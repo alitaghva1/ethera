@@ -207,6 +207,68 @@ const ENEMY_TYPES = {
     },
 };
 
+// ============================================================
+//  BOSS ABILITY HELPERS — shared patterns for boss attacks
+// ============================================================
+// AoE ring: damage in radius around a point, with particle ring + shake.
+// Used by Slime King slam, Frost Wyrm shatter, Ruined King void pulse, etc.
+function bossAoE(centerRow, centerCol, radius, damage, particleCount, particleColor, shakeIntensity, source) {
+    // Particle ring
+    for (let p = 0; p < particleCount; p++) {
+        const angle = (p / particleCount) * Math.PI * 2;
+        spawnParticle(
+            centerRow + Math.cos(angle) * radius,
+            centerCol + Math.sin(angle) * radius,
+            Math.cos(angle) * 1.5, Math.sin(angle) * 1.5,
+            0.5, particleColor, 0.8
+        );
+    }
+    // Damage player if in range
+    const pdr = player.row - centerRow;
+    const pdc = player.col - centerCol;
+    if (Math.sqrt(pdr * pdr + pdc * pdc) < radius) {
+        damagePlayer(damage, source || 'boss');
+    }
+    addScreenShake(shakeIntensity || 5, 0.25);
+}
+
+// Sweep arc: damage in frontal cone toward player
+function bossSweep(e, radius, damage, particleCount, particleColor, source) {
+    const dr = player.row - e.row;
+    const dc = player.col - e.col;
+    const sweepCenter = Math.atan2(dc, dr);
+    for (let p = 0; p < particleCount; p++) {
+        const angle = sweepCenter + (p / particleCount - 0.5) * Math.PI;
+        const px = e.row + Math.cos(angle) * radius;
+        const py = e.col + Math.sin(angle) * radius;
+        spawnParticle(px, py, Math.cos(angle) * 1, Math.sin(angle) * 1, 0.4, particleColor, 0.8);
+    }
+    const dist = Math.sqrt(dr * dr + dc * dc);
+    if (dist < radius) {
+        damagePlayer(damage, source || e.type);
+    }
+    addScreenShake(4, 0.2);
+}
+
+// Summon adds around a boss
+function bossSummonAdds(e, addType, count, radius, addStatScale) {
+    const scale = addStatScale || Math.max(1.0, (e.statMult || 1.0) * 0.6);
+    for (let s = 0; s < count; s++) {
+        const angle = (s / count) * Math.PI * 2 + Math.random() * 0.5;
+        const spawnR = e.row + Math.cos(angle) * radius;
+        const spawnC = e.col + Math.sin(angle) * radius;
+        if (canEnemyMoveTo(spawnR, spawnC, 0.25, null)) {
+            const add = spawnEnemy(addType, spawnR, spawnC, scale);
+            if (add) add.attackCooldown = 0.5 + Math.random();
+        }
+    }
+    for (let p = 0; p < 8; p++) {
+        const angle = Math.random() * Math.PI * 2;
+        spawnParticle(e.row, e.col, Math.cos(angle) * 2, Math.sin(angle) * 2, 0.4, e.def.tintColor || '#ff6644', 0.7);
+    }
+    addScreenShake(3, 0.15);
+}
+
 const FIREBALL_DAMAGE = COMBAT.fireballDmg;
 const ENEMY_KNOCKBACK = COMBAT.knockback;
 // Knockback multipliers by context
@@ -231,8 +293,9 @@ const enemies = [];
 const enemyProjectiles = [];
 
 // ----- PARTICLE SYSTEM -----
+// Effect particles are managed in particles.js (spawnParticle, spawnDeathBurst, etc.)
+// This array is shared — ambient particles (no .type) + effect particles (with .type)
 const particles = [];
-const MAX_PARTICLES = 200;
 for (let i = 0; i < 40; i++) {
     particles.push({
         x: Math.random() * 500 - 250,
@@ -300,82 +363,69 @@ function buildRoomBounds() {
     }
 }
 
+// ============================================================
+//  UNIFIED ENEMY HIT / STAGGER PIPELINE
+// ============================================================
+// All damage to enemies should go through this function.
+// It handles: damage application, hurt/death state, stagger cooldown,
+// knockback (with resistance), hit particles, SFX, and loot.
+//
+// Options:
+//   knockVr/knockVc — knockback velocity (tile-space)
+//   skipHurtState   — true to damage without interrupting AI (DoT, thorns)
+//   skipSFX         — true to suppress sound (batch hits)
+//   skipParticles   — true to suppress hit spark (batch hits)
+function applyEnemyHit(e, damage, opts) {
+    if (!e || e.state === 'death') return;
+    opts = opts || {};
+
+    // Armored skeleton shield damage reduction
+    const shieldReduc = e.isShielding ? (1 - (e.def.shieldDmgReduc || 0)) : 1;
+    const finalDmg = Math.round(damage * shieldReduc);
+    e.hp -= finalDmg;
+
+    // Knockback with resistance
+    if (opts.knockVr !== undefined || opts.knockVc !== undefined) {
+        const kbResist = e.def.knockbackResist || 1.0;
+        e.knockVr = (e.knockVr || 0) + (opts.knockVr || 0) * kbResist;
+        e.knockVc = (e.knockVc || 0) + (opts.knockVc || 0) * kbResist;
+    }
+
+    if (e.hp <= 0) {
+        e.hp = 0;
+        e.state = 'death';
+        e.deathTimer = 0.7;
+        e.animFrame = 0;
+        if (!opts.skipSFX) sfxEnemyDeath(e.row, e.col);
+        rollEnemyLoot(e);
+        if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
+    } else if (!opts.skipHurtState) {
+        // Stagger: only interrupt if not already staggered recently
+        // Bosses have built-in stagger resistance via shorter hurtTimer
+        const hurtDur = e.def.isBoss ? 0.15 : 0.3;
+        e.state = 'hurt';
+        e.hurtTimer = hurtDur;
+        e.animFrame = 0;
+        if (!opts.skipSFX) sfxEnemyHurt(e.row, e.col);
+        // Hit spark particle
+        if (!opts.skipParticles) {
+            const hitPos = tileToScreen(e.row, e.col);
+            spawnHitSpark(hitPos.x + cameraX, hitPos.y + cameraY);
+        }
+        // Retreat impulse for ranged enemies when hit
+        if (e.def.retreatOnHit && Math.random() < e.def.retreatOnHit) {
+            const rdr = e.row - player.row;
+            const rdc = e.col - player.col;
+            const rLen = Math.sqrt(rdr * rdr + rdc * rdc) || 1;
+            e.knockVr += (rdr / rLen) * 1.5;
+            e.knockVc += (rdc / rLen) * 1.5;
+        }
+    }
+}
+
 // ----- ENHANCED PARTICLE SYSTEMS -----
-// Spawn bursts for combat and events
-function spawnDeathBurst(worldX, worldY, color) {
-    const count = 8 + Math.floor(Math.random() * 5);
-    for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
-        const speed = 2.5 + Math.random() * 2;
-        particles.push({
-            x: worldX,
-            y: worldY,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            life: 0.5,
-            maxLife: 0.5,
-            size: 2.5 + Math.random() * 1.5,
-            color: color || '#ff6644',
-            alpha: 0.9,
-            type: 'death',
-            compositeOp: 'screen'
-        });
-    }
-}
-
-function spawnHitSpark(worldX, worldY) {
-    const count = 3 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 3.5 + Math.random() * 2.5;
-        particles.push({
-            x: worldX,
-            y: worldY,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            life: 0.2,
-            maxLife: 0.2,
-            size: 1.2 + Math.random() * 0.8,
-            color: '#ffff99',
-            alpha: 0.9,
-            type: 'hitspark'
-        });
-    }
-}
-
-// Helper: spawn a single particle at tile coords (converted to screen internally)
-function spawnParticle(tileRow, tileCol, vr, vc, life, color, alpha) {
-    const pos = tileToScreen(tileRow, tileCol);
-    particles.push({
-        x: pos.x + cameraX, y: pos.y + cameraY,
-        vx: vr, vy: vc,
-        life: life, maxLife: life,
-        size: 2 + Math.random() * 2,
-        color: color || '#ffaa44',
-        alpha: alpha || 0.8,
-        type: 'effect',
-    });
-}
-
-function spawnCastEffect(worldX, worldY) {
-    const count = 4 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
-        const speed = 2.0 + Math.random() * 1.8;
-        particles.push({
-            x: worldX,
-            y: worldY,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            life: 0.3,
-            maxLife: 0.3,
-            size: 1.8 + Math.random() * 1.2,
-            color: '#6688ff',
-            alpha: 0.75,
-            type: 'cast'
-        });
-    }
-}
+// spawnDeathBurst, spawnHitSpark, spawnParticle, spawnCastEffect
+// are now in particles.js (unified pooled particle manager)
 
 // ============================================================
 //  WAVE SYSTEM
@@ -1925,61 +1975,30 @@ function updateEnemies(dt) {
         // SLIME KING ABILITIES
         // =====================================================
         if (e.type === 'slime_king' && dist < e.def.aggroRange) {
-            // Ground Slam — AoE damage around the boss
+            // Ground Slam — AoE damage around the boss (using shared bossAoE helper)
             if (e.bossSlamTimer <= 0 && dist < e.def.slamRadius + 1) {
                 e.bossSlamTimer = e.def.slamCooldown * (e.bossPhase === 1 ? 0.7 : 1.0);
-                const slamR = e.def.slamRadius;
-                // Particle ring
-                for (let p = 0; p < 16; p++) {
-                    const angle = (p / 16) * Math.PI * 2;
-                    spawnParticle(e.row + Math.cos(angle) * slamR, e.col + Math.sin(angle) * slamR,
-                        Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, 0.5, '#88ee44', 0.8);
-                }
-                // Damage player if in range
-                if (dist < slamR) {
-                    const slamDmg = Math.round(e.def.slamDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
-                    damagePlayer(slamDmg, 'slime_king');
-                }
-                addScreenShake(5, 0.25);
-                e.howlPaused = 0.4; // brief pause after slam
-                e.state = 'attack';
-                e.animFrame = 0;
-                e.attackTimer = 0.4;
-                e.attackFired = true;
+                const slamDmg = Math.round(e.def.slamDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
+                bossAoE(e.row, e.col, e.def.slamRadius, slamDmg, 16, '#88ee44', 5, 'slime_king');
+                e.howlPaused = 0.4;
+                e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.4; e.attackFired = true;
                 continue;
             }
 
             // Slam telegraph — visual warning 0.3s before slam fires
             if (e.bossSlamTimer > 0 && e.bossSlamTimer <= 0.3 && dist < e.def.slamRadius + 1) {
-                const slamR = e.def.slamRadius;
-                // Red warning particles in expanding ring
                 if (Math.random() < 0.5) {
                     const angle = Math.random() * Math.PI * 2;
-                    spawnParticle(e.row + Math.cos(angle) * slamR, e.col + Math.sin(angle) * slamR,
+                    spawnParticle(e.row + Math.cos(angle) * e.def.slamRadius, e.col + Math.sin(angle) * e.def.slamRadius,
                         Math.cos(angle) * 0.5, Math.sin(angle) * 0.5, 0.15, '#ff4444', 0.9);
                 }
             }
 
-            // Summon Slime Adds — spawns small slimes around the boss
+            // Summon Slime Adds (using shared bossSummonAdds helper)
             if (e.bossSummonTimer <= 0) {
                 e.bossSummonTimer = e.def.summonCooldown * (e.bossPhase === 1 ? 0.6 : 1.0);
                 const addCount = e.def.summonCount + (e.bossPhase === 1 ? 1 : 0);
-                for (let s = 0; s < addCount; s++) {
-                    const angle = (s / addCount) * Math.PI * 2 + Math.random() * 0.5;
-                    const spawnR = e.row + Math.cos(angle) * 1.5;
-                    const spawnC = e.col + Math.sin(angle) * 1.5;
-                    if (canEnemyMoveTo(spawnR, spawnC, 0.25, null)) {
-                        const addMult = Math.max(1.0, (e.statMult || 1.0) * 0.6); // adds are 60% of boss scaling
-                        const add = spawnEnemy('slime', spawnR, spawnC, addMult);
-                        if (add) add.attackCooldown = 0.5 + Math.random();
-                    }
-                }
-                // Summon particles
-                for (let p = 0; p < 8; p++) {
-                    const angle = Math.random() * Math.PI * 2;
-                    spawnParticle(e.row, e.col, Math.cos(angle) * 2, Math.sin(angle) * 2, 0.4, '#66cc22', 0.7);
-                }
-                addScreenShake(3, 0.15);
+                bossSummonAdds(e, 'slime', addCount, 1.5);
             }
         }
 
@@ -1987,28 +2006,13 @@ function updateEnemies(dt) {
         // BONE COLOSSUS ABILITIES
         // =====================================================
         if (e.type === 'bone_colossus' && dist < e.def.aggroRange) {
-            // Sweeping Attack — damages in a frontal arc
+            // Sweeping Attack — damages in a frontal arc (using shared bossSweep helper)
             if (e.bossSweepTimer <= 0 && dist < e.def.sweepRadius + 0.5) {
                 e.bossSweepTimer = e.def.sweepCooldown * (e.bossPhase === 1 ? 0.65 : 1.0);
-                // Sweep particle arc in facing direction
-                const sweepCenter = Math.atan2(dc, dr);
-                for (let p = 0; p < 10; p++) {
-                    const angle = sweepCenter + (p / 10 - 0.5) * Math.PI;
-                    const px = e.row + Math.cos(angle) * e.def.sweepRadius;
-                    const py = e.col + Math.sin(angle) * e.def.sweepRadius;
-                    spawnParticle(px, py, Math.cos(angle) * 1, Math.sin(angle) * 1, 0.4, '#ccaa66', 0.8);
-                }
-                // Damage if player in range
-                if (dist < e.def.sweepRadius) {
-                    const sweepDmg = Math.round(e.def.sweepDamage * (e.bossPhase === 1 ? 1.4 : 1.0));
-                    damagePlayer(sweepDmg, 'bone_colossus');
-                }
-                addScreenShake(4, 0.2);
+                const sweepDmg = Math.round(e.def.sweepDamage * (e.bossPhase === 1 ? 1.4 : 1.0));
+                bossSweep(e, e.def.sweepRadius, sweepDmg, 10, '#ccaa66', 'bone_colossus');
                 e.howlPaused = 0.3;
-                e.state = 'attack';
-                e.animFrame = 0;
-                e.attackTimer = 0.3;
-                e.attackFired = true;
+                e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.3; e.attackFired = true;
                 continue;
             }
 
@@ -2920,25 +2924,16 @@ function damagePlayer(amount, enemyType = '') {
         sfxPlayerHurt();
     }
 
-    // Thorns of Flame: damage melee attackers
+    // Thorns of Flame: damage melee attackers (uses unified hit pipeline)
     if (getUpgrade('thorns') > 0) {
         const thornDmg = 15 * getUpgrade('thorns');
         sfxThorns();
-        // Damage all enemies within melee range
         for (const e of enemies) {
             if (e.state === 'death') continue;
             const dr = e.row - player.row;
             const dc = e.col - player.col;
             if (Math.sqrt(dr*dr + dc*dc) < 1.5) {
-                e.hp -= thornDmg;
-                e.state = 'hurt'; e.hurtTimer = 0.2; e.animFrame = 0;
-                if (e.hp <= 0) {
-                    e.hp = 0; e.state = 'death'; e.deathTimer = 0.7; e.animFrame = 0;
-                    sfxEnemyDeath(e.row, e.col);
-                    rollEnemyLoot(e);
-                } else {
-                    sfxEnemyHurt(e.row, e.col);
-                }
+                applyEnemyHit(e, thornDmg, { skipSFX: false });
             }
         }
     }

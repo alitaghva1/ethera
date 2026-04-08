@@ -49,24 +49,9 @@ function updateSkeleton(dt) {
     // Rolling overrides movement
     if (skeletonState.rolling) {
         skeletonState.rollTimer -= dt;
-        const rollMoveRow = skeletonState.rollDirRow * 10 * dt;
-        const rollMoveCol = skeletonState.rollDirCol * 10 * dt;
-        const rollNewRow = player.row + rollMoveRow;
-        const rollNewCol = player.col + rollMoveCol;
-        if (canMoveTo(rollNewRow, rollNewCol)) {
-            player.row = rollNewRow;
-            player.col = rollNewCol;
-        } else {
-            // Per-axis sliding (like wizard dodge)
-            if (canMoveTo(rollNewRow, player.col)) {
-                player.row = rollNewRow;
-            }
-            if (canMoveTo(player.row, rollNewCol)) {
-                player.col = rollNewCol;
-            }
-            // End roll early on wall hit
-            skeletonState.rollTimer = 0;
-        }
+        // Shared dodge movement with wall sliding
+        const rollBlocked = dodgeMove(skeletonState.rollDirRow, skeletonState.rollDirCol, 10, dt);
+        if (rollBlocked) skeletonState.rollTimer = 0; // End roll early on wall hit
         // Skull Bash upgrade: roll through enemies deals damage + builds combo
         if (getUpgrade('skull_bash') > 0) {
             for (const e of enemies) {
@@ -201,7 +186,7 @@ function updateSkeleton(dt) {
             proj.isBoomerang = getUpgrade('bone_boomerang') > 0;
             proj.boomerangTimer = 0;
             proj.marrowLeech = getUpgrade('marrow_leech') > 0;
-            proj.trail = [];
+            // trail ring buffer initialized by getPooledProj()
             projectiles.push(proj);
         }
         if (sfxCtx) sfxFireballShoot(); // reuse fireball SFX
@@ -223,6 +208,11 @@ function updateSkeleton(dt) {
 
     // === DODGE COOLDOWN ===
     if (player.dodgeCoolTimer > 0) player.dodgeCoolTimer -= dt;
+
+    // Consume buffered dodge when cooldown expires
+    if (player.dodgeCoolTimer <= 0 && !skeletonState.rolling && consumeBuffer('dodge')) {
+        formHandlers.skeleton.onDodge();
+    }
 
     // === BONE FRAGMENT PICKUPS (from dead skeleton enemies) ===
     for (let i = skeletonState.boneFragments.length - 1; i >= 0; i--) {
@@ -296,7 +286,7 @@ function updateSkeleton(dt) {
                 proj.explode = false;
                 proj.bounce = 0;
                 proj.isBone = true;
-                proj.trail = [];
+                // trail ring buffer initialized by getPooledProj()
                 projectiles.push(proj);
             }
             addScreenShake(2, 0.1);
@@ -832,18 +822,20 @@ formHandlers.skeleton.onSecondaryAbility = function() {
             proj.explode = false;
             proj.bounce = 0;
             proj.isBone = true;
-            proj.trail = [];
+            // trail ring buffer initialized by getPooledProj()
             projectiles.push(proj);
         }
     }
     addScreenShake(2, 0.15);
 };
 
-// Roll Dodge (Space)
+// Roll Dodge (Space) — also fires from input buffer
 formHandlers.skeleton.onDodge = function() {
-    if (skeletonState.rolling) return;
-    if (player.dodgeCoolTimer > 0) return;
-    if (skeletonState.shieldUp) return;
+    if (skeletonState.rolling || skeletonState.shieldUp) return;
+    if (player.dodgeCoolTimer > 0) {
+        bufferInput('dodge');
+        return;
+    }
     skeletonState.rolling = true;
     skeletonState.rollTimer = 0.35;
     player.dodgeCoolTimer = DODGE_COOLDOWN * 0.5; // fast cooldown for agile skeleton
@@ -940,7 +932,8 @@ function spawnDustBurst(cx, cy, count) {
 
 function updateDustParticles(dt) {
     // --- Spawn ambient particles during gameplay ---
-    const particleCap = currentZone === 0 ? 45 : (currentZone >= 4 && currentZone <= 6) ? 50 : 25;
+    const baseCap = currentZone === 0 ? 45 : (currentZone >= 4 && currentZone <= 6) ? 50 : 25;
+    const particleCap = Math.round(baseCap * GFX.particleMul);
     if (gamePhase === 'playing' && dustParticles.length < particleCap) {
 
         // ===== DARK FANTASY TOWN PARTICLES (zone 0) =====

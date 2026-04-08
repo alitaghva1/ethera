@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ethera - The Awakening</title>
     <meta name="description" content="Ethera - The Awakening. A dark dungeon RPG. Free for Windows, macOS, and Linux.">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Cinzel:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap');
 
@@ -17,39 +18,40 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background: #050407;
+            background: #030205;
             color: #c8c0b0;
         }
 
-        /* ── Full-screen dungeon background ── */
+        /* ── Deep layered dungeon atmosphere ── */
         .dungeon-bg {
             position: fixed;
             inset: 0;
             z-index: 0;
-
-            /* Layered radial gradients simulating torchlight on stone walls */
             background:
-                /* Top-center warm torchlight */
-                radial-gradient(ellipse 600px 400px at 50% 8%, rgba(180, 120, 50, 0.08) 0%, transparent 100%),
-                /* Left wall torch */
-                radial-gradient(ellipse 300px 500px at 5% 50%, rgba(160, 90, 30, 0.06) 0%, transparent 100%),
-                /* Right wall torch */
-                radial-gradient(ellipse 300px 500px at 95% 50%, rgba(160, 90, 30, 0.06) 0%, transparent 100%),
-                /* Deep purple ambient from above */
-                radial-gradient(ellipse 800px 300px at 50% 0%, rgba(60, 25, 80, 0.12) 0%, transparent 100%),
-                /* Green magical glow from below */
-                radial-gradient(ellipse 500px 200px at 50% 100%, rgba(20, 60, 30, 0.08) 0%, transparent 100%),
-                /* Base dark */
-                #050407;
+                /* Central warm cathedral light from above */
+                radial-gradient(ellipse 500px 700px at 50% -5%, rgba(200, 140, 50, 0.10) 0%, transparent 70%),
+                /* Wider ambient warmth */
+                radial-gradient(ellipse 900px 500px at 50% 10%, rgba(160, 100, 40, 0.06) 0%, transparent 100%),
+                /* Left wall torch — warm orange */
+                radial-gradient(ellipse 200px 350px at 8% 40%, rgba(180, 100, 30, 0.07) 0%, transparent 100%),
+                /* Right wall torch — warm orange */
+                radial-gradient(ellipse 200px 350px at 92% 40%, rgba(180, 100, 30, 0.07) 0%, transparent 100%),
+                /* Deep purple ambient ceiling */
+                radial-gradient(ellipse 1200px 400px at 50% -10%, rgba(50, 20, 70, 0.15) 0%, transparent 100%),
+                /* Floor: dark green magical residue */
+                radial-gradient(ellipse 600px 200px at 50% 105%, rgba(15, 50, 25, 0.10) 0%, transparent 100%),
+                /* Subtle blue moonlight from top-right */
+                radial-gradient(ellipse 300px 400px at 80% 5%, rgba(40, 60, 120, 0.05) 0%, transparent 100%),
+                #030205;
         }
 
-        /* ── Stone texture overlay ── */
+        /* ── Stone texture ── */
         .stone-texture {
             position: fixed;
             inset: 0;
             z-index: 0;
             pointer-events: none;
-            opacity: 0.035;
+            opacity: 0.03;
             background-image:
                 repeating-conic-gradient(rgba(120,100,80,0.3) 0% 25%, transparent 0% 50%) 0 0 / 3px 3px,
                 linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
@@ -57,59 +59,107 @@
             background-size: 3px 3px, 8px 8px, 8px 8px;
         }
 
-        /* ── Vignette — dark edges like dungeon walls closing in ── */
+        /* ── Heavy vignette — dungeon walls closing in ── */
         .vignette {
             position: fixed;
             inset: 0;
             z-index: 1;
             pointer-events: none;
             background: radial-gradient(
-                ellipse 70% 65% at 50% 50%,
+                ellipse 60% 55% at 50% 45%,
                 transparent 0%,
-                rgba(5, 4, 7, 0.3) 60%,
-                rgba(5, 4, 7, 0.7) 80%,
-                rgba(5, 4, 7, 0.95) 100%
+                rgba(3, 2, 5, 0.25) 55%,
+                rgba(3, 2, 5, 0.65) 75%,
+                rgba(3, 2, 5, 0.92) 100%
             );
         }
 
-        /* ── Torch flicker effect on the whole scene ── */
+        /* ── Torch flicker ── */
         .torch-flicker {
             position: fixed;
             inset: 0;
             z-index: 0;
             pointer-events: none;
-            background: radial-gradient(ellipse 600px 400px at 50% 30%, rgba(200, 130, 50, 0.03) 0%, transparent 100%);
+            background:
+                radial-gradient(ellipse 500px 500px at 50% 20%, rgba(200, 130, 50, 0.04) 0%, transparent 100%),
+                radial-gradient(ellipse 200px 300px at 8% 40%, rgba(200, 130, 50, 0.03) 0%, transparent 100%),
+                radial-gradient(ellipse 200px 300px at 92% 40%, rgba(200, 130, 50, 0.03) 0%, transparent 100%);
             animation: flicker 4s ease-in-out infinite alternate;
         }
         @keyframes flicker {
-            0% { opacity: 0.6; }
+            0% { opacity: 0.5; }
             15% { opacity: 1; }
-            30% { opacity: 0.7; }
-            50% { opacity: 0.9; }
-            65% { opacity: 0.5; }
+            30% { opacity: 0.6; }
+            50% { opacity: 0.95; }
+            65% { opacity: 0.4; }
             80% { opacity: 1; }
-            100% { opacity: 0.7; }
+            100% { opacity: 0.65; }
         }
 
-        /* ── Floating embers / dust motes ── */
+        /* ── Light rays from above ── */
+        .light-rays {
+            position: fixed;
+            top: -10%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 70vh;
+            z-index: 1;
+            pointer-events: none;
+            background: linear-gradient(
+                180deg,
+                rgba(200, 150, 60, 0.06) 0%,
+                rgba(200, 150, 60, 0.02) 40%,
+                transparent 100%
+            );
+            clip-path: polygon(35% 0%, 65% 0%, 85% 100%, 15% 100%);
+            animation: rayPulse 8s ease-in-out infinite alternate;
+        }
+        @keyframes rayPulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+        /* ── Slow fog drift layer ── */
+        .fog {
+            position: fixed;
+            bottom: 0;
+            left: -20%;
+            width: 140%;
+            height: 40%;
+            z-index: 2;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 600px 150px at 20% 80%, rgba(60, 50, 40, 0.08) 0%, transparent 100%),
+                radial-gradient(ellipse 500px 120px at 70% 70%, rgba(60, 50, 40, 0.06) 0%, transparent 100%),
+                radial-gradient(ellipse 800px 100px at 50% 95%, rgba(40, 35, 30, 0.10) 0%, transparent 100%);
+            animation: fogDrift 30s ease-in-out infinite alternate;
+        }
+        @keyframes fogDrift {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(5%); }
+        }
+
+        /* ── Floating embers / dust / magic ── */
         .ember {
             position: fixed;
             border-radius: 50%;
             pointer-events: none;
-            z-index: 2;
+            z-index: 4;
         }
         .ember.spark {
-            background: rgba(200, 140, 60, 0.7);
-            box-shadow: 0 0 6px rgba(200, 140, 60, 0.4), 0 0 2px rgba(255, 200, 100, 0.3);
+            background: rgba(220, 150, 50, 0.8);
+            box-shadow: 0 0 8px rgba(220, 150, 50, 0.5), 0 0 3px rgba(255, 200, 80, 0.4);
             animation: spark linear infinite;
         }
         .ember.dust {
-            background: rgba(140, 120, 100, 0.25);
+            background: rgba(140, 120, 100, 0.2);
             animation: dust linear infinite;
         }
         .ember.magic {
-            background: rgba(130, 80, 180, 0.5);
-            box-shadow: 0 0 4px rgba(130, 80, 180, 0.3);
+            background: rgba(140, 90, 200, 0.6);
+            box-shadow: 0 0 6px rgba(140, 90, 200, 0.4), 0 0 12px rgba(140, 90, 200, 0.15);
             animation: spark linear infinite;
         }
 
@@ -122,14 +172,14 @@
         @keyframes dust {
             0% { transform: translateY(0) translateX(0); opacity: 0; }
             10% { opacity: 0.3; }
-            90% { opacity: 0.15; }
+            90% { opacity: 0.1; }
             100% { transform: translateY(var(--travel)) translateX(var(--drift)); opacity: 0; }
         }
 
-        /* ── Page layout — vertically centered ── */
+        /* ── Page layout — full viewport, no card ── */
         .page {
             position: relative;
-            z-index: 3;
+            z-index: 5;
             height: 100vh;
             display: flex;
             flex-direction: column;
@@ -138,78 +188,40 @@
             padding: 32px 24px;
         }
 
-        /* ── Stone-bordered frame ── */
-        .frame {
-            position: relative;
-            max-width: 640px;
+        .content {
+            max-width: 560px;
             width: 100%;
-            padding: 48px 44px 40px;
             text-align: center;
-            background: rgba(8, 6, 12, 0.65);
-            border: 1px solid rgba(100, 80, 60, 0.15);
-            box-shadow:
-                inset 0 0 60px rgba(0, 0, 0, 0.5),
-                0 0 80px rgba(0, 0, 0, 0.6);
-        }
-
-        /* Corner brackets — stone/iron feel */
-        .frame::before, .frame::after,
-        .corner-tr, .corner-bl {
-            content: '';
-            position: absolute;
-            width: 20px; height: 20px;
-            border-style: solid;
-        }
-        .frame::before {
-            top: -1px; left: -1px;
-            border-width: 2px 0 0 2px;
-            border-color: rgba(160, 120, 60, 0.25);
-        }
-        .frame::after {
-            bottom: -1px; right: -1px;
-            border-width: 0 2px 2px 0;
-            border-color: rgba(160, 120, 60, 0.25);
-        }
-        .corner-tr {
-            top: -1px; right: -1px;
-            border-width: 2px 2px 0 0;
-            border-color: rgba(160, 120, 60, 0.25);
-        }
-        .corner-bl {
-            bottom: -1px; left: -1px;
-            border-width: 0 0 2px 2px;
-            border-color: rgba(160, 120, 60, 0.25);
-        }
-
-        /* ── Inner glow line ── */
-        .frame-glow {
-            position: absolute;
-            inset: 6px;
-            border: 1px solid rgba(160, 120, 60, 0.06);
-            pointer-events: none;
         }
 
         /* ── Title ── */
         .title {
             font-family: 'Cinzel Decorative', serif;
             font-weight: 900;
-            font-size: clamp(2.6rem, 7vw, 3.8rem);
-            letter-spacing: 0.14em;
-            color: #d4c4a0;
+            font-size: clamp(3rem, 8vw, 4.5rem);
+            letter-spacing: 0.16em;
+            color: #dbc89c;
             text-shadow:
-                0 0 60px rgba(200, 150, 60, 0.12),
-                0 0 20px rgba(200, 150, 60, 0.06),
-                0 2px 0 rgba(0, 0, 0, 0.5);
-            margin-bottom: 6px;
+                0 0 80px rgba(200, 150, 60, 0.18),
+                0 0 40px rgba(200, 150, 60, 0.08),
+                0 0 120px rgba(200, 150, 60, 0.06),
+                0 3px 0 rgba(0, 0, 0, 0.6);
+            margin-bottom: 12px;
+            animation: titleGlow 6s ease-in-out infinite alternate;
+        }
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 80px rgba(200,150,60,0.12), 0 0 40px rgba(200,150,60,0.06), 0 0 120px rgba(200,150,60,0.04), 0 3px 0 rgba(0,0,0,0.6); }
+            100% { text-shadow: 0 0 80px rgba(200,150,60,0.22), 0 0 40px rgba(200,150,60,0.10), 0 0 120px rgba(200,150,60,0.08), 0 3px 0 rgba(0,0,0,0.6); }
         }
 
         .subtitle {
             font-family: 'Cinzel', serif;
             font-weight: 400;
-            font-size: 0.65rem;
-            letter-spacing: 0.55em;
+            font-size: 0.72rem;
+            letter-spacing: 0.5em;
             text-transform: uppercase;
-            color: rgba(160, 130, 80, 0.35);
+            color: rgba(190, 155, 90, 0.5);
+            text-shadow: 0 0 20px rgba(190, 155, 90, 0.08);
         }
 
         /* ── Ornamental divider ── */
@@ -217,81 +229,88 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 14px;
-            margin: 22px 0;
+            gap: 16px;
+            margin: 28px auto;
+            max-width: 260px;
         }
         .ornament::before, .ornament::after {
             content: '';
             flex: 1;
             height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(160, 120, 60, 0.15), transparent);
+            background: linear-gradient(90deg, transparent, rgba(180, 140, 60, 0.18), transparent);
         }
         .ornament-diamond {
-            width: 6px; height: 6px;
-            background: rgba(160, 120, 60, 0.2);
+            width: 5px; height: 5px;
+            background: rgba(180, 140, 60, 0.25);
             transform: rotate(45deg);
+            box-shadow: 0 0 8px rgba(180, 140, 60, 0.1);
         }
 
         /* ── Tagline ── */
         .tagline {
-            font-size: 0.92rem;
+            font-size: 1rem;
             font-weight: 300;
-            color: rgba(190, 170, 140, 0.7);
-            line-height: 1.8;
-            max-width: 380px;
+            color: rgba(200, 180, 150, 0.6);
+            line-height: 1.9;
+            max-width: 360px;
             margin: 0 auto;
             font-style: italic;
-            font-family: Georgia, serif;
+            font-family: Georgia, 'Times New Roman', serif;
+            letter-spacing: 0.02em;
         }
 
         /* ── Download area ── */
         .download-area {
-            margin-top: 30px;
+            margin-top: 40px;
         }
 
+        /* ── Download button — gold with glow pulse ── */
         .download-btn {
             display: inline-flex;
             align-items: center;
             gap: 12px;
-            padding: 15px 40px;
+            padding: 16px 48px;
             font-family: 'Cinzel', serif;
             font-weight: 700;
-            font-size: 0.88rem;
-            letter-spacing: 0.1em;
+            font-size: 0.85rem;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
             color: #0a0806;
-            background: linear-gradient(135deg, #c4a460 0%, #a08840 50%, #c4a460 100%);
-            background-size: 200% 200%;
+            background: linear-gradient(135deg, #d4b060 0%, #a88a40 40%, #c4a855 60%, #d4b060 100%);
+            background-size: 300% 300%;
             border: none;
-            border-radius: 1px;
             cursor: pointer;
             text-decoration: none;
-            transition: all 0.3s ease;
-            box-shadow:
-                0 2px 20px rgba(180, 140, 50, 0.15),
-                inset 0 1px 0 rgba(255, 240, 180, 0.2),
-                inset 0 -1px 0 rgba(0, 0, 0, 0.2);
             position: relative;
-            animation: btnShimmer 6s ease-in-out infinite;
+            transition: all 0.4s ease;
+            animation: btnShimmer 8s ease-in-out infinite;
+            /* Tapered/clipped shape */
+            clip-path: polygon(4px 0%, calc(100% - 4px) 0%, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0% calc(100% - 4px), 0% 4px);
         }
         @keyframes btnShimmer {
             0%, 100% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
         }
+        /* Outer glow */
         .download-btn::before {
             content: '';
             position: absolute;
-            inset: -1px;
-            border: 1px solid rgba(200, 160, 60, 0.3);
-            border-radius: 1px;
-            pointer-events: none;
+            inset: -2px;
+            clip-path: polygon(4px 0%, calc(100% - 4px) 0%, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0% calc(100% - 4px), 0% 4px);
+            background: linear-gradient(135deg, rgba(212, 176, 96, 0.4), rgba(168, 138, 64, 0.2), rgba(212, 176, 96, 0.4));
+            z-index: -1;
+            animation: glowPulse 3s ease-in-out infinite;
+        }
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(200, 160, 50, 0.15), 0 0 60px rgba(200, 160, 50, 0.05); opacity: 0.7; }
+            50% { box-shadow: 0 0 30px rgba(200, 160, 50, 0.25), 0 0 80px rgba(200, 160, 50, 0.10); opacity: 1; }
         }
         .download-btn:hover {
-            transform: translateY(-1px);
-            box-shadow:
-                0 4px 30px rgba(180, 140, 50, 0.25),
-                inset 0 1px 0 rgba(255, 240, 180, 0.3),
-                inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+        .download-btn:hover::before {
+            box-shadow: 0 0 40px rgba(200, 160, 50, 0.3), 0 0 100px rgba(200, 160, 50, 0.12);
         }
         .download-btn svg {
             width: 17px; height: 17px;
@@ -301,9 +320,9 @@
         .download-meta {
             display: block;
             font-size: 0.68rem;
-            color: rgba(170, 145, 100, 0.55);
-            margin-top: 10px;
-            letter-spacing: 0.03em;
+            color: rgba(170, 145, 100, 0.45);
+            margin-top: 12px;
+            letter-spacing: 0.04em;
         }
 
         /* ── Platform buttons ── */
@@ -311,7 +330,7 @@
             display: flex;
             justify-content: center;
             gap: 10px;
-            margin-top: 20px;
+            margin-top: 22px;
             flex-wrap: wrap;
         }
         .plat-btn {
@@ -321,65 +340,61 @@
             padding: 7px 18px;
             font-size: 0.73rem;
             font-weight: 500;
-            color: rgba(180, 155, 110, 0.6);
-            background: rgba(160, 120, 60, 0.03);
-            border: 1px solid rgba(160, 120, 60, 0.12);
+            color: rgba(180, 155, 110, 0.5);
+            background: transparent;
+            border: 1px solid rgba(160, 120, 60, 0.08);
             border-radius: 1px;
             text-decoration: none;
-            transition: all 0.25s ease;
+            transition: all 0.3s ease;
             cursor: pointer;
         }
         .plat-btn:hover {
-            color: rgba(200, 170, 110, 0.6);
-            background: rgba(160, 120, 60, 0.06);
-            border-color: rgba(160, 120, 60, 0.15);
+            color: rgba(200, 170, 110, 0.65);
+            border-color: rgba(160, 120, 60, 0.18);
         }
         .plat-btn.active {
             color: rgba(200, 170, 110, 0.6);
             border-color: rgba(160, 120, 60, 0.2);
-            background: rgba(160, 120, 60, 0.06);
+            background: rgba(160, 120, 60, 0.04);
         }
         .plat-btn svg { width: 13px; height: 13px; fill: currentColor; }
-        .plat-btn .plat-size { opacity: 0.5; font-size: 0.65rem; }
+        .plat-btn .plat-size { opacity: 0.45; font-size: 0.63rem; }
 
-        /* ── Version bar ── */
+        /* ── Version bar — subtle, tucked away ── */
         .version-bar {
             display: flex;
             justify-content: center;
-            gap: 24px;
+            gap: 20px;
             flex-wrap: wrap;
-            margin-top: 24px;
-            padding-top: 16px;
-            border-top: 1px solid rgba(160, 120, 60, 0.06);
+            margin-top: 28px;
         }
         .version-bar span {
-            font-size: 0.62rem;
-            color: rgba(160, 140, 100, 0.4);
+            font-size: 0.58rem;
+            color: rgba(140, 120, 90, 0.3);
             letter-spacing: 0.06em;
         }
         .version-bar strong {
-            color: rgba(180, 150, 100, 0.5);
+            color: rgba(160, 135, 90, 0.35);
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.1em;
         }
 
-        /* ── Byline — matches in-game ── */
+        /* ── Byline ── */
         .byline {
             font-family: Georgia, serif;
             font-style: italic;
             font-weight: 400;
-            font-size: 0.7rem;
+            font-size: 0.72rem;
             letter-spacing: 0.04em;
-            color: #b8a078;
-            opacity: 0.4;
-            margin-top: 24px;
+            color: rgba(184, 160, 120, 0.3);
+            margin-top: 32px;
         }
 
         /* ── Coming soon ── */
         .coming-soon {
             display: none;
-            margin-top: 28px;
+            margin-top: 36px;
         }
         .coming-soon .badge {
             display: inline-block;
@@ -399,40 +414,41 @@
             font-family: Georgia, serif;
         }
 
-        /* ── Bottom info — outside frame ── */
+        /* ── Bottom info ── */
         .bottom-info {
             position: fixed;
             bottom: 16px;
             left: 0; right: 0;
-            z-index: 3;
+            z-index: 5;
             text-align: center;
         }
         .sys-req {
-            font-size: 0.6rem;
-            color: rgba(130, 110, 80, 0.35);
+            font-size: 0.58rem;
+            color: rgba(120, 100, 70, 0.25);
             letter-spacing: 0.03em;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }
         .copyright {
-            font-size: 0.55rem;
-            color: rgba(80, 60, 40, 0.18);
+            font-size: 0.52rem;
+            color: rgba(80, 60, 40, 0.15);
         }
         .copyright a {
-            color: rgba(120, 90, 50, 0.25);
+            color: rgba(120, 90, 50, 0.2);
             text-decoration: none;
         }
         .copyright a:hover { color: rgba(160, 120, 60, 0.35); }
 
         /* ── Responsive ── */
         @media (max-width: 600px) {
-            .frame { padding: 36px 24px 32px; }
+            .content { padding: 0 12px; }
             .platforms { gap: 6px; }
             .plat-btn { padding: 6px 12px; font-size: 0.68rem; }
+            .download-btn { padding: 14px 36px; font-size: 0.8rem; }
         }
         @media (max-height: 700px) {
-            .frame { padding: 32px 36px 28px; }
-            .ornament { margin: 14px 0; }
-            .download-area { margin-top: 20px; }
+            .ornament { margin: 18px auto; }
+            .download-area { margin-top: 28px; }
+            .byline { margin-top: 20px; }
         }
     </style>
 </head>
@@ -440,25 +456,27 @@
     <div class="dungeon-bg"></div>
     <div class="stone-texture"></div>
     <div class="torch-flicker"></div>
+    <div class="light-rays"></div>
+    <div class="fog"></div>
     <div class="vignette"></div>
 
     <script>
         // Spawn embers, dust motes, and magic particles
         const types = [
-            { cls: 'spark', count: 12, sizeMin: 1.5, sizeMax: 3, durMin: 6, durMax: 14 },
-            { cls: 'dust', count: 15, sizeMin: 1, sizeMax: 2.5, durMin: 12, durMax: 25 },
-            { cls: 'magic', count: 5, sizeMin: 1.5, sizeMax: 2.5, durMin: 8, durMax: 16 }
+            { cls: 'spark', count: 15, sizeMin: 1.5, sizeMax: 3.5, durMin: 5, durMax: 12 },
+            { cls: 'dust', count: 20, sizeMin: 1, sizeMax: 2.5, durMin: 14, durMax: 28 },
+            { cls: 'magic', count: 6, sizeMin: 1.5, sizeMax: 3, durMin: 7, durMax: 14 }
         ];
         types.forEach(t => {
             for (let i = 0; i < t.count; i++) {
                 const e = document.createElement('div');
                 e.className = 'ember ' + t.cls;
                 e.style.left = (5 + Math.random() * 90) + '%';
-                e.style.top = (60 + Math.random() * 35) + '%';
+                e.style.top = (55 + Math.random() * 40) + '%';
                 e.style.animationDuration = (t.durMin + Math.random() * (t.durMax - t.durMin)) + 's';
                 e.style.animationDelay = (Math.random() * 10) + 's';
-                e.style.setProperty('--drift', (Math.random() * 50 - 25) + 'px');
-                e.style.setProperty('--travel', -(100 + Math.random() * 300) + 'px');
+                e.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
+                e.style.setProperty('--travel', -(120 + Math.random() * 350) + 'px');
                 const s = t.sizeMin + Math.random() * (t.sizeMax - t.sizeMin);
                 e.style.width = e.style.height = s + 'px';
                 document.body.appendChild(e);
@@ -467,11 +485,7 @@
     </script>
 
     <div class="page">
-        <div class="frame">
-            <div class="corner-tr"></div>
-            <div class="corner-bl"></div>
-            <div class="frame-glow"></div>
-
+        <div class="content">
             <h1 class="title">Ethera</h1>
             <p class="subtitle">The Awakening</p>
 

@@ -45,8 +45,32 @@ function sfxDistanceVol(row, col) {
     return Math.min(1.0, 1.0 / (1 + dist * dist * 0.04));
 }
 
-// Helper: play a shaped noise burst
-function playNoise(duration, freq, Q, vol, attack, decay) {
+// Stereo panning — compute L/R pan from tile-space position relative to player
+// Returns -1 (left) to +1 (right). Uses isometric screen-X offset.
+function sfxPanValue(row, col) {
+    if (row === undefined || col === undefined) return 0;
+    const dr = row - player.row;
+    const dc = col - player.col;
+    // Convert to screen-space X: screenX = (col - row) * HALF_DW
+    const screenXOffset = (dc - dr) * (typeof HALF_DW !== 'undefined' ? HALF_DW : 57);
+    // Normalize: full pan at ~400px offset, clamped to [-1, 1]
+    return Math.max(-1, Math.min(1, screenXOffset / 400));
+}
+
+// Create a panned gain node chain: source → panner → gain → master
+function createPannedOutput(pan) {
+    if (!sfxCtx || !sfxCtx.createStereoPanner) {
+        // Fallback if StereoPanner not supported
+        return sfxMasterGain;
+    }
+    const panner = sfxCtx.createStereoPanner();
+    panner.pan.value = pan || 0;
+    panner.connect(sfxMasterGain);
+    return panner;
+}
+
+// Helper: play a shaped noise burst (optional dest for stereo panning)
+function playNoise(duration, freq, Q, vol, attack, decay, dest) {
     const now = sfxCtx.currentTime;
     const noise = sfxCtx.createBufferSource();
     noise.buffer = createNoiseBuffer(duration);
@@ -60,13 +84,13 @@ function playNoise(duration, freq, Q, vol, attack, decay) {
     gain.gain.exponentialRampToValueAtTime(0.001, now + decay);
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(sfxMasterGain);
+    gain.connect(dest || sfxMasterGain);
     noise.start(now);
     noise.stop(now + duration);
 }
 
-// Helper: play a tone with pitch sweep
-function playTone(type, startFreq, endFreq, duration, vol, attack, decay) {
+// Helper: play a tone with pitch sweep (optional dest for stereo panning)
+function playTone(type, startFreq, endFreq, duration, vol, attack, decay, dest) {
     const now = sfxCtx.currentTime;
     const osc = sfxCtx.createOscillator();
     osc.type = type;
@@ -77,7 +101,7 @@ function playTone(type, startFreq, endFreq, duration, vol, attack, decay) {
     gain.gain.linearRampToValueAtTime(vol, now + (attack || 0.01));
     gain.gain.exponentialRampToValueAtTime(0.001, now + (decay || duration));
     osc.connect(gain);
-    gain.connect(sfxMasterGain);
+    gain.connect(dest || sfxMasterGain);
     osc.start(now);
     osc.stop(now + duration);
 }
@@ -102,19 +126,23 @@ function sfxFireballHit() {
 function sfxEnemyHurt(row, col) {
     if (!sfxCtx || !canPlaySFX(0)) return;
     const v = sfxDistanceVol(row, col);
-    if (v < 0.05) return; // too far, skip entirely
+    if (v < 0.05) return;
     trackSFXChannel(0.08);
-    playTone('square', 180, 80, 0.08, 0.15 * v, 0.003, 0.08);
-    playNoise(0.06, 800, 4, 0.1 * v, 0.003, 0.05);
+    const pan = sfxPanValue(row, col);
+    const dest = createPannedOutput(pan);
+    playTone('square', 180, 80, 0.08, 0.15 * v, 0.003, 0.08, dest);
+    playNoise(0.06, 800, 4, 0.1 * v, 0.003, 0.05, dest);
 }
 
 function sfxEnemyDeath(row, col) {
     if (!sfxCtx) return;
     const v = sfxDistanceVol(row, col);
     if (v < 0.05) return;
-    playTone('sawtooth', 300, 50, 0.3, 0.2 * v, 0.01, 0.25);
-    playTone('sine', 200, 40, 0.35, 0.15 * v, 0.01, 0.3);
-    playNoise(0.25, 600, 2, 0.18 * v, 0.01, 0.2);
+    const pan = sfxPanValue(row, col);
+    const dest = createPannedOutput(pan);
+    playTone('sawtooth', 300, 50, 0.3, 0.2 * v, 0.01, 0.25, dest);
+    playTone('sine', 200, 40, 0.35, 0.15 * v, 0.01, 0.3, dest);
+    playNoise(0.25, 600, 2, 0.18 * v, 0.01, 0.2, dest);
 }
 
 function sfxPlayerHurt() {
@@ -137,8 +165,10 @@ function sfxTowerShoot(row, col) {
     if (!sfxCtx) return;
     const v = sfxDistanceVol(row, col);
     if (v < 0.05) return;
-    playTone('sine', 800, 400, 0.1, 0.15 * v, 0.003, 0.1);
-    playTone('triangle', 1200, 600, 0.08, 0.1 * v, 0.003, 0.08);
+    const pan = sfxPanValue(row, col);
+    const dest = createPannedOutput(pan);
+    playTone('sine', 800, 400, 0.1, 0.15 * v, 0.003, 0.1, dest);
+    playTone('triangle', 1200, 600, 0.08, 0.1 * v, 0.003, 0.08, dest);
 }
 
 function sfxTowerSummon() {
@@ -184,8 +214,10 @@ function sfxArrowShoot(row, col) {
     if (!sfxCtx) return;
     const v = sfxDistanceVol(row, col);
     if (v < 0.05) return;
-    playTone('triangle', 600, 200, 0.1, 0.18 * v, 0.003, 0.08);
-    playNoise(0.12, 3500, 3, 0.12 * v, 0.003, 0.1);
+    const pan = sfxPanValue(row, col);
+    const dest = createPannedOutput(pan);
+    playTone('triangle', 600, 200, 0.1, 0.18 * v, 0.003, 0.08, dest);
+    playNoise(0.12, 3500, 3, 0.12 * v, 0.003, 0.1, dest);
 }
 
 function sfxArrowHit() {

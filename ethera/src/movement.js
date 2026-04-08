@@ -1,9 +1,41 @@
 // ============================================================
+//  SHARED DODGE MOVEMENT HELPER
+// ============================================================
+// Used by wizard phase-jump, skeleton roll, and slime bounce to
+// move during an active dodge with collision + wall sliding.
+// Returns true if movement was blocked (hit a wall).
+function dodgeMove(dirRow, dirCol, speed, dt) {
+    const moveRow = dirRow * speed * dt;
+    const moveCol = dirCol * speed * dt;
+    const newRow = player.row + moveRow;
+    const newCol = player.col + moveCol;
+    if (canMoveTo(newRow, newCol)) {
+        player.row = newRow;
+        player.col = newCol;
+        return false;
+    }
+    // Per-axis sliding
+    let blocked = true;
+    if (canMoveTo(newRow, player.col)) {
+        player.row = newRow;
+        blocked = false;
+    }
+    if (canMoveTo(player.row, newCol)) {
+        player.col = newCol;
+        blocked = false;
+    }
+    return blocked;
+}
+
+// ============================================================
 //  8-DIRECTION RESOLVER
 // ============================================================
-// Converts tile-space velocity (vx=row, vy=col) into one of 8 compass
-// directions matching the PVGames spritesheet layout.
-// In Ethera's isometric space:
+// Converts tile-space velocity into one of 8 compass directions
+// matching the PVGames spritesheet layout.
+//
+// NAMING NOTE: parameters are called vx/vy for historical reasons
+// but represent tile-space ROW/COL velocity (not screen X/Y).
+//   vx = row velocity, vy = col velocity
 //   +row,+col = screen South    -row,-col = screen North
 //   +row,-col = screen West     -row,+col = screen East
 
@@ -82,7 +114,14 @@ function updatePlayer(dt) {
     if (inputLen > 0) { inputRow /= inputLen; inputCol /= inputLen; }
 
     // --- Phase Jump trigger (Space) — lich uses Shadow Step instead (handled in balance.js) ---
-    if (keys[' '] && !player.dodging && player.dodgeCoolTimer <= 0 && FormSystem.currentForm !== 'lich') {
+    // Buffer dodge input when on cooldown
+    if (keys[' '] && FormSystem.currentForm !== 'lich') {
+        if (player.dodging || player.dodgeCoolTimer > 0) {
+            bufferInput('dodge');
+        }
+    }
+    const dodgeTrigger = (keys[' '] || consumeBuffer('dodge'));
+    if (dodgeTrigger && !player.dodging && player.dodgeCoolTimer <= 0 && FormSystem.currentForm !== 'lich') {
         player.dodging = true;
         player.dodgeTimer = DODGE_DURATION;
         player.dodgeCoolTimer = Math.max(0.3, DODGE_COOLDOWN - (equipBonus.dodgeCdReduc || 0));
@@ -130,26 +169,10 @@ function updatePlayer(dt) {
     if (player.dodging) {
         player.dodgeTimer -= dt;
         const dodgeSpeed = DODGE_DISTANCE / DODGE_DURATION;
-        const moveRow = player.dodgeDirRow * dodgeSpeed * dt;
-        const moveCol = player.dodgeDirCol * dodgeSpeed * dt;
-        const newRow = player.row + moveRow;
-        const newCol = player.col + moveCol;
 
-        // Phase jump uses same collision but stops the dodge on hit
-        if (canMoveTo(newRow, newCol)) {
-            player.row = newRow;
-            player.col = newCol;
-        } else {
-            // Try per-axis sliding during dodge
-            if (canMoveTo(newRow, player.col)) {
-                player.row = newRow;
-            }
-            if (canMoveTo(player.row, newCol)) {
-                player.col = newCol;
-            }
-            // End dodge early on wall hit
-            player.dodgeTimer = 0;
-        }
+        // Shared dodge movement with wall sliding
+        const hitWall = dodgeMove(player.dodgeDirRow, player.dodgeDirCol, dodgeSpeed, dt);
+        if (hitWall) player.dodgeTimer = 0; // End dodge early on wall hit
 
         // Spawn trailing ghosts during the dash
         if (Math.random() < 0.6) {
@@ -379,20 +402,20 @@ function spawnProjectile() {
         const sizeBonus = getUpgrade('bigshot');
         const projSize = ATK_PROJ_SIZE + sizeBonus * 3;
 
-        projectiles.push({
-            row: player.row, col: player.col,
-            vr: td.dr * ATK_SPEED, vc: td.dc * ATK_SPEED,
-            life: ATK_PROJ_LIFE,
-            trail: [], hit: false,
-            size: projSize,
-            animTime: 0,
-            angle: angle,
-            pierceLeft: getUpgrade('pierce'),
-            bounceLeft: getUpgrade('bounce'),
-            canExplode: getUpgrade('explode') > 0,
-            explodeScale: getUpgrade('explode'),
-            hitEnemies: new Set(),
-        });
+        const _wp = getPooledProj();
+        _wp.row = player.row; _wp.col = player.col;
+        _wp.vr = td.dr * ATK_SPEED; _wp.vc = td.dc * ATK_SPEED;
+        _wp.life = ATK_PROJ_LIFE;
+        _wp.hit = false;
+        _wp.size = projSize;
+        _wp.animTime = 0;
+        _wp.angle = angle;
+        _wp.pierceLeft = getUpgrade('pierce');
+        _wp.bounceLeft = getUpgrade('bounce');
+        _wp.canExplode = getUpgrade('explode') > 0;
+        _wp.explodeScale = getUpgrade('explode');
+        _wp.hitEnemies = new Set();
+        projectiles.push(_wp);
         FormSystem.formData.wizard.spellsCast++;
     }
 }

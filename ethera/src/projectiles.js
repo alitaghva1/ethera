@@ -17,9 +17,8 @@ function updateProjectiles(dt) {
         const newRow = p.row + p.vr * dt;
         const newCol = p.col + p.vc * dt;
 
-        // Save trail points
-        p.trail.push({ row: p.row, col: p.col, age: 0 });
-        if (p.trail.length > 10) p.trail.shift();
+        // Save trail points (ring buffer — no allocations)
+        trailPush(p.trail, p.row, p.col);
 
         // Boomerang logic
         if (p.isBoomerang) {
@@ -81,8 +80,10 @@ function updateProjectiles(dt) {
         // Tick fireball animation
         p.animTime += dt;
 
-        // Age trail points
-        for (const t of p.trail) t.age += dt;
+        // Age trail points (ring buffer)
+        for (let ti = 0; ti < p.trail.count; ti++) {
+            p.trail.buf[(((p.trail.head - p.trail.count + TRAIL_MAX) % TRAIL_MAX) + ti) % TRAIL_MAX].age += dt;
+        }
 
         // Remove if expired or out of map
         const mapBound = floorMap.length;
@@ -165,7 +166,10 @@ function drawProjectiles() {
             // Bone shard (ivory jagged shape)
             ctx.save();
             ctx.globalAlpha = 0.85;
-            const bAngle = Math.atan2(p.vy, p.vx);
+            // Convert tile-space velocity to screen-space angle for rotation
+            const bScreenX = (p.vc - p.vr);          // screen X from tile velocity
+            const bScreenY = (p.vc + p.vr) * 0.5;    // screen Y from tile velocity
+            const bAngle = Math.atan2(bScreenY, bScreenX);
             ctx.translate(px, py);
             ctx.rotate(bAngle);
             ctx.fillStyle = '#e8e0c8';
@@ -239,14 +243,13 @@ function drawProjectiles() {
         ctx.fill();
         ctx.restore();
 
-        // --- Fire trail with color/scale interpolation ---
+        // --- Fire trail with color/scale interpolation (ring buffer) ---
         ctx.save();
-        for (let i = 0; i < p.trail.length; i++) {
-            const t = p.trail[i];
+        trailForEach(p.trail, function(t, i, total) {
             const tp = tileToScreen(t.row, t.col);
             const tx = tp.x + cameraX;
             const ty = tp.y + cameraY;
-            const frac = i / p.trail.length; // 0=oldest, 1=newest
+            const frac = i / total; // 0=oldest, 1=newest
             const ageFade = Math.max(0, 1 - t.age * 3); // fade by actual age
 
             // Outer glow: orange→red as it ages
@@ -267,7 +270,7 @@ function drawProjectiles() {
             ctx.beginPath();
             ctx.arc(tx, ty, p.size * frac * 0.5 * (0.5 + ageFade * 0.5), 0, Math.PI * 2);
             ctx.fill();
-        }
+        });
         ctx.restore();
 
         // --- Outer fire bloom ---

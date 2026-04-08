@@ -366,7 +366,7 @@ function drawTowerGlow(t) {
     if (t.spawnAnim > 0) {
         const sf = t.spawnAnim / 0.8;
         ctx.save();
-        ctx.globalCompositeOperation = 'screen';
+        ctx.globalCompositeOperation = GFX.screenBlend ? 'screen' : 'source-over';
 
         for (let ring = 0; ring < 2; ring++) {
             const ringR = (1 - sf) * (35 + ring * 18) + 5;
@@ -402,7 +402,7 @@ function drawTowerGlow(t) {
 
     // --- Arcane ground glow ---
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = GFX.screenBlend ? 'screen' : 'source-over';
     const pulseR = 28 + Math.sin(t.animTime * 3) * 4;
     const gndGrad = ctx.createRadialGradient(sx, sy + 4, 2, sx, sy + 4, pulseR);
     gndGrad.addColorStop(0, `rgba(120, 50, 230, ${0.30 * pop3 * timeFrac})`);
@@ -429,12 +429,12 @@ function drawTowerGlow(t) {
     ctx.restore();
 
     // --- Swirling energy vortex around obelisk ---
-    if (pop3 > 0) {
+    if (pop3 > 0 && GFX.towerGlowParticles) {
         const oH = 42 * pop3;
         const baseY = sy + 2;
 
         ctx.save();
-        ctx.globalCompositeOperation = 'screen';
+        ctx.globalCompositeOperation = GFX.screenBlend ? 'screen' : 'source-over';
         for (let p = 0; p < 12; p++) {
             const pAng = (p / 12) * Math.PI * 2 + t.animTime * 1.8;
             const pDist = 10 + Math.sin(t.animTime * 3 + p * 1.5) * 5;
@@ -460,7 +460,7 @@ function drawTowerGlow(t) {
 
         // Large outer glow — boosted for vivid visibility
         ctx.save();
-        ctx.globalCompositeOperation = 'screen';
+        ctx.globalCompositeOperation = GFX.screenBlend ? 'screen' : 'source-over';
         const outerGlow = ctx.createRadialGradient(sx, crystalY, 0, sx, crystalY, 36);
         outerGlow.addColorStop(0, `rgba(200, 140, 255, ${0.45 * crystalPulse * timeFrac})`);
         outerGlow.addColorStop(0.3, `rgba(140, 80, 240, ${0.22 * timeFrac})`);
@@ -876,50 +876,9 @@ function drawFogOfWar() {
     ctx.fillRect(lightX - lightRange, lightY - lightRange, lightRange * 2, lightRange * 2);
 }
 
+// drawParticles — now delegates to the unified particle system in particles.js
+// This wrapper exists so existing call sites (gameloop.js) don't need changing.
 function drawParticles() {
-    ctx.save();
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-
-        // Skip ambient particles (they have no 'type' field — handled by old updateParticles)
-        if (!p.type) continue;
-
-        p.life -= 1 / 60;  // assume 60 fps
-        if (p.life <= 0) {
-            particles.splice(i, 1);
-            continue;
-        }
-
-        // Physics: velocity and gravity
-        if (p.type === 'death' || p.type === 'hitspark') {
-            p.vy += 2.5 * (1 / 60);
-            p.x += p.vx * (1 / 60);
-            p.y += p.vy * (1 / 60);
-        } else if (p.type === 'cast') {
-            p.vy += 1.5 * (1 / 60);
-            p.x += p.vx * (1 / 60);
-            p.y += p.vy * (1 / 60);
-        }
-
-        // Fade out at end of life
-        const ageFrac = Math.max(0, p.life / (p.maxLife || 1));
-        ctx.globalAlpha = (p.alpha || 0.5) * ageFrac;
-        
-        // Use screen blending for death particles for visibility in dark dungeons
-        if (p.type === 'death' && p.compositeOp === 'screen') {
-            ctx.globalCompositeOperation = 'screen';
-        }
-        
-        ctx.fillStyle = p.color || '#ffaa44';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size || 1, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Reset composite operation
-        if (p.type === 'death' && p.compositeOp === 'screen') {
-            ctx.globalCompositeOperation = 'source-over';
-        }
-    }
-    ctx.restore();
+    drawEffectParticles();
 }
 

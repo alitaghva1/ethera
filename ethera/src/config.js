@@ -169,6 +169,83 @@ function applyZoneTileConfig(zoneNumber) {
 // Zone tracking
 let currentZone = 1;
 
+// ============================================================
+//  PERFORMANCE QUALITY TOGGLE
+// ============================================================
+// Two presets: 'high' (default, all effects) and 'low' (reduced VFX for
+// slower hardware). Toggle via setQuality('low') / setQuality('high').
+// Individual systems read GFX.* multipliers rather than hardcoding counts.
+const GFX = {
+    quality: 'high',
+    // Multiplier for particle spawn counts (1.0 = full, 0.4 = 40%)
+    particleMul: 1.0,
+    // Whether to render tile edge shadows (radial gradient per edge)
+    tileEdgeShadows: true,
+    // Whether to render rough floor dust/detail hints
+    roughFloorHints: true,
+    // Whether to render tower glow vortex particles
+    towerGlowParticles: true,
+    // Max active particles (hard cap)
+    maxParticles: 200,
+    // Whether to use screen-blend composite ops (expensive on some GPUs)
+    screenBlend: true,
+};
+
+function setQuality(level) {
+    GFX.quality = level;
+    if (level === 'low') {
+        GFX.particleMul = 0.4;
+        GFX.tileEdgeShadows = false;
+        GFX.roughFloorHints = false;
+        GFX.towerGlowParticles = false;
+        GFX.maxParticles = 80;
+        GFX.screenBlend = false;
+    } else {
+        GFX.particleMul = 1.0;
+        GFX.tileEdgeShadows = true;
+        GFX.roughFloorHints = true;
+        GFX.towerGlowParticles = true;
+        GFX.maxParticles = 200;
+        GFX.screenBlend = true;
+    }
+}
+
+// ============================================================
+//  SEEDED PRNG — for map variation across playthroughs
+// ============================================================
+// Uses mulberry32 — fast, good distribution, deterministic from seed.
+// Call seedMapRNG(seed) at game start, then use mapRandom() instead
+// of Math.random() in map generators for reproducible variety.
+let _mapSeed = 0;
+let _mapRngState = 0;
+
+function seedMapRNG(seed) {
+    _mapSeed = seed | 0;
+    _mapRngState = _mapSeed;
+}
+
+// Returns a float in [0, 1) deterministically from the current seed state
+function mapRandom() {
+    _mapRngState = (_mapRngState + 0x6D2B79F5) | 0;
+    let t = Math.imul(_mapRngState ^ (_mapRngState >>> 15), 1 | _mapRngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+// Seeded integer in [min, max] inclusive
+function mapRandomInt(min, max) {
+    return min + Math.floor(mapRandom() * (max - min + 1));
+}
+
+// Shuffle an array in-place using the seeded PRNG
+function mapShuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(mapRandom() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
 // Player name
 let playerName = 'Wizard';
 
@@ -177,6 +254,13 @@ const SAVE_KEY_PREFIX = 'ethera_save_';
 let saveSlots = [null, null, null]; // loaded from localStorage on init
 
 // ----- MOVEMENT PHYSICS -----
+// COORDINATE CONVENTION:
+//   player.vx = row velocity (tile-space), player.vy = col velocity (tile-space)
+//   These are NOT screen-space. Screen mapping is:
+//     screenX = (col - row) * HALF_DW
+//     screenY = (col + row) * HALF_DH
+//   Named vx/vy for historical reasons; treat as vRow/vCol mentally.
+//   Enemy velocity uses vr/vc (correct naming). Projectiles use vr/vc too.
 const MOVE_ACCEL = 20;       // tiles/sec^2 — snappy response
 const MOVE_MAX_SPEED = 4.2;  // tiles/sec
 const MOVE_DECEL = 18;       // tiles/sec^2 — tight stop, no ice skating

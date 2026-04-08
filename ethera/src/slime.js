@@ -162,12 +162,16 @@ function updateSlime(dt) {
         player.lastHorizDir = player.vy > 0.1 ? 1 : player.vy < -0.1 ? -1 : player.lastHorizDir;
     }
 
-    // === SPACE KEY — Bounce Jump ===
+    // === SPACE KEY — Bounce Jump (with input buffering) ===
     if (keys[' ']) {
         keys[' '] = false; // consume key
         if (formHandlers.slime.onDodge) {
             formHandlers.slime.onDodge();
         }
+    }
+    // Consume buffered dodge when cooldown expires
+    if (!slimeState.bounceJumping && player.dodgeCoolTimer <= 0 && consumeBuffer('dodge')) {
+        if (formHandlers.slime.onDodge) formHandlers.slime.onDodge();
     }
 
     // === BOUNCE VISUAL — dampened spring that settles + gentle breathing ===
@@ -271,7 +275,7 @@ function updateSlime(dt) {
         proj.explode = false;
         proj.bounce = 0;
         proj.isAcid = true; // flag for green rendering
-        proj.trail = [];
+        // trail ring buffer initialized by getPooledProj()
         projectiles.push(proj);
         // SFX
         if (sfxCtx) sfxFireballShoot(); // reuse fireball SFX for now
@@ -428,7 +432,7 @@ function updateSlime(dt) {
                 proj.explode = false;
                 proj.bounce = 0;
                 proj.isAcid = true;
-                proj.trail = [];
+                // trail ring buffer initialized by getPooledProj()
                 projectiles.push(proj);
             }
         } else {
@@ -935,7 +939,10 @@ formHandlers.slime.onSecondaryAbility = function() {
 // === SLIME DODGE — Bounce Jump (Space) ===
 formHandlers.slime.onDodge = function() {
     if (slimeState.bounceJumping) return;
-    if (player.dodgeCoolTimer > 0) return;
+    if (player.dodgeCoolTimer > 0) {
+        bufferInput('dodge');
+        return;
+    }
     slimeState.bounceJumping = true;
     slimeState.bounceJumpTimer = 0.5;
     slimeState.bounceJumpHeight = 0;

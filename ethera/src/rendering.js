@@ -59,6 +59,7 @@ function drawHellTile(img, row, col) {
 // Draw subtle shadow edges on walkable tiles that border blocked tiles
 // This gives visual feedback about where the collision boundary is
 function drawTileEdgeShadows(row, col) {
+    if (!GFX.tileEdgeShadows) return;
     if (blocked[row][col]) return; // only draw on walkable tiles
 
     const pos = tileToScreen(row, col);
@@ -119,6 +120,7 @@ function drawTileEdgeShadows(row, col) {
 
 // Draw subtle dust/debris particles on rough walkable tiles to signal "damaged but passable"
 function drawRoughFloorHint(row, col) {
+    if (!GFX.roughFloorHints) return;
     const ft = floorMap[row][col];
     if (!ft) return;
 

@@ -121,6 +121,28 @@ const ghosts = [];
 const projectiles = [];
 const _projPool = []; // recycled projectile objects
 const _boltPool = []; // recycled tower bolt objects
+
+// Trail ring buffer — fixed-size, no allocations during gameplay
+const TRAIL_MAX = 10;
+function _initTrailRing() {
+    const buf = new Array(TRAIL_MAX);
+    for (let i = 0; i < TRAIL_MAX; i++) buf[i] = { row: 0, col: 0, age: 0 };
+    return { buf, head: 0, count: 0 };
+}
+function trailPush(ring, row, col) {
+    const slot = ring.buf[ring.head];
+    slot.row = row; slot.col = col; slot.age = 0;
+    ring.head = (ring.head + 1) % TRAIL_MAX;
+    if (ring.count < TRAIL_MAX) ring.count++;
+}
+// Iterate trail oldest→newest, calling fn(entry, index, total)
+function trailForEach(ring, fn) {
+    const start = (ring.head - ring.count + TRAIL_MAX) % TRAIL_MAX;
+    for (let i = 0; i < ring.count; i++) {
+        fn(ring.buf[(start + i) % TRAIL_MAX], i, ring.count);
+    }
+}
+
 function getPooledProj() {
     const p = _projPool.pop() || {};
     // Reset ALL flags to prevent contamination from previous projectile type
@@ -131,8 +153,13 @@ function getPooledProj() {
     p.isAcid = false; p.isBone = false; p.isDark = false;
     p.isBoomerang = false; p.marrowLeech = false;
     p.boomerangTimer = 0;
-    p.hitEnemies = null; p.trail = []; p.animTime = 0; p.angle = 0;
-    p.vx = 0; p.vy = 0; // used by bone projectile rotation
+    p.hitEnemies = null; p.animTime = 0; p.angle = 0;
+    // Trail ring buffer (reuse if already allocated)
+    if (p.trail && p.trail.buf) {
+        p.trail.head = 0; p.trail.count = 0;
+    } else {
+        p.trail = _initTrailRing();
+    }
     return p;
 }
 function getPooledBolt() { return _boltPool.pop() || {}; }
@@ -142,6 +169,32 @@ function recycleBolt(b) { if (_boltPool.length < 40) _boltPool.push(b); }
 // ----- INPUT -----
 const keys = {};
 const mouse = { x: 0, y: 0, down: false, rightDown: false };
+
+// ---- INPUT BUFFER ----
+// Buffers action key presses so that pressing dodge/attack slightly before
+// the cooldown expires still registers. Makes combat feel responsive.
+const INPUT_BUFFER_WINDOW = 0.12; // seconds — how long a buffered press stays valid
+const inputBuffer = {
+    dodge:     0,  // time remaining on buffered dodge press
+    attack:    0,  // time remaining on buffered attack press (LMB)
+    secondary: 0,  // time remaining on buffered secondary ability (RMB)
+    interact:  0,  // time remaining on buffered interact (E)
+};
+function bufferInput(action) {
+    inputBuffer[action] = INPUT_BUFFER_WINDOW;
+}
+function consumeBuffer(action) {
+    if (inputBuffer[action] > 0) {
+        inputBuffer[action] = 0;
+        return true;
+    }
+    return false;
+}
+function tickInputBuffers(dt) {
+    for (const key in inputBuffer) {
+        if (inputBuffer[key] > 0) inputBuffer[key] -= dt;
+    }
+}
 
 // Guard flag to prevent listener duplication on game restart
 let inputListenersRegistered = false;
@@ -276,7 +329,11 @@ function handleKeyDown(e) {
         const form = FormSystem.currentForm;
         if (form !== 'slime' && form !== 'wizard') {
             const handler = FormSystem.getHandler();
-            if (handler && handler.onDodge) handler.onDodge();
+            if (handler && handler.onDodge) {
+                handler.onDodge();
+                // If dodge didn't fire (on cooldown), buffer it
+                if (player.dodgeCoolTimer > 0) bufferInput('dodge');
+            }
         }
     }
     // P key pauses game
@@ -284,6 +341,10 @@ function handleKeyDown(e) {
         gamePaused = !gamePaused;
         if (gamePaused) pauseMusic();
         else resumeMusic();
+    }
+    // Q key toggles graphics quality while paused
+    if (e.key.toLowerCase() === 'q' && gamePaused) {
+        setQuality(GFX.quality === 'high' ? 'low' : 'high');
     }
     // T key cycles tower target mode: nearest -> strongest -> weakest -> nearest
     if (e.key.toLowerCase() === 't' && gamePhase === 'playing' && !gameDead && summons.length > 0) {

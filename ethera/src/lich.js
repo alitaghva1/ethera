@@ -99,7 +99,7 @@ function updateLich(dt) {
         proj.explode = getUpgrade('necrotic_blast') > 0;
         proj.bounce = 0;
         proj.isDark = true; // dark magic rendering
-        proj.trail = [];
+        // trail ring buffer initialized by getPooledProj()
         projectiles.push(proj);
         if (sfxCtx) sfxFireballShoot();
     }
@@ -133,6 +133,11 @@ function updateLich(dt) {
     // === SHADOW STEP COOLDOWN ===
     if (lichState.shadowStepCooldown > 0) lichState.shadowStepCooldown -= dt;
     if (player.dodgeCoolTimer > 0) player.dodgeCoolTimer -= dt;
+
+    // Consume buffered dodge when cooldown expires
+    if (lichState.shadowStepCooldown <= 0 && player.dodgeCoolTimer <= 0 && consumeBuffer('dodge')) {
+        formHandlers.lich.onDodge();
+    }
 
     // === LIFE TAP COOLDOWN ===
     if (lichState.lifeTapCooldown > 0) lichState.lifeTapCooldown -= dt;
@@ -189,25 +194,56 @@ function updateLich(dt) {
             }
             lichState.undeadMinions.splice(i, 1); continue;
         }
-        // AI: attack nearest enemy
-        let nearest = null, nearDist = Infinity;
+        // AI: improved minion behavior
+        // 1. Prioritize the enemy closest to the player (bodyguard behavior)
+        // 2. If no enemies nearby, orbit around the player
+        let target = null, bestScore = -Infinity;
         for (const e of enemies) {
             if (e.state === 'death') continue;
-            const d = Math.sqrt((e.row - m.row) ** 2 + (e.col - m.col) ** 2);
-            if (d < nearDist) { nearDist = d; nearest = e; }
+            const dToMinion = Math.sqrt((e.row - m.row) ** 2 + (e.col - m.col) ** 2);
+            const dToPlayer = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
+            // Score: prefer enemies close to player (threats), then close to minion
+            const score = 20 - dToPlayer * 3 - dToMinion;
+            // Bonus for enemies targeting player (within aggro range)
+            const threatBonus = dToPlayer < 3 ? 10 : 0;
+            if (score + threatBonus > bestScore) {
+                bestScore = score + threatBonus;
+                target = e;
+            }
         }
-        if (nearest && nearDist > 0.7) {
-            const dx = nearest.row - m.row;
-            const dy = nearest.col - m.col;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            m.row += (dx / d) * 3 * dt;
-            m.col += (dy / d) * 3 * dt;
-        } else if (nearest && nearDist <= 0.7) {
+        const targetDist = target ? Math.sqrt((target.row - m.row) ** 2 + (target.col - m.col) ** 2) : Infinity;
+
+        if (target && targetDist > 0.7) {
+            // Chase target — intercept between player and threat
+            const dx = target.row - m.row;
+            const dy = target.col - m.col;
+            const d = Math.sqrt(dx * dx + dy * dy) || 1;
+            const minionSpeed = 3.5; // slightly faster than before
+            m.row += (dx / d) * minionSpeed * dt;
+            m.col += (dy / d) * minionSpeed * dt;
+        } else if (target && targetDist <= 0.7) {
+            // Attack
             m.atkTimer -= dt;
             if (m.atkTimer <= 0) {
-                m.atkTimer = 0.7;
-                nearest.hp -= 12;
-                if (nearest.hp <= 0) nearest.state = 'death';
+                m.atkTimer = 0.6; // slightly faster attack rate
+                const minionDmg = 12 + getUpgrade('army_dead') * 4; // scale with upgrade
+                target.hp -= minionDmg;
+                if (target.hp <= 0) target.state = 'death';
+                // Small hit particles
+                spawnParticle(target.row, target.col, (Math.random()-0.5)*2, -1, 0.2, '#bb66ff', 0.6);
+            }
+        } else {
+            // No enemies — orbit around the player at ~1.5 tile distance
+            const orbitAngle = (performance.now() / 1000 * 1.5) + i * (Math.PI * 2 / maxMin);
+            const orbitR = 1.5;
+            const goalRow = player.row + Math.cos(orbitAngle) * orbitR;
+            const goalCol = player.col + Math.sin(orbitAngle) * orbitR;
+            const gx = goalRow - m.row;
+            const gy = goalCol - m.col;
+            const gd = Math.sqrt(gx * gx + gy * gy) || 1;
+            if (gd > 0.3) {
+                m.row += (gx / gd) * 2.5 * dt;
+                m.col += (gy / gd) * 2.5 * dt;
             }
         }
     }
@@ -655,11 +691,13 @@ formHandlers.lich.onSecondaryAbility = function() {
     }
 };
 
-// Shadow Step (Space)
+// Shadow Step (Space) — also fires from input buffer
 formHandlers.lich.onDodge = function() {
     if (gamePhase !== 'playing') return;
-    if (player.dodgeCoolTimer > 0) return;
-    if (lichState.shadowStepCooldown > 0) return;
+    if (player.dodgeCoolTimer > 0 || lichState.shadowStepCooldown > 0) {
+        bufferInput('dodge');
+        return;
+    }
     lichState.shadowStepCooldown = DODGE_COOLDOWN * 0.7;
     player.dodgeCoolTimer = DODGE_COOLDOWN * 0.7;
 

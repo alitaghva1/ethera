@@ -395,6 +395,7 @@ const ZONE_TARGET_MAP = {
 };
 
 function updateGameplay(dt) {
+    tickInputBuffers(dt);
     if (multiKillTimer > 0) multiKillTimer -= dt;
     if (gamePhase === 'playing' && !inventoryOpen) {
         const handler = FormSystem.getHandler();
@@ -419,6 +420,7 @@ function updateGameplay(dt) {
         tryPickupKeyDrops();
     }
     updateParticles(dt);
+    updateEffectParticles(dt);
     updatePickupTexts(dt);
     if (typeof updateFrozenEchoes === 'function') updateFrozenEchoes(dt);
     // Check if Pale Queen dialogue triggered ending choice
@@ -578,6 +580,7 @@ function gameLoop(timestamp) {
     if (gameDead) {
         deathFadeTimer += dt;
         updateParticles(dt);
+        updateEffectParticles(dt);
         render();
         drawDeathScreen();
         requestAnimationFrame(gameLoop);
@@ -1594,11 +1597,30 @@ function drawItemTooltip(item, anchorX, anchorY) {
         ctx.moveTo(tx + 10, sy + 2);
         ctx.lineTo(tx + ttW - 10, sy + 2);
         ctx.stroke();
+
+        // Determine overall upgrade/downgrade/sidegrade
+        let netPositive = 0, netNegative = 0;
+        for (const delta of Object.values(compareStats)) {
+            if (delta > 0) netPositive++;
+            else if (delta < 0) netNegative++;
+        }
+        const verdictText = netPositive > netNegative ? 'UPGRADE' :
+                            netNegative > netPositive ? 'DOWNGRADE' : 'SIDEGRADE';
+        const verdictColor = netPositive > netNegative ? '#66dd88' :
+                             netNegative > netPositive ? '#dd6666' : '#dddd66';
+
         ctx.globalAlpha = 0.5;
         ctx.font = '9px monospace';
         ctx.fillStyle = '#7a6a4a';
         ctx.textAlign = 'left';
         ctx.fillText('vs ' + equippedItem.name, tx + 14, sy + 14);
+        // Verdict badge
+        ctx.globalAlpha = 0.7;
+        ctx.font = 'bold 9px monospace';
+        ctx.fillStyle = verdictColor;
+        ctx.textAlign = 'right';
+        ctx.fillText(verdictText, tx + ttW - 14, sy + 14);
+        ctx.textAlign = 'left';
         sy += 24;
         ctx.globalAlpha = 1;
         for (const [stat, delta] of Object.entries(compareStats)) {
@@ -1928,6 +1950,7 @@ function drawPauseOverlay() {
     ctx.globalAlpha = 0.4;
     ctx.fillStyle = '#a89060';
     ctx.fillText('P to resume', canvasW / 2, canvasH / 2 + 25);
+    ctx.fillText('Q — graphics: ' + GFX.quality.toUpperCase(), canvasW / 2, canvasH / 2 + 45);
     ctx.restore();
 }
 
@@ -2065,6 +2088,7 @@ function restartGame() {
     // Reset light to full
     lightRadius = MAX_LIGHT;
     // Reload zone 1 properly (regenerate dungeon, doors, chests, NPCs)
+    seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0)); // new seed each restart
     currentZone = 1;
     loadZone(1);
     updateDoorDefsForZone(1);
@@ -2927,6 +2951,8 @@ async function init() {
         blockType.push(Array(MAP_SIZE).fill(null));
         objRadius.push(Array(MAP_SIZE).fill(0));
     }
+    // Seed map PRNG for this playthrough (unique per session)
+    seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0));
     generateDungeon();
     updateDoorDefsForZone(1);
     updateChestDefsForZone(1);
