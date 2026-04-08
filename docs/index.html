@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethera - The Awakening | Download</title>
+    <meta name="description" content="Download Ethera - The Awakening. Begin as a humble slime. Evolve through death and rebirth. Free for Windows, macOS, and Linux.">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            color: #e0ddd5;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        .bg-effects {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+        .bg-effects::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(ellipse at 30% 20%, rgba(80, 40, 120, 0.15) 0%, transparent 50%),
+                        radial-gradient(ellipse at 70% 80%, rgba(40, 80, 40, 0.1) 0%, transparent 50%);
+            animation: drift 20s ease-in-out infinite;
+        }
+        @keyframes drift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(2%, -1%) rotate(1deg); }
+            66% { transform: translate(-1%, 2%) rotate(-1deg); }
+        }
+
+        /* Floating particles */
+        .particle {
+            position: fixed;
+            width: 2px; height: 2px;
+            background: rgba(160, 130, 200, 0.4);
+            border-radius: 50%;
+            animation: float linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        @keyframes float {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 24px;
+            text-align: center;
+        }
+
+        /* Logo / Title */
+        .title {
+            font-family: 'Cinzel', serif;
+            font-weight: 900;
+            font-size: clamp(3rem, 8vw, 5rem);
+            letter-spacing: 0.15em;
+            background: linear-gradient(135deg, #c9a0dc 0%, #8fd3a0 50%, #c9a0dc 100%);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shimmer 4s ease-in-out infinite;
+            margin-bottom: 8px;
+        }
+        @keyframes shimmer {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .subtitle {
+            font-family: 'Cinzel', serif;
+            font-weight: 400;
+            font-size: 1.1rem;
+            letter-spacing: 0.3em;
+            color: #8a8578;
+            margin-bottom: 48px;
+            text-transform: uppercase;
+        }
+
+        /* Tagline */
+        .tagline {
+            font-size: 1.15rem;
+            font-weight: 300;
+            color: #9a9590;
+            max-width: 550px;
+            margin: 0 auto 56px;
+            line-height: 1.7;
+        }
+
+        /* Download section */
+        .download-section {
+            margin-bottom: 48px;
+        }
+
+        /* Primary download button */
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            padding: 18px 48px;
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            font-size: 1.15rem;
+            letter-spacing: 0.08em;
+            color: #0a0a0f;
+            background: linear-gradient(135deg, #c9a0dc, #a0c9b0);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 24px rgba(160, 130, 200, 0.3);
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(160, 130, 200, 0.5);
+        }
+        .download-btn.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .download-btn svg {
+            width: 22px; height: 22px;
+            fill: #0a0a0f;
+        }
+        .download-hint {
+            display: block;
+            font-family: 'Inter', sans-serif;
+            font-weight: 400;
+            font-size: 0.78rem;
+            letter-spacing: 0.02em;
+            color: #6a6560;
+            margin-top: 14px;
+        }
+        .download-hint .size {
+            color: #8a8578;
+        }
+
+        /* All three platform buttons */
+        .all-platforms {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 28px;
+        }
+        .platform-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 28px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #b0aaa0;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 6px;
+            text-decoration: none;
+            transition: all 0.25s ease;
+            cursor: pointer;
+        }
+        .platform-btn:hover {
+            color: #e0ddd5;
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.15);
+            transform: translateY(-1px);
+        }
+        .platform-btn.active {
+            border-color: rgba(160, 130, 200, 0.4);
+            background: rgba(160, 130, 200, 0.08);
+            color: #d0ccc5;
+        }
+        .platform-btn svg {
+            width: 18px; height: 18px;
+            fill: currentColor;
+        }
+
+        /* Version info */
+        .version-info {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            flex-wrap: wrap;
+            padding: 24px 0;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 48px;
+        }
+        .version-item {
+            font-size: 0.8rem;
+            color: #6a6560;
+        }
+        .version-item strong {
+            color: #9a9590;
+            font-weight: 600;
+        }
+
+        /* Requirements */
+        .requirements {
+            max-width: 520px;
+            margin: 0 auto 48px;
+            text-align: left;
+        }
+        .requirements h3 {
+            font-family: 'Cinzel', serif;
+            font-size: 0.85rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: #7a7570;
+            margin-bottom: 14px;
+        }
+        .requirements p {
+            font-size: 0.85rem;
+            color: #5a5550;
+            line-height: 1.8;
+        }
+
+        /* Coming soon state */
+        .coming-soon {
+            display: none;
+            margin-bottom: 48px;
+        }
+        .coming-soon .badge {
+            display: inline-block;
+            font-family: 'Cinzel', serif;
+            font-size: 0.8rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: #9a8aaa;
+            border: 1px solid rgba(160, 130, 200, 0.2);
+            padding: 10px 32px;
+            border-radius: 6px;
+            background: rgba(160, 130, 200, 0.05);
+        }
+        .coming-soon p {
+            font-size: 0.85rem;
+            color: #5a5550;
+            margin-top: 16px;
+        }
+
+        /* Footer */
+        .footer {
+            font-size: 0.75rem;
+            color: #3a3530;
+            margin-top: 40px;
+        }
+        .footer a {
+            color: #6a6560;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            color: #9a9590;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-effects"></div>
+
+    <script>
+        for (let i = 0; i < 30; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.left = Math.random() * 100 + '%';
+            p.style.animationDuration = (8 + Math.random() * 12) + 's';
+            p.style.animationDelay = (Math.random() * 10) + 's';
+            p.style.width = p.style.height = (1 + Math.random() * 2) + 'px';
+            document.body.appendChild(p);
+        }
+    </script>
+
+    <div class="container">
+        <h1 class="title">Ethera</h1>
+        <p class="subtitle">The Awakening</p>
+
+        <p class="tagline">
+            Begin as a humble slime. Evolve through death and rebirth.
+            Become the Lich King of the dungeon.
+        </p>
+
+        <!-- Download section — populated by JS -->
+        <div class="download-section" id="download-section" style="display:none;">
+            <a class="download-btn" id="main-btn" href="#">
+                <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                <span id="main-btn-text">Download</span>
+            </a>
+            <span class="download-hint" id="download-hint"></span>
+
+            <div class="all-platforms" id="all-platforms"></div>
+        </div>
+
+        <!-- Coming soon fallback -->
+        <div class="coming-soon" id="coming-soon">
+            <div class="badge">Coming Soon</div>
+            <p>The first release is being forged in the dungeon. Check back soon.</p>
+        </div>
+
+        <!-- Version + info -->
+        <div class="version-info" id="version-info" style="display:none;">
+            <div class="version-item"><strong>Version</strong> <span id="version">—</span></div>
+            <div class="version-item"><strong>Released</strong> <span id="release-date">—</span></div>
+            <div class="version-item"><strong>Price</strong> Free</div>
+        </div>
+
+        <div class="requirements">
+            <h3>System Requirements</h3>
+            <p>
+                Windows 10+ (64-bit) &nbsp;/&nbsp; macOS 11+ &nbsp;/&nbsp; Ubuntu 20.04+ or equivalent Linux.
+                No additional software required — everything is included in the installer.
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2026 Ethera by Armin &middot; All rights reserved &middot; <a href="https://github.com/alitaghva1/ethera">Source</a></p>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const OWNER = 'alitaghva1';
+        const REPO  = 'ethera';
+
+        // Platform definitions
+        const PLATFORMS = {
+            windows: {
+                label: 'Windows',
+                // Match the .exe that ISN'T a blockmap or uninstaller
+                match: a => a.name.endsWith('.exe') && !a.name.includes('blockmap'),
+                icon: '<svg viewBox="0 0 24 24"><path d="M3 12V6.75l8-1.25V12H3zm0 .5h8v6.5l-8-1.25V12.5zM11.5 12V5.35l9.5-1.6V12H11.5zm0 .5h9.5v8.25l-9.5-1.6V12.5z"/></svg>',
+                btnLabel: 'Download for Windows',
+                fileNote: '.exe installer'
+            },
+            mac: {
+                label: 'macOS',
+                match: a => a.name.endsWith('.dmg'),
+                icon: '<svg viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>',
+                btnLabel: 'Download for macOS',
+                fileNote: '.dmg disk image'
+            },
+            linux: {
+                label: 'Linux',
+                match: a => a.name.endsWith('.AppImage'),
+                icon: '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.22.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
+                btnLabel: 'Download for Linux',
+                fileNote: '.AppImage'
+            }
+        };
+
+        function detectOS() {
+            const ua = navigator.userAgent.toLowerCase();
+            const platform = navigator.platform?.toLowerCase() || '';
+            if (ua.includes('win') || platform.includes('win')) return 'windows';
+            if (ua.includes('mac') || platform.includes('mac')) return 'mac';
+            if (ua.includes('linux') || platform.includes('linux')) return 'linux';
+            return 'windows';
+        }
+
+        function formatSize(bytes) {
+            if (bytes > 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+            if (bytes > 1048576) return (bytes / 1048576).toFixed(0) + ' MB';
+            return (bytes / 1024).toFixed(0) + ' KB';
+        }
+
+        async function init() {
+            const userOS = detectOS();
+
+            try {
+                const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`);
+                if (!res.ok) throw new Error(res.status);
+                const release = await res.json();
+
+                // Build download map: { windows: { url, size }, mac: {...}, linux: {...} }
+                const downloads = {};
+                for (const [key, plat] of Object.entries(PLATFORMS)) {
+                    const asset = release.assets.find(plat.match);
+                    if (asset) {
+                        downloads[key] = {
+                            url: asset.browser_download_url,
+                            size: asset.size,
+                            name: asset.name
+                        };
+                    }
+                }
+
+                if (Object.keys(downloads).length === 0) throw new Error('No assets');
+
+                // Show download section
+                document.getElementById('download-section').style.display = '';
+                document.getElementById('version-info').style.display = '';
+
+                // Version info
+                document.getElementById('version').textContent = release.tag_name;
+                document.getElementById('release-date').textContent =
+                    new Date(release.published_at).toLocaleDateString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric'
+                    });
+
+                // Primary button — user's detected OS
+                const mainBtn = document.getElementById('main-btn');
+                const mainText = document.getElementById('main-btn-text');
+                const hint = document.getElementById('download-hint');
+
+                const primary = downloads[userOS] ? userOS : Object.keys(downloads)[0];
+                mainBtn.href = downloads[primary].url;
+                mainText.textContent = PLATFORMS[primary].btnLabel;
+                hint.innerHTML = `
+                    Your download will start immediately &middot;
+                    <span class="size">${formatSize(downloads[primary].size)}</span> &middot;
+                    ${PLATFORMS[primary].fileNote}
+                `;
+
+                // Build all three platform buttons below
+                const allPlatEl = document.getElementById('all-platforms');
+                allPlatEl.innerHTML = Object.entries(PLATFORMS).map(([key, plat]) => {
+                    if (!downloads[key]) return '';
+                    const isActive = key === primary ? ' active' : '';
+                    return `<a class="platform-btn${isActive}" href="${downloads[key].url}" data-platform="${key}">
+                        ${plat.icon} ${plat.label}
+                        <span style="opacity:0.5;font-size:0.75rem;">${formatSize(downloads[key].size)}</span>
+                    </a>`;
+                }).join('');
+
+                // Clicking a platform button also updates the main button
+                allPlatEl.querySelectorAll('.platform-btn').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        const key = this.dataset.platform;
+                        mainBtn.href = downloads[key].url;
+                        mainText.textContent = PLATFORMS[key].btnLabel;
+                        hint.innerHTML = `
+                            Your download will start immediately &middot;
+                            <span class="size">${formatSize(downloads[key].size)}</span> &middot;
+                            ${PLATFORMS[key].fileNote}
+                        `;
+                        allPlatEl.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                        // Don't prevent default — let the download happen too
+                    });
+                });
+
+            } catch (err) {
+                // No release yet — show coming soon
+                document.getElementById('coming-soon').style.display = '';
+            }
+        }
+
+        init();
+    })();
+    </script>
+</body>
+</html>
