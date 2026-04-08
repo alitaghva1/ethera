@@ -5,6 +5,8 @@ const COL_EPS = 0.005;
 
 function canMoveTo(newRow, newCol) {
     // Check tiles the player hitbox overlaps (2-tile radius scan)
+    // The +/-0.5 padding ensures we capture all tiles the hitbox might touch.
+    // This is symmetric: both scanR0/scanR1 and scanC0/scanC1 expand equally.
     const scanR0 = Math.floor(newRow - HITBOX_RADIUS - 0.5);
     const scanR1 = Math.floor(newRow + HITBOX_RADIUS + 0.5);
     const scanC0 = Math.floor(newCol - HITBOX_RADIUS - 0.5);

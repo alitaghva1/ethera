@@ -219,8 +219,16 @@ function updateLich(dt) {
             const dy = target.col - m.col;
             const d = Math.sqrt(dx * dx + dy * dy) || 1;
             const minionSpeed = 3.5; // slightly faster than before
-            m.row += (dx / d) * minionSpeed * dt;
-            m.col += (dy / d) * minionSpeed * dt;
+            const mNewRow = m.row + (dx / d) * minionSpeed * dt;
+            const mNewCol = m.col + (dy / d) * minionSpeed * dt;
+            // Collision check with wall sliding (BUG-001 fix)
+            if (canMoveTo(mNewRow, mNewCol)) {
+                m.row = mNewRow;
+                m.col = mNewCol;
+            } else {
+                if (canMoveTo(mNewRow, m.col)) m.row = mNewRow;
+                if (canMoveTo(m.row, mNewCol)) m.col = mNewCol;
+            }
         } else if (target && targetDist <= 0.7) {
             // Attack
             m.atkTimer -= dt;
@@ -242,8 +250,16 @@ function updateLich(dt) {
             const gy = goalCol - m.col;
             const gd = Math.sqrt(gx * gx + gy * gy) || 1;
             if (gd > 0.3) {
-                m.row += (gx / gd) * 2.5 * dt;
-                m.col += (gy / gd) * 2.5 * dt;
+                const oNewRow = m.row + (gx / gd) * 2.5 * dt;
+                const oNewCol = m.col + (gy / gd) * 2.5 * dt;
+                // Collision check for orbit movement (BUG-001 fix)
+                if (canMoveTo(oNewRow, oNewCol)) {
+                    m.row = oNewRow;
+                    m.col = oNewCol;
+                } else {
+                    if (canMoveTo(oNewRow, m.col)) m.row = oNewRow;
+                    if (canMoveTo(m.row, oNewCol)) m.col = oNewCol;
+                }
             }
         }
     }

@@ -31,6 +31,28 @@ const skeletonState = {
     maxCombo: 15,         // cap for combo counter
 };
 
+// Reset combat-specific state (called on death or form switch)
+function resetSkeletonCombat() {
+    skeletonState.comboCount = 0;
+    skeletonState.comboTimer = 0;
+    skeletonState.rolling = false;
+    skeletonState.rollTimer = 0;
+    skeletonState.shieldUp = false;
+    skeletonState.shieldTimer = 0;
+    skeletonState.shieldHP = skeletonState.shieldMaxHP;
+    skeletonState.warCryTimer = 0;
+}
+
+// Reset all skeleton form state (called on form switch)
+function resetSkeletonState() {
+    skeletonState.stamina = 100;
+    skeletonState.staminaDelayTimer = 0;
+    skeletonState.boneAmmo = skeletonState.maxBoneAmmo;
+    skeletonState.boneRegenTimer = 0;
+    resetSkeletonCombat();
+    skeletonState.boneFragments.length = 0;
+}
+
 function updateSkeleton(dt) {
     const config = FORM_CONFIGS.skeleton;
 
@@ -330,6 +352,7 @@ function checkSkeletonEvolution() {
     if (fd.totalKills >= req.kills &&
         fd.shieldDamageBlocked >= req.shieldDamageBlocked &&
         fd.maxComboReached >= req.comboReached &&
+        FormSystem.talisman.found &&
         FormSystem.talisman.level >= req.talismanLevel) {
         triggerEvolution('wizard');
     }

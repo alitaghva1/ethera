@@ -290,6 +290,7 @@ function drawWizard() {
     else if (playerInvTimer > 0) {
         ctx.globalAlpha = Math.sin(playerInvTimer * 25) > 0 ? 1.0 : 0.25;
     }
+    // Filter is safely enclosed within ctx.save()/ctx.restore() below, no leak risk
 
     // Draw with horizontal flip for E/NE/SE directions
     if (flipH) {

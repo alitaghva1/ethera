@@ -36,6 +36,20 @@ const slimeState = {
     landingDamageDealt: false,
 };
 
+// Reset slime form state (called on form switch)
+function resetSlimeState() {
+    slimeState.size = 1;
+    slimeState.bounceHeight = 0;
+    slimeState.bounceVel = 0;
+    slimeState.squash = 1.0;
+    slimeState.acidPuddles.length = 0;
+    slimeState.splitClones.length = 0;
+    slimeState.bounceJumping = false;
+    slimeState.bounceJumpTimer = 0;
+    slimeState.bounceJumpHeight = 0;
+    slimeState.landingDamageDealt = false;
+}
+
 // Size scaling multipliers
 function getSlimeSizeMult() {
     const s = slimeState.size;
@@ -63,15 +77,17 @@ function slimeAbsorbEnemy(target, particleCount) {
         FormSystem.formData.slime.maxSizeReached = slimeState.size;
     }
     addScreenShake(2, 0.15);
-    // Absorb particles
+    // Absorb particles (BUG-006 fix: use pooled system)
     const absPos = tileToScreen(target.row, target.col);
     for (let j = 0; j < (particleCount || 5); j++) {
-        particles.push({
-            x: absPos.x + cameraX, y: absPos.y + cameraY,
-            angle: Math.random() * Math.PI * 2, speed: 20 + Math.random() * 35,
-            life: 0.3 + Math.random() * 0.3, maxLife: 0.6,
-            size: 2 + Math.random() * 3, color: '#cc3333', drift: Math.random() * 3,
-        });
+        const a = Math.random() * Math.PI * 2;
+        const spd = 20 + Math.random() * 35;
+        _emitParticle(
+            absPos.x + cameraX, absPos.y + cameraY,
+            Math.cos(a) * spd, Math.sin(a) * spd,
+            0.3 + Math.random() * 0.3, 2 + Math.random() * 3,
+            '#cc3333', 0.8, 'effect'
+        );
     }
     pickupTexts.push({
         row: player.row, col: player.col,
@@ -217,10 +233,13 @@ function updateSlime(dt) {
         for (let js = 0; js < jumpSubSteps; js++) {
             const jnr = player.row + jStepDr;
             const jnc = player.col + jStepDc;
+            // BUG-003 fix: check both axes independently instead of breaking on first collision
+            let hitWall = false;
             if (canMoveTo(jnr, player.col)) player.row = jnr;
-            else { player.dodgeDirRow *= -0.3; break; }
+            else { player.dodgeDirRow *= -0.3; hitWall = true; }
             if (canMoveTo(player.row, jnc)) player.col = jnc;
-            else { player.dodgeDirCol *= -0.3; break; }
+            else { player.dodgeDirCol *= -0.3; hitWall = true; }
+            if (hitWall) break; // stop substeps after wall contact, but both axes were checked
         }
 
         if (slimeState.bounceJumpTimer <= 0) {
@@ -308,7 +327,7 @@ function updateSlime(dt) {
             for (const e of enemies) {
                 if (e.state === 'death') continue;
                 const dist = Math.sqrt((e.row - p.row) ** 2 + (e.col - p.col) ** 2);
-                if (dist < p.radius) {
+                if (dist < p.radius + (e.def.hitboxR || 0.25)) {
                     e.hp -= p.damage;
                     if (e.hp <= 0) e.state = 'death';
                 }
@@ -347,15 +366,17 @@ function updateSlime(dt) {
                 row: clone.row, col: clone.col,
                 radius: 0.8, damage: 5 * (1 + getUpgrade('acid_potency') * 0.25), life: 3.0, dmgTimer: 0,
             });
-            // Visual burst
+            // Visual burst (BUG-006 fix: use pooled system)
             const popPos = tileToScreen(clone.row, clone.col);
             for (let j = 0; j < 8; j++) {
-                particles.push({
-                    x: popPos.x + cameraX, y: popPos.y + cameraY,
-                    angle: Math.random() * Math.PI * 2, speed: 40 + Math.random() * 50,
-                    life: 0.3 + Math.random() * 0.3, maxLife: 0.6,
-                    size: 2 + Math.random() * 3, color: '#cc3333', drift: Math.random() * 2,
-                });
+                const a = Math.random() * Math.PI * 2;
+                const spd = 40 + Math.random() * 50;
+                _emitParticle(
+                    popPos.x + cameraX, popPos.y + cameraY,
+                    Math.cos(a) * spd, Math.sin(a) * spd,
+                    0.3 + Math.random() * 0.3, 2 + Math.random() * 3,
+                    '#cc3333', 0.8, 'effect'
+                );
             }
             pickupTexts.push({
                 row: clone.row, col: clone.col,
@@ -494,7 +515,7 @@ function updateSlime(dt) {
         (player.state === 'walk' ? 'slime_p_walk' : 'slime_p_idle')];
     if (_slimeImg) {
         const _slimeFC = Math.floor(_slimeImg.width / 100);
-        if (_slimeFC > 0) player.animFrame = player.animFrame % _slimeFC;
+        if (_slimeFC > 0) player.animFrame = Math.floor(player.animFrame % _slimeFC);
     }
 
     // === EVOLUTION CHECK ===
@@ -924,15 +945,17 @@ formHandlers.slime.onSecondaryAbility = function() {
     slimeState.size = Math.max(1, slimeState.size - 0.8); // slightly lower cost
     // size cost already applied above
     addScreenShake(2, 0.15);
-    // Split particles
+    // Split particles (BUG-006 fix: use pooled system)
     const splitPos = tileToScreen(player.row, player.col);
     for (let i = 0; i < 5; i++) {
-        particles.push({
-            x: splitPos.x + cameraX, y: splitPos.y + cameraY,
-            angle: Math.random() * Math.PI * 2, speed: 25 + Math.random() * 35,
-            life: 0.3 + Math.random() * 0.2, maxLife: 0.5,
-            size: 2 + Math.random() * 2, color: '#cc4444', drift: Math.random() * 2,
-        });
+        const a = Math.random() * Math.PI * 2;
+        const spd = 25 + Math.random() * 35;
+        _emitParticle(
+            splitPos.x + cameraX, splitPos.y + cameraY,
+            Math.cos(a) * spd, Math.sin(a) * spd,
+            0.3 + Math.random() * 0.2, 2 + Math.random() * 2,
+            '#cc4444', 0.8, 'effect'
+        );
     }
 };
 

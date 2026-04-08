@@ -170,6 +170,11 @@ function loadGame(slotIdx) {
     inventory.equipped = data.inventory?.equipped || { wand: null, robe: null, amulet: null, ring: null };
     inventory.backpack = data.inventory?.backpack || [];
 
+    // Recalculate equipment bonuses immediately (BUG-017)
+    if (typeof getEquipBonuses === 'function') {
+        equipBonus = getEquipBonuses();
+    }
+
     // Restore key items
     keyItems.length = 0;
     if (data.keyItems) {

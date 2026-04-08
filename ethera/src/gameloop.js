@@ -413,7 +413,7 @@ function updateGameplay(dt) {
         updateTowers(dt);
         updateTowerBolts(dt);
         updateOrbitFireballs(dt);
-        updatePlacement();
+        updatePlacement(dt);
         updateWorldDrops(dt);
         tryPickupDrops();
         updateWorldKeyDrops(dt);
@@ -1656,7 +1656,7 @@ function drawItemTooltip(item, anchorX, anchorY) {
 }
 
 function drawInventoryUI() {
-    // Standalone inventory disabled — inventory is now in Grimoire Equipment tab
+    // NOTE: Standalone inventory UI disabled — inventory managed through Grimoire Equipment tab
     // Full code retained below for potential future reactivation per form
     return;
     if (!inventoryOpen) return;

@@ -118,8 +118,17 @@ function stopMusic(fadeDuration) {
     music.currentTrack = null;
 }
 
-// Duck music volume (for level-up screen)
-// NOTE: Callers must call duckMusic(false) to restore volume. Current callers: enemies.js (level-up), gameloop.js (menu transitions)
+// Duck music volume (for level-up screen and cinematic transitions)
+// NOTE: Callers must call duckMusic(false) to restore volume.
+// Current callers:
+//   - enemies.js line 1148: duckMusic(true) during calm phase in wave system
+//   - enemies.js line 1171: duckMusic(false) when tension builds
+//   - enemies.js line 2875: duckMusic(true) when level-up menu opens
+//   - enemies.js line 2882: duckMusic(false) after upgrade selection
+//   - enemies.js line 2856: duckMusic(false) after victory upgrade
+//   - gameloop.js line 202: duckMusic(true) during cinematic SFX fade-in
+//   - gameloop.js line 206: duckMusic(false) after cinematic SFX fades
+//   - gameloop.js line 2105: duckMusic(false) on wave restart
 function duckMusic(on) {
     music.duckTarget = on ? 0.25 : 1.0;
 }

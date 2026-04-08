@@ -157,6 +157,8 @@ function drawJournalReader() {
     const def = KEY_ITEM_DEFS[journalItemId];
     if (!def || !def.pages) { closeJournalReader(); return; }
     const pages = def.pages;
+    // Clamp journalPage to valid bounds (BUG-028)
+    journalPage = Math.max(0, Math.min(journalPage, pages.length - 1));
     const page = pages[journalPage] || pages[0];
 
     journalFadeIn = Math.min(1, journalFadeIn + 0.04);
@@ -357,7 +359,17 @@ function equipItem(backpackIdx) {
 function unequipItem(slot) {
     const item = inventory.equipped[slot];
     if (!item) return;
-    if (inventory.backpack.length >= inventory.maxBackpack) return; // backpack full
+    if (inventory.backpack.length >= inventory.maxBackpack) {
+        // Show notification when unequip fails (BUG-039)
+        pickupTexts.push({
+            text: 'Backpack Full!',
+            color: '#ff6b6b',
+            row: player.row, col: player.col,
+            offsetY: 0,
+            life: 1.2,
+        });
+        return;
+    }
     inventory.equipped[slot] = null;
     inventory.backpack.push(item);
 }
@@ -509,6 +521,9 @@ function getNearbyChest() {
 function openChest(chest) {
     const key = `${chest.row},${chest.col}`;
     if (openedChests.has(key)) return;
+
+    // Validate chest position bounds (BUG-040)
+    if (!objectMap[chest.row] || !objectMap[chest.row][chest.col]) return;
 
     const def = getChestDef(chest.row, chest.col);
 
@@ -725,6 +740,24 @@ function loadZone(zoneNumber) {
         player.vy = 0;
     }
 
+    // Validate spawn position is walkable; if blocked, search nearby tiles (BUG-010)
+    const spawnR = Math.floor(player.row), spawnC = Math.floor(player.col);
+    if (blocked && blocked[spawnR] && blocked[spawnR][spawnC]) {
+        let found = false;
+        for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+                const nr = spawnR + dr, nc = spawnC + dc;
+                if (nr >= 0 && nr < MAP_SIZE && nc >= 0 && nc < MAP_SIZE && !blocked[nr][nc]) {
+                    player.row = nr + 0.5;
+                    player.col = nc + 0.5;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+    }
+
     // Generate procedural background for ALL zones.
     // Each zone has its own palette and coverage settings in ZONE_BG_PALETTES.
     if (typeof initSpaceBackground === 'function' && ZONE_BG_PALETTES[zoneNumber]) {
@@ -793,8 +826,8 @@ function updateDoorDefsForZone(zone) {
             '1,4': townDoor, '1,5': townDoor,
             '2,4': townDoor, '2,5': townDoor,
             '3,4': townDoor, '3,5': townDoor,
-            // Original zone 2 stairs
-            '19,13': {
+            // Zone 2 stairs — centre-south of Great Hall
+            '20,17': {
                 requiresKey: 'dungeon_key',
                 label: 'Ascend',
                 lockedLabel: 'Locked',

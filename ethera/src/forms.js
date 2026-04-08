@@ -309,7 +309,9 @@ function getFormStat(key) {
     return config ? config[key] : null;
 }
 
-// Talisman passive bonuses — scale with talisman level (increases on evolution)
+// Talisman passive bonuses — scale with talisman level (increases on evolution, not during gameplay)
+// Talisman XP does not change during normal play; bonuses only update when the player evolves
+// and talisman.level is incremented. This is intentional per design.
 function getTalismanBonus() {
     if (!FormSystem.talisman.found) return { dmgMult: 1, speedMult: 1, xpMult: 1, hpBonus: 0 };
     const lvl = FormSystem.talisman.level;

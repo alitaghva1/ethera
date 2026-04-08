@@ -30,10 +30,10 @@ function summonTowerAt(row, col) {
     sfxTowerSummon();
 }
 
-function updatePlacement() {
+function updatePlacement(dt) {
     // --- Channeling phase ---
     if (placement.channeling) {
-        placement.channelTimer += 1/60; // approximate dt
+        placement.channelTimer += (dt || 1/60); // use real dt, fallback to 1/60 (BUG-027 fix)
         // Interrupt if player takes damage (checked via invincibility timer starting)
         // Use fallback invTime if PLAYER_INV_TIME not available (defined in enemies.js)
         const invTime = (typeof PLAYER_INV_TIME !== 'undefined') ? PLAYER_INV_TIME : 0.8;

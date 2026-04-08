@@ -10,6 +10,8 @@ function updateCamera(dt) {
     const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
     let leadX = 0, leadY = 0;
     if (speed > 0.5) {
+        // tileToScreen applies a linear transformation, so it correctly converts velocity vectors.
+        // For isometric projection, the velocity transformation is: (vx,vy) -> ((vy-vx)*HALF_DW, (vy+vx)*HALF_DH)
         const screenVel = tileToScreen(player.vx, player.vy);
         const velLen = Math.sqrt(screenVel.x * screenVel.x + screenVel.y * screenVel.y);
         if (velLen > 0) {

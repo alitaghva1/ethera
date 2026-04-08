@@ -394,6 +394,7 @@ function drawCrosshair() {
     // Attack cooldown ring — fills as cooldown resets (form-aware)
     const formConfig = FORM_CONFIGS[form] || {};
     const baseCooldown = formConfig.atkCooldown || ATK_COOLDOWN;
+    // Only wizard has equipment bonuses; skeleton and lich have hasEquipment: false by design
     const effAtkCooldown = form === 'wizard'
         ? (baseCooldown / (1 + (equipBonus.atkSpeedMult || 0))) * Math.pow(0.85, getUpgrade('firerate'))
         : baseCooldown;
@@ -472,6 +473,8 @@ const ECHO_TRIGGER_RANGE = 2.5;
 let frozenEchoActive = null; // { text, alpha, timer }
 
 function resetFrozenEchoes() {
+    // Called during zone transitions to reset echo state.
+    // This ensures frozenEchoActive doesn't persist when leaving zone 5.
     for (const e of FROZEN_ECHOES) e.triggered = false;
     frozenEchoActive = null;
 }

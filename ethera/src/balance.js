@@ -582,6 +582,7 @@ function handleMouseDown(e) {
 
     // Level-up screen click handling (not during death)
     if (xpState.levelUpPending && !gameDead && e.button === 0) {
+        if (!xpState.levelUpPending) return; // Defensive check
         const choice = getLevelUpChoice(mouse.x, mouse.y);
         if (choice >= 0 && choice < xpState.levelUpChoices.length) {
             applyUpgrade(xpState.levelUpChoices[choice].id);
@@ -657,7 +658,7 @@ function handleMouseUp(e) {
 function handleContextMenu(e) {
     e.preventDefault();
 }
-
+// Register input listeners once per page load (full page reload resets this for new sessions)
 // Register input listeners only once to prevent duplication on game restart
 if (!inputListenersRegistered) {
     window.addEventListener('keydown', handleKeyDown);

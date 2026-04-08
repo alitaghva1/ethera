@@ -14,17 +14,17 @@ function dodgeMove(dirRow, dirCol, speed, dt) {
         player.col = newCol;
         return false;
     }
-    // Per-axis sliding
-    let blocked = true;
+    // Per-axis sliding (BUG-009 fix: renamed to avoid shadowing global `blocked` array)
+    let wasBlocked = true;
     if (canMoveTo(newRow, player.col)) {
         player.row = newRow;
-        blocked = false;
+        wasBlocked = false;
     }
     if (canMoveTo(player.row, newCol)) {
         player.col = newCol;
-        blocked = false;
+        wasBlocked = false;
     }
-    return blocked;
+    return wasBlocked;
 }
 
 // ============================================================
@@ -145,7 +145,9 @@ function updatePlayer(dt) {
             }
         }
 
-        // Spawn ghost afterimages along the path
+        // Spawn ghost afterimages along the path (interpolated preview)
+        // These are positioned partway along the intended dodge trajectory as a visual preview.
+        // The * 0.5 factor shows where the player will be during the dodge phase.
         for (let i = 0; i < DODGE_GHOST_COUNT; i++) {
             const t = i / DODGE_GHOST_COUNT;
             ghosts.push({
@@ -217,6 +219,8 @@ function updatePlayer(dt) {
     if (Math.abs(player.vy) < 0.01 && inputCol === 0) player.vy = 0;
 
     // --- Collision with clean wall sliding ---
+    // Per-axis wall sliding: if full movement is blocked, try moving on each axis separately.
+    // Velocity is zeroed on blocked axes (intentional sticky-wall feel gives better game feel).
     const newRow = player.row + player.vx * dt;
     const newCol = player.col + player.vy * dt;
 

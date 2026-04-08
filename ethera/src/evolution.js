@@ -100,6 +100,8 @@ function updateEvolution(dt) {
             FormSystem.talisman.level++;
             FormSystem.talisman.xp = 0;
             // Unequip items for non-equipment forms
+            // Slime and Skeleton do not have equipment (hasEquipment: false),
+            // so any equipped items must be returned to the backpack
             if (evolutionState.targetForm === 'slime' || evolutionState.targetForm === 'skeleton') {
                 const slots = ['wand', 'robe', 'amulet', 'ring'];
                 for (const slot of slots) {

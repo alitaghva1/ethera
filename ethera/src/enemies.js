@@ -402,11 +402,14 @@ function applyEnemyHit(e, damage, opts) {
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
         // Bosses have built-in stagger resistance via shorter hurtTimer
-        const hurtDur = e.def.isBoss ? 0.15 : 0.3;
-        e.state = 'hurt';
-        e.hurtTimer = hurtDur;
-        e.animFrame = 0;
-        if (!opts.skipSFX) sfxEnemyHurt(e.row, e.col);
+        if (e.staggerCooldown <= 0) {
+            const hurtDur = e.def.isBoss ? 0.15 : 0.3;
+            e.state = 'hurt';
+            e.hurtTimer = hurtDur;
+            e.staggerCooldown = 0.3;
+            e.animFrame = 0;
+            if (!opts.skipSFX) sfxEnemyHurt(e.row, e.col);
+        }
         // Hit spark particle
         if (!opts.skipParticles) {
             const hitPos = tileToScreen(e.row, e.col);
@@ -445,7 +448,7 @@ const SPAWN_ZONES = [
     { r: 14, c: 18 }, { r: 15, c: 13 }, { r: 15, c: 17 },
     { r: 16, c: 15 }, { r: 16, c: 19 }, { r: 17, c: 14 },
     { r: 17, c: 18 }, { r: 18, c: 16 }, { r: 18, c: 20 },
-    { r: 19, c: 15 }, { r: 19, c: 18 }, { r: 20, c: 16 },
+    { r: 19, c: 15 }, { r: 19, c: 19 }, { r: 20, c: 13 },
     // Room 4: Alcove (rows 2-6, cols 15-20)
     { r: 3, c: 17 }, { r: 4, c: 16 }, { r: 4, c: 19 },
     { r: 5, c: 17 }, { r: 6, c: 18 },
@@ -1540,6 +1543,7 @@ function spawnEnemy(type, row, col, statMult) {
         spawnFade: 0.5,
         slowTimer: 0,
         orbitHitCooldown: 0,
+        staggerCooldown: 0,
         // AI behavior state
         lungeTimer: 0,
         lungeCooldownTimer: 0,
@@ -1807,6 +1811,7 @@ function updateEnemies(dt) {
         if (e.attackCooldown > 0) e.attackCooldown -= dt;
         if (e.slowTimer > 0) e.slowTimer -= dt;
         if (e.orbitHitCooldown > 0) e.orbitHitCooldown -= dt;
+        if (e.staggerCooldown > 0) e.staggerCooldown -= dt;
         if (e.howlCooldown > 0) e.howlCooldown -= dt;
 
         // Distance to player
@@ -2037,16 +2042,18 @@ function updateEnemies(dt) {
                     const angle = (p / cageCount) * Math.PI * 2;
                     const startR = player.row + Math.cos(angle) * cageRadius;
                     const startC = player.col + Math.sin(angle) * cageRadius;
-                    // Fire inward toward where player was
-                    enemyProjectiles.push({
-                        row: startR, col: startC,
-                        vr: -Math.cos(angle) * 3.0,
-                        vc: -Math.sin(angle) * 3.0,
-                        life: 1.2,
-                        damage: Math.round(e.def.damage * BOSS_CAGE_DAMAGE_MULT),
-                        type: 'bone_cage',
-                        size: 4,
-                    });
+                    // Fire inward toward where player was (only if not inside a wall)
+                    if (canMoveTo(Math.round(startR), Math.round(startC))) {
+                        enemyProjectiles.push({
+                            row: startR, col: startC,
+                            vr: -Math.cos(angle) * 3.0,
+                            vc: -Math.sin(angle) * 3.0,
+                            life: 1.2,
+                            damage: Math.round(e.def.damage * BOSS_CAGE_DAMAGE_MULT),
+                            type: 'bone_cage',
+                            size: 4,
+                        });
+                    }
                 }
                 // Warning particles at player position
                 for (let p = 0; p < cageCount; p++) {
@@ -2141,7 +2148,7 @@ function updateEnemies(dt) {
                 e.fireTrails.push({
                     row: e.row, col: e.col,
                     life: e.def.fireTrailDuration * (e.bossPhase === 1 ? 1.5 : 1.0),
-                    tickTimer: 0.5,
+                    tickTimer: 1.0,
                 });
                 // Fire spawn particle
                 for (let p = 0; p < 4; p++) {
@@ -2256,15 +2263,18 @@ function updateEnemies(dt) {
             // Freeze Trap — places a trap at player's current position
             if (e.bossFreezeTrapTimer <= 0 && dist < 8) {
                 e.bossFreezeTrapTimer = e.def.freezeTrapCooldown * (e.bossPhase === 1 ? 0.7 : 1.0);
-                // Warning particles at player position
+                // Store the trap target position at warning time
+                const freezeTrapRow = player.row;
+                const freezeTrapCol = player.col;
+                // Warning particles at stored position
                 for (let p = 0; p < 8; p++) {
                     const angle = (p / 8) * Math.PI * 2;
-                    spawnParticle(player.row + Math.cos(angle) * 0.5, player.col + Math.sin(angle) * 0.5,
+                    spawnParticle(freezeTrapRow + Math.cos(angle) * 0.5, freezeTrapCol + Math.sin(angle) * 0.5,
                         0, -1, 0.6, '#aaddff', 0.7);
                 }
                 // After short delay, freeze triggers (immediate for gameplay)
-                const trapDr = player.row - e.row;
-                const trapDc = player.col - e.col;
+                const trapDr = freezeTrapRow - e.row;
+                const trapDc = freezeTrapCol - e.col;
                 if (Math.sqrt(trapDr * trapDr + trapDc * trapDc) < 1.2) {
                     // Player is very close to where trap was laid — freeze them
                     player.frozenTimer = (player.frozenTimer || 0) + e.def.freezeTrapDuration;
@@ -2916,6 +2926,9 @@ function damagePlayer(amount, enemyType = '') {
         if (typeof slimeState !== 'undefined') {
             slimeState.splitClones.length = 0;
             slimeState.acidPuddles.length = 0;
+        }
+        if (typeof resetSkeletonCombat !== 'undefined') {
+            resetSkeletonCombat();
         }
         sfxPlayerDeath();
         // Fade to death music

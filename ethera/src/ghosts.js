@@ -20,7 +20,7 @@ function _getGhostSpriteInfo(form, state, dir8) {
         const key = state === 'walk' ? 'slime_p_walk' : 'slime_p_idle';
         return {
             sheet: slimeTintedSprites[key] || images[key],
-            frameCount: 6, frameW: 100, frameH: 100, scale: 1.3,
+            frameCount: 6, frameW: 100, frameH: 100, scale: 1.3, // frameCount=6 matches Tiny RPG slime spritesheet
         };
     }
     if (form === 'skeleton') {
@@ -63,6 +63,7 @@ function drawGhost(g) {
     ctx.globalAlpha = g.alpha;
 
     // Form-specific ghost tint
+    // All filter assignments are safely enclosed within ctx.save()/ctx.restore() below
     if (form === 'slime') {
         try { ctx.filter = 'hue-rotate(340deg) saturate(2) brightness(1.6)'; } catch(e) {}
     } else if (form === 'skeleton') {

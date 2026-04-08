@@ -216,8 +216,8 @@ function drawGameMenu() {
     // --- Tab bar (equipment only for wizard/lich) ---
     const _form = FormSystem.currentForm;
     const _formCfg = FORM_CONFIGS[_form] || {};
-    const _hasEquip = !!_formCfg.hasEquipment;
-    const _hasKeyItems = _formCfg.hasKeyItems !== false; // default true for safety
+    const _hasEquip = (_formCfg.hasEquipment ?? false);
+    const _hasKeyItems = (_formCfg.hasKeyItems ?? true); // default true for safety
     const tabs = [
         { id: 'status',    label: 'STATUS',    icon: 'status' },
         ...(_hasEquip    ? [{ id: 'equipment', label: 'EQUIPMENT', icon: 'equip' }] : []),

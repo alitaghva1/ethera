@@ -244,15 +244,15 @@ function generateDungeon() {
 
     // Key objects: chest (locked) and stairs (door to zone 2)
     placeObj(19, 21, 'chestClosed');     // locked chest — needs chest_key
-    // Stairs to zone 2 — walkable so door interaction works on-tile
-    openTile(19, 13, 'stairs');
-    objectMap[19][13] = 'stairsSpiral';  // visual only, not blocking
+    // Stairs to zone 2 — centre-south wall, open area so AI never gets stuck
+    openTile(20, 17, 'stairs');
+    objectMap[20][17] = 'stairsSpiral';  // visual only, not blocking
 
     // Atmospheric props along walls
     placeObj(8, 21, 'barrelsStacked');
     placeObj(8, 12, 'woodenCrate');
     placeObj(20, 21, 'barrel');
-    placeObj(20, 12, 'woodenCrates');
+    placeObj(20, 12, 'woodenCrate');     // lighter prop — no dead pocket
     placeObj(17, 21, 'woodenSupportBeams');
     placeObj(14, 20, 'tableRoundChairs');
 
@@ -275,7 +275,7 @@ function generateDungeon() {
     placeObj(3, 16, 'chestClosed');  // free loot chest
     placeObj(5, 19, 'barrelsStacked');
     placeObj(4, 20, 'woodenCrates');
-    placeObj(6, 16, 'stairsAged');
+    placeObj(6, 16, 'stairsAged', false);  // decorative only, non-blocking
     placeObj(2, 20, 'barrel');
     placeObj(2, 15, 'woodenPile');
 }
