@@ -1,18 +1,11 @@
 // ============================================================
 //  SAVE / LOAD SYSTEM
 // ============================================================
-// This module handles all save/load functionality including:
-// - Loading save slots from localStorage (browser) or local files (Electron)
-// - Saving game state (saveGame)
-// - Loading game state (loadGame)
-// - Auto-save slot selection (getAutoSaveSlot)
-// - Save date formatting (formatSaveDate)
-//
 // Dependencies: config.js (SAVE_KEY_PREFIX, saveSlots), all game state globals
-// Global references: player, FormSystem, inventory, upgrades, keyItems, etc.
-//
 // When running in Electron, saves go to the user's AppData folder as JSON files.
 // When running in a browser, saves use localStorage as before.
+
+const SAVE_FORMAT_VERSION = 3;  // bump when save schema changes
 
 // Helper: detect if we're running inside Electron with file save support
 const _useFileSaves = typeof window !== 'undefined' && window.ethera && window.ethera.isElectron;
@@ -26,13 +19,16 @@ function loadSaveSlots() {
                 const raw = localStorage.getItem(SAVE_KEY_PREFIX + i);
                 saveSlots[i] = raw ? JSON.parse(raw) : null;
             }
-        } catch (e) { saveSlots[i] = null; }
+        } catch (e) {
+            console.warn('Failed to load save slot ' + i + ':', e);
+            saveSlots[i] = null;
+        }
     }
 }
 
 function saveGame(slotIdx) {
     const data = {
-        version: 1,
+        version: SAVE_FORMAT_VERSION,
         timestamp: Date.now(),
         playerName: playerName,
         currentZone: currentZone,
@@ -65,22 +61,73 @@ function saveGame(slotIdx) {
             localStorage.setItem(SAVE_KEY_PREFIX + slotIdx, JSON.stringify(data));
         }
         saveSlots[slotIdx] = data;
-    } catch (e) { console.error('Save failed:', e); }
+        if (typeof Notify !== 'undefined') Notify.toast('Game saved', { duration: 1.5, color: '#88cc88' });
+    } catch (e) {
+        console.error('Save failed (slot ' + slotIdx + '):', e);
+        if (typeof Notify !== 'undefined') Notify.toast('Save failed!', { duration: 3, color: '#ff6644' });
+    }
+}
+
+// Migrate saves from older versions to current format
+function _migrateSave(data) {
+    if (!data.version || data.version < 1) {
+        // v0 → v1: Add missing fields with safe defaults
+        data.version = 1;
+        if (data.currentForm === undefined) data.currentForm = 'wizard';
+        if (data.previousForm === undefined) data.previousForm = null;
+        if (data.evolutionCount === undefined) data.evolutionCount = 0;
+        if (!data.talisman) data.talisman = { level: 1, xp: 0, xpToNext: 100, perks: [], found: false };
+        if (!data.formData) data.formData = {};
+        if (!data.openedChests) data.openedChests = [];
+    }
+    if (data.version < 2) {
+        // v1 → v2: Normalize field names (zone → currentZone, form → currentForm)
+        if (data.zone !== undefined && data.currentZone === undefined) {
+            data.currentZone = data.zone;
+            delete data.zone;
+        }
+        if (data.form !== undefined && data.currentForm === undefined) {
+            data.currentForm = data.form;
+            delete data.form;
+        }
+        data.version = 2;
+    }
+    if (data.version < 3) {
+        // v2 → v3: Add bossDefeated to slime formData, recalculate xpToNext with new curve
+        if (data.formData && data.formData.slime && data.formData.slime.bossDefeated === undefined) {
+            data.formData.slime.bossDefeated = false;
+        }
+        // XP curve changed — recalculate xpToNext for current level
+        if (data.level) {
+            data.xpToNext = xpForLevel(data.level);
+        }
+        data.version = 3;
+    }
+    return data;
+}
+
+// Validate that critical fields exist and are sane
+function _validateSave(data) {
+    if (!data || typeof data !== 'object') return 'Save data is null or not an object';
+    if (data.currentZone === undefined && data.zone === undefined) return 'Missing zone';
+    if (data.playerRow != null && (data.playerRow < 0 || data.playerRow > 64)) return 'Player row out of bounds';
+    if (data.playerCol != null && (data.playerCol < 0 || data.playerCol > 64)) return 'Player col out of bounds';
+    return null; // valid
 }
 
 function loadGame(slotIdx) {
-    const data = saveSlots[slotIdx];
+    let data = saveSlots[slotIdx];
     if (!data) return false;
 
-    // Version check for save format migration
-    if (!data.version || data.version < 1) {
-        console.warn('Legacy save format detected, attempting migration...');
-    }
+    // Migration: upgrade old save formats
+    data = _migrateSave(data);
+    saveSlots[slotIdx] = data; // store migrated version
 
     // Validate critical save fields
-    if (!data || data.zone === undefined || !data.form) {
-        console.error('Save data corrupted or incomplete');
-        if (typeof Notify !== 'undefined') Notify.toast('Save data corrupted', { duration: 3, color: '#ff6644' });
+    const error = _validateSave(data);
+    if (error) {
+        console.error('Save data invalid:', error);
+        if (typeof Notify !== 'undefined') Notify.toast('Save data corrupted: ' + error, { duration: 3, color: '#ff6644' });
         return false;
     }
 
@@ -205,4 +252,8 @@ function formatSaveDate(ts) {
            String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 }
 
-const ZONE_NAMES_SHORT = { 1: 'Undercroft', 2: 'Ruined Tower', 3: 'The Spire' };
+// Derive zone display names from ZONE_CONFIGS (single source of truth)
+const ZONE_NAMES_SHORT = {};
+for (const [id, cfg] of Object.entries(ZONE_CONFIGS)) {
+    ZONE_NAMES_SHORT[id] = cfg.name;
+}

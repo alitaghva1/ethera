@@ -5,8 +5,9 @@ const EVOLUTION_REQUIREMENTS = {
     slime_to_skeleton: {
         absorbed: 8,        // absorb 8 enemies → teaches resource gathering
         maxSizeReached: 4,  // reach size 4 → teaches growth mechanic
-        kills: 20,          // kill 20 enemies → basic combat proficiency
+        kills: 20,          // kill 20 enemies → combat proficiency (absorb counts as kills)
         talismanFound: true,
+        bossDefeated: true, // must defeat the Slime King → proves mastery of slime form
     },
     skeleton_to_wizard: {
         kills: 35,
@@ -28,7 +29,8 @@ function checkSlimeEvolution() {
     if (fd.absorbed >= req.absorbed &&
         fd.maxSizeReached >= req.maxSizeReached &&
         fd.totalKills >= req.kills &&
-        FormSystem.talisman.found) {
+        FormSystem.talisman.found &&
+        fd.bossDefeated) {
         // Trigger evolution!
         triggerEvolution('skeleton');
     }

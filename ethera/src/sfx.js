@@ -299,7 +299,7 @@ let gamePaused = false;
 const xpState = {
     xp: 0,
     level: 1,
-    xpToNext: 30,      // first level-up at 30 XP
+    xpToNext: 40,      // first level-up at 40 XP
     levelUpPending: false,
     levelUpChoices: [], // 3 upgrade options to show
     levelUpHover: -1,   // which choice is hovered (-1 = none)
@@ -310,7 +310,8 @@ const xpState = {
 const ENEMY_XP = { slime: 5, skeleton: 10, skelarch: 15, armoredskel: 30, werewolf: 200, slime_king: 100, bone_colossus: 150, infernal_knight: 250, frost_wyrm: 350, ruined_king: 500 };
 
 // XP scaling: each level needs more
-function xpForLevel(lvl) { return Math.round(30 + (lvl - 1) * 18 + (lvl - 1) * (lvl - 1) * 2); }
+// Lv2: 40, Lv3: 68, Lv4: 102, Lv5: 142, Lv6: 188, Lv7: 240
+function xpForLevel(lvl) { return Math.round(40 + (lvl - 1) * 25 + (lvl - 1) * (lvl - 1) * 3); }
 
 // Upgrade state: tracks how many times each upgrade has been taken
 const upgrades = {};

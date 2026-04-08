@@ -40,64 +40,81 @@
     <input id="nameInput" type="text" maxlength="16" autocomplete="off" spellcheck="false"
            style="position:fixed;top:-100px;left:-100px;opacity:0;pointer-events:none;font-size:16px;">
 
-    <!-- Core: config, constants, globals -->
-    <script src="src/config.js"></script>
-    <script src="src/spacebg.js"></script>
-    <!-- Audio -->
-    <script src="src/music.js"></script>
-    <script src="src/sfx.js"></script>
-    <!-- Form/evolution system (depends on config) -->
-    <script src="src/forms.js"></script>
-    <!-- Asset loader (depends on config paths + images global) -->
-    <script src="src/loader.js"></script>
-    <!-- Map and world -->
-    <script src="src/maps.js"></script>
-    <!-- Player state -->
-    <script src="src/player.js"></script>
-    <!-- Inventory and items -->
-    <script src="src/inventory.js"></script>
-    <!-- Chests, doors, zone loading -->
-    <script src="src/interactables.js"></script>
-    <!-- NPCs (townsfolk dialogue system) -->
-    <script src="src/npcs.js"></script>
-    <!-- Grimoire (character menu UI) -->
-    <script src="src/grimoire.js"></script>
-    <!-- Balance tuning, placement, input, projectile pools -->
-    <script src="src/balance.js"></script>
-    <!-- Particles -->
-    <script src="src/particles.js"></script>
-    <!-- Coordinate helpers -->
-    <script src="src/collision.js"></script>
-    <!-- Rendering -->
-    <script src="src/rendering.js"></script>
-    <!-- Player forms -->
-    <script src="src/slime.js"></script>
-    <script src="src/lich.js"></script>
-    <script src="src/evolution.js"></script>
-    <script src="src/skeleton.js"></script>
-    <!-- Player movement and physics -->
-    <script src="src/movement.js"></script>
-    <!-- Ghosts (dodge afterimages) -->
-    <script src="src/ghosts.js"></script>
-    <!-- Projectiles -->
-    <script src="src/projectiles.js"></script>
-    <!-- Orbit fireballs -->
-    <script src="src/orbit.js"></script>
-    <!-- Enemies and waves -->
-    <script src="src/enemies.js"></script>
-    <!-- Summoning towers -->
-    <script src="src/towers.js"></script>
-    <!-- Level-up screen -->
-    <script src="src/levelup.js"></script>
-    <!-- HUD: HP bars, crosshair, pickup text -->
-    <script src="src/ui.js"></script>
-    <!-- Unified notification system -->
-    <script src="src/notifications.js"></script>
-    <!-- Camera -->
-    <script src="src/camera.js"></script>
-    <!-- Save / Load system -->
-    <script src="src/saveload.js"></script>
-    <!-- Game loop, menu, init (must be last) -->
-    <script src="src/gameloop.js"></script>
+    <!--
+        Script loading: modules are loaded in dependency order.
+        Cache-busting: each src gets ?v= appended at load time by the inline
+        script below, so browser caches are invalidated on version bumps.
+    -->
+    <script>
+        // Dynamically load all game modules with cache-busting version param.
+        // This avoids stale caches after Electron auto-updates.
+        (function() {
+            var v = '0.1.0'; // must match ETHERA_VERSION in config.js
+            var modules = [
+                // Core: config, constants, globals
+                'src/config.js',
+                'src/spacebg.js',
+                // Audio
+                'src/music.js',
+                'src/sfx.js',
+                // Form/evolution system (depends on config)
+                'src/forms.js',
+                // Asset loader (depends on config paths + images global)
+                'src/loader.js',
+                // Map and world
+                'src/maps.js',
+                // Player state
+                'src/player.js',
+                // Inventory and items
+                'src/inventory.js',
+                // Chests, doors, zone loading
+                'src/interactables.js',
+                // NPCs (townsfolk dialogue system)
+                'src/npcs.js',
+                // Grimoire (character menu UI)
+                'src/grimoire.js',
+                // Balance tuning, placement, input, projectile pools
+                'src/balance.js',
+                // Particles
+                'src/particles.js',
+                // Coordinate helpers
+                'src/collision.js',
+                // Rendering
+                'src/rendering.js',
+                // Player forms
+                'src/slime.js',
+                'src/lich.js',
+                'src/evolution.js',
+                'src/skeleton.js',
+                // Player movement and physics
+                'src/movement.js',
+                // Ghosts (dodge afterimages)
+                'src/ghosts.js',
+                // Projectiles
+                'src/projectiles.js',
+                // Orbit fireballs
+                'src/orbit.js',
+                // Enemies and waves
+                'src/enemies.js',
+                // Summoning towers
+                'src/towers.js',
+                // Level-up screen
+                'src/levelup.js',
+                // HUD: HP bars, crosshair, pickup text
+                'src/ui.js',
+                // Unified notification system
+                'src/notifications.js',
+                // Camera
+                'src/camera.js',
+                // Save / Load system
+                'src/saveload.js',
+                // Game loop, menu, init (must be last)
+                'src/gameloop.js',
+            ];
+            for (var i = 0; i < modules.length; i++) {
+                document.write('<script src="' + modules[i] + '?v=' + v + '"><\/script>');
+            }
+        })();
+    </script>
 </body>
 </html>

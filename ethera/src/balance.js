@@ -1,6 +1,11 @@
 // ============================================================
 //  TUNABLE GAME PARAMETERS — adjust balance from one place
 // ============================================================
+//
+//  This file contains ONLY gameplay balance values and enemy tuning constants.
+//  Static configuration (paths, tile sizes) → config.js
+//  Runtime state (placement, pools, input) → further down, clearly separated.
+//
 const COMBAT = {
     atkDuration: 0.40,   atkCooldown: 0.45,   atkFireAt: 0.20,
     atkSpeed: 11,        projLife: 1.8,        projSize: 8,
@@ -19,23 +24,23 @@ const TOWER = {
 };
 const DIFFICULTY = { scale: 1.0 }; // global difficulty multiplier
 
-// Aliases for backward compatibility
-const ATK_DURATION = COMBAT.atkDuration;
-const ATK_COOLDOWN = COMBAT.atkCooldown;
-const ATK_FIRE_AT = COMBAT.atkFireAt;
-const ATK_SPEED = COMBAT.atkSpeed;
-const ATK_PROJ_LIFE = COMBAT.projLife;
-const ATK_PROJ_SIZE = COMBAT.projSize;
-const ATK_MANA_COST = COMBAT.manaCost;
-const MAX_HP = PLAYER_STATS.maxHp;
-const MAX_MANA = PLAYER_STATS.maxMana;
-const MANA_REGEN = PLAYER_STATS.manaRegen;
+// ── Convenience accessors (use the grouped objects above for new code) ──
+const ATK_DURATION    = COMBAT.atkDuration;
+const ATK_COOLDOWN    = COMBAT.atkCooldown;
+const ATK_FIRE_AT     = COMBAT.atkFireAt;
+const ATK_SPEED       = COMBAT.atkSpeed;
+const ATK_PROJ_LIFE   = COMBAT.projLife;
+const ATK_PROJ_SIZE   = COMBAT.projSize;
+const ATK_MANA_COST   = COMBAT.manaCost;
+const MAX_HP          = PLAYER_STATS.maxHp;
+const MAX_MANA        = PLAYER_STATS.maxMana;
+const MANA_REGEN      = PLAYER_STATS.manaRegen;
 const MANA_REGEN_DELAY = PLAYER_STATS.manaRegenDelay;
 const SUMMON_MANA_COST = TOWER.summonCost;
 const SUMMON_MAX_COUNT = TOWER.maxCount;
-const TOWER_RANGE = TOWER.range;
-const TOWER_FIRE_RATE = TOWER.fireRate;
-const TOWER_DAMAGE = TOWER.damage;
+const TOWER_RANGE      = TOWER.range;
+const TOWER_FIRE_RATE  = TOWER.fireRate;
+const TOWER_DAMAGE     = TOWER.damage;
 const TOWER_BOLT_SPEED = TOWER.boltSpeed;
 
 // ============================================================
@@ -87,6 +92,10 @@ const BOSS_DESPERATE_HP_THRESHOLD = 0.25;   // Boss enters phase 2 at 25% HP (Ru
 // --- Healing & Leech Multipliers ---
 const VAMPIRIC_ELITE_HEAL_PER_HIT = 0.3;    // Vampiric elite heals this % of damage dealt
 const MARROW_LEECH_HEAL_MULT = 0.15;        // Marrow Leech: heal % of projectile damage
+
+// ============================================================
+//  RUNTIME STATE — mutable game objects (not balance tuning)
+// ============================================================
 
 // Placement mode state
 const placement = {

@@ -1,9 +1,80 @@
 // ============================================================
 //  ETHERA - Isometric Dungeon RPG
 // ============================================================
+//
+//  Architecture note: This game uses plain <script> tags with shared globals.
+//  All top-level const/let/function declarations are intentionally global.
+//  When adding new globals, prefix with the module name to avoid collisions
+//  (e.g. wave_*, sfx_*, ui_*). A future migration to ES modules is planned.
+//
+// ============================================================
+
+// Game version — used for save format and cache busting
+const ETHERA_VERSION = '0.1.0';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
+
+// ============================================================
+//  UI CONSTANTS — extracted from inline magic numbers
+// ============================================================
+const UI = {
+    // Menu buttons
+    MENU_BTN_W: 220,
+    MENU_BTN_H: 44,
+    MENU_BTN_SPACING: 55,       // vertical gap between buttons
+    CONTROLS_BTN_W: 180,
+    CONTROLS_BTN_H: 40,
+    // Save slot layout
+    SAVE_SLOT_W: 320,
+    SAVE_SLOT_H: 70,
+    SAVE_SLOT_GAP: 12,
+    // Timing
+    MAX_FRAME_DT: 0.1,         // max dt per frame (clamp)
+    PREMENU_FADE_SPEED: 1.2,
+    MENU_FADE_IN_SPEED: 2.5,
+    MENU_FADE_OUT_SPEED: 3.0,
+    // Reference resolution
+    REF_WIDTH: 1920,
+    // Vision flash
+    VISION_FLASH_DURATION: 6.0,
+    // Ending cinematic
+    ENDING_CINEMATIC_DURATION: 14.0,
+};
+
+// ============================================================
+//  COLOR PALETTE — centralized color constants
+// ============================================================
+const COLORS = {
+    // Enemy tints (also used for death burst VFX)
+    SLIME_TINT: '#88dd44',
+    SKELETON_TINT: '#ffaa88',
+    ARCHER_TINT: '#ff8888',
+    ARMORED_TINT: '#aaaacc',
+    WEREWOLF_TINT: '#cc4444',
+    SLIME_KING_TINT: '#66cc22',
+    BONE_COLOSSUS_TINT: '#bbaa88',
+    INFERNAL_KNIGHT_TINT: '#ff4422',
+    FROST_WYRM_TINT: '#44aaff',
+    RUINED_KING_TINT: '#9944dd',
+    // UI
+    BORDER_GOLD: '#d4b478',
+    BORDER_DARK: '#2a1a0e',
+    TEXT_WARM: '#e8d8b0',
+    TEXT_DIM: '#a09070',
+    TEXT_HINT: '#aabbff',
+    DAMAGE_RED: '#ff6644',
+    HEAL_GREEN: '#88cc88',
+    MANA_BLUE: '#88ccff',
+    // Vision / cinematic
+    VISION_PURPLE: 'rgba(160, 80, 255, 0.6)',
+    VISION_DARK: '#0a0510',
+    VISION_TEXT: '#cc99ff',
+    // Menu
+    MENU_BG_CENTER: '#0d0906',
+    MENU_BG_MID: '#080504',
+    MENU_BG_EDGE: '#030202',
+};
 
 // ----- CONFIGURATION -----
 let TILE_SCALE = 0.45;
@@ -59,45 +130,20 @@ const PV_SLIME_ANIMS = {
 // ============================================================
 //  ZONE CONFIGURATION REGISTRY
 // ============================================================
+// Shared tile defaults — all zones use these unless overridden
+const ZONE_TILE_DEFAULTS = {
+    tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
+    tileScale: 0.45, lighting: 'torch', hasWaves: true, isTown: false,
+};
+
 const ZONE_CONFIGS = {
-    1: {
-        name: 'The Undercroft', mapSize: 24,
-        tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
-        tileScale: 0.45, lighting: 'torch', hasWaves: true, isTown: false,
-    },
-    2: {
-        name: 'Ruined Tower', mapSize: 30,
-        tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
-        tileScale: 0.45, lighting: 'torch', hasWaves: true, isTown: false,
-    },
-    3: {
-        name: 'The Spire', mapSize: 24,
-        tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
-        tileScale: 0.45, lighting: 'torch', hasWaves: true, isTown: false,
-    },
-    0: {
-        name: 'The Hamlet', mapSize: 30,
-        tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
-        tileScale: 0.45, lighting: 'outdoor', hasWaves: false, isTown: true,
-    },
-    4: {
-        name: 'The Inferno', mapSize: 28,
-        tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
-        tileScale: 0.45, lighting: 'torch', hasWaves: true, isTown: false,
-        isHell: true,
-    },
-    5: {
-        name: 'The Frozen Abyss', mapSize: 30,
-        tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
-        tileScale: 0.45, lighting: 'torch', hasWaves: true, isTown: false,
-        isHell: true, isFrozen: true,
-    },
-    6: {
-        name: 'Throne of Ruin', mapSize: 32,
-        tileImgW: 256, tileImgH: 512, diamondW: 256, diamondH: 128,
-        tileScale: 0.45, lighting: 'torch', hasWaves: true, isTown: false,
-        isHell: true, isFinalZone: true,
-    },
+    1: { ...ZONE_TILE_DEFAULTS, name: 'The Undercroft', mapSize: 24 },
+    2: { ...ZONE_TILE_DEFAULTS, name: 'Ruined Tower', mapSize: 30 },
+    3: { ...ZONE_TILE_DEFAULTS, name: 'The Spire', mapSize: 24 },
+    0: { ...ZONE_TILE_DEFAULTS, name: 'The Hamlet', mapSize: 30, lighting: 'outdoor', hasWaves: false, isTown: true },
+    4: { ...ZONE_TILE_DEFAULTS, name: 'The Inferno', mapSize: 28, isHell: true },
+    5: { ...ZONE_TILE_DEFAULTS, name: 'The Frozen Abyss', mapSize: 30, isHell: true, isFrozen: true },
+    6: { ...ZONE_TILE_DEFAULTS, name: 'Throne of Ruin', mapSize: 32, isHell: true, isFinalZone: true },
 };
 
 function applyZoneTileConfig(zoneNumber) {

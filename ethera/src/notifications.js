@@ -301,71 +301,83 @@ const Notify = {
     },
     
     /**
-     * Draw controls reference (top-right, persistent)
+     * Draw controls reference (top-right, below wave HUD)
      */
     _drawControls: function(ctx, canvasW, canvasH) {
         if (!this.controlsVisible) {
             return;
         }
-        
+
         ctx.save();
-        
+
         // Get current form (with guard)
         let form = 'wizard';
         if (typeof FormSystem !== 'undefined' && FormSystem.currentForm) {
             form = FormSystem.currentForm;
         }
-        
+
         const controls = this.FORM_CONTROLS[form] || this.FORM_CONTROLS.wizard;
-        
-        ctx.font = '9px monospace';
-        const lineHeight = 14;
-        const padding = 10;
-        const borderRadius = 4;
-        const margin = 15;
-        
+
+        ctx.font = '11px monospace';
+        const lineHeight = 18;
+        const padding = 12;
+        const borderRadius = 5;
+        const margin = 16;
+        // Offset below wave HUD (HOSTILE/CALM indicator sits at y ~30)
+        const topOffset = 40;
+
         // Calculate box dimensions
         let maxWidth = 0;
         for (const line of controls) {
             const metrics = ctx.measureText(line);
             maxWidth = Math.max(maxWidth, metrics.width);
         }
-        
+
         const boxWidth = maxWidth + padding * 2;
-        const boxHeight = controls.length * lineHeight + padding * 2 + 15; // +15 for [H] label
+        const boxHeight = controls.length * lineHeight + padding * 2 + 18; // +18 for [H] label
         const boxX = canvasW - boxWidth - margin;
-        const boxY = margin;
-        
+        const boxY = topOffset;
+
         // Draw background box
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
         this._drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, borderRadius);
         ctx.fill();
-        
+
         // Draw border
         ctx.strokeStyle = '#8a7030';
-        ctx.globalAlpha = 0.4;
+        ctx.globalAlpha = 0.35;
         ctx.lineWidth = 1;
         this._drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, borderRadius);
         ctx.stroke();
-        
+
         // Draw control lines
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#888877';
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = '#999988';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        
+
         let textY = boxY + padding;
         for (const line of controls) {
-            ctx.fillText(line, boxX + padding, textY);
+            // Highlight the key (before first space) slightly brighter
+            const spaceIdx = line.indexOf(' ');
+            if (spaceIdx > 0) {
+                ctx.fillStyle = '#bbaa88';
+                ctx.fillText(line.substring(0, spaceIdx), boxX + padding, textY);
+                ctx.fillStyle = '#888877';
+                ctx.fillText(line.substring(spaceIdx), boxX + padding + ctx.measureText(line.substring(0, spaceIdx)).width, textY);
+            } else {
+                ctx.fillText(line, boxX + padding, textY);
+            }
             textY += lineHeight;
         }
-        
+
         // Draw [H] Hide label at bottom
-        ctx.font = '8px monospace';
+        ctx.font = '9px monospace';
         ctx.fillStyle = '#666655';
+        ctx.globalAlpha = 0.5;
         ctx.textAlign = 'right';
         ctx.fillText('[H] Hide', boxX + boxWidth - padding, boxY + boxHeight - padding - 4);
-        
+
         ctx.restore();
     },
     

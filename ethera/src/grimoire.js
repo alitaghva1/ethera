@@ -446,6 +446,8 @@ function _drawTabIcon(type, cx, cy, s) {
 
 // --- Stat bar helper ---
 function _drawStatBar(x, y, w, h, ratio, col1, col2, fa) {
+    // Clamp ratio to [0, 1] so bar never overflows its track
+    ratio = Math.max(0, Math.min(1, ratio));
     // Dark track background
     ctx.globalAlpha = fa * 0.6;
     ctx.fillStyle = '#0a0806';
@@ -606,6 +608,20 @@ function drawEvolutionProgress(x, y, w, h, fa) {
         ctx.textAlign = 'left';
         y += 12;
     }
+    if ('bossDefeated' in requirements) {
+        const defeated = currentFormData.bossDefeated ? 'YES' : 'NO';
+        const color = currentFormData.bossDefeated ? GM.gold : GM.textDim;
+        ctx.globalAlpha = fa * 0.5;
+        ctx.font = '9px Georgia';
+        ctx.fillStyle = GM.textMid;
+        ctx.fillText('Boss Defeated', x, y);
+        ctx.globalAlpha = fa * 0.8;
+        ctx.fillStyle = color;
+        ctx.textAlign = 'right';
+        ctx.fillText(defeated, x + w, y);
+        ctx.textAlign = 'left';
+        y += 12;
+    }
     if ('talismanLevel' in requirements) {
         const lvl = FormSystem.talisman.level || 1;
         const req = requirements.talismanLevel;
@@ -686,7 +702,9 @@ function drawMenuStatus(x, y, w, h, fa) {
     _drawStatBar(x, ly, w, barH, xpRatio, GM.xpAmber, GM.xpAmberLit, fa);
     ly += barH + 18;
 
-    // --- HP ---
+    // --- HP (effective max = base + equipment + talisman) ---
+    const eb = getEquipBonuses();
+    const effMaxHP = MAX_HP + (eb.maxHpBonus || 0) + getTalismanBonus().hpBonus;
     ctx.globalAlpha = fa * 0.7;
     ctx.font = '10px Georgia';
     ctx.fillStyle = labelCol;
@@ -694,13 +712,14 @@ function drawMenuStatus(x, y, w, h, fa) {
     ctx.textAlign = 'right';
     ctx.fillStyle = valCol;
     ctx.globalAlpha = fa * 0.6;
-    ctx.fillText(`${Math.round(player.hp)} / ${MAX_HP}`, x + w, ly);
+    ctx.fillText(`${Math.round(player.hp)} / ${Math.round(effMaxHP)}`, x + w, ly);
     ctx.textAlign = 'left';
     ly += 15;
-    _drawStatBar(x, ly, w, barH, player.hp / MAX_HP, GM.hpRed, GM.hpRedLit, fa);
+    _drawStatBar(x, ly, w, barH, player.hp / effMaxHP, GM.hpRed, GM.hpRedLit, fa);
     ly += barH + 18;
 
-    // --- Mana ---
+    // --- Mana (effective max = base + equipment) ---
+    const effMaxMana = MAX_MANA + (eb.maxManaBonus || 0);
     ctx.globalAlpha = fa * 0.7;
     ctx.font = '10px Georgia';
     ctx.fillStyle = labelCol;
@@ -708,18 +727,17 @@ function drawMenuStatus(x, y, w, h, fa) {
     ctx.textAlign = 'right';
     ctx.fillStyle = valCol;
     ctx.globalAlpha = fa * 0.6;
-    ctx.fillText(`${Math.round(player.mana)} / ${MAX_MANA}`, x + w, ly);
+    ctx.fillText(`${Math.round(player.mana)} / ${Math.round(effMaxMana)}`, x + w, ly);
     ctx.textAlign = 'left';
     ly += 15;
-    _drawStatBar(x, ly, w, barH, player.mana / MAX_MANA, GM.manaBlue, GM.manaBluLit, fa);
+    _drawStatBar(x, ly, w, barH, player.mana / effMaxMana, GM.manaBlue, GM.manaBluLit, fa);
     ly += barH + 24;
 
     // --- Divider ---
     _drawDivider(x + w / 2, ly, w * 0.3, fa);
     ly += 14;
 
-    // --- Stat rows ---
-    const eb = getEquipBonuses();
+    // --- Stat rows (reuses eb from HP/Mana section above) ---
     const statRows = [
         { label: 'Wand Damage',  value: FIREBALL_DAMAGE + (eb.dmgBonus || 0) },
         { label: 'Creatures Slain', value: wave.totalKilled },

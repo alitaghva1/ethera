@@ -18,7 +18,7 @@ const FormSystem = {
 
     // Per-form persistent data (frozen on evolution, never lost)
     formData: {
-        slime:    { unlocked: true, absorbed: 0, maxSizeReached: 0, totalKills: 0 },
+        slime:    { unlocked: true, absorbed: 0, maxSizeReached: 0, totalKills: 0, bossDefeated: false },
         skeleton: { unlocked: false, bonesCollected: 0, shieldBashes: 0, shieldDamageBlocked: 0, maxComboReached: 0, totalKills: 0 },
         wizard:   { unlocked: false, spellsCast: 0, towersPlaced: 0, lowManaKills: 0, totalKills: 0 },
         lich:     { unlocked: false, soulsHarvested: 0, undeadRaised: 0, totalKills: 0 },
@@ -55,7 +55,9 @@ const FormSystem = {
 
 // Form configuration objects — stats, abilities, and metadata per form
 const FORM_CONFIGS = {
-    // TODO: Wizard form config — currently uses legacy code in gameloop.js; this is placeholder data
+    // NOTE: Wizard form uses the FormSystem config values below but its update/draw/ability
+    // handlers are still defined in gameloop.js (legacy). They should eventually be extracted
+    // into a dedicated wizard.js module to match slime.js / skeleton.js / lich.js.
     wizard: {
         name: 'Wizard',
         displayName: 'Broken Wizard',
@@ -204,19 +206,18 @@ const FORM_CONFIGS = {
     },
 };
 
-// Form handler registry — each form registers its update/draw/ability functions
-// For now, only wizard is registered; others will be added in later phases
+// Form handler registry — each form registers its update/draw/ability functions.
+// Wizard handlers are wired up at the end of gameloop.js after its functions are defined.
+// Slime/Skeleton/Lich handlers are wired up in their respective modules.
 const formHandlers = {
-    // TODO: Wizard form handler — currently uses legacy code in gameloop.js
     wizard: {
-        // These point to existing functions — the wizard handler IS the current code
-        update: null,       // set after updatePlayer is defined
-        draw: null,         // set after drawWizard is defined
-        drawHUD: null,      // set after drawHPMana is defined
-        onPrimaryAttack: null,   // set after attack code is defined
-        onSecondaryAbility: null, // summon tower
-        onDodge: null,           // phase jump
-        onInteract: null,        // E key
+        update: null,            // → updatePlayer (gameloop.js)
+        draw: null,              // → drawWizard (gameloop.js)
+        drawHUD: null,           // → drawHPMana (gameloop.js)
+        onPrimaryAttack: null,   // → attack code (gameloop.js)
+        onSecondaryAbility: null, // → summon tower
+        onDodge: null,           // → phase jump
+        onInteract: null,        // → E key
         getUpgradePool: () => UPGRADE_POOL,
     },
 };

@@ -95,6 +95,364 @@ let gameLoopErrors = 0;
 let gameLoopCrashed = false;
 const GAME_LOOP_ERROR_THRESHOLD = 10;
 
+// ============================================================
+//  PHASE UPDATE FUNCTIONS — extracted from gameLoop for clarity
+// ============================================================
+
+/** Returns true if the phase was handled (caller should return early). */
+function updateHitPause(dt) {
+    if (hitPauseTimer > 0) {
+        hitPauseTimer -= dt;
+        render();
+        if (gameDead) drawDeathScreen();
+        return true;
+    }
+    return false;
+}
+
+function updatePreMenuPhase(dt) {
+    menuTime += dt;
+    preMenuAlpha = Math.min(1, preMenuAlpha + dt * 1.2);
+}
+
+function updateMenuPhase(dt) {
+    menuTime += dt;
+    updateMenuEmbers(dt);
+    if (menuFadeAlpha < 1) menuFadeAlpha = Math.min(1, menuFadeAlpha + dt * 2.5);
+
+    // Update hover state from mouse position
+    menuHover = null;
+    if (gamePhase === 'menu') {
+        const btns = getMenuButtons();
+        if (pointInButton(mouse.x, mouse.y, btns.start)) menuHover = 'start';
+        else if (pointInButton(mouse.x, mouse.y, btns.loadGame) && !btns.loadGame.disabled) menuHover = 'loadGame';
+        else if (pointInButton(mouse.x, mouse.y, btns.controls)) menuHover = 'controls';
+    } else if (gamePhase === 'menuControls') {
+        const backBtn = getControlsBackButton();
+        if (pointInButton(mouse.x, mouse.y, backBtn)) menuHover = 'back';
+    }
+    setPixelCursor(menuHover ? 'pointer' : 'default');
+}
+
+function updateNameEntryPhase(dt) {
+    menuTime += dt;
+    setPixelCursor('default');
+}
+
+function updateLoadScreenPhase(dt) {
+    menuTime += dt;
+    updateMenuEmbers(dt);
+    setPixelCursor(loadScreenHover >= 0 ? 'pointer' : 'default');
+}
+
+function updateMenuFadePhase(dt) {
+    menuTime += dt;
+    updateMenuEmbers(dt);
+    menuFadeAlpha = Math.max(0, menuFadeAlpha - dt * 3);
+    setPixelCursor('default');
+    if (menuFadeAlpha <= 0) {
+        gamePhase = menuFadeTarget;
+        if (menuFadeTarget === 'menuControls') {
+            menuFadeAlpha = 0;
+        } else if (menuFadeTarget === 'menu') {
+            menuFadeAlpha = 0;
+        } else if (menuFadeTarget === 'nameEntry') {
+            nameEntryAlpha = 0;
+            nameEntryBlink = 0;
+            if (nameInputEl) { nameInputEl.value = ''; nameInputEl.focus(); }
+        } else if (menuFadeTarget === 'loadScreen') {
+            loadScreenAlpha = 0;
+            loadSaveSlots(); // refresh slots
+        } else if (menuFadeTarget === 'intro') {
+            runIntro();
+        }
+    }
+}
+
+function updateCinematicPhase(dt) {
+    cinematicTimer += dt;
+    const t = cinematicTimer;
+
+    // === NARRATIVE TEXT — three-phase reveal ===
+    for (let i = 0; i < 2; i++) {
+        if (t > CINEMATIC_01_FADE_OUT) {
+            cinematicTextAlpha[i] = Math.max(0, cinematicTextAlpha[i] - dt * 2.0);
+        } else if (t >= CINEMATIC_LINE_TIMINGS[i]) {
+            cinematicTextAlpha[i] = Math.min(1, cinematicTextAlpha[i] + dt * 1.2);
+        }
+    }
+    if (t > CINEMATIC_2_FADE_OUT) {
+        cinematicTextAlpha[2] = Math.max(0, cinematicTextAlpha[2] - dt * 2.5);
+    } else if (t >= CINEMATIC_LINE_TIMINGS[2]) {
+        cinematicTextAlpha[2] = Math.min(1, cinematicTextAlpha[2] + dt * 1.2);
+    }
+    if (t > CINEMATIC_TEXT_FADE_OUT) {
+        cinematicTextAlpha[3] = Math.max(0, cinematicTextAlpha[3] - dt * 1.2);
+    } else if (t >= CINEMATIC_LINE_TIMINGS[3]) {
+        cinematicTextAlpha[3] = Math.min(1, cinematicTextAlpha[3] + dt * 0.6);
+    }
+
+    // === CINEMATIC SFX CUES ===
+    if (t >= 0.1 && !cinematicSFX_heartbeat && sfxCtx) {
+        cinematicSFX_heartbeat = true;
+        sfxCinematicHeartbeat();
+    }
+    if (t >= CINEMATIC_2_FADE_OUT && !cinematicSFX_ducked) {
+        cinematicSFX_ducked = true;
+        duckMusic(true);
+    }
+    if (t >= CINEMATIC_LINE_TIMINGS[3] - 0.3 && !cinematicSFX_unducked) {
+        cinematicSFX_unducked = true;
+        duckMusic(false);
+    }
+    if (t >= CINEMATIC_RISE_START + 0.1 && !cinematicSFX_stir && sfxCtx) {
+        cinematicSFX_stir = true;
+        sfxCinematicStir();
+    }
+    if (t >= CINEMATIC_RISE_START + CINEMATIC_RISE_DURATION * 0.7 && !cinematicSFX_stand && sfxCtx) {
+        cinematicSFX_stand = true;
+        sfxCinematicStand();
+    }
+
+    // === CAMERA PAN ===
+    const panProgress = Math.min(1, t / CINEMATIC_PAN_DURATION);
+    const eased = 1 - Math.pow(1 - panProgress, 3);
+    const targetRow = 4, targetCol = 3;
+    const camRow = cinematicCamRow + (targetRow - cinematicCamRow) * eased;
+    const camCol = cinematicCamCol + (targetCol - cinematicCamCol) * eased;
+    const camPos = tileToScreen(camRow, camCol);
+    smoothCamX = canvasW / 2 - camPos.x;
+    smoothCamY = canvasH / 2 - camPos.y;
+    cameraX = Math.round(smoothCamX);
+    cameraY = Math.round(smoothCamY);
+
+    // === LIGHT — atmospheric dim during pan ===
+    if (t < CINEMATIC_LIGHT_SWELL_START) {
+        const baseRadius = 80 + Math.min(35, t * 4);
+        const breath = Math.sin(t * 1.2) * 6;
+        const flick = Math.sin(t * 7.3) * 2 + Math.sin(t * 11) * 1.5;
+        lightRadius = Math.max(50, baseRadius + breath + flick);
+
+        if (t < 0.4) {
+            const flickPulse = Math.sin(t * Math.PI / 0.2) * 12;
+            lightRadius += Math.max(0, flickPulse);
+        }
+        if (t > 5.8 && t < CINEMATIC_LINE_TIMINGS[3]) {
+            const dipT = (t - 5.8) / (CINEMATIC_LINE_TIMINGS[3] - 5.8);
+            const dipEase = Math.sin(dipT * Math.PI * 0.5);
+            lightRadius -= dipEase * 32;
+        }
+        if (t > CINEMATIC_LINE_TIMINGS[3] && t < CINEMATIC_LINE_TIMINGS[3] + 1.5) {
+            const bloomT = (t - CINEMATIC_LINE_TIMINGS[3]) / 1.5;
+            const bloomEase = 1 - Math.pow(1 - bloomT, 2);
+            lightRadius += bloomEase * 35;
+        }
+        if (t > CINEMATIC_LIGHT_SWELL_START - 0.8) {
+            const contrT = (t - (CINEMATIC_LIGHT_SWELL_START - 0.8)) / 0.8;
+            lightRadius -= contrT * 25;
+            lightRadius = Math.max(50, lightRadius);
+        }
+    }
+
+    // === BLOOD STAIN ===
+    if (t > 7.0) {
+        bloodStainAlpha = Math.min(1, (t - 7.0) / 1.5);
+    }
+
+    // === PLAYER AWAKENS ===
+    if (t >= CINEMATIC_RISE_START) {
+        const riseT = Math.min(1, (t - CINEMATIC_RISE_START) / CINEMATIC_RISE_DURATION);
+        let riseEased;
+        if (riseT < 0.5) {
+            const half = riseT / 0.5;
+            riseEased = Math.pow(half, 2.5) * 0.35;
+        } else {
+            const half = (riseT - 0.5) / 0.5;
+            riseEased = 0.35 + (1 - Math.pow(1 - half, 2)) * 0.65;
+        }
+        wizardRotation = (Math.PI / 2) * (1 - riseEased);
+        wizardRiseProgress = riseEased;
+
+        if (riseT > 0.02 && riseT < 0.08 && dustParticles.length < 10) {
+            const pos = tileToScreen(4, 3);
+            spawnDustBurst(pos.x, pos.y, 8);
+        }
+        if (riseT > 0.45 && riseT < 0.55 && dustParticles.length < 40) {
+            const pos = tileToScreen(4, 3);
+            spawnDustBurst(pos.x, pos.y, 22);
+        }
+        if (riseT > 0.4 && riseT < 0.65 && !cinematicShakeTriggered) {
+            cinematicShakeTriggered = true;
+            addScreenShake(3.5, 0.6);
+        }
+    }
+
+    // === LIGHT SWELL ===
+    if (t >= CINEMATIC_LIGHT_SWELL_START) {
+        const swellT = (t - CINEMATIC_LIGHT_SWELL_START) / (CINEMATIC_TOTAL - CINEMATIC_LIGHT_SWELL_START);
+        const x = Math.min(1, swellT);
+        const swellEased = x < 0.6
+            ? (x / 0.6) * (x / 0.6) * (3 - 2 * (x / 0.6)) * 1.18
+            : 1.18 - 0.18 * ((x - 0.6) / 0.4);
+        lightRadius = 90 + (MAX_LIGHT - 90) * Math.min(1.18, swellEased);
+    }
+
+    // === TRANSITION FLASH ===
+    if (t >= CINEMATIC_TOTAL - 0.5) {
+        const flashT = (t - (CINEMATIC_TOTAL - 0.5)) / 0.5;
+        cinematicFlashAlpha = flashT < 0.25
+            ? (flashT / 0.25) * 0.30
+            : 0.30 * (1 - (flashT - 0.25) / 0.75);
+    }
+
+    updateDustParticles(dt);
+
+    // === END → PLAYING ===
+    if (t >= CINEMATIC_TOTAL) {
+        gamePhase = 'playing';
+        lightRadius = MAX_LIGHT;
+        wizardRotation = 0;
+        wizardRiseProgress = 1;
+        cinematicFlashAlpha = 0;
+        setPixelCursor('none');
+        cinematicActionHintAlpha = 1.0;
+        if (typeof Notify !== 'undefined') Notify.showControlsOnce();
+        pickupTexts.push({
+            text: 'Find a way out...',
+            color: COLORS.TEXT_HINT,
+            row: player.row, col: player.col,
+            offsetY: 0,
+            life: 3.0,
+        });
+        setTimeout(() => { startWaveSystem(); }, 1500);
+    }
+}
+
+function updateVisionFlashPhase(dt) {
+    visionFlashTimer += dt;
+    const vt = visionFlashTimer;
+
+    render();
+    ctx.save();
+
+    // Dark overlay
+    let overlayAlpha = 0;
+    if (vt < 1.0) overlayAlpha = vt / 1.0 * 0.85;
+    else if (vt < 4.5) overlayAlpha = 0.85;
+    else overlayAlpha = Math.max(0, 0.85 * (1 - (vt - 4.5) / 1.5));
+
+    ctx.globalAlpha = overlayAlpha;
+    ctx.fillStyle = COLORS.VISION_DARK;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Purple pulse from center
+    if (vt > 0.5 && vt < 5.0) {
+        const pulseA = Math.min(1, (vt - 0.5) / 1.0) * (vt < 4.5 ? 1 : (1 - (vt - 4.5) / 0.5));
+        ctx.globalAlpha = pulseA * 0.15;
+        const pulse = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, 300);
+        pulse.addColorStop(0, COLORS.VISION_PURPLE);
+        pulse.addColorStop(1, 'rgba(60, 20, 120, 0)');
+        ctx.fillStyle = pulse;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+
+    // Vision text
+    const cx = canvasW / 2;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const lines = [
+        { text: 'The talisman burns.', time: 1.5, y: canvasH * 0.38 },
+        { text: 'A vision — a throne, deep below.', time: 2.2, y: canvasH * 0.46 },
+        { text: 'She sits there. Eyes open. Holding everything together.', time: 3.0, y: canvasH * 0.54 },
+        { text: 'Something below is calling.', time: 3.8, y: canvasH * 0.64 },
+    ];
+    for (const line of lines) {
+        if (vt > line.time) {
+            const lineAge = vt - line.time;
+            const fadeIn = Math.min(1, lineAge / 0.6);
+            const fadeOut = vt > 4.5 ? Math.max(0, 1 - (vt - 4.5) / 1.0) : 1;
+            ctx.globalAlpha = fadeIn * fadeOut * 0.8;
+            ctx.font = 'italic 14px Georgia';
+            ctx.fillStyle = COLORS.VISION_TEXT;
+            ctx.shadowColor = 'rgba(140, 80, 220, 0.5)';
+            ctx.shadowBlur = 8;
+            ctx.fillText(line.text, cx, line.y);
+            ctx.shadowBlur = 0;
+        }
+    }
+    ctx.restore();
+
+    if (vt >= 6.0) {
+        gamePhase = 'playing';
+        currentObjective = 'The talisman pulls you downward...';
+    }
+}
+
+// Zone transition target → zone number lookup
+const ZONE_TARGET_MAP = {
+    town: 0, zone1: 1, zone2: 2, zone3: 3,
+    zone4: 4, zone5: 5, zone6: 6,
+};
+
+function updateGameplay(dt) {
+    if (multiKillTimer > 0) multiKillTimer -= dt;
+    if (gamePhase === 'playing' && !inventoryOpen) {
+        const handler = FormSystem.getHandler();
+        if (handler && handler.update) handler.update(dt);
+        else updatePlayer(dt); // fallback to wizard
+    }
+    updateGhosts(dt);
+    if (!inventoryOpen) updateProjectiles(dt);
+    updateNPCs(dt);
+    if (gamePhase === 'playing' && !inventoryOpen) {
+        updateWaveSystem(dt);
+        updateEnemies(dt);
+        checkProjectileEnemyHits();
+        updateEnemyProjectiles(dt);
+        updateTowers(dt);
+        updateTowerBolts(dt);
+        updateOrbitFireballs(dt);
+        updatePlacement();
+        updateWorldDrops(dt);
+        tryPickupDrops();
+        updateWorldKeyDrops(dt);
+        tryPickupKeyDrops();
+    }
+    updateParticles(dt);
+    updatePickupTexts(dt);
+    if (typeof updateFrozenEchoes === 'function') updateFrozenEchoes(dt);
+    // Check if Pale Queen dialogue triggered ending choice
+    if (typeof paleQueenDialogueComplete !== 'undefined' && paleQueenDialogueComplete) {
+        paleQueenDialogueComplete = false;
+        gamePhase = 'endingChoice';
+        endingChoiceFadeIn = 0;
+        endingChoiceHover = null;
+    }
+    if (typeof Notify !== 'undefined') Notify.update(dt);
+    if (towerModeDisplayTimer > 0) towerModeDisplayTimer -= dt;
+    updateCamera(dt);
+
+    // Zone transition fade overlay
+    if (zoneTransitionFading) {
+        if (zoneTransitionAlpha < 1) {
+            zoneTransitionAlpha += dt * 3;
+            if (zoneTransitionAlpha >= 1) {
+                const nextZone = ZONE_TARGET_MAP[zoneTransitionTarget] != null
+                    ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
+                loadZone(nextZone);
+                zoneTransitionAlpha = 1;
+                zoneTransitionFading = 'fadeIn';
+            }
+        } else if (zoneTransitionFading === 'fadeIn') {
+            zoneTransitionAlpha -= dt * 2.5;
+            if (zoneTransitionAlpha <= 0) {
+                zoneTransitionAlpha = 0;
+                zoneTransitionFading = false;
+            }
+        }
+    }
+}
+
 function gameLoop(timestamp) {
     try {
         let dt = Math.min((timestamp - lastTime) / 1000, 0.1);
@@ -110,19 +468,11 @@ function gameLoop(timestamp) {
         updateMusic(dt);
 
     // Hit pause — freeze frame on impact
-    if (hitPauseTimer > 0) {
-        hitPauseTimer -= dt;
-        render();
-        if (gameDead) drawDeathScreen();
-        requestAnimationFrame(gameLoop);
-        return;
-    }
+    if (updateHitPause(dt)) { requestAnimationFrame(gameLoop); return; }
 
     // ----- Pre-menu phase (just "click anywhere to begin") -----
     if (gamePhase === 'preMenu') {
-        menuTime += dt;
-        // Gentle fade-in of the prompt text
-        preMenuAlpha = Math.min(1, preMenuAlpha + dt * 1.2);
+        updatePreMenuPhase(dt);
         render();
         requestAnimationFrame(gameLoop);
         return;
@@ -130,262 +480,28 @@ function gameLoop(timestamp) {
 
     // ----- Menu phase updates -----
     if (gamePhase === 'menu' || gamePhase === 'menuControls') {
-        menuTime += dt;
-        updateMenuEmbers(dt);
-        // Fade in
-        if (menuFadeAlpha < 1) menuFadeAlpha = Math.min(1, menuFadeAlpha + dt * 2.5);
-
-        // Update hover state from mouse position
-        menuHover = null;
-        if (gamePhase === 'menu') {
-            const btns = getMenuButtons();
-            if (pointInButton(mouse.x, mouse.y, btns.start)) menuHover = 'start';
-            else if (pointInButton(mouse.x, mouse.y, btns.loadGame) && !btns.loadGame.disabled) menuHover = 'loadGame';
-            else if (pointInButton(mouse.x, mouse.y, btns.controls)) menuHover = 'controls';
-        } else if (gamePhase === 'menuControls') {
-            const backBtn = getControlsBackButton();
-            if (pointInButton(mouse.x, mouse.y, backBtn)) menuHover = 'back';
-        }
-
-        // Update cursor style
-        setPixelCursor(menuHover ? 'pointer' : 'default');
+        updateMenuPhase(dt);
     }
 
     // ----- Name entry phase -----
     if (gamePhase === 'nameEntry') {
-        menuTime += dt;
-        setPixelCursor('default');
+        updateNameEntryPhase(dt);
     }
 
     // ----- Load screen phase -----
     if (gamePhase === 'loadScreen') {
-        menuTime += dt;
-        updateMenuEmbers(dt);
-        setPixelCursor(loadScreenHover >= 0 ? 'pointer' : 'default');
+        updateLoadScreenPhase(dt);
     }
 
     // ----- Menu fade-out transitions -----
     if (gamePhase === 'menuFade' || gamePhase === 'menuControlsFade') {
-        menuTime += dt;
-        updateMenuEmbers(dt);
-        menuFadeAlpha = Math.max(0, menuFadeAlpha - dt * 3);
-        setPixelCursor('default');
-        if (menuFadeAlpha <= 0) {
-            gamePhase = menuFadeTarget;
-            if (menuFadeTarget === 'menuControls') {
-                menuFadeAlpha = 0;
-            } else if (menuFadeTarget === 'menu') {
-                menuFadeAlpha = 0;
-            } else if (menuFadeTarget === 'nameEntry') {
-                nameEntryAlpha = 0;
-                nameEntryBlink = 0;
-                if (nameInputEl) { nameInputEl.value = ''; nameInputEl.focus(); }
-            } else if (menuFadeTarget === 'loadScreen') {
-                loadScreenAlpha = 0;
-                loadSaveSlots(); // refresh slots
-            } else if (menuFadeTarget === 'intro') {
-                runIntro();
-            }
-        }
+        updateMenuFadePhase(dt);
     }
 
     // ----- Cinematic "left for dead" sequence -----
     if (gamePhase === 'cinematic') {
-        cinematicTimer += dt;
-        const t = cinematicTimer;
-
-        // === NARRATIVE TEXT — three-phase reveal ===
-        // Each line is either fading IN or fading OUT, never both.
-
-        // Lines 0-1: fade in until CINEMATIC_01_FADE_OUT, then fade out
-        for (let i = 0; i < 2; i++) {
-            if (t > CINEMATIC_01_FADE_OUT) {
-                cinematicTextAlpha[i] = Math.max(0, cinematicTextAlpha[i] - dt * 2.0); // faster fade-out
-            } else if (t >= CINEMATIC_LINE_TIMINGS[i]) {
-                cinematicTextAlpha[i] = Math.min(1, cinematicTextAlpha[i] + dt * 1.2); // faster fade-in
-            }
-        }
-
-        // Line 2 ("They left you for dead"): fade in until CINEMATIC_2_FADE_OUT, then fade out
-        if (t > CINEMATIC_2_FADE_OUT) {
-            cinematicTextAlpha[2] = Math.max(0, cinematicTextAlpha[2] - dt * 2.5); // much faster fade-out
-        } else if (t >= CINEMATIC_LINE_TIMINGS[2]) {
-            cinematicTextAlpha[2] = Math.min(1, cinematicTextAlpha[2] + dt * 1.2);
-        }
-
-        // Line 3 ("They were wrong"): fade in until CINEMATIC_TEXT_FADE_OUT, then fade out
-        if (t > CINEMATIC_TEXT_FADE_OUT) {
-            cinematicTextAlpha[3] = Math.max(0, cinematicTextAlpha[3] - dt * 1.2); // faster fade-out
-        } else if (t >= CINEMATIC_LINE_TIMINGS[3]) {
-            cinematicTextAlpha[3] = Math.min(1, cinematicTextAlpha[3] + dt * 0.6); // slightly faster fade-in
-        }
-
-        // === CINEMATIC SFX CUES ===
-        // Heartbeat pulse at the very start
-        if (t >= 0.1 && !cinematicSFX_heartbeat && sfxCtx) {
-            cinematicSFX_heartbeat = true;
-            sfxCinematicHeartbeat();
-        }
-        // Music duck during the dark/alone beat
-        if (t >= CINEMATIC_2_FADE_OUT && !cinematicSFX_ducked) {
-            cinematicSFX_ducked = true;
-            duckMusic(true);
-        }
-        if (t >= CINEMATIC_LINE_TIMINGS[3] - 0.3 && !cinematicSFX_unducked) {
-            cinematicSFX_unducked = true;
-            duckMusic(false);
-        }
-        // Bone-crack stir sound when wizard first moves
-        if (t >= CINEMATIC_RISE_START + 0.1 && !cinematicSFX_stir && sfxCtx) {
-            cinematicSFX_stir = true;
-            sfxCinematicStir();
-        }
-        // Resonant magical tone when wizard stands fully
-        if (t >= CINEMATIC_RISE_START + CINEMATIC_RISE_DURATION * 0.7 && !cinematicSFX_stand && sfxCtx) {
-            cinematicSFX_stand = true;
-            sfxCinematicStand();
-        }
-
-        // === CAMERA PAN ===
-        // Ease-out heavy curve: camera drifts fast at first, slows as it finds the wizard
-        const panProgress = Math.min(1, t / CINEMATIC_PAN_DURATION);
-        // Custom ease: fast start, very slow settle (cubic ease-out)
-        const eased = 1 - Math.pow(1 - panProgress, 3);
-        const targetRow = 4, targetCol = 3;
-        const camRow = cinematicCamRow + (targetRow - cinematicCamRow) * eased;
-        const camCol = cinematicCamCol + (targetCol - cinematicCamCol) * eased;
-        const camPos = tileToScreen(camRow, camCol);
-        smoothCamX = canvasW / 2 - camPos.x;
-        smoothCamY = canvasH / 2 - camPos.y;
-        cameraX = Math.round(smoothCamX);
-        cameraY = Math.round(smoothCamY);
-
-        // === LIGHT — atmospheric dim during pan ===
-        if (t < CINEMATIC_LIGHT_SWELL_START) {
-            // Start at ~80, grow to ~115, with a "breathing" quality
-            const baseRadius = 80 + Math.min(35, t * 4);
-            // Slow breathing rhythm + tiny nervous flicker
-            const breath = Math.sin(t * 1.2) * 6;
-            const flick = Math.sin(t * 7.3) * 2 + Math.sin(t * 11) * 1.5;
-            lightRadius = Math.max(50, baseRadius + breath + flick);
-
-            // Opening flicker — a quick pulse to signal "we're live" (kills dead air)
-            if (t < 0.4) {
-                const flickPulse = Math.sin(t * Math.PI / 0.2) * 12;
-                lightRadius += Math.max(0, flickPulse);
-            }
-
-            // Darkness deepens during empty beat (after all text gone, before "They were wrong")
-            if (t > 5.8 && t < CINEMATIC_LINE_TIMINGS[3]) {
-                const dipT = (t - 5.8) / (CINEMATIC_LINE_TIMINGS[3] - 5.8);
-                const dipEase = Math.sin(dipT * Math.PI * 0.5);
-                lightRadius -= dipEase * 32; // slightly deeper dip
-            }
-            // Gentle light bloom as "They were wrong" materializes
-            if (t > CINEMATIC_LINE_TIMINGS[3] && t < CINEMATIC_LINE_TIMINGS[3] + 1.5) {
-                const bloomT = (t - CINEMATIC_LINE_TIMINGS[3]) / 1.5;
-                const bloomEase = 1 - Math.pow(1 - bloomT, 2);
-                lightRadius += bloomEase * 35;
-            }
-
-            // Brief light contraction right before the swell (gathering energy)
-            if (t > CINEMATIC_LIGHT_SWELL_START - 0.8) {
-                const contrT = (t - (CINEMATIC_LIGHT_SWELL_START - 0.8)) / 0.8;
-                lightRadius -= contrT * 25; // pulls inward
-                lightRadius = Math.max(50, lightRadius);
-            }
-        }
-
-        // === BLOOD STAIN — fade in as camera nears player ===
-        if (t > 7.0) {
-            bloodStainAlpha = Math.min(1, (t - 7.0) / 1.5); // faster reveal
-        }
-
-        // === PLAYER AWAKENS (wizardRiseProgress used by all forms) ===
-        if (t >= CINEMATIC_RISE_START) {
-            const riseT = Math.min(1, (t - CINEMATIC_RISE_START) / CINEMATIC_RISE_DURATION);
-            // Natural body mechanics: slow struggle at first, then purposeful acceleration
-            // Cubic ease-in for the first half (slow), then ease-out for second (fast, determined)
-            let riseEased;
-            if (riseT < 0.5) {
-                // Slow struggle (ease-in: x^2.5 mapped to 0-0.5 → 0-0.35)
-                const half = riseT / 0.5;
-                riseEased = Math.pow(half, 2.5) * 0.35;
-            } else {
-                // Purposeful rise (ease-out from 0.35 to 1.0)
-                const half = (riseT - 0.5) / 0.5;
-                riseEased = 0.35 + (1 - Math.pow(1 - half, 2)) * 0.65;
-            }
-            wizardRotation = (Math.PI / 2) * (1 - riseEased);
-            wizardRiseProgress = riseEased;
-
-            // Dust burst when the wizard first stirs, and a bigger one when standing
-            if (riseT > 0.02 && riseT < 0.08 && dustParticles.length < 10) {
-                const pos = tileToScreen(4, 3);
-                spawnDustBurst(pos.x, pos.y, 8); // small initial stir (was 6)
-            }
-            if (riseT > 0.45 && riseT < 0.55 && dustParticles.length < 40) {
-                const pos = tileToScreen(4, 3);
-                spawnDustBurst(pos.x, pos.y, 22); // bigger burst on stand (was 14)
-            }
-
-            // Screen shake during the purposeful rise phase
-            if (riseT > 0.4 && riseT < 0.65 && !cinematicShakeTriggered) {
-                cinematicShakeTriggered = true;
-                addScreenShake(3.5, 0.6); // subtle but noticeable
-            }
-        }
-
-        // === LIGHT SWELL — magic surges as wizard stands ===
-        if (t >= CINEMATIC_LIGHT_SWELL_START) {
-            const swellT = (t - CINEMATIC_LIGHT_SWELL_START) / (CINEMATIC_TOTAL - CINEMATIC_LIGHT_SWELL_START);
-            // Ease-out with visible overshoot for dramatic surge
-            const x = Math.min(1, swellT);
-            const swellEased = x < 0.6
-                ? (x / 0.6) * (x / 0.6) * (3 - 2 * (x / 0.6)) * 1.18 // noticeable overshoot (was 1.08)
-                : 1.18 - 0.18 * ((x - 0.6) / 0.4); // settle back over longer tail
-            lightRadius = 90 + (MAX_LIGHT - 90) * Math.min(1.18, swellEased);
-        }
-
-        // === TRANSITION FLASH ===
-        if (t >= CINEMATIC_TOTAL - 0.5) {
-            // Brief warm flash as we transition to gameplay
-            const flashT = (t - (CINEMATIC_TOTAL - 0.5)) / 0.5;
-            // Quick in, slow out — slightly brighter for more punch
-            cinematicFlashAlpha = flashT < 0.25
-                ? (flashT / 0.25) * 0.30
-                : 0.30 * (1 - (flashT - 0.25) / 0.75);
-        }
-
-        // Update dust
-        updateDustParticles(dt);
-
-        // === END → PLAYING ===
-        if (t >= CINEMATIC_TOTAL) {
-            gamePhase = 'playing';
-            lightRadius = MAX_LIGHT;
-            wizardRotation = 0;
-            wizardRiseProgress = 1;
-            cinematicFlashAlpha = 0;
-            setPixelCursor('none');
-            // Brief delay before combat starts — show action hint first
-            cinematicActionHintAlpha = 1.0;
-            // Show controls hint
-            if (typeof Notify !== 'undefined') Notify.showControlsOnce();
-            // Show objective hint as floating text
-            pickupTexts.push({
-                text: 'Find a way out...',
-                color: '#aabbff',
-                row: player.row, col: player.col,
-                offsetY: 0,
-                life: 3.0,
-            });
-            setTimeout(() => { startWaveSystem(); }, 1500);
-        }
-
-        // Render the cinematic frame
+        updateCinematicPhase(dt);
         render();
-        // Draw narrative text + flash on top
         drawCinematicText();
         requestAnimationFrame(gameLoop);
         return;
@@ -404,7 +520,7 @@ function gameLoop(timestamp) {
             // Show objective hint as floating text
             pickupTexts.push({
                 text: 'Find a way out...',
-                color: '#aabbff',
+                color: COLORS.TEXT_HINT,
                 row: player.row, col: player.col,
                 offsetY: 0,
                 life: 3.0,
@@ -429,69 +545,7 @@ function gameLoop(timestamp) {
 
     // ----- Vision flash (after Zone 3 boss) -----
     if (gamePhase === 'visionFlash') {
-        visionFlashTimer += dt;
-        const vt = visionFlashTimer;
-
-        // Phase 1 (0-1.5s): screen darkens, talisman pulse
-        // Phase 2 (1.5-4.5s): text reveals
-        // Phase 3 (4.5-6s): fade back to gameplay
-
-        render();
-
-        ctx.save();
-        // Dark overlay
-        let overlayAlpha = 0;
-        if (vt < 1.0) overlayAlpha = vt / 1.0 * 0.85;
-        else if (vt < 4.5) overlayAlpha = 0.85;
-        else overlayAlpha = Math.max(0, 0.85 * (1 - (vt - 4.5) / 1.5));
-
-        ctx.globalAlpha = overlayAlpha;
-        ctx.fillStyle = '#0a0510';
-        ctx.fillRect(0, 0, canvasW, canvasH);
-
-        // Purple pulse from center
-        if (vt > 0.5 && vt < 5.0) {
-            const pulseA = Math.min(1, (vt - 0.5) / 1.0) * (vt < 4.5 ? 1 : (1 - (vt - 4.5) / 0.5));
-            ctx.globalAlpha = pulseA * 0.15;
-            const pulse = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, 300);
-            pulse.addColorStop(0, 'rgba(160, 80, 255, 0.6)');
-            pulse.addColorStop(1, 'rgba(60, 20, 120, 0)');
-            ctx.fillStyle = pulse;
-            ctx.fillRect(0, 0, canvasW, canvasH);
-        }
-
-        // Vision text
-        const cx = canvasW / 2;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        const lines = [
-            { text: 'The talisman burns.', time: 1.5, y: canvasH * 0.38 },
-            { text: 'A vision — a throne, deep below.', time: 2.2, y: canvasH * 0.46 },
-            { text: 'She sits there. Eyes open. Holding everything together.', time: 3.0, y: canvasH * 0.54 },
-            { text: 'Something below is calling.', time: 3.8, y: canvasH * 0.64 },
-        ];
-        for (const line of lines) {
-            if (vt > line.time) {
-                const lineAge = vt - line.time;
-                const fadeIn = Math.min(1, lineAge / 0.6);
-                const fadeOut = vt > 4.5 ? Math.max(0, 1 - (vt - 4.5) / 1.0) : 1;
-                ctx.globalAlpha = fadeIn * fadeOut * 0.8;
-                ctx.font = 'italic 14px Georgia';
-                ctx.fillStyle = '#cc99ff';
-                ctx.shadowColor = 'rgba(140, 80, 220, 0.5)';
-                ctx.shadowBlur = 8;
-                ctx.fillText(line.text, cx, line.y);
-                ctx.shadowBlur = 0;
-            }
-        }
-        ctx.restore();
-
-        // End vision
-        if (vt >= 6.0) {
-            gamePhase = 'playing';
-            currentObjective = 'The talisman pulls you downward...';
-        }
+        updateVisionFlashPhase(dt);
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -587,76 +641,7 @@ function gameLoop(timestamp) {
 
     // ----- Gameplay phases -----
     if (gamePhase === 'playing' || gamePhase === 'awakening') {
-        if (multiKillTimer > 0) multiKillTimer -= dt;
-        if (gamePhase === 'playing' && !inventoryOpen) {
-            const handler = FormSystem.getHandler();
-            if (handler && handler.update) handler.update(dt);
-            else updatePlayer(dt); // fallback to wizard
-        }
-        updateGhosts(dt);
-        if (!inventoryOpen) updateProjectiles(dt);
-        updateNPCs(dt);  // NPC animations always update
-        if (gamePhase === 'playing' && !inventoryOpen) {
-            updateWaveSystem(dt);
-            updateEnemies(dt);
-            checkProjectileEnemyHits();
-            updateEnemyProjectiles(dt);
-            updateTowers(dt);
-            updateTowerBolts(dt);
-            updateOrbitFireballs(dt);
-            updatePlacement();
-            updateWorldDrops(dt);
-            tryPickupDrops();
-            updateWorldKeyDrops(dt);
-            tryPickupKeyDrops();
-        }
-        updateParticles(dt);
-        updatePickupTexts(dt);
-        if (typeof updateFrozenEchoes === 'function') updateFrozenEchoes(dt);
-        // Check if Pale Queen dialogue triggered ending choice
-        if (typeof paleQueenDialogueComplete !== 'undefined' && paleQueenDialogueComplete) {
-            paleQueenDialogueComplete = false;
-            gamePhase = 'endingChoice';
-            endingChoiceFadeIn = 0;
-            endingChoiceHover = null;
-        }
-        // Update notification timers
-        if (typeof Notify !== 'undefined') Notify.update(dt);
-        // Update tower mode display timer
-        if (towerModeDisplayTimer > 0) {
-            towerModeDisplayTimer -= dt;
-        }
-        updateCamera(dt);
-
-        // --- Zone transition fade overlay update ---
-        if (zoneTransitionFading) {
-            // Fade to black
-            if (zoneTransitionAlpha < 1) {
-                zoneTransitionAlpha += dt * 3; // fade to black in ~0.33s
-                if (zoneTransitionAlpha >= 1) {
-                    // Load the zone when fade is complete
-                    let nextZone = 1;
-                    if (zoneTransitionTarget === 'town') nextZone = 0;
-                    else if (zoneTransitionTarget === 'zone1') nextZone = 1;
-                    else if (zoneTransitionTarget === 'zone2') nextZone = 2;
-                    else if (zoneTransitionTarget === 'zone3') nextZone = 3;
-                    else if (zoneTransitionTarget === 'zone4') nextZone = 4;
-                    else if (zoneTransitionTarget === 'zone5') nextZone = 5;
-                    else if (zoneTransitionTarget === 'zone6') nextZone = 6;
-                    loadZone(nextZone);
-                    zoneTransitionAlpha = 1; // hold at black while loading
-                    zoneTransitionFading = 'fadeIn'; // now fading in
-                }
-            }
-            // Fade from black back to normal
-            else if (zoneTransitionFading === 'fadeIn') {
-                zoneTransitionAlpha -= dt * 2.5; // fade back in ~0.4s
-                if (zoneTransitionAlpha <= 0) {
-                    zoneTransitionAlpha = 0;
-                    zoneTransitionFading = false;
-                }
-            }
-        }
+        updateGameplay(dt);
     }
 
     // Reset error counter on successful frame
@@ -720,10 +705,9 @@ if (!window._gameLoopErrorHandlersAdded) {
     });
 }
 
-// Reference resolution — all rendering is tuned for 1920px width.
+// Reference resolution — all rendering is tuned for REF_WIDTH.
 // On bigger monitors we scale everything up so the game looks identical.
-const REF_WIDTH = 1920;
-let displayScale = 1;   // physicalWidth / REF_WIDTH
+let displayScale = 1;   // physicalWidth / UI.REF_WIDTH
 
 function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
@@ -737,10 +721,10 @@ function resizeCanvas() {
     canvas.style.height = physH + 'px';
 
     // Scale factor: map virtual 1920-wide space to actual screen
-    displayScale = physW / REF_WIDTH;
+    displayScale = physW / UI.REF_WIDTH;
 
     // Virtual dimensions — all game code renders in this coordinate space
-    canvasW = REF_WIDTH;
+    canvasW = UI.REF_WIDTH;
     canvasH = physH / displayScale;
 
     // Combined transform: DPR * display scale
@@ -757,12 +741,13 @@ window.addEventListener('resize', resizeCanvas);
 function getMenuButtons() {
     const cx = canvasW / 2;
     const cy = canvasH / 2;
-    const btnW = 220, btnH = 44;
+    const btnW = UI.MENU_BTN_W, btnH = UI.MENU_BTN_H;
+    const gap = UI.MENU_BTN_SPACING;
     const hasAnySave = saveSlots.some(s => s !== null);
     return {
-        start:    { x: cx - btnW / 2, y: cy + 30,  w: btnW, h: btnH, label: 'NEW GAME',    id: 'start' },
-        loadGame: { x: cx - btnW / 2, y: cy + 85,  w: btnW, h: btnH, label: 'LOAD GAME',   id: 'loadGame', disabled: !hasAnySave },
-        controls: { x: cx - btnW / 2, y: cy + 140, w: btnW, h: btnH, label: 'CONTROLS',    id: 'controls' },
+        start:    { x: cx - btnW / 2, y: cy + 30,          w: btnW, h: btnH, label: 'NEW GAME',    id: 'start' },
+        loadGame: { x: cx - btnW / 2, y: cy + 30 + gap,    w: btnW, h: btnH, label: 'LOAD GAME',   id: 'loadGame', disabled: !hasAnySave },
+        controls: { x: cx - btnW / 2, y: cy + 30 + gap * 2, w: btnW, h: btnH, label: 'CONTROLS',   id: 'controls' },
     };
 }
 
@@ -1952,7 +1937,7 @@ function restartGame() {
     FormSystem.previousForm = null;
     FormSystem.evolutionCount = 0;
     FormSystem.talisman = { level: 1, xp: 0, xpToNext: 100, perks: [], found: false };
-    FormSystem.formData.slime = { unlocked: true, absorbed: 0, maxSizeReached: 0, totalKills: 0 };
+    FormSystem.formData.slime = { unlocked: true, absorbed: 0, maxSizeReached: 0, totalKills: 0, bossDefeated: false };
     FormSystem.formData.skeleton = { unlocked: false, bonesCollected: 0, shieldBashes: 0, shieldDamageBlocked: 0, maxComboReached: 0, totalKills: 0 };
     FormSystem.formData.wizard = { unlocked: false, spellsCast: 0, towersPlaced: 0, lowManaKills: 0, totalKills: 0 };
     FormSystem.formData.lich = { unlocked: false, soulsHarvested: 0, undeadRaised: 0, totalKills: 0 };

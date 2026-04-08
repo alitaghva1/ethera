@@ -17,7 +17,7 @@ const ENEMY_TYPES = {
         lungeDur: 0.25,     // lunge duration
         patrolRange: 0.5,  // barely moves when idle — just bobs in place
         retreatOnHit: 0,
-        tintColor: '#88dd44',  // green for slime death burst
+        tintColor: COLORS.SLIME_TINT,
     },
     skeleton: {
         prefix: 'skel',
@@ -31,7 +31,7 @@ const ENEMY_TYPES = {
         flankDist: 2.5,  // distance at which they start flanking
         patrolRange: 3.5,  // patrols around spawn point when idle
         retreatOnHit: 0,
-        tintColor: '#ffaa88',  // warm yellow-orange for skeleton death burst
+        tintColor: COLORS.SKELETON_TINT,
     },
     skelarch: {
         prefix: 'skelarch',
@@ -43,7 +43,7 @@ const ENEMY_TYPES = {
         ai: 'ranged', preferredDist: 4.5,
         patrolRange: 2.0,
         retreatOnHit: 0.3,  // 30% chance to back away when hit
-        tintColor: '#ff8888',  // reddish for archer death burst
+        tintColor: COLORS.ARCHER_TINT,
     },
     armoredskel: {
         prefix: 'armoredskel',
@@ -58,7 +58,7 @@ const ENEMY_TYPES = {
         shieldDmgReduc: 0.6,  // takes 60% less damage while shielding
         patrolRange: 3.5,  // patrols like regular skeleton but tankier
         retreatOnHit: 0,
-        tintColor: '#aaaacc',  // steel-blue for armored skeleton death burst
+        tintColor: COLORS.ARMORED_TINT,
     },
     werewolf: {
         prefix: 'werewolf',
@@ -72,7 +72,7 @@ const ENEMY_TYPES = {
         retreatOnHit: 0,
         isBoss: true,
         knockbackResist: 0.4,
-        tintColor: '#cc4444',
+        tintColor: COLORS.WEREWOLF_TINT,
     },
     // --- ZONE 1 BOSS: Slime King ---
     slime_king: {
@@ -91,7 +91,7 @@ const ENEMY_TYPES = {
         retreatOnHit: 0,
         isBoss: true,
         knockbackResist: 0.6,
-        tintColor: '#66cc22',
+        tintColor: COLORS.SLIME_KING_TINT,
         // Boss abilities
         slamCooldown: 6.0,    // ground slam AoE cooldown
         slamRadius: 2.5,      // AoE range
@@ -112,7 +112,7 @@ const ENEMY_TYPES = {
         retreatOnHit: 0,
         isBoss: true,
         knockbackResist: 0.7,
-        tintColor: '#bbaa88',
+        tintColor: COLORS.BONE_COLOSSUS_TINT,
         // Boss abilities
         sweepCooldown: 5.0,    // sweeping attack cooldown
         sweepRadius: 2.0,      // sweep range
@@ -135,7 +135,7 @@ const ENEMY_TYPES = {
         retreatOnHit: 0,
         isBoss: true,
         knockbackResist: 0.65,
-        tintColor: '#ff4422',
+        tintColor: COLORS.INFERNAL_KNIGHT_TINT,
         // Boss abilities
         flameSweepCooldown: 4.5,   // wide flame sweep
         flameSweepRadius: 2.8,     // larger than Bone Colossus
@@ -162,7 +162,7 @@ const ENEMY_TYPES = {
         retreatOnHit: 0.2,
         isBoss: true,
         knockbackResist: 0.6,
-        tintColor: '#44aaff',
+        tintColor: COLORS.FROST_WYRM_TINT,
         // Boss abilities
         iceBreathCooldown: 5.0,    // cone attack
         iceBreathRadius: 3.5,      // cone length
@@ -191,7 +191,7 @@ const ENEMY_TYPES = {
         retreatOnHit: 0,
         isBoss: true,
         knockbackResist: 0.8,
-        tintColor: '#9944dd',
+        tintColor: COLORS.RUINED_KING_TINT,
         // Boss abilities — multi-phase fight
         teleSlashCooldown: 4.0,    // teleport behind player + slash
         teleSlashDamage: 24,       // base, scales with statMult
@@ -440,6 +440,38 @@ const WAVES = [
         statMult: 1.4,
         title: 'The Slime King Emerges',
         isBossWave: true,
+        bossTitle: 'The Slime King Falls',
+        bossSub: 'Sealed passages crumble... the depths beckon.',
+    },
+    // --- SECOND HALF: Sealed Wings (unlocked after Slime King) ---
+    {
+        // Wave 5: Heavy skeleton push from opened passages
+        enemies: [
+            { type: 'skeleton', count: 8 },
+            { type: 'skelarch', count: 4 },
+        ],
+        statMult: 1.5,
+        title: 'Sealed Passages Crumble',
+    },
+    {
+        // Wave 6: Full mixed assault — the depths fight back
+        enemies: [
+            { type: 'slime', count: 4 },
+            { type: 'skeleton', count: 6 },
+            { type: 'skelarch', count: 5 },
+        ],
+        statMult: 1.65,
+        title: 'The Deep Stirs',
+    },
+    {
+        // Wave 7: Final push — overwhelming numbers
+        enemies: [
+            { type: 'skeleton', count: 8 },
+            { type: 'skelarch', count: 6 },
+            { type: 'slime', count: 6 },
+        ],
+        statMult: 1.8,
+        title: 'The Undercroft\'s Last Stand',
     },
 ];
 
@@ -718,9 +750,12 @@ const ZONE_5_FINAL_WAVE = ZONE5_WAVES.length - 1;
 const ZONE_6_FINAL_WAVE = ZONE6_WAVES.length - 1;
 
 // Wave state
+// NOTE: phase starts as 'done' so waves don't auto-trigger before startWaveSystem() is called.
+// Previously 'pre' with timer:0 caused beginNextWave() to fire immediately on the first
+// updateWaveSystem() tick — before the delayed startWaveSystem() from the cinematic.
 const wave = {
     current: 0,          // 0-indexed, -1 = not started
-    phase: 'pre',        // pre, countdown, fighting, cleared, zoneClear, victory
+    phase: 'done',       // done until startWaveSystem() is called; then: pre, countdown, fighting, cleared, zoneClear, victory
     timer: 0,            // multipurpose timer
     bannerAlpha: 0,      // for announcement fade
     bannerText: '',
@@ -825,6 +860,9 @@ function beginNextWave() {
             { text: 'Darkness Gathers',         sub: 'They know you are here.' },
             { text: 'The Walls Tremble',        sub: 'More are coming.' },
             { text: 'Death Approaches',         sub: 'The dungeon will not forgive.' },
+            { text: 'Bones Rattle Below',       sub: 'The sealed wings echo with fury.' },
+            { text: 'The Depths Hunger',        sub: 'No mercy from what lies beneath.' },
+            { text: 'A Final Reckoning',        sub: 'Stand or fall.' },
         ],
         2: [
             { text: 'The Tower Awakens',       sub: 'Ancient guardians stir...' },
@@ -1027,9 +1065,18 @@ function updateWaveSystem(dt) {
                 playMusic('menu', 3.0);
             } else {
                 wave.phase = 'cleared';
-                wave.timer = 8.0;
-                wave.bannerText = `Wave ${wave.current} Cleared`;
-                wave.bannerSub = '';
+                // Check if this was a mid-zone boss wave (e.g. Slime King before sealed wings)
+                const _zoneWaves = { 1: WAVES, 2: ZONE2_WAVES, 3: ZONE3_WAVES, 4: ZONE4_WAVES, 5: ZONE5_WAVES, 6: ZONE6_WAVES };
+                const currentWaveDef = (_zoneWaves[currentZone] || WAVES)[wave.current];
+                if (currentWaveDef && currentWaveDef.isBossWave) {
+                    wave.timer = 10.0; // longer breather after boss
+                    wave.bannerText = currentWaveDef.bossTitle || 'Boss Defeated';
+                    wave.bannerSub = currentWaveDef.bossSub || 'The way ahead opens...';
+                } else {
+                    wave.timer = 8.0;
+                    wave.bannerText = `Wave ${wave.current} Cleared`;
+                    wave.bannerSub = '';
+                }
                 wave.bannerAlpha = 1;
                 wave.tensionPhase = 0; // 0=calm, 1=building tension
                 playSting('waveCleared');
@@ -1403,6 +1450,12 @@ function drawBossHealthBar() {
 }
 
 // ----- SPAWN SINGLE ENEMY WITH STAT SCALING -----
+// All damage keys that scale with statMult on spawn
+const _SCALED_DAMAGE_KEYS = [
+    'slamDamage', 'sweepDamage', 'flameSweepDamage', 'fireTrailDamage',
+    'iceBreathDamage', 'shatterDamage', 'teleSlashDamage', 'voidPulseDamage', 'despDamage',
+];
+
 function spawnEnemy(type, row, col, statMult) {
     const baseDef = ENEMY_TYPES[type];
     if (!baseDef) { console.error('Unknown enemy type:', type); return; }
@@ -1412,18 +1465,13 @@ function spawnEnemy(type, row, col, statMult) {
         hp: Math.round(baseDef.hp * statMult),
         damage: Math.round(baseDef.damage * statMult),
         speed: baseDef.speed * (1 + (statMult - 1) * 0.5), // speed scales gentler
-        // Scale ALL boss ability damage with statMult
-        slamDamage: baseDef.slamDamage ? Math.round(baseDef.slamDamage * statMult) : 0,
-        sweepDamage: baseDef.sweepDamage ? Math.round(baseDef.sweepDamage * statMult) : 0,
-        flameSweepDamage: baseDef.flameSweepDamage ? Math.round(baseDef.flameSweepDamage * statMult) : 0,
-        fireTrailDamage: baseDef.fireTrailDamage ? Math.round(baseDef.fireTrailDamage * statMult) : 0,
-        iceBreathDamage: baseDef.iceBreathDamage ? Math.round(baseDef.iceBreathDamage * statMult) : 0,
-        shatterDamage: baseDef.shatterDamage ? Math.round(baseDef.shatterDamage * statMult) : 0,
-        teleSlashDamage: baseDef.teleSlashDamage ? Math.round(baseDef.teleSlashDamage * statMult) : 0,
-        voidPulseDamage: baseDef.voidPulseDamage ? Math.round(baseDef.voidPulseDamage * statMult) : 0,
-        despDamage: baseDef.despDamage ? Math.round(baseDef.despDamage * statMult) : 0,
     };
-    enemies.push({
+    // Scale all boss ability damage keys with statMult
+    for (const key of _SCALED_DAMAGE_KEYS) {
+        def[key] = baseDef[key] ? Math.round(baseDef[key] * statMult) : 0;
+    }
+    // Core enemy state (shared by all enemies)
+    const enemy = {
         type, def,
         statMult,   // store for scaling summoned adds + XP
         row, col,
@@ -1442,9 +1490,6 @@ function spawnEnemy(type, row, col, statMult) {
         spawnFade: 0.5,
         slowTimer: 0,
         orbitHitCooldown: 0,
-        // Boss-specific: werewolf charge mechanics
-        chargeTimer: 0,
-        isCharging: false,
         // AI behavior state
         lungeTimer: 0,
         lungeCooldownTimer: 0,
@@ -1453,34 +1498,36 @@ function spawnEnemy(type, row, col, statMult) {
         flankSide: Math.random() < 0.5 ? 1 : -1,
         shieldTimer: 0,
         isShielding: false,
-        // Boss howl attack
-        howlCooldown: 0,
-        howlPaused: 0,
-        // Boss ability timers (Slime King / Bone Colossus)
-        bossSlamTimer: 0,
-        bossSummonTimer: 0,
-        bossSweepTimer: 0,
-        bossCageTimer: 0,
-        // Infernal Knight timers
-        bossFlameSweepTimer: 0,
-        bossFireTrailTimer: 0,
-        bossShieldPhaseTimer: 0,
-        bossShieldPhaseActive: false,
-        bossShieldPhaseDur: 0,
-        // Frost Wyrm timers
-        bossIceBreathTimer: 0,
-        bossFreezeTrapTimer: 0,
-        bossShatterTimer: 0,
-        // Ruined King timers
-        bossTeleSlashTimer: 0,
-        bossVoidPulseTimer: 0,
-        bossDespTimer: 0,
-        // Fire trail ground hazards spawned by this enemy
-        fireTrails: [],
-        bossPhase: 0,       // 0 = normal, 1 = enraged (below 50% HP), 2 = desperate (25% HP, Ruined King only)
+        chargeTimer: 0,
+        isCharging: false,
         // Elite modifier
         elite: null,
-    });
+    };
+
+    // Boss-only timers — only allocated for bosses to reduce per-enemy memory
+    if (baseDef.isBoss) {
+        enemy.howlCooldown = 0;
+        enemy.howlPaused = 0;
+        enemy.bossSlamTimer = 0;
+        enemy.bossSummonTimer = 0;
+        enemy.bossSweepTimer = 0;
+        enemy.bossCageTimer = 0;
+        enemy.bossFlameSweepTimer = 0;
+        enemy.bossFireTrailTimer = 0;
+        enemy.bossShieldPhaseTimer = 0;
+        enemy.bossShieldPhaseActive = false;
+        enemy.bossShieldPhaseDur = 0;
+        enemy.bossIceBreathTimer = 0;
+        enemy.bossFreezeTrapTimer = 0;
+        enemy.bossShatterTimer = 0;
+        enemy.bossTeleSlashTimer = 0;
+        enemy.bossVoidPulseTimer = 0;
+        enemy.bossDespTimer = 0;
+        enemy.fireTrails = [];
+        enemy.bossPhase = 0;
+    }
+
+    enemies.push(enemy);
     const spawned = enemies[enemies.length - 1];
 
     // --- Elite Modifier System ---
@@ -1629,6 +1676,10 @@ function updateEnemies(dt) {
                 // Boss drops special key (Zone 3 werewolf only)
                 if (e.type === 'werewolf' && currentZone === 3) {
                     dropKeyItemInWorld(e.row, e.col, 'zone3_exit_key');
+                }
+                // Track boss defeat for evolution gating
+                if (e.type === 'slime_king' && FormSystem.formData.slime) {
+                    FormSystem.formData.slime.bossDefeated = true;
                 }
                 // Siphon Life: heal on kill
                 if (getUpgrade('regen') > 0) {
@@ -2581,7 +2632,12 @@ function updateEnemies(dt) {
         }
         // --- Ranged AI (Skeleton Archer) ---
         else if (e.def.ai === 'ranged' && dist < e.def.preferredDist) {
-            moveDir = { dr: -dr, dc: -dc };
+            // Retreat from player, but stop retreating if stuck (don't back into walls forever)
+            if (e._stuckTimer && e._stuckTimer > 0.5) {
+                moveDir = null; // stand ground instead of backing deeper into corner
+            } else {
+                moveDir = { dr: -dr, dc: -dc };
+            }
         } else if (e.def.ai === 'ranged' && dist <= e.def.attackRange && e.attackCooldown <= 0) {
             moveDir = null;
         }
@@ -2613,13 +2669,14 @@ function updateEnemies(dt) {
                     e.col = newC;
                     moved = true;
                 }
-                // Anti-stuck: if completely blocked, nudge in a perpendicular direction
+                // Anti-stuck: if completely blocked, try increasingly aggressive escapes
                 if (!moved) {
                     if (!e._stuckTimer) e._stuckTimer = 0;
                     e._stuckTimer += dt;
+
                     if (e._stuckTimer > 0.3) {
-                        // Try perpendicular nudge to escape corners
-                        const nudge = e.def.speed * 0.5 * dt;
+                        // Phase 1 (0.3s-1.5s): Perpendicular nudge to escape corners
+                        const nudge = e.def.speed * 0.8 * dt;
                         const perpR = -moveDir.dc / mLen;
                         const perpC = moveDir.dr / mLen;
                         // Alternate nudge direction each attempt
@@ -2630,6 +2687,35 @@ function updateEnemies(dt) {
                             e.row = nudgeR;
                             e.col = nudgeC;
                         }
+                    }
+
+                    if (e._stuckTimer > 1.5) {
+                        // Phase 2 (1.5s+): Try random directions to find ANY open path
+                        for (let attempt = 0; attempt < 4; attempt++) {
+                            const randAngle = Math.random() * Math.PI * 2;
+                            const escape = e.def.speed * dt;
+                            const tryR = e.row + Math.cos(randAngle) * escape;
+                            const tryC = e.col + Math.sin(randAngle) * escape;
+                            if (canEnemyMoveTo(tryR, tryC, e.def.hitboxR, e)) {
+                                e.row = tryR;
+                                e.col = tryC;
+                                e._stuckTimer = 0;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (e._stuckTimer > 3.0) {
+                        // Phase 3 (3s+): Warp toward player (clear line of sight)
+                        // Move enemy 1 tile toward player, checking validity
+                        const warpDist = 1.0;
+                        const warpR = e.row + (dr / (dist || 1)) * warpDist;
+                        const warpC = e.col + (dc / (dist || 1)) * warpDist;
+                        if (canEnemyMoveTo(warpR, warpC, e.def.hitboxR, e)) {
+                            e.row = warpR;
+                            e.col = warpC;
+                        }
+                        e._stuckTimer = 0;
                     }
                 } else {
                     e._stuckTimer = 0;

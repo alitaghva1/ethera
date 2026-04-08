@@ -56,6 +56,9 @@ function slimeAbsorbEnemy(target, particleCount) {
     slimeState.size = Math.min(slimeState.maxSize, slimeState.size + sizeGain);
     player.hp = Math.min(FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp, player.hp + 10);
     FormSystem.formData.slime.absorbed++;
+    // Absorbing IS killing — grant XP (which also increments totalKills) + wave total
+    grantXP(target.type, target.statMult || 1.0);
+    wave.totalKilled++;
     if (slimeState.size > FormSystem.formData.slime.maxSizeReached) {
         FormSystem.formData.slime.maxSizeReached = slimeState.size;
     }
