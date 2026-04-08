@@ -457,7 +457,6 @@ const SPAWN_ZONES = [
 // Wave definitions: each wave has a list of enemies and a stat multiplier
 const WAVES = [
     {
-        // Wave 1: Slimes swarm early — feel the pressure immediately
         enemies: [
             { type: 'slime', count: 7 },
         ],
@@ -465,7 +464,6 @@ const WAVES = [
         title: 'The Dungeon Stirs',
     },
     {
-        // Wave 2: Skeletons join — mixed melee rush
         enemies: [
             { type: 'slime', count: 5 },
             { type: 'skeleton', count: 4 },
@@ -474,7 +472,6 @@ const WAVES = [
         title: 'The Dead Rise',
     },
     {
-        // Wave 3: Archers appear, big numbers
         enemies: [
             { type: 'slime', count: 6 },
             { type: 'skeleton', count: 5 },
@@ -482,32 +479,17 @@ const WAVES = [
         ],
         statMult: 1.35,
         title: 'Arrow and Bone',
+        isExpansionTrigger: true,
     },
     {
-        // Wave 4: BOSS — The Slime King + minion escort
-        enemies: [
-            { type: 'slime_king', count: 1 },
-            { type: 'slime', count: 4 },
-            { type: 'skeleton', count: 3 },
-        ],
-        statMult: 1.4,
-        title: 'The Slime King Emerges',
-        isBossWave: true,
-        bossTitle: 'The Slime King Falls',
-        bossSub: 'Sealed passages crumble... the depths beckon.',
-    },
-    // --- SECOND HALF: Sealed Wings (unlocked after Slime King) ---
-    {
-        // Wave 5: Heavy skeleton push from opened passages
         enemies: [
             { type: 'skeleton', count: 8 },
             { type: 'skelarch', count: 4 },
         ],
         statMult: 1.5,
-        title: 'Sealed Passages Crumble',
+        title: 'The Crypt Opens',
     },
     {
-        // Wave 6: Full mixed assault — the depths fight back
         enemies: [
             { type: 'slime', count: 4 },
             { type: 'skeleton', count: 6 },
@@ -517,7 +499,6 @@ const WAVES = [
         title: 'The Deep Stirs',
     },
     {
-        // Wave 7: Final push — overwhelming numbers
         enemies: [
             { type: 'skeleton', count: 8 },
             { type: 'skelarch', count: 6 },
@@ -526,13 +507,22 @@ const WAVES = [
         statMult: 1.8,
         title: 'The Undercroft\'s Last Stand',
     },
+    {
+        enemies: [
+            { type: 'slime_king', count: 1 },
+            { type: 'slime', count: 4 },
+            { type: 'skeleton', count: 3 },
+        ],
+        statMult: 1.9,
+        title: 'The Slime King Emerges',
+        isBossWave: true,
+    },
 ];
 
 // ===== ZONE 2 WAVES =====
 // Harder than Zone 1 — more enemies, heavier archer/skeleton mix
 const ZONE2_WAVES = [
     {
-        // Wave 1 (Zone 2): Skeletons lead the charge
         enemies: [
             { type: 'skeleton', count: 6 },
             { type: 'skelarch', count: 2 },
@@ -541,7 +531,6 @@ const ZONE2_WAVES = [
         title: 'Bones Ascend',
     },
     {
-        // Wave 2: Mixed assault with archers
         enemies: [
             { type: 'slime', count: 3 },
             { type: 'skeleton', count: 6 },
@@ -551,7 +540,6 @@ const ZONE2_WAVES = [
         title: 'The Guard Post',
     },
     {
-        // Wave 3: Armored skeletons arrive, mixed with archers
         enemies: [
             { type: 'skeleton', count: 4 },
             { type: 'armoredskel', count: 2 },
@@ -559,30 +547,35 @@ const ZONE2_WAVES = [
         ],
         statMult: 1.85,
         title: 'Iron and Arrows',
+        isExpansionTrigger: true,
     },
     {
-        // Wave 4: All-out assault with more armored units
         enemies: [
-            { type: 'slime', count: 3 },
-            { type: 'skeleton', count: 6 },
-            { type: 'armoredskel', count: 3 },
+            { type: 'skeleton', count: 8 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 2.1,
-        title: 'The Tower\'s Wrath',
+        statMult: 2.0,
+        title: 'The Tower Crumbles',
     },
     {
-        // Wave 5: Heavy armored presence
+        enemies: [
+            { type: 'skeleton', count: 6 },
+            { type: 'armoredskel', count: 3 },
+            { type: 'skelarch', count: 8 },
+        ],
+        statMult: 2.2,
+        title: 'Death From Above',
+    },
+    {
         enemies: [
             { type: 'skeleton', count: 8 },
             { type: 'armoredskel', count: 4 },
-            { type: 'skelarch', count: 8 },
+            { type: 'skelarch', count: 6 },
         ],
         statMult: 2.4,
         title: 'Endless Legions',
     },
     {
-        // Wave 6 (Final for Zone 2): BOSS — The Bone Colossus
         enemies: [
             { type: 'bone_colossus', count: 1 },
             { type: 'armoredskel', count: 3 },
@@ -595,35 +588,77 @@ const ZONE2_WAVES = [
 ];
 
 // ===== ZONE 3 WAVES =====
-// Boss arena — single brutal encounter
+// Spire gauntlet — escalating difficulty toward werewolf boss
 const ZONE3_WAVES = [
     {
         enemies: [
-            { type: 'armoredskel', count: 6 },
-            { type: 'skelarch', count: 8 },
-            { type: 'skeleton', count: 10 },
+            { type: 'skeleton', count: 6 },
+            { type: 'skelarch', count: 2 },
         ],
-        statMult: 3.0,
+        statMult: 2.5,
         title: 'The Spire\'s Guard',
     },
     {
-        // BOSS — The Werewolf + elite guards
+        enemies: [
+            { type: 'skeleton', count: 4 },
+            { type: 'skelarch', count: 4 },
+            { type: 'armoredskel', count: 2 },
+        ],
+        statMult: 2.7,
+        title: 'Sentinels of Stone',
+    },
+    {
+        enemies: [
+            { type: 'skeleton', count: 6 },
+            { type: 'skelarch', count: 6 },
+            { type: 'armoredskel', count: 2 },
+        ],
+        statMult: 2.9,
+        title: 'The Garrison Falls',
+        isExpansionTrigger: true,
+    },
+    {
+        enemies: [
+            { type: 'skeleton', count: 8 },
+            { type: 'skelarch', count: 4 },
+        ],
+        statMult: 3.0,
+        title: 'The Ascent',
+    },
+    {
+        enemies: [
+            { type: 'skeleton', count: 6 },
+            { type: 'armoredskel', count: 4 },
+            { type: 'skelarch', count: 8 },
+        ],
+        statMult: 3.2,
+        title: 'Summit of Bone',
+    },
+    {
+        enemies: [
+            { type: 'skeleton', count: 10 },
+            { type: 'skelarch', count: 6 },
+            { type: 'armoredskel', count: 4 },
+        ],
+        statMult: 3.4,
+        title: 'The Heights Rage',
+    },
+    {
         enemies: [
             { type: 'werewolf', count: 1 },
             { type: 'armoredskel', count: 4 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 3.0,
+        statMult: 3.5,
         title: 'The Beast Awakens',
         isBossWave: true,
     },
 ];
 
 // ===== ZONE 4 WAVES (THE INFERNO) =====
-// Harder than Zone 3 — brutal hellfire gauntlet
+// Brutal hellfire gauntlet with escalating intensity
 const ZONE4_WAVES = [
     {
-        // Wave 1: Hellfire vanguard — armored skeletons charge
         enemies: [
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 6 },
@@ -632,53 +667,66 @@ const ZONE4_WAVES = [
         title: 'The Inferno Awakens',
     },
     {
-        // Wave 2: Full assault — everything at once
         enemies: [
             { type: 'skeleton', count: 10 },
             { type: 'armoredskel', count: 6 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 4.0,
+        statMult: 3.8,
         title: 'Burning Legions',
     },
     {
-        // Wave 3: Werewolf shock troop — tests player before the real boss
         enemies: [
             { type: 'werewolf', count: 1 },
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 4.2,
+        statMult: 4.0,
         title: 'The Damned March',
+        isExpansionTrigger: true,
     },
     {
-        // Wave 4: Elite guard with heavy armored focus
         enemies: [
             { type: 'armoredskel', count: 10 },
             { type: 'skelarch', count: 10 },
             { type: 'skeleton', count: 6 },
         ],
+        statMult: 4.2,
+        title: 'Blood and Fire',
+    },
+    {
+        enemies: [
+            { type: 'armoredskel', count: 12 },
+            { type: 'skelarch', count: 10 },
+            { type: 'skeleton', count: 8 },
+        ],
         statMult: 4.5,
         title: 'Hellfire Gauntlet',
     },
     {
-        // Wave 5: BOSS — The Infernal Knight + fire escort
+        enemies: [
+            { type: 'armoredskel', count: 14 },
+            { type: 'skelarch', count: 12 },
+        ],
+        statMult: 4.8,
+        title: 'The Forge Calls',
+    },
+    {
         enemies: [
             { type: 'infernal_knight', count: 1 },
             { type: 'armoredskel', count: 6 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 4.5,
+        statMult: 5.0,
         title: 'The Infernal Knight Descends',
         isBossWave: true,
     },
 ];
 
 // ===== ZONE 5 WAVES (THE FROZEN ABYSS) =====
-// Escalation from Zone 4 — more enemies, higher multipliers, culminates in Frost Wyrm
+// Frozen gauntlet escalating to Frost Wyrm boss
 const ZONE5_WAVES = [
     {
-        // Wave 1: Frozen vanguard — heavy armored push
         enemies: [
             { type: 'armoredskel', count: 10 },
             { type: 'skelarch', count: 8 },
@@ -687,62 +735,75 @@ const ZONE5_WAVES = [
         title: 'The Abyss Stirs',
     },
     {
-        // Wave 2: Swarm wave — overwhelming numbers
         enemies: [
             { type: 'skeleton', count: 14 },
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 5.5,
+        statMult: 5.3,
         title: 'Frozen Legions',
     },
     {
-        // Wave 3: Archer-heavy ambush
         enemies: [
             { type: 'skelarch', count: 14 },
             { type: 'armoredskel', count: 8 },
         ],
         statMult: 5.5,
         title: 'Arrows of Ice',
+        isExpansionTrigger: true,
     },
     {
-        // Wave 4: Werewolf pair + elite gauntlet — callback to Zone 3 boss
+        enemies: [
+            { type: 'skeleton', count: 12 },
+            { type: 'armoredskel', count: 10 },
+            { type: 'skelarch', count: 8 },
+        ],
+        statMult: 5.8,
+        title: 'The Deep Freeze',
+    },
+    {
         enemies: [
             { type: 'werewolf', count: 2 },
             { type: 'armoredskel', count: 10 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 5.8,
+        statMult: 6.0,
         title: 'The Dead March',
     },
     {
-        // Wave 5: BOSS — The Frost Wyrm + frozen elite guard
+        enemies: [
+            { type: 'skeleton', count: 16 },
+            { type: 'armoredskel', count: 12 },
+            { type: 'skelarch', count: 10 },
+        ],
+        statMult: 6.3,
+        title: 'Abyss Unbound',
+    },
+    {
         enemies: [
             { type: 'frost_wyrm', count: 1 },
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 6.0,
+        statMult: 6.5,
         title: 'The Wyrm Awakens',
         isBossWave: true,
     },
 ];
 
 // ===== ZONE 6 WAVES (THRONE OF RUIN) =====
-// The final gauntlet — boss rush callback + ultimate boss. Every previous boss reappears.
+// The final gauntlet — crescendo of all enemies, ending in Ruined King
 const ZONE6_WAVES = [
     {
-        // Wave 1: Throne guard — full assault from the start
         enemies: [
             { type: 'armoredskel', count: 12 },
             { type: 'skelarch', count: 10 },
             { type: 'skeleton', count: 8 },
         ],
-        statMult: 7.0,
+        statMult: 6.5,
         title: 'Ruin Awakens',
     },
     {
-        // Wave 2: Boss rush callback — weakened echoes of past bosses
         enemies: [
             { type: 'slime_king', count: 1 },
             { type: 'bone_colossus', count: 1 },
@@ -751,10 +812,8 @@ const ZONE6_WAVES = [
         ],
         statMult: 7.0,
         title: 'Echoes of the Fallen',
-        isBossWave: true,
     },
     {
-        // Wave 3: Werewolf pack + Infernal Knight — another callback
         enemies: [
             { type: 'werewolf', count: 2 },
             { type: 'infernal_knight', count: 1 },
@@ -762,10 +821,9 @@ const ZONE6_WAVES = [
         ],
         statMult: 7.5,
         title: 'The Ruined Guard',
-        isBossWave: true,
+        isExpansionTrigger: true,
     },
     {
-        // Wave 4: Overwhelming swarm — the world throws everything
         enemies: [
             { type: 'skeleton', count: 16 },
             { type: 'armoredskel', count: 14 },
@@ -775,7 +833,6 @@ const ZONE6_WAVES = [
         title: 'Endless Ruin',
     },
     {
-        // Wave 5: Elite vanguard before final boss
         enemies: [
             { type: 'frost_wyrm', count: 1 },
             { type: 'werewolf', count: 1 },
@@ -784,20 +841,123 @@ const ZONE6_WAVES = [
         ],
         statMult: 8.5,
         title: 'The Last Stand',
-        isBossWave: true,
     },
     {
-        // Wave 6: FINAL BOSS — The Ruined King
+        enemies: [
+            { type: 'skeleton', count: 20 },
+            { type: 'armoredskel', count: 16 },
+            { type: 'skelarch', count: 16 },
+        ],
+        statMult: 9.0,
+        title: 'The World Breaks',
+    },
+    {
         enemies: [
             { type: 'ruined_king', count: 1 },
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 9.0,
+        statMult: 10.0,
         title: 'THE THRONE FALLS',
         isBossWave: true,
     },
 ];
+
+// ===== ZONE EXPANSION SYSTEM =====
+// Two-act structure: after Act 1's final wave (isExpansionTrigger), sealed areas open
+const ZONE_EXPANSIONS = {
+    1: {
+        triggerAfterWaveIndex: 2,
+        bannerText: 'Sealed passages collapse...',
+        bannerSub: 'The dungeon reveals its depths.',
+        cameraTarget: { r: 8, c: 25 },
+        shakeIntensity: 6,
+        shakeDuration: 1.2,
+        breatherChest: true,
+    },
+    2: {
+        triggerAfterWaveIndex: 2,
+        bannerText: 'The tower shudders...',
+        bannerSub: 'The western wall gives way.',
+        cameraTarget: { r: 14, c: 8 },
+        shakeIntensity: 6,
+        shakeDuration: 1.2,
+        breatherChest: true,
+    },
+    3: {
+        triggerAfterWaveIndex: 2,
+        bannerText: 'The spire opens above...',
+        bannerSub: 'Something howls in the heights.',
+        cameraTarget: { r: 7, c: 20 },
+        shakeIntensity: 7,
+        shakeDuration: 1.0,
+        breatherChest: true,
+    },
+    4: {
+        triggerAfterWaveIndex: 2,
+        bannerText: 'The iron gate crumbles...',
+        bannerSub: 'Heat and ruin pour forth.',
+        cameraTarget: { r: 12, c: 26 },
+        shakeIntensity: 8,
+        shakeDuration: 1.2,
+        breatherChest: true,
+    },
+    5: {
+        triggerAfterWaveIndex: 2,
+        bannerText: 'The ice shatters...',
+        bannerSub: 'The abyss yawns open.',
+        cameraTarget: { r: 12, c: 27 },
+        shakeIntensity: 8,
+        shakeDuration: 1.2,
+        breatherChest: true,
+    },
+    6: {
+        triggerAfterWaveIndex: 2,
+        bannerText: 'The tomb screams open...',
+        bannerSub: 'The Ruined King stirs.',
+        cameraTarget: { r: 28, c: 15 },
+        shakeIntensity: 10,
+        shakeDuration: 1.5,
+        breatherChest: false,
+    },
+};
+
+// Sealed tile data per zone — populated by map generators, consumed by expandZone()
+// Each entry: { sealTiles: [{r,c}], rubbleTiles: [{r,c,obj}], chestTile: {r,c} }
+const zoneSealData = {};
+
+function expandZone(zoneNum) {
+    const seal = zoneSealData[zoneNum];
+    if (!seal) { console.warn('No seal data for zone', zoneNum); return; }
+
+    // Unblock sealed tiles — open them as walkable floor
+    for (const t of seal.sealTiles) {
+        blocked[t.r][t.c] = false;
+        blockType[t.r][t.c] = null;
+        objectMap[t.r][t.c] = null;
+        objRadius[t.r][t.c] = 0;
+        if (!floorMap[t.r][t.c]) floorMap[t.r][t.c] = 'stoneTile';
+    }
+
+    // Place rubble/debris props on designated tiles (decorative, non-blocking)
+    if (seal.rubbleTiles) {
+        for (const t of seal.rubbleTiles) {
+            if (t.obj) {
+                objectMap[t.r][t.c] = t.obj;
+                // rubble is decorative — don't block
+            }
+        }
+    }
+
+    // Spawn breather chest if configured
+    const expCfg = ZONE_EXPANSIONS[zoneNum];
+    if (expCfg && expCfg.breatherChest && seal.chestTile) {
+        objectMap[seal.chestTile.r][seal.chestTile.c] = 'chestClosed';
+        blocked[seal.chestTile.r][seal.chestTile.c] = true;
+        blockType[seal.chestTile.r][seal.chestTile.c] = 'object';
+        objRadius[seal.chestTile.r][seal.chestTile.c] = OBJ_RADII.chestClosed || 0.32;
+    }
+}
 
 const ZONE_5_FINAL_WAVE = ZONE5_WAVES.length - 1;
 const ZONE_6_FINAL_WAVE = ZONE6_WAVES.length - 1;
@@ -909,41 +1069,58 @@ function beginNextWave() {
     // Atmospheric wave announcements — no numbers, keep the player guessing
     const ZONE_STIR_MESSAGES = {
         1: [
-            { text: 'The Dungeon Stirs',       sub: 'Something awakens in the dark...' },
-            { text: 'Darkness Gathers',         sub: 'They know you are here.' },
-            { text: 'The Walls Tremble',        sub: 'More are coming.' },
-            { text: 'Death Approaches',         sub: 'The dungeon will not forgive.' },
-            { text: 'Bones Rattle Below',       sub: 'The sealed wings echo with fury.' },
-            { text: 'The Depths Hunger',        sub: 'No mercy from what lies beneath.' },
-            { text: 'A Final Reckoning',        sub: 'Stand or fall.' },
+            { text: 'The Dungeon Stirs', sub: 'Something awakens in the dark...' },
+            { text: 'The Dead Rise', sub: 'They know you are here.' },
+            { text: 'Arrow and Bone', sub: 'More are coming.' },
+            { text: 'The Crypt Opens', sub: 'Sealed passages give way.' },
+            { text: 'The Deep Stirs', sub: 'No mercy from what lies beneath.' },
+            { text: 'The Undercroft\'s Last Stand', sub: 'Stand or fall.' },
+            { text: 'The Slime King Emerges', sub: 'A powerful enemy approaches...' },
         ],
         2: [
-            { text: 'The Tower Awakens',       sub: 'Ancient guardians stir...' },
-            { text: 'Shadows Converge',         sub: 'The tower descends upon you.' },
-            { text: 'The Spire Trembles',       sub: 'Reinforcements surge forth.' },
-            { text: 'Spirits Manifest',         sub: 'The tower demands sacrifice.' },
+            { text: 'Bones Ascend', sub: 'Ancient guardians stir...' },
+            { text: 'The Guard Post', sub: 'The tower descends upon you.' },
+            { text: 'Iron and Arrows', sub: 'Reinforcements surge forth.' },
+            { text: 'The Tower Crumbles', sub: 'The ruins shift and groan.' },
+            { text: 'Death From Above', sub: 'Arrows rain from the heights.' },
+            { text: 'Endless Legions', sub: 'They will not stop.' },
+            { text: 'The Bone Colossus Rises', sub: 'A powerful enemy approaches...' },
         ],
         3: [
-            { text: 'The Spire Watches',       sub: 'Eyes gleam in the heights above...' },
-            { text: 'A Howl Echoes',           sub: 'Something terrible awaits at the summit.' },
+            { text: 'The Spire\'s Guard', sub: 'Eyes gleam in the heights above...' },
+            { text: 'Sentinels of Stone', sub: 'The garrison holds fast.' },
+            { text: 'The Garrison Falls', sub: 'The spire trembles.' },
+            { text: 'The Ascent', sub: 'Higher. Always higher.' },
+            { text: 'Summit of Bone', sub: 'The wind carries death.' },
+            { text: 'The Heights Rage', sub: 'No shelter at the peak.' },
+            { text: 'The Beast Awakens', sub: 'Something terrible awaits...' },
         ],
         4: [
-            { text: 'The Flames Rise',         sub: 'Heat scorches the very air...' },
-            { text: 'Ash and Ember',           sub: 'The inferno hungers for you.' },
-            { text: 'Hellfire Surges',         sub: 'There is no escape from the flames.' },
-            { text: 'The Crucible Burns',      sub: 'Only ruin remains.' },
+            { text: 'The Inferno Awakens', sub: 'Heat scorches the very air...' },
+            { text: 'Burning Legions', sub: 'The inferno hungers for you.' },
+            { text: 'The Damned March', sub: 'Hellfire surges forth.' },
+            { text: 'Blood and Fire', sub: 'The pits demand sacrifice.' },
+            { text: 'Hellfire Gauntlet', sub: 'There is no escape from the flames.' },
+            { text: 'The Forge Calls', sub: 'Only ruin remains.' },
+            { text: 'The Infernal Knight Descends', sub: 'A powerful enemy approaches...' },
         ],
         5: [
-            { text: 'The Ice Cracks',          sub: 'Something stirs beneath...' },
-            { text: 'Frozen Wrath',            sub: 'The abyss will not release you.' },
-            { text: 'Cold Embrace',            sub: 'The dead rise from frost.' },
-            { text: 'Shatter',                 sub: 'There is no warmth here.' },
+            { text: 'The Abyss Stirs', sub: 'Something stirs beneath...' },
+            { text: 'Frozen Legions', sub: 'The abyss will not release you.' },
+            { text: 'Arrows of Ice', sub: 'Cold embrace.' },
+            { text: 'The Deep Freeze', sub: 'The dead rise from frost.' },
+            { text: 'The Dead March', sub: 'There is no warmth here.' },
+            { text: 'Abyss Unbound', sub: 'Shatter.' },
+            { text: 'The Wyrm Awakens', sub: 'A powerful enemy approaches...' },
         ],
         6: [
-            { text: 'The Throne Stirs',        sub: 'Your end awaits...' },
-            { text: 'Ruin Descends',           sub: 'The walls close in.' },
-            { text: 'No Mercy',                sub: 'The Throne demands blood.' },
-            { text: 'Annihilation',            sub: 'This is where it ends.' },
+            { text: 'Ruin Awakens', sub: 'Your end awaits...' },
+            { text: 'Echoes of the Fallen', sub: 'The walls close in.' },
+            { text: 'The Ruined Guard', sub: 'The Throne demands blood.' },
+            { text: 'Endless Ruin', sub: 'The dead outnumber the living.' },
+            { text: 'The Last Stand', sub: 'No mercy.' },
+            { text: 'The World Breaks', sub: 'This is where it ends.' },
+            { text: 'THE THRONE FALLS', sub: 'A powerful enemy approaches...' },
         ],
     };
     const STIR_MESSAGES = ZONE_STIR_MESSAGES[currentZone] || ZONE_STIR_MESSAGES[1];
@@ -1117,40 +1294,105 @@ function updateWaveSystem(dt) {
                 // Fade to calmer music
                 playMusic('menu', 3.0);
             } else {
-                wave.phase = 'cleared';
-                // Check if this was a mid-zone boss wave (e.g. Slime King before sealed wings)
                 const _zoneWaves = { 1: WAVES, 2: ZONE2_WAVES, 3: ZONE3_WAVES, 4: ZONE4_WAVES, 5: ZONE5_WAVES, 6: ZONE6_WAVES };
                 const currentWaveDef = (_zoneWaves[currentZone] || WAVES)[wave.current];
-                if (currentWaveDef && currentWaveDef.isBossWave) {
+
+                // Check if this wave triggers zone expansion
+                if (currentWaveDef && currentWaveDef.isExpansionTrigger) {
+                    wave.phase = 'expanding';
+                    wave.timer = 6.0; // total expansion sequence time
+                    const expCfg = ZONE_EXPANSIONS[currentZone];
+                    if (expCfg) {
+                        // Run the physical map expansion
+                        expandZone(currentZone);
+                        // Screen shake
+                        addScreenShake(expCfg.shakeIntensity || 6, expCfg.shakeDuration || 1.0);
+                        // Banner
+                        wave.bannerText = expCfg.bannerText || 'The way opens...';
+                        wave.bannerSub = expCfg.bannerSub || '';
+                        wave.bannerAlpha = 1;
+                        playSting('waveCleared');
+                    }
+                    // Heal player on expansion (same as wave clear heal)
+                    const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
+                    const expHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+                    const expHealAmt = Math.round(expHealMaxHp * 0.20);
+                    player.hp = Math.min(expHealMaxHp, player.hp + expHealAmt);
+                    pickupTexts.push({
+                        text: `+${expHealAmt} HP`,
+                        color: '#44dd66',
+                        row: player.row, col: player.col,
+                        offsetY: 0, life: 2.0,
+                    });
+                    duckMusic(true);
+                    // Talisman drop after wave 2 in zone 1 (for slime form) — moved here since wave 2 is also the expansion trigger
+                    if (currentZone === 1 && wave.current === 2 && FormSystem.currentForm === 'slime') {
+                        spawnTalismanDrop();
+                    }
+                } else if (currentWaveDef && currentWaveDef.isBossWave) {
+                    wave.phase = 'cleared';
                     wave.timer = 10.0; // longer breather after boss
-                    wave.bannerText = currentWaveDef.bossTitle || 'Boss Defeated';
-                    wave.bannerSub = currentWaveDef.bossSub || 'The way ahead opens...';
+                    wave.bannerText = 'Boss Defeated';
+                    wave.bannerSub = 'The way ahead opens...';
+                    wave.bannerAlpha = 1;
+                    wave.tensionPhase = 0;
+                    playSting('waveCleared');
+                    // Wave clear HP heal — 15% of max HP
+                    const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
+                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+                    const waveHealAmt = Math.round(waveHealMaxHp * 0.15);
+                    player.hp = Math.min(waveHealMaxHp, player.hp + waveHealAmt);
+                    pickupTexts.push({
+                        text: `+${waveHealAmt} HP`,
+                        color: '#44dd66',
+                        row: player.row, col: player.col,
+                        offsetY: 0, life: 2.0,
+                    });
+                    duckMusic(true);
                 } else {
+                    wave.phase = 'cleared';
                     wave.timer = 8.0;
                     wave.bannerText = `Wave ${wave.current} Cleared`;
                     wave.bannerSub = '';
-                }
-                wave.bannerAlpha = 1;
-                wave.tensionPhase = 0; // 0=calm, 1=building tension
-                playSting('waveCleared');
-                // Wave clear HP heal — 15% of max HP
-                const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
-                const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
-                const waveHealAmt = Math.round(waveHealMaxHp * 0.15);
-                player.hp = Math.min(waveHealMaxHp, player.hp + waveHealAmt);
-                pickupTexts.push({
-                    text: `+${waveHealAmt} HP`,
-                    color: '#44dd66',
-                    row: player.row, col: player.col,
-                    offsetY: 0, life: 2.0,
-                });
-                // Dip music to ambient during calm phase
-                duckMusic(true);
-                // Talisman drop after wave 2 in zone 1 (for slime form)
-                if (currentZone === 1 && wave.current === 2 && FormSystem.currentForm === 'slime') {
-                    spawnTalismanDrop();
+                    wave.bannerAlpha = 1;
+                    wave.tensionPhase = 0; // 0=calm, 1=building tension
+                    playSting('waveCleared');
+                    // Wave clear HP heal — 15% of max HP
+                    const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
+                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+                    const waveHealAmt = Math.round(waveHealMaxHp * 0.15);
+                    player.hp = Math.min(waveHealMaxHp, player.hp + waveHealAmt);
+                    pickupTexts.push({
+                        text: `+${waveHealAmt} HP`,
+                        color: '#44dd66',
+                        row: player.row, col: player.col,
+                        offsetY: 0, life: 2.0,
+                    });
+                    // Dip music to ambient during calm phase
+                    duckMusic(true);
+                    // Talisman drop after wave 2 in zone 1 (for slime form)
+                    if (currentZone === 1 && wave.current === 2 && FormSystem.currentForm === 'slime') {
+                        spawnTalismanDrop();
+                    }
                 }
             }
+        }
+        return;
+    }
+
+    if (wave.phase === 'expanding') {
+        wave.timer -= dt;
+        // Fade banner
+        if (wave.timer < 3.0) {
+            wave.bannerAlpha = Math.max(0, wave.timer / 3.0);
+        }
+        if (wave.timer <= 0) {
+            // Expansion complete — transition to normal cleared → next wave flow
+            wave.phase = 'pre';
+            wave.timer = 5.0; // calm before Act 2 begins
+            wave.bannerText = '';
+            wave.bannerSub = '';
+            wave.bannerAlpha = 0;
         }
         return;
     }

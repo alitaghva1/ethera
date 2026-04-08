@@ -137,13 +137,13 @@ const ZONE_TILE_DEFAULTS = {
 };
 
 const ZONE_CONFIGS = {
-    1: { ...ZONE_TILE_DEFAULTS, name: 'The Undercroft', mapSize: 24 },
-    2: { ...ZONE_TILE_DEFAULTS, name: 'Ruined Tower', mapSize: 30 },
-    3: { ...ZONE_TILE_DEFAULTS, name: 'The Spire', mapSize: 24 },
+    1: { ...ZONE_TILE_DEFAULTS, name: 'The Undercroft', mapSize: 28 },
+    2: { ...ZONE_TILE_DEFAULTS, name: 'Ruined Tower', mapSize: 34 },
+    3: { ...ZONE_TILE_DEFAULTS, name: 'The Spire', mapSize: 30 },
     0: { ...ZONE_TILE_DEFAULTS, name: 'The Hamlet', mapSize: 30, lighting: 'outdoor', hasWaves: false, isTown: true },
-    4: { ...ZONE_TILE_DEFAULTS, name: 'The Inferno', mapSize: 28, isHell: true },
-    5: { ...ZONE_TILE_DEFAULTS, name: 'The Frozen Abyss', mapSize: 30, isHell: true, isFrozen: true },
-    6: { ...ZONE_TILE_DEFAULTS, name: 'Throne of Ruin', mapSize: 32, isHell: true, isFinalZone: true },
+    4: { ...ZONE_TILE_DEFAULTS, name: 'The Inferno', mapSize: 32, isHell: true },
+    5: { ...ZONE_TILE_DEFAULTS, name: 'The Frozen Abyss', mapSize: 34, isHell: true, isFrozen: true },
+    6: { ...ZONE_TILE_DEFAULTS, name: 'Throne of Ruin', mapSize: 36, isHell: true, isFinalZone: true },
 };
 
 function applyZoneTileConfig(zoneNumber) {
