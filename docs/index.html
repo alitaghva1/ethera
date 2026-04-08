@@ -10,289 +10,370 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background: #08080c;
+            background: #050407;
             color: #c8c0b0;
-            min-height: 100vh;
-            overflow-x: hidden;
         }
 
-        /* ── Dark stone texture background ── */
-        .bg-layer {
+        /* ── Full-screen dungeon background ── */
+        .dungeon-bg {
             position: fixed;
             inset: 0;
             z-index: 0;
-            pointer-events: none;
+
+            /* Layered radial gradients simulating torchlight on stone walls */
             background:
-                radial-gradient(ellipse at 50% 0%, rgba(60, 30, 80, 0.12) 0%, transparent 60%),
-                radial-gradient(ellipse at 20% 100%, rgba(20, 60, 40, 0.08) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(80, 40, 60, 0.06) 0%, transparent 40%);
+                /* Top-center warm torchlight */
+                radial-gradient(ellipse 600px 400px at 50% 8%, rgba(180, 120, 50, 0.08) 0%, transparent 100%),
+                /* Left wall torch */
+                radial-gradient(ellipse 300px 500px at 5% 50%, rgba(160, 90, 30, 0.06) 0%, transparent 100%),
+                /* Right wall torch */
+                radial-gradient(ellipse 300px 500px at 95% 50%, rgba(160, 90, 30, 0.06) 0%, transparent 100%),
+                /* Deep purple ambient from above */
+                radial-gradient(ellipse 800px 300px at 50% 0%, rgba(60, 25, 80, 0.12) 0%, transparent 100%),
+                /* Green magical glow from below */
+                radial-gradient(ellipse 500px 200px at 50% 100%, rgba(20, 60, 30, 0.08) 0%, transparent 100%),
+                /* Base dark */
+                #050407;
         }
 
-        /* ── Pixel-grid overlay for retro feel ── */
-        .pixel-grid {
+        /* ── Stone texture overlay ── */
+        .stone-texture {
             position: fixed;
             inset: 0;
             z-index: 0;
             pointer-events: none;
-            opacity: 0.03;
+            opacity: 0.035;
             background-image:
-                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px);
-            background-size: 4px 4px;
+                repeating-conic-gradient(rgba(120,100,80,0.3) 0% 25%, transparent 0% 50%) 0 0 / 3px 3px,
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 3px 3px, 8px 8px, 8px 8px;
         }
 
-        /* ── Floating embers ── */
+        /* ── Vignette — dark edges like dungeon walls closing in ── */
+        .vignette {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            background: radial-gradient(
+                ellipse 70% 65% at 50% 50%,
+                transparent 0%,
+                rgba(5, 4, 7, 0.3) 60%,
+                rgba(5, 4, 7, 0.7) 80%,
+                rgba(5, 4, 7, 0.95) 100%
+            );
+        }
+
+        /* ── Torch flicker effect on the whole scene ── */
+        .torch-flicker {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 600px 400px at 50% 30%, rgba(200, 130, 50, 0.03) 0%, transparent 100%);
+            animation: flicker 4s ease-in-out infinite alternate;
+        }
+        @keyframes flicker {
+            0% { opacity: 0.6; }
+            15% { opacity: 1; }
+            30% { opacity: 0.7; }
+            50% { opacity: 0.9; }
+            65% { opacity: 0.5; }
+            80% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+
+        /* ── Floating embers / dust motes ── */
         .ember {
             position: fixed;
-            width: 2px; height: 2px;
             border-radius: 50%;
-            animation: rise linear infinite;
             pointer-events: none;
-            z-index: 0;
+            z-index: 2;
         }
-        .ember.purple { background: rgba(140, 90, 180, 0.6); box-shadow: 0 0 4px rgba(140, 90, 180, 0.3); }
-        .ember.green { background: rgba(80, 160, 90, 0.5); box-shadow: 0 0 4px rgba(80, 160, 90, 0.2); }
-        .ember.gold { background: rgba(180, 150, 80, 0.5); box-shadow: 0 0 4px rgba(180, 150, 80, 0.2); }
-
-        @keyframes rise {
-            0% { transform: translateY(100vh) translateX(0) scale(0); opacity: 0; }
-            8% { opacity: 1; scale: 1; }
-            50% { transform: translateY(50vh) translateX(var(--drift)) scale(1); opacity: 0.8; }
-            100% { transform: translateY(-5vh) translateX(calc(var(--drift) * -0.5)) scale(0.3); opacity: 0; }
+        .ember.spark {
+            background: rgba(200, 140, 60, 0.7);
+            box-shadow: 0 0 6px rgba(200, 140, 60, 0.4), 0 0 2px rgba(255, 200, 100, 0.3);
+            animation: spark linear infinite;
+        }
+        .ember.dust {
+            background: rgba(140, 120, 100, 0.25);
+            animation: dust linear infinite;
+        }
+        .ember.magic {
+            background: rgba(130, 80, 180, 0.5);
+            box-shadow: 0 0 4px rgba(130, 80, 180, 0.3);
+            animation: spark linear infinite;
         }
 
-        /* ── Layout ── */
+        @keyframes spark {
+            0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
+            5% { opacity: 1; }
+            50% { transform: translateY(calc(var(--travel) * 0.5)) translateX(var(--drift)) scale(0.8); opacity: 0.6; }
+            100% { transform: translateY(var(--travel)) translateX(calc(var(--drift) * -0.3)) scale(0); opacity: 0; }
+        }
+        @keyframes dust {
+            0% { transform: translateY(0) translateX(0); opacity: 0; }
+            10% { opacity: 0.3; }
+            90% { opacity: 0.15; }
+            100% { transform: translateY(var(--travel)) translateX(var(--drift)); opacity: 0; }
+        }
+
+        /* ── Page layout — vertically centered ── */
         .page {
             position: relative;
-            z-index: 1;
-            min-height: 100vh;
+            z-index: 3;
+            height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 48px 24px;
+            padding: 32px 24px;
         }
 
-        /* ── Decorative border frame ── */
+        /* ── Stone-bordered frame ── */
         .frame {
             position: relative;
-            max-width: 680px;
+            max-width: 640px;
             width: 100%;
-            padding: 56px 48px;
+            padding: 48px 44px 40px;
             text-align: center;
-            border: 1px solid rgba(140, 100, 170, 0.12);
-            background: rgba(12, 10, 18, 0.6);
-            backdrop-filter: blur(8px);
+            background: rgba(8, 6, 12, 0.65);
+            border: 1px solid rgba(100, 80, 60, 0.15);
+            box-shadow:
+                inset 0 0 60px rgba(0, 0, 0, 0.5),
+                0 0 80px rgba(0, 0, 0, 0.6);
         }
-        .frame::before, .frame::after {
+
+        /* Corner brackets — stone/iron feel */
+        .frame::before, .frame::after,
+        .corner-tr, .corner-bl {
             content: '';
             position: absolute;
-            width: 16px; height: 16px;
-            border-color: rgba(140, 100, 170, 0.25);
+            width: 20px; height: 20px;
             border-style: solid;
         }
         .frame::before {
             top: -1px; left: -1px;
             border-width: 2px 0 0 2px;
+            border-color: rgba(160, 120, 60, 0.25);
         }
         .frame::after {
             bottom: -1px; right: -1px;
             border-width: 0 2px 2px 0;
+            border-color: rgba(160, 120, 60, 0.25);
         }
-        .corner-tr, .corner-bl {
+        .corner-tr {
+            top: -1px; right: -1px;
+            border-width: 2px 2px 0 0;
+            border-color: rgba(160, 120, 60, 0.25);
+        }
+        .corner-bl {
+            bottom: -1px; left: -1px;
+            border-width: 0 0 2px 2px;
+            border-color: rgba(160, 120, 60, 0.25);
+        }
+
+        /* ── Inner glow line ── */
+        .frame-glow {
             position: absolute;
-            width: 16px; height: 16px;
-            border-color: rgba(140, 100, 170, 0.25);
-            border-style: solid;
-        }
-        .corner-tr { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
-        .corner-bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
-
-        /* ── Byline — matches in-game credit style ── */
-        .byline {
-            font-family: Georgia, serif;
-            font-style: italic;
-            font-weight: 400;
-            font-size: 0.72rem;
-            letter-spacing: 0.04em;
-            color: #b8a078;
-            opacity: 0.28;
-            margin-top: 28px;
-        }
-
-        /* ── Divider ornament ── */
-        .ornament {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            margin: 20px 0;
-            color: rgba(140, 100, 170, 0.3);
-            font-size: 0.65rem;
-            letter-spacing: 0.3em;
-        }
-        .ornament::before, .ornament::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(140, 100, 170, 0.15), transparent);
+            inset: 6px;
+            border: 1px solid rgba(160, 120, 60, 0.06);
+            pointer-events: none;
         }
 
         /* ── Title ── */
         .title {
             font-family: 'Cinzel Decorative', serif;
             font-weight: 900;
-            font-size: clamp(2.4rem, 7vw, 3.6rem);
-            letter-spacing: 0.12em;
-            color: #d4c8e0;
+            font-size: clamp(2.6rem, 7vw, 3.8rem);
+            letter-spacing: 0.14em;
+            color: #d4c4a0;
             text-shadow:
-                0 0 40px rgba(140, 90, 180, 0.15),
-                0 2px 0 rgba(0,0,0,0.4);
+                0 0 60px rgba(200, 150, 60, 0.12),
+                0 0 20px rgba(200, 150, 60, 0.06),
+                0 2px 0 rgba(0, 0, 0, 0.5);
             margin-bottom: 6px;
         }
+
         .subtitle {
             font-family: 'Cinzel', serif;
             font-weight: 400;
-            font-size: 0.7rem;
-            letter-spacing: 0.5em;
+            font-size: 0.65rem;
+            letter-spacing: 0.55em;
             text-transform: uppercase;
-            color: #5a5050;
+            color: rgba(160, 130, 80, 0.35);
+        }
+
+        /* ── Ornamental divider ── */
+        .ornament {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            margin: 22px 0;
+        }
+        .ornament::before, .ornament::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(160, 120, 60, 0.15), transparent);
+        }
+        .ornament-diamond {
+            width: 6px; height: 6px;
+            background: rgba(160, 120, 60, 0.2);
+            transform: rotate(45deg);
         }
 
         /* ── Tagline ── */
         .tagline {
-            font-size: 0.95rem;
+            font-size: 0.92rem;
             font-weight: 300;
-            color: #7a7268;
+            color: rgba(180, 160, 130, 0.5);
             line-height: 1.8;
-            max-width: 420px;
+            max-width: 380px;
             margin: 0 auto;
             font-style: italic;
+            font-family: Georgia, serif;
         }
 
         /* ── Download area ── */
         .download-area {
-            margin-top: 32px;
+            margin-top: 30px;
         }
 
         .download-btn {
             display: inline-flex;
             align-items: center;
             gap: 12px;
-            padding: 16px 44px;
+            padding: 15px 40px;
             font-family: 'Cinzel', serif;
             font-weight: 700;
-            font-size: 0.95rem;
+            font-size: 0.88rem;
             letter-spacing: 0.1em;
             text-transform: uppercase;
-            color: #0a0a0f;
-            background: linear-gradient(135deg, #b890d0 0%, #7ab88a 100%);
+            color: #0a0806;
+            background: linear-gradient(135deg, #c4a460 0%, #a08840 50%, #c4a460 100%);
+            background-size: 200% 200%;
             border: none;
-            border-radius: 2px;
+            border-radius: 1px;
             cursor: pointer;
             text-decoration: none;
             transition: all 0.3s ease;
             box-shadow:
-                0 2px 16px rgba(140, 90, 180, 0.2),
-                inset 0 1px 0 rgba(255,255,255,0.15);
+                0 2px 20px rgba(180, 140, 50, 0.15),
+                inset 0 1px 0 rgba(255, 240, 180, 0.2),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.2);
             position: relative;
+            animation: btnShimmer 6s ease-in-out infinite;
         }
-        .download-btn::after {
+        @keyframes btnShimmer {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .download-btn::before {
             content: '';
             position: absolute;
             inset: -1px;
-            border: 1px solid rgba(180, 140, 210, 0.3);
-            border-radius: 2px;
+            border: 1px solid rgba(200, 160, 60, 0.3);
+            border-radius: 1px;
             pointer-events: none;
         }
         .download-btn:hover {
             transform: translateY(-1px);
             box-shadow:
-                0 4px 24px rgba(140, 90, 180, 0.35),
-                inset 0 1px 0 rgba(255,255,255,0.2);
-        }
-        .download-btn.disabled {
-            opacity: 0.3;
-            pointer-events: none;
+                0 4px 30px rgba(180, 140, 50, 0.25),
+                inset 0 1px 0 rgba(255, 240, 180, 0.3),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.2);
         }
         .download-btn svg {
-            width: 18px; height: 18px;
-            fill: #0a0a0f;
+            width: 17px; height: 17px;
+            fill: #0a0806;
         }
 
         .download-meta {
             display: block;
-            font-size: 0.7rem;
-            color: #4a4540;
-            margin-top: 12px;
-            letter-spacing: 0.02em;
+            font-size: 0.68rem;
+            color: rgba(140, 120, 80, 0.35);
+            margin-top: 10px;
+            letter-spacing: 0.03em;
         }
-        .download-meta .size { color: #6a6560; }
 
-        /* ── Platform selector ── */
+        /* ── Platform buttons ── */
         .platforms {
             display: flex;
             justify-content: center;
             gap: 10px;
-            margin-top: 24px;
+            margin-top: 20px;
             flex-wrap: wrap;
         }
         .plat-btn {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 20px;
-            font-size: 0.78rem;
+            gap: 7px;
+            padding: 7px 18px;
+            font-size: 0.73rem;
             font-weight: 500;
-            color: #6a6260;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 2px;
+            color: rgba(160, 140, 100, 0.4);
+            background: rgba(160, 120, 60, 0.03);
+            border: 1px solid rgba(160, 120, 60, 0.08);
+            border-radius: 1px;
             text-decoration: none;
             transition: all 0.25s ease;
             cursor: pointer;
         }
         .plat-btn:hover {
-            color: #a09890;
-            background: rgba(255,255,255,0.04);
-            border-color: rgba(255,255,255,0.1);
+            color: rgba(200, 170, 110, 0.6);
+            background: rgba(160, 120, 60, 0.06);
+            border-color: rgba(160, 120, 60, 0.15);
         }
         .plat-btn.active {
-            color: #b0a8a0;
-            border-color: rgba(140, 100, 170, 0.25);
-            background: rgba(140, 100, 170, 0.06);
+            color: rgba(200, 170, 110, 0.6);
+            border-color: rgba(160, 120, 60, 0.2);
+            background: rgba(160, 120, 60, 0.06);
         }
-        .plat-btn svg {
-            width: 14px; height: 14px;
-            fill: currentColor;
-        }
-        .plat-btn .plat-size {
-            opacity: 0.4;
-            font-size: 0.68rem;
-        }
+        .plat-btn svg { width: 13px; height: 13px; fill: currentColor; }
+        .plat-btn .plat-size { opacity: 0.5; font-size: 0.65rem; }
 
         /* ── Version bar ── */
         .version-bar {
             display: flex;
             justify-content: center;
-            gap: 28px;
+            gap: 24px;
             flex-wrap: wrap;
-            margin-top: 32px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255,255,255,0.04);
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(160, 120, 60, 0.06);
         }
         .version-bar span {
-            font-size: 0.68rem;
-            color: #3a3530;
-            letter-spacing: 0.05em;
+            font-size: 0.62rem;
+            color: rgba(140, 120, 80, 0.2);
+            letter-spacing: 0.06em;
         }
         .version-bar strong {
-            color: #5a5550;
+            color: rgba(160, 130, 80, 0.3);
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.1em;
+        }
+
+        /* ── Byline — matches in-game ── */
+        .byline {
+            font-family: Georgia, serif;
+            font-style: italic;
+            font-weight: 400;
+            font-size: 0.7rem;
+            letter-spacing: 0.04em;
+            color: #b8a078;
+            opacity: 0.28;
+            margin-top: 24px;
         }
 
         /* ── Coming soon ── */
@@ -303,84 +384,98 @@
         .coming-soon .badge {
             display: inline-block;
             font-family: 'Cinzel', serif;
-            font-size: 0.7rem;
+            font-size: 0.68rem;
             letter-spacing: 0.25em;
             text-transform: uppercase;
-            color: #6a5a70;
-            border: 1px solid rgba(140, 100, 170, 0.12);
+            color: rgba(160, 130, 80, 0.4);
+            border: 1px solid rgba(160, 120, 60, 0.1);
             padding: 8px 28px;
-            border-radius: 2px;
         }
         .coming-soon p {
-            font-size: 0.78rem;
-            color: #3a3530;
+            font-size: 0.75rem;
+            color: rgba(140, 120, 80, 0.25);
             margin-top: 12px;
+            font-style: italic;
+            font-family: Georgia, serif;
         }
 
-        /* ── Footer ── */
-        .footer {
-            position: relative;
-            z-index: 1;
+        /* ── Bottom info — outside frame ── */
+        .bottom-info {
+            position: fixed;
+            bottom: 16px;
+            left: 0; right: 0;
+            z-index: 3;
             text-align: center;
-            padding: 32px 24px 24px;
-        }
-        .footer-inner {
-            max-width: 500px;
-            margin: 0 auto;
         }
         .sys-req {
-            font-size: 0.68rem;
-            color: #2a2520;
-            line-height: 1.8;
-            margin-bottom: 16px;
+            font-size: 0.6rem;
+            color: rgba(100, 80, 60, 0.2);
+            letter-spacing: 0.03em;
+            margin-bottom: 4px;
         }
         .copyright {
-            font-size: 0.65rem;
-            color: #1a1818;
+            font-size: 0.55rem;
+            color: rgba(80, 60, 40, 0.18);
         }
         .copyright a {
-            color: #3a3530;
+            color: rgba(120, 90, 50, 0.25);
             text-decoration: none;
         }
-        .copyright a:hover { color: #5a5550; }
+        .copyright a:hover { color: rgba(160, 120, 60, 0.35); }
 
         /* ── Responsive ── */
         @media (max-width: 600px) {
-            .frame { padding: 40px 28px; }
-            .platforms { gap: 8px; }
-            .plat-btn { padding: 8px 14px; font-size: 0.72rem; }
+            .frame { padding: 36px 24px 32px; }
+            .platforms { gap: 6px; }
+            .plat-btn { padding: 6px 12px; font-size: 0.68rem; }
+        }
+        @media (max-height: 700px) {
+            .frame { padding: 32px 36px 28px; }
+            .ornament { margin: 14px 0; }
+            .download-area { margin-top: 20px; }
         }
     </style>
 </head>
 <body>
-    <div class="bg-layer"></div>
-    <div class="pixel-grid"></div>
+    <div class="dungeon-bg"></div>
+    <div class="stone-texture"></div>
+    <div class="torch-flicker"></div>
+    <div class="vignette"></div>
 
     <script>
-        // Floating embers
-        const colors = ['purple', 'green', 'gold'];
-        for (let i = 0; i < 25; i++) {
-            const e = document.createElement('div');
-            e.className = 'ember ' + colors[Math.floor(Math.random() * colors.length)];
-            e.style.left = Math.random() * 100 + '%';
-            e.style.animationDuration = (10 + Math.random() * 15) + 's';
-            e.style.animationDelay = (Math.random() * 12) + 's';
-            e.style.setProperty('--drift', (Math.random() * 40 - 20) + 'px');
-            const size = 1.5 + Math.random() * 2;
-            e.style.width = e.style.height = size + 'px';
-            document.body.appendChild(e);
-        }
+        // Spawn embers, dust motes, and magic particles
+        const types = [
+            { cls: 'spark', count: 12, sizeMin: 1.5, sizeMax: 3, durMin: 6, durMax: 14 },
+            { cls: 'dust', count: 15, sizeMin: 1, sizeMax: 2.5, durMin: 12, durMax: 25 },
+            { cls: 'magic', count: 5, sizeMin: 1.5, sizeMax: 2.5, durMin: 8, durMax: 16 }
+        ];
+        types.forEach(t => {
+            for (let i = 0; i < t.count; i++) {
+                const e = document.createElement('div');
+                e.className = 'ember ' + t.cls;
+                e.style.left = (5 + Math.random() * 90) + '%';
+                e.style.top = (60 + Math.random() * 35) + '%';
+                e.style.animationDuration = (t.durMin + Math.random() * (t.durMax - t.durMin)) + 's';
+                e.style.animationDelay = (Math.random() * 10) + 's';
+                e.style.setProperty('--drift', (Math.random() * 50 - 25) + 'px');
+                e.style.setProperty('--travel', -(100 + Math.random() * 300) + 'px');
+                const s = t.sizeMin + Math.random() * (t.sizeMax - t.sizeMin);
+                e.style.width = e.style.height = s + 'px';
+                document.body.appendChild(e);
+            }
+        });
     </script>
 
     <div class="page">
         <div class="frame">
             <div class="corner-tr"></div>
             <div class="corner-bl"></div>
+            <div class="frame-glow"></div>
 
             <h1 class="title">Ethera</h1>
             <p class="subtitle">The Awakening</p>
 
-            <div class="ornament">&#9670;</div>
+            <div class="ornament"><div class="ornament-diamond"></div></div>
 
             <p class="tagline">
                 Descend into the dungeon. Fight. Fall. Rise again&mdash;changed.
@@ -397,8 +492,8 @@
                 <div class="platforms" id="platforms"></div>
 
                 <div class="version-bar" id="version-bar">
-                    <span><strong>Ver</strong> <span id="version">—</span></span>
-                    <span><strong>Released</strong> <span id="release-date">—</span></span>
+                    <span><strong>Ver</strong> <span id="version">&mdash;</span></span>
+                    <span><strong>Released</strong> <span id="release-date">&mdash;</span></span>
                     <span><strong>Price</strong> Free</span>
                 </div>
             </div>
@@ -413,111 +508,72 @@
         </div>
     </div>
 
-    <div class="footer">
-        <div class="footer-inner">
-            <p class="sys-req">
-                Windows 10+ &middot; macOS 11+ &middot; Ubuntu 20.04+<br>
-                No additional software required.
-            </p>
-            <p class="copyright">
-                &copy; 2026 Ethera by Armin &middot; All rights reserved &middot;
-                <a href="https://github.com/alitaghva1/ethera">Source</a>
-            </p>
-        </div>
+    <div class="bottom-info">
+        <p class="sys-req">Windows 10+ &middot; macOS 11+ &middot; Ubuntu 20.04+</p>
+        <p class="copyright">&copy; 2026 Ethera by Armin &middot; <a href="https://github.com/alitaghva1/ethera">Source</a></p>
     </div>
 
     <script>
     (function() {
-        const OWNER = 'alitaghva1';
-        const REPO  = 'ethera';
-
+        const OWNER = 'alitaghva1', REPO = 'ethera';
         const PLATFORMS = {
             windows: {
                 label: 'Windows',
                 match: a => a.name.endsWith('.exe') && !a.name.includes('blockmap'),
                 icon: '<svg viewBox="0 0 24 24"><path d="M3 12V6.75l8-1.25V12H3zm0 .5h8v6.5l-8-1.25V12.5zM11.5 12V5.35l9.5-1.6V12H11.5zm0 .5h9.5v8.25l-9.5-1.6V12.5z"/></svg>',
-                btnLabel: 'Download for Windows',
-                note: '.exe installer'
+                btnLabel: 'Download for Windows', note: '.exe installer'
             },
             mac: {
                 label: 'macOS',
                 match: a => a.name.endsWith('.dmg'),
                 icon: '<svg viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>',
-                btnLabel: 'Download for macOS',
-                note: '.dmg disk image'
+                btnLabel: 'Download for macOS', note: '.dmg disk image'
             },
             linux: {
                 label: 'Linux',
                 match: a => a.name.endsWith('.AppImage'),
                 icon: '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.22.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
-                btnLabel: 'Download for Linux',
-                note: '.AppImage'
+                btnLabel: 'Download for Linux', note: '.AppImage'
             }
         };
-
         function detectOS() {
-            const ua = navigator.userAgent.toLowerCase();
-            const p = navigator.platform?.toLowerCase() || '';
-            if (ua.includes('win') || p.includes('win')) return 'windows';
-            if (ua.includes('mac') || p.includes('mac')) return 'mac';
-            if (ua.includes('linux') || p.includes('linux')) return 'linux';
+            const u = navigator.userAgent.toLowerCase(), p = navigator.platform?.toLowerCase() || '';
+            if (u.includes('win') || p.includes('win')) return 'windows';
+            if (u.includes('mac') || p.includes('mac')) return 'mac';
+            if (u.includes('linux') || p.includes('linux')) return 'linux';
             return 'windows';
         }
-
         function fmtSize(b) {
-            if (b > 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
-            if (b > 1048576) return (b / 1048576).toFixed(0) + ' MB';
-            return (b / 1024).toFixed(0) + ' KB';
+            return b > 1073741824 ? (b/1073741824).toFixed(1)+' GB' : b > 1048576 ? (b/1048576).toFixed(0)+' MB' : (b/1024).toFixed(0)+' KB';
         }
-
         async function init() {
             const userOS = detectOS();
             try {
                 const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`);
                 if (!res.ok) throw new Error(res.status);
                 const release = await res.json();
-
                 const dl = {};
                 for (const [k, pl] of Object.entries(PLATFORMS)) {
                     const a = release.assets.find(pl.match);
                     if (a) dl[k] = { url: a.browser_download_url, size: a.size };
                 }
-                if (!Object.keys(dl).length) throw new Error('No assets');
-
+                if (!Object.keys(dl).length) throw new Error('empty');
                 document.getElementById('download-area').style.display = '';
                 document.getElementById('version').textContent = release.tag_name;
-                document.getElementById('release-date').textContent =
-                    new Date(release.published_at).toLocaleDateString('en-US', {
-                        year: 'numeric', month: 'short', day: 'numeric'
-                    });
-
+                document.getElementById('release-date').textContent = new Date(release.published_at).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
                 const primary = dl[userOS] ? userOS : Object.keys(dl)[0];
-                const mainBtn = document.getElementById('main-btn');
-                const mainText = document.getElementById('main-btn-text');
-                const meta = document.getElementById('download-meta');
-
-                function setPrimary(key) {
-                    mainBtn.href = dl[key].url;
-                    mainText.textContent = PLATFORMS[key].btnLabel;
-                    meta.innerHTML = `${fmtSize(dl[key].size)} &middot; ${PLATFORMS[key].note}`;
-                    document.querySelectorAll('.plat-btn').forEach(b => b.classList.toggle('active', b.dataset.p === key));
+                const mainBtn = document.getElementById('main-btn'), mainText = document.getElementById('main-btn-text'), meta = document.getElementById('download-meta');
+                function set(k) {
+                    mainBtn.href = dl[k].url;
+                    mainText.textContent = PLATFORMS[k].btnLabel;
+                    meta.innerHTML = fmtSize(dl[k].size)+' &middot; '+PLATFORMS[k].note;
+                    document.querySelectorAll('.plat-btn').forEach(b => b.classList.toggle('active', b.dataset.p===k));
                 }
-
-                setPrimary(primary);
-
-                const platEl = document.getElementById('platforms');
-                platEl.innerHTML = Object.entries(PLATFORMS).map(([k, pl]) => {
-                    if (!dl[k]) return '';
-                    return `<a class="plat-btn${k === primary ? ' active' : ''}" href="${dl[k].url}" data-p="${k}">
-                        ${pl.icon} ${pl.label} <span class="plat-size">${fmtSize(dl[k].size)}</span>
-                    </a>`;
-                }).join('');
-
-                platEl.querySelectorAll('.plat-btn').forEach(btn => {
-                    btn.addEventListener('click', function(e) { setPrimary(this.dataset.p); });
-                });
-
-            } catch (err) {
+                set(primary);
+                const pe = document.getElementById('platforms');
+                pe.innerHTML = Object.entries(PLATFORMS).map(([k,pl]) => dl[k] ? `<a class="plat-btn${k===primary?' active':''}" href="${dl[k].url}" data-p="${k}">${pl.icon} ${pl.label} <span class="plat-size">${fmtSize(dl[k].size)}</span></a>` : '').join('');
+                pe.querySelectorAll('.plat-btn').forEach(b => b.addEventListener('click', function(){ set(this.dataset.p); }));
+            } catch(e) {
                 document.getElementById('coming-soon').style.display = '';
             }
         }
