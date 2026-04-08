@@ -1,0 +1,44 @@
+name: Build & Release Ethera
+
+# Trigger: when you push a version tag like v0.2.0, v1.0.0, etc.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Allow the workflow to create releases and upload assets
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: electron
+        run: npm install --include=dev
+
+      - name: Build for ${{ matrix.platform }}
+        working-directory: electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --${{ matrix.platform }} --publish always

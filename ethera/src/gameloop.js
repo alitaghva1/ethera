@@ -3,6 +3,34 @@
 let lastTime = 0;
 let _frameDt = 0.016; // cached dt for render() access (updated each frame)
 
+// ── Auto-update notifications (Electron only) ──────────────
+if (typeof window !== 'undefined' && window.ethera && window.ethera.isElectron) {
+    window.ethera.onUpdateAvailable(function(info) {
+        console.log('Update available:', info.version);
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Update v' + info.version + ' found — downloading...', {
+                id: 'update-available',
+                duration: 5,
+                color: '#88ccff',
+                borderColor: '#4488cc',
+                position: 'bottom'
+            });
+        }
+    });
+    window.ethera.onUpdateDownloaded(function(info) {
+        console.log('Update downloaded:', info.version);
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Update v' + info.version + ' ready — restart to apply', {
+                id: 'update-downloaded',
+                duration: 8,
+                color: '#88ffaa',
+                borderColor: '#44aa66',
+                position: 'bottom'
+            });
+        }
+    });
+}
+
 // Sprite sorting pooled array — reused each frame to eliminate GC pressure
 const spritePool = [];
 
