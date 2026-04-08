@@ -1,0 +1,61 @@
+{
+  "name": "ethera",
+  "version": "0.1.0",
+  "description": "Ethera - The Awakening",
+  "author": "Armin",
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "publish:win": "electron-builder --win --publish always",
+    "publish:mac": "electron-builder --mac --publish always",
+    "publish:linux": "electron-builder --linux --publish always"
+  },
+  "build": {
+    "appId": "com.ethera.game",
+    "productName": "Ethera",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "alitaghva1",
+        "repo": "ethera"
+      }
+    ],
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../ethera",
+        "to": "game",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerHeaderIcon": "build/icon.ico"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Game"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

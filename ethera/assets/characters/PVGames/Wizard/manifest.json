@@ -1,0 +1,81 @@
+{
+  "frameW": 160,
+  "frameH": 200,
+  "directions": [
+    "S",
+    "SW",
+    "W",
+    "NW",
+    "N",
+    "NE",
+    "E",
+    "SE"
+  ],
+  "animations": {
+    "idle": {
+      "frames": 8,
+      "files": {
+        "S": "idle-S.png",
+        "SW": "idle-SW.png",
+        "W": "idle-W.png",
+        "NW": "idle-NW.png",
+        "N": "idle-N.png",
+        "NE": "idle-NE.png",
+        "E": "idle-E.png",
+        "SE": "idle-SE.png"
+      }
+    },
+    "walk": {
+      "frames": 8,
+      "files": {
+        "S": "walk-S.png",
+        "SW": "walk-SW.png",
+        "W": "walk-W.png",
+        "NW": "walk-NW.png",
+        "N": "walk-N.png",
+        "NE": "walk-NE.png",
+        "E": "walk-E.png",
+        "SE": "walk-SE.png"
+      }
+    },
+    "attack": {
+      "frames": 10,
+      "files": {
+        "S": "attack-S.png",
+        "SW": "attack-SW.png",
+        "W": "attack-W.png",
+        "NW": "attack-NW.png",
+        "N": "attack-N.png",
+        "NE": "attack-NE.png",
+        "E": "attack-E.png",
+        "SE": "attack-SE.png"
+      }
+    },
+    "death": {
+      "frames": 10,
+      "files": {
+        "S": "death-S.png",
+        "SW": "death-SW.png",
+        "W": "death-W.png",
+        "NW": "death-NW.png",
+        "N": "death-N.png",
+        "NE": "death-NE.png",
+        "E": "death-E.png",
+        "SE": "death-SE.png"
+      }
+    },
+    "hurt": {
+      "frames": 4,
+      "files": {
+        "S": "hurt-S.png",
+        "SW": "hurt-SW.png",
+        "W": "hurt-W.png",
+        "NW": "hurt-NW.png",
+        "N": "hurt-N.png",
+        "NE": "hurt-NE.png",
+        "E": "hurt-E.png",
+        "SE": "hurt-SE.png"
+      }
+    }
+  }
+}

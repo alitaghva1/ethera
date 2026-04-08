@@ -1,0 +1,33 @@
+# Electron build output and dependencies
+electron/node_modules/
+electron/dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Large asset packs (source originals - not part of game)
+Characters Vol 1/
+Cursor Pixel Pack/
+Fantasy UI Borders/
+Free - Raven Fantasy Icons/
+Humble Gift - v1.3/
+Impact Sounds/
+Isometric Blocks/
+Isometric Medieval Town/
+Isometric Miniature Dungeon (2.3)/
+Isometric Nature/
+Isometric Tower Defense/
+Other Worlds Slime/
+Pixel Fantasy 30 Tracks Music Pack/
+RPG Audio/
+SpaceBackgroundSource/
+Super Asset Bundle #5 Mini Pocket Status 2.1/
+Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/
+UI Audio/
+free-pixel-art-cloud-and-sky-backgrounds/

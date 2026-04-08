@@ -1,0 +1,42 @@
+{
+  "frameW": 150,
+  "frameH": 150,
+  "directions": [
+    "S",
+    "SW",
+    "W",
+    "NW",
+    "N",
+    "NE",
+    "E",
+    "SE"
+  ],
+  "animations": {
+    "idle": {
+      "frames": 10,
+      "files": {
+        "S": "idle-S.png",
+        "SW": "idle-SW.png",
+        "W": "idle-W.png",
+        "NW": "idle-NW.png",
+        "N": "idle-N.png",
+        "NE": "idle-NE.png",
+        "E": "idle-E.png",
+        "SE": "idle-SE.png"
+      }
+    },
+    "walk": {
+      "frames": 10,
+      "files": {
+        "S": "walk-S.png",
+        "SW": "walk-SW.png",
+        "W": "walk-W.png",
+        "NW": "walk-NW.png",
+        "N": "walk-N.png",
+        "NE": "walk-NE.png",
+        "E": "walk-E.png",
+        "SE": "walk-SE.png"
+      }
+    }
+  }
+}

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Ethera - The Awakening</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; font-family: 'Georgia', serif; }
+        canvas { display: block; }
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 10;
+            transition: opacity 1.5s ease;
+        }
+        #overlay.fade-out { opacity: 0; pointer-events: none; }
+        .intro-line {
+            color: #b8a88a; font-size: 22px; opacity: 0;
+            margin: 8px 0; letter-spacing: 2px;
+            transition: opacity 1.5s ease;
+        }
+        .intro-line.visible { opacity: 1; }
+        #loading-text {
+            color: #665544; font-size: 14px; position: fixed;
+            bottom: 40px; left: 50%; transform: translateX(-50%);
+            letter-spacing: 3px;
+        }
+        /* cursor managed by JS: default on menu, none in gameplay */
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <div class="intro-line" id="line1">You awaken on cold stone.</div>
+        <div class="intro-line" id="line2">Darkness presses in from every side.</div>
+        <div class="intro-line" id="line3">They left you for dead.</div>
+        <div class="intro-line" id="line4" style="margin-top: 24px; color: #d4c4a0; font-style: italic;">They were wrong.</div>
+        <div id="loading-text">LOADING...</div>
+    </div>
+    <canvas id="game"></canvas>
+    <input id="nameInput" type="text" maxlength="16" autocomplete="off" spellcheck="false"
+           style="position:fixed;top:-100px;left:-100px;opacity:0;pointer-events:none;font-size:16px;">
+
+    <!-- Core: config, constants, globals -->
+    <script src="src/config.js"></script>
+    <script src="src/spacebg.js"></script>
+    <!-- Audio -->
+    <script src="src/music.js"></script>
+    <script src="src/sfx.js"></script>
+    <!-- Form/evolution system (depends on config) -->
+    <script src="src/forms.js"></script>
+    <!-- Asset loader (depends on config paths + images global) -->
+    <script src="src/loader.js"></script>
+    <!-- Map and world -->
+    <script src="src/maps.js"></script>
+    <!-- Player state -->
+    <script src="src/player.js"></script>
+    <!-- Inventory and items -->
+    <script src="src/inventory.js"></script>
+    <!-- Chests, doors, zone loading -->
+    <script src="src/interactables.js"></script>
+    <!-- NPCs (townsfolk dialogue system) -->
+    <script src="src/npcs.js"></script>
+    <!-- Grimoire (character menu UI) -->
+    <script src="src/grimoire.js"></script>
+    <!-- Balance tuning, placement, input, projectile pools -->
+    <script src="src/balance.js"></script>
+    <!-- Particles -->
+    <script src="src/particles.js"></script>
+    <!-- Coordinate helpers -->
+    <script src="src/collision.js"></script>
+    <!-- Rendering -->
+    <script src="src/rendering.js"></script>
+    <!-- Player forms -->
+    <script src="src/slime.js"></script>
+    <script src="src/lich.js"></script>
+    <script src="src/evolution.js"></script>
+    <script src="src/skeleton.js"></script>
+    <!-- Player movement and physics -->
+    <script src="src/movement.js"></script>
+    <!-- Ghosts (dodge afterimages) -->
+    <script src="src/ghosts.js"></script>
+    <!-- Projectiles -->
+    <script src="src/projectiles.js"></script>
+    <!-- Orbit fireballs -->
+    <script src="src/orbit.js"></script>
+    <!-- Enemies and waves -->
+    <script src="src/enemies.js"></script>
+    <!-- Summoning towers -->
+    <script src="src/towers.js"></script>
+    <!-- Level-up screen -->
+    <script src="src/levelup.js"></script>
+    <!-- HUD: HP bars, crosshair, pickup text -->
+    <script src="src/ui.js"></script>
+    <!-- Unified notification system -->
+    <script src="src/notifications.js"></script>
+    <!-- Camera -->
+    <script src="src/camera.js"></script>
+    <!-- Save / Load system -->
+    <script src="src/saveload.js"></script>
+    <!-- Game loop, menu, init (must be last) -->
+    <script src="src/gameloop.js"></script>
+</body>
+</html>
