@@ -419,15 +419,50 @@
             letter-spacing: 0.1em;
         }
 
-        /* ── Byline ── */
-        .byline {
-            font-family: Georgia, serif;
-            font-style: italic;
+        /* ── Studio byline — anchored bottom ── */
+        .byline-area {
+            position: fixed;
+            bottom: 44px;
+            left: 0; right: 0;
+            z-index: 5;
+            text-align: center;
+            transition: opacity 0.4s ease;
+        }
+        .byline-mark {
+            display: block;
+            margin: 0 auto 8px;
+            width: 14px;
+            height: 14px;
+            opacity: 0.25;
+            transition: opacity 0.4s ease;
+        }
+        .byline-mark svg {
+            width: 100%;
+            height: 100%;
+        }
+        .byline-line {
+            display: block;
+            width: 40px;
+            height: 1px;
+            margin: 0 auto 10px;
+            background: linear-gradient(90deg, transparent, rgba(180, 150, 80, 0.2), transparent);
+        }
+        .byline-text {
+            font-family: 'Cinzel', serif;
             font-weight: 400;
-            font-size: 0.72rem;
-            letter-spacing: 0.04em;
-            color: rgba(184, 160, 120, 0.3);
-            margin-top: 32px;
+            font-size: 0.62rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: rgba(180, 155, 110, 0.35);
+            text-decoration: none;
+            display: inline-block;
+            transition: color 0.4s ease;
+        }
+        .byline-area:hover .byline-text {
+            color: rgba(200, 175, 120, 0.55);
+        }
+        .byline-area:hover .byline-mark {
+            opacity: 0.45;
         }
 
         /* ── Coming soon ── */
@@ -456,7 +491,7 @@
         /* ── Bottom info ── */
         .bottom-info {
             position: fixed;
-            bottom: 16px;
+            bottom: 10px;
             left: 0; right: 0;
             z-index: 5;
             text-align: center;
@@ -559,8 +594,17 @@
                 <p>The first release is being forged deep in the dungeon.</p>
             </div>
 
-            <p class="byline">a game by Ali Taghva</p>
         </div>
+    </div>
+
+    <!-- Studio byline -->
+    <div class="byline-area">
+        <span class="byline-mark">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(180, 150, 80, 0.6)"/>
+            </svg>
+        </span>
+        <a href="https://github.com/alitaghva1" class="byline-text">A game by Ali Taghva</a>
     </div>
 
     <div class="bottom-info">
