@@ -28,20 +28,20 @@
             inset: 0;
             z-index: 0;
             background:
-                /* Central warm cathedral light from above */
-                radial-gradient(ellipse 500px 700px at 50% -5%, rgba(200, 140, 50, 0.10) 0%, transparent 70%),
+                /* Central warm cathedral light from above — STRONG */
+                radial-gradient(ellipse 600px 800px at 50% -5%, rgba(200, 140, 50, 0.22) 0%, transparent 65%),
                 /* Wider ambient warmth */
-                radial-gradient(ellipse 900px 500px at 50% 10%, rgba(160, 100, 40, 0.06) 0%, transparent 100%),
+                radial-gradient(ellipse 1000px 600px at 50% 10%, rgba(160, 100, 40, 0.12) 0%, transparent 100%),
                 /* Left wall torch — warm orange */
-                radial-gradient(ellipse 200px 350px at 8% 40%, rgba(180, 100, 30, 0.07) 0%, transparent 100%),
+                radial-gradient(ellipse 250px 400px at 6% 40%, rgba(200, 110, 30, 0.14) 0%, transparent 100%),
                 /* Right wall torch — warm orange */
-                radial-gradient(ellipse 200px 350px at 92% 40%, rgba(180, 100, 30, 0.07) 0%, transparent 100%),
+                radial-gradient(ellipse 250px 400px at 94% 40%, rgba(200, 110, 30, 0.14) 0%, transparent 100%),
                 /* Deep purple ambient ceiling */
-                radial-gradient(ellipse 1200px 400px at 50% -10%, rgba(50, 20, 70, 0.15) 0%, transparent 100%),
+                radial-gradient(ellipse 1200px 500px at 50% -10%, rgba(60, 25, 80, 0.22) 0%, transparent 100%),
                 /* Floor: dark green magical residue */
-                radial-gradient(ellipse 600px 200px at 50% 105%, rgba(15, 50, 25, 0.10) 0%, transparent 100%),
+                radial-gradient(ellipse 700px 250px at 50% 105%, rgba(15, 60, 30, 0.15) 0%, transparent 100%),
                 /* Subtle blue moonlight from top-right */
-                radial-gradient(ellipse 300px 400px at 80% 5%, rgba(40, 60, 120, 0.05) 0%, transparent 100%),
+                radial-gradient(ellipse 350px 500px at 80% 5%, rgba(40, 60, 120, 0.10) 0%, transparent 100%),
                 #030205;
         }
 
@@ -81,9 +81,9 @@
             z-index: 0;
             pointer-events: none;
             background:
-                radial-gradient(ellipse 500px 500px at 50% 20%, rgba(200, 130, 50, 0.04) 0%, transparent 100%),
-                radial-gradient(ellipse 200px 300px at 8% 40%, rgba(200, 130, 50, 0.03) 0%, transparent 100%),
-                radial-gradient(ellipse 200px 300px at 92% 40%, rgba(200, 130, 50, 0.03) 0%, transparent 100%);
+                radial-gradient(ellipse 600px 600px at 50% 20%, rgba(200, 130, 50, 0.10) 0%, transparent 100%),
+                radial-gradient(ellipse 250px 400px at 6% 40%, rgba(200, 130, 50, 0.08) 0%, transparent 100%),
+                radial-gradient(ellipse 250px 400px at 94% 40%, rgba(200, 130, 50, 0.08) 0%, transparent 100%);
             animation: flicker 4s ease-in-out infinite alternate;
         }
         @keyframes flicker {
@@ -102,43 +102,81 @@
             top: -10%;
             left: 50%;
             transform: translateX(-50%);
-            width: 200px;
-            height: 70vh;
+            width: 350px;
+            height: 75vh;
             z-index: 1;
             pointer-events: none;
             background: linear-gradient(
                 180deg,
-                rgba(200, 150, 60, 0.06) 0%,
-                rgba(200, 150, 60, 0.02) 40%,
+                rgba(200, 150, 60, 0.14) 0%,
+                rgba(200, 150, 60, 0.06) 35%,
+                rgba(200, 150, 60, 0.02) 60%,
                 transparent 100%
             );
-            clip-path: polygon(35% 0%, 65% 0%, 85% 100%, 15% 100%);
+            clip-path: polygon(38% 0%, 62% 0%, 88% 100%, 12% 100%);
             animation: rayPulse 8s ease-in-out infinite alternate;
         }
+        /* Secondary angled ray */
+        .light-rays-2 {
+            position: fixed;
+            top: -15%;
+            left: 42%;
+            transform: translateX(-50%) rotate(-8deg);
+            width: 180px;
+            height: 65vh;
+            z-index: 1;
+            pointer-events: none;
+            background: linear-gradient(
+                180deg,
+                rgba(200, 150, 60, 0.08) 0%,
+                rgba(200, 150, 60, 0.03) 40%,
+                transparent 100%
+            );
+            clip-path: polygon(30% 0%, 70% 0%, 85% 100%, 15% 100%);
+            animation: rayPulse 10s ease-in-out infinite alternate-reverse;
+        }
         @keyframes rayPulse {
-            0% { opacity: 0.4; }
+            0% { opacity: 0.5; }
             50% { opacity: 1; }
-            100% { opacity: 0.5; }
+            100% { opacity: 0.6; }
         }
 
         /* ── Slow fog drift layer ── */
         .fog {
             position: fixed;
-            bottom: 0;
-            left: -20%;
-            width: 140%;
-            height: 40%;
+            bottom: -5%;
+            left: -25%;
+            width: 150%;
+            height: 50%;
             z-index: 2;
             pointer-events: none;
             background:
-                radial-gradient(ellipse 600px 150px at 20% 80%, rgba(60, 50, 40, 0.08) 0%, transparent 100%),
-                radial-gradient(ellipse 500px 120px at 70% 70%, rgba(60, 50, 40, 0.06) 0%, transparent 100%),
-                radial-gradient(ellipse 800px 100px at 50% 95%, rgba(40, 35, 30, 0.10) 0%, transparent 100%);
-            animation: fogDrift 30s ease-in-out infinite alternate;
+                radial-gradient(ellipse 700px 200px at 15% 75%, rgba(70, 55, 40, 0.16) 0%, transparent 100%),
+                radial-gradient(ellipse 600px 180px at 75% 65%, rgba(70, 55, 40, 0.14) 0%, transparent 100%),
+                radial-gradient(ellipse 900px 150px at 50% 90%, rgba(50, 40, 30, 0.18) 0%, transparent 100%),
+                radial-gradient(ellipse 400px 120px at 35% 85%, rgba(60, 45, 35, 0.10) 0%, transparent 100%);
+            animation: fogDrift 25s ease-in-out infinite alternate;
+        }
+        .fog-2 {
+            position: fixed;
+            bottom: -8%;
+            left: -15%;
+            width: 130%;
+            height: 45%;
+            z-index: 2;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 500px 160px at 60% 80%, rgba(60, 50, 40, 0.12) 0%, transparent 100%),
+                radial-gradient(ellipse 700px 140px at 25% 90%, rgba(50, 40, 30, 0.10) 0%, transparent 100%);
+            animation: fogDrift2 35s ease-in-out infinite alternate;
         }
         @keyframes fogDrift {
             0% { transform: translateX(0); }
-            100% { transform: translateX(5%); }
+            100% { transform: translateX(6%); }
+        }
+        @keyframes fogDrift2 {
+            0% { transform: translateX(3%); }
+            100% { transform: translateX(-4%); }
         }
 
         /* ── Floating embers / dust / magic ── */
@@ -149,17 +187,18 @@
             z-index: 4;
         }
         .ember.spark {
-            background: rgba(220, 150, 50, 0.8);
-            box-shadow: 0 0 8px rgba(220, 150, 50, 0.5), 0 0 3px rgba(255, 200, 80, 0.4);
+            background: rgba(240, 170, 50, 0.9);
+            box-shadow: 0 0 10px rgba(240, 170, 50, 0.6), 0 0 4px rgba(255, 210, 80, 0.5), 0 0 20px rgba(240, 170, 50, 0.2);
             animation: spark linear infinite;
         }
         .ember.dust {
-            background: rgba(140, 120, 100, 0.2);
+            background: rgba(160, 140, 110, 0.3);
+            box-shadow: 0 0 4px rgba(160, 140, 110, 0.15);
             animation: dust linear infinite;
         }
         .ember.magic {
-            background: rgba(140, 90, 200, 0.6);
-            box-shadow: 0 0 6px rgba(140, 90, 200, 0.4), 0 0 12px rgba(140, 90, 200, 0.15);
+            background: rgba(160, 100, 220, 0.8);
+            box-shadow: 0 0 8px rgba(160, 100, 220, 0.5), 0 0 16px rgba(160, 100, 220, 0.25), 0 0 30px rgba(160, 100, 220, 0.1);
             animation: spark linear infinite;
         }
 
@@ -216,12 +255,12 @@
 
         .subtitle {
             font-family: 'Cinzel', serif;
-            font-weight: 400;
-            font-size: 0.72rem;
-            letter-spacing: 0.5em;
+            font-weight: 600;
+            font-size: 0.82rem;
+            letter-spacing: 0.45em;
             text-transform: uppercase;
-            color: rgba(190, 155, 90, 0.5);
-            text-shadow: 0 0 20px rgba(190, 155, 90, 0.08);
+            color: rgba(200, 168, 100, 0.75);
+            text-shadow: 0 0 30px rgba(200, 168, 100, 0.15);
         }
 
         /* ── Ornamental divider ── */
@@ -457,15 +496,17 @@
     <div class="stone-texture"></div>
     <div class="torch-flicker"></div>
     <div class="light-rays"></div>
+    <div class="light-rays-2"></div>
     <div class="fog"></div>
+    <div class="fog-2"></div>
     <div class="vignette"></div>
 
     <script>
         // Spawn embers, dust motes, and magic particles
         const types = [
-            { cls: 'spark', count: 15, sizeMin: 1.5, sizeMax: 3.5, durMin: 5, durMax: 12 },
-            { cls: 'dust', count: 20, sizeMin: 1, sizeMax: 2.5, durMin: 14, durMax: 28 },
-            { cls: 'magic', count: 6, sizeMin: 1.5, sizeMax: 3, durMin: 7, durMax: 14 }
+            { cls: 'spark', count: 22, sizeMin: 2, sizeMax: 4.5, durMin: 5, durMax: 11 },
+            { cls: 'dust', count: 28, sizeMin: 1.5, sizeMax: 3, durMin: 12, durMax: 24 },
+            { cls: 'magic', count: 10, sizeMin: 2, sizeMax: 4, durMin: 6, durMax: 13 }
         ];
         types.forEach(t => {
             for (let i = 0; i < t.count; i++) {
