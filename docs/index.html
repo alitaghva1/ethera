@@ -657,7 +657,7 @@
         }
         async function init() {
             if (isMobile()) {
-                document.getElementById('mobile-notice').style.display = '';
+                document.getElementById('mobile-notice').style.display = 'block';
                 return;
             }
             const userOS = detectOS();
@@ -687,7 +687,7 @@
                 pe.innerHTML = Object.entries(PLATFORMS).map(([k,pl]) => dl[k] ? `<a class="plat-btn${k===primary?' active':''}" href="${dl[k].url}" data-p="${k}">${pl.icon} ${pl.label} <span class="plat-size">${fmtSize(dl[k].size)}</span></a>` : '').join('');
                 pe.querySelectorAll('.plat-btn').forEach(b => b.addEventListener('click', function(){ set(this.dataset.p); }));
             } catch(e) {
-                document.getElementById('coming-soon').style.display = '';
+                document.getElementById('coming-soon').style.display = 'block';
             }
         }
         init();
