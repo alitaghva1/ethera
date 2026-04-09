@@ -588,6 +588,12 @@
                 </div>
             </div>
 
+            <!-- Mobile device message -->
+            <div class="coming-soon" id="mobile-notice" style="display:none;">
+                <div class="badge">Desktop Only</div>
+                <p>Ethera is available for Windows, Mac, and Linux.<br>Visit this page on a computer to download.</p>
+            </div>
+
             <!-- Coming soon fallback -->
             <div class="coming-soon" id="coming-soon">
                 <div class="badge">Coming Soon</div>
@@ -645,7 +651,15 @@
         function fmtSize(b) {
             return b > 1073741824 ? (b/1073741824).toFixed(1)+' GB' : b > 1048576 ? (b/1048576).toFixed(0)+' MB' : (b/1024).toFixed(0)+' KB';
         }
+        function isMobile() {
+            return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent)
+                || (navigator.maxTouchPoints > 1 && /Mobi/i.test(navigator.userAgent));
+        }
         async function init() {
+            if (isMobile()) {
+                document.getElementById('mobile-notice').style.display = '';
+                return;
+            }
             const userOS = detectOS();
             try {
                 const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`);
