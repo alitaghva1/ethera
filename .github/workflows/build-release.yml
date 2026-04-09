@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -31,15 +32,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: electron
-        run: npm install --include=dev
+        run: npm ci || npm install --include=dev
 
       - name: Build for ${{ matrix.platform }}
         working-directory: electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ''
+          DEBUG: electron-builder
         run: npx electron-builder --${{ matrix.platform }} --publish always
