@@ -16,16 +16,10 @@ jobs:
         include:
           - os: windows-latest
             platform: win
-            artifact: "electron/dist/Ethera Setup *.exe"
-            glob: "electron/dist/*.exe"
           - os: macos-latest
             platform: mac
-            artifact: "electron/dist/Ethera-*.dmg"
-            glob: "electron/dist/*.dmg"
           - os: ubuntu-latest
             platform: linux
-            artifact: "electron/dist/Ethera-*.AppImage"
-            glob: "electron/dist/*.AppImage"
 
     runs-on: ${{ matrix.os }}
 
@@ -45,22 +39,22 @@ jobs:
       - name: Build for ${{ matrix.platform }}
         working-directory: electron
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ''
         run: npx electron-builder --${{ matrix.platform }}
 
       - name: List build output
         shell: bash
-        run: ls -la electron/dist/ || true
+        run: find electron/dist -type f -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.blockmap" -o -name "*.yml" 2>/dev/null || true
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Ethera ${{ github.ref_name }}
           files: |
             electron/dist/*.exe
+            electron/dist/*.exe.blockmap
             electron/dist/*.dmg
+            electron/dist/*.dmg.blockmap
             electron/dist/*.AppImage
-            electron/dist/*.blockmap
             electron/dist/latest*.yml
