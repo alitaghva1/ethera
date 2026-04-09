@@ -887,6 +887,25 @@ function drawSlimeHUD() {
 formHandlers.slime.update = function(dt) { updateSlime(dt); };
 formHandlers.slime.draw = function() { drawSlime(); };
 formHandlers.slime.drawHUD = function() { drawSlimeHUD(); drawObjective(); };
+// Occlusion ghost — bare sprite only, no shadow/VFX
+formHandlers.slime.drawGhost = function(sx, sy) {
+    let spriteKey = player.state === 'walk' ? 'slime_p_walk' : 'slime_p_idle';
+    const img = slimeTintedSprites[spriteKey] || images[spriteKey];
+    if (!img) return;
+    const fw = 100, fh = 100;
+    const frameCount = Math.floor(img.width / fw);
+    const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
+    const scale = WIZARD_SCALE * (typeof getSlimeSizeMult === 'function' ? getSlimeSizeMult().scale : 1);
+    const dw = fw * scale, dh = fh * scale;
+    const drawY = sy - dh * 0.72;
+    if (player.facing < 0) {
+        ctx.save(); ctx.translate(sx, drawY); ctx.scale(-1, 1);
+        ctx.drawImage(img, frame * fw, 0, fw, fh, -dw / 2, 0, dw, dh);
+        ctx.restore();
+    } else {
+        ctx.drawImage(img, frame * fw, 0, fw, fh, sx - dw / 2, drawY, dw, dh);
+    }
+};
 
 // === SLIME ABSORB (E key) ===
 formHandlers.slime.onInteract = function() {

@@ -211,9 +211,10 @@ const FORM_CONFIGS = {
 // Slime/Skeleton/Lich handlers are wired up in their respective modules.
 const formHandlers = {
     wizard: {
-        update: null,            // → updatePlayer (gameloop.js)
-        draw: null,              // → drawWizard (gameloop.js)
-        drawHUD: null,           // → drawHPMana (gameloop.js)
+        update: null,            // → updatePlayer (movement.js)
+        draw: null,              // → drawWizard (rendering.js)
+        drawGhost: null,         // → occlusion ghost (rendering.js)
+        drawHUD: null,           // → drawHPMana (ui.js)
         onPrimaryAttack: null,   // → attack code (gameloop.js)
         onSecondaryAbility: null, // → summon tower
         onDodge: null,           // → phase jump
@@ -256,6 +257,7 @@ const SKELETON_UPGRADE_POOL = [
 formHandlers.slime = {
     update: null,    // set after slime update is defined
     draw: null,      // set after slime draw is defined
+    drawGhost: null, // set after slime draw is defined
     drawHUD: null,   // set after slime HUD is defined
     onPrimaryAttack: null,
     onSecondaryAbility: null,
@@ -266,6 +268,7 @@ formHandlers.slime = {
 formHandlers.skeleton = {
     update: null,
     draw: null,
+    drawGhost: null, // set after skeleton draw is defined
     drawHUD: null,
     onPrimaryAttack: null,
     onSecondaryAbility: null,
@@ -295,6 +298,7 @@ const LICH_UPGRADE_POOL = [
 formHandlers.lich = {
     update: null,
     draw: null,
+    drawGhost: null, // set after lich draw is defined
     drawHUD: null,
     onPrimaryAttack: null,
     onSecondaryAbility: null,

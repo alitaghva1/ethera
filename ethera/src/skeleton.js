@@ -797,6 +797,30 @@ function drawSkeletonHUD() {
 formHandlers.skeleton.update = function(dt) { updateSkeleton(dt); };
 formHandlers.skeleton.draw = function() { drawSkeleton(); };
 formHandlers.skeleton.drawHUD = function() { drawSkeletonHUD(); drawObjective(); };
+// Occlusion ghost — bare sprite only, no shadow/VFX
+formHandlers.skeleton.drawGhost = function(sx, sy) {
+    const fw = 100, fh = 100, skelScale = 1.5;
+    let spriteKey;
+    if (player.attacking) spriteKey = 'skel_p_attack';
+    else if (player.state === 'walk') spriteKey = 'skel_p_walk';
+    else spriteKey = 'skel_p_idle';
+    if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'skel_p_hurt';
+    const img = images[spriteKey];
+    if (!img) return;
+    const frameCount = Math.min(Math.floor(img.width / fw), 8);
+    const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
+    const dw = fw * skelScale, dh = fh * skelScale;
+    const drawY = sy - fh * skelScale * 0.72;
+    const dir = player.dir8 || 'S';
+    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
+    if (flipH) {
+        ctx.save(); ctx.translate(sx, drawY); ctx.scale(-1, 1);
+        ctx.drawImage(img, frame * fw, 0, fw, fh, -dw / 2, 0, dw, dh);
+        ctx.restore();
+    } else {
+        ctx.drawImage(img, frame * fw, 0, fw, fh, sx - dw / 2, drawY, dw, dh);
+    }
+};
 
 // Shield Bash (RMB)
 formHandlers.skeleton.onSecondaryAbility = function() {
@@ -1353,168 +1377,5 @@ function drawCinematicText() {
     ctx.restore();
 }
 
-function drawDarkness() {
-    // ===== HELL ZONE: crimson inferno lighting =====
-    const zoneCfg = ZONE_CONFIGS[currentZone];
-    if (zoneCfg && zoneCfg.isHell) {
-        let px, py;
-        if (gamePhase === 'cinematic') {
-            px = canvasW / 2; py = canvasH / 2 - 20;
-        } else {
-            const pos = tileToScreen(player.row, player.col);
-            px = pos.x + cameraX; py = pos.y + cameraY - 20;
-        }
-        const flickerScale = gamePhase === 'cinematic' ? 0.3 : 1.0;
-        const flicker = (Math.sin(lightFlicker * 3.7) * 8 +
-                        Math.sin(lightFlicker * 5.3) * 4 +
-                        Math.sin(lightFlicker * 1.1) * 12) * flickerScale;
-        const radius = Math.max(5, lightRadius + flicker);
-
-        // Zone-specific hell lighting colors
-        // Nebula is now drawn AFTER darkness with screen blend + void clip,
-        // so outer stops can be properly dark for the torch effect.
-        let gradStops, pulseColor, filmColor;
-        if (zoneCfg.isFrozen) {
-            // Zone 5: Frozen Abyss — icy blue/purple
-            // Outer stops raised so icy nebula glows through
-            gradStops = [
-                [0,    'rgba(140, 180, 240, 1)'],    // cold blue-white core
-                [0.25, 'rgba(60, 100, 200, 1)'],     // icy blue
-                [0.55, 'rgba(30, 50, 130, 1)'],      // deep blue
-                [0.8,  'rgba(18, 28, 70, 1)'],       // dark blue — nebula visible
-                [1,    'rgba(10, 15, 45, 1)'],        // outer void — icy glow
-            ];
-            pulseColor = [80, 120, 200];
-            filmColor = 'rgba(15, 20, 60, 0.3)';
-        } else if (zoneCfg.isFinalZone) {
-            // Zone 6: Throne of Ruin — dark purple/violet
-            // Outer stops raised so cosmic nebula shows through
-            gradStops = [
-                [0,    'rgba(200, 140, 240, 1)'],    // violet core
-                [0.25, 'rgba(140, 60, 180, 1)'],     // deep purple
-                [0.55, 'rgba(70, 25, 110, 1)'],      // dark purple
-                [0.8,  'rgba(35, 12, 55, 1)'],       // dark violet — nebula visible
-                [1,    'rgba(20, 6, 32, 1)'],         // outer void — purple glow
-            ];
-            pulseColor = [140, 40, 180];
-            filmColor = 'rgba(40, 15, 50, 0.3)';
-        } else {
-            // Zone 4: The Inferno — crimson/orange
-            // Multiply blend: result = pixel * stop / 255.
-            // Outer stops must be HIGH so the nebula base layer survives.
-            // e.g. nebula rgb(235,95,30) * rgb(220,100,50)/255 = rgb(203,37,6) — visible crimson.
-            // The dungeon floats in a hellfire nebula.
-            gradStops = [
-                [0,    'rgba(255, 200, 140, 1)'],     // hot white-orange core (bright torch)
-                [0.20, 'rgba(240, 120, 60, 1)'],      // warm orange
-                [0.45, 'rgba(180, 60, 25, 1)'],       // deep red (dungeon edges)
-                [0.70, 'rgba(200, 80, 35, 1)'],       // rising back — transition to void
-                [1,    'rgba(230, 110, 55, 1)'],       // outer void — nebula clearly visible
-            ];
-            pulseColor = [180, 40, 20];
-            filmColor = 'rgba(60, 20, 15, 0.12)';    // lighter film so void stays warm
-        }
-
-        // Pass 1: radial glow
-        ctx.save();
-        ctx.globalCompositeOperation = 'multiply';
-        const grad = ctx.createRadialGradient(px, py, 0, px, py, radius);
-        for (const [stop, color] of gradStops) grad.addColorStop(stop, color);
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvasW, canvasH);
-        ctx.restore();
-
-        // Pass 2: pulsing ambient glow
-        ctx.save();
-        ctx.globalCompositeOperation = 'screen';
-        const pulse = 0.03 + Math.sin(lightFlicker * 0.8) * 0.015;
-        ctx.fillStyle = `rgba(${pulseColor[0]}, ${pulseColor[1]}, ${pulseColor[2]}, ${pulse})`;
-        ctx.fillRect(0, 0, canvasW, canvasH);
-        ctx.restore();
-
-        // Pass 3: darkness film
-        ctx.save();
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = filmColor;
-        ctx.fillRect(0, 0, canvasW, canvasH);
-        ctx.restore();
-        return;
-    }
-
-    // Outdoor zones get bright ambient light instead of torch darkness
-    if (zoneCfg && zoneCfg.lighting === 'outdoor') {
-        // DARK FANTASY TOWN — cool twilight, overcast, gloomy
-        ctx.save();
-
-        // Layer 1: cold desaturated ambient (multiply) — overcast stone
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = 'rgba(140, 130, 120, 0.92)';
-        ctx.fillRect(0, 0, canvasW, canvasH);
-
-        // Layer 2: directional shadow gradient (top-left slightly lighter = faint moon)
-        const shadowGrad = ctx.createLinearGradient(0, 0, canvasW, canvasH);
-        shadowGrad.addColorStop(0, 'rgba(160, 155, 145, 0.75)');
-        shadowGrad.addColorStop(0.5, 'rgba(120, 115, 105, 0.82)');
-        shadowGrad.addColorStop(1, 'rgba(80, 75, 70, 0.88)');
-        ctx.fillStyle = shadowGrad;
-        ctx.fillRect(0, 0, canvasW, canvasH);
-
-        // Layer 3: fog gradient — thicker at edges, transparent near player
-        ctx.globalAlpha = 0.25;
-        const fogGrad = ctx.createRadialGradient(
-            canvasW / 2, canvasH / 2, canvasH * 0.15,
-            canvasW / 2, canvasH / 2, canvasH * 0.7
-        );
-        fogGrad.addColorStop(0, 'rgba(80, 80, 95, 0)');
-        fogGrad.addColorStop(0.5, 'rgba(80, 80, 95, 0.2)');
-        fogGrad.addColorStop(1, 'rgba(60, 60, 75, 0.5)');
-        ctx.fillStyle = fogGrad;
-        ctx.fillRect(0, 0, canvasW, canvasH);
-        ctx.globalAlpha = 1;
-
-        // Layer 4: faint cool blue screen cast — pushes shadows toward blue
-        ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = 0.025;
-        ctx.fillStyle = 'rgba(80, 100, 140, 1)';
-        ctx.fillRect(0, 0, canvasW, canvasH);
-
-        ctx.restore();
-        return;
-    }
-
-    let px, py;
-    if (gamePhase === 'cinematic') {
-        px = canvasW / 2;
-        py = canvasH / 2 - 20;
-    } else {
-        const pos = tileToScreen(player.row, player.col);
-        px = pos.x + cameraX;
-        py = pos.y + cameraY - 20;
-    }
-
-    const flickerScale = gamePhase === 'cinematic' ? 0.3 : 1.0;
-    const flicker = (Math.sin(lightFlicker * 3.7) * 8 +
-                    Math.sin(lightFlicker * 5.3) * 4 +
-                    Math.sin(lightFlicker * 1.1) * 12) * flickerScale;
-    const radius = Math.max(5, lightRadius + flicker);
-
-    // Pass 1: radial torch light (same proven structure as original)
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    const grad = ctx.createRadialGradient(px, py, 0, px, py, radius);
-    grad.addColorStop(0, 'rgba(210, 185, 135, 1)');
-    grad.addColorStop(0.3, 'rgba(160, 120, 75, 1)');
-    grad.addColorStop(0.65, 'rgba(50, 32, 14, 1)');
-    grad.addColorStop(1, 'rgba(8, 4, 2, 1)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvasW, canvasH);
-    ctx.restore();
-
-    // Pass 2: overall darkness film — dims everything including the lit center
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(48, 35, 25, 0.58)';
-    ctx.fillRect(0, 0, canvasW, canvasH);
-    ctx.restore();
-}
+// drawDarkness() moved to rendering.js — it's a core rendering function, not skeleton-specific
 

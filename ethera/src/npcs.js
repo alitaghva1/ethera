@@ -296,20 +296,47 @@ function drawNPC(npc) {
     ctx.textBaseline = 'bottom';
     ctx.font = isPaleQueen ? 'bold 11px Georgia' : 'bold 10px monospace';
     ctx.fillStyle = isPaleQueen ? '#cc99ff' : (isGhost ? '#aabbdd' : '#d4c4a0');
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(npc.name, sx, drawY + ghostBob - 8);
     ctx.fillText(npc.name, sx, drawY + ghostBob - 8);
     ctx.restore();
 
-    // Interaction prompt (E key) when player is close
+    // Interaction prompt (E key badge) when player is close
     const dist = Math.sqrt((npc.row - player.row) ** 2 + (npc.col - player.col) ** 2);
     if (dist < NPC_INTERACTION_RANGE && !npcDialogueOpen) {
         ctx.save();
-        const pulse = 0.4 + Math.sin(performance.now() / 400) * 0.25;
-        ctx.globalAlpha = pulse * baseAlpha;
+        const pulse = 0.6 + Math.sin(performance.now() / 500) * 0.2;
+        const promptY = drawY + ghostBob - 24;
+        const accentColor = isPaleQueen ? '#9966cc' : '#aa9060';
+        const textColor = isPaleQueen ? '#cc99ff' : '#e8d4a0';
+        const labelColor = isPaleQueen ? '#aa88cc' : '#c4a878';
+
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = 'bold 12px monospace';
-        ctx.fillStyle = isPaleQueen ? '#cc99ff' : '#ffcc44';
-        ctx.fillText('[E]', sx, drawY + ghostBob - 20);
+
+        // Key badge background
+        ctx.globalAlpha = pulse * 0.7 * baseAlpha;
+        ctx.fillStyle = isPaleQueen ? '#140e1a' : '#1a1408';
+        ctx.strokeStyle = accentColor;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(sx - 14, promptY - 10, 28, 20, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // Key letter
+        ctx.globalAlpha = pulse * 0.9 * baseAlpha;
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = textColor;
+        ctx.fillText('E', sx, promptY);
+
+        // "Talk" label below badge
+        ctx.globalAlpha = pulse * 0.5 * baseAlpha;
+        ctx.font = 'italic 10px Georgia';
+        ctx.fillStyle = labelColor;
+        ctx.fillText('Talk', sx, promptY + 18);
+
         ctx.restore();
     }
 }
@@ -363,6 +390,9 @@ function drawNPCDialogue() {
     ctx.textBaseline = 'top';
     ctx.font = _isPQ ? 'bold 13px Georgia' : 'bold 12px Georgia';
     ctx.fillStyle = _isPQ ? '#cc99ff' : '#ffcc88';
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 2;
+    ctx.strokeText(currentNPC.name, bx + 20, by + 12);
     ctx.fillText(currentNPC.name, bx + 20, by + 12);
 
     // Divider line
@@ -381,6 +411,8 @@ function drawNPCDialogue() {
     ctx.textBaseline = 'top';
     ctx.font = '11px Georgia';
     ctx.fillStyle = '#c4a878';
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1.5;
 
     // Word wrap dialogue (using calculated bw)
     const maxW = bw - 60;
@@ -395,6 +427,7 @@ function drawNPCDialogue() {
         const test = curLine + (curLine ? ' ' : '') + word;
         if (ctx.measureText(test).width > maxW) {
             if (lineCount < maxLines) {
+                ctx.strokeText(curLine, bx + 30, lineY);
                 ctx.fillText(curLine, bx + 30, lineY);
                 lineY += lineHeight;
                 lineCount++;
@@ -405,6 +438,7 @@ function drawNPCDialogue() {
         }
     }
     if (curLine && lineCount < maxLines) {
+        ctx.strokeText(curLine, bx + 30, lineY);
         ctx.fillText(curLine, bx + 30, lineY);
     }
 
@@ -414,6 +448,7 @@ function drawNPCDialogue() {
     ctx.textBaseline = 'bottom';
     ctx.font = '8px monospace';
     ctx.fillStyle = '#8a7a5a';
+    ctx.strokeText('[E] to continue', bx + bw - 20, by + bh - 8);
     ctx.fillText('[E] to continue', bx + bw - 20, by + bh - 8);
 
     ctx.restore();

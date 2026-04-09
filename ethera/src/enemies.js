@@ -1457,7 +1457,7 @@ function updateWaveSystem(dt) {
 function drawDecorLine(cx, y, halfW, alpha) {
     ctx.save();
     ctx.globalAlpha = alpha;
-    // Center line
+    // Center line — faded gradient from edges to bright center
     const lg = ctx.createLinearGradient(cx - halfW, y, cx + halfW, y);
     lg.addColorStop(0, 'rgba(168, 144, 96, 0)');
     lg.addColorStop(0.2, 'rgba(168, 144, 96, 0.6)');
@@ -1470,17 +1470,23 @@ function drawDecorLine(cx, y, halfW, alpha) {
     ctx.moveTo(cx - halfW, y);
     ctx.lineTo(cx + halfW, y);
     ctx.stroke();
-    // Small diamond at center
+    // Small diamond at center — clean closed path
     ctx.fillStyle = '#c4a878';
     ctx.beginPath();
     ctx.moveTo(cx, y - 3);
     ctx.lineTo(cx + 3, y);
-    ctx.moveTo(cx, y + 3);
-    ctx.lineTo(cx - 3, y);
-    ctx.moveTo(cx, y - 3);
-    ctx.lineTo(cx + 3, y);
     ctx.lineTo(cx, y + 3);
     ctx.lineTo(cx - 3, y);
+    ctx.closePath();
+    ctx.fill();
+    // Tiny inner highlight for polish
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.fillStyle = '#e8dcc0';
+    ctx.beginPath();
+    ctx.moveTo(cx, y - 1.5);
+    ctx.lineTo(cx + 1.5, y);
+    ctx.lineTo(cx, y + 1.5);
+    ctx.lineTo(cx - 1.5, y);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -1651,6 +1657,9 @@ function drawWaveHUD() {
     const ry = 20;
 
     // Small subtle indicator — no numbers, just a vibe
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 2;
+
     if (wave.phase === 'fighting') {
         // Pulsing danger dot + "hostile" text
         const pulse = 0.5 + Math.sin(performance.now() / 400) * 0.3;
@@ -1664,13 +1673,16 @@ function drawWaveHUD() {
         ctx.textAlign = 'right';
         ctx.font = '9px monospace';
         ctx.fillStyle = '#aa6655';
+        ctx.strokeText('HOSTILE', rx - 18, ry + 13);
         ctx.fillText('HOSTILE', rx - 18, ry + 13);
     } else if (wave.phase === 'cleared' || wave.phase === 'zoneClear') {
         ctx.globalAlpha = 0.35;
         ctx.textAlign = 'right';
         ctx.font = '9px monospace';
         ctx.fillStyle = wave.phase === 'zoneClear' ? '#c4a878' : '#7a9a6a';
-        ctx.fillText(wave.phase === 'zoneClear' ? 'SAFE' : 'CALM', rx - 10, ry + 13);
+        const statusText = wave.phase === 'zoneClear' ? 'SAFE' : 'CALM';
+        ctx.strokeText(statusText, rx - 10, ry + 13);
+        ctx.fillText(statusText, rx - 10, ry + 13);
     }
 
     ctx.restore();
@@ -1683,10 +1695,10 @@ function drawBossHealthBar() {
     if (!boss) return;
 
     ctx.save();
-    const barW = 260;
+    const barW = 280;
     const barH = 14;
     const barX = (canvasW - barW) / 2;
-    const barY = 30;
+    const barY = 34;
 
     // Boss name
     const bossNames = {
@@ -1699,47 +1711,125 @@ function drawBossHealthBar() {
     };
     const bossName = bossNames[boss.type] || 'Boss';
 
-    // Background
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = '#111';
+    // Phase state
+    const phase = boss.bossPhase || 0;
+    const hpPct = Math.max(0, boss.hp / boss.maxHp);
+    const phaseText = phase === 2 ? ' — Desperate' : (phase === 1 ? ' — Enraged' : '');
+
+    // Phase-specific accent colors
+    const phaseAccent = phase === 2 ? [180, 60, 255] : (phase === 1 ? [255, 80, 40] : [200, 170, 100]);
+    const phaseBorder = phase === 2 ? '#9944cc' : (phase === 1 ? '#cc4422' : '#8a7030');
+    const phaseNameColor = phase === 2 ? '#cc88ff' : (phase === 1 ? '#ff8866' : '#e8d4aa');
+
+    // --- Backing panel ---
+    const panelX = barX - 12;
+    const panelY = barY - 22;
+    const panelW = barW + 24;
+    const panelH = barH + 32;
+
+    // Drop shadow
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.roundRect(barX - 4, barY - 18, barW + 8, barH + 24, 4);
+    ctx.roundRect(panelX + 1, panelY + 2, panelW, panelH, 5);
     ctx.fill();
 
-    // Name
-    ctx.globalAlpha = 0.9;
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 11px monospace';
-    const phaseText = boss.bossPhase === 2 ? ' (Desperate)' : (boss.bossPhase === 1 ? ' (Enraged)' : '');
-    const phaseColor = boss.bossPhase === 2 ? '#bb44ff' : (boss.bossPhase === 1 ? '#ff6644' : '#ddbb88');
-    ctx.fillStyle = phaseColor;
-    ctx.fillText(bossName + phaseText, canvasW / 2, barY - 4);
+    // Dark gradient fill
+    ctx.globalAlpha = 0.92;
+    const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
+    panelGrad.addColorStop(0, '#1a1510');
+    panelGrad.addColorStop(1, '#0a0806');
+    ctx.fillStyle = panelGrad;
+    ctx.beginPath();
+    ctx.roundRect(panelX, panelY, panelW, panelH, 5);
+    ctx.fill();
 
-    // Health bar background
-    ctx.globalAlpha = 0.5;
-    ctx.fillStyle = '#333';
+    // Panel border — accented by boss phase
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = phaseBorder;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(panelX, panelY, panelW, panelH, 5);
+    ctx.stroke();
+
+    // --- Boss name + phase text ---
+    ctx.globalAlpha = 0.95;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'small-caps bold 11px Georgia';
+    ctx.fillStyle = phaseNameColor;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 2;
+    ctx.strokeText(bossName + phaseText, canvasW / 2, barY - 8);
+    ctx.fillText(bossName + phaseText, canvasW / 2, barY - 8);
+
+    // --- Health bar dark track ---
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = '#0a0404';
     ctx.beginPath();
     ctx.roundRect(barX, barY, barW, barH, 3);
     ctx.fill();
 
-    // Health bar fill
-    const hpPct = Math.max(0, boss.hp / boss.maxHp);
-    const fillColor = boss.bossPhase === 1 ? '#cc3322' : '#88cc44';
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = fillColor;
+    // --- Health bar gradient fill ---
     if (hpPct > 0) {
+        ctx.globalAlpha = 0.92;
+        const fillW = Math.max(2, barW * hpPct);
+        const hpGrad = ctx.createLinearGradient(barX, barY, barX, barY + barH);
+        if (phase === 2) {
+            // Desperate: pulsing purple
+            hpGrad.addColorStop(0, '#bb55ee');
+            hpGrad.addColorStop(0.5, '#8833cc');
+            hpGrad.addColorStop(1, '#6622aa');
+        } else if (phase === 1) {
+            // Enraged: angry red-orange
+            hpGrad.addColorStop(0, '#ee5544');
+            hpGrad.addColorStop(0.5, '#cc2222');
+            hpGrad.addColorStop(1, '#aa1818');
+        } else {
+            // Normal: healthy green-gold
+            hpGrad.addColorStop(0, '#88cc44');
+            hpGrad.addColorStop(0.5, '#669933');
+            hpGrad.addColorStop(1, '#557722');
+        }
+        ctx.fillStyle = hpGrad;
         ctx.beginPath();
-        ctx.roundRect(barX, barY, barW * hpPct, barH, 3);
+        ctx.roundRect(barX, barY, fillW, barH, 3);
         ctx.fill();
+
+        // Highlight stripe (top edge catch light)
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(barX + 1, barY + 1, Math.max(1, fillW - 2), 2);
     }
 
-    // Health bar border
-    ctx.globalAlpha = 0.4;
-    ctx.strokeStyle = '#aaa';
-    ctx.lineWidth = 1;
+    // --- Health bar border ---
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = phaseBorder;
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
     ctx.roundRect(barX, barY, barW, barH, 3);
     ctx.stroke();
+
+    // --- Decorative end caps (small diamonds) ---
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = phaseBorder;
+    for (const capX of [barX - 4, barX + barW + 4]) {
+        const capY = barY + barH / 2;
+        ctx.beginPath();
+        ctx.moveTo(capX, capY - 3);
+        ctx.lineTo(capX + 3, capY);
+        ctx.lineTo(capX, capY + 3);
+        ctx.lineTo(capX - 3, capY);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // --- HP percentage text (right-aligned, small) ---
+    ctx.globalAlpha = 0.5;
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#aa9977';
+    ctx.fillText(Math.ceil(hpPct * 100) + '%', barX + barW - 3, barY + barH / 2 + 1);
 
     ctx.restore();
 }
@@ -3594,21 +3684,53 @@ function drawEnemy(e) {
 
     // HP bar above enemy (only when damaged and alive)
     if (e.state !== 'death' && e.hp < e.maxHp) {
-        const barW = 34;
-        const barH = 4;
+        const barW = e.def.isBoss ? 44 : 34;
+        const barH = e.def.isBoss ? 5 : 4;
         const bx = sx - barW / 2;
         const by = drawY - 8;
         const hpFrac = e.hp / e.maxHp;
+        const fillW = Math.max(1, barW * hpFrac);
 
         ctx.save();
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#1a0000';
-        ctx.fillRect(bx, by, barW, barH);
-        ctx.fillStyle = hpFrac > 0.5 ? '#cc3333' : (hpFrac > 0.25 ? '#cc6600' : '#cc0000');
-        ctx.fillRect(bx, by, barW * hpFrac, barH);
-        ctx.strokeStyle = '#660000';
+
+        // Dark track
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = '#0a0404';
+        ctx.beginPath();
+        ctx.roundRect(bx, by, barW, barH, 2);
+        ctx.fill();
+
+        // Gradient fill — smooth color ramp based on HP percentage
+        ctx.globalAlpha = 0.9;
+        const hpGrad = ctx.createLinearGradient(bx, by, bx, by + barH);
+        if (hpFrac > 0.5) {
+            hpGrad.addColorStop(0, '#ee4444');
+            hpGrad.addColorStop(1, '#aa2222');
+        } else if (hpFrac > 0.25) {
+            hpGrad.addColorStop(0, '#ee7733');
+            hpGrad.addColorStop(1, '#aa4400');
+        } else {
+            hpGrad.addColorStop(0, '#ee2222');
+            hpGrad.addColorStop(1, '#880000');
+        }
+        ctx.fillStyle = hpGrad;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, fillW, barH, 2);
+        ctx.fill();
+
+        // Highlight stripe (tiny catch light)
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(bx + 1, by, Math.max(1, fillW - 2), 1);
+
+        // Border
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = '#442222';
         ctx.lineWidth = 0.5;
-        ctx.strokeRect(bx, by, barW, barH);
+        ctx.beginPath();
+        ctx.roundRect(bx, by, barW, barH, 2);
+        ctx.stroke();
+
         ctx.restore();
     }
 }
@@ -3623,7 +3745,7 @@ function drawFireTrails() {
             const py = pos.y + cameraY;
             const alpha = Math.min(0.7, ft.life / 2.0);
             // Pulsing fire circle on ground
-            const pulse = 1.0 + Math.sin(Date.now() * 0.008 + ft.row * 3) * 0.15;
+            const pulse = 1.0 + Math.sin(performance.now() * 0.008 + ft.row * 3) * 0.15;
             const radius = 14 * pulse;
             ctx.save();
             ctx.globalAlpha = alpha;
@@ -3672,7 +3794,7 @@ function drawEnemyProjectiles() {
             ctx.beginPath();
             ctx.moveTo(0, -s);
             ctx.lineTo(s * 0.6, 0);
-            ctx.moveTo(0, s);
+            ctx.lineTo(0, s);
             ctx.lineTo(-s * 0.6, 0);
             ctx.closePath();
             ctx.fill();

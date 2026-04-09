@@ -679,6 +679,28 @@ function drawLichHUD() {
 formHandlers.lich.update = function(dt) { updateLich(dt); };
 formHandlers.lich.draw = function() { drawLich(); };
 formHandlers.lich.drawHUD = function() { drawLichHUD(); drawObjective(); };
+// Occlusion ghost — bare sprite only, no shadow/VFX
+formHandlers.lich.drawGhost = function(sx, sy) {
+    const dir = player.dir8 || 'S';
+    let spriteKey = player.attacking ? 'lich_p_attack' : (player.state === 'walk' ? 'lich_p_walk' : 'lich_p_idle');
+    if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'lich_p_hurt';
+    const img = images[spriteKey];
+    if (!img) return;
+    const fw = 160, fh = 128;
+    const frameCount = Math.floor(img.width / fw);
+    const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
+    const dw = fw * PV_LICH_SCALE, dh = fh * PV_LICH_SCALE;
+    const hover = (typeof lichState !== 'undefined') ? lichState.hoverOffset || 0 : 0;
+    const drawY = (sy - hover) - dh * 0.89;
+    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
+    if (flipH) {
+        ctx.save(); ctx.translate(sx, drawY); ctx.scale(-1, 1);
+        ctx.drawImage(img, frame * fw, 0, fw, fh, -dw / 2, 0, dw, dh);
+        ctx.restore();
+    } else {
+        ctx.drawImage(img, frame * fw, 0, fw, fh, sx - dw / 2, drawY, dw, dh);
+    }
+};
 
 // Soul Bolt is handled in updateLich (LMB)
 

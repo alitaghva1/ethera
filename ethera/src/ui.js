@@ -59,6 +59,9 @@ function drawObjective() {
     ctx.fillStyle = '#aa9970';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeText(currentObjective, objX, objY);
     ctx.fillText(currentObjective, objX, objY);
 
     ctx.restore();
@@ -262,6 +265,9 @@ function drawHPMana() {
     ctx.fillStyle = '#ddcc88';
     ctx.font = '9px monospace';
     ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
     ctx.fillText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
 
     // --- Active Upgrade Icons ---

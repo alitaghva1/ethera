@@ -6,6 +6,11 @@ electron/dist/
 .DS_Store
 Thumbs.db
 Desktop.ini
+.fuse_hidden*
+
+# Temp files
+_server.js
+_push.bat
 
 # IDE
 .vscode/

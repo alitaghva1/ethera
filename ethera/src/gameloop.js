@@ -757,7 +757,7 @@ function getMenuButtons() {
 function getControlsBackButton() {
     const cx = canvasW / 2;
     const cy = canvasH / 2;
-    return { x: cx - 90, y: cy + 190, w: 180, h: 40, label: 'BACK', id: 'back' };
+    return { x: cx - 90, y: cy + 155, w: 180, h: 40, label: 'BACK', id: 'back' };
 }
 
 function pointInButton(mx, my, btn) {
@@ -983,11 +983,11 @@ function drawMenuScreen(dt) {
     ctx.fillStyle = '#b8a078';
     ctx.fillText('a game by Ali Taghva', cx, canvasH - 46);
 
-    // Version / tagline
-    ctx.globalAlpha = menuFadeAlpha * 0.15;
-    ctx.font = '9px monospace';
-    ctx.fillStyle = '#665544';
-    ctx.fillText('v0.1', cx, canvasH - 26);
+    // Version number
+    ctx.globalAlpha = menuFadeAlpha * 0.45;
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#8a7a5a';
+    ctx.fillText('v' + ETHERA_VERSION, cx, canvasH - 26);
 
     ctx.restore();
 }
@@ -1035,59 +1035,84 @@ function drawControlsScreen(dt) {
 
     drawDecorLine(cx, cy - 105, 120, menuFadeAlpha * 0.4);
 
-    // Control bindings
-    const controls = [
-        { key: 'W  A  S  D',    desc: 'Move' },
-        { key: 'SPACE',         desc: 'Phase Jump' },
-        { key: 'LEFT CLICK',    desc: 'Fireball' },
-        { key: 'RIGHT CLICK',   desc: 'Summon Tower' },
+    // Two-column control bindings — combat left, interface right
+    const leftCol = [
+        { key: 'W A S D',       desc: 'Move' },
+        { key: 'SPACE',         desc: 'Dodge' },
+        { key: 'LEFT CLICK',    desc: 'Attack' },
+        { key: 'RIGHT CLICK',   desc: 'Ability' },
         { key: 'E',             desc: 'Interact' },
-        { key: 'I',             desc: 'Inventory' },
+        { key: 'T',             desc: 'Tower Mode' },
+    ];
+    const rightCol = [
+        { key: 'TAB',           desc: 'Grimoire' },
+        { key: 'I',             desc: 'Equipment' },
         { key: 'J',             desc: 'Journal' },
-        { key: 'ESC',           desc: 'Cancel / Close' },
+        { key: 'H',             desc: 'Controls HUD' },
+        { key: 'P',             desc: 'Pause' },
+        { key: 'ESC',           desc: 'Close' },
     ];
 
-    const startY = cy - 70;
-    const rowH = 42;
-    const keyX = cx - 30;
-    const descX = cx + 30;
+    const startY = cy - 68;
+    const rowH = 34;
+    const keyW = 86;
 
-    for (let i = 0; i < controls.length; i++) {
-        const y = startY + i * rowH;
-        const c = controls[i];
+    // Column positions: key badge right edge offset from cx
+    const leftKx  = -50;   // left col badge right edge at cx - 50
+    const rightKx = 150;   // right col badge right edge at cx + 150
 
-        // Key badge background
-        const keyW = 90;
-        ctx.globalAlpha = menuFadeAlpha * 0.15;
-        ctx.fillStyle = '#a89060';
-        ctx.beginPath();
-        ctx.roundRect(keyX - keyW, y - 12, keyW, 24, 3);
-        ctx.fill();
+    // Section headers (centered above each column's badge)
+    ctx.globalAlpha = menuFadeAlpha * 0.45;
+    ctx.font = 'italic 11px Georgia';
+    ctx.fillStyle = '#a89060';
+    ctx.textAlign = 'center';
+    ctx.fillText('Combat', cx + leftKx - keyW / 2 + 30, startY - 16);
+    ctx.fillText('Interface', cx + rightKx - keyW / 2 + 30, startY - 16);
 
-        // Key badge border
-        ctx.globalAlpha = menuFadeAlpha * 0.25;
-        ctx.strokeStyle = '#a89060';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(keyX - keyW, y - 12, keyW, 24, 3);
-        ctx.stroke();
+    // Draw a column of key-desc rows
+    function drawControlColumn(col, kxOffset) {
+        for (let i = 0; i < col.length; i++) {
+            const y = startY + i * rowH;
+            const c = col[i];
+            const kx = cx + kxOffset;        // key badge right edge
+            const dx = kx + 10;              // description left edge
 
-        // Key text
-        ctx.globalAlpha = menuFadeAlpha * 0.85;
-        ctx.textAlign = 'right';
-        ctx.font = '12px monospace';
-        ctx.fillStyle = '#c4a878';
-        ctx.fillText(c.key, keyX - 8, y + 1);
+            // Key badge background
+            ctx.globalAlpha = menuFadeAlpha * 0.15;
+            ctx.fillStyle = '#a89060';
+            ctx.beginPath();
+            ctx.roundRect(kx - keyW, y - 11, keyW, 22, 3);
+            ctx.fill();
 
-        // Description
-        ctx.textAlign = 'left';
-        ctx.font = '14px Georgia';
-        ctx.fillStyle = '#b8a888';
-        ctx.fillText(c.desc, descX, y + 1);
+            // Key badge border
+            ctx.globalAlpha = menuFadeAlpha * 0.25;
+            ctx.strokeStyle = '#a89060';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(kx - keyW, y - 11, keyW, 22, 3);
+            ctx.stroke();
+
+            // Key text
+            ctx.globalAlpha = menuFadeAlpha * 0.85;
+            ctx.textAlign = 'right';
+            ctx.font = '11px monospace';
+            ctx.fillStyle = '#c4a878';
+            ctx.fillText(c.key, kx - 8, y + 1);
+
+            // Description
+            ctx.textAlign = 'left';
+            ctx.font = '13px Georgia';
+            ctx.fillStyle = '#b8a888';
+            ctx.fillText(c.desc, dx, y + 1);
+        }
     }
 
+    drawControlColumn(leftCol, leftKx);
+    drawControlColumn(rightCol, rightKx);
+
     // Separator before back button
-    drawDecorLine(cx, cy + 165, 100, menuFadeAlpha * 0.25);
+    const lastRowY = startY + (Math.max(leftCol.length, rightCol.length) - 1) * rowH;
+    drawDecorLine(cx, lastRowY + 32, 100, menuFadeAlpha * 0.25);
 
     ctx.restore();
 
@@ -1890,9 +1915,14 @@ function drawDeathScreen() {
         ctx.fillText(_deathMsg, cx, cy - 40);
         ctx.shadowBlur = 0;
 
+        // Shared outline for sub-text
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+
         // Wave info
         ctx.font = '16px Georgia';
         ctx.fillStyle = '#8a6a5a';
+        ctx.strokeText(`Fell on Wave ${wave.current + 1}  —  ${wave.totalKilled} enemies slain`, cx, cy + 10);
         ctx.fillText(`Fell on Wave ${wave.current + 1}  —  ${wave.totalKilled} enemies slain`, cx, cy + 10);
 
         // Death cause recap
@@ -1900,6 +1930,7 @@ function drawDeathScreen() {
             ctx.font = '13px Georgia';
             ctx.fillStyle = '#bb7766';
             const causeText = `Slain by ${deathCause}`;
+            ctx.strokeText(causeText, cx, cy + 35);
             ctx.fillText(causeText, cx, cy + 35);
         }
 
@@ -1915,6 +1946,7 @@ function drawDeathScreen() {
         ctx.font = '11px Georgia';
         ctx.fillStyle = '#7a6a5a';
         ctx.globalAlpha = textAlpha * 0.7;
+        ctx.strokeText(`Tip: ${tip}`, cx, cy + 58);
         ctx.fillText(`Tip: ${tip}`, cx, cy + 58);
         ctx.globalAlpha = textAlpha;
     }
@@ -1936,21 +1968,62 @@ function drawDeathScreen() {
 }
 
 function drawPauseOverlay() {
+    const cx = canvasW / 2;
+    const cy = canvasH / 2;
+
     ctx.save();
-    ctx.globalAlpha = 0.5;
+
+    // Dim overlay with radial vignette
+    ctx.globalAlpha = 0.6;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
-    ctx.globalAlpha = 0.8;
+    const vig = ctx.createRadialGradient(cx, cy, 80, cx, cy, Math.max(canvasW, canvasH) * 0.6);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.4)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Title glow
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.08;
+    const titleGlow = ctx.createRadialGradient(cx, cy - 10, 0, cx, cy - 10, 180);
+    titleGlow.addColorStop(0, 'rgba(180, 140, 60, 0.4)');
+    titleGlow.addColorStop(1, 'rgba(60, 40, 10, 0)');
+    ctx.fillStyle = titleGlow;
+    ctx.fillRect(cx - 200, cy - 120, 400, 220);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // "PAUSED" title
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.globalAlpha = 0.85;
     ctx.font = '36px Georgia';
-    ctx.fillStyle = '#d4c4a0';
-    ctx.fillText('PAUSED', canvasW / 2, canvasH / 2 - 10);
-    ctx.font = '12px monospace';
-    ctx.globalAlpha = 0.4;
+    ctx.shadowColor = 'rgba(180, 140, 50, 0.35)';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#d4b878';
+    ctx.fillText('PAUSED', cx, cy - 10);
+    ctx.shadowBlur = 0;
+
+    // Decorative lines
+    drawDecorLine(cx, cy - 42, 120, 0.3);
+    drawDecorLine(cx, cy + 18, 90, 0.2);
+
+    // Hint text with outlines
+    ctx.font = '11px monospace';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 2;
+
+    ctx.globalAlpha = 0.45;
     ctx.fillStyle = '#a89060';
-    ctx.fillText('P to resume', canvasW / 2, canvasH / 2 + 25);
-    ctx.fillText('Q — graphics: ' + GFX.quality.toUpperCase(), canvasW / 2, canvasH / 2 + 45);
+    ctx.strokeText('P to resume', cx, cy + 40);
+    ctx.fillText('P to resume', cx, cy + 40);
+
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#8a7850';
+    ctx.strokeText('Q \u2014 graphics: ' + GFX.quality.toUpperCase(), cx, cy + 58);
+    ctx.fillText('Q \u2014 graphics: ' + GFX.quality.toUpperCase(), cx, cy + 58);
+
     ctx.restore();
 }
 
@@ -2159,21 +2232,31 @@ function render() {
     if (gamePhase !== 'playing' && gamePhase !== 'awakening' && gamePhase !== 'cinematic') return;
 
     // ═══════════════════════════════════════════════════════════
-    //  BACKGROUND — base layer, drawn BEFORE all world content.
-    //  For hell/cosmic zones (4+): nebula texture fills the viewport.
-    //  Floor tiles draw on top with source-over, fully covering it
-    //  where the map exists. The void beyond tiles shows the nebula.
-    //  Darkness is modified to preserve nebula visibility in the void.
+    //  RENDER LAYER ORDER (formalized for maintainability):
+    //    0. Background (nebula/void texture)
+    //    1. Ghost afterimages (dodge trails)
+    //    2. Depth-sorted world (floors → edge shadows → hints → sprites ↔ object tiles)
+    //    3. Floor decals (blood stain)
+    //    4. Darkness / lighting (multiply-blend torch, hell, outdoor)
+    //    5. Player occlusion overlay (40% alpha sprite above darkness)
+    //    6. Player ground marker + brightness boost
+    //    7. World effects (dust, tower glows, orbits, drops, projectiles, particles)
+    //    8. Screen effects (dodge flash, damage flash, vignette, cooldown)
+    //    9. HUD (HP/mana, notifications, wave UI, crosshair, inventory)
+    //   10. Zone transition overlay
     // ═══════════════════════════════════════════════════════════
+
+    // ── LAYER 0: Background ──
     if (typeof BackgroundManager !== 'undefined') {
         BackgroundManager.draw(ctx, canvasW, canvasH, cameraX, cameraY, _frameDt);
     }
 
-    // Draw ghost afterimages (behind everything at their depth)
+    // ── LAYER 1: Ghost afterimages ──
     for (const g of ghosts) {
         drawGhost(g);
     }
 
+    // ── LAYER 2: Depth-sorted world ──
     // Build sorted list of all "sprites" (player + enemies) by depth score
     spritePool.length = 0; // Clear pooled array instead of allocating new one
     const mapSize = floorMap.length;
@@ -2360,136 +2443,18 @@ function render() {
         spriteIdx++;
     }
 
-    drawBloodStain();     // blood stain on floor beneath wizard's starting position
+    // ── LAYER 3: Floor decals ──
+    drawBloodStain();
 
+    // ── LAYER 4: Darkness / Lighting ──
     drawDarkness();
 
-    // === PLAYER OCCLUSION FIX — sprite-only ghost above all tiles + darkness ===
-    // In isometric view, tall tiles (walls, columns) can cover the player.
-    // Draw the character sprite at reduced alpha above everything so the
-    // player silhouette is always visible through occluding geometry.
-    // Drawn AFTER darkness so the main sprite (darkened by multiply) is
-    // less visible than this overlay — no distracting double-image.
-    {
-        if (gamePhase === 'playing' && !gameDead) {
-            ctx.save();
-            ctx.globalAlpha = 0.4;
-            const _gPos = tileToScreen(player.row, player.col);
-            const _gSX = _gPos.x + cameraX;
-            const _gSY = _gPos.y + cameraY;
-            const _form = FormSystem.currentForm;
+    // ── LAYER 5: Player occlusion overlay ──
+    // Draws sprite at 40% alpha above darkness so the player
+    // silhouette is always visible through tall tiles.
+    drawPlayerOcclusionGhost();
 
-            if (_form === 'lich') {
-                const _gDir = player.dir8 || 'S';
-                let _gAnimKey = player.attacking ? 'lich_p_attack' : (player.state === 'walk' ? 'lich_p_walk' : 'lich_p_idle');
-                if (playerInvTimer > PLAYER_STATS.invTime * 0.5) _gAnimKey = 'lich_p_hurt';
-                const _gSheet = images[_gAnimKey];
-                if (_gSheet) {
-                    const _gFW = 160, _gFH = 128;
-                    const _gFC = Math.floor(_gSheet.width / _gFW);
-                    const _gFrame = Math.floor(player.animFrame) % Math.max(1, _gFC);
-                    const _gDW = _gFW * PV_LICH_SCALE;
-                    const _gDH = _gFH * PV_LICH_SCALE;
-                    const _gHover = (typeof lichState !== 'undefined') ? lichState.hoverOffset || 0 : 0;
-                    const _gDY = (_gSY - _gHover) - _gDH * 0.89;
-                    const _gFlip = (_gDir === 'E' || _gDir === 'NE' || _gDir === 'SE');
-                    if (_gFlip) {
-                        ctx.save();
-                        ctx.translate(_gSX, _gDY);
-                        ctx.scale(-1, 1);
-                        ctx.drawImage(_gSheet, _gFrame * _gFW, 0, _gFW, _gFH,
-                                      -_gDW / 2, 0, _gDW, _gDH);
-                        ctx.restore();
-                    } else {
-                        ctx.drawImage(_gSheet, _gFrame * _gFW, 0, _gFW, _gFH,
-                                      _gSX - _gDW / 2, _gDY, _gDW, _gDH);
-                    }
-                }
-            } else if (_form === 'wizard' || !_form) {
-                const _gDir = player.dir8 || 'S';
-                let _gSheet;
-                let _gFC;
-                if (player.attacking) { _gSheet = images.wiz_attack2; _gFC = 6; }
-                else if (player.state === 'walk') { _gSheet = images.wiz_walk; _gFC = 8; }
-                else { _gSheet = images.wiz_idle; _gFC = 6; }
-                if (_gSheet) {
-                    const _gFW = WIZARD_FRAME_W, _gFH = WIZARD_FRAME_H;
-                    const _gFrame = Math.floor(player.animFrame) % Math.max(1, _gFC);
-                    const _gDW = _gFW * WIZARD_SCALE;
-                    const _gDH = _gFH * WIZARD_SCALE;
-                    let _gBob = 0;
-                    if (player.state === 'walk' && !player.dodging) _gBob = Math.sin(player.animFrame * Math.PI) * 2.0;
-                    const _gDY = _gSY - _gDH * 0.72 - _gBob;
-                    const _gFlip = (_gDir === 'E' || _gDir === 'NE' || _gDir === 'SE');
-                    if (_gFlip) {
-                        ctx.save();
-                        ctx.translate(_gSX, _gDY);
-                        ctx.scale(-1, 1);
-                        ctx.drawImage(_gSheet, _gFrame * _gFW, 0, _gFW, _gFH,
-                                      -_gDW / 2, 0, _gDW, _gDH);
-                        ctx.restore();
-                    } else {
-                        ctx.drawImage(_gSheet, _gFrame * _gFW, 0, _gFW, _gFH,
-                                      _gSX - _gDW / 2, _gDY, _gDW, _gDH);
-                    }
-                }
-            } else if (_form === 'skeleton') {
-                // Armored Skeleton — single-direction sprites with flip
-                let _gKey;
-                if (player.attacking) _gKey = 'skel_p_attack';
-                else if (player.state === 'walk') _gKey = 'skel_p_walk';
-                else _gKey = 'skel_p_idle';
-                if (playerInvTimer > PLAYER_STATS.invTime * 0.5) _gKey = 'skel_p_hurt';
-                const _gSheet = images[_gKey];
-                if (_gSheet) {
-                    const _gFW = 100, _gFH = 100, _skelScale = 1.5;
-                    const _gFC = Math.floor(_gSheet.width / _gFW);
-                    const _gFrame = Math.floor(player.animFrame) % Math.max(1, _gFC);
-                    const _gDW = _gFW * _skelScale;
-                    const _gDH = _gFH * _skelScale;
-                    const _gDY = _gSY - _gFH * _skelScale * 0.72;
-                    const _gDir = player.dir8 || 'S';
-                    const _gFlip = (_gDir === 'E' || _gDir === 'NE' || _gDir === 'SE');
-                    if (_gFlip) {
-                        ctx.save();
-                        ctx.translate(_gSX, _gDY);
-                        ctx.scale(-1, 1);
-                        ctx.drawImage(_gSheet, _gFrame * _gFW, 0, _gFW, _gFH,
-                                      -_gDW / 2, 0, _gDW, _gDH);
-                        ctx.restore();
-                    } else {
-                        ctx.drawImage(_gSheet, _gFrame * _gFW, 0, _gFW, _gFH,
-                                      _gSX - _gDW / 2, _gDY, _gDW, _gDH);
-                    }
-                }
-            } else if (_form === 'slime') {
-                let _gKey = player.state === 'walk' ? 'slime_p_walk' : 'slime_p_idle';
-                const _gImg = slimeTintedSprites[_gKey] || images[_gKey];
-                if (_gImg) {
-                    const _gFW = 100, _gFH = 100;
-                    const _gFC = Math.floor(_gImg.width / _gFW);
-                    const _gFrame = Math.floor(player.animFrame) % Math.max(1, _gFC);
-                    const _gScale = WIZARD_SCALE * (typeof getSlimeSizeMult === 'function' ? getSlimeSizeMult().scale : 1);
-                    const _gDW = _gFW * _gScale;
-                    const _gDH = _gFH * _gScale;
-                    const _gDY = _gSY - _gDH * 0.72;
-                    if (player.facing < 0) {
-                        ctx.save();
-                        ctx.translate(_gSX, _gDY);
-                        ctx.scale(-1, 1);
-                        ctx.drawImage(_gImg, _gFrame * _gFW, 0, _gFW, _gFH, -_gDW / 2, 0, _gDW, _gDH);
-                        ctx.restore();
-                    } else {
-                        ctx.drawImage(_gImg, _gFrame * _gFW, 0, _gFW, _gFH,
-                                      _gSX - _gDW / 2, _gDY, _gDW, _gDH);
-                    }
-                }
-            }
-            ctx.restore();
-        }
-    }
-
-    // === PLAYER GROUND MARKER — always-visible position indicator ===
+    // ── LAYER 6: Player ground marker + brightness boost ──
     // Subtle glowing ring at the player's feet, drawn after darkness so it's
     // visible even when the character sprite is occluded by tall tiles.
     if (gamePhase === 'playing' && !gameDead) {
@@ -2546,20 +2511,20 @@ function render() {
         ctx.restore();
     }
 
-    drawDustParticles();  // dust particles above darkness
-    drawAllTowerGlows();  // tower glow effects ABOVE darkness for vivid crystal/runes
-    drawOrbitFireballs(); // orbit passive effect
-    drawWorldDrops();     // loot drops glow above darkness
-    drawWorldKeyDrops();  // key item drops — extra glow
+    // ── LAYER 7: World effects ──
+    drawDustParticles();
+    drawAllTowerGlows();
+    drawOrbitFireballs();
+    drawWorldDrops();
+    drawWorldKeyDrops();
     drawProjectiles();
     drawTowerBolts();
-    drawFireTrails();        // Infernal Knight ground fire
+    drawFireTrails();
     drawEnemyProjectiles();
     drawParticles();
-    drawRoomAmbientTint();  // subtle room color tinting
+    drawRoomAmbientTint();
 
-
-    // === HUD & OVERLAY EFFECTS (drawn in both 2D and 3D modes) ===
+    // ── LAYER 8: Screen effects ──
 
     // Phase jump flash — brief arcane burst on screen
     if (player.dodgeFlashTimer > 0) {
@@ -2637,7 +2602,7 @@ function render() {
         ctx.restore();
     }
 
-    // Skip gameplay HUD during cinematic
+    // ── LAYER 9: HUD ──
     if (gamePhase !== 'cinematic') {
         // HP & Mana bars (form-specific)
         const hudHandler = FormSystem.getHandler();
@@ -2676,7 +2641,7 @@ function render() {
             BackgroundManager.drawDebug(ctx, canvasW, canvasH, cameraX, cameraY);
         }
 
-        // Zone transition fade overlay (fullscreen, topmost)
+        // ── LAYER 10: Zone transition overlay ──
         if (zoneTransitionAlpha > 0) {
             ctx.save();
             ctx.globalAlpha = zoneTransitionAlpha;
