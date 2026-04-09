@@ -404,8 +404,9 @@ function drawNPCDialogue() {
     ctx.lineTo(bx + bw - 20, by + 32);
     ctx.stroke();
 
-    // Dialogue text
-    const dialogueLine = currentNPC.dialogue[currentNPC.dialogueIndex % currentNPC.dialogue.length];
+    // Dialogue text (form-reactive: may have extra opening line for non-wizard forms)
+    const activeDialogue = getFormReactiveDialogue(currentNPC);
+    const dialogueLine = activeDialogue[currentNPC.dialogueIndex % activeDialogue.length];
     ctx.globalAlpha = fa * 0.8;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -454,6 +455,47 @@ function drawNPCDialogue() {
     ctx.restore();
 }
 
+// ----- FORM-REACTIVE DIALOGUE -----
+// NPCs react to the player's current evolution form with a unique opening line.
+// These override the first dialogue line when the player is NOT in wizard form.
+const NPC_FORM_REACTIONS = {
+    garrett: {
+        slime:    'What in the— is that a slime? How are you... never mind. I\'ve seen stranger.',
+        skeleton: 'Bones walk these streets now? At least you\'re not hostile... I think.',
+        lich:     'By the forge... the air around you reeks of death magic. What have you become?',
+    },
+    mira: {
+        slime:    'Oh my... you\'re one of those creatures. But your eyes — there\'s something human in there.',
+        skeleton: 'A walking skeleton in my town. The world truly has gone mad.',
+        lich:     'I can feel the cold coming off you. You\'re not the same person who left here, are you?',
+    },
+    aldric: {
+        slime:    'Stand down, men! This... creature means no harm. I think.',
+        skeleton: 'A skeleton that doesn\'t attack on sight. You must be the one they told me about.',
+        lich:     'The corruption has changed you. But your eyes still hold purpose. That\'s enough for me.',
+    },
+    hermit: {
+        slime:    'Ah... the first form. The formless beginning. You have far to go, little one.',
+        skeleton: 'Bones remember what flesh forgets. You\'re closer now. Can you feel it?',
+        lich:     'You\'ve walked the full path. The talisman sings in your hands. Be careful — power like this has a price.',
+    },
+    senna: {
+        slime:    'Fascinating! A sentient slime. Your cellular structure must be extraordinary.',
+        skeleton: 'Remarkable — the bones hold together through sheer will. Evolution in action.',
+        lich:     'The final form... or is it? The covenant changes everything, you know.',
+    },
+};
+
+function getFormReactiveDialogue(npc) {
+    const form = (typeof FormSystem !== 'undefined' && FormSystem.currentForm) ? FormSystem.currentForm : 'wizard';
+    // Only show form-reactive line for non-wizard forms (wizard is the "default" expected form)
+    if (form === 'wizard' || !NPC_FORM_REACTIONS[npc.id]) return npc.dialogue;
+    const reaction = NPC_FORM_REACTIONS[npc.id][form];
+    if (!reaction) return npc.dialogue;
+    // Prepend the reaction line to the normal dialogue
+    return [reaction, ...npc.dialogue];
+}
+
 // ----- INTERACTION -----
 // Returns true if interaction was consumed (NPC was found or dialogue advanced)
 // Flag: set to true when Pale Queen dialogue finishes → triggers ending choice
@@ -461,9 +503,10 @@ let paleQueenDialogueComplete = false;
 
 function handleNPCInteraction() {
     if (npcDialogueOpen) {
-        // Advance dialogue
+        // Advance dialogue (use form-reactive dialogue which may have extra opening line)
         currentNPC.dialogueIndex++;
-        if (currentNPC.dialogueIndex >= currentNPC.dialogue.length) {
+        const activeDialogue = getFormReactiveDialogue(currentNPC);
+        if (currentNPC.dialogueIndex >= activeDialogue.length) {
             // Check if this was the Pale Queen — trigger ending choice
             if (currentNPC.isPaleQueen) {
                 paleQueenDialogueComplete = true;

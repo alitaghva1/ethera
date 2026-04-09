@@ -54,15 +54,18 @@ function drawObjective() {
     const objX = 20;
     const objY = 20;
 
-    ctx.globalAlpha = 0.5;
-    ctx.font = 'italic 12px Georgia';
-    ctx.fillStyle = '#aa9970';
+    ctx.globalAlpha = 0.85;
+    ctx.font = 'bold 14px Georgia';
+    ctx.fillStyle = '#d4c49a';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-    ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 3;
     ctx.strokeText(currentObjective, objX, objY);
     ctx.fillText(currentObjective, objX, objY);
+    ctx.shadowBlur = 0;
 
     ctx.restore();
 }
@@ -270,6 +273,23 @@ function drawHPMana() {
     ctx.strokeText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
     ctx.fillText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
 
+    // --- Evolution Surge Indicator ---
+    if (typeof evolutionSurge !== 'undefined' && evolutionSurge.active) {
+        const remaining = evolutionSurge.duration - evolutionSurge.timer;
+        const surgeIntensity = remaining < evolutionSurge.fadeDuration
+            ? remaining / evolutionSurge.fadeDuration : 1;
+        const pulse = 0.6 + Math.sin(performance.now() / 200) * 0.3 * surgeIntensity;
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = '#ffdd44';
+        ctx.font = 'bold 10px monospace';
+        ctx.textBaseline = 'top';
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 2.5;
+        const surgeText = `EVOLUTION SURGE ${Math.ceil(remaining)}s`;
+        ctx.strokeText(surgeText, x, yXP + barH + 6);
+        ctx.fillText(surgeText, x, yXP + barH + 6);
+    }
+
     // --- Active Upgrade Icons ---
     drawActiveUpgradeIcons(x, yXP, barH);
 
@@ -390,7 +410,7 @@ function drawCrosshair() {
     // Form-specific crosshair colors
     const form = FormSystem.currentForm;
     const crossColors = {
-        slime:    { ring: '#ff4444', cross: '#ff6655', dot: '#ff8877', progress: '#ff3333' },
+        slime:    { ring: '#44dd66', cross: '#55ee77', dot: '#77ff99', progress: '#33cc55' },
         skeleton: { ring: '#aabbcc', cross: '#ccddee', dot: '#eeeeff', progress: '#88aacc' },
         wizard:   { ring: '#c4a878', cross: '#e8d4a0', dot: '#fff0cc', progress: '#ddaa44' },
         lich:     { ring: '#8844aa', cross: '#aa66cc', dot: '#cc88ee', progress: '#9955bb' }
@@ -559,10 +579,21 @@ function drawPickupTexts() {
         ctx.globalAlpha = alpha * 0.9;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '11px Georgia';
+
+        // ── COMBAT JUICE: Crit damage numbers are bigger and bolder ──
+        if (t.isCrit) {
+            const critPop = t.life > 0.9 ? 1 + (t.life - 0.9) * 2.5 : 1; // pop on spawn
+            const fontSize = Math.round(15 * critPop);
+            ctx.font = `bold ${fontSize}px Georgia`;
+            ctx.shadowColor = 'rgba(180, 120, 0, 0.6)';
+            ctx.shadowBlur = 8;
+        } else {
+            ctx.font = '11px Georgia';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 4;
+        }
+
         ctx.fillStyle = t.color;
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 4;
         ctx.fillText(t.text, sx, sy);
         ctx.shadowBlur = 0;
         ctx.restore();

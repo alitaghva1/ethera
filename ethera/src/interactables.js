@@ -445,6 +445,12 @@ function updateChestDefsForZone(zone) {
                 label: 'Open',
                 lockedLabel: 'Locked',
             },
+            '5,25': {
+                // Flooded Crypt — Act 2 loot chest
+                requiresKey: null,
+                type: 'loot',
+                label: 'Open',
+            },
         };
     } else if (zone === 2) {
         CHEST_DEFS = {
@@ -637,6 +643,7 @@ function loadZone(zoneNumber) {
     blocked.length = 0;
     blockType.length = 0;
     objRadius.length = 0;
+    resetFogOfWar(newMapSize);
 
     for (let i = 0; i < newMapSize; i++) {
         floorMap.push(Array(newMapSize).fill(null));
@@ -707,7 +714,7 @@ function loadZone(zoneNumber) {
     } else if (zoneNumber === 2) {
         generateZone2();
         player.row = 4;
-        player.col = 5;
+        player.col = 23;
         player.vx = 0;
         player.vy = 0;
     } else if (zoneNumber === 3) {
@@ -776,6 +783,12 @@ function loadZone(zoneNumber) {
     updateChestDefsForZone(zoneNumber);
     loadZoneNPCs(zoneNumber);  // Load NPCs for this zone
     buildRoomBounds();  // Update room lighting/ambience for new zone
+    buildEnvironmentLights();  // Rebuild zone light sources
+    // Reveal fog of war from new spawn position
+    if (typeof updateFogOfWar === 'function') updateFogOfWar();
+
+    // Start zone-specific ambient soundscape
+    if (typeof startAmbient === 'function') startAmbient(zoneNumber);
 
     // Reset wave system (skip for non-combat zones like town)
     const _zoneCfg = ZONE_CONFIGS[zoneNumber];
@@ -822,10 +835,8 @@ function updateDoorDefsForZone(zone) {
     if (zone === 1) {
         const townDoor = { requiresKey: 'town_pass', label: 'Step Outside', lockedLabel: 'The way is sealed...', destination: 'town' };
         DOOR_DEFS = {
-            // Town exit — Cell north wall archway (easy access for testing)
+            // Town exit — Cell north wall archway only (reduced from 6 tiles to prevent accidental triggers)
             '1,4': townDoor, '1,5': townDoor,
-            '2,4': townDoor, '2,5': townDoor,
-            '3,4': townDoor, '3,5': townDoor,
             // Zone 2 stairs — centre-south of Great Hall
             '20,17': {
                 requiresKey: 'dungeon_key',
@@ -843,7 +854,7 @@ function updateDoorDefsForZone(zone) {
         };
     } else if (zone === 2) {
         DOOR_DEFS = {
-            '27,21': {
+            '33,15': {
                 requiresKey: 'zone2_key',
                 label: 'Ascend',
                 lockedLabel: 'Locked',

@@ -9,7 +9,7 @@
 const COMBAT = {
     atkDuration: 0.40,   atkCooldown: 0.45,   atkFireAt: 0.20,
     atkSpeed: 11,        projLife: 1.8,        projSize: 8,
-    manaCost: 8,         fireballDmg: 20,      knockback: 2.5,
+    manaCost: 6,         fireballDmg: 20,      knockback: 2.5,
     explodeRadius: 2.5,  explodeDmgPct: 0.4,
 };
 const PLAYER_STATS = {
@@ -152,6 +152,7 @@ function getPooledProj() {
     p.bounce = 0; p.bounceLeft = 0;
     p.isAcid = false; p.isBone = false; p.isDark = false;
     p.isBoomerang = false; p.marrowLeech = false;
+    p._hasRicocheted = false;
     p.boomerangTimer = 0;
     p.hitEnemies = null; p.animTime = 0; p.angle = 0;
     // Trail ring buffer (reuse if already allocated)

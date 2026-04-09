@@ -211,7 +211,7 @@ function updateSkeleton(dt) {
             // trail ring buffer initialized by getPooledProj()
             projectiles.push(proj);
         }
-        if (sfxCtx) sfxFireballShoot(); // reuse fireball SFX
+        if (sfxCtx) sfxSkeletonBoneThrow(); // dedicated bone throw SFX
     }
 
     // Attack animation
@@ -886,6 +886,16 @@ formHandlers.skeleton.onDodge = function() {
     skeletonState.rolling = true;
     skeletonState.rollTimer = 0.35;
     player.dodgeCoolTimer = DODGE_COOLDOWN * 0.5; // fast cooldown for agile skeleton
+    sfxSkeletonRoll();
+    // Dodge VFX: dust cloud burst at start position
+    const _rollPos = tileToScreen(player.row, player.col);
+    const _rpx = _rollPos.x + cameraX, _rpy = _rollPos.y + cameraY;
+    for (let _ri = 0; _ri < 6; _ri++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 30 + Math.random() * 40;
+        _emitParticle(_rpx, _rpy, Math.cos(angle) * speed, Math.sin(angle) * speed - 15,
+            0.3 + Math.random() * 0.2, 3 + Math.random() * 3, '#c8b89a', 0.5, 'dodgeDust');
+    }
 
     let dr = 0, dc = 0;
     if (keys['w'] || keys['arrowup'])    { dr--; dc--; }

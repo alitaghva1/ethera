@@ -278,13 +278,25 @@ let playerInvTimer = 0;
 let multiKillTimer = 0;
 let multiKillCount = 0;
 
+// ── COMBAT JUICE STATE ──────────────────────────────────────
+// Damage vignette — red screen-edge flash when player is hit
+let dmgVignetteIntensity = 0;  // 0–1, decays over time
+let dmgVignetteTimer = 0;
+// Low-HP warning — pulsing red vignette below 25% HP
+// (drawn in render, no separate timer needed — uses sin wave)
+// Critical hit constants
+const CRIT_CHANCE = 0.15;     // 15% per projectile hit
+const CRIT_MULTIPLIER = 1.8;  // damage multiplier
+// Multikill text display
+const multiKillTexts = [];    // { text, color, life, scale }
+
 // ----- DEATH RECAP SYSTEM -----
 let deathCause = '';  // What killed the player (enemy type or damage source)
 let deathRecapTimer = 0;
 
 // ----- UPGRADE PITY SYSTEM -----
 let recentlyOffered = new Set();  // Tracks which upgrades were recently offered
-const PITY_POOL_SIZE = 9;  // Clear pool when it reaches this size (allows rotation back in)
+const PITY_POOL_SIZE = 13;  // Clear pool when it reaches this size (allows rotation back in)
 
 // ----- ENEMY ARRAY -----
 const enemies = [];
@@ -325,12 +337,16 @@ function buildRoomBounds() {
     }
     // Zone 1 rooms
     else if (currentZone === 1) {
-        ROOM_BOUNDS.push({ name: 'Cell', r1: 2, r2: 5, c1: 2, c2: 6, tint: '#1a1a3a' });           // cold blue
+        ROOM_BOUNDS.push({ name: 'Cell', r1: 2, r2: 5, c1: 2, c2: 10, tint: '#1a1a3a' });          // cold blue (L-shape: main + tunnel)
         ROOM_BOUNDS.push({ name: 'Corridor1', r1: 7, r2: 9, c1: 3, c2: 6, tint: '#2a2a2a' });      // neutral
-        ROOM_BOUNDS.push({ name: 'GuardHall', r1: 10, r2: 16, c1: 1, c2: 8, tint: '#3a2a1a' });    // warm orange
+        ROOM_BOUNDS.push({ name: 'GuardHall', r1: 10, r2: 19, c1: 1, c2: 8, tint: '#3a2a1a' });    // warm orange (T-shape: main + armory)
         ROOM_BOUNDS.push({ name: 'Corridor2', r1: 11, r2: 14, c1: 10, c2: 11, tint: '#2a2a2a' });  // neutral
-        ROOM_BOUNDS.push({ name: 'GreatHall', r1: 8, r2: 20, c1: 12, c2: 21, tint: '#2a2a2a' });   // neutral
+        ROOM_BOUNDS.push({ name: 'GreatHall', r1: 8, r2: 20, c1: 12, c2: 21, tint: '#2a2a2a' });   // neutral (cathedral aisles)
         ROOM_BOUNDS.push({ name: 'Alcove', r1: 2, r2: 6, c1: 15, c2: 20, tint: '#1a3a2a' });       // green
+        // Act 2 rooms (accessible after expansion)
+        ROOM_BOUNDS.push({ name: 'BoneGallery', r1: 8, r2: 16, c1: 23, c2: 32, tint: '#2a1a1a' }); // dark red
+        ROOM_BOUNDS.push({ name: 'FloodedCrypt', r1: 2, r2: 7, c1: 23, c2: 27, tint: '#1a2a2a' }); // teal/damp
+        ROOM_BOUNDS.push({ name: 'KingsHollow', r1: 19, r2: 30, c1: 23, c2: 32, tint: '#2a1a3a' }); // purple boss (octagonal)
     } else if (currentZone === 2) {
         // Zone 2 rooms — matched to actual generateZone2() geometry
         ROOM_BOUNDS.push({ name: 'Vestibule', r1: 2, r2: 6, c1: 2, c2: 8, tint: '#2a2a3a' });           // cool
@@ -381,8 +397,47 @@ function applyEnemyHit(e, damage, opts) {
 
     // Armored skeleton shield damage reduction
     const shieldReduc = e.isShielding ? (1 - (e.def.shieldDmgReduc || 0)) : 1;
-    const finalDmg = Math.round(damage * shieldReduc);
+    let finalDmg = Math.round(damage * shieldReduc);
+
+    // ── COMBAT JUICE: Critical hit roll (applies to all damage sources) ──
+    const isCrit = !opts.skipCrit && Math.random() < CRIT_CHANCE;
+    if (isCrit) finalDmg = Math.round(finalDmg * CRIT_MULTIPLIER);
+
     e.hp -= finalDmg;
+
+    // Hit flash — brief white overlay on ANY damage (longer on crit)
+    e.hitFlashTimer = isCrit ? 0.18 : 0.1;
+
+    // ── Impact scaling by enemy max HP ──
+    const impactScale = Math.min(2.5, Math.max(0.8, (e.def.hp || 30) / 60));
+
+    // Floating damage number (gold + '!' on crit)
+    if (!opts.skipParticles) {
+        pickupTexts.push({
+            text: isCrit ? '-' + finalDmg + '!' : '-' + finalDmg,
+            color: isCrit ? COLORS.DAMAGE_CRIT : COLORS.DAMAGE_RED,
+            row: e.row, col: e.col,
+            offsetY: -10 - Math.random() * 8,
+            life: isCrit ? 1.1 : 0.8,
+            isCrit: isCrit,
+        });
+    }
+
+    // Crit spark burst
+    if (isCrit && !opts.skipParticles) {
+        const critPos = tileToScreen(e.row, e.col);
+        const cx = critPos.x + cameraX, cy = critPos.y + cameraY;
+        const critCount = Math.max(4, Math.round(8 * GFX.particleMul));
+        for (let ci = 0; ci < critCount; ci++) {
+            const ca = (Math.PI * 2 * ci) / critCount + (Math.random() - 0.5) * 0.5;
+            _emitParticle(cx, cy,
+                Math.cos(ca) * (4 + Math.random() * 3),
+                Math.sin(ca) * (4 + Math.random() * 3),
+                0.25, 2 + Math.random() * 1.5,
+                '#ffffcc', 1.0, 'crit', 'screen'
+            );
+        }
+    }
 
     // Knockback with resistance
     if (opts.knockVr !== undefined || opts.knockVc !== undefined) {
@@ -390,6 +445,8 @@ function applyEnemyHit(e, damage, opts) {
         e.knockVr = (e.knockVr || 0) + (opts.knockVr || 0) * kbResist;
         e.knockVc = (e.knockVc || 0) + (opts.knockVc || 0) * kbResist;
     }
+
+    const critMul = isCrit ? 2.0 : 1.0;
 
     if (e.hp <= 0) {
         e.hp = 0;
@@ -399,6 +456,7 @@ function applyEnemyHit(e, damage, opts) {
         if (!opts.skipSFX) sfxEnemyDeath(e.row, e.col);
         rollEnemyLoot(e);
         if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
+        else { addHitPause(0.04 * impactScale); addScreenShake(3 * impactScale * critMul, 0.1 * impactScale); }
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
         // Bosses have built-in stagger resistance via shorter hurtTimer
@@ -462,6 +520,8 @@ const WAVES = [
         ],
         statMult: 1.0,
         title: 'The Dungeon Stirs',
+        // Spawn in Guard Hall — first combat room
+        spawnZone: { rMin: 10, rMax: 19, cMin: 1, cMax: 8 },
     },
     {
         enemies: [
@@ -470,6 +530,8 @@ const WAVES = [
         ],
         statMult: 1.15,
         title: 'The Dead Rise',
+        // Spawn in Great Hall — main arena
+        spawnZone: { rMin: 8, rMax: 20, cMin: 12, cMax: 21 },
     },
     {
         enemies: [
@@ -480,6 +542,8 @@ const WAVES = [
         statMult: 1.35,
         title: 'Arrow and Bone',
         isExpansionTrigger: true,
+        // Spawn in Great Hall
+        spawnZone: { rMin: 8, rMax: 20, cMin: 12, cMax: 21 },
     },
     {
         enemies: [
@@ -488,6 +552,8 @@ const WAVES = [
         ],
         statMult: 1.5,
         title: 'The Crypt Opens',
+        // Spawn in Bone Gallery (Act 2)
+        spawnZone: { rMin: 8, rMax: 16, cMin: 23, cMax: 32 },
     },
     {
         enemies: [
@@ -497,6 +563,8 @@ const WAVES = [
         ],
         statMult: 1.65,
         title: 'The Deep Stirs',
+        // Spawn across Gallery + Crypt area
+        spawnZone: { rMin: 2, rMax: 16, cMin: 23, cMax: 33 },
     },
     {
         enemies: [
@@ -506,6 +574,8 @@ const WAVES = [
         ],
         statMult: 1.8,
         title: 'The Undercroft\'s Last Stand',
+        // Spawn across Gallery + Crypt area
+        spawnZone: { rMin: 2, rMax: 16, cMin: 23, cMax: 33 },
     },
     {
         enemies: [
@@ -516,19 +586,23 @@ const WAVES = [
         statMult: 1.9,
         title: 'The Slime King Emerges',
         isBossWave: true,
+        // Spawn in King's Hollow
+        spawnZone: { rMin: 20, rMax: 29, cMin: 24, cMax: 31 },
     },
 ];
 
 // ===== ZONE 2 WAVES =====
-// Harder than Zone 1 — more enemies, heavier archer/skeleton mix
+// Skeleton form debut — smoother ramp lets player learn combo/shield before the real challenge
 const ZONE2_WAVES = [
     {
         enemies: [
             { type: 'skeleton', count: 6 },
             { type: 'skelarch', count: 2 },
         ],
-        statMult: 1.4,
+        statMult: 1.2,
         title: 'Bones Ascend',
+        // Spawn in Ruined Armory — first combat room
+        spawnZone: { rMin: 10, rMax: 19, cMin: 18, cMax: 30 },
     },
     {
         enemies: [
@@ -536,8 +610,10 @@ const ZONE2_WAVES = [
             { type: 'skeleton', count: 6 },
             { type: 'skelarch', count: 4 },
         ],
-        statMult: 1.65,
+        statMult: 1.35,
         title: 'The Guard Post',
+        // Spawn in Guard Barracks
+        spawnZone: { rMin: 21, rMax: 30, cMin: 20, cMax: 32 },
     },
     {
         enemies: [
@@ -545,17 +621,21 @@ const ZONE2_WAVES = [
             { type: 'armoredskel', count: 2 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 1.85,
+        statMult: 1.5,
         title: 'Iron and Arrows',
         isExpansionTrigger: true,
+        // Spawn in Guard Barracks
+        spawnZone: { rMin: 21, rMax: 30, cMin: 20, cMax: 32 },
     },
     {
         enemies: [
             { type: 'skeleton', count: 8 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 2.0,
+        statMult: 1.65,
         title: 'The Tower Crumbles',
+        // Spawn in Collapsed Floor (Act 2)
+        spawnZone: { rMin: 14, rMax: 27, cMin: 2, cMax: 16 },
     },
     {
         enemies: [
@@ -563,8 +643,10 @@ const ZONE2_WAVES = [
             { type: 'armoredskel', count: 3 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 2.2,
+        statMult: 1.8,
         title: 'Death From Above',
+        // Spawn across Collapsed Floor + Bell Tower
+        spawnZone: { rMin: 4, rMax: 27, cMin: 2, cMax: 16 },
     },
     {
         enemies: [
@@ -572,8 +654,10 @@ const ZONE2_WAVES = [
             { type: 'armoredskel', count: 4 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 2.4,
+        statMult: 1.95,
         title: 'Endless Legions',
+        // Spawn in Collapsed Floor
+        spawnZone: { rMin: 14, rMax: 27, cMin: 2, cMax: 16 },
     },
     {
         enemies: [
@@ -581,9 +665,11 @@ const ZONE2_WAVES = [
             { type: 'armoredskel', count: 3 },
             { type: 'skelarch', count: 4 },
         ],
-        statMult: 2.4,
+        statMult: 2.0,
         title: 'The Bone Colossus Rises',
         isBossWave: true,
+        // Spawn in Throne Antechamber
+        spawnZone: { rMin: 29, rMax: 33, cMin: 8, cMax: 22 },
     },
 ];
 
@@ -663,7 +749,7 @@ const ZONE4_WAVES = [
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 3.5,
+        statMult: 3.2,
         title: 'The Inferno Awakens',
     },
     {
@@ -672,7 +758,7 @@ const ZONE4_WAVES = [
             { type: 'armoredskel', count: 6 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 3.8,
+        statMult: 3.4,
         title: 'Burning Legions',
     },
     {
@@ -681,7 +767,7 @@ const ZONE4_WAVES = [
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 4.0,
+        statMult: 3.6,
         title: 'The Damned March',
         isExpansionTrigger: true,
     },
@@ -691,7 +777,7 @@ const ZONE4_WAVES = [
             { type: 'skelarch', count: 10 },
             { type: 'skeleton', count: 6 },
         ],
-        statMult: 4.2,
+        statMult: 3.8,
         title: 'Blood and Fire',
     },
     {
@@ -700,7 +786,7 @@ const ZONE4_WAVES = [
             { type: 'skelarch', count: 10 },
             { type: 'skeleton', count: 8 },
         ],
-        statMult: 4.5,
+        statMult: 4.0,
         title: 'Hellfire Gauntlet',
     },
     {
@@ -708,7 +794,7 @@ const ZONE4_WAVES = [
             { type: 'armoredskel', count: 14 },
             { type: 'skelarch', count: 12 },
         ],
-        statMult: 4.8,
+        statMult: 4.1,
         title: 'The Forge Calls',
     },
     {
@@ -717,7 +803,7 @@ const ZONE4_WAVES = [
             { type: 'armoredskel', count: 6 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 5.0,
+        statMult: 4.2,
         title: 'The Infernal Knight Descends',
         isBossWave: true,
     },
@@ -731,7 +817,7 @@ const ZONE5_WAVES = [
             { type: 'armoredskel', count: 10 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 5.0,
+        statMult: 4.2,
         title: 'The Abyss Stirs',
     },
     {
@@ -740,7 +826,7 @@ const ZONE5_WAVES = [
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 5.3,
+        statMult: 4.5,
         title: 'Frozen Legions',
     },
     {
@@ -748,7 +834,7 @@ const ZONE5_WAVES = [
             { type: 'skelarch', count: 14 },
             { type: 'armoredskel', count: 8 },
         ],
-        statMult: 5.5,
+        statMult: 4.7,
         title: 'Arrows of Ice',
         isExpansionTrigger: true,
     },
@@ -758,7 +844,7 @@ const ZONE5_WAVES = [
             { type: 'armoredskel', count: 10 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 5.8,
+        statMult: 5.0,
         title: 'The Deep Freeze',
     },
     {
@@ -767,7 +853,7 @@ const ZONE5_WAVES = [
             { type: 'armoredskel', count: 10 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 6.0,
+        statMult: 5.2,
         title: 'The Dead March',
     },
     {
@@ -776,7 +862,7 @@ const ZONE5_WAVES = [
             { type: 'armoredskel', count: 12 },
             { type: 'skelarch', count: 10 },
         ],
-        statMult: 6.3,
+        statMult: 5.4,
         title: 'Abyss Unbound',
     },
     {
@@ -785,7 +871,7 @@ const ZONE5_WAVES = [
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 6.5,
+        statMult: 5.5,
         title: 'The Wyrm Awakens',
         isBossWave: true,
     },
@@ -870,7 +956,7 @@ const ZONE_EXPANSIONS = {
         triggerAfterWaveIndex: 2,
         bannerText: 'Sealed passages collapse...',
         bannerSub: 'The dungeon reveals its depths.',
-        cameraTarget: { r: 8, c: 25 },
+        cameraTarget: { r: 12, c: 28 },
         shakeIntensity: 6,
         shakeDuration: 1.2,
         breatherChest: true,
@@ -936,7 +1022,7 @@ function expandZone(zoneNum) {
         blockType[t.r][t.c] = null;
         objectMap[t.r][t.c] = null;
         objRadius[t.r][t.c] = 0;
-        if (!floorMap[t.r][t.c]) floorMap[t.r][t.c] = 'stoneTile';
+        floorMap[t.r][t.c] = t.tile || 'stoneTile';
     }
 
     // Place rubble/debris props on designated tiles (decorative, non-blocking)
@@ -1161,19 +1247,22 @@ function spawnWaveEnemies() {
         }
     }
 
-    // Build spawn zones dynamically from walkable floor tiles (works for any zone)
-    let zones;
-    if (currentZone === 1) {
-        zones = [...SPAWN_ZONES];
-    } else {
-        // Auto-generate spawn zones from walkable tiles for zone 2/3
-        zones = [];
-        const ms = floorMap.length;
-        for (let r = 1; r < ms - 1; r++) {
-            for (let c = 1; c < ms - 1; c++) {
-                if (floorMap[r][c] && !blocked[r][c] && !objectMap[r][c]) {
-                    zones.push({ r, c });
-                }
+    // Build spawn zones via BFS from player — only tiles the player can reach
+    // This prevents enemies spawning behind sealed walls in unexpanded areas
+    let zones = [];
+    const ms = floorMap.length;
+    const _spawnVis = Array.from({ length: ms }, () => Array(ms).fill(false));
+    const _spawnQ = [[ Math.floor(player.row), Math.floor(player.col) ]];
+    _spawnVis[_spawnQ[0][0]][_spawnQ[0][1]] = true;
+    while (_spawnQ.length) {
+        const [sr, sc] = _spawnQ.shift();
+        if (!objectMap[sr][sc]) zones.push({ r: sr, c: sc });
+        for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+            const nr = sr + dr, nc = sc + dc;
+            if (nr >= 0 && nr < ms && nc >= 0 && nc < ms &&
+                !_spawnVis[nr][nc] && floorMap[nr][nc] && !blocked[nr][nc]) {
+                _spawnVis[nr][nc] = true;
+                _spawnQ.push([nr, nc]);
             }
         }
     }
@@ -1186,8 +1275,32 @@ function spawnWaveEnemies() {
         return Math.sqrt(dr * dr + dc * dc) > ENEMY_SPAWN_MIN_DISTANCE;
     });
 
-    // Use valid zones first, then fall back to any zone
-    const useZones = validZones.length >= toSpawn.length ? validZones : zones;
+    // --- SpawnZone bias: prefer tiles inside the wave's target room ---
+    // If the wave defines a spawnZone bounding box, 80% of spawns go inside it.
+    // Remaining 20% spawn outside for flanking pressure. Falls back to global
+    // pool if the box doesn't have enough valid tiles.
+    let useZones;
+    if (w.spawnZone) {
+        const sz = w.spawnZone;
+        const inside = validZones.filter(z => z.r >= sz.rMin && z.r <= sz.rMax && z.c >= sz.cMin && z.c <= sz.cMax);
+        const outside = validZones.filter(z => z.r < sz.rMin || z.r > sz.rMax || z.c < sz.cMin || z.c > sz.cMax);
+        if (inside.length >= Math.ceil(toSpawn.length * 0.5)) {
+            // Enough room tiles — build biased list: 80% inside, 20% outside
+            const biased = [];
+            const insideCount = Math.ceil(toSpawn.length * 0.8);
+            for (let i = 0; i < insideCount && i < inside.length; i++) biased.push(inside[i]);
+            for (let i = 0; i < toSpawn.length - biased.length && i < outside.length; i++) biased.push(outside[i]);
+            // Pad with inside tiles if outside didn't have enough
+            while (biased.length < toSpawn.length && inside.length > 0) biased.push(inside[biased.length % inside.length]);
+            useZones = biased;
+        } else {
+            // Not enough tiles in target room — fall back to global
+            useZones = validZones.length >= toSpawn.length ? validZones : zones;
+        }
+    } else {
+        // No spawnZone defined — use original behavior
+        useZones = validZones.length >= toSpawn.length ? validZones : zones;
+    }
 
     // Stagger attack cooldowns by type so enemies don't all fire at once
     const typeIndex = {}; // track spawn index per type for stagger offset
@@ -1305,6 +1418,8 @@ function updateWaveSystem(dt) {
                     if (expCfg) {
                         // Run the physical map expansion
                         expandZone(currentZone);
+                        // Recalculate fog of war so newly accessible tiles are revealed
+                        if (typeof updateFogOfWar === 'function') updateFogOfWar();
                         // Screen shake
                         addScreenShake(expCfg.shakeIntensity || 6, expCfg.shakeDuration || 1.0);
                         // Banner
@@ -1374,6 +1489,18 @@ function updateWaveSystem(dt) {
                     if (currentZone === 1 && wave.current === 2 && FormSystem.currentForm === 'slime') {
                         spawnTalismanDrop();
                     }
+
+                    // --- Zone 1 Alcove mini-seal: open Secret Alcove after wave 1 ---
+                    if (currentZone === 1 && wave.current === 0 && z1AlcoveSealTiles && z1AlcoveSealTiles.length > 0) {
+                        for (const t of z1AlcoveSealTiles) {
+                            blocked[t.r][t.c] = false;
+                            blockType[t.r][t.c] = null;
+                            floorMap[t.r][t.c] = 'stone';
+                        }
+                        z1AlcoveSealTiles = []; // consumed
+                        addScreenShake(3, 0.5);
+                        if (typeof updateFogOfWar === 'function') updateFogOfWar();
+                    }
                 }
             }
         }
@@ -1421,7 +1548,10 @@ function updateWaveSystem(dt) {
             // Restore some HP/mana between waves as a reward
             const eb = getEquipBonuses();
             const formMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus;
-            player.hp = Math.min(formMaxHP + (eb.maxHpBonus || 0), player.hp + 25);
+            // Percentage-based heal: 20% of max HP (minimum 25), rewards building tanky
+            const maxHP = formMaxHP + (eb.maxHpBonus || 0);
+            const healAmt = Math.max(25, Math.floor(maxHP * 0.20));
+            player.hp = Math.min(maxHP, player.hp + healAmt);
             player.mana = MAX_MANA + (eb.maxManaBonus || 0);
             beginNextWave();
         }
@@ -1964,6 +2094,36 @@ function updateEnemies(dt) {
                 e._corpseLingerExtended = true;
                 e.deathTimer = 4.0; // 4 seconds — enough time to reach and interact
 
+                // ── COMBAT JUICE: Killing blow flash + micro time-dip ──
+                e._deathFlashTimer = 0.08; // 2-3 frames of solid white
+                if (!e.def.isBoss) {
+                    // Micro time-dip: brief 60% speed for non-bosses (bosses have their own slow-mo)
+                    addSlowMo(0.05, 0.6);
+                }
+
+                // ── COMBAT JUICE: Multikill tracking ──
+                if (multiKillTimer > 0) {
+                    multiKillCount++;
+                } else {
+                    multiKillCount = 1;
+                }
+                multiKillTimer = 1.5; // 1.5s rolling window
+                if (multiKillCount >= 2) {
+                    const mkLabel = multiKillCount === 2 ? 'DOUBLE KILL' :
+                                    multiKillCount === 3 ? 'TRIPLE KILL' :
+                                    multiKillCount === 4 ? 'QUAD KILL' : 'MASSACRE';
+                    const mkColor = multiKillCount === 2 ? '#ff9944' :
+                                    multiKillCount === 3 ? '#ff4444' :
+                                    multiKillCount === 4 ? '#ff44ff' : '#ffd700';
+                    multiKillTexts.push({
+                        text: mkLabel, color: mkColor,
+                        life: 1.4, scale: 0.8 + multiKillCount * 0.15,
+                    });
+                    // Escalating feedback
+                    addScreenShake(2 + multiKillCount * 1.5, 0.1 + multiKillCount * 0.03);
+                    if (multiKillCount >= 4) addSlowMo(0.15, 0.35);
+                }
+
                 // --- BOSS DEATH CINEMATIC ---
                 if (e.def.isBoss) {
                     // Stage 1: Immediate freeze frame + shake + slow-mo combo for impact
@@ -2048,17 +2208,7 @@ function updateEnemies(dt) {
                 enemies.splice(i, 1);
                 wave.totalKilled++;
                 grantXP(e.type, e.statMult || 1.0);
-                // Multi-kill tracking
-                if (multiKillTimer > 0) {
-                    multiKillCount++;
-                    if (multiKillCount >= 3) {
-                        addSlowMo(0.15, 0.2);
-                        addScreenShake(5, 0.15);
-                    }
-                } else {
-                    multiKillCount = 1;
-                }
-                multiKillTimer = 0.8; // 0.8s window to chain kills
+                // Multi-kill tracking now handled at kill moment (when entering death state)
                 // Boss drops special key (Zone 3 werewolf only)
                 if (e.type === 'werewolf' && currentZone === 3) {
                     dropKeyItemInWorld(e.row, e.col, 'zone3_exit_key');
@@ -2144,7 +2294,36 @@ function updateEnemies(dt) {
         if (e.slowTimer > 0) e.slowTimer -= dt;
         if (e.orbitHitCooldown > 0) e.orbitHitCooldown -= dt;
         if (e.staggerCooldown > 0) e.staggerCooldown -= dt;
+        if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
+        if (e._deathFlashTimer > 0) e._deathFlashTimer -= dt;
         if (e.howlCooldown > 0) e.howlCooldown -= dt;
+
+        // === SLIME: Corrosive Linger DOT tick ===
+        if (e._corrosiveDot && e._corrosiveDot.ticks > 0) {
+            e._corrosiveDot.timer -= dt;
+            if (e._corrosiveDot.timer <= 0) {
+                e._corrosiveDot.timer = e._corrosiveDot.interval;
+                e._corrosiveDot.ticks--;
+                e.hp -= e._corrosiveDot.dmgPerTick;
+                // Green DOT particle
+                const _dotPos = tileToScreen(e.row, e.col);
+                _emitParticle(
+                    _dotPos.x + cameraX, _dotPos.y + cameraY,
+                    (Math.random() - 0.5) * 20, -15 - Math.random() * 10,
+                    0.3, 2, '#44cc33', 0.6, 'effect'
+                );
+                pickupTexts.push({
+                    text: '-' + e._corrosiveDot.dmgPerTick,
+                    color: '#66dd44',
+                    row: e.row, col: e.col,
+                    offsetY: -8 - Math.random() * 6,
+                    life: 0.5,
+                });
+                if (e.hp <= 0) e.state = 'death';
+            }
+        }
+        // === SLIME: Sticky Landing slow decay ===
+        if (e._stickySlowTimer > 0) e._stickySlowTimer -= dt;
 
         // Distance to player
         const dr = player.row - e.row;
@@ -2906,7 +3085,9 @@ function updateEnemies(dt) {
 
         // --- Movement AI ---
         let moveDir;
-        const slowMult = e.slowTimer > 0 ? Math.max(0.2, 1 - 0.3 * getUpgrade('tower_slow')) : 1;
+        let slowMult = e.slowTimer > 0 ? Math.max(0.2, 1 - 0.3 * getUpgrade('tower_slow')) : 1;
+        // Sticky Landing slow stacks with tower slow (floor at 20% to prevent full freeze)
+        if (e._stickySlowTimer > 0) slowMult = Math.max(0.2, slowMult * (e._stickySlowMult || 0.4));
         const enrageMult = e.def.isBoss && e.hp < e.maxHp * 0.5 ? 1.3 : 1.0;
 
         // --- Shield stance (Armored Skeleton) ---
@@ -3130,9 +3311,27 @@ function grantXP(enemyType, statMult) {
     const scaledAmount = baseAmount * Math.sqrt(statMult || 1.0);
     const amount = Math.round(scaledAmount * getTalismanBonus().xpMult);
     xpState.xp += amount;
-    // Track kills for current form
+    // Track kills for current form + evolution milestone toasts
     if (FormSystem.formData[FormSystem.currentForm]) {
-        FormSystem.formData[FormSystem.currentForm].totalKills++;
+        const _fd = FormSystem.formData[FormSystem.currentForm];
+        _fd.totalKills++;
+        // Evolution progress notifications at milestone kill counts
+        if (typeof Notify !== 'undefined') {
+            const _form = FormSystem.currentForm;
+            const _req = typeof EVOLUTION_REQUIREMENTS !== 'undefined' ? (
+                _form === 'slime' ? EVOLUTION_REQUIREMENTS.slime_to_skeleton :
+                _form === 'skeleton' ? EVOLUTION_REQUIREMENTS.skeleton_to_wizard :
+                _form === 'wizard' ? EVOLUTION_REQUIREMENTS.wizard_to_lich : null
+            ) : null;
+            if (_req && _req.kills) {
+                const half = Math.floor(_req.kills / 2);
+                if (_fd.totalKills === half) {
+                    Notify.toast(`${Math.round((_fd.totalKills / _req.kills) * 100)}% kills toward evolution!`, { color: '#88ff88', duration: 3 });
+                } else if (_fd.totalKills === _req.kills) {
+                    Notify.toast('Kill requirement met — keep progressing!', { color: '#ffdd44', duration: 3.5 });
+                }
+            }
+        }
     }
     // Wizard: track kills while below 30% mana (for lich evolution requirement)
     if (FormSystem.currentForm === 'wizard' && player.mana < (FORM_CONFIGS.wizard.maxMana || 100) * 0.3) {
@@ -3203,9 +3402,10 @@ function triggerLevelUp() {
     xpState.levelUpPending = true;
     xpState.levelUpHover = -1;
     xpState.levelUpFadeIn = 0;
-    // Duck music and play level-up sting
+    // Duck music and play level-up sting + procedural chime
     duckMusic(true);
     playSting('levelUp');
+    if (typeof sfxLevelUp === 'function') sfxLevelUp();
 }
 
 function applyUpgrade(upgradeId) {
@@ -3234,13 +3434,45 @@ function damagePlayer(amount, enemyType = '') {
         getUpgrade('ethereal_form') > 0 && lichState.soulEnergy >= 80) {
         amount = Math.round(amount * (1 - 0.25 * getUpgrade('ethereal_form')));
     }
+    // Wizard Mana Shield: 15% damage reduction per stack while above 50% mana
+    if (FormSystem.currentForm === 'wizard' && getUpgrade('mana_shield') > 0 &&
+        player.mana >= MAX_MANA * 0.5) {
+        amount = Math.round(amount * (1 - 0.15 * getUpgrade('mana_shield')));
+    }
     // Skeleton combo armor: 3% reduction per combo stack (max 30%)
     if (FormSystem.currentForm === 'skeleton' && typeof skeletonState !== 'undefined' &&
         skeletonState.comboCount > 0) {
         const comboReduc = Math.min(0.30, skeletonState.comboCount * 0.03);
         amount = Math.round(amount * (1 - comboReduc));
     }
-    const reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0))));
+    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0))));
+
+    // === SLIME: Membrane shield absorbs damage before HP ===
+    if (FormSystem.currentForm === 'slime' && typeof slimeState !== 'undefined' && slimeState.membraneShield > 0) {
+        if (reducedAmt <= slimeState.membraneShield) {
+            slimeState.membraneShield -= reducedAmt;
+            pickupTexts.push({
+                row: player.row, col: player.col,
+                text: 'Shielded!', color: '#66ccff',
+                life: 0.6, offsetY: -10,
+            });
+            // Still trigger inv frames but no HP loss
+            playerInvTimer = PLAYER_INV_TIME;
+            addScreenShake(2, 0.1);
+            sfxPlayerHurt();
+            return;
+        } else {
+            reducedAmt -= slimeState.membraneShield;
+            slimeState.membraneShield = 0;
+        }
+    }
+
+    // === SLIME: Volatile Mass — shed size in acid explosion on big hits ===
+    if (FormSystem.currentForm === 'slime' && typeof slimeState !== 'undefined' &&
+        getUpgrade('volatile_mass') > 0 && reducedAmt >= 15 && slimeState.size > 1.5) {
+        _slimeVolatileMassBurst(reducedAmt);
+    }
+
     player.hp -= reducedAmt;
     playerInvTimer = PLAYER_INV_TIME;
     // Scale feedback by damage taken
@@ -3248,6 +3480,10 @@ function damagePlayer(amount, enemyType = '') {
     addScreenShake(4 + 6 * shakeScale, 0.15 + 0.1 * shakeScale);
     addHitPause(0.03 + 0.04 * shakeScale);
     if (reducedAmt >= 25) addSlowMo(0.12, 0.3); // big hit slow-mo
+    // ── COMBAT JUICE: Damage vignette — intensity scales with damage ──
+    const vigStr = Math.min(1.0, reducedAmt / (PLAYER_STATS.maxHp * 0.4));
+    dmgVignetteIntensity = Math.max(dmgVignetteIntensity, 0.3 + vigStr * 0.7);
+    dmgVignetteTimer = 0.4 + vigStr * 0.3; // bigger hit = longer flash
     if (player.hp <= 0) {
         player.hp = 0;
         gameDead = true;
@@ -3308,13 +3544,55 @@ function checkProjectileEnemyHits() {
                 const dmgBonus = (equipBonus.dmgBonus || 0) + getUpgrade('bigshot') * 5;
                 const shieldReduc = e.isShielding ? (1 - (e.def.shieldDmgReduc || 0)) : 1;
                 const talismanDmg = getTalismanBonus().dmgMult;
-                e.hp -= Math.round((baseProjDmg + dmgBonus) * shieldReduc * talismanDmg);
+                let projFinalDmg = Math.round((baseProjDmg + dmgBonus) * shieldReduc * talismanDmg);
+
+                // ── COMBAT JUICE: Critical hit roll ──
+                const isCrit = Math.random() < CRIT_CHANCE;
+                if (isCrit) projFinalDmg = Math.round(projFinalDmg * CRIT_MULTIPLIER);
+
+                e.hp -= projFinalDmg;
+                e.hitFlashTimer = isCrit ? 0.18 : 0.1; // longer flash on crit
+
+                // ── COMBAT JUICE: Impact scaling by enemy max HP ──
+                const impactScale = Math.min(2.5, Math.max(0.8, (e.def.hp || 30) / 60));
+
+                // Floating damage number (gold + bigger on crit)
+                pickupTexts.push({
+                    text: isCrit ? '-' + projFinalDmg + '!' : '-' + projFinalDmg,
+                    color: isCrit ? COLORS.DAMAGE_CRIT : COLORS.DAMAGE_RED,
+                    row: e.row, col: e.col,
+                    offsetY: -10 - Math.random() * 8,
+                    life: isCrit ? 1.1 : 0.8,
+                    isCrit: isCrit, // flag for scaled rendering
+                });
+
+                // Crit: bright white spark burst at impact
+                if (isCrit) {
+                    const critPos = tileToScreen(e.row, e.col);
+                    const cx = critPos.x + cameraX, cy = critPos.y + cameraY;
+                    const critCount = Math.max(4, Math.round(8 * GFX.particleMul));
+                    for (let ci = 0; ci < critCount; ci++) {
+                        const ca = (Math.PI * 2 * ci) / critCount + (Math.random() - 0.5) * 0.5;
+                        _emitParticle(cx, cy,
+                            Math.cos(ca) * (4 + Math.random() * 3),
+                            Math.sin(ca) * (4 + Math.random() * 3),
+                            0.25, 2 + Math.random() * 1.5,
+                            '#ffffcc', 1.0, 'crit', 'screen'
+                        );
+                    }
+                }
 
                 if (!p.hitEnemies) p.hitEnemies = new Set();
                 p.hitEnemies.add(e);
 
-                addHitPause(0.025);
-                addScreenShake(2, 0.08);
+                // Hit feel: scaled by enemy size + crit
+                const isKill = e.hp <= 0;
+                const critMul = isCrit ? 2.0 : 1.0;
+                addHitPause(isKill ? 0.06 * impactScale : 0.035 * impactScale * critMul);
+                addScreenShake(
+                    (isKill ? 4 : 2.5) * impactScale * critMul,
+                    (isKill ? 0.15 : 0.08) * impactScale
+                );
 
                 // Knockback — varies by projectile type
                 const kbMult = p.canExplode ? KNOCKBACK_MULT.explode : KNOCKBACK_MULT.normal;
@@ -3337,6 +3615,75 @@ function checkProjectileEnemyHits() {
                             radius: 0.5, damage: 3 * (1 + getUpgrade('acid_potency') * 0.2),
                             life: 2.0, dmgTimer: 0,
                         });
+                        // === CORROSIVE LINGER — acid DOT on hit enemy ===
+                        const _lingerLvl = getUpgrade('corrosive_linger');
+                        if (_lingerLvl > 0 && e.state !== 'death') {
+                            const dotTicks = 3 + _lingerLvl;
+                            const dotDmgPerTick = Math.round(projFinalDmg * 0.15 * (1 + getUpgrade('acid_potency') * 0.1));
+                            // Refresh DOT: keep higher damage, reset tick count
+                            if (e._corrosiveDot && e._corrosiveDot.ticks > 0) {
+                                e._corrosiveDot.ticks = Math.max(e._corrosiveDot.ticks, dotTicks);
+                                e._corrosiveDot.dmgPerTick = Math.max(e._corrosiveDot.dmgPerTick, dotDmgPerTick);
+                            } else {
+                                e._corrosiveDot = {
+                                    ticks: dotTicks,
+                                    dmgPerTick: dotDmgPerTick,
+                                    interval: 0.5,
+                                    timer: 0.5,
+                                };
+                            }
+                        }
+                        // === RICOCHET SPIT — bounce to nearby enemy ===
+                        const _ricochetLvl = getUpgrade('ricochet_spit');
+                        if (_ricochetLvl > 0 && !p._hasRicocheted) {
+                            let bounceCount = _ricochetLvl;
+                            let lastTarget = e;
+                            let lastRow = p.row, lastCol = p.col;
+                            for (let _rb = 0; _rb < bounceCount; _rb++) {
+                                let _nearE = null, _nearD = Infinity;
+                                for (const _ce of enemies) {
+                                    if (_ce.state === 'death' || _ce === lastTarget) continue;
+                                    if (p.hitEnemies && p.hitEnemies.has(_ce)) continue;
+                                    const _d = Math.sqrt((_ce.row - lastRow) ** 2 + (_ce.col - lastCol) ** 2);
+                                    if (_d < 4.0 && _d < _nearD) { _nearD = _d; _nearE = _ce; }
+                                }
+                                if (_nearE) {
+                                    const ricochetDmg = Math.round(projFinalDmg * 0.6);
+                                    _nearE.hp -= ricochetDmg;
+                                    if (_nearE.hp <= 0) _nearE.state = 'death';
+                                    pickupTexts.push({
+                                        text: '-' + ricochetDmg,
+                                        color: '#88ee44',
+                                        row: _nearE.row, col: _nearE.col,
+                                        offsetY: -10 - Math.random() * 8,
+                                        life: 0.7,
+                                    });
+                                    // Apply corrosive DOT to ricochet target too
+                                    if (_lingerLvl > 0 && _nearE.state !== 'death') {
+                                        _nearE._corrosiveDot = {
+                                            ticks: 3 + _lingerLvl,
+                                            dmgPerTick: Math.round(ricochetDmg * 0.15 * (1 + getUpgrade('acid_potency') * 0.1)),
+                                            interval: 0.5,
+                                            timer: 0.5,
+                                        };
+                                    }
+                                    // Ricochet particle trail
+                                    const _rFrom = tileToScreen(lastRow, lastCol);
+                                    const _rTo = tileToScreen(_nearE.row, _nearE.col);
+                                    _emitParticle(
+                                        _rFrom.x + cameraX, _rFrom.y + cameraY,
+                                        (_rTo.x - _rFrom.x) * 2, (_rTo.y - _rFrom.y) * 2,
+                                        0.2, 3, '#66dd33', 0.7, 'effect'
+                                    );
+                                    if (!p.hitEnemies) p.hitEnemies = new Set();
+                                    p.hitEnemies.add(_nearE);
+                                    lastTarget = _nearE;
+                                    lastRow = _nearE.row;
+                                    lastCol = _nearE.col;
+                                } else break;
+                            }
+                            p._hasRicocheted = true;
+                        }
                     }
                 }
 
@@ -3357,6 +3704,14 @@ function checkProjectileEnemyHits() {
                         const dc2 = p.col - e2.col;
                         if (Math.sqrt(dr2 * dr2 + dc2 * dc2) < explodeRadius) {
                             e2.hp -= explodeDmg;
+                            // Floating damage number for AoE hit
+                            pickupTexts.push({
+                                text: '-' + explodeDmg,
+                                color: COLORS.DAMAGE_RED,
+                                row: e2.row, col: e2.col,
+                                offsetY: -10 - Math.random() * 8,
+                                life: 0.8,
+                            });
                             if (e2.hp <= 0) {
                                 e2.hp = 0; e2.state = 'death'; e2.deathTimer = 0.7; e2.animFrame = 0;
                                 sfxEnemyDeath(e2.row, e2.col); rollEnemyLoot(e2);
@@ -3620,6 +3975,47 @@ function drawEnemy(e) {
     }
     ctx.restore();
 
+    // === COMBAT JUICE: Death flash — solid white frame on killing blow ===
+    if (e._deathFlashTimer > 0 && e.state === 'death') {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, e._deathFlashTimer / 0.04) * 0.85 * spawnAlpha;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.filter = 'brightness(5) saturate(0)';
+        if (e.facing === -1) {
+            ctx.translate(sx, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(sheet,
+                frame * WIZARD_FRAME_W, 0, WIZARD_FRAME_W, WIZARD_FRAME_H,
+                -scaledDW / 2, drawY - (scaledDH - dh) / 2, scaledDW, scaledDH);
+        } else {
+            ctx.drawImage(sheet,
+                frame * WIZARD_FRAME_W, 0, WIZARD_FRAME_W, WIZARD_FRAME_H,
+                sx - scaledDW / 2, drawY - (scaledDH - dh) / 2, scaledDW, scaledDH);
+        }
+        ctx.restore();
+    }
+
+    // === HIT FLASH — brief white overlay on any damage (independent of stagger) ===
+    if (e.hitFlashTimer > 0 && e.state !== 'death') {
+        ctx.save();
+        const flashIntensity = Math.min(1, e.hitFlashTimer / 0.06); // peaks fast, fades out
+        ctx.globalAlpha = flashIntensity * 0.5 * spawnAlpha;
+        ctx.globalCompositeOperation = 'lighter'; // additive blend = bright white flash
+        ctx.filter = 'brightness(3) saturate(0)'; // desaturate + overbrighten = white glow
+        if (e.facing === -1) {
+            ctx.translate(sx, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(sheet,
+                frame * WIZARD_FRAME_W, 0, WIZARD_FRAME_W, WIZARD_FRAME_H,
+                -scaledDW / 2, drawY - (scaledDH - dh) / 2, scaledDW, scaledDH);
+        } else {
+            ctx.drawImage(sheet,
+                frame * WIZARD_FRAME_W, 0, WIZARD_FRAME_W, WIZARD_FRAME_H,
+                sx - scaledDW / 2, drawY - (scaledDH - dh) / 2, scaledDW, scaledDH);
+        }
+        ctx.restore();
+    }
+
     // === ENEMY OUTLINE — dark edge for silhouette definition ===
     if (e.state !== 'death' && spawnAlpha > 0.5) {
         ctx.save();
@@ -3641,6 +4037,47 @@ function drawEnemy(e) {
         ctx.restore();
     }
 
+    // --- Ranged attack telegraph — bright pre-fire warning glow ---
+    // Shows during wind-up (before attackFired) so player can react
+    if (e.state === 'attack' && e.def.ai === 'ranged' && !e.attackFired) {
+        const windUpFrac = 1 - (e.attackTimer / e.def.attackDur); // 0→1 during wind-up
+        const telegraphAlpha = windUpFrac * 0.8; // ramps up to fire moment
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = telegraphAlpha * spawnAlpha;
+        // Weapon glow at hand position
+        const handX = sx + (e.facing === -1 ? -12 : 12);
+        const handY = drawY + dh * 0.35;
+        const telegraphR = 12 + windUpFrac * 6;
+        const tGrad = ctx.createRadialGradient(handX, handY, 0, handX, handY, telegraphR);
+        tGrad.addColorStop(0, 'rgba(255, 220, 120, 0.9)');
+        tGrad.addColorStop(0.4, 'rgba(255, 160, 60, 0.5)');
+        tGrad.addColorStop(1, 'rgba(255, 100, 20, 0)');
+        ctx.fillStyle = tGrad;
+        ctx.fillRect(handX - telegraphR, handY - telegraphR, telegraphR * 2, telegraphR * 2);
+        // Directional aim line toward player (faint)
+        if (windUpFrac > 0.3) {
+            const aimAlpha = (windUpFrac - 0.3) * 0.4;
+            ctx.globalAlpha = aimAlpha * spawnAlpha;
+            ctx.strokeStyle = 'rgba(255, 200, 100, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 6]);
+            const pPos = tileToScreen(player.row, player.col);
+            const ppx = pPos.x + cameraX;
+            const ppy = pPos.y + cameraY;
+            const aimDx = ppx - handX;
+            const aimDy = ppy - handY;
+            const aimLen = Math.sqrt(aimDx * aimDx + aimDy * aimDy) || 1;
+            const lineLen = Math.min(aimLen, 60);
+            ctx.beginPath();
+            ctx.moveTo(handX, handY);
+            ctx.lineTo(handX + (aimDx / aimLen) * lineLen, handY + (aimDy / aimLen) * lineLen);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        ctx.restore();
+    }
+
     // --- Corpse interaction glow (pulsing when player is nearby) ---
     if (e.state === 'death' && e.deathTimer > 0.5) {
         const pDist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
@@ -3648,7 +4085,7 @@ function drawEnemy(e) {
             const t = performance.now() / 1000;
             const corpPulse = 0.2 + Math.sin(t * 4) * 0.1;
             const _cf = FormSystem.currentForm;
-            const corpCol = _cf === 'slime' ? 'rgba(200, 80, 60,' :
+            const corpCol = _cf === 'slime' ? 'rgba(60, 190, 80,' :
                            _cf === 'skeleton' ? 'rgba(200, 190, 150,' :
                            _cf === 'lich' ? 'rgba(140, 70, 200,' :
                            'rgba(100, 140, 200,';
@@ -3821,19 +4258,78 @@ function drawEnemyProjectiles() {
             ctx.arc(0, 0, s * 1.5, 0, Math.PI * 2);
             ctx.fill();
         } else {
-            // Default: arrow
+            // Default: skeleton archer arrow — enhanced for readability
+            // 1) Ground glow so projectile pops against dark floors
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = 0.4;
+            const arrowGlowR = 18;
+            const arrowGlow = ctx.createRadialGradient(0, 4, 0, 0, 4, arrowGlowR);
+            arrowGlow.addColorStop(0, 'rgba(255, 200, 100, 0.5)');
+            arrowGlow.addColorStop(0.5, 'rgba(255, 140, 50, 0.2)');
+            arrowGlow.addColorStop(1, 'rgba(200, 80, 20, 0)');
+            ctx.fillStyle = arrowGlow;
+            ctx.beginPath();
+            ctx.ellipse(0, 4, arrowGlowR, arrowGlowR * 0.45, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
             ctx.rotate(a.angle);
+
+            // 2) Bright arrow with high-contrast colors
             if (arrowImg) {
                 const s = 0.35;
                 ctx.drawImage(arrowImg, -50 * s, -50 * s, 100 * s, 100 * s);
+                // Brightness boost overlay
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = 0.5;
+                ctx.drawImage(arrowImg, -50 * s, -50 * s, 100 * s, 100 * s);
+                ctx.restore();
             } else {
-                ctx.strokeStyle = '#aaa';
-                ctx.lineWidth = 2;
+                // Fallback: bright warm arrow shape
+                ctx.strokeStyle = '#ffcc66';
+                ctx.lineWidth = 2.5;
                 ctx.beginPath();
-                ctx.moveTo(-8, 0);
-                ctx.lineTo(8, 0);
+                ctx.moveTo(-10, 0);
+                ctx.lineTo(10, 0);
                 ctx.stroke();
+                ctx.fillStyle = '#ffdd88';
+                ctx.beginPath();
+                ctx.moveTo(10, 0);
+                ctx.lineTo(6, -3);
+                ctx.lineTo(6, 3);
+                ctx.closePath();
+                ctx.fill();
             }
+
+            // 3) Hot tip glow — bright point at arrow tip for tracking
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = 0.7;
+            const tipGrad = ctx.createRadialGradient(10, 0, 0, 10, 0, 6);
+            tipGrad.addColorStop(0, 'rgba(255, 240, 180, 0.9)');
+            tipGrad.addColorStop(0.5, 'rgba(255, 180, 80, 0.4)');
+            tipGrad.addColorStop(1, 'rgba(255, 120, 30, 0)');
+            ctx.fillStyle = tipGrad;
+            ctx.fillRect(4, -6, 12, 12);
+            ctx.restore();
+
+            // 4) Short motion trail behind arrow
+            ctx.save();
+            ctx.globalAlpha = 0.35;
+            ctx.strokeStyle = 'rgba(255, 180, 80, 0.6)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-10, 0);
+            ctx.lineTo(-20, 0);
+            ctx.stroke();
+            ctx.globalAlpha = 0.18;
+            ctx.beginPath();
+            ctx.moveTo(-20, 0);
+            ctx.lineTo(-28, 0);
+            ctx.stroke();
+            ctx.restore();
         }
         ctx.restore();
     }

@@ -396,7 +396,15 @@ const ZONE_TARGET_MAP = {
 
 function updateGameplay(dt) {
     tickInputBuffers(dt);
-    if (multiKillTimer > 0) multiKillTimer -= dt;
+    if (multiKillTimer > 0) {
+        multiKillTimer -= dt;
+        if (multiKillTimer <= 0) multiKillCount = 0; // reset streak
+    }
+    // ── COMBAT JUICE: Update multikill floating texts ──
+    for (let i = multiKillTexts.length - 1; i >= 0; i--) {
+        multiKillTexts[i].life -= dt;
+        if (multiKillTexts[i].life <= 0) multiKillTexts.splice(i, 1);
+    }
     if (gamePhase === 'playing' && !inventoryOpen) {
         const handler = FormSystem.getHandler();
         if (handler && handler.update) handler.update(dt);
@@ -406,6 +414,7 @@ function updateGameplay(dt) {
     if (!inventoryOpen) updateProjectiles(dt);
     updateNPCs(dt);
     if (gamePhase === 'playing' && !inventoryOpen) {
+        if (typeof updateEvolutionSurge === 'function') updateEvolutionSurge(dt);
         updateWaveSystem(dt);
         updateEnemies(dt);
         checkProjectileEnemyHits();
@@ -433,6 +442,16 @@ function updateGameplay(dt) {
     if (typeof Notify !== 'undefined') Notify.update(dt);
     if (towerModeDisplayTimer > 0) towerModeDisplayTimer -= dt;
     updateCamera(dt);
+
+    // Update fog of war — throttled to ~4 times per second
+    if (typeof updateFogOfWar === 'function') {
+        if (!updateGameplay._fogTimer) updateGameplay._fogTimer = 0;
+        updateGameplay._fogTimer += dt;
+        if (updateGameplay._fogTimer > 0.25) {
+            updateGameplay._fogTimer = 0;
+            updateFogOfWar();
+        }
+    }
 
     // Zone transition fade overlay
     if (zoneTransitionFading) {
@@ -2150,6 +2169,10 @@ function restartGame() {
     // Reset evolution state
     evolutionState.active = false;
     evolutionState.timer = 0;
+    evolutionHintState.active = false;
+    evolutionHintState.dismissed = false;
+    evolutionHintState.timer = 0;
+    evolutionHintState.alpha = 0;
     // Reset cinematic state
     wizardRotation = 0;
     wizardRiseProgress = 1;
@@ -2167,6 +2190,7 @@ function restartGame() {
     updateDoorDefsForZone(1);
     updateChestDefsForZone(1);
     buildRoomBounds();
+    buildEnvironmentLights();
     loadZoneNPCs(1);
     // Re-snap camera after zone rebuild
     const restartPos = tileToScreen(player.row, player.col);
@@ -2298,8 +2322,18 @@ function render() {
             const col = depth - row;
             if (col < 0 || col >= mapSize) continue;
 
+            // Fog of war — skip tiles the player hasn't explored yet
+            // fogRevealed is numeric: 0 = hidden, 1 = full, 0.2-0.8 = dim edge
+            const _fogVal = (fogRevealed[row] && fogRevealed[row][col]) || 0;
+            const _fogVis = _fogVal > 0;
+            const _fogDim = _fogVal < 1 && _fogVal > 0; // edge tile that needs darkening
             const ft = floorMap[row][col];
-            if (ft && images[ft]) {
+            if (ft && images[ft] && _fogVis) {
+                // Apply fog edge dimming — darken wall peek tiles
+                if (_fogDim) {
+                    ctx.save();
+                    ctx.globalAlpha = _fogVal;
+                }
                 if (ft.startsWith('h_')) {
                     drawHellTile(images[ft], row, col);
                 } else if (currentZone !== 0 && ft.startsWith('n_')) {
@@ -2309,10 +2343,11 @@ function render() {
                 }
                 drawTileEdgeShadows(row, col);
                 drawRoughFloorHint(row, col);
+                if (_fogDim) ctx.restore();
             }
 
             // Draw any sprites that should appear BEFORE this object tile
-            const ot = objectMap[row][col];
+            const ot = _fogVis ? objectMap[row][col] : null;
             if (ot) {
                 let tileScore = (row + col) * mapSize + row;
                 // Z-fix: tall nature objects (trees, rocks, logs) in non-town zones
@@ -2330,7 +2365,8 @@ function render() {
             }
 
             // Closed chest glow — golden for openable, red-tinted for locked (cached)
-            if (ot === 'chestClosed' && !openedChests.has(`${row},${col}`)) {
+            // Skip glows on fog-dimmed edge tiles
+            if (ot === 'chestClosed' && !_fogDim && !openedChests.has(`${row},${col}`)) {
                 const pos = tileToScreen(row, col);
                 const sx = pos.x + cameraX;
                 const sy = pos.y + cameraY;
@@ -2416,8 +2452,9 @@ function render() {
                         }
                     }
                 }
-                if (_occludeFade < 1) ctx.save();
-                if (_occludeFade < 1) ctx.globalAlpha = _occludeFade;
+                // Combine occlusion fade with fog edge dimming
+                const _objAlpha = (_fogDim ? _fogVal : 1) * _occludeFade;
+                if (_objAlpha < 1) { ctx.save(); ctx.globalAlpha = _objAlpha; }
                 // Dispatch to correct draw function based on tile prefix
                 if (ot.startsWith('h_')) {
                     drawHellTile(images[ot], row, col);
@@ -2426,7 +2463,7 @@ function render() {
                 } else {
                     drawTile(images[ot], row, col);
                 }
-                if (_occludeFade < 1) ctx.restore();
+                if (_objAlpha < 1) ctx.restore();
             }
         }
 
@@ -2443,11 +2480,15 @@ function render() {
         spriteIdx++;
     }
 
-    // ── LAYER 3: Floor decals ──
+    // ── LAYER 3: Floor decals + environment light props ──
     drawBloodStain();
+    drawEnvironmentLightProps();
 
     // ── LAYER 4: Darkness / Lighting ──
     drawDarkness();
+
+    // ── LAYER 4b: Environment light punchthrough (screen blend after darkness) ──
+    drawEnvironmentLightPunchthrough();
 
     // ── LAYER 5: Player occlusion overlay ──
     // Draws sprite at 40% alpha above darkness so the player
@@ -2489,7 +2530,8 @@ function render() {
     }
 
     // === PLAYER BRIGHTNESS BOOST — render after darkness so character pops ===
-    if (gamePhase === 'playing' && !gameDead) {
+    // Skipped for slime — slimes don't emit magical light; the glow looked wrong
+    if (gamePhase === 'playing' && !gameDead && FormSystem.currentForm !== 'slime') {
         const pPos = tileToScreen(player.row, player.col);
         const ppx = pPos.x + cameraX;
         const ppy = pPos.y + cameraY - 25;
@@ -2497,8 +2539,7 @@ function render() {
         ctx.globalCompositeOperation = 'screen';
         // Form-specific glow color
         const _pForm = FormSystem.currentForm;
-        const glowCol = _pForm === 'slime' ? 'rgba(200, 80, 70,' :
-                        _pForm === 'skeleton' ? 'rgba(180, 170, 150,' :
+        const glowCol = _pForm === 'skeleton' ? 'rgba(180, 170, 150,' :
                         _pForm === 'lich' ? 'rgba(140, 80, 200,' :
                         'rgba(120, 150, 220,';
         ctx.globalAlpha = 0.35;
@@ -2524,6 +2565,26 @@ function render() {
     drawParticles();
     drawRoomAmbientTint();
 
+    // ── COMBAT JUICE: Multikill text (world-space, above particles) ──
+    for (const mk of multiKillTexts) {
+        const mkAlpha = Math.min(1, mk.life / 0.4); // fade out in last 0.4s
+        const mkPop = mk.life > 1.1 ? 1 + (mk.life - 1.1) * 3 : 1; // brief scale pop on spawn
+        const mkFontSize = Math.round(18 * mk.scale * mkPop);
+        ctx.save();
+        ctx.globalAlpha = mkAlpha * 0.95;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `bold ${mkFontSize}px Georgia`;
+        ctx.fillStyle = mk.color;
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 8;
+        // Draw at upper-center screen, drifting up
+        const mkY = canvasH * 0.28 - (1.4 - mk.life) * 30;
+        ctx.fillText(mk.text, canvasW / 2, mkY);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    }
+
     // ── LAYER 8: Screen effects ──
 
     // Phase jump flash — brief arcane burst on screen
@@ -2545,14 +2606,48 @@ function render() {
         ctx.restore();
     }
 
-    // Player damage flash (red screen pulse when hit)
-    if (playerInvTimer > PLAYER_INV_TIME * 0.5) {
-        const flashStr = (playerInvTimer - PLAYER_INV_TIME * 0.5) / (PLAYER_INV_TIME * 0.5);
+    // ── COMBAT JUICE: Damage vignette (replaces old flat red flash) ──
+    // Decay the vignette timer
+    if (dmgVignetteTimer > 0) {
+        dmgVignetteTimer -= _frameDt;
+        // Exponential decay for snappy attack, slow tail
+        dmgVignetteIntensity *= Math.pow(0.08, _frameDt); // fast falloff
+        if (dmgVignetteTimer <= 0) { dmgVignetteIntensity = 0; dmgVignetteTimer = 0; }
+    }
+    if (dmgVignetteIntensity > 0.01) {
         ctx.save();
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = `rgba(180, 20, 10, ${0.18 * flashStr})`;
+        const vigAlpha = Math.min(0.6, dmgVignetteIntensity);
+        const vigGrad = ctx.createRadialGradient(
+            canvasW / 2, canvasH / 2, canvasH * 0.2,
+            canvasW / 2, canvasH / 2, canvasH * 0.85
+        );
+        vigGrad.addColorStop(0, 'rgba(180, 10, 0, 0)');
+        vigGrad.addColorStop(0.5, `rgba(180, 10, 0, ${vigAlpha * 0.15})`);
+        vigGrad.addColorStop(1, `rgba(140, 0, 0, ${vigAlpha})`);
+        ctx.fillStyle = vigGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.restore();
+    }
+
+    // ── COMBAT JUICE: Low-HP warning vignette (pulsing below 25%) ──
+    if (gamePhase === 'playing' && !gameDead && player.hp > 0) {
+        const hpRatio = player.hp / (PLAYER_STATS.maxHp + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus);
+        if (hpRatio < 0.25) {
+            const urgency = 1 - (hpRatio / 0.25); // 0→1 as HP drops from 25%→0%
+            const pulse = 0.12 + Math.sin(performance.now() * 0.005) * 0.06; // ~0.8Hz
+            const lowHpAlpha = urgency * pulse;
+            ctx.save();
+            const lowGrad = ctx.createRadialGradient(
+                canvasW / 2, canvasH / 2, canvasH * 0.25,
+                canvasW / 2, canvasH / 2, canvasH * 0.8
+            );
+            lowGrad.addColorStop(0, 'rgba(100, 0, 0, 0)');
+            lowGrad.addColorStop(0.6, `rgba(120, 0, 0, ${lowHpAlpha * 0.3})`);
+            lowGrad.addColorStop(1, `rgba(80, 0, 0, ${lowHpAlpha})`);
+            ctx.fillStyle = lowGrad;
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.restore();
+        }
     }
 
     // Vignette — lighter for outdoor town, dramatic for dungeon
@@ -2902,13 +2997,17 @@ async function init() {
     nameInputEl = document.getElementById('nameInput');
     loadSaveSlots();
 
-    // Clear arrays first (they're already initialized at declaration with MAP_SIZE rows)
+    // Apply zone 1 tile config first so MAP_SIZE is correct for dungeon generation
+    applyZoneTileConfig(1);
+
+    // Clear arrays first (they're already initialized at declaration with default MAP_SIZE)
+    resetFogOfWar(MAP_SIZE);
     floorMap.length = 0;
     objectMap.length = 0;
     blocked.length = 0;
     blockType.length = 0;
     objRadius.length = 0;
-    // Re-initialize the default map arrays (MAP_SIZE = 24 for Zone 1)
+    // Re-initialize map arrays with correct MAP_SIZE for Zone 1
     for (let i = 0; i < MAP_SIZE; i++) {
         floorMap.push(Array(MAP_SIZE).fill(null));
         objectMap.push(Array(MAP_SIZE).fill(null));
@@ -2923,6 +3022,9 @@ async function init() {
     updateChestDefsForZone(1);
     loadZoneNPCs(1);
     buildRoomBounds();
+    buildEnvironmentLights();
+    // Initial fog of war reveal from player spawn position
+    updateFogOfWar();
     // Generate procedural background for zone 1 (textured earth behind tiles)
     if (typeof initSpaceBackground === 'function') {
         initSpaceBackground(1);
@@ -2935,6 +3037,16 @@ async function init() {
     // Load 2D assets
     await loadAssets();
     buildSlimeTintedSprites();
+
+    // Validate form handlers — catch missing wiring at startup, not at runtime form switch
+    const REQUIRED_HANDLERS = ['update', 'draw', 'drawHUD'];
+    for (const form of Object.keys(FORM_CONFIGS)) {
+        const h = formHandlers[form];
+        if (!h) { console.warn(`[Ethera] Missing form handler registry for: ${form}`); continue; }
+        for (const req of REQUIRED_HANDLERS) {
+            if (!h[req]) console.warn(`[Ethera] Missing handler: formHandlers.${form}.${req}`);
+        }
+    }
 
     document.getElementById('loading-text').style.display = 'none';
 

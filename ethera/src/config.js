@@ -10,7 +10,7 @@
 // ============================================================
 
 // Game version — used for save format and cache busting
-const ETHERA_VERSION = '0.3.1';
+const ETHERA_VERSION = '0.3.2';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
@@ -64,6 +64,7 @@ const COLORS = {
     TEXT_DIM: '#a09070',
     TEXT_HINT: '#aabbff',
     DAMAGE_RED: '#ff6644',
+    DAMAGE_CRIT: '#ffd700',     // gold — critical hit numbers
     HEAL_GREEN: '#88cc88',
     MANA_BLUE: '#88ccff',
     // Vision / cinematic
@@ -137,7 +138,7 @@ const ZONE_TILE_DEFAULTS = {
 };
 
 const ZONE_CONFIGS = {
-    1: { ...ZONE_TILE_DEFAULTS, name: 'The Undercroft', mapSize: 28 },
+    1: { ...ZONE_TILE_DEFAULTS, name: 'The Undercroft', mapSize: 34 },
     2: { ...ZONE_TILE_DEFAULTS, name: 'Ruined Tower', mapSize: 34 },
     3: { ...ZONE_TILE_DEFAULTS, name: 'The Spire', mapSize: 30 },
     0: { ...ZONE_TILE_DEFAULTS, name: 'The Hamlet', mapSize: 30, lighting: 'outdoor', hasWaves: false, isTown: true },

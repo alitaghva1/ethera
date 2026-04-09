@@ -4,10 +4,80 @@
 const floorMap = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(null));
 const objectMap = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(null));
 const blocked = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(true));
+// Alcove mini-seal tiles for Zone 1 (opened after wave 1, before main expansion)
+let z1AlcoveSealTiles = [];
 // Per-tile collision type: 'wall' = full tile block, 'object' = sub-tile circle
 const blockType = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(null));
 // Object collision radii (center-of-tile circle collision)
 const objRadius = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(0));
+
+// ============================================================
+//  FOG OF WAR — per-tile exploration tracking
+// ============================================================
+// fogRevealed[r][c] = visibility level:
+//   0   = completely hidden (never seen / behind sealed walls)
+//   1.0 = fully visible (player can walk there)
+//   0.3–0.8 = dim edge (wall peek — visible but darkened for soft transition)
+// Tiles behind sealed walls stay hidden until the seal breaks.
+const fogRevealed = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(0));
+// How many wall-peek passes to run (each pass reveals one more layer of walls)
+const FOG_WALL_PEEK = 4;
+// Brightness per peek layer: closer walls are brighter, outer walls fade
+const FOG_PEEK_BRIGHTNESS = [0.8, 0.55, 0.35, 0.2];
+
+function resetFogOfWar(newSize) {
+    fogRevealed.length = 0;
+    const sz = newSize || MAP_SIZE;
+    for (let i = 0; i < sz; i++) fogRevealed.push(Array(sz).fill(0));
+}
+
+// Flood-fill from the player through non-blocked tiles, then peek through walls
+// with graduated brightness so edges fade naturally into darkness.
+function updateFogOfWar() {
+    const ms = floorMap.length;
+    const pr = Math.floor(player.row);
+    const pc = Math.floor(player.col);
+    if (pr < 0 || pr >= ms || pc < 0 || pc >= ms) return;
+
+    // BFS from player through walkable tiles — full brightness
+    const vis = Array.from({ length: ms }, () => Array(ms).fill(false));
+    const q = [[pr, pc]];
+    vis[pr][pc] = true;
+    while (q.length) {
+        const [r, c] = q.shift();
+        fogRevealed[r][c] = 1;           // full visibility
+        for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < ms && nc >= 0 && nc < ms && !vis[nr][nc] && floorMap[nr][nc] && !blocked[nr][nc]) {
+                vis[nr][nc] = true;
+                q.push([nr, nc]);
+            }
+        }
+    }
+
+    // Peek through walls: each pass reveals one more layer of blocked tiles
+    // with decreasing brightness, creating a soft fog edge around rooms.
+    // Only blocked tiles get peeked — walkable floor behind a wall stays hidden
+    // so sealed rooms don't leak through.
+    for (let pass = 0; pass < FOG_WALL_PEEK; pass++) {
+        const brightness = FOG_PEEK_BRIGHTNESS[pass] || 0.15;
+        const toReveal = [];
+        for (let r = 0; r < ms; r++) {
+            for (let c = 0; c < ms; c++) {
+                if (!fogRevealed[r][c]) continue;
+                for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+                    const nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < ms && nc >= 0 && nc < ms &&
+                        fogRevealed[nr][nc] === 0 && floorMap[nr][nc]) {
+                        // Only peek into wall/blocked tiles — not walkable floor
+                        if (blocked[nr][nc]) toReveal.push([nr, nc, brightness]);
+                    }
+                }
+            }
+        }
+        for (const [r, c, b] of toReveal) fogRevealed[r][c] = b;
+    }
+}
 
 // Floor tiles that look rough/damaged but are walkable — get a subtle dust mote effect
 const ROUGH_FLOORS = new Set([
@@ -116,13 +186,25 @@ function openTile(r, c, tile) {
 
 function generateDungeon() {
     // ================================================================
-    //  ZONE 1 — THE UNDERCROFT (28×28)
-    //  Two-act structure with sealed east wall in Great Hall.
-    //  Act 1: Cell → Guard Hall → Great Hall + Secret Alcove
-    //  Act 2: Bone Gallery → Flooded Crypt → King's Hollow (boss)
+    //  ZONE 1 — THE UNDERCROFT (34×34)
+    //  Redesigned with non-rectangular rooms, purposeful layouts,
+    //  and gameplay-driven prop placement.
+    //
+    //  Act 1: Cell (L-shape) → Descent → Guard Hall (T-shape)
+    //         → Passage → Great Hall (cathedral aisles)
+    //         + Secret Alcove above
+    //  Act 2: Bone Gallery → Flooded Crypt → King's Hollow (octagonal)
+    //
+    //  Every room has a distinct shape and gameplay identity.
     // ================================================================
 
-    // ===== ROOM 1: THE CELL (rows 2-5, cols 2-6) =====
+    // =====================================================
+    //  ROOM 1: THE CELL — L-shaped prison
+    //  Main chamber (rows 2-5, cols 2-6) + collapsed eastern
+    //  tunnel alcove (rows 3-5, cols 7-10). The tunnel hints
+    //  at the dungeon's age and rewards exploration. Player
+    //  wakes at (4,3).
+    // =====================================================
     fillFloor(2, 2, 5, 6, 'dirt');
     floorMap[2][2] = 'dirtTiles';  floorMap[2][5] = 'dirtTiles';
     floorMap[3][3] = 'planksBroken'; floorMap[3][4] = 'planksHole';
@@ -145,15 +227,56 @@ function generateDungeon() {
     placeObj(2, 6, 'barrel');
     placeObj(5, 6, 'woodenCrate');
 
-    // ===== CORRIDOR 1 (rows 7-9, cols 3-6) =====
+    // --- Collapsed eastern tunnel (rows 3-5, cols 7-10) ---
+    // Extends the cell into an L-shape. fillFloor overwrites the
+    // main cell's east wall at col 7, rows 3-5, creating the opening.
+    fillFloor(3, 7, 5, 10, 'dirtTiles');
+    // Tunnel outer walls (top row 2, bottom row 6, right col 11)
+    for (let c = 8; c <= 11; c++) {
+        floorMap[2][c] = 'wallAged'; blocked[2][c] = true; blockType[2][c] = 'wall';
+        floorMap[6][c] = 'wallAged'; blocked[6][c] = true; blockType[6][c] = 'wall';
+    }
+    for (let r = 3; r <= 5; r++) {
+        floorMap[r][11] = 'wallAged'; blocked[r][11] = true; blockType[r][11] = 'wall';
+    }
+    floorMap[2][11] = 'wallCorner'; floorMap[6][11] = 'wallCorner';
+    floorMap[2][10] = 'wallBroken';
+    // Tunnel floor detail
+    floorMap[3][9] = 'planksHole'; floorMap[4][8] = 'planksBroken';
+    floorMap[5][10] = 'planksHole'; floorMap[4][10] = 'dirtTiles';
+    // Tunnel props — rubble and debris suggest a cave-in
+    placeObj(3, 10, 'woodenPile');
+    placeObj(5, 9, 'woodenCrate');
+    // Reward for exploring the tunnel dead-end
+    placeObj(4, 9, 'chestClosed');
+    placeObj(3, 8, 'woodenSupportBeams');
+
+    // =====================================================
+    //  CORRIDOR 1: THE DESCENT (rows 7-9, cols 3-6)
+    //  Narrow passage south from cell to Guard Hall.
+    //  Props and floor variation build tension on the way down.
+    // =====================================================
     fillFloor(7, 3, 9, 6, 'stone');
     floorMap[7][4] = 'stoneUneven'; floorMap[8][5] = 'stoneMissing';
+    floorMap[7][6] = 'stoneInset';  floorMap[9][3] = 'planksHole';
+    floorMap[8][3] = 'stoneMissing';
     for (let r = 7; r <= 9; r++) {
         floorMap[r][2] = 'wall'; blocked[r][2] = true; blockType[r][2] = 'wall';
         floorMap[r][7] = 'wall'; blocked[r][7] = true; blockType[r][7] = 'wall';
     }
+    // Props: support beam + barrel compress the corridor visually
+    placeObj(7, 6, 'woodenSupportBeams');
+    placeObj(8, 3, 'barrel');
+    // Breadcrumb: debris near south exit draws eye toward Guard Hall
+    placeObj(9, 5, 'woodenPile', false);
 
-    // ===== ROOM 2: GUARD HALL (rows 10-16, cols 1-8) =====
+    // =====================================================
+    //  ROOM 2: GUARD HALL — T-shaped patrol room
+    //  Main hall (rows 10-16, cols 1-8) + southern armory
+    //  alcove (rows 17-19, cols 3-6). The armory dead-end
+    //  rewards exploration with supplies and cover.
+    //  Columns in the main hall create tactical lanes.
+    // =====================================================
     fillFloor(10, 1, 16, 8, 'stoneTile');
     floorMap[10][2] = 'stone';     floorMap[10][5] = 'stoneMissing';
     floorMap[11][3] = 'stoneUneven'; floorMap[11][7] = 'stone';
@@ -167,43 +290,84 @@ function generateDungeon() {
     floorMap[9][0] = 'wallCorner';  floorMap[9][9] = 'wallCorner';
     floorMap[17][0] = 'wallCorner'; floorMap[17][9] = 'wallCorner';
     floorMap[9][4] = 'wallWindowBars'; floorMap[9][6] = 'wallWindowBars';
-    floorMap[17][3] = 'wallAged';   floorMap[17][5] = 'wallBroken';
-    floorMap[17][7] = 'wallAged';
+    floorMap[17][8] = 'wallAged';
 
     openTile(9, 3, 'stone'); openTile(9, 4, 'stone');
     openTile(9, 5, 'stone'); openTile(9, 6, 'stone');
     openTile(11, 9, 'stone'); openTile(12, 9, 'stone');
     openTile(13, 9, 'stone'); openTile(14, 9, 'stone');
+    // Extra tile for widened Corridor 2 (col 12 needs unblocking at Guard Hall wall)
+    // (wall at row 9 col 9 already open; col 12 connection handled by Corridor 2 fill)
 
+    // Props — main hall (overturned furniture as cover)
     placeObj(10, 1, 'tableChairsBroken');
     placeObj(10, 8, 'barrels');
     placeObj(16, 1, 'woodenCrates');
     placeObj(16, 8, 'barrelsStacked');
     placeObj(13, 1, 'woodenCrate');
+    // Column pair creating tactical cover lanes
+    placeObj(12, 4, 'stoneColumn');
+    placeObj(12, 7, 'stoneColumn');
 
-    // ===== CORRIDOR 2 (rows 11-14, cols 10-11) =====
-    fillFloor(11, 10, 14, 11, 'stone');
+    // --- Southern armory alcove (rows 17-19, cols 3-6) ---
+    // Extends Guard Hall into a T-shape. Dead-end with supplies.
+    fillFloor(17, 3, 19, 6, 'stoneTile');
+    addWalls(17, 2, 20, 7, 'wall');
+    openTile(17, 3, 'stoneTile'); openTile(17, 4, 'stoneTile');
+    openTile(17, 5, 'stoneTile'); openTile(17, 6, 'stoneTile');
+    floorMap[20][2] = 'wallCorner'; floorMap[20][7] = 'wallCorner';
+    floorMap[20][4] = 'wallBroken';
+    floorMap[18][4] = 'stoneMissing'; floorMap[19][5] = 'stoneUneven';
+    // Armory props (reward for exploring)
+    placeObj(18, 3, 'woodenCrates');
+    placeObj(19, 6, 'barrelsStacked');
+    placeObj(19, 3, 'barrel');
+    placeObj(18, 5, 'woodenPile', false);  // ransacked debris
+
+    // =====================================================
+    //  CORRIDOR 2: THE PASSAGE (rows 11-14, cols 10-12)
+    //  Widened to 3 tiles. Connects Guard Hall east → Great Hall west.
+    //  Landmark column at entrance + floor variation.
+    // =====================================================
+    fillFloor(11, 10, 14, 12, 'stone');
     floorMap[11][10] = 'stoneUneven'; floorMap[13][11] = 'stoneMissing';
+    floorMap[12][12] = 'stoneInset';  floorMap[14][10] = 'stoneUneven';
+    // North/south corridor walls (now cols 10-12)
     floorMap[10][10] = 'wall'; blocked[10][10] = true; blockType[10][10] = 'wall';
     floorMap[10][11] = 'wall'; blocked[10][11] = true; blockType[10][11] = 'wall';
+    floorMap[10][12] = 'wall'; blocked[10][12] = true; blockType[10][12] = 'wall';
     floorMap[15][10] = 'wall'; blocked[15][10] = true; blockType[15][10] = 'wall';
     floorMap[15][11] = 'wall'; blocked[15][11] = true; blockType[15][11] = 'wall';
+    floorMap[15][12] = 'wall'; blocked[15][12] = true; blockType[15][12] = 'wall';
+    // Landmark column at Guard Hall side — "the broken pillar marks the east passage"
+    placeObj(11, 10, 'stoneColumnWood');
+    // Breadcrumb prop at midpoint
+    placeObj(13, 12, 'woodenPile', false);
 
-    // ===== ROOM 3: THE GREAT HALL (rows 8-20, cols 12-21) =====
+    // =====================================================
+    //  ROOM 3: THE GREAT HALL — cathedral with aisles
+    //  Main nave (rows 8-20, cols 12-21) with paired columns
+    //  creating "aisles" that break sight-lines and provide
+    //  tactical cover. Central inset-stone aisle marks the
+    //  processional path. East wall at col 22 is SEALED.
+    // =====================================================
     fillFloor(8, 12, 20, 21, 'stoneTile');
-    floorMap[8][13] = 'stone';      floorMap[8][16] = 'stoneInset';
-    floorMap[8][19] = 'stone';      floorMap[9][14] = 'stoneUneven';
-    floorMap[9][17] = 'stone';      floorMap[9][20] = 'stoneMissing';
+
+    // Central processional aisle (inset stone down the middle)
+    for (let r = 9; r <= 19; r++) {
+        if (r % 2 === 0) floorMap[r][16] = 'stoneInset';
+        if (r % 2 === 1) floorMap[r][17] = 'stoneInset';
+    }
+    // Damaged/varied floor areas
+    floorMap[8][13] = 'stone';      floorMap[8][19] = 'stoneMissing';
+    floorMap[9][14] = 'stoneUneven'; floorMap[9][20] = 'stone';
     floorMap[10][12] = 'stone';     floorMap[10][15] = 'stoneInset';
-    floorMap[10][19] = 'stone';     floorMap[11][13] = 'stoneUneven';
-    floorMap[12][16] = 'stoneInset'; floorMap[12][20] = 'stone';
+    floorMap[11][13] = 'stoneUneven'; floorMap[12][20] = 'stone';
     floorMap[14][13] = 'stoneMissing'; floorMap[14][18] = 'stoneUneven';
-    floorMap[15][15] = 'stoneInset'; floorMap[15][20] = 'stone';
-    floorMap[16][14] = 'stone';     floorMap[17][17] = 'stoneInset';
+    floorMap[15][20] = 'stone';     floorMap[16][14] = 'stone';
     floorMap[17][21] = 'stoneUneven'; floorMap[18][13] = 'stoneMissing';
-    floorMap[18][18] = 'stone';     floorMap[19][16] = 'stoneInset';
-    floorMap[19][20] = 'stoneUneven'; floorMap[20][14] = 'stone';
-    floorMap[20][19] = 'stone';
+    floorMap[19][16] = 'stoneInset'; floorMap[20][14] = 'stone';
+    floorMap[20][19] = 'stoneMissing';
 
     // Great Hall walls — east wall at col 22 is the SEALED WALL
     addWalls(7, 11, 21, 22, 'wall');
@@ -214,26 +378,48 @@ function generateDungeon() {
     floorMap[21][13] = 'wallBroken'; floorMap[21][15] = 'wallAged';
     floorMap[21][18] = 'wallArchway'; floorMap[21][20] = 'wallAged';
 
+    // West wall opening (corridor entrance — widened to 3 tiles)
     openTile(11, 11, 'stone'); openTile(12, 11, 'stone');
     openTile(13, 11, 'stone'); openTile(14, 11, 'stone');
+    // North wall opening (to Secret Alcove) — STARTS SEALED, opened by mini-seal after wave 2
+    // openTile(7, 16, 'stone'); openTile(7, 17, 'stone'); openTile(7, 18, 'stone');
+    // (these tiles stay as walls until wave 2 clear — see z1AlcoveSeal below)
 
-    placeObj(9, 14, 'stoneColumn');
-    placeObj(9, 19, 'stoneColumn');
-    placeObj(18, 14, 'stoneColumn');
-    placeObj(18, 19, 'stoneColumn');
+    // Four column pairs creating cathedral "aisles"
+    // These break sight-lines and give the room a grand feel
+    placeObj(9, 14, 'stoneColumn');      // NW aisle
+    placeObj(9, 19, 'stoneColumn');      // NE aisle
+    placeObj(12, 14, 'stoneColumnWood'); // W mid (damaged)
+    placeObj(12, 19, 'stoneColumn');     // E mid
+    placeObj(15, 14, 'stoneColumn');     // W lower
+    placeObj(15, 19, 'stoneColumn');     // E lower
+    placeObj(18, 14, 'stoneColumn');     // SW aisle
+    placeObj(18, 19, 'stoneColumn');     // SE aisle
 
-    placeObj(19, 21, 'chestClosed');
+    // Interactables
+    placeObj(19, 21, 'chestClosed');     // locked chest (Rusted Key)
     openTile(20, 17, 'stairs');
     objectMap[20][17] = 'stairsSpiral';
 
+    // Props — each area of the hall has a different character
+    // NE: old storage area
     placeObj(8, 21, 'barrelsStacked');
     placeObj(8, 12, 'woodenCrate');
+    // East: remnants of gatherings
+    placeObj(10, 20, 'tableRoundChairs');
+    placeObj(14, 17, 'tableChairsBroken');  // overturned at center
+    // South: structural supports and supplies
     placeObj(20, 21, 'barrel');
     placeObj(20, 12, 'woodenCrate');
     placeObj(17, 21, 'woodenSupportBeams');
-    placeObj(14, 20, 'tableRoundChairs');
+    // Seal hint — damaged column near sealed east wall draws the eye
+    placeObj(10, 21, 'stoneColumnWood');
 
-    // ===== SECRET ALCOVE (rows 2-6, cols 15-20) =====
+    // =====================================================
+    //  SECRET ALCOVE (rows 2-6, cols 15-20)
+    //  Hidden treasure room above the Great Hall.
+    //  Column divides the space into antechamber + vault.
+    // =====================================================
     fillFloor(2, 15, 6, 20, 'stoneInset');
     floorMap[2][15] = 'stone';     floorMap[2][19] = 'stoneMissing';
     floorMap[4][17] = 'stoneUneven'; floorMap[5][16] = 'stone';
@@ -244,7 +430,8 @@ function generateDungeon() {
     floorMap[7][14] = 'wallCorner'; floorMap[7][21] = 'wallCorner';
     floorMap[1][17] = 'wallBroken'; floorMap[1][19] = 'wallHole';
 
-    openTile(7, 16, 'stone'); openTile(7, 17, 'stone'); openTile(7, 18, 'stone');
+    // North wall opening to Great Hall — SEALED until wave 2 (handled by z1AlcoveSeal)
+    // openTile(7, 16, 'stone'); openTile(7, 17, 'stone'); openTile(7, 18, 'stone');
 
     placeObj(3, 16, 'chestClosed');
     placeObj(5, 19, 'barrelsStacked');
@@ -252,97 +439,261 @@ function generateDungeon() {
     placeObj(6, 16, 'stairsAged', false);
     placeObj(2, 20, 'barrel');
     placeObj(2, 15, 'woodenPile');
+    // Column dividing antechamber from vault
+    placeObj(4, 18, 'stoneColumnWood');
 
     // =============================================================
     //  ACT 2 ROOMS — sealed behind east wall of Great Hall (col 22)
+    //  Opened by expandZone() after wave 3.
+    //
+    //  Flow: Seal breaks → Bone Gallery (transition + combat)
+    //        → [optional east: Flooded Crypt for loot]
+    //        → south corridor → King's Hollow (boss)
     // =============================================================
 
-    // ===== BONE GALLERY (rows 10-16, cols 23-27) =====
-    // Narrow corridor with alcoves and skeletal remains
-    fillFloor(10, 23, 16, 27, 'stoneUneven');
-    floorMap[10][24] = 'stoneMissing'; floorMap[11][26] = 'stone';
-    floorMap[12][23] = 'stoneMissing'; floorMap[13][25] = 'stoneUneven';
-    floorMap[14][27] = 'stone';        floorMap[15][24] = 'stoneMissing';
-    floorMap[16][26] = 'stoneUneven';
+    // =====================================================
+    //  BONE GALLERY (rows 8-16, cols 23-32)
+    //  Redesigned: stoneTile base with heavy damage patches.
+    //  Feels older and more ruined than the Great Hall.
+    //  Structural collapse theme (beams, debris clusters).
+    // =====================================================
+    fillFloor(8, 23, 16, 32, 'stoneTile');
+    // Heavy damage patches — this place is ancient
+    floorMap[8][24] = 'stoneMissing';  floorMap[8][28] = 'planksHole';
+    floorMap[9][26] = 'stoneInset';    floorMap[9][30] = 'planksBroken';
+    floorMap[10][24] = 'planksHole';   floorMap[10][29] = 'stoneMissing';
+    floorMap[11][27] = 'stoneMissing'; floorMap[11][31] = 'planksBroken';
+    floorMap[12][25] = 'stoneInset';   floorMap[12][28] = 'planksHole';
+    floorMap[13][23] = 'stoneMissing'; floorMap[13][30] = 'planksBroken';
+    floorMap[14][26] = 'planksHole';   floorMap[14][32] = 'stoneMissing';
+    floorMap[15][24] = 'stoneInset';   floorMap[15][29] = 'planksBroken';
+    floorMap[16][27] = 'planksHole';   floorMap[16][31] = 'stoneMissing';
 
-    addWalls(9, 22, 17, 27, 'wallAged');
-    floorMap[9][22] = 'wallCorner';  floorMap[9][27] = 'wallCorner';
-    floorMap[17][22] = 'wallCorner'; floorMap[17][27] = 'wallCorner';
-    floorMap[9][25] = 'wallBroken';  floorMap[17][25] = 'wallAged';
+    addWalls(7, 22, 17, 33, 'wallAged');
+    floorMap[7][22] = 'wallCorner';  floorMap[7][33] = 'wallCorner';
+    floorMap[17][22] = 'wallCorner'; floorMap[17][33] = 'wallCorner';
+    floorMap[7][25] = 'wallBroken';  floorMap[7][28] = 'wallHole';
+    floorMap[7][31] = 'wallWindowBars';
+    floorMap[17][26] = 'wallAged';   floorMap[17][30] = 'wallBroken';
 
-    // Non-blocking bone props on floor
-    placeObj(11, 24, 'woodenPile', false);
-    placeObj(13, 26, 'barrel', false);
-    placeObj(15, 23, 'woodenSupportBeams');
-    placeObj(10, 27, 'stoneColumn');
-    placeObj(16, 23, 'stoneColumn');
+    // Columns — staggered cover lanes
+    placeObj(9, 25, 'stoneColumn');
+    placeObj(9, 30, 'stoneColumn');
+    placeObj(11, 27, 'stoneColumnWood');  // damaged mid-column
+    placeObj(13, 25, 'stoneColumnWood');
+    placeObj(13, 30, 'stoneColumn');
+    placeObj(15, 28, 'stoneColumn');
 
-    // ===== FLOODED CRYPT (rows 2-11, cols 23-27) =====
-    // Large Act 2 arena — water-damaged stone
-    fillFloor(2, 23, 9, 27, 'dirtTiles');
-    floorMap[2][24] = 'planksHole';  floorMap[3][26] = 'planksBroken';
-    floorMap[4][23] = 'stoneMissing'; floorMap[5][25] = 'dirtTiles';
-    floorMap[6][27] = 'planksHole';  floorMap[7][24] = 'planksBroken';
-    floorMap[8][26] = 'stoneMissing'; floorMap[9][23] = 'dirtTiles';
+    // Structural collapse theme — beams and rubble clusters
+    placeObj(8, 23, 'woodenSupportBeams');   // NW collapse
+    placeObj(10, 23, 'woodenSupportBeams');  // W collapse
+    placeObj(14, 32, 'woodenSupportBeams');  // E collapse
+    // Debris clusters suggest skeletal remains (thematic with dungeon tileset)
+    placeObj(11, 32, 'woodenPile', false);   // bone pile proxy
+    placeObj(14, 24, 'woodenPile', false);   // bone pile proxy
+    placeObj(9, 28, 'woodenPile', false);    // bone pile proxy
+    placeObj(16, 27, 'woodenPile', false);   // bone pile proxy
+    // Broken furniture — this was once a gathering hall
+    placeObj(10, 27, 'tableChairsBroken');
+    placeObj(8, 32, 'barrelsStacked');
+    placeObj(16, 23, 'woodenCrates');
 
-    addWalls(1, 22, 10, 27, 'wallAged');
-    floorMap[1][22] = 'wallCorner'; floorMap[1][27] = 'wallCorner';
-    floorMap[10][22] = 'wallCorner'; floorMap[10][27] = 'wallCorner';
-    floorMap[1][25] = 'wallBroken'; floorMap[1][24] = 'wallHole';
+    // Flooded Crypt connects via north wall (rows 7-8, cols 30-31) — see Crypt section below
 
-    // Connect Crypt south to Bone Gallery north (3 tiles)
-    openTile(9, 24, 'stone'); openTile(9, 25, 'stone'); openTile(9, 26, 'stone');
-    openTile(10, 24, 'stone'); openTile(10, 25, 'stone'); openTile(10, 26, 'stone');
+    // South exit framing — paired columns mark the path to the boss
+    placeObj(16, 26, 'stoneColumn');
+    placeObj(16, 29, 'stoneColumn');
 
-    // Columns for cover — loose grid
-    placeObj(4, 25, 'stoneColumn');
-    placeObj(7, 23, 'stoneColumnWood');
-    placeObj(7, 27, 'stoneColumn');
-    placeObj(3, 23, 'stoneColumn');
+    // =====================================================
+    //  FLOODED CRYPT — east side-branch off Bone Gallery
+    //  (rows 10-15, cols 28-33) — optional loot room
+    //  Water-damaged chamber. Reward for exploration.
+    //  NOTE: shares east wall tiles with Gallery. The Gallery
+    //  wall at col 33 is opened (rows 11-13) to connect them.
+    //  Crypt extends further east into its own walled space.
+    // =====================================================
+    // Crypt occupies rows 10-15, cols 28-33 but the west side
+    // overlaps with the Gallery. The actual new space is a 6×4
+    // chamber east of the Gallery: rows 10-15, cols 30-33.
+    // We place it as a side-room off the Gallery's east wall.
+    // Use a small dedicated room east: rows 9-16, cols 28-33
+    // (overlaps Gallery space slightly — the opening at col 33
+    // leads into new tiles at cols 28-33 that we define as
+    // the Crypt itself, but to avoid overlap we place it
+    // fully outside: rows 9-16, cols 28-33)
+    // REVISED: Crypt is a 7×5 room at rows 10-16, cols 28-32
+    // accessed through Gallery east wall opening at col 33.
+    // Wait — col 33 IS the Gallery east wall. Let me use a
+    // clean layout: Crypt at rows 2-8, cols 28-33 (above the
+    // Gallery, northeast corner of the map).
+    // Actually simplest: keep the Crypt in its own space east
+    // of the Gallery. Gallery east wall is at col 33.
+    // Crypt: rows 10-15, cols 28-33... no, that overlaps Gallery.
+    //
+    // CLEAN APPROACH: The Bone Gallery goes cols 23-31.
+    // East wall at col 32. Crypt is a 6×5 room at rows 9-14,
+    // cols 28-32 ABOVE/overlapping Gallery NE — this doesn't
+    // work either since Gallery fills those tiles.
+    //
+    // FINAL: Crypt is in the NE corner, rows 2-7, cols 28-33.
+    // A short corridor (rows 7-8, cols 30-31) drops south
+    // from Crypt to Gallery north wall.
+    // This keeps the U-turn minimal: step north from Gallery
+    // into Crypt, grab loot, step back south. Much shorter
+    // detour than the old layout.
+    // =====================================================
 
-    // Atmospheric props
-    placeObj(2, 27, 'barrelsStacked');
-    placeObj(8, 27, 'woodenCrates');
-    placeObj(5, 23, 'woodenPile');
+    // --- Flooded Crypt (rows 2-7, cols 28-33) ---
+    // NOTE: The Gallery's north wall occupies row 7, cols 22-33.
+    // The Crypt sits directly above (rows 2-7). We manually place
+    // walls to avoid stomping on Gallery floor tiles at row 8.
+    fillFloor(2, 28, 7, 33, 'dirtTiles');
+    floorMap[2][29] = 'planksHole';   floorMap[2][32] = 'planksBroken';
+    floorMap[3][28] = 'stoneMissing'; floorMap[3][31] = 'dirtTiles';
+    floorMap[4][30] = 'planksHole';   floorMap[4][33] = 'planksBroken';
+    floorMap[5][29] = 'planksBroken'; floorMap[5][32] = 'planks';
+    floorMap[6][28] = 'dirtTiles';    floorMap[6][31] = 'planksHole';
+    floorMap[7][30] = 'planksBroken'; floorMap[7][33] = 'dirtTiles';
 
-    // ===== KING'S HOLLOW (rows 17-22, cols 23-27) =====
-    // Boss arena — Slime King fight, tighter space
-    fillFloor(17, 23, 22, 27, 'stoneTile');
-    floorMap[17][24] = 'stoneInset'; floorMap[18][26] = 'stone';
-    floorMap[19][23] = 'stoneUneven'; floorMap[20][25] = 'stoneInset';
-    floorMap[21][27] = 'stone';      floorMap[22][24] = 'stoneUneven';
+    // --- Crypt walls (manual to avoid overwriting Gallery floor at row 8) ---
+    // Top wall (row 1, cols 27-33)
+    for (let c = 27; c <= 33; c++) { floorMap[1][c] = 'wallAged'; blocked[1][c] = true; blockType[1][c] = 'wall'; }
+    floorMap[1][27] = 'wallCorner'; floorMap[1][33] = 'wallCorner';
+    floorMap[1][30] = 'wallBroken'; floorMap[1][32] = 'wallHole';
+    // Left wall (col 27, rows 2-7)
+    for (let r = 2; r <= 7; r++) { floorMap[r][27] = 'wallAged'; blocked[r][27] = true; blockType[r][27] = 'wall'; }
+    // Right wall (col 33, rows 2-7) — only above Gallery north wall
+    // (Gallery right wall at col 33 covers rows 8-16; we cover rows 2-7)
+    // Already set by Gallery's addWalls at row 7 col 33.
+    // We only need rows 2-6; row 7 col 33 is Gallery's north wall corner.
+    for (let r = 2; r <= 6; r++) { floorMap[r][33] = 'wallAged'; blocked[r][33] = true; blockType[r][33] = 'wall'; }
+    // NO south wall at row 8 — that's Gallery floor territory.
+    // The Gallery's north wall (row 7) serves as the shared boundary.
+    // Re-block row 7 tiles that fillFloor turned into Crypt floor —
+    // only cols 30-31 remain open as the passage.
+    for (let c = 28; c <= 33; c++) {
+        if (c === 30 || c === 31) continue;  // passage tiles stay open
+        floorMap[7][c] = 'wallAged'; blocked[7][c] = true; blockType[7][c] = 'wall';
+    }
 
-    addWalls(16, 22, 23, 27, 'wall');
-    floorMap[16][22] = 'wallCorner'; floorMap[16][27] = 'wallCorner';
-    floorMap[23][22] = 'wallCorner'; floorMap[23][27] = 'wallCorner';
-    floorMap[23][25] = 'wallAged';   floorMap[16][25] = 'wallBroken';
+    // Crypt columns for cover
+    placeObj(3, 30, 'stoneColumnWood');
+    placeObj(5, 32, 'stoneColumn');
+    placeObj(6, 29, 'stoneColumn');
+    // Crypt props — waterlogged storage
+    placeObj(2, 33, 'barrelsStacked');
+    placeObj(7, 28, 'woodenCrates');
+    placeObj(4, 28, 'woodenPile');
+    placeObj(2, 28, 'barrel');
+    // Act 2 loot chest — the reward for this side-branch
+    placeObj(5, 30, 'chestClosed');
 
-    // Connect Hollow north to Bone Gallery south (3 tiles)
-    openTile(17, 24, 'stone'); openTile(17, 25, 'stone'); openTile(17, 26, 'stone');
-    openTile(16, 24, 'stoneTile'); openTile(16, 25, 'stoneTile'); openTile(16, 26, 'stoneTile');
+    // --- Passage: Crypt → Gallery (row 7, cols 30-31) ---
+    // Row 7 cols 30-31 already unblocked by fillFloor + re-block skip above.
+    // Ensure floor tile is set correctly for the passage.
+    floorMap[7][30] = 'stone'; floorMap[7][31] = 'stone';
 
-    // Ritual circle (decorative)
-    placeObj(20, 25, 'stairsAged', false);  // repurposed as ritual circle visual
-    placeObj(18, 23, 'stoneColumn');
-    placeObj(18, 27, 'stoneColumn');
-    placeObj(22, 23, 'barrel');
-    placeObj(22, 27, 'woodenCrate');
+    // =====================================================
+    //  KING'S HOLLOW — tightened octagonal boss arena
+    //  (rows 20-29, cols 24-31) — smaller than before.
+    //  ~60 walkable tiles. Slime King's slam AoE threatens
+    //  a real portion of the room. Fewer cover columns.
+    // =====================================================
+    fillFloor(20, 24, 29, 31, 'stoneTile');
 
-    // ===== SEAL DATA — sealed wall tiles at col 22, rows 10-18 =====
-    // These wall tiles block entry to Act 2; expandZone() removes them
+    // Floor variation
+    floorMap[21][26] = 'stone';       floorMap[21][30] = 'stoneInset';
+    floorMap[22][25] = 'stoneUneven'; floorMap[22][29] = 'stone';
+    floorMap[23][27] = 'stoneInset';  floorMap[23][31] = 'stoneMissing';
+    floorMap[24][25] = 'stone';       floorMap[24][29] = 'stoneUneven';
+    floorMap[25][26] = 'stoneMissing'; floorMap[25][30] = 'stoneInset';
+    floorMap[26][25] = 'stone';       floorMap[26][28] = 'stoneUneven';
+    floorMap[27][27] = 'stoneInset';  floorMap[27][30] = 'stone';
+    floorMap[28][26] = 'stoneUneven'; floorMap[28][29] = 'stoneMissing';
+
+    addWalls(19, 23, 29, 32, 'wall');
+    floorMap[19][23] = 'wallCorner'; floorMap[19][32] = 'wallCorner';
+    floorMap[29][23] = 'wallCorner'; floorMap[29][32] = 'wallCorner';
+    floorMap[19][26] = 'wallBroken'; floorMap[19][29] = 'wallAged';
+    floorMap[29][26] = 'wallAged';   floorMap[29][29] = 'wallBroken';
+
+    // Cut corners → octagonal shape (tighter cuts)
+    // NW corner
+    floorMap[20][24] = 'wall'; blocked[20][24] = true; blockType[20][24] = 'wall';
+    floorMap[20][25] = 'wall'; blocked[20][25] = true; blockType[20][25] = 'wall';
+    // NE corner
+    floorMap[20][30] = 'wall'; blocked[20][30] = true; blockType[20][30] = 'wall';
+    floorMap[20][31] = 'wall'; blocked[20][31] = true; blockType[20][31] = 'wall';
+    // SW corner
+    floorMap[29][24] = 'wall'; blocked[29][24] = true; blockType[29][24] = 'wall';
+    floorMap[28][24] = 'wall'; blocked[28][24] = true; blockType[28][24] = 'wall';
+    // SE corner
+    floorMap[29][31] = 'wall'; blocked[29][31] = true; blockType[29][31] = 'wall';
+    floorMap[28][31] = 'wall'; blocked[28][31] = true; blockType[28][31] = 'wall';
+
+    // Corridor: Bone Gallery south → King's Hollow north
+    fillFloor(17, 26, 19, 29, 'stone');
+    floorMap[17][27] = 'stoneUneven'; floorMap[18][28] = 'stoneMissing';
+    openTile(17, 26, 'stone'); openTile(17, 27, 'stone');
+    openTile(17, 28, 'stone'); openTile(17, 29, 'stone');
+    openTile(18, 26, 'stone'); openTile(18, 27, 'stone');
+    openTile(18, 28, 'stone'); openTile(18, 29, 'stone');
+    openTile(19, 26, 'stone'); openTile(19, 27, 'stone');
+    openTile(19, 28, 'stone'); openTile(19, 29, 'stone');
+    floorMap[17][25] = 'wall'; blocked[17][25] = true; blockType[17][25] = 'wall';
+    floorMap[18][25] = 'wall'; blocked[18][25] = true; blockType[18][25] = 'wall';
+    floorMap[17][30] = 'wall'; blocked[17][30] = true; blockType[17][30] = 'wall';
+    floorMap[18][30] = 'wall'; blocked[18][30] = true; blockType[18][30] = 'wall';
+
+    // Arena columns — frame corners inside the octagon (4 total)
+    placeObj(21, 26, 'stoneColumn');     // inner NW
+    placeObj(21, 30, 'stoneColumn');     // inner NE
+    placeObj(27, 26, 'stoneColumn');     // inner SW
+    placeObj(27, 29, 'stoneColumn');     // inner SE
+    // Only 2 interior columns for cover — tighter, more pressure
+    placeObj(24, 27, 'stoneColumn');
+    placeObj(25, 29, 'stoneColumnWood');
+
+    // Ritual circle at center — broken altar + debris cluster
+    placeObj(25, 28, 'stoneColumn', false);    // broken altar centerpiece
+    placeObj(24, 28, 'woodenPile', false);     // ritual debris N
+    placeObj(26, 28, 'woodenPile', false);     // ritual debris S
+    placeObj(25, 27, 'woodenPile', false);     // ritual debris W
+
+    // Arena props — along the octagonal edges, keep center open
+    placeObj(20, 27, 'woodenSupportBeams');    // N edge
+    placeObj(20, 29, 'barrel');                // N edge
+    placeObj(22, 24, 'woodenCrates');          // W edge
+    placeObj(27, 24, 'woodenCrate');           // W edge
+    placeObj(22, 31, 'woodenPile');            // E edge
+    placeObj(27, 31, 'barrels');               // E edge
+    placeObj(28, 27, 'barrelsStacked');        // S edge
+
+    // ===== SEAL DATA — sealed wall tiles at col 22, rows 8-20 =====
+    // Great Hall east wall (addWalls 7,11,21,22) creates side walls at rows 8-20.
+    // All must be cleared for full passage to Act 2.
     const z1SealTiles = [];
-    for (let r = 10; r <= 18; r++) {
+    for (let r = 8; r <= 20; r++) {
         z1SealTiles.push({ r: r, c: 22 });
     }
     zoneSealData[1] = {
         sealTiles: z1SealTiles,
         rubbleTiles: [
-            { r: 10, c: 22, obj: 'woodenPile' },
-            { r: 14, c: 22, obj: 'woodenPile' },
-            { r: 18, c: 22, obj: 'woodenPile' },
+            { r: 8, c: 22, obj: 'woodenPile' },
+            { r: 12, c: 22, obj: 'woodenPile' },
+            { r: 16, c: 22, obj: 'woodenPile' },
         ],
-        chestTile: { r: 13, c: 23 },
+        chestTile: { r: 12, c: 24 },
     };
+
+    // ===== ALCOVE MINI-SEAL — Great Hall north wall (row 7, cols 16-18) =====
+    // Opened after wave 1 clears (before the main expansion).
+    // Stored globally so enemies.js can trigger it.
+    z1AlcoveSealTiles = [
+        { r: 7, c: 16 },
+        { r: 7, c: 17 },
+        { r: 7, c: 18 },
+    ];
 }
 
 // ===== ZONE 2: RUINED TOWER =====
@@ -376,57 +727,116 @@ function generateZone2() {
     // South exit to Corridor
     openTile(7, 22, 'stone'); openTile(7, 23, 'stone'); openTile(7, 24, 'stone');
 
-    // ===== CORRIDOR (rows 7-9, cols 21-25) =====
-    fillFloor(7, 21, 9, 25, 'stone');
-    floorMap[8][22] = 'stoneUneven'; floorMap[8][24] = 'stoneMissing';
+    // ===== CORRIDOR (rows 7-9, cols 22-24) =====
+    // Narrowed to 3 tiles wide to match wall openings in Vestibule and Armory.
+    fillFloor(7, 22, 9, 24, 'stone');
+    floorMap[8][23] = 'stoneUneven';
+    // Side walls enclose the corridor
+    for (let r = 7; r <= 9; r++) {
+        floorMap[r][21] = 'wall'; blocked[r][21] = true; blockType[r][21] = 'wall';
+        floorMap[r][25] = 'wall'; blocked[r][25] = true; blockType[r][25] = 'wall';
+    }
 
-    // ===== ROOM 2: RUINED ARMORY (rows 10-19, cols 18-30) =====
-    fillFloor(10, 18, 19, 30, 'stone');
-    floorMap[11][20] = 'stoneUneven'; floorMap[12][23] = 'stoneMissing';
-    floorMap[13][26] = 'stoneInset'; floorMap[14][19] = 'stone';
-    floorMap[15][28] = 'stoneMissing'; floorMap[16][22] = 'stoneUneven';
-    floorMap[17][25] = 'stoneInset'; floorMap[18][29] = 'stone';
+    // ===== ROOM 2: RUINED ARMORY — L-shaped (main + SE storage alcove) =====
+    // Main hall (rows 10-17, cols 18-30) + storage alcove (rows 18-19, cols 26-30)
+    fillFloor(10, 18, 17, 30, 'stone');
+    // Floor variation — more than before to match Zone 1 quality bar
+    floorMap[10][20] = 'stoneUneven'; floorMap[10][27] = 'stoneMissing';
+    floorMap[11][22] = 'stoneInset';  floorMap[11][29] = 'stone';
+    floorMap[12][19] = 'stoneMissing'; floorMap[12][25] = 'stoneUneven';
+    floorMap[13][21] = 'stone';       floorMap[13][28] = 'stoneInset';
+    floorMap[14][24] = 'stoneMissing'; floorMap[14][30] = 'stone';
+    floorMap[15][19] = 'stoneUneven'; floorMap[15][26] = 'stoneMissing';
+    floorMap[16][22] = 'stoneInset';  floorMap[16][29] = 'stone';
+    floorMap[17][20] = 'stone';       floorMap[17][27] = 'stoneUneven';
 
     addWalls(9, 17, 20, 31, 'wallAged');
     floorMap[9][17] = 'wallCorner';  floorMap[9][31] = 'wallCorner';
     floorMap[20][17] = 'wallCorner'; floorMap[20][31] = 'wallCorner';
     floorMap[9][23] = 'wallBroken';  floorMap[9][27] = 'wallHole';
-    floorMap[20][21] = 'wallAged';   floorMap[20][26] = 'wallBroken';
+    floorMap[20][28] = 'wallAged';
 
     // Connect corridor to armory (3 tiles)
     openTile(9, 22, 'stone'); openTile(9, 23, 'stone'); openTile(9, 24, 'stone');
 
-    placeObj(11, 19, 'woodenCrates');
-    placeObj(11, 29, 'barrelsStacked');
-    placeObj(14, 22, 'tableShort');
-    placeObj(16, 30, 'woodenPile');
-    placeObj(18, 20, 'barrel');
-    placeObj(13, 18, 'stoneColumnWood');
+    // --- L-shape: SE storage alcove (rows 18-19, cols 26-30) ---
+    // The L extends from the main hall's SE corner.
+    // addWalls already placed south wall at row 20 and east wall at col 31.
+    // We open the floor in the alcove area and close off the rest of row 18-19.
+    fillFloor(18, 26, 19, 30, 'stone');
+    floorMap[18][27] = 'stoneMissing'; floorMap[19][29] = 'stoneUneven';
+    // Inner wall: close off rows 18-19 at cols 18-25 (south wall of main hall)
+    for (let c = 18; c <= 25; c++) {
+        floorMap[18][c] = 'wallAged'; blocked[18][c] = true; blockType[18][c] = 'wall';
+    }
+    floorMap[18][17] = 'wallCorner';
+    // Opening from main hall into alcove (cols 26-28 at row 17 south wall stays open
+    // because fillFloor(10,18,17,30) already made row 17 floor)
+
+    // Columns — tactical cover lanes
+    placeObj(11, 21, 'stoneColumn');
+    placeObj(11, 28, 'stoneColumn');
+    placeObj(14, 24, 'stoneColumnWood');  // damaged mid-column
+    placeObj(14, 28, 'stoneColumn');
+    placeObj(16, 21, 'stoneColumn');
+
+    // Props — main hall
+    placeObj(10, 18, 'woodenCrates');
+    placeObj(10, 30, 'barrelsStacked');
+    placeObj(13, 18, 'woodenSupportBeams');
     placeObj(12, 27, 'tableChairsBroken');
-    placeObj(19, 18, 'chestClosed');
+    placeObj(15, 30, 'woodenPile', false);
+    placeObj(17, 18, 'barrel');
+    // Alcove props — storage supplies (reward for exploring the L)
+    placeObj(19, 26, 'woodenCrates');
+    placeObj(18, 30, 'barrelsStacked');
+    placeObj(19, 28, 'chestClosed');  // moved chest to alcove reward
 
     // ===== ROOM 3: GUARD BARRACKS (rows 21-30, cols 20-32) =====
+    // Main barracks + NE watch nook partitioned by columns.
     fillFloor(21, 20, 30, 32, 'stoneTile');
-    floorMap[22][22] = 'stoneUneven'; floorMap[23][26] = 'stoneMissing';
-    floorMap[25][21] = 'stone';      floorMap[26][28] = 'stoneInset';
-    floorMap[28][24] = 'stone';      floorMap[29][30] = 'stoneUneven';
+    // Floor variation — richer than before
+    floorMap[21][22] = 'stone';       floorMap[21][29] = 'stoneInset';
+    floorMap[22][24] = 'stoneUneven'; floorMap[22][31] = 'stone';
+    floorMap[23][20] = 'stone';       floorMap[23][26] = 'stoneMissing';
+    floorMap[24][22] = 'stoneInset';  floorMap[24][30] = 'stone';
+    floorMap[25][21] = 'stoneMissing'; floorMap[25][28] = 'stoneUneven';
+    floorMap[26][25] = 'stone';       floorMap[26][32] = 'stoneInset';
+    floorMap[27][23] = 'stoneUneven'; floorMap[27][30] = 'stone';
+    floorMap[28][21] = 'stone';       floorMap[28][27] = 'stoneMissing';
+    floorMap[29][24] = 'stoneInset';  floorMap[29][31] = 'stoneUneven';
+    floorMap[30][26] = 'stone';       floorMap[30][29] = 'stoneMissing';
 
     addWalls(20, 19, 31, 33, 'wall');
     floorMap[20][19] = 'wallCorner'; floorMap[20][33] = 'wallCorner';
     floorMap[31][19] = 'wallCorner'; floorMap[31][33] = 'wallCorner';
     floorMap[20][25] = 'wallBroken'; floorMap[31][26] = 'wallAged';
     floorMap[31][30] = 'wallBroken';
+    floorMap[20][30] = 'wallWindowBars';
 
     // Connect armory south to barracks north (3 tiles)
     openTile(20, 23, 'stone'); openTile(20, 24, 'stone'); openTile(20, 25, 'stone');
 
+    // --- NE watch nook: columns partition the corner ---
+    placeObj(23, 31, 'stoneColumn');
+    placeObj(23, 32, 'stoneColumn');
+    // Watch nook props
+    placeObj(21, 32, 'woodenCrate');
+    placeObj(22, 31, 'chair');
+
+    // Columns — main barracks cover lanes
+    placeObj(25, 22, 'stoneColumn');
+    placeObj(25, 28, 'stoneColumn');
+    placeObj(28, 25, 'stoneColumnWood');
+    placeObj(28, 31, 'stoneColumn');
+
+    // Props — barracks furniture
     placeObj(22, 21, 'chair');       placeObj(22, 26, 'chair');
-    placeObj(24, 23, 'tableRoundChairs');
-    placeObj(25, 31, 'barrelsStacked');
+    placeObj(24, 24, 'tableRoundChairs');
+    placeObj(26, 31, 'barrelsStacked');
     placeObj(27, 20, 'barrel');
     placeObj(29, 28, 'woodenCrate');
-    placeObj(23, 32, 'stoneColumn');
-    placeObj(28, 32, 'stoneColumn');
+    placeObj(30, 20, 'woodenPile', false);  // debris near seal wall
 
     // ===== SEALED WALL — west wall of Barracks (col 19, rows 23-28) =====
     // Already wall tiles from addWalls; these get removed on expansion.
@@ -436,13 +846,23 @@ function generateZone2() {
     // =============================================================
 
     // ===== COLLAPSED FLOOR (rows 14-27, cols 2-16) =====
+    // Large arena with internal rubble walls that break the space into lanes.
     fillFloor(14, 2, 27, 16, 'stone');
-    floorMap[15][4] = 'stoneMissing';  floorMap[16][8] = 'stoneUneven';
-    floorMap[17][12] = 'stoneMissing'; floorMap[18][6] = 'stoneInset';
-    floorMap[19][10] = 'stoneUneven';  floorMap[20][3] = 'stoneMissing';
-    floorMap[21][14] = 'stone';        floorMap[22][7] = 'stoneUneven';
-    floorMap[23][11] = 'stoneMissing'; floorMap[24][5] = 'stoneInset';
-    floorMap[25][9] = 'stone';         floorMap[26][15] = 'stoneUneven';
+    // Floor variation — heavy damage (this place is collapsing)
+    floorMap[14][4] = 'planksHole';    floorMap[14][10] = 'stoneUneven';
+    floorMap[15][7] = 'stoneMissing';  floorMap[15][13] = 'planksBroken';
+    floorMap[16][3] = 'stoneInset';    floorMap[16][11] = 'planksHole';
+    floorMap[17][8] = 'stoneMissing';  floorMap[17][15] = 'stoneUneven';
+    floorMap[18][5] = 'planksBroken';  floorMap[18][12] = 'stoneInset';
+    floorMap[19][3] = 'stoneMissing';  floorMap[19][9] = 'planksHole';
+    floorMap[20][7] = 'stoneUneven';   floorMap[20][14] = 'planksBroken';
+    floorMap[21][4] = 'planksHole';    floorMap[21][11] = 'stoneMissing';
+    floorMap[22][8] = 'stoneInset';    floorMap[22][15] = 'planksHole';
+    floorMap[23][3] = 'planksBroken';  floorMap[23][12] = 'stoneUneven';
+    floorMap[24][6] = 'stoneMissing';  floorMap[24][14] = 'planksBroken';
+    floorMap[25][10] = 'planksHole';   floorMap[25][16] = 'stoneUneven';
+    floorMap[26][4] = 'stoneInset';    floorMap[26][13] = 'planksHole';
+    floorMap[27][7] = 'stoneUneven';   floorMap[27][15] = 'planksBroken';
 
     addWalls(13, 1, 28, 17, 'wallAged');
     floorMap[13][1] = 'wallCorner';  floorMap[13][17] = 'wallCorner';
@@ -450,28 +870,50 @@ function generateZone2() {
     floorMap[13][6] = 'wallBroken';  floorMap[13][12] = 'wallHole';
     floorMap[28][5] = 'wallAged';    floorMap[28][10] = 'wallBroken';
 
-    // Connect Collapsed Floor east to Barracks west (4 tiles at col 17-19)
-    // Passage carved through sealed wall area
-    fillFloor(23, 17, 28, 19, 'stone');
+    // --- Internal rubble walls: break the 210-tile arena into lanes ---
+    // West rubble wall (row 19, cols 5-8) — partial, forces path around
+    for (let c = 5; c <= 8; c++) {
+        floorMap[19][c] = 'wallAged'; blocked[19][c] = true; blockType[19][c] = 'wall';
+    }
+    floorMap[19][5] = 'wallBroken';  // crumbled end — visual hint it's passable around
+    // East rubble wall (row 23, cols 10-13) — staggered from first
+    for (let c = 10; c <= 13; c++) {
+        floorMap[23][c] = 'wallAged'; blocked[23][c] = true; blockType[23][c] = 'wall';
+    }
+    floorMap[23][13] = 'wallBroken';
+
+    // Connect Collapsed Floor east to Barracks west (passage at cols 17-18)
+    // Col 19 is the SEALED WALL — must NOT be overwritten by fillFloor.
+    // The seal at col 19 rows 23-28 stays blocked until expandZone() opens it.
+    fillFloor(23, 17, 27, 18, 'stone');
     openTile(23, 17, 'stone'); openTile(24, 17, 'stone');
     openTile(25, 17, 'stone'); openTile(26, 17, 'stone');
+    openTile(27, 17, 'stone');
 
-    // Broken support beams scattered
+    // Broken support beams scattered — structural collapse theme
     placeObj(15, 3, 'woodenSupportBeams');
     placeObj(18, 15, 'woodenSupportBeams');
+    placeObj(20, 6, 'woodenSupportBeams');
     placeObj(22, 4, 'woodenSupportBeams');
     placeObj(25, 13, 'woodenSupportBeams');
-    // Columns for cover
-    placeObj(17, 6, 'stoneColumn');
-    placeObj(17, 12, 'stoneColumn');
+    placeObj(27, 8, 'woodenSupportBeams');
+    // Columns for cover — 7 total (more than before)
+    placeObj(16, 5, 'stoneColumn');
+    placeObj(16, 12, 'stoneColumn');
+    placeObj(18, 9, 'stoneColumnWood');     // damaged
     placeObj(21, 4, 'stoneColumnWood');
-    placeObj(21, 10, 'stoneColumn');
-    placeObj(25, 7, 'stoneColumn');
+    placeObj(21, 14, 'stoneColumn');
+    placeObj(24, 8, 'stoneColumn');
+    placeObj(26, 3, 'stoneColumnWood');
     // Edge props
     placeObj(14, 2, 'woodenCrates');
     placeObj(14, 16, 'barrelsStacked');
     placeObj(27, 2, 'barrel');
     placeObj(27, 16, 'woodenPile');
+    // Debris clusters near rubble walls
+    placeObj(19, 4, 'woodenPile', false);
+    placeObj(23, 14, 'woodenPile', false);
+    placeObj(20, 12, 'tableChairsBroken');
 
     // ===== BELL TOWER (rows 4-12, cols 4-12) =====
     fillFloor(4, 4, 12, 12, 'stoneTile');
@@ -498,32 +940,85 @@ function generateZone2() {
     placeObj(4, 4, 'woodenCrate');
     placeObj(4, 12, 'barrel');
 
-    // ===== THRONE ANTECHAMBER — boss arena (rows 29-33, cols 8-22) =====
+    // ===== THRONE ANTECHAMBER — octagonal boss arena (rows 29-33, cols 8-22) =====
     fillFloor(29, 8, 33, 22, 'stoneTile');
-    floorMap[29][10] = 'stoneInset';  floorMap[30][14] = 'stone';
+    // Floor variation — ceremonial feel
+    floorMap[29][11] = 'stoneInset';  floorMap[29][19] = 'stoneInset';
+    floorMap[30][9] = 'stone';        floorMap[30][14] = 'stoneInset';
     floorMap[30][20] = 'stoneUneven'; floorMap[31][12] = 'stoneMissing';
-    floorMap[31][18] = 'stoneInset'; floorMap[32][9] = 'stone';
-    floorMap[32][21] = 'stoneUneven'; floorMap[33][15] = 'stoneInset';
+    floorMap[31][18] = 'stoneInset';  floorMap[32][10] = 'stone';
+    floorMap[32][15] = 'stoneInset';  floorMap[32][21] = 'stoneUneven';
+    floorMap[33][11] = 'stone';       floorMap[33][19] = 'stone';
 
     addWalls(28, 7, 33, 23, 'wall');
     floorMap[28][7] = 'wallCorner';  floorMap[28][23] = 'wallCorner';
     floorMap[33][7] = 'wallCorner';  floorMap[33][23] = 'wallCorner';
-    floorMap[28][14] = 'wallArchway'; floorMap[33][15] = 'wallAged';
+    floorMap[28][14] = 'wallArchway'; floorMap[28][16] = 'wallBroken';
+
+    // Octagonal corner cuts — ceremonial rather than a box
+    // NW corner
+    floorMap[29][8] = 'wall'; blocked[29][8] = true; blockType[29][8] = 'wall';
+    floorMap[29][9] = 'wall'; blocked[29][9] = true; blockType[29][9] = 'wall';
+    // NE corner
+    floorMap[29][21] = 'wall'; blocked[29][21] = true; blockType[29][21] = 'wall';
+    floorMap[29][22] = 'wall'; blocked[29][22] = true; blockType[29][22] = 'wall';
+    // SW corner
+    floorMap[33][8] = 'wall'; blocked[33][8] = true; blockType[33][8] = 'wall';
+    floorMap[33][9] = 'wall'; blocked[33][9] = true; blockType[33][9] = 'wall';
+    // SE corner
+    floorMap[33][21] = 'wall'; blocked[33][21] = true; blockType[33][21] = 'wall';
+    floorMap[33][22] = 'wall'; blocked[33][22] = true; blockType[33][22] = 'wall';
 
     // Connect Collapsed Floor south to Throne north (3 tiles)
     openTile(28, 11, 'stone'); openTile(28, 12, 'stone'); openTile(28, 13, 'stone');
 
-    // Majestic columns
-    placeObj(30, 10, 'stoneColumn');
-    placeObj(30, 20, 'stoneColumn');
-    placeObj(32, 10, 'stoneColumnWood');
-    placeObj(32, 20, 'stoneColumnWood');
+    // Majestic columns — frame the octagon
+    placeObj(30, 10, 'stoneColumn');      // inner NW
+    placeObj(30, 20, 'stoneColumn');      // inner NE
+    placeObj(32, 10, 'stoneColumnWood');  // inner SW (damaged)
+    placeObj(32, 20, 'stoneColumnWood');  // inner SE (damaged)
+    // Interior cover columns
+    placeObj(31, 13, 'stoneColumn');
+    placeObj(31, 17, 'stoneColumn');
 
     placeObj(31, 15, 'chestClosed');  // zone 2 key chest
 
     // Exit stairs
     openTile(33, 15, 'stairs');
     objectMap[33][15] = 'stairsSpiral';
+
+    // Props along octagonal edges
+    placeObj(29, 15, 'woodenSupportBeams');  // N edge
+    placeObj(33, 12, 'barrel');              // S edge
+    placeObj(33, 18, 'woodenCrate');         // S edge
+
+    // ===== SECRET ARMORY — walled alcove off Throne west (rows 31-33, cols 4-6) =====
+    fillFloor(31, 4, 33, 6, 'stoneInset');
+    floorMap[32][5] = 'stoneMissing'; floorMap[33][4] = 'stoneUneven';
+    // Enclosing walls (were missing — floating room before)
+    // North wall (row 30, cols 3-7)
+    for (let c = 3; c <= 7; c++) {
+        floorMap[30][c] = 'wall'; blocked[30][c] = true; blockType[30][c] = 'wall';
+    }
+    floorMap[30][3] = 'wallCorner'; floorMap[30][7] = 'wallCorner';
+    // West wall (col 3, rows 31-33)
+    for (let r = 31; r <= 33; r++) {
+        floorMap[r][3] = 'wall'; blocked[r][3] = true; blockType[r][3] = 'wall';
+    }
+    // South wall (row 33, cols 3-6) — map edge, add wall for visual enclosure
+    // (row 33 floor tiles from fillFloor stay as floor; we wall the OUTSIDE at col 3)
+    // Actually row 33 IS the last row — south wall goes below if we had space.
+    // Instead, reuse the row 33 edge: the map boundary acts as south wall.
+    // We just need the bottom edge of col 3 covered (done above).
+    // Open passage from Throne west wall (col 7) into alcove
+    openTile(31, 7, 'stone'); openTile(32, 7, 'stone');
+    // Props
+    placeObj(32, 5, 'chestClosed');
+    placeObj(31, 4, 'barrel');
+    placeObj(33, 6, 'woodenCrate');
+
+    // Extra chest in Collapsed Floor area
+    placeObj(25, 12, 'chestClosed');
 
     // ===== SEAL DATA — west wall of Barracks (col 19, rows 23-28) =====
     const z2SealTiles = [];
@@ -708,6 +1203,22 @@ function generateZone3() {
     // Exit stairs at south wall of Apex
     openTile(13, 22, 'stairs');
     objectMap[13][22] = 'stairsSpiral';
+
+    // ===== SECRET ALCOVE — hidden room off Apex east wall (rows 6-9, cols 28-30) =====
+    fillFloor(6, 28, 9, 30, 'stoneInset');
+    floorMap[7][29] = 'stoneMissing'; floorMap[8][28] = 'stoneUneven';
+    addWalls(5, 27, 10, 31, 'wall');
+    floorMap[5][27] = 'wallCorner'; floorMap[5][31] = 'wallCorner';
+    floorMap[10][27] = 'wallCorner'; floorMap[10][31] = 'wallCorner';
+    // Open full passage through east wall (col 27) to connect all rows
+    openTile(6, 27, 'stone'); openTile(7, 27, 'stone');
+    openTile(8, 27, 'stone'); openTile(9, 27, 'stone');
+    placeObj(6, 29, 'chestClosed');
+    placeObj(9, 30, 'barrelsStacked');
+    placeObj(7, 28, 'woodenCrate');
+
+    // Extra chest in Spiral Ascent corridor
+    placeObj(18, 20, 'chestClosed');
 
     // ===== SEAL DATA — east wall tiles (col 14, rows 15-20) =====
     const z3SealTiles = [];
@@ -1450,6 +1961,21 @@ function generateHellZone() {
     openTile(31, 26, 'stairs');
     openTile(31, 27, 'stairs');
 
+    // ===== SECRET CHAMBER — hidden alcove off Knight's Forge west wall (rows 26-28, cols 18-20) =====
+    fillFloor(26, 18, 28, 20, 'h_arch1');
+    floorMap[27][19] = 'h_floor2'; floorMap[28][18] = 'h_floor3';
+    openTile(26, 18, 'h_arch1'); openTile(26, 19, 'h_arch1'); openTile(26, 20, 'h_arch1');
+    openTile(27, 18, 'h_arch1'); openTile(27, 19, 'h_arch1'); openTile(27, 20, 'h_arch1');
+    openTile(28, 18, 'h_arch1'); openTile(28, 19, 'h_arch1'); openTile(28, 20, 'h_arch1');
+    // Open passage through west wall (col 21) into Forge
+    openTile(27, 21, 'stone'); openTile(28, 21, 'stone');
+    placeObj(27, 19, 'chestClosed');
+    hellObj(26, 18, 'h_skull3', false);
+    hellObj(28, 20, 'h_bones1', false);
+
+    // Extra chest in Sacrificial Pits area
+    placeObj(16, 25, 'chestClosed');
+
     // ===== SEAL DATA — east wall of Crucible (col 19, rows 13-19) =====
     const z4SealTiles = [];
     for (let r = 13; r <= 19; r++) {
@@ -1596,6 +2122,21 @@ function generateZone5() {
     // Boss exit stairs
     openTile(32, 27, 'stairs');
     openTile(32, 28, 'stairs');
+
+    // ===== FROZEN CACHE — hidden room off Wyrm's Nest west wall (rows 25-27, cols 19-21) =====
+    fillFloor(25, 19, 27, 21, 'stoneTile');
+    floorMap[26][20] = 'stoneInset'; floorMap[27][19] = 'stoneMissing';
+    openTile(25, 19, 'stoneTile'); openTile(25, 20, 'stoneTile'); openTile(25, 21, 'stoneTile');
+    openTile(26, 19, 'stoneTile'); openTile(26, 20, 'stoneTile'); openTile(26, 21, 'stoneTile');
+    openTile(27, 19, 'stoneTile'); openTile(27, 20, 'stoneTile'); openTile(27, 21, 'stoneTile');
+    // Open passage through west wall (col 22) into Wyrm's Nest
+    openTile(26, 22, 'stone'); openTile(27, 22, 'stone');
+    placeObj(26, 20, 'chestClosed');
+    placeObj(25, 19, 'barrel');
+    placeObj(27, 21, 'woodenCrates');
+
+    // Extra chest in Frozen Gallery
+    placeObj(8, 15, 'chestClosed');
 
     // ===== SEAL DATA — east wall of Frozen Gallery (col 19, rows 10-15) =====
     const z5SealTiles = [];

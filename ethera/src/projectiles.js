@@ -113,33 +113,33 @@ function drawProjectiles() {
         ctx.fill();
         ctx.restore();
 
-        // === ACID PROJECTILE (slime — red spit) ===
+        // === ACID PROJECTILE (slime — green acid spit) ===
         if (p.isAcid) {
             // Acid pool glow on ground
             ctx.save();
-            ctx.globalCompositeOperation = 'screen';
+            ctx.globalCompositeOperation = 'lighter';
             const acidR = 40;
             const acidGlow = ctx.createRadialGradient(px, py + 6, 0, px, py + 6, acidR);
-            acidGlow.addColorStop(0, 'rgba(220, 80, 80, 0.4)');
-            acidGlow.addColorStop(0.5, 'rgba(180, 50, 50, 0.2)');
-            acidGlow.addColorStop(1, 'rgba(100, 30, 30, 0)');
+            acidGlow.addColorStop(0, 'rgba(80, 220, 40, 0.35)');
+            acidGlow.addColorStop(0.5, 'rgba(50, 160, 30, 0.15)');
+            acidGlow.addColorStop(1, 'rgba(30, 80, 15, 0)');
             ctx.fillStyle = acidGlow;
             ctx.beginPath();
             ctx.ellipse(px, py + 6, acidR, acidR * 0.45, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
 
-            // Acid blob (red slimy)
+            // Acid blob (green slimy)
             ctx.save();
             ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = 0.75;
-            ctx.fillStyle = 'rgba(220, 70, 70, 0.8)';
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = 'rgba(70, 210, 40, 0.9)';
             ctx.beginPath();
             ctx.arc(px, py, p.size, 0, Math.PI * 2);
             ctx.fill();
             // Shiny spot
             ctx.globalAlpha = 0.5;
-            ctx.fillStyle = '#ffcccc';
+            ctx.fillStyle = '#ccffcc';
             ctx.beginPath();
             ctx.arc(px - p.size * 0.3, py - p.size * 0.3, p.size * 0.4, 0, Math.PI * 2);
             ctx.fill();
@@ -147,32 +147,45 @@ function drawProjectiles() {
             continue;
         }
 
-        // === BONE PROJECTILE (skeleton) ===
+        // === BONE PROJECTILE (skeleton — player form) ===
         if (p.isBone) {
-            // Bone shard glow on ground
+            // Brighter ground glow — green-tinted to match skeleton form theme
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
-            const boneR = 30;
+            const boneR = 32;
             const boneGlow = ctx.createRadialGradient(px, py + 6, 0, px, py + 6, boneR);
-            boneGlow.addColorStop(0, 'rgba(230, 220, 180, 0.3)');
-            boneGlow.addColorStop(0.5, 'rgba(180, 170, 140, 0.12)');
-            boneGlow.addColorStop(1, 'rgba(100, 90, 70, 0)');
+            boneGlow.addColorStop(0, 'rgba(200, 240, 160, 0.4)');
+            boneGlow.addColorStop(0.4, 'rgba(160, 200, 120, 0.18)');
+            boneGlow.addColorStop(1, 'rgba(80, 120, 50, 0)');
             ctx.fillStyle = boneGlow;
             ctx.beginPath();
             ctx.ellipse(px, py + 6, boneR, boneR * 0.45, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
 
-            // Bone shard (ivory jagged shape)
+            // Bone shard — brighter ivory with green energy edge
             ctx.save();
-            ctx.globalAlpha = 0.85;
-            // Convert tile-space velocity to screen-space angle for rotation
-            const bScreenX = (p.vc - p.vr);          // screen X from tile velocity
-            const bScreenY = (p.vc + p.vr) * 0.5;    // screen Y from tile velocity
+            ctx.globalAlpha = 0.92;
+            const bScreenX = (p.vc - p.vr);
+            const bScreenY = (p.vc + p.vr) * 0.5;
             const bAngle = Math.atan2(bScreenY, bScreenX);
             ctx.translate(px, py);
             ctx.rotate(bAngle);
-            ctx.fillStyle = '#e8e0c8';
+            // Outer glow halo
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = 'rgba(180, 220, 120, 0.5)';
+            ctx.beginPath();
+            ctx.moveTo(-p.size * 1.6, 0);
+            ctx.lineTo(-p.size * 0.5, -p.size * 0.8);
+            ctx.lineTo(p.size * 1.6, 0);
+            ctx.lineTo(-p.size * 0.5, p.size * 0.8);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            // Core bone shape — bright warm white
+            ctx.fillStyle = '#f0ecd4';
             ctx.beginPath();
             ctx.moveTo(-p.size * 1.2, 0);
             ctx.lineTo(-p.size * 0.4, -p.size * 0.5);
@@ -180,9 +193,9 @@ function drawProjectiles() {
             ctx.lineTo(-p.size * 0.4, p.size * 0.5);
             ctx.closePath();
             ctx.fill();
-            // Highlight edge
-            ctx.strokeStyle = 'rgba(255,255,240,0.6)';
-            ctx.lineWidth = 0.8;
+            // Bright highlight edge
+            ctx.strokeStyle = 'rgba(255, 255, 220, 0.8)';
+            ctx.lineWidth = 1.0;
             ctx.stroke();
             ctx.restore();
             continue;

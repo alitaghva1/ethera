@@ -5,7 +5,7 @@
 const lichState = {
     soulEnergy: 0,
     maxSoulEnergy: 100,
-    soulRegen: 2.0,       // passive soul regen per second (slow but steady)
+    soulRegen: 4.0,       // passive soul regen per second (buffed from 2.0 — lich should feel powerful)
     undeadMinions: [],    // raised undead allies
     maxMinions: 2,
     shadowStepCooldown: 0,
@@ -17,6 +17,20 @@ const lichState = {
     _phylacteryUsed: false,
     corpseLocations: [],  // track where enemies died for soul harvest
 };
+
+// Reset all lich form state (called on form switch to clean up minions, corpses, etc.)
+function resetLichState() {
+    lichState.soulEnergy = 0;
+    lichState.undeadMinions.length = 0;
+    lichState.shadowStepCooldown = 0;
+    lichState.lifeTapCooldown = 0;
+    lichState.hoverOffset = 0;
+    lichState.hoverTime = 0;
+    lichState.deathAuraTimer = 0;
+    lichState.spectralCloakTimer = 0;
+    lichState._phylacteryUsed = false;
+    lichState.corpseLocations.length = 0;
+}
 
 function updateLich(dt) {
     const config = FORM_CONFIGS.lich;
@@ -101,7 +115,7 @@ function updateLich(dt) {
         proj.isDark = true; // dark magic rendering
         // trail ring buffer initialized by getPooledProj()
         projectiles.push(proj);
-        if (sfxCtx) sfxFireballShoot();
+        if (sfxCtx) sfxLichSoulBolt(); // dedicated lich soul bolt SFX
     }
 
     if (player.attacking) {
@@ -784,9 +798,28 @@ formHandlers.lich.onDodge = function() {
 
     // Only teleport if we found a point beyond the player's current position
     if (bestRow !== player.row || bestCol !== player.col) {
+        // VFX: shadow burst at departure point
+        const _depPos = tileToScreen(player.row, player.col);
+        const _dpx = _depPos.x + cameraX, _dpy = _depPos.y + cameraY;
+        for (let _si = 0; _si < 8; _si++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 20 + Math.random() * 30;
+            _emitParticle(_dpx, _dpy, Math.cos(angle) * speed, Math.sin(angle) * speed - 10,
+                0.4 + Math.random() * 0.3, 4 + Math.random() * 4, '#6622aa', 0.6, 'shadowStep', 'lighter');
+        }
         player.row = bestRow;
         player.col = bestCol;
+        // VFX: dark arrival burst at destination
+        const _arrPos = tileToScreen(player.row, player.col);
+        const _apx = _arrPos.x + cameraX, _apy = _arrPos.y + cameraY;
+        for (let _ai = 0; _ai < 8; _ai++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 15 + Math.random() * 25;
+            _emitParticle(_apx, _apy, Math.cos(angle) * speed, Math.sin(angle) * speed - 8,
+                0.35 + Math.random() * 0.25, 3 + Math.random() * 5, '#9944cc', 0.5, 'shadowStep', 'lighter');
+        }
     }
+    sfxShadowStep();
 
     // Spectral cloak
     if (getUpgrade('spectral_cloak') > 0) {

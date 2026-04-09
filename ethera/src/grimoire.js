@@ -689,7 +689,7 @@ function drawMenuStatus(x, y, w, h, fa) {
     ly += 22;
 
     // --- XP bar ---
-    const xpRatio = xpState.xp / xpState.xpToNext;
+    const xpRatio = xpState.xpToNext > 0 ? xpState.xp / xpState.xpToNext : 0;
     ctx.globalAlpha = fa * 0.4;
     ctx.font = '9px Georgia';
     ctx.fillStyle = labelCol;

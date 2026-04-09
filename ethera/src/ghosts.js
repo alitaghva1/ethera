@@ -15,12 +15,12 @@ function updateGhosts(dt) {
 function _getGhostSpriteInfo(form, state, dir8) {
     const d = dir8 || 'S';
 
-    // Always use red-tinted legacy slime sprites
+    // Use original green slime sprites (via slimeTintedSprites cache)
     if (form === 'slime') {
         const key = state === 'walk' ? 'slime_p_walk' : 'slime_p_idle';
         return {
             sheet: slimeTintedSprites[key] || images[key],
-            frameCount: 6, frameW: 100, frameH: 100, scale: 1.3, // frameCount=6 matches Tiny RPG slime spritesheet
+            frameCount: 6, frameW: 100, frameH: 100, scale: 1.8,
         };
     }
     if (form === 'skeleton') {

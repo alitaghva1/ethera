@@ -11,7 +11,9 @@ function summonTowerAt(row, col) {
     player.manaRegenTimer = MANA_REGEN_DELAY;
 
     // Duration = mana sacrificed in seconds (1 MP = 1 second)
-    const duration = manaSacrificed;
+    // Tower Mastery: +25% duration per stack (wizard only)
+    const towerMasteryStacks = (FormSystem.currentForm === 'wizard') ? getUpgrade('tower_mastery') : 0;
+    const duration = manaSacrificed * (1 + towerMasteryStacks * 0.25);
 
     summons.push({
         row, col,
@@ -33,7 +35,7 @@ function summonTowerAt(row, col) {
 function updatePlacement(dt) {
     // --- Channeling phase ---
     if (placement.channeling) {
-        placement.channelTimer += (dt || 1/60); // use real dt, fallback to 1/60 (BUG-027 fix)
+        placement.channelTimer += (dt != null ? dt : 1/60); // use real dt, fallback to 1/60 (BUG-027 fix). Don't increment on dt=0 pause frames
         // Interrupt if player takes damage (checked via invincibility timer starting)
         // Use fallback invTime if PLAYER_INV_TIME not available (defined in enemies.js)
         const invTime = (typeof PLAYER_INV_TIME !== 'undefined') ? PLAYER_INV_TIME : 0.8;
@@ -204,7 +206,9 @@ function updateTowerBolts(dt) {
                     b.hit = true; b.life = 0.2;
                     break;
                 }
-                const baseDmg = TOWER_DAMAGE + (equipBonus.towerDmgBonus || 0);
+                // Tower Mastery: +20% tower damage per stack (wizard only)
+                const towerMasteryDmg = (FormSystem.currentForm === 'wizard') ? getUpgrade('tower_mastery') * 0.20 : 0;
+                const baseDmg = Math.round((TOWER_DAMAGE + (equipBonus.towerDmgBonus || 0)) * (1 + towerMasteryDmg));
                 e.hp -= baseDmg;
                 b.hit = true; b.life = 0.2;
 

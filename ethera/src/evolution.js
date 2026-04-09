@@ -1,6 +1,42 @@
 // ============================================================
 //  EVOLUTION SYSTEM
 // ============================================================
+
+// --- Evolution Surge: temporary power boost after each evolution ---
+// Makes each new form feel immediately stronger than the old one.
+const evolutionSurge = {
+    active: false,
+    timer: 0,
+    duration: 30,       // full surge lasts 30 seconds
+    fadeDuration: 10,   // fades over the last 10 seconds
+    dmgMult: 1.25,      // +25% damage during surge
+    speedMult: 1.15,    // +15% move speed during surge
+};
+
+// Returns current surge multipliers (1.0 when inactive)
+function getEvolutionSurgeBonus() {
+    if (!evolutionSurge.active) return { dmgMult: 1, speedMult: 1 };
+    const remaining = evolutionSurge.duration - evolutionSurge.timer;
+    // Fade during last 10 seconds
+    let intensity = 1;
+    if (remaining < evolutionSurge.fadeDuration) {
+        intensity = remaining / evolutionSurge.fadeDuration;
+    }
+    return {
+        dmgMult: 1 + (evolutionSurge.dmgMult - 1) * intensity,
+        speedMult: 1 + (evolutionSurge.speedMult - 1) * intensity,
+    };
+}
+
+function updateEvolutionSurge(dt) {
+    if (!evolutionSurge.active) return;
+    evolutionSurge.timer += dt;
+    if (evolutionSurge.timer >= evolutionSurge.duration) {
+        evolutionSurge.active = false;
+        evolutionSurge.timer = 0;
+    }
+}
+
 const EVOLUTION_REQUIREMENTS = {
     slime_to_skeleton: {
         absorbed: 8,        // absorb 8 enemies → teaches resource gathering
@@ -100,9 +136,10 @@ function updateEvolution(dt) {
             FormSystem.talisman.level++;
             FormSystem.talisman.xp = 0;
             // Unequip items for non-equipment forms
-            // Slime and Skeleton do not have equipment (hasEquipment: false),
-            // so any equipped items must be returned to the backpack
-            if (evolutionState.targetForm === 'slime' || evolutionState.targetForm === 'skeleton') {
+            // Check the target form's config — if it can't use equipment,
+            // return all equipped items to the backpack
+            const targetConfig = FORM_CONFIGS[evolutionState.targetForm];
+            if (targetConfig && !targetConfig.hasEquipment) {
                 const slots = ['wand', 'robe', 'amulet', 'ring'];
                 for (const slot of slots) {
                     if (inventory.equipped[slot]) {
@@ -111,9 +148,36 @@ function updateEvolution(dt) {
                     }
                 }
             }
-            // Start lich form with initial soul energy
+            // --- Clean up state from previous form ---
+            // Reset ALL forms to prevent stale state (acid puddles, split clones, minions, etc.)
+            if (typeof resetSlimeState === 'function') resetSlimeState();
+            if (typeof resetSkeletonState === 'function') resetSkeletonState();
+            if (typeof resetLichState === 'function') resetLichState();
+            if (typeof resetWizardState === 'function') resetWizardState();
+
+            // --- Evolution Surge: activate temporary power boost ---
+            evolutionSurge.active = true;
+            evolutionSurge.timer = 0;
+
+            // --- Form-specific starting bonuses ---
+            // Give each new form a head start so it feels immediately powerful
+            if (evolutionState.targetForm === 'skeleton') {
+                if (typeof skeletonState !== 'undefined') {
+                    skeletonState.stamina = skeletonState.maxStamina || 100;
+                    skeletonState.boneAmmo = skeletonState.maxBoneAmmo || 6;
+                    skeletonState.comboCount = 2;  // start with a combo head-start
+                }
+            }
+            if (evolutionState.targetForm === 'wizard') {
+                // Wizard already starts at full mana from the stat reset above.
+                // The surge buff handles the power spike feeling.
+            }
             if (evolutionState.targetForm === 'lich') {
-                if (typeof lichState !== 'undefined') lichState.soulEnergy = 25;
+                if (typeof lichState !== 'undefined') {
+                    lichState.soulEnergy = 50;
+                    // Reset shadow step cooldown so player can immediately teleport
+                    lichState.shadowStepCooldown = 0;
+                }
             }
         }
     } else if (t < 6.0) {

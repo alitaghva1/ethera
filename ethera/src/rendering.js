@@ -424,6 +424,564 @@ function drawBloodStain() {
     ctx.restore();
 }
 
+// ============================================================
+//  ENVIRONMENTAL LIGHT SOURCES
+//  Adds visual anchor points (torches, braziers, crystals, etc.)
+//  to make zones feel authored rather than flat. Drawn in two passes:
+//  1) Floor glow props (before darkness) — warm/cool circles on floor
+//  2) Punchthrough (after darkness) — screen-blend to actually brighten
+// ============================================================
+
+const ENV_LIGHTS = {};
+
+function buildEnvironmentLights() {
+    for (const k in ENV_LIGHTS) delete ENV_LIGHTS[k];
+
+    // ── ZONE 1: The Undercroft ──
+    ENV_LIGHTS[1] = [
+        // Cell — dim candles near player start
+        { row: 2, col: 3, type: 'candle', color: [220, 180, 100], radius: 35, intensity: 0.5 },
+        { row: 5, col: 2, type: 'candle', color: [220, 180, 100], radius: 30, intensity: 0.4 },
+        // Corridor 1 entrance — wall torch
+        { row: 7, col: 4, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        // Guard Hall — braziers at corners, fire pit center
+        { row: 10, col: 2, type: 'brazier', color: [255, 160, 60], radius: 60, intensity: 0.8 },
+        { row: 10, col: 7, type: 'brazier', color: [255, 160, 60], radius: 60, intensity: 0.8 },
+        { row: 16, col: 2, type: 'torch', color: [255, 180, 80], radius: 45, intensity: 0.65 },
+        { row: 16, col: 7, type: 'torch', color: [255, 180, 80], radius: 45, intensity: 0.65 },
+        { row: 13, col: 5, type: 'fire_pit', color: [255, 140, 40], radius: 55, intensity: 0.75 },
+        // Corridor 2
+        { row: 12, col: 10, type: 'torch', color: [255, 180, 80], radius: 40, intensity: 0.6 },
+        // Great Hall — torches along aisles, central brazier
+        { row: 9, col: 13, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 9, col: 20, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 14, col: 17, type: 'brazier', color: [255, 150, 50], radius: 70, intensity: 0.85 },
+        { row: 19, col: 13, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 19, col: 20, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        // Alcove — green crystal
+        { row: 4, col: 17, type: 'crystal', color: [100, 220, 140], radius: 50, intensity: 0.6 },
+        // Act 2: Bone Gallery
+        { row: 9, col: 24, type: 'torch', color: [255, 170, 70], radius: 50, intensity: 0.7 },
+        { row: 9, col: 31, type: 'torch', color: [255, 170, 70], radius: 50, intensity: 0.7 },
+        { row: 14, col: 27, type: 'brazier', color: [255, 140, 40], radius: 65, intensity: 0.8 },
+        // Flooded Crypt — cool blue crystal
+        { row: 4, col: 24, type: 'crystal', color: [120, 180, 220], radius: 45, intensity: 0.55 },
+        { row: 4, col: 26, type: 'candle', color: [200, 180, 140], radius: 30, intensity: 0.4 },
+        // King's Hollow — boss room
+        { row: 21, col: 24, type: 'brazier', color: [255, 120, 40], radius: 70, intensity: 0.9 },
+        { row: 21, col: 31, type: 'brazier', color: [255, 120, 40], radius: 70, intensity: 0.9 },
+        { row: 28, col: 27, type: 'fire_pit', color: [255, 100, 30], radius: 80, intensity: 0.95 },
+    ];
+
+    // ── ZONE 2: Ruined Tower ──
+    ENV_LIGHTS[2] = [
+        { row: 3, col: 3, type: 'torch', color: [255, 180, 80], radius: 45, intensity: 0.65 },
+        { row: 3, col: 7, type: 'torch', color: [255, 180, 80], radius: 45, intensity: 0.65 },
+        { row: 5, col: 11, type: 'candle', color: [220, 180, 100], radius: 30, intensity: 0.5 },
+        { row: 2, col: 15, type: 'torch', color: [255, 170, 70], radius: 50, intensity: 0.7 },
+        { row: 2, col: 23, type: 'torch', color: [255, 170, 70], radius: 50, intensity: 0.7 },
+        { row: 5, col: 19, type: 'brazier', color: [255, 150, 50], radius: 65, intensity: 0.8 },
+        { row: 7, col: 15, type: 'torch', color: [255, 170, 70], radius: 50, intensity: 0.7 },
+        { row: 10, col: 15, type: 'candle', color: [220, 180, 100], radius: 35, intensity: 0.5 },
+        { row: 9, col: 19, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 9, col: 27, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 13, col: 23, type: 'brazier', color: [255, 140, 40], radius: 60, intensity: 0.8 },
+        { row: 15, col: 19, type: 'torch', color: [255, 180, 80], radius: 45, intensity: 0.65 },
+        { row: 18, col: 21, type: 'brazier', color: [255, 120, 40], radius: 70, intensity: 0.9 },
+        { row: 18, col: 27, type: 'brazier', color: [255, 120, 40], radius: 70, intensity: 0.9 },
+        { row: 22, col: 24, type: 'fire_pit', color: [255, 100, 30], radius: 75, intensity: 0.95 },
+    ];
+
+    // ── ZONE 3: The Spire ──
+    ENV_LIGHTS[3] = [
+        { row: 2, col: 2, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 2, col: 8, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 5, col: 5, type: 'brazier', color: [255, 160, 60], radius: 60, intensity: 0.8 },
+        { row: 5, col: 12, type: 'candle', color: [220, 180, 100], radius: 35, intensity: 0.5 },
+        { row: 9, col: 11, type: 'brazier', color: [255, 140, 40], radius: 65, intensity: 0.85 },
+        { row: 9, col: 21, type: 'brazier', color: [255, 140, 40], radius: 65, intensity: 0.85 },
+        { row: 13, col: 16, type: 'fire_pit', color: [255, 120, 30], radius: 80, intensity: 0.95 },
+        { row: 17, col: 11, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+        { row: 17, col: 21, type: 'torch', color: [255, 180, 80], radius: 50, intensity: 0.7 },
+    ];
+
+    // ── ZONE 4: The Inferno ──
+    ENV_LIGHTS[4] = [
+        { row: 3, col: 10, type: 'lava_crack', color: [255, 80, 20], radius: 55, intensity: 0.8 },
+        { row: 3, col: 17, type: 'lava_crack', color: [255, 80, 20], radius: 55, intensity: 0.8 },
+        { row: 6, col: 13, type: 'fire_pit', color: [255, 100, 20], radius: 70, intensity: 0.9 },
+        { row: 9, col: 7, type: 'lava_crack', color: [255, 60, 10], radius: 45, intensity: 0.7 },
+        { row: 9, col: 20, type: 'lava_crack', color: [255, 60, 10], radius: 45, intensity: 0.7 },
+        { row: 12, col: 5, type: 'fire_pit', color: [255, 100, 20], radius: 75, intensity: 0.9 },
+        { row: 12, col: 22, type: 'fire_pit', color: [255, 100, 20], radius: 75, intensity: 0.9 },
+        { row: 18, col: 13, type: 'lava_crack', color: [255, 80, 20], radius: 80, intensity: 0.95 },
+        { row: 24, col: 5, type: 'fire_pit', color: [255, 90, 15], radius: 65, intensity: 0.85 },
+        { row: 24, col: 22, type: 'fire_pit', color: [255, 90, 15], radius: 65, intensity: 0.85 },
+    ];
+
+    // ── ZONE 5: The Frozen Abyss ──
+    ENV_LIGHTS[5] = [
+        { row: 3, col: 12, type: 'ice_crystal', color: [100, 180, 255], radius: 55, intensity: 0.7 },
+        { row: 3, col: 17, type: 'ice_crystal', color: [100, 180, 255], radius: 55, intensity: 0.7 },
+        { row: 8, col: 8, type: 'ice_crystal', color: [80, 160, 240], radius: 45, intensity: 0.6 },
+        { row: 8, col: 21, type: 'ice_crystal', color: [80, 160, 240], radius: 45, intensity: 0.6 },
+        { row: 12, col: 5, type: 'ice_crystal', color: [100, 180, 255], radius: 65, intensity: 0.8 },
+        { row: 12, col: 24, type: 'ice_crystal', color: [100, 180, 255], radius: 65, intensity: 0.8 },
+        { row: 17, col: 14, type: 'ice_crystal', color: [120, 200, 255], radius: 75, intensity: 0.85 },
+        { row: 20, col: 5, type: 'ice_crystal', color: [80, 160, 240], radius: 55, intensity: 0.7 },
+        { row: 20, col: 24, type: 'ice_crystal', color: [80, 160, 240], radius: 55, intensity: 0.7 },
+        { row: 25, col: 14, type: 'ice_crystal', color: [140, 200, 255], radius: 80, intensity: 0.9 },
+    ];
+
+    // ── ZONE 6: Throne of Ruin ──
+    ENV_LIGHTS[6] = [
+        { row: 3, col: 13, type: 'void_flame', color: [180, 80, 255], radius: 55, intensity: 0.7 },
+        { row: 3, col: 18, type: 'void_flame', color: [180, 80, 255], radius: 55, intensity: 0.7 },
+        { row: 10, col: 7, type: 'void_flame', color: [160, 60, 240], radius: 50, intensity: 0.65 },
+        { row: 10, col: 24, type: 'void_flame', color: [160, 60, 240], radius: 50, intensity: 0.65 },
+        { row: 14, col: 4, type: 'void_flame', color: [180, 80, 255], radius: 65, intensity: 0.85 },
+        { row: 14, col: 27, type: 'void_flame', color: [180, 80, 255], radius: 65, intensity: 0.85 },
+        { row: 20, col: 15, type: 'void_flame', color: [200, 100, 255], radius: 80, intensity: 0.95 },
+        { row: 26, col: 4, type: 'void_flame', color: [160, 60, 240], radius: 60, intensity: 0.75 },
+        { row: 26, col: 27, type: 'void_flame', color: [160, 60, 240], radius: 60, intensity: 0.75 },
+    ];
+
+    // ── ZONE 0: The Hamlet (outdoor) ──
+    ENV_LIGHTS[0] = [
+        { row: 10, col: 10, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
+        { row: 10, col: 20, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
+        { row: 20, col: 10, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
+        { row: 20, col: 20, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
+        { row: 15, col: 15, type: 'brazier', color: [255, 190, 100], radius: 65, intensity: 0.7 },
+    ];
+}
+
+const _envLightCache = {};
+
+function _getEnvLightGlow(light) {
+    const key = `env_${light.type}_${light.radius}_${light.color.join(',')}`;
+    if (_envLightCache[key]) return _envLightCache[key];
+
+    const r = light.radius;
+    const size = r * 2;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const lctx = c.getContext('2d');
+    const [cr, cg, cb] = light.color;
+    const grad = lctx.createRadialGradient(r, r, 0, r, r, r);
+
+    if (light.type === 'torch' || light.type === 'brazier' || light.type === 'fire_pit') {
+        grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.6)`);
+        grad.addColorStop(0.3, `rgba(${cr}, ${Math.max(0,cg-40)}, ${Math.max(0,cb-30)}, 0.3)`);
+        grad.addColorStop(0.7, `rgba(${Math.max(0,cr-80)}, ${Math.max(0,cg-60)}, ${Math.max(0,cb-40)}, 0.08)`);
+        grad.addColorStop(1, `rgba(${Math.max(0,cr-120)}, ${Math.max(0,cg-80)}, 0, 0)`);
+    } else if (light.type === 'candle') {
+        grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.45)`);
+        grad.addColorStop(0.4, `rgba(${cr}, ${cg}, ${cb}, 0.15)`);
+        grad.addColorStop(1, `rgba(${Math.max(0,cr-80)}, ${Math.max(0,cg-60)}, 0, 0)`);
+    } else if (light.type === 'crystal' || light.type === 'ice_crystal') {
+        grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.5)`);
+        grad.addColorStop(0.25, `rgba(${cr}, ${cg}, ${cb}, 0.25)`);
+        grad.addColorStop(0.6, `rgba(${Math.max(0,cr-30)}, ${Math.max(0,cg-20)}, ${cb}, 0.08)`);
+        grad.addColorStop(1, `rgba(0, ${Math.max(0,cg-60)}, ${Math.max(0,cb-40)}, 0)`);
+    } else if (light.type === 'lava_crack') {
+        grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.55)`);
+        grad.addColorStop(0.2, `rgba(${cr}, ${Math.max(0,cg-30)}, 0, 0.35)`);
+        grad.addColorStop(0.5, `rgba(${Math.max(0,cr-60)}, 0, 0, 0.12)`);
+        grad.addColorStop(1, 'rgba(40, 0, 0, 0)');
+    } else if (light.type === 'void_flame') {
+        grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.55)`);
+        grad.addColorStop(0.25, `rgba(${Math.max(0,cr-30)}, ${Math.max(0,cg-20)}, ${cb}, 0.28)`);
+        grad.addColorStop(0.6, `rgba(${Math.max(0,cr-80)}, 0, ${Math.max(0,cb-40)}, 0.08)`);
+        grad.addColorStop(1, 'rgba(20, 0, 30, 0)');
+    } else {
+        grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.5)`);
+        grad.addColorStop(0.5, `rgba(${cr}, ${cg}, ${cb}, 0.15)`);
+        grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
+    }
+
+    lctx.fillStyle = grad;
+    lctx.fillRect(0, 0, size, size);
+    _envLightCache[key] = c;
+    return c;
+}
+
+function _envLightFlicker(light, now) {
+    const seed = light.row * 31 + light.col * 47;
+    if (light.type === 'torch' || light.type === 'brazier' || light.type === 'fire_pit' || light.type === 'lava_crack') {
+        return 0.88 + Math.sin(now / 200 + seed) * 0.06
+             + Math.sin(now / 130 + seed * 2.3) * 0.04
+             + Math.sin(now / 370 + seed * 0.7) * 0.02;
+    }
+    if (light.type === 'crystal' || light.type === 'ice_crystal' || light.type === 'void_flame') {
+        return 0.92 + Math.sin(now / 600 + seed) * 0.05
+             + Math.sin(now / 400 + seed * 1.7) * 0.03;
+    }
+    if (light.type === 'candle') {
+        return 0.82 + Math.sin(now / 150 + seed) * 0.10
+             + Math.sin(now / 90 + seed * 3.1) * 0.08;
+    }
+    return 1.0;
+}
+
+// ── Procedural light prop drawing ──
+// Draws a small physical object (torch bracket, brazier bowl, crystal, etc.)
+// at each light position so glows have a visible source.
+function _drawLightProp(sx, sy, light, flicker, now) {
+    const [cr, cg, cb] = light.color;
+    const seed = light.row * 31 + light.col * 47;
+
+    if (light.type === 'torch') {
+        // Iron wall bracket + animated flame
+        // Bracket (dark iron L-shape)
+        ctx.save();
+        ctx.fillStyle = '#3a3028';
+        ctx.fillRect(sx - 1, sy - 18, 3, 14);      // vertical post
+        ctx.fillRect(sx - 1, sy - 18, 8, 3);        // horizontal arm
+        ctx.fillStyle = '#2a221a';
+        ctx.fillRect(sx + 4, sy - 18, 4, 3);        // arm cap
+        // Cup/holder
+        ctx.fillStyle = '#4a3828';
+        ctx.beginPath();
+        ctx.ellipse(sx + 6, sy - 16, 4, 2, 0, 0, Math.PI);
+        ctx.fill();
+        ctx.restore();
+        // Animated flame
+        ctx.save();
+        const fh = 6 + Math.sin(now / 100 + seed) * 2;
+        const fw = 3 + Math.sin(now / 80 + seed * 1.3) * 0.8;
+        const flameX = sx + 6;
+        const flameY = sy - 18;
+        // Outer flame (orange)
+        ctx.globalAlpha = 0.85 * flicker;
+        ctx.fillStyle = `rgb(${cr}, ${Math.max(0,cg-40)}, ${Math.max(0,cb-60)})`;
+        ctx.beginPath();
+        ctx.ellipse(flameX, flameY - fh / 2, fw, fh / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Inner flame (bright core)
+        ctx.fillStyle = `rgb(${Math.min(255, cr + 30)}, ${Math.min(255, cg + 20)}, ${Math.min(255, cb + 10)})`;
+        ctx.beginPath();
+        ctx.ellipse(flameX, flameY - fh * 0.3, fw * 0.5, fh * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Hot white tip
+        ctx.fillStyle = '#fffae0';
+        ctx.globalAlpha = 0.7 * flicker;
+        ctx.beginPath();
+        ctx.arc(flameX, flameY - fh * 0.2, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+    } else if (light.type === 'brazier') {
+        // Stone brazier bowl on short pedestal + fire
+        ctx.save();
+        // Pedestal base
+        ctx.fillStyle = '#4a4038';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 2, 7, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Bowl stem
+        ctx.fillStyle = '#5a5048';
+        ctx.fillRect(sx - 3, sy - 10, 6, 8);
+        // Bowl rim (ellipse)
+        ctx.fillStyle = '#6a5a48';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 11, 8, 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Inner bowl shadow
+        ctx.fillStyle = '#2a2018';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 10, 6, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        // Fire inside bowl
+        ctx.save();
+        const bfh = 8 + Math.sin(now / 90 + seed) * 2.5;
+        ctx.globalAlpha = 0.9 * flicker;
+        ctx.fillStyle = `rgb(${cr}, ${Math.max(0,cg-30)}, ${Math.max(0,cb-50)})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 12 - bfh / 2, 5, bfh / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Bright core
+        ctx.fillStyle = `rgb(${Math.min(255,cr+30)}, ${Math.min(255,cg+30)}, ${Math.min(255,cb+20)})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 12 - bfh * 0.3, 3, bfh * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Sparks (occasional)
+        if (Math.sin(now / 300 + seed) > 0.6) {
+            ctx.fillStyle = '#ffe880';
+            ctx.globalAlpha = 0.6;
+            const spkY = sy - 14 - bfh + Math.sin(now / 50 + seed) * 3;
+            ctx.beginPath();
+            ctx.arc(sx + Math.sin(now / 70 + seed * 2) * 3, spkY, 1, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+
+    } else if (light.type === 'fire_pit') {
+        // Ring of stones with fire
+        ctx.save();
+        // Stone ring
+        ctx.strokeStyle = '#5a5048';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 9, 4.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        // Individual stones (darker dots on the ring)
+        ctx.fillStyle = '#4a4038';
+        for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.arc(sx + Math.cos(a) * 9, sy + Math.sin(a) * 4.5, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Inner ash bed
+        ctx.fillStyle = '#2a2018';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 6, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        // Fire
+        ctx.save();
+        const pfh = 10 + Math.sin(now / 80 + seed) * 3;
+        ctx.globalAlpha = 0.9 * flicker;
+        ctx.fillStyle = `rgb(${cr}, ${Math.max(0,cg-30)}, ${Math.max(0,cb-40)})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - pfh / 2, 5, pfh / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgb(${Math.min(255,cr+20)}, ${Math.min(255,cg+30)}, ${Math.min(255,cb+20)})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - pfh * 0.3, 3, pfh * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+    } else if (light.type === 'candle') {
+        // Small candle with wax drip + tiny flame
+        ctx.save();
+        // Candle base/holder
+        ctx.fillStyle = '#5a5048';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 1, 3, 1.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Wax body
+        ctx.fillStyle = '#d4c8a0';
+        ctx.fillRect(sx - 1.5, sy - 10, 3, 9);
+        // Wax drip
+        ctx.fillStyle = '#c8bc90';
+        ctx.fillRect(sx + 1, sy - 7, 1.5, 3);
+        ctx.restore();
+        // Tiny flame
+        ctx.save();
+        const cfh = 4 + Math.sin(now / 80 + seed) * 1.5;
+        ctx.globalAlpha = 0.85 * flicker;
+        ctx.fillStyle = `rgb(${cr}, ${cg}, ${Math.max(0,cb-40)})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 10 - cfh / 2, 2, cfh / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fffae0';
+        ctx.globalAlpha = 0.7 * flicker;
+        ctx.beginPath();
+        ctx.arc(sx, sy - 10 - cfh * 0.3, 0.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+    } else if (light.type === 'crystal') {
+        // Pointed crystal cluster growing from floor
+        ctx.save();
+        // Base rubble
+        ctx.fillStyle = '#4a4a40';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 6, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Main crystal shard
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, 0.7)`;
+        ctx.beginPath();
+        ctx.moveTo(sx - 3, sy);
+        ctx.lineTo(sx - 1, sy - 16);
+        ctx.lineTo(sx + 2, sy);
+        ctx.closePath();
+        ctx.fill();
+        // Side shard
+        ctx.fillStyle = `rgba(${Math.max(0,cr-20)}, ${Math.max(0,cg-10)}, ${cb}, 0.6)`;
+        ctx.beginPath();
+        ctx.moveTo(sx + 2, sy);
+        ctx.lineTo(sx + 4, sy - 10);
+        ctx.lineTo(sx + 6, sy);
+        ctx.closePath();
+        ctx.fill();
+        // Small shard
+        ctx.beginPath();
+        ctx.moveTo(sx - 5, sy);
+        ctx.lineTo(sx - 4, sy - 7);
+        ctx.lineTo(sx - 3, sy);
+        ctx.closePath();
+        ctx.fill();
+        // Inner glow line (bright highlight)
+        ctx.strokeStyle = `rgba(${Math.min(255,cr+60)}, ${Math.min(255,cg+40)}, ${Math.min(255,cb+20)}, ${0.6 * flicker})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx - 1, sy - 2);
+        ctx.lineTo(sx, sy - 14);
+        ctx.stroke();
+        ctx.restore();
+
+    } else if (light.type === 'ice_crystal') {
+        // Blue ice crystal formation
+        ctx.save();
+        ctx.fillStyle = '#3a4a5a';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 6, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Main ice shard
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, 0.6)`;
+        ctx.beginPath();
+        ctx.moveTo(sx - 3, sy);
+        ctx.lineTo(sx - 1, sy - 18);
+        ctx.lineTo(sx + 2, sy);
+        ctx.closePath();
+        ctx.fill();
+        // Side shard
+        ctx.fillStyle = `rgba(${cr}, ${Math.max(0,cg-20)}, ${cb}, 0.5)`;
+        ctx.beginPath();
+        ctx.moveTo(sx + 2, sy - 1);
+        ctx.lineTo(sx + 5, sy - 12);
+        ctx.lineTo(sx + 7, sy);
+        ctx.closePath();
+        ctx.fill();
+        // Frost highlight
+        ctx.strokeStyle = `rgba(200, 230, 255, ${0.7 * flicker})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx - 1, sy - 3);
+        ctx.lineTo(sx, sy - 16);
+        ctx.stroke();
+        ctx.restore();
+
+    } else if (light.type === 'lava_crack') {
+        // Glowing cracks in the floor
+        ctx.save();
+        ctx.globalAlpha = 0.9 * flicker;
+        ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, 0.9)`;
+        ctx.lineWidth = 1.5;
+        // Main crack
+        ctx.beginPath();
+        ctx.moveTo(sx - 8, sy - 2);
+        ctx.lineTo(sx - 2, sy + 1);
+        ctx.lineTo(sx + 3, sy - 1);
+        ctx.lineTo(sx + 9, sy + 2);
+        ctx.stroke();
+        // Branch crack
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx - 2, sy + 1);
+        ctx.lineTo(sx - 4, sy + 5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(sx + 3, sy - 1);
+        ctx.lineTo(sx + 5, sy - 4);
+        ctx.stroke();
+        // Bright inner glow along cracks
+        ctx.strokeStyle = `rgba(${Math.min(255,cr+40)}, ${Math.min(255,cg+60)}, ${Math.min(255,cb+40)}, ${0.6 * flicker})`;
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(sx - 6, sy - 1);
+        ctx.lineTo(sx, sy);
+        ctx.lineTo(sx + 7, sy + 1);
+        ctx.stroke();
+        ctx.restore();
+
+    } else if (light.type === 'void_flame') {
+        // Small stone pedestal with floating purple wisp
+        ctx.save();
+        // Pedestal
+        ctx.fillStyle = '#3a2a3a';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 1, 5, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#4a3a4a';
+        ctx.fillRect(sx - 3, sy - 8, 6, 7);
+        ctx.fillStyle = '#5a4a5a';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - 8, 4, 1.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        // Floating void wisp
+        ctx.save();
+        const vBob = Math.sin(now / 400 + seed) * 3;
+        const vSize = 4 + Math.sin(now / 250 + seed * 1.3) * 1;
+        ctx.globalAlpha = 0.8 * flicker;
+        ctx.globalCompositeOperation = 'screen';
+        const vGrad = ctx.createRadialGradient(sx, sy - 13 + vBob, 0, sx, sy - 13 + vBob, vSize * 2);
+        vGrad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.8)`);
+        vGrad.addColorStop(0.5, `rgba(${Math.max(0,cr-40)}, ${Math.max(0,cg-30)}, ${cb}, 0.3)`);
+        vGrad.addColorStop(1, `rgba(${Math.max(0,cr-80)}, 0, ${Math.max(0,cb-40)}, 0)`);
+        ctx.fillStyle = vGrad;
+        ctx.beginPath();
+        ctx.arc(sx, sy - 13 + vBob, vSize * 2, 0, Math.PI * 2);
+        ctx.fill();
+        // White-hot center
+        ctx.fillStyle = `rgba(${Math.min(255,cr+60)}, ${Math.min(255,cg+80)}, ${Math.min(255,cb+30)}, 0.7)`;
+        ctx.beginPath();
+        ctx.arc(sx, sy - 13 + vBob, vSize * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// Pass 1: Floor glow + physical props — drawn before darkness
+function drawEnvironmentLightProps() {
+    const lights = ENV_LIGHTS[currentZone];
+    if (!lights) return;
+    const now = performance.now();
+
+    for (const light of lights) {
+        const pos = tileToScreen(light.row, light.col);
+        const sx = pos.x + cameraX;
+        const sy = pos.y + cameraY;
+        if (sx < -light.radius * 2 || sx > canvasW + light.radius * 2) continue;
+        if (sy < -light.radius * 2 || sy > canvasH + light.radius * 2) continue;
+        const fr = Math.floor(light.row), fc = Math.floor(light.col);
+        if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed.length) {
+            if (!fogRevealed[fr][fc]) continue;
+        }
+        const flicker = _envLightFlicker(light, now);
+
+        // Floor glow (subtle warm/cool circle beneath prop)
+        ctx.save();
+        ctx.globalAlpha = light.intensity * flicker * 0.35;
+        ctx.drawImage(_getEnvLightGlow(light), sx - light.radius, sy - light.radius + 4);
+        ctx.restore();
+
+        // Draw physical prop sprite
+        _drawLightProp(sx, sy, light, flicker, now);
+    }
+}
+
+// Pass 2: Punchthrough — drawn AFTER darkness (screen blend)
+function drawEnvironmentLightPunchthrough() {
+    const lights = ENV_LIGHTS[currentZone];
+    if (!lights) return;
+    const now = performance.now();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const light of lights) {
+        const pos = tileToScreen(light.row, light.col);
+        const sx = pos.x + cameraX;
+        const sy = pos.y + cameraY;
+        if (sx < -light.radius * 2 || sx > canvasW + light.radius * 2) continue;
+        if (sy < -light.radius * 2 || sy > canvasH + light.radius * 2) continue;
+        const fr = Math.floor(light.row), fc = Math.floor(light.col);
+        if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed.length) {
+            if (!fogRevealed[fr][fc]) continue;
+        }
+        ctx.globalAlpha = light.intensity * _envLightFlicker(light, now) * 0.28;
+        ctx.drawImage(_getEnvLightGlow(light), sx - light.radius, sy - light.radius + 4);
+    }
+    ctx.restore();
+}
+
 // Register wizard form draw handler
 formHandlers.wizard.draw = function() { drawWizard(); };
 

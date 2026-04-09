@@ -127,6 +127,15 @@ function updatePlayer(dt) {
         player.dodgeCoolTimer = Math.max(0.3, DODGE_COOLDOWN - (equipBonus.dodgeCdReduc || 0));
         player.dodgeFlashTimer = 0.12; // brief arcane flash
         sfxDodge();
+        // VFX: arcane glow ring burst at start position
+        const _djPos = tileToScreen(player.row, player.col);
+        const _djpx = _djPos.x + cameraX, _djpy = _djPos.y + cameraY;
+        for (let _di = 0; _di < 8; _di++) {
+            const angle = (_di / 8) * Math.PI * 2;
+            const speed = 40 + Math.random() * 20;
+            _emitParticle(_djpx, _djpy, Math.cos(angle) * speed, Math.sin(angle) * speed - 8,
+                0.3 + Math.random() * 0.15, 3 + Math.random() * 3, '#66aaff', 0.6, 'phaseJump', 'lighter');
+        }
 
         // Direction: use current input, or facing direction if idle
         if (inputLen > 0) {
@@ -285,7 +294,8 @@ function updatePlayer(dt) {
     }
 
     // --- Wand attack trigger (left click) ---
-    const effManaCost = Math.max(3, ATK_MANA_COST - (equipBonus.manaCostReduc || 0));
+    const arcaneEfficiency = (FormSystem.currentForm === 'wizard') ? getUpgrade('arcane_efficiency') * 0.15 : 0;
+    const effManaCost = Math.max(3, Math.round((ATK_MANA_COST - (equipBonus.manaCostReduc || 0)) * (1 - arcaneEfficiency)));
     const effAtkCooldown = (ATK_COOLDOWN / (1 + (equipBonus.atkSpeedMult || 0))) * Math.pow(0.85, getUpgrade('firerate'));
     if (!player.attacking && !player.dodging && mouse.down && player.attackCooldown <= 0 && player.mana >= effManaCost) {
         const aimDir = getAimDirection();
@@ -319,6 +329,13 @@ function updatePlayer(dt) {
             player.manaRegenTimer = MANA_REGEN_DELAY;
             spawnProjectile();
             sfxFireballShoot();
+            // Spell Echo: chance to fire a free second projectile (wizard only)
+            if (FormSystem.currentForm === 'wizard' && getUpgrade('spell_echo') > 0) {
+                if (Math.random() < 0.20 * getUpgrade('spell_echo')) {
+                    spawnProjectile();
+                    sfxFireballShoot();
+                }
+            }
         }
 
         if (player.attackTimer <= 0) {
@@ -425,6 +442,20 @@ function spawnProjectile() {
 }
 
 // Register wizard form handler (now that updatePlayer is defined)
+// Reset wizard form state (called on form switch)
+function resetWizardState() {
+    player.attackCooldown = 0;
+    player.dodgeCoolTimer = 0;
+    player.dodgeFlashTimer = 0;
+    player.dodging = false;
+    player.attacking = false;
+    placement.active = false;
+    placement.channeling = false;
+    placement.channelTimer = 0;
+    mouse.down = false;
+    mouse.rightDown = false;
+}
+
 formHandlers.wizard.update = function(dt) {
     updatePlayer(dt);
     // Check wizard→lich evolution
@@ -436,5 +467,33 @@ formHandlers.wizard.update = function(dt) {
         fd.lowManaKills >= req.lowManaKills) {
         triggerEvolution('lich');
     }
+};
+
+// Wire wizard ability handlers for form-system consistency.
+// These are also triggered inline by updatePlayer(), but having them as handlers
+// means the form system is complete and form-switching code can invoke them.
+formHandlers.wizard.onPrimaryAttack = function() {
+    // Wizard attack is driven by mouse.down + cooldown in updatePlayer();
+    // this handler exists for system completeness (e.g. AI-controlled wizard).
+    if (player.attackCooldown <= 0 && player.mana >= (COMBAT.manaCost * (1 - getUpgrade('arcane_efficiency') * 0.15))) {
+        mouse.down = true; // updatePlayer will pick this up next frame
+    }
+};
+formHandlers.wizard.onSecondaryAbility = function() {
+    // Trigger tower placement mode
+    const effSummonMax = SUMMON_MAX_COUNT + getUpgrade('tower_extra');
+    if (!placement.active && summons.length < effSummonMax && player.mana >= SUMMON_MANA_COST) {
+        placement.active = true;
+    }
+};
+formHandlers.wizard.onDodge = function() {
+    // Phase jump — delegated to the space-key path in updatePlayer
+    if (!player.dodging && player.dodgeCoolTimer <= 0) {
+        keys[' '] = true; // updatePlayer will consume this
+    }
+};
+formHandlers.wizard.onInteract = function() {
+    // Wizard interact = open chests (handled by input system fallback)
+    // No form-specific interact action for wizard
 };
 

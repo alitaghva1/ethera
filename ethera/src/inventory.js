@@ -198,7 +198,7 @@ function updateWorldDrops(dt) {
         const d = worldDrops[i];
         d.bobTime += dt * DROP_FLOAT_SPEED;
         if (d.spawnTime > 0) d.spawnTime -= dt;
-        d.despawnTimer -= dt;
+        d.despawnTimer = Math.max(0, d.despawnTimer - dt);
         if (d.despawnTimer <= 0) {
             worldDrops.splice(i, 1);
         }

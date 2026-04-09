@@ -139,6 +139,7 @@ function loadGame(slotIdx) {
     updateDoorDefsForZone(currentZone);
     updateChestDefsForZone(currentZone);
     buildRoomBounds();
+    buildEnvironmentLights();
 
     // Restore player state
     if (data.playerRow != null) player.row = data.playerRow;

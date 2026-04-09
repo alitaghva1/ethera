@@ -161,6 +161,92 @@ function sfxDodge() {
     playNoise(0.15, 3000, 1.5, 0.12, 0.005, 0.12);
 }
 
+// ---- SKELETON-SPECIFIC SFX ----
+
+function sfxSkeletonRoll() {
+    if (!sfxCtx) return;
+    // Rattling bone tumble — dry clatter + low thud
+    playTone('square', 180, 80, 0.1, 0.12, 0.005, 0.1);
+    playNoise(0.18, 1200, 4, 0.18, 0.005, 0.15);
+    playTone('triangle', 100, 50, 0.12, 0.1, 0.01, 0.12);
+}
+
+function sfxSkeletonBoneThrow() {
+    if (!sfxCtx) return;
+    // Sharp crack + whistling arc
+    playNoise(0.08, 3000, 5, 0.15, 0.002, 0.06);
+    playTone('sawtooth', 600, 300, 0.12, 0.1, 0.005, 0.1);
+}
+
+// ---- LICH-SPECIFIC SFX ----
+
+function sfxShadowStep() {
+    if (!sfxCtx) return;
+    // Dark ethereal whoosh — deep reverse reverb + high whisper
+    playTone('sine', 100, 400, 0.2, 0.2, 0.005, 0.2);
+    playTone('sine', 600, 200, 0.15, 0.12, 0.01, 0.15);
+    playNoise(0.2, 800, 6, 0.1, 0.01, 0.18);
+    // Ghost whisper tail
+    playTone('triangle', 1200, 400, 0.3, 0.06, 0.05, 0.3);
+}
+
+function sfxLichSoulBolt() {
+    if (!sfxCtx) return;
+    // Haunting pulse — low drone + spectral crackle
+    playTone('sine', 150, 300, 0.15, 0.18, 0.005, 0.15);
+    playTone('sawtooth', 500, 800, 0.1, 0.08, 0.003, 0.1);
+    playNoise(0.1, 1800, 3, 0.12, 0.005, 0.08);
+}
+
+function sfxLevelUp() {
+    if (!sfxCtx) return;
+    // Triumphant ascending chime — three-note arpeggio
+    playTone('sine', 523, 523, 0.15, 0.2, 0.005, 0.15); // C5
+    setTimeout(() => { if (sfxCtx) playTone('sine', 659, 659, 0.15, 0.2, 0.005, 0.15); }, 80); // E5
+    setTimeout(() => { if (sfxCtx) playTone('sine', 784, 784, 0.25, 0.25, 0.005, 0.25); }, 160); // G5
+    setTimeout(() => { if (sfxCtx) playTone('triangle', 1047, 1047, 0.3, 0.15, 0.005, 0.3); }, 240); // C6
+}
+
+// ---- SLIME-SPECIFIC SFX ----
+
+function sfxSlimeAcidSpit() {
+    if (!sfxCtx) return;
+    // Wet splat spit — low frequency bubble pop + filtered noise
+    playTone('sine', 120, 60, 0.12, 0.22, 0.005, 0.12);
+    playTone('sine', 280, 150, 0.08, 0.15, 0.003, 0.08);
+    playNoise(0.1, 600, 3, 0.18, 0.005, 0.09);
+    // Tiny high-freq pop for crispness
+    playTone('square', 900, 300, 0.04, 0.08, 0.002, 0.04);
+}
+
+function sfxSlimeBounce() {
+    if (!sfxCtx) return;
+    // Elastic spring bounce — rising rubbery tone + squish noise
+    playTone('sine', 80, 320, 0.18, 0.2, 0.01, 0.18);
+    playTone('triangle', 160, 500, 0.12, 0.1, 0.005, 0.12);
+    playNoise(0.08, 400, 5, 0.12, 0.005, 0.07);
+}
+
+function sfxSlimeLand() {
+    if (!sfxCtx) return;
+    // Wet heavy impact — deep thud + splat noise
+    playTone('sine', 100, 40, 0.15, 0.3, 0.005, 0.15);
+    playTone('sine', 60, 25, 0.2, 0.2, 0.01, 0.2);
+    playNoise(0.12, 500, 2, 0.2, 0.005, 0.1);
+    // Squelchy overtone
+    playTone('square', 200, 80, 0.06, 0.1, 0.003, 0.06);
+}
+
+function sfxSlimeAbsorb() {
+    if (!sfxCtx) return;
+    // Wet slurp — rising then settling tone + bubbly noise
+    playTone('sine', 80, 220, 0.2, 0.18, 0.01, 0.2);
+    playTone('sine', 220, 100, 0.15, 0.12, 0.01, 0.15);
+    playNoise(0.15, 700, 4, 0.12, 0.005, 0.12);
+    // Bubbly high component
+    playTone('triangle', 500, 300, 0.1, 0.06, 0.005, 0.1);
+}
+
 function sfxTowerShoot(row, col) {
     if (!sfxCtx) return;
     const v = sfxDistanceVol(row, col);
@@ -512,4 +598,231 @@ function initMenuEmbers() {
             flicker: Math.random() * 10,
         });
     }
+}
+
+// ============================================================
+//  AMBIENT SOUNDSCAPES — Procedural per-zone atmospheric audio
+// ============================================================
+let ambientNodes = [];   // active audio nodes for current zone
+let ambientZone = -1;    // which zone ambient is playing for
+
+const AMBIENT_VOLUME = 0.12; // master ambient volume (subtle)
+
+function stopAmbient() {
+    if (!sfxCtx) { ambientNodes = []; ambientZone = -1; return; }
+    for (const n of ambientNodes) {
+        try { n.gain.gain.linearRampToValueAtTime(0, sfxCtx.currentTime + 0.5); } catch (_) {}
+        try { setTimeout(() => { n.source.stop(); }, 600); } catch (_) {}
+        // Stop extra oscillators (LFOs etc.)
+        if (n.extras) {
+            for (const ex of n.extras) { try { ex.stop(); } catch (_) {} }
+        }
+    }
+    ambientNodes = [];
+    ambientZone = -1;
+}
+
+function startAmbient(zone) {
+    if (!sfxCtx) return;
+    if (zone === ambientZone) return; // already playing
+    stopAmbient();
+    ambientZone = zone;
+
+    if (zone === 0) {
+        // Hamlet: gentle wind + distant thunder rumbles
+        _ambientWind(0.08, 200, 600);
+        _ambientThunder();
+    } else if (zone === 1) {
+        // Undercroft: cave drips + low stone hum
+        _ambientDrips(0.6);
+        _ambientDrone(65, 0.04, 'sine');
+    } else if (zone === 2) {
+        // Ruined Tower: wind through stone + creaks
+        _ambientWind(0.06, 150, 400);
+        _ambientCreaks();
+    } else if (zone === 3) {
+        // Spire: eerie tonal hum + occasional metallic resonance
+        _ambientDrone(110, 0.05, 'triangle');
+        _ambientDrone(165, 0.025, 'sine');
+    } else if (zone === 4) {
+        // Inferno: crackling fire + deep rumble
+        _ambientFire(0.10);
+        _ambientDrone(45, 0.06, 'sawtooth');
+    } else if (zone === 5) {
+        // Frozen Abyss: cold wind + ice crackle
+        _ambientWind(0.07, 300, 900);
+        _ambientIceCrackle();
+    } else if (zone === 6) {
+        // Throne of Ruin: ominous pulse + whispers
+        _ambientDrone(55, 0.07, 'sine');
+        _ambientPulse(0.8, 55);
+    }
+}
+
+// --- Ambient building blocks ---
+
+function _ambientWind(vol, freqLo, freqHi) {
+    const buf = sfxCtx.createBuffer(1, sfxCtx.sampleRate * 4, sfxCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+    const src = sfxCtx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const bp = sfxCtx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = (freqLo + freqHi) / 2; bp.Q.value = 0.5;
+    const gain = sfxCtx.createGain();
+    gain.gain.value = vol * AMBIENT_VOLUME;
+    // Slow LFO to modulate filter frequency for wind variation
+    const lfo = sfxCtx.createOscillator();
+    const lfoGain = sfxCtx.createGain();
+    lfo.frequency.value = 0.15; lfoGain.gain.value = (freqHi - freqLo) / 2;
+    lfo.connect(lfoGain); lfoGain.connect(bp.frequency);
+    lfo.start();
+    src.connect(bp); bp.connect(gain); gain.connect(sfxMasterGain);
+    src.start();
+    ambientNodes.push({ source: src, gain: gain, extras: [lfo] });
+}
+
+function _ambientThunder() {
+    let running = true;
+    const thunderLoop = () => {
+        if (!running || ambientZone !== 0) return;
+        if (sfxCtx && sfxCtx.state === 'running') {
+            const t = sfxCtx.currentTime;
+            // Deep rumble burst
+            const osc = sfxCtx.createOscillator();
+            osc.type = 'sine'; osc.frequency.value = 40 + Math.random() * 20;
+            const g = sfxCtx.createGain();
+            g.gain.setValueAtTime(0, t);
+            g.gain.linearRampToValueAtTime(0.05 * AMBIENT_VOLUME, t + 0.2);
+            g.gain.linearRampToValueAtTime(0.02 * AMBIENT_VOLUME, t + 0.8);
+            g.gain.linearRampToValueAtTime(0, t + 2.0);
+            osc.connect(g); g.connect(sfxMasterGain);
+            osc.start(t); osc.stop(t + 2.2);
+        }
+        setTimeout(thunderLoop, (8 + Math.random() * 12) * 1000);
+    };
+    setTimeout(thunderLoop, 3000);
+    ambientNodes.push({ source: { stop() { running = false; } }, gain: sfxCtx.createGain() });
+}
+
+function _ambientDrips(interval) {
+    // Schedule periodic drip sounds
+    let running = true;
+    const dripLoop = () => {
+        if (!running || ambientZone !== 1) return;
+        if (sfxCtx && sfxCtx.state === 'running') {
+            const t = sfxCtx.currentTime;
+            const osc = sfxCtx.createOscillator();
+            const g = sfxCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800 + Math.random() * 600, t);
+            osc.frequency.exponentialRampToValueAtTime(200, t + 0.08);
+            g.gain.setValueAtTime(0.03 * AMBIENT_VOLUME, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+            osc.connect(g); g.connect(sfxMasterGain);
+            osc.start(t); osc.stop(t + 0.15);
+        }
+        setTimeout(dripLoop, (interval + Math.random() * interval) * 1000);
+    };
+    setTimeout(dripLoop, 500);
+    // Dummy node for cleanup tracking
+    const dummySrc = sfxCtx.createBufferSource();
+    const dummyGain = sfxCtx.createGain(); dummyGain.gain.value = 0;
+    dummySrc.connect(dummyGain);
+    ambientNodes.push({ source: { stop() { running = false; } }, gain: dummyGain });
+}
+
+function _ambientDrone(freq, vol, type) {
+    const osc = sfxCtx.createOscillator();
+    osc.type = type; osc.frequency.value = freq;
+    const gain = sfxCtx.createGain();
+    gain.gain.value = vol * AMBIENT_VOLUME;
+    osc.connect(gain); gain.connect(sfxMasterGain);
+    osc.start();
+    ambientNodes.push({ source: osc, gain: gain });
+}
+
+function _ambientCreaks() {
+    let running = true;
+    const creakLoop = () => {
+        if (!running || ambientZone !== 2) return;
+        if (sfxCtx && sfxCtx.state === 'running') {
+            const t = sfxCtx.currentTime;
+            const osc = sfxCtx.createOscillator();
+            const g = sfxCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(60 + Math.random() * 40, t);
+            osc.frequency.linearRampToValueAtTime(40 + Math.random() * 30, t + 0.3);
+            g.gain.setValueAtTime(0.02 * AMBIENT_VOLUME, t);
+            g.gain.linearRampToValueAtTime(0, t + 0.35);
+            osc.connect(g); g.connect(sfxMasterGain);
+            osc.start(t); osc.stop(t + 0.4);
+        }
+        setTimeout(creakLoop, (2 + Math.random() * 4) * 1000);
+    };
+    setTimeout(creakLoop, 1000);
+    ambientNodes.push({ source: { stop() { running = false; } }, gain: sfxCtx.createGain() });
+}
+
+function _ambientFire(vol) {
+    // Filtered noise that sounds like crackling fire
+    const buf = sfxCtx.createBuffer(1, sfxCtx.sampleRate * 2, sfxCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (Math.random() > 0.7 ? 1 : 0.3);
+    const src = sfxCtx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const hp = sfxCtx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 1000; hp.Q.value = 0.3;
+    const lp = sfxCtx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 4000;
+    const gain = sfxCtx.createGain();
+    gain.gain.value = vol * AMBIENT_VOLUME;
+    src.connect(hp); hp.connect(lp); lp.connect(gain); gain.connect(sfxMasterGain);
+    src.start();
+    ambientNodes.push({ source: src, gain: gain });
+}
+
+function _ambientIceCrackle() {
+    let running = true;
+    const crackleLoop = () => {
+        if (!running || ambientZone !== 5) return;
+        if (sfxCtx && sfxCtx.state === 'running') {
+            const t = sfxCtx.currentTime;
+            // Sharp high-frequency crack
+            const buf = sfxCtx.createBuffer(1, Math.floor(sfxCtx.sampleRate * 0.05), sfxCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+            const s = sfxCtx.createBufferSource();
+            s.buffer = buf;
+            const g = sfxCtx.createGain();
+            g.gain.setValueAtTime(0.04 * AMBIENT_VOLUME, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+            s.connect(g); g.connect(sfxMasterGain);
+            s.start(t);
+        }
+        setTimeout(crackleLoop, (1.5 + Math.random() * 3) * 1000);
+    };
+    setTimeout(crackleLoop, 800);
+    ambientNodes.push({ source: { stop() { running = false; } }, gain: sfxCtx.createGain() });
+}
+
+function _ambientPulse(interval, freq) {
+    let running = true;
+    const pulseLoop = () => {
+        if (!running || ambientZone !== 6) return;
+        if (sfxCtx && sfxCtx.state === 'running') {
+            const t = sfxCtx.currentTime;
+            const osc = sfxCtx.createOscillator();
+            osc.type = 'sine'; osc.frequency.value = freq;
+            const g = sfxCtx.createGain();
+            g.gain.setValueAtTime(0, t);
+            g.gain.linearRampToValueAtTime(0.06 * AMBIENT_VOLUME, t + 0.3);
+            g.gain.linearRampToValueAtTime(0, t + 0.8);
+            osc.connect(g); g.connect(sfxMasterGain);
+            osc.start(t); osc.stop(t + 1.0);
+        }
+        setTimeout(pulseLoop, interval * 1000);
+    };
+    setTimeout(pulseLoop, 200);
+    ambientNodes.push({ source: { stop() { running = false; } }, gain: sfxCtx.createGain() });
 }

@@ -79,7 +79,7 @@ const FORM_CONFIGS = {
         atkSpeed: 11,
         projLife: 1.8,
         projSize: 8,
-        manaCost: 8,
+        manaCost: 6,
         primaryDmg: 20,
         knockback: 2.5,
         // Abilities
@@ -194,7 +194,7 @@ const FORM_CONFIGS = {
         knockback: 2.0,
         hasDodge: true,
         hasSummon: false,
-        hasEquipment: false,
+        hasEquipment: true,
         canOpenChests: true,
         hasKeyItems: true,
         upgradePoolId: 'lich',
@@ -219,20 +219,56 @@ const formHandlers = {
         onSecondaryAbility: null, // → summon tower
         onDodge: null,           // → phase jump
         onInteract: null,        // → E key
-        getUpgradePool: () => UPGRADE_POOL,
+        getUpgradePool: () => WIZARD_UPGRADE_POOL,
     },
 };
 
+// Wizard upgrade pool (8 upgrades — split: pyromancer vs arcane tactician, with tower synergies)
+const WIZARD_UPGRADE_POOL = [
+    // === Pyromancer path ===
+    { id: 'multishot', name: 'Split Bolt', desc: 'Fire +1 additional fireball per shot', icon: 'split', maxStack: 4, category: 'wand' },
+    { id: 'pierce', name: 'Piercing Flame', desc: 'Fireballs pierce through +1 enemy', icon: 'pierce', maxStack: 5, category: 'wand' },
+    { id: 'explode', name: 'Detonation', desc: 'Fireballs explode on impact, dealing 40% dmg in area', icon: 'explode', maxStack: 3, category: 'wand' },
+    { id: 'firerate', name: 'Rapid Cast', desc: 'Attack 15% faster', icon: 'speed', maxStack: 5, category: 'wand' },
+    { id: 'bigshot', name: 'Emberstorm', desc: 'Fireballs are 25% larger and deal +5 damage', icon: 'big', maxStack: 3, category: 'wand' },
+    { id: 'bounce', name: 'Ricochet', desc: 'Fireballs bounce off walls once', icon: 'bounce', maxStack: 3, category: 'wand' },
+    // === Arcane Mastery path ===
+    { id: 'orbit', name: 'Arcane Orbit', desc: '+1 fireball orbits around you, damaging enemies', icon: 'orbit', maxStack: 4, category: 'passive' },
+    { id: 'thorns', name: 'Thorns of Flame', desc: 'Enemies that hit you take 15 fire damage', icon: 'thorns', maxStack: 3, category: 'passive' },
+    { id: 'regen', name: 'Siphon Life', desc: 'Regen 2 HP per kill', icon: 'regen', maxStack: 3, category: 'passive' },
+    { id: 'manasurge', name: 'Mana Surge', desc: '+25% mana regeneration', icon: 'mana', maxStack: 4, category: 'passive' },
+    { id: 'dodge_reset', name: 'Phase Flux', desc: 'Kills have 15% chance to reset dodge cooldown', icon: 'phase', maxStack: 3, category: 'passive' },
+    // === Tower Synergies (wizard-exclusive) ===
+    { id: 'tower_extra', name: 'Twin Summon', desc: '+1 maximum active tower', icon: 'tower', maxStack: 2, category: 'tower' },
+    { id: 'tower_chain', name: 'Chain Lightning', desc: 'Tower bolts chain to 1 nearby enemy for 50% damage', icon: 'chain', maxStack: 3, category: 'tower' },
+    { id: 'tower_slow', name: 'Frost Obelisk', desc: 'Tower shots slow enemies by 30% for 2s', icon: 'slow', maxStack: 2, category: 'tower' },
+    // === Wizard-exclusive upgrades ===
+    { id: 'arcane_efficiency', name: 'Arcane Efficiency', desc: 'Fireball mana cost reduced by 15%', icon: 'mana', maxStack: 4, category: 'passive' },
+    { id: 'spell_echo', name: 'Spell Echo', desc: '20% chance to fire a second fireball at no mana cost', icon: 'split', maxStack: 3, category: 'wand' },
+    { id: 'tower_mastery', name: 'Tower Mastery', desc: 'Towers deal +20% damage and last 25% longer', icon: 'tower', maxStack: 3, category: 'tower' },
+    { id: 'mana_shield', name: 'Mana Shield', desc: 'While above 50% mana, take 15% less damage', icon: 'phase', maxStack: 2, category: 'passive' },
+];
+
 // Slime upgrade pool
 const SLIME_UPGRADE_POOL = [
+    // === Acid Control path ===
     { id: 'acid_potency', name: 'Acid Potency', desc: 'Acid spit deals +25% damage and leaves larger puddles', icon: 'explode', maxStack: 4, category: 'wand' },
-    { id: 'elastic_body', name: 'Elastic Body', desc: 'Bounce higher and deal +30% landing damage', icon: 'bounce', maxStack: 3, category: 'passive' },
-    { id: 'rapid_mitosis', name: 'Rapid Mitosis', desc: 'Split clones last longer and explode harder', icon: 'split', maxStack: 3, category: 'passive' },
-    { id: 'iron_stomach', name: 'Iron Stomach', desc: 'Absorb faster and gain +1 size per absorb', icon: 'big', maxStack: 3, category: 'passive' },
-    { id: 'ooze_trail', name: 'Ooze Trail', desc: 'Leave a damaging acid trail when moving at size 3+', icon: 'thorns', maxStack: 2, category: 'passive' },
-    { id: 'regen_gel', name: 'Regenerative Gel', desc: 'Passive HP regen that scales with size', icon: 'regen', maxStack: 3, category: 'passive' },
     { id: 'acid_rain', name: 'Acid Rain', desc: 'Spit arcs upward and rains acid in an area', icon: 'explode', maxStack: 2, category: 'wand' },
+    { id: 'corrosive_linger', name: 'Corrosive Linger', desc: 'Acid hits leave a DOT that ticks 3 times (+1 per stack)', icon: 'thorns', maxStack: 3, category: 'wand' },
+    { id: 'ricochet_spit', name: 'Ricochet Spit', desc: 'Acid projectiles bounce to 1 nearby enemy on hit', icon: 'bounce', maxStack: 2, category: 'wand' },
+    { id: 'ooze_trail', name: 'Ooze Trail', desc: 'Leave a damaging acid trail when moving at size 3+', icon: 'thorns', maxStack: 2, category: 'passive' },
+    // === Clone Army path ===
+    { id: 'rapid_mitosis', name: 'Rapid Mitosis', desc: 'Split clones last longer and explode harder', icon: 'split', maxStack: 3, category: 'passive' },
     { id: 'hive_mind', name: 'Hive Mind', desc: 'Can maintain 2 split clones simultaneously', icon: 'orbit', maxStack: 1, category: 'passive' },
+    { id: 'sympathetic_link', name: 'Sympathetic Link', desc: 'Heal for 5% of clone damage dealt per stack', icon: 'regen', maxStack: 2, category: 'passive' },
+    // === Big Slime Brawler path ===
+    { id: 'iron_stomach', name: 'Iron Stomach', desc: 'Absorb faster and gain +1 size per absorb', icon: 'big', maxStack: 3, category: 'passive' },
+    { id: 'elastic_body', name: 'Elastic Body', desc: 'Bounce higher and deal +30% landing damage', icon: 'bounce', maxStack: 3, category: 'passive' },
+    { id: 'regen_gel', name: 'Regenerative Gel', desc: 'Passive HP regen that scales with size', icon: 'regen', maxStack: 3, category: 'passive' },
+    { id: 'osmosis', name: 'Osmosis', desc: 'Passively drain HP from nearby enemies, scaling with size', icon: 'mana', maxStack: 3, category: 'passive' },
+    { id: 'volatile_mass', name: 'Volatile Mass', desc: 'Big hits make you shed size in an acid explosion', icon: 'explode', maxStack: 2, category: 'passive' },
+    { id: 'sticky_landing', name: 'Sticky Landing', desc: 'Bounce landing creates a slow field for 2s', icon: 'slow', maxStack: 2, category: 'passive' },
+    { id: 'membrane', name: 'Membrane', desc: 'Gain a shield equal to 10% max HP every 8s (-1s per stack)', icon: 'phase', maxStack: 3, category: 'passive' },
 ];
 
 // Skeleton upgrade pool (11 upgrades — split: bone sniper vs tank brawler, with combo synergies)
@@ -319,10 +355,13 @@ function getFormStat(key) {
 function getTalismanBonus() {
     if (!FormSystem.talisman.found) return { dmgMult: 1, speedMult: 1, xpMult: 1, hpBonus: 0 };
     const lvl = FormSystem.talisman.level;
+    // Evolution surge stacks multiplicatively with talisman bonuses
+    const surge = (typeof getEvolutionSurgeBonus === 'function') ? getEvolutionSurgeBonus() : { dmgMult: 1, speedMult: 1 };
     return {
-        dmgMult: 1 + (lvl - 1) * 0.08,    // +8% damage per level
-        speedMult: 1 + (lvl - 1) * 0.04,   // +4% move speed per level
-        xpMult: 1 + (lvl - 1) * 0.10,      // +10% XP per level
-        hpBonus: (lvl - 1) * 5,             // +5 max HP per level
+        dmgMult: (1 + (lvl - 1) * 0.08) * surge.dmgMult,    // +8% damage per level × surge
+        speedMult: (1 + (lvl - 1) * 0.04) * surge.speedMult, // +4% move speed per level × surge
+        xpMult: 1 + (lvl - 1) * 0.10,                        // +10% XP per level (unaffected by surge)
+        hpBonus: (lvl - 1) * 5,                               // +5 max HP per level (unaffected by surge)
+        surgeActive: surge.dmgMult > 1,                       // flag for UI indicator
     };
 }
