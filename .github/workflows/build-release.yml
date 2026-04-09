@@ -9,32 +9,23 @@ permissions:
   contents: write
 
 jobs:
-  # First, create the GitHub Release so build jobs can upload to it
-  create-release:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Ethera ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: false
-          body: "Ethera ${{ github.ref_name }} release"
-
   build:
-    needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
             platform: win
+            artifact: "electron/dist/Ethera Setup *.exe"
+            glob: "electron/dist/*.exe"
           - os: macos-latest
             platform: mac
+            artifact: "electron/dist/Ethera-*.dmg"
+            glob: "electron/dist/*.dmg"
           - os: ubuntu-latest
             platform: linux
+            artifact: "electron/dist/Ethera-*.AppImage"
+            glob: "electron/dist/*.AppImage"
 
     runs-on: ${{ matrix.os }}
 
@@ -54,7 +45,22 @@ jobs:
       - name: Build for ${{ matrix.platform }}
         working-directory: electron
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ''
-        run: npx electron-builder --${{ matrix.platform }} --publish always
+        run: npx electron-builder --${{ matrix.platform }}
+
+      - name: List build output
+        shell: bash
+        run: ls -la electron/dist/ || true
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Ethera ${{ github.ref_name }}
+          files: |
+            electron/dist/*.exe
+            electron/dist/*.dmg
+            electron/dist/*.AppImage
+            electron/dist/*.blockmap
+            electron/dist/latest*.yml
