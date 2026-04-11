@@ -55,10 +55,9 @@ function updateFogOfWar() {
         }
     }
 
-    // Peek through walls: each pass reveals one more layer of blocked tiles
-    // with decreasing brightness, creating a soft fog edge around rooms.
-    // Only blocked tiles get peeked — walkable floor behind a wall stays hidden
-    // so sealed rooms don't leak through.
+    // Peek through blocked tiles with decreasing brightness.
+    // Objects (columns, barrels) adjacent to revealed floor get FULL brightness
+    // because they're clearly visible. Only walls get dimmed peek brightness.
     for (let pass = 0; pass < FOG_WALL_PEEK; pass++) {
         const brightness = FOG_PEEK_BRIGHTNESS[pass] || 0.15;
         const toReveal = [];
@@ -69,13 +68,17 @@ function updateFogOfWar() {
                     const nr = r + dr, nc = c + dc;
                     if (nr >= 0 && nr < ms && nc >= 0 && nc < ms &&
                         fogRevealed[nr][nc] === 0 && floorMap[nr][nc]) {
-                        // Only peek into wall/blocked tiles — not walkable floor
-                        if (blocked[nr][nc]) toReveal.push([nr, nc, brightness]);
+                        if (blocked[nr][nc]) {
+                            // Objects (columns, barrels, etc.) get full brightness
+                            // Walls get dimmed peek brightness
+                            const isObject = blockType[nr][nc] === 'object';
+                            toReveal.push([nr, nc, isObject ? 1.0 : brightness]);
+                        }
                     }
                 }
             }
         }
-        for (const [r, c, b] of toReveal) fogRevealed[r][c] = b;
+        for (const [r, c, b] of toReveal) fogRevealed[r][c] = Math.max(fogRevealed[r][c], b);
     }
 }
 
