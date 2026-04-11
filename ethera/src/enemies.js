@@ -802,6 +802,18 @@ const ZONE2_WAVES = [
     },
     {
         enemies: [
+            { type: 'werewolf', count: 1, hpOverride: 150, dmgOverride: 18, tintOverride: '#bbaa88' },
+            { type: 'skeleton', count: 3 },
+            { type: 'skelarch', count: 2 },
+        ],
+        statMult: 1.55,
+        title: 'The Bone Sentinel',
+        isBossWave: true,
+        // Spawn in Guard Barracks — dramatic mini-boss encounter
+        spawnZone: { rMin: 21, rMax: 30, cMin: 20, cMax: 32 },
+    },
+    {
+        enemies: [
             { type: 'skeleton', count: 8 },
             { type: 'skelarch', count: 6 },
         ],
@@ -3079,41 +3091,23 @@ function updateEnemies(dt) {
                 continue; // skip all other actions while shielded
             }
 
-            // Flame Sweep — wider arc than Bone Colossus, with lingering fire
-            if (e.bossFlameSweepTimer <= 0 && dist < e.def.flameSweepRadius + 0.5) {
+            // Flame Sweep — start telegraph, then sweep fires when telegraph ends
+            if (e.bossFlameSweepTimer <= 0 && dist < e.def.flameSweepRadius + 0.5 && !e._telegraphing) {
                 e.bossFlameSweepTimer = e.def.flameSweepCooldown * (e.bossPhase === 1 ? 0.6 : 1.0);
-                const sweepR = e.def.flameSweepRadius;
-                const sweepCenter = Math.atan2(dc, dr);
-                // Wide flame arc particles
-                for (let p = 0; p < 14; p++) {
-                    const angle = sweepCenter + (p / 14 - 0.5) * Math.PI * 1.2; // wider than Bone Colossus
-                    const px = e.row + Math.cos(angle) * sweepR;
-                    const py = e.col + Math.sin(angle) * sweepR;
-                    spawnParticle(px, py, Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, 0.5, '#ff6622', 0.9);
-                }
-                if (dist < sweepR) {
-                    const sweepDmg = Math.round(e.def.flameSweepDamage * (e.bossPhase === 1 ? 1.4 : 1.0));
-                    damagePlayer(sweepDmg, 'infernal_knight');
-                }
-                addScreenShake(5, 0.25);
-                e.howlPaused = 0.35;
-                e.state = 'attack';
-                e.animFrame = 0;
-                e.attackTimer = 0.35;
-                e.attackFired = true;
+                const telegraphDur = e.bossPhase === 1 ? 0.8 : 1.0;
+                e._telegraphing = true;
+                e._telegraphTimer = telegraphDur;
+                e._telegraphDuration = telegraphDur;
+                e._telegraphType = 'arc';
+                e._telegraphColor = '#ff6622';
+                e._telegraphRadius = e.def.flameSweepRadius;
+                e._telegraphRow = e.row;
+                e._telegraphCol = e.col;
+                e._telegraphAngle = Math.atan2(dc, dr);
+                e._telegraphSpan = Math.PI * 0.6; // half of the 1.2*PI arc
+                e._telegraphAttack = 'flame_sweep';
+                sfxBossTelegraph(e.row, e.col);
                 continue;
-            }
-
-            // Flame Sweep telegraph — visual warning 0.3s before sweep fires
-            if (e.bossFlameSweepTimer > 0 && e.bossFlameSweepTimer <= 0.3 && dist < e.def.flameSweepRadius + 0.5) {
-                const sweepCenter = Math.atan2(dc, dr);
-                // Orange/red warning particles in wider arc
-                if (Math.random() < 0.5) {
-                    const angle = sweepCenter + (Math.random() - 0.5) * Math.PI;
-                    const px = e.row + Math.cos(angle) * e.def.flameSweepRadius;
-                    const py = e.col + Math.sin(angle) * e.def.flameSweepRadius;
-                    spawnParticle(px, py, Math.cos(angle) * 0.5, Math.sin(angle) * 0.5, 0.15, '#ff8833', 0.95);
-                }
             }
 
             // Fire Trail — leaves burning ground where it walks (every 0.8s while moving)
@@ -3186,52 +3180,23 @@ function updateEnemies(dt) {
         // FROST WYRM ABILITIES (Zone 5 Boss)
         // =====================================================
         if (e.type === 'frost_wyrm' && dist < e.def.aggroRange) {
-            // Ice Breath — cone attack in player direction
-            if (e.bossIceBreathTimer <= 0 && dist < e.def.iceBreathRadius + 1) {
+            // Ice Breath — start telegraph, then cone fires when telegraph ends
+            if (e.bossIceBreathTimer <= 0 && dist < e.def.iceBreathRadius + 1 && !e._telegraphing) {
                 e.bossIceBreathTimer = e.def.iceBreathCooldown * (e.bossPhase === 1 ? 0.65 : 1.0);
-                const breathDir = Math.atan2(dc, dr);
-                const breathR = e.def.iceBreathRadius;
-                const halfAngle = e.def.iceBreathAngle;
-                // Cone particles
-                for (let p = 0; p < 16; p++) {
-                    const angle = breathDir + (Math.random() - 0.5) * halfAngle * 2;
-                    const dist2 = Math.random() * breathR;
-                    const px = e.row + Math.cos(angle) * dist2;
-                    const py = e.col + Math.sin(angle) * dist2;
-                    spawnParticle(px, py, Math.cos(angle) * 3, Math.sin(angle) * 3, 0.5, '#88ccff', 0.8);
-                }
-                // Check if player is in cone
-                const toPlayerAngle = Math.atan2(dc, dr);
-                let angleDiff = Math.abs(toPlayerAngle - breathDir);
-                if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-                if (dist < breathR && angleDiff < halfAngle) {
-                    const breathDmg = Math.round(e.def.iceBreathDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
-                    damagePlayer(breathDmg, 'frost_wyrm');
-                    // Slow player briefly
-                    player.slowTimer = (player.slowTimer || 0) + 0.8;
-                }
-                addScreenShake(4, 0.2);
-                e.howlPaused = 0.4;
-                e.state = 'attack';
-                e.animFrame = 0;
-                e.attackTimer = 0.4;
-                e.attackFired = true;
+                const telegraphDur = e.bossPhase === 1 ? 0.8 : 1.0;
+                e._telegraphing = true;
+                e._telegraphTimer = telegraphDur;
+                e._telegraphDuration = telegraphDur;
+                e._telegraphType = 'cone';
+                e._telegraphColor = '#44aaff';
+                e._telegraphRadius = e.def.iceBreathRadius;
+                e._telegraphRow = e.row;
+                e._telegraphCol = e.col;
+                e._telegraphAngle = Math.atan2(dc, dr);
+                e._telegraphSpan = e.def.iceBreathAngle;
+                e._telegraphAttack = 'ice_breath';
+                sfxBossTelegraph(e.row, e.col);
                 continue;
-            }
-
-            // Ice Breath telegraph — visual warning 0.3s before breath fires
-            if (e.bossIceBreathTimer > 0 && e.bossIceBreathTimer <= 0.3 && dist < e.def.iceBreathRadius + 1) {
-                const breathDir = Math.atan2(dc, dr);
-                const breathR = e.def.iceBreathRadius;
-                const halfAngle = e.def.iceBreathAngle;
-                // Cyan warning particles in cone direction
-                if (Math.random() < 0.5) {
-                    const angle = breathDir + (Math.random() - 0.5) * halfAngle * 1.5;
-                    const dist2 = Math.random() * breathR * 0.7;
-                    const px = e.row + Math.cos(angle) * dist2;
-                    const py = e.col + Math.sin(angle) * dist2;
-                    spawnParticle(px, py, Math.cos(angle) * 0.8, Math.sin(angle) * 0.8, 0.15, '#44ccff', 0.95);
-                }
             }
 
             // Freeze Trap — places a trap at player's current position
@@ -4912,6 +4877,174 @@ function drawFireTrails() {
             ctx.restore();
         }
     }
+}
+
+// ----- DRAW BOSS TELEGRAPHS — ground warning indicators -----
+// Helper: convert hex color '#rrggbb' to 'r, g, b' string for rgba()
+function _hexToRgb(hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return r + ',' + g + ',' + b;
+}
+
+function drawBossTelegraphs() {
+    for (const e of enemies) {
+        if (!e.def.isBoss || !e._telegraphing) continue;
+
+        const progress = 1.0 - (e._telegraphTimer / e._telegraphDuration); // 0 -> 1
+        const sizeFrac = 0.5 + progress * 0.5; // grows from 50% to 100%
+        const pulse = 0.4 + Math.sin(performance.now() * 0.012) * 0.15; // pulsing alpha
+        const alpha = Math.min(0.6, pulse + progress * 0.2);
+        const rgb = _hexToRgb(e._telegraphColor);
+
+        if (e._telegraphType === 'circle') {
+            // Red pulsing circle at boss position (slam)
+            const pos = tileToScreen(e._telegraphRow, e._telegraphCol);
+            const px = pos.x + cameraX;
+            const py = pos.y + cameraY;
+            // Convert tile radius to approximate screen pixels (isometric ellipse)
+            const screenRX = e._telegraphRadius * HALF_DW * sizeFrac;
+            const screenRY = e._telegraphRadius * HALF_DH * sizeFrac;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            // Filled warning zone
+            const grad = ctx.createRadialGradient(px, py, 0, px, py, Math.max(screenRX, screenRY));
+            grad.addColorStop(0, 'rgba(' + rgb + ',0.25)');
+            grad.addColorStop(0.7, 'rgba(' + rgb + ',0.12)');
+            grad.addColorStop(1, 'rgba(' + rgb + ',0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(px, py, screenRX, screenRY, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Outer ring
+            ctx.strokeStyle = e._telegraphColor;
+            ctx.lineWidth = 2 + progress * 2;
+            ctx.globalAlpha = alpha * 1.2;
+            ctx.beginPath();
+            ctx.ellipse(px, py, screenRX, screenRY, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+        } else if (e._telegraphType === 'arc') {
+            // Orange arc indicator (flame sweep)
+            const pos = tileToScreen(e._telegraphRow, e._telegraphCol);
+            const px = pos.x + cameraX;
+            const py = pos.y + cameraY;
+            const centerAngle = e._telegraphAngle;
+            const span = e._telegraphSpan;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            // Filled arc wedge
+            ctx.fillStyle = 'rgba(' + rgb + ',0.2)';
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            // Draw arc outline using line segments (isometric approx)
+            const steps = 16;
+            for (let i = 0; i <= steps; i++) {
+                const a = centerAngle - span + (i / steps) * span * 2;
+                const tileR = e._telegraphRadius * sizeFrac;
+                const tr = e._telegraphRow + Math.cos(a) * tileR;
+                const tc = e._telegraphCol + Math.sin(a) * tileR;
+                const ep = tileToScreen(tr, tc);
+                if (i === 0) ctx.moveTo(ep.x + cameraX, ep.y + cameraY);
+                ctx.lineTo(ep.x + cameraX, ep.y + cameraY);
+            }
+            ctx.lineTo(px, py);
+            ctx.closePath();
+            ctx.fill();
+            // Arc edge stroke
+            ctx.strokeStyle = e._telegraphColor;
+            ctx.lineWidth = 2 + progress * 2;
+            ctx.globalAlpha = alpha * 1.2;
+            ctx.stroke();
+            ctx.restore();
+
+        } else if (e._telegraphType === 'cone') {
+            // Blue cone indicator (ice breath)
+            const pos = tileToScreen(e._telegraphRow, e._telegraphCol);
+            const px = pos.x + cameraX;
+            const py = pos.y + cameraY;
+            const centerAngle = e._telegraphAngle;
+            const halfAngle = e._telegraphSpan;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            // Filled cone
+            ctx.fillStyle = 'rgba(' + rgb + ',0.18)';
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            const steps = 16;
+            for (let i = 0; i <= steps; i++) {
+                const a = centerAngle - halfAngle + (i / steps) * halfAngle * 2;
+                const tileR = e._telegraphRadius * sizeFrac;
+                const tr = e._telegraphRow + Math.cos(a) * tileR;
+                const tc = e._telegraphCol + Math.sin(a) * tileR;
+                const ep = tileToScreen(tr, tc);
+                ctx.lineTo(ep.x + cameraX, ep.y + cameraY);
+            }
+            ctx.lineTo(px, py);
+            ctx.closePath();
+            ctx.fill();
+            // Cone edge stroke
+            ctx.strokeStyle = e._telegraphColor;
+            ctx.lineWidth = 2 + progress * 2;
+            ctx.globalAlpha = alpha * 1.2;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Pulsing inner warning particles during telegraph
+        if (Math.random() < 0.4) {
+            const angle = Math.random() * Math.PI * 2;
+            const pDist = Math.random() * e._telegraphRadius * 0.8;
+            spawnParticle(
+                e._telegraphRow + Math.cos(angle) * pDist,
+                e._telegraphCol + Math.sin(angle) * pDist,
+                0, -0.5, 0.3, e._telegraphColor, 0.6
+            );
+        }
+    }
+}
+
+// ----- DRAW BOSS TELEGRAPH SCREEN-EDGE FLASH -----
+function drawBossTelegraphFlash() {
+    if (bossTelegraphFlashTimer <= 0) return;
+    const alpha = Math.min(0.35, bossTelegraphFlashTimer * 2.5);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = alpha;
+    // Draw a vignette flash around the screen edges
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const edgeSize = 60;
+    // Top edge
+    const topGrad = ctx.createLinearGradient(0, 0, 0, edgeSize);
+    topGrad.addColorStop(0, bossTelegraphFlashColor);
+    topGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, w, edgeSize);
+    // Bottom edge
+    const botGrad = ctx.createLinearGradient(0, h, 0, h - edgeSize);
+    botGrad.addColorStop(0, bossTelegraphFlashColor);
+    botGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = botGrad;
+    ctx.fillRect(0, h - edgeSize, w, edgeSize);
+    // Left edge
+    const leftGrad = ctx.createLinearGradient(0, 0, edgeSize, 0);
+    leftGrad.addColorStop(0, bossTelegraphFlashColor);
+    leftGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = leftGrad;
+    ctx.fillRect(0, 0, edgeSize, h);
+    // Right edge
+    const rightGrad = ctx.createLinearGradient(w, 0, w - edgeSize, 0);
+    rightGrad.addColorStop(0, bossTelegraphFlashColor);
+    rightGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = rightGrad;
+    ctx.fillRect(w - edgeSize, 0, edgeSize, h);
+    ctx.restore();
 }
 
 // ----- DRAW ENEMY ARROWS & PROJECTILES -----
