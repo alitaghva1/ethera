@@ -956,22 +956,23 @@ function drawEnvironmentLightProps() {
         // Draw physical prop sprite
         _drawLightProp(sx, sy, light, flicker, now);
 
-        // Ambient ember particles from fire-type lights
-        if (typeof _emitParticle === 'function') {
-            const fireTypes = new Set(['torch', 'brazier', 'fire_pit', 'lava_crack']);
-            if (fireTypes.has(light.type) && Math.random() < 0.012) {
-                // ~0.7 embers/sec per light at 60fps
+        // Ambient ember particles — only from fully revealed lights, subtle rate
+        if (typeof _emitParticle === 'function' && gamePhase === 'playing') {
+            const isFireLight = (light.type === 'torch' || light.type === 'brazier' || light.type === 'fire_pit');
+            // Only emit from lights the player can actually see (fog revealed = 1.0)
+            const fogVal = (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed[0].length) ? fogRevealed[fr][fc] : 0;
+            if (isFireLight && fogVal >= 1.0 && Math.random() < 0.004) {
+                // ~0.24 embers/sec per light — very subtle
                 _emitParticle(
-                    sx + (Math.random() - 0.5) * 8,
-                    sy - 20 - Math.random() * 10,
-                    (Math.random() - 0.5) * 0.8,  // drift
-                    -1.2 - Math.random() * 0.8,     // float up
-                    0.8 + Math.random() * 0.4,      // life
-                    1 + Math.random(),               // size
-                    '#ffaa44',                        // ember orange
-                    0.5,
-                    'ember',
-                    'screen'
+                    sx + (Math.random() - 0.5) * 6,
+                    sy - 18 - Math.random() * 8,
+                    (Math.random() - 0.5) * 0.4,
+                    -0.8 - Math.random() * 0.5,
+                    0.6 + Math.random() * 0.3,
+                    0.8 + Math.random() * 0.5,
+                    '#cc8833',
+                    0.3,
+                    'ember'
                 );
             }
         }

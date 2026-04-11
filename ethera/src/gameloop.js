@@ -399,18 +399,18 @@ let _nextProceduralDepth = 1;
 
 // ── AMBIENT ATMOSPHERE PARTICLES ──
 let _ambientTimer = 0;
-const _AMBIENT_MAX = 15;
+const _AMBIENT_MAX = 8;
 const _AMBIENT_CONFIGS = {
-    dungeon: { color: '#999988', size: 1, alpha: 0.1, vy: -0.3, life: 2.5 },   // dust motes
-    hell:    { color: '#ff6633', size: 1.5, alpha: 0.15, vy: -1.0, life: 1.5 }, // ash wisps
-    frozen:  { color: '#aaddff', size: 1, alpha: 0.12, vy: 0.4, life: 2.0 },    // ice sparkles
-    throne:  { color: '#7733aa', size: 1, alpha: 0.10, vy: -0.2, life: 2.5 },   // void motes
-    town:    { color: '#bbaa88', size: 1, alpha: 0.06, vy: -0.2, life: 3.0 },   // warm dust
+    dungeon: { color: '#888877', size: 0.8, alpha: 0.06, vy: -0.2, life: 3.0 },  // faint dust motes
+    hell:    { color: '#cc5522', size: 1, alpha: 0.08, vy: -0.6, life: 2.0 },    // subtle ash
+    frozen:  { color: '#99bbdd', size: 0.8, alpha: 0.07, vy: 0.3, life: 2.5 },   // faint ice
+    throne:  { color: '#664499', size: 0.8, alpha: 0.05, vy: -0.15, life: 3.0 }, // barely-there void
+    town:    { color: '#aa9977', size: 0.8, alpha: 0.04, vy: -0.15, life: 3.5 }, // very subtle dust
 };
 function spawnAmbientParticles(dt) {
     if (gamePhase !== 'playing' || typeof _emitParticle !== 'function') return;
     _ambientTimer += dt;
-    if (_ambientTimer < 0.5) return; // spawn every 0.5s
+    if (_ambientTimer < 0.8) return; // spawn every 0.8s (subtle, not constant)
     _ambientTimer = 0;
 
     // Determine atmosphere type from current zone
@@ -434,9 +434,8 @@ function spawnAmbientParticles(dt) {
     const ambientCount = particles.filter(p => p.type === 'ambient').length;
     if (ambientCount >= _AMBIENT_MAX) return;
 
-    // Spawn 1-2 particles near the player
-    const count = 1 + (Math.random() < 0.3 ? 1 : 0);
-    for (let i = 0; i < count; i++) {
+    // Spawn 1 particle near the player
+    for (let i = 0; i < 1; i++) {
         const pPos = tileToScreen(player.row, player.col);
         const px = pPos.x + cameraX + (Math.random() - 0.5) * 300;
         const py = pPos.y + cameraY + (Math.random() - 0.5) * 200;
