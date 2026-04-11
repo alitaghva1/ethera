@@ -294,7 +294,8 @@ function handleKeyDown(e) {
     if ((e.key === 'Tab' || e.key.toLowerCase() === 'j') && gamePhase === 'playing' && !gameDead) {
         e.preventDefault();
         menuOpen = !menuOpen;
-        if (!menuOpen) menuFadeInTimer = 0;
+        if (!menuOpen) { menuFadeInTimer = 0; if (typeof sfxBookClose === 'function') sfxBookClose(); }
+        else { if (typeof sfxBookOpen === 'function') sfxBookOpen(); }
         // Reset to STATUS if current tab is hidden for this form
         if (menuOpen) {
             const _mCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
@@ -565,6 +566,7 @@ function handleMouseDown(e) {
     if (gamePhase === 'preMenu' && e.button === 0) {
         initMusic();
         initSFX();
+        if (typeof preloadSfxSamples === 'function') preloadSfxSamples();
         playMusic('menu', 2.0);
         menuFadeAlpha = 0; // will fade in during menu phase
         gamePhase = 'menu';
@@ -572,6 +574,7 @@ function handleMouseDown(e) {
     }
     // ----- Menu click handling -----
     if (gamePhase === 'menu' && e.button === 0) {
+        if (typeof sfxUIClick === 'function') sfxUIClick();
         const btns = getMenuButtons();
         if (pointInButton(mouse.x, mouse.y, btns.start)) {
             // Fade out, then go to name entry

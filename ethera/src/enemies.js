@@ -277,10 +277,10 @@ const ENEMY_TYPES = {
 
     // Shadow Knight (Zone 6) — flanks like skeleton, teleports when hit
     shadow_knight: {
-        prefix: 'shadowknight',  // unique sprite (lizardman)
+        prefix: 'shadowknight',  // unique sprite (NightBorne warrior)
         hp: 80, speed: 2.8, damage: 22, attackRange: 0.9, aggroRange: 9,
         hitboxR: 0.3,
-        frames: { idle: 3, walk: 6, attack: 5, hurt: 2, death: 6 },
+        frames: { idle: 9, walk: 6, attack: 12, hurt: 5, death: 23 },
         animSpeed: 8, attackDur: 0.5, attackCooldown: 1.3,
         scale: 1.4, yOff: 0.75,
         ai: 'flank',
@@ -666,7 +666,10 @@ function applyEnemyHit(e, damage, opts) {
             e.hurtTimer = hurtDur;
             e.staggerCooldown = 0.3;
             e.animFrame = 0;
-            if (!opts.skipSFX) sfxEnemyHurt(e.row, e.col);
+            if (!opts.skipSFX) {
+                sfxEnemyHurt(e.row, e.col);
+                if (typeof sfxRealHit === 'function') sfxRealHit(); // layered sample
+            }
         }
         // Hit spark particle
         if (!opts.skipParticles) {

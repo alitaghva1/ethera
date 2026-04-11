@@ -134,11 +134,11 @@ const NPC_REGISTRY = {
             name: 'Elara — The Pale Queen',
             row: 26, col: 16,
             zone: 6,
-            spriteKey: 'enemy_skel_idle',
-            frameCount: 6,
+            spriteKey: 'enemy_palequeen_idle',
+            frameCount: 8,
             frameW: 100, frameH: 100,
-            scale: 1.5,
-            tint: { r: 220, g: 180, b: 255, a: 0.4 },
+            scale: 1.8,
+            tint: null,  // unique sprite, no tint needed
             isPaleQueen: true,  // custom rendering flag
             dialogue: [
                 'You... you\'re alive. I thought the talisman would be enough. I thought you\'d stay away.',

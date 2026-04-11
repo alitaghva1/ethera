@@ -362,6 +362,10 @@ function updatePlayer(dt) {
 
     // --- Animation state ---
     player.state = speed > 0.2 ? 'walk' : 'idle';
+    // Footstep sounds (only for wizard/skeleton/lich — slime bounces instead)
+    if (typeof updateFootsteps === 'function' && FormSystem.currentForm !== 'slime') {
+        updateFootsteps(dt, player.state === 'walk' && !player.dodging);
+    }
 
     // --- Facing toward mouse when idle (subtle) ---
     if (speed <= 0.3) {

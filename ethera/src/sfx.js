@@ -481,6 +481,87 @@ let hitPauseTimer = 0;
 const MAX_SCREEN_SHAKE = 18;
 const MAX_HIT_PAUSE = 0.15;
 // Slow-mo system for big moments
+// ============================================================
+//  SAMPLE-BASED SFX — Real audio files for key sounds
+// ============================================================
+const _sfxSamples = {};  // cache: { path: AudioBuffer }
+
+// Load and cache an audio sample
+function _loadSfxSample(path) {
+    if (_sfxSamples[path]) return Promise.resolve(_sfxSamples[path]);
+    return fetch(path).then(r => r.arrayBuffer()).then(buf => {
+        if (!sfxCtx) return null;
+        return sfxCtx.decodeAudioData(buf);
+    }).then(decoded => {
+        if (decoded) _sfxSamples[path] = decoded;
+        return decoded;
+    }).catch(() => null);
+}
+
+// Play a cached sample at given volume
+function playSfxSample(path, volume, rate) {
+    if (!sfxCtx || !sfxMasterGain) return;
+    const buf = _sfxSamples[path];
+    if (!buf) { _loadSfxSample(path); return; } // lazy-load on first call
+    const src = sfxCtx.createBufferSource();
+    src.buffer = buf;
+    if (rate) src.playbackRate.value = rate;
+    const gain = sfxCtx.createGain();
+    gain.gain.value = (volume || 0.3) * sfxVolume;
+    src.connect(gain);
+    gain.connect(sfxMasterGain);
+    src.start();
+}
+
+// Preload key samples on init
+function preloadSfxSamples() {
+    const samples = [
+        'assets/sfx/impacts/footstep_concrete_000.ogg',
+        'assets/sfx/impacts/footstep_concrete_001.ogg',
+        'assets/sfx/impacts/footstep_concrete_002.ogg',
+        'assets/sfx/impacts/impactPunch_heavy_000.ogg',
+        'assets/sfx/impacts/impactPunch_heavy_001.ogg',
+        'assets/sfx/ui/click1.ogg',
+        'assets/sfx/ui/rollover1.ogg',
+        'assets/sfx/rpg/bookOpen.ogg',
+        'assets/sfx/rpg/bookClose.ogg',
+    ];
+    for (const s of samples) _loadSfxSample(s);
+}
+
+// --- Footstep system ---
+let _footstepTimer = 0;
+let _footstepIdx = 0;
+const _FOOTSTEP_FILES = [
+    'assets/sfx/impacts/footstep_concrete_000.ogg',
+    'assets/sfx/impacts/footstep_concrete_001.ogg',
+    'assets/sfx/impacts/footstep_concrete_002.ogg',
+    'assets/sfx/impacts/footstep_concrete_003.ogg',
+];
+function updateFootsteps(dt, isMoving) {
+    if (!isMoving) { _footstepTimer = 0; return; }
+    _footstepTimer += dt;
+    const interval = 0.35; // seconds between footsteps
+    if (_footstepTimer >= interval) {
+        _footstepTimer -= interval;
+        const file = _FOOTSTEP_FILES[_footstepIdx % _FOOTSTEP_FILES.length];
+        playSfxSample(file, 0.12, 0.9 + Math.random() * 0.2);
+        _footstepIdx++;
+    }
+}
+
+// --- UI click sound ---
+function sfxUIClick() { playSfxSample('assets/sfx/ui/click1.ogg', 0.25); }
+function sfxUIHover() { playSfxSample('assets/sfx/ui/rollover1.ogg', 0.15); }
+function sfxBookOpen() { playSfxSample('assets/sfx/rpg/bookOpen.ogg', 0.3); }
+function sfxBookClose() { playSfxSample('assets/sfx/rpg/bookClose.ogg', 0.25); }
+
+// --- Real impact hit sound (layered with procedural) ---
+function sfxRealHit() {
+    const files = ['assets/sfx/impacts/impactPunch_heavy_000.ogg', 'assets/sfx/impacts/impactPunch_heavy_001.ogg', 'assets/sfx/impacts/impactPunch_heavy_002.ogg'];
+    playSfxSample(files[Math.floor(Math.random() * files.length)], 0.2, 0.8 + Math.random() * 0.4);
+}
+
 let slowMoTimer = 0;
 let slowMoScale = 1.0; // 1.0 = normal, 0.3 = slow
 function addScreenShake(intensity, duration) {

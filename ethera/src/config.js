@@ -879,11 +879,18 @@ const ENEMY_FILES = {
     bonemage_hurt:   '../../BoneMage/BoneMage-Hurt.png',
     bonemage_death:  '../../BoneMage/BoneMage-Death.png',
 
-    shadowknight_idle:   '../../ShadowKnight/ShadowKnight-Idle.png',
-    shadowknight_walk:   '../../ShadowKnight/ShadowKnight-Walk.png',
-    shadowknight_attack: '../../ShadowKnight/ShadowKnight-Attack01.png',
-    shadowknight_hurt:   '../../ShadowKnight/ShadowKnight-Hurt.png',
-    shadowknight_death:  '../../ShadowKnight/ShadowKnight-Death.png',
+    shadowknight_idle:   '../../NightBorne/NightBorne-Idle.png',
+    shadowknight_walk:   '../../NightBorne/NightBorne-Walk.png',
+    shadowknight_attack: '../../NightBorne/NightBorne-Attack01.png',
+    shadowknight_hurt:   '../../NightBorne/NightBorne-Hurt.png',
+    shadowknight_death:  '../../NightBorne/NightBorne-Death.png',
+
+    // Pale Queen NPC sprite (Evil Wizard 2)
+    palequeen_idle:   '../../PaleQueen/PaleQueen-Idle.png',
+    palequeen_walk:   '../../PaleQueen/PaleQueen-Walk.png',
+    palequeen_attack: '../../PaleQueen/PaleQueen-Attack01.png',
+    palequeen_hurt:   '../../PaleQueen/PaleQueen-Hurt.png',
+    palequeen_death:  '../../PaleQueen/PaleQueen-Death.png',
 };
 
 // ----- GLOBALS -----
