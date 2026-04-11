@@ -397,17 +397,49 @@ const Notify = {
         ctx.quadraticCurveTo(x, y, x + r, y);
         ctx.closePath();
     },
-    
+
+    // ========== TUTORIAL SEQUENCE SYSTEM ==========
+
+    _tutorialState: {
+        sequences: {},
+        pending: [],
+    },
+
+    tutorialSequence: function(sequenceId, hints) {
+        if (this._tutorialState.sequences[sequenceId]) return;
+        this._tutorialState.sequences[sequenceId] = true;
+        let cumulative = 0;
+        for (const h of hints) {
+            cumulative += (h.delay || 3);
+            this._tutorialState.pending.push({
+                id: sequenceId + '_' + cumulative,
+                text: h.text,
+                delay: cumulative,
+                timer: 0,
+                options: h.options || {},
+            });
+        }
+    },
+
+    updateTutorials: function(dt) {
+        const pending = this._tutorialState.pending;
+        for (let i = pending.length - 1; i >= 0; i--) {
+            const p = pending[i];
+            p.timer += dt;
+            if (p.timer >= p.delay) {
+                this.hint(p.id, p.text, 5, p.options);
+                pending.splice(i, 1);
+            }
+        }
+    },
+
     // ========== RESET ==========
-    
-    /**
-     * Clear all active notifications (called on game restart)
-     * Note: Does NOT reset shownHints (those persist per session)
-     */
+
     reset: function() {
         this.toasts = [];
         this.zoneBanner.text = '';
         this.zoneBanner.timer = 0;
         this.controlsVisible = false;
+        this._tutorialState.pending.length = 0;
     }
 };

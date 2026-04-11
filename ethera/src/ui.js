@@ -474,8 +474,7 @@ function drawTowerModeIndicator() {
     ctx.restore();
 }
 
-// Register wizard form HUD handler
-formHandlers.wizard.drawHUD = function() { drawHPMana(); drawObjective(); };
+// Wizard form drawHUD handler is registered in wizard.js
 
 // ============================================================
 //  SHARED: Active Upgrade Icons (drawn below XP bar for all forms)

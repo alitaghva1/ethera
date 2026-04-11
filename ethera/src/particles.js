@@ -129,6 +129,25 @@ function spawnCastEffect(worldX, worldY) {
     }
 }
 
+// Evolution burst — large radial burst at tile position (used for evolution transform)
+function spawnParticleBurst(tileRow, tileCol, count, color) {
+    const pos = tileToScreen(tileRow, tileCol);
+    const wx = pos.x + cameraX;
+    const wy = pos.y + cameraY;
+    const n = Math.max(8, Math.round(count * GFX.particleMul));
+    for (let i = 0; i < n; i++) {
+        const angle = (Math.PI * 2 * i) / n + (Math.random() - 0.5) * 0.5;
+        const speed = 3.5 + Math.random() * 4;
+        _emitParticle(
+            wx, wy,
+            Math.cos(angle) * speed, Math.sin(angle) * speed,
+            0.8 + Math.random() * 0.5,
+            3 + Math.random() * 3,
+            color || '#e8c840', 0.95, 'death', 'screen'
+        );
+    }
+}
+
 // ============================================================
 //  UPDATE — tick all effect particles (ambient handled in ui.js)
 // ============================================================

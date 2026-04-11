@@ -343,6 +343,25 @@ formHandlers.lich = {
     getUpgradePool: () => LICH_UPGRADE_POOL,
 };
 
+// Talisman perk definitions — one unlocked per evolution (levels 2-4)
+const TALISMAN_PERKS = [
+    { id: 'bone_memory', name: 'Bone Memory', desc: '+10% XP gain', level: 2, effect: { xpMult: 1.10 } },
+    { id: 'arcane_resonance', name: 'Arcane Resonance', desc: 'Mana regen +20%', level: 3, effect: { manaRegenMult: 1.20 } },
+    { id: 'death_embrace', name: "Death's Embrace", desc: '+20 max HP, +15% damage', level: 4, effect: { hpBonus: 20, dmgMult: 1.15 } },
+];
+
+// Aggregate bonuses from all unlocked talisman perks
+FormSystem.getTalismanBonuses = function() {
+    const bonuses = { xpMult: 1, manaRegenMult: 1, dmgMult: 1, hpBonus: 0 };
+    for (const perk of this.talisman.perks) {
+        if (perk.effect.xpMult) bonuses.xpMult *= perk.effect.xpMult;
+        if (perk.effect.manaRegenMult) bonuses.manaRegenMult *= perk.effect.manaRegenMult;
+        if (perk.effect.dmgMult) bonuses.dmgMult *= perk.effect.dmgMult;
+        if (perk.effect.hpBonus) bonuses.hpBonus += perk.effect.hpBonus;
+    }
+    return bonuses;
+};
+
 // Helper: get current form config value with fallback
 function getFormStat(key) {
     const config = FormSystem.getFormConfig();
@@ -352,16 +371,18 @@ function getFormStat(key) {
 // Talisman passive bonuses — scale with talisman level (increases on evolution, not during gameplay)
 // Talisman XP does not change during normal play; bonuses only update when the player evolves
 // and talisman.level is incremented. This is intentional per design.
+// Perk bonuses from TALISMAN_PERKS are folded in so all existing call sites benefit automatically.
 function getTalismanBonus() {
-    if (!FormSystem.talisman.found) return { dmgMult: 1, speedMult: 1, xpMult: 1, hpBonus: 0 };
+    if (!FormSystem.talisman.found) return { dmgMult: 1, speedMult: 1, xpMult: 1, manaRegenMult: 1, hpBonus: 0 };
     const lvl = FormSystem.talisman.level;
-    // Evolution surge stacks multiplicatively with talisman bonuses
     const surge = (typeof getEvolutionSurgeBonus === 'function') ? getEvolutionSurgeBonus() : { dmgMult: 1, speedMult: 1 };
+    const perks = FormSystem.getTalismanBonuses();
     return {
-        dmgMult: (1 + (lvl - 1) * 0.08) * surge.dmgMult,    // +8% damage per level × surge
-        speedMult: (1 + (lvl - 1) * 0.04) * surge.speedMult, // +4% move speed per level × surge
-        xpMult: 1 + (lvl - 1) * 0.10,                        // +10% XP per level (unaffected by surge)
-        hpBonus: (lvl - 1) * 5,                               // +5 max HP per level (unaffected by surge)
-        surgeActive: surge.dmgMult > 1,                       // flag for UI indicator
+        dmgMult: (1 + (lvl - 1) * 0.08) * surge.dmgMult * perks.dmgMult,
+        speedMult: (1 + (lvl - 1) * 0.04) * surge.speedMult,
+        xpMult: (1 + (lvl - 1) * 0.10) * perks.xpMult,
+        manaRegenMult: perks.manaRegenMult,
+        hpBonus: (lvl - 1) * 5 + perks.hpBonus,
+        surgeActive: surge.dmgMult > 1,
     };
 }

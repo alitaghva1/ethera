@@ -585,6 +585,11 @@ function drawChestPrompt() {
     const chest = getNearbyChest();
     if (!chest) return;
 
+    // One-time hint on first chest encounter
+    if (typeof Notify !== 'undefined') {
+        Notify.hint('tutorial_chest', 'Press E to open chests for loot.', 4, { color: '#e8d4a0', borderColor: '#aa9060' });
+    }
+
     const def = getChestDef(chest.row, chest.col);
     const locked = isChestLocked(chest.row, chest.col);
     const _isSlimeForm = (FormSystem.currentForm === 'slime');
@@ -846,6 +851,22 @@ function loadZone(zoneNumber) {
     const zoneCfgName = ZONE_CONFIGS[zoneNumber] || {};
     if (typeof Notify !== 'undefined') Notify.showZoneBanner(zoneCfgName.name || 'Unknown Zone');
 
+    // --- Zone entry tutorials (one-time sequences) ---
+    if (typeof Notify !== 'undefined' && Notify.tutorialSequence) {
+        if (zoneNumber === 0) {
+            Notify.tutorialSequence('hamlet_intro', [
+                { text: 'WASD to move. Explore the hamlet.', delay: 1 },
+                { text: 'Press E near villagers to talk.', delay: 4 },
+                { text: 'Head north to find the Undercroft...', delay: 5 },
+            ]);
+        } else if (zoneNumber === 1) {
+            Notify.tutorialSequence('undercroft_intro', [
+                { text: 'LMB to attack enemies!', delay: 1 },
+                { text: 'SPACE to dodge — you have brief invulnerability.', delay: 4 },
+            ]);
+        }
+    }
+
     // Switch to playing phase
     gamePhase = 'playing';
 }
@@ -993,7 +1014,7 @@ function isDoorLocked(row, col) {
 const ZONE_FORM_REQUIREMENTS = {
     'zone2': { forms: ['skeleton', 'wizard', 'lich'], message: 'You are too weak... Evolve first.' },
     'zone3': { forms: ['wizard', 'lich'], message: 'Dark magic bars the way... You must master the arcane.' },
-    'zone4': { forms: ['lich'], message: 'Only the undying may enter the Inferno...' },
+    'zone4': { forms: ['wizard', 'lich'], message: 'The Inferno demands arcane mastery...' },
     'zone5': { forms: ['lich'], message: 'The Abyss rejects the living...' },
     'zone6': { forms: ['lich'], message: 'Only the mightiest undead may face the Throne...' },
 };

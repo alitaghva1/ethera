@@ -59,15 +59,23 @@ const EVOLUTION_REQUIREMENTS = {
     },
 };
 
+// Track evolution milestone hints (show once when 1 milestone remains)
+let _evoHintShown = { slime: false, skeleton: false, wizard: false };
+
 function checkSlimeEvolution() {
     const fd = FormSystem.formData.slime;
     const req = EVOLUTION_REQUIREMENTS.slime_to_skeleton;
-    if (fd.absorbed >= req.absorbed &&
-        fd.maxSizeReached >= req.maxSizeReached &&
-        fd.totalKills >= req.kills &&
-        FormSystem.talisman.found &&
-        fd.bossDefeated) {
-        // Trigger evolution!
+    const met = (fd.absorbed >= req.absorbed ? 1 : 0) +
+                (fd.maxSizeReached >= req.maxSizeReached ? 1 : 0) +
+                (fd.totalKills >= req.kills ? 1 : 0) +
+                (FormSystem.talisman.found ? 1 : 0) +
+                (fd.bossDefeated ? 1 : 0);
+    // Show hint when close to evolution (1 milestone remaining)
+    if (met >= 4 && !_evoHintShown.slime && typeof Notify !== 'undefined') {
+        _evoHintShown.slime = true;
+        Notify.hint('evo_near_slime', 'Evolution is near... Check the Grimoire (TAB) for progress.', { color: '#e8c840' });
+    }
+    if (met >= 5) {
         triggerEvolution('skeleton');
     }
 }
@@ -101,6 +109,8 @@ function triggerEvolution(targetForm) {
     gamePhase = 'evolution'; // new game phase
     addScreenShake(8, 1.0);
     addSlowMo(0.5, 0.3);
+    // Play evolution SFX
+    if (typeof sfxEvolution === 'function') sfxEvolution();
 }
 
 function updateEvolution(dt) {
@@ -135,6 +145,16 @@ function updateEvolution(dt) {
             // Talisman levels up on evolution
             FormSystem.talisman.level++;
             FormSystem.talisman.xp = 0;
+            // Grant talisman perk for the new level
+            if (typeof TALISMAN_PERKS !== 'undefined') {
+                const newPerk = TALISMAN_PERKS.find(p => p.level === FormSystem.talisman.level);
+                if (newPerk) {
+                    FormSystem.talisman.perks.push(newPerk);
+                    if (typeof Notify !== 'undefined') {
+                        Notify.toast('Talisman Perk: ' + newPerk.name, { duration: 5, color: '#ffd700', borderColor: '#aa8800' });
+                    }
+                }
+            }
             // Unequip items for non-equipment forms
             // Check the target form's config — if it can't use equipment,
             // return all equipped items to the backpack
@@ -158,6 +178,14 @@ function updateEvolution(dt) {
             // --- Evolution Surge: activate temporary power boost ---
             evolutionSurge.active = true;
             evolutionSurge.timer = 0;
+            // Dramatic screen shake at transform
+            addScreenShake(14, 0.8);
+            // Particle burst — form-colored
+            if (typeof spawnParticleBurst === 'function') {
+                const _evoColors = { skeleton: '#ffffff', wizard: '#5588ff', lich: '#aa44ff' };
+                const _evoColor = _evoColors[evolutionState.targetForm] || '#e8c840';
+                spawnParticleBurst(player.row, player.col, 40, _evoColor);
+            }
 
             // --- Form-specific starting bonuses ---
             // Give each new form a head start so it feels immediately powerful
@@ -194,6 +222,25 @@ function updateEvolution(dt) {
         evolutionHintState.alpha = 0;
         // Don't set gamePhase to 'playing' yet — hint screen will do it when dismissed
         addScreenShake(4, 0.5);
+        // Post-evolution tutorial hints (fire after hint screen auto-dismisses)
+        if (typeof Notify !== 'undefined' && Notify.tutorialSequence) {
+            if (evolutionState.targetForm === 'skeleton') {
+                Notify.tutorialSequence('skeleton_intro', [
+                    { text: 'Skeleton Form: LMB to throw bones, RMB for shield bash.', delay: 8 },
+                    { text: 'SPACE to roll dodge. Build combos with attacks!', delay: 5 },
+                ]);
+            } else if (evolutionState.targetForm === 'wizard') {
+                Notify.tutorialSequence('wizard_intro', [
+                    { text: 'Wizard Form: LMB for fireball, RMB to summon a tower.', delay: 8 },
+                    { text: 'SPACE to phase jump through enemies!', delay: 5 },
+                ]);
+            } else if (evolutionState.targetForm === 'lich') {
+                Notify.tutorialSequence('lich_intro', [
+                    { text: 'Lich Form: LMB for soul bolt, RMB to raise undead.', delay: 8 },
+                    { text: 'SPACE to shadow step. E to harvest souls from the fallen.', delay: 5 },
+                ]);
+            }
+        }
         // Autosave at evolution milestone
         try { saveGame(getAutoSaveSlot()); } catch(e) { /* silent */ }
     }
@@ -219,14 +266,20 @@ function drawEvolution() {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvasW, canvasH);
 
-        // Evolution text
+        // Evolution text with scale pulse
         ctx.globalAlpha = evolutionState.textAlpha;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '42px Georgia';
-        ctx.shadowColor = 'rgba(200, 160, 40, 0.6)';
+        const _evoTextT = evolutionState.timer - 1.0;
+        const _evoScale = 30 + Math.min(18, _evoTextT * 24); // 30px -> 48px
+        const _evoPulse = 1.0 + Math.sin(_evoTextT * 4) * 0.03; // subtle throb
+        ctx.font = Math.round(_evoScale * _evoPulse) + 'px Georgia';
+        // Form-colored glow
+        const _evoGlowColors = { skeleton: 'rgba(220, 220, 255, 0.6)', wizard: 'rgba(80, 130, 255, 0.6)', lich: 'rgba(170, 60, 255, 0.6)' };
+        const _evoTextColors = { skeleton: '#ddddff', wizard: '#88aaff', lich: '#cc88ff' };
+        ctx.shadowColor = _evoGlowColors[evolutionState.targetForm] || 'rgba(200, 160, 40, 0.6)';
         ctx.shadowBlur = 30;
-        ctx.fillStyle = '#e8c840';
+        ctx.fillStyle = _evoTextColors[evolutionState.targetForm] || '#e8c840';
         ctx.fillText('EVOLUTION', cx, cy - 40);
         ctx.shadowBlur = 0;
 
@@ -253,13 +306,19 @@ function drawEvolution() {
         ctx.restore();
     }
 
-    // Second flash during transform
+    // Second flash during transform (form-colored)
     if (evolutionState.phase === 2 && evolutionState.flashAlpha > 0) {
         ctx.save();
         ctx.globalAlpha = evolutionState.flashAlpha;
         const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, canvasH * 0.5);
-        grad.addColorStop(0, 'rgba(232, 200, 64, 0.8)');
-        grad.addColorStop(0.5, 'rgba(200, 160, 40, 0.3)');
+        const _flashColors = {
+            skeleton: ['rgba(220, 220, 255, 0.8)', 'rgba(180, 180, 220, 0.3)'],
+            wizard:   ['rgba(80, 130, 255, 0.8)', 'rgba(40, 80, 200, 0.3)'],
+            lich:     ['rgba(170, 60, 255, 0.8)', 'rgba(120, 30, 180, 0.3)'],
+        };
+        const _fc = _flashColors[evolutionState.targetForm] || ['rgba(232, 200, 64, 0.8)', 'rgba(200, 160, 40, 0.3)'];
+        grad.addColorStop(0, _fc[0]);
+        grad.addColorStop(0.5, _fc[1]);
         grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvasW, canvasH);
@@ -307,6 +366,10 @@ function checkTalismanPickup() {
                     color: '#e8c840',
                     life: 2.5, offsetY: 0,
                 });
+                // Tutorial hint — nudge player to check Grimoire
+                if (typeof Notify !== 'undefined') {
+                    Notify.hint('tutorial_talisman', 'Open the Grimoire (TAB) to see your evolution progress.', 6, { color: '#c4a878', borderColor: '#8a7030' });
+                }
                 return;
             }
         }

@@ -10,7 +10,7 @@
 // ============================================================
 
 // Game version — used for save format and cache busting
-const ETHERA_VERSION = '0.4.0';
+const ETHERA_VERSION = '0.5.0';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
@@ -226,6 +226,52 @@ function setQuality(level) {
         GFX.screenBlend = true;
     }
 }
+
+// ============================================================
+//  GAME SETTINGS — persisted to localStorage
+// ============================================================
+const gameSettings = {
+    musicVolume: 0.6,
+    sfxVolume: 0.35,
+    quality: 'high',
+    screenShake: true,
+    fullscreen: false,
+};
+
+let optionsReturnPhase = 'menu';
+
+function saveSettings() {
+    try { localStorage.setItem('ethera_settings', JSON.stringify(gameSettings)); } catch(e) {}
+}
+
+function loadSettings() {
+    try {
+        const s = JSON.parse(localStorage.getItem('ethera_settings'));
+        if (s) Object.assign(gameSettings, s);
+    } catch(e) {}
+    applySettings();
+}
+
+function applySettings() {
+    if (typeof music !== 'undefined') music.masterVolume = gameSettings.musicVolume;
+    if (typeof sfxVolume !== 'undefined') {
+        sfxVolume = gameSettings.sfxVolume;
+        if (typeof sfxMasterGain !== 'undefined' && sfxMasterGain) {
+            sfxMasterGain.gain.value = sfxVolume;
+        }
+    }
+    setQuality(gameSettings.quality);
+    if (gameSettings.fullscreen && !document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function() {});
+    } else if (!gameSettings.fullscreen && document.fullscreenElement) {
+        document.exitFullscreen().catch(function() {});
+    }
+}
+
+document.addEventListener('fullscreenchange', function() {
+    gameSettings.fullscreen = !!document.fullscreenElement;
+    saveSettings();
+});
 
 // ============================================================
 //  SEEDED PRNG — for map variation across playthroughs

@@ -231,6 +231,12 @@ function handleKeyDown(e) {
         nameEntryAlpha = 0;
         return;
     }
+    // Options screen: Escape goes back
+    if (gamePhase === 'options' && e.key === 'Escape') {
+        if (optionsReturnPhase === 'paused') { gamePhase = 'playing'; gamePaused = true; }
+        else { gamePhase = 'menu'; menuFadeAlpha = 1; }
+        return;
+    }
     // Load screen: Escape goes back
     if (gamePhase === 'loadScreen' && e.key === 'Escape') {
         gamePhase = 'menuFade';
@@ -491,10 +497,43 @@ function handleMouseDown(e) {
         return; // consume click while menu is open
     }
 
+    // ----- Credits: click to skip -----
+    if (gamePhase === 'credits' && e.button === 0) {
+        gamePhase = 'preMenu';
+        preMenuAlpha = 0;
+        return;
+    }
+
     // ----- Ending choice click -----
     if (gamePhase === 'endingChoice' && e.button === 0) {
         if (typeof handleEndingChoiceClick === 'function') {
             handleEndingChoiceClick(mouse.x, mouse.y);
+        }
+        return;
+    }
+
+    // ----- Options screen clicks -----
+    if (gamePhase === 'options' && e.button === 0) {
+        if (optionsBackBtn && pointInButton(mouse.x, mouse.y, optionsBackBtn)) {
+            if (optionsReturnPhase === 'paused') { gamePhase = 'playing'; gamePaused = true; }
+            else { gamePhase = 'menu'; menuFadeAlpha = 1; }
+            return;
+        }
+        for (const id in optionsSliders) {
+            const r = optionsSliders[id];
+            if (r && clickX >= r.x && clickX <= r.x + r.w && clickY >= r.y - 8 && clickY <= r.y + r.h + 8) {
+                gameSettings[id] = Math.max(0, Math.min(1, Math.round(((clickX - r.x) / r.w) * 100) / 100));
+                applySettings(); saveSettings(); return;
+            }
+        }
+        for (const id in optionsToggles) {
+            const r = optionsToggles[id];
+            if (r && clickX >= r.x && clickX <= r.x + r.w && clickY >= r.y && clickY <= r.y + r.h) {
+                if (id === 'quality') gameSettings.quality = gameSettings.quality === 'high' ? 'low' : 'high';
+                else if (id === 'screenShake') gameSettings.screenShake = !gameSettings.screenShake;
+                else if (id === 'fullscreen') gameSettings.fullscreen = !gameSettings.fullscreen;
+                applySettings(); saveSettings(); return;
+            }
         }
         return;
     }
@@ -525,6 +564,11 @@ function handleMouseDown(e) {
         if (pointInButton(mouse.x, mouse.y, btns.controls)) {
             gamePhase = 'menuFade';
             menuFadeTarget = 'menuControls';
+            return;
+        }
+        if (btns.options && pointInButton(mouse.x, mouse.y, btns.options)) {
+            optionsReturnPhase = 'menu';
+            gamePhase = 'options';
             return;
         }
         return;
