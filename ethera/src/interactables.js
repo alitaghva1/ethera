@@ -495,6 +495,8 @@ function updateChestDefsForZone(zone) {
         CHEST_DEFS = {
             // Zone 6: No chests — Pale Queen dialogue is the story delivery
         };
+    } else if (zone >= 100 && typeof PROCEDURAL_CHEST_DEFS !== 'undefined' && PROCEDURAL_CHEST_DEFS[zone]) {
+        CHEST_DEFS = PROCEDURAL_CHEST_DEFS[zone];
     }
 }
 
@@ -913,6 +915,8 @@ function updateDoorDefsForZone(zone) {
             '1,15': { requiresKey: null, label: 'Return to the Abyss', destination: 'zone5' },
             // No exit — final zone. Victory comes from defeating the final boss.
         };
+    } else if (zone >= 100 && typeof PROCEDURAL_DOOR_DEFS !== 'undefined' && PROCEDURAL_DOOR_DEFS[zone]) {
+        DOOR_DEFS = PROCEDURAL_DOOR_DEFS[zone];
     }
 }
 const DOOR_INTERACT_RANGE = 2.2;

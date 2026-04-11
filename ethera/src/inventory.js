@@ -203,6 +203,18 @@ function updateWorldDrops(dt) {
         d.despawnTimer = Math.max(0, d.despawnTimer - dt);
         if (d.despawnTimer <= 0) {
             worldDrops.splice(i, 1);
+            continue;
+        }
+        // Auto-loot magnetic pull — after 1s on ground, drift toward player
+        if (d.spawnTime <= 0 && d.despawnTimer < 44) {
+            const dr = player.row - d.row;
+            const dc = player.col - d.col;
+            const dist = Math.sqrt(dr * dr + dc * dc);
+            if (dist < 2.5 && dist > 0.1 && inventory.backpack.length < inventory.maxBackpack) {
+                const pullSpeed = 3.0 * dt;
+                d.row += (dr / dist) * pullSpeed;
+                d.col += (dc / dist) * pullSpeed;
+            }
         }
     }
 }

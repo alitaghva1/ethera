@@ -439,11 +439,24 @@ function applyEnemyHit(e, damage, opts) {
         }
     }
 
-    // Knockback with resistance
+    // Knockback with resistance + directional particles
     if (opts.knockVr !== undefined || opts.knockVc !== undefined) {
         const kbResist = e.def.knockbackResist || 1.0;
-        e.knockVr = (e.knockVr || 0) + (opts.knockVr || 0) * kbResist;
-        e.knockVc = (e.knockVc || 0) + (opts.knockVc || 0) * kbResist;
+        const kvr = (opts.knockVr || 0) * kbResist;
+        const kvc = (opts.knockVc || 0) * kbResist;
+        e.knockVr = (e.knockVr || 0) + kvr;
+        e.knockVc = (e.knockVc || 0) + kvc;
+        // Spawn 3 directional particles trailing opposite to knockback
+        if (!opts.skipParticles && typeof _emitParticle === 'function') {
+            const ePos = tileToScreen(e.row, e.col);
+            const ex = ePos.x + cameraX, ey = ePos.y + cameraY;
+            for (let pi = 0; pi < 3; pi++) {
+                _emitParticle(ex, ey,
+                    -kvr * 2 + (Math.random() - 0.5) * 3,
+                    -kvc * 2 + (Math.random() - 0.5) * 3,
+                    0.25, 2 + Math.random(), '#ffddaa', 0.6);
+            }
+        }
     }
 
     const critMul = isCrit ? 2.0 : 1.0;
@@ -4059,6 +4072,24 @@ function drawEnemy(e) {
                 frame * WIZARD_FRAME_W, 0, WIZARD_FRAME_W, WIZARD_FRAME_H,
                 sx - scaledDW / 2 - 1, eDY - 1, scaledDW + 2, scaledDH + 2);
         }
+        ctx.restore();
+    }
+
+    // === ENEMY HEALTH BAR — thin bar above head, only when damaged ===
+    if (e.state !== 'death' && e.hp < (e.def.hp * (e.statMult || 1)) && !e.def.isBoss) {
+        const maxHp = e.def.hp * (e.statMult || 1);
+        const hpRatio = Math.max(0, e.hp / maxHp);
+        const barW = 22, barH = 3;
+        const barX = sx - barW / 2;
+        const barY = drawY - 4;
+        ctx.save();
+        ctx.globalAlpha = 0.7 * spawnAlpha;
+        // Background
+        ctx.fillStyle = '#1a0808';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        // HP fill
+        ctx.fillStyle = hpRatio > 0.5 ? '#cc3322' : hpRatio > 0.25 ? '#cc6622' : '#cc2222';
+        ctx.fillRect(barX, barY, barW * hpRatio, barH);
         ctx.restore();
     }
 

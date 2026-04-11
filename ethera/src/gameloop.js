@@ -479,8 +479,8 @@ function updateGameplay(dt) {
         if (zoneTransitionAlpha < 1) {
             zoneTransitionAlpha += dt * 3;
             if (zoneTransitionAlpha >= 1) {
-                const nextZone = ZONE_TARGET_MAP[zoneTransitionTarget] != null
-                    ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
+                const nextZone = typeof zoneTransitionTarget === 'number' ? zoneTransitionTarget
+                    : ZONE_TARGET_MAP[zoneTransitionTarget] != null ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
                 loadZone(nextZone);
                 showZoneBanner(nextZone);
                 zoneTransitionAlpha = 1;

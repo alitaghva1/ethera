@@ -506,6 +506,12 @@ function carveCorridor(r1, c1, r2, c2, theme) {
         wallIfEmpty(r, cV - halfW - 1, theme);
         wallIfEmpty(r, cV + halfW + 1, theme);
     }
+    // Seal diagonal corners at the L-junction to prevent void gaps
+    for (const dr of [-(halfW + 1), halfW + 1]) {
+        for (const dc of [-(halfW + 1), halfW + 1]) {
+            wallIfEmpty(rH + dr, cV + dc, theme);
+        }
+    }
 }
 
 // BFS connectivity check — returns true if all rooms are reachable from start
@@ -635,27 +641,42 @@ function populateRoomProps(room, theme) {
 // ============================================================
 //  CONTENT POPULATION — chests, doors, spawn zones
 // ============================================================
-function populateContent(rooms, spawnRoom, exitRoom, depth, theme) {
+// Registries for procedural zone interactables
+const PROCEDURAL_CHEST_DEFS = {};
+const PROCEDURAL_DOOR_DEFS = {};
+
+function populateContent(rooms, spawnRoom, exitRoom, depth, theme, zoneNum) {
+    // Clear registries
+    PROCEDURAL_CHEST_DEFS[zoneNum] = {};
+    PROCEDURAL_DOOR_DEFS[zoneNum] = {};
+
     // Chests: 1 per 3 rooms, min 2
     const chestCount = Math.max(2, Math.floor(rooms.length / 3));
     const chestRooms = rooms.filter(r => r !== spawnRoom && r !== exitRoom);
     mapShuffle(chestRooms);
     for (let i = 0; i < Math.min(chestCount, chestRooms.length); i++) {
         const room = chestRooms[i];
-        // Find a corner tile
         const corners = room.floorTiles.filter(t => !objectMap[t.r][t.c] && !blocked[t.r][t.c]);
         if (corners.length === 0) continue;
         const spot = corners[mapRandomInt(0, corners.length - 1)];
         placeObj(spot.r, spot.c, 'chestClosed', true);
+        // Register chest definition so the interaction system recognizes it
+        PROCEDURAL_CHEST_DEFS[zoneNum][spot.r + ',' + spot.c] = { type: 'loot', label: 'Open' };
     }
 
     // Exit stairs in exit room center
     if (exitRoom) {
         const er = exitRoom.center.r;
         const ec = exitRoom.center.c;
-        // Clear any object at the center
         if (objectMap[er][ec]) { objectMap[er][ec] = null; blocked[er][ec] = false; }
         placeObj(er, ec, theme.id === 'hell' ? 'h_stairs1' : 'stairsSpiral', true);
+        // Register door definition — destination is next procedural depth
+        const nextZone = zoneNum + 1;
+        PROCEDURAL_DOOR_DEFS[zoneNum][er + ',' + ec] = {
+            requiresKey: null,
+            label: 'Descend Deeper',
+            destination: nextZone, // numeric — handled directly by zone transition
+        };
     }
 
     // Calculate spawn points per room
@@ -674,13 +695,19 @@ const hazardDamageTimers = {}; // key: 'r,c' → cooldown timer
 
 function initHazardMap(size) {
     hazardMap = Array.from({ length: size }, () => Array(size).fill(null));
+    // Clear leftover damage timers from previous zones
+    for (const k in hazardDamageTimers) delete hazardDamageTimers[k];
 }
 
-function placeHazards(rooms, theme, density) {
+function placeHazards(rooms, theme, density, spawnRoom) {
     if (!theme.hazardTypes || theme.hazardTypes.length === 0) return;
     const type = theme.hazardTypes[mapRandomInt(0, theme.hazardTypes.length - 1)];
+    // Spawn protection: no hazards within 3 tiles of player start
+    const spawnR = spawnRoom ? spawnRoom.center.r : -99;
+    const spawnC = spawnRoom ? spawnRoom.center.c : -99;
 
     for (const room of rooms) {
+        if (room === spawnRoom) continue; // never place hazards in spawn room
         if (room.isSecret || room.floorTiles.length < 20) continue;
         const hazardCount = Math.floor(room.floorTiles.length * density);
         if (hazardCount <= 0) continue;
@@ -1085,15 +1112,15 @@ const DGEN_ENEMY_ROSTER = [
     { depth: 8, types: ['werewolf', 'armoredskel', 'skelarch'], boss: 'frostwyrm' },
 ];
 
-function generateWaves(rooms, depth, zoneNum) {
+function generateWaves(rooms, depth, zoneNum, spawnRoom) {
     const waveCount = Math.min(8, 4 + Math.floor(depth / 2));
     const rosterIdx = Math.min(depth, DGEN_ENEMY_ROSTER.length) - 1;
     const roster = DGEN_ENEMY_ROSTER[rosterIdx] || DGEN_ENEMY_ROSTER[DGEN_ENEMY_ROSTER.length - 1];
     const baseMult = 1.0 + (depth - 1) * 0.35;
     const waves = [];
 
-    // Combat rooms (exclude spawn room, secret rooms)
-    const combatRooms = rooms.filter(r => !r.isSecret && r.spawnPoints && r.spawnPoints.length > 0);
+    // Combat rooms — exclude spawn room and secret rooms so wave 0 doesn't hit player on entry
+    const combatRooms = rooms.filter(r => r !== spawnRoom && !r.isSecret && r.spawnPoints && r.spawnPoints.length > 0);
 
     for (let i = 0; i < waveCount; i++) {
         const enemyCount = 3 + Math.floor(i * 1.5) + Math.floor(depth * 0.5);
@@ -1158,6 +1185,8 @@ function generateLights(rooms, theme, zoneNum) {
         }
     }
     PROCEDURAL_LIGHTS[zoneNum] = lights;
+    // Write directly into the renderer's ENV_LIGHTS so buildEnvironmentLights() finds them
+    if (typeof ENV_LIGHTS !== 'undefined') ENV_LIGHTS[zoneNum] = lights;
     return lights;
 }
 
@@ -1255,11 +1284,11 @@ function generateProceduralZone(params) {
         populateRoomProps(room, theme);
     }
 
-    // Phase 8: Content
-    populateContent(rooms, spawnRoom, exitRoom, depth, theme);
+    // Phase 8: Content (chests, doors, spawn zones)
+    populateContent(rooms, spawnRoom, exitRoom, depth, theme, zoneNum);
 
-    // Phase 9: Hazards
-    placeHazards(rooms, theme, hazardDensity + depth * 0.005);
+    // Phase 9: Hazards (exclude spawn area)
+    placeHazards(rooms, theme, hazardDensity + depth * 0.005, spawnRoom);
 
     // Phase 10: Secret rooms
     placeSecretRooms(rooms, theme, secretChance);
@@ -1267,8 +1296,22 @@ function generateProceduralZone(params) {
     // Phase 11: Lighting
     generateLights(rooms, theme, zoneNum);
 
-    // Phase 12: Waves
-    generateWaves(rooms, depth, zoneNum);
+    // Phase 12: Waves (exclude spawn room from combat)
+    generateWaves(rooms, depth, zoneNum, spawnRoom);
+
+    // Phase 13: Wall seam cleanup — seal any null tile adjacent to floor
+    const ms = floorMap.length;
+    for (let r = 0; r < ms; r++) {
+        for (let c = 0; c < ms; c++) {
+            if (!floorMap[r][c] || blocked[r][c]) continue; // only check floor tiles
+            for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < ms && nc >= 0 && nc < ms && floorMap[nr][nc] === null) {
+                    wallIfEmpty(nr, nc, theme);
+                }
+            }
+        }
+    }
 
     return {
         spawnRow: proceduralSpawnRow,

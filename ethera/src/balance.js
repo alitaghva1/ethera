@@ -601,6 +601,7 @@ function handleMouseDown(e) {
         const choice = getLevelUpChoice(mouse.x, mouse.y);
         if (choice >= 0 && choice < xpState.levelUpChoices.length) {
             applyUpgrade(xpState.levelUpChoices[choice].id);
+            if (typeof sfxUpgradeSelect === 'function') sfxUpgradeSelect();
         }
         return;
     }

@@ -404,6 +404,13 @@ function sfxUnequip() {
     playTone('sine', 700, 400, 0.08, 0.1, 0.005, 0.08);
 }
 
+function sfxUpgradeSelect() {
+    if (!sfxCtx) return;
+    // Crisp confirm chime — two ascending notes
+    playTone('sine', 523, 523, 0.08, 0.2, 0.005, 0.08);
+    setTimeout(() => { if (sfxCtx) playTone('sine', 784, 784, 0.12, 0.18, 0.005, 0.12); }, 80);
+}
+
 function sfxRarePickup() {
     if (!sfxCtx) return;
     // Sparkle shimmer — ascending chime with harmonics for rare+ items
