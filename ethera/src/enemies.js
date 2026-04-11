@@ -2386,8 +2386,10 @@ function spawnEnemy(type, row, col, statMult) {
 
     // --- Elite Modifier System ---
     // Non-boss enemies in zone 2+ have a chance to become elite
-    if (!baseDef.isBoss && currentZone >= 2) {
-        const eliteChance = Math.min(ELITE_MAX_CHANCE, ELITE_BASE_CHANCE + (currentZone - 2) * ELITE_CHANCE_PER_ZONE);
+    // Iron Horde abyss modifier forces ALL enemies to be elite
+    const _forceElite = (typeof hasAbyssMod === 'function' && hasAbyssMod('forceElite'));
+    if (!baseDef.isBoss && (currentZone >= 2 || _forceElite)) {
+        const eliteChance = _forceElite ? 1.0 : Math.min(ELITE_MAX_CHANCE, ELITE_BASE_CHANCE + (currentZone - 2) * ELITE_CHANCE_PER_ZONE);
         if (Math.random() < eliteChance) {
             const modifiers = ['swift', 'vampiric', 'volatile', 'splitting', 'shielded', 'thorned', 'frenzy', 'necromancer'];
             const mod = modifiers[Math.floor(Math.random() * modifiers.length)];
@@ -4076,6 +4078,25 @@ function damagePlayer(amount, enemyType = '') {
     dmgVignetteIntensity = Math.max(dmgVignetteIntensity, 0.3 + vigStr * 0.7);
     dmgVignetteTimer = 0.4 + vigStr * 0.3; // bigger hit = longer flash
     if (player.hp <= 0) {
+        // LEGENDARY: Veil of the Undying — survive lethal damage once per zone
+        let _veilSaved = false;
+        if (typeof equipBonus !== 'undefined' && equipBonus.effects && typeof veilUndyingCooldown !== 'undefined' && veilUndyingCooldown <= 0) {
+            for (const eff of equipBonus.effects) {
+                if (eff.id === 'veil_undying') {
+                    const formMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0);
+                    player.hp = Math.max(1, Math.round(formMaxHP * 0.15));
+                    veilUndyingCooldown = 60; // 60s cooldown
+                    _veilSaved = true;
+                    playerInvTimer = 1.5; // brief invulnerability
+                    addScreenShake(10, 0.6);
+                    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 30, '#ffd700');
+                    pickupTexts.push({ text: 'UNDYING!', color: '#ffd700', row: player.row, col: player.col, offsetY: -20, life: 2.5 });
+                    if (typeof sfxEvolution === 'function') sfxEvolution();
+                    break;
+                }
+            }
+        }
+        if (!_veilSaved) {
         player.hp = 0;
         gameDead = true;
         deathFadeTimer = 0;
@@ -4092,6 +4113,7 @@ function damagePlayer(amount, enemyType = '') {
         sfxPlayerDeath();
         // Fade to death music
         playMusic('death', 2.0);
+        } // end if (!_veilSaved)
     } else {
         sfxPlayerHurt();
     }
@@ -4289,6 +4311,16 @@ function checkProjectileEnemyHits() {
                                 } else break;
                             }
                             p._hasRicocheted = true;
+                        }
+                    }
+                }
+
+                // LEGENDARY: Burn Ground — 20% chance to leave fire on impact
+                if (!p.isAcid && !p.isBone && !p.isDark && typeof equipBonus !== 'undefined' && equipBonus.effects) {
+                    for (const eff of equipBonus.effects) {
+                        if (eff.id === 'burn_ground' && Math.random() < (eff.chance || 0.20)) {
+                            burnZones.push({ row: e.row, col: e.col, radius: 0.8, damage: eff.dmg || 3, life: eff.duration || 2, dmgTimer: 0 });
+                            break;
                         }
                     }
                 }

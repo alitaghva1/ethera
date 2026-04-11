@@ -437,11 +437,10 @@ function getEquipBonuses() {
         const item = inventory.equipped[slot];
         if (item && item.effect) totals.effects.push(item.effect);
     }
-    // Elara's Locket: +2% damage per zone cleared
+    // Elara's Locket: +2 flat damage per zone cleared (always meaningful)
     for (const eff of totals.effects) {
         if (eff.id === 'elara_locket' && typeof currentZone === 'number') {
-            const zoneBonus = Math.max(0, currentZone - 1) * (eff.dmgPerZone || 0.02);
-            totals.dmgBonus = (totals.dmgBonus || 0) + Math.round(zoneBonus * (totals.dmgBonus || 8));
+            totals.dmgBonus = (totals.dmgBonus || 0) + Math.max(0, currentZone - 1) * 2;
         }
     }
 
