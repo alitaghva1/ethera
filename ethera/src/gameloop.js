@@ -3325,19 +3325,43 @@ function runIntro() {
     const overlay = document.getElementById('overlay');
     overlay.style.display = 'none';
 
-    // Initialize game state FIRST (loads Zone 0 Hamlet)
+    // Initialize game state (loads Zone 0 Hamlet)
     restartGame();
 
+    // Zone 0 (Hamlet): skip cinematic entirely — just fade in to playing
+    if (currentZone === 0) {
+        gamePhase = 'playing';
+        lightRadius = typeof MAX_LIGHT !== 'undefined' ? MAX_LIGHT : 300;
+        setPixelCursor('none');
+        // Quick fade from black
+        zoneTransitionAlpha = 1;
+        zoneTransitionFading = true;
+        // Show hint after brief delay
+        setTimeout(function() {
+            pickupTexts.push({
+                text: 'Choose your path...',
+                color: COLORS.TEXT_HINT,
+                row: player.row, col: player.col,
+                offsetY: 0, life: 5.0,
+            });
+        }, 800);
+        // Play calm town music
+        playMusic('hamlet', 2.0);
+        if (typeof Notify !== 'undefined') Notify.showControlsOnce();
+        return;
+    }
+
+    // Dungeon zones: play full cinematic
     // Reset cinematic state
     cinematicTimer = 0;
     cinematicPhase = 0;
-    wizardRotation = Math.PI / 2; // wizard lying on side
+    wizardRotation = Math.PI / 2;
     wizardRiseProgress = 0;
     cinematicTextAlpha = [0, 0, 0, 0];
     bloodStainAlpha = 0;
     dustParticles = [];
     cinematicFlashAlpha = 0;
-    lightRadius = 80; // dim but visible — enough to see dungeon shapes
+    lightRadius = 80;
 
     // Reset cinematic SFX one-shot flags so they fire again on replay
     cinematicSFX_heartbeat = false;
