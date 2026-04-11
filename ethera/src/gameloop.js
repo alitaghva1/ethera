@@ -1045,19 +1045,32 @@ function drawPreMenuScreen() {
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Pulsing "click anywhere to begin" — made brighter and more visible
-    preMenuAlpha = Math.min(1, preMenuAlpha + 0.02); // fade in
-    const pulse = 0.6 + Math.sin(t * 2.5) * 0.25;
+    // Title
+    preMenuAlpha = Math.min(1, preMenuAlpha + 0.015);
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.globalAlpha = preMenuAlpha * pulse;
-    ctx.font = '18px Georgia';
+    // Game title
+    ctx.globalAlpha = preMenuAlpha * 0.9;
+    ctx.font = 'small-caps bold 42px Georgia';
+    ctx.shadowColor = 'rgba(180, 140, 50, 0.4)';
+    ctx.shadowBlur = 20;
     ctx.fillStyle = '#d4b878';
-    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-    ctx.lineWidth = 2;
-    ctx.strokeText('Click anywhere to begin', cx, canvasH / 2);
-    ctx.fillText('Click anywhere to begin', cx, canvasH / 2);
+    ctx.fillText('ETHERA', cx, canvasH * 0.4);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = preMenuAlpha * 0.5;
+    ctx.font = 'italic 16px Georgia';
+    ctx.fillStyle = '#a89060';
+    ctx.fillText('The Awakening', cx, canvasH * 0.4 + 35);
+    // Click prompt — bright and pulsing
+    const pulse = 0.7 + Math.sin(t * 2.5) * 0.3;
+    ctx.globalAlpha = preMenuAlpha * pulse;
+    ctx.font = '20px Georgia';
+    ctx.fillStyle = '#e8d0a0';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 3;
+    ctx.strokeText('Click anywhere to begin', cx, canvasH * 0.6);
+    ctx.fillText('Click anywhere to begin', cx, canvasH * 0.6);
     ctx.restore();
 }
 
