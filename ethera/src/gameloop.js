@@ -3324,33 +3324,33 @@ function drawLoadScreen() {
 function runIntro() {
     // Hide any HTML overlay — we render everything on canvas now
     const overlay = document.getElementById('overlay');
-    overlay.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
 
-    // Initialize game state (loads Zone 0 Hamlet)
-    restartGame();
-
-    // Zone 0 (Hamlet): skip cinematic entirely — just fade in to playing
-    if (currentZone === 0) {
-        gamePhase = 'playing';
-        lightRadius = typeof MAX_LIGHT !== 'undefined' ? MAX_LIGHT : 300;
-        setPixelCursor('none');
-        // Quick fade from black (must use string 'fadeIn', not boolean)
-        zoneTransitionAlpha = 1;
-        zoneTransitionFading = 'fadeIn';
-        // Show hint after brief delay
-        setTimeout(function() {
-            pickupTexts.push({
-                text: 'Choose your path...',
-                color: COLORS.TEXT_HINT,
-                row: player.row, col: player.col,
-                offsetY: 0, life: 5.0,
-            });
-        }, 800);
-        // Play calm town music
-        playMusic('hamlet', 2.0);
-        if (typeof Notify !== 'undefined') Notify.showControlsOnce();
-        return;
+    try {
+        // Initialize game state (loads Zone 0 Hamlet)
+        restartGame();
+    } catch(e) {
+        console.error('restartGame failed:', e);
     }
+
+    // Always go straight to playing for Zone 0 (skip cinematic)
+    gamePhase = 'playing';
+    lightRadius = typeof MAX_LIGHT !== 'undefined' ? MAX_LIGHT : 300;
+    setPixelCursor('none');
+    // Fade from black
+    zoneTransitionAlpha = 1;
+    zoneTransitionFading = 'fadeIn';
+    // Show hint after brief delay
+    setTimeout(function() {
+        pickupTexts.push({
+            text: 'Choose your path...',
+            color: typeof COLORS !== 'undefined' ? COLORS.TEXT_HINT : '#aabbff',
+            row: player.row, col: player.col,
+            offsetY: 0, life: 5.0,
+        });
+    }, 800);
+    try { playMusic('hamlet', 2.0); } catch(e) {}
+    if (typeof Notify !== 'undefined') Notify.showControlsOnce();
 
     // Dungeon zones: play full cinematic
     // Reset cinematic state
