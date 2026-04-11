@@ -5,7 +5,7 @@
 // When running in Electron, saves go to the user's AppData folder as JSON files.
 // When running in a browser, saves use localStorage as before.
 
-const SAVE_FORMAT_VERSION = 6;  // bump when save schema changes
+const SAVE_FORMAT_VERSION = 7;  // bump when save schema changes
 
 // Helper: detect if we're running inside Electron with file save support
 const _useFileSaves = typeof window !== 'undefined' && window.ethera && window.ethera.isElectron;
@@ -66,6 +66,10 @@ function saveGame(slotIdx) {
         questCompleted: typeof questState !== 'undefined' ? [...questState.completed] : [],
         questRerollTokens: typeof questState !== 'undefined' ? questState.rerollTokens : 0,
         questPermBonuses: typeof questState !== 'undefined' ? { ...questState.permBonuses } : { dmgBonus: 0, maxHpBonus: 0 },
+        // Ascension system
+        ascensionLevel: typeof ascensionLevel !== 'undefined' ? ascensionLevel : 0,
+        ascensionUnlocked: typeof ascensionUnlocked !== 'undefined' ? ascensionUnlocked : 0,
+        gameCleared: typeof gameCleared !== 'undefined' ? gameCleared : false,
     };
     try {
         if (_useFileSaves) {
@@ -138,6 +142,17 @@ function _migrateSave(data) {
         if (data.questRerollTokens === undefined) data.questRerollTokens = 0;
         if (!data.questPermBonuses) data.questPermBonuses = { dmgBonus: 0, maxHpBonus: 0 };
         data.version = 6;
+    }
+    if (data.version < 7) {
+        if (data.ascensionLevel === undefined) data.ascensionLevel = 0;
+        if (data.ascensionUnlocked === undefined) data.ascensionUnlocked = 0;
+        if (data.gameCleared === undefined) data.gameCleared = false;
+        // Migrate progression index (bridge zones removed: old 0,1,2,3,4,5,6,7,8,9 → new 0,0,1,1,2,2,3,3,4,5)
+        if (data.progressionIndex !== undefined) {
+            const _oldToNew = { 0:0, 1:0, 2:1, 3:1, 4:2, 5:2, 6:3, 7:3, 8:4, 9:5 };
+            data.progressionIndex = _oldToNew[data.progressionIndex] !== undefined ? _oldToNew[data.progressionIndex] : data.progressionIndex;
+        }
+        data.version = 7;
     }
     return data;
 }
@@ -291,6 +306,11 @@ function loadGame(slotIdx) {
         questState.rerollTokens = data.questRerollTokens || 0;
         questState.permBonuses = data.questPermBonuses || { dmgBonus: 0, maxHpBonus: 0 };
     }
+
+    // Restore ascension state
+    if (typeof ascensionLevel !== 'undefined') ascensionLevel = data.ascensionLevel || 0;
+    if (typeof ascensionUnlocked !== 'undefined') ascensionUnlocked = data.ascensionUnlocked || 0;
+    if (typeof gameCleared !== 'undefined') gameCleared = data.gameCleared || false;
 
     // Set wave to zoneClear so player can explore and use doors/chests
     wave.current = data.waveNum || 0;

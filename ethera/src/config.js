@@ -254,6 +254,14 @@ const gameSettings = {
 
 let optionsReturnPhase = 'menu';
 
+// ============================================================
+//  ASCENSION SYSTEM — NG+ difficulty scaling
+// ============================================================
+const ASCENSION_MAX = 10;
+let ascensionLevel = 0;          // current run's ascension level
+let ascensionUnlocked = 0;       // highest ascension unlocked (beat game at N → unlocks N+1)
+let gameCleared = false;         // true after first Zone 6 completion
+
 function saveSettings() {
     try { localStorage.setItem('ethera_settings', JSON.stringify(gameSettings)); } catch(e) {}
 }

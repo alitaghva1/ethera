@@ -784,9 +784,17 @@ function loadZone(zoneNumber) {
         player.vx = 0;
         player.vy = 0;
     } else if (zoneNumber === 1) {
-        generateDungeon();
-        player.row = 4;
-        player.col = 3;
+        // Hybrid zone template system — falls back to legacy if template unavailable
+        if (typeof ZONE_TEMPLATE_1 !== 'undefined' && typeof generateZoneFromTemplate === 'function') {
+            const _asc = typeof ascensionLevel !== 'undefined' ? ascensionLevel : 0;
+            const _result = generateZoneFromTemplate(ZONE_TEMPLATE_1, _asc);
+            player.row = _result.spawnRow || 4;
+            player.col = _result.spawnCol || 3;
+        } else {
+            generateDungeon();
+            player.row = 4;
+            player.col = 3;
+        }
         player.vx = 0;
         player.vy = 0;
     } else if (zoneNumber === 2) {
@@ -956,16 +964,12 @@ function loadZone(zoneNumber) {
 //  ZONE PROGRESSION TABLE — unified story + procedural flow
 // ============================================================
 const ZONE_PROGRESSION = [
-    { zone: 1 },                                              // 0: Story — Undercroft
-    { procedural: true, theme: 'dungeon', depth: 1 },         // 1: Procedural bridge
-    { zone: 2 },                                              // 2: Story — Ruined Tower
-    { procedural: true, theme: 'ruins', depth: 2 },            // 3: Procedural bridge
-    { zone: 3 },                                              // 4: Story — The Spire
-    { procedural: true, theme: 'hell', depth: 3 },             // 5: Procedural bridge
-    { zone: 4 },                                              // 6: Story — The Inferno
-    { procedural: true, theme: 'frozen', depth: 4 },           // 7: Procedural bridge
-    { zone: 5 },                                              // 8: Story — Frozen Abyss
-    { zone: 6 },                                              // 9: Story — Throne of Ruin
+    { zone: 1 },   // 0: The Undercroft
+    { zone: 2 },   // 1: Ruined Tower
+    { zone: 3 },   // 2: The Spire
+    { zone: 4 },   // 3: The Inferno
+    { zone: 5 },   // 4: Frozen Abyss
+    { zone: 6 },   // 5: Throne of Ruin
 ];
 let progressionIndex = 0;
 let endlessUnlocked = false;

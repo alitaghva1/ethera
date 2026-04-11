@@ -695,6 +695,15 @@ function gameLoop(timestamp) {
         creditsTimer += dt;
         drawCreditsScreen();
         if (creditsTimer >= CREDITS_DURATION) {
+            // Unlock next Ascension level on game clear
+            if (typeof gameCleared !== 'undefined') gameCleared = true;
+            if (typeof ascensionUnlocked !== 'undefined' && typeof ascensionLevel !== 'undefined') {
+                if (ascensionLevel >= ascensionUnlocked) {
+                    ascensionUnlocked = Math.min(typeof ASCENSION_MAX !== 'undefined' ? ASCENSION_MAX : 10, ascensionLevel + 1);
+                }
+            }
+            // Save ascension progress
+            try { saveGame(0); } catch(e) {}
             gamePhase = 'preMenu';
             preMenuAlpha = 0;
         }
