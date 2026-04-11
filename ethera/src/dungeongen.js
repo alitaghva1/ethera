@@ -25,10 +25,8 @@ const ZONE_THEMES = {
             { obj: 'barrels', w: 2, blocks: true },
             { obj: 'woodenCrate', w: 2, blocks: true },
             { obj: 'woodenPile', w: 1, blocks: true },
-            { obj: 'stoneColumn', w: 3, blocks: true },
             { obj: 'tableRound', w: 1, blocks: true },
-            { obj: 'chair', w: 1, blocks: true },
-            { obj: 'woodenSupports', w: 1, blocks: true },
+            { obj: 'woodenSupports', w: 1, blocks: false },
         ],
         lightType: 'torch',
         lightColor: [255, 180, 80],
@@ -45,12 +43,10 @@ const ZONE_THEMES = {
         archTile: 'h_arch1',
         props: [
             { obj: 'h_altar1', w: 2, blocks: true },
-            { obj: 'h_bones1', w: 3, blocks: true },
+            { obj: 'h_bones1', w: 3, blocks: false },
             { obj: 'h_skull1', w: 2, blocks: false },
             { obj: 'h_candelabra1', w: 2, blocks: true },
-            { obj: 'h_col1', w: 3, blocks: true },
             { obj: 'h_cage1', w: 1, blocks: true },
-            { obj: 'h_gore1', w: 1, blocks: true },
             { obj: 'h_grave1', w: 1, blocks: true },
         ],
         lightType: 'fire_pit',
@@ -67,10 +63,9 @@ const ZONE_THEMES = {
         cornerTile: 'wallCorner',
         archTile: 'wallArchway',
         props: [
-            { obj: 'stoneColumn', w: 3, blocks: true },
             { obj: 'barrel', w: 2, blocks: true },
             { obj: 'woodenPile', w: 2, blocks: true },
-            { obj: 'stoneColumnWood', w: 1, blocks: true },
+            { obj: 'woodenCrate', w: 1, blocks: true },
         ],
         lightType: 'ice_crystal',
         lightColor: [100, 180, 255],
@@ -89,7 +84,6 @@ const ZONE_THEMES = {
             { obj: 'woodenPile', w: 3, blocks: true },
             { obj: 'woodenCrate', w: 2, blocks: true },
             { obj: 'barrel', w: 2, blocks: true },
-            { obj: 'stoneColumn', w: 2, blocks: true },
             { obj: 'tableChairsBroken', w: 1, blocks: true },
         ],
         lightType: 'candle',
@@ -109,7 +103,6 @@ const ZONE_THEMES = {
             { obj: 'barrel', w: 2, blocks: true },
             { obj: 'woodenPile', w: 3, blocks: true },
             { obj: 'woodenCrate', w: 2, blocks: true },
-            { obj: 'stoneColumn', w: 2, blocks: true },
         ],
         lightType: 'torch',
         lightColor: [200, 220, 140],
@@ -195,19 +188,9 @@ const ROOM_TEMPLATES = {
             const rh = mapRandomInt(Math.max(7, leaf.h - 3), leaf.h - 2);
             const ox = leaf.x + mapRandomInt(1, Math.max(1, leaf.w - rw - 1));
             const oy = leaf.y + mapRandomInt(1, Math.max(1, leaf.h - rh - 1));
-            const room = carveRect(ox, oy, rw, rh, theme, 'arena');
-            // Add symmetrical columns
-            const midR = oy + Math.floor(rh / 2);
-            const midC = ox + Math.floor(rw / 2);
-            const colOff = Math.floor(Math.min(rw, rh) / 3);
-            const colObj = theme.id === 'hell' ? 'h_col1' : 'stoneColumn';
-            if (rw >= 8 && rh >= 8) {
-                tryPlaceProp(midR - colOff, midC - colOff, colObj, true);
-                tryPlaceProp(midR - colOff, midC + colOff, colObj, true);
-                tryPlaceProp(midR + colOff, midC - colOff, colObj, true);
-                tryPlaceProp(midR + colOff, midC + colOff, colObj, true);
-            }
-            return room;
+            // Arena rooms use border floor pattern for visual weight
+            return carveRect(ox, oy, rw, rh, theme, 'arena');
+            // Columns handled by placeStructuralColumns() in populateRoomProps
         }
     },
     corridor: {
@@ -323,32 +306,58 @@ const ROOM_TEMPLATES = {
     },
 };
 
-// Helper: carve a rectangular room and return the RoomInstance
+// Helper: carve a rectangular room with structured floor patterns
 let _dgenRoomId = 0;
 function carveRect(x, y, w, h, theme, templateId) {
     const r1 = y, c1 = x, r2 = y + h - 1, c2 = x + w - 1;
     const tiles = [];
+    const ms = floorMap.length;
+
+    // Choose a floor pattern for this room
+    const patternType = mapRandomInt(0, 3); // 0=border, 1=checkerboard, 2=pathway, 3=plain
+
     for (let r = r1; r <= r2; r++) {
         for (let c = c1; c <= c2; c++) {
-            if (r < 0 || r >= floorMap.length || c < 0 || c >= floorMap.length) continue;
-            const tile = mapRandom() < 0.12
-                ? theme.floorAccents[mapRandomInt(0, theme.floorAccents.length - 1)]
-                : theme.floors[mapRandomInt(0, theme.floors.length - 1)];
+            if (r < 0 || r >= ms || c < 0 || c >= ms) continue;
+            let tile;
+            const isEdge = (r === r1 || r === r2 || c === c1 || c === c2);
+            const isNearEdge = (r <= r1 + 1 || r >= r2 - 1 || c <= c1 + 1 || c >= c2 - 1);
+
+            if (patternType === 0 && isEdge && w >= 5 && h >= 5) {
+                // Border pattern: edge tiles use accent, interior uses primary
+                tile = theme.floorAccents[0] || theme.floors[0];
+            } else if (patternType === 1 && ((r + c) % 2 === 0) && !isEdge && w >= 6 && h >= 6) {
+                // Checkerboard: alternating primary/secondary in interior
+                tile = theme.floors.length > 1 ? theme.floors[1] : theme.floors[0];
+            } else if (patternType === 2 && !isNearEdge && (r === Math.floor((r1 + r2) / 2) || c === Math.floor((c1 + c2) / 2))) {
+                // Pathway cross: center row and column use inset tile
+                tile = theme.floorAccents.length > 2 ? theme.floorAccents[2] : theme.floorAccents[0];
+            } else {
+                // Primary floor with very sparse accents (only 4% instead of 12%)
+                tile = mapRandom() < 0.04
+                    ? theme.floorAccents[mapRandomInt(0, theme.floorAccents.length - 1)]
+                    : theme.floors[0]; // Use primary tile consistently, not random
+            }
             floorMap[r][c] = tile;
             blocked[r][c] = false;
             blockType[r][c] = null;
             tiles.push({ r, c, tile });
         }
     }
+
     // Walls around perimeter (one tile outward)
     const wr1 = Math.max(0, r1 - 1), wc1 = Math.max(0, c1 - 1);
-    const wr2 = Math.min(floorMap.length - 1, r2 + 1), wc2 = Math.min(floorMap.length - 1, c2 + 1);
+    const wr2 = Math.min(ms - 1, r2 + 1), wc2 = Math.min(ms - 1, c2 + 1);
     for (let c = wc1; c <= wc2; c++) {
         wallIfEmpty(wr1, c, theme); wallIfEmpty(wr2, c, theme);
     }
     for (let r = wr1 + 1; r < wr2; r++) {
         wallIfEmpty(r, wc1, theme); wallIfEmpty(r, wc2, theme);
     }
+
+    // Place wall corners
+    wallCorner(wr1, wc1, theme); wallCorner(wr1, wc2, theme);
+    wallCorner(wr2, wc1, theme); wallCorner(wr2, wc2, theme);
 
     return {
         id: _dgenRoomId++,
@@ -362,6 +371,14 @@ function carveRect(x, y, w, h, theme, templateId) {
         isBossRoom: false,
         act: 1,
     };
+}
+
+function wallCorner(r, c, theme) {
+    if (r < 0 || r >= floorMap.length || c < 0 || c >= floorMap.length) return;
+    if (floorMap[r][c] && !blocked[r][c]) return;
+    floorMap[r][c] = theme.cornerTile;
+    blocked[r][c] = true;
+    blockType[r][c] = 'wall';
 }
 
 function wallIfEmpty(r, c, theme) {
@@ -513,34 +530,105 @@ function validateConnectivity(rooms, startR, startC) {
 }
 
 // ============================================================
-//  PROP PLACEMENT
+//  PROP PLACEMENT — purposeful, not random scatter
 // ============================================================
+
+// Separate column props from decoration props — columns are architectural
+function getColumnObj(theme) {
+    if (theme.id === 'hell') return 'h_col1';
+    return 'stoneColumn';
+}
+
+// Place columns in symmetrical architectural patterns
+function placeStructuralColumns(room, theme) {
+    const b = room.bounds;
+    const rw = b.r2 - b.r1 + 1;
+    const cw = b.c2 - b.c1 + 1;
+    if (rw < 6 || cw < 6) return; // too small for columns
+    if (room.templateId === 'corridor' || room.templateId === 'vault') return;
+
+    const colObj = getColumnObj(theme);
+    const midR = Math.floor((b.r1 + b.r2) / 2);
+    const midC = Math.floor((b.c1 + b.c2) / 2);
+
+    // Choose column pattern based on room size
+    if (rw >= 10 && cw >= 10) {
+        // Large room: paired column rows creating a processional aisle
+        const inset = 2;
+        const colR1 = b.r1 + inset, colR2 = b.r2 - inset;
+        const colC1 = b.c1 + inset, colC2 = b.c2 - inset;
+        // Two rows of columns flanking the center
+        for (let r = colR1; r <= colR2; r += 3) {
+            tryPlaceProp(r, colC1, colObj, true);
+            tryPlaceProp(r, colC2, colObj, true);
+        }
+    } else if (rw >= 7 && cw >= 7) {
+        // Medium room: 4 corner columns
+        const off = 2;
+        tryPlaceProp(b.r1 + off, b.c1 + off, colObj, true);
+        tryPlaceProp(b.r1 + off, b.c2 - off, colObj, true);
+        tryPlaceProp(b.r2 - off, b.c1 + off, colObj, true);
+        tryPlaceProp(b.r2 - off, b.c2 - off, colObj, true);
+    } else {
+        // Small room: 2 flanking columns
+        tryPlaceProp(midR, b.c1 + 1, colObj, true);
+        tryPlaceProp(midR, b.c2 - 1, colObj, true);
+    }
+}
+
+// Place decoration props in corners and along walls — never in the center
 function populateRoomProps(room, theme) {
-    const tiles = room.floorTiles;
-    if (tiles.length < 16) return; // too small for props
-    const propCount = Math.floor(tiles.length * 0.08) + mapRandomInt(0, 2);
-    const propPool = theme.props.slice();
-    // Weighted selection
-    const totalWeight = propPool.reduce((s, p) => s + p.w, 0);
+    const b = room.bounds;
+    const rw = b.r2 - b.r1 + 1;
+    const cw = b.c2 - b.c1 + 1;
+    if (rw < 5 || cw < 5) return;
 
-    for (let i = 0; i < propCount; i++) {
-        let roll = mapRandom() * totalWeight;
-        let chosen = propPool[0];
-        for (const p of propPool) { roll -= p.w; if (roll <= 0) { chosen = p; break; } }
+    // Step 1: Structural columns (symmetrical, architectural)
+    if (mapRandom() < 0.6) placeStructuralColumns(room, theme);
 
-        // Place near walls (prefer wall-adjacent tiles)
-        const wallAdj = tiles.filter(t => {
-            if (objectMap[t.r][t.c]) return false;
-            for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-                const nr = t.r + dr, nc = t.c + dc;
-                if (nr >= 0 && nr < floorMap.length && nc >= 0 && nc < floorMap.length && blocked[nr][nc]) return true;
-            }
-            return false;
-        });
-        const pool = wallAdj.length > 0 && mapRandom() < 0.7 ? wallAdj : tiles.filter(t => !objectMap[t.r][t.c]);
-        if (pool.length === 0) continue;
-        const spot = pool[mapRandomInt(0, pool.length - 1)];
-        tryPlaceProp(spot.r, spot.c, chosen.obj, chosen.blocks);
+    // Step 2: Corner clusters — group 1-2 props in each corner
+    // Filter props to exclude columns (those are placed structurally above)
+    const decoProps = theme.props.filter(p => p.obj !== 'stoneColumn' && p.obj !== 'h_col1'
+        && p.obj !== 'h_col2' && p.obj !== 'h_col3');
+    if (decoProps.length === 0) return;
+
+    const corners = [
+        { r: b.r1 + 1, c: b.c1 + 1 },
+        { r: b.r1 + 1, c: b.c2 - 1 },
+        { r: b.r2 - 1, c: b.c1 + 1 },
+        { r: b.r2 - 1, c: b.c2 - 1 },
+    ];
+
+    // Place 1-2 props in 2-3 corners (not all, to avoid symmetry fatigue)
+    const usedCorners = mapRandomInt(2, Math.min(3, corners.length));
+    mapShuffle(corners);
+    for (let i = 0; i < usedCorners; i++) {
+        const cr = corners[i];
+        const prop = decoProps[mapRandomInt(0, decoProps.length - 1)];
+        tryPlaceProp(cr.r, cr.c, prop.obj, prop.blocks);
+        // Occasionally add a second prop adjacent to the corner
+        if (mapRandom() < 0.4) {
+            const adj = decoProps[mapRandomInt(0, decoProps.length - 1)];
+            const dr = mapRandom() < 0.5 ? 1 : 0;
+            const dc = dr === 0 ? 1 : 0;
+            tryPlaceProp(cr.r + dr, cr.c + dc, adj.obj, adj.blocks);
+        }
+    }
+
+    // Step 3: Sparse wall-side props (1-2 along longer walls, never center)
+    if (rw >= 8 || cw >= 8) {
+        const wallProps = mapRandomInt(1, 2);
+        for (let i = 0; i < wallProps; i++) {
+            const prop = decoProps[mapRandomInt(0, decoProps.length - 1)];
+            // Pick a wall-adjacent spot that's not near a corner or center
+            const side = mapRandomInt(0, 3);
+            let pr, pc;
+            if (side === 0) { pr = b.r1 + 1; pc = mapRandomInt(b.c1 + 3, b.c2 - 3); }
+            else if (side === 1) { pr = b.r2 - 1; pc = mapRandomInt(b.c1 + 3, b.c2 - 3); }
+            else if (side === 2) { pr = mapRandomInt(b.r1 + 3, b.r2 - 3); pc = b.c1 + 1; }
+            else { pr = mapRandomInt(b.r1 + 3, b.r2 - 3); pc = b.c2 - 1; }
+            tryPlaceProp(pr, pc, prop.obj, prop.blocks);
+        }
     }
 }
 
