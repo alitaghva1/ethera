@@ -187,6 +187,8 @@ function drawObjective() {
 let _displayHP = -1;
 let _displayMana = -1;
 let _displayXP = -1;
+let _hpFlashTimer = 0;
+let _prevHP = -1;
 function drawHPMana() {
     if (gamePhase !== 'playing') return;
     // Smooth lerp toward actual values (8x per second convergence)
@@ -195,6 +197,11 @@ function drawHPMana() {
     if (_displayHP < 0) _displayHP = player.hp;
     if (_displayMana < 0) _displayMana = player.mana;
     if (_displayXP < 0) _displayXP = xpState.xp;
+    if (_prevHP < 0) _prevHP = player.hp;
+    // Detect damage — trigger flash
+    if (player.hp < _prevHP - 0.5) _hpFlashTimer = 0.15;
+    _prevHP = player.hp;
+    if (_hpFlashTimer > 0) _hpFlashTimer -= frameDt;
     _displayHP += (player.hp - _displayHP) * Math.min(1, lerpSpeed * frameDt);
     _displayMana += (player.mana - _displayMana) * Math.min(1, lerpSpeed * frameDt);
     _displayXP += (xpState.xp - _displayXP) * Math.min(1, lerpSpeed * frameDt);
@@ -267,6 +274,14 @@ function drawHPMana() {
         ctx.globalAlpha = 0.2;
         ctx.fillStyle = '#fff';
         ctx.fillRect(x + 1, yHP + 1, Math.max(1, barW * hpFrac - 2), 2);
+        // Damage flash overlay — white flash when hit
+        if (_hpFlashTimer > 0) {
+            ctx.globalAlpha = (_hpFlashTimer / 0.15) * 0.45;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.roundRect(x, yHP, Math.max(2, barW * hpFrac), barH, 3);
+            ctx.fill();
+        }
     }
 
     // HP border

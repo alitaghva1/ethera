@@ -600,6 +600,28 @@ function handleMouseDown(e) {
         return;
     }
 
+    // Pause menu click handling
+    if (gamePaused && e.button === 0) {
+        if (pauseBtnResume && pointInButton(mouse.x, mouse.y, pauseBtnResume)) {
+            gamePaused = false;
+            setPixelCursor('none');
+            return;
+        }
+        if (pauseBtnSave && pointInButton(mouse.x, mouse.y, pauseBtnSave)) {
+            saveGame(0); // auto-save to slot 0
+            return;
+        }
+        if (pauseBtnQuit && pointInButton(mouse.x, mouse.y, pauseBtnQuit)) {
+            gamePaused = false;
+            drawDeathScreen._tip = null;
+            restartGame();
+            gamePhase = 'menu';
+            setPixelCursor('default');
+            return;
+        }
+        return;
+    }
+
     // Ignore clicks during transitions or non-playing phases
     if (gamePhase !== 'playing') return;
 

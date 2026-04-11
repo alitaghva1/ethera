@@ -2010,24 +2010,28 @@ function drawDeathScreen() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Red vignette
+    // Pulsing red vignette — heartbeat-like throb
+    const vigPulse = 0.12 + Math.sin(t * 1.8) * 0.04;
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = fadeIn * 0.15;
+    ctx.globalAlpha = fadeIn * vigPulse;
     const rVig = ctx.createRadialGradient(cx, cy, 0, cx, cy, canvasH * 0.7);
     rVig.addColorStop(0, 'rgba(0,0,0,0)');
-    rVig.addColorStop(0.6, 'rgba(80,10,5,0.3)');
-    rVig.addColorStop(1, 'rgba(120,15,5,0.5)');
+    rVig.addColorStop(0.5, 'rgba(80,10,5,0.2)');
+    rVig.addColorStop(1, 'rgba(140,15,5,0.6)');
     ctx.fillStyle = rVig;
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.globalCompositeOperation = 'source-over';
 
     if (t > 1.0) {
         const textAlpha = Math.min(1, (t - 1.0) / 1.0);
+        // Slide-in offset — text starts 20px high and settles down
+        const slideOffset = Math.max(0, 20 * (1 - Math.min(1, (t - 1.0) / 0.5)));
+
         ctx.globalAlpha = textAlpha;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Death headline — use character name with proper grammar
+        // Death headline with slide-in
         const _deathName = playerName || 'Wanderer';
         const _deathMsg = _deathName.toLowerCase().endsWith('s')
             ? `${_deathName}' light fades...`
@@ -2036,57 +2040,70 @@ function drawDeathScreen() {
         ctx.shadowColor = 'rgba(180, 20, 10, 0.6)';
         ctx.shadowBlur = 30;
         ctx.fillStyle = '#cc3322';
-        ctx.fillText(_deathMsg, cx, cy - 40);
+        ctx.fillText(_deathMsg, cx, cy - 40 - slideOffset);
         ctx.shadowBlur = 0;
 
-        // Shared outline for sub-text
+        // Decorative lines flanking the title
+        if (typeof drawDecorLine === 'function') {
+            drawDecorLine(cx, cy - 72 - slideOffset, 160, textAlpha * 0.4);
+            drawDecorLine(cx, cy - 10 - slideOffset, 120, textAlpha * 0.3);
+        }
+
         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
         ctx.lineWidth = 2;
 
-        // Stats summary
-        ctx.font = '14px Georgia';
-        ctx.fillStyle = '#8a6a5a';
-        const zoneName = ZONE_CONFIGS[currentZone] ? ZONE_CONFIGS[currentZone].name : 'Unknown';
+        // Stats with symbolic icons
+        const statsY = cy + 14;
+        ctx.font = '13px Georgia';
+        ctx.fillStyle = '#9a7a6a';
+        const zoneCfg = ZONE_CONFIGS[currentZone] || (currentZone >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(currentZone) : null);
+        const zoneName = zoneCfg ? zoneCfg.name : 'Unknown';
         const formName = FormSystem.currentForm ? FormSystem.currentForm.charAt(0).toUpperCase() + FormSystem.currentForm.slice(1) : 'Unknown';
-        const statsY = cy + 8;
-        ctx.strokeText(`Wave ${wave.current + 1}  ·  ${wave.totalKilled} slain  ·  ${zoneName}  ·  ${formName} form`, cx, statsY);
-        ctx.fillText(`Wave ${wave.current + 1}  ·  ${wave.totalKilled} slain  ·  ${zoneName}  ·  ${formName} form`, cx, statsY);
 
-        // Death cause recap
-        if (deathCause) {
-            ctx.font = '13px Georgia';
-            ctx.fillStyle = '#bb7766';
-            const causeText = `Slain by ${deathCause}`;
-            ctx.strokeText(causeText, cx, statsY + 24);
-            ctx.fillText(causeText, cx, statsY + 24);
+        const statLines = [
+            `\u2694 Wave ${wave.current + 1}  \u00B7  ${wave.totalKilled} slain`,
+            `\u26F0 ${zoneName}  \u00B7  ${formName} form`,
+        ];
+        for (let i = 0; i < statLines.length; i++) {
+            ctx.strokeText(statLines[i], cx, statsY + i * 20);
+            ctx.fillText(statLines[i], cx, statsY + i * 20);
         }
 
-        // Decorative separator
-        ctx.globalAlpha = textAlpha * 0.3;
-        ctx.strokeStyle = '#8a6a5a';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cx - 100, statsY + 42);
-        ctx.lineTo(cx + 100, statsY + 42);
-        ctx.stroke();
-        ctx.globalAlpha = textAlpha;
+        // Death cause
+        if (deathCause) {
+            ctx.font = '12px Georgia';
+            ctx.fillStyle = '#bb7766';
+            ctx.strokeText(`Slain by ${deathCause}`, cx, statsY + 44);
+            ctx.fillText(`Slain by ${deathCause}`, cx, statsY + 44);
+        }
 
-        // Random tip
+        // Tip in styled box
         if (!drawDeathScreen._tip) {
             const deathTips = [
                 "Try dodging more frequently.",
                 "Equip better gear from the Grimoire.",
-                "Summon towers to help in combat.",
                 "Explore for chests to find loot.",
-                "Watch enemy attack patterns."
+                "Watch enemy attack patterns.",
+                "Use your form's special abilities.",
             ];
             drawDeathScreen._tip = deathTips[Math.floor(Math.random() * deathTips.length)];
         }
-        ctx.font = '11px Georgia';
-        ctx.fillStyle = '#7a6a5a';
+        const tipY = statsY + 70;
+        const tipW = 260, tipH = 28;
+        // Tip box background
+        ctx.globalAlpha = textAlpha * 0.35;
+        ctx.fillStyle = '#1a1510';
+        ctx.beginPath();
+        ctx.roundRect(cx - tipW / 2, tipY - tipH / 2, tipW, tipH, 3);
+        ctx.fill();
+        ctx.strokeStyle = '#5a4a3a';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+        // Tip text
         ctx.globalAlpha = textAlpha * 0.6;
-        ctx.strokeText(`Tip: ${drawDeathScreen._tip}`, cx, statsY + 58);
-        ctx.fillText(`Tip: ${drawDeathScreen._tip}`, cx, statsY + 58);
+        ctx.font = '10px Georgia';
+        ctx.fillStyle = '#a09080';
+        ctx.fillText(`\u2731 ${drawDeathScreen._tip}`, cx, tipY);
         ctx.globalAlpha = textAlpha;
     }
 
@@ -2094,15 +2111,13 @@ function drawDeathScreen() {
         const btnAlpha = Math.min(1, (t - 2.5) / 0.8);
         ctx.globalAlpha = btnAlpha;
 
-        // "Rise Again" button
         const btnW = 180, btnH = 40;
         const btnGap = 12;
-        const btnX = cx - btnW - btnGap / 2, btnY = cy + 80;
+        const btnX = cx - btnW - btnGap / 2, btnY = cy + 100;
         deathBtnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
         const hoveredRestart = mouse.x >= btnX && mouse.x <= btnX + btnW && mouse.y >= btnY && mouse.y <= btnY + btnH;
         drawMenuButton({ x: btnX, y: btnY, w: btnW, h: btnH, label: 'RISE AGAIN' }, hoveredRestart, btnAlpha);
 
-        // "Return to Menu" button
         const menuBtnX = cx + btnGap / 2, menuBtnY = btnY;
         if (!deathMenuBtnRect) deathMenuBtnRect = {};
         deathMenuBtnRect.x = menuBtnX; deathMenuBtnRect.y = menuBtnY;
@@ -2115,6 +2130,9 @@ function drawDeathScreen() {
 
     ctx.restore();
 }
+
+// Pause menu button rects (for click handling)
+let pauseBtnResume = null, pauseBtnSave = null, pauseBtnQuit = null;
 
 function drawPauseOverlay() {
     const cx = canvasW / 2;
@@ -2136,11 +2154,11 @@ function drawPauseOverlay() {
     // Title glow
     ctx.globalCompositeOperation = 'screen';
     ctx.globalAlpha = 0.08;
-    const titleGlow = ctx.createRadialGradient(cx, cy - 10, 0, cx, cy - 10, 180);
+    const titleGlow = ctx.createRadialGradient(cx, cy - 50, 0, cx, cy - 50, 180);
     titleGlow.addColorStop(0, 'rgba(180, 140, 60, 0.4)');
     titleGlow.addColorStop(1, 'rgba(60, 40, 10, 0)');
     ctx.fillStyle = titleGlow;
-    ctx.fillRect(cx - 200, cy - 120, 400, 220);
+    ctx.fillRect(cx - 200, cy - 160, 400, 220);
     ctx.globalCompositeOperation = 'source-over';
 
     // "PAUSED" title
@@ -2151,27 +2169,46 @@ function drawPauseOverlay() {
     ctx.shadowColor = 'rgba(180, 140, 50, 0.35)';
     ctx.shadowBlur = 20;
     ctx.fillStyle = '#d4b878';
-    ctx.fillText('PAUSED', cx, cy - 10);
+    ctx.fillText('PAUSED', cx, cy - 55);
     ctx.shadowBlur = 0;
 
     // Decorative lines
-    drawDecorLine(cx, cy - 42, 120, 0.3);
-    drawDecorLine(cx, cy + 18, 90, 0.2);
+    drawDecorLine(cx, cy - 87, 120, 0.3);
+    drawDecorLine(cx, cy - 27, 90, 0.2);
 
-    // Hint text with outlines
-    ctx.font = '11px monospace';
+    // --- Pause menu buttons ---
+    const btnW = 180, btnH = 36, btnGap = 8;
+    const btnX = cx - btnW / 2;
+    let btnY = cy - 5;
+
+    // Resume
+    pauseBtnResume = { x: btnX, y: btnY, w: btnW, h: btnH };
+    const hResume = pointInButton(mouse.x, mouse.y, pauseBtnResume);
+    drawMenuButton({ ...pauseBtnResume, label: 'RESUME' }, hResume, 0.9);
+    btnY += btnH + btnGap;
+
+    // Save Game
+    pauseBtnSave = { x: btnX, y: btnY, w: btnW, h: btnH };
+    const hSave = pointInButton(mouse.x, mouse.y, pauseBtnSave);
+    drawMenuButton({ ...pauseBtnSave, label: 'SAVE GAME' }, hSave, 0.9);
+    btnY += btnH + btnGap;
+
+    // Quit to Menu
+    pauseBtnQuit = { x: btnX, y: btnY, w: btnW, h: btnH };
+    const hQuit = pointInButton(mouse.x, mouse.y, pauseBtnQuit);
+    drawMenuButton({ ...pauseBtnQuit, label: 'QUIT TO MENU' }, hQuit, 0.9);
+    btnY += btnH + btnGap + 8;
+
+    // Settings hints below buttons
+    ctx.font = '10px monospace';
     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
     ctx.lineWidth = 2;
-
-    ctx.globalAlpha = 0.45;
-    ctx.fillStyle = '#a89060';
-    ctx.strokeText('P to resume', cx, cy + 40);
-    ctx.fillText('P to resume', cx, cy + 40);
-
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = '#8a7850';
-    ctx.strokeText('Q \u2014 graphics: ' + GFX.quality.toUpperCase(), cx, cy + 58);
-    ctx.fillText('Q \u2014 graphics: ' + GFX.quality.toUpperCase(), cx, cy + 58);
+    ctx.strokeText('Q \u2014 graphics: ' + GFX.quality.toUpperCase(), cx, btnY);
+    ctx.fillText('Q \u2014 graphics: ' + GFX.quality.toUpperCase(), cx, btnY);
+
+    setPixelCursor((hResume || hSave || hQuit) ? 'pointer' : 'default');
 
     ctx.restore();
 }
@@ -2915,24 +2952,54 @@ function drawNameEntry() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Title
-    ctx.globalAlpha = fa * 0.8;
+    // Decorative frame panel behind input area
+    const panelW = 320, panelH = 140;
+    const panelX = cx - panelW / 2, panelY = cy - panelH / 2 - 10;
+    ctx.globalAlpha = fa * 0.7;
+    const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
+    panelGrad.addColorStop(0, '#1a1510');
+    panelGrad.addColorStop(1, '#0e0a06');
+    ctx.fillStyle = panelGrad;
+    ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 6); ctx.fill();
+    ctx.globalAlpha = fa * 0.3;
+    ctx.strokeStyle = '#a89060';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 6); ctx.stroke();
+
+    // Title — larger and more prominent
+    ctx.globalAlpha = fa * 0.85;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = 'small-caps 14px Georgia';
-    ctx.fillStyle = '#8a7a5a';
-    ctx.fillText('What is your name, wanderer?', cx, cy - 60);
+    ctx.font = 'small-caps 18px Georgia';
+    ctx.fillStyle = '#c4a878';
+    ctx.fillText('What is your name, wanderer?', cx, cy - 50);
 
-    // Name display box
+    // Decorative lines
+    if (typeof drawDecorLine === 'function') {
+        drawDecorLine(cx, cy - 68, 100, fa * 0.25);
+        drawDecorLine(cx, cy - 32, 80, fa * 0.2);
+    }
+
+    // Input box with pulsing golden glow
     const boxW = 260, boxH = 40;
     const bx = cx - boxW / 2, by = cy - boxH / 2;
 
-    ctx.globalAlpha = fa * 0.7;
+    // Pulsing glow behind input
+    const glowPulse = 0.08 + Math.sin(nameEntryBlink * 1.5) * 0.04;
+    ctx.globalAlpha = fa * glowPulse;
+    const inputGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, boxW * 0.6);
+    inputGlow.addColorStop(0, 'rgba(200, 160, 60, 0.3)');
+    inputGlow.addColorStop(1, 'rgba(100, 80, 20, 0)');
+    ctx.fillStyle = inputGlow;
+    ctx.fillRect(bx - 20, by - 15, boxW + 40, boxH + 30);
+
+    // Input box background
+    ctx.globalAlpha = fa * 0.75;
     ctx.fillStyle = '#0e0c08';
     ctx.beginPath(); ctx.roundRect(bx, by, boxW, boxH, 4); ctx.fill();
 
-    ctx.globalAlpha = fa * 0.35;
-    ctx.strokeStyle = '#a89060';
+    ctx.globalAlpha = fa * 0.45;
+    ctx.strokeStyle = '#c4a060';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.roundRect(bx, by, boxW, boxH, 4); ctx.stroke();
 
@@ -2947,16 +3014,16 @@ function drawNameEntry() {
     // Blinking cursor
     if (Math.sin(nameEntryBlink * 3) > 0) {
         const tw = ctx.measureText(displayName).width;
-        ctx.globalAlpha = fa * 0.6;
+        ctx.globalAlpha = fa * 0.7;
         ctx.fillStyle = '#c4a878';
         ctx.fillRect(cx + tw / 2 + 3, cy - 10, 2, 20);
     }
 
-    // Hint
-    ctx.globalAlpha = fa * 0.3;
-    ctx.font = '10px Georgia';
+    // Hint — slightly larger
+    ctx.globalAlpha = fa * 0.4;
+    ctx.font = '12px Georgia';
     ctx.fillStyle = '#8a7a5a';
-    ctx.fillText('Type your name and press Enter to begin', cx, cy + 50);
+    ctx.fillText('Press Enter to begin your journey', cx, cy + 48);
 
     // Draw embers from menu
     updateMenuEmbers(0.016);
