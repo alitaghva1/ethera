@@ -20,13 +20,29 @@ const ZONE_BANNER_DURATION = 4.0; // total display time in seconds
 const ZONE_BANNER_FADE_IN = 0.8;
 const ZONE_BANNER_FADE_OUT = 1.2;
 
+// Procedural bridge floor flavor text
+const PROC_BRIDGE_SUBTITLES = {
+    dungeon: 'The tunnels wind deeper...',
+    ruins: 'Ancient halls crumble around you...',
+    hell: 'Heat rises from below...',
+    frozen: 'The air grows cold...',
+};
+
 function showZoneBanner(zoneNumber) {
     const cfg = ZONE_CONFIGS[zoneNumber] || (zoneNumber >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(zoneNumber) : null);
     if (!cfg) return;
     zoneBannerName = cfg.name || '';
-    // Subtitle based on zone type
-    if (cfg.isProcedural) zoneBannerSubtitle = 'Endless Dungeon';
-    else if (cfg.isTown) zoneBannerSubtitle = 'Safe Haven';
+
+    if (cfg.isProcedural && typeof endlessUnlocked !== 'undefined' && endlessUnlocked) {
+        // Post-game endless mode
+        zoneBannerSubtitle = 'The abyss has no end...';
+    } else if (cfg.isProcedural && typeof _nextProceduralTheme !== 'undefined') {
+        // Bridge floor between story zones — use theme-specific text
+        const themeId = (typeof proceduralDepth !== 'undefined') ? themeForDepth(proceduralDepth).id : 'dungeon';
+        zoneBannerSubtitle = PROC_BRIDGE_SUBTITLES[themeId] || 'Descending...';
+    } else if (cfg.isProcedural) {
+        zoneBannerSubtitle = 'Descending...';
+    } else if (cfg.isTown) zoneBannerSubtitle = 'Safe Haven';
     else if (cfg.isFinalZone) zoneBannerSubtitle = 'The End Awaits';
     else if (cfg.isFrozen) zoneBannerSubtitle = 'Depths of Despair';
     else if (cfg.isHell) zoneBannerSubtitle = 'Descent into Flame';

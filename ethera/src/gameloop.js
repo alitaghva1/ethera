@@ -125,9 +125,9 @@ function updateMenuPhase(dt) {
     if (gamePhase === 'menu') {
         const btns = getMenuButtons();
         if (pointInButton(mouse.x, mouse.y, btns.start)) menuHover = 'start';
-        else if (pointInButton(mouse.x, mouse.y, btns.endless)) menuHover = 'endless';
         else if (pointInButton(mouse.x, mouse.y, btns.loadGame) && !btns.loadGame.disabled) menuHover = 'loadGame';
         else if (pointInButton(mouse.x, mouse.y, btns.controls)) menuHover = 'controls';
+        else if (btns.endless && pointInButton(mouse.x, mouse.y, btns.endless)) menuHover = 'endless';
     } else if (gamePhase === 'menuControls') {
         const backBtn = getControlsBackButton();
         if (pointInButton(mouse.x, mouse.y, backBtn)) menuHover = 'back';
@@ -167,16 +167,20 @@ function updateMenuFadePhase(dt) {
         } else if (menuFadeTarget === 'intro') {
             runIntro();
         } else if (menuFadeTarget === 'endless') {
-            // Start Endless Dungeon mode at depth 1
-            playerName = 'Wanderer';
-            FormSystem.currentForm = 'wizard';
-            const startConfig = FORM_CONFIGS.wizard;
+            // Post-game Endless Mode — start at depth 5 with Lich form
+            playerName = playerName || 'Wanderer';
+            FormSystem.currentForm = 'lich';
+            const startConfig = FORM_CONFIGS.lich;
             player.hp = startConfig.maxHp;
             player.mana = startConfig.maxMana || 0;
-            xpState.level = 1; xpState.xp = 0; xpState.xpToNext = xpForLevel(1);
-            currentZone = 100;
-            loadZone(100);
-            showZoneBanner(100);
+            xpState.level = 15; xpState.xp = 0; xpState.xpToNext = xpForLevel(15);
+            progressionIndex = ZONE_PROGRESSION.length; // past story
+            isProceduralZone = true;
+            proceduralDepth = endlessDepth;
+            const zoneNum = 100 + endlessDepth;
+            currentZone = zoneNum;
+            loadZone(zoneNum);
+            showZoneBanner(zoneNum);
             if (typeof Notify !== 'undefined') Notify.showControlsOnce();
             gamePhase = 'playing';
             lightRadius = MAX_LIGHT;
@@ -410,6 +414,9 @@ const ZONE_TARGET_MAP = {
     town: 0, zone1: 1, zone2: 2, zone3: 3,
     zone4: 4, zone5: 5, zone6: 6,
 };
+// Temp vars for passing procedural config through zone transitions
+let _nextProceduralTheme = null;
+let _nextProceduralDepth = 1;
 
 function updateGameplay(dt) {
     tickInputBuffers(dt);
@@ -479,8 +486,21 @@ function updateGameplay(dt) {
         if (zoneTransitionAlpha < 1) {
             zoneTransitionAlpha += dt * 3;
             if (zoneTransitionAlpha >= 1) {
-                const nextZone = typeof zoneTransitionTarget === 'number' ? zoneTransitionTarget
-                    : ZONE_TARGET_MAP[zoneTransitionTarget] != null ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
+                let nextZone;
+                if (zoneTransitionTarget === 'next') {
+                    // Unified progression — advance to next in ZONE_PROGRESSION
+                    const entry = resolveNextZone();
+                    nextZone = getZoneNumberForProgression(entry);
+                    // Pass theme to procedural generator
+                    if (entry.procedural && typeof ZONE_THEMES !== 'undefined') {
+                        _nextProceduralTheme = ZONE_THEMES[entry.theme] || null;
+                        _nextProceduralDepth = entry.depth || 1;
+                    }
+                } else if (typeof zoneTransitionTarget === 'number') {
+                    nextZone = zoneTransitionTarget;
+                } else {
+                    nextZone = ZONE_TARGET_MAP[zoneTransitionTarget] != null ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
+                }
                 loadZone(nextZone);
                 showZoneBanner(nextZone);
                 zoneTransitionAlpha = 1;
@@ -788,12 +808,16 @@ function getMenuButtons() {
     const btnW = UI.MENU_BTN_W, btnH = UI.MENU_BTN_H;
     const gap = UI.MENU_BTN_SPACING;
     const hasAnySave = saveSlots.some(s => s !== null);
-    return {
-        start:    { x: cx - btnW / 2, y: cy + 30,          w: btnW, h: btnH, label: 'NEW GAME',    id: 'start' },
-        endless:  { x: cx - btnW / 2, y: cy + 30 + gap,    w: btnW, h: btnH, label: 'ENDLESS DUNGEON', id: 'endless' },
-        loadGame: { x: cx - btnW / 2, y: cy + 30 + gap * 2, w: btnW, h: btnH, label: 'LOAD GAME',   id: 'loadGame', disabled: !hasAnySave },
-        controls: { x: cx - btnW / 2, y: cy + 30 + gap * 3, w: btnW, h: btnH, label: 'CONTROLS',   id: 'controls' },
+    const btns = {
+        start:    { x: cx - btnW / 2, y: cy + 30,          w: btnW, h: btnH, label: 'PLAY',        id: 'start' },
+        loadGame: { x: cx - btnW / 2, y: cy + 30 + gap,    w: btnW, h: btnH, label: 'CONTINUE',    id: 'loadGame', disabled: !hasAnySave },
+        controls: { x: cx - btnW / 2, y: cy + 30 + gap * 2, w: btnW, h: btnH, label: 'CONTROLS',   id: 'controls' },
     };
+    // Post-game: show Endless Mode button if unlocked
+    if (endlessUnlocked) {
+        btns.endless = { x: cx - btnW / 2, y: cy + 30 + gap * 3, w: btnW, h: btnH, label: 'ENDLESS MODE', id: 'endless' };
+    }
+    return btns;
 }
 
 function getControlsBackButton() {
@@ -1012,9 +1036,9 @@ function drawMenuScreen(dt) {
     // ----- Buttons -----
     const btns = getMenuButtons();
     drawMenuButton(btns.start, menuHover === 'start', menuFadeAlpha);
-    drawMenuButton(btns.endless, menuHover === 'endless', menuFadeAlpha);
     drawMenuButton(btns.loadGame, menuHover === 'loadGame', menuFadeAlpha, btns.loadGame.disabled);
     drawMenuButton(btns.controls, menuHover === 'controls', menuFadeAlpha);
+    if (btns.endless) drawMenuButton(btns.endless, menuHover === 'endless', menuFadeAlpha);
 
     // ----- Bottom credit line -----
     ctx.save();
@@ -2147,6 +2171,11 @@ function restartGame() {
     inventory.equipped = { wand: null, robe: null, amulet: null, ring: null };
     inventory.backpack = [];
     inventoryOpen = false;
+    // Reset progression
+    progressionIndex = 0;
+    isProceduralZone = false;
+    proceduralDepth = 1;
+    endlessDepth = 5;
     // Reset wave
     wave.current = 0;
     wave.phase = 'pre';

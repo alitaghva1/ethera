@@ -53,6 +53,12 @@ function saveGame(slotIdx) {
         talisman: { ...FormSystem.talisman },
         formData: JSON.parse(JSON.stringify(FormSystem.formData)),
         openedChests: [...openedChests],
+        // Unified progression
+        progressionIndex: progressionIndex,
+        endlessUnlocked: endlessUnlocked,
+        endlessDepth: endlessDepth,
+        isProceduralZone: isProceduralZone,
+        proceduralDepth: proceduralDepth,
     };
     try {
         if (_useFileSaves) {
@@ -207,6 +213,13 @@ function loadGame(slotIdx) {
             }
         }
     }
+
+    // Restore unified progression state
+    if (data.progressionIndex != null) progressionIndex = data.progressionIndex;
+    if (data.endlessUnlocked != null) endlessUnlocked = data.endlessUnlocked;
+    if (data.endlessDepth != null) endlessDepth = data.endlessDepth;
+    if (data.isProceduralZone != null) isProceduralZone = data.isProceduralZone;
+    if (data.proceduralDepth != null) proceduralDepth = data.proceduralDepth;
 
     // Set wave to zoneClear so player can explore and use doors/chests
     wave.current = data.waveNum || 0;

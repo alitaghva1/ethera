@@ -670,12 +670,11 @@ function populateContent(rooms, spawnRoom, exitRoom, depth, theme, zoneNum) {
         const ec = exitRoom.center.c;
         if (objectMap[er][ec]) { objectMap[er][ec] = null; blocked[er][ec] = false; }
         placeObj(er, ec, theme.id === 'hell' ? 'h_stairs1' : 'stairsSpiral', true);
-        // Register door definition — destination is next procedural depth
-        const nextZone = zoneNum + 1;
+        // Register door definition — destination uses progression system
         PROCEDURAL_DOOR_DEFS[zoneNum][er + ',' + ec] = {
             requiresKey: null,
             label: 'Descend Deeper',
-            destination: nextZone, // numeric — handled directly by zone transition
+            destination: 'next', // resolved by ZONE_PROGRESSION table
         };
     }
 

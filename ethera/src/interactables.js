@@ -750,9 +750,11 @@ function loadZone(zoneNumber) {
         player.vx = 0;
         player.vy = 0;
     } else if (zoneNumber >= 100 && typeof generateProceduralZone === 'function') {
-        // Procedural Endless Dungeon zones
+        // Procedural zones — used as bridge floors between story zones and in endless mode
         const depth = zoneNumber - 99;
-        const theme = themeForDepth(depth);
+        // Use theme override from progression system if available, otherwise derive from depth
+        const theme = (typeof _nextProceduralTheme !== 'undefined' && _nextProceduralTheme) ? _nextProceduralTheme : themeForDepth(depth);
+        _nextProceduralTheme = null; // consume
         const result = generateProceduralZone({
             mapSize: Math.min(36, 28 + depth * 2),
             depth,
@@ -851,6 +853,43 @@ function loadZone(zoneNumber) {
 //  INTERACTABLE DOORS / STAIRS (zone exits)
 // ============================================================
 // Zone-specific door definitions (rebuilt per zone)
+// ============================================================
+//  ZONE PROGRESSION TABLE — unified story + procedural flow
+// ============================================================
+const ZONE_PROGRESSION = [
+    { zone: 1 },                                              // 0: Story — Undercroft
+    { procedural: true, theme: 'dungeon', depth: 1 },         // 1: Procedural bridge
+    { zone: 2 },                                              // 2: Story — Ruined Tower
+    { procedural: true, theme: 'ruins', depth: 2 },            // 3: Procedural bridge
+    { zone: 3 },                                              // 4: Story — The Spire
+    { procedural: true, theme: 'hell', depth: 3 },             // 5: Procedural bridge
+    { zone: 4 },                                              // 6: Story — The Inferno
+    { procedural: true, theme: 'frozen', depth: 4 },           // 7: Procedural bridge
+    { zone: 5 },                                              // 8: Story — Frozen Abyss
+    { zone: 6 },                                              // 9: Story — Throne of Ruin
+];
+let progressionIndex = 0;
+let endlessUnlocked = false;
+let endlessDepth = 5; // starting depth for post-game endless mode
+
+function resolveNextZone() {
+    progressionIndex++;
+    // Past the story? Enter endless mode
+    if (progressionIndex >= ZONE_PROGRESSION.length) {
+        if (!endlessUnlocked) endlessUnlocked = true;
+        // Endless: generate procedural zones indefinitely
+        const themes = ['dungeon', 'ruins', 'hell', 'frozen'];
+        const d = endlessDepth++;
+        return { procedural: true, theme: themes[(d - 5) % themes.length], depth: d };
+    }
+    return ZONE_PROGRESSION[progressionIndex];
+}
+
+function getZoneNumberForProgression(entry) {
+    if (entry.procedural) return 100 + entry.depth;
+    return entry.zone;
+}
+
 let DOOR_DEFS = {};
 function updateDoorDefsForZone(zone) {
     if (zone === 1) {
@@ -858,12 +897,12 @@ function updateDoorDefsForZone(zone) {
         DOOR_DEFS = {
             // Town exit — Cell north wall archway only (reduced from 6 tiles to prevent accidental triggers)
             '1,4': townDoor, '1,5': townDoor,
-            // Zone 2 stairs — centre-south of Great Hall
+            // Exit stairs — centre-south of Great Hall → next in progression
             '20,17': {
                 requiresKey: 'dungeon_key',
-                label: 'Ascend',
+                label: 'Descend Deeper',
                 lockedLabel: 'Locked',
-                destination: 'zone2',
+                destination: 'next',
             },
         };
     } else if (zone === 0) {
@@ -877,18 +916,18 @@ function updateDoorDefsForZone(zone) {
         DOOR_DEFS = {
             '33,15': {
                 requiresKey: 'zone2_key',
-                label: 'Ascend',
+                label: 'Descend Deeper',
                 lockedLabel: 'Locked',
-                destination: 'zone3',
+                destination: 'next',
             },
         };
     } else if (zone === 3) {
         DOOR_DEFS = {
             '19,16': {
-                requiresKey: 'zone3_exit_key',  // Boss drops this key on death
+                requiresKey: 'zone3_exit_key',
                 label: 'Descend into the depths...',
                 lockedLabel: 'Locked',
-                destination: 'zone4',
+                destination: 'next',
             },
         };
     } else if (zone === 4) {
@@ -896,8 +935,8 @@ function updateDoorDefsForZone(zone) {
             // Entry stairs (for going back — optional, matches zone 3 exit at 19,16)
             '1,16': { requiresKey: null, label: 'Return to the Spire', destination: 'zone3' },
             // Boss exit (south wall center) — locked until hell boss dies
-            '26,13': { requiresKey: 'zone4_key', label: 'Descend Deeper...', lockedLabel: 'Sealed by dark power', destination: 'zone5' },
-            '26,14': { requiresKey: 'zone4_key', label: 'Descend Deeper...', lockedLabel: 'Sealed by dark power', destination: 'zone5' },
+            '26,13': { requiresKey: 'zone4_key', label: 'Descend Deeper...', lockedLabel: 'Sealed by dark power', destination: 'next' },
+            '26,14': { requiresKey: 'zone4_key', label: 'Descend Deeper...', lockedLabel: 'Sealed by dark power', destination: 'next' },
         };
     } else if (zone === 5) {
         DOOR_DEFS = {
@@ -905,8 +944,8 @@ function updateDoorDefsForZone(zone) {
             '1,13': { requiresKey: null, label: 'Return to the Inferno', destination: 'zone4' },
             '1,14': { requiresKey: null, label: 'Return to the Inferno', destination: 'zone4' },
             // Boss exit — south end, descend to final zone
-            '28,14': { requiresKey: 'zone5_key', label: 'Enter the Throne of Ruin', lockedLabel: 'An ancient seal holds...', destination: 'zone6' },
-            '28,15': { requiresKey: 'zone5_key', label: 'Enter the Throne of Ruin', lockedLabel: 'An ancient seal holds...', destination: 'zone6' },
+            '28,14': { requiresKey: 'zone5_key', label: 'Enter the Throne of Ruin', lockedLabel: 'An ancient seal holds...', destination: 'next' },
+            '28,15': { requiresKey: 'zone5_key', label: 'Enter the Throne of Ruin', lockedLabel: 'An ancient seal holds...', destination: 'next' },
         };
     } else if (zone === 6) {
         DOOR_DEFS = {
