@@ -9,6 +9,18 @@ let npcDialogueOpen = false;  // whether dialogue box is shown
 let npcDialogueFadeIn = 0;    // fade-in timer
 let npcDialogueIndex = 0;     // which dialogue line to show
 
+// ----- NPC SERVICE MENUS -----
+let smithyMenuOpen = false;   // Garrett's enchantment forge
+let shopMenuOpen = false;     // Senna's potion shop
+let smithyFadeIn = 0;
+let shopFadeIn = 0;
+let smithyHover = -1;         // hovered equipment slot index (0-3)
+let shopHover = -1;           // hovered potion index (0-2)
+let smithyResultText = '';    // feedback text after enchant attempt
+let smithyResultTimer = 0;    // fade timer for feedback
+let shopResultText = '';
+let shopResultTimer = 0;
+
 const NPC_INTERACTION_RANGE = 2.2; // tiles
 const NPC_DEPTH_MULTIPLIER = 100;  // fixed constant for depth sort scoring
 
@@ -627,6 +639,21 @@ function handleNPCInteraction() {
 }
 
 function openNPCDialogue(npc) {
+    // Check if this NPC should open a service menu instead of dialogue
+    const formCfg = typeof FormSystem !== 'undefined' ? FormSystem.getFormConfig() : null;
+    const hasEquip = formCfg && formCfg.hasEquipment;
+
+    // Garrett opens smithy if player has equipment forms (wizard/lich)
+    if (npc.id === 'garrett' && hasEquip) {
+        openSmithyMenu(npc);
+        return;
+    }
+    // Senna opens potion shop (all forms can buy potions)
+    if (npc.id === 'senna') {
+        openShopMenu(npc);
+        return;
+    }
+
     currentNPC = npc;
     npc.dialogueIndex = 0;
     npcDialogueOpen = true;
@@ -641,7 +668,492 @@ function closeNPCDialogue() {
 }
 
 function isNPCDialogueOpen() {
-    return npcDialogueOpen;
+    return npcDialogueOpen || smithyMenuOpen || shopMenuOpen;
+}
+
+// ============================================================
+//  GARRETT'S SMITHY — Equipment Enchantment Menu
+// ============================================================
+function openSmithyMenu(npc) {
+    currentNPC = npc;
+    smithyMenuOpen = true;
+    smithyFadeIn = 0;
+    smithyHover = -1;
+    smithyResultText = '';
+    smithyResultTimer = 0;
+    sfxChestOpen();
+}
+
+function closeSmithyMenu() {
+    smithyMenuOpen = false;
+    currentNPC = null;
+    smithyFadeIn = 0;
+    smithyHover = -1;
+}
+
+function handleSmithyClick(clickX, clickY) {
+    if (!smithyMenuOpen) return false;
+    const pw = Math.min(520, canvasW - 60);
+    const ph = 380;
+    const px = (canvasW - pw) / 2;
+    const py = (canvasH - ph) / 2;
+
+    // Click outside panel closes it
+    if (clickX < px || clickX > px + pw || clickY < py || clickY > py + ph) {
+        closeSmithyMenu();
+        return true;
+    }
+
+    // Check item row clicks
+    const rowH = 60;
+    const startY = py + 80;
+    for (let i = 0; i < EQUIP_SLOTS.length; i++) {
+        const ry = startY + i * (rowH + 8);
+        if (clickY >= ry && clickY <= ry + rowH && clickX >= px + 16 && clickX <= px + pw - 16) {
+            const slot = EQUIP_SLOTS[i];
+            const item = inventory.equipped[slot];
+            if (item) {
+                const result = enchantItem(item);
+                if (result.success) {
+                    smithyResultText = item.name + ' enchanted to +' + result.newLevel + '! (-' + result.cost + 'g)';
+                    smithyResultTimer = 3.0;
+                    if (typeof sfxItemPickup === 'function') sfxItemPickup();
+                } else {
+                    smithyResultText = result.reason;
+                    smithyResultTimer = 2.5;
+                }
+            }
+            return true;
+        }
+    }
+    return true;
+}
+
+function drawSmithyMenu() {
+    if (!smithyMenuOpen) return;
+    smithyFadeIn = Math.min(1, smithyFadeIn + 0.06);
+    if (smithyResultTimer > 0) smithyResultTimer -= 1 / 60;
+    const fa = smithyFadeIn;
+
+    ctx.save();
+
+    // Dim overlay
+    ctx.globalAlpha = fa * 0.6;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Panel dimensions
+    const pw = Math.min(520, canvasW - 60);
+    const ph = 380;
+    const px = (canvasW - pw) / 2;
+    const py = (canvasH - ph) / 2;
+
+    // Panel background — dark forge style
+    ctx.globalAlpha = fa * 0.95;
+    const panelGrad = ctx.createLinearGradient(px, py, px, py + ph);
+    panelGrad.addColorStop(0, '#1a1410');
+    panelGrad.addColorStop(0.1, '#161008');
+    panelGrad.addColorStop(0.9, '#100c06');
+    panelGrad.addColorStop(1, '#0c0804');
+    ctx.fillStyle = panelGrad;
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill();
+
+    // Border
+    ctx.globalAlpha = fa * 0.4;
+    ctx.strokeStyle = '#c49040';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke();
+
+    // Inner border
+    ctx.globalAlpha = fa * 0.12;
+    ctx.strokeStyle = '#a88040';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(px + 4, py + 4, pw - 8, ph - 8, 6); ctx.stroke();
+
+    // Title
+    ctx.globalAlpha = fa * 0.9;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 18px Georgia';
+    ctx.fillStyle = '#e8c060';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 3;
+    ctx.strokeText("Garrett's Forge", px + pw / 2, py + 28);
+    ctx.fillText("Garrett's Forge", px + pw / 2, py + 28);
+
+    // Subtitle
+    ctx.globalAlpha = fa * 0.5;
+    ctx.font = 'italic 11px Georgia';
+    ctx.fillStyle = '#a89060';
+    ctx.fillText('Select an item to enchant', px + pw / 2, py + 50);
+
+    // Divider
+    ctx.globalAlpha = fa * 0.2;
+    ctx.strokeStyle = '#8a7040';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 30, py + 65);
+    ctx.lineTo(px + pw - 30, py + 65);
+    ctx.stroke();
+
+    // Gold display
+    ctx.globalAlpha = fa * 0.8;
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 12px Georgia';
+    ctx.fillStyle = '#e8c040';
+    const goldVal = typeof playerGold !== 'undefined' ? playerGold : 0;
+    ctx.fillText('Gold: ' + goldVal + 'g', px + pw - 20, py + 28);
+
+    // Equipment rows
+    const rowH = 60;
+    const startY = py + 80;
+    smithyHover = -1;
+
+    for (let i = 0; i < EQUIP_SLOTS.length; i++) {
+        const slot = EQUIP_SLOTS[i];
+        const item = inventory.equipped[slot];
+        const ry = startY + i * (rowH + 8);
+        const rx = px + 16;
+        const rw = pw - 32;
+
+        // Hover detection
+        const hovered = mouse.x >= rx && mouse.x <= rx + rw && mouse.y >= ry && mouse.y <= ry + rowH;
+        if (hovered) smithyHover = i;
+
+        // Row background
+        ctx.globalAlpha = fa * (hovered ? 0.35 : 0.18);
+        ctx.fillStyle = hovered ? '#2a2010' : '#1a1408';
+        ctx.beginPath(); ctx.roundRect(rx, ry, rw, rowH, 4); ctx.fill();
+
+        // Row border
+        ctx.globalAlpha = fa * (hovered ? 0.4 : 0.15);
+        ctx.strokeStyle = hovered ? '#c49040' : '#6a5a30';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(rx, ry, rw, rowH, 4); ctx.stroke();
+
+        if (!item) {
+            // Empty slot
+            ctx.globalAlpha = fa * 0.3;
+            ctx.textAlign = 'left';
+            ctx.font = '12px Georgia';
+            ctx.fillStyle = '#6a5a40';
+            ctx.fillText(SLOT_LABELS[slot] + ' — Empty', rx + 14, ry + rowH / 2 + 1);
+            continue;
+        }
+
+        // Slot icon
+        ctx.globalAlpha = fa * 0.4;
+        ctx.textAlign = 'center';
+        ctx.font = '18px Georgia';
+        ctx.fillStyle = RARITY[item.rarity].color;
+        ctx.fillText(SLOT_ICONS[slot], rx + 20, ry + rowH / 2 + 1);
+
+        // Item name with rarity color
+        ctx.globalAlpha = fa * 0.9;
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 12px Georgia';
+        ctx.fillStyle = RARITY[item.rarity].color;
+        const enchLvl = item.enchantLevel || 0;
+        const nameStr = item.name + (enchLvl > 0 ? ' +' + enchLvl : '');
+        ctx.fillText(nameStr, rx + 40, ry + 18);
+
+        // Stat summary
+        ctx.globalAlpha = fa * 0.55;
+        ctx.font = '10px Georgia';
+        ctx.fillStyle = '#b0a080';
+        const statParts = [];
+        for (const [stat, val] of Object.entries(item.stats)) {
+            const def = typeof STAT_DEFS !== 'undefined' ? STAT_DEFS[stat] : null;
+            if (def) statParts.push(def.label + ' ' + def.fmt(val));
+        }
+        ctx.fillText(statParts.join('  |  '), rx + 40, ry + 34);
+
+        // Enchant info on right side
+        const maxEnch = getEnchantMax(item);
+        const atMax = enchLvl >= maxEnch;
+        ctx.textAlign = 'right';
+
+        if (atMax) {
+            ctx.globalAlpha = fa * 0.5;
+            ctx.font = 'italic 11px Georgia';
+            ctx.fillStyle = '#88aa88';
+            ctx.fillText('MAX +' + enchLvl, rx + rw - 14, ry + 18);
+        } else {
+            const cost = getEnchantCost(item);
+            const canAfford = goldVal >= cost;
+            ctx.globalAlpha = fa * 0.7;
+            ctx.font = '11px Georgia';
+            ctx.fillStyle = canAfford ? '#e8c040' : '#884444';
+            ctx.fillText(cost + 'g', rx + rw - 14, ry + 18);
+            ctx.globalAlpha = fa * 0.45;
+            ctx.font = '9px Georgia';
+            ctx.fillStyle = '#a09070';
+            ctx.fillText('+' + enchLvl + ' \u2192 +' + (enchLvl + 1), rx + rw - 14, ry + 34);
+        }
+
+        // Rarity tag
+        ctx.globalAlpha = fa * 0.35;
+        ctx.textAlign = 'left';
+        ctx.font = '8px monospace';
+        ctx.fillStyle = RARITY[item.rarity].color;
+        ctx.fillText(RARITY[item.rarity].label.toUpperCase(), rx + 40, ry + rowH - 10);
+    }
+
+    // Result text feedback
+    if (smithyResultTimer > 0 && smithyResultText) {
+        const resultAlpha = Math.min(1, smithyResultTimer);
+        ctx.globalAlpha = fa * resultAlpha * 0.9;
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 12px Georgia';
+        const isSuccess = smithyResultText.indexOf('enchanted') !== -1;
+        ctx.fillStyle = isSuccess ? '#88cc88' : '#cc6644';
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeText(smithyResultText, px + pw / 2, py + ph - 28);
+        ctx.fillText(smithyResultText, px + pw / 2, py + ph - 28);
+    }
+
+    // Close hint
+    ctx.globalAlpha = fa * 0.35;
+    ctx.textAlign = 'center';
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#8a7a5a';
+    ctx.fillText('[ESC/E] Close', px + pw / 2, py + ph - 10);
+
+    ctx.restore();
+}
+
+// ============================================================
+//  SENNA'S POTION SHOP
+// ============================================================
+function openShopMenu(npc) {
+    currentNPC = npc;
+    shopMenuOpen = true;
+    shopFadeIn = 0;
+    shopHover = -1;
+    shopResultText = '';
+    shopResultTimer = 0;
+    sfxChestOpen();
+}
+
+function closeShopMenu() {
+    shopMenuOpen = false;
+    currentNPC = null;
+    shopFadeIn = 0;
+    shopHover = -1;
+}
+
+function handleShopClick(clickX, clickY) {
+    if (!shopMenuOpen) return false;
+    const pw = Math.min(460, canvasW - 60);
+    const ph = 320;
+    const px = (canvasW - pw) / 2;
+    const py = (canvasH - ph) / 2;
+
+    // Click outside closes
+    if (clickX < px || clickX > px + pw || clickY < py || clickY > py + ph) {
+        closeShopMenu();
+        return true;
+    }
+
+    // Check potion row clicks
+    const potionIds = Object.keys(POTIONS);
+    const rowH = 56;
+    const startY = py + 80;
+    for (let i = 0; i < potionIds.length; i++) {
+        const ry = startY + i * (rowH + 8);
+        if (clickY >= ry && clickY <= ry + rowH && clickX >= px + 16 && clickX <= px + pw - 16) {
+            const result = buyPotion(potionIds[i]);
+            if (result.success) {
+                shopResultText = 'Bought ' + POTIONS[potionIds[i]].name + '!';
+                shopResultTimer = 2.0;
+                if (typeof sfxItemPickup === 'function') sfxItemPickup();
+            } else {
+                shopResultText = result.reason;
+                shopResultTimer = 2.0;
+            }
+            return true;
+        }
+    }
+    return true;
+}
+
+function drawShopMenu() {
+    if (!shopMenuOpen) return;
+    shopFadeIn = Math.min(1, shopFadeIn + 0.06);
+    if (shopResultTimer > 0) shopResultTimer -= 1 / 60;
+    const fa = shopFadeIn;
+
+    ctx.save();
+
+    // Dim overlay
+    ctx.globalAlpha = fa * 0.6;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Panel
+    const pw = Math.min(460, canvasW - 60);
+    const ph = 320;
+    const px = (canvasW - pw) / 2;
+    const py = (canvasH - ph) / 2;
+
+    // Panel background — alchemical green-tinted
+    ctx.globalAlpha = fa * 0.95;
+    const panelGrad = ctx.createLinearGradient(px, py, px, py + ph);
+    panelGrad.addColorStop(0, '#141a10');
+    panelGrad.addColorStop(0.1, '#101408');
+    panelGrad.addColorStop(0.9, '#0c1006');
+    panelGrad.addColorStop(1, '#080c04');
+    ctx.fillStyle = panelGrad;
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill();
+
+    // Border
+    ctx.globalAlpha = fa * 0.4;
+    ctx.strokeStyle = '#60a050';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke();
+
+    // Inner border
+    ctx.globalAlpha = fa * 0.12;
+    ctx.strokeStyle = '#508840';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(px + 4, py + 4, pw - 8, ph - 8, 6); ctx.stroke();
+
+    // Title
+    ctx.globalAlpha = fa * 0.9;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 18px Georgia';
+    ctx.fillStyle = '#a0dd60';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 3;
+    ctx.strokeText("Senna's Alchemy", px + pw / 2, py + 28);
+    ctx.fillText("Senna's Alchemy", px + pw / 2, py + 28);
+
+    // Subtitle
+    ctx.globalAlpha = fa * 0.5;
+    ctx.font = 'italic 11px Georgia';
+    ctx.fillStyle = '#80a060';
+    ctx.fillText('Potions for the journey ahead', px + pw / 2, py + 50);
+
+    // Divider
+    ctx.globalAlpha = fa * 0.2;
+    ctx.strokeStyle = '#506830';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 30, py + 65);
+    ctx.lineTo(px + pw - 30, py + 65);
+    ctx.stroke();
+
+    // Gold display
+    ctx.globalAlpha = fa * 0.8;
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 12px Georgia';
+    ctx.fillStyle = '#e8c040';
+    const goldVal = typeof playerGold !== 'undefined' ? playerGold : 0;
+    ctx.fillText('Gold: ' + goldVal + 'g', px + pw - 20, py + 28);
+
+    // Potion rows
+    const potionIds = Object.keys(POTIONS);
+    const potionIcons = ['\u2665', '\u2726', '\u2666']; // heart, star, diamond
+    const potionColors = ['#ee5544', '#4488ee', '#ddaa44'];
+    const rowH = 56;
+    const startY = py + 80;
+    shopHover = -1;
+
+    for (let i = 0; i < potionIds.length; i++) {
+        const pid = potionIds[i];
+        const pot = POTIONS[pid];
+        const owned = playerPotions[pid] || 0;
+        const ry = startY + i * (rowH + 8);
+        const rx = px + 16;
+        const rw = pw - 32;
+
+        const hovered = mouse.x >= rx && mouse.x <= rx + rw && mouse.y >= ry && mouse.y <= ry + rowH;
+        if (hovered) shopHover = i;
+
+        // Row background
+        ctx.globalAlpha = fa * (hovered ? 0.35 : 0.18);
+        ctx.fillStyle = hovered ? '#1a2a10' : '#121a08';
+        ctx.beginPath(); ctx.roundRect(rx, ry, rw, rowH, 4); ctx.fill();
+
+        // Row border
+        ctx.globalAlpha = fa * (hovered ? 0.4 : 0.15);
+        ctx.strokeStyle = hovered ? '#60a050' : '#3a5a28';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(rx, ry, rw, rowH, 4); ctx.stroke();
+
+        // Potion icon
+        ctx.globalAlpha = fa * 0.7;
+        ctx.textAlign = 'center';
+        ctx.font = '20px Georgia';
+        ctx.fillStyle = potionColors[i];
+        ctx.fillText(potionIcons[i], rx + 22, ry + rowH / 2 + 2);
+
+        // Key binding badge
+        ctx.globalAlpha = fa * 0.4;
+        ctx.font = '8px monospace';
+        ctx.fillStyle = '#a0a080';
+        ctx.fillText('[' + (i + 1) + ']', rx + 22, ry + rowH - 6);
+
+        // Potion name
+        ctx.globalAlpha = fa * 0.9;
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 12px Georgia';
+        ctx.fillStyle = potionColors[i];
+        ctx.fillText(pot.name, rx + 44, ry + 18);
+
+        // Description
+        ctx.globalAlpha = fa * 0.5;
+        ctx.font = '10px Georgia';
+        ctx.fillStyle = '#a0a080';
+        ctx.fillText(pot.desc, rx + 44, ry + 34);
+
+        // Owned count
+        ctx.globalAlpha = fa * 0.6;
+        ctx.font = '10px monospace';
+        ctx.fillStyle = owned >= pot.max ? '#88aa88' : '#a09070';
+        ctx.fillText(owned + '/' + pot.max, rx + 44, ry + rowH - 8);
+
+        // Price on right
+        ctx.textAlign = 'right';
+        const atMax = owned >= pot.max;
+        const canAfford = goldVal >= pot.cost;
+        if (atMax) {
+            ctx.globalAlpha = fa * 0.45;
+            ctx.font = 'italic 11px Georgia';
+            ctx.fillStyle = '#88aa88';
+            ctx.fillText('FULL', rx + rw - 14, ry + rowH / 2 + 1);
+        } else {
+            ctx.globalAlpha = fa * 0.8;
+            ctx.font = 'bold 12px Georgia';
+            ctx.fillStyle = canAfford ? '#e8c040' : '#884444';
+            ctx.fillText(pot.cost + 'g', rx + rw - 14, ry + rowH / 2 + 1);
+        }
+    }
+
+    // Result text
+    if (shopResultTimer > 0 && shopResultText) {
+        const resultAlpha = Math.min(1, shopResultTimer);
+        ctx.globalAlpha = fa * resultAlpha * 0.9;
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 12px Georgia';
+        const isSuccess = shopResultText.indexOf('Bought') !== -1;
+        ctx.fillStyle = isSuccess ? '#88cc88' : '#cc6644';
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeText(shopResultText, px + pw / 2, py + ph - 28);
+        ctx.fillText(shopResultText, px + pw / 2, py + ph - 28);
+    }
+
+    // Close hint
+    ctx.globalAlpha = fa * 0.35;
+    ctx.textAlign = 'center';
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#6a7a5a';
+    ctx.fillText('[ESC/E] Close', px + pw / 2, py + ph - 10);
+
+    ctx.restore();
 }
 
 // ============================================================

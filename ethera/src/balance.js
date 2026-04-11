@@ -356,6 +356,12 @@ function handleKeyDown(e) {
             }
         }
     }
+    // Number keys use potions during gameplay
+    if (gamePhase === 'playing' && !gameDead && !menuOpen && !gamePaused && typeof usePotion === 'function') {
+        if (e.key === '1') { usePotion('health_vial'); return; }
+        if (e.key === '2') { usePotion('mana_elixir'); return; }
+        if (e.key === '3') { usePotion('fortitude_salt'); return; }
+    }
     // P key pauses game
     if (e.key.toLowerCase() === 'p' && gamePhase === 'playing' && !gameDead) {
         gamePaused = !gamePaused;

@@ -320,3 +320,117 @@ function updateWorldDrops(dt) {
     }
 }
 
+// ============================================================
+//  ENCHANTMENT SYSTEM — Garrett's Forge
+// ============================================================
+const ENCHANT_MAX = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
+const ENCHANT_COST = { common: 50, uncommon: 100, rare: 200, epic: 350, legendary: 500 };
+
+function getEnchantCost(item) {
+    const currentLvl = item.enchantLevel || 0;
+    const baseCost = ENCHANT_COST[item.rarity] || 50;
+    return baseCost * (currentLvl + 1);
+}
+
+function getEnchantMax(item) {
+    return ENCHANT_MAX[item.rarity] || 1;
+}
+
+function enchantItem(item) {
+    const maxLvl = getEnchantMax(item);
+    const currentLvl = item.enchantLevel || 0;
+    if (currentLvl >= maxLvl) return { success: false, reason: 'Max enchantment reached' };
+    const cost = getEnchantCost(item);
+    if (typeof playerGold === 'undefined' || playerGold < cost) return { success: false, reason: 'Not enough gold (' + cost + 'g needed)' };
+    playerGold -= cost;
+    item.enchantLevel = currentLvl + 1;
+    // Boost all numeric stats by 15% per enchant (compounding from current values)
+    const boosted = {};
+    for (const [stat, val] of Object.entries(item.stats)) {
+        if (typeof val === 'number') {
+            const oldVal = val;
+            if (val < 1 && val > 0) {
+                item.stats[stat] = Math.round(val * 1.15 * 100) / 100;
+            } else {
+                item.stats[stat] = Math.round(val * 1.15);
+            }
+            boosted[stat] = { from: oldVal, to: item.stats[stat] };
+        }
+    }
+    // Recalculate equipment bonuses immediately
+    if (typeof getEquipBonuses === 'function') {
+        equipBonus = getEquipBonuses();
+    }
+    return { success: true, cost: cost, newLevel: item.enchantLevel, boosted: boosted };
+}
+
+// ============================================================
+//  POTION SYSTEM — Senna's Alchemy
+// ============================================================
+const POTIONS = {
+    health_vial:    { name: 'Health Vial',    cost: 50,  max: 3, desc: 'Restores 30 HP',                   effect: { type: 'heal',        value: 30 } },
+    mana_elixir:    { name: 'Mana Elixir',    cost: 50,  max: 2, desc: 'Restores 40 Mana',                 effect: { type: 'mana',        value: 40 } },
+    fortitude_salt: { name: 'Fortitude Salt',  cost: 75,  max: 1, desc: '+15% dmg reduction for 1 zone',    effect: { type: 'buff_dmgReduc', value: 0.15, duration: 'zone' } },
+};
+let playerPotions = { health_vial: 0, mana_elixir: 0, fortitude_salt: 0 };
+
+// Active potion buffs
+let activePotionBuffs = {};  // { dmgReduc: { value: 0.15, duration: 'zone' } }
+
+function buyPotion(potionId) {
+    const pot = POTIONS[potionId];
+    if (!pot) return { success: false, reason: 'Unknown potion' };
+    if (playerPotions[potionId] >= pot.max) return { success: false, reason: 'Already at max (' + pot.max + ')' };
+    if (typeof playerGold === 'undefined' || playerGold < pot.cost) return { success: false, reason: 'Not enough gold (' + pot.cost + 'g needed)' };
+    playerGold -= pot.cost;
+    playerPotions[potionId]++;
+    return { success: true };
+}
+
+function usePotion(potionId) {
+    if (playerPotions[potionId] <= 0) return false;
+    const pot = POTIONS[potionId];
+    if (!pot) return false;
+    playerPotions[potionId]--;
+    const eff = pot.effect;
+    if (eff.type === 'heal') {
+        const maxHp = typeof MAX_HP !== 'undefined' ? MAX_HP + (equipBonus.maxHpBonus || 0) : 100;
+        const oldHp = player.hp;
+        player.hp = Math.min(maxHp, player.hp + eff.value);
+        const healed = Math.round(player.hp - oldHp);
+        if (healed > 0) {
+            pickupTexts.push({ text: '+' + healed + ' HP', color: COLORS.HEAL_GREEN, row: player.row, col: player.col, offsetY: 0, life: 1.5 });
+        }
+    } else if (eff.type === 'mana') {
+        const maxMana = typeof MAX_MANA !== 'undefined' ? MAX_MANA + (equipBonus.maxManaBonus || 0) : 100;
+        const oldMana = player.mana;
+        player.mana = Math.min(maxMana, player.mana + eff.value);
+        const restored = Math.round(player.mana - oldMana);
+        if (restored > 0) {
+            pickupTexts.push({ text: '+' + restored + ' Mana', color: COLORS.MANA_BLUE, row: player.row, col: player.col, offsetY: 0, life: 1.5 });
+        }
+    } else if (eff.type === 'buff_dmgReduc') {
+        activePotionBuffs.dmgReduc = { value: eff.value, duration: eff.duration };
+        pickupTexts.push({ text: 'Fortitude!', color: '#ffcc44', row: player.row, col: player.col, offsetY: 0, life: 2.0 });
+    }
+    if (typeof sfxItemPickup === 'function') sfxItemPickup();
+    return true;
+}
+
+function resetPotions() {
+    playerPotions = { health_vial: 0, mana_elixir: 0, fortitude_salt: 0 };
+    activePotionBuffs = {};
+}
+
+function clearPotionBuffsForZone() {
+    for (const key of Object.keys(activePotionBuffs)) {
+        if (activePotionBuffs[key].duration === 'zone') {
+            delete activePotionBuffs[key];
+        }
+    }
+}
+
+function getPotionDmgReduc() {
+    return activePotionBuffs.dmgReduc ? activePotionBuffs.dmgReduc.value : 0;
+}
+

@@ -736,6 +736,8 @@ function gameLoop(timestamp) {
         setPixelCursor('default');
         render();
         drawNPCDialogue();
+        if (typeof smithyMenuOpen !== 'undefined' && smithyMenuOpen && typeof drawSmithyMenu === 'function') drawSmithyMenu();
+        if (typeof shopMenuOpen !== 'undefined' && shopMenuOpen && typeof drawShopMenu === 'function') drawShopMenu();
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -2344,6 +2346,7 @@ function restartGame() {
     if (typeof groundHazards !== 'undefined') groundHazards.length = 0;
     if (typeof claimedMilestones !== 'undefined') claimedMilestones.length = 0;
     if (typeof playerGold !== 'undefined') playerGold = 0;
+    if (typeof resetPotions === 'function') resetPotions();
     if (typeof _evoHintShown !== 'undefined') { _evoHintShown.slime = false; _evoHintShown.skeleton = false; _evoHintShown.wizard = false; }
     // Reset wave
     wave.current = 0;
