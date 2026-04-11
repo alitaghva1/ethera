@@ -73,6 +73,7 @@ function saveGame(slotIdx) {
         // Gold + Potions
         playerGold: typeof playerGold !== 'undefined' ? playerGold : 0,
         playerPotions: typeof playerPotions !== 'undefined' ? { ...playerPotions } : { health_vial: 0, mana_elixir: 0, fortitude_salt: 0 },
+        forgeUpgrades: typeof forgeUpgrades !== 'undefined' ? { ...forgeUpgrades } : {},
     };
     try {
         if (_useFileSaves) {
@@ -319,6 +320,9 @@ function loadGame(slotIdx) {
     if (typeof playerGold !== 'undefined') playerGold = data.playerGold || 0;
     if (typeof playerPotions !== 'undefined' && data.playerPotions) {
         Object.assign(playerPotions, data.playerPotions);
+    }
+    if (typeof forgeUpgrades !== 'undefined' && data.forgeUpgrades) {
+        Object.assign(forgeUpgrades, data.forgeUpgrades);
     }
 
     // Set wave to zoneClear so player can explore and use doors/chests

@@ -643,8 +643,8 @@ function openNPCDialogue(npc) {
     const formCfg = typeof FormSystem !== 'undefined' ? FormSystem.getFormConfig() : null;
     const hasEquip = formCfg && formCfg.hasEquipment;
 
-    // Garrett opens smithy if player has equipment forms (wizard/lich)
-    if (npc.id === 'garrett' && hasEquip) {
+    // Garrett opens forge for ALL forms (equipment enchantment for wizard/lich, form upgrades for slime/skeleton)
+    if (npc.id === 'garrett') {
         openSmithyMenu(npc);
         return;
     }
@@ -704,9 +704,34 @@ function handleSmithyClick(clickX, clickY) {
         return true;
     }
 
-    // Check item row clicks
+    // Check form-specific upgrade clicks (slime/skeleton)
+    const _clickForm = typeof FormSystem !== 'undefined' ? FormSystem.currentForm : 'wizard';
+    const _clickHasEquip = _clickForm === 'wizard' || _clickForm === 'lich';
+    const _clickFormUpgrades = (!_clickHasEquip && typeof FORGE_UPGRADES !== 'undefined') ? FORGE_UPGRADES[_clickForm] : null;
+
     const rowH = 60;
     const startY = py + 80;
+
+    if (_clickFormUpgrades) {
+        for (let i = 0; i < _clickFormUpgrades.length; i++) {
+            const ry = startY + i * (rowH + 8);
+            if (clickY >= ry && clickY <= ry + rowH && clickX >= px + 16 && clickX <= px + pw - 16) {
+                const result = typeof buyForgeUpgrade === 'function' ? buyForgeUpgrade(_clickFormUpgrades[i]) : { success: false, reason: 'System unavailable' };
+                if (result.success) {
+                    smithyResultText = _clickFormUpgrades[i].name + ' forged to +' + result.newLevel + '! (-' + result.cost + 'g)';
+                    smithyResultTimer = 3.0;
+                    if (typeof sfxItemPickup === 'function') sfxItemPickup();
+                } else {
+                    smithyResultText = result.reason;
+                    smithyResultTimer = 2.5;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Check equipment enchant clicks (wizard/lich)
     for (let i = 0; i < EQUIP_SLOTS.length; i++) {
         const ry = startY + i * (rowH + 8);
         if (clickY >= ry && clickY <= ry + rowH && clickX >= px + 16 && clickX <= px + pw - 16) {
@@ -781,11 +806,16 @@ function drawSmithyMenu() {
     ctx.strokeText("Garrett's Forge", px + pw / 2, py + 28);
     ctx.fillText("Garrett's Forge", px + pw / 2, py + 28);
 
+    // Check if current form uses equipment or form-specific upgrades
+    const _smithForm = typeof FormSystem !== 'undefined' ? FormSystem.currentForm : 'wizard';
+    const _smithHasEquip = _smithForm === 'wizard' || _smithForm === 'lich';
+    const _smithFormUpgrades = (!_smithHasEquip && typeof FORGE_UPGRADES !== 'undefined') ? FORGE_UPGRADES[_smithForm] : null;
+
     // Subtitle
     ctx.globalAlpha = fa * 0.5;
     ctx.font = 'italic 11px Georgia';
     ctx.fillStyle = '#a89060';
-    ctx.fillText('Select an item to enchant', px + pw / 2, py + 50);
+    ctx.fillText(_smithHasEquip ? 'Select an item to enchant' : 'Forge permanent upgrades', px + pw / 2, py + 50);
 
     // Divider
     ctx.globalAlpha = fa * 0.2;
@@ -804,11 +834,75 @@ function drawSmithyMenu() {
     const goldVal = typeof playerGold !== 'undefined' ? playerGold : 0;
     ctx.fillText('Gold: ' + goldVal + 'g', px + pw - 20, py + 28);
 
-    // Equipment rows
+    // Equipment rows OR form-specific upgrades
     const rowH = 60;
     const startY = py + 80;
     smithyHover = -1;
 
+    // --- FORM-SPECIFIC UPGRADES (slime/skeleton) ---
+    if (_smithFormUpgrades) {
+        for (let i = 0; i < _smithFormUpgrades.length; i++) {
+            const u = _smithFormUpgrades[i];
+            const level = (typeof forgeUpgrades !== 'undefined') ? (forgeUpgrades[u.id] || 0) : 0;
+            const ry = startY + i * (rowH + 8);
+            const rx = px + 16;
+            const rw = pw - 32;
+            const hovered = mouse.x >= rx && mouse.x <= rx + rw && mouse.y >= ry && mouse.y <= ry + rowH;
+            if (hovered) smithyHover = i;
+
+            ctx.globalAlpha = fa * (hovered ? 0.35 : 0.18);
+            ctx.fillStyle = hovered ? '#2a2010' : '#1a1408';
+            ctx.beginPath(); ctx.roundRect(rx, ry, rw, rowH, 4); ctx.fill();
+            ctx.globalAlpha = fa * (hovered ? 0.4 : 0.15);
+            ctx.strokeStyle = hovered ? '#c49040' : '#6a5a30';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.roundRect(rx, ry, rw, rowH, 4); ctx.stroke();
+
+            // Upgrade name
+            ctx.globalAlpha = fa * 0.9;
+            ctx.textAlign = 'left';
+            ctx.font = 'bold 13px Georgia';
+            ctx.fillStyle = '#e8c060';
+            ctx.fillText(u.name + (level > 0 ? ' +' + level : ''), rx + 14, ry + 20);
+            // Description
+            ctx.globalAlpha = fa * 0.55;
+            ctx.font = '10px Georgia';
+            ctx.fillStyle = '#b0a080';
+            ctx.fillText(u.desc + ' per level (max ' + u.max + ')', rx + 14, ry + 36);
+            // Level bar
+            ctx.globalAlpha = fa * 0.3;
+            const barW = 80, barH2 = 6, barX = rx + 14, barY = ry + 46;
+            ctx.fillStyle = '#0a0804';
+            ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH2, 2); ctx.fill();
+            if (level > 0) {
+                ctx.globalAlpha = fa * 0.7;
+                ctx.fillStyle = '#c49040';
+                ctx.beginPath(); ctx.roundRect(barX, barY, barW * (level / u.max), barH2, 2); ctx.fill();
+            }
+            // Cost on right
+            ctx.textAlign = 'right';
+            if (level >= u.max) {
+                ctx.globalAlpha = fa * 0.5;
+                ctx.font = 'italic 11px Georgia';
+                ctx.fillStyle = '#88aa88';
+                ctx.fillText('MAXED', rx + rw - 14, ry + 22);
+            } else {
+                const cost = typeof getForgeUpgradeCost === 'function' ? getForgeUpgradeCost(u) : u.baseCost;
+                const canAfford = goldVal >= cost;
+                ctx.globalAlpha = fa * 0.7;
+                ctx.font = 'bold 11px Georgia';
+                ctx.fillStyle = canAfford ? '#ffd700' : '#884444';
+                ctx.fillText(cost + 'g', rx + rw - 14, ry + 22);
+                ctx.globalAlpha = fa * 0.4;
+                ctx.font = '9px Georgia';
+                ctx.fillStyle = canAfford ? '#aaa' : '#664444';
+                ctx.fillText(canAfford ? 'Click to forge' : 'Need more gold', rx + rw - 14, ry + 38);
+            }
+        }
+    }
+
+    // --- EQUIPMENT ENCHANTMENT (wizard/lich) ---
+    if (_smithHasEquip)
     for (let i = 0; i < EQUIP_SLOTS.length; i++) {
         const slot = EQUIP_SLOTS[i];
         const item = inventory.equipped[slot];

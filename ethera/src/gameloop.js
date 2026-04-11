@@ -2347,6 +2347,9 @@ function restartGame() {
     if (typeof claimedMilestones !== 'undefined') claimedMilestones.length = 0;
     if (typeof playerGold !== 'undefined') playerGold = 0;
     if (typeof resetPotions === 'function') resetPotions();
+    if (typeof forgeUpgrades !== 'undefined') {
+        for (const k of Object.keys(forgeUpgrades)) forgeUpgrades[k] = 0;
+    }
     if (typeof _evoHintShown !== 'undefined') { _evoHintShown.slime = false; _evoHintShown.skeleton = false; _evoHintShown.wizard = false; }
     // Reset wave
     wave.current = 0;

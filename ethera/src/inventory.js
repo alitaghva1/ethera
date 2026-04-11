@@ -321,7 +321,55 @@ function updateWorldDrops(dt) {
 }
 
 // ============================================================
-//  ENCHANTMENT SYSTEM — Garrett's Forge
+//  FORM-SPECIFIC FORGE UPGRADES — permanent stat boosts for gold
+// ============================================================
+const FORGE_UPGRADES = {
+    slime: [
+        { id: 'slime_hp', name: 'Harden Membrane', desc: '+8 Max HP', stat: 'maxHp', value: 8, baseCost: 50, costScale: 1.5, max: 5 },
+        { id: 'slime_dmg', name: 'Acidify Core', desc: '+2 Acid Damage', stat: 'dmgBonus', value: 2, baseCost: 75, costScale: 1.5, max: 5 },
+        { id: 'slime_size', name: 'Elastic Gel', desc: '+0.2 Starting Size', stat: 'startSize', value: 0.2, baseCost: 100, costScale: 1.5, max: 4 },
+    ],
+    skeleton: [
+        { id: 'skel_dmg', name: 'Reinforce Bones', desc: '+3 Melee Damage', stat: 'dmgBonus', value: 3, baseCost: 50, costScale: 1.5, max: 5 },
+        { id: 'skel_hp', name: 'Iron Marrow', desc: '+10 Max HP', stat: 'maxHp', value: 10, baseCost: 75, costScale: 1.5, max: 5 },
+        { id: 'skel_shield', name: 'Tempered Shield', desc: '+5 Shield Block', stat: 'shieldBlock', value: 5, baseCost: 100, costScale: 1.5, max: 4 },
+    ],
+};
+
+// Tracks purchased forge upgrade levels per form
+let forgeUpgrades = {
+    slime_hp: 0, slime_dmg: 0, slime_size: 0,
+    skel_dmg: 0, skel_hp: 0, skel_shield: 0,
+};
+
+function getForgeUpgradeCost(upgrade) {
+    const level = forgeUpgrades[upgrade.id] || 0;
+    return Math.round(upgrade.baseCost * Math.pow(upgrade.costScale, level));
+}
+
+function buyForgeUpgrade(upgrade) {
+    const level = forgeUpgrades[upgrade.id] || 0;
+    if (level >= upgrade.max) return { success: false, reason: 'Max level reached' };
+    const cost = getForgeUpgradeCost(upgrade);
+    if (typeof playerGold === 'undefined' || playerGold < cost) return { success: false, reason: 'Not enough gold (' + cost + 'g)' };
+    playerGold -= cost;
+    forgeUpgrades[upgrade.id] = level + 1;
+    return { success: true, cost: cost, newLevel: level + 1 };
+}
+
+// Get total forge bonus for a stat across all purchased upgrades
+function getForgeBonus(stat) {
+    let total = 0;
+    for (const [formId, upgrades] of Object.entries(FORGE_UPGRADES)) {
+        for (const u of upgrades) {
+            if (u.stat === stat) total += (forgeUpgrades[u.id] || 0) * u.value;
+        }
+    }
+    return total;
+}
+
+// ============================================================
+//  ENCHANTMENT SYSTEM — Garrett's Forge (equipment forms only)
 // ============================================================
 const ENCHANT_MAX = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
 const ENCHANT_COST = { common: 50, uncommon: 100, rare: 200, epic: 350, legendary: 500 };
