@@ -318,14 +318,19 @@ function updateCinematicPhase(dt) {
         setPixelCursor('none');
         cinematicActionHintAlpha = 1.0;
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
+        // Show context-appropriate hint based on starting zone
+        const _isStartTown = (typeof currentZone !== 'undefined' && currentZone === 0);
         pickupTexts.push({
-            text: 'Find a way out...',
+            text: _isStartTown ? 'Choose your path...' : 'Find a way out...',
             color: COLORS.TEXT_HINT,
             row: player.row, col: player.col,
             offsetY: 0,
-            life: 3.0,
+            life: _isStartTown ? 5.0 : 3.0,
         });
-        setTimeout(() => { startWaveSystem(); }, 1500);
+        // Only start waves in combat zones
+        if (!_isStartTown) {
+            setTimeout(() => { startWaveSystem(); }, 1500);
+        }
     }
 }
 
