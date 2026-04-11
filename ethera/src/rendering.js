@@ -955,6 +955,26 @@ function drawEnvironmentLightProps() {
 
         // Draw physical prop sprite
         _drawLightProp(sx, sy, light, flicker, now);
+
+        // Ambient ember particles from fire-type lights
+        if (typeof _emitParticle === 'function') {
+            const fireTypes = new Set(['torch', 'brazier', 'fire_pit', 'lava_crack']);
+            if (fireTypes.has(light.type) && Math.random() < 0.012) {
+                // ~0.7 embers/sec per light at 60fps
+                _emitParticle(
+                    sx + (Math.random() - 0.5) * 8,
+                    sy - 20 - Math.random() * 10,
+                    (Math.random() - 0.5) * 0.8,  // drift
+                    -1.2 - Math.random() * 0.8,     // float up
+                    0.8 + Math.random() * 0.4,      // life
+                    1 + Math.random(),               // size
+                    '#ffaa44',                        // ember orange
+                    0.5,
+                    'ember',
+                    'screen'
+                );
+            }
+        }
     }
 }
 

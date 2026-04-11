@@ -397,6 +397,61 @@ const ZONE_TARGET_MAP = {
 let _nextProceduralTheme = null;
 let _nextProceduralDepth = 1;
 
+// ── AMBIENT ATMOSPHERE PARTICLES ──
+let _ambientTimer = 0;
+const _AMBIENT_MAX = 15;
+const _AMBIENT_CONFIGS = {
+    dungeon: { color: '#999988', size: 1, alpha: 0.1, vy: -0.3, life: 2.5 },   // dust motes
+    hell:    { color: '#ff6633', size: 1.5, alpha: 0.15, vy: -1.0, life: 1.5 }, // ash wisps
+    frozen:  { color: '#aaddff', size: 1, alpha: 0.12, vy: 0.4, life: 2.0 },    // ice sparkles
+    throne:  { color: '#7733aa', size: 1, alpha: 0.10, vy: -0.2, life: 2.5 },   // void motes
+    town:    { color: '#bbaa88', size: 1, alpha: 0.06, vy: -0.2, life: 3.0 },   // warm dust
+};
+function spawnAmbientParticles(dt) {
+    if (gamePhase !== 'playing' || typeof _emitParticle !== 'function') return;
+    _ambientTimer += dt;
+    if (_ambientTimer < 0.5) return; // spawn every 0.5s
+    _ambientTimer = 0;
+
+    // Determine atmosphere type from current zone
+    let cfg;
+    const z = currentZone;
+    if (z === 0) cfg = _AMBIENT_CONFIGS.town;
+    else if (z >= 1 && z <= 3) cfg = _AMBIENT_CONFIGS.dungeon;
+    else if (z === 4) cfg = _AMBIENT_CONFIGS.hell;
+    else if (z === 5) cfg = _AMBIENT_CONFIGS.frozen;
+    else if (z === 6) cfg = _AMBIENT_CONFIGS.throne;
+    else if (z >= 100) {
+        // Procedural — match theme
+        const depth = z - 99;
+        if (depth <= 2) cfg = _AMBIENT_CONFIGS.dungeon;
+        else if (depth <= 4) cfg = _AMBIENT_CONFIGS.hell;
+        else cfg = _AMBIENT_CONFIGS.frozen;
+    }
+    if (!cfg) return;
+
+    // Count existing ambient particles to cap
+    const ambientCount = particles.filter(p => p.type === 'ambient').length;
+    if (ambientCount >= _AMBIENT_MAX) return;
+
+    // Spawn 1-2 particles near the player
+    const count = 1 + (Math.random() < 0.3 ? 1 : 0);
+    for (let i = 0; i < count; i++) {
+        const pPos = tileToScreen(player.row, player.col);
+        const px = pPos.x + cameraX + (Math.random() - 0.5) * 300;
+        const py = pPos.y + cameraY + (Math.random() - 0.5) * 200;
+        _emitParticle(px, py,
+            (Math.random() - 0.5) * 0.5,
+            cfg.vy + (Math.random() - 0.5) * 0.3,
+            cfg.life,
+            cfg.size,
+            cfg.color,
+            cfg.alpha,
+            'ambient'
+        );
+    }
+}
+
 function updateGameplay(dt) {
     tickInputBuffers(dt);
     if (multiKillTimer > 0) {
@@ -448,6 +503,8 @@ function updateGameplay(dt) {
     // Procedural dungeon systems
     if (typeof updateHazards === 'function') updateHazards(dt);
     if (typeof checkSecretWalls === 'function') checkSecretWalls();
+    // Ambient atmosphere particles — make the world feel alive
+    spawnAmbientParticles(dt);
     updateCamera(dt);
 
     // Update fog of war — throttled to ~4 times per second
@@ -836,6 +893,25 @@ function drawMenuButton(btn, isHovered, alpha, disabled) {
     const t = menuTime;
     ctx.save();
     ctx.globalAlpha = alpha;
+
+    // Hover scale — slight zoom + glow for active button
+    if (isHovered) {
+        const cx = btn.x + btn.w / 2;
+        const cy = btn.y + btn.h / 2;
+        ctx.translate(cx, cy);
+        ctx.scale(1.03, 1.03);
+        ctx.translate(-cx, -cy);
+        // Subtle glow behind button
+        ctx.globalAlpha = alpha * 0.15;
+        ctx.shadowColor = '#d4a040';
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = '#d4a040';
+        ctx.beginPath();
+        ctx.roundRect(btn.x - 4, btn.y - 4, btn.w + 8, btn.h + 8, 8);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = alpha;
+    }
 
     // Button background
     const hoverGlow = isHovered ? 0.25 : 0;

@@ -411,13 +411,24 @@ function applyEnemyHit(e, damage, opts) {
     // ── Impact scaling by enemy max HP ──
     const impactScale = Math.min(2.5, Math.max(0.8, (e.def.hp || 30) / 60));
 
-    // Floating damage number (gold + '!' on crit)
+    // Floating damage number (gold + '!' on crit) — stagger Y offset to prevent overlap
     if (!opts.skipParticles) {
+        // Track per-enemy damage number offset to prevent stacking
+        if (!e._dmgNumTimer) e._dmgNumTimer = 0;
+        if (!e._dmgNumOffset) e._dmgNumOffset = 0;
+        const now = performance.now() / 1000;
+        if (now - e._dmgNumTimer < 0.4) {
+            e._dmgNumOffset -= 12; // stack upward
+        } else {
+            e._dmgNumOffset = 0; // reset after gap
+        }
+        e._dmgNumTimer = now;
+
         pickupTexts.push({
             text: isCrit ? '-' + finalDmg + '!' : '-' + finalDmg,
             color: isCrit ? COLORS.DAMAGE_CRIT : COLORS.DAMAGE_RED,
             row: e.row, col: e.col,
-            offsetY: -10 - Math.random() * 8,
+            offsetY: -10 - Math.random() * 8 + e._dmgNumOffset,
             life: isCrit ? 1.1 : 0.8,
             isCrit: isCrit,
         });

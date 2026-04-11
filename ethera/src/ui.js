@@ -182,10 +182,22 @@ function drawObjective() {
 }
 
 // ============================================================
-//  HP & MANA BARS
+//  HP & MANA BARS — with smooth lerp transitions
 // ============================================================
+let _displayHP = -1;
+let _displayMana = -1;
+let _displayXP = -1;
 function drawHPMana() {
     if (gamePhase !== 'playing') return;
+    // Smooth lerp toward actual values (8x per second convergence)
+    const lerpSpeed = 8;
+    const frameDt = 1 / 60; // approximate
+    if (_displayHP < 0) _displayHP = player.hp;
+    if (_displayMana < 0) _displayMana = player.mana;
+    if (_displayXP < 0) _displayXP = xpState.xp;
+    _displayHP += (player.hp - _displayHP) * Math.min(1, lerpSpeed * frameDt);
+    _displayMana += (player.mana - _displayMana) * Math.min(1, lerpSpeed * frameDt);
+    _displayXP += (xpState.xp - _displayXP) * Math.min(1, lerpSpeed * frameDt);
 
     const barW = 180;
     const barH = 12;
@@ -229,9 +241,9 @@ function drawHPMana() {
         ctx.globalAlpha = 1.0;
     }
 
-    // --- HP Bar ---
+    // --- HP Bar (uses smoothed display value) ---
     const totalMaxHP = MAX_HP + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
-    const hpFrac = Math.max(0, player.hp / totalMaxHP);
+    const hpFrac = Math.max(0, _displayHP / totalMaxHP);
 
     // Dark track
     ctx.globalAlpha = 0.5;

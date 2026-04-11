@@ -1011,7 +1011,22 @@ function tryUseDoor(door) {
     }
 
     // Check evolution gating for zone transitions
-    const formReq = ZONE_FORM_REQUIREMENTS[door.def.destination];
+    // For 'next' destinations, peek at what the actual target zone would be
+    let formGateKey = door.def.destination;
+    if (formGateKey === 'next' || formGateKey === 'deepest') {
+        // Resolve the actual next story zone to check form requirements against
+        if (formGateKey === 'next') {
+            const peekIdx = progressionIndex + 1;
+            // Walk forward through progression to find the next story zone
+            for (let i = peekIdx; i < ZONE_PROGRESSION.length; i++) {
+                if (ZONE_PROGRESSION[i].zone) { formGateKey = 'zone' + ZONE_PROGRESSION[i].zone; break; }
+            }
+        } else {
+            // 'deepest' — no form gating (player earned access by reaching that depth already)
+            formGateKey = null;
+        }
+    }
+    const formReq = formGateKey ? ZONE_FORM_REQUIREMENTS[formGateKey] : null;
     if (formReq && !formReq.forms.includes(FormSystem.currentForm)) {
         pickupTexts.push({
             text: formReq.message,

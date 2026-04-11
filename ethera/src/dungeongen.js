@@ -463,6 +463,9 @@ function carveCorridor(r1, c1, r2, c2, theme) {
     const midR = horizFirst ? r1 : r2;
     const midC = horizFirst ? c2 : c1;
 
+    // Corridors use only the primary floor tile (no accents) for visual distinction from rooms
+    const corridorTile = theme.floors[0];
+
     // Horizontal segment
     const cMin = Math.min(c1, midC), cMax = Math.max(c1, midC);
     const rH = horizFirst ? r1 : r2;
@@ -471,7 +474,7 @@ function carveCorridor(r1, c1, r2, c2, theme) {
             const rr = rH + dr;
             if (rr >= 0 && rr < ms && c >= 0 && c < ms) {
                 if (blocked[rr][c]) {
-                    const tile = theme.floors[mapRandomInt(0, theme.floors.length - 1)];
+                    const tile = corridorTile;
                     floorMap[rr][c] = tile;
                     blocked[rr][c] = false;
                     blockType[rr][c] = null;
@@ -488,7 +491,7 @@ function carveCorridor(r1, c1, r2, c2, theme) {
             const cc = cV + dc;
             if (r >= 0 && r < ms && cc >= 0 && cc < ms) {
                 if (blocked[r][cc]) {
-                    const tile = theme.floors[mapRandomInt(0, theme.floors.length - 1)];
+                    const tile = corridorTile;
                     floorMap[r][cc] = tile;
                     blocked[r][cc] = false;
                     blockType[r][cc] = null;

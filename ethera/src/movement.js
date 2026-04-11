@@ -254,6 +254,16 @@ function updatePlayer(dt) {
     if (speed > 0.3) {
         player.dir8 = resolveDir8(player.vx, player.vy);
         player.facing = dir8ToFacing(player.dir8);
+        // Footstep dust particles (all forms)
+        if (!player._dustTimer) player._dustTimer = 0;
+        player._dustTimer += dt;
+        if (player._dustTimer > 0.3 && typeof _emitParticle === 'function') {
+            player._dustTimer = 0;
+            const fpos = tileToScreen(player.row, player.col);
+            const fx = fpos.x + cameraX + (Math.random() - 0.5) * 6;
+            const fy = fpos.y + cameraY + 4;
+            _emitParticle(fx, fy, (Math.random() - 0.5) * 0.5, -0.3, 0.4, 1, '#8a7a6a', 0.15, 'dust');
+        }
     }
 
     // --- Mana regeneration (capped by locked mana from summons) ---
