@@ -492,8 +492,12 @@ const MAX_HIT_PAUSE = 0.15;
 // ============================================================
 const _sfxSamples = {};  // cache: { path: AudioBuffer }
 
+// Check if we can use fetch (fails on file:// protocol)
+const _canFetchAudio = (window.location.protocol !== 'file:');
+
 // Load and cache an audio sample
 function _loadSfxSample(path) {
+    if (!_canFetchAudio) return Promise.resolve(null); // skip on file://
     if (_sfxSamples[path]) return Promise.resolve(_sfxSamples[path]);
     return fetch(path).then(r => r.arrayBuffer()).then(buf => {
         if (!sfxCtx) return null;
