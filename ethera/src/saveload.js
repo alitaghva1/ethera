@@ -5,7 +5,7 @@
 // When running in Electron, saves go to the user's AppData folder as JSON files.
 // When running in a browser, saves use localStorage as before.
 
-const SAVE_FORMAT_VERSION = 3;  // bump when save schema changes
+const SAVE_FORMAT_VERSION = 4;  // bump when save schema changes
 
 // Helper: detect if we're running inside Electron with file save support
 const _useFileSaves = typeof window !== 'undefined' && window.ethera && window.ethera.isElectron;
@@ -109,6 +109,13 @@ function _migrateSave(data) {
             data.xpToNext = xpForLevel(data.level);
         }
         data.version = 3;
+    }
+    if (data.version < 4) {
+        // v3 → v4: Ensure talisman.perks is an array (talisman perk system)
+        if (data.talisman && !Array.isArray(data.talisman.perks)) {
+            data.talisman.perks = [];
+        }
+        data.version = 4;
     }
     return data;
 }

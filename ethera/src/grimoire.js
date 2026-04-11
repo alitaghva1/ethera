@@ -814,8 +814,52 @@ function drawMenuStatus(x, y, w, h, fa) {
         ly += 20;
     }
 
-    // --- Divider before evolution section ---
+    // --- Divider before talisman section ---
     ly += 4;
+    _drawDivider(x + w / 2, ly, w * 0.3, fa);
+    ly += 14;
+
+    // --- Talisman Perks ---
+    if (FormSystem.talisman.found) {
+        const tLvl = FormSystem.talisman.level;
+        ctx.globalAlpha = fa * 0.6;
+        ctx.font = 'bold 11px Georgia';
+        ctx.fillStyle = GM.gold;
+        ctx.textAlign = 'left';
+        ctx.fillText('TALISMAN LV.' + tLvl, x, ly);
+        ly += 16;
+
+        for (const perk of FormSystem.talisman.perks) {
+            ctx.globalAlpha = fa * 0.8;
+            ctx.font = '10px Georgia';
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText(perk.name, x, ly);
+            ctx.globalAlpha = fa * 0.45;
+            ctx.font = '9px Georgia';
+            ctx.fillStyle = GM.textDim;
+            ctx.textAlign = 'right';
+            ctx.fillText(perk.desc, x + w, ly);
+            ctx.textAlign = 'left';
+            ly += 14;
+        }
+
+        if (typeof TALISMAN_PERKS !== 'undefined') {
+            const nextPerk = TALISMAN_PERKS.find(p => p.level === tLvl + 1);
+            if (nextPerk) {
+                ctx.globalAlpha = fa * 0.25;
+                ctx.font = 'italic 9px Georgia';
+                ctx.fillStyle = GM.textDim;
+                ctx.fillText('Next: ' + nextPerk.name, x, ly);
+                ctx.textAlign = 'right';
+                ctx.fillText(nextPerk.desc, x + w, ly);
+                ctx.textAlign = 'left';
+                ly += 14;
+            }
+        }
+        ly += 4;
+    }
+
+    // --- Divider before evolution section ---
     _drawDivider(x + w / 2, ly, w * 0.3, fa);
     ly += 14;
 
@@ -1270,7 +1314,11 @@ function drawMenuMap(x, y, w, h, fa) {
         ctx.fill();
     }
 
-    // --- Player dot (gold, pulsing glow) ---
+    // --- Player dot (form-colored, pulsing glow) ---
+    const _mapFormColors = { slime: '#88dd44', skeleton: '#ddddff', wizard: '#5588ff', lich: '#aa44ff' };
+    const _mapFormGlow = { slime: '#66bb22', skeleton: '#aaaacc', wizard: '#3366cc', lich: '#7722cc' };
+    const _mapFormColor = _mapFormColors[FormSystem.currentForm] || GM.goldBright;
+    const _mapFormGlowC = _mapFormGlow[FormSystem.currentForm] || GM.goldBright;
     const playerPulse = 0.7 + Math.sin(performance.now() / 400) * 0.3;
     const plX = mapX + pCol * cellSize + cellSize / 2;
     const plY = mapY + pRow * cellSize + cellSize / 2;
@@ -1278,14 +1326,14 @@ function drawMenuMap(x, y, w, h, fa) {
 
     // Glow ring
     ctx.globalAlpha = fa * playerPulse * 0.3;
-    ctx.fillStyle = GM.goldBright;
+    ctx.fillStyle = _mapFormGlowC;
     ctx.beginPath();
     ctx.arc(plX, plY, plR * 2.5, 0, Math.PI * 2);
     ctx.fill();
 
     // Solid dot
     ctx.globalAlpha = fa * 0.95;
-    ctx.fillStyle = GM.goldBright;
+    ctx.fillStyle = _mapFormColor;
     ctx.beginPath();
     ctx.arc(plX, plY, plR, 0, Math.PI * 2);
     ctx.fill();

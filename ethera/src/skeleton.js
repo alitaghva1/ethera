@@ -349,11 +349,16 @@ function checkSkeletonEvolution() {
     if (skeletonState.comboCount > fd.maxComboReached) {
         fd.maxComboReached = skeletonState.comboCount;
     }
-    if (fd.totalKills >= req.kills &&
-        fd.shieldDamageBlocked >= req.shieldDamageBlocked &&
-        fd.maxComboReached >= req.comboReached &&
-        FormSystem.talisman.found &&
-        FormSystem.talisman.level >= req.talismanLevel) {
+    const met = (fd.totalKills >= req.kills ? 1 : 0) +
+                (fd.shieldDamageBlocked >= req.shieldDamageBlocked ? 1 : 0) +
+                (fd.maxComboReached >= req.comboReached ? 1 : 0) +
+                (FormSystem.talisman.found ? 1 : 0) +
+                (FormSystem.talisman.level >= req.talismanLevel ? 1 : 0);
+    if (met >= 4 && typeof _evoHintShown !== 'undefined' && !_evoHintShown.skeleton && typeof Notify !== 'undefined') {
+        _evoHintShown.skeleton = true;
+        Notify.hint('evo_near_skeleton', 'Evolution is near... Check the Grimoire (TAB) for progress.', { color: '#e8c840' });
+    }
+    if (met >= 5) {
         triggerEvolution('wizard');
     }
 }

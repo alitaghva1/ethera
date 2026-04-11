@@ -714,6 +714,20 @@ function updateSlime(dt) {
         }
     }
 
+    // === ABSORB HINT — one-time tutorial when a low-HP enemy is nearby ===
+    if (typeof Notify !== 'undefined' && !Notify.shownHints.has('tutorial_absorb')) {
+        for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            if (e.state === 'death') continue;
+            if (e.hp > e.maxHp * 0.3) continue;
+            const dist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
+            if (dist < 3.0) {
+                Notify.hint('tutorial_absorb', 'Press E near weakened enemies to absorb them!', 5, { color: '#88ff88', borderColor: '#448844' });
+                break;
+            }
+        }
+    }
+
     // === ANIMATION (smoother timing — slower cycle, speed-aware) ===
     const moveSpeed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
     const slimeAnimSpeed = player.state === 'walk'

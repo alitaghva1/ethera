@@ -127,6 +127,7 @@ function updateMenuPhase(dt) {
         if (pointInButton(mouse.x, mouse.y, btns.start)) menuHover = 'start';
         else if (pointInButton(mouse.x, mouse.y, btns.loadGame) && !btns.loadGame.disabled) menuHover = 'loadGame';
         else if (pointInButton(mouse.x, mouse.y, btns.controls)) menuHover = 'controls';
+        else if (btns.options && pointInButton(mouse.x, mouse.y, btns.options)) menuHover = 'options';
     } else if (gamePhase === 'menuControls') {
         const backBtn = getControlsBackButton();
         if (pointInButton(mouse.x, mouse.y, backBtn)) menuHover = 'back';
@@ -488,6 +489,7 @@ function updateGameplay(dt) {
     updateParticles(dt);
     updateEffectParticles(dt);
     updatePickupTexts(dt);
+    if (typeof Notify !== 'undefined' && Notify.updateTutorials) Notify.updateTutorials(dt);
     if (typeof updateFrozenEchoes === 'function') updateFrozenEchoes(dt);
     // Check if Pale Queen dialogue triggered ending choice
     if (typeof paleQueenDialogueComplete !== 'undefined' && paleQueenDialogueComplete) {
@@ -582,6 +584,14 @@ function gameLoop(timestamp) {
         return;
     }
 
+    // ----- Options screen -----
+    if (gamePhase === 'options') {
+        render();
+        drawOptionsScreen();
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
     // ----- Menu phase updates -----
     if (gamePhase === 'menu' || gamePhase === 'menuControls') {
         updateMenuPhase(dt);
@@ -670,7 +680,19 @@ function gameLoop(timestamp) {
         render();
         drawEndingCinematic();
         if (endingCinematicTimer >= 14.0) {
-            // Return to title after ending
+            // Transition to credits
+            gamePhase = 'credits';
+            creditsTimer = 0;
+        }
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
+    // ----- Credits roll -----
+    if (gamePhase === 'credits') {
+        creditsTimer += dt;
+        drawCreditsScreen();
+        if (creditsTimer >= CREDITS_DURATION) {
             gamePhase = 'preMenu';
             preMenuAlpha = 0;
         }
@@ -850,9 +872,10 @@ function getMenuButtons() {
     const gap = UI.MENU_BTN_SPACING;
     const hasAnySave = saveSlots.some(s => s !== null);
     return {
-        start:    { x: cx - btnW / 2, y: cy + 30,          w: btnW, h: btnH, label: 'PLAY',        id: 'start' },
-        loadGame: { x: cx - btnW / 2, y: cy + 30 + gap,    w: btnW, h: btnH, label: 'CONTINUE',    id: 'loadGame', disabled: !hasAnySave },
-        controls: { x: cx - btnW / 2, y: cy + 30 + gap * 2, w: btnW, h: btnH, label: 'CONTROLS',   id: 'controls' },
+        start:    { x: cx - btnW / 2, y: cy + 30,            w: btnW, h: btnH, label: 'PLAY',        id: 'start' },
+        loadGame: { x: cx - btnW / 2, y: cy + 30 + gap,      w: btnW, h: btnH, label: 'CONTINUE',    id: 'loadGame', disabled: !hasAnySave },
+        controls: { x: cx - btnW / 2, y: cy + 30 + gap * 2,  w: btnW, h: btnH, label: 'CONTROLS',   id: 'controls' },
+        options:  { x: cx - btnW / 2, y: cy + 30 + gap * 3,  w: btnW, h: btnH, label: 'OPTIONS',    id: 'options' },
     };
 }
 
@@ -1096,6 +1119,7 @@ function drawMenuScreen(dt) {
     drawMenuButton(btns.start, menuHover === 'start', menuFadeAlpha);
     drawMenuButton(btns.loadGame, menuHover === 'loadGame', menuFadeAlpha, btns.loadGame.disabled);
     drawMenuButton(btns.controls, menuHover === 'controls', menuFadeAlpha);
+    if (btns.options) drawMenuButton(btns.options, menuHover === 'options', menuFadeAlpha);
 
     // ----- Bottom credit line -----
     ctx.save();
@@ -2031,11 +2055,18 @@ function drawDeathScreen() {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Death headline with slide-in
+        // Death headline with slide-in (form-specific)
         const _deathName = playerName || 'Wanderer';
+        const _formDeathLines = {
+            slime:    'dissolves into nothing...',
+            skeleton: 'crumbles to dust...',
+            wizard:   'light fades...',
+            lich:     'soul dissipates...',
+        };
+        const _deathVerb = _formDeathLines[FormSystem.currentForm] || 'light fades...';
         const _deathMsg = _deathName.toLowerCase().endsWith('s')
-            ? `${_deathName}' light fades...`
-            : `${_deathName}'s light fades...`;
+            ? `${_deathName}' ${_deathVerb}`
+            : `${_deathName}'s ${_deathVerb}`;
         ctx.font = '48px Georgia';
         ctx.shadowColor = 'rgba(180, 20, 10, 0.6)';
         ctx.shadowBlur = 30;
@@ -2079,14 +2110,35 @@ function drawDeathScreen() {
 
         // Tip in styled box
         if (!drawDeathScreen._tip) {
-            const deathTips = [
+            const _sharedTips = [
                 "Try dodging more frequently.",
-                "Equip better gear from the Grimoire.",
-                "Explore for chests to find loot.",
                 "Watch enemy attack patterns.",
                 "Use your form's special abilities.",
             ];
-            drawDeathScreen._tip = deathTips[Math.floor(Math.random() * deathTips.length)];
+            const _formTips = {
+                slime: [
+                    "Absorb weakened enemies to grow larger and stronger.",
+                    "A bigger slime has more HP — stay aggressive.",
+                    "Bounce to dodge attacks and close gaps quickly.",
+                ],
+                skeleton: [
+                    "Use shield bash to block heavy hits.",
+                    "Build combos for bonus damage.",
+                    "Roll through enemy attacks for counterattack openings.",
+                ],
+                wizard: [
+                    "Equip better gear from the Grimoire.",
+                    "Summon towers to control the battlefield.",
+                    "Manage your mana — don't spam fireballs.",
+                ],
+                lich: [
+                    "Raise undead minions to draw enemy fire.",
+                    "Harvest souls from kills to fuel your power.",
+                    "Shadow step behind enemies for safe positioning.",
+                ],
+            };
+            const _allTips = _sharedTips.concat(_formTips[FormSystem.currentForm] || []);
+            drawDeathScreen._tip = _allTips[Math.floor(Math.random() * _allTips.length)];
         }
         const tipY = statsY + 70;
         const tipW = 260, tipH = 28;
@@ -3104,11 +3156,13 @@ function drawLoadScreen() {
             ctx.fillStyle = '#d4c4a0';
             ctx.fillText(s.playerName || 'Unknown', sx + 12, sy + 38);
 
-            // Level + Zone
+            // Level + Form + Zone + Talisman
             ctx.globalAlpha = fa * 0.5;
             ctx.font = '10px Georgia';
             ctx.fillStyle = '#a89060';
-            ctx.fillText('Lv.' + (s.level || 1) + '  ·  ' + (ZONE_NAMES_SHORT[s.currentZone] || 'Zone ' + s.currentZone), sx + 12, sy + 56);
+            const _slotForm = s.currentForm ? s.currentForm.charAt(0).toUpperCase() + s.currentForm.slice(1) : 'Wizard';
+            const _slotTalisman = (s.talisman && s.talisman.level > 1) ? '  ·  Talisman Lv.' + s.talisman.level : '';
+            ctx.fillText('Lv.' + (s.level || 1) + '  ·  ' + _slotForm + '  ·  ' + (ZONE_NAMES_SHORT[s.currentZone] || 'Zone ' + s.currentZone) + _slotTalisman, sx + 12, sy + 56);
 
             // Date on right
             ctx.textAlign = 'right';
@@ -3210,6 +3264,7 @@ async function init() {
     resizeCanvas();
     nameInputEl = document.getElementById('nameInput');
     loadSaveSlots();
+    if (typeof loadSettings === 'function') loadSettings();
 
     // Apply zone 1 tile config first so MAP_SIZE is correct for dungeon generation
     applyZoneTileConfig(1);
@@ -3497,6 +3552,197 @@ function drawEndingCinematic() {
         ctx.fillText(subtitle, cx, canvasH * 0.52);
     }
 
+    ctx.restore();
+}
+
+// ============================================================
+//  CREDITS SCREEN
+// ============================================================
+let creditsTimer = 0;
+const CREDITS_DURATION = 18; // seconds
+const CREDITS_LINES = [
+    { text: 'ETHERA: THE AWAKENING', font: 'small-caps bold 28px Georgia', color: '#d4c4a0', gap: 60 },
+    { text: 'Created by', font: 'italic 12px Georgia', color: '#8a7a5a', gap: 20 },
+    { text: 'Armin', font: '18px Georgia', color: '#c4a878', gap: 50 },
+    { text: 'Game Design & Programming', font: 'italic 11px Georgia', color: '#8a7a5a', gap: 18 },
+    { text: 'Armin', font: '14px Georgia', color: '#a89060', gap: 40 },
+    { text: 'Art Assets', font: 'italic 11px Georgia', color: '#8a7a5a', gap: 18 },
+    { text: 'PVGames  ·  creativekind  ·  Tiny RPG Pack', font: '12px Georgia', color: '#a89060', gap: 40 },
+    { text: 'Music', font: 'italic 11px Georgia', color: '#8a7a5a', gap: 18 },
+    { text: 'Arcane Whispers  ·  Blood and Honor  ·  Chant of the Fallen', font: '12px Georgia', color: '#a89060', gap: 18 },
+    { text: 'Dawn of Blades  ·  Riders of the Storm  ·  Legends of the Flame', font: '12px Georgia', color: '#a89060', gap: 40 },
+    { text: 'Sound Design', font: 'italic 11px Georgia', color: '#8a7a5a', gap: 18 },
+    { text: 'Procedural SFX via Web Audio API', font: '12px Georgia', color: '#a89060', gap: 50 },
+    { text: 'Built with vanilla JavaScript & HTML5 Canvas', font: 'italic 11px Georgia', color: '#665544', gap: 30 },
+    { text: 'Thank you for playing.', font: 'italic 14px Georgia', color: '#c4a878', gap: 0 },
+];
+
+function drawCreditsScreen() {
+    const cx = canvasW / 2;
+    ctx.save();
+
+    // Black background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Scrolling credits
+    const totalHeight = CREDITS_LINES.reduce((h, l) => h + l.gap, 0) + 200;
+    const scrollSpeed = (totalHeight + canvasH) / CREDITS_DURATION;
+    const scrollY = canvasH - creditsTimer * scrollSpeed + 80;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    let y = scrollY;
+    for (const line of CREDITS_LINES) {
+        // Only draw if on screen
+        if (y > -40 && y < canvasH + 40) {
+            ctx.globalAlpha = Math.min(1, Math.min(y / 80, (canvasH - y) / 80));
+            ctx.globalAlpha = Math.max(0, ctx.globalAlpha) * 0.85;
+            ctx.font = line.font;
+            ctx.fillStyle = line.color;
+            ctx.fillText(line.text, cx, y);
+        }
+        y += line.gap;
+    }
+
+    // Skip hint
+    if (creditsTimer > 2) {
+        ctx.globalAlpha = 0.25;
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#555';
+        ctx.textAlign = 'right';
+        ctx.fillText('click to skip', canvasW - 20, canvasH - 16);
+    }
+
+    ctx.restore();
+}
+
+// ============================================================
+//  OPTIONS SCREEN
+// ============================================================
+let optionsBackBtn = null;
+let optionsSliders = {};
+let optionsToggles = {};
+let optionsHover = null;
+
+function drawOptionsScreen() {
+    const cx = canvasW / 2;
+    const cy = canvasH / 2;
+
+    ctx.save();
+    if (optionsReturnPhase === 'paused') {
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+    } else {
+        const bgGrad = ctx.createRadialGradient(cx, cy * 0.8, 0, cx, cy * 0.8, canvasW * 0.6);
+        bgGrad.addColorStop(0, '#0d0906');
+        bgGrad.addColorStop(1, '#030202');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = 0.9;
+    ctx.font = '30px Georgia';
+    ctx.shadowColor = 'rgba(180, 140, 50, 0.35)';
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = '#d4b878';
+    ctx.fillText('OPTIONS', cx, cy - 130);
+    ctx.shadowBlur = 0;
+
+    drawDecorLine(cx, cy - 105, 120, 0.4);
+
+    const labelX = cx - 140;
+    const controlX = cx - 30;
+    const sliderW = 200, sliderH = 12;
+    const toggleW = 70, toggleH = 28;
+    const rowH = 48;
+    let rowY = cy - 70;
+
+    ctx.textBaseline = 'middle';
+
+    // Music Volume
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Music Volume', labelX, rowY);
+    _drawOptSlider('musicVolume', controlX, rowY - sliderH / 2, sliderW, sliderH, gameSettings.musicVolume);
+    ctx.textAlign = 'left'; ctx.font = '12px monospace'; ctx.fillStyle = '#a09070'; ctx.globalAlpha = 0.6;
+    ctx.fillText(Math.round(gameSettings.musicVolume * 100) + '%', controlX + sliderW + 10, rowY);
+    rowY += rowH;
+
+    // SFX Volume
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('SFX Volume', labelX, rowY);
+    _drawOptSlider('sfxVolume', controlX, rowY - sliderH / 2, sliderW, sliderH, gameSettings.sfxVolume);
+    ctx.textAlign = 'left'; ctx.font = '12px monospace'; ctx.fillStyle = '#a09070'; ctx.globalAlpha = 0.6;
+    ctx.fillText(Math.round(gameSettings.sfxVolume * 100) + '%', controlX + sliderW + 10, rowY);
+    rowY += rowH;
+
+    // Graphics Quality
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Graphics', labelX, rowY);
+    _drawOptToggle('quality', controlX, rowY - toggleH / 2, toggleW, toggleH, gameSettings.quality === 'high' ? 'HIGH' : 'LOW');
+    rowY += rowH;
+
+    // Screen Shake
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Screen Shake', labelX, rowY);
+    _drawOptToggle('screenShake', controlX, rowY - toggleH / 2, toggleW, toggleH, gameSettings.screenShake ? 'ON' : 'OFF');
+    rowY += rowH;
+
+    // Fullscreen
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Fullscreen', labelX, rowY);
+    _drawOptToggle('fullscreen', controlX, rowY - toggleH / 2, toggleW, toggleH, gameSettings.fullscreen ? 'ON' : 'OFF');
+    rowY += rowH + 12;
+
+    drawDecorLine(cx, rowY, 100, 0.25);
+    rowY += 20;
+
+    const backW = 140, backH = 36;
+    optionsBackBtn = { x: cx - backW / 2, y: rowY, w: backW, h: backH, label: 'BACK' };
+    const hBack = pointInButton(mouse.x, mouse.y, optionsBackBtn);
+    drawMenuButton(optionsBackBtn, hBack, 0.9);
+
+    ctx.restore();
+}
+
+function _drawOptSlider(id, x, y, w, h, value) {
+    optionsSliders[id] = { x: x, y: y, w: w, h: h };
+    ctx.save();
+    ctx.globalAlpha = 0.25; ctx.fillStyle = '#a89060';
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill();
+    ctx.globalAlpha = 0.3; ctx.strokeStyle = COLORS.BORDER_GOLD; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.stroke();
+    const fillW = Math.max(h, w * value);
+    ctx.globalAlpha = 0.7;
+    const fg = ctx.createLinearGradient(x, y, x + fillW, y);
+    fg.addColorStop(0, '#8a6a30'); fg.addColorStop(1, '#d4a040');
+    ctx.fillStyle = fg;
+    ctx.beginPath(); ctx.roundRect(x, y, fillW, h, h / 2); ctx.fill();
+    const knobX = x + w * value;
+    ctx.globalAlpha = 0.9; ctx.fillStyle = '#d4b478';
+    ctx.beginPath(); ctx.arc(knobX, y + h / 2, h * 0.9, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#2a1a0e'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.restore();
+}
+
+function _drawOptToggle(id, x, y, w, h, label) {
+    optionsToggles[id] = { x: x, y: y, w: w, h: h };
+    const isOn = label === 'HIGH' || label === 'ON';
+    ctx.save();
+    ctx.fillStyle = `rgba(30, 22, 14, 0.55)`;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill();
+    ctx.strokeStyle = isOn ? 'rgba(212, 180, 120, 0.25)' : 'rgba(140, 120, 80, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '12px monospace';
+    ctx.globalAlpha = isOn ? 0.9 : 0.5;
+    ctx.fillStyle = isOn ? '#d4b878' : '#8a7a5a';
+    ctx.fillText(label, x + w / 2, y + h / 2);
     ctx.restore();
 }
 

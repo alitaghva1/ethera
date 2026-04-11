@@ -411,6 +411,26 @@ function sfxUpgradeSelect() {
     setTimeout(() => { if (sfxCtx) playTone('sine', 784, 784, 0.12, 0.18, 0.005, 0.12); }, 80);
 }
 
+function sfxEvolution() {
+    if (!sfxCtx) return;
+    // Dramatic ascending power surge — rising tone cascade with shimmer
+    playTone('sine', 300, 600, 0.15, 0.6, 0.02, 0.15);
+    playTone('triangle', 450, 900, 0.10, 0.6, 0.03, 0.10);
+    setTimeout(() => {
+        if (sfxCtx) playTone('sine', 600, 1200, 0.12, 0.5, 0.02, 0.12);
+        if (sfxCtx) playNoise(0.3, 4000, 6, 0.06, 0.02, 0.25);
+    }, 200);
+    setTimeout(() => {
+        if (sfxCtx) playTone('sine', 900, 1500, 0.14, 0.4, 0.01, 0.14);
+        if (sfxCtx) playTone('triangle', 1200, 1800, 0.10, 0.3, 0.01, 0.10);
+    }, 450);
+    // Final shimmer
+    setTimeout(() => {
+        if (sfxCtx) playTone('sine', 1500, 1500, 0.10, 0.2, 0.005, 0.10);
+        if (sfxCtx) playNoise(0.15, 8000, 3, 0.04, 0.01, 0.12);
+    }, 700);
+}
+
 function sfxRarePickup() {
     if (!sfxCtx) return;
     // Sparkle shimmer — ascending chime with harmonics for rare+ items
@@ -437,6 +457,7 @@ const MAX_HIT_PAUSE = 0.15;
 let slowMoTimer = 0;
 let slowMoScale = 1.0; // 1.0 = normal, 0.3 = slow
 function addScreenShake(intensity, duration) {
+    if (typeof gameSettings !== 'undefined' && !gameSettings.screenShake) return;
     screenShakeIntensity = Math.min(MAX_SCREEN_SHAKE, screenShakeIntensity + intensity);
     screenShakeTimer = Math.max(screenShakeTimer, duration);
 }

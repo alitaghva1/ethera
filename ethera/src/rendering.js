@@ -1003,38 +1003,7 @@ function drawEnvironmentLightPunchthrough() {
     ctx.restore();
 }
 
-// Register wizard form draw handler
-formHandlers.wizard.draw = function() { drawWizard(); };
-
-// ============================================================
-//  WIZARD OCCLUSION GHOST — draws just the sprite (no VFX)
-//  Used by drawPlayerOcclusionGhost() for the above-darkness overlay.
-// ============================================================
-formHandlers.wizard.drawGhost = function(sx, sy) {
-    const dir = player.dir8 || 'S';
-    let sheet, frameCount;
-    if (player.attacking) { sheet = images.wiz_attack2; frameCount = 6; }
-    else if (player.state === 'walk') { sheet = images.wiz_walk; frameCount = 8; }
-    else { sheet = images.wiz_idle; frameCount = 6; }
-    if (!sheet) return;
-    const fw = WIZARD_FRAME_W, fh = WIZARD_FRAME_H;
-    const scale = WIZARD_SCALE;
-    const dw = fw * scale, dh = fh * scale;
-    const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
-    let bob = 0;
-    if (player.state === 'walk' && !player.dodging) bob = Math.sin(player.animFrame * Math.PI) * 2.0;
-    const drawY = sy - dh * 0.72 - bob;
-    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
-    if (flipH) {
-        ctx.save();
-        ctx.translate(sx, drawY);
-        ctx.scale(-1, 1);
-        ctx.drawImage(sheet, frame * fw, 0, fw, fh, -dw / 2, 0, dw, dh);
-        ctx.restore();
-    } else {
-        ctx.drawImage(sheet, frame * fw, 0, fw, fh, sx - dw / 2, drawY, dw, dh);
-    }
-};
+// Wizard form draw/drawGhost handlers are registered in wizard.js
 
 // ============================================================
 //  DARKNESS / LIGHTING SYSTEM
