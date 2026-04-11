@@ -125,6 +125,10 @@ function _migrateSave(data) {
     }
     if (data.version < 5) {
         if (!data.claimedMilestones) data.claimedMilestones = [];
+        if (!data.questFlags) data.questFlags = {};
+        if (!data.questCompleted) data.questCompleted = [];
+        if (data.questRerollTokens === undefined) data.questRerollTokens = 0;
+        if (!data.questPermBonuses) data.questPermBonuses = { dmgBonus: 0, maxHpBonus: 0 };
         data.version = 5;
     }
     if (data.version < 6) {

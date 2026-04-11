@@ -172,6 +172,12 @@ function generateItem(waveIdx) {
     else if ((roll -= weights.epic) < weights.rare) rarity = 'rare';
     else if ((roll -= weights.rare) < weights.uncommon) rarity = 'uncommon';
 
+    // Skip legendary for non-equipment forms (slime/skeleton can't equip)
+    if (rarity === 'legendary') {
+        const _formCfg = typeof FormSystem !== 'undefined' ? FormSystem.getFormConfig() : null;
+        if (_formCfg && !_formCfg.hasEquipment) rarity = 'epic'; // downgrade to epic
+    }
+
     // Legendary items use fixed unique templates
     if (rarity === 'legendary') {
         const slot = EQUIP_SLOTS[Math.floor(Math.random() * EQUIP_SLOTS.length)];
@@ -273,7 +279,7 @@ function tryPickupDrops() {
                 // Play rare sparkle for rare+ items, normal chime for common/uncommon
                 const _isRarePlus = d.item.rarity === 'rare' || d.item.rarity === 'epic' || d.item.rarity === 'legendary';
                 if (_isRarePlus && typeof sfxRarePickup === 'function') sfxRarePickup();
-                else sfxItemPickup();
+                else if (typeof sfxItemPickup === 'function') sfxItemPickup();
             } else {
                 // Inventory full — show feedback message
                 pickupTexts.push({

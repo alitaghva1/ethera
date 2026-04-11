@@ -2875,7 +2875,7 @@ function updateEnemies(dt) {
         }
 
         // --- Boss enrage phase transition ---
-        if (e.def.isBoss && e.bossPhase === 0 && e.hp < e.maxHp * 0.5) {
+        if (e.def.isBoss && e.bossPhase === 0 && e.hp < e.maxHp * 0.5 && !e._telegraphing) {
             e.bossPhase = 1;
             addScreenShake(8, 0.4);
             // Visual enrage burst

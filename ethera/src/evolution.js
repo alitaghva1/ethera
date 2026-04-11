@@ -73,7 +73,7 @@ function checkSlimeEvolution() {
     // Show hint when close to evolution (1 milestone remaining)
     if (met >= 4 && !_evoHintShown.slime && typeof Notify !== 'undefined') {
         _evoHintShown.slime = true;
-        Notify.hint('evo_near_slime', 'Evolution is near... Check the Grimoire (TAB) for progress.', { color: '#e8c840' });
+        Notify.hint('evo_near_slime', 'Evolution is near... Check the Grimoire (TAB) for progress.', 5, { color: '#e8c840' });
     }
     if (met >= 5) {
         triggerEvolution('skeleton');

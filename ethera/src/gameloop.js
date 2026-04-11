@@ -2325,9 +2325,14 @@ function restartGame() {
     proceduralDepth = 1;
     endlessDepth = 5;
     deepestDepthReached = 0;
-    // Reset abyss modifiers
+    // Reset abyss modifiers and new feature state
     if (typeof activeModifiers !== 'undefined') activeModifiers.length = 0;
     if (typeof _lastAddedModifier !== 'undefined') _lastAddedModifier = null;
+    if (typeof burnZones !== 'undefined') burnZones.length = 0;
+    if (typeof veilUndyingCooldown !== 'undefined') veilUndyingCooldown = 0;
+    if (typeof groundHazards !== 'undefined') groundHazards.length = 0;
+    if (typeof claimedMilestones !== 'undefined') claimedMilestones.length = 0;
+    if (typeof _evoHintShown !== 'undefined') { _evoHintShown.slime = false; _evoHintShown.skeleton = false; _evoHintShown.wizard = false; }
     // Reset wave
     wave.current = 0;
     wave.phase = 'pre';

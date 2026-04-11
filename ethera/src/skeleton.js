@@ -356,7 +356,7 @@ function checkSkeletonEvolution() {
                 (FormSystem.talisman.level >= req.talismanLevel ? 1 : 0);
     if (met >= 4 && typeof _evoHintShown !== 'undefined' && !_evoHintShown.skeleton && typeof Notify !== 'undefined') {
         _evoHintShown.skeleton = true;
-        Notify.hint('evo_near_skeleton', 'Evolution is near... Check the Grimoire (TAB) for progress.', { color: '#e8c840' });
+        Notify.hint('evo_near_skeleton', 'Evolution is near... Check the Grimoire (TAB) for progress.', 5, { color: '#e8c840' });
     }
     if (met >= 5) {
         triggerEvolution('wizard');
