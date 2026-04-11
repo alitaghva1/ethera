@@ -975,9 +975,9 @@ function drawSlime() {
 function drawSlimeHUD() {
     if (gamePhase !== 'playing') return;
 
-    const barW = 180, barH = 12, gap = 5;
+    const barW = 200, barH = 14, gap = 6;
     const x = 28;
-    const yHP = canvasH - 84;
+    const yHP = canvasH - 100;
     const ySize = yHP + barH + gap;
     const yXP = ySize + barH + gap;
 
@@ -1005,6 +1005,14 @@ function drawSlimeHUD() {
     ctx.roundRect(panelX, panelY, panelW, panelH, 4);
     ctx.stroke();
 
+    // Form label
+    ctx.globalAlpha = 0.5;
+    ctx.font = 'small-caps bold 10px Georgia';
+    ctx.fillStyle = '#88dd44';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'left';
+    ctx.fillText('SLIME', x, yHP - 4);
+
     // HP Bar (red for player slime)
     const _qHpSlime = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
     const maxHP = FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp + _qHpSlime;
@@ -1022,10 +1030,13 @@ function drawSlimeHUD() {
         ctx.fillStyle = hpGrad;
         ctx.beginPath(); ctx.roundRect(x, yHP, Math.max(2, barW * hpFrac), barH, 3); ctx.fill();
     }
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.9;
     ctx.fillStyle = '#ffcccc';
-    ctx.font = '9px monospace';
+    ctx.font = 'bold 11px monospace';
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
+    ctx.strokeText(`HP ${Math.ceil(player.hp)}/${Math.ceil(maxHP)}`, x + 4, yHP + barH / 2 + 1);
     ctx.fillText(`HP ${Math.ceil(player.hp)}/${Math.ceil(maxHP)}`, x + 4, yHP + barH / 2 + 1);
 
     // Size Bar (yellow-green)
@@ -1042,9 +1053,11 @@ function drawSlimeHUD() {
         ctx.fillStyle = sizeGrad;
         ctx.beginPath(); ctx.roundRect(x, ySize, Math.max(2, barW * sizeFrac), barH, 3); ctx.fill();
     }
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.9;
     ctx.fillStyle = '#ddddaa';
-    ctx.font = '9px monospace';
+    ctx.font = 'bold 11px monospace';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
+    ctx.strokeText(`SIZE ${slimeState.size.toFixed(1)}/${slimeState.maxSize}`, x + 4, ySize + barH / 2 + 1);
     ctx.fillText(`SIZE ${slimeState.size.toFixed(1)}/${slimeState.maxSize}`, x + 4, ySize + barH / 2 + 1);
 
     // XP Bar
@@ -1061,9 +1074,11 @@ function drawSlimeHUD() {
         ctx.fillStyle = xpGrad;
         ctx.beginPath(); ctx.roundRect(x, yXP, Math.max(2, barW * xpFrac), barH, 3); ctx.fill();
     }
-    ctx.globalAlpha = 0.65;
+    ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#ddcc88';
-    ctx.font = '9px monospace';
+    ctx.font = 'bold 11px monospace';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
+    ctx.strokeText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
     ctx.fillText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
 
     // Active upgrade icons

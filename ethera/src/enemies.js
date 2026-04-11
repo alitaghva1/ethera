@@ -4616,7 +4616,7 @@ function drawEnemy(e) {
     if (e.state === 'death') {
         // Fade out only in last 1 second of linger
         const fadeStart = 1.0;
-        ctx.globalAlpha = e.deathTimer > fadeStart ? 0.7 : Math.max(0, (e.deathTimer / fadeStart) * 0.7);
+        ctx.globalAlpha = e.deathTimer > fadeStart ? 0.85 : Math.max(0.1, (e.deathTimer / fadeStart) * 0.85);
     }
     // Apply spawn fade alpha multiplier
     ctx.globalAlpha *= spawnAlpha;
@@ -4758,30 +4758,31 @@ function drawEnemy(e) {
         ctx.restore();
     }
 
-    // --- Corpse interaction glow (pulsing when player is nearby) ---
+    // --- Corpse interaction glow (always visible, brighter when close) ---
     if (e.state === 'death' && e.deathTimer > 0.5) {
         const pDist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
-        if (pDist < 2.5) {
-            const t = performance.now() / 1000;
-            const corpPulse = 0.2 + Math.sin(t * 4) * 0.1;
-            const _cf = FormSystem.currentForm;
-            const corpCol = _cf === 'slime' ? 'rgba(60, 190, 80,' :
-                           _cf === 'skeleton' ? 'rgba(200, 190, 150,' :
-                           _cf === 'lich' ? 'rgba(140, 70, 200,' :
-                           'rgba(100, 140, 200,';
-            ctx.save();
-            ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = corpPulse * Math.min(1, (e.deathTimer - 0.5) / 0.5);
-            const corpGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, 20);
-            corpGrad.addColorStop(0, corpCol + ' 0.4)');
-            corpGrad.addColorStop(0.6, corpCol + ' 0.1)');
-            corpGrad.addColorStop(1, corpCol + ' 0)');
-            ctx.fillStyle = corpGrad;
-            ctx.beginPath();
-            ctx.ellipse(sx, sy + 2, 22, 10, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
+        const t = performance.now() / 1000;
+        const corpPulse = 0.25 + Math.sin(t * 3) * 0.15;
+        const _cf = FormSystem.currentForm;
+        const corpCol = _cf === 'slime' ? 'rgba(80, 220, 100,' :
+                       _cf === 'skeleton' ? 'rgba(200, 190, 150,' :
+                       _cf === 'lich' ? 'rgba(160, 90, 220,' :
+                       'rgba(100, 140, 200,';
+        // Subtle glow always visible, strong pulse when close
+        const nearMult = pDist < 2.5 ? 1.0 : (pDist < 5.0 ? 0.4 : 0.2);
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = corpPulse * nearMult * Math.min(1, (e.deathTimer - 0.5) / 0.5);
+        const glowR = pDist < 2.5 ? 28 : 18;
+        const corpGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowR);
+        corpGrad.addColorStop(0, corpCol + ' 0.6)');
+        corpGrad.addColorStop(0.5, corpCol + ' 0.2)');
+        corpGrad.addColorStop(1, corpCol + ' 0)');
+        ctx.fillStyle = corpGrad;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 2, glowR, glowR * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     // --- Shield stance glow (Armored Skeleton) ---
