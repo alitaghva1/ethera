@@ -3325,6 +3325,9 @@ function runIntro() {
     const overlay = document.getElementById('overlay');
     overlay.style.display = 'none';
 
+    // Initialize game state FIRST (loads Zone 0 Hamlet)
+    restartGame();
+
     // Reset cinematic state
     cinematicTimer = 0;
     cinematicPhase = 0;
