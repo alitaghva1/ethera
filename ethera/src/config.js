@@ -10,7 +10,7 @@
 // ============================================================
 
 // Game version — used for save format and cache busting
-const ETHERA_VERSION = '0.3.2';
+const ETHERA_VERSION = '0.4.0';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
