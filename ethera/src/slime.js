@@ -107,12 +107,15 @@ function slimeAbsorbEnemy(target, particleCount) {
     slimeState.size = Math.min(slimeState.maxSize, slimeState.size + sizeGain);
     player.hp = Math.min(FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp, player.hp + 20);
     FormSystem.formData.slime.absorbed++;
-    // Evolution progress toast for absorb milestone
+    // Evolution progress toasts
     if (typeof Notify !== 'undefined' && typeof EVOLUTION_REQUIREMENTS !== 'undefined') {
         const _absReq = EVOLUTION_REQUIREMENTS.slime_to_skeleton.absorbed;
-        if (FormSystem.formData.slime.absorbed === Math.floor(_absReq / 2)) {
+        const _absCount = FormSystem.formData.slime.absorbed;
+        if (_absCount === 1) {
+            Notify.hint('first_absorb', 'You grew! Absorb more enemies to evolve into something stronger.', 5, { color: '#88ff88', borderColor: '#448844' });
+        } else if (_absCount === Math.floor(_absReq / 2)) {
             Notify.toast(`${Math.floor(_absReq / 2)}/${_absReq} absorbs toward evolution!`, { color: '#88ff88', duration: 3 });
-        } else if (FormSystem.formData.slime.absorbed === _absReq) {
+        } else if (_absCount === _absReq) {
             Notify.toast('Absorb requirement met!', { color: '#ffdd44', duration: 3 });
         }
     }
@@ -1153,12 +1156,16 @@ formHandlers.slime.onInteract = function() {
         const nearbyChest = getNearbyChest();
         if (nearbyChest) {
             pickupTexts.push({
-                text: 'You lack the form to open this...',
+                text: 'Too formless to open... Evolve.',
                 color: '#aa7744',
                 row: nearbyChest.row, col: nearbyChest.col,
                 offsetY: 0,
-                life: 2.0,
+                life: 2.5,
             });
+            // One-time tutorial hint about evolution
+            if (typeof Notify !== 'undefined') {
+                Notify.hint('chest_evolve_hint', 'You cannot open chests as a Slime. Absorb enemies and defeat the boss to evolve!', 6, { color: '#e8c840', borderColor: '#aa8800' });
+            }
         }
     }
 };

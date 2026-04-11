@@ -757,9 +757,10 @@ const WAVES = [
     },
     {
         enemies: [
-            { type: 'slime', count: 4 },
-            { type: 'skeleton', count: 6 },
-            { type: 'skelarch', count: 5 },
+            { type: 'slime', count: 3 },
+            { type: 'skeleton', count: 5 },
+            { type: 'skelarch', count: 4 },
+            { type: 'bone_mage', count: 1 },
         ],
         statMult: 1.65,
         title: 'The Deep Stirs',
@@ -768,9 +769,10 @@ const WAVES = [
     },
     {
         enemies: [
-            { type: 'skeleton', count: 8 },
-            { type: 'skelarch', count: 6 },
-            { type: 'slime', count: 6 },
+            { type: 'skeleton', count: 7 },
+            { type: 'skelarch', count: 5 },
+            { type: 'slime', count: 5 },
+            { type: 'bone_mage', count: 2 },
         ],
         statMult: 1.8,
         title: 'The Undercroft\'s Last Stand',
@@ -1207,11 +1209,11 @@ const ZONE6_WAVES = [
 const ZONE_EXPANSIONS = {
     1: {
         triggerAfterWaveIndex: 2,
-        bannerText: 'Sealed passages collapse...',
-        bannerSub: 'The dungeon reveals its depths.',
+        bannerText: 'The walls CRUMBLE...',
+        bannerSub: 'Something stirs in the depths beyond.',
         cameraTarget: { r: 12, c: 28 },
-        shakeIntensity: 6,
-        shakeDuration: 1.2,
+        shakeIntensity: 10,
+        shakeDuration: 1.8,
         breatherChest: true,
     },
     2: {
@@ -1726,8 +1728,14 @@ function updateWaveSystem(dt) {
                         expandZone(currentZone);
                         // Recalculate fog of war so newly accessible tiles are revealed
                         if (typeof updateFogOfWar === 'function') updateFogOfWar();
-                        // Screen shake
+                        // Screen shake + dust burst
                         addScreenShake(expCfg.shakeIntensity || 6, expCfg.shakeDuration || 1.0);
+                        addSlowMo(0.4, 0.2); // brief dramatic slow-mo
+                        // Dust/debris particles at expansion point
+                        if (expCfg.cameraTarget && typeof spawnParticleBurst === 'function') {
+                            spawnParticleBurst(expCfg.cameraTarget.r, expCfg.cameraTarget.c, 25, '#8a7a60');
+                        }
+                        if (typeof sfxExplosion === 'function') sfxExplosion(); // rumble SFX
                         // Banner
                         wave.bannerText = expCfg.bannerText || 'The way opens...';
                         wave.bannerSub = expCfg.bannerSub || '';
@@ -2925,8 +2933,33 @@ function updateEnemies(dt) {
             }
             // Boss-specific enrage banner
             if (e.type === 'slime_king') {
-                wave.bannerText = 'The Slime King Rages!';
-                wave.bannerSub = 'It grows more aggressive...';
+                wave.bannerText = 'The Slime King RAGES!';
+                wave.bannerSub = 'The ground trembles beneath its mass...';
+                addScreenShake(12, 0.8); // extra shake for dramatic effect
+                e.def = Object.assign({}, e.def, {
+                    slamRadius: 3.5,      // bigger slam (was 2.5)
+                    slamDamage: 28,       // harder slam (was 20)
+                    summonCooldown: 5.0,  // faster summons (was 10)
+                    summonCount: 4,       // more adds (was 3)
+                    speed: 2.1,          // faster movement (was 1.6)
+                });
+                // Burst of green slime particles
+                for (let p2 = 0; p2 < 20; p2++) {
+                    const a2 = (p2 / 20) * Math.PI * 2;
+                    spawnParticle(e.row + Math.cos(a2) * 0.8, e.col + Math.sin(a2) * 0.8,
+                        Math.cos(a2) * 4, Math.sin(a2) * 4, 0.8, '#66cc22', 1.0);
+                }
+                if (typeof sfxEvolution === 'function') sfxEvolution(); // dramatic SFX
+            } else if (e.type === 'demon_slime_king') {
+                wave.bannerText = 'The Demon Awakens!';
+                wave.bannerSub = 'Hellfire surges through its veins...';
+                addScreenShake(14, 1.0);
+                e.def = Object.assign({}, e.def, {
+                    slamRadius: 3.8,
+                    slamDamage: 35,
+                    summonCooldown: 4.0,
+                    speed: 2.4,
+                });
             } else if (e.type === 'bone_colossus') {
                 wave.bannerText = 'The Colossus Awakens!';
                 wave.bannerSub = 'Bones rattle with fury...';
