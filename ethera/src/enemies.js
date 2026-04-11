@@ -76,10 +76,10 @@ const ENEMY_TYPES = {
     },
     // --- ZONE 1 BOSS: Slime King ---
     slime_king: {
-        prefix: 'demonslime',  // unique boss sprite
+        prefix: 'slime',  // classic slime sprite for Zone 1 boss
         hp: 200, speed: 1.6, damage: 16, attackRange: 1.2, aggroRange: 12,
         hitboxR: 0.45,
-        frames: { idle: 6, walk: 12, attack: 15, hurt: 5, death: 22 },
+        frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
         animSpeed: 6, attackDur: 0.5, attackCooldown: 1.8,
         scale: 2.8, yOff: 0.75,
         ai: 'lunge',
@@ -99,6 +99,33 @@ const ENEMY_TYPES = {
         summonCooldown: 10.0, // summons slime adds
         summonCount: 3,       // slimes per summon
     },
+    // --- ZONE 4 MID-BOSS: Demon Slime King (Inferno variant) ---
+    demon_slime_king: {
+        prefix: 'demonslime',  // unique demon slime sprite
+        hp: 350, speed: 1.8, damage: 22, attackRange: 1.4, aggroRange: 12,
+        hitboxR: 0.45,
+        frames: { idle: 6, walk: 12, attack: 15, hurt: 5, death: 22 },
+        animSpeed: 7, attackDur: 0.5, attackCooldown: 1.6,
+        scale: 2.2, yOff: 0.45,
+        ai: 'lunge',
+        lungeRange: 4.5,
+        lungeCooldown: 2.0,
+        lungeSpeed: 5.0,
+        lungeDur: 0.3,
+        patrolRange: 3.0,
+        retreatOnHit: 0,
+        isBoss: true,
+        knockbackResist: 0.65,
+        tintColor: '#ff4422',
+        slamCooldown: 5.0,
+        slamRadius: 3.0,
+        slamDamage: 25,
+        summonCooldown: 8.0,
+        summonCount: 2,
+        firePoolOnDeath: true,  // leaves fire pool like fire_slime
+        firePoolDuration: 4.0,
+        firePoolDPS: 8,
+    },
     // --- ZONE 2 BOSS: Bone Colossus ---
     bone_colossus: {
         prefix: 'bonecolossus',  // unique boss sprite (demon)
@@ -106,7 +133,7 @@ const ENEMY_TYPES = {
         hitboxR: 0.5,
         frames: { idle: 3, walk: 6, attack: 4, hurt: 2, death: 6 },
         animSpeed: 7, attackDur: 0.6, attackCooldown: 1.6,
-        scale: 2.5, yOff: 0.75,
+        scale: 2.2, yOff: 0.50,  // adjusted for centered demon sprite
         ai: 'chase',
         patrolRange: 4.0,
         retreatOnHit: 0,
@@ -129,7 +156,7 @@ const ENEMY_TYPES = {
         hitboxR: 0.45,
         frames: { idle: 8, walk: 8, attack: 11, hurt: 6, death: 13 },
         animSpeed: 8, attackDur: 0.55, attackCooldown: 1.4,
-        scale: 2.6, yOff: 0.75,
+        scale: 2.8, yOff: 0.55,  // adjusted for bottom-center fire knight sprite
         ai: 'chase',
         patrolRange: 4.0,
         retreatOnHit: 0,
@@ -156,7 +183,7 @@ const ENEMY_TYPES = {
         hitboxR: 0.5,
         frames: { idle: 3, walk: 5, attack: 4, hurt: 2, death: 5 },
         animSpeed: 7, attackDur: 0.6, attackCooldown: 2.0,
-        scale: 2.8, yOff: 0.75,
+        scale: 2.5, yOff: 0.40,  // adjusted for top-aligned dragon sprite
         ai: 'ranged', preferredDist: 5.0,
         patrolRange: 4.0,
         retreatOnHit: 0.2,
@@ -185,7 +212,7 @@ const ENEMY_TYPES = {
         hitboxR: 0.5,
         frames: { idle: 5, walk: 5, attack: 6, hurt: 6, death: 10 },
         animSpeed: 9, attackDur: 0.5, attackCooldown: 1.2,
-        scale: 3.0, yOff: 0.75,
+        scale: 2.5, yOff: 0.55,  // adjusted for top-heavy executioner sprite
         ai: 'chase',
         patrolRange: 5.0,
         retreatOnHit: 0,
@@ -972,6 +999,17 @@ const ZONE4_WAVES = [
         ],
         statMult: 3.8,
         title: 'Blood and Fire',
+    },
+    {
+        enemies: [
+            { type: 'demon_slime_king', count: 1 },
+            { type: 'fire_slime', count: 3 },
+            { type: 'armoredskel', count: 4 },
+        ],
+        statMult: 3.9,
+        title: 'The Demon Slime King',
+        isBossWave: true,
+        spawnZone: { rMin: 8, rMax: 20, cMin: 12, cMax: 24 },
     },
     {
         enemies: [
@@ -2106,6 +2144,7 @@ function drawBossHealthBar() {
     // Boss name
     const bossNames = {
         slime_king: 'Slime King',
+        demon_slime_king: 'Demon Slime King',
         bone_colossus: 'Bone Colossus',
         werewolf: 'The Beast',
         infernal_knight: 'Infernal Knight',
@@ -4552,31 +4591,42 @@ function drawEnemy(e) {
 
     // Enemy ground aura glow removed — looked unnatural per art direction
 
-    // Shadow
+    // Shadow (scales with boss size)
     ctx.save();
     ctx.globalAlpha = (e.state === 'death' ? 0.1 : 0.25) * spawnAlpha;
     ctx.fillStyle = '#000';
+    const shadowRx = e.def.isBoss ? Math.min(30, 14 * def.scale * 0.5) : 14;
+    const shadowRy = e.def.isBoss ? Math.min(14, 6 * def.scale * 0.5) : 6;
     ctx.beginPath();
-    ctx.ellipse(sx, sy + 4, 14, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy + 4, shadowRx, shadowRy, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     // (Silhouette halo removed — felt unnatural)
 
-    // Boss glow aura
+    // Boss glow aura (centered on sprite, not fixed offset)
     if (e.def.isBoss && e.state !== 'death') {
         ctx.save();
         const bossGlowColor = e.bossPhase === 1 ? 'rgba(255, 60, 30, ' : 'rgba(255, 200, 80, ';
-        const bossGlowPulse = 0.15 + Math.sin(performance.now() / 300) * 0.08;
+        const bossGlowPulse = 0.22 + Math.sin(performance.now() / 300) * 0.10;
         ctx.globalAlpha = bossGlowPulse * spawnAlpha;
         ctx.globalCompositeOperation = 'screen';
-        const glowGrad = ctx.createRadialGradient(sx, sy - dh * 0.3, 0, sx, sy - dh * 0.3, dw * 0.6);
+        // Center glow on sprite using same yOff as draw position
+        const glowCY = drawY + dh * 0.5;
+        const glowGrad = ctx.createRadialGradient(sx, glowCY, 0, sx, glowCY, dw * 0.7);
         glowGrad.addColorStop(0, bossGlowColor + '0.4)');
         glowGrad.addColorStop(1, bossGlowColor + '0)');
         ctx.fillStyle = glowGrad;
         ctx.beginPath();
-        ctx.ellipse(sx, sy - dh * 0.3, dw * 0.6, dh * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx, glowCY, dw * 0.7, dh * 0.5, 0, 0, Math.PI * 2);
         ctx.fill();
+        // Boss ground ring (helps identify boss on dark floors)
+        ctx.globalAlpha = (0.3 + Math.sin(performance.now() / 400) * 0.1) * spawnAlpha;
+        ctx.strokeStyle = bossGlowColor + '0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 4, dw * 0.35, dw * 0.15, 0, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.restore();
     }
 
