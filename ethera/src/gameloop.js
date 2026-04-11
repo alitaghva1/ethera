@@ -539,6 +539,8 @@ function updateGameplay(dt) {
                     progressionIndex = ZONE_PROGRESSION.length; // skip past story
                     isProceduralZone = true;
                     proceduralDepth = d;
+                    endlessUnlocked = true;
+                    endlessDepth = d + 1; // next floor will be one deeper
                 } else if (typeof zoneTransitionTarget === 'number') {
                     nextZone = zoneTransitionTarget;
                 } else {
@@ -2323,6 +2325,9 @@ function restartGame() {
     proceduralDepth = 1;
     endlessDepth = 5;
     deepestDepthReached = 0;
+    // Reset abyss modifiers
+    if (typeof activeModifiers !== 'undefined') activeModifiers.length = 0;
+    if (typeof _lastAddedModifier !== 'undefined') _lastAddedModifier = null;
     // Reset wave
     wave.current = 0;
     wave.phase = 'pre';
@@ -2793,9 +2798,11 @@ function render() {
     drawWorldKeyDrops();
     drawProjectiles();
     drawTowerBolts();
+    drawBossTelegraphs();
     drawFireTrails();
     drawEnemyProjectiles();
     drawParticles();
+    drawBossTelegraphFlash();
     drawRoomAmbientTint();
 
     // ── COMBAT JUICE: Multikill text (world-space, above particles) ──
@@ -2864,7 +2871,8 @@ function render() {
 
     // ── COMBAT JUICE: Low-HP warning vignette (pulsing below 25%) ──
     if (gamePhase === 'playing' && !gameDead && player.hp > 0) {
-        const hpRatio = player.hp / (PLAYER_STATS.maxHp + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus);
+        const _qHpGL = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+        const hpRatio = player.hp / (PLAYER_STATS.maxHp + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHpGL);
         if (hpRatio < 0.25) {
             const urgency = 1 - (hpRatio / 0.25); // 0→1 as HP drops from 25%→0%
             const pulse = 0.12 + Math.sin(performance.now() * 0.005) * 0.06; // ~0.8Hz
@@ -2936,6 +2944,10 @@ function render() {
         const hudHandler = FormSystem.getHandler();
         if (hudHandler && hudHandler.drawHUD) hudHandler.drawHUD();
         else drawHPMana();
+
+        // Abyss modifier pills + rank badge (endless mode HUD)
+        if (typeof drawAbyssModifiers === 'function') drawAbyssModifiers();
+        if (typeof drawAbyssRankBadge === 'function') drawAbyssRankBadge();
 
         // Unified notification system (controls, mana-lock, zone name)
         if (typeof Notify !== 'undefined') Notify.draw(ctx, canvasW, canvasH);
@@ -3156,13 +3168,22 @@ function drawLoadScreen() {
             ctx.fillStyle = '#d4c4a0';
             ctx.fillText(s.playerName || 'Unknown', sx + 12, sy + 38);
 
-            // Level + Form + Zone + Talisman
+            // Level + Form + Zone + Talisman + Abyss Rank
             ctx.globalAlpha = fa * 0.5;
             ctx.font = '10px Georgia';
             ctx.fillStyle = '#a89060';
             const _slotForm = s.currentForm ? s.currentForm.charAt(0).toUpperCase() + s.currentForm.slice(1) : 'Wizard';
             const _slotTalisman = (s.talisman && s.talisman.level > 1) ? '  ·  Talisman Lv.' + s.talisman.level : '';
-            ctx.fillText('Lv.' + (s.level || 1) + '  ·  ' + _slotForm + '  ·  ' + (ZONE_NAMES_SHORT[s.currentZone] || 'Zone ' + s.currentZone) + _slotTalisman, sx + 12, sy + 56);
+            // Compute abyss rank for this save slot
+            let _slotAbyssRank = '';
+            if (s.deepestDepthReached > 0 && typeof ABYSS_RANKS !== 'undefined') {
+                let _slotRank = null;
+                for (const r of ABYSS_RANKS) {
+                    if (s.deepestDepthReached >= r.depth) _slotRank = r;
+                }
+                if (_slotRank) _slotAbyssRank = '  ·  ' + _slotRank.name;
+            }
+            ctx.fillText('Lv.' + (s.level || 1) + '  ·  ' + _slotForm + '  ·  ' + (ZONE_NAMES_SHORT[s.currentZone] || 'Zone ' + s.currentZone) + _slotTalisman + _slotAbyssRank, sx + 12, sy + 56);
 
             // Date on right
             ctx.textAlign = 'right';

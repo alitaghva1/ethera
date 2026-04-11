@@ -88,6 +88,22 @@ const KEY_ITEM_DEFS = {
             },
         ],
     },
+    // Quest chain items
+    infernal_ore: {
+        name: 'Infernal Ore',
+        desc: 'A dark, pulsing chunk of ore still warm from the burning depths. Garrett could forge something powerful with this.',
+        color: '#ff6633',
+    },
+    frost_essence: {
+        name: 'Frost Essence',
+        desc: 'A pale blue crystalline vial of distilled cold. Senna would know what to do with this.',
+        color: '#88ccff',
+    },
+    ancient_tome: {
+        name: 'Ancient Tome',
+        desc: 'A heavy tome bound in something older than leather. The pages hum with forgotten knowledge. The Hermit seeks this.',
+        color: '#cc88ff',
+    },
 };
 
 function hasKeyItem(id) {
@@ -134,6 +150,18 @@ function grantKeyItem(id) {
         currentObjective = 'Descend to the Frozen Abyss';
     } else if (id === 'zone5_key') {
         currentObjective = 'Face the Throne of Ruin';
+    }
+
+    // Quest item pickups — set quest flags and objectives
+    if (id === 'infernal_ore') {
+        if (typeof questState !== 'undefined') questState.flags.has_infernal_ore = true;
+        currentObjective = 'Return the ore to Garrett';
+    } else if (id === 'frost_essence') {
+        if (typeof questState !== 'undefined') questState.flags.has_frost_essence = true;
+        currentObjective = 'Bring the essence to Senna';
+    } else if (id === 'ancient_tome') {
+        if (typeof questState !== 'undefined') questState.flags.has_ancient_tome = true;
+        currentObjective = 'Return the tome to the Hermit';
     }
 }
 
@@ -417,6 +445,12 @@ function getEquipBonuses() {
         }
     }
 
+    // Merge equipment set bonuses
+    const setBonuses = typeof getActiveSetBonuses === 'function' ? getActiveSetBonuses() : {};
+    for (const [k, v] of Object.entries(setBonuses)) {
+        if (typeof v === 'number') totals[k] = (totals[k] || 0) + v;
+    }
+
     return totals;
 }
 
@@ -489,8 +523,13 @@ function updateChestDefsForZone(zone) {
         };
     } else if (zone === 3) {
         CHEST_DEFS = {
-            // No chests in zone 3 (focus on boss encounter)
-            // Boss drops the key to exit
+            // Zone 3: Ancient Tome for the Hermit's quest (tucked in a Spire alcove)
+            '8,22': {
+                requiresKey: null,
+                type: 'story',
+                keyItems: ['ancient_tome'],
+                label: 'Open',
+            },
         };
     } else if (zone === 4) {
         CHEST_DEFS = {
@@ -501,10 +540,23 @@ function updateChestDefsForZone(zone) {
                 keyItems: ['charred_fragment'],
                 label: 'Open',
             },
+            '10,8': {
+                // Zone 4: Infernal Ore for Garrett's quest (hidden in a lava-side forge)
+                requiresKey: null,
+                type: 'story',
+                keyItems: ['infernal_ore'],
+                label: 'Open',
+            },
         };
     } else if (zone === 5) {
         CHEST_DEFS = {
-            // Zone 5: No chests — frozen echoes serve as environmental storytelling
+            // Zone 5: Frost Essence for Senna's quest (frozen into the ice)
+            '14,18': {
+                requiresKey: null,
+                type: 'story',
+                keyItems: ['frost_essence'],
+                label: 'Open',
+            },
         };
     } else if (zone === 6) {
         CHEST_DEFS = {
@@ -920,6 +972,88 @@ let endlessUnlocked = false;
 let endlessDepth = 5; // starting depth for post-game endless mode
 let deepestDepthReached = 0; // highest procedural depth the player has survived
 
+// ============================================================
+//  ABYSS MODIFIER SYSTEM — escalating challenge for endless mode
+// ============================================================
+const ABYSS_MODIFIERS = [
+    { id: 'swarm', name: 'Swarm', desc: '+50% enemy count, -30% enemy HP', enemyCountMult: 1.5, enemyHpMult: 0.7 },
+    { id: 'iron_horde', name: 'Iron Horde', desc: 'All enemies are elite', forceElite: true },
+    { id: 'darkness', name: 'Darkness', desc: 'Light radius halved', lightMult: 0.5 },
+    { id: 'drought', name: 'Drought', desc: 'Mana regen -50%', manaRegenMult: 0.5 },
+    { id: 'frail', name: 'Frailty', desc: 'Max HP -25%', hpMult: 0.75 },
+    { id: 'haste', name: 'Haste', desc: 'All enemies +40% speed', enemySpeedMult: 1.4 },
+    { id: 'famine', name: 'Famine', desc: 'No HP from kills', noHpDrops: true },
+    { id: 'gauntlet', name: 'Gauntlet', desc: 'No rest between waves', noRestPeriod: true },
+];
+let activeModifiers = [];
+let _lastAddedModifier = null;
+const ABYSS_MODIFIER_CAP = 4;
+
+function rollAbyssModifier() {
+    const available = ABYSS_MODIFIERS.filter(m => !activeModifiers.some(a => a.id === m.id));
+    if (available.length === 0 || activeModifiers.length >= ABYSS_MODIFIER_CAP) return null;
+    const pick = available[Math.floor(Math.random() * available.length)];
+    activeModifiers.push(pick);
+    _lastAddedModifier = pick;
+    return pick;
+}
+function hasAbyssMod(prop) { return activeModifiers.some(m => m[prop]); }
+function getAbyssModMult(prop, base) {
+    let val = base;
+    for (const m of activeModifiers) { if (m[prop] != null) val *= m[prop]; }
+    return val;
+}
+function applyAbyssHpMod(maxHp) {
+    if (typeof currentZone !== 'undefined' && currentZone >= 100 && activeModifiers.length > 0) return Math.round(getAbyssModMult('hpMult', 1) * maxHp);
+    return maxHp;
+}
+
+const ABYSS_RANKS = [
+    { depth: 5, name: 'Initiate', tint: null },
+    { depth: 10, name: 'Delver', tint: '#4488cc' },
+    { depth: 20, name: 'Abyssal', tint: '#8844cc' },
+    { depth: 35, name: 'Void Walker', tint: '#cc4488' },
+    { depth: 50, name: 'Eternal', tint: '#ffcc00' },
+];
+function getAbyssRank() {
+    let rank = null;
+    for (const r of ABYSS_RANKS) { if (deepestDepthReached >= r.depth) rank = r; }
+    return rank;
+}
+
+// Abyss milestone rewards — permanent buffs at certain endless depths
+// Store base values so milestones can be cleanly re-applied on save load
+const _BASE_MAX_HP = typeof PLAYER_STATS !== 'undefined' ? PLAYER_STATS.maxHp : 100;
+const _BASE_FIREBALL_DMG = typeof COMBAT !== 'undefined' ? COMBAT.fireballDmg : 20;
+const ABYSS_MILESTONES = [
+    { depth: 5, reward: { type: 'hp', value: 10, desc: '+10 Max HP' } },
+    { depth: 10, reward: { type: 'damage', value: 5, desc: '+5 Damage' } },
+    { depth: 15, reward: { type: 'hp', value: 15, desc: '+15 Max HP' } },
+    { depth: 20, reward: { type: 'damage', value: 8, desc: '+8 Damage' } },
+    { depth: 25, reward: { type: 'hp', value: 20, desc: '+20 Max HP' } },
+];
+let claimedMilestones = [];
+
+function checkAbyssMilestone(depth) {
+    for (const m of ABYSS_MILESTONES) {
+        if (m.depth === depth && !claimedMilestones.includes(depth)) {
+            claimedMilestones.push(depth);
+            // Apply reward
+            if (m.reward.type === 'hp') {
+                PLAYER_STATS.maxHp += m.reward.value;
+                player.hp = Math.min(player.hp + m.reward.value, PLAYER_STATS.maxHp + (typeof equipBonus !== 'undefined' ? (equipBonus.maxHpBonus || 0) : 0));
+            } else if (m.reward.type === 'damage') {
+                COMBAT.fireballDmg += m.reward.value;
+            }
+            // Show notification
+            if (typeof Notify !== 'undefined') {
+                Notify.toast('Abyss Milestone! ' + m.reward.desc, { duration: 4, color: '#ffd700', borderColor: '#aa8800' });
+            }
+            return;
+        }
+    }
+}
+
 function resolveNextZone() {
     progressionIndex++;
     // Past the story? Enter endless mode
@@ -928,6 +1062,10 @@ function resolveNextZone() {
         // Endless: generate procedural zones indefinitely
         const themes = ['dungeon', 'ruins', 'hell', 'frozen'];
         const d = endlessDepth++;
+        // Roll abyss modifier from depth 2+ of endless
+        if (d >= 6) rollAbyssModifier();
+        // Check for abyss milestones
+        checkAbyssMilestone(d);
         return { procedural: true, theme: themes[(d - 5) % themes.length], depth: d };
     }
     return ZONE_PROGRESSION[progressionIndex];

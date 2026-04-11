@@ -1027,7 +1027,10 @@ function drawDarkness() {
         const flicker = (Math.sin(lightFlicker * 3.7) * 8 +
                         Math.sin(lightFlicker * 5.3) * 4 +
                         Math.sin(lightFlicker * 1.1) * 12) * flickerScale;
-        const radius = Math.max(5, lightRadius + flicker);
+        // Abyss modifier: Darkness — reduce light radius in endless mode
+        const _abyssLightMult = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
+            ? getAbyssModMult('lightMult', 1) : 1;
+        const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult);
 
         // Zone-specific hell lighting colors
         // Nebula is now drawn AFTER darkness with screen blend + void clip,
@@ -1149,7 +1152,10 @@ function drawDarkness() {
     const flicker = (Math.sin(lightFlicker * 3.7) * 8 +
                     Math.sin(lightFlicker * 5.3) * 4 +
                     Math.sin(lightFlicker * 1.1) * 12) * flickerScale;
-    const radius = Math.max(5, lightRadius + flicker);
+    // Abyss modifier: Darkness — reduce light radius in endless mode
+    const _abyssLightMult2 = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
+        ? getAbyssModMult('lightMult', 1) : 1;
+    const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult2);
 
     // Pass 1: radial torch light (same proven structure as original)
     ctx.save();

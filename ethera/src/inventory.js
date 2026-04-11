@@ -103,6 +103,40 @@ const LEGENDARY_POOL = {
     },
 };
 
+// Equipment set bonuses — wearing multiple items from a set grants extra stats
+const EQUIP_SETS = {
+    infernal: {
+        items: ['Ashen Staff', 'Dungeon Mail', 'Charred Talisman', 'Ember Ring'],
+        bonus2: { dmgBonus: 8, desc: '+8 Fire Damage' },
+        bonus4: { dmgBonus: 16, atkSpeedMult: 0.15, desc: '+16 Damage, +15% Attack Speed' },
+    },
+    arcane: {
+        items: ["Channeler's Rod", 'Arcane Mantle', "Seer's Eye", 'Phase Loop'],
+        bonus2: { maxManaBonus: 20, desc: '+20 Max Mana' },
+        bonus4: { manaRegenMult: 0.3, manaCostReduc: 0.15, desc: '+30% Mana Regen, -15% Mana Cost' },
+    },
+    warden: {
+        items: ['Smoldering Wand', 'Warded Cloak', 'Obelisk Shard', 'Band of Warding'],
+        bonus2: { maxHpBonus: 25, desc: '+25 Max HP' },
+        bonus4: { dmgReduc: 0.15, maxHpBonus: 40, desc: '+40 HP, +15% Damage Reduction' },
+    },
+};
+
+function getActiveSetBonuses() {
+    const equipped = [];
+    for (const slot of EQUIP_SLOTS) {
+        const item = inventory.equipped[slot];
+        if (item) equipped.push(item.name);
+    }
+    const bonuses = {};
+    for (const [setId, set] of Object.entries(EQUIP_SETS)) {
+        const count = set.items.filter(name => equipped.includes(name)).length;
+        if (count >= 4 && set.bonus4) Object.assign(bonuses, set.bonus4);
+        else if (count >= 2 && set.bonus2) Object.assign(bonuses, set.bonus2);
+    }
+    return bonuses;
+}
+
 // Rarity name prefixes
 const RARITY_PREFIX = {
     common: '',

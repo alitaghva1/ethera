@@ -29,7 +29,7 @@ const NPC_REGISTRY = {
             dialogue: [
                 'The forge hasn\'t seen proper work in ages.',
                 'If you\'re heading into the Undercroft, you\'ll need better gear.',
-                'Come back when you\'ve found something worth smithing.',
+                'Wait... you\'re going deeper? I need something. Infernal Ore — it\'s found in the burning depths. Bring it to me.',
                 'A woman came through here once. Asked me to forge something strange — a talisman housing.',
             ],
             dialogueIndex: 0,
@@ -82,7 +82,7 @@ const NPC_REGISTRY = {
             tint: { r: 200, g: 100, b: 220, a: 0.3 }, // purple tint
             dialogue: [
                 'The old magics... they whisper to those who listen.',
-                'Transformation waits for the worthy. But the path is dark.',
+                'There is an Ancient Tome lost in the Spire — Zone 3. Retrieve it, and I will share what the old magics have shown me.',
                 'Do you feel it? The pull of something greater?',
                 'The talisman you carry... it belonged to someone who walked this path before you. Someone who didn\'t come back.',
             ],
@@ -100,7 +100,7 @@ const NPC_REGISTRY = {
             tint: { r: 255, g: 220, b: 100, a: 0.25 }, // yellow tint
             dialogue: [
                 'My experiments require... exotic ingredients.',
-                'The dungeons are rich with strange essences. If you find any...',
+                'I\'ve been searching for Frost Essence — it forms in the frozen reaches. Zone 5. Bring me some and I\'ll make it worth your while.',
                 'Evolution isn\'t a curse, you know. It\'s becoming whole.',
                 'A covenant made with the deep... it changes you. But it doesn\'t destroy you. Not if someone holds the line.',
             ],
@@ -488,12 +488,105 @@ const NPC_FORM_REACTIONS = {
 
 function getFormReactiveDialogue(npc) {
     const form = (typeof FormSystem !== 'undefined' && FormSystem.currentForm) ? FormSystem.currentForm : 'wizard';
+    let lines = [...npc.dialogue];
+
+    // Inject quest dialogue for quest-giver NPCs
+    const questLines = getQuestDialogueLines(npc.id);
+    if (questLines) {
+        lines = questLines;
+    }
+
     // Only show form-reactive line for non-wizard forms (wizard is the "default" expected form)
-    if (form === 'wizard' || !NPC_FORM_REACTIONS[npc.id]) return npc.dialogue;
+    if (form === 'wizard' || !NPC_FORM_REACTIONS[npc.id]) return lines;
     const reaction = NPC_FORM_REACTIONS[npc.id][form];
-    if (!reaction) return npc.dialogue;
+    if (!reaction) return lines;
     // Prepend the reaction line to the normal dialogue
-    return [reaction, ...npc.dialogue];
+    return [reaction, ...lines];
+}
+
+// ----- Quest-Gated Dialogue -----
+// Returns replacement dialogue lines when an NPC has quest content to deliver, or null for default.
+function getQuestDialogueLines(npcId) {
+    // Garrett — infernal ore quest
+    if (npcId === 'garrett') {
+        if (isQuestComplete('garrett_forge')) {
+            return [
+                'That ore you brought... finest I\'ve ever worked with.',
+                'Your weapons will hit harder now. Permanently.',
+                'If you find more rare materials, bring them my way.',
+            ];
+        }
+        if (questState.flags.garrett_quest_started && typeof hasKeyItem === 'function' && hasKeyItem('infernal_ore')) {
+            return [
+                'You found it! Infernal Ore — still warm from the depths.',
+                'Give me a moment... this will take focus. And heat. Lots of heat.',
+                'There. Your strikes carry the weight of the forge now. Use it well.',
+            ];
+        }
+        if (questState.flags.garrett_quest_started) {
+            return [
+                'Still no ore? The burning depths, I said. Zone 4.',
+                'Infernal Ore — dark, pulsing, warm to the touch. You\'ll know it when you see it.',
+                'Come back when you\'ve found it. My forge is hungry.',
+            ];
+        }
+        // Not started yet — use normal dialogue with quest hook on line 3
+        return null;
+    }
+
+    // Senna — frost essence quest
+    if (npcId === 'senna') {
+        if (isQuestComplete('senna_brew')) {
+            return [
+                'The Frost Essence changed everything. My formulas are singing.',
+                'You\'re tougher now — permanently. That\'s what my brew does.',
+                'Bring me more curiosities if you find them. Science never sleeps.',
+            ];
+        }
+        if (questState.flags.senna_quest_started && typeof hasKeyItem === 'function' && hasKeyItem('frost_essence')) {
+            return [
+                'Is that... Frost Essence?! The crystalline lattice is perfect!',
+                'One moment — distilling, separating, recombining... yes!',
+                'Drink this. It\'ll fortify your constitution. Permanently. You\'re welcome.',
+            ];
+        }
+        if (questState.flags.senna_quest_started) {
+            return [
+                'No essence yet? It forms in the frozen reaches. Zone 5.',
+                'Frost Essence — pale blue, almost translucent. Beautiful stuff.',
+                'My experiments are on hold until you bring it back.',
+            ];
+        }
+        return null;
+    }
+
+    // Hermit — ancient tome quest
+    if (npcId === 'hermit') {
+        if (isQuestComplete('hermit_prophecy')) {
+            return [
+                'The tome\'s knowledge flows through me now. Ancient, terrible, wondrous.',
+                'The tokens I gave you... use them wisely when fate offers you choices.',
+                'The old magics remember those who serve them.',
+            ];
+        }
+        if (questState.flags.hermit_quest_started && typeof hasKeyItem === 'function' && hasKeyItem('ancient_tome')) {
+            return [
+                'You found it... the Ancient Tome. I can feel its weight from here.',
+                'This knowledge was lost for centuries. You\'ve done something remarkable.',
+                'Take these tokens. When fate offers you a choice... you may ask for another.',
+            ];
+        }
+        if (questState.flags.hermit_quest_started) {
+            return [
+                'The tome eludes you still? It rests in the Spire. Zone 3.',
+                'An Ancient Tome, bound in something older than leather. You\'ll sense it.',
+                'The old magics will guide your hand... if you let them.',
+            ];
+        }
+        return null;
+    }
+
+    return null;
 }
 
 // ----- INTERACTION -----
@@ -506,11 +599,17 @@ function handleNPCInteraction() {
         // Advance dialogue (use form-reactive dialogue which may have extra opening line)
         currentNPC.dialogueIndex++;
         const activeDialogue = getFormReactiveDialogue(currentNPC);
+
+        // --- Quest flag triggers on specific dialogue lines ---
+        handleQuestDialogueTriggers(currentNPC);
+
         if (currentNPC.dialogueIndex >= activeDialogue.length) {
             // Check if this was the Pale Queen — trigger ending choice
             if (currentNPC.isPaleQueen) {
                 paleQueenDialogueComplete = true;
             }
+            // Check for quest completion on dialogue end
+            handleQuestCompletionOnDialogueEnd(currentNPC);
             closeNPCDialogue();
         }
         return true;
@@ -543,4 +642,164 @@ function closeNPCDialogue() {
 
 function isNPCDialogueOpen() {
     return npcDialogueOpen;
+}
+
+// ============================================================
+//  QUEST CHAIN SYSTEM
+// ============================================================
+
+// ----- Quest dialogue triggers -----
+// Called each time the player advances a dialogue line; sets flags based on NPC + line index.
+function handleQuestDialogueTriggers(npc) {
+    const activeDialogue = getFormReactiveDialogue(npc);
+    const idx = npc.dialogueIndex; // the line we just advanced TO
+
+    // Garrett: 3rd normal dialogue line (index 2) starts his quest.
+    // Account for form-reactive prepend: if form line was added, quest hook is at index 3.
+    if (npc.id === 'garrett' && !questState.flags.garrett_quest_started && !isQuestComplete('garrett_forge')) {
+        // The quest hook is the 3rd line of his normal dialogue ("Come back when you've found something worth smithing.")
+        // We replace it with the quest offer line in the NPC_REGISTRY dialogue array
+        const lineText = activeDialogue[idx] || '';
+        if (lineText.indexOf('Infernal Ore') !== -1) {
+            setQuestFlag('garrett_quest_started');
+            if (typeof Notify !== 'undefined') Notify.toast('New Quest: The Smith\'s Request', { duration: 3, color: '#e8c840' });
+        }
+    }
+
+    // Senna: 2nd normal dialogue line ("The dungeons are rich with strange essences...")
+    if (npc.id === 'senna' && !questState.flags.senna_quest_started && !isQuestComplete('senna_brew')) {
+        const lineText = activeDialogue[idx] || '';
+        if (lineText.indexOf('Frost Essence') !== -1) {
+            setQuestFlag('senna_quest_started');
+            if (typeof Notify !== 'undefined') Notify.toast('New Quest: Exotic Ingredients', { duration: 3, color: '#e8c840' });
+        }
+    }
+
+    // Hermit: 2nd normal dialogue line ("Transformation waits for the worthy...")
+    if (npc.id === 'hermit' && !questState.flags.hermit_quest_started && !isQuestComplete('hermit_prophecy')) {
+        const lineText = activeDialogue[idx] || '';
+        if (lineText.indexOf('Ancient Tome') !== -1) {
+            setQuestFlag('hermit_quest_started');
+            if (typeof Notify !== 'undefined') Notify.toast('New Quest: The Old Magics', { duration: 3, color: '#e8c840' });
+        }
+    }
+}
+
+// Called when an NPC dialogue ends; checks if a quest turn-in should happen.
+function handleQuestCompletionOnDialogueEnd(npc) {
+    // Garrett: deliver infernal ore
+    if (npc.id === 'garrett' && questState.flags.garrett_quest_started
+        && !isQuestComplete('garrett_forge')
+        && typeof hasKeyItem === 'function' && hasKeyItem('infernal_ore')) {
+        setQuestFlag('has_infernal_ore');
+        setQuestFlag('garrett_ore_delivered');
+        removeKeyItem('infernal_ore');
+        completeQuest('garrett_forge');
+    }
+
+    // Senna: deliver frost essence
+    if (npc.id === 'senna' && questState.flags.senna_quest_started
+        && !isQuestComplete('senna_brew')
+        && typeof hasKeyItem === 'function' && hasKeyItem('frost_essence')) {
+        setQuestFlag('has_frost_essence');
+        setQuestFlag('senna_essence_delivered');
+        removeKeyItem('frost_essence');
+        completeQuest('senna_brew');
+    }
+
+    // Hermit: deliver ancient tome
+    if (npc.id === 'hermit' && questState.flags.hermit_quest_started
+        && !isQuestComplete('hermit_prophecy')
+        && typeof hasKeyItem === 'function' && hasKeyItem('ancient_tome')) {
+        setQuestFlag('has_ancient_tome');
+        setQuestFlag('hermit_tome_delivered');
+        removeKeyItem('ancient_tome');
+        completeQuest('hermit_prophecy');
+    }
+}
+
+const QUEST_REGISTRY = [
+    {
+        id: 'garrett_forge',
+        name: "The Smith's Request",
+        giver: 'garrett',
+        steps: [
+            { text: 'Speak to Garrett about his work', condition: 'garrett_quest_started' },
+            { text: 'Find Infernal Ore in Zone 4', condition: 'has_infernal_ore' },
+            { text: 'Return the ore to Garrett', condition: 'garrett_ore_delivered' },
+        ],
+        reward: { type: 'stat', stat: 'dmgBonus', value: 5, desc: '+5 Permanent Damage' },
+    },
+    {
+        id: 'senna_brew',
+        name: 'Exotic Ingredients',
+        giver: 'senna',
+        steps: [
+            { text: 'Speak to Senna about her experiments', condition: 'senna_quest_started' },
+            { text: 'Collect Frost Essence from Zone 5', condition: 'has_frost_essence' },
+            { text: 'Bring the essence to Senna', condition: 'senna_essence_delivered' },
+        ],
+        reward: { type: 'stat', stat: 'maxHpBonus', value: 15, desc: '+15 Permanent Max HP' },
+    },
+    {
+        id: 'hermit_prophecy',
+        name: 'The Old Magics',
+        giver: 'hermit',
+        steps: [
+            { text: 'Listen to the Hermit\'s prophecy', condition: 'hermit_quest_started' },
+            { text: 'Find the Ancient Tome in Zone 3', condition: 'has_ancient_tome' },
+            { text: 'Return with the tome', condition: 'hermit_tome_delivered' },
+        ],
+        reward: { type: 'upgrade_reroll', value: 3, desc: '+3 Upgrade Reroll Tokens' },
+    },
+];
+
+const questState = {
+    flags: {},        // condition flags: { garrett_quest_started: true, ... }
+    completed: [],    // completed quest IDs
+    rerollTokens: 0,  // from hermit reward
+    permBonuses: { dmgBonus: 0, maxHpBonus: 0 }, // from quest rewards
+};
+
+// ----- Quest helpers -----
+function isQuestComplete(questId) {
+    return questState.completed.indexOf(questId) !== -1;
+}
+
+function getQuestCurrentStep(questId) {
+    const quest = QUEST_REGISTRY.find(q => q.id === questId);
+    if (!quest || isQuestComplete(questId)) return -1;
+    for (let i = 0; i < quest.steps.length; i++) {
+        if (!questState.flags[quest.steps[i].condition]) return i;
+    }
+    return -1; // all steps done but not yet completed (shouldn't happen)
+}
+
+function setQuestFlag(flag) {
+    questState.flags[flag] = true;
+}
+
+function completeQuest(questId) {
+    if (isQuestComplete(questId)) return;
+    const quest = QUEST_REGISTRY.find(q => q.id === questId);
+    if (!quest) return;
+    questState.completed.push(questId);
+
+    // Apply reward
+    const r = quest.reward;
+    if (r.type === 'stat') {
+        questState.permBonuses[r.stat] = (questState.permBonuses[r.stat] || 0) + r.value;
+    } else if (r.type === 'upgrade_reroll') {
+        questState.rerollTokens += r.value;
+    }
+
+    if (typeof Notify !== 'undefined') {
+        Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
+        Notify.toast('Reward: ' + r.desc, { duration: 4, color: '#88cc88' });
+    }
+}
+
+function removeKeyItem(id) {
+    const idx = keyItems.findIndex(k => k.id === id);
+    if (idx !== -1) keyItems.splice(idx, 1);
 }

@@ -381,6 +381,10 @@ let playerInvTimer = 0;
 let multiKillTimer = 0;
 let multiKillCount = 0;
 
+// ── Boss Telegraph Flash — screen-edge flash when telegraph attack fires ──
+let bossTelegraphFlashTimer = 0;
+let bossTelegraphFlashColor = '#ff4444';
+
 // ── COMBAT JUICE STATE ──────────────────────────────────────
 // Damage vignette — red screen-edge flash when player is hit
 let dmgVignetteIntensity = 0;  // 0–1, decays over time
@@ -1368,9 +1372,17 @@ function beginNextWave() {
         wave.bannerSub = 'A powerful enemy approaches...';
         wave.bannerAlpha = 1;
         addScreenShake(4, 0.3);
-        // Play combat music
-        const musicArray = currentZone === 1 ? WAVE_MUSIC : (currentZone === 2 ? ZONE2_WAVE_MUSIC : (currentZone === 4 ? ZONE3_WAVE_MUSIC : ZONE3_WAVE_MUSIC));
-        const combatTrack = musicArray[Math.min(wave.current, musicArray.length - 1)];
+        // Play boss-specific music if available, otherwise use normal wave rotation
+        let combatTrack = null;
+        if (typeof BOSS_MUSIC !== 'undefined' && w.enemies) {
+            for (const eg of w.enemies) {
+                if (BOSS_MUSIC[eg.type]) { combatTrack = BOSS_MUSIC[eg.type]; break; }
+            }
+        }
+        if (!combatTrack) {
+            const musicArray = currentZone === 1 ? WAVE_MUSIC : (currentZone === 2 ? ZONE2_WAVE_MUSIC : (currentZone === 4 ? ZONE3_WAVE_MUSIC : ZONE3_WAVE_MUSIC));
+            combatTrack = musicArray[Math.min(wave.current, musicArray.length - 1)];
+        }
         playMusic(combatTrack, 1.5);
         return;
     }
@@ -1674,7 +1686,8 @@ function updateWaveSystem(dt) {
                     }
                     // Heal player on expansion (same as wave clear heal)
                     const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
-                    const expHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+                    const _qHp1 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+                    const expHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHp1;
                     const expHealAmt = Math.round(expHealMaxHp * 0.20);
                     player.hp = Math.min(expHealMaxHp, player.hp + expHealAmt);
                     pickupTexts.push({
@@ -1698,7 +1711,8 @@ function updateWaveSystem(dt) {
                     playSting('waveCleared');
                     // Wave clear HP heal — 15% of max HP
                     const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
-                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+                    const _qHp2 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHp2;
                     const waveHealAmt = Math.round(waveHealMaxHp * 0.15);
                     player.hp = Math.min(waveHealMaxHp, player.hp + waveHealAmt);
                     pickupTexts.push({
@@ -1718,7 +1732,8 @@ function updateWaveSystem(dt) {
                     playSting('waveCleared');
                     // Wave clear HP heal — 15% of max HP
                     const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
-                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+                    const _qHp3 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHp3;
                     const waveHealAmt = Math.round(waveHealMaxHp * 0.15);
                     player.hp = Math.min(waveHealMaxHp, player.hp + waveHealAmt);
                     pickupTexts.push({
@@ -1791,9 +1806,10 @@ function updateWaveSystem(dt) {
         if (wave.timer <= 0) {
             // Restore some HP/mana between waves as a reward
             const eb = getEquipBonuses();
+            const _qHp4 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
             const formMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus;
             // Percentage-based heal: 20% of max HP (minimum 25), rewards building tanky
-            const maxHP = formMaxHP + (eb.maxHpBonus || 0);
+            const maxHP = formMaxHP + (eb.maxHpBonus || 0) + _qHp4;
             const healAmt = Math.max(25, Math.floor(maxHP * 0.20));
             player.hp = Math.min(maxHP, player.hp + healAmt);
             player.mana = MAX_MANA + (eb.maxManaBonus || 0);
@@ -1811,8 +1827,9 @@ function updateWaveSystem(dt) {
         // Restore full HP/mana — zone reward
         if (wave.timer <= 5.5 && wave.timer > 5.3) {
             const eb = getEquipBonuses();
+            const _qHp5 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
             const zFormMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus;
-            player.hp = zFormMaxHP + (eb.maxHpBonus || 0);
+            player.hp = zFormMaxHP + (eb.maxHpBonus || 0) + _qHp5;
             player.mana = MAX_MANA + (eb.maxManaBonus || 0);
         }
         // Zone clear stays indefinitely — player explores, opens chest, finds door
@@ -2288,6 +2305,18 @@ function spawnEnemy(type, row, col, statMult) {
         enemy.bossDespTimer = 0;
         enemy.fireTrails = [];
         enemy.bossPhase = 0;
+        // Telegraph system — visual warning before big attacks
+        enemy._telegraphing = false;
+        enemy._telegraphTimer = 0;
+        enemy._telegraphDuration = 0;   // total telegraph time (for progress calc)
+        enemy._telegraphType = '';       // 'circle', 'arc', 'cone'
+        enemy._telegraphColor = '#ff4444';
+        enemy._telegraphRadius = 0;
+        enemy._telegraphRow = 0;
+        enemy._telegraphCol = 0;
+        enemy._telegraphAngle = 0;      // center angle for arc/cone
+        enemy._telegraphSpan = 0;       // half-angle for arc/cone
+        enemy._telegraphAttack = '';     // which attack to fire when telegraph ends
     }
 
     enemies.push(enemy);
@@ -2336,6 +2365,9 @@ function spawnEnemy(type, row, col, statMult) {
 
 // ----- ENEMY AI UPDATE -----
 function updateEnemies(dt) {
+    // Tick global boss telegraph flash timer
+    if (bossTelegraphFlashTimer > 0) bossTelegraphFlashTimer -= dt;
+
     for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
 
@@ -2514,7 +2546,8 @@ function updateEnemies(dt) {
                 // Siphon Life: heal on kill
                 if (getUpgrade('regen') > 0) {
                     const healAmt = 2 * getUpgrade('regen');
-                    const killMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0);
+                    const _qHp6 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+                    const killMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _qHp6;
                     player.hp = Math.min(killMaxHP, player.hp + healAmt);
                 }
                 // Phase Flux: chance to reset dodge
@@ -2735,6 +2768,79 @@ function updateEnemies(dt) {
             continue;
         }
 
+        // --- Boss telegraph system — freeze in place, count down, then fire ---
+        if (e.def.isBoss && e._telegraphing) {
+            e._telegraphTimer -= dt;
+            // Freeze in place — slow idle animation
+            e.state = 'idle';
+            e.animFrame = (e.animFrame + e.def.animSpeed * 0.2 * dt) % e.def.frames.idle;
+
+            if (e._telegraphTimer <= 0) {
+                // Telegraph finished — execute the actual attack
+                e._telegraphing = false;
+                const atk = e._telegraphAttack;
+
+                if (atk === 'slime_slam') {
+                    const slamDmg = Math.round(e.def.slamDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
+                    bossAoE(e.row, e.col, e.def.slamRadius, slamDmg, 16, '#88ee44', 5, 'slime_king');
+                    e.howlPaused = 0.4;
+                    e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.4; e.attackFired = true;
+                    // Screen edge flash on attack fire
+                    bossTelegraphFlashTimer = 0.15;
+                    bossTelegraphFlashColor = '#ff4444';
+                } else if (atk === 'flame_sweep') {
+                    const sweepR = e.def.flameSweepRadius;
+                    const sweepCenter = e._telegraphAngle;
+                    for (let p = 0; p < 14; p++) {
+                        const angle = sweepCenter + (p / 14 - 0.5) * Math.PI * 1.2;
+                        const px = e.row + Math.cos(angle) * sweepR;
+                        const py = e.col + Math.sin(angle) * sweepR;
+                        spawnParticle(px, py, Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, 0.5, '#ff6622', 0.9);
+                    }
+                    const pdr = player.row - e.row;
+                    const pdc = player.col - e.col;
+                    const pDist = Math.sqrt(pdr * pdr + pdc * pdc);
+                    if (pDist < sweepR) {
+                        const sweepDmg = Math.round(e.def.flameSweepDamage * (e.bossPhase === 1 ? 1.4 : 1.0));
+                        damagePlayer(sweepDmg, 'infernal_knight');
+                    }
+                    addScreenShake(5, 0.25);
+                    e.howlPaused = 0.35;
+                    e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.35; e.attackFired = true;
+                    bossTelegraphFlashTimer = 0.15;
+                    bossTelegraphFlashColor = '#ff6622';
+                } else if (atk === 'ice_breath') {
+                    const breathDir = e._telegraphAngle;
+                    const breathR = e.def.iceBreathRadius;
+                    const halfAngle = e.def.iceBreathAngle;
+                    for (let p = 0; p < 16; p++) {
+                        const angle = breathDir + (Math.random() - 0.5) * halfAngle * 2;
+                        const dist2 = Math.random() * breathR;
+                        const px = e.row + Math.cos(angle) * dist2;
+                        const py = e.col + Math.sin(angle) * dist2;
+                        spawnParticle(px, py, Math.cos(angle) * 3, Math.sin(angle) * 3, 0.5, '#88ccff', 0.8);
+                    }
+                    const pdr = player.row - e.row;
+                    const pdc = player.col - e.col;
+                    const toPlayerAngle = Math.atan2(pdc, pdr);
+                    let angleDiff = Math.abs(toPlayerAngle - breathDir);
+                    if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+                    const pDist = Math.sqrt(pdr * pdr + pdc * pdc);
+                    if (pDist < breathR && angleDiff < halfAngle) {
+                        const breathDmg = Math.round(e.def.iceBreathDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
+                        damagePlayer(breathDmg, 'frost_wyrm');
+                        player.slowTimer = (player.slowTimer || 0) + 0.8;
+                    }
+                    addScreenShake(4, 0.2);
+                    e.howlPaused = 0.4;
+                    e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.4; e.attackFired = true;
+                    bossTelegraphFlashTimer = 0.15;
+                    bossTelegraphFlashColor = '#44aaff';
+                }
+            }
+            continue; // skip all other actions while telegraphing
+        }
+
         // --- Boss howl attack (AOE at 50% HP) — Werewolf only ---
         if (e.type === 'werewolf' && e.hp < e.maxHp * BOSS_ENRAGE_HP_THRESHOLD && e.howlCooldown <= 0 && Math.random() < BOSS_HOWL_TRIGGER_CHANCE) {
             const howlRadius = 1.5;
@@ -2849,23 +2955,22 @@ function updateEnemies(dt) {
         // SLIME KING ABILITIES
         // =====================================================
         if (e.type === 'slime_king' && dist < e.def.aggroRange) {
-            // Ground Slam — AoE damage around the boss (using shared bossAoE helper)
-            if (e.bossSlamTimer <= 0 && dist < e.def.slamRadius + 1) {
+            // Ground Slam — start telegraph, then AoE fires when telegraph ends
+            if (e.bossSlamTimer <= 0 && dist < e.def.slamRadius + 1 && !e._telegraphing) {
                 e.bossSlamTimer = e.def.slamCooldown * (e.bossPhase === 1 ? 0.7 : 1.0);
-                const slamDmg = Math.round(e.def.slamDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
-                bossAoE(e.row, e.col, e.def.slamRadius, slamDmg, 16, '#88ee44', 5, 'slime_king');
-                e.howlPaused = 0.4;
-                e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.4; e.attackFired = true;
+                // Start telegraph instead of instant attack
+                const telegraphDur = e.bossPhase === 1 ? 0.8 : 1.0;
+                e._telegraphing = true;
+                e._telegraphTimer = telegraphDur;
+                e._telegraphDuration = telegraphDur;
+                e._telegraphType = 'circle';
+                e._telegraphColor = '#ff4444';
+                e._telegraphRadius = e.def.slamRadius;
+                e._telegraphRow = e.row;
+                e._telegraphCol = e.col;
+                e._telegraphAttack = 'slime_slam';
+                sfxBossTelegraph(e.row, e.col);
                 continue;
-            }
-
-            // Slam telegraph — visual warning 0.3s before slam fires
-            if (e.bossSlamTimer > 0 && e.bossSlamTimer <= 0.3 && dist < e.def.slamRadius + 1) {
-                if (Math.random() < 0.5) {
-                    const angle = Math.random() * Math.PI * 2;
-                    spawnParticle(e.row + Math.cos(angle) * e.def.slamRadius, e.col + Math.sin(angle) * e.def.slamRadius,
-                        Math.cos(angle) * 0.5, Math.sin(angle) * 0.5, 0.15, '#ff4444', 0.9);
-                }
             }
 
             // Summon Slime Adds (using shared bossSummonAdds helper)
@@ -3988,7 +4093,8 @@ function checkProjectileEnemyHits() {
                 }
                 // Hit!
                 const baseProjDmg = p.damage || FIREBALL_DAMAGE; // use projectile's own damage if set
-                const dmgBonus = (equipBonus.dmgBonus || 0) + getUpgrade('bigshot') * 5;
+                const _questDmg = (typeof questState !== 'undefined') ? (questState.permBonuses.dmgBonus || 0) : 0;
+                const dmgBonus = (equipBonus.dmgBonus || 0) + getUpgrade('bigshot') * 5 + _questDmg;
                 const shieldReduc = e.isShielding ? (1 - (e.def.shieldDmgReduc || 0)) : 1;
                 const talismanDmg = getTalismanBonus().dmgMult;
                 let projFinalDmg = Math.round((baseProjDmg + dmgBonus) * shieldReduc * talismanDmg);
@@ -4189,7 +4295,8 @@ function checkProjectileEnemyHits() {
                 if (p.marrowLeech) {
                     const healAmt = Math.round(p.damage * MARROW_LEECH_HEAL_MULT);
                     const skelMaxHp = (FORM_CONFIGS.skeleton || {}).maxHp || 80;
-                    const maxHp = skelMaxHp * (1 + getUpgrade('calcium_fort') * 0.15) + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0);
+                    const _qHpSkelE = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+                    const maxHp = skelMaxHp * (1 + getUpgrade('calcium_fort') * 0.15) + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _qHpSkelE;
                     player.hp = Math.min(maxHp, player.hp + healAmt);
                 }
 

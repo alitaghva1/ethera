@@ -28,6 +28,15 @@ const ZONE2_WAVE_MUSIC = ['combat2', 'combat3', 'combat4', 'combat3'];  // Shift
 // Track 10: Crown of Thorns, Track 24: Blood and Honor, Track 12: March of Iron, Track 15: Legends of the Flame
 const ZONE3_WAVE_MUSIC = ['combat3', 'combat4', 'combat4', 'combat4'];  // escalating intensity for boss
 
+// Boss-specific music assignments — override normal wave music rotation
+const BOSS_MUSIC = {
+    slime_king: 'combat2',
+    bone_colossus: 'combat3',
+    infernal_knight: 'combat4',
+    frost_wyrm: 'combat1',
+    ruined_king: 'combat4',
+};
+
 // Audio engine state
 const music = {
     channels: [null, null],   // two Audio channels for crossfading

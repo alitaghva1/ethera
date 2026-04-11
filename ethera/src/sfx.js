@@ -143,6 +143,8 @@ function sfxEnemyDeath(row, col) {
     playTone('sawtooth', 300, 50, 0.3, 0.2 * v, 0.01, 0.25, dest);
     playTone('sine', 200, 40, 0.35, 0.15 * v, 0.01, 0.3, dest);
     playNoise(0.25, 600, 2, 0.18 * v, 0.01, 0.2, dest);
+    // Bass layer — low-frequency punch for impact
+    playTone('sine', 70, 60, 0.1, 0.08 * v, 0.005, 0.1, dest);
 }
 
 function sfxPlayerHurt() {
@@ -294,6 +296,8 @@ function sfxExplosion() {
     playTone('sawtooth', 120, 40, 0.3, 0.2, 0.005, 0.25);
     playNoise(0.3, 400, 1, 0.3, 0.005, 0.25);
     playNoise(0.15, 2000, 2, 0.2, 0.003, 0.12);
+    // Bass layer — deep sub-bass punch for weight
+    playTone('sine', 65, 55, 0.1, 0.1, 0.005, 0.1);
 }
 
 function sfxArrowShoot(row, col) {
@@ -905,4 +909,21 @@ function _ambientPulse(interval, freq) {
     };
     setTimeout(pulseLoop, 200);
     ambientNodes.push({ source: { stop() { running = false; } }, gain: sfxCtx.createGain() });
+}
+
+// ---- BOSS TELEGRAPH WARNING TONE ----
+// Rising pitch over 0.8s — warns player a big attack is coming
+function sfxBossTelegraph(row, col) {
+    if (!sfxCtx || !canPlaySFX(2)) return;
+    trackSFXChannel(0.9);
+    const v = sfxDistanceVol(row, col);
+    if (v < 0.05) return;
+    const pan = sfxPanValue(row, col);
+    const dest = createPannedOutput(pan);
+    // Rising sine tone: 150Hz → 600Hz over 0.8s
+    playTone('sine', 150, 600, 0.8, 0.2 * v, 0.02, 0.75, dest);
+    // Layered triangle for harmonic richness: 200Hz → 800Hz
+    playTone('triangle', 200, 800, 0.7, 0.1 * v, 0.03, 0.65, dest);
+    // Short noise tail at the end for urgency
+    playNoise(0.15, 1500, 3, 0.08 * v, 0.6, 0.8, dest);
 }

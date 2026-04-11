@@ -532,7 +532,8 @@ function drawLichHUD() {
     ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 4); ctx.stroke();
 
     // HP Bar (dark red/purple)
-    const lichMaxHp = FORM_CONFIGS.lich.maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0);
+    const _qHpLich = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    const lichMaxHp = FORM_CONFIGS.lich.maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _qHpLich;
     const hpFrac = Math.max(0, player.hp / lichMaxHp);
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0408';

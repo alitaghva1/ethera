@@ -16,6 +16,8 @@ let zoneTransitionTarget = -1;
 let zoneBannerTimer = 0;       // counts down from ZONE_BANNER_DURATION
 let zoneBannerName = '';        // zone display name
 let zoneBannerSubtitle = '';    // subtitle (e.g. "Act I")
+let zoneBannerModLine = '';     // active modifiers line (e.g. "[Swarm] [Darkness]")
+let zoneBannerNewMod = '';      // newly added modifier (e.g. "New: Haste")
 const ZONE_BANNER_DURATION = 4.0; // total display time in seconds
 const ZONE_BANNER_FADE_IN = 0.8;
 const ZONE_BANNER_FADE_OUT = 1.2;
@@ -33,9 +35,23 @@ function showZoneBanner(zoneNumber) {
     if (!cfg) return;
     zoneBannerName = cfg.name || '';
 
+    // Reset modifier banner text
+    zoneBannerModLine = '';
+    zoneBannerNewMod = '';
+
     if (cfg.isProcedural && typeof endlessUnlocked !== 'undefined' && endlessUnlocked) {
-        // Post-game endless mode
+        // Post-game endless mode — show depth and modifiers
+        const depthNum = zoneNumber >= 100 ? (zoneNumber - 99) : '';
+        zoneBannerName = 'Endless Depth ' + depthNum;
         zoneBannerSubtitle = 'The abyss has no end...';
+
+        // Build modifier display lines
+        if (typeof activeModifiers !== 'undefined' && activeModifiers.length > 0) {
+            zoneBannerModLine = activeModifiers.map(m => '[' + m.name + ']').join('  ');
+        }
+        if (typeof _lastAddedModifier !== 'undefined' && _lastAddedModifier) {
+            zoneBannerNewMod = 'New: ' + _lastAddedModifier.name;
+        }
     } else if (cfg.isProcedural && typeof _nextProceduralTheme !== 'undefined') {
         // Bridge floor between story zones — use theme-specific text
         const themeId = (typeof proceduralDepth !== 'undefined') ? themeForDepth(proceduralDepth).id : 'dungeon';
@@ -51,7 +67,13 @@ function showZoneBanner(zoneNumber) {
 }
 
 function updateZoneBanner(dt) {
-    if (zoneBannerTimer > 0) zoneBannerTimer = Math.max(0, zoneBannerTimer - dt);
+    if (zoneBannerTimer > 0) {
+        zoneBannerTimer = Math.max(0, zoneBannerTimer - dt);
+        // Clear the "new modifier" marker once banner finishes
+        if (zoneBannerTimer <= 0 && typeof _lastAddedModifier !== 'undefined') {
+            _lastAddedModifier = null;
+        }
+    }
 }
 
 function drawZoneBanner() {
@@ -105,6 +127,20 @@ function drawZoneBanner() {
     ctx.globalAlpha = alpha * 0.7;
     ctx.fillStyle = '#c4a878';
     ctx.fillText(zoneBannerSubtitle, cx, cy + 52);
+
+    // Abyss modifier lines (endless mode only)
+    if (zoneBannerModLine) {
+        ctx.font = '13px monospace';
+        ctx.globalAlpha = alpha * 0.55;
+        ctx.fillStyle = '#aa9060';
+        ctx.fillText(zoneBannerModLine, cx, cy + 82);
+    }
+    if (zoneBannerNewMod) {
+        ctx.font = 'bold 14px Georgia';
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = '#ee8844';
+        ctx.fillText(zoneBannerNewMod, cx, cy + (zoneBannerModLine ? 105 : 82));
+    }
 
     ctx.restore();
 }
@@ -249,7 +285,11 @@ function drawHPMana() {
     }
 
     // --- HP Bar (uses smoothed display value) ---
-    const totalMaxHP = MAX_HP + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+    // Abyss modifier: Frailty — reduce max HP in endless mode
+    const _abyssHpMult = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
+        ? getAbyssModMult('hpMult', 1) : 1;
+    const _questHpBonus = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    const totalMaxHP = Math.round((MAX_HP + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _questHpBonus) * _abyssHpMult);
     const hpFrac = Math.max(0, _displayHP / totalMaxHP);
 
     // Dark track
@@ -747,4 +787,119 @@ function drawPickupTexts() {
     }
 }
 
+// ============================================================
+//  ABYSS MODIFIER HUD — active modifier pills (top-right)
+// ============================================================
+const _ABYSS_MOD_COLORS = {
+    swarm:      '#cc8833',
+    iron_horde: '#cc3333',
+    darkness:   '#6644aa',
+    drought:    '#3366aa',
+    frail:      '#aa4455',
+    haste:      '#33aa66',
+    famine:     '#887744',
+    gauntlet:   '#aa6622',
+};
+
+function drawAbyssModifiers() {
+    if (gamePhase !== 'playing') return;
+    if (typeof activeModifiers === 'undefined' || activeModifiers.length === 0) return;
+    if (typeof currentZone === 'undefined' || currentZone < 100) return;
+    if (typeof endlessUnlocked === 'undefined' || !endlessUnlocked) return;
+
+    ctx.save();
+    const padR = 12;
+    const padT = 12;
+    const pillH = 18;
+    const pillGap = 4;
+    const pillPadX = 8;
+
+    ctx.font = 'bold 9px monospace';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'right';
+
+    for (let i = 0; i < activeModifiers.length; i++) {
+        const mod = activeModifiers[i];
+        const color = _ABYSS_MOD_COLORS[mod.id] || '#888888';
+        const textW = ctx.measureText(mod.name).width;
+        const pillW = textW + pillPadX * 2;
+        const px = canvasW - padR - pillW;
+        const py = padT + i * (pillH + pillGap);
+
+        // Pill background
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#0a0806';
+        ctx.beginPath();
+        ctx.roundRect(px, py, pillW, pillH, 3);
+        ctx.fill();
+
+        // Pill border
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(px, py, pillW, pillH, 3);
+        ctx.stroke();
+
+        // Pill text
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = color;
+        ctx.fillText(mod.name, canvasW - padR - pillPadX, py + pillH / 2 + 1);
+    }
+
+    ctx.restore();
+}
+
+// ============================================================
+//  ABYSS RANK BADGE — small corner badge during endless mode
+// ============================================================
+function drawAbyssRankBadge() {
+    if (gamePhase !== 'playing') return;
+    if (typeof getAbyssRank !== 'function') return;
+    if (typeof currentZone === 'undefined' || currentZone < 100) return;
+    if (typeof endlessUnlocked === 'undefined' || !endlessUnlocked) return;
+
+    const rank = getAbyssRank();
+    if (!rank) return;
+
+    ctx.save();
+
+    // Position below the modifier pills
+    const modCount = (typeof activeModifiers !== 'undefined') ? activeModifiers.length : 0;
+    const padR = 12;
+    const startY = 12 + modCount * 22 + 8;
+
+    ctx.font = 'bold 10px Georgia';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+
+    const text = rank.name;
+    const textW = ctx.measureText(text).width;
+    const badgeW = textW + 16;
+    const badgeH = 20;
+    const bx = canvasW - padR - badgeW;
+    const by = startY;
+
+    // Badge background
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#0a0806';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, badgeW, badgeH, 3);
+    ctx.fill();
+
+    // Badge border with rank tint
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = rank.tint || '#888888';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, badgeW, badgeH, 3);
+    ctx.stroke();
+
+    // Rank text
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = rank.tint || '#ccccaa';
+    ctx.fillText(text, canvasW - padR - 8, by + 5);
+
+    ctx.restore();
+}
 

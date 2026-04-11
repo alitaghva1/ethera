@@ -1006,7 +1006,8 @@ function drawSlimeHUD() {
     ctx.stroke();
 
     // HP Bar (red for player slime)
-    const maxHP = FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp;
+    const _qHpSlime = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    const maxHP = FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp + _qHpSlime;
     player.hp = Math.min(player.hp, maxHP); // clamp HP to max
     const hpFrac = Math.max(0, Math.min(1, player.hp / maxHP));
     ctx.globalAlpha = 0.5;

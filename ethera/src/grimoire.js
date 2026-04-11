@@ -707,8 +707,9 @@ function drawMenuStatus(x, y, w, h, fa) {
     const formCfg = FormSystem.getFormConfig() || FORM_CONFIGS.wizard;
     const form = FormSystem.currentForm || 'wizard';
 
-    // --- HP (effective max = base + equipment + talisman) ---
-    const effMaxHP = formCfg.maxHp + (eb.maxHpBonus || 0) + getTalismanBonus().hpBonus;
+    // --- HP (effective max = base + equipment + talisman + quest bonuses) ---
+    const _qHpBonus = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    const effMaxHP = formCfg.maxHp + (eb.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHpBonus;
     ctx.globalAlpha = fa * 0.7;
     ctx.font = '10px Georgia';
     ctx.fillStyle = labelCol;
@@ -796,8 +797,9 @@ function drawMenuStatus(x, y, w, h, fa) {
     // --- Stat rows — form-aware damage label ---
     const dmgLabel = form === 'slime' ? 'Acid Damage' : form === 'skeleton' ? 'Bone Damage' : form === 'lich' ? 'Soul Damage' : 'Wand Damage';
     const baseDmg = formCfg.primaryDmg || 20;
+    const _qDmgBonus = (typeof questState !== 'undefined') ? (questState.permBonuses.dmgBonus || 0) : 0;
     const statRows = [
-        { label: dmgLabel, value: baseDmg + (eb.dmgBonus || 0) },
+        { label: dmgLabel, value: baseDmg + (eb.dmgBonus || 0) + _qDmgBonus },
         { label: 'Creatures Slain', value: wave.totalKilled },
         { label: 'Zone', value: currentZone >= 100 ? 'Depth ' + (currentZone - 99) : currentZone },
     ];
@@ -927,6 +929,32 @@ function drawMenuEquipment(x, y, w, h, fa) {
         const _cbSym = (item && gameSettings.colorblindMode === 'symbols' && typeof RARITY_SYMBOLS !== 'undefined')
             ? RARITY_SYMBOLS[item.rarity].symbol + ' ' : '';
         ctx.fillText(_cbSym + _slotLabel, rect.x + rect.w / 2, rect.y + rect.h + 3);
+    }
+
+    // === SET BONUSES (if any active) ===
+    if (typeof EQUIP_SETS !== 'undefined' && typeof getActiveSetBonuses === 'function') {
+        const equipped = [];
+        for (const slot of EQUIP_SLOTS) {
+            const item = inventory.equipped[slot];
+            if (item) equipped.push(item.name);
+        }
+        let setBonusY = y + GRIM_EQUIP_SIZE + 20;
+        let hasSetBonus = false;
+        for (const [setId, set] of Object.entries(EQUIP_SETS)) {
+            const count = set.items.filter(name => equipped.includes(name)).length;
+            if (count < 2) continue;
+            hasSetBonus = true;
+            const setNames = { infernal: 'Infernal', arcane: 'Arcane', warden: 'Warden' };
+            const label = setNames[setId] || setId;
+            const tier = count >= 4 ? '4' : '2';
+            const desc = count >= 4 && set.bonus4 ? set.bonus4.desc : set.bonus2.desc;
+            ctx.globalAlpha = fa * 0.6;
+            ctx.textAlign = 'center';
+            ctx.font = '8px monospace';
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText(label + ' Set (' + count + '/4): ' + desc, x + w / 2, setBonusY);
+            setBonusY += 11;
+        }
     }
 
     // === BACKPACK SEPARATOR ===
@@ -1150,6 +1178,40 @@ function drawMenuQuests(x, y, w, h, fa) {
         });
     }
 
+    // --- NPC Quest Chains (from QUEST_REGISTRY) ---
+    if (typeof QUEST_REGISTRY !== 'undefined' && typeof questState !== 'undefined') {
+        for (const quest of QUEST_REGISTRY) {
+            // Only show quests that have been started or completed
+            const started = questState.flags[quest.steps[0].condition] || isQuestComplete(quest.id);
+            if (!started) continue;
+
+            const completed = isQuestComplete(quest.id);
+
+            // Section header for this quest chain
+            quests.push({ text: '', done: false, isSpacer: true });
+            quests.push({
+                text: quest.name + (completed ? '  [COMPLETE]' : ''),
+                done: completed,
+                isHeader: true,
+            });
+
+            // Individual steps
+            for (const step of quest.steps) {
+                const stepDone = !!questState.flags[step.condition];
+                quests.push({ text: step.text, done: stepDone });
+            }
+
+            // Reward line
+            if (completed) {
+                quests.push({
+                    text: 'Reward: ' + quest.reward.desc,
+                    done: true,
+                    isReward: true,
+                });
+            }
+        }
+    }
+
     if (quests.length === 0) {
         ctx.globalAlpha = fa * 0.3;
         ctx.font = 'italic 11px Georgia';
@@ -1164,6 +1226,32 @@ function drawMenuQuests(x, y, w, h, fa) {
     }
 
     for (const q of quests) {
+        // Spacer
+        if (q.isSpacer) {
+            ly += 10;
+            continue;
+        }
+
+        // Quest chain header
+        if (q.isHeader) {
+            ctx.globalAlpha = fa * (q.done ? 0.4 : 0.7);
+            ctx.font = q.done ? 'italic bold 11px Georgia' : 'bold 11px Georgia';
+            ctx.fillStyle = q.done ? '#88cc88' : GM.gold;
+            ctx.fillText(q.text, x, ly);
+            ly += 18;
+            continue;
+        }
+
+        // Reward line
+        if (q.isReward) {
+            ctx.globalAlpha = fa * 0.4;
+            ctx.font = 'italic 9px Georgia';
+            ctx.fillStyle = '#88cc88';
+            ctx.fillText(q.text, x + 20, ly + 1);
+            ly += 20;
+            continue;
+        }
+
         // Checkbox
         ctx.globalAlpha = fa * (q.done ? 0.4 : 0.2);
         ctx.strokeStyle = q.done ? GM.gold : GM.goldFaint;

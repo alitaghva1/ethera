@@ -5,7 +5,7 @@
 // When running in Electron, saves go to the user's AppData folder as JSON files.
 // When running in a browser, saves use localStorage as before.
 
-const SAVE_FORMAT_VERSION = 4;  // bump when save schema changes
+const SAVE_FORMAT_VERSION = 6;  // bump when save schema changes
 
 // Helper: detect if we're running inside Electron with file save support
 const _useFileSaves = typeof window !== 'undefined' && window.ethera && window.ethera.isElectron;
@@ -60,6 +60,12 @@ function saveGame(slotIdx) {
         isProceduralZone: isProceduralZone,
         proceduralDepth: proceduralDepth,
         deepestDepthReached: deepestDepthReached,
+        claimedMilestones: typeof claimedMilestones !== 'undefined' ? [...claimedMilestones] : [],
+        activeModifierIds: (typeof activeModifiers !== 'undefined') ? activeModifiers.map(m => m.id) : [],
+        questFlags: typeof questState !== 'undefined' ? { ...questState.flags } : {},
+        questCompleted: typeof questState !== 'undefined' ? [...questState.completed] : [],
+        questRerollTokens: typeof questState !== 'undefined' ? questState.rerollTokens : 0,
+        questPermBonuses: typeof questState !== 'undefined' ? { ...questState.permBonuses } : { dmgBonus: 0, maxHpBonus: 0 },
     };
     try {
         if (_useFileSaves) {
@@ -116,6 +122,18 @@ function _migrateSave(data) {
             data.talisman.perks = [];
         }
         data.version = 4;
+    }
+    if (data.version < 5) {
+        if (!data.claimedMilestones) data.claimedMilestones = [];
+        data.version = 5;
+    }
+    if (data.version < 6) {
+        if (!data.activeModifierIds) data.activeModifierIds = [];
+        if (!data.questFlags) data.questFlags = {};
+        if (!data.questCompleted) data.questCompleted = [];
+        if (data.questRerollTokens === undefined) data.questRerollTokens = 0;
+        if (!data.questPermBonuses) data.questPermBonuses = { dmgBonus: 0, maxHpBonus: 0 };
+        data.version = 6;
     }
     return data;
 }
@@ -229,6 +247,46 @@ function loadGame(slotIdx) {
     if (data.isProceduralZone != null) isProceduralZone = data.isProceduralZone;
     if (data.proceduralDepth != null) proceduralDepth = data.proceduralDepth;
     if (data.deepestDepthReached != null) deepestDepthReached = data.deepestDepthReached;
+
+    // Restore abyss milestones and re-apply their permanent rewards
+    if (typeof claimedMilestones !== 'undefined') {
+        // Reset base stats before re-applying milestones (prevents stacking on multiple loads)
+        if (typeof _BASE_MAX_HP !== 'undefined') PLAYER_STATS.maxHp = _BASE_MAX_HP;
+        if (typeof _BASE_FIREBALL_DMG !== 'undefined') COMBAT.fireballDmg = _BASE_FIREBALL_DMG;
+        claimedMilestones.length = 0;
+        if (data.claimedMilestones && Array.isArray(data.claimedMilestones)) {
+            for (const depth of data.claimedMilestones) {
+                claimedMilestones.push(depth);
+                // Re-apply milestone rewards
+                if (typeof ABYSS_MILESTONES !== 'undefined') {
+                    const m = ABYSS_MILESTONES.find(ms => ms.depth === depth);
+                    if (m) {
+                        if (m.reward.type === 'hp') PLAYER_STATS.maxHp += m.reward.value;
+                        else if (m.reward.type === 'damage') COMBAT.fireballDmg += m.reward.value;
+                    }
+                }
+            }
+        }
+    }
+
+    // Restore abyss modifiers
+    if (typeof activeModifiers !== 'undefined' && typeof ABYSS_MODIFIERS !== 'undefined') {
+        activeModifiers.length = 0;
+        if (data.activeModifierIds && Array.isArray(data.activeModifierIds)) {
+            for (const id of data.activeModifierIds) {
+                const mod = ABYSS_MODIFIERS.find(m => m.id === id);
+                if (mod) activeModifiers.push(mod);
+            }
+        }
+    }
+
+    // Restore quest chain state
+    if (typeof questState !== 'undefined') {
+        questState.flags = data.questFlags || {};
+        questState.completed = data.questCompleted || [];
+        questState.rerollTokens = data.questRerollTokens || 0;
+        questState.permBonuses = data.questPermBonuses || { dmgBonus: 0, maxHpBonus: 0 };
+    }
 
     // Set wave to zoneClear so player can explore and use doors/chests
     wave.current = data.waveNum || 0;

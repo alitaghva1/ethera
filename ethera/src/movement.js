@@ -269,7 +269,10 @@ function updatePlayer(dt) {
     // --- Mana regeneration (capped by locked mana from summons) ---
     const lockedMana = summons.reduce((sum, s) => sum + s.manaLocked, 0);
     const effMaxMana = (MAX_MANA + (equipBonus.maxManaBonus || 0)) - lockedMana;
-    const effManaRegen = MANA_REGEN * (1 + (equipBonus.manaRegenMult || 0) + getUpgrade('manasurge') * 0.25) * getTalismanBonus().manaRegenMult;
+    // Abyss modifier: Drought — halve mana regen in endless mode
+    const _abyssManaRegenMult = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
+        ? getAbyssModMult('manaRegenMult', 1) : 1;
+    const effManaRegen = MANA_REGEN * (1 + (equipBonus.manaRegenMult || 0) + getUpgrade('manasurge') * 0.25) * getTalismanBonus().manaRegenMult * _abyssManaRegenMult;
     if (player.manaRegenTimer > 0) {
         player.manaRegenTimer -= dt;
     } else if (player.mana < effMaxMana) {

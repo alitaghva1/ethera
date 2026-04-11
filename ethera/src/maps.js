@@ -1223,6 +1223,9 @@ function generateZone3() {
     // Extra chest in Spiral Ascent corridor
     placeObj(18, 20, 'chestClosed');
 
+    // Quest item chest — Ancient Tome (Hermit's quest)
+    placeObj(8, 22, 'chestClosed');
+
     // ===== SEAL DATA — east wall tiles (col 14, rows 15-20) =====
     const z3SealTiles = [];
     for (let r = 15; r <= 20; r++) {
@@ -1979,6 +1982,9 @@ function generateHellZone() {
     // Extra chest in Sacrificial Pits area
     placeObj(16, 25, 'chestClosed');
 
+    // Quest item chest — Infernal Ore (Garrett's quest)
+    placeObj(10, 8, 'chestClosed');
+
     // ===== SEAL DATA — east wall of Crucible (col 19, rows 13-19) =====
     const z4SealTiles = [];
     for (let r = 13; r <= 19; r++) {
@@ -2140,6 +2146,9 @@ function generateZone5() {
 
     // Extra chest in Frozen Gallery
     placeObj(8, 15, 'chestClosed');
+
+    // Quest item chest — Frost Essence (Senna's quest)
+    placeObj(14, 18, 'chestClosed');
 
     // ===== SEAL DATA — east wall of Frozen Gallery (col 19, rows 10-15) =====
     const z5SealTiles = [];
