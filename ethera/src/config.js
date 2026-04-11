@@ -147,8 +147,24 @@ const ZONE_CONFIGS = {
     6: { ...ZONE_TILE_DEFAULTS, name: 'Throne of Ruin', mapSize: 36, isHell: true, isFinalZone: true },
 };
 
+// Dynamic config for procedural zones (100+)
+function getProceduralZoneConfig(zoneNum) {
+    const depth = zoneNum - 99;
+    const ms = Math.min(36, 28 + depth * 2);
+    const isHellDepth = depth >= 5;
+    return {
+        ...ZONE_TILE_DEFAULTS,
+        name: 'Depth ' + depth,
+        mapSize: ms,
+        hasWaves: true,
+        isHell: isHellDepth,
+        isFrozen: depth >= 7 && depth <= 8,
+        isProcedural: true,
+    };
+}
+
 function applyZoneTileConfig(zoneNumber) {
-    const cfg = ZONE_CONFIGS[zoneNumber] || ZONE_CONFIGS[1];
+    const cfg = ZONE_CONFIGS[zoneNumber] || (zoneNumber >= 100 ? getProceduralZoneConfig(zoneNumber) : ZONE_CONFIGS[1]);
     TILE_SCALE = cfg.tileScale;
     TILE_IMG_W = cfg.tileImgW;
     TILE_IMG_H = cfg.tileImgH;

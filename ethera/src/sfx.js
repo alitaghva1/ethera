@@ -387,10 +387,39 @@ function sfxCinematicStand() {
     playTone('sine', 110, 165, 0.7, 0.12, 0.1, 0.6);
 }
 
+// ---- EQUIPMENT SFX ----
+
+function sfxEquip() {
+    if (!sfxCtx) return;
+    // Metallic click + magical hum — item slots into place
+    playNoise(0.06, 3000, 8, 0.18, 0.002, 0.05);
+    playTone('sine', 600, 800, 0.1, 0.12, 0.005, 0.1);
+    setTimeout(() => { if (sfxCtx) playTone('triangle', 900, 900, 0.08, 0.08, 0.003, 0.08); }, 50);
+}
+
+function sfxUnequip() {
+    if (!sfxCtx) return;
+    // Softer reverse click — item removed
+    playNoise(0.04, 2000, 6, 0.12, 0.002, 0.04);
+    playTone('sine', 700, 400, 0.08, 0.1, 0.005, 0.08);
+}
+
+function sfxRarePickup() {
+    if (!sfxCtx) return;
+    // Sparkle shimmer — ascending chime with harmonics for rare+ items
+    playTone('sine', 600, 600, 0.06, 0.2, 0.005, 0.06);
+    setTimeout(() => { if (sfxCtx) playTone('sine', 900, 900, 0.08, 0.2, 0.005, 0.08); }, 60);
+    setTimeout(() => { if (sfxCtx) playTone('triangle', 1200, 1200, 0.1, 0.18, 0.005, 0.1); }, 120);
+    setTimeout(() => { if (sfxCtx) playTone('sine', 1500, 1500, 0.12, 0.12, 0.005, 0.12); }, 180);
+    // Sparkle noise
+    setTimeout(() => { if (sfxCtx) playNoise(0.15, 6000, 3, 0.06, 0.01, 0.12); }, 100);
+}
+
 // ----- DEATH & HIT FEEDBACK -----
 let gameDead = false;
 let deathFadeTimer = 0;
 let deathBtnRect = null;
+let deathMenuBtnRect = null;
 let screenShakeTimer = 0;
 let screenShakeIntensity = 0;
 let hitPauseTimer = 0;

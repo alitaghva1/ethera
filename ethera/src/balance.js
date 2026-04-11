@@ -517,6 +517,12 @@ function handleMouseDown(e) {
             menuFadeTarget = 'nameEntry';
             return;
         }
+        if (pointInButton(mouse.x, mouse.y, btns.endless)) {
+            // Start Endless Dungeon mode — skip name entry, go straight to gameplay
+            gamePhase = 'menuFade';
+            menuFadeTarget = 'endless';
+            return;
+        }
         if (pointInButton(mouse.x, mouse.y, btns.loadGame) && !btns.loadGame.disabled) {
             gamePhase = 'menuFade';
             menuFadeTarget = 'loadScreen';
@@ -575,7 +581,15 @@ function handleMouseDown(e) {
     // Death screen click handling
     if (gameDead && deathBtnRect && e.button === 0) {
         if (pointInButton(mouse.x, mouse.y, deathBtnRect)) {
+            drawDeathScreen._tip = null; // reset cached tip
             restartGame();
+            return;
+        }
+        if (deathMenuBtnRect && pointInButton(mouse.x, mouse.y, deathMenuBtnRect)) {
+            drawDeathScreen._tip = null;
+            restartGame();
+            gamePhase = 'menu';
+            setPixelCursor('default');
             return;
         }
         return;

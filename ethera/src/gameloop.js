@@ -125,6 +125,7 @@ function updateMenuPhase(dt) {
     if (gamePhase === 'menu') {
         const btns = getMenuButtons();
         if (pointInButton(mouse.x, mouse.y, btns.start)) menuHover = 'start';
+        else if (pointInButton(mouse.x, mouse.y, btns.endless)) menuHover = 'endless';
         else if (pointInButton(mouse.x, mouse.y, btns.loadGame) && !btns.loadGame.disabled) menuHover = 'loadGame';
         else if (pointInButton(mouse.x, mouse.y, btns.controls)) menuHover = 'controls';
     } else if (gamePhase === 'menuControls') {
@@ -165,6 +166,22 @@ function updateMenuFadePhase(dt) {
             loadSaveSlots(); // refresh slots
         } else if (menuFadeTarget === 'intro') {
             runIntro();
+        } else if (menuFadeTarget === 'endless') {
+            // Start Endless Dungeon mode at depth 1
+            playerName = 'Wanderer';
+            FormSystem.currentForm = 'wizard';
+            const startConfig = FORM_CONFIGS.wizard;
+            player.hp = startConfig.maxHp;
+            player.mana = startConfig.maxMana || 0;
+            xpState.level = 1; xpState.xp = 0; xpState.xpToNext = xpForLevel(1);
+            currentZone = 100;
+            loadZone(100);
+            showZoneBanner(100);
+            if (typeof Notify !== 'undefined') Notify.showControlsOnce();
+            gamePhase = 'playing';
+            lightRadius = MAX_LIGHT;
+            setPixelCursor('none');
+            lastTime = performance.now();
         }
     }
 }
@@ -441,6 +458,10 @@ function updateGameplay(dt) {
     }
     if (typeof Notify !== 'undefined') Notify.update(dt);
     if (towerModeDisplayTimer > 0) towerModeDisplayTimer -= dt;
+    updateZoneBanner(dt);
+    // Procedural dungeon systems
+    if (typeof updateHazards === 'function') updateHazards(dt);
+    if (typeof checkSecretWalls === 'function') checkSecretWalls();
     updateCamera(dt);
 
     // Update fog of war — throttled to ~4 times per second
@@ -461,6 +482,7 @@ function updateGameplay(dt) {
                 const nextZone = ZONE_TARGET_MAP[zoneTransitionTarget] != null
                     ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
                 loadZone(nextZone);
+                showZoneBanner(nextZone);
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
             }
@@ -768,8 +790,9 @@ function getMenuButtons() {
     const hasAnySave = saveSlots.some(s => s !== null);
     return {
         start:    { x: cx - btnW / 2, y: cy + 30,          w: btnW, h: btnH, label: 'NEW GAME',    id: 'start' },
-        loadGame: { x: cx - btnW / 2, y: cy + 30 + gap,    w: btnW, h: btnH, label: 'LOAD GAME',   id: 'loadGame', disabled: !hasAnySave },
-        controls: { x: cx - btnW / 2, y: cy + 30 + gap * 2, w: btnW, h: btnH, label: 'CONTROLS',   id: 'controls' },
+        endless:  { x: cx - btnW / 2, y: cy + 30 + gap,    w: btnW, h: btnH, label: 'ENDLESS DUNGEON', id: 'endless' },
+        loadGame: { x: cx - btnW / 2, y: cy + 30 + gap * 2, w: btnW, h: btnH, label: 'LOAD GAME',   id: 'loadGame', disabled: !hasAnySave },
+        controls: { x: cx - btnW / 2, y: cy + 30 + gap * 3, w: btnW, h: btnH, label: 'CONTROLS',   id: 'controls' },
     };
 }
 
@@ -989,6 +1012,7 @@ function drawMenuScreen(dt) {
     // ----- Buttons -----
     const btns = getMenuButtons();
     drawMenuButton(btns.start, menuHover === 'start', menuFadeAlpha);
+    drawMenuButton(btns.endless, menuHover === 'endless', menuFadeAlpha);
     drawMenuButton(btns.loadGame, menuHover === 'loadGame', menuFadeAlpha, btns.loadGame.disabled);
     drawMenuButton(btns.controls, menuHover === 'controls', menuFadeAlpha);
 
@@ -1938,49 +1962,74 @@ function drawDeathScreen() {
         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
         ctx.lineWidth = 2;
 
-        // Wave info
-        ctx.font = '16px Georgia';
+        // Stats summary
+        ctx.font = '14px Georgia';
         ctx.fillStyle = '#8a6a5a';
-        ctx.strokeText(`Fell on Wave ${wave.current + 1}  —  ${wave.totalKilled} enemies slain`, cx, cy + 10);
-        ctx.fillText(`Fell on Wave ${wave.current + 1}  —  ${wave.totalKilled} enemies slain`, cx, cy + 10);
+        const zoneName = ZONE_CONFIGS[currentZone] ? ZONE_CONFIGS[currentZone].name : 'Unknown';
+        const formName = FormSystem.currentForm ? FormSystem.currentForm.charAt(0).toUpperCase() + FormSystem.currentForm.slice(1) : 'Unknown';
+        const statsY = cy + 8;
+        ctx.strokeText(`Wave ${wave.current + 1}  ·  ${wave.totalKilled} slain  ·  ${zoneName}  ·  ${formName} form`, cx, statsY);
+        ctx.fillText(`Wave ${wave.current + 1}  ·  ${wave.totalKilled} slain  ·  ${zoneName}  ·  ${formName} form`, cx, statsY);
 
         // Death cause recap
         if (deathCause) {
             ctx.font = '13px Georgia';
             ctx.fillStyle = '#bb7766';
             const causeText = `Slain by ${deathCause}`;
-            ctx.strokeText(causeText, cx, cy + 35);
-            ctx.fillText(causeText, cx, cy + 35);
+            ctx.strokeText(causeText, cx, statsY + 24);
+            ctx.fillText(causeText, cx, statsY + 24);
         }
 
-        // Random tip (show after death cause)
-        const deathTips = [
-            "Try dodging more frequently.",
-            "Equip better gear from the Grimoire.",
-            "Summon towers to help in combat.",
-            "Explore for chests to find loot.",
-            "Watch enemy attack patterns."
-        ];
-        const tip = deathTips[Math.floor(Math.random() * deathTips.length)];
+        // Decorative separator
+        ctx.globalAlpha = textAlpha * 0.3;
+        ctx.strokeStyle = '#8a6a5a';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx - 100, statsY + 42);
+        ctx.lineTo(cx + 100, statsY + 42);
+        ctx.stroke();
+        ctx.globalAlpha = textAlpha;
+
+        // Random tip
+        if (!drawDeathScreen._tip) {
+            const deathTips = [
+                "Try dodging more frequently.",
+                "Equip better gear from the Grimoire.",
+                "Summon towers to help in combat.",
+                "Explore for chests to find loot.",
+                "Watch enemy attack patterns."
+            ];
+            drawDeathScreen._tip = deathTips[Math.floor(Math.random() * deathTips.length)];
+        }
         ctx.font = '11px Georgia';
         ctx.fillStyle = '#7a6a5a';
-        ctx.globalAlpha = textAlpha * 0.7;
-        ctx.strokeText(`Tip: ${tip}`, cx, cy + 58);
-        ctx.fillText(`Tip: ${tip}`, cx, cy + 58);
+        ctx.globalAlpha = textAlpha * 0.6;
+        ctx.strokeText(`Tip: ${drawDeathScreen._tip}`, cx, statsY + 58);
+        ctx.fillText(`Tip: ${drawDeathScreen._tip}`, cx, statsY + 58);
         ctx.globalAlpha = textAlpha;
     }
 
     if (t > 2.5) {
         const btnAlpha = Math.min(1, (t - 2.5) / 0.8);
-        // Restart button
-        const btnW = 200, btnH = 44;
-        const btnX = cx - btnW / 2, btnY = cy + 50;
-        deathBtnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
-
-        const hovered = mouse.x >= btnX && mouse.x <= btnX + btnW && mouse.y >= btnY && mouse.y <= btnY + btnH;
         ctx.globalAlpha = btnAlpha;
-        drawMenuButton({ x: btnX, y: btnY, w: btnW, h: btnH, label: 'RISE AGAIN' }, hovered, btnAlpha);
-        setPixelCursor(hovered ? 'pointer' : 'default');
+
+        // "Rise Again" button
+        const btnW = 180, btnH = 40;
+        const btnGap = 12;
+        const btnX = cx - btnW - btnGap / 2, btnY = cy + 80;
+        deathBtnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
+        const hoveredRestart = mouse.x >= btnX && mouse.x <= btnX + btnW && mouse.y >= btnY && mouse.y <= btnY + btnH;
+        drawMenuButton({ x: btnX, y: btnY, w: btnW, h: btnH, label: 'RISE AGAIN' }, hoveredRestart, btnAlpha);
+
+        // "Return to Menu" button
+        const menuBtnX = cx + btnGap / 2, menuBtnY = btnY;
+        if (!deathMenuBtnRect) deathMenuBtnRect = {};
+        deathMenuBtnRect.x = menuBtnX; deathMenuBtnRect.y = menuBtnY;
+        deathMenuBtnRect.w = btnW; deathMenuBtnRect.h = btnH;
+        const hoveredMenu = mouse.x >= menuBtnX && mouse.x <= menuBtnX + btnW && mouse.y >= menuBtnY && mouse.y <= menuBtnY + btnH;
+        drawMenuButton({ x: menuBtnX, y: menuBtnY, w: btnW, h: btnH, label: 'RETURN TO MENU' }, hoveredMenu, btnAlpha);
+
+        setPixelCursor((hoveredRestart || hoveredMenu) ? 'pointer' : 'default');
     }
 
     ctx.restore();
@@ -2113,6 +2162,7 @@ function restartGame() {
     deathFadeTimer = 0;
     deathCause = '';
     deathBtnRect = null;
+    deathMenuBtnRect = null;
     gamePaused = false;
     // Reset camera
     const startPos = tileToScreen(player.row, player.col);
@@ -2187,6 +2237,9 @@ function restartGame() {
     seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0)); // new seed each restart
     currentZone = 1;
     loadZone(1);
+    showZoneBanner(1);
+    // Show controls overlay on first game start
+    if (typeof Notify !== 'undefined') Notify.showControlsOnce();
     updateDoorDefsForZone(1);
     updateChestDefsForZone(1);
     buildRoomBounds();
@@ -2343,6 +2396,10 @@ function render() {
                 }
                 drawTileEdgeShadows(row, col);
                 drawRoughFloorHint(row, col);
+                // Procedural hazard overlays (lava, acid, spikes, ice)
+                if (typeof hazardMap !== 'undefined' && hazardMap.length > 0 && hazardMap[row] && hazardMap[row][col]) {
+                    drawHazardOverlayTile(row, col);
+                }
                 if (_fogDim) ctx.restore();
             }
 
@@ -2736,7 +2793,10 @@ function render() {
             BackgroundManager.drawDebug(ctx, canvasW, canvasH, cameraX, cameraY);
         }
 
-        // ── LAYER 10: Zone transition overlay ──
+        // ── LAYER 10: Zone name banner ──
+        drawZoneBanner();
+
+        // ── LAYER 11: Zone transition overlay ──
         if (zoneTransitionAlpha > 0) {
             ctx.save();
             ctx.globalAlpha = zoneTransitionAlpha;
@@ -3070,6 +3130,7 @@ async function init() {
         xpState.xp = 0;
         xpState.xpToNext = xpForLevel(xpState.level);
         loadZone(DEBUG_START_ZONE);
+        showZoneBanner(DEBUG_START_ZONE);
         gamePhase = 'playing';
         lightRadius = MAX_LIGHT;
         setPixelCursor('none');

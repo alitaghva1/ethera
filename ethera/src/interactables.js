@@ -353,6 +353,7 @@ function equipItem(backpackIdx) {
     inventory.backpack.splice(backpackIdx, 1);
     if (current) inventory.backpack.push(current);
     inventory.equipped[slot] = item;
+    if (typeof sfxEquip === 'function') sfxEquip();
 }
 
 // Unequip to backpack
@@ -372,6 +373,7 @@ function unequipItem(slot) {
     }
     inventory.equipped[slot] = null;
     inventory.backpack.push(item);
+    if (typeof sfxUnequip === 'function') sfxUnequip();
 }
 
 // Drop item from backpack to world
@@ -745,6 +747,23 @@ function loadZone(zoneNumber) {
         player.col = 15;
         player.vx = 0;
         player.vy = 0;
+    } else if (zoneNumber >= 100 && typeof generateProceduralZone === 'function') {
+        // Procedural Endless Dungeon zones
+        const depth = zoneNumber - 99;
+        const theme = themeForDepth(depth);
+        const result = generateProceduralZone({
+            mapSize: Math.min(36, 28 + depth * 2),
+            depth,
+            theme,
+            seed: Date.now() ^ (Math.random() * 0xFFFFFF | 0),
+            enableSeal: depth >= 2,
+            hazardDensity: Math.min(0.10, 0.02 + depth * 0.01),
+            secretChance: 0.3,
+        });
+        player.row = result.spawnRow;
+        player.col = result.spawnCol;
+        player.vx = 0;
+        player.vy = 0;
     }
 
     // Validate spawn position is walkable; if blocked, search nearby tiles (BUG-010)
@@ -791,7 +810,7 @@ function loadZone(zoneNumber) {
     if (typeof startAmbient === 'function') startAmbient(zoneNumber);
 
     // Reset wave system (skip for non-combat zones like town)
-    const _zoneCfg = ZONE_CONFIGS[zoneNumber];
+    const _zoneCfg = ZONE_CONFIGS[zoneNumber] || (zoneNumber >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(zoneNumber) : null);
     if (_zoneCfg && _zoneCfg.hasWaves) {
         startWaveSystem();
     } else {

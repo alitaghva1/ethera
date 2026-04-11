@@ -178,7 +178,9 @@ function tryPickupDrops() {
                 });
                 inventory.backpack.push(d.item);
                 worldDrops.splice(i, 1);
-                sfxItemPickup();
+                // Play rare sparkle for rare+ items, normal chime for common/uncommon
+                if (d.item.rarity >= 2 && typeof sfxRarePickup === 'function') sfxRarePickup();
+                else sfxItemPickup();
             } else {
                 // Inventory full — show feedback message
                 pickupTexts.push({

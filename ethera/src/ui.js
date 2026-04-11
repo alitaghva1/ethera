@@ -11,6 +11,89 @@ let zoneTransitionFading = false;
 let zoneTransitionTarget = -1;
 
 // ============================================================
+//  ZONE NAME BANNER — dramatic title on zone entry
+// ============================================================
+let zoneBannerTimer = 0;       // counts down from ZONE_BANNER_DURATION
+let zoneBannerName = '';        // zone display name
+let zoneBannerSubtitle = '';    // subtitle (e.g. "Act I")
+const ZONE_BANNER_DURATION = 4.0; // total display time in seconds
+const ZONE_BANNER_FADE_IN = 0.8;
+const ZONE_BANNER_FADE_OUT = 1.2;
+
+function showZoneBanner(zoneNumber) {
+    const cfg = ZONE_CONFIGS[zoneNumber] || (zoneNumber >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(zoneNumber) : null);
+    if (!cfg) return;
+    zoneBannerName = cfg.name || '';
+    // Subtitle based on zone type
+    if (cfg.isProcedural) zoneBannerSubtitle = 'Endless Dungeon';
+    else if (cfg.isTown) zoneBannerSubtitle = 'Safe Haven';
+    else if (cfg.isFinalZone) zoneBannerSubtitle = 'The End Awaits';
+    else if (cfg.isFrozen) zoneBannerSubtitle = 'Depths of Despair';
+    else if (cfg.isHell) zoneBannerSubtitle = 'Descent into Flame';
+    else zoneBannerSubtitle = 'Act I';
+    zoneBannerTimer = ZONE_BANNER_DURATION;
+}
+
+function updateZoneBanner(dt) {
+    if (zoneBannerTimer > 0) zoneBannerTimer = Math.max(0, zoneBannerTimer - dt);
+}
+
+function drawZoneBanner() {
+    if (zoneBannerTimer <= 0 || !zoneBannerName) return;
+
+    const elapsed = ZONE_BANNER_DURATION - zoneBannerTimer;
+    // Compute alpha: fade in, hold, fade out
+    let alpha;
+    if (elapsed < ZONE_BANNER_FADE_IN) {
+        alpha = elapsed / ZONE_BANNER_FADE_IN;
+    } else if (zoneBannerTimer < ZONE_BANNER_FADE_OUT) {
+        alpha = zoneBannerTimer / ZONE_BANNER_FADE_OUT;
+    } else {
+        alpha = 1;
+    }
+
+    const cx = canvasW / 2;
+    const cy = canvasH * 0.3;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Zone name — large golden text with shadow
+    ctx.font = '52px Georgia';
+    ctx.shadowColor = 'rgba(180, 140, 40, 0.6)';
+    ctx.shadowBlur = 30;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#e8c868';
+    ctx.fillText(zoneBannerName, cx, cy);
+    ctx.shadowBlur = 0;
+
+    // Decorative line above
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.strokeStyle = '#c4a050';
+    ctx.lineWidth = 1;
+    const lineW = ctx.measureText(zoneBannerName).width * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(cx - lineW, cy - 38);
+    ctx.lineTo(cx + lineW, cy - 38);
+    ctx.stroke();
+
+    // Decorative line below
+    ctx.beginPath();
+    ctx.moveTo(cx - lineW, cy + 32);
+    ctx.lineTo(cx + lineW, cy + 32);
+    ctx.stroke();
+
+    // Subtitle — smaller italic
+    ctx.font = 'italic 20px Georgia';
+    ctx.globalAlpha = alpha * 0.7;
+    ctx.fillStyle = '#c4a878';
+    ctx.fillText(zoneBannerSubtitle, cx, cy + 52);
+
+    ctx.restore();
+}
+
+// ============================================================
 function drawPanel9Slice(img, x, y, w, h, border, scale) {
     if (!img) return;
     const s = border;           // source border size
@@ -66,6 +149,18 @@ function drawObjective() {
     ctx.strokeText(currentObjective, objX, objY);
     ctx.fillText(currentObjective, objX, objY);
     ctx.shadowBlur = 0;
+
+    // Depth indicator for Endless Dungeon mode
+    if (typeof isProceduralZone !== 'undefined' && isProceduralZone && typeof proceduralDepth !== 'undefined') {
+        ctx.globalAlpha = 0.6;
+        ctx.font = '11px monospace';
+        ctx.fillStyle = '#aa9060';
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+        const depthText = 'DEPTH ' + proceduralDepth;
+        ctx.strokeText(depthText, objX, objY + 20);
+        ctx.fillText(depthText, objX, objY + 20);
+    }
 
     ctx.restore();
 }

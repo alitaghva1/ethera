@@ -1129,7 +1129,7 @@ function beginNextWave() {
     lightRadius = MAX_LIGHT;
     // Fixed waves exhausted — generate dynamic ones (no more victory screen, endless mode)
     let w;
-    const waveArray = currentZone === 1 ? WAVES : currentZone === 2 ? ZONE2_WAVES : currentZone === 4 ? ZONE4_WAVES : currentZone === 5 ? ZONE5_WAVES : currentZone === 6 ? ZONE6_WAVES : ZONE3_WAVES;
+    const waveArray = currentZone === 1 ? WAVES : currentZone === 2 ? ZONE2_WAVES : currentZone === 4 ? ZONE4_WAVES : currentZone === 5 ? ZONE5_WAVES : currentZone === 6 ? ZONE6_WAVES : (typeof PROCEDURAL_WAVES !== 'undefined' && PROCEDURAL_WAVES[currentZone]) ? PROCEDURAL_WAVES[currentZone] : ZONE3_WAVES;
     if (wave.current < waveArray.length) {
         w = waveArray[wave.current];
     } else {
@@ -1234,6 +1234,7 @@ function spawnWaveEnemies() {
     else if (currentZone === 4) waveArray = ZONE4_WAVES;
     else if (currentZone === 5) waveArray = ZONE5_WAVES;
     else if (currentZone === 6) waveArray = ZONE6_WAVES;
+    else if (typeof PROCEDURAL_WAVES !== 'undefined' && PROCEDURAL_WAVES[currentZone]) waveArray = PROCEDURAL_WAVES[currentZone];
     else waveArray = WAVES; // fallback
 
     const w = wave.current < waveArray.length ? waveArray[wave.current] : generateDynamicWave(wave.current);
@@ -1302,6 +1303,14 @@ function spawnWaveEnemies() {
         useZones = validZones.length >= toSpawn.length ? validZones : zones;
     }
 
+    // Guard: if no valid spawn zones exist, skip this wave tick
+    if (!useZones || useZones.length === 0) {
+        console.warn('No valid spawn zones found — skipping spawn');
+        wave.enemiesAlive = 0;
+        wave.phase = 'fighting';
+        return;
+    }
+
     // Stagger attack cooldowns by type so enemies don't all fire at once
     const typeIndex = {}; // track spawn index per type for stagger offset
     for (let i = 0; i < toSpawn.length; i++) {
@@ -1317,6 +1326,18 @@ function spawnWaveEnemies() {
 
     wave.enemiesAlive = toSpawn.length;
     wave.phase = 'fighting';
+
+    // Tutorial hints — show once per session at key moments
+    if (typeof Notify !== 'undefined') {
+        if (wave.current === 0) {
+            const form = FormSystem.currentForm;
+            const dodgeKey = form === 'slime' ? 'SPACE to Bounce Jump' : form === 'skeleton' ? 'SPACE to Roll' : form === 'lich' ? 'SPACE to Shadow Step' : 'SPACE to Phase Jump';
+            Notify.hint('tutorial_dodge', dodgeKey + ' — dodge through danger!', 5, { color: '#88ccff', borderColor: '#446688' });
+        }
+        if (wave.current === 1) {
+            Notify.hint('tutorial_grimoire', 'Press TAB to open the Grimoire — check your stats and gear.', 5, { color: '#c4a878', borderColor: '#8a7030' });
+        }
+    }
 }
 
 function updateWaveSystem(dt) {
@@ -3406,6 +3427,10 @@ function triggerLevelUp() {
     duckMusic(true);
     playSting('levelUp');
     if (typeof sfxLevelUp === 'function') sfxLevelUp();
+    // Tutorial hint on first level-up
+    if (typeof Notify !== 'undefined') {
+        Notify.hint('tutorial_levelup', 'Choose an upgrade! Hover cards to preview.', 4, { color: '#e8c868', borderColor: '#8a7030' });
+    }
 }
 
 function applyUpgrade(upgradeId) {

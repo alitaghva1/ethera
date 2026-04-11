@@ -35,7 +35,7 @@ function summonTowerAt(row, col) {
 function updatePlacement(dt) {
     // --- Channeling phase ---
     if (placement.channeling) {
-        placement.channelTimer += (dt != null ? dt : 1/60); // use real dt, fallback to 1/60 (BUG-027 fix). Don't increment on dt=0 pause frames
+        placement.channelTimer += (dt ?? 1/60); // use real dt, fallback to 1/60 (BUG-027 fix)
         // Interrupt if player takes damage (checked via invincibility timer starting)
         // Use fallback invTime if PLAYER_INV_TIME not available (defined in enemies.js)
         const invTime = (typeof PLAYER_INV_TIME !== 'undefined') ? PLAYER_INV_TIME : 0.8;
@@ -663,6 +663,25 @@ function drawPlacementPreview() {
     ctx.ellipse(sx, sy, tRangeX, tRangeY, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // --- Isometric tile highlight ---
+    {
+        const hw = HALF_DW;
+        const hh = HALF_DH;
+        ctx.globalAlpha = placement.valid ? 0.25 : 0.18;
+        ctx.fillStyle = placement.valid ? 'rgba(120, 80, 220, 0.3)' : 'rgba(180, 40, 40, 0.25)';
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - hh);
+        ctx.lineTo(sx + hw, sy);
+        ctx.lineTo(sx, sy + hh);
+        ctx.lineTo(sx - hw, sy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = placement.valid ? '#aa77ff' : '#aa3333';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = placement.valid ? 0.4 : 0.3;
+        ctx.stroke();
+    }
 
     // --- Ghost tower preview ---
     if (placement.valid) {
