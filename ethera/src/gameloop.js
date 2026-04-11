@@ -642,15 +642,20 @@ function gameLoop(timestamp) {
             setPixelCursor('none');
             // Show controls hint
             if (typeof Notify !== 'undefined') Notify.showControlsOnce();
-            // Show objective hint as floating text
+            // Show context-appropriate hint
+            const _awakeInTown = (typeof currentZone !== 'undefined' && currentZone === 0);
             pickupTexts.push({
-                text: 'Find a way out...',
+                text: _awakeInTown ? 'Choose your path...' : 'Find a way out...',
                 color: COLORS.TEXT_HINT,
                 row: player.row, col: player.col,
                 offsetY: 0,
-                life: 3.0,
+                life: _awakeInTown ? 5.0 : 3.0,
             });
-            startWaveSystem();
+            // Only start waves in combat zones
+            const _zoneCfg = typeof ZONE_CONFIGS !== 'undefined' ? ZONE_CONFIGS[currentZone] : null;
+            if (!_awakeInTown && (!_zoneCfg || _zoneCfg.hasWaves !== false)) {
+                startWaveSystem();
+            }
         }
     }
 
