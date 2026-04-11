@@ -152,7 +152,8 @@ function updateMenuFadePhase(dt) {
     menuFadeAlpha = Math.max(0, menuFadeAlpha - dt * 3);
     setPixelCursor('default');
     if (menuFadeAlpha <= 0) {
-        gamePhase = menuFadeTarget;
+        // Don't set gamePhase to 'intro' — it's unhandled. runIntro() sets the correct phase.
+        if (menuFadeTarget !== 'intro') gamePhase = menuFadeTarget;
         if (menuFadeTarget === 'menuControls') {
             menuFadeAlpha = 0;
         } else if (menuFadeTarget === 'menu') {
@@ -3333,9 +3334,9 @@ function runIntro() {
         gamePhase = 'playing';
         lightRadius = typeof MAX_LIGHT !== 'undefined' ? MAX_LIGHT : 300;
         setPixelCursor('none');
-        // Quick fade from black
+        // Quick fade from black (must use string 'fadeIn', not boolean)
         zoneTransitionAlpha = 1;
-        zoneTransitionFading = true;
+        zoneTransitionFading = 'fadeIn';
         // Show hint after brief delay
         setTimeout(function() {
             pickupTexts.push({
