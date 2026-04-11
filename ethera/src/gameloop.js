@@ -2457,9 +2457,7 @@ function restartGame() {
     seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0)); // new seed each restart
     currentZone = 0;
     loadZone(0);
-    showZoneBanner(0);
-    // Show controls overlay on first game start
-    if (typeof Notify !== 'undefined') Notify.showControlsOnce();
+    // Don't show zone banner for starting zone — let runIntro handle the reveal
     updateDoorDefsForZone(0);
     updateChestDefsForZone(0);
     buildRoomBounds();
@@ -2483,15 +2481,6 @@ function restartGame() {
     zoneTransitionAlpha = 0;
     zoneTransitionTarget = -1;
     if (typeof Notify !== 'undefined') Notify.reset();
-    // Show starting hint text in the antechamber
-    if (currentZone === 0) {
-        pickupTexts.push({
-            text: 'Choose your path...',
-            color: '#d4b878',
-            row: 25, col: 15,
-            offsetY: -20, life: 5.0,
-        });
-    }
 }
 
 function render() {
