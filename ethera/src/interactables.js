@@ -752,6 +752,7 @@ function loadZone(zoneNumber) {
     } else if (zoneNumber >= 100 && typeof generateProceduralZone === 'function') {
         // Procedural zones — used as bridge floors between story zones and in endless mode
         const depth = zoneNumber - 99;
+        if (depth > deepestDepthReached) deepestDepthReached = depth;
         // Use theme override from progression system if available, otherwise derive from depth
         const theme = (typeof _nextProceduralTheme !== 'undefined' && _nextProceduralTheme) ? _nextProceduralTheme : themeForDepth(depth);
         _nextProceduralTheme = null; // consume
@@ -871,6 +872,7 @@ const ZONE_PROGRESSION = [
 let progressionIndex = 0;
 let endlessUnlocked = false;
 let endlessDepth = 5; // starting depth for post-game endless mode
+let deepestDepthReached = 0; // highest procedural depth the player has survived
 
 function resolveNextZone() {
     progressionIndex++;
@@ -912,6 +914,14 @@ function updateDoorDefsForZone(zone) {
             '1,14': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,15': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
         };
+        // Abyss Portal — warp to deepest reached depth (only if player has been to procedural floors)
+        if (deepestDepthReached > 0) {
+            DOOR_DEFS['7,15'] = {
+                requiresKey: null,
+                label: 'Enter the Abyss (Depth ' + deepestDepthReached + ')',
+                destination: 'deepest',
+            };
+        }
     } else if (zone === 2) {
         DOOR_DEFS = {
             '33,15': {
@@ -952,7 +962,8 @@ function updateDoorDefsForZone(zone) {
             // Entry — return to Frozen Abyss (matches zone 5 exit at 28,14-15)
             '1,14': { requiresKey: null, label: 'Return to the Abyss', destination: 'zone5' },
             '1,15': { requiresKey: null, label: 'Return to the Abyss', destination: 'zone5' },
-            // No exit — final zone. Victory comes from defeating the final boss.
+            // Endless descent — appears after final boss defeat. The dungeon continues forever.
+            '35,29': { requiresKey: null, label: 'Descend into the unknown...', destination: 'next' },
         };
     } else if (zone >= 100 && typeof PROCEDURAL_DOOR_DEFS !== 'undefined' && PROCEDURAL_DOOR_DEFS[zone]) {
         DOOR_DEFS = PROCEDURAL_DOOR_DEFS[zone];

@@ -517,12 +517,6 @@ function handleMouseDown(e) {
             menuFadeTarget = 'nameEntry';
             return;
         }
-        if (pointInButton(mouse.x, mouse.y, btns.endless)) {
-            // Start Endless Dungeon mode — skip name entry, go straight to gameplay
-            gamePhase = 'menuFade';
-            menuFadeTarget = 'endless';
-            return;
-        }
         if (pointInButton(mouse.x, mouse.y, btns.loadGame) && !btns.loadGame.disabled) {
             gamePhase = 'menuFade';
             menuFadeTarget = 'loadScreen';

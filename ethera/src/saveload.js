@@ -59,6 +59,7 @@ function saveGame(slotIdx) {
         endlessDepth: endlessDepth,
         isProceduralZone: isProceduralZone,
         proceduralDepth: proceduralDepth,
+        deepestDepthReached: deepestDepthReached,
     };
     try {
         if (_useFileSaves) {
@@ -220,6 +221,7 @@ function loadGame(slotIdx) {
     if (data.endlessDepth != null) endlessDepth = data.endlessDepth;
     if (data.isProceduralZone != null) isProceduralZone = data.isProceduralZone;
     if (data.proceduralDepth != null) proceduralDepth = data.proceduralDepth;
+    if (data.deepestDepthReached != null) deepestDepthReached = data.deepestDepthReached;
 
     // Set wave to zoneClear so player can explore and use doors/chests
     wave.current = data.waveNum || 0;
