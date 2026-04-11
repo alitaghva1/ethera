@@ -1041,15 +1041,19 @@ function drawPreMenuScreen() {
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Pulsing "click anywhere to begin"
-    const pulse = 0.35 + Math.sin(t * 2.5) * 0.15;
+    // Pulsing "click anywhere to begin" — made brighter and more visible
+    preMenuAlpha = Math.min(1, preMenuAlpha + 0.02); // fade in
+    const pulse = 0.6 + Math.sin(t * 2.5) * 0.25;
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.globalAlpha = preMenuAlpha * pulse;
-    ctx.font = 'italic 15px Georgia';
-    ctx.fillStyle = '#aa9970';
-    ctx.fillText('click anywhere to begin', cx, canvasH / 2);
+    ctx.font = '18px Georgia';
+    ctx.fillStyle = '#d4b878';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeText('Click anywhere to begin', cx, canvasH / 2);
+    ctx.fillText('Click anywhere to begin', cx, canvasH / 2);
     ctx.restore();
 }
 
@@ -2529,6 +2533,21 @@ function render() {
 
     if (gamePhase !== 'playing' && gamePhase !== 'awakening' && gamePhase !== 'cinematic') return;
 
+    // Cinematic: render black background with subtle vignette, NOT the game world
+    if (gamePhase === 'cinematic') {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        // Subtle warm vignette for atmosphere
+        ctx.globalAlpha = 0.15;
+        const vigGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, canvasH * 0.7);
+        vigGrad.addColorStop(0, 'rgba(60, 30, 10, 0.3)');
+        vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        ctx.globalAlpha = 1;
+        return; // skip world rendering
+    }
+
     // ═══════════════════════════════════════════════════════════
     //  RENDER LAYER ORDER (formalized for maintainability):
     //    0. Background (nebula/void texture)
@@ -3388,41 +3407,21 @@ async function init() {
     if (typeof loadSettings === 'function') loadSettings();
     if (typeof installFontScaling === 'function') installFontScaling(ctx);
 
-    // Apply zone 1 tile config first so MAP_SIZE is correct for dungeon generation
-    applyZoneTileConfig(1);
-
-    // Clear arrays first (they're already initialized at declaration with default MAP_SIZE)
+    // Initialize minimal map arrays (actual zone generation happens in restartGame/loadZone)
+    // Don't generate Zone 1 here — the menu and cinematic render over black backgrounds
+    applyZoneTileConfig(0); // use Zone 0 config for initial MAP_SIZE
     resetFogOfWar(MAP_SIZE);
     floorMap.length = 0;
     objectMap.length = 0;
     blocked.length = 0;
     blockType.length = 0;
     objRadius.length = 0;
-    // Re-initialize map arrays with correct MAP_SIZE for Zone 1
     for (let i = 0; i < MAP_SIZE; i++) {
         floorMap.push(Array(MAP_SIZE).fill(null));
         objectMap.push(Array(MAP_SIZE).fill(null));
         blocked.push(Array(MAP_SIZE).fill(true));
         blockType.push(Array(MAP_SIZE).fill(null));
         objRadius.push(Array(MAP_SIZE).fill(0));
-    }
-    // Seed map PRNG for this playthrough (unique per session)
-    seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0));
-    generateDungeon();
-    updateDoorDefsForZone(1);
-    updateChestDefsForZone(1);
-    loadZoneNPCs(1);
-    buildRoomBounds();
-    buildEnvironmentLights();
-    // Initial fog of war reveal from player spawn position
-    updateFogOfWar();
-    // Generate procedural background for zone 1 (textured earth behind tiles)
-    if (typeof initSpaceBackground === 'function') {
-        initSpaceBackground(1);
-    }
-    // Initialize background manager for starting zone
-    if (typeof BackgroundManager !== 'undefined') {
-        BackgroundManager.init(1);
     }
 
     // Load 2D assets
