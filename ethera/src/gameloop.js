@@ -3362,9 +3362,15 @@ function runIntro() {
     gamePhase = 'playing';
     lightRadius = typeof MAX_LIGHT !== 'undefined' ? MAX_LIGHT : 300;
     setPixelCursor('none');
-    // Fade from black
-    zoneTransitionAlpha = 1;
-    zoneTransitionFading = 'fadeIn';
+    // No fade — just show the game immediately
+    zoneTransitionAlpha = 0;
+    zoneTransitionFading = false;
+    // Re-snap camera to player position
+    const _introPos = tileToScreen(player.row, player.col);
+    smoothCamX = canvasW / 2 - _introPos.x;
+    smoothCamY = canvasH / 2 - _introPos.y;
+    cameraX = Math.round(smoothCamX);
+    cameraY = Math.round(smoothCamY);
     // Show hint after brief delay
     setTimeout(function() {
         pickupTexts.push({
