@@ -826,6 +826,56 @@ const ENEMY_FILES = {
     werewolf_attack: 'Werewolf/Werewolf/Werewolf-Attack01.png',
     werewolf_hurt:   'Werewolf/Werewolf/Werewolf-Hurt.png',
     werewolf_death:  'Werewolf/Werewolf/Werewolf-Death.png',
+
+    // New boss sprites (unique art)
+    ruinedking_idle:   '../../RuinedKing/RuinedKing-Idle.png',
+    ruinedking_walk:   '../../RuinedKing/RuinedKing-Walk.png',
+    ruinedking_attack: '../../RuinedKing/RuinedKing-Attack01.png',
+    ruinedking_hurt:   '../../RuinedKing/RuinedKing-Hurt.png',
+    ruinedking_death:  '../../RuinedKing/RuinedKing-Death.png',
+
+    demonslime_idle:   '../../DemonSlime/DemonSlime-Idle.png',
+    demonslime_walk:   '../../DemonSlime/DemonSlime-Walk.png',
+    demonslime_attack: '../../DemonSlime/DemonSlime-Attack01.png',
+    demonslime_hurt:   '../../DemonSlime/DemonSlime-Hurt.png',
+    demonslime_death:  '../../DemonSlime/DemonSlime-Death.png',
+
+    fireknight_idle:   '../../FireKnight/FireKnight-Idle.png',
+    fireknight_walk:   '../../FireKnight/FireKnight-Walk.png',
+    fireknight_attack: '../../FireKnight/FireKnight-Attack01.png',
+    fireknight_hurt:   '../../FireKnight/FireKnight-Hurt.png',
+    fireknight_death:  '../../FireKnight/FireKnight-Death.png',
+
+    bonecolossus_idle:   '../../BoneColossus/BoneColossus-Idle.png',
+    bonecolossus_walk:   '../../BoneColossus/BoneColossus-Walk.png',
+    bonecolossus_attack: '../../BoneColossus/BoneColossus-Attack01.png',
+    bonecolossus_hurt:   '../../BoneColossus/BoneColossus-Hurt.png',
+    bonecolossus_death:  '../../BoneColossus/BoneColossus-Death.png',
+
+    frostwyrm_idle:   '../../FrostWyrm/FrostWyrm-Idle.png',
+    frostwyrm_walk:   '../../FrostWyrm/FrostWyrm-Walk.png',
+    frostwyrm_attack: '../../FrostWyrm/FrostWyrm-Attack01.png',
+    frostwyrm_hurt:   '../../FrostWyrm/FrostWyrm-Hurt.png',
+    frostwyrm_death:  '../../FrostWyrm/FrostWyrm-Death.png',
+
+    // New enemy sprites (unique art)
+    flyingdemon_idle:   '../../FlyingDemon/FlyingDemon-Idle.png',
+    flyingdemon_walk:   '../../FlyingDemon/FlyingDemon-Walk.png',
+    flyingdemon_attack: '../../FlyingDemon/FlyingDemon-Attack01.png',
+    flyingdemon_hurt:   '../../FlyingDemon/FlyingDemon-Hurt.png',
+    flyingdemon_death:  '../../FlyingDemon/FlyingDemon-Death.png',
+
+    bonemage_idle:   '../../BoneMage/BoneMage-Idle.png',
+    bonemage_walk:   '../../BoneMage/BoneMage-Walk.png',
+    bonemage_attack: '../../BoneMage/BoneMage-Attack01.png',
+    bonemage_hurt:   '../../BoneMage/BoneMage-Hurt.png',
+    bonemage_death:  '../../BoneMage/BoneMage-Death.png',
+
+    shadowknight_idle:   '../../ShadowKnight/ShadowKnight-Idle.png',
+    shadowknight_walk:   '../../ShadowKnight/ShadowKnight-Walk.png',
+    shadowknight_attack: '../../ShadowKnight/ShadowKnight-Attack01.png',
+    shadowknight_hurt:   '../../ShadowKnight/ShadowKnight-Hurt.png',
+    shadowknight_death:  '../../ShadowKnight/ShadowKnight-Death.png',
 };
 
 // ----- GLOBALS -----

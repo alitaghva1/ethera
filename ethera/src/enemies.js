@@ -76,10 +76,10 @@ const ENEMY_TYPES = {
     },
     // --- ZONE 1 BOSS: Slime King ---
     slime_king: {
-        prefix: 'slime',  // reuses slime sprites, scaled up + tinted
+        prefix: 'demonslime',  // unique boss sprite
         hp: 200, speed: 1.6, damage: 16, attackRange: 1.2, aggroRange: 12,
         hitboxR: 0.45,
-        frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
+        frames: { idle: 6, walk: 12, attack: 15, hurt: 5, death: 22 },
         animSpeed: 6, attackDur: 0.5, attackCooldown: 1.8,
         scale: 2.8, yOff: 0.75,
         ai: 'lunge',
@@ -101,10 +101,10 @@ const ENEMY_TYPES = {
     },
     // --- ZONE 2 BOSS: Bone Colossus ---
     bone_colossus: {
-        prefix: 'armoredskel',  // reuses armored skeleton sprites, scaled up
+        prefix: 'bonecolossus',  // unique boss sprite (demon)
         hp: 400, speed: 1.4, damage: 24, attackRange: 1.5, aggroRange: 12,
         hitboxR: 0.5,
-        frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+        frames: { idle: 3, walk: 6, attack: 4, hurt: 2, death: 6 },
         animSpeed: 7, attackDur: 0.6, attackCooldown: 1.6,
         scale: 2.5, yOff: 0.75,
         ai: 'chase',
@@ -124,10 +124,10 @@ const ENEMY_TYPES = {
 
     // --- ZONE 4 BOSS: Infernal Knight ---
     infernal_knight: {
-        prefix: 'armoredskel',  // reuses armored skeleton sprites, scaled + red tint
+        prefix: 'fireknight',  // unique boss sprite (fire knight)
         hp: 550, speed: 1.8, damage: 28, attackRange: 1.3, aggroRange: 12,
         hitboxR: 0.45,
-        frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+        frames: { idle: 8, walk: 8, attack: 11, hurt: 6, death: 13 },
         animSpeed: 8, attackDur: 0.55, attackCooldown: 1.4,
         scale: 2.6, yOff: 0.75,
         ai: 'chase',
@@ -151,10 +151,10 @@ const ENEMY_TYPES = {
 
     // --- ZONE 5 BOSS: Frost Wyrm ---
     frost_wyrm: {
-        prefix: 'werewolf',  // reuses werewolf sprites, blue tint + ice VFX
+        prefix: 'frostwyrm',  // unique boss sprite (dragon)
         hp: 700, speed: 2.0, damage: 26, attackRange: 6.0, aggroRange: 14,
         hitboxR: 0.5,
-        frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+        frames: { idle: 3, walk: 5, attack: 4, hurt: 2, death: 5 },
         animSpeed: 7, attackDur: 0.6, attackCooldown: 2.0,
         scale: 2.8, yOff: 0.75,
         ai: 'ranged', preferredDist: 5.0,
@@ -180,10 +180,10 @@ const ENEMY_TYPES = {
 
     // --- ZONE 6 BOSS: The Ruined King ---
     ruined_king: {
-        prefix: 'skel',  // reuses skeleton sprites, massive scale + dark purple VFX
+        prefix: 'ruinedking',  // unique boss sprite (undead executioner)
         hp: 1000, speed: 2.2, damage: 32, attackRange: 1.5, aggroRange: 16,
         hitboxR: 0.5,
-        frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+        frames: { idle: 5, walk: 5, attack: 6, hurt: 6, death: 10 },
         animSpeed: 9, attackDur: 0.5, attackCooldown: 1.2,
         scale: 3.0, yOff: 0.75,
         ai: 'chase',
@@ -210,10 +210,10 @@ const ENEMY_TYPES = {
 
     // Fire Slime (Zone 4+) — lunges like slime, leaves fire pool on death
     fire_slime: {
-        prefix: 'slime',
+        prefix: 'flyingdemon',  // unique sprite (flying demon)
         hp: 45, speed: 3.0, damage: 14, attackRange: 0.7, aggroRange: 8,
         hitboxR: 0.25,
-        frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
+        frames: { idle: 4, walk: 4, attack: 4, hurt: 2, death: 4 },
         animSpeed: 8, attackDur: 0.4, attackCooldown: 0.8,
         scale: 1.4, yOff: 0.75,
         ai: 'lunge',
@@ -250,10 +250,10 @@ const ENEMY_TYPES = {
 
     // Shadow Knight (Zone 6) — flanks like skeleton, teleports when hit
     shadow_knight: {
-        prefix: 'armoredskel',
+        prefix: 'shadowknight',  // unique sprite (lizardman)
         hp: 80, speed: 2.8, damage: 22, attackRange: 0.9, aggroRange: 9,
         hitboxR: 0.3,
-        frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+        frames: { idle: 3, walk: 6, attack: 5, hurt: 2, death: 6 },
         animSpeed: 8, attackDur: 0.5, attackCooldown: 1.3,
         scale: 1.4, yOff: 0.75,
         ai: 'flank',
@@ -271,10 +271,10 @@ const ENEMY_TYPES = {
 
     // Bone Mage (Zone 3+) — ranged, casts ground AoE with 1.5s delay
     bone_mage: {
-        prefix: 'skelarch',
+        prefix: 'bonemage',  // unique sprite (jinn)
         hp: 35, speed: 2.0, damage: 16, attackRange: 7.0, aggroRange: 10,
         hitboxR: 0.25,
-        frames: { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+        frames: { idle: 3, walk: 3, attack: 4, hurt: 2, death: 6 },
         animSpeed: 8, attackDur: 0.55, attackCooldown: 2.5,
         scale: 1.5, yOff: 0.75,
         ai: 'ranged', preferredDist: 5.0,
