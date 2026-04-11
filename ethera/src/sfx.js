@@ -469,6 +469,12 @@ function sfxRarePickup() {
     setTimeout(() => { if (sfxCtx) playNoise(0.15, 6000, 3, 0.06, 0.01, 0.12); }, 100);
 }
 
+function sfxGoldPickup() {
+    if (!sfxCtx) return;
+    playTone('sine', 1200, 1600, 0.06, 0.1, 0.005, 0.06);
+    setTimeout(() => { if (sfxCtx) playTone('sine', 1600, 2000, 0.04, 0.08, 0.005, 0.04); }, 40);
+}
+
 // ----- DEATH & HIT FEEDBACK -----
 let gameDead = false;
 let deathFadeTimer = 0;
@@ -591,6 +597,15 @@ const xpState = {
 
 // XP per enemy type
 const ENEMY_XP = { slime: 5, skeleton: 10, skelarch: 15, armoredskel: 30, werewolf: 200, slime_king: 100, bone_colossus: 150, infernal_knight: 250, frost_wyrm: 350, ruined_king: 500 };
+
+// Gold per enemy type
+const ENEMY_GOLD_DROP = {
+    slime: 8, skeleton: 12, skelarch: 15, armoredskel: 20,
+    werewolf: 40, fire_slime: 15, frost_archer: 18, shadow_knight: 25,
+    bone_mage: 20, pit_lurker: 22,
+    slime_king: 200, demon_slime_king: 250, bone_colossus: 300,
+    infernal_knight: 400, frost_wyrm: 450, ruined_king: 600,
+};
 
 // XP scaling: each level needs more
 // Lv2: 40, Lv3: 68, Lv4: 102, Lv5: 142, Lv6: 188, Lv7: 240

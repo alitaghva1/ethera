@@ -262,6 +262,11 @@ let ascensionLevel = 0;          // current run's ascension level
 let ascensionUnlocked = 0;       // highest ascension unlocked (beat game at N → unlocks N+1)
 let gameCleared = false;         // true after first Zone 6 completion
 
+// ============================================================
+//  GOLD CURRENCY
+// ============================================================
+let playerGold = 0;
+
 function saveSettings() {
     try { localStorage.setItem('ethera_settings', JSON.stringify(gameSettings)); } catch(e) {}
 }

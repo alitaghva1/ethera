@@ -1782,6 +1782,13 @@ function updateWaveSystem(dt) {
                         row: player.row, col: player.col,
                         offsetY: 0, life: 2.0,
                     });
+                    // Boss kill bonus gold
+                    if (typeof playerGold !== 'undefined') {
+                        const bossBonus = 100 + currentZone * 50;
+                        playerGold += bossBonus;
+                        pickupTexts.push({ text: '+' + bossBonus + ' GOLD', color: '#ffd700', row: player.row, col: player.col, offsetY: -20, life: 2.5 });
+                        if (typeof sfxGoldPickup === 'function') sfxGoldPickup();
+                    }
                     duckMusic(true);
                 } else {
                     wave.phase = 'cleared';
@@ -2598,6 +2605,15 @@ function updateEnemies(dt) {
                 enemies.splice(i, 1);
                 wave.totalKilled++;
                 grantXP(e.type, e.statMult || 1.0);
+                // Gold drop
+                if (typeof ENEMY_GOLD_DROP !== 'undefined') {
+                    const goldDrop = ENEMY_GOLD_DROP[e.type] || 10;
+                    const ascMult = 1 + (typeof ascensionLevel !== 'undefined' ? ascensionLevel * 0.25 : 0);
+                    const gold = Math.round(goldDrop * (0.8 + Math.random() * 0.4) * ascMult);
+                    playerGold += gold;
+                    pickupTexts.push({ text: '+' + gold + 'g', color: '#ffd700', row: e.row, col: e.col, offsetY: -8, life: 1.0 });
+                    if (typeof sfxGoldPickup === 'function') sfxGoldPickup();
+                }
                 // Multi-kill tracking now handled at kill moment (when entering death state)
                 // Boss drops special key (Zone 3 werewolf only)
                 if (e.type === 'werewolf' && currentZone === 3) {

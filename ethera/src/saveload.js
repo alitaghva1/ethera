@@ -70,6 +70,8 @@ function saveGame(slotIdx) {
         ascensionLevel: typeof ascensionLevel !== 'undefined' ? ascensionLevel : 0,
         ascensionUnlocked: typeof ascensionUnlocked !== 'undefined' ? ascensionUnlocked : 0,
         gameCleared: typeof gameCleared !== 'undefined' ? gameCleared : false,
+        // Gold
+        playerGold: typeof playerGold !== 'undefined' ? playerGold : 0,
     };
     try {
         if (_useFileSaves) {
@@ -311,6 +313,9 @@ function loadGame(slotIdx) {
     if (typeof ascensionLevel !== 'undefined') ascensionLevel = data.ascensionLevel || 0;
     if (typeof ascensionUnlocked !== 'undefined') ascensionUnlocked = data.ascensionUnlocked || 0;
     if (typeof gameCleared !== 'undefined') gameCleared = data.gameCleared || false;
+
+    // Restore gold
+    if (typeof playerGold !== 'undefined') playerGold = data.playerGold || 0;
 
     // Set wave to zoneClear so player can explore and use doors/chests
     wave.current = data.waveNum || 0;

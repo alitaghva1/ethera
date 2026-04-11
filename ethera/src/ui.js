@@ -471,6 +471,19 @@ function drawHPMana() {
     // --- Active Upgrade Icons ---
     drawActiveUpgradeIcons(x, yXP, barH);
 
+    // --- Gold Display (bottom-right) ---
+    if (typeof playerGold !== 'undefined') {
+        ctx.globalAlpha = 0.7;
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 12px monospace';
+        ctx.fillStyle = '#ffd700';
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+        const goldText = playerGold + 'g';
+        ctx.strokeText(goldText, canvasW - 20, canvasH - 20);
+        ctx.fillText(goldText, canvasW - 20, canvasH - 20);
+    }
+
     ctx.restore();
 
     // Draw tower mode indicator if towers are active

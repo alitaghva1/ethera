@@ -2343,6 +2343,7 @@ function restartGame() {
     if (typeof veilUndyingCooldown !== 'undefined') veilUndyingCooldown = 0;
     if (typeof groundHazards !== 'undefined') groundHazards.length = 0;
     if (typeof claimedMilestones !== 'undefined') claimedMilestones.length = 0;
+    if (typeof playerGold !== 'undefined') playerGold = 0;
     if (typeof _evoHintShown !== 'undefined') { _evoHintShown.slime = false; _evoHintShown.skeleton = false; _evoHintShown.wizard = false; }
     // Reset wave
     wave.current = 0;
