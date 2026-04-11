@@ -565,29 +565,39 @@ function drawCrosshair() {
         ctx.stroke();
     }
 
-    // Crosshair: white with 60% opacity, 1px thin lines, 3px gap from center
-    ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
+    // Dark outline for contrast on bright backgrounds
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
-
-    // Four short lines radiating from center with gap
     ctx.beginPath();
-    ctx.moveTo(mx - r, my);
-    ctx.lineTo(mx - gap, my);
-    ctx.moveTo(mx + gap, my);
-    ctx.lineTo(mx + r, my);
-    ctx.moveTo(mx, my - r);
-    ctx.lineTo(mx, my - gap);
-    ctx.moveTo(mx, my + gap);
-    ctx.lineTo(mx, my + r);
+    ctx.moveTo(mx - r, my); ctx.lineTo(mx - gap, my);
+    ctx.moveTo(mx + gap, my); ctx.lineTo(mx + r, my);
+    ctx.moveTo(mx, my - r); ctx.lineTo(mx, my - gap);
+    ctx.moveTo(mx, my + gap); ctx.lineTo(mx, my + r);
     ctx.stroke();
 
-    // Subtle center dot (1px)
-    ctx.globalAlpha = 0.6;
+    // Crosshair: white with stronger opacity, 1.5px lines
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(mx - r, my); ctx.lineTo(mx - gap, my);
+    ctx.moveTo(mx + gap, my); ctx.lineTo(mx + r, my);
+    ctx.moveTo(mx, my - r); ctx.lineTo(mx, my - gap);
+    ctx.moveTo(mx, my + gap); ctx.lineTo(mx, my + r);
+    ctx.stroke();
+
+    // Center dot with dark outline
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(mx, my, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.9;
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(mx, my, 1, 0, Math.PI * 2);
+    ctx.arc(mx, my, 1.2, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();

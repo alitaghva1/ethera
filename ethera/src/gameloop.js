@@ -912,9 +912,12 @@ function drawMenuButton(btn, isHovered, alpha, disabled) {
         ctx.globalAlpha = alpha;
     }
 
-    // Button background
+    // Button background with subtle inner gradient
     const hoverGlow = isHovered ? 0.25 : 0;
-    ctx.fillStyle = `rgba(20, 14, 8, ${0.6 + hoverGlow})`;
+    const btnGrad = ctx.createLinearGradient(btn.x, btn.y, btn.x, btn.y + btn.h);
+    btnGrad.addColorStop(0, `rgba(30, 22, 14, ${0.65 + hoverGlow})`);
+    btnGrad.addColorStop(1, `rgba(12, 8, 4, ${0.75 + hoverGlow})`);
+    ctx.fillStyle = btnGrad;
     ctx.beginPath();
     ctx.roundRect(btn.x, btn.y, btn.w, btn.h, 4);
     ctx.fill();

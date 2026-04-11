@@ -21,9 +21,9 @@ const objRadius = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(0)
 // Tiles behind sealed walls stay hidden until the seal breaks.
 const fogRevealed = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).fill(0));
 // How many wall-peek passes to run (each pass reveals one more layer of walls)
-const FOG_WALL_PEEK = 4;
-// Brightness per peek layer: closer walls are brighter, outer walls fade
-const FOG_PEEK_BRIGHTNESS = [0.8, 0.55, 0.35, 0.2];
+const FOG_WALL_PEEK = 3;
+// Brightness per peek layer — sharper falloff for tighter, more mysterious boundaries
+const FOG_PEEK_BRIGHTNESS = [0.5, 0.2, 0.05];
 
 function resetFogOfWar(newSize) {
     fogRevealed.length = 0;

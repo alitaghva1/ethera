@@ -165,9 +165,19 @@ function drawEffectParticles() {
         // Skip ambient particles (handled elsewhere)
         if (!p.type) continue;
 
+        // Fog-aware culling — hide particles in unexplored areas
+        const tilePos = screenToTile(p.x - cameraX, p.y - cameraY);
+        const tr = Math.floor(tilePos.row), tc = Math.floor(tilePos.col);
+        let fogMul = 1;
+        if (tr >= 0 && tr < fogRevealed.length && tc >= 0 && tc < fogRevealed.length) {
+            const fv = fogRevealed[tr][tc];
+            if (fv <= 0) continue; // completely hidden — skip
+            if (fv < 1) fogMul = fv; // dim in peek zone
+        }
+
         // Fade out at end of life
         const ageFrac = Math.max(0, p.life / (p.maxLife || 1));
-        ctx.globalAlpha = (p.alpha || 0.5) * ageFrac;
+        ctx.globalAlpha = (p.alpha || 0.5) * ageFrac * fogMul;
 
         // Use screen blending for death particles for visibility in dark dungeons
         if (p.compositeOp && GFX.screenBlend) {

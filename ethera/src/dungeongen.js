@@ -14,8 +14,8 @@ const DGEN_HAZARD_COOLDOWN = 0.5; // seconds between damage ticks
 const ZONE_THEMES = {
     dungeon: {
         id: 'dungeon',
-        floors: ['stoneTile', 'stone', 'stone', 'stoneTile'],
-        floorAccents: ['stoneUneven', 'stoneMissing', 'stoneInset'],
+        floors: ['stoneTile', 'stone', 'stoneInset', 'stoneTile', 'stone'],
+        floorAccents: ['stoneUneven', 'stoneMissing'],
         wallTile: 'wall',
         wallVariants: ['wallAged', 'wallBroken', 'wallHole'],
         cornerTile: 'wallCorner',
@@ -27,6 +27,11 @@ const ZONE_THEMES = {
             { obj: 'woodenPile', w: 1, blocks: true },
             { obj: 'tableRound', w: 1, blocks: true },
             { obj: 'woodenSupports', w: 1, blocks: false },
+        ],
+        // Non-blocking floor scatter — visual texture, no collision
+        scatter: [
+            { obj: 'h_skull1', w: 2 }, { obj: 'h_bones1', w: 2 },
+            { obj: 'h_rock1', w: 1 }, { obj: 'h_rubble1', w: 1 },
         ],
         lightType: 'torch',
         lightColor: [255, 180, 80],
@@ -49,6 +54,10 @@ const ZONE_THEMES = {
             { obj: 'h_cage1', w: 1, blocks: true },
             { obj: 'h_grave1', w: 1, blocks: true },
         ],
+        scatter: [
+            { obj: 'h_skull1', w: 2 }, { obj: 'h_skull2', w: 1 }, { obj: 'h_bones1', w: 2 },
+            { obj: 'h_bones2', w: 1 }, { obj: 'h_gore1', w: 1 }, { obj: 'h_rock1', w: 1 },
+        ],
         lightType: 'fire_pit',
         lightColor: [255, 100, 30],
         hazardTypes: ['lava'],
@@ -66,6 +75,9 @@ const ZONE_THEMES = {
             { obj: 'barrel', w: 2, blocks: true },
             { obj: 'woodenPile', w: 2, blocks: true },
             { obj: 'woodenCrate', w: 1, blocks: true },
+        ],
+        scatter: [
+            { obj: 'h_rock1', w: 3 }, { obj: 'h_rock2', w: 2 }, { obj: 'h_rubble1', w: 1 },
         ],
         lightType: 'ice_crystal',
         lightColor: [100, 180, 255],
@@ -86,6 +98,10 @@ const ZONE_THEMES = {
             { obj: 'barrel', w: 2, blocks: true },
             { obj: 'tableChairsBroken', w: 1, blocks: true },
         ],
+        scatter: [
+            { obj: 'h_rubble1', w: 3 }, { obj: 'h_rubble2', w: 2 },
+            { obj: 'h_rock1', w: 2 }, { obj: 'h_bones1', w: 1 },
+        ],
         lightType: 'candle',
         lightColor: [220, 180, 100],
         hazardTypes: ['spikes', 'collapse'],
@@ -103,6 +119,9 @@ const ZONE_THEMES = {
             { obj: 'barrel', w: 2, blocks: true },
             { obj: 'woodenPile', w: 3, blocks: true },
             { obj: 'woodenCrate', w: 2, blocks: true },
+        ],
+        scatter: [
+            { obj: 'h_rock1', w: 3 }, { obj: 'h_rock2', w: 2 },
         ],
         lightType: 'torch',
         lightColor: [200, 220, 140],
@@ -639,6 +658,32 @@ function populateRoomProps(room, theme) {
             tryPlaceProp(pr, pc, prop.obj, prop.blocks);
         }
     }
+
+    // Step 4: Non-blocking floor scatter — visual texture, no collision
+    if (theme.scatter && theme.scatter.length > 0 && rw >= 5 && cw >= 5) {
+        const scatterCount = mapRandomInt(2, Math.min(4, Math.floor(room.floorTiles.length / 12)));
+        const totalScatterW = theme.scatter.reduce((s, p) => s + p.w, 0);
+        for (let i = 0; i < scatterCount; i++) {
+            // Weighted random selection
+            let roll = mapRandom() * totalScatterW;
+            let chosen = theme.scatter[0];
+            for (const s of theme.scatter) { roll -= s.w; if (roll <= 0) { chosen = s; break; } }
+            // Place on any open interior tile (not edge, not center 3x3, not occupied)
+            const interior = room.floorTiles.filter(t => {
+                if (objectMap[t.r][t.c]) return false;
+                // Not on edges
+                if (t.r <= b.r1 + 1 || t.r >= b.r2 - 1 || t.c <= b.c1 + 1 || t.c >= b.c2 - 1) return false;
+                // Not dead center (keep combat space clear)
+                const midR = Math.floor((b.r1 + b.r2) / 2);
+                const midC = Math.floor((b.c1 + b.c2) / 2);
+                if (Math.abs(t.r - midR) <= 1 && Math.abs(t.c - midC) <= 1) return false;
+                return true;
+            });
+            if (interior.length === 0) break;
+            const spot = interior[mapRandomInt(0, interior.length - 1)];
+            tryPlaceProp(spot.r, spot.c, chosen.obj, false); // always non-blocking
+        }
+    }
 }
 
 // ============================================================
@@ -904,37 +949,65 @@ function drawHazardOverlayTile(r, c) {
 
     ctx.save();
     if (h.type === 'lava') {
-        ctx.globalAlpha = 0.3 + Math.sin(t * 3 + r) * 0.08;
-        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, HALF_DW * 0.7);
-        g.addColorStop(0, 'rgba(255, 80, 0, 0.45)');
-        g.addColorStop(1, 'rgba(200, 40, 0, 0)');
+        // Bright glowing lava pool with animated bubbles
+        ctx.globalAlpha = 0.45 + Math.sin(t * 3 + r) * 0.1;
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, HALF_DW * 0.75);
+        g.addColorStop(0, 'rgba(255, 120, 20, 0.6)');
+        g.addColorStop(0.5, 'rgba(255, 60, 0, 0.35)');
+        g.addColorStop(1, 'rgba(180, 30, 0, 0)');
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.ellipse(sx, sy, HALF_DW * 0.7, HALF_DH * 0.7, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx, sy, HALF_DW * 0.75, HALF_DH * 0.75, 0, 0, Math.PI * 2);
         ctx.fill();
+        // Animated bubble dots
+        for (let i = 0; i < 2; i++) {
+            const bx = sx + Math.sin(t * 4 + i * 3.7 + r) * HALF_DW * 0.3;
+            const by = sy + Math.cos(t * 3.2 + i * 2.1 + c) * HALF_DH * 0.25;
+            ctx.globalAlpha = 0.4 + Math.sin(t * 6 + i) * 0.2;
+            ctx.fillStyle = '#ffcc44';
+            ctx.beginPath();
+            ctx.arc(bx, by, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
     } else if (h.type === 'acid') {
-        ctx.globalAlpha = 0.25 + Math.sin(t * 2.5 + c) * 0.06;
-        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, HALF_DW * 0.6);
-        g.addColorStop(0, 'rgba(60, 255, 60, 0.35)');
-        g.addColorStop(1, 'rgba(30, 180, 30, 0)');
+        ctx.globalAlpha = 0.4 + Math.sin(t * 2.5 + c) * 0.08;
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, HALF_DW * 0.65);
+        g.addColorStop(0, 'rgba(80, 255, 80, 0.5)');
+        g.addColorStop(0.6, 'rgba(40, 200, 40, 0.25)');
+        g.addColorStop(1, 'rgba(20, 120, 20, 0)');
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.ellipse(sx, sy, HALF_DW * 0.6, HALF_DH * 0.6, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx, sy, HALF_DW * 0.65, HALF_DH * 0.65, 0, 0, Math.PI * 2);
         ctx.fill();
     } else if (h.type === 'spikes') {
-        ctx.globalAlpha = 0.45;
-        ctx.strokeStyle = '#999';
-        ctx.lineWidth = 1.5;
-        for (let i = 0; i < 3; i++) {
-            const ox = (i - 1) * 5;
+        // Proper triangular spike shapes
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#888';
+        const spikeW = 3, spikeH = 7;
+        for (let i = -2; i <= 2; i++) {
+            const bx = sx + i * 5;
             ctx.beginPath();
-            ctx.moveTo(sx + ox, sy + 2);
-            ctx.lineTo(sx + ox, sy - 5);
+            ctx.moveTo(bx - spikeW, sy + 2);
+            ctx.lineTo(bx, sy - spikeH + Math.sin(t * 2 + i) * 1);
+            ctx.lineTo(bx + spikeW, sy + 2);
+            ctx.closePath();
+            ctx.fill();
+        }
+        // Metallic highlight on spikes
+        ctx.globalAlpha = 0.25;
+        ctx.strokeStyle = '#ccc';
+        ctx.lineWidth = 0.5;
+        for (let i = -2; i <= 2; i++) {
+            const bx = sx + i * 5;
+            ctx.beginPath();
+            ctx.moveTo(bx, sy - spikeH + Math.sin(t * 2 + i) * 1);
+            ctx.lineTo(bx + 1, sy);
             ctx.stroke();
         }
     } else if (h.type === 'ice') {
-        ctx.globalAlpha = 0.18 + Math.sin(t * 2 + r + c) * 0.04;
-        ctx.fillStyle = 'rgba(150, 220, 255, 0.25)';
+        // Brighter shimmer with faster pulse
+        ctx.globalAlpha = 0.25 + Math.sin(t * 4 + r + c) * 0.08;
+        ctx.fillStyle = 'rgba(170, 230, 255, 0.35)';
         ctx.beginPath();
         ctx.moveTo(sx, sy - HALF_DH * 0.7);
         ctx.lineTo(sx + HALF_DW * 0.7, sy);
@@ -942,18 +1015,25 @@ function drawHazardOverlayTile(r, c) {
         ctx.lineTo(sx - HALF_DW * 0.7, sy);
         ctx.closePath();
         ctx.fill();
-    } else if (h.type === 'collapse') {
-        ctx.globalAlpha = 0.2;
-        ctx.strokeStyle = '#665544';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
+        // Frost sparkle
+        ctx.globalAlpha = 0.3 + Math.sin(t * 8 + r * 3) * 0.15;
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.moveTo(sx - 8, sy - 3);
-        ctx.lineTo(sx + 7, sy + 2);
-        ctx.moveTo(sx - 5, sy + 3);
+        ctx.arc(sx + Math.sin(t * 2) * 4, sy + Math.cos(t * 3) * 2, 1, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (h.type === 'collapse') {
+        ctx.globalAlpha = 0.25 + Math.sin(t * 1.5) * 0.05;
+        ctx.strokeStyle = '#776655';
+        ctx.lineWidth = 1.2;
+        // Crack pattern
+        ctx.beginPath();
+        ctx.moveTo(sx - 10, sy - 4);
+        ctx.lineTo(sx - 2, sy + 1);
         ctx.lineTo(sx + 8, sy - 2);
+        ctx.moveTo(sx - 3, sy + 4);
+        ctx.lineTo(sx + 5, sy + 1);
+        ctx.lineTo(sx + 10, sy + 3);
         ctx.stroke();
-        ctx.setLineDash([]);
     }
     ctx.restore();
 }
