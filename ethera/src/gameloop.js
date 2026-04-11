@@ -802,8 +802,12 @@ function gameLoop(timestamp) {
     // Reset error counter on successful frame
     gameLoopErrors = 0;
     } catch (err) {
-        console.error('Game loop error:', err);
+        console.error('Game loop error:', err, err.stack);
         gameLoopErrors++;
+        // Force fade-in to complete even if gameplay crashes
+        if (zoneTransitionAlpha > 0 && zoneTransitionFading === 'fadeIn') {
+            zoneTransitionAlpha = Math.max(0, zoneTransitionAlpha - 0.05);
+        }
 
         if (gameLoopErrors >= GAME_LOOP_ERROR_THRESHOLD) {
             gameLoopCrashed = true;
