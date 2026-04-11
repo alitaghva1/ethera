@@ -1435,7 +1435,7 @@ function beginNextWave() {
             }
         }
         if (!combatTrack) {
-            const musicArray = currentZone === 1 ? WAVE_MUSIC : (currentZone === 2 ? ZONE2_WAVE_MUSIC : (currentZone === 4 ? ZONE3_WAVE_MUSIC : ZONE3_WAVE_MUSIC));
+            const musicArray = currentZone === 1 ? WAVE_MUSIC : currentZone === 2 ? ZONE2_WAVE_MUSIC : currentZone === 3 ? ZONE3_WAVE_MUSIC : currentZone === 4 ? ZONE4_WAVE_MUSIC : currentZone === 5 ? ZONE5_WAVE_MUSIC : currentZone === 6 ? ZONE6_WAVE_MUSIC : WAVE_MUSIC;
             combatTrack = musicArray[Math.min(wave.current, musicArray.length - 1)];
         }
         playMusic(combatTrack, 1.5);
@@ -1511,7 +1511,7 @@ function beginNextWave() {
     wave.bannerAlpha = 1;
 
     // Play combat music for this wave (cycle through combat tracks based on zone)
-    const musicArray = currentZone === 1 ? WAVE_MUSIC : (currentZone === 2 ? ZONE2_WAVE_MUSIC : (currentZone === 4 ? ZONE3_WAVE_MUSIC : ZONE3_WAVE_MUSIC));
+    const musicArray = currentZone === 1 ? WAVE_MUSIC : currentZone === 2 ? ZONE2_WAVE_MUSIC : currentZone === 3 ? ZONE3_WAVE_MUSIC : currentZone === 4 ? ZONE4_WAVE_MUSIC : currentZone === 5 ? ZONE5_WAVE_MUSIC : currentZone === 6 ? ZONE6_WAVE_MUSIC : WAVE_MUSIC;
     const combatTrack = musicArray[Math.min(wave.current, musicArray.length - 1)];
     playMusic(combatTrack, 1.5);
 }

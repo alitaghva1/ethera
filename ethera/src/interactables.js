@@ -922,8 +922,8 @@ function loadZone(zoneNumber) {
     // Restore full light for new zone
     lightRadius = MAX_LIGHT;
 
-    // Update music to menu (calmer between zones)
-    playMusic('menu', 2.0);
+    // Update music — hamlet ambient for Zone 0, menu for other zones
+    playMusic(zoneNumber === 0 ? 'hamlet' : 'menu', 2.0);
 
     // Reset camera
     smoothCamX = 0;
