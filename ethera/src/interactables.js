@@ -637,8 +637,8 @@ function loadZone(zoneNumber) {
     // Apply zone-specific tile dimensions
     applyZoneTileConfig(zoneNumber);
 
-    // Determine MAP_SIZE for this zone
-    const zoneCfg = ZONE_CONFIGS[zoneNumber];
+    // Determine MAP_SIZE for this zone (procedural zones use dynamic config)
+    const zoneCfg = ZONE_CONFIGS[zoneNumber] || (zoneNumber >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(zoneNumber) : null);
     const newMapSize = zoneCfg ? zoneCfg.mapSize : 24;
 
     // Reinitialize map arrays with correct size
