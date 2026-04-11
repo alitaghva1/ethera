@@ -1328,19 +1328,67 @@ function generateTown() {
         }
     }
 
-    // ===== 4. DUNGEON ENTRY (south, rows 24-28) =====
-    fillFloor(25, 13, 27, 17, 'stone');
-    placeObj(26, 12, 'stoneColumn');  // flanking columns
-    placeObj(26, 18, 'stoneColumn');
-    placeObj(27, 11, 'barrel');
-    placeObj(27, 19, 'barrel');
-    placeObj(25, 12, 'barrels');       // ADDED: more barrels for atmosphere
-    placeObj(25, 18, 'barrelsStacked');
-    // Archway back to dungeon
+    // ===== 4. STARTING ANTECHAMBER (south, rows 24-28, cols 11-19) =====
+    // A sealed stone chamber where the player spawns at game start.
+    // Two exits: north archway into the Hamlet, south stairs to the Dungeon (Zone 1).
+    // Atmospheric: dark stone floor, central altar/pillar, flanking torches.
+
+    // 4a. Chamber floor — dark stone with insets
+    fillFloor(25, 12, 28, 18, 'stone');
+    floorMap[26][15] = 'stoneInset';  // center accent
+    floorMap[27][14] = 'stoneInset';  // altar area accent
+    floorMap[27][16] = 'stoneInset';
+    floorMap[25][13] = 'stoneInset';
+    floorMap[25][17] = 'stoneInset';
+
+    // 4b. Chamber walls — enclose on east, west, and parts of north/south
+    // North wall (row 24) — sealed except archway at cols 14-15
+    wall(24, 11, 'wallCorner');
+    wall(24, 12, 'wall');
+    wall(24, 13, 'wall');
+    // North archway opening at (24, 14) and (24, 15) — door into Hamlet
+    openTile(24, 14, 'wallArchway'); blocked[24][14] = false;
+    openTile(24, 15, 'wallArchway'); blocked[24][15] = false;
+    wall(24, 16, 'wall');
+    wall(24, 17, 'wall');
+    wall(24, 18, 'wall');
+    wall(24, 19, 'wallCorner');
+    // West wall (col 11, rows 25-27)
+    wall(25, 11, 'wall');
+    wall(26, 11, 'wallWindowBars');
+    wall(27, 11, 'wall');
+    // East wall (col 19, rows 25-27)
+    wall(25, 19, 'wall');
+    wall(26, 19, 'wallWindowBars');
+    wall(27, 19, 'wall');
+    // South wall (row 28) — sealed except stairway at cols 14-15
+    // Row 29 is the border wall, already blocked. Seal row 28.
+    wall(28, 11, 'wallCorner');
+    wall(28, 12, 'wallAged');
+    wall(28, 13, 'wallAged');
+    wall(28, 16, 'wallAged');
+    wall(28, 17, 'wallAged');
+    wall(28, 18, 'wallAged');
+    wall(28, 19, 'wallCorner');
+    // Dungeon stairway — south exit (unchanged archway position)
     openTile(29, 14, 'wallArchway'); blocked[29][14] = false;
     openTile(29, 15, 'wallArchway'); blocked[29][15] = false;
     openTile(28, 14, 'stairs'); blocked[28][14] = false;
     openTile(28, 15, 'stairs'); blocked[28][15] = false;
+
+    // 4c. Central altar / pillar — focal point
+    placeObj(26, 15, 'stoneColumn');       // central pillar
+    placeObj(26, 14, 'stoneColumnWood');   // broken altar piece
+    placeObj(26, 16, 'stoneColumnWood');   // broken altar piece
+
+    // 4d. Flanking atmosphere
+    placeObj(25, 12, 'stoneColumn');   // left torch pillar
+    placeObj(25, 18, 'stoneColumn');   // right torch pillar
+    placeObj(27, 12, 'barrels');       // left supply stack
+    placeObj(27, 18, 'barrel');        // right supply barrel
+
+    // 4e. Hint text tile marker — row 25, col 15 (near spawn)
+    // (The HUD will show "Choose your path..." text when in this room — handled in rendering)
 
     // ===== 5. TOWN SQUARE (center, ENLARGED: rows 12-20, cols 10-20) =====
     fillFloor(12, 10, 20, 20, 'stoneTile');
@@ -1686,7 +1734,7 @@ function generateTown() {
     placeObj(8, 15, 'stoneColumnWood');     // north road approach
     placeObj(10, 15, 'stoneColumnWood', false);  // at barricade
     placeObj(21, 15, 'stoneColumnWood');   // south of square
-    placeObj(24, 15, 'stoneColumnWood');   // near dungeon entry
+    placeObj(23, 15, 'stoneColumnWood');   // approach to antechamber (moved up from row 24)
 
     // ===== 16. SCATTERED DETAIL PROPS — life everywhere =====
     // Crates and barrels along roads and building edges
@@ -1745,25 +1793,27 @@ function generateTown() {
     fillFloor(9, 14, 9, 16, 'dirtTiles');
     placeObj(2, 14, 'barrel', false);
 
-    // ===== 19. DUNGEON CORRUPTION BLEED (south rows 25-28) =====
+    // ===== 19. DUNGEON CORRUPTION BLEED (outside antechamber walls) =====
+    // Corruption only bleeds on tiles OUTSIDE the antechamber (cols <11 or >19)
     for (let r = 26; r <= 28; r++) {
-        for (let c = 12; c <= 18; c++) {
+        for (let c = 2; c <= 10; c++) {
+            if (!blocked[r][c]) {
+                const v = (r * 5 + c * 3) % 5;
+                floorMap[r][c] = v < 2 ? 'dirt' : 'stoneMissing';
+            }
+        }
+        for (let c = 20; c <= 27; c++) {
             if (!blocked[r][c]) {
                 const v = (r * 5 + c * 3) % 5;
                 floorMap[r][c] = v < 2 ? 'dirt' : 'stoneMissing';
             }
         }
     }
-    // Dirt patches spreading from the archway
-    floorMap[27][13] = 'dirt';
-    floorMap[27][17] = 'dirt';
-    floorMap[25][14] = 'dirtTiles';
-    floorMap[25][16] = 'dirtTiles';
-    floorMap[26][11] = 'dirt';
-    floorMap[26][19] = 'dirt';
-    // Rubble objects near the entry
-    placeObj(27, 12, 'barrelsStacked');
-    placeObj(27, 18, 'woodenCrate');
+    // Dirt patches outside the antechamber approaches
+    floorMap[25][10] = 'dirt';
+    floorMap[25][20] = 'dirt';
+    floorMap[26][10] = 'dirtTiles';
+    floorMap[26][20] = 'dirtTiles';
 
     // ===== 20. ENTRANCES =====
     // North gate (future zone)

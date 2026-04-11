@@ -1789,6 +1789,43 @@ function updateWaveSystem(dt) {
                         pickupTexts.push({ text: '+' + bossBonus + ' GOLD', color: '#ffd700', row: player.row, col: player.col, offsetY: -20, life: 2.5 });
                         if (typeof sfxGoldPickup === 'function') sfxGoldPickup();
                     }
+                    // Spawn a town return portal near the player after boss kill
+                    // Find a free tile near the player to place the portal stairs
+                    const _portalR = Math.floor(player.row);
+                    const _portalC = Math.floor(player.col);
+                    let _pr = -1, _pc = -1;
+                    // Try positions 2 tiles away from player, expanding outward
+                    const _portalOffsets = [
+                        [0,2],[0,-2],[2,0],[-2,0],       // cardinal, 2 away
+                        [1,2],[-1,2],[1,-2],[-1,-2],     // diagonals at dist 2
+                        [2,1],[2,-1],[-2,1],[-2,-1],
+                        [0,3],[0,-3],[3,0],[-3,0],       // 3 away
+                    ];
+                    for (const [_dr, _dc] of _portalOffsets) {
+                        const _tr = _portalR + _dr, _tc = _portalC + _dc;
+                        if (_tr >= 0 && _tr < MAP_SIZE && _tc >= 0 && _tc < MAP_SIZE && !blocked[_tr][_tc] && !objectMap[_tr][_tc]) {
+                            _pr = _tr; _pc = _tc; break;
+                        }
+                    }
+                    // Place the portal stairs object
+                    if (_pr >= 0 && _pr < MAP_SIZE && _pc >= 0 && _pc < MAP_SIZE) {
+                        floorMap[_pr][_pc] = 'stairs';
+                        objectMap[_pr][_pc] = 'stairsSpiral';
+                        // Register as a door with town destination
+                        if (typeof DOOR_DEFS !== 'undefined') {
+                            DOOR_DEFS[`${_pr},${_pc}`] = {
+                                requiresKey: null,
+                                label: 'Return to Hamlet',
+                                destination: 'town',
+                            };
+                        }
+                        pickupTexts.push({
+                            text: 'A way back to the Hamlet appears...',
+                            color: '#88ccff',
+                            row: _pr, col: _pc,
+                            offsetY: -30, life: 4.0,
+                        });
+                    }
                     duckMusic(true);
                 } else {
                     wave.phase = 'cleared';

@@ -780,8 +780,17 @@ function loadZone(zoneNumber) {
     // Generate the appropriate zone
     if (zoneNumber === 0) {
         generateTown();
-        player.row = 27;
-        player.col = 15;
+        // Spawn position depends on how we got here:
+        // - New game (restartGame): spawn inside the starting antechamber (row 27, col 15)
+        // - Returning from dungeon (portal/door): spawn at Hamlet entrance (row 23, col 15)
+        if (typeof _townReturnSpawn !== 'undefined' && _townReturnSpawn) {
+            player.row = 23;
+            player.col = 15;
+            _townReturnSpawn = false;
+        } else {
+            player.row = 27;
+            player.col = 15;
+        }
         player.vx = 0;
         player.vy = 0;
     } else if (zoneNumber === 1) {
@@ -1098,8 +1107,13 @@ function updateDoorDefsForZone(zone) {
         };
     } else if (zone === 0) {
         DOOR_DEFS = {
-            '28,14': { requiresKey: null, label: 'Descend to Dungeon', destination: 'zone1' },
-            '28,15': { requiresKey: null, label: 'Descend to Dungeon', destination: 'zone1' },
+            // Starting Antechamber — south exit to Dungeon (Zone 1)
+            '28,14': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
+            '28,15': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
+            // Starting Antechamber — north archway into the Hamlet
+            '24,14': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
+            '24,15': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
+            // North gate (future zone / zone 2 access)
             '1,14': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,15': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
         };
@@ -1160,6 +1174,7 @@ function updateDoorDefsForZone(zone) {
 }
 const DOOR_INTERACT_RANGE = 2.2;
 let zoneTransition = null; // null or { timer, phase, destination }
+let _townReturnSpawn = false; // true when returning from dungeon → spawn at Hamlet entrance, not antechamber
 
 function getNearbyDoor() {
     for (const [key, def] of Object.entries(DOOR_DEFS)) {
@@ -1227,6 +1242,44 @@ function tryUseDoor(door) {
         return;
     }
 
+    // Special: hamlet_open — opens the antechamber into the Hamlet (no zone transition)
+    if (door.def.destination === 'hamlet_open') {
+        // Remove antechamber north wall tiles to let player walk into the Hamlet
+        for (let c = 11; c <= 19; c++) {
+            if (blocked[24] && blocked[24][c]) {
+                blocked[24][c] = false;
+                blockType[24][c] = null;
+                objectMap[24][c] = null;  // clear wall object so it stops rendering
+                floorMap[24][c] = 'stone';
+            }
+        }
+        // Also open east/west side walls so the chamber merges with the Hamlet
+        // Only rows 25-27 — row 28 is the south wall and stays sealed
+        for (let r = 25; r <= 27; r++) {
+            if (blocked[r] && blocked[r][11]) {
+                blocked[r][11] = false; blockType[r][11] = null; objectMap[r][11] = null;
+                floorMap[r][11] = 'stoneUneven';
+            }
+            if (blocked[r] && blocked[r][19]) {
+                blocked[r][19] = false; blockType[r][19] = null; objectMap[r][19] = null;
+                floorMap[r][19] = 'stoneUneven';
+            }
+        }
+        addScreenShake(3, 0.5);
+        if (typeof updateFogOfWar === 'function') updateFogOfWar();
+        pickupTexts.push({
+            text: 'The way opens...',
+            color: '#d4b878',
+            row: door.row, col: door.col,
+            offsetY: -15,
+            life: 2.5,
+        });
+        // Remove the hamlet_open door entries so they don't re-trigger
+        delete DOOR_DEFS['24,14'];
+        delete DOOR_DEFS['24,15'];
+        return;
+    }
+
     // Begin zone transition fade (new system only)
     zoneTransitionFading = true;
     zoneTransitionTarget = door.def.destination;
@@ -1246,7 +1299,7 @@ function updateZoneTransition(dt) {
             zt.timer = 0;
             // Actually load the zone when fade completes
             let nextZone = 1;
-            if (zt.destination === 'town') nextZone = 0;
+            if (zt.destination === 'town') { nextZone = 0; _townReturnSpawn = true; }
             else if (zt.destination === 'zone1') nextZone = 1;
             else if (zt.destination === 'zone2') nextZone = 2;
             else if (zt.destination === 'zone3') nextZone = 3;
@@ -1349,7 +1402,7 @@ function drawZoneTransition() {
 
 function drawDoorPrompt() {
     if (gameDead || inventoryOpen || gamePaused || zoneTransitionFading) return;
-    if (FormSystem.currentForm === 'slime') return; // slime can't open doors
+    if (FormSystem.currentForm === 'slime' && currentZone !== 0) return; // slime can't open doors (except in town)
     const door = getNearbyDoor();
     if (!door) return;
 

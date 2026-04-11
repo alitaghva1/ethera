@@ -546,6 +546,10 @@ function updateGameplay(dt) {
                 } else {
                     nextZone = ZONE_TARGET_MAP[zoneTransitionTarget] != null ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
                 }
+                // When returning to town from dungeon, spawn at Hamlet entrance (not antechamber)
+                if (nextZone === 0 && zoneTransitionTarget === 'town') {
+                    _townReturnSpawn = true;
+                }
                 loadZone(nextZone);
                 showZoneBanner(nextZone);
                 zoneTransitionAlpha = 1;
@@ -2291,8 +2295,8 @@ function restartGame() {
     FormSystem.formData.wizard = { unlocked: false, spellsCast: 0, towersPlaced: 0, lowManaKills: 0, totalKills: 0 };
     FormSystem.formData.lich = { unlocked: false, soulsHarvested: 0, undeadRaised: 0, totalKills: 0 };
     FormSystem.evolutionProgress = { currentMilestones: {}, nextForm: null };
-    // Reset player
-    player.row = 4; player.col = 3;
+    // Reset player (position will be overridden by loadZone below)
+    player.row = 27; player.col = 15;
     player.vx = 0; player.vy = 0;
     // Set form-specific starting stats (now correctly reads slime config)
     const startConfig = FormSystem.getFormConfig() || FORM_CONFIGS.slime;
@@ -2325,6 +2329,7 @@ function restartGame() {
     keyItems.length = 0;
     worldKeyDrops.length = 0;
     zoneTransition = null;
+    _townReturnSpawn = false;  // new game spawns inside antechamber, not Hamlet entrance
     menuOpen = false;
     menuFadeInTimer = 0;
     menuTab = 'status';
@@ -2437,33 +2442,45 @@ function restartGame() {
     cinematicFlashAlpha = 0;
     // Reset light to full
     lightRadius = MAX_LIGHT;
-    // Reload zone 1 properly (regenerate dungeon, doors, chests, NPCs)
+    // Start in the Hamlet (Zone 0) — player spawns in the starting antechamber
     seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0)); // new seed each restart
-    currentZone = 1;
-    loadZone(1);
-    showZoneBanner(1);
+    currentZone = 0;
+    loadZone(0);
+    showZoneBanner(0);
     // Show controls overlay on first game start
     if (typeof Notify !== 'undefined') Notify.showControlsOnce();
-    updateDoorDefsForZone(1);
-    updateChestDefsForZone(1);
+    updateDoorDefsForZone(0);
+    updateChestDefsForZone(0);
     buildRoomBounds();
     buildEnvironmentLights();
-    loadZoneNPCs(1);
+    loadZoneNPCs(0);
     // Re-snap camera after zone rebuild
     const restartPos = tileToScreen(player.row, player.col);
     smoothCamX = canvasW / 2 - restartPos.x;
     smoothCamY = canvasH / 2 - restartPos.y;
     cameraX = Math.round(smoothCamX);
     cameraY = Math.round(smoothCamY);
-    // Restart waves and music
+    // Restart waves and music (skip wave system for non-combat zones like Zone 0)
     duckMusic(false);
-    startWaveSystem();
+    const _restartZoneCfg = ZONE_CONFIGS[currentZone] || {};
+    if (_restartZoneCfg.hasWaves !== false) {
+        startWaveSystem();
+    }
     setPixelCursor('none');
     // Reset zone transition state
     zoneTransitionFading = false;
     zoneTransitionAlpha = 0;
     zoneTransitionTarget = -1;
     if (typeof Notify !== 'undefined') Notify.reset();
+    // Show starting hint text in the antechamber
+    if (currentZone === 0) {
+        pickupTexts.push({
+            text: 'Choose your path...',
+            color: '#d4b878',
+            row: 25, col: 15,
+            offsetY: -20, life: 5.0,
+        });
+    }
 }
 
 function render() {

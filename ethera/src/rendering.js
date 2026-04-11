@@ -546,13 +546,21 @@ function buildEnvironmentLights() {
         { row: 26, col: 27, type: 'void_flame', color: [160, 60, 240], radius: 60, intensity: 0.75 },
     ];
 
-    // ── ZONE 0: The Hamlet (outdoor) ──
+    // ── ZONE 0: The Hamlet (outdoor + Starting Antechamber) ──
     ENV_LIGHTS[0] = [
+        // Town proper lights
         { row: 10, col: 10, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
         { row: 10, col: 20, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
         { row: 20, col: 10, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
         { row: 20, col: 20, type: 'torch', color: [255, 210, 120], radius: 55, intensity: 0.6 },
         { row: 15, col: 15, type: 'brazier', color: [255, 190, 100], radius: 65, intensity: 0.7 },
+        // Starting Antechamber — atmospheric torch light on pillar columns
+        { row: 25, col: 12, type: 'torch', color: [255, 170, 80], radius: 45, intensity: 0.7 },
+        { row: 25, col: 18, type: 'torch', color: [255, 170, 80], radius: 45, intensity: 0.7 },
+        // Central altar glow — eerie blue-green
+        { row: 26, col: 15, type: 'crystal', color: [120, 180, 200], radius: 50, intensity: 0.55 },
+        // Stairway glow — warm orange near dungeon entrance
+        { row: 28, col: 14, type: 'candle', color: [255, 140, 60], radius: 35, intensity: 0.5 },
     ];
 }
 
