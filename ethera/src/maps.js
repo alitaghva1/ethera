@@ -2344,3 +2344,115 @@ function generateZone6() {
     };
 }
 
+
+// ============================================================
+//  STORY ZONE ENVIRONMENTAL HAZARDS
+//  Places hand-crafted hazards in zones 4, 5, 6 after generation.
+//  Reuses the same hazardMap / updateHazards / drawHazardOverlayTile
+//  system from dungeongen.js so rendering and damage "just work."
+// ============================================================
+
+function _storyHazardSafe(r, c) {
+    // Returns true if tile is a valid walkable tile with no object/hazard
+    if (r < 0 || r >= MAP_SIZE || c < 0 || c >= MAP_SIZE) return false;
+    if (blocked[r][c]) return false;
+    if (objectMap[r][c]) return false;
+    if (hazardMap[r] && hazardMap[r][c]) return false;
+    if (!floorMap[r] || !floorMap[r][c]) return false;
+    return true;
+}
+
+function _placeHazardCluster(tiles, type, damage, extra) {
+    // Places a cluster of hazard tiles, skipping any unsafe positions
+    for (const t of tiles) {
+        if (!_storyHazardSafe(t.r, t.c)) continue;
+        hazardMap[t.r][t.c] = { type, damage, triggered: false, ...extra };
+    }
+}
+
+function initStoryZoneHazards(zoneNumber) {
+    if (zoneNumber < 4 || zoneNumber > 6) return;
+
+    // Ensure hazardMap is initialized for this map size
+    if (!hazardMap || hazardMap.length !== MAP_SIZE) {
+        initHazardMap(MAP_SIZE);
+    }
+
+    if (zoneNumber === 4) {
+        // ---- ZONE 4: THE INFERNO — Lava pools (8 DPS) ----
+        // Crucible (rows 11-22, cols 3-18): 3 clusters of 2-3 tiles
+        _placeHazardCluster([
+            { r: 14, c: 7 }, { r: 14, c: 8 }, { r: 15, c: 7 },
+        ], 'lava', 8);
+        _placeHazardCluster([
+            { r: 18, c: 13 }, { r: 18, c: 14 },
+        ], 'lava', 8);
+        _placeHazardCluster([
+            { r: 20, c: 6 }, { r: 21, c: 6 }, { r: 21, c: 7 },
+        ], 'lava', 8);
+
+        // Sacrificial Pits (rows 9-20, cols 20-31): 2 clusters
+        _placeHazardCluster([
+            { r: 12, c: 25 }, { r: 12, c: 26 }, { r: 13, c: 26 },
+        ], 'lava', 8);
+        _placeHazardCluster([
+            { r: 17, c: 21 }, { r: 17, c: 22 },
+        ], 'lava', 8);
+    }
+
+    if (zoneNumber === 5) {
+        // ---- ZONE 5: THE FROZEN ABYSS — Ice patches (0 DPS, 30% slow for 1.5s) ----
+        // Frozen Gallery (rows 8-17, cols 3-18): ice near columns and narrow areas
+        _placeHazardCluster([
+            { r: 9, c: 8 }, { r: 9, c: 9 },
+        ], 'ice', 0);
+        _placeHazardCluster([
+            { r: 12, c: 6 }, { r: 12, c: 7 }, { r: 13, c: 6 },
+        ], 'ice', 0);
+        _placeHazardCluster([
+            { r: 15, c: 12 }, { r: 15, c: 13 }, { r: 16, c: 13 },
+        ], 'ice', 0);
+        // Near chest at (8,15)
+        _placeHazardCluster([
+            { r: 9, c: 15 }, { r: 9, c: 16 },
+        ], 'ice', 0);
+
+        // The Hollow (rows 6-19, cols 20-33): ice in corridors
+        _placeHazardCluster([
+            { r: 10, c: 26 }, { r: 10, c: 27 }, { r: 11, c: 27 },
+        ], 'ice', 0);
+        _placeHazardCluster([
+            { r: 15, c: 22 }, { r: 15, c: 23 },
+        ], 'ice', 0);
+
+        // Narrow throat to Wyrm's Nest (rows 20-21, cols 26-28)
+        _placeHazardCluster([
+            { r: 20, c: 27 },
+        ], 'ice', 0);
+    }
+
+    if (zoneNumber === 6) {
+        // ---- ZONE 6: THRONE OF RUIN — Void cracks (12 DPS + gravitational pull) ----
+        // Throne of Ruin boss arena (rows 28-35, cols 23-35): void around perimeter
+        // Pull center = center of boss arena
+        const pullCenter = { r: 31.5, c: 29 };
+
+        // Left perimeter — avoids burner (28,23), skull (29,24), column (29,25)
+        _placeHazardCluster([
+            { r: 30, c: 23 }, { r: 31, c: 23 },
+        ], 'void', 12, { pullCenter });
+        // Bottom perimeter — avoids altars (34,26)/(34,31) and candelabras
+        _placeHazardCluster([
+            { r: 34, c: 29 }, { r: 34, c: 30 },
+        ], 'void', 12, { pullCenter });
+        // Right perimeter — avoids skull (30,34), burner (28,34), column (29,33)
+        _placeHazardCluster([
+            { r: 32, c: 34 }, { r: 33, c: 34 },
+        ], 'void', 12, { pullCenter });
+        // Inner right — avoids pentagram (33,28) and bones (32,27)
+        _placeHazardCluster([
+            { r: 30, c: 30 }, { r: 30, c: 31 },
+        ], 'void', 12, { pullCenter });
+    }
+}
+

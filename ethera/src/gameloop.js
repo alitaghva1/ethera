@@ -3696,6 +3696,26 @@ function drawOptionsScreen() {
     ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
     ctx.fillText('Fullscreen', labelX, rowY);
     _drawOptToggle('fullscreen', controlX, rowY - toggleH / 2, toggleW, toggleH, gameSettings.fullscreen ? 'ON' : 'OFF');
+    rowY += rowH;
+
+    // Colorblind Mode
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Colorblind', labelX, rowY);
+    const _cbLabels = { off: 'OFF', symbols: 'SYM' };
+    _drawOptToggle('colorblindMode', controlX, rowY - toggleH / 2, toggleW, toggleH, _cbLabels[gameSettings.colorblindMode] || 'OFF');
+    rowY += rowH;
+
+    // Text Scale
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Text Size', labelX, rowY);
+    const _tsMap = { 0.85: 'S', 1: 'M', 1.15: 'L', 1.3: 'XL' };
+    _drawOptToggle('textScale', controlX, rowY - toggleH / 2, toggleW, toggleH, _tsMap[gameSettings.textScale] || 'M');
+    rowY += rowH;
+
+    // Pause on Blur
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Auto-Pause', labelX, rowY);
+    _drawOptToggle('pauseOnBlur', controlX, rowY - toggleH / 2, toggleW, toggleH, gameSettings.pauseOnBlur ? 'ON' : 'OFF');
     rowY += rowH + 12;
 
     drawDecorLine(cx, rowY, 100, 0.25);

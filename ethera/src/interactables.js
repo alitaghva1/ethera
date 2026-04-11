@@ -402,6 +402,21 @@ function getEquipBonuses() {
     if (totals.moveSpeedMult) totals.moveSpeedMult = Math.min(0.5, totals.moveSpeedMult);
     if (totals.manaRegenMult) totals.manaRegenMult = Math.min(1.5, totals.manaRegenMult);
     if (totals.dodgeCdReduc) totals.dodgeCdReduc = Math.min(0.8, totals.dodgeCdReduc);
+
+    // Collect passive effects from legendary items
+    totals.effects = [];
+    for (const slot of EQUIP_SLOTS) {
+        const item = inventory.equipped[slot];
+        if (item && item.effect) totals.effects.push(item.effect);
+    }
+    // Elara's Locket: +2% damage per zone cleared
+    for (const eff of totals.effects) {
+        if (eff.id === 'elara_locket' && typeof currentZone === 'number') {
+            const zoneBonus = Math.max(0, currentZone - 1) * (eff.dmgPerZone || 0.02);
+            totals.dmgBonus = (totals.dmgBonus || 0) + Math.round(zoneBonus * (totals.dmgBonus || 8));
+        }
+    }
+
     return totals;
 }
 
@@ -665,6 +680,8 @@ function loadZone(zoneNumber) {
     // Clear game state
     enemies.length = 0;
     projectiles.length = 0;
+    if (typeof burnZones !== 'undefined') burnZones.length = 0;
+    if (typeof veilUndyingCooldown !== 'undefined') veilUndyingCooldown = 0;
     if (typeof slimeState !== 'undefined') {
         slimeState.splitClones.length = 0;
         slimeState.acidPuddles.length = 0;
@@ -792,6 +809,14 @@ function loadZone(zoneNumber) {
             }
             if (found) break;
         }
+    }
+
+    // Initialize environmental hazards for story zones 4-6
+    if (zoneNumber >= 4 && zoneNumber <= 6) {
+        initHazardMap(MAP_SIZE);
+        if (typeof initStoryZoneHazards === 'function') initStoryZoneHazards(zoneNumber);
+    } else if (zoneNumber < 100) {
+        initHazardMap(MAP_SIZE);
     }
 
     // Generate procedural background for ALL zones.

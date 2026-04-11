@@ -448,6 +448,28 @@ function spawnProjectile() {
         _wp.hitEnemies = new Set();
         projectiles.push(_wp);
         FormSystem.formData.wizard.spellsCast++;
+
+        // LEGENDARY: Band of Echoes — 20% chance to duplicate projectile
+        if (typeof equipBonus !== 'undefined' && equipBonus.effects && !_wp.isEcho) {
+            for (const eff of equipBonus.effects) {
+                if (eff.id === 'band_echoes' && Math.random() < (eff.chance || 0.20)) {
+                    const echoAngle = angle + (Math.random() - 0.5) * 0.25;
+                    const eNx = Math.cos(echoAngle), eNy = Math.sin(echoAngle);
+                    const eTd = screenDirToTile(eNx, eNy);
+                    const _ep = getPooledProj();
+                    _ep.row = player.row + (Math.random() - 0.5) * 0.3;
+                    _ep.col = player.col + (Math.random() - 0.5) * 0.3;
+                    _ep.vr = eTd.dr * ATK_SPEED; _ep.vc = eTd.dc * ATK_SPEED;
+                    _ep.life = ATK_PROJ_LIFE; _ep.hit = false;
+                    _ep.size = projSize * 0.85; _ep.animTime = 0; _ep.angle = echoAngle;
+                    _ep.pierceLeft = getUpgrade('pierce'); _ep.bounceLeft = getUpgrade('bounce');
+                    _ep.canExplode = getUpgrade('explode') > 0; _ep.explodeScale = getUpgrade('explode');
+                    _ep.hitEnemies = new Set(); _ep.isEcho = true;
+                    projectiles.push(_ep);
+                    break;
+                }
+            }
+        }
     }
 }
 

@@ -411,6 +411,29 @@ function sfxUpgradeSelect() {
     setTimeout(() => { if (sfxCtx) playTone('sine', 784, 784, 0.12, 0.18, 0.005, 0.12); }, 80);
 }
 
+function sfxRareUpgradeSelect() {
+    if (!sfxCtx) return;
+    playTone('sine', 523, 523, 0.10, 0.22, 0.005, 0.10);
+    setTimeout(() => { if (sfxCtx) playTone('sine', 784, 784, 0.12, 0.22, 0.005, 0.12); }, 70);
+    setTimeout(() => { if (sfxCtx) playTone('sine', 1047, 1047, 0.14, 0.18, 0.005, 0.14); }, 140);
+    setTimeout(() => { if (sfxCtx) playNoise(0.10, 5000, 4, 0.04, 0.008, 0.08); }, 100);
+}
+
+function sfxLegendaryUpgradeSelect() {
+    if (!sfxCtx) return;
+    playTone('sine', 400, 600, 0.12, 0.35, 0.01, 0.12);
+    playTone('triangle', 600, 900, 0.08, 0.35, 0.02, 0.08);
+    setTimeout(() => {
+        if (sfxCtx) playTone('sine', 800, 1200, 0.14, 0.3, 0.01, 0.14);
+        if (sfxCtx) playNoise(0.15, 5000, 5, 0.05, 0.01, 0.12);
+    }, 150);
+    setTimeout(() => {
+        if (sfxCtx) playTone('sine', 1200, 1500, 0.12, 0.2, 0.005, 0.12);
+        if (sfxCtx) playTone('triangle', 1500, 1800, 0.08, 0.15, 0.005, 0.08);
+    }, 320);
+    setTimeout(() => { if (sfxCtx) playNoise(0.10, 7000, 3, 0.03, 0.008, 0.08); }, 450);
+}
+
 function sfxEvolution() {
     if (!sfxCtx) return;
     // Dramatic ascending power surge — rising tone cascade with shimmer

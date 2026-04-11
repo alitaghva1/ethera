@@ -922,7 +922,11 @@ function drawMenuEquipment(x, y, w, h, fa) {
         ctx.textBaseline = 'top';
         ctx.font = '8px monospace';
         ctx.fillStyle = item ? RARITY[item.rarity].color : '#8a7a5a';
-        ctx.fillText(SLOT_LABELS[slot].toUpperCase(), rect.x + rect.w / 2, rect.y + rect.h + 3);
+        // Colorblind: prepend rarity symbol
+        const _slotLabel = SLOT_LABELS[slot].toUpperCase();
+        const _cbSym = (item && gameSettings.colorblindMode === 'symbols' && typeof RARITY_SYMBOLS !== 'undefined')
+            ? RARITY_SYMBOLS[item.rarity].symbol + ' ' : '';
+        ctx.fillText(_cbSym + _slotLabel, rect.x + rect.w / 2, rect.y + rect.h + 3);
     }
 
     // === BACKPACK SEPARATOR ===

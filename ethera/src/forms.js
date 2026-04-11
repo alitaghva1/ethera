@@ -223,70 +223,82 @@ const formHandlers = {
     },
 };
 
-// Wizard upgrade pool (8 upgrades — split: pyromancer vs arcane tactician, with tower synergies)
+// Wizard upgrade pool — split: pyromancer vs arcane tactician, with tower synergies
+// Tier: 'normal' (level 1+), 'rare' (level 5+), 'legendary' (level 10+)
 const WIZARD_UPGRADE_POOL = [
     // === Pyromancer path ===
-    { id: 'multishot', name: 'Split Bolt', desc: 'Fire +1 additional fireball per shot', icon: 'split', maxStack: 4, category: 'wand' },
-    { id: 'pierce', name: 'Piercing Flame', desc: 'Fireballs pierce through +1 enemy', icon: 'pierce', maxStack: 5, category: 'wand' },
-    { id: 'explode', name: 'Detonation', desc: 'Fireballs explode on impact, dealing 40% dmg in area', icon: 'explode', maxStack: 3, category: 'wand' },
-    { id: 'firerate', name: 'Rapid Cast', desc: 'Attack 15% faster', icon: 'speed', maxStack: 5, category: 'wand' },
-    { id: 'bigshot', name: 'Emberstorm', desc: 'Fireballs are 25% larger and deal +5 damage', icon: 'big', maxStack: 3, category: 'wand' },
-    { id: 'bounce', name: 'Ricochet', desc: 'Fireballs bounce off walls once', icon: 'bounce', maxStack: 3, category: 'wand' },
+    { id: 'multishot', name: 'Split Bolt', desc: 'Fire +1 additional fireball per shot', icon: 'split', maxStack: 4, category: 'wand', tier: 'normal' },
+    { id: 'pierce', name: 'Piercing Flame', desc: 'Fireballs pierce through +1 enemy', icon: 'pierce', maxStack: 5, category: 'wand', tier: 'normal' },
+    { id: 'explode', name: 'Detonation', desc: 'Fireballs explode on impact, dealing 40% dmg in area', icon: 'explode', maxStack: 3, category: 'wand', tier: 'rare' },
+    { id: 'firerate', name: 'Rapid Cast', desc: 'Attack 15% faster', icon: 'speed', maxStack: 5, category: 'wand', tier: 'normal' },
+    { id: 'bigshot', name: 'Emberstorm', desc: 'Fireballs are 25% larger and deal +5 damage', icon: 'big', maxStack: 3, category: 'wand', tier: 'normal' },
+    { id: 'bounce', name: 'Ricochet', desc: 'Fireballs bounce off walls once', icon: 'bounce', maxStack: 3, category: 'wand', tier: 'normal' },
     // === Arcane Mastery path ===
-    { id: 'orbit', name: 'Arcane Orbit', desc: '+1 fireball orbits around you, damaging enemies', icon: 'orbit', maxStack: 4, category: 'passive' },
-    { id: 'thorns', name: 'Thorns of Flame', desc: 'Enemies that hit you take 15 fire damage', icon: 'thorns', maxStack: 3, category: 'passive' },
-    { id: 'regen', name: 'Siphon Life', desc: 'Regen 2 HP per kill', icon: 'regen', maxStack: 3, category: 'passive' },
-    { id: 'manasurge', name: 'Mana Surge', desc: '+25% mana regeneration', icon: 'mana', maxStack: 4, category: 'passive' },
-    { id: 'dodge_reset', name: 'Phase Flux', desc: 'Kills have 15% chance to reset dodge cooldown', icon: 'phase', maxStack: 3, category: 'passive' },
+    { id: 'orbit', name: 'Arcane Orbit', desc: '+1 fireball orbits around you, damaging enemies', icon: 'orbit', maxStack: 4, category: 'passive', tier: 'rare' },
+    { id: 'thorns', name: 'Thorns of Flame', desc: 'Enemies that hit you take 15 fire damage', icon: 'thorns', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'regen', name: 'Siphon Life', desc: 'Regen 2 HP per kill', icon: 'regen', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'manasurge', name: 'Mana Surge', desc: '+25% mana regeneration', icon: 'mana', maxStack: 4, category: 'passive', tier: 'normal' },
+    { id: 'dodge_reset', name: 'Phase Flux', desc: 'Kills have 15% chance to reset dodge cooldown', icon: 'phase', maxStack: 3, category: 'passive', tier: 'normal' },
     // === Tower Synergies (wizard-exclusive) ===
-    { id: 'tower_extra', name: 'Twin Summon', desc: '+1 maximum active tower', icon: 'tower', maxStack: 2, category: 'tower' },
-    { id: 'tower_chain', name: 'Chain Lightning', desc: 'Tower bolts chain to 1 nearby enemy for 50% damage', icon: 'chain', maxStack: 3, category: 'tower' },
-    { id: 'tower_slow', name: 'Frost Obelisk', desc: 'Tower shots slow enemies by 30% for 2s', icon: 'slow', maxStack: 2, category: 'tower' },
+    { id: 'tower_extra', name: 'Twin Summon', desc: '+1 maximum active tower', icon: 'tower', maxStack: 2, category: 'tower', tier: 'rare' },
+    { id: 'tower_chain', name: 'Chain Lightning', desc: 'Tower bolts chain to 1 nearby enemy for 50% damage', icon: 'chain', maxStack: 3, category: 'tower', tier: 'rare' },
+    { id: 'tower_slow', name: 'Frost Obelisk', desc: 'Tower shots slow enemies by 30% for 2s', icon: 'slow', maxStack: 2, category: 'tower', tier: 'normal' },
     // === Wizard-exclusive upgrades ===
-    { id: 'arcane_efficiency', name: 'Arcane Efficiency', desc: 'Fireball mana cost reduced by 15%', icon: 'mana', maxStack: 4, category: 'passive' },
-    { id: 'spell_echo', name: 'Spell Echo', desc: '20% chance to fire a second fireball at no mana cost', icon: 'split', maxStack: 3, category: 'wand' },
-    { id: 'tower_mastery', name: 'Tower Mastery', desc: 'Towers deal +20% damage and last 25% longer', icon: 'tower', maxStack: 3, category: 'tower' },
-    { id: 'mana_shield', name: 'Mana Shield', desc: 'While above 50% mana, take 15% less damage', icon: 'phase', maxStack: 2, category: 'passive' },
+    { id: 'arcane_efficiency', name: 'Arcane Efficiency', desc: 'Fireball mana cost reduced by 15%', icon: 'mana', maxStack: 4, category: 'passive', tier: 'normal' },
+    { id: 'spell_echo', name: 'Spell Echo', desc: '20% chance to fire a second fireball at no mana cost', icon: 'split', maxStack: 3, category: 'wand', tier: 'rare' },
+    { id: 'tower_mastery', name: 'Tower Mastery', desc: 'Towers deal +20% damage and last 25% longer', icon: 'tower', maxStack: 3, category: 'tower', tier: 'rare' },
+    { id: 'mana_shield', name: 'Mana Shield', desc: 'While above 50% mana, take 15% less damage', icon: 'phase', maxStack: 2, category: 'passive', tier: 'normal' },
+    // === Legendary (level 10+) ===
+    { id: 'inferno_mode', name: 'Inferno Mode', desc: 'All fireballs become explosive + piercing. -20% max HP.', icon: 'explode', maxStack: 1, category: 'wand', tier: 'legendary' },
+    { id: 'arcane_singularity', name: 'Arcane Singularity', desc: 'Tower attacks pull enemies inward. Tower range +50%.', icon: 'tower', maxStack: 1, category: 'tower', tier: 'legendary' },
 ];
 
 // Slime upgrade pool
+// Tier: 'normal' (level 1+), 'rare' (level 5+), 'legendary' (level 10+)
 const SLIME_UPGRADE_POOL = [
     // === Acid Control path ===
-    { id: 'acid_potency', name: 'Acid Potency', desc: 'Acid spit deals +25% damage and leaves larger puddles', icon: 'explode', maxStack: 4, category: 'wand' },
-    { id: 'acid_rain', name: 'Acid Rain', desc: 'Spit arcs upward and rains acid in an area', icon: 'explode', maxStack: 2, category: 'wand' },
-    { id: 'corrosive_linger', name: 'Corrosive Linger', desc: 'Acid hits leave a DOT that ticks 3 times (+1 per stack)', icon: 'thorns', maxStack: 3, category: 'wand' },
-    { id: 'ricochet_spit', name: 'Ricochet Spit', desc: 'Acid projectiles bounce to 1 nearby enemy on hit', icon: 'bounce', maxStack: 2, category: 'wand' },
-    { id: 'ooze_trail', name: 'Ooze Trail', desc: 'Leave a damaging acid trail when moving at size 3+', icon: 'thorns', maxStack: 2, category: 'passive' },
+    { id: 'acid_potency', name: 'Acid Potency', desc: 'Acid spit deals +25% damage and leaves larger puddles', icon: 'explode', maxStack: 4, category: 'wand', tier: 'normal' },
+    { id: 'acid_rain', name: 'Acid Rain', desc: 'Spit arcs upward and rains acid in an area', icon: 'explode', maxStack: 2, category: 'wand', tier: 'rare' },
+    { id: 'corrosive_linger', name: 'Corrosive Linger', desc: 'Acid hits leave a DOT that ticks 3 times (+1 per stack)', icon: 'thorns', maxStack: 3, category: 'wand', tier: 'normal' },
+    { id: 'ricochet_spit', name: 'Ricochet Spit', desc: 'Acid projectiles bounce to 1 nearby enemy on hit', icon: 'bounce', maxStack: 2, category: 'wand', tier: 'rare' },
+    { id: 'ooze_trail', name: 'Ooze Trail', desc: 'Leave a damaging acid trail when moving at size 3+', icon: 'thorns', maxStack: 2, category: 'passive', tier: 'normal' },
     // === Clone Army path ===
-    { id: 'rapid_mitosis', name: 'Rapid Mitosis', desc: 'Split clones last longer and explode harder', icon: 'split', maxStack: 3, category: 'passive' },
-    { id: 'hive_mind', name: 'Hive Mind', desc: 'Can maintain 2 split clones simultaneously', icon: 'orbit', maxStack: 1, category: 'passive' },
-    { id: 'sympathetic_link', name: 'Sympathetic Link', desc: 'Heal for 5% of clone damage dealt per stack', icon: 'regen', maxStack: 2, category: 'passive' },
+    { id: 'rapid_mitosis', name: 'Rapid Mitosis', desc: 'Split clones last longer and explode harder', icon: 'split', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'hive_mind', name: 'Hive Mind', desc: 'Can maintain 2 split clones simultaneously', icon: 'orbit', maxStack: 1, category: 'passive', tier: 'rare' },
+    { id: 'sympathetic_link', name: 'Sympathetic Link', desc: 'Heal for 5% of clone damage dealt per stack', icon: 'regen', maxStack: 2, category: 'passive', tier: 'normal' },
     // === Big Slime Brawler path ===
-    { id: 'iron_stomach', name: 'Iron Stomach', desc: 'Absorb faster and gain +1 size per absorb', icon: 'big', maxStack: 3, category: 'passive' },
-    { id: 'elastic_body', name: 'Elastic Body', desc: 'Bounce higher and deal +30% landing damage', icon: 'bounce', maxStack: 3, category: 'passive' },
-    { id: 'regen_gel', name: 'Regenerative Gel', desc: 'Passive HP regen that scales with size', icon: 'regen', maxStack: 3, category: 'passive' },
-    { id: 'osmosis', name: 'Osmosis', desc: 'Passively drain HP from nearby enemies, scaling with size', icon: 'mana', maxStack: 3, category: 'passive' },
-    { id: 'volatile_mass', name: 'Volatile Mass', desc: 'Big hits make you shed size in an acid explosion', icon: 'explode', maxStack: 2, category: 'passive' },
-    { id: 'sticky_landing', name: 'Sticky Landing', desc: 'Bounce landing creates a slow field for 2s', icon: 'slow', maxStack: 2, category: 'passive' },
-    { id: 'membrane', name: 'Membrane', desc: 'Gain a shield equal to 10% max HP every 8s (-1s per stack)', icon: 'phase', maxStack: 3, category: 'passive' },
+    { id: 'iron_stomach', name: 'Iron Stomach', desc: 'Absorb faster and gain +1 size per absorb', icon: 'big', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'elastic_body', name: 'Elastic Body', desc: 'Bounce higher and deal +30% landing damage', icon: 'bounce', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'regen_gel', name: 'Regenerative Gel', desc: 'Passive HP regen that scales with size', icon: 'regen', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'osmosis', name: 'Osmosis', desc: 'Passively drain HP from nearby enemies, scaling with size', icon: 'mana', maxStack: 3, category: 'passive', tier: 'rare' },
+    { id: 'volatile_mass', name: 'Volatile Mass', desc: 'Big hits make you shed size in an acid explosion', icon: 'explode', maxStack: 2, category: 'passive', tier: 'rare' },
+    { id: 'sticky_landing', name: 'Sticky Landing', desc: 'Bounce landing creates a slow field for 2s', icon: 'slow', maxStack: 2, category: 'passive', tier: 'normal' },
+    { id: 'membrane', name: 'Membrane', desc: 'Gain a shield equal to 10% max HP every 8s (-1s per stack)', icon: 'phase', maxStack: 3, category: 'passive', tier: 'normal' },
+    // === Legendary (level 10+) ===
+    { id: 'mitotic_bloom', name: 'Mitotic Bloom', desc: 'Clones also split on death, cascading into mini-clones.', icon: 'split', maxStack: 1, category: 'passive', tier: 'legendary' },
+    { id: 'acid_tsunami', name: 'Acid Tsunami', desc: 'Acid spit becomes a wide wave that pierces all enemies.', icon: 'explode', maxStack: 1, category: 'wand', tier: 'legendary' },
 ];
 
-// Skeleton upgrade pool (11 upgrades — split: bone sniper vs tank brawler, with combo synergies)
+// Skeleton upgrade pool — split: bone sniper vs tank brawler, with combo synergies
+// Tier: 'normal' (level 1+), 'rare' (level 5+), 'legendary' (level 10+)
 const SKELETON_UPGRADE_POOL = [
     // === Bone Sniper path ===
-    { id: 'bone_barrage', name: 'Bone Barrage', desc: 'Throw 2 bones simultaneously', icon: 'split', maxStack: 3, category: 'wand' },
-    { id: 'bone_boomerang', name: 'Bone Boomerang', desc: 'Thrown bones return to you', icon: 'bounce', maxStack: 1, category: 'wand' },
-    { id: 'marrow_leech', name: 'Marrow Leech', desc: 'Bone hits steal a small amount of HP', icon: 'thorns', maxStack: 3, category: 'wand' },
-    { id: 'shrapnel_shield', name: 'Shrapnel Shield', desc: 'Shield bash sends bone fragments outward', icon: 'explode', maxStack: 2, category: 'wand' },
+    { id: 'bone_barrage', name: 'Bone Barrage', desc: 'Throw 2 bones simultaneously', icon: 'split', maxStack: 3, category: 'wand', tier: 'normal' },
+    { id: 'bone_boomerang', name: 'Bone Boomerang', desc: 'Thrown bones return to you', icon: 'bounce', maxStack: 1, category: 'wand', tier: 'rare' },
+    { id: 'marrow_leech', name: 'Marrow Leech', desc: 'Bone hits steal a small amount of HP', icon: 'thorns', maxStack: 3, category: 'wand', tier: 'normal' },
+    { id: 'shrapnel_shield', name: 'Shrapnel Shield', desc: 'Shield bash sends bone fragments outward', icon: 'explode', maxStack: 2, category: 'wand', tier: 'rare' },
     // === Tank Brawler path ===
-    { id: 'calcium_fort', name: 'Calcium Fortification', desc: '+15% max HP and shield durability', icon: 'big', maxStack: 4, category: 'passive' },
-    { id: 'undying_resolve', name: 'Undying Resolve', desc: 'Survive a lethal hit once per zone (1 HP)', icon: 'regen', maxStack: 1, category: 'passive' },
-    { id: 'war_cry', name: 'War Cry', desc: 'Periodic AoE fear that stuns nearby enemies briefly', icon: 'chain', maxStack: 2, category: 'passive' },
+    { id: 'calcium_fort', name: 'Calcium Fortification', desc: '+15% max HP and shield durability', icon: 'big', maxStack: 4, category: 'passive', tier: 'normal' },
+    { id: 'undying_resolve', name: 'Undying Resolve', desc: 'Survive a lethal hit once per zone (1 HP)', icon: 'regen', maxStack: 1, category: 'passive', tier: 'rare' },
+    { id: 'war_cry', name: 'War Cry', desc: 'Periodic AoE fear that stuns nearby enemies briefly', icon: 'chain', maxStack: 2, category: 'passive', tier: 'normal' },
     // === Combo system upgrades ===
-    { id: 'relentless', name: 'Relentless', desc: 'Combo timer extended +0.5s per stack', icon: 'speed', maxStack: 3, category: 'passive' },
-    { id: 'skull_bash', name: 'Skull Bash', desc: 'Dodge roll through enemies deals damage + builds combo', icon: 'phase', maxStack: 2, category: 'passive' },
-    { id: 'bone_storm', name: 'Bone Storm', desc: 'At 10+ combo, auto-fire bones in a circle every 2s', icon: 'orbit', maxStack: 2, category: 'wand' },
-    { id: 'quick_recovery', name: 'Quick Recovery', desc: 'Stamina regenerates 30% faster', icon: 'speed', maxStack: 3, category: 'passive' },
+    { id: 'relentless', name: 'Relentless', desc: 'Combo timer extended +0.5s per stack', icon: 'speed', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'skull_bash', name: 'Skull Bash', desc: 'Dodge roll through enemies deals damage + builds combo', icon: 'phase', maxStack: 2, category: 'passive', tier: 'normal' },
+    { id: 'bone_storm', name: 'Bone Storm', desc: 'At 10+ combo, auto-fire bones in a circle every 2s', icon: 'orbit', maxStack: 2, category: 'wand', tier: 'rare' },
+    { id: 'quick_recovery', name: 'Quick Recovery', desc: 'Stamina regenerates 30% faster', icon: 'speed', maxStack: 3, category: 'passive', tier: 'normal' },
+    // === Legendary (level 10+) ===
+    { id: 'bone_fortress', name: 'Bone Fortress', desc: 'Shield blocks 100% damage for 0.5s on perfect timing.', icon: 'big', maxStack: 1, category: 'passive', tier: 'legendary' },
+    { id: 'rattling_charge', name: 'Rattling Charge', desc: 'Dodge becomes a charge that stuns enemies in path for 1s.', icon: 'phase', maxStack: 1, category: 'passive', tier: 'legendary' },
 ];
 
 // Register form handlers for slime and skeleton
@@ -313,22 +325,26 @@ formHandlers.skeleton = {
     getUpgradePool: () => SKELETON_UPGRADE_POOL,
 };
 
-// Lich upgrade pool (11 upgrades — split: necromancer build vs soul caster build)
+// Lich upgrade pool — split: necromancer build vs soul caster build
+// Tier: 'normal' (level 1+), 'rare' (level 5+), 'legendary' (level 10+)
 const LICH_UPGRADE_POOL = [
     // === Soul Caster path ===
-    { id: 'soul_siphon', name: 'Soul Siphon', desc: 'Kills generate +30% more soul energy', icon: 'mana', maxStack: 4, category: 'passive' },
-    { id: 'necrotic_blast', name: 'Necrotic Blast', desc: 'Soul bolts explode on final hit for 40% AoE', icon: 'explode', maxStack: 2, category: 'wand' },
-    { id: 'dark_pact', name: 'Dark Pact', desc: 'Soul bolts cost 5 energy but deal +50% damage', icon: 'thorns', maxStack: 1, category: 'wand' },
-    { id: 'ethereal_form', name: 'Ethereal Form', desc: 'Above 80 soul: take 25% less damage', icon: 'phase', maxStack: 2, category: 'passive' },
+    { id: 'soul_siphon', name: 'Soul Siphon', desc: 'Kills generate +30% more soul energy', icon: 'mana', maxStack: 4, category: 'passive', tier: 'normal' },
+    { id: 'necrotic_blast', name: 'Necrotic Blast', desc: 'Soul bolts explode on final hit for 40% AoE', icon: 'explode', maxStack: 2, category: 'wand', tier: 'rare' },
+    { id: 'dark_pact', name: 'Dark Pact', desc: 'Soul bolts cost 5 energy but deal +50% damage', icon: 'thorns', maxStack: 1, category: 'wand', tier: 'rare' },
+    { id: 'ethereal_form', name: 'Ethereal Form', desc: 'Above 80 soul: take 25% less damage', icon: 'phase', maxStack: 2, category: 'passive', tier: 'rare' },
     // === Necromancer path ===
-    { id: 'army_dead', name: 'Army of the Dead', desc: 'Raise up to +1 undead minion simultaneously', icon: 'split', maxStack: 3, category: 'passive' },
-    { id: 'plague_bearer', name: 'Plague Bearer', desc: 'Undead explode on death, dealing AoE damage', icon: 'explode', maxStack: 2, category: 'passive' },
-    { id: 'corpse_explosion', name: 'Corpse Explosion', desc: 'Detonate corpses for massive AoE on harvest', icon: 'explode', maxStack: 2, category: 'wand' },
+    { id: 'army_dead', name: 'Army of the Dead', desc: 'Raise up to +1 undead minion simultaneously', icon: 'split', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'plague_bearer', name: 'Plague Bearer', desc: 'Undead explode on death, dealing AoE damage', icon: 'explode', maxStack: 2, category: 'passive', tier: 'normal' },
+    { id: 'corpse_explosion', name: 'Corpse Explosion', desc: 'Detonate corpses for massive AoE on harvest', icon: 'explode', maxStack: 2, category: 'wand', tier: 'normal' },
     // === Universal ===
-    { id: 'spectral_cloak', name: 'Spectral Cloak', desc: 'Brief invisibility after shadow step', icon: 'phase', maxStack: 2, category: 'passive' },
-    { id: 'death_aura', name: 'Death Aura', desc: 'Passive damage to nearby enemies (scales with soul energy)', icon: 'orbit', maxStack: 3, category: 'passive' },
-    { id: 'phylactery', name: 'Phylactery', desc: 'On death, revive at 30% HP once per zone', icon: 'regen', maxStack: 1, category: 'passive' },
-    { id: 'soul_overflow', name: 'Soul Overflow', desc: 'Excess soul energy above 80 converts to HP regen', icon: 'regen', maxStack: 3, category: 'passive' },
+    { id: 'spectral_cloak', name: 'Spectral Cloak', desc: 'Brief invisibility after shadow step', icon: 'phase', maxStack: 2, category: 'passive', tier: 'normal' },
+    { id: 'death_aura', name: 'Death Aura', desc: 'Passive damage to nearby enemies (scales with soul energy)', icon: 'orbit', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'phylactery', name: 'Phylactery', desc: 'On death, revive at 30% HP once per zone', icon: 'regen', maxStack: 1, category: 'passive', tier: 'rare' },
+    { id: 'soul_overflow', name: 'Soul Overflow', desc: 'Excess soul energy above 80 converts to HP regen', icon: 'regen', maxStack: 3, category: 'passive', tier: 'normal' },
+    // === Legendary (level 10+) ===
+    { id: 'undead_legion', name: 'Undead Legion', desc: '+3 max minions, but they decay over 15s.', icon: 'split', maxStack: 1, category: 'passive', tier: 'legendary' },
+    { id: 'soul_nova', name: 'Soul Nova', desc: 'At max soul energy, release a nova dealing 200% damage to all nearby.', icon: 'orbit', maxStack: 1, category: 'wand', tier: 'legendary' },
 ];
 
 formHandlers.lich = {

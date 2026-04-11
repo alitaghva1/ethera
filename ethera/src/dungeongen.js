@@ -800,6 +800,7 @@ function getHazardDamage(type) {
     if (type === 'acid') return 5;
     if (type === 'spikes') return 15;
     if (type === 'collapse') return 20;
+    if (type === 'void') return 12;
     return 0; // ice does no damage, just slows
 }
 
@@ -821,13 +822,41 @@ function updateHazards(dt) {
             const key = r + ',' + c;
             if (hazardDamageTimers[key] > 0) {
                 hazardDamageTimers[key] -= dt;
+                // Ice slow applies even during cooldown (continuous effect)
+                if (h.type === 'ice') {
+                    player.slowTimer = Math.max(player.slowTimer || 0, 1.5);
+                }
+                // Void pull applies even during damage cooldown
+                if (h.type === 'void' && h.pullCenter && !player.dodging) {
+                    const pullStr = 0.5 * dt;
+                    const toR = h.pullCenter.r - player.row;
+                    const toC = h.pullCenter.c - player.col;
+                    const pullDist = Math.sqrt(toR * toR + toC * toC);
+                    if (pullDist > 0.1) {
+                        player.vx += (toR / pullDist) * pullStr;
+                        player.vy += (toC / pullDist) * pullStr;
+                    }
+                }
                 continue;
             }
             if (h.type === 'ice') {
-                // Slow effect handled in movement — no damage
+                // Apply slow debuff — 30% reduction for 1.5s
+                player.slowTimer = Math.max(player.slowTimer || 0, 1.5);
+                hazardDamageTimers[key] = 0.3; // short cooldown to avoid spamming
                 continue;
             }
             if (h.type === 'collapse' && h.triggered) continue;
+            // Void pull toward cluster center (subtle gravitational pull)
+            if (h.type === 'void' && h.pullCenter && !player.dodging) {
+                const pullStr = 0.5 * dt;
+                const toR = h.pullCenter.r - player.row;
+                const toC = h.pullCenter.c - player.col;
+                const pullDist = Math.sqrt(toR * toR + toC * toC);
+                if (pullDist > 0.1) {
+                    player.vx += (toR / pullDist) * pullStr;
+                    player.vy += (toC / pullDist) * pullStr;
+                }
+            }
             // Deal damage
             if (playerInvTimer <= 0 && !player.dodging && !gameDead) {
                 player.hp -= h.damage;
@@ -836,7 +865,7 @@ function updateHazards(dt) {
                 if (typeof sfxPlayerHurt === 'function') sfxPlayerHurt();
                 if (player.hp <= 0) {
                     player.hp = 0;
-                    deathCause = h.type === 'lava' ? 'Lava' : h.type === 'acid' ? 'Acid' : h.type === 'spikes' ? 'Spike Trap' : 'Collapsing Floor';
+                    deathCause = h.type === 'lava' ? 'Lava' : h.type === 'acid' ? 'Acid' : h.type === 'spikes' ? 'Spike Trap' : h.type === 'void' ? 'The Void' : 'Collapsing Floor';
                 }
                 hazardDamageTimers[key] = DGEN_HAZARD_COOLDOWN;
                 if (h.type === 'collapse') {
@@ -852,7 +881,7 @@ function updateHazards(dt) {
                 }
                 // Spawn particles
                 if (typeof spawnParticle === 'function') {
-                    const color = h.type === 'lava' ? '#ff4400' : h.type === 'acid' ? '#44ff44' : h.type === 'spikes' ? '#aaaaaa' : '#886644';
+                    const color = h.type === 'lava' ? '#ff4400' : h.type === 'acid' ? '#44ff44' : h.type === 'spikes' ? '#aaaaaa' : h.type === 'void' ? '#8833cc' : '#886644';
                     for (let i = 0; i < 4; i++) {
                         spawnParticle(r + 0.5, c + 0.5, (Math.random() - 0.5) * 2, -Math.random() * 3, 0.4, color, 3);
                     }
@@ -931,6 +960,17 @@ function drawHazardOverlays() {
                 ctx.lineTo(sx + 10, sy - 2);
                 ctx.stroke();
                 ctx.setLineDash([]);
+            } else if (h.type === 'void') {
+                const pulse = Math.sin(t * 2 + r * 1.7 + c * 2.3);
+                ctx.globalAlpha = 0.35 + pulse * 0.1;
+                const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, HALF_DW * 0.8);
+                g.addColorStop(0, 'rgba(30, 0, 40, 0.6)');
+                g.addColorStop(0.4, 'rgba(100, 30, 160, 0.35)');
+                g.addColorStop(1, 'rgba(60, 10, 100, 0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.ellipse(sx, sy, HALF_DW * 0.8, HALF_DH * 0.8, 0, 0, Math.PI * 2);
+                ctx.fill();
             }
             ctx.restore();
         }
@@ -1034,6 +1074,34 @@ function drawHazardOverlayTile(r, c) {
         ctx.lineTo(sx + 5, sy + 1);
         ctx.lineTo(sx + 10, sy + 3);
         ctx.stroke();
+    } else if (h.type === 'void') {
+        // Purple-black swirling void crack
+        const pulse = Math.sin(t * 2 + r * 1.7 + c * 2.3);
+        ctx.globalAlpha = 0.35 + pulse * 0.1;
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, HALF_DW * 0.8);
+        g.addColorStop(0, 'rgba(30, 0, 40, 0.6)');
+        g.addColorStop(0.4, 'rgba(100, 30, 160, 0.35)');
+        g.addColorStop(1, 'rgba(60, 10, 100, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, HALF_DW * 0.8, HALF_DH * 0.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Swirl lines rotating around center
+        ctx.globalAlpha = 0.3 + pulse * 0.1;
+        ctx.strokeStyle = 'rgba(180, 80, 255, 0.5)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) {
+            const a = t * 1.5 + i * (Math.PI * 2 / 3);
+            const ir = HALF_DW * 0.15;
+            const or = HALF_DW * 0.55;
+            ctx.beginPath();
+            ctx.moveTo(sx + Math.cos(a) * ir, sy + Math.sin(a) * ir * 0.5);
+            ctx.quadraticCurveTo(
+                sx + Math.cos(a + 0.5) * or * 0.7, sy + Math.sin(a + 0.5) * or * 0.35,
+                sx + Math.cos(a + 1.0) * or, sy + Math.sin(a + 1.0) * or * 0.5
+            );
+            ctx.stroke();
+        }
     }
     ctx.restore();
 }

@@ -212,13 +212,17 @@ function drawLevelUpScreen() {
 
     for (let i = 0; i < choices.length; i++) {
         const u = choices[i];
+        const tier = u.tier || 'normal';
+        const isLegendary = tier === 'legendary';
+        const isRare = tier === 'rare';
         const cardX = startX + i * (cardW + cardGap);
         const cardY = cy - cardH / 2 + 20;
         const hovered = xpState.levelUpHover === i;
         const stacks = upgrades[u.id] || 0;
 
-        // Card float animation
-        const floatY = Math.sin(t * 2 + i * 1.5) * 3;
+        // Card float animation — legendary cards float more dramatically
+        const floatAmp = isLegendary ? 5 : 3;
+        const floatY = Math.sin(t * 2 + i * 1.5) * floatAmp;
         let cy2 = cardY + floatY;
 
         // Hover elevation: draw 2px higher when hovered
@@ -228,14 +232,42 @@ function drawLevelUpScreen() {
 
         ctx.globalAlpha = fade;
 
+        // --- Tier-specific outer glow (behind card) ---
+        if (isLegendary) {
+            // Animated golden pulse glow for legendary
+            const pulse = 0.5 + 0.5 * Math.sin(t * 3 + i);
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = fade * (0.08 + 0.06 * pulse);
+            const legGlow = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 10, cardX + cardW/2, cy2 + cardH/2, cardW * 1.1);
+            legGlow.addColorStop(0, 'rgba(255, 200, 50, 0.5)');
+            legGlow.addColorStop(0.5, 'rgba(255, 160, 20, 0.2)');
+            legGlow.addColorStop(1, 'rgba(255, 120, 0, 0)');
+            ctx.fillStyle = legGlow;
+            ctx.fillRect(cardX - 40, cy2 - 40, cardW + 80, cardH + 80);
+            ctx.restore();
+        } else if (isRare) {
+            // Subtle blue glow for rare
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = fade * 0.06;
+            const rareGlow = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 10, cardX + cardW/2, cy2 + cardH/2, cardW * 0.95);
+            rareGlow.addColorStop(0, 'rgba(80, 140, 255, 0.4)');
+            rareGlow.addColorStop(1, 'rgba(40, 80, 200, 0)');
+            ctx.fillStyle = rareGlow;
+            ctx.fillRect(cardX - 30, cy2 - 30, cardW + 60, cardH + 60);
+            ctx.restore();
+        }
+
         // Subtle glow behind hovered card
         if (hovered) {
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
             ctx.globalAlpha = fade * 0.06;
+            const hoverColor = isLegendary ? 'rgba(255, 200, 50, 0.4)' : (isRare ? 'rgba(80, 140, 255, 0.4)' : 'rgba(212, 160, 64, 0.4)');
             const bgGlow = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 20, cardX + cardW/2, cy2 + cardH/2, cardW * 0.9);
-            bgGlow.addColorStop(0, 'rgba(212, 160, 64, 0.4)');
-            bgGlow.addColorStop(1, 'rgba(212, 160, 64, 0)');
+            bgGlow.addColorStop(0, hoverColor);
+            bgGlow.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = bgGlow;
             ctx.fillRect(cardX - 30, cy2 - 30, cardW + 60, cardH + 60);
             ctx.restore();
@@ -248,25 +280,50 @@ function drawLevelUpScreen() {
         ctx.roundRect(cardX, cy2, cardW, cardH, 6);
         ctx.fill();
 
-        // Card border: bright gold when hovered, normal when not
+        // Card border: tier-colored
         const catColor = u.category === 'wand' ? '#dd8833' : (u.category === 'passive' ? '#44bb88' : '#8866cc');
-        ctx.strokeStyle = hovered ? '#d4a040' : 'rgba(140, 120, 80, 0.3)';
-        ctx.lineWidth = hovered ? 2 : 1;
-        ctx.globalAlpha = fade * (hovered ? 0.8 : 0.4);
+        let borderColor, borderHoverColor, borderWidth;
+        if (isLegendary) {
+            const pulse = 0.5 + 0.5 * Math.sin(t * 3 + i);
+            borderColor = `rgba(255, ${180 + Math.floor(40 * pulse)}, ${20 + Math.floor(40 * pulse)}, ${0.5 + 0.3 * pulse})`;
+            borderHoverColor = `rgba(255, ${200 + Math.floor(30 * pulse)}, ${40 + Math.floor(40 * pulse)}, ${0.8 + 0.2 * pulse})`;
+            borderWidth = hovered ? 3 : 2;
+        } else if (isRare) {
+            borderColor = 'rgba(80, 140, 255, 0.5)';
+            borderHoverColor = 'rgba(100, 170, 255, 0.8)';
+            borderWidth = hovered ? 2 : 1.5;
+        } else {
+            borderColor = 'rgba(140, 120, 80, 0.3)';
+            borderHoverColor = '#d4a040';
+            borderWidth = hovered ? 2 : 1;
+        }
+        ctx.strokeStyle = hovered ? borderHoverColor : borderColor;
+        ctx.lineWidth = borderWidth;
+        ctx.globalAlpha = fade * (hovered ? 0.8 : (isLegendary ? 0.7 : (isRare ? 0.6 : 0.4)));
         ctx.beginPath();
         ctx.roundRect(cardX, cy2, cardW, cardH, 6);
         ctx.stroke();
 
-        // Hover glow (category-specific)
+        // Hover glow (category-specific, tinted by tier)
         if (hovered) {
+            const glowColor = isLegendary ? '#ffcc33' : (isRare ? '#5588ff' : catColor);
             ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = fade * 0.08;
+            ctx.globalAlpha = fade * (isLegendary ? 0.12 : (isRare ? 0.10 : 0.08));
             const hg = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 0, cardX + cardW/2, cy2 + cardH/2, cardW * 0.7);
-            hg.addColorStop(0, catColor);
+            hg.addColorStop(0, glowColor);
             hg.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = hg;
             ctx.fillRect(cardX - 20, cy2 - 20, cardW + 40, cardH + 40);
             ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Tier tag (above category tag for rare/legendary)
+        if (isLegendary || isRare) {
+            ctx.globalAlpha = fade * 0.7;
+            ctx.font = '7px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = isLegendary ? '#ffcc33' : '#5588ff';
+            ctx.fillText(tier.toUpperCase(), cardX + cardW / 2, cy2 + 11);
         }
 
         // Category tag
@@ -274,21 +331,28 @@ function drawLevelUpScreen() {
         ctx.font = '8px monospace';
         ctx.textAlign = 'center';
         ctx.fillStyle = catColor;
-        ctx.fillText(u.category.toUpperCase(), cardX + cardW / 2, cy2 + 18);
+        ctx.fillText(u.category.toUpperCase(), cardX + cardW / 2, cy2 + (isLegendary || isRare ? 22 : 18));
 
         // Icon
         ctx.globalAlpha = fade;
-        drawUpgradeIcon(cardX + cardW / 2, cy2 + 65, u.icon, catColor, 16);
+        drawUpgradeIcon(cardX + cardW / 2, cy2 + 65, u.icon, isLegendary ? '#ffcc33' : (isRare ? '#6699ff' : catColor), 16);
 
-        // Name
-        ctx.font = '14px Georgia';
-        ctx.fillStyle = hovered ? '#e8d8b0' : '#c4a878';
+        // Name — tinted by tier
+        ctx.font = isLegendary ? 'bold 14px Georgia' : '14px Georgia';
+        const nameColor = isLegendary ? '#ffd855' : (isRare ? '#88bbff' : (hovered ? '#e8d8b0' : '#c4a878'));
+        ctx.fillStyle = nameColor;
         ctx.globalAlpha = fade;
+        // Legendary name glow
+        if (isLegendary) {
+            ctx.shadowColor = 'rgba(255, 200, 40, 0.4)';
+            ctx.shadowBlur = 8;
+        }
         ctx.fillText(u.name, cardX + cardW / 2, cy2 + 110);
+        ctx.shadowBlur = 0;
 
         // Description (word-wrap)
         ctx.font = '10px Georgia';
-        ctx.fillStyle = '#9a8a6a';
+        ctx.fillStyle = isLegendary ? '#c8a860' : (isRare ? '#8899aa' : '#9a8a6a');
         ctx.globalAlpha = fade * 0.8;
         const words = u.desc.split(' ');
         let line = '';
@@ -314,7 +378,7 @@ function drawLevelUpScreen() {
         } else {
             ctx.globalAlpha = fade * 0.3;
             ctx.font = '9px monospace';
-            ctx.fillStyle = '#666';
+            ctx.fillStyle = isLegendary ? '#ffcc33' : (isRare ? '#5588ff' : '#666');
             ctx.fillText('NEW', cardX + cardW / 2, cy2 + cardH - 16);
         }
     }

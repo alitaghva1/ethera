@@ -205,6 +205,109 @@ const ENEMY_TYPES = {
         despDamage: 14,
         despRadius: 2.5,
     },
+
+    // --- NEW ENEMY TYPES ---
+
+    // Fire Slime (Zone 4+) — lunges like slime, leaves fire pool on death
+    fire_slime: {
+        prefix: 'slime',
+        hp: 45, speed: 3.0, damage: 14, attackRange: 0.7, aggroRange: 8,
+        hitboxR: 0.25,
+        frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
+        animSpeed: 8, attackDur: 0.4, attackCooldown: 0.8,
+        scale: 1.4, yOff: 0.75,
+        ai: 'lunge',
+        lungeRange: 3.5,
+        lungeCooldown: 2.0,
+        lungeSpeed: 5.0,
+        lungeDur: 0.25,
+        patrolRange: 0.5,
+        retreatOnHit: 0,
+        tintColor: COLORS.FIRE_SLIME_TINT,
+        // Special: fire pool on death
+        firePoolOnDeath: true,
+        firePoolDuration: 3.0,
+        firePoolDPS: 5,
+    },
+
+    // Frost Archer (Zone 5+) — ranged like skelarch, arrows slow the player
+    frost_archer: {
+        prefix: 'skelarch',
+        hp: 40, speed: 2.5, damage: 14, attackRange: 7.5, aggroRange: 10,
+        hitboxR: 0.25,
+        frames: { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+        animSpeed: 8, attackDur: 0.55, attackCooldown: 1.8,
+        scale: 1.5, yOff: 0.75,
+        ai: 'ranged', preferredDist: 4.5,
+        patrolRange: 2.0,
+        retreatOnHit: 0.3,
+        tintColor: COLORS.FROST_ARCHER_TINT,
+        // Special: arrows apply slow
+        frostArrows: true,
+        frostSlowDuration: 2.0,
+        frostSlowMult: 0.7, // 30% movement slow
+    },
+
+    // Shadow Knight (Zone 6) — flanks like skeleton, teleports when hit
+    shadow_knight: {
+        prefix: 'armoredskel',
+        hp: 80, speed: 2.8, damage: 22, attackRange: 0.9, aggroRange: 9,
+        hitboxR: 0.3,
+        frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+        animSpeed: 8, attackDur: 0.5, attackCooldown: 1.3,
+        scale: 1.4, yOff: 0.75,
+        ai: 'flank',
+        flankAngle: 0.8,
+        flankDist: 2.5,
+        patrolRange: 3.5,
+        retreatOnHit: 0,
+        tintColor: COLORS.SHADOW_KNIGHT_TINT,
+        // Special: 40% teleport on hit, 5s cooldown
+        shadowTeleport: true,
+        shadowTeleportChance: 0.4,
+        shadowTeleportDist: 3.0,
+        shadowTeleportCooldown: 5.0,
+    },
+
+    // Bone Mage (Zone 3+) — ranged, casts ground AoE with 1.5s delay
+    bone_mage: {
+        prefix: 'skelarch',
+        hp: 35, speed: 2.0, damage: 16, attackRange: 7.0, aggroRange: 10,
+        hitboxR: 0.25,
+        frames: { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+        animSpeed: 8, attackDur: 0.55, attackCooldown: 2.5,
+        scale: 1.5, yOff: 0.75,
+        ai: 'ranged', preferredDist: 5.0,
+        patrolRange: 2.0,
+        retreatOnHit: 0.3,
+        tintColor: COLORS.BONE_MAGE_TINT,
+        // Special: ground AoE instead of arrows
+        groundAoE: true,
+        groundAoEDelay: 1.5,
+        groundAoERadius: 1.2,
+        groundAoEDamage: 20,
+    },
+
+    // Pit Lurker (Zone 5+) — ambush AI, invisible until player is close
+    pit_lurker: {
+        prefix: 'slime',
+        hp: 50, speed: 4.5, damage: 18, attackRange: 0.7, aggroRange: 8,
+        hitboxR: 0.25,
+        frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
+        animSpeed: 10, attackDur: 0.4, attackCooldown: 0.8,
+        scale: 0.98, yOff: 0.75,  // 0.7 * 1.4 base = 0.98
+        ai: 'lunge',
+        lungeRange: 3.5,
+        lungeCooldown: 1.5,
+        lungeSpeed: 6.0,
+        lungeDur: 0.25,
+        patrolRange: 0.5,
+        retreatOnHit: 0,
+        tintColor: COLORS.PIT_LURKER_TINT,
+        // Special: ambush — invisible until player within 3 tiles
+        ambush: true,
+        ambushRevealDist: 3.0,
+    },
 };
 
 // ============================================================
@@ -300,9 +403,15 @@ const PITY_POOL_SIZE = 13;  // Clear pool when it reaches this size (allows rota
 
 // ----- ENEMY ARRAY -----
 const enemies = [];
+const burnZones = [];
+let veilUndyingCooldown = 0;
 
 // ----- ENEMY PROJECTILES (skeleton archer arrows) -----
 const enemyProjectiles = [];
+
+// ----- GROUND HAZARDS (fire pools, bone mage AoE warnings) -----
+const groundHazards = [];
+// Each hazard: { type, row, col, radius, life, maxLife, damage, tickTimer, color, warningColor }
 
 // ----- PARTICLE SYSTEM -----
 // Effect particles are managed in particles.js (spawnParticle, spawnDeathBurst, etc.)
@@ -393,6 +502,7 @@ function buildRoomBounds() {
 //   skipParticles   — true to suppress hit spark (batch hits)
 function applyEnemyHit(e, damage, opts) {
     if (!e || e.state === 'death') return;
+    if (e._ambushHidden) return; // pit lurker hidden — immune to damage
     opts = opts || {};
 
     // Armored skeleton shield damage reduction
@@ -471,6 +581,41 @@ function applyEnemyHit(e, damage, opts) {
     }
 
     const critMul = isCrit ? 2.0 : 1.0;
+
+    // --- Shadow Knight: teleport on hit ---
+    if (e.def.shadowTeleport && e.hp > 0 && !opts.skipHurtState) {
+        if (!e._shadowTeleportCooldown) e._shadowTeleportCooldown = 0;
+        if (e._shadowTeleportCooldown <= 0 && Math.random() < (e.def.shadowTeleportChance || 0.4)) {
+            const teleDist = e.def.shadowTeleportDist || 3.0;
+            // Try random directions to find walkable tile
+            for (let attempt = 0; attempt < 8; attempt++) {
+                const teleAngle = Math.random() * Math.PI * 2;
+                const teleR = e.row + Math.cos(teleAngle) * teleDist;
+                const teleC = e.col + Math.sin(teleAngle) * teleDist;
+                if (canEnemyMoveTo(teleR, teleC, e.def.hitboxR, e)) {
+                    // Purple flash at old position
+                    for (let tp = 0; tp < 6; tp++) {
+                        spawnParticle(e.row, e.col,
+                            (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3,
+                            0.3, '#7733bb', 0.8);
+                    }
+                    e.row = teleR;
+                    e.col = teleC;
+                    // Purple flash at new position
+                    for (let tp = 0; tp < 6; tp++) {
+                        spawnParticle(e.row, e.col,
+                            (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3,
+                            0.3, '#7733bb', 0.8);
+                    }
+                    e._shadowTeleportCooldown = e.def.shadowTeleportCooldown || 5.0;
+                    // Cancel knockback since we teleported
+                    e.knockVr = 0;
+                    e.knockVc = 0;
+                    break;
+                }
+            }
+        }
+    }
 
     if (e.hp <= 0) {
         e.hp = 0;
@@ -719,9 +864,10 @@ const ZONE3_WAVES = [
     },
     {
         enemies: [
-            { type: 'skeleton', count: 6 },
-            { type: 'skelarch', count: 6 },
+            { type: 'skeleton', count: 5 },
+            { type: 'skelarch', count: 5 },
             { type: 'armoredskel', count: 2 },
+            { type: 'bone_mage', count: 1 },
         ],
         statMult: 2.9,
         title: 'The Garrison Falls',
@@ -729,26 +875,29 @@ const ZONE3_WAVES = [
     },
     {
         enemies: [
-            { type: 'skeleton', count: 8 },
-            { type: 'skelarch', count: 4 },
+            { type: 'skeleton', count: 7 },
+            { type: 'skelarch', count: 3 },
+            { type: 'bone_mage', count: 1 },
         ],
         statMult: 3.0,
         title: 'The Ascent',
     },
     {
         enemies: [
-            { type: 'skeleton', count: 6 },
+            { type: 'skeleton', count: 5 },
             { type: 'armoredskel', count: 4 },
-            { type: 'skelarch', count: 8 },
+            { type: 'skelarch', count: 6 },
+            { type: 'bone_mage', count: 2 },
         ],
         statMult: 3.2,
         title: 'Summit of Bone',
     },
     {
         enemies: [
-            { type: 'skeleton', count: 10 },
-            { type: 'skelarch', count: 6 },
+            { type: 'skeleton', count: 8 },
+            { type: 'skelarch', count: 5 },
             { type: 'armoredskel', count: 4 },
+            { type: 'bone_mage', count: 2 },
         ],
         statMult: 3.4,
         title: 'The Heights Rage',
@@ -778,9 +927,10 @@ const ZONE4_WAVES = [
     },
     {
         enemies: [
-            { type: 'skeleton', count: 10 },
+            { type: 'skeleton', count: 8 },
             { type: 'armoredskel', count: 6 },
-            { type: 'skelarch', count: 8 },
+            { type: 'skelarch', count: 6 },
+            { type: 'fire_slime', count: 2 },
         ],
         statMult: 3.4,
         title: 'Burning Legions',
@@ -788,8 +938,9 @@ const ZONE4_WAVES = [
     {
         enemies: [
             { type: 'werewolf', count: 1 },
-            { type: 'armoredskel', count: 8 },
-            { type: 'skelarch', count: 8 },
+            { type: 'armoredskel', count: 7 },
+            { type: 'skelarch', count: 6 },
+            { type: 'fire_slime', count: 3 },
         ],
         statMult: 3.6,
         title: 'The Damned March',
@@ -797,26 +948,32 @@ const ZONE4_WAVES = [
     },
     {
         enemies: [
-            { type: 'armoredskel', count: 10 },
-            { type: 'skelarch', count: 10 },
-            { type: 'skeleton', count: 6 },
+            { type: 'armoredskel', count: 8 },
+            { type: 'skelarch', count: 8 },
+            { type: 'skeleton', count: 5 },
+            { type: 'fire_slime', count: 3 },
+            { type: 'bone_mage', count: 1 },
         ],
         statMult: 3.8,
         title: 'Blood and Fire',
     },
     {
         enemies: [
-            { type: 'armoredskel', count: 12 },
-            { type: 'skelarch', count: 10 },
-            { type: 'skeleton', count: 8 },
+            { type: 'armoredskel', count: 10 },
+            { type: 'skelarch', count: 8 },
+            { type: 'skeleton', count: 6 },
+            { type: 'fire_slime', count: 3 },
+            { type: 'bone_mage', count: 1 },
         ],
         statMult: 4.0,
         title: 'Hellfire Gauntlet',
     },
     {
         enemies: [
-            { type: 'armoredskel', count: 14 },
-            { type: 'skelarch', count: 12 },
+            { type: 'armoredskel', count: 12 },
+            { type: 'skelarch', count: 10 },
+            { type: 'fire_slime', count: 2 },
+            { type: 'bone_mage', count: 2 },
         ],
         statMult: 4.1,
         title: 'The Forge Calls',
@@ -846,17 +1003,19 @@ const ZONE5_WAVES = [
     },
     {
         enemies: [
-            { type: 'skeleton', count: 14 },
-            { type: 'armoredskel', count: 8 },
-            { type: 'skelarch', count: 6 },
+            { type: 'skeleton', count: 12 },
+            { type: 'armoredskel', count: 6 },
+            { type: 'skelarch', count: 5 },
+            { type: 'frost_archer', count: 2 },
         ],
         statMult: 4.5,
         title: 'Frozen Legions',
     },
     {
         enemies: [
-            { type: 'skelarch', count: 14 },
-            { type: 'armoredskel', count: 8 },
+            { type: 'skelarch', count: 10 },
+            { type: 'armoredskel', count: 7 },
+            { type: 'frost_archer', count: 3 },
         ],
         statMult: 4.7,
         title: 'Arrows of Ice',
@@ -864,9 +1023,11 @@ const ZONE5_WAVES = [
     },
     {
         enemies: [
-            { type: 'skeleton', count: 12 },
-            { type: 'armoredskel', count: 10 },
-            { type: 'skelarch', count: 8 },
+            { type: 'skeleton', count: 10 },
+            { type: 'armoredskel', count: 8 },
+            { type: 'skelarch', count: 6 },
+            { type: 'frost_archer', count: 2 },
+            { type: 'pit_lurker', count: 1 },
         ],
         statMult: 5.0,
         title: 'The Deep Freeze',
@@ -874,17 +1035,21 @@ const ZONE5_WAVES = [
     {
         enemies: [
             { type: 'werewolf', count: 2 },
-            { type: 'armoredskel', count: 10 },
-            { type: 'skelarch', count: 8 },
+            { type: 'armoredskel', count: 8 },
+            { type: 'skelarch', count: 6 },
+            { type: 'frost_archer', count: 2 },
+            { type: 'pit_lurker', count: 2 },
         ],
         statMult: 5.2,
         title: 'The Dead March',
     },
     {
         enemies: [
-            { type: 'skeleton', count: 16 },
-            { type: 'armoredskel', count: 12 },
-            { type: 'skelarch', count: 10 },
+            { type: 'skeleton', count: 14 },
+            { type: 'armoredskel', count: 10 },
+            { type: 'skelarch', count: 8 },
+            { type: 'frost_archer', count: 3 },
+            { type: 'pit_lurker', count: 2 },
         ],
         statMult: 5.4,
         title: 'Abyss Unbound',
@@ -927,7 +1092,9 @@ const ZONE6_WAVES = [
         enemies: [
             { type: 'werewolf', count: 2 },
             { type: 'infernal_knight', count: 1 },
-            { type: 'armoredskel', count: 8 },
+            { type: 'armoredskel', count: 6 },
+            { type: 'shadow_knight', count: 1 },
+            { type: 'bone_mage', count: 1 },
         ],
         statMult: 7.5,
         title: 'The Ruined Guard',
@@ -935,9 +1102,12 @@ const ZONE6_WAVES = [
     },
     {
         enemies: [
-            { type: 'skeleton', count: 16 },
-            { type: 'armoredskel', count: 14 },
-            { type: 'skelarch', count: 14 },
+            { type: 'skeleton', count: 14 },
+            { type: 'armoredskel', count: 12 },
+            { type: 'skelarch', count: 12 },
+            { type: 'shadow_knight', count: 2 },
+            { type: 'bone_mage', count: 1 },
+            { type: 'frost_archer', count: 1 },
         ],
         statMult: 8.0,
         title: 'Endless Ruin',
@@ -946,17 +1116,22 @@ const ZONE6_WAVES = [
         enemies: [
             { type: 'frost_wyrm', count: 1 },
             { type: 'werewolf', count: 1 },
-            { type: 'armoredskel', count: 10 },
-            { type: 'skelarch', count: 10 },
+            { type: 'armoredskel', count: 8 },
+            { type: 'skelarch', count: 8 },
+            { type: 'shadow_knight', count: 2 },
+            { type: 'frost_archer', count: 1 },
         ],
         statMult: 8.5,
         title: 'The Last Stand',
     },
     {
         enemies: [
-            { type: 'skeleton', count: 20 },
-            { type: 'armoredskel', count: 16 },
-            { type: 'skelarch', count: 16 },
+            { type: 'skeleton', count: 16 },
+            { type: 'armoredskel', count: 14 },
+            { type: 'skelarch', count: 12 },
+            { type: 'shadow_knight', count: 2 },
+            { type: 'bone_mage', count: 2 },
+            { type: 'frost_archer', count: 1 },
         ],
         statMult: 9.0,
         title: 'The World Breaks',
@@ -1102,6 +1277,7 @@ function startWaveSystem() {
         wave.bannerSub = '';
         wave.bannerAlpha = 0;
         enemies.length = 0;
+        burnZones.length = 0;
         return;
     }
     wave.current = -1;
@@ -1140,6 +1316,29 @@ function generateDynamicWave(waveIdx) {
     ];
     if (slimeCount > 0) enemyList.push({ type: 'slime', count: slimeCount });
     if (armoredCount > 0) enemyList.push({ type: 'armoredskel', count: armoredCount });
+
+    // Add new enemy types based on zone thresholds
+    if (currentZone >= 3) {
+        const boneMageCount = Math.min(3, 1 + Math.floor(tier / 3));
+        enemyList.push({ type: 'bone_mage', count: boneMageCount });
+    }
+    if (currentZone >= 4) {
+        const fireSlimeCount = Math.min(4, 1 + Math.floor(tier / 2));
+        enemyList.push({ type: 'fire_slime', count: fireSlimeCount });
+    }
+    if (currentZone >= 5) {
+        const frostArcherCount = Math.min(4, 1 + Math.floor(tier / 2));
+        enemyList.push({ type: 'frost_archer', count: frostArcherCount });
+        if (tier >= 2) {
+            const pitLurkerCount = Math.min(3, Math.floor(tier / 2));
+            enemyList.push({ type: 'pit_lurker', count: pitLurkerCount });
+        }
+    }
+    if (currentZone >= 6) {
+        const shadowKnightCount = Math.min(3, 1 + Math.floor(tier / 3));
+        enemyList.push({ type: 'shadow_knight', count: shadowKnightCount });
+    }
+
     return {
         enemies: enemyList,
         statMult: baseMult * DIFFICULTY.scale,
@@ -2014,6 +2213,7 @@ function drawBossHealthBar() {
 const _SCALED_DAMAGE_KEYS = [
     'slamDamage', 'sweepDamage', 'flameSweepDamage', 'fireTrailDamage',
     'iceBreathDamage', 'shatterDamage', 'teleSlashDamage', 'voidPulseDamage', 'despDamage',
+    'groundAoEDamage', 'firePoolDPS',
 ];
 
 function spawnEnemy(type, row, col, statMult) {
@@ -2063,6 +2263,8 @@ function spawnEnemy(type, row, col, statMult) {
         isCharging: false,
         // Elite modifier
         elite: null,
+        // Ambush state (pit_lurker)
+        _ambushHidden: baseDef.ambush ? true : false,
     };
 
     // Boss-only timers — only allocated for bosses to reduce per-enemy memory
@@ -2092,11 +2294,11 @@ function spawnEnemy(type, row, col, statMult) {
     const spawned = enemies[enemies.length - 1];
 
     // --- Elite Modifier System ---
-    // Non-boss enemies in zone 3+ have a chance to become elite
-    if (!baseDef.isBoss && currentZone >= 3) {
-        const eliteChance = Math.min(ELITE_MAX_CHANCE, ELITE_BASE_CHANCE + (currentZone - 3) * ELITE_CHANCE_PER_ZONE);
+    // Non-boss enemies in zone 2+ have a chance to become elite
+    if (!baseDef.isBoss && currentZone >= 2) {
+        const eliteChance = Math.min(ELITE_MAX_CHANCE, ELITE_BASE_CHANCE + (currentZone - 2) * ELITE_CHANCE_PER_ZONE);
         if (Math.random() < eliteChance) {
-            const modifiers = ['swift', 'vampiric', 'volatile', 'splitting'];
+            const modifiers = ['swift', 'vampiric', 'volatile', 'splitting', 'shielded', 'thorned', 'frenzy', 'necromancer'];
             const mod = modifiers[Math.floor(Math.random() * modifiers.length)];
             spawned.elite = mod;
             // Apply modifier bonuses
@@ -2116,6 +2318,14 @@ function spawnEnemy(type, row, col, statMult) {
                 case 'splitting':
                     spawned.hp = Math.round(spawned.hp * ELITE_SPLITTING_HP_MULT);
                     spawned.maxHp = spawned.hp;
+                    break;
+                case 'shielded':
+                    spawned._eliteShieldTimer = ELITE_SHIELDED_DURATION;
+                    spawned._eliteShieldCooldown = 0;
+                    spawned._eliteShieldFlash = 0;
+                    break;
+                case 'frenzy':
+                    spawned._eliteFrenzied = false;
                     break;
             }
         }
@@ -2248,6 +2458,45 @@ function updateEnemies(dt) {
                             }
                         }
                     }
+                } else if (e.elite === 'necromancer') {
+                    // Spawn 1 clone of same type at 50% HP
+                    const nAngle = Math.random() * Math.PI * 2;
+                    const nr = e.row + Math.cos(nAngle) * 0.8;
+                    const nc = e.col + Math.sin(nAngle) * 0.8;
+                    if (canEnemyMoveTo(nr, nc, 0.25, null)) {
+                        const necroMult = Math.max(0.5, (e.statMult || 1.0) * ELITE_NECRO_CLONE_HP_MULT);
+                        const clone = spawnEnemy(e.type, nr, nc, necroMult);
+                        if (clone) {
+                            clone.elite = null; // prevent chain necromancy
+                            clone.attackCooldown = 0.5 + Math.random();
+                            // Green necro particles
+                            for (let np = 0; np < 6; np++) {
+                                const npAngle = (np / 6) * Math.PI * 2;
+                                spawnParticle(nr + Math.cos(npAngle) * 0.3, nc + Math.sin(npAngle) * 0.3,
+                                    Math.cos(npAngle) * 2, Math.sin(npAngle) * 2, 0.4, COLORS.ELITE_NECRO_TINT, 0.8);
+                            }
+                        }
+                    }
+                }
+
+                // --- Fire Slime: spawn fire pool on death ---
+                if (e.def.firePoolOnDeath) {
+                    groundHazards.push({
+                        type: 'fire_pool',
+                        row: e.row, col: e.col,
+                        radius: 0.8,
+                        life: e.def.firePoolDuration || 3.0,
+                        maxLife: e.def.firePoolDuration || 3.0,
+                        damage: e.def.firePoolDPS || 5,
+                        tickTimer: 0,
+                        color: COLORS.FIRE_SLIME_TINT || '#ff6622',
+                    });
+                    // Fire burst particles on pool spawn
+                    for (let fp = 0; fp < 8; fp++) {
+                        const fpAngle = (fp / 8) * Math.PI * 2;
+                        spawnParticle(e.row + Math.cos(fpAngle) * 0.3, e.col + Math.sin(fpAngle) * 0.3,
+                            Math.cos(fpAngle) * 2, Math.sin(fpAngle) * 2, 0.4, '#ff6622', 0.8);
+                    }
                 }
 
                 enemies.splice(i, 1);
@@ -2342,6 +2591,29 @@ function updateEnemies(dt) {
         if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
         if (e._deathFlashTimer > 0) e._deathFlashTimer -= dt;
         if (e.howlCooldown > 0) e.howlCooldown -= dt;
+        if (e._shadowTeleportCooldown > 0) e._shadowTeleportCooldown -= dt;
+
+        // --- Elite shielded: tick shield timer and cooldown ---
+        if (e.elite === 'shielded') {
+            if (e._eliteShieldTimer > 0) {
+                e._eliteShieldTimer -= dt;
+            } else if (e._eliteShieldCooldown > 0) {
+                e._eliteShieldCooldown -= dt;
+            } else {
+                // Reactivate shield
+                e._eliteShieldTimer = ELITE_SHIELDED_DURATION;
+                e._eliteShieldCooldown = ELITE_SHIELDED_COOLDOWN;
+            }
+            if (e._eliteShieldFlash > 0) e._eliteShieldFlash -= dt;
+        }
+
+        // --- Elite frenzy: double attack speed when below 50% HP ---
+        if (e.elite === 'frenzy' && !e._eliteFrenzied && e.hp < e.maxHp * ELITE_FRENZY_HP_THRESHOLD) {
+            e._eliteFrenzied = true;
+            e.def = Object.assign({}, e.def); // shallow copy to avoid mutating shared def
+            e.def.attackCooldown = e.def.attackCooldown / ELITE_FRENZY_SPEED_MULT;
+            spawnParticle(e.row, e.col, 0, -1.5, 0.4, COLORS.ELITE_FRENZY_TINT, 0.9);
+        }
 
         // === SLIME: Corrosive Linger DOT tick ===
         if (e._corrosiveDot && e._corrosiveDot.ticks > 0) {
@@ -2375,6 +2647,26 @@ function updateEnemies(dt) {
         const dc = player.col - e.col;
         const dist = Math.sqrt(dr * dr + dc * dc);
 
+        // --- Pit Lurker: ambush reveal ---
+        if (e._ambushHidden) {
+            if (dist <= (e.def.ambushRevealDist || 3.0)) {
+                // Reveal! Burst of dirt particles
+                e._ambushHidden = false;
+                for (let dp = 0; dp < 8; dp++) {
+                    const dAngle = (dp / 8) * Math.PI * 2;
+                    spawnParticle(e.row + Math.cos(dAngle) * 0.3, e.col + Math.sin(dAngle) * 0.3,
+                        Math.cos(dAngle) * 2.5, Math.sin(dAngle) * 2.5 - 1,
+                        0.4, '#664422', 0.8);
+                }
+                addScreenShake(2, 0.1);
+            } else {
+                // Stay hidden — skip all AI
+                e.state = 'idle';
+                e.animFrame = 0;
+                continue;
+            }
+        }
+
         // Facing
         const screenVx = dc - dr; // screen X component
         if (Math.abs(screenVx) > 0.1) e.facing = screenVx > 0 ? 1 : -1;
@@ -2389,7 +2681,28 @@ function updateEnemies(dt) {
             // Fire at midpoint
             if (!e.attackFired && elapsed >= e.def.attackDur * 0.5) {
                 e.attackFired = true;
-                if (e.def.ai === 'ranged') {
+                if (e.def.groundAoE) {
+                    // Bone Mage: place ground AoE warning at player position
+                    groundHazards.push({
+                        type: 'bone_aoe_warning',
+                        row: player.row, col: player.col,
+                        radius: e.def.groundAoERadius || 1.2,
+                        life: (e.def.groundAoEDelay || 1.5) + 0.1,
+                        maxLife: e.def.groundAoEDelay || 1.5,
+                        damage: e.def.groundAoEDamage || 20,
+                        tickTimer: e.def.groundAoEDelay || 1.5,
+                        color: COLORS.BONE_MAGE_TINT || '#ccaa44',
+                    });
+                    // Cast particles at caster
+                    for (let cp = 0; cp < 6; cp++) {
+                        spawnParticle(e.row, e.col,
+                            (Math.random() - 0.5) * 2, -1 - Math.random(),
+                            0.3, '#ccaa44', 0.7);
+                    }
+                } else if (e.def.frostArrows) {
+                    // Frost Archer: fire arrow with slow effect
+                    fireEnemyArrow(e, { type: 'frost_arrow', slowDuration: e.def.frostSlowDuration || 2.0 });
+                } else if (e.def.ai === 'ranged') {
                     fireEnemyArrow(e);
                 } else {
                     // Melee: damage player if in range
@@ -3302,12 +3615,15 @@ function updateEnemies(dt) {
         }
     }
 
+    // --- Legendary Burn Zones: AoE damage to enemies ---
+    updateBurnZones(dt);
+
     // --- Enemy-player contact damage ---
     if (playerInvTimer > 0) {
         playerInvTimer -= dt;
     } else {
         for (const e of enemies) {
-            if (e.state === 'death') continue;
+            if (e.state === 'death' || e._ambushHidden) continue;
             const dr = player.row - e.row;
             const dc = player.col - e.col;
             const dist = Math.sqrt(dr * dr + dc * dc);
@@ -3316,6 +3632,58 @@ function updateEnemies(dt) {
                 break;
             }
         }
+    }
+}
+
+// ----- LEGENDARY BURN ZONES -----
+function updateBurnZones(dt) {
+    // Tick veil cooldown
+    if (veilUndyingCooldown > 0) veilUndyingCooldown -= dt;
+    // Update each burn zone: deal AoE damage to enemies, decay lifetime
+    for (let i = burnZones.length - 1; i >= 0; i--) {
+        const bz = burnZones[i];
+        bz.life -= dt;
+        if (bz.life <= 0) {
+            burnZones.splice(i, 1);
+            continue;
+        }
+        bz.tickTimer -= dt;
+        if (bz.tickTimer <= 0) {
+            bz.tickTimer = bz.tickInterval || 0.5;
+            // Damage all enemies within radius
+            for (const e of enemies) {
+                if (e.state === 'death') continue;
+                const dr = e.row - bz.row;
+                const dc = e.col - bz.col;
+                if (Math.sqrt(dr * dr + dc * dc) < bz.radius) {
+                    e.hp -= bz.damage;
+                    e.hitFlashTimer = 0.08;
+                    spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1.5, 0.25, bz.color || '#ff4400', 0.6);
+                }
+            }
+        }
+    }
+}
+
+function drawBurnZones() {
+    for (const bz of burnZones) {
+        const pos = tileToScreen(bz.row, bz.col);
+        const sx = pos.x + cameraX;
+        const sy = pos.y + cameraY;
+        const fadeAlpha = Math.min(1, bz.life / (bz.maxLife * 0.2)); // fade out in last 20%
+        const pulseR = bz.radius * TILE_SIZE * (0.9 + Math.sin(performance.now() / 200) * 0.1);
+        ctx.save();
+        ctx.globalAlpha = 0.25 * fadeAlpha;
+        ctx.globalCompositeOperation = 'screen';
+        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, pulseR);
+        grad.addColorStop(0, (bz.color || '#ff4400') + 'cc');
+        grad.addColorStop(0.6, (bz.color || '#ff4400') + '44');
+        grad.addColorStop(1, (bz.color || '#ff4400') + '00');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, pulseR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -3397,7 +3765,14 @@ function triggerLevelUp() {
     // Use the current form's upgrade pool
     const handler = FormSystem.getHandler();
     const currentPool = (handler && handler.getUpgradePool) ? handler.getUpgradePool() : UPGRADE_POOL;
-    const available = currentPool.filter(u => (upgrades[u.id] || 0) < u.maxStack);
+    const lvl = xpState.level;
+    const available = currentPool.filter(u => {
+        if ((upgrades[u.id] || 0) >= u.maxStack) return false;
+        const tier = u.tier || 'normal';
+        if (tier === 'rare' && lvl < 5) return false;
+        if (tier === 'legendary' && lvl < 10) return false;
+        return true;
+    });
 
     const choices = [];
     const pool = [...available];
@@ -3419,6 +3794,28 @@ function triggerLevelUp() {
         const otherPool = priorityPool === fresh ? repeat : fresh;
         const otherIdx = otherPool.findIndex(u => u.id === chosen.id);
         if (otherIdx >= 0) otherPool.splice(otherIdx, 1);
+    }
+
+    // --- Guaranteed rare at level 7+, legendary at level 12+ ---
+    if (lvl >= 7 && choices.length > 0) {
+        const hasRare = choices.some(u => (u.tier || 'normal') === 'rare' || (u.tier || 'normal') === 'legendary');
+        if (!hasRare) {
+            // Try to swap last choice with a rare one from available pool
+            const rarePool = available.filter(u => (u.tier || 'normal') === 'rare' && !choices.some(c => c.id === u.id));
+            if (rarePool.length > 0) {
+                choices[choices.length - 1] = rarePool[Math.floor(Math.random() * rarePool.length)];
+            }
+        }
+    }
+    if (lvl >= 12 && choices.length > 0) {
+        const hasLegendary = choices.some(u => (u.tier || 'normal') === 'legendary');
+        if (!hasLegendary) {
+            // Try to swap last choice with a legendary one from available pool
+            const legendPool = available.filter(u => (u.tier || 'normal') === 'legendary' && !choices.some(c => c.id === u.id));
+            if (legendPool.length > 0) {
+                choices[choices.length - 1] = legendPool[Math.floor(Math.random() * legendPool.length)];
+            }
+        }
     }
 
     if (choices.length === 0) {
@@ -3575,6 +3972,7 @@ function checkProjectileEnemyHits() {
         if (p.hit) continue;
         for (const e of enemies) {
             if (e.state === 'death') continue;
+            if (e._ambushHidden) continue; // pit lurker hidden — no collision
             if (p.hitEnemies && p.hitEnemies.has(e)) continue; // already hit this enemy
             const dr = p.row - e.row;
             const dc = p.col - e.col;
@@ -3598,6 +3996,19 @@ function checkProjectileEnemyHits() {
                 // ── COMBAT JUICE: Critical hit roll ──
                 const isCrit = Math.random() < CRIT_CHANCE;
                 if (isCrit) projFinalDmg = Math.round(projFinalDmg * CRIT_MULTIPLIER);
+
+                // Elite shielded: reduce incoming damage by 30% when shield is active
+                if (e.elite === 'shielded' && e._eliteShieldTimer > 0) {
+                    projFinalDmg = Math.round(projFinalDmg * (1 - ELITE_SHIELDED_ABSORB));
+                    e._eliteShieldFlash = 0.15;
+                    spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1, 0.25, COLORS.ELITE_SHIELDED_TINT, 0.7);
+                }
+                // Elite thorned: reflect 15% damage back to player
+                if (e.elite === 'thorned') {
+                    const reflectDmg = Math.max(1, Math.round(projFinalDmg * ELITE_THORNED_REFLECT));
+                    damagePlayer(reflectDmg, 'thorned_reflect');
+                    spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1, 0.25, COLORS.ELITE_THORNED_TINT, 0.7);
+                }
 
                 e.hp -= projFinalDmg;
                 e.hitFlashTimer = isCrit ? 0.18 : 0.1; // longer flash on crit
@@ -3822,7 +4233,8 @@ function checkProjectileEnemyHits() {
 }
 
 // ----- SKELETON ARCHER ARROW -----
-function fireEnemyArrow(e) {
+function fireEnemyArrow(e, opts) {
+    opts = opts || {};
     const dr = player.row - e.row;
     const dc = player.col - e.col;
     const len = Math.sqrt(dr * dr + dc * dc) || 1;
@@ -3845,21 +4257,17 @@ function fireEnemyArrow(e) {
         const spreadC = normR * sinS + normC * cosS;
         // Stagger burst timing with slight delay
         const delay = b * 0.15;
-        if (b === 0) {
-            enemyProjectiles.push({
-                row: e.row, col: e.col,
-                vr: spreadR * speed, vc: spreadC * speed,
-                life: 2.5, angle, damage: e.def.damage,
-            });
-        } else {
-            // Queue delayed projectile (simplified: spawn immediately with offset)
-            enemyProjectiles.push({
-                row: e.row - spreadR * delay * speed,
-                col: e.col - spreadC * delay * speed,
-                vr: spreadR * speed, vc: spreadC * speed,
-                life: 2.5, angle, damage: Math.round(e.def.damage * ENEMY_PROJECTILE_BURST_MULT), // burst shots do less
-            });
-        }
+        const proj = {
+            row: b === 0 ? e.row : e.row - spreadR * delay * speed,
+            col: b === 0 ? e.col : e.col - spreadC * delay * speed,
+            vr: spreadR * speed, vc: spreadC * speed,
+            life: 2.5, angle,
+            damage: b === 0 ? e.def.damage : Math.round(e.def.damage * ENEMY_PROJECTILE_BURST_MULT),
+        };
+        // Apply optional overrides (frost_arrow type, slow duration, etc.)
+        if (opts.type) proj.type = opts.type;
+        if (opts.slowDuration) proj.slowDuration = opts.slowDuration;
+        enemyProjectiles.push(proj);
     }
     sfxArrowShoot(e.row, e.col);
 }
@@ -3893,8 +4301,21 @@ function updateEnemyProjectiles(dt) {
                 const dmgSource = a.type === 'bone_cage' ? 'bone_colossus'
                     : a.type === 'ice_shard' ? 'frost_wyrm'
                     : a.type === 'void_pulse' ? 'ruined_king'
+                    : a.type === 'frost_arrow' ? 'frost_archer'
+                    : a.type === 'bone_aoe_proj' ? 'bone_mage'
                     : 'skelarch';
                 damagePlayer(a.damage, dmgSource);
+                // Frost arrow slow: apply movement slow to player on hit
+                if (a.type === 'frost_arrow') {
+                    player.slowTimer = Math.max(player.slowTimer || 0, a.slowDuration || 2.0);
+                    player.slowMult = 0.7; // 30% movement slow
+                    // Ice particle burst on player
+                    for (let fp = 0; fp < 4; fp++) {
+                        spawnParticle(player.row, player.col,
+                            (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3 - 1,
+                            0.3, '#88ccff', 0.7);
+                    }
+                }
                 enemyProjectiles.splice(i, 1);
                 continue;
             }
@@ -3907,8 +4328,124 @@ function updateEnemyProjectiles(dt) {
     }
 }
 
+// ----- UPDATE GROUND HAZARDS (fire pools, bone mage AoE) -----
+function updateGroundHazards(dt) {
+    for (let i = groundHazards.length - 1; i >= 0; i--) {
+        const h = groundHazards[i];
+        h.life -= dt;
+        if (h.life <= 0) {
+            groundHazards.splice(i, 1);
+            continue;
+        }
+
+        if (h.type === 'fire_pool') {
+            // Damage player if standing on fire pool
+            const pdr = player.row - h.row;
+            const pdc = player.col - h.col;
+            if (Math.sqrt(pdr * pdr + pdc * pdc) < h.radius + HITBOX_RADIUS) {
+                h.tickTimer -= dt;
+                if (h.tickTimer <= 0) {
+                    h.tickTimer = 1.0; // damage once per second
+                    damagePlayer(h.damage, 'fire_slime');
+                }
+            }
+            // Ambient fire particles
+            if (Math.random() < 0.3 * GFX.particleMul) {
+                const pAngle = Math.random() * Math.PI * 2;
+                const pDist = Math.random() * h.radius * 0.6;
+                spawnParticle(
+                    h.row + Math.cos(pAngle) * pDist,
+                    h.col + Math.sin(pAngle) * pDist,
+                    (Math.random() - 0.5) * 0.5, -1 - Math.random(),
+                    0.3, '#ff6622', 0.5
+                );
+            }
+        }
+
+        if (h.type === 'bone_aoe_warning') {
+            // Warning phase: show red/orange circle, then detonate
+            h.tickTimer -= dt;
+            if (h.tickTimer <= 0) {
+                // Detonate: damage player if in radius
+                const pdr = player.row - h.row;
+                const pdc = player.col - h.col;
+                if (Math.sqrt(pdr * pdr + pdc * pdc) < h.radius) {
+                    damagePlayer(h.damage, 'bone_mage');
+                }
+                // Explosion particles
+                for (let ep = 0; ep < 10; ep++) {
+                    const angle = (ep / 10) * Math.PI * 2;
+                    spawnParticle(h.row + Math.cos(angle) * h.radius * 0.5,
+                        h.col + Math.sin(angle) * h.radius * 0.5,
+                        Math.cos(angle) * 3, Math.sin(angle) * 3,
+                        0.4, '#ffaa44', 0.9);
+                }
+                addScreenShake(3, 0.15);
+                groundHazards.splice(i, 1);
+                continue;
+            }
+        }
+    }
+}
+
+// ----- DRAW GROUND HAZARDS -----
+function drawGroundHazards() {
+    for (const h of groundHazards) {
+        const pos = tileToScreen(h.row, h.col);
+        const sx = pos.x + cameraX;
+        const sy = pos.y + cameraY;
+
+        if (h.type === 'fire_pool') {
+            // Pulsing fire pool on ground
+            const pulse = 0.4 + Math.sin(performance.now() / 200) * 0.15;
+            const fadeAlpha = Math.min(1, h.life / 0.5); // fade out in last 0.5s
+            ctx.save();
+            ctx.globalAlpha = pulse * fadeAlpha;
+            ctx.globalCompositeOperation = 'screen';
+            const r = h.radius * DIAMOND_W * 0.8;
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+            grad.addColorStop(0, 'rgba(255, 100, 30, 0.6)');
+            grad.addColorStop(0.5, 'rgba(255, 60, 10, 0.3)');
+            grad.addColorStop(1, 'rgba(200, 40, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        if (h.type === 'bone_aoe_warning') {
+            // Growing warning circle that fills up before detonation
+            const progress = 1 - (h.tickTimer / (h.maxLife || 1.5));
+            const fadeAlpha = 0.3 + progress * 0.4; // brightens as it approaches detonation
+            ctx.save();
+            ctx.globalAlpha = fadeAlpha;
+            const r = h.radius * DIAMOND_W * 0.8;
+            // Outer warning ring
+            ctx.strokeStyle = 'rgba(255, 80, 20, ' + (0.5 + progress * 0.5) + ')';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            // Fill — grows with progress
+            const fillR = r * progress;
+            const fillGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, fillR || 1);
+            fillGrad.addColorStop(0, 'rgba(255, 120, 40, 0.4)');
+            fillGrad.addColorStop(1, 'rgba(255, 60, 20, 0.1)');
+            ctx.fillStyle = fillGrad;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, fillR, fillR * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+}
+
 // ----- DRAW SINGLE ENEMY -----
 function drawEnemy(e) {
+    // Pit Lurker: don't render while hidden (ambush)
+    if (e._ambushHidden) return;
+
     const def = e.def;
     const prefix = def.prefix;
     let sheetKey, frameCount;
@@ -3979,6 +4516,10 @@ function drawEnemy(e) {
             vampiric: 'rgba(100, 255, 100, ',
             volatile: 'rgba(255, 120, 50, ',
             splitting: 'rgba(180, 100, 255, ',
+            shielded: 'rgba(68, 136, 255, ',
+            thorned: 'rgba(255, 68, 68, ',
+            frenzy: 'rgba(255, 34, 0, ',
+            necromancer: 'rgba(68, 255, 68, ',
         };
         const eliteColor = eliteColors[e.elite] || 'rgba(255, 255, 255, ';
         const elitePulse = 0.12 + Math.sin(performance.now() / 250) * 0.06;

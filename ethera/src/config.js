@@ -57,6 +57,17 @@ const COLORS = {
     INFERNAL_KNIGHT_TINT: '#ff4422',
     FROST_WYRM_TINT: '#44aaff',
     RUINED_KING_TINT: '#9944dd',
+    // Elite modifier tints
+    ELITE_SHIELDED_TINT: '#4488ff',
+    ELITE_THORNED_TINT: '#ff4444',
+    ELITE_FRENZY_TINT: '#ff2200',
+    ELITE_NECRO_TINT: '#44ff44',
+    // New enemy tints
+    FIRE_SLIME_TINT: '#ff6622',
+    FROST_ARCHER_TINT: '#88ccff',
+    SHADOW_KNIGHT_TINT: '#442266',
+    BONE_MAGE_TINT: '#ccaa44',
+    PIT_LURKER_TINT: '#664422',
     // UI
     BORDER_GOLD: '#d4b478',
     BORDER_DARK: '#2a1a0e',
@@ -236,6 +247,9 @@ const gameSettings = {
     quality: 'high',
     screenShake: true,
     fullscreen: false,
+    colorblindMode: 'off',  // 'off', 'deuteranopia', 'protanopia', 'symbols'
+    textScale: 1.0,         // 0.85, 1.0, 1.15, 1.3
+    pauseOnBlur: true,
 };
 
 let optionsReturnPhase = 'menu';
@@ -272,6 +286,33 @@ document.addEventListener('fullscreenchange', function() {
     gameSettings.fullscreen = !!document.fullscreenElement;
     saveSettings();
 });
+
+// Pause on blur — stop gameplay when window loses focus
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden && gameSettings.pauseOnBlur && typeof gamePhase !== 'undefined' && gamePhase === 'playing' && !gameDead) {
+        gamePaused = true;
+    }
+});
+window.addEventListener('blur', function() {
+    if (gameSettings.pauseOnBlur && typeof gamePhase !== 'undefined' && gamePhase === 'playing' && !gameDead) {
+        gamePaused = true;
+    }
+});
+
+// Rarity symbol indicators for colorblind accessibility
+const RARITY_SYMBOLS = {
+    common:    { symbol: '\u25C7', name: 'Common' },     // ◇
+    uncommon:  { symbol: '\u2726', name: 'Uncommon' },    // ✦
+    rare:      { symbol: '\u2605', name: 'Rare' },        // ★
+    epic:      { symbol: '\u2727', name: 'Epic' },        // ✧
+    legendary: { symbol: '\u2666', name: 'Legendary' },   // ◆
+};
+
+// Scaled font helper — respects textScale setting
+function scaledFont(basePx, family) {
+    const px = Math.round(basePx * (gameSettings.textScale || 1.0));
+    return px + 'px ' + (family || 'Georgia');
+}
 
 // ============================================================
 //  SEEDED PRNG — for map variation across playthroughs

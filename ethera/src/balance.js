@@ -52,16 +52,23 @@ const ENEMY_SPAWN_MIN_DISTANCE = 4;         // Enemies spawn at least this far f
 const ENEMY_STAGGER_COOLDOWN = 0.4;         // Base stagger cooldown per enemy type
 const ENEMY_STAGGER_VARIANCE = 0.3;         // Random variance on stagger cooldown
 
-// --- Elite Modifier System (Zone 3+) ---
-const ELITE_BASE_CHANCE = 0.05;             // 5% base elite spawn chance (zone 3)
+// --- Elite Modifier System (Zone 2+) ---
+const ELITE_BASE_CHANCE = 0.05;             // 5% base elite spawn chance (zone 2)
 const ELITE_MAX_CHANCE = 0.25;              // Cap at 25% elite chance
-const ELITE_CHANCE_PER_ZONE = 0.05;         // +5% per zone above zone 3
+const ELITE_CHANCE_PER_ZONE = 0.05;         // +5% per zone above zone 2
 const ELITE_SWIFT_SPEED_MULT = 1.5;         // Swift elite: speed multiplier
 const ELITE_SWIFT_SCALE_MULT = 0.9;         // Swift elite: slightly smaller
 const ELITE_VAMPIRIC_DAMAGE_MULT = 0.85;    // Vampiric elite: reduced damage
 const ELITE_VAMPIRIC_HEAL_MULT = 0.3;       // Vampiric elite: heal % of damage dealt
 const ELITE_VOLATILE_HP_MULT = 0.7;         // Volatile elite: reduced max HP
 const ELITE_SPLITTING_HP_MULT = 0.6;        // Splitting elite: reduced max HP
+const ELITE_SHIELDED_ABSORB = 0.30;         // Shielded elite: absorbs 30% damage
+const ELITE_SHIELDED_DURATION = 3.0;        // Shielded elite: shield lasts 3s after spawn
+const ELITE_SHIELDED_COOLDOWN = 10.0;       // Shielded elite: 10s between shields
+const ELITE_THORNED_REFLECT = 0.15;         // Thorned elite: reflects 15% melee damage
+const ELITE_FRENZY_SPEED_MULT = 2.0;        // Frenzy elite: 2x attack speed below threshold
+const ELITE_FRENZY_HP_THRESHOLD = 0.5;      // Frenzy elite: triggers at 50% HP
+const ELITE_NECRO_CLONE_HP_MULT = 0.5;      // Necromancer elite: clone has 50% HP
 
 // --- Enemy Contact & Projectile Damage ---
 const ENEMY_CONTACT_DAMAGE_MULT = 0.5;      // Contact damage is 50% of melee damage
@@ -532,6 +539,17 @@ function handleMouseDown(e) {
                 if (id === 'quality') gameSettings.quality = gameSettings.quality === 'high' ? 'low' : 'high';
                 else if (id === 'screenShake') gameSettings.screenShake = !gameSettings.screenShake;
                 else if (id === 'fullscreen') gameSettings.fullscreen = !gameSettings.fullscreen;
+                else if (id === 'colorblindMode') {
+                    const _cbCycle = ['off', 'symbols'];
+                    const _cbIdx = _cbCycle.indexOf(gameSettings.colorblindMode);
+                    gameSettings.colorblindMode = _cbCycle[(_cbIdx + 1) % _cbCycle.length];
+                }
+                else if (id === 'textScale') {
+                    const _tsCycle = [0.85, 1, 1.15, 1.3];
+                    const _tsIdx = _tsCycle.indexOf(gameSettings.textScale);
+                    gameSettings.textScale = _tsCycle[(_tsIdx + 1) % _tsCycle.length];
+                }
+                else if (id === 'pauseOnBlur') gameSettings.pauseOnBlur = !gameSettings.pauseOnBlur;
                 applySettings(); saveSettings(); return;
             }
         }
@@ -638,8 +656,12 @@ function handleMouseDown(e) {
         if (!xpState.levelUpPending) return; // Defensive check
         const choice = getLevelUpChoice(mouse.x, mouse.y);
         if (choice >= 0 && choice < xpState.levelUpChoices.length) {
-            applyUpgrade(xpState.levelUpChoices[choice].id);
-            if (typeof sfxUpgradeSelect === 'function') sfxUpgradeSelect();
+            const chosenUpgrade = xpState.levelUpChoices[choice];
+            const chosenTier = chosenUpgrade.tier || 'normal';
+            applyUpgrade(chosenUpgrade.id);
+            if (chosenTier === 'legendary' && typeof sfxLegendaryUpgradeSelect === 'function') sfxLegendaryUpgradeSelect();
+            else if (chosenTier === 'rare' && typeof sfxRareUpgradeSelect === 'function') sfxRareUpgradeSelect();
+            else if (typeof sfxUpgradeSelect === 'function') sfxUpgradeSelect();
         }
         return;
     }

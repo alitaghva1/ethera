@@ -25,6 +25,7 @@ const RARITY = {
     uncommon:  { color: '#5dcc5d', glow: 'rgba(80,200,80,0.3)',   label: 'Uncommon',  mult: 1.4 },
     rare:      { color: '#5588ee', glow: 'rgba(80,130,240,0.3)',  label: 'Rare',      mult: 1.9 },
     epic:      { color: '#bb55ee', glow: 'rgba(180,80,240,0.3)',  label: 'Epic',      mult: 2.6 },
+    legendary: { color: '#ffaa00', glow: 'rgba(255,170,0,0.3)',   label: 'Legendary', mult: 3.5 },
 };
 
 // Stat definitions — each has a display name and format function
@@ -74,36 +75,93 @@ const ITEM_POOL = {
     ],
 };
 
+// Legendary item templates — fixed unique items with passive effects
+const LEGENDARY_POOL = {
+    wand: {
+        name: 'Ember of Creation',
+        stats: { dmgBonus: 15, atkSpeedMult: 0.10 },
+        effect: { id: 'burn_ground', chance: 0.20, dmg: 3, duration: 2 },
+        effectDesc: 'Fireballs have 20% chance to leave burning ground (3 DPS, 2s)',
+    },
+    robe: {
+        name: 'Veil of the Undying',
+        stats: { maxHpBonus: 35, dmgReduc: 0.12 },
+        effect: { id: 'veil_undying', hpRestore: 0.15, cooldown: 60 },
+        effectDesc: 'Survive lethal damage once per zone (restore 15% HP, 60s cooldown)',
+    },
+    amulet: {
+        name: "Elara's Locket",
+        stats: { dmgBonus: 8, manaRegenMult: 0.18 },
+        effect: { id: 'elara_locket', dmgPerZone: 0.02 },
+        effectDesc: '+2% damage per zone cleared this run',
+    },
+    ring: {
+        name: 'Band of Echoes',
+        stats: { atkSpeedMult: 0.08, dmgBonus: 5 },
+        effect: { id: 'band_echoes', chance: 0.20 },
+        effectDesc: '20% chance to duplicate any projectile fired',
+    },
+};
+
 // Rarity name prefixes
 const RARITY_PREFIX = {
     common: '',
     uncommon: 'Fine ',
     rare: 'Superior ',
     epic: 'Mythic ',
+    legendary: '',
 };
 
 // Drop rate config — base chance per enemy kill, rarity weights by wave
-const DROP_CHANCE_BASE = 0.04; // 4% chance — loot should feel rare and exciting
+const DROP_CHANCE_BASE = 0.06; // 6% chance — slightly generous to make legendary feel exciting
 const RARITY_WEIGHTS_BY_WAVE = [
     // Wave 1
-    { common: 80, uncommon: 18, rare: 2, epic: 0 },
+    { common: 80, uncommon: 18, rare: 2, epic: 0, legendary: 0 },
     // Wave 2
-    { common: 60, uncommon: 30, rare: 9, epic: 1 },
+    { common: 60, uncommon: 30, rare: 9, epic: 1, legendary: 0 },
     // Wave 3
-    { common: 40, uncommon: 35, rare: 20, epic: 5 },
+    { common: 40, uncommon: 35, rare: 20, epic: 5, legendary: 0 },
     // Wave 4
-    { common: 25, uncommon: 35, rare: 28, epic: 12 },
+    { common: 25, uncommon: 35, rare: 28, epic: 12, legendary: 0 },
+    // Wave 5+
+    { common: 20, uncommon: 30, rare: 30, epic: 18, legendary: 2 },
 ];
 
 // Generate a random item
 function generateItem(waveIdx) {
     const weights = RARITY_WEIGHTS_BY_WAVE[Math.min(waveIdx, RARITY_WEIGHTS_BY_WAVE.length - 1)];
-    const totalW = weights.common + weights.uncommon + weights.rare + weights.epic;
+    const totalW = weights.common + weights.uncommon + weights.rare + weights.epic + (weights.legendary || 0);
     let roll = Math.random() * totalW;
     let rarity = 'common';
-    if (roll < weights.epic) rarity = 'epic';
+    if (roll < (weights.legendary || 0)) rarity = 'legendary';
+    else if ((roll -= (weights.legendary || 0)) < weights.epic) rarity = 'epic';
     else if ((roll -= weights.epic) < weights.rare) rarity = 'rare';
     else if ((roll -= weights.rare) < weights.uncommon) rarity = 'uncommon';
+
+    // Legendary items use fixed unique templates
+    if (rarity === 'legendary') {
+        const slot = EQUIP_SLOTS[Math.floor(Math.random() * EQUIP_SLOTS.length)];
+        const tmpl = LEGENDARY_POOL[slot];
+        // Small variance on stats (±5% — legendaries are more consistent)
+        const stats = {};
+        for (const [stat, val] of Object.entries(tmpl.stats)) {
+            const variance = 1 + (Math.random() - 0.5) * 0.1;
+            if (typeof val === 'number' && val < 1) {
+                stats[stat] = Math.round(val * variance * 100) / 100;
+            } else {
+                stats[stat] = Math.round(val * variance);
+            }
+        }
+        return {
+            id: Date.now() + Math.random(),
+            name: tmpl.name,
+            slot,
+            rarity: 'legendary',
+            stats,
+            effect: tmpl.effect,
+            effectDesc: tmpl.effectDesc,
+        };
+    }
 
     const rarityIdx = ['common', 'uncommon', 'rare', 'epic'].indexOf(rarity);
 
@@ -179,7 +237,8 @@ function tryPickupDrops() {
                 inventory.backpack.push(d.item);
                 worldDrops.splice(i, 1);
                 // Play rare sparkle for rare+ items, normal chime for common/uncommon
-                if (d.item.rarity >= 2 && typeof sfxRarePickup === 'function') sfxRarePickup();
+                const _isRarePlus = d.item.rarity === 'rare' || d.item.rarity === 'epic' || d.item.rarity === 'legendary';
+                if (_isRarePlus && typeof sfxRarePickup === 'function') sfxRarePickup();
                 else sfxItemPickup();
             } else {
                 // Inventory full — show feedback message
