@@ -4054,7 +4054,8 @@ function damagePlayer(amount, enemyType = '') {
         const comboReduc = Math.min(0.30, skeletonState.comboCount * 0.03);
         amount = Math.round(amount * (1 - comboReduc));
     }
-    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0))));
+    const _potionReduc = typeof getPotionDmgReduc === 'function' ? getPotionDmgReduc() : 0;
+    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0) - _potionReduc)));
 
     // === SLIME: Membrane shield absorbs damage before HP ===
     if (FormSystem.currentForm === 'slime' && typeof slimeState !== 'undefined' && slimeState.membraneShield > 0) {

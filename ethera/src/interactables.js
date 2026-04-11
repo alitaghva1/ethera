@@ -752,6 +752,8 @@ function loadZone(zoneNumber) {
     worldKeyDrops.length = 0;
     openedChests.clear();
     pickupTexts.length = 0;
+    // Clear zone-duration potion buffs
+    if (typeof clearPotionBuffsForZone === 'function') clearPotionBuffsForZone();
     // Keep only ambient particles (no type), clear combat particles
     for (let i = particles.length - 1; i >= 0; i--) {
         if (particles[i] && particles[i].type) particles.splice(i, 1);

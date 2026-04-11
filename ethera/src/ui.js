@@ -527,6 +527,57 @@ function drawTowerModeIndicator() {
     ctx.restore();
 }
 
+// ============================================================
+//  POTION HUD — shows owned potions near HP/Mana bars
+// ============================================================
+function drawPotionHUD() {
+    if (gamePhase !== 'playing') return;
+    if (typeof playerPotions === 'undefined' || typeof POTIONS === 'undefined') return;
+    // Only show if player has any potions
+    const total = (playerPotions.health_vial || 0) + (playerPotions.mana_elixir || 0) + (playerPotions.fortitude_salt || 0);
+    if (total <= 0) return;
+
+    ctx.save();
+    const x = 28;
+    const y = canvasH - 28;  // below XP bar area
+
+    const potionIds = ['health_vial', 'mana_elixir', 'fortitude_salt'];
+    const potionShort = ['Vial', 'Elixir', 'Salt'];
+    const potionColors = ['#ee5544', '#4488ee', '#ddaa44'];
+    let offsetX = 0;
+
+    for (let i = 0; i < potionIds.length; i++) {
+        const count = playerPotions[potionIds[i]] || 0;
+        if (count <= 0) continue;
+
+        const label = '[' + (i + 1) + '] ' + potionShort[i] + ' x' + count;
+        ctx.globalAlpha = 0.6;
+        ctx.font = '9px monospace';
+        ctx.fillStyle = potionColors[i];
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 2;
+        ctx.strokeText(label, x + offsetX, y);
+        ctx.fillText(label, x + offsetX, y);
+        offsetX += ctx.measureText(label).width + 14;
+    }
+
+    // Show active fortitude buff indicator
+    if (typeof activePotionBuffs !== 'undefined' && activePotionBuffs.dmgReduc) {
+        ctx.globalAlpha = 0.5 + Math.sin(performance.now() / 400) * 0.15;
+        ctx.font = 'bold 8px monospace';
+        ctx.fillStyle = '#ffcc44';
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 2;
+        const buffText = 'FORTITUDE ACTIVE';
+        ctx.strokeText(buffText, x + offsetX, y);
+        ctx.fillText(buffText, x + offsetX, y);
+    }
+
+    ctx.restore();
+}
+
 // Wizard form drawHUD handler is registered in wizard.js
 
 // ============================================================
