@@ -3376,8 +3376,9 @@ function runIntro() {
     }, 800);
     try { playMusic('hamlet', 2.0); } catch(e) {}
     if (typeof Notify !== 'undefined') Notify.showControlsOnce();
+    return; // CRITICAL: stop here — don't fall through to cinematic setup below
 
-    // Dungeon zones: play full cinematic
+    // Dungeon zones: play full cinematic (dead code for now, preserved for future)
     // Reset cinematic state
     cinematicTimer = 0;
     cinematicPhase = 0;
