@@ -314,6 +314,27 @@ function scaledFont(basePx, family) {
     return px + 'px ' + (family || 'Georgia');
 }
 
+// Auto-scale all canvas font assignments when textScale != 1.0
+// Patches the ctx.font setter so every `ctx.font = '12px Georgia'` auto-scales.
+function installFontScaling(ctx) {
+    const _origFontDesc = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'font');
+    if (!_origFontDesc || !_origFontDesc.set) return; // safety
+    Object.defineProperty(ctx, 'font', {
+        get: function() { return _origFontDesc.get.call(this); },
+        set: function(val) {
+            const scale = gameSettings.textScale || 1.0;
+            if (scale !== 1.0) {
+                // Parse font string and scale pixel sizes
+                val = val.replace(/(\d+(?:\.\d+)?)px/g, function(match, num) {
+                    return Math.round(parseFloat(num) * scale) + 'px';
+                });
+            }
+            _origFontDesc.set.call(this, val);
+        },
+        configurable: true,
+    });
+}
+
 // ============================================================
 //  SEEDED PRNG — for map variation across playthroughs
 // ============================================================

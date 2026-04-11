@@ -1665,7 +1665,9 @@ function drawItemTooltip(item, anchorX, anchorY) {
 
     // Build tooltip content
     const nameText = item.name;
-    const subText = RARITY[item.rarity].label + ' ' + SLOT_LABELS[item.slot];
+    const _cbPrefix = (gameSettings.colorblindMode === 'symbols' && typeof RARITY_SYMBOLS !== 'undefined' && RARITY_SYMBOLS[item.rarity])
+        ? RARITY_SYMBOLS[item.rarity].symbol + ' ' : '';
+    const subText = _cbPrefix + RARITY[item.rarity].label + ' ' + SLOT_LABELS[item.slot];
     const statLines = [];
     for (const [stat, val] of Object.entries(item.stats)) {
         const def = STAT_DEFS[stat];
@@ -3291,6 +3293,7 @@ async function init() {
     nameInputEl = document.getElementById('nameInput');
     loadSaveSlots();
     if (typeof loadSettings === 'function') loadSettings();
+    if (typeof installFontScaling === 'function') installFontScaling(ctx);
 
     // Apply zone 1 tile config first so MAP_SIZE is correct for dungeon generation
     applyZoneTileConfig(1);

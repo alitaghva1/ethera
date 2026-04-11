@@ -267,8 +267,10 @@ function tryPickupDrops() {
         if (Math.sqrt(dr * dr + dc * dc) < PICKUP_RANGE) {
             if (inventory.backpack.length < inventory.maxBackpack) {
                 const pickPos = tileToScreen(d.row, d.col);
+                const _cbPickup = (typeof gameSettings !== 'undefined' && gameSettings.colorblindMode === 'symbols' && typeof RARITY_SYMBOLS !== 'undefined' && RARITY_SYMBOLS[d.item.rarity])
+                    ? RARITY_SYMBOLS[d.item.rarity].symbol + ' ' : '';
                 pickupTexts.push({
-                    text: d.item.name,
+                    text: _cbPickup + d.item.name,
                     color: RARITY[d.item.rarity].color,
                     row: d.row, col: d.col,
                     offsetY: 0,
