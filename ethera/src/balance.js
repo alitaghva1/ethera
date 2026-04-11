@@ -220,6 +220,11 @@ function handleKeyDown(e) {
         e.preventDefault();
         return;
     }
+    // Ascension selector arrows during name entry
+    if (gamePhase === 'nameEntry' && typeof ascensionUnlocked !== 'undefined' && ascensionUnlocked > 0) {
+        if (e.key === 'ArrowLeft' && ascensionLevel > 0) { ascensionLevel--; return; }
+        if (e.key === 'ArrowRight' && ascensionLevel < ascensionUnlocked) { ascensionLevel++; return; }
+    }
     // Name entry: Enter confirms name
     if (gamePhase === 'nameEntry' && e.key === 'Enter') {
         const val = nameInputEl ? nameInputEl.value.trim() : '';

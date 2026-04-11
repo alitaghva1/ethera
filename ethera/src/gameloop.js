@@ -3105,6 +3105,39 @@ function drawNameEntry() {
     ctx.fillStyle = '#8a7a5a';
     ctx.fillText('Press Enter to begin your journey', cx, cy + 48);
 
+    // Ascension selector (only shown after first game clear)
+    if (typeof ascensionUnlocked !== 'undefined' && ascensionUnlocked > 0) {
+        const ascY = cy + 80;
+        // Label
+        ctx.globalAlpha = fa * 0.5;
+        ctx.font = 'small-caps 11px Georgia';
+        ctx.fillStyle = '#c4a878';
+        ctx.fillText('Ascension', cx, ascY - 14);
+        // Left arrow
+        ctx.globalAlpha = fa * (ascensionLevel > 0 ? 0.6 : 0.2);
+        ctx.font = '16px monospace';
+        ctx.fillStyle = '#d4b478';
+        ctx.fillText('<', cx - 40, ascY + 4);
+        // Level number
+        ctx.globalAlpha = fa * 0.9;
+        const ascColor = ascensionLevel === 0 ? '#aaa' : ascensionLevel <= 3 ? '#88ccff' : ascensionLevel <= 6 ? '#cc88ff' : '#ffcc44';
+        ctx.font = 'bold 20px Georgia';
+        ctx.fillStyle = ascColor;
+        ctx.fillText(ascensionLevel, cx, ascY + 5);
+        // Right arrow
+        ctx.globalAlpha = fa * (ascensionLevel < ascensionUnlocked ? 0.6 : 0.2);
+        ctx.font = '16px monospace';
+        ctx.fillStyle = '#d4b478';
+        ctx.fillText('>', cx + 40, ascY + 4);
+        // Description
+        ctx.globalAlpha = fa * 0.3;
+        ctx.font = 'italic 9px Georgia';
+        ctx.fillStyle = '#a89060';
+        const ascDesc = ascensionLevel === 0 ? 'Normal difficulty' :
+            'Enemies +' + (ascensionLevel * 15) + '% | Extra enemies | ' + (ascensionLevel >= 2 ? 'New rooms | ' : '') + (ascensionLevel >= 3 ? 'Elites everywhere' : 'Hazards');
+        ctx.fillText(ascDesc, cx, ascY + 22);
+    }
+
     // Draw embers from menu
     updateMenuEmbers(0.016);
     for (const e of menuEmbers) {
