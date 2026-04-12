@@ -945,9 +945,8 @@ function loadZone(zoneNumber) {
     cameraY = 0;
 
 
-    // Trigger zone name display
-    const zoneCfgName = ZONE_CONFIGS[zoneNumber] || {};
-    if (typeof Notify !== 'undefined') Notify.showZoneBanner(zoneCfgName.name || 'Unknown Zone');
+    // Zone name display handled by showZoneBanner() in gameloop.js (called from zone transition)
+    // Notify.showZoneBanner removed — was creating a duplicate banner
 
     // --- Zone entry tutorials (one-time sequences) ---
     if (typeof Notify !== 'undefined' && Notify.tutorialSequence) {
