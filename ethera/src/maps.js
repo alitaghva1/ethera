@@ -1295,12 +1295,11 @@ function generateAntechamber() {
     // East wall (col 10, rows 3-9)
     for (let r = 3; r <= 9; r++) wall(r, 10, r === 6 ? 'wallWindowBars' : 'wall');
 
-    // Props — torch pillars and central column
+    // Props — torch pillars at corners (no central pillar — keep spawn area clear)
     placeObj(3, 3, 'stoneColumn');   // NW torch
     placeObj(3, 9, 'stoneColumn');   // NE torch
     placeObj(9, 3, 'stoneColumn');   // SW stair pillar
     placeObj(9, 9, 'stoneColumn');   // SE stair pillar
-    placeObj(6, 6, 'stoneColumn');   // central pillar
 }
 
 // ============================================================

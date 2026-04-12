@@ -770,7 +770,10 @@ function updateGameplay(dt) {
                 if (nextZone === 0 && zoneTransitionTarget === 'town') {
                     _townReturnSpawn = true;
                 }
-                loadZone(nextZone);
+                try { loadZone(nextZone); } catch(e) {
+                    console.error('Zone load failed:', e);
+                    loadZone(0); nextZone = 0; // fallback to hamlet
+                }
                 showZoneBanner(nextZone);
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
