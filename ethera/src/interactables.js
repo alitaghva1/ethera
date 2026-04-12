@@ -962,6 +962,8 @@ function loadZone(zoneNumber) {
             Notify.tutorialSequence('undercroft_intro', [
                 { text: 'LMB to attack enemies!', delay: 1 },
                 { text: 'SPACE to dodge — you have brief invulnerability.', delay: 4 },
+                { text: 'Press E near weakened enemies to absorb them and grow.', delay: 5 },
+                { text: 'TAB opens the Grimoire — track your evolution progress.', delay: 5 },
             ]);
         }
     }

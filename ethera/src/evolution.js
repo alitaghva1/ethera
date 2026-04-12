@@ -62,6 +62,40 @@ const EVOLUTION_REQUIREMENTS = {
 // Track evolution milestone hints (show once when 1 milestone remains)
 let _evoHintShown = { slime: false, skeleton: false, wizard: false };
 
+// Returns { met, total } for current form's evolution progress (null if no evolution available)
+function getEvolutionProgress() {
+    const form = FormSystem.currentForm;
+    const fd = FormSystem.formData[form];
+    if (!fd) return null;
+    let req, met = 0, total = 0;
+    if (form === 'slime') {
+        req = EVOLUTION_REQUIREMENTS.slime_to_skeleton;
+        total = 5;
+        met = (fd.absorbed >= req.absorbed ? 1 : 0) +
+              (fd.maxSizeReached >= req.maxSizeReached ? 1 : 0) +
+              (fd.totalKills >= req.kills ? 1 : 0) +
+              (FormSystem.talisman.found ? 1 : 0) +
+              (fd.bossDefeated ? 1 : 0);
+    } else if (form === 'skeleton') {
+        req = EVOLUTION_REQUIREMENTS.skeleton_to_wizard;
+        total = 4;
+        met = (fd.totalKills >= req.kills ? 1 : 0) +
+              (fd.shieldDamageBlocked >= req.shieldDamageBlocked ? 1 : 0) +
+              (fd.maxComboReached >= req.comboReached ? 1 : 0) +
+              (FormSystem.talisman.level >= req.talismanLevel ? 1 : 0);
+    } else if (form === 'wizard') {
+        req = EVOLUTION_REQUIREMENTS.wizard_to_lich;
+        total = 4;
+        met = (fd.totalKills >= req.kills ? 1 : 0) +
+              (FormSystem.talisman.level >= req.talismanLevel ? 1 : 0) +
+              (fd.towersPlaced >= req.towersPlaced ? 1 : 0) +
+              (fd.lowManaKills >= req.lowManaKills ? 1 : 0);
+    } else {
+        return null; // lich — no further evolution
+    }
+    return { met, total };
+}
+
 function checkSlimeEvolution() {
     const fd = FormSystem.formData.slime;
     const req = EVOLUTION_REQUIREMENTS.slime_to_skeleton;

@@ -213,6 +213,12 @@ function updateIntroPhase(dt) {
             row: player.row, col: player.col,
             offsetY: 0, life: 5.0,
         });
+        // Delayed navigation hint
+        setTimeout(function() {
+            if (typeof Notify !== 'undefined' && currentZone === 7) {
+                Notify.hint('antechamber_nav', 'Press E near glowing exits to enter.', 4, { color: '#c4a878' });
+            }
+        }, 3000);
     }
 }
 
@@ -316,6 +322,51 @@ function drawIntroOverlay() {
 // ============================================================
 //  DOOR GLOWS — persistent colored light pools at zone exits
 // ============================================================
+// ============================================================
+//  EVOLUTION HUD INDICATOR — milestone dots at top-right
+// ============================================================
+function drawEvolutionIndicator() {
+    if (typeof getEvolutionProgress !== 'function') return;
+    if (gamePhase !== 'playing' || gameDead) return;
+    const prog = getEvolutionProgress();
+    if (!prog) return;
+
+    const x = canvasW - 60;
+    const y = 58;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = 0.8;
+
+    // Milestone dots
+    const dotR = 3;
+    const dotGap = 10;
+    const totalW = (prog.total - 1) * dotGap;
+    const startX = x - totalW / 2;
+
+    for (let i = 0; i < prog.total; i++) {
+        const dx = startX + i * dotGap;
+        ctx.beginPath();
+        ctx.arc(dx, y, dotR, 0, Math.PI * 2);
+        if (i < prog.met) {
+            ctx.fillStyle = '#e8c840';
+            ctx.fill();
+        } else {
+            ctx.strokeStyle = '#8a7a5a';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+
+    // Label
+    ctx.font = '7px monospace';
+    ctx.fillStyle = prog.met >= prog.total ? '#e8c840' : '#8a7a5a';
+    ctx.globalAlpha = 0.6;
+    ctx.fillText('EVOLVE', x, y + 10);
+
+    ctx.restore();
+}
+
 function drawDoorGlows() {
     if (typeof DOOR_DEFS === 'undefined' || !DOOR_DEFS) return;
     if (gamePhase === 'cinematic' || gamePhase === 'preMenu' || gamePhase === 'menu') return;
@@ -3263,6 +3314,9 @@ function render() {
         const hudHandler = FormSystem.getHandler();
         if (hudHandler && hudHandler.drawHUD) hudHandler.drawHUD();
         else drawHPMana();
+
+        // Evolution progress indicator (milestone dots)
+        drawEvolutionIndicator();
 
         // Abyss modifier pills + rank badge (endless mode HUD)
         if (typeof drawAbyssModifiers === 'function') drawAbyssModifiers();

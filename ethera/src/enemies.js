@@ -1333,6 +1333,7 @@ const wave = {
     bannerSub: '',
     enemiesAlive: 0,     // live count for current wave
     totalKilled: 0,      // total across all waves
+    waveKills: 0,        // kills in current wave
     lastDeathRow: 0,     // position of last enemy killed
     lastDeathCol: 0,
 };
@@ -1421,6 +1422,7 @@ function generateDynamicWave(waveIdx) {
 
 function beginNextWave() {
     wave.current++;
+    wave.waveKills = 0; // reset per-wave kill counter
     // Restore full light at wave start (tension effect dims it between waves)
     lightRadius = MAX_LIGHT;
     // Fixed waves exhausted — generate dynamic ones (no more victory screen, endless mode)
@@ -1785,6 +1787,9 @@ function updateWaveSystem(dt) {
                     wave.bannerAlpha = 1;
                     wave.tensionPhase = 0;
                     playSting('waveCleared');
+                    if (typeof Notify !== 'undefined') {
+                        Notify.toast(wave.waveKills + ' kills — Boss slain!', { duration: 3, color: '#e8c840', borderColor: '#8a7030' });
+                    }
                     // Wave clear HP heal — 15% of max HP
                     const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
                     const _qHp2 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
@@ -1850,6 +1855,10 @@ function updateWaveSystem(dt) {
                     wave.bannerAlpha = 1;
                     wave.tensionPhase = 0; // 0=calm, 1=building tension
                     playSting('waveCleared');
+                    // Wave clear stats toast
+                    if (typeof Notify !== 'undefined') {
+                        Notify.toast(wave.waveKills + ' kills', { duration: 2.5, color: '#c4a878', borderColor: '#8a7030' });
+                    }
                     // Wave clear HP heal — 15% of max HP
                     const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
                     const _qHp3 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
@@ -2657,6 +2666,7 @@ function updateEnemies(dt) {
 
                 enemies.splice(i, 1);
                 wave.totalKilled++;
+                wave.waveKills++;
                 grantXP(e.type, e.statMult || 1.0);
                 // Gold drop
                 if (typeof ENEMY_GOLD_DROP !== 'undefined') {
