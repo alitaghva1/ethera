@@ -323,8 +323,6 @@ const Notify = {
         const padding = 12;
         const borderRadius = 5;
         const margin = 16;
-        // Offset below wave HUD (HOSTILE/CALM indicator sits at y ~30)
-        const topOffset = 40;
 
         // Calculate box dimensions
         let maxWidth = 0;
@@ -336,7 +334,7 @@ const Notify = {
         const boxWidth = maxWidth + padding * 2;
         const boxHeight = controls.length * lineHeight + padding * 2 + 18; // +18 for [H] label
         const boxX = canvasW - boxWidth - margin;
-        const boxY = topOffset;
+        const boxY = canvasH - boxHeight - margin - 100; // bottom-right, above HUD bars
 
         // Draw background box
         ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
