@@ -182,26 +182,37 @@ function updateIntroPhase(dt) {
     introTimer += dt;
     const t = introTimer;
 
-    // === HEARTBEAT SEQUENCE ===
-    // Timeline: text done at 7.5s → void → beats with screen flash → golden text at peak
+    // === 7-BEAT HEARTBEAT SEQUENCE ===
+    // Gaps compress: 2.0 → 1.7 → 1.5 → 1.3 → 1.1 → 0.9
+    // Volume builds: 0.15 → 0.20 → 0.28 → 0.38 → 0.50 → 0.65 → 0.85
+    // Flash grows: barely visible → full crimson pulse
+    //
+    // Beat times: 8.5, 10.5, 12.2, 13.7, 15.0, 16.1, 17.0
+    //
     if (typeof sfxCinematicHeartbeat === 'function') {
-        if (t >= 9.0 && !introSfxPlayed)  { introSfxPlayed = true;  sfxCinematicHeartbeat(0.35); introFlash = 0.08; }
-        if (t >= 10.5 && !introSfxBeat2)  { introSfxBeat2 = true;   sfxCinematicHeartbeat(0.55); introFlash = 0.12; }
-        if (t >= 11.7 && !introSfxBeat3)  { introSfxBeat3 = true;   sfxCinematicHeartbeat(0.80); introFlash = 0.18; }
+        if (t >= 8.5  && !introSfxPlayed) { introSfxPlayed = true; sfxCinematicHeartbeat(0.15); introFlash = 0.03; introFlashRadius = 0.25; }
+        if (t >= 10.5 && !introSfxBeat2)  { introSfxBeat2 = true;  sfxCinematicHeartbeat(0.20); introFlash = 0.05; introFlashRadius = 0.30; }
+        if (t >= 12.2 && !introSfxBeat3)  { introSfxBeat3 = true;  sfxCinematicHeartbeat(0.28); introFlash = 0.07; introFlashRadius = 0.35; }
+        if (t >= 13.7 && !introSfxBeat4)  { introSfxBeat4 = true;  sfxCinematicHeartbeat(0.38); introFlash = 0.10; introFlashRadius = 0.42; }
+        if (t >= 15.0 && !introSfxBeat5)  { introSfxBeat5 = true;  sfxCinematicHeartbeat(0.50); introFlash = 0.14; introFlashRadius = 0.50; }
+        if (t >= 16.1 && !introSfxBeat6)  { introSfxBeat6 = true;  sfxCinematicHeartbeat(0.65); introFlash = 0.18; introFlashRadius = 0.60; }
+        if (t >= 17.0 && !introSfxBeat7)  { introSfxBeat7 = true;  sfxCinematicHeartbeat(0.85); introFlash = 0.25; introFlashRadius = 0.75; }
     }
+    // "They were wrong." appears at beat 7 (17.0s) — see drawIntroOverlay
+
     // Decay screen flash
-    if (introFlash > 0) introFlash = Math.max(0, introFlash - dt * 0.5);
+    if (introFlash > 0) introFlash = Math.max(0, introFlash - dt * 0.4);
 
     // === MUSIC ===
-    // Enters AFTER "They were wrong." fades — the release, the answer
-    if (t >= 14.5 && !introMusicStarted) {
+    // Enters AFTER "They were wrong." holds and fades — the release
+    if (t >= 19.5 && !introMusicStarted) {
         introMusicStarted = true;
-        try { playMusic('cinematic', 3.5); } catch(e) {}
+        try { playMusic('cinematic', 3.0); } catch(e) {}
     }
 
-    // === REVEAL PHASE (15.5-18.0s) ===
-    if (t > 15.5 && t <= INTRO_DURATION) {
-        const revealT = Math.min(1, (t - 15.5) / 2.5);
+    // === REVEAL PHASE (20.0-22.0s) ===
+    if (t > 20.0 && t <= INTRO_DURATION) {
+        const revealT = Math.min(1, (t - 20.0) / 2.0);
         // Smooth ease-out
         const eased = 1 - (1 - revealT) * (1 - revealT);
         lightRadius = 80 + (MAX_LIGHT - 80) * eased;
@@ -238,9 +249,9 @@ function drawIntroOverlay() {
     const t = introTimer;
     ctx.save();
 
-    // Black overlay — opaque through heartbeats + golden text, fades during reveal
+    // Black overlay — opaque through heartbeats + golden text, fades during reveal (20-22s)
     let overlayAlpha = 1.0;
-    if (t > 15.5) overlayAlpha = Math.max(0, 1 - (t - 15.5) / 2.5);
+    if (t > 20.0) overlayAlpha = Math.max(0, 1 - (t - 20.0) / 2.0);
 
     if (overlayAlpha > 0.01) {
         ctx.globalAlpha = overlayAlpha;
@@ -248,11 +259,13 @@ function drawIntroOverlay() {
         ctx.fillRect(0, 0, canvasW, canvasH);
     }
 
-    // Heartbeat screen flash — dark red pulse synced to beats
-    if (introFlash > 0.01) {
+    // Heartbeat screen flash — dark red pulse, radius and intensity grow with each beat
+    if (introFlash > 0.005) {
         ctx.globalAlpha = introFlash;
-        const flashGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, canvasH * 0.6);
-        flashGrad.addColorStop(0, 'rgba(80, 20, 10, 0.6)');
+        const _fr = canvasH * introFlashRadius;
+        const flashGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, _fr);
+        flashGrad.addColorStop(0, 'rgba(100, 20, 10, 0.7)');
+        flashGrad.addColorStop(0.5, 'rgba(60, 10, 5, 0.3)');
         flashGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = flashGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
@@ -264,60 +277,58 @@ function drawIntroOverlay() {
     const baseY = canvasH * 0.42;
 
     // LINE 0: "You awaken on cold stone."
-    // Appears alone. Fade in, hold, fade out. Then line 1 gets its own turn.
-    //   1.0s: fade in (2.0s)
-    //   3.0s: hold
-    //   4.0s: fade out (1.0s)
-    //   5.0s: gone
+    // Hazy, small — a thought forming through fog
+    //   1.0-3.0: fade in (2.0s)
+    //   3.0-4.0: hold
+    //   4.0-5.0: fade out (1.0s)
     let a0 = 0;
     if (t >= 1.0 && t < 3.0) a0 = Math.min(1, (t - 1.0) / 2.0);
     if (t >= 3.0 && t < 4.0) a0 = 1;
     if (t >= 4.0 && t < 5.0) a0 = 1 - (t - 4.0) / 1.0;
     if (a0 > 0.01) {
-        ctx.globalAlpha = a0 * 0.9;
-        ctx.font = '18px Georgia';
+        ctx.globalAlpha = a0 * 0.7; // hazy, like a thought
+        ctx.font = '16px Georgia';
         ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 6;
-        ctx.fillStyle = '#aa9b80';
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 10; // blurrier — dreamy
+        ctx.fillStyle = '#998a70';
         ctx.fillText('You awaken on cold stone.', cx, baseY);
     }
 
     // LINE 1: "They left you for dead."
-    // Appears AFTER line 0 is gone. Its own moment.
-    //   5.5s: fade in (1.5s)
-    //   7.0s: hold
-    //   7.5s: fade out (1.0s)
-    //   8.5s: gone → void → heartbeats begin
+    // Appears AFTER line 0 is gone. Sharper, more present — reality hitting.
+    //   5.5-7.0: fade in (1.5s)
+    //   7.0-7.5: hold
+    //   7.5-8.0: fade out (0.5s — quicker, like a door closing)
     let a1 = 0;
     if (t >= 5.5 && t < 7.0) a1 = Math.min(1, (t - 5.5) / 1.5);
     if (t >= 7.0 && t < 7.5) a1 = 1;
-    if (t >= 7.5 && t < 8.5) a1 = 1 - (t - 7.5) / 1.0;
+    if (t >= 7.5 && t < 8.0) a1 = 1 - (t - 7.5) / 0.5;
     if (a1 > 0.01) {
         ctx.globalAlpha = a1 * 0.9;
-        ctx.font = '19px Georgia';
+        ctx.font = '20px Georgia';
         ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 6;
-        ctx.fillStyle = '#aa9b80';
-        ctx.fillText('They left you for dead.', cx, baseY + 34);
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 4; // sharper than line 0
+        ctx.fillStyle = '#bbaa88'; // brighter — more present
+        ctx.fillText('They left you for dead.', cx, baseY);
     }
 
     // LINE 2: "They were wrong."
-    // Appears at peak heartbeat (11.7s). HOLDS for 2.5 seconds. Let the player feel it.
-    // Then fades. Then music enters. Then world reveals.
-    //   11.7s: appears (0.5s quick reveal — defiant)
-    //   12.2s: holds at full brightness
-    //   14.2s: starts fading (1.0s)
-    //   15.2s: gone → music swells → world reveals
+    // Appears at PEAK heartbeat (17.0s). Quick defiant reveal.
+    // HOLDS for 2 seconds so the player FEELS it.
+    // Then fades. THEN music enters. THEN world reveals.
+    //   17.0-17.4: quick reveal (0.4s)
+    //   17.4-19.2: HOLD at full (1.8s)
+    //   19.2-19.8: fade out (0.6s)
     let a2 = 0;
-    if (t >= 11.7 && t < 12.2) a2 = Math.min(1, (t - 11.7) / 0.5);
-    if (t >= 12.2 && t < 14.2) a2 = 1; // HOLD — 2 seconds at full
-    if (t >= 14.2 && t < 15.2) a2 = 1 - (t - 14.2) / 1.0;
+    if (t >= 17.0 && t < 17.4) a2 = Math.min(1, (t - 17.0) / 0.4);
+    if (t >= 17.4 && t < 19.2) a2 = 1; // HOLD
+    if (t >= 19.2 && t < 19.8) a2 = 1 - (t - 19.2) / 0.6;
     if (a2 > 0.01) {
-        const scaleT = Math.min(1, (t - 11.7) / 2.0);
+        const scaleT = Math.min(1, (t - 17.0) / 2.0);
         const scale = 1.08 - 0.08 * scaleT;
-        const glowBuild = Math.min(1, (t - 11.7) / 1.5);
+        const glowBuild = Math.min(1, (t - 17.0) / 1.5);
 
         ctx.save();
         ctx.translate(cx, canvasH * 0.44);
@@ -2973,7 +2984,7 @@ function render() {
 
     // Intro: black screen during text phase, then render world during reveal
     if (gamePhase === 'intro') {
-        if (introTimer < 15.5) {
+        if (introTimer < 20.0) {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasW, canvasH);
             return; // text overlay drawn by drawIntroOverlay() after render()
@@ -3826,8 +3837,13 @@ function runIntro() {
     introSfxPlayed = false;
     introSfxBeat2 = false;
     introSfxBeat3 = false;
+    introSfxBeat4 = false;
+    introSfxBeat5 = false;
+    introSfxBeat6 = false;
+    introSfxBeat7 = false;
     introMusicStarted = false;
     introFlash = 0;
+    introFlashRadius = 0.3;
     lightRadius = 80; // dim — expands during reveal
     setPixelCursor('none');
     zoneTransitionAlpha = 0;

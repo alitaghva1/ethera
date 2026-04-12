@@ -939,11 +939,16 @@ let introTimer = 0;
 let lightRadius = 60;
 const MAX_LIGHT = 340;
 const HAMLET_LIGHT = 310;         // twilight brightness for town atmosphere
-const INTRO_DURATION = 18.0;      // intro: line 1 → line 2 → void → heartbeats with flash → golden text holds → music → reveal
+const INTRO_DURATION = 22.0;      // intro: line 1 → line 2 → void → 7 heartbeats → golden text holds → music → reveal
 let introSfxPlayed = false;       // one-shot flag for intro heartbeat 1
 let introSfxBeat2 = false;        // one-shot flag for intro heartbeat 2
 let introSfxBeat3 = false;        // one-shot flag for intro heartbeat 3
+let introSfxBeat4 = false;
+let introSfxBeat5 = false;
+let introSfxBeat6 = false;
+let introSfxBeat7 = false;
 let introFlash = 0;               // screen flash intensity tied to heartbeats
+let introFlashRadius = 0.3;       // flash radius grows with each beat
 let introMusicStarted = false;    // one-shot flag for hamlet music start during reveal
 let lightFlicker = 0;
 
