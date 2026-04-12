@@ -1,7 +1,9 @@
 // ============================================================
 //  GLOBALS
 // ============================================================
-let currentObjective = '';  // Context-sensitive objective display
+var currentObjective = '';  // Context-sensitive objective display (var for cross-file access)
+var objectiveShowTimer = 0; // fades after 5 seconds, resets on change
+var _lastObjective = '';    // track changes
 
 // ============================================================
 //  ZONE TRANSITION
@@ -184,13 +186,26 @@ function drawPanel9Slice(img, x, y, w, h, border, scale) {
 function drawObjective() {
     if (gamePhase !== 'playing' || !currentObjective) return;
 
+    // Reset timer when objective changes
+    if (currentObjective !== _lastObjective) {
+        _lastObjective = currentObjective;
+        objectiveShowTimer = 0;
+    }
+    objectiveShowTimer += 1 / 60; // approximate dt
+
+    // Fade: full for 5s, then fade to 0.15 over 2s
+    let objAlpha = 0.85;
+    if (objectiveShowTimer > 5) {
+        objAlpha = Math.max(0.15, 0.85 - (objectiveShowTimer - 5) * 0.35);
+    }
+
     ctx.save();
 
     const objX = 20;
     const objY = 20;
 
-    ctx.globalAlpha = 0.85;
-    ctx.font = 'bold 14px Georgia';
+    ctx.globalAlpha = objAlpha;
+    ctx.font = '13px Georgia';
     ctx.fillStyle = '#d4c49a';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';

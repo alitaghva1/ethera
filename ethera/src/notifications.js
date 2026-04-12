@@ -124,18 +124,14 @@ const Notify = {
     /**
      * Show controls on first play, then allow toggle with H
      */
+    controlsAutoHideTimer: 0,
     showControlsOnce: function() {
         if (this.controlsEverShown) {
             return;
         }
         this.controlsEverShown = true;
         this.controlsVisible = true;
-        this.toast('Press H to toggle controls', {
-            duration: 4,
-            color: '#888877',
-            font: '9px monospace',
-            id: 'h_key_hint'
-        });
+        this.controlsAutoHideTimer = 10; // auto-hide after 10 seconds
     },
     
     // ========== UPDATE ==========
@@ -154,6 +150,14 @@ const Notify = {
             this.zoneBanner.timer -= dt;
         }
         
+        // Auto-hide controls after timer expires
+        if (this.controlsAutoHideTimer > 0) {
+            this.controlsAutoHideTimer -= dt;
+            if (this.controlsAutoHideTimer <= 0) {
+                this.controlsVisible = false;
+            }
+        }
+
         // Update toasts
         for (let i = 0; i < this.toasts.length; i++) {
             const toast = this.toasts[i];
@@ -259,8 +263,8 @@ const Notify = {
         // Sort toasts by priority (higher priority first)
         const sortedToasts = [...this.toasts].sort((a, b) => b.priority - a.priority);
         
-        let y = 20;
-        const gap = 8;
+        let y = canvasH * 0.28; // bottom-center area, above gameplay
+        const gap = 6;
         const padding = 12;
         const borderRadius = 4;
         
@@ -275,26 +279,18 @@ const Notify = {
             const boxX = (canvasW - boxWidth) / 2;
             const boxY = y;
             
-            // Draw background box — darker, more opaque for readability
-            ctx.fillStyle = 'rgba(8, 6, 4, 0.8)';
-            this._drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, borderRadius);
-            ctx.fill();
-
-            // Draw border — brighter
-            ctx.strokeStyle = toast.borderColor;
-            ctx.globalAlpha = toast.alpha * 0.6;
-            ctx.lineWidth = 1.5;
-            this._drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, borderRadius);
-            ctx.stroke();
-
-            // Draw text — full brightness
-            ctx.globalAlpha = toast.alpha;
+            // Clean borderless style — text with subtle shadow, no box
+            ctx.globalAlpha = toast.alpha * 0.9;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+            ctx.shadowBlur = 6;
             ctx.fillStyle = toast.color;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(toast.message, canvasW / 2, boxY + boxHeight / 2);
-            
-            y += boxHeight + gap;
+            ctx.font = '12px Georgia';
+            ctx.fillText(toast.message, canvasW / 2, y);
+            ctx.shadowBlur = 0;
+
+            y += 22 + gap;
         }
         
         ctx.restore();
