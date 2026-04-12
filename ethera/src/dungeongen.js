@@ -799,13 +799,99 @@ function getHazardDamage(type) {
     if (type === 'lava') return 8;
     if (type === 'acid') return 5;
     if (type === 'spikes') return 15;
+    if (type === 'timed_spikes') return 12;
     if (type === 'collapse') return 20;
     if (type === 'void') return 12;
     return 0; // ice does no damage, just slows
 }
 
+// ============================================================
+//  STORY ZONE HAZARDS — hand-authored positions for zones 2-6
+// ============================================================
+const STORY_HAZARDS = {
+    2: [
+        // Ruined Tower — spike traps in corridors
+        { r: 6, c: 16, type: 'timed_spikes' },
+        { r: 6, c: 17, type: 'timed_spikes' },
+        { r: 11, c: 20, type: 'timed_spikes' },
+        { r: 11, c: 21, type: 'timed_spikes' },
+        { r: 16, c: 22, type: 'spikes' },
+    ],
+    3: [
+        // The Spire — void patches and spikes
+        { r: 7, c: 8, type: 'void' },
+        { r: 7, c: 9, type: 'void' },
+        { r: 12, c: 14, type: 'timed_spikes' },
+        { r: 12, c: 15, type: 'timed_spikes' },
+        { r: 15, c: 18, type: 'spikes' },
+    ],
+    4: [
+        // The Inferno — lava pools
+        { r: 5, c: 8, type: 'lava' },
+        { r: 5, c: 9, type: 'lava' },
+        { r: 5, c: 10, type: 'lava' },
+        { r: 15, c: 8, type: 'lava' },
+        { r: 15, c: 9, type: 'lava' },
+        { r: 20, c: 15, type: 'lava' },
+        { r: 20, c: 16, type: 'lava' },
+        { r: 10, c: 14, type: 'timed_spikes' },
+        { r: 10, c: 15, type: 'timed_spikes' },
+    ],
+    5: [
+        // Frozen Abyss — ice patches
+        { r: 5, c: 10, type: 'ice' },
+        { r: 5, c: 11, type: 'ice' },
+        { r: 5, c: 12, type: 'ice' },
+        { r: 10, c: 15, type: 'ice' },
+        { r: 10, c: 16, type: 'ice' },
+        { r: 15, c: 10, type: 'timed_spikes' },
+        { r: 15, c: 11, type: 'timed_spikes' },
+        { r: 22, c: 18, type: 'ice' },
+        { r: 22, c: 19, type: 'ice' },
+    ],
+    6: [
+        // Throne of Ruin — void corruption
+        { r: 8, c: 12, type: 'void' },
+        { r: 8, c: 13, type: 'void' },
+        { r: 8, c: 14, type: 'void' },
+        { r: 16, c: 8, type: 'void' },
+        { r: 16, c: 9, type: 'void' },
+        { r: 22, c: 20, type: 'timed_spikes' },
+        { r: 22, c: 21, type: 'timed_spikes' },
+    ],
+};
+
+function placeStoryHazards(zoneNum) {
+    const defs = STORY_HAZARDS[zoneNum];
+    if (!defs) return;
+    for (const def of defs) {
+        if (def.r >= hazardMap.length || def.c >= hazardMap.length) continue;
+        if (blocked[def.r][def.c] || objectMap[def.r][def.c]) continue;
+        hazardMap[def.r][def.c] = {
+            type: def.type,
+            damage: getHazardDamage(def.type),
+            triggered: false,
+        };
+    }
+}
+
+// Global timed spike cycle — all timed spikes share this timer
+let _timedSpikeCycle = 0;
+const TIMED_SPIKE_RETRACT = 2.0;  // safe period
+const TIMED_SPIKE_WARN = 0.5;     // warning shimmer
+const TIMED_SPIKE_EXTEND = 1.0;   // damaging period
+const TIMED_SPIKE_TOTAL = TIMED_SPIKE_RETRACT + TIMED_SPIKE_WARN + TIMED_SPIKE_EXTEND;
+
+function getTimedSpikePhase() {
+    const t = _timedSpikeCycle % TIMED_SPIKE_TOTAL;
+    if (t < TIMED_SPIKE_RETRACT) return 'retracted';
+    if (t < TIMED_SPIKE_RETRACT + TIMED_SPIKE_WARN) return 'warning';
+    return 'extended';
+}
+
 function updateHazards(dt) {
     if (!hazardMap || hazardMap.length === 0) return;
+    _timedSpikeCycle += dt;
     const pr = Math.floor(player.row);
     const pc = Math.floor(player.col);
     // Scan tiles near player
@@ -846,6 +932,8 @@ function updateHazards(dt) {
                 continue;
             }
             if (h.type === 'collapse' && h.triggered) continue;
+            // Timed spikes only damage during extended phase
+            if (h.type === 'timed_spikes' && getTimedSpikePhase() !== 'extended') continue;
             // Void pull toward cluster center (subtle gravitational pull)
             if (h.type === 'void' && h.pullCenter && !player.dodging) {
                 const pullStr = 0.5 * dt;
@@ -865,7 +953,7 @@ function updateHazards(dt) {
                 if (typeof sfxPlayerHurt === 'function') sfxPlayerHurt();
                 if (player.hp <= 0) {
                     player.hp = 0;
-                    deathCause = h.type === 'lava' ? 'Lava' : h.type === 'acid' ? 'Acid' : h.type === 'spikes' ? 'Spike Trap' : h.type === 'void' ? 'The Void' : 'Collapsing Floor';
+                    deathCause = h.type === 'lava' ? 'Lava' : h.type === 'acid' ? 'Acid' : (h.type === 'spikes' || h.type === 'timed_spikes') ? 'Spike Trap' : h.type === 'void' ? 'The Void' : 'Collapsing Floor';
                 }
                 hazardDamageTimers[key] = DGEN_HAZARD_COOLDOWN;
                 if (h.type === 'collapse') {
@@ -937,6 +1025,38 @@ function drawHazardOverlays() {
                     ctx.moveTo(sx + ox, sy + 3);
                     ctx.lineTo(sx + ox, sy - 6);
                     ctx.stroke();
+                }
+            } else if (h.type === 'timed_spikes') {
+                const phase = getTimedSpikePhase();
+                if (phase === 'retracted') {
+                    // Show recessed slots — subtle dark marks
+                    ctx.globalAlpha = 0.2;
+                    ctx.fillStyle = '#444';
+                    for (let i = 0; i < 3; i++) {
+                        const ox = (i - 1) * 6;
+                        ctx.fillRect(sx + ox - 1, sy - 1, 2, 2);
+                    }
+                } else if (phase === 'warning') {
+                    // Pulsing shimmer warning
+                    const warn = 0.3 + Math.sin(t * 15) * 0.2;
+                    ctx.globalAlpha = warn;
+                    ctx.fillStyle = '#ff8844';
+                    for (let i = 0; i < 3; i++) {
+                        const ox = (i - 1) * 6;
+                        ctx.fillRect(sx + ox - 1.5, sy - 2, 3, 4);
+                    }
+                } else {
+                    // Extended — visible spikes
+                    ctx.globalAlpha = 0.6;
+                    ctx.strokeStyle = '#cc4422';
+                    ctx.lineWidth = 1.5;
+                    for (let i = 0; i < 3; i++) {
+                        const ox = (i - 1) * 6;
+                        ctx.beginPath();
+                        ctx.moveTo(sx + ox, sy + 3);
+                        ctx.lineTo(sx + ox, sy - 8);
+                        ctx.stroke();
+                    }
                 }
             } else if (h.type === 'ice') {
                 ctx.globalAlpha = 0.2 + Math.sin(t * 2 + r + c) * 0.05;

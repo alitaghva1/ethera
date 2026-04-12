@@ -6,6 +6,145 @@ var objectiveShowTimer = 0; // fades after 5 seconds, resets on change
 var _lastObjective = '';    // track changes
 
 // ============================================================
+//  WORLD LABEL OVERLAP PREVENTION
+//  Interaction prompts register their screen bounds each frame.
+//  Pickup texts and lower-priority labels shift to avoid them.
+// ============================================================
+var _frameWorldLabels = [];  // {x, y, w, h} — cleared each frame before HUD draw
+
+function _resetWorldLabels() { _frameWorldLabels.length = 0; }
+
+function _registerWorldLabel(cx, cy, w, h) {
+    _frameWorldLabels.push({ x: cx - w / 2, y: cy - h / 2, w: w, h: h });
+}
+
+function _overlapsAnyLabel(cx, cy, w, h) {
+    const lx = cx - w / 2, ly = cy - h / 2;
+    for (const lb of _frameWorldLabels) {
+        if (lx < lb.x + lb.w && lx + w > lb.x &&
+            ly < lb.y + lb.h && ly + h > lb.y) return lb;
+    }
+    return null;
+}
+
+// ============================================================
+//  MINIMAP SYSTEM
+//  Offscreen canvas rendered from fogRevealed data.
+//  Rebuilt when fog changes (dirty flag). Player/enemy dots drawn each frame.
+// ============================================================
+let minimapVisible = true;
+let _minimapDirty = true;
+let _minimapCanvas = null;
+let _minimapCtx = null;
+const MINIMAP_PX = 3;        // pixels per tile
+const MINIMAP_PAD = 14;      // padding from screen edge
+const MINIMAP_ALPHA = 0.75;  // overall minimap opacity
+
+function markMinimapDirty() { _minimapDirty = true; }
+
+function _rebuildMinimapStatic() {
+    const sz = typeof MAP_SIZE !== 'undefined' ? MAP_SIZE : 24;
+    const dim = sz * MINIMAP_PX;
+    if (!_minimapCanvas || _minimapCanvas.width !== dim) {
+        _minimapCanvas = document.createElement('canvas');
+        _minimapCanvas.width = dim;
+        _minimapCanvas.height = dim;
+        _minimapCtx = _minimapCanvas.getContext('2d');
+    }
+    const mc = _minimapCtx;
+    mc.clearRect(0, 0, dim, dim);
+
+    for (let r = 0; r < sz; r++) {
+        for (let c = 0; c < sz; c++) {
+            const fog = (fogRevealed && fogRevealed[r] && fogRevealed[r][c]) ? fogRevealed[r][c] : 0;
+            if (fog <= 0) continue;
+            const px = c * MINIMAP_PX, py = r * MINIMAP_PX;
+            const hasFloor = floorMap && floorMap[r] && floorMap[r][c];
+            const isBlocked = blocked && blocked[r] && blocked[r][c];
+
+            if (hasFloor && !isBlocked) {
+                mc.fillStyle = fog >= 1 ? '#3a2a1e' : '#1e1610';
+            } else if (hasFloor) {
+                mc.fillStyle = fog >= 1 ? '#2a201a' : '#15100c';
+            } else {
+                continue; // void tile
+            }
+            mc.globalAlpha = Math.min(1, fog + 0.2);
+            mc.fillRect(px, py, MINIMAP_PX, MINIMAP_PX);
+        }
+    }
+    // Draw door markers
+    if (typeof DOOR_DEFS !== 'undefined' && DOOR_DEFS) {
+        for (const key in DOOR_DEFS) {
+            const parts = key.split(',');
+            const dr = parseInt(parts[0]), dc = parseInt(parts[1]);
+            if (isNaN(dr) || isNaN(dc)) continue;
+            const fog = (fogRevealed && fogRevealed[dr] && fogRevealed[dr][dc]) ? fogRevealed[dr][dc] : 0;
+            if (fog <= 0) continue;
+            mc.globalAlpha = 0.8;
+            mc.fillStyle = '#5588cc';
+            mc.fillRect(dc * MINIMAP_PX, dr * MINIMAP_PX, MINIMAP_PX, MINIMAP_PX);
+        }
+    }
+    mc.globalAlpha = 1;
+    _minimapDirty = false;
+}
+
+function drawMinimap() {
+    if (!minimapVisible || gamePhase !== 'playing' || gameDead) return;
+    if (typeof MAP_SIZE === 'undefined' || typeof fogRevealed === 'undefined') return;
+    // Skip in town-like antechamber (zone 7) if map is tiny
+    if (currentZone === 7) return;
+
+    if (_minimapDirty || !_minimapCanvas) _rebuildMinimapStatic();
+
+    const sz = MAP_SIZE;
+    const dim = sz * MINIMAP_PX;
+    const mx = MINIMAP_PAD;
+    const my = MINIMAP_PAD;
+
+    ctx.save();
+    ctx.globalAlpha = MINIMAP_ALPHA;
+
+    // Background
+    ctx.fillStyle = 'rgba(8, 6, 4, 0.7)';
+    ctx.fillRect(mx - 2, my - 2, dim + 4, dim + 4);
+    ctx.strokeStyle = 'rgba(138, 112, 48, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx - 2, my - 2, dim + 4, dim + 4);
+
+    // Static map layer
+    ctx.drawImage(_minimapCanvas, mx, my);
+
+    // Dynamic: player dot (white, pulsing)
+    const pulse = 0.7 + Math.sin(performance.now() / 300) * 0.3;
+    ctx.globalAlpha = pulse;
+    // Form-colored player dot
+    const formColors = { slime: '#44dd66', skeleton: '#ddddcc', wizard: '#6688ff', lich: '#aa55ff' };
+    ctx.fillStyle = formColors[FormSystem.currentForm] || '#ffffff';
+    const pr = Math.floor(player.row), pc = Math.floor(player.col);
+    ctx.fillRect(mx + pc * MINIMAP_PX - 1, my + pr * MINIMAP_PX - 1, MINIMAP_PX + 2, MINIMAP_PX + 2);
+
+    // Dynamic: enemy dots (red, only within light radius range)
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#cc3333';
+    if (typeof enemies !== 'undefined') {
+        for (const e of enemies) {
+            if (e.state === 'death') continue;
+            const er = Math.floor(e.row), ec = Math.floor(e.col);
+            // Only show enemies near the player (within ~10 tiles)
+            const dr = er - pr, dc = ec - pc;
+            if (dr * dr + dc * dc > 100) continue;
+            const fog = (fogRevealed[er] && fogRevealed[er][ec]) ? fogRevealed[er][ec] : 0;
+            if (fog < 1) continue;
+            ctx.fillRect(mx + ec * MINIMAP_PX, my + er * MINIMAP_PX, MINIMAP_PX, MINIMAP_PX);
+        }
+    }
+
+    ctx.restore();
+}
+
+// ============================================================
 //  ZONE TRANSITION
 // ============================================================
 let zoneTransitionAlpha = 0;
@@ -235,6 +374,62 @@ function drawObjective() {
 // ============================================================
 //  HP & MANA BARS — with smooth lerp transitions
 // ============================================================
+// ============================================================
+//  QUEST TRACKER — persistent bottom-right HUD
+// ============================================================
+let _questTrackerVisible = true;
+
+function drawQuestTracker() {
+    if (!_questTrackerVisible || gamePhase !== 'playing' || gameDead) return;
+    if (typeof QUEST_REGISTRY === 'undefined' || typeof questState === 'undefined') return;
+    if (typeof menuOpen !== 'undefined' && menuOpen) return;
+
+    // Find active quest: first started but not completed
+    let activeQuest = null, activeStep = -1;
+    for (const quest of QUEST_REGISTRY) {
+        if (isQuestComplete(quest.id)) continue;
+        const step = getQuestCurrentStep(quest.id);
+        if (step >= 0) { activeQuest = quest; activeStep = step; break; }
+    }
+    if (!activeQuest) return;
+
+    const stepText = activeQuest.steps[activeStep].text;
+    const rx = canvasW - 20;
+    const ry = canvasH - 60;
+
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+
+    // Quest name
+    ctx.globalAlpha = 0.6;
+    ctx.font = 'bold 10px Georgia';
+    ctx.fillStyle = '#e8c040';
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(activeQuest.name, rx, ry);
+
+    // Current step
+    ctx.globalAlpha = 0.45;
+    ctx.font = 'italic 9px Georgia';
+    ctx.fillStyle = '#c4a878';
+    ctx.fillText(stepText, rx, ry + 14);
+
+    // Step progress dots
+    ctx.globalAlpha = 0.4;
+    const dotY = ry + 22;
+    for (let i = 0; i < activeQuest.steps.length; i++) {
+        const dotX = rx - (activeQuest.steps.length - 1 - i) * 8;
+        ctx.fillStyle = i < activeStep ? '#e8c040' : (i === activeStep ? '#aa8830' : '#443320');
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+}
+
 let _displayHP = -1;
 let _displayMana = -1;
 let _displayXP = -1;
@@ -481,6 +676,62 @@ function drawHPMana() {
         const surgeText = `EVOLUTION SURGE ${Math.ceil(remaining)}s`;
         ctx.strokeText(surgeText, x, yXP + barH + 6);
         ctx.fillText(surgeText, x, yXP + barH + 6);
+    }
+
+    // --- Status Effect Icons (below XP bar) ---
+    {
+        const statusIcons = [];
+        const now = performance.now() / 1000;
+        // Invincibility frames
+        if (typeof playerInvTimer !== 'undefined' && playerInvTimer > 0.15) {
+            statusIcons.push({ label: 'INV', color: '#ffffff', frac: Math.min(1, playerInvTimer / 0.8) });
+        }
+        // Slow debuff
+        if (player.slowTimer && player.slowTimer > 0) {
+            statusIcons.push({ label: 'SLOW', color: '#6699cc', frac: Math.min(1, player.slowTimer / 2) });
+        }
+        // Frozen debuff
+        if (player.frozenTimer && player.frozenTimer > 0) {
+            statusIcons.push({ label: 'FRZ', color: '#88ccff', frac: Math.min(1, player.frozenTimer / 1.5) });
+        }
+        // Evolution surge buff
+        if (typeof evolutionSurge !== 'undefined' && evolutionSurge.active) {
+            const rem = evolutionSurge.duration - evolutionSurge.timer;
+            statusIcons.push({ label: 'PWR', color: '#ffdd44', frac: rem / evolutionSurge.duration });
+        }
+
+        if (statusIcons.length > 0) {
+            const iconSize = 14;
+            const iconGap = 3;
+            const iconY = yXP + barH + 4;
+            for (let si = 0; si < statusIcons.length; si++) {
+                const ic = statusIcons[si];
+                const iconX = x + si * (iconSize + iconGap);
+
+                // Background square
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = '#0a0806';
+                ctx.fillRect(iconX, iconY, iconSize, iconSize);
+
+                // Timer arc (clockwise sweep showing remaining fraction)
+                ctx.globalAlpha = 0.6;
+                ctx.strokeStyle = ic.color;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                const arcCx = iconX + iconSize / 2, arcCy = iconY + iconSize / 2;
+                ctx.arc(arcCx, arcCy, iconSize / 2 - 1, -Math.PI / 2, -Math.PI / 2 + ic.frac * Math.PI * 2);
+                ctx.stroke();
+
+                // Label
+                ctx.globalAlpha = 0.7;
+                ctx.font = 'bold 6px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = ic.color;
+                ctx.fillText(ic.label, arcCx, arcCy + 1);
+            }
+            ctx.textAlign = 'left';
+        }
     }
 
     // --- Active Upgrade Icons ---
@@ -752,6 +1003,85 @@ function updateParticles(dt) {
 }
 
 // ============================================================
+// ============================================================
+//  WALL INSCRIPTIONS — environmental lore text in zones 1-3
+//  Proximity-triggered, drawn in world-space above the inscription tile.
+// ============================================================
+const WALL_INSCRIPTIONS = {
+    1: [
+        { row: 4, col: 5, text: '"We sealed it below. Pray it holds."', triggered: false },
+        { row: 9, col: 8, text: '"The guards stopped reporting at dawn."', triggered: false },
+        { row: 14, col: 12, text: '"Something stirs in the hollow."', triggered: false },
+        { row: 18, col: 6, text: '"Count the bones. There should be twelve."', triggered: false },
+    ],
+    2: [
+        { row: 4, col: 18, text: '"The tower was never meant to stand this long."', triggered: false },
+        { row: 8, col: 22, text: '"Elara climbed past here. She did not look back."', triggered: false },
+        { row: 14, col: 16, text: '"The moss grows thickest where they fell."', triggered: false },
+    ],
+    3: [
+        { row: 5, col: 7, text: '"The howling started three nights ago."', triggered: false },
+        { row: 10, col: 16, text: '"It wears a man\'s shape. It is not a man."', triggered: false },
+        { row: 14, col: 12, text: '"The Pale Covenant asks only one thing: everything."', triggered: false },
+    ],
+};
+const INSCRIPTION_RANGE = 2.0;
+let _inscriptionActive = null; // { text, alpha, timer, worldRow, worldCol }
+
+function resetInscriptions() {
+    for (const z in WALL_INSCRIPTIONS)
+        for (const ins of WALL_INSCRIPTIONS[z]) ins.triggered = false;
+    _inscriptionActive = null;
+}
+
+function updateInscriptions(dt) {
+    const inscriptions = WALL_INSCRIPTIONS[currentZone];
+    if (!inscriptions) return;
+
+    for (const ins of inscriptions) {
+        if (ins.triggered) continue;
+        const dr = ins.row - player.row;
+        const dc = ins.col - player.col;
+        if (Math.sqrt(dr * dr + dc * dc) < INSCRIPTION_RANGE) {
+            ins.triggered = true;
+            _inscriptionActive = { text: ins.text, alpha: 0, timer: 5.0, worldRow: ins.row, worldCol: ins.col };
+        }
+    }
+
+    if (_inscriptionActive) {
+        _inscriptionActive.timer -= dt;
+        if (_inscriptionActive.timer > 4.0) {
+            _inscriptionActive.alpha = Math.min(1, _inscriptionActive.alpha + dt * 2.5);
+        } else if (_inscriptionActive.timer < 1.5) {
+            _inscriptionActive.alpha = Math.max(0, _inscriptionActive.alpha - dt * 0.7);
+        }
+        if (_inscriptionActive.timer <= 0) _inscriptionActive = null;
+    }
+}
+
+function drawInscriptions() {
+    if (!_inscriptionActive || _inscriptionActive.alpha <= 0) return;
+    const ins = _inscriptionActive;
+
+    // Draw in world-space above the inscription tile
+    const pos = tileToScreen(ins.worldRow, ins.worldCol);
+    const sx = pos.x + cameraX;
+    const sy = pos.y + cameraY - 50;
+
+    ctx.save();
+    const tremble = Math.sin(performance.now() / 300) * 0.4;
+    ctx.globalAlpha = ins.alpha * 0.6;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'italic 11px Georgia';
+    ctx.fillStyle = '#c4a878';
+    ctx.shadowColor = 'rgba(180, 140, 60, 0.3)';
+    ctx.shadowBlur = 8;
+    ctx.fillText(ins.text, sx + tremble, sy);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+}
+
 //  FROZEN ECHO SYSTEM — Zone 5 environmental story text
 // ============================================================
 const FROZEN_ECHOES = [
@@ -840,6 +1170,17 @@ function drawPickupTexts() {
         const pos = tileToScreen(t.row, t.col);
         let sx = pos.x + cameraX;
         let sy = pos.y + cameraY + t.offsetY;
+
+        // Shift pickup text if it overlaps a registered interaction prompt
+        if (typeof _overlapsAnyLabel === 'function') {
+            const textW = 60, textH = 16;
+            const overlap = _overlapsAnyLabel(sx, sy, textW, textH);
+            if (overlap) {
+                // Push below the prompt badge
+                sy = overlap.y + overlap.h + 8;
+            }
+        }
+
         const alpha = Math.min(1, t.life / 0.5);
         ctx.save();
         ctx.globalAlpha = alpha * 0.9;

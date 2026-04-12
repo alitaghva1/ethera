@@ -36,14 +36,36 @@ function updateCamera(dt) {
     }
 
     // Screen shake effect — decays intensity over time
+    // Supports directional bias via _shakeDirX/_shakeDirY (set by addDirectionalShake)
     if (screenShakeTimer > 0) {
         screenShakeTimer -= dt;
         screenShakeIntensity *= Math.max(0, 1 - dt * 8); // smooth decay
         const shake = screenShakeIntensity;
-        cameraX += Math.round((Math.random() - 0.5) * shake * 2);
-        cameraY += Math.round((Math.random() - 0.5) * shake * 2);
-        if (screenShakeTimer <= 0) screenShakeIntensity = 0;
+        // Blend directional bias with random jitter (bias decays quickly)
+        const dirBias = typeof _shakeDirBias !== 'undefined' ? Math.max(0, _shakeDirBias) : 0;
+        const dirX = typeof _shakeDirX !== 'undefined' ? _shakeDirX : 0;
+        const dirY = typeof _shakeDirY !== 'undefined' ? _shakeDirY : 0;
+        const randX = (Math.random() - 0.5) * 2;
+        const randY = (Math.random() - 0.5) * 2;
+        cameraX += Math.round((randX * (1 - dirBias) + dirX * dirBias) * shake);
+        cameraY += Math.round((randY * (1 - dirBias) + dirY * dirBias) * shake);
+        if (dirBias > 0) _shakeDirBias -= dt * 12; // directional bias fades fast
+        if (screenShakeTimer <= 0) { screenShakeIntensity = 0; _shakeDirBias = 0; }
     }
+}
+
+// Directional shake state
+var _shakeDirX = 0, _shakeDirY = 0, _shakeDirBias = 0;
+
+function addDirectionalShake(fromRow, fromCol, intensity, duration) {
+    // Shake biased AWAY from the damage source
+    const dx = player.col - fromCol;
+    const dy = player.row - fromRow;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    _shakeDirX = dx / len;
+    _shakeDirY = dy / len;
+    _shakeDirBias = 0.7; // starts 70% directional, decays to random
+    addScreenShake(intensity, duration);
 }
 
 // ============================================================

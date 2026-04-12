@@ -97,6 +97,35 @@ function spawnDeathBurst(worldX, worldY, color) {
             color || '#ff6644', 0.9, 'death', 'screen'
         );
     }
+    // Secondary "soul drift" — slow, larger particles rising from the corpse
+    const soulCount = Math.max(2, Math.round(4 * GFX.particleMul));
+    for (let i = 0; i < soulCount; i++) {
+        _emitParticle(
+            worldX + (Math.random() - 0.5) * 8,
+            worldY + (Math.random() - 0.5) * 4,
+            (Math.random() - 0.5) * 0.5,
+            -0.6 - Math.random() * 0.4,
+            1.2 + Math.random() * 0.5,
+            3.5 + Math.random() * 2,
+            color || '#ff6644', 0.35, 'soul', 'screen'
+        );
+    }
+}
+
+// Healing sparkle — green particles rising from player on HP pickup
+function spawnHealBurst(worldX, worldY) {
+    const count = Math.max(3, Math.round(6 * GFX.particleMul));
+    for (let i = 0; i < count; i++) {
+        _emitParticle(
+            worldX + (Math.random() - 0.5) * 10,
+            worldY - Math.random() * 6,
+            (Math.random() - 0.5) * 0.8,
+            -1.2 - Math.random() * 0.6,
+            0.5 + Math.random() * 0.3,
+            1.5 + Math.random() * 1,
+            '#44dd66', 0.6, 'heal', 'screen'
+        );
+    }
 }
 
 // Hit spark — small bright sparks on projectile impact

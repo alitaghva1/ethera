@@ -978,24 +978,50 @@ function drawEnvironmentLightProps() {
         // Draw physical prop sprite
         _drawLightProp(sx, sy, light, flicker, now);
 
-        // Ambient ember particles — only from fully revealed lights, subtle rate
+        // Ambient particles — only from fully revealed lights
         if (typeof _emitParticle === 'function' && gamePhase === 'playing') {
-            const isFireLight = (light.type === 'torch' || light.type === 'brazier' || light.type === 'fire_pit');
-            // Only emit from lights the player can actually see (fog revealed = 1.0)
+            const isFireLight = (light.type === 'torch' || light.type === 'brazier' || light.type === 'fire_pit' || light.type === 'lava_crack');
+            const isIceLight = (light.type === 'ice_crystal');
+            const isVoidLight = (light.type === 'void_flame');
             const fogVal = (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed[0].length) ? fogRevealed[fr][fc] : 0;
-            if (isFireLight && fogVal >= 1.0 && Math.random() < 0.004) {
-                // ~0.24 embers/sec per light — very subtle
-                _emitParticle(
-                    sx + (Math.random() - 0.5) * 6,
-                    sy - 18 - Math.random() * 8,
-                    (Math.random() - 0.5) * 0.4,
-                    -0.8 - Math.random() * 0.5,
-                    0.6 + Math.random() * 0.3,
-                    0.8 + Math.random() * 0.5,
-                    '#cc8833',
-                    0.3,
-                    'ember'
-                );
+            if (fogVal >= 1.0) {
+                if (isFireLight && Math.random() < 0.008) {
+                    _emitParticle(
+                        sx + (Math.random() - 0.5) * 6,
+                        sy - 18 - Math.random() * 8,
+                        (Math.random() - 0.5) * 0.4,
+                        -0.8 - Math.random() * 0.5,
+                        0.6 + Math.random() * 0.3,
+                        0.8 + Math.random() * 0.5,
+                        light.type === 'lava_crack' ? '#ff4400' : '#cc8833',
+                        0.3,
+                        'ember'
+                    );
+                } else if (isIceLight && Math.random() < 0.005) {
+                    _emitParticle(
+                        sx + (Math.random() - 0.5) * 10,
+                        sy - 14 - Math.random() * 6,
+                        (Math.random() - 0.5) * 0.3,
+                        -0.3 - Math.random() * 0.2,
+                        0.8 + Math.random() * 0.4,
+                        0.6 + Math.random() * 0.4,
+                        '#88ccff',
+                        0.25,
+                        'ember'
+                    );
+                } else if (isVoidLight && Math.random() < 0.005) {
+                    _emitParticle(
+                        sx + (Math.random() - 0.5) * 8,
+                        sy - 16 - Math.random() * 6,
+                        (Math.random() - 0.5) * 0.2,
+                        -0.5 - Math.random() * 0.3,
+                        0.7 + Math.random() * 0.4,
+                        0.7 + Math.random() * 0.5,
+                        '#aa55ff',
+                        0.25,
+                        'ember'
+                    );
+                }
             }
         }
     }
@@ -1019,7 +1045,7 @@ function drawEnvironmentLightPunchthrough() {
         if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed.length) {
             if (!fogRevealed[fr][fc]) continue;
         }
-        ctx.globalAlpha = light.intensity * _envLightFlicker(light, now) * 0.28;
+        ctx.globalAlpha = light.intensity * _envLightFlicker(light, now) * 0.36;
         ctx.drawImage(_getEnvLightGlow(light), sx - light.radius, sy - light.radius + 4);
     }
     ctx.restore();
@@ -1126,14 +1152,14 @@ function drawDarkness() {
 
         // Layer 1: cold desaturated ambient (multiply) — overcast stone
         ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = 'rgba(140, 130, 120, 0.92)';
+        ctx.fillStyle = 'rgba(152, 142, 132, 0.88)';
         ctx.fillRect(0, 0, canvasW, canvasH);
 
         // Layer 2: directional shadow gradient (top-left slightly lighter = faint moon)
         const shadowGrad = ctx.createLinearGradient(0, 0, canvasW, canvasH);
         shadowGrad.addColorStop(0, 'rgba(160, 155, 145, 0.75)');
         shadowGrad.addColorStop(0.5, 'rgba(120, 115, 105, 0.82)');
-        shadowGrad.addColorStop(1, 'rgba(80, 75, 70, 0.88)');
+        shadowGrad.addColorStop(1, 'rgba(95, 90, 82, 0.84)');
         ctx.fillStyle = shadowGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
 
@@ -1184,8 +1210,8 @@ function drawDarkness() {
     ctx.globalCompositeOperation = 'multiply';
     const grad = ctx.createRadialGradient(px, py, 0, px, py, radius);
     grad.addColorStop(0, 'rgba(210, 185, 135, 1)');
-    grad.addColorStop(0.3, 'rgba(160, 120, 75, 1)');
-    grad.addColorStop(0.65, 'rgba(50, 32, 14, 1)');
+    grad.addColorStop(0.3, 'rgba(175, 140, 90, 1)');
+    grad.addColorStop(0.65, 'rgba(65, 42, 22, 1)');
     grad.addColorStop(1, 'rgba(8, 4, 2, 1)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvasW, canvasH);
@@ -1194,7 +1220,7 @@ function drawDarkness() {
     // Pass 2: overall darkness film — dims everything including the lit center
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(48, 35, 25, 0.58)';
+    ctx.fillStyle = 'rgba(48, 35, 25, 0.45)';
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();
 }

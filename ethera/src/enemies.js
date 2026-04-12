@@ -357,7 +357,7 @@ function bossAoE(centerRow, centerCol, radius, damage, particleCount, particleCo
     const pdr = player.row - centerRow;
     const pdc = player.col - centerCol;
     if (Math.sqrt(pdr * pdr + pdc * pdc) < radius) {
-        damagePlayer(damage, source || 'boss');
+        damagePlayer(damage, source || 'boss', centerRow, centerCol);
     }
     addScreenShake(shakeIntensity || 5, 0.25);
 }
@@ -375,7 +375,7 @@ function bossSweep(e, radius, damage, particleCount, particleColor, source) {
     }
     const dist = Math.sqrt(dr * dr + dc * dc);
     if (dist < radius) {
-        damagePlayer(damage, source || e.type);
+        damagePlayer(damage, source || e.type, e.row, e.col);
     }
     addScreenShake(4, 0.2);
 }
@@ -562,6 +562,21 @@ function applyEnemyHit(e, damage, opts) {
     // Hit flash — brief white overlay on ANY damage (longer on crit)
     e.hitFlashTimer = isCrit ? 0.18 : 0.1;
 
+    // ── Hit pause on crit or heavy hit (>15% max HP) ──
+    const heavyHitThreshold = (e.def.hp || 30) * 0.15;
+    if (isCrit) {
+        addHitPause(0.04);
+        addScreenShake(4, 0.12);
+    } else if (finalDmg >= heavyHitThreshold) {
+        addHitPause(0.025);
+    }
+
+    // ── Stagger wobble on heavy hits — visual sprite offset during hit flash ──
+    if (finalDmg >= heavyHitThreshold && !e.def.isBoss) {
+        e._staggerOffX = (opts.knockVr || (Math.random() - 0.5)) * 3;
+        e._staggerOffY = (opts.knockVc || (Math.random() - 0.5)) * 3;
+    }
+
     // ── Impact scaling by enemy max HP ──
     const impactScale = Math.min(2.5, Math.max(0.8, (e.def.hp || 30) / 60));
 
@@ -668,6 +683,17 @@ function applyEnemyHit(e, damage, opts) {
         e.animFrame = 0;
         if (!opts.skipSFX) sfxEnemyDeath(e.row, e.col);
         rollEnemyLoot(e);
+        // Clean up boss phase 2 effects on death
+        if (e.def.isBoss && e._boneWallActive && e._boneWallTiles) {
+            for (const t of e._boneWallTiles) {
+                if (t.r >= 0 && t.r < MAP_SIZE && t.c >= 0 && t.c < MAP_SIZE) {
+                    blocked[t.r][t.c] = false;
+                    blockType[t.r][t.c] = null;
+                }
+            }
+            e._boneWallActive = false;
+            e._boneWallTiles = [];
+        }
         if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
         else if (e.elite) { addHitPause(0.05 * impactScale); addScreenShake(4 * impactScale * critMul, 0.12 * impactScale); addSlowMo(0.08, 0.3); }
         else { addHitPause(0.04 * impactScale); addScreenShake(3 * impactScale * critMul, 0.1 * impactScale); }
@@ -1774,6 +1800,10 @@ function updateWaveSystem(dt) {
                         row: player.row, col: player.col,
                         offsetY: 0, life: 2.0,
                     });
+                    if (typeof spawnHealBurst === 'function') {
+                        const _hp = tileToScreen(player.row, player.col);
+                        spawnHealBurst(_hp.x + cameraX, _hp.y + cameraY);
+                    }
                     duckMusic(true);
                     // Talisman drop after wave 2 in zone 1 (for slime form) — moved here since wave 2 is also the expansion trigger
                     if (currentZone === 1 && wave.current === 2 && FormSystem.currentForm === 'slime') {
@@ -1802,6 +1832,10 @@ function updateWaveSystem(dt) {
                         row: player.row, col: player.col,
                         offsetY: 0, life: 2.0,
                     });
+                    if (typeof spawnHealBurst === 'function') {
+                        const _hp2 = tileToScreen(player.row, player.col);
+                        spawnHealBurst(_hp2.x + cameraX, _hp2.y + cameraY);
+                    }
                     // Boss kill bonus gold
                     if (typeof playerGold !== 'undefined') {
                         const bossBonus = 100 + currentZone * 50;
@@ -2615,7 +2649,7 @@ function updateEnemies(dt) {
                     const pdr = player.row - e.row;
                     const pdc = player.col - e.col;
                     if (Math.sqrt(pdr * pdr + pdc * pdc) < explodeR) {
-                        damagePlayer(Math.round(e.def.damage * ENEMY_CONTACT_DAMAGE_MULT), e.type);
+                        damagePlayer(Math.round(e.def.damage * ENEMY_CONTACT_DAMAGE_MULT), e.type, e.row, e.col);
                     }
                     // Big explosion particles
                     for (let p = 0; p < 12; p++) {
@@ -2902,7 +2936,7 @@ function updateEnemies(dt) {
                     // Melee: damage player if in range
                     if (dist < e.def.attackRange + 0.3) {
                         sfxEnemyHurt(e.row, e.col); // melee attack impact sound
-                        damagePlayer(e.def.damage, e.type);
+                        damagePlayer(e.def.damage, e.type, e.row, e.col);
                         // Elite vampiric: heal on hit
                         if (e.elite === 'vampiric') {
                             const healAmt = Math.round(e.def.damage * ELITE_VAMPIRIC_HEAL_MULT);
@@ -3092,6 +3126,100 @@ function updateEnemies(dt) {
             wave.bannerSub = 'All shall perish...';
             wave.bannerAlpha = 1;
             wave.timer = 1.5;
+        }
+
+        // --- Phase 2 for other bosses (25% HP) ---
+        if (e.def.isBoss && e.bossPhase === 1 && e.hp < e.maxHp * 0.25 && e.type !== 'ruined_king') {
+            e.bossPhase = 2;
+            addScreenShake(10, 0.5);
+            addHitPause(0.08);
+            for (let p = 0; p < 20; p++) {
+                const angle = (p / 20) * Math.PI * 2;
+                spawnParticle(e.row + Math.cos(angle) * 0.5, e.col + Math.sin(angle) * 0.5,
+                    Math.cos(angle) * 4, Math.sin(angle) * 4, 0.7, e.def.tintColor || '#ff4444', 1.0);
+            }
+
+            if (e.type === 'slime_king') {
+                wave.bannerText = 'The King Fractures!';
+                wave.bannerSub = 'Its mass splits apart...';
+                // Split into 3 mini-slimes that reform after 5s
+                e._splitActive = true;
+                e._splitTimer = 5.0;
+                e._splitAlpha = 0.3; // boss fades while split
+                for (let si = 0; si < 3; si++) {
+                    const sa = (si / 3) * Math.PI * 2 + Math.random() * 0.5;
+                    const sr = e.row + Math.cos(sa) * 2;
+                    const sc = e.col + Math.sin(sa) * 2;
+                    spawnEnemy('slime', sr, sc, 0.5); // half-strength mini-slimes
+                }
+            } else if (e.type === 'bone_colossus') {
+                wave.bannerText = 'The Colossus Crumbles!';
+                wave.bannerSub = 'Bones form a living barrier...';
+                // Bone wall — block tiles around the boss temporarily
+                e._boneWallActive = true;
+                e._boneWallTimer = 6.0;
+                e._boneWallTiles = [];
+                for (let bw = 0; bw < 4; bw++) {
+                    const bwa = (bw / 4) * Math.PI * 2;
+                    const bwr = Math.round(e.row + Math.cos(bwa) * 2.5);
+                    const bwc = Math.round(e.col + Math.sin(bwa) * 2.5);
+                    if (bwr >= 0 && bwr < MAP_SIZE && bwc >= 0 && bwc < MAP_SIZE && !blocked[bwr][bwc]) {
+                        blocked[bwr][bwc] = true;
+                        blockType[bwr][bwc] = 'wall';
+                        e._boneWallTiles.push({ r: bwr, c: bwc });
+                    }
+                }
+            } else if (e.type === 'infernal_knight') {
+                wave.bannerText = 'The Knight Burns!';
+                wave.bannerSub = 'Fire trails consume the arena...';
+                // Permanent fire trail mode — leaves trail every move
+                e._permFireTrail = true;
+            } else if (e.type === 'frost_wyrm') {
+                wave.bannerText = 'The Wyrm Freezes All!';
+                wave.bannerSub = 'The ground turns to ice...';
+                // Freeze floor tiles in expanding ring
+                const fCenter = { r: Math.round(e.row), c: Math.round(e.col) };
+                for (let fr = -4; fr <= 4; fr++) {
+                    for (let fc = -4; fc <= 4; fc++) {
+                        const dist = Math.sqrt(fr * fr + fc * fc);
+                        if (dist > 4 || dist < 2) continue;
+                        const tr = fCenter.r + fr, tc = fCenter.c + fc;
+                        if (tr >= 0 && tr < MAP_SIZE && tc >= 0 && tc < MAP_SIZE && !blocked[tr][tc]) {
+                            if (!hazardMap[tr][tc]) {
+                                hazardMap[tr][tc] = { type: 'ice', damage: 0, triggered: false };
+                            }
+                        }
+                    }
+                }
+            }
+            wave.bannerAlpha = 1;
+            wave.timer = 1.5;
+        }
+
+        // --- Boss phase 2 ongoing effects ---
+        if (e.def.isBoss && e.bossPhase === 2) {
+            // Slime King split — reform after timer
+            if (e.type === 'slime_king' && e._splitActive) {
+                e._splitTimer -= dt;
+                if (e._splitTimer <= 0) {
+                    e._splitActive = false;
+                    e._splitAlpha = 1.0;
+                }
+            }
+            // Bone Colossus wall — remove after timer
+            if (e.type === 'bone_colossus' && e._boneWallActive) {
+                e._boneWallTimer -= dt;
+                if (e._boneWallTimer <= 0) {
+                    e._boneWallActive = false;
+                    for (const t of (e._boneWallTiles || [])) {
+                        if (t.r >= 0 && t.r < MAP_SIZE && t.c >= 0 && t.c < MAP_SIZE) {
+                            blocked[t.r][t.c] = false;
+                            blockType[t.r][t.c] = null;
+                        }
+                    }
+                    e._boneWallTiles = [];
+                }
+            }
         }
 
         // --- Tick boss ability timers ---
@@ -3284,9 +3412,11 @@ function updateEnemies(dt) {
                 continue;
             }
 
-            // Fire Trail — leaves burning ground where it walks (every 0.8s while moving)
-            if (e.def.fireTrail && e.bossFireTrailTimer <= 0 && e.state === 'walk') {
-                e.bossFireTrailTimer = 0.8;
+            // Fire Trail — leaves burning ground where it walks
+            // _permFireTrail (phase 2) drops trails faster
+            const _fireTrailCD = e._permFireTrail ? 0.3 : 0.8;
+            if ((e.def.fireTrail || e._permFireTrail) && e.bossFireTrailTimer <= 0 && e.state === 'walk') {
+                e.bossFireTrailTimer = _fireTrailCD;
                 e.fireTrails.push({
                     row: e.row, col: e.col,
                     life: e.def.fireTrailDuration * (e.bossPhase === 1 ? 1.5 : 1.0),
@@ -3872,7 +4002,7 @@ function updateEnemies(dt) {
             const dc = player.col - e.col;
             const dist = Math.sqrt(dr * dr + dc * dc);
             if (dist < HITBOX_RADIUS + e.def.hitboxR + 0.1) {
-                damagePlayer(Math.ceil(e.def.damage * ENEMY_CONTACT_DAMAGE_MULT), e.type); // contact = half damage
+                damagePlayer(Math.ceil(e.def.damage * ENEMY_CONTACT_DAMAGE_MULT), e.type, e.row, e.col); // contact = half damage
                 break;
             }
         }
@@ -4114,7 +4244,7 @@ function applyUpgrade(upgradeId) {
 function getUpgrade(id) { return upgrades[id] || 0; }
 
 // ----- PLAYER DAMAGE -----
-function damagePlayer(amount, enemyType = '') {
+function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
     if (player.dodging) return; // immune during phase jump
     if (playerInvTimer > 0) return;
     // Skeleton shield reduces damage by 70%
@@ -4170,9 +4300,13 @@ function damagePlayer(amount, enemyType = '') {
 
     player.hp -= reducedAmt;
     playerInvTimer = PLAYER_INV_TIME;
-    // Scale feedback by damage taken
+    // Scale feedback by damage taken — directional if source position known
     const shakeScale = Math.min(2.0, reducedAmt / 15);
-    addScreenShake(4 + 6 * shakeScale, 0.15 + 0.1 * shakeScale);
+    if (sourceRow !== undefined && typeof addDirectionalShake === 'function') {
+        addDirectionalShake(sourceRow, sourceCol, 4 + 6 * shakeScale, 0.15 + 0.1 * shakeScale);
+    } else {
+        addScreenShake(4 + 6 * shakeScale, 0.15 + 0.1 * shakeScale);
+    }
     addHitPause(0.03 + 0.04 * shakeScale);
     if (reducedAmt >= 25) addSlowMo(0.12, 0.3); // big hit slow-mo
     // ── COMBAT JUICE: Damage vignette — intensity scales with damage ──
@@ -4884,20 +5018,33 @@ function drawEnemy(e) {
     }
     // Apply spawn fade alpha multiplier
     ctx.globalAlpha *= spawnAlpha;
+    // Boss split phase — reduce alpha while split copies are active
+    if (e._splitActive && e._splitAlpha !== undefined) ctx.globalAlpha *= e._splitAlpha;
 
     const scaledDW = dw * spawnScale;
     const scaledDH = dh * spawnScale;
 
+    // Stagger wobble offset during hit flash (decays with flash timer)
+    let staggerX = 0, staggerY = 0;
+    if (e.hitFlashTimer > 0 && e._staggerOffX !== undefined) {
+        const wobble = Math.min(1, e.hitFlashTimer / 0.08);
+        staggerX = (e._staggerOffX || 0) * wobble;
+        staggerY = (e._staggerOffY || 0) * wobble;
+    } else {
+        e._staggerOffX = 0;
+        e._staggerOffY = 0;
+    }
+
     if (e.facing === -1) {
-        ctx.translate(sx, 0);
+        ctx.translate(sx + staggerX, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(sheet,
             frame * WIZARD_FRAME_W, 0, WIZARD_FRAME_W, WIZARD_FRAME_H,
-            -scaledDW / 2, drawY - (scaledDH - dh) / 2, scaledDW, scaledDH);
+            -scaledDW / 2, drawY - (scaledDH - dh) / 2 + staggerY, scaledDW, scaledDH);
     } else {
         ctx.drawImage(sheet,
             frame * WIZARD_FRAME_W, 0, WIZARD_FRAME_W, WIZARD_FRAME_H,
-            sx - scaledDW / 2, drawY - (scaledDH - dh) / 2, scaledDW, scaledDH);
+            sx - scaledDW / 2 + staggerX, drawY - (scaledDH - dh) / 2 + staggerY, scaledDW, scaledDH);
     }
     ctx.restore();
 

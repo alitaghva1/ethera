@@ -347,6 +347,9 @@ function drawNPC(npc) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
+        // Register bounds for overlap prevention
+        if (typeof _registerWorldLabel === 'function') _registerWorldLabel(sx, promptY + 4, 80, 40);
+
         // Key badge background
         ctx.globalAlpha = pulse * 0.7 * baseAlpha;
         ctx.fillStyle = isPaleQueen ? '#140e1a' : '#1a1408';

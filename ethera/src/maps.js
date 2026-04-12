@@ -80,6 +80,8 @@ function updateFogOfWar() {
         }
         for (const [r, c, b] of toReveal) fogRevealed[r][c] = Math.max(fogRevealed[r][c], b);
     }
+    // Mark minimap dirty so it redraws with new fog data
+    if (typeof markMinimapDirty === 'function') markMinimapDirty();
 }
 
 // Floor tiles that look rough/damaged but are walkable — get a subtle dust mote effect
@@ -2266,11 +2268,37 @@ function _placeHazardCluster(tiles, type, damage, extra) {
 }
 
 function initStoryZoneHazards(zoneNumber) {
-    if (zoneNumber < 4 || zoneNumber > 6) return;
+    if (zoneNumber < 2 || zoneNumber > 6) return;
 
     // Ensure hazardMap is initialized for this map size
     if (!hazardMap || hazardMap.length !== MAP_SIZE) {
         initHazardMap(MAP_SIZE);
+    }
+
+    if (zoneNumber === 2) {
+        // ---- ZONE 2: RUINED TOWER — Timed spike traps in corridors ----
+        _placeHazardCluster([
+            { r: 6, c: 16 }, { r: 6, c: 17 },
+        ], 'timed_spikes', 12);
+        _placeHazardCluster([
+            { r: 11, c: 20 }, { r: 11, c: 21 },
+        ], 'timed_spikes', 12);
+        _placeHazardCluster([
+            { r: 16, c: 22 },
+        ], 'spikes', 15);
+    }
+
+    if (zoneNumber === 3) {
+        // ---- ZONE 3: THE SPIRE — Timed spikes and static spikes ----
+        _placeHazardCluster([
+            { r: 7, c: 8 }, { r: 7, c: 9 },
+        ], 'timed_spikes', 12);
+        _placeHazardCluster([
+            { r: 12, c: 14 }, { r: 12, c: 15 },
+        ], 'timed_spikes', 12);
+        _placeHazardCluster([
+            { r: 15, c: 18 },
+        ], 'spikes', 15);
     }
 
     if (zoneNumber === 4) {

@@ -300,6 +300,10 @@ function handleKeyDown(e) {
         else if (inventoryOpen) { inventoryOpen = false; invHover = null; invTooltipItem = null; }
         else if (placement.active) { placement.active = false; }
     }
+    // M toggles minimap
+    if (e.key.toLowerCase() === 'm' && gamePhase === 'playing' && !gameDead && !menuOpen) {
+        if (typeof minimapVisible !== 'undefined') minimapVisible = !minimapVisible;
+    }
     // TAB or J toggles game menu
     if ((e.key === 'Tab' || e.key.toLowerCase() === 'j') && gamePhase === 'playing' && !gameDead) {
         e.preventDefault();

@@ -670,6 +670,9 @@ function drawChestPrompt() {
 
     const pulse = 0.6 + Math.sin(performance.now() / 500) * 0.2;
 
+    // Register bounds for overlap prevention (badge + label area)
+    if (typeof _registerWorldLabel === 'function') _registerWorldLabel(sx, sy + 4, 80, 40);
+
     // Key badge
     ctx.globalAlpha = pulse * 0.7;
     ctx.fillStyle = (locked || _isSlimeForm) ? '#1a0808' : '#1a1408';
@@ -744,6 +747,7 @@ function loadZone(zoneNumber) {
     }
     // Reset frozen echoes on zone transition
     if (typeof resetFrozenEchoes === 'function') resetFrozenEchoes();
+    if (typeof resetInscriptions === 'function') resetInscriptions();
     // Reset lich corpse locations on zone transition
     if (typeof lichState !== 'undefined') {
         lichState.corpseLocations.length = 0;
@@ -884,8 +888,8 @@ function loadZone(zoneNumber) {
         }
     }
 
-    // Initialize environmental hazards for story zones 4-6
-    if (zoneNumber >= 4 && zoneNumber <= 6) {
+    // Initialize environmental hazards for story zones 2-6
+    if (zoneNumber >= 2 && zoneNumber <= 6) {
         initHazardMap(MAP_SIZE);
         if (typeof initStoryZoneHazards === 'function') initStoryZoneHazards(zoneNumber);
     } else if (zoneNumber < 100) {
@@ -1452,6 +1456,8 @@ function drawRebuildPrompt() {
 
     // Badge background — prominent and readable
     const _rbw = Math.max(160, ctx.measureText('[E]  ' + label + ' (' + cost + 'g)').width + 40 || 160);
+    // Register bounds for overlap prevention
+    if (typeof _registerWorldLabel === 'function') _registerWorldLabel(sx, sy, _rbw, 32);
     ctx.globalAlpha = pulse * 0.85;
     ctx.fillStyle = '#0e0c06';
     ctx.shadowColor = canAfford ? 'rgba(200, 160, 40, 0.4)' : 'rgba(180, 60, 40, 0.3)';
@@ -1495,6 +1501,8 @@ function drawDoorPrompt() {
     const _doorText = '[E]  ' + _doorLabel;
     ctx.font = 'bold 13px Georgia';
     const _dw = Math.max(120, ctx.measureText(_doorText).width + 36);
+    // Register bounds for overlap prevention
+    if (typeof _registerWorldLabel === 'function') _registerWorldLabel(sx, sy, _dw, 32);
     ctx.globalAlpha = pulse * 0.85;
     ctx.fillStyle = '#0e0c06';
     ctx.shadowColor = locked ? 'rgba(180, 60, 40, 0.3)' : 'rgba(80, 130, 200, 0.4)';

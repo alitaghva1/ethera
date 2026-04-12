@@ -784,18 +784,19 @@ let _nextProceduralDepth = 1;
 
 // ── AMBIENT ATMOSPHERE PARTICLES ──
 let _ambientTimer = 0;
+let _arrivalVignetteTimer = 0; // dissipating edge vignette on zone entry
 const _AMBIENT_MAX = 12;
 const _AMBIENT_CONFIGS = {
-    dungeon: { color: '#888877', size: 0.8, alpha: 0.06, vy: -0.2, life: 3.0 },  // faint dust motes
-    hell:    { color: '#cc5522', size: 1, alpha: 0.08, vy: -0.6, life: 2.0 },    // subtle ash
-    frozen:  { color: '#99bbdd', size: 0.8, alpha: 0.07, vy: 0.3, life: 2.5 },   // faint ice
-    throne:  { color: '#664499', size: 0.8, alpha: 0.05, vy: -0.15, life: 3.0 }, // barely-there void
+    dungeon: { color: '#998866', size: 1.0, alpha: 0.08, vy: -0.2, life: 3.5 },  // warm amber dust motes
+    hell:    { color: '#dd6622', size: 1.2, alpha: 0.10, vy: -0.7, life: 2.0 },  // rising ember ash
+    frozen:  { color: '#aaccee', size: 1.0, alpha: 0.09, vy: 0.25, life: 3.0 },  // drifting ice crystals
+    throne:  { color: '#7744aa', size: 1.0, alpha: 0.07, vy: -0.2, life: 3.0 },  // rising void wisps
     town:    { color: '#8899bb', size: 1.0, alpha: 0.10, vy: -0.1, life: 4.0 },  // ethereal blue-gray motes
 };
 function spawnAmbientParticles(dt) {
     if (gamePhase !== 'playing' || typeof _emitParticle !== 'function') return;
     _ambientTimer += dt;
-    if (_ambientTimer < 0.8) return; // spawn every 0.8s (subtle, not constant)
+    if (_ambientTimer < 0.6) return; // spawn every 0.6s
     _ambientTimer = 0;
 
     // Determine atmosphere type from current zone
@@ -835,12 +836,42 @@ function spawnAmbientParticles(dt) {
         'ambient'
     );
 
-    // Town: forge smoke rising from Garrett's workshop
-    if (z === 0 && Math.random() < 0.2) {
+    // Town: forge smoke — only when forge is rebuilt
+    if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.forge && Math.random() < 0.25) {
         const forgePos = tileToScreen(14, 6);
         _emitParticle(forgePos.x + cameraX + (Math.random()-0.5)*25, forgePos.y + cameraY - 10,
             (Math.random()-0.5)*0.2, -0.5 - Math.random()*0.3,
             3.0, 1.2, '#aa8866', 0.08, 'ambient');
+        // Occasional bright forge spark
+        if (Math.random() < 0.3) {
+            _emitParticle(forgePos.x + cameraX + (Math.random()-0.5)*10, forgePos.y + cameraY - 5,
+                (Math.random()-0.5)*1.5, -1.5 - Math.random()*0.5,
+                0.4, 0.8, '#ffaa33', 0.25, 'ambient');
+        }
+    }
+
+    // Town: warm glow near shop — only when shop is rebuilt
+    if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.shop && Math.random() < 0.15) {
+        const shopPos = tileToScreen(14, 24);
+        _emitParticle(shopPos.x + cameraX + (Math.random()-0.5)*20, shopPos.y + cameraY - 8,
+            (Math.random()-0.5)*0.15, -0.3 - Math.random()*0.2,
+            2.5, 1.0, '#66cc88', 0.06, 'ambient');
+    }
+
+    // Town: guard post lantern flicker — only when guard post is rebuilt
+    if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.guardPost && Math.random() < 0.12) {
+        const guardPos = tileToScreen(7, 6);
+        _emitParticle(guardPos.x + cameraX + (Math.random()-0.5)*15, guardPos.y + cameraY - 12,
+            (Math.random()-0.5)*0.3, -0.4 - Math.random()*0.2,
+            2.0, 0.8, '#ddaa55', 0.10, 'ambient');
+    }
+
+    // Town: hermit's hut mystic glow — only when rebuilt
+    if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.hermitHut && Math.random() < 0.10) {
+        const hermitPos = tileToScreen(7, 24);
+        _emitParticle(hermitPos.x + cameraX + (Math.random()-0.5)*15, hermitPos.y + cameraY - 10,
+            (Math.random()-0.5)*0.2, -0.2 - Math.random()*0.2,
+            3.0, 1.2, '#8866cc', 0.07, 'ambient');
     }
 
     // Town: warm particles near dungeon entrance stairway
@@ -869,6 +900,182 @@ function spawnAmbientParticles(dt) {
                 (Math.random()-0.5)*0.3, -0.4, 2.0, 0.8, '#cc6633', 0.10, 'ambient');
         }
     }
+}
+
+// ============================================================
+//  WEATHER SYSTEM — zone-specific ambient weather effects
+//  Rain (hamlet), embers (inferno), snow (frozen), void (throne)
+//  Separate from dust particles — higher density, unique rendering.
+// ============================================================
+const _weatherParticles = [];
+const _WEATHER_MAX = 80;
+const _weatherRipples = []; // floor ripples for rain
+const _RIPPLE_MAX = 15;
+
+function updateWeather(dt) {
+    if (gamePhase !== 'playing') return;
+    const z = currentZone;
+
+    // Spawn weather particles
+    if (_weatherParticles.length < _WEATHER_MAX) {
+        const pPos = tileToScreen(player.row, player.col);
+        const cx = pPos.x + cameraX, cy = pPos.y + cameraY;
+
+        if (z === 0) {
+            // RAIN — angled streaks falling fast
+            for (let i = 0; i < 3; i++) {
+                _weatherParticles.push({
+                    x: cx + (Math.random() - 0.5) * canvasW * 0.8,
+                    y: cy - canvasH * 0.5 + Math.random() * canvasH * 0.3,
+                    vx: -1.5 - Math.random() * 0.5,
+                    vy: 8 + Math.random() * 3,
+                    life: 0.8 + Math.random() * 0.4,
+                    maxLife: 1.2,
+                    type: 'rain',
+                    size: 8 + Math.random() * 6,
+                });
+            }
+            // Rain ripple on floor
+            if (_weatherRipples.length < _RIPPLE_MAX && Math.random() < 0.15) {
+                const rr = player.row + (Math.random() - 0.5) * 8;
+                const rc = player.col + (Math.random() - 0.5) * 8;
+                const rPos = tileToScreen(rr, rc);
+                _weatherRipples.push({
+                    x: rPos.x + cameraX, y: rPos.y + cameraY + 4,
+                    radius: 0, maxRadius: 4 + Math.random() * 3,
+                    life: 0.4 + Math.random() * 0.2,
+                    maxLife: 0.6,
+                });
+            }
+        } else if (z === 4) {
+            // EMBERS — rising orange/red dots
+            if (Math.random() < 0.15) {
+                _weatherParticles.push({
+                    x: cx + (Math.random() - 0.5) * canvasW * 0.7,
+                    y: cy + canvasH * 0.3 + Math.random() * canvasH * 0.2,
+                    vx: (Math.random() - 0.5) * 0.8,
+                    vy: -1.5 - Math.random() * 1.0,
+                    life: 2.0 + Math.random() * 1.5,
+                    maxLife: 3.5,
+                    type: 'ember_weather',
+                    size: 1.0 + Math.random() * 1.5,
+                });
+            }
+        } else if (z === 5) {
+            // SNOW — slow-falling white dots with lateral drift
+            if (Math.random() < 0.2) {
+                _weatherParticles.push({
+                    x: cx + (Math.random() - 0.5) * canvasW * 0.8,
+                    y: cy - canvasH * 0.4 + Math.random() * canvasH * 0.2,
+                    vx: (Math.random() - 0.5) * 0.6,
+                    vy: 0.5 + Math.random() * 0.4,
+                    life: 4.0 + Math.random() * 2.0,
+                    maxLife: 6.0,
+                    type: 'snow',
+                    size: 1.0 + Math.random() * 1.5,
+                    drift: Math.random() * Math.PI * 2, // lateral sinusoidal drift phase
+                });
+            }
+        } else if (z === 6) {
+            // VOID — slow purple/black particles rising from ground
+            if (Math.random() < 0.12) {
+                _weatherParticles.push({
+                    x: cx + (Math.random() - 0.5) * canvasW * 0.6,
+                    y: cy + canvasH * 0.2 + Math.random() * canvasH * 0.2,
+                    vx: (Math.random() - 0.5) * 0.3,
+                    vy: -0.4 - Math.random() * 0.3,
+                    life: 3.0 + Math.random() * 2.0,
+                    maxLife: 5.0,
+                    type: 'void',
+                    size: 1.5 + Math.random() * 2.0,
+                });
+            }
+        }
+    }
+
+    // Update particles
+    for (let i = _weatherParticles.length - 1; i >= 0; i--) {
+        const p = _weatherParticles[i];
+        p.life -= dt;
+        if (p.life <= 0) { _weatherParticles.splice(i, 1); continue; }
+        p.x += p.vx * 60 * dt;
+        p.y += p.vy * 60 * dt;
+        // Snow lateral drift
+        if (p.type === 'snow' && p.drift !== undefined) {
+            p.x += Math.sin(p.drift + performance.now() / 1000) * 0.3;
+        }
+        // Cull particles that drift far off-screen
+        if (p.x < -200 || p.x > canvasW + 200 || p.y < -200 || p.y > canvasH + 200) {
+            _weatherParticles.splice(i, 1);
+            continue;
+        }
+    }
+
+    // Update ripples
+    for (let i = _weatherRipples.length - 1; i >= 0; i--) {
+        const r = _weatherRipples[i];
+        r.life -= dt;
+        if (r.life <= 0) { _weatherRipples.splice(i, 1); continue; }
+        r.radius = r.maxRadius * (1 - r.life / r.maxLife);
+    }
+}
+
+function drawWeather() {
+    if (gamePhase !== 'playing' || _weatherParticles.length === 0 && _weatherRipples.length === 0) return;
+    ctx.save();
+
+    for (const p of _weatherParticles) {
+        const alpha = Math.min(1, p.life / (p.maxLife * 0.3)) * Math.min(1, (p.maxLife - p.life) / 0.3);
+
+        if (p.type === 'rain') {
+            // Rain = thin angled line
+            ctx.globalAlpha = alpha * 0.25;
+            ctx.strokeStyle = '#8899bb';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x + p.vx * 0.4, p.y + p.vy * 0.4);
+            ctx.stroke();
+        } else if (p.type === 'ember_weather') {
+            // Ember = small glowing dot, screen blend
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = alpha * 0.5;
+            ctx.fillStyle = `rgb(255, ${130 + Math.random() * 60 | 0}, 30)`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        } else if (p.type === 'snow') {
+            // Snow = white dot
+            ctx.globalAlpha = alpha * 0.4;
+            ctx.fillStyle = '#ddeeff';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (p.type === 'void') {
+            // Void = purple dot, screen blend
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = alpha * 0.3;
+            ctx.fillStyle = '#6622aa';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        }
+    }
+
+    // Rain floor ripples
+    for (const r of _weatherRipples) {
+        const alpha = r.life / r.maxLife;
+        ctx.globalAlpha = alpha * 0.15;
+        ctx.strokeStyle = '#8899bb';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.ellipse(r.x, r.y, r.radius, r.radius * 0.4, 0, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    ctx.restore();
 }
 
 function updateGameplay(dt) {
@@ -910,6 +1117,8 @@ function updateGameplay(dt) {
     updatePickupTexts(dt);
     if (typeof Notify !== 'undefined' && Notify.updateTutorials) Notify.updateTutorials(dt);
     if (typeof updateFrozenEchoes === 'function') updateFrozenEchoes(dt);
+    if (typeof updateInscriptions === 'function') updateInscriptions(dt);
+    if (_arrivalVignetteTimer > 0) _arrivalVignetteTimer -= dt;
     // Check if Pale Queen dialogue triggered ending choice
     if (typeof paleQueenDialogueComplete !== 'undefined' && paleQueenDialogueComplete) {
         paleQueenDialogueComplete = false;
@@ -925,6 +1134,7 @@ function updateGameplay(dt) {
     if (typeof checkSecretWalls === 'function') checkSecretWalls();
     // Ambient atmosphere particles — make the world feel alive
     spawnAmbientParticles(dt);
+    if (typeof updateWeather === 'function') updateWeather(dt);
     updateCamera(dt);
 
     // Update fog of war — throttled to ~4 times per second
@@ -2912,6 +3122,9 @@ function restartGame() {
     wizardRiseProgress = 1;
     bloodStainAlpha = 0;
     dustParticles = [];
+    if (typeof _weatherParticles !== 'undefined') _weatherParticles.length = 0;
+    if (typeof _weatherRipples !== 'undefined') _weatherRipples.length = 0;
+    _arrivalVignetteTimer = 1.5; // start arrival vignette on zone load
     cinematicTimer = 0;
     cinematicTextAlpha = [0, 0, 0, 0];
     cinematicFlashAlpha = 0;
@@ -2956,6 +3169,9 @@ function render() {
 
     // Safety: reset alpha every frame so no VFX leak carries over
     ctx.globalAlpha = 1.0;
+
+    // Reset world label overlap tracking for this frame
+    if (typeof _resetWorldLabels === 'function') _resetWorldLabels();
 
     // 2D mode: clear with zone-appropriate background color
     // Use palette bgColor for zones that have one, fallback to dark brown
@@ -3323,6 +3539,7 @@ function render() {
     }
 
     // ── LAYER 7: World effects ──
+    if (typeof drawWeather === 'function') drawWeather();
     drawDustParticles();
     drawAllTowerGlows();
     drawOrbitFireballs();
@@ -3490,6 +3707,12 @@ function render() {
         // Evolution progress indicator (milestone dots)
         drawEvolutionIndicator();
 
+        // Minimap
+        if (typeof drawMinimap === 'function') drawMinimap();
+
+        // Quest tracker
+        if (typeof drawQuestTracker === 'function') drawQuestTracker();
+
         // Gold display — persistent in top-right below evolution dots
         if (typeof playerGold !== 'undefined' && !gameDead) {
             ctx.save();
@@ -3516,6 +3739,7 @@ function render() {
 
         // Frozen echoes (Zone 5 environmental story text)
         if (typeof drawFrozenEcho === 'function') drawFrozenEcho();
+        if (typeof drawInscriptions === 'function') drawInscriptions();
 
         // Interaction prompts
         drawChestPrompt();
@@ -3544,11 +3768,36 @@ function render() {
         // ── LAYER 10: Zone name banner ──
         drawZoneBanner();
 
-        // ── LAYER 11: Zone transition overlay ──
+        // ── LAYER 11: Zone transition overlay (themed by destination zone) ──
         if (zoneTransitionAlpha > 0) {
             ctx.save();
             ctx.globalAlpha = zoneTransitionAlpha;
-            ctx.fillStyle = '#000';
+            // Use destination zone palette color for themed fade
+            let fadeColor = '#000';
+            const targetZ = (typeof zoneTransitionTarget !== 'undefined' && typeof zoneTransitionTarget === 'number' && zoneTransitionTarget >= 0)
+                ? zoneTransitionTarget : currentZone;
+            const fadePal = (typeof ZONE_BG_PALETTES !== 'undefined') ? ZONE_BG_PALETTES[targetZ] : null;
+            if (fadePal) {
+                const bg = fadePal.bgColor;
+                fadeColor = `rgb(${bg[0]}, ${bg[1]}, ${bg[2]})`;
+            }
+            ctx.fillStyle = fadeColor;
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.restore();
+        }
+
+        // ── LAYER 12: Arrival vignette (eyes adjusting to light) ──
+        if (typeof _arrivalVignetteTimer !== 'undefined' && _arrivalVignetteTimer > 0) {
+            ctx.save();
+            const vigFrac = _arrivalVignetteTimer / 1.5; // 1.5s total duration
+            ctx.globalAlpha = vigFrac * 0.4;
+            const vigGrad = ctx.createRadialGradient(
+                canvasW / 2, canvasH / 2, canvasH * 0.3 * (1 - vigFrac),
+                canvasW / 2, canvasH / 2, canvasH * 0.8
+            );
+            vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            vigGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+            ctx.fillStyle = vigGrad;
             ctx.fillRect(0, 0, canvasW, canvasH);
             ctx.restore();
         }
