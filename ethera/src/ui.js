@@ -13,7 +13,7 @@ let zoneTransitionTarget = -1;
 // ============================================================
 //  ZONE NAME BANNER — dramatic title on zone entry
 // ============================================================
-let zoneBannerTimer = 0;       // counts down from ZONE_BANNER_DURATION
+var zoneBannerTimer = 0;       // counts down from ZONE_BANNER_DURATION (var for cross-file access)
 let zoneBannerName = '';        // zone display name
 let zoneBannerSubtitle = '';    // subtitle (e.g. "Act I")
 let zoneBannerModLine = '';     // active modifiers line (e.g. "[Swarm] [Darkness]")
