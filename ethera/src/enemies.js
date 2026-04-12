@@ -2014,7 +2014,7 @@ function drawDecorLine(cx, y, halfW, alpha) {
 
 function drawWaveBanner() {
     if (wave.bannerAlpha <= 0) return;
-    if (typeof zoneBannerTimer !== 'undefined' && zoneBannerTimer > 0) return; // suppress while zone banner showing
+    if (window.zoneBannerTimer > 0) return; // suppress while zone banner showing
 
     ctx.save();
     const cx = canvasW / 2;
