@@ -1424,9 +1424,17 @@ function generateTown() {
     floorMap[12][19] = 'n_grassFlowers';
     floorMap[9][15] = 'n_grassFlowers';
     floorMap[12][15] = 'n_grassFlowers';
-    // Central stone monument / column
-    fillFloor(10, 14, 11, 16, 'stoneTile');
+    // Central stone monument — expanded focal point
+    fillFloor(10, 13, 11, 17, 'stoneTile');
+    floorMap[10][14] = 'stoneInset';
+    floorMap[10][16] = 'stoneInset';
     placeObj(10, 15, 'stoneColumn');       // monument pillar
+    // Flanking columns frame the monument
+    placeObj(9, 14, 'stoneColumn');
+    placeObj(9, 16, 'stoneColumn');
+    // Supply barrels left by traders
+    placeObj(10, 12, 'barrel');
+    placeObj(10, 18, 'barrel');
 
     // ===== 6. GARRETT'S FORGE (rows 13-17, cols 3-8) =====
     // Stone floor, back wall (north) + left wall (west), open front
@@ -1556,11 +1564,18 @@ function generateTown() {
             floorMap[r][c] = 'n_dirt';
         }
     }
-    // Decorative bushes along sides of path (non-blocking)
+    // Decorative bushes and props along path (non-blocking where marked)
     placeObj(19, 13, 'woodenPile', false);
     placeObj(19, 17, 'woodenPile', false);
     placeObj(21, 13, 'woodenPile', false);
     placeObj(21, 17, 'woodenPile', false);
+    // Supply depot and abandoned cargo near entrance path
+    placeObj(19, 11, 'barrel');            // supply depot west
+    placeObj(20, 18, 'woodenCrate', false); // abandoned cargo east
+    placeObj(18, 10, 'woodenPile', false); // fallen timber west
+    // Stone path markers along main road
+    floorMap[19][15] = 'stoneInset';
+    floorMap[21][15] = 'stoneInset';
     // Stone columns as lantern posts along main road
     placeObj(19, 14, 'stoneColumnWood');
     placeObj(21, 16, 'stoneColumnWood');
@@ -1592,6 +1607,20 @@ function generateTown() {
     placeObj(9, 14, 'stoneColumnWood');    // town square approach
     placeObj(12, 16, 'stoneColumnWood');   // south of square
     placeObj(18, 15, 'stoneColumnWood');   // south approach to lobby
+
+    // ===== 12b. SOUTH GARDEN / RUINS (rows 24-27) =====
+    // Fills the empty space south of the dungeon entrance with atmospheric ruins
+    fillFloor(24, 12, 27, 18, 'n_grass');
+    fillFloor(25, 14, 26, 16, 'stone');
+    floorMap[25][15] = 'stoneUneven';
+    floorMap[26][14] = 'stoneMissing';
+    placeObj(24, 14, 'stoneColumn');        // crumbling old monument
+    placeObj(26, 17, 'woodenPile', false);  // collapsed fence/structure
+    placeObj(27, 13, 'barrel');             // old forgotten supplies
+    // Perimeter decoration near walls
+    placeObj(1, 5, 'woodenPile', false);    // collapsed scaffolding NW
+    placeObj(1, 25, 'woodenPile', false);   // collapsed scaffolding NE
+    placeObj(28, 6, 'barrel');              // old supply SW
 
     // ===== 13. TREASURE CHESTS =====
     placeObj(6, 4, 'chestClosed');         // guard post interior

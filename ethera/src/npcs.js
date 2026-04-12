@@ -314,6 +314,20 @@ function drawNPC(npc) {
     ctx.lineWidth = 2.5;
     ctx.strokeText(npc.name, sx, drawY + ghostBob - 8);
     ctx.fillText(npc.name, sx, drawY + ghostBob - 8);
+
+    // Service indicator icon above service NPCs (forge/shop)
+    if (npc.id === 'garrett' || npc.id === 'senna') {
+        const svcPulse = 0.5 + Math.sin(performance.now() / 800) * 0.2;
+        ctx.globalAlpha = svcPulse * baseAlpha;
+        ctx.font = '12px Georgia';
+        ctx.fillStyle = npc.id === 'garrett' ? '#dd9944' : '#66cc88';
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 2;
+        const svcIcon = npc.id === 'garrett' ? '\u2692' : '\u25C6';
+        ctx.strokeText(svcIcon, sx, drawY + ghostBob - 22);
+        ctx.fillText(svcIcon, sx, drawY + ghostBob - 22);
+    }
+
     ctx.restore();
 
     // Interaction prompt (E key badge) when player is close

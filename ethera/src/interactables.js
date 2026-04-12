@@ -470,14 +470,14 @@ function rollEnemyLoot(enemy) {
 let CHEST_DEFS = {};
 function updateChestDefsForZone(zone) {
     if (zone === 0) {
-        // Town chests — scattered around The Hamlet as rewards for exploration
+        // Town chests — match placeObj positions in generateTown()
         CHEST_DEFS = {
-            '15,20': { type: 'loot', label: 'Open' },  // Town square NE
-            '19,10': { type: 'loot', label: 'Open' },  // Town square SW
-            '13,5':  { type: 'loot', label: 'Open' },  // Chapel interior
-            '26,26': { type: 'loot', label: 'Open' },  // Inn interior
-            '14,27': { type: 'loot', label: 'Open' },  // Forge interior
-            '16,6':  { type: 'loot', label: 'Open' },  // Graveyard (eerie)
+            '6,4':   { type: 'loot', label: 'Open' },  // Guard Post interior
+            '6,25':  { type: 'loot', label: 'Open' },  // Hermit's Hut
+            '15,4':  { type: 'loot', label: 'Open' },  // Forge interior
+            '15,25': { type: 'loot', label: 'Open' },  // Shop interior
+            '11,11': { type: 'loot', label: 'Open' },  // Town Square west
+            '11,19': { type: 'loot', label: 'Open' },  // Town Square east
         };
     } else if (zone === 1) {
         CHEST_DEFS = {

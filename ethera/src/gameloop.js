@@ -777,6 +777,14 @@ function spawnAmbientParticles(dt) {
         'ambient'
     );
 
+    // Town: forge smoke rising from Garrett's workshop
+    if (z === 0 && Math.random() < 0.2) {
+        const forgePos = tileToScreen(14, 6);
+        _emitParticle(forgePos.x + cameraX + (Math.random()-0.5)*25, forgePos.y + cameraY - 10,
+            (Math.random()-0.5)*0.2, -0.5 - Math.random()*0.3,
+            3.0, 1.2, '#aa8866', 0.08, 'ambient');
+    }
+
     // Town: warm particles near dungeon entrance stairway
     if (z === 0 && Math.random() < 0.25) {
         const dungeonPos = tileToScreen(23, 15);
