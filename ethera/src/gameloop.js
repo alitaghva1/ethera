@@ -188,20 +188,30 @@ function updateIntroPhase(dt) {
         if (typeof sfxCinematicHeartbeat === 'function') sfxCinematicHeartbeat();
     }
 
-    // During reveal phase (5.5-6.5s): expand light from 80 to HAMLET_LIGHT
-    if (t > 5.5 && t <= INTRO_DURATION) {
-        const revealT = Math.min(1, (t - 5.5) / 1.0);
+    // During reveal phase (5.0-6.5s): expand light, run camera, start music
+    if (t > 5.0 && t <= INTRO_DURATION) {
+        const revealT = Math.min(1, (t - 5.0) / 1.5);
         // Smooth ease-out
         const eased = 1 - (1 - revealT) * (1 - revealT);
         lightRadius = 80 + (HAMLET_LIGHT - 80) * eased;
+        // Run camera lerp during reveal so there's no jump at transition
+        if (typeof updateCamera === 'function') updateCamera(dt);
+    }
+
+    // Start hamlet music during reveal (once)
+    if (t >= 5.0 && !introMusicStarted) {
+        introMusicStarted = true;
+        try { playMusic('hamlet', 2.5); } catch(e) {}
     }
 
     // End intro
     if (t >= INTRO_DURATION) {
+        // Sync smooth camera to prevent sub-pixel drift on transition
+        smoothCamX = cameraX;
+        smoothCamY = cameraY;
         gamePhase = 'playing';
         lightRadius = HAMLET_LIGHT;
         setPixelCursor('none');
-        try { playMusic('hamlet', 2.5); } catch(e) {}
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
             text: 'Choose your path...',
@@ -216,9 +226,9 @@ function drawIntroOverlay() {
     const t = introTimer;
     ctx.save();
 
-    // Black overlay — opaque during text, fades during reveal
+    // Black overlay — opaque during text, fades during reveal (5.0-6.5s)
     let overlayAlpha = 1.0;
-    if (t > 5.5) overlayAlpha = Math.max(0, 1 - (t - 5.5) / 1.0);
+    if (t > 5.0) overlayAlpha = Math.max(0, 1 - (t - 5.0) / 1.5);
 
     if (overlayAlpha > 0.01) {
         ctx.globalAlpha = overlayAlpha;
@@ -266,10 +276,10 @@ function drawIntroOverlay() {
         ctx.fillText('They left you for dead.', cx, baseY + 34);
     }
 
-    // Line 2: "They were wrong." — appears 3.5s, golden glow, fades 5.5s
+    // Line 2: "They were wrong." — appears 3.5s, golden glow, fades at 5.0s
     let a2 = 0;
-    if (t >= 3.5 && t < 5.5) a2 = Math.min(1, (t - 3.5) / 0.8);
-    if (t >= 5.5) a2 = Math.max(0, 1 - (t - 5.5) / 0.6);
+    if (t >= 3.5 && t < 5.0) a2 = Math.min(1, (t - 3.5) / 0.8);
+    if (t >= 5.0) a2 = Math.max(0, 1 - (t - 5.0) / 0.8);
     if (a2 > 0.01) {
         // Scale effect: starts slightly large, settles
         const scaleT = Math.min(1, (t - 3.5) / 2.0);
@@ -2708,7 +2718,7 @@ function render() {
 
     // Intro: black screen during text phase, then render world during reveal
     if (gamePhase === 'intro') {
-        if (introTimer < 5.5) {
+        if (introTimer < 5.0) {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasW, canvasH);
             return; // text overlay drawn by drawIntroOverlay() after render()
@@ -3537,6 +3547,7 @@ function runIntro() {
     gamePhase = 'intro';
     introTimer = 0;
     introSfxPlayed = false;
+    introMusicStarted = false;
     lightRadius = 80; // dim — expands during reveal
     setPixelCursor('none');
     zoneTransitionAlpha = 0;

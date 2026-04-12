@@ -911,9 +911,10 @@ let gamePhase = 'loading';
 let introTimer = 0;
 let lightRadius = 60;
 const MAX_LIGHT = 340;
-const HAMLET_LIGHT = 280;         // twilight brightness for town atmosphere
+const HAMLET_LIGHT = 310;         // twilight brightness for town atmosphere
 const INTRO_DURATION = 6.5;       // new intro text sequence length
 let introSfxPlayed = false;       // one-shot flag for intro heartbeat
+let introMusicStarted = false;    // one-shot flag for hamlet music start during reveal
 let lightFlicker = 0;
 
 // ----- CINEMATIC AWAKENING -----

@@ -329,7 +329,7 @@ function handleKeyDown(e) {
         // Slime/Skeleton: no equipment access (no hands!)
     }
     // E key interacts with nearby objects (chests, doors, NPCs) OR form-specific interact
-    if (e.key.toLowerCase() === 'e' && gamePhase === 'playing' && !gameDead && !menuOpen && !zoneTransitionFading) {
+    if (e.key.toLowerCase() === 'e' && (gamePhase === 'playing' || (gamePhase === 'intro' && introTimer > 5.0)) && !gameDead && !menuOpen && !zoneTransitionFading) {
         const _eHandler = FormSystem.getHandler();
         const _eForm = FormSystem.currentForm;
         // Priority 1: Doors — ALL forms can use doors (including slime)
