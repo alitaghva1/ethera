@@ -392,8 +392,19 @@ function drawNPCDialogue() {
     const by = Math.max(80, canvasH - 140);
     const bh = 120;
 
-    // Parchment background — tinted for Pale Queen
+    // Parchment background — tinted for Pale Queen, with border glow
     const _isPQ = currentNPC.isPaleQueen;
+    const _borderColor = _isPQ ? '#7a5aaa' : '#8a7a5a';
+
+    // Outer glow behind the box
+    ctx.globalAlpha = fa * 0.12;
+    ctx.shadowColor = _isPQ ? 'rgba(120, 80, 180, 0.5)' : 'rgba(180, 140, 60, 0.4)';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.roundRect(bx - 2, by - 2, bw + 4, bh + 4, 8); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Background gradient
     ctx.globalAlpha = fa * 0.95;
     const parchGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
     if (_isPQ) {
@@ -410,11 +421,14 @@ function drawNPCDialogue() {
     ctx.fillStyle = parchGrad;
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill();
 
-    // Border
-    ctx.globalAlpha = fa * 0.3;
-    ctx.strokeStyle = _isPQ ? '#7a5aaa' : '#8a7a5a';
+    // Border with subtle glow
+    ctx.globalAlpha = fa * 0.4;
+    ctx.strokeStyle = _borderColor;
     ctx.lineWidth = 2;
+    ctx.shadowColor = _borderColor;
+    ctx.shadowBlur = 6;
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.stroke();
+    ctx.shadowBlur = 0;
 
     // NPC name (left side)
     ctx.globalAlpha = fa * 0.7;
@@ -436,9 +450,14 @@ function drawNPCDialogue() {
     ctx.lineTo(bx + bw - 20, by + 32);
     ctx.stroke();
 
-    // Dialogue text (form-reactive: may have extra opening line for non-wizard forms)
+    // Dialogue text with typewriter reveal
     const activeDialogue = getFormReactiveDialogue(currentNPC);
-    const dialogueLine = activeDialogue[currentNPC.dialogueIndex % activeDialogue.length];
+    const fullDialogueLine = activeDialogue[currentNPC.dialogueIndex % activeDialogue.length];
+    // Typewriter: reveal characters over time (35 chars/sec)
+    if (!currentNPC._typewriterTimer) currentNPC._typewriterTimer = 0;
+    currentNPC._typewriterTimer += 1 / 60; // approximate dt
+    const charsRevealed = Math.floor(currentNPC._typewriterTimer * 35);
+    const dialogueLine = fullDialogueLine.substring(0, Math.min(charsRevealed, fullDialogueLine.length));
     ctx.globalAlpha = fa * 0.8;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -667,6 +686,7 @@ function handleNPCInteraction() {
     if (npcDialogueOpen) {
         // Advance dialogue (use form-reactive dialogue which may have extra opening line)
         currentNPC.dialogueIndex++;
+        currentNPC._typewriterTimer = 0; // reset typewriter for next line
         // Persist highest dialogue index reached
         _npcDialogueProgress[currentNPC.id] = Math.max(
             _npcDialogueProgress[currentNPC.id] || 0, currentNPC.dialogueIndex
@@ -717,6 +737,7 @@ function openNPCDialogue(npc) {
 
     currentNPC = npc;
     npc.dialogueIndex = 0;
+    npc._typewriterTimer = 0; // reset typewriter
     npcDialogueOpen = true;
     npcDialogueFadeIn = 0;
     sfxChestOpen(); // use existing sound effect

@@ -1405,9 +1405,14 @@ function tryHamletRebuild() {
     }
     playerGold -= cost;
     hamletRebuild[rp.key] = true;
-    if (typeof addScreenShake === 'function') addScreenShake(6, 0.4);
-    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(rp.row, rp.col, 20, '#ffd700');
+    if (typeof addScreenShake === 'function') addScreenShake(8, 0.5);
+    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(rp.row, rp.col, 35, '#ffd700');
+    if (typeof addSlowMo === 'function') addSlowMo(0.15, 0.3); // brief dramatic slow-mo
     if (typeof sfxLevelUp === 'function') sfxLevelUp();
+    // Screen flash for celebration
+    if (typeof dmgVignetteIntensity !== 'undefined') {
+        dmgVignetteIntensity = 0; // clear any red vignette
+    }
     pickupTexts.push({ text: label + ' \u2014 Complete!', color: '#ffd700',
         row: rp.row, col: rp.col, offsetY: -30, life: 3.0 });
     // Apply passive bonuses
