@@ -10,7 +10,7 @@
 // ============================================================
 
 // Game version — used for save format and cache busting
-const ETHERA_VERSION = '0.5.3';
+const ETHERA_VERSION = '0.6.0';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
@@ -156,6 +156,7 @@ const ZONE_CONFIGS = {
     4: { ...ZONE_TILE_DEFAULTS, name: 'The Inferno', mapSize: 32, isHell: true },
     5: { ...ZONE_TILE_DEFAULTS, name: 'The Frozen Abyss', mapSize: 34, isHell: true, isFrozen: true },
     6: { ...ZONE_TILE_DEFAULTS, name: 'Throne of Ruin', mapSize: 36, isHell: true, isFinalZone: true },
+    7: { ...ZONE_TILE_DEFAULTS, name: 'The Awakening', mapSize: 12, lighting: 'torch', hasWaves: false, isTown: false, isAntechamber: true },
 };
 
 // Dynamic config for procedural zones (100+)

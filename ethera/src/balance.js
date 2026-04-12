@@ -338,7 +338,7 @@ function handleKeyDown(e) {
             tryUseDoor(door);
         }
         // Priority 2: NPCs — talk to townsfolk (town zone only, returns false if no NPC nearby)
-        else if (currentZone === 0 && handleNPCInteraction()) {
+        else if (npcList.length > 0 && handleNPCInteraction()) {
             // NPC interaction consumed the input
         }
         // Priority 3: Form-specific interact (slime absorb, skeleton consume, lich harvest)

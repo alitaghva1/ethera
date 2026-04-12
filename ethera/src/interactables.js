@@ -764,7 +764,9 @@ function loadZone(zoneNumber) {
     if (typeof shopMenuOpen !== 'undefined') shopMenuOpen = false;
 
     // Update objective based on zone
-    if (zoneNumber === 0) {
+    if (zoneNumber === 7) {
+        currentObjective = 'Find a way out';
+    } else if (zoneNumber === 0) {
         currentObjective = 'Rest and prepare';
     } else if (zoneNumber === 1) {
         currentObjective = 'Explore the Undercroft';
@@ -781,19 +783,18 @@ function loadZone(zoneNumber) {
     }
 
     // Generate the appropriate zone
-    if (zoneNumber === 0) {
+    if (zoneNumber === 7) {
+        generateAntechamber();
+        player.row = 6;
+        player.col = 6;
+        player.vx = 0;
+        player.vy = 0;
+    } else if (zoneNumber === 0) {
         generateTown();
-        // Spawn position depends on how we got here:
-        // - New game (restartGame): spawn inside the lobby (row 26, col 15)
-        // - Returning from dungeon (portal/door): spawn at Hamlet entrance (row 22, col 15)
-        if (typeof _townReturnSpawn !== 'undefined' && _townReturnSpawn) {
-            player.row = 22;
-            player.col = 15;
-            _townReturnSpawn = false;
-        } else {
-            player.row = 26;
-            player.col = 15;
-        }
+        // Spawn at south entrance of Hamlet (arriving from antechamber or returning from dungeon)
+        player.row = 21;
+        player.col = 15;
+        if (typeof _townReturnSpawn !== 'undefined' && _townReturnSpawn) _townReturnSpawn = false;
         player.vx = 0;
         player.vy = 0;
     } else if (zoneNumber === 1) {
@@ -936,7 +937,7 @@ function loadZone(zoneNumber) {
     lightRadius = MAX_LIGHT;
 
     // Update music — hamlet ambient for Zone 0, menu for other zones
-    playMusic(zoneNumber === 0 ? 'hamlet' : 'menu', 2.0);
+    playMusic(zoneNumber === 0 ? 'hamlet' : zoneNumber === 7 ? 'cinematic' : 'menu', 2.0);
 
     // Reset camera
     smoothCamX = 0;
@@ -1108,17 +1109,20 @@ function updateDoorDefsForZone(zone) {
                 destination: 'next',
             },
         };
+    } else if (zone === 7) {
+        DOOR_DEFS = {
+            // North archway → Hamlet (Zone 0)
+            '2,5': { requiresKey: null, label: 'Enter the Hamlet', destination: 'town' },
+            '2,6': { requiresKey: null, label: 'Enter the Hamlet', destination: 'town' },
+            '2,7': { requiresKey: null, label: 'Enter the Hamlet', destination: 'town' },
+            // South stairs → Dungeon (Zone 1)
+            '10,5': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
+            '10,6': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
+            '10,7': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
+        };
     } else if (zone === 0) {
         DOOR_DEFS = {
-            // Lobby — south exit stairs to Dungeon (Zone 1)
-            '28,14': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
-            '28,15': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
-            '28,16': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
-            // Lobby — north archway into the Hamlet
-            '23,14': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
-            '23,15': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
-            '23,16': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
-            // North gate (future zone / zone 2 access)
+            // North gate — zone 2 access
             '1,14': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,15': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,16': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
@@ -1248,46 +1252,7 @@ function tryUseDoor(door) {
         return;
     }
 
-    // Special: hamlet_open — opens the lobby into the Hamlet (no zone transition)
-    if (door.def.destination === 'hamlet_open') {
-        // Remove lobby north wall tiles to let player walk into the Hamlet
-        for (let c = 11; c <= 19; c++) {
-            if (blocked[23] && blocked[23][c]) {
-                blocked[23][c] = false;
-                blockType[23][c] = null;
-                objectMap[23][c] = null;  // clear wall object so it stops rendering
-                floorMap[23][c] = 'stone';
-            }
-        }
-        // Also open east/west side walls so the lobby merges with the Hamlet
-        // Only rows 24-27 — row 28 is the south wall and stays sealed
-        for (let r = 24; r <= 27; r++) {
-            if (blocked[r] && blocked[r][11]) {
-                blocked[r][11] = false; blockType[r][11] = null; objectMap[r][11] = null;
-                floorMap[r][11] = 'n_grassEdge';
-            }
-            if (blocked[r] && blocked[r][19]) {
-                blocked[r][19] = false; blockType[r][19] = null; objectMap[r][19] = null;
-                floorMap[r][19] = 'n_grassEdge';
-            }
-        }
-        addScreenShake(3, 0.5);
-        if (typeof updateFogOfWar === 'function') updateFogOfWar();
-        pickupTexts.push({
-            text: 'The way opens...',
-            color: '#d4b878',
-            row: door.row, col: door.col,
-            offsetY: -15,
-            life: 2.5,
-        });
-        // Remove the hamlet_open door entries so they don't re-trigger
-        delete DOOR_DEFS['23,14'];
-        delete DOOR_DEFS['23,15'];
-        delete DOOR_DEFS['23,16'];
-        return;
-    }
-
-    // Begin zone transition fade (new system only)
+    // Begin zone transition fade
     zoneTransitionFading = true;
     zoneTransitionTarget = door.def.destination;
     zoneTransitionAlpha = 0;

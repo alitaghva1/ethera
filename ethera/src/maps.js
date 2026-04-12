@@ -1243,6 +1243,67 @@ function generateZone3() {
 }
 
 // ============================================================
+//  ZONE 7 — ANTECHAMBER (dark starting room, 12×12)
+//  Player awakens here. North → Hamlet, South → Dungeon.
+// ============================================================
+function generateAntechamber() {
+    const ms = 12;
+    // Local helper: place wall as blocking object
+    function wall(r, c, tile) {
+        objectMap[r][c] = tile || 'wall';
+        blocked[r][c] = true;
+        blockType[r][c] = 'wall';
+    }
+    // Base: all tiles start blocked (set by loadZone)
+
+    // Floor — stone chamber (rows 3-9, cols 3-9)
+    fillFloor(3, 3, 9, 9, 'stone');
+    // Accent insets
+    floorMap[5][6] = 'stoneInset';
+    floorMap[7][5] = 'stoneInset';
+    floorMap[7][7] = 'stoneInset';
+    floorMap[4][4] = 'stoneInset';
+    floorMap[4][8] = 'stoneInset';
+
+    // Walls — fully enclosed
+    // North wall (row 2) with archway at cols 5-7
+    wall(2, 2, 'wallCorner');
+    wall(2, 3, 'wall');
+    wall(2, 4, 'wall');
+    openTile(2, 5, 'wallArchway'); blocked[2][5] = false;
+    openTile(2, 6, 'wallArchway'); blocked[2][6] = false;
+    openTile(2, 7, 'wallArchway'); blocked[2][7] = false;
+    wall(2, 8, 'wall');
+    wall(2, 9, 'wall');
+    wall(2, 10, 'wallCorner');
+    // South wall (row 10) with stairway at cols 5-7
+    wall(10, 2, 'wallCorner');
+    wall(10, 3, 'wallAged');
+    wall(10, 4, 'wallAged');
+    openTile(10, 5, 'stairs'); blocked[10][5] = false;
+    openTile(10, 6, 'stairs'); blocked[10][6] = false;
+    openTile(10, 7, 'stairs'); blocked[10][7] = false;
+    wall(10, 8, 'wallAged');
+    wall(10, 9, 'wallAged');
+    wall(10, 10, 'wallCorner');
+    // Archway tiles below south stairs
+    openTile(11, 5, 'wallArchway'); blocked[11][5] = false;
+    openTile(11, 6, 'wallArchway'); blocked[11][6] = false;
+    openTile(11, 7, 'wallArchway'); blocked[11][7] = false;
+    // West wall (col 2, rows 3-9)
+    for (let r = 3; r <= 9; r++) wall(r, 2, r === 6 ? 'wallWindowBars' : 'wall');
+    // East wall (col 10, rows 3-9)
+    for (let r = 3; r <= 9; r++) wall(r, 10, r === 6 ? 'wallWindowBars' : 'wall');
+
+    // Props — torch pillars and central column
+    placeObj(3, 3, 'stoneColumn');   // NW torch
+    placeObj(3, 9, 'stoneColumn');   // NE torch
+    placeObj(9, 3, 'stoneColumn');   // SW stair pillar
+    placeObj(9, 9, 'stoneColumn');   // SE stair pillar
+    placeObj(6, 6, 'stoneColumn');   // central pillar
+}
+
+// ============================================================
 //  ZONE 0 — TOWN (outdoor safe zone, 30×30)
 //  Uses Medieval Town + Nature asset packs
 // ============================================================
@@ -1325,63 +1386,11 @@ function generateTown() {
         floorMap[15][c] = 'n_dirt';
     }
 
-    // ===== 4. LOBBY / STARTING ANTECHAMBER (rows 23-28, cols 11-19) =====
-    // Enclosed stone room at the south. Player spawns here on new game.
-    // Two exits: north archway → Hamlet, south stairs → Dungeon (Zone 1).
+    // (Lobby removed — antechamber is now its own zone, Zone 7)
 
-    // 4a. Chamber floor — stone with inset accents
-    fillFloor(24, 12, 27, 18, 'stone');
-    floorMap[25][15] = 'stoneInset';
-    floorMap[26][14] = 'stoneInset';
-    floorMap[26][16] = 'stoneInset';
-    floorMap[24][13] = 'stoneInset';
-    floorMap[24][17] = 'stoneInset';
-
-    // 4b. Chamber walls — fully enclosed with 2 exits
-    // North wall (row 23) — sealed except archway at cols 14-16
-    wall(23, 11, 'wallCorner');
-    wall(23, 12, 'wall');
-    wall(23, 13, 'wall');
-    // North archway opening → into Hamlet
-    openTile(23, 14, 'wallArchway'); blocked[23][14] = false;
-    openTile(23, 15, 'wallArchway'); blocked[23][15] = false;
-    openTile(23, 16, 'wallArchway'); blocked[23][16] = false;
-    wall(23, 17, 'wall');
-    wall(23, 18, 'wall');
-    wall(23, 19, 'wallCorner');
-    // West wall (col 11, rows 24-27)
-    wall(24, 11, 'wall');
-    wall(25, 11, 'wallWindowBars');
-    wall(26, 11, 'wall');
-    wall(27, 11, 'wall');
-    // East wall (col 19, rows 24-27)
-    wall(24, 19, 'wall');
-    wall(25, 19, 'wallWindowBars');
-    wall(26, 19, 'wall');
-    wall(27, 19, 'wall');
-    // South wall (row 28) — sealed except stairway at cols 14-16
-    wall(28, 11, 'wallCorner');
-    wall(28, 12, 'wallAged');
-    wall(28, 13, 'wallAged');
-    wall(28, 17, 'wallAged');
-    wall(28, 18, 'wallAged');
-    wall(28, 19, 'wallCorner');
-    // Dungeon stairway — south exit
-    openTile(29, 14, 'wallArchway'); blocked[29][14] = false;
-    openTile(29, 15, 'wallArchway'); blocked[29][15] = false;
-    openTile(29, 16, 'wallArchway'); blocked[29][16] = false;
-    openTile(28, 14, 'stairs'); blocked[28][14] = false;
-    openTile(28, 15, 'stairs'); blocked[28][15] = false;
-    openTile(28, 16, 'stairs'); blocked[28][16] = false;
-
-    // 4c. Central pillar — focal point
-    placeObj(25, 15, 'stoneColumn');
-
-    // 4d. Flanking columns (torch pillars)
-    placeObj(24, 12, 'stoneColumn');   // left torch pillar
-    placeObj(24, 18, 'stoneColumn');   // right torch pillar
-    placeObj(27, 12, 'stoneColumn');   // left stair pillar
-    placeObj(27, 18, 'stoneColumn');   // right stair pillar
+    // ===== 4. SOUTH ENTRANCE (row 22-23) — grass path entry from antechamber =====
+    // Open southern edge where players arrive from zone 7
+    fillFloor(22, 13, 23, 17, 'n_dirt');
 
     // ===== 5. TOWN SQUARE (rows 9-12, cols 10-20) =====
     // Open area with grass floor, dirt path through center, central monument

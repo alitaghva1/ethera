@@ -193,15 +193,9 @@ function updateIntroPhase(dt) {
         const revealT = Math.min(1, (t - 5.0) / 1.5);
         // Smooth ease-out
         const eased = 1 - (1 - revealT) * (1 - revealT);
-        lightRadius = 80 + (HAMLET_LIGHT - 80) * eased;
+        lightRadius = 80 + (MAX_LIGHT - 80) * eased;
         // Run camera lerp during reveal so there's no jump at transition
         if (typeof updateCamera === 'function') updateCamera(dt);
-    }
-
-    // Start hamlet music during reveal (once)
-    if (t >= 5.0 && !introMusicStarted) {
-        introMusicStarted = true;
-        try { playMusic('hamlet', 2.5); } catch(e) {}
     }
 
     // End intro
@@ -210,7 +204,7 @@ function updateIntroPhase(dt) {
         smoothCamX = cameraX;
         smoothCamY = cameraY;
         gamePhase = 'playing';
-        lightRadius = HAMLET_LIGHT;
+        lightRadius = MAX_LIGHT;
         setPixelCursor('none');
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
@@ -546,7 +540,7 @@ function updateVisionFlashPhase(dt) {
 // Zone transition target → zone number lookup
 const ZONE_TARGET_MAP = {
     town: 0, zone1: 1, zone2: 2, zone3: 3,
-    zone4: 4, zone5: 5, zone6: 6,
+    zone4: 4, zone5: 5, zone6: 6, antechamber: 7,
 };
 // Temp vars for passing procedural config through zone transitions
 let _nextProceduralTheme = null;
@@ -576,6 +570,7 @@ function spawnAmbientParticles(dt) {
     else if (z === 4) cfg = _AMBIENT_CONFIGS.hell;
     else if (z === 5) cfg = _AMBIENT_CONFIGS.frozen;
     else if (z === 6) cfg = _AMBIENT_CONFIGS.throne;
+    else if (z === 7) cfg = _AMBIENT_CONFIGS.dungeon; // antechamber uses dungeon dust
     else if (z >= 100) {
         // Procedural — match theme
         const depth = z - 99;
@@ -2642,16 +2637,16 @@ function restartGame() {
     cinematicFlashAlpha = 0;
     // Reset light to full
     lightRadius = MAX_LIGHT;
-    // Start in the Hamlet (Zone 0) — player spawns in the lobby
+    // Start in the Antechamber (Zone 7) — player awakens here
     seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0)); // new seed each restart
-    currentZone = 0;
-    loadZone(0);
+    currentZone = 7;
+    loadZone(7);
     // Don't show zone banner for starting zone — let runIntro handle the reveal
-    updateDoorDefsForZone(0);
-    updateChestDefsForZone(0);
+    updateDoorDefsForZone(7);
+    updateChestDefsForZone(7);
     buildRoomBounds();
     buildEnvironmentLights();
-    loadZoneNPCs(0);
+    loadZoneNPCs(7);
     // Re-snap camera after zone rebuild
     const restartPos = tileToScreen(player.row, player.col);
     smoothCamX = canvasW / 2 - restartPos.x;
