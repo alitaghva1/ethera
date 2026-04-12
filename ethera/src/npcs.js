@@ -31,13 +31,13 @@ const NPC_REGISTRY = {
         {
             id: 'garrett',
             name: 'Garrett the Smith',
-            row: 14, col: 23,
+            row: 15, col: 6,
             zone: 0,
-            spriteKey: 'enemy_skel_idle',
+            spriteKey: 'enemy_armoredskel_idle',
             frameCount: 6,
             frameW: 100, frameH: 100,
-            scale: 1.3,
-            tint: { r: 100, g: 180, b: 255, a: 0.3 }, // blue tint
+            scale: 1.6,
+            tint: { r: 255, g: 160, b: 80, a: 0.45 }, // warm orange (forge fire)
             dialogue: [
                 'The forge hasn\'t seen proper work in ages.',
                 'If you\'re heading into the Undercroft, you\'ll need better gear.',
@@ -49,13 +49,13 @@ const NPC_REGISTRY = {
         {
             id: 'mira',
             name: 'Old Mira',
-            row: 22, col: 25,
+            row: 10, col: 14,
             zone: 0,
             spriteKey: 'enemy_skel_idle',
             frameCount: 6,
             frameW: 100, frameH: 100,
-            scale: 1.3,
-            tint: { r: 150, g: 220, b: 100, a: 0.3 }, // green tint
+            scale: 1.5,
+            tint: { r: 180, g: 255, b: 180, a: 0.5 }, // soft green (herbalist)
             dialogue: [
                 'They say the tower was built long ago... before the corruption.',
                 'People don\'t go down there anymore. The ones who did... never came back.',
@@ -67,13 +67,13 @@ const NPC_REGISTRY = {
         {
             id: 'aldric',
             name: 'Captain Aldric',
-            row: 13, col: 6,
+            row: 6, col: 6,
             zone: 0,
             spriteKey: 'enemy_armoredskel_idle',
             frameCount: 6,
             frameW: 100, frameH: 100,
-            scale: 1.4,
-            tint: { r: 180, g: 180, b: 200, a: 0.25 }, // steel-blue tint
+            scale: 1.7,
+            tint: { r: 120, g: 160, b: 255, a: 0.5 }, // bright steel blue (captain)
             dialogue: [
                 'The northern border grows darker each day.',
                 'We\'ve lost contact with the outposts. Something stirs in the deep places.',
@@ -85,13 +85,13 @@ const NPC_REGISTRY = {
         {
             id: 'hermit',
             name: 'The Hermit',
-            row: 7, col: 15,
+            row: 6, col: 24,
             zone: 0,
-            spriteKey: 'enemy_skelarch_idle',
-            frameCount: 6,
+            spriteKey: 'enemy_palequeen_idle',
+            frameCount: 8,
             frameW: 100, frameH: 100,
-            scale: 1.3,
-            tint: { r: 200, g: 100, b: 220, a: 0.3 }, // purple tint
+            scale: 1.5,
+            tint: { r: 180, g: 120, b: 255, a: 0.4 }, // mystical purple
             dialogue: [
                 'The old magics... they whisper to those who listen.',
                 'There is an Ancient Tome lost in the Spire — Zone 3. Retrieve it, and I will share what the old magics have shown me.',
@@ -103,13 +103,13 @@ const NPC_REGISTRY = {
         {
             id: 'senna',
             name: 'Senna the Alchemist',
-            row: 23, col: 6,
+            row: 15, col: 24,
             zone: 0,
-            spriteKey: 'enemy_slime_idle',
+            spriteKey: 'enemy_skel_idle',
             frameCount: 6,
             frameW: 100, frameH: 100,
-            scale: 1.4,
-            tint: { r: 255, g: 220, b: 100, a: 0.25 }, // yellow tint
+            scale: 1.5,
+            tint: { r: 255, g: 220, b: 80, a: 0.5 }, // bright gold (alchemist)
             dialogue: [
                 'My experiments require... exotic ingredients.',
                 'I\'ve been searching for Frost Essence — it forms in the frozen reaches. Zone 5. Bring me some and I\'ll make it worth your while.',
