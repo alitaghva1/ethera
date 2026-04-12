@@ -1461,21 +1461,25 @@ function drawRebuildPrompt() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Badge background
-    ctx.globalAlpha = pulse * 0.7;
-    ctx.fillStyle = '#1a1408';
-    ctx.strokeStyle = canAfford ? '#cc9933' : '#884444';
-    ctx.lineWidth = 1;
+    // Badge background — prominent and readable
+    const _rbw = Math.max(160, ctx.measureText('[E]  ' + label + ' (' + cost + 'g)').width + 40 || 160);
+    ctx.globalAlpha = pulse * 0.85;
+    ctx.fillStyle = '#0e0c06';
+    ctx.shadowColor = canAfford ? 'rgba(200, 160, 40, 0.4)' : 'rgba(180, 60, 40, 0.3)';
+    ctx.shadowBlur = 12;
     ctx.beginPath();
-    ctx.roundRect(sx - 70, sy - 14, 140, 28, 4);
+    ctx.roundRect(sx - _rbw / 2, sy - 16, _rbw, 32, 6);
     ctx.fill();
+    ctx.strokeStyle = canAfford ? '#d4a840' : '#aa4444';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Key + label
-    ctx.globalAlpha = pulse * 0.9;
-    ctx.font = 'bold 11px monospace';
-    ctx.fillStyle = canAfford ? '#e8c840' : '#cc6644';
-    ctx.fillText('[E] ' + label + ' (' + cost + 'g)', sx, sy);
+    // Key + label text
+    ctx.globalAlpha = pulse;
+    ctx.font = 'bold 13px Georgia';
+    ctx.fillStyle = canAfford ? '#ffd855' : '#dd6644';
+    ctx.fillText('[E]  ' + label + ' (' + cost + 'g)', sx, sy);
 
     ctx.restore();
 }
@@ -1497,26 +1501,26 @@ function drawDoorPrompt() {
 
     const pulse = 0.6 + Math.sin(performance.now() / 500) * 0.2;
 
-    // Key badge
-    ctx.globalAlpha = pulse * 0.7;
-    ctx.fillStyle = locked ? '#1a0808' : '#08101a';
-    ctx.strokeStyle = locked ? '#884444' : '#6688aa';
-    ctx.lineWidth = 1;
+    // Unified action badge — bold, readable
+    const _doorLabel = locked ? (door.def.lockedLabel || 'Locked') : (door.def.label || 'Enter');
+    const _doorText = '[E]  ' + _doorLabel;
+    ctx.font = 'bold 13px Georgia';
+    const _dw = Math.max(120, ctx.measureText(_doorText).width + 36);
+    ctx.globalAlpha = pulse * 0.85;
+    ctx.fillStyle = '#0e0c06';
+    ctx.shadowColor = locked ? 'rgba(180, 60, 40, 0.3)' : 'rgba(80, 130, 200, 0.4)';
+    ctx.shadowBlur = 12;
     ctx.beginPath();
-    ctx.roundRect(sx - 14, sy - 10, 28, 20, 4);
+    ctx.roundRect(sx - _dw / 2, sy - 16, _dw, 32, 6);
     ctx.fill();
+    ctx.strokeStyle = locked ? '#aa5544' : '#6699bb';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    ctx.globalAlpha = pulse * 0.9;
-    ctx.font = 'bold 11px monospace';
-    ctx.fillStyle = locked ? '#cc6644' : '#a0c8e0';
-    ctx.fillText('E', sx, sy);
-
-    // Label
-    ctx.globalAlpha = pulse * (locked ? 0.6 : 0.5);
-    ctx.font = 'italic 10px Georgia';
-    ctx.fillStyle = locked ? '#aa5544' : '#8ab0cc';
-    ctx.fillText(locked ? (door.def.lockedLabel || 'Locked') : (door.def.label || 'Enter'), sx, sy + 18);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = locked ? '#dd6644' : '#c8ddf0';
+    ctx.fillText(_doorText, sx, sy);
 
     ctx.restore();
 }

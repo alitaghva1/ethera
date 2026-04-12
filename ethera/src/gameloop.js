@@ -474,6 +474,9 @@ function drawDoorGlows() {
         else { portalLabel = def.label || ''; }
 
         if (portalLabel) {
+            // Fade out label when player is close (door prompt takes over)
+            const _pDist = Math.sqrt((r - player.row) ** 2 + (centerCol - player.col) ** 2);
+            if (_pDist < 2.5) continue; // hide when door prompt is visible
             const labelY = sy - portalH - 8;
             const labelAlpha = 0.5 + Math.sin(t * 1.2 + r) * 0.15;
             ctx.globalAlpha = labelAlpha;
@@ -2611,41 +2614,54 @@ function drawPauseOverlay() {
 
     ctx.save();
 
-    // Dim overlay with radial vignette
-    ctx.globalAlpha = 0.6;
+    // Heavy dark overlay with vignette
+    ctx.globalAlpha = 0.75;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
-    const vig = ctx.createRadialGradient(cx, cy, 80, cx, cy, Math.max(canvasW, canvasH) * 0.6);
+    const vig = ctx.createRadialGradient(cx, cy, 60, cx, cy, Math.max(canvasW, canvasH) * 0.55);
     vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, 'rgba(0,0,0,0.4)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.5)');
     ctx.globalAlpha = 1;
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Title glow
+    // Center panel backdrop
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#0a0806';
+    ctx.beginPath();
+    ctx.roundRect(cx - 130, cy - 100, 260, 250, 8);
+    ctx.fill();
+    ctx.globalAlpha = 0.2;
+    ctx.strokeStyle = '#8a7a50';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(cx - 130, cy - 100, 260, 250, 8);
+    ctx.stroke();
+
+    // Title glow — warmer, more prominent
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.08;
-    const titleGlow = ctx.createRadialGradient(cx, cy - 50, 0, cx, cy - 50, 180);
-    titleGlow.addColorStop(0, 'rgba(180, 140, 60, 0.4)');
+    ctx.globalAlpha = 0.15;
+    const titleGlow = ctx.createRadialGradient(cx, cy - 55, 0, cx, cy - 55, 160);
+    titleGlow.addColorStop(0, 'rgba(200, 160, 60, 0.5)');
     titleGlow.addColorStop(1, 'rgba(60, 40, 10, 0)');
     ctx.fillStyle = titleGlow;
-    ctx.fillRect(cx - 200, cy - 160, 400, 220);
+    ctx.fillRect(cx - 180, cy - 150, 360, 200);
     ctx.globalCompositeOperation = 'source-over';
 
-    // "PAUSED" title
+    // "PAUSED" title — larger, bolder
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.globalAlpha = 0.85;
-    ctx.font = '36px Georgia';
-    ctx.shadowColor = 'rgba(180, 140, 50, 0.35)';
-    ctx.shadowBlur = 20;
-    ctx.fillStyle = '#d4b878';
+    ctx.globalAlpha = 0.9;
+    ctx.font = '42px Georgia';
+    ctx.shadowColor = 'rgba(200, 160, 50, 0.4)';
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = '#e8c868';
     ctx.fillText('PAUSED', cx, cy - 55);
     ctx.shadowBlur = 0;
 
-    // Decorative lines
-    drawDecorLine(cx, cy - 87, 120, 0.3);
-    drawDecorLine(cx, cy - 27, 90, 0.2);
+    // Decorative lines — wider, more visible
+    drawDecorLine(cx, cy - 87, 140, 0.4);
+    drawDecorLine(cx, cy - 27, 110, 0.3);
 
     // --- Pause menu buttons ---
     const btnW = 180, btnH = 36, btnGap = 8;

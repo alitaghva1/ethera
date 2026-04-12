@@ -275,20 +275,20 @@ const Notify = {
             const boxX = (canvasW - boxWidth) / 2;
             const boxY = y;
             
-            // Draw background box with rounded corners
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            // Draw background box — darker, more opaque for readability
+            ctx.fillStyle = 'rgba(8, 6, 4, 0.8)';
             this._drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, borderRadius);
             ctx.fill();
-            
-            // Draw border
+
+            // Draw border — brighter
             ctx.strokeStyle = toast.borderColor;
-            ctx.globalAlpha = toast.alpha * 0.4;
-            ctx.lineWidth = 1;
+            ctx.globalAlpha = toast.alpha * 0.6;
+            ctx.lineWidth = 1.5;
             this._drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, borderRadius);
             ctx.stroke();
-            
-            // Draw text
-            ctx.globalAlpha = toast.alpha * 0.8;
+
+            // Draw text — full brightness
+            ctx.globalAlpha = toast.alpha;
             ctx.fillStyle = toast.color;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
