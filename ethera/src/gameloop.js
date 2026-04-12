@@ -213,8 +213,7 @@ function updateIntroPhase(dt) {
         gamePhase = 'playing';
         lightRadius = MAX_LIGHT;
         setPixelCursor('none');
-        // Crossfade cinematic → antechamber music
-        try { playMusic('antechamber', 2.5); } catch(e) {}
+        // Let cinematic music continue — zone transition will crossfade naturally
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
             text: 'Two paths lie before you...',
@@ -3811,9 +3810,9 @@ function runIntro() {
     smoothCamY = canvasH / 2 - _introPos.y;
     cameraX = Math.round(smoothCamX);
     cameraY = Math.round(smoothCamY);
-    // Kill all music — intro starts in silence for maximum impact
+    // Fade to silence — intro starts quiet for maximum impact
     // Music cue happens at INTRO_MUSIC_CUE (3.5s) in updateIntroPhase
-    try { if (typeof pauseMusic === 'function') pauseMusic(); } catch(e) {}
+    try { if (typeof stopMusic === 'function') stopMusic(0.5); } catch(e) {}
     return; // CRITICAL: stop here — don't fall through to old cinematic setup below
 
     // Dungeon zones: play full cinematic (dead code for now, preserved for future)
