@@ -463,6 +463,30 @@ function drawDoorGlows() {
             ctx.fill();
         }
 
+        // Destination label — always visible above portal
+        ctx.globalCompositeOperation = 'source-over';
+        let portalLabel = '';
+        let portalArrow = '';
+        if (dest === 'zone1' || dest === 'next') { portalLabel = 'The Dungeon'; portalArrow = '\u2193'; }
+        else if (dest === 'town') { portalLabel = 'The Hamlet'; portalArrow = '\u2191'; }
+        else if (dest === 'deepest') { portalLabel = 'The Abyss'; portalArrow = '\u2193'; }
+        else if (dest === 'zone2') { portalLabel = 'Ascend'; portalArrow = '\u2191'; }
+        else { portalLabel = def.label || ''; }
+
+        if (portalLabel) {
+            const labelY = sy - portalH - 8;
+            const labelAlpha = 0.5 + Math.sin(t * 1.2 + r) * 0.15;
+            ctx.globalAlpha = labelAlpha;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = 'italic 11px Georgia';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 4;
+            ctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',1)';
+            ctx.fillText(portalLabel + ' ' + portalArrow, sx, labelY);
+            ctx.shadowBlur = 0;
+        }
+
         ctx.restore();
     }
 }
