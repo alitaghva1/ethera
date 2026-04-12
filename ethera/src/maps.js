@@ -92,7 +92,8 @@ const ROUGH_FLOORS = new Set([
 // Town floor tiles that get ambient ground detail (cracks, pebbles, scuffs)
 const TOWN_DETAIL_FLOORS = new Set([
     'stoneTile', 'stone', 'stoneInset', 'stoneUneven',
-    'dirt', 'dirtTiles', 'planks', 'planksBroken'
+    'dirt', 'dirtTiles', 'planks', 'planksBroken',
+    'n_dirt', 'n_grassEdge',
 ]);
 
 // Sub-tile radii per object type (how much of the tile the object actually fills)
@@ -1247,18 +1248,16 @@ function generateZone3() {
 // ============================================================
 function generateTown() {
     // ================================================================
-    //  ZONE 0 — THE HAMLET  (uses dungeon tileset for visual unity)
+    //  ZONE 0 — THE HAMLET  (medieval village with nature + dungeon tiles)
     //
-    //  DARK FANTASY DESIGN RULES:
-    //  1. Uses DUNGEON TILES exclusively — same art as underground zones.
-    //  2. Open-air layout distinguishes it: wide plazas, broken walls,
-    //     half-walls, and sky overhead (outdoor lighting).
-    //  3. Buildings are OPEN FACADES — back-walls (north + west) only.
-    //  4. The hamlet is SHRINKING — north abandoned, south desperate.
-    //  5. More varied floor textures, props, and broken surfaces than
-    //     the dungeons to give a weathered, surface-settlement feel.
-    //  6. VIBRANT & ALIVE: Market activity, diverse props, treasure chests,
-    //     training yards, graveyards, and thematic detail throughout.
+    //  LAYOUT (30x30):
+    //  Row 0-3:   North wall / boundary
+    //  Row 4-8:   Guard Post (Aldric) left | Hermit's Hut right
+    //  Row 9-12:  TOWN SQUARE — open area with central monument
+    //  Row 13-17: Garrett's Forge (left) | Senna's Shop (right)
+    //  Row 18-22: Path areas, grass, decorative elements
+    //  Row 23-26: LOBBY (spawn room) — stone floor, 2 exits
+    //  Row 27-29: South wall / dungeon entrance stairs
     // ================================================================
 
     // --- helper: place wall as object (keeps ground tile visible beneath) ---
@@ -1268,21 +1267,19 @@ function generateTown() {
         blockType[r][c] = 'wall';
     }
 
-    // ===== 1. BASE GROUND: weathered stone and dirt =====
+    // ===== 1. BASE GROUND — grass everywhere =====
     for (let r = 0; r < 30; r++) {
         for (let c = 0; c < 30; c++) {
-            const v = (r * 7 + c * 13 + r * c) % 12;
-            // Outdoor surface: mostly dirt with scattered stone remnants
-            floorMap[r][c] = v < 3  ? 'dirt'
-                           : v < 5  ? 'dirtTiles'
-                           : v < 7  ? 'stoneUneven'
-                           :          'stoneMissing';
+            const v = (r * 7 + c * 13 + r * c) % 10;
+            floorMap[r][c] = v < 5 ? 'n_grass'
+                           : v < 7 ? 'n_grassEdge'
+                           :         'n_grassFlowers';
             blocked[r][c] = false;
             blockType[r][c] = null;
         }
     }
 
-    // ===== 2. BORDER — blocked edges with wall ruins =====
+    // ===== 2. BORDER — blocked edges =====
     for (let c = 0; c < 30; c++) {
         floorMap[0][c] = 'wallAged'; blocked[0][c] = true; blockType[0][c] = 'wall';
         floorMap[29][c] = 'wallAged'; blocked[29][c] = true; blockType[29][c] = 'wall';
@@ -1291,12 +1288,12 @@ function generateTown() {
         floorMap[r][0] = 'wallAged'; blocked[r][0] = true; blockType[r][0] = 'wall';
         floorMap[r][29] = 'wallAged'; blocked[r][29] = true; blockType[r][29] = 'wall';
     }
-    // Broken sections in the perimeter wall
-    for (let c = 4; c < 28; c += 5) {
+    // Broken sections in perimeter
+    for (let c = 5; c < 28; c += 6) {
         floorMap[0][c] = 'wallBroken';
         floorMap[29][c] = 'wallBroken';
     }
-    for (let r = 4; r < 28; r += 5) {
+    for (let r = 5; r < 28; r += 6) {
         floorMap[r][0] = 'wallBroken';
         floorMap[r][29] = 'wallBroken';
     }
@@ -1304,540 +1301,302 @@ function generateTown() {
     floorMap[0][0] = 'wallCorner'; floorMap[0][29] = 'wallCorner';
     floorMap[29][0] = 'wallCorner'; floorMap[29][29] = 'wallCorner';
 
-    // ===== 3. ROADS — expanded cobblestone network =====
-    // Main N-S road (cols 14-16): neat stone tile
-    for (let r = 2; r < 28; r++) {
+    // ===== 3. MAIN ROAD — dirt path north-south (cols 14-16) =====
+    for (let r = 1; r < 23; r++) {
         for (let c = 14; c <= 16; c++) {
-            floorMap[r][c] = (r + c) % 5 === 0 ? 'stoneInset' : 'stoneTile';
+            floorMap[r][c] = 'n_dirt';
         }
     }
-    // East branch to market (row 18-19, cols 16→26) — EXPANDED
-    for (let c = 16; c <= 26; c++) {
-        floorMap[18][c] = 'stoneTile';
-        floorMap[19][c] = (c % 3 === 0) ? 'stoneInset' : 'stoneTile';
+    // Branch paths to buildings
+    // West branch to Forge + Guard Post (row 8, cols 6-14)
+    for (let c = 6; c <= 14; c++) {
+        floorMap[8][c] = 'n_dirt';
     }
-    // West branch to residential & alchemist (row 16-17, cols 3→14) — EXPANDED
-    for (let c = 3; c <= 14; c++) {
-        floorMap[16][c] = 'stoneTile';
-        floorMap[17][c] = (c % 3 === 0) ? 'stoneInset' : 'stoneTile';
+    // West branch to Forge (row 15, cols 8-14)
+    for (let c = 8; c <= 14; c++) {
+        floorMap[15][c] = 'n_dirt';
     }
-    // Short NW branch from main road to guard manor (col 8, rows 11-12)
-    for (let r = 11; r <= 12; r++) {
-        for (let c = 8; c <= 11; c++) {
-            floorMap[r][c] = (r + c) % 4 === 0 ? 'stoneInset' : 'stoneTile';
-        }
+    // East branch to Shop + Hermit (row 8, cols 16-24)
+    for (let c = 16; c <= 24; c++) {
+        floorMap[8][c] = 'n_dirt';
+    }
+    // East branch to Shop (row 15, cols 16-24)
+    for (let c = 16; c <= 24; c++) {
+        floorMap[15][c] = 'n_dirt';
     }
 
-    // ===== 4. STARTING ANTECHAMBER (south, rows 24-28, cols 11-19) =====
-    // A sealed stone chamber where the player spawns at game start.
-    // Two exits: north archway into the Hamlet, south stairs to the Dungeon (Zone 1).
-    // Atmospheric: dark stone floor, central altar/pillar, flanking torches.
+    // ===== 4. LOBBY / STARTING ANTECHAMBER (rows 23-28, cols 11-19) =====
+    // Enclosed stone room at the south. Player spawns here on new game.
+    // Two exits: north archway → Hamlet, south stairs → Dungeon (Zone 1).
 
-    // 4a. Chamber floor — dark stone with insets
-    fillFloor(25, 12, 28, 18, 'stone');
-    floorMap[26][15] = 'stoneInset';  // center accent
-    floorMap[27][14] = 'stoneInset';  // altar area accent
-    floorMap[27][16] = 'stoneInset';
-    floorMap[25][13] = 'stoneInset';
-    floorMap[25][17] = 'stoneInset';
+    // 4a. Chamber floor — stone with inset accents
+    fillFloor(24, 12, 27, 18, 'stone');
+    floorMap[25][15] = 'stoneInset';
+    floorMap[26][14] = 'stoneInset';
+    floorMap[26][16] = 'stoneInset';
+    floorMap[24][13] = 'stoneInset';
+    floorMap[24][17] = 'stoneInset';
 
-    // 4b. Chamber walls — enclose on east, west, and parts of north/south
-    // North wall (row 24) — sealed except archway at cols 14-15
-    wall(24, 11, 'wallCorner');
-    wall(24, 12, 'wall');
-    wall(24, 13, 'wall');
-    // North archway opening at (24, 14) and (24, 15) — door into Hamlet
-    openTile(24, 14, 'wallArchway'); blocked[24][14] = false;
-    openTile(24, 15, 'wallArchway'); blocked[24][15] = false;
-    wall(24, 16, 'wall');
-    wall(24, 17, 'wall');
-    wall(24, 18, 'wall');
-    wall(24, 19, 'wallCorner');
-    // West wall (col 11, rows 25-27)
-    wall(25, 11, 'wall');
-    wall(26, 11, 'wallWindowBars');
+    // 4b. Chamber walls — fully enclosed with 2 exits
+    // North wall (row 23) — sealed except archway at cols 14-16
+    wall(23, 11, 'wallCorner');
+    wall(23, 12, 'wall');
+    wall(23, 13, 'wall');
+    // North archway opening → into Hamlet
+    openTile(23, 14, 'wallArchway'); blocked[23][14] = false;
+    openTile(23, 15, 'wallArchway'); blocked[23][15] = false;
+    openTile(23, 16, 'wallArchway'); blocked[23][16] = false;
+    wall(23, 17, 'wall');
+    wall(23, 18, 'wall');
+    wall(23, 19, 'wallCorner');
+    // West wall (col 11, rows 24-27)
+    wall(24, 11, 'wall');
+    wall(25, 11, 'wallWindowBars');
+    wall(26, 11, 'wall');
     wall(27, 11, 'wall');
-    // East wall (col 19, rows 25-27)
-    wall(25, 19, 'wall');
-    wall(26, 19, 'wallWindowBars');
+    // East wall (col 19, rows 24-27)
+    wall(24, 19, 'wall');
+    wall(25, 19, 'wallWindowBars');
+    wall(26, 19, 'wall');
     wall(27, 19, 'wall');
-    // South wall (row 28) — sealed except stairway at cols 14-15
-    // Row 29 is the border wall, already blocked. Seal row 28.
+    // South wall (row 28) — sealed except stairway at cols 14-16
     wall(28, 11, 'wallCorner');
     wall(28, 12, 'wallAged');
     wall(28, 13, 'wallAged');
-    wall(28, 16, 'wallAged');
     wall(28, 17, 'wallAged');
     wall(28, 18, 'wallAged');
     wall(28, 19, 'wallCorner');
-    // Dungeon stairway — south exit (unchanged archway position)
+    // Dungeon stairway — south exit
     openTile(29, 14, 'wallArchway'); blocked[29][14] = false;
     openTile(29, 15, 'wallArchway'); blocked[29][15] = false;
+    openTile(29, 16, 'wallArchway'); blocked[29][16] = false;
     openTile(28, 14, 'stairs'); blocked[28][14] = false;
     openTile(28, 15, 'stairs'); blocked[28][15] = false;
+    openTile(28, 16, 'stairs'); blocked[28][16] = false;
 
-    // 4c. Central altar / pillar — focal point
-    placeObj(26, 15, 'stoneColumn');       // central pillar
-    placeObj(26, 14, 'stoneColumnWood');   // broken altar piece
-    placeObj(26, 16, 'stoneColumnWood');   // broken altar piece
+    // 4c. Central pillar — focal point
+    placeObj(25, 15, 'stoneColumn');
 
-    // 4d. Flanking atmosphere
-    placeObj(25, 12, 'stoneColumn');   // left torch pillar
-    placeObj(25, 18, 'stoneColumn');   // right torch pillar
-    placeObj(27, 12, 'barrels');       // left supply stack
-    placeObj(27, 18, 'barrel');        // right supply barrel
+    // 4d. Flanking columns (torch pillars)
+    placeObj(24, 12, 'stoneColumn');   // left torch pillar
+    placeObj(24, 18, 'stoneColumn');   // right torch pillar
+    placeObj(27, 12, 'stoneColumn');   // left stair pillar
+    placeObj(27, 18, 'stoneColumn');   // right stair pillar
 
-    // 4e. Hint text tile marker — row 25, col 15 (near spawn)
-    // (The HUD will show "Choose your path..." text when in this room — handled in rendering)
-
-    // ===== 5. TOWN SQUARE (center, ENLARGED: rows 12-20, cols 10-20) =====
-    fillFloor(12, 10, 20, 20, 'stoneTile');
-    // Richer inset pattern for visual interest
-    floorMap[13][12] = 'stoneInset'; floorMap[13][18] = 'stoneInset';
-    floorMap[15][11] = 'stoneInset'; floorMap[15][19] = 'stoneInset';
-    floorMap[17][13] = 'stoneInset'; floorMap[17][17] = 'stoneInset';
-    floorMap[19][12] = 'stoneInset'; floorMap[19][18] = 'stoneInset';
-    // Worn edges of the enlarged square
-    for (let c = 9; c <= 21; c++) { floorMap[11][c] = 'stoneUneven'; floorMap[21][c] = 'stoneUneven'; }
-    for (let r = 12; r <= 20; r++) { floorMap[r][9] = 'stoneUneven'; floorMap[r][21] = 'stoneUneven'; }
-
-    // BROKEN FOUNTAIN MEMORIAL (center) — major focal point
-    placeObj(15, 15, 'stoneColumn');
-    placeObj(16, 15, 'stoneColumnWood');
-    placeObj(15, 16, 'stoneColumn', false);  // decorative rubble around fountain
-    placeObj(16, 14, 'stoneColumn', false);
-    placeObj(14, 15, 'woodenPile', false);
-    placeObj(17, 15, 'woodenPile', false);
-
-    // MARKET STALLS scattered in square (tables + crates/barrels nearby)
-    // NE corner stalls
-    placeObj(13, 18, 'tableShort');
-    placeObj(12, 19, 'woodenCrates');
-    placeObj(13, 19, 'barrel', false);
-    // NW corner stalls
-    placeObj(13, 11, 'tableRound');
-    placeObj(12, 10, 'woodenCrates');
-    placeObj(13, 10, 'barrel', false);
-    // SE corner stalls
-    placeObj(19, 19, 'tableShort');
-    placeObj(20, 18, 'barrelsStacked');
-    // SW corner stalls
-    placeObj(19, 11, 'tableRound');
-    placeObj(20, 10, 'woodenCrate', false);
-
-    // ===== 6. THE FORGE — enhanced interior (NE of square) =====
-    // Footprint: rows 11-16, cols 22-27
-    fillFloor(13, 23, 15, 26, 'planks');  // larger interior
-    floorMap[14][24] = 'planksBroken';
-    floorMap[14][25] = 'planksBroken';
-    // North back wall
-    wall(12, 22, 'wallCorner');
-    wall(12, 23, 'wall');
-    wall(12, 24, 'wallWindowBars');
-    wall(12, 25, 'wall');
-    wall(12, 26, 'wall');
-    wall(12, 27, 'wallCorner');
-    // West back wall
-    wall(13, 22, 'wall');
-    wall(14, 22, 'wallWindowBars');
-    wall(15, 22, 'wallAged');
-    wall(16, 22, 'wall');
-    // Pavement in front (south + east approach)
-    fillFloor(16, 23, 16, 27, 'stone');
-    fillFloor(13, 27, 16, 27, 'stone');
-    // ENHANCED INTERIOR: anvil-shaped setup with tools
-    placeObj(13, 24, 'stoneColumn');     // anvil proxy
-    placeObj(14, 25, 'stoneColumnWood'); // anvil detail
-    placeObj(13, 26, 'woodenSupports');  // weapon rack
-    placeObj(15, 26, 'woodenSupports');  // weapon rack
-    placeObj(15, 23, 'barrels');         // storage
-    placeObj(16, 26, 'woodenCrates');    // more storage
-    // Column and rubble at entrance
-    placeObj(16, 28, 'stoneColumnWood');
-    placeObj(17, 22, 'woodenPile', false);
-    placeObj(11, 27, 'woodenPile', false);
-
-    // ===== 7. RAGGED RAVEN INN — expanded interior (SE) =====
-    // Footprint: rows 19-25, cols 22-28
-    fillFloor(21, 23, 23, 27, 'planks');  // larger interior
-    floorMap[22][25] = 'planksBroken';
-    floorMap[23][24] = 'planksBroken';
-    // North back wall
-    wall(20, 22, 'wallCorner');
-    wall(20, 23, 'wallAged');
-    wall(20, 24, 'wallWindowBars');
-    wall(20, 25, 'wall');
-    wall(20, 26, 'wallAged');
-    wall(20, 27, 'wall');
-    wall(20, 28, 'wallCorner');
-    // West back wall
-    wall(21, 22, 'wall');
-    wall(22, 22, 'wallWindowBars');
-    wall(23, 22, 'wallAged');
-    wall(24, 22, 'wall');
-    // EXPANDED INTERIOR: tavern atmosphere
-    placeObj(21, 25, 'tableRoundChairs');
-    placeObj(22, 24, 'tableRound');
-    placeObj(21, 27, 'chair');
-    placeObj(22, 27, 'chair');
-    placeObj(23, 26, 'barrels');
-    placeObj(23, 24, 'barrel');
-    placeObj(24, 26, 'barrelsStacked');
-    // OUTDOOR SEATING (south side of inn)
-    placeObj(25, 24, 'chair');
-    placeObj(25, 25, 'tableShort');
-    placeObj(25, 26, 'chair');
-    // Worn approach & market area
-    fillFloor(25, 23, 25, 28, 'stone');
-    fillFloor(26, 23, 26, 28, 'dirtTiles');
-    placeObj(20, 21, 'woodenPile');
-    placeObj(26, 28, 'barrel', false);
-    // Dirt & trampled ground around market
-    fillFloor(24, 28, 25, 28, 'dirt');
-
-    // ===== 8. MARKET ROW — vibrant stall strip (east road rows 18-19) =====
-    // Stalls along the market branch: alternating tables, crates, barrels
-    placeObj(18, 20, 'tableShort');
-    placeObj(18, 22, 'woodenCrates');
-    placeObj(18, 24, 'barrel');
-    placeObj(19, 21, 'tableShort');
-    placeObj(19, 23, 'barrelsStacked');
-    placeObj(19, 25, 'woodenCrate');
-    // Additional stalls further out
-    placeObj(17, 22, 'tableRound');
-    placeObj(20, 22, 'barrel', false);
-    placeObj(17, 24, 'woodenCrates');
-    placeObj(20, 24, 'barrel', false);
-
-    // ===== 9. RUINED CHAPEL — expanded with graveyard (W) =====
-    // Footprint: rows 13-17, cols 4-9
-    fillFloor(14, 5, 16, 8, 'stoneInset');  // larger interior
-    floorMap[15][6] = 'stoneMissing';
-    // North back wall (partially broken)
-    wall(13, 4, 'wallCorner');
-    wall(13, 5, 'wallBroken');
-    wall(13, 6, 'wallArchway');
-    wall(13, 7, 'wallBroken');
-    wall(13, 8, 'wall');
-    wall(13, 9, 'wallCorner');
-    // West back wall (crumbling)
-    wall(14, 4, 'wallAged');
-    wall(15, 4, 'wallBroken');
-    wall(16, 4, 'wallAged');
-    // Interior columns
-    placeObj(15, 5, 'stoneColumn');
-    placeObj(15, 8, 'stoneColumn');
-    placeObj(14, 6, 'woodenPile', false);
-    placeObj(16, 7, 'woodenPile', false);
-
-    // EXPANDED GRAVEYARD (east of chapel: rows 14-17, cols 10-13)
-    for (let r = 14; r <= 17; r++) {
-        for (let c = 10; c <= 13; c++) {
-            floorMap[r][c] = 'dirt';
-        }
+    // ===== 5. TOWN SQUARE (rows 9-12, cols 10-20) =====
+    // Open area with grass floor, dirt path through center, central monument
+    fillFloor(9, 10, 12, 20, 'n_grass');
+    // Dirt path through center
+    for (let c = 10; c <= 20; c++) {
+        floorMap[10][c] = 'n_dirt';
+        floorMap[11][c] = 'n_dirt';
     }
-    // Grave markers (stone columns as headstones) — EXPANDED SET
-    placeObj(14, 11, 'stoneColumn');
-    placeObj(15, 10, 'stoneColumn');
-    placeObj(16, 11, 'stoneColumn');
-    placeObj(17, 12, 'stoneColumn');
-    placeObj(15, 13, 'stoneColumn');
-    placeObj(16, 12, 'woodenPile', false);  // broken markers
-    placeObj(14, 13, 'woodenPile', false);
-    placeObj(17, 10, 'woodenPile', false);
-    // Rubble at chapel entrance
-    placeObj(17, 6, 'woodenSupports');
-    placeObj(14, 9, 'barrel', false);
-    // Additional decay
-    placeObj(17, 8, 'woodenPile');
+    // Scattered flowers
+    floorMap[9][12] = 'n_grassFlowers';
+    floorMap[9][18] = 'n_grassFlowers';
+    floorMap[12][11] = 'n_grassFlowers';
+    floorMap[12][19] = 'n_grassFlowers';
+    floorMap[9][15] = 'n_grassFlowers';
+    floorMap[12][15] = 'n_grassFlowers';
+    // Central stone monument / column
+    fillFloor(10, 14, 11, 16, 'stoneTile');
+    placeObj(10, 15, 'stoneColumn');       // monument pillar
 
-    // ===== 10. GUARD CAPTAIN'S MANOR — with training yard (NW) =====
-    // Manor footprint: rows 11-15, cols 3-7
-    fillFloor(12, 4, 14, 6, 'stone');
-    floorMap[13][5] = 'stoneInset';
-    // North back wall (stone, authoritative)
-    wall(11, 3, 'wallCorner');
-    wall(11, 4, 'wallStructure');
-    wall(11, 5, 'wallWindowBars');
-    wall(11, 6, 'wallStructure');
-    wall(11, 7, 'wallCorner');
+    // ===== 6. GARRETT'S FORGE (rows 13-17, cols 3-8) =====
+    // Stone floor, back wall (north) + left wall (west), open front
+    fillFloor(14, 4, 16, 7, 'stoneTile');
+    floorMap[15][5] = 'stoneInset';
+    floorMap[15][6] = 'stoneInset';
+    // North back wall
+    wall(13, 3, 'wallCorner');
+    wall(13, 4, 'wall');
+    wall(13, 5, 'wallWindowBars');
+    wall(13, 6, 'wall');
+    wall(13, 7, 'wall');
+    wall(13, 8, 'wallCorner');
     // West back wall
-    wall(12, 3, 'wall');
-    wall(13, 3, 'wallWindowBars');
     wall(14, 3, 'wall');
-    // Manor interior
-    placeObj(12, 5, 'stoneColumn');
-    placeObj(14, 6, 'tableRound');
-    placeObj(13, 4, 'stoneColumn', false);
+    wall(15, 3, 'wallWindowBars');
+    wall(16, 3, 'wallAged');
+    // Pavement approach (south + east)
+    fillFloor(17, 4, 17, 8, 'stoneTile');
+    fillFloor(14, 8, 17, 8, 'stoneTile');
+    // Interior props
+    placeObj(14, 5, 'stoneColumn');      // anvil proxy
+    placeObj(14, 7, 'woodenSupports');   // weapon rack
+    placeObj(16, 7, 'barrel');           // storage
+    placeObj(16, 4, 'woodenCrates');     // crates
+    // Rubble at entrance area
+    placeObj(17, 3, 'woodenPile', false);
 
-    // TRAINING YARD (south of manor: rows 15-17, cols 4-7)
-    // Practice dummies and barriers
-    placeObj(15, 4, 'woodenSupports');
-    placeObj(15, 6, 'woodenSupports');
-    placeObj(16, 5, 'woodenSupportBeams');
-    placeObj(16, 7, 'woodenSupports');
-    placeObj(17, 4, 'stoneColumnWood');
-    placeObj(17, 6, 'stoneColumnWood');
-    // Worn training ground
-    fillFloor(15, 3, 17, 8, 'stoneUneven');
-    // Rubble around
-    placeObj(15, 3, 'woodenPile', false);
-    placeObj(15, 8, 'woodenPile', false);
-    placeObj(11, 2, 'woodenPile');
+    // ===== 7. SENNA'S ALCHEMY SHOP (rows 13-17, cols 22-27) =====
+    // Stone floor, back wall (north) + right wall (east), open front
+    fillFloor(14, 23, 16, 26, 'stoneTile');
+    floorMap[15][24] = 'stoneInset';
+    floorMap[15][25] = 'stoneInset';
+    // North back wall
+    wall(13, 22, 'wallCorner');
+    wall(13, 23, 'wall');
+    wall(13, 24, 'wallWindowBars');
+    wall(13, 25, 'wall');
+    wall(13, 26, 'wall');
+    wall(13, 27, 'wallCorner');
+    // East back wall
+    wall(14, 27, 'wall');
+    wall(15, 27, 'wallWindowBars');
+    wall(16, 27, 'wallAged');
+    // Pavement approach (south + west)
+    fillFloor(17, 22, 17, 26, 'stoneTile');
+    fillFloor(14, 22, 17, 22, 'stoneTile');
+    // Interior props
+    placeObj(14, 24, 'barrel');           // potions barrel
+    placeObj(14, 26, 'barrelsStacked');   // more potions
+    placeObj(16, 23, 'woodenCrate');      // ingredient crate
+    placeObj(16, 26, 'tableShort');       // alchemy table
+    // Rubble at entrance area
+    placeObj(17, 27, 'woodenPile', false);
 
-    // ===== 11. ALCHEMIST'S COTTAGE — with garden plots (SW) =====
-    // Cottage: rows 21-24, cols 4-8
-    fillFloor(22, 5, 23, 7, 'planks');
-    floorMap[22][6] = 'planksHole';
-    // North back wall (aged)
-    wall(21, 4, 'wallCorner');
-    wall(21, 5, 'wallAged');
-    wall(21, 6, 'wallWindowBars');
-    wall(21, 7, 'wallAged');
-    wall(21, 8, 'wallCorner');
+    // ===== 8. ALDRIC'S GUARD POST (rows 4-8, cols 3-8) =====
+    // Stone floor, back wall (north) + left wall (west), open front
+    fillFloor(5, 4, 7, 7, 'stone');
+    floorMap[6][5] = 'stoneInset';
+    floorMap[6][6] = 'stoneInset';
+    // North back wall
+    wall(4, 3, 'wallCorner');
+    wall(4, 4, 'wallStructure');
+    wall(4, 5, 'wallWindowBars');
+    wall(4, 6, 'wallStructure');
+    wall(4, 7, 'wall');
+    wall(4, 8, 'wallCorner');
     // West back wall
-    wall(22, 4, 'wallAged');
-    wall(23, 4, 'wallBroken');
-    // Cottage interior
-    placeObj(22, 6, 'barrel');           // potion storage
-    placeObj(23, 5, 'woodenCrate');      // ingredient storage
-    placeObj(23, 7, 'barrelsStacked');   // more ingredients
-    placeObj(22, 8, 'barrel', false);
+    wall(5, 3, 'wall');
+    wall(6, 3, 'wallWindowBars');
+    wall(7, 3, 'wall');
+    // Pavement approach (south + east)
+    fillFloor(8, 4, 8, 8, 'stone');
+    fillFloor(5, 8, 8, 8, 'stone');
+    // Interior props
+    placeObj(5, 5, 'woodenSupports');     // weapon rack
+    placeObj(5, 7, 'woodenSupports');     // weapon rack
+    placeObj(7, 4, 'woodenCrate');        // supply crate
+    placeObj(7, 7, 'stoneColumn');        // support column
+    // Rubble at entrance
+    placeObj(8, 3, 'woodenPile', false);
 
-    // GARDEN PLOTS (east of cottage: rows 22-24, cols 9-11)
-    for (let r = 22; r <= 24; r++) {
-        for (let c = 9; c <= 11; c++) {
-            floorMap[r][c] = 'dirtTiles';  // cultivated garden
-        }
-    }
-    // Garden details: scattered around plots
-    placeObj(22, 10, 'woodenSupports');  // garden stake
-    placeObj(23, 9, 'woodenSupports');   // garden stake
-    placeObj(24, 11, 'woodenSupports');  // garden stake
-    placeObj(24, 9, 'stoneColumn', false); // decorative
-    placeObj(23, 11, 'barrel', false);   // water barrel
-    // Overgrowth around cottage (weeds)
-    placeObj(24, 5, 'woodenPile', false);
-    placeObj(24, 7, 'woodenPile', false);
-    placeObj(21, 9, 'woodenPile');
-    placeObj(24, 8, 'stoneColumnWood');
+    // ===== 9. HERMIT'S HUT (rows 4-8, cols 22-27) =====
+    // Small isolated hut with grass around, stone patch, single wall behind
+    fillFloor(5, 23, 7, 26, 'stoneInset');
+    floorMap[6][24] = 'stoneMissing';
+    // North back wall only (minimal enclosure)
+    wall(4, 22, 'wallCorner');
+    wall(4, 23, 'wallAged');
+    wall(4, 24, 'wallWindowBars');
+    wall(4, 25, 'wallAged');
+    wall(4, 26, 'wallBroken');
+    wall(4, 27, 'wallCorner');
+    // East wall (partial)
+    wall(5, 27, 'wall');
+    wall(6, 27, 'wallWindowBars');
+    wall(7, 27, 'wallHalf');
+    // Pavement approach
+    fillFloor(8, 23, 8, 26, 'stone');
+    // Interior — sparse, mystical
+    placeObj(5, 24, 'stoneColumn');       // arcane pillar
+    placeObj(5, 26, 'stoneColumn');       // arcane pillar
+    placeObj(7, 23, 'woodenPile', false);
+    placeObj(7, 26, 'barrel', false);
+    // Surrounding grass detail
+    floorMap[3][23] = 'n_grassFlowers';
+    floorMap[3][26] = 'n_grassFlowers';
+    floorMap[8][22] = 'n_grassFlowers';
 
-    // ===== 12. HERMIT'S TOWER — sealed tower in wasteland (north center) =====
-    // Footprint: rows 4-8, cols 13-17
-    fillFloor(5, 14, 7, 16, 'stoneInset');
-    floorMap[6][15] = 'stoneMissing';
-    // Back walls (north + west + east for tower enclosure)
-    wall(4, 13, 'wallCorner');
-    wall(4, 14, 'wall');
-    wall(4, 15, 'wallWindowBars');
-    wall(4, 16, 'wall');
-    wall(4, 17, 'wallCorner');
-    wall(5, 13, 'wall');
-    wall(6, 13, 'wallWindowBars');
-    wall(7, 13, 'wall');
-    wall(5, 17, 'wall');
-    wall(6, 17, 'wallWindowBars');
-    wall(7, 17, 'wall');
-    // South entrance with stairs
-    wall(8, 13, 'wallHalf');
-    openTile(8, 15, 'stairsAged');
-    wall(8, 17, 'wallHalf');
-    // Interior (sealed, sparse)
-    placeObj(5, 14, 'stoneColumn');
-    placeObj(5, 16, 'stoneColumn');
-    placeObj(6, 15, 'woodenPile', false);
-
-    // ===== 13. ABANDONED NORTH (rows 1-10) — denser wasteland =====
-    // The north is lost — crumbled, decayed, heavily ruined
-    for (let r = 1; r <= 10; r++) {
+    // ===== 10. PATH AREA / GREEN ZONE (rows 18-22) =====
+    // Grass with decorative elements between forge/shop row and lobby
+    // This area is mostly grass already from the base layer
+    // Add some grass variety and a few decorative objects
+    for (let r = 18; r <= 22; r++) {
         for (let c = 2; c <= 27; c++) {
             if (!blocked[r][c] && !objectMap[r][c]) {
-                const v = (r * 11 + c * 7) % 8;
-                floorMap[r][c] = v < 2 ? 'dirt'
-                               : v < 4 ? 'dirtTiles'
-                               : v < 6 ? 'stoneMissing'
-                               :         'stoneUneven';
+                const v = (r * 3 + c * 7) % 8;
+                floorMap[r][c] = v < 4 ? 'n_grass'
+                               : v < 6 ? 'n_grassEdge'
+                               :         'n_grassFlowers';
             }
         }
     }
-    // DENSER RUBBLE — more broken supports and walls to feel threatening
-    // West side
-    placeObj(2, 3, 'woodenPile');
-    placeObj(3, 5, 'woodenSupportBeams');
-    placeObj(5, 2, 'woodenPile');
-    placeObj(6, 4, 'woodenSupports');
-    placeObj(8, 3, 'barrelsStacked');
-    placeObj(4, 6, 'woodenCrates');
-    placeObj(7, 7, 'woodenPile');
-    // Center
-    placeObj(3, 11, 'woodenPile');
-    placeObj(5, 15, 'woodenPile');
-    placeObj(9, 14, 'barrelsStacked');
-    placeObj(8, 18, 'woodenSupports');
-    placeObj(6, 20, 'woodenCrates');
-    // East side
-    placeObj(2, 25, 'woodenPile');
-    placeObj(3, 23, 'woodenSupportBeams');
-    placeObj(5, 26, 'woodenSupports');
-    placeObj(7, 24, 'barrelsStacked');
-    placeObj(9, 26, 'woodenCrate');
-    placeObj(6, 27, 'woodenPile');
-    placeObj(8, 25, 'woodenCrates');
-    // Additional walls and decay scattered
-    placeObj(3, 16, 'wallBroken', false);
-    placeObj(7, 10, 'wallAged', false);
-
-    // EXPANDED GRAVEYARD (rows 2-6, cols 6-9) — mass plague graves
-    for (let r = 2; r <= 6; r++) {
-        for (let c = 6; c <= 9; c++) {
-            floorMap[r][c] = 'dirt';
+    // Continue main road through this area to the lobby
+    for (let r = 18; r <= 22; r++) {
+        for (let c = 14; c <= 16; c++) {
+            floorMap[r][c] = 'n_dirt';
         }
     }
-    // More grave markers (stone columns as headstones) — DENSER
-    placeObj(2, 7, 'stoneColumn');
-    placeObj(3, 6, 'stoneColumn');
-    placeObj(3, 8, 'stoneColumn');
-    placeObj(4, 9, 'stoneColumn');
-    placeObj(5, 7, 'stoneColumn');
-    placeObj(6, 6, 'stoneColumn');
-    placeObj(2, 9, 'woodenPile', false);
-    placeObj(4, 7, 'woodenPile', false);
-    placeObj(6, 8, 'woodenPile', false);
+    // Decorative bushes along sides of path (non-blocking)
+    placeObj(19, 13, 'woodenPile', false);
+    placeObj(19, 17, 'woodenPile', false);
+    placeObj(21, 13, 'woodenPile', false);
+    placeObj(21, 17, 'woodenPile', false);
+    // Stone columns as lantern posts along main road
+    placeObj(19, 14, 'stoneColumnWood');
+    placeObj(21, 16, 'stoneColumnWood');
 
-    // ===== 14. DEFENSIVE BARRICADE — prominent gate (rows 10-11) =====
-    // Separates abandoned north from surviving town
-    // Much more prominent with denser walls and clear gate
-    // West section
-    wall(10, 7, 'wallBroken');
-    wall(10, 8, 'wallHalf');
-    wall(10, 9, 'wallBroken');
-    placeObj(11, 7, 'barrelsStacked');
-    // CENTER GATE OPENING (cols 10-18 passable for main road)
-    // East section
-    wall(10, 19, 'wallBroken');
-    wall(10, 20, 'wallHalf');
-    wall(10, 21, 'wallBroken');
-    placeObj(11, 21, 'barrelsStacked');
-    // Additional reinforcements
-    placeObj(11, 10, 'woodenSupports');
-    placeObj(11, 18, 'woodenSupports');
-    placeObj(10, 12, 'barrel');
-    placeObj(10, 16, 'barrel');
-    placeObj(11, 14, 'woodenCrate');
-    // Debris near buildings
-    placeObj(12, 6, 'woodenPile');
-    placeObj(12, 23, 'woodenPile');
-    placeObj(9, 3, 'barrel', false);
-    placeObj(9, 26, 'barrel', false);
-
-    // ===== 15. ROAD COLUMNS — enhanced placement (replacing lightposts) =====
-    placeObj(8, 15, 'stoneColumnWood');     // north road approach
-    placeObj(10, 15, 'stoneColumnWood', false);  // at barricade
-    placeObj(21, 15, 'stoneColumnWood');   // south of square
-    placeObj(23, 15, 'stoneColumnWood');   // approach to antechamber (moved up from row 24)
-
-    // ===== 16. SCATTERED DETAIL PROPS — life everywhere =====
-    // Crates and barrels along roads and building edges
-    // Main road variations
-    placeObj(5, 15, 'barrel', false);
-    placeObj(8, 14, 'woodenCrate', false);
-    placeObj(13, 14, 'barrel', false);
-    placeObj(22, 15, 'barrel', false);
-    // Chapel area
-    placeObj(13, 9, 'barrel', false);
-    placeObj(14, 4, 'barrel', false);
-    // Guard manor area
-    placeObj(11, 8, 'barrel', false);
-    placeObj(12, 3, 'woodenCrate', false);
-    // Alchemist area
-    placeObj(22, 3, 'barrel', false);
-    placeObj(25, 4, 'woodenCrates', false);
-
-    // ===== 17. TREASURE CHESTS (4-6 strategic loot locations) =====
-    placeObj(15, 20, 'chestClosed');       // town square NE
-    placeObj(19, 10, 'chestClosed');       // town square SW
-    placeObj(13, 5, 'chestClosed');        // chapel interior
-    placeObj(26, 26, 'chestClosed');       // inn interior
-    placeObj(14, 27, 'chestClosed');       // forge interior
-    placeObj(16, 6, 'chestClosed');        // graveyard (eerie loot)
-
-    // ===== 18. BUILDING GROUND DETAIL =====
-    // Stone aprons and dirt transitions around structures
-
-    // The Forge (rows 11-17, cols 22-28)
-    fillFloor(11, 28, 16, 28, 'stone');
-    fillFloor(17, 23, 17, 28, 'stone');
-    placeObj(17, 28, 'woodenPile', false);
-    placeObj(18, 22, 'barrel', false);
-
-    // Ragged Raven Inn (rows 19-27, cols 22-29)
-    fillFloor(27, 23, 27, 29, 'dirtTiles');
-    placeObj(27, 29, 'barrel', false);
-    placeObj(28, 25, 'woodenPile', false);
-
-    // Ruined Chapel + Graveyard (rows 13-18, cols 4-14)
-    fillFloor(18, 5, 18, 13, 'dirtTiles');
-    fillFloor(13, 14, 18, 14, 'dirtTiles');
-    placeObj(18, 4, 'woodenPile', false);
-
-    // Guard Manor (rows 11-17, cols 3-8)
-    fillFloor(15, 2, 17, 8, 'stone');
-    fillFloor(11, 8, 14, 8, 'stone');
-    placeObj(18, 3, 'barrel', false);
-
-    // Alchemist's Cottage + Garden (rows 21-25, cols 4-12)
-    fillFloor(25, 4, 25, 12, 'dirtTiles');
-    placeObj(25, 3, 'barrel', false);
-
-    // Hermit's Tower (rows 4-9, cols 13-17)
-    fillFloor(9, 14, 9, 16, 'dirtTiles');
-    placeObj(2, 14, 'barrel', false);
-
-    // ===== 19. DUNGEON CORRUPTION BLEED (outside antechamber walls) =====
-    // Corruption only bleeds on tiles OUTSIDE the antechamber (cols <11 or >19)
-    for (let r = 26; r <= 28; r++) {
-        for (let c = 2; c <= 10; c++) {
-            if (!blocked[r][c]) {
-                const v = (r * 5 + c * 3) % 5;
-                floorMap[r][c] = v < 2 ? 'dirt' : 'stoneMissing';
-            }
-        }
-        for (let c = 20; c <= 27; c++) {
-            if (!blocked[r][c]) {
-                const v = (r * 5 + c * 3) % 5;
-                floorMap[r][c] = v < 2 ? 'dirt' : 'stoneMissing';
+    // ===== 11. NORTH AREA (rows 1-3) =====
+    // Grass area between border wall and buildings
+    for (let r = 1; r <= 3; r++) {
+        for (let c = 2; c <= 27; c++) {
+            if (!blocked[r][c] && !objectMap[r][c]) {
+                const v = (r * 5 + c * 11) % 6;
+                floorMap[r][c] = v < 3 ? 'n_grass'
+                               : v < 5 ? 'n_grassEdge'
+                               :         'n_grassFlowers';
             }
         }
     }
-    // Dirt patches outside the antechamber approaches
-    floorMap[25][10] = 'dirt';
-    floorMap[25][20] = 'dirt';
-    floorMap[26][10] = 'dirtTiles';
-    floorMap[26][20] = 'dirtTiles';
+    // Continue main road north
+    for (let c = 14; c <= 16; c++) {
+        floorMap[1][c] = 'n_dirt';
+        floorMap[2][c] = 'n_dirt';
+        floorMap[3][c] = 'n_dirt';
+    }
+    // Decorative columns near north gate
+    placeObj(2, 13, 'stoneColumn');
+    placeObj(2, 17, 'stoneColumn');
 
-    // ===== 20. ENTRANCES =====
-    // North gate (future zone)
+    // ===== 12. ROAD LANTERN COLUMNS =====
+    placeObj(4, 15, 'stoneColumnWood');    // north road
+    placeObj(9, 14, 'stoneColumnWood');    // town square approach
+    placeObj(12, 16, 'stoneColumnWood');   // south of square
+    placeObj(18, 15, 'stoneColumnWood');   // south approach to lobby
+
+    // ===== 13. TREASURE CHESTS =====
+    placeObj(6, 4, 'chestClosed');         // guard post interior
+    placeObj(6, 25, 'chestClosed');        // hermit's hut
+    placeObj(15, 4, 'chestClosed');        // forge area
+    placeObj(15, 25, 'chestClosed');       // shop area
+    placeObj(11, 11, 'chestClosed');       // town square west
+    placeObj(11, 19, 'chestClosed');       // town square east
+
+    // ===== 14. NORTH GATE =====
     openTile(0, 14, 'wallArchway'); blocked[0][14] = false;
     openTile(0, 15, 'wallArchway'); blocked[0][15] = false;
+    openTile(0, 16, 'wallArchway'); blocked[0][16] = false;
 
-    // ===== 21. GROUND TRANSITION PASS =====
-    // Soften hard edges: where stoneTile meets dirt, insert stoneUneven
-    const paveTypes = new Set(['stoneTile', 'stone', 'stoneInset', 'planks']);
-    const dirtTypes = new Set(['dirt', 'dirtTiles']);
+    // ===== 15. TRANSITION: grass edges around stone buildings =====
+    // Place grass-edge tiles around building borders for natural transition
+    const stoneFloors = new Set(['stoneTile', 'stone', 'stoneInset', 'planks']);
+    const grassFloors = new Set(['n_grass', 'n_grassEdge', 'n_grassFlowers', 'n_grassBush']);
     const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
     for (let r = 1; r < 29; r++) {
         for (let c = 1; c < 29; c++) {
             const ft = floorMap[r][c];
-            if (!dirtTypes.has(ft)) continue;
+            if (!grassFloors.has(ft)) continue;
             if (blocked[r][c]) continue;
-            // Check if any neighbor is paved
-            let nearPave = false;
+            let nearStone = false;
             for (const [dr, dc] of dirs) {
                 const nf = floorMap[r + dr]?.[c + dc];
-                if (paveTypes.has(nf)) nearPave = true;
+                if (stoneFloors.has(nf)) nearStone = true;
             }
-            if (nearPave) {
-                floorMap[r][c] = 'stoneUneven';
+            if (nearStone) {
+                floorMap[r][c] = 'n_grassEdge';
             }
         }
     }

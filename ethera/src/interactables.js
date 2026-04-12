@@ -781,14 +781,14 @@ function loadZone(zoneNumber) {
     if (zoneNumber === 0) {
         generateTown();
         // Spawn position depends on how we got here:
-        // - New game (restartGame): spawn inside the starting antechamber (row 27, col 15)
-        // - Returning from dungeon (portal/door): spawn at Hamlet entrance (row 23, col 15)
+        // - New game (restartGame): spawn inside the lobby (row 26, col 15)
+        // - Returning from dungeon (portal/door): spawn at Hamlet entrance (row 22, col 15)
         if (typeof _townReturnSpawn !== 'undefined' && _townReturnSpawn) {
-            player.row = 23;
+            player.row = 22;
             player.col = 15;
             _townReturnSpawn = false;
         } else {
-            player.row = 27;
+            player.row = 26;
             player.col = 15;
         }
         player.vx = 0;
@@ -1107,19 +1107,22 @@ function updateDoorDefsForZone(zone) {
         };
     } else if (zone === 0) {
         DOOR_DEFS = {
-            // Starting Antechamber — south exit to Dungeon (Zone 1)
+            // Lobby — south exit stairs to Dungeon (Zone 1)
             '28,14': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
             '28,15': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
-            // Starting Antechamber — north archway into the Hamlet
-            '24,14': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
-            '24,15': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
+            '28,16': { requiresKey: null, label: 'Enter the Dungeon', destination: 'zone1' },
+            // Lobby — north archway into the Hamlet
+            '23,14': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
+            '23,15': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
+            '23,16': { requiresKey: null, label: 'The Hamlet', destination: 'hamlet_open' },
             // North gate (future zone / zone 2 access)
             '1,14': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,15': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
+            '1,16': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
         };
         // Abyss Portal — warp to deepest reached depth (only if player has been to procedural floors)
         if (deepestDepthReached > 0) {
-            DOOR_DEFS['7,15'] = {
+            DOOR_DEFS['6,24'] = {
                 requiresKey: null,
                 label: 'Enter the Abyss (Depth ' + deepestDepthReached + ')',
                 destination: 'deepest',
@@ -1174,7 +1177,7 @@ function updateDoorDefsForZone(zone) {
 }
 const DOOR_INTERACT_RANGE = 2.2;
 let zoneTransition = null; // null or { timer, phase, destination }
-let _townReturnSpawn = false; // true when returning from dungeon → spawn at Hamlet entrance, not antechamber
+let _townReturnSpawn = false; // true when returning from dungeon → spawn at Hamlet entrance, not lobby
 
 function getNearbyDoor() {
     for (const [key, def] of Object.entries(DOOR_DEFS)) {
@@ -1242,27 +1245,27 @@ function tryUseDoor(door) {
         return;
     }
 
-    // Special: hamlet_open — opens the antechamber into the Hamlet (no zone transition)
+    // Special: hamlet_open — opens the lobby into the Hamlet (no zone transition)
     if (door.def.destination === 'hamlet_open') {
-        // Remove antechamber north wall tiles to let player walk into the Hamlet
+        // Remove lobby north wall tiles to let player walk into the Hamlet
         for (let c = 11; c <= 19; c++) {
-            if (blocked[24] && blocked[24][c]) {
-                blocked[24][c] = false;
-                blockType[24][c] = null;
-                objectMap[24][c] = null;  // clear wall object so it stops rendering
-                floorMap[24][c] = 'stone';
+            if (blocked[23] && blocked[23][c]) {
+                blocked[23][c] = false;
+                blockType[23][c] = null;
+                objectMap[23][c] = null;  // clear wall object so it stops rendering
+                floorMap[23][c] = 'stone';
             }
         }
-        // Also open east/west side walls so the chamber merges with the Hamlet
-        // Only rows 25-27 — row 28 is the south wall and stays sealed
-        for (let r = 25; r <= 27; r++) {
+        // Also open east/west side walls so the lobby merges with the Hamlet
+        // Only rows 24-27 — row 28 is the south wall and stays sealed
+        for (let r = 24; r <= 27; r++) {
             if (blocked[r] && blocked[r][11]) {
                 blocked[r][11] = false; blockType[r][11] = null; objectMap[r][11] = null;
-                floorMap[r][11] = 'stoneUneven';
+                floorMap[r][11] = 'n_grassEdge';
             }
             if (blocked[r] && blocked[r][19]) {
                 blocked[r][19] = false; blockType[r][19] = null; objectMap[r][19] = null;
-                floorMap[r][19] = 'stoneUneven';
+                floorMap[r][19] = 'n_grassEdge';
             }
         }
         addScreenShake(3, 0.5);
@@ -1275,8 +1278,9 @@ function tryUseDoor(door) {
             life: 2.5,
         });
         // Remove the hamlet_open door entries so they don't re-trigger
-        delete DOOR_DEFS['24,14'];
-        delete DOOR_DEFS['24,15'];
+        delete DOOR_DEFS['23,14'];
+        delete DOOR_DEFS['23,15'];
+        delete DOOR_DEFS['23,16'];
         return;
     }
 

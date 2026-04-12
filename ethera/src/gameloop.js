@@ -552,7 +552,7 @@ function updateGameplay(dt) {
                 } else {
                     nextZone = ZONE_TARGET_MAP[zoneTransitionTarget] != null ? ZONE_TARGET_MAP[zoneTransitionTarget] : 1;
                 }
-                // When returning to town from dungeon, spawn at Hamlet entrance (not antechamber)
+                // When returning to town from dungeon, spawn at Hamlet entrance (not lobby)
                 if (nextZone === 0 && zoneTransitionTarget === 'town') {
                     _townReturnSpawn = true;
                 }
@@ -2328,7 +2328,7 @@ function restartGame() {
     FormSystem.formData.lich = { unlocked: false, soulsHarvested: 0, undeadRaised: 0, totalKills: 0 };
     FormSystem.evolutionProgress = { currentMilestones: {}, nextForm: null };
     // Reset player (position will be overridden by loadZone below)
-    player.row = 27; player.col = 15;
+    player.row = 26; player.col = 15;
     player.vx = 0; player.vy = 0;
     // Set form-specific starting stats (now correctly reads slime config)
     const startConfig = FormSystem.getFormConfig() || FORM_CONFIGS.slime;
@@ -2361,7 +2361,7 @@ function restartGame() {
     keyItems.length = 0;
     worldKeyDrops.length = 0;
     zoneTransition = null;
-    _townReturnSpawn = false;  // new game spawns inside antechamber, not Hamlet entrance
+    _townReturnSpawn = false;  // new game spawns inside lobby, not Hamlet entrance
     menuOpen = false;
     menuFadeInTimer = 0;
     menuTab = 'status';
@@ -2474,7 +2474,7 @@ function restartGame() {
     cinematicFlashAlpha = 0;
     // Reset light to full
     lightRadius = MAX_LIGHT;
-    // Start in the Hamlet (Zone 0) — player spawns in the starting antechamber
+    // Start in the Hamlet (Zone 0) — player spawns in the lobby
     seedMapRNG(Date.now() ^ (Math.random() * 0xFFFFFF | 0)); // new seed each restart
     currentZone = 0;
     loadZone(0);
@@ -2646,7 +2646,7 @@ function render() {
                 }
                 if (ft.startsWith('h_')) {
                     drawHellTile(images[ft], row, col);
-                } else if (currentZone !== 0 && ft.startsWith('n_')) {
+                } else if (ft.startsWith('n_')) {
                     drawNatureTile(images[ft], row, col);
                 } else {
                     drawTile(images[ft], row, col);
@@ -2666,7 +2666,7 @@ function render() {
                 let tileScore = (row + col) * mapSize + row;
                 // Z-fix: tall nature objects (trees, rocks, logs) in non-town zones
                 // visually extend above normal tile height, covering nearby sprites.
-                if (currentZone !== 0 && ot.startsWith('n_') && !ot.startsWith('n_grass')) {
+                if (ot.startsWith('n_') && !ot.startsWith('n_grass')) {
                     tileScore -= mapSize * 2;
                 }
                 // Use <= so sprites at the same depth as a tile draw BEFORE the tile.
@@ -2772,7 +2772,7 @@ function render() {
                 // Dispatch to correct draw function based on tile prefix
                 if (ot.startsWith('h_')) {
                     drawHellTile(images[ot], row, col);
-                } else if (currentZone !== 0 && ot.startsWith('n_')) {
+                } else if (ot.startsWith('n_')) {
                     drawNatureTile(images[ot], row, col);
                 } else {
                     drawTile(images[ot], row, col);
