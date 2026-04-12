@@ -100,6 +100,16 @@ const BOSS_DESPERATE_HP_THRESHOLD = 0.25;   // Boss enters phase 2 at 25% HP (Ru
 const VAMPIRIC_ELITE_HEAL_PER_HIT = 0.3;    // Vampiric elite heals this % of damage dealt
 const MARROW_LEECH_HEAL_MULT = 0.15;        // Marrow Leech: heal % of projectile damage
 
+// --- Boomerang & Projectile Tuning ---
+const BOOMERANG_RETURN_PIERCE_CAP = 3;      // Max pierce on boomerang return trip
+
+// --- SFX & Feel Tuning ---
+const SFX_DISTANCE_COEFF = 0.015;           // Quadratic falloff coefficient for spatial SFX
+
+// --- Spawn Scaling ---
+const SPAWN_DIST_ZONE_SCALE = 0.4;          // Min spawn distance increase per zone
+const SPAWN_DIST_MAX_BONUS = 2;             // Max additional spawn distance (tiles)
+
 // ============================================================
 //  RUNTIME STATE — mutable game objects (not balance tuning)
 // ============================================================
@@ -365,7 +375,7 @@ function handleKeyDown(e) {
     // P key pauses game
     if (e.key.toLowerCase() === 'p' && gamePhase === 'playing' && !gameDead) {
         gamePaused = !gamePaused;
-        if (gamePaused) pauseMusic();
+        if (gamePaused) { pauseMusic(); hitPauseTimer = 0; }
         else resumeMusic();
     }
     // Q key toggles graphics quality while paused

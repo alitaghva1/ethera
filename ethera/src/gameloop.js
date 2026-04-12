@@ -78,6 +78,10 @@ function getGlowCanvas(cacheKey, radius, colorStops) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
 
+    // Evict oldest entry if cache is too large
+    if (Object.keys(glowCache).length >= 64) {
+        delete glowCache[Object.keys(glowCache)[0]];
+    }
     glowCache[cacheKey] = canvas;
     return canvas;
 }
@@ -152,7 +156,7 @@ function updateMenuFadePhase(dt) {
     menuFadeAlpha = Math.max(0, menuFadeAlpha - dt * 3);
     setPixelCursor('default');
     if (menuFadeAlpha <= 0) {
-        // Don't set gamePhase to 'intro' — it's unhandled. runIntro() sets the correct phase.
+        // runIntro() sets gamePhase = 'intro' itself — don't override it here.
         if (menuFadeTarget !== 'intro') gamePhase = menuFadeTarget;
         if (menuFadeTarget === 'menuControls') {
             menuFadeAlpha = 0;
@@ -169,6 +173,140 @@ function updateMenuFadePhase(dt) {
             runIntro();
         }
     }
+}
+
+// ============================================================
+//  INTRO PHASE — clean text-on-black → world reveal (6.5s)
+// ============================================================
+function updateIntroPhase(dt) {
+    introTimer += dt;
+    const t = introTimer;
+
+    // Heartbeat SFX at start
+    if (t >= 0.1 && !introSfxPlayed) {
+        introSfxPlayed = true;
+        if (typeof sfxCinematicHeartbeat === 'function') sfxCinematicHeartbeat();
+    }
+
+    // During reveal phase (5.5-6.5s): expand light from 80 to HAMLET_LIGHT
+    if (t > 5.5 && t <= INTRO_DURATION) {
+        const revealT = Math.min(1, (t - 5.5) / 1.0);
+        // Smooth ease-out
+        const eased = 1 - (1 - revealT) * (1 - revealT);
+        lightRadius = 80 + (HAMLET_LIGHT - 80) * eased;
+    }
+
+    // End intro
+    if (t >= INTRO_DURATION) {
+        gamePhase = 'playing';
+        lightRadius = HAMLET_LIGHT;
+        setPixelCursor('none');
+        try { playMusic('hamlet', 2.5); } catch(e) {}
+        if (typeof Notify !== 'undefined') Notify.showControlsOnce();
+        pickupTexts.push({
+            text: 'Choose your path...',
+            color: typeof COLORS !== 'undefined' ? COLORS.TEXT_HINT : '#aabbff',
+            row: player.row, col: player.col,
+            offsetY: 0, life: 5.0,
+        });
+    }
+}
+
+function drawIntroOverlay() {
+    const t = introTimer;
+    ctx.save();
+
+    // Black overlay — opaque during text, fades during reveal
+    let overlayAlpha = 1.0;
+    if (t > 5.5) overlayAlpha = Math.max(0, 1 - (t - 5.5) / 1.0);
+
+    if (overlayAlpha > 0.01) {
+        ctx.globalAlpha = overlayAlpha;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        // Subtle warm vignette
+        ctx.globalAlpha = overlayAlpha * 0.15;
+        const vigGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, canvasH * 0.7);
+        vigGrad.addColorStop(0, 'rgba(60, 30, 10, 0.3)');
+        vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+
+    // --- Text rendering ---
+    ctx.globalAlpha = 1;
+    const cx = canvasW / 2;
+    const baseY = canvasH * 0.38;
+
+    // Line 0: "You awaken on cold stone." — appears 0.3s, fades 3.0s
+    let a0 = 0;
+    if (t >= 0.3 && t < 3.0) a0 = Math.min(1, (t - 0.3) / 0.8);
+    if (t >= 3.0 && t < 3.5) a0 = 1 - (t - 3.0) / 0.5;
+    if (a0 > 0.01) {
+        ctx.globalAlpha = a0 * 0.9;
+        ctx.font = '18px Georgia';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = '#aa9b80';
+        ctx.fillText('You awaken on cold stone.', cx, baseY);
+    }
+
+    // Line 1: "They left you for dead." — appears 1.2s, fades 3.0s
+    let a1 = 0;
+    if (t >= 1.2 && t < 3.0) a1 = Math.min(1, (t - 1.2) / 0.8);
+    if (t >= 3.0 && t < 3.5) a1 = 1 - (t - 3.0) / 0.5;
+    if (a1 > 0.01) {
+        ctx.globalAlpha = a1 * 0.9;
+        ctx.font = '19px Georgia';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = '#aa9b80';
+        ctx.fillText('They left you for dead.', cx, baseY + 34);
+    }
+
+    // Line 2: "They were wrong." — appears 3.5s, golden glow, fades 5.5s
+    let a2 = 0;
+    if (t >= 3.5 && t < 5.5) a2 = Math.min(1, (t - 3.5) / 0.8);
+    if (t >= 5.5) a2 = Math.max(0, 1 - (t - 5.5) / 0.6);
+    if (a2 > 0.01) {
+        // Scale effect: starts slightly large, settles
+        const scaleT = Math.min(1, (t - 3.5) / 2.0);
+        const scale = 1.08 - 0.08 * scaleT;
+        const glowBuild = Math.min(1, (t - 3.5) / 1.5);
+
+        ctx.save();
+        ctx.translate(cx, canvasH * 0.44);
+        ctx.scale(scale, scale);
+        ctx.textAlign = 'center';
+        ctx.font = 'italic 28px Georgia';
+
+        // Outer halo
+        ctx.shadowColor = 'rgba(200, 155, 70, ' + (glowBuild * 0.18 * a2) + ')';
+        ctx.shadowBlur = 55;
+        ctx.globalAlpha = a2 * 0.3;
+        ctx.fillStyle = 'rgba(230, 205, 155, ' + (a2 * 0.3) + ')';
+        ctx.fillText('They were wrong.', 0, 0);
+
+        // Mid glow
+        ctx.shadowColor = 'rgba(225, 180, 90, ' + (glowBuild * 0.45 * a2) + ')';
+        ctx.shadowBlur = 25;
+        ctx.globalAlpha = a2 * 0.6;
+        ctx.fillStyle = 'rgba(230, 205, 155, ' + (a2 * 0.6) + ')';
+        ctx.fillText('They were wrong.', 0, 0);
+
+        // Core text
+        ctx.shadowColor = 'rgba(240, 200, 120, ' + (glowBuild * 0.8 * a2) + ')';
+        ctx.shadowBlur = 8;
+        ctx.globalAlpha = a2;
+        ctx.fillStyle = '#e6cd9b';
+        ctx.fillText('They were wrong.', 0, 0);
+
+        ctx.restore();
+    }
+
+    ctx.restore();
 }
 
 function updateCinematicPhase(dt) {
@@ -406,13 +544,13 @@ let _nextProceduralDepth = 1;
 
 // ── AMBIENT ATMOSPHERE PARTICLES ──
 let _ambientTimer = 0;
-const _AMBIENT_MAX = 8;
+const _AMBIENT_MAX = 12;
 const _AMBIENT_CONFIGS = {
     dungeon: { color: '#888877', size: 0.8, alpha: 0.06, vy: -0.2, life: 3.0 },  // faint dust motes
     hell:    { color: '#cc5522', size: 1, alpha: 0.08, vy: -0.6, life: 2.0 },    // subtle ash
     frozen:  { color: '#99bbdd', size: 0.8, alpha: 0.07, vy: 0.3, life: 2.5 },   // faint ice
     throne:  { color: '#664499', size: 0.8, alpha: 0.05, vy: -0.15, life: 3.0 }, // barely-there void
-    town:    { color: '#aa9977', size: 0.8, alpha: 0.04, vy: -0.15, life: 3.5 }, // very subtle dust
+    town:    { color: '#8899bb', size: 1.0, alpha: 0.10, vy: -0.1, life: 4.0 },  // ethereal blue-gray motes
 };
 function spawnAmbientParticles(dt) {
     if (gamePhase !== 'playing' || typeof _emitParticle !== 'function') return;
@@ -442,18 +580,27 @@ function spawnAmbientParticles(dt) {
     if (ambientCount >= _AMBIENT_MAX) return;
 
     // Spawn 1 particle near the player
-    for (let i = 0; i < 1; i++) {
-        const pPos = tileToScreen(player.row, player.col);
-        const px = pPos.x + cameraX + (Math.random() - 0.5) * 300;
-        const py = pPos.y + cameraY + (Math.random() - 0.5) * 200;
-        _emitParticle(px, py,
-            (Math.random() - 0.5) * 0.5,
-            cfg.vy + (Math.random() - 0.5) * 0.3,
-            cfg.life,
-            cfg.size,
-            cfg.color,
-            cfg.alpha,
-            'ambient'
+    const pPos = tileToScreen(player.row, player.col);
+    const px = pPos.x + cameraX + (Math.random() - 0.5) * 300;
+    const py = pPos.y + cameraY + (Math.random() - 0.5) * 200;
+    _emitParticle(px, py,
+        (Math.random() - 0.5) * 0.5,
+        cfg.vy + (Math.random() - 0.5) * 0.3,
+        cfg.life,
+        cfg.size,
+        cfg.color,
+        cfg.alpha,
+        'ambient'
+    );
+
+    // Town: 20% chance to spawn a warm particle near dungeon entrance (visual cue)
+    if (z === 0 && Math.random() < 0.2) {
+        const dungeonPos = tileToScreen(28, 15);
+        const dx = dungeonPos.x + cameraX + (Math.random() - 0.5) * 60;
+        const dy = dungeonPos.y + cameraY + (Math.random() - 0.5) * 30;
+        _emitParticle(dx, dy,
+            (Math.random() - 0.5) * 0.3, -0.4 - Math.random() * 0.3,
+            2.5, 0.8, '#cc6633', 0.08, 'ambient'
         );
     }
 }
@@ -622,6 +769,15 @@ function gameLoop(timestamp) {
     // ----- Menu fade-out transitions -----
     if (gamePhase === 'menuFade' || gamePhase === 'menuControlsFade') {
         updateMenuFadePhase(dt);
+    }
+
+    // ----- Intro text sequence (new clean intro) -----
+    if (gamePhase === 'intro') {
+        updateIntroPhase(dt);
+        render();
+        drawIntroOverlay();
+        requestAnimationFrame(gameLoop);
+        return;
     }
 
     // ----- Cinematic "left for dead" sequence -----
@@ -2548,7 +2704,17 @@ function render() {
         return;
     }
 
-    if (gamePhase !== 'playing' && gamePhase !== 'awakening' && gamePhase !== 'cinematic') return;
+    if (gamePhase !== 'playing' && gamePhase !== 'awakening' && gamePhase !== 'cinematic' && gamePhase !== 'intro') return;
+
+    // Intro: black screen during text phase, then render world during reveal
+    if (gamePhase === 'intro') {
+        if (introTimer < 5.5) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            return; // text overlay drawn by drawIntroOverlay() after render()
+        }
+        // After 5.5s: fall through to normal world rendering (overlay fades on top)
+    }
 
     // Cinematic: render black background with subtle vignette, NOT the game world
     if (gamePhase === 'cinematic') {
@@ -2919,6 +3085,15 @@ function render() {
         flashGrad.addColorStop(1, 'rgba(60, 40, 160, 0)');
         ctx.fillStyle = flashGrad;
         ctx.fillRect(fx - 150, fy - 150, 300, 300);
+        ctx.restore();
+    }
+
+    // ── HAMLET TWILIGHT TINT — subtle cool/purple atmosphere for the town ──
+    if (currentZone === 0 && (gamePhase === 'playing' || gamePhase === 'intro')) {
+        ctx.save();
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = '#140f28';
+        ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.restore();
     }
 
@@ -3358,31 +3533,23 @@ function runIntro() {
         console.error('restartGame failed:', e);
     }
 
-    // Always go straight to playing for Zone 0 (skip cinematic)
-    gamePhase = 'playing';
-    lightRadius = typeof MAX_LIGHT !== 'undefined' ? MAX_LIGHT : 300;
+    // Start intro text sequence — world loads but screen is black with narrative
+    gamePhase = 'intro';
+    introTimer = 0;
+    introSfxPlayed = false;
+    lightRadius = 80; // dim — expands during reveal
     setPixelCursor('none');
-    // No fade — just show the game immediately
     zoneTransitionAlpha = 0;
     zoneTransitionFading = false;
-    // Re-snap camera to player position
+    // Snap camera to player
     const _introPos = tileToScreen(player.row, player.col);
     smoothCamX = canvasW / 2 - _introPos.x;
     smoothCamY = canvasH / 2 - _introPos.y;
     cameraX = Math.round(smoothCamX);
     cameraY = Math.round(smoothCamY);
-    // Show hint after brief delay
-    setTimeout(function() {
-        pickupTexts.push({
-            text: 'Choose your path...',
-            color: typeof COLORS !== 'undefined' ? COLORS.TEXT_HINT : '#aabbff',
-            row: player.row, col: player.col,
-            offsetY: 0, life: 5.0,
-        });
-    }, 800);
-    try { playMusic('hamlet', 2.0); } catch(e) {}
-    if (typeof Notify !== 'undefined') Notify.showControlsOnce();
-    return; // CRITICAL: stop here — don't fall through to cinematic setup below
+    // Cinematic music during text, crossfades to hamlet when intro ends
+    try { playMusic('cinematic', 1.5); } catch(e) {}
+    return; // CRITICAL: stop here — don't fall through to old cinematic setup below
 
     // Dungeon zones: play full cinematic (dead code for now, preserved for future)
     // Reset cinematic state

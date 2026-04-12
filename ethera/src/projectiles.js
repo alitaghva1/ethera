@@ -33,7 +33,7 @@ function updateProjectiles(dt) {
                 p.vr = (dr / dist) * speed;
                 p.vc = (dc / dist) * speed;
                 p.life = 3.0; // extend life to make it back
-                p.pierceLeft = (p.pierce || 0) + 3; // pierce a few on return, not everything (BUG-005 fix)
+                p.pierceLeft = Math.min((p.pierce || 0), BOOMERANG_RETURN_PIERCE_CAP); // capped return pierce
             }
         }
 

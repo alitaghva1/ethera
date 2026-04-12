@@ -42,7 +42,7 @@ function sfxDistanceVol(row, col) {
     const dr = row - player.row;
     const dc = col - player.col;
     const dist = Math.sqrt(dr * dr + dc * dc);
-    return Math.min(1.0, 1.0 / (1 + dist * dist * 0.04));
+    return Math.min(1.0, 1.0 / (1 + dist * dist * SFX_DISTANCE_COEFF));
 }
 
 // Stereo panning — compute L/R pan from tile-space position relative to player
@@ -485,7 +485,7 @@ let screenShakeIntensity = 0;
 let hitPauseTimer = 0;
 // Stacking caps for game feel
 const MAX_SCREEN_SHAKE = 18;
-const MAX_HIT_PAUSE = 0.15;
+const MAX_HIT_PAUSE = 0.10;
 // Slow-mo system for big moments
 // ============================================================
 //  SAMPLE-BASED SFX — Real audio files for key sounds

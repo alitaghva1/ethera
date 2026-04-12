@@ -759,6 +759,9 @@ function loadZone(zoneNumber) {
         if (particles[i] && particles[i].type) particles.splice(i, 1);
     }
     gameDead = false;
+    // Clear NPC service menus that may have been open during zone transition
+    if (typeof smithyMenuOpen !== 'undefined') smithyMenuOpen = false;
+    if (typeof shopMenuOpen !== 'undefined') shopMenuOpen = false;
 
     // Update objective based on zone
     if (zoneNumber === 0) {

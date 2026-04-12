@@ -27,6 +27,14 @@ function updateCamera(dt) {
     cameraX = Math.round(smoothCamX);
     cameraY = Math.round(smoothCamY);
 
+    // Clamp camera to prevent showing void beyond map edges
+    if (typeof MAP_SIZE !== 'undefined' && typeof DIAMOND_W !== 'undefined') {
+        const mapW = MAP_SIZE * DIAMOND_W;
+        const mapH = MAP_SIZE * DIAMOND_H;
+        cameraX = Math.max(-(mapW * 0.6), Math.min(canvasW * 0.5, cameraX));
+        cameraY = Math.max(-(mapH * 0.8), Math.min(canvasH * 0.3, cameraY));
+    }
+
     // Screen shake effect — decays intensity over time
     if (screenShakeTimer > 0) {
         screenShakeTimer -= dt;

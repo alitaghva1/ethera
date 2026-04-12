@@ -8,6 +8,8 @@ let currentNPC = null;        // the NPC player is interacting with
 let npcDialogueOpen = false;  // whether dialogue box is shown
 let npcDialogueFadeIn = 0;    // fade-in timer
 let npcDialogueIndex = 0;     // which dialogue line to show
+// Persistent dialogue progress — tracks max dialogue index reached per NPC
+const _npcDialogueProgress = {};
 
 // ----- NPC SERVICE MENUS -----
 let smithyMenuOpen = false;   // Garrett's enchantment forge
@@ -39,10 +41,10 @@ const NPC_REGISTRY = {
             scale: 1.6,
             tint: { r: 255, g: 160, b: 80, a: 0.45 }, // warm orange (forge fire)
             dialogue: [
-                'The forge hasn\'t seen proper work in ages.',
-                'If you\'re heading into the Undercroft, you\'ll need better gear.',
-                'Wait... you\'re going deeper? I need something. Infernal Ore — it\'s found in the burning depths. Bring it to me.',
-                'A woman came through here once. Asked me to forge something strange — a talisman housing.',
+                'The hammer keeps me focused. Without it, I start to forget things.',
+                'You need something forged? Good. Keeps the fire alive. Keeps me alive.',
+                'A woman came through once. Asked me to make something strange \u2014 a talisman housing. My hands remembered how.',
+                'Bring me Infernal Ore from the burning depths. I don\'t know why I need it. But my hands do.',
             ],
             dialogueIndex: 0,
         },
@@ -57,10 +59,10 @@ const NPC_REGISTRY = {
             scale: 1.5,
             tint: { r: 180, g: 255, b: 180, a: 0.5 }, // soft green (herbalist)
             dialogue: [
-                'They say the tower was built long ago... before the corruption.',
-                'People don\'t go down there anymore. The ones who did... never came back.',
-                'You look different somehow. Like you\'re not quite of this world.',
-                'There was a woman here once. Elara, I think. She went north and never returned.',
+                'I keep forgetting things. But I remember her. Elara. She walked through here and the ground felt warm.',
+                'We\'re all still here. I don\'t know why. The others don\'t ask.',
+                'You look new. Like you just arrived. We don\'t get new ones anymore.',
+                'She said she\'d come back. She was lying. But it was a kind lie.',
             ],
             dialogueIndex: 0,
         },
@@ -75,10 +77,10 @@ const NPC_REGISTRY = {
             scale: 1.7,
             tint: { r: 120, g: 160, b: 255, a: 0.5 }, // bright steel blue (captain)
             dialogue: [
-                'The northern border grows darker each day.',
-                'We\'ve lost contact with the outposts. Something stirs in the deep places.',
-                'If you\'re brave enough to venture into the Undercroft, we need intelligence.',
-                'A scholar went north alone — said she\'d found the source of the corruption. We never heard back.',
+                'I guard the north road. Against what, I can\'t remember. But I guard it.',
+                'Used to be more of us. Don\'t know where they went. Maybe they just stopped.',
+                'A scholar came through once. Walked right past my post. Didn\'t even look afraid.',
+                'You\'re going down there? Good. Someone has to.',
             ],
             dialogueIndex: 0,
         },
@@ -93,10 +95,10 @@ const NPC_REGISTRY = {
             scale: 1.5,
             tint: { r: 180, g: 120, b: 255, a: 0.4 }, // mystical purple
             dialogue: [
-                'The old magics... they whisper to those who listen.',
-                'There is an Ancient Tome lost in the Spire — Zone 3. Retrieve it, and I will share what the old magics have shown me.',
-                'Do you feel it? The pull of something greater?',
-                'The talisman you carry... it belonged to someone who walked this path before you. Someone who didn\'t come back.',
+                'You died, you know. Most people don\'t get back up.',
+                'The talisman you carry \u2014 she had one just like it. Do you feel it pulling?',
+                'There\'s a tome in the Spire. It explains what happened here. What happened to all of us.',
+                'The covenant isn\'t a prison. It\'s a choice. Remember that when you reach her.',
             ],
             dialogueIndex: 0,
         },
@@ -111,10 +113,10 @@ const NPC_REGISTRY = {
             scale: 1.5,
             tint: { r: 255, g: 220, b: 80, a: 0.5 }, // bright gold (alchemist)
             dialogue: [
-                'My experiments require... exotic ingredients.',
-                'I\'ve been searching for Frost Essence — it forms in the frozen reaches. Zone 5. Bring me some and I\'ll make it worth your while.',
-                'Evolution isn\'t a curse, you know. It\'s becoming whole.',
-                'A covenant made with the deep... it changes you. But it doesn\'t destroy you. Not if someone holds the line.',
+                'I mix things. Potions, elixirs. I keep hoping one of them will make me feel warm again.',
+                'Frost Essence from the frozen reaches \u2014 I need it. Not for a potion. For a theory.',
+                'Evolution isn\'t dying. It\'s remembering what you really are. Layer by layer.',
+                'She made a covenant. Bound herself to the dark so it wouldn\'t spread. Someone has to hold the line.',
             ],
             dialogueIndex: 0,
         },
@@ -184,9 +186,9 @@ function loadZoneNPCs(zoneNumber) {
         npcList.push({ ...npcDef });
         npcAnimFrames[npcDef.id] = 0;
     }
-    // Reset dialogue indices when loading zone
+    // Restore dialogue progress from persistence map
     for (const npc of npcList) {
-        npc.dialogueIndex = 0;
+        npc.dialogueIndex = _npcDialogueProgress[npc.id] || 0;
     }
 }
 
@@ -472,29 +474,29 @@ function drawNPCDialogue() {
 // These override the first dialogue line when the player is NOT in wizard form.
 const NPC_FORM_REACTIONS = {
     garrett: {
-        slime:    'What in the— is that a slime? How are you... never mind. I\'ve seen stranger.',
-        skeleton: 'Bones walk these streets now? At least you\'re not hostile... I think.',
-        lich:     'By the forge... the air around you reeks of death magic. What have you become?',
+        slime:    'The forge doesn\'t care what shape you are. Neither do I.',
+        skeleton: 'Hah. Bones. You\'d fit right in around here.',
+        lich:     'The temperature dropped ten degrees. What are you?',
     },
     mira: {
-        slime:    'Oh my... you\'re one of those creatures. But your eyes — there\'s something human in there.',
-        skeleton: 'A walking skeleton in my town. The world truly has gone mad.',
-        lich:     'I can feel the cold coming off you. You\'re not the same person who left here, are you?',
+        slime:    'Oh my. You\'re like us, aren\'t you? Changed.',
+        skeleton: 'Another skeleton. But you move differently. Like you chose this.',
+        lich:     'The cold. You\'ve gone deep, haven\'t you?',
     },
     aldric: {
-        slime:    'Stand down, men! This... creature means no harm. I think.',
-        skeleton: 'A skeleton that doesn\'t attack on sight. You must be the one they told me about.',
-        lich:     'The corruption has changed you. But your eyes still hold purpose. That\'s enough for me.',
+        slime:    'I\'ve seen stranger things on this road. You may pass.',
+        skeleton: 'A skeleton with purpose. That\'s more than most of us have.',
+        lich:     'You came back from down there. What did you see?',
     },
     hermit: {
-        slime:    'Ah... the first form. The formless beginning. You have far to go, little one.',
-        skeleton: 'Bones remember what flesh forgets. You\'re closer now. Can you feel it?',
-        lich:     'You\'ve walked the full path. The talisman sings in your hands. Be careful — power like this has a price.',
+        slime:    'The first form. Formless. You have far to go.',
+        skeleton: 'Bones remember what flesh forgets. You\'re learning.',
+        lich:     'The final veil. You can hear the covenant now, can\'t you?',
     },
     senna: {
-        slime:    'Fascinating! A sentient slime. Your cellular structure must be extraordinary.',
-        skeleton: 'Remarkable — the bones hold together through sheer will. Evolution in action.',
-        lich:     'The final form... or is it? The covenant changes everything, you know.',
+        slime:    'Your cells shift like nothing I\'ve studied. Fascinating.',
+        skeleton: 'The skeletal form holds through will alone. Remarkable.',
+        lich:     'You\'ve crossed the threshold. Don\'t look back.',
     },
 };
 
@@ -610,6 +612,10 @@ function handleNPCInteraction() {
     if (npcDialogueOpen) {
         // Advance dialogue (use form-reactive dialogue which may have extra opening line)
         currentNPC.dialogueIndex++;
+        // Persist highest dialogue index reached
+        _npcDialogueProgress[currentNPC.id] = Math.max(
+            _npcDialogueProgress[currentNPC.id] || 0, currentNPC.dialogueIndex
+        );
         const activeDialogue = getFormReactiveDialogue(currentNPC);
 
         // --- Quest flag triggers on specific dialogue lines ---

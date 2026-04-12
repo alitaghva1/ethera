@@ -522,6 +522,15 @@ function buildRoomBounds() {
 // ============================================================
 //  UNIFIED ENEMY HIT / STAGGER PIPELINE
 // ============================================================
+// Centralized player damage bonus calculation — safe accessors for all bonus sources
+function calcPlayerDmgBonus() {
+    const quest = (typeof questState !== 'undefined' && questState.permBonuses) ? (questState.permBonuses.dmgBonus || 0) : 0;
+    const equip = (typeof equipBonus !== 'undefined') ? (equipBonus.dmgBonus || 0) : 0;
+    const big = (typeof getUpgrade === 'function') ? getUpgrade('bigshot') * 5 : 0;
+    const talisman = (typeof getTalismanBonus === 'function') ? getTalismanBonus().dmgMult : 1;
+    return { flat: equip + big + quest, mult: talisman };
+}
+
 // All damage to enemies should go through this function.
 // It handles: damage application, hurt/death state, stagger cooldown,
 // knockback (with resistance), hit particles, SFX, and loot.
@@ -534,6 +543,10 @@ function buildRoomBounds() {
 function applyEnemyHit(e, damage, opts) {
     if (!e || e.state === 'death') return;
     if (e._ambushHidden) return; // pit lurker hidden — immune to damage
+    if (e.bossShieldPhaseActive) {
+        if (!(opts && opts.skipParticles)) spawnParticle(e.row, e.col, (Math.random()-0.5)*3, (Math.random()-0.5)*3, 0.2, '#ff8844', 0.6);
+        return;
+    }
     opts = opts || {};
 
     // Armored skeleton shield damage reduction
@@ -656,6 +669,7 @@ function applyEnemyHit(e, damage, opts) {
         if (!opts.skipSFX) sfxEnemyDeath(e.row, e.col);
         rollEnemyLoot(e);
         if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
+        else if (e.elite) { addHitPause(0.05 * impactScale); addScreenShake(4 * impactScale * critMul, 0.12 * impactScale); addSlowMo(0.08, 0.3); }
         else { addHitPause(0.04 * impactScale); addScreenShake(3 * impactScale * critMul, 0.1 * impactScale); }
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
@@ -1559,11 +1573,12 @@ function spawnWaveEnemies() {
     }
     zones.sort(() => Math.random() - 0.5);
 
-    // Filter zones that are at least ENEMY_SPAWN_MIN_DISTANCE tiles from the player
+    // Filter zones by minimum spawn distance — scales with zone difficulty
+    const scaledMinDist = ENEMY_SPAWN_MIN_DISTANCE + Math.min(SPAWN_DIST_MAX_BONUS, (currentZone || 0) * SPAWN_DIST_ZONE_SCALE);
     const validZones = zones.filter(z => {
         const dr = z.r - player.row;
         const dc = z.c - player.col;
-        return Math.sqrt(dr * dr + dc * dc) > ENEMY_SPAWN_MIN_DISTANCE;
+        return Math.sqrt(dr * dr + dc * dc) > scaledMinDist;
     });
 
     // --- SpawnZone bias: prefer tiles inside the wave's target room ---
@@ -4209,11 +4224,10 @@ function checkProjectileEnemyHits() {
                 }
                 // Hit!
                 const baseProjDmg = p.damage || FIREBALL_DAMAGE; // use projectile's own damage if set
-                const _questDmg = (typeof questState !== 'undefined') ? (questState.permBonuses.dmgBonus || 0) : 0;
-                const dmgBonus = (equipBonus.dmgBonus || 0) + getUpgrade('bigshot') * 5 + _questDmg;
+                const _bonus = calcPlayerDmgBonus();
+                const dmgBonus = _bonus.flat;
                 const shieldReduc = e.isShielding ? (1 - (e.def.shieldDmgReduc || 0)) : 1;
-                const talismanDmg = getTalismanBonus().dmgMult;
-                let projFinalDmg = Math.round((baseProjDmg + dmgBonus) * shieldReduc * talismanDmg);
+                let projFinalDmg = Math.round((baseProjDmg + dmgBonus) * shieldReduc * _bonus.mult);
 
                 // ── COMBAT JUICE: Critical hit roll ──
                 const isCrit = Math.random() < CRIT_CHANCE;
@@ -4238,12 +4252,18 @@ function checkProjectileEnemyHits() {
                 // ── COMBAT JUICE: Impact scaling by enemy max HP ──
                 const impactScale = Math.min(2.5, Math.max(0.8, (e.def.hp || 30) / 60));
 
-                // Floating damage number (gold + bigger on crit)
+                // Floating damage number (gold + bigger on crit) — stagger Y to prevent overlap
+                if (!e._dmgNumTimer) e._dmgNumTimer = 0;
+                if (!e._dmgNumOffset) e._dmgNumOffset = 0;
+                const _projDmgNow = performance.now() / 1000;
+                if (_projDmgNow - e._dmgNumTimer < 0.4) { e._dmgNumOffset -= 12; }
+                else { e._dmgNumOffset = 0; }
+                e._dmgNumTimer = _projDmgNow;
                 pickupTexts.push({
                     text: isCrit ? '-' + projFinalDmg + '!' : '-' + projFinalDmg,
                     color: isCrit ? COLORS.DAMAGE_CRIT : COLORS.DAMAGE_RED,
                     row: e.row, col: e.col,
-                    offsetY: -10 - Math.random() * 8,
+                    offsetY: -10 - Math.random() * 8 + (e._dmgNumOffset || 0),
                     life: isCrit ? 1.1 : 0.8,
                     isCrit: isCrit, // flag for scaled rendering
                 });
@@ -4332,7 +4352,15 @@ function checkProjectileEnemyHits() {
                                 if (_nearE) {
                                     const ricochetDmg = Math.round(projFinalDmg * 0.6);
                                     _nearE.hp -= ricochetDmg;
-                                    if (_nearE.hp <= 0) _nearE.state = 'death';
+                                    _nearE.hitFlashTimer = 0.1;
+                                    if (_nearE.hp <= 0) {
+                                        _nearE.hp = 0; _nearE.state = 'death'; _nearE.deathTimer = 0.7; _nearE.animFrame = 0;
+                                        sfxEnemyDeath(_nearE.row, _nearE.col); rollEnemyLoot(_nearE);
+                                        if (_nearE.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
+                                    } else {
+                                        _nearE.state = 'hurt'; _nearE.hurtTimer = 0.2; _nearE.animFrame = 0;
+                                        sfxEnemyHurt(_nearE.row, _nearE.col);
+                                    }
                                     pickupTexts.push({
                                         text: '-' + ricochetDmg,
                                         color: '#88ee44',
@@ -4396,12 +4424,24 @@ function checkProjectileEnemyHits() {
                         const dc2 = p.col - e2.col;
                         if (Math.sqrt(dr2 * dr2 + dc2 * dc2) < explodeRadius) {
                             e2.hp -= explodeDmg;
-                            // Floating damage number for AoE hit
+                            e2.hitFlashTimer = 0.1;
+                            // Radial knockback from explosion center
+                            const kbDr2 = e2.row - p.row, kbDc2 = e2.col - p.col;
+                            const kbLen2 = Math.sqrt(kbDr2 * kbDr2 + kbDc2 * kbDc2) || 1;
+                            e2.knockVr = (e2.knockVr || 0) + (kbDr2 / kbLen2) * ENEMY_KNOCKBACK * KNOCKBACK_MULT.explode * (e2.def.knockbackResist || 1.0);
+                            e2.knockVc = (e2.knockVc || 0) + (kbDc2 / kbLen2) * ENEMY_KNOCKBACK * KNOCKBACK_MULT.explode * (e2.def.knockbackResist || 1.0);
+                            // Floating damage number for AoE hit — stagger offset
+                            if (!e2._dmgNumTimer) e2._dmgNumTimer = 0;
+                            if (!e2._dmgNumOffset) e2._dmgNumOffset = 0;
+                            const _aoeDmgNow = performance.now() / 1000;
+                            if (_aoeDmgNow - e2._dmgNumTimer < 0.4) { e2._dmgNumOffset -= 12; }
+                            else { e2._dmgNumOffset = 0; }
+                            e2._dmgNumTimer = _aoeDmgNow;
                             pickupTexts.push({
                                 text: '-' + explodeDmg,
                                 color: COLORS.DAMAGE_RED,
                                 row: e2.row, col: e2.col,
-                                offsetY: -10 - Math.random() * 8,
+                                offsetY: -10 - Math.random() * 8 + (e2._dmgNumOffset || 0),
                                 life: 0.8,
                             });
                             if (e2.hp <= 0) {
