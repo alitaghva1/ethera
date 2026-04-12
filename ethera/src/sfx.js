@@ -5,7 +5,7 @@ let sfxCtx = null;          // AudioContext (created on first interaction)
 let sfxMasterGain = null;   // Master gain node
 let sfxVolume = 0.35;       // SFX master volume (0-1)
 // Polyphony control — max simultaneous SFX channels
-const SFX_MAX_CHANNELS = 6;
+const SFX_MAX_CHANNELS = 10;
 let sfxActiveCount = 0;
 const SFX_PRIORITY = { playerDeath: 3, playerHurt: 3, explosion: 2, enemyDeath: 1, fireballHit: 1, default: 0 };
 

@@ -256,8 +256,8 @@ function drawIntroOverlay() {
         ctx.globalAlpha = a0 * 0.9;
         ctx.font = '18px Georgia';
         ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 6;
         ctx.fillStyle = '#aa9b80';
         ctx.fillText('You awaken on cold stone.', cx, baseY);
     }
@@ -270,8 +270,8 @@ function drawIntroOverlay() {
         ctx.globalAlpha = a1 * 0.9;
         ctx.font = '19px Georgia';
         ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 6;
         ctx.fillStyle = '#aa9b80';
         ctx.fillText('They left you for dead.', cx, baseY + 34);
     }
@@ -586,7 +586,8 @@ function spawnAmbientParticles(dt) {
     if (!cfg) return;
 
     // Count existing ambient particles to cap
-    const ambientCount = particles.filter(p => p.type === 'ambient').length;
+    let ambientCount = 0;
+    for (let i = 0; i < particles.length; i++) { if (particles[i].type === 'ambient') ambientCount++; }
     if (ambientCount >= _AMBIENT_MAX) return;
 
     // Spawn 1 particle near the player
@@ -3112,7 +3113,7 @@ function render() {
     if (dmgVignetteTimer > 0) {
         dmgVignetteTimer -= _frameDt;
         // Exponential decay for snappy attack, slow tail
-        dmgVignetteIntensity *= Math.pow(0.08, _frameDt); // fast falloff
+        dmgVignetteIntensity *= Math.exp(-15 * _frameDt); // frame-rate independent decay
         if (dmgVignetteTimer <= 0) { dmgVignetteIntensity = 0; dmgVignetteTimer = 0; }
     }
     if (dmgVignetteIntensity > 0.01) {
@@ -3200,6 +3201,7 @@ function render() {
     }
 
     // ── LAYER 9: HUD ──
+    ctx.globalAlpha = 1; // safety reset before HUD
     if (gamePhase !== 'cinematic') {
         // HP & Mana bars (form-specific)
         const hudHandler = FormSystem.getHandler();

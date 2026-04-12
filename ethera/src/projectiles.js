@@ -70,6 +70,11 @@ function updateProjectiles(dt) {
             } else {
                 p.hit = true;
                 p.life = 0.3; // linger for impact effect
+                // Wall impact sparks
+                if (typeof spawnHitSpark === 'function') {
+                    const wallPos = tileToScreen(p.row, p.col);
+                    spawnHitSpark(wallPos.x + cameraX, wallPos.y + cameraY);
+                }
             }
             continue;
         }

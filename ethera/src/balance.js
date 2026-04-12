@@ -168,7 +168,7 @@ function getPooledProj() {
     p.explode = false; p.canExplode = false; p.explodeScale = 0;
     p.bounce = 0; p.bounceLeft = 0;
     p.isAcid = false; p.isBone = false; p.isDark = false;
-    p.isBoomerang = false; p.marrowLeech = false;
+    p.isBoomerang = false; p.returning = false; p.marrowLeech = false;
     p._hasRicocheted = false;
     p.boomerangTimer = 0;
     p.hitEnemies = null; p.animTime = 0; p.angle = 0;
@@ -375,8 +375,8 @@ function handleKeyDown(e) {
     // P key pauses game
     if (e.key.toLowerCase() === 'p' && gamePhase === 'playing' && !gameDead) {
         gamePaused = !gamePaused;
-        if (gamePaused) { pauseMusic(); hitPauseTimer = 0; }
-        else resumeMusic();
+        if (gamePaused) { duckMusic(true); hitPauseTimer = 0; }
+        else duckMusic(false);
     }
     // Q key toggles graphics quality while paused
     if (e.key.toLowerCase() === 'q' && gamePaused) {

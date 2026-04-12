@@ -4479,6 +4479,11 @@ function checkProjectileEnemyHits() {
                     e.animFrame = 0;
                     sfxEnemyDeath(e.row, e.col);
                     rollEnemyLoot(e);
+                    // Death particles — directional burst away from projectile
+                    if (typeof spawnDeathBurst === 'function') {
+                        const deathPos = tileToScreen(e.row, e.col);
+                        spawnDeathBurst(deathPos.x + cameraX, deathPos.y + cameraY, e.def.tint || '#aa8866');
+                    }
                     // Boss kill: dramatic slow-mo
                     if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
                 } else {
@@ -4751,7 +4756,21 @@ function drawEnemy(e) {
     const spawnAlpha = e.spawnFade > 0 ? Math.max(0, 1 - (e.spawnFade / 0.5)) : 1;
     const spawnScale = e.spawnFade > 0 ? 0.5 + 0.5 * (1 - (e.spawnFade / 0.5)) : 1;
 
-    // Enemy ground aura glow removed — looked unnatural per art direction
+    // Spawn telegraph — pulsing glow ring while enemy materializes
+    if (e.spawnFade > 0.1 && typeof ctx !== 'undefined') {
+        ctx.save();
+        const fadeT = e.spawnFade / 0.5; // 1→0
+        const ringR = 18 + fadeT * 12; // shrinks as spawn completes
+        const ringAlpha = fadeT * 0.35;
+        const eliteColor = e.elite ? (COLORS['ELITE_' + e.elite.toUpperCase() + '_TINT'] || '#ff8844') : '#cc8844';
+        ctx.globalAlpha = ringAlpha;
+        ctx.strokeStyle = eliteColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 2, ringR, ringR * 0.45, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
 
     // Shadow (scales with boss size)
     ctx.save();
