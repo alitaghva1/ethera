@@ -368,16 +368,17 @@ function sfxPlayerDeath() {
 function sfxCinematicHeartbeat(volume) {
     if (!sfxCtx) return;
     const v = volume || 0.5;
-    // Heartbeat: low thump + mid-range knock so it's audible on all speakers
-    // First beat (LUB)
-    playTone('sine', 80, 45, 0.3, v, 0.005, 0.25);          // bass body
-    playTone('triangle', 120, 60, 0.15, v * 0.5, 0.005, 0.12); // mid punch
-    // Second beat (DUB) — slightly quieter, slightly delayed
+    // Cinematic heartbeat: deep chest thump with resonance
+    // LUB — primary beat
+    playTone('sine', 70, 35, 0.45, v, 0.005, 0.4);            // deep bass body (long resonance)
+    playTone('triangle', 110, 55, 0.2, v * 0.45, 0.005, 0.15); // mid knock (audible on all speakers)
+    playTone('sine', 40, 25, 0.5, v * 0.25, 0.01, 0.45);       // sub rumble (felt on headphones)
+    // DUB — secondary beat, softer
     setTimeout(() => {
         if (!sfxCtx) return;
-        playTone('sine', 90, 50, 0.25, v * 0.8, 0.005, 0.2);
-        playTone('triangle', 130, 65, 0.12, v * 0.4, 0.005, 0.1);
-    }, 250);
+        playTone('sine', 75, 40, 0.35, v * 0.7, 0.005, 0.3);
+        playTone('triangle', 115, 60, 0.15, v * 0.35, 0.005, 0.12);
+    }, 320);
 }
 
 function sfxCinematicStir() {

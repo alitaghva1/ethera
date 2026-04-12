@@ -183,24 +183,24 @@ function updateIntroPhase(dt) {
     const t = introTimer;
 
     // === HEARTBEAT SEQUENCE ===
-    // 1.5s of void after text fades (3.5-5.0s), then 3 beats at natural rhythm
+    // Long void after text (5.5-7.5s), then 3 beats with real space between
     if (typeof sfxCinematicHeartbeat === 'function') {
-        if (t >= 5.0 && !introSfxPlayed)  { introSfxPlayed = true;  sfxCinematicHeartbeat(0.40); } // distant
-        if (t >= 6.0 && !introSfxBeat2)   { introSfxBeat2 = true;   sfxCinematicHeartbeat(0.60); } // building (1.0s gap)
-        if (t >= 6.8 && !introSfxBeat3)   { introSfxBeat3 = true;   sfxCinematicHeartbeat(0.80); } // strong (0.8s gap — quickening)
+        if (t >= 7.5 && !introSfxPlayed)  { introSfxPlayed = true;  sfxCinematicHeartbeat(0.35); } // distant
+        if (t >= 9.0 && !introSfxBeat2)   { introSfxBeat2 = true;   sfxCinematicHeartbeat(0.55); } // closer (1.5s gap)
+        if (t >= 10.2 && !introSfxBeat3)  { introSfxBeat3 = true;   sfxCinematicHeartbeat(0.80); } // STRONG (1.2s gap — quickening)
     }
+    // "They were wrong." appears at beat 3 — see drawIntroOverlay at t=10.2
 
-    // === MUSIC SWELL ===
-    // Enters 0.7s after last heartbeat, BEFORE the golden text
-    // Text lands on a growing swell rather than arriving with the music
-    const INTRO_MUSIC_CUE = 7.5;
+    // === MUSIC ===
+    // Enters AFTER "They were wrong." — the release after the statement
+    const INTRO_MUSIC_CUE = 11.0;
     if (t >= INTRO_MUSIC_CUE && !introMusicStarted) {
         introMusicStarted = true;
-        try { playMusic('cinematic', 3.5); } catch(e) {} // slow 3.5s swell
+        try { playMusic('cinematic', 3.0); } catch(e) {}
     }
 
-    // === REVEAL PHASE (9.5-11.0s) ===
-    if (t > 9.5 && t <= INTRO_DURATION) {
+    // === REVEAL PHASE (12.0-14.0s) ===
+    if (t > 12.0 && t <= INTRO_DURATION) {
         const revealT = Math.min(1, (t - 5.0) / 1.5);
         // Smooth ease-out
         const eased = 1 - (1 - revealT) * (1 - revealT);
@@ -238,9 +238,9 @@ function drawIntroOverlay() {
     const t = introTimer;
     ctx.save();
 
-    // Black overlay — opaque during text + heartbeats, fades during reveal (9.5-11.0s)
+    // Black overlay — opaque through heartbeats, fades during reveal (12.0-14.0s)
     let overlayAlpha = 1.0;
-    if (t > 9.5) overlayAlpha = Math.max(0, 1 - (t - 9.5) / 1.5);
+    if (t > 12.0) overlayAlpha = Math.max(0, 1 - (t - 12.0) / 2.0);
 
     if (overlayAlpha > 0.01) {
         ctx.globalAlpha = overlayAlpha;
@@ -260,10 +260,10 @@ function drawIntroOverlay() {
     const cx = canvasW / 2;
     const baseY = canvasH * 0.38;
 
-    // Line 0: "You awaken on cold stone." — appears 0.8s, fades at 3.5s
+    // Line 0: "You awaken on cold stone." — slow fade in, long hold, slow fade out
     let a0 = 0;
-    if (t >= 0.8 && t < 3.5) a0 = Math.min(1, (t - 0.8) / 1.2);
-    if (t >= 3.5 && t < 4.0) a0 = 1 - (t - 3.5) / 0.5;
+    if (t >= 1.0 && t < 4.5) a0 = Math.min(1, (t - 1.0) / 1.5);  // 1.5s fade-in
+    if (t >= 4.5 && t < 5.5) a0 = 1 - (t - 4.5) / 1.0;           // 1.0s fade-out
     if (a0 > 0.01) {
         ctx.globalAlpha = a0 * 0.9;
         ctx.font = '18px Georgia';
@@ -274,10 +274,10 @@ function drawIntroOverlay() {
         ctx.fillText('You awaken on cold stone.', cx, baseY);
     }
 
-    // Line 1: "They left you for dead." — appears 2.0s, fades at 3.5s
+    // Line 1: "They left you for dead." — appears after line 0, same slow pacing
     let a1 = 0;
-    if (t >= 2.0 && t < 3.5) a1 = Math.min(1, (t - 2.0) / 1.0);
-    if (t >= 3.5 && t < 4.0) a1 = 1 - (t - 3.5) / 0.5;
+    if (t >= 2.5 && t < 4.5) a1 = Math.min(1, (t - 2.5) / 1.5);  // 1.5s fade-in
+    if (t >= 4.5 && t < 5.5) a1 = 1 - (t - 4.5) / 1.0;           // 1.0s fade-out with line 0
     if (a1 > 0.01) {
         ctx.globalAlpha = a1 * 0.9;
         ctx.font = '19px Georgia';
@@ -288,15 +288,15 @@ function drawIntroOverlay() {
         ctx.fillText('They left you for dead.', cx, baseY + 34);
     }
 
-    // Line 2: "They were wrong." — appears 8.0s on the music swell, fades at 9.5s
+    // Line 2: "They were wrong." — appears at peak heartbeat (10.2s), holds through music
     let a2 = 0;
-    if (t >= 8.0 && t < 9.5) a2 = Math.min(1, (t - 8.0) / 0.8);
-    if (t >= 9.5) a2 = Math.max(0, 1 - (t - 9.5) / 0.8);
+    if (t >= 10.2 && t < 12.0) a2 = Math.min(1, (t - 10.2) / 0.6); // quick reveal — defiant
+    if (t >= 12.0) a2 = Math.max(0, 1 - (t - 12.0) / 1.0);         // fades as world reveals
     if (a2 > 0.01) {
         // Scale effect: starts slightly large, settles
-        const scaleT = Math.min(1, (t - 8.0) / 2.0);
+        const scaleT = Math.min(1, (t - 10.2) / 2.0);
         const scale = 1.08 - 0.08 * scaleT;
-        const glowBuild = Math.min(1, (t - 8.0) / 1.5);
+        const glowBuild = Math.min(1, (t - 10.2) / 1.5);
 
         ctx.save();
         ctx.translate(cx, canvasH * 0.44);
@@ -2952,7 +2952,7 @@ function render() {
 
     // Intro: black screen during text phase, then render world during reveal
     if (gamePhase === 'intro') {
-        if (introTimer < 9.5) {
+        if (introTimer < 12.0) {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasW, canvasH);
             return; // text overlay drawn by drawIntroOverlay() after render()
