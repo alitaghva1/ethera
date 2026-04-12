@@ -182,37 +182,45 @@ function updateIntroPhase(dt) {
     introTimer += dt;
     const t = introTimer;
 
-    // === 7-BEAT HEARTBEAT SEQUENCE ===
-    // Gaps compress: 2.0 → 1.7 → 1.5 → 1.3 → 1.1 → 0.9
-    // Volume builds: 0.15 → 0.20 → 0.28 → 0.38 → 0.50 → 0.65 → 0.85
-    // Flash grows: barely visible → full crimson pulse
+    // === 12-BEAT HEARTBEAT SEQUENCE ===
+    // Gaps compress: 2.0 → 1.8 → 1.6 → 1.5 → 1.4 → 1.3 → 1.2 → 1.1 → 1.0 → 0.9 → 0.8
+    // Volume: 0.10 → 0.85 (exponential curve)
+    // Flash: barely visible → full crimson pulse
     //
-    // Beat times: 8.5, 10.5, 12.2, 13.7, 15.0, 16.1, 17.0
+    // Beat:  1     2     3     4     5     6     7     8     9    10    11    12
+    // Time: 10.0  12.0  13.8  15.4  16.9  18.3  19.6  20.8  21.9 22.9 23.8 24.6
+    // Gap:  —     2.0   1.8   1.6   1.5   1.4   1.3   1.2   1.1  1.0  0.9  0.8
+    // Vol:  .10   .13   .17   .22   .28   .35   .42   .50   .58  .68  .78  .90
     //
     if (typeof sfxCinematicHeartbeat === 'function') {
-        if (t >= 8.5  && !introSfxPlayed) { introSfxPlayed = true; sfxCinematicHeartbeat(0.15); introFlash = 0.03; introFlashRadius = 0.25; }
-        if (t >= 10.5 && !introSfxBeat2)  { introSfxBeat2 = true;  sfxCinematicHeartbeat(0.20); introFlash = 0.05; introFlashRadius = 0.30; }
-        if (t >= 12.2 && !introSfxBeat3)  { introSfxBeat3 = true;  sfxCinematicHeartbeat(0.28); introFlash = 0.07; introFlashRadius = 0.35; }
-        if (t >= 13.7 && !introSfxBeat4)  { introSfxBeat4 = true;  sfxCinematicHeartbeat(0.38); introFlash = 0.10; introFlashRadius = 0.42; }
-        if (t >= 15.0 && !introSfxBeat5)  { introSfxBeat5 = true;  sfxCinematicHeartbeat(0.50); introFlash = 0.14; introFlashRadius = 0.50; }
-        if (t >= 16.1 && !introSfxBeat6)  { introSfxBeat6 = true;  sfxCinematicHeartbeat(0.65); introFlash = 0.18; introFlashRadius = 0.60; }
-        if (t >= 17.0 && !introSfxBeat7)  { introSfxBeat7 = true;  sfxCinematicHeartbeat(0.85); introFlash = 0.25; introFlashRadius = 0.75; }
+        if (t >= 10.0 && !introSfxPlayed) { introSfxPlayed = true; sfxCinematicHeartbeat(0.10); introFlash = 0.02; introFlashRadius = 0.20; }
+        if (t >= 12.0 && !introSfxBeat2)  { introSfxBeat2 = true;  sfxCinematicHeartbeat(0.13); introFlash = 0.03; introFlashRadius = 0.22; }
+        if (t >= 13.8 && !introSfxBeat3)  { introSfxBeat3 = true;  sfxCinematicHeartbeat(0.17); introFlash = 0.04; introFlashRadius = 0.25; }
+        if (t >= 15.4 && !introSfxBeat4)  { introSfxBeat4 = true;  sfxCinematicHeartbeat(0.22); introFlash = 0.05; introFlashRadius = 0.28; }
+        if (t >= 16.9 && !introSfxBeat5)  { introSfxBeat5 = true;  sfxCinematicHeartbeat(0.28); introFlash = 0.07; introFlashRadius = 0.32; }
+        if (t >= 18.3 && !introSfxBeat6)  { introSfxBeat6 = true;  sfxCinematicHeartbeat(0.35); introFlash = 0.09; introFlashRadius = 0.38; }
+        if (t >= 19.6 && !introSfxBeat7)  { introSfxBeat7 = true;  sfxCinematicHeartbeat(0.42); introFlash = 0.11; introFlashRadius = 0.44; }
+        if (t >= 20.8 && !introSfxBeat8)  { introSfxBeat8 = true;  sfxCinematicHeartbeat(0.50); introFlash = 0.14; introFlashRadius = 0.50; }
+        if (t >= 21.9 && !introSfxBeat9)  { introSfxBeat9 = true;  sfxCinematicHeartbeat(0.58); introFlash = 0.17; introFlashRadius = 0.56; }
+        if (t >= 22.9 && !introSfxBeat10) { introSfxBeat10 = true;  sfxCinematicHeartbeat(0.68); introFlash = 0.20; introFlashRadius = 0.62; }
+        if (t >= 23.8 && !introSfxBeat11) { introSfxBeat11 = true;  sfxCinematicHeartbeat(0.78); introFlash = 0.23; introFlashRadius = 0.70; }
+        if (t >= 24.6 && !introSfxBeat12) { introSfxBeat12 = true;  sfxCinematicHeartbeat(0.90); introFlash = 0.28; introFlashRadius = 0.80; }
     }
-    // "They were wrong." appears at beat 7 (17.0s) — see drawIntroOverlay
+    // "They were wrong." appears at beat 12 (24.6s) — see drawIntroOverlay
 
     // Decay screen flash
-    if (introFlash > 0) introFlash = Math.max(0, introFlash - dt * 0.4);
+    if (introFlash > 0) introFlash = Math.max(0, introFlash - dt * 0.35);
 
     // === MUSIC ===
-    // Enters AFTER "They were wrong." holds and fades — the release
-    if (t >= 19.5 && !introMusicStarted) {
+    // Enters AFTER "They were wrong." holds — the release
+    if (t >= 25.8 && !introMusicStarted) {
         introMusicStarted = true;
         try { playMusic('cinematic', 3.0); } catch(e) {}
     }
 
-    // === REVEAL PHASE (20.0-22.0s) ===
-    if (t > 20.0 && t <= INTRO_DURATION) {
-        const revealT = Math.min(1, (t - 20.0) / 2.0);
+    // === REVEAL PHASE (26.0-28.0s) ===
+    if (t > 26.0 && t <= INTRO_DURATION) {
+        const revealT = Math.min(1, (t - 26.0) / 2.0);
         // Smooth ease-out
         const eased = 1 - (1 - revealT) * (1 - revealT);
         lightRadius = 80 + (MAX_LIGHT - 80) * eased;
@@ -249,9 +257,9 @@ function drawIntroOverlay() {
     const t = introTimer;
     ctx.save();
 
-    // Black overlay — opaque through heartbeats + golden text, fades during reveal (20-22s)
+    // Black overlay — opaque through heartbeats + golden text, fades during reveal (26-28s)
     let overlayAlpha = 1.0;
-    if (t > 20.0) overlayAlpha = Math.max(0, 1 - (t - 20.0) / 2.0);
+    if (t > 26.0) overlayAlpha = Math.max(0, 1 - (t - 26.0) / 2.0);
 
     if (overlayAlpha > 0.01) {
         ctx.globalAlpha = overlayAlpha;
@@ -297,13 +305,14 @@ function drawIntroOverlay() {
 
     // LINE 1: "They left you for dead."
     // Appears AFTER line 0 is gone. Sharper, more present — reality hitting.
+    // HOLDS LONG — let the weight of this land.
     //   5.5-7.0: fade in (1.5s)
-    //   7.0-7.5: hold
-    //   7.5-8.0: fade out (0.5s — quicker, like a door closing)
+    //   7.0-8.5: HOLD (1.5s — feel it)
+    //   8.5-9.5: fade out (1.0s — slow dissolve into void)
     let a1 = 0;
     if (t >= 5.5 && t < 7.0) a1 = Math.min(1, (t - 5.5) / 1.5);
-    if (t >= 7.0 && t < 7.5) a1 = 1;
-    if (t >= 7.5 && t < 8.0) a1 = 1 - (t - 7.5) / 0.5;
+    if (t >= 7.0 && t < 8.5) a1 = 1;
+    if (t >= 8.5 && t < 9.5) a1 = 1 - (t - 8.5) / 1.0;
     if (a1 > 0.01) {
         ctx.globalAlpha = a1 * 0.9;
         ctx.font = '20px Georgia';
@@ -315,20 +324,19 @@ function drawIntroOverlay() {
     }
 
     // LINE 2: "They were wrong."
-    // Appears at PEAK heartbeat (17.0s). Quick defiant reveal.
-    // HOLDS for 2 seconds so the player FEELS it.
-    // Then fades. THEN music enters. THEN world reveals.
-    //   17.0-17.4: quick reveal (0.4s)
-    //   17.4-19.2: HOLD at full (1.8s)
-    //   19.2-19.8: fade out (0.6s)
+    // Appears at PEAK heartbeat 12 (24.6s). Quick defiant reveal.
+    // HOLDS for 1.8 seconds. Then fades. Then music. Then world.
+    //   24.6-25.0: reveal (0.4s)
+    //   25.0-25.5: HOLD (1.8s — but overlaps with music start at 25.8)
+    //   25.5-26.0: fade out
     let a2 = 0;
-    if (t >= 17.0 && t < 17.4) a2 = Math.min(1, (t - 17.0) / 0.4);
-    if (t >= 17.4 && t < 19.2) a2 = 1; // HOLD
-    if (t >= 19.2 && t < 19.8) a2 = 1 - (t - 19.2) / 0.6;
+    if (t >= 24.6 && t < 25.0) a2 = Math.min(1, (t - 24.6) / 0.4);
+    if (t >= 25.0 && t < 25.5) a2 = 1;
+    if (t >= 25.5 && t < 26.0) a2 = 1 - (t - 25.5) / 0.5;
     if (a2 > 0.01) {
-        const scaleT = Math.min(1, (t - 17.0) / 2.0);
+        const scaleT = Math.min(1, (t - 24.6) / 2.0);
         const scale = 1.08 - 0.08 * scaleT;
-        const glowBuild = Math.min(1, (t - 17.0) / 1.5);
+        const glowBuild = Math.min(1, (t - 24.6) / 1.5);
 
         ctx.save();
         ctx.translate(cx, canvasH * 0.44);
@@ -2984,7 +2992,7 @@ function render() {
 
     // Intro: black screen during text phase, then render world during reveal
     if (gamePhase === 'intro') {
-        if (introTimer < 20.0) {
+        if (introTimer < 26.0) {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasW, canvasH);
             return; // text overlay drawn by drawIntroOverlay() after render()
@@ -3835,15 +3843,13 @@ function runIntro() {
     gamePhase = 'intro';
     introTimer = 0;
     introSfxPlayed = false;
-    introSfxBeat2 = false;
-    introSfxBeat3 = false;
-    introSfxBeat4 = false;
-    introSfxBeat5 = false;
-    introSfxBeat6 = false;
-    introSfxBeat7 = false;
+    introSfxBeat2 = false; introSfxBeat3 = false; introSfxBeat4 = false;
+    introSfxBeat5 = false; introSfxBeat6 = false; introSfxBeat7 = false;
+    introSfxBeat8 = false; introSfxBeat9 = false; introSfxBeat10 = false;
+    introSfxBeat11 = false; introSfxBeat12 = false;
     introMusicStarted = false;
     introFlash = 0;
-    introFlashRadius = 0.3;
+    introFlashRadius = 0.2;
     lightRadius = 80; // dim — expands during reveal
     setPixelCursor('none');
     zoneTransitionAlpha = 0;
