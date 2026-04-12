@@ -1256,14 +1256,18 @@ function generateAntechamber() {
     }
     // Base: all tiles start blocked (set by loadZone)
 
-    // Floor — stone chamber (rows 3-9, cols 3-9)
+    // Floor — stone chamber (rows 3-9, cols 3-9) with signs of age and violence
     fillFloor(3, 3, 9, 9, 'stone');
-    // Accent insets
+    // Accent insets — decorative but cracked
     floorMap[5][6] = 'stoneInset';
     floorMap[7][5] = 'stoneInset';
     floorMap[7][7] = 'stoneInset';
     floorMap[4][4] = 'stoneInset';
     floorMap[4][8] = 'stoneInset';
+    // Damaged floor tiles — something happened here
+    floorMap[6][5] = 'stoneUneven';
+    floorMap[6][7] = 'stoneUneven';
+    floorMap[8][6] = 'stoneMissing';
 
     // Walls — fully enclosed
     // North wall (row 2) with archway at cols 5-7
@@ -1295,11 +1299,15 @@ function generateAntechamber() {
     // East wall (col 10, rows 3-9)
     for (let r = 3; r <= 9; r++) wall(r, 10, r === 6 ? 'wallWindowBars' : 'wall');
 
-    // Props — torch pillars at corners (no central pillar — keep spawn area clear)
+    // Props — torch pillars at corners
     placeObj(3, 3, 'stoneColumn');   // NW torch
     placeObj(3, 9, 'stoneColumn');   // NE torch
     placeObj(9, 3, 'stoneColumn');   // SW stair pillar
     placeObj(9, 9, 'stoneColumn');   // SE stair pillar
+    // Environmental debris — signs of a struggle
+    placeObj(4, 3, 'woodenPile', false);   // collapsed shelf near NW corner
+    placeObj(8, 9, 'barrel');              // overturned barrel near SE
+    placeObj(3, 7, 'woodenCrate', false);  // smashed crate along north wall
 }
 
 // ============================================================
@@ -1385,16 +1393,21 @@ function generateTown() {
         floorMap[15][c] = 'n_dirt';
     }
 
-    // ===== 4. SOUTH DUNGEON ENTRANCE (rows 21-24) =====
-    // Visible stairway leading down to the dungeon, framed by stone pillars
-    fillFloor(21, 13, 24, 17, 'n_dirt');
+    // ===== 4. SOUTH DUNGEON ENTRANCE (rows 20-24) =====
+    // Atmospheric stairway leading down, framed by stone pillars and debris
+    fillFloor(20, 13, 24, 17, 'n_dirt');
     fillFloor(22, 14, 23, 16, 'stone');
+    floorMap[22][14] = 'stoneUneven';
+    floorMap[22][16] = 'stoneUneven';
     openTile(23, 14, 'stairs'); blocked[23][14] = false;
     openTile(23, 15, 'stairs'); blocked[23][15] = false;
     openTile(23, 16, 'stairs'); blocked[23][16] = false;
     // Flanking pillars to frame the entrance
     placeObj(22, 13, 'stoneColumn');
     placeObj(22, 17, 'stoneColumn');
+    // Environmental props — suggest the entrance has history
+    placeObj(21, 12, 'woodenPile', false);  // collapsed debris near entrance
+    placeObj(21, 18, 'barrel');             // supply barrel left by previous explorers
 
     // ===== 5. TOWN SQUARE (rows 9-12, cols 10-20) =====
     // Open area with grass floor, dirt path through center, central monument

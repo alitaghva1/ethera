@@ -4104,6 +4104,10 @@ function applyUpgrade(upgradeId) {
     duckMusic(false); // restore music volume
     xpState.levelUpChoices = [];
     setPixelCursor('none');
+    // Power surge feedback — brief flash + particle burst from player
+    addScreenShake(3, 0.15);
+    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 12, '#e8c840');
+    if (typeof sfxLevelUp === 'function') sfxLevelUp();
 }
 
 // Helper to get current stack count
