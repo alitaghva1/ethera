@@ -684,7 +684,14 @@ function updateGameplay(dt) {
 
     // Zone transition fade overlay
     if (zoneTransitionFading) {
-        if (zoneTransitionAlpha < 1) {
+        if (zoneTransitionFading === 'fadeIn') {
+            // Phase 2: fade black overlay OUT (reveal new zone)
+            zoneTransitionAlpha -= dt * 2.5;
+            if (zoneTransitionAlpha <= 0) {
+                zoneTransitionAlpha = 0;
+                zoneTransitionFading = false;
+            }
+        } else if (zoneTransitionAlpha < 1) {
             zoneTransitionAlpha += dt * 3;
             if (zoneTransitionAlpha >= 1) {
                 let nextZone;
@@ -718,12 +725,6 @@ function updateGameplay(dt) {
                 showZoneBanner(nextZone);
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
-            }
-        } else if (zoneTransitionFading === 'fadeIn') {
-            zoneTransitionAlpha -= dt * 2.5;
-            if (zoneTransitionAlpha <= 0) {
-                zoneTransitionAlpha = 0;
-                zoneTransitionFading = false;
             }
         }
     }
