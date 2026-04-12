@@ -337,7 +337,11 @@ function handleKeyDown(e) {
         if (door) {
             tryUseDoor(door);
         }
-        // Priority 2: NPCs — talk to townsfolk (town zone only, returns false if no NPC nearby)
+        // Priority 2: Hamlet rebuild — spend gold to restore buildings
+        else if (typeof tryHamletRebuild === 'function' && tryHamletRebuild()) {
+            // rebuild consumed the input
+        }
+        // Priority 3: NPCs — talk to townsfolk (returns false if no NPC nearby)
         else if (npcList.length > 0 && handleNPCInteraction()) {
             // NPC interaction consumed the input
         }

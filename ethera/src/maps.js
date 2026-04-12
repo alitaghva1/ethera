@@ -1424,23 +1424,28 @@ function generateTown() {
     floorMap[12][19] = 'n_grassFlowers';
     floorMap[9][15] = 'n_grassFlowers';
     floorMap[12][15] = 'n_grassFlowers';
-    // Central stone monument — expanded focal point
-    fillFloor(10, 13, 11, 17, 'stoneTile');
-    floorMap[10][14] = 'stoneInset';
-    floorMap[10][16] = 'stoneInset';
-    placeObj(10, 15, 'stoneColumn');       // monument pillar
-    // Flanking columns frame the monument
-    placeObj(9, 14, 'stoneColumn');
-    placeObj(9, 16, 'stoneColumn');
-    // Supply barrels left by traders
-    placeObj(10, 12, 'barrel');
-    placeObj(10, 18, 'barrel');
+    // Central monument — full or broken depending on rebuild state
+    const _monumentRebuilt = typeof hamletRebuild !== 'undefined' && hamletRebuild.monument;
+    if (_monumentRebuilt) {
+        fillFloor(10, 13, 11, 17, 'stoneTile');
+        floorMap[10][14] = 'stoneInset';
+        floorMap[10][16] = 'stoneInset';
+        placeObj(10, 15, 'stoneColumn');       // restored monument
+        placeObj(9, 14, 'stoneColumn');
+        placeObj(9, 16, 'stoneColumn');
+        placeObj(10, 12, 'barrel');
+        placeObj(10, 18, 'barrel');
+    } else {
+        fillFloor(10, 14, 11, 16, 'stoneUneven');
+        floorMap[10][15] = 'stoneMissing';     // broken stump
+    }
 
     // ===== 6. GARRETT'S FORGE (rows 13-17, cols 3-8) =====
     // Stone floor, back wall (north) + left wall (west), open front
-    fillFloor(14, 4, 16, 7, 'stoneTile');
-    floorMap[15][5] = 'stoneInset';
-    floorMap[15][6] = 'stoneInset';
+    const _forgeRebuilt = typeof hamletRebuild !== 'undefined' && hamletRebuild.forge;
+    fillFloor(14, 4, 16, 7, _forgeRebuilt ? 'stoneTile' : 'stoneUneven');
+    if (_forgeRebuilt) { floorMap[15][5] = 'stoneInset'; floorMap[15][6] = 'stoneInset'; }
+    else { floorMap[15][5] = 'stoneMissing'; }
     // North back wall
     wall(13, 3, 'wallCorner');
     wall(13, 4, 'wall');
@@ -1455,19 +1460,24 @@ function generateTown() {
     // Pavement approach (south + east)
     fillFloor(17, 4, 17, 8, 'stoneTile');
     fillFloor(14, 8, 17, 8, 'stoneTile');
-    // Interior props
-    placeObj(14, 5, 'stoneColumn');      // anvil proxy
-    placeObj(14, 7, 'woodenSupports');   // weapon rack
-    placeObj(16, 7, 'barrel');           // storage
-    placeObj(16, 4, 'woodenCrates');     // crates
-    // Rubble at entrance area
+    // Interior props — functional or rubble depending on rebuild state
+    if (_forgeRebuilt) {
+        placeObj(14, 5, 'stoneColumn');      // anvil proxy
+        placeObj(14, 7, 'woodenSupports');   // weapon rack
+        placeObj(16, 7, 'barrel');           // storage
+        placeObj(16, 4, 'woodenCrates');     // crates
+    } else {
+        placeObj(14, 5, 'woodenPile', false); // rubble where anvil would be
+        placeObj(16, 6, 'woodenPile', false); // collapsed structure
+    }
     placeObj(17, 3, 'woodenPile', false);
 
     // ===== 7. SENNA'S ALCHEMY SHOP (rows 13-17, cols 22-27) =====
     // Stone floor, back wall (north) + right wall (east), open front
-    fillFloor(14, 23, 16, 26, 'stoneTile');
-    floorMap[15][24] = 'stoneInset';
-    floorMap[15][25] = 'stoneInset';
+    const _shopRebuilt = typeof hamletRebuild !== 'undefined' && hamletRebuild.shop;
+    fillFloor(14, 23, 16, 26, _shopRebuilt ? 'stoneTile' : 'stoneUneven');
+    if (_shopRebuilt) { floorMap[15][24] = 'stoneInset'; floorMap[15][25] = 'stoneInset'; }
+    else { floorMap[15][24] = 'stoneMissing'; }
     // North back wall
     wall(13, 22, 'wallCorner');
     wall(13, 23, 'wall');
@@ -1482,19 +1492,23 @@ function generateTown() {
     // Pavement approach (south + west)
     fillFloor(17, 22, 17, 26, 'stoneTile');
     fillFloor(14, 22, 17, 22, 'stoneTile');
-    // Interior props
-    placeObj(14, 24, 'barrel');           // potions barrel
-    placeObj(14, 26, 'barrelsStacked');   // more potions
-    placeObj(16, 23, 'woodenCrate');      // ingredient crate
-    placeObj(16, 26, 'tableShort');       // alchemy table
-    // Rubble at entrance area
+    // Interior props — functional or rubble
+    if (_shopRebuilt) {
+        placeObj(14, 24, 'barrel');           // potions barrel
+        placeObj(14, 26, 'barrelsStacked');   // more potions
+        placeObj(16, 23, 'woodenCrate');      // ingredient crate
+        placeObj(16, 26, 'tableShort');       // alchemy table
+    } else {
+        placeObj(14, 24, 'woodenPile', false); // rubble
+        placeObj(16, 25, 'woodenPile', false); // collapsed shelves
+    }
     placeObj(17, 27, 'woodenPile', false);
 
     // ===== 8. ALDRIC'S GUARD POST (rows 4-8, cols 3-8) =====
-    // Stone floor, back wall (north) + left wall (west), open front
-    fillFloor(5, 4, 7, 7, 'stone');
-    floorMap[6][5] = 'stoneInset';
-    floorMap[6][6] = 'stoneInset';
+    const _guardRebuilt = typeof hamletRebuild !== 'undefined' && hamletRebuild.guardPost;
+    fillFloor(5, 4, 7, 7, _guardRebuilt ? 'stone' : 'stoneUneven');
+    if (_guardRebuilt) { floorMap[6][5] = 'stoneInset'; floorMap[6][6] = 'stoneInset'; }
+    else { floorMap[6][5] = 'stoneMissing'; }
     // North back wall
     wall(4, 3, 'wallCorner');
     wall(4, 4, 'wallStructure');
@@ -1509,18 +1523,22 @@ function generateTown() {
     // Pavement approach (south + east)
     fillFloor(8, 4, 8, 8, 'stone');
     fillFloor(5, 8, 8, 8, 'stone');
-    // Interior props
-    placeObj(5, 5, 'woodenSupports');     // weapon rack
-    placeObj(5, 7, 'woodenSupports');     // weapon rack
-    placeObj(7, 4, 'woodenCrate');        // supply crate
-    placeObj(7, 7, 'stoneColumn');        // support column
-    // Rubble at entrance
+    // Interior props — functional or rubble
+    if (_guardRebuilt) {
+        placeObj(5, 5, 'woodenSupports');     // weapon rack
+        placeObj(5, 7, 'woodenSupports');     // weapon rack
+        placeObj(7, 4, 'woodenCrate');        // supply crate
+        placeObj(7, 7, 'stoneColumn');        // support column
+    } else {
+        placeObj(5, 5, 'woodenPile', false);  // collapsed racks
+        placeObj(7, 7, 'woodenPile', false);  // rubble
+    }
     placeObj(8, 3, 'woodenPile', false);
 
     // ===== 9. HERMIT'S HUT (rows 4-8, cols 22-27) =====
-    // Small isolated hut with grass around, stone patch, single wall behind
-    fillFloor(5, 23, 7, 26, 'stoneInset');
-    floorMap[6][24] = 'stoneMissing';
+    const _hermitRebuilt = typeof hamletRebuild !== 'undefined' && hamletRebuild.hermitHut;
+    fillFloor(5, 23, 7, 26, _hermitRebuilt ? 'stoneInset' : 'stoneUneven');
+    if (!_hermitRebuilt) floorMap[6][24] = 'stoneMissing';
     // North back wall only (minimal enclosure)
     wall(4, 22, 'wallCorner');
     wall(4, 23, 'wallAged');
@@ -1534,11 +1552,15 @@ function generateTown() {
     wall(7, 27, 'wallHalf');
     // Pavement approach
     fillFloor(8, 23, 8, 26, 'stone');
-    // Interior — sparse, mystical
-    placeObj(5, 24, 'stoneColumn');       // arcane pillar
-    placeObj(5, 26, 'stoneColumn');       // arcane pillar
+    // Interior — functional or rubble
+    if (_hermitRebuilt) {
+        placeObj(5, 24, 'stoneColumn');       // arcane pillar
+        placeObj(5, 26, 'stoneColumn');       // arcane pillar
+        placeObj(7, 26, 'barrel', false);
+    } else {
+        placeObj(5, 24, 'woodenPile', false); // collapsed pillar
+    }
     placeObj(7, 23, 'woodenPile', false);
-    placeObj(7, 26, 'barrel', false);
     // Surrounding grass detail
     floorMap[3][23] = 'n_grassFlowers';
     floorMap[3][26] = 'n_grassFlowers';

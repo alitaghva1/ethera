@@ -240,7 +240,11 @@ function drawNPC(npc) {
     const isGhost = !!npc.isGhost;
     const isPaleQueen = !!npc.isPaleQueen;
     const ghostBob = isGhost ? Math.sin(performance.now() / 800 + npc.row * 3) * 4 : 0;
-    const baseAlpha = isGhost ? 0.35 + Math.sin(performance.now() / 1200) * 0.1 : 1.0;
+    // NPCs whose buildings aren't rebuilt appear dimmer/ghostlier
+    const _npcBld = typeof NPC_BUILDING_MAP !== 'undefined' ? NPC_BUILDING_MAP[npc.id] : null;
+    const _npcRebuilt = !_npcBld || (typeof hamletRebuild !== 'undefined' && hamletRebuild[_npcBld]);
+    const baseAlpha = isGhost ? 0.35 + Math.sin(performance.now() / 1200) * 0.1
+        : (_npcRebuilt ? 1.0 : 0.5 + Math.sin(performance.now() / 1000) * 0.05);
 
     // Shadow (ghosts have no shadow)
     if (!isGhost) {
@@ -315,8 +319,8 @@ function drawNPC(npc) {
     ctx.strokeText(npc.name, sx, drawY + ghostBob - 8);
     ctx.fillText(npc.name, sx, drawY + ghostBob - 8);
 
-    // Service indicator icon above service NPCs (forge/shop)
-    if (npc.id === 'garrett' || npc.id === 'senna') {
+    // Service indicator icon above service NPCs — only after building rebuilt
+    if ((npc.id === 'garrett' && _npcRebuilt) || (npc.id === 'senna' && _npcRebuilt)) {
         const svcPulse = 0.5 + Math.sin(performance.now() / 800) * 0.2;
         ctx.globalAlpha = svcPulse * baseAlpha;
         ctx.font = '12px Georgia';
@@ -514,8 +518,45 @@ const NPC_FORM_REACTIONS = {
     },
 };
 
+// Pre-rebuild dialogue — shown when NPC's building is in ruins
+const NPC_RUINED_DIALOGUE = {
+    garrett: [
+        'The forge... it\'s been cold for so long.',
+        'If someone could restore it, I could work again. My hands remember how.',
+        'It would take gold. But the result would be worth it.',
+    ],
+    senna: [
+        'My instruments are shattered. I can\'t brew anything in these ruins.',
+        'Restore my workshop and I\'ll make potions that keep you alive down there.',
+        'Gold can rebuild what was lost.',
+    ],
+    aldric: [
+        'This post used to mean something. Now it\'s just rubble and memory.',
+        'Rebuild it and I\'ll share what I know about fighting. It might save your life.',
+    ],
+    hermit: [
+        'The old magics need a proper space to resonate. This place is too broken.',
+        'Restore this hut and I can open a path to the deeper places.',
+    ],
+    mira: [
+        'We built that monument together, once. Before everything fell apart.',
+        'You\'re bringing things back. I can feel it.',
+    ],
+};
+
 function getFormReactiveDialogue(npc) {
     const form = (typeof FormSystem !== 'undefined' && FormSystem.currentForm) ? FormSystem.currentForm : 'wizard';
+
+    // Pre-rebuild: show ruined dialogue if NPC's building isn't restored
+    if (typeof NPC_BUILDING_MAP !== 'undefined' && typeof hamletRebuild !== 'undefined') {
+        const bld = NPC_BUILDING_MAP[npc.id];
+        // Mira's building is the monument
+        const miraKey = npc.id === 'mira' ? 'monument' : bld;
+        if (miraKey && !hamletRebuild[miraKey] && NPC_RUINED_DIALOGUE[npc.id]) {
+            return [...NPC_RUINED_DIALOGUE[npc.id]];
+        }
+    }
+
     let lines = [...npc.dialogue];
 
     // Inject quest dialogue for quest-giver NPCs
@@ -695,6 +736,11 @@ function isNPCDialogueOpen() {
 //  GARRETT'S SMITHY — Equipment Enchantment Menu
 // ============================================================
 function openSmithyMenu(npc) {
+    if (typeof hamletRebuild !== 'undefined' && !hamletRebuild.forge) {
+        pickupTexts.push({ text: 'The forge lies in ruins...', color: '#aa6644',
+            row: npc.row, col: npc.col, offsetY: -20, life: 2.0 });
+        return;
+    }
     currentNPC = npc;
     smithyMenuOpen = true;
     smithyFadeIn = 0;
@@ -1041,6 +1087,11 @@ function drawSmithyMenu() {
 //  SENNA'S POTION SHOP
 // ============================================================
 function openShopMenu(npc) {
+    if (typeof hamletRebuild !== 'undefined' && !hamletRebuild.shop) {
+        pickupTexts.push({ text: 'The alchemy lab is destroyed...', color: '#aa6644',
+            row: npc.row, col: npc.col, offsetY: -20, life: 2.0 });
+        return;
+    }
     currentNPC = npc;
     shopMenuOpen = true;
     shopFadeIn = 0;

@@ -2756,6 +2756,10 @@ function restartGame() {
         for (const k of Object.keys(forgeUpgrades)) forgeUpgrades[k] = 0;
     }
     if (typeof _evoHintShown !== 'undefined') { _evoHintShown.slime = false; _evoHintShown.skeleton = false; _evoHintShown.wizard = false; }
+    // Reset hamlet rebuild state for new game
+    if (typeof hamletRebuild !== 'undefined') {
+        for (const k of Object.keys(hamletRebuild)) hamletRebuild[k] = false;
+    }
     // Reset wave
     wave.current = 0;
     wave.phase = 'pre';
@@ -3431,6 +3435,7 @@ function render() {
         // Interaction prompts
         drawChestPrompt();
         drawDoorPrompt();
+        if (typeof drawRebuildPrompt === 'function') drawRebuildPrompt();
 
         // Wave system UI
         drawWaveBanner();

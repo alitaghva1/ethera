@@ -1131,8 +1131,8 @@ function updateDoorDefsForZone(zone) {
             '1,15': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,16': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
         };
-        // Abyss Portal — warp to deepest reached depth (only if player has been to procedural floors)
-        if (deepestDepthReached > 0) {
+        // Abyss Portal — requires Hermit's Hut rebuilt + procedural depth reached
+        if (deepestDepthReached > 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.hermitHut) {
             DOOR_DEFS['6,24'] = {
                 requiresKey: null,
                 label: 'Enter the Abyss (Depth ' + deepestDepthReached + ')',
@@ -1372,6 +1372,92 @@ function drawZoneTransition() {
             zoneTransition = null;
         }
     }
+
+    ctx.restore();
+}
+
+// ============================================================
+//  HAMLET REBUILD SYSTEM
+// ============================================================
+function getNearbyRebuildPoint() {
+    if (typeof hamletRebuild === 'undefined' || typeof REBUILD_POINTS === 'undefined') return null;
+    if (currentZone !== 0) return null;
+    for (const [key, point] of Object.entries(REBUILD_POINTS)) {
+        if (hamletRebuild[key]) continue; // already rebuilt
+        const dr = player.row - point.row;
+        const dc = player.col - point.col;
+        if (Math.sqrt(dr * dr + dc * dc) < 2.5) {
+            return { key, ...point };
+        }
+    }
+    return null;
+}
+
+function tryHamletRebuild() {
+    const rp = getNearbyRebuildPoint();
+    if (!rp) return false;
+    const cost = REBUILD_COSTS[rp.key];
+    const label = REBUILD_LABELS[rp.key];
+    if (playerGold < cost) {
+        pickupTexts.push({ text: 'Not enough gold (' + cost + 'g needed)', color: '#cc4444',
+            row: rp.row, col: rp.col, offsetY: -20, life: 2.0 });
+        return true; // consumed the input even though it failed
+    }
+    playerGold -= cost;
+    hamletRebuild[rp.key] = true;
+    if (typeof addScreenShake === 'function') addScreenShake(6, 0.4);
+    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(rp.row, rp.col, 20, '#ffd700');
+    if (typeof sfxLevelUp === 'function') sfxLevelUp();
+    pickupTexts.push({ text: label + ' \u2014 Complete!', color: '#ffd700',
+        row: rp.row, col: rp.col, offsetY: -30, life: 3.0 });
+    // Apply passive bonuses
+    if (rp.key === 'guardPost' && typeof questState !== 'undefined') {
+        questState.permBonuses.dmgBonus = (questState.permBonuses.dmgBonus || 0) + 2;
+        pickupTexts.push({ text: '+2 Permanent Damage', color: '#dd8844',
+            row: player.row, col: player.col, offsetY: -10, life: 2.5 });
+    }
+    // Reload zone to show rebuilt building
+    loadZone(0);
+    updateDoorDefsForZone(0);
+    updateChestDefsForZone(0);
+    if (typeof buildRoomBounds === 'function') buildRoomBounds();
+    if (typeof buildEnvironmentLights === 'function') buildEnvironmentLights();
+    loadZoneNPCs(0);
+    if (typeof updateFogOfWar === 'function') updateFogOfWar();
+    return true;
+}
+
+function drawRebuildPrompt() {
+    if (currentZone !== 0 || typeof hamletRebuild === 'undefined') return;
+    if (gameDead || inventoryOpen || gamePaused || zoneTransitionFading) return;
+    const rp = getNearbyRebuildPoint();
+    if (!rp) return;
+    const cost = REBUILD_COSTS[rp.key];
+    const label = REBUILD_LABELS[rp.key];
+    const canAfford = playerGold >= cost;
+    const pos = tileToScreen(rp.row, rp.col);
+    const sx = pos.x + cameraX, sy = pos.y + cameraY - 80;
+    const pulse = 0.6 + Math.sin(performance.now() / 500) * 0.2;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Badge background
+    ctx.globalAlpha = pulse * 0.7;
+    ctx.fillStyle = '#1a1408';
+    ctx.strokeStyle = canAfford ? '#cc9933' : '#884444';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(sx - 70, sy - 14, 140, 28, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Key + label
+    ctx.globalAlpha = pulse * 0.9;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = canAfford ? '#e8c840' : '#cc6644';
+    ctx.fillText('[E] ' + label + ' (' + cost + 'g)', sx, sy);
 
     ctx.restore();
 }

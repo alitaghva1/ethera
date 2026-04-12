@@ -75,6 +75,7 @@ function saveGame(slotIdx) {
         playerPotions: typeof playerPotions !== 'undefined' ? { ...playerPotions } : { health_vial: 0, mana_elixir: 0, fortitude_salt: 0 },
         forgeUpgrades: typeof forgeUpgrades !== 'undefined' ? { ...forgeUpgrades } : {},
         npcDialogueProgress: typeof _npcDialogueProgress !== 'undefined' ? { ..._npcDialogueProgress } : {},
+        hamletRebuild: typeof hamletRebuild !== 'undefined' ? { ...hamletRebuild } : {},
     };
     try {
         if (_useFileSaves) {
@@ -331,6 +332,11 @@ function loadGame(slotIdx) {
         for (const [id, idx] of Object.entries(data.npcDialogueProgress)) {
             _npcDialogueProgress[id] = idx;
         }
+    }
+
+    // Restore hamlet rebuild state
+    if (typeof hamletRebuild !== 'undefined' && data.hamletRebuild) {
+        Object.assign(hamletRebuild, data.hamletRebuild);
     }
 
     // Set wave to zoneClear so player can explore and use doors/chests

@@ -268,6 +268,32 @@ let gameCleared = false;         // true after first Zone 6 completion
 // ============================================================
 let playerGold = 0;
 
+// ── HAMLET REBUILD SYSTEM ──
+// Buildings start ruined. Player spends gold to rebuild, unlocking NPC services.
+var hamletRebuild = {
+    forge: false,      // Garrett's Forge — unlocks enchanting/form upgrades
+    shop: false,       // Senna's Alchemy — unlocks potions
+    guardPost: false,  // Aldric's Post — unlocks +5% damage passive
+    hermitHut: false,  // Hermit's Hut — unlocks Abyss Portal + quest
+    monument: false,   // Town Monument — unlocks +10% XP passive
+};
+const REBUILD_COSTS = {
+    forge: 250, shop: 250, guardPost: 600, hermitHut: 600, monument: 1200,
+};
+const REBUILD_LABELS = {
+    forge: 'Rebuild Forge', shop: 'Rebuild Alchemy Lab',
+    guardPost: 'Rebuild Guard Post', hermitHut: 'Rebuild Hermit\'s Hut',
+    monument: 'Restore Monument',
+};
+// Rebuild interaction positions (NPC locations)
+const REBUILD_POINTS = {
+    forge: { row: 15, col: 6 }, shop: { row: 15, col: 24 },
+    guardPost: { row: 6, col: 6 }, hermitHut: { row: 6, col: 24 },
+    monument: { row: 10, col: 15 },
+};
+// NPC → building mapping
+const NPC_BUILDING_MAP = { garrett: 'forge', senna: 'shop', aldric: 'guardPost', hermit: 'hermitHut' };
+
 function saveSettings() {
     try { localStorage.setItem('ethera_settings', JSON.stringify(gameSettings)); } catch(e) {}
 }
