@@ -367,51 +367,102 @@ function drawEvolutionIndicator() {
     ctx.restore();
 }
 
-const _doorGlowCache = {}; // cache pre-rendered glow canvases by color key
-function _getDoorGlow(cr, cg, cb, radius) {
-    const key = cr + ',' + cg + ',' + cb + ',' + radius;
-    if (_doorGlowCache[key]) return _doorGlowCache[key];
-    const size = radius * 2;
-    const c = document.createElement('canvas');
-    c.width = size; c.height = Math.round(size * 0.5);
-    const gc = c.getContext('2d');
-    const glow = gc.createRadialGradient(radius, c.height / 2, 0, radius, c.height / 2, radius);
-    glow.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.4)');
-    glow.addColorStop(0.6, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.1)');
-    glow.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0)');
-    gc.fillStyle = glow;
-    gc.beginPath();
-    gc.ellipse(radius, c.height / 2, radius, c.height / 2, 0, 0, Math.PI * 2);
-    gc.fill();
-    _doorGlowCache[key] = c;
-    return c;
-}
-
+// Track which door positions we've already drawn a portal for (dedup adjacent tiles)
 function drawDoorGlows() {
     if (typeof DOOR_DEFS === 'undefined' || !DOOR_DEFS) return;
     if (gamePhase === 'cinematic' || gamePhase === 'preMenu' || gamePhase === 'menu') return;
     const t = performance.now() / 1000;
+
+    // Group doors by destination+row to draw one portal per exit (not per tile)
+    const drawn = {};
     for (const [key, def] of Object.entries(DOOR_DEFS)) {
         if (def.used) continue;
         const [r, c] = key.split(',').map(Number);
-        const pos = tileToScreen(r, c);
+        const groupKey = def.destination + '_' + r;
+        if (drawn[groupKey]) continue; // already drew this portal row
+        drawn[groupKey] = true;
+
+        // Find center of this door group (average col of all tiles with same dest+row)
+        let colSum = 0, colCount = 0;
+        for (const [k2, d2] of Object.entries(DOOR_DEFS)) {
+            const [r2, c2] = k2.split(',').map(Number);
+            if (r2 === r && d2.destination === def.destination) { colSum += c2; colCount++; }
+        }
+        const centerCol = colSum / colCount;
+        const pos = tileToScreen(r, centerCol);
         const sx = pos.x + cameraX, sy = pos.y + cameraY;
-        if (sx < -100 || sx > canvasW + 100 || sy < -100 || sy > canvasH + 100) continue;
-        if (typeof fogRevealed !== 'undefined' && fogRevealed[r] && fogRevealed[r][c] < 0.3) continue;
+        if (sx < -200 || sx > canvasW + 200 || sy < -200 || sy > canvasH + 200) continue;
+        if (typeof fogRevealed !== 'undefined' && fogRevealed[r] && fogRevealed[r][c] < 0.2) continue;
 
         const dest = def.destination;
-        let cr, cg, cb, radius;
-        if (dest === 'zone1' || dest === 'next') { cr = 200; cg = 120; cb = 40; radius = 50; }
-        else if (dest === 'town') { cr = 200; cg = 180; cb = 120; radius = 50; }
-        else if (dest === 'deepest') { cr = 140; cg = 60; cb = 200; radius = 45; }
-        else { cr = 120; cg = 150; cb = 220; radius = 45; }
+        let cr, cg, cb;
+        if (dest === 'zone1' || dest === 'next') { cr = 220; cg = 130; cb = 40; }
+        else if (dest === 'town') { cr = 200; cg = 190; cb = 130; }
+        else if (dest === 'deepest') { cr = 150; cg = 60; cb = 220; }
+        else { cr = 100; cg = 150; cb = 230; }
 
-        const pulse = 0.22 + Math.sin(t * 1.5 + r + c) * 0.08;
-        const glowCanvas = _getDoorGlow(cr, cg, cb, radius);
+        const portalW = 44;
+        const portalH = 58;
+        const pulse = 0.6 + Math.sin(t * 2 + r) * 0.15;
+        const innerPulse = 0.4 + Math.sin(t * 3 + r + 1) * 0.2;
+
         ctx.save();
+
+        // Outer glow halo on ground
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = pulse;
-        ctx.drawImage(glowCanvas, sx - radius, sy + 4 - radius * 0.25, radius * 2, radius);
+        ctx.globalAlpha = pulse * 0.2;
+        const haloGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, portalW * 1.5);
+        haloGrad.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ',0.3)');
+        haloGrad.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ',0)');
+        ctx.fillStyle = haloGrad;
+        ctx.fillRect(sx - portalW * 2, sy - portalW, portalW * 4, portalW * 2);
+
+        // Portal ring — vertical ellipse (reads as a doorway)
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = pulse * 0.7;
+        ctx.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',0.8)';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(' + cr + ',' + cg + ',' + cb + ',0.6)';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - portalH * 0.4, portalW, portalH, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner ring (slightly smaller, brighter)
+        ctx.globalAlpha = innerPulse * 0.5;
+        ctx.strokeStyle = 'rgba(' + Math.min(255, cr + 40) + ',' + Math.min(255, cg + 40) + ',' + Math.min(255, cb + 40) + ',0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - portalH * 0.4, portalW * 0.7, portalH * 0.7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner fill — dark center with color tint
+        ctx.globalAlpha = innerPulse * 0.15;
+        ctx.shadowBlur = 0;
+        const fillGrad = ctx.createRadialGradient(sx, sy - portalH * 0.4, 0, sx, sy - portalH * 0.4, portalH * 0.6);
+        fillGrad.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ',0.4)');
+        fillGrad.addColorStop(0.7, 'rgba(' + Math.floor(cr/3) + ',' + Math.floor(cg/3) + ',' + Math.floor(cb/3) + ',0.3)');
+        fillGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = fillGrad;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy - portalH * 0.4, portalW * 0.65, portalH * 0.65, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Orbiting sparkle particles (3 particles rotating around the ring)
+        ctx.globalCompositeOperation = 'screen';
+        for (let pi = 0; pi < 3; pi++) {
+            const angle = t * 1.8 + (pi / 3) * Math.PI * 2;
+            const sparkX = sx + Math.cos(angle) * portalW * 0.85;
+            const sparkY = (sy - portalH * 0.4) + Math.sin(angle) * portalH * 0.85;
+            const sparkAlpha = 0.4 + Math.sin(t * 5 + pi * 2) * 0.3;
+            ctx.globalAlpha = sparkAlpha;
+            ctx.fillStyle = 'rgba(' + Math.min(255, cr + 50) + ',' + Math.min(255, cg + 50) + ',' + Math.min(255, cb + 50) + ',1)';
+            ctx.beginPath();
+            ctx.arc(sparkX, sparkY, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
         ctx.restore();
     }
 }
