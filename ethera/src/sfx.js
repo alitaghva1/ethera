@@ -367,13 +367,17 @@ function sfxPlayerDeath() {
 // ----- CINEMATIC SFX -----
 function sfxCinematicHeartbeat(volume) {
     if (!sfxCtx) return;
-    const v = volume || 0.3;
-    // Deep, resonant double-thump heartbeat — volume controls intensity
-    playTone('sine', 55, 35, 0.3, v, 0.01, 0.25);
+    const v = volume || 0.5;
+    // Heartbeat: low thump + mid-range knock so it's audible on all speakers
+    // First beat (LUB)
+    playTone('sine', 80, 45, 0.3, v, 0.005, 0.25);          // bass body
+    playTone('triangle', 120, 60, 0.15, v * 0.5, 0.005, 0.12); // mid punch
+    // Second beat (DUB) — slightly quieter, slightly delayed
     setTimeout(() => {
         if (!sfxCtx) return;
-        playTone('sine', 60, 38, 0.25, v * 0.85, 0.01, 0.2);
-    }, 280);
+        playTone('sine', 90, 50, 0.25, v * 0.8, 0.005, 0.2);
+        playTone('triangle', 130, 65, 0.12, v * 0.4, 0.005, 0.1);
+    }, 250);
 }
 
 function sfxCinematicStir() {

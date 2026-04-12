@@ -185,9 +185,9 @@ function updateIntroPhase(dt) {
     // Heartbeat sequence — builds through the silence, growing louder
     // Timeline: text fades at 3.5s → heartbeats fill the void → music enters at 5.5s
     if (typeof sfxCinematicHeartbeat === 'function') {
-        if (t >= 3.6 && !introSfxPlayed)  { introSfxPlayed = true;  sfxCinematicHeartbeat(0.20); } // quiet
-        if (t >= 4.3 && !introSfxBeat2)   { introSfxBeat2 = true;   sfxCinematicHeartbeat(0.30); } // building
-        if (t >= 4.9 && !introSfxBeat3)   { introSfxBeat3 = true;   sfxCinematicHeartbeat(0.40); } // strong
+        if (t >= 3.6 && !introSfxPlayed)  { introSfxPlayed = true;  sfxCinematicHeartbeat(0.40); } // distant
+        if (t >= 4.3 && !introSfxBeat2)   { introSfxBeat2 = true;   sfxCinematicHeartbeat(0.60); } // building
+        if (t >= 4.9 && !introSfxBeat3)   { introSfxBeat3 = true;   sfxCinematicHeartbeat(0.80); } // strong
     }
 
     // Music cue — enters after heartbeats build, with "They were wrong."
