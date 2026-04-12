@@ -3419,6 +3419,20 @@ function render() {
         // Evolution progress indicator (milestone dots)
         drawEvolutionIndicator();
 
+        // Gold display — persistent in top-right below evolution dots
+        if (typeof playerGold !== 'undefined' && !gameDead) {
+            ctx.save();
+            ctx.globalAlpha = 0.7;
+            ctx.textAlign = 'right';
+            ctx.font = 'bold 11px monospace';
+            ctx.fillStyle = '#e8c040';
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = 3;
+            ctx.fillText(playerGold + 'g', canvasW - 20, 78);
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+
         // Abyss modifier pills + rank badge (endless mode HUD)
         if (typeof drawAbyssModifiers === 'function') drawAbyssModifiers();
         if (typeof drawAbyssRankBadge === 'function') drawAbyssRankBadge();

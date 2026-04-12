@@ -5,7 +5,7 @@
 // When running in Electron, saves go to the user's AppData folder as JSON files.
 // When running in a browser, saves use localStorage as before.
 
-const SAVE_FORMAT_VERSION = 7;  // bump when save schema changes
+const SAVE_FORMAT_VERSION = 8;  // bump when save schema changes
 
 // Helper: detect if we're running inside Electron with file save support
 const _useFileSaves = typeof window !== 'undefined' && window.ethera && window.ethera.isElectron;
@@ -159,6 +159,13 @@ function _migrateSave(data) {
             data.progressionIndex = _oldToNew[data.progressionIndex] !== undefined ? _oldToNew[data.progressionIndex] : data.progressionIndex;
         }
         data.version = 7;
+    }
+    if (data.version < 8) {
+        // v7 → v8: Add hamlet rebuild system (all buildings start unbuilt)
+        if (!data.hamletRebuild) {
+            data.hamletRebuild = { forge: false, shop: false, guardPost: false, hermitHut: false, monument: false };
+        }
+        data.version = 8;
     }
     return data;
 }

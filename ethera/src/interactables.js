@@ -952,9 +952,9 @@ function loadZone(zoneNumber) {
     if (typeof Notify !== 'undefined' && Notify.tutorialSequence) {
         if (zoneNumber === 0) {
             Notify.tutorialSequence('hamlet_intro', [
-                { text: 'WASD to move. Explore the hamlet.', delay: 1 },
-                { text: 'Press E near villagers to talk.', delay: 4 },
-                { text: 'Head north to find the Undercroft...', delay: 5 },
+                { text: 'The settlement lies in ruins. Earn gold to rebuild it.', delay: 1 },
+                { text: 'Press E near villagers to talk. Explore the hamlet.', delay: 5 },
+                { text: 'Head south to find the Dungeon...', delay: 5 },
             ]);
         } else if (zoneNumber === 1) {
             Notify.tutorialSequence('undercroft_intro', [
@@ -1416,14 +1416,27 @@ function tryHamletRebuild() {
         pickupTexts.push({ text: '+2 Permanent Damage', color: '#dd8844',
             row: player.row, col: player.col, offsetY: -10, life: 2.5 });
     }
-    // Reload zone to show rebuilt building
-    loadZone(0);
-    updateDoorDefsForZone(0);
-    updateChestDefsForZone(0);
-    if (typeof buildRoomBounds === 'function') buildRoomBounds();
-    if (typeof buildEnvironmentLights === 'function') buildEnvironmentLights();
-    loadZoneNPCs(0);
-    if (typeof updateFogOfWar === 'function') updateFogOfWar();
+    // Reload zone to show rebuilt building — preserve player position
+    const _rebuildRow = player.row, _rebuildCol = player.col;
+    try {
+        loadZone(0);
+        updateDoorDefsForZone(0);
+        updateChestDefsForZone(0);
+        if (typeof buildRoomBounds === 'function') buildRoomBounds();
+        if (typeof buildEnvironmentLights === 'function') buildEnvironmentLights();
+        loadZoneNPCs(0);
+        if (typeof updateFogOfWar === 'function') updateFogOfWar();
+    } catch(e) { console.error('Rebuild zone reload failed:', e); }
+    // Restore player position (loadZone resets to south entrance)
+    player.row = _rebuildRow;
+    player.col = _rebuildCol;
+    player.vx = 0; player.vy = 0;
+    // Snap camera to prevent jump
+    const _rbPos = tileToScreen(player.row, player.col);
+    smoothCamX = canvasW / 2 - _rbPos.x;
+    smoothCamY = canvasH / 2 - _rbPos.y;
+    cameraX = Math.round(smoothCamX);
+    cameraY = Math.round(smoothCamY);
     return true;
 }
 

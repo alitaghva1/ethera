@@ -4106,7 +4106,7 @@ function applyUpgrade(upgradeId) {
     setPixelCursor('none');
     // Power surge feedback — brief flash + particle burst from player
     addScreenShake(3, 0.15);
-    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 12, '#e8c840');
+    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 30, '#e8c840');
     if (typeof sfxLevelUp === 'function') sfxLevelUp();
 }
 
