@@ -940,7 +940,8 @@ let lightRadius = 60;
 const MAX_LIGHT = 340;
 const HAMLET_LIGHT = 310;         // twilight brightness for town atmosphere
 const INTRO_DURATION = 6.5;       // new intro text sequence length
-let introSfxPlayed = false;       // one-shot flag for intro heartbeat
+let introSfxPlayed = false;       // one-shot flag for intro heartbeat 1
+let introSfxBeat2 = false;        // one-shot flag for intro heartbeat 2
 let introMusicStarted = false;    // one-shot flag for hamlet music start during reveal
 let lightFlicker = 0;
 

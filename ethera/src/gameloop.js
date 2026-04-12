@@ -182,10 +182,18 @@ function updateIntroPhase(dt) {
     introTimer += dt;
     const t = introTimer;
 
-    // Heartbeat SFX at start — hits hard in silence
-    if (t >= 0.1 && !introSfxPlayed) {
-        introSfxPlayed = true;
-        if (typeof sfxCinematicHeartbeat === 'function') sfxCinematicHeartbeat();
+    // Heartbeat sequence — builds through the silence, signals "still alive"
+    // Beat 1: during text (you're alive), Beat 2: text fading (growing stronger)
+    // Then music enters as the emotional release
+    if (typeof sfxCinematicHeartbeat === 'function') {
+        if (t >= 2.4 && !introSfxPlayed) {
+            introSfxPlayed = true;
+            sfxCinematicHeartbeat();
+        }
+        if (t >= 3.0 && !introSfxBeat2) {
+            introSfxBeat2 = true;
+            sfxCinematicHeartbeat();
+        }
     }
 
     // Music cue at "They were wrong." — cinematic track swells in from silence
@@ -3799,6 +3807,7 @@ function runIntro() {
     gamePhase = 'intro';
     introTimer = 0;
     introSfxPlayed = false;
+    introSfxBeat2 = false;
     introMusicStarted = false;
     lightRadius = 80; // dim — expands during reveal
     setPixelCursor('none');
