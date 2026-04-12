@@ -381,6 +381,31 @@ function drawLevelUpScreen() {
             ctx.fillStyle = isLegendary ? '#ffcc33' : (isRare ? '#5588ff' : '#666');
             ctx.fillText('NEW', cardX + cardW / 2, cy2 + cardH - 16);
         }
+
+        // Hover stat hint — show practical impact when hovering
+        if (hovered) {
+            let statHint = '';
+            const nextStack = stacks + 1;
+            if (u.id === 'pierce') statHint = 'Passes through ' + nextStack + ' enemies';
+            else if (u.id === 'bounce') statHint = 'Bounces off ' + nextStack + ' walls';
+            else if (u.id === 'explode') statHint = 'AoE radius: 2.5 tiles';
+            else if (u.id === 'multishot') statHint = (nextStack + 1) + ' projectiles per attack';
+            else if (u.id === 'bigshot') statHint = '+' + (nextStack * 5) + ' base damage';
+            else if (u.id === 'firerate') statHint = '-' + Math.round(nextStack * 15) + '% cooldown';
+            else if (u.id === 'maxHp') statHint = '+' + (nextStack * 15) + ' max HP';
+            else if (u.id === 'speed') statHint = '+' + (nextStack * 8) + '% move speed';
+            else if (u.id === 'regen') statHint = '+' + nextStack + ' HP/sec';
+            else if (u.id === 'tower_extra') statHint = (SUMMON_MAX_COUNT + nextStack) + ' max towers';
+            else if (u.id === 'tower_damage') statHint = '+' + Math.round(nextStack * 20) + '% tower damage';
+            else if (u.id === 'mana_shield') statHint = '-' + (nextStack * 15) + '% dmg at 50%+ mana';
+            else if (u.id === 'spell_echo') statHint = (nextStack * 20) + '% chance for extra bolt';
+            if (statHint) {
+                ctx.globalAlpha = fade * 0.45;
+                ctx.font = 'italic 8px Georgia';
+                ctx.fillStyle = '#aabb88';
+                ctx.fillText(statHint, cardX + cardW / 2, cy2 + cardH - 4);
+            }
+        }
     }
 
     ctx.restore();

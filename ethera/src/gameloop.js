@@ -367,6 +367,26 @@ function drawEvolutionIndicator() {
     ctx.restore();
 }
 
+const _doorGlowCache = {}; // cache pre-rendered glow canvases by color key
+function _getDoorGlow(cr, cg, cb, radius) {
+    const key = cr + ',' + cg + ',' + cb + ',' + radius;
+    if (_doorGlowCache[key]) return _doorGlowCache[key];
+    const size = radius * 2;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = Math.round(size * 0.5);
+    const gc = c.getContext('2d');
+    const glow = gc.createRadialGradient(radius, c.height / 2, 0, radius, c.height / 2, radius);
+    glow.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.4)');
+    glow.addColorStop(0.6, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.1)');
+    glow.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0)');
+    gc.fillStyle = glow;
+    gc.beginPath();
+    gc.ellipse(radius, c.height / 2, radius, c.height / 2, 0, 0, Math.PI * 2);
+    gc.fill();
+    _doorGlowCache[key] = c;
+    return c;
+}
+
 function drawDoorGlows() {
     if (typeof DOOR_DEFS === 'undefined' || !DOOR_DEFS) return;
     if (gamePhase === 'cinematic' || gamePhase === 'preMenu' || gamePhase === 'menu') return;
@@ -387,17 +407,11 @@ function drawDoorGlows() {
         else { cr = 120; cg = 150; cb = 220; radius = 45; }
 
         const pulse = 0.22 + Math.sin(t * 1.5 + r + c) * 0.08;
+        const glowCanvas = _getDoorGlow(cr, cg, cb, radius);
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
         ctx.globalAlpha = pulse;
-        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
-        glow.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.4)');
-        glow.addColorStop(0.6, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.1)');
-        glow.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.ellipse(sx, sy + 4, radius, radius * 0.5, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.drawImage(glowCanvas, sx - radius, sy + 4 - radius * 0.25, radius * 2, radius);
         ctx.restore();
     }
 }

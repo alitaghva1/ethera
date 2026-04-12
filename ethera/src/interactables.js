@@ -794,7 +794,6 @@ function loadZone(zoneNumber) {
         // Spawn at south entrance of Hamlet (arriving from antechamber or returning from dungeon)
         player.row = 21;
         player.col = 15;
-        if (typeof _townReturnSpawn !== 'undefined' && _townReturnSpawn) _townReturnSpawn = false;
         player.vx = 0;
         player.vy = 0;
     } else if (zoneNumber === 1) {

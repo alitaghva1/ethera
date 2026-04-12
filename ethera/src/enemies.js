@@ -2098,8 +2098,26 @@ function drawWaveBanner() {
         ctx.globalAlpha = wave.bannerAlpha * 0.8;
         ctx.fillText(wave.bannerSub, cx, cy + 28);
 
+        // Difficulty indicator — filled dots showing wave intensity
+        const _waveArray = currentZone === 1 ? WAVES : currentZone === 2 ? ZONE2_WAVES : currentZone === 4 ? ZONE4_WAVES : currentZone === 5 ? ZONE5_WAVES : currentZone === 6 ? ZONE6_WAVES : ZONE3_WAVES;
+        const _maxWaves = _waveArray.length;
+        const _intensity = Math.min(5, Math.ceil(((wave.current + 1) / Math.max(1, _maxWaves)) * 5));
+        ctx.globalAlpha = wave.bannerAlpha * 0.4;
+        for (let di = 0; di < 5; di++) {
+            ctx.beginPath();
+            ctx.arc(cx - 20 + di * 10, cy + 46, 3, 0, Math.PI * 2);
+            if (di < _intensity) {
+                ctx.fillStyle = _intensity >= 5 ? '#cc4422' : _intensity >= 3 ? '#ddaa44' : '#88aa66';
+                ctx.fill();
+            } else {
+                ctx.strokeStyle = '#665544';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+
         // Decorative bottom line
-        drawDecorLine(cx, cy + 46, 140, wave.bannerAlpha * 0.5);
+        drawDecorLine(cx, cy + 58, 140, wave.bannerAlpha * 0.5);
 
         // Countdown number — large, pulsing
         const countNum = Math.ceil(wave.timer);
