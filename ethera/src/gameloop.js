@@ -182,13 +182,20 @@ function updateIntroPhase(dt) {
     introTimer += dt;
     const t = introTimer;
 
-    // Heartbeat SFX at start
+    // Heartbeat SFX at start — hits hard in silence
     if (t >= 0.1 && !introSfxPlayed) {
         introSfxPlayed = true;
         if (typeof sfxCinematicHeartbeat === 'function') sfxCinematicHeartbeat();
     }
 
-    // During reveal phase (5.0-6.5s): expand light, run camera, start music
+    // Music cue at "They were wrong." — cinematic track swells in from silence
+    const INTRO_MUSIC_CUE = 3.5; // tune this: when "They were wrong." appears
+    if (t >= INTRO_MUSIC_CUE && !introMusicStarted) {
+        introMusicStarted = true;
+        try { playMusic('cinematic', 3.0); } catch(e) {} // slow 3s fade-in for drama
+    }
+
+    // During reveal phase (5.0-6.5s): expand light, run camera
     if (t > 5.0 && t <= INTRO_DURATION) {
         const revealT = Math.min(1, (t - 5.0) / 1.5);
         // Smooth ease-out
@@ -206,6 +213,8 @@ function updateIntroPhase(dt) {
         gamePhase = 'playing';
         lightRadius = MAX_LIGHT;
         setPixelCursor('none');
+        // Crossfade cinematic → antechamber music
+        try { playMusic('antechamber', 2.5); } catch(e) {}
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
             text: 'Two paths lie before you...',
@@ -3802,8 +3811,9 @@ function runIntro() {
     smoothCamY = canvasH / 2 - _introPos.y;
     cameraX = Math.round(smoothCamX);
     cameraY = Math.round(smoothCamY);
-    // Cinematic music during text, crossfades to hamlet when intro ends
-    try { playMusic('cinematic', 1.5); } catch(e) {}
+    // Kill all music — intro starts in silence for maximum impact
+    // Music cue happens at INTRO_MUSIC_CUE (3.5s) in updateIntroPhase
+    try { if (typeof pauseMusic === 'function') pauseMusic(); } catch(e) {}
     return; // CRITICAL: stop here — don't fall through to old cinematic setup below
 
     // Dungeon zones: play full cinematic (dead code for now, preserved for future)

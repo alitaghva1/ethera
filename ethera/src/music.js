@@ -21,9 +21,10 @@ const MUSIC_TRACKS = {
     levelUp:    { path: 'Tracks/mp3/Fx 2.mp3',                     vol: 0.40, loop: false },
 
     // --- Zone-specific tracks ---
-    // Zone 0 (Hamlet)
+    // Zone 0 (Hamlet) + Zone 7 (Antechamber)
     hamlet:         { path: 'Loops/mp3/4. Ballad of Ashenwood.mp3',     vol: 0.45, loop: true  },
     hamlet2:        { path: 'Loops/mp3/9. The Old Tavern.mp3',          vol: 0.45, loop: true  },
+    antechamber:    { path: 'Loops/mp3/23. The Last Watch.mp3',         vol: 0.40, loop: true  },
     // Zone 2 combat
     zone2_combat1:  { path: 'Loops/mp3/2. Echoes of the Keep.mp3',     vol: 0.50, loop: true  },
     zone2_combat2:  { path: 'Loops/mp3/12. March of Iron.mp3',         vol: 0.50, loop: true  },
