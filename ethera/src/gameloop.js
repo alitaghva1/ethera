@@ -212,15 +212,17 @@ function updateIntroPhase(dt) {
     if (introFlash > 0) introFlash = Math.max(0, introFlash - dt * 0.35);
 
     // === MUSIC ===
-    // Enters AFTER "They were wrong." holds — the release
-    if (t >= 25.8 && !introMusicStarted) {
+    // Enters AFTER golden text has faded — 0.5s of silence, then the swell.
+    // Music needs 2-3 seconds to establish before the world appears.
+    if (t >= 29.0 && !introMusicStarted) {
         introMusicStarted = true;
-        try { playMusic('cinematic', 3.0); } catch(e) {}
+        try { playMusic('cinematic', 4.0); } catch(e) {} // slow 4s swell
     }
 
-    // === REVEAL PHASE (26.0-28.0s) ===
-    if (t > 26.0 && t <= INTRO_DURATION) {
-        const revealT = Math.min(1, (t - 26.0) / 2.0);
+    // === REVEAL PHASE (31.0-33.0s) ===
+    // Music has been playing for 2 seconds — established enough to accompany the reveal
+    if (t > 31.0 && t <= INTRO_DURATION) {
+        const revealT = Math.min(1, (t - 31.0) / 2.0);
         // Smooth ease-out
         const eased = 1 - (1 - revealT) * (1 - revealT);
         lightRadius = 80 + (MAX_LIGHT - 80) * eased;
@@ -257,9 +259,9 @@ function drawIntroOverlay() {
     const t = introTimer;
     ctx.save();
 
-    // Black overlay — opaque through heartbeats + golden text, fades during reveal (26-28s)
+    // Black overlay — opaque through everything, fades during reveal (31-33s)
     let overlayAlpha = 1.0;
-    if (t > 26.0) overlayAlpha = Math.max(0, 1 - (t - 26.0) / 2.0);
+    if (t > 31.0) overlayAlpha = Math.max(0, 1 - (t - 31.0) / 2.0);
 
     if (overlayAlpha > 0.01) {
         ctx.globalAlpha = overlayAlpha;
@@ -325,18 +327,19 @@ function drawIntroOverlay() {
 
     // LINE 2: "They were wrong."
     // Appears at PEAK heartbeat 12 (24.6s). Quick defiant reveal.
-    // HOLDS for 1.8 seconds. Then fades. Then music. Then world.
+    // HOLDS for 2.5 seconds — let the player sit with it.
+    // Then fades slowly. Silence. THEN music. THEN world.
     //   24.6-25.0: reveal (0.4s)
-    //   25.0-25.5: HOLD (1.8s — but overlaps with music start at 25.8)
-    //   25.5-26.0: fade out
+    //   25.0-27.5: HOLD at full (2.5s)
+    //   27.5-28.5: slow fade out (1.0s)
     let a2 = 0;
     if (t >= 24.6 && t < 25.0) a2 = Math.min(1, (t - 24.6) / 0.4);
-    if (t >= 25.0 && t < 25.5) a2 = 1;
-    if (t >= 25.5 && t < 26.0) a2 = 1 - (t - 25.5) / 0.5;
+    if (t >= 25.0 && t < 27.5) a2 = 1; // HOLD — 2.5 seconds
+    if (t >= 27.5 && t < 28.5) a2 = 1 - (t - 27.5) / 1.0;
     if (a2 > 0.01) {
-        const scaleT = Math.min(1, (t - 24.6) / 2.0);
+        const scaleT = Math.min(1, (t - 24.6) / 3.0);
         const scale = 1.08 - 0.08 * scaleT;
-        const glowBuild = Math.min(1, (t - 24.6) / 1.5);
+        const glowBuild = Math.min(1, (t - 24.6) / 2.0);
 
         ctx.save();
         ctx.translate(cx, canvasH * 0.44);
@@ -2992,7 +2995,7 @@ function render() {
 
     // Intro: black screen during text phase, then render world during reveal
     if (gamePhase === 'intro') {
-        if (introTimer < 26.0) {
+        if (introTimer < 31.0) {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasW, canvasH);
             return; // text overlay drawn by drawIntroOverlay() after render()
