@@ -948,21 +948,10 @@ function loadZone(zoneNumber) {
     // Zone name display handled by showZoneBanner() in gameloop.js (called from zone transition)
     // Notify.showZoneBanner removed — was creating a duplicate banner
 
-    // --- Zone entry tutorials (one-time sequences) ---
-    if (typeof Notify !== 'undefined' && Notify.tutorialSequence) {
+    // --- Zone entry hints (single brief line, non-intrusive) ---
+    if (typeof Notify !== 'undefined') {
         if (zoneNumber === 0) {
-            Notify.tutorialSequence('hamlet_intro', [
-                { text: 'The settlement lies in ruins. Earn gold to rebuild it.', delay: 1 },
-                { text: 'Press E near villagers to talk. Explore the hamlet.', delay: 5 },
-                { text: 'Head south to find the Dungeon...', delay: 5 },
-            ]);
-        } else if (zoneNumber === 1) {
-            Notify.tutorialSequence('undercroft_intro', [
-                { text: 'LMB to attack enemies!', delay: 1 },
-                { text: 'SPACE to dodge — you have brief invulnerability.', delay: 4 },
-                { text: 'Press E near weakened enemies to absorb them and grow.', delay: 5 },
-                { text: 'TAB opens the Grimoire — track your evolution progress.', delay: 5 },
-            ]);
+            Notify.hint('hamlet_ruins', 'The settlement lies in ruins. Earn gold to rebuild.', 4, { color: '#c4a878' });
         }
     }
 
