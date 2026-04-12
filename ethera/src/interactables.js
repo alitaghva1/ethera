@@ -1122,6 +1122,10 @@ function updateDoorDefsForZone(zone) {
         };
     } else if (zone === 0) {
         DOOR_DEFS = {
+            // South dungeon stairway — descend to Zone 1
+            '23,14': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
+            '23,15': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
+            '23,16': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
             // North gate — zone 2 access
             '1,14': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,15': { requiresKey: null, label: 'Ascend', destination: 'zone2' },

@@ -208,7 +208,7 @@ function updateIntroPhase(dt) {
         setPixelCursor('none');
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
-            text: 'Choose your path...',
+            text: 'Two paths lie before you...',
             color: typeof COLORS !== 'undefined' ? COLORS.TEXT_HINT : '#aabbff',
             row: player.row, col: player.col,
             offsetY: 0, life: 5.0,
@@ -311,6 +311,44 @@ function drawIntroOverlay() {
     }
 
     ctx.restore();
+}
+
+// ============================================================
+//  DOOR GLOWS — persistent colored light pools at zone exits
+// ============================================================
+function drawDoorGlows() {
+    if (typeof DOOR_DEFS === 'undefined' || !DOOR_DEFS) return;
+    if (gamePhase === 'cinematic' || gamePhase === 'preMenu' || gamePhase === 'menu') return;
+    const t = performance.now() / 1000;
+    for (const [key, def] of Object.entries(DOOR_DEFS)) {
+        if (def.used) continue;
+        const [r, c] = key.split(',').map(Number);
+        const pos = tileToScreen(r, c);
+        const sx = pos.x + cameraX, sy = pos.y + cameraY;
+        if (sx < -100 || sx > canvasW + 100 || sy < -100 || sy > canvasH + 100) continue;
+        if (typeof fogRevealed !== 'undefined' && fogRevealed[r] && fogRevealed[r][c] < 0.3) continue;
+
+        const dest = def.destination;
+        let cr, cg, cb, radius;
+        if (dest === 'zone1' || dest === 'next') { cr = 200; cg = 120; cb = 40; radius = 50; }
+        else if (dest === 'town') { cr = 200; cg = 180; cb = 120; radius = 50; }
+        else if (dest === 'deepest') { cr = 140; cg = 60; cb = 200; radius = 45; }
+        else { cr = 120; cg = 150; cb = 220; radius = 45; }
+
+        const pulse = 0.22 + Math.sin(t * 1.5 + r + c) * 0.08;
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = pulse;
+        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+        glow.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.4)');
+        glow.addColorStop(0.6, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0.1)');
+        glow.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ', 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 4, radius, radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
 }
 
 function updateCinematicPhase(dt) {
@@ -599,15 +637,31 @@ function spawnAmbientParticles(dt) {
         'ambient'
     );
 
-    // Town: 20% chance to spawn a warm particle near dungeon entrance (visual cue)
-    if (z === 0 && Math.random() < 0.2) {
-        const dungeonPos = tileToScreen(28, 15);
-        const dx = dungeonPos.x + cameraX + (Math.random() - 0.5) * 60;
-        const dy = dungeonPos.y + cameraY + (Math.random() - 0.5) * 30;
+    // Town: warm particles near dungeon entrance stairway
+    if (z === 0 && Math.random() < 0.25) {
+        const dungeonPos = tileToScreen(23, 15);
+        const dx = dungeonPos.x + cameraX + (Math.random() - 0.5) * 50;
+        const dy = dungeonPos.y + cameraY + (Math.random() - 0.5) * 20;
         _emitParticle(dx, dy,
             (Math.random() - 0.5) * 0.3, -0.4 - Math.random() * 0.3,
-            2.5, 0.8, '#cc6633', 0.08, 'ambient'
+            2.5, 0.8, '#cc6633', 0.10, 'ambient'
         );
+    }
+
+    // Antechamber: particles at both exits
+    if (z === 7) {
+        // North exit — warm white-gold (light from the Hamlet above)
+        if (Math.random() < 0.3) {
+            const nPos = tileToScreen(2, 6);
+            _emitParticle(nPos.x + cameraX + (Math.random()-0.5)*40, nPos.y + cameraY,
+                (Math.random()-0.5)*0.3, -0.3, 2.5, 0.8, '#ddcc88', 0.12, 'ambient');
+        }
+        // South exit — warm orange (heat from the dungeon below)
+        if (Math.random() < 0.3) {
+            const sPos = tileToScreen(10, 6);
+            _emitParticle(sPos.x + cameraX + (Math.random()-0.5)*40, sPos.y + cameraY,
+                (Math.random()-0.5)*0.3, -0.4, 2.0, 0.8, '#cc6633', 0.10, 'ambient');
+        }
     }
 }
 
@@ -2976,6 +3030,9 @@ function render() {
 
     // ── LAYER 4b: Environment light punchthrough (screen blend after darkness) ──
     drawEnvironmentLightPunchthrough();
+
+    // ── LAYER 4c: Door / exit glows (visible through darkness) ──
+    drawDoorGlows();
 
     // ── LAYER 5: Player occlusion overlay ──
     // Draws sprite at 40% alpha above darkness so the player

@@ -1386,11 +1386,16 @@ function generateTown() {
         floorMap[15][c] = 'n_dirt';
     }
 
-    // (Lobby removed — antechamber is now its own zone, Zone 7)
-
-    // ===== 4. SOUTH ENTRANCE (row 22-23) — grass path entry from antechamber =====
-    // Open southern edge where players arrive from zone 7
-    fillFloor(22, 13, 23, 17, 'n_dirt');
+    // ===== 4. SOUTH DUNGEON ENTRANCE (rows 21-24) =====
+    // Visible stairway leading down to the dungeon, framed by stone pillars
+    fillFloor(21, 13, 24, 17, 'n_dirt');
+    fillFloor(22, 14, 23, 16, 'stone');
+    openTile(23, 14, 'stairs'); blocked[23][14] = false;
+    openTile(23, 15, 'stairs'); blocked[23][15] = false;
+    openTile(23, 16, 'stairs'); blocked[23][16] = false;
+    // Flanking pillars to frame the entrance
+    placeObj(22, 13, 'stoneColumn');
+    placeObj(22, 17, 'stoneColumn');
 
     // ===== 5. TOWN SQUARE (rows 9-12, cols 10-20) =====
     // Open area with grass floor, dirt path through center, central monument
