@@ -365,13 +365,14 @@ function sfxPlayerDeath() {
 }
 
 // ----- CINEMATIC SFX -----
-function sfxCinematicHeartbeat() {
+function sfxCinematicHeartbeat(volume) {
     if (!sfxCtx) return;
-    // Deep, resonant double-thump heartbeat
-    playTone('sine', 55, 35, 0.25, 0.3, 0.01, 0.2);
+    const v = volume || 0.3;
+    // Deep, resonant double-thump heartbeat — volume controls intensity
+    playTone('sine', 55, 35, 0.3, v, 0.01, 0.25);
     setTimeout(() => {
         if (!sfxCtx) return;
-        playTone('sine', 60, 38, 0.2, 0.25, 0.01, 0.18);
+        playTone('sine', 60, 38, 0.25, v * 0.85, 0.01, 0.2);
     }, 280);
 }
 

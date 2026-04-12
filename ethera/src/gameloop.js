@@ -182,29 +182,23 @@ function updateIntroPhase(dt) {
     introTimer += dt;
     const t = introTimer;
 
-    // Heartbeat sequence — builds through the silence, signals "still alive"
-    // Beat 1: during text (you're alive), Beat 2: text fading (growing stronger)
-    // Then music enters as the emotional release
+    // Heartbeat sequence — builds through the silence, growing louder
+    // Timeline: text fades at 3.5s → heartbeats fill the void → music enters at 5.5s
     if (typeof sfxCinematicHeartbeat === 'function') {
-        if (t >= 2.4 && !introSfxPlayed) {
-            introSfxPlayed = true;
-            sfxCinematicHeartbeat();
-        }
-        if (t >= 3.0 && !introSfxBeat2) {
-            introSfxBeat2 = true;
-            sfxCinematicHeartbeat();
-        }
+        if (t >= 3.6 && !introSfxPlayed)  { introSfxPlayed = true;  sfxCinematicHeartbeat(0.20); } // quiet
+        if (t >= 4.3 && !introSfxBeat2)   { introSfxBeat2 = true;   sfxCinematicHeartbeat(0.30); } // building
+        if (t >= 4.9 && !introSfxBeat3)   { introSfxBeat3 = true;   sfxCinematicHeartbeat(0.40); } // strong
     }
 
-    // Music cue at "They were wrong." — cinematic track swells in from silence
-    const INTRO_MUSIC_CUE = 3.5; // tune this: when "They were wrong." appears
+    // Music cue — enters after heartbeats build, with "They were wrong."
+    const INTRO_MUSIC_CUE = 5.5;
     if (t >= INTRO_MUSIC_CUE && !introMusicStarted) {
         introMusicStarted = true;
-        try { playMusic('cinematic', 3.0); } catch(e) {} // slow 3s fade-in for drama
+        try { playMusic('cinematic', 3.0); } catch(e) {}
     }
 
-    // During reveal phase (5.0-6.5s): expand light, run camera
-    if (t > 5.0 && t <= INTRO_DURATION) {
+    // During reveal phase (7.5-9.0s): expand light, run camera
+    if (t > 7.5 && t <= INTRO_DURATION) {
         const revealT = Math.min(1, (t - 5.0) / 1.5);
         // Smooth ease-out
         const eased = 1 - (1 - revealT) * (1 - revealT);
@@ -242,9 +236,9 @@ function drawIntroOverlay() {
     const t = introTimer;
     ctx.save();
 
-    // Black overlay — opaque during text, fades during reveal (5.0-6.5s)
+    // Black overlay — opaque during text + heartbeats, fades during reveal (7.5-9.0s)
     let overlayAlpha = 1.0;
-    if (t > 5.0) overlayAlpha = Math.max(0, 1 - (t - 5.0) / 1.5);
+    if (t > 7.5) overlayAlpha = Math.max(0, 1 - (t - 7.5) / 1.5);
 
     if (overlayAlpha > 0.01) {
         ctx.globalAlpha = overlayAlpha;
@@ -264,9 +258,9 @@ function drawIntroOverlay() {
     const cx = canvasW / 2;
     const baseY = canvasH * 0.38;
 
-    // Line 0: "You awaken on cold stone." — appears 0.3s, fades 3.0s
+    // Line 0: "You awaken on cold stone." — appears 0.5s, fades 3.0s
     let a0 = 0;
-    if (t >= 0.3 && t < 3.0) a0 = Math.min(1, (t - 0.3) / 0.8);
+    if (t >= 0.5 && t < 3.0) a0 = Math.min(1, (t - 0.5) / 1.0);
     if (t >= 3.0 && t < 3.5) a0 = 1 - (t - 3.0) / 0.5;
     if (a0 > 0.01) {
         ctx.globalAlpha = a0 * 0.9;
@@ -278,9 +272,9 @@ function drawIntroOverlay() {
         ctx.fillText('You awaken on cold stone.', cx, baseY);
     }
 
-    // Line 1: "They left you for dead." — appears 1.2s, fades 3.0s
+    // Line 1: "They left you for dead." — appears 1.5s, fades 3.0s
     let a1 = 0;
-    if (t >= 1.2 && t < 3.0) a1 = Math.min(1, (t - 1.2) / 0.8);
+    if (t >= 1.5 && t < 3.0) a1 = Math.min(1, (t - 1.5) / 1.0);
     if (t >= 3.0 && t < 3.5) a1 = 1 - (t - 3.0) / 0.5;
     if (a1 > 0.01) {
         ctx.globalAlpha = a1 * 0.9;
@@ -292,15 +286,15 @@ function drawIntroOverlay() {
         ctx.fillText('They left you for dead.', cx, baseY + 34);
     }
 
-    // Line 2: "They were wrong." — appears 3.5s, golden glow, fades at 5.0s
+    // Line 2: "They were wrong." — appears 5.5s with music, golden glow, fades at 7.5s
     let a2 = 0;
-    if (t >= 3.5 && t < 5.0) a2 = Math.min(1, (t - 3.5) / 0.8);
-    if (t >= 5.0) a2 = Math.max(0, 1 - (t - 5.0) / 0.8);
+    if (t >= 5.5 && t < 7.5) a2 = Math.min(1, (t - 5.5) / 0.8);
+    if (t >= 7.5) a2 = Math.max(0, 1 - (t - 7.5) / 0.8);
     if (a2 > 0.01) {
         // Scale effect: starts slightly large, settles
-        const scaleT = Math.min(1, (t - 3.5) / 2.0);
+        const scaleT = Math.min(1, (t - 5.5) / 2.0);
         const scale = 1.08 - 0.08 * scaleT;
-        const glowBuild = Math.min(1, (t - 3.5) / 1.5);
+        const glowBuild = Math.min(1, (t - 5.5) / 1.5);
 
         ctx.save();
         ctx.translate(cx, canvasH * 0.44);
@@ -2956,7 +2950,7 @@ function render() {
 
     // Intro: black screen during text phase, then render world during reveal
     if (gamePhase === 'intro') {
-        if (introTimer < 5.0) {
+        if (introTimer < 7.5) {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasW, canvasH);
             return; // text overlay drawn by drawIntroOverlay() after render()
@@ -3808,6 +3802,7 @@ function runIntro() {
     introTimer = 0;
     introSfxPlayed = false;
     introSfxBeat2 = false;
+    introSfxBeat3 = false;
     introMusicStarted = false;
     lightRadius = 80; // dim — expands during reveal
     setPixelCursor('none');
