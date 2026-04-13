@@ -1367,16 +1367,20 @@ function updateGameplay(dt) {
                 if (nextZone === 0 && zoneTransitionTarget === 'town') {
                     _townReturnSpawn = true;
                 }
-                try { loadZone(nextZone); } catch(e) {
-                    console.error('Zone load failed:', e);
-                    loadZone(0); nextZone = 0; // fallback to hamlet
-                }
-                showZoneBanner(nextZone);
-                _arrivalVignetteTimer = 1.5;
-                if (typeof sfxZoneEnter === 'function') sfxZoneEnter();
-                if (typeof startAmbientAudio === 'function') startAmbientAudio(nextZone);
+                // CRITICAL: Set fadeIn state FIRST, before any code that might throw.
+                // If loadZone/showZoneBanner/sfx throw, the screen must still fade in.
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
+                try {
+                    loadZone(nextZone);
+                } catch(e) {
+                    console.error('Zone load failed:', e);
+                    try { loadZone(0); nextZone = 0; } catch(e2) {}
+                }
+                try { showZoneBanner(nextZone); } catch(e) {}
+                _arrivalVignetteTimer = 1.5;
+                try { if (typeof sfxZoneEnter === 'function') sfxZoneEnter(); } catch(e) {}
+                try { if (typeof startAmbientAudio === 'function') startAmbientAudio(nextZone); } catch(e) {}
             }
         }
     }
