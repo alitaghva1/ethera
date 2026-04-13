@@ -62,9 +62,9 @@ const EVOLUTION_REQUIREMENTS = {
 // Track evolution milestone hints (show once when 1 milestone remains)
 let _evoHintShown = { slime: false, skeleton: false, wizard: false };
 
-// Returns { met, total } for current form's evolution progress (null if no evolution available)
-function getEvolutionProgress() {
-    const form = FormSystem.currentForm;
+// Returns { met, total } for given form's evolution progress (null if no evolution available)
+function getEvolutionProgress(formOverride) {
+    const form = formOverride || FormSystem.currentForm;
     const fd = FormSystem.formData[form];
     if (!fd) return null;
     let req, met = 0, total = 0;

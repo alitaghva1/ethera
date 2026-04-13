@@ -306,9 +306,11 @@ function drawGameMenu() {
     ctx.roundRect(contentX - 6, contentY - 4, contentW + 12, contentH + 8, 4);
     ctx.stroke();
 
-    // --- Draw tab content ---
-    ctx.globalAlpha = fa;
-    if (menuTab === 'status')         drawMenuStatus(contentX, contentY, contentW, contentH, fa);
+    // --- Draw tab content (with transition fade) ---
+    if (menuTabTransition > 0) menuTabTransition -= 1 / 60;
+    const tabFade = menuTabTransition > 0 ? Math.max(0.3, 1 - (menuTabTransition / 0.2)) : 1;
+    ctx.globalAlpha = fa * tabFade;
+    if (menuTab === 'status')         drawMenuStatus(contentX, contentY, contentW, contentH, fa * tabFade);
     else if (menuTab === 'equipment') drawMenuEquipment(contentX, contentY, contentW, contentH, fa);
     else if (menuTab === 'keyitems')  drawMenuKeyItems(contentX, contentY, contentW, contentH, fa);
     else if (menuTab === 'quests')    drawMenuQuests(contentX, contentY, contentW, contentH, fa);

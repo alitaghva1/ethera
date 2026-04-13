@@ -805,75 +805,7 @@ function getHazardDamage(type) {
     return 0; // ice does no damage, just slows
 }
 
-// ============================================================
-//  STORY ZONE HAZARDS — hand-authored positions for zones 2-6
-// ============================================================
-const STORY_HAZARDS = {
-    2: [
-        // Ruined Tower — spike traps in corridors
-        { r: 6, c: 16, type: 'timed_spikes' },
-        { r: 6, c: 17, type: 'timed_spikes' },
-        { r: 11, c: 20, type: 'timed_spikes' },
-        { r: 11, c: 21, type: 'timed_spikes' },
-        { r: 16, c: 22, type: 'spikes' },
-    ],
-    3: [
-        // The Spire — void patches and spikes
-        { r: 7, c: 8, type: 'void' },
-        { r: 7, c: 9, type: 'void' },
-        { r: 12, c: 14, type: 'timed_spikes' },
-        { r: 12, c: 15, type: 'timed_spikes' },
-        { r: 15, c: 18, type: 'spikes' },
-    ],
-    4: [
-        // The Inferno — lava pools
-        { r: 5, c: 8, type: 'lava' },
-        { r: 5, c: 9, type: 'lava' },
-        { r: 5, c: 10, type: 'lava' },
-        { r: 15, c: 8, type: 'lava' },
-        { r: 15, c: 9, type: 'lava' },
-        { r: 20, c: 15, type: 'lava' },
-        { r: 20, c: 16, type: 'lava' },
-        { r: 10, c: 14, type: 'timed_spikes' },
-        { r: 10, c: 15, type: 'timed_spikes' },
-    ],
-    5: [
-        // Frozen Abyss — ice patches
-        { r: 5, c: 10, type: 'ice' },
-        { r: 5, c: 11, type: 'ice' },
-        { r: 5, c: 12, type: 'ice' },
-        { r: 10, c: 15, type: 'ice' },
-        { r: 10, c: 16, type: 'ice' },
-        { r: 15, c: 10, type: 'timed_spikes' },
-        { r: 15, c: 11, type: 'timed_spikes' },
-        { r: 22, c: 18, type: 'ice' },
-        { r: 22, c: 19, type: 'ice' },
-    ],
-    6: [
-        // Throne of Ruin — void corruption
-        { r: 8, c: 12, type: 'void' },
-        { r: 8, c: 13, type: 'void' },
-        { r: 8, c: 14, type: 'void' },
-        { r: 16, c: 8, type: 'void' },
-        { r: 16, c: 9, type: 'void' },
-        { r: 22, c: 20, type: 'timed_spikes' },
-        { r: 22, c: 21, type: 'timed_spikes' },
-    ],
-};
-
-function placeStoryHazards(zoneNum) {
-    const defs = STORY_HAZARDS[zoneNum];
-    if (!defs) return;
-    for (const def of defs) {
-        if (def.r >= hazardMap.length || def.c >= hazardMap.length) continue;
-        if (blocked[def.r][def.c] || objectMap[def.r][def.c]) continue;
-        hazardMap[def.r][def.c] = {
-            type: def.type,
-            damage: getHazardDamage(def.type),
-            triggered: false,
-        };
-    }
-}
+// Story zone hazards are placed by initStoryZoneHazards() in maps.js
 
 // Global timed spike cycle — all timed spikes share this timer
 let _timedSpikeCycle = 0;

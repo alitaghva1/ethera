@@ -348,6 +348,16 @@ function sfxChestOpen() {
     }, 80);
 }
 
+function sfxZoneEnter() {
+    if (!sfxCtx) return;
+    // Low resonant tone — sense of arrival, space opening up
+    playTone('sine', 80, 120, 0.6, 0.08, 0.05, 0.5);
+    playTone('triangle', 160, 200, 0.4, 0.06, 0.08, 0.4);
+    setTimeout(() => {
+        playTone('sine', 240, 300, 0.3, 0.04, 0.05, 0.3);
+    }, 150);
+}
+
 function sfxWaveStart() {
     if (!sfxCtx) return;
     // Ominous horn-like tone

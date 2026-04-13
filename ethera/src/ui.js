@@ -116,17 +116,16 @@ function drawMinimap() {
     // Static map layer
     ctx.drawImage(_minimapCanvas, mx, my);
 
-    // Dynamic: player dot (white, pulsing)
+    // Dynamic: player dot (form-colored, pulsing)
     const pulse = 0.7 + Math.sin(performance.now() / 300) * 0.3;
-    ctx.globalAlpha = pulse;
-    // Form-colored player dot
+    ctx.globalAlpha = MINIMAP_ALPHA * pulse;
     const formColors = { slime: '#44dd66', skeleton: '#ddddcc', wizard: '#6688ff', lich: '#aa55ff' };
     ctx.fillStyle = formColors[FormSystem.currentForm] || '#ffffff';
     const pr = Math.floor(player.row), pc = Math.floor(player.col);
     ctx.fillRect(mx + pc * MINIMAP_PX - 1, my + pr * MINIMAP_PX - 1, MINIMAP_PX + 2, MINIMAP_PX + 2);
 
     // Dynamic: enemy dots (red, only within light radius range)
-    ctx.globalAlpha = 0.7;
+    ctx.globalAlpha = MINIMAP_ALPHA * 0.7;
     ctx.fillStyle = '#cc3333';
     if (typeof enemies !== 'undefined') {
         for (const e of enemies) {
@@ -341,7 +340,10 @@ function drawObjective() {
     ctx.save();
 
     const objX = 20;
-    const objY = 20;
+    // Position below minimap if visible, otherwise at top
+    const minimapBottom = (typeof minimapVisible !== 'undefined' && minimapVisible && typeof MAP_SIZE !== 'undefined' && currentZone !== 7)
+        ? MINIMAP_PAD + MAP_SIZE * MINIMAP_PX + 8 : 0;
+    const objY = Math.max(20, minimapBottom);
 
     ctx.globalAlpha = objAlpha;
     ctx.font = '13px Georgia';
@@ -395,7 +397,7 @@ function drawQuestTracker() {
 
     const stepText = activeQuest.steps[activeStep].text;
     const rx = canvasW - 20;
-    const ry = canvasH - 60;
+    const ry = canvasH - 110; // above HP panel area to avoid bottom-right crowding
 
     ctx.save();
     ctx.textAlign = 'right';
@@ -737,18 +739,7 @@ function drawHPMana() {
     // --- Active Upgrade Icons ---
     drawActiveUpgradeIcons(x, yXP, barH);
 
-    // --- Gold Display (bottom-right) ---
-    if (typeof playerGold !== 'undefined') {
-        ctx.globalAlpha = 0.7;
-        ctx.textAlign = 'right';
-        ctx.font = 'bold 12px monospace';
-        ctx.fillStyle = '#ffd700';
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-        ctx.lineWidth = 2;
-        const goldText = playerGold + 'g';
-        ctx.strokeText(goldText, canvasW - 20, canvasH - 20);
-        ctx.fillText(goldText, canvasW - 20, canvasH - 20);
-    }
+    // Gold display is drawn in gameloop.js (top-right, below evolution dots)
 
     ctx.restore();
 
@@ -1187,13 +1178,20 @@ function drawPickupTexts() {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // ── COMBAT JUICE: Crit damage numbers are bigger and bolder ──
+        // ── COMBAT JUICE: Scale damage numbers by magnitude ──
         if (t.isCrit) {
-            const critPop = t.life > 0.9 ? 1 + (t.life - 0.9) * 2.5 : 1; // pop on spawn
-            const fontSize = Math.round(15 * critPop);
+            const critPop = t.life > 0.9 ? 1 + (t.life - 0.9) * 2.5 : 1;
+            const fontSize = Math.round(16 * critPop);
             ctx.font = `bold ${fontSize}px Georgia`;
             ctx.shadowColor = 'rgba(180, 120, 0, 0.6)';
             ctx.shadowBlur = 8;
+        } else if (t.text && t.text.startsWith('-')) {
+            // Scale font by damage magnitude: -5 = 10px, -30 = 13px, -50+ = 14px
+            const dmgVal = parseInt(t.text.replace('-', '')) || 0;
+            const scaledSize = Math.min(14, 10 + Math.sqrt(dmgVal) * 0.6);
+            ctx.font = `bold ${Math.round(scaledSize)}px Georgia`;
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 4;
         } else {
             ctx.font = '11px Georgia';
             ctx.shadowColor = 'rgba(0,0,0,0.8)';

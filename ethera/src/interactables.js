@@ -619,6 +619,8 @@ function openChest(chest) {
     openedChests.add(key);
     objectMap[chest.row][chest.col] = 'chestOpen';
     sfxChestOpen();
+    addHitPause(0.03);
+    addScreenShake(2.5, 0.15);
 
     if (def.type === 'story') {
         // Grant key items from this chest
@@ -748,6 +750,19 @@ function loadZone(zoneNumber) {
     // Reset frozen echoes on zone transition
     if (typeof resetFrozenEchoes === 'function') resetFrozenEchoes();
     if (typeof resetInscriptions === 'function') resetInscriptions();
+    // Clean up any boss bone wall tiles that might have persisted
+    if (typeof enemies !== 'undefined') {
+        for (const e of enemies) {
+            if (e._boneWallActive && e._boneWallTiles) {
+                for (const t of e._boneWallTiles) {
+                    if (t.r >= 0 && t.r < MAP_SIZE && t.c >= 0 && t.c < MAP_SIZE) {
+                        blocked[t.r][t.c] = false;
+                        blockType[t.r][t.c] = null;
+                    }
+                }
+            }
+        }
+    }
     // Reset lich corpse locations on zone transition
     if (typeof lichState !== 'undefined') {
         lichState.corpseLocations.length = 0;

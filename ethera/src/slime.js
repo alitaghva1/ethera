@@ -2,6 +2,15 @@
 //  SLIME FORM — Complete mechanics
 // ============================================================
 
+// Helper: correct slime max HP including equipment, talisman, and quest bonuses
+function _slimeMaxHP() {
+    const base = (FORM_CONFIGS.slime.maxHp || 60) * getSlimeSizeMult().hp;
+    const equipHp = (typeof equipBonus !== 'undefined' && equipBonus.maxHpBonus) ? equipBonus.maxHpBonus : 0;
+    const talismanHp = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
+    const questHp = (typeof questState !== 'undefined' && questState.permBonuses) ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    return Math.round(base + equipHp + talismanHp + questHp);
+}
+
 // --- Pre-rendered tinted slime sprites (avoids per-frame ctx.filter) ---
 const slimeTintedSprites = {};
 
@@ -105,7 +114,7 @@ function slimeAbsorbEnemy(target, particleCount) {
     if (idx !== -1) enemies.splice(idx, 1);
     const sizeGain = 0.5 + getUpgrade('iron_stomach') * 0.25;
     slimeState.size = Math.min(slimeState.maxSize, slimeState.size + sizeGain);
-    player.hp = Math.min(FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp, player.hp + 20);
+    player.hp = Math.min(_slimeMaxHP(), player.hp + 20);
     FormSystem.formData.slime.absorbed++;
     // Evolution progress toasts
     if (typeof Notify !== 'undefined' && typeof EVOLUTION_REQUIREMENTS !== 'undefined') {
@@ -462,7 +471,7 @@ function updateSlime(dt) {
     const regenLevel = getUpgrade('regen_gel');
     if (regenLevel > 0) {
         const regenRate = 2 * regenLevel * slimeState.size;
-        player.hp = Math.min(config.maxHp * getSlimeSizeMult().hp, player.hp + regenRate * dt);
+        player.hp = Math.min(_slimeMaxHP(), player.hp + regenRate * dt);
     }
 
     // === ACID PUDDLES update ===
@@ -509,7 +518,7 @@ function updateSlime(dt) {
             const _sympBurstLvl = getUpgrade('sympathetic_link');
             if (_sympBurstLvl > 0 && burstTotalDmg > 0) {
                 const burstHeal = burstTotalDmg * 0.05 * _sympBurstLvl;
-                player.hp = Math.min(FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp, player.hp + burstHeal);
+                player.hp = Math.min(_slimeMaxHP(), player.hp + burstHeal);
             }
             // Refund size when clone pops (reabsorbed) — matches split cost to prevent farming
             const _sizeRefund = 0.5; // exact refund of split cost (no net gain)
@@ -601,7 +610,7 @@ function updateSlime(dt) {
                 const sympLvl = getUpgrade('sympathetic_link');
                 if (sympLvl > 0) {
                     const healAmt = cloneDmg * 0.05 * sympLvl;
-                    player.hp = Math.min(config.maxHp * getSlimeSizeMult().hp, player.hp + healAmt);
+                    player.hp = Math.min(_slimeMaxHP(), player.hp + healAmt);
                 }
             }
             // Ranged acid spit when further away

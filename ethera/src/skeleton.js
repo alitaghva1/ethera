@@ -985,11 +985,10 @@ function spawnDustBurst(cx, cy, count) {
             vy: Math.sin(angle) * speed * 0.5 - Math.random() * 20,
             size: Math.random() * 2.5 + 1,
             life: Math.random() * 1.2 + 0.6,
-            maxLife: 0,
+            maxLife: Math.random() * 1.2 + 0.6,
             alpha: Math.random() * 0.4 + 0.3,
             color: Math.random() > 0.5 ? '#a0907060' : '#80706050',
         });
-        dustParticles[dustParticles.length - 1].maxLife = dustParticles[dustParticles.length - 1].life;
     }
 }
 

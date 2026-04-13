@@ -473,6 +473,10 @@ function handleMouseDown(e) {
             const tx = px + 24 + i * (tabW + tabGap);
             if (clickX >= tx && clickX <= tx + tabW &&
                 clickY >= tabY && clickY <= tabY + tabH) {
+                if (menuTab !== tabs[i]) {
+                    menuTabPrev = menuTab;
+                    menuTabTransition = 0.2; // 0.2s fade transition
+                }
                 menuTab = tabs[i];
                 return;
             }

@@ -1191,6 +1191,8 @@ function updateGameplay(dt) {
                     loadZone(0); nextZone = 0; // fallback to hamlet
                 }
                 showZoneBanner(nextZone);
+                _arrivalVignetteTimer = 1.5; // arrival vignette on zone transition
+                if (typeof sfxZoneEnter === 'function') sfxZoneEnter();
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
             }
@@ -3124,7 +3126,7 @@ function restartGame() {
     dustParticles = [];
     if (typeof _weatherParticles !== 'undefined') _weatherParticles.length = 0;
     if (typeof _weatherRipples !== 'undefined') _weatherRipples.length = 0;
-    _arrivalVignetteTimer = 1.5; // start arrival vignette on zone load
+    _arrivalVignetteTimer = 0; // vignette only triggers on zone transitions, not initial load
     cinematicTimer = 0;
     cinematicTextAlpha = [0, 0, 0, 0];
     cinematicFlashAlpha = 0;

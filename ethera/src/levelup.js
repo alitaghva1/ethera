@@ -400,10 +400,10 @@ function drawLevelUpScreen() {
             else if (u.id === 'mana_shield') statHint = '-' + (nextStack * 15) + '% dmg at 50%+ mana';
             else if (u.id === 'spell_echo') statHint = (nextStack * 20) + '% chance for extra bolt';
             if (statHint) {
-                ctx.globalAlpha = fade * 0.45;
-                ctx.font = 'italic 8px Georgia';
-                ctx.fillStyle = '#aabb88';
-                ctx.fillText(statHint, cardX + cardW / 2, cy2 + cardH - 4);
+                ctx.globalAlpha = fade * 0.75;
+                ctx.font = '10px Georgia';
+                ctx.fillStyle = '#ccdd99';
+                ctx.fillText(statHint, cardX + cardW / 2, cy2 + cardH - 6);
             }
         }
     }
