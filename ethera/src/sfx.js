@@ -390,9 +390,14 @@ function startAmbientAudio(zoneNum) {
 }
 
 function stopAmbientAudio() {
+    if (!sfxCtx) { _ambientNodes = []; _ambientZone = -1; return; }
+    const stopTime = sfxCtx.currentTime + 0.5;
     for (const node of _ambientNodes) {
-        try { node.gain.gain.linearRampToValueAtTime(0, sfxCtx.currentTime + 0.5); } catch(e) {}
-        try { setTimeout(() => { node.osc.stop(); }, 600); } catch(e) {}
+        try {
+            if (node.gain) node.gain.gain.linearRampToValueAtTime(0, stopTime);
+            if (node.osc) node.osc.stop(stopTime);
+            if (node.lfo) node.lfo.stop(stopTime);
+        } catch(e) {} // ignore already-stopped nodes
     }
     _ambientNodes = [];
     _ambientZone = -1;

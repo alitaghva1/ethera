@@ -822,10 +822,11 @@ function spawnCombatDecal(row, col, color, size) {
 
 function drawCombatDecals() {
     if (_combatDecals.length === 0) return;
+    const _decalDt = typeof _frameDt !== 'undefined' ? _frameDt : 1/60;
     ctx.save();
     for (let i = _combatDecals.length - 1; i >= 0; i--) {
         const d = _combatDecals[i];
-        d.life -= 1 / 60;
+        d.life -= _decalDt;
         if (d.life <= 0) { _combatDecals.splice(i, 1); continue; }
         const pos = tileToScreen(d.row, d.col);
         const sx = pos.x + cameraX, sy = pos.y + cameraY;
@@ -971,10 +972,11 @@ function spawnImpactRipple(worldX, worldY, color, maxRadius) {
 }
 
 function drawImpactRipples() {
+    const _ripDt = typeof _frameDt !== 'undefined' ? _frameDt : 1/60;
     for (let i = _impactRipples.length - 1; i >= 0; i--) {
         const r = _impactRipples[i];
-        r.radius += 180 * (1 / 60); // ~180px/sec expansion
-        r.alpha -= 2.0 * (1 / 60);  // fade over ~0.3s
+        r.radius += 180 * _ripDt;
+        r.alpha -= 2.0 * _ripDt;
         if (r.alpha <= 0) { _impactRipples.splice(i, 1); continue; }
         ctx.save();
         ctx.globalAlpha = r.alpha;
@@ -1038,8 +1040,19 @@ function updateCritters(dt) {
             c.vr = (Math.random() - 0.5) * 0.5;
             c.vc = (Math.random() - 0.5) * 0.5;
         }
-        c.row += c.vr * dt;
-        c.col += c.vc * dt;
+        // Move with wall collision check
+        const nextR = c.row + c.vr * dt;
+        const nextC = c.col + c.vc * dt;
+        const nr = Math.floor(nextR), nc = Math.floor(nextC);
+        if (nr >= 0 && nr < MAP_SIZE && nc >= 0 && nc < MAP_SIZE && !blocked[nr][nc]) {
+            c.row = nextR;
+            c.col = nextC;
+        } else {
+            // Bounce off wall — reverse velocity
+            c.vr *= -0.5;
+            c.vc *= -0.5;
+            c.fleeing = false;
+        }
         // Despawn if out of map
         if (c.row < 0 || c.row >= MAP_SIZE || c.col < 0 || c.col >= MAP_SIZE) {
             _critters.splice(i, 1);
@@ -1694,7 +1707,13 @@ function resizeCanvas() {
 
     // Combined transform: DPR * display scale
     const _zf = typeof _cameraZoom !== 'undefined' ? _cameraZoom : 1;
-    ctx.setTransform(dpr * displayScale * _zf, 0, 0, dpr * displayScale * _zf, 0, 0);
+    ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
+    if (_zf !== 1) {
+        const _zcx = canvasW / 2, _zcy = canvasH / 2;
+        ctx.translate(_zcx, _zcy);
+        ctx.scale(_zf, _zf);
+        ctx.translate(-_zcx, -_zcy);
+    }
 
 }
 window.addEventListener('resize', resizeCanvas);
@@ -3304,6 +3323,9 @@ function restartGame() {
     if (typeof _weatherRipples !== 'undefined') _weatherRipples.length = 0;
     if (typeof _combatDecals !== 'undefined') _combatDecals.length = 0;
     if (typeof _critters !== 'undefined') _critters.length = 0;
+    if (typeof _impactRipples !== 'undefined') _impactRipples.length = 0;
+    _lowHpBeatTimer = 0;
+    if (typeof _phantomHP !== 'undefined') _phantomHP = -1;
     _arrivalVignetteTimer = 0; // vignette only triggers on zone transitions, not initial load
     cinematicTimer = 0;
     cinematicTextAlpha = [0, 0, 0, 0];
@@ -3346,7 +3368,13 @@ function render() {
 
 
     const _zf = typeof _cameraZoom !== 'undefined' ? _cameraZoom : 1;
-    ctx.setTransform(dpr * displayScale * _zf, 0, 0, dpr * displayScale * _zf, 0, 0);
+    ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
+    if (_zf !== 1) {
+        const _zcx = canvasW / 2, _zcy = canvasH / 2;
+        ctx.translate(_zcx, _zcy);
+        ctx.scale(_zf, _zf);
+        ctx.translate(-_zcx, -_zcy);
+    }
 
     // Safety: reset alpha every frame so no VFX leak carries over
     ctx.globalAlpha = 1.0;
@@ -3907,12 +3935,11 @@ function render() {
             const urgency = 1 - (hpRatio / 0.25); // 0→1 as HP drops from 25%→0%
             const pulse = 0.12 + Math.sin(performance.now() * 0.005) * 0.06; // ~0.8Hz
             // Low-HP heartbeat SFX — plays on each pulse peak
-            if (!_lowHpBeatTimer) _lowHpBeatTimer = 0;
             _lowHpBeatTimer -= _frameDt;
             if (_lowHpBeatTimer <= 0 && typeof sfxCinematicHeartbeat === 'function') {
                 const beatInterval = 1.2 - urgency * 0.5; // 1.2s → 0.7s as HP drops
                 _lowHpBeatTimer = beatInterval;
-                sfxCinematicHeartbeat(0.10 + urgency * 0.15); // quiet but audible
+                sfxCinematicHeartbeat(0.10 + urgency * 0.15);
             }
             const lowHpAlpha = urgency * pulse;
             ctx.save();
@@ -3926,6 +3953,8 @@ function render() {
             ctx.fillStyle = lowGrad;
             ctx.fillRect(0, 0, canvasW, canvasH);
             ctx.restore();
+        } else {
+            _lowHpBeatTimer = 0; // Reset when HP recovers above 25%
         }
     }
 

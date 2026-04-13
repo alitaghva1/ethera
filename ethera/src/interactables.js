@@ -750,6 +750,10 @@ function loadZone(zoneNumber) {
     // Reset frozen echoes on zone transition
     if (typeof resetFrozenEchoes === 'function') resetFrozenEchoes();
     if (typeof resetInscriptions === 'function') resetInscriptions();
+    // Reset visual effect state on zone transition
+    if (typeof _impactRipples !== 'undefined') _impactRipples.length = 0;
+    if (typeof _phantomHP !== 'undefined') _phantomHP = -1;
+    if (typeof _displayHP !== 'undefined') _displayHP = -1;
     // Clean up any boss bone wall tiles that might have persisted
     if (typeof enemies !== 'undefined') {
         for (const e of enemies) {

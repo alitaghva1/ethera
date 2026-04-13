@@ -5056,7 +5056,8 @@ function drawEnemy(e) {
 
     // Death squash-and-stretch — sprite deflates before burst
     if (e.state === 'death' && e._deathSquash > 0) {
-        e._deathSquash = Math.max(0, e._deathSquash - (1 / 60) * 4); // drain over 0.25s
+        const _sqDt = typeof _frameDt !== 'undefined' ? _frameDt : 1/60;
+        e._deathSquash = Math.max(0, e._deathSquash - _sqDt * 4); // drain over 0.25s
         const sq = e._deathSquash;
         scaledDW *= 1 + (1 - sq) * 0.3;  // stretch wider
         scaledDH *= sq * 0.7 + 0.3;      // squash flatter (1.0→0.3)
