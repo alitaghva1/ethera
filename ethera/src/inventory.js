@@ -312,7 +312,7 @@ function updateWorldDrops(dt) {
             const dc = player.col - d.col;
             const dist = Math.sqrt(dr * dr + dc * dc);
             if (dist < 2.5 && dist > 0.1 && inventory.backpack.length < inventory.maxBackpack) {
-                const pullSpeed = 3.0 * dt;
+                const pullSpeed = (dist < 1.0 ? 8.0 : 4.0) * dt; // accelerate when close
                 d.row += (dr / dist) * pullSpeed;
                 d.col += (dc / dist) * pullSpeed;
             }

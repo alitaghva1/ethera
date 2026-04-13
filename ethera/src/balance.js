@@ -294,6 +294,21 @@ function handleKeyDown(e) {
         dismissEvolutionHint();
         return; // consume all keys during hint screen
     }
+    // Death screen quick keys
+    if (gameDead && deathFadeTimer <= 0) {
+        if (e.key.toLowerCase() === 'r') {
+            drawDeathScreen._tip = null;
+            restartGame();
+            return;
+        }
+        if (e.key.toLowerCase() === 'm') {
+            drawDeathScreen._tip = null;
+            restartGame();
+            gamePhase = 'menu';
+            setPixelCursor('default');
+            return;
+        }
+    }
     // Escape closes game menu
     if (e.key === 'Escape') {
         if (menuOpen) { menuOpen = false; menuFadeInTimer = 0; }

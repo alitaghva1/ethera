@@ -35,6 +35,9 @@ function resetLichState() {
 function updateLich(dt) {
     const config = FORM_CONFIGS.lich;
 
+    // Recalculate equipment bonuses each frame (same as wizard in movement.js)
+    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+
     // === MOVEMENT (lerp-based, matches wizard responsiveness) ===
     let inputRow = 0, inputCol = 0;
     if (keys['w'] || keys['arrowup'])    { inputRow--; inputCol--; }
@@ -156,10 +159,10 @@ function updateLich(dt) {
     // === LIFE TAP COOLDOWN ===
     if (lichState.lifeTapCooldown > 0) lichState.lifeTapCooldown -= dt;
 
-    // === PASSIVE SOUL REGEN ===
-    // Slow trickle so lich always has some resource between fights
+    // === PASSIVE SOUL REGEN (scales with equipment mana regen bonuses) ===
     const soulRegenRate = lichState.soulRegen;
-    lichState.soulEnergy = Math.min(lichState.maxSoulEnergy, lichState.soulEnergy + soulRegenRate * dt);
+    const soulRegenMult = 1 + (equipBonus.manaRegenMult || 0);
+    lichState.soulEnergy = Math.min(lichState.maxSoulEnergy, lichState.soulEnergy + soulRegenRate * soulRegenMult * dt);
 
     // === SOUL OVERFLOW: excess soul energy above 80% → HP regen ===
     if (getUpgrade('soul_overflow') > 0 && lichState.soulEnergy >= lichState.maxSoulEnergy * 0.8) {

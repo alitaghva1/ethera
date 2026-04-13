@@ -2867,6 +2867,13 @@ function drawDeathScreen() {
         drawMenuButton({ x: menuBtnX, y: menuBtnY, w: btnW, h: btnH, label: 'RETURN TO MENU' }, hoveredMenu, btnAlpha);
 
         setPixelCursor((hoveredRestart || hoveredMenu) ? 'pointer' : 'default');
+
+        // Key hints
+        ctx.globalAlpha = btnAlpha * 0.3;
+        ctx.font = '8px monospace';
+        ctx.fillStyle = '#aa9060';
+        ctx.fillText('[R] Retry', btnX + btnW / 2, btnY + btnH + 14);
+        ctx.fillText('[M] Menu', menuBtnX + btnW / 2, menuBtnY + btnH + 14);
     }
 
     ctx.restore();

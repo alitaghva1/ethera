@@ -86,10 +86,10 @@ function spawnParticle(tileRow, tileCol, vr, vc, life, color, alpha) {
 
 // Death burst — ring of particles when an enemy dies
 function spawnDeathBurst(worldX, worldY, color) {
-    const count = Math.max(3, Math.round((8 + Math.floor(Math.random() * 5)) * GFX.particleMul));
+    const count = Math.max(6, Math.round((14 + Math.floor(Math.random() * 6)) * GFX.particleMul));
     for (let i = 0; i < count; i++) {
         const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
-        const speed = 2.5 + Math.random() * 2;
+        const speed = 3.0 + Math.random() * 2.5;
         _emitParticle(
             worldX, worldY,
             Math.cos(angle) * speed, Math.sin(angle) * speed,

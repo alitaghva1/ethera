@@ -696,7 +696,7 @@ function applyEnemyHit(e, damage, opts) {
         }
         if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
         else if (e.elite) { addHitPause(0.05 * impactScale); addScreenShake(4 * impactScale * critMul, 0.12 * impactScale); addSlowMo(0.08, 0.3); }
-        else { addHitPause(0.04 * impactScale); addScreenShake(3 * impactScale * critMul, 0.1 * impactScale); }
+        else { addHitPause(0.05 * impactScale); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); }
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
         // Bosses have built-in stagger resistance via shorter hurtTimer
