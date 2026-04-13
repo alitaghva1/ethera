@@ -225,10 +225,11 @@ function handleKeyDown(e) {
         ['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) {
         e.preventDefault();
     }
-    // Intro skip — any key after 2s jumps to music/reveal sequence
-    if (gamePhase === 'intro' && typeof introTimer !== 'undefined' && introTimer > 2.0 && introTimer < 29.0) {
+    // Intro skip — any key after 2s jumps to music/reveal sequence (once only)
+    if (gamePhase === 'intro' && typeof introTimer !== 'undefined' && introTimer > 2.0 && introTimer < 24.0) {
         introTimer = 24.0;
-        introMusicStarted = false; // let music trigger naturally at 29.0
+        _introBeatIndex = INTRO_BEATS.length; // skip ALL beats — prevent 12-sound burst
+        introMusicStarted = false;
         return;
     }
     // Name entry: prevent Tab from stealing focus from input
@@ -450,9 +451,10 @@ function handleMouseDown(e) {
     mouse.x = clickX;
     mouse.y = clickY;
 
-    // Intro skip on click
-    if (gamePhase === 'intro' && typeof introTimer !== 'undefined' && introTimer > 2.0 && introTimer < 29.0 && e.button === 0) {
+    // Intro skip on click (once only — window closes after skip fires)
+    if (gamePhase === 'intro' && typeof introTimer !== 'undefined' && introTimer > 2.0 && introTimer < 24.0 && e.button === 0) {
         introTimer = 24.0;
+        _introBeatIndex = INTRO_BEATS.length;
         introMusicStarted = false;
         return;
     }

@@ -3816,8 +3816,8 @@ function render() {
     }
 
     // ── LAYER 7.5: Per-zone color grading tint ──
-    // Single multiply pass that unifies all pixels under the zone's color identity.
-    {
+    // Single multiply pass. Skip during zone transition to avoid stacking with fade overlay.
+    if (zoneTransitionAlpha <= 0.01) {
         const _ZONE_TINTS = {
             0: 'rgba(140, 150, 170, 0.92)',  // Hamlet: cool blue-grey overcast
             1: 'rgba(170, 150, 130, 0.93)',  // Undercroft: warm earthy brown
@@ -4096,10 +4096,11 @@ function render() {
         }
 
         // ── LAYER 12: Arrival vignette (eyes adjusting to light) ──
-        if (typeof _arrivalVignetteTimer !== 'undefined' && _arrivalVignetteTimer > 0) {
+        // Only show when zone transition overlay is fully gone (avoid stacking darkening)
+        if (typeof _arrivalVignetteTimer !== 'undefined' && _arrivalVignetteTimer > 0 && zoneTransitionAlpha <= 0.01) {
             ctx.save();
-            const vigFrac = _arrivalVignetteTimer / 1.5; // 1.5s total duration
-            ctx.globalAlpha = vigFrac * 0.4;
+            const vigFrac = _arrivalVignetteTimer / 1.5;
+            ctx.globalAlpha = vigFrac * 0.25; // reduced from 0.4 to avoid over-darkening
             const vigGrad = ctx.createRadialGradient(
                 canvasW / 2, canvasH / 2, canvasH * 0.3 * (1 - vigFrac),
                 canvasW / 2, canvasH / 2, canvasH * 0.8
