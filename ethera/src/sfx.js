@@ -348,6 +348,101 @@ function sfxChestOpen() {
     }, 80);
 }
 
+// ============================================================
+//  AMBIENT AUDIO — per-zone environmental sound layers
+//  Continuous low-volume loops that make zones feel alive.
+//  Uses Web Audio oscillators + filtered noise, not audio files.
+// ============================================================
+let _ambientNodes = [];  // active audio nodes for cleanup
+let _ambientZone = -1;   // currently playing zone
+
+function startAmbientAudio(zoneNum) {
+    stopAmbientAudio();
+    if (!sfxCtx) return;
+    _ambientZone = zoneNum;
+    const vol = 0.06; // very low — subliminal
+
+    if (zoneNum === 0) {
+        // Hamlet: low wind drone + occasional rumble
+        _ambientDrone('sine', 80, vol * 0.8, 0.3);
+        _ambientNoise(400, 2, vol * 0.5); // filtered wind hiss
+    } else if (zoneNum >= 1 && zoneNum <= 3) {
+        // Dungeon: dripping resonance + deep rumble
+        _ambientDrone('sine', 55, vol * 0.6, 0.4);
+        _ambientNoise(800, 4, vol * 0.3); // filtered drip texture
+        _ambientDrone('triangle', 110, vol * 0.2, 0.2); // faint harmonic
+    } else if (zoneNum === 4) {
+        // Inferno: crackling low roar
+        _ambientDrone('sawtooth', 60, vol * 0.5, 0.5);
+        _ambientNoise(1200, 3, vol * 0.6); // crackling high texture
+        _ambientDrone('sine', 40, vol * 0.4, 0.6); // deep sub rumble
+    } else if (zoneNum === 5) {
+        // Frozen: howling wind + icy shimmer
+        _ambientNoise(600, 1.5, vol * 0.7); // wide wind noise
+        _ambientDrone('sine', 220, vol * 0.15, 0.3); // high icy shimmer
+        _ambientDrone('sine', 70, vol * 0.3, 0.5); // deep cold
+    } else if (zoneNum === 6) {
+        // Throne: ominous sub-bass + void whisper
+        _ambientDrone('sine', 35, vol * 0.7, 0.6); // deep void throb
+        _ambientNoise(500, 2.5, vol * 0.3); // whisper texture
+        _ambientDrone('triangle', 180, vol * 0.1, 0.2); // faint eerie harmonic
+    }
+}
+
+function stopAmbientAudio() {
+    for (const node of _ambientNodes) {
+        try { node.gain.gain.linearRampToValueAtTime(0, sfxCtx.currentTime + 0.5); } catch(e) {}
+        try { setTimeout(() => { node.osc.stop(); }, 600); } catch(e) {}
+    }
+    _ambientNodes = [];
+    _ambientZone = -1;
+}
+
+function _ambientDrone(type, freq, vol, lfoDepth) {
+    if (!sfxCtx) return;
+    const osc = sfxCtx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq;
+    // Slow LFO modulates volume for organic feel
+    const lfo = sfxCtx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.1 + Math.random() * 0.1; // 0.1-0.2 Hz
+    const lfoGain = sfxCtx.createGain();
+    lfoGain.gain.value = vol * (lfoDepth || 0.3);
+    lfo.connect(lfoGain);
+    const gain = sfxCtx.createGain();
+    gain.gain.value = vol;
+    lfoGain.connect(gain.gain);
+    osc.connect(gain);
+    gain.connect(sfxMasterGain);
+    osc.start();
+    lfo.start();
+    _ambientNodes.push({ osc, lfo, gain });
+}
+
+function _ambientNoise(freq, Q, vol) {
+    if (!sfxCtx) return;
+    // Looping noise buffer
+    const bufLen = sfxCtx.sampleRate * 2;
+    const buf = sfxCtx.createBuffer(1, bufLen, sfxCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+    const src = sfxCtx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const filter = sfxCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = freq;
+    filter.Q.value = Q;
+    const gain = sfxCtx.createGain();
+    gain.gain.value = vol;
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(sfxMasterGain);
+    src.start();
+    _ambientNodes.push({ osc: src, gain });
+}
+
 function sfxZoneEnter() {
     if (!sfxCtx) return;
     // Low resonant tone — sense of arrival, space opening up

@@ -299,12 +299,13 @@ function drawNPC(npc) {
         ctx.restore();
     }
 
-    // Draw sprite
+    // Draw sprite — with subtle idle breathing bob
+    const breathBob = Math.sin(performance.now() / 1200 + npc.row * 2) * 0.8; // ~0.8px, ~5s cycle per NPC
     ctx.save();
     ctx.globalAlpha = baseAlpha;
     ctx.drawImage(sheet,
         frame * npc.frameW, 0, npc.frameW, npc.frameH,
-        sx - dw / 2, drawY + ghostBob, dw, dh);
+        sx - dw / 2, drawY + ghostBob + breathBob, dw, dh);
     ctx.restore();
 
     // Name tag above NPC

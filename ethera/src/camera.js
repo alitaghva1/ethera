@@ -76,3 +76,25 @@ function addDirectionalShake(fromRow, fromCol, intensity, duration) {
 }
 
 // ============================================================
+//  CAMERA ZOOM — brief dramatic zoom for cinematic moments
+//  Modifies displayScale temporarily, lerps back to 1.0
+// ============================================================
+var _cameraZoom = 1.0;       // current zoom multiplier (1.0 = normal)
+var _cameraZoomTarget = 1.0; // target zoom
+var _cameraZoomSpeed = 3.0;  // lerp speed
+
+function addCameraZoom(zoom, duration) {
+    _cameraZoom = zoom;
+    _cameraZoomTarget = 1.0;
+    _cameraZoomSpeed = (zoom - 1.0) / Math.max(0.1, duration); // auto-recover over duration
+}
+
+function updateCameraZoom(dt) {
+    if (Math.abs(_cameraZoom - _cameraZoomTarget) > 0.001) {
+        _cameraZoom += (_cameraZoomTarget - _cameraZoom) * Math.min(1, _cameraZoomSpeed * dt);
+    } else {
+        _cameraZoom = _cameraZoomTarget;
+    }
+}
+
+// ============================================================

@@ -228,6 +228,7 @@ function updateIntroPhase(dt) {
         gamePhase = 'playing';
         lightRadius = MAX_LIGHT;
         setPixelCursor('none');
+        if (typeof startAmbientAudio === 'function') startAmbientAudio(currentZone);
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
             text: 'Two paths lie before you...',
@@ -956,6 +957,86 @@ function spawnAmbientParticles(dt) {
 }
 
 // ============================================================
+//  CRITTER SYSTEM — ambient creatures that flee from player
+//  Rats in dungeons, moths near lights, beetles in hamlet.
+// ============================================================
+const _critters = [];
+const _CRITTER_MAX = 6;
+const _CRITTER_FLEE_DIST = 3.0; // tiles
+const _CRITTER_COLORS = {
+    0: '#665544',  // hamlet: brown rat
+    1: '#554433',  // dungeon: dark rat
+    2: '#554433',  3: '#554433',
+    4: '#cc6622',  // inferno: fire beetle
+    5: '#88aacc',  // frozen: ice mite
+    6: '#775599',  // throne: void wisp
+};
+
+function updateCritters(dt) {
+    if (gamePhase !== 'playing') return;
+    // Spawn if under cap
+    if (_critters.length < _CRITTER_MAX && Math.random() < 0.005) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 5 + Math.random() * 6;
+        const cr = player.row + Math.cos(angle) * dist;
+        const cc = player.col + Math.sin(angle) * dist;
+        const fr = Math.floor(cr), fc = Math.floor(cc);
+        if (fr >= 0 && fr < MAP_SIZE && fc >= 0 && fc < MAP_SIZE && !blocked[fr][fc] && floorMap[fr][fc]) {
+            _critters.push({
+                row: cr, col: cc,
+                vr: (Math.random() - 0.5) * 0.5, vc: (Math.random() - 0.5) * 0.5,
+                life: 8 + Math.random() * 10,
+                fleeing: false,
+            });
+        }
+    }
+    for (let i = _critters.length - 1; i >= 0; i--) {
+        const c = _critters[i];
+        c.life -= dt;
+        if (c.life <= 0) { _critters.splice(i, 1); continue; }
+        // Flee from player
+        const dr = c.row - player.row, dc = c.col - player.col;
+        const dist = Math.sqrt(dr * dr + dc * dc);
+        if (dist < _CRITTER_FLEE_DIST) {
+            c.fleeing = true;
+            const fleeSpeed = 4.0;
+            c.vr = (dr / dist) * fleeSpeed;
+            c.vc = (dc / dist) * fleeSpeed;
+        } else if (c.fleeing && dist > _CRITTER_FLEE_DIST * 1.5) {
+            c.fleeing = false;
+            c.vr = (Math.random() - 0.5) * 0.5;
+            c.vc = (Math.random() - 0.5) * 0.5;
+        }
+        c.row += c.vr * dt;
+        c.col += c.vc * dt;
+        // Despawn if out of map
+        if (c.row < 0 || c.row >= MAP_SIZE || c.col < 0 || c.col >= MAP_SIZE) {
+            _critters.splice(i, 1);
+        }
+    }
+}
+
+function drawCritters() {
+    if (_critters.length === 0) return;
+    const color = _CRITTER_COLORS[currentZone] || '#554433';
+    ctx.save();
+    for (const c of _critters) {
+        const pos = tileToScreen(c.row, c.col);
+        const sx = pos.x + cameraX, sy = pos.y + cameraY;
+        if (sx < -20 || sx > canvasW + 20 || sy < -20 || sy > canvasH + 20) continue;
+        const fr = Math.floor(c.row), fc = Math.floor(c.col);
+        if (fogRevealed[fr] && fogRevealed[fr][fc] < 1) continue;
+        const alpha = c.life < 2 ? c.life / 2 : 1;
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.fillStyle = color;
+        // Simple 2-pixel body
+        ctx.fillRect(sx - 1, sy, 2, 1.5);
+        ctx.fillRect(sx - 0.5, sy - 0.5, 1, 1);
+    }
+    ctx.restore();
+}
+
+// ============================================================
 //  WEATHER SYSTEM — zone-specific ambient weather effects
 //  Rain (hamlet), embers (inferno), snow (frozen), void (throne)
 //  Separate from dust particles — higher density, unique rendering.
@@ -1188,7 +1269,9 @@ function updateGameplay(dt) {
     // Ambient atmosphere particles — make the world feel alive
     spawnAmbientParticles(dt);
     if (typeof updateWeather === 'function') updateWeather(dt);
+    if (typeof updateCritters === 'function') updateCritters(dt);
     updateCamera(dt);
+    if (typeof updateCameraZoom === 'function') updateCameraZoom(dt);
 
     // Update fog of war — throttled to ~4 times per second
     if (typeof updateFogOfWar === 'function') {
@@ -1244,8 +1327,9 @@ function updateGameplay(dt) {
                     loadZone(0); nextZone = 0; // fallback to hamlet
                 }
                 showZoneBanner(nextZone);
-                _arrivalVignetteTimer = 1.5; // arrival vignette on zone transition
+                _arrivalVignetteTimer = 1.5;
                 if (typeof sfxZoneEnter === 'function') sfxZoneEnter();
+                if (typeof startAmbientAudio === 'function') startAmbientAudio(nextZone);
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
             }
@@ -1578,7 +1662,8 @@ function resizeCanvas() {
     canvasH = physH / displayScale;
 
     // Combined transform: DPR * display scale
-    ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
+    const _zf = typeof _cameraZoom !== 'undefined' ? _cameraZoom : 1;
+    ctx.setTransform(dpr * displayScale * _zf, 0, 0, dpr * displayScale * _zf, 0, 0);
 
 }
 window.addEventListener('resize', resizeCanvas);
@@ -3187,6 +3272,7 @@ function restartGame() {
     if (typeof _weatherParticles !== 'undefined') _weatherParticles.length = 0;
     if (typeof _weatherRipples !== 'undefined') _weatherRipples.length = 0;
     if (typeof _combatDecals !== 'undefined') _combatDecals.length = 0;
+    if (typeof _critters !== 'undefined') _critters.length = 0;
     _arrivalVignetteTimer = 0; // vignette only triggers on zone transitions, not initial load
     cinematicTimer = 0;
     cinematicTextAlpha = [0, 0, 0, 0];
@@ -3228,7 +3314,8 @@ function render() {
     const dpr = window.devicePixelRatio || 1;
 
 
-    ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
+    const _zf = typeof _cameraZoom !== 'undefined' ? _cameraZoom : 1;
+    ctx.setTransform(dpr * displayScale * _zf, 0, 0, dpr * displayScale * _zf, 0, 0);
 
     // Safety: reset alpha every frame so no VFX leak carries over
     ctx.globalAlpha = 1.0;
@@ -3632,6 +3719,7 @@ function render() {
     }
 
     // ── LAYER 7: World effects ──
+    if (typeof drawCritters === 'function') drawCritters();
     if (typeof drawWeather === 'function') drawWeather();
     drawDustParticles();
     drawAllTowerGlows();
@@ -3685,6 +3773,43 @@ function render() {
             ctx.globalCompositeOperation = 'multiply';
             ctx.fillStyle = tint;
             ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.restore();
+        }
+    }
+
+    // ── LAYER 7.8: Foreground depth layer — fog wisps passing over the player ──
+    // Scrolls at 1.2× camera speed, creating parallax depth perception.
+    {
+        const _fgConfigs = {
+            0: { color: 'rgba(100, 110, 130, ', count: 3, speed: 0.15, size: 80 },   // hamlet: blue-grey fog
+            1: { color: 'rgba(80, 70, 55, ', count: 2, speed: 0.08, size: 60 },       // dungeon: dusty wisps
+            2: { color: 'rgba(70, 80, 60, ', count: 2, speed: 0.10, size: 70 },       // tower: mossy haze
+            4: { color: 'rgba(100, 30, 10, ', count: 2, speed: 0.12, size: 70 },      // inferno: heat haze
+            5: { color: 'rgba(80, 100, 130, ', count: 3, speed: 0.10, size: 80 },     // frozen: ice fog
+            6: { color: 'rgba(60, 30, 80, ', count: 2, speed: 0.08, size: 60 },       // throne: void mist
+        };
+        const fgCfg = _fgConfigs[currentZone];
+        if (fgCfg) {
+            ctx.save();
+            const t = performance.now() / 1000;
+            // Parallax offset at 1.2× camera (0.2× extra shift relative to world)
+            const parallaxX = cameraX * 0.2;
+            const parallaxY = cameraY * 0.2;
+            for (let i = 0; i < fgCfg.count; i++) {
+                const seed = i * 200 + currentZone * 50;
+                const wx = ((t * fgCfg.speed * 60 + seed * 3) % (canvasW + fgCfg.size * 4)) - fgCfg.size * 2;
+                const wy = canvasH * (0.2 + 0.6 * ((Math.sin(seed + t * 0.3) + 1) / 2));
+                const alpha = 0.04 + Math.sin(t * 0.5 + seed) * 0.02;
+                ctx.globalAlpha = alpha;
+                const grad = ctx.createRadialGradient(wx + parallaxX, wy + parallaxY, 0,
+                    wx + parallaxX, wy + parallaxY, fgCfg.size);
+                grad.addColorStop(0, fgCfg.color + '0.3)');
+                grad.addColorStop(0.5, fgCfg.color + '0.1)');
+                grad.addColorStop(1, fgCfg.color + '0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(wx + parallaxX - fgCfg.size, wy + parallaxY - fgCfg.size,
+                    fgCfg.size * 2, fgCfg.size * 2);
+            }
             ctx.restore();
         }
     }
