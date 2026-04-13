@@ -269,15 +269,19 @@ function drawIntroOverlay() {
         ctx.fillRect(0, 0, canvasW, canvasH);
     }
 
-    // Subtle breathing vignette during black screen phase (0-10s) — signals the game is alive
+    // Breathing vignette during black screen phase (0-10s) — signals the game is alive
+    // Must use 'screen' blend to ADD light onto the black background (source-over is invisible on black)
     if (t < 10.0) {
-        const breath = 0.035 + Math.sin(t * 0.9) * 0.025; // slow ~7s cycle, 0.01–0.06 alpha
+        const breath = 0.06 + Math.sin(t * 0.9) * 0.04; // slow ~7s cycle, 0.02–0.10 alpha
+        ctx.globalCompositeOperation = 'screen';
         ctx.globalAlpha = breath;
-        const breathGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, canvasH * 0.3, canvasW/2, canvasH/2, canvasH * 0.85);
+        const breathGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, canvasH * 0.15, canvasW/2, canvasH/2, canvasH * 0.75);
         breathGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        breathGrad.addColorStop(1, 'rgba(80, 15, 8, 1)');
+        breathGrad.addColorStop(0.6, 'rgba(60, 12, 8, 0.5)');
+        breathGrad.addColorStop(1, 'rgba(120, 25, 12, 1)');
         ctx.fillStyle = breathGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
+        ctx.globalCompositeOperation = 'source-over';
     }
 
     // Skip hint — fades in after 5s, tells user this is intentional
