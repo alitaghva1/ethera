@@ -6,12 +6,12 @@ let _frameDt = 0.016; // cached dt for render() access (updated each frame)
 // ── Hoisted render constants (avoid rebuilding every frame) ──
 const _ZONE_TINTS = {
     // Zone 0 (Hamlet): no tint — outdoor lighting handles atmosphere
-    1: 'rgba(170, 150, 130, 0.93)',  // Undercroft: warm earthy brown
-    2: 'rgba(150, 160, 145, 0.93)',  // Ruined Tower: mossy grey-green
-    3: 'rgba(170, 155, 120, 0.92)',  // Spire: sickly amber
-    4: 'rgba(180, 140, 130, 0.90)',  // Inferno: warm red push
-    5: 'rgba(135, 150, 175, 0.92)',  // Frozen: cold blue shift
-    6: 'rgba(155, 135, 170, 0.92)',  // Throne: purple corruption
+    1: 'rgba(170, 150, 130, 0.78)',  // Undercroft: warm earthy brown
+    2: 'rgba(150, 160, 145, 0.78)',  // Ruined Tower: mossy grey-green
+    3: 'rgba(170, 155, 120, 0.76)',  // Spire: sickly amber
+    4: 'rgba(180, 140, 130, 0.75)',  // Inferno: warm red push
+    5: 'rgba(135, 150, 175, 0.76)',  // Frozen: cold blue shift
+    6: 'rgba(155, 135, 170, 0.76)',  // Throne: purple corruption
 };
 const _fgConfigs = {
     0: { color: 'rgba(140, 130, 110, ', count: 2, speed: 0.10, size: 60 },   // hamlet: warm dust
@@ -450,10 +450,10 @@ function drawEvolutionIndicator() {
     }
 
     // Label
-    ctx.font = '7px monospace';
+    ctx.font = '9px monospace';
     ctx.fillStyle = prog.met >= prog.total ? '#e8c840' : '#8a7a5a';
-    ctx.globalAlpha = 0.6;
-    ctx.fillText('EVOLVE', x, y + 10);
+    ctx.globalAlpha = 0.7;
+    ctx.fillText('EVOLVE', x, y + 12);
 
     ctx.restore();
 }
@@ -3464,6 +3464,8 @@ function render() {
 
     // Safety: reset alpha every frame so no VFX leak carries over
     ctx.globalAlpha = 1.0;
+    // Crisp pixel art: disable bilinear interpolation for sprite/tile rendering
+    ctx.imageSmoothingEnabled = false;
 
     // Reset world label overlap tracking for this frame
     if (typeof _resetWorldLabels === 'function') _resetWorldLabels();
@@ -4051,22 +4053,22 @@ function render() {
     // Vignette — lighter for outdoor town, dramatic for dungeon
     ctx.save();
     if (currentZone === 0) {
-        // Dark fantasy town: dramatic vignette, nearly as heavy as dungeon
+        // Dark fantasy town: moderate vignette
         const vg = ctx.createRadialGradient(
-            canvasW / 2, canvasH / 2, canvasH * 0.3,
+            canvasW / 2, canvasH / 2, canvasH * 0.35,
             canvasW / 2, canvasH / 2, canvasH * 0.85
         );
         vg.addColorStop(0, 'rgba(0,0,0,0)');
-        vg.addColorStop(1, 'rgba(0,0,0,0.35)');
+        vg.addColorStop(1, 'rgba(0,0,0,0.28)');
         ctx.fillStyle = vg;
         ctx.fillRect(0, 0, canvasW, canvasH);
     } else {
         const vg = ctx.createRadialGradient(
-            canvasW / 2, canvasH / 2, canvasH * 0.3,
+            canvasW / 2, canvasH / 2, canvasH * 0.35,
             canvasW / 2, canvasH / 2, canvasH * 0.8
         );
         vg.addColorStop(0, 'rgba(0,0,0,0)');
-        vg.addColorStop(1, 'rgba(0,0,0,0.4)');
+        vg.addColorStop(1, 'rgba(0,0,0,0.32)');
         ctx.fillStyle = vg;
         ctx.fillRect(0, 0, canvasW, canvasH);
     }
@@ -4097,6 +4099,7 @@ function render() {
 
     // ── LAYER 9: HUD ──
     ctx.globalAlpha = 1; // safety reset before HUD
+    ctx.imageSmoothingEnabled = true; // re-enable smoothing for crisp HUD text
     if (gamePhase !== 'cinematic') {
         // HP & Mana bars (form-specific)
         const hudHandler = FormSystem.getHandler();

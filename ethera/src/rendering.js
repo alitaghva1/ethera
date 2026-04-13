@@ -1045,7 +1045,7 @@ function drawEnvironmentLightPunchthrough() {
         if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed.length) {
             if (!fogRevealed[fr][fc]) continue;
         }
-        ctx.globalAlpha = light.intensity * _envLightFlicker(light, now) * 0.36;
+        ctx.globalAlpha = light.intensity * _envLightFlicker(light, now) * 0.45;
         ctx.drawImage(_getEnvLightGlow(light), sx - light.radius, sy - light.radius + 4);
     }
     ctx.restore();
@@ -1220,7 +1220,7 @@ function drawDarkness() {
     // Pass 2: overall darkness film — dims everything including the lit center
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(48, 35, 25, 0.45)';
+    ctx.fillStyle = 'rgba(48, 35, 25, 0.25)';
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();
 }

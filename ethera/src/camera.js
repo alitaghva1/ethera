@@ -2,7 +2,9 @@
 //  CAMERA (smooth lerp follow)
 // ============================================================
 function updateCamera(dt) {
-    const LERP = 6;
+    // Faster follow during combat for better responsiveness
+    const inCombat = (typeof wave !== 'undefined' && wave.phase === 'fighting');
+    const LERP = inCombat ? 8 : 6;
     const LOOK_AHEAD = 18; // pixels of camera lead in movement direction
 
     const target = tileToScreen(player.row, player.col);
@@ -22,8 +24,12 @@ function updateCamera(dt) {
 
     const tx = canvasW / 2 - target.x - leadX;
     const ty = canvasH / 2 - target.y - leadY;
-    smoothCamX += (tx - smoothCamX) * LERP * dt;
-    smoothCamY += (ty - smoothCamY) * LERP * dt;
+    // Deadzone: don't move camera for sub-4px differences (reduces micro-jitter)
+    const dx = tx - smoothCamX, dy = ty - smoothCamY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        smoothCamX += dx * LERP * dt;
+        smoothCamY += dy * LERP * dt;
+    }
     cameraX = Math.round(smoothCamX);
     cameraY = Math.round(smoothCamY);
 

@@ -461,7 +461,8 @@ function usePotion(potionId) {
         activePotionBuffs.dmgReduc = { value: eff.value, duration: eff.duration };
         pickupTexts.push({ text: 'Fortitude!', color: '#ffcc44', row: player.row, col: player.col, offsetY: 0, life: 2.0 });
     }
-    if (typeof sfxItemPickup === 'function') sfxItemPickup();
+    if (typeof sfxPotionUse === 'function') sfxPotionUse();
+    else if (typeof sfxItemPickup === 'function') sfxItemPickup();
     return true;
 }
 

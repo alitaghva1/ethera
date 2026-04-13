@@ -560,7 +560,7 @@ function drawLichHUD() {
     }
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#eeccee';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.textBaseline = 'middle';
     ctx.fillText(`HP ${Math.ceil(player.hp)}/${Math.round(lichMaxHp)}`, x + 4, yHP + barH / 2 + 1);
 
@@ -587,7 +587,7 @@ function drawLichHUD() {
     }
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#ddaaff';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillText(`SOUL ${Math.ceil(lichState.soulEnergy)}/${lichState.maxSoulEnergy}`, x + 4, ySoul + barH / 2 + 1);
 
     // === Minion Row (dedicated section) ===
@@ -605,7 +605,7 @@ function drawLichHUD() {
 
     // Minion label
     ctx.globalAlpha = 0.7;
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillStyle = '#bb99dd';
     ctx.textBaseline = 'middle';
     ctx.fillText('MINIONS', x + 2, yMinion + minionRowH / 2);
@@ -664,7 +664,7 @@ function drawLichHUD() {
     }
     ctx.globalAlpha = 0.65;
     ctx.fillStyle = '#ccaaee';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.textBaseline = 'middle';
     ctx.fillText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
 
@@ -694,7 +694,7 @@ function drawLichHUD() {
 
     // Form indicator
     ctx.globalAlpha = 0.3;
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillStyle = '#9966cc';
     ctx.fillText('LICH', x, yHP - 8);
 

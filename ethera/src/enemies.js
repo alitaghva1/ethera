@@ -715,8 +715,8 @@ function applyEnemyHit(e, damage, opts) {
             if (typeof addCameraZoom === 'function') addCameraZoom(1.08, 1.8); // dramatic zoom on boss kill
         }
         else if (e.elite) { addHitPause(0.06 * impactScale); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); addSlowMo(0.2, 0.25); }
-        else if (isCrit) { addSlowMo(0.08, 0.4); } // brief kill-confirm slow-mo on crit kills
-        else { addHitPause(0.05 * impactScale); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); }
+        else if (isCrit) { addHitPause(0.025); addSlowMo(0.08, 0.4); } // brief kill-confirm slow-mo on crit kills
+        else { addHitPause(0.025); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); } // micro-pause on every kill
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
         // Bosses have built-in stagger resistance via shorter hurtTimer
@@ -2284,14 +2284,14 @@ function drawWaveHUD() {
 
         ctx.globalAlpha = 0.4;
         ctx.textAlign = 'right';
-        ctx.font = '9px monospace';
+        ctx.font = '11px monospace';
         ctx.fillStyle = '#aa6655';
         ctx.strokeText('HOSTILE', rx - 18, ry + 13);
         ctx.fillText('HOSTILE', rx - 18, ry + 13);
     } else if (wave.phase === 'cleared' || wave.phase === 'zoneClear') {
         ctx.globalAlpha = 0.35;
         ctx.textAlign = 'right';
-        ctx.font = '9px monospace';
+        ctx.font = '11px monospace';
         ctx.fillStyle = wave.phase === 'zoneClear' ? '#c4a878' : '#7a9a6a';
         const statusText = wave.phase === 'zoneClear' ? 'SAFE' : 'CALM';
         ctx.strokeText(statusText, rx - 10, ry + 13);
@@ -2759,7 +2759,7 @@ function updateEnemies(dt) {
                 enemies.splice(i, 1);
                 wave.totalKilled++;
                 wave.waveKills++;
-                grantXP(e.type, e.statMult || 1.0);
+                grantXP(e.type, e.statMult || 1.0, e.row, e.col);
                 // Gold drop
                 if (typeof ENEMY_GOLD_DROP !== 'undefined') {
                     const goldDrop = ENEMY_GOLD_DROP[e.type] || 10;
@@ -2767,6 +2767,13 @@ function updateEnemies(dt) {
                     const gold = Math.round(goldDrop * (0.8 + Math.random() * 0.4) * ascMult);
                     playerGold += gold;
                     pickupTexts.push({ text: '+' + gold + 'g', color: '#ffd700', row: e.row, col: e.col, offsetY: -8, life: 1.0 });
+                    // Gold coin particle burst
+                    if (typeof spawnParticle === 'function') {
+                        for (let _gp = 0; _gp < 3; _gp++) {
+                            const _ga = Math.random() * Math.PI * 2;
+                            spawnParticle(e.row, e.col, Math.cos(_ga) * 1.5, -2 - Math.random() * 1.5, 0.5 + Math.random() * 0.3, '#ffd700', 0.7);
+                        }
+                    }
                     if (typeof sfxGoldPickup === 'function') sfxGoldPickup();
                 }
                 // Multi-kill tracking now handled at kill moment (when entering death state)
@@ -4158,12 +4165,16 @@ function canEnemyMoveTo(row, col, radius, self) {
 }
 
 // ----- LEVEL-UP SYSTEM HELPERS -----
-function grantXP(enemyType, statMult) {
+function grantXP(enemyType, statMult, row, col) {
     const baseAmount = ENEMY_XP[enemyType] || 5;
     // XP scales with sqrt of statMult — harder enemies give more XP but not linearly
     const scaledAmount = baseAmount * Math.sqrt(statMult || 1.0);
     const amount = Math.round(scaledAmount * getTalismanBonus().xpMult);
     xpState.xp += amount;
+    // XP floating text feedback
+    if (typeof pickupTexts !== 'undefined' && row !== undefined) {
+        pickupTexts.push({ text: '+' + amount + ' XP', color: '#e8c840', row: row, col: col, offsetY: -18, life: 0.9 });
+    }
     // Track kills for current form + evolution milestone toasts
     if (FormSystem.formData[FormSystem.currentForm]) {
         const _fd = FormSystem.formData[FormSystem.currentForm];
@@ -5099,7 +5110,21 @@ function drawEnemy(e) {
     ctx.fill();
     ctx.restore();
 
-    // (Silhouette halo removed — felt unnatural)
+    // Readability ground glow for non-elite/non-boss enemies (ensures visibility near darkness edge)
+    if (!e.def.isBoss && !e.elite && e.state !== 'death' && spawnAlpha > 0.5) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = 0.12 * spawnAlpha;
+        const _egR = Math.max(12, 10 * def.scale);
+        const _egGrad = ctx.createRadialGradient(sx, sy + 2, 0, sx, sy + 2, _egR);
+        _egGrad.addColorStop(0, 'rgba(255, 200, 140, 0.5)');
+        _egGrad.addColorStop(1, 'rgba(255, 200, 140, 0)');
+        ctx.fillStyle = _egGrad;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 2, _egR, _egR * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
 
     // Boss glow aura — intensifies per phase (visual transformation)
     if (e.def.isBoss && e.state !== 'death') {

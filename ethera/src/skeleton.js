@@ -679,7 +679,7 @@ function drawSkeletonHUD() {
     }
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#ffeedd';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.textBaseline = 'middle';
     ctx.fillText(`HP ${Math.ceil(player.hp)}/${Math.ceil(maxHP)}`, x + 4, yHP + barH / 2 + 1);
 
@@ -699,7 +699,7 @@ function drawSkeletonHUD() {
     }
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#ffeeaa';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillText(`STA ${Math.ceil(skeletonState.stamina)}/${skeletonState.maxStamina}`, x + 4, yStam + barH / 2 + 1);
 
     // Shield HP indicator (shown when shield is active or damaged)
@@ -724,7 +724,7 @@ function drawSkeletonHUD() {
         }
         // Label
         ctx.globalAlpha = 0.6;
-        ctx.font = '7px monospace';
+        ctx.font = '9px monospace';
         ctx.fillStyle = '#aaccdd';
         ctx.fillText(`SHIELD ${Math.ceil(skeletonState.shieldHP)}`, shieldX + 2, shieldY + shieldBarH / 2 + 2);
     }
@@ -752,7 +752,7 @@ function drawSkeletonHUD() {
         ctx.textBaseline = 'top';
         ctx.fillText(`${skeletonState.comboCount}x`, comboX, comboY);
         ctx.globalAlpha = comboFade * 0.6;
-        ctx.font = '7px monospace';
+        ctx.font = '9px monospace';
         ctx.fillText('COMBO', comboX, comboY + 15);
     }
 
@@ -772,7 +772,7 @@ function drawSkeletonHUD() {
     }
     ctx.globalAlpha = 0.65;
     ctx.fillStyle = '#ddcc88';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
 
     // Active upgrade icons
@@ -801,7 +801,7 @@ function drawSkeletonHUD() {
 
     // Form indicator
     ctx.globalAlpha = 0.3;
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillStyle = '#bbaa88';
     ctx.fillText('SKELETON', x, yHP - 8);
 

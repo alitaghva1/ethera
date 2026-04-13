@@ -398,7 +398,7 @@ function drawLevelUpScreen() {
         ctx.textBaseline = 'middle';
         if (isLegendary || isRare) {
             ctx.globalAlpha = fade * cardRevealFrac * 0.7;
-            ctx.font = '7px monospace';
+            ctx.font = '9px monospace';
             ctx.textAlign = 'center';
             ctx.fillStyle = isLegendary ? '#ffcc33' : '#5588ff';
             ctx.fillText(tier.toUpperCase(), cardX + cardW / 2, cy2 + 11);

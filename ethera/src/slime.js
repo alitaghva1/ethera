@@ -129,7 +129,7 @@ function slimeAbsorbEnemy(target, particleCount) {
         }
     }
     // Absorbing IS killing — grant XP (which also increments totalKills) + wave total
-    grantXP(target.type, target.statMult || 1.0);
+    grantXP(target.type, target.statMult || 1.0, target.row, target.col);
     wave.totalKilled++;
     if (slimeState.size > FormSystem.formData.slime.maxSizeReached) {
         FormSystem.formData.slime.maxSizeReached = slimeState.size;
@@ -1125,7 +1125,7 @@ function drawSlimeHUD() {
 
     // Form indicator
     ctx.globalAlpha = 0.3;
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillStyle = '#bb6666';
     ctx.fillText('SLIME', x, yHP - 8);
 

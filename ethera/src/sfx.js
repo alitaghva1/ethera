@@ -701,6 +701,35 @@ function sfxUIHover() { playSfxSample('assets/sfx/ui/rollover1.ogg', 0.15); }
 function sfxBookOpen() { playSfxSample('assets/sfx/rpg/bookOpen.ogg', 0.3); }
 function sfxBookClose() { playSfxSample('assets/sfx/rpg/bookClose.ogg', 0.25); }
 
+// --- Potion use SFX (liquid gulp + sparkle) ---
+function sfxPotionUse() {
+    if (!sfxCtx) return;
+    const now = sfxCtx.currentTime;
+    // Liquid bubble/gulp — low sine with frequency sweep
+    const osc = sfxCtx.createOscillator();
+    const gain = sfxCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.15);
+    gain.gain.setValueAtTime(0.18 * sfxVolume, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    osc.connect(gain);
+    gain.connect(sfxCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+    // Glass clink — high triangle ping
+    const osc2 = sfxCtx.createOscillator();
+    const gain2 = sfxCtx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(880, now + 0.05);
+    gain2.gain.setValueAtTime(0.12 * sfxVolume, now + 0.05);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+    osc2.connect(gain2);
+    gain2.connect(sfxCtx.destination);
+    osc2.start(now + 0.05);
+    osc2.stop(now + 0.2);
+}
+
 // --- Real impact hit sound (layered with procedural) ---
 function sfxRealHit() {
     const files = ['assets/sfx/impacts/impactPunch_heavy_000.ogg', 'assets/sfx/impacts/impactPunch_heavy_001.ogg', 'assets/sfx/impacts/impactPunch_heavy_002.ogg'];

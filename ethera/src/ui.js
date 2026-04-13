@@ -405,21 +405,21 @@ function drawQuestTracker() {
 
     // Quest name
     ctx.globalAlpha = 0.6;
-    ctx.font = 'bold 10px Georgia';
+    ctx.font = 'bold 12px Georgia';
     ctx.fillStyle = '#e8c040';
     ctx.shadowColor = 'rgba(0,0,0,0.7)';
     ctx.shadowBlur = 4;
     ctx.fillText(activeQuest.name, rx, ry);
 
     // Current step
-    ctx.globalAlpha = 0.45;
-    ctx.font = 'italic 9px Georgia';
+    ctx.globalAlpha = 0.55;
+    ctx.font = 'italic 11px Georgia';
     ctx.fillStyle = '#c4a878';
-    ctx.fillText(stepText, rx, ry + 14);
+    ctx.fillText(stepText, rx, ry + 16);
 
     // Step progress dots
-    ctx.globalAlpha = 0.4;
-    const dotY = ry + 22;
+    ctx.globalAlpha = 0.5;
+    const dotY = ry + 26;
     for (let i = 0; i < activeQuest.steps.length; i++) {
         const dotX = rx - (activeQuest.steps.length - 1 - i) * 8;
         ctx.fillStyle = i < activeStep ? '#e8c040' : (i === activeStep ? '#aa8830' : '#443320');
@@ -563,7 +563,7 @@ function drawHPMana() {
     // HP label
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#ffcccc';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.textBaseline = 'middle';
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.lineWidth = 2.5;
@@ -627,7 +627,7 @@ function drawHPMana() {
     // Mana label
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#aabbff';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.textBaseline = 'middle';
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.lineWidth = 2.5;
@@ -672,7 +672,7 @@ function drawHPMana() {
     // XP label
     ctx.globalAlpha = 0.65;
     ctx.fillStyle = '#ddcc88';
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.textBaseline = 'middle';
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.lineWidth = 2.5;
@@ -742,7 +742,7 @@ function drawHPMana() {
 
                 // Label
                 ctx.globalAlpha = 0.7;
-                ctx.font = 'bold 6px monospace';
+                ctx.font = 'bold 8px monospace';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillStyle = ic.color;
@@ -784,7 +784,7 @@ function drawTowerModeIndicator() {
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = '9px monospace';
+    ctx.font = '11px monospace';
     ctx.fillStyle = '#80aaee';
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.lineWidth = 2;
@@ -825,7 +825,7 @@ function drawPotionHUD() {
 
         const label = '[' + (i + 1) + '] ' + potionShort[i] + ' x' + count;
         ctx.globalAlpha = 0.6;
-        ctx.font = '9px monospace';
+        ctx.font = '11px monospace';
         ctx.fillStyle = potionColors[i];
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
@@ -1257,7 +1257,7 @@ function drawAbyssModifiers() {
     const pillGap = 4;
     const pillPadX = 8;
 
-    ctx.font = 'bold 9px monospace';
+    ctx.font = 'bold 11px monospace';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'right';
 
