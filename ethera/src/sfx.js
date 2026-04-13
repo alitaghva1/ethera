@@ -380,14 +380,16 @@ function sfxCinematicHeartbeat(volume) {
     const v = volume || 0.5;
     // Cinematic heartbeat: deep chest thump with resonance
     // LUB — primary beat
-    playTone('sine', 70, 35, 0.45, v, 0.005, 0.4);            // deep bass body (long resonance)
-    playTone('triangle', 110, 55, 0.2, v * 0.45, 0.005, 0.15); // mid knock (audible on all speakers)
-    playTone('sine', 40, 25, 0.5, v * 0.25, 0.01, 0.45);       // sub rumble (felt on headphones)
+    playTone('sine', 70, 35, 0.45, v, 0.01, 0.4);              // deep bass body
+    playTone('triangle', 110, 55, 0.2, v * 0.45, 0.01, 0.15);  // low-mid knock
+    playTone('triangle', 200, 120, 0.12, v * 0.35, 0.005, 0.08); // mid thump (laptop speakers)
+    playTone('sine', 40, 25, 0.5, v * 0.25, 0.01, 0.45);       // sub rumble (headphones)
     // DUB — secondary beat, softer
     setTimeout(() => {
         if (!sfxCtx) return;
         playTone('sine', 75, 40, 0.35, v * 0.7, 0.005, 0.3);
         playTone('triangle', 115, 60, 0.15, v * 0.35, 0.005, 0.12);
+        playTone('triangle', 190, 110, 0.1, v * 0.25, 0.005, 0.06); // mid dub (laptop)
     }, 320);
 }
 

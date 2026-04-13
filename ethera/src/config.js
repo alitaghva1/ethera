@@ -939,23 +939,31 @@ let introTimer = 0;
 let lightRadius = 60;
 const MAX_LIGHT = 340;
 const HAMLET_LIGHT = 310;         // twilight brightness for town atmosphere
-const INTRO_DURATION = 33.0;      // intro: text → heartbeats → golden text → silence → music establishes → reveal
-let introSfxPlayed = false;       // one-shot flag for intro heartbeat 1
-let introSfxBeat2 = false;        // one-shot flag for intro heartbeat 2
-let introSfxBeat3 = false;        // one-shot flag for intro heartbeat 3
-let introSfxBeat4 = false;
-let introSfxBeat5 = false;
-let introSfxBeat6 = false;
-let introSfxBeat7 = false;
-let introSfxBeat8 = false;
-let introSfxBeat9 = false;
-let introSfxBeat10 = false;
-let introSfxBeat11 = false;
-let introSfxBeat12 = false;
-let introFlash = 0;               // screen flash intensity tied to heartbeats
-let introFlashRadius = 0.3;       // flash radius grows with each beat
-let introMusicStarted = false;    // one-shot flag for hamlet music start during reveal
+const INTRO_DURATION = 28.0;      // intro: text → heartbeats → golden text → silence → music → reveal
+
+// Unified cardiac pulse system — one variable drives all intro visuals
+let introPulse = 0;               // 0–1, drives radial glow + vignette
+let introMusicStarted = false;
 let lightFlicker = 0;
+
+// Data-driven heartbeat sequence — {time, vol, pulse}
+// Starts at 8.0s (overlaps with "They left you for dead" text for narrative impact)
+// Gaps compress from 1.5s down to 0.5s for accelerating rhythm
+const INTRO_BEATS = [
+    { time: 8.0,  vol: 0.35, pulse: 0.15 },
+    { time: 9.5,  vol: 0.38, pulse: 0.18 },
+    { time: 10.8, vol: 0.40, pulse: 0.22 },
+    { time: 12.0, vol: 0.42, pulse: 0.28 },
+    { time: 13.2, vol: 0.42, pulse: 0.35 },
+    { time: 14.3, vol: 0.45, pulse: 0.42 },
+    { time: 15.3, vol: 0.50, pulse: 0.50 },
+    { time: 16.2, vol: 0.55, pulse: 0.60 },
+    { time: 17.0, vol: 0.60, pulse: 0.70 },
+    { time: 17.7, vol: 0.70, pulse: 0.80 },
+    { time: 18.3, vol: 0.80, pulse: 0.90 },
+    { time: 18.8, vol: 0.90, pulse: 1.00 },
+];
+let _introBeatIndex = 0; // tracks which beat we're on
 
 // ----- CINEMATIC AWAKENING -----
 let cinematicTimer = 0;

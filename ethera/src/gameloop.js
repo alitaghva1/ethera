@@ -182,63 +182,52 @@ function updateIntroPhase(dt) {
     introTimer += dt;
     const t = introTimer;
 
-    // === 12-BEAT HEARTBEAT SEQUENCE ===
-    // Gaps compress: 2.0 → 1.8 → 1.6 → 1.5 → 1.4 → 1.3 → 1.2 → 1.1 → 1.0 → 0.9 → 0.8
-    // Volume: 0.10 → 0.85 (exponential curve)
-    // Flash: barely visible → full crimson pulse
-    //
-    // Beat:  1     2     3     4     5     6     7     8     9    10    11    12
-    // Time: 10.0  12.0  13.8  15.4  16.9  18.3  19.6  20.8  21.9 22.9 23.8 24.6
-    // Gap:  —     2.0   1.8   1.6   1.5   1.4   1.3   1.2   1.1  1.0  0.9  0.8
-    // Vol:  .10   .13   .17   .22   .28   .35   .42   .50   .58  .68  .78  .90
-    //
-    if (typeof sfxCinematicHeartbeat === 'function') {
-        if (t >= 10.0 && !introSfxPlayed) { introSfxPlayed = true; sfxCinematicHeartbeat(0.20); introFlash = 0.06; introFlashRadius = 0.30; }
-        if (t >= 12.0 && !introSfxBeat2)  { introSfxBeat2 = true;  sfxCinematicHeartbeat(0.24); introFlash = 0.07; introFlashRadius = 0.32; }
-        if (t >= 13.8 && !introSfxBeat3)  { introSfxBeat3 = true;  sfxCinematicHeartbeat(0.28); introFlash = 0.08; introFlashRadius = 0.35; }
-        if (t >= 15.4 && !introSfxBeat4)  { introSfxBeat4 = true;  sfxCinematicHeartbeat(0.32); introFlash = 0.09; introFlashRadius = 0.38; }
-        if (t >= 16.9 && !introSfxBeat5)  { introSfxBeat5 = true;  sfxCinematicHeartbeat(0.28); introFlash = 0.07; introFlashRadius = 0.32; }
-        if (t >= 18.3 && !introSfxBeat6)  { introSfxBeat6 = true;  sfxCinematicHeartbeat(0.35); introFlash = 0.09; introFlashRadius = 0.38; }
-        if (t >= 19.6 && !introSfxBeat7)  { introSfxBeat7 = true;  sfxCinematicHeartbeat(0.42); introFlash = 0.11; introFlashRadius = 0.44; }
-        if (t >= 20.8 && !introSfxBeat8)  { introSfxBeat8 = true;  sfxCinematicHeartbeat(0.50); introFlash = 0.14; introFlashRadius = 0.50; }
-        if (t >= 21.9 && !introSfxBeat9)  { introSfxBeat9 = true;  sfxCinematicHeartbeat(0.58); introFlash = 0.17; introFlashRadius = 0.56; }
-        if (t >= 22.9 && !introSfxBeat10) { introSfxBeat10 = true;  sfxCinematicHeartbeat(0.68); introFlash = 0.20; introFlashRadius = 0.62; }
-        if (t >= 23.8 && !introSfxBeat11) { introSfxBeat11 = true;  sfxCinematicHeartbeat(0.78); introFlash = 0.23; introFlashRadius = 0.70; }
-        if (t >= 24.6 && !introSfxBeat12) { introSfxBeat12 = true;  sfxCinematicHeartbeat(0.90); introFlash = 0.28; introFlashRadius = 0.80; }
-    }
-    // "They were wrong." appears at beat 12 (24.6s) — see drawIntroOverlay
+    // === UNIFIED CARDIAC PULSE ===
+    // One variable drives all visual feedback. Baseline breathing +
+    // heartbeat spikes create one seamless escalating rhythm.
 
-    // Decay screen flash
-    if (introFlash > 0) introFlash = Math.max(0, introFlash - dt * 0.35);
+    // Baseline breathing (0-8s): slow warm pulse before beats start
+    if (t < 8.0) {
+        const breathBase = 0.04 + Math.sin(t * 0.9) * 0.03; // 0.01–0.07
+        introPulse = Math.max(introPulse, breathBase);
+    }
+
+    // Data-driven heartbeat triggers
+    if (typeof sfxCinematicHeartbeat === 'function') {
+        while (_introBeatIndex < INTRO_BEATS.length && t >= INTRO_BEATS[_introBeatIndex].time) {
+            const beat = INTRO_BEATS[_introBeatIndex];
+            sfxCinematicHeartbeat(beat.vol);
+            introPulse = beat.pulse; // spike — exponential decay handles the falloff
+            _introBeatIndex++;
+        }
+    }
+
+    // Exponential decay — fast initial drop, slow organic tail
+    if (introPulse > 0.01) {
+        introPulse *= Math.pow(0.06, dt); // ~94% drop per second
+    }
 
     // === MUSIC ===
-    // Enters AFTER golden text has faded — 0.5s of silence, then the swell.
-    // Music needs 2-3 seconds to establish before the world appears.
-    if (t >= 29.0 && !introMusicStarted) {
+    if (t >= 24.0 && !introMusicStarted) {
         introMusicStarted = true;
-        try { playMusic('cinematic', 4.0); } catch(e) {} // slow 4s swell
+        try { playMusic('cinematic', 4.0); } catch(e) {}
     }
 
-    // === REVEAL PHASE (31.0-33.0s) ===
-    // Music has been playing for 2 seconds — established enough to accompany the reveal
-    if (t > 31.0 && t <= INTRO_DURATION) {
-        const revealT = Math.min(1, (t - 31.0) / 2.0);
-        // Smooth ease-out
+    // === REVEAL PHASE (26.0-28.0s) ===
+    if (t > 26.0 && t <= INTRO_DURATION) {
+        const revealT = Math.min(1, (t - 26.0) / 2.0);
         const eased = 1 - (1 - revealT) * (1 - revealT);
         lightRadius = 80 + (MAX_LIGHT - 80) * eased;
-        // Run camera lerp during reveal so there's no jump at transition
         if (typeof updateCamera === 'function') updateCamera(dt);
     }
 
     // End intro
     if (t >= INTRO_DURATION) {
-        // Sync smooth camera to prevent sub-pixel drift on transition
         smoothCamX = cameraX;
         smoothCamY = cameraY;
         gamePhase = 'playing';
         lightRadius = MAX_LIGHT;
         setPixelCursor('none');
-        // Let cinematic music continue — zone transition will crossfade naturally
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
             text: 'Two paths lie before you...',
@@ -246,7 +235,6 @@ function updateIntroPhase(dt) {
             row: player.row, col: player.col,
             offsetY: 0, life: 5.0,
         });
-        // Delayed navigation hint
         setTimeout(function() {
             if (typeof Notify !== 'undefined' && currentZone === 7) {
                 Notify.hint('antechamber_nav', 'Press E near glowing exits to enter.', 4, { color: '#c4a878' });
@@ -259,9 +247,9 @@ function drawIntroOverlay() {
     const t = introTimer;
     ctx.save();
 
-    // Black overlay — opaque through everything, fades during reveal (31-33s)
+    // Black overlay — opaque through everything, fades during reveal (26-28s)
     let overlayAlpha = 1.0;
-    if (t > 31.0) overlayAlpha = Math.max(0, 1 - (t - 31.0) / 2.0);
+    if (t > 26.0) overlayAlpha = Math.max(0, 1 - (t - 26.0) / 2.0);
 
     if (overlayAlpha > 0.01) {
         ctx.globalAlpha = overlayAlpha;
@@ -269,68 +257,44 @@ function drawIntroOverlay() {
         ctx.fillRect(0, 0, canvasW, canvasH);
     }
 
-    // Breathing vignette during black screen phase (0-10s) — signals the game is alive
-    // Uses 'lighter' (additive) blend to project light onto the black background.
-    // Math: on black, final pixel = source × globalAlpha. Need R ≥ 30/255 to be visible.
-    // At alpha 0.20, color (200,40,15) → R=40, G=8, B=3 — clearly visible warm glow.
-    if (t < 10.0) {
-        const breath = 0.15 + Math.sin(t * 0.9) * 0.10; // slow ~7s cycle, alpha 0.05–0.25
+    // === UNIFIED CARDIAC PULSE VISUAL ===
+    // One radial glow driven by introPulse. Center = warm amber light,
+    // edges = dark vignette. Creates a heartbeat of light in darkness.
+    if (introPulse > 0.005) {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = breath;
-        const breathGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, canvasH * 0.2, canvasW/2, canvasH/2, canvasH * 0.7);
-        breathGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        breathGrad.addColorStop(0.5, 'rgba(100, 20, 8, 0.4)');
-        breathGrad.addColorStop(0.8, 'rgba(180, 35, 12, 0.8)');
-        breathGrad.addColorStop(1, 'rgba(200, 40, 15, 1)');
-        ctx.fillStyle = breathGrad;
+
+        // Center glow — warm amber/crimson, radius scales with pulse
+        const glowRadius = canvasH * (0.15 + introPulse * 0.45); // 15%–60% of screen
+        ctx.globalAlpha = introPulse * 0.7;
+        const glowGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, glowRadius);
+        glowGrad.addColorStop(0, 'rgba(220, 120, 50, 1)');   // warm amber center
+        glowGrad.addColorStop(0.3, 'rgba(180, 50, 20, 0.6)'); // crimson mid
+        glowGrad.addColorStop(0.7, 'rgba(100, 20, 8, 0.2)');  // dark red outer
+        glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = glowGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Edge vignette — warm border that pulses with the heartbeat
+        ctx.globalAlpha = introPulse * 0.35;
+        const vigGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, canvasH * 0.25, canvasW/2, canvasH/2, canvasH * 0.8);
+        vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vigGrad.addColorStop(0.6, 'rgba(80, 15, 5, 0.3)');
+        vigGrad.addColorStop(1, 'rgba(140, 30, 10, 1)');
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
         ctx.globalCompositeOperation = 'source-over';
     }
 
-    // Floating ember particles during black screen (2-10s) — gives the eye something to track
-    if (t > 2.0 && t < 10.0) {
-        ctx.globalCompositeOperation = 'lighter';
-        const emberCount = 4;
-        for (let i = 0; i < emberCount; i++) {
-            // Each ember has a unique slow trajectory based on its index
-            const seed = i * 137.5; // golden angle offset
-            const lifeT = ((t - 2.0 + seed) % 8.0) / 8.0; // 0→1 over 8s, looping
-            const ex = canvasW * (0.2 + 0.6 * ((Math.sin(seed + lifeT * 3.1) + 1) / 2));
-            const ey = canvasH * (0.8 - lifeT * 0.7); // drift upward
-            const eAlpha = Math.sin(lifeT * Math.PI) * 0.4; // fade in then out
-            const eSize = 1.0 + Math.sin(seed + t * 2) * 0.5;
-            ctx.globalAlpha = eAlpha;
-            ctx.fillStyle = '#cc6633';
-            ctx.beginPath();
-            ctx.arc(ex, ey, eSize, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.globalCompositeOperation = 'source-over';
-    }
-
-    // Skip hint — fades in after 5s, tells user this is intentional
-    if (t > 5.0 && t < 29.0) {
-        const skipAlpha = Math.min(0.18, (t - 5.0) * 0.09);
+    // Skip hint — fades in after 4s
+    if (t > 4.0 && t < 24.0) {
+        const skipAlpha = Math.min(0.18, (t - 4.0) * 0.06);
         ctx.globalAlpha = skipAlpha;
         ctx.font = '9px monospace';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'bottom';
         ctx.fillStyle = '#666';
         ctx.fillText('Press any key to skip', canvasW - 20, canvasH - 16);
-    }
-
-    // Heartbeat screen flash — crimson pulse from center, additive blend for visibility on black
-    if (introFlash > 0.005) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = introFlash;
-        const _fr = canvasH * introFlashRadius;
-        const flashGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, _fr);
-        flashGrad.addColorStop(0, 'rgba(200, 50, 20, 1)');
-        flashGrad.addColorStop(0.4, 'rgba(140, 25, 10, 0.6)');
-        flashGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = flashGrad;
-        ctx.fillRect(0, 0, canvasW, canvasH);
-        ctx.globalCompositeOperation = 'source-over';
     }
 
     // --- Text rendering ---
@@ -378,20 +342,19 @@ function drawIntroOverlay() {
     }
 
     // LINE 2: "They were wrong."
-    // Appears at PEAK heartbeat 12 (24.6s). Quick defiant reveal.
-    // HOLDS for 2.5 seconds — let the player sit with it.
-    // Then fades slowly. Silence. THEN music. THEN world.
-    //   24.6-25.0: reveal (0.4s)
-    //   25.0-27.5: HOLD at full (2.5s)
-    //   27.5-28.5: slow fade out (1.0s)
+    // Appears right after beat 12 peak (19.5s). Quick defiant reveal.
+    // HOLDS for 2.5 seconds. Then fades. Silence. Music. World.
+    //   19.5-19.9: reveal (0.4s)
+    //   19.9-22.4: HOLD at full (2.5s)
+    //   22.4-23.4: slow fade out (1.0s)
     let a2 = 0;
-    if (t >= 24.6 && t < 25.0) a2 = Math.min(1, (t - 24.6) / 0.4);
-    if (t >= 25.0 && t < 27.5) a2 = 1; // HOLD — 2.5 seconds
-    if (t >= 27.5 && t < 28.5) a2 = 1 - (t - 27.5) / 1.0;
+    if (t >= 19.5 && t < 19.9) a2 = Math.min(1, (t - 19.5) / 0.4);
+    if (t >= 19.9 && t < 22.4) a2 = 1;
+    if (t >= 22.4 && t < 23.4) a2 = 1 - (t - 22.4) / 1.0;
     if (a2 > 0.01) {
-        const scaleT = Math.min(1, (t - 24.6) / 3.0);
+        const scaleT = Math.min(1, (t - 19.5) / 3.0);
         const scale = 1.08 - 0.08 * scaleT;
-        const glowBuild = Math.min(1, (t - 24.6) / 2.0);
+        const glowBuild = Math.min(1, (t - 19.5) / 2.0);
 
         ctx.save();
         ctx.translate(cx, canvasH * 0.44);
@@ -3272,7 +3235,7 @@ function render() {
 
     // Intro: black screen during text phase, then render world during reveal
     if (gamePhase === 'intro') {
-        if (introTimer < 31.0) {
+        if (introTimer < 26.0) {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasW, canvasH);
             return; // text overlay drawn by drawIntroOverlay() after render()
@@ -4155,14 +4118,9 @@ function runIntro() {
     // Start intro text sequence — world loads but screen is black with narrative
     gamePhase = 'intro';
     introTimer = 0;
-    introSfxPlayed = false;
-    introSfxBeat2 = false; introSfxBeat3 = false; introSfxBeat4 = false;
-    introSfxBeat5 = false; introSfxBeat6 = false; introSfxBeat7 = false;
-    introSfxBeat8 = false; introSfxBeat9 = false; introSfxBeat10 = false;
-    introSfxBeat11 = false; introSfxBeat12 = false;
+    introPulse = 0;
+    _introBeatIndex = 0;
     introMusicStarted = false;
-    introFlash = 0;
-    introFlashRadius = 0.2;
     lightRadius = 80; // dim — expands during reveal
     setPixelCursor('none');
     zoneTransitionAlpha = 0;
