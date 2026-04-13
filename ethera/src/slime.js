@@ -209,6 +209,9 @@ function _slimeVolatileMassBurst(rawDamage) {
 }
 
 function updateSlime(dt) {
+    if (gameDead) return;
+    if (typeof wave !== 'undefined' && wave.phase === 'victory') return;
+
     const config = FORM_CONFIGS.slime;
     const sizeMult = getSlimeSizeMult();
 
@@ -763,6 +766,10 @@ function updateSlime(dt) {
     if (typeof playerInvTimer !== 'undefined' && playerInvTimer > 0) {
         playerInvTimer -= dt;
     }
+
+    // Clamp HP to effective max (size changes can reduce max)
+    const _slimeMaxHp = _slimeMaxHP();
+    if (player.hp > _slimeMaxHp) player.hp = _slimeMaxHp;
 }
 
 function drawSlime() {
@@ -1026,9 +1033,7 @@ function drawSlimeHUD() {
     ctx.fillText('SLIME', x, yHP - 4);
 
     // HP Bar (red for player slime)
-    const _qHpSlime = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-    const maxHP = FORM_CONFIGS.slime.maxHp * getSlimeSizeMult().hp + _qHpSlime;
-    player.hp = Math.min(player.hp, maxHP); // clamp HP to max
+    const maxHP = _slimeMaxHP();
     const hpFrac = Math.max(0, Math.min(1, player.hp / maxHP));
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0404';

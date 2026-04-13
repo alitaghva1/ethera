@@ -3,6 +3,25 @@
 let lastTime = 0;
 let _frameDt = 0.016; // cached dt for render() access (updated each frame)
 
+// ── Hoisted render constants (avoid rebuilding every frame) ──
+const _ZONE_TINTS = {
+    // Zone 0 (Hamlet): no tint — outdoor lighting handles atmosphere
+    1: 'rgba(170, 150, 130, 0.93)',  // Undercroft: warm earthy brown
+    2: 'rgba(150, 160, 145, 0.93)',  // Ruined Tower: mossy grey-green
+    3: 'rgba(170, 155, 120, 0.92)',  // Spire: sickly amber
+    4: 'rgba(180, 140, 130, 0.90)',  // Inferno: warm red push
+    5: 'rgba(135, 150, 175, 0.92)',  // Frozen: cold blue shift
+    6: 'rgba(155, 135, 170, 0.92)',  // Throne: purple corruption
+};
+const _fgConfigs = {
+    0: { color: 'rgba(140, 130, 110, ', count: 2, speed: 0.10, size: 60 },   // hamlet: warm dust
+    1: { color: 'rgba(80, 70, 55, ', count: 2, speed: 0.08, size: 60 },       // dungeon: dusty wisps
+    2: { color: 'rgba(70, 80, 60, ', count: 2, speed: 0.10, size: 70 },       // tower: mossy haze
+    4: { color: 'rgba(100, 30, 10, ', count: 2, speed: 0.12, size: 70 },      // inferno: heat haze
+    5: { color: 'rgba(80, 100, 130, ', count: 3, speed: 0.10, size: 80 },     // frozen: ice fog
+    6: { color: 'rgba(60, 30, 80, ', count: 2, speed: 0.08, size: 60 },       // throne: void mist
+};
+
 // ── Auto-update notifications (Electron only) ──────────────
 if (typeof window !== 'undefined' && window.ethera && window.ethera.isElectron) {
     window.ethera.onUpdateAvailable(function(info) {
@@ -803,6 +822,13 @@ let _nextProceduralDepth = 1;
 let _ambientTimer = 0;
 let _arrivalVignetteTimer = 0; // dissipating edge vignette on zone entry
 let _lowHpBeatTimer = 0;       // heartbeat sound timer for low HP
+let _screenFlashTimer = 0;     // brief white screen flash (seal break, events)
+let _screenFlashColor = '#ffffff';
+
+function triggerScreenFlash(duration, color) {
+    _screenFlashTimer = duration || 0.2;
+    _screenFlashColor = color || '#ffffff';
+}
 
 // ============================================================
 //  COMBAT DECALS — persistent blood/scorch marks on the floor
@@ -1126,6 +1152,35 @@ function updateWeather(dt) {
                     maxLife: 0.6,
                 });
             }
+        } else if (z >= 1 && z <= 3) {
+            // DUNGEON DUST MOTES — slow drifting particles (zones 1-3)
+            if (Math.random() < 0.08) {
+                const dustColors = ['#a0957a', '#8a806a', '#b0a080']; // warm stone tones
+                _weatherParticles.push({
+                    x: cx + (Math.random() - 0.5) * canvasW * 0.7,
+                    y: cy + (Math.random() - 0.5) * canvasH * 0.6,
+                    vx: (Math.random() - 0.5) * 0.15,
+                    vy: -0.1 + Math.random() * 0.2,
+                    life: 4.0 + Math.random() * 3.0,
+                    maxLife: 7.0,
+                    type: 'dust',
+                    size: 0.8 + Math.random() * 1.2,
+                    drift: Math.random() * Math.PI * 2,
+                });
+            }
+            // Zone 3 (Spire) — occasional arcane motes
+            if (z === 3 && Math.random() < 0.04) {
+                _weatherParticles.push({
+                    x: cx + (Math.random() - 0.5) * canvasW * 0.6,
+                    y: cy + (Math.random() - 0.5) * canvasH * 0.5,
+                    vx: (Math.random() - 0.5) * 0.2,
+                    vy: -0.3 - Math.random() * 0.2,
+                    life: 3.0 + Math.random() * 2.0,
+                    maxLife: 5.0,
+                    type: 'arcane_mote',
+                    size: 1.0 + Math.random() * 1.0,
+                });
+            }
         } else if (z === 4) {
             // EMBERS — rising orange/red dots
             if (Math.random() < 0.15) {
@@ -1179,9 +1234,9 @@ function updateWeather(dt) {
         if (p.life <= 0) { _weatherParticles.splice(i, 1); continue; }
         p.x += p.vx * 60 * dt;
         p.y += p.vy * 60 * dt;
-        // Snow lateral drift
-        if (p.type === 'snow' && p.drift !== undefined) {
-            p.x += Math.sin(p.drift + performance.now() / 1000) * 0.3;
+        // Snow / dust lateral drift
+        if ((p.type === 'snow' || p.type === 'dust') && p.drift !== undefined) {
+            p.x += Math.sin(p.drift + performance.now() / 1200) * (p.type === 'dust' ? 0.15 : 0.3);
         }
         // Cull particles that drift far off-screen
         if (p.x < -200 || p.x > canvasW + 200 || p.y < -200 || p.y > canvasH + 200) {
@@ -1231,6 +1286,22 @@ function drawWeather() {
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             ctx.fill();
+        } else if (p.type === 'dust') {
+            // Dust motes = warm brownish dots, subtle
+            ctx.globalAlpha = alpha * 0.25;
+            ctx.fillStyle = '#b0a080';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (p.type === 'arcane_mote') {
+            // Arcane motes = faint blue-green glow, screen blend
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = alpha * 0.35;
+            ctx.fillStyle = '#4488aa';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
         } else if (p.type === 'void') {
             // Void = purple dot, screen blend
             ctx.globalCompositeOperation = 'screen';
@@ -1298,6 +1369,7 @@ function updateGameplay(dt) {
     if (typeof updateFrozenEchoes === 'function') updateFrozenEchoes(dt);
     if (typeof updateInscriptions === 'function') updateInscriptions(dt);
     if (_arrivalVignetteTimer > 0) _arrivalVignetteTimer -= dt;
+    if (_screenFlashTimer > 0) _screenFlashTimer -= dt;
     // Check if Pale Queen dialogue triggered ending choice
     if (typeof paleQueenDialogueComplete !== 'undefined' && paleQueenDialogueComplete) {
         paleQueenDialogueComplete = false;
@@ -1481,6 +1553,8 @@ function gameLoop(timestamp) {
             if (!_awakeInTown && (!_zoneCfg || _zoneCfg.hasWaves !== false)) {
                 startWaveSystem();
             }
+            requestAnimationFrame(gameLoop);
+            return;
         }
     }
 
@@ -3254,6 +3328,8 @@ function restartGame() {
     screenShakeTimer = 0;
     screenShakeIntensity = 0;
     hitPauseTimer = 0;
+    slowMoTimer = 0;
+    slowMoScale = 1.0;
     gameDead = false;
     deathFadeTimer = 0;
     deathCause = '';
@@ -3273,7 +3349,10 @@ function restartGame() {
     xpState.levelUpPending = false;
     xpState.levelUpChoices = [];
     xpState.levelUpHover = -1;
+    xpState.levelUpKeyHover = -1;
     xpState.levelUpFadeIn = 0;
+    xpState.levelUpRevealT = 0;
+    xpState.levelUpHasLegendary = false;
     // Clear all upgrades
     for (const key of Object.keys(upgrades)) delete upgrades[key];
     orbitAngle = 0;
@@ -3700,6 +3779,7 @@ function render() {
                 const sx = pos.x + cameraX, sy = pos.y + cameraY;
                 if (sx < -150 || sx > canvasW + 150 || sy < -150 || sy > canvasH + 150) continue;
                 const fr = Math.floor(light.row), fc = Math.floor(light.col);
+                if (fogRevealed.length === 0 || !fogRevealed[0]) continue;
                 if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed[0].length && !fogRevealed[fr][fc]) continue;
                 // Soft bloom halo — 2x radius of the light, very low alpha
                 const bloomR = light.radius * 2.2;
@@ -3823,15 +3903,6 @@ function render() {
     // ── LAYER 7.5: Per-zone color grading tint ──
     // Single multiply pass. Skip during zone transition to avoid stacking with fade overlay.
     if (zoneTransitionAlpha <= 0.01) {
-        const _ZONE_TINTS = {
-            0: 'rgba(140, 150, 170, 0.92)',  // Hamlet: cool blue-grey overcast
-            1: 'rgba(170, 150, 130, 0.93)',  // Undercroft: warm earthy brown
-            2: 'rgba(150, 160, 145, 0.93)',  // Ruined Tower: mossy grey-green
-            3: 'rgba(170, 155, 120, 0.92)',  // Spire: sickly amber
-            4: 'rgba(180, 140, 130, 0.90)',  // Inferno: warm red push
-            5: 'rgba(135, 150, 175, 0.92)',  // Frozen: cold blue shift
-            6: 'rgba(155, 135, 170, 0.92)',  // Throne: purple corruption
-        };
         const tint = _ZONE_TINTS[currentZone];
         if (tint) {
             ctx.save();
@@ -3845,14 +3916,6 @@ function render() {
     // ── LAYER 7.8: Foreground depth layer — fog wisps passing over the player ──
     // Scrolls at 1.2× camera speed, creating parallax depth perception.
     {
-        const _fgConfigs = {
-            0: { color: 'rgba(100, 110, 130, ', count: 3, speed: 0.15, size: 80 },   // hamlet: blue-grey fog
-            1: { color: 'rgba(80, 70, 55, ', count: 2, speed: 0.08, size: 60 },       // dungeon: dusty wisps
-            2: { color: 'rgba(70, 80, 60, ', count: 2, speed: 0.10, size: 70 },       // tower: mossy haze
-            4: { color: 'rgba(100, 30, 10, ', count: 2, speed: 0.12, size: 70 },      // inferno: heat haze
-            5: { color: 'rgba(80, 100, 130, ', count: 3, speed: 0.10, size: 80 },     // frozen: ice fog
-            6: { color: 'rgba(60, 30, 80, ', count: 2, speed: 0.08, size: 60 },       // throne: void mist
-        };
         const fgCfg = _fgConfigs[currentZone];
         if (fgCfg) {
             ctx.save();
@@ -3881,22 +3944,42 @@ function render() {
 
     // ── LAYER 8: Screen effects ──
 
-    // Phase jump flash — brief arcane burst on screen
+    // Phase jump flash — bright arcane burst on dodge
     if (player.dodgeFlashTimer > 0) {
-        const flashAlpha = player.dodgeFlashTimer / 0.12; // 0→1
+        const flashAlpha = Math.min(1, player.dodgeFlashTimer / 0.15); // 0→1
         let fx, fy;
         const pos = tileToScreen(player.row, player.col);
         fx = pos.x + cameraX;
         fy = pos.y + cameraY - 30;
 
+        // Screen-wide white flash (brief, sells the impact)
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
-        const flashGrad = ctx.createRadialGradient(fx, fy, 0, fx, fy, 120);
-        flashGrad.addColorStop(0, `rgba(140, 120, 255, ${0.5 * flashAlpha})`);
-        flashGrad.addColorStop(0.4, `rgba(100, 80, 220, ${0.25 * flashAlpha})`);
+        ctx.globalAlpha = flashAlpha * 0.15;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        ctx.restore();
+
+        // Focused arcane burst at player
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        const flashGrad = ctx.createRadialGradient(fx, fy, 0, fx, fy, 160);
+        flashGrad.addColorStop(0, `rgba(180, 160, 255, ${0.65 * flashAlpha})`);
+        flashGrad.addColorStop(0.3, `rgba(120, 100, 240, ${0.3 * flashAlpha})`);
         flashGrad.addColorStop(1, 'rgba(60, 40, 160, 0)');
         ctx.fillStyle = flashGrad;
-        ctx.fillRect(fx - 150, fy - 150, 300, 300);
+        ctx.fillRect(fx - 200, fy - 200, 400, 400);
+        ctx.restore();
+    }
+
+    // ── Screen flash (seal break, big events) ──
+    if (_screenFlashTimer > 0) {
+        const sfAlpha = Math.min(1, _screenFlashTimer / 0.15); // fast attack, slow tail
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = sfAlpha * 0.55;
+        ctx.fillStyle = _screenFlashColor;
+        ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.restore();
     }
 
@@ -4071,8 +4154,8 @@ function render() {
         // Crosshair (always on top, unless inventory open)
         if (!inventoryOpen) drawCrosshair();
 
-        // Inventory UI (topmost layer)
-        drawInventoryUI();
+        // Inventory UI (disabled — managed through Grimoire Equipment tab)
+        // drawInventoryUI();
 
         // Background debug overlay (toggle: BackgroundManager.debugEnabled = true)
         if (typeof BackgroundManager !== 'undefined') {

@@ -396,6 +396,59 @@ function handleKeyDown(e) {
             }
         }
     }
+    // Level-up keyboard selection (1/2/3 or arrow keys + Enter)
+    if (xpState.levelUpPending && !gameDead) {
+        // Number keys: instant select
+        const _luKeyIdx = parseInt(e.key) - 1; // '1'→0, '2'→1, '3'→2
+        if (_luKeyIdx >= 0 && _luKeyIdx < xpState.levelUpChoices.length) {
+            const _luChosen = xpState.levelUpChoices[_luKeyIdx];
+            const _luTier = _luChosen.tier || 'normal';
+            // Legendary ceremony: screen flash + heavier shake
+            if (_luTier === 'legendary') {
+                if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.4, '#ffd855');
+                addScreenShake(6, 0.3);
+            }
+            applyUpgrade(_luChosen.id);
+            if (_luTier === 'legendary' && typeof sfxLegendaryUpgradeSelect === 'function') sfxLegendaryUpgradeSelect();
+            else if (_luTier === 'rare' && typeof sfxRareUpgradeSelect === 'function') sfxRareUpgradeSelect();
+            else if (typeof sfxUpgradeSelect === 'function') sfxUpgradeSelect();
+            xpState.levelUpKeyHover = -1;
+            return;
+        }
+        // Arrow keys: navigate keyboard hover
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (xpState.levelUpKeyHover <= 0) xpState.levelUpKeyHover = xpState.levelUpChoices.length - 1;
+            else xpState.levelUpKeyHover--;
+            return;
+        }
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (xpState.levelUpKeyHover >= xpState.levelUpChoices.length - 1) xpState.levelUpKeyHover = 0;
+            else xpState.levelUpKeyHover++;
+            return;
+        }
+        // Enter/Space: confirm keyboard-hovered card
+        if ((e.key === 'Enter' || e.key === ' ') && xpState.levelUpKeyHover >= 0) {
+            e.preventDefault();
+            const _luIdx = xpState.levelUpKeyHover;
+            if (_luIdx < xpState.levelUpChoices.length) {
+                const _luChosen = xpState.levelUpChoices[_luIdx];
+                const _luTier = _luChosen.tier || 'normal';
+                if (_luTier === 'legendary') {
+                    if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.4, '#ffd855');
+                    addScreenShake(6, 0.3);
+                }
+                applyUpgrade(_luChosen.id);
+                if (_luTier === 'legendary' && typeof sfxLegendaryUpgradeSelect === 'function') sfxLegendaryUpgradeSelect();
+                else if (_luTier === 'rare' && typeof sfxRareUpgradeSelect === 'function') sfxRareUpgradeSelect();
+                else if (typeof sfxUpgradeSelect === 'function') sfxUpgradeSelect();
+            }
+            xpState.levelUpKeyHover = -1;
+            return;
+        }
+        return; // consume all keys during level-up screen
+    }
     // Number keys use potions during gameplay
     if (gamePhase === 'playing' && !gameDead && !menuOpen && !gamePaused && typeof usePotion === 'function') {
         if (e.key === '1') { usePotion('health_vial'); return; }
@@ -479,6 +532,7 @@ function handleMouseDown(e) {
     }
 
     // ----- Game menu tab clicks (must match drawGameMenu layout exactly) -----
+    if (menuOpen && menuFadeInTimer < 0.95) return; // don't process clicks during open animation
     if (menuOpen && e.button === 0) {
         const cx = canvasW / 2;
         const cy = canvasH / 2;
@@ -719,16 +773,21 @@ function handleMouseDown(e) {
 
     // Level-up screen click handling (not during death)
     if (xpState.levelUpPending && !gameDead && e.button === 0) {
-        if (!xpState.levelUpPending) return; // Defensive check
         const choice = getLevelUpChoice(mouse.x, mouse.y);
         if (choice >= 0 && choice < xpState.levelUpChoices.length) {
             const chosenUpgrade = xpState.levelUpChoices[choice];
             const chosenTier = chosenUpgrade.tier || 'normal';
+            // Legendary ceremony: golden screen flash + heavier shake
+            if (chosenTier === 'legendary') {
+                if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.4, '#ffd855');
+                addScreenShake(6, 0.3);
+            }
             applyUpgrade(chosenUpgrade.id);
             if (chosenTier === 'legendary' && typeof sfxLegendaryUpgradeSelect === 'function') sfxLegendaryUpgradeSelect();
             else if (chosenTier === 'rare' && typeof sfxRareUpgradeSelect === 'function') sfxRareUpgradeSelect();
             else if (typeof sfxUpgradeSelect === 'function') sfxUpgradeSelect();
         }
+        xpState.levelUpKeyHover = -1;
         return;
     }
 

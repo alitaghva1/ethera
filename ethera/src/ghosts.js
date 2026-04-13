@@ -4,7 +4,7 @@
 function updateGhosts(dt) {
     for (let i = ghosts.length - 1; i >= 0; i--) {
         ghosts[i].life -= dt;
-        ghosts[i].alpha *= 0.92; // exponential fade
+        ghosts[i].alpha *= Math.pow(0.92, dt * 60); // framerate-independent exponential fade
         if (ghosts[i].life <= 0 || ghosts[i].alpha < 0.01) {
             ghosts.splice(i, 1);
         }

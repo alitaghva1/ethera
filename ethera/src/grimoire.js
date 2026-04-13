@@ -8,6 +8,10 @@ let menuTabTransDir = 1;   // 1 = slide left, -1 = slide right
 let menuTabPrev = 'status';
 let menuFadeInTimer = 0;
 
+function isGrimoireReady() {
+    return menuOpen && menuFadeInTimer >= 0.95;
+}
+
 // --- Grimoire color palette ---
 const GM = {
     // Background layers
@@ -87,7 +91,7 @@ function drawSpriteDivider(img, cx, y, width) {
 function drawGameMenu() {
     if (!menuOpen) return;
 
-    menuFadeInTimer = Math.min(1, menuFadeInTimer + 0.05);
+    menuFadeInTimer = Math.min(1, menuFadeInTimer + (typeof _frameDt !== 'undefined' ? _frameDt * 3 : 0.05));
     const fa = menuFadeInTimer;
     // Book-open animation: horizontal scale from 0 → 1
     const bookOpenProgress = Math.min(1, menuFadeInTimer * 2.5); // opens in ~0.4s
@@ -307,7 +311,7 @@ function drawGameMenu() {
     ctx.stroke();
 
     // --- Draw tab content (with transition fade) ---
-    if (menuTabTransition > 0) menuTabTransition -= 1 / 60;
+    if (menuTabTransition > 0) menuTabTransition -= (typeof _frameDt !== 'undefined' ? _frameDt : 1/60);
     const tabFade = menuTabTransition > 0 ? Math.max(0.3, 1 - (menuTabTransition / 0.2)) : 1;
     ctx.globalAlpha = fa * tabFade;
     if (menuTab === 'status')         drawMenuStatus(contentX, contentY, contentW, contentH, fa * tabFade);
@@ -508,6 +512,49 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     ctx.font = '10px Georgia';
     ctx.fillStyle = GM.textLight;
     ctx.fillText(`${currentForm} → ${nextForm}`, x, y);
+
+    // Milestone summary pips (right-aligned on same line)
+    if (typeof getEvolutionProgress === 'function') {
+        const prog = getEvolutionProgress();
+        if (prog) {
+            ctx.textAlign = 'right';
+            ctx.globalAlpha = fa * 0.5;
+            ctx.font = '9px Georgia';
+            ctx.fillStyle = GM.textMid;
+            ctx.fillText(`${prog.met}/${prog.total}`, x + w, y);
+            ctx.textAlign = 'left';
+            // Draw pips
+            const pipR = 3;
+            const pipGap = 10;
+            const pipTotalW = prog.total * pipGap;
+            const pipStartX = x + w - pipTotalW - 28;
+            for (let p = 0; p < prog.total; p++) {
+                const px = pipStartX + p * pipGap;
+                const py = y - 3;
+                ctx.beginPath();
+                ctx.arc(px, py, pipR, 0, Math.PI * 2);
+                if (p < prog.met) {
+                    // Filled pip — golden glow
+                    ctx.globalAlpha = fa * 0.9;
+                    ctx.fillStyle = GM.goldBright;
+                    ctx.fill();
+                    ctx.globalAlpha = fa * 0.3;
+                    ctx.strokeStyle = GM.gold;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                } else {
+                    // Empty pip — dim outline
+                    ctx.globalAlpha = fa * 0.2;
+                    ctx.fillStyle = GM.bgLight;
+                    ctx.fill();
+                    ctx.globalAlpha = fa * 0.3;
+                    ctx.strokeStyle = GM.textDim;
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+            }
+        }
+    }
     y += 14;
 
     // If already at final form, show completion message
@@ -907,6 +954,8 @@ let grimEquipTooltipItem = null;
 function drawMenuEquipment(x, y, w, h, fa) {
     ctx.save();
     grimEquipTooltipItem = null;
+
+    if (menuFadeInTimer < 0.95) { ctx.restore(); return; } // skip hover during open animation
 
     // === EQUIPPED GEAR SLOTS ===
     for (let i = 0; i < EQUIP_SLOTS.length; i++) {

@@ -39,6 +39,11 @@ function dodgeMove(dirRow, dirCol, speed, dt) {
 //   +row,+col = screen South    -row,-col = screen North
 //   +row,-col = screen West     -row,+col = screen East
 
+const DIR8_FROM_SECTOR = {
+    '-4': 'W', '-3': 'NW', '-2': 'N', '-1': 'NE',
+     '0': 'E',  '1': 'SE',  '2': 'S',  '3': 'SW', '4': 'W'
+};
+
 function resolveDir8(vx, vy) {
     // Convert tile velocity to screen-space direction
     const screenX = (vy - vx);   // col - row → horizontal
@@ -50,10 +55,6 @@ function resolveDir8(vx, vy) {
     //   E=0, SE=π/4, S=π/2, SW=3π/4, W=±π, NW=-3π/4, N=-π/2, NE=-π/4
     const sector = Math.round(angle / (Math.PI / 4));
     // sector: -4=W, -3=NW, -2=N, -1=NE, 0=E, 1=SE, 2=S, 3=SW, 4=W
-    const DIR8_FROM_SECTOR = {
-        '-4': 'W', '-3': 'NW', '-2': 'N', '-1': 'NE',
-         '0': 'E',  '1': 'SE',  '2': 'S',  '3': 'SW', '4': 'W'
-    };
     return DIR8_FROM_SECTOR[String(sector)] || 'S';
 }
 
@@ -125,16 +126,17 @@ function updatePlayer(dt) {
         player.dodging = true;
         player.dodgeTimer = DODGE_DURATION;
         player.dodgeCoolTimer = Math.max(0.3, DODGE_COOLDOWN - (equipBonus.dodgeCdReduc || 0));
-        player.dodgeFlashTimer = 0.12; // brief arcane flash
+        player.dodgeFlashTimer = 0.18; // brighter, longer arcane flash
         sfxDodge();
-        // VFX: arcane glow ring burst at start position
+        addScreenShake(2.5, 0.08); // subtle shake on dodge for tactile feedback
+        // VFX: bigger arcane ring burst at start position
         const _djPos = tileToScreen(player.row, player.col);
         const _djpx = _djPos.x + cameraX, _djpy = _djPos.y + cameraY;
-        for (let _di = 0; _di < 8; _di++) {
-            const angle = (_di / 8) * Math.PI * 2;
-            const speed = 40 + Math.random() * 20;
-            _emitParticle(_djpx, _djpy, Math.cos(angle) * speed, Math.sin(angle) * speed - 8,
-                0.3 + Math.random() * 0.15, 3 + Math.random() * 3, '#66aaff', 0.6, 'phaseJump', 'lighter');
+        for (let _di = 0; _di < 12; _di++) {
+            const angle = (_di / 12) * Math.PI * 2;
+            const speed = 50 + Math.random() * 30;
+            _emitParticle(_djpx, _djpy, Math.cos(angle) * speed, Math.sin(angle) * speed - 12,
+                0.35 + Math.random() * 0.2, 3.5 + Math.random() * 3.5, '#88bbff', 0.7, 'phaseJump', 'lighter');
         }
 
         // Direction: use current input, or facing direction if idle
@@ -467,7 +469,8 @@ function spawnProjectile() {
         _wp.bounceLeft = getUpgrade('bounce');
         _wp.canExplode = getUpgrade('explode') > 0;
         _wp.explodeScale = getUpgrade('explode');
-        _wp.hitEnemies = new Set();
+        if (_wp.hitEnemies) _wp.hitEnemies.clear();
+        else _wp.hitEnemies = new Set();
         projectiles.push(_wp);
         FormSystem.formData.wizard.spellsCast++;
 
@@ -486,7 +489,9 @@ function spawnProjectile() {
                     _ep.size = projSize * 0.85; _ep.animTime = 0; _ep.angle = echoAngle;
                     _ep.pierceLeft = getUpgrade('pierce'); _ep.bounceLeft = getUpgrade('bounce');
                     _ep.canExplode = getUpgrade('explode') > 0; _ep.explodeScale = getUpgrade('explode');
-                    _ep.hitEnemies = new Set(); _ep.isEcho = true;
+                    if (_ep.hitEnemies) _ep.hitEnemies.clear();
+                    else _ep.hitEnemies = new Set();
+                    _ep.isEcho = true;
                     projectiles.push(_ep);
                     break;
                 }

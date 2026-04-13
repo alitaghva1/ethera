@@ -46,13 +46,19 @@ function _emitParticle(x, y, vx, vy, life, size, color, alpha, type, compositeOp
         // Find first non-ambient particle to recycle
         for (let i = 0; i < particles.length; i++) {
             if (particles[i].type) {
-                _recycleParticle(particles.splice(i, 1)[0]);
+                // Swap-and-pop (O(1) instead of O(n))
+                _recycleParticle(particles[i]);
+                particles[i] = particles[particles.length - 1];
+                particles.pop();
                 break;
             }
         }
         // If still full, drop the oldest regardless
         if (particles.length >= cap) {
-            _recycleParticle(particles.splice(0, 1)[0]);
+            // Swap oldest with last, then pop (O(1) instead of O(n))
+            _recycleParticle(particles[0]);
+            particles[0] = particles[particles.length - 1];
+            particles.pop();
         }
     }
     const p = _getPooledParticle();
@@ -84,61 +90,79 @@ function spawnParticle(tileRow, tileCol, vr, vc, life, color, alpha) {
     );
 }
 
-// Death burst — ring of particles when an enemy dies
+// Death burst — three-tier particle system (research: burst + chunks + soul drift)
 function spawnDeathBurst(worldX, worldY, color) {
-    const count = Math.max(6, Math.round((14 + Math.floor(Math.random() * 6)) * GFX.particleMul));
+    const c = color || '#ff6644';
+    // Tier 1: Fast radial spark ring (2x count, longer life)
+    const count = Math.max(10, Math.round((28 + Math.floor(Math.random() * 8)) * GFX.particleMul));
     for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
-        const speed = 3.0 + Math.random() * 2.5;
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+        const speed = 3.5 + Math.random() * 3.0;
         _emitParticle(
             worldX, worldY,
             Math.cos(angle) * speed, Math.sin(angle) * speed,
-            0.5, 2.5 + Math.random() * 1.5,
-            color || '#ff6644', 0.9, 'death', 'screen'
+            0.8 + Math.random() * 0.4, 2.5 + Math.random() * 2,
+            c, 0.9, 'death', 'screen'
         );
     }
-    // Secondary "soul drift" — slow, larger particles rising from the corpse
-    const soulCount = Math.max(2, Math.round(4 * GFX.particleMul));
+    // Tier 2: Gravity chunks — medium speed, arc downward (new!)
+    const chunkCount = Math.max(3, Math.round(6 * GFX.particleMul));
+    for (let i = 0; i < chunkCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2.0 + Math.random() * 2.0;
+        const p = _emitParticle(
+            worldX + (Math.random() - 0.5) * 6,
+            worldY + (Math.random() - 0.5) * 4,
+            Math.cos(angle) * speed, -1.5 - Math.random() * 2.0,
+            0.7 + Math.random() * 0.3, 3.0 + Math.random() * 2,
+            c, 0.75, 'death', 'screen'
+        );
+    }
+    // Tier 3: Soul drift — slow, larger particles rising from the corpse
+    const soulCount = Math.max(3, Math.round(6 * GFX.particleMul));
     for (let i = 0; i < soulCount; i++) {
         _emitParticle(
-            worldX + (Math.random() - 0.5) * 8,
-            worldY + (Math.random() - 0.5) * 4,
-            (Math.random() - 0.5) * 0.5,
-            -0.6 - Math.random() * 0.4,
-            1.2 + Math.random() * 0.5,
-            3.5 + Math.random() * 2,
-            color || '#ff6644', 0.35, 'soul', 'screen'
+            worldX + (Math.random() - 0.5) * 10,
+            worldY + (Math.random() - 0.5) * 5,
+            (Math.random() - 0.5) * 0.6,
+            -0.7 - Math.random() * 0.5,
+            1.4 + Math.random() * 0.6,
+            4.0 + Math.random() * 2.5,
+            c, 0.35, 'soul', 'screen'
         );
     }
 }
 
 // Healing sparkle — green particles rising from player on HP pickup
 function spawnHealBurst(worldX, worldY) {
-    const count = Math.max(3, Math.round(6 * GFX.particleMul));
+    const count = Math.max(5, Math.round(10 * GFX.particleMul));
     for (let i = 0; i < count; i++) {
         _emitParticle(
-            worldX + (Math.random() - 0.5) * 10,
-            worldY - Math.random() * 6,
-            (Math.random() - 0.5) * 0.8,
-            -1.2 - Math.random() * 0.6,
-            0.5 + Math.random() * 0.3,
-            1.5 + Math.random() * 1,
-            '#44dd66', 0.6, 'heal', 'screen'
+            worldX + (Math.random() - 0.5) * 14,
+            worldY - Math.random() * 8,
+            (Math.random() - 0.5) * 1.0,
+            -1.4 - Math.random() * 0.8,
+            0.8 + Math.random() * 0.4,
+            2.0 + Math.random() * 1.5,
+            '#44dd66', 0.7, 'heal', 'screen'
         );
     }
 }
 
-// Hit spark — small bright sparks on projectile impact
-function spawnHitSpark(worldX, worldY) {
-    const count = Math.max(2, Math.round((3 + Math.floor(Math.random() * 3)) * GFX.particleMul));
+// Hit spark — bright directional sparks on projectile impact
+function spawnHitSpark(worldX, worldY, dirX, dirY) {
+    const count = Math.max(4, Math.round((6 + Math.floor(Math.random() * 4)) * GFX.particleMul));
     for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 3.5 + Math.random() * 2.5;
+        const speed = 4.0 + Math.random() * 3.0;
+        // Bias direction away from projectile travel (if provided)
+        const bx = dirX ? -dirX * 1.5 : 0;
+        const by = dirY ? -dirY * 1.5 : 0;
         _emitParticle(
             worldX, worldY,
-            Math.cos(angle) * speed, Math.sin(angle) * speed,
-            0.2, 1.2 + Math.random() * 0.8,
-            '#ffff99', 0.9, 'hitspark'
+            Math.cos(angle) * speed + bx, Math.sin(angle) * speed + by,
+            0.4 + Math.random() * 0.15, 1.5 + Math.random() * 1.0,
+            '#ffff99', 0.9, 'hitspark', 'screen'
         );
     }
 }
@@ -188,7 +212,10 @@ function updateEffectParticles(dt) {
 
         p.life -= dt;
         if (p.life <= 0) {
-            _recycleParticle(particles.splice(i, 1)[0]);
+            _recycleParticle(p);
+            particles[i] = particles[particles.length - 1];
+            particles.pop();
+            i--; // re-check the swapped element
             continue;
         }
 

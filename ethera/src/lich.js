@@ -33,6 +33,9 @@ function resetLichState() {
 }
 
 function updateLich(dt) {
+    if (gameDead) return;
+    if (typeof wave !== 'undefined' && wave.phase === 'victory') return;
+
     const config = FORM_CONFIGS.lich;
 
     // Recalculate equipment bonuses each frame (same as wizard in movement.js)
@@ -98,7 +101,10 @@ function updateLich(dt) {
         player.attackCooldown = config.atkCooldown;
         player.attacking = true;
         player.attackTimer = config.atkDuration;
-        if (hasDarkPact) lichState.soulEnergy -= darkPactCost;
+        if (hasDarkPact) {
+            lichState.soulEnergy -= darkPactCost;
+            lichState.soulEnergy = Math.max(0, lichState.soulEnergy);
+        }
 
         const tgt = screenToTile(mouse.x, mouse.y);
         const dx = tgt.row - player.row;
@@ -167,7 +173,9 @@ function updateLich(dt) {
     // === SOUL OVERFLOW: excess soul energy above 80% → HP regen ===
     if (getUpgrade('soul_overflow') > 0 && lichState.soulEnergy >= lichState.maxSoulEnergy * 0.8) {
         const overflowRegen = 2 * getUpgrade('soul_overflow') * dt; // 2 HP/s per stack
-        player.hp = Math.min(config.maxHp, player.hp + overflowRegen);
+        const _lichQHp = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+        const _lichEffMaxHp = config.maxHp + (typeof getTalismanBonus === 'function' ? getTalismanBonus().hpBonus : 0) + (typeof equipBonus !== 'undefined' ? (equipBonus.maxHpBonus || 0) : 0) + _lichQHp;
+        player.hp = Math.min(_lichEffMaxHp, player.hp + overflowRegen);
     }
 
     // === SPECTRAL CLOAK (invisibility after shadow step) ===
@@ -737,6 +745,7 @@ formHandlers.lich.onSecondaryAbility = function() {
     if (bestCorpse !== null) {
         const c = lichState.corpseLocations[bestCorpse];
         lichState.soulEnergy -= 15;
+        lichState.soulEnergy = Math.max(0, lichState.soulEnergy);
         lichState.undeadMinions.push({
             row: c.row, col: c.col,
             life: 12, atkTimer: 0.5,

@@ -32,6 +32,7 @@ function updateCamera(dt) {
     if (screenShakeTimer <= 0) {
         const breathT = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
         cameraY += Math.sin(breathT * 2.1) * 0.4; // ~0.4px vertical, ~3s cycle
+        cameraY = Math.round(cameraY); // re-round after breathing
     }
 
     // Clamp camera to prevent showing void beyond map edges
@@ -86,7 +87,7 @@ var _cameraZoomSpeed = 3.0;  // lerp speed
 function addCameraZoom(zoom, duration) {
     _cameraZoom = zoom;
     _cameraZoomTarget = 1.0;
-    _cameraZoomSpeed = (zoom - 1.0) / Math.max(0.1, duration); // auto-recover over duration
+    _cameraZoomSpeed = Math.abs(zoom - 1.0) / Math.max(0.1, duration); // auto-recover over duration
 }
 
 function updateCameraZoom(dt) {

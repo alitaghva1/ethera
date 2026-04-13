@@ -176,6 +176,9 @@ function updateEvolution(dt) {
             player.attackCooldown = 0;
             player.dodgeCoolTimer = 0;
             player.attacking = false;
+            player.dodging = false;
+            player.dodgeTimer = 0;
+            player.dodgeCoolTimer = 0;
             // Talisman levels up on evolution
             FormSystem.talisman.level++;
             FormSystem.talisman.xp = 0;

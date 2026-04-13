@@ -329,7 +329,7 @@ function drawObjective() {
         _lastObjective = currentObjective;
         objectiveShowTimer = 0;
     }
-    objectiveShowTimer += 1 / 60; // approximate dt
+    objectiveShowTimer += (typeof _frameDt !== 'undefined' ? _frameDt : 1/60);
 
     // Fade: full for 5s, then fade to 0.15 over 2s
     let objAlpha = 0.85;
@@ -442,7 +442,7 @@ function drawHPMana() {
     if (gamePhase !== 'playing') return;
     // Smooth lerp toward actual values (8x per second convergence)
     const lerpSpeed = 8;
-    const frameDt = 1 / 60; // approximate
+    const frameDt = (typeof _frameDt !== 'undefined') ? _frameDt : 1/60;
     if (_displayHP < 0) _displayHP = player.hp;
     if (_displayMana < 0) _displayMana = player.mana;
     if (_displayXP < 0) _displayXP = xpState.xp;
@@ -1167,7 +1167,14 @@ function updatePickupTexts(dt) {
     for (let i = pickupTexts.length - 1; i >= 0; i--) {
         const t = pickupTexts[i];
         t.life -= dt;
-        t.offsetY -= 35 * dt;
+        // Gravity arc for damage numbers (vy starts negative = up, gravity pulls down)
+        if (t.vy !== undefined) {
+            t.offsetY += t.vy * dt;
+            t.vy += 220 * dt; // gravity
+            if (t.offsetX !== undefined) t.offsetX *= 0.97; // friction on horizontal scatter
+        } else {
+            t.offsetY -= 35 * dt; // fallback: linear float for non-damage text
+        }
         if (t.life <= 0) pickupTexts.splice(i, 1);
     }
 }
@@ -1175,7 +1182,7 @@ function updatePickupTexts(dt) {
 function drawPickupTexts() {
     for (const t of pickupTexts) {
         const pos = tileToScreen(t.row, t.col);
-        let sx = pos.x + cameraX;
+        let sx = pos.x + cameraX + (t.offsetX || 0);
         let sy = pos.y + cameraY + t.offsetY;
 
         // Shift pickup text if it overlaps a registered interaction prompt
@@ -1196,18 +1203,20 @@ function drawPickupTexts() {
 
         // ── COMBAT JUICE: Scale damage numbers by magnitude ──
         if (t.isCrit) {
-            const critPop = t.life > 0.9 ? 1 + (t.life - 0.9) * 2.5 : 1;
-            const fontSize = Math.round(16 * critPop);
+            // Scale-pop: 1.0 → 1.5 → 1.0 over first 0.15s of life
+            const popT = Math.max(0, t.life - (1.2 - 0.15)) / 0.15; // 0→1 during first 150ms
+            const critPop = popT > 0 ? 1 + Math.sin(popT * Math.PI) * 0.5 : 1;
+            const fontSize = Math.round(20 * critPop);
             ctx.font = `bold ${fontSize}px Georgia`;
-            ctx.shadowColor = 'rgba(180, 120, 0, 0.6)';
-            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(200, 140, 0, 0.7)';
+            ctx.shadowBlur = 10;
         } else if (t.text && t.text.startsWith('-')) {
-            // Scale font by damage magnitude: -5 = 10px, -30 = 13px, -50+ = 14px
+            // Scale font by damage magnitude: -5 = 12px, -30 = 15px, -50+ = 16px
             const dmgVal = parseInt(t.text.replace('-', '')) || 0;
-            const scaledSize = Math.min(14, 10 + Math.sqrt(dmgVal) * 0.6);
+            const scaledSize = Math.min(16, 12 + Math.sqrt(dmgVal) * 0.5);
             ctx.font = `bold ${Math.round(scaledSize)}px Georgia`;
             ctx.shadowColor = 'rgba(0,0,0,0.8)';
-            ctx.shadowBlur = 4;
+            ctx.shadowBlur = 5;
         } else {
             ctx.font = '11px Georgia';
             ctx.shadowColor = 'rgba(0,0,0,0.8)';

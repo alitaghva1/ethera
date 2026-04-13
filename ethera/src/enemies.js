@@ -560,15 +560,18 @@ function applyEnemyHit(e, damage, opts) {
     e.hp -= finalDmg;
 
     // Hit flash — brief white overlay on ANY damage (longer on crit)
-    e.hitFlashTimer = isCrit ? 0.18 : 0.1;
+    e.hitFlashTimer = isCrit ? 0.22 : 0.12;
 
-    // ── Hit pause on crit or heavy hit (>15% max HP) ──
+    // ── Hit pause — scaled by impact (research: 80ms base, 120ms crit) ──
     const heavyHitThreshold = (e.def.hp || 30) * 0.15;
     if (isCrit) {
-        addHitPause(0.04);
-        addScreenShake(4, 0.12);
+        addHitPause(0.10);
+        addScreenShake(5, 0.15);
     } else if (finalDmg >= heavyHitThreshold) {
-        addHitPause(0.025);
+        addHitPause(0.06);
+        addScreenShake(2.5, 0.08);
+    } else {
+        addHitPause(0.03);
     }
 
     // ── Stagger wobble on heavy hits — visual sprite offset during hit flash ──
@@ -598,7 +601,9 @@ function applyEnemyHit(e, damage, opts) {
             color: isCrit ? COLORS.DAMAGE_CRIT : COLORS.DAMAGE_RED,
             row: e.row, col: e.col,
             offsetY: -10 - Math.random() * 8 + e._dmgNumOffset,
-            life: isCrit ? 1.1 : 0.8,
+            offsetX: (Math.random() - 0.5) * (isCrit ? 40 : 24),  // horizontal scatter
+            vy: -(80 + Math.random() * 40) * (isCrit ? 1.4 : 1),  // upward launch velocity
+            life: isCrit ? 1.2 : 0.9,
             isCrit: isCrit,
         });
     }
@@ -706,10 +711,11 @@ function applyEnemyHit(e, damage, opts) {
             spawnCombatDecal(e.row, e.col, e.def.tintColor || '#441111', e.def.isBoss ? 8 : 4);
         }
         if (e.def.isBoss) {
-            addSlowMo(0.4, 0.15); addScreenShake(12, 0.4);
-            if (typeof addCameraZoom === 'function') addCameraZoom(1.06, 1.5); // brief 6% zoom-in on boss kill
+            addSlowMo(0.5, 0.12); addScreenShake(14, 0.5);
+            if (typeof addCameraZoom === 'function') addCameraZoom(1.08, 1.8); // dramatic zoom on boss kill
         }
-        else if (e.elite) { addHitPause(0.05 * impactScale); addScreenShake(4 * impactScale * critMul, 0.12 * impactScale); addSlowMo(0.08, 0.3); }
+        else if (e.elite) { addHitPause(0.06 * impactScale); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); addSlowMo(0.2, 0.25); }
+        else if (isCrit) { addSlowMo(0.08, 0.4); } // brief kill-confirm slow-mo on crit kills
         else { addHitPause(0.05 * impactScale); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); }
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
@@ -1601,8 +1607,9 @@ function spawnWaveEnemies() {
     const _spawnVis = Array.from({ length: ms }, () => Array(ms).fill(false));
     const _spawnQ = [[ Math.floor(player.row), Math.floor(player.col) ]];
     _spawnVis[_spawnQ[0][0]][_spawnQ[0][1]] = true;
-    while (_spawnQ.length) {
-        const [sr, sc] = _spawnQ.shift();
+    let _spawnQHead = 0;
+    while (_spawnQHead < _spawnQ.length) {
+        const [sr, sc] = _spawnQ[_spawnQHead++];
         if (!objectMap[sr][sc]) zones.push({ r: sr, c: sc });
         for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
             const nr = sr + dr, nc = sc + dc;
@@ -1673,6 +1680,8 @@ function spawnWaveEnemies() {
 
     wave.enemiesAlive = toSpawn.length;
     wave.phase = 'fighting';
+    // Start combat audio pulse (rhythmic sub-bass during active waves)
+    if (typeof startCombatPulse === 'function') startCombatPulse();
 
     // Tutorial hints — show once per session at key moments
     if (typeof Notify !== 'undefined') {
@@ -1725,6 +1734,8 @@ function updateWaveSystem(dt) {
 
         // Wave cleared?
         if (wave.enemiesAlive <= 0 && enemies.length === 0) {
+            // Fade out combat audio pulse
+            if (typeof stopCombatPulse === 'function') stopCombatPulse();
             // Check if this is the final wave of the current zone
             const finalWaveIdx = currentZone === 1 ? ZONE_1_FINAL_WAVE
                 : currentZone === 2 ? ZONE_2_FINAL_WAVE
@@ -1788,14 +1799,24 @@ function updateWaveSystem(dt) {
                         expandZone(currentZone);
                         // Recalculate fog of war so newly accessible tiles are revealed
                         if (typeof updateFogOfWar === 'function') updateFogOfWar();
-                        // Screen shake + dust burst
-                        addScreenShake(expCfg.shakeIntensity || 6, expCfg.shakeDuration || 1.0);
-                        addSlowMo(0.4, 0.2); // brief dramatic slow-mo
-                        // Dust/debris particles at expansion point
+                        // ── SEAL BREAK CINEMATIC — dramatic multi-layer event ──
+                        // Hit pause (150ms freeze frame at moment of impact)
+                        addHitPause(0.15);
+                        // Slow-mo (800ms at 0.15x — let it breathe)
+                        addSlowMo(0.8, 0.15);
+                        // Heavy screen shake (longer, more intense)
+                        addScreenShake((expCfg.shakeIntensity || 6) * 1.5, (expCfg.shakeDuration || 1.0) * 1.3);
+                        // Camera zoom out briefly (show the newly opened area)
+                        if (typeof addCameraZoom === 'function') addCameraZoom(0.96, 2.5);
+                        // Larger dust/debris burst at expansion point
                         if (expCfg.cameraTarget && typeof spawnParticleBurst === 'function') {
-                            spawnParticleBurst(expCfg.cameraTarget.r, expCfg.cameraTarget.c, 25, '#8a7a60');
+                            spawnParticleBurst(expCfg.cameraTarget.r, expCfg.cameraTarget.c, 40, '#8a7a60');
+                            // Secondary ring of brighter particles
+                            spawnParticleBurst(expCfg.cameraTarget.r, expCfg.cameraTarget.c, 20, '#c4b090');
                         }
-                        if (typeof sfxExplosion === 'function') sfxExplosion(); // rumble SFX
+                        // White screen flash — sells the explosive moment
+                        if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.3, '#ffffff');
+                        if (typeof sfxExplosion === 'function') sfxExplosion(); // deep rumble SFX
                         // Banner
                         wave.bannerText = expCfg.bannerText || 'The way opens...';
                         wave.bannerSub = expCfg.bannerSub || '';
@@ -1898,7 +1919,7 @@ function updateWaveSystem(dt) {
                 } else {
                     wave.phase = 'cleared';
                     wave.timer = 8.0;
-                    wave.bannerText = `Wave ${wave.current} Cleared`;
+                    wave.bannerText = 'The darkness recedes...';
                     wave.bannerSub = '';
                     wave.bannerAlpha = 1;
                     wave.tensionPhase = 0; // 0=calm, 1=building tension
@@ -2878,7 +2899,17 @@ function updateEnemies(dt) {
                     offsetY: -8 - Math.random() * 6,
                     life: 0.5,
                 });
-                if (e.hp <= 0) e.state = 'death';
+                if (e.hp <= 0 && e.state !== 'death') {
+                    e.state = 'death';
+                    e.deathTimer = 0.7;
+                    e.animFrame = 0;
+                    if (typeof sfxEnemyDeath === 'function') sfxEnemyDeath(e.row, e.col);
+                    if (typeof rollEnemyLoot === 'function') rollEnemyLoot(e);
+                    if (typeof spawnDeathBurst === 'function') {
+                        const _dp = tileToScreen(e.row, e.col);
+                        spawnDeathBurst(_dp.x + cameraX, _dp.y + cameraY, e.def.tint || '#ff6644');
+                    }
+                }
             }
         }
         // === SLIME: Sticky Landing slow decay ===
@@ -3071,15 +3102,19 @@ function updateEnemies(dt) {
             continue;
         }
 
-        // --- Boss enrage phase transition ---
+        // --- Boss enrage phase transition (dramatic transformation) ---
         if (e.def.isBoss && e.bossPhase === 0 && e.hp < e.maxHp * 0.5 && !e._telegraphing) {
             e.bossPhase = 1;
-            addScreenShake(8, 0.4);
-            // Visual enrage burst
-            for (let p = 0; p < 16; p++) {
-                const angle = (p / 16) * Math.PI * 2;
+            // Research: phase transition = slow-mo + shake + zoom + particles
+            addSlowMo(0.6, 0.15);
+            addScreenShake(10, 0.5);
+            addHitPause(0.12);
+            if (typeof addCameraZoom === 'function') addCameraZoom(1.05, 1.2);
+            // Bright enrage burst — 2x particles for dramatic visual
+            for (let p = 0; p < 28; p++) {
+                const angle = (p / 28) * Math.PI * 2;
                 spawnParticle(e.row + Math.cos(angle) * 0.5, e.col + Math.sin(angle) * 0.5,
-                    Math.cos(angle) * 3, Math.sin(angle) * 3, 0.6, e.def.tintColor || '#ff4444', 0.9);
+                    Math.cos(angle) * 4, Math.sin(angle) * 4, 0.9, e.def.tintColor || '#ff4444', 1.0);
             }
             // Boss-specific enrage banner
             if (e.type === 'slime_king') {
@@ -3128,13 +3163,14 @@ function updateEnemies(dt) {
         }
 
         // --- Ruined King Phase 2 (25% HP) — desperate phase ---
-        if (e.type === 'ruined_king' && e.bossPhase === 1 && e.hp < e.maxHp * 0.25) {
+        if (e.type === 'ruined_king' && e.bossPhase === 1 && e.hp < e.maxHp * 0.25 && !e._telegraphing) {
             e.bossPhase = 2;
-            addScreenShake(12, 0.6);
-            for (let p = 0; p < 24; p++) {
-                const angle = (p / 24) * Math.PI * 2;
-                spawnParticle(e.row + Math.cos(angle) * 0.5, e.col + Math.sin(angle) * 0.5,
-                    Math.cos(angle) * 4, Math.sin(angle) * 4, 0.8, '#9944dd', 1.0);
+            addSlowMo(0.8, 0.1); addScreenShake(14, 0.8); addHitPause(0.15);
+            if (typeof addCameraZoom === 'function') addCameraZoom(1.08, 2.0);
+            for (let p = 0; p < 32; p++) {
+                const angle = (p / 32) * Math.PI * 2;
+                spawnParticle(e.row + Math.cos(angle) * 0.6, e.col + Math.sin(angle) * 0.6,
+                    Math.cos(angle) * 5, Math.sin(angle) * 5, 1.0, '#9944dd', 1.0);
             }
             wave.bannerText = 'THE KING UNLEASHES RUIN';
             wave.bannerSub = 'All shall perish...';
@@ -3142,18 +3178,18 @@ function updateEnemies(dt) {
             wave.timer = 1.5;
         }
 
-        // --- Phase 2 for other bosses (25% HP) ---
-        if (e.def.isBoss && e.bossPhase === 1 && e.hp < e.maxHp * 0.25 && e.type !== 'ruined_king') {
+        // --- Phase 2 for other bosses (25% HP — desperation) ---
+        if (e.def.isBoss && e.bossPhase === 1 && e.hp < e.maxHp * 0.25 && e.type !== 'ruined_king' && !e._telegraphing) {
             e.bossPhase = 2;
-            addScreenShake(10, 0.5);
-            addHitPause(0.08);
-            for (let p = 0; p < 20; p++) {
-                const angle = (p / 20) * Math.PI * 2;
-                spawnParticle(e.row + Math.cos(angle) * 0.5, e.col + Math.sin(angle) * 0.5,
-                    Math.cos(angle) * 4, Math.sin(angle) * 4, 0.7, e.def.tintColor || '#ff4444', 1.0);
+            addSlowMo(0.7, 0.12); addScreenShake(12, 0.6); addHitPause(0.12);
+            if (typeof addCameraZoom === 'function') addCameraZoom(1.06, 1.5);
+            for (let p = 0; p < 26; p++) {
+                const angle = (p / 26) * Math.PI * 2;
+                spawnParticle(e.row + Math.cos(angle) * 0.6, e.col + Math.sin(angle) * 0.6,
+                    Math.cos(angle) * 4.5, Math.sin(angle) * 4.5, 0.9, e.def.tintColor || '#ff4444', 1.0);
             }
 
-            if (e.type === 'slime_king') {
+            if (e.type === 'slime_king' || e.type === 'demon_slime_king') {
                 wave.bannerText = 'The King Fractures!';
                 wave.bannerSub = 'Its mass splits apart...';
                 // Split into 3 mini-slimes that reform after 5s
@@ -3213,7 +3249,7 @@ function updateEnemies(dt) {
         // --- Boss phase 2 ongoing effects ---
         if (e.def.isBoss && e.bossPhase === 2) {
             // Slime King split — reform after timer
-            if (e.type === 'slime_king' && e._splitActive) {
+            if ((e.type === 'slime_king' || e.type === 'demon_slime_king') && e._splitActive) {
                 e._splitTimer -= dt;
                 if (e._splitTimer <= 0) {
                     e._splitActive = false;
@@ -3282,7 +3318,7 @@ function updateEnemies(dt) {
         // =====================================================
         // SLIME KING ABILITIES
         // =====================================================
-        if (e.type === 'slime_king' && dist < e.def.aggroRange) {
+        if ((e.type === 'slime_king' || e.type === 'demon_slime_king') && dist < e.def.aggroRange) {
             // Ground Slam — start telegraph, then AoE fires when telegraph ends
             if (e.bossSlamTimer <= 0 && dist < e.def.slamRadius + 1 && !e._telegraphing) {
                 e.bossSlamTimer = e.def.slamCooldown * (e.bossPhase === 1 ? 0.7 : 1.0);
@@ -3530,8 +3566,8 @@ function updateEnemies(dt) {
                         0, -1, 0.6, '#aaddff', 0.7);
                 }
                 // After short delay, freeze triggers (immediate for gameplay)
-                const trapDr = freezeTrapRow - e.row;
-                const trapDc = freezeTrapCol - e.col;
+                const trapDr = player.row - freezeTrapRow;
+                const trapDc = player.col - freezeTrapCol;
                 if (Math.sqrt(trapDr * trapDr + trapDc * trapDc) < 1.2) {
                     // Player is very close to where trap was laid — freeze them
                     player.frozenTimer = (player.frozenTimer || 0) + e.def.freezeTrapDuration;
@@ -4046,6 +4082,17 @@ function updateBurnZones(dt) {
                 if (Math.sqrt(dr * dr + dc * dc) < bz.radius) {
                     e.hp -= bz.damage;
                     e.hitFlashTimer = 0.08;
+                    if (e.hp <= 0 && e.state !== 'death') {
+                        e.state = 'death';
+                        e.deathTimer = 0.7;
+                        e.animFrame = 0;
+                        if (typeof sfxEnemyDeath === 'function') sfxEnemyDeath(e.row, e.col);
+                        if (typeof rollEnemyLoot === 'function') rollEnemyLoot(e);
+                        if (typeof spawnDeathBurst === 'function') {
+                            const _dp = tileToScreen(e.row, e.col);
+                            spawnDeathBurst(_dp.x + cameraX, _dp.y + cameraY, e.def.tint || '#ff6644');
+                        }
+                    }
                     spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1.5, 0.25, bz.color || '#ff4400', 0.6);
                 }
             }
@@ -4231,17 +4278,38 @@ function triggerLevelUp() {
     xpState.levelUpChoices = choices;
     xpState.levelUpPending = true;
     xpState.levelUpHover = -1;
+    xpState.levelUpKeyHover = -1;
     xpState.levelUpFadeIn = 0;
+    xpState.levelUpRevealT = 0; // reset entrance animation timer
+    xpState.levelUpHasLegendary = choices.some(c => (c.tier || 'normal') === 'legendary');
     // Duck music and play level-up sting + procedural chime
     duckMusic(true);
     playSting('levelUp');
     if (typeof sfxLevelUp === 'function') sfxLevelUp();
-    // Level-up shockwave — golden ring + enemy pushback
+    // Legendary ceremony: extra slow-mo + golden screen flash on reveal
+    if (xpState.levelUpHasLegendary) {
+        addSlowMo(0.5, 0.15); // longer, deeper slow-mo for legendary
+        if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.25, '#ffd855');
+    }
+    // Level-up shockwave — dramatic golden burst (research: slow-mo + shake + flash)
+    addSlowMo(0.3, 0.2); // brief celebratory slow-mo
+    addScreenShake(6, 0.25);
+    if (typeof addCameraZoom === 'function') addCameraZoom(1.04, 0.8);
     if (typeof spawnImpactRipple === 'function') {
         const lvPos = tileToScreen(player.row, player.col);
-        spawnImpactRipple(lvPos.x + cameraX, lvPos.y + cameraY, '#ffdd44', 120);
+        spawnImpactRipple(lvPos.x + cameraX, lvPos.y + cameraY, '#ffdd44', 140);
     }
-    addScreenShake(4, 0.2);
+    // Golden particle burst from player
+    if (typeof _emitParticle === 'function') {
+        const lvP = tileToScreen(player.row, player.col);
+        const lpx = lvP.x + cameraX, lpy = lvP.y + cameraY - 20;
+        for (let li = 0; li < 16; li++) {
+            const la = (li / 16) * Math.PI * 2;
+            const ls = 2.5 + Math.random() * 2;
+            _emitParticle(lpx, lpy, Math.cos(la) * ls, Math.sin(la) * ls - 1,
+                0.8 + Math.random() * 0.3, 3 + Math.random() * 2, '#ffdd44', 0.8, 'cast', 'screen');
+        }
+    }
     // Push nearby enemies away — brief breathing room
     for (const e of enemies) {
         if (e.state === 'death') continue;
@@ -4276,11 +4344,13 @@ function getUpgrade(id) { return upgrades[id] || 0; }
 // ----- PLAYER DAMAGE -----
 function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
     if (player.dodging) return; // immune during phase jump
+    if (typeof skeletonState !== 'undefined' && skeletonState.rolling) return;
+    if (typeof slimeState !== 'undefined' && slimeState.bounceJumping) return;
     if (playerInvTimer > 0) return;
     // Skeleton shield reduces damage by 70%
     if (FormSystem.currentForm === 'skeleton' && typeof skeletonState !== 'undefined' && skeletonState.shieldUp) {
-        const blocked = amount - Math.round(amount * 0.3);
-        FormSystem.formData.skeleton.shieldDamageBlocked += blocked; // track for evolution
+        const blockedDmg = amount - Math.round(amount * 0.3);
+        FormSystem.formData.skeleton.shieldDamageBlocked += blockedDmg; // track for evolution
         amount = Math.round(amount * 0.3); // shield reduces 70%
     }
     // Lich Ethereal Form: 25% damage reduction per stack when above 80 soul energy
@@ -4361,6 +4431,28 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
                     break;
                 }
             }
+        }
+        // Skeleton Undying Resolve — survive lethal blow once per zone
+        if (!_veilSaved && typeof skeletonState !== 'undefined' && skeletonState.undyingResolveReady && FormSystem.currentForm === 'skeleton') {
+            player.hp = 1;
+            skeletonState.undyingResolveReady = false;
+            playerInvTimer = 1.5;
+            addScreenShake(8, 0.5);
+            addSlowMo(0.6, 0.2);
+            if (typeof Notify !== 'undefined') Notify.toast('Undying Resolve!', { duration: 3, color: '#ffffff', borderColor: '#888888' });
+            if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 30, '#ffffff');
+            _veilSaved = true;
+        }
+        // Lich Phylactery — consume soul energy to cheat death
+        if (!_veilSaved && typeof lichState !== 'undefined' && lichState.soulEnergy >= 30 && FormSystem.currentForm === 'lich') {
+            player.hp = Math.round((FORM_CONFIGS.lich.maxHp || 100) * 0.3);
+            lichState.soulEnergy -= 30;
+            playerInvTimer = 1.5;
+            addScreenShake(10, 0.6);
+            addSlowMo(0.8, 0.15);
+            if (typeof Notify !== 'undefined') Notify.toast('Phylactery Activated!', { duration: 3, color: '#aa44ff', borderColor: '#6622aa' });
+            if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 35, '#aa44ff');
+            _veilSaved = true;
         }
         if (!_veilSaved) {
         player.hp = 0;
@@ -4550,11 +4642,15 @@ function checkProjectileEnemyHits() {
                                     const ricochetDmg = Math.round(projFinalDmg * 0.6);
                                     _nearE.hp -= ricochetDmg;
                                     _nearE.hitFlashTimer = 0.1;
-                                    if (_nearE.hp <= 0) {
+                                    if (_nearE.hp <= 0 && _nearE.state !== 'death') {
                                         _nearE.hp = 0; _nearE.state = 'death'; _nearE.deathTimer = 0.7; _nearE.animFrame = 0;
                                         sfxEnemyDeath(_nearE.row, _nearE.col); rollEnemyLoot(_nearE);
+                                        if (typeof spawnDeathBurst === 'function') {
+                                            const _dp = tileToScreen(_nearE.row, _nearE.col);
+                                            spawnDeathBurst(_dp.x + cameraX, _dp.y + cameraY, _nearE.def.tint || '#ff6644');
+                                        }
                                         if (_nearE.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
-                                    } else {
+                                    } else if (_nearE.hp > 0) {
                                         _nearE.state = 'hurt'; _nearE.hurtTimer = 0.2; _nearE.animFrame = 0;
                                         sfxEnemyHurt(_nearE.row, _nearE.col);
                                     }
@@ -4641,10 +4737,14 @@ function checkProjectileEnemyHits() {
                                 offsetY: -10 - Math.random() * 8 + (e2._dmgNumOffset || 0),
                                 life: 0.8,
                             });
-                            if (e2.hp <= 0) {
+                            if (e2.hp <= 0 && e2.state !== 'death') {
                                 e2.hp = 0; e2.state = 'death'; e2.deathTimer = 0.7; e2.animFrame = 0;
                                 sfxEnemyDeath(e2.row, e2.col); rollEnemyLoot(e2);
-                            } else {
+                                if (typeof spawnDeathBurst === 'function') {
+                                    const _dp = tileToScreen(e2.row, e2.col);
+                                    spawnDeathBurst(_dp.x + cameraX, _dp.y + cameraY, e2.def.tint || '#ff6644');
+                                }
+                            } else if (e2.hp > 0) {
                                 e2.state = 'hurt'; e2.hurtTimer = 0.2; e2.animFrame = 0;
                                 sfxEnemyHurt(e2.row, e2.col);
                                 const hitPos2 = tileToScreen(e2.row, e2.col);
@@ -4969,12 +5069,22 @@ function drawEnemy(e) {
         ctx.restore();
     }
 
-    // Shadow (scales with boss size)
+    // Shadow — soft blob shadow (bigger for bosses, tinted during enrage)
     ctx.save();
-    ctx.globalAlpha = (e.state === 'death' ? 0.1 : 0.25) * spawnAlpha;
-    ctx.fillStyle = '#000';
-    const shadowRx = e.def.isBoss ? Math.min(30, 14 * def.scale * 0.5) : 14;
-    const shadowRy = e.def.isBoss ? Math.min(14, 6 * def.scale * 0.5) : 6;
+    const shadowAlpha = (e.state === 'death' ? 0.08 : 0.3) * spawnAlpha;
+    const shadowRx = e.def.isBoss ? Math.min(36, 16 * def.scale * 0.5) : Math.max(10, 12 * def.scale);
+    const shadowRy = e.def.isBoss ? Math.min(16, 7 * def.scale * 0.5) : Math.max(4, 5 * def.scale);
+    // Phase-tinted shadows for bosses (red glow bleeds into shadow)
+    if (e.def.isBoss && e.bossPhase >= 1) {
+        const shadowGrad = ctx.createRadialGradient(sx, sy + 4, 0, sx, sy + 4, shadowRx);
+        shadowGrad.addColorStop(0, e.bossPhase >= 2 ? 'rgba(120, 30, 60, 0.35)' : 'rgba(80, 20, 10, 0.3)');
+        shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.globalAlpha = shadowAlpha * 1.4;
+        ctx.fillStyle = shadowGrad;
+    } else {
+        ctx.globalAlpha = shadowAlpha;
+        ctx.fillStyle = '#000';
+    }
     ctx.beginPath();
     ctx.ellipse(sx, sy + 4, shadowRx, shadowRy, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -4982,17 +5092,24 @@ function drawEnemy(e) {
 
     // (Silhouette halo removed — felt unnatural)
 
-    // Boss glow aura (centered on sprite, not fixed offset)
+    // Boss glow aura — intensifies per phase (visual transformation)
     if (e.def.isBoss && e.state !== 'death') {
         ctx.save();
-        const bossGlowColor = e.bossPhase === 1 ? 'rgba(255, 60, 30, ' : 'rgba(255, 200, 80, ';
-        const bossGlowPulse = 0.22 + Math.sin(performance.now() / 300) * 0.10;
+        // Phase 0: warm gold, Phase 1: angry red-orange, Phase 2: intense crimson-white
+        const bossGlowColor = e.bossPhase >= 2 ? 'rgba(255, 80, 80, '
+            : e.bossPhase === 1 ? 'rgba(255, 60, 30, '
+            : 'rgba(255, 200, 80, ';
+        // Pulse faster at higher phases
+        const pulseSpeed = e.bossPhase >= 2 ? 180 : e.bossPhase === 1 ? 250 : 350;
+        const pulseBase = e.bossPhase >= 2 ? 0.32 : e.bossPhase === 1 ? 0.26 : 0.20;
+        const pulseRange = e.bossPhase >= 2 ? 0.15 : 0.10;
+        const bossGlowPulse = pulseBase + Math.sin(performance.now() / pulseSpeed) * pulseRange;
         ctx.globalAlpha = bossGlowPulse * spawnAlpha;
         ctx.globalCompositeOperation = 'screen';
-        // Center glow on sprite using same yOff as draw position
         const glowCY = drawY + dh * 0.5;
-        const glowGrad = ctx.createRadialGradient(sx, glowCY, 0, sx, glowCY, dw * 0.7);
-        glowGrad.addColorStop(0, bossGlowColor + '0.4)');
+        const glowRadius = dw * (e.bossPhase >= 2 ? 0.9 : e.bossPhase === 1 ? 0.8 : 0.7);
+        const glowGrad = ctx.createRadialGradient(sx, glowCY, 0, sx, glowCY, glowRadius);
+        glowGrad.addColorStop(0, bossGlowColor + (e.bossPhase >= 2 ? '0.6)' : '0.4)'));
         glowGrad.addColorStop(1, bossGlowColor + '0)');
         ctx.fillStyle = glowGrad;
         ctx.beginPath();
@@ -5110,8 +5227,8 @@ function drawEnemy(e) {
     // === HIT FLASH — brief white overlay on any damage (independent of stagger) ===
     if (e.hitFlashTimer > 0 && e.state !== 'death') {
         ctx.save();
-        const flashIntensity = Math.min(1, e.hitFlashTimer / 0.06); // peaks fast, fades out
-        ctx.globalAlpha = flashIntensity * 0.5 * spawnAlpha;
+        const flashIntensity = Math.min(1, e.hitFlashTimer / 0.08); // peaks fast, fades out
+        ctx.globalAlpha = flashIntensity * 0.7 * spawnAlpha;
         ctx.globalCompositeOperation = 'lighter'; // additive blend = bright white flash
         ctx.filter = 'brightness(3) saturate(0)'; // desaturate + overbrighten = white glow
         if (e.facing === -1) {
@@ -5149,23 +5266,7 @@ function drawEnemy(e) {
         ctx.restore();
     }
 
-    // === ENEMY HEALTH BAR — thin bar above head, only when damaged ===
-    if (e.state !== 'death' && e.hp < (e.def.hp * (e.statMult || 1)) && !e.def.isBoss) {
-        const maxHp = e.def.hp * (e.statMult || 1);
-        const hpRatio = Math.max(0, e.hp / maxHp);
-        const barW = 22, barH = 3;
-        const barX = sx - barW / 2;
-        const barY = drawY - 4;
-        ctx.save();
-        ctx.globalAlpha = 0.7 * spawnAlpha;
-        // Background
-        ctx.fillStyle = '#1a0808';
-        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
-        // HP fill
-        ctx.fillStyle = hpRatio > 0.5 ? '#cc3322' : hpRatio > 0.25 ? '#cc6622' : '#cc2222';
-        ctx.fillRect(barX, barY, barW * hpRatio, barH);
-        ctx.restore();
-    }
+    // (Removed: old thin health bar — superseded by gradient health bar below)
 
     // --- Ranged attack telegraph — bright pre-fire warning glow ---
     // Shows during wind-up (before attackFired) so player can react

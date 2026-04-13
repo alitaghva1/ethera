@@ -8,13 +8,18 @@ function getLevelUpChoice(mx, my) {
     const cardW = 170, cardH = 220, cardGap = 20;
     const totalW = choices.length * cardW + (choices.length - 1) * cardGap;
     const startX = cx - totalW / 2;
+    const t = performance.now() / 1000;
 
     for (let i = 0; i < choices.length; i++) {
+        const tier = (choices[i].tier || 'normal');
+        const isLegendary = tier === 'legendary';
+        const floatAmp = isLegendary ? 5 : 3;
+        const floatY = Math.sin(t * 2 + i * 1.5) * floatAmp;
         const cardX = startX + i * (cardW + cardGap);
-        const cardY = cy - cardH / 2 + 20;
-        if (mx >= cardX && mx <= cardX + cardW && my >= cardY && my <= cardY + cardH) {
-            return i;
-        }
+        let cardY2 = cy - cardH / 2 + 20 + floatY;
+        // Match hover elevation from draw
+        const hovered = (mx >= cardX && mx <= cardX + cardW && my >= cardY2 && my <= cardY2 + cardH);
+        if (hovered) return i;
     }
     return -1;
 }
@@ -168,6 +173,16 @@ function drawLevelUpScreen() {
     const cy = canvasH / 2;
     const t = performance.now() / 1000;
 
+    // Advance reveal timer (used for card entrance stagger)
+    xpState.levelUpRevealT += _frameDt || 0.016;
+    const revealT = xpState.levelUpRevealT;
+
+    // Detect legendary presence (cached on first frame)
+    if (revealT < 0.05) {
+        xpState.levelUpHasLegendary = choices.some(c => (c.tier || 'normal') === 'legendary');
+    }
+    const hasLegendary = xpState.levelUpHasLegendary;
+
     ctx.save();
 
     // Dim overlay
@@ -175,11 +190,11 @@ function drawLevelUpScreen() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Golden vignette
+    // Golden vignette — more intense when legendary present
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = fade * 0.1;
+    ctx.globalAlpha = fade * (hasLegendary ? 0.18 : 0.1);
     const vig = ctx.createRadialGradient(cx, cy, 0, cx, cy, canvasH * 0.5);
-    vig.addColorStop(0, 'rgba(200, 160, 40, 0.3)');
+    vig.addColorStop(0, hasLegendary ? 'rgba(255, 200, 50, 0.4)' : 'rgba(200, 160, 40, 0.3)');
     vig.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, canvasW, canvasH);
@@ -196,7 +211,7 @@ function drawLevelUpScreen() {
     ctx.fillText('LEVEL UP', cx, cy - 140);
     ctx.shadowBlur = 0;
 
-    // Level number
+    // Level number + keyboard hint
     ctx.font = '14px monospace';
     ctx.fillStyle = '#a89060';
     ctx.globalAlpha = fade * 0.6;
@@ -207,7 +222,7 @@ function drawLevelUpScreen() {
     const totalW = choices.length * cardW + (choices.length - 1) * cardGap;
     const startX = cx - totalW / 2;
 
-    // Update hover
+    // Update hover — keyboard hover takes priority over mouse hover
     xpState.levelUpHover = getLevelUpChoice(mouse.x, mouse.y);
 
     for (let i = 0; i < choices.length; i++) {
@@ -217,29 +232,67 @@ function drawLevelUpScreen() {
         const isRare = tier === 'rare';
         const cardX = startX + i * (cardW + cardGap);
         const cardY = cy - cardH / 2 + 20;
-        const hovered = xpState.levelUpHover === i;
+        const mouseHov = xpState.levelUpHover === i;
+        const keyHov = xpState.levelUpKeyHover === i;
+        const hovered = mouseHov || keyHov;
         const stacks = upgrades[u.id] || 0;
+
+        // ── Card entrance animation ──
+        // Normal cards: appear at stagger 0.08s each
+        // Legendary: delayed entrance at 0.5s with dramatic bounce
+        let cardRevealFrac;
+        if (isLegendary && hasLegendary) {
+            // Legendary entrance: delayed start, dramatic scale bounce
+            const legDelay = 0.45;
+            const legDur = 0.4;
+            cardRevealFrac = Math.min(1, Math.max(0, (revealT - legDelay) / legDur));
+        } else {
+            const normalDelay = i * 0.08;
+            cardRevealFrac = Math.min(1, Math.max(0, (revealT - normalDelay) / 0.25));
+        }
+        // Ease-out bounce for legendary, ease-out cubic for others
+        let cardScale;
+        if (isLegendary && hasLegendary) {
+            // Overshoot bounce: 0 → 1.08 → 1.0
+            if (cardRevealFrac < 0.7) {
+                cardScale = (cardRevealFrac / 0.7) * 1.08;
+            } else {
+                cardScale = 1.08 - (cardRevealFrac - 0.7) / 0.3 * 0.08;
+            }
+            cardScale = Math.max(0, cardScale);
+        } else {
+            cardScale = 1 - Math.pow(1 - cardRevealFrac, 3); // ease-out cubic
+        }
+
+        if (cardRevealFrac <= 0) continue; // not revealed yet
 
         // Card float animation — legendary cards float more dramatically
         const floatAmp = isLegendary ? 5 : 3;
         const floatY = Math.sin(t * 2 + i * 1.5) * floatAmp;
         let cy2 = cardY + floatY;
 
-        // Hover elevation: draw 2px higher when hovered
-        if (hovered) {
-            cy2 -= 2;
+        // Hover elevation
+        if (hovered) cy2 -= 4;
+
+        // Apply scale transform for entrance
+        const cardCx = cardX + cardW / 2;
+        const cardCy = cy2 + cardH / 2;
+        ctx.save();
+        if (cardScale < 0.99) {
+            ctx.translate(cardCx, cardCy);
+            ctx.scale(cardScale, cardScale);
+            ctx.translate(-cardCx, -cardCy);
         }
 
-        ctx.globalAlpha = fade;
+        ctx.globalAlpha = fade * cardRevealFrac;
 
         // --- Tier-specific outer glow (behind card) ---
         if (isLegendary) {
-            // Animated golden pulse glow for legendary
             const pulse = 0.5 + 0.5 * Math.sin(t * 3 + i);
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = fade * (0.08 + 0.06 * pulse);
-            const legGlow = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 10, cardX + cardW/2, cy2 + cardH/2, cardW * 1.1);
+            ctx.globalAlpha = fade * cardRevealFrac * (0.08 + 0.06 * pulse);
+            const legGlow = ctx.createRadialGradient(cardCx, cardCy, 10, cardCx, cardCy, cardW * 1.1);
             legGlow.addColorStop(0, 'rgba(255, 200, 50, 0.5)');
             legGlow.addColorStop(0.5, 'rgba(255, 160, 20, 0.2)');
             legGlow.addColorStop(1, 'rgba(255, 120, 0, 0)');
@@ -247,11 +300,10 @@ function drawLevelUpScreen() {
             ctx.fillRect(cardX - 40, cy2 - 40, cardW + 80, cardH + 80);
             ctx.restore();
         } else if (isRare) {
-            // Subtle blue glow for rare
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = fade * 0.06;
-            const rareGlow = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 10, cardX + cardW/2, cy2 + cardH/2, cardW * 0.95);
+            ctx.globalAlpha = fade * cardRevealFrac * 0.06;
+            const rareGlow = ctx.createRadialGradient(cardCx, cardCy, 10, cardCx, cardCy, cardW * 0.95);
             rareGlow.addColorStop(0, 'rgba(80, 140, 255, 0.4)');
             rareGlow.addColorStop(1, 'rgba(40, 80, 200, 0)');
             ctx.fillStyle = rareGlow;
@@ -259,13 +311,13 @@ function drawLevelUpScreen() {
             ctx.restore();
         }
 
-        // Subtle glow behind hovered card
+        // Glow behind hovered card (mouse or keyboard)
         if (hovered) {
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = fade * 0.06;
+            ctx.globalAlpha = fade * 0.08;
             const hoverColor = isLegendary ? 'rgba(255, 200, 50, 0.4)' : (isRare ? 'rgba(80, 140, 255, 0.4)' : 'rgba(212, 160, 64, 0.4)');
-            const bgGlow = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 20, cardX + cardW/2, cy2 + cardH/2, cardW * 0.9);
+            const bgGlow = ctx.createRadialGradient(cardCx, cardCy, 20, cardCx, cardCy, cardW * 0.9);
             bgGlow.addColorStop(0, hoverColor);
             bgGlow.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = bgGlow;
@@ -275,12 +327,12 @@ function drawLevelUpScreen() {
 
         // Card background
         ctx.fillStyle = hovered ? '#14100a' : '#0c0906';
-        ctx.globalAlpha = fade * (hovered ? 0.95 : 0.88);
+        ctx.globalAlpha = fade * cardRevealFrac * (hovered ? 0.95 : 0.88);
         ctx.beginPath();
         ctx.roundRect(cardX, cy2, cardW, cardH, 6);
         ctx.fill();
 
-        // Card border: tier-colored
+        // Card border: tier-colored, highlight on keyboard hover
         const catColor = u.category === 'wand' ? '#dd8833' : (u.category === 'passive' ? '#44bb88' : '#8866cc');
         let borderColor, borderHoverColor, borderWidth;
         if (isLegendary) {
@@ -299,7 +351,7 @@ function drawLevelUpScreen() {
         }
         ctx.strokeStyle = hovered ? borderHoverColor : borderColor;
         ctx.lineWidth = borderWidth;
-        ctx.globalAlpha = fade * (hovered ? 0.8 : (isLegendary ? 0.7 : (isRare ? 0.6 : 0.4)));
+        ctx.globalAlpha = fade * cardRevealFrac * (hovered ? 0.8 : (isLegendary ? 0.7 : (isRare ? 0.6 : 0.4)));
         ctx.beginPath();
         ctx.roundRect(cardX, cy2, cardW, cardH, 6);
         ctx.stroke();
@@ -309,7 +361,7 @@ function drawLevelUpScreen() {
             const glowColor = isLegendary ? '#ffcc33' : (isRare ? '#5588ff' : catColor);
             ctx.globalCompositeOperation = 'screen';
             ctx.globalAlpha = fade * (isLegendary ? 0.12 : (isRare ? 0.10 : 0.08));
-            const hg = ctx.createRadialGradient(cardX + cardW/2, cy2 + cardH/2, 0, cardX + cardW/2, cy2 + cardH/2, cardW * 0.7);
+            const hg = ctx.createRadialGradient(cardCx, cardCy, 0, cardCx, cardCy, cardW * 0.7);
             hg.addColorStop(0, glowColor);
             hg.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = hg;
@@ -317,9 +369,35 @@ function drawLevelUpScreen() {
             ctx.globalCompositeOperation = 'source-over';
         }
 
+        // ── Key number badge (top-left of card) ──
+        {
+            const kx = cardX + 12;
+            const ky = cy2 + 10;
+            const keyNum = String(i + 1);
+            ctx.globalAlpha = fade * cardRevealFrac * (hovered ? 0.9 : 0.4);
+            // Badge background
+            ctx.fillStyle = hovered ? 'rgba(200, 160, 40, 0.25)' : 'rgba(100, 90, 70, 0.2)';
+            ctx.beginPath();
+            ctx.roundRect(kx - 7, ky - 7, 14, 14, 3);
+            ctx.fill();
+            // Badge border
+            ctx.strokeStyle = hovered ? 'rgba(200, 160, 40, 0.5)' : 'rgba(100, 90, 70, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(kx - 7, ky - 7, 14, 14, 3);
+            ctx.stroke();
+            // Number text
+            ctx.font = 'bold 10px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = hovered ? '#e8c840' : '#8a7a60';
+            ctx.fillText(keyNum, kx, ky);
+        }
+
         // Tier tag (above category tag for rare/legendary)
+        ctx.textBaseline = 'middle';
         if (isLegendary || isRare) {
-            ctx.globalAlpha = fade * 0.7;
+            ctx.globalAlpha = fade * cardRevealFrac * 0.7;
             ctx.font = '7px monospace';
             ctx.textAlign = 'center';
             ctx.fillStyle = isLegendary ? '#ffcc33' : '#5588ff';
@@ -327,22 +405,21 @@ function drawLevelUpScreen() {
         }
 
         // Category tag
-        ctx.globalAlpha = fade * 0.5;
+        ctx.globalAlpha = fade * cardRevealFrac * 0.5;
         ctx.font = '8px monospace';
         ctx.textAlign = 'center';
         ctx.fillStyle = catColor;
         ctx.fillText(u.category.toUpperCase(), cardX + cardW / 2, cy2 + (isLegendary || isRare ? 22 : 18));
 
         // Icon
-        ctx.globalAlpha = fade;
+        ctx.globalAlpha = fade * cardRevealFrac;
         drawUpgradeIcon(cardX + cardW / 2, cy2 + 65, u.icon, isLegendary ? '#ffcc33' : (isRare ? '#6699ff' : catColor), 16);
 
         // Name — tinted by tier
         ctx.font = isLegendary ? 'bold 14px Georgia' : '14px Georgia';
         const nameColor = isLegendary ? '#ffd855' : (isRare ? '#88bbff' : (hovered ? '#e8d8b0' : '#c4a878'));
         ctx.fillStyle = nameColor;
-        ctx.globalAlpha = fade;
-        // Legendary name glow
+        ctx.globalAlpha = fade * cardRevealFrac;
         if (isLegendary) {
             ctx.shadowColor = 'rgba(255, 200, 40, 0.4)';
             ctx.shadowBlur = 8;
@@ -353,7 +430,7 @@ function drawLevelUpScreen() {
         // Description (word-wrap)
         ctx.font = '10px Georgia';
         ctx.fillStyle = isLegendary ? '#c8a860' : (isRare ? '#8899aa' : '#9a8a6a');
-        ctx.globalAlpha = fade * 0.8;
+        ctx.globalAlpha = fade * cardRevealFrac * 0.8;
         const words = u.desc.split(' ');
         let line = '';
         let lineY = cy2 + 132;
@@ -363,20 +440,21 @@ function drawLevelUpScreen() {
                 ctx.fillText(line, cardX + cardW / 2, lineY);
                 line = w;
                 lineY += 14;
+                if (lineY > cy2 + cardH - 45) break; // stop before stack count area
             } else {
                 line = test;
             }
         }
-        if (line) ctx.fillText(line, cardX + cardW / 2, lineY);
+        if (line && lineY <= cy2 + cardH - 45) ctx.fillText(line, cardX + cardW / 2, lineY);
 
         // Stack count
         if (stacks > 0) {
-            ctx.globalAlpha = fade * 0.6;
+            ctx.globalAlpha = fade * cardRevealFrac * 0.6;
             ctx.font = '9px monospace';
             ctx.fillStyle = catColor;
             ctx.fillText(`${stacks}/${u.maxStack}`, cardX + cardW / 2, cy2 + cardH - 16);
         } else {
-            ctx.globalAlpha = fade * 0.3;
+            ctx.globalAlpha = fade * cardRevealFrac * 0.3;
             ctx.font = '9px monospace';
             ctx.fillStyle = isLegendary ? '#ffcc33' : (isRare ? '#5588ff' : '#666');
             ctx.fillText('NEW', cardX + cardW / 2, cy2 + cardH - 16);
@@ -406,7 +484,17 @@ function drawLevelUpScreen() {
                 ctx.fillText(statHint, cardX + cardW / 2, cy2 + cardH - 6);
             }
         }
+
+        ctx.restore(); // pop card scale transform
     }
+
+    // ── Keyboard hint at bottom ──
+    ctx.globalAlpha = fade * 0.35;
+    ctx.font = '10px Georgia';
+    ctx.fillStyle = '#8a7a60';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Press 1-' + choices.length + ' or use arrow keys + Enter', cx, cy + cardH / 2 + 50);
 
     ctx.restore();
 }

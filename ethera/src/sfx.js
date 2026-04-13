@@ -27,12 +27,16 @@ function trackSFXChannel(duration) {
     setTimeout(() => { sfxActiveCount = Math.max(0, sfxActiveCount - 1); }, duration * 1000);
 }
 
-// Helper: create noise buffer (for whooshes, hits, explosions)
+// Helper: create noise buffer (for whooshes, hits, explosions) — cached by duration
+const _noiseBufCache = {};
 function createNoiseBuffer(duration) {
-    const len = sfxCtx.sampleRate * duration;
+    const key = duration.toFixed(2);
+    if (_noiseBufCache[key]) return _noiseBufCache[key];
+    const len = Math.ceil(sfxCtx.sampleRate * duration);
     const buf = sfxCtx.createBuffer(1, len, sfxCtx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    _noiseBufCache[key] = buf;
     return buf;
 }
 
@@ -87,6 +91,7 @@ function playNoise(duration, freq, Q, vol, attack, decay, dest) {
     gain.connect(dest || sfxMasterGain);
     noise.start(now);
     noise.stop(now + duration);
+    noise.onended = () => { try { filter.disconnect(); gain.disconnect(); } catch(e){} };
 }
 
 // Helper: play a tone with pitch sweep (optional dest for stereo panning)
@@ -104,12 +109,15 @@ function playTone(type, startFreq, endFreq, duration, vol, attack, decay, dest) 
     gain.connect(dest || sfxMasterGain);
     osc.start(now);
     osc.stop(now + duration);
+    osc.onended = () => { try { gain.disconnect(); } catch(e){} };
 }
 
 // ---- SOUND DEFINITIONS ----
 
 function sfxFireballShoot() {
     if (!sfxCtx) return;
+    if (!canPlaySFX(1)) return;
+    trackSFXChannel(0.15);
     // Magical whoosh: rising tone + filtered noise burst
     playTone('sine', 200, 600, 0.15, 0.25, 0.01, 0.15);
     playTone('triangle', 400, 900, 0.1, 0.12, 0.005, 0.1);
@@ -612,7 +620,7 @@ let screenShakeIntensity = 0;
 let hitPauseTimer = 0;
 // Stacking caps for game feel
 const MAX_SCREEN_SHAKE = 18;
-const MAX_HIT_PAUSE = 0.10;
+const MAX_HIT_PAUSE = 0.15;
 // Slow-mo system for big moments
 // ============================================================
 //  SAMPLE-BASED SFX — Real audio files for key sounds
@@ -724,6 +732,9 @@ const xpState = {
     levelUpChoices: [], // 3 upgrade options to show
     levelUpHover: -1,   // which choice is hovered (-1 = none)
     levelUpFadeIn: 0,   // animation timer
+    levelUpKeyHover: -1, // keyboard-highlighted card (-1 = none, set by arrow/number keys)
+    levelUpRevealT: 0,   // reveal timer for card entrance animation (counts up)
+    levelUpHasLegendary: false, // whether current choices include a legendary
 };
 
 // XP per enemy type
@@ -737,10 +748,6 @@ const ENEMY_GOLD_DROP = {
     slime_king: 200, demon_slime_king: 250, bone_colossus: 300,
     infernal_knight: 400, frost_wyrm: 450, ruined_king: 600,
 };
-
-// XP scaling: each level needs more
-// Lv2: 40, Lv3: 68, Lv4: 102, Lv5: 142, Lv6: 188, Lv7: 240
-function xpForLevel(lvl) { return Math.round(40 + (lvl - 1) * 25 + (lvl - 1) * (lvl - 1) * 3); }
 
 // Upgrade state: tracks how many times each upgrade has been taken
 const upgrades = {};
@@ -946,28 +953,76 @@ function startAmbient(zone) {
     } else if (zone === 1) {
         // Undercroft: cave drips + low stone hum
         _ambientDrips(0.6);
-        _ambientDrone(65, 0.04, 'sine');
+        _ambientDroneSimple(65, 0.04, 'sine');
     } else if (zone === 2) {
         // Ruined Tower: wind through stone + creaks
         _ambientWind(0.06, 150, 400);
         _ambientCreaks();
     } else if (zone === 3) {
         // Spire: eerie tonal hum + occasional metallic resonance
-        _ambientDrone(110, 0.05, 'triangle');
-        _ambientDrone(165, 0.025, 'sine');
+        _ambientDroneSimple(110, 0.05, 'triangle');
+        _ambientDroneSimple(165, 0.025, 'sine');
     } else if (zone === 4) {
         // Inferno: crackling fire + deep rumble
         _ambientFire(0.10);
-        _ambientDrone(45, 0.06, 'sawtooth');
+        _ambientDroneSimple(45, 0.06, 'sawtooth');
     } else if (zone === 5) {
         // Frozen Abyss: cold wind + ice crackle
         _ambientWind(0.07, 300, 900);
         _ambientIceCrackle();
     } else if (zone === 6) {
         // Throne of Ruin: ominous pulse + whispers
-        _ambientDrone(55, 0.07, 'sine');
+        _ambientDroneSimple(55, 0.07, 'sine');
         _ambientPulse(0.8, 55);
     }
+}
+
+// --- Combat intensity audio layer ---
+// Rhythmic low-frequency pulse that fades in during active combat waves
+let _combatPulseGain = null;
+let _combatPulseOsc = null;
+let _combatPulseLfo = null;
+
+function startCombatPulse() {
+    if (!sfxCtx || _combatPulseGain) return;
+    try {
+        const gain = sfxCtx.createGain();
+        gain.gain.value = 0;
+        gain.connect(sfxMasterGain);
+        // Deep rhythmic kick drum (sub-bass pulse)
+        const osc = sfxCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 40;
+        // LFO for rhythmic pulsing (~1.5 Hz = heartbeat rhythm)
+        const lfo = sfxCtx.createOscillator();
+        lfo.type = 'square';
+        lfo.frequency.value = 1.5;
+        const lfoGain = sfxCtx.createGain();
+        lfoGain.gain.value = 0.04;
+        lfo.connect(lfoGain);
+        lfoGain.connect(gain.gain);
+        osc.connect(gain);
+        osc.start();
+        lfo.start();
+        // Fade in over 2 seconds
+        gain.gain.linearRampToValueAtTime(0.04, sfxCtx.currentTime + 2);
+        _combatPulseGain = gain;
+        _combatPulseOsc = osc;
+        _combatPulseLfo = lfo;
+    } catch(e) {}
+}
+
+function stopCombatPulse() {
+    if (!sfxCtx || !_combatPulseGain) return;
+    try {
+        const t = sfxCtx.currentTime;
+        _combatPulseGain.gain.linearRampToValueAtTime(0, t + 2);
+        _combatPulseOsc.stop(t + 2.1);
+        _combatPulseLfo.stop(t + 2.1);
+    } catch(e) {}
+    _combatPulseGain = null;
+    _combatPulseOsc = null;
+    _combatPulseLfo = null;
 }
 
 // --- Ambient building blocks ---
@@ -1009,6 +1064,7 @@ function _ambientThunder() {
             g.gain.linearRampToValueAtTime(0, t + 2.0);
             osc.connect(g); g.connect(sfxMasterGain);
             osc.start(t); osc.stop(t + 2.2);
+            osc.onended = () => { try { g.disconnect(); osc.disconnect(); } catch(e){} };
         }
         setTimeout(thunderLoop, (8 + Math.random() * 12) * 1000);
     };
@@ -1032,6 +1088,7 @@ function _ambientDrips(interval) {
             g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
             osc.connect(g); g.connect(sfxMasterGain);
             osc.start(t); osc.stop(t + 0.15);
+            osc.onended = () => { try { g.disconnect(); osc.disconnect(); } catch(e){} };
         }
         setTimeout(dripLoop, (interval + Math.random() * interval) * 1000);
     };
@@ -1043,7 +1100,7 @@ function _ambientDrips(interval) {
     ambientNodes.push({ source: { stop() { running = false; } }, gain: dummyGain });
 }
 
-function _ambientDrone(freq, vol, type) {
+function _ambientDroneSimple(freq, vol, type) {
     const osc = sfxCtx.createOscillator();
     osc.type = type; osc.frequency.value = freq;
     const gain = sfxCtx.createGain();
@@ -1068,6 +1125,7 @@ function _ambientCreaks() {
             g.gain.linearRampToValueAtTime(0, t + 0.35);
             osc.connect(g); g.connect(sfxMasterGain);
             osc.start(t); osc.stop(t + 0.4);
+            osc.onended = () => { try { g.disconnect(); osc.disconnect(); } catch(e){} };
         }
         setTimeout(creakLoop, (2 + Math.random() * 4) * 1000);
     };
@@ -1110,6 +1168,8 @@ function _ambientIceCrackle() {
             g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
             s.connect(g); g.connect(sfxMasterGain);
             s.start(t);
+            s.stop(t + 0.08);
+            s.onended = () => { try { g.disconnect(); s.disconnect(); } catch(e){} };
         }
         setTimeout(crackleLoop, (1.5 + Math.random() * 3) * 1000);
     };
@@ -1131,6 +1191,7 @@ function _ambientPulse(interval, freq) {
             g.gain.linearRampToValueAtTime(0, t + 0.8);
             osc.connect(g); g.connect(sfxMasterGain);
             osc.start(t); osc.stop(t + 1.0);
+            osc.onended = () => { try { g.disconnect(); osc.disconnect(); } catch(e){} };
         }
         setTimeout(pulseLoop, interval * 1000);
     };

@@ -579,19 +579,25 @@ function isChestLocked(row, col) {
 }
 
 function getNearbyChest() {
-    const mapSize = floorMap.length;
-    for (let r = 0; r < mapSize; r++) {
-        for (let c = 0; c < mapSize; c++) {
-            if (objectMap[r][c] !== 'chestClosed') continue;
-            if (openedChests.has(`${r},${c}`)) continue;
-            const dr = player.row - r;
-            const dc = player.col - c;
-            if (Math.sqrt(dr * dr + dc * dc) < CHEST_INTERACT_RANGE) {
-                return { row: r, col: c };
+    const pr = Math.floor(player.row);
+    const pc = Math.floor(player.col);
+    const range = Math.ceil(typeof CHEST_INTERACT_RANGE !== 'undefined' ? CHEST_INTERACT_RANGE : 1.8);
+    const ms = floorMap.length;
+    let bestDist = Infinity, bestChest = null;
+    for (let r = Math.max(0, pr - range); r <= Math.min(ms - 1, pr + range); r++) {
+        for (let c = Math.max(0, pc - range); c <= Math.min(ms - 1, pc + range); c++) {
+            if (objectMap[r] && objectMap[r][c] === 'chestClosed') {
+                const dr = r + 0.5 - player.row;
+                const dc = c + 0.5 - player.col;
+                const dist = Math.sqrt(dr * dr + dc * dc);
+                if (dist < (typeof CHEST_INTERACT_RANGE !== 'undefined' ? CHEST_INTERACT_RANGE : 1.8) && dist < bestDist) {
+                    bestDist = dist;
+                    bestChest = { row: r, col: c };
+                }
             }
         }
     }
-    return null;
+    return bestChest;
 }
 
 function openChest(chest) {

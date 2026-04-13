@@ -53,7 +53,17 @@ function resetSkeletonState() {
     skeletonState.boneFragments.length = 0;
 }
 
+// Helper: correct skeleton max HP including upgrades, talisman, and quest bonuses
+function _skeletonMaxHP() {
+    const base = FORM_CONFIGS.skeleton.maxHp * (1 + getUpgrade('calcium_fort') * 0.15);
+    const qBonus = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    return base + qBonus;
+}
+
 function updateSkeleton(dt) {
+    if (gameDead) return;
+    if (typeof wave !== 'undefined' && wave.phase === 'victory') return;
+
     const config = FORM_CONFIGS.skeleton;
 
     // === MOVEMENT ===
@@ -246,7 +256,7 @@ function updateSkeleton(dt) {
         if (dist < 1.0) {
             skeletonState.boneFragments.splice(i, 1);
             FormSystem.formData.skeleton.bonesCollected++;
-            player.hp = Math.min(config.maxHp * (1 + getUpgrade('calcium_fort') * 0.15),
+            player.hp = Math.min(_skeletonMaxHP(),
                 player.hp + 8);
             pickupTexts.push({
                 row: player.row, col: player.col,
@@ -652,8 +662,7 @@ function drawSkeletonHUD() {
     ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 4); ctx.stroke();
 
     // HP Bar (bone white)
-    const _qHpSkel = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-    const maxHP = FORM_CONFIGS.skeleton.maxHp * (1 + getUpgrade('calcium_fort') * 0.15) + _qHpSkel;
+    const maxHP = _skeletonMaxHP();
     const hpFrac = Math.max(0, player.hp / maxHP);
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0808';
@@ -959,8 +968,7 @@ formHandlers.skeleton.onInteract = function() {
     }
 
     if (healed > 0 || bonesGained > 0) {
-        const _qHpSkel2 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-        const maxHP = FORM_CONFIGS.skeleton.maxHp * (1 + getUpgrade('calcium_fort') * 0.15) + getTalismanBonus().hpBonus + _qHpSkel2;
+        const maxHP = _skeletonMaxHP();
         player.hp = Math.min(maxHP, player.hp + healed);
         let txt = `+${healed} HP`;
         if (bonesGained > 0) txt += ` +${bonesGained} Bones`;
