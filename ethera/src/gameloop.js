@@ -270,17 +270,41 @@ function drawIntroOverlay() {
     }
 
     // Breathing vignette during black screen phase (0-10s) — signals the game is alive
-    // Must use 'screen' blend to ADD light onto the black background (source-over is invisible on black)
+    // Uses 'lighter' (additive) blend to project light onto the black background.
+    // Math: on black, final pixel = source × globalAlpha. Need R ≥ 30/255 to be visible.
+    // At alpha 0.20, color (200,40,15) → R=40, G=8, B=3 — clearly visible warm glow.
     if (t < 10.0) {
-        const breath = 0.06 + Math.sin(t * 0.9) * 0.04; // slow ~7s cycle, 0.02–0.10 alpha
-        ctx.globalCompositeOperation = 'screen';
+        const breath = 0.15 + Math.sin(t * 0.9) * 0.10; // slow ~7s cycle, alpha 0.05–0.25
+        ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = breath;
-        const breathGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, canvasH * 0.15, canvasW/2, canvasH/2, canvasH * 0.75);
+        const breathGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, canvasH * 0.2, canvasW/2, canvasH/2, canvasH * 0.7);
         breathGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        breathGrad.addColorStop(0.6, 'rgba(60, 12, 8, 0.5)');
-        breathGrad.addColorStop(1, 'rgba(120, 25, 12, 1)');
+        breathGrad.addColorStop(0.5, 'rgba(100, 20, 8, 0.4)');
+        breathGrad.addColorStop(0.8, 'rgba(180, 35, 12, 0.8)');
+        breathGrad.addColorStop(1, 'rgba(200, 40, 15, 1)');
         ctx.fillStyle = breathGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Floating ember particles during black screen (2-10s) — gives the eye something to track
+    if (t > 2.0 && t < 10.0) {
+        ctx.globalCompositeOperation = 'lighter';
+        const emberCount = 4;
+        for (let i = 0; i < emberCount; i++) {
+            // Each ember has a unique slow trajectory based on its index
+            const seed = i * 137.5; // golden angle offset
+            const lifeT = ((t - 2.0 + seed) % 8.0) / 8.0; // 0→1 over 8s, looping
+            const ex = canvasW * (0.2 + 0.6 * ((Math.sin(seed + lifeT * 3.1) + 1) / 2));
+            const ey = canvasH * (0.8 - lifeT * 0.7); // drift upward
+            const eAlpha = Math.sin(lifeT * Math.PI) * 0.4; // fade in then out
+            const eSize = 1.0 + Math.sin(seed + t * 2) * 0.5;
+            ctx.globalAlpha = eAlpha;
+            ctx.fillStyle = '#cc6633';
+            ctx.beginPath();
+            ctx.arc(ex, ey, eSize, 0, Math.PI * 2);
+            ctx.fill();
+        }
         ctx.globalCompositeOperation = 'source-over';
     }
 
@@ -295,16 +319,18 @@ function drawIntroOverlay() {
         ctx.fillText('Press any key to skip', canvasW - 20, canvasH - 16);
     }
 
-    // Heartbeat screen flash — dark red pulse, radius and intensity grow with each beat
+    // Heartbeat screen flash — crimson pulse from center, additive blend for visibility on black
     if (introFlash > 0.005) {
+        ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = introFlash;
         const _fr = canvasH * introFlashRadius;
         const flashGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, 0, canvasW/2, canvasH/2, _fr);
-        flashGrad.addColorStop(0, 'rgba(100, 20, 10, 0.7)');
-        flashGrad.addColorStop(0.5, 'rgba(60, 10, 5, 0.3)');
+        flashGrad.addColorStop(0, 'rgba(200, 50, 20, 1)');
+        flashGrad.addColorStop(0.4, 'rgba(140, 25, 10, 0.6)');
         flashGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = flashGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
+        ctx.globalCompositeOperation = 'source-over';
     }
 
     // --- Text rendering ---
