@@ -437,6 +437,7 @@ let _displayMana = -1;
 let _displayXP = -1;
 let _hpFlashTimer = 0;
 let _prevHP = -1;
+let _phantomHP = -1; // ghost bar that drains slowly after damage
 function drawHPMana() {
     if (gamePhase !== 'playing') return;
     // Smooth lerp toward actual values (8x per second convergence)
@@ -446,6 +447,7 @@ function drawHPMana() {
     if (_displayMana < 0) _displayMana = player.mana;
     if (_displayXP < 0) _displayXP = xpState.xp;
     if (_prevHP < 0) _prevHP = player.hp;
+    if (_phantomHP < 0) _phantomHP = player.hp;
     // Detect damage — trigger flash
     if (player.hp < _prevHP - 0.5) _hpFlashTimer = 0.15;
     _prevHP = player.hp;
@@ -504,12 +506,26 @@ function drawHPMana() {
     const totalMaxHP = Math.round((MAX_HP + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _questHpBonus) * _abyssHpMult);
     const hpFrac = Math.max(0, _displayHP / totalMaxHP);
 
+    // Phantom HP drain — stays at old value, drains slowly after damage
+    if (_phantomHP < player.hp) _phantomHP = player.hp;
+    _phantomHP = Math.max(player.hp, _phantomHP - totalMaxHP * frameDt * 1.5);
+    const phantomFrac = Math.max(0, _phantomHP / totalMaxHP);
+
     // Dark track
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0404';
     ctx.beginPath();
     ctx.roundRect(x, yHP, barW, barH, 3);
     ctx.fill();
+
+    // Phantom bar — pale yellow ghost showing recent damage (drawn behind real HP)
+    if (phantomFrac > hpFrac + 0.01) {
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = '#ddcc88';
+        ctx.beginPath();
+        ctx.roundRect(x, yHP, Math.max(2, barW * phantomFrac), barH, 3);
+        ctx.fill();
+    }
 
     // HP gradient fill
     if (hpFrac > 0) {

@@ -603,6 +603,12 @@ function applyEnemyHit(e, damage, opts) {
         });
     }
 
+    // Impact ripple on crit hits
+    if (isCrit && typeof spawnImpactRipple === 'function') {
+        const ripPos = tileToScreen(e.row, e.col);
+        spawnImpactRipple(ripPos.x + cameraX, ripPos.y + cameraY, '#ffdd66', 40);
+    }
+
     // Crit spark burst
     if (isCrit && !opts.skipParticles) {
         const critPos = tileToScreen(e.row, e.col);
@@ -681,6 +687,7 @@ function applyEnemyHit(e, damage, opts) {
         e.state = 'death';
         e.deathTimer = 0.7;
         e.animFrame = 0;
+        e._deathSquash = 1.0; // squash-and-stretch timer (1→0)
         if (!opts.skipSFX) sfxEnemyDeath(e.row, e.col);
         rollEnemyLoot(e);
         // Clean up boss phase 2 effects on death
@@ -4229,6 +4236,22 @@ function triggerLevelUp() {
     duckMusic(true);
     playSting('levelUp');
     if (typeof sfxLevelUp === 'function') sfxLevelUp();
+    // Level-up shockwave — golden ring + enemy pushback
+    if (typeof spawnImpactRipple === 'function') {
+        const lvPos = tileToScreen(player.row, player.col);
+        spawnImpactRipple(lvPos.x + cameraX, lvPos.y + cameraY, '#ffdd44', 120);
+    }
+    addScreenShake(4, 0.2);
+    // Push nearby enemies away — brief breathing room
+    for (const e of enemies) {
+        if (e.state === 'death') continue;
+        const dr = e.row - player.row, dc = e.col - player.col;
+        const dist = Math.sqrt(dr * dr + dc * dc);
+        if (dist < 4 && dist > 0.1) {
+            e.knockVr = (e.knockVr || 0) + (dr / dist) * 3;
+            e.knockVc = (e.knockVc || 0) + (dc / dist) * 3;
+        }
+    }
     // Tutorial hint on first level-up
     if (typeof Notify !== 'undefined') {
         Notify.hint('tutorial_levelup', 'Choose an upgrade! Hover cards to preview.', 4, { color: '#e8c868', borderColor: '#8a7030' });
@@ -5028,8 +5051,16 @@ function drawEnemy(e) {
     // Boss split phase — reduce alpha while split copies are active
     if (e._splitActive && e._splitAlpha !== undefined) ctx.globalAlpha *= e._splitAlpha;
 
-    const scaledDW = dw * spawnScale;
-    const scaledDH = dh * spawnScale;
+    let scaledDW = dw * spawnScale;
+    let scaledDH = dh * spawnScale;
+
+    // Death squash-and-stretch — sprite deflates before burst
+    if (e.state === 'death' && e._deathSquash > 0) {
+        e._deathSquash = Math.max(0, e._deathSquash - (1 / 60) * 4); // drain over 0.25s
+        const sq = e._deathSquash;
+        scaledDW *= 1 + (1 - sq) * 0.3;  // stretch wider
+        scaledDH *= sq * 0.7 + 0.3;      // squash flatter (1.0→0.3)
+    }
 
     // Stagger wobble offset during hit flash (decays with flash timer)
     let staggerX = 0, staggerY = 0;

@@ -801,6 +801,7 @@ let _nextProceduralDepth = 1;
 // ── AMBIENT ATMOSPHERE PARTICLES ──
 let _ambientTimer = 0;
 let _arrivalVignetteTimer = 0; // dissipating edge vignette on zone entry
+let _lowHpBeatTimer = 0;       // heartbeat sound timer for low HP
 
 // ============================================================
 //  COMBAT DECALS — persistent blood/scorch marks on the floor
@@ -953,6 +954,36 @@ function spawnAmbientParticles(dt) {
             _emitParticle(sPos.x + cameraX + (Math.random()-0.5)*40, sPos.y + cameraY,
                 (Math.random()-0.5)*0.3, -0.4, 2.0, 0.8, '#cc6633', 0.10, 'ambient');
         }
+    }
+}
+
+// ============================================================
+//  IMPACT RIPPLE RINGS — expanding shockwave on heavy hits
+// ============================================================
+const _impactRipples = [];
+
+function spawnImpactRipple(worldX, worldY, color, maxRadius) {
+    _impactRipples.push({
+        x: worldX, y: worldY,
+        radius: 5, maxRadius: maxRadius || 50,
+        alpha: 0.6, color: color || '#ffffff',
+    });
+}
+
+function drawImpactRipples() {
+    for (let i = _impactRipples.length - 1; i >= 0; i--) {
+        const r = _impactRipples[i];
+        r.radius += 180 * (1 / 60); // ~180px/sec expansion
+        r.alpha -= 2.0 * (1 / 60);  // fade over ~0.3s
+        if (r.alpha <= 0) { _impactRipples.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = r.alpha;
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
     }
 }
 
@@ -3720,6 +3751,7 @@ function render() {
 
     // ── LAYER 7: World effects ──
     if (typeof drawCritters === 'function') drawCritters();
+    if (typeof drawImpactRipples === 'function') drawImpactRipples();
     if (typeof drawWeather === 'function') drawWeather();
     drawDustParticles();
     drawAllTowerGlows();
@@ -3874,6 +3906,14 @@ function render() {
         if (hpRatio < 0.25) {
             const urgency = 1 - (hpRatio / 0.25); // 0→1 as HP drops from 25%→0%
             const pulse = 0.12 + Math.sin(performance.now() * 0.005) * 0.06; // ~0.8Hz
+            // Low-HP heartbeat SFX — plays on each pulse peak
+            if (!_lowHpBeatTimer) _lowHpBeatTimer = 0;
+            _lowHpBeatTimer -= _frameDt;
+            if (_lowHpBeatTimer <= 0 && typeof sfxCinematicHeartbeat === 'function') {
+                const beatInterval = 1.2 - urgency * 0.5; // 1.2s → 0.7s as HP drops
+                _lowHpBeatTimer = beatInterval;
+                sfxCinematicHeartbeat(0.10 + urgency * 0.15); // quiet but audible
+            }
             const lowHpAlpha = urgency * pulse;
             ctx.save();
             const lowGrad = ctx.createRadialGradient(
