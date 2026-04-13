@@ -225,6 +225,12 @@ function handleKeyDown(e) {
         ['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) {
         e.preventDefault();
     }
+    // Intro skip — any key after 2s jumps to music/reveal sequence
+    if (gamePhase === 'intro' && typeof introTimer !== 'undefined' && introTimer > 2.0 && introTimer < 29.0) {
+        introTimer = 29.0;
+        introMusicStarted = false; // let music trigger naturally at 29.0
+        return;
+    }
     // Name entry: prevent Tab from stealing focus from input
     if (gamePhase === 'nameEntry' && e.key === 'Tab') {
         e.preventDefault();
@@ -443,6 +449,13 @@ function handleMouseDown(e) {
     const clickY = e.clientY / scale;
     mouse.x = clickX;
     mouse.y = clickY;
+
+    // Intro skip on click
+    if (gamePhase === 'intro' && typeof introTimer !== 'undefined' && introTimer > 2.0 && introTimer < 29.0 && e.button === 0) {
+        introTimer = 29.0;
+        introMusicStarted = false;
+        return;
+    }
 
     // ----- Journal reader clicks -----
     if (journalOpen && e.button === 0) {

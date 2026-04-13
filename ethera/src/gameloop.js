@@ -193,10 +193,10 @@ function updateIntroPhase(dt) {
     // Vol:  .10   .13   .17   .22   .28   .35   .42   .50   .58  .68  .78  .90
     //
     if (typeof sfxCinematicHeartbeat === 'function') {
-        if (t >= 10.0 && !introSfxPlayed) { introSfxPlayed = true; sfxCinematicHeartbeat(0.10); introFlash = 0.02; introFlashRadius = 0.20; }
-        if (t >= 12.0 && !introSfxBeat2)  { introSfxBeat2 = true;  sfxCinematicHeartbeat(0.13); introFlash = 0.03; introFlashRadius = 0.22; }
-        if (t >= 13.8 && !introSfxBeat3)  { introSfxBeat3 = true;  sfxCinematicHeartbeat(0.17); introFlash = 0.04; introFlashRadius = 0.25; }
-        if (t >= 15.4 && !introSfxBeat4)  { introSfxBeat4 = true;  sfxCinematicHeartbeat(0.22); introFlash = 0.05; introFlashRadius = 0.28; }
+        if (t >= 10.0 && !introSfxPlayed) { introSfxPlayed = true; sfxCinematicHeartbeat(0.20); introFlash = 0.06; introFlashRadius = 0.30; }
+        if (t >= 12.0 && !introSfxBeat2)  { introSfxBeat2 = true;  sfxCinematicHeartbeat(0.24); introFlash = 0.07; introFlashRadius = 0.32; }
+        if (t >= 13.8 && !introSfxBeat3)  { introSfxBeat3 = true;  sfxCinematicHeartbeat(0.28); introFlash = 0.08; introFlashRadius = 0.35; }
+        if (t >= 15.4 && !introSfxBeat4)  { introSfxBeat4 = true;  sfxCinematicHeartbeat(0.32); introFlash = 0.09; introFlashRadius = 0.38; }
         if (t >= 16.9 && !introSfxBeat5)  { introSfxBeat5 = true;  sfxCinematicHeartbeat(0.28); introFlash = 0.07; introFlashRadius = 0.32; }
         if (t >= 18.3 && !introSfxBeat6)  { introSfxBeat6 = true;  sfxCinematicHeartbeat(0.35); introFlash = 0.09; introFlashRadius = 0.38; }
         if (t >= 19.6 && !introSfxBeat7)  { introSfxBeat7 = true;  sfxCinematicHeartbeat(0.42); introFlash = 0.11; introFlashRadius = 0.44; }
@@ -267,6 +267,28 @@ function drawIntroOverlay() {
         ctx.globalAlpha = overlayAlpha;
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+
+    // Subtle breathing vignette during black screen phase (0-10s) — signals the game is alive
+    if (t < 10.0) {
+        const breath = 0.035 + Math.sin(t * 0.9) * 0.025; // slow ~7s cycle, 0.01–0.06 alpha
+        ctx.globalAlpha = breath;
+        const breathGrad = ctx.createRadialGradient(canvasW/2, canvasH/2, canvasH * 0.3, canvasW/2, canvasH/2, canvasH * 0.85);
+        breathGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        breathGrad.addColorStop(1, 'rgba(80, 15, 8, 1)');
+        ctx.fillStyle = breathGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+
+    // Skip hint — fades in after 5s, tells user this is intentional
+    if (t > 5.0 && t < 29.0) {
+        const skipAlpha = Math.min(0.18, (t - 5.0) * 0.09);
+        ctx.globalAlpha = skipAlpha;
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#666';
+        ctx.fillText('Press any key to skip', canvasW - 20, canvasH - 16);
     }
 
     // Heartbeat screen flash — dark red pulse, radius and intensity grow with each beat
