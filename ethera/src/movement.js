@@ -366,6 +366,21 @@ function updatePlayer(dt) {
     if (typeof updateFootsteps === 'function' && FormSystem.currentForm !== 'slime') {
         updateFootsteps(dt, player.state === 'walk' && !player.dodging);
     }
+    // Footstep dust particles — subtle ground reaction when walking
+    if (player.state === 'walk' && !player.dodging && typeof _emitParticle === 'function') {
+        if (!player._footDustTimer) player._footDustTimer = 0;
+        player._footDustTimer += dt;
+        if (player._footDustTimer > 0.25) { // every 0.25s while walking
+            player._footDustTimer = 0;
+            const fp = tileToScreen(player.row, player.col);
+            const fx = fp.x + cameraX + (Math.random() - 0.5) * 6;
+            const fy = fp.y + cameraY + 4;
+            _emitParticle(fx, fy,
+                (Math.random() - 0.5) * 0.6, -0.3 - Math.random() * 0.2,
+                0.4 + Math.random() * 0.2, 1.0 + Math.random() * 0.5,
+                '#887766', 0.12, 'footdust');
+        }
+    }
 
     // --- Facing toward mouse when idle (subtle) ---
     if (speed <= 0.3) {

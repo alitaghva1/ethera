@@ -694,6 +694,10 @@ function applyEnemyHit(e, damage, opts) {
             e._boneWallActive = false;
             e._boneWallTiles = [];
         }
+        // Spawn combat decal (blood pool) at death location
+        if (typeof spawnCombatDecal === 'function') {
+            spawnCombatDecal(e.row, e.col, e.def.tintColor || '#441111', e.def.isBoss ? 8 : 4);
+        }
         if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
         else if (e.elite) { addHitPause(0.05 * impactScale); addScreenShake(4 * impactScale * critMul, 0.12 * impactScale); addSlowMo(0.08, 0.3); }
         else { addHitPause(0.05 * impactScale); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); }

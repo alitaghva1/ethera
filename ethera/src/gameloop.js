@@ -800,6 +800,44 @@ let _nextProceduralDepth = 1;
 // ── AMBIENT ATMOSPHERE PARTICLES ──
 let _ambientTimer = 0;
 let _arrivalVignetteTimer = 0; // dissipating edge vignette on zone entry
+
+// ============================================================
+//  COMBAT DECALS — persistent blood/scorch marks on the floor
+// ============================================================
+const _combatDecals = [];
+const _DECAL_MAX = 30;
+const _DECAL_LIFE = 18; // seconds before fade starts
+
+function spawnCombatDecal(row, col, color, size) {
+    if (_combatDecals.length >= _DECAL_MAX) _combatDecals.shift();
+    _combatDecals.push({
+        row, col, color: color || '#441111',
+        size: size || (3 + Math.random() * 3),
+        life: _DECAL_LIFE + Math.random() * 4,
+        maxLife: _DECAL_LIFE + 4,
+    });
+}
+
+function drawCombatDecals() {
+    if (_combatDecals.length === 0) return;
+    ctx.save();
+    for (let i = _combatDecals.length - 1; i >= 0; i--) {
+        const d = _combatDecals[i];
+        d.life -= 1 / 60;
+        if (d.life <= 0) { _combatDecals.splice(i, 1); continue; }
+        const pos = tileToScreen(d.row, d.col);
+        const sx = pos.x + cameraX, sy = pos.y + cameraY;
+        if (sx < -50 || sx > canvasW + 50 || sy < -50 || sy > canvasH + 50) continue;
+        // Fade in last 3 seconds of life
+        const alpha = d.life < 3 ? d.life / 3 : 1;
+        ctx.globalAlpha = alpha * 0.25;
+        ctx.fillStyle = d.color;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 2, d.size, d.size * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
 const _AMBIENT_MAX = 12;
 const _AMBIENT_CONFIGS = {
     dungeon: { color: '#998866', size: 1.0, alpha: 0.08, vy: -0.2, life: 3.5 },  // warm amber dust motes
@@ -3148,6 +3186,7 @@ function restartGame() {
     dustParticles = [];
     if (typeof _weatherParticles !== 'undefined') _weatherParticles.length = 0;
     if (typeof _weatherRipples !== 'undefined') _weatherRipples.length = 0;
+    if (typeof _combatDecals !== 'undefined') _combatDecals.length = 0;
     _arrivalVignetteTimer = 0; // vignette only triggers on zone transitions, not initial load
     cinematicTimer = 0;
     cinematicTextAlpha = [0, 0, 0, 0];
@@ -3489,6 +3528,7 @@ function render() {
 
     // ── LAYER 3: Floor decals + environment light props ──
     drawBloodStain();
+    drawCombatDecals();
     drawEnvironmentLightProps();
 
     // ── LAYER 4: Darkness / Lighting ──
@@ -3496,6 +3536,35 @@ function render() {
 
     // ── LAYER 4b: Environment light punchthrough (screen blend after darkness) ──
     drawEnvironmentLightPunchthrough();
+
+    // ── LAYER 4b2: Bloom glow on light sources (soft additive halo) ──
+    {
+        const _bloomLights = typeof ENV_LIGHTS !== 'undefined' ? ENV_LIGHTS[currentZone] : null;
+        if (_bloomLights && _bloomLights.length > 0) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            const now = performance.now();
+            for (const light of _bloomLights) {
+                const pos = tileToScreen(light.row, light.col);
+                const sx = pos.x + cameraX, sy = pos.y + cameraY;
+                if (sx < -150 || sx > canvasW + 150 || sy < -150 || sy > canvasH + 150) continue;
+                const fr = Math.floor(light.row), fc = Math.floor(light.col);
+                if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed[0].length && !fogRevealed[fr][fc]) continue;
+                // Soft bloom halo — 2x radius of the light, very low alpha
+                const bloomR = light.radius * 2.2;
+                const flicker = 0.8 + Math.sin(now / 500 + light.row * 3) * 0.2;
+                ctx.globalAlpha = light.intensity * 0.08 * flicker;
+                const [cr, cg, cb] = light.color;
+                const bg = ctx.createRadialGradient(sx, sy - 8, 0, sx, sy - 8, bloomR);
+                bg.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.4)`);
+                bg.addColorStop(0.4, `rgba(${cr}, ${cg}, ${cb}, 0.1)`);
+                bg.addColorStop(1, `rgba(0, 0, 0, 0)`);
+                ctx.fillStyle = bg;
+                ctx.fillRect(sx - bloomR, sy - 8 - bloomR, bloomR * 2, bloomR * 2);
+            }
+            ctx.restore();
+        }
+    }
 
     // ── LAYER 4c: Door / exit glows (visible through darkness) ──
     drawDoorGlows();
@@ -3596,6 +3665,28 @@ function render() {
         ctx.fillText(mk.text, canvasW / 2, mkY);
         ctx.shadowBlur = 0;
         ctx.restore();
+    }
+
+    // ── LAYER 7.5: Per-zone color grading tint ──
+    // Single multiply pass that unifies all pixels under the zone's color identity.
+    {
+        const _ZONE_TINTS = {
+            0: 'rgba(140, 150, 170, 0.92)',  // Hamlet: cool blue-grey overcast
+            1: 'rgba(170, 150, 130, 0.93)',  // Undercroft: warm earthy brown
+            2: 'rgba(150, 160, 145, 0.93)',  // Ruined Tower: mossy grey-green
+            3: 'rgba(170, 155, 120, 0.92)',  // Spire: sickly amber
+            4: 'rgba(180, 140, 130, 0.90)',  // Inferno: warm red push
+            5: 'rgba(135, 150, 175, 0.92)',  // Frozen: cold blue shift
+            6: 'rgba(155, 135, 170, 0.92)',  // Throne: purple corruption
+        };
+        const tint = _ZONE_TINTS[currentZone];
+        if (tint) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.fillStyle = tint;
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.restore();
+        }
     }
 
     // ── LAYER 8: Screen effects ──

@@ -27,6 +27,13 @@ function updateCamera(dt) {
     cameraX = Math.round(smoothCamX);
     cameraY = Math.round(smoothCamY);
 
+    // Camera breathing — subtle idle bob that makes the world feel alive
+    // Only active when player is idle (not moving, not shaking)
+    if (screenShakeTimer <= 0) {
+        const breathT = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
+        cameraY += Math.sin(breathT * 2.1) * 0.4; // ~0.4px vertical, ~3s cycle
+    }
+
     // Clamp camera to prevent showing void beyond map edges
     if (typeof MAP_SIZE !== 'undefined' && typeof DIAMOND_W !== 'undefined') {
         const mapW = MAP_SIZE * DIAMOND_W;
