@@ -204,7 +204,8 @@ function updateIntroPhase(dt) {
 
     // Exponential decay — fast initial drop, slow organic tail
     if (introPulse > 0.01) {
-        introPulse *= Math.pow(0.06, dt); // ~94% drop per second
+        const decayFactor = Math.pow(0.06, Math.min(dt, 0.1)); // clamp dt to prevent NaN on huge frames
+        introPulse *= isFinite(decayFactor) ? decayFactor : 0;
     }
 
     // === MUSIC ===

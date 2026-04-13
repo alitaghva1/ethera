@@ -359,6 +359,7 @@ let _ambientZone = -1;   // currently playing zone
 function startAmbientAudio(zoneNum) {
     stopAmbientAudio();
     if (!sfxCtx) return;
+    if (typeof zoneNum !== 'number' || !isFinite(zoneNum)) return;
     _ambientZone = zoneNum;
     const vol = 0.06; // very low — subliminal
 
@@ -405,6 +406,10 @@ function stopAmbientAudio() {
 
 function _ambientDrone(type, freq, vol, lfoDepth) {
     if (!sfxCtx) return;
+    // Guard: validate all params are finite numbers
+    if (!isFinite(freq) || !isFinite(vol)) return;
+    if (typeof type !== 'string') return;
+    try {
     const osc = sfxCtx.createOscillator();
     osc.type = type;
     osc.frequency.value = freq;
@@ -423,10 +428,13 @@ function _ambientDrone(type, freq, vol, lfoDepth) {
     osc.start();
     lfo.start();
     _ambientNodes.push({ osc, lfo, gain });
+    } catch(e) { /* swallow audio creation errors gracefully */ }
 }
 
 function _ambientNoise(freq, Q, vol) {
     if (!sfxCtx) return;
+    if (!isFinite(freq) || !isFinite(Q) || !isFinite(vol)) return;
+    try {
     // Looping noise buffer
     const bufLen = sfxCtx.sampleRate * 2;
     const buf = sfxCtx.createBuffer(1, bufLen, sfxCtx.sampleRate);
@@ -446,6 +454,7 @@ function _ambientNoise(freq, Q, vol) {
     gain.connect(sfxMasterGain);
     src.start();
     _ambientNodes.push({ osc: src, gain });
+    } catch(e) { /* swallow audio creation errors gracefully */ }
 }
 
 function sfxZoneEnter() {
