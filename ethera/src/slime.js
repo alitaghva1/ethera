@@ -1034,7 +1034,7 @@ function drawSlimeHUD() {
 
     // HP Bar (red for player slime)
     const maxHP = _slimeMaxHP();
-    const hpFrac = Math.max(0, Math.min(1, player.hp / maxHP));
+    const hpFrac = (maxHP > 0) ? Math.max(0, Math.min(1, player.hp / maxHP)) : 0;
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0404';
     ctx.beginPath(); ctx.roundRect(x, yHP, barW, barH, 3); ctx.fill();
@@ -1049,7 +1049,7 @@ function drawSlimeHUD() {
     }
     ctx.globalAlpha = 0.9;
     ctx.fillStyle = '#ffcccc';
-    ctx.font = 'bold 11px monospace';
+    ctx.font = 'bold 11px Georgia';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
@@ -1057,7 +1057,7 @@ function drawSlimeHUD() {
     ctx.fillText(`HP ${Math.ceil(player.hp)}/${Math.ceil(maxHP)}`, x + 4, yHP + barH / 2 + 1);
 
     // Size Bar (yellow-green)
-    const sizeFrac = slimeState.size / slimeState.maxSize;
+    const sizeFrac = (slimeState.maxSize > 0) ? slimeState.size / slimeState.maxSize : 0;
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0804';
     ctx.beginPath(); ctx.roundRect(x, ySize, barW, barH, 3); ctx.fill();
@@ -1072,10 +1072,10 @@ function drawSlimeHUD() {
     }
     ctx.globalAlpha = 0.9;
     ctx.fillStyle = '#ddddaa';
-    ctx.font = 'bold 11px monospace';
+    ctx.font = 'bold 11px Georgia';
     ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
-    ctx.strokeText(`SIZE ${slimeState.size.toFixed(1)}/${slimeState.maxSize}`, x + 4, ySize + barH / 2 + 1);
-    ctx.fillText(`SIZE ${slimeState.size.toFixed(1)}/${slimeState.maxSize}`, x + 4, ySize + barH / 2 + 1);
+    ctx.strokeText(`Size ${slimeState.size.toFixed(1)}/${slimeState.maxSize}`, x + 4, ySize + barH / 2 + 1);
+    ctx.fillText(`Size ${slimeState.size.toFixed(1)}/${slimeState.maxSize}`, x + 4, ySize + barH / 2 + 1);
 
     // XP Bar
     const xpFrac = xpState.xpToNext > 0 ? xpState.xp / xpState.xpToNext : 0;
@@ -1093,7 +1093,7 @@ function drawSlimeHUD() {
     }
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#ddcc88';
-    ctx.font = 'bold 11px monospace';
+    ctx.font = 'bold 11px Georgia';
     ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
     ctx.strokeText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);
     ctx.fillText(`Lv${xpState.level}  ${xpState.xp}/${xpState.xpToNext}`, x + 4, yXP + barH / 2 + 1);

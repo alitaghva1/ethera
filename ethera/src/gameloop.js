@@ -241,8 +241,8 @@ function updateIntroPhase(dt) {
         if (typeof updateCamera === 'function') updateCamera(dt);
     }
 
-    // End intro
-    if (t >= INTRO_DURATION) {
+    // End intro (one-shot — gamePhase change prevents re-entry next frame)
+    if (t >= INTRO_DURATION && gamePhase !== 'playing') {
         smoothCamX = cameraX;
         smoothCamY = cameraY;
         gamePhase = 'playing';
@@ -3317,11 +3317,13 @@ function restartGame() {
     if (typeof hamletRebuild !== 'undefined') {
         for (const k of Object.keys(hamletRebuild)) hamletRebuild[k] = false;
     }
-    // Reset wave
+    // Reset wave — use 'done' so waves don't auto-trigger before loadZone/startWaveSystem
     wave.current = 0;
-    wave.phase = 'pre';
+    wave.phase = 'done';
     wave.timer = 0;
     wave.bannerAlpha = 0;
+    wave.bannerText = '';
+    wave.bannerSub = '';
     wave.enemiesAlive = 0;
     wave.totalKilled = 0;
     // Reset screen effects

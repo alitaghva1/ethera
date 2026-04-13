@@ -749,6 +749,9 @@ const ENEMY_GOLD_DROP = {
     infernal_knight: 400, frost_wyrm: 450, ruined_king: 600,
 };
 
+// XP required for each level: base 40, linear +25/lvl, quadratic +3/lvl²
+function xpForLevel(lvl) { return Math.round(40 + (lvl - 1) * 25 + (lvl - 1) * (lvl - 1) * 3); }
+
 // Upgrade state: tracks how many times each upgrade has been taken
 const upgrades = {};
 

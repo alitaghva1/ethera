@@ -288,6 +288,19 @@ function handleKeyDown(e) {
         }
         return; // consume all keys while journal is open
     }
+    // NPC service menus (smithy/shop) — Escape or E closes
+    if (typeof smithyMenuOpen !== 'undefined' && smithyMenuOpen) {
+        if (e.key === 'Escape' || e.key.toLowerCase() === 'e') {
+            if (typeof closeSmithyMenu === 'function') closeSmithyMenu();
+        }
+        return; // consume all keys while smithy is open
+    }
+    if (typeof shopMenuOpen !== 'undefined' && shopMenuOpen) {
+        if (e.key === 'Escape' || e.key.toLowerCase() === 'e') {
+            if (typeof closeShopMenu === 'function') closeShopMenu();
+        }
+        return; // consume all keys while shop is open
+    }
     // NPC dialogue navigation
     if (npcDialogueOpen) {
         if (e.key === 'Escape' || e.key.toLowerCase() === 'e') {
@@ -301,8 +314,8 @@ function handleKeyDown(e) {
         dismissEvolutionHint();
         return; // consume all keys during hint screen
     }
-    // Death screen quick keys
-    if (gameDead && deathFadeTimer <= 0) {
+    // Death screen quick keys — only after buttons are visible (2.5s fade)
+    if (gameDead && deathFadeTimer >= 2.5) {
         if (e.key.toLowerCase() === 'r') {
             drawDeathScreen._tip = null;
             restartGame();

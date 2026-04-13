@@ -381,6 +381,7 @@ function equipItem(backpackIdx) {
     inventory.backpack.splice(backpackIdx, 1);
     if (current) inventory.backpack.push(current);
     inventory.equipped[slot] = item;
+    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
     if (typeof sfxEquip === 'function') sfxEquip();
 }
 
@@ -401,6 +402,7 @@ function unequipItem(slot) {
     }
     inventory.equipped[slot] = null;
     inventory.backpack.push(item);
+    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
     if (typeof sfxUnequip === 'function') sfxUnequip();
 }
 
@@ -739,10 +741,15 @@ function loadZone(zoneNumber) {
         objRadius.push(Array(newMapSize).fill(0));
     }
 
-    // Clear game state
+    // Clear game state — ALL entity/projectile/effect arrays must be purged
     enemies.length = 0;
     projectiles.length = 0;
+    if (typeof enemyProjectiles !== 'undefined') enemyProjectiles.length = 0;
+    if (typeof towerBolts !== 'undefined') towerBolts.length = 0;
+    if (typeof summons !== 'undefined') summons.length = 0;
+    if (typeof ghosts !== 'undefined') ghosts.length = 0;
     if (typeof burnZones !== 'undefined') burnZones.length = 0;
+    if (typeof groundHazards !== 'undefined') groundHazards.length = 0;
     if (typeof veilUndyingCooldown !== 'undefined') veilUndyingCooldown = 0;
     if (typeof slimeState !== 'undefined') {
         slimeState.splitClones.length = 0;
@@ -758,6 +765,9 @@ function loadZone(zoneNumber) {
     if (typeof resetInscriptions === 'function') resetInscriptions();
     // Reset visual effect state on zone transition
     if (typeof _impactRipples !== 'undefined') _impactRipples.length = 0;
+    if (typeof _combatDecals !== 'undefined') _combatDecals.length = 0;
+    if (typeof _weatherParticles !== 'undefined') _weatherParticles.length = 0;
+    if (typeof _weatherRipples !== 'undefined') _weatherRipples.length = 0;
     if (typeof _phantomHP !== 'undefined') _phantomHP = -1;
     if (typeof _displayHP !== 'undefined') _displayHP = -1;
     // Clean up any boss bone wall tiles that might have persisted
@@ -825,6 +835,25 @@ function loadZone(zoneNumber) {
         player.col = 15;
         player.vx = 0;
         player.vy = 0;
+        // Restore HP/mana to full on town entry — safe haven heals you
+        // Use form-specific max HP calculators (includes equip/talisman/quest bonuses)
+        const _healForm = typeof FormSystem !== 'undefined' ? FormSystem.currentForm : 'slime';
+        if (_healForm === 'slime' && typeof _slimeMaxHP === 'function') {
+            player.hp = _slimeMaxHP();
+        } else if (_healForm === 'skeleton' && typeof _skeletonMaxHP === 'function') {
+            player.hp = _skeletonMaxHP();
+        } else {
+            // Wizard or fallback — base + equip + talisman + quest bonuses
+            const _cfg = typeof FormSystem !== 'undefined' ? FormSystem.getFormConfig() : null;
+            const _base = _cfg ? _cfg.maxHp : 100;
+            const _eqHP = (typeof equipBonus !== 'undefined' && equipBonus.maxHpBonus) ? equipBonus.maxHpBonus : 0;
+            const _talHP = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
+            const _qHP = (typeof questState !== 'undefined' && questState.permBonuses) ? (questState.permBonuses.maxHpBonus || 0) : 0;
+            player.hp = Math.round(_base + _eqHP + _talHP + _qHP);
+        }
+        // Restore mana too
+        const _manaCfg = typeof FormSystem !== 'undefined' ? FormSystem.getFormConfig() : null;
+        if (_manaCfg && _manaCfg.maxMana) player.mana = _manaCfg.maxMana;
     } else if (zoneNumber === 1) {
         // Hybrid zone template system — falls back to legacy if template unavailable
         if (typeof ZONE_TEMPLATE_1 !== 'undefined' && typeof generateZoneFromTemplate === 'function') {

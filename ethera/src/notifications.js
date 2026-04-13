@@ -434,6 +434,14 @@ const Notify = {
         this.zoneBanner.text = '';
         this.zoneBanner.timer = 0;
         this.controlsVisible = false;
+        // Clear one-time hint memory so hints re-show on new game
+        this.shownHints.clear();
+        this.controlsEverShown = false;
+        this.controlsAutoHideTimer = 0;
         this._tutorialState.pending.length = 0;
+        // Clear tutorial sequence memory
+        for (const k of Object.keys(this._tutorialState.sequences || {})) {
+            delete this._tutorialState.sequences[k];
+        }
     }
 };

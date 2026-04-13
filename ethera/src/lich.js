@@ -545,7 +545,7 @@ function drawLichHUD() {
     // HP Bar (dark red/purple)
     const _qHpLich = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
     const lichMaxHp = FORM_CONFIGS.lich.maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _qHpLich;
-    const hpFrac = Math.max(0, player.hp / lichMaxHp);
+    const hpFrac = (lichMaxHp > 0) ? Math.max(0, player.hp / lichMaxHp) : 0;
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0408';
     ctx.beginPath(); ctx.roundRect(x, yHP, barW, barH, 3); ctx.fill();
@@ -565,7 +565,7 @@ function drawLichHUD() {
     ctx.fillText(`HP ${Math.ceil(player.hp)}/${Math.round(lichMaxHp)}`, x + 4, yHP + barH / 2 + 1);
 
     // Soul Energy Bar (purple, drains)
-    const soulFrac = lichState.soulEnergy / lichState.maxSoulEnergy;
+    const soulFrac = (lichState.maxSoulEnergy > 0) ? lichState.soulEnergy / lichState.maxSoulEnergy : 0;
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#04040a';
     ctx.beginPath(); ctx.roundRect(x, ySoul, barW, barH, 3); ctx.fill();

@@ -56,8 +56,9 @@ function resetSkeletonState() {
 // Helper: correct skeleton max HP including upgrades, talisman, and quest bonuses
 function _skeletonMaxHP() {
     const base = FORM_CONFIGS.skeleton.maxHp * (1 + getUpgrade('calcium_fort') * 0.15);
+    const talismanHp = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
     const qBonus = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-    return base + qBonus;
+    return base + talismanHp + qBonus;
 }
 
 function updateSkeleton(dt) {
@@ -663,7 +664,7 @@ function drawSkeletonHUD() {
 
     // HP Bar (bone white)
     const maxHP = _skeletonMaxHP();
-    const hpFrac = Math.max(0, player.hp / maxHP);
+    const hpFrac = (maxHP > 0) ? Math.max(0, player.hp / maxHP) : 0;
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0808';
     ctx.beginPath(); ctx.roundRect(x, yHP, barW, barH, 3); ctx.fill();
@@ -683,7 +684,7 @@ function drawSkeletonHUD() {
     ctx.fillText(`HP ${Math.ceil(player.hp)}/${Math.ceil(maxHP)}`, x + 4, yHP + barH / 2 + 1);
 
     // Stamina Bar (yellow-orange)
-    const stamFrac = skeletonState.stamina / skeletonState.maxStamina;
+    const stamFrac = (skeletonState.maxStamina > 0) ? skeletonState.stamina / skeletonState.maxStamina : 0;
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#0a0804';
     ctx.beginPath(); ctx.roundRect(x, yStam, barW, barH, 3); ctx.fill();

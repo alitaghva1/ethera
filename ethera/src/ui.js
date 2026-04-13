@@ -504,7 +504,7 @@ function drawHPMana() {
         ? getAbyssModMult('hpMult', 1) : 1;
     const _questHpBonus = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
     const totalMaxHP = Math.round((MAX_HP + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _questHpBonus) * _abyssHpMult);
-    const hpFrac = Math.max(0, _displayHP / totalMaxHP);
+    const hpFrac = (totalMaxHP > 0) ? Math.max(0, _displayHP / totalMaxHP) : 0;
 
     // Phantom HP drain — stays at old value, drains slowly after damage
     if (_phantomHP < player.hp) _phantomHP = player.hp;
@@ -573,8 +573,8 @@ function drawHPMana() {
     // --- Mana Bar ---
     const lockedMana = summons.reduce((sum, s) => sum + s.manaLocked, 0);
     const totalMaxMana = MAX_MANA + (equipBonus.maxManaBonus || 0);
-    const manaFrac = Math.max(0, player.mana / totalMaxMana);
-    const lockedFrac = lockedMana / totalMaxMana;
+    const manaFrac = (totalMaxMana > 0) ? Math.max(0, player.mana / totalMaxMana) : 0;
+    const lockedFrac = (totalMaxMana > 0) ? lockedMana / totalMaxMana : 0;
 
     // Dark track
     ctx.globalAlpha = 0.5;

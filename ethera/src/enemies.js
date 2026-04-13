@@ -1402,7 +1402,7 @@ function startWaveSystem() {
     }
     wave.current = -1;
     wave.phase = 'pre';
-    wave.timer = 4.0; // calm before wave 1
+    wave.timer = 6.0; // breathing room — lets zone banner (4s) finish + 2s calm
     wave.bannerText = '';
     wave.bannerSub = '';
     wave.bannerAlpha = 0;
@@ -1684,14 +1684,19 @@ function spawnWaveEnemies() {
     if (typeof startCombatPulse === 'function') startCombatPulse();
 
     // Tutorial hints — show once per session at key moments
+    // Delayed so they don't stack with wave banners (banner fades over ~3-4s)
     if (typeof Notify !== 'undefined') {
         if (wave.current === 0) {
-            const form = FormSystem.currentForm;
-            const dodgeKey = form === 'slime' ? 'SPACE to Bounce Jump' : form === 'skeleton' ? 'SPACE to Roll' : form === 'lich' ? 'SPACE to Shadow Step' : 'SPACE to Phase Jump';
-            Notify.hint('tutorial_dodge', dodgeKey + ' — dodge through danger!', 5, { color: '#88ccff', borderColor: '#446688' });
+            const _form = FormSystem.currentForm;
+            const _dodgeKey = _form === 'slime' ? 'SPACE to Bounce Jump' : _form === 'skeleton' ? 'SPACE to Roll' : _form === 'lich' ? 'SPACE to Shadow Step' : 'SPACE to Phase Jump';
+            setTimeout(function() {
+                Notify.hint('tutorial_dodge', _dodgeKey + ' — dodge through danger!', 5, { color: '#88ccff', borderColor: '#446688' });
+            }, 4000);
         }
         if (wave.current === 1) {
-            Notify.hint('tutorial_grimoire', 'Press TAB to open the Grimoire — check your stats and gear.', 5, { color: '#c4a878', borderColor: '#8a7030' });
+            setTimeout(function() {
+                Notify.hint('tutorial_grimoire', 'Press TAB to open the Grimoire — check your stats and gear.', 5, { color: '#c4a878', borderColor: '#8a7030' });
+            }, 4000);
         }
     }
 }
@@ -4419,7 +4424,8 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
         if (typeof equipBonus !== 'undefined' && equipBonus.effects && typeof veilUndyingCooldown !== 'undefined' && veilUndyingCooldown <= 0) {
             for (const eff of equipBonus.effects) {
                 if (eff.id === 'veil_undying') {
-                    const formMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0);
+                    const _veilQHp = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+                    const formMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _veilQHp;
                     player.hp = Math.max(1, Math.round(formMaxHP * 0.15));
                     veilUndyingCooldown = 60; // 60s cooldown
                     _veilSaved = true;
@@ -4445,7 +4451,10 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
         }
         // Lich Phylactery — consume soul energy to cheat death
         if (!_veilSaved && typeof lichState !== 'undefined' && lichState.soulEnergy >= 30 && FormSystem.currentForm === 'lich') {
-            player.hp = Math.round((FORM_CONFIGS.lich.maxHp || 100) * 0.3);
+            const _phylTalHp = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
+            const _phylEqHp = (typeof equipBonus !== 'undefined') ? (equipBonus.maxHpBonus || 0) : 0;
+            const _phylQHp = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
+            player.hp = Math.round(((FORM_CONFIGS.lich.maxHp || 100) + _phylTalHp + _phylEqHp + _phylQHp) * 0.3);
             lichState.soulEnergy -= 30;
             playerInvTimer = 1.5;
             addScreenShake(10, 0.6);

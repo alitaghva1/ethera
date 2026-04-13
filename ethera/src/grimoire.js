@@ -576,6 +576,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if (!reqKey) return;
 
     const requirements = EVOLUTION_REQUIREMENTS[reqKey];
+    if (!requirements) return;
     const currentFormData = FormSystem.formData[FormSystem.currentForm];
 
     // Build requirement display list with readable names

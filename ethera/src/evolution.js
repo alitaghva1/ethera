@@ -169,9 +169,12 @@ function updateEvolution(dt) {
         // Perform the actual form switch at the peak
         if (t > 3.8 && FormSystem.currentForm !== evolutionState.targetForm) {
             FormSystem.switchForm(evolutionState.targetForm);
-            // Reset player stats for new form
+            // Reset player stats for new form (include all HP bonuses)
             const newConfig = FormSystem.getFormConfig();
-            player.hp = newConfig.maxHp;
+            const _evoEqHP = (typeof equipBonus !== 'undefined' && equipBonus.maxHpBonus) ? equipBonus.maxHpBonus : 0;
+            const _evoTalHP = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
+            const _evoQHP = (typeof questState !== 'undefined' && questState.permBonuses) ? (questState.permBonuses.maxHpBonus || 0) : 0;
+            player.hp = Math.round(newConfig.maxHp + _evoEqHP + _evoTalHP + _evoQHP);
             player.mana = newConfig.maxMana || 0;
             player.attackCooldown = 0;
             player.dodgeCoolTimer = 0;
@@ -204,6 +207,8 @@ function updateEvolution(dt) {
                         inventory.equipped[slot] = null;
                     }
                 }
+                // Recalculate equipment bonuses after unequipping
+                if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
             }
             // --- Clean up state from previous form ---
             // Reset ALL forms to prevent stale state (acid puddles, split clones, minions, etc.)

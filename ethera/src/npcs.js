@@ -337,7 +337,7 @@ function drawNPC(npc) {
 
     // Interaction prompt (E key badge) when player is close
     const dist = Math.sqrt((npc.row - player.row) ** 2 + (npc.col - player.col) ** 2);
-    if (dist < NPC_INTERACTION_RANGE && !npcDialogueOpen) {
+    if (dist < NPC_INTERACTION_RANGE && !npcDialogueOpen && !smithyMenuOpen && !shopMenuOpen) {
         ctx.save();
         const pulse = 0.6 + Math.sin(performance.now() / 500) * 0.2;
         const promptY = drawY + ghostBob - 24;
@@ -687,6 +687,9 @@ function getQuestDialogueLines(npcId) {
 let paleQueenDialogueComplete = false;
 
 function handleNPCInteraction() {
+    // Close service menus on E key press (prevents double-open)
+    if (smithyMenuOpen) { closeSmithyMenu(); return true; }
+    if (shopMenuOpen) { closeShopMenu(); return true; }
     if (npcDialogueOpen) {
         // Advance dialogue (use form-reactive dialogue which may have extra opening line)
         currentNPC.dialogueIndex++;
@@ -761,6 +764,7 @@ function isNPCDialogueOpen() {
 //  GARRETT'S SMITHY — Equipment Enchantment Menu
 // ============================================================
 function openSmithyMenu(npc) {
+    if (smithyMenuOpen || shopMenuOpen) return; // prevent double-open
     if (typeof hamletRebuild !== 'undefined' && !hamletRebuild.forge) {
         pickupTexts.push({ text: 'The forge lies in ruins...', color: '#aa6644',
             row: npc.row, col: npc.col, offsetY: -20, life: 2.0 });
@@ -1112,6 +1116,7 @@ function drawSmithyMenu() {
 //  SENNA'S POTION SHOP
 // ============================================================
 function openShopMenu(npc) {
+    if (shopMenuOpen || smithyMenuOpen) return; // prevent double-open
     if (typeof hamletRebuild !== 'undefined' && !hamletRebuild.shop) {
         pickupTexts.push({ text: 'The alchemy lab is destroyed...', color: '#aa6644',
             row: npc.row, col: npc.col, offsetY: -20, life: 2.0 });

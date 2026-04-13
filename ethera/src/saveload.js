@@ -369,8 +369,37 @@ function loadGame(slotIdx) {
     gameDead = false;
     gamePaused = false;
     menuOpen = false;
+    menuFadeInTimer = 0;
     screenShakeTimer = 0;
     hitPauseTimer = 0;
+    slowMoTimer = 0;
+    slowMoScale = 1.0;
+
+    // Reset form-specific runtime state (not saved, must reinitialize)
+    if (typeof skeletonState !== 'undefined') {
+        skeletonState._undyingUsed = false;
+        skeletonState.comboCount = 0;
+        skeletonState.comboTimer = 0;
+        skeletonState.rolling = false;
+        skeletonState.rollTimer = 0;
+        skeletonState.boneFragments = [];
+    }
+    if (typeof slimeState !== 'undefined') {
+        slimeState.splitClones.length = 0;
+        slimeState.acidPuddles.length = 0;
+        slimeState._absorbCooldown = 0;
+    }
+    if (typeof lichState !== 'undefined') {
+        lichState.undeadMinions = [];
+        lichState.lifeTapCooldown = 0;
+        lichState.shadowStepCooldown = 0;
+        lichState.deathAuraTimer = 0;
+        lichState._phylacteryUsed = false;
+    }
+    // Clear zone-duration potion buffs (should not persist through load)
+    if (typeof clearPotionBuffsForZone === 'function') clearPotionBuffsForZone();
+    // Reset notification state for fresh start
+    if (typeof Notify !== 'undefined') Notify.reset();
 
     // Camera snap
     const startPos = tileToScreen(player.row, player.col);
