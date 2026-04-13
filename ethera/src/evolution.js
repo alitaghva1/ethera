@@ -104,6 +104,10 @@ function checkSlimeEvolution() {
                 (fd.totalKills >= req.kills ? 1 : 0) +
                 (FormSystem.talisman.found ? 1 : 0) +
                 (fd.bossDefeated ? 1 : 0);
+    // Hint when first milestone is met — teach the evolution concept early
+    if (met >= 1 && typeof Notify !== 'undefined') {
+        Notify.hint('evo_first_milestone', 'You feel something stirring... Open the Grimoire (TAB) to see your evolution progress.', 6, { color: '#c4a878', borderColor: '#8a7030' });
+    }
     // Show hint when close to evolution (1 milestone remaining)
     if (met >= 4 && !_evoHintShown.slime && typeof Notify !== 'undefined') {
         _evoHintShown.slime = true;
@@ -209,6 +213,11 @@ function updateEvolution(dt) {
                 }
                 // Recalculate equipment bonuses after unequipping
                 if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+            }
+            // Clear form-specific augments (mutations/runes don't carry across evolutions)
+            if (typeof augmentInventory !== 'undefined') {
+                augmentInventory.equipped = [null, null, null];
+                augmentInventory.backpack = [];
             }
             // --- Clean up state from previous form ---
             // Reset ALL forms to prevent stale state (acid puddles, split clones, minions, etc.)

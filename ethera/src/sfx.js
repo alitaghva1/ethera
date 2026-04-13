@@ -714,7 +714,7 @@ function sfxPotionUse() {
     gain.gain.setValueAtTime(0.18 * sfxVolume, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
     osc.connect(gain);
-    gain.connect(sfxCtx.destination);
+    gain.connect(sfxMasterGain || sfxCtx.destination);
     osc.start(now);
     osc.stop(now + 0.2);
     // Glass clink — high triangle ping
@@ -725,7 +725,7 @@ function sfxPotionUse() {
     gain2.gain.setValueAtTime(0.12 * sfxVolume, now + 0.05);
     gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
     osc2.connect(gain2);
-    gain2.connect(sfxCtx.destination);
+    gain2.connect(sfxMasterGain || sfxCtx.destination);
     osc2.start(now + 0.05);
     osc2.stop(now + 0.2);
 }
@@ -976,6 +976,8 @@ function startAmbient(zone) {
     if (!sfxCtx) return;
     if (zone === ambientZone) return; // already playing
     stopAmbient();
+    // Also stop the legacy simple ambient system to prevent double-layering
+    if (typeof stopAmbientAudio === 'function') stopAmbientAudio();
     ambientZone = zone;
 
     if (zone === 0) {

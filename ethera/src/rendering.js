@@ -1142,6 +1142,7 @@ function drawDarkness() {
         ctx.fillStyle = filmColor;
         ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.restore();
+        _applyBrightnessPass();
         return;
     }
 
@@ -1183,6 +1184,7 @@ function drawDarkness() {
         ctx.fillRect(0, 0, canvasW, canvasH);
 
         ctx.restore();
+        _applyBrightnessPass();
         return;
     }
 
@@ -1221,6 +1223,28 @@ function drawDarkness() {
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
     ctx.fillStyle = 'rgba(48, 35, 25, 0.25)';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+    ctx.restore();
+    _applyBrightnessPass();
+}
+
+// Brightness adjustment pass — called at the end of all drawDarkness() branches.
+// Lightens (screen blend) or darkens (multiply blend) the final result.
+function _applyBrightnessPass() {
+    const brightness = (typeof gameSettings !== 'undefined') ? (gameSettings.brightness || 1.0) : 1.0;
+    if (brightness === 1.0) return;
+    ctx.save();
+    if (brightness > 1.0) {
+        // Lighten: white screen blend, capped at 0.4 alpha for safety
+        ctx.globalCompositeOperation = 'screen';
+        const amt = Math.min((brightness - 1.0), 0.5);
+        ctx.fillStyle = `rgba(255,255,255,${amt})`;
+    } else {
+        // Darken: gray multiply blend
+        const v = Math.round(brightness * 255);
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = `rgb(${v},${v},${v})`;
+    }
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();
 }

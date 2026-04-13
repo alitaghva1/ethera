@@ -224,6 +224,11 @@ function generateZoneFromTemplate(template, ascension) {
         });
     }
 
+    // ── Step 15: Place secret room (one per zone, zones 1+) ──
+    if (template.id >= 1 && template.id <= 6) {
+        _placeSecretRoom(allRooms, mapSize, template.id);
+    }
+
     return {
         rooms: allRooms,
         landmarkRooms: landmarkRooms,
@@ -233,6 +238,68 @@ function generateZoneFromTemplate(template, ascension) {
         spawnCol: spawnC,
         mapSize: mapSize,
     };
+}
+
+// ============================================================
+//  SECRET ROOM PLACEMENT
+//  Finds a wall tile bordering a walkable room, carves a 3x3
+//  secret room behind it, marks the wall as a cracked wall.
+//  Player can attack the cracked wall to break it open.
+// ============================================================
+let crackedWalls = []; // { row, col, secretTiles: [{r,c}], chestR, chestC }
+
+function _placeSecretRoom(allRooms, mapSize, zoneId) {
+    crackedWalls = [];
+    // Only place in Act 1 rooms (Act 2 is behind seal)
+    var act1Rooms = allRooms.filter(function(rm) { return rm.act === 1 && rm.floorTiles.length > 10; });
+    if (act1Rooms.length === 0) return;
+
+    // Pick a random room to attach the secret to
+    var room = act1Rooms[Math.floor(mapRandom() * act1Rooms.length)];
+    var attempts = 80;
+    while (attempts-- > 0) {
+        // Pick a random floor tile on the room boundary
+        var ft = room.floorTiles[Math.floor(mapRandom() * room.floorTiles.length)];
+        var r = ft.r, c = ft.c;
+
+        // Try each direction for a wall that has space behind it
+        var dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+        for (var d = 0; d < dirs.length; d++) {
+            var dr = dirs[d][0], dc = dirs[d][1];
+            var wallR = r + dr, wallC = c + dc;
+            // Wall tile must exist and be blocked
+            if (wallR < 2 || wallR >= mapSize - 4 || wallC < 2 || wallC >= mapSize - 4) continue;
+            if (!blocked[wallR] || !blocked[wallR][wallC]) continue;
+            if (blockType[wallR][wallC] !== 'wall') continue;
+
+            // Space behind the wall: check a 3x3 area is all blocked walls (uncarved)
+            var secretR = wallR + dr, secretC = wallC + dc;
+            var valid = true;
+            var secretTiles = [];
+            for (var sr = secretR - 1; sr <= secretR + 1; sr++) {
+                for (var sc = secretC - 1; sc <= secretC + 1; sc++) {
+                    if (sr < 1 || sr >= mapSize - 1 || sc < 1 || sc >= mapSize - 1) { valid = false; break; }
+                    if (!blocked[sr] || !blocked[sr][sc]) { valid = false; break; }
+                    secretTiles.push({ r: sr, c: sc });
+                }
+                if (!valid) break;
+            }
+            if (!valid || secretTiles.length !== 9) continue;
+
+            // Found a valid spot! Mark wall as cracked
+            objectMap[wallR][wallC] = 'crackedWall';
+            blockType[wallR][wallC] = 'crackedWall'; // special type for rendering
+
+            // Don't carve the secret room yet — it opens when the wall is destroyed
+            crackedWalls.push({
+                row: wallR, col: wallC,
+                secretTiles: secretTiles,
+                secretCenter: { r: secretR, c: secretC },
+                opened: false,
+            });
+            return; // only one secret per zone
+        }
+    }
 }
 
 

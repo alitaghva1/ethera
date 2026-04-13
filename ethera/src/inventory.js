@@ -483,3 +483,226 @@ function getPotionDmgReduc() {
     return activePotionBuffs.dmgReduc ? activePotionBuffs.dmgReduc.value : 0;
 }
 
+// ============================================================
+//  AUGMENT SYSTEM — Form-specific loot for Slime and Skeleton
+//  Mutations (slime) and Bone Runes (skeleton) drop from combat,
+//  equip in 3 generic slots, and feed stats through equipBonus.
+// ============================================================
+const augmentInventory = {
+    equipped: [null, null, null],
+    backpack: [],
+    maxBackpack: 8,
+};
+
+const AUGMENT_LABELS = {
+    slime: { tab: 'MUTATIONS', slotPrefix: 'Mutation', icon: '\u2B22' },
+    skeleton: { tab: 'BONE RUNES', slotPrefix: 'Rune', icon: '\u2B21' },
+};
+
+// --- Slime Mutation Pool ---
+const SLIME_AUGMENT_POOL = {
+    common: [
+        { name: 'Corrosive Membrane', stats: { dmgBonus: [2, 4, 7, 12] }, desc: 'Acidic secretions boost damage' },
+        { name: 'Gelatinous Mass', stats: { maxHpBonus: [8, 14, 22, 32] }, desc: 'Denser body absorbs more hits' },
+        { name: 'Elastic Core', stats: { moveSpeedMult: [0.04, 0.07, 0.11, 0.16] }, desc: 'Internal tension for faster movement' },
+        { name: 'Regenerative Gel', stats: { maxHpBonus: [4, 7, 11, 16] },
+          effect: { id: 'regen_gel_aug', healOnAbsorb: 3 }, desc: 'Absorbing corpses heals HP' },
+    ],
+    rare: [
+        { name: 'Toxic Blood', stats: { dmgBonus: [3, 5] },
+          effect: { id: 'toxic_blood', poisonDPS: 5, poisonDur: 2.0 }, desc: 'Melee attackers take poison damage' },
+        { name: 'Mitotic Vigor', stats: { maxHpBonus: [5, 8] },
+          effect: { id: 'mitotic_vigor', cloneDurMult: 1.4, cloneDmgMult: 1.25 }, desc: 'Clones last longer and hit harder' },
+        { name: 'Osmotic Shell', stats: { moveSpeedMult: [0.03, 0.06] },
+          effect: { id: 'osmotic_shell', absorbRangeMult: 2.0, absorbSpeedBuff: 0.15 }, desc: 'Double absorb range, brief speed on absorb' },
+    ],
+    epic: [
+        { name: 'Volatile Cytoplasm', stats: { dmgBonus: [5, 8] },
+          effect: { id: 'volatile_cytoplasm', puddleExplodePct: 0.5 }, desc: 'Acid puddles explode on expiry' },
+        { name: 'Adhesive Membrane', stats: { dmgReduc: [0.05, 0.08] },
+          effect: { id: 'adhesive_membrane', slowPct: 0.30, slowDur: 1.5 }, desc: 'Melee attackers are slowed' },
+    ],
+    legendary: [
+        { name: 'Primordial Ooze', stats: { dmgBonus: 6, maxHpBonus: 10 },
+          effect: { id: 'primordial_ooze', absorbDmgBuff: 0.20, absorbDmgDur: 8.0, absorbHealPct: 0.15 },
+          effectDesc: 'Absorbing grants +20% damage for 8s and heals 15% max HP' },
+    ],
+};
+
+// --- Skeleton Bone Rune Pool ---
+const SKELETON_AUGMENT_POOL = {
+    common: [
+        { name: 'Rune of Fury', stats: { atkSpeedMult: [0.05, 0.08, 0.12, 0.18] }, desc: 'Faster bone throwing speed' },
+        { name: 'Rune of Fortitude', stats: { maxHpBonus: [6, 12, 20, 30] }, desc: 'Ancient ward bolsters health' },
+        { name: 'Rune of Precision', stats: { dmgBonus: [2, 4, 7, 11] }, desc: 'Sharpened bone strikes' },
+        { name: 'Rune of Swiftness', stats: { moveSpeedMult: [0.04, 0.07, 0.11, 0.16] }, desc: 'Lighter bones, faster movement' },
+    ],
+    rare: [
+        { name: 'Rune of the Wall', stats: { dmgReduc: [0.04, 0.07] },
+          effect: { id: 'rune_wall', shieldBlockMult: 1.5, bashPushMult: 2.0 }, desc: 'Shield blocks 50% more, bash pushes 2x' },
+        { name: 'Rune of Echo', stats: { dmgBonus: [2, 4] },
+          effect: { id: 'rune_echo', extraBoneChance: 0.15 }, desc: '15% chance to throw an extra bone' },
+        { name: 'Rune of Marrow', stats: { maxHpBonus: [4, 8] },
+          effect: { id: 'rune_marrow', boneRegenMult: 1.5, bonePickupHeal: 3 }, desc: 'Faster bone regen, pickups heal' },
+    ],
+    epic: [
+        { name: 'Rune of Frenzy', stats: { atkSpeedMult: [0.06, 0.10] },
+          effect: { id: 'rune_frenzy', maxComboAdd: 3, comboDecayMult: 0.80 }, desc: '+3 max combo, slower decay' },
+        { name: 'Rune of Shrapnel', stats: { dmgBonus: [4, 7] },
+          effect: { id: 'rune_shrapnel', fragmentCount: 3 }, desc: 'Kill shots spray bone fragments' },
+    ],
+    legendary: [
+        { name: 'Rune of the Deathless', stats: { maxHpBonus: 15, dmgReduc: 0.05 },
+          effect: { id: 'rune_deathless' },
+          effectDesc: 'Undying Resolve recharges between waves' },
+    ],
+};
+
+const AUGMENT_RARITY_PREFIX = { common: '', uncommon: 'Fine ', rare: 'Greater ', epic: 'Superior ' };
+
+// Generate a random augment for a form
+function generateAugment(waveIdx, form) {
+    const pool = form === 'slime' ? SLIME_AUGMENT_POOL : SKELETON_AUGMENT_POOL;
+    if (!pool) return null;
+
+    const weights = RARITY_WEIGHTS_BY_WAVE[Math.min(waveIdx, RARITY_WEIGHTS_BY_WAVE.length - 1)];
+    const totalW = weights.common + weights.uncommon + weights.rare + weights.epic + (weights.legendary || 0);
+    let roll = Math.random() * totalW;
+    let rarity = 'common';
+    if (roll < (weights.legendary || 0)) rarity = 'legendary';
+    else if ((roll -= (weights.legendary || 0)) < weights.epic) rarity = 'epic';
+    else if ((roll -= weights.epic) < weights.rare) rarity = 'rare';
+    else if ((roll -= weights.rare) < weights.uncommon) rarity = 'uncommon';
+
+    // Legendary augments use fixed templates
+    if (rarity === 'legendary' && pool.legendary && pool.legendary.length > 0) {
+        const tmpl = pool.legendary[Math.floor(Math.random() * pool.legendary.length)];
+        const stats = {};
+        for (const [stat, val] of Object.entries(tmpl.stats)) {
+            if (typeof val === 'number') {
+                const v = 1 + (Math.random() - 0.5) * 0.1;
+                stats[stat] = val < 1 ? Math.round(val * v * 100) / 100 : Math.round(val * v);
+            }
+        }
+        return {
+            id: Date.now() + Math.random(), name: tmpl.name, form, rarity: 'legendary',
+            augment: true, stats, effect: tmpl.effect || null,
+            effectDesc: tmpl.effectDesc || '', desc: tmpl.desc || '',
+        };
+    }
+
+    // Map uncommon → common pool, epic → rare pool for tier index
+    const tierIdx = rarity === 'uncommon' ? 0 : rarity === 'epic' ? 1 : 0;
+    const poolKey = (rarity === 'rare' || rarity === 'epic') ? 'rare' : 'common';
+    const templates = pool[poolKey];
+    if (!templates || templates.length === 0) return null;
+    const tmpl = templates[Math.floor(Math.random() * templates.length)];
+
+    // Build stats from template at rarity tier
+    const rarityIdx = ['common', 'uncommon', 'rare', 'epic'].indexOf(rarity);
+    const stats = {};
+    for (const [stat, tiers] of Object.entries(tmpl.stats)) {
+        if (Array.isArray(tiers)) {
+            const base = tiers[Math.min(rarityIdx, tiers.length - 1)];
+            const v = 1 + (Math.random() - 0.5) * 0.2;
+            stats[stat] = base < 1 ? Math.round(base * v * 100) / 100 : Math.round(base * v);
+        }
+    }
+
+    return {
+        id: Date.now() + Math.random(),
+        name: (AUGMENT_RARITY_PREFIX[rarity] || '') + tmpl.name,
+        form, rarity, augment: true, stats,
+        effect: tmpl.effect || null,
+        effectDesc: tmpl.effectDesc || '',
+        desc: tmpl.desc || '',
+    };
+}
+
+// --- Augment world drops (mirrors worldDrops for equipment) ---
+const worldAugmentDrops = [];
+
+function dropAugmentInWorld(row, col, augment) {
+    if (!augment) return;
+    worldAugmentDrops.push({
+        row, col, augment,
+        bobTime: Math.random() * 10,
+        spawnTime: 0.5,
+        despawnTimer: 45,
+    });
+}
+
+function updateWorldAugmentDrops(dt) {
+    for (let i = worldAugmentDrops.length - 1; i >= 0; i--) {
+        const d = worldAugmentDrops[i];
+        d.bobTime += dt;
+        if (d.spawnTime > 0) d.spawnTime -= dt;
+        d.despawnTimer -= dt;
+        if (d.despawnTimer <= 0) { worldAugmentDrops.splice(i, 1); continue; }
+        // Magnetic pull toward player
+        if (d.spawnTime <= 0) {
+            const dr = player.row - d.row, dc = player.col - d.col;
+            const dist = Math.sqrt(dr * dr + dc * dc);
+            if (dist < PICKUP_RANGE) {
+                // Pickup
+                if (augmentInventory.backpack.length < augmentInventory.maxBackpack) {
+                    augmentInventory.backpack.push(d.augment);
+                    const rc = RARITY[d.augment.rarity] || RARITY.common;
+                    pickupTexts.push({ text: d.augment.name, color: rc.color, row: d.row, col: d.col, offsetY: -8, life: 2.0 });
+                    if (typeof sfxItemPickup === 'function') sfxItemPickup();
+                } else {
+                    pickupTexts.push({ text: 'Augments Full!', color: '#ff6b6b', row: d.row, col: d.col, offsetY: 0, life: 1.2 });
+                }
+                worldAugmentDrops.splice(i, 1);
+                continue;
+            }
+            if (dist < 2.5) {
+                const pull = 4 * dt;
+                d.row += (dr / dist) * pull;
+                d.col += (dc / dist) * pull;
+            }
+        }
+    }
+}
+
+// --- Augment equip/unequip ---
+function equipAugment(backpackIdx) {
+    const aug = augmentInventory.backpack[backpackIdx];
+    if (!aug) return;
+    // Find first empty slot
+    let targetSlot = -1;
+    for (let i = 0; i < 3; i++) {
+        if (!augmentInventory.equipped[i]) { targetSlot = i; break; }
+    }
+    augmentInventory.backpack.splice(backpackIdx, 1);
+    if (targetSlot >= 0) {
+        augmentInventory.equipped[targetSlot] = aug;
+    } else {
+        // All slots full — swap with slot 2 (last)
+        const old = augmentInventory.equipped[2];
+        augmentInventory.equipped[2] = aug;
+        if (old) augmentInventory.backpack.push(old);
+    }
+    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+    if (typeof sfxEquip === 'function') sfxEquip();
+}
+
+function unequipAugment(slotIdx) {
+    const aug = augmentInventory.equipped[slotIdx];
+    if (!aug) return;
+    if (augmentInventory.backpack.length >= augmentInventory.maxBackpack) {
+        pickupTexts.push({ text: 'Pack Full!', color: '#ff6b6b', row: player.row, col: player.col, offsetY: 0, life: 1.2 });
+        return;
+    }
+    augmentInventory.equipped[slotIdx] = null;
+    augmentInventory.backpack.push(aug);
+    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+    if (typeof sfxUnequip === 'function') sfxUnequip();
+}
+
+function dropAugmentFromBackpack(idx) {
+    if (idx < 0 || idx >= augmentInventory.backpack.length) return;
+    const aug = augmentInventory.backpack.splice(idx, 1)[0];
+    if (aug) dropAugmentInWorld(player.row, player.col, aug);
+}
+

@@ -39,6 +39,11 @@ function updateProjectiles(dt) {
 
         // Check wall collision
         if (!canMoveTo(newRow, newCol)) {
+            // Check if we hit a cracked wall — break it open
+            const _wallR = Math.floor(newRow), _wallC = Math.floor(newCol);
+            if (typeof objectMap !== 'undefined' && objectMap[_wallR] && objectMap[_wallR][_wallC] === 'crackedWall') {
+                if (typeof breakCrackedWall === 'function') breakCrackedWall(_wallR, _wallC);
+            }
             // Handle bounce
             if (p.bounceLeft > 0) {
                 p.bounceLeft--;

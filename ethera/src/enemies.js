@@ -408,6 +408,15 @@ let playerInvTimer = 0;
 let multiKillTimer = 0;
 let multiKillCount = 0;
 
+// ── Kill Streak System — sustained aggression multiplies XP and gold ──
+const killStreak = {
+    count: 0,           // consecutive kills within window
+    timer: 0,           // time since last kill (resets on kill)
+    window: 3.0,        // seconds before streak breaks
+    multiplier: 1.0,    // current XP/gold multiplier
+    displayAlpha: 0,    // HUD fade
+};
+
 // ── Boss Telegraph Flash — screen-edge flash when telegraph attack fires ──
 let bossTelegraphFlashTimer = 0;
 let bossTelegraphFlashColor = '#ff4444';
@@ -442,7 +451,8 @@ const enemyProjectiles = [];
 
 // ----- GROUND HAZARDS (fire pools, bone mage AoE warnings) -----
 const groundHazards = [];
-// Each hazard: { type, row, col, radius, life, maxLife, damage, tickTimer, color, warningColor }
+// Each hazard: { type, row, col, radius, life, maxLife, damage, tickTimer, color, damagesEnemies }
+let _envHazardTimer = 0; // timer for periodic environmental hazard spawning
 
 // ----- PARTICLE SYSTEM -----
 // Effect particles are managed in particles.js (spawnParticle, spawnDeathBurst, etc.)
@@ -528,7 +538,8 @@ function calcPlayerDmgBonus() {
     const equip = (typeof equipBonus !== 'undefined') ? (equipBonus.dmgBonus || 0) : 0;
     const big = (typeof getUpgrade === 'function') ? getUpgrade('bigshot') * 5 : 0;
     const talisman = (typeof getTalismanBonus === 'function') ? getTalismanBonus().dmgMult : 1;
-    return { flat: equip + big + quest, mult: talisman };
+    const synBonus = (typeof hasSynergy === 'function' && hasSynergy('power_surge')) ? 1.10 : 1.0;
+    return { flat: equip + big + quest, mult: talisman * synBonus };
 }
 
 // All damage to enemies should go through this function.
@@ -556,6 +567,13 @@ function applyEnemyHit(e, damage, opts) {
     // ── COMBAT JUICE: Critical hit roll (applies to all damage sources) ──
     const isCrit = !opts.skipCrit && Math.random() < CRIT_CHANCE;
     if (isCrit) finalDmg = Math.round(finalDmg * CRIT_MULTIPLIER);
+
+    // Executioner upgrade (skeleton): bonus damage to low-HP enemies
+    if (typeof FormSystem !== 'undefined' && FormSystem.currentForm === 'skeleton' &&
+        typeof getUpgrade === 'function' && getUpgrade('executioner') > 0 &&
+        e.maxHp > 0 && e.hp / e.maxHp < 0.25) {
+        finalDmg = Math.round(finalDmg * (1 + 0.3 * getUpgrade('executioner')));
+    }
 
     e.hp -= finalDmg;
 
@@ -1382,7 +1400,39 @@ const wave = {
     waveKills: 0,        // kills in current wave
     lastDeathRow: 0,     // position of last enemy killed
     lastDeathCol: 0,
+    modifier: null,       // current WAVE_MODIFIERS entry or null
+    modifierTimer: 0,     // countdown for timed modifier
 };
+
+// ── Wave Modifiers — vary objectives and difficulty per wave ──
+const WAVE_MODIFIERS = {
+    bloodlust: {
+        id: 'bloodlust', name: 'Bloodlust',
+        desc: 'Enemies are faster — 2x gold',
+        color: '#cc4444',
+        enemySpeedMult: 1.3, goldMult: 2.0,
+    },
+    onslaught: {
+        id: 'onslaught', name: 'Onslaught',
+        desc: 'Double enemies, half HP',
+        color: '#ff8844',
+        enemyCountMult: 2.0, enemyHpMult: 0.5,
+    },
+    darkness: {
+        id: 'darkness', name: 'Darkness',
+        desc: 'Light radius halved',
+        color: '#6644aa',
+        lightMult: 0.5,
+    },
+    timed: {
+        id: 'timed', name: 'Timed Trial',
+        desc: 'Clear in 45s for 3x XP',
+        color: '#ffcc44',
+        timerDuration: 45, xpBonusMult: 3.0,
+    },
+};
+const _WAVE_MOD_KEYS = Object.keys(WAVE_MODIFIERS);
+
 const ZONE_1_FINAL_WAVE = WAVES.length - 1; // index of the last fixed wave
 const ZONE_2_FINAL_WAVE = ZONE2_WAVES.length - 1;
 const ZONE_3_FINAL_WAVE = ZONE3_WAVES.length - 1;
@@ -1407,6 +1457,25 @@ function startWaveSystem() {
     wave.bannerSub = '';
     wave.bannerAlpha = 0;
     wave.totalKilled = 0;
+
+    // Contextual combat tutorial — fires once per session on first combat zone
+    if (typeof Notify !== 'undefined' && currentZone === 1) {
+        const form = FormSystem.currentForm || 'slime';
+        const atkKey = form === 'slime' ? 'Acid Spit' : form === 'skeleton' ? 'Bone Throw' : form === 'lich' ? 'Soul Bolt' : 'Fireball';
+        const dodgeKey = form === 'slime' ? 'Bounce Jump' : form === 'skeleton' ? 'Roll' : form === 'lich' ? 'Shadow Step' : 'Phase Jump';
+        setTimeout(function() {
+            Notify.hint('tutorial_attack', 'Left Click to attack (' + atkKey + ')', 6, { color: '#ddc890', borderColor: '#887040' });
+        }, 2000);
+        setTimeout(function() {
+            Notify.hint('tutorial_dodge', 'SPACE to dodge (' + dodgeKey + ')', 6, { color: '#ddc890', borderColor: '#887040' });
+        }, 5000);
+        setTimeout(function() {
+            Notify.hint('tutorial_controls', 'Press H to show all controls', 5, { color: '#aabbcc', borderColor: '#667788' });
+        }, 9000);
+        setTimeout(function() {
+            Notify.hint('tutorial_grimoire', 'Press TAB to open the Grimoire (character menu)', 5, { color: '#aabbcc', borderColor: '#667788' });
+        }, 13000);
+    }
 }
 
 // Generate dynamic wave data for waves beyond the fixed definitions
@@ -1459,9 +1528,12 @@ function generateDynamicWave(waveIdx) {
         enemyList.push({ type: 'shadow_knight', count: shadowKnightCount });
     }
 
+    // Mythic scaling at depth 30+: stat mult increases 2x faster
+    const mythicMult = (typeof abyssDepthFlags !== 'undefined' && abyssDepthFlags.mythicScaling) ? 2.0 : 1.0;
+
     return {
         enemies: enemyList,
-        statMult: baseMult * DIFFICULTY.scale,
+        statMult: baseMult * DIFFICULTY.scale * mythicMult,
         title: titles[tier % titles.length],
     };
 }
@@ -1471,6 +1543,12 @@ function beginNextWave() {
     wave.waveKills = 0; // reset per-wave kill counter
     // Restore full light at wave start (tension effect dims it between waves)
     lightRadius = MAX_LIGHT;
+    // Augment: Rune of the Deathless — reset undying resolve between waves
+    if (typeof equipBonus !== 'undefined' && equipBonus.effects && typeof skeletonState !== 'undefined') {
+        for (const eff of equipBonus.effects) {
+            if (eff.id === 'rune_deathless') { skeletonState._undyingUsed = false; break; }
+        }
+    }
     // Fixed waves exhausted — generate dynamic ones (no more victory screen, endless mode)
     let w;
     const waveArray = currentZone === 1 ? WAVES : currentZone === 2 ? ZONE2_WAVES : currentZone === 4 ? ZONE4_WAVES : currentZone === 5 ? ZONE5_WAVES : currentZone === 6 ? ZONE6_WAVES : (typeof PROCEDURAL_WAVES !== 'undefined' && PROCEDURAL_WAVES[currentZone]) ? PROCEDURAL_WAVES[currentZone] : ZONE3_WAVES;
@@ -1576,6 +1654,23 @@ function beginNextWave() {
     const musicArray = currentZone === 1 ? WAVE_MUSIC : currentZone === 2 ? ZONE2_WAVE_MUSIC : currentZone === 3 ? ZONE3_WAVE_MUSIC : currentZone === 4 ? ZONE4_WAVE_MUSIC : currentZone === 5 ? ZONE5_WAVE_MUSIC : currentZone === 6 ? ZONE6_WAVE_MUSIC : WAVE_MUSIC;
     const combatTrack = musicArray[Math.min(wave.current, musicArray.length - 1)];
     playMusic(combatTrack, 1.5);
+
+    // Roll wave modifier (40% chance on wave 3+, never on boss/expansion waves)
+    wave.modifier = null;
+    wave.modifierTimer = 0;
+    if (w && !w.isBossWave && !w.isExpansionTrigger && wave.current >= 2 && Math.random() < 0.4) {
+        wave.modifier = WAVE_MODIFIERS[_WAVE_MOD_KEYS[Math.floor(Math.random() * _WAVE_MOD_KEYS.length)]];
+        if (wave.modifier.timerDuration) wave.modifierTimer = wave.modifier.timerDuration;
+    }
+    // Fixed waves can specify a modifier
+    if (w && w.modifier && WAVE_MODIFIERS[w.modifier]) {
+        wave.modifier = WAVE_MODIFIERS[w.modifier];
+        if (wave.modifier.timerDuration) wave.modifierTimer = wave.modifier.timerDuration;
+    }
+    // Show modifier in banner subtitle
+    if (wave.modifier) {
+        wave.bannerSub = '[' + wave.modifier.name + '] ' + wave.modifier.desc;
+    }
 }
 
 function spawnWaveEnemies() {
@@ -1594,8 +1689,10 @@ function spawnWaveEnemies() {
 
     // Build flat list of enemies to spawn
     const toSpawn = [];
+    const _modCountMult = (wave.modifier && wave.modifier.enemyCountMult) ? wave.modifier.enemyCountMult : 1;
     for (const group of w.enemies) {
-        for (let i = 0; i < group.count; i++) {
+        const count = Math.round(group.count * _modCountMult);
+        for (let i = 0; i < count; i++) {
             toSpawn.push(group.type);
         }
     }
@@ -1728,6 +1825,21 @@ function updateWaveSystem(dt) {
     }
 
     if (wave.phase === 'fighting') {
+        // Wave modifier tick effects
+        if (wave.modifier) {
+            if (wave.modifier.lightMult) lightRadius = MAX_LIGHT * wave.modifier.lightMult;
+            if (wave.modifier.timerDuration) {
+                wave.modifierTimer -= dt;
+                // Timer expired before wave cleared — lose the bonus
+                if (wave.modifierTimer <= 0) { wave.modifierTimer = 0; }
+            }
+        }
+        // Spawn zone-specific environmental hazards during combat
+        if (typeof spawnEnvironmentHazards === 'function') spawnEnvironmentHazards(dt);
+        // Abyss hazard surge: more frequent hazard spawning at milestone depths
+        if (typeof abyssDepthFlags !== 'undefined' && abyssDepthFlags.hazardSurge && typeof _envHazardTimer !== 'undefined') {
+            if (_envHazardTimer > 4) _envHazardTimer = 3 + Math.random() * 3; // 2x spawn rate
+        }
         // Fade banner out
         if (wave.timer > 0) {
             wave.timer -= dt;
@@ -1829,9 +1941,7 @@ function updateWaveSystem(dt) {
                         playSting('waveCleared');
                     }
                     // Heal player on expansion (same as wave clear heal)
-                    const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
-                    const _qHp1 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-                    const expHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHp1;
+                    const expHealMaxHp = getPlayerMaxHP();
                     const expHealAmt = Math.round(expHealMaxHp * 0.20);
                     player.hp = Math.min(expHealMaxHp, player.hp + expHealAmt);
                     pickupTexts.push({
@@ -1861,9 +1971,7 @@ function updateWaveSystem(dt) {
                         Notify.toast(wave.waveKills + ' kills — Boss slain!', { duration: 3, color: '#e8c840', borderColor: '#8a7030' });
                     }
                     // Wave clear HP heal — 15% of max HP
-                    const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
-                    const _qHp2 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHp2;
+                    const waveHealMaxHp = getPlayerMaxHP();
                     const waveHealAmt = Math.round(waveHealMaxHp * 0.15);
                     player.hp = Math.min(waveHealMaxHp, player.hp + waveHealAmt);
                     pickupTexts.push({
@@ -1929,16 +2037,25 @@ function updateWaveSystem(dt) {
                     wave.bannerAlpha = 1;
                     wave.tensionPhase = 0; // 0=calm, 1=building tension
                     playSting('waveCleared');
+                    // Wave modifier rewards
+                    if (wave.modifier && wave.modifier.timerDuration && wave.modifierTimer > 0) {
+                        // Timed Trial cleared in time — bonus XP
+                        const bonusXP = Math.round(wave.waveKills * 5 * wave.modifier.xpBonusMult);
+                        xpState.xp += bonusXP;
+                        if (typeof Notify !== 'undefined') {
+                            Notify.toast('TIMED CLEAR! +' + bonusXP + ' bonus XP', { duration: 3, color: '#ffcc44', borderColor: '#aa8800' });
+                        }
+                        pickupTexts.push({ text: '+' + bonusXP + ' XP', color: '#ffcc44', row: player.row, col: player.col, offsetY: -25, life: 1.5 });
+                    }
                     // Wave clear stats toast
                     if (typeof Notify !== 'undefined') {
-                        Notify.toast(wave.waveKills + ' kills', { duration: 2.5, color: '#c4a878', borderColor: '#8a7030' });
+                        const modSuffix = (wave.modifier && wave.modifier.goldMult > 1) ? '  [2x Gold]' : '';
+                        Notify.toast(wave.waveKills + ' kills' + modSuffix, { duration: 2.5, color: '#c4a878', borderColor: '#8a7030' });
                     }
                     // Wave clear HP heal — 15% of max HP
-                    const formCfg = FORM_CONFIGS[FormSystem.currentForm] || {};
-                    const _qHp3 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-                    const waveHealMaxHp = (formCfg.maxHp || 100) + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHp3;
-                    const waveHealAmt = Math.round(waveHealMaxHp * 0.15);
-                    player.hp = Math.min(waveHealMaxHp, player.hp + waveHealAmt);
+                    const waveHealMaxHp2 = getPlayerMaxHP();
+                    const waveHealAmt = Math.round(waveHealMaxHp2 * 0.15);
+                    player.hp = Math.min(waveHealMaxHp2, player.hp + waveHealAmt);
                     pickupTexts.push({
                         text: `+${waveHealAmt} HP`,
                         color: '#44dd66',
@@ -2009,10 +2126,8 @@ function updateWaveSystem(dt) {
         if (wave.timer <= 0) {
             // Restore some HP/mana between waves as a reward
             const eb = getEquipBonuses();
-            const _qHp4 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-            const formMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus;
             // Percentage-based heal: 20% of max HP (minimum 25), rewards building tanky
-            const maxHP = formMaxHP + (eb.maxHpBonus || 0) + _qHp4;
+            const maxHP = getPlayerMaxHP();
             const healAmt = Math.max(25, Math.floor(maxHP * 0.20));
             player.hp = Math.min(maxHP, player.hp + healAmt);
             player.mana = MAX_MANA + (eb.maxManaBonus || 0);
@@ -2030,9 +2145,7 @@ function updateWaveSystem(dt) {
         // Restore full HP/mana — zone reward
         if (wave.timer <= 5.5 && wave.timer > 5.3) {
             const eb = getEquipBonuses();
-            const _qHp5 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-            const zFormMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus;
-            player.hp = zFormMaxHP + (eb.maxHpBonus || 0) + _qHp5;
+            player.hp = getPlayerMaxHP();
             player.mana = MAX_MANA + (eb.maxManaBonus || 0);
         }
         // Zone clear stays indefinitely — player explores, opens chest, finds door
@@ -2166,9 +2279,9 @@ function drawWaveBanner() {
         ctx.fillText(wave.bannerText, cx, cy);
         ctx.shadowBlur = 0;
 
-        // Subtitle
+        // Subtitle (uses modifier color when active)
         ctx.font = 'italic 15px Georgia';
-        ctx.fillStyle = '#b09868';
+        ctx.fillStyle = (wave.modifier && wave.modifier.color) ? wave.modifier.color : '#b09868';
         ctx.globalAlpha = wave.bannerAlpha * 0.8;
         ctx.fillText(wave.bannerSub, cx, cy + 28);
 
@@ -2262,6 +2375,44 @@ function drawWaveBanner() {
 }
 
 // ----- DRAW WAVE HUD (top-right, minimal atmospheric indicator) -----
+// ── Kill Streak HUD — shows multiplier and decay timer ──
+function drawKillStreakHUD() {
+    if (killStreak.displayAlpha <= 0.01) return;
+    if (wave.phase !== 'fighting') return;
+    ctx.save();
+    ctx.globalAlpha = killStreak.displayAlpha * 0.85;
+    const sx = canvasW - 55;
+    const sy = 90;
+    const streakColor = killStreak.multiplier >= 3 ? '#ffd700' :
+                        killStreak.multiplier >= 2 ? '#ff4444' :
+                        killStreak.multiplier >= 1.5 ? '#ff8844' : '#887766';
+    // Multiplier text
+    if (killStreak.multiplier > 1) {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 18px Georgia';
+        ctx.shadowColor = 'rgba(0,0,0,0.7)';
+        ctx.shadowBlur = 4;
+        ctx.fillStyle = streakColor;
+        ctx.fillText(killStreak.multiplier.toFixed(1) + 'x', sx, sy);
+        // Decay bar — drains as timer approaches window
+        const barW = 32;
+        const barH = 3;
+        const filled = Math.max(0, 1 - (killStreak.timer / killStreak.window));
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(sx - barW / 2, sy + 14, barW, barH);
+        ctx.fillStyle = streakColor;
+        ctx.fillRect(sx - barW / 2, sy + 14, barW * filled, barH);
+        // Kill count
+        ctx.font = '9px monospace';
+        ctx.globalAlpha = killStreak.displayAlpha * 0.5;
+        ctx.fillStyle = '#bbaa99';
+        ctx.fillText(killStreak.count + ' streak', sx, sy + 26);
+    }
+    ctx.restore();
+}
+
 function drawWaveHUD() {
     if (wave.phase !== 'fighting' && wave.phase !== 'cleared' && wave.phase !== 'countdown' && wave.phase !== 'zoneClear') return;
 
@@ -2288,6 +2439,21 @@ function drawWaveHUD() {
         ctx.fillStyle = '#aa6655';
         ctx.strokeText('HOSTILE', rx - 18, ry + 13);
         ctx.fillText('HOSTILE', rx - 18, ry + 13);
+
+        // Wave modifier indicator
+        if (wave.modifier) {
+            ctx.globalAlpha = 0.6;
+            ctx.font = 'bold 10px Georgia';
+            ctx.fillStyle = wave.modifier.color;
+            ctx.fillText(wave.modifier.name.toUpperCase(), rx - 10, ry + 28);
+            // Timed modifier countdown
+            if (wave.modifier.timerDuration && wave.modifierTimer > 0) {
+                ctx.font = 'bold 14px monospace';
+                ctx.globalAlpha = wave.modifierTimer < 10 ? 0.5 + Math.sin(performance.now() / 200) * 0.4 : 0.7;
+                ctx.fillStyle = wave.modifierTimer < 10 ? '#ff4444' : '#ffcc44';
+                ctx.fillText(Math.ceil(wave.modifierTimer) + 's', rx - 10, ry + 44);
+            }
+        }
     } else if (wave.phase === 'cleared' || wave.phase === 'zoneClear') {
         ctx.globalAlpha = 0.35;
         ctx.textAlign = 'right';
@@ -2296,6 +2462,26 @@ function drawWaveHUD() {
         const statusText = wave.phase === 'zoneClear' ? 'SAFE' : 'CALM';
         ctx.strokeText(statusText, rx - 10, ry + 13);
         ctx.fillText(statusText, rx - 10, ry + 13);
+    }
+
+    // Abyss rank display during procedural zones
+    if (typeof currentZone !== 'undefined' && currentZone >= 100 && typeof getAbyssRank === 'function') {
+        const rank = getAbyssRank();
+        const depth = typeof abyssDepthFlags !== 'undefined' ? abyssDepthFlags.depth : (currentZone - 99);
+        if (rank) {
+            ctx.globalAlpha = 0.45;
+            ctx.textAlign = 'right';
+            ctx.font = '9px monospace';
+            ctx.fillStyle = rank.tint || '#887766';
+            ctx.fillText(rank.name.toUpperCase() + '  \u2014  Depth ' + depth, rx - 10, ry + 52);
+        }
+        // Show active modifier count
+        if (typeof activeModifiers !== 'undefined' && activeModifiers.length > 0) {
+            ctx.globalAlpha = 0.3;
+            ctx.font = '8px monospace';
+            ctx.fillStyle = '#cc4488';
+            ctx.fillText(activeModifiers.length + ' modifier' + (activeModifiers.length > 1 ? 's' : ''), rx - 10, ry + 64);
+        }
     }
 
     ctx.restore();
@@ -2470,6 +2656,20 @@ function spawnEnemy(type, row, col, statMult) {
     for (const key of _SCALED_DAMAGE_KEYS) {
         def[key] = baseDef[key] ? Math.round(baseDef[key] * statMult) : 0;
     }
+    // Wave modifier stat adjustments
+    if (wave.modifier) {
+        if (wave.modifier.enemyHpMult) { def.hp = Math.round(def.hp * wave.modifier.enemyHpMult); }
+        if (wave.modifier.enemySpeedMult) { def.speed *= wave.modifier.enemySpeedMult; }
+    }
+    // Abyss modifiers (endless mode) — apply to all spawned enemies
+    if (typeof activeModifiers !== 'undefined' && activeModifiers.length > 0) {
+        for (var _am = 0; _am < activeModifiers.length; _am++) {
+            var _mod = activeModifiers[_am];
+            if (_mod.enemyHpMult) def.hp = Math.round(def.hp * _mod.enemyHpMult);
+            if (_mod.enemySpeedMult) def.speed *= _mod.enemySpeedMult;
+            if (_mod.enemyScaleMult) def.scale = (def.scale || 1) * _mod.enemyScaleMult;
+        }
+    }
     // Core enemy state (shared by all enemies)
     const enemy = {
         type, def,
@@ -2636,6 +2836,39 @@ function updateEnemies(dt) {
                     if (multiKillCount >= 4) addSlowMo(0.15, 0.35);
                 }
 
+                // ── Kill Streak tracking — builds multiplier for sustained aggression ──
+                killStreak.count++;
+                killStreak.timer = 0;
+                if (killStreak.count >= 10) killStreak.multiplier = 3.0;
+                else if (killStreak.count >= 6) killStreak.multiplier = 2.0;
+                else if (killStreak.count >= 3) killStreak.multiplier = 1.5;
+                else killStreak.multiplier = 1.0;
+                killStreak.displayAlpha = 1.0;
+
+                // Bestiary tracking — record this kill in player profile
+                if (typeof playerProfile !== 'undefined') {
+                    if (!playerProfile.bestiary[e.type]) playerProfile.bestiary[e.type] = { killed: 0, killedBy: 0, name: e.def.name || e.type };
+                    playerProfile.bestiary[e.type].killed++;
+                    if (e.elite) playerProfile.bestiary._eliteKills = (playerProfile.bestiary._eliteKills || 0) + 1;
+                }
+
+                // Captain's Bounty quest — track elite kills
+                if (e.elite && typeof questState !== 'undefined' &&
+                    questState.flags.captain_quest_started && !questState.flags.captain_bounty_kills_done) {
+                    questState.flags.elite_bounty_kills = (questState.flags.elite_bounty_kills || 0) + 1;
+                    if (questState.flags.elite_bounty_kills >= 5) {
+                        questState.flags.captain_bounty_kills_done = true;
+                        if (typeof Notify !== 'undefined') {
+                            Notify.toast('Bounty complete! Report to Captain Aldric.', { duration: 4, color: '#e8c840' });
+                        }
+                        currentObjective = 'Report to Captain Aldric';
+                    } else {
+                        if (typeof Notify !== 'undefined') {
+                            Notify.toast('Elite slain (' + questState.flags.elite_bounty_kills + '/5)', { duration: 2, color: '#ccaa88' });
+                        }
+                    }
+                }
+
                 // --- BOSS DEATH CINEMATIC ---
                 if (e.def.isBoss) {
                     // Stage 1: Immediate freeze frame + shake + slow-mo combo for impact
@@ -2764,8 +2997,10 @@ function updateEnemies(dt) {
                 if (typeof ENEMY_GOLD_DROP !== 'undefined') {
                     const goldDrop = ENEMY_GOLD_DROP[e.type] || 10;
                     const ascMult = 1 + (typeof ascensionLevel !== 'undefined' ? ascensionLevel * 0.25 : 0);
-                    const gold = Math.round(goldDrop * (0.8 + Math.random() * 0.4) * ascMult);
+                    const _modGoldMult = (wave.modifier && wave.modifier.goldMult) ? wave.modifier.goldMult : 1;
+                    const gold = Math.round(goldDrop * (0.8 + Math.random() * 0.4) * ascMult * killStreak.multiplier * _modGoldMult);
                     playerGold += gold;
+                    if (typeof runGoldEarned !== 'undefined') runGoldEarned += gold;
                     pickupTexts.push({ text: '+' + gold + 'g', color: '#ffd700', row: e.row, col: e.col, offsetY: -8, life: 1.0 });
                     // Gold coin particle burst
                     if (typeof spawnParticle === 'function') {
@@ -2788,9 +3023,7 @@ function updateEnemies(dt) {
                 // Siphon Life: heal on kill
                 if (getUpgrade('regen') > 0) {
                     const healAmt = 2 * getUpgrade('regen');
-                    const _qHp6 = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-                    const killMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _qHp6;
-                    player.hp = Math.min(killMaxHP, player.hp + healAmt);
+                    player.hp = Math.min(getPlayerMaxHP(), player.hp + healAmt);
                 }
                 // Phase Flux: chance to reset dodge
                 if (getUpgrade('dodge_reset') > 0) {
@@ -3088,6 +3321,65 @@ function updateEnemies(dt) {
                     e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.4; e.attackFired = true;
                     bossTelegraphFlashTimer = 0.15;
                     bossTelegraphFlashColor = '#44aaff';
+                } else if (atk === 'bone_sweep') {
+                    // Bone Colossus sweeping attack — frontal arc damage
+                    const sweepDmg = Math.round(e.def.sweepDamage * (e.bossPhase === 1 ? 1.4 : 1.0));
+                    bossSweep(e, e.def.sweepRadius, sweepDmg, 10, '#ccaa66', 'bone_colossus');
+                    e.howlPaused = 0.3;
+                    e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.3; e.attackFired = true;
+                    bossTelegraphFlashTimer = 0.15;
+                    bossTelegraphFlashColor = '#ccaa66';
+                } else if (atk === 'freeze_trap') {
+                    // Frost Wyrm freeze trap — check if player is still in the target zone
+                    const trapRow = e._telegraphRow;
+                    const trapCol = e._telegraphCol;
+                    const trapDr = player.row - trapRow;
+                    const trapDc = player.col - trapCol;
+                    if (Math.sqrt(trapDr * trapDr + trapDc * trapDc) < 1.2) {
+                        player.frozenTimer = (player.frozenTimer || 0) + e.def.freezeTrapDuration;
+                    }
+                    // Ice burst at trap location
+                    for (let p = 0; p < 8; p++) {
+                        spawnParticle(trapRow, trapCol,
+                            (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.4, '#44aaff', 0.8);
+                    }
+                    addScreenShake(3, 0.15);
+                    bossTelegraphFlashTimer = 0.15;
+                    bossTelegraphFlashColor = '#66bbff';
+                } else if (atk === 'tele_slash') {
+                    // Ruined King tele-slash — teleport behind the stored target position, then slash
+                    const targetRow = e._telegraphRow;
+                    const targetCol = e._telegraphCol;
+                    // Vanish particles at old position
+                    for (let p = 0; p < 10; p++) {
+                        spawnParticle(e.row, e.col,
+                            (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, 0.4, '#7722bb', 0.8);
+                    }
+                    // Teleport to the marked position (where player WAS when telegraph started)
+                    const behindAngle = Math.atan2(targetCol - e.col, targetRow - e.row);
+                    const teleRow = targetRow + Math.cos(behindAngle + Math.PI) * 1.2;
+                    const teleCol = targetCol + Math.sin(behindAngle + Math.PI) * 1.2;
+                    if (canEnemyMoveTo(teleRow, teleCol, e.def.hitboxR, e)) {
+                        e.row = teleRow;
+                        e.col = teleCol;
+                    }
+                    // Appear particles at new position
+                    for (let p = 0; p < 10; p++) {
+                        spawnParticle(e.row, e.col,
+                            (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.3, '#9944dd', 0.9);
+                    }
+                    // Slash damage — player had time to dodge away from the marked zone
+                    const newDr = player.row - e.row;
+                    const newDc = player.col - e.col;
+                    const newDist = Math.sqrt(newDr * newDr + newDc * newDc);
+                    if (newDist < 2.0) {
+                        const slashDmg = Math.round(e.def.teleSlashDamage * (e.bossPhase >= 1 ? 1.3 : 1.0));
+                        damagePlayer(slashDmg, 'ruined_king');
+                    }
+                    addScreenShake(5, 0.2);
+                    e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.3; e.attackFired = true;
+                    bossTelegraphFlashTimer = 0.15;
+                    bossTelegraphFlashColor = '#9944dd';
                 }
             }
             continue; // skip all other actions while telegraphing
@@ -3361,26 +3653,23 @@ function updateEnemies(dt) {
         // BONE COLOSSUS ABILITIES
         // =====================================================
         if (e.type === 'bone_colossus' && dist < e.def.aggroRange) {
-            // Sweeping Attack — damages in a frontal arc (using shared bossSweep helper)
-            if (e.bossSweepTimer <= 0 && dist < e.def.sweepRadius + 0.5) {
+            // Sweeping Attack — telegraph then damage in a frontal arc
+            if (e.bossSweepTimer <= 0 && dist < e.def.sweepRadius + 0.5 && !e._telegraphing) {
                 e.bossSweepTimer = e.def.sweepCooldown * (e.bossPhase === 1 ? 0.65 : 1.0);
-                const sweepDmg = Math.round(e.def.sweepDamage * (e.bossPhase === 1 ? 1.4 : 1.0));
-                bossSweep(e, e.def.sweepRadius, sweepDmg, 10, '#ccaa66', 'bone_colossus');
-                e.howlPaused = 0.3;
-                e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.3; e.attackFired = true;
+                const telegraphDur = e.bossPhase === 1 ? 0.6 : 0.8;
+                e._telegraphing = true;
+                e._telegraphTimer = telegraphDur;
+                e._telegraphDuration = telegraphDur;
+                e._telegraphType = 'arc';
+                e._telegraphColor = '#ccaa66';
+                e._telegraphRadius = e.def.sweepRadius;
+                e._telegraphRow = e.row;
+                e._telegraphCol = e.col;
+                e._telegraphAngle = Math.atan2(dc, dr);
+                e._telegraphSpan = Math.PI * 0.6;
+                e._telegraphAttack = 'bone_sweep';
+                sfxBossTelegraph(e.row, e.col);
                 continue;
-            }
-
-            // Sweep telegraph — visual warning 0.3s before sweep fires
-            if (e.bossSweepTimer > 0 && e.bossSweepTimer <= 0.3 && dist < e.def.sweepRadius + 0.5) {
-                const sweepCenter = Math.atan2(dc, dr);
-                // Tan/brown warning particles in arc
-                if (Math.random() < 0.4) {
-                    const angle = sweepCenter + (Math.random() - 0.5) * Math.PI * 0.8;
-                    const px = e.row + Math.cos(angle) * e.def.sweepRadius;
-                    const py = e.col + Math.sin(angle) * e.def.sweepRadius;
-                    spawnParticle(px, py, Math.cos(angle) * 0.3, Math.sin(angle) * 0.3, 0.15, '#dd8844', 0.9);
-                }
             }
 
             // Bone Cage — spawns a ring of projectiles that close in on player position
@@ -3565,31 +3854,21 @@ function updateEnemies(dt) {
                 continue;
             }
 
-            // Freeze Trap — places a trap at player's current position
-            if (e.bossFreezeTrapTimer <= 0 && dist < 8) {
+            // Freeze Trap — telegraph at player's position, then freeze after delay
+            if (e.bossFreezeTrapTimer <= 0 && dist < 8 && !e._telegraphing) {
                 e.bossFreezeTrapTimer = e.def.freezeTrapCooldown * (e.bossPhase === 1 ? 0.7 : 1.0);
-                // Store the trap target position at warning time
-                const freezeTrapRow = player.row;
-                const freezeTrapCol = player.col;
-                // Warning particles at stored position
-                for (let p = 0; p < 8; p++) {
-                    const angle = (p / 8) * Math.PI * 2;
-                    spawnParticle(freezeTrapRow + Math.cos(angle) * 0.5, freezeTrapCol + Math.sin(angle) * 0.5,
-                        0, -1, 0.6, '#aaddff', 0.7);
-                }
-                // After short delay, freeze triggers (immediate for gameplay)
-                const trapDr = player.row - freezeTrapRow;
-                const trapDc = player.col - freezeTrapCol;
-                if (Math.sqrt(trapDr * trapDr + trapDc * trapDc) < 1.2) {
-                    // Player is very close to where trap was laid — freeze them
-                    player.frozenTimer = (player.frozenTimer || 0) + e.def.freezeTrapDuration;
-                }
-                // Ice burst at trap location
-                for (let p = 0; p < 6; p++) {
-                    spawnParticle(player.row, player.col,
-                        (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.4, '#44aaff', 0.8);
-                }
-                addScreenShake(3, 0.15);
+                const telegraphDur = e.bossPhase === 1 ? 0.7 : 1.0;
+                e._telegraphing = true;
+                e._telegraphTimer = telegraphDur;
+                e._telegraphDuration = telegraphDur;
+                e._telegraphType = 'circle';
+                e._telegraphColor = '#66bbff';
+                e._telegraphRadius = 1.2;
+                e._telegraphRow = player.row;  // lock target position at telegraph start
+                e._telegraphCol = player.col;
+                e._telegraphAttack = 'freeze_trap';
+                sfxBossTelegraph(e.row, e.col);
+                continue;
             }
 
             // Shatter — AoE burst of ice shard projectiles (enrage only, or on long cooldown normally)
@@ -3657,52 +3936,22 @@ function updateEnemies(dt) {
         // RUINED KING ABILITIES (Zone 6 Boss)
         // =====================================================
         if (e.type === 'ruined_king' && dist < e.def.aggroRange) {
-            // Tele-Slash — teleports behind player, then slashes
-            if (e.bossTeleSlashTimer <= 0 && dist < e.def.teleSlashRange && dist > 2.0) {
+            // Tele-Slash — telegraph warning circle at player, then teleport + slash
+            if (e.bossTeleSlashTimer <= 0 && dist < e.def.teleSlashRange && dist > 2.0 && !e._telegraphing) {
                 const cdMult = e.bossPhase === 2 ? 0.5 : (e.bossPhase === 1 ? 0.7 : 1.0);
                 e.bossTeleSlashTimer = e.def.teleSlashCooldown * cdMult;
-                // Vanish particles at old position
-                for (let p = 0; p < 10; p++) {
-                    spawnParticle(e.row, e.col,
-                        (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, 0.4, '#7722bb', 0.8);
-                }
-                // Teleport behind player
-                const behindAngle = Math.atan2(player.col - e.col, player.row - e.row) + Math.PI;
-                const teleRow = player.row + Math.cos(behindAngle) * 1.2;
-                const teleCol = player.col + Math.sin(behindAngle) * 1.2;
-                if (canEnemyMoveTo(teleRow, teleCol, e.def.hitboxR, e)) {
-                    e.row = teleRow;
-                    e.col = teleCol;
-                }
-                // Appear particles at new position
-                for (let p = 0; p < 10; p++) {
-                    spawnParticle(e.row, e.col,
-                        (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.3, '#9944dd', 0.9);
-                }
-                // Immediate slash damage at new position
-                const newDr = player.row - e.row;
-                const newDc = player.col - e.col;
-                const newDist = Math.sqrt(newDr * newDr + newDc * newDc);
-                if (newDist < 2.0) {
-                    const slashDmg = Math.round(e.def.teleSlashDamage * (e.bossPhase >= 1 ? 1.3 : 1.0));
-                    damagePlayer(slashDmg, 'ruined_king');
-                }
-                addScreenShake(5, 0.2);
-                e.state = 'attack';
-                e.animFrame = 0;
-                e.attackTimer = 0.3;
-                e.attackFired = true;
+                const telegraphDur = e.bossPhase === 2 ? 0.5 : (e.bossPhase === 1 ? 0.6 : 0.8);
+                e._telegraphing = true;
+                e._telegraphTimer = telegraphDur;
+                e._telegraphDuration = telegraphDur;
+                e._telegraphType = 'circle';
+                e._telegraphColor = '#9944dd';
+                e._telegraphRadius = 2.0;
+                e._telegraphRow = player.row;  // mark where the slash will land
+                e._telegraphCol = player.col;
+                e._telegraphAttack = 'tele_slash';
+                sfxBossTelegraph(e.row, e.col);
                 continue;
-            }
-
-            // Tele-Slash telegraph — visual warning 0.3s before slash fires
-            if (e.bossTeleSlashTimer > 0 && e.bossTeleSlashTimer <= 0.3 && dist < e.def.teleSlashRange && dist > 2.0) {
-                // Purple warning particles at player position (indicating incoming teleport)
-                if (Math.random() < 0.5) {
-                    const angle = Math.random() * Math.PI * 2;
-                    spawnParticle(player.row + Math.cos(angle) * 0.6, player.col + Math.sin(angle) * 0.6,
-                        Math.cos(angle) * 0.3, Math.sin(angle) * 0.3, 0.15, '#bb44ff', 0.95);
-                }
             }
 
             // Void Pulse — expanding ring of dark energy
@@ -4065,6 +4314,11 @@ function updateEnemies(dt) {
             const dist = Math.sqrt(dr * dr + dc * dc);
             if (dist < HITBOX_RADIUS + e.def.hitboxR + 0.1) {
                 damagePlayer(Math.ceil(e.def.damage * ENEMY_CONTACT_DAMAGE_MULT), e.type, e.row, e.col); // contact = half damage
+                // Juggernaut synergy: slime deals contact damage back to enemies
+                if (typeof hasSynergy === 'function' && hasSynergy('juggernaut') && FormSystem.currentForm === 'slime') {
+                    const jDmg = Math.round(8 + (typeof slimeState !== 'undefined' ? slimeState.currentSize * 3 : 0));
+                    if (typeof applyEnemyHit === 'function') applyEnemyHit(e, jDmg, { skipHurtState: true });
+                }
                 break;
             }
         }
@@ -4169,7 +4423,7 @@ function grantXP(enemyType, statMult, row, col) {
     const baseAmount = ENEMY_XP[enemyType] || 5;
     // XP scales with sqrt of statMult — harder enemies give more XP but not linearly
     const scaledAmount = baseAmount * Math.sqrt(statMult || 1.0);
-    const amount = Math.round(scaledAmount * getTalismanBonus().xpMult);
+    const amount = Math.round(scaledAmount * getTalismanBonus().xpMult * killStreak.multiplier);
     xpState.xp += amount;
     // XP floating text feedback
     if (typeof pickupTexts !== 'undefined' && row !== undefined) {
@@ -4352,6 +4606,18 @@ function applyUpgrade(upgradeId) {
     addScreenShake(3, 0.15);
     if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 30, '#e8c840');
     if (typeof sfxLevelUp === 'function') sfxLevelUp();
+    // Check for newly unlocked upgrade synergies
+    if (typeof checkSynergies === 'function') {
+        const newSynergies = checkSynergies();
+        for (const syn of newSynergies) {
+            if (typeof Notify !== 'undefined') {
+                Notify.toast('SYNERGY: ' + syn.name + ' — ' + syn.desc, { duration: 5, color: syn.color, borderColor: syn.color });
+            }
+            addScreenShake(6, 0.25);
+            addSlowMo(0.4, 0.2);
+            if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 35, syn.color);
+        }
+    }
 }
 
 // Helper to get current stack count
@@ -4386,7 +4652,9 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
         amount = Math.round(amount * (1 - comboReduc));
     }
     const _potionReduc = typeof getPotionDmgReduc === 'function' ? getPotionDmgReduc() : 0;
-    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0) - _potionReduc)));
+    // Iron Bones upgrade (skeleton): flat damage reduction per stack
+    const _ironBonesReduc = (FormSystem.currentForm === 'skeleton' && typeof getUpgrade === 'function') ? getUpgrade('iron_bones') * 0.05 : 0;
+    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0) - _potionReduc - _ironBonesReduc)));
 
     // === SLIME: Membrane shield absorbs damage before HP ===
     if (FormSystem.currentForm === 'slime' && typeof slimeState !== 'undefined' && slimeState.membraneShield > 0) {
@@ -4416,6 +4684,10 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
 
     player.hp -= reducedAmt;
     playerInvTimer = PLAYER_INV_TIME;
+    // Kill streak breaks on taking damage
+    killStreak.count = 0;
+    killStreak.multiplier = 1.0;
+    killStreak.timer = 0;
     // Scale feedback by damage taken — directional if source position known
     const shakeScale = Math.min(2.0, reducedAmt / 15);
     if (sourceRow !== undefined && typeof addDirectionalShake === 'function') {
@@ -4435,9 +4707,7 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
         if (typeof equipBonus !== 'undefined' && equipBonus.effects && typeof veilUndyingCooldown !== 'undefined' && veilUndyingCooldown <= 0) {
             for (const eff of equipBonus.effects) {
                 if (eff.id === 'veil_undying') {
-                    const _veilQHp = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-                    const formMaxHP = (FormSystem.getFormConfig() || FORM_CONFIGS.wizard).maxHp + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _veilQHp;
-                    player.hp = Math.max(1, Math.round(formMaxHP * 0.15));
+                    player.hp = Math.max(1, Math.round(getPlayerMaxHP() * 0.15));
                     veilUndyingCooldown = 60; // 60s cooldown
                     _veilSaved = true;
                     playerInvTimer = 1.5; // brief invulnerability
@@ -4462,10 +4732,7 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
         }
         // Lich Phylactery — consume soul energy to cheat death
         if (!_veilSaved && typeof lichState !== 'undefined' && lichState.soulEnergy >= 30 && FormSystem.currentForm === 'lich') {
-            const _phylTalHp = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
-            const _phylEqHp = (typeof equipBonus !== 'undefined') ? (equipBonus.maxHpBonus || 0) : 0;
-            const _phylQHp = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-            player.hp = Math.round(((FORM_CONFIGS.lich.maxHp || 100) + _phylTalHp + _phylEqHp + _phylQHp) * 0.3);
+            player.hp = Math.round(getPlayerMaxHP() * 0.3);
             lichState.soulEnergy -= 30;
             playerInvTimer = 1.5;
             addScreenShake(10, 0.6);
@@ -4481,6 +4748,48 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
         deathCause = enemyType || 'Unknown';
         deathRecapTimer = 0;
         placement.active = false;
+
+        // ── Update player profile on death ──
+        if (typeof playerProfile !== 'undefined') {
+            playerProfile.totalDeaths++;
+            playerProfile.totalRuns++;
+            playerProfile.totalKills += wave.totalKilled;
+            if (currentZone > playerProfile.bestZone || (currentZone === playerProfile.bestZone && wave.current > playerProfile.bestWave)) {
+                playerProfile.bestZone = currentZone;
+                playerProfile.bestWave = wave.current;
+            }
+            if (wave.totalKilled > playerProfile.bestKills) playerProfile.bestKills = wave.totalKilled;
+            if (xpState.level > playerProfile.bestLevel) playerProfile.bestLevel = xpState.level;
+            // Record death in bestiary (enemy that killed player)
+            if (deathCause && deathCause !== 'Unknown') {
+                if (!playerProfile.bestiary[deathCause]) playerProfile.bestiary[deathCause] = { killed: 0, killedBy: 0, name: deathCause };
+                playerProfile.bestiary[deathCause].killedBy++;
+            }
+            // Add to run history (last 10)
+            const _runTime = typeof runStartTime !== 'undefined' ? Math.round((Date.now() - runStartTime) / 1000) : 0;
+            const _upgradeCount = typeof upgrades !== 'undefined' ? Object.values(upgrades).reduce(function(s, v) { return s + v; }, 0) : 0;
+            playerProfile.runHistory.push({
+                zone: currentZone, wave: wave.current, kills: wave.totalKilled,
+                form: FormSystem.currentForm, level: xpState.level,
+                gold: typeof runGoldEarned !== 'undefined' ? runGoldEarned : 0,
+                upgrades: _upgradeCount, cause: deathCause,
+                time: _runTime, timestamp: Date.now(),
+            });
+            if (playerProfile.runHistory.length > 10) playerProfile.runHistory.shift();
+            // Check milestones
+            if (typeof MILESTONE_DEFS !== 'undefined') {
+                const _run = { zone: currentZone, wave: wave.current, kills: wave.totalKilled, form: FormSystem.currentForm };
+                for (var mi = 0; mi < MILESTONE_DEFS.length; mi++) {
+                    var ms = MILESTONE_DEFS[mi];
+                    if (!playerProfile.milestones[ms.id] && ms.check(playerProfile, _run)) {
+                        playerProfile.milestones[ms.id] = true;
+                        if (typeof Notify !== 'undefined') {
+                            Notify.toast('MILESTONE: ' + ms.name + ' — ' + ms.desc, { duration: 5, color: '#ffd700', borderColor: '#aa8800' });
+                        }
+                    }
+                }
+            }
+        }
         if (typeof slimeState !== 'undefined') {
             slimeState.splitClones.length = 0;
             slimeState.acidPuddles.length = 0;
@@ -4506,6 +4815,33 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
             const dc = e.col - player.col;
             if (Math.sqrt(dr*dr + dc*dc) < 1.5) {
                 applyEnemyHit(e, thornDmg, { skipSFX: false });
+            }
+        }
+    }
+
+    // Augment passive effects on taking damage
+    if (typeof equipBonus !== 'undefined' && equipBonus.effects) {
+        for (const eff of equipBonus.effects) {
+            // Toxic Blood: poison nearby melee attacker
+            if (eff.id === 'toxic_blood') {
+                for (const e of enemies) {
+                    if (e.state === 'death') continue;
+                    const dist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
+                    if (dist < 1.5) {
+                        applyEnemyHit(e, Math.round(eff.poisonDPS * eff.poisonDur), { skipHurtState: true, skipSFX: true });
+                        spawnParticle(e.row, e.col, 0, -1, 0.5, '#44dd66', 0.7);
+                    }
+                }
+            }
+            // Adhesive Membrane: slow nearby attacker
+            if (eff.id === 'adhesive_membrane') {
+                for (const e of enemies) {
+                    if (e.state === 'death') continue;
+                    const dist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
+                    if (dist < 1.5) {
+                        e.slowTimer = Math.max(e.slowTimer || 0, eff.slowDur || 1.5);
+                    }
+                }
             }
         }
     }
@@ -4553,6 +4889,12 @@ function checkProjectileEnemyHits() {
                     const reflectDmg = Math.max(1, Math.round(projFinalDmg * ELITE_THORNED_REFLECT));
                     damagePlayer(reflectDmg, 'thorned_reflect');
                     spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1, 0.25, COLORS.ELITE_THORNED_TINT, 0.7);
+                }
+
+                // Marrow Spike upgrade (skeleton): bonus damage to low-HP enemies
+                if (p.isBone && typeof getUpgrade === 'function' && getUpgrade('marrow_spike') > 0 &&
+                    e.maxHp > 0 && e.hp / e.maxHp < 0.3) {
+                    projFinalDmg = Math.round(projFinalDmg * (1 + 0.5 * getUpgrade('marrow_spike')));
                 }
 
                 e.hp -= projFinalDmg;
@@ -4772,21 +5114,51 @@ function checkProjectileEnemyHits() {
                             }
                         }
                     }
+                    // Chain Reaction synergy: explosions spawn sub-projectiles outward
+                    if (typeof hasSynergy === 'function' && hasSynergy('chain_reaction')) {
+                        for (let si = 0; si < 4; si++) {
+                            const sa = (si / 4) * Math.PI * 2 + Math.random() * 0.3;
+                            const subProj = recycleProj(p.row, p.col, Math.cos(sa) * ATK_SPEED * 0.7, Math.sin(sa) * ATK_SPEED * 0.7);
+                            subProj.damage = Math.round(explodeDmg * 0.5);
+                            subProj.life = 0.6;
+                            subProj.canExplode = false; // no infinite chain
+                            subProj.pierce = true;
+                        }
+                    }
                 }
 
                 // Marrow Leech: skeleton bone hits heal player
                 if (p.marrowLeech) {
                     const healAmt = Math.round(p.damage * MARROW_LEECH_HEAL_MULT);
-                    const skelMaxHp = (FORM_CONFIGS.skeleton || {}).maxHp || 80;
-                    const _qHpSkelE = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-                    const maxHp = skelMaxHp * (1 + getUpgrade('calcium_fort') * 0.15) + getTalismanBonus().hpBonus + (equipBonus.maxHpBonus || 0) + _qHpSkelE;
-                    player.hp = Math.min(maxHp, player.hp + healAmt);
+                    player.hp = Math.min(getPlayerMaxHP(), player.hp + healAmt);
                 }
 
                 // Skeleton combo system: increment on bone hit
                 if (p.isBone && typeof skeletonState !== 'undefined') {
                     skeletonState.comboCount = Math.min(skeletonState.maxCombo, skeletonState.comboCount + 1);
                     skeletonState.comboTimer = 0; // reset decay timer
+                }
+
+                // Bone Ricochet upgrade: chain bone to nearest enemy on hit
+                if (p.isBone && typeof getUpgrade === 'function' && getUpgrade('bone_ricochet') > 0 &&
+                    (!p._ricochetCount || p._ricochetCount < getUpgrade('bone_ricochet'))) {
+                    let nearestE = null, nearestDist = 3.0; // 3 tile max chain range
+                    for (const e2 of enemies) {
+                        if (e2 === e || e2.state === 'death') continue;
+                        if (p.hitEnemies && p.hitEnemies.has(e2)) continue;
+                        const d2 = Math.sqrt((e2.row - e.row) ** 2 + (e2.col - e.col) ** 2);
+                        if (d2 < nearestDist) { nearestDist = d2; nearestE = e2; }
+                    }
+                    if (nearestE) {
+                        const chainProj = recycleProj(e.row, e.col,
+                            ((nearestE.row - e.row) / nearestDist) * ATK_SPEED,
+                            ((nearestE.col - e.col) / nearestDist) * ATK_SPEED);
+                        chainProj.damage = Math.round(p.damage * 0.6); // 60% damage per bounce
+                        chainProj.life = 0.5;
+                        chainProj.isBone = true;
+                        chainProj.marrowLeech = p.marrowLeech;
+                        chainProj._ricochetCount = (p._ricochetCount || 0) + 1;
+                    }
                 }
 
                 if (e.hp <= 0) {
@@ -4796,6 +5168,11 @@ function checkProjectileEnemyHits() {
                     e.animFrame = 0;
                     sfxEnemyDeath(e.row, e.col);
                     rollEnemyLoot(e);
+                    // Bone Collector synergy: bone kills restore ammo
+                    if (p.isBone && typeof hasSynergy === 'function' && hasSynergy('bone_collector') &&
+                        typeof skeletonState !== 'undefined') {
+                        skeletonState.boneAmmo = Math.min(skeletonState.maxBoneAmmo || 20, (skeletonState.boneAmmo || 0) + 2);
+                    }
                     // Death particles — directional burst away from projectile
                     if (typeof spawnDeathBurst === 'function') {
                         const deathPos = tileToScreen(e.row, e.col);
@@ -4887,6 +5264,21 @@ function updateEnemyProjectiles(dt) {
         a.row = nr;
         a.col = nc;
 
+        // Bone Wall upgrade: skeleton barriers block enemy projectiles
+        if (typeof skeletonState !== 'undefined' && skeletonState.boneWalls && skeletonState.boneWalls.length > 0) {
+            let blocked = false;
+            for (const bw of skeletonState.boneWalls) {
+                const bdr = a.row - bw.row, bdc = a.col - bw.col;
+                if (Math.sqrt(bdr * bdr + bdc * bdc) < bw.radius) {
+                    enemyProjectiles.splice(i, 1);
+                    spawnParticle(a.row, a.col, (Math.random()-0.5)*3, -2, 0.3, '#ccaa66', 0.7);
+                    blocked = true;
+                    break;
+                }
+            }
+            if (blocked) continue;
+        }
+
         // Hit player
         if (!player.dodging && playerInvTimer <= 0) {
             const pdr = player.row - a.row;
@@ -4933,18 +5325,36 @@ function updateGroundHazards(dt) {
             continue;
         }
 
-        if (h.type === 'fire_pool') {
-            // Damage player if standing on fire pool
+        if (h.type === 'fire_pool' || h.type === 'lava_vent' || h.type === 'void_fissure') {
+            // Damage player if standing in hazard
             const pdr = player.row - h.row;
             const pdc = player.col - h.col;
             if (Math.sqrt(pdr * pdr + pdc * pdc) < h.radius + HITBOX_RADIUS) {
                 h.tickTimer -= dt;
                 if (h.tickTimer <= 0) {
-                    h.tickTimer = 1.0; // damage once per second
-                    damagePlayer(h.damage, 'fire_slime');
+                    h.tickTimer = 1.0;
+                    damagePlayer(h.damage, h.type);
                 }
             }
-            // Ambient fire particles
+            // Environmental hazards also damage enemies
+            if (h.damagesEnemies) {
+                if (!h._enemyTickTimer) h._enemyTickTimer = 0;
+                h._enemyTickTimer -= dt;
+                if (h._enemyTickTimer <= 0) {
+                    h._enemyTickTimer = 1.0;
+                    for (const e of enemies) {
+                        if (e.state === 'death') continue;
+                        const edr = e.row - h.row, edc = e.col - h.col;
+                        if (Math.sqrt(edr * edr + edc * edc) < h.radius + (e.def.hitboxR || 0.4)) {
+                            if (typeof applyEnemyHit === 'function') {
+                                applyEnemyHit(e, h.damage, { skipHurtState: true, skipSFX: true });
+                            }
+                        }
+                    }
+                }
+            }
+            // Ambient particles (color varies by type)
+            const hazColor = h.type === 'void_fissure' ? '#9944dd' : h.type === 'lava_vent' ? '#ff4400' : '#ff6622';
             if (Math.random() < 0.3 * GFX.particleMul) {
                 const pAngle = Math.random() * Math.PI * 2;
                 const pDist = Math.random() * h.radius * 0.6;
@@ -4952,8 +5362,25 @@ function updateGroundHazards(dt) {
                     h.row + Math.cos(pAngle) * pDist,
                     h.col + Math.sin(pAngle) * pDist,
                     (Math.random() - 0.5) * 0.5, -1 - Math.random(),
-                    0.3, '#ff6622', 0.5
+                    0.3, hazColor, 0.5
                 );
+            }
+        }
+
+        // Ice patch — slows everything that crosses it (player and enemies)
+        if (h.type === 'ice_patch') {
+            // Slow player
+            const ipdr = player.row - h.row, ipdc = player.col - h.col;
+            if (Math.sqrt(ipdr * ipdr + ipdc * ipdc) < h.radius + HITBOX_RADIUS) {
+                player.slowTimer = Math.max(player.slowTimer || 0, 0.3);
+            }
+            // Slow enemies
+            for (const e of enemies) {
+                if (e.state === 'death') continue;
+                const edr = e.row - h.row, edc = e.col - h.col;
+                if (Math.sqrt(edr * edr + edc * edc) < h.radius + (e.def.hitboxR || 0.4)) {
+                    e.slowTimer = Math.max(e.slowTimer || 0, 0.3);
+                }
             }
         }
 
@@ -4980,6 +5407,53 @@ function updateGroundHazards(dt) {
                 continue;
             }
         }
+    }
+}
+
+// ----- ENVIRONMENTAL HAZARD SPAWNING (zone-specific, during combat) -----
+function spawnEnvironmentHazards(dt) {
+    if (wave.phase !== 'fighting') return;
+    _envHazardTimer -= dt;
+    if (_envHazardTimer > 0) return;
+    _envHazardTimer = 8 + Math.random() * 6; // every 8-14 seconds
+
+    const ms = floorMap.length;
+    // Find a random walkable floor tile near player
+    let attempts = 20;
+    let hr = 0, hc = 0;
+    while (attempts-- > 0) {
+        hr = Math.floor(player.row + (Math.random() - 0.5) * 10);
+        hc = Math.floor(player.col + (Math.random() - 0.5) * 10);
+        if (hr >= 0 && hr < ms && hc >= 0 && hc < ms && floorMap[hr][hc] && !blocked[hr][hc]) break;
+    }
+    if (attempts <= 0) return;
+
+    // Determine hazard type by zone (or procedural depth theme)
+    const _isProcedural = currentZone >= 100;
+    const _depth = _isProcedural ? (typeof abyssDepthFlags !== 'undefined' ? abyssDepthFlags.depth : currentZone - 99) : 0;
+    const _isLavaZone = currentZone === 4 || (_isProcedural && _depth % 4 === 1);
+    const _isIceZone = currentZone === 5 || (_isProcedural && _depth % 4 === 3);
+    const _isVoidZone = currentZone === 6 || (_isProcedural && _depth % 4 === 0 && _depth > 4);
+
+    if (_isLavaZone) {
+        groundHazards.push({
+            type: 'lava_vent', row: hr + 0.5, col: hc + 0.5,
+            radius: 1.2, damage: 8 + (_isProcedural ? _depth : 0), life: 5.0, maxLife: 5.0,
+            tickTimer: 0, damagesEnemies: true,
+        });
+        addScreenShake(2, 0.1);
+    } else if (_isIceZone) {
+        groundHazards.push({
+            type: 'ice_patch', row: hr + 0.5, col: hc + 0.5,
+            radius: 1.5, damage: 0, life: 8.0, maxLife: 8.0,
+            tickTimer: 0, damagesEnemies: false,
+        });
+    } else if (_isVoidZone) {
+        groundHazards.push({
+            type: 'void_fissure', row: hr + 0.5, col: hc + 0.5,
+            radius: 1.0, damage: 10 + (_isProcedural ? _depth : 0), life: 4.0, maxLife: 4.0,
+            tickTimer: 0, damagesEnemies: true,
+        });
     }
 }
 
@@ -5031,6 +5505,53 @@ function drawGroundHazards() {
             ctx.beginPath();
             ctx.ellipse(sx, sy, fillR, fillR * 0.5, 0, 0, Math.PI * 2);
             ctx.fill();
+            ctx.restore();
+        }
+
+        if (h.type === 'lava_vent') {
+            const pulse = 0.5 + Math.sin(performance.now() / 150) * 0.2;
+            const fadeAlpha = Math.min(1, h.life / 0.5);
+            ctx.save();
+            ctx.globalAlpha = pulse * fadeAlpha;
+            ctx.globalCompositeOperation = 'screen';
+            const r = h.radius * DIAMOND_W * 0.8;
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+            grad.addColorStop(0, 'rgba(255, 80, 0, 0.7)');
+            grad.addColorStop(0.4, 'rgba(255, 40, 0, 0.4)');
+            grad.addColorStop(1, 'rgba(180, 20, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+
+        if (h.type === 'ice_patch') {
+            const fadeAlpha = Math.min(1, h.life / 0.5);
+            ctx.save();
+            ctx.globalAlpha = 0.25 * fadeAlpha;
+            ctx.globalCompositeOperation = 'screen';
+            const r = h.radius * DIAMOND_W * 0.8;
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+            grad.addColorStop(0, 'rgba(100, 180, 255, 0.5)');
+            grad.addColorStop(0.6, 'rgba(80, 140, 220, 0.2)');
+            grad.addColorStop(1, 'rgba(60, 100, 180, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+
+        if (h.type === 'void_fissure') {
+            const pulse = 0.4 + Math.sin(performance.now() / 250) * 0.25;
+            const fadeAlpha = Math.min(1, h.life / 0.5);
+            ctx.save();
+            ctx.globalAlpha = pulse * fadeAlpha;
+            ctx.globalCompositeOperation = 'screen';
+            const r = h.radius * DIAMOND_W * 0.8;
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+            grad.addColorStop(0, 'rgba(140, 40, 220, 0.6)');
+            grad.addColorStop(0.5, 'rgba(100, 20, 180, 0.3)');
+            grad.addColorStop(1, 'rgba(60, 10, 120, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
         }
     }

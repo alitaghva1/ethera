@@ -154,7 +154,21 @@ function grantKeyItem(id) {
 
     // Quest item pickups — set quest flags and objectives
     if (id === 'infernal_ore') {
-        if (typeof questState !== 'undefined') questState.flags.has_infernal_ore = true;
+        if (typeof questState !== 'undefined') {
+            questState.flags.has_infernal_ore = true;
+            // Ore quality degrades based on how many waves cleared in Zone 4
+            const waveCount = (typeof wave !== 'undefined') ? wave.current : 0;
+            if (waveCount <= 2) {
+                questState.flags.ore_quality = 3; // white-hot
+                pickupTexts.push({ text: 'White-hot ore! Rush it back!', color: '#ffd700', row: player.row, col: player.col, offsetY: -15, life: 3 });
+            } else if (waveCount <= 4) {
+                questState.flags.ore_quality = 2; // still glowing
+                pickupTexts.push({ text: 'The ore still glows...', color: '#ffaa44', row: player.row, col: player.col, offsetY: -15, life: 3 });
+            } else {
+                questState.flags.ore_quality = 1; // dimming
+                pickupTexts.push({ text: 'The ore has dimmed...', color: '#aa7744', row: player.row, col: player.col, offsetY: -15, life: 3 });
+            }
+        }
         currentObjective = 'Return the ore to Garrett';
     } else if (id === 'frost_essence') {
         if (typeof questState !== 'undefined') questState.flags.has_frost_essence = true;
@@ -417,7 +431,9 @@ function dropFromBackpack(backpackIdx) {
 // Calculate total stat bonuses from equipped gear (wizard/lich only)
 function getEquipBonuses() {
     const form = FormSystem.currentForm;
-    if (form !== 'wizard' && form !== 'lich') return {}; // no equipment for slime/skeleton
+    if (form !== 'wizard' && form !== 'lich') {
+        return typeof getAugmentBonuses === 'function' ? getAugmentBonuses() : {};
+    }
     const totals = {};
     for (const slot of EQUIP_SLOTS) {
         const item = inventory.equipped[slot];
@@ -455,13 +471,272 @@ function getEquipBonuses() {
     return totals;
 }
 
-// On enemy death — roll for loot
+// Augment stat bonuses — mirrors getEquipBonuses for Slime/Skeleton forms
+function getAugmentBonuses() {
+    if (typeof augmentInventory === 'undefined') return {};
+    const totals = {};
+    for (const aug of augmentInventory.equipped) {
+        if (!aug) continue;
+        for (const [stat, val] of Object.entries(aug.stats)) {
+            if (typeof val === 'number') totals[stat] = (totals[stat] || 0) + val;
+        }
+    }
+    // Same caps as equipment
+    if (totals.dmgReduc) totals.dmgReduc = Math.min(0.6, totals.dmgReduc);
+    if (totals.atkSpeedMult) totals.atkSpeedMult = Math.min(1.0, totals.atkSpeedMult);
+    if (totals.moveSpeedMult) totals.moveSpeedMult = Math.min(0.5, totals.moveSpeedMult);
+    // Collect passive effects
+    totals.effects = [];
+    for (const aug of augmentInventory.equipped) {
+        if (aug && aug.effect) totals.effects.push(aug.effect);
+    }
+    return totals;
+}
+
+// On enemy death — roll for loot (equipment for wizard/lich, augments for slime/skeleton)
 function rollEnemyLoot(enemy) {
     const dropChance = DROP_CHANCE_BASE;
     if (Math.random() < dropChance) {
-        const item = generateItem(wave.current);
-        dropItemInWorld(enemy.row, enemy.col, item);
+        const formCfg = typeof FormSystem !== 'undefined' ? FormSystem.getFormConfig() : null;
+        if (formCfg && !formCfg.hasEquipment && typeof generateAugment === 'function') {
+            const aug = generateAugment(wave.current, FormSystem.currentForm);
+            if (aug) dropAugmentInWorld(enemy.row, enemy.col, aug);
+        } else {
+            const item = generateItem(wave.current);
+            dropItemInWorld(enemy.row, enemy.col, item);
+        }
     }
+}
+
+// ============================================================
+//  CRACKED WALLS / SECRET ROOMS
+// ============================================================
+function breakCrackedWall(wallR, wallC) {
+    if (typeof crackedWalls === 'undefined') return false;
+    for (let i = 0; i < crackedWalls.length; i++) {
+        const cw = crackedWalls[i];
+        if (cw.row === wallR && cw.col === wallC && !cw.opened) {
+            cw.opened = true;
+            // Open the wall tile
+            blocked[wallR][wallC] = false;
+            blockType[wallR][wallC] = null;
+            objectMap[wallR][wallC] = null;
+            floorMap[wallR][wallC] = 'stoneTile';
+            // Carve the 3x3 secret room
+            for (const t of cw.secretTiles) {
+                floorMap[t.r][t.c] = 'stoneTile';
+                blocked[t.r][t.c] = false;
+                blockType[t.r][t.c] = null;
+                objectMap[t.r][t.c] = null;
+            }
+            // Add walls around the secret room perimeter
+            const sr = cw.secretCenter.r, sc = cw.secretCenter.c;
+            for (let r = sr - 2; r <= sr + 2; r++) {
+                for (let c = sc - 2; c <= sc + 2; c++) {
+                    if (r < 0 || r >= floorMap.length || c < 0 || c >= floorMap.length) continue;
+                    if (Math.abs(r - sr) <= 1 && Math.abs(c - sc) <= 1) continue; // inner room
+                    if (r === wallR && c === wallC) continue; // entrance
+                    if (!floorMap[r][c] && !blocked[r][c]) {
+                        blocked[r][c] = true;
+                        blockType[r][c] = 'wall';
+                    }
+                }
+            }
+            // Place a rare+ chest in the secret room
+            placeObj(sr, sc, 'chestClosed', false);
+            // Register as a loot chest with boosted rarity
+            const chestKey = sr + ',' + sc;
+            if (typeof CHEST_DEFS !== 'undefined') {
+                CHEST_DEFS[chestKey] = { type: 'loot', label: 'Secret Cache', rarity: 'rare' };
+            }
+            // Update fog of war to reveal
+            if (typeof updateFogOfWar === 'function') updateFogOfWar();
+            // Dramatic feedback
+            addScreenShake(8, 0.4);
+            addSlowMo(0.2, 0.3);
+            if (typeof spawnParticleBurst === 'function') spawnParticleBurst(wallR, wallC, 20, '#ccaa66');
+            if (typeof sfxExplosion === 'function') sfxExplosion();
+            if (typeof Notify !== 'undefined') {
+                Notify.toast('A hidden chamber reveals itself...', { duration: 3.5, color: '#e8c840', borderColor: '#8a7030' });
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+// ============================================================
+//  CHALLENGE ALTARS — optional risk/reward encounters
+// ============================================================
+const altarState = {
+    row: -1, col: -1,
+    phase: 'none',       // 'none', 'ready', 'active', 'success', 'failed', 'spent'
+    timer: 0,            // countdown during active challenge
+    killTarget: 0,       // enemies to kill
+    killCount: 0,        // enemies killed during challenge
+    reward: null,        // reward type
+};
+
+function placeAltarInZone(zoneNum) {
+    altarState.phase = 'none';
+    altarState.row = -1;
+    altarState.col = -1;
+    if (zoneNum <= 1 || zoneNum === 0 || zoneNum === 7) return; // no altars in early zones or town
+    // Find a random walkable floor tile not near spawn or doors
+    const ms = floorMap.length;
+    let attempts = 50;
+    while (attempts-- > 0) {
+        const r = Math.floor(4 + Math.random() * (ms - 8));
+        const c = Math.floor(4 + Math.random() * (ms - 8));
+        if (!floorMap[r] || !floorMap[r][c] || blocked[r][c]) continue;
+        if (objectMap[r] && objectMap[r][c]) continue;
+        // Not too close to player spawn
+        const dist = Math.sqrt((r - player.row) ** 2 + (c - player.col) ** 2);
+        if (dist < 5) continue;
+        altarState.row = r;
+        altarState.col = c;
+        altarState.phase = 'ready';
+        placeObj(r, c, 'challengeAltar', false); // non-blocking so player can walk near
+        break;
+    }
+}
+
+const ALTAR_INTERACT_RANGE = 2.2;
+
+function getNearbyAltar() {
+    if (altarState.phase !== 'ready') return null;
+    const dr = altarState.row + 0.5 - player.row;
+    const dc = altarState.col + 0.5 - player.col;
+    if (Math.sqrt(dr * dr + dc * dc) < ALTAR_INTERACT_RANGE) {
+        return { row: altarState.row, col: altarState.col };
+    }
+    return null;
+}
+
+function activateAltar() {
+    if (altarState.phase !== 'ready') return false;
+    altarState.phase = 'active';
+    altarState.timer = 30; // 30 seconds to complete
+    altarState.killTarget = 3 + Math.floor(currentZone / 2); // 3-6 elites depending on zone
+    altarState.killCount = 0;
+    // Spawn elites at the altar
+    const types = ['armoredskel', 'skelarch', 'skeleton'];
+    for (let i = 0; i < altarState.killTarget; i++) {
+        const type = types[Math.floor(Math.random() * types.length)];
+        const angle = (i / altarState.killTarget) * Math.PI * 2;
+        const sr = altarState.row + Math.cos(angle) * 2.5;
+        const sc = altarState.col + Math.sin(angle) * 2.5;
+        if (typeof spawnEnemy === 'function') {
+            const e = spawnEnemy(type, sr, sc, (currentZone || 1) * 1.5);
+            if (e) { e.elite = 'swift'; e._altarChallenge = true; }
+        }
+    }
+    addScreenShake(6, 0.3);
+    if (typeof Notify !== 'undefined') {
+        Notify.toast('ALTAR CHALLENGE: Kill ' + altarState.killTarget + ' elites in 30s!', { duration: 4, color: '#e8c840', borderColor: '#aa8800' });
+    }
+    if (typeof sfxWaveStart === 'function') sfxWaveStart();
+    return true;
+}
+
+function updateAltarChallenge(dt) {
+    if (altarState.phase !== 'active') return;
+    altarState.timer -= dt;
+    // Count altar kills
+    altarState.killCount = 0;
+    for (const e of enemies) {
+        if (e._altarChallenge && e.state === 'death') altarState.killCount++;
+    }
+    // Success
+    if (altarState.killCount >= altarState.killTarget) {
+        altarState.phase = 'success';
+        objectMap[altarState.row][altarState.col] = 'altarSpent';
+        // Grant reward: bonus gold + reroll token
+        const bonusGold = 50 + currentZone * 25;
+        if (typeof playerGold !== 'undefined') playerGold += bonusGold;
+        if (typeof questState !== 'undefined') questState.rerollTokens = (questState.rerollTokens || 0) + 1;
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('ALTAR COMPLETE! +' + bonusGold + ' gold, +1 reroll token', { duration: 4, color: '#ffd700', borderColor: '#aa8800' });
+        }
+        addScreenShake(4, 0.2);
+        if (typeof spawnParticleBurst === 'function') spawnParticleBurst(altarState.row, altarState.col, 30, '#ffd700');
+        altarState.phase = 'spent';
+    }
+    // Failure
+    if (altarState.timer <= 0 && altarState.phase === 'active') {
+        altarState.phase = 'spent';
+        objectMap[altarState.row][altarState.col] = 'altarSpent';
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Altar challenge failed...', { duration: 3, color: '#cc6644' });
+        }
+    }
+}
+
+function drawAltarPrompt() {
+    if (altarState.phase === 'active') {
+        // Show timer HUD during active challenge
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 16px Georgia';
+        const timeLeft = Math.ceil(altarState.timer);
+        ctx.fillStyle = timeLeft <= 10 ? '#ff4444' : '#e8c840';
+        ctx.globalAlpha = timeLeft <= 5 ? 0.5 + Math.sin(performance.now() / 200) * 0.4 : 0.7;
+        ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 4;
+        ctx.fillText('ALTAR: ' + altarState.killCount + '/' + altarState.killTarget + '  [' + timeLeft + 's]', canvasW / 2, 55);
+        ctx.restore();
+        return;
+    }
+    const altar = getNearbyAltar();
+    if (!altar) return;
+    // Draw interaction prompt at altar position
+    const pos = tileToScreen(altar.row + 0.5, altar.col + 0.5);
+    const sx = pos.x + cameraX, sy = pos.y + cameraY;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = 0.5 + Math.sin(performance.now() / 600) * 0.2;
+    // E badge
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.beginPath(); ctx.roundRect(sx - 10, sy - 38, 20, 18, 3); ctx.fill();
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#e8c840';
+    ctx.fillText('E', sx, sy - 29);
+    // Label
+    ctx.font = 'italic 10px Georgia';
+    ctx.fillStyle = '#e8c840';
+    ctx.globalAlpha = 0.6;
+    ctx.fillText('Challenge Altar', sx, sy - 15);
+    ctx.restore();
+}
+
+// Draw altar object in world (glowing pillar)
+function drawAltarObject() {
+    if (altarState.row < 0) return;
+    const pos = tileToScreen(altarState.row + 0.5, altarState.col + 0.5);
+    const sx = pos.x + cameraX, sy = pos.y + cameraY;
+    if (sx < -100 || sx > canvasW + 100 || sy < -100 || sy > canvasH + 100) return;
+    const t = performance.now() / 1000;
+    const isReady = altarState.phase === 'ready';
+    const isActive = altarState.phase === 'active';
+    ctx.save();
+    // Base pillar
+    ctx.fillStyle = isReady ? '#554422' : isActive ? '#665533' : '#333';
+    ctx.globalAlpha = 0.8;
+    ctx.fillRect(sx - 4, sy - 20, 8, 20);
+    // Top gem
+    if (isReady || isActive) {
+        ctx.globalCompositeOperation = 'screen';
+        const pulse = 0.5 + Math.sin(t * (isActive ? 4 : 2)) * 0.3;
+        ctx.globalAlpha = pulse;
+        const gemColor = isActive ? '#ff6644' : '#e8c840';
+        const g = ctx.createRadialGradient(sx, sy - 22, 0, sx, sy - 22, 12);
+        g.addColorStop(0, gemColor);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(sx - 12, sy - 34, 24, 24);
+    }
+    ctx.restore();
 }
 
 // ============================================================
@@ -715,6 +990,9 @@ function drawChestPrompt() {
 function loadZone(zoneNumber) {
     currentZone = zoneNumber;
 
+    // Reset secret room state for new zone
+    if (typeof crackedWalls !== 'undefined') { try { crackedWalls.length = 0; } catch(e) {} }
+
     // Clear glow cache on zone load
     clearGlowCache();
 
@@ -820,6 +1098,9 @@ function loadZone(zoneNumber) {
     } else if (zoneNumber === 6) {
         currentObjective = 'Reach the Throne. Find her.';
     }
+
+    // Place a challenge altar in combat zones (Zone 2+)
+    if (typeof placeAltarInZone === 'function') placeAltarInZone(zoneNumber);
 
     // Generate the appropriate zone
     if (zoneNumber === 7) {
@@ -1003,6 +1284,11 @@ function loadZone(zoneNumber) {
     cameraY = 0;
 
 
+    // Auto-save on zone transition — protects against crashes and accidental closes
+    if (typeof saveGame === 'function' && typeof getAutoSaveSlot === 'function' && zoneNumber !== 7) {
+        try { saveGame(getAutoSaveSlot()); } catch(e) { /* silent */ }
+    }
+
     // Zone name display handled by showZoneBanner() in gameloop.js (called from zone transition)
     // Notify.showZoneBanner removed — was creating a duplicate banner
 
@@ -1049,10 +1335,56 @@ const ABYSS_MODIFIERS = [
     { id: 'haste', name: 'Haste', desc: 'All enemies +40% speed', enemySpeedMult: 1.4 },
     { id: 'famine', name: 'Famine', desc: 'No HP from kills', noHpDrops: true },
     { id: 'gauntlet', name: 'Gauntlet', desc: 'No rest between waves', noRestPeriod: true },
+    { id: 'volatile', name: 'Volatile', desc: 'Enemies explode on death', enemyExplodeOnDeath: true, color: '#ff6644' },
+    { id: 'thorned_horde', name: 'Thorned Horde', desc: 'All enemies reflect 10% damage', enemyReflect: 0.10, color: '#44cc88' },
+    { id: 'giant', name: 'Giant', desc: 'Enemies +30% size, +50% HP', enemyScaleMult: 1.3, enemyHpMult: 1.5, color: '#cc8844' },
+    { id: 'starved', name: 'Starved', desc: 'Gold drops -70%', goldMult: 0.3, color: '#888888' },
 ];
 let activeModifiers = [];
 let _lastAddedModifier = null;
-const ABYSS_MODIFIER_CAP = 4;
+const ABYSS_MODIFIER_CAP = 6; // raised from 4 to support deeper runs
+
+// Modifier choice state — pauses gameplay for player to pick
+var abyssChoiceState = {
+    pending: false,
+    options: [],     // 3 random modifiers to choose from
+    doubleChoice: false, // depth 25+: pick 2
+    picksRemaining: 0,
+};
+
+// Depth tier flags for current procedural zone (set by resolveNextZone, consumed by wave system)
+var abyssDepthFlags = {
+    bossGauntlet: false,
+    hazardSurge: false,
+    mythicScaling: false,
+    depth: 0,
+};
+
+function rollAbyssModifierChoices() {
+    const available = ABYSS_MODIFIERS.filter(m => !activeModifiers.some(a => a.id === m.id));
+    if (available.length === 0 || activeModifiers.length >= ABYSS_MODIFIER_CAP) return;
+    // Shuffle and pick 3
+    const shuffled = available.sort(() => Math.random() - 0.5);
+    abyssChoiceState.options = shuffled.slice(0, Math.min(3, shuffled.length));
+    abyssChoiceState.pending = true;
+    abyssChoiceState.picksRemaining = abyssChoiceState.doubleChoice ? 2 : 1;
+}
+
+function applyAbyssModifierChoice(idx) {
+    if (idx < 0 || idx >= abyssChoiceState.options.length) return;
+    const pick = abyssChoiceState.options[idx];
+    activeModifiers.push(pick);
+    _lastAddedModifier = pick;
+    abyssChoiceState.options.splice(idx, 1);
+    abyssChoiceState.picksRemaining--;
+    if (abyssChoiceState.picksRemaining <= 0 || abyssChoiceState.options.length === 0) {
+        abyssChoiceState.pending = false;
+        abyssChoiceState.options = [];
+    }
+    if (typeof Notify !== 'undefined') {
+        Notify.toast('Abyss Modifier: ' + pick.name + ' — ' + pick.desc, { duration: 4, color: '#cc4488', borderColor: '#882244' });
+    }
+}
 
 function rollAbyssModifier() {
     const available = ABYSS_MODIFIERS.filter(m => !activeModifiers.some(a => a.id === m.id));
@@ -1124,14 +1456,44 @@ function resolveNextZone() {
     // Past the story? Enter endless mode
     if (progressionIndex >= ZONE_PROGRESSION.length) {
         if (!endlessUnlocked) endlessUnlocked = true;
-        // Endless: generate procedural zones indefinitely
         const themes = ['dungeon', 'ruins', 'hell', 'frozen'];
         const d = endlessDepth++;
-        // Roll abyss modifier from depth 2+ of endless
-        if (d >= 6) rollAbyssModifier();
-        // Check for abyss milestones
+
+        // Depth tier events — modifier choice every 5 depths
+        if (d >= 6 && d % 5 === 0) {
+            abyssChoiceState.doubleChoice = (d >= 25); // depth 25+: pick 2
+            rollAbyssModifierChoices();
+        }
+
+        // Depth tier: boss gauntlet at 10, 20, 30... (stored as zone flag)
+        const isBossGauntlet = (d >= 10 && d % 10 === 0);
+        // Depth tier: environmental hazard surge at 15, 25, 35...
+        const isHazardSurge = (d >= 15 && d % 10 === 5);
+        // Depth tier: mythic scaling at 30+
+        const isMythic = (d >= 30);
+
         checkAbyssMilestone(d);
-        return { procedural: true, theme: themes[(d - 5) % themes.length], depth: d };
+
+        // Track in player profile
+        if (typeof playerProfile !== 'undefined') {
+            if (!playerProfile.bestAbyssDepth) playerProfile.bestAbyssDepth = {};
+            const form = FormSystem.currentForm;
+            if (!playerProfile.bestAbyssDepth[form] || d > playerProfile.bestAbyssDepth[form]) {
+                playerProfile.bestAbyssDepth[form] = d;
+            }
+        }
+
+        // Store depth tier flags globally for wave system
+        abyssDepthFlags.bossGauntlet = isBossGauntlet;
+        abyssDepthFlags.hazardSurge = isHazardSurge;
+        abyssDepthFlags.mythicScaling = isMythic;
+        abyssDepthFlags.depth = d;
+
+        return {
+            procedural: true,
+            theme: themes[(d - 5) % themes.length],
+            depth: d,
+        };
     }
     return ZONE_PROGRESSION[progressionIndex];
 }
@@ -1430,11 +1792,12 @@ function getNearbyRebuildPoint() {
     if (typeof hamletRebuild === 'undefined' || typeof REBUILD_POINTS === 'undefined') return null;
     if (currentZone !== 0) return null;
     for (const [key, point] of Object.entries(REBUILD_POINTS)) {
-        if (hamletRebuild[key]) continue; // already rebuilt
+        const level = typeof getRebuiltLevel === 'function' ? getRebuiltLevel(key) : (hamletRebuild[key] ? 3 : 0);
+        if (level >= 3) continue; // fully upgraded
         const dr = player.row - point.row;
         const dc = player.col - point.col;
         if (Math.sqrt(dr * dr + dc * dc) < 2.5) {
-            return { key, ...point };
+            return { key, level, ...point };
         }
     }
     return null;
@@ -1443,29 +1806,41 @@ function getNearbyRebuildPoint() {
 function tryHamletRebuild() {
     const rp = getNearbyRebuildPoint();
     if (!rp) return false;
-    const cost = REBUILD_COSTS[rp.key];
-    const label = REBUILD_LABELS[rp.key];
+    const nextTier = rp.level + 1;
+    const costs = typeof REBUILD_TIER_COSTS !== 'undefined' ? REBUILD_TIER_COSTS[rp.key] : null;
+    const labels = typeof REBUILD_TIER_LABELS !== 'undefined' ? REBUILD_TIER_LABELS[rp.key] : null;
+    const descs = typeof REBUILD_TIER_DESCS !== 'undefined' ? REBUILD_TIER_DESCS[rp.key] : null;
+    const cost = costs ? costs[nextTier - 1] : (REBUILD_COSTS[rp.key] || 250);
+    const label = labels ? labels[nextTier - 1] : (REBUILD_LABELS[rp.key] || 'Upgrade');
     if (playerGold < cost) {
         pickupTexts.push({ text: 'Not enough gold (' + cost + 'g needed)', color: '#cc4444',
             row: rp.row, col: rp.col, offsetY: -20, life: 2.0 });
-        return true; // consumed the input even though it failed
+        return true;
     }
     playerGold -= cost;
-    hamletRebuild[rp.key] = true;
-    if (typeof addScreenShake === 'function') addScreenShake(8, 0.5);
-    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(rp.row, rp.col, 35, '#ffd700');
-    if (typeof addSlowMo === 'function') addSlowMo(0.15, 0.3); // brief dramatic slow-mo
+    hamletRebuild[rp.key] = nextTier;
+    if (typeof addScreenShake === 'function') addScreenShake(6 + nextTier * 2, 0.4);
+    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(rp.row, rp.col, 25 + nextTier * 10, '#ffd700');
+    if (typeof addSlowMo === 'function') addSlowMo(0.15, 0.3);
     if (typeof sfxLevelUp === 'function') sfxLevelUp();
-    // Screen flash for celebration
-    if (typeof dmgVignetteIntensity !== 'undefined') {
-        dmgVignetteIntensity = 0; // clear any red vignette
-    }
-    pickupTexts.push({ text: label + ' \u2014 Complete!', color: '#ffd700',
+    pickupTexts.push({ text: label + ' \u2014 Tier ' + nextTier + '!', color: '#ffd700',
         row: rp.row, col: rp.col, offsetY: -30, life: 3.0 });
-    // Apply passive bonuses
+    if (descs) {
+        pickupTexts.push({ text: descs[nextTier - 1], color: '#ccaa66',
+            row: rp.row, col: rp.col, offsetY: -15, life: 3.0 });
+    }
+    // Apply tier-specific passive bonuses
     if (rp.key === 'guardPost' && typeof questState !== 'undefined') {
+        const dmgBonus = nextTier === 2 ? 2 : nextTier === 3 ? 2 : 0; // +2 at tier 2, +2 more at tier 3
+        if (dmgBonus > 0) {
+            questState.permBonuses.dmgBonus = (questState.permBonuses.dmgBonus || 0) + dmgBonus;
+            pickupTexts.push({ text: '+' + dmgBonus + ' Permanent Damage', color: '#dd8844',
+                row: player.row, col: player.col, offsetY: -10, life: 2.5 });
+        }
+    }
+    if (rp.key === 'forge' && nextTier === 3 && typeof questState !== 'undefined') {
         questState.permBonuses.dmgBonus = (questState.permBonuses.dmgBonus || 0) + 2;
-        pickupTexts.push({ text: '+2 Permanent Damage', color: '#dd8844',
+        pickupTexts.push({ text: '+2 Permanent Damage (Master Forge)', color: '#dd8844',
             row: player.row, col: player.col, offsetY: -10, life: 2.5 });
     }
     // Reload zone to show rebuilt building — preserve player position
@@ -1497,8 +1872,11 @@ function drawRebuildPrompt() {
     if (gameDead || inventoryOpen || gamePaused || zoneTransitionFading) return;
     const rp = getNearbyRebuildPoint();
     if (!rp) return;
-    const cost = REBUILD_COSTS[rp.key];
-    const label = REBUILD_LABELS[rp.key];
+    const nextTier = (rp.level || 0) + 1;
+    const costs = typeof REBUILD_TIER_COSTS !== 'undefined' ? REBUILD_TIER_COSTS[rp.key] : null;
+    const labels = typeof REBUILD_TIER_LABELS !== 'undefined' ? REBUILD_TIER_LABELS[rp.key] : null;
+    const cost = costs ? costs[nextTier - 1] : (REBUILD_COSTS[rp.key] || 250);
+    const label = (labels ? labels[nextTier - 1] : REBUILD_LABELS[rp.key]) + ' (Tier ' + nextTier + ')';
     const canAfford = playerGold >= cost;
     const pos = tileToScreen(rp.row, rp.col);
     const sx = pos.x + cameraX, sy = pos.y + cameraY - 80;

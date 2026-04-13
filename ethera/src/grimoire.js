@@ -221,10 +221,14 @@ function drawGameMenu() {
     const _form = FormSystem.currentForm;
     const _formCfg = FORM_CONFIGS[_form] || {};
     const _hasEquip = (_formCfg.hasEquipment ?? false);
+    const _hasAugments = (!_hasEquip && (_form === 'slime' || _form === 'skeleton'));
+    const _augLabel = _form === 'slime' ? 'MUTATIONS' : 'BONE RUNES';
     const _hasKeyItems = (_formCfg.hasKeyItems ?? true); // default true for safety
     const tabs = [
         { id: 'status',    label: 'STATUS',    icon: 'status' },
-        ...(_hasEquip    ? [{ id: 'equipment', label: 'EQUIPMENT', icon: 'equip' }] : []),
+        ...(_hasEquip     ? [{ id: 'equipment', label: 'EQUIPMENT', icon: 'equip' }] : []),
+        ...(_hasAugments  ? [{ id: 'augments',  label: _augLabel,   icon: 'equip' }] : []),
+        { id: 'bestiary',  label: 'BESTIARY', icon: 'quest' },
         ...(_hasKeyItems ? [{ id: 'keyitems',  label: 'KEY ITEMS', icon: 'key' }] : []),
         ...(_hasKeyItems ? [{ id: 'quests',    label: 'QUESTS',    icon: 'quest' }] : []),
         ...(_hasKeyItems ? [{ id: 'map',       label: 'MAP',       icon: 'map' }] : []),
@@ -316,6 +320,8 @@ function drawGameMenu() {
     ctx.globalAlpha = fa * tabFade;
     if (menuTab === 'status')         drawMenuStatus(contentX, contentY, contentW, contentH, fa * tabFade);
     else if (menuTab === 'equipment') drawMenuEquipment(contentX, contentY, contentW, contentH, fa);
+    else if (menuTab === 'augments')  drawMenuAugments(contentX, contentY, contentW, contentH, fa);
+    else if (menuTab === 'bestiary') drawMenuBestiary(contentX, contentY, contentW, contentH, fa);
     else if (menuTab === 'keyitems')  drawMenuKeyItems(contentX, contentY, contentW, contentH, fa);
     else if (menuTab === 'quests')    drawMenuQuests(contentX, contentY, contentW, contentH, fa);
     else if (menuTab === 'map')       drawMenuMap(contentX, contentY, contentW, contentH, fa);
@@ -1155,6 +1161,25 @@ function drawMenuQuests(x, y, w, h, fa) {
 
     let ly = y + 6;
 
+    // Current objective display at top
+    if (typeof currentObjective !== 'undefined' && currentObjective) {
+        ctx.globalAlpha = fa * 0.6;
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#887766';
+        ctx.fillText('CURRENT OBJECTIVE', x, ly);
+        ly += 14;
+        ctx.globalAlpha = fa * 0.85;
+        ctx.font = 'italic 11px Georgia';
+        ctx.fillStyle = '#e8c840';
+        ctx.fillText(currentObjective, x + 4, ly);
+        ly += 20;
+        // Divider
+        ctx.globalAlpha = fa * 0.15;
+        ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, ly); ctx.lineTo(x + w - 20, ly); ctx.stroke();
+        ly += 10;
+    }
+
     // Build dynamic quest entries based on game state
     const quests = [];
     if (currentZone === 1) {
@@ -1206,7 +1231,7 @@ function drawMenuQuests(x, y, w, h, fa) {
         });
         quests.push({
             text: 'Speak with the Fading Pilgrim',
-            done: false,  // no tracking for NPC convos yet — always shows as available
+            done: typeof _npcDialogueProgress !== 'undefined' && (_npcDialogueProgress['ghost_pilgrim'] || 0) > 0,
         });
     }
     if (currentZone >= 5) {
@@ -1216,7 +1241,7 @@ function drawMenuQuests(x, y, w, h, fa) {
         });
         quests.push({
             text: 'Follow Elara\'s frozen echoes',
-            done: false,  // environmental — no discrete completion
+            done: currentZone > 5,  // completed when player has moved past zone 5
         });
     }
     if (currentZone >= 6) {
@@ -1253,13 +1278,29 @@ function drawMenuQuests(x, y, w, h, fa) {
                 quests.push({ text: step.text, done: stepDone });
             }
 
-            // Reward line
+            // Captain bounty: show kill progress
+            if (quest.id === 'captain_bounty' && !completed && questState.flags.captain_quest_started) {
+                const kills = questState.flags.elite_bounty_kills || 0;
+                quests.push({ text: '  Progress: ' + kills + '/5 elites slain', done: false, isProgress: true });
+            }
+
+            // Reward line — show for completed, preview for active
             if (completed) {
-                quests.push({
-                    text: 'Reward: ' + quest.reward.desc,
-                    done: true,
-                    isReward: true,
-                });
+                const rewardDesc = quest.reward.type === 'choice'
+                    ? (quest.reward.choices[questState.flags[quest.id + '_choice'] || 'a'] || {}).desc || quest.reward.choices.a.desc
+                    : quest.reward.type === 'stat_tiered'
+                        ? (quest.reward.tiers[questState.flags.ore_quality || 1] || {}).desc || quest.reward.desc
+                        : quest.reward.desc;
+                quests.push({ text: 'Reward: ' + rewardDesc, done: true, isReward: true });
+            } else {
+                // Preview potential reward for active quests
+                let previewDesc = '';
+                if (quest.reward.type === 'stat') previewDesc = quest.reward.desc;
+                else if (quest.reward.type === 'stat_tiered') previewDesc = quest.reward.tiers[3].desc + ' (best)';
+                else if (quest.reward.type === 'gold_and_stat') previewDesc = quest.reward.desc;
+                else if (quest.reward.type === 'choice') previewDesc = 'Choice reward';
+                else if (quest.reward.type === 'upgrade_reroll') previewDesc = quest.reward.desc;
+                if (previewDesc) quests.push({ text: 'Reward: ' + previewDesc, done: false, isRewardPreview: true });
             }
         }
     }
@@ -1294,13 +1335,33 @@ function drawMenuQuests(x, y, w, h, fa) {
             continue;
         }
 
-        // Reward line
+        // Reward line (completed quest)
         if (q.isReward) {
             ctx.globalAlpha = fa * 0.4;
             ctx.font = 'italic 9px Georgia';
             ctx.fillStyle = '#88cc88';
             ctx.fillText(q.text, x + 20, ly + 1);
             ly += 20;
+            continue;
+        }
+
+        // Reward preview (active quest)
+        if (q.isRewardPreview) {
+            ctx.globalAlpha = fa * 0.25;
+            ctx.font = 'italic 9px Georgia';
+            ctx.fillStyle = '#ccaa66';
+            ctx.fillText(q.text, x + 20, ly + 1);
+            ly += 18;
+            continue;
+        }
+
+        // Kill progress line (Captain bounty)
+        if (q.isProgress) {
+            ctx.globalAlpha = fa * 0.5;
+            ctx.font = '9px monospace';
+            ctx.fillStyle = '#e8c840';
+            ctx.fillText(q.text, x + 20, ly + 1);
+            ly += 16;
             continue;
         }
 
@@ -1554,6 +1615,290 @@ function drawMenuMap(x, y, w, h, fa) {
     ctx.globalAlpha = fa * 0.5;
     ctx.fillStyle = GM.textMid;
     ctx.fillText('Stairs', x + 184, legY);
+
+    ctx.restore();
+}
+
+// ===== BESTIARY TAB — enemy knowledge tracker =====
+function drawMenuBestiary(x, y, w, h, fa) {
+    if (typeof playerProfile === 'undefined') return;
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    let ly = y + 6;
+
+    // Title
+    ctx.font = 'bold 12px Georgia';
+    ctx.fillStyle = '#c4a878';
+    ctx.globalAlpha = fa * 0.7;
+    ctx.fillText('Creatures Encountered', x, ly);
+    ly += 18;
+
+    // Stats summary
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#887766';
+    ctx.globalAlpha = fa * 0.5;
+    ctx.fillText('Total kills: ' + playerProfile.totalKills + '  |  Deaths: ' + playerProfile.totalDeaths + '  |  Runs: ' + playerProfile.totalRuns, x, ly);
+    ly += 16;
+
+    // Divider
+    ctx.globalAlpha = fa * 0.15;
+    ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, ly); ctx.lineTo(x + w - 20, ly); ctx.stroke();
+    ly += 8;
+
+    // Enemy list from bestiary
+    const entries = [];
+    const _enemyDisplayNames = {
+        slime: 'Slime', skeleton: 'Skeleton', skelarch: 'Skeleton Archer',
+        armoredskel: 'Armored Skeleton', fire_slime: 'Fire Slime',
+        frost_archer: 'Frost Archer', shadow_knight: 'Shadow Knight',
+        bone_mage: 'Bone Mage', pit_lurker: 'Pit Lurker', werewolf: 'Werewolf',
+        slime_king: 'Slime King', demon_slime_king: 'Demon Slime King',
+        bone_colossus: 'Bone Colossus', infernal_knight: 'Infernal Knight',
+        frost_wyrm: 'Frost Wyrm', ruined_king: 'Ruined King',
+    };
+    for (const type in playerProfile.bestiary) {
+        if (type === '_eliteKills') continue;
+        const entry = playerProfile.bestiary[type];
+        entries.push({ type: type, name: _enemyDisplayNames[type] || entry.name || type, killed: entry.killed || 0, killedBy: entry.killedBy || 0 });
+    }
+    // Sort by kill count descending
+    entries.sort(function(a, b) { return b.killed - a.killed; });
+
+    if (entries.length === 0) {
+        ctx.globalAlpha = fa * 0.3;
+        ctx.font = 'italic 11px Georgia';
+        ctx.fillStyle = '#887766';
+        ctx.fillText('No creatures encountered yet...', x, ly);
+        ctx.restore();
+        return;
+    }
+
+    // Column headers
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#776655';
+    ctx.globalAlpha = fa * 0.4;
+    ctx.fillText('ENEMY', x, ly);
+    ctx.fillText('SLAIN', x + w - 100, ly);
+    ctx.fillText('DIED TO', x + w - 50, ly);
+    ly += 14;
+
+    for (let i = 0; i < entries.length && ly < y + h - 20; i++) {
+        const e = entries[i];
+        const isBoss = ['slime_king', 'demon_slime_king', 'bone_colossus', 'infernal_knight', 'frost_wyrm', 'ruined_king'].indexOf(e.type) !== -1;
+
+        // Enemy name
+        ctx.font = isBoss ? 'bold 10px Georgia' : '10px Georgia';
+        ctx.fillStyle = isBoss ? '#e8c840' : '#b09878';
+        ctx.globalAlpha = fa * 0.8;
+        ctx.fillText(e.name, x + 4, ly);
+
+        // Kill count
+        ctx.font = '10px monospace';
+        ctx.fillStyle = '#88aa88';
+        ctx.globalAlpha = fa * 0.7;
+        ctx.fillText(String(e.killed), x + w - 95, ly);
+
+        // Killed-by count
+        ctx.fillStyle = e.killedBy > 0 ? '#cc6644' : '#555';
+        ctx.globalAlpha = fa * (e.killedBy > 0 ? 0.7 : 0.3);
+        ctx.fillText(String(e.killedBy), x + w - 45, ly);
+
+        ly += 16;
+    }
+
+    // Elite kills
+    if (playerProfile.bestiary._eliteKills) {
+        ly += 6;
+        ctx.globalAlpha = fa * 0.4;
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#aa8844';
+        ctx.fillText('Elite kills: ' + playerProfile.bestiary._eliteKills, x, ly);
+    }
+
+    // Milestones section
+    if (typeof MILESTONE_DEFS !== 'undefined') {
+        ly += 18;
+        ctx.font = 'bold 10px Georgia';
+        ctx.fillStyle = '#c4a878';
+        ctx.globalAlpha = fa * 0.6;
+        ctx.fillText('Milestones', x, ly);
+        ly += 14;
+        for (var mi = 0; mi < MILESTONE_DEFS.length && ly < y + h - 10; mi++) {
+            var ms = MILESTONE_DEFS[mi];
+            var unlocked = playerProfile.milestones[ms.id];
+            ctx.font = '9px Georgia';
+            ctx.fillStyle = unlocked ? '#88cc88' : '#665544';
+            ctx.globalAlpha = fa * (unlocked ? 0.7 : 0.3);
+            var checkmark = unlocked ? '\u2713 ' : '\u25CB ';
+            ctx.fillText(checkmark + ms.name + ' — ' + ms.desc, x + 4, ly);
+            if (unlocked && ms.bonus) {
+                ctx.font = '8px monospace';
+                ctx.fillStyle = '#aabb88';
+                ctx.globalAlpha = fa * 0.4;
+                ctx.fillText('  ' + ms.bonus.desc, x + 14, ly + 11);
+                ly += 10;
+            }
+            ly += 14;
+        }
+    }
+
+    ctx.restore();
+}
+
+// ===== AUGMENT TAB (Mutations for Slime, Bone Runes for Skeleton) =====
+let _augHoverSlot = -1;
+let _augHoverBp = -1;
+
+function drawMenuAugments(x, y, w, h, fa) {
+    if (typeof augmentInventory === 'undefined') return;
+    const form = FormSystem.currentForm;
+    const labels = (typeof AUGMENT_LABELS !== 'undefined' && AUGMENT_LABELS[form]) ? AUGMENT_LABELS[form] : { tab: 'AUGMENTS', slotPrefix: 'Slot', icon: '' };
+    const isSlime = form === 'slime';
+    const themeColor = isSlime ? '#44cc66' : '#ccaa66';
+    const themeDim = isSlime ? '#2a7a3a' : '#8a7a3a';
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Section title
+    ctx.font = 'bold 13px Georgia';
+    ctx.fillStyle = themeColor;
+    ctx.globalAlpha = fa * 0.8;
+    ctx.fillText(labels.tab, x + w / 2, y + 14);
+
+    // --- 3 Equipped Slots ---
+    const slotSize = 52;
+    const slotGap = 12;
+    const totalSW = slotSize * 3 + slotGap * 2;
+    const slotStartX = x + (w - totalSW) / 2;
+    const slotY = y + 32;
+    _augHoverSlot = -1;
+    _augHoverBp = -1;
+
+    for (let i = 0; i < 3; i++) {
+        const sx = slotStartX + i * (slotSize + slotGap);
+        const aug = augmentInventory.equipped[i];
+        const hovered = mouse && mouse.x >= sx && mouse.x <= sx + slotSize && mouse.y >= slotY && mouse.y <= slotY + slotSize;
+        if (hovered) _augHoverSlot = i;
+
+        ctx.globalAlpha = fa * 0.6;
+        ctx.fillStyle = hovered ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.roundRect(sx, slotY, slotSize, slotSize, 5); ctx.fill();
+        ctx.strokeStyle = aug ? (RARITY[aug.rarity] || RARITY.common).color : themeDim;
+        ctx.lineWidth = aug ? 2 : 1;
+        ctx.globalAlpha = fa * (aug ? 0.8 : 0.3);
+        ctx.beginPath(); ctx.roundRect(sx, slotY, slotSize, slotSize, 5); ctx.stroke();
+
+        if (aug) {
+            const rc = (RARITY[aug.rarity] || RARITY.common).color;
+            const orbColor = isSlime ? '#44dd66' : '#ccbb88';
+            ctx.globalAlpha = fa * 0.85;
+            const g = ctx.createRadialGradient(sx + slotSize / 2 - 1, slotY + slotSize / 2 - 2, 0, sx + slotSize / 2, slotY + slotSize / 2, 14);
+            g.addColorStop(0, '#ffffff'); g.addColorStop(0.3, orbColor); g.addColorStop(1, rc);
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(sx + slotSize / 2, slotY + slotSize / 2 - 2, 12, 0, Math.PI * 2); ctx.fill();
+            ctx.font = '8px monospace';
+            ctx.globalAlpha = fa * 0.6;
+            ctx.fillStyle = '#b0a080';
+            const shortName = aug.name.length > 12 ? aug.name.slice(0, 11) + '.' : aug.name;
+            ctx.fillText(shortName, sx + slotSize / 2, slotY + slotSize - 4);
+        } else {
+            ctx.font = '9px monospace';
+            ctx.globalAlpha = fa * 0.25;
+            ctx.fillStyle = themeColor;
+            ctx.fillText(labels.slotPrefix + ' ' + (i + 1), sx + slotSize / 2, slotY + slotSize / 2);
+        }
+    }
+
+    // --- Backpack Grid (4x2) ---
+    const bpY = slotY + slotSize + 20;
+    const bpSize = 44;
+    const bpGap = 5;
+    const bpCols = 4;
+    ctx.font = '9px monospace';
+    ctx.globalAlpha = fa * 0.35;
+    ctx.fillStyle = '#887766';
+    ctx.fillText('Pack (' + augmentInventory.backpack.length + '/' + augmentInventory.maxBackpack + ')', x + w / 2, bpY - 6);
+
+    for (let i = 0; i < augmentInventory.maxBackpack; i++) {
+        const col = i % bpCols;
+        const row = Math.floor(i / bpCols);
+        const bx = x + (w - bpCols * (bpSize + bpGap) + bpGap) / 2 + col * (bpSize + bpGap);
+        const by = bpY + row * (bpSize + bpGap);
+        const aug = augmentInventory.backpack[i];
+        const hovered = mouse && mouse.x >= bx && mouse.x <= bx + bpSize && mouse.y >= by && mouse.y <= by + bpSize;
+        if (hovered && aug) _augHoverBp = i;
+
+        ctx.globalAlpha = fa * 0.5;
+        ctx.fillStyle = hovered && aug ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.25)';
+        ctx.beginPath(); ctx.roundRect(bx, by, bpSize, bpSize, 4); ctx.fill();
+        ctx.strokeStyle = aug ? (RARITY[aug.rarity] || RARITY.common).color : 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = aug ? 1.5 : 0.5;
+        ctx.globalAlpha = fa * (aug ? 0.6 : 0.15);
+        ctx.beginPath(); ctx.roundRect(bx, by, bpSize, bpSize, 4); ctx.stroke();
+        if (aug) {
+            const rc = (RARITY[aug.rarity] || RARITY.common).color;
+            ctx.globalAlpha = fa * 0.8;
+            ctx.fillStyle = rc;
+            ctx.beginPath(); ctx.arc(bx + bpSize / 2, by + bpSize / 2, 8, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+
+    // --- Drop button ---
+    if (augmentInventory.backpack.length > 0) {
+        const dropW = 70, dropH = 22;
+        const dropX = x + (w - dropW) / 2;
+        const dropY = bpY + 2 * (bpSize + bpGap) + 10;
+        ctx.globalAlpha = fa * 0.5;
+        ctx.fillStyle = 'rgba(180,60,60,0.15)';
+        ctx.beginPath(); ctx.roundRect(dropX, dropY, dropW, dropH, 4); ctx.fill();
+        ctx.strokeStyle = '#884444'; ctx.lineWidth = 1; ctx.globalAlpha = fa * 0.4;
+        ctx.beginPath(); ctx.roundRect(dropX, dropY, dropW, dropH, 4); ctx.stroke();
+        ctx.font = '9px monospace'; ctx.fillStyle = '#cc6666'; ctx.globalAlpha = fa * 0.6;
+        ctx.fillText('DROP', x + w / 2, dropY + dropH / 2);
+    }
+
+    // --- Tooltip for hovered augment ---
+    const hoveredAug = _augHoverSlot >= 0 ? augmentInventory.equipped[_augHoverSlot] :
+                       _augHoverBp >= 0 ? augmentInventory.backpack[_augHoverBp] : null;
+    if (hoveredAug) {
+        const rc = RARITY[hoveredAug.rarity] || RARITY.common;
+        const tipW = 180, tipH = 90 + (hoveredAug.effectDesc ? 16 : 0);
+        let tipX = mouse.x + 15, tipY = mouse.y - tipH / 2;
+        if (tipX + tipW > canvasW - 10) tipX = mouse.x - tipW - 15;
+        if (tipY < 10) tipY = 10;
+        ctx.globalAlpha = fa * 0.92;
+        ctx.fillStyle = 'rgba(15,12,10,0.95)';
+        ctx.beginPath(); ctx.roundRect(tipX, tipY, tipW, tipH, 6); ctx.fill();
+        ctx.strokeStyle = rc.color; ctx.lineWidth = 1.5; ctx.globalAlpha = fa * 0.7;
+        ctx.beginPath(); ctx.roundRect(tipX, tipY, tipW, tipH, 6); ctx.stroke();
+        let ty = tipY + 16;
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 11px Georgia'; ctx.fillStyle = rc.color; ctx.globalAlpha = fa * 0.95;
+        ctx.fillText(hoveredAug.name, tipX + 10, ty); ty += 14;
+        ctx.font = '9px monospace'; ctx.fillStyle = '#887766'; ctx.globalAlpha = fa * 0.5;
+        ctx.fillText(rc.label + ' ' + (isSlime ? 'Mutation' : 'Bone Rune'), tipX + 10, ty); ty += 14;
+        ctx.font = '10px monospace'; ctx.globalAlpha = fa * 0.8;
+        for (const [stat, val] of Object.entries(hoveredAug.stats)) {
+            const def = typeof STAT_DEFS !== 'undefined' ? STAT_DEFS[stat] : null;
+            if (def && typeof val === 'number') {
+                ctx.fillStyle = '#88cc88';
+                ctx.fillText(def.fmt(val) + ' ' + def.label, tipX + 10, ty); ty += 12;
+            }
+        }
+        if (hoveredAug.effectDesc) {
+            ctx.font = 'italic 9px Georgia'; ctx.fillStyle = '#e8c840'; ctx.globalAlpha = fa * 0.85;
+            ctx.fillText(hoveredAug.effectDesc, tipX + 10, ty + 4);
+        } else if (hoveredAug.desc) {
+            ctx.font = 'italic 9px Georgia'; ctx.fillStyle = '#aaa'; ctx.globalAlpha = fa * 0.5;
+            ctx.fillText(hoveredAug.desc, tipX + 10, ty + 4);
+        }
+        ctx.textAlign = 'center'; ctx.font = '8px monospace'; ctx.fillStyle = '#666'; ctx.globalAlpha = fa * 0.4;
+        ctx.fillText(_augHoverSlot >= 0 ? 'click to unequip' : 'click to equip', tipX + tipW / 2, tipY + tipH - 8);
+    }
 
     ctx.restore();
 }

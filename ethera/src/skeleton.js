@@ -29,6 +29,8 @@ const skeletonState = {
     comboTimer: 0,        // time since last hit (combo drops after 2s)
     comboDecay: 2.0,      // seconds before combo resets
     maxCombo: 15,         // cap for combo counter
+    boneWalls: [],        // active bone wall barriers from shield bash
+    colossusActive: false, // true when bone colossus form is active (12+ combo)
 };
 
 // Reset combat-specific state (called on death or form switch)
@@ -113,7 +115,9 @@ function updateSkeleton(dt) {
         }
 
         // Lerp velocity toward target (snappy, responsive movement)
-        const skelMaxSpd = config.moveMaxSpeed * getTalismanBonus().speedMult;
+        // Adrenaline upgrade: combo stacks boost move speed
+        const _adrenalineMult = 1 + skeletonState.comboCount * 0.03 * getUpgrade('adrenaline');
+        const skelMaxSpd = config.moveMaxSpeed * getTalismanBonus().speedMult * _adrenalineMult;
         const targetVr = inputRow * skelMaxSpd;
         const targetVc = inputCol * skelMaxSpd;
         const resp = Math.min(1, 25 * dt);
@@ -158,12 +162,25 @@ function updateSkeleton(dt) {
     }
 
     // === COMBO SYSTEM ===
+    // Augment: Rune of Frenzy — increase max combo cap (update each frame for all consumers)
+    skeletonState.maxCombo = 15;
+    if (typeof equipBonus !== 'undefined' && equipBonus.effects) {
+        for (const eff of equipBonus.effects) {
+            if (eff.id === 'rune_frenzy') skeletonState.maxCombo += (eff.maxComboAdd || 3);
+        }
+    }
     // Combo decays if no hits land within the window
     if (skeletonState.comboCount > 0) {
         skeletonState.comboTimer += dt;
-        const decayTime = skeletonState.comboDecay + getUpgrade('relentless') * 0.5; // Relentless extends window
+        // Augment: Rune of Frenzy — slower decay
+        let _frenzyDecayMult = 1.0;
+        if (typeof equipBonus !== 'undefined' && equipBonus.effects) {
+            for (const eff of equipBonus.effects) { if (eff.id === 'rune_frenzy') _frenzyDecayMult = eff.comboDecayMult || 0.8; }
+        }
+        const decayTime = (skeletonState.comboDecay + getUpgrade('relentless') * 0.5) / _frenzyDecayMult; // Relentless extends, Frenzy slows decay
         if (skeletonState.comboTimer >= decayTime) {
-            skeletonState.comboCount = 0;
+            // Berserker synergy: combo floors at 5 instead of resetting to 0
+            skeletonState.comboCount = (typeof hasSynergy === 'function' && hasSynergy('berserker')) ? Math.min(skeletonState.comboCount, 5) : 0;
             skeletonState.comboTimer = 0;
         }
     }
@@ -223,6 +240,25 @@ function updateSkeleton(dt) {
             projectiles.push(proj);
         }
         if (sfxCtx) sfxSkeletonBoneThrow(); // dedicated bone throw SFX
+        // Augment: Rune of Echo — chance for extra bone
+        if (typeof equipBonus !== 'undefined' && equipBonus.effects) {
+            for (const eff of equipBonus.effects) {
+                if (eff.id === 'rune_echo' && Math.random() < (eff.extraBoneChance || 0.15) && skeletonState.boneAmmo > 0) {
+                    skeletonState.boneAmmo--;
+                    const tgt2 = screenToTile(mouse.x, mouse.y);
+                    const dx2 = tgt2.row - player.row, dy2 = tgt2.col - player.col;
+                    const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+                    const echoProj = getPooledProj();
+                    echoProj.row = player.row; echoProj.col = player.col;
+                    echoProj.vr = (dx2 / dist2) * config.atkSpeed; echoProj.vc = (dy2 / dist2) * config.atkSpeed;
+                    echoProj.life = config.projLife; echoProj.size = config.projSize;
+                    echoProj.damage = config.primaryDmg; echoProj.pierce = 0; echoProj.explode = false;
+                    echoProj.bounce = 1; echoProj.bounceLeft = 1; echoProj.isBone = true;
+                    echoProj.marrowLeech = getUpgrade('marrow_leech') > 0;
+                    projectiles.push(echoProj);
+                }
+            }
+        }
     }
 
     // Attack animation
@@ -315,7 +351,7 @@ function updateSkeleton(dt) {
                 proj.life = 0.8;
                 proj.size = 3;
                 proj.damage = 6 + skeletonState.comboCount;
-                proj.pierce = 0;
+                proj.pierce = (typeof hasSynergy === 'function' && hasSynergy('bone_storm_mastery')) ? 1 : 0;
                 proj.explode = false;
                 proj.bounce = 0;
                 proj.isBone = true;
@@ -326,10 +362,28 @@ function updateSkeleton(dt) {
         }
     }
 
+    // === BONE COLOSSUS FORM legendary: at 12+ combo, grow massive ===
+    if (getUpgrade('bone_colossus_form') > 0) {
+        skeletonState.colossusActive = skeletonState.comboCount >= 12;
+    }
+
+    // === BONE WALL decay — remove expired barriers ===
+    if (skeletonState.boneWalls) {
+        for (let bw = skeletonState.boneWalls.length - 1; bw >= 0; bw--) {
+            skeletonState.boneWalls[bw].life -= dt;
+            if (skeletonState.boneWalls[bw].life <= 0) skeletonState.boneWalls.splice(bw, 1);
+        }
+    }
+
     // === UNDYING RESOLVE upgrade ===
     if (getUpgrade('undying_resolve') > 0 && player.hp <= 0 && !skeletonState._undyingUsed) {
         skeletonState._undyingUsed = true;
-        player.hp = 1;
+        // Immortal Frame synergy: heal to 25% instead of 1 HP
+        if (typeof hasSynergy === 'function' && hasSynergy('immortal_frame')) {
+            player.hp = Math.max(1, Math.round(getPlayerMaxHP() * 0.25));
+        } else {
+            player.hp = 1;
+        }
         addScreenShake(6, 0.5);
         addSlowMo(0.3, 0.2);
         pickupTexts.push({
@@ -888,6 +942,16 @@ formHandlers.skeleton.onSecondaryAbility = function() {
             projectiles.push(proj);
         }
     }
+    // Bone Wall upgrade: create a barrier that blocks enemy projectiles
+    if (getUpgrade('bone_wall') > 0) {
+        if (!skeletonState.boneWalls) skeletonState.boneWalls = [];
+        skeletonState.boneWalls.push({
+            row: player.row + player.facing * 0.8,
+            col: player.col,
+            life: 1.8, // 1.8 seconds duration
+            radius: 1.2,
+        });
+    }
     addScreenShake(2, 0.15);
 };
 
@@ -897,6 +961,31 @@ formHandlers.skeleton.onDodge = function() {
     if (player.dodgeCoolTimer > 0) {
         bufferInput('dodge');
         return;
+    }
+    // Bone Colossus legendary: dodge becomes AoE ground slam when active
+    if (skeletonState.colossusActive && getUpgrade('bone_colossus_form') > 0) {
+        player.dodgeCoolTimer = DODGE_COOLDOWN;
+        const slamDmg = 30 + skeletonState.comboCount * 2;
+        const slamRadius = 2.5;
+        for (const e of enemies) {
+            if (e.state === 'death') continue;
+            const dist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
+            if (dist < slamRadius) {
+                if (typeof applyEnemyHit === 'function') {
+                    const kbDr = (e.row - player.row) / (dist || 1);
+                    const kbDc = (e.col - player.col) / (dist || 1);
+                    applyEnemyHit(e, slamDmg, { knockVr: kbDr * 4, knockVc: kbDc * 4 });
+                } else {
+                    e.hp -= slamDmg;
+                    if (e.hp <= 0) { e.hp = 0; e.state = 'death'; }
+                }
+            }
+        }
+        addScreenShake(12, 0.4);
+        addSlowMo(0.15, 0.3);
+        if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 25, '#ddcc88');
+        sfxExplosion();
+        return; // slam replaces dodge roll
     }
     skeletonState.rolling = true;
     skeletonState.rollTimer = 0.35;

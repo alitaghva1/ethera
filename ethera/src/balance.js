@@ -380,6 +380,10 @@ function handleKeyDown(e) {
         else if (typeof tryHamletRebuild === 'function' && tryHamletRebuild()) {
             // rebuild consumed the input
         }
+        // Priority 2.5: Challenge altars
+        else if (typeof getNearbyAltar === 'function' && getNearbyAltar() && typeof activateAltar === 'function') {
+            activateAltar();
+        }
         // Priority 3: NPCs — talk to townsfolk (returns false if no NPC nearby)
         else if (npcList.length > 0 && handleNPCInteraction()) {
             // NPC interaction consumed the input
@@ -544,6 +548,46 @@ function handleMouseDown(e) {
         return;
     }
 
+    // ----- Abyss modifier choice clicks -----
+    if (typeof abyssChoiceState !== 'undefined' && abyssChoiceState.pending && typeof _abyssChoiceRects !== 'undefined' && e.button === 0) {
+        for (let i = 0; i < _abyssChoiceRects.length; i++) {
+            const r = _abyssChoiceRects[i];
+            if (r && clickX >= r.x && clickX <= r.x + r.w && clickY >= r.y && clickY <= r.y + r.h) {
+                if (typeof applyAbyssModifierChoice === 'function') applyAbyssModifierChoice(i);
+                return;
+            }
+        }
+        return; // consume click while choice is open
+    }
+
+    // ----- Quest choice clicks (Senna's Frozen Heart) -----
+    if (npcDialogueOpen && typeof questState !== 'undefined' && questState.flags.senna_choice_pending && questState._choiceRects && e.button === 0) {
+        const ra = questState._choiceRects.a;
+        const rb = questState._choiceRects.b;
+        if (ra && clickX >= ra.x && clickX <= ra.x + ra.w && clickY >= ra.y && clickY <= ra.y + ra.h) {
+            // Choice A: Keep it whole
+            questState.flags.senna_brew_choice = 'a';
+            questState.flags.senna_choice_pending = false;
+            setQuestFlag('has_frost_essence');
+            setQuestFlag('senna_essence_delivered');
+            if (typeof removeKeyItem === 'function') removeKeyItem('frost_essence');
+            completeQuest('senna_brew');
+            npcDialogueOpen = false;
+            return;
+        }
+        if (rb && clickX >= rb.x && clickX <= rb.x + rb.w && clickY >= rb.y && clickY <= rb.y + rb.h) {
+            // Choice B: Shatter it
+            questState.flags.senna_brew_choice = 'b';
+            questState.flags.senna_choice_pending = false;
+            setQuestFlag('has_frost_essence');
+            setQuestFlag('senna_essence_delivered');
+            if (typeof removeKeyItem === 'function') removeKeyItem('frost_essence');
+            completeQuest('senna_brew');
+            npcDialogueOpen = false;
+            return;
+        }
+    }
+
     // ----- Game menu tab clicks (must match drawGameMenu layout exactly) -----
     if (menuOpen && menuFadeInTimer < 0.95) return; // don't process clicks during open animation
     if (menuOpen && e.button === 0) {
@@ -619,6 +663,41 @@ function handleMouseDown(e) {
             }
         }
 
+        // Augments tab: click to equip/unequip augments
+        if (menuTab === 'augments' && typeof augmentInventory !== 'undefined') {
+            // Equipped slots — click to unequip
+            const slotSize = 52, slotGap = 12;
+            const totalSW = slotSize * 3 + slotGap * 2;
+            const contentX = px + 24, contentY = tabY + tabH + 14, contentW = pw - 48;
+            const slotStartX = contentX + (contentW - totalSW) / 2;
+            const slotY = contentY + 32;
+            for (let i = 0; i < 3; i++) {
+                const sx = slotStartX + i * (slotSize + slotGap);
+                if (clickX >= sx && clickX <= sx + slotSize && clickY >= slotY && clickY <= slotY + slotSize) {
+                    if (augmentInventory.equipped[i]) { unequipAugment(i); return; }
+                }
+            }
+            // Backpack — click to equip
+            const bpY = slotY + slotSize + 20, bpSize = 44, bpGap2 = 5, bpCols = 4;
+            for (let i = 0; i < augmentInventory.maxBackpack; i++) {
+                const col = i % bpCols, row = Math.floor(i / bpCols);
+                const bx = contentX + (contentW - bpCols * (bpSize + bpGap2) + bpGap2) / 2 + col * (bpSize + bpGap2);
+                const by = bpY + row * (bpSize + bpGap2);
+                if (clickX >= bx && clickX <= bx + bpSize && clickY >= by && clickY <= by + bpSize) {
+                    if (augmentInventory.backpack[i]) { equipAugment(i); return; }
+                }
+            }
+            // Drop button
+            if (augmentInventory.backpack.length > 0) {
+                const dropW = 70, dropH = 22;
+                const dropX = contentX + (contentW - dropW) / 2;
+                const dropY = bpY + 2 * (bpSize + bpGap2) + 10;
+                if (clickX >= dropX && clickX <= dropX + dropW && clickY >= dropY && clickY <= dropY + dropH) {
+                    dropAugmentFromBackpack(augmentInventory.backpack.length - 1); return;
+                }
+            }
+        }
+
         // Key Items tab: click readable items to open journal reader
         if (menuTab === 'keyitems') {
             for (const rect of _keyItemClickRects) {
@@ -660,7 +739,10 @@ function handleMouseDown(e) {
         for (const id in optionsSliders) {
             const r = optionsSliders[id];
             if (r && clickX >= r.x && clickX <= r.x + r.w && clickY >= r.y - 8 && clickY <= r.y + r.h + 8) {
-                gameSettings[id] = Math.max(0, Math.min(1, Math.round(((clickX - r.x) / r.w) * 100) / 100));
+                let val = Math.max(0, Math.min(1, Math.round(((clickX - r.x) / r.w) * 100) / 100));
+                // Brightness slider maps 0-1 to 0.5-1.5 range
+                if (id === 'brightness') val = 0.5 + val * 1.0;
+                gameSettings[id] = val;
                 applySettings(); saveSettings(); return;
             }
         }
@@ -812,7 +894,7 @@ function handleMouseDown(e) {
             return;
         }
         if (pauseBtnSave && pointInButton(mouse.x, mouse.y, pauseBtnSave)) {
-            saveGame(0); // auto-save to slot 0
+            saveGame(getAutoSaveSlot());
             return;
         }
         if (pauseBtnQuit && pointInButton(mouse.x, mouse.y, pauseBtnQuit)) {

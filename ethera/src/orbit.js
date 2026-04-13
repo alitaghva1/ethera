@@ -16,14 +16,22 @@ function updateOrbitFireballs(dt) {
             const dr = orbRow - e.row;
             const dc = orbCol - e.col;
             if (Math.sqrt(dr*dr + dc*dc) < e.def.hitboxR + 0.3) {
-                e.hp -= 12;
+                // Scale orbit damage with player bonuses (base 12 + flat bonuses, * talisman mult)
+                const _orbitBonus = (typeof calcPlayerDmgBonus === 'function') ? calcPlayerDmgBonus() : { flat: 0, mult: 1 };
+                const orbitDmg = Math.round((12 + _orbitBonus.flat * 0.5) * _orbitBonus.mult);
                 e.orbitHitCooldown = 0.5; // prevent rapid re-hits
-                sfxOrbitHit();
-                e.state = 'hurt'; e.hurtTimer = 0.15; e.animFrame = 0;
-                if (e.hp <= 0) {
-                    e.hp = 0; e.state = 'death'; e.deathTimer = 0.7; e.animFrame = 0;
-                    sfxEnemyDeath();
-                    rollEnemyLoot(e);
+                // Use applyEnemyHit if available for unified death/loot/effects pipeline
+                if (typeof applyEnemyHit === 'function') {
+                    applyEnemyHit(e, orbitDmg, { skipHurtState: false });
+                } else {
+                    e.hp -= orbitDmg;
+                    sfxOrbitHit();
+                    e.state = 'hurt'; e.hurtTimer = 0.15; e.animFrame = 0;
+                    if (e.hp <= 0) {
+                        e.hp = 0; e.state = 'death'; e.deathTimer = 0.7; e.animFrame = 0;
+                        sfxEnemyDeath();
+                        rollEnemyLoot(e);
+                    }
                 }
             }
         }

@@ -10,7 +10,7 @@
 // ============================================================
 
 // Game version — used for save format and cache busting
-const ETHERA_VERSION = '0.9.6';
+const ETHERA_VERSION = '1.0.0';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
@@ -251,6 +251,7 @@ const gameSettings = {
     colorblindMode: 'off',  // 'off', 'deuteranopia', 'protanopia', 'symbols'
     textScale: 1.0,         // 0.85, 1.0, 1.15, 1.3
     pauseOnBlur: true,
+    brightness: 1.0,        // 0.5 (dark) to 1.5 (bright), 1.0 = default
 };
 
 let optionsReturnPhase = 'menu';
@@ -264,6 +265,50 @@ let ascensionUnlocked = 0;       // highest ascension unlocked (beat game at N �
 let gameCleared = false;         // true after first Zone 6 completion
 
 // ============================================================
+//  PLAYER PROFILE — persists across ALL runs (never reset)
+//  Uses the same pattern as ascensionUnlocked: saved in every
+//  save slot, restored on load, NOT cleared by restartGame().
+// ============================================================
+var playerProfile = {
+    // Run statistics
+    totalDeaths: 0,
+    totalKills: 0,
+    totalRuns: 0,
+    bestZone: 0,
+    bestWave: 0,
+    bestKills: 0,
+    bestLevel: 0,
+    // Run history (last 10 runs)
+    runHistory: [],
+    // Bestiary — { enemyType: { killed: N, killedBy: N, name: '' } }
+    bestiary: {},
+    // Milestone unlocks — { milestoneId: true }
+    milestones: {},
+    // NPC relationship tracking — interaction counts
+    npcRelationship: { garrett: 0, senna: 0, aldric: 0, hermit: 0 },
+    // NPC relationship bonuses claimed
+    npcBonusesClaimed: {},
+};
+
+// Run-level tracking (reset each run)
+var runStartTime = 0;
+var runGoldEarned = 0;
+
+// ============================================================
+//  MILESTONE DEFINITIONS
+// ============================================================
+const MILESTONE_DEFS = [
+    { id: 'zone3_reached', name: 'Descent', desc: 'Reach Zone 3', check: function(p, run) { return run.zone >= 3; }, bonus: { type: 'potion', item: 'health_vial', value: 1, desc: '+1 starting health potion' } },
+    { id: 'zone5_reached', name: 'Deep Delver', desc: 'Reach Zone 5', check: function(p, run) { return run.zone >= 5; }, bonus: { type: 'gold', value: 10, desc: '+10 starting gold' } },
+    { id: 'kills_100', name: 'Centurion', desc: 'Kill 100 enemies in one run', check: function(p, run) { return run.kills >= 100; }, bonus: { type: 'gold', value: 15, desc: '+15 starting gold' } },
+    { id: 'kills_200', name: 'Butcher', desc: 'Kill 200 enemies in one run', check: function(p, run) { return run.kills >= 200; }, bonus: { type: 'stat', stat: 'dmgBonus', value: 1, desc: '+1 starting damage' } },
+    { id: 'deaths_10', name: 'Stubborn', desc: 'Die 10 times', check: function(p) { return p.totalDeaths >= 10; }, bonus: { type: 'stat', stat: 'maxHpBonus', value: 5, desc: '+5 starting max HP' } },
+    { id: 'deaths_25', name: 'Undying Spirit', desc: 'Die 25 times', check: function(p) { return p.totalDeaths >= 25; }, bonus: { type: 'stat', stat: 'maxHpBonus', value: 10, desc: '+10 starting max HP' } },
+    { id: 'elites_50', name: 'Elite Hunter', desc: 'Kill 50 elites total', check: function(p) { return (p.bestiary._eliteKills || 0) >= 50; }, bonus: { type: 'stat', stat: 'dmgBonus', value: 2, desc: '+2 starting damage' } },
+    { id: 'game_cleared', name: 'The Awakened', desc: 'Beat the game', check: function() { return typeof gameCleared !== 'undefined' && gameCleared; }, bonus: { type: 'gold', value: 25, desc: '+25 starting gold' } },
+];
+
+// ============================================================
 //  GOLD CURRENCY
 // ============================================================
 let playerGold = 0;
@@ -271,19 +316,50 @@ let playerGold = 0;
 // ── HAMLET REBUILD SYSTEM ──
 // Buildings start ruined. Player spends gold to rebuild, unlocking NPC services.
 var hamletRebuild = {
-    forge: false,      // Garrett's Forge — unlocks enchanting/form upgrades
-    shop: false,       // Senna's Alchemy — unlocks potions
-    guardPost: false,  // Aldric's Post — unlocks +5% damage passive
-    hermitHut: false,  // Hermit's Hut — unlocks Abyss Portal + quest
-    monument: false,   // Town Monument — unlocks +10% XP passive
+    forge: 0,      // 0=ruined, 1=basic, 2=improved, 3=mastered
+    shop: 0,
+    guardPost: 0,
+    hermitHut: 0,
+    monument: 0,
 };
-const REBUILD_COSTS = {
+// Tiered rebuild costs: [tier1, tier2, tier3]
+const REBUILD_TIER_COSTS = {
+    forge:     [100, 300, 600],
+    shop:      [100, 300, 600],
+    guardPost: [200, 500, 1000],
+    hermitHut: [200, 500, 1000],
+    monument:  [400, 800, 1500],
+};
+const REBUILD_TIER_LABELS = {
+    forge:     ['Restore Forge', 'Improve Forge', 'Master Forge'],
+    shop:      ['Restore Alchemy Lab', 'Improve Lab', 'Master Lab'],
+    guardPost: ['Restore Guard Post', 'Fortify Post', 'Command Post'],
+    hermitHut: ['Restore Hut', 'Build Study', 'Build Observatory'],
+    monument:  ['Restore Base', 'Full Monument', 'Raise Beacon'],
+};
+const REBUILD_TIER_DESCS = {
+    forge:     ['Basic enchanting & upgrades', 'All enchant levels, -20% forge costs', '+2 permanent damage'],
+    shop:      ['Health vials available', 'All potions, +1 stock', 'Combo potions, HP regen in town'],
+    guardPost: ['Captain\'s quest available', '+2 permanent damage', '+4 total damage, 2x bounty rewards'],
+    hermitHut: ['Hermit\'s quest available', 'Enemy HP visible in combat', 'Abyss portal access'],
+    monument:  ['Ambient town lighting', 'NPC relationship bonuses +1', '+1 starting level XP'],
+};
+// Legacy compatibility: treat true as 3, false as 0
+function getRebuiltLevel(key) {
+    const v = hamletRebuild[key];
+    if (v === true) return 3;
+    if (v === false) return 0;
+    return v || 0;
+}
+// Convenience: is building at least tier N?
+function isRebuilt(key, minTier) { return getRebuiltLevel(key) >= (minTier || 1); }
+const REBUILD_COSTS = { // legacy compat
     forge: 250, shop: 250, guardPost: 600, hermitHut: 600, monument: 1200,
 };
-const REBUILD_LABELS = {
-    forge: 'Rebuild Forge', shop: 'Rebuild Alchemy Lab',
-    guardPost: 'Rebuild Guard Post', hermitHut: 'Rebuild Hermit\'s Hut',
-    monument: 'Restore Monument',
+const REBUILD_LABELS = { // legacy compat
+    forge: 'Upgrade Forge', shop: 'Upgrade Alchemy Lab',
+    guardPost: 'Upgrade Guard Post', hermitHut: 'Upgrade Hermit\'s Hut',
+    monument: 'Upgrade Monument',
 };
 // Rebuild interaction positions (NPC locations)
 const REBUILD_POINTS = {

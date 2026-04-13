@@ -66,6 +66,15 @@ function saveGame(slotIdx) {
         questCompleted: typeof questState !== 'undefined' ? [...questState.completed] : [],
         questRerollTokens: typeof questState !== 'undefined' ? questState.rerollTokens : 0,
         questPermBonuses: typeof questState !== 'undefined' ? { ...questState.permBonuses } : { dmgBonus: 0, maxHpBonus: 0 },
+        // Upgrade synergies
+        activeSynergies: typeof activeSynergies !== 'undefined' ? { ...activeSynergies } : {},
+        // Augment inventory (slime mutations / skeleton bone runes)
+        augmentInventory: typeof augmentInventory !== 'undefined' ? {
+            equipped: [...augmentInventory.equipped],
+            backpack: [...augmentInventory.backpack],
+        } : { equipped: [null, null, null], backpack: [] },
+        // Player profile (persists across runs)
+        playerProfile: typeof playerProfile !== 'undefined' ? JSON.parse(JSON.stringify(playerProfile)) : {},
         // Ascension system
         ascensionLevel: typeof ascensionLevel !== 'undefined' ? ascensionLevel : 0,
         ascensionUnlocked: typeof ascensionUnlocked !== 'undefined' ? ascensionUnlocked : 0,
@@ -322,6 +331,79 @@ function loadGame(slotIdx) {
         questState.permBonuses = data.questPermBonuses || { dmgBonus: 0, maxHpBonus: 0 };
     }
 
+    // Restore upgrade synergies
+    if (typeof activeSynergies !== 'undefined' && data.activeSynergies) {
+        for (const k of Object.keys(activeSynergies)) delete activeSynergies[k];
+        Object.assign(activeSynergies, data.activeSynergies);
+    }
+    // Retroactively check synergies in case upgrade state qualifies for new ones
+    if (typeof checkSynergies === 'function') checkSynergies();
+
+    // Restore augment inventory
+    if (typeof augmentInventory !== 'undefined') {
+        if (data.augmentInventory) {
+            augmentInventory.equipped = data.augmentInventory.equipped || [null, null, null];
+            augmentInventory.backpack = data.augmentInventory.backpack || [];
+        } else {
+            augmentInventory.equipped = [null, null, null];
+            augmentInventory.backpack = [];
+        }
+    }
+
+    // Restore player profile (persists across runs — merge, don't replace)
+    if (typeof playerProfile !== 'undefined' && data.playerProfile) {
+        const saved = data.playerProfile;
+        // Keep the HIGHER of current or saved values (profile should only grow)
+        playerProfile.totalDeaths = Math.max(playerProfile.totalDeaths, saved.totalDeaths || 0);
+        playerProfile.totalKills = Math.max(playerProfile.totalKills, saved.totalKills || 0);
+        playerProfile.totalRuns = Math.max(playerProfile.totalRuns, saved.totalRuns || 0);
+        playerProfile.bestZone = Math.max(playerProfile.bestZone, saved.bestZone || 0);
+        playerProfile.bestWave = Math.max(playerProfile.bestWave, saved.bestWave || 0);
+        playerProfile.bestKills = Math.max(playerProfile.bestKills, saved.bestKills || 0);
+        playerProfile.bestLevel = Math.max(playerProfile.bestLevel, saved.bestLevel || 0);
+        // Merge bestiary (keep higher kill counts)
+        if (saved.bestiary) {
+            for (const type in saved.bestiary) {
+                if (!playerProfile.bestiary[type]) playerProfile.bestiary[type] = { killed: 0, killedBy: 0, name: '' };
+                playerProfile.bestiary[type].killed = Math.max(playerProfile.bestiary[type].killed, saved.bestiary[type].killed || 0);
+                playerProfile.bestiary[type].killedBy = Math.max(playerProfile.bestiary[type].killedBy, saved.bestiary[type].killedBy || 0);
+                if (saved.bestiary[type].name) playerProfile.bestiary[type].name = saved.bestiary[type].name;
+            }
+        }
+        if (saved.bestiary && saved.bestiary._eliteKills) {
+            playerProfile.bestiary._eliteKills = Math.max(playerProfile.bestiary._eliteKills || 0, saved.bestiary._eliteKills);
+        }
+        // Merge milestones (once unlocked, stay unlocked)
+        if (saved.milestones) {
+            for (const id in saved.milestones) { if (saved.milestones[id]) playerProfile.milestones[id] = true; }
+        }
+        // Merge run history (take the longer list)
+        if (saved.runHistory && saved.runHistory.length > (playerProfile.runHistory || []).length) {
+            playerProfile.runHistory = saved.runHistory;
+        }
+        // Merge NPC relationship counts (keep highest)
+        if (saved.npcRelationship) {
+            if (!playerProfile.npcRelationship) playerProfile.npcRelationship = {};
+            for (const npc in saved.npcRelationship) {
+                playerProfile.npcRelationship[npc] = Math.max(playerProfile.npcRelationship[npc] || 0, saved.npcRelationship[npc] || 0);
+            }
+        }
+        // Merge NPC bonuses claimed (once claimed, stay claimed)
+        if (saved.npcBonusesClaimed) {
+            if (!playerProfile.npcBonusesClaimed) playerProfile.npcBonusesClaimed = {};
+            for (const id in saved.npcBonusesClaimed) {
+                if (saved.npcBonusesClaimed[id]) playerProfile.npcBonusesClaimed[id] = true;
+            }
+        }
+        // Merge best abyss depth per form
+        if (saved.bestAbyssDepth) {
+            if (!playerProfile.bestAbyssDepth) playerProfile.bestAbyssDepth = {};
+            for (const form in saved.bestAbyssDepth) {
+                playerProfile.bestAbyssDepth[form] = Math.max(playerProfile.bestAbyssDepth[form] || 0, saved.bestAbyssDepth[form] || 0);
+            }
+        }
+    }
+
     // Restore ascension state
     if (typeof ascensionLevel !== 'undefined') ascensionLevel = data.ascensionLevel || 0;
     if (typeof ascensionUnlocked !== 'undefined') ascensionUnlocked = data.ascensionUnlocked || 0;
@@ -396,8 +478,8 @@ function loadGame(slotIdx) {
         lichState.deathAuraTimer = 0;
         lichState._phylacteryUsed = false;
     }
-    // Clear zone-duration potion buffs (should not persist through load)
-    if (typeof clearPotionBuffsForZone === 'function') clearPotionBuffsForZone();
+    // NOTE: zone-duration potion buffs are intentionally preserved across save/load.
+    // clearPotionBuffsForZone() is NOT called here -- it only fires on zone transitions.
     // Reset notification state for fresh start
     if (typeof Notify !== 'undefined') Notify.reset();
 

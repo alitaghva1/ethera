@@ -193,6 +193,10 @@ function updateLich(dt) {
                 if (dist < 2.5) {
                     e.hp -= auraDmg;
                     if (e.hp <= 0) e.state = 'death';
+                    // Death Shroud synergy: aura also slows enemies
+                    if (typeof hasSynergy === 'function' && hasSynergy('death_shroud')) {
+                        e.slowTimer = Math.max(e.slowTimer || 0, 0.6);
+                    }
                 }
             }
         }

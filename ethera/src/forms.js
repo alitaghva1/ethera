@@ -296,9 +296,19 @@ const SKELETON_UPGRADE_POOL = [
     { id: 'skull_bash', name: 'Skull Bash', desc: 'Dodge roll through enemies deals damage + builds combo', icon: 'phase', maxStack: 2, category: 'passive', tier: 'normal' },
     { id: 'bone_storm', name: 'Bone Storm', desc: 'At 10+ combo, auto-fire bones in a circle every 2s', icon: 'orbit', maxStack: 2, category: 'wand', tier: 'rare' },
     { id: 'quick_recovery', name: 'Quick Recovery', desc: 'Stamina regenerates 30% faster', icon: 'speed', maxStack: 3, category: 'passive', tier: 'normal' },
+    // === Bone Sniper path (extended) ===
+    { id: 'bone_ricochet', name: 'Bone Ricochet', desc: 'Bones chain to a nearby enemy on hit', icon: 'bounce', maxStack: 2, category: 'wand', tier: 'rare' },
+    { id: 'marrow_spike', name: 'Marrow Spike', desc: 'Bones deal +50% damage to enemies below 30% HP', icon: 'thorns', maxStack: 3, category: 'wand', tier: 'normal' },
+    // === Tank Brawler path (extended) ===
+    { id: 'iron_bones', name: 'Iron Bones', desc: 'Take 5% less damage per stack', icon: 'big', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'bone_wall', name: 'Bone Wall', desc: 'Shield bash creates a barrier that blocks enemy projectiles', icon: 'tower', maxStack: 1, category: 'passive', tier: 'rare' },
+    // === Combo path (extended) ===
+    { id: 'adrenaline', name: 'Adrenaline', desc: '+3% move speed per active combo stack', icon: 'speed', maxStack: 3, category: 'passive', tier: 'normal' },
+    { id: 'executioner', name: 'Executioner', desc: 'Enemies below 25% HP take +30% damage per stack', icon: 'thorns', maxStack: 2, category: 'wand', tier: 'rare' },
     // === Legendary (level 10+) ===
     { id: 'bone_fortress', name: 'Bone Fortress', desc: 'Shield blocks 100% damage for 0.5s on perfect timing.', icon: 'big', maxStack: 1, category: 'passive', tier: 'legendary' },
     { id: 'rattling_charge', name: 'Rattling Charge', desc: 'Dodge becomes a charge that stuns enemies in path for 1s.', icon: 'phase', maxStack: 1, category: 'passive', tier: 'legendary' },
+    { id: 'bone_colossus_form', name: 'Bone Colossus', desc: 'At 12+ combo, grow massive. Dodge becomes AoE ground slam.', icon: 'big', maxStack: 1, category: 'passive', tier: 'legendary' },
 ];
 
 // Register form handlers for slime and skeleton
@@ -384,6 +394,21 @@ function getFormStat(key) {
     return config ? config[key] : null;
 }
 
+// Canonical max HP calculation — use this everywhere instead of inline reconstruction.
+// Accounts for form base HP, equipment, talisman, quest bonuses, and abyss modifier.
+function getPlayerMaxHP() {
+    const formCfg = (typeof FormSystem !== 'undefined' && FormSystem.getFormConfig)
+        ? FormSystem.getFormConfig()
+        : (typeof FORM_CONFIGS !== 'undefined' ? FORM_CONFIGS.wizard : { maxHp: 100 });
+    const baseHp = formCfg.maxHp || 100;
+    const eqHp = (typeof equipBonus !== 'undefined' && equipBonus.maxHpBonus) ? equipBonus.maxHpBonus : 0;
+    const talHp = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
+    const questHp = (typeof questState !== 'undefined' && questState.permBonuses) ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    const abyssMult = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
+        ? getAbyssModMult('hpMult', 1) : 1;
+    return Math.round((baseHp + eqHp + talHp + questHp) * abyssMult);
+}
+
 // Talisman passive bonuses — scale with talisman level (increases on evolution, not during gameplay)
 // Talisman XP does not change during normal play; bonuses only update when the player evolves
 // and talisman.level is incremented. This is intentional per design.
@@ -402,3 +427,96 @@ function getTalismanBonus() {
         surgeActive: surge.dmgMult > 1,
     };
 }
+
+// ============================================================
+//  UPGRADE SYNERGIES — combo effects that unlock when specific
+//  upgrade pairs are both stacked to minimum thresholds.
+// ============================================================
+const UPGRADE_SYNERGIES = {
+    chain_reaction: {
+        id: 'chain_reaction', name: 'Chain Reaction',
+        desc: 'Explosions spawn sub-projectiles',
+        form: 'wizard', color: '#ff6644',
+        requires: { multishot: 2, explode: 1 },
+    },
+    berserker: {
+        id: 'berserker', name: 'Berserker',
+        desc: 'Dodge resets combo to 5 instead of 0',
+        form: 'skeleton', color: '#ff4444',
+        requires: { relentless: 2, skull_bash: 2 },
+    },
+    juggernaut: {
+        id: 'juggernaut', name: 'Juggernaut',
+        desc: '+25% knockback resist, contact damage',
+        form: 'slime', color: '#88aaff',
+        requires: { iron_stomach: 2, elastic_body: 2 },
+    },
+    death_shroud: {
+        id: 'death_shroud', name: 'Death Shroud',
+        desc: 'Death aura also slows enemies 20%',
+        form: 'lich', color: '#6644cc',
+        requires: { death_aura: 2, spectral_cloak: 1 },
+    },
+    bone_storm_mastery: {
+        id: 'bone_storm_mastery', name: 'Bone Storm Mastery',
+        desc: 'Bone storm projectiles pierce enemies',
+        form: 'skeleton', color: '#ddcc88',
+        requires: { bone_barrage: 2, shrapnel_shield: 1 },
+    },
+    immortal_frame: {
+        id: 'immortal_frame', name: 'Immortal Frame',
+        desc: 'Undying Resolve also heals 25% HP',
+        form: 'skeleton', color: '#44ffaa',
+        requires: { calcium_fort: 3, undying_resolve: 1 },
+    },
+    bone_collector: {
+        id: 'bone_collector', name: 'Bone Collector',
+        desc: 'Bone kills restore +2 bone ammo',
+        form: 'skeleton', color: '#ccaa44',
+        requires: { marrow_leech: 2, bone_ricochet: 1 },
+    },
+    power_surge: {
+        id: 'power_surge', name: 'Power Surge',
+        desc: '+10% all damage permanently',
+        form: 'any', color: '#ffd700',
+        requiresAnyRareCount: 3,
+    },
+};
+const activeSynergies = {};
+
+function checkSynergies() {
+    if (typeof upgrades === 'undefined') return [];
+    const form = FormSystem.currentForm;
+    const newlyUnlocked = [];
+    for (const key in UPGRADE_SYNERGIES) {
+        if (activeSynergies[key]) continue;
+        const syn = UPGRADE_SYNERGIES[key];
+        if (syn.form !== 'any' && syn.form !== form) continue;
+        // Universal "any N rares" check
+        if (syn.requiresAnyRareCount) {
+            const handler = FormSystem.getHandler ? FormSystem.getHandler() : null;
+            const pool = (handler && handler.getUpgradePool) ? handler.getUpgradePool() : [];
+            let rareCount = 0;
+            for (const u of pool) {
+                if ((u.tier === 'rare' || u.tier === 'legendary') && (upgrades[u.id] || 0) > 0) rareCount++;
+            }
+            if (rareCount >= syn.requiresAnyRareCount) {
+                activeSynergies[key] = true;
+                newlyUnlocked.push(syn);
+            }
+            continue;
+        }
+        // Standard requires check
+        let met = true;
+        for (const uid in syn.requires) {
+            if ((upgrades[uid] || 0) < syn.requires[uid]) { met = false; break; }
+        }
+        if (met) {
+            activeSynergies[key] = true;
+            newlyUnlocked.push(syn);
+        }
+    }
+    return newlyUnlocked;
+}
+
+function hasSynergy(id) { return !!activeSynergies[id]; }

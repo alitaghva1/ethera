@@ -242,7 +242,7 @@ function drawNPC(npc) {
     const ghostBob = isGhost ? Math.sin(performance.now() / 800 + npc.row * 3) * 4 : 0;
     // NPCs whose buildings aren't rebuilt appear dimmer/ghostlier
     const _npcBld = typeof NPC_BUILDING_MAP !== 'undefined' ? NPC_BUILDING_MAP[npc.id] : null;
-    const _npcRebuilt = !_npcBld || (typeof hamletRebuild !== 'undefined' && hamletRebuild[_npcBld]);
+    const _npcRebuilt = !_npcBld || (typeof isRebuilt === 'function' ? isRebuilt(_npcBld) : (typeof hamletRebuild !== 'undefined' && hamletRebuild[_npcBld]));
     const baseAlpha = isGhost ? 0.35 + Math.sin(performance.now() / 1200) * 0.1
         : (_npcRebuilt ? 1.0 : 0.5 + Math.sin(performance.now() / 1000) * 0.05);
 
@@ -498,14 +498,62 @@ function drawNPCDialogue() {
         ctx.fillText(curLine, bx + 30, lineY);
     }
 
-    // "Press E to continue" hint
-    ctx.globalAlpha = fa * 0.4;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.font = '8px monospace';
-    ctx.fillStyle = '#8a7a5a';
-    ctx.strokeText('[E] to continue', bx + bw - 20, by + bh - 8);
-    ctx.fillText('[E] to continue', bx + bw - 20, by + bh - 8);
+    // Quest choice UI (Senna's Frozen Heart)
+    if (typeof questState !== 'undefined' && questState.flags.senna_choice_pending && currentNPC.id === 'senna') {
+        const choiceY = by - 50;
+        const choiceW = (bw - 60) / 2;
+        const choiceH = 36;
+        const choiceX1 = bx + 20;
+        const choiceX2 = bx + 40 + choiceW;
+
+        // Store choice rects for click handling
+        questState._choiceRects = {
+            a: { x: choiceX1, y: choiceY, w: choiceW, h: choiceH },
+            b: { x: choiceX2, y: choiceY, w: choiceW, h: choiceH },
+        };
+
+        // Choice A: Keep it whole (+15 HP)
+        const hoverA = mouse && mouse.x >= choiceX1 && mouse.x <= choiceX1 + choiceW && mouse.y >= choiceY && mouse.y <= choiceY + choiceH;
+        ctx.globalAlpha = fa * 0.85;
+        ctx.fillStyle = hoverA ? 'rgba(40,60,40,0.95)' : 'rgba(25,22,18,0.95)';
+        ctx.beginPath(); ctx.roundRect(choiceX1, choiceY, choiceW, choiceH, 5); ctx.fill();
+        ctx.strokeStyle = hoverA ? '#66cc66' : '#8a7a5a';
+        ctx.lineWidth = 1.5; ctx.globalAlpha = fa * 0.6;
+        ctx.beginPath(); ctx.roundRect(choiceX1, choiceY, choiceW, choiceH, 5); ctx.stroke();
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 10px Georgia'; ctx.fillStyle = '#88cc88'; ctx.globalAlpha = fa * 0.9;
+        ctx.fillText('Keep It Whole', choiceX1 + choiceW / 2, choiceY + 12);
+        ctx.font = '8px monospace'; ctx.fillStyle = '#aaa'; ctx.globalAlpha = fa * 0.6;
+        ctx.fillText('+15 Max HP', choiceX1 + choiceW / 2, choiceY + 26);
+
+        // Choice B: Shatter it (+2 potion capacity)
+        const hoverB = mouse && mouse.x >= choiceX2 && mouse.x <= choiceX2 + choiceW && mouse.y >= choiceY && mouse.y <= choiceY + choiceH;
+        ctx.globalAlpha = fa * 0.85;
+        ctx.fillStyle = hoverB ? 'rgba(40,40,60,0.95)' : 'rgba(25,22,18,0.95)';
+        ctx.beginPath(); ctx.roundRect(choiceX2, choiceY, choiceW, choiceH, 5); ctx.fill();
+        ctx.strokeStyle = hoverB ? '#6688cc' : '#8a7a5a';
+        ctx.lineWidth = 1.5; ctx.globalAlpha = fa * 0.6;
+        ctx.beginPath(); ctx.roundRect(choiceX2, choiceY, choiceW, choiceH, 5); ctx.stroke();
+        ctx.font = 'bold 10px Georgia'; ctx.fillStyle = '#88aacc'; ctx.globalAlpha = fa * 0.9;
+        ctx.fillText('Shatter It', choiceX2 + choiceW / 2, choiceY + 12);
+        ctx.font = '8px monospace'; ctx.fillStyle = '#aaa'; ctx.globalAlpha = fa * 0.6;
+        ctx.fillText('+2 Potion Slots', choiceX2 + choiceW / 2, choiceY + 26);
+
+        // Replace E hint with choice instruction
+        ctx.globalAlpha = fa * 0.5;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.font = '9px Georgia'; ctx.fillStyle = '#e8c840';
+        ctx.fillText('Click to choose your reward', bx + bw / 2, by + bh - 8);
+    } else {
+        // "Press E to continue" hint
+        ctx.globalAlpha = fa * 0.4;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.font = '8px monospace';
+        ctx.fillStyle = '#8a7a5a';
+        ctx.strokeText('[E] to continue', bx + bw - 20, by + bh - 8);
+        ctx.fillText('[E] to continue', bx + bw - 20, by + bh - 8);
+    }
 
     ctx.restore();
 }
@@ -575,7 +623,7 @@ function getFormReactiveDialogue(npc) {
         const bld = NPC_BUILDING_MAP[npc.id];
         // Mira's building is the monument
         const miraKey = npc.id === 'mira' ? 'monument' : bld;
-        if (miraKey && !hamletRebuild[miraKey] && NPC_RUINED_DIALOGUE[npc.id]) {
+        if (miraKey && (typeof isRebuilt === 'function' ? !isRebuilt(miraKey) : !hamletRebuild[miraKey]) && NPC_RUINED_DIALOGUE[npc.id]) {
             return [...NPC_RUINED_DIALOGUE[npc.id]];
         }
     }
@@ -698,6 +746,12 @@ function handleNPCInteraction() {
         _npcDialogueProgress[currentNPC.id] = Math.max(
             _npcDialogueProgress[currentNPC.id] || 0, currentNPC.dialogueIndex
         );
+        // NPC relationship tracking — increment on each dialogue advance
+        if (typeof playerProfile !== 'undefined' && playerProfile.npcRelationship && currentNPC.id) {
+            if (!playerProfile.npcRelationship[currentNPC.id]) playerProfile.npcRelationship[currentNPC.id] = 0;
+            playerProfile.npcRelationship[currentNPC.id]++;
+            _checkNPCRelationshipBonus(currentNPC.id);
+        }
         const activeDialogue = getFormReactiveDialogue(currentNPC);
 
         // --- Quest flag triggers on specific dialogue lines ---
@@ -765,7 +819,7 @@ function isNPCDialogueOpen() {
 // ============================================================
 function openSmithyMenu(npc) {
     if (smithyMenuOpen || shopMenuOpen) return; // prevent double-open
-    if (typeof hamletRebuild !== 'undefined' && !hamletRebuild.forge) {
+    if (typeof hamletRebuild !== 'undefined' && typeof isRebuilt === 'function' && !isRebuilt('forge')) {
         pickupTexts.push({ text: 'The forge lies in ruins...', color: '#aa6644',
             row: npc.row, col: npc.col, offsetY: -20, life: 2.0 });
         return;
@@ -1117,7 +1171,7 @@ function drawSmithyMenu() {
 // ============================================================
 function openShopMenu(npc) {
     if (shopMenuOpen || smithyMenuOpen) return; // prevent double-open
-    if (typeof hamletRebuild !== 'undefined' && !hamletRebuild.shop) {
+    if (typeof hamletRebuild !== 'undefined' && typeof isRebuilt === 'function' && !isRebuilt('shop')) {
         pickupTexts.push({ text: 'The alchemy lab is destroyed...', color: '#aa6644',
             row: npc.row, col: npc.col, offsetY: -20, life: 2.0 });
         return;
@@ -1390,6 +1444,17 @@ function handleQuestDialogueTriggers(npc) {
             if (typeof Notify !== 'undefined') Notify.toast('New Quest: The Old Magics', { duration: 3, color: '#e8c840' });
         }
     }
+
+    // Captain Aldric: last dialogue line starts bounty quest
+    if (npc.id === 'aldric' && !questState.flags.captain_quest_started && !isQuestComplete('captain_bounty')
+        && (typeof isRebuilt === 'function' ? isRebuilt('guardPost') : true)) {
+        const lineText = activeDialogue[idx] || '';
+        if (lineText.indexOf('going down there') !== -1 || idx >= activeDialogue.length - 1) {
+            setQuestFlag('captain_quest_started');
+            questState.flags.elite_bounty_kills = 0;
+            if (typeof Notify !== 'undefined') Notify.toast("New Quest: Captain's Bounty", { duration: 3, color: '#e8c840' });
+        }
+    }
 }
 
 // Called when an NPC dialogue ends; checks if a quest turn-in should happen.
@@ -1423,30 +1488,100 @@ function handleQuestCompletionOnDialogueEnd(npc) {
         removeKeyItem('ancient_tome');
         completeQuest('hermit_prophecy');
     }
+
+    // Captain: report bounty completion
+    if (npc.id === 'aldric' && questState.flags.captain_quest_started
+        && !isQuestComplete('captain_bounty')
+        && questState.flags.captain_bounty_kills_done) {
+        setQuestFlag('captain_bounty_delivered');
+        completeQuest('captain_bounty');
+    }
+
+    // Senna: choice quest — set pending choice instead of auto-completing
+    if (npc.id === 'senna' && questState.flags.senna_quest_started
+        && !isQuestComplete('senna_brew')
+        && typeof hasKeyItem === 'function' && hasKeyItem('frost_essence')
+        && !questState.flags.senna_choice_pending) {
+        questState.flags.senna_choice_pending = true;
+    }
+}
+
+// ============================================================
+//  NPC RELATIONSHIP BONUSES
+// ============================================================
+const NPC_RELATIONSHIP_THRESHOLDS = {
+    garrett: { threshold: 10, bonusId: 'garrett_bond', desc: '+2 permanent damage', apply: function() {
+        if (typeof questState !== 'undefined') questState.permBonuses.dmgBonus = (questState.permBonuses.dmgBonus || 0) + 2;
+    }},
+    senna: { threshold: 10, bonusId: 'senna_bond', desc: '+1 max health potion slot', apply: function() {
+        // Increase potion max — tracked as a flag
+        if (typeof playerProfile !== 'undefined') playerProfile.npcBonusesClaimed.senna_potion_slot = true;
+    }},
+    aldric: { threshold: 10, bonusId: 'aldric_bond', desc: '+5 permanent max HP', apply: function() {
+        if (typeof questState !== 'undefined') questState.permBonuses.maxHpBonus = (questState.permBonuses.maxHpBonus || 0) + 5;
+    }},
+    hermit: { threshold: 10, bonusId: 'hermit_bond', desc: '+1 reroll token', apply: function() {
+        if (typeof questState !== 'undefined') questState.rerollTokens++;
+    }},
+};
+
+function _checkNPCRelationshipBonus(npcId) {
+    if (typeof playerProfile === 'undefined') return;
+    const def = NPC_RELATIONSHIP_THRESHOLDS[npcId];
+    if (!def) return;
+    const count = playerProfile.npcRelationship[npcId] || 0;
+    // Bonus at threshold — only once
+    if (count >= def.threshold && !playerProfile.npcBonusesClaimed[def.bonusId]) {
+        playerProfile.npcBonusesClaimed[def.bonusId] = true;
+        def.apply();
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('BOND: ' + (npcId.charAt(0).toUpperCase() + npcId.slice(1)) + ' trusts you. ' + def.desc, { duration: 5, color: '#ffd700', borderColor: '#aa8800' });
+        }
+        if (typeof addScreenShake === 'function') addScreenShake(3, 0.2);
+        if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 15, '#ffd700');
+    }
+    // Backstory hint at 5 interactions
+    if (count === 5 && typeof Notify !== 'undefined') {
+        const backstories = {
+            garrett: 'Garrett pauses. "I had an apprentice once. Before the Pale came."',
+            senna: 'Senna looks distant. "I studied under a master alchemist. She didn\'t survive."',
+            aldric: 'Aldric\'s voice drops. "I remember what I was guarding now."',
+            hermit: 'The Hermit smiles sadly. "I wasn\'t always a hermit, you know."',
+        };
+        if (backstories[npcId]) {
+            Notify.toast(backstories[npcId], { duration: 6, color: '#ccaa88', borderColor: '#887744' });
+        }
+    }
 }
 
 const QUEST_REGISTRY = [
     {
         id: 'garrett_forge',
-        name: "The Smith's Request",
+        name: 'The Dying Flame',
         giver: 'garrett',
         steps: [
             { text: 'Speak to Garrett about his work', condition: 'garrett_quest_started' },
-            { text: 'Find Infernal Ore in Zone 4', condition: 'has_infernal_ore' },
+            { text: 'Find Infernal Ore quickly — it degrades!', condition: 'has_infernal_ore' },
             { text: 'Return the ore to Garrett', condition: 'garrett_ore_delivered' },
         ],
-        reward: { type: 'stat', stat: 'dmgBonus', value: 5, desc: '+5 Permanent Damage' },
+        reward: { type: 'stat_tiered', stat: 'dmgBonus', desc: 'Permanent Damage',
+            tiers: { 3: { value: 7, desc: '+7 Permanent Damage (white-hot ore!)' },
+                     2: { value: 5, desc: '+5 Permanent Damage (warm ore)' },
+                     1: { value: 3, desc: '+3 Permanent Damage (cooled ore)' } } },
     },
     {
         id: 'senna_brew',
-        name: 'Exotic Ingredients',
+        name: 'The Frozen Heart',
         giver: 'senna',
         steps: [
             { text: 'Speak to Senna about her experiments', condition: 'senna_quest_started' },
             { text: 'Collect Frost Essence from Zone 5', condition: 'has_frost_essence' },
-            { text: 'Bring the essence to Senna', condition: 'senna_essence_delivered' },
+            { text: 'Choose what to do with the essence', condition: 'senna_essence_delivered' },
         ],
-        reward: { type: 'stat', stat: 'maxHpBonus', value: 15, desc: '+15 Permanent Max HP' },
+        reward: { type: 'choice', choices: {
+            a: { stat: 'maxHpBonus', value: 15, desc: '+15 Permanent Max HP', label: 'Keep It Whole' },
+            b: { potionCapacity: 2, value: 0, desc: '+2 Max Health Potion Capacity', label: 'Shatter It' },
+        }},
     },
     {
         id: 'hermit_prophecy',
@@ -1458,6 +1593,17 @@ const QUEST_REGISTRY = [
             { text: 'Return with the tome', condition: 'hermit_tome_delivered' },
         ],
         reward: { type: 'upgrade_reroll', value: 3, desc: '+3 Upgrade Reroll Tokens' },
+    },
+    {
+        id: 'captain_bounty',
+        name: "Captain's Bounty",
+        giver: 'aldric',
+        steps: [
+            { text: 'Speak to the Captain about threats', condition: 'captain_quest_started' },
+            { text: 'Slay 5 elite enemies (any zone)', condition: 'captain_bounty_kills_done' },
+            { text: 'Report back to the Captain', condition: 'captain_bounty_delivered' },
+        ],
+        reward: { type: 'gold_and_stat', stat: 'dmgBonus', value: 3, gold: 100, desc: '+3 Permanent Damage + 100 Gold' },
     },
 ];
 
@@ -1496,13 +1642,49 @@ function completeQuest(questId) {
     const r = quest.reward;
     if (r.type === 'stat') {
         questState.permBonuses[r.stat] = (questState.permBonuses[r.stat] || 0) + r.value;
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
+            Notify.toast('Reward: ' + r.desc, { duration: 4, color: '#88cc88' });
+        }
+    } else if (r.type === 'stat_tiered') {
+        // Tiered reward — quality stored in quest flags
+        const quality = questState.flags.ore_quality || 1;
+        const tier = r.tiers[quality] || r.tiers[1];
+        questState.permBonuses[r.stat] = (questState.permBonuses[r.stat] || 0) + tier.value;
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
+            Notify.toast('Reward: ' + tier.desc, { duration: 4, color: '#88cc88' });
+        }
     } else if (r.type === 'upgrade_reroll') {
         questState.rerollTokens += r.value;
-    }
-
-    if (typeof Notify !== 'undefined') {
-        Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
-        Notify.toast('Reward: ' + r.desc, { duration: 4, color: '#88cc88' });
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
+            Notify.toast('Reward: ' + r.desc, { duration: 4, color: '#88cc88' });
+        }
+    } else if (r.type === 'gold_and_stat') {
+        questState.permBonuses[r.stat] = (questState.permBonuses[r.stat] || 0) + r.value;
+        if (typeof playerGold !== 'undefined') playerGold += (r.gold || 0);
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
+            Notify.toast('Reward: ' + r.desc, { duration: 4, color: '#88cc88' });
+        }
+    } else if (r.type === 'choice') {
+        // Choice quests complete with the chosen branch reward
+        const choiceId = questState.flags[quest.id + '_choice'] || 'a';
+        const chosen = r.choices[choiceId] || r.choices.a;
+        if (chosen.stat) questState.permBonuses[chosen.stat] = (questState.permBonuses[chosen.stat] || 0) + chosen.value;
+        if (chosen.potionCapacity && typeof playerPotions !== 'undefined') {
+            // Increase potion max capacity
+            questState.flags.extra_potion_capacity = (questState.flags.extra_potion_capacity || 0) + chosen.potionCapacity;
+        }
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
+            Notify.toast('Reward: ' + chosen.desc, { duration: 4, color: '#88cc88' });
+        }
+    } else {
+        if (typeof Notify !== 'undefined') {
+            Notify.toast('Quest Complete: ' + quest.name, { duration: 4, color: '#e8c840' });
+        }
     }
 }
 

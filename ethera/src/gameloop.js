@@ -248,7 +248,8 @@ function updateIntroPhase(dt) {
         gamePhase = 'playing';
         lightRadius = MAX_LIGHT;
         setPixelCursor('none');
-        if (typeof startAmbientAudio === 'function') startAmbientAudio(currentZone);
+        if (typeof startAmbient === 'function') startAmbient(currentZone);
+        else if (typeof startAmbientAudio === 'function') startAmbientAudio(currentZone);
         if (typeof Notify !== 'undefined') Notify.showControlsOnce();
         pickupTexts.push({
             text: 'Two paths lie before you...',
@@ -567,7 +568,7 @@ function drawDoorGlows() {
         if (portalLabel) {
             // Fade out label when player is close (door prompt takes over)
             const _pDist = Math.sqrt((r - player.row) ** 2 + (centerCol - player.col) ** 2);
-            if (_pDist < 2.5) continue; // hide when door prompt is visible
+            if (_pDist < 2.5) { ctx.restore(); continue; } // hide when door prompt is visible
             const labelY = sy - portalH - 8;
             const labelAlpha = 0.5 + Math.sin(t * 1.2 + r) * 0.15;
             ctx.globalAlpha = labelAlpha;
@@ -1334,6 +1335,18 @@ function updateGameplay(dt) {
         multiKillTimer -= dt;
         if (multiKillTimer <= 0) multiKillCount = 0; // reset streak
     }
+    // Kill streak decay — breaks after 3s without a kill
+    if (typeof killStreak !== 'undefined' && killStreak.count > 0) {
+        killStreak.timer += dt;
+        if (killStreak.timer >= killStreak.window) {
+            killStreak.count = 0;
+            killStreak.multiplier = 1.0;
+            killStreak.timer = 0;
+        }
+    }
+    if (typeof killStreak !== 'undefined' && killStreak.displayAlpha > 0 && killStreak.count === 0) {
+        killStreak.displayAlpha = Math.max(0, killStreak.displayAlpha - dt * 2);
+    }
     // ── COMBAT JUICE: Update multikill floating texts ──
     for (let i = multiKillTexts.length - 1; i >= 0; i--) {
         multiKillTexts[i].life -= dt;
@@ -1359,6 +1372,8 @@ function updateGameplay(dt) {
         updatePlacement(dt);
         updateWorldDrops(dt);
         tryPickupDrops();
+        if (typeof updateWorldAugmentDrops === 'function') updateWorldAugmentDrops(dt);
+        if (typeof updateAltarChallenge === 'function') updateAltarChallenge(dt);
         updateWorldKeyDrops(dt);
         tryPickupKeyDrops();
     }
@@ -1452,7 +1467,7 @@ function updateGameplay(dt) {
                 try { showZoneBanner(nextZone); } catch(e) {}
                 _arrivalVignetteTimer = 1.5;
                 try { if (typeof sfxZoneEnter === 'function') sfxZoneEnter(); } catch(e) {}
-                try { if (typeof startAmbientAudio === 'function') startAmbientAudio(nextZone); } catch(e) {}
+                try { if (typeof startAmbient === 'function') startAmbient(nextZone); else if (typeof startAmbientAudio === 'function') startAmbientAudio(nextZone); } catch(e) {}
             }
         }
     }
@@ -1527,35 +1542,6 @@ function gameLoop(timestamp) {
         drawCinematicText();
         requestAnimationFrame(gameLoop);
         return;
-    }
-
-    // ----- Awakening phase (legacy fallback) -----
-    if (gamePhase === 'awakening') {
-        introTimer += dt;
-        lightRadius = Math.min(MAX_LIGHT, 60 + (MAX_LIGHT - 60) * (introTimer / 3));
-        if (introTimer > 3) {
-            gamePhase = 'playing';
-            lightRadius = MAX_LIGHT;
-            setPixelCursor('none');
-            // Show controls hint
-            if (typeof Notify !== 'undefined') Notify.showControlsOnce();
-            // Show context-appropriate hint
-            const _awakeInTown = (typeof currentZone !== 'undefined' && currentZone === 0);
-            pickupTexts.push({
-                text: _awakeInTown ? 'Choose your path...' : 'Find a way out...',
-                color: COLORS.TEXT_HINT,
-                row: player.row, col: player.col,
-                offsetY: 0,
-                life: _awakeInTown ? 5.0 : 3.0,
-            });
-            // Only start waves in combat zones
-            const _zoneCfg = typeof ZONE_CONFIGS !== 'undefined' ? ZONE_CONFIGS[currentZone] : null;
-            if (!_awakeInTown && (!_zoneCfg || _zoneCfg.hasWaves !== false)) {
-                startWaveSystem();
-            }
-            requestAnimationFrame(gameLoop);
-            return;
-        }
     }
 
     // Cursor management for inventory
@@ -1660,6 +1646,15 @@ function gameLoop(timestamp) {
         setPixelCursor('default');
         render();
         drawGameMenu();
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
+    // Abyss modifier choice — pauses gameplay between procedural zones
+    if (typeof abyssChoiceState !== 'undefined' && abyssChoiceState.pending && gamePhase === 'playing') {
+        setPixelCursor('default');
+        render();
+        drawAbyssChoiceScreen();
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -2326,6 +2321,53 @@ function drawWorldDrops() {
     }
 }
 
+function drawWorldAugmentDrops() {
+    if (typeof worldAugmentDrops === 'undefined') return;
+    for (const d of worldAugmentDrops) {
+        const pos = tileToScreen(d.row, d.col);
+        const sx = pos.x + cameraX, sy = pos.y + cameraY;
+        const bob = Math.sin(d.bobTime * 2.5) * 4;
+        const fadeIn = d.spawnTime > 0 ? 1 - (d.spawnTime / 0.5) : 1;
+        const rarDef = RARITY[d.augment.rarity] || RARITY.common;
+        const t = performance.now() / 1000;
+        const isSlime = d.augment.form === 'slime';
+        const orbColor = isSlime ? '#44dd66' : '#ccbb88';
+        ctx.save();
+        ctx.globalAlpha = fadeIn;
+        // Ground glow
+        ctx.globalCompositeOperation = 'screen';
+        const glowR = 28;
+        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowR);
+        glow.addColorStop(0, isSlime ? 'rgba(60,220,100,0.5)' : 'rgba(200,180,120,0.5)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.globalAlpha = fadeIn * (0.7 + Math.sin(t * 2) * 0.2);
+        ctx.fillRect(sx - glowR, sy - glowR, glowR * 2, glowR * 2);
+        // Floating orb
+        ctx.globalCompositeOperation = 'source-over';
+        const iy = sy - 18 + bob;
+        ctx.globalAlpha = fadeIn * 0.4;
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.ellipse(sx, sy - 2, 6, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+        // Orb core
+        ctx.globalAlpha = fadeIn * 0.9;
+        const orbGrad = ctx.createRadialGradient(sx - 1, iy - 2, 0, sx, iy, 7);
+        orbGrad.addColorStop(0, '#ffffff');
+        orbGrad.addColorStop(0.3, orbColor);
+        orbGrad.addColorStop(1, rarDef.color);
+        ctx.fillStyle = orbGrad;
+        ctx.beginPath(); ctx.arc(sx, iy, 6, 0, Math.PI * 2); ctx.fill();
+        // Rarity border
+        if (d.augment.rarity !== 'common') {
+            ctx.globalAlpha = fadeIn * (0.4 + Math.sin(t * 3) * 0.2);
+            ctx.strokeStyle = rarDef.color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(sx, iy, 8, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+    }
+}
+
 function drawWorldKeyDrops() {
     for (const d of worldKeyDrops) {
         const pos = tileToScreen(d.row, d.col);
@@ -2785,8 +2827,7 @@ function drawItemTooltip(item, anchorX, anchorY) {
 }
 
 function drawInventoryUI() {
-    // NOTE: Standalone inventory UI disabled — inventory managed through Grimoire Equipment tab
-    // Full code retained below for potential future reactivation per form
+    // Standalone inventory UI removed — inventory managed through Grimoire Equipment tab
     return;
     if (!inventoryOpen) return;
 
@@ -2978,6 +3019,120 @@ function handleInventoryClick(mx, my) {
 // ============================================================
 //  DEATH SCREEN & PAUSE OVERLAY
 // ============================================================
+// ============================================================
+//  ABYSS MODIFIER CHOICE SCREEN
+//  Shows 3 modifier cards. Player clicks one to accept.
+// ============================================================
+var _abyssChoiceRects = []; // click rects for each card
+
+function drawAbyssChoiceScreen() {
+    if (typeof abyssChoiceState === 'undefined' || !abyssChoiceState.pending) return;
+    const cx = canvasW / 2, cy = canvasH / 2;
+    ctx.save();
+
+    // Dark overlay
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Title
+    ctx.globalAlpha = 0.9;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 28px Georgia';
+    ctx.fillStyle = '#cc4488';
+    ctx.shadowColor = 'rgba(200,60,120,0.4)';
+    ctx.shadowBlur = 20;
+    const titleText = abyssChoiceState.doubleChoice ? 'CHOOSE TWO MODIFIERS' : 'CHOOSE A MODIFIER';
+    ctx.fillText(titleText, cx, cy - 110);
+    ctx.shadowBlur = 0;
+
+    ctx.font = 'italic 12px Georgia';
+    ctx.fillStyle = '#aa6688';
+    ctx.globalAlpha = 0.6;
+    ctx.fillText('The Abyss deepens. Choose your burden.', cx, cy - 80);
+
+    // Cards
+    const cardW = 150, cardH = 120, cardGap = 16;
+    const opts = abyssChoiceState.options;
+    const totalW = opts.length * cardW + (opts.length - 1) * cardGap;
+    const startX = cx - totalW / 2;
+    _abyssChoiceRects = [];
+
+    for (let i = 0; i < opts.length; i++) {
+        const mod = opts[i];
+        const cardX = startX + i * (cardW + cardGap);
+        const cardY = cy - 40;
+        const hovered = mouse && mouse.x >= cardX && mouse.x <= cardX + cardW && mouse.y >= cardY && mouse.y <= cardY + cardH;
+        _abyssChoiceRects.push({ x: cardX, y: cardY, w: cardW, h: cardH });
+
+        // Card background
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = hovered ? 'rgba(60,30,40,0.95)' : 'rgba(25,15,20,0.95)';
+        ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 8); ctx.fill();
+
+        // Border
+        const modColor = mod.color || '#cc4488';
+        ctx.strokeStyle = hovered ? modColor : '#664455';
+        ctx.lineWidth = hovered ? 2.5 : 1.5;
+        ctx.globalAlpha = hovered ? 0.9 : 0.5;
+        ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 8); ctx.stroke();
+
+        // Hover glow
+        if (hovered) {
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = 0.15;
+            const g = ctx.createRadialGradient(cardX + cardW / 2, cardY + cardH / 2, 0, cardX + cardW / 2, cardY + cardH / 2, cardW * 0.6);
+            g.addColorStop(0, modColor);
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(cardX, cardY, cardW, cardH);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Modifier name
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 14px Georgia';
+        ctx.fillStyle = modColor;
+        ctx.globalAlpha = 0.9;
+        ctx.fillText(mod.name, cardX + cardW / 2, cardY + 30);
+
+        // Description (word-wrapped)
+        ctx.font = '10px Georgia';
+        ctx.fillStyle = '#aa9988';
+        ctx.globalAlpha = 0.7;
+        const words = mod.desc.split(' ');
+        let line = '', lineY = cardY + 55;
+        for (const word of words) {
+            const test = line + (line ? ' ' : '') + word;
+            if (ctx.measureText(test).width > cardW - 20) {
+                ctx.fillText(line, cardX + cardW / 2, lineY);
+                lineY += 14;
+                line = word;
+            } else {
+                line = test;
+            }
+        }
+        if (line) ctx.fillText(line, cardX + cardW / 2, lineY);
+
+        // Click hint
+        ctx.font = '8px monospace';
+        ctx.fillStyle = '#776666';
+        ctx.globalAlpha = hovered ? 0.6 : 0.3;
+        ctx.fillText('click to accept', cardX + cardW / 2, cardY + cardH - 10);
+    }
+
+    // Picks remaining indicator
+    if (abyssChoiceState.picksRemaining > 1) {
+        ctx.font = '11px Georgia';
+        ctx.fillStyle = '#e8c840';
+        ctx.globalAlpha = 0.7;
+        ctx.fillText('Picks remaining: ' + abyssChoiceState.picksRemaining, cx, cy + cardH + 10);
+    }
+
+    ctx.restore();
+}
+
 function drawDeathScreen() {
     const t = deathFadeTimer;
     const fadeIn = Math.min(1, t / 1.5);
@@ -3039,29 +3194,59 @@ function drawDeathScreen() {
         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
         ctx.lineWidth = 2;
 
-        // Stats with symbolic icons
-        const statsY = cy + 14;
-        ctx.font = '13px Georgia';
+        // Enhanced run summary card
+        const statsY = cy + 10;
+        ctx.font = '12px Georgia';
         ctx.fillStyle = '#9a7a6a';
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
         const zoneCfg = ZONE_CONFIGS[currentZone] || (currentZone >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(currentZone) : null);
         const zoneName = zoneCfg ? zoneCfg.name : 'Unknown';
         const formName = FormSystem.currentForm ? FormSystem.currentForm.charAt(0).toUpperCase() + FormSystem.currentForm.slice(1) : 'Unknown';
+        const _runSecs = typeof runStartTime !== 'undefined' && runStartTime > 0 ? Math.round((Date.now() - runStartTime) / 1000) : 0;
+        const _runMin = Math.floor(_runSecs / 60);
+        const _runSecRem = _runSecs % 60;
+        const _runTimeStr = _runMin + ':' + (_runSecRem < 10 ? '0' : '') + _runSecRem;
+        const _upgradeCount = typeof upgrades !== 'undefined' ? Object.values(upgrades).reduce(function(s, v) { return s + v; }, 0) : 0;
+        const _goldEarned = typeof runGoldEarned !== 'undefined' ? runGoldEarned : 0;
 
-        const statLines = [
-            `\u2694 Wave ${wave.current + 1}  \u00B7  ${wave.totalKilled} slain`,
-            `\u26F0 ${zoneName}  \u00B7  ${formName} form`,
-        ];
-        for (let i = 0; i < statLines.length; i++) {
-            ctx.strokeText(statLines[i], cx, statsY + i * 20);
-            ctx.fillText(statLines[i], cx, statsY + i * 20);
+        // Left column — this run
+        const col1X = cx - 90, col2X = cx + 30;
+        let sY = statsY;
+        ctx.textAlign = 'left';
+        ctx.font = '9px monospace'; ctx.fillStyle = '#776655'; ctx.globalAlpha = textAlpha * 0.5;
+        ctx.fillText('THIS RUN', col1X, sY); sY += 14;
+        ctx.font = '11px Georgia'; ctx.fillStyle = '#b09878'; ctx.globalAlpha = textAlpha * 0.8;
+        ctx.fillText(zoneName + ', Wave ' + (wave.current + 1), col1X, sY); sY += 15;
+        ctx.fillText(wave.totalKilled + ' kills  ·  ' + formName, col1X, sY); sY += 15;
+        const _augCount = (typeof augmentInventory !== 'undefined') ? augmentInventory.equipped.filter(function(a) { return a !== null; }).length : 0;
+        const _gearStr = _upgradeCount + ' upgrades' + (_augCount > 0 ? ', ' + _augCount + ' augments' : '');
+        ctx.fillText('Level ' + xpState.level + '  ·  ' + _gearStr, col1X, sY); sY += 15;
+        ctx.fillText(_runTimeStr + '  ·  ' + _goldEarned + 'g earned', col1X, sY); sY += 15;
+
+        // Right column — best run comparison
+        if (typeof playerProfile !== 'undefined' && playerProfile.totalRuns > 1) {
+            sY = statsY;
+            ctx.textAlign = 'left';
+            ctx.font = '9px monospace'; ctx.fillStyle = '#776655'; ctx.globalAlpha = textAlpha * 0.5;
+            ctx.fillText('BEST RUN', col2X, sY); sY += 14;
+            ctx.font = '11px Georgia'; ctx.globalAlpha = textAlpha * 0.6;
+            const _bestZoneCfg = ZONE_CONFIGS[playerProfile.bestZone] || {};
+            ctx.fillStyle = '#887766';
+            ctx.fillText((_bestZoneCfg.name || 'Zone ' + playerProfile.bestZone) + ', Wave ' + (playerProfile.bestWave + 1), col2X, sY); sY += 15;
+            ctx.fillText(playerProfile.bestKills + ' kills best', col2X, sY); sY += 15;
+            ctx.fillText('Level ' + playerProfile.bestLevel + ' best', col2X, sY); sY += 15;
+            ctx.fillText(playerProfile.totalRuns + ' runs  ·  ' + playerProfile.totalDeaths + ' deaths', col2X, sY);
         }
 
-        // Death cause
+        // Death cause (centered below stats)
+        ctx.textAlign = 'center';
         if (deathCause) {
             ctx.font = '12px Georgia';
             ctx.fillStyle = '#bb7766';
-            ctx.strokeText(`Slain by ${deathCause}`, cx, statsY + 44);
-            ctx.fillText(`Slain by ${deathCause}`, cx, statsY + 44);
+            ctx.globalAlpha = textAlpha * 0.8;
+            ctx.strokeText('Slain by ' + deathCause, cx, statsY + 80);
+            ctx.fillText('Slain by ' + deathCause, cx, statsY + 80);
         }
 
         // Tip in styled box
@@ -3269,6 +3454,12 @@ function restartGame() {
     towerBolts.length = 0;
     summons.length = 0;
     worldDrops.length = 0;
+    if (typeof worldAugmentDrops !== 'undefined') worldAugmentDrops.length = 0;
+    // Reset augment inventory (form-specific loot doesn't carry between runs)
+    if (typeof augmentInventory !== 'undefined') {
+        augmentInventory.equipped = [null, null, null];
+        augmentInventory.backpack = [];
+    }
     ghosts.length = 0;
     pickupTexts.length = 0;
     playerInvTimer = 0;
@@ -3308,14 +3499,39 @@ function restartGame() {
     if (typeof groundHazards !== 'undefined') groundHazards.length = 0;
     if (typeof claimedMilestones !== 'undefined') claimedMilestones.length = 0;
     if (typeof playerGold !== 'undefined') playerGold = 0;
+    if (typeof runStartTime !== 'undefined') runStartTime = Date.now();
+    if (typeof runGoldEarned !== 'undefined') runGoldEarned = 0;
+    // Apply milestone start bonuses from player profile
+    if (typeof playerProfile !== 'undefined' && typeof MILESTONE_DEFS !== 'undefined') {
+        for (var _mi = 0; _mi < MILESTONE_DEFS.length; _mi++) {
+            var _ms = MILESTONE_DEFS[_mi];
+            if (playerProfile.milestones[_ms.id] && _ms.bonus) {
+                if (_ms.bonus.type === 'gold') playerGold += _ms.bonus.value;
+                else if (_ms.bonus.type === 'stat' && _ms.bonus.stat === 'dmgBonus') {
+                    questState.permBonuses.dmgBonus = (questState.permBonuses.dmgBonus || 0) + _ms.bonus.value;
+                } else if (_ms.bonus.type === 'stat' && _ms.bonus.stat === 'maxHpBonus') {
+                    player.hp += _ms.bonus.value;
+                }
+            }
+        }
+    }
     if (typeof resetPotions === 'function') resetPotions();
+    // Apply potion milestone bonuses AFTER resetPotions
+    if (typeof playerProfile !== 'undefined' && typeof MILESTONE_DEFS !== 'undefined') {
+        for (var _mi2 = 0; _mi2 < MILESTONE_DEFS.length; _mi2++) {
+            var _ms2 = MILESTONE_DEFS[_mi2];
+            if (playerProfile.milestones[_ms2.id] && _ms2.bonus && _ms2.bonus.type === 'potion') {
+                if (typeof playerPotions !== 'undefined') playerPotions[_ms2.bonus.item] = (playerPotions[_ms2.bonus.item] || 0) + _ms2.bonus.value;
+            }
+        }
+    }
     if (typeof forgeUpgrades !== 'undefined') {
         for (const k of Object.keys(forgeUpgrades)) forgeUpgrades[k] = 0;
     }
     if (typeof _evoHintShown !== 'undefined') { _evoHintShown.slime = false; _evoHintShown.skeleton = false; _evoHintShown.wizard = false; }
     // Reset hamlet rebuild state for new game
     if (typeof hamletRebuild !== 'undefined') {
-        for (const k of Object.keys(hamletRebuild)) hamletRebuild[k] = false;
+        for (const k of Object.keys(hamletRebuild)) hamletRebuild[k] = 0;
     }
     // Reset wave — use 'done' so waves don't auto-trigger before loadZone/startWaveSystem
     wave.current = 0;
@@ -3667,6 +3883,24 @@ function render() {
 
                 ctx.restore();
             }
+            // Cracked wall visual tell — subtle crack lines on the wall tile
+            if (ot === 'crackedWall' && !_fogDim) {
+                const pos = tileToScreen(row, col);
+                const sx = pos.x + cameraX, sy = pos.y + cameraY;
+                ctx.save();
+                ctx.globalAlpha = 0.35 + Math.sin(performance.now() / 2000 + row * 3) * 0.1;
+                ctx.strokeStyle = '#aa8855';
+                ctx.lineWidth = 1.5;
+                // Diagonal crack pattern
+                ctx.beginPath();
+                ctx.moveTo(sx - 6, sy - 14); ctx.lineTo(sx + 2, sy - 6);
+                ctx.lineTo(sx - 3, sy - 2); ctx.lineTo(sx + 4, sy + 4);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(sx + 5, sy - 12); ctx.lineTo(sx + 1, sy - 4);
+                ctx.stroke();
+                ctx.restore();
+            }
             // Door/stairs glow
             if (ot && DOOR_DEFS[`${row},${col}`]) {
                 const doorDef = DOOR_DEFS[`${row},${col}`];
@@ -3874,6 +4108,7 @@ function render() {
     drawAllTowerGlows();
     drawOrbitFireballs();
     drawWorldDrops();
+    if (typeof drawWorldAugmentDrops === 'function') drawWorldAugmentDrops();
     drawWorldKeyDrops();
     drawProjectiles();
     drawTowerBolts();
@@ -4021,8 +4256,7 @@ function render() {
 
     // ── COMBAT JUICE: Low-HP warning vignette (pulsing below 25%) ──
     if (gamePhase === 'playing' && !gameDead && player.hp > 0) {
-        const _qHpGL = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-        const hpRatio = player.hp / (PLAYER_STATS.maxHp + (equipBonus.maxHpBonus || 0) + getTalismanBonus().hpBonus + _qHpGL);
+        const hpRatio = player.hp / (getPlayerMaxHP() || 1);
         if (hpRatio < 0.25) {
             const urgency = 1 - (hpRatio / 0.25); // 0→1 as HP drops from 25%→0%
             const pulse = 0.12 + Math.sin(performance.now() * 0.005) * 0.06; // ~0.8Hz
@@ -4146,11 +4380,14 @@ function render() {
         // Interaction prompts
         drawChestPrompt();
         drawDoorPrompt();
+        if (typeof drawAltarPrompt === 'function') drawAltarPrompt();
+        if (typeof drawAltarObject === 'function') drawAltarObject();
         if (typeof drawRebuildPrompt === 'function') drawRebuildPrompt();
 
         // Wave system UI
         drawWaveBanner();
         drawWaveHUD();
+        if (typeof drawKillStreakHUD === 'function') drawKillStreakHUD();
         drawBossHealthBar();
 
         // Placement preview (above HUD, below crosshair)
@@ -4513,42 +4750,6 @@ function runIntro() {
     // Fade to silence — intro starts quiet for maximum impact
     // Music cue happens at INTRO_MUSIC_CUE (3.5s) in updateIntroPhase
     try { if (typeof stopMusic === 'function') stopMusic(0.5); } catch(e) {}
-    return; // CRITICAL: stop here — don't fall through to old cinematic setup below
-
-    // Dungeon zones: play full cinematic (dead code for now, preserved for future)
-    // Reset cinematic state
-    cinematicTimer = 0;
-    cinematicPhase = 0;
-    wizardRotation = Math.PI / 2;
-    wizardRiseProgress = 0;
-    cinematicTextAlpha = [0, 0, 0, 0];
-    bloodStainAlpha = 0;
-    dustParticles = [];
-    cinematicFlashAlpha = 0;
-    lightRadius = 80;
-
-    // Reset cinematic SFX one-shot flags so they fire again on replay
-    cinematicSFX_heartbeat = false;
-    cinematicSFX_stir = false;
-    cinematicSFX_stand = false;
-    cinematicSFX_ducked = false;
-    cinematicSFX_unducked = false;
-    cinematicShakeTriggered = false;
-
-    // Camera starts offset from player — looking at a nearby part of the dungeon
-    cinematicCamRow = 7;
-    cinematicCamCol = 7;
-    const camPos = tileToScreen(cinematicCamRow, cinematicCamCol);
-    smoothCamX = canvasW / 2 - camPos.x;
-    smoothCamY = canvasH / 2 - camPos.y;
-    cameraX = Math.round(smoothCamX);
-    cameraY = Math.round(smoothCamY);
-
-    setPixelCursor('none');
-    gamePhase = 'cinematic';
-
-    // Crossfade from menu music to cinematic music
-    playMusic('cinematic', 2.5);
 }
 
 // ----- 3D MODE FLAG -----
@@ -4954,6 +5155,14 @@ function drawOptionsScreen() {
     _drawOptSlider('sfxVolume', controlX, rowY - sliderH / 2, sliderW, sliderH, gameSettings.sfxVolume);
     ctx.textAlign = 'left'; ctx.font = '12px monospace'; ctx.fillStyle = '#a09070'; ctx.globalAlpha = 0.6;
     ctx.fillText(Math.round(gameSettings.sfxVolume * 100) + '%', controlX + sliderW + 10, rowY);
+    rowY += rowH;
+
+    // Brightness
+    ctx.textAlign = 'right'; ctx.font = '14px Georgia'; ctx.globalAlpha = 0.8; ctx.fillStyle = COLORS.TEXT_WARM;
+    ctx.fillText('Brightness', labelX, rowY);
+    _drawOptSlider('brightness', controlX, rowY - sliderH / 2, sliderW, sliderH, (gameSettings.brightness - 0.5) / 1.0);
+    ctx.textAlign = 'left'; ctx.font = '12px monospace'; ctx.fillStyle = '#a09070'; ctx.globalAlpha = 0.6;
+    ctx.fillText(Math.round(gameSettings.brightness * 100) + '%', controlX + sliderW + 10, rowY);
     rowY += rowH;
 
     // Graphics Quality
