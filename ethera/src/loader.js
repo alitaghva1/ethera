@@ -63,7 +63,7 @@ async function loadAssets() {
         npc_nun_idle:           'npc_nun_idle.png',           // Old Mira (elder herbalist)
         npc_crusader_idle:      'npc_crusader_idle.png',      // Captain Aldric (guard)
         npc_mage_idle:          'npc_mage_idle.png',          // The Hermit (mystic sage)
-        npc_plaguedoctor_idle:  'npc_plaguedoctor_idle.png',  // Senna the Alchemist
+        npc_femalewizard_idle:  'npc_femalewizard_idle.png',  // Senna the Alchemist
         npc_woundedknight_idle: 'npc_woundedknight_idle.png', // Fading Pilgrim (ghost)
     };
     for (var _nk in NPC_SPRITE_FILES) {

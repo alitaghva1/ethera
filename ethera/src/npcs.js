@@ -116,7 +116,7 @@ const NPC_REGISTRY = {
             portrait: 'portrait_senna', // sharp-eyed alchemist researcher
             row: 16, col: 22,
             zone: 0,
-            spriteKey: 'npc_plaguedoctor_idle', // GandalfHardcore — beaked mask, alchemist/researcher
+            spriteKey: 'npc_femalewizard_idle', // GandalfHardcore — robed woman with magic, matches female portrait
             frameCount: 5,
             frameW: 64, frameH: 64,
             scale: 1.4,
