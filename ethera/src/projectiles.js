@@ -141,7 +141,8 @@ function drawProjectiles() {
 
             // Sprite-based acid blob (AI-generated frames)
             // life counts down from projLife — map to frame 0→5 as projectile ages
-            const acidProgress = 1 - Math.max(0, Math.min(1, p.life / (PLAYER_STATS.projLife || 1.4)));
+            const _acidMaxLife = (typeof FORM_CONFIGS !== 'undefined' && FORM_CONFIGS.slime) ? FORM_CONFIGS.slime.projLife : 1.4;
+            const acidProgress = 1 - Math.max(0, Math.min(1, p.life / _acidMaxLife));
             const acidFrame = Math.min(5, Math.floor(acidProgress * 6));
             const acidSprite = images['proj_acid_' + acidFrame];
             if (acidSprite) {
@@ -330,6 +331,7 @@ function drawProjectiles() {
             ctx.rotate(p.angle);
             ctx.drawImage(fbAI, -fbSz / 2, -fbSz / 2, fbSz, fbSz);
             ctx.restore();
+            // AI sprite has core + embers baked in — skip procedural overlays
         } else {
             const fbImg = images.fireball;
             if (fbImg) {
@@ -350,29 +352,28 @@ function drawProjectiles() {
                     -dw / 2, -dh / 2, dw, dh);
                 ctx.restore();
             }
-        }
 
-        // --- White-yellow hot core ---
-        ctx.save();
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = '#fff8e0';
-        ctx.globalAlpha = 0.85;
-        ctx.beginPath();
-        ctx.arc(px, py, p.size * 0.35, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // --- Orbiting embers ---
-        ctx.save();
-        for (let s = 0; s < 5; s++) {
-            const ang = (s / 5) * Math.PI * 2 + p.animTime * 10;
-            const dist = p.size * 1.0 + Math.sin(p.animTime * 16 + s) * 3;
-            ctx.globalAlpha = 0.6 + Math.sin(p.animTime * 12 + s * 2) * 0.4;
-            ctx.fillStyle = s % 2 === 0 ? '#ffaa30' : '#ff6600';
+            // --- White-yellow hot core (procedural only) ---
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = '#fff8e0';
+            ctx.globalAlpha = 0.85;
             ctx.beginPath();
-            ctx.arc(px + Math.cos(ang) * dist, py + Math.sin(ang) * dist, 1.5, 0, Math.PI * 2);
+            ctx.arc(px, py, p.size * 0.35, 0, Math.PI * 2);
             ctx.fill();
-        }
+            ctx.restore();
+
+            // --- Orbiting embers (procedural only) ---
+            ctx.save();
+            for (let s = 0; s < 5; s++) {
+                const ang = (s / 5) * Math.PI * 2 + p.animTime * 10;
+                const dist = p.size * 1.0 + Math.sin(p.animTime * 16 + s) * 3;
+                ctx.globalAlpha = 0.6 + Math.sin(p.animTime * 12 + s * 2) * 0.4;
+                ctx.fillStyle = s % 2 === 0 ? '#ffaa30' : '#ff6600';
+                ctx.beginPath();
+                ctx.arc(px + Math.cos(ang) * dist, py + Math.sin(ang) * dist, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
         ctx.restore();
     }
 }
