@@ -56,6 +56,18 @@ async function loadAssets() {
     for (const [key, file] of Object.entries(NATURE_TILE_FILES)) {
         promises.push(loadImage(NATURE_PATH + file).then(img => { if (img) images[key] = img; }));
     }
+    // Load Kenney Miniature Overworld tiles (256×512px — uses drawTile, same as dungeon)
+    for (const [key, file] of Object.entries(OVERWORLD_TILE_FILES)) {
+        promises.push(loadImage('assets/overworld/' + file).then(img => { if (img) images[key] = img; }));
+    }
+    // Load Kenney Miniature Farm tiles
+    for (const [key, file] of Object.entries(FARM_TILE_FILES)) {
+        promises.push(loadImage('assets/farm/' + file).then(img => { if (img) images[key] = img; }));
+    }
+    // Load Kenney Miniature Library tiles
+    for (const [key, file] of Object.entries(LIBRARY_TILE_FILES)) {
+        promises.push(loadImage('assets/library/' + file).then(img => { if (img) images[key] = img; }));
+    }
     // Load Hell (Infernus) tiles
     for (const [key, info] of Object.entries(HELL_TILE_FILES)) {
         promises.push(loadImage(info.path + info.file).then(img => { if (img) images[key] = img; }));

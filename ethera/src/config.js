@@ -10,7 +10,7 @@
 // ============================================================
 
 // Game version — used for save format and cache busting
-const ETHERA_VERSION = '1.0.0';
+const ETHERA_VERSION = '1.0.1';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
@@ -615,6 +615,74 @@ const NATURE_IMG_H = 379;
 const NATURE_DIAMOND_W = 180;   // same as town diamond
 let NATURE_DRAW_W = 0;          // set by applyZoneTileConfig
 let NATURE_DRAW_H = 0;
+
+// ----- KENNEY MINIATURE OVERWORLD TILES (256×512px, same as dungeon) -----
+const OVERWORLD_TILE_FILES = {
+    ow_grass:           'grass_S.png',
+    ow_grassHill:       'grassHill_S.png',
+    ow_grassPath:       'grassPathStraight_S.png',
+    ow_grassPathCorner: 'grassPathCorner_S.png',
+    ow_grassPathCross:  'grassPathCrossing_S.png',
+    ow_grassPathEnd:    'grassPathEnd_S.png',
+    ow_grassPathClear:  'grassPathClearing_S.png',
+    ow_grassStoneS:     'grassStoneSmall_S.png',
+    ow_grassStoneL:     'grassStoneLarge_S.png',
+    ow_grassStump:      'grassTreeStump_S.png',
+    ow_treePineL:       'treePineLarge_S.png',
+    ow_treePineS:       'treePineSmall_S.png',
+    ow_treePineH:       'treePineHuge_S.png',
+    ow_treeDeadL:       'treeDeadLarge_S.png',
+    ow_treeDeadS:       'treeDeadSmall_S.png',
+};
+
+// ----- KENNEY MINIATURE FARM TILES (256×512px) -----
+const FARM_TILE_FILES = {
+    fm_dirt:            'dirt_S.png',
+    fm_planks:          'planks_S.png',
+    fm_planksOld:       'planksOld_S.png',
+    fm_woodWall:        'woodWall_S.png',
+    fm_woodWallCorner:  'woodWallCorner_S.png',
+    fm_woodWallDoor:    'woodWallDoorway_S.png',
+    fm_woodWallWindow:  'woodWallWindow_S.png',
+    fm_woodWallGate:    'woodWallGateway_S.png',
+    fm_fenceHigh:       'fenceHigh_S.png',
+    fm_fenceLow:        'fenceLow_S.png',
+    fm_fenceHighBrk:    'fenceHighBroken_S.png',
+    fm_fenceLowBrk:     'fenceLowBroken_S.png',
+    fm_hay:             'hay_S.png',
+    fm_hayBales:        'hayBales_S.png',
+    fm_sack:            'sack_S.png',
+    fm_sacksCrate:      'sacksCrate_S.png',
+    fm_chimney:         'chimneyBase_S.png',
+    fm_chimneyTop:      'chimneyTop_S.png',
+    fm_roof:            'roof_S.png',
+    fm_roofCorner:      'roofCorner_S.png',
+    fm_ladder:          'ladderStand_S.png',
+};
+
+// ----- KENNEY MINIATURE LIBRARY TILES (256×512px) -----
+const LIBRARY_TILE_FILES = {
+    lib_bookcase:       'bookcaseBooks_S.png',
+    lib_bookcaseWide:   'bookcaseWideBooks_S.png',
+    lib_bookcaseHalf:   'bookcaseHalfBooks_S.png',
+    lib_bookcaseEmpty:  'bookcaseEmpty_S.png',
+    lib_bookcaseDestroy:'bookcaseDestroyed_S.png',
+    lib_bookcaseFallen: 'bookcaseFallen_S.png',
+    lib_bookcaseGlass:  'bookcaseGlass_S.png',
+    lib_bookStand:      'bookStand_S.png',
+    lib_candleStand:    'candleStand_S.png',
+    lib_candleDouble:   'candleStandDouble_S.png',
+    lib_displayCase:    'displayCase_S.png',
+    lib_displayBooks:   'displayCaseBooks_S.png',
+    lib_carpet:         'floorCarpet_S.png',
+    lib_carpetEnd:      'floorCarpetEnd_S.png',
+    lib_carpetSmall:    'floorCarpetSmall_S.png',
+    lib_longTable:      'longTable_S.png',
+    lib_longTableChairs:'longTableChairs_S.png',
+    lib_chair:          'libraryChair_S.png',
+    lib_wallBooks:      'wallBooks_S.png',
+    lib_wallDoorway:    'wallDoorway_S.png',
+};
 
 // ----- HELL (INFERNUS) TILE REGISTRY -----
 // PVGames Infernus Free tileset — 2.5D isometric, 64px diamond base

@@ -1337,13 +1337,13 @@ function generateTown() {
         blockType[r][c] = 'wall';
     }
 
-    // ===== 1. BASE GROUND — grass everywhere =====
+    // ===== 1. BASE GROUND — Kenney Miniature Overworld grass =====
     for (let r = 0; r < 30; r++) {
         for (let c = 0; c < 30; c++) {
-            const v = (r * 7 + c * 13 + r * c) % 10;
-            floorMap[r][c] = v < 5 ? 'n_grass'
-                           : v < 7 ? 'n_grassEdge'
-                           :         'n_grassFlowers';
+            const v = (r * 7 + c * 13 + r * c) % 25;
+            floorMap[r][c] = v < 20 ? 'ow_grass'
+                           : v < 23 ? 'ow_grassStoneS'
+                           :          'ow_grassHill';
             blocked[r][c] = false;
             blockType[r][c] = null;
         }
@@ -1371,33 +1371,33 @@ function generateTown() {
     floorMap[0][0] = 'wallCorner'; floorMap[0][29] = 'wallCorner';
     floorMap[29][0] = 'wallCorner'; floorMap[29][29] = 'wallCorner';
 
-    // ===== 3. MAIN ROAD — dirt path north-south (cols 14-16) =====
+    // ===== 3. MAIN ROAD — Overworld path tiles north-south (cols 14-16) =====
     for (let r = 1; r < 23; r++) {
-        for (let c = 14; c <= 16; c++) {
-            floorMap[r][c] = 'n_dirt';
-        }
+        floorMap[r][15] = 'ow_grassPath'; // center path
+        floorMap[r][14] = 'ow_grassStoneS'; // path edge left
+        floorMap[r][16] = 'ow_grassStoneS'; // path edge right
     }
     // Branch paths to buildings
     // West branch to Forge + Guard Post (row 8, cols 6-14)
     for (let c = 6; c <= 14; c++) {
-        floorMap[8][c] = 'n_dirt';
+        floorMap[8][c] = c === 14 ? 'ow_grassPathCross' : 'ow_grassPath';
     }
     // West branch to Forge (row 15, cols 8-14)
     for (let c = 8; c <= 14; c++) {
-        floorMap[15][c] = 'n_dirt';
+        floorMap[15][c] = 'ow_grassPath';
     }
     // East branch to Shop + Hermit (row 8, cols 16-24)
     for (let c = 16; c <= 24; c++) {
-        floorMap[8][c] = 'n_dirt';
+        floorMap[8][c] = 'ow_grassPath';
     }
     // East branch to Shop (row 15, cols 16-24)
     for (let c = 16; c <= 24; c++) {
-        floorMap[15][c] = 'n_dirt';
+        floorMap[15][c] = 'ow_grassPath';
     }
 
     // ===== 4. SOUTH DUNGEON ENTRANCE (rows 20-24) =====
     // Atmospheric stairway leading down, framed by stone pillars and debris
-    fillFloor(20, 13, 24, 17, 'n_dirt');
+    fillFloor(20, 13, 24, 17, 'fm_dirt');
     fillFloor(22, 14, 23, 16, 'stone');
     floorMap[22][14] = 'stoneUneven';
     floorMap[22][16] = 'stoneUneven';
@@ -1413,19 +1413,19 @@ function generateTown() {
 
     // ===== 5. TOWN SQUARE (rows 9-12, cols 10-20) =====
     // Open area with grass floor, dirt path through center, central monument
-    fillFloor(9, 10, 12, 20, 'n_grass');
-    // Dirt path through center
+    fillFloor(9, 10, 12, 20, 'ow_grass');
+    // Path through center
     for (let c = 10; c <= 20; c++) {
-        floorMap[10][c] = 'n_dirt';
-        floorMap[11][c] = 'n_dirt';
+        floorMap[10][c] = 'ow_grassPath';
+        floorMap[11][c] = 'ow_grassPath';
     }
-    // Scattered flowers
-    floorMap[9][12] = 'n_grassFlowers';
-    floorMap[9][18] = 'n_grassFlowers';
-    floorMap[12][11] = 'n_grassFlowers';
-    floorMap[12][19] = 'n_grassFlowers';
-    floorMap[9][15] = 'n_grassFlowers';
-    floorMap[12][15] = 'n_grassFlowers';
+    // Stone details at edges
+    floorMap[9][12] = 'ow_grassStoneS';
+    floorMap[9][18] = 'ow_grassStoneS';
+    floorMap[12][11] = 'ow_grassStoneS';
+    floorMap[12][19] = 'ow_grassStoneS';
+    floorMap[9][15] = 'ow_grassStoneL';
+    floorMap[12][15] = 'ow_grassStoneL';
     // Central monument — full or broken depending on rebuild state
     const _monumentRebuilt = typeof hamletRebuild !== 'undefined' && hamletRebuild.monument;
     if (_monumentRebuilt) {
@@ -1455,6 +1455,9 @@ function generateTown() {
     wall(13, 6, 'wall');
     wall(13, 7, 'wall');
     wall(13, 8, 'wallCorner');
+    // Roof overhang
+    placeObj(12, 5, 'fm_roof', false);
+    placeObj(12, 6, 'fm_roof', false);
     // West back wall
     wall(14, 3, 'wall');
     wall(15, 3, 'wallWindowBars');
@@ -1467,12 +1470,15 @@ function generateTown() {
         placeObj(14, 5, 'stoneColumn');      // anvil proxy
         placeObj(14, 7, 'woodenSupports');   // weapon rack
         placeObj(16, 7, 'barrel');           // storage
-        placeObj(16, 4, 'woodenCrates');     // crates
+        placeObj(16, 4, 'fm_hayBales');      // fuel storage (farm hay)
+        placeObj(17, 3, 'lib_candleStand', false); // forge light
     } else {
         placeObj(14, 5, 'woodenPile', false); // rubble where anvil would be
         placeObj(16, 6, 'woodenPile', false); // collapsed structure
+        placeObj(17, 3, 'woodenPile', false);
     }
-    placeObj(17, 3, 'woodenPile', false);
+    // Forge chimney outside
+    placeObj(13, 2, 'fm_chimney', false);
 
     // ===== 7. SENNA'S ALCHEMY SHOP (rows 13-17, cols 22-27) =====
     // Stone floor, back wall (north) + right wall (east), open front
@@ -1487,6 +1493,9 @@ function generateTown() {
     wall(13, 25, 'wall');
     wall(13, 26, 'wall');
     wall(13, 27, 'wallCorner');
+    // Roof overhang
+    placeObj(12, 24, 'fm_roof', false);
+    placeObj(12, 25, 'fm_roof', false);
     // East back wall
     wall(14, 27, 'wall');
     wall(15, 27, 'wallWindowBars');
@@ -1496,15 +1505,16 @@ function generateTown() {
     fillFloor(14, 22, 17, 22, 'stoneTile');
     // Interior props — functional or rubble
     if (_shopRebuilt) {
-        placeObj(14, 24, 'barrel');           // potions barrel
-        placeObj(14, 26, 'barrelsStacked');   // more potions
-        placeObj(16, 23, 'woodenCrate');      // ingredient crate
-        placeObj(16, 26, 'tableShort');       // alchemy table
+        placeObj(14, 24, 'lib_bookcaseHalf'); // ingredient shelf
+        placeObj(14, 26, 'lib_displayCase');  // potion display case
+        placeObj(16, 23, 'barrel');           // ingredient barrel
+        placeObj(16, 26, 'lib_candleDouble', false); // alchemy light
+        placeObj(17, 27, 'fm_sacksCrate', false);    // supply sacks outside
     } else {
-        placeObj(14, 24, 'woodenPile', false); // rubble
-        placeObj(16, 25, 'woodenPile', false); // collapsed shelves
+        placeObj(14, 24, 'lib_bookcaseDestroy', false); // ruined shelves
+        placeObj(16, 25, 'woodenPile', false);  // collapsed structure
+        placeObj(17, 27, 'woodenPile', false);
     }
-    placeObj(17, 27, 'woodenPile', false);
 
     // ===== 8. ALDRIC'S GUARD POST (rows 4-8, cols 3-8) =====
     const _guardRebuilt = typeof hamletRebuild !== 'undefined' && hamletRebuild.guardPost;
@@ -1518,6 +1528,9 @@ function generateTown() {
     wall(4, 6, 'wallStructure');
     wall(4, 7, 'wall');
     wall(4, 8, 'wallCorner');
+    // Roof overhang
+    placeObj(3, 5, 'fm_roof', false);
+    placeObj(3, 6, 'fm_roof', false);
     // West back wall
     wall(5, 3, 'wall');
     wall(6, 3, 'wallWindowBars');
@@ -1548,25 +1561,32 @@ function generateTown() {
     wall(4, 25, 'wallAged');
     wall(4, 26, 'wallBroken');
     wall(4, 27, 'wallCorner');
+    // Roof overhang
+    placeObj(3, 24, 'fm_roof', false);
+    placeObj(3, 25, 'fm_roof', false);
     // East wall (partial)
     wall(5, 27, 'wall');
     wall(6, 27, 'wallWindowBars');
     wall(7, 27, 'wallHalf');
     // Pavement approach
     fillFloor(8, 23, 8, 26, 'stone');
-    // Interior — functional or rubble
+    // Interior — library furnishings or ruins
     if (_hermitRebuilt) {
-        placeObj(5, 24, 'stoneColumn');       // arcane pillar
-        placeObj(5, 26, 'stoneColumn');       // arcane pillar
-        placeObj(7, 26, 'barrel', false);
+        // Carpet on floor
+        floorMap[6][24] = 'lib_carpet';
+        floorMap[6][25] = 'lib_carpet';
+        placeObj(5, 24, 'lib_bookcase');       // arcane bookcase
+        placeObj(5, 26, 'lib_bookStand');       // reading stand
+        placeObj(7, 26, 'lib_candleStand', false);
+        placeObj(7, 23, 'lib_chair', false);
     } else {
-        placeObj(5, 24, 'woodenPile', false); // collapsed pillar
+        placeObj(5, 24, 'lib_bookcaseFallen', false); // fallen bookcase
+        placeObj(7, 23, 'woodenPile', false);
     }
-    placeObj(7, 23, 'woodenPile', false);
     // Surrounding grass detail
-    floorMap[3][23] = 'n_grassFlowers';
-    floorMap[3][26] = 'n_grassFlowers';
-    floorMap[8][22] = 'n_grassFlowers';
+    floorMap[3][23] = 'ow_grassStoneS';
+    floorMap[3][26] = 'ow_grassStoneS';
+    floorMap[8][22] = 'ow_grassStoneS';
 
     // ===== 10. PATH AREA / GREEN ZONE (rows 18-22) =====
     // Grass with decorative elements between forge/shop row and lobby
@@ -1575,28 +1595,28 @@ function generateTown() {
     for (let r = 18; r <= 22; r++) {
         for (let c = 2; c <= 27; c++) {
             if (!blocked[r][c] && !objectMap[r][c]) {
-                const v = (r * 3 + c * 7) % 8;
-                floorMap[r][c] = v < 4 ? 'n_grass'
-                               : v < 6 ? 'n_grassEdge'
-                               :         'n_grassFlowers';
+                const v = (r * 3 + c * 7) % 25;
+                floorMap[r][c] = v < 20 ? 'ow_grass'
+                               : v < 23 ? 'ow_grassStoneS'
+                               :          'ow_grassHill';
             }
         }
     }
     // Continue main road through this area to the lobby
     for (let r = 18; r <= 22; r++) {
-        for (let c = 14; c <= 16; c++) {
-            floorMap[r][c] = 'n_dirt';
-        }
+        floorMap[r][15] = 'ow_grassPath';
+        floorMap[r][14] = 'ow_grassStoneS';
+        floorMap[r][16] = 'ow_grassStoneS';
     }
-    // Decorative bushes and props along path (non-blocking where marked)
-    placeObj(19, 13, 'woodenPile', false);
-    placeObj(19, 17, 'woodenPile', false);
-    placeObj(21, 13, 'woodenPile', false);
-    placeObj(21, 17, 'woodenPile', false);
+    // Decorative props along path — farm and overworld elements
+    placeObj(19, 13, 'fm_fenceLow', false);
+    placeObj(19, 17, 'fm_fenceLow', false);
+    placeObj(21, 13, 'fm_hay', false);
+    placeObj(21, 17, 'fm_sack', false);
     // Supply depot and abandoned cargo near entrance path
     placeObj(19, 11, 'barrel');            // supply depot west
-    placeObj(20, 18, 'woodenCrate', false); // abandoned cargo east
-    placeObj(18, 10, 'woodenPile', false); // fallen timber west
+    placeObj(20, 18, 'fm_sacksCrate', false); // cargo east
+    placeObj(18, 10, 'fm_hayBales', false); // hay storage west
     // Stone path markers along main road
     floorMap[19][15] = 'stoneInset';
     floorMap[21][15] = 'stoneInset';
@@ -1609,32 +1629,52 @@ function generateTown() {
     for (let r = 1; r <= 3; r++) {
         for (let c = 2; c <= 27; c++) {
             if (!blocked[r][c] && !objectMap[r][c]) {
-                const v = (r * 5 + c * 11) % 6;
-                floorMap[r][c] = v < 3 ? 'n_grass'
-                               : v < 5 ? 'n_grassEdge'
-                               :         'n_grassFlowers';
+                const v = (r * 5 + c * 11) % 25;
+                floorMap[r][c] = v < 20 ? 'ow_grass'
+                               : v < 23 ? 'ow_grassStoneS'
+                               :          'ow_grassHill';
             }
         }
     }
     // Continue main road north
-    for (let c = 14; c <= 16; c++) {
-        floorMap[1][c] = 'n_dirt';
-        floorMap[2][c] = 'n_dirt';
-        floorMap[3][c] = 'n_dirt';
+    for (let r = 1; r <= 3; r++) {
+        floorMap[r][15] = 'ow_grassPath';
+        floorMap[r][14] = 'ow_grassStoneS';
+        floorMap[r][16] = 'ow_grassStoneS';
     }
-    // Decorative columns near north gate
+    // Gate pillars + trees near north wall
     placeObj(2, 13, 'stoneColumn');
     placeObj(2, 17, 'stoneColumn');
+    // Overworld trees around hamlet perimeter
+    placeObj(2, 4, 'ow_treePineL');
+    placeObj(2, 26, 'ow_treePineL');
+    placeObj(3, 8, 'ow_treePineS');
+    placeObj(3, 21, 'ow_treePineS');
+    placeObj(18, 4, 'ow_treePineL');
+    placeObj(18, 26, 'ow_treePineL');
+    placeObj(20, 8, 'ow_treeDeadL');
+    placeObj(20, 22, 'ow_treeDeadL');
+    placeObj(27, 5, 'ow_treePineS');
+    placeObj(27, 25, 'ow_treePineS');
+    // Additional tree clusters for boundary definition
+    placeObj(1, 10, 'ow_treePineS');
+    placeObj(1, 20, 'ow_treePineS');
+    placeObj(10, 2, 'ow_treePineL');
+    placeObj(11, 3, 'ow_treePineS');
+    placeObj(10, 27, 'ow_treePineL');
+    placeObj(11, 26, 'ow_treePineS');
+    placeObj(25, 10, 'ow_treeDeadS');
+    placeObj(25, 20, 'ow_treeDeadS');
 
     // ===== 12. ROAD LANTERN COLUMNS =====
-    placeObj(4, 15, 'stoneColumnWood');    // north road
-    placeObj(9, 14, 'stoneColumnWood');    // town square approach
-    placeObj(12, 16, 'stoneColumnWood');   // south of square
-    placeObj(18, 15, 'stoneColumnWood');   // south approach to lobby
+    placeObj(4, 15, 'lib_candleStand');     // north road lantern
+    placeObj(9, 14, 'lib_candleStand');     // town square approach
+    placeObj(12, 16, 'lib_candleStand');    // south of square
+    placeObj(18, 15, 'lib_candleStand');    // south approach to lobby
 
     // ===== 12b. SOUTH GARDEN / RUINS (rows 24-27) =====
     // Fills the empty space south of the dungeon entrance with atmospheric ruins
-    fillFloor(24, 12, 27, 18, 'n_grass');
+    fillFloor(24, 12, 27, 18, 'ow_grass');
     fillFloor(25, 14, 26, 16, 'stone');
     floorMap[25][15] = 'stoneUneven';
     floorMap[26][14] = 'stoneMissing';
@@ -1642,9 +1682,10 @@ function generateTown() {
     placeObj(26, 17, 'woodenPile', false);  // collapsed fence/structure
     placeObj(27, 13, 'barrel');             // old forgotten supplies
     // Perimeter decoration near walls
-    placeObj(1, 5, 'woodenPile', false);    // collapsed scaffolding NW
-    placeObj(1, 25, 'woodenPile', false);   // collapsed scaffolding NE
-    placeObj(28, 6, 'barrel');              // old supply SW
+    placeObj(1, 5, 'fm_fenceHighBrk', false);  // broken fence NW
+    placeObj(1, 25, 'fm_fenceHighBrk', false); // broken fence NE
+    placeObj(28, 6, 'fm_sack', false);         // abandoned sack SW
+    placeObj(28, 24, 'fm_hay', false);         // scattered hay SE
 
     // ===== 13. TREASURE CHESTS =====
     placeObj(6, 4, 'chestClosed');         // guard post interior
@@ -1661,8 +1702,9 @@ function generateTown() {
 
     // ===== 15. TRANSITION: grass edges around stone buildings =====
     // Place grass-edge tiles around building borders for natural transition
-    const stoneFloors = new Set(['stoneTile', 'stone', 'stoneInset', 'planks']);
-    const grassFloors = new Set(['n_grass', 'n_grassEdge', 'n_grassFlowers', 'n_grassBush']);
+    const stoneFloors = new Set(['stoneTile', 'stone', 'stoneInset', 'planks', 'fm_planks']);
+    const grassFloors = new Set(['ow_grass', 'ow_grassHill', 'ow_grassStump',
+        'n_grass', 'n_grassEdge', 'n_grassFlowers', 'n_grassBush']);
     const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
     for (let r = 1; r < 29; r++) {
         for (let c = 1; c < 29; c++) {
@@ -1674,8 +1716,8 @@ function generateTown() {
                 const nf = floorMap[r + dr]?.[c + dc];
                 if (stoneFloors.has(nf)) nearStone = true;
             }
-            if (nearStone) {
-                floorMap[r][c] = 'n_grassEdge';
+            if (nearStone && ft === 'ow_grass') {
+                floorMap[r][c] = 'ow_grassStoneS'; // stone-grass transition (only plain grass)
             }
         }
     }

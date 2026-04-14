@@ -3848,7 +3848,8 @@ function render() {
                 let tileScore = (row + col) * mapSize + row;
                 // Z-fix: tall nature objects (trees, rocks, logs) in non-town zones
                 // visually extend above normal tile height, covering nearby sprites.
-                if (ot.startsWith('n_') && !ot.startsWith('n_grass')) {
+                if ((ot.startsWith('n_') && !ot.startsWith('n_grass')) ||
+                    ot.startsWith('ow_tree') || ot.startsWith('lib_bookcase')) {
                     tileScore -= mapSize * 2;
                 }
                 // Use <= so sprites at the same depth as a tile draw BEFORE the tile.

@@ -1885,9 +1885,11 @@ function drawRebuildPrompt() {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Georgia'; // Set font BEFORE measuring text width
 
     // Badge background — prominent and readable
-    const _rbw = Math.max(160, ctx.measureText('[E]  ' + label + ' (' + cost + 'g)').width + 40 || 160);
+    const _promptText = '[E]  ' + label + ' (' + cost + 'g)';
+    const _rbw = Math.max(180, ctx.measureText(_promptText).width + 40);
     // Register bounds for overlap prevention
     if (typeof _registerWorldLabel === 'function') _registerWorldLabel(sx, sy, _rbw, 32);
     ctx.globalAlpha = pulse * 0.85;
@@ -1904,9 +1906,8 @@ function drawRebuildPrompt() {
 
     // Key + label text
     ctx.globalAlpha = pulse;
-    ctx.font = 'bold 13px Georgia';
     ctx.fillStyle = canAfford ? '#ffd855' : '#dd6644';
-    ctx.fillText('[E]  ' + label + ' (' + cost + 'g)', sx, sy);
+    ctx.fillText(_promptText, sx, sy);
 
     ctx.restore();
 }

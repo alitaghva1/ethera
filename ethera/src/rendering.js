@@ -1148,19 +1148,19 @@ function drawDarkness() {
 
     // Outdoor zones get bright ambient light instead of torch darkness
     if (zoneCfg && zoneCfg.lighting === 'outdoor') {
-        // DARK FANTASY TOWN — cool twilight, overcast, gloomy
+        // WARM HAMLET — golden hour campfire evening, lived-in feel
         ctx.save();
 
-        // Layer 1: cold desaturated ambient (multiply) — overcast stone
+        // Layer 1: warm golden-brown ambient (multiply)
         ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = 'rgba(152, 142, 132, 0.88)';
+        ctx.fillStyle = 'rgba(175, 155, 125, 0.78)';
         ctx.fillRect(0, 0, canvasW, canvasH);
 
-        // Layer 2: directional shadow gradient (top-left slightly lighter = faint moon)
+        // Layer 2: directional shadow gradient (warm tones)
         const shadowGrad = ctx.createLinearGradient(0, 0, canvasW, canvasH);
-        shadowGrad.addColorStop(0, 'rgba(160, 155, 145, 0.75)');
-        shadowGrad.addColorStop(0.5, 'rgba(120, 115, 105, 0.82)');
-        shadowGrad.addColorStop(1, 'rgba(95, 90, 82, 0.84)');
+        shadowGrad.addColorStop(0, 'rgba(185, 165, 130, 0.65)');
+        shadowGrad.addColorStop(0.5, 'rgba(145, 125, 95, 0.75)');
+        shadowGrad.addColorStop(1, 'rgba(110, 95, 70, 0.82)');
         ctx.fillStyle = shadowGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
 
@@ -1170,17 +1170,17 @@ function drawDarkness() {
             canvasW / 2, canvasH / 2, canvasH * 0.15,
             canvasW / 2, canvasH / 2, canvasH * 0.7
         );
-        fogGrad.addColorStop(0, 'rgba(80, 80, 95, 0)');
-        fogGrad.addColorStop(0.5, 'rgba(80, 80, 95, 0.2)');
-        fogGrad.addColorStop(1, 'rgba(60, 60, 75, 0.5)');
+        fogGrad.addColorStop(0, 'rgba(90, 80, 65, 0)');
+        fogGrad.addColorStop(0.5, 'rgba(85, 75, 60, 0.15)');
+        fogGrad.addColorStop(1, 'rgba(70, 60, 45, 0.4)');
         ctx.fillStyle = fogGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.globalAlpha = 1;
 
-        // Layer 4: faint cool blue screen cast — pushes shadows toward blue
+        // Layer 4: warm golden screen cast
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = 0.025;
-        ctx.fillStyle = 'rgba(80, 100, 140, 1)';
+        ctx.globalAlpha = 0.03;
+        ctx.fillStyle = 'rgba(220, 180, 120, 1)';
         ctx.fillRect(0, 0, canvasW, canvasH);
 
         ctx.restore();
