@@ -97,24 +97,28 @@ function getEvolutionProgress(formOverride) {
 }
 
 function checkSlimeEvolution() {
-    const fd = FormSystem.formData.slime;
-    const req = EVOLUTION_REQUIREMENTS.slime_to_skeleton;
-    const met = (fd.absorbed >= req.absorbed ? 1 : 0) +
-                (fd.maxSizeReached >= req.maxSizeReached ? 1 : 0) +
-                (fd.totalKills >= req.kills ? 1 : 0) +
-                (FormSystem.talisman.found ? 1 : 0) +
-                (fd.bossDefeated ? 1 : 0);
-    // Hint when first milestone is met — teach the evolution concept early
-    if (met >= 1 && typeof Notify !== 'undefined') {
-        Notify.hint('evo_first_milestone', 'You feel something stirring... Open the Grimoire (TAB) to see your evolution progress.', 6, { color: '#c4a878', borderColor: '#8a7030' });
-    }
-    // Show hint when close to evolution (1 milestone remaining)
-    if (met >= 4 && !_evoHintShown.slime && typeof Notify !== 'undefined') {
-        _evoHintShown.slime = true;
-        Notify.hint('evo_near_slime', 'Evolution is near... Check the Grimoire (TAB) for progress.', 5, { color: '#e8c840' });
-    }
-    if (met >= 5) {
-        triggerEvolution('skeleton');
+    try {
+        const fd = FormSystem.formData.slime;
+        const req = EVOLUTION_REQUIREMENTS.slime_to_skeleton;
+        const met = (fd.absorbed >= req.absorbed ? 1 : 0) +
+                    (fd.maxSizeReached >= req.maxSizeReached ? 1 : 0) +
+                    (fd.totalKills >= req.kills ? 1 : 0) +
+                    (FormSystem.talisman.found ? 1 : 0) +
+                    (fd.bossDefeated ? 1 : 0);
+        // Hint when first milestone is met — teach the evolution concept early
+        if (met >= 1 && typeof Notify !== 'undefined') {
+            Notify.hint('evo_first_milestone', 'You feel something stirring... Open the Grimoire (TAB) to see your evolution progress.', 6, { color: '#c4a878', borderColor: '#8a7030' });
+        }
+        // Show hint when close to evolution (1 milestone remaining)
+        if (met >= 4 && !_evoHintShown.slime && typeof Notify !== 'undefined') {
+            _evoHintShown.slime = true;
+            Notify.hint('evo_near_slime', 'Evolution is near... Check the Grimoire (TAB) for progress.', 5, { color: '#e8c840' });
+        }
+        if (met >= 5) {
+            triggerEvolution('skeleton');
+        }
+    } catch (err) {
+        console.error('checkSlimeEvolution failed:', err, err.stack);
     }
 }
 

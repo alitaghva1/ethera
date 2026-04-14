@@ -421,22 +421,26 @@ function updateSkeleton(dt) {
 }
 
 function checkSkeletonEvolution() {
-    const fd = FormSystem.formData.skeleton;
-    const req = EVOLUTION_REQUIREMENTS.skeleton_to_wizard;
-    // Track max combo reached
-    if (skeletonState.comboCount > fd.maxComboReached) {
-        fd.maxComboReached = skeletonState.comboCount;
-    }
-    const met = (fd.totalKills >= req.kills ? 1 : 0) +
-                (fd.shieldDamageBlocked >= req.shieldDamageBlocked ? 1 : 0) +
-                (fd.maxComboReached >= req.comboReached ? 1 : 0) +
-                (FormSystem.talisman.level >= req.talismanLevel ? 1 : 0);
-    if (met >= 3 && typeof _evoHintShown !== 'undefined' && !_evoHintShown.skeleton && typeof Notify !== 'undefined') {
-        _evoHintShown.skeleton = true;
-        Notify.hint('evo_near_skeleton', 'Evolution is near... Check the Grimoire (TAB) for progress.', 5, { color: '#e8c840' });
-    }
-    if (met >= 4) {
-        triggerEvolution('wizard');
+    try {
+        const fd = FormSystem.formData.skeleton;
+        const req = EVOLUTION_REQUIREMENTS.skeleton_to_wizard;
+        // Track max combo reached
+        if (skeletonState.comboCount > fd.maxComboReached) {
+            fd.maxComboReached = skeletonState.comboCount;
+        }
+        const met = (fd.totalKills >= req.kills ? 1 : 0) +
+                    (fd.shieldDamageBlocked >= req.shieldDamageBlocked ? 1 : 0) +
+                    (fd.maxComboReached >= req.comboReached ? 1 : 0) +
+                    (FormSystem.talisman.level >= req.talismanLevel ? 1 : 0);
+        if (met >= 3 && typeof _evoHintShown !== 'undefined' && !_evoHintShown.skeleton && typeof Notify !== 'undefined') {
+            _evoHintShown.skeleton = true;
+            Notify.hint('evo_near_skeleton', 'Evolution is near... Check the Grimoire (TAB) for progress.', 5, { color: '#e8c840' });
+        }
+        if (met >= 4) {
+            triggerEvolution('wizard');
+        }
+    } catch (err) {
+        console.error('checkSkeletonEvolution failed:', err, err.stack);
     }
 }
 

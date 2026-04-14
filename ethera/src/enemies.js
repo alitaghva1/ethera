@@ -3038,6 +3038,9 @@ function updateEnemies(dt) {
                 // Track boss defeat for evolution gating
                 if (e.type === 'slime_king' && FormSystem.formData.slime) {
                     FormSystem.formData.slime.bossDefeated = true;
+                    // Backup: trigger evolution check immediately at the moment the condition is met
+                    // (the per-frame check in updateSlime can be silently swallowed by the game loop try/catch)
+                    try { if (typeof checkSlimeEvolution === 'function') checkSlimeEvolution(); } catch(e) { console.error('Evolution check failed at boss defeat:', e); }
                 }
                 // Siphon Life: heal on kill
                 if (getUpgrade('regen') > 0) {

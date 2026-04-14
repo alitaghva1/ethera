@@ -717,6 +717,48 @@ function drawEvolutionProgress(x, y, w, h, fa) {
         _drawStatBar(x, y, w, 7, ratio, req.color, req.color, fa * 0.6);
         y += 11;
     }
+
+    // --- "EVOLUTION READY" banner when all conditions are met ---
+    if (typeof getEvolutionProgress === 'function') {
+        const prog = getEvolutionProgress();
+        if (prog && prog.met >= prog.total) {
+            y += 6;
+            const t = performance.now() / 1000;
+            const pulse = 0.7 + Math.sin(t * 3) * 0.3;
+
+            // Pulsing golden border box
+            ctx.globalAlpha = fa * pulse * 0.4;
+            ctx.strokeStyle = GM.goldBright || '#ffd700';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(x - 4, y - 2, w + 8, 36, 4);
+            ctx.stroke();
+
+            // Background fill
+            ctx.globalAlpha = fa * 0.15;
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            ctx.roundRect(x - 4, y - 2, w + 8, 36, 4);
+            ctx.fill();
+
+            // "EVOLUTION READY" text
+            ctx.globalAlpha = fa * pulse;
+            ctx.font = 'bold 12px Georgia';
+            ctx.fillStyle = '#ffd700';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(255, 215, 0, 0.5)';
+            ctx.shadowBlur = 8;
+            ctx.fillText('EVOLUTION READY', x + w / 2, y + 12);
+            ctx.shadowBlur = 0;
+
+            // Subtitle
+            ctx.globalAlpha = fa * 0.6;
+            ctx.font = 'italic 9px Georgia';
+            ctx.fillStyle = '#c4a878';
+            ctx.fillText('Close the Grimoire to evolve', x + w / 2, y + 26);
+            ctx.textAlign = 'left';
+        }
+    }
 }
 
 function drawMenuStatus(x, y, w, h, fa) {
