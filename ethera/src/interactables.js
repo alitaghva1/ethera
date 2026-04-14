@@ -1796,7 +1796,7 @@ function getNearbyRebuildPoint() {
         if (level >= 3) continue; // fully upgraded
         const dr = player.row - point.row;
         const dc = player.col - point.col;
-        if (Math.sqrt(dr * dr + dc * dc) < 2.5) {
+        if (Math.sqrt(dr * dr + dc * dc) < 1.5) { // reduced from 2.5 — must stand ON rebuild point, not near it
             return { key, level, ...point };
         }
     }

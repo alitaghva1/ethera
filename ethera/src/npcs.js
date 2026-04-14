@@ -34,12 +34,12 @@ const NPC_REGISTRY = {
             id: 'garrett',
             name: 'Garrett the Smith',
             portrait: 'portrait_garrett', // dark-bearded craftsman
-            row: 15, col: 6,
+            row: 16, col: 8, // moved from (15,6) — 2 tiles from forge rebuild point, toward road
             zone: 0,
             spriteKey: 'enemy_armoredskel_idle',
             frameCount: 6,
             frameW: 100, frameH: 100,
-            scale: 1.6,
+            scale: 1.7, // scaled up for visibility
             tint: { r: 255, g: 160, b: 80, a: 0.45 }, // warm orange (forge fire)
             dialogue: [
                 'The hammer keeps me focused. Without it, I start to forget things.',
@@ -53,12 +53,12 @@ const NPC_REGISTRY = {
             id: 'mira',
             name: 'Old Mira',
             portrait: 'portrait_mira', // weathered elder who remembers Elara
-            row: 10, col: 14,
+            row: 10, col: 12, // moved from (10,14) — 3 tiles from monument rebuild, accessible
             zone: 0,
             spriteKey: 'enemy_skel_idle',
             frameCount: 6,
             frameW: 100, frameH: 100,
-            scale: 1.5,
+            scale: 1.6, // scaled up from 1.5 for visibility
             tint: { r: 180, g: 255, b: 180, a: 0.5 }, // soft green (herbalist)
             dialogue: [
                 'I keep forgetting things. But I remember her. Elara. She walked through here and the ground felt warm.',
@@ -72,7 +72,7 @@ const NPC_REGISTRY = {
             id: 'aldric',
             name: 'Captain Aldric',
             portrait: 'portrait_aldric', // armored duty-bound captain
-            row: 6, col: 6,
+            row: 7, col: 8, // moved from (6,6) — 2 tiles from guard post rebuild, toward road
             zone: 0,
             spriteKey: 'enemy_armoredskel_idle',
             frameCount: 6,
@@ -91,12 +91,12 @@ const NPC_REGISTRY = {
             id: 'hermit',
             name: 'The Hermit',
             portrait: 'portrait_hermit', // hooded mystic sage
-            row: 6, col: 24,
+            row: 7, col: 22, // moved from (6,24) — 2 tiles from hut rebuild, toward road
             zone: 0,
             spriteKey: 'enemy_palequeen_idle',
             frameCount: 8,
             frameW: 100, frameH: 100,
-            scale: 1.5,
+            scale: 1.6, // scaled up from 1.5
             tint: { r: 180, g: 120, b: 255, a: 0.4 }, // mystical purple
             dialogue: [
                 'You died, you know. Most people don\'t get back up.',
@@ -110,12 +110,12 @@ const NPC_REGISTRY = {
             id: 'senna',
             name: 'Senna the Alchemist',
             portrait: 'portrait_senna', // sharp-eyed alchemist researcher
-            row: 15, col: 24,
+            row: 16, col: 22, // moved from (15,24) — 2 tiles from shop rebuild, toward road
             zone: 0,
             spriteKey: 'enemy_skel_idle',
             frameCount: 6,
             frameW: 100, frameH: 100,
-            scale: 1.5,
+            scale: 1.6, // scaled up from 1.5 for visibility
             tint: { r: 255, g: 220, b: 80, a: 0.5 }, // bright gold (alchemist)
             dialogue: [
                 'I mix things. Potions, elixirs. I keep hoping one of them will make me feel warm again.',
