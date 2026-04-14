@@ -39,7 +39,7 @@ const NPC_REGISTRY = {
             spriteKey: 'npc_blacksmith_idle', // GandalfHardcore — burly smith in work apron
             frameCount: 5,
             frameW: 64, frameH: 64,
-            scale: 2.5,
+            scale: 2.1,
             tint: { r: 255, g: 160, b: 80, a: 0.45 }, // warm orange (glow/UI only)
             noSpriteTint: true, // dedicated sprite — skip CSS filter
             dialogue: [
@@ -59,7 +59,7 @@ const NPC_REGISTRY = {
             spriteKey: 'npc_nun_idle', // GandalfHardcore — elderly robed woman, devoted
             frameCount: 5,
             frameW: 64, frameH: 64,
-            scale: 2.4,
+            scale: 1.9,
             tint: { r: 180, g: 255, b: 180, a: 0.5 }, // soft green (glow/UI only)
             noSpriteTint: true,
             dialogue: [
@@ -79,7 +79,7 @@ const NPC_REGISTRY = {
             spriteKey: 'npc_crusader_idle', // GandalfHardcore — armored knight with sword+shield
             frameCount: 5,
             frameW: 64, frameH: 64,
-            scale: 2.5,
+            scale: 2.2,
             tint: { r: 120, g: 160, b: 255, a: 0.5 }, // steel blue (glow/UI only)
             noSpriteTint: true,
             dialogue: [
@@ -99,7 +99,7 @@ const NPC_REGISTRY = {
             spriteKey: 'npc_mage_idle', // GandalfHardcore — robed mystic with purple magic
             frameCount: 5,
             frameW: 64, frameH: 64,
-            scale: 2.4,
+            scale: 2.0,
             tint: { r: 180, g: 120, b: 255, a: 0.4 }, // mystical purple (glow/UI only)
             noSpriteTint: true,
             dialogue: [
@@ -119,7 +119,7 @@ const NPC_REGISTRY = {
             spriteKey: 'npc_plaguedoctor_idle', // GandalfHardcore — beaked mask, alchemist/researcher
             frameCount: 5,
             frameW: 64, frameH: 64,
-            scale: 2.4,
+            scale: 2.0,
             tint: { r: 255, g: 220, b: 80, a: 0.5 }, // bright gold (glow/UI only)
             noSpriteTint: true,
             dialogue: [
@@ -141,7 +141,7 @@ const NPC_REGISTRY = {
             spriteKey: 'npc_woundedknight_idle', // GandalfHardcore — damaged armor, leaning on sword
             frameCount: 5,
             frameW: 64, frameH: 64,
-            scale: 2.2,
+            scale: 1.8,
             tint: { r: 200, g: 220, b: 255, a: 0.3 },
             noSpriteTint: true,
             isGhost: true,  // custom rendering flag
@@ -266,7 +266,10 @@ function drawNPC(npc) {
 
     const dw = npc.frameW * npc.scale;
     const dh = npc.frameH * npc.scale;
-    const drawY = sy - dh * 0.72;
+    // GandalfHardcore sprites (64px) fill their frames tightly — need higher Y offset
+    // vs Tiny RPG sprites (100px) which have ~30px padding above/below
+    const _yFactor = npc.noSpriteTint ? 0.85 : 0.72;
+    const drawY = sy - dh * _yFactor;
 
     // Ghost NPC: vertical bob offset + translucent rendering
     const isGhost = !!npc.isGhost;
@@ -276,15 +279,17 @@ function drawNPC(npc) {
     const _npcBld = typeof NPC_BUILDING_MAP !== 'undefined' ? NPC_BUILDING_MAP[npc.id] : null;
     const _npcRebuilt = !_npcBld || (typeof isRebuilt === 'function' ? isRebuilt(_npcBld) : (typeof hamletRebuild !== 'undefined' && hamletRebuild[_npcBld]));
     const baseAlpha = isGhost ? 0.35 + Math.sin(performance.now() / 1200) * 0.1
-        : (_npcRebuilt ? 1.0 : 0.5 + Math.sin(performance.now() / 1000) * 0.05);
+        : (_npcRebuilt ? 1.0 : 0.78 + Math.sin(performance.now() / 1000) * 0.04);
 
-    // Shadow (ghosts have no shadow)
+    // Shadow (ghosts have no shadow) — sized to sprite footprint
     if (!isGhost) {
         ctx.save();
-        ctx.globalAlpha = 0.25;
+        ctx.globalAlpha = 0.3;
         ctx.fillStyle = '#000';
         ctx.beginPath();
-        ctx.ellipse(sx, sy + 4, 14, 6, 0, 0, Math.PI * 2);
+        var _shadW = npc.noSpriteTint ? 18 : 14; // wider shadow for denser GH sprites
+        var _shadH = npc.noSpriteTint ? 8 : 6;
+        ctx.ellipse(sx, sy + 4, _shadW, _shadH, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
