@@ -56,6 +56,33 @@ async function loadAssets() {
     for (const [key, file] of Object.entries(NATURE_TILE_FILES)) {
         promises.push(loadImage(NATURE_PATH + file).then(img => { if (img) images[key] = img; }));
     }
+    // Load NPC dialogue portraits (32×32px Veil of Darkness dark fantasy pixel art)
+    const PORTRAIT_FILES = {
+        // NPC-specific mappings
+        portrait_garrett: 'Merchant.png',           // grizzled forge worker
+        portrait_mira: 'Old_Man.png',               // elderly herbalist who remembers
+        portrait_aldric: 'Hooded_Knight.png',        // stern guard captain
+        portrait_hermit: 'Wizard.png',               // hooded mystic sage
+        portrait_senna: 'Dark_Elf_Girl.png',         // sharp-eyed alchemist researcher
+        portrait_pilgrim: 'Vampire.png',             // ghostly hollowed spirit
+        portrait_elara: 'Skeleton_2.png',            // pale queen, gaunt, holding on
+        // General use / bestiary
+        portrait_skeleton: 'Skeleton.png',
+        portrait_skeleton_warrior: 'Skeleton_Warrior.png',
+        portrait_warrior: 'Warrior.png',
+        portrait_knight: 'Knight.png',
+        portrait_cleric: 'Cleric.png',
+        portrait_old_king: 'old_king.png',
+        portrait_young_king: 'young_king.png',
+        portrait_barbarian: 'Barbarian.png',
+        portrait_thief: 'Thief.png',
+        portrait_werewolf: 'Werewolf.png',
+        portrait_dragon: 'Dragon.png',
+        portrait_goblin: 'Goblin_1.png',
+    };
+    for (const [key, file] of Object.entries(PORTRAIT_FILES)) {
+        promises.push(loadImage('assets/portraits/' + file).then(img => { if (img) images[key] = img; }));
+    }
     // Load Kenney Miniature Overworld tiles (256×512px — uses drawTile, same as dungeon)
     for (const [key, file] of Object.entries(OVERWORLD_TILE_FILES)) {
         promises.push(loadImage('assets/overworld/' + file).then(img => { if (img) images[key] = img; }));

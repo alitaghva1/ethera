@@ -1719,6 +1719,7 @@ function gameLoop(timestamp) {
         setPixelCursor('default');
         render();
         drawNPCDialogue();
+        if (typeof drawNPCChoiceMenu === 'function') drawNPCChoiceMenu();
         if (typeof smithyMenuOpen !== 'undefined' && smithyMenuOpen && typeof drawSmithyMenu === 'function') drawSmithyMenu();
         if (typeof shopMenuOpen !== 'undefined' && shopMenuOpen && typeof drawShopMenu === 'function') drawShopMenu();
         requestAnimationFrame(gameLoop);

@@ -33,6 +33,7 @@ const NPC_REGISTRY = {
         {
             id: 'garrett',
             name: 'Garrett the Smith',
+            portrait: 'portrait_garrett', // dark-bearded craftsman
             row: 15, col: 6,
             zone: 0,
             spriteKey: 'enemy_armoredskel_idle',
@@ -51,6 +52,7 @@ const NPC_REGISTRY = {
         {
             id: 'mira',
             name: 'Old Mira',
+            portrait: 'portrait_mira', // weathered elder who remembers Elara
             row: 10, col: 14,
             zone: 0,
             spriteKey: 'enemy_skel_idle',
@@ -69,6 +71,7 @@ const NPC_REGISTRY = {
         {
             id: 'aldric',
             name: 'Captain Aldric',
+            portrait: 'portrait_aldric', // armored duty-bound captain
             row: 6, col: 6,
             zone: 0,
             spriteKey: 'enemy_armoredskel_idle',
@@ -87,6 +90,7 @@ const NPC_REGISTRY = {
         {
             id: 'hermit',
             name: 'The Hermit',
+            portrait: 'portrait_hermit', // hooded mystic sage
             row: 6, col: 24,
             zone: 0,
             spriteKey: 'enemy_palequeen_idle',
@@ -105,6 +109,7 @@ const NPC_REGISTRY = {
         {
             id: 'senna',
             name: 'Senna the Alchemist',
+            portrait: 'portrait_senna', // sharp-eyed alchemist researcher
             row: 15, col: 24,
             zone: 0,
             spriteKey: 'enemy_skel_idle',
@@ -125,6 +130,7 @@ const NPC_REGISTRY = {
         {
             id: 'ghost_pilgrim',
             name: 'Fading Pilgrim',
+            portrait: 'portrait_pilgrim', // hollowed ghost who failed to reach Elara
             row: 10, col: 14,
             zone: 4,
             spriteKey: 'enemy_skel_idle',
@@ -146,6 +152,7 @@ const NPC_REGISTRY = {
         {
             id: 'pale_queen',
             name: 'Elara — The Pale Queen',
+            portrait: 'portrait_elara', // gaunt, holding the covenant together
             row: 26, col: 16,
             zone: 6,
             spriteKey: 'enemy_palequeen_idle',
@@ -434,7 +441,61 @@ function drawNPCDialogue() {
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // NPC name (left side)
+    // ── Portrait rendering ──
+    const _portraitKey = currentNPC.portrait;
+    const _portraitImg = _portraitKey && typeof images !== 'undefined' ? images[_portraitKey] : null;
+    const _portraitSize = 64; // render 32px portrait at 2x scale
+    const _portraitPad = 8;
+    const _hasPortrait = !!_portraitImg;
+    const _textOffsetX = _hasPortrait ? _portraitSize + _portraitPad * 2 + 4 : 20; // shift text right when portrait present
+
+    if (_hasPortrait) {
+        const _px = bx + _portraitPad;
+        const _py = by + (bh - _portraitSize) / 2; // vertically centered in dialogue box
+
+        // Portrait background circle
+        ctx.globalAlpha = fa * 0.6;
+        ctx.fillStyle = '#0a0806';
+        ctx.beginPath();
+        ctx.roundRect(_px - 3, _py - 3, _portraitSize + 6, _portraitSize + 6, 6);
+        ctx.fill();
+
+        // Portrait border
+        ctx.strokeStyle = _isPQ ? '#8866cc' : _borderColor;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = fa * 0.5;
+        ctx.beginPath();
+        ctx.roundRect(_px - 3, _py - 3, _portraitSize + 6, _portraitSize + 6, 6);
+        ctx.stroke();
+
+        // Portrait image (nearest-neighbor scaling for pixel art)
+        ctx.globalAlpha = fa * 0.95;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(_portraitImg, _px, _py, _portraitSize, _portraitSize);
+        ctx.imageSmoothingEnabled = true;
+
+        // Ghost NPCs get translucent portrait
+        if (currentNPC.isGhost) {
+            ctx.globalAlpha = fa * 0.4;
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.roundRect(_px, _py, _portraitSize, _portraitSize, 4);
+            ctx.fill();
+        }
+
+        // NPC tint glow behind portrait (subtle color accent)
+        if (currentNPC.tint) {
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = fa * 0.08;
+            ctx.fillStyle = 'rgb(' + currentNPC.tint.r + ',' + currentNPC.tint.g + ',' + currentNPC.tint.b + ')';
+            ctx.beginPath();
+            ctx.roundRect(_px - 6, _py - 6, _portraitSize + 12, _portraitSize + 12, 8);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        }
+    }
+
+    // NPC name (offset right when portrait present)
     ctx.globalAlpha = fa * 0.7;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -442,15 +503,15 @@ function drawNPCDialogue() {
     ctx.fillStyle = _isPQ ? '#cc99ff' : '#ffcc88';
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
     ctx.lineWidth = 2;
-    ctx.strokeText(currentNPC.name, bx + 20, by + 12);
-    ctx.fillText(currentNPC.name, bx + 20, by + 12);
+    ctx.strokeText(currentNPC.name, bx + _textOffsetX, by + 12);
+    ctx.fillText(currentNPC.name, bx + _textOffsetX, by + 12);
 
     // Divider line
     ctx.globalAlpha = fa * 0.2;
     ctx.strokeStyle = '#8a7a5a';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(bx + 20, by + 32);
+    ctx.moveTo(bx + _textOffsetX, by + 32);
     ctx.lineTo(bx + bw - 20, by + 32);
     ctx.stroke();
 
@@ -470,21 +531,21 @@ function drawNPCDialogue() {
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = 1.5;
 
-    // Word wrap dialogue (using calculated bw)
-    const maxW = bw - 60;
+    // Word wrap dialogue (accounting for portrait width)
+    const maxW = bw - _textOffsetX - 30;
     const words = dialogueLine.split(' ');
     let curLine = '';
     let lineY = by + 44;
     const lineHeight = 16;
-    const maxLines = 3;
+    const maxLines = 4;
     let lineCount = 0;
 
     for (const word of words) {
         const test = curLine + (curLine ? ' ' : '') + word;
         if (ctx.measureText(test).width > maxW) {
             if (lineCount < maxLines) {
-                ctx.strokeText(curLine, bx + 30, lineY);
-                ctx.fillText(curLine, bx + 30, lineY);
+                ctx.strokeText(curLine, bx + _textOffsetX, lineY);
+                ctx.fillText(curLine, bx + _textOffsetX, lineY);
                 lineY += lineHeight;
                 lineCount++;
             }
@@ -494,8 +555,8 @@ function drawNPCDialogue() {
         }
     }
     if (curLine && lineCount < maxLines) {
-        ctx.strokeText(curLine, bx + 30, lineY);
-        ctx.fillText(curLine, bx + 30, lineY);
+        ctx.strokeText(curLine, bx + _textOffsetX, lineY);
+        ctx.fillText(curLine, bx + _textOffsetX, lineY);
     }
 
     // Quest choice UI (Senna's Frozen Heart)
@@ -830,23 +891,157 @@ function openNPCDialogue(npc) {
     const formCfg = typeof FormSystem !== 'undefined' ? FormSystem.getFormConfig() : null;
     const hasEquip = formCfg && formCfg.hasEquipment;
 
-    // Garrett opens forge for ALL forms (equipment enchantment for wizard/lich, form upgrades for slime/skeleton)
-    if (npc.id === 'garrett') {
-        openSmithyMenu(npc);
-        return;
-    }
-    // Senna opens potion shop (all forms can buy potions)
-    if (npc.id === 'senna') {
-        openShopMenu(npc);
+    // Service NPCs (Garrett, Senna) show choice menu: Talk / Service / Leave
+    if (npc.id === 'garrett' || npc.id === 'senna') {
+        const _npcBld = NPC_BUILDING_MAP[npc.id];
+        const _rebuilt = typeof isRebuilt === 'function' ? isRebuilt(_npcBld) : false;
+        if (!_rebuilt) {
+            // Building not rebuilt — just show dialogue (ruined state)
+            currentNPC = npc;
+            npc.dialogueIndex = 0;
+            npc._typewriterTimer = 0;
+            npcDialogueOpen = true;
+            npcDialogueFadeIn = 0;
+            sfxChestOpen();
+            return;
+        }
+        // Show interaction choice menu
+        npcChoiceState.active = true;
+        npcChoiceState.npc = npc;
+        npcChoiceState.hover = -1;
+        npcChoiceState.fadeIn = 0;
+        setPixelCursor('default');
         return;
     }
 
     currentNPC = npc;
     npc.dialogueIndex = 0;
-    npc._typewriterTimer = 0; // reset typewriter
+    npc._typewriterTimer = 0;
     npcDialogueOpen = true;
     npcDialogueFadeIn = 0;
-    sfxChestOpen(); // use existing sound effect
+    sfxChestOpen();
+}
+
+// ── NPC Interaction Choice Menu (Talk / Service / Leave) ──
+var npcChoiceState = { active: false, npc: null, hover: -1, fadeIn: 0 };
+
+function drawNPCChoiceMenu() {
+    if (!npcChoiceState.active || !npcChoiceState.npc) return;
+    npcChoiceState.fadeIn = Math.min(1, npcChoiceState.fadeIn + 0.06);
+    var fa = npcChoiceState.fadeIn;
+    var npc = npcChoiceState.npc;
+
+    ctx.save();
+
+    // Dim overlay
+    ctx.globalAlpha = fa * 0.4;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Menu box (centered on screen)
+    var mw = 260, mh = 160;
+    var mx = (canvasW - mw) / 2;
+    var my = (canvasH - mh) / 2;
+
+    ctx.globalAlpha = fa * 0.92;
+    ctx.fillStyle = 'rgba(20,16,12,0.95)';
+    ctx.beginPath(); ctx.roundRect(mx, my, mw, mh, 8); ctx.fill();
+    ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 1.5; ctx.globalAlpha = fa * 0.5;
+    ctx.beginPath(); ctx.roundRect(mx, my, mw, mh, 8); ctx.stroke();
+
+    // Portrait + name at top
+    var _pKey = npc.portrait;
+    var _pImg = _pKey && typeof images !== 'undefined' ? images[_pKey] : null;
+    if (_pImg) {
+        ctx.globalAlpha = fa * 0.9;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(_pImg, mx + 12, my + 12, 48, 48);
+        ctx.imageSmoothingEnabled = true;
+    }
+    ctx.globalAlpha = fa * 0.8;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Georgia'; ctx.fillStyle = '#ffcc88';
+    ctx.fillText(npc.name, mx + 68, my + 28);
+    // Short greeting bark
+    ctx.font = 'italic 10px Georgia'; ctx.fillStyle = '#a09070'; ctx.globalAlpha = fa * 0.6;
+    var _bark = npc.id === 'garrett' ? 'The forge awaits.' : 'What do you need?';
+    ctx.fillText(_bark, mx + 68, my + 44);
+
+    // Choice buttons
+    var btnW = mw - 30, btnH = 26, btnX = mx + 15, btnGap = 6;
+    var btnY0 = my + 72;
+    var _serviceLabel = npc.id === 'garrett' ? 'Open Forge' : 'Browse Potions';
+    var _choices = [
+        { label: 'Talk', key: 'E', color: '#ccbb88' },
+        { label: _serviceLabel, key: 'F', color: '#ddaa44' },
+        { label: 'Leave', key: 'ESC', color: '#887766' },
+    ];
+
+    // Store rects for click handling
+    npcChoiceState._rects = [];
+    for (var ci = 0; ci < _choices.length; ci++) {
+        var by = btnY0 + ci * (btnH + btnGap);
+        var hovered = mouse && mouse.x >= btnX && mouse.x <= btnX + btnW && mouse.y >= by && mouse.y <= by + btnH;
+        if (hovered) npcChoiceState.hover = ci;
+        npcChoiceState._rects.push({ x: btnX, y: by, w: btnW, h: btnH });
+
+        ctx.globalAlpha = fa * (hovered ? 0.75 : 0.5);
+        ctx.fillStyle = hovered ? 'rgba(60,50,35,0.9)' : 'rgba(30,25,18,0.8)';
+        ctx.beginPath(); ctx.roundRect(btnX, by, btnW, btnH, 4); ctx.fill();
+        ctx.strokeStyle = hovered ? _choices[ci].color : '#554433';
+        ctx.lineWidth = 1; ctx.globalAlpha = fa * (hovered ? 0.7 : 0.3);
+        ctx.beginPath(); ctx.roundRect(btnX, by, btnW, btnH, 4); ctx.stroke();
+
+        ctx.globalAlpha = fa * 0.85;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '11px Georgia'; ctx.fillStyle = _choices[ci].color;
+        ctx.fillText('[' + _choices[ci].key + ']  ' + _choices[ci].label, btnX + btnW / 2, by + btnH / 2);
+    }
+
+    ctx.restore();
+}
+
+function handleNPCChoiceInput(key) {
+    if (!npcChoiceState.active) return false;
+    var npc = npcChoiceState.npc;
+    if (key === 'e') {
+        // Talk — open dialogue
+        npcChoiceState.active = false;
+        currentNPC = npc;
+        npc.dialogueIndex = 0;
+        npc._typewriterTimer = 0;
+        npcDialogueOpen = true;
+        npcDialogueFadeIn = 0;
+        sfxChestOpen();
+        setPixelCursor('none');
+        return true;
+    }
+    if (key === 'f') {
+        // Service
+        npcChoiceState.active = false;
+        if (npc.id === 'garrett') openSmithyMenu(npc);
+        else if (npc.id === 'senna') openShopMenu(npc);
+        return true;
+    }
+    if (key === 'escape') {
+        npcChoiceState.active = false;
+        setPixelCursor('none');
+        return true;
+    }
+    return false;
+}
+
+function handleNPCChoiceClick(clickX, clickY) {
+    if (!npcChoiceState.active || !npcChoiceState._rects) return false;
+    for (var ci = 0; ci < npcChoiceState._rects.length; ci++) {
+        var r = npcChoiceState._rects[ci];
+        if (clickX >= r.x && clickX <= r.x + r.w && clickY >= r.y && clickY <= r.y + r.h) {
+            if (ci === 0) return handleNPCChoiceInput('e');
+            if (ci === 1) return handleNPCChoiceInput('f');
+            if (ci === 2) return handleNPCChoiceInput('escape');
+        }
+    }
+    return false;
 }
 
 function closeNPCDialogue() {

@@ -301,6 +301,11 @@ function handleKeyDown(e) {
         }
         return; // consume all keys while shop is open
     }
+    // NPC choice menu (Talk / Service / Leave)
+    if (typeof npcChoiceState !== 'undefined' && npcChoiceState.active) {
+        if (typeof handleNPCChoiceInput === 'function' && handleNPCChoiceInput(e.key.toLowerCase())) return;
+        return; // consume all keys while choice menu is open
+    }
     // NPC dialogue navigation
     if (npcDialogueOpen) {
         if (e.key === 'Escape' || e.key.toLowerCase() === 'e') {
@@ -552,6 +557,12 @@ function handleMouseDown(e) {
         } else {
             closeJournalReader(); // click outside closes
         }
+        return;
+    }
+
+    // ----- NPC choice menu clicks -----
+    if (typeof npcChoiceState !== 'undefined' && npcChoiceState.active && typeof handleNPCChoiceClick === 'function' && e.button === 0) {
+        handleNPCChoiceClick(clickX, clickY);
         return;
     }
 
