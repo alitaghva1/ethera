@@ -113,7 +113,7 @@ const NPC_REGISTRY = {
             row: 16, col: 22,
             zone: 0,
             spriteKey: 'enemy_bonemage_idle', // robed caster — alchemist/researcher silhouette
-            frameCount: 6,
+            frameCount: 3, // BoneMage idle sprite has 3 frames (not 6)
             frameW: 100, frameH: 100,
             scale: 1.6, // scaled up from 1.5 for visibility
             tint: { r: 255, g: 220, b: 80, a: 0.5 }, // bright gold (alchemist)
@@ -201,6 +201,8 @@ function loadZoneNPCs(zoneNumber) {
     // Add dedicated light sources at NPC positions (hamlet only)
     if (zoneNumber === 0 && typeof ENV_LIGHTS !== 'undefined') {
         if (!ENV_LIGHTS[0]) ENV_LIGHTS[0] = [];
+        // Remove any previously-added NPC lights to prevent accumulation on re-entry
+        ENV_LIGHTS[0] = ENV_LIGHTS[0].filter(function(l) { return !l._npcLight; });
         for (const npc of npcList) {
             if (npc.tint) {
                 ENV_LIGHTS[0].push({
@@ -209,6 +211,7 @@ function loadZoneNPCs(zoneNumber) {
                     color: [npc.tint.r, npc.tint.g, npc.tint.b],
                     radius: 38,
                     intensity: 0.55,
+                    _npcLight: true, // tag so we can clear on re-entry
                 });
             }
         }
@@ -334,7 +337,10 @@ function drawNPC(npc) {
     if (npc.tint) {
         // Convert RGB tint to hue-rotate + saturate + brightness
         var _tr = npc.tint.r, _tg = npc.tint.g, _tb = npc.tint.b;
-        var _hue = Math.round(Math.atan2(Math.sqrt(3) * (_tg - _tb), 2 * _tr - _tg - _tb) * 180 / Math.PI);
+        var _denominator = 2 * _tr - _tg - _tb;
+        var _hue = (_denominator === 0 && _tg === _tb) ? 0
+            : Math.round(Math.atan2(Math.sqrt(3) * (_tg - _tb), _denominator) * 180 / Math.PI);
+        if (isNaN(_hue)) _hue = 0;
         var _sat = Math.round(100 + (Math.max(_tr, _tg, _tb) - Math.min(_tr, _tg, _tb)) * 0.3);
         var _bri = Math.round(80 + ((_tr + _tg + _tb) / 765) * 40);
         try { ctx.filter = 'hue-rotate(' + _hue + 'deg) saturate(' + _sat + '%) brightness(' + _bri + '%)'; } catch(e) {}
@@ -350,32 +356,32 @@ function drawNPC(npc) {
         var _medSize = 22; // medallion diameter
         var _medY = drawY + ghostBob - 38; // above name label
         var _medBob = Math.sin(performance.now() / 1500 + npc.col) * 1.5; // gentle float
+        var _medCX = sx, _medCY = _medY + _medBob;
+        // Clipped portrait image — save/restore must bracket the clip entirely
         ctx.save();
         ctx.globalAlpha = baseAlpha * 0.85;
-        // Circular clip mask
         ctx.beginPath();
-        ctx.arc(sx, _medY + _medBob, _medSize / 2, 0, Math.PI * 2);
-        ctx.save();
+        ctx.arc(_medCX, _medCY, _medSize / 2, 0, Math.PI * 2);
         ctx.clip();
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(_pMedImg, sx - _medSize / 2, _medY + _medBob - _medSize / 2, _medSize, _medSize);
+        ctx.drawImage(_pMedImg, _medCX - _medSize / 2, _medCY - _medSize / 2, _medSize, _medSize);
         ctx.imageSmoothingEnabled = true;
-        ctx.restore();
-        // Colored border ring
+        ctx.restore(); // removes clip — back to full canvas
+        // Colored border ring (no clip active)
+        ctx.save();
         ctx.strokeStyle = npc.tint ? 'rgb(' + npc.tint.r + ',' + npc.tint.g + ',' + npc.tint.b + ')' : '#aa9977';
         ctx.lineWidth = 1.5;
         ctx.globalAlpha = baseAlpha * 0.7;
         ctx.beginPath();
-        ctx.arc(sx, _medY + _medBob, _medSize / 2 + 1, 0, Math.PI * 2);
+        ctx.arc(_medCX, _medCY, _medSize / 2 + 1, 0, Math.PI * 2);
         ctx.stroke();
         // Dark backing behind ring
         ctx.globalCompositeOperation = 'destination-over';
         ctx.globalAlpha = baseAlpha * 0.5;
         ctx.fillStyle = '#000';
         ctx.beginPath();
-        ctx.arc(sx, _medY + _medBob, _medSize / 2 + 2, 0, Math.PI * 2);
+        ctx.arc(_medCX, _medCY, _medSize / 2 + 2, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
         ctx.restore();
     }
 
