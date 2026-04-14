@@ -32,7 +32,7 @@
       {
         "from": "../ethera",
         "to": "game",
-        "filter": ["**/*"]
+        "filter": ["**/*", "!.claude", "!.claude/**", "!.git", "!.git/**", "!node_modules", "!node_modules/**"]
       }
     ],
     "win": {
