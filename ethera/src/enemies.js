@@ -735,7 +735,7 @@ function applyEnemyHit(e, damage, opts) {
             if (typeof addCameraZoom === 'function') addCameraZoom(1.12, 2.0);
         }
         else if (e.elite) { addHitPause(0.10 * impactScale); addScreenShake(7 * impactScale * critMul, 0.20); addSlowMo(0.25, 0.20); }
-        else if (isCrit) { addHitPause(0.06); addSlowMo(0.10, 0.35); addScreenShake(4, 0.10); }
+        else if (isCrit) { addHitPause(0.05); addScreenShake(4, 0.10); } // no slow-mo on crit kills (too frequent at high levels)
         else { addHitPause(0.04); addScreenShake(3 * impactScale * critMul, 0.10); }
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
@@ -2796,12 +2796,8 @@ function updateEnemies(dt) {
                 e._corpseLingerExtended = true;
                 e.deathTimer = 4.0; // 4 seconds — enough time to reach and interact
 
-                // ── COMBAT JUICE: Killing blow flash + micro time-dip ──
-                e._deathFlashTimer = 0.08; // 2-3 frames of solid white
-                if (!e.def.isBoss) {
-                    // Micro time-dip: brief 60% speed for non-bosses (bosses have their own slow-mo)
-                    addSlowMo(0.05, 0.6);
-                }
+                // ── COMBAT JUICE: Killing blow flash (hit pause provides the beat) ──
+                e._deathFlashTimer = 0.08;
 
                 // ── COMBAT JUICE: Multikill tracking ──
                 if (multiKillTimer > 0) {
@@ -2821,10 +2817,9 @@ function updateEnemies(dt) {
                         text: mkLabel, color: mkColor,
                         life: 1.4, scale: 0.8 + multiKillCount * 0.15,
                     });
-                    // Escalating feedback
-                    addScreenShake(3 + multiKillCount * 2, 0.12 + multiKillCount * 0.04);
-                    if (multiKillCount >= 3) addSlowMo(0.12, 0.30);
-                    if (multiKillCount >= 5) addSlowMo(0.20, 0.20);
+                    // Escalating feedback — screen shake scales, but NO slow-mo on normal multikills
+                    // (slow-mo during massacres makes the game feel stuck instead of powerful)
+                    addScreenShake(2 + multiKillCount * 1.5, 0.08 + multiKillCount * 0.02);
                 }
 
                 // ── Kill Streak tracking — builds multiplier for sustained aggression ──

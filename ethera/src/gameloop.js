@@ -3521,7 +3521,14 @@ function restartGame() {
     FormSystem.formData.lich = { unlocked: false, soulsHarvested: 0, undeadRaised: 0, totalKills: 0 };
     FormSystem.evolutionProgress = { currentMilestones: {}, nextForm: null };
     FormSystem.formHistory = [];
-    window._storyBeatShown = {}; // reset story beat tracking for new run
+    window._storyBeatShown = {};
+    // Reset quest state for fresh run (quest progress should not leak between runs)
+    if (typeof questState !== 'undefined') {
+        questState.flags = {};
+        questState.completed = [];
+        questState.rerollTokens = 0;
+        questState.permBonuses = { dmgBonus: 0, maxHpBonus: 0 };
+    }
     // Reset player (position will be overridden by loadZone below)
     player.row = 26; player.col = 15;
     player.vx = 0; player.vy = 0;

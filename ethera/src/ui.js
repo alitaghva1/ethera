@@ -386,10 +386,13 @@ function drawQuestTracker() {
     if (typeof QUEST_REGISTRY === 'undefined' || typeof questState === 'undefined') return;
     if (typeof menuOpen !== 'undefined' && menuOpen) return;
 
-    // Find active quest: first started but not completed
+    // Find active quest: first DISCOVERED (started) but not completed
     let activeQuest = null, activeStep = -1;
     for (const quest of QUEST_REGISTRY) {
         if (isQuestComplete(quest.id)) continue;
+        // Only show quests the player has actually discovered (first step flag must be set)
+        const discovered = questState.flags[quest.steps[0].condition];
+        if (!discovered) continue;
         const step = getQuestCurrentStep(quest.id);
         if (step >= 0) { activeQuest = quest; activeStep = step; break; }
     }
