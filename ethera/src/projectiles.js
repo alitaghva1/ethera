@@ -140,7 +140,9 @@ function drawProjectiles() {
             ctx.restore();
 
             // Sprite-based acid blob (AI-generated frames)
-            const acidFrame = Math.floor((p.life / p.maxLife) * 6) % 6;
+            // life counts down from projLife — map to frame 0→5 as projectile ages
+            const acidProgress = 1 - Math.max(0, Math.min(1, p.life / (PLAYER_STATS.projLife || 1.4)));
+            const acidFrame = Math.min(5, Math.floor(acidProgress * 6));
             const acidSprite = images['proj_acid_' + acidFrame];
             if (acidSprite) {
                 ctx.save();
