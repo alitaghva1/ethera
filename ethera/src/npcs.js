@@ -53,9 +53,9 @@ const NPC_REGISTRY = {
             id: 'mira',
             name: 'Old Mira',
             portrait: 'portrait_mira', // weathered elder who remembers Elara
-            row: 10, col: 12, // moved from (10,14) — 3 tiles from monument rebuild, accessible
+            row: 10, col: 12,
             zone: 0,
-            spriteKey: 'enemy_skel_idle',
+            spriteKey: 'npc_wizard_idle', // robed figure — distinct from skeleton enemies
             frameCount: 6,
             frameW: 100, frameH: 100,
             scale: 1.6, // scaled up from 1.5 for visibility
@@ -72,9 +72,9 @@ const NPC_REGISTRY = {
             id: 'aldric',
             name: 'Captain Aldric',
             portrait: 'portrait_aldric', // armored duty-bound captain
-            row: 7, col: 8, // moved from (6,6) — 2 tiles from guard post rebuild, toward road
+            row: 7, col: 8,
             zone: 0,
-            spriteKey: 'enemy_armoredskel_idle',
+            spriteKey: 'enemy_werewolf_idle', // beastly guard — unique silhouette vs other NPCs
             frameCount: 6,
             frameW: 100, frameH: 100,
             scale: 1.7,
@@ -110,9 +110,9 @@ const NPC_REGISTRY = {
             id: 'senna',
             name: 'Senna the Alchemist',
             portrait: 'portrait_senna', // sharp-eyed alchemist researcher
-            row: 16, col: 22, // moved from (15,24) — 2 tiles from shop rebuild, toward road
+            row: 16, col: 22,
             zone: 0,
-            spriteKey: 'enemy_skel_idle',
+            spriteKey: 'enemy_bonemage_idle', // robed caster — alchemist/researcher silhouette
             frameCount: 6,
             frameW: 100, frameH: 100,
             scale: 1.6, // scaled up from 1.5 for visibility
@@ -196,6 +196,22 @@ function loadZoneNPCs(zoneNumber) {
     // Restore dialogue progress from persistence map
     for (const npc of npcList) {
         npc.dialogueIndex = _npcDialogueProgress[npc.id] || 0;
+    }
+
+    // Add dedicated light sources at NPC positions (hamlet only)
+    if (zoneNumber === 0 && typeof ENV_LIGHTS !== 'undefined') {
+        if (!ENV_LIGHTS[0]) ENV_LIGHTS[0] = [];
+        for (const npc of npcList) {
+            if (npc.tint) {
+                ENV_LIGHTS[0].push({
+                    row: npc.row, col: npc.col,
+                    type: 'candle',
+                    color: [npc.tint.r, npc.tint.g, npc.tint.b],
+                    radius: 38,
+                    intensity: 0.55,
+                });
+            }
+        }
     }
 }
 
@@ -326,6 +342,42 @@ function drawNPC(npc) {
     ctx.drawImage(sheet, frame * npc.frameW, 0, npc.frameW, npc.frameH, _sprX, _sprY, dw, dh);
     ctx.filter = 'none';
     ctx.restore();
+
+    // Floating portrait medallion above NPC — instant face recognition from distance
+    var _pMedKey = npc.portrait;
+    var _pMedImg = _pMedKey && typeof images !== 'undefined' ? images[_pMedKey] : null;
+    if (_pMedImg) {
+        var _medSize = 22; // medallion diameter
+        var _medY = drawY + ghostBob - 38; // above name label
+        var _medBob = Math.sin(performance.now() / 1500 + npc.col) * 1.5; // gentle float
+        ctx.save();
+        ctx.globalAlpha = baseAlpha * 0.85;
+        // Circular clip mask
+        ctx.beginPath();
+        ctx.arc(sx, _medY + _medBob, _medSize / 2, 0, Math.PI * 2);
+        ctx.save();
+        ctx.clip();
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(_pMedImg, sx - _medSize / 2, _medY + _medBob - _medSize / 2, _medSize, _medSize);
+        ctx.imageSmoothingEnabled = true;
+        ctx.restore();
+        // Colored border ring
+        ctx.strokeStyle = npc.tint ? 'rgb(' + npc.tint.r + ',' + npc.tint.g + ',' + npc.tint.b + ')' : '#aa9977';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = baseAlpha * 0.7;
+        ctx.beginPath();
+        ctx.arc(sx, _medY + _medBob, _medSize / 2 + 1, 0, Math.PI * 2);
+        ctx.stroke();
+        // Dark backing behind ring
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.globalAlpha = baseAlpha * 0.5;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(sx, _medY + _medBob, _medSize / 2 + 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.restore();
+    }
 
     // Name tag above NPC — with dark background panel for readability
     ctx.save();

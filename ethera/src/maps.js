@@ -1692,6 +1692,12 @@ function generateTown() {
     placeObj(6, 25, 'chestClosed');        // hermit's hut
     placeObj(15, 4, 'chestClosed');        // forge area
     placeObj(15, 25, 'chestClosed');       // shop area
+    // Mira's corner — memorial garden where she remembers Elara
+    placeObj(9, 11, 'lib_chair', false);       // bench for Mira to stand near
+    placeObj(11, 12, 'lib_candleStand', false); // memorial candle
+    floorMap[9][12] = 'ow_grassStoneL';         // stone marker in her area
+    floorMap[10][11] = 'ow_grassStoneS';        // path stone
+
     placeObj(11, 11, 'chestClosed');       // town square west
     placeObj(11, 19, 'chestClosed');       // town square east
 

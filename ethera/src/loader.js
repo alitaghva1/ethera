@@ -56,6 +56,9 @@ async function loadAssets() {
     for (const [key, file] of Object.entries(NATURE_TILE_FILES)) {
         promises.push(loadImage(NATURE_PATH + file).then(img => { if (img) images[key] = img; }));
     }
+    // Load NPC-specific sprites (distinct from player and enemy sprites)
+    promises.push(loadImage(CHAR_PATH + 'Wizard/Wizard/Wizard-Idle.png').then(img => { if (img) images['npc_wizard_idle'] = img; }));
+
     // Load NPC dialogue portraits (32×32px Veil of Darkness dark fantasy pixel art)
     const PORTRAIT_FILES = {
         // NPC-specific mappings
