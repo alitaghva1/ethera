@@ -340,7 +340,7 @@ function handleKeyDown(e) {
         if (typeof minimapVisible !== 'undefined') minimapVisible = !minimapVisible;
     }
     // TAB or J toggles game menu
-    if ((e.key === 'Tab' || e.key.toLowerCase() === 'j') && gamePhase === 'playing' && !gameDead) {
+    if ((e.key === 'Tab' || e.key.toLowerCase() === 'j') && gamePhase === 'playing' && !gameDead && !zoneTransitionFading) {
         e.preventDefault();
         menuOpen = !menuOpen;
         if (!menuOpen) { menuFadeInTimer = 0; if (typeof sfxBookClose === 'function') sfxBookClose(); }

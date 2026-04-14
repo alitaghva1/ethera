@@ -1475,11 +1475,18 @@ function updateGameplay(dt) {
             ctx.shadowBlur = 0;
             ctx.restore();
             if (window._storyBeatTimer >= 4.0) {
-                zoneTransitionFading = true; // resume normal transition → will enter the `else if (zoneTransitionAlpha < 1)` below
-                zoneTransitionAlpha = 0.99; // nearly full → triggers zone load on next tick
+                // Load the zone directly using stored nextZone (avoids double resolveNextZone call)
+                var _sbNextZone = window._storyBeatNextZone || 1;
+                zoneTransitionAlpha = 1;
+                zoneTransitionFading = 'fadeIn';
                 window._storyBeatTimer = 0;
+                try { loadZone(_sbNextZone); } catch(e) { try { loadZone(0); _sbNextZone = 0; } catch(e2) {} }
+                try { showZoneBanner(_sbNextZone); } catch(e) {}
+                _arrivalVignetteTimer = 1.5;
+                try { if (typeof sfxZoneEnter === 'function') sfxZoneEnter(); } catch(e) {}
+                try { if (typeof startAmbient === 'function') startAmbient(_sbNextZone); } catch(e) {}
             }
-            return; // don't process further this frame
+            return;
         } else if (zoneTransitionAlpha < 1) {
             zoneTransitionAlpha += dt * 3;
             if (zoneTransitionAlpha >= 1) {
@@ -2904,9 +2911,8 @@ function drawItemTooltip(item, anchorX, anchorY) {
 }
 
 function drawInventoryUI() {
-    // Standalone inventory UI removed — inventory managed through Grimoire Equipment tab
+    // Removed — inventory managed through Grimoire Equipment tab
     return;
-    if (!inventoryOpen) return;
 
     const { px, py, pw, ph } = getInvLayout();
     const t = performance.now() / 1000;

@@ -2145,11 +2145,16 @@ function updateWaveSystem(dt) {
         if (wave.timer <= 0) {
             // Restore some HP/mana between waves as a reward
             const eb = getEquipBonuses();
-            // Percentage-based heal: 20% of max HP (minimum 25), rewards building tanky
             const maxHP = getPlayerMaxHP();
             const healAmt = Math.max(25, Math.floor(maxHP * 0.20));
             player.hp = Math.min(maxHP, player.hp + healAmt);
             player.mana = MAX_MANA + (eb.maxManaBonus || 0);
+            // Visual feedback for between-wave heal (was invisible)
+            pickupTexts.push({ text: '+' + healAmt + ' HP', color: '#44dd66', row: player.row, col: player.col, offsetY: -8, life: 1.5 });
+            if (typeof spawnHealBurst === 'function') {
+                var _hbPos = tileToScreen(player.row, player.col);
+                spawnHealBurst(_hbPos.x + cameraX, _hbPos.y + cameraY);
+            }
             beginNextWave();
         }
         return;
@@ -4339,24 +4344,17 @@ function updateBurnZones(dt) {
         bz.tickTimer -= dt;
         if (bz.tickTimer <= 0) {
             bz.tickTimer = bz.tickInterval || 0.5;
-            // Damage all enemies within radius
+            // Damage all enemies within radius — use unified damage pipeline
             for (const e of enemies) {
                 if (e.state === 'death') continue;
                 const dr = e.row - bz.row;
                 const dc = e.col - bz.col;
                 if (Math.sqrt(dr * dr + dc * dc) < bz.radius) {
-                    e.hp -= bz.damage;
-                    e.hitFlashTimer = 0.08;
-                    if (e.hp <= 0 && e.state !== 'death') {
-                        e.state = 'death';
-                        e.deathTimer = 0.7;
-                        e.animFrame = 0;
-                        if (typeof sfxEnemyDeath === 'function') sfxEnemyDeath(e.row, e.col);
-                        if (typeof rollEnemyLoot === 'function') rollEnemyLoot(e);
-                        if (typeof spawnDeathBurst === 'function') {
-                            const _dp = tileToScreen(e.row, e.col);
-                            spawnDeathBurst(_dp.x + cameraX, _dp.y + cameraY, e.def.tint || '#ff6644');
-                        }
+                    if (typeof applyEnemyHit === 'function') {
+                        applyEnemyHit(e, bz.damage, { skipHurtState: true, skipSFX: true });
+                    } else {
+                        e.hp -= bz.damage;
+                        if (e.hp <= 0) { e.state = 'death'; e.deathTimer = 0.7; }
                     }
                     spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1.5, 0.25, bz.color || '#ff4400', 0.6);
                 }
@@ -4371,7 +4369,7 @@ function drawBurnZones() {
         const sx = pos.x + cameraX;
         const sy = pos.y + cameraY;
         const fadeAlpha = Math.min(1, bz.life / (bz.maxLife * 0.2)); // fade out in last 20%
-        const pulseR = bz.radius * TILE_SIZE * (0.9 + Math.sin(performance.now() / 200) * 0.1);
+        const pulseR = bz.radius * DIAMOND_W * (0.9 + Math.sin(performance.now() / 200) * 0.1);
         ctx.save();
         ctx.globalAlpha = 0.25 * fadeAlpha;
         ctx.globalCompositeOperation = 'screen';
@@ -5068,7 +5066,7 @@ function checkProjectileEnemyHits() {
                 if (!p.isAcid && !p.isBone && !p.isDark && typeof equipBonus !== 'undefined' && equipBonus.effects) {
                     for (const eff of equipBonus.effects) {
                         if (eff.id === 'burn_ground' && Math.random() < (eff.chance || 0.20)) {
-                            burnZones.push({ row: e.row, col: e.col, radius: 0.8, damage: eff.dmg || 3, life: eff.duration || 2, dmgTimer: 0 });
+                            burnZones.push({ row: e.row, col: e.col, radius: 0.8, damage: eff.dmg || 3, life: eff.duration || 2, maxLife: eff.duration || 2, tickTimer: 0 });
                             break;
                         }
                     }
