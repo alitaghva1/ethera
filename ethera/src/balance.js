@@ -7,7 +7,7 @@
 //  Runtime state (placement, pools, input) → further down, clearly separated.
 //
 const COMBAT = {
-    atkDuration: 0.40,   atkCooldown: 0.45,   atkFireAt: 0.20,
+    atkDuration: 0.35,   atkCooldown: 0.38,   atkFireAt: 0.16,
     atkSpeed: 11,        projLife: 1.8,        projSize: 8,
     manaCost: 6,         fireballDmg: 20,      knockback: 2.5,
     explodeRadius: 2.5,  explodeDmgPct: 0.4,
@@ -586,6 +586,7 @@ function handleMouseDown(e) {
             npcDialogueOpen = false;
             return;
         }
+        return; // consume click while choice modal is open (prevent fall-through)
     }
 
     // ----- Game menu tab clicks (must match drawGameMenu layout exactly) -----

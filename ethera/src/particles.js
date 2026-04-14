@@ -93,11 +93,11 @@ function spawnParticle(tileRow, tileCol, vr, vc, life, color, alpha) {
 // Death burst — three-tier particle system (research: burst + chunks + soul drift)
 function spawnDeathBurst(worldX, worldY, color) {
     const c = color || '#ff6644';
-    // Tier 1: Fast radial spark ring (2x count, longer life)
-    const count = Math.max(10, Math.round((28 + Math.floor(Math.random() * 8)) * GFX.particleMul));
+    // Tier 1: Fast radial spark ring — boosted for visceral impact
+    const count = Math.max(14, Math.round((35 + Math.floor(Math.random() * 10)) * GFX.particleMul));
     for (let i = 0; i < count; i++) {
         const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
-        const speed = 3.5 + Math.random() * 3.0;
+        const speed = 4.5 + Math.random() * 4.0;
         _emitParticle(
             worldX, worldY,
             Math.cos(angle) * speed, Math.sin(angle) * speed,

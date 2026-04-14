@@ -778,13 +778,18 @@ function updateVisionFlashPhase(dt) {
         ctx.fillRect(0, 0, canvasW, canvasH);
     }
 
-    // Vision text
+    // Vision text — different content for Zone 3 vs Zone 5
     const cx = canvasW / 2;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const lines = [
+    const lines = window._visionFlashZone5 ? [
+        { text: 'The talisman BURNS.', time: 1.5, y: canvasH * 0.36 },
+        { text: 'You see her face \u2014 gaunt, pale, but her eyes find yours.', time: 2.2, y: canvasH * 0.44 },
+        { text: "'You came,' she whispers. Not with relief. With fear.", time: 3.0, y: canvasH * 0.52 },
+        { text: "'You shouldn't have come.'", time: 3.8, y: canvasH * 0.62 },
+    ] : [
         { text: 'The talisman burns.', time: 1.5, y: canvasH * 0.38 },
-        { text: 'A vision — a throne, deep below.', time: 2.2, y: canvasH * 0.46 },
+        { text: 'A vision \u2014 a throne, deep below.', time: 2.2, y: canvasH * 0.46 },
         { text: 'She sits there. Eyes open. Holding everything together.', time: 3.0, y: canvasH * 0.54 },
         { text: 'Something below is calling.', time: 3.8, y: canvasH * 0.64 },
     ];
@@ -806,7 +811,8 @@ function updateVisionFlashPhase(dt) {
 
     if (vt >= 6.0) {
         gamePhase = 'playing';
-        currentObjective = 'The talisman pulls you downward...';
+        currentObjective = window._visionFlashZone5 ? 'She is waiting...' : 'The talisman pulls you downward...';
+        window._visionFlashZone5 = false; // clear Zone 5 flag after use
     }
 }
 
@@ -1374,6 +1380,31 @@ function updateGameplay(dt) {
         tryPickupDrops();
         if (typeof updateWorldAugmentDrops === 'function') updateWorldAugmentDrops(dt);
         if (typeof updateAltarChallenge === 'function') updateAltarChallenge(dt);
+        // Talisman Echo: Arcane Echo — ghost tower fires every 25s
+        if (typeof hasTalismanEcho === 'function' && hasTalismanEcho('ghost_tower') && wave.phase === 'fighting') {
+            if (!window._arcaneEchoTimer) window._arcaneEchoTimer = 0;
+            window._arcaneEchoTimer += dt;
+            var _aeData = getTalismanEcho('ghost_tower');
+            if (_aeData && window._arcaneEchoTimer >= _aeData.interval) {
+                window._arcaneEchoTimer = 0;
+                // Fire bolts at nearest enemies from player position
+                var _aeTargets = enemies.filter(function(e) { return e.state !== 'death'; })
+                    .sort(function(a, b) { return ((a.row-player.row)**2+(a.col-player.col)**2) - ((b.row-player.row)**2+(b.col-player.col)**2); });
+                for (var _aeI = 0; _aeI < Math.min(_aeData.bolts, _aeTargets.length); _aeI++) {
+                    var _aeE = _aeTargets[_aeI];
+                    var _aeDr = _aeE.row - player.row, _aeDc = _aeE.col - player.col;
+                    var _aeDist = Math.sqrt(_aeDr*_aeDr + _aeDc*_aeDc) || 1;
+                    if (_aeDist < 8) {
+                        var _aeP = recycleProj(player.row, player.col, (_aeDr/_aeDist)*9, (_aeDc/_aeDist)*9);
+                        _aeP.damage = 15; _aeP.life = 1.0; _aeP.pierce = 0; _aeP.isBone = false;
+                    }
+                }
+                if (_aeTargets.length > 0) {
+                    spawnParticleBurst(player.row, player.col, 8, '#5588ff');
+                    addScreenShake(1, 0.03);
+                }
+            }
+        }
         updateWorldKeyDrops(dt);
         tryPickupKeyDrops();
     }
@@ -1415,15 +1446,40 @@ function updateGameplay(dt) {
         }
     }
 
-    // Zone transition fade overlay
+    // Zone transition fade overlay (with narrative story beats between zones)
     if (zoneTransitionFading) {
         if (zoneTransitionFading === 'fadeIn') {
-            // Phase 2: fade black overlay OUT (reveal new zone)
+            // Phase 3: fade black overlay OUT (reveal new zone)
             zoneTransitionAlpha -= dt * 2.5;
             if (zoneTransitionAlpha <= 0) {
                 zoneTransitionAlpha = 0;
                 zoneTransitionFading = false;
             }
+        } else if (zoneTransitionFading === 'storyBeat') {
+            // Phase 2: show narrative text on black screen
+            if (!window._storyBeatTimer) window._storyBeatTimer = 0;
+            window._storyBeatTimer += dt;
+            const _sbAlpha = window._storyBeatTimer < 0.8 ? window._storyBeatTimer / 0.8 :
+                             window._storyBeatTimer > 3.2 ? Math.max(0, 1 - (window._storyBeatTimer - 3.2) / 0.8) : 1;
+            ctx.save();
+            ctx.fillStyle = '#000'; ctx.globalAlpha = 1; ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.globalAlpha = _sbAlpha * 0.85;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.font = 'italic 16px Georgia';
+            ctx.fillStyle = '#c4a878';
+            ctx.shadowColor = 'rgba(200, 160, 80, 0.3)'; ctx.shadowBlur = 10;
+            const _sbLines = (window._storyBeatText || '').split('\n');
+            for (var _sbL = 0; _sbL < _sbLines.length; _sbL++) {
+                ctx.fillText(_sbLines[_sbL], canvasW / 2, canvasH / 2 - (_sbLines.length - 1) * 12 + _sbL * 24);
+            }
+            ctx.shadowBlur = 0;
+            ctx.restore();
+            if (window._storyBeatTimer >= 4.0) {
+                zoneTransitionFading = true; // resume normal transition → will enter the `else if (zoneTransitionAlpha < 1)` below
+                zoneTransitionAlpha = 0.99; // nearly full → triggers zone load on next tick
+                window._storyBeatTimer = 0;
+            }
+            return; // don't process further this frame
         } else if (zoneTransitionAlpha < 1) {
             zoneTransitionAlpha += dt * 3;
             if (zoneTransitionAlpha >= 1) {
@@ -1453,6 +1509,27 @@ function updateGameplay(dt) {
                 // When returning to town from dungeon, spawn at Hamlet entrance (not lobby)
                 if (nextZone === 0 && zoneTransitionTarget === 'town') {
                     _townReturnSpawn = true;
+                }
+                // Zone transition narrative text — show story beat before loading
+                const _ZONE_STORY_BEATS = {
+                    '1_2': 'The talisman pulls. Deeper. She went this way.',
+                    '2_3': "You found her letter. She didn't want to be followed.\nThat's how you know you have to.",
+                    '3_4': 'The vision burned \u2014 a throne, a figure holding everything together.\nThe pull is stronger now.',
+                    '4_5': "The pilgrim's words echo: 'Tell her someone tried.'\nYou will do more than try.",
+                    '5_6': 'The cold gives way to something worse.\nA presence. Not hostile. Resigned.\nShe knows you are coming.',
+                };
+                const _prevZone = currentZone;
+                const _storyKey = _prevZone + '_' + nextZone;
+                if (!window._storyBeatShown) window._storyBeatShown = {};
+                if (_ZONE_STORY_BEATS[_storyKey] && !window._storyBeatShown[_storyKey]) {
+                        window._storyBeatShown[_storyKey] = true;
+                        window._storyBeatText = _ZONE_STORY_BEATS[_storyKey];
+                        window._storyBeatTimer = 0;
+                        window._storyBeatNextZone = nextZone;
+                        zoneTransitionFading = 'storyBeat';
+                        // Don't load zone yet — story beat will resume transition after 4s
+                        // But we need to break out of this block
+                        return;
                 }
                 // CRITICAL: Set fadeIn state FIRST, before any code that might throw.
                 // If loadZone/showZoneBanner/sfx throw, the screen must still fade in.
@@ -3437,6 +3514,8 @@ function restartGame() {
     FormSystem.formData.wizard = { unlocked: false, spellsCast: 0, towersPlaced: 0, lowManaKills: 0, totalKills: 0 };
     FormSystem.formData.lich = { unlocked: false, soulsHarvested: 0, undeadRaised: 0, totalKills: 0 };
     FormSystem.evolutionProgress = { currentMilestones: {}, nextForm: null };
+    FormSystem.formHistory = [];
+    window._storyBeatShown = {}; // reset story beat tracking for new run
     // Reset player (position will be overridden by loadZone below)
     player.row = 26; player.col = 15;
     player.vx = 0; player.vy = 0;

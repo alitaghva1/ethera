@@ -93,18 +93,17 @@ function updateLich(dt) {
     // === SOUL BOLT ATTACK (LMB) ===
     if (player.attackCooldown > 0) player.attackCooldown -= dt;
     const hasDarkPact = getUpgrade('dark_pact') > 0;
-    const darkPactCost = 5;
-    // Dark Pact: bolts cost 5 soul energy but deal +50% damage
-    const canAttack = hasDarkPact ? lichState.soulEnergy >= darkPactCost : true;
+    const baseSoulCost = 3;  // ALL lich bolts cost soul energy — creates resource tension
+    const darkPactCost = hasDarkPact ? 5 : baseSoulCost; // Dark Pact costs more but deals +50%
+    // Lich must manage soul energy: kills generate it, attacks spend it
+    const canAttack = lichState.soulEnergy >= darkPactCost;
     if (mouse.down && player.attackCooldown <= 0 && canAttack &&
         gamePhase === 'playing' && !menuOpen && !gamePaused) {
         player.attackCooldown = config.atkCooldown;
         player.attacking = true;
         player.attackTimer = config.atkDuration;
-        if (hasDarkPact) {
-            lichState.soulEnergy -= darkPactCost;
-            lichState.soulEnergy = Math.max(0, lichState.soulEnergy);
-        }
+        lichState.soulEnergy -= darkPactCost;
+        lichState.soulEnergy = Math.max(0, lichState.soulEnergy);
 
         const tgt = screenToTile(mouse.x, mouse.y);
         const dx = tgt.row - player.row;

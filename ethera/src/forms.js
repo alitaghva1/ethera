@@ -64,7 +64,7 @@ const FORM_CONFIGS = {
         // Movement physics
         moveAccel: 22,
         moveDecel: 18,
-        moveMaxSpeed: 4.2,
+        moveMaxSpeed: 4.8,
         hitboxRadius: 0.18,
         // Base stats
         maxHp: 100,
@@ -104,7 +104,7 @@ const FORM_CONFIGS = {
         // Movement physics — bouncy, high accel, lower max speed
         moveAccel: 28,
         moveDecel: 12,
-        moveMaxSpeed: 3.2,
+        moveMaxSpeed: 3.6,
         hitboxRadius: 0.22,
         // Base stats — grows with size
         maxHp: 60,
@@ -143,7 +143,7 @@ const FORM_CONFIGS = {
         displayName: 'Risen Skeleton',
         moveAccel: 24,
         moveDecel: 16,
-        moveMaxSpeed: 4.5,
+        moveMaxSpeed: 5.0,
         hitboxRadius: 0.18,
         maxHp: 80,
         maxMana: 0,
@@ -176,9 +176,9 @@ const FORM_CONFIGS = {
         displayName: 'Lich Necromancer',
         moveAccel: 20,
         moveDecel: 14,
-        moveMaxSpeed: 4.8,
+        moveMaxSpeed: 5.2,
         hitboxRadius: 0.18,
-        maxHp: 120,
+        maxHp: 100,  // reduced from 120 — lich power comes from soul economy, not raw tankiness
         maxMana: 0,
         manaRegen: 0,
         manaRegenDelay: 0,
@@ -369,17 +369,23 @@ formHandlers.lich = {
     getUpgradePool: () => LICH_UPGRADE_POOL,
 };
 
-// Talisman perk definitions — one unlocked per evolution (levels 2-4)
+// Talisman perk definitions — Evolution Echoes: each perk carries a trace
+// of the PREVIOUS form's signature mechanic into the new form.
 const TALISMAN_PERKS = [
-    { id: 'bone_memory', name: 'Bone Memory', desc: '+10% XP gain', level: 2, effect: { xpMult: 1.10 } },
-    { id: 'arcane_resonance', name: 'Arcane Resonance', desc: 'Mana regen +20%', level: 3, effect: { manaRegenMult: 1.20 } },
-    { id: 'death_embrace', name: "Death's Embrace", desc: '+20 max HP, +15% damage', level: 4, effect: { hpBonus: 20, dmgMult: 1.15 } },
+    { id: 'residual_mass', name: 'Residual Mass', desc: 'Every 5th kill heals HP (echo of Slime absorb, scales with level)', level: 2,
+      effect: { echoType: 'heal_on_kill', killInterval: 5, healBase: 3, healPerLevel: 2 } },
+    { id: 'bone_rhythm', name: 'Bone Rhythm', desc: '5 consecutive hits grant +30% attack speed for 3s (echo of Skeleton combo)', level: 3,
+      effect: { echoType: 'spell_combo', comboTarget: 5, speedBoost: 0.30, boostDuration: 3.0 } },
+    { id: 'arcane_echo', name: 'Arcane Echo', desc: 'A ghost tower appears every 25s and fires 3 bolts (echo of Wizard towers)', level: 4,
+      effect: { echoType: 'ghost_tower', interval: 25, bolts: 3 } },
 ];
 
 // Aggregate bonuses from all unlocked talisman perks
 FormSystem.getTalismanBonuses = function() {
     const bonuses = { xpMult: 1, manaRegenMult: 1, dmgMult: 1, hpBonus: 0 };
     for (const perk of this.talisman.perks) {
+        // Echo perks don't provide stat multipliers — they're handled in gameplay code
+        if (perk.effect.echoType) continue;
         if (perk.effect.xpMult) bonuses.xpMult *= perk.effect.xpMult;
         if (perk.effect.manaRegenMult) bonuses.manaRegenMult *= perk.effect.manaRegenMult;
         if (perk.effect.dmgMult) bonuses.dmgMult *= perk.effect.dmgMult;
@@ -387,6 +393,20 @@ FormSystem.getTalismanBonuses = function() {
     }
     return bonuses;
 };
+
+// Check if a specific talisman echo is active
+function hasTalismanEcho(echoType) {
+    if (!FormSystem.talisman.found) return false;
+    return FormSystem.talisman.perks.some(function(p) { return p.effect && p.effect.echoType === echoType; });
+}
+function getTalismanEcho(echoType) {
+    if (!FormSystem.talisman.found) return null;
+    var perk = FormSystem.talisman.perks.find(function(p) { return p.effect && p.effect.echoType === echoType; });
+    return perk ? perk.effect : null;
+}
+
+// Form evolution history — tracks which forms the player has been (for particle color echoes)
+FormSystem.formHistory = [];
 
 // Helper: get current form config value with fallback
 function getFormStat(key) {
@@ -419,11 +439,11 @@ function getTalismanBonus() {
     const surge = (typeof getEvolutionSurgeBonus === 'function') ? getEvolutionSurgeBonus() : { dmgMult: 1, speedMult: 1 };
     const perks = FormSystem.getTalismanBonuses();
     return {
-        dmgMult: (1 + (lvl - 1) * 0.08) * surge.dmgMult * perks.dmgMult,
-        speedMult: (1 + (lvl - 1) * 0.04) * surge.speedMult,
+        dmgMult: (1 + (lvl - 1) * 0.12) * surge.dmgMult * perks.dmgMult,  // boosted from 0.08
+        speedMult: (1 + (lvl - 1) * 0.06) * surge.speedMult,            // boosted from 0.04
         xpMult: (1 + (lvl - 1) * 0.10) * perks.xpMult,
         manaRegenMult: perks.manaRegenMult,
-        hpBonus: (lvl - 1) * 5 + perks.hpBonus,
+        hpBonus: (lvl - 1) * 15 + perks.hpBonus,                        // boosted from 5 to 15 per level
         surgeActive: surge.dmgMult > 1,
     };
 }

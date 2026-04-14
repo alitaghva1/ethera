@@ -386,10 +386,20 @@ function updateSlime(dt) {
                     if (e.state === 'death') continue;
                     const dist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
                     if (dist < landRadius) {
-                        e.hp -= landDmg;
-                        addScreenShake(3, 0.2);
-                        if (e.hp <= 0) e.state = 'death';
+                        if (typeof applyEnemyHit === 'function') {
+                            const kbDr = (e.row - player.row) / (dist || 1);
+                            const kbDc = (e.col - player.col) / (dist || 1);
+                            applyEnemyHit(e, landDmg, { knockVr: kbDr * 3, knockVc: kbDc * 3 });
+                        } else {
+                            e.hp -= landDmg;
+                            if (e.hp <= 0) e.state = 'death';
+                        }
                     }
+                }
+                // Size-scaled landing impact — bigger slime = bigger shake
+                addScreenShake(2 + slimeState.size * 2, 0.15 + slimeState.size * 0.05);
+                if (slimeState.size >= 3 && typeof spawnParticleBurst === 'function') {
+                    spawnParticleBurst(player.row, player.col, Math.round(slimeState.size * 4), '#44dd66');
                 }
                 // === STICKY LANDING upgrade — slow field on landing ===
                 const stickyLvl = getUpgrade('sticky_landing');

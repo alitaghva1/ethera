@@ -52,6 +52,7 @@ function saveGame(slotIdx) {
         evolutionCount: FormSystem.evolutionCount,
         talisman: { ...FormSystem.talisman },
         formData: JSON.parse(JSON.stringify(FormSystem.formData)),
+        formHistory: FormSystem.formHistory ? [...FormSystem.formHistory] : [],
         openedChests: [...openedChests],
         // Unified progression
         progressionIndex: progressionIndex,
@@ -264,6 +265,7 @@ function loadGame(slotIdx) {
     if (data.currentForm) FormSystem.currentForm = data.currentForm;
     if (data.previousForm !== undefined) FormSystem.previousForm = data.previousForm;
     if (data.evolutionCount !== undefined) FormSystem.evolutionCount = data.evolutionCount;
+    FormSystem.formHistory = data.formHistory || [];
     if (data.talisman) Object.assign(FormSystem.talisman, data.talisman);
     if (data.formData) {
         for (const [form, fdata] of Object.entries(data.formData)) {

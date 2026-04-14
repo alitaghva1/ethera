@@ -204,8 +204,8 @@ function updatePlayer(dt) {
 
         if (player.dodgeTimer <= 0) {
             player.dodging = false;
-            player.vx = player.dodgeDirRow * MOVE_MAX_SPEED * 0.3; // residual momentum
-            player.vy = player.dodgeDirCol * MOVE_MAX_SPEED * 0.3;
+            player.vx = player.dodgeDirRow * MOVE_MAX_SPEED * 0.55; // boosted residual momentum
+            player.vy = player.dodgeDirCol * MOVE_MAX_SPEED * 0.55;
         }
 
         // Keep walk animation going during dodge
@@ -311,7 +311,11 @@ function updatePlayer(dt) {
     // --- Wand attack trigger (left click) ---
     const arcaneEfficiency = (FormSystem.currentForm === 'wizard') ? getUpgrade('arcane_efficiency') * 0.15 : 0;
     const effManaCost = Math.max(3, Math.round((ATK_MANA_COST - (equipBonus.manaCostReduc || 0)) * (1 - arcaneEfficiency)));
-    const effAtkCooldown = (ATK_COOLDOWN / (1 + (equipBonus.atkSpeedMult || 0))) * Math.pow(0.85, getUpgrade('firerate'));
+    // Bone Rhythm echo: timer decay + speed boost application
+    if (player._boneRhythmTimer > 0) { player._boneRhythmTimer -= dt; if (player._boneRhythmTimer <= 0) player._boneRhythmHits = 0; }
+    if (player._boneRhythmSpeedBoost > 0) player._boneRhythmSpeedBoost -= dt;
+    const _boneRhythmMult = (player._boneRhythmSpeedBoost > 0) ? (1 + 0.30) : 1;
+    const effAtkCooldown = (ATK_COOLDOWN / (1 + (equipBonus.atkSpeedMult || 0)) / _boneRhythmMult) * Math.pow(0.85, getUpgrade('firerate'));
     if (!player.attacking && !player.dodging && mouse.down && player.attackCooldown <= 0 && player.mana >= effManaCost) {
         const aimDir = getAimDirection();
         player.attacking = true;
@@ -344,6 +348,13 @@ function updatePlayer(dt) {
             player.manaRegenTimer = MANA_REGEN_DELAY;
             spawnProjectile();
             sfxFireballShoot();
+            addScreenShake(1.5, 0.04); // weapon kick — micro-shake on every shot
+            // Talisman Echo: Bone Rhythm — track consecutive hits for speed burst
+            if (typeof hasTalismanEcho === 'function' && hasTalismanEcho('spell_combo')) {
+                if (!player._boneRhythmTimer) player._boneRhythmTimer = 0;
+                if (!player._boneRhythmHits) player._boneRhythmHits = 0;
+                player._boneRhythmTimer = 1.5; // 1.5s window to land hits
+            }
             // Spell Echo: chance to fire a free second projectile (wizard only)
             if (FormSystem.currentForm === 'wizard' && getUpgrade('spell_echo') > 0) {
                 if (Math.random() < 0.20 * getUpgrade('spell_echo')) {
@@ -473,6 +484,12 @@ function spawnProjectile() {
         else _wp.hitEnemies = new Set();
         projectiles.push(_wp);
         FormSystem.formData.wizard.spellsCast++;
+        // Muzzle flash — brief glow at cast point
+        if (i === 0 && typeof spawnParticle === 'function') {
+            const _mfPos = tileToScreen(player.row, player.col);
+            spawnParticle(player.row, player.col, td.dr * 2, td.dc * 2, 0.12, '#ffcc44', 0.8);
+            spawnParticle(player.row, player.col, td.dr * 1.5 + (Math.random()-0.5), td.dc * 1.5 + (Math.random()-0.5), 0.10, '#ffffff', 0.6);
+        }
 
         // LEGENDARY: Band of Echoes — 20% chance to duplicate projectile
         if (typeof equipBonus !== 'undefined' && equipBonus.effects && !_wp.isEcho) {

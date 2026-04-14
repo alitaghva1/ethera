@@ -184,6 +184,18 @@ function updateSkeleton(dt) {
             skeletonState.comboTimer = 0;
         }
     }
+    // Combo visual escalation — higher combo = more intense feedback
+    if (skeletonState.comboCount >= 10 && Math.random() < 0.15) {
+        // Speed lines — directional particles trailing behind the player
+        spawnParticle(player.row - player.vx * 0.1, player.col - player.vy * 0.1,
+            -player.vx * 0.5, -player.vy * 0.5, 0.15, '#ffd700', 0.4);
+    }
+    if (skeletonState.comboCount >= 15 && typeof performance !== 'undefined') {
+        // Max combo glow pulse — golden screen-edge hint
+        if (!skeletonState._comboGlowTimer) skeletonState._comboGlowTimer = 0;
+        skeletonState._comboGlowTimer += dt;
+    }
+
     // Combo bonuses: +5% attack speed per stack, +10% bone regen per stack
     const comboAtkSpeedMult = Math.min(2.0, 1 + skeletonState.comboCount * 0.05);
     const comboBoneRegenMult = 1 + skeletonState.comboCount * 0.10;

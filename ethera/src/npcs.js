@@ -628,7 +628,43 @@ function getFormReactiveDialogue(npc) {
         }
     }
 
+    // Progressive lore — NPCs reveal new dialogue as player reaches deeper zones
+    // Use ONLY story zone progress for lore gating (not procedural depth which would spoil plot)
+    const _zoneReached = typeof currentZone !== 'undefined' ? currentZone : 0;
+    const _PROGRESSIVE_LORE = {
+        garrett: [
+            { minZone: 2, line: 'The talisman housing... I remember now. She brought the core herself. Said it had to be made by someone who understood fire.' },
+            { minZone: 4, line: "The Infernal Ore... it's the same material as the talisman's core. She planned this. All of it." },
+        ],
+        mira: [
+            { minZone: 2, line: "She used to sit right here. Told me stories about a place below where time doesn't pass. I thought she was making it up." },
+            { minZone: 5, line: "She said the covenant was a gift. Not to her \u2014 to everyone else. So they could keep living without knowing what waits below." },
+        ],
+        hermit: [
+            { minZone: 3, line: "The tome you found \u2014 it describes the covenant's origin. The first holder lasted three centuries before their mind fractured." },
+            { minZone: 4, line: "When you reach her, she'll ask you to choose. Shatter the covenant and the corruption walks free \u2014 but so does she. Take her place and the world stays safe \u2014 but you sit there. Forever." },
+            { minZone: 5, line: "Elara has held it for eleven years. The longest in recorded history. But even she is fading. You can feel it in the talisman \u2014 the pulses are weaker now." },
+        ],
+        senna: [
+            { minZone: 3, line: "Evolution isn't random, you know. The talisman is reshaping you. Preparing you for what's below." },
+            { minZone: 5, line: "The Frost Essence... it crystallizes around sources of immense will. She's been holding so hard the very air froze around her." },
+        ],
+        aldric: [
+            { minZone: 3, line: "I remember now. I wasn't guarding against enemies coming IN. I was guarding against something coming OUT." },
+        ],
+    };
+    const _npcLore = _PROGRESSIVE_LORE[npc.id];
+
     let lines = [...npc.dialogue];
+
+    // Prepend the HIGHEST zone-gated lore line the player has unlocked (one at a time)
+    if (_npcLore) {
+        var _bestLore = null;
+        for (var _li = 0; _li < _npcLore.length; _li++) {
+            if (_zoneReached >= _npcLore[_li].minZone) _bestLore = _npcLore[_li];
+        }
+        if (_bestLore) lines.unshift(_bestLore.line);
+    }
 
     // Inject quest dialogue for quest-giver NPCs
     const questLines = getQuestDialogueLines(npc.id);

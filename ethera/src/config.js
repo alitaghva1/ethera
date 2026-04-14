@@ -10,7 +10,7 @@
 // ============================================================
 
 // Game version — used for save format and cache busting
-const ETHERA_VERSION = '1.0.1';
+const ETHERA_VERSION = '1.0.2';
 
 // ----- DEBUG: Set to a zone number (e.g. 4) to skip menu and start there -----
 const DEBUG_START_ZONE = null;   // null = normal start, 2 = skeleton, 3 = spire, 4 = hell zone, 5 = frozen abyss, 6 = throne
@@ -503,14 +503,14 @@ let saveSlots = [null, null, null]; // loaded from localStorage on init
 //   Named vx/vy for historical reasons; treat as vRow/vCol mentally.
 //   Enemy velocity uses vr/vc (correct naming). Projectiles use vr/vc too.
 const MOVE_ACCEL = 20;       // tiles/sec^2 — snappy response
-const MOVE_MAX_SPEED = 4.2;  // tiles/sec
+const MOVE_MAX_SPEED = 4.8;  // tiles/sec (increased from 4.2 for snappier feel)
 const MOVE_DECEL = 18;       // tiles/sec^2 — tight stop, no ice skating
 const HITBOX_RADIUS = 0.18;  // collision radius — small so walls don't feel sticky
 
 // ----- PHASE JUMP (dodge) -----
 const DODGE_DISTANCE = 2.8;  // tiles — how far the phase jump carries you
 const DODGE_DURATION = 0.18; // seconds — duration of the dash
-const DODGE_COOLDOWN = 0.85;  // seconds — time before you can dodge again
+const DODGE_COOLDOWN = 0.70;  // seconds — reduced for more aggressive dodge-weaving
 const DODGE_GHOST_COUNT = 5; // number of afterimage ghosts
 const DODGE_GHOST_LIFE = 0.4; // seconds — how long ghosts linger
 

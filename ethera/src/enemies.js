@@ -412,7 +412,7 @@ let multiKillCount = 0;
 const killStreak = {
     count: 0,           // consecutive kills within window
     timer: 0,           // time since last kill (resets on kill)
-    window: 3.0,        // seconds before streak breaks
+    window: 2.2,        // seconds before streak breaks (tight = pressure)
     multiplier: 1.0,    // current XP/gold multiplier
     displayAlpha: 0,    // HUD fade
 };
@@ -580,16 +580,17 @@ function applyEnemyHit(e, damage, opts) {
     // Hit flash — brief white overlay on ANY damage (longer on crit)
     e.hitFlashTimer = isCrit ? 0.22 : 0.12;
 
-    // ── Hit pause — scaled by impact (research: 80ms base, 120ms crit) ──
+    // ── Hit pause — scaled by impact. Tuned for visceral punch. ──
     const heavyHitThreshold = (e.def.hp || 30) * 0.15;
     if (isCrit) {
-        addHitPause(0.10);
-        addScreenShake(5, 0.15);
+        addHitPause(0.12);
+        addScreenShake(6, 0.18);
     } else if (finalDmg >= heavyHitThreshold) {
-        addHitPause(0.06);
-        addScreenShake(2.5, 0.08);
+        addHitPause(0.07);
+        addScreenShake(4, 0.12);
     } else {
-        addHitPause(0.03);
+        addHitPause(0.05);
+        addScreenShake(2, 0.06);
     }
 
     // ── Stagger wobble on heavy hits — visual sprite offset during hit flash ──
@@ -729,12 +730,13 @@ function applyEnemyHit(e, damage, opts) {
             spawnCombatDecal(e.row, e.col, e.def.tintColor || '#441111', e.def.isBoss ? 8 : 4);
         }
         if (e.def.isBoss) {
-            addSlowMo(0.5, 0.12); addScreenShake(14, 0.5);
-            if (typeof addCameraZoom === 'function') addCameraZoom(1.08, 1.8); // dramatic zoom on boss kill
+            addHitPause(0.25);
+            addSlowMo(0.8, 0.10); addScreenShake(18, 0.6);
+            if (typeof addCameraZoom === 'function') addCameraZoom(1.12, 2.0);
         }
-        else if (e.elite) { addHitPause(0.06 * impactScale); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); addSlowMo(0.2, 0.25); }
-        else if (isCrit) { addHitPause(0.025); addSlowMo(0.08, 0.4); } // brief kill-confirm slow-mo on crit kills
-        else { addHitPause(0.025); addScreenShake(5 * impactScale * critMul, 0.15 * impactScale); } // micro-pause on every kill
+        else if (e.elite) { addHitPause(0.10 * impactScale); addScreenShake(7 * impactScale * critMul, 0.20); addSlowMo(0.25, 0.20); }
+        else if (isCrit) { addHitPause(0.06); addSlowMo(0.10, 0.35); addScreenShake(4, 0.10); }
+        else { addHitPause(0.04); addScreenShake(3 * impactScale * critMul, 0.10); }
     } else if (!opts.skipHurtState) {
         // Stagger: only interrupt if not already staggered recently
         // Bosses have built-in stagger resistance via shorter hurtTimer
@@ -1458,23 +1460,25 @@ function startWaveSystem() {
     wave.bannerAlpha = 0;
     wave.totalKilled = 0;
 
-    // Contextual combat tutorial — fires once per session on first combat zone
+    // Contextual combat tutorial — sequential hints during pre-wave calm (one at a time)
     if (typeof Notify !== 'undefined' && currentZone === 1) {
         const form = FormSystem.currentForm || 'slime';
         const atkKey = form === 'slime' ? 'Acid Spit' : form === 'skeleton' ? 'Bone Throw' : form === 'lich' ? 'Soul Bolt' : 'Fireball';
         const dodgeKey = form === 'slime' ? 'Bounce Jump' : form === 'skeleton' ? 'Roll' : form === 'lich' ? 'Shadow Step' : 'Phase Jump';
+        // Staggered during the 6-second pre-wave calm — one at a time, short duration
         setTimeout(function() {
-            Notify.hint('tutorial_attack', 'Left Click to attack (' + atkKey + ')', 6, { color: '#ddc890', borderColor: '#887040' });
-        }, 2000);
+            Notify.hint('tutorial_attack', 'Left Click \u2014 ' + atkKey, 3, { color: '#ddc890' });
+        }, 500);
         setTimeout(function() {
-            Notify.hint('tutorial_dodge', 'SPACE to dodge (' + dodgeKey + ')', 6, { color: '#ddc890', borderColor: '#887040' });
-        }, 5000);
+            Notify.hint('tutorial_dodge', 'SPACE \u2014 ' + dodgeKey, 3, { color: '#ddc890' });
+        }, 3500);
+        // Controls + grimoire hints fire AFTER first wave clears (not during combat)
         setTimeout(function() {
-            Notify.hint('tutorial_controls', 'Press H to show all controls', 5, { color: '#aabbcc', borderColor: '#667788' });
-        }, 9000);
+            Notify.hint('tutorial_controls', 'H \u2014 Controls Reference', 3, { color: '#aabbcc' });
+        }, 25000);
         setTimeout(function() {
-            Notify.hint('tutorial_grimoire', 'Press TAB to open the Grimoire (character menu)', 5, { color: '#aabbcc', borderColor: '#667788' });
-        }, 13000);
+            Notify.hint('tutorial_grimoire', 'TAB \u2014 Grimoire (stats, gear, quests)', 3, { color: '#aabbcc' });
+        }, 30000);
     }
 }
 
@@ -1561,12 +1565,18 @@ function beginNextWave() {
     wave.phase = 'countdown';
     wave.timer = w.isBossWave ? 5.0 : 4.0; // longer countdown for boss waves
 
-    // Boss wave gets a special announcement
+    // Boss wave gets dramatic entrance
     if (w.isBossWave) {
         wave.bannerText = w.title;
         wave.bannerSub = 'A powerful enemy approaches...';
         wave.bannerAlpha = 1;
-        addScreenShake(4, 0.3);
+        addScreenShake(8, 0.6);
+        addSlowMo(0.4, 0.25); // dramatic slow-mo before boss spawns
+        addHitPause(0.15);    // world freezes briefly
+        // Darken the screen for boss approach (vignette)
+        if (typeof dmgVignetteIntensity !== 'undefined') {
+            dmgVignetteIntensity = 0.5; dmgVignetteTimer = 1.5;
+        }
         // Play boss-specific music if available, otherwise use normal wave rotation
         let combatTrack = null;
         if (typeof BOSS_MUSIC !== 'undefined' && w.enemies) {
@@ -1590,7 +1600,7 @@ function beginNextWave() {
             { text: 'Arrow and Bone', sub: 'More are coming.' },
             { text: 'The Crypt Opens', sub: 'Sealed passages give way.' },
             { text: 'The Deep Stirs', sub: 'No mercy from what lies beneath.' },
-            { text: 'The Undercroft\'s Last Stand', sub: 'Stand or fall.' },
+            { text: 'The Undercroft\'s Last Stand', sub: 'The guardians stir. They protect something below.' },
             { text: 'The Slime King Emerges', sub: 'A powerful enemy approaches...' },
         ],
         2: [
@@ -1600,7 +1610,7 @@ function beginNextWave() {
             { text: 'The Tower Crumbles', sub: 'The ruins shift and groan.' },
             { text: 'Death From Above', sub: 'Arrows rain from the heights.' },
             { text: 'Endless Legions', sub: 'They will not stop.' },
-            { text: 'The Bone Colossus Rises', sub: 'A powerful enemy approaches...' },
+            { text: 'The Bone Colossus Rises', sub: 'These bones served the covenant once. Now they serve no one.' },
         ],
         3: [
             { text: 'The Spire\'s Guard', sub: 'Eyes gleam in the heights above...' },
@@ -1609,7 +1619,7 @@ function beginNextWave() {
             { text: 'The Ascent', sub: 'Higher. Always higher.' },
             { text: 'Summit of Bone', sub: 'The wind carries death.' },
             { text: 'The Heights Rage', sub: 'No shelter at the peak.' },
-            { text: 'The Beast Awakens', sub: 'Something terrible awaits...' },
+            { text: 'The Beast Awakens', sub: 'The spire was her watchtower. She saw everything from here.' },
         ],
         4: [
             { text: 'The Inferno Awakens', sub: 'Heat scorches the very air...' },
@@ -1618,7 +1628,7 @@ function beginNextWave() {
             { text: 'Blood and Fire', sub: 'The pits demand sacrifice.' },
             { text: 'Hellfire Gauntlet', sub: 'There is no escape from the flames.' },
             { text: 'The Forge Calls', sub: 'Only ruin remains.' },
-            { text: 'The Infernal Knight Descends', sub: 'A powerful enemy approaches...' },
+            { text: 'The Infernal Knight Descends', sub: 'The fire was her last barrier. She set the world ablaze to buy time.' },
         ],
         5: [
             { text: 'The Abyss Stirs', sub: 'Something stirs beneath...' },
@@ -1627,7 +1637,7 @@ function beginNextWave() {
             { text: 'The Deep Freeze', sub: 'The dead rise from frost.' },
             { text: 'The Dead March', sub: 'There is no warmth here.' },
             { text: 'Abyss Unbound', sub: 'Shatter.' },
-            { text: 'The Wyrm Awakens', sub: 'A powerful enemy approaches...' },
+            { text: 'The Wyrm Awakens', sub: "The cold is the covenant's edge. Beyond this, only the throne." },
         ],
         6: [
             { text: 'Ruin Awakens', sub: 'Your end awaits...' },
@@ -1636,7 +1646,7 @@ function beginNextWave() {
             { text: 'Endless Ruin', sub: 'The dead outnumber the living.' },
             { text: 'The Last Stand', sub: 'No mercy.' },
             { text: 'The World Breaks', sub: 'This is where it ends.' },
-            { text: 'THE THRONE FALLS', sub: 'A powerful enemy approaches...' },
+            { text: 'THE THRONE FALLS', sub: 'You feel her now. Tired. Waiting. She knew you would come.' },
         ],
     };
     const STIR_MESSAGES = ZONE_STIR_MESSAGES[currentZone] || ZONE_STIR_MESSAGES[1];
@@ -1892,6 +1902,15 @@ function updateWaveSystem(dt) {
                     wave.bannerText = 'The Abyss Shatters';
                     wave.bannerSub = 'An ancient throne beckons below...';
                     dropKeyItemInWorld(wave.lastDeathRow, wave.lastDeathCol, 'zone5_key');
+                    // Second vision flash — Elara reaches out
+                    setTimeout(function() {
+                        if (typeof visionFlashTimer !== 'undefined') {
+                            // Store Zone 5 vision text for the vision flash renderer
+                            window._visionFlashZone5 = true;
+                            visionFlashTimer = 0;
+                            gamePhase = 'visionFlash';
+                        }
+                    }, 4000);
                 } else if (currentZone === 6) {
                     wave.bannerText = 'THE PALE STIRS';
                     wave.bannerSub = 'The guardians fall silent... She is waiting.';
@@ -2252,108 +2271,74 @@ function drawWaveBanner() {
     } else if (wave.phase === 'cleared' && wave.tensionPhase === 1) {
         // Tension building: no text needed, just visual ambiance handled here
     } else if (wave.phase === 'countdown') {
-        const cy = canvasH * 0.20;
+        // ── SLIM TOP RIBBON — wave title + countdown, out of gameplay center ──
+        const ry = 36; // top of screen, below minimap area
+        const ribbonH = 44;
 
-        // Subtle dark band behind the announcement
-        ctx.globalAlpha = wave.bannerAlpha * 0.45;
-        const bandGrad = ctx.createLinearGradient(0, cy - 80, 0, cy + 90);
+        // Dark ribbon background — fade from edges
+        ctx.globalAlpha = wave.bannerAlpha * 0.55;
+        const bandGrad = ctx.createLinearGradient(cx - 300, 0, cx + 300, 0);
         bandGrad.addColorStop(0, 'rgba(0,0,0,0)');
-        bandGrad.addColorStop(0.3, 'rgba(0,0,0,0.7)');
-        bandGrad.addColorStop(0.7, 'rgba(0,0,0,0.7)');
+        bandGrad.addColorStop(0.15, 'rgba(0,0,0,0.7)');
+        bandGrad.addColorStop(0.85, 'rgba(0,0,0,0.7)');
         bandGrad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = bandGrad;
-        ctx.fillRect(0, cy - 80, canvasW, 170);
+        ctx.fillRect(cx - 300, ry - ribbonH / 2, 600, ribbonH);
 
         ctx.globalAlpha = wave.bannerAlpha;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Decorative top line
-        drawDecorLine(cx, cy - 32, 140, wave.bannerAlpha * 0.5);
-
-        // Wave title
-        ctx.font = '36px Georgia';
+        // Wave title — clean, moderate size
+        ctx.font = '22px Georgia';
         ctx.fillStyle = '#e8d4aa';
-        ctx.shadowColor = 'rgba(200, 160, 80, 0.4)';
-        ctx.shadowBlur = 14;
-        ctx.fillText(wave.bannerText, cx, cy);
+        ctx.shadowColor = 'rgba(200, 160, 80, 0.3)';
+        ctx.shadowBlur = 8;
+        ctx.fillText(wave.bannerText, cx, ry - 4);
         ctx.shadowBlur = 0;
 
-        // Subtitle (uses modifier color when active)
-        ctx.font = 'italic 15px Georgia';
-        ctx.fillStyle = (wave.modifier && wave.modifier.color) ? wave.modifier.color : '#b09868';
-        ctx.globalAlpha = wave.bannerAlpha * 0.8;
-        ctx.fillText(wave.bannerSub, cx, cy + 28);
-
-        // Difficulty indicator — filled dots showing wave intensity
-        const _waveArray = currentZone === 1 ? WAVES : currentZone === 2 ? ZONE2_WAVES : currentZone === 4 ? ZONE4_WAVES : currentZone === 5 ? ZONE5_WAVES : currentZone === 6 ? ZONE6_WAVES : ZONE3_WAVES;
-        const _maxWaves = _waveArray.length;
-        const _intensity = Math.min(5, Math.ceil(((wave.current + 1) / Math.max(1, _maxWaves)) * 5));
-        ctx.globalAlpha = wave.bannerAlpha * 0.4;
-        for (let di = 0; di < 5; di++) {
-            ctx.beginPath();
-            ctx.arc(cx - 20 + di * 10, cy + 46, 3, 0, Math.PI * 2);
-            if (di < _intensity) {
-                ctx.fillStyle = _intensity >= 5 ? '#cc4422' : _intensity >= 3 ? '#ddaa44' : '#88aa66';
-                ctx.fill();
-            } else {
-                ctx.strokeStyle = '#665544';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
+        // Subtitle (modifier info or atmospheric text) — smaller, below title
+        if (wave.bannerSub) {
+            ctx.font = 'italic 11px Georgia';
+            ctx.fillStyle = (wave.modifier && wave.modifier.color) ? wave.modifier.color : '#a09060';
+            ctx.globalAlpha = wave.bannerAlpha * 0.7;
+            ctx.fillText(wave.bannerSub, cx, ry + 13);
         }
 
-        // Decorative bottom line
-        drawDecorLine(cx, cy + 58, 140, wave.bannerAlpha * 0.5);
-
-        // Countdown number — large, pulsing
+        // Countdown integrated into ribbon — right side
         const countNum = Math.ceil(wave.timer);
-        if (countNum > 0 && countNum <= 3) {
-            const countPulse = 1 + (wave.timer % 1) * 0.15;
-            ctx.save();
-            ctx.translate(cx, cy + 82);
-            ctx.scale(countPulse, countPulse);
-            ctx.font = 'bold 52px Georgia';
-            ctx.globalAlpha = wave.bannerAlpha * 0.65;
+        if (countNum > 0 && countNum <= 5) {
+            ctx.font = 'bold 20px Georgia';
+            ctx.globalAlpha = wave.bannerAlpha * 0.5;
             ctx.fillStyle = '#ffd070';
-            ctx.shadowColor = 'rgba(255, 170, 40, 0.7)';
-            ctx.shadowBlur = 28;
-            ctx.fillText(countNum, 0, 0);
-            ctx.restore();
+            ctx.fillText(countNum, cx + 200, ry - 2);
         }
 
     } else if (wave.phase === 'fighting' || wave.phase === 'cleared' || wave.phase === 'zoneClear') {
-        const cy = canvasH * 0.16;
+        // ── POST-WAVE: slim ribbon for clear messages ──
+        const ry = 36;
         const isCleared = wave.phase === 'cleared' || wave.phase === 'zoneClear';
         const isZoneClear = wave.phase === 'zoneClear';
 
-        // Faint dark band
-        ctx.globalAlpha = wave.bannerAlpha * (isZoneClear ? 0.5 : 0.3);
-        const bandGrad = ctx.createLinearGradient(0, cy - 50, 0, cy + 50);
+        ctx.globalAlpha = wave.bannerAlpha * 0.4;
+        const bandGrad = ctx.createLinearGradient(cx - 250, 0, cx + 250, 0);
         bandGrad.addColorStop(0, 'rgba(0,0,0,0)');
-        bandGrad.addColorStop(0.3, 'rgba(0,0,0,0.6)');
-        bandGrad.addColorStop(0.7, 'rgba(0,0,0,0.6)');
+        bandGrad.addColorStop(0.2, 'rgba(0,0,0,0.5)');
+        bandGrad.addColorStop(0.8, 'rgba(0,0,0,0.5)');
         bandGrad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = bandGrad;
-        ctx.fillRect(0, cy - 50, canvasW, 100);
+        ctx.fillRect(cx - 250, ry - 16, 500, 32);
 
         ctx.globalAlpha = wave.bannerAlpha;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        ctx.font = isZoneClear ? '32px Georgia' : '28px Georgia';
-        ctx.fillStyle = isZoneClear ? '#e8d88c' : (isCleared ? '#b8c8a8' : '#e0d0a8');
-        ctx.shadowColor = isZoneClear ? 'rgba(230, 200, 80, 0.4)' : (isCleared ? 'rgba(150, 180, 130, 0.3)' : 'rgba(180, 150, 80, 0.3)');
-        ctx.shadowBlur = 10;
-        ctx.fillText(wave.bannerText, cx, cy);
+        ctx.font = isZoneClear ? '20px Georgia' : '18px Georgia';
+        ctx.fillStyle = isZoneClear ? '#e8d88c' : (isCleared ? '#b8c8a8' : '#d8c898');
+        ctx.shadowColor = 'rgba(180, 150, 80, 0.3)';
+        ctx.shadowBlur = 6;
+        ctx.fillText(wave.bannerText, cx, ry);
         ctx.shadowBlur = 0;
-
-        if (wave.bannerSub) {
-            ctx.font = 'italic 14px Georgia';
-            ctx.fillStyle = '#b09868';
-            ctx.globalAlpha = wave.bannerAlpha * 0.7;
-            ctx.fillText(wave.bannerSub, cx, cy + 24);
-        }
     }
 
     // --- Tension phase visual cues (between waves) ---
@@ -2832,8 +2817,9 @@ function updateEnemies(dt) {
                         life: 1.4, scale: 0.8 + multiKillCount * 0.15,
                     });
                     // Escalating feedback
-                    addScreenShake(2 + multiKillCount * 1.5, 0.1 + multiKillCount * 0.03);
-                    if (multiKillCount >= 4) addSlowMo(0.15, 0.35);
+                    addScreenShake(3 + multiKillCount * 2, 0.12 + multiKillCount * 0.04);
+                    if (multiKillCount >= 3) addSlowMo(0.12, 0.30);
+                    if (multiKillCount >= 5) addSlowMo(0.20, 0.20);
                 }
 
                 // ── Kill Streak tracking — builds multiplier for sustained aggression ──
@@ -2844,6 +2830,19 @@ function updateEnemies(dt) {
                 else if (killStreak.count >= 3) killStreak.multiplier = 1.5;
                 else killStreak.multiplier = 1.0;
                 killStreak.displayAlpha = 1.0;
+
+                // Talisman Echo: Residual Mass — heal on every Nth kill (echo of Slime absorb)
+                if (typeof hasTalismanEcho === 'function' && hasTalismanEcho('heal_on_kill')) {
+                    if (!wave._echoKillCount) wave._echoKillCount = 0;
+                    wave._echoKillCount++;
+                    var _echoData = getTalismanEcho('heal_on_kill');
+                    if (_echoData && wave._echoKillCount % _echoData.killInterval === 0) {
+                        var _echoHeal = (_echoData.healBase || 3) + (_echoData.healPerLevel || 0) * (FormSystem.talisman.level || 1);
+                        player.hp = Math.min(getPlayerMaxHP(), player.hp + _echoHeal);
+                        spawnParticle(player.row, player.col, 0, -1.5, 0.3, '#44dd66', 0.7);
+                        spawnParticle(player.row, player.col, (Math.random()-0.5)*2, -1, 0.25, '#66ff88', 0.5);
+                    }
+                }
 
                 // Bestiary tracking — record this kill in player profile
                 if (typeof playerProfile !== 'undefined') {
@@ -4891,6 +4890,19 @@ function checkProjectileEnemyHits() {
                     spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1, 0.25, COLORS.ELITE_THORNED_TINT, 0.7);
                 }
 
+                // Talisman Echo: Bone Rhythm — increment hit combo on projectile hit
+                if (typeof hasTalismanEcho === 'function' && hasTalismanEcho('spell_combo') && player._boneRhythmTimer > 0) {
+                    player._boneRhythmHits = (player._boneRhythmHits || 0) + 1;
+                    player._boneRhythmTimer = 1.5; // refresh window
+                    var _brEcho = getTalismanEcho('spell_combo');
+                    if (_brEcho && player._boneRhythmHits >= _brEcho.comboTarget) {
+                        player._boneRhythmHits = 0;
+                        player._boneRhythmSpeedBoost = _brEcho.boostDuration;
+                        if (typeof Notify !== 'undefined') Notify.toast('Bone Rhythm!', { duration: 1.5, color: '#ddcc88' });
+                        if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 10, '#ddcc88');
+                    }
+                }
+
                 // Marrow Spike upgrade (skeleton): bonus damage to low-HP enemies
                 if (p.isBone && typeof getUpgrade === 'function' && getUpgrade('marrow_spike') > 0 &&
                     e.maxHp > 0 && e.hp / e.maxHp < 0.3) {
@@ -5181,9 +5193,14 @@ function checkProjectileEnemyHits() {
                     // Boss kill: dramatic slow-mo
                     if (e.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
                 } else {
-                    e.state = 'hurt';
-                    e.hurtTimer = 0.3;
-                    e.animFrame = 0;
+                    // Stagger with cooldown (prevents perma-stagger on bosses)
+                    if (e.staggerCooldown <= 0) {
+                        const _projHurtDur = e.def.isBoss ? 0.15 : 0.3;
+                        e.state = 'hurt';
+                        e.hurtTimer = _projHurtDur;
+                        e.animFrame = 0;
+                        e.staggerCooldown = 0.3;
+                    }
                     sfxEnemyHurt(e.row, e.col);
                     // Spawn hit spark particle
                     const hitPos = tileToScreen(e.row, e.col);

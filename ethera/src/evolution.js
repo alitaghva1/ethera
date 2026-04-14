@@ -7,10 +7,10 @@
 const evolutionSurge = {
     active: false,
     timer: 0,
-    duration: 30,       // full surge lasts 30 seconds
-    fadeDuration: 10,   // fades over the last 10 seconds
-    dmgMult: 1.25,      // +25% damage during surge
-    speedMult: 1.15,    // +15% move speed during surge
+    duration: 45,       // extended from 30s — gives new form time to reveal strengths
+    fadeDuration: 15,   // fades over the last 15 seconds
+    dmgMult: 1.30,      // +30% damage during surge (boosted from 25%)
+    speedMult: 1.20,    // +20% move speed during surge (boosted from 15%)
 };
 
 // Returns current surge multipliers (1.0 when inactive)
@@ -238,23 +238,27 @@ function updateEvolution(dt) {
                 spawnParticleBurst(player.row, player.col, 40, _evoColor);
             }
 
-            // --- Form-specific starting bonuses ---
-            // Give each new form a head start so it feels immediately powerful
+            // --- Track form evolution history (for particle color echoes) ---
+            if (typeof FormSystem !== 'undefined') {
+                if (!FormSystem.formHistory) FormSystem.formHistory = [];
+                FormSystem.formHistory.push(FormSystem.previousForm || 'slime');
+            }
+
+            // --- Form-specific starting bonuses (enhanced for evolution feel) ---
             if (evolutionState.targetForm === 'skeleton') {
                 if (typeof skeletonState !== 'undefined') {
                     skeletonState.stamina = skeletonState.maxStamina || 100;
-                    skeletonState.boneAmmo = skeletonState.maxBoneAmmo || 6;
-                    skeletonState.comboCount = 2;  // start with a combo head-start
+                    skeletonState.boneAmmo = 10;     // boosted from 6 — reward for aggressive slime play
+                    skeletonState.comboCount = 3;     // boosted from 2 — momentum carried forward
                 }
             }
             if (evolutionState.targetForm === 'wizard') {
-                // Wizard already starts at full mana from the stat reset above.
-                // The surge buff handles the power spike feeling.
+                // Start with bonus mana — magical reserves from skeleton discipline
+                player.mana = 120;  // 20% over base max
             }
             if (evolutionState.targetForm === 'lich') {
                 if (typeof lichState !== 'undefined') {
-                    lichState.soulEnergy = 50;
-                    // Reset shadow step cooldown so player can immediately teleport
+                    lichState.soulEnergy = 80;        // boosted from 50 — arcane power carried forward
                     lichState.shadowStepCooldown = 0;
                 }
             }

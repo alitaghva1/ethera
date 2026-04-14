@@ -119,6 +119,7 @@ const Notify = {
      */
     toggleControls: function() {
         this.controlsVisible = !this.controlsVisible;
+        this.controlsAutoHideTimer = 0; // cancel auto-hide when manually toggled
     },
     
     /**
@@ -131,7 +132,7 @@ const Notify = {
         }
         this.controlsEverShown = true;
         this.controlsVisible = true;
-        this.controlsAutoHideTimer = 10; // auto-hide after 10 seconds
+        this.controlsAutoHideTimer = 4; // auto-hide quickly — player can press H to re-show
     },
     
     // ========== UPDATE ==========
@@ -257,42 +258,27 @@ const Notify = {
         if (this.toasts.length === 0) {
             return;
         }
-        
-        ctx.save();
-        
-        // Sort toasts by priority (higher priority first)
-        const sortedToasts = [...this.toasts].sort((a, b) => b.priority - a.priority);
-        
-        let y = canvasH * 0.28; // bottom-center area, above gameplay
-        const gap = 6;
-        const padding = 12;
-        const borderRadius = 4;
-        
-        for (const toast of sortedToasts) {
-            ctx.globalAlpha = toast.alpha * 0.8; // Text alpha
-            
-            ctx.font = toast.font;
-            const textMetrics = ctx.measureText(toast.message);
-            const textWidth = textMetrics.width;
-            const boxHeight = 24;
-            const boxWidth = textWidth + padding * 2;
-            const boxX = (canvasW - boxWidth) / 2;
-            const boxY = y;
-            
-            // Clean borderless style — text with subtle shadow, no box
-            ctx.globalAlpha = toast.alpha * 0.9;
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-            ctx.shadowBlur = 6;
-            ctx.fillStyle = toast.color;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = '12px Georgia';
-            ctx.fillText(toast.message, canvasW / 2, y);
-            ctx.shadowBlur = 0;
 
-            y += 22 + gap;
-        }
-        
+        ctx.save();
+
+        // Show only the HIGHEST PRIORITY toast — no stacking, peripheral position
+        const sortedToasts = [...this.toasts].sort((a, b) => b.priority - a.priority);
+        const toast = sortedToasts[0];
+
+        // Position: left-center edge — visible but not in the action zone
+        const x = 140;
+        const y = canvasH * 0.42;
+
+        ctx.globalAlpha = toast.alpha * 0.75;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = toast.color;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.font = '11px Georgia';
+        ctx.fillText(toast.message, x, y);
+        ctx.shadowBlur = 0;
+
         ctx.restore();
     },
     
@@ -330,7 +316,7 @@ const Notify = {
         const boxWidth = maxWidth + padding * 2;
         const boxHeight = controls.length * lineHeight + padding * 2 + 18; // +18 for [H] label
         const boxX = canvasW - boxWidth - margin;
-        const boxY = canvasH - boxHeight - margin - 100; // bottom-right, above HUD bars
+        const boxY = canvasH * 0.35; // right side, vertically centered — clear of quest tracker below and minimap above
 
         // Draw background box
         ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
