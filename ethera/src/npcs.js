@@ -291,41 +291,69 @@ function drawNPC(npc) {
         ctx.restore();
     }
 
-    // Colored glow ring at NPC's feet to distinguish from enemies
+    // Colored glow ring at NPC's feet — boosted visibility for identification
     if (npc.tint) {
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = (0.15 + Math.sin(performance.now() / 600 + npc.row) * 0.05) * baseAlpha;
-        const tGrad = ctx.createRadialGradient(sx, sy + 2 + ghostBob, 0, sx, sy + 2 + ghostBob, isGhost ? 25 : 20);
-        tGrad.addColorStop(0, `rgba(${npc.tint.r}, ${npc.tint.g}, ${npc.tint.b}, 0.5)`);
-        tGrad.addColorStop(1, `rgba(${npc.tint.r}, ${npc.tint.g}, ${npc.tint.b}, 0)`);
+        ctx.globalAlpha = (0.25 + Math.sin(performance.now() / 600 + npc.row) * 0.08) * baseAlpha; // boosted from 0.15
+        var _glowR = isGhost ? 30 : 26; // larger than before (was 20/25)
+        const tGrad = ctx.createRadialGradient(sx, sy + 2 + ghostBob, 0, sx, sy + 2 + ghostBob, _glowR);
+        tGrad.addColorStop(0, 'rgba(' + npc.tint.r + ',' + npc.tint.g + ',' + npc.tint.b + ',0.6)');
+        tGrad.addColorStop(0.6, 'rgba(' + npc.tint.r + ',' + npc.tint.g + ',' + npc.tint.b + ',0.2)');
+        tGrad.addColorStop(1, 'rgba(' + npc.tint.r + ',' + npc.tint.g + ',' + npc.tint.b + ',0)');
         ctx.fillStyle = tGrad;
         ctx.beginPath();
-        ctx.ellipse(sx, sy + 2 + ghostBob, isGhost ? 25 : 20, isGhost ? 10 : 9, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx, sy + 2 + ghostBob, _glowR, _glowR * 0.45, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
 
-    // Draw sprite — with subtle idle breathing bob
-    const breathBob = Math.sin(performance.now() / 1200 + npc.row * 2) * 0.8; // ~0.8px, ~5s cycle per NPC
+    // Draw sprite — with subtle idle breathing bob + color tint via filter
+    const breathBob = Math.sin(performance.now() / 1200 + npc.row * 2) * 0.8;
+    const _sprX = sx - dw / 2;
+    const _sprY = drawY + ghostBob + breathBob;
     ctx.save();
     ctx.globalAlpha = baseAlpha;
-    ctx.drawImage(sheet,
-        frame * npc.frameW, 0, npc.frameW, npc.frameH,
-        sx - dw / 2, drawY + ghostBob + breathBob, dw, dh);
+    // Apply CSS filter tint to differentiate NPC sprites by color
+    if (npc.tint) {
+        // Convert RGB tint to hue-rotate + saturate + brightness
+        var _tr = npc.tint.r, _tg = npc.tint.g, _tb = npc.tint.b;
+        var _hue = Math.round(Math.atan2(Math.sqrt(3) * (_tg - _tb), 2 * _tr - _tg - _tb) * 180 / Math.PI);
+        var _sat = Math.round(100 + (Math.max(_tr, _tg, _tb) - Math.min(_tr, _tg, _tb)) * 0.3);
+        var _bri = Math.round(80 + ((_tr + _tg + _tb) / 765) * 40);
+        try { ctx.filter = 'hue-rotate(' + _hue + 'deg) saturate(' + _sat + '%) brightness(' + _bri + '%)'; } catch(e) {}
+    }
+    ctx.drawImage(sheet, frame * npc.frameW, 0, npc.frameW, npc.frameH, _sprX, _sprY, dw, dh);
+    ctx.filter = 'none';
     ctx.restore();
 
-    // Name tag above NPC
+    // Name tag above NPC — with dark background panel for readability
     ctx.save();
-    ctx.globalAlpha = (isPaleQueen ? 0.8 : 0.6) * baseAlpha;
+    var _nameAlpha = (isPaleQueen ? 0.85 : 0.7) * baseAlpha;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.font = isPaleQueen ? 'bold 11px Georgia' : 'bold 10px monospace';
-    ctx.fillStyle = isPaleQueen ? '#cc99ff' : (isGhost ? '#aabbdd' : '#d4c4a0');
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.lineWidth = 2.5;
-    ctx.strokeText(npc.name, sx, drawY + ghostBob - 8);
-    ctx.fillText(npc.name, sx, drawY + ghostBob - 8);
+    ctx.textBaseline = 'middle';
+    ctx.font = isPaleQueen ? 'bold 11px Georgia' : 'bold 10px Georgia';
+    var _nameText = npc.name;
+    var _nameY = drawY + ghostBob - 14;
+    var _nameW = ctx.measureText(_nameText).width;
+    // Dark background pill for readability against any terrain
+    ctx.globalAlpha = _nameAlpha * 0.5;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.roundRect(sx - _nameW / 2 - 6, _nameY - 8, _nameW + 12, 16, 4);
+    ctx.fill();
+    // Name text with tint accent color
+    ctx.globalAlpha = _nameAlpha;
+    var _nameColor = isPaleQueen ? '#cc99ff' : (isGhost ? '#aabbdd' : '#e8d4aa');
+    if (npc.tint && !isPaleQueen && !isGhost) {
+        // Blend name color toward NPC's tint for identity
+        _nameColor = 'rgb(' + Math.round(220 + npc.tint.r * 0.1) + ',' + Math.round(200 + npc.tint.g * 0.1) + ',' + Math.round(160 + npc.tint.b * 0.1) + ')';
+    }
+    ctx.fillStyle = _nameColor;
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(_nameText, sx, _nameY);
+    ctx.shadowBlur = 0;
 
     // Service indicator icon above service NPCs — only after building rebuilt
     if ((npc.id === 'garrett' && _npcRebuilt) || (npc.id === 'senna' && _npcRebuilt)) {
