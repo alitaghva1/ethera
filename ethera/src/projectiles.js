@@ -374,7 +374,8 @@ function drawProjectiles() {
                 ctx.arc(px + Math.cos(ang) * dist, py + Math.sin(ang) * dist, 1.5, 0, Math.PI * 2);
                 ctx.fill();
             }
-        ctx.restore();
+            ctx.restore();
+        }
     }
 }
 
