@@ -56,8 +56,21 @@ async function loadAssets() {
     for (const [key, file] of Object.entries(NATURE_TILE_FILES)) {
         promises.push(loadImage(NATURE_PATH + file).then(img => { if (img) images[key] = img; }));
     }
-    // Load NPC-specific sprites (distinct from player and enemy sprites)
-    promises.push(loadImage(CHAR_PATH + 'Wizard/Wizard/Wizard-Idle.png').then(img => { if (img) images['npc_wizard_idle'] = img; }));
+    // Load dedicated NPC sprites (GandalfHardcore 64×64 pack — distinct from enemies)
+    var NPC_SPRITE_PATH = 'assets/npcs/';
+    var NPC_SPRITE_FILES = {
+        npc_blacksmith_idle:    'npc_blacksmith_idle.png',    // Garrett the Smith
+        npc_nun_idle:           'npc_nun_idle.png',           // Old Mira (elder herbalist)
+        npc_crusader_idle:      'npc_crusader_idle.png',      // Captain Aldric (guard)
+        npc_mage_idle:          'npc_mage_idle.png',          // The Hermit (mystic sage)
+        npc_plaguedoctor_idle:  'npc_plaguedoctor_idle.png',  // Senna the Alchemist
+        npc_woundedknight_idle: 'npc_woundedknight_idle.png', // Fading Pilgrim (ghost)
+    };
+    for (var _nk in NPC_SPRITE_FILES) {
+        (function(key, file) {
+            promises.push(loadImage(NPC_SPRITE_PATH + file).then(function(img) { if (img) images[key] = img; }));
+        })(_nk, NPC_SPRITE_FILES[_nk]);
+    }
 
     // Load NPC dialogue portraits (32×32px Veil of Darkness dark fantasy pixel art)
     const PORTRAIT_FILES = {

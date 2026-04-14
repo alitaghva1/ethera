@@ -34,13 +34,14 @@ const NPC_REGISTRY = {
             id: 'garrett',
             name: 'Garrett the Smith',
             portrait: 'portrait_garrett', // dark-bearded craftsman
-            row: 16, col: 8, // moved from (15,6) — 2 tiles from forge rebuild point, toward road
+            row: 16, col: 8,
             zone: 0,
-            spriteKey: 'enemy_armoredskel_idle',
-            frameCount: 6,
-            frameW: 100, frameH: 100,
-            scale: 1.7, // scaled up for visibility
-            tint: { r: 255, g: 160, b: 80, a: 0.45 }, // warm orange (forge fire)
+            spriteKey: 'npc_blacksmith_idle', // GandalfHardcore — burly smith in work apron
+            frameCount: 5,
+            frameW: 64, frameH: 64,
+            scale: 2.5,
+            tint: { r: 255, g: 160, b: 80, a: 0.45 }, // warm orange (glow/UI only)
+            noSpriteTint: true, // dedicated sprite — skip CSS filter
             dialogue: [
                 'The hammer keeps me focused. Without it, I start to forget things.',
                 'You need something forged? Good. Keeps the fire alive. Keeps me alive.',
@@ -55,11 +56,12 @@ const NPC_REGISTRY = {
             portrait: 'portrait_mira', // weathered elder who remembers Elara
             row: 10, col: 12,
             zone: 0,
-            spriteKey: 'npc_wizard_idle', // robed figure — distinct from skeleton enemies
-            frameCount: 6,
-            frameW: 100, frameH: 100,
-            scale: 1.6, // scaled up from 1.5 for visibility
-            tint: { r: 180, g: 255, b: 180, a: 0.5 }, // soft green (herbalist)
+            spriteKey: 'npc_nun_idle', // GandalfHardcore — elderly robed woman, devoted
+            frameCount: 5,
+            frameW: 64, frameH: 64,
+            scale: 2.4,
+            tint: { r: 180, g: 255, b: 180, a: 0.5 }, // soft green (glow/UI only)
+            noSpriteTint: true,
             dialogue: [
                 'I keep forgetting things. But I remember her. Elara. She walked through here and the ground felt warm.',
                 'We\'re all still here. I don\'t know why. The others don\'t ask.',
@@ -74,11 +76,12 @@ const NPC_REGISTRY = {
             portrait: 'portrait_aldric', // armored duty-bound captain
             row: 7, col: 8,
             zone: 0,
-            spriteKey: 'enemy_werewolf_idle', // beastly guard — unique silhouette vs other NPCs
-            frameCount: 6,
-            frameW: 100, frameH: 100,
-            scale: 1.7,
-            tint: { r: 120, g: 160, b: 255, a: 0.5 }, // bright steel blue (captain)
+            spriteKey: 'npc_crusader_idle', // GandalfHardcore — armored knight with sword+shield
+            frameCount: 5,
+            frameW: 64, frameH: 64,
+            scale: 2.5,
+            tint: { r: 120, g: 160, b: 255, a: 0.5 }, // steel blue (glow/UI only)
+            noSpriteTint: true,
             dialogue: [
                 'I guard the north road. Against what, I can\'t remember. But I guard it.',
                 'Used to be more of us. Don\'t know where they went. Maybe they just stopped.',
@@ -91,13 +94,14 @@ const NPC_REGISTRY = {
             id: 'hermit',
             name: 'The Hermit',
             portrait: 'portrait_hermit', // hooded mystic sage
-            row: 7, col: 22, // moved from (6,24) — 2 tiles from hut rebuild, toward road
+            row: 7, col: 22,
             zone: 0,
-            spriteKey: 'enemy_palequeen_idle',
-            frameCount: 8,
-            frameW: 100, frameH: 100,
-            scale: 1.6, // scaled up from 1.5
-            tint: { r: 180, g: 120, b: 255, a: 0.4 }, // mystical purple
+            spriteKey: 'npc_mage_idle', // GandalfHardcore — robed mystic with purple magic
+            frameCount: 5,
+            frameW: 64, frameH: 64,
+            scale: 2.4,
+            tint: { r: 180, g: 120, b: 255, a: 0.4 }, // mystical purple (glow/UI only)
+            noSpriteTint: true,
             dialogue: [
                 'You died, you know. Most people don\'t get back up.',
                 'The talisman you carry \u2014 she had one just like it. Do you feel it pulling?',
@@ -112,11 +116,12 @@ const NPC_REGISTRY = {
             portrait: 'portrait_senna', // sharp-eyed alchemist researcher
             row: 16, col: 22,
             zone: 0,
-            spriteKey: 'enemy_bonemage_idle', // robed caster — alchemist/researcher silhouette
-            frameCount: 3, // BoneMage idle sprite has 3 frames (not 6)
-            frameW: 100, frameH: 100,
-            scale: 1.6, // scaled up from 1.5 for visibility
-            tint: { r: 255, g: 220, b: 80, a: 0.5 }, // bright gold (alchemist)
+            spriteKey: 'npc_plaguedoctor_idle', // GandalfHardcore — beaked mask, alchemist/researcher
+            frameCount: 5,
+            frameW: 64, frameH: 64,
+            scale: 2.4,
+            tint: { r: 255, g: 220, b: 80, a: 0.5 }, // bright gold (glow/UI only)
+            noSpriteTint: true,
             dialogue: [
                 'I mix things. Potions, elixirs. I keep hoping one of them will make me feel warm again.',
                 'Frost Essence from the frozen reaches \u2014 I need it. Not for a potion. For a theory.',
@@ -133,11 +138,12 @@ const NPC_REGISTRY = {
             portrait: 'portrait_pilgrim', // hollowed ghost who failed to reach Elara
             row: 10, col: 14,
             zone: 4,
-            spriteKey: 'enemy_skel_idle',
-            frameCount: 6,
-            frameW: 100, frameH: 100,
-            scale: 1.3,
+            spriteKey: 'npc_woundedknight_idle', // GandalfHardcore — damaged armor, leaning on sword
+            frameCount: 5,
+            frameW: 64, frameH: 64,
+            scale: 2.2,
             tint: { r: 200, g: 220, b: 255, a: 0.3 },
+            noSpriteTint: true,
             isGhost: true,  // custom rendering flag
             dialogue: [
                 'You can still turn back. I couldn\'t.',
@@ -333,9 +339,8 @@ function drawNPC(npc) {
     const _sprY = drawY + ghostBob + breathBob;
     ctx.save();
     ctx.globalAlpha = baseAlpha;
-    // Apply CSS filter tint to differentiate NPC sprites by color
-    if (npc.tint) {
-        // Convert RGB tint to hue-rotate + saturate + brightness
+    // Apply CSS filter tint ONLY for NPCs using shared enemy sprites (not dedicated NPC art)
+    if (npc.tint && !npc.noSpriteTint) {
         var _tr = npc.tint.r, _tg = npc.tint.g, _tb = npc.tint.b;
         var _denominator = 2 * _tr - _tg - _tb;
         var _hue = (_denominator === 0 && _tg === _tb) ? 0
@@ -345,7 +350,10 @@ function drawNPC(npc) {
         var _bri = Math.round(80 + ((_tr + _tg + _tb) / 765) * 40);
         try { ctx.filter = 'hue-rotate(' + _hue + 'deg) saturate(' + _sat + '%) brightness(' + _bri + '%)'; } catch(e) {}
     }
+    // Disable smoothing for pixel art upscaling (64→160px stays crisp)
+    if (npc.noSpriteTint) ctx.imageSmoothingEnabled = false;
     ctx.drawImage(sheet, frame * npc.frameW, 0, npc.frameW, npc.frameH, _sprX, _sprY, dw, dh);
+    ctx.imageSmoothingEnabled = true;
     ctx.filter = 'none';
     ctx.restore();
 
