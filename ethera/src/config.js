@@ -633,6 +633,19 @@ const OVERWORLD_TILE_FILES = {
     ow_treePineH:       'treePineHuge_S.png',
     ow_treeDeadL:       'treeDeadLarge_S.png',
     ow_treeDeadS:       'treeDeadSmall_S.png',
+    // AI-generated hamlet trees (richer detail)
+    ow_treeAutumnOak:   'tree_autumn_oak_S.png',
+    ow_treeDarkWillow:  'tree_dark_willow_S.png',
+    ow_treeDeadGnarled: 'tree_dead_gnarled_S.png',
+    ow_treeWildShrub:   'tree_wild_shrub_S.png',
+    // AI-generated building props
+    ow_forgeFurnace:    'prop_forge_furnace_S.png',
+    ow_forgeAnvil:      'prop_forge_anvil_S.png',
+    ow_weaponRack:      'prop_weapon_rack_S.png',
+    ow_potionShelf:     'prop_potion_shelf_S.png',
+    ow_cauldron:        'prop_cauldron_S.png',
+    ow_well:            'prop_well_S.png',
+    ow_crystalBall:     'prop_crystal_ball_S.png',
 };
 
 // ----- KENNEY MINIATURE FARM TILES (256×512px) -----

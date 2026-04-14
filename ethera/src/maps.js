@@ -1432,7 +1432,7 @@ function generateTown() {
         fillFloor(10, 13, 11, 17, 'stoneTile');
         floorMap[10][14] = 'stoneInset';
         floorMap[10][16] = 'stoneInset';
-        placeObj(10, 15, 'stoneColumn');       // restored monument
+        placeObj(10, 15, 'ow_well');           // AI stone well — hamlet centerpiece
         placeObj(9, 14, 'stoneColumn');
         placeObj(9, 16, 'stoneColumn');
         placeObj(10, 12, 'barrel');
@@ -1467,8 +1467,8 @@ function generateTown() {
     fillFloor(14, 8, 17, 8, 'stoneTile');
     // Interior props — functional or rubble depending on rebuild state
     if (_forgeRebuilt) {
-        placeObj(14, 5, 'stoneColumn');      // anvil proxy
-        placeObj(14, 7, 'woodenSupports');   // weapon rack
+        placeObj(14, 5, 'ow_forgeAnvil');    // glowing anvil
+        placeObj(14, 7, 'ow_forgeFurnace');  // stone furnace with fire
         placeObj(16, 7, 'barrel');           // storage
         placeObj(16, 4, 'fm_hayBales');      // fuel storage (farm hay)
         placeObj(17, 3, 'lib_candleStand', false); // forge light
@@ -1505,8 +1505,8 @@ function generateTown() {
     fillFloor(14, 22, 17, 22, 'stoneTile');
     // Interior props — functional or rubble
     if (_shopRebuilt) {
-        placeObj(14, 24, 'lib_bookcaseHalf'); // ingredient shelf
-        placeObj(14, 26, 'lib_displayCase');  // potion display case
+        placeObj(14, 24, 'ow_potionShelf');   // AI potion shelf with colorful bottles
+        placeObj(14, 26, 'ow_cauldron');      // AI bubbling alchemy cauldron
         placeObj(16, 23, 'barrel');           // ingredient barrel
         placeObj(16, 26, 'lib_candleDouble', false); // alchemy light
         placeObj(17, 27, 'fm_sacksCrate', false);    // supply sacks outside
@@ -1540,8 +1540,8 @@ function generateTown() {
     fillFloor(5, 8, 8, 8, 'stone');
     // Interior props — functional or rubble
     if (_guardRebuilt) {
-        placeObj(5, 5, 'woodenSupports');     // weapon rack
-        placeObj(5, 7, 'woodenSupports');     // weapon rack
+        placeObj(5, 5, 'ow_weaponRack');      // AI weapon rack with swords & shields
+        placeObj(5, 7, 'woodenSupports');     // second rack (keep generic for variety)
         placeObj(7, 4, 'woodenCrate');        // supply crate
         placeObj(7, 7, 'stoneColumn');        // support column
     } else {
@@ -1576,7 +1576,7 @@ function generateTown() {
         floorMap[6][24] = 'lib_carpet';
         floorMap[6][25] = 'lib_carpet';
         placeObj(5, 24, 'lib_bookcase');       // arcane bookcase
-        placeObj(5, 26, 'lib_bookStand');       // reading stand
+        placeObj(5, 26, 'ow_crystalBall');     // AI crystal ball on stool
         placeObj(7, 26, 'lib_candleStand', false);
         placeObj(7, 23, 'lib_chair', false);
     } else {
@@ -1645,26 +1645,26 @@ function generateTown() {
     // Gate pillars + trees near north wall
     placeObj(2, 13, 'stoneColumn');
     placeObj(2, 17, 'stoneColumn');
-    // Overworld trees around hamlet perimeter
-    placeObj(2, 4, 'ow_treePineL');
-    placeObj(2, 26, 'ow_treePineL');
-    placeObj(3, 8, 'ow_treePineS');
-    placeObj(3, 21, 'ow_treePineS');
-    placeObj(18, 4, 'ow_treePineL');
-    placeObj(18, 26, 'ow_treePineL');
-    placeObj(20, 8, 'ow_treeDeadL');
-    placeObj(20, 22, 'ow_treeDeadL');
-    placeObj(27, 5, 'ow_treePineS');
-    placeObj(27, 25, 'ow_treePineS');
+    // Overworld trees around hamlet perimeter (AI-generated)
+    placeObj(2, 4, 'ow_treeAutumnOak');       // NW corner — warm welcoming oak
+    placeObj(2, 26, 'ow_treeAutumnOak');      // NE corner — matching oak
+    placeObj(3, 8, 'ow_treeWildShrub');       // north edge filler
+    placeObj(3, 21, 'ow_treeWildShrub');      // north edge filler
+    placeObj(18, 4, 'ow_treeDarkWillow');     // SW — moody willow near dungeon
+    placeObj(18, 26, 'ow_treeDarkWillow');   // SE — matching willow pair
+    placeObj(20, 8, 'ow_treeDeadGnarled');    // south — dead trees near dungeon
+    placeObj(20, 22, 'ow_treeDeadGnarled');   // south — matching dead pair
+    placeObj(27, 5, 'ow_treeWildShrub');      // far south shrubs
+    placeObj(27, 25, 'ow_treeWildShrub');     // far south shrubs
     // Additional tree clusters for boundary definition
-    placeObj(1, 10, 'ow_treePineS');
-    placeObj(1, 20, 'ow_treePineS');
-    placeObj(10, 2, 'ow_treePineL');
-    placeObj(11, 3, 'ow_treePineS');
-    placeObj(10, 27, 'ow_treePineL');
-    placeObj(11, 26, 'ow_treePineS');
-    placeObj(25, 10, 'ow_treeDeadS');
-    placeObj(25, 20, 'ow_treeDeadS');
+    placeObj(1, 10, 'ow_treeWildShrub');      // north boundary filler
+    placeObj(1, 20, 'ow_treeWildShrub');      // north boundary filler
+    placeObj(10, 2, 'ow_treeAutumnOak');      // west boundary — big oak
+    placeObj(11, 3, 'ow_treeWildShrub');      // west undergrowth
+    placeObj(10, 27, 'ow_treeDarkWillow');    // east boundary — willow
+    placeObj(11, 26, 'ow_treeWildShrub');     // east undergrowth
+    placeObj(25, 10, 'ow_treeDeadGnarled');   // south — dead near dungeon
+    placeObj(25, 20, 'ow_treeDeadGnarled');   // south — dead near dungeon
 
     // ===== 12. ROAD LANTERN COLUMNS =====
     placeObj(4, 15, 'lib_candleStand');     // north road lantern

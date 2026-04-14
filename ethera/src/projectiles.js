@@ -139,21 +139,30 @@ function drawProjectiles() {
             ctx.fill();
             ctx.restore();
 
-            // Acid blob (green slimy)
-            ctx.save();
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = 'rgba(70, 210, 40, 0.9)';
-            ctx.beginPath();
-            ctx.arc(px, py, p.size, 0, Math.PI * 2);
-            ctx.fill();
-            // Shiny spot
-            ctx.globalAlpha = 0.5;
-            ctx.fillStyle = '#ccffcc';
-            ctx.beginPath();
-            ctx.arc(px - p.size * 0.3, py - p.size * 0.3, p.size * 0.4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+            // Sprite-based acid blob (AI-generated frames)
+            const acidFrame = Math.floor((p.life / p.maxLife) * 6) % 6;
+            const acidSprite = images['proj_acid_' + acidFrame];
+            if (acidSprite) {
+                ctx.save();
+                ctx.imageSmoothingEnabled = false;
+                const acidSz = p.size * 4;
+                ctx.drawImage(acidSprite, px - acidSz / 2, py - acidSz / 2, acidSz, acidSz);
+                ctx.restore();
+            } else {
+                // Procedural fallback
+                ctx.save();
+                ctx.globalAlpha = 0.85;
+                ctx.fillStyle = 'rgba(70, 210, 40, 0.9)';
+                ctx.beginPath();
+                ctx.arc(px, py, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = '#ccffcc';
+                ctx.beginPath();
+                ctx.arc(px - p.size * 0.3, py - p.size * 0.3, p.size * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
             continue;
         }
 
@@ -173,41 +182,37 @@ function drawProjectiles() {
             ctx.fill();
             ctx.restore();
 
-            // Bone shard — brighter ivory with green energy edge
-            ctx.save();
-            ctx.globalAlpha = 0.92;
-            const bScreenX = (p.vc - p.vr);
-            const bScreenY = (p.vc + p.vr) * 0.5;
-            const bAngle = Math.atan2(bScreenY, bScreenX);
-            ctx.translate(px, py);
-            ctx.rotate(bAngle);
-            // Outer glow halo
-            ctx.save();
-            ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = 0.35;
-            ctx.fillStyle = 'rgba(180, 220, 120, 0.5)';
-            ctx.beginPath();
-            ctx.moveTo(-p.size * 1.6, 0);
-            ctx.lineTo(-p.size * 0.5, -p.size * 0.8);
-            ctx.lineTo(p.size * 1.6, 0);
-            ctx.lineTo(-p.size * 0.5, p.size * 0.8);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-            // Core bone shape — bright warm white
-            ctx.fillStyle = '#f0ecd4';
-            ctx.beginPath();
-            ctx.moveTo(-p.size * 1.2, 0);
-            ctx.lineTo(-p.size * 0.4, -p.size * 0.5);
-            ctx.lineTo(p.size * 1.2, 0);
-            ctx.lineTo(-p.size * 0.4, p.size * 0.5);
-            ctx.closePath();
-            ctx.fill();
-            // Bright highlight edge
-            ctx.strokeStyle = 'rgba(255, 255, 220, 0.8)';
-            ctx.lineWidth = 1.0;
-            ctx.stroke();
-            ctx.restore();
+            // Bone shard — sprite-based (AI-generated spinning bone with soul energy)
+            const boneFrame = Math.floor(((performance.now() / 1000) * 8 + p.row * 3) % 6);
+            const boneSprite = images['proj_bone_' + boneFrame];
+            if (boneSprite) {
+                ctx.save();
+                ctx.imageSmoothingEnabled = false;
+                const boneSz = p.size * 5;
+                ctx.drawImage(boneSprite, px - boneSz / 2, py - boneSz / 2, boneSz, boneSz);
+                ctx.restore();
+            } else {
+                // Procedural fallback
+                ctx.save();
+                ctx.globalAlpha = 0.92;
+                const bScreenX = (p.vc - p.vr);
+                const bScreenY = (p.vc + p.vr) * 0.5;
+                const bAngle = Math.atan2(bScreenY, bScreenX);
+                ctx.translate(px, py);
+                ctx.rotate(bAngle);
+                ctx.fillStyle = '#f0ecd4';
+                ctx.beginPath();
+                ctx.moveTo(-p.size * 1.2, 0);
+                ctx.lineTo(-p.size * 0.4, -p.size * 0.5);
+                ctx.lineTo(p.size * 1.2, 0);
+                ctx.lineTo(-p.size * 0.4, p.size * 0.5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255, 255, 220, 0.8)';
+                ctx.lineWidth = 1.0;
+                ctx.stroke();
+                ctx.restore();
+            }
             continue;
         }
 
@@ -227,27 +232,31 @@ function drawProjectiles() {
             ctx.fill();
             ctx.restore();
 
-            // Soul bolt (dark purple sphere with glow)
-            ctx.save();
-            ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = 0.8;
-            ctx.fillStyle = 'rgba(150, 60, 220, 0.9)';
-            ctx.beginPath();
-            ctx.arc(px, py, p.size, 0, Math.PI * 2);
-            ctx.fill();
-            // Dark inner core
-            ctx.globalAlpha = 0.6;
-            ctx.fillStyle = 'rgba(80, 20, 140, 0.8)';
-            ctx.beginPath();
-            ctx.arc(px, py, p.size * 0.6, 0, Math.PI * 2);
-            ctx.fill();
-            // Magical sparkle spot
-            ctx.globalAlpha = 0.7;
-            ctx.fillStyle = '#dd88ff';
-            ctx.beginPath();
-            ctx.arc(px - p.size * 0.35, py - p.size * 0.35, p.size * 0.35, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+            // Soul bolt — sprite-based (AI-generated purple soul energy)
+            const soulFrame = Math.floor(((performance.now() / 1000) * 8 + p.col * 2) % 6);
+            const soulSprite = images['proj_soul_' + soulFrame];
+            if (soulSprite) {
+                ctx.save();
+                ctx.imageSmoothingEnabled = false;
+                const soulSz = p.size * 5;
+                ctx.drawImage(soulSprite, px - soulSz / 2, py - soulSz / 2, soulSz, soulSz);
+                ctx.restore();
+            } else {
+                // Procedural fallback
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = 'rgba(150, 60, 220, 0.9)';
+                ctx.beginPath();
+                ctx.arc(px, py, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 0.6;
+                ctx.fillStyle = 'rgba(80, 20, 140, 0.8)';
+                ctx.beginPath();
+                ctx.arc(px, py, p.size * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
             continue;
         }
 
@@ -309,26 +318,36 @@ function drawProjectiles() {
         ctx.restore();
 
         // --- Fireball sprite ---
-        const fbImg = images.fireball;
-        if (fbImg) {
-            const frame = Math.floor(p.animTime * 14) % FIREBALL_FRAMES;
-            const fbScale = 0.55; // scale the 100x100 sprite down
-            const dw = FIREBALL_FRAME_W * fbScale;
-            const dh = FIREBALL_FRAME_H * fbScale;
-
+        const fbFrame = Math.floor(p.animTime * 10) % 6;
+        const fbAI = images['proj_fireball_' + fbFrame];
+        if (fbAI) {
             ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            const fbSz = p.size * 5;
             ctx.translate(px, py);
             ctx.rotate(p.angle);
-            ctx.globalCompositeOperation = 'screen';
-            ctx.drawImage(fbImg,
-                frame * FIREBALL_FRAME_W, 0, FIREBALL_FRAME_W, FIREBALL_FRAME_H,
-                -dw / 2, -dh / 2, dw, dh);
-            // Draw again brighter for intensity
-            ctx.globalAlpha = 0.5;
-            ctx.drawImage(fbImg,
-                frame * FIREBALL_FRAME_W, 0, FIREBALL_FRAME_W, FIREBALL_FRAME_H,
-                -dw / 2, -dh / 2, dw, dh);
+            ctx.drawImage(fbAI, -fbSz / 2, -fbSz / 2, fbSz, fbSz);
             ctx.restore();
+        } else {
+            const fbImg = images.fireball;
+            if (fbImg) {
+                const frame = Math.floor(p.animTime * 14) % FIREBALL_FRAMES;
+                const fbScale = 0.55;
+                const dw = FIREBALL_FRAME_W * fbScale;
+                const dh = FIREBALL_FRAME_H * fbScale;
+                ctx.save();
+                ctx.translate(px, py);
+                ctx.rotate(p.angle);
+                ctx.globalCompositeOperation = 'screen';
+                ctx.drawImage(fbImg,
+                    frame * FIREBALL_FRAME_W, 0, FIREBALL_FRAME_W, FIREBALL_FRAME_H,
+                    -dw / 2, -dh / 2, dw, dh);
+                ctx.globalAlpha = 0.5;
+                ctx.drawImage(fbImg,
+                    frame * FIREBALL_FRAME_W, 0, FIREBALL_FRAME_W, FIREBALL_FRAME_H,
+                    -dw / 2, -dh / 2, dw, dh);
+                ctx.restore();
+            }
         }
 
         // --- White-yellow hot core ---

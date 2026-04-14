@@ -1955,16 +1955,18 @@ function drawMenuButton(btn, isHovered, alpha, disabled) {
 
     // Button background with subtle inner gradient
     const hoverGlow = isHovered ? 0.25 : 0;
+    const hasBgArt = !!images.menu_title_bg;
+    const baseOpacity = hasBgArt ? 0.8 : 0.65;  // more opaque over busy art
     const btnGrad = ctx.createLinearGradient(btn.x, btn.y, btn.x, btn.y + btn.h);
-    btnGrad.addColorStop(0, `rgba(30, 22, 14, ${0.65 + hoverGlow})`);
-    btnGrad.addColorStop(1, `rgba(12, 8, 4, ${0.75 + hoverGlow})`);
+    btnGrad.addColorStop(0, `rgba(30, 22, 14, ${baseOpacity + hoverGlow})`);
+    btnGrad.addColorStop(1, `rgba(12, 8, 4, ${baseOpacity + 0.1 + hoverGlow})`);
     ctx.fillStyle = btnGrad;
     ctx.beginPath();
     ctx.roundRect(btn.x, btn.y, btn.w, btn.h, 4);
     ctx.fill();
 
     // Border
-    const borderAlpha = isHovered ? 0.6 : 0.2;
+    const borderAlpha = isHovered ? 0.6 : (hasBgArt ? 0.35 : 0.2);
     const borderColor = isHovered ? `rgba(212, 180, 120, ${borderAlpha})` : `rgba(140, 120, 80, ${borderAlpha})`;
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = isHovered ? 1.5 : 1;
@@ -2011,7 +2013,7 @@ function drawMenuButton(btn, isHovered, alpha, disabled) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = '14px monospace';
-    ctx.fillStyle = isHovered ? '#e8d8b0' : '#a09070';
+    ctx.fillStyle = isHovered ? '#e8d8b0' : (hasBgArt ? '#b8a880' : '#a09070');
     ctx.letterSpacing = '3px';
     ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
     ctx.letterSpacing = '0px';
@@ -2066,20 +2068,55 @@ function drawMenuScreen(dt) {
     const t = menuTime;
 
     // ----- Background -----
-    // Deep dark gradient
-    const bgGrad = ctx.createRadialGradient(cx, cy * 0.7, 0, cx, cy * 0.7, canvasW * 0.7);
-    bgGrad.addColorStop(0, '#0d0906');
-    bgGrad.addColorStop(0.5, '#080504');
-    bgGrad.addColorStop(1, '#030202');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, canvasW, canvasH);
+    const bgImg = images.menu_title_bg;
+    if (bgImg) {
+        // "Cover" scaling — fill canvas, crop overflow, center
+        const imgAspect = bgImg.width / bgImg.height;
+        const canAspect = canvasW / canvasH;
+        let drawW, drawH, drawX, drawY;
+        if (canAspect > imgAspect) {
+            // Canvas is wider — fit width, crop height
+            drawW = canvasW;
+            drawH = canvasW / imgAspect;
+            drawX = 0;
+            drawY = (canvasH - drawH) / 2;
+        } else {
+            // Canvas is taller — fit height, crop width
+            drawH = canvasH;
+            drawW = canvasH * imgAspect;
+            drawX = (canvasW - drawW) / 2;
+            drawY = 0;
+        }
+        ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
 
-    // Subtle warm vignette at bottom
-    const vigGrad = ctx.createLinearGradient(0, canvasH * 0.6, 0, canvasH);
-    vigGrad.addColorStop(0, 'rgba(40, 20, 5, 0)');
-    vigGrad.addColorStop(1, `rgba(30, 12, 3, ${0.15 + Math.sin(t * 0.8) * 0.05})`);
-    ctx.fillStyle = vigGrad;
-    ctx.fillRect(0, canvasH * 0.6, canvasW, canvasH * 0.4);
+        // Subtle darkening vignette at edges so buttons/text read clearly
+        const edgeVig = ctx.createRadialGradient(cx, cy * 0.7, canvasW * 0.25, cx, cy * 0.7, canvasW * 0.75);
+        edgeVig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        edgeVig.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+        ctx.fillStyle = edgeVig;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Bottom darkening so buttons are legible
+        const bottomVig = ctx.createLinearGradient(0, canvasH * 0.55, 0, canvasH);
+        bottomVig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        bottomVig.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
+        ctx.fillStyle = bottomVig;
+        ctx.fillRect(0, canvasH * 0.55, canvasW, canvasH * 0.45);
+    } else {
+        // Fallback — original procedural background
+        const bgGrad = ctx.createRadialGradient(cx, cy * 0.7, 0, cx, cy * 0.7, canvasW * 0.7);
+        bgGrad.addColorStop(0, '#0d0906');
+        bgGrad.addColorStop(0.5, '#080504');
+        bgGrad.addColorStop(1, '#030202');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        const vigGrad = ctx.createLinearGradient(0, canvasH * 0.6, 0, canvasH);
+        vigGrad.addColorStop(0, 'rgba(40, 20, 5, 0)');
+        vigGrad.addColorStop(1, `rgba(30, 12, 3, ${0.15 + Math.sin(t * 0.8) * 0.05})`);
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, canvasH * 0.6, canvasW, canvasH * 0.4);
+    }
 
     // ----- Floating embers -----
     ctx.save();
@@ -2116,36 +2153,71 @@ function drawMenuScreen(dt) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Title glow
-    ctx.globalCompositeOperation = 'screen';
-    const titleGlow = ctx.createRadialGradient(cx, cy - 60, 0, cx, cy - 60, 260);
-    titleGlow.addColorStop(0, `rgba(180, 130, 50, ${0.12 + Math.sin(t * 1.5) * 0.04})`);
-    titleGlow.addColorStop(0.5, `rgba(120, 80, 20, ${0.04})`);
-    titleGlow.addColorStop(1, 'rgba(60, 30, 5, 0)');
-    ctx.fillStyle = titleGlow;
-    ctx.fillRect(cx - 300, cy - 200, 600, 300);
+    // Title vertical position — push up into the arch top when bg art is present
+    const titleY = images.menu_title_bg ? canvasH * 0.18 : cy - 60;
 
-    ctx.globalCompositeOperation = 'source-over';
+    const logoImg = images.menu_title_logo;
 
-    // Title text
-    ctx.font = '62px Georgia';
-    ctx.shadowColor = 'rgba(200, 140, 40, 0.4)';
-    ctx.shadowBlur = 30;
-    ctx.fillStyle = '#d4b878';
-    ctx.fillText('ETHERA', cx, cy - 60);
-    ctx.shadowBlur = 0;
+    if (logoImg) {
+        // ── Sprite-based title ──
+        // Scale logo to fit ~35% of canvas width, maintaining aspect ratio
+        const logoTargetW = canvasW * 0.35;
+        const logoScale = logoTargetW / logoImg.width;
+        const logoW = logoImg.width * logoScale;
+        const logoH = logoImg.height * logoScale;
 
-    // Subtitle
-    ctx.font = 'italic 16px Georgia';
-    ctx.fillStyle = '#8a7a5a';
-    ctx.globalAlpha = menuFadeAlpha * (0.5 + Math.sin(t * 2) * 0.15);
-    ctx.fillText('The Awakening', cx, cy - 20);
+        // Subtle pulsing green glow behind logo — matches portal energy
+        ctx.globalCompositeOperation = 'screen';
+        const titleGlow = ctx.createRadialGradient(cx, titleY, 0, cx, titleY, logoW * 0.55);
+        titleGlow.addColorStop(0, `rgba(40, 180, 80, ${0.05 + Math.sin(t * 1.5) * 0.025})`);
+        titleGlow.addColorStop(0.6, `rgba(20, 100, 40, ${0.02})`);
+        titleGlow.addColorStop(1, 'rgba(10, 40, 15, 0)');
+        ctx.fillStyle = titleGlow;
+        ctx.fillRect(cx - logoW, titleY - logoH, logoW * 2, logoH * 2);
+        ctx.globalCompositeOperation = 'source-over';
+
+        // Draw logo sprite centered at titleY
+        ctx.globalAlpha = menuFadeAlpha;
+        ctx.drawImage(logoImg, cx - logoW / 2, titleY - logoH / 2, logoW, logoH);
+    } else {
+        // ── Fallback: text-based title ──
+        if (images.menu_title_bg) {
+            ctx.globalAlpha = menuFadeAlpha * 0.5;
+            const stripGrad = ctx.createRadialGradient(cx, titleY, 0, cx, titleY, 280);
+            stripGrad.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
+            stripGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.2)');
+            stripGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = stripGrad;
+            ctx.fillRect(cx - 300, titleY - 60, 600, 120);
+            ctx.globalAlpha = menuFadeAlpha;
+        }
+
+        ctx.globalCompositeOperation = 'screen';
+        const titleGlow = ctx.createRadialGradient(cx, titleY, 0, cx, titleY, 260);
+        titleGlow.addColorStop(0, `rgba(180, 130, 50, ${0.12 + Math.sin(t * 1.5) * 0.04})`);
+        titleGlow.addColorStop(0.5, `rgba(120, 80, 20, ${0.04})`);
+        titleGlow.addColorStop(1, 'rgba(60, 30, 5, 0)');
+        ctx.fillStyle = titleGlow;
+        ctx.fillRect(cx - 300, titleY - 140, 600, 300);
+        ctx.globalCompositeOperation = 'source-over';
+
+        ctx.font = '62px Georgia';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = '#d4b878';
+        ctx.fillText('ETHERA', cx, titleY);
+        ctx.shadowColor = 'rgba(200, 140, 40, 0.5)';
+        ctx.shadowBlur = 30;
+        ctx.fillText('ETHERA', cx, titleY);
+        ctx.shadowBlur = 0;
+
+        ctx.font = 'italic 16px Georgia';
+        ctx.fillStyle = '#b8a078';
+        ctx.globalAlpha = menuFadeAlpha * (0.5 + Math.sin(t * 2) * 0.15);
+        ctx.fillText('The Awakening', cx, titleY + 45);
+    }
 
     ctx.globalAlpha = menuFadeAlpha;
-
-    // Decorative lines above and below title
-    drawDecorLine(cx, cy - 98, 180, menuFadeAlpha * 0.4);
-    drawDecorLine(cx, cy + 5, 140, menuFadeAlpha * 0.3);
 
     ctx.restore();
 
@@ -2307,11 +2379,21 @@ function drawControlsScreen(dt) {
 // ============================================================
 //  WORLD DROP RENDERING
 // ============================================================
-// Map item slot + rarity to the best Raven icon variant
+// Map item slot + rarity to the best icon sprite
 function getItemSpriteForSlot(slot, rarity) {
-    const suffix = rarity === 'epic' ? '_e' : rarity === 'rare' ? '_r' : rarity === 'uncommon' ? '_u' : '';
-    const key = 'item_' + slot + suffix;
-    return images[key] || images['item_' + slot] || null;
+    // Try exact match first (e.g., icon_wand_rare)
+    const exact = images['icon_' + slot + '_' + rarity];
+    if (exact) return exact;
+    // Rarity fallback: legendary→epic→rare→uncommon→common
+    const fallbackOrder = { legendary: 'epic', epic: 'rare', uncommon: 'common' };
+    let fallback = fallbackOrder[rarity];
+    while (fallback) {
+        const fb = images['icon_' + slot + '_' + fallback];
+        if (fb) return fb;
+        fallback = fallbackOrder[fallback];
+    }
+    // Last resort: common variant or old Raven icon
+    return images['icon_' + slot + '_common'] || images['item_' + slot] || null;
 }
 
 function drawWorldDrops() {
@@ -2563,12 +2645,20 @@ function drawItemIcon(cx, cy, slot, rarityKey, size, alpha) {
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // Try sprite-based rendering first (Raven Fantasy Icons — each rarity has unique art)
+    // Try sprite-based rendering first (AI-generated pixel art icons)
     const spriteImg = getItemSpriteForSlot(slot, rarityKey);
     if (spriteImg) {
         ctx.imageSmoothingEnabled = false;
-        const sprW = size * 0.8;
+        const sprW = size * 0.9;
         ctx.drawImage(spriteImg, cx - sprW / 2, cy - sprW / 2, sprW, sprW);
+        // Rarity tinted glow overlay
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = alpha * 0.15;
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, sprW * 0.6);
+        glow.addColorStop(0, RARITY[rarityKey].glow);
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(cx - sprW, cy - sprW, sprW * 2, sprW * 2);
         ctx.imageSmoothingEnabled = true;
         ctx.restore();
         return;
@@ -3230,6 +3320,27 @@ function drawDeathScreen() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
+    // Death screen background art (if available)
+    const deathBg = images.death_screen_bg;
+    if (deathBg) {
+        const imgAspect = deathBg.width / deathBg.height;
+        const canAspect = canvasW / canvasH;
+        let drawW, drawH, drawX, drawY;
+        if (canAspect > imgAspect) {
+            drawW = canvasW;
+            drawH = canvasW / imgAspect;
+            drawX = 0;
+            drawY = (canvasH - drawH) / 2;
+        } else {
+            drawH = canvasH;
+            drawW = canvasH * imgAspect;
+            drawX = (canvasW - drawW) / 2;
+            drawY = 0;
+        }
+        ctx.globalAlpha = fadeIn * 0.85;
+        ctx.drawImage(deathBg, drawX, drawY, drawW, drawH);
+    }
+
     // Pulsing red vignette — heartbeat-like throb
     const vigPulse = 0.12 + Math.sin(t * 1.8) * 0.04;
     ctx.globalCompositeOperation = 'screen';
@@ -3244,14 +3355,16 @@ function drawDeathScreen() {
 
     if (t > 1.0) {
         const textAlpha = Math.min(1, (t - 1.0) / 1.0);
-        // Slide-in offset — text starts 20px high and settles down
         const slideOffset = Math.max(0, 20 * (1 - Math.min(1, (t - 1.0) / 0.5)));
+
+        // Position headline in the dark zone below the art
+        const headlineY = deathBg ? canvasH * 0.68 : cy - 40;
 
         ctx.globalAlpha = textAlpha;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Death headline with slide-in (form-specific)
+        // Death headline — large, dramatic, the only text element
         const _deathName = playerName || 'Wanderer';
         const _formDeathLines = {
             slime:    'dissolves into nothing...',
@@ -3264,134 +3377,31 @@ function drawDeathScreen() {
             ? `${_deathName}' ${_deathVerb}`
             : `${_deathName}'s ${_deathVerb}`;
         ctx.font = '48px Georgia';
-        ctx.shadowColor = 'rgba(180, 20, 10, 0.6)';
-        ctx.shadowBlur = 30;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+        ctx.shadowBlur = 16;
         ctx.fillStyle = '#cc3322';
-        ctx.fillText(_deathMsg, cx, cy - 40 - slideOffset);
+        ctx.fillText(_deathMsg, cx, headlineY - slideOffset);
+        ctx.shadowColor = 'rgba(180, 20, 10, 0.5)';
+        ctx.shadowBlur = 40;
+        ctx.fillText(_deathMsg, cx, headlineY - slideOffset);
         ctx.shadowBlur = 0;
 
-        // Decorative lines flanking the title
+        // Decorative lines
         if (typeof drawDecorLine === 'function') {
-            drawDecorLine(cx, cy - 72 - slideOffset, 160, textAlpha * 0.4);
-            drawDecorLine(cx, cy - 10 - slideOffset, 120, textAlpha * 0.3);
+            drawDecorLine(cx, headlineY - 36 - slideOffset, 180, textAlpha * 0.4);
+            drawDecorLine(cx, headlineY + 32 - slideOffset, 140, textAlpha * 0.3);
         }
-
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-        ctx.lineWidth = 2;
-
-        // Enhanced run summary card
-        const statsY = cy + 10;
-        ctx.font = '12px Georgia';
-        ctx.fillStyle = '#9a7a6a';
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-        ctx.lineWidth = 2;
-        const zoneCfg = ZONE_CONFIGS[currentZone] || (currentZone >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(currentZone) : null);
-        const zoneName = zoneCfg ? zoneCfg.name : 'Unknown';
-        const formName = FormSystem.currentForm ? FormSystem.currentForm.charAt(0).toUpperCase() + FormSystem.currentForm.slice(1) : 'Unknown';
-        const _runSecs = typeof runStartTime !== 'undefined' && runStartTime > 0 ? Math.round((Date.now() - runStartTime) / 1000) : 0;
-        const _runMin = Math.floor(_runSecs / 60);
-        const _runSecRem = _runSecs % 60;
-        const _runTimeStr = _runMin + ':' + (_runSecRem < 10 ? '0' : '') + _runSecRem;
-        const _upgradeCount = typeof upgrades !== 'undefined' ? Object.values(upgrades).reduce(function(s, v) { return s + v; }, 0) : 0;
-        const _goldEarned = typeof runGoldEarned !== 'undefined' ? runGoldEarned : 0;
-
-        // Left column — this run
-        const col1X = cx - 90, col2X = cx + 30;
-        let sY = statsY;
-        ctx.textAlign = 'left';
-        ctx.font = '9px monospace'; ctx.fillStyle = '#776655'; ctx.globalAlpha = textAlpha * 0.5;
-        ctx.fillText('THIS RUN', col1X, sY); sY += 14;
-        ctx.font = '11px Georgia'; ctx.fillStyle = '#b09878'; ctx.globalAlpha = textAlpha * 0.8;
-        ctx.fillText(zoneName + ', Wave ' + (wave.current + 1), col1X, sY); sY += 15;
-        ctx.fillText(wave.totalKilled + ' kills  ·  ' + formName, col1X, sY); sY += 15;
-        const _augCount = (typeof augmentInventory !== 'undefined') ? augmentInventory.equipped.filter(function(a) { return a !== null; }).length : 0;
-        const _gearStr = _upgradeCount + ' upgrades' + (_augCount > 0 ? ', ' + _augCount + ' augments' : '');
-        ctx.fillText('Level ' + xpState.level + '  ·  ' + _gearStr, col1X, sY); sY += 15;
-        ctx.fillText(_runTimeStr + '  ·  ' + _goldEarned + 'g earned', col1X, sY); sY += 15;
-
-        // Right column — best run comparison
-        if (typeof playerProfile !== 'undefined' && playerProfile.totalRuns > 1) {
-            sY = statsY;
-            ctx.textAlign = 'left';
-            ctx.font = '9px monospace'; ctx.fillStyle = '#776655'; ctx.globalAlpha = textAlpha * 0.5;
-            ctx.fillText('BEST RUN', col2X, sY); sY += 14;
-            ctx.font = '11px Georgia'; ctx.globalAlpha = textAlpha * 0.6;
-            const _bestZoneCfg = ZONE_CONFIGS[playerProfile.bestZone] || {};
-            ctx.fillStyle = '#887766';
-            ctx.fillText((_bestZoneCfg.name || 'Zone ' + playerProfile.bestZone) + ', Wave ' + (playerProfile.bestWave + 1), col2X, sY); sY += 15;
-            ctx.fillText(playerProfile.bestKills + ' kills best', col2X, sY); sY += 15;
-            ctx.fillText('Level ' + playerProfile.bestLevel + ' best', col2X, sY); sY += 15;
-            ctx.fillText(playerProfile.totalRuns + ' runs  ·  ' + playerProfile.totalDeaths + ' deaths', col2X, sY);
-        }
-
-        // Death cause (centered below stats)
-        ctx.textAlign = 'center';
-        if (deathCause) {
-            ctx.font = '12px Georgia';
-            ctx.fillStyle = '#bb7766';
-            ctx.globalAlpha = textAlpha * 0.8;
-            ctx.strokeText('Slain by ' + deathCause, cx, statsY + 80);
-            ctx.fillText('Slain by ' + deathCause, cx, statsY + 80);
-        }
-
-        // Tip in styled box
-        if (!drawDeathScreen._tip) {
-            const _sharedTips = [
-                "Try dodging more frequently.",
-                "Watch enemy attack patterns.",
-                "Use your form's special abilities.",
-            ];
-            const _formTips = {
-                slime: [
-                    "Absorb weakened enemies to grow larger and stronger.",
-                    "A bigger slime has more HP — stay aggressive.",
-                    "Bounce to dodge attacks and close gaps quickly.",
-                ],
-                skeleton: [
-                    "Use shield bash to block heavy hits.",
-                    "Build combos for bonus damage.",
-                    "Roll through enemy attacks for counterattack openings.",
-                ],
-                wizard: [
-                    "Equip better gear from the Grimoire.",
-                    "Summon towers to control the battlefield.",
-                    "Manage your mana — don't spam fireballs.",
-                ],
-                lich: [
-                    "Raise undead minions to draw enemy fire.",
-                    "Harvest souls from kills to fuel your power.",
-                    "Shadow step behind enemies for safe positioning.",
-                ],
-            };
-            const _allTips = _sharedTips.concat(_formTips[FormSystem.currentForm] || []);
-            drawDeathScreen._tip = _allTips[Math.floor(Math.random() * _allTips.length)];
-        }
-        const tipY = statsY + 70;
-        const tipW = 260, tipH = 28;
-        // Tip box background
-        ctx.globalAlpha = textAlpha * 0.35;
-        ctx.fillStyle = '#1a1510';
-        ctx.beginPath();
-        ctx.roundRect(cx - tipW / 2, tipY - tipH / 2, tipW, tipH, 3);
-        ctx.fill();
-        ctx.strokeStyle = '#5a4a3a';
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-        // Tip text
-        ctx.globalAlpha = textAlpha * 0.6;
-        ctx.font = '10px Georgia';
-        ctx.fillStyle = '#a09080';
-        ctx.fillText(`\u2731 ${drawDeathScreen._tip}`, cx, tipY);
-        ctx.globalAlpha = textAlpha;
     }
 
     if (t > 2.5) {
         const btnAlpha = Math.min(1, (t - 2.5) / 0.8);
         ctx.globalAlpha = btnAlpha;
 
+        // Buttons centered below the headline
         const btnW = 180, btnH = 40;
         const btnGap = 12;
-        const btnX = cx - btnW - btnGap / 2, btnY = cy + 100;
+        const btnY = deathBg ? canvasH * 0.80 : cy + 100;
+        const btnX = cx - btnW - btnGap / 2;
         deathBtnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
         const hoveredRestart = mouse.x >= btnX && mouse.x <= btnX + btnW && mouse.y >= btnY && mouse.y <= btnY + btnH;
         drawMenuButton({ x: btnX, y: btnY, w: btnW, h: btnH, label: 'RISE AGAIN' }, hoveredRestart, btnAlpha);

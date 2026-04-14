@@ -149,6 +149,43 @@ async function loadAssets() {
     promises.push(loadImage(CURSOR_PATH + 'tile_0000.png').then(img => { if (img) images.cursor_pointer = img; }));
     promises.push(loadImage(CURSOR_PATH + 'tile_0091.png').then(img => { if (img) images.cursor_crosshair = img; }));
 
+    // Load menu title screen background art
+    promises.push(loadImage('assets/menu-title-bg.png').then(img => { if (img) images.menu_title_bg = img; }));
+    // Load pixel art title logo sprite
+    promises.push(loadImage('assets/menu-title-logo.png').then(img => { if (img) images.menu_title_logo = img; }));
+    // Load death screen background art
+    promises.push(loadImage('assets/death-screen-bg.png').then(img => { if (img) images.death_screen_bg = img; }));
+
+    // Load projectile animation frames (AI-generated pixel art)
+    const PROJ_PATH = 'assets/projectiles/';
+    for (let i = 0; i < 6; i++) {
+        promises.push(loadImage(PROJ_PATH + 'acid_spit_' + i + '.png').then(img => { if (img) images['proj_acid_' + i] = img; }));
+        promises.push(loadImage(PROJ_PATH + 'bone_shard_' + i + '.png').then(img => { if (img) images['proj_bone_' + i] = img; }));
+        promises.push(loadImage(PROJ_PATH + 'fireball_' + i + '.png').then(img => { if (img) images['proj_fireball_' + i] = img; }));
+        promises.push(loadImage(PROJ_PATH + 'soul_bolt_' + i + '.png').then(img => { if (img) images['proj_soul_' + i] = img; }));
+        promises.push(loadImage(PROJ_PATH + 'heal_aura_' + i + '.png').then(img => { if (img) images['proj_heal_' + i] = img; }));
+    }
+
+    // Load equipment item icons (AI-generated pixel art)
+    const ICON_PATH = 'assets/icons/';
+    const ICON_FILES = {
+        icon_wand_common: 'icon_wand_common.png',
+        icon_wand_uncommon: 'icon_wand_uncommon.png',
+        icon_wand_rare: 'icon_wand_rare.png',
+        icon_wand_epic: 'icon_wand_epic.png',
+        icon_robe_common: 'icon_robe_common.png',
+        icon_robe_uncommon: 'icon_robe_uncommon.png',
+        icon_robe_rare: 'icon_robe_rare.png',
+        icon_robe_epic: 'icon_robe_epic.png',
+        icon_amulet_common: 'icon_amulet_common.png',
+        icon_amulet_rare: 'icon_amulet_rare.png',
+        icon_ring_common: 'icon_ring_common.png',
+        icon_ring_rare: 'icon_ring_rare.png',
+    };
+    for (const [key, file] of Object.entries(ICON_FILES)) {
+        promises.push(loadImage(ICON_PATH + file).then(img => { if (img) images[key] = img; }));
+    }
+
     // ── Load PVGames 2.5D directional sprites ──
     // Wizard (8 dirs × 5 anims = 40 strip images)
     for (const [anim, info] of Object.entries(PV_WIZARD_ANIMS)) {
