@@ -629,8 +629,17 @@ function getFormReactiveDialogue(npc) {
     }
 
     // Progressive lore — NPCs reveal new dialogue as player reaches deeper zones
-    // Use ONLY story zone progress for lore gating (not procedural depth which would spoil plot)
-    const _zoneReached = typeof currentZone !== 'undefined' ? currentZone : 0;
+    // Use deepest STORY zone reached for lore gating (not currentZone, which is 0 in the Hamlet)
+    var _zoneReached = 0;
+    if (typeof progressionIndex !== 'undefined' && typeof ZONE_PROGRESSION !== 'undefined') {
+        // progressionIndex tracks how far through the story the player has gone
+        var _pi = Math.min(progressionIndex, ZONE_PROGRESSION.length - 1);
+        _zoneReached = _pi >= 0 && ZONE_PROGRESSION[_pi] ? ZONE_PROGRESSION[_pi].zone : 0;
+    }
+    // Also check currentZone in case the player is actively in a dungeon zone
+    if (typeof currentZone !== 'undefined' && currentZone > _zoneReached && currentZone < 100) {
+        _zoneReached = currentZone;
+    }
     const _PROGRESSIVE_LORE = {
         garrett: [
             { minZone: 2, line: 'The talisman housing... I remember now. She brought the core herself. Said it had to be made by someone who understood fire.' },

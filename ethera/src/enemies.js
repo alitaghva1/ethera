@@ -5018,7 +5018,9 @@ function checkProjectileEnemyHits() {
                                         }
                                         if (_nearE.def.isBoss) { addSlowMo(0.4, 0.15); addScreenShake(12, 0.4); }
                                     } else if (_nearE.hp > 0) {
-                                        _nearE.state = 'hurt'; _nearE.hurtTimer = 0.2; _nearE.animFrame = 0;
+                                        if (_nearE.staggerCooldown <= 0) {
+                                            _nearE.state = 'hurt'; _nearE.hurtTimer = _nearE.def.isBoss ? 0.15 : 0.2; _nearE.animFrame = 0; _nearE.staggerCooldown = 0.3;
+                                        }
                                         sfxEnemyHurt(_nearE.row, _nearE.col);
                                     }
                                     pickupTexts.push({
@@ -5112,7 +5114,9 @@ function checkProjectileEnemyHits() {
                                     spawnDeathBurst(_dp.x + cameraX, _dp.y + cameraY, e2.def.tint || '#ff6644');
                                 }
                             } else if (e2.hp > 0) {
-                                e2.state = 'hurt'; e2.hurtTimer = 0.2; e2.animFrame = 0;
+                                if (e2.staggerCooldown <= 0) {
+                                    e2.state = 'hurt'; e2.hurtTimer = e2.def.isBoss ? 0.15 : 0.2; e2.animFrame = 0; e2.staggerCooldown = 0.3;
+                                }
                                 sfxEnemyHurt(e2.row, e2.col);
                                 const hitPos2 = tileToScreen(e2.row, e2.col);
                                 spawnHitSpark(hitPos2.x + cameraX, hitPos2.y + cameraY);
