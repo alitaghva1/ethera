@@ -76,7 +76,7 @@ async function loadAssets() {
     const PORTRAIT_FILES = {
         // NPC-specific mappings
         portrait_garrett: 'Merchant.png',           // grizzled forge worker
-        portrait_mira: 'Old_Man.png',               // elderly herbalist who remembers
+        portrait_mira: 'Cleric.png',                // warm-faced woman with wimple — matches nun sprite
         portrait_aldric: 'Hooded_Knight.png',        // stern guard captain
         portrait_hermit: 'Wizard.png',               // hooded mystic sage
         portrait_senna: 'Dark_Elf_Girl.png',         // sharp-eyed alchemist researcher
