@@ -1001,7 +1001,7 @@ formHandlers.skeleton.onDodge = function() {
     }
     skeletonState.rolling = true;
     skeletonState.rollTimer = 0.35;
-    player.dodgeCoolTimer = DODGE_COOLDOWN * 0.5; // fast cooldown for agile skeleton
+    player.dodgeCoolTimer = DODGE_COOLDOWN * 0.65; // agile but not spammable (0.455s CD)
     sfxSkeletonRoll();
     // Dodge VFX: dust cloud burst at start position
     const _rollPos = tileToScreen(player.row, player.col);

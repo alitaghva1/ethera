@@ -5,7 +5,7 @@
 // When running in Electron, saves go to the user's AppData folder as JSON files.
 // When running in a browser, saves use localStorage as before.
 
-const SAVE_FORMAT_VERSION = 8;  // bump when save schema changes
+const SAVE_FORMAT_VERSION = 9; // v9: augments, synergies, playerProfile, formHistory, echo perks  // bump when save schema changes
 
 // Helper: detect if we're running inside Electron with file save support
 const _useFileSaves = typeof window !== 'undefined' && window.ethera && window.ethera.isElectron;
@@ -178,6 +178,21 @@ function _migrateSave(data) {
             data.hamletRebuild = { forge: false, shop: false, guardPost: false, hermitHut: false, monument: false };
         }
         data.version = 8;
+    }
+    if (data.version < 9) {
+        // v8 → v9: Augments, synergies, playerProfile, formHistory, echo perks
+        if (!data.augmentInventory) data.augmentInventory = { equipped: [null, null, null], backpack: [] };
+        if (!data.activeSynergies) data.activeSynergies = {};
+        if (!data.playerProfile) data.playerProfile = {};
+        if (!data.formHistory) data.formHistory = [];
+        // Convert boolean hamlet rebuild to integer tiers (true→3, false→0)
+        if (data.hamletRebuild) {
+            for (var _hk in data.hamletRebuild) {
+                if (data.hamletRebuild[_hk] === true) data.hamletRebuild[_hk] = 3;
+                else if (data.hamletRebuild[_hk] === false) data.hamletRebuild[_hk] = 0;
+            }
+        }
+        data.version = 9;
     }
     return data;
 }

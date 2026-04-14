@@ -496,6 +496,31 @@ function drawLevelUpScreen() {
     ctx.textBaseline = 'middle';
     ctx.fillText('Press 1-' + choices.length + ' or use arrow keys + Enter', cx, cy + cardH / 2 + 50);
 
+    // ── Reroll button (if player has reroll tokens) ──
+    var _rerollTokens = (typeof questState !== 'undefined') ? (questState.rerollTokens || 0) : 0;
+    if (_rerollTokens > 0) {
+        var rerollY = cy + cardH / 2 + 72;
+        var rerollW = 140, rerollH = 24;
+        var rerollX = cx - rerollW / 2;
+        var rerollHovered = mouse && mouse.x >= rerollX && mouse.x <= rerollX + rerollW &&
+                            mouse.y >= rerollY && mouse.y <= rerollY + rerollH;
+        // Store rect for click handling
+        xpState._rerollRect = { x: rerollX, y: rerollY, w: rerollW, h: rerollH };
+
+        ctx.globalAlpha = fade * (rerollHovered ? 0.8 : 0.5);
+        ctx.fillStyle = rerollHovered ? 'rgba(40,50,30,0.9)' : 'rgba(20,20,15,0.8)';
+        ctx.beginPath(); ctx.roundRect(rerollX, rerollY, rerollW, rerollH, 4); ctx.fill();
+        ctx.strokeStyle = rerollHovered ? '#88cc44' : '#665544';
+        ctx.lineWidth = 1; ctx.globalAlpha = fade * 0.6;
+        ctx.beginPath(); ctx.roundRect(rerollX, rerollY, rerollW, rerollH, 4); ctx.stroke();
+        ctx.font = 'bold 10px Georgia';
+        ctx.fillStyle = '#88cc44';
+        ctx.globalAlpha = fade * 0.85;
+        ctx.fillText('R  Reroll (' + _rerollTokens + ' left)', cx, rerollY + rerollH / 2);
+    } else {
+        xpState._rerollRect = null;
+    }
+
     ctx.restore();
 }
 

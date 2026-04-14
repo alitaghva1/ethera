@@ -1133,12 +1133,6 @@ function drawSlimeHUD() {
         ctx.textAlign = 'left';
     }
 
-    // Form indicator
-    ctx.globalAlpha = 0.3;
-    ctx.font = '11px monospace';
-    ctx.fillStyle = '#bb6666';
-    ctx.fillText('SLIME', x, yHP - 8);
-
     ctx.restore();
 }
 

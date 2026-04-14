@@ -4474,6 +4474,7 @@ function render() {
         drawWaveBanner();
         drawWaveHUD();
         if (typeof drawKillStreakHUD === 'function') drawKillStreakHUD();
+        if (typeof drawPotionHUD === 'function') drawPotionHUD();
         drawBossHealthBar();
 
         // Placement preview (above HUD, below crosshair)

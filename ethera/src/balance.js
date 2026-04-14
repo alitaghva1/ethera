@@ -464,6 +464,13 @@ function handleKeyDown(e) {
             xpState.levelUpKeyHover = -1;
             return;
         }
+        // R key: reroll choices (if tokens available)
+        if (e.key.toLowerCase() === 'r' && typeof questState !== 'undefined' && questState.rerollTokens > 0) {
+            questState.rerollTokens--;
+            if (typeof triggerLevelUp === 'function') triggerLevelUp(); // regenerate choices
+            if (typeof Notify !== 'undefined') Notify.toast('Rerolled! (' + questState.rerollTokens + ' tokens left)', { duration: 2, color: '#88cc44' });
+            return;
+        }
         return; // consume all keys during level-up screen
     }
     // Number keys use potions during gameplay
@@ -869,6 +876,16 @@ function handleMouseDown(e) {
 
     // Level-up screen click handling (not during death)
     if (xpState.levelUpPending && !gameDead && e.button === 0) {
+        // Check reroll button click
+        if (xpState._rerollRect && typeof questState !== 'undefined' && questState.rerollTokens > 0) {
+            var _rr = xpState._rerollRect;
+            if (clickX >= _rr.x && clickX <= _rr.x + _rr.w && clickY >= _rr.y && clickY <= _rr.y + _rr.h) {
+                questState.rerollTokens--;
+                if (typeof triggerLevelUp === 'function') triggerLevelUp();
+                if (typeof Notify !== 'undefined') Notify.toast('Rerolled! (' + questState.rerollTokens + ' tokens left)', { duration: 2, color: '#88cc44' });
+                return;
+            }
+        }
         const choice = getLevelUpChoice(mouse.x, mouse.y);
         if (choice >= 0 && choice < xpState.levelUpChoices.length) {
             const chosenUpgrade = xpState.levelUpChoices[choice];
