@@ -216,9 +216,10 @@ function updateTowerBolts(dt) {
                 e.knockVr = (b.vr / TOWER_BOLT_SPEED) * 1.5 * kbResist;
                 e.knockVc = (b.vc / TOWER_BOLT_SPEED) * 1.5 * kbResist;
 
-                // Tower Slow: apply slow effect
+                // Tower Slow: apply slow effect (also feeds elemental reactions)
                 if (getUpgrade('tower_slow') > 0) {
                     e.slowTimer = 2;
+                    if (typeof applyStatusEffect === 'function') applyStatusEffect(e, 'slow', 2, 'ice');
                 }
 
                 if (e.hp <= 0) {

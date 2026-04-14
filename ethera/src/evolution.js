@@ -238,6 +238,43 @@ function updateEvolution(dt) {
                 spawnParticleBurst(player.row, player.col, 40, _evoColor);
             }
 
+            // --- Clear form-specific fusions on evolution (they don't transfer) ---
+            if (typeof fusedUpgrades !== 'undefined') {
+                for (const key of Object.keys(fusedUpgrades)) delete fusedUpgrades[key];
+            }
+
+            // --- Legacy Echo: carry one upgrade from previous form at 50% power ---
+            if (typeof FormSystem !== 'undefined' && FormSystem.legacyEchoes &&
+                FormSystem.legacyEchoes.length < (FormSystem.maxEchoes || 3)) {
+                // Find the highest-stacked upgrade the player has from the previous form
+                const prevForm = FormSystem.previousForm || 'slime';
+                const prevPools = {
+                    slime: typeof SLIME_UPGRADE_POOL !== 'undefined' ? SLIME_UPGRADE_POOL : [],
+                    skeleton: typeof SKELETON_UPGRADE_POOL !== 'undefined' ? SKELETON_UPGRADE_POOL : [],
+                    wizard: typeof WIZARD_UPGRADE_POOL !== 'undefined' ? WIZARD_UPGRADE_POOL : [],
+                    lich: typeof LICH_UPGRADE_POOL !== 'undefined' ? LICH_UPGRADE_POOL : [],
+                };
+                const prevPool = prevPools[prevForm] || [];
+                let bestUpgrade = null, bestStacks = 0;
+                for (const u of prevPool) {
+                    const stacks = upgrades[u.id] || 0;
+                    if (stacks > bestStacks) { bestStacks = stacks; bestUpgrade = u; }
+                }
+                if (bestUpgrade && bestStacks > 0) {
+                    FormSystem.legacyEchoes.push({
+                        upgradeId: bestUpgrade.id,
+                        upgradeName: bestUpgrade.name,
+                        originalForm: prevForm,
+                        stackCount: bestStacks,
+                        effectiveMult: 0.5,
+                    });
+                    if (typeof Notify !== 'undefined') {
+                        Notify.toast('LEGACY ECHO: ' + bestUpgrade.name + ' carries forward at 50% power',
+                            { duration: 5, color: '#ffd700', borderColor: '#aa8800' });
+                    }
+                }
+            }
+
             // --- Track form evolution history (for particle color echoes) ---
             if (typeof FormSystem !== 'undefined') {
                 if (!FormSystem.formHistory) FormSystem.formHistory = [];

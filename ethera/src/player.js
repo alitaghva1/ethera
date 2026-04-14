@@ -28,5 +28,7 @@ const player = {
     // Status effects
     frozenTimer: 0,       // Frost Wyrm freeze — prevents all movement/actions
     slowTimer: 0,         // slow debuff (reduces speed)
+    // Parry system
+    parryTimer: 0,        // counts down from PARRY_WINDOW on dodge start; active while > 0
 };
 

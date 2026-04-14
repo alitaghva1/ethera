@@ -760,6 +760,59 @@ function drawHPMana() {
 
     // Gold display is drawn in gameloop.js (top-right, below evolution dots)
 
+    // --- Momentum Meter (form-specific engagement loop) ---
+    {
+        let momValue = 0, momMax = 1, momLabel = '', momColor = '#888888';
+        const form = FormSystem.currentForm;
+        if (form === 'slime' && typeof slimeState !== 'undefined') {
+            momValue = slimeState.absorptionMomentum;
+            momMax = slimeState.maxMomentum;
+            momLabel = 'ABSORPTION';
+            momColor = '#88ff88';
+        } else if (form === 'skeleton' && typeof skeletonState !== 'undefined') {
+            momValue = skeletonState.comboCount || 0;
+            momMax = skeletonState.maxCombo || 15;
+            momLabel = 'COMBO';
+            momColor = '#ddcc88';
+        } else if (form === 'wizard' && typeof wizardState !== 'undefined') {
+            momValue = wizardState.arcaneResonance;
+            momMax = wizardState.maxResonance;
+            momLabel = 'RESONANCE';
+            momColor = '#88bbff';
+        } else if (form === 'lich' && typeof lichState !== 'undefined') {
+            momValue = lichState.harvestChain;
+            momMax = lichState.maxHarvestChain;
+            momLabel = 'HARVEST';
+            momColor = '#bb66ff';
+        }
+        if (momMax > 0 && (momValue > 0 || form === 'skeleton')) {
+            const momBarY = yXP + barH + 22;
+            const momBarW = barW * 0.6;
+            const momBarH = 6;
+            const momFrac = Math.min(1, momValue / momMax);
+            // Dark track
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = '#04040a';
+            ctx.beginPath();
+            ctx.roundRect(x, momBarY, momBarW, momBarH, 2);
+            ctx.fill();
+            // Fill
+            if (momFrac > 0) {
+                ctx.globalAlpha = 0.7;
+                ctx.fillStyle = momColor;
+                ctx.beginPath();
+                ctx.roundRect(x, momBarY, momBarW * momFrac, momBarH, 2);
+                ctx.fill();
+            }
+            // Label
+            ctx.globalAlpha = 0.5;
+            ctx.font = '7px monospace';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = momColor;
+            ctx.fillText(`${momLabel} ${Math.floor(momValue)}`, x + momBarW + 4, momBarY + momBarH / 2);
+        }
+    }
+
     ctx.restore();
 
     // Draw tower mode indicator if towers are active

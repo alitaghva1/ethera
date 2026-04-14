@@ -5,7 +5,7 @@
 // When running in Electron, saves go to the user's AppData folder as JSON files.
 // When running in a browser, saves use localStorage as before.
 
-const SAVE_FORMAT_VERSION = 9; // v9: augments, synergies, playerProfile, formHistory, echo perks  // bump when save schema changes
+const SAVE_FORMAT_VERSION = 10; // v10: legacy echoes, upgrade fusions, synergy tags, momentum, status effects, parry
 
 // Helper: detect if we're running inside Electron with file save support
 const _useFileSaves = typeof window !== 'undefined' && window.ethera && window.ethera.isElectron;
@@ -53,6 +53,8 @@ function saveGame(slotIdx) {
         talisman: { ...FormSystem.talisman },
         formData: JSON.parse(JSON.stringify(FormSystem.formData)),
         formHistory: FormSystem.formHistory ? [...FormSystem.formHistory] : [],
+        legacyEchoes: FormSystem.legacyEchoes ? [...FormSystem.legacyEchoes] : [],
+        fusedUpgrades: typeof fusedUpgrades !== 'undefined' ? { ...fusedUpgrades } : {},
         openedChests: [...openedChests],
         // Unified progression
         progressionIndex: progressionIndex,
@@ -194,6 +196,12 @@ function _migrateSave(data) {
         }
         data.version = 9;
     }
+    if (data.version < 10) {
+        // v9 → v10: Legacy Echoes, Upgrade Fusions, Synergy Tags, Momentum, Status Effects
+        if (!data.legacyEchoes) data.legacyEchoes = [];
+        if (!data.fusedUpgrades) data.fusedUpgrades = {};
+        data.version = 10;
+    }
     return data;
 }
 
@@ -281,6 +289,11 @@ function loadGame(slotIdx) {
     if (data.previousForm !== undefined) FormSystem.previousForm = data.previousForm;
     if (data.evolutionCount !== undefined) FormSystem.evolutionCount = data.evolutionCount;
     FormSystem.formHistory = data.formHistory || [];
+    FormSystem.legacyEchoes = data.legacyEchoes || [];
+    if (typeof fusedUpgrades !== 'undefined' && data.fusedUpgrades) {
+        for (const key of Object.keys(fusedUpgrades)) delete fusedUpgrades[key];
+        Object.assign(fusedUpgrades, data.fusedUpgrades);
+    }
     if (data.talisman) Object.assign(FormSystem.talisman, data.talisman);
     if (data.formData) {
         for (const [form, fdata] of Object.entries(data.formData)) {

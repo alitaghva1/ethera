@@ -1370,6 +1370,7 @@ function updateGameplay(dt) {
         if (typeof updateEvolutionSurge === 'function') updateEvolutionSurge(dt);
         updateWaveSystem(dt);
         updateEnemies(dt);
+        if (typeof updateEnemySynergies === 'function') updateEnemySynergies(dt);
         checkProjectileEnemyHits();
         updateEnemyProjectiles(dt);
         updateTowers(dt);
@@ -3522,6 +3523,10 @@ function restartGame() {
     FormSystem.formData.lich = { unlocked: false, soulsHarvested: 0, undeadRaised: 0, totalKills: 0 };
     FormSystem.evolutionProgress = { currentMilestones: {}, nextForm: null };
     FormSystem.formHistory = [];
+    FormSystem.legacyEchoes = [];
+    if (typeof fusedUpgrades !== 'undefined') {
+        for (const key of Object.keys(fusedUpgrades)) delete fusedUpgrades[key];
+    }
     window._storyBeatShown = {};
     // Reset quest state for fresh run (quest progress should not leak between runs)
     if (typeof questState !== 'undefined') {
@@ -3680,6 +3685,9 @@ function restartGame() {
     slimeState.landingDamageDealt = false;
     slimeState._absorbCooldown = 0;
     slimeState._oozeTimer = 0;
+    slimeState.absorptionMomentum = 0;
+    slimeState.momentumTimer = 0;
+    slimeState.membraneShield = 0;
     // Reset skeleton state
     skeletonState.stamina = skeletonState.maxStamina;
     skeletonState.staminaDelayTimer = 0;

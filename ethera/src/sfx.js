@@ -339,6 +339,14 @@ function sfxThorns() {
     playNoise(0.06, 1800, 3, 0.1, 0.003, 0.05);
 }
 
+function sfxParry() {
+    if (!sfxCtx) return;
+    // Metallic clash + bright ring — satisfying parry feedback
+    playTone('square', 800, 1200, 0.06, 0.18, 0.003, 0.05);
+    playTone('sine', 1200, 600, 0.12, 0.12, 0.005, 0.1);
+    playNoise(0.08, 4000, 3, 0.15, 0.003, 0.06);
+}
+
 function sfxChainLightning() {
     if (!sfxCtx) return;
     // Electric crackle

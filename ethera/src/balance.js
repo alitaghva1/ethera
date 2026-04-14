@@ -103,6 +103,102 @@ const MARROW_LEECH_HEAL_MULT = 0.15;        // Marrow Leech: heal % of projectil
 // --- Boomerang & Projectile Tuning ---
 const BOOMERANG_RETURN_PIERCE_CAP = 3;      // Max pierce on boomerang return trip
 
+// --- Upgrade Fusion Recipes (two max-stacked upgrades → legendary fusion) ---
+const FUSION_RECIPES = [
+    {
+        id: 'infernal_barrage',
+        name: 'Infernal Barrage',
+        desc: 'Fireballs split into 3 on wall bounce and ignite enemies.',
+        requires: ['multishot', 'firerate'],
+        form: 'wizard',
+        icon: 'explode',
+        color: '#ff6622',
+    },
+    {
+        id: 'bone_avatar',
+        name: 'Bone Avatar',
+        desc: 'At 8+ combo, become a bone whirlwind dealing constant AoE.',
+        requires: ['bone_barrage', 'relentless'],
+        form: 'skeleton',
+        icon: 'orbit',
+        color: '#ddcc88',
+    },
+    {
+        id: 'caustic_tide',
+        name: 'Caustic Tide',
+        desc: 'Acid puddles chain between enemies, spreading corrosion.',
+        requires: ['acid_potency', 'corrosive_linger'],
+        form: 'slime',
+        icon: 'chain',
+        color: '#88ff44',
+    },
+    {
+        id: 'soul_vortex',
+        name: 'Soul Vortex',
+        desc: 'Death aura pulls enemies inward and drains soul energy from them.',
+        requires: ['soul_siphon', 'death_aura'],
+        form: 'lich',
+        icon: 'orbit',
+        color: '#aa44ff',
+    },
+];
+
+// --- Enemy Synergies (group auras) ---
+const ENEMY_SYNERGIES = [
+    {
+        id: 'shield_wall',
+        label: 'Shield Wall',
+        requires: { type: 'armoredskel', minCount: 2, maxDist: 3.0 },
+        effect: { dmgReduc: 0.20 },
+        color: '#8888cc',
+    },
+    {
+        id: 'bone_empowerment',
+        label: 'Empowered',
+        requires: { types: ['bone_mage', 'skelarch'], maxDist: 5.0 },
+        effect: { atkSpeedMult: 1.3 },
+        color: '#ccaa44',
+    },
+    {
+        id: 'howl_frenzy',
+        label: 'Frenzied',
+        requires: { leaderType: 'werewolf', followerTypes: ['skeleton', 'skelarch', 'armoredskel'], maxDist: 5.0 },
+        effect: { dmgMult: 1.20 },
+        color: '#ff4444',
+    },
+];
+const ENEMY_SYNERGY_CHECK_INTERVAL = 0.5; // Only check every 0.5s for performance
+
+// --- Elemental Reactions ---
+const REACTION_MELT_DURATION = 3.0;         // Melt (slow+fire): enemy takes 25% more damage for 3s
+const REACTION_MELT_DMG_MULT = 1.25;        // Damage multiplier during Melt
+const REACTION_SHATTER_DMG_FRAC = 0.15;     // Shatter (freeze+fire): burst = 15% of maxHP
+const REACTION_SHATTER_STUN = 1.0;          // Shatter stun duration
+const REACTION_ROOT_DURATION = 1.5;         // Root (slow+shadow): immobilize for 1.5s
+
+// --- Synergy Tag Set Bonuses ---
+const UPGRADE_TAGS = {
+    offensive: { name: 'Offensive', color: '#cc4444' },
+    defensive: { name: 'Defensive', color: '#4488cc' },
+    utility:   { name: 'Utility',   color: '#88aa44' },
+    summoner:  { name: 'Summoner',  color: '#aa66cc' },
+};
+const TAG_SET_BONUS_THRESHOLD = 3;
+const TAG_SET_BONUSES = {
+    offensive: { dmgMult: 1.12 },                          // +12% damage
+    defensive: { dmgReduc: 0.10 },                         // 10% damage reduction
+    utility:   { speedMult: 1.10, cdReduc: 0.10 },         // +10% speed, -10% cooldowns
+    summoner:  { minionDmg: 1.20, minionDur: 1.25 },       // +20% minion dmg, +25% duration
+};
+
+// --- Parry System ---
+const PARRY_WINDOW = 0.15;                  // Parry active for first 0.15s of any dodge
+const PARRY_REFLECT_MULT = 1.5;             // Reflected projectile deals 150% original damage
+const PARRY_STAGGER_DURATION = 0.8;         // Melee attackers stagger for 0.8s on parry
+const PARRY_STAGGER_RANGE = 1.8;            // Melee parry staggers enemies within this tile radius
+const PARRY_MELEE_DMG_MULT = 0.5;           // Melee parry deals 50% of incoming damage back
+const PARRY_INV_TIME = 0.3;                 // Brief invulnerability after successful parry
+
 // --- SFX & Feel Tuning ---
 const SFX_DISTANCE_COEFF = 0.015;           // Quadratic falloff coefficient for spatial SFX
 

@@ -16,6 +16,11 @@ const lichState = {
     spectralCloakTimer: 0,
     _phylacteryUsed: false,
     corpseLocations: [],  // track where enemies died for soul harvest
+    // Harvest Chain — consecutive harvests within a window multiply gains
+    harvestChain: 0,
+    harvestChainTimer: 0,
+    harvestChainDecay: 5.0,
+    maxHarvestChain: 8,
 };
 
 // Reset all lich form state (called on form switch to clean up minions, corpses, etc.)
@@ -30,11 +35,20 @@ function resetLichState() {
     lichState.spectralCloakTimer = 0;
     lichState._phylacteryUsed = false;
     lichState.corpseLocations.length = 0;
+    lichState.harvestChain = 0;
+    lichState.harvestChainTimer = 0;
 }
 
 function updateLich(dt) {
     if (gameDead) return;
     if (typeof wave !== 'undefined' && wave.phase === 'victory') return;
+
+    // Harvest Chain decay — drop 1 stack per second after decay window expires
+    lichState.harvestChainTimer += dt;
+    if (lichState.harvestChainTimer > lichState.harvestChainDecay && lichState.harvestChain > 0) {
+        lichState.harvestChain = Math.max(0, Math.floor(lichState.harvestChain) - 1);
+        lichState.harvestChainTimer = lichState.harvestChainDecay - 0.5; // re-check in 0.5s
+    }
 
     const config = FORM_CONFIGS.lich;
 
@@ -192,9 +206,10 @@ function updateLich(dt) {
                 if (dist < 2.5) {
                     e.hp -= auraDmg;
                     if (e.hp <= 0) e.state = 'death';
-                    // Death Shroud synergy: aura also slows enemies
+                    // Death Shroud synergy: aura also slows enemies (shadow element for root reaction)
                     if (typeof hasSynergy === 'function' && hasSynergy('death_shroud')) {
                         e.slowTimer = Math.max(e.slowTimer || 0, 0.6);
+                        if (typeof applyStatusEffect === 'function') applyStatusEffect(e, 'slow', 0.6, 'shadow');
                     }
                 }
             }
@@ -768,6 +783,7 @@ formHandlers.lich.onDodge = function() {
     }
     lichState.shadowStepCooldown = DODGE_COOLDOWN * 0.7;
     player.dodgeCoolTimer = DODGE_COOLDOWN * 0.7;
+    player.parryTimer = PARRY_WINDOW; // parry active briefly after shadow step
 
     // Teleport in movement direction (WASD), fall back to facing direction
     const maxRange = 4;
@@ -877,10 +893,16 @@ formHandlers.lich.onInteract = function() {
         }
     }
     if (harvested > 0) {
+        // Harvest Chain: boost soul gain by chain multiplier
+        const chainMult = 1 + lichState.harvestChain * 0.15;
+        harvested *= chainMult;
         lichState.soulEnergy = Math.min(lichState.maxSoulEnergy, lichState.soulEnergy + harvested);
+        // Build harvest chain
+        lichState.harvestChain = Math.min(lichState.maxHarvestChain, lichState.harvestChain + 1);
+        lichState.harvestChainTimer = 0;
         pickupTexts.push({
             row: player.row, col: player.col,
-            text: `+${Math.ceil(harvested)} Soul Energy`, color: '#bb66ff',
+            text: `+${Math.ceil(harvested)} Soul Energy` + (lichState.harvestChain > 1 ? ` (x${chainMult.toFixed(1)})` : ''), color: '#bb66ff',
             life: 1.5, offsetY: 0,
         });
         addScreenShake(1.5, 0.1);
