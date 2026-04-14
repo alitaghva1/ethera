@@ -76,6 +76,11 @@ const slimeState = {
     bounceJumpHeight: 0,
     landingDamageDealt: false,
     membraneShield: 0,   // Membrane upgrade — absorbs damage before HP
+    // Absorption Momentum — builds on consecutive absorbs without taking damage
+    absorptionMomentum: 0,
+    momentumTimer: 0,
+    momentumDecay: 4.0,
+    maxMomentum: 10,
 };
 
 // Reset slime form state (called on form switch)
@@ -116,6 +121,9 @@ function slimeAbsorbEnemy(target, particleCount) {
     slimeState.size = Math.min(slimeState.maxSize, slimeState.size + sizeGain);
     player.hp = Math.min(_slimeMaxHP(), player.hp + 20);
     FormSystem.formData.slime.absorbed++;
+    // Absorption Momentum — build stacks on absorb
+    slimeState.absorptionMomentum = Math.min(slimeState.maxMomentum, slimeState.absorptionMomentum + 1);
+    slimeState.momentumTimer = 0;
     // Evolution progress toasts
     if (typeof Notify !== 'undefined' && typeof EVOLUTION_REQUIREMENTS !== 'undefined') {
         const _absReq = EVOLUTION_REQUIREMENTS.slime_to_skeleton.absorbed;
@@ -376,6 +384,7 @@ function updateSlime(dt) {
 
         if (slimeState.bounceJumpTimer <= 0) {
             slimeState.bounceJumping = false;
+            player.parryTimer = 0; // clear parry when bounce lands
             slimeState.bounceJumpHeight = 0;
             // Landing damage
             if (!slimeState.landingDamageDealt) {
@@ -485,6 +494,31 @@ function updateSlime(dt) {
     if (regenLevel > 0) {
         const regenRate = 2 * regenLevel * slimeState.size;
         player.hp = Math.min(_slimeMaxHP(), player.hp + regenRate * dt);
+    }
+
+    // === ABSORPTION MOMENTUM — decay and passive aura ===
+    slimeState.momentumTimer += dt;
+    if (slimeState.momentumTimer > slimeState.momentumDecay && slimeState.absorptionMomentum > 0) {
+        slimeState.absorptionMomentum = Math.max(0, Math.floor(slimeState.absorptionMomentum) - 1);
+        slimeState.momentumTimer = slimeState.momentumDecay - 0.5; // re-check in 0.5s
+    }
+    // Passive damage aura at 5+ momentum stacks
+    if (slimeState.absorptionMomentum >= 5) {
+        const auraDmg = 3 + Math.floor(slimeState.absorptionMomentum * 0.5);
+        const auraRadius = 1.5 + slimeState.absorptionMomentum * 0.1;
+        for (let _ai = 0; _ai < enemies.length; _ai++) {
+            const _ae = enemies[_ai];
+            if (_ae.state === 'death') continue;
+            const _adr = _ae.row - player.row, _adc = _ae.col - player.col;
+            if (Math.sqrt(_adr * _adr + _adc * _adc) < auraRadius) {
+                if (!_ae._slimeAuraTick) _ae._slimeAuraTick = 0;
+                _ae._slimeAuraTick += dt;
+                if (_ae._slimeAuraTick >= 0.5) {
+                    _ae._slimeAuraTick = 0;
+                    applyEnemyHit(_ae, auraDmg, { skipHurtState: true, skipSFX: true, skipParticles: true });
+                }
+            }
+        }
     }
 
     // === ACID PUDDLES update ===
@@ -1234,6 +1268,7 @@ formHandlers.slime.onDodge = function() {
     slimeState.bounceJumpHeight = 0;
     slimeState.landingDamageDealt = false;
     player.dodgeCoolTimer = DODGE_COOLDOWN * 0.8; // slightly shorter cooldown for slime
+    player.parryTimer = PARRY_WINDOW; // parry active for first frames of bounce
 
     // === LAUNCH SQUISH — compress hard then stretch tall ===
     slimeState.squash = 0.72; // pre-jump crouch compression

@@ -127,6 +127,7 @@ function updatePlayer(dt) {
         player.dodgeTimer = DODGE_DURATION;
         player.dodgeCoolTimer = Math.max(0.3, DODGE_COOLDOWN - (equipBonus.dodgeCdReduc || 0));
         player.dodgeFlashTimer = 0.18; // brighter, longer arcane flash
+        player.parryTimer = PARRY_WINDOW; // parry active for first frames of dodge
         sfxDodge();
         addScreenShake(2.5, 0.08); // subtle shake on dodge for tactile feedback
         // VFX: bigger arcane ring burst at start position
@@ -178,6 +179,9 @@ function updatePlayer(dt) {
         keys[' '] = false;
     }
 
+    // --- Parry timer (ticks down independently of dodge type) ---
+    if (player.parryTimer > 0) player.parryTimer -= dt;
+
     // --- Phase Jump movement (override normal movement) ---
     if (player.dodging) {
         player.dodgeTimer -= dt;
@@ -204,6 +208,7 @@ function updatePlayer(dt) {
 
         if (player.dodgeTimer <= 0) {
             player.dodging = false;
+            player.parryTimer = 0; // clear parry when dodge ends
             player.vx = player.dodgeDirRow * MOVE_MAX_SPEED * 0.55; // boosted residual momentum
             player.vy = player.dodgeDirCol * MOVE_MAX_SPEED * 0.55;
         }

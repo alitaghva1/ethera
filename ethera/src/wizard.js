@@ -2,7 +2,14 @@
 //  WIZARD FORM — Handler wiring
 // ============================================================
 
-const wizardState = {};
+const wizardState = {
+    // Spell Weaving — alternate fireball/tower to build arcane resonance
+    arcaneResonance: 0,
+    resonanceTimer: 0,
+    resonanceDecay: 3.5,
+    maxResonance: 8,
+    lastAction: null,  // 'fireball' or 'tower'
+};
 
 // Reset wizard form state (called on form switch)
 function resetWizardState() {
@@ -16,12 +23,21 @@ function resetWizardState() {
     placement.channelTimer = 0;
     mouse.down = false;
     mouse.rightDown = false;
+    wizardState.arcaneResonance = 0;
+    wizardState.resonanceTimer = 0;
+    wizardState.lastAction = null;
 }
 
 // --- Handler registration ---
 
 formHandlers.wizard.update = function(dt) {
     updatePlayer(dt);
+    // Spell Weaving: tick resonance decay
+    wizardState.resonanceTimer += dt;
+    if (wizardState.resonanceTimer > wizardState.resonanceDecay && wizardState.arcaneResonance > 0) {
+        wizardState.arcaneResonance = Math.max(0, Math.floor(wizardState.arcaneResonance) - 1);
+        wizardState.resonanceTimer = wizardState.resonanceDecay - 0.5; // re-check in 0.5s
+    }
     // Check wizard->lich evolution
     const fd = FormSystem.formData.wizard;
     const req = EVOLUTION_REQUIREMENTS.wizard_to_lich;
@@ -67,12 +83,24 @@ formHandlers.wizard.drawGhost = function(sx, sy) {
 formHandlers.wizard.onPrimaryAttack = function() {
     if (player.attackCooldown <= 0 && player.mana >= (COMBAT.manaCost * (1 - getUpgrade('arcane_efficiency') * 0.15))) {
         mouse.down = true;
+        // Spell Weaving: alternating fireball/tower builds resonance
+        if (wizardState.lastAction === 'tower') {
+            wizardState.arcaneResonance = Math.min(wizardState.maxResonance, wizardState.arcaneResonance + 1);
+            wizardState.resonanceTimer = 0;
+        }
+        wizardState.lastAction = 'fireball';
     }
 };
 formHandlers.wizard.onSecondaryAbility = function() {
     const effSummonMax = SUMMON_MAX_COUNT + getUpgrade('tower_extra');
     if (!placement.active && summons.length < effSummonMax && player.mana >= SUMMON_MANA_COST) {
         placement.active = true;
+        // Spell Weaving: alternating tower/fireball builds resonance
+        if (wizardState.lastAction === 'fireball') {
+            wizardState.arcaneResonance = Math.min(wizardState.maxResonance, wizardState.arcaneResonance + 1);
+            wizardState.resonanceTimer = 0;
+        }
+        wizardState.lastAction = 'tower';
     }
 };
 formHandlers.wizard.onDodge = function() {

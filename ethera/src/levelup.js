@@ -411,6 +411,19 @@ function drawLevelUpScreen() {
         ctx.fillStyle = catColor;
         ctx.fillText(u.category.toUpperCase(), cardX + cardW / 2, cy2 + (isLegendary || isRare ? 22 : 18));
 
+        // Synergy tag label (bottom-right corner)
+        if (u.tag && typeof UPGRADE_TAGS !== 'undefined' && UPGRADE_TAGS[u.tag]) {
+            const _tagInfo = UPGRADE_TAGS[u.tag];
+            const _tagCounts = (typeof countUpgradeTags === 'function') ? countUpgradeTags() : {};
+            const _tagActive = (_tagCounts[u.tag] || 0) >= (typeof TAG_SET_BONUS_THRESHOLD !== 'undefined' ? TAG_SET_BONUS_THRESHOLD : 3);
+            ctx.globalAlpha = fade * cardRevealFrac * (_tagActive ? 0.9 : 0.45);
+            ctx.font = '7px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillStyle = _tagInfo.color;
+            ctx.fillText(_tagInfo.name.toUpperCase(), cardX + cardW - 8, cy2 + (isLegendary || isRare ? 22 : 18));
+            ctx.textAlign = 'center';
+        }
+
         // Icon
         ctx.globalAlpha = fade * cardRevealFrac;
         drawUpgradeIcon(cardX + cardW / 2, cy2 + 65, u.icon, isLegendary ? '#ffcc33' : (isRare ? '#6699ff' : catColor), 16);

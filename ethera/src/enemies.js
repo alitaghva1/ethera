@@ -539,7 +539,15 @@ function calcPlayerDmgBonus() {
     const big = (typeof getUpgrade === 'function') ? getUpgrade('bigshot') * 5 : 0;
     const talisman = (typeof getTalismanBonus === 'function') ? getTalismanBonus().dmgMult : 1;
     const synBonus = (typeof hasSynergy === 'function' && hasSynergy('power_surge')) ? 1.10 : 1.0;
-    return { flat: equip + big + quest, mult: talisman * synBonus };
+    // Synergy tag: offensive set bonus (+12% damage)
+    const tagBonuses = (typeof getActiveTagBonuses === 'function') ? getActiveTagBonuses() : {};
+    const tagDmgMult = tagBonuses.offensive ? tagBonuses.offensive.dmgMult : 1;
+    // Wizard Spell Weaving: +6% fireball damage per resonance stack
+    const wizResonanceMult = (typeof FormSystem !== 'undefined' && FormSystem.currentForm === 'wizard' && typeof wizardState !== 'undefined')
+        ? (1 + wizardState.arcaneResonance * 0.06) : 1;
+    // Fusion bonus: active fusions grant +25% damage as a baseline reward
+    const fusionDmgMult = (typeof fusedUpgrades !== 'undefined' && Object.keys(fusedUpgrades).length > 0) ? 1.25 : 1;
+    return { flat: equip + big + quest, mult: talisman * synBonus * tagDmgMult * wizResonanceMult * fusionDmgMult };
 }
 
 // All damage to enemies should go through this function.
@@ -562,7 +570,11 @@ function applyEnemyHit(e, damage, opts) {
 
     // Armored skeleton shield damage reduction
     const shieldReduc = e.isShielding ? (1 - (e.def.shieldDmgReduc || 0)) : 1;
-    let finalDmg = Math.round(damage * shieldReduc);
+    // Melt reaction: +25% damage while melted
+    const meltMult = (e.meltTimer > 0) ? REACTION_MELT_DMG_MULT : 1;
+    // Enemy synergy: Shield Wall damage reduction
+    const synReduc = 1 - (e.synergyDmgReduc || 0);
+    let finalDmg = Math.round(damage * shieldReduc * meltMult * synReduc);
 
     // ── COMBAT JUICE: Critical hit roll (applies to all damage sources) ──
     const isCrit = !opts.skipCrit && Math.random() < CRIT_CHANCE;
@@ -2695,6 +2707,14 @@ function spawnEnemy(type, row, col, statMult) {
         elite: null,
         // Ambush state (pit_lurker)
         _ambushHidden: baseDef.ambush ? true : false,
+        // Status effects (for elemental reactions)
+        statusEffects: { slow: 0, burn: 0, freeze: 0 },
+        meltTimer: 0,   // Melt reaction: take 25% more damage
+        rootTimer: 0,   // Root reaction: immobilized
+        // Enemy synergy aura fields (set by updateEnemySynergies)
+        synergyDmgReduc: 0,
+        synergyAtkSpeed: 1,
+        synergyDmgMult: 1,
     };
 
     // Boss-only timers — only allocated for bosses to reduce per-enemy memory
@@ -3093,6 +3113,14 @@ function updateEnemies(dt) {
         // --- Timer ticks ---
         if (e.attackCooldown > 0) e.attackCooldown -= dt;
         if (e.slowTimer > 0) e.slowTimer -= dt;
+        // Status effect timers (elemental reactions)
+        if (e.statusEffects) {
+            if (e.statusEffects.slow > 0) e.statusEffects.slow -= dt;
+            if (e.statusEffects.burn > 0) e.statusEffects.burn -= dt;
+            if (e.statusEffects.freeze > 0) e.statusEffects.freeze -= dt;
+        }
+        if (e.meltTimer > 0) e.meltTimer -= dt;
+        if (e.rootTimer > 0) e.rootTimer -= dt;
         if (e.orbitHitCooldown > 0) e.orbitHitCooldown -= dt;
         if (e.staggerCooldown > 0) e.staggerCooldown -= dt;
         if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
@@ -3225,7 +3253,8 @@ function updateEnemies(dt) {
                     // Melee: damage player if in range
                     if (dist < e.def.attackRange + 0.3) {
                         sfxEnemyHurt(e.row, e.col); // melee attack impact sound
-                        damagePlayer(e.def.damage, e.type, e.row, e.col);
+                        const _synMeleeDmg = Math.round(e.def.damage * (e.synergyDmgMult || 1));
+                        damagePlayer(_synMeleeDmg, e.type, e.row, e.col);
                         // Elite vampiric: heal on hit
                         if (e.elite === 'vampiric') {
                             const healAmt = Math.round(e.def.damage * ELITE_VAMPIRIC_HEAL_MULT);
@@ -3239,7 +3268,7 @@ function updateEnemies(dt) {
             if (e.attackTimer <= 0) {
                 e.state = 'idle';
                 e.animFrame = 0;
-                e.attackCooldown = e.def.attackCooldown;
+                e.attackCooldown = e.def.attackCooldown / (e.synergyAtkSpeed || 1);
             }
             continue;
         }
@@ -4126,8 +4155,10 @@ function updateEnemies(dt) {
         }
 
         // --- Movement AI ---
+        // Root reaction: immobilized, zero velocity (but still tick timers/attack)
+        if (e.rootTimer > 0) { e.vr = 0; e.vc = 0; }
         let moveDir;
-        let slowMult = e.slowTimer > 0 ? Math.max(0.2, 1 - 0.3 * getUpgrade('tower_slow')) : 1;
+        let slowMult = e.rootTimer > 0 ? 0 : (e.slowTimer > 0 ? Math.max(0.2, 1 - 0.3 * getUpgrade('tower_slow')) : 1);
         // Sticky Landing slow stacks with tower slow (floor at 20% to prevent full freeze)
         if (e._stickySlowTimer > 0) slowMult = Math.max(0.2, slowMult * (e._stickySlowMult || 0.4));
         const enrageMult = e.def.isBoss && e.hp < e.maxHp * 0.5 ? 1.3 : 1.0;
@@ -4464,7 +4495,7 @@ function triggerLevelUp() {
     const currentPool = (handler && handler.getUpgradePool) ? handler.getUpgradePool() : UPGRADE_POOL;
     const lvl = xpState.level;
     const available = currentPool.filter(u => {
-        if ((upgrades[u.id] || 0) >= u.maxStack) return false;
+        if (getUpgrade(u.id) >= u.maxStack) return false; // includes legacy echoes
         const tier = u.tier || 'normal';
         if (tier === 'rare' && lvl < 5) return false;
         if (tier === 'legendary' && lvl < 10) return false;
@@ -4610,13 +4641,137 @@ function applyUpgrade(upgradeId) {
             if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 35, syn.color);
         }
     }
+    // Check for newly activated tag set bonuses
+    if (typeof countUpgradeTags === 'function' && typeof UPGRADE_TAGS !== 'undefined') {
+        const _tagCounts = countUpgradeTags();
+        for (const tag in _tagCounts) {
+            if (_tagCounts[tag] === TAG_SET_BONUS_THRESHOLD) {
+                // Just crossed the threshold — notify
+                const tagInfo = UPGRADE_TAGS[tag];
+                if (tagInfo && typeof Notify !== 'undefined') {
+                    Notify.toast('SET BONUS: ' + tagInfo.name + ' (' + TAG_SET_BONUS_THRESHOLD + '+ upgrades)', { duration: 4, color: tagInfo.color, borderColor: tagInfo.color });
+                    addScreenShake(5, 0.2);
+                    if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 25, tagInfo.color);
+                }
+            }
+        }
+    }
+    // Check for upgrade fusion (two max-stacked upgrades → legendary)
+    if (typeof checkFusions === 'function') {
+        const newFusion = checkFusions();
+        if (newFusion) {
+            if (typeof Notify !== 'undefined') {
+                Notify.toast('FUSION: ' + newFusion.name + ' — ' + newFusion.desc,
+                    { duration: 6, color: newFusion.color || '#ffd700', borderColor: newFusion.color || '#aa8800' });
+            }
+            addScreenShake(10, 0.4);
+            addSlowMo(0.5, 0.3);
+            addHitPause(0.15);
+            if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 50, newFusion.color || '#ffd700');
+        }
+    }
 }
 
-// Helper to get current stack count
-function getUpgrade(id) { return upgrades[id] || 0; }
+// Helper to get current stack count (includes legacy echoes at reduced power)
+function getUpgrade(id) {
+    let base = upgrades[id] || 0;
+    if (typeof FormSystem !== 'undefined' && FormSystem.legacyEchoes) {
+        for (let _ei = 0; _ei < FormSystem.legacyEchoes.length; _ei++) {
+            const echo = FormSystem.legacyEchoes[_ei];
+            if (echo.upgradeId === id) {
+                base += Math.max(1, Math.floor(echo.stackCount * (echo.effectiveMult || 0.5)));
+            }
+        }
+    }
+    return base;
+}
+
+// ============================================================
+//  ELEMENTAL STATUS EFFECTS & REACTIONS
+// ============================================================
+function applyStatusEffect(e, effectType, duration, element) {
+    if (!e || e.state === 'death' || !e.statusEffects) return;
+    const had = { slow: e.statusEffects.slow > 0, burn: e.statusEffects.burn > 0, freeze: e.statusEffects.freeze > 0 };
+    e.statusEffects[effectType] = Math.max(e.statusEffects[effectType] || 0, duration);
+    // Check for elemental reactions
+    if (effectType === 'burn' && had.slow && element === 'fire') triggerReaction(e, 'melt');
+    if (effectType === 'burn' && had.freeze && element === 'fire') triggerReaction(e, 'shatter');
+    if (effectType === 'slow' && element === 'shadow') {
+        if (had.slow) triggerReaction(e, 'root'); // shadow slow on already-slowed = root
+    }
+}
+
+function triggerReaction(e, reactionType) {
+    if (!e || e.state === 'death') return;
+    if (reactionType === 'melt') {
+        e.meltTimer = REACTION_MELT_DURATION;
+        e.statusEffects.slow = 0; // consume slow
+        // Orange burst VFX
+        for (let _rv = 0; _rv < 6; _rv++) {
+            spawnParticle(e.row, e.col, (Math.random()-0.5)*3, (Math.random()-0.5)*3-1, 0.3, '#ff8844', 0.8);
+        }
+        pickupTexts.push({ row: e.row, col: e.col, text: 'MELT', color: '#ff8844', life: 0.6, offsetY: -8 });
+    } else if (reactionType === 'shatter') {
+        const burstDmg = Math.round(e.maxHp * REACTION_SHATTER_DMG_FRAC);
+        applyEnemyHit(e, burstDmg, { skipCrit: true, skipSFX: true }); // route through damage pipeline
+        e.state = 'hurt'; e.hurtTimer = REACTION_SHATTER_STUN; e.animFrame = 0;
+        e.statusEffects.freeze = 0; // consume freeze
+        e.statusEffects.burn = 0;   // consume burn
+        // Cyan burst VFX
+        for (let _rv = 0; _rv < 8; _rv++) {
+            spawnParticle(e.row, e.col, (Math.random()-0.5)*4, (Math.random()-0.5)*4-1, 0.35, '#88ccff', 0.9);
+        }
+        pickupTexts.push({ row: e.row, col: e.col, text: 'SHATTER', color: '#88ccff', life: 0.8, offsetY: -8 });
+        addScreenShake(4, 0.15);
+        if (e.hp <= 0) { e.hp = 0; e.state = 'death'; }
+    } else if (reactionType === 'root') {
+        e.rootTimer = REACTION_ROOT_DURATION;
+        e.statusEffects.slow = 0; // consume slow
+        // Purple burst VFX
+        for (let _rv = 0; _rv < 5; _rv++) {
+            spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -Math.random()*2, 0.4, '#6622aa', 0.7);
+        }
+        pickupTexts.push({ row: e.row, col: e.col, text: 'ROOT', color: '#6622aa', life: 0.6, offsetY: -8 });
+    }
+}
 
 // ----- PLAYER DAMAGE -----
 function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
+    // === PARRY CHECK — must come before dodge immunity ===
+    // parryTimer is auto-cleared when each dodge ends (movement.js, skeleton.js, slime.js)
+    // so it can't outlast the dodge. Lich parry persists briefly post-teleport by design.
+    if (player.parryTimer > 0) {
+        // Melee parry: stagger nearby enemies and deal counter-damage
+        const parryDmg = Math.round(amount * PARRY_MELEE_DMG_MULT);
+        for (let _pi = 0; _pi < enemies.length; _pi++) {
+            const _pe = enemies[_pi];
+            if (_pe.state === 'death') continue;
+            const _pdr = _pe.row - player.row, _pdc = _pe.col - player.col;
+            const _pdist = Math.sqrt(_pdr * _pdr + _pdc * _pdc);
+            if (_pdist < PARRY_STAGGER_RANGE) {
+                _pe.state = 'hurt';
+                _pe.hurtTimer = PARRY_STAGGER_DURATION;
+                _pe.animFrame = 0;
+                if (parryDmg > 0) applyEnemyHit(_pe, parryDmg, { skipCrit: true, knockVr: _pdr / (_pdist || 1) * 3, knockVc: _pdc / (_pdist || 1) * 3 });
+            }
+        }
+        player.parryTimer = 0; // consume parry
+        playerInvTimer = PARRY_INV_TIME;
+        addScreenShake(8, 0.25);
+        addHitPause(0.10);
+        sfxParry();
+        // Parry VFX: gold/white ring burst
+        const _parryPos = tileToScreen(player.row, player.col);
+        const _ppx = _parryPos.x + cameraX, _ppy = _parryPos.y + cameraY;
+        for (let _pv = 0; _pv < 10; _pv++) {
+            const angle = (_pv / 10) * Math.PI * 2;
+            const speed = 60 + Math.random() * 40;
+            _emitParticle(_ppx, _ppy, Math.cos(angle) * speed, Math.sin(angle) * speed - 10,
+                0.3 + Math.random() * 0.15, 3 + Math.random() * 4, '#ffdd66', 0.8, 'parry', 'lighter');
+        }
+        pickupTexts.push({ row: player.row, col: player.col, text: 'PARRY!', color: '#ffdd44', life: 0.8, offsetY: -20 });
+        return;
+    }
     if (player.dodging) return; // immune during phase jump
     if (typeof skeletonState !== 'undefined' && skeletonState.rolling) return;
     if (typeof slimeState !== 'undefined' && slimeState.bounceJumping) return;
@@ -4646,7 +4801,10 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
     const _potionReduc = typeof getPotionDmgReduc === 'function' ? getPotionDmgReduc() : 0;
     // Iron Bones upgrade (skeleton): flat damage reduction per stack
     const _ironBonesReduc = (FormSystem.currentForm === 'skeleton' && typeof getUpgrade === 'function') ? getUpgrade('iron_bones') * 0.05 : 0;
-    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0) - _potionReduc - _ironBonesReduc)));
+    // Synergy tag: defensive set bonus (10% damage reduction)
+    const _tagBonuses = (typeof getActiveTagBonuses === 'function') ? getActiveTagBonuses() : {};
+    const _tagDefReduc = _tagBonuses.defensive ? _tagBonuses.defensive.dmgReduc : 0;
+    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0) - _potionReduc - _ironBonesReduc - _tagDefReduc)));
 
     // === SLIME: Membrane shield absorbs damage before HP ===
     if (FormSystem.currentForm === 'slime' && typeof slimeState !== 'undefined' && slimeState.membraneShield > 0) {
@@ -4676,6 +4834,10 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
 
     player.hp -= reducedAmt;
     playerInvTimer = PLAYER_INV_TIME;
+    // Slime absorption momentum: lose 3 stacks on taking damage (skill gate)
+    if (FormSystem.currentForm === 'slime' && typeof slimeState !== 'undefined' && slimeState.absorptionMomentum > 0) {
+        slimeState.absorptionMomentum = Math.max(0, slimeState.absorptionMomentum - 3);
+    }
     // Kill streak breaks on taking damage
     killStreak.count = 0;
     killStreak.multiplier = 1.0;
@@ -5078,6 +5240,8 @@ function checkProjectileEnemyHits() {
                     addScreenShake(7, 0.25);
                     addHitPause(0.06);
                     addSlowMo(0.1, 0.25); // devastating explosion slow-mo
+                    // Apply burn status (fire element) to primary target for reactions
+                    if (typeof applyStatusEffect === 'function') applyStatusEffect(e, 'burn', 2, 'fire');
                     const explodeRadius = 2.5;
                     const explodeDmg = Math.round((baseProjDmg + dmgBonus) * 0.4 * p.explodeScale);
                     for (const e2 of enemies) {
@@ -5258,6 +5422,84 @@ function fireEnemyArrow(e, opts) {
     sfxArrowShoot(e.row, e.col);
 }
 
+// ============================================================
+//  ENEMY SYNERGIES — group auras that buff nearby enemies
+// ============================================================
+let _enemySynergyTimer = 0;
+function updateEnemySynergies(dt) {
+    _enemySynergyTimer += dt;
+    if (_enemySynergyTimer < ENEMY_SYNERGY_CHECK_INTERVAL) return;
+    _enemySynergyTimer = 0;
+    // Clear all synergy flags
+    for (const e of enemies) {
+        if (e.state === 'death') continue;
+        e.synergyDmgReduc = 0;
+        e.synergyAtkSpeed = 1;
+        e.synergyDmgMult = 1;
+        e._synergyLabel = null;
+    }
+    if (typeof ENEMY_SYNERGIES === 'undefined') return;
+    for (const syn of ENEMY_SYNERGIES) {
+        const req = syn.requires;
+        if (req.type && req.minCount) {
+            // Same-type grouping (Shield Wall)
+            const matching = enemies.filter(e => e.state !== 'death' && e.type === req.type);
+            for (const e of matching) {
+                let nearbyCount = 0;
+                for (const e2 of matching) {
+                    if (e2 === e) continue;
+                    const dist = Math.sqrt((e.row - e2.row) ** 2 + (e.col - e2.col) ** 2);
+                    if (dist < req.maxDist) nearbyCount++;
+                }
+                if (nearbyCount >= req.minCount - 1) {
+                    if (syn.effect.dmgReduc) e.synergyDmgReduc = Math.max(e.synergyDmgReduc, syn.effect.dmgReduc);
+                    e._synergyLabel = syn.label;
+                    e._synergyColor = syn.color;
+                    // Also buff nearby non-matching enemies within range
+                    for (const e2 of enemies) {
+                        if (e2.state === 'death' || e2.type === req.type) continue;
+                        const dist = Math.sqrt((e.row - e2.row) ** 2 + (e.col - e2.col) ** 2);
+                        if (dist < req.maxDist) {
+                            if (syn.effect.dmgReduc) e2.synergyDmgReduc = Math.max(e2.synergyDmgReduc, syn.effect.dmgReduc);
+                        }
+                    }
+                }
+            }
+        } else if (req.types) {
+            // Pair synergy (Bone Empowerment)
+            const typeA = enemies.filter(e => e.state !== 'death' && e.type === req.types[0]);
+            const typeB = enemies.filter(e => e.state !== 'death' && e.type === req.types[1]);
+            for (const a of typeA) {
+                for (const b of typeB) {
+                    const dist = Math.sqrt((a.row - b.row) ** 2 + (a.col - b.col) ** 2);
+                    if (dist < req.maxDist) {
+                        if (syn.effect.atkSpeedMult) {
+                            a.synergyAtkSpeed = Math.max(a.synergyAtkSpeed, syn.effect.atkSpeedMult);
+                            a._synergyLabel = syn.label; a._synergyColor = syn.color;
+                        }
+                    }
+                }
+            }
+        } else if (req.leaderType && req.followerTypes) {
+            // Leader-follower synergy (Howl Frenzy)
+            const leaders = enemies.filter(e => e.state !== 'death' && e.type === req.leaderType);
+            for (const leader of leaders) {
+                for (const e of enemies) {
+                    if (e.state === 'death' || e === leader) continue;
+                    if (!req.followerTypes.includes(e.type)) continue;
+                    const dist = Math.sqrt((leader.row - e.row) ** 2 + (leader.col - e.col) ** 2);
+                    if (dist < req.maxDist) {
+                        if (syn.effect.dmgMult) {
+                            e.synergyDmgMult = Math.max(e.synergyDmgMult, syn.effect.dmgMult);
+                            e._synergyLabel = syn.label; e._synergyColor = syn.color;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 function updateEnemyProjectiles(dt) {
     for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
         const a = enemyProjectiles[i];
@@ -5278,6 +5520,23 @@ function updateEnemyProjectiles(dt) {
         a.row = nr;
         a.col = nc;
 
+        // Reflected projectile hits enemies (from parry)
+        if (a.reflected) {
+            let _reflectHit = false;
+            for (let _rei = 0; _rei < enemies.length; _rei++) {
+                const _re = enemies[_rei];
+                if (_re.state === 'death') continue;
+                const _rdr = _re.row - a.row, _rdc = _re.col - a.col;
+                if (Math.sqrt(_rdr * _rdr + _rdc * _rdc) < (_re.def.hitboxR || 0.5) + 0.25) {
+                    applyEnemyHit(_re, a.damage, { skipCrit: false, knockVr: a.vr * 0.3, knockVc: a.vc * 0.3 });
+                    enemyProjectiles.splice(i, 1);
+                    _reflectHit = true;
+                    break;
+                }
+            }
+            if (_reflectHit) continue;
+        }
+
         // Bone Wall upgrade: skeleton barriers block enemy projectiles
         if (typeof skeletonState !== 'undefined' && skeletonState.boneWalls && skeletonState.boneWalls.length > 0) {
             let blocked = false;
@@ -5291,6 +5550,27 @@ function updateEnemyProjectiles(dt) {
                 }
             }
             if (blocked) continue;
+        }
+
+        // Parry reflection — reflect projectile back at enemies
+        if (player.parryTimer > 0) {
+            const _rpdr = player.row - a.row, _rpdc = player.col - a.col;
+            if (Math.sqrt(_rpdr * _rpdr + _rpdc * _rpdc) < HITBOX_RADIUS + 0.3) {
+                a.vr = -a.vr; a.vc = -a.vc;
+                a.damage = Math.round(a.damage * PARRY_REFLECT_MULT);
+                a.reflected = true;
+                a.life = 1.5; // refresh lifetime so it can reach enemies
+                player.parryTimer = 0; // consume parry
+                playerInvTimer = PARRY_INV_TIME;
+                addScreenShake(6, 0.2);
+                sfxParry();
+                // Gold spark burst at reflection point
+                for (let _rv = 0; _rv < 6; _rv++) {
+                    spawnParticle(a.row, a.col, (Math.random()-0.5)*4, (Math.random()-0.5)*4 - 1, 0.25, '#ffdd66', 0.8);
+                }
+                pickupTexts.push({ row: player.row, col: player.col, text: 'PARRY!', color: '#ffdd44', life: 0.8, offsetY: -20 });
+                continue; // don't damage player, projectile continues reversed
+            }
         }
 
         // Hit player
