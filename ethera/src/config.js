@@ -110,7 +110,7 @@ const PV_WIZARD_FH = 200;
 const PV_WIZARD_SCALE = 0.55;   // 160*0.55 ≈ 88px wide — close to old 100*1.3=130 but taller/leaner
 const PV_SLIME_FW = 150;
 const PV_SLIME_FH = 150;
-const PV_SLIME_SCALE = 0.50;    // 150*0.50 = 75px frame, content is ~65% = ~49px body — matches wizard sizing
+const PV_SLIME_SCALE = 0.38;    // 150*0.38 = 57px frame — starts small (35px body), grows to 74px at max size 5
 const PV_LICH_FW = 160;         // necromancer creativekind sheet
 const PV_LICH_FH = 128;
 const PV_LICH_SCALE = 1.50;     // small pixel-art character needs high scale to match wizard
