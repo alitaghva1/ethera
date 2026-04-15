@@ -210,23 +210,46 @@ function drawRoughFloorHint(row, col) {
     ctx.restore();
 }
 
+// Helper: resolve PV 8-directional wizard sprite
+function _getWizardPVSprite(animType) {
+    const dir = player.dir8 || 'S';
+    const pvKey = `pv_wizard_${animType}_${dir}`;
+    const img = images[pvKey];
+    if (!img) return null;
+    return { img, fw: PV_WIZARD_FW, fh: PV_WIZARD_FH, frameCount: (PV_WIZARD_ANIMS[animType] || PV_WIZARD_ANIMS.idle).frames };
+}
+
 function drawWizard() {
     const dir = player.dir8 || 'S';
-    const fw = WIZARD_FRAME_W;   // 100
-    const fh = WIZARD_FRAME_H;   // 100
-    const scale = WIZARD_SCALE;  // 1.3
 
-    // Select single-direction Tiny RPG sprite strip
-    let sheet, frameCount;
-    if (player.attacking) {
-        sheet = images.wiz_attack2; frameCount = 6;
-    } else if (player.state === 'walk') {
-        sheet = images.wiz_walk; frameCount = 8;
+    // --- Resolve PV 8-directional sprite (preferred) or legacy fallback ---
+    const animType = (player.state === 'walk') ? 'walk' : 'idle';
+    const pvData = _getWizardPVSprite(animType);
+
+    let sheet, fw, fh, frameCount, scale, flipH;
+    if (pvData) {
+        sheet = pvData.img;
+        fw = pvData.fw;
+        fh = pvData.fh;
+        frameCount = pvData.frameCount;
+        scale = PV_WIZARD_SCALE;
+        flipH = false; // PV sprites have direction baked in
     } else {
-        sheet = images.wiz_idle; frameCount = 6;
-    }
-    if (playerInvTimer > PLAYER_STATS.invTime * 0.5 && images.wiz_hurt) {
-        sheet = images.wiz_hurt; frameCount = 4;
+        // Legacy Tiny RPG fallback
+        fw = WIZARD_FRAME_W;  // 100
+        fh = WIZARD_FRAME_H;  // 100
+        scale = WIZARD_SCALE; // 1.3
+        flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
+        if (player.attacking) {
+            sheet = images.wiz_attack2; frameCount = 6;
+        } else if (player.state === 'walk') {
+            sheet = images.wiz_walk; frameCount = 8;
+        } else {
+            sheet = images.wiz_idle; frameCount = 6;
+        }
+        if (playerInvTimer > PLAYER_STATS.invTime * 0.5 && images.wiz_hurt) {
+            sheet = images.wiz_hurt; frameCount = 4;
+        }
     }
     if (!sheet) return;
 
@@ -236,9 +259,6 @@ function drawWizard() {
     const sy = pos.y + cameraY;
     const dw = fw * scale;
     const dh = fh * scale;
-
-    // Flip for east-facing directions (single-direction sprites face west/south)
-    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
 
     // Sprite bob while walking
     let bob = 0;

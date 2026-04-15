@@ -328,30 +328,49 @@ function updateLich(dt) {
     if (playerInvTimer > 0) playerInvTimer -= dt;
 }
 
+// Helper: resolve PV 8-directional lich sprite
+function _getLichPVSprite(animType) {
+    const dir = player.dir8 || 'S';
+    const pvKey = `pv_lich_${animType}_${dir}`;
+    const img = images[pvKey];
+    if (!img) return null;
+    return { img, fw: PV_LICH_FW, fh: PV_LICH_FH, frameCount: (PV_LICH_ANIMS[animType] || PV_LICH_ANIMS.idle).frames };
+}
+
 function drawLich() {
     const pos = tileToScreen(player.row, player.col);
     const sx = pos.x + cameraX;
     const sy = pos.y + cameraY - lichState.hoverOffset; // floating
-    const scale = WIZARD_SCALE * 1.1; // slightly bigger
-
-    // ── Necromancer sprite (single-direction, flip for E/NE/SE) ──
-    let spriteKey;
-    if (player.attacking) spriteKey = 'lich_p_attack';
-    else if (player.state === 'walk') spriteKey = 'lich_p_walk';
-    else spriteKey = 'lich_p_idle';
-    if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'lich_p_hurt';
-
-    const img = images[spriteKey];
-    if (!img) return;
-    const fw = 160, fh = 128;
-    const frameCount = Math.floor(img.width / fw);
-    const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
-
-    // Flip when facing right (E, NE, SE)
     const dir = player.dir8 || 'S';
-    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
 
-    const lichScale = PV_LICH_SCALE;
+    // --- Resolve PV 8-directional sprite (preferred) or legacy fallback ---
+    const animType = (player.state === 'walk') ? 'walk' : 'idle';
+    const pvData = _getLichPVSprite(animType);
+
+    let img, fw, fh, frameCount, flipH, lichScale;
+    if (pvData) {
+        img = pvData.img;
+        fw = pvData.fw;
+        fh = pvData.fh;
+        frameCount = pvData.frameCount;
+        flipH = false; // PV sprites have direction baked in
+        lichScale = PV_LICH_SCALE;
+    } else {
+        // Legacy fallback
+        let spriteKey;
+        if (player.attacking) spriteKey = 'lich_p_attack';
+        else if (player.state === 'walk') spriteKey = 'lich_p_walk';
+        else spriteKey = 'lich_p_idle';
+        if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'lich_p_hurt';
+        img = images[spriteKey];
+        if (!img) return;
+        fw = 160; fh = 128;
+        frameCount = Math.floor(img.width / fw);
+        flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
+        lichScale = 1.50;
+    }
+
+    const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
 
     ctx.save();
 
@@ -403,7 +422,9 @@ function drawLich() {
 
     const drawW = fw * lichScale;
     const drawH = fh * lichScale;
-    const drawY = sy - drawH * 0.89;
+    // PV sprites: content in top 70% of frame, use 0.72 anchor (same as wizard/skeleton)
+    // Legacy sprites: different frame layout, use 0.89
+    const drawY = sy - drawH * (pvData ? 0.72 : 0.89);
 
     // Draw necromancer sprite (flip horizontally for E/NE/SE directions)
     if (flipH) {

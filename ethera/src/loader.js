@@ -196,7 +196,7 @@ async function loadAssets() {
     }
 
     // ── Load PVGames 2.5D directional sprites ──
-    // Wizard (8 dirs × 5 anims = 40 strip images)
+    // Wizard (8 dirs × 2 anims = 16 strip images)
     for (const [anim, info] of Object.entries(PV_WIZARD_ANIMS)) {
         for (const dir of DIR8_NAMES) {
             const key = `pv_wizard_${anim}_${dir}`;
@@ -204,11 +204,19 @@ async function loadAssets() {
             promises.push(loadImage(PV_PATH + file).then(img => { if (img) images[key] = img; }));
         }
     }
-    // Lich (same structure, different folder)
+    // Lich (8 dirs × 2 anims = 16 strip images)
     for (const [anim, info] of Object.entries(PV_LICH_ANIMS)) {
         for (const dir of DIR8_NAMES) {
             const key = `pv_lich_${anim}_${dir}`;
             const file = `Lich/${anim}-${dir}.png`;
+            promises.push(loadImage(PV_PATH + file).then(img => { if (img) images[key] = img; }));
+        }
+    }
+    // Skeleton (8 dirs × 2 anims = 16 strip images)
+    for (const [anim, info] of Object.entries(PV_SKEL_ANIMS)) {
+        for (const dir of DIR8_NAMES) {
+            const key = `pv_skel_${anim}_${dir}`;
+            const file = `Skeleton/${anim}-${dir}.png`;
             promises.push(loadImage(PV_PATH + file).then(img => { if (img) images[key] = img; }));
         }
     }

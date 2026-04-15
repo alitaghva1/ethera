@@ -445,42 +445,65 @@ function checkSkeletonEvolution() {
     }
 }
 
+// Helper: resolve PV 8-directional skeleton sprite
+function _getSkeletonPVSprite(animType) {
+    const dir = player.dir8 || 'S';
+    const pvKey = `pv_skel_${animType}_${dir}`;
+    const img = images[pvKey];
+    if (!img) return null;
+    const fw = PV_SKEL_FW;
+    const fh = PV_SKEL_FH;
+    const info = PV_SKEL_ANIMS[animType] || PV_SKEL_ANIMS.idle;
+    return { img, fw, fh, frameCount: info.frames };
+}
+
 function drawSkeleton() {
     const pos = tileToScreen(player.row, player.col);
     const sx = pos.x + cameraX;
     const sy = pos.y + cameraY;
-    const scale = 1.5;  // bigger scale — armored skeleton has small pixel content
-    const fw = 100, fh = 100;
+    const dir = player.dir8 || 'S';
+
+    // --- Resolve PV 8-directional sprite (preferred) or legacy fallback ---
+    const animType = (player.state === 'walk' || skeletonState.rolling) ? 'walk' : 'idle';
+    const pvData = _getSkeletonPVSprite(animType);
+
+    let img, fw, fh, frameCount, flipH, scale;
+    if (pvData) {
+        img = pvData.img;
+        fw = pvData.fw;
+        fh = pvData.fh;
+        frameCount = pvData.frameCount;
+        flipH = false; // PV sprites have direction baked in
+        scale = PV_SKEL_SCALE;
+    } else {
+        // Legacy Tiny RPG fallback
+        fw = 100; fh = 100;
+        scale = 1.5;
+        flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
+        let spriteKey;
+        if (skeletonState.shieldUp) {
+            spriteKey = 'skel_p_attack2'; frameCount = 9;
+        } else if (player.attacking) {
+            spriteKey = 'skel_p_attack'; frameCount = 8;
+        } else if (skeletonState.rolling) {
+            spriteKey = 'skel_p_walk'; frameCount = 8;
+        } else if (player.state === 'walk') {
+            spriteKey = 'skel_p_walk'; frameCount = 8;
+        } else {
+            spriteKey = 'skel_p_idle'; frameCount = 6;
+        }
+        if (playerInvTimer > PLAYER_STATS.invTime * 0.5 && !skeletonState.rolling) {
+            spriteKey = 'skel_p_hurt'; frameCount = 4;
+        }
+        img = images[spriteKey];
+        if (!img) return;
+        const actualFC = Math.floor(img.width / fw);
+        if (frameCount > actualFC) frameCount = actualFC;
+    }
+
     const drawW = fw * scale;
     const drawH = fh * scale;
-    const drawY = sy - fh * scale * 0.72;
-    const dir = player.dir8 || 'S';
-    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
-
-    // --- Select sprite based on state ---
-    let spriteKey, frameCount;
-    if (skeletonState.shieldUp) {
-        // Use spinning attack2 sheet for shield bash (looks like a whirlwind block)
-        spriteKey = 'skel_p_attack2'; frameCount = 9;
-    } else if (player.attacking) {
-        spriteKey = 'skel_p_attack'; frameCount = 8;
-    } else if (skeletonState.rolling) {
-        spriteKey = 'skel_p_walk'; frameCount = 8;  // use walk for roll (crouched motion)
-    } else if (player.state === 'walk') {
-        spriteKey = 'skel_p_walk'; frameCount = 8;
-    } else {
-        spriteKey = 'skel_p_idle'; frameCount = 6;
-    }
-    if (playerInvTimer > PLAYER_STATS.invTime * 0.5 && !skeletonState.rolling) {
-        spriteKey = 'skel_p_hurt'; frameCount = 4;
-    }
-
-    const img = images[spriteKey];
-    if (!img) return;
-
-    // Clamp frame count to actual sheet width
-    const actualFC = Math.floor(img.width / fw);
-    if (frameCount > actualFC) frameCount = actualFC;
+    const drawY = sy - drawH * 0.72;
     const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
 
     // --- Ground shadow ---

@@ -105,15 +105,20 @@ const WIZARD_SCALE = 1.3;
 let MAP_SIZE = 24;
 
 // ── PVGames 2.5D Sprite System ──────────────────────────────────────
+// All humanoid forms use 160x200 frames with content in top ~70%, 30% bottom padding.
+// This ensures yAnchor=0.72 positions feet at tile center for correct depth sorting.
 const PV_WIZARD_FW = 160;
 const PV_WIZARD_FH = 200;
-const PV_WIZARD_SCALE = 0.55;   // 160*0.55 ≈ 88px wide — close to old 100*1.3=130 but taller/leaner
+const PV_WIZARD_SCALE = 0.55;   // 160*0.55 = 88px frame, ~60px body — standard humanoid size
 const PV_SLIME_FW = 150;
 const PV_SLIME_FH = 150;
-const PV_SLIME_SCALE = 0.38;    // 150*0.38 = 57px frame — starts small (35px body), grows to 74px at max size 5
-const PV_LICH_FW = 160;         // necromancer creativekind sheet
-const PV_LICH_FH = 128;
-const PV_LICH_SCALE = 1.50;     // small pixel-art character needs high scale to match wizard
+const PV_SLIME_SCALE = 0.38;    // 150*0.38 = 57px frame — starts small, grows with size
+const PV_LICH_FW = 160;
+const PV_LICH_FH = 200;         // updated to match new AI-generated sprites
+const PV_LICH_SCALE = 0.55;     // same scale as wizard — consistent humanoid sizing
+const PV_SKEL_FW = 160;
+const PV_SKEL_FH = 200;
+const PV_SKEL_SCALE = 0.55;     // same scale as wizard/lich
 
 // 8-direction labels matching PVGames sheet row order
 const DIR8_NAMES = ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'];
@@ -121,18 +126,16 @@ const DIR8_NAMES = ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'];
 // PVGames sprite registry — loaded as images.pv_{form}_{anim}_{dir}
 const PV_PATH = 'assets/characters/PVGames/';
 const PV_WIZARD_ANIMS = {
-    idle:   { frames: 8 },
-    walk:   { frames: 8 },
-    attack: { frames: 10 },
-    death:  { frames: 10 },
-    hurt:   { frames: 4 },
+    idle:   { frames: 10 },
+    walk:   { frames: 10 },
 };
-const PV_LICH_ANIMS = {  // necromancer creativekind sprite
-    idle:   { frames: 8 },
-    walk:   { frames: 8 },
-    attack: { frames: 13 },
-    death:  { frames: 9 },
-    hurt:   { frames: 5 },
+const PV_LICH_ANIMS = {
+    idle:   { frames: 10 },
+    walk:   { frames: 10 },
+};
+const PV_SKEL_ANIMS = {
+    idle:   { frames: 10 },
+    walk:   { frames: 10 },
 };
 const PV_SLIME_ANIMS = {
     idle:   { frames: 10 },
