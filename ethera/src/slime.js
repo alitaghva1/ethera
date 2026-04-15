@@ -29,19 +29,23 @@ function buildSlimeTintedSprites() {
             const offCtx = offCanvas.getContext('2d');
             offCtx.drawImage(src, 0, 0);
             // Strip black background — make pixels with low brightness transparent
-            const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
-            const px = imgData.data;
-            for (let p = 0; p < px.length; p += 4) {
-                const brightness = px[p] + px[p + 1] + px[p + 2];
-                if (brightness < 45) {
-                    // Near-black → fully transparent
-                    px[p + 3] = 0;
-                } else if (brightness < 90) {
-                    // Dark fringe → fade alpha for smooth edges
-                    px[p + 3] = Math.min(255, Math.round((brightness - 45) * (255 / 45)));
+            // Wrapped in try/catch: getImageData throws on tainted canvases (file:// protocol)
+            try {
+                const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
+                const px = imgData.data;
+                for (let p = 0; p < px.length; p += 4) {
+                    const brightness = px[p] + px[p + 1] + px[p + 2];
+                    if (brightness < 45) {
+                        px[p + 3] = 0;
+                    } else if (brightness < 90) {
+                        px[p + 3] = Math.min(255, Math.round((brightness - 45) * (255 / 45)));
+                    }
                 }
+                offCtx.putImageData(imgData, 0, 0);
+            } catch (e) {
+                // file:// or cross-origin — can't strip bg, sprite will show with black bg
+                // (still better than crashing)
             }
-            offCtx.putImageData(imgData, 0, 0);
             slimeTintedSprites[key] = offCanvas;
         }
     }
