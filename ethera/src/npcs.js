@@ -444,7 +444,7 @@ function drawNPC(npc) {
     if (dist < NPC_INTERACTION_RANGE && !npcDialogueOpen && !smithyMenuOpen && !shopMenuOpen) {
         ctx.save();
         const pulse = 0.6 + Math.sin(performance.now() / 500) * 0.2;
-        const promptY = drawY + ghostBob - 24;
+        const promptY = drawY + ghostBob - 44;
         const accentColor = isPaleQueen ? '#9966cc' : '#aa9060';
         const textColor = isPaleQueen ? '#cc99ff' : '#e8d4a0';
         const labelColor = isPaleQueen ? '#aa88cc' : '#c4a878';
