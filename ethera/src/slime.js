@@ -821,8 +821,9 @@ function drawSlime() {
     const sy = pos.y + cameraY;
     const sizeMult = getSlimeSizeMult();
 
-    // ── Scale: 1.8 base makes the ~30px sprite body render at ~54px — readable ──
-    const SLIME_BASE_SCALE = 1.8;
+    // ── Scale: PV sprites are 150px, use PV_SLIME_SCALE (0.65). Legacy were 30px body needing 1.8x ──
+    const usePVSlime = !!_getSlimePVSprite('idle'); // check if PV sprites are available
+    const SLIME_BASE_SCALE = usePVSlime ? PV_SLIME_SCALE : 1.8;
     const slimeScale = SLIME_BASE_SCALE * sizeMult.scale;
 
     // During cinematic/awakening: slime coalesces from a puddle
@@ -912,7 +913,9 @@ function drawSlime() {
         if (Math.sin(playerInvTimer * 20) > 0) ctx.globalAlpha = 0.35;
     }
 
-    if (player.facing < 0) {
+    // PV sprites have direction baked in (8 strips) — no horizontal flip needed.
+    // Legacy sprites only have one facing and need flip.
+    if (!pvData && player.facing < 0) {
         ctx.save();
         ctx.translate(pxSx, drawY);
         ctx.scale(-1, 1);
