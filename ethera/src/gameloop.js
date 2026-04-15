@@ -4099,19 +4099,23 @@ function render() {
                 }
             }
             if (ot && images[ot]) {
-                // Fade tall tiles that occlude the player (walls, columns, gates)
+                // Fade ALL tall objects that occlude the player.
+                // Isometric tiles extend ~230px upward from their diamond center,
+                // so objects at depth+1/+2 visually cover entities at the previous depth.
+                // Fading them to 30% opacity when near the player keeps the player visible.
+                // This is the standard approach (Diablo, Hades, etc.)
                 let _occludeFade = 1;
                 if (gamePhase === 'playing' && !gameDead) {
                     const _tDepth = row + col;
                     const _pDepth = player.row + player.col;
-                    if (_tDepth > _pDepth && _tDepth <= _pDepth + 2) {
+                    if (_tDepth > _pDepth && _tDepth <= _pDepth + 2.5) {
                         const _dr = Math.abs(row - player.row);
                         const _dc = Math.abs(col - player.col);
-                        if (_dr <= 2 && _dc <= 2 && (ot.includes('wall') || ot.includes('Wall') ||
-                            ot.includes('column') || ot.includes('Column') ||
-                            ot.includes('gate') || ot.includes('Gate') ||
-                            ot.includes('Arch') || ot.includes('arch'))) {
-                            _occludeFade = 0.45;
+                        // Fade any tall object near the player — exclude chests (interactive)
+                        // and crackedWall (has its own visual system)
+                        if (_dr <= 2 && _dc <= 2 &&
+                            ot !== 'chestClosed' && ot !== 'chestOpen' && ot !== 'crackedWall') {
+                            _occludeFade = 0.30;
                         }
                     }
                 }
@@ -4143,44 +4147,9 @@ function render() {
         spriteIdx++;
     }
 
-    // ── LAYER 2b: Occlusion ghost — semi-transparent player silhouette ──
-    // When the player is directly behind a tall object (column, wall, barrel),
-    // draw a translucent silhouette on top so the player stays visible.
-    // Uses tile-space check: object must be at isometric depth+1 (directly in front).
-    {
-        const handler = FormSystem.getHandler();
-        if (handler && handler.draw) {
-            const pr = Math.floor(player.row);
-            const pc = Math.floor(player.col);
-            let occluded = false;
-            // In isometric view, tiles at (row+1, col) and (row, col+1) are
-            // directly "in front" of the player and their tall sprites cover
-            // the player. Only check these two directions.
-            const frontTiles = [[1, 0], [0, 1]];
-            for (const [dr, dc] of frontTiles) {
-                const cr = pr + dr;
-                const cc = pc + dc;
-                if (cr < 0 || cr >= mapSize || cc < 0 || cc >= mapSize) continue;
-                if (!objectMap[cr] || !objectMap[cr][cc]) continue;
-                const obj = objectMap[cr][cc];
-                // Only tall objects that visually extend upward and cover things behind them
-                if (obj && (obj.startsWith('wall') || obj.startsWith('stoneColumn') ||
-                    obj === 'barrel' || obj === 'barrels' || obj === 'barrelsStacked' ||
-                    obj === 'woodenCrate' || obj === 'woodenCrates' ||
-                    obj === 'woodenSupports' || obj === 'woodenSupportBeams' ||
-                    obj === 'stairs' || obj === 'stairsSpiral' || obj === 'stairsAged')) {
-                    occluded = true;
-                    break;
-                }
-            }
-            if (occluded) {
-                ctx.save();
-                ctx.globalAlpha = 0.3;
-                handler.draw();
-                ctx.restore();
-            }
-        }
-    }
+    // (Occlusion ghost removed — replaced by comprehensive object fade in the
+    //  depth-sorted draw pass above. All tall objects near the player now fade
+    //  to 30% opacity, making the player always visible without a ghost layer.)
 
     // ── LAYER 3: Floor decals + environment light props ──
     drawBloodStain();
