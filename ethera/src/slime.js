@@ -15,9 +15,7 @@ function _slimeMaxHP() {
 const slimeTintedSprites = {};
 
 function buildSlimeTintedSprites() {
-    // Cache PVGames directional slime sprites with black background removed.
-    // The AI-generated sprites have pure black backgrounds — we convert dark
-    // pixels to transparent at load time so the slime composites normally.
+    // Cache PVGames directional slime sprites (transparency baked into PNGs).
     for (const anim of ['idle', 'walk']) {
         for (const dir of DIR8_NAMES) {
             const key = `pv_slime_${anim}_${dir}`;
@@ -28,24 +26,6 @@ function buildSlimeTintedSprites() {
             offCanvas.height = src.height;
             const offCtx = offCanvas.getContext('2d');
             offCtx.drawImage(src, 0, 0);
-            // Strip black background — make pixels with low brightness transparent
-            // Wrapped in try/catch: getImageData throws on tainted canvases (file:// protocol)
-            try {
-                const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
-                const px = imgData.data;
-                for (let p = 0; p < px.length; p += 4) {
-                    const brightness = px[p] + px[p + 1] + px[p + 2];
-                    if (brightness < 45) {
-                        px[p + 3] = 0;
-                    } else if (brightness < 90) {
-                        px[p + 3] = Math.min(255, Math.round((brightness - 45) * (255 / 45)));
-                    }
-                }
-                offCtx.putImageData(imgData, 0, 0);
-            } catch (e) {
-                // file:// or cross-origin — can't strip bg, sprite will show with black bg
-                // (still better than crashing)
-            }
             slimeTintedSprites[key] = offCanvas;
         }
     }

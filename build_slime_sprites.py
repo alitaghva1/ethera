@@ -80,12 +80,26 @@ def extract_slime_from_cell(img, row, col, cell_w, cell_h):
     new_h = max(1, int(blob_h * scale))
     scaled = cropped.resize((new_w, new_h), Image.LANCZOS)
 
-    # Center on a FRAME_W x FRAME_H black canvas
+    # Center on a FRAME_W x FRAME_H transparent canvas
     # Position slightly lower to leave room for bounce animation
-    canvas = Image.new('RGB', (FRAME_W, FRAME_H), (0, 0, 0))
+    canvas = Image.new('RGBA', (FRAME_W, FRAME_H), (0, 0, 0, 0))
     offset_x = (FRAME_W - new_w) // 2
     offset_y = (FRAME_H - new_h) // 2 + 5  # slight downward offset
-    canvas.paste(scaled, (offset_x, offset_y))
+
+    # Convert scaled image to RGBA and strip black background
+    scaled_rgba = scaled.convert('RGBA')
+    px = scaled_rgba.load()
+    for y in range(scaled_rgba.height):
+        for x in range(scaled_rgba.width):
+            r, g, b, a = px[x, y]
+            brightness = r + g + b
+            if brightness < 45:
+                px[x, y] = (0, 0, 0, 0)  # near-black → transparent
+            elif brightness < 90:
+                # Dark fringe → partial alpha for smooth edges
+                px[x, y] = (r, g, b, min(255, int((brightness - 45) * (255 / 45))))
+
+    canvas.paste(scaled_rgba, (offset_x, offset_y), scaled_rgba)
 
     return canvas
 
@@ -97,43 +111,36 @@ def build_animation_strip(base_frame, anim_type):
     idle: gentle breathing squash/stretch cycle
     walk: bouncier movement with more pronounced squash
     """
-    strip = Image.new('RGB', (FRAME_W * NUM_FRAMES, FRAME_H), (0, 0, 0))
+    strip = Image.new('RGBA', (FRAME_W * NUM_FRAMES, FRAME_H), (0, 0, 0, 0))
 
     for i in range(NUM_FRAMES):
         t = i / NUM_FRAMES  # 0.0 to 0.9
         angle = t * 2 * math.pi  # full cycle
 
         if anim_type == 'idle':
-            # Gentle breathing: subtle squash/stretch
-            sx = 1.0 + math.sin(angle) * 0.04  # 0.96x to 1.04x width
-            sy = 1.0 - math.sin(angle) * 0.04  # inverse: tall when narrow
-            offset_y = math.sin(angle) * 2  # subtle vertical bob
+            sx = 1.0 + math.sin(angle) * 0.04
+            sy = 1.0 - math.sin(angle) * 0.04
+            offset_y = math.sin(angle) * 2
         else:  # walk
-            # Bouncier: more pronounced squash/stretch + vertical bounce
-            sx = 1.0 + math.sin(angle) * 0.07  # 0.93x to 1.07x width
+            sx = 1.0 + math.sin(angle) * 0.07
             sy = 1.0 - math.sin(angle) * 0.07
-            offset_y = -abs(math.sin(angle)) * 6  # bouncing upward
+            offset_y = -abs(math.sin(angle)) * 6
 
-        # Apply transform
         new_w = max(1, int(FRAME_W * sx))
         new_h = max(1, int(FRAME_H * sy))
 
-        # Resize the base frame
         transformed = base_frame.resize((new_w, new_h), Image.LANCZOS)
 
-        # Create frame canvas and center the transformed image
-        frame = Image.new('RGB', (FRAME_W, FRAME_H), (0, 0, 0))
+        frame = Image.new('RGBA', (FRAME_W, FRAME_H), (0, 0, 0, 0))
         paste_x = (FRAME_W - new_w) // 2
         paste_y = (FRAME_H - new_h) // 2 + int(offset_y)
 
-        # Clamp paste position
         paste_x = max(-new_w + 1, min(FRAME_W - 1, paste_x))
         paste_y = max(-new_h + 1, min(FRAME_H - 1, paste_y))
 
-        frame.paste(transformed, (paste_x, paste_y))
+        frame.paste(transformed, (paste_x, paste_y), transformed)
 
-        # Paste into strip
-        strip.paste(frame, (i * FRAME_W, 0))
+        strip.paste(frame, (i * FRAME_W, 0), frame)
 
     return strip
 
