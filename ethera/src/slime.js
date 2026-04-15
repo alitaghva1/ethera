@@ -821,8 +821,10 @@ function drawSlime() {
     const sy = pos.y + cameraY;
     const sizeMult = getSlimeSizeMult();
 
-    // ── Scale: PV sprites are 150px, use PV_SLIME_SCALE (0.65). Legacy were 30px body needing 1.8x ──
-    const usePVSlime = !!_getSlimePVSprite('idle'); // check if PV sprites are available
+    // ── Scale: Match wizard's approach — wizard uses 100px frames at 1.3x = 130px draw size.
+    // Our PV slime uses 150px frames. To get ~50px draw size (slime is small):
+    // 150 * 0.35 = 52px at size 1, growing to ~100px at max size 5.
+    const usePVSlime = !!_getSlimePVSprite('idle');
     const SLIME_BASE_SCALE = usePVSlime ? PV_SLIME_SCALE : 1.8;
     const slimeScale = SLIME_BASE_SCALE * sizeMult.scale;
 
@@ -895,13 +897,9 @@ function drawSlime() {
     // Snap all screen positions to whole pixels — prevents subpixel jitter
     const pxSx = Math.round(sx);
     const pxSy = Math.round(sy);
-    // PV sprites: anchor at bottom (1.0) so sprite draws entirely above the tile
-    // center point (sy).  Floor tiles at the next isometric depth start right at
-    // sy, so any sprite pixels below sy get overdrawn by later floor tiles.
-    // Using 1.0 keeps the slime fully above that overlap zone.
-    // Legacy sprites: body is small inside frame, needs 0.72 offset.
-    const yAnchor = pvData ? 1.0 : 0.72;
-    const drawY = Math.round(pxSy - drawH * yAnchor - bounceOffset - jumpOffset);
+    // Use same 0.72 anchor as the wizard — sprites are rebuilt with matching
+    // content placement (body in top ~70% of frame, ~30% bottom padding).
+    const drawY = Math.round(pxSy - drawH * 0.72 - bounceOffset - jumpOffset);
 
     // ── Ground contact shadow (simple ellipse, no sprite duplication) ──
     const shadowScale = Math.max(0.5, 1.0 - totalAir * 0.015);

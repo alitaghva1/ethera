@@ -72,19 +72,20 @@ def extract_slime_from_cell(img, row, col, cell_w, cell_h):
     # Crop to bounding box
     cropped = cell.crop((min_x, min_y, max_x + 1, max_y + 1))
 
-    # Scale to fit within FRAME_W x FRAME_H with some margin
+    # Scale to fit within FRAME_W x FRAME_H with margin
     blob_w, blob_h = cropped.size
-    target_size = int(FRAME_W * 0.82)  # leave margin for squash/stretch
+    target_size = int(FRAME_W * 0.65)  # smaller — leave 30%+ bottom padding like wizard sprites
     scale = min(target_size / blob_w, target_size / blob_h)
     new_w = max(1, int(blob_w * scale))
     new_h = max(1, int(blob_h * scale))
     scaled = cropped.resize((new_w, new_h), Image.LANCZOS)
 
-    # Center on a FRAME_W x FRAME_H transparent canvas
-    # Position slightly lower to leave room for bounce animation
+    # Position slime in upper portion of frame with ~30% bottom padding.
+    # This matches how wizard sprites have their body in the top ~70% of the frame,
+    # which makes yAnchor=0.72 work correctly for isometric depth sorting.
     canvas = Image.new('RGBA', (FRAME_W, FRAME_H), (0, 0, 0, 0))
     offset_x = (FRAME_W - new_w) // 2
-    offset_y = (FRAME_H - new_h) // 2 + 5  # slight downward offset
+    offset_y = max(0, int(FRAME_H * 0.05))  # pin near top with small top margin
 
     # Convert scaled image to RGBA and strip black background
     scaled_rgba = scaled.convert('RGBA')
