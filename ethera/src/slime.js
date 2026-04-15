@@ -15,8 +15,9 @@ function _slimeMaxHP() {
 const slimeTintedSprites = {};
 
 function buildSlimeTintedSprites() {
-    // Cache PVGames directional slime sprites (green, no tinting needed).
-    // Also cache legacy Tiny RPG sprites as fallback.
+    // Cache PVGames directional slime sprites with black background removed.
+    // The AI-generated sprites have pure black backgrounds — we convert dark
+    // pixels to transparent at load time so the slime composites normally.
     for (const anim of ['idle', 'walk']) {
         for (const dir of DIR8_NAMES) {
             const key = `pv_slime_${anim}_${dir}`;
@@ -27,6 +28,20 @@ function buildSlimeTintedSprites() {
             offCanvas.height = src.height;
             const offCtx = offCanvas.getContext('2d');
             offCtx.drawImage(src, 0, 0);
+            // Strip black background — make pixels with low brightness transparent
+            const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
+            const px = imgData.data;
+            for (let p = 0; p < px.length; p += 4) {
+                const brightness = px[p] + px[p + 1] + px[p + 2];
+                if (brightness < 45) {
+                    // Near-black → fully transparent
+                    px[p + 3] = 0;
+                } else if (brightness < 90) {
+                    // Dark fringe → fade alpha for smooth edges
+                    px[p + 3] = Math.min(255, Math.round((brightness - 45) * (255 / 45)));
+                }
+            }
+            offCtx.putImageData(imgData, 0, 0);
             slimeTintedSprites[key] = offCanvas;
         }
     }
@@ -906,20 +921,15 @@ function drawSlime() {
     ctx.ellipse(pxSx, pxSy + 4, 18 * sizeMult.scale * shadowScale, 7 * sizeMult.scale * shadowScale, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // ── Draw sprite ONCE — PV sprites use screen blend (black bg vanishes) ──
+    // ── Draw sprite ONCE — black bg stripped at load time, normal compositing ──
     ctx.globalAlpha = 1.0;
     // Invulnerability blink (covers both damage flash and hurt state)
     if (typeof playerInvTimer !== 'undefined' && playerInvTimer > 0) {
         if (Math.sin(playerInvTimer * 20) > 0) ctx.globalAlpha = 0.35;
     }
 
-    // PVGames sprites have black backgrounds — use screen blend to make black transparent
-    const usePV = !!pvData;
-    if (usePV) ctx.globalCompositeOperation = 'screen';
-
     if (player.facing < 0) {
         ctx.save();
-        if (usePV) ctx.globalCompositeOperation = 'screen';
         ctx.translate(pxSx, drawY);
         ctx.scale(-1, 1);
         ctx.drawImage(img, frame * fw, 0, fw, fh, Math.round(-drawW / 2), 0, drawW, drawH);
@@ -927,9 +937,6 @@ function drawSlime() {
     } else {
         ctx.drawImage(img, frame * fw, 0, fw, fh, Math.round(pxSx - drawW / 2), drawY, drawW, drawH);
     }
-
-    // Reset blend mode after sprite draw
-    if (usePV) ctx.globalCompositeOperation = 'source-over';
 
     // ── Ooze drip particles (small green flecks, normal blend) ──
     const _slimeT = performance.now() / 1000;
