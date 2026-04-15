@@ -895,10 +895,12 @@ function drawSlime() {
     // Snap all screen positions to whole pixels — prevents subpixel jitter
     const pxSx = Math.round(sx);
     const pxSy = Math.round(sy);
-    // PV sprites: anchor at bottom of sprite so entire blob draws above tile point.
-    // This prevents depth-sort clipping with floor/object tiles behind the slime.
+    // PV sprites: anchor at bottom (1.0) so sprite draws entirely above the tile
+    // center point (sy).  Floor tiles at the next isometric depth start right at
+    // sy, so any sprite pixels below sy get overdrawn by later floor tiles.
+    // Using 1.0 keeps the slime fully above that overlap zone.
     // Legacy sprites: body is small inside frame, needs 0.72 offset.
-    const yAnchor = pvData ? 0.75 : 0.72;
+    const yAnchor = pvData ? 1.0 : 0.72;
     const drawY = Math.round(pxSy - drawH * yAnchor - bounceOffset - jumpOffset);
 
     // ── Ground contact shadow (simple ellipse, no sprite duplication) ──
@@ -930,22 +932,25 @@ function drawSlime() {
     }
 
     // ── Ooze drip particles (small green flecks, normal blend) ──
+    // Particle positions are relative to the sprite's visual center so they
+    // track correctly regardless of yAnchor or squash/stretch state.
+    const _slimeCenterY = drawY + drawH * 0.5;
     const _slimeT = performance.now() / 1000;
     for (let _si = 0; _si < 4; _si++) {
         const _sa = _slimeT * (1.0 + _si * 0.2) + _si * 1.57;
         const _sr = (8 + Math.sin(_slimeT * 0.6 + _si * 2) * 4) * sizeMult.scale;
         const _spx = sx + Math.cos(_sa) * _sr;
-        const _spy = sy - 14 * slimeScale - bounceOffset + Math.sin(_sa * 0.7) * _sr * 0.4;
+        const _spy = _slimeCenterY + Math.sin(_sa * 0.7) * _sr * 0.4;
         ctx.globalAlpha = 0.25 + Math.sin(_slimeT * 1.8 + _si) * 0.1;
         ctx.fillStyle = _si % 2 === 0 ? '#2a8833' : '#227728';
         ctx.beginPath();
         ctx.arc(_spx, _spy, 1.2 + Math.sin(_slimeT * 2.5 + _si) * 0.4, 0, Math.PI * 2);
         ctx.fill();
     }
-    // Dripping droplet
+    // Dripping droplet — falls from sprite center toward the ground (pxSy)
     const dripPhase = (_slimeT * 0.7) % 1.0;
     if (dripPhase < 0.5) {
-        const dripY = sy - 4 * slimeScale + dripPhase * 16 * sizeMult.scale;
+        const dripY = _slimeCenterY + dripPhase * 16 * sizeMult.scale;
         const dripX = sx + Math.sin(_slimeT * 3.1) * 5 * sizeMult.scale;
         ctx.globalAlpha = 0.3 * (1.0 - dripPhase / 0.5);
         ctx.fillStyle = '#2a8833';
@@ -960,7 +965,7 @@ function drawSlime() {
         const t = performance.now() / 1000;
         const orbitR = 18 * sizeMult.scale;
         const tx = sx + Math.cos(t * 2) * orbitR;
-        const ty = sy - 30 * slimeScale - bounceOffset + Math.sin(t * 2) * orbitR * 0.4;
+        const ty = drawY + Math.sin(t * 2) * orbitR * 0.4;
         ctx.globalCompositeOperation = 'screen';
         ctx.globalAlpha = 0.6 + Math.sin(t * 4) * 0.2;
         const tGlow = ctx.createRadialGradient(tx, ty, 0, tx, ty, 8);

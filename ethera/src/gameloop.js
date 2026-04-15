@@ -3913,10 +3913,10 @@ function render() {
     // Player gets +0.5 depth bias so they draw AFTER object tiles at the same
     // position on the diagonal — prevents tall wall/column sprites from covering
     // the player when they're on the same isometric depth line.
-    // Slime is ground-level and gets clipped by floor tiles more easily than tall characters.
-    // Give it a higher depth bias to ensure it draws on top of tiles at its position.
-    const isSlimeForm = FormSystem.currentForm === 'slime';
-    const wizardScore = playerDepth * mapSize + player.row + (isSlimeForm ? 2.0 : 0.5);
+    // All forms use the same +0.5 depth bias.  The slime's draw function anchors
+    // the sprite at yAnchor=1.0 so it sits entirely above the tile center point,
+    // eliminating the floor-tile overdraw that previously required a higher bias.
+    const wizardScore = playerDepth * mapSize + player.row + 0.5;
     let spriteId = 0;
     spritePool.push({ score: wizardScore, id: spriteId++, isPlayer: true, draw: () => {
         const handler = FormSystem.getHandler();
