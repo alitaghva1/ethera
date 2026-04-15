@@ -4131,6 +4131,47 @@ function render() {
         spriteIdx++;
     }
 
+    // ── LAYER 2b: Occlusion ghost — semi-transparent player silhouette ──
+    // When the player (especially short forms like slime) is behind tall objects,
+    // draw a translucent outline on top so the player is always visible.
+    {
+        const handler = FormSystem.getHandler();
+        if (handler && handler.draw) {
+            // Check if any object tile at higher depth occludes the player's screen position
+            const pPos = tileToScreen(player.row, player.col);
+            const pSx = pPos.x + cameraX;
+            const pSy = pPos.y + cameraY;
+            // Check a few tiles at depth+1 and depth+2 for tall objects
+            let occluded = false;
+            const checkOffsets = [[1, 0], [0, 1], [1, 1], [2, 0], [0, 2]];
+            for (const [dr, dc] of checkOffsets) {
+                const cr = Math.floor(player.row) + dr;
+                const cc = Math.floor(player.col) + dc;
+                if (cr >= 0 && cr < mapSize && cc >= 0 && cc < mapSize && objectMap[cr] && objectMap[cr][cc]) {
+                    const obj = objectMap[cr][cc];
+                    if (obj && !obj.startsWith('chest') && !obj.startsWith('crackedWall')) {
+                        // Check if this object's screen position overlaps the player
+                        const oPos = tileToScreen(cr, cc);
+                        const oSx = oPos.x + cameraX;
+                        const oSy = oPos.y + cameraY;
+                        const dx = Math.abs(pSx - oSx);
+                        const dy = pSy - oSy; // positive means object is below player on screen
+                        if (dx < 50 && dy > -20 && dy < 60) {
+                            occluded = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (occluded) {
+                ctx.save();
+                ctx.globalAlpha = 0.4;
+                handler.draw();
+                ctx.restore();
+            }
+        }
+    }
+
     // ── LAYER 3: Floor decals + environment light props ──
     drawBloodStain();
     drawCombatDecals();
