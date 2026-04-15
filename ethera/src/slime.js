@@ -857,17 +857,28 @@ function drawSlime() {
         return;
     }
 
-    // ── Resolve sprite (Tiny RPG slime_p_* set) ──
-    const fw = 100, fh = 100;
-    let spriteKey;
-    if (player.attacking) spriteKey = 'slime_p_attack';
-    else if (player.state === 'walk') spriteKey = 'slime_p_walk';
-    else spriteKey = 'slime_p_idle';
-    if (typeof playerInvTimer !== 'undefined' && playerInvTimer > PLAYER_STATS.invTime * 0.5)
-        spriteKey = 'slime_p_hurt';
-    const img = slimeTintedSprites[spriteKey] || images[spriteKey];
-    if (!img) return;
-    const frameCount = Math.floor(img.width / fw);
+    // ── Resolve sprite (PVGames 8-directional slime set, black bg + screen blend) ──
+    const animType = (player.state === 'walk') ? 'walk' : 'idle';
+    const pvData = _getSlimePVSprite(animType);
+    let img, fw, fh, frameCount;
+    if (pvData) {
+        img = pvData.img;
+        fw = pvData.fw;
+        fh = pvData.fh;
+        frameCount = pvData.frameCount;
+    } else {
+        // Fallback to legacy Tiny RPG sprites
+        fw = 100; fh = 100;
+        let spriteKey;
+        if (player.attacking) spriteKey = 'slime_p_attack';
+        else if (player.state === 'walk') spriteKey = 'slime_p_walk';
+        else spriteKey = 'slime_p_idle';
+        if (typeof playerInvTimer !== 'undefined' && playerInvTimer > PLAYER_STATS.invTime * 0.5)
+            spriteKey = 'slime_p_hurt';
+        img = slimeTintedSprites[spriteKey] || images[spriteKey];
+        if (!img) return;
+        frameCount = Math.floor(img.width / fw);
+    }
     const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
 
     ctx.save();
@@ -895,15 +906,20 @@ function drawSlime() {
     ctx.ellipse(pxSx, pxSy + 4, 18 * sizeMult.scale * shadowScale, 7 * sizeMult.scale * shadowScale, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // ── Draw sprite ONCE — no shadow, no outline, no duplicate layers ──
+    // ── Draw sprite ONCE — PV sprites use screen blend (black bg vanishes) ──
     ctx.globalAlpha = 1.0;
     // Invulnerability blink (covers both damage flash and hurt state)
     if (typeof playerInvTimer !== 'undefined' && playerInvTimer > 0) {
         if (Math.sin(playerInvTimer * 20) > 0) ctx.globalAlpha = 0.35;
     }
 
+    // PVGames sprites have black backgrounds — use screen blend to make black transparent
+    const usePV = !!pvData;
+    if (usePV) ctx.globalCompositeOperation = 'screen';
+
     if (player.facing < 0) {
         ctx.save();
+        if (usePV) ctx.globalCompositeOperation = 'screen';
         ctx.translate(pxSx, drawY);
         ctx.scale(-1, 1);
         ctx.drawImage(img, frame * fw, 0, fw, fh, Math.round(-drawW / 2), 0, drawW, drawH);
@@ -911,6 +927,9 @@ function drawSlime() {
     } else {
         ctx.drawImage(img, frame * fw, 0, fw, fh, Math.round(pxSx - drawW / 2), drawY, drawW, drawH);
     }
+
+    // Reset blend mode after sprite draw
+    if (usePV) ctx.globalCompositeOperation = 'source-over';
 
     // ── Ooze drip particles (small green flecks, normal blend) ──
     const _slimeT = performance.now() / 1000;
