@@ -895,7 +895,10 @@ function drawSlime() {
     // Snap all screen positions to whole pixels — prevents subpixel jitter
     const pxSx = Math.round(sx);
     const pxSy = Math.round(sy);
-    const drawY = Math.round(pxSy - drawH * 0.72 - bounceOffset - jumpOffset);
+    // PV sprites: slime body fills frame, anchor base at tile center
+    // Legacy sprites: body is small inside frame, needs 0.72 offset
+    const yAnchor = pvData ? 0.9 : 0.72;
+    const drawY = Math.round(pxSy - drawH * yAnchor - bounceOffset - jumpOffset);
 
     // ── Ground contact shadow (simple ellipse, no sprite duplication) ──
     const shadowScale = Math.max(0.5, 1.0 - totalAir * 0.015);
