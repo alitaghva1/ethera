@@ -275,6 +275,9 @@ function drawNPC(npc) {
     const isGhost = !!npc.isGhost;
     const isPaleQueen = !!npc.isPaleQueen;
     const ghostBob = isGhost ? Math.sin(performance.now() / 800 + npc.row * 3) * 4 : 0;
+    // Check interaction range early — used for sprite glow + name label
+    const _inRange = !npcDialogueOpen && !smithyMenuOpen && !shopMenuOpen &&
+        Math.sqrt((npc.row - player.row) ** 2 + (npc.col - player.col) ** 2) < NPC_INTERACTION_RANGE;
     // NPCs whose buildings aren't rebuilt appear dimmer/ghostlier
     const _npcBld = typeof NPC_BUILDING_MAP !== 'undefined' ? NPC_BUILDING_MAP[npc.id] : null;
     const _npcRebuilt = !_npcBld || (typeof isRebuilt === 'function' ? isRebuilt(_npcBld) : (typeof hamletRebuild !== 'undefined' && hamletRebuild[_npcBld]));
@@ -355,6 +358,12 @@ function drawNPC(npc) {
     }
     // Disable smoothing for pixel art upscaling (64→90px stays crisp)
     if (npc.noSpriteTint) ctx.imageSmoothingEnabled = false;
+    // Subtle glow when player is in interaction range
+    if (_inRange) {
+        var _glowPulse = 0.35 + Math.sin(performance.now() / 500) * 0.15;
+        ctx.shadowColor = isPaleQueen ? 'rgba(153,102,204,' + _glowPulse + ')' : 'rgba(220,190,120,' + _glowPulse + ')';
+        ctx.shadowBlur = 10;
+    }
     ctx.drawImage(sheet, frame * npc.frameW, 0, npc.frameW, npc.frameH, _sprX, _sprY, dw, dh);
     ctx.imageSmoothingEnabled = true;
     ctx.filter = 'none';
@@ -399,10 +408,11 @@ function drawNPC(npc) {
     // Name tag above NPC — with dark background panel for readability
     ctx.save();
     var _nameAlpha = (isPaleQueen ? 0.85 : 0.7) * baseAlpha;
+    if (_inRange) _nameAlpha = Math.min(1, _nameAlpha * 1.3);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = isPaleQueen ? 'bold 11px Georgia' : 'bold 10px Georgia';
-    var _nameText = npc.name;
+    var _nameText = _inRange ? '[E] ' + npc.name : npc.name;
     var _nameY = drawY + ghostBob - 14;
     var _nameW = ctx.measureText(_nameText).width;
     // Dark background pill for readability against any terrain
@@ -439,46 +449,6 @@ function drawNPC(npc) {
 
     ctx.restore();
 
-    // Interaction prompt (E key badge) when player is close
-    const dist = Math.sqrt((npc.row - player.row) ** 2 + (npc.col - player.col) ** 2);
-    if (dist < NPC_INTERACTION_RANGE && !npcDialogueOpen && !smithyMenuOpen && !shopMenuOpen) {
-        ctx.save();
-        const pulse = 0.6 + Math.sin(performance.now() / 500) * 0.2;
-        const promptY = drawY + ghostBob - 44;
-        const accentColor = isPaleQueen ? '#9966cc' : '#aa9060';
-        const textColor = isPaleQueen ? '#cc99ff' : '#e8d4a0';
-        const labelColor = isPaleQueen ? '#aa88cc' : '#c4a878';
-
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        // Register bounds for overlap prevention
-        if (typeof _registerWorldLabel === 'function') _registerWorldLabel(sx, promptY + 4, 80, 40);
-
-        // Key badge background
-        ctx.globalAlpha = pulse * 0.7 * baseAlpha;
-        ctx.fillStyle = isPaleQueen ? '#140e1a' : '#1a1408';
-        ctx.strokeStyle = accentColor;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(sx - 14, promptY - 10, 28, 20, 4);
-        ctx.fill();
-        ctx.stroke();
-
-        // Key letter
-        ctx.globalAlpha = pulse * 0.9 * baseAlpha;
-        ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = textColor;
-        ctx.fillText('E', sx, promptY);
-
-        // "Talk" label below badge
-        ctx.globalAlpha = pulse * 0.5 * baseAlpha;
-        ctx.font = 'italic 10px Georgia';
-        ctx.fillStyle = labelColor;
-        ctx.fillText('Talk', sx, promptY + 18);
-
-        ctx.restore();
-    }
 }
 
 function drawNPCDialogue() {
