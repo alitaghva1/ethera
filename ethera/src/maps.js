@@ -1394,6 +1394,19 @@ function generateTown() {
     for (let c = 16; c <= 24; c++) {
         floorMap[15][c] = 'ow_grassPath';
     }
+    // --- Path junctions & termini (proper corner/end tiles) ---
+    // Dead-ends at building entrances
+    floorMap[8][6]   = 'ow_grassPathEnd';      // guard post approach
+    floorMap[8][24]  = 'ow_grassPathEnd';      // hermit hut approach
+    floorMap[15][8]  = 'ow_grassPathEnd';      // forge approach
+    floorMap[15][24] = 'ow_grassPathEnd';      // shop approach
+    // T-junctions where branches meet main road
+    floorMap[8][16]  = 'ow_grassPathCross';    // east branch at main road
+    floorMap[15][14] = 'ow_grassPathCross';    // forge branch at main road
+    floorMap[15][16] = 'ow_grassPathCross';    // shop branch at main road
+    // Path clearings where road opens into town square
+    floorMap[9][15]  = 'ow_grassPathClear';    // square entrance from north
+    floorMap[12][15] = 'ow_grassPathClear';    // square entrance from south
 
     // ===== 4. SOUTH DUNGEON ENTRANCE (rows 20-24) =====
     // Atmospheric stairway leading down, framed by stone pillars and debris
@@ -1687,6 +1700,82 @@ function generateTown() {
     placeObj(28, 6, 'fm_sack', false);         // abandoned sack SW
     placeObj(28, 24, 'fm_hay', false);         // scattered hay SE
 
+    // ===== 12c. GROUND VARIATION — break up monotonous grass =====
+    // Stumps — suggest trees were cleared to build the hamlet
+    floorMap[3][12]  = 'ow_grassStump';    // near north gate
+    floorMap[19][9]  = 'ow_grassStump';    // west of path area
+    floorMap[6][13]  = 'ow_grassStump';    // between guard post and road
+    floorMap[13][20] = 'ow_grassStump';    // east of town square
+    // Large stones — anchor points in empty grass
+    floorMap[5][10]  = 'ow_grassStoneL';   // west open area
+    floorMap[6][20]  = 'ow_grassStoneL';   // east open area
+    floorMap[13][10] = 'ow_grassStoneL';   // between forge and square
+    floorMap[13][19] = 'ow_grassStoneL';   // between shop and square
+    floorMap[20][11] = 'ow_grassStoneL';   // south west approach
+    floorMap[20][19] = 'ow_grassStoneL';   // south east approach
+    // Small stones — texture the gaps between buildings and paths
+    floorMap[5][12]  = 'ow_grassStoneS';   // guard post east approach
+    floorMap[5][18]  = 'ow_grassStoneS';   // hermit west approach
+    floorMap[7][10]  = 'ow_grassStoneS';   // west mid
+    floorMap[7][20]  = 'ow_grassStoneS';   // east mid
+    floorMap[13][12] = 'ow_grassStoneS';   // forge approach
+    floorMap[13][18] = 'ow_grassStoneS';   // shop approach
+    floorMap[16][10] = 'ow_grassStoneS';   // south of forge
+    floorMap[16][20] = 'ow_grassStoneS';   // south of shop
+    floorMap[22][10] = 'ow_grassStoneS';   // south approach
+    floorMap[22][20] = 'ow_grassStoneS';   // south approach
+    // Hills — gentle terrain undulation in flat stretches
+    floorMap[3][10]  = 'ow_grassHill';     // north west
+    floorMap[3][20]  = 'ow_grassHill';     // north east
+    floorMap[6][11]  = 'ow_grassHill';     // west mid area
+    floorMap[6][19]  = 'ow_grassHill';     // east mid area
+    floorMap[14][10] = 'ow_grassHill';     // between forge and square
+    floorMap[14][20] = 'ow_grassHill';     // between shop and square
+    floorMap[22][9]  = 'ow_grassHill';     // south west
+    floorMap[22][21] = 'ow_grassHill';     // south east
+    // Elevated grass patches — terrain undulation in the flattest areas
+    floorMap[5][11]  = 'ow_grassHillHigh'; // west open area, gentle rise
+    floorMap[5][19]  = 'ow_grassHillHigh'; // east open area, gentle rise
+    floorMap[7][12]  = 'ow_grassHillHigh'; // between guard post and road
+    floorMap[7][18]  = 'ow_grassHillHigh'; // between hermit and road
+    floorMap[14][11] = 'ow_grassHillHigh'; // south of forge approach
+    floorMap[14][19] = 'ow_grassHillHigh'; // south of shop approach
+    floorMap[21][9]  = 'ow_grassHillHigh'; // south approach west
+    floorMap[21][21] = 'ow_grassHillHigh'; // south approach east
+
+    // ===== 12d. SAME-FAMILY PROPS — fill dead space near buildings =====
+    // Forge exterior (complete chimney stack + storage)
+    placeObj(13, 2, 'fm_chimneyTop', false);   // chimney top above base at (13,2)
+    placeObj(12, 3, 'fm_roofCorner', false);   // roof corner NW of forge
+    placeObj(17, 9, 'fm_ladder', false);        // ladder leaning against forge east wall
+    placeObj(16, 9, 'fm_sacksCrate', false);   // supply crates east of forge
+    placeObj(18, 3, 'barrel');                  // barrel outside forge west
+
+    // Shop exterior (matching detail level)
+    placeObj(12, 27, 'fm_roofCorner', false);  // roof corner NE of shop
+    placeObj(17, 21, 'fm_ladder', false);       // ladder propped outside shop
+    placeObj(16, 21, 'fm_sack', false);        // sack near shop west wall
+    placeObj(18, 27, 'barrel');                 // barrel outside shop east
+
+    // Town square boundaries — broken fences define the edges
+    placeObj(9, 9, 'fm_fenceLow', false);      // west fence, north square
+    placeObj(9, 21, 'fm_fenceLow', false);     // east fence, north square
+    placeObj(12, 9, 'fm_fenceLowBrk', false);  // broken fence SW of square
+    placeObj(12, 21, 'fm_fenceLowBrk', false); // broken fence SE of square
+
+    // Guard post exterior — supply depot
+    placeObj(8, 3, 'fm_hayBales', false);      // hay stores outside guard post
+    placeObj(8, 9, 'fm_sacksCrate', false);    // supply crates east of guard post
+
+    // Hermit hut exterior — overgrown clutter
+    placeObj(8, 27, 'fm_hay', false);          // scattered hay outside hut
+    placeObj(8, 21, 'fm_sack', false);         // sack west of hermit hut
+
+    // Path area — more cargo and supplies along the approach
+    placeObj(20, 12, 'barrel');                 // barrel west of dungeon path
+    placeObj(19, 19, 'fm_hayBales', false);    // hay east of path
+    placeObj(21, 11, 'fm_sacksCrate', false);  // cargo west
+
     // ===== 13. TREASURE CHESTS =====
     placeObj(6, 4, 'chestClosed');         // guard post interior
     placeObj(6, 25, 'chestClosed');        // hermit's hut
@@ -1709,7 +1798,7 @@ function generateTown() {
     // ===== 15. TRANSITION: grass edges around stone buildings =====
     // Place grass-edge tiles around building borders for natural transition
     const stoneFloors = new Set(['stoneTile', 'stone', 'stoneInset', 'planks', 'fm_planks']);
-    const grassFloors = new Set(['ow_grass', 'ow_grassHill', 'ow_grassStump',
+    const grassFloors = new Set(['ow_grass', 'ow_grassHill', 'ow_grassHillHigh', 'ow_grassStump',
         'n_grass', 'n_grassEdge', 'n_grassFlowers', 'n_grassBush']);
     const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
     for (let r = 1; r < 29; r++) {

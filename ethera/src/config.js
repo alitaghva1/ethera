@@ -623,6 +623,7 @@ let NATURE_DRAW_H = 0;
 const OVERWORLD_TILE_FILES = {
     ow_grass:           'grass_S.png',
     ow_grassHill:       'grassHill_S.png',
+    ow_grassHillHigh:   'grassHillHigh_S.png',
     ow_grassPath:       'grassPathStraight_S.png',
     ow_grassPathCorner: 'grassPathCorner_S.png',
     ow_grassPathCross:  'grassPathCrossing_S.png',
