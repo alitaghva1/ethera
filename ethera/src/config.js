@@ -636,6 +636,11 @@ const OVERWORLD_TILE_FILES = {
     ow_lanternTall:     'prop_lantern_tall_S.png',
     ow_marketStand:     'prop_market_stand_S.png',
     ow_gravestone:      'prop_gravestone_S.png',
+    // AI-generated area feature props
+    ow_herbBed:         'prop_herb_bed_S.png',
+    ow_gardenArch:      'prop_garden_arch_S.png',
+    ow_trainingDummy:   'prop_training_dummy_S.png',
+    ow_weaponStand:     'prop_weapon_stand_S.png',
     ow_grassPath:       'grassPathStraight_S.png',
     ow_grassPathCorner: 'grassPathCorner_S.png',
     ow_grassPathCross:  'grassPathCrossing_S.png',

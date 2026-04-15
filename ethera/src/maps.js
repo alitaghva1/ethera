@@ -111,6 +111,7 @@ const OBJ_RADII = {
     // Hamlet props (AI-generated)
     ow_signPost: 0.20, ow_flowerPlanter: 0.28, ow_benchWood: 0.30,
     ow_lanternTall: 0.18, ow_marketStand: 0.40, ow_gravestone: 0.22,
+    ow_herbBed: 0.35, ow_gardenArch: 0.15, ow_trainingDummy: 0.25, ow_weaponStand: 0.30,
     // (Town now uses dungeon tiles — no separate n_/t_ radii needed)
     // Hell (Infernus) props
     h_altar1: 0.42, h_altar2: 0.42, h_altar3: 0.42,
@@ -1775,35 +1776,67 @@ function generateTown() {
     floorMap[21][9]  = 'ow_grassHillHigh'; // south approach west
     floorMap[21][21] = 'ow_grassHillHigh'; // south approach east
 
-    // ===== 12c2. AI-GENERATED PROPS — hamlet character pieces =====
-    // Signposts at road forks (wayfinding)
-    placeObj(4, 14, 'ow_signPost');             // north road fork
-    placeObj(13, 14, 'ow_signPost');            // south road fork
+    // ===== 12e. HAMLET ZONES — thematic areas with AI-generated props =====
+    // The hamlet reads north-to-south: welcoming → functional → foreboding.
+    // Each zone serves a purpose and connects to an NPC's identity.
 
-    // Flower planters outside building entrances (life and color)
+    // --- WAYFINDING: Signposts at road forks ---
+    placeObj(4, 14, 'ow_signPost');             // north fork — "Guard Post / Hermit"
+    placeObj(13, 16, 'ow_signPost');            // south fork — "Forge / Shop / Dungeon"
+
+    // --- BUILDING ENTRANCES: Flower planters add life ---
     placeObj(8, 5, 'ow_flowerPlanter', false);  // guard post entrance
     placeObj(8, 25, 'ow_flowerPlanter', false); // hermit hut entrance
     placeObj(17, 5, 'ow_flowerPlanter', false); // forge entrance
     placeObj(17, 25, 'ow_flowerPlanter', false);// shop entrance
 
-    // Benches at town square (rest spots)
-    placeObj(9, 10, 'ow_benchWood', false);     // bench west of square
-    placeObj(12, 17, 'ow_benchWood', false);    // bench south-east of square
+    // --- SENNA'S HERB GARDEN (rows 5-7, cols 10-12) ---
+    // West of main road, between guard post and town square.
+    // Senna grows the herbs she uses for alchemy here.
+    fillFloor(5, 10, 7, 12, 'ow_dirtWorn');    // garden soil
+    floorMap[5][10] = 'ow_wildflowers';         // flowers at garden edge
+    placeObj(5, 11, 'ow_herbBed');              // herb bed — sage, rosemary
+    placeObj(6, 10, 'ow_herbBed');              // herb bed — medicinal plants
+    placeObj(7, 11, 'ow_herbBed');              // herb bed — lavender
+    placeObj(7, 12, 'ow_gardenArch', false);    // vine archway at garden entrance
+    // Low fence border (west and north sides)
+    placeObj(5, 9, 'fm_fenceLow', false);       // fence NW
+    placeObj(6, 9, 'fm_fenceLow', false);       // fence W
+    placeObj(7, 9, 'fm_fenceLowBrk', false);    // broken fence SW — aged
 
-    // Lantern posts at road junctions (with matching env lights added in rendering.js)
-    placeObj(8, 14, 'ow_lanternTall');          // west branch / main road junction
-    placeObj(8, 16, 'ow_lanternTall');          // east branch / main road junction
-    placeObj(15, 13, 'ow_lanternTall');         // south fork west
-    placeObj(15, 17, 'ow_lanternTall');         // south fork east
+    // --- ALDRIC'S TRAINING YARD (rows 5-7, cols 18-20) ---
+    // East of main road, where guards drill. Worn dirt, battered equipment.
+    fillFloor(5, 18, 7, 20, 'fm_dirt');         // trampled training ground
+    floorMap[6][19] = 'ow_dirtWorn';            // extra-worn center
+    placeObj(5, 19, 'ow_trainingDummy');         // straw dummy — strike target
+    placeObj(7, 19, 'ow_trainingDummy');         // second dummy
+    placeObj(6, 20, 'ow_weaponStand');           // weapon rack with practice swords
+    placeObj(5, 18, 'fm_hayBales', false);       // hay bale archery target
+    // Low fence border (east and north sides)
+    placeObj(5, 21, 'fm_fenceLow', false);       // fence NE
+    placeObj(6, 21, 'fm_fenceLow', false);       // fence E
+    placeObj(7, 21, 'fm_fenceLowBrk', false);    // broken fence SE
 
-    // Market stands in town square wings
+    // --- TOWN SQUARE (rows 9-12) ---
+    // The heart of the hamlet. Market, rest, community.
+    placeObj(9, 10, 'ow_benchWood', false);     // bench west — rest spot near Mira
+    placeObj(12, 20, 'ow_benchWood', false);    // bench east — rest spot south
     placeObj(11, 13, 'ow_marketStand');         // west market wing
     placeObj(11, 17, 'ow_marketStand');         // east market wing
 
-    // Memorial gravestones near dungeon approach
-    placeObj(25, 12, 'ow_gravestone');          // memorial for fallen
-    placeObj(26, 11, 'ow_gravestone', false);   // smaller marker
+    // --- ROAD LANTERNS: off the path, flanking junctions ---
+    placeObj(7, 13, 'ow_lanternTall');          // lights the west branch approach
+    placeObj(7, 17, 'ow_lanternTall');          // lights the east branch approach
+    placeObj(16, 12, 'ow_lanternTall');         // lights south fork, west side
+    placeObj(16, 18, 'ow_lanternTall');         // lights south fork, east side
+
+    // --- MEMORIAL GARDEN (rows 24-27, south of dungeon) ---
+    // Honoring those who descended and never returned.
+    placeObj(25, 12, 'ow_gravestone');          // central memorial stone
+    placeObj(26, 11, 'ow_gravestone', false);   // weathered marker
     placeObj(25, 18, 'ow_gravestone', false);   // eastern marker
+    floorMap[25][13] = 'ow_wildflowers';        // flowers at the graves
+    floorMap[26][12] = 'ow_wildflowers';        // flowers honoring the fallen
 
     // ===== 12d. SAME-FAMILY PROPS — fill dead space near buildings =====
     // Forge exterior (complete chimney stack + storage)
