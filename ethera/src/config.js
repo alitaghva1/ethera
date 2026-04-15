@@ -110,7 +110,7 @@ const PV_WIZARD_FH = 200;
 const PV_WIZARD_SCALE = 0.55;   // 160*0.55 ≈ 88px wide — close to old 100*1.3=130 but taller/leaner
 const PV_SLIME_FW = 150;
 const PV_SLIME_FH = 150;
-const PV_SLIME_SCALE = 0.65;
+const PV_SLIME_SCALE = 0.35;    // 150*0.35 ≈ 52px — slime fills its frame, so scale much lower than wizard
 const PV_LICH_FW = 160;         // necromancer creativekind sheet
 const PV_LICH_FH = 128;
 const PV_LICH_SCALE = 1.50;     // small pixel-art character needs high scale to match wizard
