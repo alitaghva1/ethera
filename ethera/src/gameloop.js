@@ -1451,11 +1451,21 @@ function updateGameplay(dt) {
     // Zone transition fade overlay (with narrative story beats between zones)
     if (zoneTransitionFading) {
         if (zoneTransitionFading === 'fadeIn') {
-            // Phase 3: fade black overlay OUT (reveal new zone)
-            zoneTransitionAlpha -= dt * 2.5;
-            if (zoneTransitionAlpha <= 0) {
-                zoneTransitionAlpha = 0;
-                zoneTransitionFading = false;
+            // Phase 3: hold black briefly, then fade overlay OUT to reveal new zone + banner art.
+            // holdTimer gives the zone banner time to start rendering before the world is visible.
+            if (!window._zoneFadeHoldTimer) window._zoneFadeHoldTimer = 0;
+            window._zoneFadeHoldTimer += dt;
+            if (window._zoneFadeHoldTimer < 0.5) {
+                // Hold at full black for 0.5s — zone banner art fades in behind this
+                zoneTransitionAlpha = 1;
+            } else {
+                // Slow reveal — 1.2s fade so banner art is established before world shows
+                zoneTransitionAlpha -= dt * 0.85;
+                if (zoneTransitionAlpha <= 0) {
+                    zoneTransitionAlpha = 0;
+                    zoneTransitionFading = false;
+                    window._zoneFadeHoldTimer = 0;
+                }
             }
         } else if (zoneTransitionFading === 'storyBeat') {
             // Phase 2: show narrative text on black screen
@@ -1481,6 +1491,7 @@ function updateGameplay(dt) {
                 var _sbNextZone = window._storyBeatNextZone || 1;
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
+                window._zoneFadeHoldTimer = 0;
                 window._storyBeatTimer = 0;
                 try { loadZone(_sbNextZone); } catch(e) { try { loadZone(0); _sbNextZone = 0; } catch(e2) {} }
                 try { showZoneBanner(_sbNextZone); } catch(e) {}
@@ -1544,6 +1555,7 @@ function updateGameplay(dt) {
                 // If loadZone/showZoneBanner/sfx throw, the screen must still fade in.
                 zoneTransitionAlpha = 1;
                 zoneTransitionFading = 'fadeIn';
+                window._zoneFadeHoldTimer = 0;
                 try {
                     loadZone(nextZone);
                 } catch(e) {
