@@ -3916,7 +3916,7 @@ function render() {
     // Slime is ground-level and gets clipped by floor tiles more easily than tall characters.
     // Give it a higher depth bias to ensure it draws on top of tiles at its position.
     const isSlimeForm = FormSystem.currentForm === 'slime';
-    const wizardScore = playerDepth * mapSize + player.row + (isSlimeForm ? 1.5 : 0.5);
+    const wizardScore = playerDepth * mapSize + player.row + (isSlimeForm ? 2.0 : 0.5);
     let spriteId = 0;
     spritePool.push({ score: wizardScore, id: spriteId++, isPlayer: true, draw: () => {
         const handler = FormSystem.getHandler();
