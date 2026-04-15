@@ -4132,46 +4132,38 @@ function render() {
     }
 
     // ── LAYER 2b: Occlusion ghost — semi-transparent player silhouette ──
-    // When the player is behind tall objects (columns, walls, barrels),
+    // When the player is directly behind a tall object (column, wall, barrel),
     // draw a translucent silhouette on top so the player stays visible.
+    // Uses tile-space check: object must be at isometric depth+1 (directly in front).
     {
         const handler = FormSystem.getHandler();
         if (handler && handler.draw) {
-            const pPos = tileToScreen(player.row, player.col);
-            const pSx = pPos.x + cameraX;
-            const pSy = pPos.y + cameraY;
-            // Only check immediately adjacent tiles at higher isometric depth
+            const pr = Math.floor(player.row);
+            const pc = Math.floor(player.col);
             let occluded = false;
-            const checkOffsets = [[1, 0], [0, 1], [1, 1]];
-            // Tall objects that can visually cover a ground-level character
-            const TALL_OBJECTS = new Set([
-                'stoneColumn', 'stoneColumnWood', 'barrel', 'barrels', 'barrelsStacked',
-                'woodenCrate', 'woodenCrates', 'woodenPile', 'woodenSupports', 'woodenSupportBeams',
-                'tableRound', 'tableRoundChairs', 'tableChairsBroken', 'tableShort',
-                'stairs', 'stairsSpiral', 'stairsAged',
-            ]);
-            for (const [dr, dc] of checkOffsets) {
-                const cr = Math.floor(player.row) + dr;
-                const cc = Math.floor(player.col) + dc;
+            // In isometric view, tiles at (row+1, col) and (row, col+1) are
+            // directly "in front" of the player and their tall sprites cover
+            // the player. Only check these two directions.
+            const frontTiles = [[1, 0], [0, 1]];
+            for (const [dr, dc] of frontTiles) {
+                const cr = pr + dr;
+                const cc = pc + dc;
                 if (cr < 0 || cr >= mapSize || cc < 0 || cc >= mapSize) continue;
                 if (!objectMap[cr] || !objectMap[cr][cc]) continue;
                 const obj = objectMap[cr][cc];
-                // Only trigger for known tall objects or wall types
-                if (!TALL_OBJECTS.has(obj) && !obj.startsWith('wall')) continue;
-                // Screen-space proximity check — is this object close enough to cover the player?
-                const oPos = tileToScreen(cr, cc);
-                const oSx = oPos.x + cameraX;
-                const oSy = oPos.y + cameraY;
-                const dx = Math.abs(pSx - oSx);
-                const dy = pSy - oSy;
-                if (dx < 35 && dy > -10 && dy < 40) {
+                // Only tall objects that visually extend upward and cover things behind them
+                if (obj && (obj.startsWith('wall') || obj.startsWith('stoneColumn') ||
+                    obj === 'barrel' || obj === 'barrels' || obj === 'barrelsStacked' ||
+                    obj === 'woodenCrate' || obj === 'woodenCrates' ||
+                    obj === 'woodenSupports' || obj === 'woodenSupportBeams' ||
+                    obj === 'stairs' || obj === 'stairsSpiral' || obj === 'stairsAged')) {
                     occluded = true;
                     break;
                 }
             }
             if (occluded) {
                 ctx.save();
-                ctx.globalAlpha = 0.35;
+                ctx.globalAlpha = 0.3;
                 handler.draw();
                 ctx.restore();
             }
