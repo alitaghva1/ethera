@@ -629,6 +629,13 @@ const OVERWORLD_TILE_FILES = {
     ow_moss:            'ground_moss_S.png',
     ow_dirtWorn:        'ground_worn_dirt_S.png',
     ow_rubbleGrass:     'ground_rubble_grass_S.png',
+    // AI-generated hamlet props
+    ow_signPost:        'prop_signpost_S.png',
+    ow_flowerPlanter:   'prop_flower_planter_S.png',
+    ow_benchWood:       'prop_wood_bench_S.png',
+    ow_lanternTall:     'prop_lantern_tall_S.png',
+    ow_marketStand:     'prop_market_stand_S.png',
+    ow_gravestone:      'prop_gravestone_S.png',
     ow_grassPath:       'grassPathStraight_S.png',
     ow_grassPathCorner: 'grassPathCorner_S.png',
     ow_grassPathCross:  'grassPathCrossing_S.png',

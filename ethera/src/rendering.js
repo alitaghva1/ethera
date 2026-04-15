@@ -613,6 +613,11 @@ function buildEnvironmentLights() {
         { row: 18, col: 15, type: 'candle', color: [255, 210, 120], radius: 40, intensity: 0.5 },
         { row: 19, col: 14, type: 'candle', color: [255, 210, 120], radius: 35, intensity: 0.45 },
         { row: 21, col: 16, type: 'candle', color: [255, 210, 120], radius: 35, intensity: 0.45 },
+        // AI-generated lantern posts at road junctions
+        { row: 8, col: 14, type: 'torch', color: [255, 190, 90], radius: 45, intensity: 0.55 },
+        { row: 8, col: 16, type: 'torch', color: [255, 190, 90], radius: 45, intensity: 0.55 },
+        { row: 15, col: 13, type: 'torch', color: [255, 190, 90], radius: 45, intensity: 0.55 },
+        { row: 15, col: 17, type: 'torch', color: [255, 190, 90], radius: 45, intensity: 0.55 },
     ];
 }
 

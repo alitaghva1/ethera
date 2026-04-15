@@ -108,6 +108,9 @@ const OBJ_RADII = {
     woodenSupports: 0.20, woodenSupportBeams: 0.20,
     stoneColumn: 0.22, stoneColumnWood: 0.22,
     stairs: 0.40, stairsSpiral: 0.38, stairsAged: 0.38,
+    // Hamlet props (AI-generated)
+    ow_signPost: 0.20, ow_flowerPlanter: 0.28, ow_benchWood: 0.30,
+    ow_lanternTall: 0.18, ow_marketStand: 0.40, ow_gravestone: 0.22,
     // (Town now uses dungeon tiles — no separate n_/t_ radii needed)
     // Hell (Infernus) props
     h_altar1: 0.42, h_altar2: 0.42, h_altar3: 0.42,
@@ -1771,6 +1774,36 @@ function generateTown() {
     floorMap[14][19] = 'ow_grassHillHigh'; // south of shop approach
     floorMap[21][9]  = 'ow_grassHillHigh'; // south approach west
     floorMap[21][21] = 'ow_grassHillHigh'; // south approach east
+
+    // ===== 12c2. AI-GENERATED PROPS — hamlet character pieces =====
+    // Signposts at road forks (wayfinding)
+    placeObj(4, 14, 'ow_signPost');             // north road fork
+    placeObj(13, 14, 'ow_signPost');            // south road fork
+
+    // Flower planters outside building entrances (life and color)
+    placeObj(8, 5, 'ow_flowerPlanter', false);  // guard post entrance
+    placeObj(8, 25, 'ow_flowerPlanter', false); // hermit hut entrance
+    placeObj(17, 5, 'ow_flowerPlanter', false); // forge entrance
+    placeObj(17, 25, 'ow_flowerPlanter', false);// shop entrance
+
+    // Benches at town square (rest spots)
+    placeObj(9, 10, 'ow_benchWood', false);     // bench west of square
+    placeObj(12, 17, 'ow_benchWood', false);    // bench south-east of square
+
+    // Lantern posts at road junctions (with matching env lights added in rendering.js)
+    placeObj(8, 14, 'ow_lanternTall');          // west branch / main road junction
+    placeObj(8, 16, 'ow_lanternTall');          // east branch / main road junction
+    placeObj(15, 13, 'ow_lanternTall');         // south fork west
+    placeObj(15, 17, 'ow_lanternTall');         // south fork east
+
+    // Market stands in town square wings
+    placeObj(11, 13, 'ow_marketStand');         // west market wing
+    placeObj(11, 17, 'ow_marketStand');         // east market wing
+
+    // Memorial gravestones near dungeon approach
+    placeObj(25, 12, 'ow_gravestone');          // memorial for fallen
+    placeObj(26, 11, 'ow_gravestone', false);   // smaller marker
+    placeObj(25, 18, 'ow_gravestone', false);   // eastern marker
 
     // ===== 12d. SAME-FAMILY PROPS — fill dead space near buildings =====
     // Forge exterior (complete chimney stack + storage)
