@@ -277,7 +277,7 @@ function getPooledProj() {
     return p;
 }
 function getPooledBolt() { return _boltPool.pop() || {}; }
-function recycleProj(p) { if (_projPool.length < 80) _projPool.push(p); }
+function recycleProj(p) { if (p.hitEnemies) p.hitEnemies.clear(); if (_projPool.length < 80) _projPool.push(p); }
 function recycleBolt(b) { if (_boltPool.length < 40) _boltPool.push(b); }
 
 // ----- INPUT -----
@@ -414,6 +414,11 @@ function handleKeyDown(e) {
             return;
         }
         return; // consume all keys while NPC dialogue is open
+    }
+    // Talisman pickup screen — dismiss on any key
+    if (typeof talismanPickupState !== 'undefined' && talismanPickupState.active && typeof dismissTalismanPickup === 'function') {
+        dismissTalismanPickup();
+        return;
     }
     // Evolution hint screen — dismiss on any key
     if (typeof evolutionHintState !== 'undefined' && evolutionHintState.active && typeof dismissEvolutionHint === 'function') {

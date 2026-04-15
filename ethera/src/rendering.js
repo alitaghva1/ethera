@@ -3,6 +3,24 @@
 // ============================================================
 const TILE_CULL_PADDING = 80;
 
+// ── Darkness gradient cache — avoid recreating when position/radius barely changed ──
+let _darkGradCache = null;
+let _darkGradCacheKey = '';
+
+function _getDarknessGrad(ctx, px, py, radius, tag, stops) {
+    // Quantise position to nearest 2px and radius to nearest 2px
+    const qx = (px + 1) >> 1 << 1;
+    const qy = (py + 1) >> 1 << 1;
+    const qr = (radius + 1) >> 1 << 1;
+    const key = `${tag}_${qx}_${qy}_${qr}`;
+    if (key === _darkGradCacheKey && _darkGradCache) return _darkGradCache;
+    _darkGradCacheKey = key;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, radius);
+    for (const [stop, color] of stops) g.addColorStop(stop, color);
+    _darkGradCache = g;
+    return g;
+}
+
 function drawTile(img, row, col) {
     if (!img) return;
     const pos = tileToScreen(row, col);
@@ -1139,11 +1157,11 @@ function drawDarkness() {
             filmColor = 'rgba(60, 20, 15, 0.12)';
         }
 
-        // Pass 1: radial glow
+        // Pass 1: radial glow (cached — only recreated when position/radius shift >2px)
+        const hellTag = zoneCfg.isFrozen ? 'hell_frozen' : zoneCfg.isFinalZone ? 'hell_final' : 'hell_inferno';
         ctx.save();
         ctx.globalCompositeOperation = 'multiply';
-        const grad = ctx.createRadialGradient(px, py, 0, px, py, radius);
-        for (const [stop, color] of gradStops) grad.addColorStop(stop, color);
+        const grad = _getDarknessGrad(ctx, px, py, radius, hellTag, gradStops);
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.restore();
@@ -1227,14 +1245,12 @@ function drawDarkness() {
         ? getAbyssModMult('lightMult', 1) : 1;
     const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult2);
 
-    // Pass 1: radial torch light (same proven structure as original)
+    // Pass 1: radial torch light (cached — only recreated when position/radius shift >2px)
+    const _torchStops = [[0, 'rgba(210, 185, 135, 1)'], [0.3, 'rgba(175, 140, 90, 1)'],
+                         [0.65, 'rgba(65, 42, 22, 1)'], [1, 'rgba(8, 4, 2, 1)']];
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    const grad = ctx.createRadialGradient(px, py, 0, px, py, radius);
-    grad.addColorStop(0, 'rgba(210, 185, 135, 1)');
-    grad.addColorStop(0.3, 'rgba(175, 140, 90, 1)');
-    grad.addColorStop(0.65, 'rgba(65, 42, 22, 1)');
-    grad.addColorStop(1, 'rgba(8, 4, 2, 1)');
+    const grad = _getDarknessGrad(ctx, px, py, radius, 'dungeon', _torchStops);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();

@@ -98,6 +98,8 @@ function resetSlimeState() {
     slimeState._membraneTimer = 0;
     slimeState._osmosisTick = 0;
     slimeState._oozeTimer = 0;
+    slimeState.absorptionMomentum = 0;
+    slimeState.momentumTimer = 0;
 }
 
 // Size scaling multipliers
@@ -116,6 +118,10 @@ function getSlimeSizeMult() {
 function slimeAbsorbEnemy(target, particleCount) {
     const idx = enemies.indexOf(target);
     if (idx !== -1) enemies.splice(idx, 1);
+    // Track boss defeat when boss corpse is absorbed (bypasses normal death-timer processing)
+    if (target.type === 'slime_king' && FormSystem.formData.slime) {
+        FormSystem.formData.slime.bossDefeated = true;
+    }
     const sizeGain = 0.5 + getUpgrade('iron_stomach') * 0.25;
     slimeState.size = Math.min(slimeState.maxSize, slimeState.size + sizeGain);
     player.hp = Math.min(_slimeMaxHP(), player.hp + 20);

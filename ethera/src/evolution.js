@@ -460,17 +460,14 @@ function checkTalismanPickup() {
                 worldKeyDrops.splice(i, 1);
                 addScreenShake(5, 0.5);
                 addSlowMo(0.5, 0.4);
-                // Show pickup text
-                pickupTexts.push({
-                    row: player.row, col: player.col,
-                    text: 'Ancient Talisman Found!',
-                    color: '#e8c840',
-                    life: 2.5, offsetY: 0,
-                });
-                // Tutorial hint — nudge player to check Grimoire
-                if (typeof Notify !== 'undefined') {
-                    Notify.hint('tutorial_talisman', 'Open the Grimoire (TAB) to see your evolution progress.', 6, { color: '#c4a878', borderColor: '#8a7030' });
-                }
+                // Show dramatic pickup screen
+                triggerTalismanPickup();
+                // Tutorial hint — nudge player to check Grimoire (fires after pickup screen)
+                setTimeout(function() {
+                    if (typeof Notify !== 'undefined') {
+                        Notify.hint('tutorial_talisman', 'Open the Grimoire (TAB) to see your evolution progress.', 6, { color: '#c4a878', borderColor: '#8a7030' });
+                    }
+                }, 6000);
                 return;
             }
         }
@@ -645,6 +642,120 @@ function dismissEvolutionHint() {
     if (!evolutionHintState.active) return;
     evolutionHintState.active = false;
     evolutionHintState.dismissed = true;
+    gamePhase = 'playing';
+}
+
+// ============================================================
+//  TALISMAN PICKUP SCREEN — dramatic reveal when talisman is found
+// ============================================================
+let talismanPickupState = {
+    active: false,
+    timer: 0,
+    alpha: 0,
+    dismissed: false,
+};
+
+function triggerTalismanPickup() {
+    if (talismanPickupState.active) return;
+    talismanPickupState.active = true;
+    talismanPickupState.timer = 0;
+    talismanPickupState.alpha = 0;
+    talismanPickupState.dismissed = false;
+    gamePhase = 'talismanPickup';
+}
+
+function updateTalismanPickup(dt) {
+    if (!talismanPickupState.active) return;
+    talismanPickupState.timer += dt;
+    const fadeInTime = 0.5;
+    const showDuration = 5.0;
+    const fadeOutTime = 0.8;
+
+    if (talismanPickupState.timer < fadeInTime) {
+        talismanPickupState.alpha = talismanPickupState.timer / fadeInTime;
+    } else if (talismanPickupState.timer < showDuration) {
+        talismanPickupState.alpha = 1.0;
+    } else {
+        const fadeElapsed = talismanPickupState.timer - showDuration;
+        talismanPickupState.alpha = Math.max(0, 1.0 - (fadeElapsed / fadeOutTime));
+    }
+
+    if (talismanPickupState.timer >= showDuration + fadeOutTime) {
+        talismanPickupState.active = false;
+        talismanPickupState.dismissed = true;
+        gamePhase = 'playing';
+    }
+}
+
+function drawTalismanPickup() {
+    if (!talismanPickupState.active || talismanPickupState.alpha <= 0) return;
+
+    const alpha = talismanPickupState.alpha;
+    const cx = canvasW / 2;
+    const cy = canvasH / 2;
+    const t = talismanPickupState.timer;
+
+    ctx.save();
+
+    // Dark overlay
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Draw pickup art if available (screen blend to merge with dark overlay)
+    const pickupImg = images.talisman_pickup;
+    if (pickupImg) {
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.globalCompositeOperation = 'screen';
+        // Scale image to fit canvas while maintaining aspect ratio
+        const imgAspect = pickupImg.width / pickupImg.height;
+        const canvasAspect = canvasW / canvasH;
+        let drawW, drawH, drawX, drawY;
+        if (imgAspect > canvasAspect) {
+            drawW = canvasW * 0.85;
+            drawH = drawW / imgAspect;
+        } else {
+            drawH = canvasH * 0.75;
+            drawW = drawH * imgAspect;
+        }
+        drawX = cx - drawW / 2;
+        drawY = cy - drawH / 2 - 20;
+        ctx.drawImage(pickupImg, drawX, drawY, drawW, drawH);
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Title text
+    ctx.globalAlpha = alpha * 0.95;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const titleScale = 28 + Math.min(8, t * 12);
+    const titlePulse = 1.0 + Math.sin(t * 3) * 0.02;
+    ctx.font = 'bold ' + Math.round(titleScale * titlePulse) + 'px Georgia';
+    ctx.shadowColor = 'rgba(100, 220, 80, 0.6)';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#e8c840';
+    ctx.fillText('Ancient Talisman Found', cx, cy + canvasH * 0.30);
+    ctx.shadowBlur = 0;
+
+    // Subtitle
+    ctx.globalAlpha = alpha * 0.7;
+    ctx.font = 'italic 14px Georgia';
+    ctx.fillStyle = '#a89060';
+    ctx.fillText('A relic of forgotten power... it hums with evolution energy.', cx, cy + canvasH * 0.30 + 30);
+
+    // Footer
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.font = '10px Georgia';
+    ctx.fillStyle = '#8a7a5a';
+    ctx.fillText('Press any key to continue', cx, canvasH - 30);
+
+    ctx.restore();
+}
+
+function dismissTalismanPickup() {
+    if (!talismanPickupState.active) return;
+    talismanPickupState.active = false;
+    talismanPickupState.dismissed = true;
     gamePhase = 'playing';
 }
 

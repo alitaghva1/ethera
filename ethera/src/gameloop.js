@@ -2,6 +2,7 @@
 // ============================================================
 let lastTime = 0;
 let _frameDt = 0.016; // cached dt for render() access (updated each frame)
+let _frameNow = 0;    // cached performance.now()/1000 — set once per frame
 
 // ── Hoisted render constants (avoid rebuilding every frame) ──
 const _ZONE_TINTS = {
@@ -112,6 +113,9 @@ function clearGlowCache() {
     for (const key in glowCache) {
         delete glowCache[key];
     }
+    // Also invalidate darkness gradient cache (defined in rendering.js)
+    _darkGradCache = null;
+    _darkGradCacheKey = '';
 }
 // Error boundary state
 let gameLoopErrors = 0;
@@ -464,7 +468,7 @@ function drawEvolutionIndicator() {
 function drawDoorGlows() {
     if (typeof DOOR_DEFS === 'undefined' || !DOOR_DEFS) return;
     if (gamePhase === 'cinematic' || gamePhase === 'preMenu' || gamePhase === 'menu') return;
-    const t = performance.now() / 1000;
+    const t = _frameNow;
 
     // Group doors by destination+row to draw one portal per exit (not per tile)
     const drawn = {};
@@ -1235,29 +1239,38 @@ function updateWeather(dt) {
         }
     }
 
-    // Update particles
+    // Update particles (swap-and-pop instead of splice for O(1) removal)
     for (let i = _weatherParticles.length - 1; i >= 0; i--) {
         const p = _weatherParticles[i];
         p.life -= dt;
-        if (p.life <= 0) { _weatherParticles.splice(i, 1); continue; }
+        if (p.life <= 0) {
+            _weatherParticles[i] = _weatherParticles[_weatherParticles.length - 1];
+            _weatherParticles.pop();
+            continue;
+        }
         p.x += p.vx * 60 * dt;
         p.y += p.vy * 60 * dt;
         // Snow / dust lateral drift
         if ((p.type === 'snow' || p.type === 'dust') && p.drift !== undefined) {
-            p.x += Math.sin(p.drift + performance.now() / 1200) * (p.type === 'dust' ? 0.15 : 0.3);
+            p.x += Math.sin(p.drift + _frameNow * 1000 / 1200) * (p.type === 'dust' ? 0.15 : 0.3);
         }
         // Cull particles that drift far off-screen
         if (p.x < -200 || p.x > canvasW + 200 || p.y < -200 || p.y > canvasH + 200) {
-            _weatherParticles.splice(i, 1);
+            _weatherParticles[i] = _weatherParticles[_weatherParticles.length - 1];
+            _weatherParticles.pop();
             continue;
         }
     }
 
-    // Update ripples
+    // Update ripples (swap-and-pop instead of splice for O(1) removal)
     for (let i = _weatherRipples.length - 1; i >= 0; i--) {
         const r = _weatherRipples[i];
         r.life -= dt;
-        if (r.life <= 0) { _weatherRipples.splice(i, 1); continue; }
+        if (r.life <= 0) {
+            _weatherRipples[i] = _weatherRipples[_weatherRipples.length - 1];
+            _weatherRipples.pop();
+            continue;
+        }
         r.radius = r.maxRadius * (1 - r.life / r.maxLife);
     }
 }
@@ -1390,9 +1403,32 @@ function updateGameplay(dt) {
             if (_aeData && window._arcaneEchoTimer >= _aeData.interval) {
                 window._arcaneEchoTimer = 0;
                 // Fire bolts at nearest enemies from player position
-                var _aeTargets = enemies.filter(function(e) { return e.state !== 'death'; })
-                    .sort(function(a, b) { return ((a.row-player.row)**2+(a.col-player.col)**2) - ((b.row-player.row)**2+(b.col-player.col)**2); });
-                for (var _aeI = 0; _aeI < Math.min(_aeData.bolts, _aeTargets.length); _aeI++) {
+                // Find nearest N alive enemies in one pass (avoids filter+sort allocation)
+                var _aeN = _aeData.bolts;
+                var _aeTargets = [];    // small array, length <= _aeN
+                var _aeDists2 = [];     // parallel squared distances
+                var _aeHasAlive = false;
+                for (var _aeJ = 0; _aeJ < enemies.length; _aeJ++) {
+                    var _aeC = enemies[_aeJ];
+                    if (_aeC.state === 'death') continue;
+                    _aeHasAlive = true;
+                    var _aeD2 = (_aeC.row - player.row) ** 2 + (_aeC.col - player.col) ** 2;
+                    if (_aeTargets.length < _aeN) {
+                        _aeTargets.push(_aeC);
+                        _aeDists2.push(_aeD2);
+                    } else {
+                        // Replace the farthest in our top-N if this one is closer
+                        var _aeMax = 0;
+                        for (var _aeK = 1; _aeK < _aeN; _aeK++) {
+                            if (_aeDists2[_aeK] > _aeDists2[_aeMax]) _aeMax = _aeK;
+                        }
+                        if (_aeD2 < _aeDists2[_aeMax]) {
+                            _aeTargets[_aeMax] = _aeC;
+                            _aeDists2[_aeMax] = _aeD2;
+                        }
+                    }
+                }
+                for (var _aeI = 0; _aeI < _aeTargets.length; _aeI++) {
                     var _aeE = _aeTargets[_aeI];
                     var _aeDr = _aeE.row - player.row, _aeDc = _aeE.col - player.col;
                     var _aeDist = Math.sqrt(_aeDr*_aeDr + _aeDc*_aeDc) || 1;
@@ -1401,7 +1437,7 @@ function updateGameplay(dt) {
                         _aeP.damage = 15; _aeP.life = 1.0; _aeP.pierce = 0; _aeP.isBone = false;
                     }
                 }
-                if (_aeTargets.length > 0) {
+                if (_aeHasAlive) {
                     spawnParticleBurst(player.row, player.col, 8, '#5588ff');
                     addScreenShake(1, 0.03);
                 }
@@ -1576,6 +1612,7 @@ function gameLoop(timestamp) {
         let dt = Math.min((timestamp - lastTime) / 1000, 0.1);
         lastTime = timestamp;
         _frameDt = dt; // cache for render()
+        _frameNow = performance.now() / 1000; // cache once per frame
         // Slow-mo effect for big moments
         if (slowMoTimer > 0) {
             slowMoTimer -= dt;
@@ -1764,6 +1801,16 @@ function gameLoop(timestamp) {
         setPixelCursor('default');
         render();
         drawLevelUpScreen();
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
+    // Talisman pickup screen — dramatic reveal when talisman is found
+    if (typeof talismanPickupState !== 'undefined' && talismanPickupState.active) {
+        if (typeof updateTalismanPickup === 'function') updateTalismanPickup(dt);
+        setPixelCursor('default');
+        render();
+        if (typeof drawTalismanPickup === 'function') drawTalismanPickup();
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -2417,7 +2464,7 @@ function drawWorldDrops() {
         const bob = Math.sin(d.bobTime * 2.5) * 4;
         const fadeIn = d.spawnTime > 0 ? 1 - (d.spawnTime / 0.5) : 1;
         const rarDef = RARITY[d.item.rarity];
-        const t = performance.now() / 1000;
+        const t = _frameNow;
         const isRare = d.item.rarity === 'rare' || d.item.rarity === 'epic';
 
         ctx.save();
@@ -2510,7 +2557,7 @@ function drawWorldAugmentDrops() {
         const bob = Math.sin(d.bobTime * 2.5) * 4;
         const fadeIn = d.spawnTime > 0 ? 1 - (d.spawnTime / 0.5) : 1;
         const rarDef = RARITY[d.augment.rarity] || RARITY.common;
-        const t = performance.now() / 1000;
+        const t = _frameNow;
         const isSlime = d.augment.form === 'slime';
         const orbColor = isSlime ? '#44dd66' : '#ccbb88';
         ctx.save();
@@ -2556,7 +2603,7 @@ function drawWorldKeyDrops() {
         const sy = pos.y + cameraY;
         const bob = Math.sin(d.bobTime * 2) * 5;
         const fadeIn = d.spawnTime > 0 ? 1 - (d.spawnTime / 0.5) : 1;
-        const t = performance.now() / 1000;
+        const t = _frameNow;
 
         ctx.save();
         ctx.globalAlpha = fadeIn;
@@ -2576,11 +2623,17 @@ function drawWorldKeyDrops() {
             ctx.fillStyle = glow;
             ctx.fillRect(sx - 45, sy - 45, 90, 90);
 
-            // Draw talisman sprite with screen blend — black bg vanishes, glow shines
+            // Draw talisman sprite — clip to circle to eliminate JPG background artifacts
             const spriteSize = 48 + Math.sin(t * 2) * 3; // subtle size pulse
             const iy = sy - 24 + bob;
+            ctx.globalCompositeOperation = 'screen';
             ctx.globalAlpha = fadeIn * 0.9;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(sx, iy, spriteSize * 0.48, 0, Math.PI * 2);
+            ctx.clip();
             ctx.drawImage(talismanImg, sx - spriteSize / 2, iy - spriteSize / 2, spriteSize, spriteSize);
+            ctx.restore();
 
             // Extra sparkle ring
             ctx.globalCompositeOperation = 'screen';
@@ -4018,7 +4071,7 @@ function render() {
                 const sx = pos.x + cameraX;
                 const sy = pos.y + cameraY;
                 const locked = isChestLocked(row, col);
-                const pulse = 0.15 + Math.sin(performance.now() / 800 + row * 2) * 0.08;
+                const pulse = 0.15 + Math.sin(_frameNow * 1000 / 800 + row * 2) * 0.08;
                 ctx.save();
                 ctx.globalCompositeOperation = 'screen';
                 ctx.globalAlpha = pulse;
@@ -4039,7 +4092,7 @@ function render() {
                 const pos = tileToScreen(row, col);
                 const sx = pos.x + cameraX, sy = pos.y + cameraY;
                 ctx.save();
-                ctx.globalAlpha = 0.35 + Math.sin(performance.now() / 2000 + row * 3) * 0.1;
+                ctx.globalAlpha = 0.35 + Math.sin(_frameNow * 1000 / 2000 + row * 3) * 0.1;
                 ctx.strokeStyle = '#aa8855';
                 ctx.lineWidth = 1.5;
                 // Diagonal crack pattern
@@ -4064,7 +4117,7 @@ function render() {
                     ctx.save();
                     ctx.globalCompositeOperation = 'screen';
                     // Layer 1: wide warm glow (cached)
-                    const pulse1 = 0.22 + Math.sin(performance.now() / 1200) * 0.06;
+                    const pulse1 = 0.22 + Math.sin(_frameNow * 1000 / 1200) * 0.06;
                     ctx.globalAlpha = pulse1;
                     const radius1 = 140;
                     const colorStops1 = [['rgba(255, 230, 160, 0.5)', 0], ['rgba(255, 200, 100, 0.15)', 0.4], ['rgba(200, 150, 50, 0)', 1]];
@@ -4072,7 +4125,7 @@ function render() {
                     const glowCanvas1 = getGlowCanvas(cacheKey1, radius1, colorStops1);
                     ctx.drawImage(glowCanvas1, sx - radius1, sy - 30 - radius1);
                     // Layer 2: intense white-gold center (cached)
-                    ctx.globalAlpha = 0.35 + Math.sin(performance.now() / 800) * 0.1;
+                    ctx.globalAlpha = 0.35 + Math.sin(_frameNow * 1000 / 800) * 0.1;
                     const radius2 = 50;
                     const colorStops2 = [['rgba(255, 255, 220, 0.7)', 0], ['rgba(255, 220, 130, 0)', 1]];
                     const cacheKey2 = getGlowCacheKey(colorStops2, radius2, 'archway_center');
@@ -4086,7 +4139,7 @@ function render() {
                     const pos = tileToScreen(row, col);
                     const sx = pos.x + cameraX;
                     const sy = pos.y + cameraY;
-                    const pulse = 0.18 + Math.sin(performance.now() / 700 + col * 2) * 0.08;
+                    const pulse = 0.18 + Math.sin(_frameNow * 1000 / 700 + col * 2) * 0.08;
                     ctx.save();
                     ctx.globalCompositeOperation = 'screen';
                     ctx.globalAlpha = pulse;
@@ -4170,7 +4223,7 @@ function render() {
         if (_bloomLights && _bloomLights.length > 0) {
             ctx.save();
             ctx.globalCompositeOperation = 'lighter';
-            const now = performance.now();
+            const now = _frameNow * 1000;
             for (const light of _bloomLights) {
                 const pos = tileToScreen(light.row, light.col);
                 const sx = pos.x + cameraX, sy = pos.y + cameraY;
@@ -4217,7 +4270,7 @@ function render() {
                           _mForm === 'lich' ? [140, 80, 200] :
                           [120, 150, 220];
         // Pulsing ring
-        const mPulse = 0.3 + Math.sin(performance.now() / 500) * 0.1;
+        const mPulse = 0.3 + Math.sin(_frameNow * 1000 / 500) * 0.1;
         ctx.globalAlpha = mPulse;
         ctx.strokeStyle = `rgba(${markerCol[0]}, ${markerCol[1]}, ${markerCol[2]}, 0.7)`;
         ctx.lineWidth = 1.5;
@@ -4317,7 +4370,7 @@ function render() {
         const fgCfg = _fgConfigs[currentZone];
         if (fgCfg) {
             ctx.save();
-            const t = performance.now() / 1000;
+            const t = _frameNow;
             // Parallax offset at 1.2× camera (0.2× extra shift relative to world)
             const parallaxX = cameraX * 0.2;
             const parallaxY = cameraY * 0.2;
@@ -4418,7 +4471,7 @@ function render() {
         const hpRatio = player.hp / (getPlayerMaxHP() || 1);
         if (hpRatio < 0.25) {
             const urgency = 1 - (hpRatio / 0.25); // 0→1 as HP drops from 25%→0%
-            const pulse = 0.12 + Math.sin(performance.now() * 0.005) * 0.06; // ~0.8Hz
+            const pulse = 0.12 + Math.sin(_frameNow * 1000 * 0.005) * 0.06; // ~0.8Hz
             // Low-HP heartbeat SFX — plays on each pulse peak
             _lowHpBeatTimer -= _frameDt;
             if (_lowHpBeatTimer <= 0 && typeof sfxCinematicHeartbeat === 'function') {

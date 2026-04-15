@@ -164,6 +164,7 @@ async function loadAssets() {
     // Load talisman assets
     promises.push(loadImage('assets/talisman_drop.jpg').then(img => { if (img) images.talisman_drop = img; }));
     promises.push(loadImage('assets/icons/icon_talisman.jpg').then(img => { if (img) images.icon_talisman = img; }));
+    promises.push(loadImage('assets/talisman_pickup.jpg').then(img => { if (img) images.talisman_pickup = img; }));
 
     // Load projectile animation frames (AI-generated pixel art)
     const PROJ_PATH = 'assets/projectiles/';

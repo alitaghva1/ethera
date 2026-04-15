@@ -156,9 +156,9 @@ const RARITY_WEIGHTS_BY_WAVE = [
     // Wave 3
     { common: 40, uncommon: 35, rare: 20, epic: 5, legendary: 0 },
     // Wave 4
-    { common: 25, uncommon: 35, rare: 28, epic: 12, legendary: 0 },
+    { common: 23, uncommon: 35, rare: 28, epic: 12, legendary: 2 },
     // Wave 5+
-    { common: 20, uncommon: 30, rare: 30, epic: 18, legendary: 2 },
+    { common: 18, uncommon: 28, rare: 30, epic: 20, legendary: 4 },
 ];
 
 // Generate a random item
@@ -377,7 +377,8 @@ const ENCHANT_COST = { common: 50, uncommon: 100, rare: 200, epic: 350, legendar
 function getEnchantCost(item) {
     const currentLvl = item.enchantLevel || 0;
     const baseCost = ENCHANT_COST[item.rarity] || 50;
-    return baseCost * (currentLvl + 1);
+    const zoneMult = 1 + (typeof currentZone !== 'undefined' ? currentZone : 0) * 0.15;
+    return Math.round(baseCost * (currentLvl + 1) * zoneMult);
 }
 
 function getEnchantMax(item) {

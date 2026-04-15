@@ -1806,15 +1806,8 @@ function handleQuestCompletionOnDialogueEnd(npc) {
         completeQuest('garrett_forge');
     }
 
-    // Senna: deliver frost essence
-    if (npc.id === 'senna' && questState.flags.senna_quest_started
-        && !isQuestComplete('senna_brew')
-        && typeof hasKeyItem === 'function' && hasKeyItem('frost_essence')) {
-        setQuestFlag('has_frost_essence');
-        setQuestFlag('senna_essence_delivered');
-        removeKeyItem('frost_essence');
-        completeQuest('senna_brew');
-    }
+    // Senna: deliver frost essence — triggers choice UI instead of auto-completing
+    // (choice click handler in balance.js completes the quest after player picks A or B)
 
     // Hermit: deliver ancient tome
     if (npc.id === 'hermit' && questState.flags.hermit_quest_started

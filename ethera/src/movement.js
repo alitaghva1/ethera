@@ -481,10 +481,12 @@ function spawnProjectile() {
         _wp.size = projSize;
         _wp.animTime = 0;
         _wp.angle = angle;
-        _wp.pierceLeft = getUpgrade('pierce');
+        const _infernoMode = getUpgrade('inferno_mode') > 0;
+        _wp.pierceLeft = _infernoMode ? Math.max(1, getUpgrade('pierce')) : getUpgrade('pierce');
         _wp.bounceLeft = getUpgrade('bounce');
-        _wp.canExplode = getUpgrade('explode') > 0;
-        _wp.explodeScale = getUpgrade('explode');
+        _wp.canExplode = _infernoMode || getUpgrade('explode') > 0;
+        _wp.explodeScale = _infernoMode ? Math.max(1, getUpgrade('explode')) : getUpgrade('explode');
+        _wp._infernoIgnite = _infernoMode; // flag for burn-on-explode
         if (_wp.hitEnemies) _wp.hitEnemies.clear();
         else _wp.hitEnemies = new Set();
         projectiles.push(_wp);

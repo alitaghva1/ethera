@@ -585,12 +585,12 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if (!requirements) return;
     const currentFormData = FormSystem.formData[FormSystem.currentForm];
 
-    // Build requirement display list with readable names
+    // Build requirement display list with human-readable milestone descriptions
     const reqDisplay = [];
     if ('kills' in requirements) {
         const val = currentFormData.totalKills || 0;
         reqDisplay.push({
-            label: 'Kills',
+            label: 'Defeat ' + requirements.kills + ' enemies',
             current: val,
             required: requirements.kills,
             color: GM.hpRedLit
@@ -599,7 +599,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if ('absorbed' in requirements) {
         const val = currentFormData.absorbed || 0;
         reqDisplay.push({
-            label: 'Absorbed',
+            label: 'Absorb ' + requirements.absorbed + ' enemies',
             current: val,
             required: requirements.absorbed,
             color: GM.manaBlue
@@ -608,7 +608,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if ('maxSizeReached' in requirements) {
         const val = currentFormData.maxSizeReached || 0;
         reqDisplay.push({
-            label: 'Max Size',
+            label: 'Reach size ' + requirements.maxSizeReached,
             current: val,
             required: requirements.maxSizeReached,
             color: '#8a8a60'
@@ -617,7 +617,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if ('shieldDamageBlocked' in requirements) {
         const val = currentFormData.shieldDamageBlocked || 0;
         reqDisplay.push({
-            label: 'Shield Damage',
+            label: 'Block ' + requirements.shieldDamageBlocked + ' damage',
             current: val,
             required: requirements.shieldDamageBlocked,
             color: '#6a8a6a'
@@ -626,7 +626,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if ('comboReached' in requirements) {
         const val = currentFormData.maxComboReached || 0;
         reqDisplay.push({
-            label: 'Combo Reached',
+            label: 'Reach ' + requirements.comboReached + '-hit combo',
             current: val,
             required: requirements.comboReached,
             color: '#a06a8a'
@@ -635,7 +635,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if ('towersPlaced' in requirements) {
         const val = currentFormData.towersPlaced || 0;
         reqDisplay.push({
-            label: 'Towers Placed',
+            label: 'Place ' + requirements.towersPlaced + ' towers',
             current: val,
             required: requirements.towersPlaced,
             color: GM.catTower
@@ -644,7 +644,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
     if ('lowManaKills' in requirements) {
         const val = currentFormData.lowManaKills || 0;
         reqDisplay.push({
-            label: 'Low Mana Kills',
+            label: requirements.lowManaKills + ' kills below 30% mana',
             current: val,
             required: requirements.lowManaKills,
             color: GM.manaBluLit
@@ -656,7 +656,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
         ctx.globalAlpha = fa * 0.5;
         ctx.font = '9px Georgia';
         ctx.fillStyle = GM.textMid;
-        ctx.fillText('Talisman Found', x, y);
+        ctx.fillText('Find the Talisman', x, y);
         ctx.globalAlpha = fa * 0.8;
         ctx.fillStyle = color;
         ctx.textAlign = 'right';
@@ -670,7 +670,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
         ctx.globalAlpha = fa * 0.5;
         ctx.font = '9px Georgia';
         ctx.fillStyle = GM.textMid;
-        ctx.fillText('Boss Defeated', x, y);
+        ctx.fillText('Defeat the Boss', x, y);
         ctx.globalAlpha = fa * 0.8;
         ctx.fillStyle = color;
         ctx.textAlign = 'right';
@@ -685,7 +685,7 @@ function drawEvolutionProgress(x, y, w, h, fa) {
         ctx.globalAlpha = fa * 0.5;
         ctx.font = '9px Georgia';
         ctx.fillStyle = GM.textMid;
-        ctx.fillText('Talisman Level', x, y);
+        ctx.fillText('Talisman to level ' + req, x, y);
         ctx.globalAlpha = fa * 0.8;
         ctx.fillStyle = done ? GM.gold : GM.textDim;
         ctx.textAlign = 'right';

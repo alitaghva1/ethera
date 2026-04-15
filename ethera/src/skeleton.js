@@ -376,9 +376,9 @@ function updateSkeleton(dt) {
         }
     }
 
-    // === BONE COLOSSUS FORM legendary: at 12+ combo, grow massive ===
+    // === BONE COLOSSUS FORM legendary: at 8+ combo, grow massive ===
     if (getUpgrade('bone_colossus_form') > 0) {
-        skeletonState.colossusActive = skeletonState.comboCount >= 12;
+        skeletonState.colossusActive = skeletonState.comboCount >= 8;
     }
 
     // === BONE WALL decay — remove expired barriers ===

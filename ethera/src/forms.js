@@ -253,7 +253,7 @@ const WIZARD_UPGRADE_POOL = [
     { id: 'tower_mastery', name: 'Tower Mastery', desc: 'Towers deal +20% damage and last 25% longer', icon: 'tower', maxStack: 3, category: 'tower', tier: 'rare', tag: 'summoner' },
     { id: 'mana_shield', name: 'Mana Shield', desc: 'While above 50% mana, take 15% less damage', icon: 'phase', maxStack: 2, category: 'passive', tier: 'normal', tag: 'defensive' },
     // === Legendary (level 10+) ===
-    { id: 'inferno_mode', name: 'Inferno Mode', desc: 'All fireballs become explosive + piercing. -20% max HP.', icon: 'explode', maxStack: 1, category: 'wand', tier: 'legendary', tag: 'offensive' },
+    { id: 'inferno_mode', name: 'Inferno Mode', desc: 'All fireballs become explosive + piercing. Explosions ignite enemies for 3s.', icon: 'explode', maxStack: 1, category: 'wand', tier: 'legendary', tag: 'offensive' },
     { id: 'arcane_singularity', name: 'Arcane Singularity', desc: 'Tower attacks pull enemies inward. Tower range +50%.', icon: 'tower', maxStack: 1, category: 'tower', tier: 'legendary', tag: 'summoner' },
 ];
 
@@ -312,7 +312,7 @@ const SKELETON_UPGRADE_POOL = [
     // === Legendary (level 10+) ===
     { id: 'bone_fortress', name: 'Bone Fortress', desc: 'Shield blocks 100% damage for 0.5s on perfect timing.', icon: 'big', maxStack: 1, category: 'passive', tier: 'legendary', tag: 'defensive' },
     { id: 'rattling_charge', name: 'Rattling Charge', desc: 'Dodge becomes a charge that stuns enemies in path for 1s.', icon: 'phase', maxStack: 1, category: 'passive', tier: 'legendary', tag: 'utility' },
-    { id: 'bone_colossus_form', name: 'Bone Colossus', desc: 'At 12+ combo, grow massive. Dodge becomes AoE ground slam.', icon: 'big', maxStack: 1, category: 'passive', tier: 'legendary', tag: 'offensive' },
+    { id: 'bone_colossus_form', name: 'Bone Colossus', desc: 'At 8+ combo, grow massive. Dodge becomes AoE ground slam.', icon: 'big', maxStack: 1, category: 'passive', tier: 'legendary', tag: 'offensive' },
 ];
 
 // Register form handlers for slime and skeleton
@@ -354,7 +354,7 @@ const LICH_UPGRADE_POOL = [
     // === Universal ===
     { id: 'spectral_cloak', name: 'Spectral Cloak', desc: 'Brief invisibility after shadow step', icon: 'phase', maxStack: 2, category: 'passive', tier: 'normal', tag: 'utility' },
     { id: 'death_aura', name: 'Death Aura', desc: 'Passive damage to nearby enemies (scales with soul energy)', icon: 'orbit', maxStack: 3, category: 'passive', tier: 'normal', tag: 'offensive' },
-    { id: 'phylactery', name: 'Phylactery', desc: 'On death, revive at 30% HP once per zone', icon: 'regen', maxStack: 1, category: 'passive', tier: 'rare', tag: 'defensive' },
+    { id: 'phylactery', name: 'Phylactery', desc: 'On death, revive at 30% HP once per run', icon: 'regen', maxStack: 1, category: 'passive', tier: 'rare', tag: 'defensive' },
     { id: 'soul_overflow', name: 'Soul Overflow', desc: 'Excess soul energy above 80 converts to HP regen', icon: 'regen', maxStack: 3, category: 'passive', tier: 'normal', tag: 'defensive' },
     // === Legendary (level 10+) ===
     { id: 'undead_legion', name: 'Undead Legion', desc: '+3 max minions, but they decay over 15s.', icon: 'split', maxStack: 1, category: 'passive', tier: 'legendary', tag: 'summoner' },

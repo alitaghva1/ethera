@@ -411,17 +411,45 @@ function drawLevelUpScreen() {
         ctx.fillStyle = catColor;
         ctx.fillText(u.category.toUpperCase(), cardX + cardW / 2, cy2 + (isLegendary || isRare ? 22 : 18));
 
-        // Synergy tag label (bottom-right corner)
+        // Synergy tag label with set bonus progress (bottom of card area)
         if (u.tag && typeof UPGRADE_TAGS !== 'undefined' && UPGRADE_TAGS[u.tag]) {
             const _tagInfo = UPGRADE_TAGS[u.tag];
             const _tagCounts = (typeof countUpgradeTags === 'function') ? countUpgradeTags() : {};
-            const _tagActive = (_tagCounts[u.tag] || 0) >= (typeof TAG_SET_BONUS_THRESHOLD !== 'undefined' ? TAG_SET_BONUS_THRESHOLD : 3);
+            const _threshold = (typeof TAG_SET_BONUS_THRESHOLD !== 'undefined') ? TAG_SET_BONUS_THRESHOLD : 3;
+            const _tagCount = _tagCounts[u.tag] || 0;
+            const _tagActive = _tagCount >= _threshold;
+
+            // Tag name in corner (existing position)
             ctx.globalAlpha = fade * cardRevealFrac * (_tagActive ? 0.9 : 0.45);
             ctx.font = '7px monospace';
             ctx.textAlign = 'right';
             ctx.fillStyle = _tagInfo.color;
             ctx.fillText(_tagInfo.name.toUpperCase(), cardX + cardW - 8, cy2 + (isLegendary || isRare ? 22 : 18));
             ctx.textAlign = 'center';
+
+            // Set bonus progress line below the card
+            const _tagLineY = cy2 + cardH + 10;
+            if (_tagActive) {
+                // Active bonus — gold text with checkmark and bonus description
+                var _bonusDesc = '';
+                if (typeof TAG_SET_BONUSES !== 'undefined' && TAG_SET_BONUSES[u.tag]) {
+                    var _b = TAG_SET_BONUSES[u.tag];
+                    if (_b.dmgMult) _bonusDesc = ' +' + Math.round((_b.dmgMult - 1) * 100) + '% DMG';
+                    else if (_b.dmgReduc) _bonusDesc = ' -' + Math.round(_b.dmgReduc * 100) + '% DMG taken';
+                    else if (_b.speedMult) _bonusDesc = ' +' + Math.round((_b.speedMult - 1) * 100) + '% SPD';
+                    else if (_b.minionDmg) _bonusDesc = ' +' + Math.round((_b.minionDmg - 1) * 100) + '% minion DMG';
+                }
+                ctx.globalAlpha = fade * cardRevealFrac * 0.85;
+                ctx.font = 'bold 8px monospace';
+                ctx.fillStyle = '#e8c840';
+                ctx.fillText(_tagInfo.name + ' \u2713' + _bonusDesc, cardX + cardW / 2, _tagLineY);
+            } else {
+                // Progress toward threshold
+                ctx.globalAlpha = fade * cardRevealFrac * 0.4;
+                ctx.font = '8px monospace';
+                ctx.fillStyle = _tagInfo.color;
+                ctx.fillText(_tagInfo.name + ' ' + _tagCount + '/' + _threshold, cardX + cardW / 2, _tagLineY);
+            }
         }
 
         // Icon

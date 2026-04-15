@@ -3016,7 +3016,7 @@ function updateEnemies(dt) {
                 // Gold drop
                 if (typeof ENEMY_GOLD_DROP !== 'undefined') {
                     const goldDrop = ENEMY_GOLD_DROP[e.type] || 10;
-                    const ascMult = 1 + (typeof ascensionLevel !== 'undefined' ? ascensionLevel * 0.25 : 0);
+                    const ascMult = 1 + Math.min(typeof ascensionLevel !== 'undefined' ? ascensionLevel * 0.25 : 0, 1.5);
                     const _modGoldMult = (wave.modifier && wave.modifier.goldMult) ? wave.modifier.goldMult : 1;
                     const gold = Math.round(goldDrop * (0.8 + Math.random() * 0.4) * ascMult * killStreak.multiplier * _modGoldMult);
                     playerGold += gold;
@@ -4741,6 +4741,9 @@ function triggerReaction(e, reactionType) {
 
 // ----- PLAYER DAMAGE -----
 function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
+    // Immune during evolution cinematic and talisman pickup
+    if (gamePhase === 'evolution' || gamePhase === 'talismanPickup') return;
+    if (typeof evolutionHintState !== 'undefined' && evolutionHintState.active) return;
     // === PARRY CHECK — must come before dodge immunity ===
     // parryTimer is auto-cleared when each dodge ends (movement.js, skeleton.js, slime.js)
     // so it can't outlast the dodge. Lich parry persists briefly post-teleport by design.
@@ -4888,8 +4891,9 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
             if (typeof spawnParticleBurst === 'function') spawnParticleBurst(player.row, player.col, 30, '#ffffff');
             _veilSaved = true;
         }
-        // Lich Phylactery — consume soul energy to cheat death
-        if (!_veilSaved && typeof lichState !== 'undefined' && lichState.soulEnergy >= 30 && FormSystem.currentForm === 'lich') {
+        // Lich Phylactery — consume soul energy to cheat death (once per run)
+        if (!_veilSaved && typeof lichState !== 'undefined' && !lichState._phylacteryUsed && lichState.soulEnergy >= 30 && FormSystem.currentForm === 'lich') {
+            lichState._phylacteryUsed = true;
             player.hp = Math.round(getPlayerMaxHP() * 0.3);
             lichState.soulEnergy -= 30;
             playerInvTimer = 1.5;
@@ -5250,11 +5254,14 @@ function checkProjectileEnemyHits() {
                     const explodeDmg = Math.round((baseProjDmg + dmgBonus) * 0.4 * p.explodeScale);
                     for (const e2 of enemies) {
                         if (e2.state === 'death' || e2 === e) continue;
+                        if (p.hitEnemies && p.hitEnemies.has(e2)) continue; // skip already-hit by pierce
                         const dr2 = p.row - e2.row;
                         const dc2 = p.col - e2.col;
                         if (Math.sqrt(dr2 * dr2 + dc2 * dc2) < explodeRadius) {
                             e2.hp -= explodeDmg;
                             e2.hitFlashTimer = 0.1;
+                            // Inferno Mode: ignite AoE targets
+                            if (p._infernoIgnite && typeof applyStatusEffect === 'function') applyStatusEffect(e2, 'burn', 3, 'fire');
                             // Radial knockback from explosion center
                             const kbDr2 = e2.row - p.row, kbDc2 = e2.col - p.col;
                             const kbLen2 = Math.sqrt(kbDr2 * kbDr2 + kbDc2 * kbDc2) || 1;

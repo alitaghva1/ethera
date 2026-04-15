@@ -26,6 +26,11 @@ function summonTowerAt(row, col) {
         spawnAnim: 0.8,        // summoning portal animation timer
     });
 
+    // Track tower placement for wizard→lich evolution milestone
+    if (FormSystem.currentForm === 'wizard' && FormSystem.formData.wizard) {
+        FormSystem.formData.wizard.towersPlaced = (FormSystem.formData.wizard.towersPlaced || 0) + 1;
+    }
+
     // Show mana-lock hint on first tower summon
     if (typeof Notify !== 'undefined') Notify.hint('mana_lock', 'Towers lock your mana while active.\nLocked mana returns when tower expires.', 4, { color: '#aabbff', borderColor: '#6633aa' });
 

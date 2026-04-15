@@ -506,7 +506,7 @@ function loadGame(slotIdx) {
         lichState.lifeTapCooldown = 0;
         lichState.shadowStepCooldown = 0;
         lichState.deathAuraTimer = 0;
-        lichState._phylacteryUsed = false;
+        // _phylacteryUsed intentionally NOT reset here — once per run, not per zone
     }
     // NOTE: zone-duration potion buffs are intentionally preserved across save/load.
     // clearPotionBuffsForZone() is NOT called here -- it only fires on zone transitions.
