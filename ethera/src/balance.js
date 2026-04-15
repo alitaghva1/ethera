@@ -18,7 +18,7 @@ const PLAYER_STATS = {
     invTime: 0.8,
 };
 const TOWER = {
-    summonCost: 30,  maxCount: 1,
+    summonCost: 30,  maxCount: 2,  // buffed from 1 — wizard tower fantasy needs 2 base towers to feel real
     range: 5.5,      fireRate: 0.8,
     damage: 35,      boltSpeed: 9,
 };

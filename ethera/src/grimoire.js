@@ -922,12 +922,26 @@ function drawMenuStatus(x, y, w, h, fa) {
     // --- Talisman Perks ---
     if (FormSystem.talisman.found) {
         const tLvl = FormSystem.talisman.level;
+
+        // Talisman icon (if sprite loaded)
+        const talisIcon = images.icon_talisman;
+        const iconSize = 32;
+        if (talisIcon) {
+            ctx.globalAlpha = fa * 0.85;
+            ctx.drawImage(talisIcon, x, ly - 2, iconSize, iconSize);
+        }
+        const textOffsetX = talisIcon ? iconSize + 6 : 0;
+
         ctx.globalAlpha = fa * 0.6;
         ctx.font = 'bold 11px Georgia';
         ctx.fillStyle = GM.gold;
         ctx.textAlign = 'left';
-        ctx.fillText('TALISMAN LV.' + tLvl, x, ly);
-        ly += 16;
+        ctx.fillText('TALISMAN LV.' + tLvl, x + textOffsetX, ly + (talisIcon ? 8 : 0));
+        ctx.globalAlpha = fa * 0.35;
+        ctx.font = '9px Georgia';
+        ctx.fillStyle = GM.textDim;
+        ctx.fillText('Ancient Talisman', x + textOffsetX, ly + (talisIcon ? 20 : 12));
+        ly += talisIcon ? iconSize + 4 : 16;
 
         for (const perk of FormSystem.talisman.perks) {
             ctx.globalAlpha = fa * 0.8;

@@ -156,6 +156,15 @@ async function loadAssets() {
     // Load death screen background art
     promises.push(loadImage('assets/death-screen-bg.png').then(img => { if (img) images.death_screen_bg = img; }));
 
+    // Load zone transition art (splash illustrations per zone)
+    for (let z = 1; z <= 6; z++) {
+        promises.push(loadImage('assets/zone_art_' + z + '.jpg').then(img => { if (img) images['zone_art_' + z] = img; }));
+    }
+
+    // Load talisman assets
+    promises.push(loadImage('assets/talisman_drop.jpg').then(img => { if (img) images.talisman_drop = img; }));
+    promises.push(loadImage('assets/icons/icon_talisman.jpg').then(img => { if (img) images.icon_talisman = img; }));
+
     // Load projectile animation frames (AI-generated pixel art)
     const PROJ_PATH = 'assets/projectiles/';
     for (let i = 0; i < 6; i++) {

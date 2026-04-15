@@ -197,8 +197,9 @@ function updateSkeleton(dt) {
         skeletonState._comboGlowTimer += dt;
     }
 
-    // Combo bonuses: +5% attack speed per stack, +10% bone regen per stack
+    // Combo bonuses: +5% attack speed, +3% damage, +10% bone regen per stack
     const comboAtkSpeedMult = Math.min(2.0, 1 + skeletonState.comboCount * 0.05);
+    const comboDmgMult = 1 + skeletonState.comboCount * 0.03; // +3% damage per combo stack — makes combo the skeleton's power engine
     const comboBoneRegenMult = 1 + skeletonState.comboCount * 0.10;
 
     // === BONE AMMO REGEN (boosted by combo) ===
@@ -241,7 +242,7 @@ function updateSkeleton(dt) {
             proj.vc = (dy / dist) * config.atkSpeed;
             proj.life = config.projLife;
             proj.size = config.projSize;
-            proj.damage = config.primaryDmg;
+            proj.damage = Math.round(config.primaryDmg * comboDmgMult);
             proj.pierce = 0;
             proj.explode = false;
             proj.bounce = 1; proj.bounceLeft = 1; // bones ricochet off walls once

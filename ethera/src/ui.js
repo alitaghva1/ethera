@@ -158,9 +158,10 @@ let zoneBannerName = '';        // zone display name
 let zoneBannerSubtitle = '';    // subtitle (e.g. "Act I")
 let zoneBannerModLine = '';     // active modifiers line (e.g. "[Swarm] [Darkness]")
 let zoneBannerNewMod = '';      // newly added modifier (e.g. "New: Haste")
-const ZONE_BANNER_DURATION = 4.0; // total display time in seconds
-const ZONE_BANNER_FADE_IN = 0.8;
-const ZONE_BANNER_FADE_OUT = 1.2;
+let zoneBannerZone = 0;        // zone number for art lookup
+const ZONE_BANNER_DURATION = 5.0; // total display time (extended from 4s for zone art)
+const ZONE_BANNER_FADE_IN = 1.0;  // slower fade in to reveal art
+const ZONE_BANNER_FADE_OUT = 1.5; // slower fade out
 
 // Procedural bridge floor flavor text
 const PROC_BRIDGE_SUBTITLES = {
@@ -174,6 +175,7 @@ function showZoneBanner(zoneNumber) {
     const cfg = ZONE_CONFIGS[zoneNumber] || (zoneNumber >= 100 && typeof getProceduralZoneConfig === 'function' ? getProceduralZoneConfig(zoneNumber) : null);
     if (!cfg) return;
     zoneBannerName = cfg.name || '';
+    zoneBannerZone = zoneNumber;
 
     // Reset modifier banner text
     zoneBannerModLine = '';
@@ -231,9 +233,52 @@ function drawZoneBanner() {
     }
 
     const cx = canvasW / 2;
-    const cy = canvasH * 0.3;
+    const cy = canvasH * 0.38; // shifted down slightly to sit over art
 
     ctx.save();
+
+    // --- Zone transition art (full-screen background) ---
+    const zoneArt = images['zone_art_' + zoneBannerZone];
+    if (zoneArt) {
+        // Dark overlay first — dims the game world behind
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Draw zone art — cover-fit to canvas (crop to fill, center)
+        const imgAspect = zoneArt.width / zoneArt.height;
+        const canAspect = canvasW / canvasH;
+        let sx = 0, sy = 0, sw = zoneArt.width, sh = zoneArt.height;
+        if (imgAspect > canAspect) {
+            // Image is wider — crop sides
+            sw = zoneArt.height * canAspect;
+            sx = (zoneArt.width - sw) / 2;
+        } else {
+            // Image is taller — crop top/bottom
+            sh = zoneArt.width / canAspect;
+            sy = (zoneArt.height - sh) / 2;
+        }
+        ctx.globalAlpha = alpha * 0.55; // semi-transparent so text is readable
+        ctx.drawImage(zoneArt, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
+
+        // Gradient vignette — darken edges for text readability
+        ctx.globalAlpha = alpha * 0.7;
+        const vignette = ctx.createRadialGradient(cx, canvasH * 0.4, canvasH * 0.2, cx, canvasH * 0.4, canvasH * 0.8);
+        vignette.addColorStop(0, 'rgba(0,0,0,0)');
+        vignette.addColorStop(0.6, 'rgba(0,0,0,0.2)');
+        vignette.addColorStop(1, 'rgba(0,0,0,0.8)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Bottom gradient — heavy darkening at bottom for subtitle readability
+        ctx.globalAlpha = alpha * 0.6;
+        const bottomGrad = ctx.createLinearGradient(0, canvasH * 0.5, 0, canvasH);
+        bottomGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        bottomGrad.addColorStop(1, 'rgba(0,0,0,0.7)');
+        ctx.fillStyle = bottomGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 

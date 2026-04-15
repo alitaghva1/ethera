@@ -1219,6 +1219,7 @@ const ZONE5_WAVES = [
 
 // ===== ZONE 6 WAVES (THRONE OF RUIN) =====
 // The final gauntlet — crescendo of all enemies, ending in Ruined King
+// Flattened from 6.5-10.0x to 5.8-8.5x — player power scales ~4-5x, enemies shouldn't scale 10x
 const ZONE6_WAVES = [
     {
         enemies: [
@@ -1226,7 +1227,7 @@ const ZONE6_WAVES = [
             { type: 'skelarch', count: 10 },
             { type: 'skeleton', count: 8 },
         ],
-        statMult: 6.5,
+        statMult: 5.8,
         title: 'Ruin Awakens',
     },
     {
@@ -1236,7 +1237,7 @@ const ZONE6_WAVES = [
             { type: 'armoredskel', count: 6 },
             { type: 'skelarch', count: 6 },
         ],
-        statMult: 7.0,
+        statMult: 6.3,
         title: 'Echoes of the Fallen',
     },
     {
@@ -1247,44 +1248,44 @@ const ZONE6_WAVES = [
             { type: 'shadow_knight', count: 1 },
             { type: 'bone_mage', count: 1 },
         ],
-        statMult: 7.5,
+        statMult: 6.8,
         title: 'The Ruined Guard',
         isExpansionTrigger: true,
     },
     {
         enemies: [
-            { type: 'skeleton', count: 14 },
-            { type: 'armoredskel', count: 12 },
-            { type: 'skelarch', count: 12 },
+            { type: 'skeleton', count: 10 },      // reduced from 14
+            { type: 'armoredskel', count: 8 },     // reduced from 12
+            { type: 'skelarch', count: 8 },        // reduced from 12
             { type: 'shadow_knight', count: 2 },
             { type: 'bone_mage', count: 1 },
             { type: 'frost_archer', count: 1 },
         ],
-        statMult: 8.0,
+        statMult: 7.2,
         title: 'Endless Ruin',
     },
     {
         enemies: [
             { type: 'frost_wyrm', count: 1 },
             { type: 'werewolf', count: 1 },
-            { type: 'armoredskel', count: 8 },
-            { type: 'skelarch', count: 8 },
+            { type: 'armoredskel', count: 6 },     // reduced from 8
+            { type: 'skelarch', count: 6 },        // reduced from 8
             { type: 'shadow_knight', count: 2 },
             { type: 'frost_archer', count: 1 },
         ],
-        statMult: 8.5,
+        statMult: 7.6,
         title: 'The Last Stand',
     },
     {
         enemies: [
-            { type: 'skeleton', count: 16 },
-            { type: 'armoredskel', count: 14 },
-            { type: 'skelarch', count: 12 },
+            { type: 'skeleton', count: 12 },      // reduced from 16
+            { type: 'armoredskel', count: 10 },    // reduced from 14
+            { type: 'skelarch', count: 8 },        // reduced from 12
             { type: 'shadow_knight', count: 2 },
             { type: 'bone_mage', count: 2 },
             { type: 'frost_archer', count: 1 },
         ],
-        statMult: 9.0,
+        statMult: 8.0,
         title: 'The World Breaks',
     },
     {
@@ -1293,7 +1294,7 @@ const ZONE6_WAVES = [
             { type: 'armoredskel', count: 8 },
             { type: 'skelarch', count: 8 },
         ],
-        statMult: 10.0,
+        statMult: 8.5,
         title: 'THE THRONE FALLS',
         isBossWave: true,
     },
@@ -1466,7 +1467,7 @@ function startWaveSystem() {
     }
     wave.current = -1;
     wave.phase = 'pre';
-    wave.timer = 6.0; // breathing room — lets zone banner (4s) finish + 2s calm
+    wave.timer = 7.0; // breathing room — lets zone banner (5s with art) finish + 2s calm
     wave.bannerText = '';
     wave.bannerSub = '';
     wave.bannerAlpha = 0;

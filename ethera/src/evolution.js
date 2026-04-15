@@ -55,7 +55,7 @@ const EVOLUTION_REQUIREMENTS = {
         kills: 50,
         talismanLevel: 3,
         towersPlaced: 3,          // place 3 towers → ensures you've used the summon mechanic
-        lowManaKills: 10,         // kill 10 enemies while below 30% mana → teaches resource pressure (lich life)
+        lowManaKills: 5,          // kill 5 enemies while below 30% mana → teaches resource pressure (halved — happens naturally in extended fights)
     },
 };
 
@@ -247,10 +247,10 @@ function updateEvolution(dt) {
                 for (const key of Object.keys(fusedUpgrades)) delete fusedUpgrades[key];
             }
 
-            // --- Legacy Echo: carry one upgrade from previous form at 50% power ---
+            // --- Legacy Echo: carry top 2 upgrades from previous form at 65% power ---
             if (typeof FormSystem !== 'undefined' && FormSystem.legacyEchoes &&
                 FormSystem.legacyEchoes.length < (FormSystem.maxEchoes || 3)) {
-                // Find the highest-stacked upgrade the player has from the previous form
+                // Find the top 2 highest-stacked upgrades the player has from the previous form
                 const prevForm = FormSystem.previousForm || 'slime';
                 const prevPools = {
                     slime: typeof SLIME_UPGRADE_POOL !== 'undefined' ? SLIME_UPGRADE_POOL : [],
@@ -259,21 +259,26 @@ function updateEvolution(dt) {
                     lich: typeof LICH_UPGRADE_POOL !== 'undefined' ? LICH_UPGRADE_POOL : [],
                 };
                 const prevPool = prevPools[prevForm] || [];
-                let bestUpgrade = null, bestStacks = 0;
+                // Collect all upgrades with stacks, sorted by stacks descending
+                const stackedUpgrades = [];
                 for (const u of prevPool) {
                     const stacks = upgrades[u.id] || 0;
-                    if (stacks > bestStacks) { bestStacks = stacks; bestUpgrade = u; }
+                    if (stacks > 0) stackedUpgrades.push({ upgrade: u, stacks });
                 }
-                if (bestUpgrade && bestStacks > 0) {
+                stackedUpgrades.sort((a, b) => b.stacks - a.stacks);
+                // Carry top 2 (or fewer if not enough room in maxEchoes)
+                const echoSlots = Math.min(2, (FormSystem.maxEchoes || 3) - FormSystem.legacyEchoes.length);
+                for (let ei = 0; ei < Math.min(echoSlots, stackedUpgrades.length); ei++) {
+                    const { upgrade: bestUpgrade, stacks: bestStacks } = stackedUpgrades[ei];
                     FormSystem.legacyEchoes.push({
                         upgradeId: bestUpgrade.id,
                         upgradeName: bestUpgrade.name,
                         originalForm: prevForm,
                         stackCount: bestStacks,
-                        effectiveMult: 0.5,
+                        effectiveMult: 0.65,  // buffed from 0.5 — carry 65% power forward
                     });
                     if (typeof Notify !== 'undefined') {
-                        Notify.toast('LEGACY ECHO: ' + bestUpgrade.name + ' carries forward at 50% power',
+                        Notify.toast('LEGACY ECHO: ' + bestUpgrade.name + ' carries forward at 65% power',
                             { duration: 5, color: '#ffd700', borderColor: '#aa8800' });
                     }
                 }

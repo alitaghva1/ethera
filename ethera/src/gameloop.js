@@ -2548,47 +2548,68 @@ function drawWorldKeyDrops() {
         ctx.save();
         ctx.globalAlpha = fadeIn;
 
-        // Large golden ground glow — key items are special
-        ctx.globalCompositeOperation = 'screen';
-        const pulse = 0.6 + Math.sin(t * 3) * 0.2;
-        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 30);
-        glow.addColorStop(0, `rgba(255, 210, 80, ${0.5 * pulse})`);
-        glow.addColorStop(0.5, `rgba(200, 150, 30, ${0.15 * pulse})`);
-        glow.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = glow;
-        ctx.fillRect(sx - 30, sy - 30, 60, 60);
+        // --- Talisman drop: use sprite with screen blend (black bg disappears) ---
+        const isTalisman = d.id === 'talisman';
+        const talismanImg = isTalisman ? images.talisman_drop : null;
 
-        // Floating key shape
-        ctx.globalCompositeOperation = 'source-over';
-        const iy = sy - 18 + bob;
-        ctx.globalAlpha = fadeIn * 0.95;
+        if (talismanImg) {
+            // Ground glow — larger and more dramatic for the talisman
+            ctx.globalCompositeOperation = 'screen';
+            const pulse = 0.6 + Math.sin(t * 2.5) * 0.25;
+            const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 45);
+            glow.addColorStop(0, `rgba(100, 220, 80, ${0.4 * pulse})`);
+            glow.addColorStop(0.4, `rgba(200, 180, 50, ${0.2 * pulse})`);
+            glow.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(sx - 45, sy - 45, 90, 90);
 
-        // Key body — simple iconic shape
-        ctx.fillStyle = d.color;
-        ctx.strokeStyle = '#fff8e0';
-        ctx.lineWidth = 1;
+            // Draw talisman sprite with screen blend — black bg vanishes, glow shines
+            const spriteSize = 48 + Math.sin(t * 2) * 3; // subtle size pulse
+            const iy = sy - 24 + bob;
+            ctx.globalAlpha = fadeIn * 0.9;
+            ctx.drawImage(talismanImg, sx - spriteSize / 2, iy - spriteSize / 2, spriteSize, spriteSize);
 
-        // Circle head
-        ctx.beginPath();
-        ctx.arc(sx, iy - 4, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = fadeIn * 0.4;
-        ctx.stroke();
+            // Extra sparkle ring
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = fadeIn * (0.15 + Math.sin(t * 4) * 0.1);
+            const ringGlow = ctx.createRadialGradient(sx, iy, spriteSize * 0.3, sx, iy, spriteSize * 0.7);
+            ringGlow.addColorStop(0, 'rgba(0,0,0,0)');
+            ringGlow.addColorStop(0.5, 'rgba(120, 255, 100, 0.3)');
+            ringGlow.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = ringGlow;
+            ctx.fillRect(sx - spriteSize, iy - spriteSize, spriteSize * 2, spriteSize * 2);
+        } else {
+            // Fallback: procedural key shape for non-talisman key drops
+            ctx.globalCompositeOperation = 'screen';
+            const pulse = 0.6 + Math.sin(t * 3) * 0.2;
+            const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 30);
+            glow.addColorStop(0, `rgba(255, 210, 80, ${0.5 * pulse})`);
+            glow.addColorStop(0.5, `rgba(200, 150, 30, ${0.15 * pulse})`);
+            glow.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(sx - 30, sy - 30, 60, 60);
 
-        // Shaft
-        ctx.globalAlpha = fadeIn * 0.95;
-        ctx.fillRect(sx - 1.5, iy + 1, 3, 10);
-
-        // Teeth
-        ctx.fillRect(sx + 1, iy + 7, 3, 2);
-        ctx.fillRect(sx + 1, iy + 4, 2, 2);
-
-        // Sparkle
-        ctx.globalAlpha = fadeIn * (0.3 + Math.sin(t * 5) * 0.3);
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(sx - 2, iy - 6, 1.5, 0, Math.PI * 2);
-        ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+            const iy = sy - 18 + bob;
+            ctx.globalAlpha = fadeIn * 0.95;
+            ctx.fillStyle = d.color;
+            ctx.strokeStyle = '#fff8e0';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(sx, iy - 4, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = fadeIn * 0.4;
+            ctx.stroke();
+            ctx.globalAlpha = fadeIn * 0.95;
+            ctx.fillRect(sx - 1.5, iy + 1, 3, 10);
+            ctx.fillRect(sx + 1, iy + 7, 3, 2);
+            ctx.fillRect(sx + 1, iy + 4, 2, 2);
+            ctx.globalAlpha = fadeIn * (0.3 + Math.sin(t * 5) * 0.3);
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(sx - 2, iy - 6, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         ctx.restore();
     }

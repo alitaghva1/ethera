@@ -5,7 +5,7 @@
 const lichState = {
     soulEnergy: 0,
     maxSoulEnergy: 100,
-    soulRegen: 4.0,       // passive soul regen per second (buffed from 2.0 — lich should feel powerful)
+    soulRegen: 5.0,       // passive soul regen per second (buffed from 4.0 — less punishing when resource-starved in late zones)
     undeadMinions: [],    // raised undead allies
     maxMinions: 2,
     shadowStepCooldown: 0,

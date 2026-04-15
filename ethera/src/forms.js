@@ -32,7 +32,7 @@ const FormSystem = {
 
     // Legacy Echoes — upgrades carried from previous forms at reduced power
     legacyEchoes: [],  // { upgradeId, originalForm, stackCount, effectiveMult }
-    maxEchoes: 3,      // max echoes player can accumulate across all evolutions
+    maxEchoes: 5,      // max echoes player can accumulate across all evolutions (2 per evolution, 3 evolutions)
 
     // Get the current form's config
     getFormConfig() {
@@ -149,7 +149,7 @@ const FORM_CONFIGS = {
         moveDecel: 16,
         moveMaxSpeed: 5.0,
         hitboxRadius: 0.18,
-        maxHp: 80,
+        maxHp: 95,       // buffed from 80 — softens the HP cliff from max-size slime (~144 effective)
         maxMana: 0,
         manaRegen: 0,
         manaRegenDelay: 0,
@@ -161,12 +161,12 @@ const FORM_CONFIGS = {
         projLife: 1.5,
         projSize: 5,
         manaCost: 0,
-        primaryDmg: 16,
+        primaryDmg: 18,   // buffed from 16 — compensates for no equipment access
         knockback: 2.0,
         hasDodge: true,
         hasSummon: false,
         hasEquipment: false,
-        canOpenChests: false,
+        canOpenChests: true,   // skeleton has hands — let it loot chests
         hasKeyItems: true,
         upgradePoolId: 'skeleton',
         resourceType: 'stamina',
@@ -182,11 +182,11 @@ const FORM_CONFIGS = {
         moveDecel: 14,
         moveMaxSpeed: 5.2,
         hitboxRadius: 0.18,
-        maxHp: 100,  // reduced from 120 — lich power comes from soul economy, not raw tankiness
+        maxHp: 120,  // restored to 120 — lich needs survivability buffer for zones 5-6 stat inflation
         maxMana: 0,
         manaRegen: 0,
         manaRegenDelay: 0,
-        invTime: 0.6,
+        invTime: 0.8,  // buffed from 0.6 — match wizard survivability window
         atkDuration: 0.30,
         atkCooldown: 0.35,
         atkFireAt: 0.10,
