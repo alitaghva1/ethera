@@ -3956,39 +3956,41 @@ function render() {
     spritePool.sort((a, b) => a.score - b.score || a.id - b.id);
     let spriteIdx = 0;
 
-    // Depth-sorted rendering with proper sprite interleaving
+    // === PASS 1: Draw ALL floor tiles first ===
+    // Floor tiles are flat ground and must never overlap entities.
+    // Drawing them in a separate pass before sprite interleaving prevents
+    // floor tiles at depth D+1 from covering sprites at depth D.
     for (let depth = 0; depth < mapSize * 2; depth++) {
         for (let row = Math.max(0, depth - mapSize + 1); row <= Math.min(depth, mapSize - 1); row++) {
             const col = depth - row;
             if (col < 0 || col >= mapSize) continue;
-
-            // Fog of war — skip tiles the player hasn't explored yet
-            // fogRevealed is numeric: 0 = hidden, 1 = full, 0.2-0.8 = dim edge
             const _fogVal = (fogRevealed[row] && fogRevealed[row][col]) || 0;
-            const _fogVis = _fogVal > 0;
-            const _fogDim = _fogVal < 1 && _fogVal > 0; // edge tile that needs darkening
+            if (_fogVal <= 0) continue;
+            const _fogDim = _fogVal < 1;
             const ft = floorMap[row][col];
-            if (ft && images[ft] && _fogVis) {
-                // Apply fog edge dimming — darken wall peek tiles
-                if (_fogDim) {
-                    ctx.save();
-                    ctx.globalAlpha = _fogVal;
-                }
-                if (ft.startsWith('h_')) {
-                    drawHellTile(images[ft], row, col);
-                } else if (ft.startsWith('n_')) {
-                    drawNatureTile(images[ft], row, col);
-                } else {
-                    drawTile(images[ft], row, col);
-                }
+            if (ft && images[ft]) {
+                if (_fogDim) { ctx.save(); ctx.globalAlpha = _fogVal; }
+                if (ft.startsWith('h_')) drawHellTile(images[ft], row, col);
+                else if (ft.startsWith('n_')) drawNatureTile(images[ft], row, col);
+                else drawTile(images[ft], row, col);
                 drawTileEdgeShadows(row, col);
                 drawRoughFloorHint(row, col);
-                // Procedural hazard overlays (lava, acid, spikes, ice)
                 if (typeof hazardMap !== 'undefined' && hazardMap.length > 0 && hazardMap[row] && hazardMap[row][col]) {
                     drawHazardOverlayTile(row, col);
                 }
                 if (_fogDim) ctx.restore();
             }
+        }
+    }
+
+    // === PASS 2: Depth-sorted object tiles interleaved with sprites ===
+    for (let depth = 0; depth < mapSize * 2; depth++) {
+        for (let row = Math.max(0, depth - mapSize + 1); row <= Math.min(depth, mapSize - 1); row++) {
+            const col = depth - row;
+            if (col < 0 || col >= mapSize) continue;
+            const _fogVal = (fogRevealed[row] && fogRevealed[row][col]) || 0;
+            const _fogVis = _fogVal > 0;
+            const _fogDim = _fogVal < 1 && _fogVal > 0;
 
             // Draw any sprites that should appear BEFORE this object tile
             const ot = _fogVis ? objectMap[row][col] : null;
