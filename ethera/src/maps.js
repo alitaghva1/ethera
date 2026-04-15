@@ -1733,6 +1733,35 @@ function generateTown() {
     floorMap[14][20] = 'ow_grassHill';     // between shop and square
     floorMap[22][9]  = 'ow_grassHill';     // south west
     floorMap[22][21] = 'ow_grassHill';     // south east
+
+    // === AI-GENERATED GROUND TILES — thematic placement ===
+    // Wildflowers — bright spots near peaceful areas (memorial, gardens, square edges)
+    floorMap[9][13]  = 'ow_wildflowers';   // near Mira's memorial
+    floorMap[9][17]  = 'ow_wildflowers';   // east of town square entrance
+    floorMap[3][13]  = 'ow_wildflowers';   // north gate approach west
+    floorMap[3][17]  = 'ow_wildflowers';   // north gate approach east
+    floorMap[12][12] = 'ow_wildflowers';   // south of square, west
+    floorMap[12][18] = 'ow_wildflowers';   // south of square, east
+    floorMap[6][12]  = 'ow_wildflowers';   // between guard post and road
+    // Moss — damp shaded spots near walls and corners
+    floorMap[1][2]   = 'ow_moss';          // NW wall interior corner
+    floorMap[1][28]  = 'ow_moss';          // NE wall interior corner
+    floorMap[28][2]  = 'ow_moss';          // SW wall interior corner
+    floorMap[28][28] = 'ow_moss';          // SE wall interior corner
+    floorMap[4][9]   = 'ow_moss';          // shaded east of guard post wall
+    floorMap[4][21]  = 'ow_moss';          // shaded west of hermit wall
+    floorMap[13][9]  = 'ow_moss';          // shaded east of forge wall
+    // Worn dirt — high foot traffic near building entrances
+    floorMap[8][7]   = 'ow_dirtWorn';      // guard post doorstep
+    floorMap[8][23]  = 'ow_dirtWorn';      // hermit hut doorstep
+    floorMap[17][7]  = 'ow_dirtWorn';      // forge doorstep
+    floorMap[17][23] = 'ow_dirtWorn';      // shop doorstep
+    // Rubble — corruption near dungeon entrance and south ruins
+    floorMap[24][13] = 'ow_rubbleGrass';   // ruins edge west
+    floorMap[24][17] = 'ow_rubbleGrass';   // ruins edge east
+    floorMap[27][14] = 'ow_rubbleGrass';   // near south wall
+    floorMap[21][12] = 'ow_rubbleGrass';   // dungeon approach west
+    floorMap[21][18] = 'ow_rubbleGrass';   // dungeon approach east
     // Elevated grass patches — terrain undulation in the flattest areas
     floorMap[5][11]  = 'ow_grassHillHigh'; // west open area, gentle rise
     floorMap[5][19]  = 'ow_grassHillHigh'; // east open area, gentle rise
@@ -1799,6 +1828,7 @@ function generateTown() {
     // Place grass-edge tiles around building borders for natural transition
     const stoneFloors = new Set(['stoneTile', 'stone', 'stoneInset', 'planks', 'fm_planks']);
     const grassFloors = new Set(['ow_grass', 'ow_grassHill', 'ow_grassHillHigh', 'ow_grassStump',
+        'ow_wildflowers', 'ow_moss', 'ow_rubbleGrass',
         'n_grass', 'n_grassEdge', 'n_grassFlowers', 'n_grassBush']);
     const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
     for (let r = 1; r < 29; r++) {
