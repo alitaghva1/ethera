@@ -542,6 +542,20 @@ function getAutoSaveSlot() {
     return bestSlot;
 }
 
+function deleteSave(slotIdx) {
+    if (slotIdx < 0 || slotIdx >= 3) return;
+    try {
+        if (_useFileSaves && window.ethera.deleteSlot) {
+            window.ethera.deleteSlot(slotIdx);
+        } else {
+            localStorage.removeItem(SAVE_KEY_PREFIX + slotIdx);
+        }
+        saveSlots[slotIdx] = null;
+    } catch (e) {
+        console.warn('Failed to delete save slot ' + slotIdx + ':', e);
+    }
+}
+
 function formatSaveDate(ts) {
     const d = new Date(ts);
     const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

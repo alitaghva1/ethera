@@ -362,11 +362,16 @@ function handleKeyDown(e) {
         else { gamePhase = 'menu'; menuFadeAlpha = 1; }
         return;
     }
-    // Load screen: Escape goes back
+    // Load screen: Escape goes back (or cancels delete confirm)
     if (gamePhase === 'loadScreen' && e.key === 'Escape') {
+        if (loadScreenConfirmDelete >= 0) {
+            loadScreenConfirmDelete = -1;
+            return;
+        }
         gamePhase = 'menuFade';
         menuFadeTarget = 'menu';
         loadScreenAlpha = 0;
+        loadScreenConfirmDelete = -1;
         return;
     }
     // Journal reader navigation
@@ -928,11 +933,51 @@ function handleMouseDown(e) {
     }
     // Load screen clicks
     if (gamePhase === 'loadScreen' && e.button === 0) {
-        // Check save slot clicks
         const cx = canvasW / 2;
         const cy = canvasH / 2;
         const slotW = 320, slotH = 70, slotGap = 12;
+        const delBtnW = 28, delBtnH = 22;
         const startY = cy - 80;
+
+        // --- Handle delete confirmation dialog ---
+        if (loadScreenConfirmDelete >= 0) {
+            const i = loadScreenConfirmDelete;
+            const sy = startY + i * (slotH + slotGap);
+            const btnY = sy + 38;
+            const yesW = 70, noW = 70, btnH2 = 24, btnGap2 = 16;
+            const yesX = cx - yesW - btnGap2 / 2;
+            const noX = cx + btnGap2 / 2;
+
+            // Yes (Delete) button
+            if (clickX >= yesX && clickX <= yesX + yesW && clickY >= btnY && clickY <= btnY + btnH2) {
+                deleteSave(i);
+                loadScreenConfirmDelete = -1;
+                return;
+            }
+            // No (Cancel) button
+            if (clickX >= noX && clickX <= noX + noW && clickY >= btnY && clickY <= btnY + btnH2) {
+                loadScreenConfirmDelete = -1;
+                return;
+            }
+            // Click anywhere else dismisses confirm
+            loadScreenConfirmDelete = -1;
+            return;
+        }
+
+        // --- Check delete button clicks (small X on each slot) ---
+        for (let i = 0; i < 3; i++) {
+            if (!saveSlots[i]) continue;
+            const sx = cx - slotW / 2;
+            const sy = startY + i * (slotH + slotGap);
+            const delX = sx + slotW - delBtnW - 6;
+            const delY = sy + 6;
+            if (clickX >= delX && clickX <= delX + delBtnW && clickY >= delY && clickY <= delY + delBtnH) {
+                loadScreenConfirmDelete = i;
+                return;
+            }
+        }
+
+        // --- Check save slot clicks (load game) ---
         for (let i = 0; i < 3; i++) {
             const sx = cx - slotW / 2;
             const sy = startY + i * (slotH + slotGap);
@@ -943,6 +988,7 @@ function handleMouseDown(e) {
                 }
             }
         }
+
         // Back button
         const backY = startY + 3 * (slotH + slotGap) + 10;
         const backW = 140, backH = 36;
@@ -951,6 +997,7 @@ function handleMouseDown(e) {
             gamePhase = 'menuFade';
             menuFadeTarget = 'menu';
             loadScreenAlpha = 0;
+            loadScreenConfirmDelete = -1;
             return;
         }
         return;

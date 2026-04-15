@@ -939,6 +939,8 @@ let nameInputEl = null; // reference to hidden input, set in init
 // Load/save screen state
 let loadScreenAlpha = 0;
 let loadScreenHover = -1; // which save slot is hovered (0-2), -1 = none
+let loadScreenDeleteHover = -1; // which delete button is hovered
+let loadScreenConfirmDelete = -1; // slot pending delete confirmation (-1 = none)
 
 // Initialize menu embers
 function initMenuEmbers() {

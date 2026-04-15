@@ -166,7 +166,7 @@ function updateNameEntryPhase(dt) {
 function updateLoadScreenPhase(dt) {
     menuTime += dt;
     updateMenuEmbers(dt);
-    setPixelCursor(loadScreenHover >= 0 ? 'pointer' : 'default');
+    setPixelCursor(loadScreenHover >= 0 || loadScreenDeleteHover >= 0 || loadScreenConfirmDelete >= 0 ? 'pointer' : 'default');
 }
 
 function updateMenuFadePhase(dt) {
@@ -187,6 +187,7 @@ function updateMenuFadePhase(dt) {
             if (nameInputEl) { nameInputEl.value = ''; nameInputEl.focus(); }
         } else if (menuFadeTarget === 'loadScreen') {
             loadScreenAlpha = 0;
+            loadScreenConfirmDelete = -1;
             loadSaveSlots(); // refresh slots
         } else if (menuFadeTarget === 'intro') {
             runIntro();
@@ -4748,24 +4749,87 @@ function drawLoadScreen() {
 
     // 3 save slots
     loadScreenHover = -1;
+    loadScreenDeleteHover = -1;
     const slotW = 320, slotH = 70, slotGap = 12;
+    const delBtnW = 28, delBtnH = 22;
     const startY = cy - 80;
 
     for (let i = 0; i < 3; i++) {
         const sx = cx - slotW / 2;
         const sy = startY + i * (slotH + slotGap);
         const s = saveSlots[i];
-        const hovered = mouse.x >= sx && mouse.x <= sx + slotW &&
+        const isConfirming = loadScreenConfirmDelete === i;
+
+        // --- Delete confirmation overlay for this slot ---
+        if (isConfirming) {
+            // Darkened slot background
+            ctx.globalAlpha = fa * 0.6;
+            ctx.fillStyle = '#1a0808';
+            ctx.beginPath(); ctx.roundRect(sx, sy, slotW, slotH, 5); ctx.fill();
+
+            // Red border
+            ctx.globalAlpha = fa * 0.6;
+            ctx.strokeStyle = '#cc4444';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.roundRect(sx, sy, slotW, slotH, 5); ctx.stroke();
+
+            // Confirm text
+            ctx.globalAlpha = fa * 0.9;
+            ctx.textAlign = 'center';
+            ctx.font = '12px Georgia';
+            ctx.fillStyle = '#ee8866';
+            ctx.fillText('Delete this save?', cx, sy + 20);
+
+            // Yes / No buttons
+            const btnY = sy + 38;
+            const yesW = 70, noW = 70, btnH2 = 24, btnGap2 = 16;
+            const yesX = cx - yesW - btnGap2 / 2;
+            const noX = cx + btnGap2 / 2;
+
+            const yesHover = mouse.x >= yesX && mouse.x <= yesX + yesW && mouse.y >= btnY && mouse.y <= btnY + btnH2;
+            const noHover = mouse.x >= noX && mouse.x <= noX + noW && mouse.y >= btnY && mouse.y <= btnY + btnH2;
+
+            // Yes button
+            ctx.globalAlpha = fa * (yesHover ? 0.7 : 0.35);
+            ctx.fillStyle = '#331111';
+            ctx.beginPath(); ctx.roundRect(yesX, btnY, yesW, btnH2, 3); ctx.fill();
+            ctx.globalAlpha = fa * (yesHover ? 0.7 : 0.3);
+            ctx.strokeStyle = '#cc4444';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.roundRect(yesX, btnY, yesW, btnH2, 3); ctx.stroke();
+            ctx.globalAlpha = fa * (yesHover ? 0.95 : 0.6);
+            ctx.font = 'small-caps bold 11px Georgia';
+            ctx.fillStyle = '#ff6644';
+            ctx.fillText('Delete', yesX + yesW / 2, btnY + btnH2 / 2);
+
+            // No button
+            ctx.globalAlpha = fa * (noHover ? 0.7 : 0.35);
+            ctx.fillStyle = '#111411';
+            ctx.beginPath(); ctx.roundRect(noX, btnY, noW, btnH2, 3); ctx.fill();
+            ctx.globalAlpha = fa * (noHover ? 0.7 : 0.3);
+            ctx.strokeStyle = '#668866';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.roundRect(noX, btnY, noW, btnH2, 3); ctx.stroke();
+            ctx.globalAlpha = fa * (noHover ? 0.95 : 0.6);
+            ctx.font = 'small-caps bold 11px Georgia';
+            ctx.fillStyle = '#88cc88';
+            ctx.fillText('Cancel', noX + noW / 2, btnY + btnH2 / 2);
+
+            continue; // skip normal slot rendering
+        }
+
+        // --- Normal slot rendering ---
+        const slotHovered = mouse.x >= sx && mouse.x <= sx + slotW &&
                         mouse.y >= sy && mouse.y <= sy + slotH;
-        if (hovered && s) loadScreenHover = i;
+        if (slotHovered && s) loadScreenHover = i;
 
         // Slot background
-        ctx.globalAlpha = fa * (hovered && s ? 0.5 : 0.3);
+        ctx.globalAlpha = fa * (slotHovered && s ? 0.5 : 0.3);
         ctx.fillStyle = s ? '#14100c' : '#0a0806';
         ctx.beginPath(); ctx.roundRect(sx, sy, slotW, slotH, 5); ctx.fill();
 
         // Border
-        ctx.globalAlpha = fa * (hovered && s ? 0.5 : 0.15);
+        ctx.globalAlpha = fa * (slotHovered && s ? 0.5 : 0.15);
         ctx.strokeStyle = s ? '#a89060' : '#443822';
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.roundRect(sx, sy, slotW, slotH, 5); ctx.stroke();
@@ -4790,7 +4854,6 @@ function drawLoadScreen() {
             ctx.fillStyle = '#a89060';
             const _slotForm = s.currentForm ? s.currentForm.charAt(0).toUpperCase() + s.currentForm.slice(1) : 'Wizard';
             const _slotTalisman = (s.talisman && s.talisman.level > 1) ? '  ·  Talisman Lv.' + s.talisman.level : '';
-            // Compute abyss rank for this save slot
             let _slotAbyssRank = '';
             if (s.deepestDepthReached > 0 && typeof ABYSS_RANKS !== 'undefined') {
                 let _slotRank = null;
@@ -4807,13 +4870,35 @@ function drawLoadScreen() {
             ctx.font = '9px monospace';
             ctx.fillStyle = '#8a7a5a';
             ctx.fillText(formatSaveDate(s.timestamp), sx + slotW - 12, sy + 56);
+
+            // Delete button (small X in top-right corner)
+            const delX = sx + slotW - delBtnW - 6;
+            const delY = sy + 6;
+            const delHover = mouse.x >= delX && mouse.x <= delX + delBtnW &&
+                             mouse.y >= delY && mouse.y <= delY + delBtnH;
+            if (delHover) loadScreenDeleteHover = i;
+
+            ctx.globalAlpha = fa * (delHover ? 0.6 : 0.2);
+            ctx.fillStyle = delHover ? '#2a1111' : '#14100c';
+            ctx.beginPath(); ctx.roundRect(delX, delY, delBtnW, delBtnH, 3); ctx.fill();
+            ctx.globalAlpha = fa * (delHover ? 0.6 : 0.15);
+            ctx.strokeStyle = delHover ? '#cc4444' : '#664433';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.roundRect(delX, delY, delBtnW, delBtnH, 3); ctx.stroke();
+
+            // X icon
+            ctx.globalAlpha = fa * (delHover ? 0.9 : 0.3);
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 12px monospace';
+            ctx.fillStyle = delHover ? '#cc4444' : '#886655';
+            ctx.fillText('\u2715', delX + delBtnW / 2, delY + delBtnH / 2);
         } else {
             // Empty
             ctx.globalAlpha = fa * 0.15;
             ctx.font = 'italic 12px Georgia';
             ctx.fillStyle = '#665544';
             ctx.textAlign = 'center';
-            ctx.fillText('— Empty —', cx, sy + slotH / 2);
+            ctx.fillText('\u2014 Empty \u2014', cx, sy + slotH / 2);
         }
     }
 
