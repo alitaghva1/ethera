@@ -4132,40 +4132,46 @@ function render() {
     }
 
     // ── LAYER 2b: Occlusion ghost — semi-transparent player silhouette ──
-    // When the player (especially short forms like slime) is behind tall objects,
-    // draw a translucent outline on top so the player is always visible.
+    // When the player is behind tall objects (columns, walls, barrels),
+    // draw a translucent silhouette on top so the player stays visible.
     {
         const handler = FormSystem.getHandler();
         if (handler && handler.draw) {
-            // Check if any object tile at higher depth occludes the player's screen position
             const pPos = tileToScreen(player.row, player.col);
             const pSx = pPos.x + cameraX;
             const pSy = pPos.y + cameraY;
-            // Check a few tiles at depth+1 and depth+2 for tall objects
+            // Only check immediately adjacent tiles at higher isometric depth
             let occluded = false;
-            const checkOffsets = [[1, 0], [0, 1], [1, 1], [2, 0], [0, 2]];
+            const checkOffsets = [[1, 0], [0, 1], [1, 1]];
+            // Tall objects that can visually cover a ground-level character
+            const TALL_OBJECTS = new Set([
+                'stoneColumn', 'stoneColumnWood', 'barrel', 'barrels', 'barrelsStacked',
+                'woodenCrate', 'woodenCrates', 'woodenPile', 'woodenSupports', 'woodenSupportBeams',
+                'tableRound', 'tableRoundChairs', 'tableChairsBroken', 'tableShort',
+                'stairs', 'stairsSpiral', 'stairsAged',
+            ]);
             for (const [dr, dc] of checkOffsets) {
                 const cr = Math.floor(player.row) + dr;
                 const cc = Math.floor(player.col) + dc;
-                if (cr >= 0 && cr < mapSize && cc >= 0 && cc < mapSize && objectMap[cr] && objectMap[cr][cc]) {
-                    const obj = objectMap[cr][cc];
-                    if (obj && !obj.startsWith('chest') && !obj.startsWith('crackedWall')) {
-                        // Check if this object's screen position overlaps the player
-                        const oPos = tileToScreen(cr, cc);
-                        const oSx = oPos.x + cameraX;
-                        const oSy = oPos.y + cameraY;
-                        const dx = Math.abs(pSx - oSx);
-                        const dy = pSy - oSy; // positive means object is below player on screen
-                        if (dx < 50 && dy > -20 && dy < 60) {
-                            occluded = true;
-                            break;
-                        }
-                    }
+                if (cr < 0 || cr >= mapSize || cc < 0 || cc >= mapSize) continue;
+                if (!objectMap[cr] || !objectMap[cr][cc]) continue;
+                const obj = objectMap[cr][cc];
+                // Only trigger for known tall objects or wall types
+                if (!TALL_OBJECTS.has(obj) && !obj.startsWith('wall')) continue;
+                // Screen-space proximity check — is this object close enough to cover the player?
+                const oPos = tileToScreen(cr, cc);
+                const oSx = oPos.x + cameraX;
+                const oSy = oPos.y + cameraY;
+                const dx = Math.abs(pSx - oSx);
+                const dy = pSy - oSy;
+                if (dx < 35 && dy > -10 && dy < 40) {
+                    occluded = true;
+                    break;
                 }
             }
             if (occluded) {
                 ctx.save();
-                ctx.globalAlpha = 0.4;
+                ctx.globalAlpha = 0.35;
                 handler.draw();
                 ctx.restore();
             }
