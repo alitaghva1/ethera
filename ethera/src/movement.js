@@ -77,6 +77,8 @@ function updatePlayer(dt) {
     if (gameDead) return;
     // Freeze player during victory
     if (wave.phase === 'victory') return;
+    // Freeze player during zone banner (no movement or shooting while art shows)
+    if (typeof zoneBannerTimer !== 'undefined' && zoneBannerTimer > 0) return;
 
     // Frost Wyrm freeze — player cannot move or act
     if (player.frozenTimer > 0) {

@@ -749,12 +749,12 @@ function updateChestDefsForZone(zone) {
     if (zone === 0) {
         // Town chests — match placeObj positions in generateTown()
         CHEST_DEFS = {
-            '6,4':   { type: 'loot', label: 'Open' },  // Guard Post interior
-            '6,25':  { type: 'loot', label: 'Open' },  // Hermit's Hut
-            '15,4':  { type: 'loot', label: 'Open' },  // Forge interior
-            '15,25': { type: 'loot', label: 'Open' },  // Shop interior
-            '11,11': { type: 'loot', label: 'Open' },  // Town Square west
-            '11,19': { type: 'loot', label: 'Open' },  // Town Square east
+            '5,5':   { type: 'loot', label: 'Open' },  // Guard Barracks
+            '7,24':  { type: 'loot', label: 'Open' },  // Scholar's Hut
+            '21,5':  { type: 'loot', label: 'Open' },  // Forge Ruin
+            '21,22': { type: 'loot', label: 'Open' },  // Apothecary Ruin
+            '17,9':  { type: 'loot', label: 'Open' },  // Mira's vigil
+            '16,20': { type: 'loot', label: 'Open' },  // Market
         };
     } else if (zone === 1) {
         CHEST_DEFS = {
@@ -1531,10 +1531,10 @@ function updateDoorDefsForZone(zone) {
         };
     } else if (zone === 0) {
         DOOR_DEFS = {
-            // South dungeon stairway — descend to Zone 1
-            '23,14': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
-            '23,15': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
-            '23,16': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
+            // South dungeon stairway — The Descent (row 27)
+            '27,14': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
+            '27,15': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
+            '27,16': { requiresKey: null, label: 'Descend to the Dungeon', destination: 'zone1' },
             // North gate — zone 2 access
             '1,14': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
             '1,15': { requiresKey: null, label: 'Ascend', destination: 'zone2' },
@@ -1542,7 +1542,7 @@ function updateDoorDefsForZone(zone) {
         };
         // Abyss Portal — requires Hermit's Hut rebuilt + procedural depth reached
         if (deepestDepthReached > 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.hermitHut) {
-            DOOR_DEFS['6,24'] = {
+            DOOR_DEFS['7,26'] = {
                 requiresKey: null,
                 label: 'Enter the Abyss (Depth ' + deepestDepthReached + ')',
                 destination: 'deepest',

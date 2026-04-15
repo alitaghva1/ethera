@@ -52,6 +52,10 @@ const ENEMY_SPAWN_MIN_DISTANCE = 4;         // Enemies spawn at least this far f
 const ENEMY_STAGGER_COOLDOWN = 0.4;         // Base stagger cooldown per enemy type
 const ENEMY_STAGGER_VARIANCE = 0.3;         // Random variance on stagger cooldown
 
+// --- Alert Propagation ---
+const ALERT_RADIUS = 7;                     // tiles — when one enemy aggros, nearby ones join
+const ALERT_STUCK_DISENGAGE = 5.0;          // seconds — stuck enemies give up instead of warping
+
 // --- Elite Modifier System (Zone 2+) ---
 const ELITE_BASE_CHANCE = 0.05;             // 5% base elite spawn chance (zone 2)
 const ELITE_MAX_CHANCE = 0.25;              // Cap at 25% elite chance

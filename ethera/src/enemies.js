@@ -5,7 +5,7 @@
 const ENEMY_TYPES = {
     slime: {
         prefix: 'slime',
-        hp: 30, speed: 2.0, damage: 10, attackRange: 0.7, aggroRange: 8,
+        hp: 30, speed: 2.0, damage: 10, attackRange: 0.7, aggroRange: 12,
         hitboxR: 0.25,
         frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
         animSpeed: 8, attackDur: 0.4, attackCooldown: 0.8,
@@ -21,7 +21,7 @@ const ENEMY_TYPES = {
     },
     skeleton: {
         prefix: 'skel',
-        hp: 50, speed: 2.3, damage: 14, attackRange: 0.9, aggroRange: 9,
+        hp: 50, speed: 2.3, damage: 14, attackRange: 0.9, aggroRange: 13,
         hitboxR: 0.25,
         frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
         animSpeed: 9, attackDur: 0.45, attackCooldown: 1.1,
@@ -35,7 +35,7 @@ const ENEMY_TYPES = {
     },
     skelarch: {
         prefix: 'skelarch',
-        hp: 35, speed: 1.6, damage: 12, attackRange: 7.5, aggroRange: 10,
+        hp: 35, speed: 1.6, damage: 12, attackRange: 7.5, aggroRange: 14,
         hitboxR: 0.25,
         frames: { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
         animSpeed: 8, attackDur: 0.55, attackCooldown: 1.8,
@@ -47,7 +47,7 @@ const ENEMY_TYPES = {
     },
     armoredskel: {
         prefix: 'armoredskel',
-        hp: 60, speed: 1.8, damage: 18, attackRange: 0.9, aggroRange: 9,
+        hp: 60, speed: 1.8, damage: 18, attackRange: 0.9, aggroRange: 13,
         hitboxR: 0.3,
         frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
         animSpeed: 8, attackDur: 0.5, attackCooldown: 1.3,
@@ -62,7 +62,7 @@ const ENEMY_TYPES = {
     },
     werewolf: {
         prefix: 'werewolf',
-        hp: 280, speed: 2.6, damage: 22, attackRange: 1.8, aggroRange: 12,
+        hp: 280, speed: 2.6, damage: 22, attackRange: 1.8, aggroRange: 15,
         hitboxR: 0.35,
         frames: { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
         animSpeed: 9, attackDur: 0.5, attackCooldown: 1.5,
@@ -238,7 +238,7 @@ const ENEMY_TYPES = {
     // Fire Slime (Zone 4+) — lunges like slime, leaves fire pool on death
     fire_slime: {
         prefix: 'flyingdemon',  // unique sprite (flying demon)
-        hp: 45, speed: 3.0, damage: 14, attackRange: 0.7, aggroRange: 8,
+        hp: 45, speed: 3.0, damage: 14, attackRange: 0.7, aggroRange: 12,
         hitboxR: 0.25,
         frames: { idle: 4, walk: 4, attack: 4, hurt: 2, death: 4 },
         animSpeed: 8, attackDur: 0.4, attackCooldown: 0.8,
@@ -260,7 +260,7 @@ const ENEMY_TYPES = {
     // Frost Archer (Zone 5+) — ranged like skelarch, arrows slow the player
     frost_archer: {
         prefix: 'skelarch',
-        hp: 40, speed: 2.5, damage: 14, attackRange: 7.5, aggroRange: 10,
+        hp: 40, speed: 2.5, damage: 14, attackRange: 7.5, aggroRange: 14,
         hitboxR: 0.25,
         frames: { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
         animSpeed: 8, attackDur: 0.55, attackCooldown: 1.8,
@@ -278,7 +278,7 @@ const ENEMY_TYPES = {
     // Shadow Knight (Zone 6) — flanks like skeleton, teleports when hit
     shadow_knight: {
         prefix: 'shadowknight',  // unique sprite (NightBorne warrior)
-        hp: 80, speed: 2.8, damage: 22, attackRange: 0.9, aggroRange: 9,
+        hp: 80, speed: 2.8, damage: 22, attackRange: 0.9, aggroRange: 13,
         hitboxR: 0.3,
         frames: { idle: 9, walk: 6, attack: 12, hurt: 5, death: 23 },
         animSpeed: 8, attackDur: 0.5, attackCooldown: 1.3,
@@ -299,7 +299,7 @@ const ENEMY_TYPES = {
     // Bone Mage (Zone 3+) — ranged, casts ground AoE with 1.5s delay
     bone_mage: {
         prefix: 'bonemage',  // unique sprite (jinn)
-        hp: 35, speed: 2.0, damage: 16, attackRange: 7.0, aggroRange: 10,
+        hp: 35, speed: 2.0, damage: 16, attackRange: 7.0, aggroRange: 14,
         hitboxR: 0.25,
         frames: { idle: 3, walk: 3, attack: 4, hurt: 2, death: 6 },
         animSpeed: 8, attackDur: 0.55, attackCooldown: 2.5,
@@ -318,7 +318,7 @@ const ENEMY_TYPES = {
     // Pit Lurker (Zone 5+) — ambush AI, invisible until player is close
     pit_lurker: {
         prefix: 'slime',
-        hp: 50, speed: 4.5, damage: 18, attackRange: 0.7, aggroRange: 8,
+        hp: 50, speed: 4.5, damage: 18, attackRange: 0.7, aggroRange: 12,
         hitboxR: 0.25,
         frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
         animSpeed: 10, attackDur: 0.4, attackCooldown: 0.8,
@@ -588,6 +588,9 @@ function applyEnemyHit(e, damage, opts) {
     }
 
     e.hp -= finalDmg;
+
+    // Alert propagation — combat is contagious. When one gets hit, neighbors aggro.
+    if (typeof alertNearbyEnemies === 'function') alertNearbyEnemies(e);
 
     // Hit flash — brief white overlay on ANY damage (longer on crit)
     e.hitFlashTimer = isCrit ? 0.22 : 0.12;
@@ -2799,6 +2802,24 @@ function spawnEnemy(type, row, col, statMult) {
     return spawned;
 }
 
+// ----- ALERT PROPAGATION -----
+// When one enemy enters combat, nearby enemies aggro too — combat is contagious.
+function alertNearbyEnemies(sourceEnemy) {
+    const r = typeof ALERT_RADIUS !== 'undefined' ? ALERT_RADIUS : 7;
+    for (let i = 0; i < enemies.length; i++) {
+        const e = enemies[i];
+        if (e === sourceEnemy || e.hp <= 0 || e._alerted) continue;
+        const dr = e.row - sourceEnemy.row;
+        const dc = e.col - sourceEnemy.col;
+        const dist = Math.sqrt(dr * dr + dc * dc);
+        if (dist <= r) {
+            // Force this enemy into aggro by temporarily boosting its range
+            e._alerted = true;
+            e._alertTimer = 10.0; // stays alerted for 10 seconds
+        }
+    }
+}
+
 // ----- ENEMY AI UPDATE -----
 function updateEnemies(dt) {
     // Tick global boss telegraph flash timer
@@ -4122,8 +4143,15 @@ function updateEnemies(dt) {
             }
         }
 
+        // --- Alert timer decay ---
+        if (e._alertTimer > 0) e._alertTimer -= dt;
+        if (e._alertTimer <= 0) e._alerted = false;
+
+        // --- Effective aggro range (boosted if alerted by nearby combat) ---
+        const effectiveAggro = e._alerted ? Math.max(e.def.aggroRange, 20) : e.def.aggroRange;
+
         // --- Not aggro'd: idle / patrol ---
-        if (dist > e.def.aggroRange) {
+        if (dist > effectiveAggro) {
             // Patrol: drift toward spawn point if too far
             const patrolRange = e.def.patrolRange || 1.5;
             const dsr = e.spawnRow - e.row;
@@ -4147,6 +4175,12 @@ function updateEnemies(dt) {
             }
             e.vr = 0; e.vc = 0;
             continue;
+        }
+
+        // --- Enemy is chasing — alert nearby enemies (combat is contagious) ---
+        if (!e._hasAlerted) {
+            e._hasAlerted = true;
+            if (typeof alertNearbyEnemies === 'function') alertNearbyEnemies(e);
         }
 
         // --- In attack range? ---
@@ -4309,17 +4343,22 @@ function updateEnemies(dt) {
                         }
                     }
 
-                    if (e._stuckTimer > 3.0) {
-                        // Phase 3 (3s+): Warp toward player (clear line of sight)
-                        // Move enemy 1 tile toward player, checking validity
-                        const warpDist = 1.0;
-                        const warpR = e.row + (dr / (dist || 1)) * warpDist;
-                        const warpC = e.col + (dc / (dist || 1)) * warpDist;
-                        if (canEnemyMoveTo(warpR, warpC, e.def.hitboxR, e)) {
-                            e.row = warpR;
-                            e.col = warpC;
-                        }
+                    const disengageTime = typeof ALERT_STUCK_DISENGAGE !== 'undefined' ? ALERT_STUCK_DISENGAGE : 5.0;
+                    if (e._stuckTimer > disengageTime) {
+                        // Phase 3: Disengage — give up chasing, return to patrol near spawn
+                        // Much better than the old teleport-warp through walls
                         e._stuckTimer = 0;
+                        e._alerted = false;
+                        e._alertTimer = 0;
+                        // Nudge back toward spawn point if possible
+                        const toSpawnR = e.spawnRow - e.row;
+                        const toSpawnC = e.spawnCol - e.col;
+                        const spDist = Math.sqrt(toSpawnR * toSpawnR + toSpawnC * toSpawnC) || 1;
+                        const retreatR = e.row + (toSpawnR / spDist) * 0.5;
+                        const retreatC = e.col + (toSpawnC / spDist) * 0.5;
+                        if (canEnemyMoveTo(retreatR, retreatC, e.def.hitboxR, e)) {
+                            e.row = retreatR; e.col = retreatC;
+                        }
                     }
                 } else {
                     e._stuckTimer = 0;

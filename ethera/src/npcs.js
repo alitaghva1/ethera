@@ -34,7 +34,7 @@ const NPC_REGISTRY = {
             id: 'garrett',
             name: 'Garrett the Smith',
             portrait: 'portrait_garrett', // dark-bearded craftsman
-            row: 16, col: 8,
+            row: 21, col: 7,
             zone: 0,
             spriteKey: 'npc_blacksmith_idle', // GandalfHardcore — burly smith in work apron
             frameCount: 5,
@@ -54,7 +54,7 @@ const NPC_REGISTRY = {
             id: 'mira',
             name: 'Old Mira',
             portrait: 'portrait_mira', // weathered elder who remembers Elara
-            row: 10, col: 12,
+            row: 16, col: 11,
             zone: 0,
             spriteKey: 'npc_nun_idle', // GandalfHardcore — elderly robed woman, devoted
             frameCount: 5,
@@ -74,7 +74,7 @@ const NPC_REGISTRY = {
             id: 'aldric',
             name: 'Captain Aldric',
             portrait: 'portrait_aldric', // armored duty-bound captain
-            row: 7, col: 8,
+            row: 6, col: 7,
             zone: 0,
             spriteKey: 'npc_crusader_idle', // GandalfHardcore — armored knight with sword+shield
             frameCount: 5,
@@ -94,7 +94,7 @@ const NPC_REGISTRY = {
             id: 'hermit',
             name: 'The Hermit',
             portrait: 'portrait_hermit', // hooded mystic sage
-            row: 7, col: 22,
+            row: 7, col: 25,
             zone: 0,
             spriteKey: 'npc_mage_idle', // GandalfHardcore — robed mystic with purple magic
             frameCount: 5,
@@ -114,7 +114,7 @@ const NPC_REGISTRY = {
             id: 'senna',
             name: 'Senna the Alchemist',
             portrait: 'portrait_senna', // sharp-eyed alchemist researcher
-            row: 16, col: 22,
+            row: 21, col: 24,
             zone: 0,
             spriteKey: 'npc_femalewizard_idle', // GandalfHardcore — robed woman with magic, matches female portrait
             frameCount: 5,

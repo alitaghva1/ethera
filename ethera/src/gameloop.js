@@ -933,7 +933,7 @@ function spawnAmbientParticles(dt) {
 
     // Town: forge smoke — only when forge is rebuilt
     if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.forge && Math.random() < 0.25) {
-        const forgePos = tileToScreen(14, 6);
+        const forgePos = tileToScreen(20, 6);
         _emitParticle(forgePos.x + cameraX + (Math.random()-0.5)*25, forgePos.y + cameraY - 10,
             (Math.random()-0.5)*0.2, -0.5 - Math.random()*0.3,
             3.0, 1.2, '#aa8866', 0.08, 'ambient');
@@ -947,7 +947,7 @@ function spawnAmbientParticles(dt) {
 
     // Town: warm glow near shop — only when shop is rebuilt
     if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.shop && Math.random() < 0.15) {
-        const shopPos = tileToScreen(14, 24);
+        const shopPos = tileToScreen(21, 23);
         _emitParticle(shopPos.x + cameraX + (Math.random()-0.5)*20, shopPos.y + cameraY - 8,
             (Math.random()-0.5)*0.15, -0.3 - Math.random()*0.2,
             2.5, 1.0, '#66cc88', 0.06, 'ambient');
@@ -955,7 +955,7 @@ function spawnAmbientParticles(dt) {
 
     // Town: guard post lantern flicker — only when guard post is rebuilt
     if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.guardPost && Math.random() < 0.12) {
-        const guardPos = tileToScreen(7, 6);
+        const guardPos = tileToScreen(6, 6);
         _emitParticle(guardPos.x + cameraX + (Math.random()-0.5)*15, guardPos.y + cameraY - 12,
             (Math.random()-0.5)*0.3, -0.4 - Math.random()*0.2,
             2.0, 0.8, '#ddaa55', 0.10, 'ambient');
@@ -963,7 +963,7 @@ function spawnAmbientParticles(dt) {
 
     // Town: hermit's hut mystic glow — only when rebuilt
     if (z === 0 && typeof hamletRebuild !== 'undefined' && hamletRebuild.hermitHut && Math.random() < 0.10) {
-        const hermitPos = tileToScreen(7, 24);
+        const hermitPos = tileToScreen(7, 25);
         _emitParticle(hermitPos.x + cameraX + (Math.random()-0.5)*15, hermitPos.y + cameraY - 10,
             (Math.random()-0.5)*0.2, -0.2 - Math.random()*0.2,
             3.0, 1.2, '#8866cc', 0.07, 'ambient');
@@ -971,7 +971,7 @@ function spawnAmbientParticles(dt) {
 
     // Town: warm particles near dungeon entrance stairway
     if (z === 0 && Math.random() < 0.25) {
-        const dungeonPos = tileToScreen(23, 15);
+        const dungeonPos = tileToScreen(27, 15);
         const dx = dungeonPos.x + cameraX + (Math.random() - 0.5) * 50;
         const dy = dungeonPos.y + cameraY + (Math.random() - 0.5) * 20;
         _emitParticle(dx, dy,

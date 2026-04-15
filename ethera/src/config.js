@@ -366,9 +366,9 @@ const REBUILD_LABELS = { // legacy compat
 };
 // Rebuild interaction positions (NPC locations)
 const REBUILD_POINTS = {
-    forge: { row: 15, col: 6 }, shop: { row: 15, col: 24 },
-    guardPost: { row: 6, col: 6 }, hermitHut: { row: 6, col: 24 },
-    monument: { row: 10, col: 15 },
+    forge: { row: 21, col: 6 }, shop: { row: 21, col: 24 },
+    guardPost: { row: 6, col: 6 }, hermitHut: { row: 7, col: 25 },
+    monument: { row: 16, col: 15 },
 };
 // NPC → building mapping
 const NPC_BUILDING_MAP = { garrett: 'forge', senna: 'shop', aldric: 'guardPost', hermit: 'hermitHut' };

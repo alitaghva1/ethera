@@ -157,7 +157,7 @@ async function loadAssets() {
     promises.push(loadImage('assets/death-screen-bg.png').then(img => { if (img) images.death_screen_bg = img; }));
 
     // Load zone transition art (splash illustrations per zone)
-    for (let z = 1; z <= 6; z++) {
+    for (let z = 0; z <= 6; z++) {
         promises.push(loadImage('assets/zone_art_' + z + '.jpg').then(img => { if (img) images['zone_art_' + z] = img; }));
     }
 

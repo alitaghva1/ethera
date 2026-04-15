@@ -240,8 +240,8 @@ function drawZoneBanner() {
     // --- Zone transition art (full-screen background) ---
     const zoneArt = images['zone_art_' + zoneBannerZone];
     if (zoneArt) {
-        // Dark overlay first — dims the game world behind
-        ctx.globalAlpha = alpha * 0.85;
+        // Solid black background — fully hides the game world
+        ctx.globalAlpha = alpha;
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvasW, canvasH);
 
@@ -250,15 +250,13 @@ function drawZoneBanner() {
         const canAspect = canvasW / canvasH;
         let sx = 0, sy = 0, sw = zoneArt.width, sh = zoneArt.height;
         if (imgAspect > canAspect) {
-            // Image is wider — crop sides
             sw = zoneArt.height * canAspect;
             sx = (zoneArt.width - sw) / 2;
         } else {
-            // Image is taller — crop top/bottom
             sh = zoneArt.width / canAspect;
             sy = (zoneArt.height - sh) / 2;
         }
-        ctx.globalAlpha = alpha * 0.55; // semi-transparent so text is readable
+        ctx.globalAlpha = alpha * 0.8; // visible but leaves room for text
         ctx.drawImage(zoneArt, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
 
         // Gradient vignette — darken edges for text readability
