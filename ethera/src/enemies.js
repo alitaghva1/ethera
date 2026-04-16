@@ -1475,7 +1475,7 @@ function startWaveSystem() {
     }
     wave.current = -1;
     wave.phase = 'pre';
-    wave.timer = 7.0; // breathing room — lets zone banner (5s with art) finish + 2s calm
+    wave.timer = 4.0; // breathing room — lets zone banner finish before combat starts
     wave.bannerText = '';
     wave.bannerSub = '';
     wave.bannerAlpha = 0;
@@ -1585,7 +1585,7 @@ function beginNextWave() {
     }
 
     wave.phase = 'countdown';
-    wave.timer = w.isBossWave ? 5.0 : 4.0; // longer countdown for boss waves
+    wave.timer = w.isBossWave ? 5.0 : 3.0; // shorter countdown gets action started faster
 
     // Boss wave gets dramatic entrance
     if (w.isBossWave) {
@@ -2096,7 +2096,7 @@ function updateWaveSystem(dt) {
                     duckMusic(true);
                 } else {
                     wave.phase = 'cleared';
-                    wave.timer = 4.0;
+                    wave.timer = 3.0;
                     wave.bannerText = 'The darkness recedes...';
                     wave.bannerSub = '';
                     wave.bannerAlpha = 1;
@@ -2172,20 +2172,20 @@ function updateWaveSystem(dt) {
     if (wave.phase === 'cleared') {
         wave.timer -= dt;
 
-        // Phase 1 (first 5s): calm — banner fades, music ducked, light steady
-        if (wave.timer > 3.0) {
+        // Phase 1 (first half): calm — banner fades, music ducked, light steady
+        if (wave.timer > 1.5) {
             lightRadius = MAX_LIGHT; // keep light full during calm phase
-            wave.bannerAlpha = Math.max(0, (wave.timer - 6.0) / 2.0);
+            wave.bannerAlpha = Math.max(0, (wave.timer - 2.5) / 1.0);
             wave.tensionPhase = 0;
         }
-        // Phase 2 (last 3s): tension building — flicker increases, ambient cues
+        // Phase 2 (last 1.5s): tension building — flicker increases, ambient cues
         else {
             if (wave.tensionPhase === 0) {
                 wave.tensionPhase = 1;
                 duckMusic(false); // restore music as tension builds
             }
             // Pulse the light down slightly to create unease
-            const tensionProgress = 1 - (wave.timer / 3.0);
+            const tensionProgress = 1 - (wave.timer / 1.5);
             lightRadius = Math.max(MAX_LIGHT * 0.7, MAX_LIGHT - tensionProgress * (MAX_LIGHT * 0.3));
         }
 
