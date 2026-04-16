@@ -69,8 +69,9 @@ function dir8ToFacing(dir) {
 // ============================================================
 //  PLAYER UPDATE (physics-based free movement + phase jump)
 // ============================================================
-// Cached equipment bonuses — recalculated each frame in updatePlayer
+// Cached equipment bonuses — recalculated on equipment/zone/form change
 let equipBonus = {};
+let equipBonusDirty = true;
 
 function updatePlayer(dt) {
     // Freeze player when dead
@@ -98,8 +99,11 @@ function updatePlayer(dt) {
         return; // skip all player input/movement
     }
 
-    // Recalculate equipment bonuses
-    equipBonus = getEquipBonuses();
+    // Recalculate equipment bonuses only when dirty
+    if (equipBonusDirty) {
+        equipBonus = getEquipBonuses();
+        equipBonusDirty = false;
+    }
 
     // --- Tick cooldowns ---
     if (player.dodgeCoolTimer > 0) player.dodgeCoolTimer -= dt;

@@ -356,7 +356,7 @@ function bossAoE(centerRow, centerCol, radius, damage, particleCount, particleCo
     // Damage player if in range
     const pdr = player.row - centerRow;
     const pdc = player.col - centerCol;
-    if (Math.sqrt(pdr * pdr + pdc * pdc) < radius) {
+    if (pdr * pdr + pdc * pdc < radius * radius) {
         damagePlayer(damage, source || 'boss', centerRow, centerCol);
     }
     addScreenShake(shakeIntensity || 5, 0.25);
@@ -373,8 +373,8 @@ function bossSweep(e, radius, damage, particleCount, particleColor, source) {
         const py = e.col + Math.sin(angle) * radius;
         spawnParticle(px, py, Math.cos(angle) * 1, Math.sin(angle) * 1, 0.4, particleColor, 0.8);
     }
-    const dist = Math.sqrt(dr * dr + dc * dc);
-    if (dist < radius) {
+    const distSq = dr * dr + dc * dc;
+    if (distSq < radius * radius) {
         damagePlayer(damage, source || e.type, e.row, e.col);
     }
     addScreenShake(4, 0.2);
@@ -588,6 +588,9 @@ function applyEnemyHit(e, damage, opts) {
     }
 
     e.hp -= finalDmg;
+
+    // Track last damage time for wave stall detection
+    wave._lastDamageTime = performance.now() / 1000;
 
     // Alert propagation — combat is contagious. When one gets hit, neighbors aggro.
     if (typeof alertNearbyEnemies === 'function') alertNearbyEnemies(e);
@@ -1561,6 +1564,7 @@ function generateDynamicWave(waveIdx) {
 function beginNextWave() {
     wave.current++;
     wave.waveKills = 0; // reset per-wave kill counter
+    wave._lastDamageTime = null; // reset stall tracker
     // Restore full light at wave start (tension effect dims it between waves)
     lightRadius = MAX_LIGHT;
     // Augment: Rune of the Deathless — reset undying resolve between waves
@@ -1589,6 +1593,7 @@ function beginNextWave() {
         addScreenShake(8, 0.6);
         addSlowMo(0.4, 0.25); // dramatic slow-mo before boss spawns
         addHitPause(0.15);    // world freezes briefly
+        if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.25, '#ffffff');
         // Darken the screen for boss approach (vignette)
         if (typeof dmgVignetteIntensity !== 'undefined') {
             dmgVignetteIntensity = 0.5; dmgVignetteTimer = 1.5;
@@ -1750,7 +1755,7 @@ function spawnWaveEnemies() {
     const validZones = zones.filter(z => {
         const dr = z.r - player.row;
         const dc = z.c - player.col;
-        return Math.sqrt(dr * dr + dc * dc) > scaledMinDist;
+        return dr * dr + dc * dc > scaledMinDist * scaledMinDist;
     });
 
     // --- SpawnZone bias: prefer tiles inside the wave's target room ---
@@ -1833,6 +1838,7 @@ function updateWaveSystem(dt) {
     if (wave.phase === 'pre') {
         wave.timer -= dt;
         if (wave.timer <= 0) {
+            console.log('[WAVE] pre -> beginNextWave (wave', wave.current + 1, ')');
             beginNextWave();
         }
         return;
@@ -1842,7 +1848,13 @@ function updateWaveSystem(dt) {
         wave.timer -= dt;
         wave.bannerAlpha = Math.min(1, wave.bannerAlpha + dt * 3);
         if (wave.timer <= 0) {
-            spawnWaveEnemies();
+            try {
+                spawnWaveEnemies();
+            } catch (err) {
+                console.error('[WAVE] spawnWaveEnemies failed:', err);
+                wave.phase = 'fighting';
+                wave.enemiesAlive = 0;
+            }
             sfxWaveStart();
             // Banner stays for a moment then fades
             wave.timer = 1.5;
@@ -1866,6 +1878,21 @@ function updateWaveSystem(dt) {
         if (typeof abyssDepthFlags !== 'undefined' && abyssDepthFlags.hazardSurge && typeof _envHazardTimer !== 'undefined') {
             if (_envHazardTimer > 4) _envHazardTimer = 3 + Math.random() * 3; // 2x spawn rate
         }
+        // Wave stall safety net — force-kill unreachable enemies after 30s of no damage
+        if (wave._lastDamageTime && wave.enemiesAlive > 0) {
+            const stallDuration = (performance.now() / 1000) - wave._lastDamageTime;
+            if (stallDuration > 30) {
+                console.warn('[WAVE] Stall detected — force-killing', wave.enemiesAlive, 'remaining enemies after', Math.round(stallDuration) + 's');
+                for (let _si = enemies.length - 1; _si >= 0; _si--) {
+                    if (enemies[_si].state !== 'death') {
+                        enemies[_si].hp = 0;
+                        enemies[_si].state = 'death';
+                        enemies[_si].deathTimer = 0.01;
+                    }
+                }
+                wave._lastDamageTime = null;
+            }
+        }
         // Fade banner out
         if (wave.timer > 0) {
             wave.timer -= dt;
@@ -1877,6 +1904,7 @@ function updateWaveSystem(dt) {
 
         // Wave cleared?
         if (wave.enemiesAlive <= 0 && enemies.length === 0) {
+            console.log('[WAVE] fighting -> cleared (wave', wave.current, 'zone', currentZone, ')');
             // Fade out combat audio pulse
             if (typeof stopCombatPulse === 'function') stopCombatPulse();
             // Check if this is the final wave of the current zone
@@ -2129,6 +2157,7 @@ function updateWaveSystem(dt) {
         }
         if (wave.timer <= 0) {
             // Expansion complete — transition to normal cleared → next wave flow
+            console.log('[WAVE] expanding -> pre (5s calm before next wave)');
             wave.phase = 'pre';
             wave.timer = 5.0; // calm before Act 2 begins
             wave.bannerText = '';
@@ -2811,8 +2840,8 @@ function alertNearbyEnemies(sourceEnemy) {
         if (e === sourceEnemy || e.hp <= 0 || e._alerted) continue;
         const dr = e.row - sourceEnemy.row;
         const dc = e.col - sourceEnemy.col;
-        const dist = Math.sqrt(dr * dr + dc * dc);
-        if (dist <= r) {
+        const distSq = dr * dr + dc * dc;
+        if (distSq <= r * r) {
             // Force this enemy into aggro by temporarily boosting its range
             e._alerted = true;
             e._alertTimer = 10.0; // stays alerted for 10 seconds
@@ -2916,6 +2945,7 @@ function updateEnemies(dt) {
                     addHitPause(0.3);       // Freeze for 0.3s
                     addScreenShake(10, 0.5);  // Intense 10px shake for 0.5s
                     addSlowMo(0.8, 0.3);      // Slow-mo for 0.8s at 30% speed (dramatic easing out)
+                    if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.35, '#ffffcc');
 
                     // Stage 2: Extra death particles — spawn 2-3 more bursts with offsets
                     const deathPos = tileToScreen(e.row, e.col);
@@ -2962,7 +2992,7 @@ function updateEnemies(dt) {
                     const explodeR = 2.0;
                     const pdr = player.row - e.row;
                     const pdc = player.col - e.col;
-                    if (Math.sqrt(pdr * pdr + pdc * pdc) < explodeR) {
+                    if (pdr * pdr + pdc * pdc < explodeR * explodeR) {
                         damagePlayer(Math.round(e.def.damage * ENEMY_CONTACT_DAMAGE_MULT), e.type, e.row, e.col);
                     }
                     // Big explosion particles
@@ -3123,7 +3153,7 @@ function updateEnemies(dt) {
                                 if (ally === e || ally.def.ai !== 'shield' || ally.isShielding || ally.state === 'death') continue;
                                 const adr = ally.row - e.row;
                                 const adc = ally.col - e.col;
-                                if (Math.sqrt(adr * adr + adc * adc) < 3.0 && Math.random() < 0.5) {
+                                if (adr * adr + adc * adc < 9.0 && Math.random() < 0.5) {
                                     ally.isShielding = true;
                                     ally.shieldTimer = e.def.shieldDuration * 0.7;
                                 }
@@ -3337,8 +3367,8 @@ function updateEnemies(dt) {
                     }
                     const pdr = player.row - e.row;
                     const pdc = player.col - e.col;
-                    const pDist = Math.sqrt(pdr * pdr + pdc * pdc);
-                    if (pDist < sweepR) {
+                    const pDistSq = pdr * pdr + pdc * pdc;
+                    if (pDistSq < sweepR * sweepR) {
                         const sweepDmg = Math.round(e.def.flameSweepDamage * (e.bossPhase === 1 ? 1.4 : 1.0));
                         damagePlayer(sweepDmg, 'infernal_knight');
                     }
@@ -3363,8 +3393,8 @@ function updateEnemies(dt) {
                     const toPlayerAngle = Math.atan2(pdc, pdr);
                     let angleDiff = Math.abs(toPlayerAngle - breathDir);
                     if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-                    const pDist = Math.sqrt(pdr * pdr + pdc * pdc);
-                    if (pDist < breathR && angleDiff < halfAngle) {
+                    const pDistSq = pdr * pdr + pdc * pdc;
+                    if (pDistSq < breathR * breathR && angleDiff < halfAngle) {
                         const breathDmg = Math.round(e.def.iceBreathDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
                         damagePlayer(breathDmg, 'frost_wyrm');
                         player.slowTimer = (player.slowTimer || 0) + 0.8;
@@ -3388,7 +3418,7 @@ function updateEnemies(dt) {
                     const trapCol = e._telegraphCol;
                     const trapDr = player.row - trapRow;
                     const trapDc = player.col - trapCol;
-                    if (Math.sqrt(trapDr * trapDr + trapDc * trapDc) < 1.2) {
+                    if (trapDr * trapDr + trapDc * trapDc < 1.44) {
                         player.frozenTimer = (player.frozenTimer || 0) + e.def.freezeTrapDuration;
                     }
                     // Ice burst at trap location
@@ -3424,8 +3454,8 @@ function updateEnemies(dt) {
                     // Slash damage — player had time to dodge away from the marked zone
                     const newDr = player.row - e.row;
                     const newDc = player.col - e.col;
-                    const newDist = Math.sqrt(newDr * newDr + newDc * newDc);
-                    if (newDist < 2.0) {
+                    const newDistSq = newDr * newDr + newDc * newDc;
+                    if (newDistSq < 4.0) {
                         const slashDmg = Math.round(e.def.teleSlashDamage * (e.bossPhase >= 1 ? 1.3 : 1.0));
                         damagePlayer(slashDmg, 'ruined_king');
                     }
@@ -3662,7 +3692,7 @@ function updateEnemies(dt) {
                 const ft = e.fireTrails[t];
                 const fdr = player.row - ft.row;
                 const fdc = player.col - ft.col;
-                if (Math.sqrt(fdr * fdr + fdc * fdc) < 0.8) {
+                if (fdr * fdr + fdc * fdc < 0.64) {
                     ft.tickTimer -= dt;
                     if (ft.tickTimer <= 0) {
                         damagePlayer(e.def.fireTrailDamage || 8, 'infernal_knight');
@@ -4384,8 +4414,9 @@ function updateEnemies(dt) {
             if (e.state === 'death' || e._ambushHidden) continue;
             const dr = player.row - e.row;
             const dc = player.col - e.col;
-            const dist = Math.sqrt(dr * dr + dc * dc);
-            if (dist < HITBOX_RADIUS + e.def.hitboxR + 0.1) {
+            const distSq = dr * dr + dc * dc;
+            const _hitThresh = HITBOX_RADIUS + e.def.hitboxR + 0.1;
+            if (distSq < _hitThresh * _hitThresh) {
                 damagePlayer(Math.ceil(e.def.damage * ENEMY_CONTACT_DAMAGE_MULT), e.type, e.row, e.col); // contact = half damage
                 // Juggernaut synergy: slime deals contact damage back to enemies
                 if (typeof hasSynergy === 'function' && hasSynergy('juggernaut') && FormSystem.currentForm === 'slime') {
@@ -4418,7 +4449,7 @@ function updateBurnZones(dt) {
                 if (e.state === 'death') continue;
                 const dr = e.row - bz.row;
                 const dc = e.col - bz.col;
-                if (Math.sqrt(dr * dr + dc * dc) < bz.radius) {
+                if (dr * dr + dc * dc < bz.radius * bz.radius) {
                     if (typeof applyEnemyHit === 'function') {
                         applyEnemyHit(e, bz.damage, { skipHurtState: true, skipSFX: true });
                     } else {
@@ -4793,12 +4824,12 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
             const _pe = enemies[_pi];
             if (_pe.state === 'death') continue;
             const _pdr = _pe.row - player.row, _pdc = _pe.col - player.col;
-            const _pdist = Math.sqrt(_pdr * _pdr + _pdc * _pdc);
-            if (_pdist < PARRY_STAGGER_RANGE) {
+            const _pdistSq = _pdr * _pdr + _pdc * _pdc;
+            if (_pdistSq < PARRY_STAGGER_RANGE * PARRY_STAGGER_RANGE) {
                 _pe.state = 'hurt';
                 _pe.hurtTimer = PARRY_STAGGER_DURATION;
                 _pe.animFrame = 0;
-                if (parryDmg > 0) applyEnemyHit(_pe, parryDmg, { skipCrit: true, knockVr: _pdr / (_pdist || 1) * 3, knockVc: _pdc / (_pdist || 1) * 3 });
+                if (parryDmg > 0) { const _pdist = Math.sqrt(_pdistSq); applyEnemyHit(_pe, parryDmg, { skipCrit: true, knockVr: _pdr / (_pdist || 1) * 3, knockVc: _pdc / (_pdist || 1) * 3 }); }
             }
         }
         player.parryTimer = 0; // consume parry
@@ -5014,7 +5045,7 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
             if (e.state === 'death') continue;
             const dr = e.row - player.row;
             const dc = e.col - player.col;
-            if (Math.sqrt(dr*dr + dc*dc) < 1.5) {
+            if (dr*dr + dc*dc < 2.25) {
                 applyEnemyHit(e, thornDmg, { skipSFX: false });
             }
         }
@@ -5027,8 +5058,8 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
             if (eff.id === 'toxic_blood') {
                 for (const e of enemies) {
                     if (e.state === 'death') continue;
-                    const dist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
-                    if (dist < 1.5) {
+                    const distSq = (e.row - player.row) ** 2 + (e.col - player.col) ** 2;
+                    if (distSq < 2.25) {
                         applyEnemyHit(e, Math.round(eff.poisonDPS * eff.poisonDur), { skipHurtState: true, skipSFX: true });
                         spawnParticle(e.row, e.col, 0, -1, 0.5, '#44dd66', 0.7);
                     }
@@ -5038,8 +5069,8 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
             if (eff.id === 'adhesive_membrane') {
                 for (const e of enemies) {
                     if (e.state === 'death') continue;
-                    const dist = Math.sqrt((e.row - player.row) ** 2 + (e.col - player.col) ** 2);
-                    if (dist < 1.5) {
+                    const distSq = (e.row - player.row) ** 2 + (e.col - player.col) ** 2;
+                    if (distSq < 2.25) {
                         e.slowTimer = Math.max(e.slowTimer || 0, eff.slowDur || 1.5);
                     }
                 }
@@ -5211,8 +5242,8 @@ function checkProjectileEnemyHits() {
                                 for (const _ce of enemies) {
                                     if (_ce.state === 'death' || _ce === lastTarget) continue;
                                     if (p.hitEnemies && p.hitEnemies.has(_ce)) continue;
-                                    const _d = Math.sqrt((_ce.row - lastRow) ** 2 + (_ce.col - lastCol) ** 2);
-                                    if (_d < 4.0 && _d < _nearD) { _nearD = _d; _nearE = _ce; }
+                                    const _d = (_ce.row - lastRow) ** 2 + (_ce.col - lastCol) ** 2;
+                                    if (_d < 16.0 && _d < _nearD) { _nearD = _d; _nearE = _ce; }
                                 }
                                 if (_nearE) {
                                     const ricochetDmg = Math.round(projFinalDmg * 0.6);
@@ -5296,7 +5327,7 @@ function checkProjectileEnemyHits() {
                         if (p.hitEnemies && p.hitEnemies.has(e2)) continue; // skip already-hit by pierce
                         const dr2 = p.row - e2.row;
                         const dc2 = p.col - e2.col;
-                        if (Math.sqrt(dr2 * dr2 + dc2 * dc2) < explodeRadius) {
+                        if (dr2 * dr2 + dc2 * dc2 < explodeRadius * explodeRadius) {
                             e2.hp -= explodeDmg;
                             e2.hitFlashTimer = 0.1;
                             // Inferno Mode: ignite AoE targets
@@ -5365,14 +5396,15 @@ function checkProjectileEnemyHits() {
                 // Bone Ricochet upgrade: chain bone to nearest enemy on hit
                 if (p.isBone && typeof getUpgrade === 'function' && getUpgrade('bone_ricochet') > 0 &&
                     (!p._ricochetCount || p._ricochetCount < getUpgrade('bone_ricochet'))) {
-                    let nearestE = null, nearestDist = 3.0; // 3 tile max chain range
+                    let nearestE = null, nearestDistSq = 9.0; // 3 tile max chain range (squared)
                     for (const e2 of enemies) {
                         if (e2 === e || e2.state === 'death') continue;
                         if (p.hitEnemies && p.hitEnemies.has(e2)) continue;
-                        const d2 = Math.sqrt((e2.row - e.row) ** 2 + (e2.col - e.col) ** 2);
-                        if (d2 < nearestDist) { nearestDist = d2; nearestE = e2; }
+                        const d2 = (e2.row - e.row) ** 2 + (e2.col - e.col) ** 2;
+                        if (d2 < nearestDistSq) { nearestDistSq = d2; nearestE = e2; }
                     }
                     if (nearestE) {
+                        const nearestDist = Math.sqrt(nearestDistSq);
                         const chainProj = recycleProj(e.row, e.col,
                             ((nearestE.row - e.row) / nearestDist) * ATK_SPEED,
                             ((nearestE.col - e.col) / nearestDist) * ATK_SPEED);
@@ -5489,17 +5521,23 @@ function updateEnemySynergies(dt) {
         e._synergyLabel = null;
     }
     if (typeof ENEMY_SYNERGIES === 'undefined') return;
+    // Build type-keyed cache once to avoid repeated .filter() allocations
+    const _aliveByType = {};
+    for (const e of enemies) {
+        if (e.state === 'death') continue;
+        (_aliveByType[e.type] || (_aliveByType[e.type] = [])).push(e);
+    }
     for (const syn of ENEMY_SYNERGIES) {
         const req = syn.requires;
         if (req.type && req.minCount) {
             // Same-type grouping (Shield Wall)
-            const matching = enemies.filter(e => e.state !== 'death' && e.type === req.type);
+            const matching = _aliveByType[req.type] || [];
             for (const e of matching) {
                 let nearbyCount = 0;
                 for (const e2 of matching) {
                     if (e2 === e) continue;
-                    const dist = Math.sqrt((e.row - e2.row) ** 2 + (e.col - e2.col) ** 2);
-                    if (dist < req.maxDist) nearbyCount++;
+                    const distSq = (e.row - e2.row) ** 2 + (e.col - e2.col) ** 2;
+                    if (distSq < req.maxDist * req.maxDist) nearbyCount++;
                 }
                 if (nearbyCount >= req.minCount - 1) {
                     if (syn.effect.dmgReduc) e.synergyDmgReduc = Math.max(e.synergyDmgReduc, syn.effect.dmgReduc);
@@ -5508,8 +5546,8 @@ function updateEnemySynergies(dt) {
                     // Also buff nearby non-matching enemies within range
                     for (const e2 of enemies) {
                         if (e2.state === 'death' || e2.type === req.type) continue;
-                        const dist = Math.sqrt((e.row - e2.row) ** 2 + (e.col - e2.col) ** 2);
-                        if (dist < req.maxDist) {
+                        const distSq = (e.row - e2.row) ** 2 + (e.col - e2.col) ** 2;
+                        if (distSq < req.maxDist * req.maxDist) {
                             if (syn.effect.dmgReduc) e2.synergyDmgReduc = Math.max(e2.synergyDmgReduc, syn.effect.dmgReduc);
                         }
                     }
@@ -5517,12 +5555,12 @@ function updateEnemySynergies(dt) {
             }
         } else if (req.types) {
             // Pair synergy (Bone Empowerment)
-            const typeA = enemies.filter(e => e.state !== 'death' && e.type === req.types[0]);
-            const typeB = enemies.filter(e => e.state !== 'death' && e.type === req.types[1]);
+            const typeA = _aliveByType[req.types[0]] || [];
+            const typeB = _aliveByType[req.types[1]] || [];
             for (const a of typeA) {
                 for (const b of typeB) {
-                    const dist = Math.sqrt((a.row - b.row) ** 2 + (a.col - b.col) ** 2);
-                    if (dist < req.maxDist) {
+                    const distSq = (a.row - b.row) ** 2 + (a.col - b.col) ** 2;
+                    if (distSq < req.maxDist * req.maxDist) {
                         if (syn.effect.atkSpeedMult) {
                             a.synergyAtkSpeed = Math.max(a.synergyAtkSpeed, syn.effect.atkSpeedMult);
                             a._synergyLabel = syn.label; a._synergyColor = syn.color;
@@ -5532,13 +5570,13 @@ function updateEnemySynergies(dt) {
             }
         } else if (req.leaderType && req.followerTypes) {
             // Leader-follower synergy (Howl Frenzy)
-            const leaders = enemies.filter(e => e.state !== 'death' && e.type === req.leaderType);
+            const leaders = _aliveByType[req.leaderType] || [];
             for (const leader of leaders) {
                 for (const e of enemies) {
                     if (e.state === 'death' || e === leader) continue;
                     if (!req.followerTypes.includes(e.type)) continue;
-                    const dist = Math.sqrt((leader.row - e.row) ** 2 + (leader.col - e.col) ** 2);
-                    if (dist < req.maxDist) {
+                    const distSq = (leader.row - e.row) ** 2 + (leader.col - e.col) ** 2;
+                    if (distSq < req.maxDist * req.maxDist) {
                         if (syn.effect.dmgMult) {
                             e.synergyDmgMult = Math.max(e.synergyDmgMult, syn.effect.dmgMult);
                             e._synergyLabel = syn.label; e._synergyColor = syn.color;
@@ -5577,7 +5615,7 @@ function updateEnemyProjectiles(dt) {
                 const _re = enemies[_rei];
                 if (_re.state === 'death') continue;
                 const _rdr = _re.row - a.row, _rdc = _re.col - a.col;
-                if (Math.sqrt(_rdr * _rdr + _rdc * _rdc) < (_re.def.hitboxR || 0.5) + 0.25) {
+                if (_rdr * _rdr + _rdc * _rdc < ((_re.def.hitboxR || 0.5) + 0.25) * ((_re.def.hitboxR || 0.5) + 0.25)) {
                     applyEnemyHit(_re, a.damage, { skipCrit: false, knockVr: a.vr * 0.3, knockVc: a.vc * 0.3 });
                     enemyProjectiles.splice(i, 1);
                     _reflectHit = true;
@@ -5592,7 +5630,7 @@ function updateEnemyProjectiles(dt) {
             let blocked = false;
             for (const bw of skeletonState.boneWalls) {
                 const bdr = a.row - bw.row, bdc = a.col - bw.col;
-                if (Math.sqrt(bdr * bdr + bdc * bdc) < bw.radius) {
+                if (bdr * bdr + bdc * bdc < bw.radius * bw.radius) {
                     enemyProjectiles.splice(i, 1);
                     spawnParticle(a.row, a.col, (Math.random()-0.5)*3, -2, 0.3, '#ccaa66', 0.7);
                     blocked = true;
@@ -5605,7 +5643,7 @@ function updateEnemyProjectiles(dt) {
         // Parry reflection — reflect projectile back at enemies
         if (player.parryTimer > 0) {
             const _rpdr = player.row - a.row, _rpdc = player.col - a.col;
-            if (Math.sqrt(_rpdr * _rpdr + _rpdc * _rpdc) < HITBOX_RADIUS + 0.3) {
+            if (_rpdr * _rpdr + _rpdc * _rpdc < (HITBOX_RADIUS + 0.3) * (HITBOX_RADIUS + 0.3)) {
                 a.vr = -a.vr; a.vc = -a.vc;
                 a.damage = Math.round(a.damage * PARRY_REFLECT_MULT);
                 a.reflected = true;
@@ -5627,7 +5665,7 @@ function updateEnemyProjectiles(dt) {
         if (!player.dodging && playerInvTimer <= 0) {
             const pdr = player.row - a.row;
             const pdc = player.col - a.col;
-            if (Math.sqrt(pdr * pdr + pdc * pdc) < HITBOX_RADIUS + 0.15) {
+            if (pdr * pdr + pdc * pdc < (HITBOX_RADIUS + 0.15) * (HITBOX_RADIUS + 0.15)) {
                 sfxArrowHit();
                 const dmgSource = a.type === 'bone_cage' ? 'bone_colossus'
                     : a.type === 'ice_shard' ? 'frost_wyrm'
@@ -5673,7 +5711,7 @@ function updateGroundHazards(dt) {
             // Damage player if standing in hazard
             const pdr = player.row - h.row;
             const pdc = player.col - h.col;
-            if (Math.sqrt(pdr * pdr + pdc * pdc) < h.radius + HITBOX_RADIUS) {
+            if (pdr * pdr + pdc * pdc < (h.radius + HITBOX_RADIUS) * (h.radius + HITBOX_RADIUS)) {
                 h.tickTimer -= dt;
                 if (h.tickTimer <= 0) {
                     h.tickTimer = 1.0;
@@ -5689,7 +5727,7 @@ function updateGroundHazards(dt) {
                     for (const e of enemies) {
                         if (e.state === 'death') continue;
                         const edr = e.row - h.row, edc = e.col - h.col;
-                        if (Math.sqrt(edr * edr + edc * edc) < h.radius + (e.def.hitboxR || 0.4)) {
+                        if (edr * edr + edc * edc < (h.radius + (e.def.hitboxR || 0.4)) * (h.radius + (e.def.hitboxR || 0.4))) {
                             if (typeof applyEnemyHit === 'function') {
                                 applyEnemyHit(e, h.damage, { skipHurtState: true, skipSFX: true });
                             }
@@ -5715,14 +5753,14 @@ function updateGroundHazards(dt) {
         if (h.type === 'ice_patch') {
             // Slow player
             const ipdr = player.row - h.row, ipdc = player.col - h.col;
-            if (Math.sqrt(ipdr * ipdr + ipdc * ipdc) < h.radius + HITBOX_RADIUS) {
+            if (ipdr * ipdr + ipdc * ipdc < (h.radius + HITBOX_RADIUS) * (h.radius + HITBOX_RADIUS)) {
                 player.slowTimer = Math.max(player.slowTimer || 0, 0.3);
             }
             // Slow enemies
             for (const e of enemies) {
                 if (e.state === 'death') continue;
                 const edr = e.row - h.row, edc = e.col - h.col;
-                if (Math.sqrt(edr * edr + edc * edc) < h.radius + (e.def.hitboxR || 0.4)) {
+                if (edr * edr + edc * edc < (h.radius + (e.def.hitboxR || 0.4)) * (h.radius + (e.def.hitboxR || 0.4))) {
                     e.slowTimer = Math.max(e.slowTimer || 0, 0.3);
                 }
             }
@@ -5735,7 +5773,7 @@ function updateGroundHazards(dt) {
                 // Detonate: damage player if in radius
                 const pdr = player.row - h.row;
                 const pdc = player.col - h.col;
-                if (Math.sqrt(pdr * pdr + pdc * pdc) < h.radius) {
+                if (pdr * pdr + pdc * pdc < h.radius * h.radius) {
                     damagePlayer(h.damage, 'bone_mage');
                 }
                 // Explosion particles
@@ -6254,8 +6292,8 @@ function drawEnemy(e) {
     if (e.state !== 'death' && e.hp < e.maxHp) {
         const barW = e.def.isBoss ? 44 : 34;
         const barH = e.def.isBoss ? 5 : 4;
-        const bx = sx - barW / 2;
-        const by = drawY - 8;
+        const bx = sx + staggerX - barW / 2;
+        const by = drawY + staggerY - 8;
         const hpFrac = e.hp / e.maxHp;
         const fillW = Math.max(1, barW * hpFrac);
 

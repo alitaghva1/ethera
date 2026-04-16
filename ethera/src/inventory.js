@@ -409,6 +409,7 @@ function enchantItem(item) {
     // Recalculate equipment bonuses immediately
     if (typeof getEquipBonuses === 'function') {
         equipBonus = getEquipBonuses();
+        equipBonusDirty = false;
     }
     return { success: true, cost: cost, newLevel: item.enchantLevel, boosted: boosted };
 }
@@ -684,7 +685,7 @@ function equipAugment(backpackIdx) {
         augmentInventory.equipped[2] = aug;
         if (old) augmentInventory.backpack.push(old);
     }
-    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+    if (typeof getEquipBonuses === 'function') { equipBonus = getEquipBonuses(); equipBonusDirty = false; }
     if (typeof sfxEquip === 'function') sfxEquip();
 }
 
@@ -697,7 +698,7 @@ function unequipAugment(slotIdx) {
     }
     augmentInventory.equipped[slotIdx] = null;
     augmentInventory.backpack.push(aug);
-    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+    if (typeof getEquipBonuses === 'function') { equipBonus = getEquipBonuses(); equipBonusDirty = false; }
     if (typeof sfxUnequip === 'function') sfxUnequip();
 }
 

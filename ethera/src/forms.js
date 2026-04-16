@@ -46,6 +46,7 @@ const FormSystem = {
         this.currentForm = newForm;
         this.formData[newForm].unlocked = true;
         this.evolutionCount++;
+        if (typeof equipBonusDirty !== 'undefined') equipBonusDirty = true;
     },
 
     // Get the handler functions for the current form

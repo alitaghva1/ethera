@@ -396,6 +396,7 @@ function equipItem(backpackIdx) {
     if (current) inventory.backpack.push(current);
     inventory.equipped[slot] = item;
     if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+    equipBonusDirty = false; // just recalculated
     if (typeof sfxEquip === 'function') sfxEquip();
 }
 
@@ -417,6 +418,7 @@ function unequipItem(slot) {
     inventory.equipped[slot] = null;
     inventory.backpack.push(item);
     if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+    equipBonusDirty = false; // just recalculated
     if (typeof sfxUnequip === 'function') sfxUnequip();
 }
 
@@ -1041,6 +1043,10 @@ function loadZone(zoneNumber) {
     // Reset frozen echoes on zone transition
     if (typeof resetFrozenEchoes === 'function') resetFrozenEchoes();
     if (typeof resetInscriptions === 'function') resetInscriptions();
+    // Reset camera shake and fog timer on zone transition
+    if (typeof resetCameraShake === 'function') resetCameraShake();
+    if (typeof updateGameplay !== 'undefined') updateGameplay._fogTimer = 0;
+    if (typeof equipBonusDirty !== 'undefined') equipBonusDirty = true; // Elara's Locket depends on currentZone
     // Reset visual effect state on zone transition
     if (typeof _impactRipples !== 'undefined') _impactRipples.length = 0;
     if (typeof _combatDecals !== 'undefined') _combatDecals.length = 0;

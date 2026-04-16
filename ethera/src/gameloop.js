@@ -3642,6 +3642,11 @@ function restartGame() {
     player.attacking = false; player.dodging = false;
     player.attackCooldown = 0; player.dodgeCoolTimer = 0;
     player.manaRegenTimer = 0;
+    player.dodgeTimer = 0; player.parryTimer = 0;
+    player.frozenTimer = 0; player.slowTimer = 0;
+    player.dodgeDirRow = 0; player.dodgeDirCol = 0;
+    player.dodgeFlashTimer = 0;
+    player.attackTimer = 0; player.attackFrame = 0;
     // Reset combat
     enemies.length = 0;
     projectiles.length = 0;
@@ -3743,6 +3748,9 @@ function restartGame() {
     hitPauseTimer = 0;
     slowMoTimer = 0;
     slowMoScale = 1.0;
+    window._arcaneEchoTimer = 0;
+    window._zoneFadeHoldTimer = 0;
+    window._storyBeatTimer = 0;
     gameDead = false;
     deathFadeTimer = 0;
     deathCause = '';

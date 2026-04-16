@@ -52,8 +52,11 @@ function updateLich(dt) {
 
     const config = FORM_CONFIGS.lich;
 
-    // Recalculate equipment bonuses each frame (same as wizard in movement.js)
-    if (typeof getEquipBonuses === 'function') equipBonus = getEquipBonuses();
+    // Recalculate equipment bonuses only when dirty (same as wizard in movement.js)
+    if (equipBonusDirty && typeof getEquipBonuses === 'function') {
+        equipBonus = getEquipBonuses();
+        equipBonusDirty = false;
+    }
 
     // === MOVEMENT (lerp-based, matches wizard responsiveness) ===
     let inputRow = 0, inputCol = 0;

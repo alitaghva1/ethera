@@ -273,6 +273,7 @@ function loadGame(slotIdx) {
     // Recalculate equipment bonuses immediately (BUG-017)
     if (typeof getEquipBonuses === 'function') {
         equipBonus = getEquipBonuses();
+        equipBonusDirty = false;
     }
 
     // Restore key items

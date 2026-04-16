@@ -67,6 +67,12 @@ function updateSkeleton(dt) {
     if (gameDead) return;
     if (typeof wave !== 'undefined' && wave.phase === 'victory') return;
 
+    // Recalculate equipment bonuses only when dirty
+    if (typeof equipBonusDirty !== 'undefined' && equipBonusDirty && typeof getEquipBonuses === 'function') {
+        equipBonus = getEquipBonuses();
+        equipBonusDirty = false;
+    }
+
     const config = FORM_CONFIGS.skeleton;
 
     // === MOVEMENT ===

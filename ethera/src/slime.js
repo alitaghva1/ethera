@@ -225,6 +225,12 @@ function updateSlime(dt) {
     if (gameDead) return;
     if (typeof wave !== 'undefined' && wave.phase === 'victory') return;
 
+    // Recalculate equipment bonuses only when dirty
+    if (typeof equipBonusDirty !== 'undefined' && equipBonusDirty && typeof getEquipBonuses === 'function') {
+        equipBonus = getEquipBonuses();
+        equipBonusDirty = false;
+    }
+
     const config = FORM_CONFIGS.slime;
     const sizeMult = getSlimeSizeMult();
 
@@ -365,6 +371,15 @@ function updateSlime(dt) {
     // === BOUNCE JUMP (Space — dodge equivalent) ===
     if (slimeState.bounceJumping) {
         slimeState.bounceJumpTimer -= dt;
+        // Trailing afterimage ghosts during bounce (40% chance per frame)
+        if (Math.random() < 0.4 && typeof ghosts !== 'undefined') {
+            ghosts.push({
+                row: player.row, col: player.col,
+                facing: player.facing, dir8: player.dir8 || 0,
+                animFrame: player.animFrame, state: player.state,
+                form: 'slime', alpha: 0.3, life: 0.25,
+            });
+        }
         const jumpT = 1 - (slimeState.bounceJumpTimer / 0.5);
         slimeState.bounceJumpHeight = Math.sin(jumpT * Math.PI) * (20 + slimeState.size * 5);
         // Move in jump direction (with wall collision + sub-stepping)
@@ -891,6 +906,11 @@ function drawSlime() {
 
     ctx.save();
 
+    // ── Bounce shimmer — translucent flash during dodge jump ──
+    if (slimeState.bounceJumping) {
+        ctx.globalAlpha = 0.6 + Math.sin((slimeState.bounceJumpTimer || 0) * 30) * 0.15;
+    }
+
     // ── Bounce / jump offsets (unchanged physics) ──
     const jumpOffset = slimeState.bounceJumping ? slimeState.bounceJumpHeight : 0;
     const bounceOffset = slimeState.bounceHeight;
@@ -1302,13 +1322,25 @@ formHandlers.slime.onDodge = function() {
 
     // SFX — wet bounce launch
     if (sfxCtx) sfxSlimeBounce();
+    // VFX: bounce afterimage ghosts (uses existing ghost system from ghosts.js)
+    for (let _gi = 0; _gi < 3; _gi++) {
+        const _gt = _gi / 3;
+        ghosts.push({
+            row: player.row, col: player.col,
+            facing: player.facing, dir8: player.dir8 || 0,
+            animFrame: player.animFrame, state: player.state,
+            form: 'slime',
+            alpha: 0.45 - _gt * 0.15,
+            life: 0.3 * (1 - _gt * 0.2),
+        });
+    }
     // VFX: green slime splatter ring on bounce
     const _bjPos = tileToScreen(player.row, player.col);
     const _bjpx = _bjPos.x + cameraX, _bjpy = _bjPos.y + cameraY;
     for (let _bi = 0; _bi < 6; _bi++) {
-        const angle = (_bi / 6) * Math.PI * 2 + Math.random() * 0.4;
+        const angle = (_bi / 6) * Math.PI * 2 + (Math.random() - 0.5) * 1.0;
         const speed = 25 + Math.random() * 20;
-        _emitParticle(_bjpx, _bjpy + 4, Math.cos(angle) * speed, Math.sin(angle) * speed * 0.5,
+        _emitParticle(_bjpx, _bjpy + 4, Math.cos(angle) * speed, Math.sin(angle) * speed * 0.7,
             0.3 + Math.random() * 0.2, 3 + Math.random() * 2, '#44cc44', 0.5, 'slimeSplat');
     }
 

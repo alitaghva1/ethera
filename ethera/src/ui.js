@@ -6,6 +6,35 @@ var objectiveShowTimer = 0; // fades after 5 seconds, resets on change
 var _lastObjective = '';    // track changes
 
 // ============================================================
+//  SHADOW TEXT CACHE — avoids expensive shadowBlur per frame
+// ============================================================
+const _shadowTextCache = new Map();
+function _getCachedShadowText(text, font, blur, fillColor, shadowColor) {
+    const key = text + '|' + font + '|' + blur + '|' + fillColor;
+    if (_shadowTextCache.has(key)) return _shadowTextCache.get(key);
+    const pad = blur + 4;
+    const off = document.createElement('canvas');
+    const oc = off.getContext('2d');
+    oc.font = font;
+    const m = oc.measureText(text);
+    off.width = Math.ceil(m.width) + pad * 2;
+    off.height = Math.ceil(parseInt(font) * 1.4) + pad * 2;
+    oc.font = font;
+    oc.textAlign = 'center';
+    oc.textBaseline = 'middle';
+    oc.shadowColor = shadowColor || 'rgba(0,0,0,0.7)';
+    oc.shadowBlur = blur;
+    oc.fillStyle = fillColor;
+    oc.fillText(text, off.width / 2, off.height / 2);
+    // Store with dimensions for positioning
+    off._pad = pad;
+    off._textW = m.width;
+    if (_shadowTextCache.size > 32) _shadowTextCache.clear(); // prevent unbounded growth
+    _shadowTextCache.set(key, off);
+    return off;
+}
+
+// ============================================================
 //  WORLD LABEL OVERLAP PREVENTION
 //  Interaction prompts register their screen bounds each frame.
 //  Pickup texts and lower-priority labels shift to avoid them.
@@ -280,20 +309,16 @@ function drawZoneBanner() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Zone name — large golden text with shadow
-    ctx.font = '52px Georgia';
-    ctx.shadowColor = 'rgba(180, 140, 40, 0.6)';
-    ctx.shadowBlur = 30;
+    // Zone name — large golden text with cached shadow (avoids expensive blur=30 per frame)
+    const _bannerCached = _getCachedShadowText(zoneBannerName, '52px Georgia', 30, '#e8c868', 'rgba(180, 140, 40, 0.6)');
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#e8c868';
-    ctx.fillText(zoneBannerName, cx, cy);
-    ctx.shadowBlur = 0;
+    ctx.drawImage(_bannerCached, cx - _bannerCached.width / 2, cy - _bannerCached.height / 2);
 
     // Decorative line above
     ctx.globalAlpha = alpha * 0.5;
     ctx.strokeStyle = '#c4a050';
     ctx.lineWidth = 1;
-    const lineW = ctx.measureText(zoneBannerName).width * 0.6;
+    const lineW = (_bannerCached._textW || 200) * 0.6;
     ctx.beginPath();
     ctx.moveTo(cx - lineW, cy - 38);
     ctx.lineTo(cx + lineW, cy - 38);

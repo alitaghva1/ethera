@@ -71,6 +71,11 @@ function updateCamera(dt) {
 // Directional shake state
 var _shakeDirX = 0, _shakeDirY = 0, _shakeDirBias = 0;
 
+function resetCameraShake() {
+    screenShakeTimer = 0; screenShakeIntensity = 0;
+    _shakeDirX = 0; _shakeDirY = 0; _shakeDirBias = 0;
+}
+
 function addDirectionalShake(fromRow, fromCol, intensity, duration) {
     // Shake biased AWAY from the damage source
     const dx = player.col - fromCol;

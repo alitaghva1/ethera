@@ -166,6 +166,22 @@ function drawProjectiles() {
                 ctx.fill();
                 ctx.restore();
             }
+            // --- Acid trail (green drip trail) ---
+            ctx.save();
+            trailForEach(p.trail, function(t, i, total) {
+                const tp = tileToScreen(t.row, t.col);
+                const tx = tp.x + cameraX;
+                const ty = tp.y + cameraY;
+                const frac = i / total;
+                const ageFade = Math.max(0, 1 - t.age * 4);
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = frac * 0.3 * ageFade;
+                ctx.fillStyle = '#33cc55';
+                ctx.beginPath();
+                ctx.arc(tx, ty, p.size * frac * 1.2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
             continue;
         }
 
@@ -216,6 +232,22 @@ function drawProjectiles() {
                 ctx.stroke();
                 ctx.restore();
             }
+            // --- Bone trail (faint white dotted trail) ---
+            ctx.save();
+            trailForEach(p.trail, function(t, i, total) {
+                if (i % 2 === 0) return; // skip every other for dotted look
+                const tp = tileToScreen(t.row, t.col);
+                const tx = tp.x + cameraX;
+                const ty = tp.y + cameraY;
+                const frac = i / total;
+                const ageFade = Math.max(0, 1 - t.age * 4);
+                ctx.globalAlpha = frac * 0.25 * ageFade;
+                ctx.fillStyle = '#ddccaa';
+                ctx.beginPath();
+                ctx.arc(tx, ty, p.size * frac * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
             continue;
         }
 
@@ -260,6 +292,28 @@ function drawProjectiles() {
                 ctx.fill();
                 ctx.restore();
             }
+            // --- Soul trail (purple wisp trail) ---
+            ctx.save();
+            trailForEach(p.trail, function(t, i, total) {
+                const tp = tileToScreen(t.row, t.col);
+                const tx = tp.x + cameraX;
+                const ty = tp.y + cameraY;
+                const frac = i / total;
+                const ageFade = Math.max(0, 1 - t.age * 3);
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = frac * 0.35 * ageFade;
+                ctx.fillStyle = '#aa55ff';
+                ctx.beginPath();
+                ctx.arc(tx, ty, p.size * frac * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Inner bright core
+                ctx.globalAlpha = frac * 0.5 * ageFade;
+                ctx.fillStyle = '#dd99ff';
+                ctx.beginPath();
+                ctx.arc(tx, ty, p.size * frac * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
             continue;
         }
 
