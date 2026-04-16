@@ -598,17 +598,19 @@ function applyEnemyHit(e, damage, opts) {
     // Hit flash — brief white overlay on ANY damage (longer on crit)
     e.hitFlashTimer = isCrit ? 0.22 : 0.12;
 
-    // ── Hit pause — scaled by impact. Tuned for visceral punch. ──
+    // ── Hit pause + directional shake — scaled by impact for visceral punch ──
     const heavyHitThreshold = (e.def.hp || 30) * 0.15;
     if (isCrit) {
         addHitPause(0.12);
-        addScreenShake(6, 0.18);
+        if (typeof addDirectionalShake === 'function') addDirectionalShake(e.row, e.col, 7, 0.18);
+        else addScreenShake(7, 0.18);
     } else if (finalDmg >= heavyHitThreshold) {
         addHitPause(0.07);
-        addScreenShake(4, 0.12);
+        if (typeof addDirectionalShake === 'function') addDirectionalShake(e.row, e.col, 5, 0.12);
+        else addScreenShake(5, 0.12);
     } else {
-        addHitPause(0.05);
-        addScreenShake(2, 0.06);
+        addHitPause(0.04);
+        addScreenShake(3, 0.08);
     }
 
     // ── Stagger wobble on heavy hits — visual sprite offset during hit flash ──
@@ -2984,6 +2986,8 @@ function updateEnemies(dt) {
                 if (!e.def.isBoss) {
                     const deathPos = tileToScreen(e.row, e.col);
                     spawnDeathBurst(deathPos.x + cameraX, deathPos.y + cameraY, e.def.tintColor || '#ff6644');
+                    // Kill shake — small but noticeable, makes kills feel satisfying
+                    addScreenShake(e.elite ? 5 : 3, e.elite ? 0.12 : 0.08);
                 }
 
                 // --- Elite death effects ---

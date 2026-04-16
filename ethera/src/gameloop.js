@@ -4474,6 +4474,26 @@ function render() {
         ctx.restore();
     }
 
+    // ── Low-HP danger vignette — persistent red pulse when health critical ──
+    if (!gameDead && typeof player !== 'undefined' && typeof getPlayerMaxHP === 'function') {
+        const _hpFrac = player.hp / getPlayerMaxHP();
+        if (_hpFrac < 0.25 && _hpFrac > 0) {
+            ctx.save();
+            const _dangerPulse = 0.15 + Math.sin((_frameNow || 0) * 4) * 0.08;
+            const _dangerAlpha = (1 - _hpFrac / 0.25) * _dangerPulse;
+            const _dVig = ctx.createRadialGradient(
+                canvasW / 2, canvasH / 2, canvasH * 0.25,
+                canvasW / 2, canvasH / 2, canvasH * 0.8
+            );
+            _dVig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            _dVig.addColorStop(0.6, `rgba(120, 0, 0, ${_dangerAlpha * 0.3})`);
+            _dVig.addColorStop(1, `rgba(100, 0, 0, ${_dangerAlpha})`);
+            ctx.fillStyle = _dVig;
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.restore();
+        }
+    }
+
     // ── COMBAT JUICE: Low-HP warning vignette (pulsing below 25%) ──
     if (gamePhase === 'playing' && !gameDead && player.hp > 0) {
         const hpRatio = player.hp / (getPlayerMaxHP() || 1);

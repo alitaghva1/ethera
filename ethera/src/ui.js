@@ -438,6 +438,27 @@ function drawObjective() {
         ctx.fillText(depthText, objX, objY + 20);
     }
 
+    // Wave progress counter (shows during combat zones)
+    if (typeof wave !== 'undefined' && wave.phase !== 'done' && typeof currentZone !== 'undefined') {
+        const _wCfg = typeof ZONE_CONFIGS !== 'undefined' ? ZONE_CONFIGS[currentZone] : null;
+        if (_wCfg && _wCfg.hasWaves) {
+            const _zWaveArrays = { 1: typeof WAVES !== 'undefined' ? WAVES : null, 2: typeof ZONE2_WAVES !== 'undefined' ? ZONE2_WAVES : null, 3: typeof ZONE3_WAVES !== 'undefined' ? ZONE3_WAVES : null, 4: typeof ZONE4_WAVES !== 'undefined' ? ZONE4_WAVES : null, 5: typeof ZONE5_WAVES !== 'undefined' ? ZONE5_WAVES : null, 6: typeof ZONE6_WAVES !== 'undefined' ? ZONE6_WAVES : null };
+            const _zArr = _zWaveArrays[currentZone];
+            const totalWaves = _zArr ? _zArr.length : '?';
+            const currentWaveNum = Math.max(0, wave.current) + 1;
+            const waveText = 'Wave ' + currentWaveNum + '/' + totalWaves;
+            ctx.globalAlpha = 0.55;
+            ctx.font = '10px Georgia';
+            ctx.fillStyle = '#c4a878';
+            ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+            ctx.lineWidth = 2;
+            ctx.textAlign = 'left';
+            const waveY = objY + ((typeof isProceduralZone !== 'undefined' && isProceduralZone) ? 36 : 18);
+            ctx.strokeText(waveText, objX, waveY);
+            ctx.fillText(waveText, objX, waveY);
+        }
+    }
+
     ctx.restore();
 }
 
