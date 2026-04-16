@@ -2024,7 +2024,7 @@ function updateWaveSystem(dt) {
                     }
                 } else if (currentWaveDef && currentWaveDef.isBossWave) {
                     wave.phase = 'cleared';
-                    wave.timer = 10.0; // longer breather after boss
+                    wave.timer = 6.0; // breather after boss
                     wave.bannerText = 'Boss Defeated';
                     wave.bannerSub = 'The way ahead opens...';
                     wave.bannerAlpha = 1;
@@ -2094,7 +2094,7 @@ function updateWaveSystem(dt) {
                     duckMusic(true);
                 } else {
                     wave.phase = 'cleared';
-                    wave.timer = 8.0;
+                    wave.timer = 4.0;
                     wave.bannerText = 'The darkness recedes...';
                     wave.bannerSub = '';
                     wave.bannerAlpha = 1;

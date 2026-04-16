@@ -1251,8 +1251,9 @@ function drawDarkness() {
     const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult2);
 
     // Pass 1: radial torch light (cached — only recreated when position/radius shift >2px)
-    const _torchStops = [[0, 'rgba(210, 185, 135, 1)'], [0.3, 'rgba(175, 140, 90, 1)'],
-                         [0.65, 'rgba(65, 42, 22, 1)'], [1, 'rgba(8, 4, 2, 1)']];
+    const _torchStops = [[0, 'rgba(210, 185, 135, 1)'], [0.25, 'rgba(180, 145, 95, 1)'],
+                         [0.5, 'rgba(110, 75, 45, 1)'], [0.75, 'rgba(40, 24, 14, 1)'],
+                         [1, 'rgba(8, 4, 2, 1)']];
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
     const grad = _getDarknessGrad(ctx, px, py, radius, 'dungeon', _torchStops);

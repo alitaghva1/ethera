@@ -702,11 +702,10 @@ function drawTalismanPickup() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Draw pickup art if available (screen blend to merge with dark overlay)
+    // Draw pickup art if available (source-over to preserve image colors on dark backdrop)
     const pickupImg = images.talisman_pickup;
     if (pickupImg) {
-        ctx.globalAlpha = alpha * 0.85;
-        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = alpha * 0.95;
         // Scale image to fit canvas while maintaining aspect ratio
         const imgAspect = pickupImg.width / pickupImg.height;
         const canvasAspect = canvasW / canvasH;
@@ -721,7 +720,6 @@ function drawTalismanPickup() {
         drawX = cx - drawW / 2;
         drawY = cy - drawH / 2 - 20;
         ctx.drawImage(pickupImg, drawX, drawY, drawW, drawH);
-        ctx.globalCompositeOperation = 'source-over';
     }
 
     // Title text

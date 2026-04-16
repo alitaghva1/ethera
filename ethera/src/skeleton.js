@@ -883,20 +883,23 @@ function drawSkeletonHUD() {
     if (FormSystem.talisman.found) {
         const tX = canvasW - 60, tY = 30;
         const t = performance.now() / 1000;
-        ctx.globalAlpha = 0.7 + Math.sin(t * 2) * 0.15;
+        ctx.globalAlpha = 0.8 + Math.sin(t * 2) * 0.12;
+        ctx.shadowColor = 'rgba(232, 200, 64, 0.5)';
+        ctx.shadowBlur = 6;
         ctx.fillStyle = '#e8c840';
         ctx.beginPath();
-        ctx.moveTo(tX, tY - 10);
-        ctx.lineTo(tX + 7, tY);
-        ctx.lineTo(tX, tY + 10);
-        ctx.lineTo(tX - 7, tY);
+        ctx.moveTo(tX, tY - 14);
+        ctx.lineTo(tX + 10, tY);
+        ctx.lineTo(tX, tY + 14);
+        ctx.lineTo(tX - 10, tY);
         ctx.closePath();
         ctx.fill();
-        ctx.globalAlpha = 0.4;
-        ctx.font = '8px monospace';
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.65;
+        ctx.font = '10px Georgia';
         ctx.textAlign = 'center';
-        ctx.fillStyle = '#c4a878';
-        ctx.fillText(`Lv${FormSystem.talisman.level}`, tX, tY + 20);
+        ctx.fillStyle = '#e8c840';
+        ctx.fillText(`Lv${FormSystem.talisman.level}`, tX, tY + 24);
         ctx.textAlign = 'left';
     }
 

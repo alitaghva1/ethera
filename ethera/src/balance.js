@@ -48,7 +48,7 @@ const TOWER_BOLT_SPEED = TOWER.boltSpeed;
 // ============================================================
 
 // --- Spawn & Wave Scaling ---
-const ENEMY_SPAWN_MIN_DISTANCE = 4;         // Enemies spawn at least this far from player
+const ENEMY_SPAWN_MIN_DISTANCE = 3;         // Enemies spawn at least this far from player
 const ENEMY_STAGGER_COOLDOWN = 0.4;         // Base stagger cooldown per enemy type
 const ENEMY_STAGGER_VARIANCE = 0.3;         // Random variance on stagger cooldown
 
