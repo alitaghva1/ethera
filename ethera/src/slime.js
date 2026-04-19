@@ -1191,28 +1191,30 @@ function drawSlimeHUD() {
     // Active upgrade icons
     drawActiveUpgradeIcons(x, yXP, barH);
 
-    // Talisman indicator (top right)
+    // Talisman indicator — positioned below the relic row (y=80-108) and the
+    // HOSTILE combat indicator (y~33). Slightly smaller than before to reduce
+    // visual noise in an increasingly crowded top-right HUD corner.
     if (FormSystem.talisman.found) {
-        const tX = canvasW - 60;
-        const tY = 30;
+        const tX = canvasW - 32;
+        const tY = 130;
         const t = performance.now() / 1000;
         ctx.globalAlpha = 0.8 + Math.sin(t * 2) * 0.12;
         ctx.shadowColor = 'rgba(232, 200, 64, 0.5)';
         ctx.shadowBlur = 6;
         ctx.fillStyle = '#e8c840';
         ctx.beginPath();
-        ctx.moveTo(tX, tY - 14);
-        ctx.lineTo(tX + 10, tY);
-        ctx.lineTo(tX, tY + 14);
-        ctx.lineTo(tX - 10, tY);
+        ctx.moveTo(tX, tY - 10);
+        ctx.lineTo(tX + 8, tY);
+        ctx.lineTo(tX, tY + 10);
+        ctx.lineTo(tX - 8, tY);
         ctx.closePath();
         ctx.fill();
         ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.65;
-        ctx.font = '10px Georgia';
+        ctx.globalAlpha = 0.7;
+        ctx.font = '9px Georgia';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#e8c840';
-        ctx.fillText(`Lv${FormSystem.talisman.level}`, tX, tY + 24);
+        ctx.fillText(`Lv${FormSystem.talisman.level}`, tX, tY + 20);
         ctx.textAlign = 'left';
     }
 

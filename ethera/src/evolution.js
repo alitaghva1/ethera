@@ -314,14 +314,18 @@ function updateEvolution(dt) {
         evolutionState.flashAlpha = Math.max(0, evolutionState.flashAlpha - dt * 1.5);
         evolutionState.phase = 3;
     } else {
-        // Done — show ability hint screen before resuming gameplay
+        // Done — show ability hint screen before resuming gameplay.
         evolutionState.active = false;
         evolutionHintState.active = true;
         evolutionHintState.form = evolutionState.targetForm;
         evolutionHintState.timer = 0;
         evolutionHintState.dismissed = false;
         evolutionHintState.alpha = 0;
-        // Don't set gamePhase to 'playing' yet — hint screen will do it when dismissed
+        // CRITICAL: flip gamePhase back to 'playing' NOW so the gameloop takes
+        // the hint-screen branch (which gates on evolutionHintState.active, not
+        // gamePhase). Leaving gamePhase at 'evolution' made the gameloop keep
+        // routing to the evolution branch with nothing to render → black freeze.
+        gamePhase = 'playing';
         addScreenShake(4, 0.5);
         // Post-evolution tutorial hints (fire after hint screen auto-dismisses)
         if (typeof Notify !== 'undefined' && Notify.tutorialSequence) {
@@ -661,7 +665,12 @@ function triggerTalismanPickup() {
     talismanPickupState.timer = 0;
     talismanPickupState.alpha = 0;
     talismanPickupState.dismissed = false;
-    gamePhase = 'talismanPickup';
+    // Keep gamePhase at 'playing' — the gameloop's talismanPickup branch gates
+    // on talismanPickupState.active, not gamePhase. Setting gamePhase here would
+    // make render() return early (talismanPickup isn't in its allowed list) →
+    // the world stops rendering and the modal sits over a solid zone-bg fill,
+    // which looked to users like a "white flash then no image".
+    // gamePhase = 'talismanPickup';  // ← removed (caused broken render)
 }
 
 function updateTalismanPickup(dt) {
