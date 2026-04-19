@@ -3905,6 +3905,15 @@ function render() {
 
     // Safety: reset alpha every frame so no VFX leak carries over
     ctx.globalAlpha = 1.0;
+    // ALSO reset composite mode — a leaked 'lighter'/'screen'/'multiply' from a
+    // previous frame's light/vignette/hazard pass will otherwise invisibly blend
+    // the entire next frame (HUD appears to vanish).
+    ctx.globalCompositeOperation = 'source-over';
+    // Defensive: if zoneTransitionAlpha is stuck > 0 with no active fade state,
+    // decay it so a bugged transition can't permanently cover the HUD.
+    if (typeof zoneTransitionAlpha === 'number' && zoneTransitionAlpha > 0 && !zoneTransitionFading) {
+        zoneTransitionAlpha = Math.max(0, zoneTransitionAlpha - 0.08);
+    }
     // Crisp pixel art: disable bilinear interpolation for sprite/tile rendering
     ctx.imageSmoothingEnabled = false;
 

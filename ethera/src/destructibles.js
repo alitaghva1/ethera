@@ -132,11 +132,12 @@ function applyMeleeDestructibleHits(cx, cy, radius, damage) {
 
 function damageDestructible(d, dmg) {
     if (!d || d.hp <= 0) return;
+    const def = DESTRUCTIBLE_DEFS[d.type];
+    if (!def) { d.hp = 0; return; } // corrupt type — kill without effects, don't crash
     d.hp -= dmg;
     d.hitFlash = 0.18;
     d.shakeTimer = 0.12;
     // Hit particles — wood chips / clay shards
-    const def = DESTRUCTIBLE_DEFS[d.type];
     if (typeof spawnParticle === 'function') {
         for (let i = 0; i < 3; i++) {
             const ang = Math.random() * Math.PI * 2;
@@ -152,6 +153,7 @@ function damageDestructible(d, dmg) {
 
 function breakDestructible(d) {
     const def = DESTRUCTIBLE_DEFS[d.type];
+    if (!def) return; // corrupt type — already dead, don't crash on def.goldRange access
     // Big particle burst + screen shake on break
     if (typeof spawnParticle === 'function') {
         for (let i = 0; i < 10; i++) {
@@ -212,6 +214,7 @@ function _drawSingleDestructible(d) {
     if (!d || d.hp <= 0) return;
     if (typeof tileToScreen !== 'function') return;
     const def = DESTRUCTIBLE_DEFS[d.type];
+    if (!def) return; // corrupt type — skip instead of throwing inside save/restore
     const pos = tileToScreen(d.row, d.col);
     let sx = pos.x + cameraX;
     let sy = pos.y + cameraY;
@@ -222,6 +225,7 @@ function _drawSingleDestructible(d) {
     const bob = Math.sin(d.bobTime * 1.5) * 1.2;
 
     ctx.save();
+    try {
 
     // Ground shadow
     ctx.globalAlpha = 0.35;
@@ -284,7 +288,11 @@ function _drawSingleDestructible(d) {
         ctx.fillRect(bx, by, Math.max(1, barW * hpFrac), barH);
     }
 
-    ctx.restore();
+    } finally {
+        // Guarantee ctx restore even if a sub-draw throws — otherwise leaked
+        // alpha/composite would invisibly corrupt every subsequent frame.
+        ctx.restore();
+    }
 }
 
 function _lightenColor(hex, amt) {
