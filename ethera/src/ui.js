@@ -1313,7 +1313,15 @@ function drawFrozenEcho() {
 // ============================================================
 //  PICKUP TEXT SYSTEM
 // ============================================================
+// Hard cap on floating text count — prevents unbounded growth during AoE chains / dense combat
+// that can tank frame time (each entry draws text + optional crit decoration).
+const PICKUP_TEXT_MAX = 120;
+
 function updatePickupTexts(dt) {
+    // Cull oldest entries if we've blown past the cap (defensive — aoe spam can push past 120).
+    if (pickupTexts.length > PICKUP_TEXT_MAX) {
+        pickupTexts.splice(0, pickupTexts.length - PICKUP_TEXT_MAX);
+    }
     for (let i = pickupTexts.length - 1; i >= 0; i--) {
         const t = pickupTexts[i];
         t.life -= dt;

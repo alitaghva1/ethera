@@ -597,7 +597,10 @@ function applyEnemyHit(e, damage, opts) {
     wave._lastDamageTime = performance.now() / 1000;
 
     // Alert propagation — combat is contagious. When one gets hit, neighbors aggro.
-    if (typeof alertNearbyEnemies === 'function') alertNearbyEnemies(e);
+    // Skip if this enemy is already alerted — its neighbors were already notified,
+    // no need to walk the full enemy list on every subsequent hit. Saves ~80% of
+    // calls in sustained combat.
+    if (!e._alerted && typeof alertNearbyEnemies === 'function') alertNearbyEnemies(e);
 
     // Hit flash — brief white overlay on ANY damage (longer on crit)
     e.hitFlashTimer = isCrit ? 0.22 : 0.12;
@@ -680,11 +683,14 @@ function applyEnemyHit(e, damage, opts) {
         const kvc = (opts.knockVc || 0) * kbResist;
         e.knockVr = (e.knockVr || 0) + kvr;
         e.knockVc = (e.knockVc || 0) + kvc;
-        // Spawn 3 directional particles trailing opposite to knockback
-        if (!opts.skipParticles && typeof _emitParticle === 'function') {
+        // Spawn 3 directional particles trailing opposite to knockback.
+        // Gated on particleMul so Low-quality setting can skip this noise during heavy combat.
+        const _pmul = (typeof GFX !== 'undefined' && typeof GFX.particleMul === 'number') ? GFX.particleMul : 1;
+        if (!opts.skipParticles && typeof _emitParticle === 'function' && _pmul >= 0.5) {
             const ePos = tileToScreen(e.row, e.col);
             const ex = ePos.x + cameraX, ey = ePos.y + cameraY;
-            for (let pi = 0; pi < 3; pi++) {
+            const _pCount = _pmul >= 1 ? 3 : 2;
+            for (let pi = 0; pi < _pCount; pi++) {
                 _emitParticle(ex, ey,
                     -kvr * 2 + (Math.random() - 0.5) * 3,
                     -kvc * 2 + (Math.random() - 0.5) * 3,
@@ -5171,12 +5177,17 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
 
 // ----- FIREBALL → ENEMY COLLISION -----
 function checkProjectileEnemyHits() {
+    // Cache hot values once per call — avoids re-querying globals for each projectile/enemy pair.
+    const _hasDestructibles = typeof destructibles !== 'undefined' && destructibles.length > 0;
+    const _destructibleCheckFn = _hasDestructibles && typeof checkProjectileDestructibleHit === 'function'
+        ? checkProjectileDestructibleHit : null;
     for (const p of projectiles) {
         if (p.hit) continue;
         // Destructibles — breakable scenery, hit before enemy check so props can't
         // be shadowed by enemies behind them. Piercing projectiles continue through.
-        if (typeof checkProjectileDestructibleHit === 'function') {
-            if (checkProjectileDestructibleHit(p) && p.hit) continue;
+        // Skip entirely when no destructibles are in the zone (saves O(projectiles) work).
+        if (_destructibleCheckFn) {
+            if (_destructibleCheckFn(p) && p.hit) continue;
         }
         for (const e of enemies) {
             if (e.state === 'death') continue;

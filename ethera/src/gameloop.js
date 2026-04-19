@@ -4259,28 +4259,34 @@ function render() {
         const _bloomLights = typeof ENV_LIGHTS !== 'undefined' ? ENV_LIGHTS[currentZone] : null;
         if (_bloomLights && _bloomLights.length > 0) {
             ctx.save();
-            ctx.globalCompositeOperation = 'lighter';
-            const now = _frameNow * 1000;
-            for (const light of _bloomLights) {
-                const pos = tileToScreen(light.row, light.col);
-                const sx = pos.x + cameraX, sy = pos.y + cameraY;
-                if (sx < -150 || sx > canvasW + 150 || sy < -150 || sy > canvasH + 150) continue;
-                const fr = Math.floor(light.row), fc = Math.floor(light.col);
-                if (fogRevealed.length === 0 || !fogRevealed[0]) continue;
-                if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed[0].length && !fogRevealed[fr][fc]) continue;
-                // Soft bloom halo — 2x radius of the light, very low alpha
-                const bloomR = light.radius * 2.2;
-                const flicker = 0.8 + Math.sin(now / 500 + light.row * 3) * 0.2;
-                ctx.globalAlpha = light.intensity * 0.08 * flicker;
-                const [cr, cg, cb] = light.color;
-                const bg = ctx.createRadialGradient(sx, sy - 8, 0, sx, sy - 8, bloomR);
-                bg.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.4)`);
-                bg.addColorStop(0.4, `rgba(${cr}, ${cg}, ${cb}, 0.1)`);
-                bg.addColorStop(1, `rgba(0, 0, 0, 0)`);
-                ctx.fillStyle = bg;
-                ctx.fillRect(sx - bloomR, sy - 8 - bloomR, bloomR * 2, bloomR * 2);
+            try {
+                ctx.globalCompositeOperation = 'lighter';
+                const now = _frameNow * 1000;
+                for (const light of _bloomLights) {
+                    const pos = tileToScreen(light.row, light.col);
+                    const sx = pos.x + cameraX, sy = pos.y + cameraY;
+                    if (sx < -150 || sx > canvasW + 150 || sy < -150 || sy > canvasH + 150) continue;
+                    const fr = Math.floor(light.row), fc = Math.floor(light.col);
+                    if (fogRevealed.length === 0 || !fogRevealed[0]) continue;
+                    if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed[0].length && !fogRevealed[fr][fc]) continue;
+                    // Soft bloom halo — 2x radius of the light, very low alpha
+                    const bloomR = light.radius * 2.2;
+                    const flicker = 0.8 + Math.sin(now / 500 + light.row * 3) * 0.2;
+                    ctx.globalAlpha = light.intensity * 0.08 * flicker;
+                    const [cr, cg, cb] = light.color;
+                    const bg = ctx.createRadialGradient(sx, sy - 8, 0, sx, sy - 8, bloomR);
+                    bg.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.4)`);
+                    bg.addColorStop(0.4, `rgba(${cr}, ${cg}, ${cb}, 0.1)`);
+                    bg.addColorStop(1, `rgba(0, 0, 0, 0)`);
+                    ctx.fillStyle = bg;
+                    ctx.fillRect(sx - bloomR, sy - 8 - bloomR, bloomR * 2, bloomR * 2);
+                }
+            } finally {
+                // Guarantee composite mode reverts even if a light entry throws —
+                // without this, 'lighter' blend leaks into the HUD render and can
+                // invisibly hide UI elements.
+                ctx.restore();
             }
-            ctx.restore();
         }
     }
 
@@ -4583,9 +4589,15 @@ function render() {
     }
 
     // ── LAYER 9: HUD ──
+    // Wrap everything in save/restore so any exception or leaked composite mode
+    // inside a HUD function can't corrupt ctx state and invisibly hide the HUD
+    // on subsequent frames. (This was a real bug source — see v1.14.0 notes.)
+    ctx.save();
     ctx.globalAlpha = 1; // safety reset before HUD
+    ctx.globalCompositeOperation = 'source-over';
     ctx.imageSmoothingEnabled = true; // re-enable smoothing for crisp HUD text
     if (gamePhase !== 'cinematic') {
+        try {
         // HP & Mana bars (form-specific)
         const hudHandler = FormSystem.getHandler();
         if (hudHandler && hudHandler.drawHUD) hudHandler.drawHUD();
@@ -4696,7 +4708,16 @@ function render() {
             ctx.fillRect(0, 0, canvasW, canvasH);
             ctx.restore();
         }
+        } catch (_hudErr) {
+            // A crash inside any HUD function must not silently corrupt ctx state.
+            // Log once so we can diagnose without spamming; frame keeps rendering.
+            if (!window._hudErrLogged) {
+                console.error('[HUD] render error:', _hudErr);
+                window._hudErrLogged = true;
+            }
+        }
     }
+    ctx.restore(); // matches the save() at top of LAYER 9
 }
 
 // ============================================================
