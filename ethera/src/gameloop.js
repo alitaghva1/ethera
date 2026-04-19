@@ -2608,6 +2608,13 @@ function drawWorldKeyDrops() {
         ctx.save();
         ctx.globalAlpha = fadeIn;
 
+        // --- Relic drop: hades-style orb with glyph, glow, and hover label ---
+        if (d.id === 'relic') {
+            if (typeof drawRelicDrop === 'function') drawRelicDrop(d, sx, sy, bob, fadeIn, t);
+            ctx.restore();
+            continue;
+        }
+
         // --- Talisman drop: use sprite with screen blend (black bg disappears) ---
         const isTalisman = d.id === 'talisman';
         const talismanImg = isTalisman ? images.talisman_drop : null;
@@ -3701,6 +3708,8 @@ function restartGame() {
     if (typeof playerGold !== 'undefined') playerGold = 0;
     if (typeof runStartTime !== 'undefined') runStartTime = Date.now();
     if (typeof runGoldEarned !== 'undefined') runGoldEarned = 0;
+    // Reset per-run relics (Hades-style — power-ups don't persist across runs)
+    if (typeof resetRunRelics === 'function') resetRunRelics();
     // Apply milestone start bonuses from player profile
     if (typeof playerProfile !== 'undefined' && typeof MILESTONE_DEFS !== 'undefined') {
         for (var _mi = 0; _mi < MILESTONE_DEFS.length; _mi++) {

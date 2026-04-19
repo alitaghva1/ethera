@@ -429,9 +429,10 @@ function getPlayerMaxHP() {
     const eqHp = (typeof equipBonus !== 'undefined' && equipBonus.maxHpBonus) ? equipBonus.maxHpBonus : 0;
     const talHp = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
     const questHp = (typeof questState !== 'undefined' && questState.permBonuses) ? (questState.permBonuses.maxHpBonus || 0) : 0;
+    const relicHp = (typeof runRelicState !== 'undefined') ? (runRelicState.maxHpBonus || 0) : 0;
     const abyssMult = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
         ? getAbyssModMult('hpMult', 1) : 1;
-    return Math.round((baseHp + eqHp + talHp + questHp) * abyssMult);
+    return Math.round((baseHp + eqHp + talHp + questHp + relicHp) * abyssMult);
 }
 
 // Talisman passive bonuses — scale with talisman level (increases on evolution, not during gameplay)

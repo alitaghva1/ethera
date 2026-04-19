@@ -230,7 +230,8 @@ function updatePlayer(dt) {
 
     // --- Normal movement (lerp-based velocity) ---
     const slowMult = player.slowTimer > 0 ? 0.5 : 1.0;
-    const effMoveSpeed = MOVE_MAX_SPEED * (1 + (equipBonus.moveSpeedMult || 0)) * getTalismanBonus().speedMult * slowMult;
+    const relicMoveMult = (typeof runRelicState !== 'undefined') ? (runRelicState.moveSpeedMult || 1) : 1;
+    const effMoveSpeed = MOVE_MAX_SPEED * (1 + (equipBonus.moveSpeedMult || 0)) * getTalismanBonus().speedMult * slowMult * relicMoveMult;
     const targetVr = inputRow * effMoveSpeed;
     const targetVc = inputCol * effMoveSpeed;
     const resp = Math.min(1, 25 * dt);
@@ -326,7 +327,8 @@ function updatePlayer(dt) {
     if (player._boneRhythmTimer > 0) { player._boneRhythmTimer -= dt; if (player._boneRhythmTimer <= 0) player._boneRhythmHits = 0; }
     if (player._boneRhythmSpeedBoost > 0) player._boneRhythmSpeedBoost -= dt;
     const _boneRhythmMult = (player._boneRhythmSpeedBoost > 0) ? (1 + 0.30) : 1;
-    const effAtkCooldown = (ATK_COOLDOWN / (1 + (equipBonus.atkSpeedMult || 0)) / _boneRhythmMult) * Math.pow(0.85, getUpgrade('firerate'));
+    const relicAtkSpeedMult = (typeof runRelicState !== 'undefined') ? (runRelicState.atkSpeedMult || 1) : 1;
+    const effAtkCooldown = (ATK_COOLDOWN / (1 + (equipBonus.atkSpeedMult || 0)) / _boneRhythmMult / relicAtkSpeedMult) * Math.pow(0.85, getUpgrade('firerate'));
     if (!player.attacking && !player.dodging && mouse.down && player.attackCooldown <= 0 && player.mana >= effManaCost) {
         const aimDir = getAimDirection();
         player.attacking = true;

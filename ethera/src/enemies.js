@@ -547,7 +547,9 @@ function calcPlayerDmgBonus() {
         ? (1 + wizardState.arcaneResonance * 0.06) : 1;
     // Fusion bonus: active fusions grant +25% damage as a baseline reward
     const fusionDmgMult = (typeof fusedUpgrades !== 'undefined' && Object.keys(fusedUpgrades).length > 0) ? 1.25 : 1;
-    return { flat: equip + big + quest, mult: talisman * synBonus * tagDmgMult * wizResonanceMult * fusionDmgMult };
+    // Run relics (picked up between waves) — stack multiplicatively
+    const relicDmgMult = (typeof runRelicState !== 'undefined') ? (runRelicState.dmgMult || 1) : 1;
+    return { flat: equip + big + quest, mult: talisman * synBonus * tagDmgMult * wizResonanceMult * fusionDmgMult * relicDmgMult };
 }
 
 // All damage to enemies should go through this function.
@@ -577,8 +579,10 @@ function applyEnemyHit(e, damage, opts) {
     let finalDmg = Math.round(damage * shieldReduc * meltMult * synReduc);
 
     // ── COMBAT JUICE: Critical hit roll (applies to all damage sources) ──
-    const isCrit = !opts.skipCrit && Math.random() < CRIT_CHANCE;
-    if (isCrit) finalDmg = Math.round(finalDmg * CRIT_MULTIPLIER);
+    const _relicCritBonus = (typeof runRelicState !== 'undefined') ? (runRelicState.critBonus || 0) : 0;
+    const _relicCritDmg = (typeof runRelicState !== 'undefined') ? (runRelicState.critDmgBonus || 0) : 0;
+    const isCrit = !opts.skipCrit && Math.random() < (CRIT_CHANCE + _relicCritBonus);
+    if (isCrit) finalDmg = Math.round(finalDmg * (CRIT_MULTIPLIER + _relicCritDmg));
 
     // Executioner upgrade (skeleton): bonus damage to low-HP enemies
     if (typeof FormSystem !== 'undefined' && FormSystem.currentForm === 'skeleton' &&
@@ -2056,6 +2060,10 @@ function updateWaveSystem(dt) {
                         pickupTexts.push({ text: '+' + bossBonus + ' GOLD', color: '#ffd700', row: player.row, col: player.col, offsetY: -20, life: 2.5 });
                         if (typeof sfxGoldPickup === 'function') sfxGoldPickup();
                     }
+                    // Boss-wave relic reward — two choices on boss kills (higher-value moment)
+                    if (typeof spawnRelicChoice === 'function') {
+                        spawnRelicChoice(player.row, player.col);
+                    }
                     // Spawn a town return portal near the player after boss kill
                     // Find a free tile near the player to place the portal stairs
                     const _portalR = Math.floor(player.row);
@@ -2132,6 +2140,10 @@ function updateWaveSystem(dt) {
                     // Talisman drop after wave 2 in zone 1 (for slime form)
                     if (currentZone === 1 && wave.current === 2 && FormSystem.currentForm === 'slime') {
                         spawnTalismanDrop();
+                    }
+                    // Relic choice — three floating power-ups for the player to pick one
+                    if (typeof spawnRelicChoice === 'function' && typeof ZONE_CONFIGS !== 'undefined' && ZONE_CONFIGS[currentZone] && ZONE_CONFIGS[currentZone].hasWaves) {
+                        spawnRelicChoice(player.row, player.col);
                     }
 
                     // --- Zone 1 Alcove mini-seal: open Secret Alcove after wave 1 ---
@@ -3069,12 +3081,21 @@ function updateEnemies(dt) {
                 wave.totalKilled++;
                 wave.waveKills++;
                 grantXP(e.type, e.statMult || 1.0, e.row, e.col);
+                // Relic: heal on kill
+                if (typeof runRelicState !== 'undefined' && runRelicState.healOnKill > 0 && typeof player !== 'undefined' && typeof getPlayerMaxHP === 'function') {
+                    const _hkHeal = runRelicState.healOnKill;
+                    player.hp = Math.min(getPlayerMaxHP(), player.hp + _hkHeal);
+                    if (typeof pickupTexts !== 'undefined') {
+                        pickupTexts.push({ text: '+' + _hkHeal, color: '#cc44aa', row: e.row, col: e.col, offsetY: -4, life: 0.8 });
+                    }
+                }
                 // Gold drop
                 if (typeof ENEMY_GOLD_DROP !== 'undefined') {
                     const goldDrop = ENEMY_GOLD_DROP[e.type] || 10;
                     const ascMult = 1 + Math.min(typeof ascensionLevel !== 'undefined' ? ascensionLevel * 0.25 : 0, 1.5);
                     const _modGoldMult = (wave.modifier && wave.modifier.goldMult) ? wave.modifier.goldMult : 1;
-                    const gold = Math.round(goldDrop * (0.8 + Math.random() * 0.4) * ascMult * killStreak.multiplier * _modGoldMult);
+                    const _relicGoldMult = (typeof runRelicState !== 'undefined') ? (runRelicState.goldMult || 1) : 1;
+                    const gold = Math.round(goldDrop * (0.8 + Math.random() * 0.4) * ascMult * killStreak.multiplier * _modGoldMult * _relicGoldMult);
                     playerGold += gold;
                     if (typeof runGoldEarned !== 'undefined') runGoldEarned += gold;
                     pickupTexts.push({ text: '+' + gold + 'g', color: '#ffd700', row: e.row, col: e.col, offsetY: -8, life: 1.0 });

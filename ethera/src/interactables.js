@@ -364,10 +364,14 @@ function dropKeyItemInWorld(row, col, itemId) {
 function tryPickupKeyDrops() {
     // Check talisman pickup first
     checkTalismanPickup();
+    // Check relic drops (non-blocking, multi-choice pickups)
+    if (typeof checkRelicPickup === 'function') checkRelicPickup();
     // Check other key drops
     for (let i = worldKeyDrops.length - 1; i >= 0; i--) {
         const d = worldKeyDrops[i];
         if (d.spawnTime > 0) continue;
+        if (d.id === 'talisman' || d.id === 'relic') continue; // handled above
+        if (!d.itemId) continue; // skip drops without an itemId (defensive)
         const dr = d.row - player.row;
         const dc = d.col - player.col;
         if (Math.sqrt(dr * dr + dc * dc) < PICKUP_RANGE) {

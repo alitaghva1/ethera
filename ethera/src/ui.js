@@ -460,6 +460,9 @@ function drawObjective() {
     }
 
     ctx.restore();
+
+    // Run relic row (top-right) — draws outside the drawObjective save/restore on purpose
+    if (typeof drawRelicHUD === 'function') drawRelicHUD();
 }
 
 // ============================================================
