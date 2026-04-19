@@ -2172,10 +2172,11 @@ function updateWaveSystem(dt) {
     if (wave.phase === 'cleared') {
         wave.timer -= dt;
 
-        // Phase 1 (first half): calm — banner fades, music ducked, light steady
+        // Phase 1 (first half): calm — banner stays visible, fades out in last 0.75s before tension
         if (wave.timer > 1.5) {
             lightRadius = MAX_LIGHT; // keep light full during calm phase
-            wave.bannerAlpha = Math.max(0, (wave.timer - 2.5) / 1.0);
+            // Banner fully visible during calm, fades over final 0.75s. Works for both 3s and 6s cleared durations.
+            wave.bannerAlpha = Math.min(1, Math.max(0, (wave.timer - 1.5) / 0.75));
             wave.tensionPhase = 0;
         }
         // Phase 2 (last 1.5s): tension building — flicker increases, ambient cues
@@ -2185,7 +2186,7 @@ function updateWaveSystem(dt) {
                 duckMusic(false); // restore music as tension builds
             }
             // Pulse the light down slightly to create unease
-            const tensionProgress = 1 - (wave.timer / 1.5);
+            const tensionProgress = Math.min(1, Math.max(0, 1 - (wave.timer / 1.5)));
             lightRadius = Math.max(MAX_LIGHT * 0.7, MAX_LIGHT - tensionProgress * (MAX_LIGHT * 0.3));
         }
 
