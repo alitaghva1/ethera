@@ -706,48 +706,49 @@ function drawTalismanPickup() {
 
     ctx.save();
 
-    // FULLY opaque black backdrop — no bleed-through of the game world underneath.
-    // Previously 80% alpha let the dungeon show faintly, which combined with the
-    // cinematic dungeon image created a "picture in picture" effect.
-    ctx.globalAlpha = alpha;
+    // Step 1: fully opaque black backdrop IMMEDIATELY. NOT faded with `alpha`
+    // because during the 0.5s fade-in ramp, a partially-transparent black on
+    // top of the still-rendered game world created a "picture in picture"
+    // effect (game world visible + cinematic image both showing at once).
+    // Backdrop snaps to full opacity the moment the modal is active; only
+    // the IMAGE fades in over it.
+    ctx.globalAlpha = 1.0;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Cinematic illustration — fills the canvas with "cover" fit so no gaps show
-    // the previous frame. Slight zoom-in over time for motion.
+    // Step 2: cinematic illustration, "contain" fit so the whole image shows
+    // with black bars as needed (no cropping of the slime + talisman). The
+    // image fades in via `alpha` while the black backdrop stays solid.
     const pickupImg = images.talisman_pickup;
     if (pickupImg) {
         ctx.globalAlpha = alpha;
         const imgAspect = pickupImg.width / pickupImg.height;
         const canvasAspect = canvasW / canvasH;
         let drawW, drawH;
-        // "cover" fit: fill canvas, crop overflow rather than leaving black bars
         if (imgAspect > canvasAspect) {
-            drawH = canvasH;
-            drawW = drawH * imgAspect;
-        } else {
-            drawW = canvasW;
+            // Wider image — fit to canvas width, letterbox top/bottom
+            drawW = canvasW * 0.95;
             drawH = drawW / imgAspect;
+        } else {
+            // Taller image (or same ratio) — fit to canvas height, pillarbox sides
+            drawH = canvasH * 0.88;
+            drawW = drawH * imgAspect;
         }
-        // Subtle zoom-in over the life of the cinematic for cinematic motion
-        const zoom = 1.0 + Math.min(0.05, t * 0.01);
-        drawW *= zoom;
-        drawH *= zoom;
         const drawX = cx - drawW / 2;
-        const drawY = cy - drawH / 2;
+        const drawY = cy - drawH / 2 - 30; // lift slightly so title text has room
         ctx.drawImage(pickupImg, drawX, drawY, drawW, drawH);
 
-        // Vignette over the image so edges fade to black — looks more cinematic
-        // and the title text underneath reads cleanly.
-        const vig = ctx.createRadialGradient(cx, cy, canvasH * 0.2, cx, cy, canvasW * 0.7);
+        // Soft vignette fading image edges into the black backdrop
+        ctx.globalAlpha = alpha;
+        const vig = ctx.createRadialGradient(cx, cy - 30, canvasH * 0.25, cx, cy - 30, canvasW * 0.55);
         vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        vig.addColorStop(0.7, 'rgba(0, 0, 0, 0.35)');
+        vig.addColorStop(0.8, 'rgba(0, 0, 0, 0.25)');
         vig.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
         ctx.fillStyle = vig;
         ctx.fillRect(0, 0, canvasW, canvasH);
     }
 
-    // Title text — positioned in the dark lower band created by the vignette
+    // Step 3: title text at the bottom, always readable against black
     ctx.globalAlpha = alpha * 0.95;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
