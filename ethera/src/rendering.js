@@ -1190,6 +1190,20 @@ function drawDarkness() {
         ctx.fillStyle = filmColor;
         ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.restore();
+        // Pass 4: hard edge vignette — forces screen-edge pixels to pure black
+        // so zone background art (stone walls etc.) can't bleed through at the
+        // canvas boundaries. Same fix as the dungeon darkness path.
+        ctx.save();
+        const _hellEdgeGrad = ctx.createRadialGradient(
+            canvasW / 2, canvasH / 2, canvasH * 0.35,
+            canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.65
+        );
+        _hellEdgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        _hellEdgeGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.4)');
+        _hellEdgeGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+        ctx.fillStyle = _hellEdgeGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        ctx.restore();
         _applyBrightnessPass();
         return;
     }
@@ -1274,6 +1288,22 @@ function drawDarkness() {
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
     ctx.fillStyle = 'rgba(48, 35, 25, 0.25)';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+    ctx.restore();
+    // Pass 3: hard edge vignette — fully black at canvas edges so zone
+    // background art (stone walls in zone_art_1.jpg etc.) can't bleed
+    // through beyond the torch radius. This is the "screen within screen"
+    // fix — users saw the zone art's stone walls at viewport edges and
+    // read it as a second game layered on the real one.
+    ctx.save();
+    const _edgeGrad = ctx.createRadialGradient(
+        canvasW / 2, canvasH / 2, canvasH * 0.35,
+        canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.65
+    );
+    _edgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    _edgeGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.4)');
+    _edgeGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+    ctx.fillStyle = _edgeGrad;
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();
     _applyBrightnessPass();

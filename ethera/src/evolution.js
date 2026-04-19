@@ -697,7 +697,11 @@ function updateTalismanPickup(dt) {
 }
 
 function drawTalismanPickup() {
-    if (!talismanPickupState.active || talismanPickupState.alpha <= 0) return;
+    // DON'T early-return on alpha <= 0 — frame 1 of the pickup has alpha=0
+    // and the modal needs to draw its OPAQUE backdrop even then, otherwise
+    // the canvas shows whatever was there last frame (raw game world → "white
+    // flash" bug). Only return if the state isn't active at all.
+    if (!talismanPickupState.active) return;
 
     const alpha = talismanPickupState.alpha;
     const cx = canvasW / 2;

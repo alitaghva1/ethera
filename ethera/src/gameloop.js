@@ -1810,11 +1810,27 @@ function gameLoop(timestamp) {
         return;
     }
 
-    // Talisman pickup screen — dramatic reveal when talisman is found
+    // Talisman pickup screen — full takeover, NOT an overlay on the running game.
+    // Previously render() was called here so the game world drew behind the modal,
+    // which caused: (1) "dual screen" during the modal's fade-in when the backdrop
+    // was still semi-transparent, (2) a "white flash" on frame 1 when the modal's
+    // alpha was 0 and drawTalismanPickup early-returned, leaving the raw game world
+    // visible. Fix: DON'T render the game world at all during pickup. Clear the
+    // canvas, draw the modal, done. Like zoneTransitionFading.
     if (typeof talismanPickupState !== 'undefined' && talismanPickupState.active) {
         if (typeof updateTalismanPickup === 'function') updateTalismanPickup(dt);
         setPixelCursor('default');
-        render();
+        // Re-apply transform and clear the full buffer to solid black — no
+        // game world underneath, no edges of zone art bleeding through.
+        const dpr = window.devicePixelRatio || 1;
+        ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
         if (typeof drawTalismanPickup === 'function') drawTalismanPickup();
         requestAnimationFrame(gameLoop);
         return;
