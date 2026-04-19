@@ -1078,6 +1078,7 @@ function loadZone(zoneNumber) {
     worldDrops.length = 0;
     worldKeyDrops.length = 0;
     if (typeof clearWavePortal === 'function') clearWavePortal();
+    if (typeof clearDestructibles === 'function') clearDestructibles();
     openedChests.clear();
     pickupTexts.length = 0;
     // Clear zone-duration potion buffs

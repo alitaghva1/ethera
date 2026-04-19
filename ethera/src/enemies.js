@@ -1835,6 +1835,20 @@ function spawnWaveEnemies() {
     wave.phase = 'fighting';
     // Start combat audio pulse (rhythmic sub-bass during active waves)
     if (typeof startCombatPulse === 'function') startCombatPulse();
+    // Wave-start destructibles — breakable props scatter across the arena for
+    // tactical variety and gold/heal rewards. Skipped on boss waves (those get
+    // arena transformation hazards instead, and destructibles can clutter bossfights).
+    const _isBossWaveNow = wave.current >= 0 && (function(){
+        const arr = currentZone === 1 ? WAVES : currentZone === 2 ? ZONE2_WAVES : currentZone === 3 ? ZONE3_WAVES : currentZone === 4 ? ZONE4_WAVES : currentZone === 5 ? ZONE5_WAVES : currentZone === 6 ? ZONE6_WAVES : null;
+        return arr && arr[wave.current] && arr[wave.current].isBossWave;
+    })();
+    if (!_isBossWaveNow && typeof spawnWaveDestructibles === 'function') {
+        spawnWaveDestructibles();
+    }
+    // Boss waves: activate arena transformation (dimmed light + hazard ramp)
+    if (_isBossWaveNow && typeof activateBossArena === 'function') {
+        activateBossArena();
+    }
 
     // Tutorial hints — show once per session at key moments
     // Delayed so they don't stack with wave banners (banner fades over ~3-4s)
@@ -2055,6 +2069,8 @@ function updateWaveSystem(dt) {
                     wave.bannerAlpha = 1;
                     wave.tensionPhase = 0;
                     playSting('waveCleared');
+                    // Deactivate boss arena transformation — hazards stop, light restores
+                    if (typeof deactivateBossArena === 'function') deactivateBossArena();
                     if (typeof Notify !== 'undefined') {
                         Notify.toast(wave.waveKills + ' kills — Boss slain!', { duration: 3, color: '#e8c840', borderColor: '#8a7030' });
                     }
@@ -5144,6 +5160,11 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
 function checkProjectileEnemyHits() {
     for (const p of projectiles) {
         if (p.hit) continue;
+        // Destructibles — breakable scenery, hit before enemy check so props can't
+        // be shadowed by enemies behind them. Piercing projectiles continue through.
+        if (typeof checkProjectileDestructibleHit === 'function') {
+            if (checkProjectileDestructibleHit(p) && p.hit) continue;
+        }
         for (const e of enemies) {
             if (e.state === 'death') continue;
             if (e._ambushHidden) continue; // pit lurker hidden — no collision
@@ -5854,11 +5875,40 @@ function updateGroundHazards(dt) {
 }
 
 // ----- ENVIRONMENTAL HAZARD SPAWNING (zone-specific, during combat) -----
+// --- Boss arena transformation state ---
+// When a boss wave spawns, activateBossArena() flips these on:
+//   - hazard spawn rate 3× faster
+//   - lightRadius dimmed 25%  (read in gameloop / render)
+//   - zones without thematic hazards get a zone-appropriate "danger" hazard
+// deactivateBossArena() reverts on boss death.
+let bossArenaActive = false;
+let _bossArenaLightDim = 1.0; // read by darkness render for dip
+
+function activateBossArena() {
+    bossArenaActive = true;
+    _bossArenaLightDim = 0.75;
+    // Dramatic entrance shake + screen flash
+    if (typeof addScreenShake === 'function') addScreenShake(6, 0.4);
+    if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.25, '#aa3355');
+    // Seed an immediate hazard so the arena feels hostile right away
+    _envHazardTimer = 0;
+}
+
+function deactivateBossArena() {
+    bossArenaActive = false;
+    _bossArenaLightDim = 1.0;
+}
+
 function spawnEnvironmentHazards(dt) {
     if (wave.phase !== 'fighting') return;
     _envHazardTimer -= dt;
     if (_envHazardTimer > 0) return;
-    _envHazardTimer = 8 + Math.random() * 6; // every 8-14 seconds
+    // Base cadence 8-14s; boss-arena mode accelerates to 3-5s.
+    if (bossArenaActive) {
+        _envHazardTimer = 3 + Math.random() * 2;
+    } else {
+        _envHazardTimer = 8 + Math.random() * 6;
+    }
 
     const ms = floorMap.length;
     // Find a random walkable floor tile near player
@@ -5897,6 +5947,16 @@ function spawnEnvironmentHazards(dt) {
             radius: 1.0, damage: 10 + (_isProcedural ? _depth : 0), life: 4.0, maxLife: 4.0,
             tickTimer: 0, damagesEnemies: true,
         });
+    } else if (bossArenaActive) {
+        // Zones 1-3 don't have thematic ambient hazards — during boss fights,
+        // spawn generic "falling debris" void_fissure-style hazards so every
+        // boss arena feels dangerous regardless of biome.
+        groundHazards.push({
+            type: 'void_fissure', row: hr + 0.5, col: hc + 0.5,
+            radius: 0.9, damage: 6, life: 3.5, maxLife: 3.5,
+            tickTimer: 0, damagesEnemies: true,
+        });
+        addScreenShake(2, 0.08);
     }
 }
 

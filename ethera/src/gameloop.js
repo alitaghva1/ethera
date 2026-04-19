@@ -1384,6 +1384,8 @@ function updateGameplay(dt) {
         if (typeof updateEvolutionSurge === 'function') updateEvolutionSurge(dt);
         updateWaveSystem(dt);
         updateEnemies(dt);
+        if (typeof updateDestructibles === 'function') updateDestructibles(dt);
+        if (typeof updateGroundHazards === 'function') updateGroundHazards(dt);
         if (typeof updateEnemySynergies === 'function') updateEnemySynergies(dt);
         checkProjectileEnemyHits();
         updateEnemyProjectiles(dt);
@@ -3685,6 +3687,8 @@ function restartGame() {
     keyItems.length = 0;
     worldKeyDrops.length = 0;
     if (typeof clearWavePortal === 'function') clearWavePortal();
+    if (typeof clearDestructibles === 'function') clearDestructibles();
+    if (typeof deactivateBossArena === 'function') deactivateBossArena();
     zoneTransition = null;
     _townReturnSpawn = false;  // new game spawns inside lobby, not Hamlet entrance
     menuOpen = false;
@@ -4012,6 +4016,16 @@ function render() {
         const eDepth = e.row + e.col;
         const eScore = eDepth * mapSize + e.row;
         spritePool.push({ score: eScore, id: spriteId++, draw: () => drawEnemy(e) });
+    }
+
+    // Destructibles — breakable props, depth-sorted alongside enemies
+    if (typeof destructibles !== 'undefined') {
+        for (const _d of destructibles) {
+            if (_d.hp <= 0) continue;
+            const _dDepth = _d.row + _d.col;
+            const _dScore = _dDepth * mapSize + _d.row - 0.01; // tiny offset so enemies render on top when overlapping
+            spritePool.push({ score: _dScore, id: spriteId++, draw: ((dest) => () => _drawSingleDestructible(dest))(_d) });
+        }
     }
 
     for (const n of npcList) {
@@ -4342,6 +4356,7 @@ function render() {
     if (typeof drawWorldAugmentDrops === 'function') drawWorldAugmentDrops();
     drawWorldKeyDrops();
     if (typeof drawWavePortal === 'function') drawWavePortal();
+    if (typeof drawGroundHazards === 'function') drawGroundHazards();
     drawProjectiles();
     drawTowerBolts();
     drawBossTelegraphs();
