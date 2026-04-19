@@ -68,7 +68,10 @@ function applyWaveModifiers(wave) {
         waveModState.active.push(id);
 
         if (id === 'darkness') {
-            waveModState.darknessLightMult = 0.45;
+            // 0.60 is intentionally less aggressive than "halved" — light combines
+            // multiplicatively with abyss / boss-arena dims, and "half of half" makes
+            // the screen unreadable. Plus the HUD can bleed into the dark edges.
+            waveModState.darknessLightMult = 0.60;
             if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.25, '#223344');
         }
 

@@ -1672,10 +1672,13 @@ function beginNextWave() {
     const combatTrack = musicArray[Math.min(wave.current, musicArray.length - 1)];
     playMusic(combatTrack, 1.5);
 
-    // Roll wave modifier (40% chance on wave 3+, never on boss/expansion waves)
+    // Roll wave modifier (40% chance on wave 3+, never on boss/expansion waves).
+    // Skipped if the wave already has designer-authored modifier tags — those
+    // two systems can collide (e.g. both darkness → lightRadius stacked × 0.5 × 0.45).
     wave.modifier = null;
     wave.modifierTimer = 0;
-    if (w && !w.isBossWave && !w.isExpansionTrigger && wave.current >= 2 && Math.random() < 0.4) {
+    const _hasAuthoredMods = !!(w && w.modifiers && w.modifiers.length > 0);
+    if (w && !w.isBossWave && !w.isExpansionTrigger && wave.current >= 2 && !_hasAuthoredMods && Math.random() < 0.4) {
         wave.modifier = WAVE_MODIFIERS[_WAVE_MOD_KEYS[Math.floor(Math.random() * _WAVE_MOD_KEYS.length)]];
         if (wave.modifier.timerDuration) wave.modifierTimer = wave.modifier.timerDuration;
     }

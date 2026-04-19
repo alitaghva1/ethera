@@ -390,6 +390,9 @@ function drawPanel9Slice(img, x, y, w, h, border, scale) {
 //  OBJECTIVE DISPLAY
 // ============================================================
 function drawObjective() {
+    // Relic HUD renders regardless of whether an objective exists — its own render
+    // path is self-gating. Call it first so even a null objective doesn't hide it.
+    if (typeof drawRelicHUD === 'function' && gamePhase === 'playing') drawRelicHUD();
     if (gamePhase !== 'playing' || !currentObjective) return;
 
     // Reset timer when objective changes
@@ -460,9 +463,8 @@ function drawObjective() {
     }
 
     ctx.restore();
-
-    // Run relic row (top-right) — draws outside the drawObjective save/restore on purpose
-    if (typeof drawRelicHUD === 'function') drawRelicHUD();
+    // drawRelicHUD is now called at the top of this function so it renders even
+    // when currentObjective is null (which would otherwise early-return).
 }
 
 // ============================================================
