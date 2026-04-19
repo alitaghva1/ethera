@@ -819,49 +819,36 @@ const SPAWN_ZONES = [
     { r: 5, c: 17 }, { r: 6, c: 18 },
 ];
 
-// Wave definitions: each wave has a list of enemies and a stat multiplier
+// Wave definitions — ZONE 1 uses a tight 4-wave arc (teach / reveal / twist / boss).
+// Each wave earns its existence. Modifier tags surface as title-card text.
+// dropRelic: true marks the waves that spawn a relic choice on clear (scarcity matters).
 const WAVES = [
-    {
-        enemies: [
-            { type: 'slime', count: 7 },
-        ],
-        statMult: 1.0,
-        title: 'The Dungeon Stirs',
-        // Spawn in Guard Hall — first combat room
-        spawnZone: { rMin: 10, rMax: 19, cMin: 1, cMax: 8 },
-    },
-    {
-        enemies: [
-            { type: 'slime', count: 5 },
-            { type: 'skeleton', count: 4 },
-        ],
-        statMult: 1.15,
-        title: 'The Dead Rise',
-        // Spawn in Great Hall — main arena
-        spawnZone: { rMin: 8, rMax: 20, cMin: 12, cMax: 21 },
-    },
+    // W1 — TEACH: slimes only, low pressure, intro the combat loop.
     {
         enemies: [
             { type: 'slime', count: 6 },
-            { type: 'skeleton', count: 5 },
-            { type: 'skelarch', count: 3 },
         ],
-        statMult: 1.35,
-        title: 'Arrow and Bone',
-        isExpansionTrigger: true,
-        // Spawn in Great Hall
-        spawnZone: { rMin: 8, rMax: 20, cMin: 12, cMax: 21 },
+        statMult: 1.0,
+        title: 'The Dungeon Stirs',
+        modifiers: [],
+        dropRelic: false,
+        spawnZone: { rMin: 10, rMax: 19, cMin: 1, cMax: 8 },
     },
+    // W2 — REVEAL: seal breaks, first skeletons + first archer. Relic drop.
     {
         enemies: [
-            { type: 'skeleton', count: 8 },
-            { type: 'skelarch', count: 4 },
+            { type: 'slime', count: 4 },
+            { type: 'skeleton', count: 5 },
+            { type: 'skelarch', count: 2 },
         ],
-        statMult: 1.5,
-        title: 'The Crypt Opens',
-        // Spawn in Bone Gallery (Act 2)
-        spawnZone: { rMin: 8, rMax: 16, cMin: 23, cMax: 32 },
+        statMult: 1.30,
+        title: 'The Dead Rise',
+        isExpansionTrigger: true,
+        modifiers: [],
+        dropRelic: true,
+        spawnZone: { rMin: 8, rMax: 20, cMin: 12, cMax: 21 },
     },
+    // W3 — TWIST: darkness + bone mage debut. Mixed arena, light crushed.
     {
         enemies: [
             { type: 'slime', count: 3 },
@@ -869,33 +856,24 @@ const WAVES = [
             { type: 'skelarch', count: 4 },
             { type: 'bone_mage', count: 1 },
         ],
-        statMult: 1.65,
-        title: 'The Deep Stirs',
-        // Spawn across Gallery + Crypt area
+        statMult: 1.55,
+        title: 'The Dark Presses In',
+        modifiers: ['darkness'],
+        dropRelic: false,
         spawnZone: { rMin: 2, rMax: 16, cMin: 23, cMax: 33 },
     },
-    {
-        enemies: [
-            { type: 'skeleton', count: 7 },
-            { type: 'skelarch', count: 5 },
-            { type: 'slime', count: 5 },
-            { type: 'bone_mage', count: 2 },
-        ],
-        statMult: 1.8,
-        title: 'The Undercroft\'s Last Stand',
-        // Spawn across Gallery + Crypt area
-        spawnZone: { rMin: 2, rMax: 16, cMin: 23, cMax: 33 },
-    },
+    // W4 — BOSS: Slime King, arena contracts. Relic drop after kill.
     {
         enemies: [
             { type: 'slime_king', count: 1 },
             { type: 'slime', count: 4 },
             { type: 'skeleton', count: 3 },
         ],
-        statMult: 1.9,
+        statMult: 1.85,
         title: 'The Slime King Emerges',
         isBossWave: true,
-        // Spawn in King's Hollow
+        modifiers: [],
+        dropRelic: true,
         spawnZone: { rMin: 20, rMax: 29, cMin: 24, cMax: 31 },
     },
 ];
@@ -1895,6 +1873,22 @@ function updateWaveSystem(dt) {
                 wave.enemiesAlive = 0;
             }
             sfxWaveStart();
+            // Lookup current wave def for modifier / title-card hooks.
+            const _zWaveArrays = { 1: WAVES, 2: ZONE2_WAVES, 3: ZONE3_WAVES, 4: ZONE4_WAVES, 5: ZONE5_WAVES, 6: ZONE6_WAVES };
+            const _wArr = _zWaveArrays[currentZone] || WAVES;
+            const _wDef = _wArr && _wArr[wave.current];
+            // Apply per-wave modifier tags (darkness, funnel, stampede, ...)
+            if (typeof applyWaveModifiers === 'function') applyWaveModifiers(_wDef);
+            // Show the title card: "WAVE N / TOTAL — TITLE — TAG TAG"
+            if (typeof showWaveTitleCard === 'function' && _wDef) {
+                showWaveTitleCard(
+                    wave.current + 1,
+                    _wArr.length,
+                    (_wDef.title || '').toUpperCase(),
+                    _wDef.modifiers || [],
+                    { isBoss: !!_wDef.isBossWave }
+                );
+            }
             // Banner stays for a moment then fades
             wave.timer = 1.5;
         }
@@ -2071,6 +2065,8 @@ function updateWaveSystem(dt) {
                     playSting('waveCleared');
                     // Deactivate boss arena transformation — hazards stop, light restores
                     if (typeof deactivateBossArena === 'function') deactivateBossArena();
+                    // Clear any active modifiers so they don't bleed into the victory scene
+                    if (typeof clearWaveModifiers === 'function') clearWaveModifiers();
                     if (typeof Notify !== 'undefined') {
                         Notify.toast(wave.waveKills + ' kills — Boss slain!', { duration: 3, color: '#e8c840', borderColor: '#8a7030' });
                     }
@@ -2095,7 +2091,9 @@ function updateWaveSystem(dt) {
                         pickupTexts.push({ text: '+' + bossBonus + ' GOLD', color: '#ffd700', row: player.row, col: player.col, offsetY: -20, life: 2.5 });
                         if (typeof sfxGoldPickup === 'function') sfxGoldPickup();
                     }
-                    // Boss-wave relic reward — two choices on boss kills (higher-value moment)
+                    // Boss-wave relic reward — always drops on boss kill regardless of dropRelic
+                    // (boss is the climactic moment, player earned it). The existing stairs-back-to-town
+                    // object is the zone exit — no next-wave portal needed here.
                     if (typeof spawnRelicChoice === 'function') {
                         spawnRelicChoice(player.row, player.col);
                     }
@@ -2145,6 +2143,9 @@ function updateWaveSystem(dt) {
                     wave.bannerAlpha = 1;
                     wave.tensionPhase = 0; // 0=calm, 1=building tension
                     playSting('waveCleared');
+                    // Clear any active wave modifiers (darkness lifts, funnel debris stays
+                    // for atmosphere, etc.) so calm phase feels like release.
+                    if (typeof clearWaveModifiers === 'function') clearWaveModifiers();
                     // Wave modifier rewards
                     if (wave.modifier && wave.modifier.timerDuration && wave.modifierTimer > 0) {
                         // Timed Trial cleared in time — bonus XP
@@ -2176,13 +2177,18 @@ function updateWaveSystem(dt) {
                     if (currentZone === 1 && wave.current === 2 && FormSystem.currentForm === 'slime') {
                         spawnTalismanDrop();
                     }
-                    // Relic choice — three floating power-ups for the player to pick one
-                    if (typeof spawnRelicChoice === 'function' && typeof ZONE_CONFIGS !== 'undefined' && ZONE_CONFIGS[currentZone] && ZONE_CONFIGS[currentZone].hasWaves) {
+                    // Relic choice — gated by wave's dropRelic flag (scarcity makes choices matter).
+                    // Zones that haven't migrated to the flag (2-6 still) default to true for back-compat.
+                    const _dropRelic = (currentWaveDef && typeof currentWaveDef.dropRelic === 'boolean')
+                        ? currentWaveDef.dropRelic
+                        : true;
+                    if (_dropRelic && typeof spawnRelicChoice === 'function' && typeof ZONE_CONFIGS !== 'undefined' && ZONE_CONFIGS[currentZone] && ZONE_CONFIGS[currentZone].hasWaves) {
                         spawnRelicChoice(player.row, player.col);
                     }
-                    // Wave portal — "proceed" door with preview icon of the next wave
+                    // Wave portal — "proceed" door with preview icon of the next wave.
+                    // Pass whether a relic was dropped so portal gates activation until pickup.
                     if (typeof spawnWavePortal === 'function') {
-                        spawnWavePortal(wave.current + 1);
+                        spawnWavePortal(wave.current + 1, _dropRelic);
                     }
 
                     // --- Zone 1 Alcove mini-seal: open Secret Alcove after wave 1 ---
@@ -4593,8 +4599,12 @@ function canEnemyMoveTo(row, col, radius, self) {
 }
 
 // ----- LEVEL-UP SYSTEM HELPERS -----
+// XP per kill scales up to compensate for fewer waves per zone (4 in Zone 1 vs old 7).
+// Tuned so a full-zone clear still levels the player the same amount.
+const XP_WAVE_COMPENSATION_MULT = 1.45;
+
 function grantXP(enemyType, statMult, row, col) {
-    const baseAmount = ENEMY_XP[enemyType] || 5;
+    const baseAmount = (ENEMY_XP[enemyType] || 5) * XP_WAVE_COMPENSATION_MULT;
     // XP scales with sqrt of statMult — harder enemies give more XP but not linearly
     const scaledAmount = baseAmount * Math.sqrt(statMult || 1.0);
     const amount = Math.round(scaledAmount * getTalismanBonus().xpMult * killStreak.multiplier);
@@ -5884,6 +5894,9 @@ function updateGroundHazards(dt) {
 let bossArenaActive = false;
 let _bossArenaLightDim = 1.0; // read by darkness render for dip
 
+// Track hazards that were spawned to contract the boss arena (so we can clean them up)
+let _bossArenaContractionHazards = [];
+
 function activateBossArena() {
     bossArenaActive = true;
     _bossArenaLightDim = 0.75;
@@ -5892,11 +5905,70 @@ function activateBossArena() {
     if (typeof triggerScreenFlash === 'function') triggerScreenFlash(0.25, '#aa3355');
     // Seed an immediate hazard so the arena feels hostile right away
     _envHazardTimer = 0;
+    // Contract the arena: spawn a line of long-lived hazards at the entry to the
+    // boss chamber so the player can't retreat back through the whole dungeon.
+    // Zone-specific corridor mouths. Hazards self-expire on boss kill.
+    _spawnBossArenaContraction();
 }
 
 function deactivateBossArena() {
     bossArenaActive = false;
     _bossArenaLightDim = 1.0;
+    // Clear any arena-contraction hazards we spawned
+    if (typeof groundHazards !== 'undefined') {
+        for (const h of _bossArenaContractionHazards) {
+            const idx = groundHazards.indexOf(h);
+            if (idx >= 0) groundHazards.splice(idx, 1);
+        }
+    }
+    _bossArenaContractionHazards.length = 0;
+}
+
+// Spawn a row of perpetual-ish damage tiles at the mouth of the boss corridor.
+// The effect is "you're locked in here" without needing to mutate the blocked tilemap.
+function _spawnBossArenaContraction() {
+    if (typeof groundHazards === 'undefined') return;
+    _bossArenaContractionHazards.length = 0;
+
+    // Zone-specific corridor positions — where the Act 2 → boss chamber transition is.
+    // Zone 1 boss chamber is King's Hollow (rows 20-29, cols 24-31). The corridor
+    // enters from the northwest, so we block along col 23 rows 20-29.
+    let wallTiles = [];
+    if (currentZone === 1) {
+        for (let r = 18; r <= 30; r++) wallTiles.push({ r, c: 22 });
+    } else if (currentZone === 2 || currentZone === 3 || currentZone === 4 || currentZone === 5 || currentZone === 6) {
+        // Other zones — spawn a ring around the boss position instead. Boss is usually
+        // the only remaining isBoss enemy. Use its position as ring center.
+        let bossR = null, bossC = null;
+        if (typeof enemies !== 'undefined') {
+            for (const e of enemies) {
+                if (e.def && e.def.isBoss && e.hp > 0) { bossR = e.row; bossC = e.col; break; }
+            }
+        }
+        if (bossR != null) {
+            const ringR = 7;
+            for (let a = 0; a < 16; a++) {
+                const ang = (a / 16) * Math.PI * 2;
+                wallTiles.push({ r: Math.round(bossR + Math.cos(ang) * ringR), c: Math.round(bossC + Math.sin(ang) * ringR) });
+            }
+        }
+    }
+
+    // Place the hazards (skip blocked / out-of-bounds tiles so we don't overlap walls)
+    const ms = typeof floorMap !== 'undefined' ? floorMap.length : 0;
+    for (const t of wallTiles) {
+        if (t.r < 0 || t.c < 0 || t.r >= ms || t.c >= ms) continue;
+        if (typeof blocked !== 'undefined' && blocked[t.r] && blocked[t.r][t.c]) continue;
+        if (typeof floorMap !== 'undefined' && floorMap[t.r] && !floorMap[t.r][t.c]) continue;
+        const haz = {
+            type: 'void_fissure',
+            row: t.r + 0.5, col: t.c + 0.5,
+            radius: 0.7, damage: 12, life: 300, maxLife: 300, // long-lived; cleared on boss death
+            tickTimer: 0, damagesEnemies: false,             // don't hurt the boss
+        };
+        groundHazards.push(haz);
+        _bossArenaContractionHazards.push(haz);
+    }
 }
 
 function spawnEnvironmentHazards(dt) {

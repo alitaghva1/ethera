@@ -29,10 +29,11 @@ const wavePortal = {
     iconType: 'sword',  // 'skull' | 'bow' | 'sword'
     nextWaveNum: 0,
     nextWaveTotal: 0,
+    needsRelic: false,  // gate: portal dim until relic drops are picked up
     _triggered: false,
 };
 
-function spawnWavePortal(nextWaveIdx) {
+function spawnWavePortal(nextWaveIdx, needsRelic) {
     if (typeof player === 'undefined') return;
 
     // Determine icon based on next wave composition
@@ -96,6 +97,7 @@ function spawnWavePortal(nextWaveIdx) {
     wavePortal.iconType = icon;
     wavePortal.nextWaveNum = nextWaveIdx + 1;
     wavePortal.nextWaveTotal = totalWaves || nextWaveIdx + 1;
+    wavePortal.needsRelic = !!needsRelic;
     wavePortal._triggered = false;
 }
 
@@ -110,6 +112,13 @@ function updateWavePortal(dt) {
     if (wavePortal.spawnTime > 0) wavePortal.spawnTime -= dt;
     if (wavePortal._triggered) return;
     if (typeof player === 'undefined') return;
+    // Re-check needsRelic status: once all relic drops are picked up, activate.
+    if (wavePortal.needsRelic && typeof worldKeyDrops !== 'undefined') {
+        const stillHasRelic = worldKeyDrops.some(d => d.id === 'relic');
+        if (!stillHasRelic) wavePortal.needsRelic = false;
+    }
+    // Dormant while relic is still on the ground — forces player to claim their reward.
+    if (wavePortal.needsRelic) return;
     // Player proximity: step through portal to skip cleared phase
     const dr = wavePortal.row - player.row;
     const dc = wavePortal.col - player.col;
@@ -142,7 +151,9 @@ function drawWavePortal() {
                     :                                   '#ccaa88';
 
     ctx.save();
-    ctx.globalAlpha = fadeIn;
+    // Dormant state (waiting for relic pickup) — portal dims to 40% and stops pulsing hard.
+    const dormantMult = wavePortal.needsRelic ? 0.4 : 1.0;
+    ctx.globalAlpha = fadeIn * dormantMult;
 
     // Ground disc — large pulsing glow
     ctx.globalCompositeOperation = 'screen';

@@ -49,7 +49,7 @@
         // Dynamically load all game modules with cache-busting version param.
         // This avoids stale caches after Electron auto-updates.
         (function() {
-            var v = '1.12.0'; // must match ETHERA_VERSION in config.js
+            var v = '1.13.0'; // must match ETHERA_VERSION in config.js
             var modules = [
                 // Core: config, constants, globals
                 'src/config.js',
@@ -87,6 +87,10 @@
                 'src/waveportal.js',
                 // Destructibles — breakable props that drop gold/heal
                 'src/destructibles.js',
+                // Wave modifiers — closed vocabulary of per-wave tags
+                'src/wavemodifiers.js',
+                // Wave title card — legible wave identity at start
+                'src/wavetitlecard.js',
                 // Particles
                 'src/particles.js',
                 // Coordinate helpers

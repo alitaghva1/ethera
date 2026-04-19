@@ -1079,6 +1079,9 @@ function loadZone(zoneNumber) {
     worldKeyDrops.length = 0;
     if (typeof clearWavePortal === 'function') clearWavePortal();
     if (typeof clearDestructibles === 'function') clearDestructibles();
+    if (typeof clearWaveModifiers === 'function') clearWaveModifiers();
+    if (typeof hideWaveTitleCard === 'function') hideWaveTitleCard();
+    if (typeof deactivateBossArena === 'function') deactivateBossArena();
     openedChests.clear();
     pickupTexts.length = 0;
     // Clear zone-duration potion buffs

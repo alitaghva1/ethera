@@ -1386,6 +1386,8 @@ function updateGameplay(dt) {
         updateEnemies(dt);
         if (typeof updateDestructibles === 'function') updateDestructibles(dt);
         if (typeof updateGroundHazards === 'function') updateGroundHazards(dt);
+        if (typeof updateWaveModifiers === 'function') updateWaveModifiers(dt);
+        if (typeof updateWaveTitleCard === 'function') updateWaveTitleCard(dt);
         if (typeof updateEnemySynergies === 'function') updateEnemySynergies(dt);
         checkProjectileEnemyHits();
         updateEnemyProjectiles(dt);
@@ -3689,6 +3691,8 @@ function restartGame() {
     if (typeof clearWavePortal === 'function') clearWavePortal();
     if (typeof clearDestructibles === 'function') clearDestructibles();
     if (typeof deactivateBossArena === 'function') deactivateBossArena();
+    if (typeof clearWaveModifiers === 'function') clearWaveModifiers();
+    if (typeof hideWaveTitleCard === 'function') hideWaveTitleCard();
     zoneTransition = null;
     _townReturnSpawn = false;  // new game spawns inside lobby, not Hamlet entrance
     menuOpen = false;
@@ -4637,6 +4641,9 @@ function render() {
         if (typeof drawKillStreakHUD === 'function') drawKillStreakHUD();
         if (typeof drawPotionHUD === 'function') drawPotionHUD();
         drawBossHealthBar();
+        // Per-wave modifier row under objective + big title card overlay
+        if (typeof drawWaveModifierOverlay === 'function') drawWaveModifierOverlay();
+        if (typeof drawWaveTitleCard === 'function') drawWaveTitleCard();
 
         // Placement preview (above HUD, below crosshair)
         drawPlacementPreview();

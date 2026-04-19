@@ -1122,7 +1122,8 @@ function drawDarkness() {
         const _abyssLightMult = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
             ? getAbyssModMult('lightMult', 1) : 1;
         const _bossDim = (typeof _bossArenaLightDim !== 'undefined') ? _bossArenaLightDim : 1;
-        const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult * _bossDim);
+        const _darkMod = (typeof waveModState !== 'undefined') ? (waveModState.darknessLightMult || 1) : 1;
+        const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult * _bossDim * _darkMod);
 
         // Zone-specific hell lighting colors
         // Nebula is now drawn AFTER darkness with screen blend + void clip,
@@ -1250,7 +1251,8 @@ function drawDarkness() {
     const _abyssLightMult2 = (typeof getAbyssModMult === 'function' && typeof currentZone !== 'undefined' && currentZone >= 100)
         ? getAbyssModMult('lightMult', 1) : 1;
     const _bossDim2 = (typeof _bossArenaLightDim !== 'undefined') ? _bossArenaLightDim : 1;
-    const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult2 * _bossDim2);
+    const _darkMod2 = (typeof waveModState !== 'undefined') ? (waveModState.darknessLightMult || 1) : 1;
+    const radius = Math.max(5, (lightRadius + flicker) * _abyssLightMult2 * _bossDim2 * _darkMod2);
 
     // Pass 1: radial torch light (cached — only recreated when position/radius shift >2px)
     const _torchStops = [[0, 'rgba(210, 185, 135, 1)'], [0.25, 'rgba(180, 145, 95, 1)'],
