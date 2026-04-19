@@ -434,23 +434,29 @@ function drawProjectiles() {
 }
 
 function drawImpact(px, py, p) {
-    const frac = Math.max(0, p.life / 0.3);
+    // CRITICAL: clamp frac to [0,1]. Projectiles hitting point-blank (e.g., a
+    // destructible spawned right in front of the player) mark p.hit=true while
+    // p.life is still near max. Without the upper clamp, frac > 1 drives the
+    // "fire burst" radius formula negative, which makes createRadialGradient
+    // throw mid-frame and leaks ctx state → HUD disappears on the next frame.
+    const frac = Math.max(0, Math.min(1, p.life / 0.3));
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
 
-    // Ground fire flash
+    // Ground fire flash (radius always >= 0 because frac clamped)
     const groundR = 60;
-    const gndGrad = ctx.createRadialGradient(px, py + 4, 0, px, py + 4, groundR * frac);
+    const groundRFrac = Math.max(0.001, groundR * frac); // never pass 0 to gradient either
+    const gndGrad = ctx.createRadialGradient(px, py + 4, 0, px, py + 4, groundRFrac);
     gndGrad.addColorStop(0, `rgba(255, 200, 60, ${0.5 * frac})`);
     gndGrad.addColorStop(0.4, `rgba(255, 100, 20, ${0.3 * frac})`);
     gndGrad.addColorStop(1, 'rgba(120, 30, 0, 0)');
     ctx.fillStyle = gndGrad;
     ctx.beginPath();
-    ctx.ellipse(px, py + 4, groundR * frac, groundR * frac * 0.45, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, py + 4, groundRFrac, groundRFrac * 0.45, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Fire burst
-    const r = (1 - frac) * 45 + 10;
+    // Fire burst — r always >= 10 (base) because frac ≤ 1
+    const r = Math.max(1, (1 - frac) * 45 + 10);
     const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
     grad.addColorStop(0, `rgba(255, 240, 180, ${0.85 * frac})`);
     grad.addColorStop(0.25, `rgba(255, 160, 40, ${0.6 * frac})`);
@@ -461,9 +467,9 @@ function drawImpact(px, py, p) {
 
     // Expanding fire ring
     ctx.strokeStyle = `rgba(255, 140, 30, ${0.5 * frac})`;
-    ctx.lineWidth = 2.5 * frac;
+    ctx.lineWidth = Math.max(0.1, 2.5 * frac);
     ctx.beginPath();
-    ctx.arc(px, py, r * 0.7, 0, Math.PI * 2);
+    ctx.arc(px, py, Math.max(0.1, r * 0.7), 0, Math.PI * 2);
     ctx.stroke();
 
     // Ember scatter
