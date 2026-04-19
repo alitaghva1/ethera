@@ -3928,7 +3928,16 @@ function render() {
     } else {
         ctx.fillStyle = '#120e0a';
     }
-    ctx.fillRect(0, 0, canvasW, canvasH);
+    // CRITICAL: clear the FULL canvas buffer in raw pixel coordinates — not just
+    // the virtual canvasW/canvasH area. When displayScale × DPR causes the physical
+    // buffer to exceed the virtual bounds (ultrawide monitors, DPR changes, window
+    // resize races), edge pixels never get cleared — old frame content stays visible
+    // at screen edges. That's the "stone-brick frame / dual HUD at edges" artifact
+    // users were reporting.
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset to raw pixel coords for the clear
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
 
     // Pre-menu: dark screen with pulsing "click anywhere to begin"
     if (gamePhase === 'preMenu') {
