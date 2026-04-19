@@ -1194,12 +1194,16 @@ function drawDarkness() {
         // so zone background art (stone walls etc.) can't bleed through at the
         // canvas boundaries. Same fix as the dungeon darkness path.
         ctx.save();
+        // Same fix as the dungeon vignette — tighter stops so canvas corners are
+        // fully opaque and zone art can't bleed through. See rendering.js dungeon
+        // path for the full rationale.
         const _hellEdgeGrad = ctx.createRadialGradient(
             canvasW / 2, canvasH / 2, canvasH * 0.35,
             canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.65
         );
         _hellEdgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        _hellEdgeGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.4)');
+        _hellEdgeGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.5)');
+        _hellEdgeGrad.addColorStop(0.8, 'rgba(0, 0, 0, 1)');
         _hellEdgeGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
         ctx.fillStyle = _hellEdgeGrad;
         ctx.fillRect(0, 0, canvasW, canvasH);
@@ -1296,12 +1300,19 @@ function drawDarkness() {
     // fix — users saw the zone art's stone walls at viewport edges and
     // read it as a second game layered on the real one.
     ctx.save();
+    // Stops tuned so corners are FULLY opaque at every reasonable aspect ratio.
+    // Previous stops (0.7 @ 0.4, 1.0 @ 1.0) left canvas corners at ~76% opacity —
+    // zone_art_*.jpg stone walls bled through and users read it as a second
+    // viewport layered on the real one ("screen within a screen" on Wave 2+).
+    // Full-black reaches position 0.80 now, which covers the corner distance for
+    // 16:9 through 32:9 aspect ratios.
     const _edgeGrad = ctx.createRadialGradient(
         canvasW / 2, canvasH / 2, canvasH * 0.35,
         canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.65
     );
     _edgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    _edgeGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.4)');
+    _edgeGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.5)');
+    _edgeGrad.addColorStop(0.8, 'rgba(0, 0, 0, 1)');
     _edgeGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
     ctx.fillStyle = _edgeGrad;
     ctx.fillRect(0, 0, canvasW, canvasH);
