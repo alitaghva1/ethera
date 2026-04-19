@@ -661,6 +661,15 @@ let talismanPickupState = {
 
 function triggerTalismanPickup() {
     if (talismanPickupState.active) return;
+    // Diagnostic: if the cinematic image isn't loaded, surface it to devtools once.
+    // Users reported "the game tries and fails to make [the cinematic] happen" —
+    // most likely cause is images.talisman_pickup never resolved. This breadcrumb
+    // + the procedural fallback in drawTalismanPickup() turn a silent failure
+    // into a visible-but-diagnosable one.
+    if (typeof images === 'undefined' || !images.talisman_pickup ||
+        !images.talisman_pickup.width || !images.talisman_pickup.height) {
+        console.warn('[talisman] talisman_pickup.jpg not available — cinematic falling back to procedural visual. Check assets/talisman_pickup.jpg load status in devtools Network tab, and window.failedAssets for details.');
+    }
     talismanPickupState.active = true;
     talismanPickupState.timer = 0;
     talismanPickupState.alpha = 0;
@@ -724,7 +733,11 @@ function drawTalismanPickup() {
     // with black bars as needed (no cropping of the slime + talisman). The
     // image fades in via `alpha` while the black backdrop stays solid.
     const pickupImg = images.talisman_pickup;
-    if (pickupImg) {
+    // Validate: image must exist AND have non-zero dimensions. A partially-decoded
+    // or errored Image() can still slot into images.talisman_pickup in edge cases;
+    // checking width/height is a cheap guarantee we have a drawable.
+    const hasValidImg = pickupImg && pickupImg.width > 0 && pickupImg.height > 0;
+    if (hasValidImg) {
         ctx.globalAlpha = alpha;
         const imgAspect = pickupImg.width / pickupImg.height;
         const canvasAspect = canvasW / canvasH;
@@ -750,6 +763,73 @@ function drawTalismanPickup() {
         vig.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
         ctx.fillStyle = vig;
         ctx.fillRect(0, 0, canvasW, canvasH);
+    } else {
+        // Procedural fallback — when talisman_pickup.jpg fails to load we used to
+        // render JUST text on a black canvas ("tries and fails to make it happen").
+        // This draws a dramatic gold-diamond cinematic so the moment still lands.
+        // (If you see this in normal play, check the console.warn from
+        // triggerTalismanPickup() and fix the underlying asset-load issue.)
+        const fbY = cy - 60; // lift slightly so title text has room below
+        const diamondR = Math.min(canvasW, canvasH) * 0.18;
+        const t2 = t * 0.8;
+
+        // Outer glow — soft wide radial, builds atmosphere around the diamond
+        ctx.globalAlpha = alpha;
+        const glowR = diamondR * 4;
+        const glow = ctx.createRadialGradient(cx, fbY, 0, cx, fbY, glowR);
+        glow.addColorStop(0, 'rgba(120, 230, 110, 0.35)');
+        glow.addColorStop(0.35, 'rgba(232, 200, 64, 0.18)');
+        glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(cx - glowR, fbY - glowR, glowR * 2, glowR * 2);
+
+        // Inner halo — pulsing tight gold ring right around the diamond
+        const haloPulse = 0.7 + Math.sin(t2 * 3) * 0.15;
+        ctx.globalAlpha = alpha * haloPulse;
+        const halo = ctx.createRadialGradient(cx, fbY, diamondR * 0.8, cx, fbY, diamondR * 2.2);
+        halo.addColorStop(0, 'rgba(255, 230, 120, 0.7)');
+        halo.addColorStop(1, 'rgba(200, 180, 60, 0)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(cx - diamondR * 3, fbY - diamondR * 3, diamondR * 6, diamondR * 6);
+
+        // Orbiting motes — 8 particles tracing an ellipse around the diamond
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.fillStyle = '#fff8b0';
+        for (let i = 0; i < 8; i++) {
+            const pa = (i / 8) * Math.PI * 2 + t2 * 0.7;
+            const pr = diamondR * (1.6 + Math.sin(t2 * 2 + i) * 0.2);
+            const ppx = cx + Math.cos(pa) * pr;
+            const ppy = fbY + Math.sin(pa) * pr * 0.7; // elliptical, not round
+            const pSize = 3 + Math.sin(t2 * 4 + i) * 1.5;
+            ctx.beginPath();
+            ctx.arc(ppx, ppy, Math.max(0.5, pSize), 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Main diamond — elongated vertical gem, classic talisman silhouette
+        ctx.globalAlpha = alpha;
+        ctx.shadowColor = 'rgba(232, 200, 64, 0.9)';
+        ctx.shadowBlur = 40;
+        ctx.fillStyle = '#e8c840';
+        ctx.beginPath();
+        ctx.moveTo(cx, fbY - diamondR);
+        ctx.lineTo(cx + diamondR * 0.7, fbY);
+        ctx.lineTo(cx, fbY + diamondR);
+        ctx.lineTo(cx - diamondR * 0.7, fbY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Diamond inner highlight — lighter facet suggesting refraction
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.fillStyle = '#fff6c0';
+        ctx.beginPath();
+        ctx.moveTo(cx, fbY - diamondR * 0.5);
+        ctx.lineTo(cx + diamondR * 0.25, fbY);
+        ctx.lineTo(cx, fbY + diamondR * 0.3);
+        ctx.lineTo(cx - diamondR * 0.25, fbY);
+        ctx.closePath();
+        ctx.fill();
     }
 
     // Step 3: title text at the bottom, always readable against black
