@@ -380,7 +380,8 @@ function updateSlime(dt) {
                 form: 'slime', alpha: 0.3, life: 0.25,
             });
         }
-        const jumpT = 1 - (slimeState.bounceJumpTimer / 0.5);
+        // Divisor must match initial bounceJumpTimer below (0.35) or the arc will desync.
+        const jumpT = 1 - (slimeState.bounceJumpTimer / 0.35);
         slimeState.bounceJumpHeight = Math.sin(jumpT * Math.PI) * (20 + slimeState.size * 5);
         // Move in jump direction (with wall collision + sub-stepping)
         const jumpSpd = 6 * dt;
@@ -409,7 +410,9 @@ function updateSlime(dt) {
             // Landing damage
             if (!slimeState.landingDamageDealt) {
                 slimeState.landingDamageDealt = true;
-                const landDmg = (8 + slimeState.size * 6) * (1 + getUpgrade('elastic_body') * 0.3);
+                // Halved size-scaling (was 8 + size*6). At high sizes the old formula turned
+                // bounce-spam into a one-shot AoE; base is preserved so early-game still feels punchy.
+                const landDmg = (8 + slimeState.size * 3) * (1 + getUpgrade('elastic_body') * 0.3);
                 const landRadius = 1.2 + slimeState.size * 0.3;
                 for (const e of enemies) {
                     if (e.state === 'death') continue;
@@ -1295,10 +1298,14 @@ formHandlers.slime.onDodge = function() {
         return;
     }
     slimeState.bounceJumping = true;
-    slimeState.bounceJumpTimer = 0.5;
+    // Shortened from 0.5 — previous duration gave ~47% i-frame uptime per bounce cycle.
+    // If you change this, also update the `/ 0.35` divisor in the jump-arc math above
+    // and the `> 0.175` ascent gate in damagePlayer().
+    slimeState.bounceJumpTimer = 0.35;
     slimeState.bounceJumpHeight = 0;
     slimeState.landingDamageDealt = false;
-    player.dodgeCoolTimer = DODGE_COOLDOWN * 0.8; // slightly shorter cooldown for slime
+    // Removed the 0.8x discount — slime no longer gets a shorter dodge cooldown than other forms.
+    player.dodgeCoolTimer = DODGE_COOLDOWN;
     player.parryTimer = PARRY_WINDOW; // parry active for first frames of bounce
 
     // === LAUNCH SQUISH — compress hard then stretch tall ===

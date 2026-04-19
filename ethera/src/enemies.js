@@ -5,16 +5,16 @@
 const ENEMY_TYPES = {
     slime: {
         prefix: 'slime',
-        hp: 30, speed: 2.0, damage: 10, attackRange: 0.7, aggroRange: 12,
+        hp: 40, speed: 2.4, damage: 14, attackRange: 0.8, aggroRange: 12,
         hitboxR: 0.25,
         frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
-        animSpeed: 8, attackDur: 0.4, attackCooldown: 0.8,
+        animSpeed: 8, attackDur: 0.4, attackCooldown: 0.75,
         scale: 1.4, yOff: 0.75,
         ai: 'lunge',
-        lungeRange: 3.5,    // starts lunge when this close
-        lungeCooldown: 2.0, // seconds between lunges
-        lungeSpeed: 5.0,    // speed during lunge
-        lungeDur: 0.25,     // lunge duration
+        lungeRange: 4.2,    // starts lunge when this close — wider so kiting doesn't avoid it
+        lungeCooldown: 1.3, // seconds between lunges — was 2.0, too passive
+        lungeSpeed: 6.0,    // speed during lunge
+        lungeDur: 0.28,     // lunge duration — slight bump to cover real distance
         patrolRange: 0.5,  // barely moves when idle — just bobs in place
         retreatOnHit: 0,
         tintColor: COLORS.SLIME_TINT,
@@ -77,27 +77,27 @@ const ENEMY_TYPES = {
     // --- ZONE 1 BOSS: Slime King ---
     slime_king: {
         prefix: 'slime',  // classic slime sprite for Zone 1 boss
-        hp: 200, speed: 1.6, damage: 16, attackRange: 1.2, aggroRange: 12,
+        hp: 260, speed: 1.8, damage: 20, attackRange: 1.3, aggroRange: 14,
         hitboxR: 0.45,
         frames: { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
-        animSpeed: 6, attackDur: 0.5, attackCooldown: 1.8,
+        animSpeed: 6, attackDur: 0.5, attackCooldown: 1.5,
         scale: 2.8, yOff: 0.75,
         ai: 'lunge',
-        lungeRange: 4.0,
-        lungeCooldown: 2.5,
-        lungeSpeed: 4.5,
-        lungeDur: 0.3,
+        lungeRange: 5.0,
+        lungeCooldown: 2.0,
+        lungeSpeed: 5.0,
+        lungeDur: 0.32,
         patrolRange: 3.0,
         retreatOnHit: 0,
         isBoss: true,
         knockbackResist: 0.6,
         tintColor: COLORS.SLIME_KING_TINT,
         // Boss abilities
-        slamCooldown: 6.0,    // ground slam AoE cooldown
-        slamRadius: 2.5,      // AoE range
-        slamDamage: 20,       // base slam damage
-        summonCooldown: 10.0, // summons slime adds
-        summonCount: 3,       // slimes per summon
+        slamCooldown: 3.5,    // ground slam AoE cooldown — was 6.0, too infrequent
+        slamRadius: 3.0,      // AoE range — was 2.5
+        slamDamage: 22,       // base slam damage — was 20
+        summonCooldown: 7.0,  // summons slime adds — was 10, too passive
+        summonCount: 2,       // slimes per summon — was 3, now smaller but more frequent
     },
     // --- ZONE 4 MID-BOSS: Demon Slime King (Inferno variant) ---
     demon_slime_king: {
@@ -3442,7 +3442,11 @@ function updateEnemies(dt) {
 
                 if (atk === 'slime_slam') {
                     const slamDmg = Math.round(e.def.slamDamage * (e.bossPhase === 1 ? 1.3 : 1.0));
-                    bossAoE(e.row, e.col, e.def.slamRadius, slamDmg, 16, '#88ee44', 5, 'slime_king');
+                    // Fire at the stored telegraph anchor (player position at telegraph start),
+                    // NOT the boss's current position — matches the warning circle the player saw.
+                    const slamR = (typeof e._telegraphRow === 'number') ? e._telegraphRow : e.row;
+                    const slamC = (typeof e._telegraphCol === 'number') ? e._telegraphCol : e.col;
+                    bossAoE(slamR, slamC, e.def.slamRadius, slamDmg, 16, '#88ee44', 5, 'slime_king');
                     e.howlPaused = 0.4;
                     e.state = 'attack'; e.animFrame = 0; e.attackTimer = 0.4; e.attackFired = true;
                     // Screen edge flash on attack fire
@@ -3798,19 +3802,22 @@ function updateEnemies(dt) {
         // SLIME KING ABILITIES
         // =====================================================
         if ((e.type === 'slime_king' || e.type === 'demon_slime_king') && dist < e.def.aggroRange) {
-            // Ground Slam — start telegraph, then AoE fires when telegraph ends
-            if (e.bossSlamTimer <= 0 && dist < e.def.slamRadius + 1 && !e._telegraphing) {
+            // Ground Slam — start telegraph, then AoE fires at the TELEGRAPH anchor (not boss's current position)
+            // Trigger range widened so kiters can't sit just past melee and avoid slam entirely.
+            if (e.bossSlamTimer <= 0 && dist < e.def.slamRadius + 4 && !e._telegraphing) {
                 e.bossSlamTimer = e.def.slamCooldown * (e.bossPhase === 1 ? 0.7 : 1.0);
-                // Start telegraph instead of instant attack
-                const telegraphDur = e.bossPhase === 1 ? 0.8 : 1.0;
+                // Tighter telegraph — was 0.8/1.0, too generous; player could stroll out.
+                const telegraphDur = e.bossPhase === 1 ? 0.55 : 0.75;
                 e._telegraphing = true;
                 e._telegraphTimer = telegraphDur;
                 e._telegraphDuration = telegraphDur;
                 e._telegraphType = 'circle';
                 e._telegraphColor = '#ff4444';
                 e._telegraphRadius = e.def.slamRadius;
-                e._telegraphRow = e.row;
-                e._telegraphCol = e.col;
+                // Anchor the slam at the PLAYER's position at telegraph start, not the boss's.
+                // This prevents the "stay 4+ tiles away and the slam never touches me" exploit.
+                e._telegraphRow = player.row;
+                e._telegraphCol = player.col;
                 e._telegraphAttack = 'slime_slam';
                 sfxBossTelegraph(e.row, e.col);
                 continue;
@@ -4947,7 +4954,11 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
     }
     if (player.dodging) return; // immune during phase jump
     if (typeof skeletonState !== 'undefined' && skeletonState.rolling) return;
-    if (typeof slimeState !== 'undefined' && slimeState.bounceJumping) return;
+    // Slime bounce-jump used to grant BLANKET immunity for the entire 0.5s airtime, which
+    // combined with the short dodge cooldown made the player practically unkillable by spam-bouncing.
+    // Now: i-frames only apply during the ASCENT half of the jump. Landing leaves you exposed.
+    // (Parry window at the start still deflects — that's the reward for timing.)
+    if (typeof slimeState !== 'undefined' && slimeState.bounceJumping && slimeState.bounceJumpTimer > 0.175) return;
     if (playerInvTimer > 0) return;
     // Skeleton shield reduces damage by 70%
     if (FormSystem.currentForm === 'skeleton' && typeof skeletonState !== 'undefined' && skeletonState.shieldUp) {
