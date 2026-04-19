@@ -137,6 +137,21 @@ function spawnRelicChoice(row, col) {
     }
 }
 
+// Spawn a single relic drop at a point (for elite kill rewards — no choice, just grab it).
+function spawnSingleRelic(row, col) {
+    if (typeof worldKeyDrops === 'undefined') return;
+    const picks = pickRandomRelicIds(1);
+    if (picks.length === 0) return;
+    worldKeyDrops.push({
+        row, col,
+        id: 'relic',
+        relicId: picks[0],
+        choiceGroup: _relicChoiceCounter++, // unique group — not part of any 3-choice
+        bobTime: Math.random() * 10,
+        spawnTime: 0.5,
+    });
+}
+
 // Pick N relic ids weighted by rarity, without duplicates in the same choice.
 function pickRandomRelicIds(n) {
     const pool = [];

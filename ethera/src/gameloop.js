@@ -1445,6 +1445,7 @@ function updateGameplay(dt) {
         }
         updateWorldKeyDrops(dt);
         tryPickupKeyDrops();
+        if (typeof updateWavePortal === 'function') updateWavePortal(dt);
     }
     updateParticles(dt);
     updateEffectParticles(dt);
@@ -3683,6 +3684,7 @@ function restartGame() {
     openedChests.clear();
     keyItems.length = 0;
     worldKeyDrops.length = 0;
+    if (typeof clearWavePortal === 'function') clearWavePortal();
     zoneTransition = null;
     _townReturnSpawn = false;  // new game spawns inside lobby, not Hamlet entrance
     menuOpen = false;
@@ -4339,6 +4341,7 @@ function render() {
     drawWorldDrops();
     if (typeof drawWorldAugmentDrops === 'function') drawWorldAugmentDrops();
     drawWorldKeyDrops();
+    if (typeof drawWavePortal === 'function') drawWavePortal();
     drawProjectiles();
     drawTowerBolts();
     drawBossTelegraphs();

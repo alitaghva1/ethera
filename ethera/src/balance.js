@@ -57,9 +57,9 @@ const ALERT_RADIUS = 7;                     // tiles — when one enemy aggros, 
 const ALERT_STUCK_DISENGAGE = 5.0;          // seconds — stuck enemies give up instead of warping
 
 // --- Elite Modifier System (Zone 2+) ---
-const ELITE_BASE_CHANCE = 0.05;             // 5% base elite spawn chance (zone 2)
-const ELITE_MAX_CHANCE = 0.25;              // Cap at 25% elite chance
-const ELITE_CHANCE_PER_ZONE = 0.05;         // +5% per zone above zone 2
+const ELITE_BASE_CHANCE = 0.12;             // 12% base elite spawn chance (zone 2) — Hades-style sub-boss moments
+const ELITE_MAX_CHANCE = 0.30;              // Cap at 30% elite chance
+const ELITE_CHANCE_PER_ZONE = 0.04;         // +4% per zone above zone 2
 const ELITE_SWIFT_SPEED_MULT = 1.5;         // Swift elite: speed multiplier
 const ELITE_SWIFT_SCALE_MULT = 0.9;         // Swift elite: slightly smaller
 const ELITE_VAMPIRIC_DAMAGE_MULT = 0.85;    // Vampiric elite: reduced damage

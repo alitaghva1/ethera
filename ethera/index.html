@@ -49,7 +49,7 @@
         // Dynamically load all game modules with cache-busting version param.
         // This avoids stale caches after Electron auto-updates.
         (function() {
-            var v = '1.10.0'; // must match ETHERA_VERSION in config.js
+            var v = '1.11.0'; // must match ETHERA_VERSION in config.js
             var modules = [
                 // Core: config, constants, globals
                 'src/config.js',
@@ -83,6 +83,8 @@
                 'src/balance.js',
                 // Relics — between-wave run power-ups (must load before enemies.js, ui.js)
                 'src/relics.js',
+                // Wave portal — Hades-style between-wave "proceed" door
+                'src/waveportal.js',
                 // Particles
                 'src/particles.js',
                 // Coordinate helpers

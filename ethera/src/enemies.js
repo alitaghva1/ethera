@@ -1571,6 +1571,8 @@ function beginNextWave() {
     wave.current++;
     wave.waveKills = 0; // reset per-wave kill counter
     wave._lastDamageTime = null; // reset stall tracker
+    // Clean up the cleared-phase portal (player has moved on)
+    if (typeof clearWavePortal === 'function') clearWavePortal();
     // Restore full light at wave start (tension effect dims it between waves)
     lightRadius = MAX_LIGHT;
     // Augment: Rune of the Deathless — reset undying resolve between waves
@@ -1801,6 +1803,7 @@ function spawnWaveEnemies() {
 
     // Stagger attack cooldowns by type so enemies don't all fire at once
     const typeIndex = {}; // track spawn index per type for stagger offset
+    const _spawnedThisWave = [];
     for (let i = 0; i < toSpawn.length; i++) {
         const zone = useZones[i % useZones.length];
         const offR = (Math.random() - 0.5) * 0.4;
@@ -1809,7 +1812,23 @@ function spawnWaveEnemies() {
         typeIndex[type] = (typeIndex[type] || 0) + 1;
         const e = spawnEnemy(type, zone.r + offR, zone.c + offC, mult);
         // Stagger: each enemy of same type gets a different initial cooldown window
-        if (e) e.attackCooldown = ENEMY_STAGGER_COOLDOWN * typeIndex[type] + Math.random() * ENEMY_STAGGER_VARIANCE;
+        if (e) {
+            e.attackCooldown = ENEMY_STAGGER_COOLDOWN * typeIndex[type] + Math.random() * ENEMY_STAGGER_VARIANCE;
+            _spawnedThisWave.push(e);
+        }
+    }
+
+    // Guarantee at least 1 elite per wave from zone 2+ (Hades-style sub-boss moments).
+    // If no enemy rolled elite, promote a random non-boss spawned enemy.
+    if (currentZone >= 2 && _spawnedThisWave.length > 0) {
+        const hasElite = _spawnedThisWave.some(e => e && e.elite);
+        if (!hasElite) {
+            const candidates = _spawnedThisWave.filter(e => e && !e.def.isBoss);
+            if (candidates.length > 0) {
+                const promo = candidates[Math.floor(Math.random() * candidates.length)];
+                if (typeof promoteToElite === 'function') promoteToElite(promo);
+            }
+        }
     }
 
     wave.enemiesAlive = toSpawn.length;
@@ -2144,6 +2163,10 @@ function updateWaveSystem(dt) {
                     // Relic choice — three floating power-ups for the player to pick one
                     if (typeof spawnRelicChoice === 'function' && typeof ZONE_CONFIGS !== 'undefined' && ZONE_CONFIGS[currentZone] && ZONE_CONFIGS[currentZone].hasWaves) {
                         spawnRelicChoice(player.row, player.col);
+                    }
+                    // Wave portal — "proceed" door with preview icon of the next wave
+                    if (typeof spawnWavePortal === 'function') {
+                        spawnWavePortal(wave.current + 1);
                     }
 
                     // --- Zone 1 Alcove mini-seal: open Secret Alcove after wave 1 ---
@@ -2809,41 +2832,49 @@ function spawnEnemy(type, row, col, statMult) {
     const _forceElite = (typeof hasAbyssMod === 'function' && hasAbyssMod('forceElite'));
     if (!baseDef.isBoss && (currentZone >= 2 || _forceElite)) {
         const eliteChance = _forceElite ? 1.0 : Math.min(ELITE_MAX_CHANCE, ELITE_BASE_CHANCE + (currentZone - 2) * ELITE_CHANCE_PER_ZONE);
-        if (Math.random() < eliteChance) {
-            const modifiers = ['swift', 'vampiric', 'volatile', 'splitting', 'shielded', 'thorned', 'frenzy', 'necromancer'];
-            const mod = modifiers[Math.floor(Math.random() * modifiers.length)];
-            spawned.elite = mod;
-            // Apply modifier bonuses
-            switch (mod) {
-                case 'swift':
-                    spawned.def.speed *= ELITE_SWIFT_SPEED_MULT;
-                    spawned.def.scale *= ELITE_SWIFT_SCALE_MULT;
-                    break;
-                case 'vampiric':
-                    spawned.def.damage = Math.round(spawned.def.damage * ELITE_VAMPIRIC_DAMAGE_MULT);
-                    // Heals on hit — handled in combat logic
-                    break;
-                case 'volatile':
-                    spawned.hp = Math.round(spawned.hp * ELITE_VOLATILE_HP_MULT);
-                    spawned.maxHp = spawned.hp;
-                    break;
-                case 'splitting':
-                    spawned.hp = Math.round(spawned.hp * ELITE_SPLITTING_HP_MULT);
-                    spawned.maxHp = spawned.hp;
-                    break;
-                case 'shielded':
-                    spawned._eliteShieldTimer = ELITE_SHIELDED_DURATION;
-                    spawned._eliteShieldCooldown = 0;
-                    spawned._eliteShieldFlash = 0;
-                    break;
-                case 'frenzy':
-                    spawned._eliteFrenzied = false;
-                    break;
-            }
-        }
+        if (Math.random() < eliteChance) promoteToElite(spawned);
     }
 
     return spawned;
+}
+
+// Promote a spawned enemy to elite status. Safe to call post-spawn.
+// Used by the "guarantee at least 1 elite per wave" logic in spawnWave.
+function promoteToElite(spawned) {
+    if (!spawned || spawned.elite || (spawned.def && spawned.def.isBoss)) return;
+    const modifiers = ['swift', 'vampiric', 'volatile', 'splitting', 'shielded', 'thorned', 'frenzy', 'necromancer'];
+    const mod = modifiers[Math.floor(Math.random() * modifiers.length)];
+    spawned.elite = mod;
+    // Apply modifier bonuses
+    switch (mod) {
+        case 'swift':
+            spawned.def.speed *= ELITE_SWIFT_SPEED_MULT;
+            spawned.def.scale *= ELITE_SWIFT_SCALE_MULT;
+            break;
+        case 'vampiric':
+            spawned.def.damage = Math.round(spawned.def.damage * ELITE_VAMPIRIC_DAMAGE_MULT);
+            break;
+        case 'volatile':
+            spawned.hp = Math.round(spawned.hp * ELITE_VOLATILE_HP_MULT);
+            spawned.maxHp = spawned.hp;
+            break;
+        case 'splitting':
+            spawned.hp = Math.round(spawned.hp * ELITE_SPLITTING_HP_MULT);
+            spawned.maxHp = spawned.hp;
+            break;
+        case 'shielded':
+            spawned._eliteShieldTimer = ELITE_SHIELDED_DURATION;
+            spawned._eliteShieldCooldown = 0;
+            spawned._eliteShieldFlash = 0;
+            break;
+        case 'frenzy':
+            spawned._eliteFrenzied = false;
+            break;
+    }
+    // All elites: +40% max HP bump so they stand out as "mini-boss" encounters
+    const eliteHpBoost = 1.40;
+    spawned.hp = Math.round(spawned.hp * eliteHpBoost);
+    spawned.maxHp = spawned.hp;
 }
 
 // ----- ALERT PROPAGATION -----
@@ -3077,6 +3108,10 @@ function updateEnemies(dt) {
                     }
                 }
 
+                // Elite kill: guaranteed single relic drop (no 3-choice, just one free relic)
+                if (e.elite && !e.def.isBoss && typeof spawnSingleRelic === 'function') {
+                    spawnSingleRelic(e.row, e.col);
+                }
                 enemies.splice(i, 1);
                 wave.totalKilled++;
                 wave.waveKills++;
@@ -6314,10 +6349,11 @@ function drawEnemy(e) {
         ctx.restore();
     }
 
-    // HP bar above enemy (only when damaged and alive)
-    if (e.state !== 'death' && e.hp < e.maxHp) {
-        const barW = e.def.isBoss ? 44 : 34;
-        const barH = e.def.isBoss ? 5 : 4;
+    // HP bar above enemy — always visible for elites/bosses, only when damaged for regulars
+    const _isElite = !!e.elite;
+    if (e.state !== 'death' && (e.hp < e.maxHp || _isElite || e.def.isBoss)) {
+        const barW = e.def.isBoss ? 44 : (_isElite ? 40 : 34);
+        const barH = e.def.isBoss ? 5 : (_isElite ? 5 : 4);
         const bx = sx + staggerX - barW / 2;
         const by = drawY + staggerY - 8;
         const hpFrac = e.hp / e.maxHp;
@@ -6332,10 +6368,14 @@ function drawEnemy(e) {
         ctx.roundRect(bx, by, barW, barH, 2);
         ctx.fill();
 
-        // Gradient fill — smooth color ramp based on HP percentage
+        // Gradient fill — smooth color ramp based on HP percentage (gold for elites)
         ctx.globalAlpha = 0.9;
         const hpGrad = ctx.createLinearGradient(bx, by, bx, by + barH);
-        if (hpFrac > 0.5) {
+        if (_isElite) {
+            // Gold bar — elites read as "mini-boss"
+            hpGrad.addColorStop(0, '#ffcc44');
+            hpGrad.addColorStop(1, '#aa7722');
+        } else if (hpFrac > 0.5) {
             hpGrad.addColorStop(0, '#ee4444');
             hpGrad.addColorStop(1, '#aa2222');
         } else if (hpFrac > 0.25) {
@@ -6349,6 +6389,30 @@ function drawEnemy(e) {
         ctx.beginPath();
         ctx.roundRect(bx, by, fillW, barH, 2);
         ctx.fill();
+
+        // Elite nameplate — "ELITE · SWIFT" above the HP bar
+        if (_isElite) {
+            const eliteColor = COLORS['ELITE_' + e.elite.toUpperCase() + '_TINT'] || '#ffcc44';
+            const label = 'ELITE · ' + e.elite.toUpperCase();
+            ctx.font = 'bold 9px Georgia';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'alphabetic';
+            const lx = sx + staggerX;
+            const ly = by - 3;
+            ctx.globalAlpha = 0.95;
+            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+            ctx.lineWidth = 3;
+            ctx.strokeText(label, lx, ly);
+            ctx.fillStyle = eliteColor;
+            ctx.fillText(label, lx, ly);
+            // Gold bar border
+            ctx.globalAlpha = 0.85;
+            ctx.strokeStyle = '#ffd860';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(bx - 0.5, by - 0.5, barW + 1, barH + 1, 2.5);
+            ctx.stroke();
+        }
 
         // Highlight stripe (tiny catch light)
         ctx.globalAlpha = 0.2;
