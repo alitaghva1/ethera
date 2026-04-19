@@ -706,57 +706,147 @@ function drawTalismanPickup() {
 
     ctx.save();
 
-    // Dark overlay
-    ctx.globalAlpha = alpha * 0.8;
+    // FULLY opaque black backdrop — no bleed-through of the game world underneath.
+    // Previously 80% alpha let the dungeon show faintly, which combined with the
+    // cinematic dungeon image created a "picture in picture" effect.
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Draw pickup art if available (source-over to preserve image colors on dark backdrop)
+    // Cinematic illustration — fills the canvas with "cover" fit so no gaps show
+    // the previous frame. Slight zoom-in over time for motion.
     const pickupImg = images.talisman_pickup;
     if (pickupImg) {
-        ctx.globalAlpha = alpha * 0.95;
-        // Scale image to fit canvas while maintaining aspect ratio
+        ctx.globalAlpha = alpha;
         const imgAspect = pickupImg.width / pickupImg.height;
         const canvasAspect = canvasW / canvasH;
-        let drawW, drawH, drawX, drawY;
+        let drawW, drawH;
+        // "cover" fit: fill canvas, crop overflow rather than leaving black bars
         if (imgAspect > canvasAspect) {
-            drawW = canvasW * 0.85;
-            drawH = drawW / imgAspect;
-        } else {
-            drawH = canvasH * 0.75;
+            drawH = canvasH;
             drawW = drawH * imgAspect;
+        } else {
+            drawW = canvasW;
+            drawH = drawW / imgAspect;
         }
-        drawX = cx - drawW / 2;
-        drawY = cy - drawH / 2 - 20;
+        // Subtle zoom-in over the life of the cinematic for cinematic motion
+        const zoom = 1.0 + Math.min(0.05, t * 0.01);
+        drawW *= zoom;
+        drawH *= zoom;
+        const drawX = cx - drawW / 2;
+        const drawY = cy - drawH / 2;
         ctx.drawImage(pickupImg, drawX, drawY, drawW, drawH);
+
+        // Vignette over the image so edges fade to black — looks more cinematic
+        // and the title text underneath reads cleanly.
+        const vig = ctx.createRadialGradient(cx, cy, canvasH * 0.2, cx, cy, canvasW * 0.7);
+        vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vig.addColorStop(0.7, 'rgba(0, 0, 0, 0.35)');
+        vig.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, canvasW, canvasH);
     }
 
-    // Title text
+    // Title text — positioned in the dark lower band created by the vignette
     ctx.globalAlpha = alpha * 0.95;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const titleScale = 28 + Math.min(8, t * 12);
+    const titleScale = 32 + Math.min(10, t * 12);
     const titlePulse = 1.0 + Math.sin(t * 3) * 0.02;
     ctx.font = 'bold ' + Math.round(titleScale * titlePulse) + 'px Georgia';
-    ctx.shadowColor = 'rgba(100, 220, 80, 0.6)';
-    ctx.shadowBlur = 20;
+    ctx.shadowColor = 'rgba(100, 220, 80, 0.7)';
+    ctx.shadowBlur = 24;
     ctx.fillStyle = '#e8c840';
-    ctx.fillText('Ancient Talisman Found', cx, cy + canvasH * 0.30);
+    ctx.fillText('Ancient Talisman Found', cx, canvasH - 95);
     ctx.shadowBlur = 0;
 
     // Subtitle
-    ctx.globalAlpha = alpha * 0.7;
-    ctx.font = 'italic 14px Georgia';
-    ctx.fillStyle = '#a89060';
-    ctx.fillText('A relic of forgotten power... it hums with evolution energy.', cx, cy + canvasH * 0.30 + 30);
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.font = 'italic 15px Georgia';
+    ctx.fillStyle = '#b8a070';
+    ctx.fillText('A relic of forgotten power... it hums with evolution energy.', cx, canvasH - 60);
 
     // Footer
-    ctx.globalAlpha = alpha * 0.5;
-    ctx.font = '10px Georgia';
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.font = '11px Georgia';
     ctx.fillStyle = '#8a7a5a';
-    ctx.fillText('Press any key to continue', cx, canvasH - 30);
+    ctx.fillText('Press any key to continue', cx, canvasH - 28);
 
     ctx.restore();
+}
+
+// Shared HUD icon renderer — used by slime.js / skeleton.js form HUDs.
+// Uses the talisman_drop sprite (clean circular icon with black bg) rendered
+// with 'screen' composite so the black background disappears against the HUD.
+// Falls back to a procedural gold diamond if the sprite hasn't loaded.
+// Clamps position so the icon never spills off the right edge of the canvas.
+function _drawTalismanHudIcon(targetX, targetY) {
+    if (typeof ctx === 'undefined' || typeof canvasW === 'undefined') return;
+    if (!FormSystem.talisman.found) return;
+
+    const iconR = 18; // render radius — icon is 2R wide
+    // Clamp so the icon stays fully on-screen even on odd aspect ratios
+    const tX = Math.min(canvasW - iconR - 6, Math.max(iconR + 6, targetX));
+    const tY = targetY;
+    const t = performance.now() / 1000;
+    const pulse = 0.85 + Math.sin(t * 2) * 0.12;
+    const img = (typeof images !== 'undefined') ? images.talisman_drop : null;
+
+    ctx.save();
+    try {
+        if (img) {
+            // Ground halo: radial green/gold glow behind the icon for depth
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = pulse * 0.5;
+            const halo = ctx.createRadialGradient(tX, tY, 0, tX, tY, iconR * 1.8);
+            halo.addColorStop(0, 'rgba(120, 230, 110, 0.55)');
+            halo.addColorStop(0.5, 'rgba(200, 180, 60, 0.25)');
+            halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = halo;
+            ctx.fillRect(tX - iconR * 2, tY - iconR * 2, iconR * 4, iconR * 4);
+
+            // Icon: clip to circle so JPG edges are hidden, screen-blend removes
+            // the black background without needing alpha channel.
+            ctx.globalAlpha = pulse;
+            ctx.beginPath();
+            ctx.arc(tX, tY, iconR, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.drawImage(img, tX - iconR, tY - iconR, iconR * 2, iconR * 2);
+        } else {
+            // Fallback: procedural gold diamond when sprite hasn't loaded yet
+            ctx.globalAlpha = pulse;
+            ctx.shadowColor = 'rgba(232, 200, 64, 0.5)';
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = '#e8c840';
+            ctx.beginPath();
+            ctx.moveTo(tX, tY - 10);
+            ctx.lineTo(tX + 8, tY);
+            ctx.lineTo(tX, tY + 10);
+            ctx.lineTo(tX - 8, tY);
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    } finally {
+        ctx.restore();
+    }
+
+    // Level label below icon (outside save/restore so composite mode is source-over)
+    ctx.save();
+    try {
+        ctx.globalAlpha = 0.8;
+        ctx.font = 'bold 10px Georgia';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = '#e8c840';
+        const label = 'Lv' + FormSystem.talisman.level;
+        ctx.strokeText(label, tX, tY + iconR + 2);
+        ctx.fillText(label, tX, tY + iconR + 2);
+    } finally {
+        ctx.restore();
+    }
 }
 
 function dismissTalismanPickup() {

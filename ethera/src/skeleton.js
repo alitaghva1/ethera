@@ -879,29 +879,10 @@ function drawSkeletonHUD() {
     // Active upgrade icons
     drawActiveUpgradeIcons(x, yXP, barH);
 
-    // Talisman indicator — positioned below the relic row and HOSTILE text to
-    // avoid overlap in the top-right corner.
+    // Talisman indicator — shared helper uses talisman_drop image (screen blend)
+    // with procedural diamond fallback. Position below relic row + HOSTILE.
     if (FormSystem.talisman.found) {
-        const tX = canvasW - 32, tY = 130;
-        const t = performance.now() / 1000;
-        ctx.globalAlpha = 0.8 + Math.sin(t * 2) * 0.12;
-        ctx.shadowColor = 'rgba(232, 200, 64, 0.5)';
-        ctx.shadowBlur = 6;
-        ctx.fillStyle = '#e8c840';
-        ctx.beginPath();
-        ctx.moveTo(tX, tY - 10);
-        ctx.lineTo(tX + 8, tY);
-        ctx.lineTo(tX, tY + 10);
-        ctx.lineTo(tX - 8, tY);
-        ctx.closePath();
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.7;
-        ctx.font = '9px Georgia';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#e8c840';
-        ctx.fillText(`Lv${FormSystem.talisman.level}`, tX, tY + 20);
-        ctx.textAlign = 'left';
+        _drawTalismanHudIcon(canvasW - 40, 130);
     }
 
     // Form indicator
