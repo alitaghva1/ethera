@@ -4,7 +4,7 @@
     {
       "name": "ethera-web",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "."],
+      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "./ethera"],
       "port": 8080
     },
     {
