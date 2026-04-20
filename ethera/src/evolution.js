@@ -659,83 +659,11 @@ let talismanPickupState = {
     dismissed: false,
 };
 
-// ============================================================
-//  DIAGNOSTIC INSTRUMENTATION — TEMPORARY — remove after root cause found.
-//  Records every state transition / gameloop branch entry / draw for the
-//  talisman cinematic so we can tell whether the cinematic is:
-//    (a) never firing (trigger path broken)
-//    (b) firing but being stomped by a state race
-//    (c) firing but being repainted by another render path
-//    (d) running under a duplicate RAF loop
-//  See window.__talismanDebug.events after reproducing the bug.
-// ============================================================
-window.__talismanDebug = window.__talismanDebug || {
-    events: [],
-    lastActive: null,
-    frameCount: 0,
-    loopId: Math.random().toString(36).slice(2),
-};
-function talismanLog(type, extra) {
-    try {
-        const s = (typeof talismanPickupState !== 'undefined') ? talismanPickupState : {};
-        const entry = {
-            t: performance.now().toFixed(1),
-            type: type,
-            loopId: window.__talismanDebug.loopId,
-            active: !!s.active,
-            timer: Number(s.timer || 0).toFixed(3),
-            alpha: Number(s.alpha || 0).toFixed(3),
-            dismissed: !!s.dismissed,
-            gamePhase: (typeof gamePhase !== 'undefined') ? gamePhase : '?',
-            levelUpPending: (typeof xpState !== 'undefined' && xpState) ? !!xpState.levelUpPending : undefined,
-            slowMoTimer: (typeof slowMoTimer !== 'undefined') ? Number(slowMoTimer).toFixed(3) : undefined,
-            slowMoScale: (typeof slowMoScale !== 'undefined') ? slowMoScale : undefined,
-        };
-        if (extra) for (const k in extra) entry[k] = extra[k];
-        window.__talismanDebug.events.push(entry);
-        if (window.__talismanDebug.events.length > 300) window.__talismanDebug.events.shift();
-        console.log('[TALISMAN]', entry);
-    } catch (e) {
-        // Never let the logger itself crash the game.
-        console.warn('[TALISMAN] log failed', e);
-    }
-}
-// On-screen debug badge — renders over EVERYTHING, bypasses game transform.
-// If this badge appears but the cinematic doesn't, the branch is firing but
-// drawTalismanPickup output is being overdrawn (or drawn off-screen).
-function drawTalismanDebugBadge() {
-    if (typeof ctx === 'undefined') return;
-    try {
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = 'red';
-        ctx.fillRect(20, 20, 300, 88);
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 16px monospace';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText('TALISMAN ACTIVE', 30, 28);
-        ctx.font = '12px monospace';
-        ctx.fillText('t=' + Number(talismanPickupState.timer || 0).toFixed(2) +
-                     '  a=' + Number(talismanPickupState.alpha || 0).toFixed(2), 30, 50);
-        ctx.fillText('frames=' + window.__talismanDebug.frameCount +
-                     '  loopId=' + window.__talismanDebug.loopId.slice(0, 6), 30, 68);
-        ctx.fillText('gamePhase=' + ((typeof gamePhase !== 'undefined') ? gamePhase : '?'), 30, 86);
-        ctx.restore();
-    } catch (e) {}
-}
-
 function triggerTalismanPickup() {
-    talismanLog('trigger:before');
-    if (talismanPickupState.active) {
-        talismanLog('trigger:blocked_already_active');
-        return;
-    }
-    // Diagnostic: if the cinematic image isn't loaded, surface it to devtools once.
-    // Users reported "the game tries and fails to make [the cinematic] happen" —
-    // most likely cause is images.talisman_pickup never resolved. This breadcrumb
-    // + the procedural fallback in drawTalismanPickup() turn a silent failure
-    // into a visible-but-diagnosable one.
+    if (talismanPickupState.active) return;
+    // Defensive warn: if the cinematic image isn't loaded at trigger time the
+    // drawTalismanPickup() fallback will render a procedural gold-diamond scene.
+    // Surface this to devtools once so it's diagnosable instead of silent.
     if (typeof images === 'undefined' || !images.talisman_pickup ||
         !images.talisman_pickup.width || !images.talisman_pickup.height) {
         console.warn('[talisman] talisman_pickup.jpg not available — cinematic falling back to procedural visual. Check assets/talisman_pickup.jpg load status in devtools Network tab, and window.failedAssets for details.');
@@ -744,7 +672,6 @@ function triggerTalismanPickup() {
     talismanPickupState.timer = 0;
     talismanPickupState.alpha = 0;
     talismanPickupState.dismissed = false;
-    talismanLog('trigger:after');
     // Keep gamePhase at 'playing' — the gameloop's talismanPickup branch gates
     // on talismanPickupState.active, not gamePhase. Setting gamePhase here would
     // make render() return early (talismanPickup isn't in its allowed list) →
@@ -755,7 +682,6 @@ function triggerTalismanPickup() {
 
 function updateTalismanPickup(dt) {
     if (!talismanPickupState.active) return;
-    talismanLog('update:start', { dt: Number(dt).toFixed(3) });
     talismanPickupState.timer += dt;
     const fadeInTime = 0.5;
     const showDuration = 5.0;
@@ -771,11 +697,9 @@ function updateTalismanPickup(dt) {
     }
 
     if (talismanPickupState.timer >= showDuration + fadeOutTime) {
-        talismanLog('update:end_reached');
         talismanPickupState.active = false;
         talismanPickupState.dismissed = true;
         gamePhase = 'playing';
-        talismanLog('update:deactivated');
     }
 }
 
@@ -785,14 +709,6 @@ function drawTalismanPickup() {
     // the canvas shows whatever was there last frame (raw game world → "white
     // flash" bug). Only return if the state isn't active at all.
     if (!talismanPickupState.active) return;
-
-    talismanLog('draw', {
-        hasImg: !!(typeof images !== 'undefined' && images.talisman_pickup && images.talisman_pickup.width > 0),
-        imgW: (typeof images !== 'undefined' && images.talisman_pickup) ? images.talisman_pickup.width : 0,
-        imgH: (typeof images !== 'undefined' && images.talisman_pickup) ? images.talisman_pickup.height : 0,
-        canvasW_virtual: typeof canvasW !== 'undefined' ? canvasW : null,
-        canvasH_virtual: typeof canvasH !== 'undefined' ? canvasH : null,
-    });
 
     const alpha = talismanPickupState.alpha;
     const cx = canvasW / 2;

@@ -419,10 +419,27 @@ function handleKeyDown(e) {
         }
         return; // consume all keys while NPC dialogue is open
     }
-    // Talisman pickup screen — dismiss on any key
+    // Talisman pickup screen — consume all keys, but only DISMISS on a deliberate
+    // skip key (Enter/Space/Escape) AFTER fade-in completes.
+    //
+    // Before: "any key dismisses" meant the first WASD keydown after pickup
+    // ended the cinematic in < 1 frame. The player was almost always holding a
+    // movement key when they walked onto the talisman, so the cinematic was
+    // effectively skipped every time — HUD showed the pickup happened, but the
+    // player never saw the art. That was the "tries and fails" bug.
+    //
+    // Root cause verified in live preview: with WASD held during pickup, state
+    // flips active=true → active=false within a single frame via this handler.
+    // With no keys held, the cinematic plays its full 6.3 s cycle correctly.
     if (typeof talismanPickupState !== 'undefined' && talismanPickupState.active && typeof dismissTalismanPickup === 'function') {
-        dismissTalismanPickup();
-        return;
+        const _tk = e.key;
+        const _isDismissKey = (_tk === 'Enter' || _tk === ' ' || _tk === 'Spacebar' || _tk === 'Escape');
+        // Protect the fade-in (0.5 s) — cinematic always plays its opening
+        // beat so players actually see the reveal before the skip window opens.
+        if (_isDismissKey && talismanPickupState.timer >= 0.5) {
+            dismissTalismanPickup();
+        }
+        return; // consume all keys during cinematic — movement/attacks are paused
     }
     // Evolution hint screen — dismiss on any key
     if (typeof evolutionHintState !== 'undefined' && evolutionHintState.active && typeof dismissEvolutionHint === 'function') {
