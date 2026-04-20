@@ -1071,10 +1071,28 @@ function drawEnvironmentLightProps() {
 }
 
 // Pass 2: Punchthrough — drawn AFTER darkness (screen blend)
+//
+// Fade env lights with distance from the player so distant torches can't
+// illuminate tiles far from the player and create a visible "ring" of lit
+// dungeon around the playable area. After Zone 1 Wave 2's map expansion,
+// ~20 static torches/braziers on the edges of the revealed map were
+// screen-blending the tiles near them bright enough to show through the
+// darkness pass, which users perceived as a stone-tile frame around the
+// viewport. Linear fade from 100 % intensity at the player to 0 % at
+// (player_torch_radius + light.radius) — keeps the near-player ambiance,
+// kills the far-field reveal.
 function drawEnvironmentLightPunchthrough() {
     const lights = ENV_LIGHTS[currentZone];
     if (!lights) return;
     const now = performance.now();
+    // Player torch radius in SCREEN pixels (matches drawDarkness Pass 1).
+    const _playerTorchR = (typeof lightRadius === 'number') ? lightRadius : 340;
+    // How far past the torch we allow env lights to contribute. Inside the
+    // torch: full contribution. Past torch+falloff: zero. The falloff is
+    // scaled per-light by its own radius so big braziers reach a bit further.
+    const _playerPos = (typeof player !== 'undefined') ? tileToScreen(player.row, player.col) : null;
+    const _pX = _playerPos ? (_playerPos.x + cameraX) : canvasW / 2;
+    const _pY = _playerPos ? (_playerPos.y + cameraY) : canvasH / 2;
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
@@ -1088,7 +1106,18 @@ function drawEnvironmentLightPunchthrough() {
         if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed.length) {
             if (!fogRevealed[fr][fc]) continue;
         }
-        ctx.globalAlpha = light.intensity * _envLightFlicker(light, now) * 0.45;
+        // Distance from player to this light source. Inside player torch → 1.
+        // Past torch + light.radius → 0. Smooth linear between.
+        const _dx = sx - _pX, _dy = sy - _pY;
+        const _distToPlayer = Math.sqrt(_dx * _dx + _dy * _dy);
+        const _fadeStart = _playerTorchR;
+        const _fadeEnd = _playerTorchR + light.radius;
+        let _distFade = 1.0;
+        if (_distToPlayer > _fadeStart) {
+            _distFade = Math.max(0, 1.0 - (_distToPlayer - _fadeStart) / (_fadeEnd - _fadeStart));
+        }
+        if (_distFade <= 0) continue; // fully outside player's area of interest
+        ctx.globalAlpha = light.intensity * _envLightFlicker(light, now) * 0.45 * _distFade;
         ctx.drawImage(_getEnvLightGlow(light), sx - light.radius, sy - light.radius + 4);
     }
     ctx.restore();
