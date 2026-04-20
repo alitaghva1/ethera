@@ -1677,7 +1677,29 @@ function gameLoop(timestamp) {
     // frame, which read as "the game tries and fails to make the cinematic
     // happen". Talisman state is short-lived (6.3s) and self-clearing, so giving
     // it render priority is safe.
+    // Detect state transitions — logs exact frame where active flips.
+    if (typeof window.__talismanDebug !== 'undefined' &&
+        typeof talismanPickupState !== 'undefined' &&
+        window.__talismanDebug.lastActive !== talismanPickupState.active) {
+        if (typeof talismanLog === 'function') {
+            talismanLog('active_changed', {
+                from: window.__talismanDebug.lastActive,
+                to: talismanPickupState.active,
+            });
+        }
+        window.__talismanDebug.lastActive = talismanPickupState.active;
+    }
     if (typeof talismanPickupState !== 'undefined' && talismanPickupState.active) {
+        if (typeof window.__talismanDebug !== 'undefined') window.__talismanDebug.frameCount++;
+        if (typeof talismanLog === 'function') {
+            talismanLog('branch:entered', {
+                frameCount: (typeof window.__talismanDebug !== 'undefined') ? window.__talismanDebug.frameCount : null,
+                canvasW_px: canvas.width,
+                canvasH_px: canvas.height,
+                dpr: window.devicePixelRatio || 1,
+                displayScale: (typeof displayScale !== 'undefined') ? displayScale : null,
+            });
+        }
         if (typeof updateTalismanPickup === 'function') updateTalismanPickup(dt);
         setPixelCursor('default');
         // Re-apply transform and clear the full buffer to solid black — no
@@ -1692,6 +1714,13 @@ function gameLoop(timestamp) {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
         if (typeof drawTalismanPickup === 'function') drawTalismanPickup();
+        // DIAGNOSTIC on-screen badge — if cinematic branch is reaching here,
+        // this red box will appear in the top-left regardless of any other
+        // render. If badge appears but cinematic art doesn't, the problem is
+        // downstream (drawImage path or paint-order); if badge never appears,
+        // the branch isn't surviving to a visible frame.
+        if (typeof drawTalismanDebugBadge === 'function') drawTalismanDebugBadge();
+        if (typeof talismanLog === 'function') talismanLog('branch:drawn');
         requestAnimationFrame(gameLoop);
         return;
     }
