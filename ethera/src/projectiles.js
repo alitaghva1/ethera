@@ -232,8 +232,9 @@ function drawProjectiles() {
                 ctx.stroke();
                 ctx.restore();
             }
-            // --- Bone trail (faint white dotted trail) ---
+            // --- Bone trail (brighter dotted trail — was fading below visibility floor) ---
             ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
             trailForEach(p.trail, function(t, i, total) {
                 if (i % 2 === 0) return; // skip every other for dotted look
                 const tp = tileToScreen(t.row, t.col);
@@ -241,10 +242,10 @@ function drawProjectiles() {
                 const ty = tp.y + cameraY;
                 const frac = i / total;
                 const ageFade = Math.max(0, 1 - t.age * 4);
-                ctx.globalAlpha = frac * 0.25 * ageFade;
-                ctx.fillStyle = '#ddccaa';
+                ctx.globalAlpha = (0.15 + frac * 0.4) * ageFade;
+                ctx.fillStyle = '#e8f4d0';
                 ctx.beginPath();
-                ctx.arc(tx, ty, p.size * frac * 0.8, 0, Math.PI * 2);
+                ctx.arc(tx, ty, p.size * (0.4 + frac * 0.6), 0, Math.PI * 2);
                 ctx.fill();
             });
             ctx.restore();

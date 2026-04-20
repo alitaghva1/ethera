@@ -6281,18 +6281,22 @@ function drawEnemy(e) {
     ctx.fill();
     ctx.restore();
 
-    // Readability ground glow for non-elite/non-boss enemies (ensures visibility near darkness edge)
-    if (!e.def.isBoss && !e.elite && e.state !== 'death' && spawnAlpha > 0.5) {
+    // Readability ground glow — ensures enemies pop against the dim Zone 1 floor tint.
+    // Applied to all non-dead enemies (previously excluded elites/bosses, but they have their
+    // own glow and benefit from the extra silhouette too). `lighter` (additive) pushes harder
+    // against the multiply-darkened floor than `screen`, which plateaus on mid-tones.
+    if (e.state !== 'death' && spawnAlpha > 0.5 && !e.def.isBoss) {
         ctx.save();
-        ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = 0.12 * spawnAlpha;
-        const _egR = Math.max(12, 10 * def.scale);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.22 * spawnAlpha;
+        const _egR = Math.max(16, 14 * def.scale);
         const _egGrad = ctx.createRadialGradient(sx, sy + 2, 0, sx, sy + 2, _egR);
-        _egGrad.addColorStop(0, 'rgba(255, 200, 140, 0.5)');
-        _egGrad.addColorStop(1, 'rgba(255, 200, 140, 0)');
+        _egGrad.addColorStop(0, 'rgba(255, 210, 150, 0.65)');
+        _egGrad.addColorStop(0.5, 'rgba(255, 190, 120, 0.25)');
+        _egGrad.addColorStop(1, 'rgba(255, 180, 100, 0)');
         ctx.fillStyle = _egGrad;
         ctx.beginPath();
-        ctx.ellipse(sx, sy + 2, _egR, _egR * 0.45, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx, sy + 2, _egR, _egR * 0.5, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
@@ -6893,18 +6897,19 @@ function drawEnemyProjectiles() {
             ctx.fill();
         } else {
             // Default: skeleton archer arrow — enhanced for readability
-            // 1) Ground glow so projectile pops against dark floors
+            // 1) Ground glow so projectile pops against dark floors. `lighter` (additive) punches
+            //    through the zone-1 brown tint + darkness overlay better than `screen`.
             ctx.save();
-            ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = 0.4;
-            const arrowGlowR = 18;
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = 0.6;
+            const arrowGlowR = 26;
             const arrowGlow = ctx.createRadialGradient(0, 4, 0, 0, 4, arrowGlowR);
-            arrowGlow.addColorStop(0, 'rgba(255, 200, 100, 0.5)');
-            arrowGlow.addColorStop(0.5, 'rgba(255, 140, 50, 0.2)');
+            arrowGlow.addColorStop(0, 'rgba(255, 210, 120, 0.7)');
+            arrowGlow.addColorStop(0.5, 'rgba(255, 150, 60, 0.3)');
             arrowGlow.addColorStop(1, 'rgba(200, 80, 20, 0)');
             ctx.fillStyle = arrowGlow;
             ctx.beginPath();
-            ctx.ellipse(0, 4, arrowGlowR, arrowGlowR * 0.45, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 4, arrowGlowR, arrowGlowR * 0.5, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
 

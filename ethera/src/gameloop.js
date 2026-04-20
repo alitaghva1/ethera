@@ -1458,7 +1458,9 @@ function updateGameplay(dt) {
     if (typeof updateFrozenEchoes === 'function') updateFrozenEchoes(dt);
     if (typeof updateInscriptions === 'function') updateInscriptions(dt);
     if (_arrivalVignetteTimer > 0) _arrivalVignetteTimer -= dt;
-    if (_screenFlashTimer > 0) _screenFlashTimer -= dt;
+    // _screenFlashTimer decrement moved to top of gameLoop() so it runs in all phases
+    // (hit pause, evolution, pickup modals). Otherwise the flash sticks at full alpha
+    // when updateGameplay stops running — classic "boss-intro white screen" bug.
     // Check if Pale Queen dialogue triggered ending choice
     if (typeof paleQueenDialogueComplete !== 'undefined' && paleQueenDialogueComplete) {
         paleQueenDialogueComplete = false;
@@ -1626,6 +1628,11 @@ function gameLoop(timestamp) {
         }
         lightFlicker += dt;
         updateMusic(dt);
+        // Screen flash decays every frame regardless of gamePhase — otherwise a flash
+        // fired right before hit pause (boss wave intro!) or a phase change (pickup,
+        // evolution, pause, level-up) sticks at full alpha because updateGameplay
+        // stops running and its decrement never fires.
+        if (_screenFlashTimer > 0) _screenFlashTimer -= dt;
 
     // Hit pause — freeze frame on impact
     if (updateHitPause(dt)) { requestAnimationFrame(gameLoop); return; }
