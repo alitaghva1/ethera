@@ -672,8 +672,12 @@ function preloadSfxSamples() {
         'assets/sfx/impacts/footstep_concrete_000.ogg',
         'assets/sfx/impacts/footstep_concrete_001.ogg',
         'assets/sfx/impacts/footstep_concrete_002.ogg',
-        'assets/sfx/impacts/impactPunch_heavy_000.ogg',
-        'assets/sfx/impacts/impactPunch_heavy_001.ogg',
+        // impactPunch_heavy_* were referenced but never shipped with assets/ —
+        // caused hundreds of 404s per fight. Substituted with impactMining_*
+        // which exists and sounds thematically appropriate for hits in a
+        // stone-dungeon setting (chunky stone-on-stone impacts).
+        'assets/sfx/impacts/impactMining_000.ogg',
+        'assets/sfx/impacts/impactMining_001.ogg',
         'assets/sfx/ui/click1.ogg',
         'assets/sfx/ui/rollover1.ogg',
         'assets/sfx/rpg/bookOpen.ogg',
@@ -739,8 +743,16 @@ function sfxPotionUse() {
 }
 
 // --- Real impact hit sound (layered with procedural) ---
+// Was impactPunch_heavy_* which doesn't ship in assets/ — dozens of 404s per
+// second of combat. impactMining_* exists and sounds like chunky stone hits,
+// which is thematically correct for this dungeon game.
 function sfxRealHit() {
-    const files = ['assets/sfx/impacts/impactPunch_heavy_000.ogg', 'assets/sfx/impacts/impactPunch_heavy_001.ogg', 'assets/sfx/impacts/impactPunch_heavy_002.ogg'];
+    const files = [
+        'assets/sfx/impacts/impactMining_000.ogg',
+        'assets/sfx/impacts/impactMining_001.ogg',
+        'assets/sfx/impacts/impactMining_002.ogg',
+        'assets/sfx/impacts/impactMining_003.ogg',
+    ];
     playSfxSample(files[Math.floor(Math.random() * files.length)], 0.2, 0.8 + Math.random() * 0.4);
 }
 

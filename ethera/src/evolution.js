@@ -367,9 +367,29 @@ function drawEvolution() {
     // Dark overlay for text
     if (evolutionState.phase === 1) {
         ctx.save();
-        ctx.globalAlpha = 0.6;
+        // ── Full-opaque backdrop — was 0.6 alpha and the dungeon showed
+        // through as a "screen within a screen". Evolution is a narrative
+        // moment; the game world must be completely hidden.
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // ── Form-colored radial atmosphere — subtle, centered, adds depth
+        // without washing out the text. Uses the same palette as the form
+        // glow so the whole frame reads as one coherent color mood.
+        const _evoAtmColors = {
+            skeleton: 'rgba(180, 180, 220, 0.18)',
+            wizard:   'rgba(70, 110, 220, 0.18)',
+            lich:     'rgba(140, 60, 200, 0.18)',
+        };
+        const _evoAtmColor = _evoAtmColors[evolutionState.targetForm] || 'rgba(200, 160, 40, 0.15)';
+        ctx.globalCompositeOperation = 'screen';
+        const _evoAtm = ctx.createRadialGradient(cx, cy, 0, cx, cy, canvasH * 0.55);
+        _evoAtm.addColorStop(0, _evoAtmColor);
+        _evoAtm.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = _evoAtm;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        ctx.globalCompositeOperation = 'source-over';
 
         // Evolution text with scale pulse
         ctx.globalAlpha = evolutionState.textAlpha;

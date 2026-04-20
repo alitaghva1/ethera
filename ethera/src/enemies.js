@@ -1555,6 +1555,7 @@ function beginNextWave() {
     wave.current++;
     wave.waveKills = 0; // reset per-wave kill counter
     wave._lastDamageTime = null; // reset stall tracker
+    wave._stallTeleportDone = false; // reset teleport-recovery flag (see stall safety net)
     // Clean up the cleared-phase portal (player has moved on)
     if (typeof clearWavePortal === 'function') clearWavePortal();
     // Restore full light at wave start (tension effect dims it between waves)
@@ -1920,11 +1921,59 @@ function updateWaveSystem(dt) {
         if (typeof abyssDepthFlags !== 'undefined' && abyssDepthFlags.hazardSurge && typeof _envHazardTimer !== 'undefined') {
             if (_envHazardTimer > 4) _envHazardTimer = 3 + Math.random() * 3; // 2x spawn rate
         }
-        // Wave stall safety net — force-kill unreachable enemies after 30s of no damage
+        // Wave stall safety net — two-stage recovery.
+        // Stage 1 (15s): proactive teleport. Stuck enemies get relocated to a
+        //   valid tile within aggro range of the player instead of being lost
+        //   behind wall geometry. This is the intended recovery — fights resume.
+        // Stage 2 (30s): force-kill as absolute fallback, in case even the
+        //   teleport can't find a spot (player cornered in a 1x1 closet, etc).
         if (wave._lastDamageTime && wave.enemiesAlive > 0) {
             const stallDuration = (performance.now() / 1000) - wave._lastDamageTime;
+            if (stallDuration > 15 && !wave._stallTeleportDone) {
+                wave._stallTeleportDone = true;
+                let teleported = 0;
+                for (let _si = 0; _si < enemies.length; _si++) {
+                    const _se = enemies[_si];
+                    if (_se.state === 'death') continue;
+                    // Skip bosses — they should NEVER be teleport-rescued (design-critical
+                    // that they stay in the arena they spawned in). If a boss is stuck,
+                    // that's a different bug worth surfacing.
+                    if (_se.def && _se.def.isBoss) continue;
+                    // Find a valid tile within [3, 8] tiles of player, preferring 4-6.
+                    // Sample 16 angles at 3 radii so even cramped layouts usually hit one.
+                    let placed = false;
+                    for (let _rad = 4.5; _rad <= 7.5 && !placed; _rad += 1.5) {
+                        for (let _ang = 0; _ang < 16 && !placed; _ang++) {
+                            const _a = (_ang / 16) * Math.PI * 2;
+                            const _tr = player.row + Math.cos(_a) * _rad;
+                            const _tc = player.col + Math.sin(_a) * _rad;
+                            if (typeof canEnemyMoveTo === 'function' &&
+                                canEnemyMoveTo(_tr, _tc, _se.def.hitboxR, _se)) {
+                                _se.row = _tr;
+                                _se.col = _tc;
+                                _se._stuckTimer = 0;
+                                _se._alerted = true;
+                                _se._alertTimer = 5.0;
+                                // Small VFX so the player registers that something moved —
+                                // otherwise enemies would seem to "blink" into existence.
+                                if (typeof spawnParticleBurst === 'function') {
+                                    spawnParticleBurst(_tr, _tc, 6, _se.def.tintColor || '#8888aa');
+                                }
+                                placed = true;
+                                teleported++;
+                            }
+                        }
+                    }
+                }
+                if (teleported > 0) {
+                    console.log('[WAVE] Stall recovery — teleported', teleported, 'stuck enemies to re-engage player');
+                    // Give the teleported enemies time to actually damage the player
+                    // before the force-kill timer re-arms. Reset to now so 30s is from this point.
+                    wave._lastDamageTime = performance.now() / 1000;
+                }
+            }
             if (stallDuration > 30) {
-                console.warn('[WAVE] Stall detected — force-killing', wave.enemiesAlive, 'remaining enemies after', Math.round(stallDuration) + 's');
+                console.warn('[WAVE] Stall detected — force-killing', wave.enemiesAlive, 'remaining enemies after', Math.round(stallDuration) + 's (teleport recovery did not resolve)');
                 for (let _si = enemies.length - 1; _si >= 0; _si--) {
                     if (enemies[_si].state !== 'death') {
                         enemies[_si].hp = 0;
@@ -1933,6 +1982,7 @@ function updateWaveSystem(dt) {
                     }
                 }
                 wave._lastDamageTime = null;
+                wave._stallTeleportDone = false;
             }
         }
         // Fade banner out

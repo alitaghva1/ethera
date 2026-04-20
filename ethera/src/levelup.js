@@ -185,20 +185,58 @@ function drawLevelUpScreen() {
 
     ctx.save();
 
-    // Dim overlay
-    ctx.globalAlpha = fade * 0.6;
-    ctx.fillStyle = '#000';
+    // ── Full-opaque warm-black backdrop ──
+    // Was globalAlpha * 0.6 — dungeon showed through at 40% and read as "screen
+    // within a screen." Level-up is a commitment moment; the game world doesn't
+    // belong behind it. Slight warm tint (#0a0705) rather than pure black so the
+    // gold tones below feel like they're emerging from the backdrop, not pasted.
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = '#0a0705';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Golden vignette — more intense when legendary present
+    // ── Outer vignette — gentle edge darkening for focus + depth ──
+    ctx.globalAlpha = fade;
+    const outerVig = ctx.createRadialGradient(cx, cy, canvasH * 0.15, cx, cy, canvasH * 0.75);
+    outerVig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    outerVig.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+    ctx.fillStyle = outerVig;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // ── Golden center vignette — existing atmospheric glow, slightly bumped ──
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = fade * (hasLegendary ? 0.18 : 0.1);
+    ctx.globalAlpha = fade * (hasLegendary ? 0.22 : 0.14);
     const vig = ctx.createRadialGradient(cx, cy, 0, cx, cy, canvasH * 0.5);
-    vig.addColorStop(0, hasLegendary ? 'rgba(255, 200, 50, 0.4)' : 'rgba(200, 160, 40, 0.3)');
+    vig.addColorStop(0, hasLegendary ? 'rgba(255, 200, 50, 0.45)' : 'rgba(200, 160, 40, 0.35)');
     vig.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.globalCompositeOperation = 'source-over';
+
+    // ── Drifting ember particles — procedural ambiance, no allocations ──
+    // Deterministic by seed so they don't jitter across frames; each ember
+    // floats upward on its own phase for a gentle "motes in firelight" feel.
+    const emberCount = hasLegendary ? 14 : 9;
+    const emberNow = performance.now() * 0.001;
+    ctx.globalAlpha = fade * 0.55;
+    for (let _ei = 0; _ei < emberCount; _ei++) {
+        const seed = _ei * 31 + 7;
+        const xBase = ((seed * 73) % 1000) / 1000;
+        const ySpeed = 0.06 + ((seed * 29) % 40) / 800;   // slow drift
+        const yPhase = ((emberNow * ySpeed) + ((seed * 13) % 97) / 97) % 1.0;
+        const swayAmp = 10 + ((seed * 17) % 20);
+        const swayHz = 0.6 + ((seed * 11) % 40) / 120;
+        const px = xBase * canvasW + Math.sin(emberNow * swayHz * Math.PI + seed) * swayAmp;
+        const py = (1.0 - yPhase) * canvasH;
+        const size = 1.2 + ((seed * 11) % 25) / 24;
+        // Peak brightness mid-flight, fade at top/bottom
+        const lifeAlpha = Math.sin(yPhase * Math.PI);
+        ctx.fillStyle = hasLegendary
+            ? 'rgba(255, 210, 90, ' + (lifeAlpha * 0.9).toFixed(2) + ')'
+            : 'rgba(220, 180, 60, ' + (lifeAlpha * 0.7).toFixed(2) + ')';
+        ctx.beginPath();
+        ctx.arc(px, py, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
     // "LEVEL UP" title
     ctx.globalAlpha = fade;
