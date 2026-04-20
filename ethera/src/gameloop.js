@@ -1666,6 +1666,36 @@ function gameLoop(timestamp) {
         updateMenuFadePhase(dt);
     }
 
+    // ----- Talisman pickup cinematic — HIGH PRIORITY, must render before other
+    // gamePhase-gated early returns (intro / cinematic / evolution / visionFlash /
+    // endingChoice / endingCinematic / credits / gameDead etc). The previous
+    // position of this block was below all those, so if triggerTalismanPickup()
+    // fired in a frame where gamePhase was anything but 'playing' (e.g. an
+    // evolution cinematic started on the same frame as pickup, or the player
+    // died at the exact moment, or a zone-transition story-beat was active), the
+    // cinematic's update+render never ran — the player saw a black flash or stale
+    // frame, which read as "the game tries and fails to make the cinematic
+    // happen". Talisman state is short-lived (6.3s) and self-clearing, so giving
+    // it render priority is safe.
+    if (typeof talismanPickupState !== 'undefined' && talismanPickupState.active) {
+        if (typeof updateTalismanPickup === 'function') updateTalismanPickup(dt);
+        setPixelCursor('default');
+        // Re-apply transform and clear the full buffer to solid black — no
+        // game world underneath, no edges of zone art bleeding through.
+        const dpr = window.devicePixelRatio || 1;
+        ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        if (typeof drawTalismanPickup === 'function') drawTalismanPickup();
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
     // ----- Intro text sequence (new clean intro) -----
     if (gamePhase === 'intro') {
         updateIntroPhase(dt);
@@ -1810,31 +1840,8 @@ function gameLoop(timestamp) {
         return;
     }
 
-    // Talisman pickup screen — full takeover, NOT an overlay on the running game.
-    // Previously render() was called here so the game world drew behind the modal,
-    // which caused: (1) "dual screen" during the modal's fade-in when the backdrop
-    // was still semi-transparent, (2) a "white flash" on frame 1 when the modal's
-    // alpha was 0 and drawTalismanPickup early-returned, leaving the raw game world
-    // visible. Fix: DON'T render the game world at all during pickup. Clear the
-    // canvas, draw the modal, done. Like zoneTransitionFading.
-    if (typeof talismanPickupState !== 'undefined' && talismanPickupState.active) {
-        if (typeof updateTalismanPickup === 'function') updateTalismanPickup(dt);
-        setPixelCursor('default');
-        // Re-apply transform and clear the full buffer to solid black — no
-        // game world underneath, no edges of zone art bleeding through.
-        const dpr = window.devicePixelRatio || 1;
-        ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.restore();
-        if (typeof drawTalismanPickup === 'function') drawTalismanPickup();
-        requestAnimationFrame(gameLoop);
-        return;
-    }
+    // Talisman pickup branch moved UP to run before gamePhase-gated early returns.
+    // See the relocated block earlier in this function.
 
     // Evolution hint screen — shows new form's abilities after evolution
     if (typeof evolutionHintState !== 'undefined' && evolutionHintState.active) {
