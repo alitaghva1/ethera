@@ -32,11 +32,17 @@ function resetWizardState() {
 
 formHandlers.wizard.update = function(dt) {
     updatePlayer(dt);
-    // Spell Weaving: tick resonance decay
+    // Spell Weaving: tick resonance decay.
+    //
+    // BUGFIX (v1.17.2): previous code reset the timer to `resonanceDecay - 0.5`,
+    // which made every stack AFTER the first decay in 0.5s instead of the
+    // designed 3.5s — ~7× too fast. Resetting to 0 makes each subsequent stack
+    // also take the full decay interval, matching the feel the system was
+    // designed for ("stacks hold for a few seconds each if you stop casting").
     wizardState.resonanceTimer += dt;
     if (wizardState.resonanceTimer > wizardState.resonanceDecay && wizardState.arcaneResonance > 0) {
         wizardState.arcaneResonance = Math.max(0, Math.floor(wizardState.arcaneResonance) - 1);
-        wizardState.resonanceTimer = wizardState.resonanceDecay - 0.5; // re-check in 0.5s
+        wizardState.resonanceTimer = 0;
     }
     // Check wizard->lich evolution
     const fd = FormSystem.formData.wizard;

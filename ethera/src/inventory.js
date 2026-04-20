@@ -269,9 +269,12 @@ function tryPickupDrops() {
                 const pickPos = tileToScreen(d.row, d.col);
                 const _cbPickup = (typeof gameSettings !== 'undefined' && gameSettings.colorblindMode === 'symbols' && typeof RARITY_SYMBOLS !== 'undefined' && RARITY_SYMBOLS[d.item.rarity])
                     ? RARITY_SYMBOLS[d.item.rarity].symbol + ' ' : '';
+                // Defensive rarity lookup — legacy saves or corrupt drops can carry an
+                // unknown rarity string; fall back to common rather than crashing.
+                const _rarityDef = RARITY[d.item.rarity] || RARITY.common;
                 pickupTexts.push({
                     text: _cbPickup + d.item.name,
-                    color: RARITY[d.item.rarity].color,
+                    color: _rarityDef.color,
                     row: d.row, col: d.col,
                     offsetY: 0,
                     life: 1.5,

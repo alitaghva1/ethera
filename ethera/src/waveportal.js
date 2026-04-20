@@ -54,17 +54,30 @@ function spawnWavePortal(nextWaveIdx, needsRelic) {
         if (arr && nextWaveIdx >= 0 && nextWaveIdx < arr.length) waveDef = arr[nextWaveIdx];
     } catch (e) { /* fall through */ }
 
+    // Composition details surfaced below the main icon so players can plan builds
+    // between waves (e.g. "see a Swarm tag? pick Power; see ranged? pick Bulwark").
+    let modifierHint = '';      // first modifier tag name, uppercased
+    let modifierColor = null;
+    let heavyHint = false;       // wave has a heavy/tank/boss-minion archetype
+
     if (waveDef) {
         if (waveDef.isBossWave) {
             icon = 'skull';
         } else if (waveDef.enemies && waveDef.enemies.length > 0) {
             const rangedTypes = new Set(['skelarch', 'bone_mage', 'frost_archer']);
-            let total = 0, ranged = 0;
+            const heavyTypes = new Set(['armored', 'bone_colossus', 'shadow_knight', 'werewolf']);
+            let total = 0, ranged = 0, heavy = 0;
             for (const grp of waveDef.enemies) {
                 total += grp.count || 0;
                 if (rangedTypes.has(grp.type)) ranged += grp.count || 0;
+                if (heavyTypes.has(grp.type)) heavy += grp.count || 0;
             }
             if (total > 0 && ranged / total >= 0.4) icon = 'bow';
+            heavyHint = (heavy >= 2 || (total > 0 && heavy / total >= 0.35));
+        }
+        if (waveDef.modifiers && waveDef.modifiers.length > 0 && typeof WAVE_MOD_DEFS !== 'undefined') {
+            const firstMod = WAVE_MOD_DEFS[waveDef.modifiers[0]];
+            if (firstMod) { modifierHint = firstMod.name; modifierColor = firstMod.color; }
         }
     }
 
@@ -99,6 +112,9 @@ function spawnWavePortal(nextWaveIdx, needsRelic) {
     wavePortal.nextWaveTotal = totalWaves || nextWaveIdx + 1;
     wavePortal.needsRelic = !!needsRelic;
     wavePortal._triggered = false;
+    wavePortal.modifierHint = modifierHint;
+    wavePortal.modifierColor = modifierColor;
+    wavePortal.heavyHint = heavyHint;
 }
 
 function clearWavePortal() {
@@ -200,6 +216,18 @@ function drawWavePortal() {
     ctx.strokeText(iconGlyph, sx, sy - 10);
     ctx.fillText(iconGlyph, sx, sy - 10);
 
+    // Heavy-enemy hint: small shield marker under the main icon so players know
+    // to expect tanky enemies before they walk through (better build planning).
+    if (wavePortal.heavyHint) {
+        ctx.globalAlpha = fadeIn * 0.85;
+        ctx.fillStyle = '#b0c0d4';
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 2.5;
+        ctx.font = 'bold 11px Georgia';
+        ctx.strokeText('⛨', sx + 16, sy + 2);
+        ctx.fillText('⛨', sx + 16, sy + 2);
+    }
+
     // "Wave X / Y — step in" label (shown when player is near)
     if (typeof player !== 'undefined') {
         const dr = wavePortal.row - player.row;
@@ -222,6 +250,19 @@ function drawWavePortal() {
             ctx.fillStyle = '#e0d4b0';
             ctx.strokeText(label2, sx, sy + 38);
             ctx.fillText(label2, sx, sy + 38);
+
+            // Modifier tag: shown when player is close. Tells them the vibe of the
+            // fight before committing (darkness / funnel / stampede).
+            if (wavePortal.modifierHint) {
+                ctx.globalAlpha = labelAlpha;
+                ctx.font = 'bold 10px Georgia';
+                ctx.fillStyle = wavePortal.modifierColor || '#c48840';
+                ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+                ctx.lineWidth = 3;
+                const tagText = '◇ ' + wavePortal.modifierHint.toUpperCase();
+                ctx.strokeText(tagText, sx, sy + 52);
+                ctx.fillText(tagText, sx, sy + 52);
+            }
         }
     }
 

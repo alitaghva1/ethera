@@ -4,23 +4,34 @@
 
 // --- Evolution Surge: temporary power boost after each evolution ---
 // Makes each new form feel immediately stronger than the old one.
+//
+// Balance note (v1.17 pass): previously 45s total × 30% dmg × 20% speed was
+// generous enough that the surge could solo-complete the next zone. The
+// empowerment moment IS the reward for evolving, so we keep full values
+// but shorten the flat-power window (full → fade cross-over happens sooner)
+// and apply an ease-out curve to the fade — fades slower at first so the
+// high-power feel lasts longer per-second, then drops off quickly at the end.
 const evolutionSurge = {
     active: false,
     timer: 0,
-    duration: 45,       // extended from 30s — gives new form time to reveal strengths
-    fadeDuration: 15,   // fades over the last 15 seconds
-    dmgMult: 1.30,      // +30% damage during surge (boosted from 25%)
-    speedMult: 1.20,    // +20% move speed during surge (boosted from 15%)
+    duration: 35,       // total surge time (down from 45s)
+    fadeDuration: 20,   // fades over the last 20s — so only 15s at peak (down from 30s)
+    dmgMult: 1.30,      // +30% damage at peak
+    speedMult: 1.20,    // +20% move speed at peak
 };
 
-// Returns current surge multipliers (1.0 when inactive)
+// Returns current surge multipliers (1.0 when inactive).
+// Ease-out cubic on the fade so the surge stays meaningful until the final
+// seconds, then drops quickly — reads as "wow I'm strong... wait it's gone" rather
+// than a long boring linear decay where the middle 5s feels like nothing.
 function getEvolutionSurgeBonus() {
     if (!evolutionSurge.active) return { dmgMult: 1, speedMult: 1 };
     const remaining = evolutionSurge.duration - evolutionSurge.timer;
-    // Fade during last 10 seconds
     let intensity = 1;
     if (remaining < evolutionSurge.fadeDuration) {
-        intensity = remaining / evolutionSurge.fadeDuration;
+        const t = remaining / evolutionSurge.fadeDuration; // 0..1
+        // ease-out-cubic: stays near 1 longer, then falls off
+        intensity = 1 - Math.pow(1 - t, 3);
     }
     return {
         dmgMult: 1 + (evolutionSurge.dmgMult - 1) * intensity,

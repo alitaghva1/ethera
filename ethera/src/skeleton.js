@@ -55,12 +55,18 @@ function resetSkeletonState() {
     skeletonState.boneFragments.length = 0;
 }
 
-// Helper: correct skeleton max HP including upgrades, talisman, and quest bonuses
+// Helper: correct skeleton max HP including upgrades, equipment, talisman, and quest bonuses.
+//
+// BUGFIX (v1.17.2): previously missed `equipBonus.maxHpBonus`, so skeleton
+// players gained nothing from +HP gear in heal-to-full paths (potions, altar,
+// campfire). Both slime.js:_slimeMaxHP and forms.js:getPlayerMaxHP include it —
+// bring skeleton in line with the other forms.
 function _skeletonMaxHP() {
     const base = FORM_CONFIGS.skeleton.maxHp * (1 + getUpgrade('calcium_fort') * 0.15);
+    const equipHp = (typeof equipBonus !== 'undefined' && equipBonus.maxHpBonus) ? equipBonus.maxHpBonus : 0;
     const talismanHp = (typeof getTalismanBonus === 'function') ? getTalismanBonus().hpBonus : 0;
     const qBonus = (typeof questState !== 'undefined') ? (questState.permBonuses.maxHpBonus || 0) : 0;
-    return base + talismanHp + qBonus;
+    return base + equipHp + talismanHp + qBonus;
 }
 
 function updateSkeleton(dt) {
@@ -898,22 +904,45 @@ function drawSkeletonHUD() {
 formHandlers.skeleton.update = function(dt) { updateSkeleton(dt); };
 formHandlers.skeleton.draw = function() { drawSkeleton(); };
 formHandlers.skeleton.drawHUD = function() { drawSkeletonHUD(); drawObjective(); };
-// Occlusion ghost — bare sprite only, no shadow/VFX
+// Occlusion ghost — bare sprite only, no shadow/VFX.
+//
+// BUGFIX (v1.17.4): previously this always drew the LEGACY Tiny-RPG sprites
+// (skel_p_idle / walk / attack / hurt), but drawSkeleton() uses the new PVGames
+// 8-directional sheet when it's available. The mismatch produced a visible
+// "two skeletons stacked" artifact — the PV sprite underneath at full alpha,
+// plus the legacy sprite at 40% alpha on top, in a different art style.
+// Prefer the same PV sprite source as the main draw; fall back to legacy only
+// if the PV sheet isn't loaded yet (e.g., mid-asset-load).
 formHandlers.skeleton.drawGhost = function(sx, sy) {
-    const fw = 100, fh = 100, skelScale = 1.5;
-    let spriteKey;
-    if (player.attacking) spriteKey = 'skel_p_attack';
-    else if (player.state === 'walk') spriteKey = 'skel_p_walk';
-    else spriteKey = 'skel_p_idle';
-    if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'skel_p_hurt';
-    const img = images[spriteKey];
-    if (!img) return;
-    const frameCount = Math.min(Math.floor(img.width / fw), 8);
+    const animType = (player.state === 'walk' || (typeof skeletonState !== 'undefined' && skeletonState.rolling)) ? 'walk' : 'idle';
+    const pvData = (typeof _getSkeletonPVSprite === 'function') ? _getSkeletonPVSprite(animType) : null;
+
+    let img, fw, fh, frameCount, flipH, skelScale;
+    if (pvData) {
+        img = pvData.img;
+        fw = pvData.fw;
+        fh = pvData.fh;
+        frameCount = pvData.frameCount;
+        flipH = false; // PV sheet bakes in direction
+        skelScale = (typeof PV_SKEL_SCALE !== 'undefined') ? PV_SKEL_SCALE : 1.5;
+    } else {
+        // Fallback: legacy Tiny-RPG sprites (matches drawSkeleton's fallback path).
+        fw = 100; fh = 100; skelScale = 1.5;
+        const dir = player.dir8 || 'S';
+        flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
+        let spriteKey;
+        if (player.attacking) spriteKey = 'skel_p_attack';
+        else if (player.state === 'walk') spriteKey = 'skel_p_walk';
+        else spriteKey = 'skel_p_idle';
+        if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'skel_p_hurt';
+        img = images[spriteKey];
+        if (!img) return;
+        const actualFC = Math.floor(img.width / fw);
+        frameCount = Math.min(8, actualFC);
+    }
     const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
     const dw = fw * skelScale, dh = fh * skelScale;
     const drawY = sy - fh * skelScale * 0.72;
-    const dir = player.dir8 || 'S';
-    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
     if (flipH) {
         ctx.save(); ctx.translate(sx, drawY); ctx.scale(-1, 1);
         ctx.drawImage(img, frame * fw, 0, fw, fh, -dw / 2, 0, dw, dh);

@@ -270,6 +270,15 @@ function loadGame(slotIdx) {
     inventory.equipped = data.inventory?.equipped || { wand: null, robe: null, amulet: null, ring: null };
     inventory.backpack = data.inventory?.backpack || [];
 
+    // Normalize rarity on load — legacy saves can carry a rarity string that no
+    // longer exists in RARITY (e.g. 'normal', 'mythic'), which would crash any
+    // code doing RARITY[item.rarity].color. Coerce to 'common' as a safe default.
+    if (typeof RARITY !== 'undefined') {
+        const _normalizeRarity = (it) => { if (it && !RARITY[it.rarity]) it.rarity = 'common'; };
+        if (inventory.equipped) for (const slot in inventory.equipped) _normalizeRarity(inventory.equipped[slot]);
+        if (Array.isArray(inventory.backpack)) inventory.backpack.forEach(_normalizeRarity);
+    }
+
     // Recalculate equipment bonuses immediately (BUG-017)
     if (typeof getEquipBonuses === 'function') {
         equipBonus = getEquipBonuses();
@@ -471,12 +480,22 @@ function loadGame(slotIdx) {
         currentObjective = data.currentObjective;
     }
 
-    // Set wave to zoneClear so player can explore and use doors/chests
+    // Set wave to zoneClear so player can explore and use doors/chests.
+    //
+    // BUGFIX (v1.17.3): previous code only reset `current/phase/timer/
+    // bannerAlpha/enemiesAlive`, leaving `waveKills`, `totalKilled`, and
+    // `modifier` with values from the save moment. If the save was taken
+    // mid-run, the next wave would show stale kill counts in the UI and
+    // the previous wave's modifier (goldMult, etc.) would still be active.
     wave.current = data.waveNum || 0;
     wave.phase = 'zoneClear';
     wave.timer = 0;
     wave.bannerAlpha = 0;
     wave.enemiesAlive = 0;
+    wave.waveKills = 0;
+    wave.totalKilled = 0;
+    wave.modifier = null;
+    wave.modifierTimer = 0;
 
     // Reset effects
     gameDead = false;

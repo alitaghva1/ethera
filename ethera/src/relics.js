@@ -20,19 +20,38 @@
 // --- Definitions ---
 // Each relic has a simple effect object that maps to runRelicState fields.
 // "Mult" suffix = stacks multiplicatively (starts at 1), anything else = additive (starts at 0).
+//
+// Balance notes (v1.17 pass):
+//   - Vampire: healOnKill now scales linearly with stack count (2, 3, 4...) instead
+//     of staying at a flat 2 HP, so it stays relevant into zone 5–6.
+//   - Vitality: stacks add +25 max HP each (on top of the heal on first pickup);
+//     previously stacks 2+ were pure waste because the heal capped at max HP.
+//   - Greed: curve softened — was pure 1.5× mult (3 stacks = 3.375×), now adds
+//     +0.35 per stack (3 stacks = 2.05×). Still strong, no longer dominant.
+//   - New relics (Bulwark/Wisdom/Kindling/Echo/Siphon/Momentum) bring the pool
+//     from 9 → 15 so zone-6 runs stop seeing the same three choices every wave.
 const RELIC_DEFS = {
-    power:      { name: 'Relic of Power',     desc: '+20% damage',         color: '#ff6644', glyph: '⚔', rarity: 'common', effect: { dmgMult: 1.20 } },
-    fortune:    { name: 'Relic of Fortune',   desc: '+15% crit chance',    color: '#ffcc44', glyph: '✦', rarity: 'common', effect: { critBonus: 0.15 } },
-    warlord:    { name: 'Relic of Warlord',   desc: '+50% crit damage',    color: '#dd4466', glyph: '☠', rarity: 'common', effect: { critDmgBonus: 0.50 } },
-    vitality:   { name: 'Relic of Vitality',  desc: '+30 max HP + heal',   color: '#44dd66', glyph: '♥', rarity: 'common', effect: { maxHpBonus: 30, healOnPickup: 1.0 } },
-    swiftness:  { name: 'Relic of Swiftness', desc: '+15% move speed',     color: '#88ddff', glyph: '⚡', rarity: 'common', effect: { moveSpeedMult: 1.15 } },
-    ferocity:   { name: 'Relic of Ferocity',  desc: '+18% attack speed',   color: '#ff8844', glyph: '⚒', rarity: 'common', effect: { atkSpeedMult: 1.18 } },
-    vampire:    { name: 'Relic of Vampire',   desc: 'Heal 2 HP on kill',   color: '#cc44aa', glyph: '◈', rarity: 'rare',   effect: { healOnKill: 2 } },
-    greed:      { name: 'Relic of Greed',     desc: '+50% gold from kills',color: '#e8c840', glyph: '$', rarity: 'common', effect: { goldMult: 1.50 } },
-    resonance:  { name: 'Relic of Resonance', desc: '+15% dmg & +8% crit', color: '#cc88ff', glyph: '◉', rarity: 'rare',   effect: { dmgMult: 1.15, critBonus: 0.08 } },
+    power:      { name: 'Relic of Power',     desc: '+20% damage',              color: '#ff6644', glyph: '⚔', rarity: 'common', effect: { dmgMult: 1.20 } },
+    fortune:    { name: 'Relic of Fortune',   desc: '+15% crit chance',         color: '#ffcc44', glyph: '✦', rarity: 'common', effect: { critBonus: 0.15 } },
+    warlord:    { name: 'Relic of Warlord',   desc: '+50% crit damage',         color: '#dd4466', glyph: '☠', rarity: 'common', effect: { critDmgBonus: 0.50 } },
+    vitality:   { name: 'Relic of Vitality',  desc: '+30 HP (+25 per stack)',   color: '#44dd66', glyph: '♥', rarity: 'common', effect: { maxHpBonus: 30, maxHpBonusStack: 25, healOnPickup: 1.0 } },
+    swiftness:  { name: 'Relic of Swiftness', desc: '+15% move speed',          color: '#88ddff', glyph: '⚡', rarity: 'common', effect: { moveSpeedMult: 1.15 } },
+    ferocity:   { name: 'Relic of Ferocity',  desc: '+18% attack speed',        color: '#ff8844', glyph: '⚒', rarity: 'common', effect: { atkSpeedMult: 1.18 } },
+    vampire:    { name: 'Relic of Vampire',   desc: '+2 HP on kill per stack',  color: '#cc44aa', glyph: '◈', rarity: 'rare',   effect: { healOnKill: 2 } },
+    greed:      { name: 'Relic of Greed',     desc: '+50% gold (+35% stacks)',  color: '#e8c840', glyph: '$', rarity: 'common', effect: { goldBonus: 0.50, goldBonusStack: 0.35 } },
+    resonance:  { name: 'Relic of Resonance', desc: '+15% dmg & +8% crit',      color: '#cc88ff', glyph: '◉', rarity: 'rare',   effect: { dmgMult: 1.15, critBonus: 0.08 } },
+    // ── NEW ─────────────────────────────────────────────────────────────────
+    bulwark:    { name: 'Relic of Bulwark',   desc: '-12% damage taken',        color: '#aaccdd', glyph: '◊', rarity: 'common', effect: { dmgTakenMult: 0.88 } },
+    wisdom:     { name: 'Relic of Wisdom',    desc: '+25% XP from kills',       color: '#c4a4ff', glyph: '✧', rarity: 'common', effect: { xpBonus: 0.25 } },
+    kindling:   { name: 'Relic of Kindling',  desc: '+10% dmg per Power stack', color: '#ff8866', glyph: '✹', rarity: 'rare',   effect: { powerSynergy: 0.10 } },
+    echo:       { name: 'Relic of Echo',      desc: '8% crits hit twice',       color: '#e0d4ff', glyph: '⚘', rarity: 'rare',   effect: { critEcho: 0.08 } },
+    siphon:     { name: 'Relic of Siphon',    desc: 'Heal 3% max HP on crit',   color: '#ffbadd', glyph: '♠', rarity: 'rare',   effect: { critHealPct: 0.03 } },
+    momentum:   { name: 'Relic of Momentum',  desc: '+4% dmg per kill, decays', color: '#ff9944', glyph: '➤', rarity: 'rare',   effect: { momentumDmg: 0.04 } },
 };
 
-const RELIC_RARITY_WEIGHT = { common: 10, rare: 3 };
+// Rare:common weight was 3:10 — a bit too generous; moved to 2:10 so the new
+// rare synergy relics still feel like a score rather than a default.
+const RELIC_RARITY_WEIGHT = { common: 10, rare: 2 };
 
 // --- Runtime state ---
 // Mutable global. Reset on new run / death (see resetRunRelics).
@@ -46,7 +65,20 @@ const runRelicState = {
     atkSpeedMult: 1,
     healOnKill: 0,
     goldMult: 1,
+    // New run-state fields
+    dmgTakenMult: 1,        // bulwark — multiplicatively reduces incoming damage
+    xpBonus: 0,             // wisdom — additive XP multiplier (0 = no bonus)
+    powerStacks: 0,         // cached count of Power for kindling synergy
+    kindlingBonus: 0,       // additive dmg bonus from kindling × power stacks
+    critEcho: 0,            // echo — chance a crit fires a second damage tick
+    critHealPct: 0,         // siphon — % max HP heal on crit
+    momentumDmg: 0,         // momentum — per-kill stacking dmg bonus
+    momentumStacks: 0,      // current momentum stacks (runtime, decays)
+    momentumTimer: 0,       // seconds of momentum life remaining
 };
+
+const MOMENTUM_MAX_STACKS = 25;
+const MOMENTUM_DECAY_AFTER = 5.0; // seconds idle before stacks bleed off
 
 function resetRunRelics() {
     runRelicState.owned.length = 0;
@@ -58,6 +90,46 @@ function resetRunRelics() {
     runRelicState.atkSpeedMult = 1;
     runRelicState.healOnKill = 0;
     runRelicState.goldMult = 1;
+    runRelicState.dmgTakenMult = 1;
+    runRelicState.xpBonus = 0;
+    runRelicState.powerStacks = 0;
+    runRelicState.kindlingBonus = 0;
+    runRelicState._kindlingPer = 0;
+    runRelicState.critEcho = 0;
+    runRelicState.critHealPct = 0;
+    runRelicState.momentumDmg = 0;
+    runRelicState.momentumStacks = 0;
+    runRelicState.momentumTimer = 0;
+}
+
+// Kindling: total synergy bonus = per-kindling-stack × power-stacks, cached so
+// the combat hit path stays branch-free (it just reads kindlingBonus).
+function _recomputeKindling() {
+    const per = runRelicState._kindlingPer || 0;
+    const ps  = runRelicState.powerStacks || 0;
+    runRelicState.kindlingBonus = per * ps;
+}
+
+// Momentum: called from the kill path (enemies.js). Adds a stack and refreshes
+// the decay timer; caps at MOMENTUM_MAX_STACKS so late-zone fights don't snowball
+// uncontrollably. Effective dmg bonus = momentumDmg × momentumStacks.
+function onRelicKill() {
+    if ((runRelicState.momentumDmg || 0) <= 0) return;
+    runRelicState.momentumStacks = Math.min(MOMENTUM_MAX_STACKS, runRelicState.momentumStacks + 1);
+    runRelicState.momentumTimer = MOMENTUM_DECAY_AFTER;
+}
+
+// Called per-frame from gameloop tick. Bleeds off momentum stacks when the
+// player stops killing so it's a pressure-up / pressure-down rhythm, not a toggle.
+function updateRelicRuntime(dt) {
+    if (runRelicState.momentumTimer > 0) {
+        runRelicState.momentumTimer -= dt;
+        if (runRelicState.momentumTimer <= 0 && runRelicState.momentumStacks > 0) {
+            // Bleed one stack every 0.5s of idle time after the grace window.
+            runRelicState.momentumStacks = Math.max(0, runRelicState.momentumStacks - 1);
+            runRelicState.momentumTimer = runRelicState.momentumStacks > 0 ? 0.5 : 0;
+        }
+    }
 }
 
 // --- Grant a relic to the player ---
@@ -68,17 +140,48 @@ function grantRelic(id) {
 
     // Track ownership (stacked count)
     const existing = runRelicState.owned.find(r => r.id === id);
+    const stackIndex = existing ? existing.count : 0;   // 0 = first pickup, 1 = second, etc.
     if (existing) existing.count++;
     else runRelicState.owned.push({ id, count: 1 });
 
     // Apply effects
     for (const key in def.effect) {
         const v = def.effect[key];
+        // --- Per-stack bonuses (handled explicitly below) ---
+        if (key === 'maxHpBonusStack' || key === 'goldBonusStack') continue;
+
         if (key === 'healOnPickup') {
-            // Heal to max on pickup (vitality relic)
+            // Heal to max on pickup (first pickup meaningful; later stacks get max-HP bonus instead)
             if (typeof player !== 'undefined' && typeof getPlayerMaxHP === 'function') {
                 player.hp = Math.min(getPlayerMaxHP(), player.hp + Math.round(getPlayerMaxHP() * v));
             }
+            continue;
+        }
+        if (key === 'maxHpBonus') {
+            // First pickup: base maxHpBonus. Later stacks: add maxHpBonusStack instead.
+            const addHp = (stackIndex === 0) ? v : (def.effect.maxHpBonusStack || 0);
+            runRelicState.maxHpBonus = (runRelicState.maxHpBonus || 0) + addHp;
+            continue;
+        }
+        if (key === 'goldBonus') {
+            // Additive gold bonus — first pickup contributes `goldBonus`, later stacks add goldBonusStack.
+            // Converts back into goldMult (used by enemies.js) so downstream code stays unchanged.
+            const addGold = (stackIndex === 0) ? v : (def.effect.goldBonusStack || 0);
+            const newBonus = ((runRelicState.goldMult || 1) - 1) + addGold;
+            runRelicState.goldMult = 1 + newBonus;
+            continue;
+        }
+        if (key === 'healOnKill') {
+            // Vampire: every stack adds the base healOnKill amount (so 2, 4, 6, ...).
+            // Reads as "+2 HP on kill per stack" on the card.
+            runRelicState.healOnKill = (runRelicState.healOnKill || 0) + v;
+            continue;
+        }
+        if (key === 'powerSynergy') {
+            // Kindling: stores the per-Power-stack dmg bonus. Effective bonus
+            // is recalculated whenever Power is picked up or another Kindling lands.
+            runRelicState._kindlingPer = (runRelicState._kindlingPer || 0) + v;
+            _recomputeKindling();
             continue;
         }
         if (key.endsWith('Mult')) {
@@ -86,6 +189,12 @@ function grantRelic(id) {
         } else {
             runRelicState[key] = (runRelicState[key] || 0) + v;
         }
+    }
+
+    // Power stack count and Kindling interaction: both read the same cache.
+    if (id === 'power') {
+        runRelicState.powerStacks = (existing ? existing.count : 1);
+        _recomputeKindling();
     }
 
     // Feedback
@@ -302,8 +411,26 @@ function drawRelicHUD() {
         ctx.textBaseline = 'middle';
         ctx.fillText(def.glyph, cx, cy + 1);
 
+        // Momentum relic: show live decaying stack count under the icon so the
+        // player can read the pressure-up/pressure-down rhythm. Without this,
+        // the damage bonus is totally invisible — worst design for a dynamic stat.
+        if (entry.id === 'momentum' && runRelicState.momentumStacks > 0) {
+            const mPulse = 0.7 + Math.sin(performance.now() / 140) * 0.3;
+            ctx.globalAlpha = mPulse;
+            ctx.fillStyle = '#ff9944';
+            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+            ctx.lineWidth = 3;
+            ctx.font = 'bold 10px Georgia';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            const mTxt = '+' + Math.round((runRelicState.momentumDmg || 0) * runRelicState.momentumStacks * 100) + '%';
+            ctx.strokeText(mTxt, cx, y + iconSize + 2);
+            ctx.fillText(mTxt, cx, y + iconSize + 2);
+        }
+
         // Stack count
         if (entry.count > 1) {
+            ctx.globalAlpha = 1;
             ctx.fillStyle = '#fff';
             ctx.strokeStyle = 'rgba(0,0,0,0.9)';
             ctx.lineWidth = 3;

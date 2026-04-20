@@ -57,7 +57,14 @@ const spritePool = [];
 // ============================================================
 // GLOW CACHE SYSTEM - Cache static radial gradients
 // ============================================================
-const glowCache = {}; // Maps cacheKey -> offscreen canvas
+//
+// PERF (v1.17.3): migrated from plain object to Map. Map preserves insertion
+// order natively AND exposes O(1) size/first-key lookups, so the per-miss
+// eviction step no longer calls `Object.keys()` twice (was allocating the
+// full key array just to read its length and first element). Saves ~O(n)
+// work on every insertion past the cap.
+const glowCache = new Map(); // Maps cacheKey -> offscreen canvas
+const GLOW_CACHE_MAX = 64;
 
 /**
  * Generate a cache key based on gradient parameters.
@@ -79,9 +86,8 @@ function getGlowCacheKey(colorStops, radius, tag = '') {
  * Use with ctx.drawImage(canvas, x - radius, y - radius) to render positioned glows.
  */
 function getGlowCanvas(cacheKey, radius, colorStops) {
-    if (glowCache[cacheKey]) {
-        return glowCache[cacheKey];
-    }
+    const hit = glowCache.get(cacheKey);
+    if (hit) return hit;
 
     // Create offscreen canvas at 2x radius to fit the entire glow
     const size = radius * 2;
@@ -98,11 +104,13 @@ function getGlowCanvas(cacheKey, radius, colorStops) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
 
-    // Evict oldest entry if cache is too large
-    if (Object.keys(glowCache).length >= 64) {
-        delete glowCache[Object.keys(glowCache)[0]];
+    // Evict oldest entry if at cap. Map iterators preserve insertion order,
+    // so `.keys().next()` gives us the oldest key in O(1).
+    if (glowCache.size >= GLOW_CACHE_MAX) {
+        const oldest = glowCache.keys().next().value;
+        if (oldest !== undefined) glowCache.delete(oldest);
     }
-    glowCache[cacheKey] = canvas;
+    glowCache.set(cacheKey, canvas);
     return canvas;
 }
 
@@ -110,9 +118,7 @@ function getGlowCanvas(cacheKey, radius, colorStops) {
  * Clear glow cache (call on zone load or when needed)
  */
 function clearGlowCache() {
-    for (const key in glowCache) {
-        delete glowCache[key];
-    }
+    glowCache.clear();
     // Also invalidate darkness gradient cache (defined in rendering.js)
     _darkGradCache = null;
     _darkGradCacheKey = '';
@@ -465,33 +471,45 @@ function drawEvolutionIndicator() {
 }
 
 // Track which door positions we've already drawn a portal for (dedup adjacent tiles)
+//
+// PERF (v1.17.2): previous implementation did a nested `Object.entries(DOOR_DEFS)`
+// loop every frame to compute the average column of each door group (O(n²) per
+// frame — 20 doors = 400 string-splits and parse operations). Replaced with a
+// single-pass group-by: one walk over DOOR_DEFS accumulates colSum/colCount
+// per group, then a second walk draws each group once. Total: O(n) per frame.
 function drawDoorGlows() {
     if (typeof DOOR_DEFS === 'undefined' || !DOOR_DEFS) return;
     if (gamePhase === 'cinematic' || gamePhase === 'preMenu' || gamePhase === 'menu') return;
     const t = _frameNow;
 
-    // Group doors by destination+row to draw one portal per exit (not per tile)
-    const drawn = {};
+    // Single pass: build {groupKey -> {r, dest, colSum, colCount, firstC, label}}.
+    // `label` captures the first door's custom label (used only for non-canonical
+    // destinations; multi-tile groups share the same destination so any tile is fine).
+    const groups = {};
     for (const [key, def] of Object.entries(DOOR_DEFS)) {
         if (def.used) continue;
         const [r, c] = key.split(',').map(Number);
         const groupKey = def.destination + '_' + r;
-        if (drawn[groupKey]) continue; // already drew this portal row
-        drawn[groupKey] = true;
-
-        // Find center of this door group (average col of all tiles with same dest+row)
-        let colSum = 0, colCount = 0;
-        for (const [k2, d2] of Object.entries(DOOR_DEFS)) {
-            const [r2, c2] = k2.split(',').map(Number);
-            if (r2 === r && d2.destination === def.destination) { colSum += c2; colCount++; }
+        let g = groups[groupKey];
+        if (!g) {
+            g = groups[groupKey] = { r, dest: def.destination, colSum: 0, colCount: 0, firstC: c, label: def.label || '' };
         }
-        const centerCol = colSum / colCount;
+        g.colSum += c;
+        g.colCount++;
+    }
+
+    // Second pass: draw one portal per group. Same render code as before,
+    // just reads the precomputed center instead of recomputing per tile.
+    for (const groupKey in groups) {
+        const g = groups[groupKey];
+        const r = g.r;
+        const c = g.firstC; // used for fog-visibility check (any tile in the group)
+        const centerCol = g.colSum / g.colCount;
         const pos = tileToScreen(r, centerCol);
         const sx = pos.x + cameraX, sy = pos.y + cameraY;
         if (sx < -200 || sx > canvasW + 200 || sy < -200 || sy > canvasH + 200) continue;
         if (typeof fogRevealed !== 'undefined' && fogRevealed[r] && fogRevealed[r][c] < 0.2) continue;
-
-        const dest = def.destination;
+        const dest = g.dest;
         let cr, cg, cb;
         if (dest === 'zone1' || dest === 'next') { cr = 220; cg = 130; cb = 40; }
         else if (dest === 'town') { cr = 200; cg = 190; cb = 130; }
@@ -568,7 +586,7 @@ function drawDoorGlows() {
         else if (dest === 'town') { portalLabel = 'The Hamlet'; portalArrow = '\u2191'; }
         else if (dest === 'deepest') { portalLabel = 'The Abyss'; portalArrow = '\u2193'; }
         else if (dest === 'zone2') { portalLabel = 'Ascend'; portalArrow = '\u2191'; }
-        else { portalLabel = def.label || ''; }
+        else { portalLabel = g.label || ''; }
 
         if (portalLabel) {
             // Fade out label when player is close (door prompt takes over)
@@ -1382,6 +1400,7 @@ function updateGameplay(dt) {
     updateNPCs(dt);
     if (gamePhase === 'playing' && !inventoryOpen) {
         if (typeof updateEvolutionSurge === 'function') updateEvolutionSurge(dt);
+        if (typeof updateRelicRuntime === 'function') updateRelicRuntime(dt);
         updateWaveSystem(dt);
         updateEnemies(dt);
         if (typeof updateDestructibles === 'function') updateDestructibles(dt);
@@ -1534,7 +1553,17 @@ function updateGameplay(dt) {
                 zoneTransitionFading = 'fadeIn';
                 window._zoneFadeHoldTimer = 0;
                 window._storyBeatTimer = 0;
-                try { loadZone(_sbNextZone); } catch(e) { try { loadZone(0); _sbNextZone = 0; } catch(e2) {} }
+                try { loadZone(_sbNextZone); } catch(e) {
+                    console.error('Story-beat zone load failed:', e);
+                    try { loadZone(0); _sbNextZone = 0; } catch(e2) {
+                        console.error('Story-beat fallback zone load ALSO failed:', e2);
+                        if (typeof Notify !== 'undefined') {
+                            Notify.toast('Zone load failed — please reload the game', {
+                                duration: 10, color: '#ff6644', borderColor: '#aa3322',
+                            });
+                        }
+                    }
+                }
                 try { showZoneBanner(_sbNextZone); } catch(e) {}
                 _arrivalVignetteTimer = 1.5;
                 try { if (typeof sfxZoneEnter === 'function') sfxZoneEnter(); } catch(e) {}
@@ -1601,7 +1630,17 @@ function updateGameplay(dt) {
                     loadZone(nextZone);
                 } catch(e) {
                     console.error('Zone load failed:', e);
-                    try { loadZone(0); nextZone = 0; } catch(e2) {}
+                    try {
+                        loadZone(0); nextZone = 0;
+                    } catch(e2) {
+                        console.error('Fallback zone load ALSO failed — player may be stuck:', e2);
+                        // Last-resort UX: surface a toast so the player isn't staring at a black screen.
+                        if (typeof Notify !== 'undefined') {
+                            Notify.toast('Zone load failed — please reload the game', {
+                                duration: 10, color: '#ff6644', borderColor: '#aa3322',
+                            });
+                        }
+                    }
                 }
                 try { showZoneBanner(nextZone); } catch(e) {}
                 _arrivalVignetteTimer = 1.5;
@@ -1843,9 +1882,23 @@ function gameLoop(timestamp) {
     // Talisman pickup branch moved UP to run before gamePhase-gated early returns.
     // See the relocated block earlier in this function.
 
-    // Evolution hint screen — shows new form's abilities after evolution
+    // Evolution hint screen — shows new form's abilities after evolution.
+    //
+    // BUGFIX (v1.17.4): previously we called render() without ticking
+    // player.animFrame, leaving the newly-evolved sprite frozen at frame 0
+    // while the player read the ability list. Now we advance animFrame at a
+    // gentle idle rate so the new form idle-breathes during the hint. We do
+    // NOT call the full form.update (that would advance combat timers and
+    // resource regen during what should feel like a paused narrative beat).
     if (typeof evolutionHintState !== 'undefined' && evolutionHintState.active) {
         if (typeof updateEvolutionHint === 'function') updateEvolutionHint(dt);
+        // Minimum-cost animation tick: 4 frames/sec idle cycle. Matches the
+        // idle animSpeed that the skeleton/wizard/lich handlers use when
+        // player.state === 'idle', so the visible pose is the natural idle loop.
+        if (typeof player !== 'undefined') {
+            player.animFrame = (player.animFrame || 0) + dt * 4;
+            player.state = 'idle';
+        }
         setPixelCursor('default');
         render();
         if (typeof drawEvolutionHint === 'function') drawEvolutionHint();
@@ -4299,9 +4352,21 @@ function render() {
     drawEnvironmentLightPunchthrough();
 
     // ── LAYER 4b2: Bloom glow on light sources (soft additive halo) ──
+    //
+    // SCREEN-IN-SCREEN FIX (v1.17.1): the punchthrough pass already fades env
+    // lights by distance from the player (v1.16.6), but this bloom pass was
+    // skipped over in that fix. On ultra-wide / 16:9+ aspect ratios, revealed
+    // torches near the expanded map edge still lit their bloom halo at full
+    // strength even when they sat well outside the player's area of interest,
+    // producing a visible "tile frame" in the dark corners after a zone
+    // expansion. Apply the same distance fade here so bloom matches punchthrough.
     {
         const _bloomLights = typeof ENV_LIGHTS !== 'undefined' ? ENV_LIGHTS[currentZone] : null;
         if (_bloomLights && _bloomLights.length > 0) {
+            const _bloomPlayerPos = (typeof player !== 'undefined') ? tileToScreen(player.row, player.col) : null;
+            const _bloomPX = _bloomPlayerPos ? (_bloomPlayerPos.x + cameraX) : canvasW / 2;
+            const _bloomPY = _bloomPlayerPos ? (_bloomPlayerPos.y + cameraY) : canvasH / 2;
+            const _bloomTorchR = (typeof lightRadius === 'number') ? lightRadius : 340;
             ctx.save();
             try {
                 ctx.globalCompositeOperation = 'lighter';
@@ -4313,10 +4378,21 @@ function render() {
                     const fr = Math.floor(light.row), fc = Math.floor(light.col);
                     if (fogRevealed.length === 0 || !fogRevealed[0]) continue;
                     if (fr >= 0 && fr < fogRevealed.length && fc >= 0 && fc < fogRevealed[0].length && !fogRevealed[fr][fc]) continue;
+                    // Distance-fade matching drawEnvironmentLightPunchthrough:
+                    // full bloom inside the player torch, linearly fading to zero
+                    // past (torchR + light.radius). Kills the post-expansion edge
+                    // reveal without softening torches near the player.
+                    const _dxB = sx - _bloomPX, _dyB = sy - _bloomPY;
+                    const _distB = Math.sqrt(_dxB * _dxB + _dyB * _dyB);
+                    let _distFadeB = 1.0;
+                    if (_distB > _bloomTorchR) {
+                        _distFadeB = Math.max(0, 1.0 - (_distB - _bloomTorchR) / light.radius);
+                    }
+                    if (_distFadeB <= 0) continue;
                     // Soft bloom halo — 2x radius of the light, very low alpha
                     const bloomR = light.radius * 2.2;
                     const flicker = 0.8 + Math.sin(now / 500 + light.row * 3) * 0.2;
-                    ctx.globalAlpha = light.intensity * 0.08 * flicker;
+                    ctx.globalAlpha = light.intensity * 0.08 * flicker * _distFadeB;
                     const [cr, cg, cb] = light.color;
                     const bg = ctx.createRadialGradient(sx, sy - 8, 0, sx, sy - 8, bloomR);
                     bg.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.4)`);

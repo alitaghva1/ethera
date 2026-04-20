@@ -749,18 +749,37 @@ formHandlers.lich.draw = function() { drawLich(); };
 formHandlers.lich.drawHUD = function() { drawLichHUD(); drawObjective(); };
 // Occlusion ghost — bare sprite only, no shadow/VFX
 formHandlers.lich.drawGhost = function(sx, sy) {
-    const dir = player.dir8 || 'S';
-    let spriteKey = player.attacking ? 'lich_p_attack' : (player.state === 'walk' ? 'lich_p_walk' : 'lich_p_idle');
-    if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'lich_p_hurt';
-    const img = images[spriteKey];
-    if (!img) return;
-    const fw = 160, fh = 128;
-    const frameCount = Math.floor(img.width / fw);
+    // BUGFIX (v1.17.4): same fix as skeleton — main drawLich prefers the PV
+    // 8-directional sheet, so this ghost pass must too. Otherwise the ghost
+    // draws the legacy sheet at 40% alpha on top of the PV main sprite and
+    // we see two mismatched lich bodies overlaid.
+    const animType = (player.state === 'walk') ? 'walk' : 'idle';
+    const pvData = (typeof _getLichPVSprite === 'function') ? _getLichPVSprite(animType) : null;
+
+    let img, fw, fh, frameCount, flipH, lichScale;
+    if (pvData) {
+        img = pvData.img;
+        fw = pvData.fw;
+        fh = pvData.fh;
+        frameCount = pvData.frameCount;
+        flipH = false; // PV sheet bakes in direction
+        lichScale = (typeof PV_LICH_SCALE !== 'undefined') ? PV_LICH_SCALE : 1.5;
+    } else {
+        // Fallback: legacy sprites (matches drawLich's fallback path).
+        const dir = player.dir8 || 'S';
+        let spriteKey = player.attacking ? 'lich_p_attack' : (player.state === 'walk' ? 'lich_p_walk' : 'lich_p_idle');
+        if (playerInvTimer > PLAYER_STATS.invTime * 0.5) spriteKey = 'lich_p_hurt';
+        img = images[spriteKey];
+        if (!img) return;
+        fw = 160; fh = 128;
+        frameCount = Math.floor(img.width / fw);
+        flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
+        lichScale = 1.50;
+    }
     const frame = Math.floor(player.animFrame) % Math.max(1, frameCount);
-    const dw = fw * PV_LICH_SCALE, dh = fh * PV_LICH_SCALE;
+    const dw = fw * lichScale, dh = fh * lichScale;
     const hover = (typeof lichState !== 'undefined') ? lichState.hoverOffset || 0 : 0;
     const drawY = (sy - hover) - dh * 0.89;
-    const flipH = (dir === 'E' || dir === 'NE' || dir === 'SE');
     if (flipH) {
         ctx.save(); ctx.translate(sx, drawY); ctx.scale(-1, 1);
         ctx.drawImage(img, frame * fw, 0, fw, fh, -dw / 2, 0, dw, dh);

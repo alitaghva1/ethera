@@ -24,19 +24,35 @@ function canPlaySFX(priority) {
 }
 function trackSFXChannel(duration) {
     sfxActiveCount++;
+    // WATCHDOG (v1.17.3): if the counter drifts unreasonably high (e.g., tab
+    // backgrounded and setTimeout callbacks fired out of order), clamp it so
+    // polyphony limiting can recover. 2× the channel cap is the "impossible"
+    // threshold — real overlapping SFX never need that many simultaneously.
+    if (sfxActiveCount > SFX_MAX_CHANNELS * 2) sfxActiveCount = SFX_MAX_CHANNELS;
     setTimeout(() => { sfxActiveCount = Math.max(0, sfxActiveCount - 1); }, duration * 1000);
 }
 
-// Helper: create noise buffer (for whooshes, hits, explosions) — cached by duration
-const _noiseBufCache = {};
+// Helper: create noise buffer (for whooshes, hits, explosions) — cached by duration.
+//
+// PERF (v1.17.3): cache was unbounded — each unique `duration.toFixed(2)` key
+// allocated an AudioBuffer, and procedurally-varied durations (0.12, 0.13, …)
+// would accumulate. Cap at 32 entries with FIFO eviction; real game only uses
+// a handful of canonical durations, so this is more than enough for reuse.
+const _noiseBufCache = new Map();
+const _NOISE_CACHE_MAX = 32;
 function createNoiseBuffer(duration) {
     const key = duration.toFixed(2);
-    if (_noiseBufCache[key]) return _noiseBufCache[key];
+    const hit = _noiseBufCache.get(key);
+    if (hit) return hit;
     const len = Math.ceil(sfxCtx.sampleRate * duration);
     const buf = sfxCtx.createBuffer(1, len, sfxCtx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    _noiseBufCache[key] = buf;
+    if (_noiseBufCache.size >= _NOISE_CACHE_MAX) {
+        const oldest = _noiseBufCache.keys().next().value;
+        if (oldest !== undefined) _noiseBufCache.delete(oldest);
+    }
+    _noiseBufCache.set(key, buf);
     return buf;
 }
 

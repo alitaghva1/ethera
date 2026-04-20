@@ -549,7 +549,16 @@ function calcPlayerDmgBonus() {
     const fusionDmgMult = (typeof fusedUpgrades !== 'undefined' && Object.keys(fusedUpgrades).length > 0) ? 1.25 : 1;
     // Run relics (picked up between waves) — stack multiplicatively
     const relicDmgMult = (typeof runRelicState !== 'undefined') ? (runRelicState.dmgMult || 1) : 1;
-    return { flat: equip + big + quest, mult: talisman * synBonus * tagDmgMult * wizResonanceMult * fusionDmgMult * relicDmgMult };
+    // Kindling synergy (Power × Kindling) and Momentum (per-kill decaying stacks)
+    // both grant additive damage % on top of the multiplicative chain — this keeps
+    // their scaling predictable and prevents the three from exponentiating.
+    let relicAdditiveMult = 1;
+    if (typeof runRelicState !== 'undefined') {
+        const kindling = runRelicState.kindlingBonus || 0;
+        const momentum = (runRelicState.momentumDmg || 0) * (runRelicState.momentumStacks || 0);
+        relicAdditiveMult = 1 + kindling + momentum;
+    }
+    return { flat: equip + big + quest, mult: talisman * synBonus * tagDmgMult * wizResonanceMult * fusionDmgMult * relicDmgMult * relicAdditiveMult };
 }
 
 // All damage to enemies should go through this function.
@@ -583,6 +592,25 @@ function applyEnemyHit(e, damage, opts) {
     const _relicCritDmg = (typeof runRelicState !== 'undefined') ? (runRelicState.critDmgBonus || 0) : 0;
     const isCrit = !opts.skipCrit && Math.random() < (CRIT_CHANCE + _relicCritBonus);
     if (isCrit) finalDmg = Math.round(finalDmg * (CRIT_MULTIPLIER + _relicCritDmg));
+
+    // Relic hooks on crit: Echo (chance to repeat damage) and Siphon (heal on crit)
+    if (isCrit && typeof runRelicState !== 'undefined') {
+        // Siphon — flat % max HP heal on every crit
+        if (runRelicState.critHealPct > 0 && typeof player !== 'undefined' && typeof getPlayerMaxHP === 'function') {
+            const maxHp = getPlayerMaxHP();
+            const healAmt = Math.max(1, Math.round(maxHp * runRelicState.critHealPct));
+            const before = player.hp;
+            player.hp = Math.min(maxHp, player.hp + healAmt);
+            if (player.hp > before && typeof pickupTexts !== 'undefined') {
+                pickupTexts.push({ text: '+' + (player.hp - before), color: '#ffbadd', row: e.row, col: e.col, offsetY: -6, life: 0.6 });
+            }
+        }
+        // Echo — small chance the crit damage fires a second time (set a pending flag
+        // so we apply it once after the main damage resolves, avoiding recursion).
+        if (!opts._echoRepeat && runRelicState.critEcho > 0 && Math.random() < runRelicState.critEcho) {
+            opts._echoRepeat = true;   // guard against infinite chains
+        }
+    }
 
     // Executioner upgrade (skeleton): bonus damage to low-HP enemies
     if (typeof FormSystem !== 'undefined' && FormSystem.currentForm === 'skeleton' &&
@@ -794,6 +822,17 @@ function applyEnemyHit(e, damage, opts) {
             e.knockVr += (rdr / rLen) * 1.5;
             e.knockVc += (rdc / rLen) * 1.5;
         }
+    }
+
+    // Echo relic follow-up: fires after the main damage so the enemy's hurt/death
+    // state transitions are already settled. Uses skipCrit to avoid re-rolling a
+    // crit on the echo itself, and skipSFX so we don't double the hit sound.
+    if (opts._echoRepeat && e.state !== 'death') {
+        opts._echoRepeat = false;
+        if (typeof pickupTexts !== 'undefined') {
+            pickupTexts.push({ text: 'ECHO', color: '#e0d4ff', row: e.row, col: e.col, offsetY: -18, life: 0.6 });
+        }
+        applyEnemyHit(e, Math.max(1, Math.round(damage * 0.6)), { skipCrit: true, skipSFX: true, skipParticles: true });
     }
 }
 
@@ -3197,6 +3236,8 @@ function updateEnemies(dt) {
                 wave.totalKilled++;
                 wave.waveKills++;
                 grantXP(e.type, e.statMult || 1.0, e.row, e.col);
+                // Momentum relic: bump the per-kill decaying damage stack
+                if (typeof onRelicKill === 'function') onRelicKill();
                 // Relic: heal on kill
                 if (typeof runRelicState !== 'undefined' && runRelicState.healOnKill > 0 && typeof player !== 'undefined' && typeof getPlayerMaxHP === 'function') {
                     const _hkHeal = runRelicState.healOnKill;
@@ -4673,7 +4714,9 @@ function grantXP(enemyType, statMult, row, col) {
     const baseAmount = (ENEMY_XP[enemyType] || 5) * XP_WAVE_COMPENSATION_MULT;
     // XP scales with sqrt of statMult — harder enemies give more XP but not linearly
     const scaledAmount = baseAmount * Math.sqrt(statMult || 1.0);
-    const amount = Math.round(scaledAmount * getTalismanBonus().xpMult * killStreak.multiplier);
+    // Wisdom relic: flat additive XP bonus (stacks of 25% each)
+    const relicXpBonus = (typeof runRelicState !== 'undefined') ? (1 + (runRelicState.xpBonus || 0)) : 1;
+    const amount = Math.round(scaledAmount * getTalismanBonus().xpMult * killStreak.multiplier * relicXpBonus);
     xpState.xp += amount;
     // XP floating text feedback
     if (typeof pickupTexts !== 'undefined' && row !== undefined) {
@@ -5038,7 +5081,11 @@ function damagePlayer(amount, enemyType = '', sourceRow, sourceCol) {
     // Synergy tag: defensive set bonus (10% damage reduction)
     const _tagBonuses = (typeof getActiveTagBonuses === 'function') ? getActiveTagBonuses() : {};
     const _tagDefReduc = _tagBonuses.defensive ? _tagBonuses.defensive.dmgReduc : 0;
-    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0) - _potionReduc - _ironBonesReduc - _tagDefReduc)));
+    // Bulwark relic: multiplicative incoming-damage reduction. Applied after
+    // additive reductions so it compounds rather than overriding (e.g. 10% flat
+    // + 12% Bulwark ≈ 21% total, not 22%).
+    const _relicDmgTakenMult = (typeof runRelicState !== 'undefined') ? (runRelicState.dmgTakenMult || 1) : 1;
+    let reducedAmt = Math.max(1, Math.round(amount * (1 - (equipBonus.dmgReduc || 0) - _potionReduc - _ironBonesReduc - _tagDefReduc) * _relicDmgTakenMult));
 
     // === SLIME: Membrane shield absorbs damage before HP ===
     if (FormSystem.currentForm === 'slime' && typeof slimeState !== 'undefined' && slimeState.membraneShield > 0) {
@@ -5284,10 +5331,25 @@ function checkProjectileEnemyHits() {
                     spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1, 0.25, COLORS.ELITE_SHIELDED_TINT, 0.7);
                 }
                 // Elite thorned: reflect 15% damage back to player
+                // Feedback: "THORNS!" floating text + spike particle streak from enemy to player
+                // so the player immediately connects "I shot the red one → I got hurt".
                 if (e.elite === 'thorned') {
                     const reflectDmg = Math.max(1, Math.round(projFinalDmg * ELITE_THORNED_REFLECT));
                     damagePlayer(reflectDmg, 'thorned_reflect');
-                    spawnParticle(e.row, e.col, (Math.random()-0.5)*2, -1, 0.25, COLORS.ELITE_THORNED_TINT, 0.7);
+                    if (typeof pickupTexts !== 'undefined') {
+                        pickupTexts.push({ text: 'THORNS!', color: '#ff6644', row: player.row, col: player.col, offsetY: -24, life: 0.8 });
+                    }
+                    // Spike streak: 4 particles traveling enemy → player so the hit is telegraphed
+                    if (typeof spawnParticle === 'function') {
+                        const sdr = player.row - e.row, sdc = player.col - e.col;
+                        const sLen = Math.sqrt(sdr*sdr + sdc*sdc) || 1;
+                        for (let ti = 0; ti < 4; ti++) {
+                            const frac = ti / 4;
+                            spawnParticle(e.row + sdr * frac, e.col + sdc * frac,
+                                (sdr / sLen) * 1.2, (sdc / sLen) * 1.2,
+                                0.35, COLORS.ELITE_THORNED_TINT || '#ff4444', 0.85);
+                        }
+                    }
                 }
 
                 // Talisman Echo: Bone Rhythm — increment hit combo on projectile hit

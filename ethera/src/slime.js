@@ -520,10 +520,15 @@ function updateSlime(dt) {
     }
 
     // === ABSORPTION MOMENTUM — decay and passive aura ===
+    //
+    // BUGFIX (v1.17.2): matches the wizard resonance fix — resetting the timer
+    // to `momentumDecay - 0.5` after a decay tick made every subsequent stack
+    // drain in 0.5s instead of the full decay interval. Resetting to 0 makes
+    // each stack hold for its full designed lifetime.
     slimeState.momentumTimer += dt;
     if (slimeState.momentumTimer > slimeState.momentumDecay && slimeState.absorptionMomentum > 0) {
         slimeState.absorptionMomentum = Math.max(0, Math.floor(slimeState.absorptionMomentum) - 1);
-        slimeState.momentumTimer = slimeState.momentumDecay - 0.5; // re-check in 0.5s
+        slimeState.momentumTimer = 0;
     }
     // Passive damage aura at 5+ momentum stacks
     if (slimeState.absorptionMomentum >= 5) {
