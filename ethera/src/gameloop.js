@@ -3488,9 +3488,12 @@ function drawDeathScreen() {
 
         // Death headline — large, dramatic, the only text element
         const _deathName = playerName || 'Wanderer';
+        // Must be noun phrases — prefixed with possessive "'s" below. Using bare
+        // verbs produced "Wanderer's dissolves into nothing..." which parses as
+        // possessive + verb and reads as nonsense.
         const _formDeathLines = {
-            slime:    'dissolves into nothing...',
-            skeleton: 'crumbles to dust...',
+            slime:    'body dissolves into nothing...',
+            skeleton: 'bones crumble to dust...',
             wizard:   'light fades...',
             lich:     'soul dissipates...',
         };
