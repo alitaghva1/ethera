@@ -1194,18 +1194,23 @@ function drawDarkness() {
         // so zone background art (stone walls etc.) can't bleed through at the
         // canvas boundaries. Same fix as the dungeon darkness path.
         ctx.save();
-        // Same fix as the dungeon vignette — tighter stops so canvas corners are
-        // fully opaque and zone art can't bleed through. See rendering.js dungeon
-        // path for the full rationale.
-        const _hellEdgeGrad = ctx.createRadialGradient(
-            canvasW / 2, canvasH / 2, canvasH * 0.35,
-            canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.65
-        );
-        _hellEdgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        _hellEdgeGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.5)');
-        _hellEdgeGrad.addColorStop(0.8, 'rgba(0, 0, 0, 1)');
-        _hellEdgeGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
-        ctx.fillStyle = _hellEdgeGrad;
+        // Aspect-aware vignette — see the dungeon path for the full rationale.
+        // Short version: radial metric darkens top/bottom less than sides on
+        // 16:9+ canvases, which leaves a visible tile-frame at the top/bottom.
+        // Two axis-aligned linear gradients fix it.
+        const _hellEdgeH = ctx.createLinearGradient(0, 0, canvasW, 0);
+        _hellEdgeH.addColorStop(0.00, 'rgba(0, 0, 0, 1)');
+        _hellEdgeH.addColorStop(0.22, 'rgba(0, 0, 0, 0)');
+        _hellEdgeH.addColorStop(0.78, 'rgba(0, 0, 0, 0)');
+        _hellEdgeH.addColorStop(1.00, 'rgba(0, 0, 0, 1)');
+        ctx.fillStyle = _hellEdgeH;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        const _hellEdgeV = ctx.createLinearGradient(0, 0, 0, canvasH);
+        _hellEdgeV.addColorStop(0.00, 'rgba(0, 0, 0, 1)');
+        _hellEdgeV.addColorStop(0.22, 'rgba(0, 0, 0, 0)');
+        _hellEdgeV.addColorStop(0.78, 'rgba(0, 0, 0, 0)');
+        _hellEdgeV.addColorStop(1.00, 'rgba(0, 0, 0, 1)');
+        ctx.fillStyle = _hellEdgeV;
         ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.restore();
         _applyBrightnessPass();
@@ -1278,9 +1283,14 @@ function drawDarkness() {
     const radius = Math.max(5, (lightRadius + flicker) * _dimCombined2);
 
     // Pass 1: radial torch light (cached — only recreated when position/radius shift >2px)
+    // Outermost stop is PURE BLACK (was rgba(8,4,2,1) = 3% brightness). The prior
+    // ~3% multiply left revealed-but-unlit dungeon tiles faintly visible beyond
+    // the torch, which after zone expansions (wave 2+) showed as a stone-tile
+    // "frame" around the playable area. Pure-black multiply collapses those
+    // tiles to true black.
     const _torchStops = [[0, 'rgba(210, 185, 135, 1)'], [0.25, 'rgba(180, 145, 95, 1)'],
-                         [0.5, 'rgba(110, 75, 45, 1)'], [0.75, 'rgba(40, 24, 14, 1)'],
-                         [1, 'rgba(8, 4, 2, 1)']];
+                         [0.5, 'rgba(110, 75, 45, 1)'], [0.75, 'rgba(20, 12, 6, 1)'],
+                         [1, 'rgba(0, 0, 0, 1)']];
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
     const grad = _getDarknessGrad(ctx, px, py, radius, 'dungeon', _torchStops);
@@ -1294,27 +1304,38 @@ function drawDarkness() {
     ctx.fillStyle = 'rgba(48, 35, 25, 0.25)';
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();
-    // Pass 3: hard edge vignette — fully black at canvas edges so zone
-    // background art (stone walls in zone_art_1.jpg etc.) can't bleed
-    // through beyond the torch radius. This is the "screen within screen"
-    // fix — users saw the zone art's stone walls at viewport edges and
-    // read it as a second game layered on the real one.
+    // Pass 3: aspect-aware edge vignette.
+    //
+    // Prior implementation used a single radial gradient centered on the
+    // canvas. On a 16:9 canvas that puts top/bottom at gradient position ~0.19
+    // (barely darkened) while left/right sit at ~0.67 (heavily darkened), so
+    // top/bottom of revealed-but-unlit dungeon tiles stayed visible as a
+    // stone-tile "frame" after zone expansion (wave 2+). The radial metric
+    // was fundamentally wrong for non-square viewports.
+    //
+    // Replaced with TWO axis-aligned linear gradients (one vertical, one
+    // horizontal). Each gradient's falloff is based on distance to the
+    // nearest edge in that axis, so top/bottom darken at the same rate as
+    // left/right regardless of aspect ratio. Combined with the pure-black
+    // torch outer stop above, this yields a clean solid-black frame and
+    // kills the stone-tile bleed-through at every aspect ratio.
     ctx.save();
-    // Stops tuned so corners are FULLY opaque at every reasonable aspect ratio.
-    // Previous stops (0.7 @ 0.4, 1.0 @ 1.0) left canvas corners at ~76% opacity —
-    // zone_art_*.jpg stone walls bled through and users read it as a second
-    // viewport layered on the real one ("screen within a screen" on Wave 2+).
-    // Full-black reaches position 0.80 now, which covers the corner distance for
-    // 16:9 through 32:9 aspect ratios.
-    const _edgeGrad = ctx.createRadialGradient(
-        canvasW / 2, canvasH / 2, canvasH * 0.35,
-        canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.65
-    );
-    _edgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    _edgeGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.5)');
-    _edgeGrad.addColorStop(0.8, 'rgba(0, 0, 0, 1)');
-    _edgeGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
-    ctx.fillStyle = _edgeGrad;
+    // Horizontal gradient — darkens left and right edges.
+    const _edgeH = ctx.createLinearGradient(0, 0, canvasW, 0);
+    _edgeH.addColorStop(0.00, 'rgba(0, 0, 0, 1)');
+    _edgeH.addColorStop(0.22, 'rgba(0, 0, 0, 0)');
+    _edgeH.addColorStop(0.78, 'rgba(0, 0, 0, 0)');
+    _edgeH.addColorStop(1.00, 'rgba(0, 0, 0, 1)');
+    ctx.fillStyle = _edgeH;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+    // Vertical gradient — darkens top and bottom edges SYMMETRICALLY so
+    // stone-tile frame artifacts are gone.
+    const _edgeV = ctx.createLinearGradient(0, 0, 0, canvasH);
+    _edgeV.addColorStop(0.00, 'rgba(0, 0, 0, 1)');
+    _edgeV.addColorStop(0.22, 'rgba(0, 0, 0, 0)');
+    _edgeV.addColorStop(0.78, 'rgba(0, 0, 0, 0)');
+    _edgeV.addColorStop(1.00, 'rgba(0, 0, 0, 1)');
+    ctx.fillStyle = _edgeV;
     ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();
     _applyBrightnessPass();
