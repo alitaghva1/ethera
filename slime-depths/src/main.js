@@ -90,6 +90,9 @@ import { DEATH_SCREEN_HTML } from './deathScreen.js';
 import { WIN_SCREEN_HTML } from './winScreen.js';
 // Credits screen — third-party asset attribution (release-prep legal step).
 import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
+// Storage health probe — surfaces a warning chip if localStorage is blocked.
+import { showStorageWarningIfBlocked } from './storage.js';
+showStorageWarningIfBlocked();
 
 const loadingEl = document.getElementById('loading');
 const deathEl = document.getElementById('deathScreen');
