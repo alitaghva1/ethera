@@ -59,103 +59,12 @@ const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 setCameraSize(canvas.width, canvas.height);
 
-// ============================================================================
-// BLOOM POST-FX — classic 3-pass pipeline, half-resolution for perf.
-// Pass 1: extract bright pixels via contrast boost
-// Pass 2: Gaussian blur the brights
-// Pass 3: composite back onto main canvas via 'lighter' (additive blend)
-// Cost is small (~250K pixels per pass) and dominates the "filmic" feel.
-// ============================================================================
-const _bloomA = document.createElement('canvas');
-const _bloomACtx = _bloomA.getContext('2d');
-const _bloomB = document.createElement('canvas');
-const _bloomBCtx = _bloomB.getContext('2d');
-_bloomACtx.imageSmoothingEnabled = true;
-_bloomBCtx.imageSmoothingEnabled = true;
-
-// ============================================================================
-// CHROMATIC ABERRATION — brief RGB channel split when the hero takes damage
-// or a big impact lands. Creates the "camera lens got shaken" feel that
-// Hades/Isaac use to sell hits. Runs after bloom + grade, before HUD.
-// ============================================================================
-const _chromCanvas = document.createElement('canvas');
-const _chromCtx = _chromCanvas.getContext('2d');
-let _chromTime = 0;
-let _chromDur = 0;
-let _chromStrength = 1;
-
-function triggerChromAberr(dur = 0.35, strength = 1) {
-  // VFX SUBTRACTION PASS: chromatic aberration disabled. The RGB-split
-  // fought with the pixel-art atmosphere and stacked illegibly with
-  // bloom + shake + flash on damage. Infrastructure kept so the effect
-  // can be re-enabled by removing this early return.
-  return;
-  // Stack: take the stronger of current vs new rather than restart
-  if (dur * strength > _chromTime * _chromStrength) {
-    _chromTime = dur;
-    _chromDur = dur;
-    _chromStrength = strength;
-  }
-}
-// Expose so hero.js can trigger without importing main.js
+// Post-FX pipeline (bloom + chromatic aberration) moved to ./postfx.js
+// as part of review #4 (main.js split). main.js still owns the render-loop
+// order and keeps the window assignment below so hero.js can trigger the
+// RGB split on damage without importing main.js.
+import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom } from './postfx.js';
 window.__triggerChromAberr = triggerChromAberr;
-
-function applyChromAberr(mainCtx, mainCanvas) {
-  if (_chromTime <= 0) return;
-  const t = Math.max(0, _chromTime / _chromDur);    // 1 → 0 over lifetime
-  const intensity = t * t;                            // quartic ease-out
-  const offset = 7 * intensity * _chromStrength;     // 0-7px peak
-  if (offset < 0.5) return;
-  if (_chromCanvas.width !== mainCanvas.width) {
-    _chromCanvas.width = mainCanvas.width;
-    _chromCanvas.height = mainCanvas.height;
-  }
-  _chromCtx.clearRect(0, 0, _chromCanvas.width, _chromCanvas.height);
-  _chromCtx.drawImage(mainCanvas, 0, 0);
-  mainCtx.save();
-  mainCtx.globalCompositeOperation = 'lighter';
-  mainCtx.globalAlpha = intensity * 0.50;
-  // Red channel offset left (filter isolates red-ish tones via sepia→hue-rotate)
-  mainCtx.filter = 'sepia(1) hue-rotate(-45deg) saturate(5) brightness(0.55)';
-  mainCtx.drawImage(_chromCanvas, -offset, 0);
-  // Cyan channel offset right
-  mainCtx.filter = 'sepia(1) hue-rotate(150deg) saturate(5) brightness(0.55)';
-  mainCtx.drawImage(_chromCanvas, offset, 0);
-  mainCtx.filter = 'none';
-  mainCtx.restore();
-}
-
-function updateChromAberr(dt) {
-  if (_chromTime > 0) _chromTime -= dt;
-  if (_chromTime <= 0) _chromTime = 0;
-}
-
-function applyBloom(targetCtx, sourceCanvas, intensity = 0.55) {
-  const W = sourceCanvas.width, H = sourceCanvas.height;
-  const BW = W >> 1, BH = H >> 1;   // half-resolution for perf
-  if (_bloomA.width !== BW) {
-    _bloomA.width = BW; _bloomA.height = BH;
-    _bloomB.width = BW; _bloomB.height = BH;
-  }
-  // Pass 1: threshold — crush midtones, preserve brights
-  _bloomACtx.clearRect(0, 0, BW, BH);
-  _bloomACtx.filter = 'brightness(1.2) contrast(2.4) saturate(1.15)';
-  _bloomACtx.drawImage(sourceCanvas, 0, 0, BW, BH);
-  _bloomACtx.filter = 'none';
-  // Pass 2: blur the extracted brights (writing to B so filter applies cleanly)
-  _bloomBCtx.clearRect(0, 0, BW, BH);
-  _bloomBCtx.filter = 'blur(8px)';
-  _bloomBCtx.drawImage(_bloomA, 0, 0);
-  _bloomBCtx.filter = 'none';
-  // Pass 3: additive composite back onto main canvas
-  targetCtx.save();
-  targetCtx.globalCompositeOperation = 'lighter';
-  targetCtx.globalAlpha = intensity;
-  targetCtx.imageSmoothingEnabled = true;   // upscale the half-res bloom smoothly
-  targetCtx.drawImage(_bloomB, 0, 0, BW, BH, 0, 0, W, H);
-  targetCtx.imageSmoothingEnabled = false;
-  targetCtx.restore();
-}
 
 const loadingEl = document.getElementById('loading');
 const deathEl = document.getElementById('deathScreen');
