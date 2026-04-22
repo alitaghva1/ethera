@@ -1,10 +1,14 @@
 Copyright (c) 2026 Armin. All rights reserved.
 
-Ethera - The Awakening
+Ethera
 
-This software and all associated assets (including but not limited to
-source code, artwork, audio, and game data) are proprietary and
-confidential.
+================================================================================
+ GAME CODE AND ORIGINAL WORK
+================================================================================
+
+The original source code of this project (all .js / .html / .css files
+authored for this game, the game design, prose, and level data) is
+proprietary and confidential.
 
 No part of this software may be reproduced, distributed, modified,
 reverse-engineered, or transmitted in any form or by any means without
@@ -18,3 +22,36 @@ written permission.
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 OR IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES
 OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+================================================================================
+ THIRD-PARTY ASSETS (bundled into ./slime-depths/assets/)
+================================================================================
+
+This game uses art, audio, and UI assets from third-party packs. Each
+pack is licensed by its original author under its own terms (CC BY,
+CC0, or commercial-use asset-store licenses, as applicable). Below is
+the attribution list; refer to each pack's own LICENSE / README for
+authoritative terms.
+
+ * Tiny RPG Character Asset Pack v1.03b (20 Characters)
+   — Character sprites (knight, slime, skeleton, orc, archer, priest,
+     wizard, vanguard, lancer, etc.) in ./slime-depths/assets/characters/
+     and ./slime-depths/assets/enemies/.
+
+ * Kenney Roguelike Dungeon tileset (kenney.nl)
+   — Dungeon tiles in ./slime-depths/assets/tiles/.
+   — CC0 / public domain per Kenney's standard terms.
+
+ * Pixel Fantasy 30 Tracks Music Pack
+   — Background music in ./slime-depths/assets/music/ (ambient, boss,
+     crypt, vault, abyss, inferno).
+
+ * Free Raven Fantasy Icons
+   — Relic / fusion icons in ./slime-depths/assets/icons/.
+
+ * Other Worlds Slime pack
+   — Bundled for future use; not currently rendered at prototype scale.
+
+If you believe an asset is incorrectly attributed or licensed, please
+contact the copyright holder listed at the top of this file so we can
+correct it.

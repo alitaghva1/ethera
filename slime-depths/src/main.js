@@ -88,6 +88,8 @@ window.__triggerChromAberr = triggerChromAberr;
 import { DEATH_SCREEN_HTML } from './deathScreen.js';
 // Between-floor + victory screen markup moved to ./winScreen.js (split pass 3).
 import { WIN_SCREEN_HTML } from './winScreen.js';
+// Credits screen — third-party asset attribution (release-prep legal step).
+import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
 
 const loadingEl = document.getElementById('loading');
 const deathEl = document.getElementById('deathScreen');
@@ -533,6 +535,12 @@ menuEl.innerHTML = `
         <span>read the chronicles</span>
         <span style="font-size:10px;opacity:0.7;">\u2192</span>
       </button>
+      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
+      <!-- Credits link — release-prep attribution screen for third-party assets. -->
+      <button id="menuCreditsLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.6;display:flex;align-items:center;gap:8px;">
+        <span>credits</span>
+        <span style="font-size:10px;opacity:0.7;">\u2192</span>
+      </button>
       <div style="width:40px;height:1px;background:linear-gradient(270deg,transparent,rgba(201,168,106,0.6));"></div>
     </div>
 
@@ -784,6 +792,22 @@ document.getElementById('menuChroniclesLink')?.addEventListener('click', () => {
 document.getElementById('menuSettingsBtn')?.addEventListener('click', () => {
   showSettingsModal();
 });
+// Credits link → in-game attribution modal. Created lazily on first click
+// so we don't pay the DOM cost for a rarely-opened screen at boot.
+let creditsEl = null;
+function showCredits() {
+  if (!creditsEl) {
+    creditsEl = document.createElement('div');
+    creditsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;';
+    creditsEl.innerHTML = CREDITS_SCREEN_HTML;
+    document.getElementById('hud').appendChild(creditsEl);
+    creditsEl.querySelector('#creditsCloseBtn')?.addEventListener('click', () => {
+      creditsEl.style.display = 'none';
+    });
+  }
+  creditsEl.style.display = 'flex';
+}
+document.getElementById('menuCreditsLink')?.addEventListener('click', showCredits);
 
 // Initial state — sets chip highlight + CTA tint
 refreshMenuModeChips();
