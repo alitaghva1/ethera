@@ -861,10 +861,12 @@ export function damageHero(amount, fromX, fromY) {
   shakeCamera(7 * hitWeight, 0.2);
   // Red screen flash — sharp, brief, less intrusive than before.
   // Capped lower so the playfield stays readable even at low HP.
+  // VFX SUBTRACTION PASS: alpha halved 0.22 → 0.11 so rapid enemy hits
+  // don't strobe the playfield into noise.
   const flashDur = Math.min(0.22, 0.08 + taken * 0.03);
-  triggerScreenFlash('rgba(220, 40, 50, 0.22)', flashDur);
-  // Chromatic aberration — RGB channel split for "camera got hit" feel.
-  // Scales with hit weight; big hits split the image hard.
+  triggerScreenFlash('rgba(220, 40, 50, 0.11)', flashDur);
+  // Chromatic aberration trigger — function is a no-op this pass (see main.js).
+  // Call kept so if we re-enable, this damage path still drives it.
   if (window.__triggerChromAberr) {
     window.__triggerChromAberr(Math.min(0.5, 0.22 + taken * 0.04), Math.min(1.6, 0.8 + hitWeight * 0.5));
   }

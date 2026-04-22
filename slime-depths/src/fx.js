@@ -453,10 +453,13 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   p.elementTag = opts.elementTag || '';
   p.elementColor = opts.elementTag === 'WEAK' ? '#7fffd4' : opts.elementTag === 'RESIST' ? '#808090' : '';
   dmgLive.push(p);
-  // Crit/exec/counter trigger a subtle screen-wash flash
-  if (opts.counter) triggerScreenFlash('rgba(255, 230, 150, 0.28)', 0.28);
-  else if (opts.exec) triggerScreenFlash('rgba(255, 90, 70, 0.22)', 0.22);
-  else if (opts.crit) triggerScreenFlash('rgba(255, 210, 120, 0.12)', 0.15);
+  // Crit/exec/counter trigger a subtle screen-wash flash.
+  // VFX SUBTRACTION PASS: per-hit flash alpha halved — these fire multiple
+  // times per second in intense combat and were stacking with bloom+shake
+  // into illegibility. Durations unchanged so the moments still register.
+  if (opts.counter) triggerScreenFlash('rgba(255, 230, 150, 0.14)', 0.28);
+  else if (opts.exec) triggerScreenFlash('rgba(255, 90, 70, 0.11)', 0.22);
+  else if (opts.crit) triggerScreenFlash('rgba(255, 210, 120, 0.06)', 0.15);
 }
 
 // Screen flash — brief colored overlay for big hits

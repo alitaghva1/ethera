@@ -85,6 +85,11 @@ let _chromDur = 0;
 let _chromStrength = 1;
 
 function triggerChromAberr(dur = 0.35, strength = 1) {
+  // VFX SUBTRACTION PASS: chromatic aberration disabled. The RGB-split
+  // fought with the pixel-art atmosphere and stacked illegibly with
+  // bloom + shake + flash on damage. Infrastructure kept so the effect
+  // can be re-enabled by removing this early return.
+  return;
   // Stack: take the stronger of current vs new rather than restart
   if (dur * strength > _chromTime * _chromStrength) {
     _chromTime = dur;
