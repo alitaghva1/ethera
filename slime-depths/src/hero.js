@@ -672,9 +672,10 @@ export function updateHero(dt, enemies, mouseWorld) {
           hero.hitThisSwing.add(e);
           // Counter-attack: perfect-dodge grants next swing guaranteed crit + 1.5x bonus
           const isCounter = !hero._counterUsedThisSwing && hasCounterAttack();
-          if (isCounter) { consumeCounterAttack(); hero._counterUsedThisSwing = true; }
+          if (isCounter) { consumeCounterAttack(); hero._counterUsedThisSwing = true; showTip('first_counter'); }
           const isCrit = isCounter || (hero.critChance > 0 && Math.random() < hero.critChance);
           const isExec = hero.executeThreshold > 0 && e.hp / e.maxHp < hero.executeThreshold;
+          if (isExec) showTip('first_execute');
           let finalDmg = damage;
           if (isCrit) finalDmg *= hero.critMul;
           if (isExec) finalDmg *= hero.executeMul;
@@ -692,6 +693,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           // WEAPON FINISHER — 3rd swing in chain — per-weapon unique bonus
           const finisherHit = hero._swingIsFinisher;
           if (finisherHit) {
+            showTip('first_finisher');
             if (w.id === 'sword')       finalDmg *= 1.5;      // sword: +50% dmg
             else if (w.id === 'dagger') finalDmg *= 1.25;     // dagger: modest +25%, will also pierce (handled below)
             else if (w.id === 'hammer') finalDmg *= 1.6;      // hammer: +60% + AoE (handled below)

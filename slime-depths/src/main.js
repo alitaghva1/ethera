@@ -3019,8 +3019,15 @@ function loadRoom(idx, entryFrom) {
     setTimeout(() => showTip('first_combat'), 2200);
   }
   if (data.kind === 'reward') showTip('first_pedestal');
+  // Room-kind onboarding tips (review onboarding pass) — fire once per player,
+  // a short delay so the room settles before the banner appears.
+  if (data.kind === 'altar')  setTimeout(() => showTip('first_altar'),  1200);
+  if (data.kind === 'trove')  setTimeout(() => showTip('first_trove'),  1200);
+  if (data.kind === 'boss')   setTimeout(() => showTip('first_boss'),   1800);
   // Detect vanguard presence for first shielded enemy encounter
   if (data.spawns?.some(s => s.type === 'vanguard')) setTimeout(() => showTip('first_vanguard'), 1500);
+  // Detect any elite presence for the affix-badge explainer
+  if (data.spawns?.some(s => s.elite)) setTimeout(() => showTip('first_elite'), 1700);
   // THE RUIN REMEMBERS — inject persistent stains from past runs into this room
   const stain = data.kind === 'boss'
     ? getBossRoomStain(currentFloorLevel)

@@ -22,16 +22,31 @@ function saveTips() {
 // Active tip state — one at a time, auto-dismiss
 let active = null;       // { text, time, totalLife }
 
-// Predefined tips for recognition & prevention of typos
+// Predefined tips for recognition & prevention of typos.
+// Voice rules: restrained, specific, second-person implied. Under ~90 chars
+// each (fits the 580px banner without wrapping). One mechanic per tip —
+// don't cram two lessons together.
 export const TIPS = {
+  // ----- Controls & core combat (shown on first use) -----
   first_combat:    { text: 'Move with WASD · Attack with LMB · Aim with mouse' },
   first_dodge:     { text: 'Press SPACE to dodge — time it with an enemy attack for a PERFECT DODGE' },
   first_dash:      { text: 'Press Q to dash-strike through enemies (2x damage, 5s cooldown)' },
   first_charge:    { text: 'Hold LMB for a charged heavy swing — releases a big AoE blow' },
-  first_pedestal:  { text: 'Walk onto a pedestal to claim the relic' },
+  // ----- Hit feedback (review #5 onboarding pass) -----
   first_crit:      { text: 'Chain attacks rapidly to build combo — at CHAIN 5+ you deal bonus damage' },
-  first_low_hp:    { text: 'At or below 30% HP: your screen pulses red — sanctuaries heal between floors' },
+  first_counter:   { text: 'Perfect dodge → next hit is a COUNTER — guaranteed crit and heavier knockback' },
+  first_execute:   { text: 'Enemies below 40% HP take +50% damage — finish the wounded first' },
+  first_finisher:  { text: 'Every 3rd swing is a FINISHER — each weapon pays off differently' },
+  // ----- Enemies & affixes -----
   first_vanguard:  { text: 'Shielded enemies block frontal attacks — flank them to break through' },
+  first_elite:     { text: 'Elite affixes — F(rost) slows · E(mber) burns · V(enom) poisons · W(arded) resists' },
+  // ----- Rooms -----
+  first_pedestal:  { text: 'Walk onto a pedestal to claim the relic' },
+  first_altar:     { text: 'Altar room — relics here cost HP, not gold. The ruin prefers deliberate pacts' },
+  first_trove:     { text: 'Trove room — the urns are worth your time. Gold, hearts, and larger coin hide inside' },
+  first_boss:      { text: 'Boss — watch the telegraph color. A wider red arc signals a heavier attack' },
+  first_low_hp:    { text: 'At or below 30% HP: your screen pulses red — sanctuaries heal between floors' },
+  // ----- Modes -----
   first_daily:     { text: 'Daily challenges share today\'s curse + relic with all players — build your streak' },
 };
 
