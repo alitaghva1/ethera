@@ -59,6 +59,23 @@ const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 setCameraSize(canvas.width, canvas.height);
 
+// Release-prep responsive pass: keep the camera and input-mapping in sync
+// when the window resizes (desktop resize, mobile rotation, DPI/zoom change).
+// The canvas internal resolution stays 1280x720; CSS handles visual scaling.
+// Camera only reads width/height in world units, so no real size change —
+// but input.js maps clientX/Y via getBoundingClientRect() which DOES depend
+// on the laid-out size, so we force a layout settle by re-running setCameraSize.
+let _resizeT = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeT);
+  _resizeT = setTimeout(() => setCameraSize(canvas.width, canvas.height), 100);
+});
+// Orientation change fires slightly ahead of resize on mobile — belt-and-braces.
+window.addEventListener('orientationchange', () => {
+  clearTimeout(_resizeT);
+  _resizeT = setTimeout(() => setCameraSize(canvas.width, canvas.height), 300);
+});
+
 // Post-FX pipeline (bloom + chromatic aberration) moved to ./postfx.js
 // as part of review #4 (main.js split). main.js still owns the render-loop
 // order and keeps the window assignment below so hero.js can trigger the

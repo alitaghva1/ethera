@@ -2,13 +2,24 @@
 <html>
 <head>
 <meta charset="utf-8">
+<!-- Release-prep pass: mobile viewport + iOS safe-area + prevent double-tap zoom on the canvas. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0a0810">
 <title>Ethera</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #0a0810; color: #ddd; font-family: system-ui, sans-serif; overflow: hidden; }
+  html, body { margin: 0; padding: 0; background: #0a0810; color: #ddd; font-family: system-ui, sans-serif; overflow: hidden; touch-action: none; overscroll-behavior: none; }
   body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
   #stage { position: relative; }
-  canvas { display: block; background: #0a0810; image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 0 80px rgba(140, 60, 180, 0.15); max-width: 100vw; max-height: 100vh; width: 100vw; height: auto; aspect-ratio: 16 / 9; }
+  /* Canvas sizing: primary rule uses aspect-ratio (Safari 15+, all modern).
+     The @supports fallback below covers older WebKit / first-gen iPads by
+     using explicit max-width / max-height in viewport units that mathematically
+     preserve 16:9 (177.77vh = 16/9 * 100vh, 56.25vw = 9/16 * 100vw). */
+  canvas { display: block; background: #0a0810; image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 0 80px rgba(140, 60, 180, 0.15); max-width: 100vw; max-height: 100vh; width: 100vw; height: auto; aspect-ratio: 16 / 9; touch-action: none; }
   @media (min-aspect-ratio: 16/9) { canvas { width: auto; height: 100vh; } }
+  /* Fallback for browsers without aspect-ratio support (Safari <15, older Chromium) */
+  @supports not (aspect-ratio: 16 / 9) {
+    canvas { max-width: 177.78vh; max-height: 56.25vw; }
+  }
   #hud { position: absolute; inset: 0; pointer-events: none; font-family: system-ui, sans-serif; }
   /* Loading screen — "opening the book" moment. Radial gradient, centered
      serif italic, gold hairline above the progress text. Matches the
@@ -323,6 +334,6 @@
     <button id="restartBtn">RESTART</button>
   </div>
 </div>
-<script type="module" src="./src/main.js?v=tips2"></script>
+<script type="module" src="./src/main.js?v=rel1"></script>
 </body>
 </html>
