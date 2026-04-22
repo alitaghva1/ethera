@@ -94,7 +94,7 @@ import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
 // contextual companion to the onboarding tips system.
 import { CONTROLS_SCREEN_HTML } from './controlsScreen.js';
 // Storage health probe — surfaces a warning chip if localStorage is blocked.
-import { showStorageWarningIfBlocked } from './storage.js';
+import { showStorageWarningIfBlocked } from './storage.js?v=save1';
 showStorageWarningIfBlocked();
 
 // Global error boundary — catches uncaught exceptions and unhandled promise

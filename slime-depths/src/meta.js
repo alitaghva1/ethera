@@ -96,29 +96,28 @@ export const UNLOCKS = {
   },
 };
 
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
+// Shape validator — plain object with the three known fields (any may be
+// absent in older saves; the normalizations below handle defaults).
+function _isMetaShape(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 export function loadMeta() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    meta.essence = data.essence | 0;
-    meta.unlocked = data.unlocked || {};
-    meta.heirloom = data.heirloom || null;
-  } catch (e) {
-    console.warn('meta load failed', e);
-  }
+  const data = safeLoadJSON(STORAGE_KEY, null, _isMetaShape);
+  if (!data) return;
+  meta.essence = data.essence | 0;
+  meta.unlocked = (data.unlocked && typeof data.unlocked === 'object' && !Array.isArray(data.unlocked)) ? data.unlocked : {};
+  meta.heirloom = data.heirloom || null;
 }
 
 export function saveMeta() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      essence: meta.essence,
-      unlocked: meta.unlocked,
-      heirloom: meta.heirloom,
-    }));
-  } catch (e) {
-    console.warn('meta save failed', e);
-  }
+  safeSaveJSON(STORAGE_KEY, {
+    essence: meta.essence,
+    unlocked: meta.unlocked,
+    heirloom: meta.heirloom,
+  });
 }
 
 // Smith's reforge: bank a relic by id, deducting essence. Returns true on

@@ -42,16 +42,18 @@ export const hamletState = {
   // growthStage: 0,    // kept commented; derived function below for now
 };
 
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
+function _isHamletShape(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 export function loadHamletState() {
-  try {
-    const raw = localStorage.getItem(STATE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    Object.assign(hamletState, parsed);
-  } catch (e) {}
+  const parsed = safeLoadJSON(STATE_KEY, null, _isHamletShape);
+  if (parsed) Object.assign(hamletState, parsed);
 }
 export function saveHamletState() {
-  try { localStorage.setItem(STATE_KEY, JSON.stringify(hamletState)); } catch (e) {}
+  safeSaveJSON(STATE_KEY, hamletState);
 }
 
 // ============================================================================

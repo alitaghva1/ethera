@@ -33,6 +33,56 @@ export function isStorageAvailable() {
 }
 
 /**
+ * Load JSON from localStorage safely.
+ *  - returns defaultValue if key is missing, unreadable, malformed, or fails
+ *    the optional validator
+ *  - on corruption (parse failure or validator rejection), REMOVES the bad
+ *    key so the game doesn't repeatedly fail on the same garbage every boot
+ *
+ * @param {string} key
+ * @param {*} defaultValue       returned on any failure
+ * @param {(v:any)=>boolean} [validator]  optional shape check
+ */
+export function safeLoadJSON(key, defaultValue, validator) {
+  let raw;
+  try {
+    raw = localStorage.getItem(key);
+  } catch (_e) {
+    return defaultValue;
+  }
+  if (raw == null) return defaultValue;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_e) {
+    // Corrupt JSON — scrub it so we don't fail on the same bytes forever.
+    try { localStorage.removeItem(key); } catch (_) {}
+    console.warn('[storage] corrupt JSON at', key, '— cleared');
+    return defaultValue;
+  }
+  if (validator && !validator(parsed)) {
+    try { localStorage.removeItem(key); } catch (_) {}
+    console.warn('[storage] invalid shape at', key, '— cleared');
+    return defaultValue;
+  }
+  return parsed;
+}
+
+/**
+ * Persist JSON to localStorage safely. Returns true on success, false on
+ * any failure (quota, blocked, JSON cycle). Silent — callers that want
+ * user-facing notification should pair with the storage warning chip.
+ */
+export function safeSaveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+/**
  * Call once at boot. If storage is blocked, renders a persistent warning
  * chip. No-op otherwise (and no-op if called twice — element is singleton).
  */

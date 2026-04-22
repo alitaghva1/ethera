@@ -1,5 +1,6 @@
 // Personal bests — tracks highest values across runs, persisted to localStorage.
 // Used by the end-of-run screen to highlight "NEW BEST" milestones.
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
 
 const KEY = 'ethera:records:v1';
 
@@ -21,17 +22,20 @@ const defaultRecords = {
 
 export const records = { ...defaultRecords };
 
+// Shape validator — ensures the loaded blob is a plain object we can merge.
+// Rejects arrays, strings, numbers, null — all of which would pass JSON.parse
+// but break Object.assign in silent, progress-eating ways.
+function _isRecordsShape(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 export function loadRecords() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    Object.assign(records, parsed);
-  } catch (e) {}
+  const parsed = safeLoadJSON(KEY, null, _isRecordsShape);
+  if (parsed) Object.assign(records, parsed);
 }
 
 export function saveRecords() {
-  try { localStorage.setItem(KEY, JSON.stringify(records)); } catch (e) {}
+  safeSaveJSON(KEY, records);
 }
 
 // Compare a stats snapshot against records. Returns a set of record IDs that were beaten.
