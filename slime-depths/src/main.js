@@ -94,6 +94,12 @@ import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
 import { showStorageWarningIfBlocked } from './storage.js';
 showStorageWarningIfBlocked();
 
+// Global error boundary — catches uncaught exceptions and unhandled promise
+// rejections and renders a friendly "something went wrong" overlay instead
+// of leaving the player staring at a frozen black canvas.
+import { installErrorBoundary } from './errorBoundary.js';
+installErrorBoundary();
+
 // Accessibility: apply prefers-reduced-motion preference once at boot.
 // Camera shake + zoom pulse are scaled through camera.shakeScale (already a
 // thing the settings panel controls); hit-stop durations are scaled through
