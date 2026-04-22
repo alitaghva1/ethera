@@ -5,7 +5,7 @@ import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches } from './room.js';
 import { hitSpark, dashTrail, footPuff, landingBurst, killRing } from './particles.js?v=8';
 import { shakeCamera, pulseZoom } from './camera.js?v=2';
-import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
+import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js?v=a11y1';
 import { stats } from './stats.js';
 import { WEAPONS } from './weapons.js';
 import {

@@ -41,7 +41,7 @@ import {
 } from './pedestals.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js?v=a11y1';
 import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
@@ -93,6 +93,19 @@ import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
 // Storage health probe — surfaces a warning chip if localStorage is blocked.
 import { showStorageWarningIfBlocked } from './storage.js';
 showStorageWarningIfBlocked();
+
+// Accessibility: apply prefers-reduced-motion preference once at boot.
+// Camera shake + zoom pulse are scaled through camera.shakeScale (already a
+// thing the settings panel controls); hit-stop durations are scaled through
+// fx.js's setHitStopScale. CSS-side animation suppression is handled by a
+// @media block in index.html.
+import { prefersReducedMotion } from './a11y.js';
+import { setShakeScale } from './camera.js?v=2';
+import { setHitStopScale } from './fx.js?v=a11y1';
+if (prefersReducedMotion()) {
+  setShakeScale(0.2);        // near-zero camera shake
+  setHitStopScale(0.15);     // near-zero freeze-frames on impact
+}
 
 const loadingEl = document.getElementById('loading');
 const deathEl = document.getElementById('deathScreen');

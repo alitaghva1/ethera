@@ -318,6 +318,31 @@
   #deathScreen[style*="flex"] { animation: modalFadeIn 0.35s ease-out; }
   /* Pedestal + achievements modals */
   #pauseRelics, #endStats, #endRelics { animation: modalFadeIn 0.4s ease-out 0.1s both; }
+
+  /* ==========================================================================
+     ACCESSIBILITY — prefers-reduced-motion
+     Disables the ambient / decorative animations (breathing title glow,
+     sigil rotation, menu hover lifts, fade-in keyframes) for players with
+     vestibular sensitivity. Canvas-side shake + hit-stop + zoom are scaled
+     down separately by a11y.js at boot. Animations that convey essential
+     state information (e.g. door-ready pulse) stay on.
+     ========================================================================= */
+  @media (prefers-reduced-motion: reduce) {
+    .ethera-title,
+    #menuSigil,
+    #menuCtaHalo,
+    #loading,
+    #hud button,
+    #hud > div[style*="display:flex"],
+    #hud > div[style*="display: flex"],
+    #deathScreen[style*="flex"],
+    #pauseRelics, #endStats, #endRelics {
+      animation: none !important;
+      transition: none !important;
+    }
+    #hud button:hover { transform: none !important; }
+    #menuSettingsBtn:hover { transform: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -334,6 +359,6 @@
     <button id="restartBtn">RESTART</button>
   </div>
 </div>
-<script type="module" src="./src/main.js?v=rel5"></script>
+<script type="module" src="./src/main.js?v=a11y2"></script>
 </body>
 </html>

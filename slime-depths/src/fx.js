@@ -305,8 +305,13 @@ export function drawHitMarkers(ctx) {
 
 // ---------- Hit stop (global freeze frame on impact) ----------
 let _hitStop = 0;
+// Accessibility scale — 1.0 by default, reduced by main.js boot when the user
+// has prefers-reduced-motion set. Freeze-frames are part of the impact feel
+// but can trigger vestibular discomfort when they compound with shake.
+let _hitStopScale = 1.0;
+export function setHitStopScale(v) { _hitStopScale = Math.max(0, Math.min(1.5, v)); }
 export function triggerHitStop(seconds = 0.05) {
-  _hitStop = Math.max(_hitStop, seconds);
+  _hitStop = Math.max(_hitStop, seconds * _hitStopScale);
 }
 export function consumeHitStop(dt) {
   if (_hitStop > 0) {

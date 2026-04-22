@@ -2,7 +2,7 @@
 // Walking onto one grants the relic + removes the rest.
 import { images } from './loader.js';
 import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph } from './relics.js';
-import { drawRelicIcon } from './fx.js';
+import { drawRelicIcon } from './fx.js?v=a11y1';
 import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js?v=8';
 import { shakeCamera } from './camera.js?v=2';

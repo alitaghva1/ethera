@@ -7,7 +7,7 @@ import { activeFusions } from './fusions.js';
 import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { getRelicGlyph } from './relics.js';
-import { drawRelicIcon } from './fx.js';
+import { drawRelicIcon } from './fx.js?v=a11y1';
 
 function toRoman(n) {
   return n === 1 ? 'I' : n === 2 ? 'II' : n === 3 ? 'III' : n === 4 ? 'IV' : n === 5 ? 'V' : String(n);

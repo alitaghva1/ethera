@@ -10,7 +10,7 @@ import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
 import { stats } from './stats.js';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
-import { triggerScreenFlash } from './fx.js';
+import { triggerScreenFlash } from './fx.js?v=a11y1';
 
 // ============================================================================
 // ELITE AFFIXES — rolled on elite spawn (floors 2+). Each affix has a unique
