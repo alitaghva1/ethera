@@ -306,7 +306,9 @@ export function updateHero(dt, enemies, mouseWorld) {
         }
       }
       shakeCamera(8, 0.22);
-      triggerScreenFlash('rgba(160, 220, 255, 0.22)', 0.25);
+      // VFX SUBTRACTION PASS: aegis pulse flash halved 0.22 → 0.12. Fires
+      // every 4s while under 30% HP — can strobe in sustained low-HP combat.
+      triggerScreenFlash('rgba(160, 220, 255, 0.12)', 0.25);
       spawnExplosion(hero.x, hero.y, R, 0);   // visual-only blast
     } else if (hero._aegisT <= 0) {
       hero._aegisT = 0.5;        // keep polling until HP drops
@@ -361,7 +363,9 @@ export function updateHero(dt, enemies, mouseWorld) {
         arc: Math.PI * 1.3,
         dur: 0.3,
       });
-      triggerScreenFlash('rgba(255, 220, 140, 0.16)', 0.18);
+      // VFX SUBTRACTION PASS: dash strike flash halved 0.16 → 0.08.
+      // Player action on a 5s cooldown — subtle is enough.
+      triggerScreenFlash('rgba(255, 220, 140, 0.08)', 0.18);
     }
     // Dodge — blocked entirely by Memory of Stillness (the pact: you traded
     // your dodge for other gifts; pressing Space is a null input).
