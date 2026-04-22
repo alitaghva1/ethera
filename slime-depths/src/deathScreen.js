@@ -1,0 +1,79 @@
+// ============================================================================
+// DEATH / VICTORY SCREEN TEMPLATE — static HTML only
+//
+// Extracted from main.js as part of review #4 (main.js split, pass 2).
+// This module owns ONLY the markup; main.js keeps the setup, event wiring
+// (restart button → startRun), and the data-filling functions that
+// populate #endStats / #endRelics / #endEssence / etc. at run-end.
+//
+// IDs preserved verbatim so main.js's getElementById() calls keep working
+// unchanged. Animation names (winFadeIn, winCardSlide) live in index.html's
+// <style> block.
+// ============================================================================
+
+// Corner ornament helper — reduces the 4 near-identical corner blocks to one
+// function call each. Preserves the exact visual of the original inline HTML.
+function cornerOrnament(position) {
+  // position: 'tl' | 'tr' | 'bl' | 'br'
+  const isTop = position[0] === 't';
+  const isLeft = position[1] === 'l';
+  const vSide = isTop ? 'top' : 'bottom';
+  const hSide = isLeft ? 'left' : 'right';
+  const hGrad = isLeft ? '90deg' : '270deg';
+  const vGrad = isTop ? '180deg' : '0deg';
+  return `
+  <div style="position:absolute;${vSide}:22px;${hSide}:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
+    <div style="position:absolute;${vSide}:0;${hSide}:0;width:48px;height:1px;background:linear-gradient(${hGrad},#c9a86a,transparent);"></div>
+    <div style="position:absolute;${vSide}:0;${hSide}:0;width:1px;height:48px;background:linear-gradient(${vGrad},#c9a86a,transparent);"></div>
+    <div style="position:absolute;${vSide}:-2px;${hSide}:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
+  </div>`;
+}
+
+export const DEATH_SCREEN_HTML = `
+  <!-- Deep vignette + page-frame corners (shared discipline) -->
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
+  ${cornerOrnament('tl')}
+  ${cornerOrnament('tr')}
+  ${cornerOrnament('bl')}
+  ${cornerOrnament('br')}
+
+  <!-- Ornamental frame above the title — color set per result (death/victory)
+       by showEndOfRun. Crimson-on-death, gold-on-victory. -->
+  <div id="endOrnament" style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.8;animation:winFadeIn 0.7s ease-out;position:relative;z-index:1;">
+    <div id="endOrnamentLineL" style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#b05858,transparent);"></div>
+    <div id="endOrnamentText" style="color:#d88080;font-size:11px;letter-spacing:6px;font-style:italic;">your story ends here</div>
+    <div id="endOrnamentLineR" style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#b05858,transparent);"></div>
+  </div>
+  <h1 id="endTitle" style="font-size:56px;margin:0;letter-spacing:8px;color:#d8556a;text-shadow:0 0 22px rgba(216,85,106,0.6);font-weight:400;line-height:1;animation:winFadeIn 0.7s ease-out 0.15s both;position:relative;z-index:1;">YOU DIED</h1>
+  <!-- Subtitle with diamond flanks — same grammar as other overlays -->
+  <div id="endSubtitleWrap" style="display:flex;align-items:center;gap:12px;margin:10px 0 20px;opacity:0.7;animation:winFadeIn 0.7s ease-out 0.3s both;position:relative;z-index:1;">
+    <span id="endSubtitleDotL" style="width:3px;height:3px;background:#b05858;transform:rotate(45deg);"></span>
+    <p id="endSubtitle" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#c8a8a8;">the ooze takes you back</p>
+    <span id="endSubtitleDotR" style="width:3px;height:3px;background:#b05858;transform:rotate(45deg);"></span>
+  </div>
+
+  <!-- CHRONICLE header — gold, ornamental -->
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;opacity:0.65;animation:winFadeIn 0.6s ease-out 0.42s both;position:relative;z-index:1;">
+    <div style="width:44px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a);"></div>
+    <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-weight:bold;">\u2666 CHRONICLE \u2666</div>
+    <div style="width:44px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
+  </div>
+  <!-- Stats plaque — GOLD palette (was purple). Inset stroke, not outline. -->
+  <div id="endStats" style="display:grid;grid-template-columns:repeat(2, 240px);gap:6px 28px;background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.88));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.3), inset 0 0 18px rgba(0,0,0,0.5), 0 0 24px rgba(201,168,106,0.12);padding:18px 28px;margin-bottom:16px;font-size:13px;color:#d8cfae;font-family:Georgia,serif;animation:winCardSlide 0.55s ease-out 0.5s both;position:relative;z-index:1;"></div>
+
+  <!-- Relic trophy strip -->
+  <div id="endRelics" style="display:flex;gap:6px;margin-bottom:14px;align-items:center;animation:winFadeIn 0.6s ease-out 0.75s both;position:relative;z-index:1;"></div>
+  <!-- Essence earned + progress bar (cyan, sanctuary theme) -->
+  <div id="endEssence" style="font-size:17px;color:#a0e8ff;letter-spacing:3px;text-shadow:0 0 12px rgba(160,232,255,0.55);margin-bottom:18px;text-align:center;animation:winFadeIn 0.7s ease-out 0.9s both;position:relative;z-index:1;"></div>
+
+  <!-- Sanctuary header — cyan (essence theme — one of the three allowed colors) -->
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;opacity:0.65;animation:winFadeIn 0.6s ease-out 1.05s both;position:relative;z-index:1;">
+    <div style="width:60px;height:1px;background:linear-gradient(90deg,transparent,#a0e8ff);"></div>
+    <div id="metaHeader" style="color:#a0e8ff;font-size:10px;letter-spacing:5px;font-weight:bold;text-shadow:0 0 8px rgba(160,232,255,0.35);">\u2727 SANCTUARY OF THE ABYSS \u2727</div>
+    <div style="width:60px;height:1px;background:linear-gradient(90deg,#a0e8ff,transparent);"></div>
+  </div>
+  <div id="metaShopRow" style="display:flex;gap:10px;margin-bottom:20px;animation:winCardSlide 0.55s ease-out 1.15s both;position:relative;z-index:1;"></div>
+
+  <!-- CTA — unified gold treatment matching other primary buttons -->
+  <button id="restartBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:14px 56px;font-size:15px;cursor:pointer;letter-spacing:6px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 22px rgba(201,168,106,0.25), inset 0 0 12px rgba(244,217,160,0.06);animation:winFadeIn 0.6s ease-out 1.35s both;position:relative;z-index:1;">NEW RUN</button>
+`;
