@@ -48,6 +48,9 @@ export const TIPS = {
   first_low_hp:    { text: 'At or below 30% HP: your screen pulses red — sanctuaries heal between floors' },
   // ----- Modes -----
   first_daily:     { text: 'Daily challenges share today\'s curse + relic with all players — build your streak' },
+  // ----- Hub + encounters -----
+  first_hamlet:    { text: 'The hamlet grows between descents — services persist. Visit when you return' },
+  first_wanderer:  { text: 'A wanderer — gold for a trade, only this sanctuary. They do not wait long' },
 };
 
 export function showTip(id) {

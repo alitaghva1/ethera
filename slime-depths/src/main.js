@@ -1208,6 +1208,8 @@ function showHamlet() {
   refreshNpcPresence(records, stats, { seenRelicIds });
   hamletEl.style.display = 'flex';
   renderHamlet();
+  // Onboarding tip — fires once to explain the hamlet as a persistent hub.
+  setTimeout(() => showTip('first_hamlet'), 500);
 }
 
 function renderHamlet() {

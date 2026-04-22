@@ -10,6 +10,7 @@ import { applyRelic, rollRelicOffer, relicTier } from './relics.js';
 import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js?v=8';
 import { stats } from './stats.js';
+import { showTip } from './tips.js';
 
 export const wanderer = {
   active: false,
@@ -31,6 +32,8 @@ export function maybeSpawnWanderer(roomKind, wh, floorLevel) {
   wanderer.y = 5 * 48 + 24;
   wanderer.active = true;
   wanderer.bob = 0;
+  // Onboarding tip — fires once when the wanderer first appears in a run.
+  showTip('first_wanderer');
 
   // Pick a trade for this encounter based on floor + roll
   const r = Math.random();
