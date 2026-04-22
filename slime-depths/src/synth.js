@@ -1,0 +1,342 @@
+// Web-Audio synthesized SFX — no sample files needed. Each call creates
+// short-lived nodes (oscillator + gain + filter) that auto-disconnect on
+// stop. Respects the sfx volume setting via the settings module.
+
+import { settings } from './settings.js';
+
+let audioCtx = null;
+
+function getCtx() {
+  if (audioCtx) return audioCtx;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch (e) { return null; }
+  return audioCtx;
+}
+
+// Unlock Web Audio on first user gesture (browsers require it)
+let unlocked = false;
+function unlockOnGesture() {
+  if (unlocked) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume();
+  unlocked = true;
+}
+window.addEventListener('click', unlockOnGesture, { once: false });
+window.addEventListener('keydown', unlockOnGesture, { once: false });
+
+function masterVol() { return (settings?.sfxVolume ?? 0.45); }
+
+// ---- Synth primitives ----
+
+// Quick decay envelope on a gain node
+function envelope(gain, ctx, attack, decay, peak) {
+  const t = ctx.currentTime;
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(peak, t + attack);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + attack + decay);
+}
+
+// Swoosh — filtered noise burst for weapon swings + whooshy UI moments
+export function synthSwoosh(pitch = 1.0, volume = 1.0, duration = 0.12) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  // Create noise buffer
+  const bufferSize = Math.floor(ctx.sampleRate * duration);
+  const buf = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  // Bandpass filter sweeps down from 3kHz → 800Hz for a whoosh effect
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.Q.value = 1.2;
+  const now = ctx.currentTime;
+  filter.frequency.setValueAtTime(3200 * pitch, now);
+  filter.frequency.exponentialRampToValueAtTime(700 * pitch, now + duration);
+  // Gain envelope
+  const gain = ctx.createGain();
+  const peak = 0.25 * volume * masterVol();
+  envelope(gain, ctx, 0.005, duration - 0.005, peak);
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start(now);
+  src.stop(now + duration + 0.02);
+}
+
+// Pickup ping — bright ascending sine chirp (gold, heal, relic acquisition)
+export function synthPing(freq = 900, volume = 1.0, duration = 0.25) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  const now = ctx.currentTime;
+  osc.frequency.setValueAtTime(freq, now);
+  osc.frequency.exponentialRampToValueAtTime(freq * 2, now + duration * 0.5);
+  osc.frequency.exponentialRampToValueAtTime(freq * 1.6, now + duration);
+  const gain = ctx.createGain();
+  const peak = 0.15 * volume * masterVol();
+  envelope(gain, ctx, 0.01, duration - 0.01, peak);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + duration + 0.02);
+}
+
+// Deep thud — low-frequency sine punch (charged strike, boss stomp)
+export function synthThud(freq = 80, volume = 1.0, duration = 0.2) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  const now = ctx.currentTime;
+  osc.frequency.setValueAtTime(freq * 2, now);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, now + duration);
+  const gain = ctx.createGain();
+  const peak = 0.45 * volume * masterVol();
+  envelope(gain, ctx, 0.002, duration - 0.002, peak);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + duration + 0.02);
+}
+
+// UI click — crisp square pop for menu interactions
+export function synthClick(pitch = 1.0, volume = 1.0) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  osc.type = 'square';
+  const now = ctx.currentTime;
+  osc.frequency.setValueAtTime(1400 * pitch, now);
+  osc.frequency.exponentialRampToValueAtTime(900 * pitch, now + 0.04);
+  const gain = ctx.createGain();
+  const peak = 0.08 * volume * masterVol();
+  envelope(gain, ctx, 0.001, 0.05, peak);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.08);
+}
+
+// Chord sting — 3-note stacked sine (achievement, victory, relic pickup)
+export function synthChord(rootFreq = 440, volume = 1.0, duration = 0.6) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  // Major chord (root, major third, perfect fifth)
+  const ratios = [1, 1.259, 1.498, 2.0];
+  for (let i = 0; i < ratios.length; i++) {
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(rootFreq * ratios[i], now + i * 0.02);
+    const gain = ctx.createGain();
+    const peak = (0.10 / (i + 1)) * volume * masterVol();
+    envelope(gain, ctx, 0.015 + i * 0.02, duration - 0.015, peak);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now + i * 0.02);
+    osc.stop(now + duration + 0.05);
+  }
+}
+
+// Descending gloom — heavy failure note (death, trap trigger)
+export function synthGloom(freq = 220, volume = 1.0, duration = 0.9) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  const now = ctx.currentTime;
+  osc.frequency.setValueAtTime(freq, now);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.35, now + duration);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(600, now);
+  filter.frequency.exponentialRampToValueAtTime(180, now + duration);
+  const gain = ctx.createGain();
+  const peak = 0.22 * volume * masterVol();
+  envelope(gain, ctx, 0.02, duration - 0.02, peak);
+  osc.connect(filter).connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + duration + 0.05);
+}
+
+// ============================================================================
+// AMBIENT PAD — procedural background drone for menu + hamlet.
+// Three sine oscillators tuned to a low minor chord, a lowpass-filtered
+// noise layer for "wind," and (hamlet variant) occasional soft crackle
+// pops evoking a distant fire. Fades in/out gracefully. Reads the music
+// volume setting so the user can silence it from settings.
+// ============================================================================
+let _ambientNodes = null;     // { oscillators, gains, noise, filter, fade, crackleTimer }
+let _ambientVariant = null;
+
+function _stopAmbientNodes(fadeSec = 1.0) {
+  if (!_ambientNodes) return;
+  const ctx = getCtx();
+  if (!ctx) { _ambientNodes = null; return; }
+  const now = ctx.currentTime;
+  const { oscillators, gains, noiseGain, fade } = _ambientNodes;
+  // Ramp master down, then stop oscillators shortly after.
+  if (fade) fade.gain.cancelScheduledValues(now);
+  if (fade) fade.gain.setValueAtTime(fade.gain.value, now);
+  if (fade) fade.gain.linearRampToValueAtTime(0.0001, now + fadeSec);
+  setTimeout(() => {
+    try {
+      for (const o of oscillators) { try { o.stop(); } catch(e) {} }
+    } catch (e) {}
+  }, (fadeSec * 1000) + 50);
+  if (_ambientNodes.crackleTimer) clearInterval(_ambientNodes.crackleTimer);
+  _ambientNodes = null;
+  _ambientVariant = null;
+}
+
+/**
+ * Start (or switch to) the ambient pad. Variants:
+ *   'menu'   — sparse, windier, slightly darker
+ *   'hamlet' — warmer drone, occasional soft fire crackles
+ * Calling with the same variant is a no-op; calling with a different
+ * variant crossfades to the new one.
+ */
+export function startAmbientPad(variant = 'menu') {
+  if (_ambientVariant === variant && _ambientNodes) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  // Transition: stop the old with a quick fade, then start the new.
+  _stopAmbientNodes(0.6);
+  // Small delay so the old fade completes before new starts; start now is fine too
+  const now = ctx.currentTime;
+
+  // Master fade gain — the pad crossfades in over 2.5s.
+  const fade = ctx.createGain();
+  fade.gain.setValueAtTime(0, now);
+  fade.gain.linearRampToValueAtTime(1, now + 2.5);
+
+  // Volume per variant (multiplied by settings.musicVolume at final stage)
+  const padVol = variant === 'hamlet' ? 0.11 : 0.09;
+  const noiseVol = variant === 'hamlet' ? 0.04 : 0.05;
+
+  // Root note (Hz) — hamlet uses a warmer A minor (110Hz); menu uses G minor
+  // for a subtly colder feel before the descent.
+  const root = variant === 'hamlet' ? 110 : 98;
+  // Chord: root, minor third (6/5), perfect fifth (3/2), octave — slightly
+  // detuned copies for a thicker shimmering pad.
+  const ratios = [1, 1.2, 1.5, 2.0];
+  const oscillators = [];
+  const gains = [];
+  for (let i = 0; i < ratios.length; i++) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(root * ratios[i] * (1 + (i * 0.0011)), now);  // slight detune per voice
+    const g = ctx.createGain();
+    const peak = padVol * (1 / (i + 1)) * (settings?.musicVolume ?? 0.35);
+    g.gain.setValueAtTime(peak, now);
+    // Slow LFO on gain (breath) — different rate per voice so they beat
+    const lfoRate = 0.11 + i * 0.017;
+    // Start/stop oscillator + lfo
+    osc.connect(g).connect(fade);
+    osc.start(now);
+    oscillators.push(osc);
+    gains.push(g);
+    // LFO — a separate oscillator modulating the gain node
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = lfoRate;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = peak * 0.35;
+    lfo.connect(lfoGain).connect(g.gain);
+    lfo.start(now);
+    oscillators.push(lfo);
+  }
+
+  // Wind — lowpass-filtered brown-ish noise with a slow LFO on filter freq
+  const bufSize = ctx.sampleRate * 2;
+  const noiseBuf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  let lastSample = 0;
+  for (let i = 0; i < bufSize; i++) {
+    // Brown noise: integrate white noise
+    const white = Math.random() * 2 - 1;
+    lastSample = (lastSample + 0.02 * white) * 0.996;
+    d[i] = lastSample * 5;
+  }
+  const noiseSrc = ctx.createBufferSource();
+  noiseSrc.buffer = noiseBuf;
+  noiseSrc.loop = true;
+  const noiseFilter = ctx.createBiquadFilter();
+  noiseFilter.type = 'lowpass';
+  noiseFilter.frequency.value = variant === 'hamlet' ? 280 : 360;
+  noiseFilter.Q.value = 0.7;
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.value = noiseVol * (settings?.musicVolume ?? 0.35);
+  // LFO on filter freq for gentle whoosh
+  const nlfo = ctx.createOscillator();
+  nlfo.type = 'sine';
+  nlfo.frequency.value = 0.08;
+  const nlfoGain = ctx.createGain();
+  nlfoGain.gain.value = 120;
+  nlfo.connect(nlfoGain).connect(noiseFilter.frequency);
+  nlfo.start(now);
+  noiseSrc.connect(noiseFilter).connect(noiseGain).connect(fade);
+  noiseSrc.start(now);
+  oscillators.push(noiseSrc);
+  oscillators.push(nlfo);
+
+  fade.connect(ctx.destination);
+
+  // Hamlet variant: schedule occasional soft fire crackles — short filtered
+  // noise pops at random intervals, low volume. Evokes a far-away hearth
+  // without being distracting.
+  let crackleTimer = null;
+  if (variant === 'hamlet') {
+    const scheduleCrackle = () => {
+      const c = getCtx();
+      if (!c) return;
+      const n = c.currentTime;
+      const dur = 0.05 + Math.random() * 0.08;
+      const sz = Math.floor(c.sampleRate * dur);
+      const b = c.createBuffer(1, sz, c.sampleRate);
+      const dd = b.getChannelData(0);
+      for (let i = 0; i < sz; i++) dd[i] = (Math.random() * 2 - 1) * (1 - i / sz);
+      const src = c.createBufferSource();
+      src.buffer = b;
+      const f = c.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.value = 1200 + Math.random() * 800;
+      f.Q.value = 2.5;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.05 * (settings?.musicVolume ?? 0.35), n);
+      g.gain.exponentialRampToValueAtTime(0.001, n + dur);
+      src.connect(f).connect(g).connect(c.destination);
+      src.start(n);
+      src.stop(n + dur + 0.02);
+    };
+    crackleTimer = setInterval(() => {
+      // 60% chance per tick — uneven rhythm
+      if (Math.random() < 0.6) scheduleCrackle();
+    }, 900 + Math.random() * 800);
+  }
+
+  _ambientNodes = { oscillators, gains, noiseGain, fade, crackleTimer };
+  _ambientVariant = variant;
+}
+
+export function stopAmbientPad() {
+  _stopAmbientNodes(1.2);
+}
+
+// Rising fanfare — 4-note ascending triangle sweep (room cleared, achievement)
+export function synthFanfare(volume = 1.0) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const notes = [523, 659, 784, 1046]; // C, E, G, C' — C major triad resolve
+  for (let i = 0; i < notes.length; i++) {
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(notes[i], now + i * 0.08);
+    const gain = ctx.createGain();
+    const peak = 0.15 * volume * masterVol();
+    envelope(gain, ctx, 0.01, 0.18, peak);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now + i * 0.08);
+    osc.stop(now + i * 0.08 + 0.22);
+  }
+}

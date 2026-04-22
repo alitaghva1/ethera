@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["start"],
       "port": 0
+    },
+    {
+      "name": "slime-depths",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5173", "--directory", "./slime-depths"],
+      "port": 5173
     }
   ]
 }

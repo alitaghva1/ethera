@@ -1,0 +1,328 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ethera</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0810; color: #ddd; font-family: system-ui, sans-serif; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  #stage { position: relative; }
+  canvas { display: block; background: #0a0810; image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 0 80px rgba(140, 60, 180, 0.15); max-width: 100vw; max-height: 100vh; width: 100vw; height: auto; aspect-ratio: 16 / 9; }
+  @media (min-aspect-ratio: 16/9) { canvas { width: auto; height: 100vh; } }
+  #hud { position: absolute; inset: 0; pointer-events: none; font-family: system-ui, sans-serif; }
+  /* Loading screen — "opening the book" moment. Radial gradient, centered
+     serif italic, gold hairline above the progress text. Matches the
+     manuscript grammar used throughout the rest of the game. */
+  #loading {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #c9a86a;
+    font-size: 13px;
+    font-family: Georgia, "Cormorant Garamond", serif;
+    font-style: italic;
+    letter-spacing: 6px;
+    background: radial-gradient(ellipse at center, #140a18 0%, #0a0610 60%, #050308 100%);
+    gap: 18px;
+  }
+  #loading::before {
+    content: "";
+    width: 120px; height: 1px;
+    background: linear-gradient(90deg, transparent, #c9a86a, transparent);
+    opacity: 0.8;
+  }
+  #loading::after {
+    content: "— ETHERA —";
+    font-size: 28px;
+    letter-spacing: 12px;
+    color: #f4d9a0;
+    text-shadow: 0 0 18px rgba(244, 217, 160, 0.45);
+    font-style: normal;
+    opacity: 0.9;
+    order: -1;
+  }
+  @keyframes loadingBreathe {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 0.95; }
+  }
+  #loading { animation: loadingBreathe 2.4s ease-in-out infinite; }
+  #deathScreen { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: radial-gradient(ellipse at center, #1a0a12 0%, #0a0410 60%, #050205 100%); color: #ddd; pointer-events: auto; font-family: Georgia, "Cormorant Garamond", serif; }
+  #deathScreen h1 { font-size: 48px; margin: 0 0 12px; letter-spacing: 4px; color: #d8556a; text-shadow: 0 0 18px rgba(216, 85, 106, 0.6); font-weight: 400; }
+  #deathScreen p { margin: 0 0 24px; opacity: 0.7; font-size: 14px; letter-spacing: 2px; font-style: italic; }
+  #deathScreen button { background: #1a1220; color: #ddd; border: 1px solid #3a2a4a; padding: 12px 28px; font-size: 16px; cursor: pointer; letter-spacing: 2px; font-family: Georgia, serif; }
+  #deathScreen button:hover { background: #2a1a30; border-color: #5a3a6a; }
+  #restartBtn:hover {
+    background: linear-gradient(180deg, #3a2030, #15080f) !important;
+    border-color: #d85a5a !important;
+    color: #ffbaba !important;
+    box-shadow: 0 0 20px rgba(216,90,90,0.45), inset 0 0 10px rgba(255,160,160,0.1);
+    letter-spacing: 5px !important;
+  }
+  #tip { position: absolute; left: 14px; bottom: 10px; font-size: 11px; opacity: 0.45; letter-spacing: 1px; }
+  #build { position: absolute; right: 14px; bottom: 10px; font-size: 10px; opacity: 0.3; letter-spacing: 1px; }
+  /* Subtle breathing glow on title text */
+  @keyframes etheraGlow {
+    0%, 100% { text-shadow: 0 0 18px rgba(218,184,110,0.45), 0 0 4px rgba(218,184,110,0.3); }
+    50%      { text-shadow: 0 0 30px rgba(245,210,140,0.7),  0 0 8px rgba(245,210,140,0.5); }
+  }
+  .ethera-title { animation: etheraGlow 3.8s ease-in-out infinite; }
+
+  /* Ambient sigil — slow rotation + gentle breathing opacity so it feels alive */
+  @keyframes sigilDrift {
+    0%   { transform: translate(-50%,-50%) rotate(0deg); opacity: 0.035; }
+    50%  { transform: translate(-50%,-50%) rotate(180deg); opacity: 0.065; }
+    100% { transform: translate(-50%,-50%) rotate(360deg); opacity: 0.035; }
+  }
+  #menuSigil { animation: sigilDrift 90s linear infinite; }
+
+  /* MENU BUTTON POLISH — hover glow, scale, and inner light animation */
+  #hud button { transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease, letter-spacing 0.18s ease, color 0.18s ease; }
+  #hud button:hover { transform: translateY(-1px) scale(1.03); }
+  /* Primary CTA — hover amplifies the existing mode tint. The shadow is set
+     inline by JS per mode; we only brighten + expand letter-spacing. */
+  #menuNewRunBtn { position: relative; }
+  #menuNewRunBtn:hover {
+    filter: brightness(1.18);
+    letter-spacing: 9px !important;
+    transform: translateY(-2px);
+  }
+  /* RESUME card — green-tinted, lifts and brightens on hover. */
+  #menuResumeBtn:hover {
+    filter: brightness(1.2);
+    transform: translateY(-2px);
+    box-shadow: inset 0 0 0 1px #a0e8b8, 0 0 28px rgba(134,183,154,0.45), inset 0 0 14px rgba(0,0,0,0.4) !important;
+  }
+  /* CTA halo slow breathe, syncs with title glow */
+  @keyframes ctaHaloBreathe {
+    0%, 100% { opacity: 0.7; }
+    50%      { opacity: 1.0; }
+  }
+  #menuCtaHalo { animation: ctaHaloBreathe 3.8s ease-in-out infinite; }
+  /* Hamlet firepit — irregular flicker so it doesn't look like a perfect
+     pulse. Scales slightly, shifts opacity, offsets tint. */
+  @keyframes hamletFireBreathe {
+    0%   { opacity: 0.85; transform: translate(-50%,0) scale(1.00); }
+    22%  { opacity: 1.00; transform: translate(-50%,0) scale(1.04); }
+    38%  { opacity: 0.78; transform: translate(-50%,0) scale(0.97); }
+    55%  { opacity: 0.95; transform: translate(-50%,0) scale(1.03); }
+    72%  { opacity: 0.82; transform: translate(-50%,0) scale(0.99); }
+    100% { opacity: 0.85; transform: translate(-50%,0) scale(1.00); }
+  }
+  /* Hamlet NPC portrait pixel-sharpness — pixel art only looks good with
+     nearest-neighbor scaling. Applied to all hamlet NPC imgs. */
+  .hamletNpcPortrait { image-rendering: pixelated; image-rendering: crisp-edges; }
+  /* === MAIN MENU — unified borderless aesthetic ============================
+     One color language: gold is the neutral. Cyan only for essence. Crimson
+     only for curses. No purple, no peach. Hovers amplify inline styles; they
+     never override them with a different visual language. */
+
+  /* Meta cards (Sanctuary, Chronicles) — lift + brighten inset stroke */
+  .menuMetaCard { transition: all 0.22s ease; }
+  .menuMetaCard:hover {
+    transform: translateY(-2px);
+    box-shadow: inset 0 0 0 1px #c9a86a, 0 0 22px rgba(201,168,106,0.35), inset 0 0 14px rgba(0,0,0,0.4) !important;
+  }
+  /* Mode chips — unselected gets warmer + lifted on hover; selected state
+     governed entirely by JS inline styles. */
+  .menuModeChip { transition: all 0.22s ease; }
+  .menuModeChip:hover {
+    color: #c9a86a !important;
+    transform: translateY(-1px);
+    opacity: 1 !important;
+  }
+  /* Settings gear — silhouette, no plate. Rotates subtly on hover. */
+  #menuSettingsBtn:hover {
+    color: #f4d9a0 !important;
+    opacity: 1 !important;
+    transform: rotate(30deg);
+    text-shadow: 0 0 10px rgba(244,217,160,0.55);
+  }
+  /* Curses corner chip — borderless text link. Hover glows in crimson. */
+  #menuCursesBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.6);
+    transform: translateY(-1px);
+  }
+  /* Memory corner chip — borderless text link. Hover glows in cream-gold. */
+  #menuMemoryBtn:hover {
+    color: #f4d9a0 !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(244,217,160,0.5);
+    transform: translateY(-1px);
+  }
+  /* Volume indicator chip — borderless text link, shows current save slot.
+     Click opens the VOLUMES modal. Hover glows in cream-gold. */
+  #menuVolumeBtn:hover {
+    color: #f4d9a0 !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(244,217,160,0.5);
+    transform: translateY(-1px);
+  }
+  /* Secondary text-links beneath the CTA — "visit the hamlet →" and
+     "read the chronicles →". Hover glows in cream-gold with a slight
+     lift, signaling interactivity without adding visual chrome. */
+  #menuHamletLink:hover, #menuChroniclesLink:hover {
+    color: #f4d9a0 !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(244,217,160,0.45);
+    transform: translateY(-1px);
+  }
+  /* Volumes modal return button */
+  #volumesCloseBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.55);
+    transform: translateX(-2px);
+  }
+  /* Smith's forge return button — same crimson-link treatment */
+  #smithCloseBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.55);
+    transform: translateX(-2px);
+  }
+  /* Oracle modal return button */
+  #oracleCloseBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.55);
+    transform: translateX(-2px);
+  }
+  /* Memory modal clear button — subtle darker hover */
+  #memoryClearBtn:hover {
+    color: #c9a86a !important;
+    border-color: #6a5c48 !important;
+    background: rgba(201,168,106,0.06) !important;
+  }
+  /* Memory modal back button — same crimson-link treatment as others */
+  #memoryCloseBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.55);
+    transform: translateX(-2px);
+  }
+  /* Dialogue panel service button — amplify gold on hover */
+  #dialogueServiceBtn:hover {
+    filter: brightness(1.15);
+    letter-spacing: 5px !important;
+    transform: translateY(-1px);
+  }
+  #menuSettingsBackBtn:hover {
+    background: rgba(60, 20, 20, 0.5) !important;
+    color: #ffbaba !important;
+    border-color: #a06060 !important;
+  }
+  /* Primary CTAs across overlays — unified gold hover treatment.
+     Pause Resume, Shop Descend, Death-screen New Run all share this. */
+  #pauseResumeBtn:hover, #restartBtn:hover, #winRestartBtn:hover {
+    filter: brightness(1.18);
+    letter-spacing: 8px !important;
+    transform: translateY(-2px);
+    box-shadow: inset 0 0 0 1px #f4d9a0, 0 0 26px rgba(244,217,160,0.4), inset 0 0 14px rgba(244,217,160,0.12) !important;
+  }
+  /* Secondary text links in pause — gold/italic journal + crimson END RUN */
+  #pauseJournalBtn:hover {
+    color: #f4d9a0 !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(244,217,160,0.45);
+  }
+  #pauseQuitBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.55);
+  }
+  /* Crimson text-link BACK buttons — unified treatment across modals. */
+  #weaponBackBtn:hover,
+  #achCloseBtn:hover,
+  #journalBackBtn:hover,
+  #menuSettingsBackBtn:hover,
+  #cursesCloseBtn:hover,
+  #tarotBackBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.55);
+    transform: translateX(-2px);
+  }
+  /* Shop + meta shop cards — lift on hover */
+  .metaBuyBtn:hover { filter: brightness(1.15); box-shadow: 0 0 12px currentColor; }
+
+  /* MODAL FADE-IN — fade overlays on display:flex instead of snap */
+  @keyframes modalFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  /* TAROT CARD reveal — each card rises + rotates into place */
+  @keyframes cardReveal {
+    from { opacity: 0; transform: translateY(60px) rotate(-10deg); }
+    to   { opacity: 1; transform: translateY(0) rotate(-3deg); }
+  }
+  /* SHOP (between-floor) reveal animations */
+  @keyframes winFadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes winCardSlide {
+    from { opacity: 0; transform: translateY(40px) scale(0.92); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  /* LEGENDARY RELIC PULSE — ambient glow on death-screen trophy cards */
+  @keyframes legendPulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(255,200,255,0.45), inset 0 0 8px rgba(0,0,0,0.5); }
+    50%      { box-shadow: 0 0 24px rgba(255,200,255,0.75), 0 0 4px rgba(255,200,255,0.3), inset 0 0 8px rgba(0,0,0,0.5); }
+  }
+  /* Shop descend button — richer pulse than the generic pause button rule */
+  #winRestartBtn:hover {
+    background: linear-gradient(180deg,#5a4030,#2a1f10) !important;
+    border-color: #f4d9a0 !important;
+    box-shadow: 0 0 24px rgba(244,217,160,0.5), inset 0 0 12px rgba(255,220,140,0.2) !important;
+    letter-spacing: 8px !important;
+    color: #fff2c0 !important;
+  }
+  /* Shop cards — lift subtly on hover (override inline transition) */
+  #shopRow > div:hover {
+    transform: translateY(-4px) scale(1.02);
+  }
+  /* "Claim" buttons — bloom on hover */
+  #shopRow .buyBtn:not(:disabled):hover {
+    transform: scale(1.06);
+    box-shadow: 0 0 14px currentColor;
+    filter: brightness(1.12);
+  }
+  /* #menuTarotBtn rule removed — tarot is now a mode chip, not a separate button. */
+  /* Tarot CTAs — same unified gold/crimson treatment as the other overlays. */
+  #tarotBeginBtn:hover {
+    filter: brightness(1.18);
+    letter-spacing: 9px !important;
+    transform: translateY(-2px);
+    box-shadow: inset 0 0 0 1px #f4d9a0, 0 0 28px rgba(244,217,160,0.45), inset 0 0 14px rgba(244,217,160,0.12) !important;
+  }
+  #tarotBackBtn:hover {
+    color: #ff9a9a !important;
+    opacity: 1 !important;
+    text-shadow: 0 0 10px rgba(216,128,128,0.55);
+    transform: translateX(-2px);
+  }
+  #hud > div[style*="display:flex"], #hud > div[style*="display: flex"] { animation: modalFadeIn 0.28s ease-out; }
+  #deathScreen[style*="flex"] { animation: modalFadeIn 0.35s ease-out; }
+  /* Pedestal + achievements modals */
+  #pauseRelics, #endStats, #endRelics { animation: modalFadeIn 0.4s ease-out 0.1s both; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="1280" height="720"></canvas>
+  <div id="hud">
+    <div id="tip">WASD · LMB attack (hold: charge) · SPACE dodge · Q dash strike</div>
+    <div id="build">Ethera · v0.1</div>
+  </div>
+  <div id="loading">Loading…</div>
+  <div id="deathScreen">
+    <h1>YOU DIED</h1>
+    <p>the ooze takes you back</p>
+    <button id="restartBtn">RESTART</button>
+  </div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

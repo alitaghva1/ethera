@@ -1,0 +1,536 @@
+// Relic system — passive modifiers applied for the rest of the run.
+// Registry is pure data; effects live as functions that mutate the hero
+// object when applied. Everything stacks additively so picks always matter.
+import { hero } from './hero.js';
+import { stats } from './stats.js';
+
+export const RELIC_DEFS = {
+  serrated_edge: {
+    id: 'serrated_edge',
+    name: 'Serrated Edge',
+    desc: '+30% attack damage',
+    flavor: 'Sharpened on bone. It remembers the screams.',
+    icon: 'relic_serrated_edge',
+    tint: '#ff7a55',
+    apply: () => { hero.damageMul *= 1.30; },
+  },
+  swift_arm: {
+    id: 'swift_arm',
+    name: 'Swift Arm',
+    desc: 'Attacks -25% cooldown',
+    flavor: 'The weight of a hundred duels, forgotten by the shoulder.',
+    icon: 'relic_swift_arm',
+    tint: '#ffcc55',
+    apply: () => { hero.attackCooldownMul *= 0.75; },
+  },
+  long_reach: {
+    id: 'long_reach',
+    name: 'Long Reach',
+    desc: '+25% attack range',
+    flavor: 'A duelist\u2019s last breath, coiled in iron.',
+    icon: 'relic_long_reach',
+    tint: '#b49aff',
+    apply: () => { hero.reachMul *= 1.25; },
+  },
+  nimble_step: {
+    id: 'nimble_step',
+    name: 'Nimble Step',
+    desc: 'Dodge -50% cooldown',
+    flavor: 'Worn thin by the feet of a thief who never died in a cell.',
+    icon: 'relic_nimble_step',
+    tint: '#7edfff',
+    apply: () => { hero.dodgeCooldownMul *= 0.50; },
+  },
+  iron_greaves: {
+    id: 'iron_greaves',
+    name: 'Iron Greaves',
+    desc: '+20% move speed',
+    flavor: 'They never rusted. Perhaps they never touched the earth.',
+    icon: 'relic_iron_greaves',
+    tint: '#9bd8ff',
+    apply: () => { hero.speedMul *= 1.20; },
+  },
+  ironhide: {
+    id: 'ironhide',
+    name: 'Ironhide',
+    desc: '+2 max HP, heal fully',
+    flavor: 'Skin hardened by a prayer made too late.',
+    icon: 'relic_ironhide',
+    tint: '#ff9ab4',
+    apply: () => { hero.maxHp += 2; hero.hp = hero.maxHp; },
+  },
+  bloodstone: {
+    id: 'bloodstone',
+    name: 'Bloodstone',
+    desc: '10% lifesteal on hit',
+    flavor: 'What you take from them, you keep.',
+    icon: 'relic_bloodstone',
+    tint: '#d95a82',
+    apply: () => { hero.lifesteal += 0.10; },
+  },
+  phoenix_tear: {
+    id: 'phoenix_tear',
+    name: 'Phoenix Tear',
+    desc: 'Revive once at 1 HP',
+    flavor: 'The last thing she gave the world before the fire took her.',
+    icon: 'relic_phoenix_tear',
+    tint: '#ffc860',
+    apply: () => { hero.revives += 1; },
+  },
+  // ---------- Expanded pool (floor 1.5+ onward) ----------
+  iron_resolve: {
+    id: 'iron_resolve',
+    name: 'Iron Resolve',
+    desc: 'Incoming damage -25%',
+    flavor: 'The knight still stood, long after the war had ended.',
+    icon: 'relic_iron_resolve',
+    tint: '#a0c8ff',
+    apply: () => { hero.damageTakenMul *= 0.75; },
+  },
+  keen_edge: {
+    id: 'keen_edge',
+    name: 'Keen Edge',
+    desc: '15% crit chance, 2x damage',
+    flavor: 'Hone it once. It will remember.',
+    icon: 'relic_keen_edge',
+    tint: '#ffe27a',
+    apply: () => { hero.critChance += 0.15; },
+  },
+  vitality: {
+    id: 'vitality',
+    name: 'Vitality',
+    desc: 'Regen 1 HP every 8 seconds',
+    flavor: 'A moss that closes wounds in exchange for sleep.',
+    icon: 'relic_vitality',
+    tint: '#8ad4a2',
+    apply: () => { hero.regenRate += 0.125; hero.regenCD = 1 / hero.regenRate; },
+  },
+  heavy_blow: {
+    id: 'heavy_blow',
+    name: 'Heavy Blow',
+    desc: 'Hits knockback 2.5x harder',
+    flavor: 'Meant for doors. It works on ribs, too.',
+    icon: 'relic_heavy_blow',
+    tint: '#c86a4a',
+    apply: () => { hero.knockbackMul *= 2.5; },
+  },
+  dash_master: {
+    id: 'dash_master',
+    name: 'Dash Master',
+    desc: 'Dodge distance +35%',
+    flavor: 'A step that ends before it begins.',
+    icon: 'relic_dash_master',
+    tint: '#a0e0ff',
+    apply: () => { hero.dodgeDistMul *= 1.35; },
+  },
+  executioner: {
+    id: 'executioner',
+    name: 'Executioner',
+    desc: '+50% dmg vs low-HP enemies',
+    flavor: 'Mercy, for those already broken. One clean cut.',
+    icon: 'relic_executioner',
+    tint: '#d25555',
+    apply: () => { hero.executeThreshold = Math.max(hero.executeThreshold, 0.40); hero.executeMul = 1.5; },
+  },
+  warlord: {
+    id: 'warlord',
+    name: 'Warlord',
+    desc: '+8% dmg per relic owned',
+    flavor: 'Every treasure at your belt sings when you swing.',
+    icon: 'relic_warlord',
+    tint: '#ffb065',
+    apply: () => { hero.damageMul *= (1 + 0.08 * equipped.length); },
+  },
+  reaver: {
+    id: 'reaver',
+    name: 'Reaver',
+    desc: '+15% lifesteal on crit',
+    flavor: 'The wound breathes — so do you.',
+    icon: 'relic_reaver',
+    tint: '#ff6a8e',
+    apply: () => { hero.lifesteal += 0.15; hero.critChance = Math.max(hero.critChance, 0.08); },
+  },
+  // ---------- EFFECT RELICS — synergies & spectacle ----------
+  chain_lightning: {
+    id: 'chain_lightning',
+    name: 'Chain Lightning',
+    desc: 'Every 3rd hit arcs to a nearby enemy',
+    flavor: 'A storm bound to a man\u2019s heart, waiting to be spent.',
+    icon: 'relic_chain_lightning',
+    tint: '#a0e8ff',
+    tier: 'rare',
+    apply: () => { hero.chainLightning = true; },
+  },
+  explosive_kill: {
+    id: 'explosive_kill',
+    name: 'Explosive Kill',
+    desc: 'Enemies explode on death',
+    flavor: 'Their bodies were never meant to hold so much hatred.',
+    icon: 'relic_explosive_kill',
+    tint: '#ff8040',
+    tier: 'rare',
+    apply: () => { hero.explosiveKill = true; },
+  },
+  soul_burst: {
+    id: 'soul_burst',
+    name: 'Soul Burst',
+    desc: 'Every 5th kill releases a wave of souls',
+    flavor: 'The things you kill do not leave you. They gather.',
+    icon: 'relic_soul_burst',
+    tint: '#b4d8ff',
+    tier: 'rare',
+    apply: () => { hero.soulBurst = true; },
+  },
+  thunder_step: {
+    id: 'thunder_step',
+    name: 'Thunder Step',
+    desc: 'Dodge leaves a damaging lightning trail',
+    flavor: 'The air forgets to close behind her.',
+    icon: 'relic_thunder_step',
+    tint: '#e8ffff',
+    tier: 'rare',
+    apply: () => { hero.thunderStep = true; },
+  },
+  vampiric_aura: {
+    id: 'vampiric_aura',
+    name: 'Vampiric Aura',
+    desc: 'Nearby enemies take damage \u00b7 you heal on hit',
+    flavor: 'Their fear is warm. You can feel it from here.',
+    icon: 'relic_vampiric_aura',
+    tint: '#ff5078',
+    tier: 'rare',
+    apply: () => { hero.vampiricAura = true; },
+  },
+  echoing_strike: {
+    id: 'echoing_strike',
+    name: 'Echoing Strike',
+    desc: 'Your hits echo 0.15s later for 60% damage',
+    flavor: 'The blade strikes twice. You only swing once.',
+    icon: 'relic_echoing_strike',
+    tint: '#ffddaa',
+    tier: 'rare',
+    apply: () => { hero.echoingStrike = true; },
+  },
+  // ==================== LEGENDARY RELICS ====================
+  // Game-changing anchors. Only roll on floor 3+ or from the post-boss shop.
+  eye_of_ether: {
+    id: 'eye_of_ether',
+    name: 'Eye of Ether',
+    desc: '+20% crit \u00b7 crits PIERCE through enemies',
+    flavor: 'It sees what the world has hidden. And what it has buried.',
+    icon: 'relic_eye_of_ether',
+    tint: '#e6c8ff',
+    tier: 'legendary',
+    apply: () => { hero.critChance += 0.20; hero.pierceCrit = true; },
+  },
+  cataclysm: {
+    id: 'cataclysm',
+    name: 'Cataclysm',
+    desc: 'Every 10th hit erupts the room',
+    flavor: 'A sliver of the world\u2019s ending, fitted into a palm.',
+    icon: 'relic_cataclysm',
+    tint: '#ff9455',
+    tier: 'legendary',
+    apply: () => { hero.cataclysm = true; },
+  },
+  wanderers_cloak: {
+    id: 'wanderers_cloak',
+    name: "Wanderer's Cloak",
+    desc: 'Dodge grants 2s of doubled attack speed',
+    flavor: 'Whoever wears it was never where you last looked.',
+    icon: 'relic_wanderers_cloak',
+    tint: '#b4e8ff',
+    tier: 'legendary',
+    apply: () => { hero.wandererCloak = true; },
+  },
+  ethereal_binding: {
+    id: 'ethereal_binding',
+    name: 'Ethereal Binding',
+    desc: 'Every 3 kills: 1s invulnerability',
+    flavor: 'The dead hold your shape a moment, that you may not die.',
+    icon: 'relic_ethereal_binding',
+    tint: '#ffe088',
+    tier: 'legendary',
+    apply: () => { hero.etherealBinding = true; },
+  },
+  // ---------- Expanded pool (overnight session) ----------
+  phoenix_cloak: {
+    id: 'phoenix_cloak',
+    name: 'Phoenix Cloak',
+    desc: 'Revive on death \u00b7 explode on revive',
+    flavor: 'Born from ash. What comes back is always a little less human.',
+    icon: 'relic_phoenix_cloak',
+    tint: '#ff9a50',
+    tier: 'legendary',
+    apply: () => { hero.revives += 1; hero.phoenixCloak = true; },
+  },
+  avatar_of_flame: {
+    id: 'avatar_of_flame',
+    name: 'Avatar of Flame',
+    desc: 'Weapon always ignited \u00b7 trails fire',
+    flavor: 'The fire did not take you. It married you.',
+    icon: 'relic_avatar_of_flame',
+    tint: '#ff6a28',
+    tier: 'legendary',
+    apply: () => { hero.avatarOfFlame = true; hero.damageMul *= 1.15; },
+  },
+  pyromancer: {
+    id: 'pyromancer',
+    name: 'Pyromancer',
+    desc: 'Every 4th hit spawns a small explosion',
+    flavor: 'Every swing, a promise. Every fourth, a reminder.',
+    icon: 'relic_pyromancer',
+    tint: '#ff8040',
+    tier: 'rare',
+    apply: () => { hero.pyromancer = true; },
+  },
+  soulreaver: {
+    id: 'soulreaver',
+    name: 'Soulreaver',
+    desc: 'Each kill grants 0.5s attack speed buff (stacks)',
+    flavor: 'The blade drinks, and the blade wants more.',
+    icon: 'relic_soulreaver',
+    tint: '#b4e8ff',
+    tier: 'rare',
+    apply: () => { hero.soulreaver = true; },
+  },
+  counterstrike: {
+    id: 'counterstrike',
+    name: 'Counterstrike',
+    desc: 'Perfect dodge counter hits explode, dealing 2x damage',
+    flavor: 'Patience is a blade. The swing is just the punctuation.',
+    icon: 'relic_counterstrike',
+    tint: '#ffeb99',
+    tier: 'rare',
+    apply: () => { hero.counterstrike = true; },
+  },
+  aegis_pulse: {
+    id: 'aegis_pulse',
+    name: 'Aegis Pulse',
+    desc: 'Below 30% HP: every 4s, emit shockwave that staggers nearby enemies',
+    flavor: 'A dying heart beats louder. Loud enough to push the world back.',
+    icon: 'relic_aegis_pulse',
+    tint: '#a0d8ff',
+    tier: 'rare',
+    apply: () => { hero.aegisPulse = true; },
+  },
+  bloodrite: {
+    id: 'bloodrite',
+    name: 'Bloodrite',
+    desc: '+15% damage while below 50% HP',
+    flavor: 'Offer your own blood. The gods of Ethera listen.',
+    icon: 'relic_bloodrite',
+    tint: '#d85a5a',
+    tier: 'common',
+    apply: () => { hero.bloodrite = true; },
+  },
+  gale_step: {
+    id: 'gale_step',
+    name: 'Gale Step',
+    desc: 'Dodge distance +35%',
+    flavor: 'Ride the breath the ruin exhales between killings.',
+    icon: 'relic_gale_step',
+    tint: '#b0e8ff',
+    tier: 'common',
+    apply: () => { hero.dodgeDistMul *= 1.35; },
+  },
+};
+
+export const ALL_RELIC_IDS = Object.keys(RELIC_DEFS);
+
+// Default tier is 'common' if a relic has no tier field.
+export function relicTier(id) {
+  const def = RELIC_DEFS[id];
+  return def && def.tier ? def.tier : 'common';
+}
+
+// Tier weight distribution per floor — higher floors see more rare/legendary.
+const TIER_WEIGHTS_BY_FLOOR = {
+  1: { common: 1.0, rare: 0.0,  legendary: 0.0 },
+  2: { common: 0.65, rare: 0.35, legendary: 0.0 },
+  3: { common: 0.45, rare: 0.40, legendary: 0.15 },
+  4: { common: 0.30, rare: 0.45, legendary: 0.25 },
+};
+
+function weightedTier(floorLevel) {
+  const weights = TIER_WEIGHTS_BY_FLOOR[floorLevel] || TIER_WEIGHTS_BY_FLOOR[1];
+  const r = Math.random();
+  let acc = 0;
+  for (const t in weights) {
+    acc += weights[t];
+    if (r <= acc) return t;
+  }
+  return 'common';
+}
+
+// Hero's picked relics for this run
+export const equipped = [];
+
+export function resetRelics() {
+  equipped.length = 0;
+  clearFusions();
+  hero.relicCount = 0;
+}
+
+// Enforce any memory-imposed max-HP cap AFTER a relic is applied. Called
+// from applyRelic below. Without this, a relic like Ironhide (+2 maxHp) or
+// Vitality (regen + maxHp) would silently raise the hero past the cap that
+// Memory of Ash (4) or Memory of the Hungry Blade (5) set at run start.
+function enforceMemoryMaxHpCap() {
+  let cap = Infinity;
+  if (hero.memoryAsh) cap = Math.min(cap, 4);
+  if (hero.memoryHungryBlade) cap = Math.min(cap, 5);
+  if (cap < Infinity && hero.maxHp > cap) {
+    hero.maxHp = cap;
+    if (hero.hp > hero.maxHp) hero.hp = hero.maxHp;
+  }
+}
+
+// ============================================================================
+// RELIC GLYPHS — 34 relics share only 8 base sprites, which made pickups feel
+// repetitive. Solution: overlay a distinguishing pixel-art glyph on top of the
+// base sprite at render time. Combined with per-relic tint hue-rotation, each
+// relic becomes visually unique without commissioning new art.
+//
+// Glyph types (canvas-drawn, see renderRelicGlyph in fx.js):
+//   sword   — attack/edge relics
+//   bolt    — lightning/electric
+//   flame   — fire/explosion
+//   shield  — defense/resist
+//   heart   — HP / sustain / lifesteal
+//   eye     — crit / precision
+//   wind    — speed / dodge / movement
+//   skull   — execute / death
+//   phoenix — revive
+//   star    — soul / magic / ethereal
+//   rune    — binding / echo
+// ============================================================================
+export const RELIC_GLYPHS = {
+  // Base pool
+  serrated_edge:    'sword',
+  swift_arm:        'wind',
+  long_reach:       'sword',
+  nimble_step:      'wind',
+  iron_greaves:     'wind',
+  ironhide:         'shield',
+  bloodstone:       'heart',
+  phoenix_tear:     'phoenix',
+  // Expanded common
+  iron_resolve:     'shield',
+  keen_edge:        'eye',
+  vitality:         'heart',
+  heavy_blow:       'sword',
+  dash_master:      'wind',
+  executioner:      'skull',
+  warlord:          'sword',
+  reaver:           'skull',
+  // Rare
+  chain_lightning:  'bolt',
+  explosive_kill:   'flame',
+  soul_burst:       'star',
+  thunder_step:     'bolt',
+  vampiric_aura:    'heart',
+  echoing_strike:   'rune',
+  // Legendary
+  eye_of_ether:     'eye',
+  cataclysm:        'flame',
+  wanderers_cloak:  'wind',
+  ethereal_binding: 'rune',
+  phoenix_cloak:    'phoenix',
+  avatar_of_flame:  'flame',
+  pyromancer:       'flame',
+  soulreaver:       'star',
+  counterstrike:    'sword',
+  aegis_pulse:      'shield',
+  bloodrite:        'skull',
+  gale_step:        'wind',
+};
+
+export function getRelicGlyph(id) {
+  return RELIC_GLYPHS[id] || null;
+}
+
+// Pick N random relics not already owned, weighted by floor tier distribution.
+// Falls back to next-lower tier if the rolled tier has no available relics.
+export function rollRelicOffer(n, floorLevel = 1) {
+  const ownedIds = new Set(equipped.map(r => r.id));
+  const availableByTier = { common: [], rare: [], legendary: [] };
+  for (const id of ALL_RELIC_IDS) {
+    if (ownedIds.has(id)) continue;
+    const t = relicTier(id);
+    if (availableByTier[t]) availableByTier[t].push(id);
+  }
+  const pickFromTier = (t) => {
+    const arr = availableByTier[t];
+    if (!arr || !arr.length) return null;
+    const i = (Math.random() * arr.length) | 0;
+    const id = arr[i];
+    arr.splice(i, 1);
+    return id;
+  };
+  const fallbackOrder = ['legendary', 'rare', 'common'];
+  const picks = [];
+  for (let k = 0; k < n; k++) {
+    const target = weightedTier(floorLevel);
+    // Try target tier first, then fallback ladder
+    const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)];
+    let got = null;
+    for (const t of tryOrder) {
+      got = pickFromTier(t);
+      if (got) break;
+    }
+    if (!got) break;
+    picks.push(RELIC_DEFS[got]);
+  }
+  return picks;
+}
+
+import { checkFusionsOnPickup, clearFusions } from './fusions.js';
+
+// Persistent "ever seen" set — drives the Chronicles relicpedia. Every relic
+// the player has ever picked up gets stored here across runs.
+const RELIC_SEEN_KEY = 'ethera:seen_relics:v1';
+export const seenRelicIds = new Set();
+export function loadSeenRelics() {
+  try {
+    const raw = localStorage.getItem(RELIC_SEEN_KEY);
+    if (raw) for (const id of JSON.parse(raw)) seenRelicIds.add(id);
+  } catch (e) {}
+}
+function saveSeenRelics() {
+  try { localStorage.setItem(RELIC_SEEN_KEY, JSON.stringify([...seenRelicIds])); } catch (e) {}
+}
+
+export function applyRelic(id) {
+  const def = RELIC_DEFS[id];
+  if (!def) return;
+  if (equipped.find(r => r.id === id)) return;  // already owned
+  def.apply();
+  equipped.push(def);
+  stats.relicsObtained++;
+  // Maintain hero.relicCount so hero.js can read it without importing
+  // relics.js (would create a circular dependency). Used by Memory of the
+  // Bell (+8% damage per relic owned).
+  hero.relicCount = equipped.length;
+  // MEMORY OF THE BELL — +8% damage per relic owned, applied at pickup.
+  // Compounds multiplicatively (1.08^N for N relics). The memory's own
+  // apply() retroactively multiplies for any relics already equipped when
+  // the memory first activates.
+  if (hero.memoryBell) hero.damageMul *= 1.08;
+  // Enforce memory-imposed max-HP caps AFTER each relic applies, so that
+  // later relics with +maxHp effects can't silently undo the cap.
+  enforceMemoryMaxHpCap();
+  // Record first-time discovery for the codex.
+  if (!seenRelicIds.has(id)) {
+    seenRelicIds.add(id);
+    saveSeenRelics();
+  }
+  // Check for fusion formations after this relic joins the build
+  try {
+    const equippedIds = equipped.map(r => r.id);
+    const formed = checkFusionsOnPickup(id, equippedIds, hero);
+    if (formed.length > 0 && typeof window !== 'undefined' && window.__onFusionFormed) {
+      for (const f of formed) window.__onFusionFormed(f);
+    }
+  } catch (e) {}
+}
