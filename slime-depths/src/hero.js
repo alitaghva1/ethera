@@ -725,8 +725,12 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (chargedHit) {
             playSfx('slime_death', { rate: 0.5, volume: 0.65 });
           }
-          spawnDamageNumber(e.x, e.y - 36, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
-          spawnHitMarker(e.x, e.y - 20, isCrit || isCounter || isExec);
+          // HUD LEGIBILITY PASS (review #2): pass charged/finisher flags so
+          // the damage number surfaces the player-action badges (CHARGE!,
+          // FINISH!). Without these, a chargedHit doing 1.85× damage reads
+          // as just "a big crit" to the player.
+          spawnDamageNumber(e.x, e.y - 36, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, charged: chargedHit, finisher: finisherHit, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
+          spawnHitMarker(e.x, e.y - 20, isCrit || isCounter || isExec || chargedHit || finisherHit);
           triggerHitStop((isCounter ? 0.12 : isCrit ? 0.08 : 0.045) * wpnHs);
           // Camera zoom-in pulse on big hits — counter/exec/finisher/charged all pop
           if (isCounter) pulseZoom(0.06, 0.3);

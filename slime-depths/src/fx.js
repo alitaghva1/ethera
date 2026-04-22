@@ -433,22 +433,37 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
     p.vx = (Math.random() * 2 - 1) * 30;
     p.vy = -120 - Math.random() * 40;
   }
-  p.life = opts.counter || opts.exec ? 1.1 : 0.85;
+  p.life = opts.counter || opts.exec ? 1.1 : (opts.charged || opts.finisher) ? 0.95 : 0.85;
   p.maxLife = p.life;
   p.text = String(amount | 0);
-  // Size ramps up with damage AND with hit weight
-  const sizeBoost = opts.counter ? 6 : opts.exec ? 4 : opts.crit ? 2 : 0;
+  // HUD LEGIBILITY PASS (review #2): size/color/badge priority picks the
+  // SINGLE most informative tag to show, in player-intent order:
+  //   counter > exec > charge > finisher > crit
+  // Counter & exec stay on top because they're rare/situational. Charge
+  // and finisher outrank crit so the player sees WHY the hit was big
+  // (their action, not RNG).
+  const sizeBoost = opts.counter ? 6 : opts.exec ? 5 : opts.charged ? 4 : opts.finisher ? 3 : opts.crit ? 2 : 0;
   p.size = (amount >= 50 ? 20 : amount >= 30 ? 17 : 14) + sizeBoost;
-  // Color per hit weight
   p.color = opts.counter ? '#ffeb99'
           : opts.exec ? '#ff7a55'
+          : opts.charged ? '#ffea80'
+          : opts.finisher ? '#c8a8ff'
           : opts.crit ? '#ffd27a'
           : amount >= 50 ? '#ff9a66'
           : amount >= 30 ? '#ffd4bf'
           : '#ffffff';
   p.outline = 'rgba(20,10,20,0.9)';
-  p.badge = opts.counter ? 'COUNTER!' : opts.exec ? 'EXECUTE!' : opts.crit ? 'CRIT!' : '';
-  p.badgeColor = opts.counter ? '#fff2b8' : opts.exec ? '#ff5540' : '#ffd27a';
+  p.badge = opts.counter ? 'COUNTER!'
+          : opts.exec ? 'EXECUTE!'
+          : opts.charged ? 'CHARGE!'
+          : opts.finisher ? 'FINISH!'
+          : opts.crit ? 'CRIT!'
+          : '';
+  p.badgeColor = opts.counter ? '#fff2b8'
+               : opts.exec ? '#ff5540'
+               : opts.charged ? '#ffea80'
+               : opts.finisher ? '#c8a8ff'
+               : '#ffd27a';
   // Element tag — shown as secondary badge (WEAK in cyan / RESIST in grey)
   p.elementTag = opts.elementTag || '';
   p.elementColor = opts.elementTag === 'WEAK' ? '#7fffd4' : opts.elementTag === 'RESIST' ? '#808090' : '';
