@@ -855,6 +855,28 @@ function showControls() {
 }
 document.getElementById('menuControlsLink')?.addEventListener('click', showControls);
 
+// First-run welcome nudge — a player who has never opened the game before
+// gets the how-to-play primer auto-opened once. Returning players with
+// the seen-welcome flag are not disturbed. Falls back to no-op if
+// localStorage is blocked.
+//
+// Note: profile.js patches localStorage to prefix keys with the active
+// profile slot (e.g. 'ethera:seen_welcome:v1' becomes
+// 'profile_i:ethera:seen_welcome:v1' in raw storage). We use
+// localStorage.getItem which goes through the patched accessor so the
+// prefix is handled automatically.
+(function firstRunNudge() {
+  try {
+    if (localStorage.getItem('ethera:seen_welcome:v1')) return;
+    // Mark the flag immediately, not on timer callback, so a fast
+    // reload during the 900ms settle delay doesn't re-trigger it.
+    try { localStorage.setItem('ethera:seen_welcome:v1', '1'); } catch (_) {}
+    setTimeout(() => showControls(), 900);
+  } catch (_) {
+    // Storage-blocked path (Safari private mode etc.) — just skip the nudge.
+  }
+})();
+
 // Initial state — sets chip highlight + CTA tint
 refreshMenuModeChips();
 
