@@ -275,6 +275,44 @@ export const MEMORIES = {
     unlockCheck: (records, _stats, ctx) => ctx && ctx.seenRelicIds && ctx.seenRelicIds.has('vampiric_aura'),
     unlockHint: 'Find Vampiric Aura to remember…',
   },
+
+  // ==========================================================================
+  // MIGRATED FROM TAROT (meta consolidation pass, review #3)
+  //
+  // Tarot's most mechanically-distinct cards moved here so there is ONE
+  // identity system (Memory) rather than two that overlap. The tarot module
+  // remains dormant in the codebase; these memories are the new home for
+  // the effects. The hanged_man's HP drain and the hermit's wanderer spawn
+  // share their gate code with the existing tarot paths in main.js.
+  // ==========================================================================
+  hermit: {
+    id: 'hermit',
+    name: 'Memory of the Hermit',
+    tint: '#c9a86a',
+    flavor: 'A lantern in every hollow.',
+    gift: 'The Wanderer appears in every sanctuary',
+    constraint: 'No other bonuses',
+    apply: (h) => {
+      h.memoryHermit = true;
+    },
+    unlockCheck: (records) => records.runsCompleted >= 2,
+    unlockHint: 'Complete 2 descents to remember…',
+  },
+
+  hanged_man: {
+    id: 'hanged_man',
+    name: 'Memory of the Hanged Man',
+    tint: '#b894e8',
+    flavor: 'Inverted, you see clearly.',
+    gift: '+30% damage',
+    constraint: 'Lose 1 HP on every room entry',
+    apply: (h) => {
+      h.damageMul *= 1.30;
+      h.memoryHanged = true;
+    },
+    unlockCheck: (records) => records.runsStarted >= 8,
+    unlockHint: 'Begin 8 descents to remember…',
+  },
 };
 
 export const ALL_MEMORY_IDS = Object.keys(MEMORIES);

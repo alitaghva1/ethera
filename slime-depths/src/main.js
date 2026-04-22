@@ -689,7 +689,14 @@ menuEl.innerHTML = `
       <span style="opacity:0.35;color:#c9a86a;font-size:10px;">\u2666</span>
       <button class="menuModeChip" data-mode="daily" style="background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
       <span style="opacity:0.35;color:#c9a86a;font-size:10px;">\u2666</span>
-      <button class="menuModeChip" data-mode="tarot" style="background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">TAROT</button>
+      <!-- META CONSOLIDATION PASS (review #3): TAROT mode chip hidden.
+           Tarot's 8 cards overlapped Memory's identity-modifier role; the
+           main menu had one too many entry points for new players. The
+           chip is hidden (not deleted) so the tarot module stays dormant
+           and can be re-enabled by removing this display:none. The two
+           most mechanically-distinct tarot cards (Hermit, Hanged Man)
+           have been migrated to the Memory pool as history-gated unlocks. -->
+      <button class="menuModeChip" data-mode="tarot" style="display:none;background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">TAROT</button>
     </div>
     <!-- Hint line — gold at lower opacity, no purple. -->
     <div id="menuModeHint" style="font-size:11px;opacity:0;letter-spacing:2px;font-family:Georgia,serif;font-style:italic;margin-top:10px;margin-bottom:0;color:#c9a86a;min-height:18px;text-align:center;max-width:480px;transition:opacity 0.28s ease;"></div>
@@ -3111,8 +3118,10 @@ function loadRoom(idx, entryFrom) {
     : getRoomStain(currentFloorLevel, idx);
   data.ruinStain = stain;
   data.ruinAging = agingLevel();
-  // THE HANGED MAN — lose 1 HP on every room entry (no effect on death)
-  if (isTarotRun() && hasCard('the_hanged_man') && hero.hp > 1 && hero.state !== 'dead') {
+  // THE HANGED MAN — lose 1 HP on every room entry (no effect on death).
+  // Meta consolidation (review #3): gate also honors hero.memoryHanged
+  // so the migrated Memory of the Hanged Man triggers the same penalty.
+  if (((isTarotRun() && hasCard('the_hanged_man')) || hero.memoryHanged) && hero.hp > 1 && hero.state !== 'dead') {
     hero.hp -= 1;
     triggerScreenFlash('rgba(120, 50, 120, 0.2)', 0.3);
   }
@@ -3125,7 +3134,10 @@ function loadRoom(idx, entryFrom) {
   clearSynergies();
   clearWanderer();
   clearAmbientCreatures();   // fresh bat/raven cycle per room
-  maybeSpawnWanderer(data.kind, isTarotRun() && hasCard('the_hermit'), currentFloorLevel);
+  // Meta consolidation (review #3): Memory of the Hermit flag piggybacks
+  // on the existing Tarot Hermit path so the Wanderer spawn logic stays
+  // in one place.
+  maybeSpawnWanderer(data.kind, (isTarotRun() && hasCard('the_hermit')) || !!hero.memoryHermit, currentFloorLevel);
   // Per-floor music: each biome has its own ambient track; all share boss track
   const biomeTrack = BIOME_BY_FLOOR[currentFloorLevel] || 'ambient';
   playTrack(data.kind === 'boss' ? 'boss' : biomeTrack);

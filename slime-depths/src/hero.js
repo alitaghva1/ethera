@@ -200,6 +200,9 @@ export function resetHero() {
   hero.memoryBell = false;
   hero.memoryNine = false;
   hero.memoryHungryBlade = false;
+  // Migrated from tarot (review #3 meta consolidation)
+  hero.memoryHermit = false;
+  hero.memoryHanged = false;
   hero.startingGold = 0;
   hero.relicCount = 0;     // maintained by relics.js for Memory of the Bell
   hero.swingIndex = 0;
