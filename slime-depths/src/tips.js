@@ -1,22 +1,19 @@
 // Onboarding tips — show each tip at most once per player (persisted to localStorage).
 // Tips are triggered by gameplay events; they appear as a small top-center banner
 // with subtle slide-in + 5s auto-dismiss.
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
 
 const KEY = 'ethera:seen_tips:v1';
 
 const seen = new Set();
 
 export function loadTips() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return;
-    const arr = JSON.parse(raw);
-    for (const id of arr) seen.add(id);
-  } catch (e) {}
+  const arr = safeLoadJSON(KEY, null, Array.isArray);
+  if (arr) for (const id of arr) seen.add(id);
 }
 
 function saveTips() {
-  try { localStorage.setItem(KEY, JSON.stringify([...seen])); } catch (e) {}
+  safeSaveJSON(KEY, [...seen]);
 }
 
 // Active tip state — one at a time, auto-dismiss

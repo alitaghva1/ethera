@@ -4,19 +4,19 @@
 //
 // MVP: 5 cards. The full Major Arcana (22) is the eventual target.
 
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
 const KEY = 'ethera:tarot_seen:v1';
 
 export const seenTarot = new Set();
 
 export function loadSeenTarot() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) for (const id of JSON.parse(raw)) seenTarot.add(id);
-  } catch (e) {}
+  const arr = safeLoadJSON(KEY, null, Array.isArray);
+  if (arr) for (const id of arr) seenTarot.add(id);
 }
 
 function saveSeenTarot() {
-  try { localStorage.setItem(KEY, JSON.stringify([...seenTarot])); } catch (e) {}
+  safeSaveJSON(KEY, [...seenTarot]);
 }
 
 // Card registry — each card has a numeric rank, name, flavor, and mechanical tag(s).

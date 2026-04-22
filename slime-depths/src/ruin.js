@@ -27,22 +27,24 @@ export const ruin = {
   runsCompleted: 0,
 };
 
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
+function _isRuinShape(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 export function loadRuin() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return;
-    const p = JSON.parse(raw);
-    Object.assign(ruin, p);
-    // Backwards compat: ensure arrays exist
-    if (!Array.isArray(ruin.deaths)) ruin.deaths = [];
-    if (!Array.isArray(ruin.bossKills)) ruin.bossKills = [];
-    if (!Array.isArray(ruin.journal)) ruin.journal = [];
-    if (!ruin.stains || typeof ruin.stains !== 'object') ruin.stains = {};
-  } catch (e) {}
+  const p = safeLoadJSON(KEY, null, _isRuinShape);
+  if (p) Object.assign(ruin, p);
+  // Backwards compat: ensure arrays / objects exist regardless of source shape.
+  if (!Array.isArray(ruin.deaths)) ruin.deaths = [];
+  if (!Array.isArray(ruin.bossKills)) ruin.bossKills = [];
+  if (!Array.isArray(ruin.journal)) ruin.journal = [];
+  if (!ruin.stains || typeof ruin.stains !== 'object') ruin.stains = {};
 }
 
 function saveRuin() {
-  try { localStorage.setItem(KEY, JSON.stringify(ruin)); } catch (e) {}
+  safeSaveJSON(KEY, ruin);
 }
 
 // Evocative death epitaph pool — 2-line poetic summaries

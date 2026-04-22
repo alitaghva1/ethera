@@ -1,5 +1,6 @@
 // Achievements — milestones tracked across runs. Unlocks show as popups.
 // Persists via localStorage.
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
 
 const STORAGE_KEY = 'ethera:achievements:v1';
 
@@ -110,16 +111,12 @@ export const unlockedAchievements = new Set();
 export const pendingPopups = [];
 
 export function loadAchievements() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const arr = JSON.parse(raw);
-    for (const id of arr) if (ACHIEVEMENTS[id]) unlockedAchievements.add(id);
-  } catch (e) {}
+  const arr = safeLoadJSON(STORAGE_KEY, null, Array.isArray);
+  if (arr) for (const id of arr) if (ACHIEVEMENTS[id]) unlockedAchievements.add(id);
 }
 
 export function saveAchievements() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...unlockedAchievements])); } catch (e) {}
+  safeSaveJSON(STORAGE_KEY, [...unlockedAchievements]);
 }
 
 export function unlockAch(id) {

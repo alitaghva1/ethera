@@ -33,15 +33,18 @@ const UNLOCKED_KEY = 'ethera:memories_unlocked:v1';
 export const unlockedMemories = new Set();
 export let selectedMemoryId = null;   // null = no memory this run
 
+// Safe JSON wrapper — applied to the UNLOCKED set; selectedMemoryId stays
+// raw-string (no JSON) but still wrapped in its own try/catch since storage
+// access can throw in restricted contexts.
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
 export function loadMemories() {
   try {
     const sel = localStorage.getItem(SELECTED_KEY);
     if (sel) selectedMemoryId = sel;
   } catch (e) {}
-  try {
-    const raw = localStorage.getItem(UNLOCKED_KEY);
-    if (raw) for (const id of JSON.parse(raw)) unlockedMemories.add(id);
-  } catch (e) {}
+  const arr = safeLoadJSON(UNLOCKED_KEY, null, Array.isArray);
+  if (arr) for (const id of arr) unlockedMemories.add(id);
   // First Descent is always available — the starter memory.
   unlockedMemories.add('first_descent');
 }
@@ -49,7 +52,7 @@ function saveSelected() {
   try { localStorage.setItem(SELECTED_KEY, selectedMemoryId || ''); } catch (e) {}
 }
 function saveUnlocked() {
-  try { localStorage.setItem(UNLOCKED_KEY, JSON.stringify([...unlockedMemories])); } catch (e) {}
+  safeSaveJSON(UNLOCKED_KEY, [...unlockedMemories]);
 }
 export function setSelectedMemory(id) {
   selectedMemoryId = id || null;

@@ -12,14 +12,18 @@ export const daily = {
   activeForRun: false,       // true while a daily run is in progress
 };
 
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
+function _isDailyShape(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 export function loadDaily() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return;
-    const p = JSON.parse(raw);
+  const p = safeLoadJSON(KEY, null, _isDailyShape);
+  if (p) {
     if (p.lastDate) daily.lastDate = p.lastDate;
     if (typeof p.streak === 'number') daily.streak = p.streak;
-  } catch (e) {}
+  }
   // If the last completed date was more than 1 day ago, break the streak
   const today = todayKey();
   if (daily.lastDate && daily.lastDate !== today && daily.lastDate !== yesterdayKey()) {
@@ -28,7 +32,7 @@ export function loadDaily() {
 }
 
 export function saveDaily() {
-  try { localStorage.setItem(KEY, JSON.stringify({ lastDate: daily.lastDate, streak: daily.streak })); } catch (e) {}
+  safeSaveJSON(KEY, { lastDate: daily.lastDate, streak: daily.streak });
 }
 
 export function todayKey() {

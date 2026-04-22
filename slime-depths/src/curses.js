@@ -59,20 +59,19 @@ export const ALL_CURSE_IDS = Object.keys(CURSES);
 
 // Currently-active curses for this run (persists in localStorage across
 // sessions so the toggle survives page reloads; cleared on purpose by player).
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
 const STORAGE_KEY = 'ethera:curses:v1';
 export const activeCurses = new Set();
 
 export function loadCurses() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const arr = JSON.parse(raw);
-    for (const id of arr) if (CURSES[id]) activeCurses.add(id);
-  } catch (e) {}
+  const arr = safeLoadJSON(STORAGE_KEY, null, Array.isArray);
+  if (!arr) return;
+  for (const id of arr) if (CURSES[id]) activeCurses.add(id);
 }
 
 export function saveCurses() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...activeCurses])); } catch (e) {}
+  safeSaveJSON(STORAGE_KEY, [...activeCurses]);
 }
 
 export function toggleCurse(id) {

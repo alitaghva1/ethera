@@ -12,18 +12,18 @@
 // Discovery is persisted in localStorage so players build up a codex over
 // many runs. The "first time" a fusion activates triggers a dramatic banner.
 
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
 const KEY = 'ethera:fusions_discovered:v1';
 
 export const discoveredFusions = new Set();
 
 export function loadDiscoveredFusions() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) for (const id of JSON.parse(raw)) discoveredFusions.add(id);
-  } catch (e) {}
+  const arr = safeLoadJSON(KEY, null, Array.isArray);
+  if (arr) for (const id of arr) discoveredFusions.add(id);
 }
 function saveDiscoveredFusions() {
-  try { localStorage.setItem(KEY, JSON.stringify([...discoveredFusions])); } catch (e) {}
+  safeSaveJSON(KEY, [...discoveredFusions]);
 }
 
 // Helper — deterministic pair key regardless of apply order

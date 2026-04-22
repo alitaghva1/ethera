@@ -13,20 +13,24 @@ export const settings = {
   shakeScale: 1.0,          // 0-1.5 (multiplier applied to shakeCamera amplitude)
 };
 
+import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+
+function _isSettingsShape(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 export function loadSettings() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
+  const parsed = safeLoadJSON(KEY, null, _isSettingsShape);
+  if (parsed) {
     if (typeof parsed.sfxVolume === 'number') settings.sfxVolume = parsed.sfxVolume;
     if (typeof parsed.musicVolume === 'number') settings.musicVolume = parsed.musicVolume;
     if (typeof parsed.shakeScale === 'number') settings.shakeScale = parsed.shakeScale;
-  } catch (e) {}
+  }
   applySettings();
 }
 
 export function saveSettings() {
-  try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch (e) {}
+  safeSaveJSON(KEY, settings);
 }
 
 export function applySettings() {

@@ -344,14 +344,16 @@ export const TYPES = {
 const CODEX_KEY = 'ethera:seen_enemies:v1';
 export const seenEnemyTypes = new Set();
 
+// Codex persistence — safeLoadJSON imported from storage module.
+// Inlined import because enemies.js doesn't import from storage elsewhere.
+import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js?v=save1';
+
 export function loadCodex() {
-  try {
-    const raw = localStorage.getItem(CODEX_KEY);
-    if (raw) for (const id of JSON.parse(raw)) seenEnemyTypes.add(id);
-  } catch (e) {}
+  const arr = _safeLoadJSON(CODEX_KEY, null, Array.isArray);
+  if (arr) for (const id of arr) seenEnemyTypes.add(id);
 }
 function saveCodex() {
-  try { localStorage.setItem(CODEX_KEY, JSON.stringify([...seenEnemyTypes])); } catch (e) {}
+  _safeSaveJSON(CODEX_KEY, [...seenEnemyTypes]);
 }
 
 // Called from spawnEnemy. If this type has never been seen, mark it + queue
