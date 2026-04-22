@@ -14,15 +14,32 @@ function getCtx() {
   return audioCtx;
 }
 
-// Unlock Web Audio on first user gesture (browsers require it)
+// Unlock Web Audio on first user gesture (browsers require it).
+// Release-prep pass: properly await resume() and don't flip `unlocked=true`
+// until the context actually resumed — iOS Safari is stricter about this
+// than Chromium and can leave ctx.state === 'suspended' if we race ahead.
 let unlocked = false;
 function unlockOnGesture() {
   if (unlocked) return;
   const ctx = getCtx();
   if (!ctx) return;
-  if (ctx.state === 'suspended') ctx.resume();
-  unlocked = true;
+  try {
+    if (ctx.state === 'running') {
+      unlocked = true;
+      return;
+    }
+    const p = ctx.resume();
+    Promise.resolve(p).then(() => {
+      if (ctx.state === 'running') unlocked = true;
+    }).catch(() => {
+      // Next gesture will re-attempt — unlocked stays false.
+    });
+  } catch (_) {
+    // Some browsers throw synchronously; next gesture retries.
+  }
 }
+// Use pointerdown (unified with touch) in addition to click.
+window.addEventListener('pointerdown', unlockOnGesture, { once: false });
 window.addEventListener('click', unlockOnGesture, { once: false });
 window.addEventListener('keydown', unlockOnGesture, { once: false });
 

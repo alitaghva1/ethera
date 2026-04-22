@@ -7,11 +7,18 @@ let started = false;
 let masterVol = 0.35;
 
 function mk(name, src) {
-  const a = new Audio(src);
-  a.loop = true;
-  a.volume = 0;
-  a.preload = 'auto';
-  tracks[name] = a;
+  try {
+    const a = new Audio(src);
+    a.loop = true;
+    a.volume = 0;
+    a.preload = 'auto';
+    tracks[name] = a;
+  } catch (e) {
+    // HTMLAudio construction can throw in restricted contexts (private mode,
+    // blocked by CSP). Game plays silently; tracks[name] stays undefined and
+    // playTrack() early-returns safely.
+    console.warn('music: could not create track', name, e);
+  }
 }
 
 export function initMusic() {
@@ -22,13 +29,28 @@ export function initMusic() {
   mk('abyss',   'assets/music/abyss.ogg');
   mk('inferno', 'assets/music/inferno.ogg');
 
-  // Resume / start on first user gesture
+  // Release-prep pass: the kick used to flip `started = true` unconditionally,
+  // so if the very first play() was denied (Safari strict autoplay) the
+  // flag would stay stuck true and nothing would retry. Now we only flip
+  // the flag on successful play, and keep the listeners around until it
+  // actually plays.
   const kick = () => {
     if (started) return;
-    started = true;
-    playTrack(target || 'ambient');
-    window.removeEventListener('pointerdown', kick);
-    window.removeEventListener('keydown', kick);
+    const name = target || 'ambient';
+    const t = tracks[name];
+    if (!t) return;
+    t.currentTime = 0;
+    t.volume = 0;
+    const p = t.play();
+    Promise.resolve(p).then(() => {
+      started = true;
+      current = name;
+      window.removeEventListener('pointerdown', kick);
+      window.removeEventListener('keydown', kick);
+    }).catch(() => {
+      // Play was denied — leave `started=false` so the next user gesture
+      // retries. No user-visible error; game just stays silent for now.
+    });
   };
   window.addEventListener('pointerdown', kick);
   window.addEventListener('keydown', kick);
