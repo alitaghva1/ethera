@@ -90,6 +90,9 @@ import { DEATH_SCREEN_HTML } from './deathScreen.js';
 import { WIN_SCREEN_HTML } from './winScreen.js';
 // Credits screen — third-party asset attribution (release-prep legal step).
 import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
+// Controls / how-to-play primer — single-reference cheat sheet, a less
+// contextual companion to the onboarding tips system.
+import { CONTROLS_SCREEN_HTML } from './controlsScreen.js';
 // Storage health probe — surfaces a warning chip if localStorage is blocked.
 import { showStorageWarningIfBlocked } from './storage.js';
 showStorageWarningIfBlocked();
@@ -558,6 +561,12 @@ menuEl.innerHTML = `
         <span style="font-size:10px;opacity:0.7;">\u2192</span>
       </button>
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
+      <!-- How-to-play primer — addresses the onboarding gap noted in the studio review. -->
+      <button id="menuControlsLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
+        <span>how to play</span>
+        <span style="font-size:10px;opacity:0.7;">\u2192</span>
+      </button>
+      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
       <!-- Credits link — release-prep attribution screen for third-party assets. -->
       <button id="menuCreditsLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.6;display:flex;align-items:center;gap:8px;">
         <span>credits</span>
@@ -830,6 +839,21 @@ function showCredits() {
   creditsEl.style.display = 'flex';
 }
 document.getElementById('menuCreditsLink')?.addEventListener('click', showCredits);
+// How-to-play link → single-reference primer modal. Same lazy-create pattern.
+let controlsEl = null;
+function showControls() {
+  if (!controlsEl) {
+    controlsEl = document.createElement('div');
+    controlsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;';
+    controlsEl.innerHTML = CONTROLS_SCREEN_HTML;
+    document.getElementById('hud').appendChild(controlsEl);
+    controlsEl.querySelector('#controlsCloseBtn')?.addEventListener('click', () => {
+      controlsEl.style.display = 'none';
+    });
+  }
+  controlsEl.style.display = 'flex';
+}
+document.getElementById('menuControlsLink')?.addEventListener('click', showControls);
 
 // Initial state — sets chip highlight + CTA tint
 refreshMenuModeChips();
