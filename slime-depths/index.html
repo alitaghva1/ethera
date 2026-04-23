@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#0a0810">
 <title>Ethera</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #0a0810; color: #ddd; font-family: system-ui, sans-serif; overflow: hidden; touch-action: none; overscroll-behavior: none; }
+  html, body { margin: 0; padding: 0; background: #0a0810; color: #ddd; font-family: system-ui, sans-serif; overflow: hidden; touch-action: none; overscroll-behavior: none; cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><g fill='none' stroke='%23f4d9a0' stroke-width='1.4' opacity='0.85'><circle cx='14' cy='14' r='9' stroke-dasharray='3 3' opacity='0.45'/><line x1='14' y1='3' x2='14' y2='8'/><line x1='14' y1='20' x2='14' y2='25'/><line x1='3' y1='14' x2='8' y2='14'/><line x1='20' y1='14' x2='25' y2='14'/></g><circle cx='14' cy='14' r='1.4' fill='%23f4d9a0'/></svg>") 14 14, crosshair; }
   body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
   #stage { position: relative; }
   /* Canvas sizing: primary rule uses aspect-ratio (Safari 15+, all modern).
@@ -324,6 +324,26 @@
     50%      { transform: scale(1.07); }
   }
   .floor-map-node:hover { transform: scale(1.1) !important; }
+  /* Floor-map card reveal — fade + subtle rise on modal open. */
+  @keyframes mapCardIn {
+    0%   { opacity: 0; transform: translateY(6px) scale(0.985); }
+    100% { opacity: 1; transform: translateY(0)   scale(1); }
+  }
+  /* Boss node ambient glow — legible goal even before it's reachable. */
+  @keyframes bossPulse {
+    0%, 100% { box-shadow: 0 0 18px rgba(255,154,85,0.35), inset 0 0 10px rgba(255,154,85,0.15); }
+    50%      { box-shadow: 0 0 30px rgba(255,154,85,0.65), inset 0 0 14px rgba(255,154,85,0.28); }
+  }
+  /* Sanctuary node soft breath — heal-room affordance. */
+  @keyframes sanctuaryBreath {
+    0%, 100% { box-shadow: 0 0 14px rgba(134,227,168,0.30), inset 0 0 8px rgba(134,227,168,0.18); }
+    50%      { box-shadow: 0 0 22px rgba(134,227,168,0.55), inset 0 0 12px rgba(134,227,168,0.28); }
+  }
+  /* Event node slow shimmer — hints at mystery without overclaiming attention. */
+  @keyframes eventShimmer {
+    0%, 100% { opacity: 0.85; }
+    50%      { opacity: 1.0;  }
+  }
 
   /* ==========================================================================
      ACCESSIBILITY — prefers-reduced-motion
@@ -342,12 +362,15 @@
     #hud > div[style*="display:flex"],
     #hud > div[style*="display: flex"],
     #deathScreen[style*="flex"],
-    #pauseRelics, #endStats, #endRelics {
+    #pauseRelics, #endStats, #endRelics,
+    .floor-map-node,
+    .floor-map-card {
       animation: none !important;
       transition: none !important;
     }
     #hud button:hover { transform: none !important; }
     #menuSettingsBtn:hover { transform: none !important; }
+    .floor-map-node:hover { transform: none !important; }
   }
 </style>
 </head>
