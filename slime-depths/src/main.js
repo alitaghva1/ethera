@@ -1072,11 +1072,33 @@ function renderMemoryGrid() {
     const gift = unlocked ? `<div style="color:${accent};font-size:10px;letter-spacing:3px;font-weight:bold;margin-top:10px;">GIFT</div><div style="font-size:11px;line-height:1.45;margin-top:3px;">${def.gift}</div>` : '';
     const constraint = unlocked ? `<div style="color:#a06060;font-size:10px;letter-spacing:3px;font-weight:bold;margin-top:8px;">BOND</div><div style="font-size:11px;line-height:1.45;margin-top:3px;opacity:0.85;">${def.constraint}</div>` : '';
     const sel = selected ? `<div style="color:${accent};font-size:10px;letter-spacing:4px;font-weight:bold;margin-top:12px;text-shadow:0 0 8px ${accent}88;">\u2766 CHOSEN</div>` : '';
+    // Progress bar for locked memories with numeric unlock conditions — shows
+    // how close the player is instead of a flat "reach floor 2" hint.
+    let progressHtml = '';
+    if (!unlocked && typeof def.unlockProgress === 'function') {
+      try {
+        const prog = def.unlockProgress(records);
+        if (prog && prog.target > 0) {
+          const pct = Math.max(0, Math.min(1, prog.current / prog.target));
+          const pctStr = (pct * 100).toFixed(0);
+          const done = pct >= 1 ? '#86e3a8' : '#c9a86a';
+          progressHtml = `
+            <div style="margin-top:10px;">
+              <div style="font-size:10px;letter-spacing:1px;color:#a89b82;font-family:Georgia,serif;">${prog.current} / ${prog.target} ${prog.unit || ''}</div>
+              <div style="margin-top:4px;height:3px;background:rgba(201,168,106,0.18);overflow:hidden;">
+                <div style="height:100%;width:${pctStr}%;background:${done};box-shadow:0 0 6px ${done}88;"></div>
+              </div>
+            </div>
+          `;
+        }
+      } catch (e) {}
+    }
     card.innerHTML = `
       <div style="color:${unlocked ? accent : '#6a5c48'};font-size:13px;letter-spacing:2.5px;font-weight:bold;margin-bottom:6px;${unlocked ? `text-shadow:0 0 8px ${accent}55;` : ''}">${name}</div>
       <div style="font-size:11px;font-style:italic;opacity:0.7;line-height:1.5;min-height:36px;">${flavor}</div>
       ${gift}
       ${constraint}
+      ${progressHtml}
       ${sel}
     `;
     if (unlocked) {
