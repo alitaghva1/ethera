@@ -357,6 +357,7 @@ let roomLabelColor = '#ffd68a';
 let paused = false;
 // Full-screen floor intro card — shown when entering a new floor
 let floorCardTime = 0;
+let floorCardStartedAt = 0;       // wall-clock mark for stuck-overlay clamp
 let floorCardRoman = '';
 let floorCardName = '';
 let floorCardFlavor = '';
@@ -460,10 +461,12 @@ window.__onFusionFormed = (fusion) => {
 // Boss phase-transition cinematic (fires when a boss enrages at 50% HP)
 let phaseIntroTime = 0;        // ticks down from ~1.6s while banner shows
 let phaseIntroBoss = null;
+let phaseIntroStartedAt = 0;   // wall-clock mark for stuck-overlay clamp
 window.triggerBossPhaseIntro = (boss) => {
   if (!boss) return;
   phaseIntroTime = 1.6;
   phaseIntroBoss = boss;
+  phaseIntroStartedAt = performance.now();
 };
 
 // Main menu — shown on page load
@@ -3246,6 +3249,10 @@ function triggerFloorCard(level) {
   floorCardFlavor = d.flavor;
   floorCardBackdrop = d.backdrop || '';
   floorCardTime = 3.2;
+  floorCardStartedAt = performance.now();    // wall-clock mark for the clamp
+  // Hero should NOT be moving while the card reads — zero velocity so the
+  // freeze reads as a deliberate hold, not a pause at mid-stride.
+  hero.vx = 0; hero.vy = 0;
 }
 
 // PROLOGUE — shown once, ever, before the first run. Sets the tone of the
@@ -3549,6 +3556,9 @@ function resumeRun(snap) {
   deathSummaryShown = false;
   phaseIntroTime = 0;
   phaseIntroBoss = null;
+  phaseIntroStartedAt = 0;
+  floorCardStartedAt = 0;
+  bossIntroStartedAt = 0;
   fusionBannerTime = 0;
   triggerFloorCard(currentFloorLevel);
   loadRoom(0, 'south');
@@ -3740,6 +3750,9 @@ function startRun() {
   deathSummaryShown = false;
   phaseIntroTime = 0;
   phaseIntroBoss = null;
+  phaseIntroStartedAt = 0;
+  floorCardStartedAt = 0;
+  bossIntroStartedAt = 0;
   fusionBannerTime = 0;
   fusionBannerFusion = null;
   // Clear fusion hero flags that might have stuck from a previous run
@@ -4155,32 +4168,31 @@ function tick(now) {
 
   const frozen = consumeHitStop(realDt);
 
-  // Boss intro — freeze gameplay but animate everything (so camera/shake continue)
-  // Wall-clock clamp: if the intro's real-world elapsed time has exceeded its
-  // cap (2.5s — slightly longer than the 2.2s duration), force it to 0. This
-  // protects against the overlay getting stuck when the game is paused
-  // mid-intro or when bossIntroTime otherwise fails to decrement.
-  if (bossIntroTime > 0 && bossIntroStartedAt > 0) {
-    const introElapsedSec = (performance.now() - bossIntroStartedAt) / 1000;
-    if (introElapsedSec > 2.5) {
-      bossIntroTime = 0;
-      bossIntroBoss = null;
-    }
+  // UNIFIED CINEMATIC FREEZE — any of the three intro overlays (floor card /
+  // boss intro / phase-2 boss intro) freezes gameplay so combat can't happen
+  // underneath the banner, hero can't walk through the veil, and enemies
+  // don't attack a defenseless player. Particles / music / camera shake
+  // still tick so the animation reads smoothly.
+  //
+  // Wall-clock clamps: each timer has a max real-world lifespan. If the
+  // normal per-frame decrement gets stuck (pause mid-intro, rAF throttle,
+  // state race), the clamp force-clears the timer so the overlay can never
+  // persist past its wall cap.
+  const nowMs = performance.now();
+  if (bossIntroTime > 0 && bossIntroStartedAt > 0 && nowMs - bossIntroStartedAt > 2500) {
+    bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
   }
-  if (bossIntroTime > 0 && !paused) {
-    bossIntroTime -= realDt;
-    updateParticles(realDt);
-    updateDust(realDt, camera.x, camera.y);
-    updateMusic(realDt);
-    updateFx(realDt);
-    render();
-    endFrameInput();
-    requestAnimationFrame(tick);
-    return;
+  if (floorCardTime > 0 && floorCardStartedAt > 0 && nowMs - floorCardStartedAt > 4500) {
+    floorCardTime = 0; floorCardStartedAt = 0;
   }
-  // Phase-2 boss intro — similar freeze, shorter
-  if (phaseIntroTime > 0 && !paused) {
-    phaseIntroTime -= realDt;
+  if (phaseIntroTime > 0 && phaseIntroStartedAt > 0 && nowMs - phaseIntroStartedAt > 2000) {
+    phaseIntroTime = 0; phaseIntroBoss = null; phaseIntroStartedAt = 0;
+  }
+  const introActive = (bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0) && !paused;
+  if (introActive) {
+    if (bossIntroTime > 0)  bossIntroTime  -= realDt;
+    if (floorCardTime > 0)  floorCardTime  -= realDt;
+    if (phaseIntroTime > 0) phaseIntroTime -= realDt;
     updateParticles(realDt);
     updateDust(realDt, camera.x, camera.y);
     updateMusic(realDt);
@@ -4216,7 +4228,7 @@ function tick(now) {
     gameTime += realDt;
     heroSpikeCD -= dt;
     if (roomLabelTime > 0) roomLabelTime -= realDt;
-    if (floorCardTime > 0) floorCardTime -= realDt;
+    // floorCardTime now decrements in the unified intro-freeze block above.
     if (fusionBannerTime > 0) fusionBannerTime -= realDt;
     updateChromAberr(realDt);
     // Pick up queued codex entries emitted by enemies.spawnEnemy.
