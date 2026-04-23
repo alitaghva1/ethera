@@ -107,7 +107,9 @@ function spawnCells(count, pillarTemplate = -1) {
   return cells;
 }
 
-function makeCombatRoom(level, slot, eliteChance) {
+// Exported so floorGraph.js can reuse the exact same combat composition
+// logic when building branching DAGs. Same pacing, different run shape.
+export function makeCombatRoom(level, slot, eliteChance) {
   const tier = tierForSlot(level, slot);
   const comp = pick(COMP[tier]).slice();
   const slotMul = COMBAT_SLOT_MULS[slot] || COMBAT_SLOT_MULS.combat1;
@@ -175,7 +177,7 @@ function makeCombatRoom(level, slot, eliteChance) {
   };
 }
 
-function makeAltarRoom() {
+export function makeAltarRoom() {
   // Two relic pedestals at HP cost, empty center otherwise
   return {
     kind: 'altar',
@@ -186,7 +188,7 @@ function makeAltarRoom() {
   };
 }
 
-function makeChallengeRoom(level, eliteChance) {
+export function makeChallengeRoom(level, eliteChance) {
   const tier = level === 1 ? 'tier2' : 'tier3';
   const comp = pick(COMP[tier]).slice();
   const extraTypes = ['skel', 'archer'];
@@ -211,7 +213,7 @@ function makeChallengeRoom(level, eliteChance) {
   };
 }
 
-function makeTroveRoom() {
+export function makeTroveRoom() {
   // Generate 10-14 urn positions avoiding center + doors
   const count = 10 + randInt(0, 4);
   const urns = [];
@@ -233,14 +235,14 @@ function makeTroveRoom() {
   };
 }
 
-function makeEventRoom(level, eliteChance) {
+export function makeEventRoom(level, eliteChance) {
   const kind = Math.random();
   if (kind < 0.35) return makeAltarRoom();
   if (kind < 0.60) return makeTroveRoom();        // 25% chance: trove
   return makeChallengeRoom(level, eliteChance);
 }
 
-function makeBossSpawns(level, pillarTemplate = -1) {
+export function makeBossSpawns(level, pillarTemplate = -1) {
   const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother' }[level] || 'orc';
   const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'] }[level] || [];
   const cells = spawnCells(adds.length, pillarTemplate);
