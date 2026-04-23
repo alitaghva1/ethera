@@ -97,7 +97,10 @@ export const MENU_SCREEN_HTML = `
        Clicking opens the Journals modal where the player can switch or
        delete slots. "Journal" reads unambiguously as a save file — the
        previous "Volume" term confused for audio volume. -->
-  <button id="menuVolumeBtn" title="Journals — your save slots" style="position:absolute;top:34px;left:96px;background:transparent;color:#8a7a5a;border:0;padding:4px 10px;font-size:9px;cursor:pointer;letter-spacing:3px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;display:flex;align-items:center;gap:8px;opacity:0.55;">
+  <!-- Save-slot indicator — minimal signage in the top-left corner. Very
+       faint at rest; brightens slightly on hover so the player remembers
+       it's interactive without letting it shout. -->
+  <button id="menuVolumeBtn" title="Journals — your save slots" style="position:absolute;top:34px;left:44px;background:transparent;color:#8a7a5a;border:0;padding:4px 8px;font-size:9px;cursor:pointer;letter-spacing:3.5px;font-family:Georgia,serif;font-weight:bold;transition:opacity 0.25s ease;display:flex;align-items:center;gap:7px;opacity:0.42;">
     <span style="font-size:10px;color:#c9a86a;">\u2042</span>
     <span>JOURNAL <span id="menuVolumeLabel">I</span></span>
   </button>
@@ -144,13 +147,15 @@ export const MENU_SCREEN_HTML = `
       <button id="menuNewRunBtn" style="position:relative;background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:19px 96px;font-size:18px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 28px rgba(201,168,106,0.25), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">BEGIN DESCENT</button>
     </div>
 
-    <!-- MODE CHIPS — borderless. Selected chip is FILLED + glows; unselected
-         chips are dim text only. Differentiation by weight, not by outline. -->
-    <div id="menuModeRow" style="display:flex;gap:4px;margin-top:20px;margin-bottom:2px;align-items:center;">
-      <button class="menuModeChip" data-mode="standard" style="background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">STANDARD</button>
-      <span style="opacity:0.35;color:#c9a86a;font-size:10px;">\u2666</span>
-      <button class="menuModeChip" data-mode="daily" style="background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
-      <span style="opacity:0.35;color:#c9a86a;font-size:10px;">\u2666</span>
+    <!-- MODE CHIPS — borderless. Smaller + tighter to the CTA now so they
+         clearly read as options FOR the button above, not as a second
+         navigation row. Selected chip is filled + glows; unselected is
+         dim text. Differentiation by weight, not by outline. -->
+    <div id="menuModeRow" style="display:flex;gap:3px;margin-top:12px;margin-bottom:0;align-items:center;">
+      <button class="menuModeChip" data-mode="standard" style="background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">STANDARD</button>
+      <span style="opacity:0.3;color:#c9a86a;font-size:9px;">\u2666</span>
+      <button class="menuModeChip" data-mode="daily" style="background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
+      <span style="opacity:0.3;color:#c9a86a;font-size:9px;">\u2666</span>
       <!-- META CONSOLIDATION PASS (review #3): TAROT mode chip hidden.
            Tarot's 8 cards overlapped Memory's identity-modifier role; the
            main menu had one too many entry points for new players. The
