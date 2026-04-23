@@ -3598,6 +3598,16 @@ function startRun() {
   resetRelics();
   resetGold();
   resetStats();
+  // Reset per-run gameplay metrics — without this, maxCombo from the previous
+  // run leaks into stats._maxCombo at the next evaluateAchievements, which
+  // instantly unlocks carnage_achieved / ceaseless on a fresh run.
+  window.__gameMetrics.killStreak = 0;
+  window.__gameMetrics.killStreakShowUntil = 0;
+  window.__gameMetrics.maxCombo = 0;
+  window.__gameMetrics.lastHitTime = 0;
+  window.__gameMetrics.lastHitFromX = 0;
+  window.__gameMetrics.lastHitFromY = 0;
+  window.__gameMetrics.lastKillTime = 0;
   incrementRunsStarted();
   triggerFloorCard(currentFloorLevel);
   clearPedestals();
@@ -3635,7 +3645,10 @@ function startRun() {
     if (hasCard('the_empress')) window.__tarotEmpress = true;
     // THE SUN — start with a random rare relic
     if (hasCard('the_sun')) {
-      const rares = ALL_RELIC_IDS.filter(id => (RELIC_DEFS[id].tier === 'rare') && !equippedRelics.find(r => r.id === id));
+      const rares = ALL_RELIC_IDS.filter(id => {
+        const def = RELIC_DEFS[id];
+        return def && def.tier === 'rare' && !equippedRelics.find(r => r.id === id);
+      });
       if (rares.length) applyRelic(rares[(Math.random() * rares.length) | 0]);
     }
     // THE FOOL — start with no weapon (will be granted after first combat)
@@ -4136,7 +4149,11 @@ function tick(now) {
     return;
   }
 
-  if (running && !transition.active && !frozen && !paused) {
+  // During the boss-clear cascade, running is already false (set on boss kill),
+  // but the coin vacuum + particles need to keep ticking so coins magnetize
+  // to the hero. Extend core updates for ~cascade_duration + 800ms.
+  const cascadeActive = !!(window.__cascadeUntil && performance.now() < window.__cascadeUntil);
+  if ((running || cascadeActive) && !transition.active && !frozen && !paused) {
     updateHero(dt, enemies, mw);
     updateEnemies(dt, hero);
     updateFlames(dt);
@@ -4554,13 +4571,17 @@ function tick(now) {
       const corpse = enemies.find(e => e.boss) || { x: ROOM_W * TILE / 2, y: ROOM_H * TILE / 2 };
       const cascadeCount = isFinal ? 24 : 12 + currentFloorLevel * 2;
       const cascadeStep = isFinal ? 55 : 70;
+      const cascadeDurationMs = cascadeCount * cascadeStep;
+      // Keep hero / gold / particle updates ticking through the cascade window
+      // even though `running` is now false. Without this, coins spawn but never
+      // magnetize (updateGold is gated by `running && ...`).
+      window.__cascadeUntil = performance.now() + cascadeDurationMs + 800;
       import('./gold.js').then(g => {
         for (let i = 0; i < cascadeCount; i++) {
           setTimeout(() => g.dropGold(corpse.x + (Math.random() - 0.5) * 24, corpse.y + (Math.random() - 0.5) * 16, 1), i * cascadeStep);
         }
       });
       // Rising chord pings — C-E-G-B-D ascending (523, 659, 784, 988, 1175 Hz).
-      const cascadeDurationMs = cascadeCount * cascadeStep;
       [523, 659, 784, 988, 1175].forEach((hz, idx) => {
         setTimeout(() => synthPing(hz, 0.55, 0.22), Math.min(cascadeDurationMs, idx * 150 + 80));
       });

@@ -2,6 +2,8 @@
 // Walking onto one grants the relic + removes the rest.
 import { images } from './loader.js';
 import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph } from './relics.js';
+// NOTE: relicTier imported above is what makes altar pedestals respect rarity
+// tiers — without tier on the pedestal, mythic drops at altars render as common.
 import { drawRelicIcon } from './fx.js';
 import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js';
@@ -91,6 +93,7 @@ export function spawnAltarOffer(hpCost = 3) {
       x: spot.x * TILE + TILE/2,
       y: spot.y * TILE + TILE/2,
       relic: offers[i],
+      tier: relicTier(offers[i].id),    // altar pedestals now carry tier for mythic visuals
       picked: false,
       bob: Math.random() * Math.PI * 2,
       glow: 0,
@@ -574,9 +577,10 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   ctx.save();
   ctx.globalAlpha = fadeIn;
 
-  const tier = (r.tier || 'common').toUpperCase();   // 'COMMON' | 'RARE' | 'LEGENDARY'
+  const tier = (r.tier || 'common').toUpperCase();   // 'COMMON' | 'RARE' | 'LEGENDARY' | 'MYTHIC'
   const tierText = isAltar ? 'ALTAR' : (tier + ' RELIC');
   const tierColor = isAltar ? '#ff8a9a'
+                  : tier === 'MYTHIC'    ? '#fff2e0'
                   : tier === 'LEGENDARY' ? '#c8a0ff'
                   : tier === 'RARE'      ? '#f4d9a0'
                   : '#b8c8d8';             // common: cool neutral
