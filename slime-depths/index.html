@@ -357,6 +357,105 @@
      down separately by a11y.js at boot. Animations that convey essential
      state information (e.g. door-ready pulse) stay on.
      ========================================================================= */
+  /* ==========================================================================
+     RESPONSIVE / MOBILE — menu + overlay scaling for narrow viewports.
+     Strategy: let the canvas CSS aspect-ratio keep the game area 16:9
+     automatically (already wired above). Then scale the menu content
+     column DOWN proportionally when the canvas is smaller than the
+     design baseline (1280px wide). One CSS transform rule handles every
+     menu element without per-pixel tweaks.
+     ========================================================================= */
+  @media (max-width: 900px) {
+    .menuContent {
+      transform: scale(0.72);
+      transform-origin: center center;
+    }
+    /* Shrink the corner flourishes too so they don't eat the small viewport */
+    .menuCorner {
+      transform: scale(0.6);
+      transform-origin: top left;
+    }
+  }
+  @media (max-width: 600px) {
+    .menuContent {
+      transform: scale(0.52);
+      transform-origin: center center;
+    }
+    .menuCorner { transform: scale(0.45); }
+  }
+  @media (max-width: 450px) {
+    .menuContent {
+      transform: scale(0.38);
+      transform-origin: center center;
+    }
+    .menuCorner { transform: scale(0.32); }
+  }
+
+  /* ==========================================================================
+     ROTATE-TO-LANDSCAPE PROMPT — phone portrait orientation covers the game
+     with a full-screen instruction to rotate. Only fires when viewport is
+     both narrow AND taller than wide (phone portrait, not desktop narrow
+     window). Hides automatically when the user rotates to landscape.
+     ========================================================================= */
+  #rotatePrompt {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: radial-gradient(ellipse at center, #140a18 0%, #0a0610 60%, #050308 100%);
+    color: #f4d9a0;
+    font-family: Georgia, serif;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    text-align: center;
+    padding: 24px;
+    letter-spacing: 4px;
+  }
+  @media (max-width: 700px) and (orientation: portrait) {
+    #rotatePrompt { display: flex; }
+  }
+  #rotatePrompt .ico {
+    width: 72px; height: 72px;
+    border: 2px solid #c9a86a;
+    border-radius: 10px;
+    position: relative;
+    animation: rotateHint 2.4s ease-in-out infinite;
+    box-shadow: 0 0 20px rgba(201, 168, 106, 0.3);
+  }
+  #rotatePrompt .ico::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px; height: 16px;
+    background: #c9a86a;
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+  @keyframes rotateHint {
+    0%   { transform: rotate(0deg); }
+    40%  { transform: rotate(-90deg); }
+    60%  { transform: rotate(-90deg); }
+    100% { transform: rotate(0deg); }
+  }
+  #rotatePrompt h2 {
+    font-size: 18px;
+    letter-spacing: 7px;
+    font-weight: 400;
+    margin: 0;
+    font-style: italic;
+  }
+  #rotatePrompt p {
+    font-size: 12px;
+    letter-spacing: 3px;
+    opacity: 0.7;
+    font-style: italic;
+    margin: 0;
+    max-width: 280px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .ethera-title,
     #menuSigil,
@@ -379,6 +478,13 @@
 </style>
 </head>
 <body>
+<!-- Rotate-to-landscape prompt. Shown only on phone portrait via CSS media
+     query. Hides automatically when user rotates — no JS required. -->
+<div id="rotatePrompt">
+  <div class="ico"></div>
+  <h2>— ROTATE YOUR DEVICE —</h2>
+  <p>Ethera is a landscape game · turn your phone sideways to begin the descent</p>
+</div>
 <div id="stage">
   <canvas id="game" width="1280" height="720"></canvas>
   <div id="hud">

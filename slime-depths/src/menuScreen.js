@@ -116,8 +116,10 @@ export const MENU_SCREEN_HTML = `
   <!-- CONTENT COLUMN — sits above ambient layers, anchored by corner frame.
        Radically simplified: TITLE → CTA → MODES → two secondary text links.
        Meta cards, records, memory/chronicles chips all relocated to the
-       Hamlet hub or the Chronicles book, accessed via text links below. -->
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
+       Hamlet hub or the Chronicles book, accessed via text links below.
+       Class "menuContent" lets responsive CSS scale the whole column down
+       on narrow viewports without per-element pixel tweaks. -->
+  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
     <h1 class="ethera-title" style="font-size:96px;margin:0;letter-spacing:14px;color:#f4d9a0;font-weight:400;line-height:1;">ETHERA</h1>
     <!-- Subtitle with integrated ornaments — small gold diamonds flanking the
          text, so it reads as one unit with the title. -->
