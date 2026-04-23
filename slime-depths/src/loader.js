@@ -163,6 +163,11 @@ export async function loadAll(progressCb) {
     loadImage('relic_aegis_pulse',      'assets/icons/relic_aegis_pulse.png'),
     loadImage('relic_bloodrite',        'assets/icons/relic_bloodrite.png'),
     loadImage('relic_gale_step',        'assets/icons/relic_gale_step.png'),
+    // Previously orphaned — PNG existed on disk but loader was missing the
+    // entry, so hourglass_of_respite rendered as a black box in the pickup
+    // tooltip. Lantern is for future use (hermit mini-boss / wanderer).
+    loadImage('relic_hourglass',        'assets/icons/relic_hourglass.png'),
+    loadImage('relic_lantern',          'assets/icons/relic_lantern.png'),
 
     // FUSION ICONS — dedicated art per fusion recipe (Nano Banana, Apr 2026)
     loadImage('fusion_tesla_storm',     'assets/icons/fusion_tesla_storm.png'),
