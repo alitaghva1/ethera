@@ -97,6 +97,22 @@ export async function loadAll(progressCb) {
     loadImage('ember_walk',    'assets/enemies/ember_walk.png'),
     loadImage('ember_attack',  'assets/enemies/ember_attack.png'),
     loadImage('ember_death',   'assets/enemies/ember_death.png'),
+    // New enemy sprites ingested via tools/ingest_enemy_pack.py:
+    //   warden    — Undead Executioner pack (mini-boss tier, slow heavy)
+    //   dreadmage — EVil Wizard 2 pack (tier-3 caster)
+    //   haunt     — Flying Demon pack (aerial harasser)
+    loadImage('warden_idle',    'assets/enemies/warden_idle.png'),
+    loadImage('warden_walk',    'assets/enemies/warden_walk.png'),
+    loadImage('warden_attack',  'assets/enemies/warden_attack.png'),
+    loadImage('warden_death',   'assets/enemies/warden_death.png'),
+    loadImage('dreadmage_idle',    'assets/enemies/dreadmage_idle.png'),
+    loadImage('dreadmage_walk',    'assets/enemies/dreadmage_walk.png'),
+    loadImage('dreadmage_attack',  'assets/enemies/dreadmage_attack.png'),
+    loadImage('dreadmage_death',   'assets/enemies/dreadmage_death.png'),
+    loadImage('haunt_idle',    'assets/enemies/haunt_idle.png'),
+    loadImage('haunt_walk',    'assets/enemies/haunt_walk.png'),
+    loadImage('haunt_attack',  'assets/enemies/haunt_attack.png'),
+    loadImage('haunt_death',   'assets/enemies/haunt_death.png'),
     loadImage('dungeon_tiles','assets/tiles/dungeon.png'),
 
     // Legacy shared-icon PNGs — kept as fallbacks if a dedicated per-relic

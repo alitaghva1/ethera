@@ -54,6 +54,9 @@ const COMP = {
     ['wizard', 'skel', 'slime'],                // wizard introduced in tier2
     ['vanguard', 'archer', 'archer'],          // vanguard + 2 archers — flank while dodging arrows
     ['vanguard', 'skel', 'slime'],              // vanguard with light support
+    // Content pass B3 — new enemies enter the pool at tier2:
+    ['haunt', 'skel', 'archer'],                // airborne harasser + ground pressure
+    ['haunt', 'haunt', 'slime'],                // two aerials force ranged response
   ],
   tier3: [
     ['orc', 'orc', 'archer'],
@@ -72,6 +75,13 @@ const COMP = {
     ['reflector', 'archer', 'skel', 'bomber'],      // flank the mirror-mage
     ['reflector', 'reflector', 'orc'],               // twin mirrors
     ['reflector', 'vanguard', 'archer', 'archer'],  // tank + caster — hardest comp
+    // Content pass B3 — the harder new enemies enter here:
+    ['warden', 'archer', 'skel'],                    // warden anchors a slow push
+    ['warden', 'priest', 'archer'],                  // healer keeps the warden up
+    ['dreadmage', 'vanguard', 'archer'],             // caster behind tank
+    ['dreadmage', 'haunt', 'skel'],                  // two ranged threats + air
+    ['dreadmage', 'dreadmage', 'priest'],            // triple-caster nightmare
+    ['warden', 'haunt', 'haunt'],                    // ground + air combo
   ],
   boss: [
     ['orc', 'archer', 'archer'],
@@ -243,10 +253,13 @@ function makeMiniBossRoom(level) {
   const pillarTemplate = randInt(0, 14);
   // Mini-boss type scales with floor — pick a unique-mechanic enemy from
   // the adjacent tier so it's genuinely threatening but not boss-scale.
+  // Warden is our dedicated mini-boss asset; put it at floor 2 where its
+  // heavy-telegraph pacing matches player skill. Other floors rotate
+  // unique-mechanic enemies.
   const miniType = level === 1 ? 'vanguard'
-                 : level === 2 ? 'reflector'
-                 : level === 3 ? 'lancer'
-                 : 'wizard';
+                 : level === 2 ? 'warden'
+                 : level === 3 ? 'reflector'
+                 : 'dreadmage';
   return {
     kind: 'combat',
     slotLabel: 'miniboss',

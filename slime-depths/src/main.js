@@ -5,7 +5,7 @@
 // that reads localStorage at module-body time (currently none do —
 // all load funcs are lazy) would need to run after this.
 import { installProfilePrefix, getActiveProfileId, listProfiles, setActiveProfile, deleteProfile, profileLabel, PROFILE_IDS } from './profile.js';
-import { loadAll } from './loader.js';
+import { loadAll } from './loader.js?v=enemies3';
 import { initInput, mouse, endFrameInput } from './input.js';
 import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js?v=2';
 import {
@@ -14,7 +14,7 @@ import {
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom, ROOM_W, ROOM_H,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
 } from './room.js';
-import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS } from './floor.js?v=graph1';
+import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS } from './floor.js?v=enemies3';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
 // of a flat 7-room array. `floor` becomes a dynamic array built up as the
 // player commits to path nodes, which keeps all existing floor[roomIndex]
@@ -54,7 +54,7 @@ import {
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js?v=a11y1';
-import { images as imageCache } from './loader.js';
+import { images as imageCache } from './loader.js?v=enemies3';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';

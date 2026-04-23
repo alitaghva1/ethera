@@ -1,5 +1,5 @@
 // Hero controller — top-down movement, directional attack, dodge roll
-import { images } from './loader.js';
+import { images } from './loader.js?v=enemies3';
 import { keys, mouse, keyJustPressed } from './input.js';
 import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches } from './room.js';

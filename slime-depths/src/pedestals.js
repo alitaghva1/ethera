@@ -1,6 +1,6 @@
 // Relic pedestals — physical pickup points that spawn after combat clears.
 // Walking onto one grants the relic + removes the rest.
-import { images } from './loader.js';
+import { images } from './loader.js?v=enemies3';
 import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph } from './relics.js';
 import { drawRelicIcon } from './fx.js?v=a11y1';
 import { playSfx } from './sfx.js';

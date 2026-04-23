@@ -1,6 +1,6 @@
 // Enemies — Tiny RPG sprites (100x100). Types now include melee, ranged, and
 // explosive behaviors with attack telegraphs to make combat readable.
-import { images } from './loader.js';
+import { images } from './loader.js?v=enemies3';
 import { isWallAtWorld, spawnExtraFirePool } from './room.js';
 import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js?v=8';
 import { playSfx } from './sfx.js';
@@ -339,6 +339,68 @@ export const TYPES = {
     displayName: 'THE EMBER TYRANT',
     flavor: 'the wound at the heart of the world',
     bossTrack: 'boss',
+  },
+
+  // ==========================================================================
+  // NEW ENEMIES (content pass B3) — ingested from third-party packs via
+  // tools/ingest_enemy_pack.py. Each fills a specific design gap the audit
+  // flagged (six melee-walk-swing duplicates = THIN enemy variety).
+  // ==========================================================================
+
+  // ---- WARDEN — slow executioner. Mini-boss-tier melee, heavy telegraphed
+  // cleave, lower swing cadence than orc. Spawns in floor-2 event rooms as
+  // the mini-boss variant (picked by floor.js makeMiniBossRoom).
+  warden: {
+    prefix: 'warden_',  drawSize: 110, radius: 22, speed: 65, hp: 140, damage: 2,
+    color: '#8a8098',  hitCD: 1.15, fps: 8, behavior: 'melee',
+    attackReach: 78, attackArc: Math.PI * 0.68,
+    windup: 0.60, swing: 0.32,
+    telegraphColor: 'rgba(200, 180, 255, ',
+    heavyChance: 0.42,
+    heavyReach: 116, heavyArc: Math.PI * 1.0,
+    heavyWindup: 0.90, heavySwing: 0.42,
+    heavyDamage: 3,
+    heavyColor: 'rgba(255, 100, 80, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.50, volume: 0.65 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.32, volume: 0.85 },
+    bloodColor: '#5a4868',
+    displayName: 'THE WARDEN',
+    flavor: 'the executioner whose blade the ruin kept sharpened',
+  },
+
+  // ---- DREAD-MAGE — tier-3 caster. Triple-orb volley with a tighter spread
+  // than wizard, faster cast, slightly less HP. Priority kill target in
+  // multi-caster comps (pair with priest or reflector).
+  dreadmage: {
+    element: 'shock',
+    prefix: 'dreadmage_', drawSize: 102, radius: 16, speed: 72, hp: 95, damage: 2,
+    color: '#b060ff',  hitCD: 2.1, fps: 10, behavior: 'wizard',
+    preferDist: 340, minDist: 230,
+    castRange: 500,
+    castWindup: 0.62,                // faster than wizard (0.70)
+    castCount: 3,                     // one more orb than wizard
+    castSpread: 0.32,
+    telegraphColor: 'rgba(180, 100, 255, ',
+    windupSfx: { key: 'click', rate: 0.35, volume: 0.65 },
+    displayName: 'DREAD-MAGE',
+    bloodColor: '#7a3ac0',
+    flavor: 'studied the old words until they answered back.',
+  },
+
+  // ---- HAUNT — aerial harasser. Ranged, moves over pillars (flies: true
+  // can be read by room-collision code later; for now behaves like a fast
+  // ranged enemy), lower HP, higher speed. Fills the "airborne threat"
+  // design gap — nothing else in the roster hovers out of melee range.
+  haunt: {
+    prefix: 'haunt_',   drawSize: 86, radius: 14, speed: 130, hp: 55, damage: 1,
+    color: '#ff8050', attackRange: 320, hitCD: 1.15, fps: 12, behavior: 'ranged',
+    windup: 0.32, swing: 0.18, preferDist: 240, minDist: 160,
+    telegraphColor: 'rgba(255, 100, 80, ',
+    windupSfx: { key: 'click', rate: 1.35, volume: 0.5 },
+    displayName: 'HAUNT',
+    bloodColor: '#c8503a',
+    flavor: 'a hunger with wings. it has time.',
+    flies: true,                     // future-proof flag for airborne collision
   },
 };
 

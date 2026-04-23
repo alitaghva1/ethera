@@ -1,7 +1,7 @@
 // HUD — health hearts, room progress, relic icons
 import { hero } from './hero.js';
 import { enemies } from './enemies.js';
-import { images } from './loader.js';
+import { images } from './loader.js?v=enemies3';
 import { mouse } from './input.js';
 import { activeFusions } from './fusions.js';
 import { drawnCards, isTarotRun } from './tarot.js';
