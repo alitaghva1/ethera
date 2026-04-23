@@ -182,7 +182,7 @@ export const MEMORIES = {
     name: 'Memory of the Echo',
     tint: '#b0c8ff',
     flavor: 'Every swing is two. One here. One somewhere the world forgot.',
-    gift: 'All attacks echo (0.15s delayed, 50% damage)',
+    gift: 'All attacks echo (0.15s delayed, 40% damage)',
     constraint: 'Direct damage −25%',
     apply: (h) => {
       h.echoingStrike = true;

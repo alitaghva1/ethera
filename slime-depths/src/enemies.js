@@ -124,7 +124,10 @@ export const TYPES = {
     flavor: 'the dead who were promised rest, and given knives',
   },
   orc:    {
-    prefix: 'orc_',    drawSize: 100, radius: 20, speed: 80, hp: 150, damage: 2,
+    // BALANCE PASS (sim: floor-1 boss p50 TTK was 2.7s — trivial).
+    // Raised 150 → 200 for ~3.5s p50 TTK. Then bone_captain was also
+    // bumped so floor 2 stays meaningfully tougher than floor 1.
+    prefix: 'orc_',    drawSize: 100, radius: 20, speed: 80, hp: 200, damage: 2,
     color: '#7fa34a', hitCD: 0.92, fps: 8, behavior: 'melee',
     attackReach: 62, attackArc: Math.PI * 0.60,
     windup: 0.38, swing: 0.26,
@@ -268,7 +271,10 @@ export const TYPES = {
     bloodColor: '#6a8cc0',             // pale spectral blue — ectoplasm of a ghost
   },
   bone_captain: {
-    prefix: 'bonecap_', drawSize: 108, radius: 22, speed: 115, hp: 180, damage: 2,
+    // BALANCE PASS — paired with orc HP bump. 180 → 220 keeps floor-2
+    // boss meaningfully tougher than floor-1 (660 → 858 effective HP
+    // after 3x × 1.3 floor mul).
+    prefix: 'bonecap_', drawSize: 108, radius: 22, speed: 115, hp: 220, damage: 2,
     color: '#cfd4d9', hitCD: 1.0, fps: 10, behavior: 'melee',
     attackReach: 72, attackArc: Math.PI * 0.52,
     windup: 0.40, swing: 0.24,

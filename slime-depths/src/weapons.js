@@ -29,7 +29,11 @@ export const WEAPONS = {
     flavor: 'The blade does not ask. It decides, then asks forgiveness.',
     tint: '#a0e0ff',
     icon: 'relic_attack_speed',
-    damage: 18,                     // was 22
+    // BALANCE PASS (sim: dagger p50 DPS 153 vs sword 169 — strictly
+    // worse with no mechanical compensation). Base dmg 18 → 22 closes
+    // the raw-DPS gap; the dagger finisher bonus in hero.js keeps its
+    // flowing-combo identity so it doesn't just become "sword lite."
+    damage: 22,
     reach: 58,
     arc: Math.PI * 0.38,
     cooldown: 0.26,                 // was 0.22 — still faster than sword but more committed

@@ -51,13 +51,21 @@ export const RELIC_DEFS = {
     apply: () => { hero.speedMul *= 1.20; },
   },
   ironhide: {
+    // BALANCE PASS — was pure +2 maxHp stat stick with −14 DPS corr.
+    // Now: +3 maxHp AND 10% damage reduction. Still defensive, but the
+    // dmg-reduction multiplier compounds with Iron Resolve / Stalwart
+    // fusion for actual tanky-build identity.
     id: 'ironhide',
     name: 'Ironhide',
-    desc: '+2 max HP, heal fully',
+    desc: '+3 max HP · −10% damage taken',
     flavor: 'Skin hardened by a prayer made too late.',
     icon: 'relic_ironhide',
     tint: '#ff9ab4',
-    apply: () => { hero.maxHp += 2; hero.hp = hero.maxHp; },
+    apply: () => {
+      hero.maxHp += 3;
+      hero.hp = hero.maxHp;
+      hero.damageTakenMul *= 0.90;
+    },
   },
   bloodstone: {
     id: 'bloodstone',
@@ -69,9 +77,15 @@ export const RELIC_DEFS = {
     apply: () => { hero.lifesteal += 0.10; },
   },
   phoenix_tear: {
+    // BALANCE PASS — "revive at 1 HP" meant the revive often did nothing
+    // (you'd just die on the next tick of a boss cleave). damageHero in
+    // hero.js already uses ceil(maxHp * 0.3) for the revive, so this
+    // relic was already 30% — the desc was stale. Updated text to match
+    // what the code actually does, which is the minimum needed to SURVIVE
+    // the revive beat.
     id: 'phoenix_tear',
     name: 'Phoenix Tear',
-    desc: 'Revive once at 1 HP',
+    desc: 'Revive once at 30% HP · brief invulnerability',
     flavor: 'The last thing she gave the world before the fire took her.',
     icon: 'relic_phoenix_tear',
     tint: '#ffc860',
@@ -97,13 +111,17 @@ export const RELIC_DEFS = {
     apply: () => { hero.critChance += 0.15; },
   },
   vitality: {
+    // BALANCE PASS — was 1HP/8s, which over a median 10-minute run
+    // totals ~75 HP regen (nice) but the moment-to-moment feel is
+    // imperceptible. Doubled rate to 1HP/4s so it actually closes
+    // wounds in the pause between rooms.
     id: 'vitality',
     name: 'Vitality',
-    desc: 'Regen 1 HP every 8 seconds',
+    desc: 'Regen 1 HP every 4 seconds',
     flavor: 'A moss that closes wounds in exchange for sleep.',
     icon: 'relic_vitality',
     tint: '#8ad4a2',
-    apply: () => { hero.regenRate += 0.125; hero.regenCD = 1 / hero.regenRate; },
+    apply: () => { hero.regenRate += 0.25; hero.regenCD = 1 / hero.regenRate; },
   },
   heavy_blow: {
     id: 'heavy_blow',
@@ -204,7 +222,7 @@ export const RELIC_DEFS = {
   echoing_strike: {
     id: 'echoing_strike',
     name: 'Echoing Strike',
-    desc: 'Your hits echo 0.15s later for 60% damage',
+    desc: 'Your hits echo 0.15s later for 40% damage',
     flavor: 'The blade strikes twice. You only swing once.',
     icon: 'relic_echoing_strike',
     tint: '#ffddaa',

@@ -813,7 +813,11 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
           // SYNERGY: Echoing Strike — queue a delayed second hit
           if (hero.echoingStrike) {
-            scheduleEchoHit(e, 0.15, finalDmg * 0.6, hero.aimX, hero.aimY);
+            // BALANCE PASS (sim showed Echoing Strike in 67.5% of top
+            // builds with +68 DPS uplift — clear outlier). Reduced echo
+            // coefficient 0.60 → 0.40. Still the premier rare DPS relic,
+            // but no longer a universal must-pick.
+            scheduleEchoHit(e, 0.15, finalDmg * 0.4, hero.aimX, hero.aimY);
           }
           // LEGENDARY: Eye of Ether — crits pierce enemies in a line behind target
           if (isCrit && hero.pierceCrit) {

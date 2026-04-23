@@ -36,7 +36,7 @@ except Exception:
 # src/weapons.js — three weapon classes with distinct DPS profiles
 WEAPONS = {
     'sword':  {'damage': 32, 'cooldown': 0.42, 'reach': 72},
-    'dagger': {'damage': 18, 'cooldown': 0.26, 'reach': 58},
+    'dagger': {'damage': 22, 'cooldown': 0.26, 'reach': 58},  # post-balance (was 18)
     'hammer': {'damage': 72, 'cooldown': 0.68, 'reach': 92},
 }
 
@@ -50,12 +50,14 @@ RELICS_COMMON = [
     ('long_reach',     lambda h: h.update(reachMul=h['reachMul']*1.25)),
     ('nimble_step',    lambda h: h.update(dodgeCooldownMul=h['dodgeCooldownMul']*0.50)),
     ('iron_greaves',   lambda h: h.update(speedMul=h['speedMul']*1.20)),
-    ('ironhide',       lambda h: h.update(maxHp=h['maxHp']+2)),
+    ('ironhide',       lambda h: (
+        h.update(maxHp=h['maxHp']+3),
+        h.update(damageTakenMul=h['damageTakenMul']*0.90))),
     ('bloodstone',     lambda h: h.update(lifesteal=h['lifesteal']+0.10)),
     ('phoenix_tear',   lambda h: h.update(revives=h['revives']+1)),
     ('iron_resolve',   lambda h: h.update(damageTakenMul=h['damageTakenMul']*0.75)),
     ('keen_edge',      lambda h: h.update(critChance=h['critChance']+0.15)),
-    ('vitality',       lambda h: h.update(regenRate=h['regenRate']+0.125)),
+    ('vitality',       lambda h: h.update(regenRate=h['regenRate']+0.25)),  # post-balance: 1/8s -> 1/4s
     ('heavy_blow',     lambda h: h.update(knockbackMul=h['knockbackMul']*2.5)),
     ('dash_master',    lambda h: h.update(dodgeDistMul=h['dodgeDistMul']*1.35)),
     ('executioner',    lambda h: h.update(executeThreshold=0.40, executeMul=1.5)),
@@ -136,7 +138,7 @@ TIER_WEIGHTS = {
 }
 
 # src/enemies.js — boss base HP, multiplied by 3 (boss) and floor hpMul
-_BASE_BOSS_HP = {1: 150, 2: 180, 3: 240, 4: 280}
+_BASE_BOSS_HP = {1: 200, 2: 220, 3: 240, 4: 280}  # orc 150->200, bone_captain 180->220 (floor-1 pacing + monotonic progression)
 BOSS_HP = {f: hp * 3 * FLOOR_ENEMY_MULS[f]['hp'] for f, hp in _BASE_BOSS_HP.items()}
 
 # ============================================================================
@@ -196,7 +198,7 @@ def expected_dps(hero):
     # Additive DPS from procs that fire periodically — approximate expected value.
     if hero['chainLightning']:  proc_bonus *= 1.23
     if hero['explosiveKill']:   proc_bonus *= 1.12
-    if hero['echoingStrike']:   proc_bonus *= 1.60
+    if hero['echoingStrike']:   proc_bonus *= 1.40   # post-balance: 0.6 -> 0.4
     if hero['pyromancer']:      proc_bonus *= 1.15
     if hero['cataclysm']:       proc_bonus *= 1.15
     if hero['avatarOfFlame']:   proc_bonus *= 1.10
