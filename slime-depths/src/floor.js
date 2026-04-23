@@ -291,6 +291,34 @@ export function makeEventRoom(level, eliteChance) {
   return makeChallengeRoom(level, eliteChance);
 }
 
+// ============================================================================
+// BOSS LOOT POOLS — thematic relic pools that each boss drops from on clear.
+// Applied as a single guaranteed pedestal that spawns after the cascade
+// finale; the shop/epilogue waits for the player to pick it up (or 15s
+// timeout) before opening.
+//
+// Each boss has 4–5 relics chosen to match its theme. Players learn to
+// "farm" a specific floor for specific builds — e.g. Grudnok for the
+// brawler kit, Ember Tyrant for fire/endgame. Diablo's Baal/Mephisto
+// pattern in a tight 4-floor package.
+// ============================================================================
+export const BOSS_LOOT_POOL = {
+  // Grudnok — orc warchief. Brute force, knockback, heavy weapons.
+  orc: ['heavy_blow', 'serrated_edge', 'warlord', 'ironhide', 'executioner'],
+  // Iron Revenant — undead reaper. Life drain, death-based mechanics.
+  bone_captain: ['bloodstone', 'reaver', 'bloodrite', 'phoenix_tear', 'vampiric_aura'],
+  // Broodmother — chaos and summoning. Explosions, chains, bursts.
+  broodmother: ['explosive_kill', 'soul_burst', 'chain_lightning', 'pyromancer', 'thunder_step'],
+  // Ember Tyrant — endgame fire lord. Legendary-heavy pool with small
+  // mythic chance for the ultimate power-fantasy final-boss drop.
+  ember_tyrant: ['avatar_of_flame', 'phoenix_cloak', 'wanderers_cloak', 'ethereal_binding', 'aegis_pulse'],
+};
+
+// On Ember Tyrant (final boss) clear, 20% chance to roll from the mythic
+// pool instead of the themed legendary pool — the true "Windforce moment".
+export const EMBER_TYRANT_MYTHIC_POOL = ['cataclysm', 'eye_of_ether'];
+export const EMBER_TYRANT_MYTHIC_CHANCE = 0.20;
+
 export function makeBossSpawns(level, pillarTemplate = -1) {
   // Floor 4's THRONE OF RUIN gets its own boss — The Ember Tyrant — instead
   // of falling back to orc. Arena hazards (6 fire pools + 2 spikes) are

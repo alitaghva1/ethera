@@ -124,6 +124,75 @@ export function spawnAltarOffer(hpCost = 3) {
   }
 }
 
+// Spawn a SINGLE guaranteed-relic pedestal from a boss's thematic pool.
+// Rolls the first unowned id from the pool; falls back to any unowned in
+// the pool if shuffled pick is already held. Optional mythicPool + chance
+// supports the Ember Tyrant's 20% "Windforce moment" drop.
+// The pedestal spawns at the given world coordinates (the boss corpse).
+export function spawnBossDrop(bossType, worldX, worldY, opts = {}) {
+  const pool = (opts.pool || []).slice();
+  const mythicPool = opts.mythicPool || null;
+  const mythicChance = opts.mythicChance || 0;
+  if (pool.length === 0 && !mythicPool) return null;
+
+  const ownedIds = new Set(equippedRelics.map(r => r.id));
+
+  // Mythic roll first (if configured)
+  let chosenId = null;
+  if (mythicPool && Math.random() < mythicChance) {
+    const available = mythicPool.filter(id => !ownedIds.has(id) && RELIC_DEFS[id]);
+    if (available.length > 0) {
+      chosenId = available[(Math.random() * available.length) | 0];
+    }
+  }
+
+  // Fall back to themed pool — shuffle then pick first unowned
+  if (!chosenId) {
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    chosenId = pool.find(id => !ownedIds.has(id) && RELIC_DEFS[id]) || null;
+    // All pool relics owned → fall back to any pool relic (duplicate OK)
+    if (!chosenId) chosenId = pool.find(id => RELIC_DEFS[id]);
+  }
+  if (!chosenId) return null;
+
+  const def = RELIC_DEFS[chosenId];
+  pedestals.length = 0;     // clear any existing pedestals
+  pedestals.push({
+    x: worldX,
+    y: worldY,
+    relic: def,
+    tier: relicTier(chosenId),
+    picked: false,
+    bob: Math.random() * Math.PI * 2,
+    glow: 0,
+    hpCost: 0,
+    isBossDrop: true,
+  });
+
+  // Dramatic spawn flourish — deathBurst + screen flash + tier-scaled sting
+  deathBurst(worldX, worldY - 20, def.tint || '#fff2e0');
+  deathBurst(worldX + 10, worldY - 15, '#f4d9a0');
+  deathBurst(worldX - 10, worldY - 15, def.tint || '#ffffff');
+  const tier = relicTier(chosenId);
+  if (tier === 'mythic') {
+    synthChord(1100, 1.3, 1.6);
+    synthThud(70, 1.1, 0.9);
+    setTimeout(() => synthChord(1397, 1.0, 1.2), 220);
+    shakeCamera(12, 0.42);
+  } else if (tier === 'legendary') {
+    synthChord(880, 1.0, 1.0);
+    synthThud(100, 0.7, 0.45);
+    shakeCamera(7, 0.3);
+  } else {
+    synthChord(659, 0.9, 0.75);
+    shakeCamera(5, 0.25);
+  }
+  return def;
+}
+
 export function clearPedestals() {
   pedestals.length = 0;
   lastPickedDef = null;

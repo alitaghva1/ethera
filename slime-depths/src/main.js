@@ -14,7 +14,7 @@ import {
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom, ROOM_W, ROOM_H,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
 } from './room.js';
-import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS } from './floor.js';
+import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
 // of a flat 7-room array. `floor` becomes a dynamic array built up as the
 // player commits to path nodes, which keeps all existing floor[roomIndex]
@@ -48,7 +48,7 @@ import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedTo
 import { loadTips, showTip, updateTips, drawTip } from './tips.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import {
-  spawnRelicOffer, spawnAltarOffer, updatePedestals, drawPedestals, clearPedestals,
+  spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip,
 } from './pedestals.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
@@ -4649,36 +4649,80 @@ function tick(now) {
       const title = document.getElementById('winTitle');
       const subtitle = document.getElementById('winSubtitle');
       const btn = document.getElementById('winRestartBtn');
-      if (isFinal) {
-        // Final victory → end-of-run summary (stats + essence + meta shop).
-        // On first-ever clear, play the epilogue first; then the summary.
-        stats._runComplete = true;
-        try { stats._ascensionAtWin = getAscensionTier() || 0; } catch (e) {}
-        if (daily.activeForRun) markDailyCompleted();        // bank today's streak
-        daily.activeForRun = false;
-        try { recordRunComplete(); } catch (e) {}           // bank a triumphant journal entry
-        evaluateAchievements(stats, meta);
-        hideShop();
-        if (!hasSeenEpilogue()) {
-          // Ceremonial first-clear moment before stats. Delayed to let the
-          // final-boss cascade complete before the epilogue takes over.
-          setTimeout(() => playEpilogue(() => showEndOfRun(true)), 2000);
+
+      // Determine the boss type so we can roll from its thematic drop pool.
+      const bossTypeId = data.spawns?.find(s => s.boss)?.type;
+      const dropPool = bossTypeId ? BOSS_LOOT_POOL[bossTypeId] : null;
+
+      // openFloorUi — executes the floor-cleared state transition. For the
+      // final boss, this means epilogue + run-complete screen; otherwise
+      // the between-floor shop. Deferred so we can gate on the boss drop
+      // pedestal pickup first.
+      const openFloorUi = () => {
+        if (isFinal) {
+          stats._runComplete = true;
+          try { stats._ascensionAtWin = getAscensionTier() || 0; } catch (e) {}
+          if (daily.activeForRun) markDailyCompleted();
+          daily.activeForRun = false;
+          try { recordRunComplete(); } catch (e) {}
+          evaluateAchievements(stats, meta);
+          hideShop();
+          if (!hasSeenEpilogue()) {
+            playEpilogue(() => showEndOfRun(true));
+          } else {
+            showEndOfRun(true);
+          }
         } else {
-          setTimeout(() => showEndOfRun(true), 1800);
+          if (curseCount() > 0) stats._cursedFloorClear = Math.max(stats._cursedFloorClear || 0, curseCount());
+          evaluateAchievements(stats, meta);
+          title.textContent = 'FLOOR ' + currentFloorLevel + ' CLEARED';
+          title.style.color = '#86e3a8';
+          title.style.textShadow = '0 0 18px rgba(134,227,168,0.7)';
+          subtitle.textContent = 'the depths merchant offers wares';
+          btn.textContent = 'DESCEND';
+          setupShop();
+          winEl.style.display = 'flex';
         }
-        return;
+      };
+
+      if (dropPool && dropPool.length > 0) {
+        // BOSS-BIASED LOOT DROP — spawn a themed pedestal after the cascade
+        // finale, then gate the floor-UI transition on the player picking
+        // it up (or a 15s timeout so AFK players aren't stuck forever).
+        const dropDelay = cascadeDurationMs + 400;
+        setTimeout(() => {
+          // Final boss gets a mythic-chance pool on top of the themed pool.
+          const opts = { pool: dropPool };
+          if (bossTypeId === 'ember_tyrant') {
+            opts.mythicPool = EMBER_TYRANT_MYTHIC_POOL;
+            opts.mythicChance = EMBER_TYRANT_MYTHIC_CHANCE;
+          }
+          spawnBossDrop(bossTypeId, corpse.x, corpse.y, opts);
+          // Extend the cascade window so the pedestal + hero updates keep ticking
+          window.__cascadeUntil = performance.now() + 16000;
+        }, dropDelay);
+
+        // Poll for pickup (or timeout). Once the pedestal is picked up, the
+        // banner runs ~3s; add extra breath before opening the UI so banner
+        // + transition don't overlap.
+        const pollStart = performance.now() + dropDelay;
+        const poll = setInterval(() => {
+          const now = performance.now();
+          if (now < pollStart) return;                          // wait for spawn
+          if (!hasActivePedestals() && pedestals.length > 0) {
+            // All spawned pedestals are picked (length>0 guards against pre-spawn state)
+            clearInterval(poll);
+            setTimeout(openFloorUi, 3800);
+          } else if (now - pollStart > 15000) {
+            clearInterval(poll);
+            openFloorUi();
+          }
+        }, 200);
+      } else {
+        // No loot pool for this boss type → fall back to original timing.
+        setTimeout(openFloorUi, cascadeDurationMs + 600);
       }
-      // Between-floor — also track curses clear
-      if (curseCount() > 0) stats._cursedFloorClear = Math.max(stats._cursedFloorClear || 0, curseCount());
-      evaluateAchievements(stats, meta);
-      // Between floors — the shop screen. Delayed past the cascade.
-      title.textContent = 'FLOOR ' + currentFloorLevel + ' CLEARED';
-      title.style.color = '#86e3a8';
-      title.style.textShadow = '0 0 18px rgba(134,227,168,0.7)';
-      subtitle.textContent = 'the depths merchant offers wares';
-      btn.textContent = 'DESCEND';
-      setupShop();
-      setTimeout(() => { winEl.style.display = 'flex'; }, cascadeDurationMs + 600);
+      if (isFinal) return;     // preserve the original early-return for final
     }
 
     // Death handling — cinematic ceremony before the summary reveal.
