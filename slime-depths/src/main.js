@@ -5265,17 +5265,42 @@ function render() {
 
     // BOSS PORTRAIT — painted reveal image (Nano Banana portraits loaded at
     // boot). Slides in from off-screen left to settle at the left-of-center
-    // third. If no portrait is mapped for this enemy type we gracefully skip
-    // and keep just the text reveal.
+    // third. If no portrait is mapped for this enemy type, fall back to a
+    // scaled-up version of the enemy's idle sprite so we never show just
+    // text over a black screen.
     const portraitPath = ENEMY_PORTRAIT_PATH[bossIntroBoss.type];
     const portraitKey = portraitPath && portraitPath.split('/').pop().replace(/\.png$/, '');
-    const portraitImg = portraitKey && imageCache[portraitKey];
+    let portraitImg = portraitKey && imageCache[portraitKey];
+    let usingFallback = false;
+    if (!portraitImg) {
+      // Fallback path: the boss's idle sprite as a stand-in portrait. Gives
+      // us SOMETHING to show even if the painted portrait didn't load.
+      const spriteKey = (bossIntroBoss.def.prefix || '') + 'idle';
+      const spriteImg = imageCache[spriteKey];
+      if (spriteImg) {
+        portraitImg = spriteImg;
+        usingFallback = true;
+        if (!bossIntroBoss._portraitWarnFired) {
+          bossIntroBoss._portraitWarnFired = true;
+          console.warn('[boss-intro] portrait missing for', bossIntroBoss.type,
+                       '— expected key', portraitKey, '— falling back to sprite', spriteKey);
+        }
+      } else if (!bossIntroBoss._portraitWarnFired) {
+        bossIntroBoss._portraitWarnFired = true;
+        console.warn('[boss-intro] NO portrait AND NO sprite for', bossIntroBoss.type,
+                     '— expected portrait key', portraitKey, '/ sprite key', spriteKey);
+      }
+    }
     if (portraitImg) {
       // Fit the portrait within the letterbox frame with some padding.
+      // Sprite fallbacks get cropped to the first animation frame (100px) so
+      // multi-frame strips don't render the whole strip squashed to size.
+      const srcW = usingFallback ? 100 : portraitImg.width;
+      const srcH = usingFallback ? 100 : portraitImg.height;
       const avail = h - barH * 2 - 48;
-      const scale = Math.min(avail / portraitImg.height, 360 / portraitImg.width);
-      const pw = portraitImg.width * scale;
-      const ph = portraitImg.height * scale;
+      const scale = Math.min(avail / srcH, 360 / srcW);
+      const pw = srcW * scale;
+      const ph = srcH * scale;
       // Slide in from the LEFT (negative xOff), slide out the same way.
       const pxOff = -(1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
       const px = w * 0.28 - pw / 2 + pxOff;
@@ -5283,10 +5308,18 @@ function render() {
       ctx.save();
       ctx.globalAlpha = introAlpha;
       // Soft red-gold glow behind the portrait — signals threat without
-      // washing the painting.
+      // washing the painting. Slightly stronger on fallback sprites so they
+      // read as dramatic despite being low-res.
       ctx.shadowColor = 'rgba(220, 60, 60, 0.55)';
-      ctx.shadowBlur = 34;
-      ctx.drawImage(portraitImg, px, py, pw, ph);
+      ctx.shadowBlur = usingFallback ? 48 : 34;
+      if (usingFallback) {
+        // Draw the first frame cropped from the sprite strip.
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(portraitImg, 0, 0, 100, 100, px, py, pw, ph);
+        ctx.imageSmoothingEnabled = true;
+      } else {
+        ctx.drawImage(portraitImg, px, py, pw, ph);
+      }
       ctx.shadowBlur = 0;
       ctx.restore();
     }
