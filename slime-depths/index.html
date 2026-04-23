@@ -318,6 +318,12 @@
   #deathScreen[style*="flex"] { animation: modalFadeIn 0.35s ease-out; }
   /* Pedestal + achievements modals */
   #pauseRelics, #endStats, #endRelics { animation: modalFadeIn 0.4s ease-out 0.1s both; }
+  /* Floor-map node pulse — draws the eye to reachable nodes. */
+  @keyframes mapNodePulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.07); }
+  }
+  .floor-map-node:hover { transform: scale(1.1) !important; }
 
   /* ==========================================================================
      ACCESSIBILITY — prefers-reduced-motion
@@ -359,6 +365,6 @@
     <button id="restartBtn">RESTART</button>
   </div>
 </div>
-<script type="module" src="./src/main.js?v=graph1"></script>
+<script type="module" src="./src/main.js?v=graph2"></script>
 </body>
 </html>
