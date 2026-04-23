@@ -39,6 +39,26 @@ export const pedestals = [];
 let lastPickedDef = null;      // for flash-text UI feedback
 let pickedFlashTime = 0;
 
+// Word-wrap helper — splits `text` into lines that fit within `maxWidth` when
+// rendered with the caller's current ctx.font. Used by drawPedestalTooltip so
+// long relic descriptions don't overflow the box frame.
+function wrapPedestalText(ctx, text, maxWidth) {
+  const words = String(text).split(' ');
+  const lines = [];
+  let cur = '';
+  for (const word of words) {
+    const test = cur ? cur + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && cur) {
+      lines.push(cur);
+      cur = word;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
 // Is a tile passable (floor) AND has at least one passable neighbor for approach?
 function tileIsClear(tx, ty) {
   if (!room.tiles || !room.tiles[ty]) return false;
@@ -703,10 +723,24 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
                   : tier === 'RARE'      ? '#f4d9a0'
                   : '#b8c8d8';             // common: cool neutral
 
-  // Box — wider so icon fits on the left with real text room on the right.
-  const boxW = 420;
+  // Box — wider so longer descriptions fit. Pre-measure wrapped line counts
+  // for flavor + desc so box height can adapt (previously desc could overflow
+  // the box right edge on long relics like "Knockback ×2.5 · hitting a
+  // knocked-back enemy is a guaranteed crit").
+  const boxW = 520;
+  // Text column: box minus the icon-slot region (icon ~60px + gutter + padding).
+  const textColW = boxW - 90;
+  ctx.font = 'italic 11px Georgia, serif';
+  const flavorLines = r.flavor ? wrapPedestalText(ctx, r.flavor, textColW) : [];
+  ctx.font = 'bold 12px Georgia, serif';
+  const descLines = wrapPedestalText(ctx, r.desc || '', textColW);
+  const flavorH = flavorLines.length * 14;
+  const descH = descLines.length * 14;
   const extraH = rerollable ? 20 : 0;
-  const boxH = (isAltar ? 92 : 76) + extraH;
+  // Box height: 18 (tier badge) + 22 (name) + flavor lines + 6 gap + desc
+  // lines + 12 bottom padding + reroll-hint extra + altar extra.
+  let boxH = 18 + 22 + flavorH + (flavorH ? 6 : 0) + descH + 12 + extraH + (isAltar ? 18 : 0);
+  if (boxH < 76) boxH = 76;      // floor for layout stability
   const bx = (w - boxW) / 2;
   const by = h - (isAltar ? 200 : 180) - extraH + riseOffset;
   const frameColor = isAltar ? '#ff6080' : (r.tint || '#ffffff');
@@ -782,21 +816,30 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   ctx.font = 'bold 18px Georgia, serif';
   ctx.fillText(r.name, textCenter, by + 38);
 
-  // Flavor (italic)
-  if (r.flavor) {
+  // Flavor (italic) — wrapped lines
+  let cursorY = by + 54;
+  if (flavorLines.length) {
     ctx.fillStyle = 'rgba(200, 190, 210, 0.75)';
     ctx.font = 'italic 11px Georgia, serif';
-    ctx.fillText(r.flavor, textCenter, by + 54);
+    for (let k = 0; k < flavorLines.length; k++) {
+      ctx.fillText(flavorLines[k], textCenter, cursorY + k * 14);
+    }
+    cursorY += flavorLines.length * 14 + 6;
+  } else {
+    cursorY = by + 58;
   }
-  // Desc (mechanic)
+  // Desc (mechanic) — wrapped lines
   ctx.fillStyle = r.tint || '#f4d9a0';
   ctx.font = 'bold 12px Georgia, serif';
-  ctx.fillText(r.desc, textCenter, by + (r.flavor ? 70 : 58));
+  for (let k = 0; k < descLines.length; k++) {
+    ctx.fillText(descLines[k], textCenter, cursorY + k * 14);
+  }
+  cursorY += descLines.length * 14 + 2;
 
   if (isAltar) {
     ctx.fillStyle = '#ff7a8e';
     ctx.font = 'bold 12px Georgia, serif';
-    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textCenter, by + (r.flavor ? 86 : 74));
+    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textCenter, cursorY + 4);
   }
   if (rerollable) {
     ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.5)';
