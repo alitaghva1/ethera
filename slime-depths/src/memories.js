@@ -262,18 +262,20 @@ export const MEMORIES = {
   },
 
   hungry_blade: {
+    // CONTENT PASS B1 — was one of three HP-cap memories (Ash/Breath/Hungry
+    // Blade), which blurred the pool. Reframed: the constraint is now a
+    // BEHAVIORAL tradeoff — every dodge costs 1 HP. Pairs with the buffed
+    // lifesteal to force aggressive play: you cannot turtle by dodging.
     id: 'hungry_blade',
     name: 'Memory of the Hungry Blade',
     tint: '#ff5078',
     flavor: 'It drank, and the blade wanted more.',
-    gift: '+20% lifesteal · +15% attack speed',
-    constraint: 'Max HP capped at 5',
+    gift: '+25% lifesteal · +15% attack speed',
+    constraint: 'Each dodge costs 1 HP — retreat is never free',
     apply: (h) => {
-      h.lifesteal += 0.20;
+      h.lifesteal += 0.25;
       h.attackCooldownMul *= 0.85;
-      h.maxHp = Math.min(h.maxHp, 5);
-      h.hp = h.maxHp;
-      h.memoryHungryBlade = true;
+      h.memoryHungryBlade = true;     // read by dodge handler in hero.js
     },
     unlockCheck: (records, _stats, ctx) => ctx && ctx.seenRelicIds && ctx.seenRelicIds.has('vampiric_aura'),
     unlockHint: 'Find Vampiric Aura to remember…',

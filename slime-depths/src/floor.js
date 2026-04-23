@@ -235,10 +235,43 @@ export function makeTroveRoom() {
   };
 }
 
+// CONTENT PASS B2 — MINI-BOSS event variant. A solo elite encounter with
+// no adds; rewards a guaranteed relic pedestal on clear (wiring in main.js
+// via room.slotLabel check). Keeps event rooms from feeling like the same
+// three categories after three runs.
+function makeMiniBossRoom(level) {
+  const pillarTemplate = randInt(0, 14);
+  // Mini-boss type scales with floor — pick a unique-mechanic enemy from
+  // the adjacent tier so it's genuinely threatening but not boss-scale.
+  const miniType = level === 1 ? 'vanguard'
+                 : level === 2 ? 'reflector'
+                 : level === 3 ? 'lancer'
+                 : 'wizard';
+  return {
+    kind: 'combat',
+    slotLabel: 'miniboss',
+    pillarTemplate,
+    spawns: [{
+      type: miniType,
+      x: Math.floor(ROOM_W / 2),
+      y: Math.floor(ROOM_H / 2),
+      elite: true,
+      hpMul: 1.8,
+      damageMul: 1.2,
+    }],
+    urns: [],
+    doors: { north: true, south: true },
+  };
+}
+
 export function makeEventRoom(level, eliteChance) {
   const kind = Math.random();
-  if (kind < 0.35) return makeAltarRoom();
-  if (kind < 0.60) return makeTroveRoom();        // 25% chance: trove
+  // ~15% mini-boss, ~30% altar, ~25% trove, ~30% challenge. Rebalanced
+  // from the original 35/25/40 to add variety without starving the
+  // existing three from roll share.
+  if (kind < 0.15) return makeMiniBossRoom(level);
+  if (kind < 0.45) return makeAltarRoom();
+  if (kind < 0.70) return makeTroveRoom();
   return makeChallengeRoom(level, eliteChance);
 }
 

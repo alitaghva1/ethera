@@ -410,6 +410,12 @@ export function updateHero(dt, enemies, mouseWorld) {
         hero.slowTime = 0;
         hero.poisonTime = 0;
       }
+      // CONTENT PASS B1 — MEMORY OF THE HUNGRY BLADE: every dodge costs 1 HP.
+      // Forces aggressive play so the buffed lifesteal has teeth to matter.
+      // Never self-kills: dodges at 1 HP are prevented entirely.
+      if (hero.memoryHungryBlade && hero.hp > 1) {
+        hero.hp -= 1;
+      }
       setState('dodge');
       playSfx('footstep_1', { rate: 0.85, volume: 0.8 });
       // Departure burst — dust kicks in the direction the hero is leaving FROM

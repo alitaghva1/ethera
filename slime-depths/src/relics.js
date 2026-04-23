@@ -444,7 +444,9 @@ export function resetRelics() {
 function enforceMemoryMaxHpCap() {
   let cap = Infinity;
   if (hero.memoryAsh) cap = Math.min(cap, 4);
-  if (hero.memoryHungryBlade) cap = Math.min(cap, 5);
+  // CONTENT PASS B1 — Hungry Blade's HP-cap removed (reframed to
+  // dodge-costs-HP). Ash is now the only HP-cap memory; makes its
+  // identity distinct instead of overlapping.
   if (cap < Infinity && hero.maxHp > cap) {
     hero.maxHp = cap;
     if (hero.hp > hero.maxHp) hero.hp = hero.maxHp;
