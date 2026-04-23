@@ -260,7 +260,13 @@ function makeBossSpawns(level, pillarTemplate = -1) {
 
 export function generateFloor(level = 1) {
   const lvl = Math.max(1, Math.min(MAX_FLOORS, level | 0));
-  const eliteChance = ELITE_CHANCE_BY_LEVEL[lvl] || 0;
+  let eliteChance = ELITE_CHANCE_BY_LEVEL[lvl] || 0;
+  // ASCENSION II — "The Early Dark": bump floor-1 elite chance to the
+  // floor-2 baseline so first-floor combat gets teeth from the start.
+  if (lvl === 1 && typeof window !== 'undefined' && window.__ascensionModifiers) {
+    const am = window.__ascensionModifiers();
+    if (am && am.eliteFloor1) eliteChance = Math.max(eliteChance, ELITE_CHANCE_BY_LEVEL[2]);
+  }
 
   // Boss pillar template rolled first so spawn positions avoid it
   const bossPillarTemplate = randInt(0, 14);

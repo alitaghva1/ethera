@@ -93,6 +93,19 @@ import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
 // Controls / how-to-play primer — single-reference cheat sheet, a less
 // contextual companion to the onboarding tips system.
 import { CONTROLS_SCREEN_HTML } from './controlsScreen.js';
+// Ascension — systems-roguelite long-tail tiers. Each cleared floor-4 run
+// unlocks the next tier's modifier + essence scaling.
+import {
+  loadAscension, ASCENSION_TIERS, activeAscension,
+  ascensionEssenceMul, ascensionModifiers,
+  getAscensionTier, getUnlockedTier, setAscensionTier,
+  onRunCompletedAtTier, MAX_ASCENSION,
+} from './ascension.js';
+loadAscension();
+// Expose modifiers to enemies.js / floor.js via a window hook rather than
+// a new import path. They call back during runtime to pick up the current
+// tier's scalars.
+window.__ascensionModifiers = ascensionModifiers;
 // Storage health probe — surfaces a warning chip if localStorage is blocked.
 import { showStorageWarningIfBlocked } from './storage.js?v=save1';
 showStorageWarningIfBlocked();
@@ -541,6 +554,18 @@ menuEl.innerHTML = `
            have been migrated to the Memory pool as history-gated unlocks. -->
       <button class="menuModeChip" data-mode="tarot" style="display:none;background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">TAROT</button>
     </div>
+
+    <!-- ASCENSION selector — systems-roguelite long-tail grind. Hidden on
+         tier 0 until the player has unlocked anything (don't clutter a new
+         player's menu with something they can't use). Click to cycle
+         through unlocked tiers. Each tier stacks on the previous. -->
+    <div id="menuAscensionRow" style="display:none;align-items:center;gap:10px;margin-top:10px;margin-bottom:2px;font-family:Georgia,serif;">
+      <span style="color:#8a7a5a;font-size:9px;letter-spacing:4px;font-style:italic;">\u25C7</span>
+      <button id="menuAscensionBtn" title="Click to cycle ascension tier" style="background:transparent;border:0;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;padding:4px 10px;">ASCENSION 0</button>
+      <span style="color:#8a7a5a;font-size:9px;letter-spacing:4px;font-style:italic;">\u25C7</span>
+    </div>
+    <div id="menuAscensionHint" style="font-size:10px;opacity:0.65;letter-spacing:2px;font-family:Georgia,serif;font-style:italic;color:#c9a86a;margin-bottom:0;text-align:center;max-width:440px;min-height:14px;"></div>
+
     <!-- Hint line — gold at lower opacity, no purple. -->
     <div id="menuModeHint" style="font-size:11px;opacity:0;letter-spacing:2px;font-family:Georgia,serif;font-style:italic;margin-top:10px;margin-bottom:0;color:#c9a86a;min-height:18px;text-align:center;max-width:480px;transition:opacity 0.28s ease;"></div>
 
@@ -854,6 +879,34 @@ function showControls() {
   controlsEl.style.display = 'flex';
 }
 document.getElementById('menuControlsLink')?.addEventListener('click', showControls);
+
+// Ascension selector — show only if the player has unlocked at least tier 1
+// (i.e. has ever cleared floor 4). Clicking cycles current → next unlocked
+// → wraps back to 0. Hint line updates to describe the active tier's rule.
+function refreshAscensionUI() {
+  const row = document.getElementById('menuAscensionRow');
+  const btn = document.getElementById('menuAscensionBtn');
+  const hint = document.getElementById('menuAscensionHint');
+  if (!row || !btn || !hint) return;
+  const unlocked = getUnlockedTier();
+  if (unlocked <= 0) { row.style.display = 'none'; hint.textContent = ''; return; }
+  row.style.display = 'flex';
+  const t = getAscensionTier();
+  const def = ASCENSION_TIERS[t];
+  btn.textContent = t === 0 ? 'STANDARD' : `ASCENSION ${['I','II','III','IV','V'][t - 1] || t}`;
+  // Tier 0 dim gold; higher tiers warmer. Visual weight of the climb.
+  btn.style.color = t === 0 ? '#8a7a5a' : t >= 4 ? '#f4d9a0' : '#c9a86a';
+  btn.style.opacity = t === 0 ? '0.7' : '1';
+  hint.textContent = def.rule ? `\u2022 ${def.rule} \u2022 +${Math.round((def.essenceMul - 1) * 100)}% essence` : '';
+}
+document.getElementById('menuAscensionBtn')?.addEventListener('click', () => {
+  const unlocked = getUnlockedTier();
+  const cur = getAscensionTier();
+  const next = (cur + 1) > unlocked ? 0 : cur + 1;
+  setAscensionTier(next);
+  refreshAscensionUI();
+});
+refreshAscensionUI();
 
 // First-run welcome nudge — a player who has never opened the game before
 // gets the how-to-play primer auto-opened once. Returning players with
@@ -3790,11 +3843,28 @@ function showEndOfRun(isVictory) {
     relicsRow.appendChild(trophyRow);
   }
 
-  // Essence earned + add to persistent total. Curse multiplier applies here.
+  // Essence earned + add to persistent total. Curse AND Ascension
+  // multipliers compound — hardcore players stacking A5 + multiple
+  // curses get the biggest payouts.
   const base = calculateEssence() * (isVictory ? 2 : 1);
   const cMul = curseEssenceMul();
-  const earned = Math.round(base * cMul);
+  const aMul = ascensionEssenceMul();
+  const earned = Math.round(base * cMul * aMul);
   addEssence(earned);
+  // On a floor-4 victory, unlock the next Ascension tier if applicable.
+  if (isVictory) {
+    const cleared = getAscensionTier();
+    const unlockedNew = onRunCompletedAtTier(cleared);
+    if (unlockedNew) {
+      // Queue a small banner — same hook used by codex entries.
+      window.__pendingCodexEntry = {
+        type: 'ascension_unlock',
+        name: ASCENSION_TIERS[cleared + 1].name,
+        flavor: ASCENSION_TIERS[cleared + 1].short,
+        color: '#f4d9a0',
+      };
+    }
+  }
   const essEl = document.getElementById('endEssence');
   const curseTag = curseCount() > 0 ? ` <span style="color:#d85a5a;font-size:13px;">☠ ${cMul.toFixed(2)}x curse bonus</span>` : '';
   // Build a "next unlock" progress bar — shows how much more essence until the
@@ -4311,7 +4381,11 @@ function tick(now) {
       if (!isCursed('starving') && consumePedestal()) {
         // Partial heal: restore 3 HP for free (was: full heal).
         // Wanderer NPC still offers paid full-heal trade.
-        const healed = Math.min(3, hero.maxHp - hero.hp);
+        // ASCENSION III — "The Half Rest": sanctuary healing halved.
+        let baseHeal = 3;
+        const am = window.__ascensionModifiers && window.__ascensionModifiers();
+        if (am && am.sanctuaryHealMul) baseHeal = Math.max(1, Math.floor(baseHeal * am.sanctuaryHealMul));
+        const healed = Math.min(baseHeal, hero.maxHp - hero.hp);
         hero.hp = Math.min(hero.maxHp, hero.hp + healed);
         playSfx('click', { volume: 0.8, rate: 1.4 });
       }

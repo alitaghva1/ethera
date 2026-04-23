@@ -410,6 +410,14 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
   if (opts.floorDmgMul) dmgMul *= opts.floorDmgMul;
   if (opts.floorHpMul)  hpMul  *= opts.floorHpMul;
 
+  // ASCENSION — stack the tier's enemy-HP modifier on every spawn.
+  // main.js exposes `__ascensionModifiers` to avoid an import cycle with
+  // ascension.js; called here at spawn time so live tier changes apply.
+  if (typeof window !== 'undefined' && window.__ascensionModifiers) {
+    const am = window.__ascensionModifiers();
+    if (am && am.enemyHpMul) hpMul *= am.enemyHpMul;
+  }
+
   // MEMORY OF NINE — the bargain is that bosses yield more easily (boss HP
   // −25%) but the world pushes back harder (normal enemy HP +40%). Read the
   // active memory via the window hook set at run start by main.js.
@@ -1292,8 +1300,14 @@ export function updateEnemies(dt, _hero) {
         }
       }
     }
-    // Enrage (Broodmother/Ember Tyrant/Bone Captain) — permanent speed + damage boost at low HP
-    if (e.def.enrageAt && !e._enraged && e.hp < e.maxHp * e.def.enrageAt) {
+    // Enrage (Broodmother/Ember Tyrant/Bone Captain) — permanent speed + damage boost at low HP.
+    // ASCENSION IV — "The Awakened": bosses enrage at 70% HP instead of 50%.
+    let enrageAt = e.def.enrageAt;
+    if (enrageAt && typeof window !== 'undefined' && window.__ascensionModifiers) {
+      const am = window.__ascensionModifiers();
+      if (am && am.bossEnrageAt) enrageAt = am.bossEnrageAt;
+    }
+    if (enrageAt && !e._enraged && e.hp < e.maxHp * enrageAt) {
       e._enraged = true;
       e.speed *= e.def.enrageSpeedMul;
       e.damage *= e.def.enrageDamageMul;

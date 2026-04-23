@@ -346,6 +346,14 @@ export function applySelectedMemory(ctx) {
   const def = MEMORIES[selectedMemoryId];
   if (!def) return null;
   if (!unlockedMemories.has(selectedMemoryId)) return null;   // safety
+  // ASCENSION V — "The Silent Pact": Memory slot neutralized. Skip the
+  // apply entirely at this tier — no gift, no pact. Player still sees
+  // their selected memory on the menu so they can choose differently
+  // for the run; it just doesn't take effect this descent.
+  if (typeof window !== 'undefined' && window.__ascensionModifiers) {
+    const am = window.__ascensionModifiers();
+    if (am && am.memoryDisabled) return null;
+  }
   try { def.apply(hero, ctx); } catch (e) { console.warn('memory apply failed', e); }
   return def;
 }
