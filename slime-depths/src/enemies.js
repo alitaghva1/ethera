@@ -656,13 +656,13 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         stats.enemiesDefeated++;
         // Kill-streak tracking — consecutive kills within 1.5s stack up
         const now = performance.now() / 1000;
-        if (window.__lastKillTime && now - window.__lastKillTime < 1.5) {
-          window.__killStreak = (window.__killStreak || 1) + 1;
+        if (window.__gameMetrics.lastKillTime && now - window.__gameMetrics.lastKillTime < 1.5) {
+          window.__gameMetrics.killStreak = (window.__gameMetrics.killStreak || 1) + 1;
         } else {
-          window.__killStreak = 1;
+          window.__gameMetrics.killStreak = 1;
         }
-        window.__lastKillTime = now;
-        window.__killStreakShowUntil = now + 1.2;         // HUD shows for 1.2s after last kill
+        window.__gameMetrics.lastKillTime = now;
+        window.__gameMetrics.killStreakShowUntil = now + 1.2;         // HUD shows for 1.2s after last kill
         if (this.boss) stats.bossesKilled++;
         else if (this.elite) stats.elitesDefeated++;
         if (def.behavior === 'bomber') {

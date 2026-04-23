@@ -95,6 +95,20 @@ window.addEventListener('orientationchange', () => {
 import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom } from './postfx.js';
 window.__triggerChromAberr = triggerChromAberr;
 
+// Per-run gameplay metrics — collapsed from 7 individual window.__ globals
+// into one object so the stat-tracker cluster reads and writes through a
+// single namespace. All values are time-gated (staleness checks in the
+// readers), so no explicit reset between runs is needed.
+window.__gameMetrics = {
+  killStreak: 0,
+  killStreakShowUntil: 0,
+  maxCombo: 0,
+  lastHitTime: 0,
+  lastHitFromX: 0,
+  lastHitFromY: 0,
+  lastKillTime: 0,
+};
+
 // Death/victory screen markup moved to ./deathScreen.js (review #4 split pass 2).
 // Data-filling (stats, relics, essence) and event wiring stay in main.js.
 import { DEATH_SCREEN_HTML } from './deathScreen.js';
@@ -4507,7 +4521,7 @@ function tick(now) {
 
     // Evaluate achievements periodically (on room transitions mostly, but cheap to re-evaluate)
     stats._legendaryEquipped = equippedRelics.some(r => r.tier === 'legendary');
-    stats._maxCombo = Math.max(stats._maxCombo || 0, window.__maxCombo || 0);
+    stats._maxCombo = Math.max(stats._maxCombo || 0, window.__gameMetrics.maxCombo || 0);
     evaluateAchievements(stats, meta);
 
     // Boss room cleared → show either "Shop + Descend" (next floor) or "Run Complete"
@@ -4566,7 +4580,7 @@ function tick(now) {
           floor: currentFloorLevel,
           roomIdx: roomIndex,
           build: equippedRelics.map(r => r.id),
-          combo: window.__maxCombo || stats._maxCombo || 0,
+          combo: window.__gameMetrics.maxCombo || stats._maxCombo || 0,
           maxHp: hero.maxHp,
           damageDealt: stats.damageDealt | 0,
         });

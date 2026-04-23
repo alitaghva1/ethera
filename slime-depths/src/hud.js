@@ -73,10 +73,10 @@ export function drawHud(ctx, w, h, progress = {}) {
 
   // KILL STREAK — number of consecutive kills within 1.5s window, shown near hero
   // Only shows at 2+ for streaks worth celebrating
-  if (typeof window !== 'undefined' && window.__killStreakShowUntil) {
+  if (typeof window !== 'undefined' && window.__gameMetrics.killStreakShowUntil) {
     const now = performance.now() / 1000;
-    const remaining = window.__killStreakShowUntil - now;
-    const streak = window.__killStreak || 1;
+    const remaining = window.__gameMetrics.killStreakShowUntil - now;
+    const streak = window.__gameMetrics.killStreak || 1;
     if (remaining > 0 && streak >= 2) {
       // Fade out in the final 0.3s
       const a = Math.min(1, remaining / 0.3);
@@ -104,10 +104,10 @@ export function drawHud(ctx, w, h, progress = {}) {
 
   // DAMAGE-SOURCE ARROW — brief red chevron on screen edge pointing to whatever
   // just hit the hero. Fades over 1s. Critical for off-screen threats.
-  const hitT = (typeof window !== 'undefined' && window.__lastHitTime) ? (performance.now() - window.__lastHitTime) / 1000 : Infinity;
-  if (hitT < 1.0 && window.__lastHitFromX !== undefined) {
-    const dx = window.__lastHitFromX - hero.x;
-    const dy = window.__lastHitFromY - hero.y;
+  const hitT = (typeof window !== 'undefined' && window.__gameMetrics.lastHitTime) ? (performance.now() - window.__gameMetrics.lastHitTime) / 1000 : Infinity;
+  if (hitT < 1.0 && window.__gameMetrics.lastHitFromX !== undefined) {
+    const dx = window.__gameMetrics.lastHitFromX - hero.x;
+    const dy = window.__gameMetrics.lastHitFromY - hero.y;
     const mag = Math.hypot(dx, dy);
     if (mag > 1) {
       const nx = dx / mag, ny = dy / mag;

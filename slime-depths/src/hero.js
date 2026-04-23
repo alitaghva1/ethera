@@ -950,9 +950,9 @@ export function damageHero(amount, fromX, fromY) {
   stats.damageTaken += taken;
   hero.hp -= taken;
   // Store hit direction for the damage-source arrow UI
-  window.__lastHitFromX = fromX;
-  window.__lastHitFromY = fromY;
-  window.__lastHitTime = performance.now();
+  window.__gameMetrics.lastHitFromX = fromX;
+  window.__gameMetrics.lastHitFromY = fromY;
+  window.__gameMetrics.lastHitTime = performance.now();
   if (hero.hp / hero.maxHp <= 0.30) showTip('first_low_hp');
   hero.iframes = IFRAME_AFTER_HIT;
   // Shake scales with hit weight — heavy hits feel punishing
