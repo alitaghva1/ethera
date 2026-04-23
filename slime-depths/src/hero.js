@@ -120,7 +120,14 @@ export const hero = {
 export function resetHero() {
   hero.x = TILE * 10; hero.y = TILE * 10;
   hero.vx = 0; hero.vy = 0;
-  hero.maxHp = 6;               // was 8 — more fragile start so the first floor has teeth
+  hero.maxHp = 3;               // bare-bones roguelite start. HP grows via:
+                                //   - Vitality Charm (meta, +3)
+                                //   - Memory of Fortitude (+3)
+                                //   - Vitality relic (+2)
+                                //   - Bloodstone / regen relics
+                                //   - sanctuary / altar / between-floor heals
+                                // Every HP upgrade feels meaningful because
+                                // 3 is the baseline the curve builds from.
   hero.hp = hero.maxHp;
   hero.state = 'idle'; hero.stateTime = 0; hero.animTime = 0;
   hero.attackCooldown = 0; hero.dodgeCooldown = 0;
