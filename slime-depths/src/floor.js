@@ -261,6 +261,7 @@ function makeMiniBossRoom(level) {
   const miniType = level === 1 ? 'vanguard'
                  : level === 2 ? 'warden'
                  : level === 3 ? 'reflector'
+                 : level === 4 ? 'hermit'       // floor 4's signature mini-boss
                  : 'dreadmage';
   return {
     kind: 'combat',

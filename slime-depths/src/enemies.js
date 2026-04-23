@@ -368,6 +368,28 @@ export const TYPES = {
     flavor: 'the executioner whose blade the ruin kept sharpened',
   },
 
+  // ---- HERMIT — floor-4 mini-boss. Slow, imposing, keeps his distance and
+  // unloads a wide triple-orb volley with long readable telegraphs. Rewards
+  // patient play: close the gap during windup, back off during cast. Uses
+  // the wizard sprite with a gold-amber tint so he reads as "other" from
+  // both dreadmage and wizard in the same room.
+  hermit: {
+    element: 'shock',
+    prefix: 'wiz_',      drawSize: 118, radius: 20, speed: 40, hp: 180, damage: 3,
+    color: '#c9a86a',    hitCD: 2.4, fps: 8, behavior: 'wizard',
+    preferDist: 420, minDist: 320,
+    castRange: 520,
+    castWindup: 1.10,                  // long telegraph — player gets a real read
+    castCount: 3,
+    castSpread: 0.42,                   // wide volley, forces positioning
+    telegraphColor: 'rgba(201, 168, 106, ',
+    windupSfx: { key: 'click', rate: 0.30, volume: 0.7 },
+    tintFilter: 'sepia(0.55) hue-rotate(-15deg) saturate(1.4) brightness(0.9)',
+    displayName: 'THE HERMIT',
+    flavor: 'a lantern in every hollow; a question in every name',
+    bloodColor: '#c9a86a',
+  },
+
   // ---- DREAD-MAGE — tier-3 caster. Triple-orb volley with a tighter spread
   // than wizard, faster cast, slightly less HP. Priority kill target in
   // multi-caster comps (pair with priest or reflector).

@@ -2172,6 +2172,7 @@ const ENEMY_PORTRAIT_PATH = {
   broodmother:  'assets/enemies/portrait_broodmother.png',
   ember_tyrant: 'assets/enemies/portrait_ember_tyrant.png',
   echo:         'assets/enemies/portrait_echo_of_self.png',
+  hermit:       'assets/enemies/portrait_hermit.png',   // floor-4 mini-boss
 };
 
 function showAchievementsModal() {
