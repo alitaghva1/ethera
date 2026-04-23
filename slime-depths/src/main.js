@@ -395,6 +395,10 @@ const VICTORY_MESSAGES = [
 // Boss intro cinematic — delay gameplay briefly when entering a boss room
 let bossIntroTime = 0;                // ticks down from ~2.2s while intro plays
 let bossIntroBoss = null;             // reference to the boss for name display
+let bossIntroStartedAt = 0;           // wall-clock timestamp — clamps intro at
+                                       // 2.5s real-time even if the game pauses
+                                       // mid-intro (previously the overlay got
+                                       // stuck on screen until a full restart).
 // Death ceremony — cinematic beat before summary UI appears
 let deathCeremonyActive = false;
 let deathCeremonyTime = 0;
@@ -3196,6 +3200,7 @@ function loadRoom(idx, entryFrom) {
   if (data.kind === 'boss') {
     bossIntroTime = 2.2;
     bossIntroBoss = enemies.find(e => e.boss);
+    bossIntroStartedAt = performance.now();    // wall-clock mark for the 2.5s clamp
     shakeCamera(14, 0.5);
     pulseZoom(0.14, 1.0);                       // cinematic punch-in on boss entry
     // Audio stinger — deep metal impact to punctuate the intro
@@ -3205,6 +3210,7 @@ function loadRoom(idx, entryFrom) {
   } else {
     bossIntroTime = 0;
     bossIntroBoss = null;
+    bossIntroStartedAt = 0;
   }
 
   // Show room name as a floating label for a moment (skip entrance and reward — those are obvious)
@@ -4150,6 +4156,17 @@ function tick(now) {
   const frozen = consumeHitStop(realDt);
 
   // Boss intro — freeze gameplay but animate everything (so camera/shake continue)
+  // Wall-clock clamp: if the intro's real-world elapsed time has exceeded its
+  // cap (2.5s — slightly longer than the 2.2s duration), force it to 0. This
+  // protects against the overlay getting stuck when the game is paused
+  // mid-intro or when bossIntroTime otherwise fails to decrement.
+  if (bossIntroTime > 0 && bossIntroStartedAt > 0) {
+    const introElapsedSec = (performance.now() - bossIntroStartedAt) / 1000;
+    if (introElapsedSec > 2.5) {
+      bossIntroTime = 0;
+      bossIntroBoss = null;
+    }
+  }
   if (bossIntroTime > 0 && !paused) {
     bossIntroTime -= realDt;
     updateParticles(realDt);
@@ -6060,6 +6077,17 @@ window.__forceGoto = (targetIdx) => {
   updateTransition(0.4);  // finish fade-out, loads room
   updateTransition(0.4);  // finish fade-in
   return { roomIndex, kind: floor[roomIndex]?.kind, enemies: enemies.length, heroPos: [hero.x|0, hero.y|0] };
+};
+
+// Debug: test a boss intro render without playing through. Spawns a fake
+// boss of the requested type + sets the intro state so the next render
+// frame includes the cinematic.
+window.__testBossIntro = (type = 'orc', durationSec = 2.2) => {
+  const def = ENEMY_TYPES[type];
+  if (!def) return { error: 'unknown enemy type: ' + type, available: Object.keys(ENEMY_TYPES) };
+  bossIntroBoss = { type, def, boss: true, x: 0, y: 0, hp: 100, maxHp: 100 };
+  bossIntroTime = durationSec;
+  return { triggered: true, type, durationSec, portraitKey: ENEMY_PORTRAIT_PATH[type] };
 };
 
 boot();
