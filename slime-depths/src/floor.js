@@ -292,8 +292,11 @@ export function makeEventRoom(level, eliteChance) {
 }
 
 export function makeBossSpawns(level, pillarTemplate = -1) {
-  const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother' }[level] || 'orc';
-  const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'] }[level] || [];
+  // Floor 4's THRONE OF RUIN gets its own boss — The Ember Tyrant — instead
+  // of falling back to orc. Arena hazards (6 fire pools + 2 spikes) are
+  // already wired in room.js:471 for this bossType.
+  const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother', 4: 'ember_tyrant' }[level] || 'orc';
+  const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'], 4: ['bomber', 'dreadmage'] }[level] || [];
   const cells = spawnCells(adds.length, pillarTemplate);
   const spawns = [
     { type: bossType, x: Math.floor(ROOM_W/2), y: 3, elite: true, boss: true },

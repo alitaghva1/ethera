@@ -447,7 +447,20 @@ export function buildRoomFromData(data) {
   } else if (data.kind === 'boss') {
     // Boss arenas — hazards vary by which boss is in this room
     const bossType = (data.spawns.find(s => s.boss) || {}).type || 'orc';
-    if (bossType === 'bone_captain') {
+    if (bossType === 'orc') {
+      // Grudnok's throne — a diamond of 4 spikes around the center point.
+      // Hero must orbit away from Grudnok's heavy slams without backing
+      // into a spike. Teaches the "position matters" rhythm early.
+      const bossPattern = [
+        [10, 5, 0.0], [10, 11, 1.0], [5, 8, 0.5], [15, 8, 1.5],
+      ];
+      for (const [sx, sy, phase] of bossPattern) {
+        if (tiles[sy]?.[sx] === 'floor') {
+          tiles[sy][sx] = 'spike';
+          roomSpikes.push({ x: sx, y: sy, phase });
+        }
+      }
+    } else if (bossType === 'bone_captain') {
       // Extra spike columns in the arena — captain's dashes can push you into them
       const bossPattern = [
         [6, 6, 0], [9, 6, 0.7], [12, 6, 0], [15, 6, 0.7],
