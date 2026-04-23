@@ -5073,7 +5073,9 @@ function render() {
     ctx.restore();
   }
 
-  // HUD (below transition veil)
+  // HUD (below transition veil). introActive flag lets the HUD suppress
+  // combat-state overlays (low-HP red pulse, damage arrow) that would
+  // otherwise double-dim the boss intro portrait.
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
     roomKind: floor[roomIndex]?.kind,
@@ -5082,6 +5084,7 @@ function render() {
     maxFloors: MAX_FLOORS,
     gold: gold.total,
     floorRooms: floor,              // pass full floor so HUD can render a minimap
+    introActive: bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0,
   });
   drawPedestalTooltip(ctx, canvas.width, canvas.height, { gold: gold.total, floorLevel: currentFloorLevel });
   drawWandererTooltip(ctx, canvas.width, canvas.height);

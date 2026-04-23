@@ -43,8 +43,11 @@ export function drawHud(ctx, w, h, progress = {}) {
   // Low-HP red pulse — triggers at â‰¤30% HP, intensity scales with HP%.
   // Vignette stays at the EDGES — the center 60% of screen remains totally clear
   // so threats and combat read fine even when you're near death.
+  // Suppressed during any cinematic intro (progress.introActive) — the intro
+  // has its own framing and the red pulse would double-dim the portrait to
+  // near-black on boss-intro entry, which was the persistent playtest bug.
   const hpFrac = hero.hp / Math.max(1, hero.maxHp);
-  if (hero.hp > 0 && hero.state !== 'dead' && hpFrac <= 0.30) {
+  if (!progress.introActive && hero.hp > 0 && hero.state !== 'dead' && hpFrac <= 0.30) {
     const beatRate = 150 + (hpFrac / 0.30) * 200;
     const pulse = 0.35 + 0.35 * Math.sin(performance.now() / beatRate);
     // Alpha capped lower; play-area visibility prioritized over drama
@@ -104,8 +107,10 @@ export function drawHud(ctx, w, h, progress = {}) {
 
   // DAMAGE-SOURCE ARROW — brief red chevron on screen edge pointing to whatever
   // just hit the hero. Fades over 1s. Critical for off-screen threats.
+  // Suppressed during cinematic intros (progress.introActive) so it doesn't
+  // sit on top of the boss portrait frame.
   const hitT = (typeof window !== 'undefined' && window.__gameMetrics.lastHitTime) ? (performance.now() - window.__gameMetrics.lastHitTime) / 1000 : Infinity;
-  if (hitT < 1.0 && window.__gameMetrics.lastHitFromX !== undefined) {
+  if (!progress.introActive && hitT < 1.0 && window.__gameMetrics.lastHitFromX !== undefined) {
     const dx = window.__gameMetrics.lastHitFromX - hero.x;
     const dy = window.__gameMetrics.lastHitFromY - hero.y;
     const mag = Math.hypot(dx, dy);
