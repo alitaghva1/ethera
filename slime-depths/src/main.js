@@ -1191,6 +1191,14 @@ function showHamlet() {
   startAmbientPad('hamlet');
   // Re-check NPC presence in case records advanced since last visit
   refreshNpcPresence(records, stats, { seenRelicIds });
+  // Also sweep each present NPC's arc — milestone stages (4th stage,
+  // added April 2026) unlock from run-state conditions like "any boss
+  // killed" or "3+ curses active" rather than from service use, so
+  // they'd otherwise never trigger unless the player happened to use
+  // the service after the milestone was hit.
+  for (const id of ALL_NPC_IDS) {
+    if (hamletState.npcArcStage[id] !== undefined) tryAdvanceArc(id);
+  }
   hamletEl.style.display = 'flex';
   renderHamlet();
   // Onboarding tip — fires once to explain the hamlet as a persistent hub.
@@ -1718,6 +1726,11 @@ document.getElementById('oracleFortuneCancelBtn').addEventListener('click', () =
 document.getElementById('oracleFortuneAcceptBtn').addEventListener('click', () => {
   if (_oracleFortunePick) {
     window.__oracleCard = _oracleFortunePick;
+    // Bump the hamlet's persistent fortune counter so the Oracle's
+    // milestone arc stage can unlock at 3+ draws.
+    hamletState.fortunesDrawn = (hamletState.fortunesDrawn | 0) + 1;
+    saveHamletState();
+    tryAdvanceArc('oracle');
   }
   oracleFortuneEl.style.display = 'none';
   showOracleForecast();   // surface the carried-fortune notice

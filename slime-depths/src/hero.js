@@ -791,7 +791,11 @@ export function updateHero(dt, enemies, mouseWorld) {
           );
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
-          const isCrit = isCounter || forcedCrit || (hero.critChance > 0 && Math.random() < hero.critChance);
+          // DAGGER SIGNATURE — flat +10% crit chance when wielded. Twin Fang
+          // is "the precision weapon" — its identity between finishers is
+          // that crits happen more often than with sword or hammer.
+          const _daggerCritBonus = (w.id === 'dagger') ? 0.10 : 0;
+          const isCrit = isCounter || forcedCrit || ((hero.critChance + _daggerCritBonus) > 0 && Math.random() < (hero.critChance + _daggerCritBonus));
           const isExec = hero.executeThreshold > 0 && e.hp / e.maxHp < hero.executeThreshold;
           // SYSTEMS PASS — LONG REACH: hits landed past 80% of your reach
           // deal +40% damage. Rewards spacing + positioning. Folded in
@@ -837,17 +841,30 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
           // COMBO BONUS — keeping a streak going rewards damage.
           // FUSION: Tempest — combo bonus ~doubles at RAMPAGE+ and CARNAGE.
+          // SWORD SIGNATURE — thresholds halved (3/7/15/30 vs 5/10/20/40).
+          // Sword is "the sustained weapon" — reaches each combo tier faster,
+          // rewarding long engagements without changing the ceiling.
           const cc = combo.count || 0;
           const tempestMul = hero.fusionTempest ? 2 : 1;
-          if (cc >= 40)      finalDmg *= 1 + 0.35 * tempestMul;   // +35% / +70%
-          else if (cc >= 20) finalDmg *= 1 + 0.22 * tempestMul;
-          else if (cc >= 10) finalDmg *= 1 + 0.12 * tempestMul;
-          else if (cc >= 5)  { finalDmg *= 1.05; showTip('first_crit'); }
+          const _swordTier = (w.id === 'sword');
+          const t40 = _swordTier ? 30 : 40;
+          const t20 = _swordTier ? 15 : 20;
+          const t10 = _swordTier ? 7  : 10;
+          const t5  = _swordTier ? 3  : 5;
+          if (cc >= t40)      finalDmg *= 1 + 0.35 * tempestMul;   // +35% / +70%
+          else if (cc >= t20) finalDmg *= 1 + 0.22 * tempestMul;
+          else if (cc >= t10) finalDmg *= 1 + 0.12 * tempestMul;
+          else if (cc >= t5)  { finalDmg *= 1.05; showTip('first_crit'); }
           // FUSION: Mountain's Heart — at full HP, +10% damage
           if (hero.fusionMountainsHeart && hero.hp >= hero.maxHp) {
             finalDmg *= 1.10;
           }
-          const kbScale = hero.knockbackMul * w.knockbackMul * (isCounter ? 1.8 : 1);
+          // HAMMER SIGNATURE — non-finisher swings get +50% knockback on top
+          // of the weapon's base 2.2x. The finisher already has the ground-
+          // slam AoE, so this fills the "middle" swings with weight too —
+          // every Dreadmaul hit should feel like a THUNK, not just the 3rd.
+          const _hammerTempo = (w.id === 'hammer' && !finisherHit) ? 1.5 : 1;
+          const kbScale = hero.knockbackMul * w.knockbackMul * _hammerTempo * (isCounter ? 1.8 : 1);
           // SYSTEMS PASS — BLOODSTONE: capture enemy HP pre-hit for the
           // sub-25% finisher-heal check after takeDamage resolves.
           const eHpBefore = e.hp;
