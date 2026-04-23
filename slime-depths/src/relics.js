@@ -475,10 +475,10 @@ function enforceMemoryMaxHpCap() {
 export const RELIC_GLYPHS = {
   // Base pool
   serrated_edge:    'sword',
-  swift_arm:        'wind',
+  swift_arm:        'wind',        // base wind glyph — pure "speed" feel
   long_reach:       'sword',
-  nimble_step:      'wind',
-  iron_greaves:     'wind',
+  nimble_step:      'step',        // footprint — walking/agility
+  iron_greaves:     'greaves',     // armored boot
   ironhide:         'shield',
   bloodstone:       'heart',
   phoenix_tear:     'phoenix',
@@ -487,7 +487,7 @@ export const RELIC_GLYPHS = {
   keen_edge:        'eye',
   vitality:         'heart',
   heavy_blow:       'sword',
-  dash_master:      'wind',
+  dash_master:      'dash',        // arrow + speed streaks
   executioner:      'skull',
   warlord:          'sword',
   reaver:           'skull',
@@ -501,7 +501,7 @@ export const RELIC_GLYPHS = {
   // Legendary
   eye_of_ether:     'eye',
   cataclysm:        'flame',
-  wanderers_cloak:  'wind',
+  wanderers_cloak:  'cloak',       // hooded figure silhouette
   ethereal_binding: 'rune',
   phoenix_cloak:    'phoenix',
   avatar_of_flame:  'flame',
@@ -510,9 +510,9 @@ export const RELIC_GLYPHS = {
   counterstrike:    'sword',
   aegis_pulse:      'shield',
   bloodrite:        'skull',
-  gale_step:        'wind',
+  gale_step:        'gale',        // swirl / tornado
   bulwark:          'shield',
-  second_wind:      'wind',
+  second_wind:      'breath',      // wind + heart — recovery identity
 };
 
 export function getRelicGlyph(id) {

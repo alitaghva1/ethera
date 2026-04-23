@@ -1869,6 +1869,10 @@ export function drawSpikes(ctx, gameTime) {
 
 // Trove urn rendering — 3 variants with subtle color differences, break animation
 export function drawUrns(ctx, dt) {
+  // Time reference for glint twinkle — keyed off performance.now so every urn
+  // pulses slightly offset from every other, reading as "found treasure"
+  // rather than a single synchronized flicker.
+  const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
   for (const u of roomUrns) {
     const cx = u.x * TILE + TILE / 2;
     const cy = u.y * TILE + TILE / 2;
@@ -1887,6 +1891,16 @@ export function drawUrns(ctx, dt) {
       }
       continue;
     }
+    // Warm radial halo — lifts the urn off the dark floor so the treasure
+    // cache reads at a glance. Non-trove rooms get a smaller halo so combat
+    // prop urns still feel like rewards without drowning the fight.
+    const haloR = u.isProp ? 14 : 22;
+    const haloA = u.isProp ? 0.10 : 0.22;
+    const halo = ctx.createRadialGradient(cx, cy + 4, 0, cx, cy + 4, haloR);
+    halo.addColorStop(0, `rgba(255, 180, 90, ${haloA})`);
+    halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(cx - haloR, cy - haloR + 4, haloR * 2, haloR * 2);
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.42)';
     ctx.beginPath();
@@ -1913,6 +1927,22 @@ export function drawUrns(ctx, dt) {
     // Decorative band
     ctx.fillStyle = rimCol;
     ctx.fillRect(cx - 9, cy + 5, 18, 2);
+    // Gold glint — twinkle that moves around the rim on a slow phase cycle.
+    // Each urn uses its tile position as a seed so the twinkles are offset.
+    // Trove urns glint brighter; combat-prop urns only glint occasionally.
+    const seed = u.x * 37 + u.y * 53;
+    const phase = (now * 0.9 + seed * 0.11) % (Math.PI * 2);
+    const glintA = Math.max(0, Math.sin(phase)) ** 4;  // sharp peaks, mostly off
+    const glintScale = u.isProp ? 0.35 : 1.0;
+    if (glintA > 0.02) {
+      ctx.save();
+      ctx.globalAlpha = glintA * glintScale;
+      ctx.fillStyle = '#fff2c8';
+      ctx.fillRect(cx - 6 + (seed % 10), cy - 5, 2, 2);
+      ctx.fillStyle = 'rgba(255, 240, 200, 0.7)';
+      ctx.fillRect(cx - 6 + (seed % 10) - 1, cy - 5, 4, 1);
+      ctx.restore();
+    }
   }
 }
 

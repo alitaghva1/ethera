@@ -201,6 +201,131 @@ function drawRelicGlyphInto(ctx, glyph, cx, cy, r, color) {
       }
       break;
     }
+    case 'step': {
+      // Two footprints — one forward, one back, offset like walking
+      ctx.beginPath();
+      ctx.ellipse(cx - r * 0.4, cy + r * 0.25, r * 0.22, r * 0.38, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx - r * 0.55, cy - r * 0.05, r * 0.15, 0, Math.PI * 2);   // toe dot
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + r * 0.3, cy - r * 0.35, r * 0.2, r * 0.34, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx + r * 0.45, cy - r * 0.6, r * 0.13, 0, Math.PI * 2);    // toe dot
+      ctx.fill();
+      break;
+    }
+    case 'greaves': {
+      // Armored boot — shin plate + sole with knee cap
+      ctx.lineWidth = Math.max(1, r * 0.16);
+      // Shin plate (trapezoid)
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.35, cy - r * 0.75);
+      ctx.lineTo(cx + r * 0.35, cy - r * 0.75);
+      ctx.lineTo(cx + r * 0.25, cy + r * 0.35);
+      ctx.lineTo(cx - r * 0.25, cy + r * 0.35);
+      ctx.closePath();
+      ctx.fill();
+      // Sole (wider foot plate)
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.45, cy + r * 0.35);
+      ctx.lineTo(cx + r * 0.55, cy + r * 0.35);
+      ctx.lineTo(cx + r * 0.55, cy + r * 0.7);
+      ctx.lineTo(cx - r * 0.45, cy + r * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      // Knee cap dot
+      ctx.beginPath();
+      ctx.arc(cx, cy - r * 0.5, r * 0.14, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'dash': {
+      // Arrow with trailing speed streaks
+      ctx.lineCap = 'round';
+      // Main arrow shaft
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.2, cy);
+      ctx.lineTo(cx + r * 0.7, cy);
+      ctx.stroke();
+      // Arrowhead
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.7, cy);
+      ctx.lineTo(cx + r * 0.3, cy - r * 0.35);
+      ctx.moveTo(cx + r * 0.7, cy);
+      ctx.lineTo(cx + r * 0.3, cy + r * 0.35);
+      ctx.stroke();
+      // Two speed streaks behind
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.85, cy - r * 0.35);
+      ctx.lineTo(cx - r * 0.35, cy - r * 0.35);
+      ctx.moveTo(cx - r * 0.85, cy + r * 0.35);
+      ctx.lineTo(cx - r * 0.35, cy + r * 0.35);
+      ctx.stroke();
+      break;
+    }
+    case 'cloak': {
+      // Hooded figure silhouette — head orb + triangular cloak drape
+      ctx.beginPath();
+      ctx.arc(cx, cy - r * 0.45, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r * 0.2);
+      ctx.lineTo(cx + r * 0.8, cy + r * 0.85);
+      ctx.lineTo(cx - r * 0.8, cy + r * 0.85);
+      ctx.closePath();
+      ctx.fill();
+      // Hood opening (darker notch)
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(cx, cy - r * 0.4, r * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case 'gale': {
+      // Tornado swirl — two arcs spiraling from wide at top to tight at bottom
+      ctx.lineWidth = Math.max(1, r * 0.22);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.75, cy - r * 0.65);
+      ctx.quadraticCurveTo(cx + r * 0.6, cy - r * 0.35, cx - r * 0.4, cy - r * 0.05);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.55, cy - r * 0.05);
+      ctx.quadraticCurveTo(cx + r * 0.4, cy + r * 0.2, cx - r * 0.2, cy + r * 0.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.3, cy + r * 0.5);
+      ctx.quadraticCurveTo(cx + r * 0.2, cy + r * 0.65, cx, cy + r * 0.85);
+      ctx.stroke();
+      break;
+    }
+    case 'breath': {
+      // Wind line cradling a small heart — signals recovery/second-wind
+      ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(1, r * 0.16);
+      // Two curved wind lines above + below
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.8, cy - r * 0.55);
+      ctx.quadraticCurveTo(cx, cy - r * 0.75, cx + r * 0.8, cy - r * 0.55);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.8, cy + r * 0.55);
+      ctx.quadraticCurveTo(cx, cy + r * 0.75, cx + r * 0.8, cy + r * 0.55);
+      ctx.stroke();
+      // Tiny heart in the center
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r * 0.35);
+      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.05, cx - r * 0.35, cy - r * 0.4, cx, cy - r * 0.1);
+      ctx.bezierCurveTo(cx + r * 0.35, cy - r * 0.4, cx + r * 0.55, cy - r * 0.05, cx, cy + r * 0.35);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
     case 'skull': {
       // Rounded skull with eye sockets
       ctx.beginPath();
