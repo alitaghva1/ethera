@@ -13,17 +13,19 @@ import { isCursed } from './curses.js';
 
 export const MAX_FLOORS = 4;
 
-// Elite chance per floor (0..1) — floor 1 now has a small elite chance
-// so even early runs contain moments of real threat.
-const ELITE_CHANCE_BY_LEVEL = [0, 0.08, 0.25, 0.40, 0.55];
+// Elite chance per floor (0..1) — floor 1 bumped to 0.18 so even the first
+// descent has real threat. Previously 0.08 meant most floor-1 rooms were
+// trash-mob slaps with no stakes; player felt invincible until floor 2.
+const ELITE_CHANCE_BY_LEVEL = [0, 0.18, 0.30, 0.45, 0.60];
 
 // Per-floor damage/HP multipliers applied to every enemy on that floor.
-// Bumped across the board — player starts at 8 HP and needs meta upgrades.
+// Floor 1 dmg bumped to 1.35× paired with the hero 8→6 maxHp cut so basic
+// hits matter again. HP multiplier unchanged to keep time-to-kill tight.
 export const FLOOR_ENEMY_MULS = {
-  1: { dmg: 1.15, hp: 1.10 },      // was 1.0/1.0 — starts firmer
-  2: { dmg: 1.40, hp: 1.30 },      // was 1.25/1.20
-  3: { dmg: 1.70, hp: 1.55 },      // was 1.5/1.40
-  4: { dmg: 2.00, hp: 1.80 },      // was 1.75/1.60
+  1: { dmg: 1.35, hp: 1.10 },      // was 1.15/1.10
+  2: { dmg: 1.55, hp: 1.30 },      // was 1.40/1.30
+  3: { dmg: 1.80, hp: 1.55 },      // was 1.70/1.55
+  4: { dmg: 2.10, hp: 1.80 },      // was 2.00/1.80
 };
 
 // Within-floor combat difficulty ramp — combat3 is harder than combat1

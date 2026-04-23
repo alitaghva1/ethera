@@ -476,7 +476,14 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.restore();
 }
 
-// Hover tooltip — shown when hero is near a pedestal (before picking it)
+// Hover tooltip — shown when hero is near a pedestal (before picking it).
+// Redesigned: left-aligned card layout with the relic icon shown inside the
+// tooltip (not just on the pedestal), a tier badge above the name, and a
+// fade-in animation when the hover target changes so the tooltip reads as
+// a discrete UI element rather than appearing mid-render.
+let _tooltipCurrent = null;
+let _tooltipSince = 0;
+
 export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   let nearest = null;
   let nearestD = Infinity;
@@ -485,78 +492,135 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
     const d = Math.hypot(hero.x - p.x, hero.y - p.y);
     if (d < 90 && d < nearestD) { nearest = p; nearestD = d; }
   }
-  if (!nearest) return;
+  if (!nearest) { _tooltipCurrent = null; return; }
   const r = nearest.relic;
   const isAltar = nearest.hpCost > 0;
-  // Is this the multi-offer pedestal (rerollable)?
   const rerollable = !isAltar && pedestals.filter(p => !p.picked && p.hpCost === 0).length >= 2;
   const rerollCost = 15 + (opts.floorLevel || 1) * 5;
   const canReroll = rerollable && (opts.gold || 0) >= rerollCost;
+
+  // Fade-in — restart when the hovered pedestal changes.
+  const now = (typeof performance !== 'undefined') ? performance.now() : 0;
+  if (_tooltipCurrent !== nearest) {
+    _tooltipCurrent = nearest;
+    _tooltipSince = now;
+  }
+  const fadeIn = Math.min(1, (now - _tooltipSince) / 180);   // 180 ms
+  // Subtle rise: start 4px below target, settle at target.
+  const riseOffset = (1 - fadeIn) * 4;
+
   ctx.save();
+  ctx.globalAlpha = fadeIn;
+
+  const tier = (r.tier || 'common').toUpperCase();   // 'COMMON' | 'RARE' | 'LEGENDARY'
+  const tierText = isAltar ? 'ALTAR' : (tier + ' RELIC');
+  const tierColor = isAltar ? '#ff8a9a'
+                  : tier === 'LEGENDARY' ? '#c8a0ff'
+                  : tier === 'RARE'      ? '#f4d9a0'
+                  : '#b8c8d8';             // common: cool neutral
+
+  // Box — wider so icon fits on the left with real text room on the right.
+  const boxW = 420;
   const extraH = rerollable ? 20 : 0;
-  const boxW = 340, boxH = (isAltar ? 82 : 64) + extraH;
+  const boxH = (isAltar ? 92 : 76) + extraH;
   const bx = (w - boxW) / 2;
-  const by = h - (isAltar ? 190 : 170) - extraH;
+  const by = h - (isAltar ? 200 : 180) - extraH + riseOffset;
   const frameColor = isAltar ? '#ff6080' : (r.tint || '#ffffff');
-  // Outer tint-colored glow — subtle drop-shadow read that something is interactable
+
+  // Outer tint-colored glow
   const glow = ctx.createRadialGradient(bx + boxW / 2, by + boxH / 2, boxW * 0.15,
                                          bx + boxW / 2, by + boxH / 2, boxW * 0.7);
   glow.addColorStop(0, frameColor + '22');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(bx - 30, by - 24, boxW + 60, boxH + 48);
-  // Vertical tome-style gradient for the body
+
+  // Body — vertical gradient
   const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
-  bg.addColorStop(0, 'rgba(18, 10, 22, 0.92)');
-  bg.addColorStop(1, 'rgba(8, 4, 12, 0.92)');
+  bg.addColorStop(0, 'rgba(18, 10, 22, 0.94)');
+  bg.addColorStop(1, 'rgba(8, 4, 12, 0.94)');
   ctx.fillStyle = bg;
   ctx.fillRect(bx, by, boxW, boxH);
   ctx.strokeStyle = frameColor;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-  // Gold inner accent stripe
   ctx.strokeStyle = 'rgba(201, 168, 106, 0.35)';
   ctx.lineWidth = 1;
   ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-  // Tiny corner accents — small bracket marks on each corner
+
+  // Corner brackets
   ctx.fillStyle = frameColor;
   const cornerAccents = [
-    [bx + 2, by + 2, 1],          // top-left (dx=+1, dy=+1)
-    [bx + boxW - 2, by + 2, -1],  // top-right (dx=-1, dy=+1)
-    [bx + 2, by + boxH - 2, 1],          // bottom-left
-    [bx + boxW - 2, by + boxH - 2, -1],  // bottom-right
+    [bx + 2, by + 2, 1],
+    [bx + boxW - 2, by + 2, -1],
+    [bx + 2, by + boxH - 2, 1],
+    [bx + boxW - 2, by + boxH - 2, -1],
   ];
   for (const [cx, cy, dx] of cornerAccents) {
     ctx.fillRect(cx + (dx === 1 ? 0 : -3), cy, 4, 1);
     ctx.fillRect(cx, cy + (cy === by + 2 ? 0 : -3), 1, 4);
   }
+
+  // ICON INSET — the relic's painted art on the left side of the box, with a
+  // tint-framed inner slot that subtly glows to match the pedestal beam.
+  const iconSize = boxH - 20;
+  const iconX = bx + 10;
+  const iconY = by + 10;
+  const iconImg = images[r.icon];
+  // Slot backdrop
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(iconX, iconY, iconSize, iconSize);
+  ctx.strokeStyle = frameColor;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(iconX + 0.5, iconY + 0.5, iconSize - 1, iconSize - 1);
+  if (iconImg) {
+    drawRelicIcon(ctx, iconImg, null, null, r.id,
+                  iconX + 3, iconY + 3, iconSize - 6);
+  }
+
+  // TEXT COLUMN — centered in the area right of the icon.
+  const textX = iconX + iconSize + 14;
+  const textCenter = (textX + bx + boxW) / 2;
+
+  // Tier badge (small caps label above name)
+  ctx.fillStyle = tierColor;
+  ctx.font = 'bold 9px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(tierText, textCenter, by + 18);
+  // Hairline above tier text for ornament
+  ctx.fillStyle = tierColor;
+  const tierW = ctx.measureText(tierText).width;
+  ctx.fillRect(textCenter - tierW / 2 - 16, by + 15, 12, 1);
+  ctx.fillRect(textCenter + tierW / 2 + 4, by + 15, 12, 1);
+
   // Name
   ctx.fillStyle = r.tint || '#ffffff';
-  ctx.font = 'bold 17px Georgia, serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(r.name, bx + boxW / 2, by + 22);
-  // Flavor (italic, grey) — lore first, mechanic second
+  ctx.font = 'bold 18px Georgia, serif';
+  ctx.fillText(r.name, textCenter, by + 38);
+
+  // Flavor (italic)
   if (r.flavor) {
-    ctx.fillStyle = 'rgba(200, 190, 210, 0.7)';
+    ctx.fillStyle = 'rgba(200, 190, 210, 0.75)';
     ctx.font = 'italic 11px Georgia, serif';
-    ctx.fillText(r.flavor, bx + boxW / 2, by + 38);
+    ctx.fillText(r.flavor, textCenter, by + 54);
   }
-  // Desc (mechanic) — brighter, bolder so player can quickly see what it does
+  // Desc (mechanic)
   ctx.fillStyle = r.tint || '#f4d9a0';
   ctx.font = 'bold 12px Georgia, serif';
-  ctx.fillText(r.desc, bx + boxW / 2, by + (r.flavor ? 54 : 42));
+  ctx.fillText(r.desc, textCenter, by + (r.flavor ? 70 : 58));
+
   if (isAltar) {
     ctx.fillStyle = '#ff7a8e';
     ctx.font = 'bold 12px Georgia, serif';
-    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', bx + boxW / 2, by + (r.flavor ? 72 : 64));
+    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textCenter, by + (r.flavor ? 86 : 74));
   }
-  // Reroll hint
   if (rerollable) {
     ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.5)';
     ctx.font = 'bold 11px system-ui, sans-serif';
     const hintY = by + boxH - 14;
-    ctx.fillText(`\u27F3 Press R to reroll \u00b7 ${rerollCost}g`, bx + boxW / 2, hintY);
+    ctx.fillText(`\u27F3 Press R to reroll \u00b7 ${rerollCost}g`, textCenter, hintY);
   }
+
   ctx.textAlign = 'left';
   ctx.restore();
 }

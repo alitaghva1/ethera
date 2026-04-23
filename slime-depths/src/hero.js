@@ -120,7 +120,7 @@ export const hero = {
 export function resetHero() {
   hero.x = TILE * 10; hero.y = TILE * 10;
   hero.vx = 0; hero.vy = 0;
-  hero.maxHp = 8;               // was 10 — fragile start, rewards meta HP unlocks
+  hero.maxHp = 6;               // was 8 — more fragile start so the first floor has teeth
   hero.hp = hero.maxHp;
   hero.state = 'idle'; hero.stateTime = 0; hero.animTime = 0;
   hero.attackCooldown = 0; hero.dodgeCooldown = 0;
