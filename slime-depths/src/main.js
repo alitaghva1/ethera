@@ -178,6 +178,21 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   if (_restartBtnOverridden) return;
   startRun();
 });
+// Escape hatch from the death/victory screen back to the main menu. Essence
+// is already banked by the time this screen shows, so the player can safely
+// detour to change memories, visit the hamlet, switch save slot, etc.
+document.getElementById('deathMenuBtn')?.addEventListener('click', () => {
+  deathEl.style.display = 'none';
+  showMainMenu();
+});
+document.getElementById('deathMenuBtn')?.addEventListener('mouseenter', (e) => {
+  e.target.style.opacity = '1';
+  e.target.style.color = '#c9a86a';
+});
+document.getElementById('deathMenuBtn')?.addEventListener('mouseleave', (e) => {
+  e.target.style.opacity = '0.7';
+  e.target.style.color = '#8a7a5a';
+});
 
 // Between-floor + victory screen — includes a shop row between floors.
 // Ornamented dramatic screen matching the main-menu aesthetic.
@@ -2700,6 +2715,11 @@ function showSanctuary() {
   document.getElementById('endEssence').textContent = '✨ ' + meta.essence + ' essence banked';
   renderMetaShop(true);
   document.getElementById('restartBtn').textContent = '← MAIN MENU';
+  // The death-screen template ships with a small secondary "← MAIN MENU"
+  // next to NEW RUN. Hide it in sanctuary mode — the primary restart button
+  // IS the main-menu return here, so two identical labels would confuse.
+  const menuBtn = document.getElementById('deathMenuBtn');
+  if (menuBtn) menuBtn.style.display = 'none';
   // Re-bind restart to route to main menu instead of a new run. Flag
   // suppresses the module-level addEventListener that would otherwise
   // fire startRun() alongside this onclick.
@@ -3747,6 +3767,10 @@ function fmtTime(seconds) {
 function showEndOfRun(isVictory) {
   // Run ended — clear any resume snapshot. Fresh start from now on.
   clearRunSnapshot();
+  // Re-show the "← MAIN MENU" secondary button in case showSanctuary hid it
+  // on a previous visit (shared DOM with the death screen).
+  const _deathMenuBtn = document.getElementById('deathMenuBtn');
+  if (_deathMenuBtn) _deathMenuBtn.style.display = '';
   const title = document.getElementById('endTitle');
   const subtitle = document.getElementById('endSubtitle');
   const ornamentText = document.getElementById('endOrnamentText');
