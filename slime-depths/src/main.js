@@ -15,6 +15,18 @@ import {
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
 } from './room.js';
 import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS } from './floor.js?v=graph1';
+// SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
+// of a flat 7-room array. `floor` becomes a dynamic array built up as the
+// player commits to path nodes, which keeps all existing floor[roomIndex]
+// call sites working unchanged.
+import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js?v=graph2';
+import { openFloorMap } from './mapScreen.js';
+let currentGraph = null;
+let currentNodeId = null;
+// Re-entrancy guard: the door-transition check runs every frame while the
+// hero stands at the door, so we must not queue multiple openFloorMap()
+// calls — they'd stack overlays and resolve in the wrong order.
+let _mapPickInFlight = false;
 import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
@@ -3476,7 +3488,12 @@ function resumeRun(snap) {
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
   window.__currentBiome = BIOME_BY_FLOOR[currentFloorLevel];
   window.__currentFloorLevel = currentFloorLevel;
-  floor = generateFloor(currentFloorLevel);
+  // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
+  // player commits to path nodes; starts with just the start room so
+  // loadRoom(0) works on the existing linear-array code.
+  currentGraph = generateFloorGraph(currentFloorLevel);
+  currentNodeId = currentGraph.startId;
+  floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   winEl.style.display = 'none';
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossWinTriggered = false;
@@ -3507,19 +3524,26 @@ function startRun() {
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
   window.__currentBiome = BIOME_BY_FLOOR[currentFloorLevel];
   window.__currentFloorLevel = currentFloorLevel;
-  floor = generateFloor(currentFloorLevel);
+  // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
+  // player commits to path nodes; starts with just the start room so
+  // loadRoom(0) works on the existing linear-array code.
+  currentGraph = generateFloorGraph(currentFloorLevel);
+  currentNodeId = currentGraph.startId;
+  floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   // THE RUIN REMEMBERS — 45% chance to spawn an Echo of Self in a random combat
   // room. The Echo inherits stats from your most recent death's build.
   if (ruin.deaths && ruin.deaths.length > 0 && Math.random() < 0.45) {
     const lastDeath = ruin.deaths[0];
     // Pick a combat room (not combat1 to avoid immediate encounter — let player settle)
-    const candidateRooms = [];
-    for (let i = 0; i < floor.length; i++) {
-      if (floor[i].kind === 'combat' && floor[i].slotLabel !== 'combat1') candidateRooms.push(i);
-    }
-    if (candidateRooms.length > 0) {
-      const targetIdx = candidateRooms[(Math.random() * candidateRooms.length) | 0];
-      const targetRoom = floor[targetIdx];
+    // SYSTEMS PASS 2c — in branching mode, `floor` starts with just the
+    // start room. Iterate the graph's nodes (all roomData already
+    // populated at generation) to find an echo-injection candidate.
+    const candidates = currentGraph
+      ? currentGraph.nodes.filter(n => n.roomData && n.roomData.kind === 'combat' && n.roomData.slotLabel !== 'combat1')
+      : [];
+    if (candidates.length > 0) {
+      const target = candidates[(Math.random() * candidates.length) | 0];
+      const targetRoom = target.roomData;
       // Echo stats scale with past build richness (more relics = stronger echo)
       const relicCount = Math.max(0, (lastDeath.build || []).length);
       const hpMul = 1.2 + relicCount * 0.18;     // 1-relic build → 1.38x, 5-relic → 2.1x
@@ -3682,7 +3706,12 @@ function beginNextFloor() {
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
   window.__currentBiome = BIOME_BY_FLOOR[currentFloorLevel];
   window.__currentFloorLevel = currentFloorLevel;
-  floor = generateFloor(currentFloorLevel);
+  // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
+  // player commits to path nodes; starts with just the start room so
+  // loadRoom(0) works on the existing linear-array code.
+  currentGraph = generateFloorGraph(currentFloorLevel);
+  currentNodeId = currentGraph.startId;
+  floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   winEl.style.display = 'none';
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossWinTriggered = false;
@@ -4395,10 +4424,31 @@ function tick(now) {
     }
 
     // Door transition check
+    // SYSTEMS PASS 2c — branching. If the next room is already committed
+    // (second trip through a pre-picked path, or legacy linear fallback),
+    // advance normally. Otherwise open the floor map for path selection.
     const door = onDoorWorld(hero.x, hero.y);
     if (door && door.dir === 'north') {
       if (roomIndex < floor.length - 1) {
         beginTransition(roomIndex + 1, 'south');
+      } else if (currentGraph && currentNodeId !== null) {
+        const curNode = getFloorNode(currentGraph, currentNodeId);
+        if (curNode && curNode.edges.length > 0 && !_mapPickInFlight) {
+          _mapPickInFlight = true;
+          openFloorMap(currentGraph, currentNodeId).then(pickedId => {
+            _mapPickInFlight = false;
+            if (pickedId == null) return;
+            const picked = getFloorNode(currentGraph, pickedId);
+            if (!picked) return;
+            // Mark state transition on the graph
+            curNode.visited = true;
+            curNode.current = false;
+            picked.current = true;
+            currentNodeId = pickedId;
+            floor.push(picked.roomData);
+            beginTransition(floor.length - 1, 'south');
+          });
+        }
       }
     }
 
