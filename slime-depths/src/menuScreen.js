@@ -97,8 +97,8 @@ export const MENU_SCREEN_HTML = `
        Clicking opens the Journals modal where the player can switch or
        delete slots. "Journal" reads unambiguously as a save file — the
        previous "Volume" term confused for audio volume. -->
-  <button id="menuVolumeBtn" title="Journals — your save slots" style="position:absolute;top:34px;left:96px;background:transparent;color:#a89a7a;border:0;padding:6px 12px;font-size:10px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;display:flex;align-items:center;gap:10px;opacity:0.8;">
-    <span style="font-size:11px;color:#c9a86a;">\u2042</span>
+  <button id="menuVolumeBtn" title="Journals — your save slots" style="position:absolute;top:34px;left:96px;background:transparent;color:#8a7a5a;border:0;padding:4px 10px;font-size:9px;cursor:pointer;letter-spacing:3px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;display:flex;align-items:center;gap:8px;opacity:0.55;">
+    <span style="font-size:10px;color:#c9a86a;">\u2042</span>
     <span>JOURNAL <span id="menuVolumeLabel">I</span></span>
   </button>
   <!-- Curses have moved to the Gravekeeper NPC inside the hamlet — that's
@@ -175,13 +175,13 @@ export const MENU_SCREEN_HTML = `
     <!-- Hint line — gold at lower opacity, no purple. -->
     <div id="menuModeHint" style="font-size:11px;opacity:0;letter-spacing:2px;font-family:Georgia,serif;font-style:italic;margin-top:10px;margin-bottom:0;color:#c9a86a;min-height:18px;text-align:center;max-width:480px;transition:opacity 0.28s ease;"></div>
 
-    <!-- SECONDARY ACTIONS — two subtle text links below the CTA. Hamlet
-         holds meta-progression (essence, NPCs, services); Chronicles is
-         the codex (achievements, bestiary, relicpedia, fusions). Both are
-         gold-italic text with a diamond flanking separator and a hairline
-         underline on hover. Nothing else lives here. -->
-    <div style="display:flex;align-items:center;gap:20px;margin-top:34px;font-family:Georgia,serif;">
-      <div style="width:40px;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,106,0.6));"></div>
+    <!-- SECONDARY ACTIONS — two destinations that pull their weight. Hamlet
+         holds meta-progression (essence, NPCs, services); Chronicles is the
+         codex (achievements, bestiary, relicpedia, fusions). Everything else
+         (how-to-play, credits) demoted to footer-level so this row stays
+         focused on "where else can I actually go?" -->
+    <div style="display:flex;align-items:center;gap:24px;margin-top:34px;font-family:Georgia,serif;">
+      <div style="width:54px;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,106,0.6));"></div>
       <button id="menuHamletLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
         <span>visit the hamlet</span>
         <span style="font-size:10px;opacity:0.7;">\u2192</span>
@@ -191,19 +191,7 @@ export const MENU_SCREEN_HTML = `
         <span>read the chronicles</span>
         <span style="font-size:10px;opacity:0.7;">\u2192</span>
       </button>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
-      <!-- How-to-play primer — addresses the onboarding gap noted in the studio review. -->
-      <button id="menuControlsLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
-        <span>how to play</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
-      <!-- Credits link — release-prep attribution screen for third-party assets. -->
-      <button id="menuCreditsLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.6;display:flex;align-items:center;gap:8px;">
-        <span>credits</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <div style="width:40px;height:1px;background:linear-gradient(270deg,transparent,rgba(201,168,106,0.6));"></div>
+      <div style="width:54px;height:1px;background:linear-gradient(270deg,transparent,rgba(201,168,106,0.6));"></div>
     </div>
 
     <!-- ACTIVE MODIFIERS indicator — only shown when a memory is selected
@@ -227,13 +215,13 @@ export const MENU_SCREEN_HTML = `
   <div id="menuCurseIndicator" style="display:none;"></div>
   <div id="menuEssence" style="display:none;"></div>
 
-  <!-- Bottom controls strip — manuscript colophon. Slightly brighter now
-       that the painted dark floor of the backdrop gives us contrast, and
-       framed with short hairline dashes so it reads as a legend rather
-       than orphaned text. -->
-  <div style="position:absolute;bottom:48px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:18px;font-family:Georgia,serif;font-style:italic;color:#c9a86a;opacity:0.55;pointer-events:none;">
-    <div style="width:60px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a);"></div>
-    <div style="font-size:10.5px;letter-spacing:4px;">WASD \u00b7 LMB attack \u00b7 SPACE dodge \u00b7 Q dash strike \u00b7 ESC pause</div>
-    <div style="width:60px;height:1px;background:linear-gradient(270deg,transparent,#c9a86a);"></div>
+  <!-- Footer row — onboarding + legal. Tiny and quiet; these aren't
+       gameplay destinations so they don't earn a spot in the main links
+       row. The controls cheatsheet that used to live here was redundant
+       with both the how-to-play page and the first-boot prologue. -->
+  <div style="position:absolute;bottom:32px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:18px;font-family:Georgia,serif;font-style:italic;color:#8a7a5a;pointer-events:auto;">
+    <button id="menuControlsLink" style="background:transparent;border:0;padding:4px 6px;cursor:pointer;color:inherit;font-family:inherit;font-size:10px;letter-spacing:2.5px;font-style:italic;transition:opacity 0.22s ease;opacity:0.5;">how to play</button>
+    <span style="width:3px;height:3px;background:#8a7a5a;transform:rotate(45deg);opacity:0.4;"></span>
+    <button id="menuCreditsLink" style="background:transparent;border:0;padding:4px 6px;cursor:pointer;color:inherit;font-family:inherit;font-size:10px;letter-spacing:2.5px;font-style:italic;transition:opacity 0.22s ease;opacity:0.5;">credits</button>
   </div>
 `;
