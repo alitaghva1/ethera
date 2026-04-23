@@ -1012,6 +1012,9 @@ export function damageHero(amount, fromX, fromY) {
     // TEMPORAL EYE — brief slow-motion on perfect dodge. Uses the
     // hit-stop pipeline already wired in fx.js (drives getTimeScale()).
     if (hero.temporalEye) { triggerHitStop(hero.temporalSlowDuration || 0.35); }
+    // Chromatic aberration accent on perfect dodge — subtle 0.18 strength.
+    // Makes the reward beat for frame-tight play visibly distinct.
+    if (window.__triggerChromAberr) window.__triggerChromAberr(0.35, 0.18);
     // WHISPER VEIL — open a post-dodge window where the next hit is a crit.
     if (hero.whisperVeil) {
       hero.whisperVeilUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + hero.whisperVeilWindow : 0;
@@ -1074,9 +1077,11 @@ export function damageHero(amount, fromX, fromY) {
   // don't strobe the playfield into noise.
   const flashDur = Math.min(0.22, 0.08 + taken * 0.03);
   triggerScreenFlash('rgba(220, 40, 50, 0.11)', flashDur);
-  // Chromatic aberration trigger — function is a no-op this pass (see main.js).
-  // Call kept so if we re-enable, this damage path still drives it.
-  if (window.__triggerChromAberr) {
+  // Chromatic aberration — now PUNCTUATION, not ambient. Only fires when
+  // the hit brings hero to low HP (<=30%) or when a boss hits; ordinary
+  // trash-mob taps stay clean so the pixel art reads.
+  const _lowHpNow = (hero.hp / Math.max(1, hero.maxHp)) <= 0.30;
+  if (window.__triggerChromAberr && _lowHpNow) {
     window.__triggerChromAberr(Math.min(0.5, 0.22 + taken * 0.04), Math.min(1.6, 0.8 + hitWeight * 0.5));
   }
   playSfx('hero_hurt', { rate: 1.0, rateJitter: 0.05, volume: 0.9 });
@@ -1095,6 +1100,9 @@ export function damageHero(amount, fromX, fromY) {
     }
     hero.hp = 0;
     setState('dead');
+    // Death punctuation — strong chromatic smear marks the moment. Strength
+    // maxed so the final frame reads as "something broke in the world."
+    if (window.__triggerChromAberr) window.__triggerChromAberr(0.85, 1.6);
   } else {
     setState('hurt');
     // Light knockback
