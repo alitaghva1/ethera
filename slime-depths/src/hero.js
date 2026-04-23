@@ -1116,7 +1116,10 @@ export function damageHero(amount, fromX, fromY) {
   hero.hp -= taken;
   // MIRROR SHARD — reflect a fraction of the damage taken back to the enemy
   // closest to the damage source. Shatterpoint fusion crits the reflection.
-  if (hero.mirrorShard && hero.mirrorReflect > 0 && activeEnemies.length) {
+  // Guard: if a reflector enemy's own reflection re-triggers damageHero (or
+  // if an AoE reflection cascades across multiple concurrent hits), the
+  // `_inReflection` flag ensures we only reflect ONCE per source hit.
+  if (hero.mirrorShard && hero.mirrorReflect > 0 && activeEnemies.length && !hero._inReflection) {
     let closest = null, closestD = 200 * 200;
     for (const e of activeEnemies) {
       if (e.dead || e.state === 'dead') continue;
@@ -1127,7 +1130,12 @@ export function damageHero(amount, fromX, fromY) {
     if (closest) {
       let reflectDmg = taken * hero.mirrorReflect;
       if (hero.fusionShatterpoint) reflectDmg *= (hero.mirrorReflectCrit || 2.5);
-      closest.takeDamage(reflectDmg, 0, 0);
+      hero._inReflection = true;
+      try {
+        closest.takeDamage(reflectDmg, 0, 0);
+      } finally {
+        hero._inReflection = false;
+      }
       sparkle(closest.x, closest.y - 10, '#d8e8ff');
       sparkle(closest.x, closest.y - 4, '#ffffff');
     }

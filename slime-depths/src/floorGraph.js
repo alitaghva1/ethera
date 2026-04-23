@@ -135,8 +135,13 @@ function connectLayers(prev, next) {
 /**
  * Generate a branching-DAG floor for the given floor level (1..MAX_FLOORS).
  * Returns { nodes, startId, bossId }.
+ *
+ * opts.extraSanctuary — when true, adds an EXTRA sanctuary node alongside
+ * the normal combat/elite picks in layer 5 (the pre-boss tension layer).
+ * Wired to THE STAR tarot card ("every floor has an extra sanctuary").
  */
-export function generateFloorGraph(level = 1) {
+export function generateFloorGraph(level = 1, opts = {}) {
+  const extraSanctuary = !!opts.extraSanctuary;
   const lvl = Math.max(1, Math.min(MAX_FLOORS, level | 0));
   _nextNodeId = 0;
 
@@ -155,6 +160,14 @@ export function generateFloorGraph(level = 1) {
       n.roomData = buildRoomForKind(kind, lvl, recipe.combatSlot);
       nodes.push(n);
       layerNodes.push(n);
+    }
+    // THE STAR — inject an extra sanctuary node alongside layer 5's combat/elite
+    // picks. Player can choose: 3rd combat option for momentum, or a safe heal.
+    if (extraSanctuary && recipe.layer === 5) {
+      const sanc = makeNode('sanctuary', recipe.layer);
+      sanc.roomData = buildRoomForKind('sanctuary', lvl, null);
+      nodes.push(sanc);
+      layerNodes.push(sanc);
     }
     connectLayers(layerToNodes[layerToNodes.length - 1], layerNodes);
     layerToNodes.push(layerNodes);

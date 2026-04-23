@@ -351,3 +351,22 @@ export function checkFusionsOnPickup(newRelicId, equippedRelicIds, hero) {
 // Get total count for codex UI
 export function totalFusions() { return Object.keys(FUSIONS).length; }
 export function discoveredCount() { return discoveredFusions.size; }
+
+// Relic ids that would complete a fusion given the currently-equipped relics.
+// Returns a Set of relic ids — each is the OTHER component of a fusion pair
+// where the player already has one component. Excludes fusions that are
+// already active. Used by THE MAGICIAN tarot card to bias relic offers.
+export function getFusionCompletingRelicIds(equippedRelicIds) {
+  const owned = new Set(equippedRelicIds);
+  const activeIds = new Set(activeFusions.map(f => f.id));
+  const completing = new Set();
+  for (const fid in FUSIONS) {
+    if (activeIds.has(fid)) continue;
+    const f = FUSIONS[fid];
+    const [a, b] = f.components;
+    const hasA = owned.has(a), hasB = owned.has(b);
+    if (hasA && !hasB) completing.add(b);
+    if (hasB && !hasA) completing.add(a);
+  }
+  return completing;
+}

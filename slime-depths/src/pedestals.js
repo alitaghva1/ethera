@@ -1,7 +1,7 @@
 // Relic pedestals — physical pickup points that spawn after combat clears.
 // Walking onto one grants the relic + removes the rest.
 import { images } from './loader.js';
-import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph } from './relics.js';
+import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
 // NOTE: relicTier imported above is what makes altar pedestals respect rarity
 // tiers — without tier on the pedestal, mythic drops at altars render as common.
 import { drawRelicIcon } from './fx.js';
@@ -12,6 +12,28 @@ import { hero } from './hero.js';
 import { TILE, ROOM_W, ROOM_H, room } from './room.js';
 import { synthChord, synthPing, synthThud, synthFanfare } from './synth.js';
 import { isCursed } from './curses.js';
+import { hasCard } from './tarot.js';
+import { getFusionCompletingRelicIds } from './fusions.js';
+
+// THE MAGICIAN tarot — if the offer doesn't already contain a fusion-completing
+// relic, swap one slot with a completer (50% chance). This roughly doubles the
+// odds of an offer including a fusion-completer vs a standard rollRelicOffer.
+function applyMagicianBias(offers) {
+  if (!hasCard('the_magician')) return offers;
+  const offerIds = new Set(offers.map(o => o.id));
+  const completers = getFusionCompletingRelicIds(equippedRelics.map(r => r.id));
+  // Strip ids the hero already owns or that are already in the offer
+  const ownedIds = new Set(equippedRelics.map(r => r.id));
+  const candidates = [...completers].filter(id => !offerIds.has(id) && !ownedIds.has(id) && RELIC_DEFS[id]);
+  if (candidates.length === 0) return offers;
+  const anyInOffer = offers.some(o => completers.has(o.id));
+  if (anyInOffer) return offers;                         // already has one, nothing to do
+  if (Math.random() > 0.5) return offers;                 // 50% bias — doubles vs baseline
+  const pickId = candidates[(Math.random() * candidates.length) | 0];
+  const swapIdx = (Math.random() * offers.length) | 0;
+  offers[swapIdx] = RELIC_DEFS[pickId];
+  return offers;
+}
 
 export const pedestals = [];
 let lastPickedDef = null;      // for flash-text UI feedback
@@ -51,7 +73,7 @@ function findClearTile(px, py, maxR = 4) {
 // Pedestals shift to nearby clear tiles if pillars block the preferred cells.
 export function spawnRelicOffer(floorLevel = 1) {
   pedestals.length = 0;
-  const offers = rollRelicOffer(3, floorLevel);
+  const offers = applyMagicianBias(rollRelicOffer(3, floorLevel));
   if (offers.length === 0) return;
   const cols = [6, 10, 14];
   const row = 4;

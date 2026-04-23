@@ -3506,7 +3506,8 @@ function resumeRun(snap) {
   // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
   // player commits to path nodes; starts with just the start room so
   // loadRoom(0) works on the existing linear-array code.
-  currentGraph = generateFloorGraph(currentFloorLevel);
+  // THE STAR tarot — adds an extra sanctuary node in layer 5 when active.
+  currentGraph = generateFloorGraph(currentFloorLevel, { extraSanctuary: hasCard('the_star') });
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   // ASCENSION VIII — track when this floor started so enemies.js can
@@ -3554,7 +3555,8 @@ function startRun() {
   // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
   // player commits to path nodes; starts with just the start room so
   // loadRoom(0) works on the existing linear-array code.
-  currentGraph = generateFloorGraph(currentFloorLevel);
+  // THE STAR tarot — adds an extra sanctuary node in layer 5 when active.
+  currentGraph = generateFloorGraph(currentFloorLevel, { extraSanctuary: hasCard('the_star') });
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   // ASCENSION VIII — track when this floor started so enemies.js can
@@ -3752,7 +3754,8 @@ function beginNextFloor() {
   // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
   // player commits to path nodes; starts with just the start room so
   // loadRoom(0) works on the existing linear-array code.
-  currentGraph = generateFloorGraph(currentFloorLevel);
+  // THE STAR tarot — adds an extra sanctuary node in layer 5 when active.
+  currentGraph = generateFloorGraph(currentFloorLevel, { extraSanctuary: hasCard('the_star') });
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   // ASCENSION VIII — track when this floor started so enemies.js can
@@ -4405,9 +4408,26 @@ function tick(now) {
           playSfx('hero_hurt', { rate: 0.38, volume: 0.7 });
         }, 650);
       } else if (pedestals.length === 0) {
-        spawnRelicOffer(currentFloorLevel);
+        // Mini-boss rooms force floor-4 rarity weights — the mini-boss fight
+        // is harder than a normal combat slot so the reward should reflect
+        // that (higher rare + legendary chance, even a shot at mythic on F4).
+        // Standard combat rooms still roll on the current floor.
+        const isMiniboss = data.slotLabel === 'miniboss';
+        spawnRelicOffer(isMiniboss ? 4 : currentFloorLevel);
         applyTarotPedestalMods();
-        playSfx('click', { volume: 0.7, rate: 1.05 });
+        if (isMiniboss) {
+          // Extra flourish on mini-boss reward: brighter ping + sparkle burst
+          // to telegraph "this one's better than the usual drop".
+          playSfx('click', { volume: 0.9, rate: 0.9 });
+          synthFanfare(0.55);
+          for (let k = 0; k < 20; k++) {
+            const ang = Math.random() * Math.PI * 2;
+            const rad = 60 + Math.random() * 80;
+            sparkle(hero.x + Math.cos(ang) * rad, hero.y + Math.sin(ang) * rad * 0.7, '#f4d9a0');
+          }
+        } else {
+          playSfx('click', { volume: 0.7, rate: 1.05 });
+        }
       } else if (!hasActivePedestals()) {
         room.cleared = true;
         data.cleared = true;
@@ -4418,9 +4438,10 @@ function tick(now) {
           hero.hp = Math.min(hero.maxHp, hero.hp + 1);
         }
         // Celebratory clear fanfare — label + sound + sparkle burst radiating from hero
-        roomLabelText = '✦ ROOM CLEARED ✦';
-        roomLabelColor = '#86e3a8';
-        roomLabelTime = 1.6;
+        const isMiniboss = data.slotLabel === 'miniboss';
+        roomLabelText = isMiniboss ? '✦ MINI-BOSS FELLED ✦' : '✦ ROOM CLEARED ✦';
+        roomLabelColor = isMiniboss ? '#f4d9a0' : '#86e3a8';
+        roomLabelTime = isMiniboss ? 2.0 : 1.6;
         for (let k = 0; k < 18; k++) {
           const ang = (k / 18) * Math.PI * 2;
           const r = 80 + (k % 4) * 15;
