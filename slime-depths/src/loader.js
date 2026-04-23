@@ -196,6 +196,20 @@ export async function loadAll(progressCb) {
     loadImage('zone_spire',             'assets/backdrops/zone_spire.jpg'),
     loadImage('zone_throne_of_ruin',    'assets/backdrops/zone_throne_of_ruin.jpg'),
 
+    // BOSS INTRO BACKDROPS — one full-frame painted scene per boss (Nano
+    // Banana). Each image IS the complete boss-intro cinematic; the render
+    // draws it full-bleed plus a veil and gold typography on the lower
+    // third. No portrait compositing — these are authored with the boss
+    // embedded in the scene. Replaced the previous portrait + zone-backdrop
+    // composite that was collapsing to black on displays with aggressive
+    // color management.
+    loadImage('boss_intro_grudnok',       'assets/backdrops/boss_intro_grudnok.jpg'),
+    loadImage('boss_intro_iron_revenant', 'assets/backdrops/boss_intro_iron_revenant.jpg'),
+    loadImage('boss_intro_broodmother',   'assets/backdrops/boss_intro_broodmother.jpg'),
+    loadImage('boss_intro_ember_tyrant',  'assets/backdrops/boss_intro_ember_tyrant.jpg'),
+    loadImage('boss_intro_echo_of_self',  'assets/backdrops/boss_intro_echo_of_self.jpg'),
+    loadImage('boss_intro_hermit',        'assets/backdrops/boss_intro_hermit.jpg'),
+
     // APRIL 2026 ICON EXPANSION — 19 painted icons (Nano Banana) covering
     // the 5 relics/fusions that previously borrowed icons (now have dedicated
     // art) plus 14 NEW concept icons reserved for future mechanic design

@@ -5272,157 +5272,102 @@ function render() {
     }
   }
 
-  // Boss intro overlay — cinematic letterbox + slow-mo + name flourish
+  // Boss intro overlay — full-bleed painted scene + veil + typography.
+  //
+  // Each boss has a dedicated pre-authored scene (Nano Banana) with the
+  // boss embedded in their thematic environment, baked at 16:9 with the
+  // lower third already shadowed for text. This replaced the previous
+  // portrait + zone-backdrop composite: that approach failed on displays
+  // with aggressive GPU color management (HDR mode, certain Windows
+  // display pipelines) because stacked semi-transparent layers collapsed
+  // dark pixel-art portraits to near-black. A single opaque painted
+  // scene has no compositing to sabotage.
   if (bossIntroTime > 0 && bossIntroBoss) {
     const total = 2.2;
-    const t = 1 - (bossIntroTime / total);           // 0 → 1
+    const t = 1 - (bossIntroTime / total);     // 0 → 1
     const w = canvas.width, h = canvas.height;
-    // LETTERBOX bars — slide in from top + bottom, stay until intro near-end, slide back out
-    // They peak at ~11% screen height each to keep central action visible.
-    const barPeak = h * 0.12;
-    let barH;
-    if (t < 0.22) barH = (t / 0.22) * barPeak;       // slide-in
-    else if (t > 0.82) barH = (1 - (t - 0.82) / 0.18) * barPeak; // slide-out
-    else barH = barPeak;
-    barH = Math.max(0, barH);
-    ctx.fillStyle = 'rgba(2, 0, 4, 0.98)';
-    ctx.fillRect(0, 0, w, barH);
-    ctx.fillRect(0, h - barH, w, barH);
-    // Accent strips on the bar edges
-    ctx.fillStyle = 'rgba(180, 30, 50, 0.55)';
-    if (barH > 2) {
-      ctx.fillRect(0, barH - 1, w, 1);
-      ctx.fillRect(0, h - barH, w, 1);
-    }
-    // Dark veil — lighter than original since letterbox handles framing
-    const veilA = t < 0.20 ? (t / 0.20) * 0.35 : t > 0.82 ? (1 - (t - 0.82) / 0.18) * 0.35 : 0.35;
-    ctx.fillStyle = 'rgba(6, 4, 10, ' + veilA.toFixed(3) + ')';
-    ctx.fillRect(0, barH, w, h - barH * 2);
+    // Alpha curve matching the floor card: ease-in, hold, ease-out
+    let a;
+    if (t < 0.12) a = t / 0.12;
+    else if (t > 0.85) a = (1 - t) / 0.15;
+    else a = 1;
+    a = Math.max(0, Math.min(1, a));
 
-    // Compute the intro's shared timing envelope — used by both the
-    // portrait slide-in (from the LEFT) and the name text slide-in
-    // (from the RIGHT). Classic "vs. screen" composition.
-    const slideIn = Math.min(1, t / 0.25);
-    const slideOut = t > 0.75 ? (t - 0.75) / 0.25 : 0;
-    const introAlpha = Math.max(0, Math.min(1, slideIn - slideOut));
+    const BOSS_INTRO_IMG = {
+      orc:          'boss_intro_grudnok',
+      bone_captain: 'boss_intro_iron_revenant',
+      broodmother:  'boss_intro_broodmother',
+      ember_tyrant: 'boss_intro_ember_tyrant',
+      echo:         'boss_intro_echo_of_self',
+      hermit:       'boss_intro_hermit',
+    };
+    const sceneKey = BOSS_INTRO_IMG[bossIntroBoss.type];
+    const sceneImg = sceneKey ? imageCache[sceneKey] : null;
 
-    // BOSS PORTRAIT — painted reveal image (Nano Banana portraits loaded at
-    // boot). Slides in from off-screen left to settle at the left-of-center
-    // third. If no portrait is mapped for this enemy type, fall back to a
-    // scaled-up version of the enemy's idle sprite so we never show just
-    // text over a black screen.
-    const portraitPath = ENEMY_PORTRAIT_PATH[bossIntroBoss.type];
-    const portraitKey = portraitPath && portraitPath.split('/').pop().replace(/\.png$/, '');
-    let portraitImg = portraitKey && imageCache[portraitKey];
-    let usingFallback = false;
-    if (!portraitImg) {
-      // Fallback path: the boss's idle sprite as a stand-in portrait. Gives
-      // us SOMETHING to show even if the painted portrait didn't load.
-      const spriteKey = (bossIntroBoss.def.prefix || '') + 'idle';
-      const spriteImg = imageCache[spriteKey];
-      if (spriteImg) {
-        portraitImg = spriteImg;
-        usingFallback = true;
-        if (!bossIntroBoss._portraitWarnFired) {
-          bossIntroBoss._portraitWarnFired = true;
-          console.warn('[boss-intro] portrait missing for', bossIntroBoss.type,
-                       '— expected key', portraitKey, '— falling back to sprite', spriteKey);
-        }
-      } else if (!bossIntroBoss._portraitWarnFired) {
-        bossIntroBoss._portraitWarnFired = true;
-        console.warn('[boss-intro] NO portrait AND NO sprite for', bossIntroBoss.type,
-                     '— expected portrait key', portraitKey, '/ sprite key', spriteKey);
-      }
-    }
-    if (portraitImg) {
-      // Fit the portrait within the letterbox frame with some padding.
-      // Sprite fallbacks get cropped to the first animation frame (100px) so
-      // multi-frame strips don't render the whole strip squashed to size.
-      const srcW = usingFallback ? 100 : portraitImg.width;
-      const srcH = usingFallback ? 100 : portraitImg.height;
-      const avail = h - barH * 2 - 48;
-      const scale = Math.min(avail / srcH, 360 / srcW);
-      const pw = srcW * scale;
-      const ph = srcH * scale;
-      // Slide in from the LEFT (negative xOff), slide out the same way.
-      const pxOff = -(1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
-      const px = w * 0.28 - pw / 2 + pxOff;
-      const py = h / 2 - ph / 2;
-
-      // PRE-RENDERED GLOW — radial red-gold halo drawn BEFORE the portrait
-      // instead of via ctx.shadowBlur on drawImage. Canvas 2D shadow on
-      // drawImage is known to visibly darken the image on Chrome/Edge
-      // (shadow+image rasterize into a temp buffer with reduced alpha),
-      // which was the persistent "boss intro looks black" playtest bug.
-      // A separate radial gradient fillRect gives the same visual glow
-      // with no platform-specific darkening.
-      ctx.save();
-      ctx.globalAlpha = introAlpha;
-      const glowR = Math.max(pw, ph) * 0.72;
-      const gcx = px + pw / 2, gcy = py + ph / 2;
-      const glow = ctx.createRadialGradient(gcx, gcy, glowR * 0.3, gcx, gcy, glowR);
-      glow.addColorStop(0,   'rgba(220, 60, 60, 0.45)');
-      glow.addColorStop(0.55,'rgba(220, 60, 60, 0.18)');
-      glow.addColorStop(1,   'rgba(220, 60, 60, 0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(gcx - glowR, gcy - glowR, glowR * 2, glowR * 2);
-
-      // Portrait itself — NO shadowBlur. Just drawImage cleanly.
-      if (usingFallback) {
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(portraitImg, 0, 0, 100, 100, px, py, pw, ph);
-        ctx.imageSmoothingEnabled = true;
-      } else {
-        ctx.drawImage(portraitImg, px, py, pw, ph);
-      }
-      ctx.restore();
-    }
-
-    // Name slide-in from the right with red tag bars. If we rendered a
-    // portrait, shift the name anchor right-of-center so it doesn't
-    // overlap; otherwise keep the original centered composition.
-    const xOff = (1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
-    const name = bossIntroBoss.def.displayName || 'BOSS';
     ctx.save();
-    ctx.globalAlpha = introAlpha;
-    // Dramatic large text with gradient
-    const nx = (portraitImg ? w * 0.62 : w / 2) + xOff;
-    const ny = h / 2;
-    ctx.font = 'bold 68px Georgia, serif';
+    if (sceneImg) {
+      ctx.globalAlpha = a;
+      ctx.drawImage(sceneImg, 0, 0, w, h);
+      ctx.globalAlpha = 1;
+    } else {
+      // No scene image (unmapped boss type) — fall back to a flat dark
+      // panel so there's still something to land the typography on.
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgb(22, 18, 26)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
+
+    // Lower-third darken — the scene art already has a shadowed lower
+    // third, but an additional gradient makes sure the typography has
+    // reliable contrast regardless of the specific image's contrast curve.
+    const titleGrad = ctx.createLinearGradient(0, h * 0.55, 0, h);
+    titleGrad.addColorStop(0, `rgba(8, 5, 12, 0)`);
+    titleGrad.addColorStop(1, `rgba(8, 5, 12, ${(a * 0.55).toFixed(3)})`);
+    ctx.fillStyle = titleGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.globalAlpha = a;
+
+    // Typography in the lower third. Matches the floor-card pass:
+    // gold "BOSS" tag, cream name with soft shadowBlur glow, amber
+    // flavor, gold ornament strokes.
+    const cx = w / 2;
+    const name = bossIntroBoss.def.displayName || 'BOSS';
+    const nameY = h * 0.82;
+
+    // Top ornament
+    ctx.strokeStyle = 'rgba(201, 168, 106, 0.9)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(cx - 280, nameY - 50); ctx.lineTo(cx - 60, nameY - 50);
+    ctx.moveTo(cx + 60, nameY - 50);  ctx.lineTo(cx + 280, nameY - 50);
+    ctx.stroke();
+    // "BOSS" tag
+    ctx.fillStyle = '#c9a86a';
+    ctx.font = 'italic 22px Georgia, serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const tw = ctx.measureText(name).width;
-    // Red accent bars above + below name
-    ctx.fillStyle = 'rgba(220, 50, 60, 0.75)';
-    ctx.fillRect(nx - tw / 2 - 50, ny - 14, tw + 100, 3);
-    ctx.fillRect(nx - tw / 2 - 50, ny + 28, tw + 100, 3);
-    // Ornate end caps on the bars
-    ctx.fillStyle = 'rgba(255, 100, 90, 0.9)';
-    ctx.fillRect(nx - tw / 2 - 54, ny - 16, 5, 7);
-    ctx.fillRect(nx + tw / 2 + 49, ny - 16, 5, 7);
-    ctx.fillRect(nx - tw / 2 - 54, ny + 30, 5, 7);
-    ctx.fillRect(nx + tw / 2 + 49, ny + 30, 5, 7);
-    // Name text — deep red stroke + cream fill. Avoids shadowBlur-on-text
-    // which, like shadowBlur-on-drawImage, can appear dim on certain browser
-    // rendering paths. Stroke gives the same "hot outline" read without the
-    // platform-specific dimming.
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(140, 20, 30, 0.9)';
-    ctx.lineWidth = 6;
-    ctx.strokeText(name, nx, ny + 8);
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = 'rgba(220, 60, 70, 0.85)';
-    ctx.strokeText(name, nx, ny + 8);
-    ctx.fillStyle = '#ffe0d0';
-    ctx.fillText(name, nx, ny + 8);
-    // Subtitle with threat descriptor
-    const sub = bossIntroBoss._enraged
-      ? '— AWAKENED —'
-      : (bossIntroBoss.def.flavor ? '— ' + bossIntroBoss.def.flavor + ' —' : '— THE BOSS —');
-    ctx.font = 'italic bold 14px Georgia, serif';
-    ctx.fillStyle = '#ff8a75';
-    ctx.letterSpacing = '4px';
-    ctx.fillText(sub, nx, ny + 52);
+    const tag = bossIntroBoss._enraged ? 'AWAKENED' : 'BOSS';
+    ctx.fillText(tag, cx, nameY - 50);
+    // Big name with soft gold glow (shadowBlur on text is safe).
+    ctx.shadowColor = 'rgba(245, 210, 140, 0.6)';
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = '#f4d9a0';
+    ctx.font = 'bold 54px Georgia, serif';
+    ctx.fillText(name, cx, nameY);
+    ctx.shadowBlur = 0;
+    // Flavor
+    ctx.fillStyle = 'rgba(218, 184, 110, 0.85)';
+    ctx.font = 'italic 16px Georgia, serif';
+    const flavor = bossIntroBoss.def.flavor || 'the boss';
+    ctx.fillText('— ' + flavor + ' —', cx, nameY + 46);
+    // Bottom ornament
+    ctx.strokeStyle = 'rgba(201, 168, 106, 0.9)';
+    ctx.beginPath();
+    ctx.moveTo(cx - 280, nameY + 76); ctx.lineTo(cx - 60, nameY + 76);
+    ctx.moveTo(cx + 60, nameY + 76);  ctx.lineTo(cx + 280, nameY + 76);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -6108,7 +6053,12 @@ async function boot() {
 }
 
 // Debug hook — inspect game state from the console
-window.__dbg = () => ({ hero, enemies, camera, running, roomIndex, floor, room, transition });
+window.__dbg = () => ({ hero, enemies, camera, running, roomIndex, floor, room, transition,
+                        bossIntroTime, floorCardTime, phaseIntroTime, paused });
+// Debug: clear all active intros so __testBossIntro renders cleanly
+// without the floor card / phase intro fighting it. Useful for A/B'ing
+// boss cinematics in isolation.
+window.__clearIntros = () => { floorCardTime = 0; phaseIntroTime = 0; bossIntroTime = 0; bossIntroBoss = null; };
 // Debug: start a fresh run bypassing the menu (useful for dev + headless tests)
 window.__startRun = () => { hideAllOverlays(); startRun(); };
 

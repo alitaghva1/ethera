@@ -18,6 +18,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["slime-depths/serve.py", "5173"],
       "port": 5173
+    },
+    {
+      "name": "slime-depths-5176",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["slime-depths/serve.py", "5176"],
+      "port": 5176
     }
   ]
 }
