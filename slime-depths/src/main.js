@@ -4865,49 +4865,52 @@ function render() {
   drawDamageNumbers(ctx);
   ctx.restore();
 
-  // BLOOM PASS — after world renders, before atmospheric dims. This is the
-  // single biggest visual lift. Bright pixels (torches, hearts, enemy glow,
-  // fire, sparks, gold coins, relic glows) bleed softly. Boss rooms get a
-  // touch more intensity to feel hotter and more apocalyptic.
-  const bloomKind = floor[roomIndex]?.kind;
-  const bloomIntensity = bloomKind === 'boss' ? 0.68 : bloomKind === 'altar' ? 0.60 : 0.52;
-  applyBloom(ctx, canvas, bloomIntensity);
-
-  // BIOME COLOR GRADE — two-pass tint giving each floor a distinct mood.
-  // Multiply pass tints shadows + midtones toward the biome's signature hue.
-  // Screen pass pushes highlights further into that color. Boss rooms dial
-  // the grade down so tension stays neutral — the boss is the color story.
-  const gradePal = currentBiomePal();
-  if (gradePal.gradeMultiply) {
-    const gradeScale = bloomKind === 'boss' ? 0.5 : 1.0;
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.globalAlpha = gradePal.gradeAlpha * gradeScale;
-    ctx.fillStyle = gradePal.gradeMultiply;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-  }
-  if (gradePal.gradeScreen) {
-    const gradeScale = bloomKind === 'boss' ? 0.6 : 1.0;
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = gradePal.gradeScreenAlpha * gradeScale;
-    ctx.fillStyle = gradePal.gradeScreen;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-  }
-
-  // CHROMATIC ABERRATION — RGB channel split overlay when hero just took a hit
-  // or a big impact landed. Brief and quartic-eased so it snaps out fast.
-  applyChromAberr(ctx, canvas);
-
-  // During any intro cinematic, suppress the heavy combat-mood darkening
-  // passes. The intro has its OWN letterbox + veil already; stacking the
-  // boss-room vignette (0.72) + hero-darkness (0.70) + red color wash
-  // (0.18) on top crushes the painted portrait to near-black. We still
-  // apply the LIGHT defaults (non-boss values) so the scene retains
-  // atmosphere, but the cumulative alpha is ~40% less.
+  // INTRO CINEMATIC GATE — when any intro is active (floor card / boss intro
+  // / phase intro), skip the ENTIRE mood-filter pipeline below: bloom,
+  // biome grade, chromatic aberration, color washes, hero-centered
+  // darkness, and screen vignette. These passes compound into ~70%
+  // darkness during a boss intro, crushing the painted portrait to
+  // near-black. Prior fixes suppressed individual layers but missed the
+  // bloom + biome-grade multiply passes that run BEFORE the per-layer
+  // gate. This gate covers everything in one shot — the intro gets its
+  // own letterbox + veil for cinematic framing, nothing else.
   const introActiveNow = bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0;
+
+  const bloomKind = floor[roomIndex]?.kind;
+  if (!introActiveNow) {
+    // BLOOM PASS — bright-pixel bleed (torches, fire, gold). Suppressed
+    // during intros so the portrait isn't pre-filtered before compositing.
+    const bloomIntensity = bloomKind === 'boss' ? 0.68 : bloomKind === 'altar' ? 0.60 : 0.52;
+    applyBloom(ctx, canvas, bloomIntensity);
+
+    // BIOME COLOR GRADE — two-pass tint giving each floor a distinct mood.
+    // Multiply dims shadows/midtones; screen adds highlights. Suppressed
+    // during intros because the multiply pass visibly darkens the portrait
+    // even at 0.5× boss-room scale.
+    const gradePal = currentBiomePal();
+    if (gradePal.gradeMultiply) {
+      const gradeScale = bloomKind === 'boss' ? 0.5 : 1.0;
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = gradePal.gradeAlpha * gradeScale;
+      ctx.fillStyle = gradePal.gradeMultiply;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+    if (gradePal.gradeScreen) {
+      const gradeScale = bloomKind === 'boss' ? 0.6 : 1.0;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = gradePal.gradeScreenAlpha * gradeScale;
+      ctx.fillStyle = gradePal.gradeScreen;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
+    // CHROMATIC ABERRATION — RGB channel split overlay when hero just took a hit
+    // or a big impact landed. Brief and quartic-eased so it snaps out fast.
+    applyChromAberr(ctx, canvas);
+  }
 
   // Per-room color wash — subtle tonal cue for room kind, on top of biome wash
   const kind = floor[roomIndex]?.kind;
@@ -4932,37 +4935,35 @@ function render() {
   const hsx = hero.x - camera.x + canvas.width / 2 + camera.offsetX;
   const hsy = hero.y - camera.y + canvas.height / 2 + camera.offsetY;
 
-  // Darkness layer — edges are dim, center is ALMOST full-bright. Gradient is
-  // wide and gentle so hero doesn't look spotlit. Boss-room heavy darkening
-  // is suppressed during intros so the painted portrait reads clearly.
-  const darkAmount = introActiveNow ? 0.35 : (kind === 'boss' ? 0.70 : 0.45);
-  const darkInner  = introActiveNow ? 340 : (kind === 'boss' ? 260 : 340);
-  const darkOuter  = introActiveNow ? 760 : (kind === 'boss' ? 620 : 760);
-  const dark = ctx.createRadialGradient(hsx, hsy, darkInner, hsx, hsy, darkOuter);
-  dark.addColorStop(0, 'rgba(6, 4, 10, 0)');
-  dark.addColorStop(0.7, 'rgba(6, 4, 10, ' + (darkAmount * 0.4).toFixed(2) + ')');
-  dark.addColorStop(1, 'rgba(6, 4, 10, ' + darkAmount.toFixed(2) + ')');
-  ctx.fillStyle = dark;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // SCREEN-SPACE VIGNETTE — always-on dim corners, biome-tinted.
-  // This stays tied to the screen frame (not hero position) so rooms feel
-  // enclosed even when hero walks near an edge. Biome-specific color deepens
-  // the tonal identity of each floor.
-  // Pre-boss rooms swap to a red-dark vignette for ominous approach.
+  // Skip darkness layer + vignette entirely during intros — the intro has
+  // its own letterbox + veil for framing, any further darkening compounds
+  // into near-black over the portrait.
   const preBoss = roomNextKind.kind === 'boss' && kind !== 'boss';
   const vigBase = preBoss ? 'rgba(30, 4, 6, ' : (pal.vignetteBase || 'rgba(4, 4, 8, ');
-  // During intros: use the light (non-boss) vignette so the portrait pops.
-  const vigStrength = introActiveNow ? 0.32 : (kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48);
-  const cx = canvas.width / 2, cy = canvas.height / 2;
-  const vigInner = Math.min(canvas.width, canvas.height) * 0.28;
-  const vigOuter = Math.max(canvas.width, canvas.height) * 0.72;
-  const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
-  vig.addColorStop(0,    vigBase + '0)');
-  vig.addColorStop(0.55, vigBase + (vigStrength * 0.25).toFixed(3) + ')');
-  vig.addColorStop(1,    vigBase + vigStrength.toFixed(3) + ')');
-  ctx.fillStyle = vig;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!introActiveNow) {
+    // Darkness layer — edges are dim, center is ALMOST full-bright.
+    const darkAmount = kind === 'boss' ? 0.70 : 0.45;
+    const darkInner  = kind === 'boss' ? 260 : 340;
+    const darkOuter  = kind === 'boss' ? 620 : 760;
+    const dark = ctx.createRadialGradient(hsx, hsy, darkInner, hsx, hsy, darkOuter);
+    dark.addColorStop(0, 'rgba(6, 4, 10, 0)');
+    dark.addColorStop(0.7, 'rgba(6, 4, 10, ' + (darkAmount * 0.4).toFixed(2) + ')');
+    dark.addColorStop(1, 'rgba(6, 4, 10, ' + darkAmount.toFixed(2) + ')');
+    ctx.fillStyle = dark;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // SCREEN-SPACE VIGNETTE — always-on dim corners, biome-tinted.
+    const vigStrength = kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48;
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const vigInner = Math.min(canvas.width, canvas.height) * 0.28;
+    const vigOuter = Math.max(canvas.width, canvas.height) * 0.72;
+    const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
+    vig.addColorStop(0,    vigBase + '0)');
+    vig.addColorStop(0.55, vigBase + (vigStrength * 0.25).toFixed(3) + ')');
+    vig.addColorStop(1,    vigBase + vigStrength.toFixed(3) + ')');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
   // Very subtle warm tint — just warms the center a touch, no halo-looking light
   ctx.save();
@@ -5347,22 +5348,33 @@ function render() {
       const pxOff = -(1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
       const px = w * 0.28 - pw / 2 + pxOff;
       const py = h / 2 - ph / 2;
+
+      // PRE-RENDERED GLOW — radial red-gold halo drawn BEFORE the portrait
+      // instead of via ctx.shadowBlur on drawImage. Canvas 2D shadow on
+      // drawImage is known to visibly darken the image on Chrome/Edge
+      // (shadow+image rasterize into a temp buffer with reduced alpha),
+      // which was the persistent "boss intro looks black" playtest bug.
+      // A separate radial gradient fillRect gives the same visual glow
+      // with no platform-specific darkening.
       ctx.save();
       ctx.globalAlpha = introAlpha;
-      // Soft red-gold glow behind the portrait — signals threat without
-      // washing the painting. Slightly stronger on fallback sprites so they
-      // read as dramatic despite being low-res.
-      ctx.shadowColor = 'rgba(220, 60, 60, 0.55)';
-      ctx.shadowBlur = usingFallback ? 48 : 34;
+      const glowR = Math.max(pw, ph) * 0.72;
+      const gcx = px + pw / 2, gcy = py + ph / 2;
+      const glow = ctx.createRadialGradient(gcx, gcy, glowR * 0.3, gcx, gcy, glowR);
+      glow.addColorStop(0,   'rgba(220, 60, 60, 0.45)');
+      glow.addColorStop(0.55,'rgba(220, 60, 60, 0.18)');
+      glow.addColorStop(1,   'rgba(220, 60, 60, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(gcx - glowR, gcy - glowR, glowR * 2, glowR * 2);
+
+      // Portrait itself — NO shadowBlur. Just drawImage cleanly.
       if (usingFallback) {
-        // Draw the first frame cropped from the sprite strip.
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(portraitImg, 0, 0, 100, 100, px, py, pw, ph);
         ctx.imageSmoothingEnabled = true;
       } else {
         ctx.drawImage(portraitImg, px, py, pw, ph);
       }
-      ctx.shadowBlur = 0;
       ctx.restore();
     }
 
@@ -5390,12 +5402,19 @@ function render() {
     ctx.fillRect(nx + tw / 2 + 49, ny - 16, 5, 7);
     ctx.fillRect(nx - tw / 2 - 54, ny + 30, 5, 7);
     ctx.fillRect(nx + tw / 2 + 49, ny + 30, 5, 7);
-    // Name text — deep shadow + glow
-    ctx.shadowColor = 'rgba(220, 40, 50, 0.7)';
-    ctx.shadowBlur = 20;
+    // Name text — deep red stroke + cream fill. Avoids shadowBlur-on-text
+    // which, like shadowBlur-on-drawImage, can appear dim on certain browser
+    // rendering paths. Stroke gives the same "hot outline" read without the
+    // platform-specific dimming.
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(140, 20, 30, 0.9)';
+    ctx.lineWidth = 6;
+    ctx.strokeText(name, nx, ny + 8);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(220, 60, 70, 0.85)';
+    ctx.strokeText(name, nx, ny + 8);
     ctx.fillStyle = '#ffe0d0';
     ctx.fillText(name, nx, ny + 8);
-    ctx.shadowBlur = 0;
     // Subtitle with threat descriptor
     const sub = bossIntroBoss._enraged
       ? '— AWAKENED —'
