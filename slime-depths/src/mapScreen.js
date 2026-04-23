@@ -82,6 +82,12 @@ function ensureMapEl() {
 // Compute node screen positions. Returns Map<nodeId, {x,y}>.
 // Layer 0 at bottom of the canvas area, highest layer at top. Nodes in a
 // layer are spread around center with a fixed gap.
+//
+// Tighter than the original pass: vertical spread uses ~76% of the canvas
+// (was full minus 160px) so lone-node layers don't feel stranded, and the
+// horizontal cap is lower so 3-node layers don't sprawl visibly wider than
+// 2-node layers. Net effect: the graph reads as one connected shape rather
+// than a scattered constellation.
 function computeLayout(graph, canvasW, canvasH) {
   const layers = {};
   for (const n of graph.nodes) {
@@ -89,15 +95,16 @@ function computeLayout(graph, canvasW, canvasH) {
     layers[n.layer].push(n);
   }
   const maxLayer = graph.maxLayer;
-  const usableH = canvasH - 160;   // reserve top for title, bottom for hint
-  const layerGap = usableH / (maxLayer + 1);
+  const usableH = Math.min(canvasH - 200, canvasH * 0.76);
+  const topY = (canvasH - usableH) / 2 + 46;         // center the map vertically
+  const layerGap = usableH / Math.max(1, maxLayer);  // evenly span START→BOSS
   const pos = new Map();
   for (const layerStr in layers) {
     const layer = parseInt(layerStr, 10);
     const layerNodes = layers[layer];
     // y: layer 0 at bottom (large y), boss layer at top (small y)
-    const y = 100 + (maxLayer - layer) * layerGap;
-    const spread = Math.min(520, canvasW * 0.55);  // total horizontal span
+    const y = topY + (maxLayer - layer) * layerGap;
+    const spread = Math.min(440, canvasW * 0.46);    // tighter than before
     const step = layerNodes.length > 1 ? spread / (layerNodes.length - 1) : 0;
     const startX = canvasW / 2 - (step * (layerNodes.length - 1)) / 2;
     layerNodes.forEach((n, i) => {
@@ -108,8 +115,32 @@ function computeLayout(graph, canvasW, canvasH) {
 }
 
 function renderSVGEdges(graph, pos, currentNode) {
-  const reachable = new Set(currentNode ? currentNode.edges : []);
   const lines = [];
+
+  // SPINE — a faint vertical line through START→BOSS. Gives the whole graph
+  // a visual backbone so lone-node layers (SANCTUARY, BOSS) feel anchored
+  // instead of stranded. Drawn first so it sits behind every edge.
+  const startNode = graph.nodes.find(n => n.kind === 'start');
+  const bossNode = graph.nodes.find(n => n.kind === 'boss');
+  if (startNode && bossNode) {
+    const sp = pos.get(startNode.id);
+    const bp = pos.get(bossNode.id);
+    if (sp && bp) {
+      lines.push(
+        `<defs>
+           <linearGradient id="mapSpine" x1="0" y1="0" x2="0" y2="1">
+             <stop offset="0%" stop-color="#c9a86a" stop-opacity="0.0"/>
+             <stop offset="30%" stop-color="#c9a86a" stop-opacity="0.18"/>
+             <stop offset="70%" stop-color="#c9a86a" stop-opacity="0.18"/>
+             <stop offset="100%" stop-color="#c9a86a" stop-opacity="0.0"/>
+           </linearGradient>
+         </defs>
+         <line x1="${sp.x}" y1="${sp.y}" x2="${bp.x}" y2="${bp.y}"
+               stroke="url(#mapSpine)" stroke-width="1.5"/>`
+      );
+    }
+  }
+
   for (const n of graph.nodes) {
     const from = pos.get(n.id);
     if (!from) continue;
@@ -146,20 +177,35 @@ function renderNode(n, p, currentNode) {
   const cursor = clickable ? 'pointer' : 'default';
   const animation = clickable ? 'animation:mapNodePulse 2.2s ease-in-out infinite;' : '';
 
+  // Anchor nodes (START and BOSS) get a larger badge so the top and bottom
+  // of the graph read as destinations rather than "just another room."
+  // BOSS additionally gets an ambient glow so it reads as the goal even
+  // before it's reachable.
+  const isAnchor = n.kind === 'start' || n.kind === 'boss';
+  const badgeSize = isAnchor ? 54 : 44;
+  const glyphSize = isAnchor ? 26 : 22;
+  const wrapperSize = isAnchor ? 66 : 56;
+  const wrapOffset = wrapperSize / 2;
+  const bossGlow = n.kind === 'boss'
+    ? `box-shadow:0 0 22px ${color}55, inset 0 0 10px ${color}22;`
+    : '';
+  const currentGlow = isCurrent ? `box-shadow:0 0 18px ${color}88;` : '';
+
   return `
   <div data-node-id="${n.id}" class="floor-map-node" style="
-    position:absolute;left:${p.x - 28}px;top:${p.y - 28}px;width:56px;height:56px;
+    position:absolute;left:${p.x - wrapOffset}px;top:${p.y - wrapOffset}px;
+    width:${wrapperSize}px;height:${wrapperSize}px;
     display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;
     cursor:${cursor};opacity:${bgOpacity};transition:transform 0.18s ease, opacity 0.25s ease;
     ${animation}
   ">
     <div style="
-      width:44px;height:44px;border-radius:50%;
+      width:${badgeSize}px;height:${badgeSize}px;border-radius:50%;
       background:radial-gradient(circle,rgba(30,22,16,0.9),rgba(14,10,8,0.95));
       border:1.5px solid ${ring};
       display:flex;align-items:center;justify-content:center;
-      color:${color};font-size:22px;line-height:1;text-shadow:0 0 8px ${color}aa;
-      ${isCurrent ? 'box-shadow:0 0 18px ' + color + '88;' : ''}
+      color:${color};font-size:${glyphSize}px;line-height:1;text-shadow:0 0 8px ${color}aa;
+      ${currentGlow || bossGlow}
     ">${glyph}</div>
     <div style="
       color:${clickable || isCurrent ? color : '#6a5c48'};

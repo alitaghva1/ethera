@@ -14,7 +14,7 @@
      The @supports fallback below covers older WebKit / first-gen iPads by
      using explicit max-width / max-height in viewport units that mathematically
      preserve 16:9 (177.77vh = 16/9 * 100vh, 56.25vw = 9/16 * 100vw). */
-  canvas { display: block; background: #0a0810; image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 0 80px rgba(140, 60, 180, 0.15); max-width: 100vw; max-height: 100vh; width: 100vw; height: auto; aspect-ratio: 16 / 9; touch-action: none; }
+  canvas { display: block; cursor: none; background: #0a0810; image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 0 80px rgba(140, 60, 180, 0.15); max-width: 100vw; max-height: 100vh; width: 100vw; height: auto; aspect-ratio: 16 / 9; touch-action: none; }
   @media (min-aspect-ratio: 16/9) { canvas { width: auto; height: 100vh; } }
   /* Fallback for browsers without aspect-ratio support (Safari <15, older Chromium) */
   @supports not (aspect-ratio: 16 / 9) {
