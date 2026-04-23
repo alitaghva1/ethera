@@ -6104,6 +6104,26 @@ window.__forceGoto = (targetIdx) => {
   return { roomIndex, kind: floor[roomIndex]?.kind, enemies: enemies.length, heroPos: [hero.x|0, hero.y|0] };
 };
 
+// Debug: jump the hero straight into the boss room of the current floor.
+// Uses the actual graph → floor flow (so data.kind==='boss' fires the REAL
+// intro trigger + post-FX stack), unlike __testBossIntro which just sets
+// the intro variables without changing the room. Useful for verifying the
+// boss cinematic in-context without playing through.
+window.__jumpToBoss = () => {
+  if (!currentGraph) return { error: 'no graph — call __startRun first' };
+  const bossNode = currentGraph.nodes.find(n => n.kind === 'boss');
+  if (!bossNode) return { error: 'no boss node in graph' };
+  // Append boss roomData to the floor array + transition to its index.
+  const targetIdx = floor.length;
+  floor.push(bossNode.roomData);
+  currentNodeId = bossNode.id;
+  bossNode.current = true;
+  beginTransition(targetIdx, 'south');
+  updateTransition(0.4);
+  updateTransition(0.4);
+  return { ok: true, roomKind: floor[targetIdx]?.kind, roomIndex };
+};
+
 // Debug: test a boss intro render without playing through. Spawns a fake
 // boss of the requested type + sets the intro state so the next render
 // frame includes the cinematic.
