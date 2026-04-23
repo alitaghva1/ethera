@@ -229,6 +229,59 @@ export const FUSIONS = {
     icon: 'fusion_weaving_step',
     apply: (hero) => { hero.fusionWeavingStep = true; },
   },
+
+  // ==========================================================================
+  // APRIL 2026 EXPANSION — 4 new fusions built on the new relic bank.
+  // Each amplifies a distinctive mechanic from its components.
+  // ==========================================================================
+
+  // Reflected damage crits on return — doubles the retaliation punch.
+  shatterpoint: {
+    id: 'shatterpoint',
+    components: ['mirror_shard', 'counterstrike'],
+    name: 'Shatterpoint',
+    desc: 'Reflected damage from Mirror Shard always crits (×2.5)',
+    flavor: 'What struck twice was struck once in return — always.',
+    tint: '#ccd8f0',
+    icon: 'fusion_shatterpoint',
+    apply: (hero) => { hero.fusionShatterpoint = true; hero.mirrorReflect = 0.20; hero.mirrorReflectCrit = 2.5; },
+  },
+  // Amplifies Hymn of Embers — wider radius + burn-over-time on enemies
+  // struck by the aura.
+  wildfire_choir: {
+    id: 'wildfire_choir',
+    components: ['hymn_of_embers', 'pyromancer'],
+    name: 'Wildfire Choir',
+    desc: 'Hymn radius +50% and aura damage applies a 1/s burn for 2s',
+    flavor: 'The choir sings three names at once. All of them yours.',
+    tint: '#ff9040',
+    icon: 'fusion_wildfire_choir',
+    apply: (hero) => { hero.fusionWildfireChoir = true; hero.hymnRadius = 120; },
+  },
+  // Martyr Bloom — lifesteal doubles while in the Marrow Pact danger zone.
+  // Rewards staying in the red for sustained aggression.
+  martyr_bloom: {
+    id: 'martyr_bloom',
+    components: ['marrow_pact', 'vampiric_aura'],
+    name: 'Martyr Bloom',
+    desc: 'Lifesteal gains are doubled while at or below 50% HP',
+    flavor: 'The rose grows brightest in shallow soil.',
+    tint: '#d85060',
+    icon: 'fusion_martyr_bloom',
+    apply: (hero) => { hero.fusionMartyrBloom = true; },
+  },
+  // Stormveil — Stormcaller strikes twice as fast during Whisper Veil's
+  // post-dodge window. Rewards dodge-aggressive play.
+  stormveil: {
+    id: 'stormveil',
+    components: ['stormcaller', 'whisper_veil'],
+    name: 'Stormveil',
+    desc: 'Stormcaller strikes twice as often during Whisper Veil window',
+    flavor: 'The storm walks with her, step for step, silent.',
+    tint: '#8098d8',
+    icon: 'fusion_stormveil',
+    apply: (hero) => { hero.fusionStormveil = true; },
+  },
 };
 
 // Build a map of pair-key → fusionId for quick lookup

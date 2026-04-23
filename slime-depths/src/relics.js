@@ -399,6 +399,132 @@ export const RELIC_DEFS = {
     tier: 'common',
     apply: () => { hero.secondWind = true; },
   },
+
+  // ==========================================================================
+  // APRIL 2026 CONTENT EXPANSION — 10 new relics built from the icon bank.
+  // Mechanics chosen to fill gaps in the existing palette: reflect/retaliation,
+  // on-kill AOE, low-HP scaling, gold economy, aura DoT, dodge-based tempo.
+  // ==========================================================================
+
+  // Damage reflection — retaliation identity. Pairs with Counterstrike
+  // (fusion_shatterpoint) for crit-reflection builds.
+  mirror_shard: {
+    id: 'mirror_shard',
+    name: 'Mirror Shard',
+    desc: 'Reflect 20% of damage taken back to the attacker',
+    flavor: 'It only shows what struck it last.',
+    icon: 'relic_mirror_shard',
+    tint: '#d8e8ff',
+    tier: 'common',
+    apply: () => { hero.mirrorShard = true; hero.mirrorReflect = 0.20; },
+  },
+  // On-kill area splash — turns every kill into a tiny second strike.
+  spore_bloom: {
+    id: 'spore_bloom',
+    name: 'Spore Bloom',
+    desc: 'Kills release a spore burst dealing 3 damage in an 80px radius',
+    flavor: 'Something feeds on what you end.',
+    icon: 'relic_spore_bloom',
+    tint: '#a0e868',
+    tier: 'common',
+    apply: () => { hero.sporeBloom = true; hero.sporeDamage = 3; hero.sporeRadius = 80; },
+  },
+  // Counter-ring on successful dodge — rewards aggressive positioning.
+  // Different from Bulwark (passive frontal) — this is an active retaliate.
+  oathshield: {
+    id: 'oathshield',
+    name: 'Oathshield',
+    desc: 'After dodging, your next hit within 1s deals +50% damage',
+    flavor: 'The vow was simple. The blade remembered it.',
+    icon: 'relic_oathshield',
+    tint: '#9ab0c8',
+    tier: 'common',
+    apply: () => { hero.oathshield = true; hero.oathshieldBonus = 0.5; },
+  },
+
+  // Rare-tier additions
+  // Chain splash — every 4th swing clips a second nearby foe. Rewards
+  // crowd positioning and favors dense rooms.
+  arcane_quiver: {
+    id: 'arcane_quiver',
+    name: 'Arcane Quiver',
+    desc: 'Every 4th melee hit splashes to one nearby enemy for 40% damage',
+    flavor: 'The string that draws itself.',
+    icon: 'relic_arcane_quiver',
+    tint: '#c8a0ff',
+    tier: 'rare',
+    apply: () => { hero.arcaneQuiver = true; },
+  },
+  // Low-HP scaling — rewards staying in the red instead of healing up.
+  marrow_pact: {
+    id: 'marrow_pact',
+    name: 'Marrow Pact',
+    desc: 'At or below 50% HP, your damage dealt is +40%',
+    flavor: 'Your bones bargain well.',
+    icon: 'relic_marrow_pact',
+    tint: '#d85858',
+    tier: 'rare',
+    apply: () => { hero.marrowPact = true; hero.marrowPactBonus = 0.4; },
+  },
+  // Gold economy — multiplies all gold pickups. High synergy with the
+  // between-floor shop and the Purse of Depths meta unlock.
+  gilded_hoard: {
+    id: 'gilded_hoard',
+    name: 'Gilded Hoard',
+    desc: '+30% gold from all sources',
+    flavor: 'The chalice never empties; it remembers what was poured.',
+    icon: 'relic_gilded_hoard',
+    tint: '#f4d9a0',
+    tier: 'rare',
+    apply: () => { hero.gildedHoard = true; hero.goldMul = (hero.goldMul || 1) * 1.3; },
+  },
+  // Ambient fire aura — passive DPS while moving through combat rooms.
+  hymn_of_embers: {
+    id: 'hymn_of_embers',
+    name: 'Hymn of Embers',
+    desc: 'Enemies within 80px take 2 damage per second',
+    flavor: 'The choir sings low. The air forgets how to cool.',
+    icon: 'relic_hymn_of_embers',
+    tint: '#ffaa58',
+    tier: 'rare',
+    apply: () => { hero.hymnOfEmbers = true; hero.hymnRadius = 80; hero.hymnDps = 2; },
+  },
+
+  // Legendary-tier additions
+  // Slow-mo on perfect dodge — rewards frame-tight play with stylish payoff.
+  temporal_eye: {
+    id: 'temporal_eye',
+    name: 'Temporal Eye',
+    desc: 'Perfect dodges trigger 0.35s of slow-motion',
+    flavor: 'The sand stops for those who see it falling.',
+    icon: 'relic_temporal_eye',
+    tint: '#a8e0e8',
+    tier: 'legendary',
+    apply: () => { hero.temporalEye = true; hero.temporalSlowDuration = 0.35; },
+  },
+  // Post-dodge crit window — the next hit after a dodge is a guaranteed crit.
+  // Pairs with mobility-focused builds (nimble_step, gale_step).
+  whisper_veil: {
+    id: 'whisper_veil',
+    name: 'Whisper Veil',
+    desc: 'For 0.5s after a dodge, your next hit is a guaranteed crit',
+    flavor: 'She is the space the ruin forgot to fill.',
+    icon: 'relic_whisper_veil',
+    tint: '#8058c8',
+    tier: 'legendary',
+    apply: () => { hero.whisperVeil = true; hero.whisperVeilWindow = 0.5; },
+  },
+  // Periodic lightning — ambient offensive that scales with room density.
+  stormcaller: {
+    id: 'stormcaller',
+    name: 'Stormcaller',
+    desc: 'Every 1.5s, strike the nearest enemy within 220px for 8 damage',
+    flavor: 'The cloud remembers every name it has spoken.',
+    icon: 'relic_stormcaller',
+    tint: '#80c8ff',
+    tier: 'legendary',
+    apply: () => { hero.stormcaller = true; hero.stormcallerInterval = 1.5; hero.stormcallerDamage = 8; hero.stormcallerRange = 220; },
+  },
 };
 
 export const ALL_RELIC_IDS = Object.keys(RELIC_DEFS);

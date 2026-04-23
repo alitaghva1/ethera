@@ -232,6 +232,21 @@ export function resetHero() {
   hero.dashStrikeCD = 0;
   hero.dashStrikeTime = 0;
   hero.dashStrikeHit.clear();
+  // April 2026 content expansion — new relic/fusion state flags.
+  hero.mirrorShard = false;       hero.mirrorReflect = 0;     hero.mirrorReflectCrit = 1;
+  hero.sporeBloom = false;        hero.sporeDamage = 0;       hero.sporeRadius = 0;
+  hero.oathshield = false;        hero.oathshieldBonus = 0;   hero.oathshieldUntil = 0;
+  hero.arcaneQuiver = false;      hero.arcaneQuiverHits = 0;
+  hero.marrowPact = false;        hero.marrowPactBonus = 0;
+  hero.gildedHoard = false;       hero.goldMul = 1;
+  hero.hymnOfEmbers = false;      hero.hymnRadius = 0;        hero.hymnDps = 0;         hero.hymnTick = 0;
+  hero.temporalEye = false;       hero.temporalSlowDuration = 0;
+  hero.whisperVeil = false;       hero.whisperVeilWindow = 0; hero.whisperVeilUntil = 0; hero.whisperVeilNextCrit = false;
+  hero.stormcaller = false;       hero.stormcallerInterval = 0; hero.stormcallerDamage = 0; hero.stormcallerRange = 0; hero.stormcallerTick = 0;
+  hero.fusionShatterpoint = false;
+  hero.fusionWildfireChoir = false;
+  hero.fusionMartyrBloom = false;
+  hero.fusionStormveil = false;
 }
 
 function setState(s) {
@@ -289,6 +304,47 @@ export function updateHero(dt, enemies, mouseWorld) {
     if (hero.regenCD <= 0) {
       hero.hp = Math.min(hero.maxHp, hero.hp + 1);
       hero.regenCD = 1 / hero.regenRate;
+    }
+  }
+
+  // HYMN OF EMBERS — passive fire aura. Ticks every 1s for hymnDps damage to
+  // every enemy within hymnRadius. Fusion Wildfire Choir bumps the radius
+  // (handled in apply:) and could add a burn-over-time (TODO follow-up round).
+  if (hero.hymnOfEmbers && enemies) {
+    hero.hymnTick -= dt;
+    if (hero.hymnTick <= 0) {
+      hero.hymnTick = 1.0;
+      const r2 = hero.hymnRadius * hero.hymnRadius;
+      for (const e of enemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const dx = e.x - hero.x, dy = e.y - hero.y;
+        if (dx * dx + dy * dy <= r2) {
+          e.takeDamage(hero.hymnDps, 0, 0);
+        }
+      }
+    }
+  }
+  // STORMCALLER — periodic strike on the nearest enemy in range.
+  if (hero.stormcaller && enemies) {
+    hero.stormcallerTick -= dt;
+    if (hero.stormcallerTick <= 0) {
+      hero.stormcallerTick = hero.stormcallerInterval;
+      // Stormveil fusion doubles the strike rate during Whisper Veil's window.
+      if (hero.fusionStormveil && hero.whisperVeilNextCrit) {
+        hero.stormcallerTick = hero.stormcallerInterval * 0.5;
+      }
+      let nearest = null, nearestD = hero.stormcallerRange;
+      for (const e of enemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const d = Math.hypot(e.x - hero.x, e.y - hero.y);
+        if (d < nearestD) { nearest = e; nearestD = d; }
+      }
+      if (nearest) {
+        nearest.takeDamage(hero.stormcallerDamage, 0, 0);
+        // Small visual cue — reuse the sparkle particle for a flash at the target.
+        sparkle(nearest.x, nearest.y - 8, '#80c8ff');
+        sparkle(nearest.x, nearest.y - 2, '#ffffff');
+      }
     }
   }
 
@@ -749,6 +805,21 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (isCounter) finalDmg *= (hero.counterstrike ? 2.0 : 1.5);
           // BLOODRITE — +15% damage while below 50% HP
           if (hero.bloodrite && hero.hp < hero.maxHp * 0.5) finalDmg *= 1.15;
+          // MARROW PACT — +40% damage at or below 50% HP. Stacks with Bloodrite.
+          if (hero.marrowPact && hero.hp <= hero.maxHp * 0.5) finalDmg *= (1 + hero.marrowPactBonus);
+          // OATHSHIELD / WHISPER VEIL — both open a post-dodge window.
+          const _hnow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+          if (hero.oathshield && _hnow < hero.oathshieldUntil) {
+            finalDmg *= (1 + hero.oathshieldBonus);
+            hero.oathshieldUntil = 0;    // consumed
+          }
+          if (hero.whisperVeilNextCrit && _hnow < hero.whisperVeilUntil) {
+            hero.whisperVeilNextCrit = false;
+            if (!isCrit) { finalDmg *= hero.critMul; }
+          } else if (hero.whisperVeilNextCrit && _hnow >= hero.whisperVeilUntil) {
+            // Window expired without consuming — clear so it doesn't linger.
+            hero.whisperVeilNextCrit = false;
+          }
           // CHARGE ATTACK — guaranteed crit vibe: 1.85x dmg + forces isCrit for VFX
           const chargedHit = hero._swingIsCharged;
           if (chargedHit) finalDmg *= 1.85;
@@ -845,6 +916,11 @@ export function updateHero(dt, enemies, mouseWorld) {
               const missingFrac = 1 - (hero.hp / hero.maxHp);
               lsRate *= 1 + missingFrac * 3;          // 1× at full, 4× at 0 HP
             }
+            // FUSION: Martyr Bloom — lifesteal doubles while at or below 50% HP.
+            // Stacks with Blood Moon for high-risk vampiric builds.
+            if (hero.fusionMartyrBloom && hero.hp <= hero.maxHp * 0.5) {
+              lsRate *= 2;
+            }
             hero._lifestealCarry = (hero._lifestealCarry || 0) + finalDmg * lsRate;
             if (hero._lifestealCarry >= 1) {
               const whole = Math.floor(hero._lifestealCarry);
@@ -929,6 +1005,18 @@ export function damageHero(amount, fromX, fromY) {
     // letting expert play chain perfect-dodges indefinitely. Pairs great
     // with counterstrike (explosion every counter-hit).
     if (hero.perfectDodgeRefund) hero.dodgeCooldown = 0;
+    // TEMPORAL EYE — brief slow-motion on perfect dodge. Uses the
+    // hit-stop pipeline already wired in fx.js (drives getTimeScale()).
+    if (hero.temporalEye) { triggerHitStop(hero.temporalSlowDuration || 0.35); }
+    // WHISPER VEIL — open a post-dodge window where the next hit is a crit.
+    if (hero.whisperVeil) {
+      hero.whisperVeilUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + hero.whisperVeilWindow : 0;
+      hero.whisperVeilNextCrit = true;
+    }
+    // OATHSHIELD — next hit within 1s deals +50% damage.
+    if (hero.oathshield) {
+      hero.oathshieldUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + 1.0 : 0;
+    }
     return 'perfect';
   }
   // SYSTEMS PASS — BULWARK: damage from within the frontal arc (aim-facing

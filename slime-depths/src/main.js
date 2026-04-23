@@ -2457,16 +2457,9 @@ function showMainMenu() {
       modEl.style.opacity = '0';
     }
   }
-  // Legacy hidden indicator — kept for anything still referencing it
+  // Legacy hidden indicator — kept at empty string for anything still reading it.
   const indEl = document.getElementById('menuCurseIndicator');
   if (indEl) indEl.textContent = '';
-  /* legacy block guarded behind false — corner button replaces this.
-  if (false && count > 0) {
-    indEl.textContent = '☠ ' + count + ' curse' + (count > 1 ? 's' : '') + ' active · ✨ ' + curseEssenceMul().toFixed(2) + 'x reward ☠';
-  } else {
-    indEl.textContent = '';
-  }
-  */
   // Lifetime records — reframed as italic manuscript flavor instead of a bare
   // stats line. "9 runs" becomes "you have descended nine times · the ruin
   // remembers." which sells the world rather than just surfacing a number.
