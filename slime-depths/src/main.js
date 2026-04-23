@@ -166,7 +166,18 @@ deathEl.style.flexDirection = 'column';
 deathEl.style.padding = '20px';
 deathEl.style.boxSizing = 'border-box';
 deathEl.innerHTML = DEATH_SCREEN_HTML;
-document.getElementById('restartBtn').addEventListener('click', () => startRun());
+// restartBtn is shared between the real death-screen ("NEW RUN") and the
+// sanctuary-opened-from-hamlet ("← MAIN MENU") re-skins. The sanctuary re-
+// skins override btn.onclick, but this addEventListener stays attached and
+// would fire startRun() alongside the override — playing the prologue while
+// the override simultaneously returns to hamlet. `_restartBtnOverridden` is
+// set by showSanctuary / showSanctuaryFromHamlet to suppress startRun when
+// the button is in overlay-exit mode instead of actual-new-run mode.
+let _restartBtnOverridden = false;
+document.getElementById('restartBtn').addEventListener('click', () => {
+  if (_restartBtnOverridden) return;
+  startRun();
+});
 
 // Between-floor + victory screen — includes a shop row between floors.
 // Ornamented dramatic screen matching the main-menu aesthetic.
@@ -1775,9 +1786,13 @@ function showWandererGift() {
 
 function showSanctuaryFromHamlet() {
   showSanctuary();
-  // Re-bind the restart button to return to hamlet on click
+  // Re-bind the restart button to return to hamlet on click. The override
+  // flag keeps the module-level addEventListener from ALSO firing startRun
+  // alongside this handler (that race caused the "farewell → prologue +
+  // back to hamlet" bug).
+  _restartBtnOverridden = true;
   const btn = document.getElementById('restartBtn');
-  btn.onclick = () => { btn.onclick = null; showHamlet(); };
+  btn.onclick = () => { _restartBtnOverridden = false; btn.onclick = null; showHamlet(); };
 }
 
 function showMemoryFromHamlet() {
@@ -2685,9 +2700,12 @@ function showSanctuary() {
   document.getElementById('endEssence').textContent = '✨ ' + meta.essence + ' essence banked';
   renderMetaShop(true);
   document.getElementById('restartBtn').textContent = '← MAIN MENU';
-  // Re-bind restart to route to main menu instead of a new run
+  // Re-bind restart to route to main menu instead of a new run. Flag
+  // suppresses the module-level addEventListener that would otherwise
+  // fire startRun() alongside this onclick.
+  _restartBtnOverridden = true;
   const btn = document.getElementById('restartBtn');
-  btn.onclick = () => { btn.onclick = null; showMainMenu(); };
+  btn.onclick = () => { _restartBtnOverridden = false; btn.onclick = null; showMainMenu(); };
   deathEl.style.display = 'flex';
 }
 
