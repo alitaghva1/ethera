@@ -3,7 +3,7 @@
 // on an unlabeled 6500-cell sheet. Drawing geometry gives a consistent dark
 // stone look tuned for the Slime Depths palette.
 
-import { setDustBiome, setWeatherBiome } from './particles.js?v=8';
+import { setDustBiome, setWeatherBiome } from './particles.js';
 
 export const TILE = 48;
 export const ROOM_W = 20;

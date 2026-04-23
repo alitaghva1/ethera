@@ -1,9 +1,9 @@
 // Enemy projectiles (arrows, fireballs, etc.). Fire-and-forget, pooled.
 import { isWallAtWorld } from './room.js';
 import { damageHero, hero } from './hero.js';
-import { shakeCamera } from './camera.js?v=2';
+import { shakeCamera } from './camera.js';
 import { playSfx } from './sfx.js';
-import { sparkle } from './particles.js?v=8';
+import { sparkle } from './particles.js';
 
 export const projectiles = [];
 const pool = [];

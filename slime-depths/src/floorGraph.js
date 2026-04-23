@@ -33,7 +33,7 @@ import {
   FLOOR_ENEMY_MULS,
   makeCombatRoom, makeEventRoom, makeAltarRoom, makeTroveRoom, makeChallengeRoom,
   makeBossSpawns,
-} from './floor.js?v=enemies3';
+} from './floor.js';
 import { ROOM_W, ROOM_H } from './room.js';
 
 // Elite chance per floor (mirrored from floor.js for now — can import later

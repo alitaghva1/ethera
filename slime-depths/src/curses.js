@@ -59,7 +59,7 @@ export const ALL_CURSE_IDS = Object.keys(CURSES);
 
 // Currently-active curses for this run (persists in localStorage across
 // sessions so the toggle survives page reloads; cleared on purpose by player).
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 const STORAGE_KEY = 'ethera:curses:v1';
 export const activeCurses = new Set();

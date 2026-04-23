@@ -3,10 +3,10 @@
 
 import { enemies } from './enemies.js';
 import { hero, damageHero } from './hero.js';
-import { shakeCamera } from './camera.js?v=2';
+import { shakeCamera } from './camera.js';
 import { playSfx } from './sfx.js';
-import { hitSpark, deathBurst } from './particles.js?v=8';
-import { spawnDamageNumber, triggerHitStop } from './fx.js?v=a11y1';
+import { hitSpark, deathBurst } from './particles.js';
+import { spawnDamageNumber, triggerHitStop } from './fx.js';
 
 // ======================================================================
 // CHAIN LIGHTNING — cyan zigzag arc between two enemies

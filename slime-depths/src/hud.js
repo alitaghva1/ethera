@@ -1,13 +1,13 @@
 // HUD — health hearts, room progress, relic icons
 import { hero } from './hero.js';
 import { enemies } from './enemies.js';
-import { images } from './loader.js?v=enemies3';
+import { images } from './loader.js';
 import { mouse } from './input.js';
 import { activeFusions } from './fusions.js';
 import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { getRelicGlyph } from './relics.js';
-import { drawRelicIcon } from './fx.js?v=a11y1';
+import { drawRelicIcon } from './fx.js';
 
 function toRoman(n) {
   return n === 1 ? 'I' : n === 2 ? 'II' : n === 3 ? 'III' : n === 4 ? 'IV' : n === 5 ? 'V' : String(n);

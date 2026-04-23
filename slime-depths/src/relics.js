@@ -562,7 +562,7 @@ import { checkFusionsOnPickup, clearFusions } from './fusions.js';
 
 // Persistent "ever seen" set — drives the Chronicles relicpedia. Every relic
 // the player has ever picked up gets stored here across runs.
-import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js';
 
 const RELIC_SEEN_KEY = 'ethera:seen_relics:v1';
 export const seenRelicIds = new Set();

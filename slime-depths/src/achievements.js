@@ -1,6 +1,6 @@
 // Achievements — milestones tracked across runs. Unlocks show as popups.
 // Persists via localStorage.
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 const STORAGE_KEY = 'ethera:achievements:v1';
 

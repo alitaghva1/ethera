@@ -1,11 +1,11 @@
 // Hero controller — top-down movement, directional attack, dodge roll
-import { images } from './loader.js?v=enemies3';
+import { images } from './loader.js';
 import { keys, mouse, keyJustPressed } from './input.js';
 import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches } from './room.js';
-import { hitSpark, dashTrail, footPuff, landingBurst, killRing } from './particles.js?v=8';
-import { shakeCamera, pulseZoom } from './camera.js?v=2';
-import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js?v=a11y1';
+import { hitSpark, dashTrail, footPuff, landingBurst, killRing } from './particles.js';
+import { shakeCamera, pulseZoom } from './camera.js';
+import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
 import { stats } from './stats.js';
 import { WEAPONS } from './weapons.js';
 import {
@@ -16,7 +16,7 @@ import {
 } from './synergies.js';
 import { spawnEmberFlame } from './enemies.js';
 import { dropGold } from './gold.js';
-import { deathBurst } from './particles.js?v=8';
+import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
 
 const SPR = 100;                  // Tiny RPG native frame size

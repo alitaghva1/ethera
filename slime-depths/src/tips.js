@@ -1,7 +1,7 @@
 // Onboarding tips — show each tip at most once per player (persisted to localStorage).
 // Tips are triggered by gameplay events; they appear as a small top-center banner
 // with subtle slide-in + 5s auto-dismiss.
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 const KEY = 'ethera:seen_tips:v1';
 

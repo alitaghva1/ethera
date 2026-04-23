@@ -96,7 +96,7 @@ export const UNLOCKS = {
   },
 };
 
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 // Shape validator — plain object with the three known fields (any may be
 // absent in older saves; the normalizations below handle defaults).

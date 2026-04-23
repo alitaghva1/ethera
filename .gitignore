@@ -12,6 +12,10 @@ Desktop.ini
 _server.js
 _push.bat
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # IDE
 .vscode/
 .idea/

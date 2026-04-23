@@ -5,21 +5,21 @@
 // that reads localStorage at module-body time (currently none do —
 // all load funcs are lazy) would need to run after this.
 import { installProfilePrefix, getActiveProfileId, listProfiles, setActiveProfile, deleteProfile, profileLabel, PROFILE_IDS } from './profile.js';
-import { loadAll } from './loader.js?v=enemies3';
+import { loadAll } from './loader.js';
 import { initInput, mouse, endFrameInput } from './input.js';
-import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js?v=2';
+import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js';
 import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
   spawnExtraFirePool, room, TILE, roomTorches,
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom, ROOM_W, ROOM_H,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
 } from './room.js';
-import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS } from './floor.js?v=enemies3';
+import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
 // of a flat 7-room array. `floor` becomes a dynamic array built up as the
 // player commits to path nodes, which keeps all existing floor[roomIndex]
 // call sites working unchanged.
-import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js?v=graph2';
+import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js';
 import { openFloorMap } from './mapScreen.js';
 let currentGraph = null;
 let currentNodeId = null;
@@ -30,8 +30,8 @@ let _mapPickInFlight = false;
 import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
-import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, setWeatherBiome, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js?v=8';
-import { drawHud, updateHudAnims } from './hud.js?v=feedback1';
+import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, setWeatherBiome, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
+import { drawHud, updateHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
 import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats.js';
@@ -53,8 +53,8 @@ import {
 } from './pedestals.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js?v=a11y1';
-import { images as imageCache } from './loader.js?v=enemies3';
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
+import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
@@ -119,7 +119,7 @@ loadAscension();
 // tier's scalars.
 window.__ascensionModifiers = ascensionModifiers;
 // Storage health probe — surfaces a warning chip if localStorage is blocked.
-import { showStorageWarningIfBlocked } from './storage.js?v=save1';
+import { showStorageWarningIfBlocked } from './storage.js';
 showStorageWarningIfBlocked();
 
 // Global error boundary — catches uncaught exceptions and unhandled promise
@@ -134,8 +134,8 @@ installErrorBoundary();
 // fx.js's setHitStopScale. CSS-side animation suppression is handled by a
 // @media block in index.html.
 import { prefersReducedMotion } from './a11y.js';
-import { setShakeScale } from './camera.js?v=2';
-import { setHitStopScale } from './fx.js?v=a11y1';
+import { setShakeScale } from './camera.js';
+import { setHitStopScale } from './fx.js';
 if (prefersReducedMotion()) {
   setShakeScale(0.2);        // near-zero camera shake
   setHitStopScale(0.15);     // near-zero freeze-frames on impact

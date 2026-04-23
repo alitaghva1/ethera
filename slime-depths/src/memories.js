@@ -36,7 +36,7 @@ export let selectedMemoryId = null;   // null = no memory this run
 // Safe JSON wrapper — applied to the UNLOCKED set; selectedMemoryId stays
 // raw-string (no JSON) but still wrapped in its own try/catch since storage
 // access can throw in restricted contexts.
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 export function loadMemories() {
   try {

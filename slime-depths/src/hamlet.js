@@ -42,7 +42,7 @@ export const hamletState = {
   // growthStage: 0,    // kept commented; derived function below for now
 };
 
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 function _isHamletShape(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);

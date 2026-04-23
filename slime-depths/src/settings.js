@@ -3,7 +3,7 @@
 
 import { setMasterVolume } from './sfx.js';
 import { setMusicVolume } from './music.js';
-import { setShakeScale } from './camera.js?v=2';
+import { setShakeScale } from './camera.js';
 
 const KEY = 'ethera:settings:v1';
 
@@ -13,7 +13,7 @@ export const settings = {
   shakeScale: 1.0,          // 0-1.5 (multiplier applied to shakeCamera amplitude)
 };
 
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 function _isSettingsShape(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);

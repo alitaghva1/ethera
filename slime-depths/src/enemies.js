@@ -1,16 +1,16 @@
 // Enemies — Tiny RPG sprites (100x100). Types now include melee, ranged, and
 // explosive behaviors with attack telegraphs to make combat readable.
-import { images } from './loader.js?v=enemies3';
+import { images } from './loader.js';
 import { isWallAtWorld, spawnExtraFirePool } from './room.js';
-import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js?v=8';
+import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
-import { shakeCamera, pulseZoom } from './camera.js?v=2';
+import { shakeCamera, pulseZoom } from './camera.js';
 import { damageHero, hero } from './hero.js';
 import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
 import { stats } from './stats.js';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
-import { triggerScreenFlash } from './fx.js?v=a11y1';
+import { triggerScreenFlash } from './fx.js';
 
 // ============================================================================
 // ELITE AFFIXES — rolled on elite spawn (floors 2+). Each affix has a unique
@@ -414,7 +414,7 @@ export const seenEnemyTypes = new Set();
 
 // Codex persistence — safeLoadJSON imported from storage module.
 // Inlined import because enemies.js doesn't import from storage elsewhere.
-import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js';
 
 export function loadCodex() {
   const arr = _safeLoadJSON(CODEX_KEY, null, Array.isArray);

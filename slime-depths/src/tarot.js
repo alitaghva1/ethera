@@ -4,7 +4,7 @@
 //
 // MVP: 5 cards. The full Major Arcana (22) is the eventual target.
 
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 const KEY = 'ethera:tarot_seen:v1';
 

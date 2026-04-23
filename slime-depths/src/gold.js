@@ -3,7 +3,7 @@
 import { hero } from './hero.js';
 import { playSfx } from './sfx.js';
 import { stats } from './stats.js';
-import { sparkle, dashTrail } from './particles.js?v=8';
+import { sparkle, dashTrail } from './particles.js';
 import { synthPing } from './synth.js';
 
 export const gold = { total: 0, streak: 0, streakT: 0, streakFlashT: 0 };
