@@ -49,8 +49,8 @@ export const hamletState = {
 import { safeLoadJSON, safeSaveJSON } from './storage.js';
 // Milestone-triggered NPC dialogue reads from these at advance() time.
 // Read-only references — no state written back into those modules.
+// `meta` is already imported at the top of the file (line 29).
 import { records } from './records.js';
-import { meta } from './meta.js';
 import { seenRelicIds } from './relics.js';
 import { curseCount } from './curses.js';
 
