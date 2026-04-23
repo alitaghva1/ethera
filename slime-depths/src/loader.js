@@ -183,6 +183,14 @@ export async function loadAll(progressCb) {
     loadImage('fusion_spare_ring',      'assets/icons/fusion_spare_ring.png'),
     loadImage('fusion_spare_star',      'assets/icons/fusion_spare_star.png'),
 
+    // ZONE BACKDROPS — one painted backdrop per floor, used for the floor-
+    // intro title card + as the floor-map modal background. 1376x768 each,
+    // fits the 1280x720 canvas with slight overscan for edge motion.
+    loadImage('zone_undercroft',        'assets/backdrops/zone_undercroft.jpg'),
+    loadImage('zone_ruined_tower',      'assets/backdrops/zone_ruined_tower.jpg'),
+    loadImage('zone_spire',             'assets/backdrops/zone_spire.jpg'),
+    loadImage('zone_throne_of_ruin',    'assets/backdrops/zone_throne_of_ruin.jpg'),
+
     // APRIL 2026 ICON EXPANSION — 19 painted icons (Nano Banana) covering
     // the 5 relics/fusions that previously borrowed icons (now have dedicated
     // art) plus 14 NEW concept icons reserved for future mechanic design

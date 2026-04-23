@@ -334,12 +334,13 @@ let floorCardTime = 0;
 let floorCardRoman = '';
 let floorCardName = '';
 let floorCardFlavor = '';
+let floorCardBackdrop = '';
 
 const FLOOR_CARD_DATA = {
-  1: { roman: 'I',   name: 'THE UNDERCROFT', flavor: 'cold stone remembers the dead' },
-  2: { roman: 'II',  name: 'THE FORGOTTEN VAULT', flavor: 'where kings once feasted, rats now feast' },
-  3: { roman: 'III', name: 'THE ABYSS', flavor: 'the world has ended. something else begins.' },
-  4: { roman: 'IV',  name: 'THE INFERNO', flavor: 'the wound at the world\u2019s heart' },
+  1: { roman: 'I',   name: 'THE UNDERCROFT',    flavor: 'cold stone remembers the dead',         backdrop: 'zone_undercroft' },
+  2: { roman: 'II',  name: 'THE RUINED TOWER',  flavor: 'where kings once feasted, rats now feast', backdrop: 'zone_ruined_tower' },
+  3: { roman: 'III', name: 'THE SPIRE',         flavor: 'the world has ended. something else begins.', backdrop: 'zone_spire' },
+  4: { roman: 'IV',  name: 'THE THRONE OF RUIN', flavor: 'the wound at the world\u2019s heart',  backdrop: 'zone_throne_of_ruin' },
 };
 
 const DEATH_MESSAGES = [
@@ -1529,14 +1530,14 @@ const ORACLE_FORECAST = [
   { name: 'The Undercroft',      roman: 'I',   enemies: 'slimes, skeletons',
     bossLine: 'A captain in rusted armor, long unburied, waits in its heart.',
     tint: '#86e3a8' },
-  { name: 'The Forgotten Vault', roman: 'II',  enemies: 'orcs, archers, bone captains',
+  { name: 'The Ruined Tower',    roman: 'II',  enemies: 'orcs, archers, bone captains',
     bossLine: 'The iron king who refused to stop. Blue fire, broken crown.',
     tint: '#a0d8ff' },
-  { name: 'The Abyss',           roman: 'III', enemies: 'bonecaps, brood, lancers',
+  { name: 'The Spire',           roman: 'III', enemies: 'bonecaps, brood, lancers',
     bossLine: 'She waits in her webs. She has waited a very long time.',
     tint: '#d85a5a' },
-  { name: 'The Inferno',         roman: 'IV',  enemies: 'embers, priests, wizards',
-    bossLine: 'A volcano that learned the shape of a man.',
+  { name: 'The Throne of Ruin',  roman: 'IV',  enemies: 'priests, wizards, the Hermit',
+    bossLine: 'A throne that forgot it was empty. Red fire answers to its silence.',
     tint: '#ff8040' },
 ];
 
@@ -3160,10 +3161,11 @@ function loadRoom(idx, entryFrom) {
 const BIOME_BY_FLOOR = { 1: 'crypt', 2: 'vault', 3: 'abyss', 4: 'inferno' };
 
 function triggerFloorCard(level) {
-  const d = FLOOR_CARD_DATA[level] || { roman: '?', name: '???', flavor: '' };
+  const d = FLOOR_CARD_DATA[level] || { roman: '?', name: '???', flavor: '', backdrop: '' };
   floorCardRoman = d.roman;
   floorCardName = d.name;
   floorCardFlavor = d.flavor;
+  floorCardBackdrop = d.backdrop || '';
   floorCardTime = 3.2;
 }
 
@@ -5342,8 +5344,22 @@ function render() {
     else a = 1;
     a = Math.max(0, Math.min(1, a));
     ctx.save();
-    // Full-screen dark veil
-    ctx.fillStyle = 'rgba(8, 5, 12, ' + (a * 0.82).toFixed(3) + ')';
+    // Zone backdrop — painted scenery behind the veil. The backdrop fills
+    // the canvas and the dark veil above it fades to black at the edges,
+    // so the painting provides atmosphere without fighting the typography.
+    const _fcBackdrop = floorCardBackdrop ? imageCache[floorCardBackdrop] : null;
+    if (_fcBackdrop) {
+      ctx.globalAlpha = a;
+      // Draw full-bleed. Source is 1376x768, canvas is 1280x720 — slight
+      // overscan crops the outer edges, keeping the most-painted center.
+      ctx.drawImage(_fcBackdrop, 0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+    }
+    // Full-screen dark veil — lighter over the backdrop than it was on the
+    // pure-black version so the painting reads through. 0.82 -> 0.58 when
+    // a backdrop is present.
+    const _veilAlpha = _fcBackdrop ? a * 0.58 : a * 0.82;
+    ctx.fillStyle = 'rgba(8, 5, 12, ' + _veilAlpha.toFixed(3) + ')';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     // Biome-tinted swirl of particles behind the card text — 40 orbiting motes
     const biomeId = currentBiomePal()._biomeId || 'vault';
