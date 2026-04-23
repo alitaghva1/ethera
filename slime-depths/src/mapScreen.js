@@ -17,10 +17,11 @@
 // Card is the framed region the graph lives in. Sized to fit within the
 // 1280x720 game canvas with healthy breathing room above/below.
 const CARD_W = 780;
-const CARD_H = 580;
+const CARD_H = 620;
 // Graph area inside the card — reserves top for title, bottom for hint.
-const GRAPH_TOP_PAD = 98;   // below "FLOOR MAP" title
-const GRAPH_BOT_PAD = 60;   // above "click a glowing node" hint
+// Generous bottom pad so START's label clears the hint text cleanly.
+const GRAPH_TOP_PAD = 112;   // below "FLOOR MAP" title
+const GRAPH_BOT_PAD = 112;   // above "click a glowing node" hint
 
 // Glyphs per node kind. Single unicode char drawn inside a circular badge
 // so we don't need sprite art for the map.
@@ -34,9 +35,11 @@ const NODE_GLYPHS = {
 };
 
 // Per-kind accent color — legible against the card's dark gradient.
+// COMBAT is deliberately muted cream (not gold) so START stays the one
+// gold node on the map — anchors read as special, combats as routine.
 const NODE_COLORS = {
   start:     '#f4d9a0',
-  combat:    '#e8d4b4',
+  combat:    '#c8b894',
   elite:     '#e07070',
   event:     '#c8a0ff',
   sanctuary: '#86e3a8',
@@ -133,9 +136,9 @@ function renderSVG(graph, pos, currentNode) {
       const to = pos.get(eid);
       if (!to) continue;
       const active = currentNode && n.id === currentNode.id;
-      const stroke = active ? '#f4d9a0' : '#3a3020';
-      const width = active ? 2.2 : 1.2;
-      const op = n.visited ? 0.35 : active ? 0.95 : 0.75;
+      const stroke = active ? '#f4d9a0' : '#5a4a30';
+      const width = active ? 2.2 : 1.3;
+      const op = n.visited ? 0.35 : active ? 0.95 : 0.85;
       const midY = (from.y + to.y) / 2;
       const d = `M ${from.x} ${from.y} C ${from.x} ${midY} ${to.x} ${midY} ${to.x} ${to.y}`;
       // Active edges get a soft glow underlay for emphasis.
@@ -253,10 +256,10 @@ function renderNode(n, p, currentNode) {
       ${currentGlow || s.extraShadow}
     ">${glyph}</div>
     <div style="
-      color:${clickable || isCurrent ? color : '#6a5c48'};
-      font-size:8px;letter-spacing:2.5px;font-weight:bold;
-      opacity:${clickable || isCurrent ? 0.92 : 0.4};
-      font-family:Georgia,serif;
+      color:${clickable || isCurrent ? color : '#8a7c5e'};
+      font-size:9.5px;letter-spacing:2.2px;font-weight:bold;
+      opacity:${clickable || isCurrent ? 0.95 : 0.65};
+      font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
     ">${NODE_LABELS[n.kind] || ''}</div>
   </div>`;
 }
