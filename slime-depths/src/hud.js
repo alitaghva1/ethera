@@ -647,32 +647,44 @@ export function drawHud(ctx, w, h, progress = {}) {
     for (let i = 0; i < progress.relics.length; i++) {
       const r = progress.relics[i];
       const x = 16 + i * (icSize + gap);
-      // Rarity glow — pulsing halo for rare/legendary relics
-      if (r.tier === 'legendary' || r.tier === 'rare') {
-        const pulse = 0.5 + 0.5 * Math.sin(now * (r.tier === 'legendary' ? 2.8 : 1.9) + i * 0.5);
-        const glowA = (r.tier === 'legendary' ? 0.4 : 0.22) * pulse;
-        const glowR = r.tier === 'legendary' ? 14 : 9;
+      // Rarity glow — pulsing halo for rare/legendary/mythic relics
+      if (r.tier === 'mythic' || r.tier === 'legendary' || r.tier === 'rare') {
+        const pulseRate = r.tier === 'mythic' ? 3.5 : r.tier === 'legendary' ? 2.8 : 1.9;
+        const pulse = 0.5 + 0.5 * Math.sin(now * pulseRate + i * 0.5);
+        const glowA = (r.tier === 'mythic' ? 0.6 : r.tier === 'legendary' ? 0.4 : 0.22) * pulse;
+        const glowR = r.tier === 'mythic' ? 20 : r.tier === 'legendary' ? 14 : 9;
         const grad = ctx.createRadialGradient(x + icSize/2, y0 + icSize/2, 4, x + icSize/2, y0 + icSize/2, glowR);
         grad.addColorStop(0, hudHexToRgba(r.tint || '#ffffff', glowA));
         grad.addColorStop(1, hudHexToRgba(r.tint || '#ffffff', 0));
         ctx.fillStyle = grad;
-        ctx.fillRect(x - 8, y0 - 8, icSize + 16, icSize + 16);
+        ctx.fillRect(x - 12, y0 - 12, icSize + 24, icSize + 24);
       }
       // Backdrop with the relic's tint
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(x, y0, icSize, icSize);
       ctx.strokeStyle = r.tint || '#ffffff';
-      ctx.lineWidth = r.tier === 'legendary' ? 1.8 : 1.2;
+      ctx.lineWidth = r.tier === 'mythic' ? 2.2 : r.tier === 'legendary' ? 1.8 : 1.2;
       ctx.strokeRect(x + 0.5, y0 + 0.5, icSize - 1, icSize - 1);
+      // Mythic gets a second outer frame in white — double-frame signature
+      if (r.tier === 'mythic') {
+        const mythPulse = 0.6 + 0.4 * Math.sin(now * 3 + i * 0.3);
+        ctx.strokeStyle = `rgba(255, 242, 224, ${mythPulse.toFixed(3)})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - 2.5, y0 - 2.5, icSize + 5, icSize + 5);
+      }
       const ic = images[r.icon];
       // Dedicated per-relic art — bypass glyph/hue overlay (pass null,null).
       if (ic) drawRelicIcon(ctx, ic, null, null, r.id,
                             x + 3, y0 + 3, icSize - 6);
-      // Legendary gets an extra corner dot
-      if (r.tier === 'legendary') {
+      // Legendary gets corner dots; mythic gets all 4 corners
+      if (r.tier === 'legendary' || r.tier === 'mythic') {
         ctx.fillStyle = r.tint || '#f4d9a0';
         ctx.fillRect(x + icSize - 5, y0 + 1, 3, 3);
         ctx.fillRect(x + 2, y0 + icSize - 4, 3, 3);
+        if (r.tier === 'mythic') {
+          ctx.fillRect(x + 1, y0 + 1, 3, 3);
+          ctx.fillRect(x + icSize - 4, y0 + icSize - 4, 3, 3);
+        }
       }
       // Hover detection — mouse over this icon?
       if (mouse.x >= x && mouse.x <= x + icSize && mouse.y >= y0 && mouse.y <= y0 + icSize) {
@@ -712,8 +724,8 @@ export function drawHud(ctx, w, h, progress = {}) {
     ctx.lineWidth = 1;
     ctx.strokeRect(tipX + 4.5, tipY + 4.5, tipW - 9, tipH - 9);
     // Tier label
-    const tierLabel = r.tier === 'legendary' ? '\u2605 LEGENDARY' : r.tier === 'rare' ? '\u25C6 RARE' : '\u00b7 COMMON';
-    ctx.fillStyle = r.tier === 'legendary' ? '#ffc8ff' : r.tier === 'rare' ? '#f4d9a0' : '#b4c8d8';
+    const tierLabel = r.tier === 'mythic' ? '\u2605\u2605 MYTHIC \u2605\u2605' : r.tier === 'legendary' ? '\u2605 LEGENDARY' : r.tier === 'rare' ? '\u25C6 RARE' : '\u00b7 COMMON';
+    ctx.fillStyle = r.tier === 'mythic' ? '#fff2e0' : r.tier === 'legendary' ? '#ffc8ff' : r.tier === 'rare' ? '#f4d9a0' : '#b4c8d8';
     ctx.font = 'bold 9px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';

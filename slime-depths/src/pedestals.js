@@ -8,7 +8,7 @@ import { deathBurst, sparkle } from './particles.js';
 import { shakeCamera } from './camera.js';
 import { hero } from './hero.js';
 import { TILE, ROOM_W, ROOM_H, room } from './room.js';
-import { synthChord, synthPing } from './synth.js';
+import { synthChord, synthPing, synthThud, synthFanfare } from './synth.js';
 import { isCursed } from './curses.js';
 
 export const pedestals = [];
@@ -119,11 +119,16 @@ export function updatePedestals(dt) {
     // Sparkle emission — scales with rarity, reduced when hero is close (visual clutter)
     if (!p.picked) {
       const tier = p.tier || 'common';
-      const rate = tier === 'legendary' ? 8 : tier === 'rare' ? 3 : 0.8;
+      // Mythic has a near-constant aurora of sparkles. Legendary is dense, rare
+      // moderate, common a trickle.
+      const rate = tier === 'mythic' ? 18 : tier === 'legendary' ? 8 : tier === 'rare' ? 3 : 0.8;
       const threshold = Math.min(0.95, rate * dt);
       if (Math.random() < threshold) {
-        const color = p.relic?.tint || (tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c0b0d0');
-        sparkle(p.x + (Math.random() - 0.5) * 22, p.y - 6 + (Math.random() - 0.5) * 18, color);
+        const color = p.relic?.tint || (tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c0b0d0');
+        // Mythic spreads sparkles wider — pedestal reads as a beacon
+        const spreadX = tier === 'mythic' ? 34 : 22;
+        const spreadY = tier === 'mythic' ? 28 : 18;
+        sparkle(p.x + (Math.random() - 0.5) * spreadX, p.y - 6 + (Math.random() - 0.5) * spreadY, color);
       }
     }
   }
@@ -140,16 +145,30 @@ export function updatePedestals(dt) {
       p.picked = true;
       picked = p.relic;
       applyRelic(p.relic.id);
-      deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
-      shakeCamera(p.hpCost > 0 ? 6 : 3, 0.15);
+      const t = p.tier || 'common';
+      // MYTHIC — bigger burst, stronger shake, layered sting, extended banner
+      if (t === 'mythic') {
+        deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
+        deathBurst(p.x + 12, p.y - 18, '#fff2e0');
+        deathBurst(p.x - 12, p.y - 18, p.relic.tint || '#ffffff');
+        shakeCamera(12, 0.42);
+        // Layered bell: big chord + sub-bass thud + delayed second bell note.
+        // This is the Diablo "Windforce dropped" signature sound.
+        synthChord(1100, 1.3, 1.6);
+        synthThud(70, 1.1, 0.9);
+        setTimeout(() => synthChord(1397, 1.0, 1.2), 220);
+        setTimeout(() => synthFanfare(0.6), 560);
+      } else {
+        deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
+        shakeCamera(p.hpCost > 0 ? 6 : 3, 0.15);
+        if (t === 'legendary') synthChord(880, 1.0, 1.0);
+        else if (t === 'rare') synthChord(659, 0.9, 0.75);
+        else synthPing(1100, 0.9, 0.3);
+      }
       playSfx('click', { volume: 0.9, rate: p.hpCost > 0 ? 0.8 : 1.2 });
       lastPickedDef = p.relic;
-      pickedFlashTime = 3.0;
-      // Tier-appropriate sting
-      const t = p.tier || 'common';
-      if (t === 'legendary') synthChord(880, 1.0, 1.0);      // high-pitched triumphant
-      else if (t === 'rare') synthChord(659, 0.9, 0.75);     // mid
-      else synthPing(1100, 0.9, 0.3);                         // quick common ping
+      // Mythic banner holds 5.5s vs common 3.0s — more time to read + screenshot.
+      pickedFlashTime = t === 'mythic' ? 5.5 : 3.0;
       break;
     }
   }
@@ -167,42 +186,55 @@ export function drawPedestals(ctx) {
     const isAltar = p.hpCost > 0;
     const tier = p.tier || 'common';
 
-    // RARITY VISUAL: rare = bright gold pulse; legendary = shimmering prismatic ring
-    if (tier === 'rare' || tier === 'legendary') {
-      const pulseAmp = tier === 'legendary' ? 0.55 : 0.35;
+    // RARITY VISUAL: rare = gold pulse; legendary = prismatic ring;
+    // mythic = triple ring + 6 rune points + prismatic aurora (the "oh shit" moment)
+    if (tier === 'rare' || tier === 'legendary' || tier === 'mythic') {
+      const pulseAmp = tier === 'mythic' ? 0.75 : tier === 'legendary' ? 0.55 : 0.35;
       const pulse = 0.7 + pulseAmp * Math.sin(now * 3 + p.bob);
-      const ringR = (tier === 'legendary' ? 44 : 34) + (pulse * 6);
-      // Outer shimmer ring
-      const ringColor = tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
+      const ringR = (tier === 'mythic' ? 58 : tier === 'legendary' ? 44 : 34) + (pulse * 8);
+      const ringColor = tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
       ctx.strokeStyle = ringColor;
       ctx.globalAlpha = pulse;
-      ctx.lineWidth = tier === 'legendary' ? 3 : 2;
+      ctx.lineWidth = tier === 'mythic' ? 4 : tier === 'legendary' ? 3 : 2;
       ctx.beginPath();
       ctx.arc(p.x, p.y + 4, ringR, 0, Math.PI * 2);
       ctx.stroke();
-      // Legendary gets a secondary counter-rotating ring
-      if (tier === 'legendary') {
-        ctx.strokeStyle = '#a0e8ff';
+      if (tier === 'legendary' || tier === 'mythic') {
+        ctx.strokeStyle = tier === 'mythic' ? (p.relic.tint || '#ffb4c8') : '#a0e8ff';
         ctx.globalAlpha = pulse * 0.6;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = tier === 'mythic' ? 2 : 1.5;
         ctx.beginPath();
         ctx.arc(p.x, p.y + 4, ringR + 6, 0, Math.PI * 2);
         ctx.stroke();
-        // 4 rotating rune points around the pedestal
+        // Rune points — mythic gets 6 (vs legendary's 4), brighter pulse
+        const runeCount = tier === 'mythic' ? 6 : 4;
         ctx.fillStyle = '#ffffff';
-        for (let k = 0; k < 4; k++) {
-          const a = (k / 4) * Math.PI * 2 + now * 1.3;
+        for (let k = 0; k < runeCount; k++) {
+          const a = (k / runeCount) * Math.PI * 2 + now * 1.3;
           const rx = p.x + Math.cos(a) * (ringR + 10);
           const ry = (p.y + 4) + Math.sin(a) * (ringR + 10);
-          ctx.globalAlpha = pulse * 0.9;
-          ctx.fillRect(rx - 1.5, ry - 1.5, 3, 3);
+          ctx.globalAlpha = pulse * (tier === 'mythic' ? 1.0 : 0.9);
+          const runeSize = tier === 'mythic' ? 4 : 3;
+          ctx.fillRect(rx - runeSize / 2, ry - runeSize / 2, runeSize, runeSize);
+        }
+        // Mythic: third outer ring, dashed, counter-rotating
+        if (tier === 'mythic') {
+          ctx.strokeStyle = '#ffffff';
+          ctx.globalAlpha = pulse * 0.3;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([6, 6]);
+          ctx.lineDashOffset = -now * 30;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y + 4, ringR + 16, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
       }
       ctx.globalAlpha = 1;
     }
 
     // Glow ring on floor — red if HP-cost altar pedestal, relic-tinted otherwise
-    const glowR = 26 + p.glow * 12 + (tier === 'legendary' ? 12 : tier === 'rare' ? 6 : 0);
+    const glowR = 26 + p.glow * 12 + (tier === 'mythic' ? 20 : tier === 'legendary' ? 12 : tier === 'rare' ? 6 : 0);
     const grad = ctx.createRadialGradient(p.x, p.y + 4, 2, p.x, p.y + 4, glowR);
     const baseColor = isAltar ? 'rgba(255, 60, 80, ' : (p.relic.tint || '#ffffff');
     if (isAltar) {
@@ -226,7 +258,7 @@ export function drawPedestals(ctx) {
     // LIGHT BEAM rising from the pedestal — tier-colored vertical cone that
     // turns the pedestal into a visible beacon.
     const beamColor = isAltar ? '#ff5080' : (p.relic.tint || '#c0b0d0');
-    const beamHeight = tier === 'legendary' ? 120 : tier === 'rare' ? 90 : 60;
+    const beamHeight = tier === 'mythic' ? 180 : tier === 'legendary' ? 120 : tier === 'rare' ? 90 : 60;
     const beamPulse = 0.6 + 0.4 * Math.sin(now * 2.5 + p.bob);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -239,8 +271,8 @@ export function drawPedestals(ctx) {
     beamGrad.addColorStop(0.5, `rgba(${br},${bg},${bb},${(0.2 * beamPulse).toFixed(3)})`);
     beamGrad.addColorStop(1, `rgba(${br},${bg},${bb},0)`);
     ctx.fillStyle = beamGrad;
-    const beamTopW = 10 + (tier === 'legendary' ? 6 : tier === 'rare' ? 3 : 0);
-    const beamBotW = 24 + (tier === 'legendary' ? 10 : tier === 'rare' ? 5 : 0);
+    const beamTopW = 10 + (tier === 'mythic' ? 12 : tier === 'legendary' ? 6 : tier === 'rare' ? 3 : 0);
+    const beamBotW = 24 + (tier === 'mythic' ? 18 : tier === 'legendary' ? 10 : tier === 'rare' ? 5 : 0);
     ctx.beginPath();
     ctx.moveTo(p.x - beamBotW / 2, p.y - 2);
     ctx.lineTo(p.x + beamBotW / 2, p.y - 2);
@@ -272,14 +304,22 @@ export function drawPedestals(ctx) {
       ctx.fillRect(p.x - 10, floatY - 10, 20, 20);
     }
 
-    // Tier label above icon (rare/legendary only) — tracks the floating icon
-    if (tier === 'rare' || tier === 'legendary') {
-      const label = tier === 'legendary' ? 'LEGENDARY' : 'RARE';
-      const labelColor = tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(p.x - 40, floatY - 24, 80, 12);
+    // Tier label above icon (rare/legendary/mythic) — tracks the floating icon
+    if (tier === 'rare' || tier === 'legendary' || tier === 'mythic') {
+      const label = tier === 'mythic' ? '\u2605 MYTHIC \u2605' : tier === 'legendary' ? 'LEGENDARY' : 'RARE';
+      const labelColor = tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
+      const lblW = tier === 'mythic' ? 100 : 80;
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(p.x - lblW / 2, floatY - 24, lblW, 12);
+      if (tier === 'mythic') {
+        ctx.strokeStyle = labelColor;
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now * 4);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(p.x - lblW / 2 + 0.5, floatY - 24 + 0.5, lblW - 1, 11);
+        ctx.globalAlpha = 1;
+      }
       ctx.fillStyle = labelColor;
-      ctx.font = 'bold 9px system-ui, sans-serif';
+      ctx.font = tier === 'mythic' ? 'italic bold 9px Georgia, serif' : 'bold 9px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, p.x, floatY - 18);
@@ -309,26 +349,28 @@ export function drawPedestals(ctx) {
 // common a muted bronze.
 export function drawPickupFlash(ctx, w, h) {
   if (pickedFlashTime <= 0 || !lastPickedDef) return;
-  const life = 3.0;
+  const tier = lastPickedDef.tier || 'common';
+  // Mythic holds the banner 5.5s; everything else 3.0s.
+  const life = tier === 'mythic' ? 5.5 : 3.0;
   const r = 1 - (pickedFlashTime / life);        // 0 → 1
   let a;
   if (r < 0.1) a = r / 0.1;
   else if (r > 0.75) a = (1 - r) / 0.25;
   else a = 1;
   a = Math.max(0, Math.min(1, a));
-  const scaleBump = r < 0.2 ? 1 + Math.sin((r / 0.2) * Math.PI) * 0.1 : 1;
-  const tier = lastPickedDef.tier || 'common';
-  // Tier palette — common stays muted bronze (was cool grey), rare gold,
-  // legendary magenta. Banner's visual weight scales with tier.
-  const tierColor = tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c9a86a';
-  const tierRgb   = tier === 'legendary' ? '255, 200, 255' : tier === 'rare' ? '244, 217, 160' : '201, 168, 106';
-  const tierGlyph = tier === 'legendary' ? '\u2605' : tier === 'rare' ? '\u25C6' : '\u2666';
-  const tierLabel = tier === 'legendary' ? `${tierGlyph} LEGENDARY ${tierGlyph}` : tier === 'rare' ? `${tierGlyph} RARE ${tierGlyph}` : `${tierGlyph} COMMON ${tierGlyph}`;
+  const scaleBump = r < 0.2 ? 1 + Math.sin((r / 0.2) * Math.PI) * (tier === 'mythic' ? 0.18 : 0.1) : 1;
+  // Tier palette — common bronze, rare gold, legendary magenta, mythic white-gold.
+  const tierColor = tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c9a86a';
+  const tierRgb   = tier === 'mythic' ? '255, 242, 224' : tier === 'legendary' ? '255, 200, 255' : tier === 'rare' ? '244, 217, 160' : '201, 168, 106';
+  const tierGlyph = tier === 'mythic' ? '\u2605' : tier === 'legendary' ? '\u2605' : tier === 'rare' ? '\u25C6' : '\u2666';
+  const tierLabel = tier === 'mythic' ? `${tierGlyph}\u2605  MYTHIC  \u2605${tierGlyph}` : tier === 'legendary' ? `${tierGlyph} LEGENDARY ${tierGlyph}` : tier === 'rare' ? `${tierGlyph} RARE ${tierGlyph}` : `${tierGlyph} COMMON ${tierGlyph}`;
 
   ctx.save();
   ctx.globalAlpha = a;
 
-  const boxW = 480, boxH = 170;
+  // Mythic banner is larger — gives the moment more weight on screen
+  const boxW = tier === 'mythic' ? 560 : 480;
+  const boxH = tier === 'mythic' ? 200 : 170;
   const bx = (w - boxW) / 2;
   const by = (h - boxH) / 2 - 30;
   const pivotX = bx + boxW / 2, pivotY = by + boxH / 2;
@@ -337,17 +379,27 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.translate(-pivotX, -pivotY);
 
   // Tier-colored radial halo behind the frame — pulsing on all tiers, stronger
-  // on rare/legendary. Creates the "lit from behind" gift feeling.
-  const pulseT = performance.now() / (tier === 'legendary' ? 320 : 420);
+  // on rare/legendary/mythic. Mythic halos wash the entire screen.
+  const pulseT = performance.now() / (tier === 'mythic' ? 260 : tier === 'legendary' ? 320 : 420);
   const pulse = 0.6 + 0.4 * Math.sin(pulseT);
   const glowA = (r < 0.5 ? 1 : (1 - r) * 2) * pulse;
   if (glowA > 0.05) {
-    const glow = ctx.createRadialGradient(pivotX, pivotY, 40, pivotX, pivotY, boxW * 0.85);
-    const glowStrength = tier === 'legendary' ? 0.55 : tier === 'rare' ? 0.45 : 0.3;
+    const glow = ctx.createRadialGradient(pivotX, pivotY, 40, pivotX, pivotY, boxW * (tier === 'mythic' ? 1.3 : 0.85));
+    const glowStrength = tier === 'mythic' ? 0.75 : tier === 'legendary' ? 0.55 : tier === 'rare' ? 0.45 : 0.3;
     glow.addColorStop(0, `rgba(${tierRgb}, ${(glowA * glowStrength).toFixed(3)})`);
     glow.addColorStop(1, `rgba(${tierRgb}, 0)`);
     ctx.fillStyle = glow;
-    ctx.fillRect(bx - 120, by - 80, boxW + 240, boxH + 160);
+    // Mythic: full-screen wash so the background darkens behind the banner.
+    if (tier === 'mythic') {
+      ctx.fillRect(0, 0, w, h);
+      const edgeVg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+      edgeVg.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      edgeVg.addColorStop(1, `rgba(0, 0, 0, ${(glowA * 0.45).toFixed(3)})`);
+      ctx.fillStyle = edgeVg;
+      ctx.fillRect(0, 0, w, h);
+    } else {
+      ctx.fillRect(bx - 120, by - 80, boxW + 240, boxH + 160);
+    }
   }
 
   // Frame — tome-style vertical gradient
@@ -357,11 +409,19 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.fillStyle = frameG;
   ctx.fillRect(bx, by, boxW, boxH);
 
-  // Tier-colored border — thickness scales, legendary pulses slightly
-  const borderWidth = tier === 'legendary' ? 2 + pulse * 0.6 : tier === 'rare' ? 1.8 : 1.5;
+  // Tier-colored border — thickness scales, mythic pulses more dramatically
+  const borderWidth = tier === 'mythic' ? 2.8 + pulse * 1.0 : tier === 'legendary' ? 2 + pulse * 0.6 : tier === 'rare' ? 1.8 : 1.5;
   ctx.strokeStyle = tierColor;
   ctx.lineWidth = borderWidth;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
+  // Mythic gets a second outer border of the relic's own tint — double-frame signature
+  if (tier === 'mythic' && lastPickedDef.tint) {
+    ctx.strokeStyle = lastPickedDef.tint;
+    ctx.globalAlpha = a * (0.5 + pulse * 0.4);
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(bx - 3.5, by - 3.5, boxW + 7, boxH + 7);
+    ctx.globalAlpha = a;
+  }
 
   // CORNER ORNAMENTS — gold L-shape + diamond at each corner. Shared grammar
   // with every overlay in the game.
@@ -414,29 +474,31 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
-  // "— RELIC ACQUIRED —" header — italic Georgia (unified grammar)
-  ctx.fillStyle = '#c9a86a';
-  ctx.font = 'italic bold 10px Georgia, serif';
-  ctx.fillText('\u2014 RELIC ACQUIRED \u2014', pivotX, by + 42);
+  // Header — "RELIC ACQUIRED" usually. Mythic gets "A LEGEND AWAKES" to sell
+  // that this is a named, storied artifact, not loot.
+  ctx.fillStyle = tier === 'mythic' ? tierColor : '#c9a86a';
+  ctx.font = tier === 'mythic' ? 'italic bold 11px Georgia, serif' : 'italic bold 10px Georgia, serif';
+  const header = tier === 'mythic' ? '\u2014 A LEGEND AWAKES \u2014' : '\u2014 RELIC ACQUIRED \u2014';
+  ctx.fillText(header, pivotX, by + (tier === 'mythic' ? 50 : 42));
 
-  // Big relic name — shadowed glow in tier color
+  // Big relic name — shadowed glow in tier color. Mythic is larger + stronger glow.
   ctx.shadowColor = tierColor;
-  ctx.shadowBlur = 14;
+  ctx.shadowBlur = tier === 'mythic' ? 22 : 14;
   ctx.fillStyle = '#fff2e0';
-  ctx.font = 'bold 30px Georgia, serif';
-  ctx.fillText(lastPickedDef.name, pivotX, by + 58);
+  ctx.font = tier === 'mythic' ? 'bold 38px Georgia, serif' : 'bold 30px Georgia, serif';
+  ctx.fillText(lastPickedDef.name, pivotX, by + (tier === 'mythic' ? 68 : 58));
   ctx.shadowBlur = 0;
 
   // Flavor line in quotes
   if (lastPickedDef.flavor) {
-    ctx.fillStyle = 'rgba(210, 200, 220, 0.82)';
-    ctx.font = 'italic 12px Georgia, serif';
-    ctx.fillText('\u201C' + lastPickedDef.flavor + '\u201D', pivotX, by + 100);
+    ctx.fillStyle = tier === 'mythic' ? 'rgba(240, 230, 220, 0.95)' : 'rgba(210, 200, 220, 0.82)';
+    ctx.font = tier === 'mythic' ? 'italic 14px Georgia, serif' : 'italic 12px Georgia, serif';
+    ctx.fillText('\u201C' + lastPickedDef.flavor + '\u201D', pivotX, by + (tier === 'mythic' ? 118 : 100));
   }
 
   // Central-diamond divider — hairline with a small diamond at midpoint
   ctx.globalAlpha = a * 0.65;
-  const divY = by + 122;
+  const divY = by + (tier === 'mythic' ? 145 : 122);
   const divHalfW = 120;
   // left segment
   const lg = ctx.createLinearGradient(pivotX - divHalfW, divY, pivotX - 8, divY);
@@ -461,8 +523,8 @@ export function drawPickupFlash(ctx, w, h) {
 
   // Mechanic description — tier-tinted bold
   ctx.fillStyle = tierColor;
-  ctx.font = 'bold 15px Georgia, serif';
-  ctx.fillText(lastPickedDef.desc, pivotX, by + 132);
+  ctx.font = tier === 'mythic' ? 'bold 17px Georgia, serif' : 'bold 15px Georgia, serif';
+  ctx.fillText(lastPickedDef.desc, pivotX, by + (tier === 'mythic' ? 158 : 132));
 
   // Tier label at the bottom — diamonds flanking. Replaces the old "· COMMON ·".
   ctx.fillStyle = tierColor;

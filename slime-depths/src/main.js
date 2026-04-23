@@ -3885,7 +3885,8 @@ function showEndOfRun(isVictory) {
     for (let i = 0; i < equippedRelics.length; i++) {
       const r = equippedRelics[i];
       const tier = r.tier || 'common';
-      const tierMeta = tier === 'legendary' ? { label: '\u2605 LEGENDARY', color: '#ffc8ff', glow: 'rgba(255,200,255,0.55)', pulse: true }
+      const tierMeta = tier === 'mythic'    ? { label: '\u2605\u2605 MYTHIC \u2605\u2605', color: '#fff2e0', glow: 'rgba(255,242,224,0.75)', pulse: true }
+                     : tier === 'legendary' ? { label: '\u2605 LEGENDARY', color: '#ffc8ff', glow: 'rgba(255,200,255,0.55)', pulse: true }
                      : tier === 'rare'      ? { label: '\u25C6 RARE',      color: '#f4d9a0', glow: 'rgba(244,217,160,0.45)', pulse: false }
                      :                         { label: '\u00B7 COMMON',   color: '#b0c0d0', glow: 'rgba(176,192,208,0.3)',  pulse: false };
       const card = document.createElement('div');
@@ -3897,7 +3898,7 @@ function showEndOfRun(isVictory) {
         border:1px solid ${r.tint || tierMeta.color};
         box-shadow:0 0 12px ${tierMeta.glow}, inset 0 0 8px rgba(0,0,0,0.5);
         font-family:Georgia,serif;
-        animation:winCardSlide 0.5s ease-out ${stagger}s both${tier === 'legendary' ? ', legendPulse 2.4s ease-in-out infinite' : ''};
+        animation:winCardSlide 0.5s ease-out ${stagger}s both${(tier === 'legendary' || tier === 'mythic') ? ', legendPulse 2.4s ease-in-out infinite' : ''};
       `;
       card.title = r.name + (r.flavor ? '\n\u201C' + r.flavor + '\u201D\n' : '\n') + r.desc;
       card.innerHTML = `
@@ -4524,8 +4525,14 @@ function tick(now) {
     }
 
     // Evaluate achievements periodically (on room transitions mostly, but cheap to re-evaluate)
-    stats._legendaryEquipped = equippedRelics.some(r => r.tier === 'legendary');
+    stats._legendaryEquipped = equippedRelics.some(r => r.tier === 'legendary' || r.tier === 'mythic');
     stats._maxCombo = Math.max(stats._maxCombo || 0, window.__gameMetrics.maxCombo || 0);
+    // Hidden-achievement stat trackers — kept adjacent to keep touch points tight.
+    const legendaryCount = equippedRelics.filter(r => r.tier === 'legendary' || r.tier === 'mythic').length;
+    stats._maxLegendariesHeld = Math.max(stats._maxLegendariesHeld || 0, legendaryCount);
+    stats._mythicEquipped = equippedRelics.some(r => r.tier === 'mythic');
+    stats._bothMythicsHeld = equippedRelics.some(r => r.id === 'cataclysm') && equippedRelics.some(r => r.id === 'eye_of_ether');
+    stats._maxFusions = Math.max(stats._maxFusions || 0, (activeFusions && activeFusions.length) || 0);
     evaluateAchievements(stats, meta);
 
     // Boss room cleared → show either "Shop + Descend" (next floor) or "Run Complete"
@@ -4539,6 +4546,42 @@ function tick(now) {
         if (bossDef) recordBossKill({ bossType: bossDef.type, floor: currentFloorLevel });
       } catch (e) {}
       const isFinal = currentFloorLevel >= MAX_FLOORS;
+
+      // FLOOR-CLEAR CASCADE — the Vampire Survivors "gem vacuum" moment.
+      // Spawns a staggered chain of coins at the boss corpse + rising chord
+      // pings + final fanfare with banner flash. Reuses gold.js's existing
+      // streak/magnet logic so the cascade feels musically ascending.
+      const corpse = enemies.find(e => e.boss) || { x: ROOM_W * TILE / 2, y: ROOM_H * TILE / 2 };
+      const cascadeCount = isFinal ? 24 : 12 + currentFloorLevel * 2;
+      const cascadeStep = isFinal ? 55 : 70;
+      import('./gold.js').then(g => {
+        for (let i = 0; i < cascadeCount; i++) {
+          setTimeout(() => g.dropGold(corpse.x + (Math.random() - 0.5) * 24, corpse.y + (Math.random() - 0.5) * 16, 1), i * cascadeStep);
+        }
+      });
+      // Rising chord pings — C-E-G-B-D ascending (523, 659, 784, 988, 1175 Hz).
+      const cascadeDurationMs = cascadeCount * cascadeStep;
+      [523, 659, 784, 988, 1175].forEach((hz, idx) => {
+        setTimeout(() => synthPing(hz, 0.55, 0.22), Math.min(cascadeDurationMs, idx * 150 + 80));
+      });
+      // Mid-cascade screen flash + shake to sell the "boss down" moment.
+      setTimeout(() => {
+        triggerScreenFlash(isFinal ? 'rgba(255, 230, 170, 0.35)' : 'rgba(180, 230, 200, 0.25)', 0.45);
+        shakeCamera(isFinal ? 10 : 6, 0.25);
+      }, 120);
+      // Finale — synthFanfare + banner flash at the cascade tail
+      setTimeout(() => {
+        synthFanfare(isFinal ? 1.1 : 0.8);
+        triggerScreenFlash(isFinal ? 'rgba(255, 210, 140, 0.45)' : 'rgba(200, 255, 220, 0.28)', 0.6);
+        shakeCamera(isFinal ? 14 : 8, 0.35);
+        if (isFinal) {
+          synthThud(60, 1.2, 1.0);
+          synthChord(880, 1.2, 1.6);
+        } else {
+          synthChord(784, 0.9, 1.0);
+        }
+      }, cascadeDurationMs + 150);
+
       const title = document.getElementById('winTitle');
       const subtitle = document.getElementById('winSubtitle');
       const btn = document.getElementById('winRestartBtn');
@@ -4546,30 +4589,32 @@ function tick(now) {
         // Final victory → end-of-run summary (stats + essence + meta shop).
         // On first-ever clear, play the epilogue first; then the summary.
         stats._runComplete = true;
+        try { stats._ascensionAtWin = getAscensionTier() || 0; } catch (e) {}
         if (daily.activeForRun) markDailyCompleted();        // bank today's streak
         daily.activeForRun = false;
         try { recordRunComplete(); } catch (e) {}           // bank a triumphant journal entry
         evaluateAchievements(stats, meta);
         hideShop();
         if (!hasSeenEpilogue()) {
-          // Ceremonial first-clear moment before stats.
-          setTimeout(() => playEpilogue(() => showEndOfRun(true)), 800);
+          // Ceremonial first-clear moment before stats. Delayed to let the
+          // final-boss cascade complete before the epilogue takes over.
+          setTimeout(() => playEpilogue(() => showEndOfRun(true)), 2000);
         } else {
-          setTimeout(() => showEndOfRun(true), 600);
+          setTimeout(() => showEndOfRun(true), 1800);
         }
         return;
       }
       // Between-floor — also track curses clear
       if (curseCount() > 0) stats._cursedFloorClear = Math.max(stats._cursedFloorClear || 0, curseCount());
       evaluateAchievements(stats, meta);
-      // Between floors — the shop screen
+      // Between floors — the shop screen. Delayed past the cascade.
       title.textContent = 'FLOOR ' + currentFloorLevel + ' CLEARED';
       title.style.color = '#86e3a8';
       title.style.textShadow = '0 0 18px rgba(134,227,168,0.7)';
       subtitle.textContent = 'the depths merchant offers wares';
       btn.textContent = 'DESCEND';
       setupShop();
-      setTimeout(() => { winEl.style.display = 'flex'; }, 600);
+      setTimeout(() => { winEl.style.display = 'flex'; }, cascadeDurationMs + 600);
     }
 
     // Death handling — cinematic ceremony before the summary reveal.
@@ -4942,7 +4987,31 @@ function render() {
       p.t += 1 / 60;
       const life = p.life;
       const r = p.t / life;
-      if (!p._stung) { p._stung = true; playSfx('click', { rate: 0.4, volume: 0.9 }); synthChord(523, 1.0, 0.7); }
+      const achDef = ACHIEVEMENTS[p.id];
+      const isHidden = achDef && achDef.hidden;
+      // Hidden reveal phase: first 1.6s shows "???" + cryptic hint; after
+      // that, a white flash crossfades to the real name/desc. Creates a
+      // discovery moment distinct from normal achievements.
+      const revealAt = 1.6;
+      const inMystery = isHidden && p.t < revealAt;
+      const justRevealed = isHidden && p.t >= revealAt && p.t < revealAt + 0.35;
+      if (!p._stung) {
+        p._stung = true;
+        if (isHidden) {
+          // Hidden achievements get a deeper, hushed sting
+          synthGloom(220, 0.9, 1.2);
+          playSfx('click', { rate: 0.35, volume: 0.7 });
+        } else {
+          playSfx('click', { rate: 0.4, volume: 0.9 });
+          synthChord(523, 1.0, 0.7);
+        }
+      }
+      // Reveal sting — triggers ONCE when the mystery phase ends
+      if (isHidden && !p._revealed && p.t >= revealAt) {
+        p._revealed = true;
+        synthChord(659, 1.0, 0.9);
+        synthFanfare(0.55);
+      }
       let opacity = 1;
       if (r < 0.1) opacity = r / 0.1;
       else if (r > 0.85) opacity = (1 - r) / 0.15;
@@ -4992,27 +5061,44 @@ function render() {
       }
       // Trophy icon
       ctx.fillStyle = '#f4d9a0';
-      ctx.font = '22px Georgia, serif';
+      // Trophy icon — question mark during hidden mystery phase, star otherwise.
+      // Reveal flash recolors the star for a beat.
+      const iconGlyph = inMystery ? '?' : '\u2605';
+      const iconColor = inMystery ? '#a0b4e0' : (justRevealed ? '#ffffff' : '#f4d9a0');
+      const iconGlow = inMystery ? '#607aa0' : (justRevealed ? '#ffffff' : '#c9a86a');
+      ctx.fillStyle = iconColor;
+      ctx.font = inMystery ? 'italic bold 26px Georgia, serif' : '22px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = '#c9a86a';
-      ctx.shadowBlur = 8;
-      ctx.fillText('\u2605', bx + 22, by + bh / 2);
+      ctx.shadowColor = iconGlow;
+      ctx.shadowBlur = justRevealed ? 18 : 8;
+      ctx.fillText(iconGlyph, bx + 22, by + bh / 2);
       ctx.shadowBlur = 0;
-      // "ACHIEVEMENT UNLOCKED" label — italic serif, unified typography
-      ctx.fillStyle = '#c9a86a';
+      // Header label — "ACHIEVEMENT UNLOCKED" normally, "A HIDDEN TRUTH" during
+      // the mystery phase of a hidden achievement.
+      ctx.fillStyle = isHidden ? (inMystery ? '#a0b4e0' : '#ffddaa') : '#c9a86a';
       ctx.font = 'italic bold 9px Georgia, serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.fillText('\u2014 ACHIEVEMENT UNLOCKED \u2014', bx + 44, by + 10);
-      // Name + desc — Georgia serif, gold hierarchy
-      const ach = ACHIEVEMENTS[p.id];
-      ctx.fillStyle = '#f4d9a0';
+      const headerText = inMystery
+        ? '\u2014 A HIDDEN TRUTH \u2014'
+        : (isHidden ? '\u2014 REVEALED \u2014' : '\u2014 ACHIEVEMENT UNLOCKED \u2014');
+      ctx.fillText(headerText, bx + 44, by + 10);
+      // Name — either "???" (mystery) or real name (revealed). Just-revealed
+      // state flashes to white to sell the unveiling.
+      const ach = achDef;
+      const nameText = inMystery ? '???' : ach.name;
+      const nameColor = justRevealed ? '#ffffff' : '#f4d9a0';
+      if (justRevealed) { ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 14; }
+      ctx.fillStyle = nameColor;
       ctx.font = 'bold 15px Georgia, serif';
-      ctx.fillText(ach.name, bx + 44, by + 24);
-      ctx.fillStyle = 'rgba(200, 190, 170, 0.8)';
-      ctx.font = 'italic 10px Georgia, serif';
-      ctx.fillText(ach.desc, bx + 44, by + 45);
+      ctx.fillText(nameText, bx + 44, by + 24);
+      ctx.shadowBlur = 0;
+      // Desc — cryptic hint in mystery phase, real desc when revealed.
+      const descText = inMystery ? (ach.hint ? '\u201C' + ach.hint + '\u201D' : '\u2014 unknown \u2014') : ach.desc;
+      ctx.fillStyle = inMystery ? 'rgba(180, 195, 220, 0.85)' : 'rgba(200, 190, 170, 0.8)';
+      ctx.font = inMystery ? 'italic 11px Georgia, serif' : 'italic 10px Georgia, serif';
+      ctx.fillText(descText, bx + 44, by + 45);
       // Orbit sparkles during entry
       if (r < 0.55) {
         ctx.save();

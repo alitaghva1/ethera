@@ -250,24 +250,27 @@ export const RELIC_DEFS = {
   },
   // ==================== LEGENDARY RELICS ====================
   // Game-changing anchors. Only roll on floor 3+ or from the post-boss shop.
+  // ---------- MYTHIC tier ----------
+  // Named, story-anchored relics. Appear only on floor 4 at ~6% per pick.
+  // Visual + audio treatment is elevated — bell + sub-bass + extended banner.
   eye_of_ether: {
     id: 'eye_of_ether',
     name: 'Eye of Ether',
     desc: '+20% crit \u00b7 crits PIERCE through enemies',
-    flavor: 'It sees what the world has hidden. And what it has buried.',
+    flavor: 'They say she tore it from her own skull the night the city burned.',
     icon: 'relic_eye_of_ether',
     tint: '#e6c8ff',
-    tier: 'legendary',
+    tier: 'mythic',
     apply: () => { hero.critChance += 0.20; hero.pierceCrit = true; },
   },
   cataclysm: {
     id: 'cataclysm',
     name: 'Cataclysm',
     desc: 'Every 10th hit erupts the room',
-    flavor: 'A sliver of the world\u2019s ending, fitted into a palm.',
+    flavor: 'The last thing the last god held. He never set it down.',
     icon: 'relic_cataclysm',
     tint: '#ff9455',
-    tier: 'legendary',
+    tier: 'mythic',
     apply: () => { hero.cataclysm = true; },
   },
   wanderers_cloak: {
@@ -549,11 +552,13 @@ export function relicTier(id) {
 }
 
 // Tier weight distribution per floor — higher floors see more rare/legendary.
+// MYTHIC appears only on floor 4 and is rare (~6%). This is the Diablo
+// "Windforce moment" — the unique drop players screenshot and remember.
 const TIER_WEIGHTS_BY_FLOOR = {
-  1: { common: 1.0, rare: 0.0,  legendary: 0.0 },
-  2: { common: 0.65, rare: 0.35, legendary: 0.0 },
-  3: { common: 0.45, rare: 0.40, legendary: 0.15 },
-  4: { common: 0.30, rare: 0.45, legendary: 0.25 },
+  1: { common: 1.0,  rare: 0.0,  legendary: 0.0,  mythic: 0.0 },
+  2: { common: 0.65, rare: 0.35, legendary: 0.0,  mythic: 0.0 },
+  3: { common: 0.45, rare: 0.40, legendary: 0.15, mythic: 0.0 },
+  4: { common: 0.28, rare: 0.44, legendary: 0.22, mythic: 0.06 },
 };
 
 function weightedTier(floorLevel) {
@@ -662,14 +667,15 @@ export function getRelicGlyph(id) {
 // Falls back to next-lower tier if the rolled tier has no available relics.
 export function rollRelicOffer(n, floorLevel = 1) {
   const ownedIds = new Set(equipped.map(r => r.id));
-  const availableByTier = { common: [], rare: [], legendary: [] };
+  const availableByTier = { common: [], rare: [], legendary: [], mythic: [] };
   // ASCENSION VI — "The Purged": legendary relics removed from the pool.
+  // Mythics are blocked at the same tier (their effect budget is in the same league).
   const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
   const legendaryBlocked = !!(am && am.legendaryDisabled);
   for (const id of ALL_RELIC_IDS) {
     if (ownedIds.has(id)) continue;
     const t = relicTier(id);
-    if (legendaryBlocked && t === 'legendary') continue;
+    if (legendaryBlocked && (t === 'legendary' || t === 'mythic')) continue;
     if (availableByTier[t]) availableByTier[t].push(id);
   }
   const pickFromTier = (t) => {
@@ -680,11 +686,12 @@ export function rollRelicOffer(n, floorLevel = 1) {
     arr.splice(i, 1);
     return id;
   };
-  const fallbackOrder = ['legendary', 'rare', 'common'];
+  // Fallback order: mythic → legendary → rare → common (so a missed mythic
+  // roll prefers legendary over dropping straight to common).
+  const fallbackOrder = ['mythic', 'legendary', 'rare', 'common'];
   const picks = [];
   for (let k = 0; k < n; k++) {
     const target = weightedTier(floorLevel);
-    // Try target tier first, then fallback ladder
     const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)];
     let got = null;
     for (const t of tryOrder) {
