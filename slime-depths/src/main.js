@@ -3095,6 +3095,9 @@ function loadRoom(idx, entryFrom) {
     hero.hp -= 1;
     triggerScreenFlash('rgba(120, 50, 120, 0.2)', 0.3);
   }
+  // SYSTEMS PASS — SECOND WIND relic: first dodge per room is free.
+  // Refreshes the charge on every room entry.
+  if (hero.secondWind) hero.secondWindAvailable = true;
   buildRoomFromData(data);
   clearEnemies();
   clearProjectiles();

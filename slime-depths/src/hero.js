@@ -203,6 +203,19 @@ export function resetHero() {
   // Migrated from tarot (review #3 meta consolidation)
   hero.memoryHermit = false;
   hero.memoryHanged = false;
+  // SYSTEMS PASS — relic mechanical variety. All flags reset per run.
+  hero.speartip = false;
+  hero.dodgeCleanses = false;
+  hero.movementCrit = false;
+  hero._moveTime = 0;
+  hero.finisherHeal = 0;
+  hero.knockbackCrit = false;
+  hero.perfectDodgeRefund = false;
+  hero.bulwark = false;
+  hero.bulwarkArc = Math.PI * 0.66;
+  hero.bulwarkReduction = 0.5;
+  hero.secondWind = false;
+  hero.secondWindAvailable = false;
   hero.startingGold = 0;
   hero.relicCount = 0;     // maintained by relics.js for Memory of the Bell
   hero.swingIndex = 0;
@@ -369,8 +382,17 @@ export function updateHero(dt, enemies, mouseWorld) {
     }
     // Dodge — blocked entirely by Memory of Stillness (the pact: you traded
     // your dodge for other gifts; pressing Space is a null input).
-    else if (keyJustPressed('Space') && hero.dodgeCooldown <= 0 && !hero.memoryStillness) {
+    // SYSTEMS PASS — SECOND WIND relic gates a free first-dodge-per-room,
+    // so the CD check also passes when secondWindAvailable is true.
+    else if (
+      keyJustPressed('Space') &&
+      !hero.memoryStillness &&
+      (hero.dodgeCooldown <= 0 || (hero.secondWind && hero.secondWindAvailable))
+    ) {
       showTip('first_dodge');
+      // Consume the Second Wind charge if we used it.
+      const usedSecondWind = hero.dodgeCooldown > 0 && hero.secondWind && hero.secondWindAvailable;
+      if (usedSecondWind) hero.secondWindAvailable = false;
       // Dodge in move direction or aim direction
       let dx = 0, dy = 0;
       if (keys.KeyW) dy -= 1;
@@ -383,6 +405,11 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.dodgeDirY = dy / m;
       hero.dodgeCooldown = DODGE_COOLDOWN * hero.dodgeCooldownMul;
       hero.iframes = DODGE_DUR + 0.05;
+      // SYSTEMS PASS — NIMBLE STEP now cleanses slow + poison on dodge start.
+      if (hero.dodgeCleanses) {
+        hero.slowTime = 0;
+        hero.poisonTime = 0;
+      }
       setState('dodge');
       playSfx('footstep_1', { rate: 0.85, volume: 0.8 });
       // Departure burst — dust kicks in the direction the hero is leaving FROM
@@ -496,6 +523,9 @@ export function updateHero(dt, enemies, mouseWorld) {
         moveAxis('x', dx * spd * dt);
         moveAxis('y', dy * spd * dt);
         setState('walk');
+        // SYSTEMS PASS — IRON GREAVES: track continuous movement time.
+        // Reset on any non-walk transition (attack/dodge/idle below).
+        hero._moveTime = (hero._moveTime || 0) + dt;
         hero.footstepT -= dt;
         if (hero.footstepT <= 0) {
           hero.footstepT = 0.32 / hero.speedMul;
@@ -512,6 +542,8 @@ export function updateHero(dt, enemies, mouseWorld) {
         }
       } else {
         setState('idle');
+        // Iron Greaves movement streak resets when the hero stops moving.
+        hero._moveTime = 0;
       }
     }
   }
@@ -677,10 +709,23 @@ export function updateHero(dt, enemies, mouseWorld) {
           // Counter-attack: perfect-dodge grants next swing guaranteed crit + 1.5x bonus
           const isCounter = !hero._counterUsedThisSwing && hasCounterAttack();
           if (isCounter) { consumeCounterAttack(); hero._counterUsedThisSwing = true; showTip('first_counter'); }
-          const isCrit = isCounter || (hero.critChance > 0 && Math.random() < hero.critChance);
+          // SYSTEMS PASS — forced-crit sources stack with RNG crit:
+          //   HEAVY BLOW: first hit on a knocked-back enemy
+          //   IRON GREAVES: first hit after 2+ seconds of continuous motion
+          const forcedCrit = (
+            (hero.knockbackCrit && e._kbCritPending) ||
+            (hero.movementCrit && (hero._moveTime || 0) >= 2.0)
+          );
+          if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
+          if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
+          const isCrit = isCounter || forcedCrit || (hero.critChance > 0 && Math.random() < hero.critChance);
           const isExec = hero.executeThreshold > 0 && e.hp / e.maxHp < hero.executeThreshold;
+          // SYSTEMS PASS — LONG REACH: hits landed past 80% of your reach
+          // deal +40% damage. Rewards spacing + positioning. Folded in
+          // below alongside the other pre-multiplier adjustments.
+          const speartipBonus = (hero.speartip && dist > reach * 0.8) ? 1.4 : 1.0;
           if (isExec) showTip('first_execute');
-          let finalDmg = damage;
+          let finalDmg = damage * speartipBonus;
           if (isCrit) finalDmg *= hero.critMul;
           if (isExec) finalDmg *= hero.executeMul;
           // FUSION: Final Verdict — crit on a below-threshold enemy = instakill.
@@ -715,7 +760,21 @@ export function updateHero(dt, enemies, mouseWorld) {
             finalDmg *= 1.10;
           }
           const kbScale = hero.knockbackMul * w.knockbackMul * (isCounter ? 1.8 : 1);
+          // SYSTEMS PASS — BLOODSTONE: capture enemy HP pre-hit for the
+          // sub-25% finisher-heal check after takeDamage resolves.
+          const eHpBefore = e.hp;
           e.takeDamage(finalDmg, hero.aimX * kbScale, hero.aimY * kbScale);
+          // SYSTEMS PASS — HEAVY BLOW: after a hit with big knockback, mark
+          // the enemy so the NEXT hero hit on them forces a crit.
+          if (hero.knockbackCrit && kbScale >= 2 && !e.dead) {
+            e._kbCritPending = true;
+          }
+          // SYSTEMS PASS — BLOODSTONE: kills of enemies under 25% HP heal +3.
+          // Applies only when THIS hit is the killing blow on an already-
+          // weakened target (no farming mid-HP kills).
+          if (hero.finisherHeal && e.dead && eHpBefore <= e.maxHp * 0.25 && hero.hp < hero.maxHp) {
+            hero.hp = Math.min(hero.maxHp, hero.hp + hero.finisherHeal);
+          }
           hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
           const wpnShake = w.shakeMul || 1;
           const wpnHs = w.hitStopMul || 1;
@@ -853,7 +912,24 @@ export function damageHero(amount, fromX, fromY) {
   if (hero.state === 'dodge') {
     triggerPerfectDodge();
     stats.perfectDodges++;
+    // SYSTEMS PASS — DASH MASTER: perfect dodges refund the dodge cooldown,
+    // letting expert play chain perfect-dodges indefinitely. Pairs great
+    // with counterstrike (explosion every counter-hit).
+    if (hero.perfectDodgeRefund) hero.dodgeCooldown = 0;
     return 'perfect';
+  }
+  // SYSTEMS PASS — BULWARK: damage from within the frontal arc (aim-facing
+  // cone, default ~120°) is halved. Rewards active positioning.
+  if (hero.bulwark) {
+    const dxF = fromX - hero.x, dyF = fromY - hero.y;
+    const srcA = Math.atan2(dyF, dxF);
+    const aimA = Math.atan2(hero.aimY, hero.aimX);
+    let diffA = srcA - aimA;
+    while (diffA > Math.PI) diffA -= Math.PI * 2;
+    while (diffA < -Math.PI) diffA += Math.PI * 2;
+    if (Math.abs(diffA) <= hero.bulwarkArc / 2) {
+      amount *= hero.bulwarkReduction;
+    }
   }
   if (hero.iframes > 0) return 'absorbed';
   if (window.GOD) return 'absorbed';

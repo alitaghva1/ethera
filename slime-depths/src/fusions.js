@@ -193,6 +193,42 @@ export const FUSIONS = {
     icon: 'fusion_witness',
     apply: (hero) => { hero.fusionWitness = true; },
   },
+
+  // ==========================================================================
+  // NEW FUSIONS (systems pass — session 1). Pairs involving the respecced
+  // commons + the two new commons so build discovery has more attainable
+  // combinations at common-tier pickup rates.
+  // ==========================================================================
+  kingslayer: {
+    id: 'kingslayer',
+    components: ['long_reach', 'serrated_edge'],
+    name: 'Kingslayer',
+    desc: 'Speartip hits past 80% reach also have +15% crit chance',
+    flavor: 'The spearman who did not need to step close.',
+    tint: '#c9a0ff',
+    icon: 'fusion_obsidian_edge',
+    apply: (hero) => { hero.fusionKingslayer = true; },
+  },
+  aegis_wall: {
+    id: 'aegis_wall',
+    components: ['bulwark', 'iron_resolve'],
+    name: 'Aegis Wall',
+    desc: 'Frontal damage reduced 75% total (stacks Bulwark + Iron Resolve)',
+    flavor: 'A silence that did not know how to break.',
+    tint: '#90b8d8',
+    icon: 'fusion_stalwart',
+    apply: (hero) => { hero.bulwarkReduction = 0.25; },
+  },
+  weaving_step: {
+    id: 'weaving_step',
+    components: ['second_wind', 'nimble_step'],
+    name: 'Weaving Step',
+    desc: 'Cleansing dodges grant 0.3s of i-frames on your next hit',
+    flavor: 'The ruin exhales, and she is already past it.',
+    tint: '#b0e8c0',
+    icon: 'fusion_sparrows_dance',
+    apply: (hero) => { hero.fusionWeavingStep = true; },
+  },
 };
 
 // Build a map of pair-key → fusionId for quick lookup

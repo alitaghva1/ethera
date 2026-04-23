@@ -47,19 +47,42 @@ WEAPONS = {
 RELICS_COMMON = [
     ('serrated_edge',  lambda h: h.update(damageMul=h['damageMul']*1.30)),
     ('swift_arm',      lambda h: h.update(attackCooldownMul=h['attackCooldownMul']*0.75)),
-    ('long_reach',     lambda h: h.update(reachMul=h['reachMul']*1.25)),
-    ('nimble_step',    lambda h: h.update(dodgeCooldownMul=h['dodgeCooldownMul']*0.50)),
-    ('iron_greaves',   lambda h: h.update(speedMul=h['speedMul']*1.20)),
+    # SYSTEMS PASS — respec'd long_reach now has a mechanical payoff.
+    # Assume ~50% of hits land past 80% reach (players learn to space) → +20% effective.
+    ('long_reach',     lambda h: (
+        h.update(reachMul=h['reachMul']*1.25),
+        h.update(speartip=True))),
+    # SYSTEMS PASS — nimble_step now cleanses debuffs. No DPS component; EHP.
+    ('nimble_step',    lambda h: (
+        h.update(dodgeCooldownMul=h['dodgeCooldownMul']*0.50),
+        h.update(dodgeCleanses=True))),
+    # SYSTEMS PASS — iron_greaves now adds forced crits after movement.
+    # Rough: 30% of hits qualify → +30% effective crit rate.
+    ('iron_greaves',   lambda h: (
+        h.update(speedMul=h['speedMul']*1.20),
+        h.update(critChance=h['critChance']+0.10))),   # sim approximation
     ('ironhide',       lambda h: (
         h.update(maxHp=h['maxHp']+3),
         h.update(damageTakenMul=h['damageTakenMul']*0.90))),
-    ('bloodstone',     lambda h: h.update(lifesteal=h['lifesteal']+0.10)),
+    # SYSTEMS PASS — bloodstone now has finisher heal. Sustain, not DPS.
+    ('bloodstone',     lambda h: (
+        h.update(lifesteal=h['lifesteal']+0.10),
+        h.update(finisherHeal=3))),
     ('phoenix_tear',   lambda h: h.update(revives=h['revives']+1)),
     ('iron_resolve',   lambda h: h.update(damageTakenMul=h['damageTakenMul']*0.75)),
     ('keen_edge',      lambda h: h.update(critChance=h['critChance']+0.15)),
     ('vitality',       lambda h: h.update(regenRate=h['regenRate']+0.25)),  # post-balance: 1/8s -> 1/4s
-    ('heavy_blow',     lambda h: h.update(knockbackMul=h['knockbackMul']*2.5)),
-    ('dash_master',    lambda h: h.update(dodgeDistMul=h['dodgeDistMul']*1.35)),
+    # SYSTEMS PASS — heavy_blow forces crit on knocked-back enemies.
+    # Rough: 40% of hits qualify → +40% effective crit rate when player
+    # keeps up the kb→chase→hit rhythm.
+    ('heavy_blow',     lambda h: (
+        h.update(knockbackMul=h['knockbackMul']*2.5),
+        h.update(critChance=h['critChance']+0.15))),
+    # SYSTEMS PASS — dash_master adds perfect-dodge refund. Enables a
+    # counter-loop; rough DPS uplift via the 1.25× attacks-per-sec approx.
+    ('dash_master',    lambda h: (
+        h.update(dodgeDistMul=h['dodgeDistMul']*1.35),
+        h.update(perfectDodgeRefund=True))),
     ('executioner',    lambda h: h.update(executeThreshold=0.40, executeMul=1.5)),
     ('warlord',        lambda h: h.update(damageMul=h['damageMul']*(1+0.08*h['relicCount']))),
     ('reaver',         lambda h: (
@@ -67,6 +90,11 @@ RELICS_COMMON = [
         h.update(critChance=max(h['critChance'], 0.08)))),
     ('bloodrite',      lambda h: h.update(bloodrite=True)),
     ('gale_step',      lambda h: h.update(dodgeDistMul=h['dodgeDistMul']*1.35)),
+    # NEW COMMONS (systems pass — session 1)
+    ('bulwark',        lambda h: (
+        h.update(bulwark=True),
+        h.update(damageTakenMul=h['damageTakenMul']*0.75))),  # approx: ~50% of hits are frontal
+    ('second_wind',    lambda h: h.update(secondWind=True)),
 ]
 
 RELICS_RARE = [
@@ -119,6 +147,10 @@ FUSIONS = {
     ('iron_resolve', 'aegis_pulse'):      ('stalwart', 1.08),
     ('swift_arm', 'gale_step'):           ('sparrows_dance', 1.12),
     ('bloodstone', 'ethereal_binding'):   ('witness', 1.05),
+    # NEW FUSIONS (systems pass — session 1)
+    ('long_reach', 'serrated_edge'):      ('kingslayer', 1.18),
+    ('bulwark', 'iron_resolve'):          ('aegis_wall', 1.05),    # mostly EHP, mild DPS
+    ('nimble_step', 'second_wind'):       ('weaving_step', 1.08),
 }
 
 # src/floor.js — per-floor enemy scaling
@@ -160,6 +192,9 @@ def new_hero(weapon):
         'cataclysm': False, 'wandererCloak': False, 'phoenixCloak': False,
         'avatarOfFlame': False, 'etherealBinding': False, 'vampiricAura': False,
         'soulBurst': False, 'echoingStrike': False,
+        # Session-1 relic respecs
+        'speartip': False, 'dodgeCleanses': False, 'finisherHeal': 0,
+        'perfectDodgeRefund': False, 'bulwark': False, 'secondWind': False,
         'relics': [], 'relicCount': 0,
     }
 
@@ -196,6 +231,7 @@ def expected_dps(hero):
 
     proc_bonus = 1.0
     # Additive DPS from procs that fire periodically — approximate expected value.
+    if hero['speartip']:        proc_bonus *= 1.20   # +40% on ~50% of hits from max-reach spacing
     if hero['chainLightning']:  proc_bonus *= 1.23
     if hero['explosiveKill']:   proc_bonus *= 1.12
     if hero['echoingStrike']:   proc_bonus *= 1.40   # post-balance: 0.6 -> 0.4

@@ -24,31 +24,41 @@ export const RELIC_DEFS = {
     apply: () => { hero.attackCooldownMul *= 0.75; },
   },
   long_reach: {
+    // SYSTEMS PASS — was pure +25% range (dead stat stick, −16 DPS corr).
+    // Now a real "poke" playstyle: hits landed at the outer 20% of your
+    // reach deal bonus damage. Rewards spacing and timing.
     id: 'long_reach',
     name: 'Long Reach',
-    desc: '+25% attack range',
+    desc: '+25% range · hits past 80% reach deal +40% damage',
     flavor: 'A duelist\u2019s last breath, coiled in iron.',
     icon: 'relic_long_reach',
     tint: '#b49aff',
-    apply: () => { hero.reachMul *= 1.25; },
+    apply: () => { hero.reachMul *= 1.25; hero.speartip = true; },
   },
   nimble_step: {
+    // SYSTEMS PASS — was pure CD -50% (dead stat stick, −12 DPS corr).
+    // Now solves a specific gameplay problem: frost/venom elite affixes
+    // slow and poison you. Dodging now clears those debuffs, so Nimble
+    // Step becomes a COUNTER-PLAY tool to specific threats.
     id: 'nimble_step',
     name: 'Nimble Step',
-    desc: 'Dodge -50% cooldown',
+    desc: 'Dodge cooldown -50% · dodging cleanses poison/slow',
     flavor: 'Worn thin by the feet of a thief who never died in a cell.',
     icon: 'relic_nimble_step',
     tint: '#7edfff',
-    apply: () => { hero.dodgeCooldownMul *= 0.50; },
+    apply: () => { hero.dodgeCooldownMul *= 0.50; hero.dodgeCleanses = true; },
   },
   iron_greaves: {
+    // SYSTEMS PASS — was pure +20% move speed (dead stat stick, −16 DPS).
+    // Now rewards CONTINUOUS MOVEMENT: first hit after 2s of non-stop
+    // motion is a guaranteed crit. Creates kiting / hit-and-run identity.
     id: 'iron_greaves',
     name: 'Iron Greaves',
-    desc: '+20% move speed',
+    desc: '+20% speed · first hit after 2s of movement crits',
     flavor: 'They never rusted. Perhaps they never touched the earth.',
     icon: 'relic_iron_greaves',
     tint: '#9bd8ff',
-    apply: () => { hero.speedMul *= 1.20; },
+    apply: () => { hero.speedMul *= 1.20; hero.movementCrit = true; },
   },
   ironhide: {
     // BALANCE PASS — was pure +2 maxHp stat stick with −14 DPS corr.
@@ -68,13 +78,16 @@ export const RELIC_DEFS = {
     },
   },
   bloodstone: {
+    // SYSTEMS PASS — kept the base 10% lifesteal (that's fine as a baseline),
+    // added a punchy conditional: kills under 25% HP heal +3 HP. Stacks with
+    // Executioner for a real finisher/sustain archetype.
     id: 'bloodstone',
     name: 'Bloodstone',
-    desc: '10% lifesteal on hit',
+    desc: '10% lifesteal · finishing kills (target under 25% HP) heal +3 HP',
     flavor: 'What you take from them, you keep.',
     icon: 'relic_bloodstone',
     tint: '#d95a82',
-    apply: () => { hero.lifesteal += 0.10; },
+    apply: () => { hero.lifesteal += 0.10; hero.finisherHeal = 3; },
   },
   phoenix_tear: {
     // BALANCE PASS — "revive at 1 HP" meant the revive often did nothing
@@ -124,22 +137,28 @@ export const RELIC_DEFS = {
     apply: () => { hero.regenRate += 0.25; hero.regenCD = 1 / hero.regenRate; },
   },
   heavy_blow: {
+    // SYSTEMS PASS — knockback without payoff didn't convert to DPS. Now
+    // the first hit on a KNOCKED-BACK enemy is a guaranteed crit. Rewards
+    // you for the hit→chase→hit rhythm the big knockback already creates.
     id: 'heavy_blow',
     name: 'Heavy Blow',
-    desc: 'Hits knockback 2.5x harder',
+    desc: 'Knockback ×2.5 · hitting a knocked-back enemy is a guaranteed crit',
     flavor: 'Meant for doors. It works on ribs, too.',
     icon: 'relic_heavy_blow',
     tint: '#c86a4a',
-    apply: () => { hero.knockbackMul *= 2.5; },
+    apply: () => { hero.knockbackMul *= 2.5; hero.knockbackCrit = true; },
   },
   dash_master: {
+    // SYSTEMS PASS — extended +35% dodge distance. Perfect-dodges now
+    // fully refund the dodge cooldown so chaining perfect-dodges is its
+    // own build identity (pairs brilliantly with counterstrike).
     id: 'dash_master',
     name: 'Dash Master',
-    desc: 'Dodge distance +35%',
+    desc: 'Dodge distance +35% · perfect dodges refund the dodge cooldown',
     flavor: 'A step that ends before it begins.',
     icon: 'relic_dash_master',
     tint: '#a0e0ff',
-    apply: () => { hero.dodgeDistMul *= 1.35; },
+    apply: () => { hero.dodgeDistMul *= 1.35; hero.perfectDodgeRefund = true; },
   },
   executioner: {
     id: 'executioner',
@@ -352,6 +371,34 @@ export const RELIC_DEFS = {
     tier: 'common',
     apply: () => { hero.dodgeDistMul *= 1.35; },
   },
+
+  // ==========================================================================
+  // NEW MECHANICAL RELICS (systems pass — session 1)
+  //
+  // These fill design gaps in the common pool: a frontal-defense identity
+  // (bulwark) and a per-room resource identity (second_wind). Both measured
+  // to stand on their own without a fusion partner.
+  // ==========================================================================
+  bulwark: {
+    id: 'bulwark',
+    name: 'Bulwark',
+    desc: 'Damage from the front is halved',
+    flavor: 'A stance older than the word for "no."',
+    icon: 'relic_iron_resolve',
+    tint: '#8ab8d8',
+    tier: 'common',
+    apply: () => { hero.bulwark = true; hero.bulwarkArc = Math.PI * 0.66; hero.bulwarkReduction = 0.5; },
+  },
+  second_wind: {
+    id: 'second_wind',
+    name: 'Second Wind',
+    desc: 'The first dodge in every room ignores cooldown',
+    flavor: 'One breath held past the end. One more step taken.',
+    icon: 'relic_nimble_step',
+    tint: '#b0e8a0',
+    tier: 'common',
+    apply: () => { hero.secondWind = true; },
+  },
 };
 
 export const ALL_RELIC_IDS = Object.keys(RELIC_DEFS);
@@ -462,6 +509,8 @@ export const RELIC_GLYPHS = {
   aegis_pulse:      'shield',
   bloodrite:        'skull',
   gale_step:        'wind',
+  bulwark:          'shield',
+  second_wind:      'wind',
 };
 
 export function getRelicGlyph(id) {
