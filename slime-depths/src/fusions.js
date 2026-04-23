@@ -206,7 +206,7 @@ export const FUSIONS = {
     desc: 'Speartip hits past 80% reach also have +15% crit chance',
     flavor: 'The spearman who did not need to step close.',
     tint: '#c9a0ff',
-    icon: 'fusion_obsidian_edge',
+    icon: 'fusion_kingslayer',
     apply: (hero) => { hero.fusionKingslayer = true; },
   },
   aegis_wall: {
@@ -216,7 +216,7 @@ export const FUSIONS = {
     desc: 'Frontal damage reduced 75% total (stacks Bulwark + Iron Resolve)',
     flavor: 'A silence that did not know how to break.',
     tint: '#90b8d8',
-    icon: 'fusion_stalwart',
+    icon: 'fusion_aegis_wall',
     apply: (hero) => { hero.bulwarkReduction = 0.25; },
   },
   weaving_step: {
@@ -226,7 +226,7 @@ export const FUSIONS = {
     desc: 'Cleansing dodges grant 0.3s of i-frames on your next hit',
     flavor: 'The ruin exhales, and she is already past it.',
     tint: '#b0e8c0',
-    icon: 'fusion_sparrows_dance',
+    icon: 'fusion_weaving_step',
     apply: (hero) => { hero.fusionWeavingStep = true; },
   },
 };

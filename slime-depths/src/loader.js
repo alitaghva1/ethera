@@ -180,6 +180,34 @@ export async function loadAll(progressCb) {
     loadImage('fusion_sparrows_dance',  'assets/icons/fusion_sparrows_dance.png'),
     loadImage('fusion_witness',         'assets/icons/fusion_witness.png'),
 
+    // APRIL 2026 ICON EXPANSION — 19 painted icons (Nano Banana) covering
+    // the 5 relics/fusions that previously borrowed icons (now have dedicated
+    // art) plus 14 NEW concept icons reserved for future mechanic design
+    // (relic + fusion bank).
+    //
+    // Now-dedicated (replaces borrowed icons):
+    loadImage('relic_bulwark',          'assets/icons/relic_bulwark.png'),
+    loadImage('relic_second_wind',      'assets/icons/relic_second_wind.png'),
+    loadImage('fusion_kingslayer',      'assets/icons/fusion_kingslayer.png'),
+    loadImage('fusion_aegis_wall',      'assets/icons/fusion_aegis_wall.png'),
+    loadImage('fusion_weaving_step',    'assets/icons/fusion_weaving_step.png'),
+    // Reserved for future relic concepts (art bank — mechanics TBD):
+    loadImage('relic_mirror_shard',     'assets/icons/relic_mirror_shard.png'),
+    loadImage('relic_spore_bloom',      'assets/icons/relic_spore_bloom.png'),
+    loadImage('relic_oathshield',       'assets/icons/relic_oathshield.png'),
+    loadImage('relic_arcane_quiver',    'assets/icons/relic_arcane_quiver.png'),
+    loadImage('relic_marrow_pact',      'assets/icons/relic_marrow_pact.png'),
+    loadImage('relic_gilded_hoard',     'assets/icons/relic_gilded_hoard.png'),
+    loadImage('relic_hymn_of_embers',   'assets/icons/relic_hymn_of_embers.png'),
+    loadImage('relic_temporal_eye',     'assets/icons/relic_temporal_eye.png'),
+    loadImage('relic_whisper_veil',     'assets/icons/relic_whisper_veil.png'),
+    loadImage('relic_stormcaller',      'assets/icons/relic_stormcaller.png'),
+    // Reserved for future fusion concepts:
+    loadImage('fusion_shatterpoint',    'assets/icons/fusion_shatterpoint.png'),
+    loadImage('fusion_wildfire_choir',  'assets/icons/fusion_wildfire_choir.png'),
+    loadImage('fusion_martyr_bloom',    'assets/icons/fusion_martyr_bloom.png'),
+    loadImage('fusion_stormveil',       'assets/icons/fusion_stormveil.png'),
+
     // BOSS PORTRAITS — shown in Chronicles > Bestiary when boss is defeated
     loadImage('portrait_grudnok',       'assets/enemies/portrait_grudnok.png'),
     loadImage('portrait_iron_revenant', 'assets/enemies/portrait_iron_revenant.png'),
