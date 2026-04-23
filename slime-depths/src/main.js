@@ -4901,11 +4901,19 @@ function render() {
   // or a big impact landed. Brief and quartic-eased so it snaps out fast.
   applyChromAberr(ctx, canvas);
 
+  // During any intro cinematic, suppress the heavy combat-mood darkening
+  // passes. The intro has its OWN letterbox + veil already; stacking the
+  // boss-room vignette (0.72) + hero-darkness (0.70) + red color wash
+  // (0.18) on top crushes the painted portrait to near-black. We still
+  // apply the LIGHT defaults (non-boss values) so the scene retains
+  // atmosphere, but the cumulative alpha is ~40% less.
+  const introActiveNow = bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0;
+
   // Per-room color wash — subtle tonal cue for room kind, on top of biome wash
   const kind = floor[roomIndex]?.kind;
   const pal = currentBiomePal();
   // Biome ambient wash (always applied so each floor reads differently)
-  if (pal.washColor) {
+  if (pal.washColor && !introActiveNow) {
     ctx.fillStyle = pal.washColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
@@ -4915,7 +4923,7 @@ function render() {
   else if (kind === 'boss')      wash = 'rgba(140, 18, 24, 0.18)';
   else if (kind === 'altar')     wash = 'rgba(150, 20, 40, 0.12)';
   else if (kind === 'challenge') wash = 'rgba(150, 90, 20, 0.08)';
-  if (wash) {
+  if (wash && !introActiveNow) {
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
@@ -4925,10 +4933,11 @@ function render() {
   const hsy = hero.y - camera.y + canvas.height / 2 + camera.offsetY;
 
   // Darkness layer — edges are dim, center is ALMOST full-bright. Gradient is
-  // wide and gentle so hero doesn't look spotlit.
-  const darkAmount = kind === 'boss' ? 0.70 : 0.45;
-  const darkInner = kind === 'boss' ? 260 : 340;
-  const darkOuter = kind === 'boss' ? 620 : 760;
+  // wide and gentle so hero doesn't look spotlit. Boss-room heavy darkening
+  // is suppressed during intros so the painted portrait reads clearly.
+  const darkAmount = introActiveNow ? 0.35 : (kind === 'boss' ? 0.70 : 0.45);
+  const darkInner  = introActiveNow ? 340 : (kind === 'boss' ? 260 : 340);
+  const darkOuter  = introActiveNow ? 760 : (kind === 'boss' ? 620 : 760);
   const dark = ctx.createRadialGradient(hsx, hsy, darkInner, hsx, hsy, darkOuter);
   dark.addColorStop(0, 'rgba(6, 4, 10, 0)');
   dark.addColorStop(0.7, 'rgba(6, 4, 10, ' + (darkAmount * 0.4).toFixed(2) + ')');
@@ -4943,7 +4952,8 @@ function render() {
   // Pre-boss rooms swap to a red-dark vignette for ominous approach.
   const preBoss = roomNextKind.kind === 'boss' && kind !== 'boss';
   const vigBase = preBoss ? 'rgba(30, 4, 6, ' : (pal.vignetteBase || 'rgba(4, 4, 8, ');
-  const vigStrength = kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48;
+  // During intros: use the light (non-boss) vignette so the portrait pops.
+  const vigStrength = introActiveNow ? 0.32 : (kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48);
   const cx = canvas.width / 2, cy = canvas.height / 2;
   const vigInner = Math.min(canvas.width, canvas.height) * 0.28;
   const vigOuter = Math.max(canvas.width, canvas.height) * 0.72;
