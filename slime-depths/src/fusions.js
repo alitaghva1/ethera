@@ -12,7 +12,7 @@
 // Discovery is persisted in localStorage so players build up a codex over
 // many runs. The "first time" a fusion activates triggers a dramatic banner.
 
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 const KEY = 'ethera:fusions_discovered:v1';
 
@@ -206,7 +206,7 @@ export const FUSIONS = {
     desc: 'Speartip hits past 80% reach also have +15% crit chance',
     flavor: 'The spearman who did not need to step close.',
     tint: '#c9a0ff',
-    icon: 'fusion_obsidian_edge',
+    icon: 'fusion_kingslayer',
     apply: (hero) => { hero.fusionKingslayer = true; },
   },
   aegis_wall: {
@@ -216,7 +216,7 @@ export const FUSIONS = {
     desc: 'Frontal damage reduced 75% total (stacks Bulwark + Iron Resolve)',
     flavor: 'A silence that did not know how to break.',
     tint: '#90b8d8',
-    icon: 'fusion_stalwart',
+    icon: 'fusion_aegis_wall',
     apply: (hero) => { hero.bulwarkReduction = 0.25; },
   },
   weaving_step: {
@@ -226,8 +226,85 @@ export const FUSIONS = {
     desc: 'Cleansing dodges grant 0.3s of i-frames on your next hit',
     flavor: 'The ruin exhales, and she is already past it.',
     tint: '#b0e8c0',
-    icon: 'fusion_sparrows_dance',
+    icon: 'fusion_weaving_step',
     apply: (hero) => { hero.fusionWeavingStep = true; },
+  },
+
+  // ==========================================================================
+  // APRIL 2026 EXPANSION — 4 new fusions built on the new relic bank.
+  // Each amplifies a distinctive mechanic from its components.
+  // ==========================================================================
+
+  // Reflected damage crits on return — doubles the retaliation punch.
+  shatterpoint: {
+    id: 'shatterpoint',
+    components: ['mirror_shard', 'counterstrike'],
+    name: 'Shatterpoint',
+    desc: 'Reflected damage from Mirror Shard always crits (×2.5)',
+    flavor: 'What struck twice was struck once in return — always.',
+    tint: '#ccd8f0',
+    icon: 'fusion_shatterpoint',
+    apply: (hero) => { hero.fusionShatterpoint = true; hero.mirrorReflect = 0.20; hero.mirrorReflectCrit = 2.5; },
+  },
+  // Amplifies Hymn of Embers — wider radius + burn-over-time on enemies
+  // struck by the aura.
+  wildfire_choir: {
+    id: 'wildfire_choir',
+    components: ['hymn_of_embers', 'pyromancer'],
+    name: 'Wildfire Choir',
+    desc: 'Hymn radius +50% and aura damage applies a 1/s burn for 2s',
+    flavor: 'The choir sings three names at once. All of them yours.',
+    tint: '#ff9040',
+    icon: 'fusion_wildfire_choir',
+    apply: (hero) => { hero.fusionWildfireChoir = true; hero.hymnRadius = 120; },
+  },
+  // Martyr Bloom — lifesteal doubles while in the Marrow Pact danger zone.
+  // Rewards staying in the red for sustained aggression.
+  martyr_bloom: {
+    id: 'martyr_bloom',
+    components: ['marrow_pact', 'vampiric_aura'],
+    name: 'Martyr Bloom',
+    desc: 'Lifesteal gains are doubled while at or below 50% HP',
+    flavor: 'The rose grows brightest in shallow soil.',
+    tint: '#d85060',
+    icon: 'fusion_martyr_bloom',
+    apply: (hero) => { hero.fusionMartyrBloom = true; },
+  },
+  // Stormveil — Stormcaller strikes twice as fast during Whisper Veil's
+  // post-dodge window. Rewards dodge-aggressive play.
+  stormveil: {
+    id: 'stormveil',
+    components: ['stormcaller', 'whisper_veil'],
+    name: 'Stormveil',
+    desc: 'Stormcaller strikes twice as often during Whisper Veil window',
+    flavor: 'The storm walks with her, step for step, silent.',
+    tint: '#8098d8',
+    icon: 'fusion_stormveil',
+    apply: (hero) => { hero.fusionStormveil = true; },
+  },
+
+  // Rehomes the orphan `fusion_spare_ring.png` and `fusion_spare_star.png`
+  // icons into the active fusion pool. Kept simple — each amplifies a
+  // mechanic on its components rather than inventing a new one.
+  ringbearer: {
+    id: 'ringbearer',
+    components: ['vitality', 'bloodstone'],
+    name: 'Ringbearer',
+    desc: 'Bloodstone finisher heals +2 (executions now restore 5 HP)',
+    flavor: 'A circle is a promise that never ends.',
+    tint: '#ffb0a8',
+    icon: 'fusion_spare_ring',
+    apply: (hero) => { hero.fusionRingbearer = true; hero.finisherHeal = (hero.finisherHeal || 0) + 2; },
+  },
+  starweave: {
+    id: 'starweave',
+    components: ['keen_edge', 'eye_of_ether'],
+    name: 'Starweave',
+    desc: '+5% crit chance on top of each component relic',
+    flavor: 'Seven threads, one constellation, no accident.',
+    tint: '#e8d8ff',
+    icon: 'fusion_spare_star',
+    apply: (hero) => { hero.fusionStarweave = true; hero.critChance = (hero.critChance || 0) + 0.05; },
   },
 };
 
@@ -274,3 +351,22 @@ export function checkFusionsOnPickup(newRelicId, equippedRelicIds, hero) {
 // Get total count for codex UI
 export function totalFusions() { return Object.keys(FUSIONS).length; }
 export function discoveredCount() { return discoveredFusions.size; }
+
+// Relic ids that would complete a fusion given the currently-equipped relics.
+// Returns a Set of relic ids — each is the OTHER component of a fusion pair
+// where the player already has one component. Excludes fusions that are
+// already active. Used by THE MAGICIAN tarot card to bias relic offers.
+export function getFusionCompletingRelicIds(equippedRelicIds) {
+  const owned = new Set(equippedRelicIds);
+  const activeIds = new Set(activeFusions.map(f => f.id));
+  const completing = new Set();
+  for (const fid in FUSIONS) {
+    if (activeIds.has(fid)) continue;
+    const f = FUSIONS[fid];
+    const [a, b] = f.components;
+    const hasA = owned.has(a), hasB = owned.has(b);
+    if (hasA && !hasB) completing.add(b);
+    if (hasB && !hasA) completing.add(a);
+  }
+  return completing;
+}

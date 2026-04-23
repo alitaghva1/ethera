@@ -1,6 +1,6 @@
 // Achievements — milestones tracked across runs. Unlocks show as popups.
 // Persists via localStorage.
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 const STORAGE_KEY = 'ethera:achievements:v1';
 
@@ -100,6 +100,93 @@ export const ACHIEVEMENTS = {
     name: 'Carnage',
     desc: 'Reach a 40-hit combo',
     check: (s) => s._maxCombo >= 40,
+  },
+
+  // ============================================================================
+  // HIDDEN ACHIEVEMENTS — not shown in any menu until discovered. Popup reveals
+  // with a "??? UNLOCKED" phase, then flashes the real name. Cryptic `hint`
+  // text stands in for the description during the mystery phase. Designed to
+  // reward habit rather than explicit pursuit.
+  // ============================================================================
+  twin_legends: {
+    id: 'twin_legends',
+    name: 'Two Fires, Together',
+    desc: 'Hold 2 legendary (or mythic) relics at once',
+    hint: 'two fires burn together',
+    hidden: true,
+    check: (s) => s._maxLegendariesHeld >= 2,
+  },
+  mythborn: {
+    id: 'mythborn',
+    name: 'Mythborn',
+    desc: 'Wield a mythic relic',
+    hint: 'a legend has awakened, and you bear it',
+    hidden: true,
+    check: (s) => s._mythicEquipped === true,
+  },
+  fate_woven: {
+    id: 'fate_woven',
+    name: 'Fate Woven',
+    desc: 'Hold 3 active fusions at once',
+    hint: 'the relics have begun to harmonize',
+    hidden: true,
+    check: (s) => s._maxFusions >= 3,
+  },
+  perfect_dodger: {
+    id: 'perfect_dodger',
+    name: 'Perfect Dodger',
+    desc: 'Pull off 25 Perfect Dodges in one run',
+    hint: 'the steps you never took',
+    hidden: true,
+    check: (s) => s.perfectDodges >= 25,
+  },
+  ceaseless: {
+    id: 'ceaseless',
+    name: 'Ceaseless',
+    desc: 'Reach an 80-hit combo',
+    hint: 'your blade, their falling',
+    hidden: true,
+    check: (s) => s._maxCombo >= 80,
+  },
+  five_hundred_slain: {
+    id: 'five_hundred_slain',
+    name: 'Five Hundred Slain',
+    desc: 'Defeat 500 enemies in one run',
+    hint: 'the ruin counts them all',
+    hidden: true,
+    check: (s) => s.enemiesDefeated >= 500,
+  },
+  crown_of_relics: {
+    id: 'crown_of_relics',
+    name: 'Crown of Relics',
+    desc: 'Acquire 15 relics in one run',
+    hint: 'burdens, worn as crowns',
+    hidden: true,
+    check: (s) => s.relicsObtained >= 15,
+  },
+  coin_hoarder: {
+    id: 'coin_hoarder',
+    name: 'Coin Hoarder',
+    desc: 'Collect 800 gold in one run',
+    hint: 'riches, gathered in the dark',
+    hidden: true,
+    check: (s) => s.goldCollected >= 800,
+  },
+  the_signature: {
+    id: 'the_signature',
+    name: 'The Dungeon Named You',
+    desc: 'Hold both Cataclysm and Eye of Ether at the same time',
+    hint: 'the dungeon has named you',
+    hidden: true,
+    check: (s) => s._bothMythicsHeld === true,
+  },
+  unbroken_climber: {
+    id: 'unbroken_climber',
+    name: 'Unbroken',
+    desc: 'Complete a run at Ascension VII or higher',
+    hint: 'the world bends to one who does not break',
+    hidden: true,
+    check: (s) => s._runComplete === true && (s._ascensionAtWin || 0) >= 7,
   },
 };
 

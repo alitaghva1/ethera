@@ -36,7 +36,7 @@ export let selectedMemoryId = null;   // null = no memory this run
 // Safe JSON wrapper — applied to the UNLOCKED set; selectedMemoryId stays
 // raw-string (no JSON) but still wrapped in its own try/catch since storage
 // access can throw in restricted contexts.
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 export function loadMemories() {
   try {
@@ -111,6 +111,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.maxFloor >= 2,
     unlockHint: 'Reach floor 2 to remember…',
+    unlockProgress: (records) => ({ current: records.maxFloor || 0, target: 2, unit: 'floor' }),
   },
 
   thunder: {
@@ -126,6 +127,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.enemiesKilledAllTime >= 150,
     unlockHint: 'Slay 150 enemies to remember…',
+    unlockProgress: (records) => ({ current: records.enemiesKilledAllTime || 0, target: 150, unit: 'slain' }),
   },
 
   ash: {
@@ -144,6 +146,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.bossKillsAllTime >= 3,
     unlockHint: 'Slay 3 bosses to remember…',
+    unlockProgress: (records) => ({ current: records.bossKillsAllTime || 0, target: 3, unit: 'bosses' }),
   },
 
   debtor: {
@@ -159,6 +162,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.mostGold >= 300,
     unlockHint: 'Earn 300 gold in one run to remember…',
+    unlockProgress: (records) => ({ current: records.mostGold || 0, target: 300, unit: 'gold' }),
   },
 
   stone: {
@@ -175,6 +179,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.maxFloor >= 3,
     unlockHint: 'Reach floor 3 to remember…',
+    unlockProgress: (records) => ({ current: records.maxFloor || 0, target: 3, unit: 'floor' }),
   },
 
   echo: {
@@ -207,6 +212,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.runsCompleted >= 1,
     unlockHint: 'Complete one descent to remember…',
+    unlockProgress: (records) => ({ current: records.runsCompleted || 0, target: 1, unit: 'completed' }),
   },
 
   hollow: {
@@ -223,6 +229,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.runsStarted >= 5,
     unlockHint: 'Begin five descents to remember…',
+    unlockProgress: (records) => ({ current: records.runsStarted || 0, target: 5, unit: 'begun' }),
   },
 
   bell: {
@@ -245,6 +252,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.mostRelics >= 6,
     unlockHint: 'Own 6 relics in one run to remember…',
+    unlockProgress: (records) => ({ current: records.mostRelics || 0, target: 6, unit: 'relics' }),
   },
 
   nine: {
@@ -259,6 +267,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.bossKillsAllTime >= 9,
     unlockHint: 'Slay 9 bosses to remember…',
+    unlockProgress: (records) => ({ current: records.bossKillsAllTime || 0, target: 9, unit: 'bosses' }),
   },
 
   hungry_blade: {
@@ -302,6 +311,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.runsCompleted >= 2,
     unlockHint: 'Complete 2 descents to remember…',
+    unlockProgress: (records) => ({ current: records.runsCompleted || 0, target: 2, unit: 'completed' }),
   },
 
   hanged_man: {
@@ -317,6 +327,7 @@ export const MEMORIES = {
     },
     unlockCheck: (records) => records.runsStarted >= 8,
     unlockHint: 'Begin 8 descents to remember…',
+    unlockProgress: (records) => ({ current: records.runsStarted || 0, target: 8, unit: 'begun' }),
   },
 };
 

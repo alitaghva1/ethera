@@ -36,13 +36,23 @@ export const hamletState = {
   npcArrivalRun: {},     // id → runsStarted at which they arrived (for flavor)
   npcServiceCount: {},   // id → how many times you've used their service
   npcDialogueSeen: {},   // id+stage → true (so we know when to show "new" indicator)
+  // Milestone counters for reactive dialogue. Main.js bumps these at the
+  // right run-lifecycle events (boss kill, fortune drawn, etc.) so NPC
+  // arcStage advance() checks can key off them.
+  fortunesDrawn: 0,      // how many Oracle's Fortunes cards the player has drawn
   // Hamlet growth stage (0=ruin, 1=kindled, 2=thriving, 3=restored)
   // Currently derived from NPC count; we may let players spend essence to
   // accelerate it in later phases.
   // growthStage: 0,    // kept commented; derived function below for now
 };
 
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
+// Milestone-triggered NPC dialogue reads from these at advance() time.
+// Read-only references — no state written back into those modules.
+// `meta` is already imported at the top of the file (line 29).
+import { records } from './records.js';
+import { seenRelicIds } from './relics.js';
+import { curseCount } from './curses.js';
 
 function _isHamletShape(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -103,6 +113,16 @@ export const NPCS = {
           'That is what a keeper does. That is what you do too, whether you know it or not.',
         ],
       },
+      {
+        // Milestone — any boss killed, any descent ever. Reframes what
+        // the player is actually doing when they bring essence home.
+        advance: () => (records && (records.bossKills | 0) >= 1),
+        text: [
+          'You came back with blood on you tonight. Not yours — not all of it.',
+          'The essence you bring is heavier after a kill. Did you know that? It remembers the weight of the thing it came from.',
+          'I will keep it well. Some of it I will not even spend.',
+        ],
+      },
     ],
     service: {
       type: 'meta_shop',
@@ -144,6 +164,16 @@ export const NPCS = {
           'You know my name, don\'t you. You heard it said, deep down.',
           'I will not tell you whether it is true. It is enough that you carry it now.',
           'Bring the next ones.',
+        ],
+      },
+      {
+        // Milestone — player has a banked heirloom (any time). Smith comments
+        // on the piece he's already holding for the next descent.
+        advance: () => (meta && meta.heirloom),
+        text: [
+          'I see what you gave me last. It asks to be carried — again.',
+          'I have hung it by the door. When you go next, it goes with you.',
+          'Some pieces are not made to sit on my workbench. They want to be used.',
         ],
       },
     ],
@@ -194,6 +224,16 @@ export const NPCS = {
           'Not today. Today you go back down.',
         ],
       },
+      {
+        // Milestone — 20+ relics discovered across saves. The codex is
+        // getting heavy enough that the archivist feels it.
+        advance: () => (seenRelicIds && seenRelicIds.size >= 20),
+        text: [
+          'You have given me more than I had left to write.',
+          'The book is heavier now. I cannot close it with one hand anymore. That is a good weight.',
+          'Keep bringing. I have space yet.',
+        ],
+      },
     ],
     service: {
       type: 'memory_codex',
@@ -239,6 +279,15 @@ export const NPCS = {
           'You bargain well. Calmly. That bothers me more than if you had bargained badly.',
           'Someone who bargains calmly has already accepted the loss. I wonder if you know what yours is, yet.',
           'I will still count for you. I just wanted you to know I was watching.',
+        ],
+      },
+      {
+        // Milestone — three or more curses active. The player's gone all-in.
+        advance: () => (typeof curseCount === 'function' && curseCount() >= 3),
+        text: [
+          'You carry three at once, now. Most cannot.',
+          'The dead notice who walks into the dark carrying more than they were given. They make room on the stone when you pass.',
+          'I do not envy what you have become. But I recognize it.',
         ],
       },
     ],
@@ -288,6 +337,15 @@ export const NPCS = {
           'I came back to watch. I am still deciding what I saw.',
         ],
       },
+      {
+        // Milestone — 3+ fortunes drawn. Player is actually USING the deck.
+        advance: (s) => (s.fortunesDrawn | 0) >= 3,
+        text: [
+          'You have begun to read the deck. I can see it in how you hold the cards before you choose.',
+          'Do not mistake that for knowing the deck. The deck learns you much faster than you learn it.',
+          'I will draw again when you ask. I find I like the asking.',
+        ],
+      },
     ],
     service: {
       type: 'oracle_forecast',
@@ -333,6 +391,16 @@ export const NPCS = {
           'You have been kind to me. I am not used to being given time.',
           'Soon — not today — I will take back to the road. There is a piece of this story I would like to see before I go.',
           'When I do, look in my pack once more. I will leave something.',
+        ],
+      },
+      {
+        // Milestone — reached the final floor at least once. Wanderer
+        // recognizes the traveler who has seen the throne.
+        advance: () => (records && (records.maxFloor | 0) >= 4),
+        text: [
+          'So you\u2019ve seen the throne.',
+          'You came back anyway. Most who get that far do not — not because the throne kills them, though it often does. Because coming back is harder than staying.',
+          'That is the part of this story I was waiting to see.',
         ],
       },
     ],

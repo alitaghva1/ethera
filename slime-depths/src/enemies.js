@@ -1,16 +1,16 @@
 // Enemies — Tiny RPG sprites (100x100). Types now include melee, ranged, and
 // explosive behaviors with attack telegraphs to make combat readable.
-import { images } from './loader.js?v=enemies3';
+import { images } from './loader.js';
 import { isWallAtWorld, spawnExtraFirePool } from './room.js';
-import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js?v=8';
+import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
-import { shakeCamera, pulseZoom } from './camera.js?v=2';
+import { shakeCamera, pulseZoom } from './camera.js';
 import { damageHero, hero } from './hero.js';
 import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
 import { stats } from './stats.js';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
-import { triggerScreenFlash } from './fx.js?v=a11y1';
+import { triggerScreenFlash } from './fx.js';
 
 // ============================================================================
 // ELITE AFFIXES — rolled on elite spawn (floors 2+). Each affix has a unique
@@ -368,6 +368,28 @@ export const TYPES = {
     flavor: 'the executioner whose blade the ruin kept sharpened',
   },
 
+  // ---- HERMIT — floor-4 mini-boss. Slow, imposing, keeps his distance and
+  // unloads a wide triple-orb volley with long readable telegraphs. Rewards
+  // patient play: close the gap during windup, back off during cast. Uses
+  // the wizard sprite with a gold-amber tint so he reads as "other" from
+  // both dreadmage and wizard in the same room.
+  hermit: {
+    element: 'shock',
+    prefix: 'wiz_',      drawSize: 118, radius: 20, speed: 40, hp: 180, damage: 3,
+    color: '#c9a86a',    hitCD: 2.4, fps: 8, behavior: 'wizard',
+    preferDist: 420, minDist: 320,
+    castRange: 520,
+    castWindup: 1.10,                  // long telegraph — player gets a real read
+    castCount: 3,
+    castSpread: 0.42,                   // wide volley, forces positioning
+    telegraphColor: 'rgba(201, 168, 106, ',
+    windupSfx: { key: 'click', rate: 0.30, volume: 0.7 },
+    tintFilter: 'sepia(0.55) hue-rotate(-15deg) saturate(1.4) brightness(0.9)',
+    displayName: 'THE HERMIT',
+    flavor: 'a lantern in every hollow; a question in every name',
+    bloodColor: '#c9a86a',
+  },
+
   // ---- DREAD-MAGE — tier-3 caster. Triple-orb volley with a tighter spread
   // than wizard, faster cast, slightly less HP. Priority kill target in
   // multi-caster comps (pair with priest or reflector).
@@ -414,7 +436,7 @@ export const seenEnemyTypes = new Set();
 
 // Codex persistence — safeLoadJSON imported from storage module.
 // Inlined import because enemies.js doesn't import from storage elsewhere.
-import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js';
 
 export function loadCodex() {
   const arr = _safeLoadJSON(CODEX_KEY, null, Array.isArray);
@@ -656,13 +678,13 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         stats.enemiesDefeated++;
         // Kill-streak tracking — consecutive kills within 1.5s stack up
         const now = performance.now() / 1000;
-        if (window.__lastKillTime && now - window.__lastKillTime < 1.5) {
-          window.__killStreak = (window.__killStreak || 1) + 1;
+        if (window.__gameMetrics.lastKillTime && now - window.__gameMetrics.lastKillTime < 1.5) {
+          window.__gameMetrics.killStreak = (window.__gameMetrics.killStreak || 1) + 1;
         } else {
-          window.__killStreak = 1;
+          window.__gameMetrics.killStreak = 1;
         }
-        window.__lastKillTime = now;
-        window.__killStreakShowUntil = now + 1.2;         // HUD shows for 1.2s after last kill
+        window.__gameMetrics.lastKillTime = now;
+        window.__gameMetrics.killStreakShowUntil = now + 1.2;         // HUD shows for 1.2s after last kill
         if (this.boss) stats.bossesKilled++;
         else if (this.elite) stats.elitesDefeated++;
         if (def.behavior === 'bomber') {

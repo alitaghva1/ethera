@@ -3,7 +3,7 @@
 import { hero } from './hero.js';
 import { playSfx } from './sfx.js';
 import { stats } from './stats.js';
-import { sparkle, dashTrail } from './particles.js?v=8';
+import { sparkle, dashTrail } from './particles.js';
 import { synthPing } from './synth.js';
 
 export const gold = { total: 0, streak: 0, streakT: 0, streakFlashT: 0 };
@@ -85,8 +85,11 @@ export function updateGold(dt) {
           sparkle(c.x, c.y - 4, '#ffe3a0');
         }
         if (d < 18) {
-          gold.total += c.value;
-          stats.goldCollected += c.value;
+          // GILDED HOARD — multiplies gold pickups. Defaults to 1 (no effect)
+          // when the relic isn't equipped.
+          const payout = Math.round(c.value * (hero.goldMul || 1));
+          gold.total += payout;
+          stats.goldCollected += payout;
           // Streak logic — bump counter, reset window. Pitch climbs with gold
           // total AND streak so a cascade sounds musically ascending.
           gold.streak = Math.min(20, gold.streak + 1);

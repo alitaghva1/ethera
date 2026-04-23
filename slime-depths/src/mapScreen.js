@@ -1,18 +1,27 @@
 // ============================================================================
-// FLOOR MAP SCREEN — renders the branching DAG for path selection
+// FLOOR MAP SCREEN — branching DAG path selection
 //
-// Session 2b of the branching-map pass. Pure UI — accepts a graph from
-// floorGraph.js, a currentNodeId, and a pick callback. Not yet wired to
-// the run flow (2c handles that).
+// Redesign pass: the graph is now rendered inside a CENTERED CARD with ornate
+// gold framing, rather than floating in the overlay's full-screen void. This
+// contains the composition so lone-node layers (SANCTUARY, BOSS) no longer
+// feel stranded. Straight-line edges became gentle bezier curves that read
+// as "paths between rooms" instead of "chart lines." Node kinds now have
+// subtly-distinct visuals (ring style, glow, pulse) so COMBAT vs ELITE vs
+// EVENT vs SANCTUARY vs BOSS is legible at a glance without reading labels.
 //
-// Visual layout: layers stacked vertically (start at bottom, boss at top),
-// nodes spread horizontally within each layer. SVG-drawn edges between
-// nodes for the lineage lines. Clickable nodes are the ones current can
-// reach (current.edges). Others are dimmed.
-//
-// Visual grammar matches the rest of the game — gold hairlines, dark
-// radial gradient backdrop, ornate corner flourishes.
+// Public API unchanged:
+//   openFloorMap(graph, currentNodeId) -> Promise<nodeId>
+//   closeFloorMap()
 // ============================================================================
+
+// Card is the framed region the graph lives in. Sized to fit within the
+// 1280x720 game canvas with healthy breathing room above/below.
+const CARD_W = 780;
+const CARD_H = 620;
+// Graph area inside the card — reserves top for title, bottom for hint.
+// Generous bottom pad so START's label clears the hint text cleanly.
+const GRAPH_TOP_PAD = 112;   // below "FLOOR MAP" title
+const GRAPH_BOT_PAD = 112;   // above "click a glowing node" hint
 
 // Glyphs per node kind. Single unicode char drawn inside a circular badge
 // so we don't need sprite art for the map.
@@ -25,11 +34,13 @@ const NODE_GLYPHS = {
   boss:      '\u265B', // ♛ queen/crown
 };
 
-// Per-kind accent color. Matches existing in-game palettes where applicable.
+// Per-kind accent color — legible against the card's dark gradient.
+// COMBAT is deliberately muted cream (not gold) so START stays the one
+// gold node on the map — anchors read as special, combats as routine.
 const NODE_COLORS = {
-  start:     '#c9a86a',
-  combat:    '#e8d4b4',
-  elite:     '#d85a5a',
+  start:     '#f4d9a0',
+  combat:    '#c8b894',
+  elite:     '#e07070',
   event:     '#c8a0ff',
   sanctuary: '#86e3a8',
   boss:      '#ff9a55',
@@ -44,11 +55,220 @@ const NODE_LABELS = {
   boss:      'BOSS',
 };
 
-let _mapEl = null;       // DOM singleton
+let _mapEl = null;
 let _currentPickResolve = null;
 
-// Corner ornament shared with the other overlays.
-function cornerOrnament(position) {
+// ============================================================================
+// LAYOUT
+// ============================================================================
+
+// Compute node screen positions INSIDE the card (not canvas-space).
+// Layer 0 (start) at bottom, layer maxLayer (boss) at top. Nodes in a layer
+// are centered horizontally with a bounded spread.
+function computeLayout(graph) {
+  const layers = {};
+  for (const n of graph.nodes) {
+    if (!layers[n.layer]) layers[n.layer] = [];
+    layers[n.layer].push(n);
+  }
+  const maxLayer = graph.maxLayer;
+  const graphH = CARD_H - GRAPH_TOP_PAD - GRAPH_BOT_PAD;
+  const layerGap = graphH / Math.max(1, maxLayer);
+  const pos = new Map();
+  for (const layerStr in layers) {
+    const layer = parseInt(layerStr, 10);
+    const layerNodes = layers[layer];
+    const y = GRAPH_TOP_PAD + (maxLayer - layer) * layerGap;
+    // Spread: 3-node layer stretches wider than 2-node, but capped so even
+    // the widest layer doesn't pierce the card's inner padding.
+    const maxSpread = CARD_W - 180;        // leaves 90px padding per side
+    const naturalSpread = (layerNodes.length - 1) * 160;
+    const spread = Math.min(maxSpread, naturalSpread);
+    const step = layerNodes.length > 1 ? spread / (layerNodes.length - 1) : 0;
+    const startX = CARD_W / 2 - (step * (layerNodes.length - 1)) / 2;
+    layerNodes.forEach((n, i) => {
+      pos.set(n.id, { x: startX + step * i, y });
+    });
+  }
+  return pos;
+}
+
+// ============================================================================
+// EDGES — bezier curves between connected nodes
+// ============================================================================
+
+function renderSVG(graph, pos, currentNode) {
+  const parts = [];
+  // Defs: gradient for the subtle spine line, glow filter for active edges.
+  parts.push(`
+    <defs>
+      <linearGradient id="mapSpine" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"  stop-color="#c9a86a" stop-opacity="0.00"/>
+        <stop offset="25%" stop-color="#c9a86a" stop-opacity="0.14"/>
+        <stop offset="75%" stop-color="#c9a86a" stop-opacity="0.14"/>
+        <stop offset="100%" stop-color="#c9a86a" stop-opacity="0.00"/>
+      </linearGradient>
+      <filter id="mapEdgeGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="1.6" />
+      </filter>
+    </defs>
+  `);
+
+  // Spine — subtle gold axis from START through BOSS. Behind every edge.
+  const startNode = graph.nodes.find(n => n.kind === 'start');
+  const bossNode  = graph.nodes.find(n => n.kind === 'boss');
+  if (startNode && bossNode) {
+    const sp = pos.get(startNode.id);
+    const bp = pos.get(bossNode.id);
+    if (sp && bp) {
+      parts.push(`<line x1="${sp.x}" y1="${sp.y}" x2="${bp.x}" y2="${bp.y}"
+                        stroke="url(#mapSpine)" stroke-width="1.2"/>`);
+    }
+  }
+
+  // Edges as bezier curves. Each edge leaves its source vertically and
+  // enters its target vertically, giving a gentle S when x differs — reads
+  // as "a path between rooms" rather than a chart line.
+  for (const n of graph.nodes) {
+    const from = pos.get(n.id);
+    if (!from) continue;
+    for (const eid of n.edges) {
+      const to = pos.get(eid);
+      if (!to) continue;
+      const active = currentNode && n.id === currentNode.id;
+      const stroke = active ? '#f4d9a0' : '#5a4a30';
+      const width = active ? 2.2 : 1.3;
+      const op = n.visited ? 0.35 : active ? 0.95 : 0.85;
+      const midY = (from.y + to.y) / 2;
+      const d = `M ${from.x} ${from.y} C ${from.x} ${midY} ${to.x} ${midY} ${to.x} ${to.y}`;
+      // Active edges get a soft glow underlay for emphasis.
+      if (active) {
+        parts.push(`<path d="${d}" stroke="${stroke}" stroke-width="${width + 2}"
+                    fill="none" opacity="0.35" filter="url(#mapEdgeGlow)"/>`);
+      }
+      parts.push(`<path d="${d}" stroke="${stroke}" stroke-width="${width}"
+                  fill="none" opacity="${op}" stroke-linecap="round"/>`);
+    }
+  }
+  return `<svg width="${CARD_W}" height="${CARD_H}"
+               style="position:absolute;inset:0;pointer-events:none;">
+            ${parts.join('')}
+          </svg>`;
+}
+
+// ============================================================================
+// NODES — per-kind visual variation (ring, glow, animation)
+// ============================================================================
+
+// Small helper: per-kind static style flourishes that survive across states.
+function kindStyling(kind, clickable, isCurrent) {
+  const base = {
+    badgeSize: 44,
+    glyphSize: 22,
+    wrapperSize: 56,
+    ringWidth: 1.5,
+    ringStyle: 'solid',
+    extraShadow: '',
+    extraAnimation: '',
+    halo: '',
+  };
+  const color = NODE_COLORS[kind] || '#c9a86a';
+
+  if (kind === 'start' || kind === 'boss') {
+    base.badgeSize = 56;
+    base.glyphSize = 26;
+    base.wrapperSize = 68;
+    base.ringWidth = 1.8;
+  }
+  if (kind === 'boss') {
+    // Subtle ambient glow even before reachable — legible as "the goal."
+    base.extraAnimation = 'animation:bossPulse 3.6s ease-in-out infinite;';
+  }
+  if (kind === 'sanctuary') {
+    base.badgeSize = 48;
+    base.glyphSize = 24;
+    base.wrapperSize = 60;
+    base.extraAnimation = 'animation:sanctuaryBreath 3.2s ease-in-out infinite;';
+    // Faint outer halo ring to reinforce the heal-room read.
+    base.halo = `
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+                  width:${base.badgeSize + 14}px;height:${base.badgeSize + 14}px;
+                  border-radius:50%;border:1px solid ${color};opacity:0.35;
+                  pointer-events:none;"></div>`;
+  }
+  if (kind === 'elite') {
+    base.ringWidth = 2.2;
+    base.extraShadow = `box-shadow:0 0 10px ${color}55, inset 0 0 8px ${color}33;`;
+  }
+  if (kind === 'event') {
+    base.ringStyle = 'dashed';
+    base.extraAnimation = 'animation:eventShimmer 2.8s ease-in-out infinite;';
+  }
+  return base;
+}
+
+function renderNode(n, p, currentNode) {
+  const reachable = currentNode && currentNode.edges.includes(n.id);
+  const isCurrent = currentNode && currentNode.id === n.id;
+  const clickable = reachable && !n.visited;
+
+  // ASCENSION VII — hidden map node: render as "?" until the player commits
+  // to it. Kind-specific flourishes are suppressed for hidden nodes so the
+  // player can't plan around them.
+  const hidden = n._hidden && !n.visited && !isCurrent;
+  const color = hidden ? '#8a7a5a' : (NODE_COLORS[n.kind] || '#c9a86a');
+  const glyph = hidden ? '?' : (NODE_GLYPHS[n.kind] || '?');
+  const s = hidden
+    ? { badgeSize: 44, glyphSize: 22, wrapperSize: 56, ringWidth: 1.5,
+        ringStyle: 'solid', extraShadow: '', extraAnimation: '', halo: '' }
+    : kindStyling(n.kind, clickable, isCurrent);
+
+  const ring = isCurrent ? '#f4d9a0' : clickable ? color : '#3a3020';
+  const bgOpacity = isCurrent ? 1.0 : clickable ? 0.95 : n.visited ? 0.32 : 0.62;
+  const cursorStyle = clickable ? 'pointer' : 'default';
+  // Clickable-pulse wins over kind-specific animation so the player's eye
+  // is drawn to actionable nodes first.
+  const animation = clickable
+    ? 'animation:mapNodePulse 2.2s ease-in-out infinite;'
+    : s.extraAnimation;
+  const currentGlow = isCurrent ? `box-shadow:0 0 20px ${color}aa, inset 0 0 10px ${color}44;` : '';
+
+  const wrapOffset = s.wrapperSize / 2;
+
+  return `
+  <div data-node-id="${n.id}" class="floor-map-node" style="
+    position:absolute;left:${p.x - wrapOffset}px;top:${p.y - wrapOffset}px;
+    width:${s.wrapperSize}px;height:${s.wrapperSize}px;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;
+    cursor:${cursorStyle};opacity:${bgOpacity};
+    transition:transform 0.18s ease, opacity 0.25s ease;
+    ${animation}
+  ">
+    ${s.halo}
+    <div style="
+      position:relative;
+      width:${s.badgeSize}px;height:${s.badgeSize}px;border-radius:50%;
+      background:radial-gradient(circle,rgba(30,22,16,0.92),rgba(12,8,6,0.97));
+      border:${s.ringWidth}px ${s.ringStyle} ${ring};
+      display:flex;align-items:center;justify-content:center;
+      color:${color};font-size:${s.glyphSize}px;line-height:1;
+      text-shadow:0 0 10px ${color}aa;
+      ${currentGlow || s.extraShadow}
+    ">${glyph}</div>
+    <div style="
+      color:${clickable || isCurrent ? color : '#8a7c5e'};
+      font-size:9.5px;letter-spacing:2.2px;font-weight:bold;
+      opacity:${clickable || isCurrent ? 0.95 : 0.65};
+      font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+    ">${NODE_LABELS[n.kind] || ''}</div>
+  </div>`;
+}
+
+// ============================================================================
+// CARD SHELL — parchment frame around the graph
+// ============================================================================
+
+function cardCorner(position) {
   const isTop = position[0] === 't';
   const isLeft = position[1] === 'l';
   const vSide = isTop ? 'top' : 'bottom';
@@ -56,12 +276,16 @@ function cornerOrnament(position) {
   const hGrad = isLeft ? '90deg' : '270deg';
   const vGrad = isTop ? '180deg' : '0deg';
   return `
-  <div style="position:absolute;${vSide}:22px;${hSide}:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;${vSide}:0;${hSide}:0;width:48px;height:1px;background:linear-gradient(${hGrad},#c9a86a,transparent);"></div>
-    <div style="position:absolute;${vSide}:0;${hSide}:0;width:1px;height:48px;background:linear-gradient(${vGrad},#c9a86a,transparent);"></div>
+  <div style="position:absolute;${vSide}:14px;${hSide}:14px;width:36px;height:36px;pointer-events:none;">
+    <div style="position:absolute;${vSide}:0;${hSide}:0;width:36px;height:1px;background:linear-gradient(${hGrad},#c9a86a,transparent);"></div>
+    <div style="position:absolute;${vSide}:0;${hSide}:0;width:1px;height:36px;background:linear-gradient(${vGrad},#c9a86a,transparent);"></div>
     <div style="position:absolute;${vSide}:-2px;${hSide}:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
   </div>`;
 }
+
+// ============================================================================
+// SETUP + LIFECYCLE
+// ============================================================================
 
 function ensureMapEl() {
   if (_mapEl) return _mapEl;
@@ -79,167 +303,81 @@ function ensureMapEl() {
   return _mapEl;
 }
 
-// Compute node screen positions. Returns Map<nodeId, {x,y}>.
-// Layer 0 at bottom of the canvas area, highest layer at top. Nodes in a
-// layer are spread around center with a fixed gap.
-function computeLayout(graph, canvasW, canvasH) {
-  const layers = {};
+// Apply ascension VII hidden flags before rendering so we only paint once.
+function applyHiddenFlags(graph) {
+  const am = typeof window !== 'undefined' && window.__ascensionModifiers
+    ? window.__ascensionModifiers() : {};
+  if (!am || !am.hiddenMapNode) return;
+  const byLayer = new Map();
   for (const n of graph.nodes) {
-    if (!layers[n.layer]) layers[n.layer] = [];
-    layers[n.layer].push(n);
+    if (n.visited || n.current || n.kind === 'start' || n.kind === 'boss') continue;
+    if (!byLayer.has(n.layer)) byLayer.set(n.layer, []);
+    byLayer.get(n.layer).push(n);
   }
-  const maxLayer = graph.maxLayer;
-  const usableH = canvasH - 160;   // reserve top for title, bottom for hint
-  const layerGap = usableH / (maxLayer + 1);
-  const pos = new Map();
-  for (const layerStr in layers) {
-    const layer = parseInt(layerStr, 10);
-    const layerNodes = layers[layer];
-    // y: layer 0 at bottom (large y), boss layer at top (small y)
-    const y = 100 + (maxLayer - layer) * layerGap;
-    const spread = Math.min(520, canvasW * 0.55);  // total horizontal span
-    const step = layerNodes.length > 1 ? spread / (layerNodes.length - 1) : 0;
-    const startX = canvasW / 2 - (step * (layerNodes.length - 1)) / 2;
-    layerNodes.forEach((n, i) => {
-      pos.set(n.id, { x: startX + step * i, y });
-    });
+  for (const [_l, arr] of byLayer) {
+    if (arr.length < 2) continue;
+    // Deterministic per-layer seed so the same node stays hidden across opens.
+    const pickIndex = (arr[0].id * 31 + arr.length * 17) % arr.length;
+    arr[pickIndex]._hidden = true;
   }
-  return pos;
-}
-
-function renderSVGEdges(graph, pos, currentNode) {
-  const reachable = new Set(currentNode ? currentNode.edges : []);
-  const lines = [];
-  for (const n of graph.nodes) {
-    const from = pos.get(n.id);
-    if (!from) continue;
-    for (const eid of n.edges) {
-      const to = pos.get(eid);
-      if (!to) continue;
-      // An edge is "active" if it originates from the current node.
-      const active = (currentNode && n.id === currentNode.id);
-      const stroke = active ? '#f4d9a0' : '#3a3020';
-      const width = active ? 2 : 1;
-      const op = n.visited ? 0.45 : 0.8;
-      lines.push(
-        `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"
-               stroke="${stroke}" stroke-width="${width}" opacity="${op}"/>`
-      );
-    }
-  }
-  return `<svg width="100%" height="100%" style="position:absolute;inset:0;pointer-events:none;">${lines.join('')}</svg>`;
-}
-
-function renderNode(n, p, currentNode) {
-  const reachable = currentNode && currentNode.edges.includes(n.id);
-  const isCurrent = currentNode && currentNode.id === n.id;
-  const clickable = reachable && !n.visited;
-
-  // ASCENSION VII — hidden map node: if this node is flagged hidden and
-  // hasn't been visited, render as "?" with a neutral color so the player
-  // cannot plan around it. The kind is revealed once they commit.
-  const hidden = n._hidden && !n.visited && !isCurrent;
-  const color = hidden ? '#8a7a5a' : (NODE_COLORS[n.kind] || '#c9a86a');
-  const glyph = hidden ? '?' : (NODE_GLYPHS[n.kind] || '?');
-  const ring = isCurrent ? '#f4d9a0' : clickable ? color : '#3a3020';
-  const bgOpacity = isCurrent ? 1.0 : clickable ? 0.9 : n.visited ? 0.3 : 0.6;
-  const cursor = clickable ? 'pointer' : 'default';
-  const animation = clickable ? 'animation:mapNodePulse 2.2s ease-in-out infinite;' : '';
-
-  return `
-  <div data-node-id="${n.id}" class="floor-map-node" style="
-    position:absolute;left:${p.x - 28}px;top:${p.y - 28}px;width:56px;height:56px;
-    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;
-    cursor:${cursor};opacity:${bgOpacity};transition:transform 0.18s ease, opacity 0.25s ease;
-    ${animation}
-  ">
-    <div style="
-      width:44px;height:44px;border-radius:50%;
-      background:radial-gradient(circle,rgba(30,22,16,0.9),rgba(14,10,8,0.95));
-      border:1.5px solid ${ring};
-      display:flex;align-items:center;justify-content:center;
-      color:${color};font-size:22px;line-height:1;text-shadow:0 0 8px ${color}aa;
-      ${isCurrent ? 'box-shadow:0 0 18px ' + color + '88;' : ''}
-    ">${glyph}</div>
-    <div style="
-      color:${clickable || isCurrent ? color : '#6a5c48'};
-      font-size:8px;letter-spacing:2px;font-weight:bold;
-      opacity:${clickable || isCurrent ? 0.9 : 0.4};
-    ">${NODE_LABELS[n.kind] || ''}</div>
-  </div>`;
 }
 
 /**
- * Show the floor map. Returns a Promise that resolves with the picked node
- * id when the player clicks a reachable node. Fades in/out.
+ * Show the floor map. Returns a Promise that resolves with the picked node id
+ * when the player clicks a reachable node.
  *
  * @param {object} graph - from floorGraph.generateFloorGraph
  * @param {number} currentNodeId - where the player is right now
  */
 export function openFloorMap(graph, currentNodeId) {
   const el = ensureMapEl();
-  const canvas = document.getElementById('game');
-  // Use the HUD/stage dimensions for layout
-  const rect = canvas?.parentElement?.getBoundingClientRect() || { width: 1280, height: 720 };
-  const canvasW = rect.width;
-  const canvasH = rect.height;
-  const pos = computeLayout(graph, canvasW, canvasH);
+  applyHiddenFlags(graph);
   const currentNode = graph.nodes.find(n => n.id === currentNodeId);
+  const pos = computeLayout(graph);
 
-  el.innerHTML = `
-    <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-    ${cornerOrnament('tl')}${cornerOrnament('tr')}${cornerOrnament('bl')}${cornerOrnament('br')}
-    <div style="position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;">
-      <div style="margin-top:22px;display:flex;align-items:center;gap:22px;opacity:0.75;">
-        <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-        <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">choose your descent</div>
-        <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      </div>
-      <h1 style="font-size:30px;margin:6px 0 4px;letter-spacing:8px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.4);font-weight:400;font-family:Georgia,serif;">FLOOR MAP</h1>
-      <div style="position:relative;flex:1;width:100%;">
-        ${renderSVGEdges(graph, pos, currentNode)}
-        ${graph.nodes.map(n => renderNode(n, pos.get(n.id), currentNode)).join('')}
-      </div>
-      <div style="margin-bottom:24px;color:#a89b82;font-size:11px;letter-spacing:3px;font-style:italic;">click a glowing node to commit your path</div>
-    </div>`;
+  const nodeMarkup = graph.nodes.map(n => renderNode(n, pos.get(n.id), currentNode)).join('');
 
-  // ASCENSION VII — hide one random per-layer non-current/non-visited node.
-  // Applied AFTER rendering so labels cover the first render; graph state
-  // gets marked so subsequent opens reveal any previously-unhidden nodes.
-  const am = typeof window !== 'undefined' && window.__ascensionModifiers ? window.__ascensionModifiers() : {};
-  if (am && am.hiddenMapNode) {
-    const byLayer = new Map();
-    for (const n of graph.nodes) {
-      if (n.visited || n.current || n.kind === 'start' || n.kind === 'boss') continue;
-      if (!byLayer.has(n.layer)) byLayer.set(n.layer, []);
-      byLayer.get(n.layer).push(n);
-    }
-    for (const [_l, arr] of byLayer) {
-      if (arr.length < 2) continue;   // only hide when there's a choice
-      // Deterministic per-layer seed so the same node stays hidden between opens
-      const pickIndex = (arr[0].id * 31 + arr.length * 17) % arr.length;
-      arr[pickIndex]._hidden = true;
-    }
-  }
-  // Force one more render with the _hidden flags now set
-  const renderedNodes = graph.nodes.map(n => renderNode(n, pos.get(n.id), currentNode)).join('');
-  el.innerHTML = `
-    <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-    ${cornerOrnament('tl')}${cornerOrnament('tr')}${cornerOrnament('bl')}${cornerOrnament('br')}
-    <div style="position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;">
-      <div style="margin-top:22px;display:flex;align-items:center;gap:22px;opacity:0.75;">
-        <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-        <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">choose your descent</div>
-        <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+  // Card — contained composition with inset gold frame, inner corner
+  // flourishes, and radial atmosphere. Title + hint live inside the card
+  // so the whole thing reads as one artifact.
+  const card = `
+    <div class="floor-map-card" style="
+      position:relative;
+      width:${CARD_W}px;height:${CARD_H}px;
+      background:
+        radial-gradient(ellipse at center, rgba(30,20,36,0.55) 0%, rgba(14,10,18,0.82) 60%, rgba(8,6,12,0.92) 100%),
+        linear-gradient(180deg, #120a18, #0a0610);
+      box-shadow:
+        inset 0 0 0 1px rgba(201,168,106,0.55),
+        inset 0 0 0 3px rgba(201,168,106,0.12),
+        inset 0 0 42px rgba(0,0,0,0.55),
+        0 0 60px rgba(201,168,106,0.12),
+        0 0 120px rgba(40,20,55,0.4);
+      animation:mapCardIn 0.42s ease-out both;
+      overflow:hidden;
+    ">
+      ${cardCorner('tl')}${cardCorner('tr')}${cardCorner('bl')}${cardCorner('br')}
+
+      <!-- TITLE BLOCK — inside the card so the whole composition is one unit. -->
+      <div style="position:absolute;top:24px;left:0;right:0;display:flex;flex-direction:column;align-items:center;pointer-events:none;">
+        <div style="display:flex;align-items:center;gap:18px;opacity:0.75;margin-bottom:4px;">
+          <div style="width:58px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+          <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-style:italic;">choose your descent</div>
+          <div style="width:58px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+        </div>
+        <h1 style="font-size:26px;margin:0;letter-spacing:8px;color:#f4d9a0;text-shadow:0 0 16px rgba(244,217,160,0.35);font-weight:400;font-family:Georgia,serif;">FLOOR MAP</h1>
       </div>
-      <h1 style="font-size:30px;margin:6px 0 4px;letter-spacing:8px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.4);font-weight:400;font-family:Georgia,serif;">FLOOR MAP</h1>
-      <div style="position:relative;flex:1;width:100%;">
-        ${renderSVGEdges(graph, pos, currentNode)}
-        ${renderedNodes}
-      </div>
-      <div style="margin-bottom:24px;color:#a89b82;font-size:11px;letter-spacing:3px;font-style:italic;">click a glowing node to commit your path</div>
+
+      <!-- GRAPH LAYER — SVG spine + bezier edges, then absolutely-positioned nodes. -->
+      ${renderSVG(graph, pos, currentNode)}
+      ${nodeMarkup}
+
+      <!-- HINT — sits at bottom of the card. -->
+      <div style="position:absolute;bottom:22px;left:0;right:0;text-align:center;color:#a89b82;font-size:10.5px;letter-spacing:3px;font-style:italic;pointer-events:none;">click a glowing node to commit your path</div>
     </div>
   `;
+
+  el.innerHTML = card;
 
   // Attach click handlers to reachable nodes.
   for (const el2 of el.querySelectorAll('.floor-map-node')) {
@@ -247,7 +385,6 @@ export function openFloorMap(graph, currentNodeId) {
     const node = graph.nodes.find(n => n.id === nodeId);
     if (!currentNode || !currentNode.edges.includes(nodeId) || node?.visited) continue;
     el2.onclick = () => {
-      // Fade out + resolve
       if (_currentPickResolve) {
         const res = _currentPickResolve;
         _currentPickResolve = null;

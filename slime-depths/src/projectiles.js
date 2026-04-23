@@ -1,9 +1,10 @@
 // Enemy projectiles (arrows, fireballs, etc.). Fire-and-forget, pooled.
 import { isWallAtWorld } from './room.js';
 import { damageHero, hero } from './hero.js';
-import { shakeCamera } from './camera.js?v=2';
+import { shakeCamera } from './camera.js';
 import { playSfx } from './sfx.js';
-import { sparkle } from './particles.js?v=8';
+import { sparkle, hitSpark, deathBurst } from './particles.js';
+import { synthPing, synthThud } from './synth.js';
 
 export const projectiles = [];
 const pool = [];
@@ -87,6 +88,20 @@ export function updateProjectiles(dt) {
       if (Math.random() < dt * 20) sparkle(p.x, p.y, p.color || '#c0a0ff');
     }
     if (isWallAtWorld(p.x, p.y)) {
+      // IMPACT VFX — projectile hits a wall. Arrows shatter with dust sparks
+      // along the wall normal; orbs dissipate with a purple burst + soft thud.
+      const speed = Math.hypot(p.vx, p.vy) || 1;
+      const nx = -p.vx / speed, ny = -p.vy / speed;
+      if (p.kind === 'arrow') {
+        hitSpark(p.x, p.y, nx, ny, '#c9a36a');
+        synthPing(1600, 0.35, 0.12);
+      } else if (p.homing) {
+        deathBurst(p.x, p.y, p.color || '#c0a0ff');
+        for (let k = 0; k < 6; k++) {
+          sparkle(p.x + (Math.random() - 0.5) * 16, p.y + (Math.random() - 0.5) * 16, p.color || '#c0a0ff');
+        }
+        synthThud(140, 0.25, 0.18);
+      }
       projectiles.splice(i, 1);
       pool.push(p);
       continue;
@@ -95,6 +110,24 @@ export function updateProjectiles(dt) {
     if (hero.state !== 'dead') {
       const dx = p.x - hero.x, dy = p.y - hero.y;
       if (dx*dx + dy*dy < (p.radius + 14) * (p.radius + 14)) {
+        // IMPACT VFX — projectile hits the hero. Spark direction pushes back
+        // along the incoming velocity so the burst reads as "pushing into" the
+        // hero. Arrows get a tight red-gold pop; orbs get a bigger prismatic
+        // explosion + brief screen-shake on top of the damage hit-stop.
+        const speed = Math.hypot(p.vx, p.vy) || 1;
+        const impactNx = -p.vx / speed, impactNy = -p.vy / speed;
+        if (p.kind === 'arrow') {
+          hitSpark(p.x, p.y, impactNx, impactNy, '#ff8a6a');
+          synthPing(900, 0.45, 0.18);
+        } else if (p.homing) {
+          deathBurst(p.x, p.y, p.color || '#c0a0ff');
+          hitSpark(p.x, p.y, impactNx, impactNy, '#e8c0ff');
+          for (let k = 0; k < 4; k++) {
+            sparkle(p.x + (Math.random() - 0.5) * 14, p.y + (Math.random() - 0.5) * 14, '#ffffff');
+          }
+          synthThud(180, 0.35, 0.28);
+          shakeCamera(4, 0.15);
+        }
         const result = damageHero(p.damage, p.x, p.y);
         if (result === 'hit' && p.affix && p.affix.onHitHero) p.affix.onHitHero();
         projectiles.splice(i, 1);

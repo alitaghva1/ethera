@@ -3,10 +3,10 @@
 
 import { enemies } from './enemies.js';
 import { hero, damageHero } from './hero.js';
-import { shakeCamera } from './camera.js?v=2';
+import { shakeCamera } from './camera.js';
 import { playSfx } from './sfx.js';
-import { hitSpark, deathBurst } from './particles.js?v=8';
-import { spawnDamageNumber, triggerHitStop } from './fx.js?v=a11y1';
+import { hitSpark, deathBurst } from './particles.js';
+import { spawnDamageNumber, triggerHitStop } from './fx.js';
 
 // ======================================================================
 // CHAIN LIGHTNING — cyan zigzag arc between two enemies
@@ -191,7 +191,7 @@ export function registerComboHit() {
   try {
     // Use a side-channel via window to avoid circular imports
     if (typeof window !== 'undefined') {
-      window.__maxCombo = Math.max(window.__maxCombo || 0, combo.count);
+      window.__gameMetrics.maxCombo = Math.max(window.__gameMetrics.maxCombo || 0, combo.count);
     }
   } catch (e) {}
   for (const t of COMBO_TIERS) {

@@ -1,6 +1,6 @@
 // Personal bests — tracks highest values across runs, persisted to localStorage.
 // Used by the end-of-run screen to highlight "NEW BEST" milestones.
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 const KEY = 'ethera:records:v1';
 

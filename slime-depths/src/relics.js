@@ -250,24 +250,27 @@ export const RELIC_DEFS = {
   },
   // ==================== LEGENDARY RELICS ====================
   // Game-changing anchors. Only roll on floor 3+ or from the post-boss shop.
+  // ---------- MYTHIC tier ----------
+  // Named, story-anchored relics. Appear only on floor 4 at ~6% per pick.
+  // Visual + audio treatment is elevated — bell + sub-bass + extended banner.
   eye_of_ether: {
     id: 'eye_of_ether',
     name: 'Eye of Ether',
     desc: '+20% crit \u00b7 crits PIERCE through enemies',
-    flavor: 'It sees what the world has hidden. And what it has buried.',
+    flavor: 'They say she tore it from her own skull the night the city burned.',
     icon: 'relic_eye_of_ether',
     tint: '#e6c8ff',
-    tier: 'legendary',
+    tier: 'mythic',
     apply: () => { hero.critChance += 0.20; hero.pierceCrit = true; },
   },
   cataclysm: {
     id: 'cataclysm',
     name: 'Cataclysm',
     desc: 'Every 10th hit erupts the room',
-    flavor: 'A sliver of the world\u2019s ending, fitted into a palm.',
+    flavor: 'The last thing the last god held. He never set it down.',
     icon: 'relic_cataclysm',
     tint: '#ff9455',
-    tier: 'legendary',
+    tier: 'mythic',
     apply: () => { hero.cataclysm = true; },
   },
   wanderers_cloak: {
@@ -384,7 +387,7 @@ export const RELIC_DEFS = {
     name: 'Bulwark',
     desc: 'Damage from the front is halved',
     flavor: 'A stance older than the word for "no."',
-    icon: 'relic_iron_resolve',
+    icon: 'relic_bulwark',
     tint: '#8ab8d8',
     tier: 'common',
     apply: () => { hero.bulwark = true; hero.bulwarkArc = Math.PI * 0.66; hero.bulwarkReduction = 0.5; },
@@ -394,10 +397,149 @@ export const RELIC_DEFS = {
     name: 'Second Wind',
     desc: 'The first dodge in every room ignores cooldown',
     flavor: 'One breath held past the end. One more step taken.',
-    icon: 'relic_nimble_step',
+    icon: 'relic_second_wind',
     tint: '#b0e8a0',
     tier: 'common',
     apply: () => { hero.secondWind = true; },
+  },
+
+  // ==========================================================================
+  // APRIL 2026 CONTENT EXPANSION — 10 new relics built from the icon bank.
+  // Mechanics chosen to fill gaps in the existing palette: reflect/retaliation,
+  // on-kill AOE, low-HP scaling, gold economy, aura DoT, dodge-based tempo.
+  // ==========================================================================
+
+  // Damage reflection — retaliation identity. Pairs with Counterstrike
+  // (fusion_shatterpoint) for crit-reflection builds.
+  mirror_shard: {
+    id: 'mirror_shard',
+    name: 'Mirror Shard',
+    desc: 'Reflect 20% of damage taken back to the attacker',
+    flavor: 'It only shows what struck it last.',
+    icon: 'relic_mirror_shard',
+    tint: '#d8e8ff',
+    tier: 'common',
+    apply: () => { hero.mirrorShard = true; hero.mirrorReflect = 0.20; },
+  },
+  // On-kill area splash — turns every kill into a tiny second strike.
+  spore_bloom: {
+    id: 'spore_bloom',
+    name: 'Spore Bloom',
+    desc: 'Kills release a spore burst dealing 3 damage in an 80px radius',
+    flavor: 'Something feeds on what you end.',
+    icon: 'relic_spore_bloom',
+    tint: '#a0e868',
+    tier: 'common',
+    apply: () => { hero.sporeBloom = true; hero.sporeDamage = 3; hero.sporeRadius = 80; },
+  },
+  // Counter-ring on successful dodge — rewards aggressive positioning.
+  // Different from Bulwark (passive frontal) — this is an active retaliate.
+  oathshield: {
+    id: 'oathshield',
+    name: 'Oathshield',
+    desc: 'After dodging, your next hit within 1s deals +50% damage',
+    flavor: 'The vow was simple. The blade remembered it.',
+    icon: 'relic_oathshield',
+    tint: '#9ab0c8',
+    tier: 'common',
+    apply: () => { hero.oathshield = true; hero.oathshieldBonus = 0.5; },
+  },
+
+  // Rare-tier additions
+  // Chain splash — every 4th swing clips a second nearby foe. Rewards
+  // crowd positioning and favors dense rooms.
+  arcane_quiver: {
+    id: 'arcane_quiver',
+    name: 'Arcane Quiver',
+    desc: 'Every 4th melee hit splashes to one nearby enemy for 40% damage',
+    flavor: 'The string that draws itself.',
+    icon: 'relic_arcane_quiver',
+    tint: '#c8a0ff',
+    tier: 'rare',
+    apply: () => { hero.arcaneQuiver = true; },
+  },
+  // Low-HP scaling — rewards staying in the red instead of healing up.
+  marrow_pact: {
+    id: 'marrow_pact',
+    name: 'Marrow Pact',
+    desc: 'At or below 50% HP, your damage dealt is +40%',
+    flavor: 'Your bones bargain well.',
+    icon: 'relic_marrow_pact',
+    tint: '#d85858',
+    tier: 'rare',
+    apply: () => { hero.marrowPact = true; hero.marrowPactBonus = 0.4; },
+  },
+  // Gold economy — multiplies all gold pickups. High synergy with the
+  // between-floor shop and the Purse of Depths meta unlock.
+  gilded_hoard: {
+    id: 'gilded_hoard',
+    name: 'Gilded Hoard',
+    desc: '+30% gold from all sources',
+    flavor: 'The chalice never empties; it remembers what was poured.',
+    icon: 'relic_gilded_hoard',
+    tint: '#f4d9a0',
+    tier: 'rare',
+    apply: () => { hero.gildedHoard = true; hero.goldMul = (hero.goldMul || 1) * 1.3; },
+  },
+  // Ambient fire aura — passive DPS while moving through combat rooms.
+  hymn_of_embers: {
+    id: 'hymn_of_embers',
+    name: 'Hymn of Embers',
+    desc: 'Enemies within 80px take 2 damage per second',
+    flavor: 'The choir sings low. The air forgets how to cool.',
+    icon: 'relic_hymn_of_embers',
+    tint: '#ffaa58',
+    tier: 'rare',
+    apply: () => { hero.hymnOfEmbers = true; hero.hymnRadius = 80; hero.hymnDps = 2; },
+  },
+
+  // Legendary-tier additions
+  // Slow-mo on perfect dodge — rewards frame-tight play with stylish payoff.
+  temporal_eye: {
+    id: 'temporal_eye',
+    name: 'Temporal Eye',
+    desc: 'Perfect dodges trigger 0.35s of slow-motion',
+    flavor: 'The sand stops for those who see it falling.',
+    icon: 'relic_temporal_eye',
+    tint: '#a8e0e8',
+    tier: 'legendary',
+    apply: () => { hero.temporalEye = true; hero.temporalSlowDuration = 0.35; },
+  },
+  // Post-dodge crit window — the next hit after a dodge is a guaranteed crit.
+  // Pairs with mobility-focused builds (nimble_step, gale_step).
+  whisper_veil: {
+    id: 'whisper_veil',
+    name: 'Whisper Veil',
+    desc: 'For 0.5s after a dodge, your next hit is a guaranteed crit',
+    flavor: 'She is the space the ruin forgot to fill.',
+    icon: 'relic_whisper_veil',
+    tint: '#8058c8',
+    tier: 'legendary',
+    apply: () => { hero.whisperVeil = true; hero.whisperVeilWindow = 0.5; },
+  },
+  // Periodic lightning — ambient offensive that scales with room density.
+  stormcaller: {
+    id: 'stormcaller',
+    name: 'Stormcaller',
+    desc: 'Every 1.5s, strike the nearest enemy within 220px for 8 damage',
+    flavor: 'The cloud remembers every name it has spoken.',
+    icon: 'relic_stormcaller',
+    tint: '#80c8ff',
+    tier: 'legendary',
+    apply: () => { hero.stormcaller = true; hero.stormcallerInterval = 1.5; hero.stormcallerDamage = 8; hero.stormcallerRange = 220; },
+  },
+
+  // Rehomes the orphan `relic_hourglass.png` asset into the active pool.
+  // Panic-button design — once-per-minute damage reduction at low HP.
+  hourglass_of_respite: {
+    id: 'hourglass_of_respite',
+    name: 'Hourglass of Respite',
+    desc: 'At 30% HP or below, incoming damage is halved. Triggers once per minute.',
+    flavor: 'The sand knows when to stop. The hand does not always obey.',
+    icon: 'relic_hourglass',
+    tint: '#e8c880',
+    tier: 'common',
+    apply: () => { hero.hourglassRespite = true; hero.hourglassReadyAt = 0; },
   },
 };
 
@@ -410,11 +552,13 @@ export function relicTier(id) {
 }
 
 // Tier weight distribution per floor — higher floors see more rare/legendary.
+// MYTHIC appears only on floor 4 and is rare (~6%). This is the Diablo
+// "Windforce moment" — the unique drop players screenshot and remember.
 const TIER_WEIGHTS_BY_FLOOR = {
-  1: { common: 1.0, rare: 0.0,  legendary: 0.0 },
-  2: { common: 0.65, rare: 0.35, legendary: 0.0 },
-  3: { common: 0.45, rare: 0.40, legendary: 0.15 },
-  4: { common: 0.30, rare: 0.45, legendary: 0.25 },
+  1: { common: 1.0,  rare: 0.0,  legendary: 0.0,  mythic: 0.0 },
+  2: { common: 0.65, rare: 0.35, legendary: 0.0,  mythic: 0.0 },
+  3: { common: 0.45, rare: 0.40, legendary: 0.15, mythic: 0.0 },
+  4: { common: 0.28, rare: 0.44, legendary: 0.22, mythic: 0.06 },
 };
 
 function weightedTier(floorLevel) {
@@ -475,10 +619,10 @@ function enforceMemoryMaxHpCap() {
 export const RELIC_GLYPHS = {
   // Base pool
   serrated_edge:    'sword',
-  swift_arm:        'wind',
+  swift_arm:        'wind',        // base wind glyph — pure "speed" feel
   long_reach:       'sword',
-  nimble_step:      'wind',
-  iron_greaves:     'wind',
+  nimble_step:      'step',        // footprint — walking/agility
+  iron_greaves:     'greaves',     // armored boot
   ironhide:         'shield',
   bloodstone:       'heart',
   phoenix_tear:     'phoenix',
@@ -487,7 +631,7 @@ export const RELIC_GLYPHS = {
   keen_edge:        'eye',
   vitality:         'heart',
   heavy_blow:       'sword',
-  dash_master:      'wind',
+  dash_master:      'dash',        // arrow + speed streaks
   executioner:      'skull',
   warlord:          'sword',
   reaver:           'skull',
@@ -501,7 +645,7 @@ export const RELIC_GLYPHS = {
   // Legendary
   eye_of_ether:     'eye',
   cataclysm:        'flame',
-  wanderers_cloak:  'wind',
+  wanderers_cloak:  'cloak',       // hooded figure silhouette
   ethereal_binding: 'rune',
   phoenix_cloak:    'phoenix',
   avatar_of_flame:  'flame',
@@ -510,9 +654,9 @@ export const RELIC_GLYPHS = {
   counterstrike:    'sword',
   aegis_pulse:      'shield',
   bloodrite:        'skull',
-  gale_step:        'wind',
+  gale_step:        'gale',        // swirl / tornado
   bulwark:          'shield',
-  second_wind:      'wind',
+  second_wind:      'breath',      // wind + heart — recovery identity
 };
 
 export function getRelicGlyph(id) {
@@ -523,14 +667,15 @@ export function getRelicGlyph(id) {
 // Falls back to next-lower tier if the rolled tier has no available relics.
 export function rollRelicOffer(n, floorLevel = 1) {
   const ownedIds = new Set(equipped.map(r => r.id));
-  const availableByTier = { common: [], rare: [], legendary: [] };
+  const availableByTier = { common: [], rare: [], legendary: [], mythic: [] };
   // ASCENSION VI — "The Purged": legendary relics removed from the pool.
+  // Mythics are blocked at the same tier (their effect budget is in the same league).
   const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
   const legendaryBlocked = !!(am && am.legendaryDisabled);
   for (const id of ALL_RELIC_IDS) {
     if (ownedIds.has(id)) continue;
     const t = relicTier(id);
-    if (legendaryBlocked && t === 'legendary') continue;
+    if (legendaryBlocked && (t === 'legendary' || t === 'mythic')) continue;
     if (availableByTier[t]) availableByTier[t].push(id);
   }
   const pickFromTier = (t) => {
@@ -541,11 +686,12 @@ export function rollRelicOffer(n, floorLevel = 1) {
     arr.splice(i, 1);
     return id;
   };
-  const fallbackOrder = ['legendary', 'rare', 'common'];
+  // Fallback order: mythic → legendary → rare → common (so a missed mythic
+  // roll prefers legendary over dropping straight to common).
+  const fallbackOrder = ['mythic', 'legendary', 'rare', 'common'];
   const picks = [];
   for (let k = 0; k < n; k++) {
     const target = weightedTier(floorLevel);
-    // Try target tier first, then fallback ladder
     const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)];
     let got = null;
     for (const t of tryOrder) {
@@ -562,7 +708,7 @@ import { checkFusionsOnPickup, clearFusions } from './fusions.js';
 
 // Persistent "ever seen" set — drives the Chronicles relicpedia. Every relic
 // the player has ever picked up gets stored here across runs.
-import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON as _safeLoadJSON, safeSaveJSON as _safeSaveJSON } from './storage.js';
 
 const RELIC_SEEN_KEY = 'ethera:seen_relics:v1';
 export const seenRelicIds = new Set();

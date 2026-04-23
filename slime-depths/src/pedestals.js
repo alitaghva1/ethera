@@ -1,15 +1,39 @@
 // Relic pedestals — physical pickup points that spawn after combat clears.
 // Walking onto one grants the relic + removes the rest.
-import { images } from './loader.js?v=enemies3';
-import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph } from './relics.js';
-import { drawRelicIcon } from './fx.js?v=a11y1';
+import { images } from './loader.js';
+import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
+// NOTE: relicTier imported above is what makes altar pedestals respect rarity
+// tiers — without tier on the pedestal, mythic drops at altars render as common.
+import { drawRelicIcon } from './fx.js';
 import { playSfx } from './sfx.js';
-import { deathBurst, sparkle } from './particles.js?v=8';
-import { shakeCamera } from './camera.js?v=2';
+import { deathBurst, sparkle } from './particles.js';
+import { shakeCamera } from './camera.js';
 import { hero } from './hero.js';
 import { TILE, ROOM_W, ROOM_H, room } from './room.js';
-import { synthChord, synthPing } from './synth.js';
+import { synthChord, synthPing, synthThud, synthFanfare } from './synth.js';
 import { isCursed } from './curses.js';
+import { hasCard } from './tarot.js';
+import { getFusionCompletingRelicIds } from './fusions.js';
+
+// THE MAGICIAN tarot — if the offer doesn't already contain a fusion-completing
+// relic, swap one slot with a completer (50% chance). This roughly doubles the
+// odds of an offer including a fusion-completer vs a standard rollRelicOffer.
+function applyMagicianBias(offers) {
+  if (!hasCard('the_magician')) return offers;
+  const offerIds = new Set(offers.map(o => o.id));
+  const completers = getFusionCompletingRelicIds(equippedRelics.map(r => r.id));
+  // Strip ids the hero already owns or that are already in the offer
+  const ownedIds = new Set(equippedRelics.map(r => r.id));
+  const candidates = [...completers].filter(id => !offerIds.has(id) && !ownedIds.has(id) && RELIC_DEFS[id]);
+  if (candidates.length === 0) return offers;
+  const anyInOffer = offers.some(o => completers.has(o.id));
+  if (anyInOffer) return offers;                         // already has one, nothing to do
+  if (Math.random() > 0.5) return offers;                 // 50% bias — doubles vs baseline
+  const pickId = candidates[(Math.random() * candidates.length) | 0];
+  const swapIdx = (Math.random() * offers.length) | 0;
+  offers[swapIdx] = RELIC_DEFS[pickId];
+  return offers;
+}
 
 export const pedestals = [];
 let lastPickedDef = null;      // for flash-text UI feedback
@@ -49,7 +73,7 @@ function findClearTile(px, py, maxR = 4) {
 // Pedestals shift to nearby clear tiles if pillars block the preferred cells.
 export function spawnRelicOffer(floorLevel = 1) {
   pedestals.length = 0;
-  const offers = rollRelicOffer(3, floorLevel);
+  const offers = applyMagicianBias(rollRelicOffer(3, floorLevel));
   if (offers.length === 0) return;
   const cols = [6, 10, 14];
   const row = 4;
@@ -91,12 +115,82 @@ export function spawnAltarOffer(hpCost = 3) {
       x: spot.x * TILE + TILE/2,
       y: spot.y * TILE + TILE/2,
       relic: offers[i],
+      tier: relicTier(offers[i].id),    // altar pedestals now carry tier for mythic visuals
       picked: false,
       bob: Math.random() * Math.PI * 2,
       glow: 0,
       hpCost: effectiveCost,
     });
   }
+}
+
+// Spawn a SINGLE guaranteed-relic pedestal from a boss's thematic pool.
+// Rolls the first unowned id from the pool; falls back to any unowned in
+// the pool if shuffled pick is already held. Optional mythicPool + chance
+// supports the Ember Tyrant's 20% "Windforce moment" drop.
+// The pedestal spawns at the given world coordinates (the boss corpse).
+export function spawnBossDrop(bossType, worldX, worldY, opts = {}) {
+  const pool = (opts.pool || []).slice();
+  const mythicPool = opts.mythicPool || null;
+  const mythicChance = opts.mythicChance || 0;
+  if (pool.length === 0 && !mythicPool) return null;
+
+  const ownedIds = new Set(equippedRelics.map(r => r.id));
+
+  // Mythic roll first (if configured)
+  let chosenId = null;
+  if (mythicPool && Math.random() < mythicChance) {
+    const available = mythicPool.filter(id => !ownedIds.has(id) && RELIC_DEFS[id]);
+    if (available.length > 0) {
+      chosenId = available[(Math.random() * available.length) | 0];
+    }
+  }
+
+  // Fall back to themed pool — shuffle then pick first unowned
+  if (!chosenId) {
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    chosenId = pool.find(id => !ownedIds.has(id) && RELIC_DEFS[id]) || null;
+    // All pool relics owned → fall back to any pool relic (duplicate OK)
+    if (!chosenId) chosenId = pool.find(id => RELIC_DEFS[id]);
+  }
+  if (!chosenId) return null;
+
+  const def = RELIC_DEFS[chosenId];
+  pedestals.length = 0;     // clear any existing pedestals
+  pedestals.push({
+    x: worldX,
+    y: worldY,
+    relic: def,
+    tier: relicTier(chosenId),
+    picked: false,
+    bob: Math.random() * Math.PI * 2,
+    glow: 0,
+    hpCost: 0,
+    isBossDrop: true,
+  });
+
+  // Dramatic spawn flourish — deathBurst + screen flash + tier-scaled sting
+  deathBurst(worldX, worldY - 20, def.tint || '#fff2e0');
+  deathBurst(worldX + 10, worldY - 15, '#f4d9a0');
+  deathBurst(worldX - 10, worldY - 15, def.tint || '#ffffff');
+  const tier = relicTier(chosenId);
+  if (tier === 'mythic') {
+    synthChord(1100, 1.3, 1.6);
+    synthThud(70, 1.1, 0.9);
+    setTimeout(() => synthChord(1397, 1.0, 1.2), 220);
+    shakeCamera(12, 0.42);
+  } else if (tier === 'legendary') {
+    synthChord(880, 1.0, 1.0);
+    synthThud(100, 0.7, 0.45);
+    shakeCamera(7, 0.3);
+  } else {
+    synthChord(659, 0.9, 0.75);
+    shakeCamera(5, 0.25);
+  }
+  return def;
 }
 
 export function clearPedestals() {
@@ -119,11 +213,16 @@ export function updatePedestals(dt) {
     // Sparkle emission — scales with rarity, reduced when hero is close (visual clutter)
     if (!p.picked) {
       const tier = p.tier || 'common';
-      const rate = tier === 'legendary' ? 8 : tier === 'rare' ? 3 : 0.8;
+      // Mythic has a near-constant aurora of sparkles. Legendary is dense, rare
+      // moderate, common a trickle.
+      const rate = tier === 'mythic' ? 18 : tier === 'legendary' ? 8 : tier === 'rare' ? 3 : 0.8;
       const threshold = Math.min(0.95, rate * dt);
       if (Math.random() < threshold) {
-        const color = p.relic?.tint || (tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c0b0d0');
-        sparkle(p.x + (Math.random() - 0.5) * 22, p.y - 6 + (Math.random() - 0.5) * 18, color);
+        const color = p.relic?.tint || (tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c0b0d0');
+        // Mythic spreads sparkles wider — pedestal reads as a beacon
+        const spreadX = tier === 'mythic' ? 34 : 22;
+        const spreadY = tier === 'mythic' ? 28 : 18;
+        sparkle(p.x + (Math.random() - 0.5) * spreadX, p.y - 6 + (Math.random() - 0.5) * spreadY, color);
       }
     }
   }
@@ -140,16 +239,30 @@ export function updatePedestals(dt) {
       p.picked = true;
       picked = p.relic;
       applyRelic(p.relic.id);
-      deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
-      shakeCamera(p.hpCost > 0 ? 6 : 3, 0.15);
+      const t = p.tier || 'common';
+      // MYTHIC — bigger burst, stronger shake, layered sting, extended banner
+      if (t === 'mythic') {
+        deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
+        deathBurst(p.x + 12, p.y - 18, '#fff2e0');
+        deathBurst(p.x - 12, p.y - 18, p.relic.tint || '#ffffff');
+        shakeCamera(12, 0.42);
+        // Layered bell: big chord + sub-bass thud + delayed second bell note.
+        // This is the Diablo "Windforce dropped" signature sound.
+        synthChord(1100, 1.3, 1.6);
+        synthThud(70, 1.1, 0.9);
+        setTimeout(() => synthChord(1397, 1.0, 1.2), 220);
+        setTimeout(() => synthFanfare(0.6), 560);
+      } else {
+        deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
+        shakeCamera(p.hpCost > 0 ? 6 : 3, 0.15);
+        if (t === 'legendary') synthChord(880, 1.0, 1.0);
+        else if (t === 'rare') synthChord(659, 0.9, 0.75);
+        else synthPing(1100, 0.9, 0.3);
+      }
       playSfx('click', { volume: 0.9, rate: p.hpCost > 0 ? 0.8 : 1.2 });
       lastPickedDef = p.relic;
-      pickedFlashTime = 3.0;
-      // Tier-appropriate sting
-      const t = p.tier || 'common';
-      if (t === 'legendary') synthChord(880, 1.0, 1.0);      // high-pitched triumphant
-      else if (t === 'rare') synthChord(659, 0.9, 0.75);     // mid
-      else synthPing(1100, 0.9, 0.3);                         // quick common ping
+      // Mythic banner holds 5.5s vs common 3.0s — more time to read + screenshot.
+      pickedFlashTime = t === 'mythic' ? 5.5 : 3.0;
       break;
     }
   }
@@ -161,48 +274,64 @@ export function updatePedestals(dt) {
 
 export function drawPedestals(ctx) {
   const now = performance.now() / 1000;
+  // Compute fusion-completing relic ids once per frame so we can tag any
+  // pedestal whose pickup would form a fusion. Cheap — small pool + Sets.
+  const fusionCompleters = getFusionCompletingRelicIds(equippedRelics.map(r => r.id));
   for (const p of pedestals) {
     if (p.picked) continue;
     const y = p.y + Math.sin(p.bob) * 3;
     const isAltar = p.hpCost > 0;
     const tier = p.tier || 'common';
 
-    // RARITY VISUAL: rare = bright gold pulse; legendary = shimmering prismatic ring
-    if (tier === 'rare' || tier === 'legendary') {
-      const pulseAmp = tier === 'legendary' ? 0.55 : 0.35;
+    // RARITY VISUAL: rare = gold pulse; legendary = prismatic ring;
+    // mythic = triple ring + 6 rune points + prismatic aurora (the "oh shit" moment)
+    if (tier === 'rare' || tier === 'legendary' || tier === 'mythic') {
+      const pulseAmp = tier === 'mythic' ? 0.75 : tier === 'legendary' ? 0.55 : 0.35;
       const pulse = 0.7 + pulseAmp * Math.sin(now * 3 + p.bob);
-      const ringR = (tier === 'legendary' ? 44 : 34) + (pulse * 6);
-      // Outer shimmer ring
-      const ringColor = tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
+      const ringR = (tier === 'mythic' ? 58 : tier === 'legendary' ? 44 : 34) + (pulse * 8);
+      const ringColor = tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
       ctx.strokeStyle = ringColor;
       ctx.globalAlpha = pulse;
-      ctx.lineWidth = tier === 'legendary' ? 3 : 2;
+      ctx.lineWidth = tier === 'mythic' ? 4 : tier === 'legendary' ? 3 : 2;
       ctx.beginPath();
       ctx.arc(p.x, p.y + 4, ringR, 0, Math.PI * 2);
       ctx.stroke();
-      // Legendary gets a secondary counter-rotating ring
-      if (tier === 'legendary') {
-        ctx.strokeStyle = '#a0e8ff';
+      if (tier === 'legendary' || tier === 'mythic') {
+        ctx.strokeStyle = tier === 'mythic' ? (p.relic.tint || '#ffb4c8') : '#a0e8ff';
         ctx.globalAlpha = pulse * 0.6;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = tier === 'mythic' ? 2 : 1.5;
         ctx.beginPath();
         ctx.arc(p.x, p.y + 4, ringR + 6, 0, Math.PI * 2);
         ctx.stroke();
-        // 4 rotating rune points around the pedestal
+        // Rune points — mythic gets 6 (vs legendary's 4), brighter pulse
+        const runeCount = tier === 'mythic' ? 6 : 4;
         ctx.fillStyle = '#ffffff';
-        for (let k = 0; k < 4; k++) {
-          const a = (k / 4) * Math.PI * 2 + now * 1.3;
+        for (let k = 0; k < runeCount; k++) {
+          const a = (k / runeCount) * Math.PI * 2 + now * 1.3;
           const rx = p.x + Math.cos(a) * (ringR + 10);
           const ry = (p.y + 4) + Math.sin(a) * (ringR + 10);
-          ctx.globalAlpha = pulse * 0.9;
-          ctx.fillRect(rx - 1.5, ry - 1.5, 3, 3);
+          ctx.globalAlpha = pulse * (tier === 'mythic' ? 1.0 : 0.9);
+          const runeSize = tier === 'mythic' ? 4 : 3;
+          ctx.fillRect(rx - runeSize / 2, ry - runeSize / 2, runeSize, runeSize);
+        }
+        // Mythic: third outer ring, dashed, counter-rotating
+        if (tier === 'mythic') {
+          ctx.strokeStyle = '#ffffff';
+          ctx.globalAlpha = pulse * 0.3;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([6, 6]);
+          ctx.lineDashOffset = -now * 30;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y + 4, ringR + 16, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
       }
       ctx.globalAlpha = 1;
     }
 
     // Glow ring on floor — red if HP-cost altar pedestal, relic-tinted otherwise
-    const glowR = 26 + p.glow * 12 + (tier === 'legendary' ? 12 : tier === 'rare' ? 6 : 0);
+    const glowR = 26 + p.glow * 12 + (tier === 'mythic' ? 20 : tier === 'legendary' ? 12 : tier === 'rare' ? 6 : 0);
     const grad = ctx.createRadialGradient(p.x, p.y + 4, 2, p.x, p.y + 4, glowR);
     const baseColor = isAltar ? 'rgba(255, 60, 80, ' : (p.relic.tint || '#ffffff');
     if (isAltar) {
@@ -226,7 +355,7 @@ export function drawPedestals(ctx) {
     // LIGHT BEAM rising from the pedestal — tier-colored vertical cone that
     // turns the pedestal into a visible beacon.
     const beamColor = isAltar ? '#ff5080' : (p.relic.tint || '#c0b0d0');
-    const beamHeight = tier === 'legendary' ? 120 : tier === 'rare' ? 90 : 60;
+    const beamHeight = tier === 'mythic' ? 180 : tier === 'legendary' ? 120 : tier === 'rare' ? 90 : 60;
     const beamPulse = 0.6 + 0.4 * Math.sin(now * 2.5 + p.bob);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -239,8 +368,8 @@ export function drawPedestals(ctx) {
     beamGrad.addColorStop(0.5, `rgba(${br},${bg},${bb},${(0.2 * beamPulse).toFixed(3)})`);
     beamGrad.addColorStop(1, `rgba(${br},${bg},${bb},0)`);
     ctx.fillStyle = beamGrad;
-    const beamTopW = 10 + (tier === 'legendary' ? 6 : tier === 'rare' ? 3 : 0);
-    const beamBotW = 24 + (tier === 'legendary' ? 10 : tier === 'rare' ? 5 : 0);
+    const beamTopW = 10 + (tier === 'mythic' ? 12 : tier === 'legendary' ? 6 : tier === 'rare' ? 3 : 0);
+    const beamBotW = 24 + (tier === 'mythic' ? 18 : tier === 'legendary' ? 10 : tier === 'rare' ? 5 : 0);
     ctx.beginPath();
     ctx.moveTo(p.x - beamBotW / 2, p.y - 2);
     ctx.lineTo(p.x + beamBotW / 2, p.y - 2);
@@ -272,14 +401,22 @@ export function drawPedestals(ctx) {
       ctx.fillRect(p.x - 10, floatY - 10, 20, 20);
     }
 
-    // Tier label above icon (rare/legendary only) — tracks the floating icon
-    if (tier === 'rare' || tier === 'legendary') {
-      const label = tier === 'legendary' ? 'LEGENDARY' : 'RARE';
-      const labelColor = tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(p.x - 40, floatY - 24, 80, 12);
+    // Tier label above icon (rare/legendary/mythic) — tracks the floating icon
+    if (tier === 'rare' || tier === 'legendary' || tier === 'mythic') {
+      const label = tier === 'mythic' ? '\u2605 MYTHIC \u2605' : tier === 'legendary' ? 'LEGENDARY' : 'RARE';
+      const labelColor = tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : '#f4d9a0';
+      const lblW = tier === 'mythic' ? 100 : 80;
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(p.x - lblW / 2, floatY - 24, lblW, 12);
+      if (tier === 'mythic') {
+        ctx.strokeStyle = labelColor;
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now * 4);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(p.x - lblW / 2 + 0.5, floatY - 24 + 0.5, lblW - 1, 11);
+        ctx.globalAlpha = 1;
+      }
       ctx.fillStyle = labelColor;
-      ctx.font = 'bold 9px system-ui, sans-serif';
+      ctx.font = tier === 'mythic' ? 'italic bold 9px Georgia, serif' : 'bold 9px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, p.x, floatY - 18);
@@ -299,6 +436,30 @@ export function drawPedestals(ctx) {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
     }
+
+    // FUSION HINT — if picking this relic would complete a fusion with one
+    // of the hero's equipped relics, show a cyan "⚡ FUSION" chip above the
+    // tier label. Massive discovery dopamine — surfaces the pairing logic
+    // that was previously invisible until activation.
+    if (fusionCompleters && fusionCompleters.has(p.relic.id)) {
+      const chipY = floatY - 40;
+      const chipW = 74;
+      const pulse = 0.75 + 0.25 * Math.sin(now * 3.2 + p.bob);
+      ctx.fillStyle = 'rgba(10, 18, 28, 0.95)';
+      ctx.fillRect(p.x - chipW / 2, chipY, chipW, 14);
+      ctx.strokeStyle = '#a0e8ff';
+      ctx.globalAlpha = pulse;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - chipW / 2 + 0.5, chipY + 0.5, chipW - 1, 13);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#a0e8ff';
+      ctx.font = 'italic bold 9px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('\u26A1 FUSION \u26A1', p.x, chipY + 7);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    }
   }
 }
 
@@ -309,26 +470,28 @@ export function drawPedestals(ctx) {
 // common a muted bronze.
 export function drawPickupFlash(ctx, w, h) {
   if (pickedFlashTime <= 0 || !lastPickedDef) return;
-  const life = 3.0;
+  const tier = lastPickedDef.tier || 'common';
+  // Mythic holds the banner 5.5s; everything else 3.0s.
+  const life = tier === 'mythic' ? 5.5 : 3.0;
   const r = 1 - (pickedFlashTime / life);        // 0 → 1
   let a;
   if (r < 0.1) a = r / 0.1;
   else if (r > 0.75) a = (1 - r) / 0.25;
   else a = 1;
   a = Math.max(0, Math.min(1, a));
-  const scaleBump = r < 0.2 ? 1 + Math.sin((r / 0.2) * Math.PI) * 0.1 : 1;
-  const tier = lastPickedDef.tier || 'common';
-  // Tier palette — common stays muted bronze (was cool grey), rare gold,
-  // legendary magenta. Banner's visual weight scales with tier.
-  const tierColor = tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c9a86a';
-  const tierRgb   = tier === 'legendary' ? '255, 200, 255' : tier === 'rare' ? '244, 217, 160' : '201, 168, 106';
-  const tierGlyph = tier === 'legendary' ? '\u2605' : tier === 'rare' ? '\u25C6' : '\u2666';
-  const tierLabel = tier === 'legendary' ? `${tierGlyph} LEGENDARY ${tierGlyph}` : tier === 'rare' ? `${tierGlyph} RARE ${tierGlyph}` : `${tierGlyph} COMMON ${tierGlyph}`;
+  const scaleBump = r < 0.2 ? 1 + Math.sin((r / 0.2) * Math.PI) * (tier === 'mythic' ? 0.18 : 0.1) : 1;
+  // Tier palette — common bronze, rare gold, legendary magenta, mythic white-gold.
+  const tierColor = tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c9a86a';
+  const tierRgb   = tier === 'mythic' ? '255, 242, 224' : tier === 'legendary' ? '255, 200, 255' : tier === 'rare' ? '244, 217, 160' : '201, 168, 106';
+  const tierGlyph = tier === 'mythic' ? '\u2605' : tier === 'legendary' ? '\u2605' : tier === 'rare' ? '\u25C6' : '\u2666';
+  const tierLabel = tier === 'mythic' ? `${tierGlyph}\u2605  MYTHIC  \u2605${tierGlyph}` : tier === 'legendary' ? `${tierGlyph} LEGENDARY ${tierGlyph}` : tier === 'rare' ? `${tierGlyph} RARE ${tierGlyph}` : `${tierGlyph} COMMON ${tierGlyph}`;
 
   ctx.save();
   ctx.globalAlpha = a;
 
-  const boxW = 480, boxH = 170;
+  // Mythic banner is larger — gives the moment more weight on screen
+  const boxW = tier === 'mythic' ? 560 : 480;
+  const boxH = tier === 'mythic' ? 200 : 170;
   const bx = (w - boxW) / 2;
   const by = (h - boxH) / 2 - 30;
   const pivotX = bx + boxW / 2, pivotY = by + boxH / 2;
@@ -337,17 +500,27 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.translate(-pivotX, -pivotY);
 
   // Tier-colored radial halo behind the frame — pulsing on all tiers, stronger
-  // on rare/legendary. Creates the "lit from behind" gift feeling.
-  const pulseT = performance.now() / (tier === 'legendary' ? 320 : 420);
+  // on rare/legendary/mythic. Mythic halos wash the entire screen.
+  const pulseT = performance.now() / (tier === 'mythic' ? 260 : tier === 'legendary' ? 320 : 420);
   const pulse = 0.6 + 0.4 * Math.sin(pulseT);
   const glowA = (r < 0.5 ? 1 : (1 - r) * 2) * pulse;
   if (glowA > 0.05) {
-    const glow = ctx.createRadialGradient(pivotX, pivotY, 40, pivotX, pivotY, boxW * 0.85);
-    const glowStrength = tier === 'legendary' ? 0.55 : tier === 'rare' ? 0.45 : 0.3;
+    const glow = ctx.createRadialGradient(pivotX, pivotY, 40, pivotX, pivotY, boxW * (tier === 'mythic' ? 1.3 : 0.85));
+    const glowStrength = tier === 'mythic' ? 0.75 : tier === 'legendary' ? 0.55 : tier === 'rare' ? 0.45 : 0.3;
     glow.addColorStop(0, `rgba(${tierRgb}, ${(glowA * glowStrength).toFixed(3)})`);
     glow.addColorStop(1, `rgba(${tierRgb}, 0)`);
     ctx.fillStyle = glow;
-    ctx.fillRect(bx - 120, by - 80, boxW + 240, boxH + 160);
+    // Mythic: full-screen wash so the background darkens behind the banner.
+    if (tier === 'mythic') {
+      ctx.fillRect(0, 0, w, h);
+      const edgeVg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+      edgeVg.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      edgeVg.addColorStop(1, `rgba(0, 0, 0, ${(glowA * 0.45).toFixed(3)})`);
+      ctx.fillStyle = edgeVg;
+      ctx.fillRect(0, 0, w, h);
+    } else {
+      ctx.fillRect(bx - 120, by - 80, boxW + 240, boxH + 160);
+    }
   }
 
   // Frame — tome-style vertical gradient
@@ -357,11 +530,19 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.fillStyle = frameG;
   ctx.fillRect(bx, by, boxW, boxH);
 
-  // Tier-colored border — thickness scales, legendary pulses slightly
-  const borderWidth = tier === 'legendary' ? 2 + pulse * 0.6 : tier === 'rare' ? 1.8 : 1.5;
+  // Tier-colored border — thickness scales, mythic pulses more dramatically
+  const borderWidth = tier === 'mythic' ? 2.8 + pulse * 1.0 : tier === 'legendary' ? 2 + pulse * 0.6 : tier === 'rare' ? 1.8 : 1.5;
   ctx.strokeStyle = tierColor;
   ctx.lineWidth = borderWidth;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
+  // Mythic gets a second outer border of the relic's own tint — double-frame signature
+  if (tier === 'mythic' && lastPickedDef.tint) {
+    ctx.strokeStyle = lastPickedDef.tint;
+    ctx.globalAlpha = a * (0.5 + pulse * 0.4);
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(bx - 3.5, by - 3.5, boxW + 7, boxH + 7);
+    ctx.globalAlpha = a;
+  }
 
   // CORNER ORNAMENTS — gold L-shape + diamond at each corner. Shared grammar
   // with every overlay in the game.
@@ -414,29 +595,31 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
-  // "— RELIC ACQUIRED —" header — italic Georgia (unified grammar)
-  ctx.fillStyle = '#c9a86a';
-  ctx.font = 'italic bold 10px Georgia, serif';
-  ctx.fillText('\u2014 RELIC ACQUIRED \u2014', pivotX, by + 42);
+  // Header — "RELIC ACQUIRED" usually. Mythic gets "A LEGEND AWAKES" to sell
+  // that this is a named, storied artifact, not loot.
+  ctx.fillStyle = tier === 'mythic' ? tierColor : '#c9a86a';
+  ctx.font = tier === 'mythic' ? 'italic bold 11px Georgia, serif' : 'italic bold 10px Georgia, serif';
+  const header = tier === 'mythic' ? '\u2014 A LEGEND AWAKES \u2014' : '\u2014 RELIC ACQUIRED \u2014';
+  ctx.fillText(header, pivotX, by + (tier === 'mythic' ? 50 : 42));
 
-  // Big relic name — shadowed glow in tier color
+  // Big relic name — shadowed glow in tier color. Mythic is larger + stronger glow.
   ctx.shadowColor = tierColor;
-  ctx.shadowBlur = 14;
+  ctx.shadowBlur = tier === 'mythic' ? 22 : 14;
   ctx.fillStyle = '#fff2e0';
-  ctx.font = 'bold 30px Georgia, serif';
-  ctx.fillText(lastPickedDef.name, pivotX, by + 58);
+  ctx.font = tier === 'mythic' ? 'bold 38px Georgia, serif' : 'bold 30px Georgia, serif';
+  ctx.fillText(lastPickedDef.name, pivotX, by + (tier === 'mythic' ? 68 : 58));
   ctx.shadowBlur = 0;
 
   // Flavor line in quotes
   if (lastPickedDef.flavor) {
-    ctx.fillStyle = 'rgba(210, 200, 220, 0.82)';
-    ctx.font = 'italic 12px Georgia, serif';
-    ctx.fillText('\u201C' + lastPickedDef.flavor + '\u201D', pivotX, by + 100);
+    ctx.fillStyle = tier === 'mythic' ? 'rgba(240, 230, 220, 0.95)' : 'rgba(210, 200, 220, 0.82)';
+    ctx.font = tier === 'mythic' ? 'italic 14px Georgia, serif' : 'italic 12px Georgia, serif';
+    ctx.fillText('\u201C' + lastPickedDef.flavor + '\u201D', pivotX, by + (tier === 'mythic' ? 118 : 100));
   }
 
   // Central-diamond divider — hairline with a small diamond at midpoint
   ctx.globalAlpha = a * 0.65;
-  const divY = by + 122;
+  const divY = by + (tier === 'mythic' ? 145 : 122);
   const divHalfW = 120;
   // left segment
   const lg = ctx.createLinearGradient(pivotX - divHalfW, divY, pivotX - 8, divY);
@@ -461,8 +644,8 @@ export function drawPickupFlash(ctx, w, h) {
 
   // Mechanic description — tier-tinted bold
   ctx.fillStyle = tierColor;
-  ctx.font = 'bold 15px Georgia, serif';
-  ctx.fillText(lastPickedDef.desc, pivotX, by + 132);
+  ctx.font = tier === 'mythic' ? 'bold 17px Georgia, serif' : 'bold 15px Georgia, serif';
+  ctx.fillText(lastPickedDef.desc, pivotX, by + (tier === 'mythic' ? 158 : 132));
 
   // Tier label at the bottom — diamonds flanking. Replaces the old "· COMMON ·".
   ctx.fillStyle = tierColor;
@@ -476,7 +659,14 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.restore();
 }
 
-// Hover tooltip — shown when hero is near a pedestal (before picking it)
+// Hover tooltip — shown when hero is near a pedestal (before picking it).
+// Redesigned: left-aligned card layout with the relic icon shown inside the
+// tooltip (not just on the pedestal), a tier badge above the name, and a
+// fade-in animation when the hover target changes so the tooltip reads as
+// a discrete UI element rather than appearing mid-render.
+let _tooltipCurrent = null;
+let _tooltipSince = 0;
+
 export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   let nearest = null;
   let nearestD = Infinity;
@@ -485,78 +675,136 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
     const d = Math.hypot(hero.x - p.x, hero.y - p.y);
     if (d < 90 && d < nearestD) { nearest = p; nearestD = d; }
   }
-  if (!nearest) return;
+  if (!nearest) { _tooltipCurrent = null; return; }
   const r = nearest.relic;
   const isAltar = nearest.hpCost > 0;
-  // Is this the multi-offer pedestal (rerollable)?
   const rerollable = !isAltar && pedestals.filter(p => !p.picked && p.hpCost === 0).length >= 2;
   const rerollCost = 15 + (opts.floorLevel || 1) * 5;
   const canReroll = rerollable && (opts.gold || 0) >= rerollCost;
+
+  // Fade-in — restart when the hovered pedestal changes.
+  const now = (typeof performance !== 'undefined') ? performance.now() : 0;
+  if (_tooltipCurrent !== nearest) {
+    _tooltipCurrent = nearest;
+    _tooltipSince = now;
+  }
+  const fadeIn = Math.min(1, (now - _tooltipSince) / 180);   // 180 ms
+  // Subtle rise: start 4px below target, settle at target.
+  const riseOffset = (1 - fadeIn) * 4;
+
   ctx.save();
+  ctx.globalAlpha = fadeIn;
+
+  const tier = (r.tier || 'common').toUpperCase();   // 'COMMON' | 'RARE' | 'LEGENDARY' | 'MYTHIC'
+  const tierText = isAltar ? 'ALTAR' : (tier + ' RELIC');
+  const tierColor = isAltar ? '#ff8a9a'
+                  : tier === 'MYTHIC'    ? '#fff2e0'
+                  : tier === 'LEGENDARY' ? '#c8a0ff'
+                  : tier === 'RARE'      ? '#f4d9a0'
+                  : '#b8c8d8';             // common: cool neutral
+
+  // Box — wider so icon fits on the left with real text room on the right.
+  const boxW = 420;
   const extraH = rerollable ? 20 : 0;
-  const boxW = 340, boxH = (isAltar ? 82 : 64) + extraH;
+  const boxH = (isAltar ? 92 : 76) + extraH;
   const bx = (w - boxW) / 2;
-  const by = h - (isAltar ? 190 : 170) - extraH;
+  const by = h - (isAltar ? 200 : 180) - extraH + riseOffset;
   const frameColor = isAltar ? '#ff6080' : (r.tint || '#ffffff');
-  // Outer tint-colored glow — subtle drop-shadow read that something is interactable
+
+  // Outer tint-colored glow
   const glow = ctx.createRadialGradient(bx + boxW / 2, by + boxH / 2, boxW * 0.15,
                                          bx + boxW / 2, by + boxH / 2, boxW * 0.7);
   glow.addColorStop(0, frameColor + '22');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(bx - 30, by - 24, boxW + 60, boxH + 48);
-  // Vertical tome-style gradient for the body
+
+  // Body — vertical gradient
   const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
-  bg.addColorStop(0, 'rgba(18, 10, 22, 0.92)');
-  bg.addColorStop(1, 'rgba(8, 4, 12, 0.92)');
+  bg.addColorStop(0, 'rgba(18, 10, 22, 0.94)');
+  bg.addColorStop(1, 'rgba(8, 4, 12, 0.94)');
   ctx.fillStyle = bg;
   ctx.fillRect(bx, by, boxW, boxH);
   ctx.strokeStyle = frameColor;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-  // Gold inner accent stripe
   ctx.strokeStyle = 'rgba(201, 168, 106, 0.35)';
   ctx.lineWidth = 1;
   ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-  // Tiny corner accents — small bracket marks on each corner
+
+  // Corner brackets
   ctx.fillStyle = frameColor;
   const cornerAccents = [
-    [bx + 2, by + 2, 1],          // top-left (dx=+1, dy=+1)
-    [bx + boxW - 2, by + 2, -1],  // top-right (dx=-1, dy=+1)
-    [bx + 2, by + boxH - 2, 1],          // bottom-left
-    [bx + boxW - 2, by + boxH - 2, -1],  // bottom-right
+    [bx + 2, by + 2, 1],
+    [bx + boxW - 2, by + 2, -1],
+    [bx + 2, by + boxH - 2, 1],
+    [bx + boxW - 2, by + boxH - 2, -1],
   ];
   for (const [cx, cy, dx] of cornerAccents) {
     ctx.fillRect(cx + (dx === 1 ? 0 : -3), cy, 4, 1);
     ctx.fillRect(cx, cy + (cy === by + 2 ? 0 : -3), 1, 4);
   }
+
+  // ICON INSET — the relic's painted art on the left side of the box, with a
+  // tint-framed inner slot that subtly glows to match the pedestal beam.
+  const iconSize = boxH - 20;
+  const iconX = bx + 10;
+  const iconY = by + 10;
+  const iconImg = images[r.icon];
+  // Slot backdrop
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(iconX, iconY, iconSize, iconSize);
+  ctx.strokeStyle = frameColor;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(iconX + 0.5, iconY + 0.5, iconSize - 1, iconSize - 1);
+  if (iconImg) {
+    drawRelicIcon(ctx, iconImg, null, null, r.id,
+                  iconX + 3, iconY + 3, iconSize - 6);
+  }
+
+  // TEXT COLUMN — centered in the area right of the icon.
+  const textX = iconX + iconSize + 14;
+  const textCenter = (textX + bx + boxW) / 2;
+
+  // Tier badge (small caps label above name)
+  ctx.fillStyle = tierColor;
+  ctx.font = 'bold 9px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(tierText, textCenter, by + 18);
+  // Hairline above tier text for ornament
+  ctx.fillStyle = tierColor;
+  const tierW = ctx.measureText(tierText).width;
+  ctx.fillRect(textCenter - tierW / 2 - 16, by + 15, 12, 1);
+  ctx.fillRect(textCenter + tierW / 2 + 4, by + 15, 12, 1);
+
   // Name
   ctx.fillStyle = r.tint || '#ffffff';
-  ctx.font = 'bold 17px Georgia, serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(r.name, bx + boxW / 2, by + 22);
-  // Flavor (italic, grey) — lore first, mechanic second
+  ctx.font = 'bold 18px Georgia, serif';
+  ctx.fillText(r.name, textCenter, by + 38);
+
+  // Flavor (italic)
   if (r.flavor) {
-    ctx.fillStyle = 'rgba(200, 190, 210, 0.7)';
+    ctx.fillStyle = 'rgba(200, 190, 210, 0.75)';
     ctx.font = 'italic 11px Georgia, serif';
-    ctx.fillText(r.flavor, bx + boxW / 2, by + 38);
+    ctx.fillText(r.flavor, textCenter, by + 54);
   }
-  // Desc (mechanic) — brighter, bolder so player can quickly see what it does
+  // Desc (mechanic)
   ctx.fillStyle = r.tint || '#f4d9a0';
   ctx.font = 'bold 12px Georgia, serif';
-  ctx.fillText(r.desc, bx + boxW / 2, by + (r.flavor ? 54 : 42));
+  ctx.fillText(r.desc, textCenter, by + (r.flavor ? 70 : 58));
+
   if (isAltar) {
     ctx.fillStyle = '#ff7a8e';
     ctx.font = 'bold 12px Georgia, serif';
-    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', bx + boxW / 2, by + (r.flavor ? 72 : 64));
+    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textCenter, by + (r.flavor ? 86 : 74));
   }
-  // Reroll hint
   if (rerollable) {
     ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.5)';
     ctx.font = 'bold 11px system-ui, sans-serif';
     const hintY = by + boxH - 14;
-    ctx.fillText(`\u27F3 Press R to reroll \u00b7 ${rerollCost}g`, bx + boxW / 2, hintY);
+    ctx.fillText(`\u27F3 Press R to reroll \u00b7 ${rerollCost}g`, textCenter, hintY);
   }
+
   ctx.textAlign = 'left';
   ctx.restore();
 }

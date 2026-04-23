@@ -5,21 +5,21 @@
 // that reads localStorage at module-body time (currently none do —
 // all load funcs are lazy) would need to run after this.
 import { installProfilePrefix, getActiveProfileId, listProfiles, setActiveProfile, deleteProfile, profileLabel, PROFILE_IDS } from './profile.js';
-import { loadAll } from './loader.js?v=enemies3';
+import { loadAll } from './loader.js';
 import { initInput, mouse, endFrameInput } from './input.js';
-import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js?v=2';
+import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js';
 import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
   spawnExtraFirePool, room, TILE, roomTorches,
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom, ROOM_W, ROOM_H,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
 } from './room.js';
-import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS } from './floor.js?v=enemies3';
+import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
 // of a flat 7-room array. `floor` becomes a dynamic array built up as the
 // player commits to path nodes, which keeps all existing floor[roomIndex]
 // call sites working unchanged.
-import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js?v=graph2';
+import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js';
 import { openFloorMap } from './mapScreen.js';
 let currentGraph = null;
 let currentNodeId = null;
@@ -30,8 +30,8 @@ let _mapPickInFlight = false;
 import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
-import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, setWeatherBiome, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js?v=8';
-import { drawHud, updateHudAnims } from './hud.js?v=feedback1';
+import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, setWeatherBiome, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
+import { drawHud, updateHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
 import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats.js';
@@ -48,13 +48,13 @@ import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedTo
 import { loadTips, showTip, updateTips, drawTip } from './tips.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import {
-  spawnRelicOffer, spawnAltarOffer, updatePedestals, drawPedestals, clearPedestals,
+  spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip,
 } from './pedestals.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js?v=a11y1';
-import { images as imageCache } from './loader.js?v=enemies3';
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
+import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
@@ -95,6 +95,20 @@ window.addEventListener('orientationchange', () => {
 import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom } from './postfx.js';
 window.__triggerChromAberr = triggerChromAberr;
 
+// Per-run gameplay metrics — collapsed from 7 individual window.__ globals
+// into one object so the stat-tracker cluster reads and writes through a
+// single namespace. All values are time-gated (staleness checks in the
+// readers), so no explicit reset between runs is needed.
+window.__gameMetrics = {
+  killStreak: 0,
+  killStreakShowUntil: 0,
+  maxCombo: 0,
+  lastHitTime: 0,
+  lastHitFromX: 0,
+  lastHitFromY: 0,
+  lastKillTime: 0,
+};
+
 // Death/victory screen markup moved to ./deathScreen.js (review #4 split pass 2).
 // Data-filling (stats, relics, essence) and event wiring stay in main.js.
 import { DEATH_SCREEN_HTML } from './deathScreen.js';
@@ -105,6 +119,10 @@ import { CREDITS_SCREEN_HTML } from './creditsScreen.js';
 // Controls / how-to-play primer — single-reference cheat sheet, a less
 // contextual companion to the onboarding tips system.
 import { CONTROLS_SCREEN_HTML } from './controlsScreen.js';
+// Main menu markup — shown on page load. main.js owns DOM setup, event
+// wiring (begin descent, mode chips, save-slot journal, link buttons), and
+// the ember particle animation.
+import { MENU_SCREEN_HTML } from './menuScreen.js';
 // Ascension — systems-roguelite long-tail tiers. Each cleared floor-4 run
 // unlocks the next tier's modifier + essence scaling.
 import {
@@ -119,7 +137,7 @@ loadAscension();
 // tier's scalars.
 window.__ascensionModifiers = ascensionModifiers;
 // Storage health probe — surfaces a warning chip if localStorage is blocked.
-import { showStorageWarningIfBlocked } from './storage.js?v=save1';
+import { showStorageWarningIfBlocked } from './storage.js';
 showStorageWarningIfBlocked();
 
 // Global error boundary — catches uncaught exceptions and unhandled promise
@@ -134,8 +152,8 @@ installErrorBoundary();
 // fx.js's setHitStopScale. CSS-side animation suppression is handled by a
 // @media block in index.html.
 import { prefersReducedMotion } from './a11y.js';
-import { setShakeScale } from './camera.js?v=2';
-import { setHitStopScale } from './fx.js?v=a11y1';
+import { setShakeScale } from './camera.js';
+import { setHitStopScale } from './fx.js';
 if (prefersReducedMotion()) {
   setShakeScale(0.2);        // near-zero camera shake
   setHitStopScale(0.15);     // near-zero freeze-frames on impact
@@ -148,7 +166,33 @@ deathEl.style.flexDirection = 'column';
 deathEl.style.padding = '20px';
 deathEl.style.boxSizing = 'border-box';
 deathEl.innerHTML = DEATH_SCREEN_HTML;
-document.getElementById('restartBtn').addEventListener('click', () => startRun());
+// restartBtn is shared between the real death-screen ("NEW RUN") and the
+// sanctuary-opened-from-hamlet ("← MAIN MENU") re-skins. The sanctuary re-
+// skins override btn.onclick, but this addEventListener stays attached and
+// would fire startRun() alongside the override — playing the prologue while
+// the override simultaneously returns to hamlet. `_restartBtnOverridden` is
+// set by showSanctuary / showSanctuaryFromHamlet to suppress startRun when
+// the button is in overlay-exit mode instead of actual-new-run mode.
+let _restartBtnOverridden = false;
+document.getElementById('restartBtn').addEventListener('click', () => {
+  if (_restartBtnOverridden) return;
+  startRun();
+});
+// Escape hatch from the death/victory screen back to the main menu. Essence
+// is already banked by the time this screen shows, so the player can safely
+// detour to change memories, visit the hamlet, switch save slot, etc.
+document.getElementById('deathMenuBtn')?.addEventListener('click', () => {
+  deathEl.style.display = 'none';
+  showMainMenu();
+});
+document.getElementById('deathMenuBtn')?.addEventListener('mouseenter', (e) => {
+  e.target.style.opacity = '1';
+  e.target.style.color = '#c9a86a';
+});
+document.getElementById('deathMenuBtn')?.addEventListener('mouseleave', (e) => {
+  e.target.style.opacity = '0.7';
+  e.target.style.color = '#8a7a5a';
+});
 
 // Between-floor + victory screen — includes a shop row between floors.
 // Ornamented dramatic screen matching the main-menu aesthetic.
@@ -316,12 +360,13 @@ let floorCardTime = 0;
 let floorCardRoman = '';
 let floorCardName = '';
 let floorCardFlavor = '';
+let floorCardBackdrop = '';
 
 const FLOOR_CARD_DATA = {
-  1: { roman: 'I',   name: 'THE UNDERCROFT', flavor: 'cold stone remembers the dead' },
-  2: { roman: 'II',  name: 'THE FORGOTTEN VAULT', flavor: 'where kings once feasted, rats now feast' },
-  3: { roman: 'III', name: 'THE ABYSS', flavor: 'the world has ended. something else begins.' },
-  4: { roman: 'IV',  name: 'THE INFERNO', flavor: 'the wound at the world\u2019s heart' },
+  1: { roman: 'I',   name: 'THE UNDERCROFT',    flavor: 'cold stone remembers the dead',         backdrop: 'zone_undercroft' },
+  2: { roman: 'II',  name: 'THE RUINED TOWER',  flavor: 'where kings once feasted, rats now feast', backdrop: 'zone_ruined_tower' },
+  3: { roman: 'III', name: 'THE SPIRE',         flavor: 'the world has ended. something else begins.', backdrop: 'zone_spire' },
+  4: { roman: 'IV',  name: 'THE THRONE OF RUIN', flavor: 'the wound at the world\u2019s heart',  backdrop: 'zone_throne_of_ruin' },
 };
 
 const DEATH_MESSAGES = [
@@ -424,225 +469,7 @@ const menuEl = document.createElement('div');
 // (title crown) and bottom (cards + chrome). Fallback radial-gradient
 // preserved in case the image fails to load.
 menuEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:#050308 url(assets/menu/menu_backdrop.jpg) center/cover no-repeat;color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow:hidden;';
-menuEl.innerHTML = `
-  <!-- BACKDROP DARKENING — quiets the busy stone texture behind the UI
-       without flattening the painting. A horizontal gradient keeps the
-       center column slightly darker so gold/cream text reads over it,
-       while the sides (torches, ivy, vignette edges) stay vivid. -->
-  <div style="position:absolute;inset:0;background:linear-gradient(90deg, transparent 0%, rgba(4,2,8,0.28) 28%, rgba(4,2,8,0.42) 50%, rgba(4,2,8,0.28) 72%, transparent 100%);pointer-events:none;"></div>
-  <!-- Soft center vignette — pulls a breath of darkness in right under the
-       title + CTA so they have air above the stonework. -->
-  <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,80vw);height:min(620px,70vh);background:radial-gradient(ellipse at center, rgba(4,2,8,0.55) 0%, rgba(4,2,8,0.25) 45%, transparent 75%);pointer-events:none;"></div>
-
-  <!-- AMBIENT SIGIL — kept as a faint overlay (0.025) so it reads as a
-       mystical diagram etched into the air above the archway. Dimmer
-       now that the painted backdrop carries most of the atmosphere. -->
-  <svg id="menuSigil" viewBox="0 0 200 200" style="position:absolute;width:440px;height:440px;left:50%;top:42%;transform:translate(-50%,-50%);opacity:0.025;pointer-events:none;filter:drop-shadow(0 0 50px rgba(201,168,106,0.25));">
-    <defs>
-      <radialGradient id="sigilGrad" cx="0.5" cy="0.5" r="0.5">
-        <stop offset="0%" stop-color="#f4d9a0" stop-opacity="0.8"/>
-        <stop offset="80%" stop-color="#c9a86a" stop-opacity="0.2"/>
-        <stop offset="100%" stop-color="#c9a86a" stop-opacity="0"/>
-      </radialGradient>
-    </defs>
-    <circle cx="100" cy="100" r="92" fill="none" stroke="#c9a86a" stroke-width="0.5" opacity="0.7"/>
-    <circle cx="100" cy="100" r="80" fill="none" stroke="#c9a86a" stroke-width="0.3" opacity="0.5"/>
-    <circle cx="100" cy="100" r="78" fill="url(#sigilGrad)"/>
-    <g stroke="#c9a86a" stroke-width="0.6" fill="none" opacity="0.8">
-      <line x1="100" y1="8" x2="100" y2="192"/>
-      <line x1="8" y1="100" x2="192" y2="100"/>
-      <line x1="35" y1="35" x2="165" y2="165"/>
-      <line x1="165" y1="35" x2="35" y2="165"/>
-    </g>
-    <g fill="#c9a86a" opacity="0.9">
-      <polygon points="100,6 104,14 100,22 96,14"/>
-      <polygon points="100,178 104,186 100,194 96,186"/>
-      <polygon points="6,100 14,96 22,100 14,104"/>
-      <polygon points="178,100 186,96 194,100 186,104"/>
-    </g>
-  </svg>
-
-  <!-- Screen-edge vignette — thin darkening on the outer rim so the painted
-       backdrop never quite touches the screen edges. Lighter than before
-       since the backdrop already has its own atmospheric vignette. -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.45) 95%, rgba(0,0,0,0.7) 100%);pointer-events:none;"></div>
-
-  <!-- EMBER PARTICLES — warm gold specks drifting up from the stair, as if
-       rising from the unseen torches and the glow below. Adds motion so
-       the scene feels alive rather than a static painting. -->
-  <canvas id="menuEmbers" width="1280" height="720" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;mix-blend-mode:screen;opacity:0.9;"></canvas>
-
-  <!-- PAGE-FRAME CORNER FLOURISHES — four gold L-shapes mark this screen as a
-       manuscript page. Now 88px (was 58) and with brighter hairlines +
-       larger corner diamonds so they read clearly against the painted
-       backdrop instead of vanishing into the dark edges. -->
-  <div class="menuCorner" style="position:absolute;top:28px;left:28px;width:88px;height:88px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:88px;height:1px;background:linear-gradient(90deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:88px;background:linear-gradient(180deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:-3px;left:-3px;width:7px;height:7px;background:#f4d9a0;transform:rotate(45deg);box-shadow:0 0 8px rgba(244,217,160,0.6);"></div>
-  </div>
-  <div class="menuCorner" style="position:absolute;top:28px;right:28px;width:88px;height:88px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:88px;height:1px;background:linear-gradient(270deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:88px;background:linear-gradient(180deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:-3px;right:-3px;width:7px;height:7px;background:#f4d9a0;transform:rotate(45deg);box-shadow:0 0 8px rgba(244,217,160,0.6);"></div>
-  </div>
-  <div class="menuCorner" style="position:absolute;bottom:28px;left:28px;width:88px;height:88px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:88px;height:1px;background:linear-gradient(90deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:88px;background:linear-gradient(0deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:-3px;left:-3px;width:7px;height:7px;background:#f4d9a0;transform:rotate(45deg);box-shadow:0 0 8px rgba(244,217,160,0.6);"></div>
-  </div>
-  <div class="menuCorner" style="position:absolute;bottom:28px;right:28px;width:88px;height:88px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:88px;height:1px;background:linear-gradient(270deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:88px;background:linear-gradient(0deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:-3px;right:-3px;width:7px;height:7px;background:#f4d9a0;transform:rotate(45deg);box-shadow:0 0 8px rgba(244,217,160,0.6);"></div>
-  </div>
-
-  <!-- CORNER CHROME — now borderless silhouettes, not boxed UI widgets. -->
-  <button id="menuSettingsBtn" title="Settings" style="position:absolute;top:34px;right:96px;background:transparent;color:#7a6a5a;border:0;width:32px;height:32px;font-size:18px;cursor:pointer;font-family:Georgia,serif;transition:all 0.22s ease;display:flex;align-items:center;justify-content:center;opacity:0.7;">\u2699</button>
-  <!-- JOURNAL indicator — shows which save slot (journal) is active.
-       Clicking opens the Journals modal where the player can switch or
-       delete slots. "Journal" reads unambiguously as a save file — the
-       previous "Volume" term confused for audio volume. -->
-  <button id="menuVolumeBtn" title="Journals — your save slots" style="position:absolute;top:34px;left:96px;background:transparent;color:#a89a7a;border:0;padding:6px 12px;font-size:10px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;display:flex;align-items:center;gap:10px;opacity:0.8;">
-    <span style="font-size:11px;color:#c9a86a;">\u2042</span>
-    <span>JOURNAL <span id="menuVolumeLabel">I</span></span>
-  </button>
-  <!-- Curses have moved to the Gravekeeper NPC inside the hamlet — that's
-       their narrative home now. Memory lives inside the Archivist. The main
-       menu no longer carries any modifier chips; those accesses happen
-       through NPC dialogue for better world integration. The two legacy
-       buttons below are kept as hidden hooks so existing click handlers
-       (for curse-active state reads, etc.) don't break. -->
-  <button id="menuCursesBtn" style="display:none;"><span id="menuCursesBtnLabel"></span></button>
-  <button id="menuMemoryBtn" style="display:none;"><span id="menuMemoryBtnLabel"></span></button>
-
-  <!-- CONTENT COLUMN — sits above ambient layers, anchored by corner frame.
-       Radically simplified: TITLE → CTA → MODES → two secondary text links.
-       Meta cards, records, memory/chronicles chips all relocated to the
-       Hamlet hub or the Chronicles book, accessed via text links below. -->
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
-    <h1 class="ethera-title" style="font-size:96px;margin:0;letter-spacing:14px;color:#f4d9a0;font-weight:400;line-height:1;">ETHERA</h1>
-    <!-- Subtitle with integrated ornaments — small gold diamonds flanking the
-         text, so it reads as one unit with the title. -->
-    <div style="display:flex;align-items:center;gap:14px;margin:10px 0 44px;opacity:0.55;">
-      <span style="width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <span style="color:#d8cfae;font-size:12px;letter-spacing:7px;font-style:italic;">beneath the ruin</span>
-      <span style="width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-
-    <!-- RESUME CARD — revealed by showMainMenu if a saved run snapshot exists.
-         Sits above the primary CTA so it's the first thing the returning
-         player sees. Hidden by default. -->
-    <button id="menuResumeBtn" style="display:none;background:linear-gradient(180deg,rgba(30,42,32,0.92),rgba(14,22,16,0.95));border:0;padding:13px 24px;cursor:pointer;font-family:Georgia,serif;margin-bottom:18px;min-width:360px;text-align:left;box-shadow:inset 0 0 0 1px #86b79a, 0 0 20px rgba(134,183,154,0.28), inset 0 0 12px rgba(0,0,0,0.4);transition:all 0.22s ease;">
-      <div style="display:flex;align-items:center;gap:14px;">
-        <span style="width:6px;height:6px;background:#86e3a8;transform:rotate(45deg);flex-shrink:0;"></span>
-        <div style="flex:1;">
-          <div style="color:#86e3a8;font-size:10px;letter-spacing:5px;font-weight:bold;margin-bottom:3px;">\u2666 DESCENT IN PROGRESS</div>
-          <div id="menuResumeLine" style="color:#f4d9a0;font-size:14px;font-weight:bold;letter-spacing:2px;">Floor I \u00b7 8/8 HP \u00b7 0 relics</div>
-        </div>
-        <span style="color:#86e3a8;font-size:14px;letter-spacing:4px;font-weight:bold;">RESUME \u2192</span>
-      </div>
-    </button>
-
-    <!-- PRIMARY ACTION — the single anchor. Soft pulse halo behind it. -->
-    <div style="position:relative;">
-      <div id="menuCtaHalo" style="position:absolute;inset:-14px;background:radial-gradient(ellipse at center, rgba(201,168,106,0.18), transparent 70%);pointer-events:none;"></div>
-      <button id="menuNewRunBtn" style="position:relative;background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:19px 96px;font-size:18px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 28px rgba(201,168,106,0.25), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">BEGIN DESCENT</button>
-    </div>
-
-    <!-- MODE CHIPS — borderless. Selected chip is FILLED + glows; unselected
-         chips are dim text only. Differentiation by weight, not by outline. -->
-    <div id="menuModeRow" style="display:flex;gap:4px;margin-top:20px;margin-bottom:2px;align-items:center;">
-      <button class="menuModeChip" data-mode="standard" style="background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">STANDARD</button>
-      <span style="opacity:0.35;color:#c9a86a;font-size:10px;">\u2666</span>
-      <button class="menuModeChip" data-mode="daily" style="background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
-      <span style="opacity:0.35;color:#c9a86a;font-size:10px;">\u2666</span>
-      <!-- META CONSOLIDATION PASS (review #3): TAROT mode chip hidden.
-           Tarot's 8 cards overlapped Memory's identity-modifier role; the
-           main menu had one too many entry points for new players. The
-           chip is hidden (not deleted) so the tarot module stays dormant
-           and can be re-enabled by removing this display:none. The two
-           most mechanically-distinct tarot cards (Hermit, Hanged Man)
-           have been migrated to the Memory pool as history-gated unlocks. -->
-      <button class="menuModeChip" data-mode="tarot" style="display:none;background:transparent;border:0;padding:7px 16px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">TAROT</button>
-    </div>
-
-    <!-- ASCENSION selector — systems-roguelite long-tail grind. Hidden on
-         tier 0 until the player has unlocked anything (don't clutter a new
-         player's menu with something they can't use). Click to cycle
-         through unlocked tiers. Each tier stacks on the previous. -->
-    <div id="menuAscensionRow" style="display:none;align-items:center;gap:10px;margin-top:10px;margin-bottom:2px;font-family:Georgia,serif;">
-      <span style="color:#8a7a5a;font-size:9px;letter-spacing:4px;font-style:italic;">\u25C7</span>
-      <button id="menuAscensionBtn" title="Click to cycle ascension tier" style="background:transparent;border:0;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;padding:4px 10px;">ASCENSION 0</button>
-      <span style="color:#8a7a5a;font-size:9px;letter-spacing:4px;font-style:italic;">\u25C7</span>
-    </div>
-    <div id="menuAscensionHint" style="font-size:10px;opacity:0.65;letter-spacing:2px;font-family:Georgia,serif;font-style:italic;color:#c9a86a;margin-bottom:0;text-align:center;max-width:440px;min-height:14px;"></div>
-
-    <!-- Hint line — gold at lower opacity, no purple. -->
-    <div id="menuModeHint" style="font-size:11px;opacity:0;letter-spacing:2px;font-family:Georgia,serif;font-style:italic;margin-top:10px;margin-bottom:0;color:#c9a86a;min-height:18px;text-align:center;max-width:480px;transition:opacity 0.28s ease;"></div>
-
-    <!-- SECONDARY ACTIONS — two subtle text links below the CTA. Hamlet
-         holds meta-progression (essence, NPCs, services); Chronicles is
-         the codex (achievements, bestiary, relicpedia, fusions). Both are
-         gold-italic text with a diamond flanking separator and a hairline
-         underline on hover. Nothing else lives here. -->
-    <div style="display:flex;align-items:center;gap:20px;margin-top:34px;font-family:Georgia,serif;">
-      <div style="width:40px;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,106,0.6));"></div>
-      <button id="menuHamletLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
-        <span>visit the hamlet</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
-      <button id="menuChroniclesLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
-        <span>read the chronicles</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
-      <!-- How-to-play primer — addresses the onboarding gap noted in the studio review. -->
-      <button id="menuControlsLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
-        <span>how to play</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
-      <!-- Credits link — release-prep attribution screen for third-party assets. -->
-      <button id="menuCreditsLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.6;display:flex;align-items:center;gap:8px;">
-        <span>credits</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <div style="width:40px;height:1px;background:linear-gradient(270deg,transparent,rgba(201,168,106,0.6));"></div>
-    </div>
-
-    <!-- ACTIVE MODIFIERS indicator — only shown when a memory is selected
-         or curses are active, so the player knows their next descent isn't
-         "vanilla." Stays invisible when nothing is set. -->
-    <div id="menuActiveModifiers" style="margin-top:22px;font-family:Georgia,serif;font-style:italic;font-size:11px;letter-spacing:3px;color:#c9a86a;opacity:0;transition:opacity 0.3s ease;min-height:16px;text-align:center;"></div>
-
-    <!-- LEGACY hidden elements — kept for code-path compatibility. Their
-         values are still updated in showMainMenu but no visible UI renders. -->
-    <div id="menuRecords" style="display:none;"></div>
-    <button id="menuMetaBtn" style="display:none;"><span id="menuSanctuaryValue">0</span></button>
-    <button id="menuAchBtn" style="display:none;"><span id="menuChroniclesValue">0/0</span></button>
-  </div>
-
-  <!-- Records moved: now shown inside the VOLUMES modal per-slot, so each
-       save's story lives with the save. No main-menu records block. -->
-  <div id="menuRecordsCorner" style="display:none;"></div>
-
-  <!-- Hidden legacy elements (kept for compat) -->
-  <div id="menuDailyInfo" style="display:none;"></div>
-  <div id="menuCurseIndicator" style="display:none;"></div>
-  <div id="menuEssence" style="display:none;"></div>
-
-  <!-- Bottom controls strip — manuscript colophon. Slightly brighter now
-       that the painted dark floor of the backdrop gives us contrast, and
-       framed with short hairline dashes so it reads as a legend rather
-       than orphaned text. -->
-  <div style="position:absolute;bottom:48px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:18px;font-family:Georgia,serif;font-style:italic;color:#c9a86a;opacity:0.55;pointer-events:none;">
-    <div style="width:60px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a);"></div>
-    <div style="font-size:10.5px;letter-spacing:4px;">WASD \u00b7 LMB attack \u00b7 SPACE dodge \u00b7 Q dash strike \u00b7 ESC pause</div>
-    <div style="width:60px;height:1px;background:linear-gradient(270deg,transparent,#c9a86a);"></div>
-  </div>
-`;
+menuEl.innerHTML = MENU_SCREEN_HTML;
 document.getElementById('hud').appendChild(menuEl);
 
 // =========================================================================
@@ -1245,11 +1072,33 @@ function renderMemoryGrid() {
     const gift = unlocked ? `<div style="color:${accent};font-size:10px;letter-spacing:3px;font-weight:bold;margin-top:10px;">GIFT</div><div style="font-size:11px;line-height:1.45;margin-top:3px;">${def.gift}</div>` : '';
     const constraint = unlocked ? `<div style="color:#a06060;font-size:10px;letter-spacing:3px;font-weight:bold;margin-top:8px;">BOND</div><div style="font-size:11px;line-height:1.45;margin-top:3px;opacity:0.85;">${def.constraint}</div>` : '';
     const sel = selected ? `<div style="color:${accent};font-size:10px;letter-spacing:4px;font-weight:bold;margin-top:12px;text-shadow:0 0 8px ${accent}88;">\u2766 CHOSEN</div>` : '';
+    // Progress bar for locked memories with numeric unlock conditions — shows
+    // how close the player is instead of a flat "reach floor 2" hint.
+    let progressHtml = '';
+    if (!unlocked && typeof def.unlockProgress === 'function') {
+      try {
+        const prog = def.unlockProgress(records);
+        if (prog && prog.target > 0) {
+          const pct = Math.max(0, Math.min(1, prog.current / prog.target));
+          const pctStr = (pct * 100).toFixed(0);
+          const done = pct >= 1 ? '#86e3a8' : '#c9a86a';
+          progressHtml = `
+            <div style="margin-top:10px;">
+              <div style="font-size:10px;letter-spacing:1px;color:#a89b82;font-family:Georgia,serif;">${prog.current} / ${prog.target} ${prog.unit || ''}</div>
+              <div style="margin-top:4px;height:3px;background:rgba(201,168,106,0.18);overflow:hidden;">
+                <div style="height:100%;width:${pctStr}%;background:${done};box-shadow:0 0 6px ${done}88;"></div>
+              </div>
+            </div>
+          `;
+        }
+      } catch (e) {}
+    }
     card.innerHTML = `
       <div style="color:${unlocked ? accent : '#6a5c48'};font-size:13px;letter-spacing:2.5px;font-weight:bold;margin-bottom:6px;${unlocked ? `text-shadow:0 0 8px ${accent}55;` : ''}">${name}</div>
       <div style="font-size:11px;font-style:italic;opacity:0.7;line-height:1.5;min-height:36px;">${flavor}</div>
       ${gift}
       ${constraint}
+      ${progressHtml}
       ${sel}
     `;
     if (unlocked) {
@@ -1390,6 +1239,14 @@ function showHamlet() {
   startAmbientPad('hamlet');
   // Re-check NPC presence in case records advanced since last visit
   refreshNpcPresence(records, stats, { seenRelicIds });
+  // Also sweep each present NPC's arc — milestone stages (4th stage,
+  // added April 2026) unlock from run-state conditions like "any boss
+  // killed" or "3+ curses active" rather than from service use, so
+  // they'd otherwise never trigger unless the player happened to use
+  // the service after the milestone was hit.
+  for (const id of ALL_NPC_IDS) {
+    if (hamletState.npcArcStage[id] !== undefined) tryAdvanceArc(id);
+  }
   hamletEl.style.display = 'flex';
   renderHamlet();
   // Onboarding tip — fires once to explain the hamlet as a persistent hub.
@@ -1705,13 +1562,21 @@ oracleEl.innerHTML = `
     <h1 style="font-size:44px;margin:0;letter-spacing:10px;color:#d8c4ff;text-shadow:0 0 18px rgba(180,154,255,0.45);font-weight:400;line-height:1;">THE PATH</h1>
     <p style="margin:14px 0 26px;opacity:0.6;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Four floors. Four shapes of hunger. I cannot tell you how they end — only what they are.</p>
     <div id="oracleFloors" style="display:flex;flex-direction:column;gap:14px;width:100%;"></div>
-    <button id="oracleCloseBtn" style="margin-top:22px;background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 LOOK AWAY</button>
+    <div id="oracleFortuneNotice" style="margin-top:10px;min-height:14px;font-size:10.5px;letter-spacing:2px;color:#86e3a8;font-style:italic;opacity:0;transition:opacity 0.3s ease;"></div>
+    <div style="display:flex;gap:18px;margin-top:14px;align-items:center;">
+      <button id="oracleCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 LOOK AWAY</button>
+      <button id="oracleDrawBtn" style="background:linear-gradient(180deg,#2a1840,#14081a);color:#d8c4ff;border:0;padding:10px 28px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #b49aff, 0 0 20px rgba(180,154,255,0.2);transition:all 0.22s ease;">\u2666 DRAW A FORTUNE \u2666</button>
+    </div>
   </div>
 `;
 document.getElementById('hud').appendChild(oracleEl);
 document.getElementById('oracleCloseBtn').addEventListener('click', () => {
   oracleEl.style.display = 'none';
   showHamlet();
+});
+document.getElementById('oracleDrawBtn').addEventListener('click', () => {
+  oracleEl.style.display = 'none';
+  showOracleFortune();
 });
 
 // The forecast is static lore-accurate data. Could be made dynamic later
@@ -1721,14 +1586,14 @@ const ORACLE_FORECAST = [
   { name: 'The Undercroft',      roman: 'I',   enemies: 'slimes, skeletons',
     bossLine: 'A captain in rusted armor, long unburied, waits in its heart.',
     tint: '#86e3a8' },
-  { name: 'The Forgotten Vault', roman: 'II',  enemies: 'orcs, archers, bone captains',
+  { name: 'The Ruined Tower',    roman: 'II',  enemies: 'orcs, archers, bone captains',
     bossLine: 'The iron king who refused to stop. Blue fire, broken crown.',
     tint: '#a0d8ff' },
-  { name: 'The Abyss',           roman: 'III', enemies: 'bonecaps, brood, lancers',
+  { name: 'The Spire',           roman: 'III', enemies: 'bonecaps, brood, lancers',
     bossLine: 'She waits in her webs. She has waited a very long time.',
     tint: '#d85a5a' },
-  { name: 'The Inferno',         roman: 'IV',  enemies: 'embers, priests, wizards',
-    bossLine: 'A volcano that learned the shape of a man.',
+  { name: 'The Throne of Ruin',  roman: 'IV',  enemies: 'priests, wizards, the Hermit',
+    bossLine: 'A throne that forgot it was empty. Red fire answers to its silence.',
     tint: '#ff8040' },
 ];
 
@@ -1758,11 +1623,166 @@ function showOracleForecast() {
     `;
     listEl.appendChild(row);
   }
+  // Carried-fortune hint — if the player has already drawn, surface the fact.
+  const notice = document.getElementById('oracleFortuneNotice');
+  if (notice) {
+    if (window.__oracleCard) {
+      const c = TAROT[window.__oracleCard];
+      notice.textContent = `\u2666 ${c ? c.name : 'A FORTUNE'} is carried into your next descent \u2666`;
+      notice.style.opacity = '0.85';
+    } else {
+      notice.textContent = '';
+      notice.style.opacity = '0';
+    }
+  }
   oracleEl.style.display = 'flex';
   // Record service use and advance the Oracle's arc (free service — her
   // value is narrative, not essence-sunk)
   recordServiceUse('oracle');
 }
+
+// ============================================================================
+// ORACLE'S FORTUNES — the reintegrated Tarot system. Eight cards from the
+// Major Arcana (tarot.js) shown face-down; player picks one to carry into
+// the next descent. On run start, the carried card is pushed into
+// `drawnCards` so every existing tarot-hook (hasCard checks throughout
+// hero.js and main.js) fires automatically — this is the SAME content
+// the hidden tarot-mode used to provide, now accessed via a worldly NPC.
+// ============================================================================
+const oracleFortuneEl = document.createElement('div');
+oracleFortuneEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0f28 0%,#0c0614 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:30;';
+oracleFortuneEl.innerHTML = `
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
+  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:960px;width:100%;">
+    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
+      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
+      <div style="color:#b49aff;font-size:11px;letter-spacing:6px;font-style:italic;">a fortune, for the descent</div>
+      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
+    </div>
+    <h1 id="oracleFortuneTitle" style="font-size:40px;margin:0;letter-spacing:10px;color:#d8c4ff;text-shadow:0 0 18px rgba(180,154,255,0.45);font-weight:400;line-height:1;">DRAW ONE</h1>
+    <p id="oracleFortuneSubtitle" style="margin:14px 0 26px;opacity:0.65;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Choose a card. It will shape your next descent — you may discard it only by dying.</p>
+    <div id="oracleFortuneCards" style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:900px;"></div>
+    <div id="oracleFortuneReveal" style="display:none;flex-direction:column;align-items:center;margin-top:14px;max-width:520px;text-align:center;"></div>
+    <div style="display:flex;gap:18px;margin-top:22px;align-items:center;">
+      <button id="oracleFortuneCancelBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 NOT TODAY</button>
+      <button id="oracleFortuneAcceptBtn" style="display:none;background:linear-gradient(180deg,#2a1840,#14081a);color:#d8c4ff;border:0;padding:10px 28px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #b49aff, 0 0 20px rgba(180,154,255,0.25);transition:all 0.22s ease;">CARRY IT FORWARD \u2192</button>
+    </div>
+  </div>
+`;
+document.getElementById('hud').appendChild(oracleFortuneEl);
+
+let _oracleFortunePick = null;
+
+function renderOracleFortuneCards() {
+  const listEl = document.getElementById('oracleFortuneCards');
+  listEl.innerHTML = '';
+  // Deterministic shuffle per visit — every time the modal opens, cards
+  // appear in a fresh order so the player's eye doesn't just click the
+  // same slot repeatedly.
+  const order = [...Object.keys(TAROT)];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  for (const id of order) {
+    const card = TAROT[id];
+    const cardEl = document.createElement('button');
+    cardEl.className = 'oracleFortuneCard';
+    cardEl.dataset.cardId = id;
+    cardEl.style.cssText = `
+      width: 96px; height: 150px;
+      background: linear-gradient(180deg, #241833, #0e0818);
+      box-shadow: inset 0 0 0 1px #b49aff, 0 0 18px rgba(180,154,255,0.12), inset 0 0 14px rgba(0,0,0,0.5);
+      border: 0; padding: 0; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-family: Georgia, serif; color: #b49aff;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+    `;
+    // Card-back ornament — gold diamond + fine hairlines
+    cardEl.innerHTML = `
+      <div style="position:absolute;inset:8px;border:1px solid rgba(180,154,255,0.25);"></div>
+      <div style="position:absolute;inset:14px;display:flex;align-items:center;justify-content:center;">
+        <div style="width:14px;height:14px;background:#b49aff;transform:rotate(45deg);opacity:0.5;box-shadow:0 0 8px #b49aff77;"></div>
+      </div>
+      <div style="position:absolute;top:8px;left:8px;right:8px;height:1px;background:linear-gradient(90deg,transparent,#b49aff44,transparent);"></div>
+      <div style="position:absolute;bottom:8px;left:8px;right:8px;height:1px;background:linear-gradient(90deg,transparent,#b49aff44,transparent);"></div>
+    `;
+    cardEl.onmouseenter = () => { cardEl.style.transform = 'translateY(-6px)'; cardEl.style.boxShadow = 'inset 0 0 0 1px #d8c4ff, 0 0 28px rgba(216,196,255,0.35), inset 0 0 14px rgba(0,0,0,0.5)'; };
+    cardEl.onmouseleave = () => { cardEl.style.transform = ''; cardEl.style.boxShadow = 'inset 0 0 0 1px #b49aff, 0 0 18px rgba(180,154,255,0.12), inset 0 0 14px rgba(0,0,0,0.5)'; };
+    cardEl.onclick = () => revealOracleFortuneCard(id, cardEl);
+    listEl.appendChild(cardEl);
+  }
+}
+
+function revealOracleFortuneCard(id, cardEl) {
+  _oracleFortunePick = id;
+  const card = TAROT[id];
+  if (!card) return;
+  // Dim every card, highlight the picked one — reads "this is what you drew"
+  const allCards = document.querySelectorAll('.oracleFortuneCard');
+  for (const el of allCards) {
+    el.style.pointerEvents = 'none';
+    if (el !== cardEl) {
+      el.style.opacity = '0.25';
+      el.style.transform = '';
+    } else {
+      el.style.transform = 'translateY(-14px) scale(1.08)';
+      el.style.boxShadow = `inset 0 0 0 2px ${card.tint}, 0 0 34px ${card.tint}66, inset 0 0 18px rgba(0,0,0,0.4)`;
+      // Flip to face-up: replace inner with typographic card face
+      el.innerHTML = `
+        <div style="position:absolute;inset:8px;border:1px solid ${card.tint}88;"></div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:10px;">
+          <div style="color:${card.tint};font-size:12px;letter-spacing:3px;opacity:0.7;margin-bottom:6px;">${card.roman}</div>
+          <div style="width:32px;height:1px;background:${card.tint};opacity:0.4;margin-bottom:8px;"></div>
+          <div style="color:${card.tint};font-size:11px;letter-spacing:2px;font-weight:bold;text-align:center;line-height:1.2;text-shadow:0 0 8px ${card.tint}77;">${card.name}</div>
+        </div>
+      `;
+    }
+  }
+  // Show reveal block with desc + flavor
+  const rev = document.getElementById('oracleFortuneReveal');
+  rev.style.display = 'flex';
+  rev.innerHTML = `
+    <div style="color:${card.tint};font-size:14px;letter-spacing:3px;font-weight:bold;margin-bottom:6px;text-shadow:0 0 10px ${card.tint}66;">${card.name}</div>
+    <div style="color:#c8c0d8;font-size:11px;letter-spacing:1.5px;font-style:italic;opacity:0.75;margin-bottom:10px;">"${card.flavor}"</div>
+    <div style="color:${card.tint};font-size:12px;letter-spacing:1.5px;line-height:1.5;">${card.desc}</div>
+  `;
+  // Swap subtitle + swap button
+  document.getElementById('oracleFortuneSubtitle').textContent = 'This is the card you will carry. Take it, or leave — once you carry one, the Oracle will wait for the next run.';
+  document.getElementById('oracleFortuneAcceptBtn').style.display = 'inline-block';
+  document.getElementById('oracleFortuneCancelBtn').textContent = '\u2190 DISCARD';
+}
+
+function showOracleFortune() {
+  hideAllOverlays();
+  _oracleFortunePick = null;
+  document.getElementById('oracleFortuneReveal').style.display = 'none';
+  document.getElementById('oracleFortuneReveal').innerHTML = '';
+  document.getElementById('oracleFortuneSubtitle').textContent = 'Choose a card. It will shape your next descent — you may discard it only by dying.';
+  document.getElementById('oracleFortuneAcceptBtn').style.display = 'none';
+  document.getElementById('oracleFortuneCancelBtn').textContent = '\u2190 NOT TODAY';
+  renderOracleFortuneCards();
+  oracleFortuneEl.style.display = 'flex';
+  recordServiceUse('oracle');
+}
+
+document.getElementById('oracleFortuneCancelBtn').addEventListener('click', () => {
+  oracleFortuneEl.style.display = 'none';
+  showOracleForecast();   // return to the forecast (visually same modal family)
+});
+document.getElementById('oracleFortuneAcceptBtn').addEventListener('click', () => {
+  if (_oracleFortunePick) {
+    window.__oracleCard = _oracleFortunePick;
+    // Bump the hamlet's persistent fortune counter so the Oracle's
+    // milestone arc stage can unlock at 3+ draws.
+    hamletState.fortunesDrawn = (hamletState.fortunesDrawn | 0) + 1;
+    saveHamletState();
+    tryAdvanceArc('oracle');
+  }
+  oracleFortuneEl.style.display = 'none';
+  showOracleForecast();   // surface the carried-fortune notice
+});
 
 // ============================================================================
 // WANDERER GIFT — pay essence for a random COMMON relic banked as heirloom
@@ -1803,9 +1823,13 @@ function showWandererGift() {
 
 function showSanctuaryFromHamlet() {
   showSanctuary();
-  // Re-bind the restart button to return to hamlet on click
+  // Re-bind the restart button to return to hamlet on click. The override
+  // flag keeps the module-level addEventListener from ALSO firing startRun
+  // alongside this handler (that race caused the "farewell → prologue +
+  // back to hamlet" bug).
+  _restartBtnOverridden = true;
   const btn = document.getElementById('restartBtn');
-  btn.onclick = () => { btn.onclick = null; showHamlet(); };
+  btn.onclick = () => { _restartBtnOverridden = false; btn.onclick = null; showHamlet(); };
 }
 
 function showMemoryFromHamlet() {
@@ -2214,6 +2238,7 @@ const ENEMY_PORTRAIT_PATH = {
   broodmother:  'assets/enemies/portrait_broodmother.png',
   ember_tyrant: 'assets/enemies/portrait_ember_tyrant.png',
   echo:         'assets/enemies/portrait_echo_of_self.png',
+  hermit:       'assets/enemies/portrait_hermit.png',   // floor-4 mini-boss
 };
 
 function showAchievementsModal() {
@@ -2657,16 +2682,9 @@ function showMainMenu() {
       modEl.style.opacity = '0';
     }
   }
-  // Legacy hidden indicator — kept for anything still referencing it
+  // Legacy hidden indicator — kept at empty string for anything still reading it.
   const indEl = document.getElementById('menuCurseIndicator');
   if (indEl) indEl.textContent = '';
-  /* legacy block guarded behind false — corner button replaces this.
-  if (false && count > 0) {
-    indEl.textContent = '☠ ' + count + ' curse' + (count > 1 ? 's' : '') + ' active · ✨ ' + curseEssenceMul().toFixed(2) + 'x reward ☠';
-  } else {
-    indEl.textContent = '';
-  }
-  */
   // Lifetime records — reframed as italic manuscript flavor instead of a bare
   // stats line. "9 runs" becomes "you have descended nine times · the ruin
   // remembers." which sells the world rather than just surfacing a number.
@@ -2719,9 +2737,17 @@ function showSanctuary() {
   document.getElementById('endEssence').textContent = '✨ ' + meta.essence + ' essence banked';
   renderMetaShop(true);
   document.getElementById('restartBtn').textContent = '← MAIN MENU';
-  // Re-bind restart to route to main menu instead of a new run
+  // The death-screen template ships with a small secondary "← MAIN MENU"
+  // next to NEW RUN. Hide it in sanctuary mode — the primary restart button
+  // IS the main-menu return here, so two identical labels would confuse.
+  const menuBtn = document.getElementById('deathMenuBtn');
+  if (menuBtn) menuBtn.style.display = 'none';
+  // Re-bind restart to route to main menu instead of a new run. Flag
+  // suppresses the module-level addEventListener that would otherwise
+  // fire startRun() alongside this onclick.
+  _restartBtnOverridden = true;
   const btn = document.getElementById('restartBtn');
-  btn.onclick = () => { btn.onclick = null; showMainMenu(); };
+  btn.onclick = () => { _restartBtnOverridden = false; btn.onclick = null; showMainMenu(); };
   deathEl.style.display = 'flex';
 }
 
@@ -3208,10 +3234,11 @@ function loadRoom(idx, entryFrom) {
 const BIOME_BY_FLOOR = { 1: 'crypt', 2: 'vault', 3: 'abyss', 4: 'inferno' };
 
 function triggerFloorCard(level) {
-  const d = FLOOR_CARD_DATA[level] || { roman: '?', name: '???', flavor: '' };
+  const d = FLOOR_CARD_DATA[level] || { roman: '?', name: '???', flavor: '', backdrop: '' };
   floorCardRoman = d.roman;
   floorCardName = d.name;
   floorCardFlavor = d.flavor;
+  floorCardBackdrop = d.backdrop || '';
   floorCardTime = 3.2;
 }
 
@@ -3501,7 +3528,8 @@ function resumeRun(snap) {
   // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
   // player commits to path nodes; starts with just the start room so
   // loadRoom(0) works on the existing linear-array code.
-  currentGraph = generateFloorGraph(currentFloorLevel);
+  // THE STAR tarot — adds an extra sanctuary node in layer 5 when active.
+  currentGraph = generateFloorGraph(currentFloorLevel, { extraSanctuary: hasCard('the_star') });
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   // ASCENSION VIII — track when this floor started so enemies.js can
@@ -3530,6 +3558,15 @@ function startRun() {
     playPrologue(() => startRun());    // re-enter after dismiss (flag now set)
     return;
   }
+  // ORACLE'S FORTUNES — if a card was drawn in the hamlet, push it into the
+  // tarot active set so the existing tarot-hook plumbing (hasCard() checks
+  // across hero.js and main.js) fires the card's effects automatically.
+  // Consumed on use; re-drawn next visit.
+  if (window.__oracleCard) {
+    const card = TAROT[window.__oracleCard];
+    if (card) drawnCards.push(card);
+    window.__oracleCard = null;
+  }
   // Ambient pad fades out as the run begins — the real combat music system
   // (music.js, when OGG tracks land) will take over from here.
   stopAmbientPad();
@@ -3540,7 +3577,8 @@ function startRun() {
   // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
   // player commits to path nodes; starts with just the start room so
   // loadRoom(0) works on the existing linear-array code.
-  currentGraph = generateFloorGraph(currentFloorLevel);
+  // THE STAR tarot — adds an extra sanctuary node in layer 5 when active.
+  currentGraph = generateFloorGraph(currentFloorLevel, { extraSanctuary: hasCard('the_star') });
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   // ASCENSION VIII — track when this floor started so enemies.js can
@@ -3584,6 +3622,16 @@ function startRun() {
   resetRelics();
   resetGold();
   resetStats();
+  // Reset per-run gameplay metrics — without this, maxCombo from the previous
+  // run leaks into stats._maxCombo at the next evaluateAchievements, which
+  // instantly unlocks carnage_achieved / ceaseless on a fresh run.
+  window.__gameMetrics.killStreak = 0;
+  window.__gameMetrics.killStreakShowUntil = 0;
+  window.__gameMetrics.maxCombo = 0;
+  window.__gameMetrics.lastHitTime = 0;
+  window.__gameMetrics.lastHitFromX = 0;
+  window.__gameMetrics.lastHitFromY = 0;
+  window.__gameMetrics.lastKillTime = 0;
   incrementRunsStarted();
   triggerFloorCard(currentFloorLevel);
   clearPedestals();
@@ -3621,7 +3669,10 @@ function startRun() {
     if (hasCard('the_empress')) window.__tarotEmpress = true;
     // THE SUN — start with a random rare relic
     if (hasCard('the_sun')) {
-      const rares = ALL_RELIC_IDS.filter(id => (RELIC_DEFS[id].tier === 'rare') && !equippedRelics.find(r => r.id === id));
+      const rares = ALL_RELIC_IDS.filter(id => {
+        const def = RELIC_DEFS[id];
+        return def && def.tier === 'rare' && !equippedRelics.find(r => r.id === id);
+      });
       if (rares.length) applyRelic(rares[(Math.random() * rares.length) | 0]);
     }
     // THE FOOL — start with no weapon (will be granted after first combat)
@@ -3725,7 +3776,8 @@ function beginNextFloor() {
   // SYSTEMS PASS 2c — initialize branching graph. `floor` grows as the
   // player commits to path nodes; starts with just the start room so
   // loadRoom(0) works on the existing linear-array code.
-  currentGraph = generateFloorGraph(currentFloorLevel);
+  // THE STAR tarot — adds an extra sanctuary node in layer 5 when active.
+  currentGraph = generateFloorGraph(currentFloorLevel, { extraSanctuary: hasCard('the_star') });
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
   // ASCENSION VIII — track when this floor started so enemies.js can
@@ -3753,6 +3805,10 @@ function fmtTime(seconds) {
 function showEndOfRun(isVictory) {
   // Run ended — clear any resume snapshot. Fresh start from now on.
   clearRunSnapshot();
+  // Re-show the "← MAIN MENU" secondary button in case showSanctuary hid it
+  // on a previous visit (shared DOM with the death screen).
+  const _deathMenuBtn = document.getElementById('deathMenuBtn');
+  if (_deathMenuBtn) _deathMenuBtn.style.display = '';
   const title = document.getElementById('endTitle');
   const subtitle = document.getElementById('endSubtitle');
   const ornamentText = document.getElementById('endOrnamentText');
@@ -3867,7 +3923,8 @@ function showEndOfRun(isVictory) {
     for (let i = 0; i < equippedRelics.length; i++) {
       const r = equippedRelics[i];
       const tier = r.tier || 'common';
-      const tierMeta = tier === 'legendary' ? { label: '\u2605 LEGENDARY', color: '#ffc8ff', glow: 'rgba(255,200,255,0.55)', pulse: true }
+      const tierMeta = tier === 'mythic'    ? { label: '\u2605\u2605 MYTHIC \u2605\u2605', color: '#fff2e0', glow: 'rgba(255,242,224,0.75)', pulse: true }
+                     : tier === 'legendary' ? { label: '\u2605 LEGENDARY', color: '#ffc8ff', glow: 'rgba(255,200,255,0.55)', pulse: true }
                      : tier === 'rare'      ? { label: '\u25C6 RARE',      color: '#f4d9a0', glow: 'rgba(244,217,160,0.45)', pulse: false }
                      :                         { label: '\u00B7 COMMON',   color: '#b0c0d0', glow: 'rgba(176,192,208,0.3)',  pulse: false };
       const card = document.createElement('div');
@@ -3879,7 +3936,7 @@ function showEndOfRun(isVictory) {
         border:1px solid ${r.tint || tierMeta.color};
         box-shadow:0 0 12px ${tierMeta.glow}, inset 0 0 8px rgba(0,0,0,0.5);
         font-family:Georgia,serif;
-        animation:winCardSlide 0.5s ease-out ${stagger}s both${tier === 'legendary' ? ', legendPulse 2.4s ease-in-out infinite' : ''};
+        animation:winCardSlide 0.5s ease-out ${stagger}s both${(tier === 'legendary' || tier === 'mythic') ? ', legendPulse 2.4s ease-in-out infinite' : ''};
       `;
       card.title = r.name + (r.flavor ? '\n\u201C' + r.flavor + '\u201D\n' : '\n') + r.desc;
       card.innerHTML = `
@@ -4117,7 +4174,11 @@ function tick(now) {
     return;
   }
 
-  if (running && !transition.active && !frozen && !paused) {
+  // During the boss-clear cascade, running is already false (set on boss kill),
+  // but the coin vacuum + particles need to keep ticking so coins magnetize
+  // to the hero. Extend core updates for ~cascade_duration + 800ms.
+  const cascadeActive = !!(window.__cascadeUntil && performance.now() < window.__cascadeUntil);
+  if ((running || cascadeActive) && !transition.active && !frozen && !paused) {
     updateHero(dt, enemies, mw);
     updateEnemies(dt, hero);
     updateFlames(dt);
@@ -4369,9 +4430,26 @@ function tick(now) {
           playSfx('hero_hurt', { rate: 0.38, volume: 0.7 });
         }, 650);
       } else if (pedestals.length === 0) {
-        spawnRelicOffer(currentFloorLevel);
+        // Mini-boss rooms force floor-4 rarity weights — the mini-boss fight
+        // is harder than a normal combat slot so the reward should reflect
+        // that (higher rare + legendary chance, even a shot at mythic on F4).
+        // Standard combat rooms still roll on the current floor.
+        const isMiniboss = data.slotLabel === 'miniboss';
+        spawnRelicOffer(isMiniboss ? 4 : currentFloorLevel);
         applyTarotPedestalMods();
-        playSfx('click', { volume: 0.7, rate: 1.05 });
+        if (isMiniboss) {
+          // Extra flourish on mini-boss reward: brighter ping + sparkle burst
+          // to telegraph "this one's better than the usual drop".
+          playSfx('click', { volume: 0.9, rate: 0.9 });
+          synthFanfare(0.55);
+          for (let k = 0; k < 20; k++) {
+            const ang = Math.random() * Math.PI * 2;
+            const rad = 60 + Math.random() * 80;
+            sparkle(hero.x + Math.cos(ang) * rad, hero.y + Math.sin(ang) * rad * 0.7, '#f4d9a0');
+          }
+        } else {
+          playSfx('click', { volume: 0.7, rate: 1.05 });
+        }
       } else if (!hasActivePedestals()) {
         room.cleared = true;
         data.cleared = true;
@@ -4382,9 +4460,10 @@ function tick(now) {
           hero.hp = Math.min(hero.maxHp, hero.hp + 1);
         }
         // Celebratory clear fanfare — label + sound + sparkle burst radiating from hero
-        roomLabelText = '✦ ROOM CLEARED ✦';
-        roomLabelColor = '#86e3a8';
-        roomLabelTime = 1.6;
+        const isMiniboss = data.slotLabel === 'miniboss';
+        roomLabelText = isMiniboss ? '✦ MINI-BOSS FELLED ✦' : '✦ ROOM CLEARED ✦';
+        roomLabelColor = isMiniboss ? '#f4d9a0' : '#86e3a8';
+        roomLabelTime = isMiniboss ? 2.0 : 1.6;
         for (let k = 0; k < 18; k++) {
           const ang = (k / 18) * Math.PI * 2;
           const r = 80 + (k % 4) * 15;
@@ -4506,8 +4585,14 @@ function tick(now) {
     }
 
     // Evaluate achievements periodically (on room transitions mostly, but cheap to re-evaluate)
-    stats._legendaryEquipped = equippedRelics.some(r => r.tier === 'legendary');
-    stats._maxCombo = Math.max(stats._maxCombo || 0, window.__maxCombo || 0);
+    stats._legendaryEquipped = equippedRelics.some(r => r.tier === 'legendary' || r.tier === 'mythic');
+    stats._maxCombo = Math.max(stats._maxCombo || 0, window.__gameMetrics.maxCombo || 0);
+    // Hidden-achievement stat trackers — kept adjacent to keep touch points tight.
+    const legendaryCount = equippedRelics.filter(r => r.tier === 'legendary' || r.tier === 'mythic').length;
+    stats._maxLegendariesHeld = Math.max(stats._maxLegendariesHeld || 0, legendaryCount);
+    stats._mythicEquipped = equippedRelics.some(r => r.tier === 'mythic');
+    stats._bothMythicsHeld = equippedRelics.some(r => r.id === 'cataclysm') && equippedRelics.some(r => r.id === 'eye_of_ether');
+    stats._maxFusions = Math.max(stats._maxFusions || 0, (activeFusions && activeFusions.length) || 0);
     evaluateAchievements(stats, meta);
 
     // Boss room cleared → show either "Shop + Descend" (next floor) or "Run Complete"
@@ -4521,37 +4606,123 @@ function tick(now) {
         if (bossDef) recordBossKill({ bossType: bossDef.type, floor: currentFloorLevel });
       } catch (e) {}
       const isFinal = currentFloorLevel >= MAX_FLOORS;
+
+      // FLOOR-CLEAR CASCADE — the Vampire Survivors "gem vacuum" moment.
+      // Spawns a staggered chain of coins at the boss corpse + rising chord
+      // pings + final fanfare with banner flash. Reuses gold.js's existing
+      // streak/magnet logic so the cascade feels musically ascending.
+      const corpse = enemies.find(e => e.boss) || { x: ROOM_W * TILE / 2, y: ROOM_H * TILE / 2 };
+      const cascadeCount = isFinal ? 24 : 12 + currentFloorLevel * 2;
+      const cascadeStep = isFinal ? 55 : 70;
+      const cascadeDurationMs = cascadeCount * cascadeStep;
+      // Keep hero / gold / particle updates ticking through the cascade window
+      // even though `running` is now false. Without this, coins spawn but never
+      // magnetize (updateGold is gated by `running && ...`).
+      window.__cascadeUntil = performance.now() + cascadeDurationMs + 800;
+      import('./gold.js').then(g => {
+        for (let i = 0; i < cascadeCount; i++) {
+          setTimeout(() => g.dropGold(corpse.x + (Math.random() - 0.5) * 24, corpse.y + (Math.random() - 0.5) * 16, 1), i * cascadeStep);
+        }
+      });
+      // Rising chord pings — C-E-G-B-D ascending (523, 659, 784, 988, 1175 Hz).
+      [523, 659, 784, 988, 1175].forEach((hz, idx) => {
+        setTimeout(() => synthPing(hz, 0.55, 0.22), Math.min(cascadeDurationMs, idx * 150 + 80));
+      });
+      // Mid-cascade screen flash + shake to sell the "boss down" moment.
+      setTimeout(() => {
+        triggerScreenFlash(isFinal ? 'rgba(255, 230, 170, 0.35)' : 'rgba(180, 230, 200, 0.25)', 0.45);
+        shakeCamera(isFinal ? 10 : 6, 0.25);
+      }, 120);
+      // Finale — synthFanfare + banner flash at the cascade tail
+      setTimeout(() => {
+        synthFanfare(isFinal ? 1.1 : 0.8);
+        triggerScreenFlash(isFinal ? 'rgba(255, 210, 140, 0.45)' : 'rgba(200, 255, 220, 0.28)', 0.6);
+        shakeCamera(isFinal ? 14 : 8, 0.35);
+        if (isFinal) {
+          synthThud(60, 1.2, 1.0);
+          synthChord(880, 1.2, 1.6);
+        } else {
+          synthChord(784, 0.9, 1.0);
+        }
+      }, cascadeDurationMs + 150);
+
       const title = document.getElementById('winTitle');
       const subtitle = document.getElementById('winSubtitle');
       const btn = document.getElementById('winRestartBtn');
-      if (isFinal) {
-        // Final victory → end-of-run summary (stats + essence + meta shop).
-        // On first-ever clear, play the epilogue first; then the summary.
-        stats._runComplete = true;
-        if (daily.activeForRun) markDailyCompleted();        // bank today's streak
-        daily.activeForRun = false;
-        try { recordRunComplete(); } catch (e) {}           // bank a triumphant journal entry
-        evaluateAchievements(stats, meta);
-        hideShop();
-        if (!hasSeenEpilogue()) {
-          // Ceremonial first-clear moment before stats.
-          setTimeout(() => playEpilogue(() => showEndOfRun(true)), 800);
+
+      // Determine the boss type so we can roll from its thematic drop pool.
+      const bossTypeId = data.spawns?.find(s => s.boss)?.type;
+      const dropPool = bossTypeId ? BOSS_LOOT_POOL[bossTypeId] : null;
+
+      // openFloorUi — executes the floor-cleared state transition. For the
+      // final boss, this means epilogue + run-complete screen; otherwise
+      // the between-floor shop. Deferred so we can gate on the boss drop
+      // pedestal pickup first.
+      const openFloorUi = () => {
+        if (isFinal) {
+          stats._runComplete = true;
+          try { stats._ascensionAtWin = getAscensionTier() || 0; } catch (e) {}
+          if (daily.activeForRun) markDailyCompleted();
+          daily.activeForRun = false;
+          try { recordRunComplete(); } catch (e) {}
+          evaluateAchievements(stats, meta);
+          hideShop();
+          if (!hasSeenEpilogue()) {
+            playEpilogue(() => showEndOfRun(true));
+          } else {
+            showEndOfRun(true);
+          }
         } else {
-          setTimeout(() => showEndOfRun(true), 600);
+          if (curseCount() > 0) stats._cursedFloorClear = Math.max(stats._cursedFloorClear || 0, curseCount());
+          evaluateAchievements(stats, meta);
+          title.textContent = 'FLOOR ' + currentFloorLevel + ' CLEARED';
+          title.style.color = '#86e3a8';
+          title.style.textShadow = '0 0 18px rgba(134,227,168,0.7)';
+          subtitle.textContent = 'the depths merchant offers wares';
+          btn.textContent = 'DESCEND';
+          setupShop();
+          winEl.style.display = 'flex';
         }
-        return;
+      };
+
+      if (dropPool && dropPool.length > 0) {
+        // BOSS-BIASED LOOT DROP — spawn a themed pedestal after the cascade
+        // finale, then gate the floor-UI transition on the player picking
+        // it up (or a 15s timeout so AFK players aren't stuck forever).
+        const dropDelay = cascadeDurationMs + 400;
+        setTimeout(() => {
+          // Final boss gets a mythic-chance pool on top of the themed pool.
+          const opts = { pool: dropPool };
+          if (bossTypeId === 'ember_tyrant') {
+            opts.mythicPool = EMBER_TYRANT_MYTHIC_POOL;
+            opts.mythicChance = EMBER_TYRANT_MYTHIC_CHANCE;
+          }
+          spawnBossDrop(bossTypeId, corpse.x, corpse.y, opts);
+          // Extend the cascade window so the pedestal + hero updates keep ticking
+          window.__cascadeUntil = performance.now() + 16000;
+        }, dropDelay);
+
+        // Poll for pickup (or timeout). Once the pedestal is picked up, the
+        // banner runs ~3s; add extra breath before opening the UI so banner
+        // + transition don't overlap.
+        const pollStart = performance.now() + dropDelay;
+        const poll = setInterval(() => {
+          const now = performance.now();
+          if (now < pollStart) return;                          // wait for spawn
+          if (!hasActivePedestals() && pedestals.length > 0) {
+            // All spawned pedestals are picked (length>0 guards against pre-spawn state)
+            clearInterval(poll);
+            setTimeout(openFloorUi, 3800);
+          } else if (now - pollStart > 15000) {
+            clearInterval(poll);
+            openFloorUi();
+          }
+        }, 200);
+      } else {
+        // No loot pool for this boss type → fall back to original timing.
+        setTimeout(openFloorUi, cascadeDurationMs + 600);
       }
-      // Between-floor — also track curses clear
-      if (curseCount() > 0) stats._cursedFloorClear = Math.max(stats._cursedFloorClear || 0, curseCount());
-      evaluateAchievements(stats, meta);
-      // Between floors — the shop screen
-      title.textContent = 'FLOOR ' + currentFloorLevel + ' CLEARED';
-      title.style.color = '#86e3a8';
-      title.style.textShadow = '0 0 18px rgba(134,227,168,0.7)';
-      subtitle.textContent = 'the depths merchant offers wares';
-      btn.textContent = 'DESCEND';
-      setupShop();
-      setTimeout(() => { winEl.style.display = 'flex'; }, 600);
+      if (isFinal) return;     // preserve the original early-return for final
     }
 
     // Death handling — cinematic ceremony before the summary reveal.
@@ -4566,7 +4737,7 @@ function tick(now) {
           floor: currentFloorLevel,
           roomIdx: roomIndex,
           build: equippedRelics.map(r => r.id),
-          combo: window.__maxCombo || stats._maxCombo || 0,
+          combo: window.__gameMetrics.maxCombo || stats._maxCombo || 0,
           maxHp: hero.maxHp,
           damageDealt: stats.damageDealt | 0,
         });
@@ -4924,7 +5095,31 @@ function render() {
       p.t += 1 / 60;
       const life = p.life;
       const r = p.t / life;
-      if (!p._stung) { p._stung = true; playSfx('click', { rate: 0.4, volume: 0.9 }); synthChord(523, 1.0, 0.7); }
+      const achDef = ACHIEVEMENTS[p.id];
+      const isHidden = achDef && achDef.hidden;
+      // Hidden reveal phase: first 1.6s shows "???" + cryptic hint; after
+      // that, a white flash crossfades to the real name/desc. Creates a
+      // discovery moment distinct from normal achievements.
+      const revealAt = 1.6;
+      const inMystery = isHidden && p.t < revealAt;
+      const justRevealed = isHidden && p.t >= revealAt && p.t < revealAt + 0.35;
+      if (!p._stung) {
+        p._stung = true;
+        if (isHidden) {
+          // Hidden achievements get a deeper, hushed sting
+          synthGloom(220, 0.9, 1.2);
+          playSfx('click', { rate: 0.35, volume: 0.7 });
+        } else {
+          playSfx('click', { rate: 0.4, volume: 0.9 });
+          synthChord(523, 1.0, 0.7);
+        }
+      }
+      // Reveal sting — triggers ONCE when the mystery phase ends
+      if (isHidden && !p._revealed && p.t >= revealAt) {
+        p._revealed = true;
+        synthChord(659, 1.0, 0.9);
+        synthFanfare(0.55);
+      }
       let opacity = 1;
       if (r < 0.1) opacity = r / 0.1;
       else if (r > 0.85) opacity = (1 - r) / 0.15;
@@ -4974,27 +5169,44 @@ function render() {
       }
       // Trophy icon
       ctx.fillStyle = '#f4d9a0';
-      ctx.font = '22px Georgia, serif';
+      // Trophy icon — question mark during hidden mystery phase, star otherwise.
+      // Reveal flash recolors the star for a beat.
+      const iconGlyph = inMystery ? '?' : '\u2605';
+      const iconColor = inMystery ? '#a0b4e0' : (justRevealed ? '#ffffff' : '#f4d9a0');
+      const iconGlow = inMystery ? '#607aa0' : (justRevealed ? '#ffffff' : '#c9a86a');
+      ctx.fillStyle = iconColor;
+      ctx.font = inMystery ? 'italic bold 26px Georgia, serif' : '22px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = '#c9a86a';
-      ctx.shadowBlur = 8;
-      ctx.fillText('\u2605', bx + 22, by + bh / 2);
+      ctx.shadowColor = iconGlow;
+      ctx.shadowBlur = justRevealed ? 18 : 8;
+      ctx.fillText(iconGlyph, bx + 22, by + bh / 2);
       ctx.shadowBlur = 0;
-      // "ACHIEVEMENT UNLOCKED" label — italic serif, unified typography
-      ctx.fillStyle = '#c9a86a';
+      // Header label — "ACHIEVEMENT UNLOCKED" normally, "A HIDDEN TRUTH" during
+      // the mystery phase of a hidden achievement.
+      ctx.fillStyle = isHidden ? (inMystery ? '#a0b4e0' : '#ffddaa') : '#c9a86a';
       ctx.font = 'italic bold 9px Georgia, serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.fillText('\u2014 ACHIEVEMENT UNLOCKED \u2014', bx + 44, by + 10);
-      // Name + desc — Georgia serif, gold hierarchy
-      const ach = ACHIEVEMENTS[p.id];
-      ctx.fillStyle = '#f4d9a0';
+      const headerText = inMystery
+        ? '\u2014 A HIDDEN TRUTH \u2014'
+        : (isHidden ? '\u2014 REVEALED \u2014' : '\u2014 ACHIEVEMENT UNLOCKED \u2014');
+      ctx.fillText(headerText, bx + 44, by + 10);
+      // Name — either "???" (mystery) or real name (revealed). Just-revealed
+      // state flashes to white to sell the unveiling.
+      const ach = achDef;
+      const nameText = inMystery ? '???' : ach.name;
+      const nameColor = justRevealed ? '#ffffff' : '#f4d9a0';
+      if (justRevealed) { ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 14; }
+      ctx.fillStyle = nameColor;
       ctx.font = 'bold 15px Georgia, serif';
-      ctx.fillText(ach.name, bx + 44, by + 24);
-      ctx.fillStyle = 'rgba(200, 190, 170, 0.8)';
-      ctx.font = 'italic 10px Georgia, serif';
-      ctx.fillText(ach.desc, bx + 44, by + 45);
+      ctx.fillText(nameText, bx + 44, by + 24);
+      ctx.shadowBlur = 0;
+      // Desc — cryptic hint in mystery phase, real desc when revealed.
+      const descText = inMystery ? (ach.hint ? '\u201C' + ach.hint + '\u201D' : '\u2014 unknown \u2014') : ach.desc;
+      ctx.fillStyle = inMystery ? 'rgba(180, 195, 220, 0.85)' : 'rgba(200, 190, 170, 0.8)';
+      ctx.font = inMystery ? 'italic 11px Georgia, serif' : 'italic 10px Georgia, serif';
+      ctx.fillText(descText, bx + 44, by + 45);
       // Orbit sparkles during entry
       if (r < 0.55) {
         ctx.save();
@@ -5044,15 +5256,50 @@ function render() {
     ctx.fillStyle = 'rgba(6, 4, 10, ' + veilA.toFixed(3) + ')';
     ctx.fillRect(0, barH, w, h - barH * 2);
 
-    // Name slide-in from the right with red tag bars
+    // Compute the intro's shared timing envelope — used by both the
+    // portrait slide-in (from the LEFT) and the name text slide-in
+    // (from the RIGHT). Classic "vs. screen" composition.
     const slideIn = Math.min(1, t / 0.25);
     const slideOut = t > 0.75 ? (t - 0.75) / 0.25 : 0;
+    const introAlpha = Math.max(0, Math.min(1, slideIn - slideOut));
+
+    // BOSS PORTRAIT — painted reveal image (Nano Banana portraits loaded at
+    // boot). Slides in from off-screen left to settle at the left-of-center
+    // third. If no portrait is mapped for this enemy type we gracefully skip
+    // and keep just the text reveal.
+    const portraitPath = ENEMY_PORTRAIT_PATH[bossIntroBoss.type];
+    const portraitKey = portraitPath && portraitPath.split('/').pop().replace(/\.png$/, '');
+    const portraitImg = portraitKey && imageCache[portraitKey];
+    if (portraitImg) {
+      // Fit the portrait within the letterbox frame with some padding.
+      const avail = h - barH * 2 - 48;
+      const scale = Math.min(avail / portraitImg.height, 360 / portraitImg.width);
+      const pw = portraitImg.width * scale;
+      const ph = portraitImg.height * scale;
+      // Slide in from the LEFT (negative xOff), slide out the same way.
+      const pxOff = -(1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
+      const px = w * 0.28 - pw / 2 + pxOff;
+      const py = h / 2 - ph / 2;
+      ctx.save();
+      ctx.globalAlpha = introAlpha;
+      // Soft red-gold glow behind the portrait — signals threat without
+      // washing the painting.
+      ctx.shadowColor = 'rgba(220, 60, 60, 0.55)';
+      ctx.shadowBlur = 34;
+      ctx.drawImage(portraitImg, px, py, pw, ph);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Name slide-in from the right with red tag bars. If we rendered a
+    // portrait, shift the name anchor right-of-center so it doesn't
+    // overlap; otherwise keep the original centered composition.
     const xOff = (1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
     const name = bossIntroBoss.def.displayName || 'BOSS';
     ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, slideIn - slideOut));
+    ctx.globalAlpha = introAlpha;
     // Dramatic large text with gradient
-    const nx = w / 2 + xOff;
+    const nx = (portraitImg ? w * 0.62 : w / 2) + xOff;
     const ny = h / 2;
     ctx.font = 'bold 68px Georgia, serif';
     ctx.textAlign = 'center';
@@ -5346,8 +5593,22 @@ function render() {
     else a = 1;
     a = Math.max(0, Math.min(1, a));
     ctx.save();
-    // Full-screen dark veil
-    ctx.fillStyle = 'rgba(8, 5, 12, ' + (a * 0.82).toFixed(3) + ')';
+    // Zone backdrop — painted scenery behind the veil. The backdrop fills
+    // the canvas and the dark veil above it fades to black at the edges,
+    // so the painting provides atmosphere without fighting the typography.
+    const _fcBackdrop = floorCardBackdrop ? imageCache[floorCardBackdrop] : null;
+    if (_fcBackdrop) {
+      ctx.globalAlpha = a;
+      // Draw full-bleed. Source is 1376x768, canvas is 1280x720 — slight
+      // overscan crops the outer edges, keeping the most-painted center.
+      ctx.drawImage(_fcBackdrop, 0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+    }
+    // Full-screen dark veil — lighter over the backdrop than it was on the
+    // pure-black version so the painting reads through. 0.82 -> 0.58 when
+    // a backdrop is present.
+    const _veilAlpha = _fcBackdrop ? a * 0.58 : a * 0.82;
+    ctx.fillStyle = 'rgba(8, 5, 12, ' + _veilAlpha.toFixed(3) + ')';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     // Biome-tinted swirl of particles behind the card text — 40 orbiting motes
     const biomeId = currentBiomePal()._biomeId || 'vault';

@@ -27,7 +27,7 @@ export const ruin = {
   runsCompleted: 0,
 };
 
-import { safeLoadJSON, safeSaveJSON } from './storage.js?v=save1';
+import { safeLoadJSON, safeSaveJSON } from './storage.js';
 
 function _isRuinShape(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);

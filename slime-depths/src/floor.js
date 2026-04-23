@@ -13,17 +13,19 @@ import { isCursed } from './curses.js';
 
 export const MAX_FLOORS = 4;
 
-// Elite chance per floor (0..1) — floor 1 now has a small elite chance
-// so even early runs contain moments of real threat.
-const ELITE_CHANCE_BY_LEVEL = [0, 0.08, 0.25, 0.40, 0.55];
+// Elite chance per floor (0..1) — floor 1 bumped to 0.18 so even the first
+// descent has real threat. Previously 0.08 meant most floor-1 rooms were
+// trash-mob slaps with no stakes; player felt invincible until floor 2.
+const ELITE_CHANCE_BY_LEVEL = [0, 0.18, 0.30, 0.45, 0.60];
 
 // Per-floor damage/HP multipliers applied to every enemy on that floor.
-// Bumped across the board — player starts at 8 HP and needs meta upgrades.
+// Floor 1 dmg bumped to 1.35× paired with the hero 8→6 maxHp cut so basic
+// hits matter again. HP multiplier unchanged to keep time-to-kill tight.
 export const FLOOR_ENEMY_MULS = {
-  1: { dmg: 1.15, hp: 1.10 },      // was 1.0/1.0 — starts firmer
-  2: { dmg: 1.40, hp: 1.30 },      // was 1.25/1.20
-  3: { dmg: 1.70, hp: 1.55 },      // was 1.5/1.40
-  4: { dmg: 2.00, hp: 1.80 },      // was 1.75/1.60
+  1: { dmg: 1.35, hp: 1.10 },      // was 1.15/1.10
+  2: { dmg: 1.55, hp: 1.30 },      // was 1.40/1.30
+  3: { dmg: 1.80, hp: 1.55 },      // was 1.70/1.55
+  4: { dmg: 2.10, hp: 1.80 },      // was 2.00/1.80
 };
 
 // Within-floor combat difficulty ramp — combat3 is harder than combat1
@@ -259,6 +261,7 @@ function makeMiniBossRoom(level) {
   const miniType = level === 1 ? 'vanguard'
                  : level === 2 ? 'warden'
                  : level === 3 ? 'reflector'
+                 : level === 4 ? 'hermit'       // floor 4's signature mini-boss
                  : 'dreadmage';
   return {
     kind: 'combat',
@@ -288,9 +291,40 @@ export function makeEventRoom(level, eliteChance) {
   return makeChallengeRoom(level, eliteChance);
 }
 
+// ============================================================================
+// BOSS LOOT POOLS — thematic relic pools that each boss drops from on clear.
+// Applied as a single guaranteed pedestal that spawns after the cascade
+// finale; the shop/epilogue waits for the player to pick it up (or 15s
+// timeout) before opening.
+//
+// Each boss has 4–5 relics chosen to match its theme. Players learn to
+// "farm" a specific floor for specific builds — e.g. Grudnok for the
+// brawler kit, Ember Tyrant for fire/endgame. Diablo's Baal/Mephisto
+// pattern in a tight 4-floor package.
+// ============================================================================
+export const BOSS_LOOT_POOL = {
+  // Grudnok — orc warchief. Brute force, knockback, heavy weapons.
+  orc: ['heavy_blow', 'serrated_edge', 'warlord', 'ironhide', 'executioner'],
+  // Iron Revenant — undead reaper. Life drain, death-based mechanics.
+  bone_captain: ['bloodstone', 'reaver', 'bloodrite', 'phoenix_tear', 'vampiric_aura'],
+  // Broodmother — chaos and summoning. Explosions, chains, bursts.
+  broodmother: ['explosive_kill', 'soul_burst', 'chain_lightning', 'pyromancer', 'thunder_step'],
+  // Ember Tyrant — endgame fire lord. Legendary-heavy pool with small
+  // mythic chance for the ultimate power-fantasy final-boss drop.
+  ember_tyrant: ['avatar_of_flame', 'phoenix_cloak', 'wanderers_cloak', 'ethereal_binding', 'aegis_pulse'],
+};
+
+// On Ember Tyrant (final boss) clear, 20% chance to roll from the mythic
+// pool instead of the themed legendary pool — the true "Windforce moment".
+export const EMBER_TYRANT_MYTHIC_POOL = ['cataclysm', 'eye_of_ether'];
+export const EMBER_TYRANT_MYTHIC_CHANCE = 0.20;
+
 export function makeBossSpawns(level, pillarTemplate = -1) {
-  const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother' }[level] || 'orc';
-  const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'] }[level] || [];
+  // Floor 4's THRONE OF RUIN gets its own boss — The Ember Tyrant — instead
+  // of falling back to orc. Arena hazards (6 fire pools + 2 spikes) are
+  // already wired in room.js:471 for this bossType.
+  const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother', 4: 'ember_tyrant' }[level] || 'orc';
+  const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'], 4: ['bomber', 'dreadmage'] }[level] || [];
   const cells = spawnCells(adds.length, pillarTemplate);
   const spawns = [
     { type: bossType, x: Math.floor(ROOM_W/2), y: 3, elite: true, boss: true },

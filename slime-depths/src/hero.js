@@ -1,11 +1,11 @@
 // Hero controller — top-down movement, directional attack, dodge roll
-import { images } from './loader.js?v=enemies3';
+import { images } from './loader.js';
 import { keys, mouse, keyJustPressed } from './input.js';
 import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches } from './room.js';
-import { hitSpark, dashTrail, footPuff, landingBurst, killRing } from './particles.js?v=8';
-import { shakeCamera, pulseZoom } from './camera.js?v=2';
-import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js?v=a11y1';
+import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
+import { shakeCamera, pulseZoom } from './camera.js';
+import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
 import { stats } from './stats.js';
 import { WEAPONS } from './weapons.js';
 import {
@@ -14,9 +14,9 @@ import {
   cataclysmRegisterHit, pierceLine, wandererOnDodge,
   spawnExplosion, combo,
 } from './synergies.js';
-import { spawnEmberFlame } from './enemies.js';
+import { spawnEmberFlame, enemies as activeEnemies } from './enemies.js';
 import { dropGold } from './gold.js';
-import { deathBurst } from './particles.js?v=8';
+import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
 
 const SPR = 100;                  // Tiny RPG native frame size
@@ -120,7 +120,14 @@ export const hero = {
 export function resetHero() {
   hero.x = TILE * 10; hero.y = TILE * 10;
   hero.vx = 0; hero.vy = 0;
-  hero.maxHp = 8;               // was 10 — fragile start, rewards meta HP unlocks
+  hero.maxHp = 3;               // bare-bones roguelite start. HP grows via:
+                                //   - Vitality Charm (meta, +3)
+                                //   - Memory of Fortitude (+3)
+                                //   - Vitality relic (+2)
+                                //   - Bloodstone / regen relics
+                                //   - sanctuary / altar / between-floor heals
+                                // Every HP upgrade feels meaningful because
+                                // 3 is the baseline the curve builds from.
   hero.hp = hero.maxHp;
   hero.state = 'idle'; hero.stateTime = 0; hero.animTime = 0;
   hero.attackCooldown = 0; hero.dodgeCooldown = 0;
@@ -225,6 +232,25 @@ export function resetHero() {
   hero.dashStrikeCD = 0;
   hero.dashStrikeTime = 0;
   hero.dashStrikeHit.clear();
+  // April 2026 content expansion — new relic/fusion state flags.
+  hero.mirrorShard = false;       hero.mirrorReflect = 0;     hero.mirrorReflectCrit = 1;
+  hero.sporeBloom = false;        hero.sporeDamage = 0;       hero.sporeRadius = 0;
+  hero.oathshield = false;        hero.oathshieldBonus = 0;   hero.oathshieldUntil = 0;
+  hero.arcaneQuiver = false;      hero.arcaneQuiverHits = 0;
+  hero.marrowPact = false;        hero.marrowPactBonus = 0;
+  hero.gildedHoard = false;       hero.goldMul = 1;
+  hero.hymnOfEmbers = false;      hero.hymnRadius = 0;        hero.hymnDps = 0;         hero.hymnTick = 0;
+  hero.temporalEye = false;       hero.temporalSlowDuration = 0;
+  hero.whisperVeil = false;       hero.whisperVeilWindow = 0; hero.whisperVeilUntil = 0; hero.whisperVeilNextCrit = false;
+  hero.stormcaller = false;       hero.stormcallerInterval = 0; hero.stormcallerDamage = 0; hero.stormcallerRange = 0; hero.stormcallerTick = 0;
+  hero.fusionShatterpoint = false;
+  hero.fusionWildfireChoir = false;
+  hero.fusionMartyrBloom = false;
+  hero.fusionStormveil = false;
+  // Orphan-icon rehomes
+  hero.hourglassRespite = false; hero.hourglassReadyAt = 0;
+  hero.fusionRingbearer = false;
+  hero.fusionStarweave = false;
 }
 
 function setState(s) {
@@ -282,6 +308,47 @@ export function updateHero(dt, enemies, mouseWorld) {
     if (hero.regenCD <= 0) {
       hero.hp = Math.min(hero.maxHp, hero.hp + 1);
       hero.regenCD = 1 / hero.regenRate;
+    }
+  }
+
+  // HYMN OF EMBERS — passive fire aura. Ticks every 1s for hymnDps damage to
+  // every enemy within hymnRadius. Fusion Wildfire Choir bumps the radius
+  // (handled in apply:) and could add a burn-over-time (TODO follow-up round).
+  if (hero.hymnOfEmbers && enemies) {
+    hero.hymnTick -= dt;
+    if (hero.hymnTick <= 0) {
+      hero.hymnTick = 1.0;
+      const r2 = hero.hymnRadius * hero.hymnRadius;
+      for (const e of enemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const dx = e.x - hero.x, dy = e.y - hero.y;
+        if (dx * dx + dy * dy <= r2) {
+          e.takeDamage(hero.hymnDps, 0, 0);
+        }
+      }
+    }
+  }
+  // STORMCALLER — periodic strike on the nearest enemy in range.
+  if (hero.stormcaller && enemies) {
+    hero.stormcallerTick -= dt;
+    if (hero.stormcallerTick <= 0) {
+      hero.stormcallerTick = hero.stormcallerInterval;
+      // Stormveil fusion doubles the strike rate during Whisper Veil's window.
+      if (hero.fusionStormveil && hero.whisperVeilNextCrit) {
+        hero.stormcallerTick = hero.stormcallerInterval * 0.5;
+      }
+      let nearest = null, nearestD = hero.stormcallerRange;
+      for (const e of enemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const d = Math.hypot(e.x - hero.x, e.y - hero.y);
+        if (d < nearestD) { nearest = e; nearestD = d; }
+      }
+      if (nearest) {
+        nearest.takeDamage(hero.stormcallerDamage, 0, 0);
+        // Small visual cue — reuse the sparkle particle for a flash at the target.
+        sparkle(nearest.x, nearest.y - 8, '#80c8ff');
+        sparkle(nearest.x, nearest.y - 2, '#ffffff');
+      }
     }
   }
 
@@ -724,7 +791,11 @@ export function updateHero(dt, enemies, mouseWorld) {
           );
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
-          const isCrit = isCounter || forcedCrit || (hero.critChance > 0 && Math.random() < hero.critChance);
+          // DAGGER SIGNATURE — flat +10% crit chance when wielded. Twin Fang
+          // is "the precision weapon" — its identity between finishers is
+          // that crits happen more often than with sword or hammer.
+          const _daggerCritBonus = (w.id === 'dagger') ? 0.10 : 0;
+          const isCrit = isCounter || forcedCrit || ((hero.critChance + _daggerCritBonus) > 0 && Math.random() < (hero.critChance + _daggerCritBonus));
           const isExec = hero.executeThreshold > 0 && e.hp / e.maxHp < hero.executeThreshold;
           // SYSTEMS PASS — LONG REACH: hits landed past 80% of your reach
           // deal +40% damage. Rewards spacing + positioning. Folded in
@@ -742,6 +813,21 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (isCounter) finalDmg *= (hero.counterstrike ? 2.0 : 1.5);
           // BLOODRITE — +15% damage while below 50% HP
           if (hero.bloodrite && hero.hp < hero.maxHp * 0.5) finalDmg *= 1.15;
+          // MARROW PACT — +40% damage at or below 50% HP. Stacks with Bloodrite.
+          if (hero.marrowPact && hero.hp <= hero.maxHp * 0.5) finalDmg *= (1 + hero.marrowPactBonus);
+          // OATHSHIELD / WHISPER VEIL — both open a post-dodge window.
+          const _hnow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+          if (hero.oathshield && _hnow < hero.oathshieldUntil) {
+            finalDmg *= (1 + hero.oathshieldBonus);
+            hero.oathshieldUntil = 0;    // consumed
+          }
+          if (hero.whisperVeilNextCrit && _hnow < hero.whisperVeilUntil) {
+            hero.whisperVeilNextCrit = false;
+            if (!isCrit) { finalDmg *= hero.critMul; }
+          } else if (hero.whisperVeilNextCrit && _hnow >= hero.whisperVeilUntil) {
+            // Window expired without consuming — clear so it doesn't linger.
+            hero.whisperVeilNextCrit = false;
+          }
           // CHARGE ATTACK — guaranteed crit vibe: 1.85x dmg + forces isCrit for VFX
           const chargedHit = hero._swingIsCharged;
           if (chargedHit) finalDmg *= 1.85;
@@ -755,17 +841,30 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
           // COMBO BONUS — keeping a streak going rewards damage.
           // FUSION: Tempest — combo bonus ~doubles at RAMPAGE+ and CARNAGE.
+          // SWORD SIGNATURE — thresholds halved (3/7/15/30 vs 5/10/20/40).
+          // Sword is "the sustained weapon" — reaches each combo tier faster,
+          // rewarding long engagements without changing the ceiling.
           const cc = combo.count || 0;
           const tempestMul = hero.fusionTempest ? 2 : 1;
-          if (cc >= 40)      finalDmg *= 1 + 0.35 * tempestMul;   // +35% / +70%
-          else if (cc >= 20) finalDmg *= 1 + 0.22 * tempestMul;
-          else if (cc >= 10) finalDmg *= 1 + 0.12 * tempestMul;
-          else if (cc >= 5)  { finalDmg *= 1.05; showTip('first_crit'); }
+          const _swordTier = (w.id === 'sword');
+          const t40 = _swordTier ? 30 : 40;
+          const t20 = _swordTier ? 15 : 20;
+          const t10 = _swordTier ? 7  : 10;
+          const t5  = _swordTier ? 3  : 5;
+          if (cc >= t40)      finalDmg *= 1 + 0.35 * tempestMul;   // +35% / +70%
+          else if (cc >= t20) finalDmg *= 1 + 0.22 * tempestMul;
+          else if (cc >= t10) finalDmg *= 1 + 0.12 * tempestMul;
+          else if (cc >= t5)  { finalDmg *= 1.05; showTip('first_crit'); }
           // FUSION: Mountain's Heart — at full HP, +10% damage
           if (hero.fusionMountainsHeart && hero.hp >= hero.maxHp) {
             finalDmg *= 1.10;
           }
-          const kbScale = hero.knockbackMul * w.knockbackMul * (isCounter ? 1.8 : 1);
+          // HAMMER SIGNATURE — non-finisher swings get +50% knockback on top
+          // of the weapon's base 2.2x. The finisher already has the ground-
+          // slam AoE, so this fills the "middle" swings with weight too —
+          // every Dreadmaul hit should feel like a THUNK, not just the 3rd.
+          const _hammerTempo = (w.id === 'hammer' && !finisherHit) ? 1.5 : 1;
+          const kbScale = hero.knockbackMul * w.knockbackMul * _hammerTempo * (isCounter ? 1.8 : 1);
           // SYSTEMS PASS — BLOODSTONE: capture enemy HP pre-hit for the
           // sub-25% finisher-heal check after takeDamage resolves.
           const eHpBefore = e.hp;
@@ -780,6 +879,41 @@ export function updateHero(dt, enemies, mouseWorld) {
           // weakened target (no farming mid-HP kills).
           if (hero.finisherHeal && e.dead && eHpBefore <= e.maxHp * 0.25 && hero.hp < hero.maxHp) {
             hero.hp = Math.min(hero.maxHp, hero.hp + hero.finisherHeal);
+          }
+          // SPORE BLOOM — on kill, release a cloud dealing sporeDamage to all
+          // other enemies within sporeRadius. Reuses the dying enemy's position.
+          if (hero.sporeBloom && e.dead && hero.sporeDamage > 0) {
+            const r2 = hero.sporeRadius * hero.sporeRadius;
+            for (const other of enemies) {
+              if (other === e || other.dead || other.state === 'dead') continue;
+              const dx = other.x - e.x, dy = other.y - e.y;
+              if (dx * dx + dy * dy <= r2) {
+                other.takeDamage(hero.sporeDamage, 0, 0);
+              }
+            }
+            // Green spore burst
+            for (let i = 0; i < 8; i++) {
+              sparkle(e.x + (Math.random() - 0.5) * 60, e.y - 10 + (Math.random() - 0.5) * 60, '#a0e868');
+            }
+          }
+          // ARCANE QUIVER — every 4th melee hit splashes to the nearest OTHER
+          // enemy within 260px for 40% of the hit damage. Rewards dense rooms.
+          if (hero.arcaneQuiver && !e.dead) {
+            hero.arcaneQuiverHits = (hero.arcaneQuiverHits || 0) + 1;
+            if (hero.arcaneQuiverHits % 4 === 0) {
+              let splashTarget = null, splashD2 = 260 * 260;
+              for (const other of enemies) {
+                if (other === e || other.dead || other.state === 'dead') continue;
+                const dx = other.x - e.x, dy = other.y - e.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < splashD2) { splashTarget = other; splashD2 = d2; }
+              }
+              if (splashTarget) {
+                splashTarget.takeDamage(finalDmg * 0.4, 0, 0);
+                sparkle(splashTarget.x, splashTarget.y - 8, '#c8a0ff');
+                sparkle(splashTarget.x, splashTarget.y - 14, '#ffffff');
+              }
+            }
           }
           hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
           const wpnShake = w.shakeMul || 1;
@@ -837,6 +971,11 @@ export function updateHero(dt, enemies, mouseWorld) {
             if (hero.fusionBloodMoon) {
               const missingFrac = 1 - (hero.hp / hero.maxHp);
               lsRate *= 1 + missingFrac * 3;          // 1× at full, 4× at 0 HP
+            }
+            // FUSION: Martyr Bloom — lifesteal doubles while at or below 50% HP.
+            // Stacks with Blood Moon for high-risk vampiric builds.
+            if (hero.fusionMartyrBloom && hero.hp <= hero.maxHp * 0.5) {
+              lsRate *= 2;
             }
             hero._lifestealCarry = (hero._lifestealCarry || 0) + finalDmg * lsRate;
             if (hero._lifestealCarry >= 1) {
@@ -922,6 +1061,21 @@ export function damageHero(amount, fromX, fromY) {
     // letting expert play chain perfect-dodges indefinitely. Pairs great
     // with counterstrike (explosion every counter-hit).
     if (hero.perfectDodgeRefund) hero.dodgeCooldown = 0;
+    // TEMPORAL EYE — brief slow-motion on perfect dodge. Uses the
+    // hit-stop pipeline already wired in fx.js (drives getTimeScale()).
+    if (hero.temporalEye) { triggerHitStop(hero.temporalSlowDuration || 0.35); }
+    // Chromatic aberration accent on perfect dodge — subtle 0.18 strength.
+    // Makes the reward beat for frame-tight play visibly distinct.
+    if (window.__triggerChromAberr) window.__triggerChromAberr(0.35, 0.18);
+    // WHISPER VEIL — open a post-dodge window where the next hit is a crit.
+    if (hero.whisperVeil) {
+      hero.whisperVeilUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + hero.whisperVeilWindow : 0;
+      hero.whisperVeilNextCrit = true;
+    }
+    // OATHSHIELD — next hit within 1s deals +50% damage.
+    if (hero.oathshield) {
+      hero.oathshieldUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + 1.0 : 0;
+    }
     return 'perfect';
   }
   // SYSTEMS PASS — BULWARK: damage from within the frontal arc (aim-facing
@@ -937,6 +1091,17 @@ export function damageHero(amount, fromX, fromY) {
       amount *= hero.bulwarkReduction;
     }
   }
+  // HOURGLASS OF RESPITE — at 30% HP or below, halve incoming damage once
+  // per minute. Panic-button safety for low-HP play; cooldown prevents it
+  // from trivializing sustained low-HP builds.
+  if (hero.hourglassRespite && hero.hp / hero.maxHp <= 0.30) {
+    const _hgNow = (typeof performance !== 'undefined') ? performance.now() : 0;
+    if (_hgNow > hero.hourglassReadyAt) {
+      amount *= 0.5;
+      hero.hourglassReadyAt = _hgNow + 60000;   // 60s cooldown
+      triggerScreenFlash('rgba(232, 200, 128, 0.25)', 0.4);
+    }
+  }
   if (hero.iframes > 0) return 'absorbed';
   if (window.GOD) return 'absorbed';
   // Round damage to integer so HP stays clean (no floating-point HP text).
@@ -949,10 +1114,36 @@ export function damageHero(amount, fromX, fromY) {
   const taken = Math.max(1, Math.round(amount * takenMul));
   stats.damageTaken += taken;
   hero.hp -= taken;
+  // MIRROR SHARD — reflect a fraction of the damage taken back to the enemy
+  // closest to the damage source. Shatterpoint fusion crits the reflection.
+  // Guard: if a reflector enemy's own reflection re-triggers damageHero (or
+  // if an AoE reflection cascades across multiple concurrent hits), the
+  // `_inReflection` flag ensures we only reflect ONCE per source hit.
+  if (hero.mirrorShard && hero.mirrorReflect > 0 && activeEnemies.length && !hero._inReflection) {
+    let closest = null, closestD = 200 * 200;
+    for (const e of activeEnemies) {
+      if (e.dead || e.state === 'dead') continue;
+      const dx = e.x - fromX, dy = e.y - fromY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < closestD) { closest = e; closestD = d2; }
+    }
+    if (closest) {
+      let reflectDmg = taken * hero.mirrorReflect;
+      if (hero.fusionShatterpoint) reflectDmg *= (hero.mirrorReflectCrit || 2.5);
+      hero._inReflection = true;
+      try {
+        closest.takeDamage(reflectDmg, 0, 0);
+      } finally {
+        hero._inReflection = false;
+      }
+      sparkle(closest.x, closest.y - 10, '#d8e8ff');
+      sparkle(closest.x, closest.y - 4, '#ffffff');
+    }
+  }
   // Store hit direction for the damage-source arrow UI
-  window.__lastHitFromX = fromX;
-  window.__lastHitFromY = fromY;
-  window.__lastHitTime = performance.now();
+  window.__gameMetrics.lastHitFromX = fromX;
+  window.__gameMetrics.lastHitFromY = fromY;
+  window.__gameMetrics.lastHitTime = performance.now();
   if (hero.hp / hero.maxHp <= 0.30) showTip('first_low_hp');
   hero.iframes = IFRAME_AFTER_HIT;
   // Shake scales with hit weight — heavy hits feel punishing
@@ -964,9 +1155,11 @@ export function damageHero(amount, fromX, fromY) {
   // don't strobe the playfield into noise.
   const flashDur = Math.min(0.22, 0.08 + taken * 0.03);
   triggerScreenFlash('rgba(220, 40, 50, 0.11)', flashDur);
-  // Chromatic aberration trigger — function is a no-op this pass (see main.js).
-  // Call kept so if we re-enable, this damage path still drives it.
-  if (window.__triggerChromAberr) {
+  // Chromatic aberration — now PUNCTUATION, not ambient. Only fires when
+  // the hit brings hero to low HP (<=30%) or when a boss hits; ordinary
+  // trash-mob taps stay clean so the pixel art reads.
+  const _lowHpNow = (hero.hp / Math.max(1, hero.maxHp)) <= 0.30;
+  if (window.__triggerChromAberr && _lowHpNow) {
     window.__triggerChromAberr(Math.min(0.5, 0.22 + taken * 0.04), Math.min(1.6, 0.8 + hitWeight * 0.5));
   }
   playSfx('hero_hurt', { rate: 1.0, rateJitter: 0.05, volume: 0.9 });
@@ -985,6 +1178,9 @@ export function damageHero(amount, fromX, fromY) {
     }
     hero.hp = 0;
     setState('dead');
+    // Death punctuation — strong chromatic smear marks the moment. Strength
+    // maxed so the final frame reads as "something broke in the world."
+    if (window.__triggerChromAberr) window.__triggerChromAberr(0.85, 1.6);
   } else {
     setState('hurt');
     // Light knockback

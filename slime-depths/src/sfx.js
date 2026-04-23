@@ -1,5 +1,5 @@
 // Lightweight SFX player — HTML5 Audio with simple voice pooling
-import { audio } from './loader.js?v=enemies3';
+import { audio } from './loader.js';
 
 const pools = {};
 const POOL_SIZE = 4;

@@ -20,9 +20,11 @@ _bloomACtx.imageSmoothingEnabled = true;
 _bloomBCtx.imageSmoothingEnabled = true;
 
 // ----- Chromatic aberration: brief RGB channel split on hero damage -----
-// Currently disabled via early return in triggerChromAberr (see VFX
-// subtraction pass). Infrastructure kept so the effect can be re-enabled
-// by removing the early return.
+// RE-ENABLED (April 2026) as PUNCTUATION, not ambient. Previous iteration
+// fired on every hero hit and smeared the pixel art into noise; it's now
+// reserved for specific moments (low-HP damage, perfect dodges, death).
+// Intensity also halved — peak offset 3.5px (was 7) and alpha 0.28 (was 0.50)
+// so it accents rather than dominates.
 const _chromCanvas = document.createElement('canvas');
 const _chromCtx = _chromCanvas.getContext('2d');
 let _chromTime = 0;
@@ -30,12 +32,9 @@ let _chromDur = 0;
 let _chromStrength = 1;
 
 export function triggerChromAberr(dur = 0.35, strength = 1) {
-  // VFX SUBTRACTION PASS: chromatic aberration disabled. The RGB-split
-  // fought with the pixel-art atmosphere and stacked illegibly with
-  // bloom + shake + flash on damage. Infrastructure kept so the effect
-  // can be re-enabled by removing this early return.
-  return;
-  // Stack: take the stronger of current vs new rather than restart
+  // Stack: take the stronger of current vs new rather than restart, so a
+  // stronger "death" trigger isn't overwritten by a weaker "perfect dodge"
+  // that happens to fire in the same frame.
   if (dur * strength > _chromTime * _chromStrength) {
     _chromTime = dur;
     _chromDur = dur;
@@ -47,7 +46,8 @@ export function applyChromAberr(mainCtx, mainCanvas) {
   if (_chromTime <= 0) return;
   const t = Math.max(0, _chromTime / _chromDur);    // 1 → 0 over lifetime
   const intensity = t * t;                            // quartic ease-out
-  const offset = 7 * intensity * _chromStrength;     // 0-7px peak
+  const offset = 3.5 * intensity * _chromStrength;   // peak halved from 7 so
+                                                       // pixel art stays legible
   if (offset < 0.5) return;
   if (_chromCanvas.width !== mainCanvas.width) {
     _chromCanvas.width = mainCanvas.width;
@@ -57,7 +57,8 @@ export function applyChromAberr(mainCtx, mainCanvas) {
   _chromCtx.drawImage(mainCanvas, 0, 0);
   mainCtx.save();
   mainCtx.globalCompositeOperation = 'lighter';
-  mainCtx.globalAlpha = intensity * 0.50;
+  mainCtx.globalAlpha = intensity * 0.28;     // lowered from 0.50 so the
+                                                // effect reads as accent, not noise
   // Red channel offset left (filter isolates red-ish tones via sepia→hue-rotate)
   mainCtx.filter = 'sepia(1) hue-rotate(-45deg) saturate(5) brightness(0.55)';
   mainCtx.drawImage(_chromCanvas, -offset, 0);
