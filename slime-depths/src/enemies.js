@@ -416,6 +416,18 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
   if (typeof window !== 'undefined' && window.__ascensionModifiers) {
     const am = window.__ascensionModifiers();
     if (am && am.enemyHpMul) hpMul *= am.enemyHpMul;
+    // ASCENSION VIII — "The Counted": if the current floor has exceeded
+    // its time limit, enemies gain a speed/damage multiplier for the
+    // rest of the floor. Applied at spawn so enemies that pop mid-timeout
+    // get the boost; enemies spawned before the timeout keep baseline.
+    if (am && am.floorTimeLimitSec && typeof window.__floorStartTime === 'number') {
+      const floorElapsed = (performance.now() - window.__floorStartTime) / 1000;
+      if (floorElapsed > am.floorTimeLimitSec) {
+        const mul = am.floorTimeoutEnemyMul || 1.4;
+        hpMul *= mul;
+        dmgMul *= mul;
+      }
+    }
   }
 
   // MEMORY OF NINE — the bargain is that bosses yield more easily (boss HP

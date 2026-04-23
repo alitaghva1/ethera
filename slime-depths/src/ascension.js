@@ -72,6 +72,67 @@ export const ASCENSION_TIERS = [
     essenceMul: 1.65,
     modifiers: { enemyHpMul: 1.25, eliteFloor1: true, sanctuaryHealMul: 0.5, bossEnrageAt: 0.70, memoryDisabled: true },
   },
+  {
+    tier: 6,
+    name: 'Ascension VI — The Purged',
+    short: 'the gods will not speak to you',
+    rule: 'Legendary relics removed from the pool',
+    essenceMul: 1.85,
+    modifiers: {
+      enemyHpMul: 1.25, eliteFloor1: true, sanctuaryHealMul: 0.5, bossEnrageAt: 0.70,
+      memoryDisabled: true, legendaryDisabled: true,
+    },
+  },
+  {
+    tier: 7,
+    name: 'Ascension VII — The Unwritten',
+    short: 'the path you cannot see is the path you must take',
+    rule: 'One node in each layer of the map is hidden until you commit',
+    essenceMul: 2.05,
+    modifiers: {
+      enemyHpMul: 1.25, eliteFloor1: true, sanctuaryHealMul: 0.5, bossEnrageAt: 0.70,
+      memoryDisabled: true, legendaryDisabled: true, hiddenMapNode: true,
+    },
+  },
+  {
+    tier: 8,
+    name: 'Ascension VIII — The Counted',
+    short: 'the ruin remembers how long you took',
+    rule: 'After 6 minutes per floor, enemies gain +40% speed + damage',
+    essenceMul: 2.30,
+    modifiers: {
+      enemyHpMul: 1.25, eliteFloor1: true, sanctuaryHealMul: 0.5, bossEnrageAt: 0.70,
+      memoryDisabled: true, legendaryDisabled: true, hiddenMapNode: true,
+      floorTimeLimitSec: 360, floorTimeoutEnemyMul: 1.40,
+    },
+  },
+  {
+    tier: 9,
+    name: 'Ascension IX — The Uncounted',
+    short: 'the ledger does not count the paths you chose',
+    rule: 'Essence rewards are 0.40× on all non-boss kills',
+    essenceMul: 2.55,
+    modifiers: {
+      enemyHpMul: 1.25, eliteFloor1: true, sanctuaryHealMul: 0.5, bossEnrageAt: 0.70,
+      memoryDisabled: true, legendaryDisabled: true, hiddenMapNode: true,
+      floorTimeLimitSec: 360, floorTimeoutEnemyMul: 1.40,
+      nonBossEssenceMul: 0.40,
+    },
+  },
+  {
+    tier: 10,
+    name: 'Ascension X — The Unbroken',
+    short: 'if you survive, the ruin forgets your name for one hour',
+    rule: 'All above, plus: run rewards ONE payout at Ember Tyrant kill (tripled)',
+    essenceMul: 3.00,  // headline number; the bossOnlyPayout flag overrides per-source accrual
+    modifiers: {
+      enemyHpMul: 1.25, eliteFloor1: true, sanctuaryHealMul: 0.5, bossEnrageAt: 0.70,
+      memoryDisabled: true, legendaryDisabled: true, hiddenMapNode: true,
+      floorTimeLimitSec: 360, floorTimeoutEnemyMul: 1.40,
+      nonBossEssenceMul: 0.0,   // zero out per-kill essence during run
+      finalBossEssenceMul: 3.0, // triple payout only on ember_tyrant defeat
+    },
+  },
 ];
 
 export const MAX_ASCENSION = ASCENSION_TIERS.length - 1;

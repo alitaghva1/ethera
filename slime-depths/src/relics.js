@@ -522,9 +522,13 @@ export function getRelicGlyph(id) {
 export function rollRelicOffer(n, floorLevel = 1) {
   const ownedIds = new Set(equipped.map(r => r.id));
   const availableByTier = { common: [], rare: [], legendary: [] };
+  // ASCENSION VI — "The Purged": legendary relics removed from the pool.
+  const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
+  const legendaryBlocked = !!(am && am.legendaryDisabled);
   for (const id of ALL_RELIC_IDS) {
     if (ownedIds.has(id)) continue;
     const t = relicTier(id);
+    if (legendaryBlocked && t === 'legendary') continue;
     if (availableByTier[t]) availableByTier[t].push(id);
   }
   const pickFromTier = (t) => {

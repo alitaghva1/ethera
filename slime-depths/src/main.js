@@ -905,7 +905,7 @@ function refreshAscensionUI() {
   row.style.display = 'flex';
   const t = getAscensionTier();
   const def = ASCENSION_TIERS[t];
-  btn.textContent = t === 0 ? 'STANDARD' : `ASCENSION ${['I','II','III','IV','V'][t - 1] || t}`;
+  btn.textContent = t === 0 ? 'STANDARD' : `ASCENSION ${['I','II','III','IV','V','VI','VII','VIII','IX','X'][t - 1] || t}`;
   // Tier 0 dim gold; higher tiers warmer. Visual weight of the climb.
   btn.style.color = t === 0 ? '#8a7a5a' : t >= 4 ? '#f4d9a0' : '#c9a86a';
   btn.style.opacity = t === 0 ? '0.7' : '1';
@@ -3494,6 +3494,9 @@ function resumeRun(snap) {
   currentGraph = generateFloorGraph(currentFloorLevel);
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
+  // ASCENSION VIII — track when this floor started so enemies.js can
+  // apply the timeout multiplier when the floor runs long.
+  window.__floorStartTime = performance.now();
   winEl.style.display = 'none';
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossWinTriggered = false;
@@ -3530,6 +3533,9 @@ function startRun() {
   currentGraph = generateFloorGraph(currentFloorLevel);
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
+  // ASCENSION VIII — track when this floor started so enemies.js can
+  // apply the timeout multiplier when the floor runs long.
+  window.__floorStartTime = performance.now();
   // THE RUIN REMEMBERS — 45% chance to spawn an Echo of Self in a random combat
   // room. The Echo inherits stats from your most recent death's build.
   if (ruin.deaths && ruin.deaths.length > 0 && Math.random() < 0.45) {
@@ -3712,6 +3718,9 @@ function beginNextFloor() {
   currentGraph = generateFloorGraph(currentFloorLevel);
   currentNodeId = currentGraph.startId;
   floor = [getFloorNode(currentGraph, currentNodeId).roomData];
+  // ASCENSION VIII — track when this floor started so enemies.js can
+  // apply the timeout multiplier when the floor runs long.
+  window.__floorStartTime = performance.now();
   winEl.style.display = 'none';
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossWinTriggered = false;
@@ -3878,7 +3887,23 @@ function showEndOfRun(isVictory) {
   // Essence earned + add to persistent total. Curse AND Ascension
   // multipliers compound — hardcore players stacking A5 + multiple
   // curses get the biggest payouts.
-  const base = calculateEssence() * (isVictory ? 2 : 1);
+  //
+  // ASCENSION IX — "The Uncounted": non-boss portion is scaled by
+  // nonBossEssenceMul (0.4× at A9, 0.0× at A10). Boss-derived portion
+  // (floors reached + bosses killed) is unchanged until A10.
+  //
+  // ASCENSION X — "The Unbroken": final-boss kill at floor 4 multiplies
+  // the ENTIRE boss-derived essence by finalBossEssenceMul (3.0×). Net:
+  // A10 non-final-boss runs earn nearly nothing; completed ascensions
+  // are the payoff.
+  const totalEss = calculateEssence();
+  const bossPortion = stats.bossesKilled * 8 + stats.floorReached * 4;
+  const nonBossPortion = Math.max(0, totalEss - bossPortion);
+  const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
+  const nonBossMul = (am && typeof am.nonBossEssenceMul === 'number') ? am.nonBossEssenceMul : 1.0;
+  const finalBossMul = (am && isVictory && typeof am.finalBossEssenceMul === 'number') ? am.finalBossEssenceMul : 1.0;
+  const adjusted = nonBossPortion * nonBossMul + bossPortion * finalBossMul;
+  const base = adjusted * (isVictory ? 2 : 1);
   const cMul = curseEssenceMul();
   const aMul = ascensionEssenceMul();
   const earned = Math.round(base * cMul * aMul);

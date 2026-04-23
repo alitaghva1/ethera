@@ -135,8 +135,12 @@ function renderNode(n, p, currentNode) {
   const isCurrent = currentNode && currentNode.id === n.id;
   const clickable = reachable && !n.visited;
 
-  const color = NODE_COLORS[n.kind] || '#c9a86a';
-  const glyph = NODE_GLYPHS[n.kind] || '?';
+  // ASCENSION VII — hidden map node: if this node is flagged hidden and
+  // hasn't been visited, render as "?" with a neutral color so the player
+  // cannot plan around it. The kind is revealed once they commit.
+  const hidden = n._hidden && !n.visited && !isCurrent;
+  const color = hidden ? '#8a7a5a' : (NODE_COLORS[n.kind] || '#c9a86a');
+  const glyph = hidden ? '?' : (NODE_GLYPHS[n.kind] || '?');
   const ring = isCurrent ? '#f4d9a0' : clickable ? color : '#3a3020';
   const bgOpacity = isCurrent ? 1.0 : clickable ? 0.9 : n.visited ? 0.3 : 0.6;
   const cursor = clickable ? 'pointer' : 'default';
@@ -195,6 +199,43 @@ export function openFloorMap(graph, currentNodeId) {
       <div style="position:relative;flex:1;width:100%;">
         ${renderSVGEdges(graph, pos, currentNode)}
         ${graph.nodes.map(n => renderNode(n, pos.get(n.id), currentNode)).join('')}
+      </div>
+      <div style="margin-bottom:24px;color:#a89b82;font-size:11px;letter-spacing:3px;font-style:italic;">click a glowing node to commit your path</div>
+    </div>`;
+
+  // ASCENSION VII — hide one random per-layer non-current/non-visited node.
+  // Applied AFTER rendering so labels cover the first render; graph state
+  // gets marked so subsequent opens reveal any previously-unhidden nodes.
+  const am = typeof window !== 'undefined' && window.__ascensionModifiers ? window.__ascensionModifiers() : {};
+  if (am && am.hiddenMapNode) {
+    const byLayer = new Map();
+    for (const n of graph.nodes) {
+      if (n.visited || n.current || n.kind === 'start' || n.kind === 'boss') continue;
+      if (!byLayer.has(n.layer)) byLayer.set(n.layer, []);
+      byLayer.get(n.layer).push(n);
+    }
+    for (const [_l, arr] of byLayer) {
+      if (arr.length < 2) continue;   // only hide when there's a choice
+      // Deterministic per-layer seed so the same node stays hidden between opens
+      const pickIndex = (arr[0].id * 31 + arr.length * 17) % arr.length;
+      arr[pickIndex]._hidden = true;
+    }
+  }
+  // Force one more render with the _hidden flags now set
+  const renderedNodes = graph.nodes.map(n => renderNode(n, pos.get(n.id), currentNode)).join('');
+  el.innerHTML = `
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
+    ${cornerOrnament('tl')}${cornerOrnament('tr')}${cornerOrnament('bl')}${cornerOrnament('br')}
+    <div style="position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;">
+      <div style="margin-top:22px;display:flex;align-items:center;gap:22px;opacity:0.75;">
+        <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+        <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">choose your descent</div>
+        <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+      </div>
+      <h1 style="font-size:30px;margin:6px 0 4px;letter-spacing:8px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.4);font-weight:400;font-family:Georgia,serif;">FLOOR MAP</h1>
+      <div style="position:relative;flex:1;width:100%;">
+        ${renderSVGEdges(graph, pos, currentNode)}
+        ${renderedNodes}
       </div>
       <div style="margin-bottom:24px;color:#a89b82;font-size:11px;letter-spacing:3px;font-style:italic;">click a glowing node to commit your path</div>
     </div>
