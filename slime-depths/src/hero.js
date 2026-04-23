@@ -3,7 +3,7 @@ import { images } from './loader.js';
 import { keys, mouse, keyJustPressed } from './input.js';
 import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches } from './room.js';
-import { hitSpark, dashTrail, footPuff, landingBurst, killRing } from './particles.js';
+import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
 import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
 import { stats } from './stats.js';
@@ -14,7 +14,7 @@ import {
   cataclysmRegisterHit, pierceLine, wandererOnDodge,
   spawnExplosion, combo,
 } from './synergies.js';
-import { spawnEmberFlame } from './enemies.js';
+import { spawnEmberFlame, enemies as activeEnemies } from './enemies.js';
 import { dropGold } from './gold.js';
 import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
@@ -880,6 +880,41 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (hero.finisherHeal && e.dead && eHpBefore <= e.maxHp * 0.25 && hero.hp < hero.maxHp) {
             hero.hp = Math.min(hero.maxHp, hero.hp + hero.finisherHeal);
           }
+          // SPORE BLOOM — on kill, release a cloud dealing sporeDamage to all
+          // other enemies within sporeRadius. Reuses the dying enemy's position.
+          if (hero.sporeBloom && e.dead && hero.sporeDamage > 0) {
+            const r2 = hero.sporeRadius * hero.sporeRadius;
+            for (const other of enemies) {
+              if (other === e || other.dead || other.state === 'dead') continue;
+              const dx = other.x - e.x, dy = other.y - e.y;
+              if (dx * dx + dy * dy <= r2) {
+                other.takeDamage(hero.sporeDamage, 0, 0);
+              }
+            }
+            // Green spore burst
+            for (let i = 0; i < 8; i++) {
+              sparkle(e.x + (Math.random() - 0.5) * 60, e.y - 10 + (Math.random() - 0.5) * 60, '#a0e868');
+            }
+          }
+          // ARCANE QUIVER — every 4th melee hit splashes to the nearest OTHER
+          // enemy within 260px for 40% of the hit damage. Rewards dense rooms.
+          if (hero.arcaneQuiver && !e.dead) {
+            hero.arcaneQuiverHits = (hero.arcaneQuiverHits || 0) + 1;
+            if (hero.arcaneQuiverHits % 4 === 0) {
+              let splashTarget = null, splashD2 = 260 * 260;
+              for (const other of enemies) {
+                if (other === e || other.dead || other.state === 'dead') continue;
+                const dx = other.x - e.x, dy = other.y - e.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < splashD2) { splashTarget = other; splashD2 = d2; }
+              }
+              if (splashTarget) {
+                splashTarget.takeDamage(finalDmg * 0.4, 0, 0);
+                sparkle(splashTarget.x, splashTarget.y - 8, '#c8a0ff');
+                sparkle(splashTarget.x, splashTarget.y - 14, '#ffffff');
+              }
+            }
+          }
           hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
           const wpnShake = w.shakeMul || 1;
           const wpnHs = w.hitStopMul || 1;
@@ -1079,6 +1114,24 @@ export function damageHero(amount, fromX, fromY) {
   const taken = Math.max(1, Math.round(amount * takenMul));
   stats.damageTaken += taken;
   hero.hp -= taken;
+  // MIRROR SHARD — reflect a fraction of the damage taken back to the enemy
+  // closest to the damage source. Shatterpoint fusion crits the reflection.
+  if (hero.mirrorShard && hero.mirrorReflect > 0 && activeEnemies.length) {
+    let closest = null, closestD = 200 * 200;
+    for (const e of activeEnemies) {
+      if (e.dead || e.state === 'dead') continue;
+      const dx = e.x - fromX, dy = e.y - fromY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < closestD) { closest = e; closestD = d2; }
+    }
+    if (closest) {
+      let reflectDmg = taken * hero.mirrorReflect;
+      if (hero.fusionShatterpoint) reflectDmg *= (hero.mirrorReflectCrit || 2.5);
+      closest.takeDamage(reflectDmg, 0, 0);
+      sparkle(closest.x, closest.y - 10, '#d8e8ff');
+      sparkle(closest.x, closest.y - 4, '#ffffff');
+    }
+  }
   // Store hit direction for the damage-source arrow UI
   window.__gameMetrics.lastHitFromX = fromX;
   window.__gameMetrics.lastHitFromY = fromY;
