@@ -205,6 +205,9 @@ export function updatePedestals(dt) {
 
 export function drawPedestals(ctx) {
   const now = performance.now() / 1000;
+  // Compute fusion-completing relic ids once per frame so we can tag any
+  // pedestal whose pickup would form a fusion. Cheap — small pool + Sets.
+  const fusionCompleters = getFusionCompletingRelicIds(equippedRelics.map(r => r.id));
   for (const p of pedestals) {
     if (p.picked) continue;
     const y = p.y + Math.sin(p.bob) * 3;
@@ -361,6 +364,30 @@ export function drawPedestals(ctx) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('-' + p.hpCost + ' HP', p.x, floatY - 23);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    // FUSION HINT — if picking this relic would complete a fusion with one
+    // of the hero's equipped relics, show a cyan "⚡ FUSION" chip above the
+    // tier label. Massive discovery dopamine — surfaces the pairing logic
+    // that was previously invisible until activation.
+    if (fusionCompleters && fusionCompleters.has(p.relic.id)) {
+      const chipY = floatY - 40;
+      const chipW = 74;
+      const pulse = 0.75 + 0.25 * Math.sin(now * 3.2 + p.bob);
+      ctx.fillStyle = 'rgba(10, 18, 28, 0.95)';
+      ctx.fillRect(p.x - chipW / 2, chipY, chipW, 14);
+      ctx.strokeStyle = '#a0e8ff';
+      ctx.globalAlpha = pulse;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - chipW / 2 + 0.5, chipY + 0.5, chipW - 1, 13);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#a0e8ff';
+      ctx.font = 'italic bold 9px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('\u26A1 FUSION \u26A1', p.x, chipY + 7);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
     }
