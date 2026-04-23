@@ -31,7 +31,7 @@ import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, enemies, cle
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, setWeatherBiome, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js?v=8';
-import { drawHud, updateHudAnims } from './hud.js';
+import { drawHud, updateHudAnims } from './hud.js?v=feedback1';
 import { setMasterVolume, playSfx } from './sfx.js';
 import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats.js';

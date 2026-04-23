@@ -758,6 +758,135 @@ export function drawHud(ctx, w, h, progress = {}) {
     ctx.fill();
     ctx.stroke();
   }
+
+  // ==========================================================================
+  // ASCENSION FEEDBACK HUD — Session A polish pass.
+  // Shows the active ascension tier + any rules currently pressing on the run
+  // (floor timer, legendary-disabled, memory-disabled, hidden map nodes, etc.)
+  // so the player always knows why their run is harder.
+  // ==========================================================================
+  drawAscensionHUD(ctx, w, h);
+}
+
+// Render a compact ascension chip just beneath the top-right floor/minimap box.
+// Only visible when the player has selected tier > 0.
+function drawAscensionHUD(ctx, w, h) {
+  const am = (typeof window !== 'undefined' && window.__ascensionModifiers)
+    ? window.__ascensionModifiers() : {};
+  // If no ascension is in effect AND no timer tracking, skip entirely.
+  const hasAscension = am && Object.keys(am).length > 0;
+  if (!hasAscension) return;
+
+  // Derive tier label — we don't have direct access to the tier number here,
+  // so infer from the modifier set. (Ascension.js's modifiers are cumulative,
+  // so counting known keys gives us the tier.)
+  const tierFlags = [
+    am.enemyHpMul > 1,                   // A1+
+    am.eliteFloor1,                      // A2+
+    am.sanctuaryHealMul !== undefined,   // A3+
+    am.bossEnrageAt !== undefined,       // A4+
+    am.memoryDisabled,                   // A5+
+    am.legendaryDisabled,                // A6+
+    am.hiddenMapNode,                    // A7+
+    am.floorTimeLimitSec !== undefined,  // A8+
+    am.nonBossEssenceMul !== undefined,  // A9+
+    am.finalBossEssenceMul !== undefined,// A10
+  ];
+  const tier = tierFlags.lastIndexOf(true) + 1;  // 0 if none
+  if (tier <= 0) return;
+
+  const roman = ['I','II','III','IV','V','VI','VII','VIII','IX','X'][tier - 1] || String(tier);
+
+  // Position: just below the top-right floor/minimap box (which sits at y=14, h=90).
+  const boxW = 156, boxH = 24;
+  const bx = w - boxW - 14;
+  const by = 14 + 90 + 6;                // 110px from top
+  // Plate
+  ctx.fillStyle = 'rgba(14, 8, 16, 0.82)';
+  ctx.fillRect(bx, by, boxW, boxH);
+  ctx.strokeStyle = tier >= 7 ? 'rgba(216, 90, 106, 0.7)' : 'rgba(201, 168, 106, 0.55)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
+  // Left ornamental diamond
+  ctx.fillStyle = tier >= 7 ? '#d85a6a' : '#c9a86a';
+  ctx.save();
+  ctx.translate(bx + 10, by + boxH / 2);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillRect(-3, -3, 6, 6);
+  ctx.restore();
+  // Label: "ASCENSION V"
+  ctx.fillStyle = tier >= 7 ? '#f4c4c8' : '#f4d9a0';
+  ctx.font = 'bold 11px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ASCENSION ' + roman, bx + 22, by + boxH / 2);
+
+  // ---------------- FLOOR TIMER (A8) ----------------
+  // If the tier imposes a per-floor time limit, draw the countdown right below.
+  if (am.floorTimeLimitSec && typeof window.__floorStartTime === 'number') {
+    const elapsed = Math.max(0, (performance.now() - window.__floorStartTime) / 1000);
+    const limit = am.floorTimeLimitSec;
+    const remaining = Math.max(0, limit - elapsed);
+    const overrun = elapsed > limit;
+    const tbx = bx;
+    const tby = by + boxH + 4;
+    const tbw = boxW;
+    const tbh = 22;
+    ctx.fillStyle = 'rgba(14, 8, 16, 0.82)';
+    ctx.fillRect(tbx, tby, tbw, tbh);
+    // Border + bar color depend on urgency
+    const urgencyColor = overrun ? '#ff5a5a' : remaining < 30 ? '#ffaa55' : '#a89b82';
+    ctx.strokeStyle = urgencyColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tbx + 0.5, tby + 0.5, tbw - 1, tbh - 1);
+    // Fill bar representing time used
+    const pct = Math.min(1, elapsed / limit);
+    const barW = (tbw - 6) * pct;
+    ctx.fillStyle = overrun ? 'rgba(255, 60, 60, 0.28)' : 'rgba(255, 170, 85, 0.14)';
+    ctx.fillRect(tbx + 3, tby + 3, barW, tbh - 6);
+    // Text: "4:32 / 6:00"  or  "OVERRUN +0:23"
+    const fmt = (s) => {
+      const m = Math.floor(s / 60);
+      const sc = Math.floor(s % 60).toString().padStart(2, '0');
+      return m + ':' + sc;
+    };
+    const text = overrun
+      ? ('OVERRUN +' + fmt(elapsed - limit))
+      : (fmt(elapsed) + ' / ' + fmt(limit));
+    ctx.fillStyle = urgencyColor;
+    ctx.font = 'bold 10px Georgia, serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, tbx + tbw - 8, tby + tbh / 2);
+    // Icon (clock-like diamond)
+    ctx.fillStyle = urgencyColor;
+    ctx.save();
+    ctx.translate(tbx + 10, tby + tbh / 2);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-3, -3, 6, 6);
+    ctx.restore();
+  }
+
+  // ---------------- ACTIVE RULES STRIP (A6+ abbreviated) ----------------
+  // A compact second line below that lists any silently-punishing rules the
+  // player should remember: legendary off, memory off, hidden nodes, boss-
+  // only essence. Keeps it one-line to avoid HUD clutter.
+  const activeRules = [];
+  if (am.legendaryDisabled)       activeRules.push('no legendaries');
+  if (am.memoryDisabled)          activeRules.push('memory null');
+  if (am.hiddenMapNode)           activeRules.push('hidden paths');
+  if (am.nonBossEssenceMul === 0) activeRules.push('boss-only essence');
+  else if (am.nonBossEssenceMul < 1 && am.nonBossEssenceMul !== undefined) activeRules.push('essence ×0.4');
+  if (activeRules.length > 0) {
+    const timerOffset = am.floorTimeLimitSec ? 32 : 6;
+    const rx = bx;
+    const ry = by + boxH + timerOffset;
+    ctx.fillStyle = 'rgba(168, 155, 130, 0.85)';
+    ctx.font = 'italic 9px Georgia, serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(activeRules.join(' · '), rx + boxW - 2, ry);
+  }
 }
 
 // Simple word-wrap helper for tooltip descriptions
