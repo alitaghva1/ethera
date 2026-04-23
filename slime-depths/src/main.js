@@ -1505,13 +1505,21 @@ oracleEl.innerHTML = `
     <h1 style="font-size:44px;margin:0;letter-spacing:10px;color:#d8c4ff;text-shadow:0 0 18px rgba(180,154,255,0.45);font-weight:400;line-height:1;">THE PATH</h1>
     <p style="margin:14px 0 26px;opacity:0.6;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Four floors. Four shapes of hunger. I cannot tell you how they end — only what they are.</p>
     <div id="oracleFloors" style="display:flex;flex-direction:column;gap:14px;width:100%;"></div>
-    <button id="oracleCloseBtn" style="margin-top:22px;background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 LOOK AWAY</button>
+    <div id="oracleFortuneNotice" style="margin-top:10px;min-height:14px;font-size:10.5px;letter-spacing:2px;color:#86e3a8;font-style:italic;opacity:0;transition:opacity 0.3s ease;"></div>
+    <div style="display:flex;gap:18px;margin-top:14px;align-items:center;">
+      <button id="oracleCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 LOOK AWAY</button>
+      <button id="oracleDrawBtn" style="background:linear-gradient(180deg,#2a1840,#14081a);color:#d8c4ff;border:0;padding:10px 28px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #b49aff, 0 0 20px rgba(180,154,255,0.2);transition:all 0.22s ease;">\u2666 DRAW A FORTUNE \u2666</button>
+    </div>
   </div>
 `;
 document.getElementById('hud').appendChild(oracleEl);
 document.getElementById('oracleCloseBtn').addEventListener('click', () => {
   oracleEl.style.display = 'none';
   showHamlet();
+});
+document.getElementById('oracleDrawBtn').addEventListener('click', () => {
+  oracleEl.style.display = 'none';
+  showOracleFortune();
 });
 
 // The forecast is static lore-accurate data. Could be made dynamic later
@@ -1558,11 +1566,161 @@ function showOracleForecast() {
     `;
     listEl.appendChild(row);
   }
+  // Carried-fortune hint — if the player has already drawn, surface the fact.
+  const notice = document.getElementById('oracleFortuneNotice');
+  if (notice) {
+    if (window.__oracleCard) {
+      const c = TAROT[window.__oracleCard];
+      notice.textContent = `\u2666 ${c ? c.name : 'A FORTUNE'} is carried into your next descent \u2666`;
+      notice.style.opacity = '0.85';
+    } else {
+      notice.textContent = '';
+      notice.style.opacity = '0';
+    }
+  }
   oracleEl.style.display = 'flex';
   // Record service use and advance the Oracle's arc (free service — her
   // value is narrative, not essence-sunk)
   recordServiceUse('oracle');
 }
+
+// ============================================================================
+// ORACLE'S FORTUNES — the reintegrated Tarot system. Eight cards from the
+// Major Arcana (tarot.js) shown face-down; player picks one to carry into
+// the next descent. On run start, the carried card is pushed into
+// `drawnCards` so every existing tarot-hook (hasCard checks throughout
+// hero.js and main.js) fires automatically — this is the SAME content
+// the hidden tarot-mode used to provide, now accessed via a worldly NPC.
+// ============================================================================
+const oracleFortuneEl = document.createElement('div');
+oracleFortuneEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0f28 0%,#0c0614 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:30;';
+oracleFortuneEl.innerHTML = `
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
+  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:960px;width:100%;">
+    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
+      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
+      <div style="color:#b49aff;font-size:11px;letter-spacing:6px;font-style:italic;">a fortune, for the descent</div>
+      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
+    </div>
+    <h1 id="oracleFortuneTitle" style="font-size:40px;margin:0;letter-spacing:10px;color:#d8c4ff;text-shadow:0 0 18px rgba(180,154,255,0.45);font-weight:400;line-height:1;">DRAW ONE</h1>
+    <p id="oracleFortuneSubtitle" style="margin:14px 0 26px;opacity:0.65;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Choose a card. It will shape your next descent — you may discard it only by dying.</p>
+    <div id="oracleFortuneCards" style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:900px;"></div>
+    <div id="oracleFortuneReveal" style="display:none;flex-direction:column;align-items:center;margin-top:14px;max-width:520px;text-align:center;"></div>
+    <div style="display:flex;gap:18px;margin-top:22px;align-items:center;">
+      <button id="oracleFortuneCancelBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 NOT TODAY</button>
+      <button id="oracleFortuneAcceptBtn" style="display:none;background:linear-gradient(180deg,#2a1840,#14081a);color:#d8c4ff;border:0;padding:10px 28px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #b49aff, 0 0 20px rgba(180,154,255,0.25);transition:all 0.22s ease;">CARRY IT FORWARD \u2192</button>
+    </div>
+  </div>
+`;
+document.getElementById('hud').appendChild(oracleFortuneEl);
+
+let _oracleFortunePick = null;
+
+function renderOracleFortuneCards() {
+  const listEl = document.getElementById('oracleFortuneCards');
+  listEl.innerHTML = '';
+  // Deterministic shuffle per visit — every time the modal opens, cards
+  // appear in a fresh order so the player's eye doesn't just click the
+  // same slot repeatedly.
+  const order = [...Object.keys(TAROT)];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  for (const id of order) {
+    const card = TAROT[id];
+    const cardEl = document.createElement('button');
+    cardEl.className = 'oracleFortuneCard';
+    cardEl.dataset.cardId = id;
+    cardEl.style.cssText = `
+      width: 96px; height: 150px;
+      background: linear-gradient(180deg, #241833, #0e0818);
+      box-shadow: inset 0 0 0 1px #b49aff, 0 0 18px rgba(180,154,255,0.12), inset 0 0 14px rgba(0,0,0,0.5);
+      border: 0; padding: 0; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-family: Georgia, serif; color: #b49aff;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+    `;
+    // Card-back ornament — gold diamond + fine hairlines
+    cardEl.innerHTML = `
+      <div style="position:absolute;inset:8px;border:1px solid rgba(180,154,255,0.25);"></div>
+      <div style="position:absolute;inset:14px;display:flex;align-items:center;justify-content:center;">
+        <div style="width:14px;height:14px;background:#b49aff;transform:rotate(45deg);opacity:0.5;box-shadow:0 0 8px #b49aff77;"></div>
+      </div>
+      <div style="position:absolute;top:8px;left:8px;right:8px;height:1px;background:linear-gradient(90deg,transparent,#b49aff44,transparent);"></div>
+      <div style="position:absolute;bottom:8px;left:8px;right:8px;height:1px;background:linear-gradient(90deg,transparent,#b49aff44,transparent);"></div>
+    `;
+    cardEl.onmouseenter = () => { cardEl.style.transform = 'translateY(-6px)'; cardEl.style.boxShadow = 'inset 0 0 0 1px #d8c4ff, 0 0 28px rgba(216,196,255,0.35), inset 0 0 14px rgba(0,0,0,0.5)'; };
+    cardEl.onmouseleave = () => { cardEl.style.transform = ''; cardEl.style.boxShadow = 'inset 0 0 0 1px #b49aff, 0 0 18px rgba(180,154,255,0.12), inset 0 0 14px rgba(0,0,0,0.5)'; };
+    cardEl.onclick = () => revealOracleFortuneCard(id, cardEl);
+    listEl.appendChild(cardEl);
+  }
+}
+
+function revealOracleFortuneCard(id, cardEl) {
+  _oracleFortunePick = id;
+  const card = TAROT[id];
+  if (!card) return;
+  // Dim every card, highlight the picked one — reads "this is what you drew"
+  const allCards = document.querySelectorAll('.oracleFortuneCard');
+  for (const el of allCards) {
+    el.style.pointerEvents = 'none';
+    if (el !== cardEl) {
+      el.style.opacity = '0.25';
+      el.style.transform = '';
+    } else {
+      el.style.transform = 'translateY(-14px) scale(1.08)';
+      el.style.boxShadow = `inset 0 0 0 2px ${card.tint}, 0 0 34px ${card.tint}66, inset 0 0 18px rgba(0,0,0,0.4)`;
+      // Flip to face-up: replace inner with typographic card face
+      el.innerHTML = `
+        <div style="position:absolute;inset:8px;border:1px solid ${card.tint}88;"></div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:10px;">
+          <div style="color:${card.tint};font-size:12px;letter-spacing:3px;opacity:0.7;margin-bottom:6px;">${card.roman}</div>
+          <div style="width:32px;height:1px;background:${card.tint};opacity:0.4;margin-bottom:8px;"></div>
+          <div style="color:${card.tint};font-size:11px;letter-spacing:2px;font-weight:bold;text-align:center;line-height:1.2;text-shadow:0 0 8px ${card.tint}77;">${card.name}</div>
+        </div>
+      `;
+    }
+  }
+  // Show reveal block with desc + flavor
+  const rev = document.getElementById('oracleFortuneReveal');
+  rev.style.display = 'flex';
+  rev.innerHTML = `
+    <div style="color:${card.tint};font-size:14px;letter-spacing:3px;font-weight:bold;margin-bottom:6px;text-shadow:0 0 10px ${card.tint}66;">${card.name}</div>
+    <div style="color:#c8c0d8;font-size:11px;letter-spacing:1.5px;font-style:italic;opacity:0.75;margin-bottom:10px;">"${card.flavor}"</div>
+    <div style="color:${card.tint};font-size:12px;letter-spacing:1.5px;line-height:1.5;">${card.desc}</div>
+  `;
+  // Swap subtitle + swap button
+  document.getElementById('oracleFortuneSubtitle').textContent = 'This is the card you will carry. Take it, or leave — once you carry one, the Oracle will wait for the next run.';
+  document.getElementById('oracleFortuneAcceptBtn').style.display = 'inline-block';
+  document.getElementById('oracleFortuneCancelBtn').textContent = '\u2190 DISCARD';
+}
+
+function showOracleFortune() {
+  hideAllOverlays();
+  _oracleFortunePick = null;
+  document.getElementById('oracleFortuneReveal').style.display = 'none';
+  document.getElementById('oracleFortuneReveal').innerHTML = '';
+  document.getElementById('oracleFortuneSubtitle').textContent = 'Choose a card. It will shape your next descent — you may discard it only by dying.';
+  document.getElementById('oracleFortuneAcceptBtn').style.display = 'none';
+  document.getElementById('oracleFortuneCancelBtn').textContent = '\u2190 NOT TODAY';
+  renderOracleFortuneCards();
+  oracleFortuneEl.style.display = 'flex';
+  recordServiceUse('oracle');
+}
+
+document.getElementById('oracleFortuneCancelBtn').addEventListener('click', () => {
+  oracleFortuneEl.style.display = 'none';
+  showOracleForecast();   // return to the forecast (visually same modal family)
+});
+document.getElementById('oracleFortuneAcceptBtn').addEventListener('click', () => {
+  if (_oracleFortunePick) {
+    window.__oracleCard = _oracleFortunePick;
+  }
+  oracleFortuneEl.style.display = 'none';
+  showOracleForecast();   // surface the carried-fortune notice
+});
 
 // ============================================================================
 // WANDERER GIFT — pay essence for a random COMMON relic banked as heirloom
@@ -3322,6 +3480,15 @@ function startRun() {
     hideAllOverlays();
     playPrologue(() => startRun());    // re-enter after dismiss (flag now set)
     return;
+  }
+  // ORACLE'S FORTUNES — if a card was drawn in the hamlet, push it into the
+  // tarot active set so the existing tarot-hook plumbing (hasCard() checks
+  // across hero.js and main.js) fires the card's effects automatically.
+  // Consumed on use; re-drawn next visit.
+  if (window.__oracleCard) {
+    const card = TAROT[window.__oracleCard];
+    if (card) drawnCards.push(card);
+    window.__oracleCard = null;
   }
   // Ambient pad fades out as the run begins — the real combat music system
   // (music.js, when OGG tracks land) will take over from here.
