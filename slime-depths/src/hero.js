@@ -247,6 +247,10 @@ export function resetHero() {
   hero.fusionWildfireChoir = false;
   hero.fusionMartyrBloom = false;
   hero.fusionStormveil = false;
+  // Orphan-icon rehomes
+  hero.hourglassRespite = false; hero.hourglassReadyAt = 0;
+  hero.fusionRingbearer = false;
+  hero.fusionStarweave = false;
 }
 
 function setState(s) {
@@ -1030,6 +1034,17 @@ export function damageHero(amount, fromX, fromY) {
     while (diffA < -Math.PI) diffA += Math.PI * 2;
     if (Math.abs(diffA) <= hero.bulwarkArc / 2) {
       amount *= hero.bulwarkReduction;
+    }
+  }
+  // HOURGLASS OF RESPITE — at 30% HP or below, halve incoming damage once
+  // per minute. Panic-button safety for low-HP play; cooldown prevents it
+  // from trivializing sustained low-HP builds.
+  if (hero.hourglassRespite && hero.hp / hero.maxHp <= 0.30) {
+    const _hgNow = (typeof performance !== 'undefined') ? performance.now() : 0;
+    if (_hgNow > hero.hourglassReadyAt) {
+      amount *= 0.5;
+      hero.hourglassReadyAt = _hgNow + 60000;   // 60s cooldown
+      triggerScreenFlash('rgba(232, 200, 128, 0.25)', 0.4);
     }
   }
   if (hero.iframes > 0) return 'absorbed';

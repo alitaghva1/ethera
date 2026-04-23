@@ -179,6 +179,9 @@ export async function loadAll(progressCb) {
     loadImage('fusion_stalwart',        'assets/icons/fusion_stalwart.png'),
     loadImage('fusion_sparrows_dance',  'assets/icons/fusion_sparrows_dance.png'),
     loadImage('fusion_witness',         'assets/icons/fusion_witness.png'),
+    // Rehomed from the spare-icon pool (April 2026 orphan cleanup)
+    loadImage('fusion_spare_ring',      'assets/icons/fusion_spare_ring.png'),
+    loadImage('fusion_spare_star',      'assets/icons/fusion_spare_star.png'),
 
     // APRIL 2026 ICON EXPANSION — 19 painted icons (Nano Banana) covering
     // the 5 relics/fusions that previously borrowed icons (now have dedicated

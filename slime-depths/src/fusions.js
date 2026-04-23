@@ -282,6 +282,30 @@ export const FUSIONS = {
     icon: 'fusion_stormveil',
     apply: (hero) => { hero.fusionStormveil = true; },
   },
+
+  // Rehomes the orphan `fusion_spare_ring.png` and `fusion_spare_star.png`
+  // icons into the active fusion pool. Kept simple — each amplifies a
+  // mechanic on its components rather than inventing a new one.
+  ringbearer: {
+    id: 'ringbearer',
+    components: ['vitality', 'bloodstone'],
+    name: 'Ringbearer',
+    desc: 'Bloodstone finisher heals +2 (executions now restore 5 HP)',
+    flavor: 'A circle is a promise that never ends.',
+    tint: '#ffb0a8',
+    icon: 'fusion_spare_ring',
+    apply: (hero) => { hero.fusionRingbearer = true; hero.finisherHeal = (hero.finisherHeal || 0) + 2; },
+  },
+  starweave: {
+    id: 'starweave',
+    components: ['keen_edge', 'eye_of_ether'],
+    name: 'Starweave',
+    desc: '+5% crit chance on top of each component relic',
+    flavor: 'Seven threads, one constellation, no accident.',
+    tint: '#e8d8ff',
+    icon: 'fusion_spare_star',
+    apply: (hero) => { hero.fusionStarweave = true; hero.critChance = (hero.critChance || 0) + 0.05; },
+  },
 };
 
 // Build a map of pair-key → fusionId for quick lookup

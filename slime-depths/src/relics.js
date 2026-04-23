@@ -525,6 +525,19 @@ export const RELIC_DEFS = {
     tier: 'legendary',
     apply: () => { hero.stormcaller = true; hero.stormcallerInterval = 1.5; hero.stormcallerDamage = 8; hero.stormcallerRange = 220; },
   },
+
+  // Rehomes the orphan `relic_hourglass.png` asset into the active pool.
+  // Panic-button design — once-per-minute damage reduction at low HP.
+  hourglass_of_respite: {
+    id: 'hourglass_of_respite',
+    name: 'Hourglass of Respite',
+    desc: 'At 30% HP or below, incoming damage is halved. Triggers once per minute.',
+    flavor: 'The sand knows when to stop. The hand does not always obey.',
+    icon: 'relic_hourglass',
+    tint: '#e8c880',
+    tier: 'common',
+    apply: () => { hero.hourglassRespite = true; hero.hourglassReadyAt = 0; },
+  },
 };
 
 export const ALL_RELIC_IDS = Object.keys(RELIC_DEFS);
