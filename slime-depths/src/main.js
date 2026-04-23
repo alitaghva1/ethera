@@ -1205,7 +1205,17 @@ function renderMemoryGrid() {
   const grid = document.getElementById('memoryGrid');
   const progress = document.getElementById('memoryProgress');
   grid.innerHTML = '';
-  progress.textContent = `${memoriesUnlockedCount()} of ${totalMemories()} remembered`;
+  // ASCENSION V — when Memory is neutralized for this run, communicate
+  // loudly BEFORE the player wastes a pick choosing one. The progress line
+  // doubles as the alert channel; regular text when clean, crimson when the
+  // memory slot is silenced.
+  const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
+  if (am && am.memoryDisabled) {
+    progress.innerHTML = `<span style="color:#d8556a;text-shadow:0 0 10px rgba(216,85,106,0.45);">\u26A0 MEMORY SLOT NEUTRALIZED — Ascension V</span>
+      <span style="display:block;font-size:9px;color:#a89b82;font-style:italic;margin-top:2px;opacity:0.8;">the selection you make will have no effect this descent</span>`;
+  } else {
+    progress.textContent = `${memoriesUnlockedCount()} of ${totalMemories()} remembered`;
+  }
   for (const id of ALL_MEMORY_IDS) {
     const def = MEMORIES[id];
     const unlocked = unlockedMemories.has(id);
@@ -4465,6 +4475,24 @@ function tick(now) {
             if (pickedId == null) return;
             const picked = getFloorNode(currentGraph, pickedId);
             if (!picked) return;
+            // ASCENSION VII — hidden-path reveal moment. If the player just
+            // committed to a node that was hidden on the map, fire a banner
+            // naming what they walked into. Uses the codex-entry queue so it
+            // plays through the same drama pipeline as bestiary reveals.
+            if (picked._hidden) {
+              const kindLabel = (picked.kind || '').toUpperCase();
+              const colorByKind = {
+                combat: '#e8d4b4', elite: '#d85a5a', event: '#c8a0ff',
+                sanctuary: '#86e3a8', boss: '#ff9a55',
+              };
+              window.__pendingCodexEntry = {
+                type: 'hidden_path_reveal',
+                name: 'HIDDEN PATH REVEALED',
+                flavor: 'the ' + kindLabel.toLowerCase() + ' was waiting for you',
+                color: colorByKind[picked.kind] || '#d85a6a',
+              };
+              picked._hidden = false;  // reveal is one-time
+            }
             // Mark state transition on the graph
             curNode.visited = true;
             curNode.current = false;
