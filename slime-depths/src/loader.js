@@ -190,13 +190,16 @@ export async function loadAll(progressCb) {
 
     // HAMLET NPC PORTRAITS — painted in the same register as boss portraits
     // (Nano Banana). When files are missing, hamlet falls back to a silhouette
-    // so the feature degrades gracefully.
+    // so the feature degrades gracefully. The three commented-out lines below
+    // are NPCs whose portraits aren't yet painted; skipped here to avoid
+    // noisy 404s in the console while still letting the silhouette fallback
+    // work in hamlet.js for those characters.
     loadImage('npc_keeper',             'assets/hamlet/npc_keeper.png'),
     loadImage('npc_smith',              'assets/hamlet/npc_smith.png'),
     loadImage('npc_archivist',          'assets/hamlet/npc_archivist.png'),
-    loadImage('npc_gravekeeper',        'assets/hamlet/npc_gravekeeper.png'),
-    loadImage('npc_oracle',             'assets/hamlet/npc_oracle.png'),
-    loadImage('npc_wanderer_hamlet',    'assets/hamlet/npc_wanderer_hamlet.png'),
+    // loadImage('npc_gravekeeper',     'assets/hamlet/npc_gravekeeper.png'),
+    // loadImage('npc_oracle',          'assets/hamlet/npc_oracle.png'),
+    // loadImage('npc_wanderer_hamlet', 'assets/hamlet/npc_wanderer_hamlet.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),

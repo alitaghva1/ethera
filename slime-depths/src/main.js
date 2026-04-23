@@ -4844,15 +4844,50 @@ function render() {
     ctx.fillStyle = 'rgba(6, 4, 10, ' + veilA.toFixed(3) + ')';
     ctx.fillRect(0, barH, w, h - barH * 2);
 
-    // Name slide-in from the right with red tag bars
+    // Compute the intro's shared timing envelope — used by both the
+    // portrait slide-in (from the LEFT) and the name text slide-in
+    // (from the RIGHT). Classic "vs. screen" composition.
     const slideIn = Math.min(1, t / 0.25);
     const slideOut = t > 0.75 ? (t - 0.75) / 0.25 : 0;
+    const introAlpha = Math.max(0, Math.min(1, slideIn - slideOut));
+
+    // BOSS PORTRAIT — painted reveal image (Nano Banana portraits loaded at
+    // boot). Slides in from off-screen left to settle at the left-of-center
+    // third. If no portrait is mapped for this enemy type we gracefully skip
+    // and keep just the text reveal.
+    const portraitPath = ENEMY_PORTRAIT_PATH[bossIntroBoss.type];
+    const portraitKey = portraitPath && portraitPath.split('/').pop().replace(/\.png$/, '');
+    const portraitImg = portraitKey && imageCache[portraitKey];
+    if (portraitImg) {
+      // Fit the portrait within the letterbox frame with some padding.
+      const avail = h - barH * 2 - 48;
+      const scale = Math.min(avail / portraitImg.height, 360 / portraitImg.width);
+      const pw = portraitImg.width * scale;
+      const ph = portraitImg.height * scale;
+      // Slide in from the LEFT (negative xOff), slide out the same way.
+      const pxOff = -(1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
+      const px = w * 0.28 - pw / 2 + pxOff;
+      const py = h / 2 - ph / 2;
+      ctx.save();
+      ctx.globalAlpha = introAlpha;
+      // Soft red-gold glow behind the portrait — signals threat without
+      // washing the painting.
+      ctx.shadowColor = 'rgba(220, 60, 60, 0.55)';
+      ctx.shadowBlur = 34;
+      ctx.drawImage(portraitImg, px, py, pw, ph);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Name slide-in from the right with red tag bars. If we rendered a
+    // portrait, shift the name anchor right-of-center so it doesn't
+    // overlap; otherwise keep the original centered composition.
     const xOff = (1 - slideIn) * w * 0.35 - slideOut * w * 0.35;
     const name = bossIntroBoss.def.displayName || 'BOSS';
     ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, slideIn - slideOut));
+    ctx.globalAlpha = introAlpha;
     // Dramatic large text with gradient
-    const nx = w / 2 + xOff;
+    const nx = (portraitImg ? w * 0.62 : w / 2) + xOff;
     const ny = h / 2;
     ctx.font = 'bold 68px Georgia, serif';
     ctx.textAlign = 'center';
