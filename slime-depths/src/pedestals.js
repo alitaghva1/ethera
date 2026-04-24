@@ -258,6 +258,13 @@ export function setPickupFlashForTest(def, tier, flashTime = 2.2) {
   pickedFlashTime = flashTime;
 }
 
+// True while the celebratory pickup banner is fading in/holding/fading out.
+// Used by systems that should DEFER their own onscreen UI until the banner
+// clears (e.g. The Watcher defers utterances while this is true).
+export function isPickupFlashActive() {
+  return pickedFlashTime > 0;
+}
+
 export function hasActivePedestals() {
   return pedestals.length > 0 && pedestals.some(p => !p.picked);
 }

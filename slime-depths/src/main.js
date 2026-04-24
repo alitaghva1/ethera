@@ -50,16 +50,18 @@ import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick,
 import {
   spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
-  setPickupFlashForTest,
+  setPickupFlashForTest, isPickupFlashActive,
 } from './pedestals.js';
 import { drawCounterPips, tickCounterPips } from './counterPips.js';
 import { drawPedestalTeasers } from './pedestalTeaser.js';
 import { drawThemeAura } from './themes.js';
 import {
   drawWatcher,
-  watcherOnRunStart, watcherOnDeath, watcherOnFloorEnter,
-  watcherOnBossClear, watcherOnFinalBossEnter,
+  watcherOnRunStart, watcherOnRunResume,
+  watcherOnDeath, watcherOnFloorEnter,
+  watcherOnBossClear, watcherOnFinalBossEnter, watcherOnAscensionStart,
   watcherResetForTesting, watcherTestSpeak, watcherSnapshot,
+  watcherLastLine, watcherDescentCount,
 } from './watcher.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
@@ -3527,6 +3529,12 @@ function resumeRun(snap) {
   floorCardStartedAt = 0;
   bossIntroStartedAt = 0;
   fusionBannerTime = 0;
+  // THE WATCHER — resume doesn't bump the run counter, but it MUST reset
+  // per-run state (so the death-depth line gate works) and notify the
+  // entity of the current floor (so milestone utterances like first-floor-4
+  // still fire if the player resumes into a not-yet-seen floor).
+  watcherOnRunResume();
+  watcherOnFloorEnter(currentFloorLevel);
   triggerFloorCard(currentFloorLevel);
   loadRoom(0, 'south');
   running = true;
@@ -3618,6 +3626,7 @@ function startRun() {
   incrementRunsStarted();
   watcherOnRunStart();
   watcherOnFloorEnter(currentFloorLevel);
+  try { watcherOnAscensionStart(getAscensionTier() || 0); } catch (e) {}
   triggerFloorCard(currentFloorLevel);
   clearPedestals();
   // Apply meta-progression unlocks to fresh run (UNLESS Forsaken curse active)
@@ -3879,6 +3888,44 @@ function showEndOfRun(isVictory) {
     <div><span style="opacity:0.6;">Max Combo</span></div><div style="text-align:right;">${mc}${comboTag}${newBestMark('maxCombo')}</div>
     ${stats.wandererTrades ? `<div><span style="opacity:0.6;">Wanderer Trades</span></div><div style="text-align:right;color:#c9a86a;">${stats.wandererTrades}</div>` : ''}
   `;
+
+  // THE WATCHER LEDGER — a quiet line from the entity: "The Watcher marks
+  // your Nth descent." + the most recent utterance, requoted with its sigil.
+  // Appears only if the Watcher has ever spoken (keeps first-run summaries
+  // clean). Matches the in-run italic serif grammar.
+  try {
+    const watcherEl = document.getElementById('endWatcher');
+    if (watcherEl) {
+      const last = watcherLastLine();
+      const count = watcherDescentCount();
+      if (last) {
+        const ordinal = (n) => {
+          const j = n % 10, k = n % 100;
+          if (k >= 11 && k <= 13) return n + 'th';
+          if (j === 1) return n + 'st';
+          if (j === 2) return n + 'nd';
+          if (j === 3) return n + 'rd';
+          return n + 'th';
+        };
+        watcherEl.style.display = 'block';
+        watcherEl.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;">
+            <svg width="18" height="18" viewBox="0 0 22 22" style="overflow:visible;">
+              <circle cx="11" cy="11" r="9" fill="none" stroke="rgba(236,224,196,0.75)" stroke-width="1"/>
+              <circle cx="11" cy="11" r="5" fill="none" stroke="rgba(236,224,196,0.35)" stroke-width="0.8"/>
+              <circle cx="11" cy="11" r="2" fill="rgba(236,224,196,0.9)"/>
+            </svg>
+            <span style="opacity:0.55;font-style:normal;letter-spacing:3px;font-size:10px;">
+              THE WATCHER MARKS YOUR ${ordinal(count).toUpperCase()} DESCENT
+            </span>
+          </div>
+          <div style="opacity:0.82;">\u201C${last}\u201D</div>
+        `;
+      } else {
+        watcherEl.style.display = 'none';
+      }
+    }
+  } catch (e) {}
 
   // Relics collected — trophy strip: each relic is a tier-glowing card with
   // name + icon, staggered in. This is the "look at what you built" moment.
@@ -5094,11 +5141,12 @@ function render() {
   drawEliteAffixTooltips(ctx, canvas.width, canvas.height);
   // THE WATCHER — rare, weighty utterance at milestone moments. Defers if
   // any ceremony is onscreen so it never speaks over a floor card / boss
-  // intro / pickup banner. Render near the end of the HUD pass so the
-  // italic sigil text sits above everything else.
+  // intro / pickup banner. Also pause-aware so the fade clock freezes
+  // while the player is in the pause menu.
   drawWatcher(ctx, canvas.width, canvas.height, {
     floorCardTime, bossIntroTime, phaseIntroTime,
-    pickupFlashActive: false,   // drawPickupFlash reads its own state; we don't gate on it here
+    pickupFlashActive: isPickupFlashActive(),
+    paused,
   });
   drawComboOverlay(ctx, canvas.width, canvas.height);
   drawScreenFlash(ctx, canvas.width, canvas.height);

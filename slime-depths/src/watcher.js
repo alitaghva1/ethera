@@ -34,6 +34,8 @@ const DEFAULT_STATE = () => ({
   runs: 0,
   deaths: 0,
   highestFloor: 0,
+  lastRunAt: 0,                 // ms timestamp (Date.now()) of last watcherOnRunStart
+  lastSpokenLine: '',           // last utterance this Watcher has spoken (for summary ledger)
   seen: {
     firstDescent: false,
     firstDeath: false,
@@ -43,6 +45,11 @@ const DEFAULT_STATE = () => ({
     firstBossKill: false,
     firstFinalBossEnter: false,
     firstVictory: false,
+    firstPostVictoryDescent: false,  // first run AFTER first victory
+    firstAscension: false,            // first run started with an ascension tier
+    deathToll10: false,
+    deathToll25: false,
+    deathToll50: false,
   },
 });
 
@@ -57,6 +64,8 @@ function loadState() {
       runs: saved.runs | 0,
       deaths: saved.deaths | 0,
       highestFloor: saved.highestFloor | 0,
+      lastRunAt: Number(saved.lastRunAt) || 0,
+      lastSpokenLine: typeof saved.lastSpokenLine === 'string' ? saved.lastSpokenLine : '',
       seen: { ...base.seen, ...(saved.seen || {}) },
     };
   } else {
@@ -79,9 +88,17 @@ function resetRun() {
 }
 
 // ---- Render state ----------------------------------------------------------
-let pendingLine = null;      // queued utterance waiting for ceremonies to clear
+// pendingQueue is a small FIFO (cap 3) so milestones fired in rapid succession
+// (e.g. boss clear + floor enter + first-floor-N on the same tick) don't
+// silently drop each other. The earliest queued line always wins.
+const PENDING_CAP = 3;
+let pendingQueue = [];       // array of strings waiting for ceremonies to clear
 let currentLine = null;      // the line currently being drawn
 let currentStart = 0;        // performance.now()/1000 when current line began fade-in
+// lastPausedStamp — performance.now() stamp when the player paused. Used to
+// shift currentStart forward on unpause so the fade timer doesn't advance
+// while the pause overlay is up.
+let lastPausedStamp = 0;
 
 const FADE_IN_SEC = 0.8;
 const HOLD_SEC = 4.5;
@@ -89,9 +106,20 @@ const FADE_OUT_SEC = 1.2;
 const TOTAL_SEC = FADE_IN_SEC + HOLD_SEC + FADE_OUT_SEC;
 
 function speak(text) {
-  // Queue. The render function promotes to `currentLine` when no intro or
-  // pickup banner is onscreen, so the Watcher doesn't talk over ceremonies.
-  pendingLine = text;
+  if (!text) return;
+  // FIFO — preserve the EARLIEST queued milestone on burst. If the queue is
+  // already at cap, drop the newest (not the oldest) — losing a later line
+  // to keep an earlier milestone is the correct trade for a scarcity-first
+  // design.
+  if (pendingQueue.length >= PENDING_CAP) return;
+  pendingQueue.push(text);
+  // Record for the run-summary ledger even if the line never reaches the
+  // screen (e.g. player alt-tabs immediately). The ledger is about what the
+  // Watcher spoke, not what the player saw.
+  if (state) {
+    state.lastSpokenLine = text;
+    saveState();
+  }
 }
 
 // ---- Trigger API -----------------------------------------------------------
@@ -102,11 +130,33 @@ export function watcherOnRunStart() {
   loadState();
   resetRun();
   state.runs += 1;
+  // RETURN AFTER LONG ABSENCE — wins over firstDescent-on-repeat (it bypasses
+  // when firstDescent already fired). Stamps lastRunAt for next time.
+  const nowMs = Date.now();
+  const gap = state.lastRunAt ? (nowMs - state.lastRunAt) : 0;
+  state.lastRunAt = nowMs;
   if (!state.seen.firstDescent) {
     state.seen.firstDescent = true;
     speak('Another one descends. I have watched many.');
+  } else if (gap > 72 * 3600 * 1000) {
+    // Rare, atmospheric — only fires on a 72h+ absence, and only once per
+    // returning session (guarded by lastRunAt being bumped above).
+    speak('You were gone. I waited. That is what I do.');
+  } else if (state.seen.firstVictory && !state.seen.firstPostVictoryDescent) {
+    // First time coming back after completing the descent. Implies the
+    // victory wasn't really an ending.
+    state.seen.firstPostVictoryDescent = true;
+    speak('Again? Then you did not finish what you started.');
   }
   saveState();
+}
+
+// RESUME — a player continuing from a snapshot. Resets per-run volatile state
+// (so death-line gating works correctly) but does NOT bump the runs counter
+// or fire firstDescent — this isn't a fresh descent, just a reconnection.
+export function watcherOnRunResume() {
+  loadState();
+  resetRun();
 }
 
 // floorLevel: 1..MAX_FLOORS, the level the player has just died on.
@@ -118,17 +168,33 @@ export function watcherOnDeath(floorLevel, nearFinalBoss = false) {
   if (!state.seen.firstDeath) {
     state.seen.firstDeath = true;
     saveState();
-    speak('You fall. Rise, then. The road is long.');
+    speak('You fall. Others have fallen farther. Rise.');
     return;
   }
-  if (!runState || runState.deathLineFired) { saveState(); return; }
-  runState.deathLineFired = true;
-  if (nearFinalBoss) {
-    speak('You were so near. Try again.');
-  } else if (floorLevel >= 3) {
-    speak('You were closer. That is not nothing.');
-  } else {
-    speak('The dark takes you shallow.');
+  // DEATH-TOLL LADDER — one-shot milestones that reflect total deaths across
+  // the account. Each fires at most once, ever. The ladder layers a sense
+  // of "it has been counting" on top of whichever per-run line also fires.
+  if (state.deaths >= 50 && !state.seen.deathToll50) {
+    state.seen.deathToll50 = true;
+    speak('Fifty. You have given more of yourself than most knights possess.');
+  } else if (state.deaths >= 25 && !state.seen.deathToll25) {
+    state.seen.deathToll25 = true;
+    speak('Twenty-five. I no longer feel I am watching a stranger.');
+  } else if (state.deaths >= 10 && !state.seen.deathToll10) {
+    state.seen.deathToll10 = true;
+    speak('Ten times. The ruin has learned your shape.');
+  }
+  // Per-run death-depth line — resolves AFTER the ladder so both can fire
+  // in the same death (ladder first in visual order via the queue).
+  if (runState && !runState.deathLineFired) {
+    runState.deathLineFired = true;
+    if (nearFinalBoss) {
+      speak('You touched the ember. It remembers your hand.');
+    } else if (floorLevel >= 3) {
+      speak('You were closer. That is not nothing.');
+    } else {
+      speak('The dark takes you shallow.');
+    }
   }
   saveState();
 }
@@ -142,7 +208,7 @@ export function watcherOnFloorEnter(floorLevel) {
   if (floorLevel === 2 && !state.seen.firstFloor2) {
     state.seen.firstFloor2 = true;
     saveState();
-    speak('You came this far. That is something.');
+    speak('You passed the first door. Few see the second.');
   } else if (floorLevel === 3 && !state.seen.firstFloor3) {
     state.seen.firstFloor3 = true;
     saveState();
@@ -180,14 +246,26 @@ export function watcherOnFinalBossEnter() {
   }
 }
 
+// First time starting a run with any ascension tier active. Tier >= 1 means
+// the player has intentionally raised the difficulty ceiling.
+export function watcherOnAscensionStart(tier) {
+  loadState();
+  if ((tier | 0) >= 1 && !state.seen.firstAscension) {
+    state.seen.firstAscension = true;
+    saveState();
+    speak('You ask the ruin to remember you harder. It will.');
+  }
+}
+
 // ---- Debug / test API ------------------------------------------------------
 
 export function watcherResetForTesting() {
   state = DEFAULT_STATE();
   saveState();
   resetRun();
-  pendingLine = null;
+  pendingQueue = [];
   currentLine = null;
+  lastPausedStamp = 0;
 }
 
 // Fires an arbitrary line immediately, bypassing state + triggers. For
@@ -202,10 +280,28 @@ export function watcherSnapshot() {
     runs: state.runs,
     deaths: state.deaths,
     highestFloor: state.highestFloor,
+    lastRunAt: state.lastRunAt,
+    lastSpokenLine: state.lastSpokenLine,
     seen: { ...state.seen },
-    hasPending: !!pendingLine,
+    pendingCount: pendingQueue.length,
     hasCurrent: !!currentLine,
   };
+}
+
+// Run-summary ledger — returns the most recent utterance this Watcher has
+// spoken, for quoting on death / victory screens. Returns empty string if
+// the Watcher has never spoken (so the death screen can omit the block).
+export function watcherLastLine() {
+  loadState();
+  return state.lastSpokenLine || '';
+}
+
+// For the ledger, the Watcher's count of descents — framed as its record
+// of YOU, not a raw counter. Use on run summary: "The Watcher marks your
+// Nth descent."
+export function watcherDescentCount() {
+  loadState();
+  return state.runs | 0;
 }
 
 // ---- Render ----------------------------------------------------------------
@@ -234,9 +330,24 @@ function wrapText(ctx, text, maxWidth) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} w  canvas width
  * @param {number} h  canvas height
- * @param {object} flags  ceremony flags { floorCardTime, bossIntroTime, phaseIntroTime, pickupFlashActive }
+ * @param {object} flags  ceremony flags { floorCardTime, bossIntroTime, phaseIntroTime, pickupFlashActive, paused }
  */
 export function drawWatcher(ctx, w, h, flags = {}) {
+  // Pause-aware timing: track wall-clock time spent paused and add it to
+  // currentStart so the fade-in/hold/fade-out clock doesn't advance while
+  // the player is in the pause menu or alt-tabbed with the pause overlay up.
+  const nowMs = performance.now();
+  if (flags.paused) {
+    if (lastPausedStamp === 0) lastPausedStamp = nowMs;
+    return;   // do not render + do not advance timer
+  } else if (lastPausedStamp !== 0) {
+    // Just unpaused — shift currentStart forward by the paused duration so
+    // the fade clock resumes where it left off.
+    const pausedFor = (nowMs - lastPausedStamp) / 1000;
+    if (currentLine) currentStart += pausedFor;
+    lastPausedStamp = 0;
+  }
+
   // Promote pending to current only when no other ceremony is onscreen.
   // This is what makes the Watcher feel RESPECTFUL of the game's other
   // moments — it waits for the floor card to fade before it speaks.
@@ -246,9 +357,8 @@ export function drawWatcher(ctx, w, h, flags = {}) {
     (flags.phaseIntroTime || 0) > 0 ||
     !!flags.pickupFlashActive;
 
-  if (!currentLine && pendingLine && !ceremonyActive) {
-    currentLine = pendingLine;
-    pendingLine = null;
+  if (!currentLine && pendingQueue.length > 0 && !ceremonyActive) {
+    currentLine = pendingQueue.shift();
     currentStart = performance.now() / 1000;
   }
   if (!currentLine) return;

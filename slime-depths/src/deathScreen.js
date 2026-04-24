@@ -63,6 +63,9 @@ export const DEATH_SCREEN_HTML = `
 
   <!-- Relic trophy strip -->
   <div id="endRelics" style="display:flex;gap:6px;margin-bottom:14px;align-items:center;animation:winFadeIn 0.6s ease-out 0.75s both;position:relative;z-index:1;"></div>
+  <!-- The Watcher's ledger — populated when the entity has ever spoken. Quiet.
+       Matches the in-run visual grammar: cream italic serif + the eye sigil. -->
+  <div id="endWatcher" style="display:none;font-family:Georgia,serif;color:#ece0c4;font-style:italic;font-size:13px;letter-spacing:0.3px;margin-bottom:16px;text-align:center;animation:winFadeIn 0.7s ease-out 0.85s both;position:relative;z-index:1;max-width:560px;line-height:1.5;"></div>
   <!-- Essence earned + progress bar (cyan, sanctuary theme) -->
   <div id="endEssence" style="font-size:17px;color:#a0e8ff;letter-spacing:3px;text-shadow:0 0 12px rgba(160,232,255,0.55);margin-bottom:18px;text-align:center;animation:winFadeIn 0.7s ease-out 0.9s both;position:relative;z-index:1;"></div>
 
