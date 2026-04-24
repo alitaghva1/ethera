@@ -64,7 +64,7 @@ import {
   watcherLastLine, watcherDescentCount,
 } from './watcher.js';
 import {
-  HAMLET_HERO_SPAWN,
+  HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX,
   updateHamletScene, drawHamletEntities, drawHamletInteractPrompt,
   consumeHamletInteract,
 } from './hamletScene.js';
@@ -4374,6 +4374,18 @@ function tick(now) {
     // HAMLET CANVAS — proximity + interact tracking. Runs on every tick
     // so the interact prompt appears the moment the hero walks into range.
     if (room.kind === 'hamlet') {
+      // Clamp hero to the painted cobblestone strip — they can't walk up
+      // into the sky / painted building zone. Invisible bound; feels like
+      // the scene has depth even though the backdrop is flat.
+      if (hero.y < HAMLET_WALK_Y_MIN) { hero.y = HAMLET_WALK_Y_MIN; hero.vy = 0; }
+      if (hero.y > HAMLET_WALK_Y_MAX) { hero.y = HAMLET_WALK_Y_MAX; hero.vy = 0; }
+      // Lock camera to the room center — the room is narrower than the
+      // viewport (960 vs 1280) so there's a mandatory ~160px side-void.
+      // Locking prevents the void from shifting as the hero moves and
+      // keeps the painted backdrop perfectly framed.
+      camera.x = 480; camera.targetX = 480;
+      camera.y = 336; camera.targetY = 336;
+
       updateHamletScene(dt);
       if (keyJustPressed('KeyE')) {
         const act = consumeHamletInteract();
