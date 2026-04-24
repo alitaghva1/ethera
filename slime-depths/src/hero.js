@@ -21,7 +21,11 @@ import { showTip } from './tips.js';
 import { markChainFired, markPyroFired } from './counterPips.js';
 
 const SPR = 128;                  // 8-directional sprite sheet cell size (was 100 for horizontal-strip sheets)
-const HERO_DRAW = 96;              // on-screen hero size (slightly scaled down)
+const HERO_DRAW = 80;              // on-screen hero size. Dropped from 96
+                                   // after the PixelLab migration — the
+                                   // chibi silhouette fills more of the
+                                   // 128px frame than the old Tiny RPG
+                                   // knight did of its 100px frame.
 const HERO_RADIUS = 14;            // collision
 const HERO_SPEED = 230;
 const DODGE_SPEED = 620;

@@ -34,12 +34,14 @@ import { watcherSnapshot } from './watcher.js';
 // strip in front of a backdrop. Obstacle circles below keep the hero out
 // of building footprints so this larger area stays coherent.
 export const HAMLET_WALK_Y_MIN = 340;
-export const HAMLET_WALK_Y_MAX = 648;
+// Y_MAX must stay far enough above row 13 (y=624-672 is the south wall)
+// that the hero-body upper-edge collision check (y − HERO_RADIUS 14)
+// lands in floor tile row 12. 608 keeps y+14=622 clear of the wall.
+export const HAMLET_WALK_Y_MAX = 608;
 
 // Hero spawn — bottom-center, on the entrance trail just south of the
-// central plaza. Every path in the hub converges at the plaza; the
-// entrance puts the hero one walk-step from the plaza's south edge.
-export const HAMLET_HERO_SPAWN = { x: 480, y: 640 };
+// central plaza. Same wall-clearance constraint as Y_MAX.
+export const HAMLET_HERO_SPAWN = { x: 480, y: 602 };
 
 // Zone anchors — named positions for every meaningful location in the
 // hamlet. Layout mirrors the design reference: plaza at the heart,
