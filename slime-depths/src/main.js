@@ -40,7 +40,7 @@ import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
 import { CURSES, ALL_CURSE_IDS, activeCurses, loadCurses, toggleCurse, isCursed, curseCount, curseEssenceMul } from './curses.js';
 import { ACHIEVEMENTS, ACH_IDS, unlockedAchievements, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked, unlockAch } from './achievements.js';
 import { records, loadRecords, updateRecords, incrementRunsStarted } from './records.js';
-import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, discoveredCount } from './fusions.js';
+import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, discoveredCount, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards, seenTarot } from './tarot.js';
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings.js';
