@@ -165,9 +165,52 @@ Configs:
 CI at `.github/workflows/ci.yml` runs lint + format:check + typecheck +
 build on every PR, plus `npm ci` on `electron/` to catch dependency drift.
 
+## TypeScript migration status
+
+Three files are `.ts` and strict-typed (settings, stats, records).
+Everything else is `.js` compiled under `allowJs + checkJs: false` so JS
+code still works unchanged. The migration is gradual on purpose — one
+file at a time, small + stable ones first.
+
+When converting a file:
+1. Write `src/<name>.ts` with types (use the settings/stats/records files
+   as templates — interface for shape, return-type annotations, type-only
+   imports where useful)
+2. `git rm src/<name>.js`
+3. Update every consumer: change `from './<name>.js'` to `from './<name>'`
+   (extensionless — Vite + tsconfig bundler resolution handles both dev
+   server and Rollup build)
+4. `npm run lint && npm run typecheck && npm run build` — all green
+5. Smoke-test in browser (the game should load identically)
+
+Next candidates (all small + stable): `meta.js`, `music.js`, `storage.js`,
+`daily.js`, `profile.js`. After those, start on consumers — converting
+a consumer of an already-typed module is where the types start pulling
+their weight (compile errors for typo'd field names, etc.).
+
+## Electron (desktop/Steam target)
+
+- `electron/main.js` — dev loads Vite at `http://localhost:5173`;
+  production loads from the packaged `slime-depths/dist/` at
+  `extraResources/game/index.html`.
+- `electron/preload.js` exposes `window.ethera.*` — both the legacy
+  slot-based save API and a newer `kvGet/kvSet/kvRemove/kvKeys/kvClear`
+  IPC surface. **The KV surface is exposed but NOT YET called from
+  game code.** A future session should wire `storage.js` to dispatch
+  through it when `window.ethera` is present, so Steam packages write
+  to `userData/saves/storage.json` (Steam-Cloud-friendly) instead of
+  Chromium's sandboxed localStorage.
+- Build: `cd electron && npm run build:win` (prebuild hook auto-runs
+  `npm run build` in slime-depths/ first).
+
 ## Core files (in `slime-depths/src/`)
 
 - `main.js` — entry, game loop, boss-clear flow, HUD rendering glue
+  (~5950 lines; shrinking as concerns get extracted — see below)
+- `debug.js` — `window.__startRun/__dbg/__jumpToBoss/etc.` (dev-only,
+  tree-shaken from production builds via `import.meta.env.DEV`)
+- `menuEmbers.js` — ambient gold ember particle system for menu / hamlet
+- `floorCardRender.js` — the "FLOOR I — THE UNDERCROFT" intro card render
 - `hero.js` — hero state + abilities (dodge, dash-strike, weapons)
 - `relics.js` — relic registry, tier weights per floor, rollRelicOffer
 - `pedestals.js` — pickup points, tier-scaled visuals, pickup flash banner
