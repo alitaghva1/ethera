@@ -224,6 +224,8 @@ export function resetHero() {
   hero.bulwarkReduction = 0.5;
   hero.secondWind = false;
   hero.secondWindAvailable = false;
+  hero.ironResolveParry = false;   // conditional parry on face+hold-still
+  hero._stillT = 0;
   hero.startingGold = 0;
   hero.relicCount = 0;     // maintained by relics.js for Memory of the Bell
   hero.swingIndex = 0;
@@ -505,6 +507,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         hero.hp -= 1;
       }
       setState('dodge');
+      hero._stillT = 0;   // iron_resolve parry window resets on dodge
       playSfx('footstep_1', { rate: 0.85, volume: 0.8 });
       // Departure burst — dust kicks in the direction the hero is leaving FROM
       // (opposite of dodge direction). Grounds the dodge in physical weight.
@@ -637,6 +640,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         // SYSTEMS PASS — IRON GREAVES: track continuous movement time.
         // Reset on any non-walk transition (attack/dodge/idle below).
         hero._moveTime = (hero._moveTime || 0) + dt;
+        hero._stillT = 0;   // iron_resolve parry window resets on motion
         hero.footstepT -= dt;
         if (hero.footstepT <= 0) {
           hero.footstepT = 0.32 / hero.speedMul;
@@ -655,6 +659,9 @@ export function updateHero(dt, enemies, mouseWorld) {
         setState('idle');
         // Iron Greaves movement streak resets when the hero stops moving.
         hero._moveTime = 0;
+        // Iron Resolve parry — track "stance time" while idle. The parry
+        // window opens at ≥0.3s of uninterrupted stillness.
+        hero._stillT = (hero._stillT || 0) + dt;
       }
     }
   }
@@ -1141,6 +1148,37 @@ export function damageHero(amount, fromX, fromY) {
     while (diffA < -Math.PI) diffA += Math.PI * 2;
     if (Math.abs(diffA) <= hero.bulwarkArc / 2) {
       amount *= hero.bulwarkReduction;
+    }
+  }
+  // IRON RESOLVE parry — if the hero has held their ground (≥0.3s still)
+  // AND is facing the attacker (±60°), the hit is turned aside: -85% dmg
+  // + slow the attacker by 60% for 0.5s. Rewards defensive stance play.
+  // Base -20% dmg-taken mul still applies (set in apply()); parry is ON TOP.
+  if (hero.ironResolveParry && (hero._stillT || 0) >= 0.3) {
+    const dxF = fromX - hero.x, dyF = fromY - hero.y;
+    const srcA = Math.atan2(dyF, dxF);
+    const aimA = Math.atan2(hero.aimY, hero.aimX);
+    let diffA = srcA - aimA;
+    while (diffA > Math.PI) diffA -= Math.PI * 2;
+    while (diffA < -Math.PI) diffA += Math.PI * 2;
+    if (Math.abs(diffA) <= Math.PI / 3) {    // ±60° arc
+      amount *= 0.15;                        // -85%
+      // Spark burst + brief slow on the nearest attacker candidate
+      for (let k = 0; k < 8; k++) {
+        const ang = aimA + (k - 4) * 0.12;
+        hitSpark(hero.x + Math.cos(ang) * 18, hero.y + Math.sin(ang) * 18, 0, 0, '#cfe4ff');
+      }
+      // Stagger the nearest enemy near the damage source (uses the existing
+      // stagger duration field the combat system already reads).
+      for (const e of activeEnemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const edx = e.x - fromX, edy = e.y - fromY;
+        if (edx * edx + edy * edy < 36 * 36) {
+          e.stagger = Math.max(e.stagger || 0, 0.45);
+        }
+      }
+      triggerScreenFlash('rgba(180, 210, 240, 0.18)', 0.25);
+      playSfx('click', { rate: 2.4, volume: 0.7 });
     }
   }
   // HOURGLASS OF RESPITE — at 30% HP or below, halve incoming damage once

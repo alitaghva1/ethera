@@ -109,11 +109,11 @@ export const RELIC_DEFS = {
   iron_resolve: {
     id: 'iron_resolve',
     name: 'Iron Resolve',
-    desc: 'Incoming damage -25%',
+    desc: '-20% damage taken · facing hits while held still PARRY for -85%',
     flavor: 'The knight still stood, long after the war had ended.',
     icon: 'relic_iron_resolve',
     tint: '#a0c8ff',
-    apply: () => { hero.damageTakenMul *= 0.75; },
+    apply: () => { hero.damageTakenMul *= 0.80; hero.ironResolveParry = true; },
   },
   keen_edge: {
     id: 'keen_edge',
