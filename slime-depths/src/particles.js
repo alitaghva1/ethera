@@ -331,7 +331,6 @@ function respawnWeather(w, cameraX, cameraY) {
 }
 
 export function updateWeather(dt, cameraX, cameraY) {
-  const st = WEATHER_STYLES[weatherBiome] || WEATHER_STYLES.vault;
   if (!weatherInit) {
     for (let i = 0; i < WEATHER_COUNT; i++) {
       const w = {};

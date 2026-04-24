@@ -3,6 +3,7 @@
 // spend the first 100 commits fighting existing style choices. Strictness
 // ratchets up over time as TypeScript migration proceeds.
 import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
 export default [
@@ -13,6 +14,15 @@ export default [
 
   // Recommended JS baseline (no-undef, no-unused-private-class-members, etc.)
   js.configs.recommended,
+
+  // TypeScript parser + recommended rule set applied to .ts/.tsx files.
+  // Gets us syntax-aware linting (no "Unexpected token interface" on
+  // `export interface Settings { ... }`) and the common TS hygiene rules
+  // (no-explicit-any, consistent-type-imports, etc.) as warnings.
+  ...tseslint.configs.recommended.map((cfg) => ({
+    ...cfg,
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+  })),
 
   // Game source (src/) — browser globals, ESM, permissive rules.
   {

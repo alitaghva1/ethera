@@ -564,7 +564,6 @@ export function drawHud(ctx, w, h, progress = {}) {
     const fSize = 26;
     const fGap = 6;
     const fY = h - fSize - 62;       // above relic strip
-    const totalW = activeFusions.length * (fSize + fGap) - fGap;
     const fLabelY = fY - 14;
     ctx.save();
     // Small header

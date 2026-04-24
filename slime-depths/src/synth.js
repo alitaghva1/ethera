@@ -2,7 +2,7 @@
 // short-lived nodes (oscillator + gain + filter) that auto-disconnect on
 // stop. Respects the sfx volume setting via the settings module.
 
-import { settings } from './settings.js';
+import { settings } from './settings';
 
 let audioCtx = null;
 

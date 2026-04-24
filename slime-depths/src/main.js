@@ -42,8 +42,8 @@ import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchieve
 import { records, loadRecords, updateRecords, incrementRunsStarted } from './records.js';
 import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
-import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards, seenTarot } from './tarot.js';
-import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings.js';
+import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
+import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
 import { loadTips, showTip, updateTips, drawTip } from './tips.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
@@ -297,7 +297,6 @@ function makeShopCard({ tint, iconKey, name, desc, flavor, price, tier, staggerI
     card.style.opacity = '0.7';
     // Purchase sparkle feedback
     try {
-      const rect = card.getBoundingClientRect();
       card.style.boxShadow = `0 0 32px ${tint}, 0 0 64px ${tint}88`;
       setTimeout(() => { card.style.boxShadow = '0 4px 16px rgba(0,0,0,0.4)'; }, 500);
       synthPing(1100, 0.9, 0.3);
@@ -775,7 +774,6 @@ function showTarotReveal() {
   row.innerHTML = '';
   for (let i = 0; i < drawnCards.length; i++) {
     const c = drawnCards[i];
-    const firstDraw = !seenTarot.has(c.id) || (seenTarot.size <= 3);
     const card = document.createElement('div');
     // Card styling — vintage tarot feel
     card.style.cssText = `width:180px;background:linear-gradient(180deg,#2a1418,#140a0d);border:2px solid ${c.tint};padding:18px 14px;text-align:center;display:flex;flex-direction:column;gap:6px;box-shadow:0 0 20px ${c.tint}44;transform:translateY(20px) rotate(-3deg);opacity:0;animation:cardReveal 0.6s ease-out ${i * 0.25}s forwards;`;
@@ -1376,14 +1374,11 @@ document.getElementById('dialogueCloseBtn').addEventListener('mouseleave', (e) =
   e.target.style.textShadow = 'none';
 });
 
-let activeDialogueNpcId = null;
-
 function openDialogue(npcId) {
   const def = NPCS[npcId];
   if (!def) return;
   const stage = hamletState.npcArcStage[npcId];
   if (stage === undefined) return;
-  activeDialogueNpcId = npcId;
   const stageDef = def.arcStages[stage] || def.arcStages[def.arcStages.length - 1];
   // Name + title
   document.getElementById('dialogueName').textContent = def.name;
@@ -1626,7 +1621,6 @@ function renderOracleFortuneCards() {
     [order[i], order[j]] = [order[j], order[i]];
   }
   for (const id of order) {
-    const card = TAROT[id];
     const cardEl = document.createElement('button');
     cardEl.className = 'oracleFortuneCard';
     cardEl.dataset.cardId = id;
@@ -3762,7 +3756,6 @@ function showEndOfRun(isVictory) {
   const title = document.getElementById('endTitle');
   const subtitle = document.getElementById('endSubtitle');
   const ornamentText = document.getElementById('endOrnamentText');
-  const ornamentParent = document.getElementById('endOrnament');
   const restartBtn = document.getElementById('restartBtn');
   const lineL = document.getElementById('endOrnamentLineL');
   const lineR = document.getElementById('endOrnamentLineR');
@@ -3827,11 +3820,6 @@ function showEndOfRun(isVictory) {
   // LIVING HAMLET — check if any new NPCs should arrive based on the
   // refreshed records. They appear when the player next opens the hamlet.
   refreshNpcPresence(records, stats, { seenRelicIds });
-  const recordLabels = {
-    maxFloor: 'Deepest Descent', maxCombo: 'Highest Combo', biggestHit: 'Biggest Hit',
-    mostRelics: 'Most Relics', mostGold: 'Richest Run', mostEnemies: 'Most Kills',
-    mostBosses: 'Most Bosses', fastestClear: 'Fastest Clear',
-  };
   const newBestMark = (key) => beatenRecords.includes(key)
     ? ' <span style="color:#ffe070;font-size:10px;letter-spacing:1px;text-shadow:0 0 8px rgba(255,224,112,0.8);">★ BEST</span>' : '';
   grid.innerHTML = `
