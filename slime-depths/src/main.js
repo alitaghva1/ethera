@@ -66,7 +66,7 @@ import {
 import {
   HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX,
   updateHamletScene, drawHamletBackdrop, drawHamletEntities, drawHamletOverlay, drawHamletInteractPrompt,
-  consumeHamletInteract,
+  consumeHamletInteract, resolveHamletCollision,
 } from './hamletScene.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
@@ -4386,11 +4386,13 @@ function tick(now) {
     // HAMLET CANVAS — proximity + interact tracking. Runs on every tick
     // so the interact prompt appears the moment the hero walks into range.
     if (room.kind === 'hamlet') {
-      // Clamp hero to the painted cobblestone strip — they can't walk up
-      // into the sky / painted building zone. Invisible bound; feels like
-      // the scene has depth even though the backdrop is flat.
+      // Clamp hero to the hamlet's walkable Y band. The band is wide now
+      // (y 340–648) so the hero can approach the tower, visit the shrine,
+      // and wander the ruined edges. Hard Y-clamp first, then obstacle
+      // resolution pushes the hero out of building footprints.
       if (hero.y < HAMLET_WALK_Y_MIN) { hero.y = HAMLET_WALK_Y_MIN; hero.vy = 0; }
       if (hero.y > HAMLET_WALK_Y_MAX) { hero.y = HAMLET_WALK_Y_MAX; hero.vy = 0; }
+      resolveHamletCollision(hero);
       // Lock camera to the room center — the room is narrower than the
       // viewport (960 vs 1280) so there's a mandatory ~160px side-void.
       // Locking prevents the void from shifting as the hero moves and

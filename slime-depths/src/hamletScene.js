@@ -28,46 +28,97 @@ import { watcherSnapshot } from './watcher.js';
 //
 // Walkable Y-band: ~500 (top of painted cobblestone) → ~630 (bottom edge
 // of room interior). All interactable entities live in that band.
-export const HAMLET_WALK_Y_MIN = 500;
-export const HAMLET_WALK_Y_MAX = 630;
+// Walkable band WIDENED (post-Nano-layout pass) so the hamlet is a real
+// place the hero moves through — approaching the tower, walking up into
+// the shrine district, visiting the ruined edges — rather than a narrow
+// strip in front of a backdrop. Obstacle circles below keep the hero out
+// of building footprints so this larger area stays coherent.
+export const HAMLET_WALK_Y_MIN = 340;
+export const HAMLET_WALK_Y_MAX = 648;
 
-// Hero spawn — front-center of the cobblestone zone, below the firepit.
-export const HAMLET_HERO_SPAWN = { x: 480, y: 635 };
+// Hero spawn — bottom-center, on the entrance trail just south of the
+// central plaza. Every path in the hub converges at the plaza; the
+// entrance puts the hero one walk-step from the plaza's south edge.
+export const HAMLET_HERO_SPAWN = { x: 480, y: 640 };
 
-// Portal interact zone — visually anchored to the central ruined tower
-// drawn by drawHamletEntities. Feet at y=440 (tower's base on the cobble
-// horizon); interact when hero approaches that base.
-const PORTAL_POS = { x: 480, y: 450 };
-// Watcher shrine — left cobblestone, pushed in enough to clear the
-// tile-variant moss patches that sit at the column edge.
-const SHRINE_POS = { x: 130, y: 580 };
-// Firepit — center-front, between NPC row and hero spawn. Decorative only.
-const FIREPIT_POS = { x: 480, y: 600 };
+// Zone anchors — named positions for every meaningful location in the
+// hamlet. Layout mirrors the design reference: plaza at the heart,
+// tower north, forge southwest, archive east, shrine northwest, ruined
+// edges in the back corners, rebuild scaffolding between plaza + archive.
+const PORTAL_POS   = { x: 480, y: 400 };  // descent tower centre
+const SHRINE_POS   = { x: 150, y: 440 };  // watcher shrine, west-mid
+const FIREPIT_POS  = { x: 480, y: 540 };  // plaza campfire, heart
+// (Forge/archive/shrine/ruin anchors live inline in drawHamletBackdrop as
+// Z_* locals — they're only consumed by zone paints, not entities.)
 
-// NPC world positions — staggered in a HANDCRAFTED diorama rather than a
-// flat row. Each NPC is placed at a spot that fits their role: keeper at
-// the firepit, smith near the forge, archivist near the dome, gravekeeper
-// in the left shadows, oracle in the right corner, wanderer far-right.
+// NPC world positions — one per district, not a service-counter row.
 // spriteIdx maps to the pixel-art hamlet_npcp sheet (3×2):
 //   0 keeper | 1 smith  | 2 archivist
 //   3 grave  | 4 oracle | 5 wanderer
 export const HAMLET_ENTITIES = [
-  { kind: 'portal',                                 x: PORTAL_POS.x, y: PORTAL_POS.y, interactR: 70 },
-  { kind: 'shrine',                                 x: SHRINE_POS.x, y: SHRINE_POS.y, interactR: 0  },
-  { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0 },
-  // KEEPER by the firepit — classic Hades-hub staging.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 540, y: 615, interactR: 50 },
-  // SMITH near the forge doorway.
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 280, y: 525, interactR: 50 },
-  // ARCHIVIST near the dome's steps on the right.
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 720, y: 555, interactR: 50 },
-  // GRAVEKEEPER in the left foreground shadows.
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 220, y: 620, interactR: 50 },
-  // ORACLE in the mid-right zone between portal + dome.
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 640, y: 600, interactR: 50 },
-  // WANDERER far-right corner, closest to the "exit" sight line.
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 830, y: 610, interactR: 50 },
+  { kind: 'portal',                                 x: PORTAL_POS.x,  y: PORTAL_POS.y,  interactR: 80 },
+  { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 0  },
+  { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0  },
+  // KEEPER — at the plaza, east-of-fire. Shop counter in the hub heart.
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 560, y: 560, interactR: 50 },
+  // SMITH — at the forge anvil.
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 240, y: 590, interactR: 50 },
+  // ARCHIVIST — beside the archive's reading pedestal.
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 765, y: 585, interactR: 50 },
+  // GRAVEKEEPER — in the WEST RUIN graveyard. Curses belong among the graves.
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 155, y: 395, interactR: 50 },
+  // ORACLE — at the plaza, west-of-fire. Mystic seer by the hearth.
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 400, y: 560, interactR: 50 },
+  // WANDERER — in the EAST RUIN by the collapsed gate. Literal outsider.
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 860, y: 415, interactR: 50 },
 ];
+
+// Solid obstacles the hero can't walk through. Circle-only for simplicity;
+// every building and the two firepits get a footprint so the hero stays
+// in the walkable corridors the paths imply. Called from main.js after
+// the Y-clamp so the hero can't push into a sprite.
+export const HAMLET_OBSTACLES = [
+  // Descent tower (central, raised disc)
+  { x: 480, y: 430, r: 62 },
+  // Forge hut — wide footprint
+  { x: 185, y: 490, r: 56 },
+  { x: 225, y: 490, r: 56 },
+  // Archive dome
+  { x: 810, y: 490, r: 62 },
+  // Background tower (far-left silhouette)
+  { x: 80,  y: 380, r: 28 },
+  // Main campfire — feet don't walk into the flame
+  { x: 480, y: 540, r: 24 },
+  // Builders' warming fire (rebuild zone)
+  { x: 745, y: 630, r: 22 },
+  // Watcher shrine — small footprint
+  { x: 150, y: 435, r: 22 },
+  // Scaffolding + cut-stone stack + half-wall (rebuild cluster blocks path)
+  { x: 680, y: 610, r: 24 },
+  { x: 720, y: 608, r: 20 },
+  // Collapsed gate (east ruin) — leaning stone
+  { x: 895, y: 375, r: 26 },
+];
+
+// Push the hero out of any obstacle they're currently inside. Cheap
+// per-tick O(N) sweep — N is tiny. Called after the hamlet Y-clamp.
+export function resolveHamletCollision(hero) {
+  for (const o of HAMLET_OBSTACLES) {
+    const dx = hero.x - o.x;
+    const dy = hero.y - o.y;
+    const d2 = dx * dx + dy * dy;
+    const rh = 10;   // hero body radius
+    const rr = o.r + rh;
+    if (d2 < rr * rr) {
+      const d = Math.sqrt(d2) || 0.001;
+      const push = (rr - d) / d;
+      hero.x += dx * push;
+      hero.y += dy * push;
+      // zero velocity component into the obstacle
+      hero.vx = 0; hero.vy = 0;
+    }
+  }
+}
 
 let _nearest = null;    // cached nearest interactable, updated each tick
 
@@ -365,150 +416,132 @@ export function drawHamletBackdrop(ctx) {
   }
 
   // ── ZONE ANCHORS ─────────────────────────────────────────────────────
-  // Named coordinates for every meaningful location in the hamlet. All
-  // path/plaza/pad painting keys off these, so moving a building means
-  // changing one number and the paths follow.
-  const Z_PLAZA  = { x: 480, y: 600 };  // campfire — the heart
-  const Z_SPAWN  = { x: 480, y: 644 };  // player entrance
-  const Z_TOWER  = { x: 480, y: 460 };  // ruined tower (descent portal)
-  const Z_FORGE  = { x: 200, y: 540 };  // hut/forge doorway approach
-  const Z_DOME   = { x: 810, y: 525 };  // archive dome approach
-  const Z_SHRINE = { x: 130, y: 600 };  // shrine pad
+  // Coordinates mirror the Nano design reference. Plaza is the heart;
+  // tower sits on a raised stone disc north of it; three districts
+  // (forge SW, shrine NW, archive E) ring the plaza; rebuild scaffolding
+  // sits on the plaza-to-archive spoke; ruin zones fill the back corners.
+  const Z_PLAZA   = { x: 480, y: 540 };  // campfire — the heart
+  const Z_SPAWN   = { x: 480, y: 644 };  // entrance trail
+  const Z_TOWER   = { x: 480, y: 400 };  // descent tower, raised disc
+  const Z_FORGE   = { x: 200, y: 575 };  // forge anvil / doorway
+  const Z_ARCHIVE = { x: 800, y: 555 };  // archive pedestal
+  const Z_SHRINE  = { x: 150, y: 440 };  // watcher shrine
+  const Z_WEST_RUIN = { x: 115, y: 360 };
+  const Z_EAST_RUIN = { x: 870, y: 380 };
 
-  // ── ZONE · NATURE RECLAIM ────────────────────────────────────────────
-  // Outer 100px on each side darkens + greens the ground, telling the
-  // story of vegetation reclaiming the edges. Multiply mode desaturates
-  // + darkens the cobble. Does NOT extend into the walkable central
-  // zone so the edges clearly frame "ruined/abandoned" vs "lived-in".
+  // ── ZONE · GROUND LEVEL-TONE ─────────────────────────────────────────
+  // Very subtle desaturation on the base cobble so the district pads
+  // below look cleaner without turning the surrounding ground into
+  // black void. Alpha kept very low — pads + paths are opaque paints,
+  // they don't need the base significantly dimmed to stand out.
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = 'rgba(200, 190, 178, 1)';
+  ctx.globalAlpha = 0.35;
+  ctx.fillRect(BG_X_MIN, 300, BG_W, 372);
+  ctx.restore();
+
+  // ── ZONE · OVERSCAN STRIPS (outside playable room) ───────────────────
+  // The extended -360..0 / 960..1320 strips fill the void on wide
+  // viewports. Make them visibly DARKER than the settlement — "past the
+  // walls" — so the playable room feels enclosed.
   {
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    // Left edge reclaim (inside room bounds, 0..90)
-    const leftGrad = ctx.createLinearGradient(0, 400, 95, 400);
-    leftGrad.addColorStop(0,   'rgba(78, 95, 65, 1)');   // deep moss
-    leftGrad.addColorStop(0.6, 'rgba(155, 160, 140, 1)');
-    leftGrad.addColorStop(1,   'rgba(255, 255, 255, 1)');
-    ctx.fillStyle = leftGrad;
-    ctx.fillRect(0, 340, 95, 332);
-    // Right edge reclaim (865..960)
-    const rightGrad = ctx.createLinearGradient(865, 400, 960, 400);
-    rightGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    rightGrad.addColorStop(0.4, 'rgba(155, 160, 140, 1)');
-    rightGrad.addColorStop(1, 'rgba(78, 95, 65, 1)');
-    ctx.fillStyle = rightGrad;
-    ctx.fillRect(865, 340, 95, 332);
-    // Overscan strips (-360..0 and 960..1320) — heavier darkening so
-    // off-room area reads as "past the settlement, not lit".
-    const farLeft = ctx.createLinearGradient(BG_X_MIN, 400, 0, 400);
-    farLeft.addColorStop(0,   'rgba(40, 38, 48, 1)');
-    farLeft.addColorStop(1,   'rgba(78, 95, 65, 1)');
-    ctx.fillStyle = farLeft;
+    const lg = ctx.createLinearGradient(BG_X_MIN, 400, 0, 400);
+    lg.addColorStop(0, 'rgba(40, 40, 55, 1)');
+    lg.addColorStop(1, 'rgba(130, 135, 140, 1)');
+    ctx.fillStyle = lg;
     ctx.fillRect(BG_X_MIN, 300, -BG_X_MIN, 372);
-    const farRight = ctx.createLinearGradient(960, 400, BG_X_MAX, 400);
-    farRight.addColorStop(0, 'rgba(78, 95, 65, 1)');
-    farRight.addColorStop(1, 'rgba(40, 38, 48, 1)');
-    ctx.fillStyle = farRight;
+    const rg = ctx.createLinearGradient(960, 400, BG_X_MAX, 400);
+    rg.addColorStop(0, 'rgba(130, 135, 140, 1)');
+    rg.addColorStop(1, 'rgba(40, 40, 55, 1)');
+    ctx.fillStyle = rg;
     ctx.fillRect(960, 300, BG_X_MAX - 960, 372);
-    // Bottom edge subtle darkening — front-of-plaza reads as "light
-    // from the campfire dies out by the time it reaches the screen
-    // edge". Vertical gradient across the lower 80px.
-    const bot = ctx.createLinearGradient(0, 610, 0, 672);
-    bot.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    bot.addColorStop(1, 'rgba(120, 110, 100, 1)');
-    ctx.fillStyle = bot;
-    ctx.fillRect(95, 610, 770, 62);
     ctx.restore();
   }
 
-  // ── ZONE · TOWER DAMAGE RING ─────────────────────────────────────────
-  // Dark desaturated shadow around the tower base — the ground is
-  // literally worse near the ruin (cracks, dust, stone chips). The
-  // cluster-decor pass below puts ACTUAL cracks + rubble here; this
-  // pass just darkens the tile palette under them.
-  paintZoneRadial(ctx, Z_TOWER.x, Z_TOWER.y + 40, 150, {
-    inner: 'rgba(18, 14, 22, 0.65)',
-    outer: 'rgba(18, 14, 22, 0)',
-    mode: 'multiply',
-  });
+  // ── ZONE · WEST & EAST RUIN PATCHES ──────────────────────────────────
+  // Authored material patches in the back corners. West is moss-heavy
+  // (graveyard overgrowth); east is dirt-heavy (collapsed gatehouse).
+  paintRuinPatch(ctx, Z_WEST_RUIN.x, Z_WEST_RUIN.y, 150, 'west');
+  paintRuinPatch(ctx, Z_EAST_RUIN.x, Z_EAST_RUIN.y, 165, 'east');
 
   // ── ZONE · BUILDING PADS ─────────────────────────────────────────────
-  // Each building approach gets a subtle warmer/cooler tint that reads
-  // as "the ground has been cleared here" relative to the damaged /
-  // overgrown surroundings. Additive, small radius.
+  // Solid painted pads under each district — each with a distinct
+  // material so the eye immediately reads "stone plaza", "warm forge
+  // yard", "cool archive court", "violet shrine platform". These are
+  // OPAQUE paints on top of the base cobble (not additive glows).
 
-  // FORGE pad — warm amber (reads as "the fire's light spills out here")
-  paintZoneRadial(ctx, Z_FORGE.x, Z_FORGE.y, 90, {
-    inner: 'rgba(240, 190, 130, 0.30)',
-    outer: 'rgba(240, 190, 130, 0)',
-    mode: 'lighter',
+  // FORGE — warm yellow-gold rectangular pad, framed by anvil + woodpile
+  paintRectPad(ctx, Z_FORGE.x, 560, 220, 130, {
+    body: '#8a7248', edge: '#5a4628', hi: '#b29868',
+    brickW: 28, brickH: 20,
   });
-  // DOME pad — cool cream (reads as "clean mystical archive")
-  paintZoneRadial(ctx, Z_DOME.x, Z_DOME.y, 90, {
-    inner: 'rgba(190, 210, 220, 0.22)',
-    outer: 'rgba(190, 210, 220, 0)',
-    mode: 'lighter',
+  // ARCHIVE — cool blue-grey rectangular pad
+  paintRectPad(ctx, Z_ARCHIVE.x, 555, 200, 140, {
+    body: '#5f636c', edge: '#363a42', hi: '#848894',
+    brickW: 28, brickH: 22,
   });
-  // SHRINE pad — pale violet (reads as "mystical stone")
-  paintZoneRadial(ctx, Z_SHRINE.x, Z_SHRINE.y, 70, {
-    inner: 'rgba(200, 190, 220, 0.25)',
-    outer: 'rgba(200, 190, 220, 0)',
-    mode: 'lighter',
+  // SHRINE — pale violet circular pad, semicircular feel
+  paintCirclePad(ctx, Z_SHRINE.x, Z_SHRINE.y, 70, {
+    outer: '#3e3548', mid: '#584a68', inner: '#70607e', tint: 'rgba(160, 120, 200, 0.22)',
   });
 
   // ── ZONE · PATHS ─────────────────────────────────────────────────────
-  // Warm stone walkways connecting the plaza to every destination.
-  // Each path is a tapered additive band (brightness fades at both
-  // endpoints so the path doesn't end abruptly). The plaza itself
-  // is the convergence point; all paths radiate from the campfire.
-  paintPath(ctx, Z_SPAWN,  Z_PLAZA,  60);   // entrance → plaza
-  paintPath(ctx, Z_PLAZA,  Z_TOWER,  58);   // plaza → ruined tower
-  paintPath(ctx, Z_PLAZA,  Z_FORGE,  52);   // plaza → forge
-  paintPath(ctx, Z_PLAZA,  Z_DOME,   52);   // plaza → dome
-  paintPath(ctx, Z_PLAZA,  Z_SHRINE, 48);   // plaza → shrine
+  // Paved stone walkways with edge lines + brick pattern, fading at
+  // endpoints so the walk reads as "worn stone laid on the cobble".
+  // Authored polylines — primary spine is the widest; spokes narrower;
+  // a back connector ties shrine → tower → east ruin (from the ref).
+  paintPath(ctx, Z_SPAWN,   Z_PLAZA,   72, 'primary');   // entrance spine
+  paintPath(ctx, Z_PLAZA,   Z_TOWER,   70, 'primary');   // plaza → tower
+  paintPath(ctx, Z_PLAZA,   Z_FORGE,   58, 'spoke');     // plaza → forge
+  paintPath(ctx, Z_PLAZA,   Z_ARCHIVE, 58, 'spoke');     // plaza → archive
+  paintPath(ctx, Z_PLAZA,   Z_SHRINE,  54, 'spoke');     // plaza → shrine
+  // Back connector: shrine → tower → east ruin (arcs behind the plaza)
+  paintPath(ctx, Z_SHRINE,  { x: 330, y: 395 }, 42, 'back');
+  paintPath(ctx, { x: 330, y: 395 }, Z_TOWER,   42, 'back');
+  paintPath(ctx, Z_TOWER,   { x: 640, y: 395 }, 42, 'back');
+  paintPath(ctx, { x: 640, y: 395 }, Z_EAST_RUIN, 42, 'back');
+
+  // ── ZONE · TOWER BASE DISC ───────────────────────────────────────────
+  // Stone disc the tower sits on — darker, scorched at the centre,
+  // with visible cracks. Draws AFTER the paths so the paths visually
+  // approach the disc edge; the disc itself is the tower's "doorstep".
+  paintTowerBase(ctx, Z_TOWER.x, Z_TOWER.y + 40, 92);
 
   // ── ZONE · CENTRAL PLAZA ─────────────────────────────────────────────
-  // Brightest warm pool around the campfire. Overlaps and dominates
-  // the path terminals, so the paths visually "feed into" the plaza
-  // instead of crossing through it.
-  paintZoneRadial(ctx, Z_PLAZA.x, Z_PLAZA.y, 150, {
-    inner: 'rgba(255, 200, 130, 0.38)',
-    outer: 'rgba(255, 200, 130, 0)',
-    mode: 'lighter',
-  });
+  // The plaza is drawn as a SOLID stone ring, not just a glow. Three
+  // concentric bands + 8 radial wedge dividers + a final warm firelight
+  // halo on top. This is the single biggest visual anchor of the hub.
+  paintPlazaRing(ctx, Z_PLAZA.x, Z_PLAZA.y, 124);
+
+  // ── CLUSTER DECOR · EDGE MOSS (nature reclaim) ───────────────────────
+  // Moss tufts along the ruin patches + around building back walls.
+  // Denser on the west side (graveyard overgrowth) than the east side.
+  drawMossCluster(ctx, 80,  390, 18);
+  drawMossCluster(ctx, 50,  440, 14);
+  drawMossCluster(ctx, 140, 480, 10);
+  drawMossCluster(ctx, 40,  540, 10);
+  // East side — fewer tufts because east reads as "dirt + collapsed"
+  drawMossCluster(ctx, 915, 460, 8);
+  drawMossCluster(ctx, 895, 600, 10);
+  // Behind-tower subtle reclaim
+  drawMossCluster(ctx, 400, 345, 7);
+  drawMossCluster(ctx, 560, 345, 7);
 
   // ── CLUSTER DECOR · TOWER RUBBLE ─────────────────────────────────────
-  // Hand-placed stone chunks in a ring around the tower base — the
-  // tower IS falling apart, so the bricks have to go somewhere. Each
-  // chunk has a shadow so it sits on the ground instead of floating.
+  // Stone chunks ringing the tower base. These sit ON the tower disc.
   drawTowerRubble(ctx, Z_TOWER.x, Z_TOWER.y + 40);
 
-  // ── CLUSTER DECOR · EDGE MOSS ────────────────────────────────────────
-  // Moss tufts only in the nature-reclaim zone (edges). Hand-placed
-  // cluster centers so moss forms BELIEVABLE patches along cracked
-  // seams, not a uniform speckle across the whole floor.
-  drawMossCluster(ctx, 40,  600, 16);
-  drawMossCluster(ctx, 75,  490, 12);
-  drawMossCluster(ctx, 50,  420, 9);
-  drawMossCluster(ctx, 920, 610, 14);
-  drawMossCluster(ctx, 905, 510, 10);
-  drawMossCluster(ctx, 905, 430, 8);
-  // Behind-tower reclaim — moss creeping up on the tower's north side
-  drawMossCluster(ctx, 425, 365, 8);
-  drawMossCluster(ctx, 540, 365, 8);
-
   // ── CLUSTER DECOR · CRACKS ───────────────────────────────────────────
-  // Cracks only in the tower-damage zone and on the outer edges
-  // (where the reclaim is eating the stone). Not in the plaza or
-  // paths — those are the cleaner, more-walked areas.
-  drawCrackCluster(ctx, 450, 490, 4);
-  drawCrackCluster(ctx, 510, 505, 3);
-  drawCrackCluster(ctx, 475, 540, 3);
-  drawCrackCluster(ctx, 85,  640, 3);
-  drawCrackCluster(ctx, 890, 640, 3);
+  // Cracks only on the tower disc edge and the east-ruin collapse zone.
+  drawCrackCluster(ctx, 450, 490, 3);
+  drawCrackCluster(ctx, 510, 500, 3);
+  drawCrackCluster(ctx, 870, 420, 4);
+  drawCrackCluster(ctx, 900, 480, 3);
 
-  // ── ZONE · HORIZON FEATHER (top layer) ───────────────────────────────
-  // Redrawn above the zone tints so the cobble-to-sky transition stays
-  // cohesive even where zone paints overlap the feather band.
+  // ── HORIZON FEATHER (top layer) ──────────────────────────────────────
   {
     const hz2 = ctx.createLinearGradient(0, 290, 0, 340);
     hz2.addColorStop(0, 'rgba(30, 18, 32, 0.55)');
@@ -516,6 +549,49 @@ export function drawHamletBackdrop(ctx) {
     ctx.fillStyle = hz2;
     ctx.fillRect(BG_X_MIN, 290, BG_W, 50);
   }
+
+  // ── PROPS · DISTRICT ANCHORS ─────────────────────────────────────────
+  // Every prop tells the district's function:
+  //   plaza: benches + lantern post (people sit here at dusk)
+  //   forge: anvil + woodpile + barrels (smith works outside)
+  //   archive: reading pedestal + cool lantern (scholarship)
+  //   shrine: standing stone + offering bowl (mystical)
+  //   tower: fallen bell on rubble
+  //   rebuild: scaffolding + cut-stone stack + half-wall
+  //   west ruin: grave markers (curses home)
+  //   east ruin: collapsed gate frame (wanderer's "arrival")
+
+  // PLAZA props — benches ring the fire, lantern post east.
+  // Plaza r=124 at (480, 540): inner walkable ring spans ~y 470–610.
+  drawBench(ctx, 442, 488);    // north-west bench
+  drawBench(ctx, 518, 488);    // north-east bench
+  drawBench(ctx, 418, 596);    // south-west bench
+  drawBench(ctx, 542, 596);    // south-east bench
+  drawLanternPost(ctx, 582, 510, 'warm');  // plaza lantern (east, above bench)
+  // FORGE props
+  drawAnvil(ctx, 260, 600);
+  drawWoodpile(ctx, 130, 620);
+  drawBarrel(ctx, 110, 585);
+  // ARCHIVE props
+  drawReadingPedestal(ctx, 740, 580);
+  drawLanternPost(ctx, 860, 580, 'cool');  // archive lantern
+  drawCrateStack(ctx, 870, 610);
+  // SHRINE props
+  drawStandingStone(ctx, Z_SHRINE.x, Z_SHRINE.y - 6);
+  drawOfferingBowl(ctx, Z_SHRINE.x + 16, Z_SHRINE.y + 18);
+  // TOWER props
+  drawFallenBell(ctx, 535, 445);
+  // REBUILD props (scaffolding + cut-stone stack + half-built wall)
+  drawHalfWall(ctx, 680, 615);
+  drawStoneStack(ctx, 640, 625);
+  drawScaffolding(ctx, 720, 608);
+  // WEST RUIN props — tombstones, one toppled
+  drawGraveMarker(ctx, 70, 395, 0);
+  drawGraveMarker(ctx, 125, 360, -0.15);
+  drawGraveMarker(ctx, 170, 420, 0.4);   // toppled
+  // EAST RUIN props — collapsed archway + scattered beams
+  drawCollapsedGate(ctx, 895, 380);
+  drawBrokenBeam(ctx, 845, 430);
 
   // ── BUILDINGS · BACK TO FRONT ────────────────────────────────────────
   // Scales chosen so the hero (96px tall) reads roughly 1/2 building
@@ -526,16 +602,16 @@ export function drawHamletBackdrop(ctx) {
   if (towerBg) {
     const bw = 85, bh = 120;
     ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.drawImage(towerBg, Math.round(100 - bw / 2), Math.round(455 - bh), bw, bh);
+    ctx.globalAlpha = 0.45;
+    ctx.drawImage(towerBg, Math.round(80 - bw / 2), Math.round(385 - bh), bw, bh);
     ctx.restore();
   }
 
-  // LAYER B — DOME (right-mid), with cool teal interior glow.
+  // LAYER B — DOME (right), with cool teal interior glow.
   const dome = images.hamlet_env_1;
   if (dome) {
-    const bw = 160, bh = 175;
-    const dx = 810, dy = 490;
+    const bw = 165, bh = 180;
+    const dx = Z_ARCHIVE.x + 10, dy = 515;
     ctx.drawImage(dome, Math.round(dx - bw / 2), Math.round(dy - bh), bw, bh);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -549,11 +625,11 @@ export function drawHamletBackdrop(ctx) {
     ctx.restore();
   }
 
-  // LAYER C — FORGE (left-foreground), with hot orange window flicker.
+  // LAYER C — FORGE (left), with hot orange window flicker.
   const forge = images.hamlet_env_0;
   if (forge) {
-    const bw = 200, bh = 225;
-    const fx = 200, fy = 510;
+    const bw = 210, bh = 235;
+    const fx = Z_FORGE.x, fy = 520;
     ctx.drawImage(forge, Math.round(fx - bw / 2), Math.round(fy - bh), bw, bh);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -570,28 +646,24 @@ export function drawHamletBackdrop(ctx) {
   // (Prayer flags are drawn by drawHamletOverlay AFTER the tower entity,
   // so they sit in front of the tower's upper sprite rather than behind it.)
 
-  // ── FOREGROUND AMBIENT PROPS ─────────────────────────────────────────
-  // Boulders placed at the lower CORNERS of the playable room only — in
-  // the nature-reclaim zone, framing the scene and visually stopping the
-  // eye from wandering off into the void strips. The secondary firepit
-  // gets an urn as its companion prop (one small pottery nod to the
-  // dome's archivist).
-  drawBoulder(ctx, 48, 634, 28, 18);
-  drawBoulder(ctx, 84, 658, 22, 14);
-  drawBoulder(ctx, 920, 648, 26, 17);
-  drawUrn(ctx, 902, 616);
+  // (Foreground ambient boulders removed — the zone-based ruin patches +
+  // authored district props now carry that framing duty without dropping
+  // large dark blobs in the walkable corridor.)
 
-  // ── SECONDARY FIREPIT (atmospheric, far-right) ───────────────────────
+  // ── SECONDARY FIREPIT — rebuild site warming fire ────────────────────
+  // Repurposed as the "builders' warming fire" next to the scaffolding.
+  // Tells the player the rebuild zone is actively being worked on, not
+  // abandoned. Small, functional.
   const firepit2 = images.hamlet_env_6;
   if (firepit2) {
-    const bw = 64, bh = 64;
-    const fx = 880, fy = 660;
+    const bw = 56, bh = 56;
+    const fx = 745, fy = 635;
     const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 350);
-    const halo = ctx.createRadialGradient(fx, fy - 10, 4, fx, fy - 10, 70);
-    halo.addColorStop(0, `rgba(255, 160, 80, ${(0.35 * pulse).toFixed(3)})`);
+    const halo = ctx.createRadialGradient(fx, fy - 10, 4, fx, fy - 10, 64);
+    halo.addColorStop(0, `rgba(255, 160, 80, ${(0.34 * pulse).toFixed(3)})`);
     halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
     ctx.fillStyle = halo;
-    ctx.fillRect(fx - 70, fy - 10 - 70, 140, 140);
+    ctx.fillRect(fx - 64, fy - 10 - 64, 128, 128);
     ctx.drawImage(firepit2, Math.round(fx - bw / 2), Math.round(fy - bh + 6), bw, bh);
   }
 
@@ -615,45 +687,283 @@ export function drawHamletBackdrop(ctx) {
 // one job cleanly so the zone list reads top-to-bottom like a level designer's
 // layer stack.
 
-// Paint a radial gradient on the ground. Used for plaza center, building
-// pads, and the tower damage ring. Mode selects how the zone combines with
-// the base cobble: 'lighter' adds warmth, 'multiply' darkens/desaturates.
-function paintZoneRadial(ctx, x, y, r, { inner, outer, mode = 'lighter' }) {
+// Paint a paved stone walkway between two anchors. Draws a solid
+// rotated rectangle with dark edge lines + soft alpha taper at both
+// ends so the path reads as a proper stone corridor (not a glowing
+// stripe). Tier chooses brightness: primary spine is cleanest,
+// spokes slightly dimmer, back connector darker.
+function paintPath(ctx, from, to, width, tier = 'primary') {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const angle = Math.atan2(dy, dx);
   ctx.save();
-  ctx.globalCompositeOperation = mode;
-  const g = ctx.createRadialGradient(x, y, 2, x, y, r);
-  g.addColorStop(0, inner);
-  g.addColorStop(1, outer);
-  ctx.fillStyle = g;
-  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.translate(from.x, from.y);
+  ctx.rotate(angle);
+
+  // Tier palette
+  const body = tier === 'primary' ? '#7a6244' : tier === 'spoke' ? '#6f583c' : '#5a4632';
+  const hi   = tier === 'primary' ? 'rgba(170, 130, 80, 0.35)'
+             : tier === 'spoke'   ? 'rgba(155, 115, 70, 0.28)'
+                                  : 'rgba(130, 95, 55, 0.20)';
+  const edge = 'rgba(22, 16, 14, 0.65)';
+
+  // End-tapered body — linear alpha ramp fades at first/last 10%.
+  const bodyGrad = ctx.createLinearGradient(0, 0, len, 0);
+  bodyGrad.addColorStop(0,    'rgba(0, 0, 0, 0)');
+  bodyGrad.addColorStop(0.1,  body);
+  bodyGrad.addColorStop(0.9,  body);
+  bodyGrad.addColorStop(1,    'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = bodyGrad;
+  ctx.fillRect(0, -width / 2, len, width);
+
+  // Warm inner sheen running down the middle
+  const sheen = ctx.createLinearGradient(0, -width / 2, 0, width / 2);
+  sheen.addColorStop(0,   'rgba(0, 0, 0, 0)');
+  sheen.addColorStop(0.5, hi);
+  sheen.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  const sheenAlpha = ctx.createLinearGradient(0, 0, len, 0);
+  sheenAlpha.addColorStop(0,    'rgba(0, 0, 0, 0)');
+  sheenAlpha.addColorStop(0.15, sheen ? 'rgba(0, 0, 0, 1)' : 'rgba(0, 0, 0, 0)');
+  // simpler: just paint the sheen without end-fade (edge tapering dominates)
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, -width / 2, len, width);
+
+  // Dark edge lines (top + bottom of the path)
+  const edgeGrad = ctx.createLinearGradient(0, 0, len, 0);
+  edgeGrad.addColorStop(0,    'rgba(0, 0, 0, 0)');
+  edgeGrad.addColorStop(0.1,  edge);
+  edgeGrad.addColorStop(0.9,  edge);
+  edgeGrad.addColorStop(1,    'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = edgeGrad;
+  ctx.fillRect(0, -width / 2,     len, 1.5);
+  ctx.fillRect(0,  width / 2 - 2, len, 1.5);
+
+  // Subtle perpendicular brick seams every ~34px
+  ctx.strokeStyle = 'rgba(24, 16, 12, 0.35)';
+  ctx.lineWidth = 1;
+  for (let x = 26; x < len - 20; x += 34) {
+    const alpha = Math.sin((x / len) * Math.PI);
+    if (alpha < 0.15) continue;
+    ctx.globalAlpha = 0.35 * alpha;
+    ctx.beginPath();
+    ctx.moveTo(x, -width / 2 + 2);
+    ctx.lineTo(x,  width / 2 - 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
-// Paint a tapered warm path band between two anchors. Implemented as a
-// chain of overlapping radial stamps along the line, each tapered with a
-// half-sine so the path fades to nothing at both endpoints instead of
-// terminating in a hard blob. Additive.
-function paintPath(ctx, from, to, width) {
+// Central plaza — solid stone ring composed of three concentric bands
+// with 8 radial wedge dividers + a final warm firelight halo. The
+// plaza is the visual heart; every path terminates here.
+function paintPlazaRing(ctx, cx, cy, r) {
+  // Drop shadow under the plaza disc
+  ctx.save();
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.beginPath();
+  ctx.arc(cx, cy + 4, r + 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Outer ring — dark stone border (weathered)
+  ctx.fillStyle = '#3c2e22';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  // Mid ring — warmer amber stone
+  ctx.fillStyle = '#6e5638';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 18, 0, Math.PI * 2);
+  ctx.fill();
+  // Inner ring — warmest firelit stone
+  ctx.fillStyle = '#8a6a44';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 52, 0, Math.PI * 2);
+  ctx.fill();
+  // Central hearth tint — brightest
+  ctx.fillStyle = '#a68252';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 100, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 8 radial wedge dividers on the outer ring (dark grout lines)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(22, 14, 10, 0.55)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * (r - 52), cy + Math.sin(a) * (r - 52));
+    ctx.lineTo(cx + Math.cos(a) * r,        cy + Math.sin(a) * r);
+    ctx.stroke();
+  }
+  // Inner ring boundary line
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 52, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 18, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Firelight halo on top — warm additive glow from the campfire
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const dx = to.x - from.x, dy = to.y - from.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 1) { ctx.restore(); return; }
-  const steps = Math.max(6, Math.ceil(len / 18));
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = from.x + dx * t;
-    const y = from.y + dy * t;
-    // Half-sine taper: 0 at endpoints, 1 at midpoint.
-    const taper = Math.sin(t * Math.PI);
-    const alpha = 0.19 * taper;
-    if (alpha < 0.01) continue;
-    const g = ctx.createRadialGradient(x, y, 2, x, y, width);
-    g.addColorStop(0, `rgba(230, 178, 112, ${alpha.toFixed(3)})`);
-    g.addColorStop(1, 'rgba(230, 178, 112, 0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x - width, y - width, width * 2, width * 2);
+  const glow = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
+  glow.addColorStop(0,   'rgba(255, 190, 110, 0.38)');
+  glow.addColorStop(0.5, 'rgba(255, 150, 80, 0.14)');
+  glow.addColorStop(1,   'rgba(255, 140, 80, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  ctx.restore();
+}
+
+// Tower base — small dark scorched stone disc the tower sits on.
+// Cracks + scorch marks emphasize the ruin; the disc visually
+// elevates the tower above the plaza level.
+function paintTowerBase(ctx, cx, cy, r) {
+  // Shadow under disc
+  ctx.save();
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.55)';
+  ctx.beginPath();
+  ctx.arc(cx, cy + 5, r + 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // Outer darker stone
+  ctx.fillStyle = '#342a2a';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  // Inner slightly lighter
+  ctx.fillStyle = '#453838';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 10, 0, Math.PI * 2);
+  ctx.fill();
+  // Scorched centre
+  ctx.fillStyle = '#1c1416';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 28, 0, Math.PI * 2);
+  ctx.fill();
+  // Edge ring line
+  ctx.strokeStyle = 'rgba(14, 10, 12, 0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+  ctx.stroke();
+  // Radial cracks from centre
+  ctx.save();
+  ctx.strokeStyle = 'rgba(10, 6, 8, 0.85)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.4;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * (r - 12), cy + Math.sin(a) * (r - 12));
+    ctx.stroke();
   }
+  ctx.restore();
+}
+
+// Rectangular building pad — painted stone tile with brick grout pattern.
+// Used for the forge yard + archive court. Opaque (not glow), so it
+// replaces the cobble underneath with district-specific material.
+function paintRectPad(ctx, cx, cy, w, h, { body, edge, hi, brickW, brickH }) {
+  const x0 = cx - w / 2, y0 = cy - h / 2;
+  // Shadow under pad
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.4)';
+  ctx.fillRect(x0 + 3, cy + h / 2 - 2, w - 6, 6);
+  // Body fill
+  ctx.fillStyle = body;
+  ctx.fillRect(x0, y0, w, h);
+  // Brick grout pattern (offset by row)
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 1;
+  // Horizontal grout lines
+  for (let y = y0 + brickH; y < y0 + h; y += brickH) {
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x0 + w, y);
+    ctx.stroke();
+  }
+  // Vertical grout lines (offset per row)
+  let r = 0;
+  for (let y = y0; y < y0 + h; y += brickH, r++) {
+    const offset = (r & 1) ? brickW / 2 : 0;
+    for (let x = x0 + offset; x < x0 + w; x += brickW) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, Math.min(y + brickH, y0 + h));
+      ctx.stroke();
+    }
+  }
+  // Top edge highlight
+  ctx.fillStyle = hi;
+  ctx.fillRect(x0, y0, w, 1);
+  // Outer border (slightly darker)
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+}
+
+// Circular building pad — used for the shrine (semicircular feel, but
+// drawn as full circle since top-down). Three concentric rings + a
+// mystical tint overlay + edge line.
+function paintCirclePad(ctx, cx, cy, r, { outer, mid, inner, tint }) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.beginPath();
+  ctx.arc(cx, cy + 4, r + 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = outer;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = mid;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = inner;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 20, 0, Math.PI * 2);
+  ctx.fill();
+  // Mystical tint on top
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = ctx.createRadialGradient(cx, cy, 5, cx, cy, r);
+  glow.addColorStop(0, tint);
+  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  ctx.restore();
+  // Edge ring line
+  ctx.strokeStyle = 'rgba(20, 14, 24, 0.65)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+// Ruin patch — authored area at the back corners telling a specific
+// "kind of broken": 'west' = graveyard overgrowth (moss + dark green);
+// 'east' = collapsed dirt (tan + rubble). Each patch darkens the
+// cobble underneath via multiply so the ruin reads as "this area is
+// genuinely different from the rebuilt zones".
+function paintRuinPatch(ctx, cx, cy, r, kind) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  const g = ctx.createRadialGradient(cx, cy, 20, cx, cy, r);
+  if (kind === 'west') {
+    g.addColorStop(0,   'rgba(58, 72, 42, 1)');   // deep moss
+    g.addColorStop(0.55,'rgba(110, 115, 90, 1)');
+    g.addColorStop(1,   'rgba(255, 255, 255, 1)');
+  } else {
+    g.addColorStop(0,   'rgba(120, 90, 60, 1)');  // tan dirt
+    g.addColorStop(0.55,'rgba(170, 155, 130, 1)');
+    g.addColorStop(1,   'rgba(255, 255, 255, 1)');
+  }
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
   ctx.restore();
 }
 
@@ -740,48 +1050,391 @@ function drawCrackCluster(ctx, cx, cy, count) {
   ctx.restore();
 }
 
-// ---- Ambient prop helpers --------------------------------------------------
-// Small pixel-art-styled boulders + urn drawn procedurally. Cheaper than
-// commissioning sprites and matches the procedurally-tinted hamlet look.
-function drawBoulder(ctx, cx, cy, rx, ry) {
+// ---- District prop helpers ------------------------------------------------
+// Small procedural pixel-art props placed at authored positions by
+// drawHamletBackdrop. Each prop tells its district's function; scale +
+// palette chosen to fit the pixel-art building sprites we already ship.
+
+function drawBench(ctx, cx, cy) {
   // Shadow
   ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
-  ctx.beginPath();
-  ctx.ellipse(cx + 2, cy + ry * 0.4, rx + 2, ry * 0.35, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Body
-  ctx.fillStyle = '#3b3034';
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Top highlight
-  ctx.fillStyle = '#5a4a4c';
-  ctx.beginPath();
-  ctx.ellipse(cx - rx * 0.15, cy - ry * 0.35, rx * 0.7, ry * 0.35, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Moss accent
-  ctx.fillStyle = 'rgba(90, 120, 70, 0.55)';
-  ctx.fillRect((cx - rx * 0.3) | 0, (cy + ry * 0.25) | 0, 3, 2);
+  ctx.fillRect(cx - 13, cy + 4, 26, 3);
+  // Stone legs
+  ctx.fillStyle = '#3a3236';
+  ctx.fillRect(cx - 12, cy + 1, 4, 5);
+  ctx.fillRect(cx + 8, cy + 1, 4, 5);
+  // Wood plank
+  ctx.fillStyle = '#5a3e28';
+  ctx.fillRect(cx - 14, cy - 3, 28, 5);
+  // Plank top highlight + grain
+  ctx.fillStyle = '#7a5434';
+  ctx.fillRect(cx - 14, cy - 3, 28, 1);
+  ctx.fillStyle = '#3a2818';
+  ctx.fillRect(cx - 14, cy + 1, 28, 1);
 }
 
-function drawUrn(ctx, cx, cy) {
+function drawLanternPost(ctx, cx, cy, kind = 'warm') {
+  const warm = kind === 'warm';
+  const poleH = 44;
   // Shadow
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 4, 9, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Base stone
+  ctx.fillStyle = '#3a3236';
+  ctx.fillRect(cx - 5, cy - 2, 10, 6);
+  ctx.fillStyle = '#5a4a4c';
+  ctx.fillRect(cx - 5, cy - 2, 10, 1);
+  // Pole
+  ctx.fillStyle = '#241c1c';
+  ctx.fillRect(cx - 1, cy - poleH, 2, poleH);
+  // Cross arm
+  ctx.fillRect(cx - 8, cy - poleH + 2, 8, 1);
+  // Lantern frame
+  ctx.fillStyle = '#181216';
+  ctx.fillRect(cx - 12, cy - poleH - 2, 6, 9);
+  // Lantern light
+  const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 700);
+  const core = warm ? '#ffc878' : '#8ed8ff';
+  const haloCol = warm ? 'rgba(255, 180, 100,' : 'rgba(130, 200, 240,';
+  ctx.fillStyle = core;
+  ctx.fillRect(cx - 11, cy - poleH - 1, 4, 7);
+  // Ground light pool
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(cx - 9, cy, 4, cx - 9, cy, 80);
+  g.addColorStop(0, `${haloCol} ${(0.35 * pulse).toFixed(3)})`);
+  g.addColorStop(0.5, `${haloCol} ${(0.12 * pulse).toFixed(3)})`);
+  g.addColorStop(1, `${haloCol} 0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - 89, cy - 80, 160, 160);
+  ctx.restore();
+}
+
+function drawAnvil(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.55)';
+  ctx.fillRect(cx - 13, cy + 5, 26, 4);
+  // Stone base
+  ctx.fillStyle = '#3a3432';
+  ctx.fillRect(cx - 10, cy - 1, 20, 9);
+  ctx.fillStyle = '#5a4e4a';
+  ctx.fillRect(cx - 10, cy - 1, 20, 1);
+  // Iron body
+  ctx.fillStyle = '#1a1a1e';
+  ctx.fillRect(cx - 11, cy - 9, 22, 8);
+  // Iron highlight
+  ctx.fillStyle = '#3e3a3c';
+  ctx.fillRect(cx - 11, cy - 9, 22, 1);
+  // Horn
+  ctx.fillStyle = '#1a1a1e';
+  ctx.fillRect(cx - 16, cy - 7, 5, 4);
+  // Top face
+  ctx.fillStyle = '#4a464c';
+  ctx.fillRect(cx - 10, cy - 9, 20, 1);
+}
+
+function drawWoodpile(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.fillRect(cx - 13, cy + 4, 26, 4);
+  // Bottom row logs
+  ctx.fillStyle = '#5a3820';
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(cx - 13 + i * 5, cy - 3, 4, 8);
+  }
+  // Top row
+  ctx.fillStyle = '#6a4a30';
+  for (let i = 0; i < 4; i++) {
+    ctx.fillRect(cx - 11 + i * 5, cy - 9, 4, 6);
+  }
+  // Ring highlights on log ends
+  ctx.fillStyle = '#3a2010';
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(cx - 12 + i * 5, cy - 2, 2, 1);
+  }
+}
+
+function drawBarrel(ctx, cx, cy) {
   ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
   ctx.beginPath();
-  ctx.ellipse(cx, cy + 14, 10, 3, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, cy + 10, 9, 3, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Body (wider middle)
-  ctx.fillStyle = '#6a4030';
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 4, 9, 12, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Neck
-  ctx.fillStyle = '#583424';
-  ctx.fillRect(cx - 5, cy - 10, 10, 6);
-  // Rim highlight
-  ctx.fillStyle = '#8a5a3c';
-  ctx.fillRect(cx - 6, cy - 11, 12, 2);
+  // Body
+  ctx.fillStyle = '#5a3a22';
+  ctx.fillRect(cx - 8, cy - 10, 16, 20);
+  // Barrel rings
+  ctx.fillStyle = '#2a1808';
+  ctx.fillRect(cx - 8, cy - 8, 16, 1);
+  ctx.fillRect(cx - 8, cy, 16, 1);
+  ctx.fillRect(cx - 8, cy + 8, 16, 1);
+  // Highlight
+  ctx.fillStyle = '#7a5232';
+  ctx.fillRect(cx - 7, cy - 9, 2, 18);
 }
+
+function drawReadingPedestal(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
+  ctx.fillRect(cx - 10, cy + 5, 20, 4);
+  // Stone base
+  ctx.fillStyle = '#5a5662';
+  ctx.fillRect(cx - 9, cy + 2, 18, 6);
+  ctx.fillStyle = '#7a768a';
+  ctx.fillRect(cx - 9, cy + 2, 18, 1);
+  // Column
+  ctx.fillStyle = '#4e4a58';
+  ctx.fillRect(cx - 5, cy - 8, 10, 10);
+  // Top slab
+  ctx.fillStyle = '#6a6678';
+  ctx.fillRect(cx - 9, cy - 12, 18, 5);
+  ctx.fillStyle = '#8a869a';
+  ctx.fillRect(cx - 9, cy - 12, 18, 1);
+  // Scroll on top
+  ctx.fillStyle = '#d8c898';
+  ctx.fillRect(cx - 6, cy - 16, 12, 5);
+  ctx.fillStyle = '#a08a5c';
+  ctx.fillRect(cx - 6, cy - 12, 12, 1);
+}
+
+function drawCrateStack(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.fillRect(cx - 12, cy + 4, 24, 4);
+  // Lower crate
+  ctx.fillStyle = '#6a4828';
+  ctx.fillRect(cx - 11, cy - 6, 22, 12);
+  ctx.fillStyle = '#3a2816';
+  ctx.fillRect(cx - 11, cy - 6, 22, 1);
+  ctx.fillRect(cx - 11, cy + 5, 22, 1);
+  ctx.fillRect(cx, cy - 6, 1, 12);
+  // Upper small crate (offset)
+  ctx.fillStyle = '#7a5838';
+  ctx.fillRect(cx - 6, cy - 14, 14, 9);
+  ctx.fillStyle = '#4a3626';
+  ctx.fillRect(cx - 6, cy - 14, 14, 1);
+}
+
+function drawStandingStone(ctx, cx, cy) {
+  // Shadow
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 6, 14, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Stone body — tall rectangle in top-down perspective
+  ctx.fillStyle = '#3a3244';
+  ctx.fillRect(cx - 11, cy - 30, 22, 38);
+  // Top highlight
+  ctx.fillStyle = '#5a4e60';
+  ctx.fillRect(cx - 11, cy - 30, 22, 4);
+  // Side shadow
+  ctx.fillStyle = '#2a2234';
+  ctx.fillRect(cx + 8, cy - 30, 3, 38);
+  // Rune engraving
+  ctx.fillStyle = '#a080d0';
+  ctx.fillRect(cx - 2, cy - 22, 4, 2);
+  ctx.fillRect(cx - 4, cy - 18, 8, 2);
+  ctx.fillRect(cx - 2, cy - 14, 4, 2);
+  // Rune glow pulse
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 900);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = `rgba(180, 140, 220, ${(0.35 * pulse).toFixed(3)})`;
+  ctx.fillRect(cx - 6, cy - 24, 12, 14);
+  ctx.restore();
+}
+
+function drawOfferingBowl(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 3, 9, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Bowl outer
+  ctx.fillStyle = '#5a4430';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 9, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Bowl dark interior
+  ctx.fillStyle = '#1a1008';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 1, 7, 2.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Rim highlight
+  ctx.fillStyle = '#9a6848';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 1, 7, 1.5, 0, 0, Math.PI);
+  ctx.fill();
+  // Tiny offering — coin or ember
+  ctx.fillStyle = 'rgba(230, 180, 100, 0.85)';
+  ctx.fillRect(cx - 1, cy - 2, 2, 2);
+}
+
+function drawFallenBell(ctx, cx, cy) {
+  // Shadow
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.55)';
+  ctx.beginPath();
+  ctx.ellipse(cx + 2, cy + 6, 20, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Bell on its side — dark bronze
+  ctx.fillStyle = '#4a3a18';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 18, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Lighter upper surface
+  ctx.fillStyle = '#8a6a2c';
+  ctx.beginPath();
+  ctx.ellipse(cx - 2, cy - 3, 15, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Dark opening
+  ctx.fillStyle = '#1a1408';
+  ctx.beginPath();
+  ctx.ellipse(cx + 13, cy, 4, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Rim band
+  ctx.fillStyle = '#6a5220';
+  ctx.beginPath();
+  ctx.ellipse(cx + 10, cy, 3, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawScaffolding(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.fillRect(cx - 22, cy + 4, 44, 4);
+  // Uprights
+  ctx.fillStyle = '#6a4830';
+  ctx.fillRect(cx - 20, cy - 26, 2, 32);
+  ctx.fillRect(cx + 18, cy - 26, 2, 32);
+  ctx.fillRect(cx - 1, cy - 26, 2, 32);
+  // Horizontal boards
+  ctx.fillRect(cx - 20, cy - 22, 40, 2);
+  ctx.fillRect(cx - 20, cy - 10, 40, 2);
+  ctx.fillRect(cx - 20, cy + 2,  40, 2);
+  // Diagonal brace
+  ctx.save();
+  ctx.strokeStyle = '#6a4830';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 18, cy - 22);
+  ctx.lineTo(cx - 2, cy + 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + 2, cy - 22);
+  ctx.lineTo(cx + 18, cy + 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawStoneStack(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.fillRect(cx - 18, cy + 4, 36, 4);
+  // Bottom row — two cut stones
+  ctx.fillStyle = '#8a7a68';
+  ctx.fillRect(cx - 16, cy - 2, 14, 8);
+  ctx.fillRect(cx - 1, cy - 2, 15, 8);
+  // Top row — one stone (offset)
+  ctx.fillStyle = '#9a8a78';
+  ctx.fillRect(cx - 9, cy - 8, 14, 6);
+  // Highlights
+  ctx.fillStyle = '#b0a088';
+  ctx.fillRect(cx - 16, cy - 2, 14, 1);
+  ctx.fillRect(cx - 1, cy - 2, 15, 1);
+  ctx.fillRect(cx - 9, cy - 8, 14, 1);
+  // Dark seams
+  ctx.fillStyle = '#4a3a30';
+  ctx.fillRect(cx - 2, cy - 2, 1, 8);
+}
+
+function drawHalfWall(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
+  ctx.fillRect(cx - 34, cy + 4, 68, 5);
+  // Stone blocks — rising half-wall pattern
+  const blocks = [
+    [-32, 0, 14, 8],
+    [-16, 0, 14, 8],
+    [0, 0, 14, 8],
+    [16, 0, 14, 8],
+    [-26, -8, 14, 8],
+    [-10, -8, 14, 8],
+    [6, -8, 14, 8],
+    [-20, -16, 14, 8],
+    [-4, -16, 14, 8],
+    [-14, -24, 14, 6],
+  ];
+  for (const [dx, dy, w, h] of blocks) {
+    ctx.fillStyle = '#8a7a68';
+    ctx.fillRect(cx + dx, cy + dy - 2, w, h);
+    ctx.fillStyle = '#a89880';
+    ctx.fillRect(cx + dx, cy + dy - 2, w, 1);
+    ctx.fillStyle = '#5a4a40';
+    ctx.fillRect(cx + dx, cy + dy + h - 3, w, 1);
+  }
+}
+
+function drawGraveMarker(ctx, cx, cy, rotation = 0) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
+  ctx.fillRect(cx - 7, cy + 3, 14, 3);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  // Tombstone body
+  ctx.fillStyle = '#3a3438';
+  ctx.fillRect(-6, -18, 12, 22);
+  // Rounded top (approximate)
+  ctx.fillRect(-5, -20, 10, 2);
+  // Top highlight
+  ctx.fillStyle = '#5a5458';
+  ctx.fillRect(-5, -20, 10, 1);
+  // Side shadow
+  ctx.fillStyle = '#241e22';
+  ctx.fillRect(4, -18, 2, 22);
+  // Engraving — small cross / mark
+  ctx.fillStyle = '#1a1618';
+  ctx.fillRect(-1, -14, 2, 6);
+  ctx.fillRect(-3, -12, 6, 2);
+  ctx.restore();
+}
+
+function drawCollapsedGate(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.55)';
+  ctx.fillRect(cx - 32, cy + 4, 64, 6);
+  // Left upright — still standing
+  ctx.fillStyle = '#4a4238';
+  ctx.fillRect(cx - 28, cy - 22, 9, 26);
+  ctx.fillStyle = '#6a6258';
+  ctx.fillRect(cx - 28, cy - 22, 9, 2);
+  // Right upright — leaning
+  ctx.save();
+  ctx.translate(cx + 20, cy - 10);
+  ctx.rotate(0.35);
+  ctx.fillStyle = '#4a4238';
+  ctx.fillRect(-4, -14, 8, 26);
+  ctx.fillStyle = '#6a6258';
+  ctx.fillRect(-4, -14, 8, 2);
+  ctx.restore();
+  // Fallen archway pieces on the ground
+  ctx.fillStyle = '#3a3428';
+  ctx.fillRect(cx - 14, cy - 2, 12, 7);
+  ctx.fillRect(cx + 2, cy + 2, 14, 6);
+  ctx.fillRect(cx - 6, cy + 6, 10, 4);
+  ctx.fillStyle = '#5a544a';
+  ctx.fillRect(cx - 14, cy - 2, 12, 1);
+  ctx.fillRect(cx + 2, cy + 2, 14, 1);
+}
+
+function drawBrokenBeam(ctx, cx, cy) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
+  ctx.fillRect(cx - 18, cy + 4, 36, 3);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(0.35);
+  ctx.fillStyle = '#4a3220';
+  ctx.fillRect(-18, -3, 36, 6);
+  ctx.fillStyle = '#6a4a30';
+  ctx.fillRect(-18, -3, 36, 1);
+  ctx.fillStyle = '#2a1810';
+  ctx.fillRect(-18, 2, 36, 1);
+  ctx.restore();
+}
+
+// (drawBoulder / drawUrn removed — foreground corner props are handled by
+// the zone-based ruin patches + authored district props now.)
 
 // Draw mid-air effects that must sit AFTER the portal tower entity — e.g.
 // the prayer-flag line stretches across the tower's upper half, and if we
@@ -790,18 +1443,21 @@ function drawUrn(ctx, cx, cy) {
 export function drawHamletOverlay(ctx) {
   const now = performance.now() / 1000;
 
+  // Prayer-flag garland strung ACROSS the plaza (from the plaza lantern
+  // post over to a notional post near the forge). Celebrates the hub's
+  // inhabited heart — not the ominous descent tower like the old version.
   const flagColors = ['#e06060', '#f4c858', '#7fc898', '#5e90c8', '#c060a0', '#f4c858', '#e06060'];
-  const flagCount = 11;
-  const startX = 380, endX = 690;
-  const startY = 236, endY = 252;
+  const flagCount = 9;
+  const startX = 585, endX = 340;   // from plaza lantern to forge-side
+  const startY = 488, endY = 498;   // above plaza, below sky
   // Rope
-  ctx.strokeStyle = 'rgba(20, 14, 14, 0.9)';
+  ctx.strokeStyle = 'rgba(22, 16, 14, 0.85)';
   ctx.lineWidth = 1.3;
   ctx.beginPath();
   for (let i = 0; i <= flagCount; i++) {
     const u = i / flagCount;
     const x = startX + (endX - startX) * u;
-    const sag = Math.sin(u * Math.PI) * 18;
+    const sag = Math.sin(u * Math.PI) * 14;
     const y = startY + (endY - startY) * u + sag;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
@@ -811,15 +1467,15 @@ export function drawHamletOverlay(ctx) {
   for (let i = 0; i < flagCount; i++) {
     const u = (i + 0.5) / flagCount;
     const x = startX + (endX - startX) * u;
-    const sag = Math.sin(u * Math.PI) * 18;
+    const sag = Math.sin(u * Math.PI) * 14;
     const y = startY + (endY - startY) * u + sag;
-    const sway = Math.sin(now * 1.4 + i * 0.6) * 1.8;
+    const sway = Math.sin(now * 1.3 + i * 0.6) * 1.4;
     const fx = ((x - 5) | 0) + sway;
     const fy = (y | 0) + 1;
     ctx.fillStyle = flagColors[i % flagColors.length];
-    ctx.fillRect(fx, fy, 11, 16);
+    ctx.fillRect(fx, fy, 10, 14);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-    ctx.fillRect(fx, fy + 13, 11, 3);
+    ctx.fillRect(fx, fy + 11, 10, 3);
   }
 }
 
