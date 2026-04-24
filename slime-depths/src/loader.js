@@ -22,6 +22,109 @@ function loadImage(key, src) {
   });
 }
 
+// Chroma-key helper — converts pure-magenta (#FF00FF ± tolerance) pixels to
+// transparent alpha with a soft edge feather for anti-aliased fringe pixels.
+// Nano Banana outputs JPG (no alpha), so magenta-background art gets keyed at
+// load time into an offscreen canvas that any ctx.drawImage call can consume.
+// Also exposes a data URL (`<key>_url`) for DOM <img> tags that can't take
+// a canvas directly (hamlet shrine, death-summary sigil).
+function keyMagentaToAlpha(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  const cx = c.getContext('2d');
+  cx.drawImage(img, 0, 0);
+  const data = cx.getImageData(0, 0, c.width, c.height);
+  const p = data.data;
+  // Hue-based magenta detection: any pixel where (red + blue)/2 strongly
+  // exceeds green is "magenta-ish" regardless of overall brightness. Handles
+  // JPEG compression artifacts, anti-aliased fringes, and the pink halo left
+  // by a naive RGB-threshold key. Score 0..100+ where ~50+ starts fading
+  // and ~90+ is full transparency.
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i], g = p[i + 1], b = p[i + 2];
+    const magScore = (r + b) / 2 - g;
+    if (magScore > 90) {
+      p[i + 3] = 0;
+    } else if (magScore > 40) {
+      // Feather zone — linear ramp from fully-opaque (40) to fully-transparent (90).
+      const t = (magScore - 40) / 50;
+      p[i + 3] = Math.max(0, Math.floor(p[i + 3] * (1 - t)));
+    }
+  }
+  cx.putImageData(data, 0, 0);
+  return c;
+}
+
+function sliceCanvasGrid(srcCanvas, cols, rows) {
+  const cellW = Math.floor(srcCanvas.width / cols);
+  const cellH = Math.floor(srcCanvas.height / rows);
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = document.createElement('canvas');
+      cell.width = cellW;
+      cell.height = cellH;
+      cell.getContext('2d').drawImage(
+        srcCanvas, c * cellW, r * cellH, cellW, cellH, 0, 0, cellW, cellH,
+      );
+      cells.push(cell);
+    }
+  }
+  return cells;
+}
+
+// Loads a magenta-keyed image. Stored at `images[key]` as a canvas (drawImage
+// accepts both Image and HTMLCanvasElement). Also populates `images[key_url]`
+// with a data URL for DOM consumption.
+function loadKeyedImage(key, src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = (ok) => {
+      if (ok) {
+        const keyed = keyMagentaToAlpha(img);
+        images[key] = keyed;
+        try { images[key + '_url'] = keyed.toDataURL('image/png'); } catch (e) {}
+      } else {
+        failed.push(src);
+        console.warn('keyed image failed:', src);
+      }
+      bump(src);
+      resolve();
+    };
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = src;
+  });
+}
+
+// Loads a magenta-keyed sprite sheet and slices it into an N×M grid. Each
+// cell is stored at `images[<baseKey>_<i>]` (row-major, 0-indexed) as a
+// canvas, with an accompanying data URL at `<baseKey>_<i>_url`.
+function loadKeyedGrid(baseKey, src, cols, rows) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = (ok) => {
+      if (ok) {
+        const keyed = keyMagentaToAlpha(img);
+        const cells = sliceCanvasGrid(keyed, cols, rows);
+        for (let i = 0; i < cells.length; i++) {
+          images[`${baseKey}_${i}`] = cells[i];
+          try { images[`${baseKey}_${i}_url`] = cells[i].toDataURL('image/png'); } catch (e) {}
+        }
+      } else {
+        failed.push(src);
+        console.warn('keyed grid failed:', src);
+      }
+      bump(src);
+      resolve();
+    };
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = src;
+  });
+}
+
 // Audio loading is tricky: `canplaythrough` may never fire in some browsers
 // before user interaction (autoplay policy) or for streaming .ogg. We resolve
 // on the FIRST of: canplay, loadedmetadata, or a 2.5s timeout. We only need
@@ -255,6 +358,13 @@ export async function loadAll(progressCb) {
     loadImage('npc_gravekeeper',        'assets/hamlet/npc_gravekeeper.png'),
     loadImage('npc_oracle',             'assets/hamlet/npc_oracle.png'),
     loadImage('npc_wanderer_hamlet',    'assets/hamlet/npc_wanderer_hamlet.png'),
+
+    // THE WATCHER — magenta-keyed art. Sigil is a single painted eye carved
+    // in stone (used in-game + in the run-summary ledger). Shrine grid is
+    // 4×2 = 8 progression states the hamlet shrine reads from based on how
+    // many milestones the player has heard.
+    loadKeyedImage('watcher_sigil',     'assets/hamlet/watcher_sigil.jpg'),
+    loadKeyedGrid('shrine_watcher',     'assets/hamlet/shrine_watcher_grid.jpg', 4, 2),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),

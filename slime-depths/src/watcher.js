@@ -27,6 +27,7 @@
 // ============================================================================
 
 import { safeLoadJSON, safeSaveJSON } from './storage.js';
+import { images } from './loader.js';
 
 const STORAGE_KEY = 'watcher_v1';
 
@@ -395,32 +396,41 @@ export function drawWatcher(ctx, w, h, flags = {}) {
   const breath = 0.75 + 0.25 * Math.sin(now * 1.6);
   const sigilAlpha = alpha * breath;
 
-  // Breathing halo
+  // Breathing halo (behind whichever sigil render we use)
   const halo = ctx.createRadialGradient(sigilX, sigilY, 2, sigilX, sigilY, sigilR * 3.2);
   halo.addColorStop(0, `rgba(236, 224, 196, ${(alpha * 0.22).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(236, 224, 196, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(sigilX - sigilR * 3.2, sigilY - sigilR * 3.2, sigilR * 6.4, sigilR * 6.4);
 
-  // Outer ring
-  ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.85).toFixed(3)})`;
-  ctx.lineWidth = 1.1;
-  ctx.beginPath();
-  ctx.arc(sigilX, sigilY, sigilR, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Inner concentric — subtle double-ring for depth
-  ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.35).toFixed(3)})`;
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.arc(sigilX, sigilY, sigilR * 0.55, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Pupil
-  ctx.fillStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.95).toFixed(3)})`;
-  ctx.beginPath();
-  ctx.arc(sigilX, sigilY, 2.2, 0, Math.PI * 2);
-  ctx.fill();
+  // Prefer the painted sigil asset if loaded; fall back to procedural rings
+  // when the image hasn't loaded yet (or in tests). The asset is a keyed
+  // canvas from loader.js — drawImage accepts canvases just like images.
+  const sigilImg = images.watcher_sigil;
+  if (sigilImg) {
+    // Slight size bump + breath-pulse so the painted carving feels alive.
+    const artSize = Math.round(sigilR * 4.4 * (0.9 + 0.1 * Math.sin(now * 1.6)));
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.95;
+    ctx.drawImage(sigilImg, sigilX - artSize / 2, sigilY - artSize / 2, artSize, artSize);
+    ctx.restore();
+  } else {
+    // Procedural fallback — two concentric rings + pupil.
+    ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.85).toFixed(3)})`;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.arc(sigilX, sigilY, sigilR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.35).toFixed(3)})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(sigilX, sigilY, sigilR * 0.55, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.95).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(sigilX, sigilY, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Text — italic serif, cream, warm drop shadow
   ctx.fillStyle = `rgba(236, 224, 196, ${alpha.toFixed(3)})`;

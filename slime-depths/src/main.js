@@ -1152,6 +1152,14 @@ hamletEl.innerHTML = `
        as you discover more of the ruin's secret combinations. -->
   <div id="hamletFusionShrines" style="position:absolute;left:0;right:0;bottom:12%;height:8%;z-index:2;pointer-events:none;"></div>
 
+  <!-- THE WATCHER'S SHRINE — a weathered standing stone tucked in the
+       hamlet's far-left ruins above the NPC row (so it doesn't collide with
+       the Gravekeeper portrait). Its appearance deepens as the player hears
+       more of the Watcher's first-time milestones. 0 seen = faint, overgrown;
+       all 9 seen = transfigured, gold-veined. Populated by renderHamlet() —
+       see watcher.js seen flags. -->
+  <div id="hamletWatcherShrine" style="position:absolute;left:2%;bottom:40%;width:9%;height:28%;z-index:2;pointer-events:auto;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;"></div>
+
   <!-- NPC LAYER — each NPC is positioned absolutely per their data.x/y% -->
   <div id="hamletNpcLayer" style="position:absolute;inset:0;z-index:2;"></div>
 
@@ -1273,6 +1281,49 @@ function renderHamlet() {
         `;
         shrines.appendChild(shrine);
       }
+    }
+  }
+
+  // THE WATCHER'S SHRINE — progression art, keyed to how many of the
+  // entity's milestones the player has heard. Grid has 8 states (0..7);
+  // we map 0-9 seen flags to states as:
+  //   0 seen   → state 0 (nascent, moss-eaten)
+  //   1-2 seen → state 1 (noticed)
+  //   3 seen   → state 2 (seen)
+  //   4 seen   → state 3 (learned)
+  //   5 seen   → state 4 (revered)
+  //   6 seen   → state 5 (celebrated)
+  //   7 seen   → state 6 (honored)
+  //   8+ seen  → state 7 (crowned)
+  // Hover = brief tooltip with the Watcher's descent count + last line.
+  const shrineEl = document.getElementById('hamletWatcherShrine');
+  if (shrineEl) {
+    const snap = watcherSnapshot();
+    const seenCount = Object.values(snap.seen || {}).filter(Boolean).length;
+    let stateIdx = 0;
+    if      (seenCount >= 8) stateIdx = 7;
+    else if (seenCount >= 7) stateIdx = 6;
+    else if (seenCount >= 6) stateIdx = 5;
+    else if (seenCount >= 5) stateIdx = 4;
+    else if (seenCount >= 4) stateIdx = 3;
+    else if (seenCount >= 3) stateIdx = 2;
+    else if (seenCount >= 1) stateIdx = 1;
+    const url = imageCache[`shrine_watcher_${stateIdx}_url`];
+    // Warm halo that scales with progression — intensifies as the shrine wakes.
+    const haloAlpha = 0.05 + stateIdx * 0.04;
+    const haloColor = stateIdx >= 5 ? '255, 180, 100' : stateIdx >= 3 ? '255, 200, 140' : '255, 220, 180';
+    shrineEl.innerHTML = url
+      ? `
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 70%, rgba(${haloColor}, ${haloAlpha.toFixed(3)}) 0%, transparent 60%);pointer-events:none;mix-blend-mode:screen;filter:blur(6px);"></div>
+        <img src="${url}" alt="" draggable="false" style="position:relative;max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 6px 18px rgba(0,0,0,0.6));pointer-events:none;" />
+      `
+      : '';
+    if (url) {
+      const last = snap.lastSpokenLine || '';
+      const descents = snap.runs || 0;
+      shrineEl.title = last
+        ? `The Watcher has marked ${descents} descent${descents === 1 ? '' : 's'}.\nLast seen to say: "${last}"`
+        : `A shrine, watching. ${descents} descent${descents === 1 ? '' : 's'} recorded.`;
     }
   }
 
@@ -3907,14 +3958,21 @@ function showEndOfRun(isVictory) {
           if (j === 3) return n + 'rd';
           return n + 'th';
         };
-        watcherEl.style.display = 'block';
-        watcherEl.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;">
-            <svg width="18" height="18" viewBox="0 0 22 22" style="overflow:visible;">
+        // Prefer the painted sigil asset; fall back to an inline SVG
+        // silhouette if the keyed canvas + data-url isn't loaded yet (first
+        // render during loading, or missing asset).
+        const sigilUrl = (imageCache && imageCache.watcher_sigil_url) || null;
+        const sigilHtml = sigilUrl
+          ? `<img src="${sigilUrl}" alt="" width="26" height="26" style="display:block;filter:drop-shadow(0 0 6px rgba(236,224,196,0.4));" />`
+          : `<svg width="22" height="22" viewBox="0 0 22 22" style="overflow:visible;">
               <circle cx="11" cy="11" r="9" fill="none" stroke="rgba(236,224,196,0.75)" stroke-width="1"/>
               <circle cx="11" cy="11" r="5" fill="none" stroke="rgba(236,224,196,0.35)" stroke-width="0.8"/>
               <circle cx="11" cy="11" r="2" fill="rgba(236,224,196,0.9)"/>
-            </svg>
+            </svg>`;
+        watcherEl.style.display = 'block';
+        watcherEl.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;">
+            ${sigilHtml}
             <span style="opacity:0.55;font-style:normal;letter-spacing:3px;font-size:10px;">
               THE WATCHER MARKS YOUR ${ordinal(count).toUpperCase()} DESCENT
             </span>
