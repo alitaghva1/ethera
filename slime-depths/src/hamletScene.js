@@ -462,59 +462,73 @@ export function drawHamletBackdrop(ctx) {
   }
 
   // ── ZONE · WEST & EAST RUIN PATCHES ──────────────────────────────────
-  // Authored material patches in the back corners. West is moss-heavy
-  // (graveyard overgrowth); east is dirt-heavy (collapsed gatehouse).
-  paintRuinPatch(ctx, Z_WEST_RUIN.x, Z_WEST_RUIN.y, 150, 'west');
-  paintRuinPatch(ctx, Z_EAST_RUIN.x, Z_EAST_RUIN.y, 165, 'east');
+  // Authored material patches in the back corners. West = mossy graveyard
+  // overgrowth; east = tan dirt + collapsed gatehouse. Bigger + more
+  // saturated than the prior pass so the "ruined edge" reads clearly.
+  paintRuinPatch(ctx, Z_WEST_RUIN.x, Z_WEST_RUIN.y, 165, 'west');
+  paintRuinPatch(ctx, Z_EAST_RUIN.x, Z_EAST_RUIN.y, 175, 'east');
 
-  // ── ZONE · BUILDING PADS ─────────────────────────────────────────────
-  // Solid painted pads under each district — each with a distinct
-  // material so the eye immediately reads "stone plaza", "warm forge
-  // yard", "cool archive court", "violet shrine platform". These are
-  // OPAQUE paints on top of the base cobble (not additive glows).
+  // ── ZONE · PERIMETER RUINS ───────────────────────────────────────────
+  // Broken wall segments running along the BACK of the playable room
+  // (y~330) with visible gaps between them. Tells the player "this
+  // settlement used to be bigger" and gives the hub a defined edge
+  // instead of the back fading into the sky.
+  drawBrokenWallSegment(ctx, 220, 348, 60);
+  drawBrokenWallSegment(ctx, 330, 338, 70);
+  drawBrokenWallSegment(ctx, 575, 348, 65);
+  drawBrokenWallSegment(ctx, 695, 340, 75);
+  drawBrokenWallSegment(ctx, 795, 352, 60);
 
-  // FORGE — warm yellow-gold rectangular pad, framed by anvil + woodpile
-  paintRectPad(ctx, Z_FORGE.x, 560, 220, 130, {
-    body: '#8a7248', edge: '#5a4628', hi: '#b29868',
-    brickW: 28, brickH: 20,
+  // ── ZONE · ENTRANCE DIRT TRAIL ───────────────────────────────────────
+  // Dirt approach from offscreen south widening into the plaza's south
+  // edge. Reads as "the player's path back home" — not cobble, because
+  // outside the hamlet the ground hasn't been paved.
+  paintDirtPad(ctx, 480, 655, 55, 22);
+  paintDirtPad(ctx, 480, 640, 45, 16);
+
+  // ── ZONE · REBUILD DIRT PAD ──────────────────────────────────────────
+  // Construction site has bare earth underfoot — not cobble. The pad
+  // anchors the scaffolding/stone-stack/half-wall cluster as a working
+  // area, not props randomly dropped on stone.
+  paintDirtPad(ctx, 685, 618, 90, 42);
+
+  // ── ZONE · BUILDING PADS (organic ovals) ─────────────────────────────
+  // Each district pad is an OVAL (not a rectangle) so it reads as a
+  // "cleared courtyard" rather than "laid platform". Each has its own
+  // material palette: forge warm gold, archive cool grey, shrine violet.
+  paintOvalPad(ctx, Z_FORGE.x, 568, 98, 61, {
+    body: '#8c7448', inner: '#a48658', edge: 'rgba(58, 44, 26, 1)', hi: '#c4a878',
   });
-  // ARCHIVE — cool blue-grey rectangular pad
-  paintRectPad(ctx, Z_ARCHIVE.x, 555, 200, 140, {
-    body: '#5f636c', edge: '#363a42', hi: '#848894',
-    brickW: 28, brickH: 22,
+  paintOvalPad(ctx, Z_ARCHIVE.x, 560, 92, 64, {
+    body: '#626672', inner: '#787c88', edge: 'rgba(34, 36, 44, 1)', hi: '#98a0ac',
   });
-  // SHRINE — pale violet circular pad, semicircular feel
-  paintCirclePad(ctx, Z_SHRINE.x, Z_SHRINE.y, 70, {
-    outer: '#3e3548', mid: '#584a68', inner: '#70607e', tint: 'rgba(160, 120, 200, 0.22)',
+  paintOvalPad(ctx, Z_SHRINE.x, Z_SHRINE.y, 64, 50, {
+    body: '#564866', inner: '#70607e', edge: 'rgba(32, 24, 40, 1)', hi: '#8878a0',
+    tint: 'rgba(160, 120, 200, 0.30)',
   });
 
   // ── ZONE · PATHS ─────────────────────────────────────────────────────
-  // Paved stone walkways with edge lines + brick pattern, fading at
-  // endpoints so the walk reads as "worn stone laid on the cobble".
-  // Authored polylines — primary spine is the widest; spokes narrower;
-  // a back connector ties shrine → tower → east ruin (from the ref).
-  paintPath(ctx, Z_SPAWN,   Z_PLAZA,   72, 'primary');   // entrance spine
-  paintPath(ctx, Z_PLAZA,   Z_TOWER,   70, 'primary');   // plaza → tower
-  paintPath(ctx, Z_PLAZA,   Z_FORGE,   58, 'spoke');     // plaza → forge
-  paintPath(ctx, Z_PLAZA,   Z_ARCHIVE, 58, 'spoke');     // plaza → archive
-  paintPath(ctx, Z_PLAZA,   Z_SHRINE,  54, 'spoke');     // plaza → shrine
-  // Back connector: shrine → tower → east ruin (arcs behind the plaza)
+  // Paths painted AFTER pads but BEFORE plaza & tower, so paths feed into
+  // pads and are overlaid by the plaza/tower centers. Primary spine is
+  // widest; spokes narrower; back connector is the narrowest/dimmest.
+  paintPath(ctx, Z_SPAWN,   Z_PLAZA,   72, 'primary');
+  paintPath(ctx, Z_PLAZA,   Z_TOWER,   70, 'primary');
+  paintPath(ctx, Z_PLAZA,   Z_FORGE,   58, 'spoke');
+  paintPath(ctx, Z_PLAZA,   Z_ARCHIVE, 58, 'spoke');
+  paintPath(ctx, Z_PLAZA,   Z_SHRINE,  54, 'spoke');
   paintPath(ctx, Z_SHRINE,  { x: 330, y: 395 }, 42, 'back');
   paintPath(ctx, { x: 330, y: 395 }, Z_TOWER,   42, 'back');
   paintPath(ctx, Z_TOWER,   { x: 640, y: 395 }, 42, 'back');
   paintPath(ctx, { x: 640, y: 395 }, Z_EAST_RUIN, 42, 'back');
 
   // ── ZONE · TOWER BASE DISC ───────────────────────────────────────────
-  // Stone disc the tower sits on — darker, scorched at the centre,
-  // with visible cracks. Draws AFTER the paths so the paths visually
-  // approach the disc edge; the disc itself is the tower's "doorstep".
-  paintTowerBase(ctx, Z_TOWER.x, Z_TOWER.y + 40, 92);
+  // Dark scorched stone disc; sits ABOVE the plaza with a 30-40px gap
+  // of path between them (visual separation).
+  paintTowerBase(ctx, Z_TOWER.x, Z_TOWER.y + 40, 72);
 
   // ── ZONE · CENTRAL PLAZA ─────────────────────────────────────────────
-  // The plaza is drawn as a SOLID stone ring, not just a glow. Three
-  // concentric bands + 8 radial wedge dividers + a final warm firelight
-  // halo on top. This is the single biggest visual anchor of the hub.
-  paintPlazaRing(ctx, Z_PLAZA.x, Z_PLAZA.y, 124);
+  // Radial-wedge flagstone plaza with concentric bands. r=130.
+  paintPlazaRing(ctx, Z_PLAZA.x, Z_PLAZA.y, 130);
 
   // ── CLUSTER DECOR · EDGE MOSS (nature reclaim) ───────────────────────
   // Moss tufts along the ruin patches + around building back walls.
@@ -755,69 +769,241 @@ function paintPath(ctx, from, to, width, tier = 'primary') {
   ctx.restore();
 }
 
-// Central plaza — solid stone ring composed of three concentric bands
-// with 8 radial wedge dividers + a final warm firelight halo. The
-// plaza is the visual heart; every path terminates here.
+// Central plaza — radial-wedge flagstone paving with three concentric
+// bands + proper pie-slice divider lines (not just concentric rings).
+// Reads as real pavement, not a tinted disc. Paths visually terminate
+// at its outer boundary.
 function paintPlazaRing(ctx, cx, cy, r) {
-  // Drop shadow under the plaza disc
+  // Drop shadow
   ctx.save();
-  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
   ctx.beginPath();
-  ctx.arc(cx, cy + 4, r + 4, 0, Math.PI * 2);
+  ctx.arc(cx, cy + 5, r + 5, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
-  // Outer ring — dark stone border (weathered)
-  ctx.fillStyle = '#3c2e22';
+  // Outer dark boundary — 6px weathered rim
+  ctx.fillStyle = '#342a20';
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
-  // Mid ring — warmer amber stone
-  ctx.fillStyle = '#6e5638';
+  // OUTER BAND — darker amber flagstone (12 wedges)
+  ctx.fillStyle = '#7a5c38';
   ctx.beginPath();
-  ctx.arc(cx, cy, r - 18, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r - 6, 0, Math.PI * 2);
   ctx.fill();
-  // Inner ring — warmest firelit stone
-  ctx.fillStyle = '#8a6a44';
+  // MID BAND — warmer amber
+  ctx.fillStyle = '#95754c';
   ctx.beginPath();
-  ctx.arc(cx, cy, r - 52, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r - 42, 0, Math.PI * 2);
   ctx.fill();
-  // Central hearth tint — brightest
-  ctx.fillStyle = '#a68252';
+  // INNER HEARTH — warmest
+  ctx.fillStyle = '#ac8756';
   ctx.beginPath();
-  ctx.arc(cx, cy, r - 100, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r - 78, 0, Math.PI * 2);
   ctx.fill();
 
-  // 8 radial wedge dividers on the outer ring (dark grout lines)
   ctx.save();
-  ctx.strokeStyle = 'rgba(22, 14, 10, 0.55)';
-  ctx.lineWidth = 1.5;
+  // OUTER BAND · 12 radial wedge dividers (pie slices)
+  ctx.strokeStyle = 'rgba(30, 20, 12, 0.70)';
+  ctx.lineWidth = 1.6;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + 0.13;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * (r - 42), cy + Math.sin(a) * (r - 42));
+    ctx.lineTo(cx + Math.cos(a) * (r - 1),  cy + Math.sin(a) * (r - 1));
+    ctx.stroke();
+  }
+  // MID BAND · 8 radial dividers
+  ctx.lineWidth = 1.3;
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * (r - 52), cy + Math.sin(a) * (r - 52));
-    ctx.lineTo(cx + Math.cos(a) * r,        cy + Math.sin(a) * r);
+    ctx.moveTo(cx + Math.cos(a) * (r - 78), cy + Math.sin(a) * (r - 78));
+    ctx.lineTo(cx + Math.cos(a) * (r - 42), cy + Math.sin(a) * (r - 42));
     ctx.stroke();
   }
-  // Inner ring boundary line
+  // Band boundary circles
+  ctx.strokeStyle = 'rgba(26, 18, 12, 0.55)';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.arc(cx, cy, r - 52, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r - 42, 0, Math.PI * 2);
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(cx, cy, r - 18, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r - 78, 0, Math.PI * 2);
   ctx.stroke();
+  // Short perpendicular flagstone seams on the outer band (midpoints)
+  ctx.strokeStyle = 'rgba(30, 20, 12, 0.45)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + 0.13 + (Math.PI / 12);
+    const r1 = r - 22, r2 = r - 25;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    ctx.stroke();
+  }
   ctx.restore();
 
-  // Firelight halo on top — warm additive glow from the campfire
+  // Firelight halo
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   const glow = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
-  glow.addColorStop(0,   'rgba(255, 190, 110, 0.38)');
-  glow.addColorStop(0.5, 'rgba(255, 150, 80, 0.14)');
+  glow.addColorStop(0,   'rgba(255, 190, 110, 0.42)');
+  glow.addColorStop(0.5, 'rgba(255, 150, 80, 0.15)');
   glow.addColorStop(1,   'rgba(255, 140, 80, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
   ctx.restore();
+}
+
+// Organic oval building pad — used for the forge and archive (no more
+// hard rectangles). Reads as "cleared courtyard", not "laid platform".
+// Has a drop shadow, body, lighter interior, dark edge ring, and
+// optional tint for districts with a colored palette.
+function paintOvalPad(ctx, cx, cy, rx, ry, { body, inner, edge, hi, tint, tintAlpha = 0.28 }) {
+  // Drop shadow
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.4)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + ry - 2, rx + 5, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Body fill
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Inner lighter stone area
+  ctx.fillStyle = inner;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 2, rx - 10, ry - 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Horizontal flagstone seams clipped to the ellipse
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx - 1, ry - 1, 0, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.strokeStyle = edge;
+  ctx.globalAlpha = 0.6;
+  ctx.lineWidth = 1;
+  for (let y = cy - ry + 12; y < cy + ry - 4; y += 13) {
+    ctx.beginPath();
+    ctx.moveTo(cx - rx, y);
+    ctx.lineTo(cx + rx, y);
+    ctx.stroke();
+  }
+  // Vertical brick seams (offset per row)
+  let r = 0;
+  for (let y = cy - ry + 12; y < cy + ry - 4; y += 13, r++) {
+    const offset = (r & 1) ? 14 : 0;
+    for (let x = cx - rx + offset; x < cx + rx; x += 28) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + 13);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // Edge dark ring
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Top highlight arc
+  ctx.strokeStyle = hi;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 1, rx - 2, ry - 2, 0, Math.PI * 1.05, Math.PI * 1.95);
+  ctx.stroke();
+  // Optional tint overlay
+  if (tint) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(cx, cy, 6, cx, cy, rx);
+    g.addColorStop(0, tint);
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.globalAlpha = tintAlpha;
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+    ctx.restore();
+  }
+}
+
+// Bare dirt pad — used under the rebuild scaffolding and the south
+// entrance trail. Opaque earth tone with subtle divot speckles so
+// the area reads as "bare earth, not paved".
+function paintDirtPad(ctx, cx, cy, rx, ry) {
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.38)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + ry - 2, rx + 3, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Base dirt
+  ctx.fillStyle = '#6a4e34';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Lighter top
+  ctx.fillStyle = '#7a5e44';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 3, rx - 6, ry - 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Dirt divot speckles — scale count to area
+  const speckles = Math.max(6, Math.round(rx * ry / 80));
+  for (let i = 0; i < speckles; i++) {
+    const h = cellHash(cx + i * 13, cy + i * 7, 100000);
+    const dxs = ((h % 200) - 100) / 100 * rx * 0.85;
+    const dys = (((h >>> 8) % 200) - 100) / 100 * ry * 0.8;
+    ctx.fillStyle = 'rgba(38, 26, 16, 0.55)';
+    ctx.fillRect((cx + dxs) | 0, (cy + dys) | 0, 2, 2);
+  }
+  // Edge darker ring
+  ctx.strokeStyle = 'rgba(28, 18, 12, 0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+// Broken wall segment — a chunk of collapsed stone wall. Used along the
+// back perimeter to tell the "this hamlet used to be bigger" story.
+// Each segment has a jagged top + scattered rubble blocks at the base.
+function drawBrokenWallSegment(ctx, cx, cy, w) {
+  // Rubble base shadow
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.5)';
+  ctx.fillRect(cx - w / 2 - 6, cy + 6, w + 12, 5);
+  // Wall body
+  const h = 22;
+  ctx.fillStyle = '#3a342e';
+  ctx.fillRect(cx - w / 2, cy - h + 4, w, h);
+  // Chipped top — pseudo-random heights per chunk
+  const chunks = 5;
+  const cw = w / chunks;
+  for (let i = 0; i < chunks; i++) {
+    const hh = (cellHash(cx + i * 19, cy, 1000) % 6);
+    const top = cy - h + 4 - hh;
+    ctx.fillStyle = '#3a342e';
+    ctx.fillRect(cx - w / 2 + i * cw, top, cw, hh);
+    // Top highlight
+    ctx.fillStyle = '#5a5248';
+    ctx.fillRect(cx - w / 2 + i * cw, top, cw, 1);
+  }
+  // Vertical stone seams
+  ctx.fillStyle = 'rgba(14, 10, 10, 0.6)';
+  for (let i = 1; i < chunks; i++) {
+    ctx.fillRect(cx - w / 2 + i * cw, cy - h + 4, 1, h - 4);
+  }
+  // Horizontal course line
+  ctx.fillRect(cx - w / 2, cy - 6, w, 1);
+  // Scattered rubble blocks at the base (left + right)
+  ctx.fillStyle = '#4a4238';
+  ctx.fillRect(cx - w / 2 - 10, cy + 2, 10, 7);
+  ctx.fillRect(cx + w / 2, cy + 4, 12, 6);
+  ctx.fillStyle = '#6a6258';
+  ctx.fillRect(cx - w / 2 - 10, cy + 2, 10, 1);
+  ctx.fillRect(cx + w / 2, cy + 4, 12, 1);
+  // Small dark soil at base (the wall has been here a while)
+  ctx.fillStyle = 'rgba(30, 22, 16, 0.4)';
+  ctx.fillRect(cx - w / 2 - 14, cy + 9, w + 28, 2);
 }
 
 // Tower base — small dark scorched stone disc the tower sits on.
@@ -866,83 +1052,8 @@ function paintTowerBase(ctx, cx, cy, r) {
   ctx.restore();
 }
 
-// Rectangular building pad — painted stone tile with brick grout pattern.
-// Used for the forge yard + archive court. Opaque (not glow), so it
-// replaces the cobble underneath with district-specific material.
-function paintRectPad(ctx, cx, cy, w, h, { body, edge, hi, brickW, brickH }) {
-  const x0 = cx - w / 2, y0 = cy - h / 2;
-  // Shadow under pad
-  ctx.fillStyle = 'rgba(4, 2, 6, 0.4)';
-  ctx.fillRect(x0 + 3, cy + h / 2 - 2, w - 6, 6);
-  // Body fill
-  ctx.fillStyle = body;
-  ctx.fillRect(x0, y0, w, h);
-  // Brick grout pattern (offset by row)
-  ctx.strokeStyle = edge;
-  ctx.lineWidth = 1;
-  // Horizontal grout lines
-  for (let y = y0 + brickH; y < y0 + h; y += brickH) {
-    ctx.beginPath();
-    ctx.moveTo(x0, y);
-    ctx.lineTo(x0 + w, y);
-    ctx.stroke();
-  }
-  // Vertical grout lines (offset per row)
-  let r = 0;
-  for (let y = y0; y < y0 + h; y += brickH, r++) {
-    const offset = (r & 1) ? brickW / 2 : 0;
-    for (let x = x0 + offset; x < x0 + w; x += brickW) {
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x, Math.min(y + brickH, y0 + h));
-      ctx.stroke();
-    }
-  }
-  // Top edge highlight
-  ctx.fillStyle = hi;
-  ctx.fillRect(x0, y0, w, 1);
-  // Outer border (slightly darker)
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
-}
-
-// Circular building pad — used for the shrine (semicircular feel, but
-// drawn as full circle since top-down). Three concentric rings + a
-// mystical tint overlay + edge line.
-function paintCirclePad(ctx, cx, cy, r, { outer, mid, inner, tint }) {
-  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
-  ctx.beginPath();
-  ctx.arc(cx, cy + 4, r + 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = outer;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = mid;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = inner;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 20, 0, Math.PI * 2);
-  ctx.fill();
-  // Mystical tint on top
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  const glow = ctx.createRadialGradient(cx, cy, 5, cx, cy, r);
-  glow.addColorStop(0, tint);
-  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-  ctx.restore();
-  // Edge ring line
-  ctx.strokeStyle = 'rgba(20, 14, 24, 0.65)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
-  ctx.stroke();
-}
+// (paintRectPad + paintCirclePad removed — all pads now use paintOvalPad
+// for organic "cleared courtyard" read instead of geometric platforms.)
 
 // Ruin patch — authored area at the back corners telling a specific
 // "kind of broken": 'west' = graveyard overgrowth (moss + dark green);
