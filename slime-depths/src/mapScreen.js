@@ -261,7 +261,28 @@ function renderNode(n, p, currentNode) {
       opacity:${clickable || isCurrent ? 0.95 : 0.65};
       font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
     ">${NODE_LABELS[n.kind] || ''}</div>
+    ${hidden ? '' : pathSublabelHtml(n, clickable, isCurrent, color)}
   </div>`;
+}
+
+// Sub-label under the node name — telegraphs the path cost/reward so forks
+// feel strategic ("I'm picking RISK for RARE+") instead of aesthetic
+// ("combat vs combat"). Only shown on elite (perilous) + sanctuary (safe)
+// since standard combat/event are the implicit baseline.
+function pathSublabelHtml(n, clickable, isCurrent, color) {
+  let text = null;
+  if (n.kind === 'elite')     text = 'RISK \u00b7 RARE+';
+  else if (n.kind === 'sanctuary') text = 'REST';
+  if (!text) return '';
+  const alive = clickable || isCurrent;
+  const alpha = alive ? 0.85 : 0.5;
+  return `
+    <div style="
+      color:${alive ? color : '#8a7c5e'};
+      font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
+      opacity:${alpha};margin-top:-1px;
+      font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+    ">${text}</div>`;
 }
 
 // ============================================================================

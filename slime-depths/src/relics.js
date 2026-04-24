@@ -681,7 +681,7 @@ export function getRelicGlyph(id) {
 
 // Pick N random relics not already owned, weighted by floor tier distribution.
 // Falls back to next-lower tier if the rolled tier has no available relics.
-export function rollRelicOffer(n, floorLevel = 1) {
+export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
   const ownedIds = new Set(equipped.map(r => r.id));
   const availableByTier = { common: [], rare: [], legendary: [], mythic: [] };
   // ASCENSION VI — "The Purged": legendary relics removed from the pool.
@@ -705,10 +705,16 @@ export function rollRelicOffer(n, floorLevel = 1) {
   // Fallback order: mythic → legendary → rare → common (so a missed mythic
   // roll prefers legendary over dropping straight to common).
   const fallbackOrder = ['mythic', 'legendary', 'rare', 'common'];
+  // minTier — skip any tier BELOW this in both primary pick + fallback.
+  // Used by elite/perilous rooms to guarantee rare+ rewards.
+  const minTier = opts.minTier || null;
+  const TIER_ORDER = { common: 0, rare: 1, legendary: 2, mythic: 3 };
+  const belowMin = (t) => minTier != null && TIER_ORDER[t] < TIER_ORDER[minTier];
   const picks = [];
   for (let k = 0; k < n; k++) {
-    const target = weightedTier(floorLevel);
-    const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)];
+    let target = weightedTier(floorLevel);
+    if (belowMin(target)) target = minTier;   // promote the target to at least minTier
+    const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)].filter(t => !belowMin(t));
     let got = null;
     for (const t of tryOrder) {
       got = pickFromTier(t);

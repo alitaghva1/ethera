@@ -91,9 +91,11 @@ function findClearTile(px, py, maxR = 4) {
 
 // Spawn 3 relic pedestals laid out across the north side of the room.
 // Pedestals shift to nearby clear tiles if pillars block the preferred cells.
-export function spawnRelicOffer(floorLevel = 1) {
+// opts.minTier promotes the offer pool to rare+ / legendary+ etc. — used by
+// elite (perilous-path) rooms to guarantee meaningful rewards for extra risk.
+export function spawnRelicOffer(floorLevel = 1, opts = {}) {
   pedestals.length = 0;
-  const offers = applyMagicianBias(rollRelicOffer(3, floorLevel));
+  const offers = applyMagicianBias(rollRelicOffer(3, floorLevel, opts));
   if (offers.length === 0) return;
   const cols = [6, 10, 14];
   const row = 4;

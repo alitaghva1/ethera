@@ -40,10 +40,16 @@ const ELITE_CHANCE_BY_LEVEL = [0, 0.08, 0.25, 0.40, 0.55];
 
 // Layer recipe — ordered from start+1 up to boss-1. Each entry picks `count`
 // nodes from its `options` pool, with repeats allowed so a layer can have
-// e.g. [combat, combat, elite]. `noCombatSlot` is the pacing slot name
+// e.g. [combat, combat, elite]. `combatSlot` is the pacing slot name
 // fed into makeCombatRoom (combat1/combat2/combat3) to match difficulty.
+//
+// forkKinds — if set, REPLACES random picks with this exact array when the
+// floor level is >= forkMinLevel. Used to guarantee a meaningful first fork
+// on floors 2+ (was [combat, combat] — two identical choices; now [combat,
+// elite] so the player actually picks risk vs safety on turn 1).
 const LAYER_RECIPE = [
-  { layer: 1, options: ['combat', 'combat'],             count: 2, combatSlot: 'combat1' },
+  { layer: 1, options: ['combat', 'combat'],             count: 2, combatSlot: 'combat1',
+    forkKinds: ['combat', 'elite'], forkMinLevel: 2 },
   { layer: 2, options: ['event', 'event', 'combat'],     count: 3, combatSlot: 'combat2' },
   { layer: 3, options: ['combat', 'elite'],              count: 2, combatSlot: 'combat2' },
   { layer: 4, options: ['sanctuary'],                    count: 1, combatSlot: null       },
@@ -51,12 +57,24 @@ const LAYER_RECIPE = [
 ];
 const BOSS_LAYER = LAYER_RECIPE.length + 1;   // 6 in the current recipe
 
+// Path tag — derives from node kind. Used by the map render to distinguish
+// "safe road" from "hard road" so forks feel strategic, not aesthetic.
+//   safe     — sanctuary / reward (no danger, no drop)
+//   standard — combat / event (default path)
+//   perilous — elite / boss (harder, better reward)
+export function pathForKind(kind) {
+  if (kind === 'sanctuary' || kind === 'reward') return 'safe';
+  if (kind === 'elite' || kind === 'boss') return 'perilous';
+  return 'standard';
+}
+
 let _nextNodeId = 0;
 function makeNode(kind, layer) {
   return {
     id: _nextNodeId++,
     kind,
     layer,
+    path: pathForKind(kind),    // 'safe' | 'standard' | 'perilous'
     edges: [],
     roomData: null,
     visited: false,
@@ -152,8 +170,14 @@ export function generateFloorGraph(level = 1, opts = {}) {
   const layerToNodes = [[start]];
   for (const recipe of LAYER_RECIPE) {
     const layerNodes = [];
+    // Honor forkKinds override when present and floor level is past the
+    // learner's-floor gate. Layer 1 becomes [combat, elite] at floors 2+,
+    // turning the former [combat, combat] aesthetic fork into a real choice.
+    const useFork = recipe.forkKinds && lvl >= (recipe.forkMinLevel || 1);
     for (let i = 0; i < recipe.count; i++) {
-      const kind = recipe.options[pickIdx(recipe.options)];
+      const kind = useFork
+        ? recipe.forkKinds[i % recipe.forkKinds.length]
+        : recipe.options[pickIdx(recipe.options)];
       const n = makeNode(kind, recipe.layer);
       n.roomData = buildRoomForKind(kind, lvl, recipe.combatSlot);
       nodes.push(n);

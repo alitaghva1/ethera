@@ -4411,9 +4411,13 @@ function tick(now) {
         // Mini-boss rooms force floor-4 rarity weights — the mini-boss fight
         // is harder than a normal combat slot so the reward should reflect
         // that (higher rare + legendary chance, even a shot at mythic on F4).
+        // Elite (perilous-path) rooms guarantee rare+ pedestals — risk pays.
         // Standard combat rooms still roll on the current floor.
         const isMiniboss = data.slotLabel === 'miniboss';
-        spawnRelicOffer(isMiniboss ? 4 : currentFloorLevel);
+        const isElitePath = !!data.eliteRoom;
+        const offerLevel = isMiniboss ? 4 : currentFloorLevel;
+        const offerOpts = isElitePath ? { minTier: 'rare' } : {};
+        spawnRelicOffer(offerLevel, offerOpts);
         applyTarotPedestalMods();
         if (isMiniboss) {
           // Extra flourish on mini-boss reward: brighter ping + sparkle burst
