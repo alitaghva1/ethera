@@ -311,14 +311,33 @@ export function drawHamletBackdrop(ctx) {
   const subtiles = ensureCobbleSubtiles();
   if (subtiles && subtiles.length === 9) {
     const tileW = 64, tileH = 64;
+    const drawW = tileW + 4, drawH = tileH + 4;   // 4px overlap blurs seams
     const groundTop = 300;
     let row = 0;
     for (let y = groundTop; y < 672; y += tileH, row++) {
-      const offset = (row & 1) ? tileW / 2 : 0;
+      // Small per-row horizontal jitter so the vertical tile grid
+      // doesn't read as a perfectly aligned column. Brick-course was
+      // too visible as an alternating wall pattern; a small pseudo-
+      // random offset softens the grid without the wall look.
+      const xOffset = ((row * 17) % 13) - 6;
       for (let x = BG_X_MIN - tileW; x < BG_X_MAX + tileW; x += tileW) {
-        const xi = ((x + offset) / tileW) | 0;
-        const i = cellHash(xi, (y / tileH) | 0, 9);
-        ctx.drawImage(subtiles[i], x + offset, y, tileW, tileH);
+        const xi = ((x + xOffset) / tileW) | 0;
+        const h = cellHash(xi, (y / tileH) | 0, 1000);
+        const i = h % 9;
+        // Per-tile vertical jitter in [-3..+3] — kills horizontal seam
+        // alignment that would otherwise draw the eye across the scene.
+        const yOffset = ((h >>> 8) % 7) - 3;
+        // Horizontal flip on half of tiles — doubles apparent variety.
+        const flipX = ((h >>> 4) & 1) === 0;
+        ctx.save();
+        if (flipX) {
+          ctx.translate(x + xOffset + drawW, y + yOffset);
+          ctx.scale(-1, 1);
+          ctx.drawImage(subtiles[i], 0, 0, drawW, drawH);
+        } else {
+          ctx.drawImage(subtiles[i], x + xOffset, y + yOffset, drawW, drawH);
+        }
+        ctx.restore();
       }
     }
     // Small dirt-smudge overlays — 22 subtle patches that sit across tile
@@ -346,6 +365,32 @@ export function drawHamletBackdrop(ctx) {
       ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+    }
+    ctx.restore();
+
+    // Large-scale subtle hue variation — 6 big soft patches at low
+    // opacity. Gives the ground zonal variation so the eye stops
+    // parsing the tile grid as the dominant line, without tinting so
+    // strongly that the stone reads as dirt.
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.35;
+    for (let s = 0; s < 6; s++) {
+      const h = cellHash(s * 131 + 17, s * 167 + 29, 1000000);
+      const cx = BG_X_MIN + (h % BG_W);
+      const cy = 360 + ((h >>> 10) % 280);
+      const r = 200 + ((h >>> 4) % 120);
+      const warm = ((h >>> 20) & 1) === 0;
+      const grad = ctx.createRadialGradient(cx, cy, 30, cx, cy, r);
+      if (warm) {
+        grad.addColorStop(0, 'rgba(215, 195, 160, 1)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 1)');
+      } else {
+        grad.addColorStop(0, 'rgba(170, 175, 185, 1)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 1)');
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
     ctx.restore();
 
