@@ -146,7 +146,7 @@ export const MENU_SCREEN_HTML = `
     <!-- PRIMARY ACTION — the single anchor. Soft pulse halo behind it. -->
     <div style="position:relative;">
       <div id="menuCtaHalo" style="position:absolute;inset:-14px;background:radial-gradient(ellipse at center, rgba(201,168,106,0.18), transparent 70%);pointer-events:none;"></div>
-      <button id="menuNewRunBtn" style="position:relative;background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:19px 96px;font-size:18px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 28px rgba(201,168,106,0.25), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">BEGIN DESCENT</button>
+      <button id="menuNewRunBtn" style="position:relative;background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:19px 96px;font-size:18px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 28px rgba(201,168,106,0.25), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">AWAKEN</button>
     </div>
 
     <!-- MODE CHIPS — borderless. Smaller + tighter to the CTA now so they
@@ -187,13 +187,13 @@ export const MENU_SCREEN_HTML = `
          codex (achievements, bestiary, relicpedia, fusions). Everything else
          (how-to-play, credits) demoted to footer-level so this row stays
          focused on "where else can I actually go?" -->
+    <!-- "visit the hamlet" link removed — the AWAKEN button above now takes
+         the player directly to the hamlet, where the descent portal starts
+         a run. menuHamletLink is kept as a hidden compat shell so the
+         existing click handler binding in main.js doesn't throw. -->
     <div style="display:flex;align-items:center;gap:24px;margin-top:34px;font-family:Georgia,serif;">
       <div style="width:54px;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,106,0.6));"></div>
-      <button id="menuHamletLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
-        <span>visit the hamlet</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
+      <button id="menuHamletLink" style="display:none;"></button>
       <button id="menuChroniclesLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
         <span>read the chronicles</span>
         <span style="font-size:10px;opacity:0.7;">\u2192</span>

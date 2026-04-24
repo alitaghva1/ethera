@@ -607,9 +607,12 @@ document.getElementById('menuResumeBtn').addEventListener('click', () => {
   resumeRun(snap);
 });
 
-document.getElementById('menuNewRunBtn').addEventListener('click', () => {
-  // Route through the currently-selected mode. Tarot detours through a reveal;
-  // daily sets a flag; standard just starts.
+// Shared "begin the descent" routing — consumes the currently-selected menu
+// mode (standard / daily / tarot). Previously only the main-menu BEGIN
+// DESCENT button called this; now the in-hamlet descent portal calls it
+// too, so the player enters the hamlet first, picks mode/ascension there,
+// and steps into the portal to actually start the run.
+function beginDescent() {
   if (menuMode === 'tarot') {
     drawTarotHand(3);
     showTarotReveal();
@@ -621,6 +624,15 @@ document.getElementById('menuNewRunBtn').addEventListener('click', () => {
   }
   if (availableWeapons().length > 1) showWeaponPicker();
   else { hideAllOverlays(); startRun(); }
+}
+
+document.getElementById('menuNewRunBtn').addEventListener('click', () => {
+  // New flow: the menu CTA takes the player to the hamlet. The descent
+  // portal inside the hamlet is what actually begins a run (routing
+  // through beginDescent). This collapses "visit hamlet" + "begin
+  // descent" into one entry point and makes the hamlet the canonical
+  // starting point of every run instead of a separate side-trip.
+  showHamlet();
 });
 document.getElementById('menuMetaBtn').addEventListener('click', () => {
   // "SANCTUARY" card now routes into the Living Hamlet hub; the Keeper NPC
@@ -4391,7 +4403,7 @@ function tick(now) {
         const act = consumeHamletInteract();
         if (act) {
           if (act.action === 'dialogue') openDialogue(act.npcId);
-          else if (act.action === 'portal') { running = false; startRun(); }
+          else if (act.action === 'portal') { running = false; beginDescent(); }
         }
       }
     }

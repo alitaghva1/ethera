@@ -788,13 +788,16 @@ function drawNpc(ctx, e, now) {
   // Gentle breathing bob so the NPC doesn't feel frozen. Phase offset by x
   // so multiple NPCs don't breathe in sync.
   const bob = Math.sin(now * 1.5 + e.x * 0.01) * 1.2;
-  // Pixel NPCs render at 80px tall — slightly larger than the old chibi
-  // placeholders (65px) because the new sprites have more silhouette detail
-  // to read at hero scale. Still smaller than the buildings.
-  const drawH = 80;
+  // NPC draw height 56 — distinctly SMALLER than the 96px hero sprite so
+  // the knight reads as the protagonist of the scene, not a dwarf among
+  // giants. Prior 80px made NPCs taller than the hero's visible silhouette.
+  const drawH = 56;
   const drawW = spr.width * (drawH / spr.height);
-  // Ground shadow just below the NPC's feet — anchors them to cobblestone.
-  drawGroundShadow(ctx, e.x, e.y + 2, 18, 0.32);
+  // Ground shadow anchored at the NPC's actual feet. The sprite's feet sit
+  // at e.y + bob (sprite bottom), so shadow center goes there; larger and
+  // darker than before (radius 22, alpha 0.55) so each NPC has clear
+  // visual weight on the cobblestone instead of seeming to hover above it.
+  drawGroundShadow(ctx, e.x, e.y + bob, 22, 0.55);
 
   // Warm proximity glow when the hero is close — signals interactivity
   // and makes the scene feel responsive to your presence.
