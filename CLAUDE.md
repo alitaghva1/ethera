@@ -24,10 +24,30 @@ pool, no Ember Tyrant / Hermit / Oracle content) and had to be redone.
 
 **Rule**: if in doubt, switch to the most-recent-open-PR's branch OR ask.
 
-## Session summary (most recent, 2026-04-23/24)
+## Session summary (most recent, 2026-04-24 evening)
 
-PR #3 merged + 11 follow-up commits shipped directly to main. Current HEAD
-is `c9ec21a`. Major changes since PR #3:
+Boss-intro darkness bug — finally resolved. Root-cause diagnosis:
+prior fixes all tried to salvage a multi-layer composite (pixel-art
+portrait on transparent PNG + zone-backdrop + veil + post-FX). Each
+layer was a fresh surface for GPU color management / HDR tone-mapping
+to dim. Portraits themselves were 20–40% mean luminance with magenta-
+flagged transparent corners that bilinear-scaled into dark halos.
+
+Fix (commit `c08c0f1`): 6 dedicated full-frame boss-intro scenes
+(Nano Banana, 1376×768, in `slime-depths/assets/backdrops/boss_intro_
+*.jpg`) with the boss embedded in their thematic environment and the
+lower third pre-shadowed for typography. Intro renders the scene
+full-bleed + a lower-third darken gradient + gold/cream typography.
+No compositing left to sabotage. Intro code ~40% shorter.
+
+Playtest confirmed on the user's display (the one that crushed the old
+composite to black): the new scenes render at correct brightness with
+clean typography.
+
+---
+
+PR #3 merged + 11 follow-up commits shipped directly to main. Previous
+HEAD was `c9ec21a`. Major changes since PR #3:
 
 - **Sprint 1 content**: mythic 4th rarity tier (Eye of Ether, Cataclysm at
   6% per pick on floor 4), floor-clear gold cascade, projectile impact
@@ -55,17 +75,16 @@ is `c9ec21a`. Major changes since PR #3:
 
 Unresolved / needs playtest on non-dev machines:
 
-- Boss intro darkness STILL REPORTED DARK by primary playtester after
-  all fixes above. Cannot reproduce on dev preview (Chromium) — pixel
-  samples show correct brown Grudnok tones. Likely environment-specific
-  (GPU driver / display / cache). Diagnostic hook `__dumpIntroPixels()`
-  was offered to user for telemetry; not yet run. If recurring,
-  consider: re-encoding portrait PNGs with baked-in brightness, or
-  adding an in-game "intro brightness" setting.
-- Preview MCP tool spawns (slime-depths-pr3, slime-depths-main-verify)
-  have been unstable in this session — hung python processes on ports
-  5174/5175. Workaround: `python slime-depths/serve.py 5173` via
-  plain Bash `run_in_background` works reliably.
+- ~~Boss intro darkness~~ — RESOLVED by commit `c08c0f1` via dedicated
+  full-frame boss-intro scenes. See session summary above.
+- Preview MCP tool spawns (slime-depths-pr3, slime-depths-main-verify,
+  plus any MCP-managed preview instance) have been unstable — hung
+  python processes on ports 5174–5177 and intermittent
+  "Unable to connect" errors. Workaround that reliably works:
+  `python slime-depths/serve.py <port>` via plain Bash
+  `run_in_background` on a fresh port (5176/5177/etc.). The
+  `.claude/launch.json` has an extra `slime-depths-5176` config for
+  that use case.
 
 ## Debug hooks (available at runtime from devtools console)
 
@@ -78,6 +97,10 @@ Unresolved / needs playtest on non-dev machines:
 - `window.__jumpToBoss()` — real boss-room entry via graph + loadRoom.
   Triggers the actual `data.kind === 'boss'` branch (portrait + FX +
   enemies spawn). Use this to verify the boss cinematic in-context.
+- `window.__clearIntros()` — zeros all active intro timers
+  (`bossIntroTime`, `floorCardTime`, `phaseIntroTime`) so
+  `__testBossIntro` / `__jumpToBoss` render cleanly without the
+  floor card overlaying. `__dbg()` now includes those timer values.
 
 ## Where the code lives
 
