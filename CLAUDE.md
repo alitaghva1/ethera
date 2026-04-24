@@ -110,13 +110,35 @@ Unresolved / needs playtest on non-dev machines:
 
 ## Dev server
 
+**Preferred (Vite):**
+
 ```bash
-python slime-depths/serve.py 5173
+cd slime-depths && npm install        # first time only
+cd slime-depths && npm run dev        # port 5173, HMR enabled
 ```
 
-The `serve.py` is a no-cache `http.server` subclass — module edits reload
-without cache-bust tags. Do NOT revert to plain `python -m http.server` or
-the cache-bust sigils will creep back in.
+Vite walks the import graph from `src/main.js` (referenced by `index.html`)
+and serves modules with on-the-fly transforms. Assets in `public/assets/`
+are served verbatim at `/assets/...` — the same URLs the loader uses in
+production.
+
+**Production build:**
+
+```bash
+cd slime-depths && npm run build      # emits dist/ (single bundled JS + copied public/)
+```
+
+**Fallback (legacy Python server):**
+
+```bash
+python slime-depths/serve.py 5173     # ThreadingHTTPServer with WinError catch
+```
+
+`serve.py` is kept around as a dependency-free fallback — it also still
+serves the dev tree. It does NOT serve the production `dist/` correctly
+because the built `index.html` references bundled JS. Use `npm run preview`
+(Vite's production preview server) if you need to smoke-test the build.
+Do NOT run plain `python -m http.server`; it lacks the no-cache headers.
 
 ## Core files (in `slime-depths/src/`)
 
@@ -163,7 +185,7 @@ Include `Co-Authored-By` line for Claude Code commits.
 
 ## Things NOT to do
 
-- Don't run `python -m http.server` on slime-depths — use `serve.py`
+- Don't run `python -m http.server` on slime-depths — use `npm run dev` (or `serve.py` fallback)
 - Don't delete other worktrees under `.claude/worktrees/`
 - Don't force-push to `main` — and NEVER to an open PR branch without asking
 - Don't add features to `ethera/` (the paused ARPG) unless explicitly asked

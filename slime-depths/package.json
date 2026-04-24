@@ -1,0 +1,15 @@
+{
+  "name": "slime-depths",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Top-down action roguelite — vanilla JS / HTML5 canvas. Folder is also the Vite project root.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5174"
+  },
+  "devDependencies": {
+    "vite": "^5.4.20"
+  }
+}
