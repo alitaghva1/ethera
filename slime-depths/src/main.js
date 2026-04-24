@@ -5100,16 +5100,20 @@ function render() {
   const introActiveNow = bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0;
 
   const bloomKind = floor[roomIndex]?.kind;
-  if (!introActiveNow) {
+  if (!introActiveNow && bloomKind !== 'hamlet') {
     // BLOOM PASS — bright-pixel bleed (torches, fire, gold). Suppressed
     // during intros so the portrait isn't pre-filtered before compositing.
+    // Also suppressed for the hamlet — that scene is pre-lit by its painted
+    // fire halos and dust motes; a bloom pass blows out the firepit into a
+    // muddy bright blob and shifts the palette toward the dungeon look.
     const bloomIntensity = bloomKind === 'boss' ? 0.68 : bloomKind === 'altar' ? 0.60 : 0.52;
     applyBloom(ctx, canvas, bloomIntensity);
 
     // BIOME COLOR GRADE — two-pass tint giving each floor a distinct mood.
     // Multiply dims shadows/midtones; screen adds highlights. Suppressed
     // during intros because the multiply pass visibly darkens the portrait
-    // even at 0.5× boss-room scale.
+    // even at 0.5× boss-room scale. Also skipped for hamlet — it already
+    // paints its own sky/ground palette.
     const gradePal = currentBiomePal();
     if (gradePal.gradeMultiply) {
       const gradeScale = bloomKind === 'boss' ? 0.5 : 1.0;
@@ -5160,32 +5164,52 @@ function render() {
 
   // Skip darkness layer + vignette entirely during intros — the intro has
   // its own letterbox + veil for framing, any further darkening compounds
-  // into near-black over the portrait.
+  // into near-black over the portrait. The hamlet is an outdoor hub and
+  // gets a much softer treatment (no hero-centered darkness, only a mild
+  // warm vignette) so it reads as welcoming, not dungeon-dim.
   const preBoss = roomNextKind.kind === 'boss' && kind !== 'boss';
-  const vigBase = preBoss ? 'rgba(30, 4, 6, ' : (pal.vignetteBase || 'rgba(4, 4, 8, ');
+  const vigBase = preBoss ? 'rgba(30, 4, 6, '
+    : kind === 'hamlet' ? 'rgba(30, 16, 10, '
+    : (pal.vignetteBase || 'rgba(4, 4, 8, ');
   if (!introActiveNow) {
-    // Darkness layer — edges are dim, center is ALMOST full-bright.
-    const darkAmount = kind === 'boss' ? 0.70 : 0.45;
-    const darkInner  = kind === 'boss' ? 260 : 340;
-    const darkOuter  = kind === 'boss' ? 620 : 760;
-    const dark = ctx.createRadialGradient(hsx, hsy, darkInner, hsx, hsy, darkOuter);
-    dark.addColorStop(0, 'rgba(6, 4, 10, 0)');
-    dark.addColorStop(0.7, 'rgba(6, 4, 10, ' + (darkAmount * 0.4).toFixed(2) + ')');
-    dark.addColorStop(1, 'rgba(6, 4, 10, ' + darkAmount.toFixed(2) + ')');
-    ctx.fillStyle = dark;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (kind === 'hamlet') {
+      // HAMLET — no hero-centered darkness; just a gentle warm edge vignette
+      // so corners don't read as flat. The scene has its own painted fog +
+      // firepit halos; the dungeon darkness pass otherwise crushes the warm
+      // palette we painted on top.
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      const vigInner = Math.min(canvas.width, canvas.height) * 0.35;
+      const vigOuter = Math.max(canvas.width, canvas.height) * 0.80;
+      const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
+      vig.addColorStop(0,    vigBase + '0)');
+      vig.addColorStop(0.65, vigBase + '0.08)');
+      vig.addColorStop(1,    vigBase + '0.28)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      // Darkness layer — edges are dim, center is ALMOST full-bright.
+      const darkAmount = kind === 'boss' ? 0.70 : 0.45;
+      const darkInner  = kind === 'boss' ? 260 : 340;
+      const darkOuter  = kind === 'boss' ? 620 : 760;
+      const dark = ctx.createRadialGradient(hsx, hsy, darkInner, hsx, hsy, darkOuter);
+      dark.addColorStop(0, 'rgba(6, 4, 10, 0)');
+      dark.addColorStop(0.7, 'rgba(6, 4, 10, ' + (darkAmount * 0.4).toFixed(2) + ')');
+      dark.addColorStop(1, 'rgba(6, 4, 10, ' + darkAmount.toFixed(2) + ')');
+      ctx.fillStyle = dark;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // SCREEN-SPACE VIGNETTE — always-on dim corners, biome-tinted.
-    const vigStrength = kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48;
-    const cx = canvas.width / 2, cy = canvas.height / 2;
-    const vigInner = Math.min(canvas.width, canvas.height) * 0.28;
-    const vigOuter = Math.max(canvas.width, canvas.height) * 0.72;
-    const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
-    vig.addColorStop(0,    vigBase + '0)');
-    vig.addColorStop(0.55, vigBase + (vigStrength * 0.25).toFixed(3) + ')');
-    vig.addColorStop(1,    vigBase + vigStrength.toFixed(3) + ')');
-    ctx.fillStyle = vig;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // SCREEN-SPACE VIGNETTE — always-on dim corners, biome-tinted.
+      const vigStrength = kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48;
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      const vigInner = Math.min(canvas.width, canvas.height) * 0.28;
+      const vigOuter = Math.max(canvas.width, canvas.height) * 0.72;
+      const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
+      vig.addColorStop(0,    vigBase + '0)');
+      vig.addColorStop(0.55, vigBase + (vigStrength * 0.25).toFixed(3) + ')');
+      vig.addColorStop(1,    vigBase + vigStrength.toFixed(3) + ')');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
   }
 
   // Very subtle warm tint — just warms the center a touch, no halo-looking light
@@ -5956,12 +5980,12 @@ function drawMenuEmbers(ctx) {
 }
 
 function drawMenuEdgeTorches(ctx) {
-  // Guard: only the actual main-menu background should render these. The
-  // hamlet canvas was getting "spotlight beams" across its scene because
-  // something in the render pipeline calls this without checking that the
-  // player is on the menu. If we're inside the hamlet (or any live game
-  // room), skip. The menu path (tick early-return) explicitly expects these.
-  if (room && room.kind && room.kind !== 'menu') return;
+  // Guard: ONLY render when the main-menu DOM overlay is actually visible.
+  // Anything else (hamlet, live run, pause, etc.) gets nothing. This is a
+  // belt-and-suspenders check — the caller (renderMenuBg) already only
+  // runs from the tick's menu-visible early return, but somewhere the
+  // torch cones were still leaking into the hamlet canvas.
+  if (!menuEl || menuEl.style.display === 'none') return;
   // Two torch columns flanking the content. Flicker via layered sine waves.
   const now = _menuFlickerT;
   const flickL = 0.78 + 0.22 * (Math.sin(now * 7.3) * 0.5 + Math.sin(now * 11.7) * 0.4 + Math.sin(now * 17.1) * 0.3) / 1.2;

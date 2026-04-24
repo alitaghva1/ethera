@@ -417,17 +417,22 @@ export function buildRoomFromData(data) {
     }
   }
 
-  // Wall torches
+  // Wall torches. The hamlet is an outdoor scene with its own lighting
+  // (painted sky + firepits + building glows) — it must NOT get the dungeon
+  // wall sconces or their vertical god-ray cones, which otherwise read as
+  // phantom spotlight beams across the open-sky hub.
   roomTorches.length = 0;
-  const torchCols = (data.kind === 'boss') ? [3, 8, 11, 16] : [5, 14];
-  const skipDoor = northDoorPos();
-  for (const col of torchCols) {
-    if (col === skipDoor.x) continue;
-    roomTorches.push({
-      x: col * TILE + TILE/2,
-      y: TILE * 0.6,
-      seed: hash(col, data.kind.length),
-    });
+  if (data.kind !== 'hamlet') {
+    const torchCols = (data.kind === 'boss') ? [3, 8, 11, 16] : [5, 14];
+    const skipDoor = northDoorPos();
+    for (const col of torchCols) {
+      if (col === skipDoor.x) continue;
+      roomTorches.push({
+        x: col * TILE + TILE/2,
+        y: TILE * 0.6,
+        seed: hash(col, data.kind.length),
+      });
+    }
   }
 
   // Spike trap patterns — in combat + boss rooms.

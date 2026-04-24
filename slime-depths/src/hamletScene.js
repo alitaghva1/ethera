@@ -16,7 +16,7 @@
 // ============================================================================
 import { hero } from './hero.js';
 import { images } from './loader.js';
-import { NPCS, hamletState } from './hamlet.js';
+import { NPCS } from './hamlet.js';
 import { watcherSnapshot } from './watcher.js';
 
 // DIORAMA COMPOSITION — the painted backdrop already has three implicit
@@ -71,12 +71,15 @@ export const HAMLET_ENTITIES = [
 
 let _nearest = null;    // cached nearest interactable, updated each tick
 
-function isNpcPresent(id) {
-  // Present NPCs have an arcStage entry (assigned when their unlock fires).
-  // For MVP, presence is simply "has been met at least once" as recorded in
-  // hamletState. Locked NPCs (unlockCheck false) will have no entry and be
-  // skipped in the world render / proximity search.
-  return hamletState.npcArcStage[id] !== undefined;
+function isNpcPresent(_id) {
+  // Canvas hamlet: always render all six NPCs. The old DOM overlay gated
+  // NPC visibility on record-based unlocks (Smith = beat floor 2, etc.) —
+  // useful for the DOM version where "1 of 6 souls returned" told a slow
+  // arrival story. For the walkable canvas version we want the full scene
+  // populated immediately so the composition reads right; unlock-based
+  // dialogue gating still applies at interact time (openDialogue handles
+  // the arc stages).
+  return true;
 }
 
 function entityAlive(e) {
@@ -162,12 +165,67 @@ export function drawHamletBackdrop(ctx) {
     hz.addColorStop(1, 'rgba(30, 18, 32, 0)');
     ctx.fillStyle = hz;
     ctx.fillRect(0, 278, 960, 62);
+
+    // Warm-stone PATHS radiating from the portal (centre-back) out to each
+    // destination. Two overlaid radial gradients brighten the cobblestone
+    // without needing new tiles. Reads as "worn walkways polished lighter
+    // by centuries of feet" — and gives the eye clear routes into each
+    // building, which is what the scene was missing before.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const pathPairs = [
+      [480, 470, 200, 540, 260], // portal → forge
+      [480, 470, 810, 540, 260], // portal → dome
+      [480, 560, 130, 600, 200], // portal-base → shrine
+      [480, 560, 880, 640, 200], // portal-base → secondary firepit
+    ];
+    for (const [x1, y1, x2, y2, rr] of pathPairs) {
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const g = ctx.createRadialGradient(mx, my, 10, mx, my, rr);
+      g.addColorStop(0, 'rgba(210, 165, 105, 0.18)');
+      g.addColorStop(0.6, 'rgba(160, 115, 70, 0.08)');
+      g.addColorStop(1, 'rgba(120, 70, 40, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(Math.min(x1, x2) - rr, Math.min(y1, y2) - rr, Math.abs(x2 - x1) + rr * 2, Math.abs(y2 - y1) + rr * 2);
+    }
+    ctx.restore();
+
+    // Moss / fallen-leaf tufts between cobblestones — deterministic sprinkles
+    // that give the ground organic texture without breaking the tile read.
+    // 36 tufts, each 2–4 pixels, varied between muted green (moss) and
+    // amber-brown (dead leaves). Seeded by index so placement is stable.
+    for (let k = 0; k < 36; k++) {
+      const h = cellHash(k * 7 + 3, k * 11 + 17, 1000000);
+      const tx = (h % 960);
+      const ty = 320 + ((h >>> 10) % 340);
+      const sz = 2 + ((h >>> 20) & 1);
+      const isMoss = ((h >>> 22) & 1) === 0;
+      const col = isMoss ? 'rgba(90, 110, 60, 0.55)' : 'rgba(150, 90, 40, 0.45)';
+      ctx.fillStyle = col;
+      ctx.fillRect(tx | 0, ty | 0, sz, sz);
+    }
   }
 
   // ── HANDCRAFTED DEPTH COMPOSITION ────────────────────────────────────
   // Layers painted back-to-front. Each building sits on a slightly
   // different horizon y to break the "three buildings in a row" feel and
   // imply distance. Scales are also varied — closer buildings larger.
+
+  // Horizon fog — painted mist band at the horizon, behind all buildings.
+  // Adds atmospheric depth and softens the hard tile-to-sky transition.
+  // Slow drift driven by performance.now() so it breathes.
+  const fogT = performance.now() / 4000;
+  const fogDrift = (fogT % 1) * 80 - 40;
+  const fog = ctx.createLinearGradient(0, 260, 0, 430);
+  fog.addColorStop(0, 'rgba(90, 50, 70, 0.0)');
+  fog.addColorStop(0.35, 'rgba(130, 90, 110, 0.45)');
+  fog.addColorStop(0.75, 'rgba(70, 50, 80, 0.20)');
+  fog.addColorStop(1, 'rgba(70, 50, 80, 0.0)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = fog;
+  ctx.fillRect(fogDrift - 80, 260, 960 + 160, 170);
+  ctx.restore();
 
   // LAYER A — FAR background silhouette. Second ruined tower dimmed + shrunk
   // so it reads as "a distant tower just past the ridge" rather than
@@ -187,6 +245,19 @@ export function drawHamletBackdrop(ctx) {
   if (dome) {
     const bw = 200, bh = 220;
     ctx.drawImage(dome, Math.round(810 - bw / 2), Math.round(490 - bh), bw, bh);
+    // Cool teal interior glow bleeding from the dome's doorway — implies
+    // an archive-like space full of lit braziers, hinting at a specific
+    // function rather than just "a building shape".
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 700);
+    const g = ctx.createRadialGradient(810, 440, 8, 810, 440, 140);
+    g.addColorStop(0, `rgba(120, 200, 210, ${(0.38 * pulse).toFixed(3)})`);
+    g.addColorStop(0.6, `rgba(80, 150, 180, ${(0.12 * pulse).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(40, 80, 110, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(670, 300, 280, 280);
+    ctx.restore();
   }
 
   // LAYER C — foreground-LEFT building. FORGE pulled forward and slightly
@@ -195,7 +266,79 @@ export function drawHamletBackdrop(ctx) {
   if (forge) {
     const bw = 245, bh = 275;
     ctx.drawImage(forge, Math.round(200 - bw / 2), Math.round(510 - bh), bw, bh);
+    // Forge interior — hot orange window/door glow with flame flicker. The
+    // forge reads inert without this; with it, the scene says "someone is
+    // working in there." Flicker layered from two sines so it never settles.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const t = performance.now() / 1000;
+    const flick = 0.78 + 0.22 * (Math.sin(t * 9.1) * 0.6 + Math.sin(t * 13.7) * 0.4) / 1.0;
+    const g = ctx.createRadialGradient(200, 440, 6, 200, 440, 170);
+    g.addColorStop(0, `rgba(255, 180, 90, ${(0.55 * flick).toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(240, 120, 60, ${(0.22 * flick).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(200, 60, 30, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(30, 290, 340, 320);
+    ctx.restore();
   }
+
+  // Prayer-flags strung along a line hanging from the central portal-tower
+  // (back of scene). Small colored rectangles with a subtle sway. Adds a
+  // hand-placed cultural touch that tells the eye "this is a place someone
+  // cares about", not just a ruin.
+  {
+    const t = performance.now() / 1000;
+    const flagColors = ['#c85050', '#e8b848', '#6eb890', '#5080b8', '#b85080'];
+    const flagCount = 8;
+    const startX = 400, endX = 560;
+    const baseY = 330;
+    for (let i = 0; i < flagCount; i++) {
+      const u = i / (flagCount - 1);
+      const x = startX + (endX - startX) * u;
+      // Catenary sag: centre dips ~10px below endpoints.
+      const sag = Math.sin(u * Math.PI) * 10;
+      const y = baseY + sag + Math.sin(t * 1.1 + i * 0.6) * 1.5;
+      ctx.fillStyle = flagColors[i % flagColors.length];
+      ctx.fillRect((x - 5) | 0, y | 0, 9, 12);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect((x - 5) | 0, (y + 12) | 0, 9, 2); // subtle fringe
+    }
+    // Rope itself — thin dark line following the same catenary.
+    ctx.strokeStyle = 'rgba(40, 24, 20, 0.75)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= flagCount - 1; i++) {
+      const u = i / (flagCount - 1);
+      const x = startX + (endX - startX) * u;
+      const sag = Math.sin(u * Math.PI) * 10;
+      const y = baseY + sag - 1;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Broken-column silhouettes framing the foreground corners. Pure dark
+  // fills — they're fallen ruins, not architectural features. Anchor the
+  // eye at the edges of the scene without competing with the buildings.
+  ctx.fillStyle = 'rgba(18, 12, 20, 0.92)';
+  // Left-foreground column stub
+  ctx.fillRect(40, 520, 30, 110);
+  ctx.fillRect(30, 510, 50, 14); // cap
+  ctx.fillRect(35, 630, 40, 10); // base
+  // Right-foreground column stub (shorter, further back to vary)
+  ctx.fillRect(920, 540, 26, 90);
+  ctx.fillRect(912, 532, 42, 12);
+  ctx.fillRect(916, 630, 34, 8);
+  // A small urn cluster foreground-right, between wanderer and scene edge
+  ctx.fillStyle = 'rgba(50, 30, 20, 0.95)';
+  ctx.fillRect(905, 595, 14, 20);
+  ctx.fillStyle = 'rgba(70, 42, 26, 0.95)';
+  ctx.fillRect(893, 608, 12, 14);
+  // A scattered rubble pile foreground-left, below the gravekeeper
+  ctx.fillStyle = 'rgba(40, 30, 36, 0.85)';
+  ctx.fillRect(165, 638, 34, 8);
+  ctx.fillRect(180, 632, 16, 8);
 
   // Secondary firepit (foreground-right) — drawn HERE as part of the
   // backdrop so it sits behind NPCs. This is purely atmospheric; the main
@@ -211,6 +354,19 @@ export function drawHamletBackdrop(ctx) {
     ctx.fillStyle = halo;
     ctx.fillRect(fx - 64, fy - 10 - 64, 128, 128);
     ctx.drawImage(firepit2, Math.round(fx - bw / 2), Math.round(fy - bh + 6), bw, bh);
+  }
+
+  // Air dust motes drifting across the scene — drawn LAST so they float on
+  // top of buildings. 14 deterministic specks on slow horizontal drift.
+  const now2 = performance.now() / 1000;
+  for (let i = 0; i < 14; i++) {
+    const baseX = (i * 91) % 960;
+    const baseY = 150 + ((i * 37) % 360);
+    const driftX = (baseX + now2 * 8 + i * 3) % 960;
+    const wobbleY = baseY + Math.sin(now2 * 0.5 + i * 0.7) * 4;
+    const alpha = 0.35 + 0.25 * Math.sin(now2 * 0.8 + i);
+    ctx.fillStyle = `rgba(232, 210, 180, ${alpha.toFixed(3)})`;
+    ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
   }
 }
 
@@ -279,12 +435,32 @@ function drawFirepit(ctx, e, now) {
   const spr = images.hamlet_env_5;
   // Embers pulse — warm radial glow on the cobblestone.
   const pulse = 0.55 + 0.45 * Math.sin(now * 1.8);
-  const haloR = 80;
+  const haloR = 110;
   const halo = ctx.createRadialGradient(e.x, e.y - 12, 4, e.x, e.y - 12, haloR);
-  halo.addColorStop(0, `rgba(255, 160, 80, ${(0.42 * pulse).toFixed(3)})`);
-  halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
+  halo.addColorStop(0, `rgba(255, 170, 90, ${(0.48 * pulse).toFixed(3)})`);
+  halo.addColorStop(0.55, `rgba(255, 130, 70, ${(0.18 * pulse).toFixed(3)})`);
+  halo.addColorStop(1, 'rgba(255, 100, 60, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y - 12 - haloR, haloR * 2, haloR * 2);
+
+  // STONE RING — flat elliptical base that reads as "this is a built
+  // firepit, not a patch of fire". Dark ring with a lit lip on the side
+  // facing the viewer so it catches the flame glow.
+  ctx.save();
+  ctx.fillStyle = 'rgba(42, 32, 36, 0.96)';
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y + 8, 44, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(80, 58, 52, 0.95)';
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y + 8, 38, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Lit front lip
+  ctx.fillStyle = `rgba(255, 170, 90, ${(0.55 * pulse).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y + 14, 36, 4, 0, 0, Math.PI);
+  ctx.fill();
+  ctx.restore();
 
   drawGroundShadow(ctx, e.x, e.y + 4, 34);
 
