@@ -4,7 +4,6 @@
 // stone look tuned for the Slime Depths palette.
 
 import { setDustBiome, setWeatherBiome } from './particles.js';
-import { images } from './loader.js';
 
 export const TILE = 48;
 export const ROOM_W = 20;
@@ -1788,17 +1787,35 @@ function drawTorchSconce(ctx, tx, ty) {
 export function drawRoom(ctx) {
   if (!room.tiles) return;
 
-  // Hamlet — paint the full backdrop instead of tile floors, then skip
-  // the rest of the tile/wear/decor rendering. Perimeter walls still
-  // exist for collision but render invisibly (backdrop covers them).
+  // Hamlet — procedural gradient sky + dim ground fill. Buildings, cobblestone
+  // tiles, firepit, shrine, and portal are drawn ON TOP of this by the
+  // hamletScene module (drawHamletBackdrop + drawHamletEntities). Replaces
+  // the earlier "paint a wide mural" approach — we compose the scene from
+  // layers now instead of leaning on a single wide backdrop.
   if (room.kind === 'hamlet') {
-    const bg = images.hamlet_backdrop;
-    if (bg) {
-      ctx.drawImage(bg, 0, 0, ROOM_W * TILE, ROOM_H * TILE);
-    } else {
-      // Fallback if backdrop didn't load: dim void so the scene still renders.
-      ctx.fillStyle = '#0a0810';
-      ctx.fillRect(0, 0, ROOM_W * TILE, ROOM_H * TILE);
+    const W = ROOM_W * TILE, H = ROOM_H * TILE;
+    // Sky: deep violet at top → warm dusk amber at horizon. Horizon sits at
+    // y=280 (~42% down the room), matching where the building band begins.
+    const sky = ctx.createLinearGradient(0, 0, 0, 300);
+    sky.addColorStop(0.00, '#0d0818');
+    sky.addColorStop(0.45, '#281638');
+    sky.addColorStop(0.80, '#5a2a40');
+    sky.addColorStop(1.00, '#7a3848');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, 300);
+    // Ground slab below the horizon — cobblestone tiles will overpaint this
+    // strip; we just need a dark base so any tiling gaps don't show the void.
+    ctx.fillStyle = '#181218';
+    ctx.fillRect(0, 300, W, H - 300);
+    // Scattered star pinpoints in the sky for atmosphere — deterministic
+    // via simple hash so they don't jitter between frames.
+    ctx.fillStyle = 'rgba(232, 220, 200, 0.65)';
+    for (let i = 0; i < 50; i++) {
+      const h = hash(i * 7 + 3, 11);
+      const sx = (h % 1000) / 1000 * W;
+      const sy = ((h >>> 10) % 1000) / 1000 * 260;
+      const size = ((h >>> 20) & 1) ? 1 : 2;
+      ctx.fillRect(sx | 0, sy | 0, size, size);
     }
     return;
   }

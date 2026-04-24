@@ -393,6 +393,15 @@ export async function loadAll(progressCb) {
     loadKeyedImage('descent_portal',    'assets/hamlet/descent_portal.jpg'),
     loadKeyedGrid('hamlet_npc',         'assets/hamlet/hamlet_npc_world_grid.jpg', 4, 2, { cropBottomFrac: 0.22 }),
 
+    // HAMLET ENV PACK — painted pixel-art buildings, cobblestone tile grid,
+    // firepit variants, and a pixel-art Watcher shrine. 4×2 = 8 cells:
+    //   0 forge        | 1 dome         | 2 tower A      | 3 tower B
+    //   4 cobble tile  | 5 firepit A    | 6 firepit B    | 7 shrine (pixel)
+    // NPCs will be a dedicated set when the user provides them — for now
+    // we build the ROOM (sky / buildings / ground / objects) and NPC
+    // rendering stays on the current placeholder chibi sprites.
+    loadKeyedGrid('hamlet_env',         'assets/hamlet/hamlet_env_pack.jpg', 4, 2),
+
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
     loadAudio('slime_death',  'assets/sfx/slime_death.ogg'),

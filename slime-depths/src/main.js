@@ -65,7 +65,7 @@ import {
 } from './watcher.js';
 import {
   HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX,
-  updateHamletScene, drawHamletEntities, drawHamletInteractPrompt,
+  updateHamletScene, drawHamletBackdrop, drawHamletEntities, drawHamletInteractPrompt,
   consumeHamletInteract,
 } from './hamletScene.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
@@ -5041,12 +5041,14 @@ function render() {
   drawPedestals(ctx);
   drawPedestalTeasers(ctx);
   drawWanderer(ctx);
-  // HAMLET CANVAS — world-positioned NPCs, portal, and watcher shrine.
-  // Drawn after drawRoom (which paints the backdrop) but before the hero's
-  // drawList so the hero walks IN FRONT of standing NPCs. Interact prompt
-  // renders after in the same camera transform so it stays anchored to
-  // the highlighted entity.
+  // HAMLET CANVAS — layered composition:
+  //   Layer 1 (room.js drawRoom hamlet branch): procedural sky + stars + ground slab
+  //   Layer 2 (drawHamletBackdrop):             cobblestone tiles + buildings
+  //   Layer 3 (drawHamletEntities):             portal-tower, shrine, firepit, NPCs
+  //   Layer 4 (drawList, hero + enemies):       player character on top
+  //   Layer 5 (drawHamletInteractPrompt):       floating "E · TALK" labels
   if (room.kind === 'hamlet') {
+    drawHamletBackdrop(ctx);
     drawHamletEntities(ctx);
   }
   // Theme ascendance aura — renders below the hero so the sprite sits on

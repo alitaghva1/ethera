@@ -31,33 +31,33 @@ import { watcherSnapshot } from './watcher.js';
 export const HAMLET_WALK_Y_MIN = 500;
 export const HAMLET_WALK_Y_MAX = 630;
 
-// Hero spawn — front-center of the cobblestone zone, facing inward. This
-// puts the player AT camera-center-bottom with NPCs standing behind them.
-export const HAMLET_HERO_SPAWN = { x: 480, y: 615 };
+// Hero spawn — front-center of the cobblestone zone, below the firepit.
+export const HAMLET_HERO_SPAWN = { x: 480, y: 635 };
 
-// Portal — back-center of the cobblestone, just in front of the painted
-// ruined tower. Reads as a real stairwell dug into the town square, not
-// a floating archway in the sky.
-const PORTAL_POS = { x: 480, y: 510 };
-// Watcher shrine — far-left of cobblestone, tucked past the forge doorway.
-const SHRINE_POS = { x: 60, y: 590 };
+// Portal interact zone — visually anchored to the central ruined tower
+// drawn by drawHamletEntities. Feet at y=440 (tower's base on the cobble
+// horizon); interact when hero approaches that base.
+const PORTAL_POS = { x: 480, y: 450 };
+// Watcher shrine — far-left, on the cobblestone.
+const SHRINE_POS = { x: 90, y: 580 };
+// Firepit — center-front, between NPC row and hero spawn. Decorative only.
+const FIREPIT_POS = { x: 480, y: 600 };
 
-// NPC world positions — all standing on the painted cobblestone at y=575,
-// spread horizontally so they don't clip each other. The existing hamlet.js
-// % positions are ignored here; those were DOM-backdrop coordinates and
-// the painted cobblestone sits at a different implicit ground line.
-// spriteIdx maps to the hamlet_npc 4×2 sheet — we skip idx 3 and 7 (Nano
-// Banana hallucinated extras).
-const NPC_GROUND_Y = 575;
+// NPC world positions — behind the firepit, spread across the cobblestone
+// in two clusters (forge side + dome side). spriteIdx maps to the
+// hamlet_npc 4×2 sheet (placeholder chibi sprites until user ships proper
+// pixel-art NPCs). We skip idx 3 and 7 (Nano Banana hallucinated extras).
+const NPC_GROUND_Y = 550;
 export const HAMLET_ENTITIES = [
-  { kind: 'portal',                                 x: PORTAL_POS.x, y: PORTAL_POS.y, interactR: 64 },
+  { kind: 'portal',                                 x: PORTAL_POS.x, y: PORTAL_POS.y, interactR: 70 },
   { kind: 'shrine',                                 x: SHRINE_POS.x, y: SHRINE_POS.y, interactR: 0  },
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 4,   x: 180, y: NPC_GROUND_Y, interactR: 52 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 290, y: NPC_GROUND_Y, interactR: 52 },
-  { kind: 'npc', id: 'oracle',      spriteIdx: 5,   x: 400, y: NPC_GROUND_Y, interactR: 52 },
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 560, y: NPC_GROUND_Y, interactR: 52 },
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 670, y: NPC_GROUND_Y, interactR: 52 },
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 6,   x: 780, y: NPC_GROUND_Y, interactR: 52 },
+  { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0 },
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 4,   x: 200, y: NPC_GROUND_Y, interactR: 50 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 290, y: NPC_GROUND_Y, interactR: 50 },
+  { kind: 'npc', id: 'oracle',      spriteIdx: 5,   x: 380, y: NPC_GROUND_Y, interactR: 50 },
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 580, y: NPC_GROUND_Y, interactR: 50 },
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 670, y: NPC_GROUND_Y, interactR: 50 },
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 6,   x: 760, y: NPC_GROUND_Y, interactR: 50 },
 ];
 
 let _nearest = null;    // cached nearest interactable, updated each tick
@@ -94,6 +94,58 @@ export function updateHamletScene() {
 
 export function getNearestHamletEntity() { return _nearest; }
 
+// ---- LAYER 2: Buildings + ground ------------------------------------------
+// Drawn AFTER room.js's drawRoom (which paints gradient sky) but BEFORE
+// entities + characters. Order inside this function: cobblestone tiles
+// (ground layer) first, then buildings (mid layer) on top so building bases
+// sit in front of the cobblestone line.
+export function drawHamletBackdrop(ctx) {
+  // Ground — stamp the cobblestone tile cell across the walkable strip.
+  // The env pack tile cell (index 4) is a mini-grid of cobblestone variants;
+  // stamping it repeatedly gives a richer floor than a single repeated tile.
+  const cobble = images.hamlet_env_4;
+  if (cobble) {
+    const tileW = 256, tileH = 200;
+    const groundTop = 280;
+    for (let y = groundTop; y < 672; y += tileH) {
+      for (let x = 0; x < 960; x += tileW) {
+        ctx.drawImage(cobble, x, y, tileW, tileH);
+      }
+    }
+    // Soft darkening vignette at the ground edges so the cobblestone doesn't
+    // abruptly stop at the room boundary. Feathered horizon line too.
+    const hz = ctx.createLinearGradient(0, 270, 0, 340);
+    hz.addColorStop(0, 'rgba(24, 16, 28, 0.95)');
+    hz.addColorStop(1, 'rgba(24, 16, 28, 0)');
+    ctx.fillStyle = hz;
+    ctx.fillRect(0, 270, 960, 70);
+  }
+
+  // Buildings — pixel-art from the env pack. Positioned so their FEET sit
+  // on the painted horizon line (~y=460) and they tower upward into the
+  // sky band. The ruined tower sits back-center + acts as the descent
+  // portal's visual anchor (interact logic lives in drawHamletEntities).
+  const forge = images.hamlet_env_0;
+  if (forge) {
+    const bw = 230, bh = 260;
+    ctx.drawImage(forge, Math.round(90 - bw / 2 + 115), Math.round(480 - bh), bw, bh);
+    // Position: center at x=205, feet at y=480
+  }
+  const dome = images.hamlet_env_1;
+  if (dome) {
+    const bw = 220, bh = 240;
+    ctx.drawImage(dome, Math.round(755 - bw / 2), Math.round(480 - bh), bw, bh);
+    // Position: center at x=755, feet at y=480
+  }
+  // Secondary ruined tower far-right as a background silhouette. Optional
+  // detail — creates more depth and uses the spare env pack cell.
+  const towerBg = images.hamlet_env_3;
+  if (towerBg) {
+    const bw = 140, bh = 200;
+    ctx.drawImage(towerBg, Math.round(440 - bw / 2) - 220, Math.round(470 - bh), bw, bh);
+  }
+}
+
 // Draw all hamlet entities in world space. Sorted by Y so NPCs that sit
 // further down paint over NPCs higher up (standard top-down ordering).
 // Called from the in-camera render block in main.js, after drawRoom.
@@ -106,6 +158,8 @@ export function drawHamletEntities(ctx) {
       drawPortal(ctx, e, now);
     } else if (e.kind === 'shrine') {
       drawShrine(ctx, e, now);
+    } else if (e.kind === 'firepit') {
+      drawFirepit(ctx, e, now);
     } else if (e.kind === 'npc') {
       drawNpc(ctx, e, now);
     }
@@ -125,35 +179,67 @@ function drawGroundShadow(ctx, x, y, radiusX, alpha = 0.38) {
 }
 
 function drawPortal(ctx, e, now) {
-  const spr = images.descent_portal;
-  // Soft halo from the portal spilling onto the cobblestone around it. Kept
-  // subtle so it doesn't bloom into the painted sky.
+  // The "portal" is visually the central ruined tower — walking up to its
+  // base + pressing E begins the descent. We prefer the pixel-art tower
+  // from the env pack; fall back to the old painted portal if unloaded.
+  const tower = images.hamlet_env_2;
+  const painted = images.descent_portal;
   const pulse = 0.55 + 0.45 * Math.sin(now * 1.3);
-  const haloR = 110;
-  const halo = ctx.createRadialGradient(e.x, e.y - 10, 6, e.x, e.y - 10, haloR);
-  halo.addColorStop(0, `rgba(255, 180, 90, ${(0.28 * pulse).toFixed(3)})`);
+
+  // Warm halo at the tower's base — signals "this is the way forward."
+  const haloR = 140;
+  const halo = ctx.createRadialGradient(e.x, e.y + 4, 10, e.x, e.y + 4, haloR);
+  halo.addColorStop(0, `rgba(255, 180, 90, ${(0.34 * pulse).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
   ctx.fillStyle = halo;
-  ctx.fillRect(e.x - haloR, e.y - 10 - haloR, haloR * 2, haloR * 2);
+  ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
 
-  // Ground shadow anchoring the stairwell to the cobblestone.
-  drawGroundShadow(ctx, e.x, e.y + 2, 40);
+  drawGroundShadow(ctx, e.x, e.y + 6, 52);
+
+  if (tower) {
+    const drawH = 270;
+    const drawW = tower.width * (drawH / tower.height);
+    ctx.drawImage(tower, Math.round(e.x - drawW / 2), Math.round(e.y - drawH), drawW, drawH);
+  } else if (painted) {
+    const drawH = 160;
+    const drawW = painted.width * (drawH / painted.height);
+    ctx.drawImage(painted, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 6), drawW, drawH);
+  }
+}
+
+function drawFirepit(ctx, e, now) {
+  const spr = images.hamlet_env_5;
+  // Embers pulse — warm radial glow on the cobblestone.
+  const pulse = 0.55 + 0.45 * Math.sin(now * 1.8);
+  const haloR = 80;
+  const halo = ctx.createRadialGradient(e.x, e.y - 12, 4, e.x, e.y - 12, haloR);
+  halo.addColorStop(0, `rgba(255, 160, 80, ${(0.42 * pulse).toFixed(3)})`);
+  halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(e.x - haloR, e.y - 12 - haloR, haloR * 2, haloR * 2);
+
+  drawGroundShadow(ctx, e.x, e.y + 4, 34);
 
   if (spr) {
     const drawH = 96;
     const drawW = spr.width * (drawH / spr.height);
-    ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 6), drawW, drawH);
-  } else {
-    ctx.strokeStyle = 'rgba(255, 180, 80, 0.8)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y - 30, 36, Math.PI, 0);
-    ctx.stroke();
+    ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 8), drawW, drawH);
   }
 }
 
 function drawShrine(ctx, e) {
-  // Reuse the watcher's 8-state grid — state chosen by milestone count.
+  // Prefer the pixel-art shrine from the env pack (matches the rest of the
+  // pixel-art hamlet). Progression states (8-state grid) will return when we
+  // have pixel-art progression variants; for now it's a single static read.
+  const pix = images.hamlet_env_7;
+  if (pix) {
+    drawGroundShadow(ctx, e.x, e.y + 2, 26);
+    const drawH = 96;
+    const drawW = pix.width * (drawH / pix.height);
+    ctx.drawImage(pix, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 4), drawW, drawH);
+    return;
+  }
+  // Legacy fallback — painted 8-state grid if the pixel shrine isn't loaded.
   const snap = watcherSnapshot();
   const seenCount = Object.values(snap.seen || {}).filter(Boolean).length;
   let stateIdx = 0;
