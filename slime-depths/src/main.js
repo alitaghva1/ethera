@@ -65,7 +65,7 @@ import {
 } from './watcher.js';
 import {
   HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX,
-  updateHamletScene, drawHamletBackdrop, drawHamletEntities, drawHamletInteractPrompt,
+  updateHamletScene, drawHamletBackdrop, drawHamletEntities, drawHamletOverlay, drawHamletInteractPrompt,
   consumeHamletInteract,
 } from './hamletScene.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
@@ -5050,6 +5050,7 @@ function render() {
   if (room.kind === 'hamlet') {
     drawHamletBackdrop(ctx);
     drawHamletEntities(ctx);
+    drawHamletOverlay(ctx);
   }
   // Theme ascendance aura — renders below the hero so the sprite sits on
   // the glow. Intentionally drawn before drawList so the hero paints on top.

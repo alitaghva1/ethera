@@ -304,19 +304,72 @@ export function drawHamletBackdrop(ctx) {
   }
 
   // ── GROUND · COBBLESTONE TILES ──────────────────────────────────────
-  // Tiles are 64px (was 96 — that made them read ~hero-height, which
-  // broke scale). Painted across the full extended range so void strips
-  // on wide canvases don't show.
+  // Tiles are 64px. Brick-course offset: every other row is shifted by
+  // half a tile width so the columnar grid never lines up for more than
+  // two rows. Combined with 9 random sub-tile variants this breaks the
+  // "repeating block" pattern that was visible at the prior scale.
   const subtiles = ensureCobbleSubtiles();
   if (subtiles && subtiles.length === 9) {
     const tileW = 64, tileH = 64;
     const groundTop = 300;
-    for (let y = groundTop; y < 672; y += tileH) {
-      for (let x = BG_X_MIN; x < BG_X_MAX; x += tileW) {
-        const i = cellHash((x / tileW) | 0, (y / tileH) | 0, 9);
-        ctx.drawImage(subtiles[i], x, y, tileW, tileH);
+    let row = 0;
+    for (let y = groundTop; y < 672; y += tileH, row++) {
+      const offset = (row & 1) ? tileW / 2 : 0;
+      for (let x = BG_X_MIN - tileW; x < BG_X_MAX + tileW; x += tileW) {
+        const xi = ((x + offset) / tileW) | 0;
+        const i = cellHash(xi, (y / tileH) | 0, 9);
+        ctx.drawImage(subtiles[i], x + offset, y, tileW, tileH);
       }
     }
+    // Small dirt-smudge overlays — 22 subtle patches that sit across tile
+    // boundaries to disrupt the brick-course grid without dominating the
+    // ground like the previous big-blob pass did. Each is a narrow
+    // elongated ellipse with very low opacity, rotated to an arbitrary
+    // angle so the boundary-crossing is obvious but individually soft.
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    for (let s = 0; s < 22; s++) {
+      const h = cellHash(s * 17 + 91, s * 23 + 5, 1000000);
+      const cx = BG_X_MIN + (h % BG_W);
+      const cy = 330 + ((h >>> 10) % 320);
+      const angle = ((h >>> 20) % 360) * Math.PI / 180;
+      const rx = 20 + ((h >>> 4) % 18);
+      const ry = 4 + ((h >>> 8) % 4);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+      grad.addColorStop(0, 'rgba(200, 185, 150, 0.90)');
+      grad.addColorStop(1, 'rgba(160, 140, 110, 1.0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Crack lines — 14 hairline dark streaks at random angles that cross
+    // tile boundaries. Reads as weathered stone with settled cracks,
+    // visually severs the grid without adding colour.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(30, 22, 22, 0.55)';
+    ctx.lineWidth = 1;
+    for (let s = 0; s < 14; s++) {
+      const h = cellHash(s * 41 + 7, s * 53 + 11, 1000000);
+      const cx = BG_X_MIN + (h % BG_W);
+      const cy = 320 + ((h >>> 10) % 330);
+      const angle = ((h >>> 20) % 180) * Math.PI / 180;
+      const len = 30 + ((h >>> 4) % 40);
+      const dx = Math.cos(angle) * len, dy = Math.sin(angle) * len;
+      ctx.beginPath();
+      ctx.moveTo(cx - dx / 2, cy - dy / 2);
+      // Slight jog at the midpoint so the crack isn't a perfect line.
+      ctx.lineTo(cx + dx * 0.15, cy + dy * 0.15 + ((h >>> 14) % 3) - 1);
+      ctx.lineTo(cx + dx / 2, cy + dy / 2);
+      ctx.stroke();
+    }
+    ctx.restore();
     // Feathered horizon line — cobble blends into the warm sky amber.
     const hz = ctx.createLinearGradient(0, 290, 0, 350);
     hz.addColorStop(0, 'rgba(30, 18, 32, 0.85)');
@@ -409,39 +462,8 @@ export function drawHamletBackdrop(ctx) {
     ctx.restore();
   }
 
-  // ── PRAYER FLAGS ─────────────────────────────────────────────────────
-  // Strung between the portal tower and a post near the dome. The tower
-  // top sits around y=230 (portal feet y=450, tower height 220). The
-  // flag line hangs in front of the sky, below the tower's top spire.
-  {
-    const flagColors = ['#c85050', '#e8b848', '#6eb890', '#5080b8', '#b85080'];
-    const flagCount = 9;
-    const startX = 430, endX = 600;
-    const startY = 250, endY = 260;
-    // Rope — dark cord with catenary sag.
-    ctx.strokeStyle = 'rgba(30, 20, 18, 0.85)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i = 0; i <= flagCount; i++) {
-      const u = i / flagCount;
-      const x = startX + (endX - startX) * u;
-      const sag = Math.sin(u * Math.PI) * 14;
-      const y = startY + (endY - startY) * u + sag;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    // Flags — small colored triangles/rects hanging below the rope.
-    for (let i = 0; i < flagCount; i++) {
-      const u = (i + 0.5) / flagCount;
-      const x = startX + (endX - startX) * u;
-      const sag = Math.sin(u * Math.PI) * 14;
-      const y = startY + (endY - startY) * u + sag;
-      const sway = Math.sin(now * 1.2 + i * 0.7) * 1.2;
-      ctx.fillStyle = flagColors[i % flagColors.length];
-      ctx.fillRect(((x - 4) | 0) + sway, (y | 0) + 1, 7, 10);
-    }
-  }
+  // (Prayer flags are drawn by drawHamletOverlay AFTER the tower entity,
+  // so they sit in front of the tower's upper sprite rather than behind it.)
 
   // ── FOREGROUND AMBIENT PROPS ─────────────────────────────────────────
   // Subtle stone boulders at the lower corners of the scene, shaded from
@@ -523,6 +545,46 @@ function drawUrn(ctx, cx, cy) {
   // Rim highlight
   ctx.fillStyle = '#8a5a3c';
   ctx.fillRect(cx - 6, cy - 11, 12, 2);
+}
+
+// Draw mid-air effects that must sit AFTER the portal tower entity — e.g.
+// the prayer-flag line stretches across the tower's upper half, and if we
+// drew it in the backdrop it'd get covered by the tower sprite. Called
+// from main.js after drawHamletEntities (inside the camera transform).
+export function drawHamletOverlay(ctx) {
+  const now = performance.now() / 1000;
+
+  const flagColors = ['#e06060', '#f4c858', '#7fc898', '#5e90c8', '#c060a0', '#f4c858', '#e06060'];
+  const flagCount = 11;
+  const startX = 380, endX = 690;
+  const startY = 236, endY = 252;
+  // Rope
+  ctx.strokeStyle = 'rgba(20, 14, 14, 0.9)';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  for (let i = 0; i <= flagCount; i++) {
+    const u = i / flagCount;
+    const x = startX + (endX - startX) * u;
+    const sag = Math.sin(u * Math.PI) * 18;
+    const y = startY + (endY - startY) * u + sag;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // Flags
+  for (let i = 0; i < flagCount; i++) {
+    const u = (i + 0.5) / flagCount;
+    const x = startX + (endX - startX) * u;
+    const sag = Math.sin(u * Math.PI) * 18;
+    const y = startY + (endY - startY) * u + sag;
+    const sway = Math.sin(now * 1.4 + i * 0.6) * 1.8;
+    const fx = ((x - 5) | 0) + sway;
+    const fy = (y | 0) + 1;
+    ctx.fillStyle = flagColors[i % flagColors.length];
+    ctx.fillRect(fx, fy, 11, 16);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.fillRect(fx, fy + 13, 11, 3);
+  }
 }
 
 // Draw all hamlet entities in world space. Sorted by Y so NPCs that sit

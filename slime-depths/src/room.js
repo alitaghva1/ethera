@@ -380,22 +380,26 @@ export function buildRoomFromData(data) {
 
   room.tiles = tiles;
 
-  // Procedural tiny cracks — subtle floor wear.
+  // Procedural tiny cracks — subtle floor wear. Hamlet skips these; it
+  // has its own painted ground layer and dungeon cracks/rubble look out
+  // of place on the cobblestone plaza.
   room.decor = [];
-  const crackCount = 3 + (hash(data.pillarTemplate | 0, 7) % 3);
-  for (let i = 0; i < crackCount; i++) {
-    const x = 2 + (hash(i + 1, 13) % (ROOM_W - 4));
-    const y = 2 + (hash(i + 2, 17) % (ROOM_H - 4));
-    if (tiles[y][x] === 'floor') room.decor.push({ x, y, kind: 'crack' });
-  }
-  // Rubble in 1-2 corners for "lived-in" feel
-  const corners = [[1, 1], [ROOM_W - 2, 1], [1, ROOM_H - 2], [ROOM_W - 2, ROOM_H - 2]];
-  const rubbleCount = 1 + (hash(data.pillarTemplate | 0, 11) % 2);
-  for (let i = 0; i < rubbleCount; i++) {
-    const c = corners[hash(i, 23) % corners.length];
-    const [cx, cy] = c;
-    if (tiles[cy][cx] === 'floor' && !room.decor.some(d => d.x === cx && d.y === cy)) {
-      room.decor.push({ x: cx, y: cy, kind: 'rubble' });
+  if (data.kind !== 'hamlet') {
+    const crackCount = 3 + (hash(data.pillarTemplate | 0, 7) % 3);
+    for (let i = 0; i < crackCount; i++) {
+      const x = 2 + (hash(i + 1, 13) % (ROOM_W - 4));
+      const y = 2 + (hash(i + 2, 17) % (ROOM_H - 4));
+      if (tiles[y][x] === 'floor') room.decor.push({ x, y, kind: 'crack' });
+    }
+    // Rubble in 1-2 corners for "lived-in" feel
+    const corners = [[1, 1], [ROOM_W - 2, 1], [1, ROOM_H - 2], [ROOM_W - 2, ROOM_H - 2]];
+    const rubbleCount = 1 + (hash(data.pillarTemplate | 0, 11) % 2);
+    for (let i = 0; i < rubbleCount; i++) {
+      const c = corners[hash(i, 23) % corners.length];
+      const [cx, cy] = c;
+      if (tiles[cy][cx] === 'floor' && !room.decor.some(d => d.x === cx && d.y === cy)) {
+        room.decor.push({ x: cx, y: cy, kind: 'rubble' });
+      }
     }
   }
   // SET-PIECE DECOR — 40% chance of a distinctive prop per room to break
