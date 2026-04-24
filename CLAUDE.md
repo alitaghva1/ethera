@@ -24,7 +24,89 @@ pool, no Ember Tyrant / Hermit / Oracle content) and had to be redone.
 
 **Rule**: if in doubt, switch to the most-recent-open-PR's branch OR ask.
 
-## Session summary (most recent, 2026-04-24 evening)
+## Session summary (most recent, 2026-04-24 overnight — strategy + relics pass)
+
+Branch `claude/musing-snyder-c13579`, 8 commits ahead of main. Two spec
+agents surveyed the strategy axis (boss phases, DAG branching, room
+pacing) and the relics axis (VS/BoI comparison, counter visibility,
+synergies). Plans landed, then the overnight session started shipping:
+
+- **Pickup banner wrap** (`f50cad4`): long relic descs like Hourglass of
+  Respite used to overflow the 480px frame into the HUD. `drawPickupFlash`
+  now pre-measures flavor + desc with the existing `wrapPedestalText`
+  helper and grows `boxH` to fit. Added `__testPickup` / `__testPickupFlash`
+  dev hooks (tree-shaken from production).
+
+- **Visible proc counters + pedestal teasers** (`e9be6fa`):
+  new `counterPips.js` renders themed pip rows under the hero for
+  chain_lightning / pyromancer / soul_burst — fills with each hit/kill,
+  flashes on trigger. New `pedestalTeaser.js` draws looping ghost effects
+  on hovered pedestals (stormcaller bolt, chain arcs, hymn aura, etc.) so
+  the player sees WHAT the relic does before committing.
+
+- **Set-bonus themes** (`d9cb000` + `3fbbc59`): new `themes.js` tags all
+  46 in-play relics into STORM / FLAME / BLOOD / VOW / SHADOW. Own 3 of
+  a theme → RESONANCE (tier-1 stat); own 5 → ASCENDANCE (tier-2 stat +
+  mechanical flavor + visible aura under hero). Tier-2 flavors:
+  - STORM: dodge releases a 56px shock pulse
+  - FLAME: 50px heat aura ticks 1 dmg/s (stacks with hymn)
+  - BLOOD: on room clear, regen 25% of missing HP + spark burst
+  - VOW: first damage each room absorbed entirely (like second_wind for hits)
+  - SHADOW: 0.8s post-dodge flanking window, every hit forced-crit
+  HUD chip strip above the fusions row; hover tooltip explains tier + path.
+
+- **Elite affix hover** (`6dc78c5`): hovering the mouse over an elite
+  shows a card with the affix NAME + a one-line description
+  (Frost/Ember/Venom/Warded). Shifts encounter prep from "die and learn
+  the badge" to "read the threat." `drawEliteAffixTooltips` in
+  enemies.js, called after drawPickupFlash in main.js render.
+
+- **Tier-scaled altar HP cost** (`68bab87`): altar HP cost now matches
+  offered tier (common=2, rare=4, legendary=7, mythic=9; curse: Starving
+  doubles). Legendary+ altars get a pulsing red halo + larger label so
+  the player FEELS the trade before walking on. Existing "won't suicide"
+  guard handles the new costs correctly.
+
+- **Asymmetric DAG — first pass** (`96c39e4`): every non-start node now
+  carries `path: 'safe' | 'standard' | 'perilous'` (via `pathForKind`
+  helper). Floor-2+ layer-1 becomes `[combat, elite]` (was `[combat,
+  combat]` — two identical choices). Elite rooms' pedestal offers
+  use `rollRelicOffer`'s new `opts.minTier = 'rare'` so perilous paths
+  actually pay. Map renders "RISK · RARE+" / "REST" sub-labels on
+  perilous / safe nodes so forks read strategic not aesthetic.
+
+- **iron_resolve retune** (`f1fcfe0`): first stat-stick retune. Base
+  -25% dmg → -20% + conditional PARRY (stand still ≥0.3s AND face the
+  attacker → -85% dmg + stagger attacker 0.45s + spark/flash/SFX).
+  Pattern ready to reuse on keen_edge, warlord, etc.
+
+### Known shape of the branch when pushing forward
+
+- `src/counterPips.js`, `src/pedestalTeaser.js`, `src/themes.js` are the
+  new modules. All gated behind existing imports — zero breakage to
+  existing run flow.
+- `hero.activeThemes` map is the canonical tier state. Any code that
+  needs a theme check reads it as `(hero.activeThemes?.storm || 0) >= 2`
+  etc. Bonus fields (`hero.themeAtkSpdBonus`, etc.) are read in existing
+  combat paths — zero duplication, zero stacking bugs.
+- Elite rooms are still the same makeCombatRoom output (just with
+  `eliteRoom: true` flag); asymmetric DAG is currently cosmetic path
+  + reward-bias only. Deeper asymmetry (per-path spawn pools, extra
+  rooms on perilous, safe-path common-only caps) is teed up for a
+  follow-up session.
+- Dev hooks that exist: `__testPickup(id)`, `__testPickupFlash(id, tier)`
+  for banner layout testing. All gated on `import.meta.env.DEV`.
+
+### Verification status
+
+Lint + typecheck + build all green. Visual verification done for
+themes HUD + ascendance aura via DOM-overlay capture trick. Full
+end-to-end playthrough NOT yet done (preview tab was backgrounded for
+part of the session, throttling rAF). Playtest before landing to main.
+
+---
+
+## Earlier session summary (2026-04-24 evening)
 
 Boss-intro darkness bug — finally resolved. Root-cause diagnosis:
 prior fixes all tried to salvage a multi-layer composite (pixel-art
