@@ -303,31 +303,43 @@ export function drawHamletBackdrop(ctx) {
     ctx.restore();
   }
 
-  // ── GROUND · COBBLESTONE TILES ──────────────────────────────────────
-  // Tiles are 64px. Brick-course offset: every other row is shifted by
-  // half a tile width so the columnar grid never lines up for more than
-  // two rows. Combined with 9 random sub-tile variants this breaks the
-  // "repeating block" pattern that was visible at the prior scale.
+  // ══════════════════════════════════════════════════════════════════════
+  // GROUND COMPOSITION — ZONE-BASED LEVEL DESIGN
+  //
+  // Instead of scattering random overlays across the whole ground, the
+  // floor is composed from NAMED ZONES that reflect the story of the
+  // place. Zones are painted back-to-front:
+  //   1. Base cobble tiles (existing tiling, kept subtler)
+  //   2. Horizon feather (cobble→sky blend)
+  //   3. Nature reclaim — moss-tinted edges
+  //   4. Tower damage zone — dark desaturated ring around the ruin
+  //   5. Building pads — warm/cool tints at each building approach
+  //   6. Paths — warm additive bands between anchors
+  //   7. Central plaza — brightest zone around the campfire
+  //   8. Intentional decor clusters (rubble, moss, cracks) at authored
+  //      positions keyed to story, not uniform random
+  //
+  // 70/20/10 rule: 70% base stone read, 20% zone tint, 10% heavy damage
+  // in intentional clusters.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── GROUND · BASE COBBLE TILES ───────────────────────────────────────
+  // Same 64px tiling as before with jitter + flips to disguise the
+  // source grid. Keeps the underlying stone texture but is no longer
+  // "the whole ground" — it's just the neutral base.
   const subtiles = ensureCobbleSubtiles();
   if (subtiles && subtiles.length === 9) {
     const tileW = 64, tileH = 64;
-    const drawW = tileW + 4, drawH = tileH + 4;   // 4px overlap blurs seams
+    const drawW = tileW + 4, drawH = tileH + 4;
     const groundTop = 300;
     let row = 0;
     for (let y = groundTop; y < 672; y += tileH, row++) {
-      // Small per-row horizontal jitter so the vertical tile grid
-      // doesn't read as a perfectly aligned column. Brick-course was
-      // too visible as an alternating wall pattern; a small pseudo-
-      // random offset softens the grid without the wall look.
       const xOffset = ((row * 17) % 13) - 6;
       for (let x = BG_X_MIN - tileW; x < BG_X_MAX + tileW; x += tileW) {
         const xi = ((x + xOffset) / tileW) | 0;
         const h = cellHash(xi, (y / tileH) | 0, 1000);
         const i = h % 9;
-        // Per-tile vertical jitter in [-3..+3] — kills horizontal seam
-        // alignment that would otherwise draw the eye across the scene.
         const yOffset = ((h >>> 8) % 7) - 3;
-        // Horizontal flip on half of tiles — doubles apparent variety.
         const flipX = ((h >>> 4) & 1) === 0;
         ctx.save();
         if (flipX) {
@@ -340,121 +352,169 @@ export function drawHamletBackdrop(ctx) {
         ctx.restore();
       }
     }
-    // Small dirt-smudge overlays — 22 subtle patches that sit across tile
-    // boundaries to disrupt the brick-course grid without dominating the
-    // ground like the previous big-blob pass did. Each is a narrow
-    // elongated ellipse with very low opacity, rotated to an arbitrary
-    // angle so the boundary-crossing is obvious but individually soft.
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    for (let s = 0; s < 22; s++) {
-      const h = cellHash(s * 17 + 91, s * 23 + 5, 1000000);
-      const cx = BG_X_MIN + (h % BG_W);
-      const cy = 330 + ((h >>> 10) % 320);
-      const angle = ((h >>> 20) % 360) * Math.PI / 180;
-      const rx = 20 + ((h >>> 4) % 18);
-      const ry = 4 + ((h >>> 8) % 4);
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(angle);
-      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
-      grad.addColorStop(0, 'rgba(200, 185, 150, 0.90)');
-      grad.addColorStop(1, 'rgba(160, 140, 110, 1.0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-    ctx.restore();
+  }
 
-    // Large-scale subtle hue variation — 6 big soft patches at low
-    // opacity. Gives the ground zonal variation so the eye stops
-    // parsing the tile grid as the dominant line, without tinting so
-    // strongly that the stone reads as dirt.
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.globalAlpha = 0.35;
-    for (let s = 0; s < 6; s++) {
-      const h = cellHash(s * 131 + 17, s * 167 + 29, 1000000);
-      const cx = BG_X_MIN + (h % BG_W);
-      const cy = 360 + ((h >>> 10) % 280);
-      const r = 200 + ((h >>> 4) % 120);
-      const warm = ((h >>> 20) & 1) === 0;
-      const grad = ctx.createRadialGradient(cx, cy, 30, cx, cy, r);
-      if (warm) {
-        grad.addColorStop(0, 'rgba(215, 195, 160, 1)');
-        grad.addColorStop(1, 'rgba(255, 255, 255, 1)');
-      } else {
-        grad.addColorStop(0, 'rgba(170, 175, 185, 1)');
-        grad.addColorStop(1, 'rgba(255, 255, 255, 1)');
-      }
-      ctx.fillStyle = grad;
-      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    }
-    ctx.restore();
-
-    // Crack lines — 14 hairline dark streaks at random angles that cross
-    // tile boundaries. Reads as weathered stone with settled cracks,
-    // visually severs the grid without adding colour.
-    ctx.save();
-    ctx.strokeStyle = 'rgba(30, 22, 22, 0.55)';
-    ctx.lineWidth = 1;
-    for (let s = 0; s < 14; s++) {
-      const h = cellHash(s * 41 + 7, s * 53 + 11, 1000000);
-      const cx = BG_X_MIN + (h % BG_W);
-      const cy = 320 + ((h >>> 10) % 330);
-      const angle = ((h >>> 20) % 180) * Math.PI / 180;
-      const len = 30 + ((h >>> 4) % 40);
-      const dx = Math.cos(angle) * len, dy = Math.sin(angle) * len;
-      ctx.beginPath();
-      ctx.moveTo(cx - dx / 2, cy - dy / 2);
-      // Slight jog at the midpoint so the crack isn't a perfect line.
-      ctx.lineTo(cx + dx * 0.15, cy + dy * 0.15 + ((h >>> 14) % 3) - 1);
-      ctx.lineTo(cx + dx / 2, cy + dy / 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-    // Feathered horizon line — cobble blends into the warm sky amber.
+  // ── GROUND · HORIZON FEATHER ─────────────────────────────────────────
+  // Cobble blends into the warm sky amber instead of a hard edge.
+  {
     const hz = ctx.createLinearGradient(0, 290, 0, 350);
     hz.addColorStop(0, 'rgba(30, 18, 32, 0.85)');
     hz.addColorStop(1, 'rgba(30, 18, 32, 0)');
     ctx.fillStyle = hz;
     ctx.fillRect(BG_X_MIN, 290, BG_W, 62);
+  }
 
-    // Warm-stone PATHS radiating from the portal. Simple radial gradients
-    // brighten the walkways without needing new tiles.
+  // ── ZONE ANCHORS ─────────────────────────────────────────────────────
+  // Named coordinates for every meaningful location in the hamlet. All
+  // path/plaza/pad painting keys off these, so moving a building means
+  // changing one number and the paths follow.
+  const Z_PLAZA  = { x: 480, y: 600 };  // campfire — the heart
+  const Z_SPAWN  = { x: 480, y: 644 };  // player entrance
+  const Z_TOWER  = { x: 480, y: 460 };  // ruined tower (descent portal)
+  const Z_FORGE  = { x: 200, y: 540 };  // hut/forge doorway approach
+  const Z_DOME   = { x: 810, y: 525 };  // archive dome approach
+  const Z_SHRINE = { x: 130, y: 600 };  // shrine pad
+
+  // ── ZONE · NATURE RECLAIM ────────────────────────────────────────────
+  // Outer 100px on each side darkens + greens the ground, telling the
+  // story of vegetation reclaiming the edges. Multiply mode desaturates
+  // + darkens the cobble. Does NOT extend into the walkable central
+  // zone so the edges clearly frame "ruined/abandoned" vs "lived-in".
+  {
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const pathPairs = [
-      [480, 470, 220, 540, 240], // portal → forge
-      [480, 470, 790, 540, 240], // portal → dome
-      [480, 560, 150, 600, 180], // portal-base → shrine
-      [480, 560, 870, 640, 180], // portal-base → secondary firepit
-    ];
-    for (const [x1, y1, x2, y2, rr] of pathPairs) {
-      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-      const g = ctx.createRadialGradient(mx, my, 10, mx, my, rr);
-      g.addColorStop(0, 'rgba(210, 165, 105, 0.22)');
-      g.addColorStop(0.6, 'rgba(160, 115, 70, 0.09)');
-      g.addColorStop(1, 'rgba(120, 70, 40, 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(Math.min(x1, x2) - rr, Math.min(y1, y2) - rr, Math.abs(x2 - x1) + rr * 2, Math.abs(y2 - y1) + rr * 2);
-    }
+    ctx.globalCompositeOperation = 'multiply';
+    // Left edge reclaim (inside room bounds, 0..90)
+    const leftGrad = ctx.createLinearGradient(0, 400, 95, 400);
+    leftGrad.addColorStop(0,   'rgba(78, 95, 65, 1)');   // deep moss
+    leftGrad.addColorStop(0.6, 'rgba(155, 160, 140, 1)');
+    leftGrad.addColorStop(1,   'rgba(255, 255, 255, 1)');
+    ctx.fillStyle = leftGrad;
+    ctx.fillRect(0, 340, 95, 332);
+    // Right edge reclaim (865..960)
+    const rightGrad = ctx.createLinearGradient(865, 400, 960, 400);
+    rightGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    rightGrad.addColorStop(0.4, 'rgba(155, 160, 140, 1)');
+    rightGrad.addColorStop(1, 'rgba(78, 95, 65, 1)');
+    ctx.fillStyle = rightGrad;
+    ctx.fillRect(865, 340, 95, 332);
+    // Overscan strips (-360..0 and 960..1320) — heavier darkening so
+    // off-room area reads as "past the settlement, not lit".
+    const farLeft = ctx.createLinearGradient(BG_X_MIN, 400, 0, 400);
+    farLeft.addColorStop(0,   'rgba(40, 38, 48, 1)');
+    farLeft.addColorStop(1,   'rgba(78, 95, 65, 1)');
+    ctx.fillStyle = farLeft;
+    ctx.fillRect(BG_X_MIN, 300, -BG_X_MIN, 372);
+    const farRight = ctx.createLinearGradient(960, 400, BG_X_MAX, 400);
+    farRight.addColorStop(0, 'rgba(78, 95, 65, 1)');
+    farRight.addColorStop(1, 'rgba(40, 38, 48, 1)');
+    ctx.fillStyle = farRight;
+    ctx.fillRect(960, 300, BG_X_MAX - 960, 372);
+    // Bottom edge subtle darkening — front-of-plaza reads as "light
+    // from the campfire dies out by the time it reaches the screen
+    // edge". Vertical gradient across the lower 80px.
+    const bot = ctx.createLinearGradient(0, 610, 0, 672);
+    bot.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    bot.addColorStop(1, 'rgba(120, 110, 100, 1)');
+    ctx.fillStyle = bot;
+    ctx.fillRect(95, 610, 770, 62);
     ctx.restore();
+  }
 
-    // Moss / fallen-leaf tufts — across the FULL painted ground so the
-    // extended void-cover strips also look populated. 50 tufts.
-    for (let k = 0; k < 50; k++) {
-      const h = cellHash(k * 7 + 3, k * 11 + 17, 1000000);
-      const tx = BG_X_MIN + (h % BG_W);
-      const ty = 330 + ((h >>> 10) % 330);
-      const sz = 2 + ((h >>> 20) & 1);
-      const isMoss = ((h >>> 22) & 1) === 0;
-      const col = isMoss ? 'rgba(90, 110, 60, 0.55)' : 'rgba(150, 90, 40, 0.45)';
-      ctx.fillStyle = col;
-      ctx.fillRect(tx | 0, ty | 0, sz, sz);
-    }
+  // ── ZONE · TOWER DAMAGE RING ─────────────────────────────────────────
+  // Dark desaturated shadow around the tower base — the ground is
+  // literally worse near the ruin (cracks, dust, stone chips). The
+  // cluster-decor pass below puts ACTUAL cracks + rubble here; this
+  // pass just darkens the tile palette under them.
+  paintZoneRadial(ctx, Z_TOWER.x, Z_TOWER.y + 40, 150, {
+    inner: 'rgba(18, 14, 22, 0.65)',
+    outer: 'rgba(18, 14, 22, 0)',
+    mode: 'multiply',
+  });
+
+  // ── ZONE · BUILDING PADS ─────────────────────────────────────────────
+  // Each building approach gets a subtle warmer/cooler tint that reads
+  // as "the ground has been cleared here" relative to the damaged /
+  // overgrown surroundings. Additive, small radius.
+
+  // FORGE pad — warm amber (reads as "the fire's light spills out here")
+  paintZoneRadial(ctx, Z_FORGE.x, Z_FORGE.y, 90, {
+    inner: 'rgba(240, 190, 130, 0.30)',
+    outer: 'rgba(240, 190, 130, 0)',
+    mode: 'lighter',
+  });
+  // DOME pad — cool cream (reads as "clean mystical archive")
+  paintZoneRadial(ctx, Z_DOME.x, Z_DOME.y, 90, {
+    inner: 'rgba(190, 210, 220, 0.22)',
+    outer: 'rgba(190, 210, 220, 0)',
+    mode: 'lighter',
+  });
+  // SHRINE pad — pale violet (reads as "mystical stone")
+  paintZoneRadial(ctx, Z_SHRINE.x, Z_SHRINE.y, 70, {
+    inner: 'rgba(200, 190, 220, 0.25)',
+    outer: 'rgba(200, 190, 220, 0)',
+    mode: 'lighter',
+  });
+
+  // ── ZONE · PATHS ─────────────────────────────────────────────────────
+  // Warm stone walkways connecting the plaza to every destination.
+  // Each path is a tapered additive band (brightness fades at both
+  // endpoints so the path doesn't end abruptly). The plaza itself
+  // is the convergence point; all paths radiate from the campfire.
+  paintPath(ctx, Z_SPAWN,  Z_PLAZA,  60);   // entrance → plaza
+  paintPath(ctx, Z_PLAZA,  Z_TOWER,  58);   // plaza → ruined tower
+  paintPath(ctx, Z_PLAZA,  Z_FORGE,  52);   // plaza → forge
+  paintPath(ctx, Z_PLAZA,  Z_DOME,   52);   // plaza → dome
+  paintPath(ctx, Z_PLAZA,  Z_SHRINE, 48);   // plaza → shrine
+
+  // ── ZONE · CENTRAL PLAZA ─────────────────────────────────────────────
+  // Brightest warm pool around the campfire. Overlaps and dominates
+  // the path terminals, so the paths visually "feed into" the plaza
+  // instead of crossing through it.
+  paintZoneRadial(ctx, Z_PLAZA.x, Z_PLAZA.y, 150, {
+    inner: 'rgba(255, 200, 130, 0.38)',
+    outer: 'rgba(255, 200, 130, 0)',
+    mode: 'lighter',
+  });
+
+  // ── CLUSTER DECOR · TOWER RUBBLE ─────────────────────────────────────
+  // Hand-placed stone chunks in a ring around the tower base — the
+  // tower IS falling apart, so the bricks have to go somewhere. Each
+  // chunk has a shadow so it sits on the ground instead of floating.
+  drawTowerRubble(ctx, Z_TOWER.x, Z_TOWER.y + 40);
+
+  // ── CLUSTER DECOR · EDGE MOSS ────────────────────────────────────────
+  // Moss tufts only in the nature-reclaim zone (edges). Hand-placed
+  // cluster centers so moss forms BELIEVABLE patches along cracked
+  // seams, not a uniform speckle across the whole floor.
+  drawMossCluster(ctx, 40,  600, 16);
+  drawMossCluster(ctx, 75,  490, 12);
+  drawMossCluster(ctx, 50,  420, 9);
+  drawMossCluster(ctx, 920, 610, 14);
+  drawMossCluster(ctx, 905, 510, 10);
+  drawMossCluster(ctx, 905, 430, 8);
+  // Behind-tower reclaim — moss creeping up on the tower's north side
+  drawMossCluster(ctx, 425, 365, 8);
+  drawMossCluster(ctx, 540, 365, 8);
+
+  // ── CLUSTER DECOR · CRACKS ───────────────────────────────────────────
+  // Cracks only in the tower-damage zone and on the outer edges
+  // (where the reclaim is eating the stone). Not in the plaza or
+  // paths — those are the cleaner, more-walked areas.
+  drawCrackCluster(ctx, 450, 490, 4);
+  drawCrackCluster(ctx, 510, 505, 3);
+  drawCrackCluster(ctx, 475, 540, 3);
+  drawCrackCluster(ctx, 85,  640, 3);
+  drawCrackCluster(ctx, 890, 640, 3);
+
+  // ── ZONE · HORIZON FEATHER (top layer) ───────────────────────────────
+  // Redrawn above the zone tints so the cobble-to-sky transition stays
+  // cohesive even where zone paints overlap the feather band.
+  {
+    const hz2 = ctx.createLinearGradient(0, 290, 0, 340);
+    hz2.addColorStop(0, 'rgba(30, 18, 32, 0.55)');
+    hz2.addColorStop(1, 'rgba(30, 18, 32, 0)');
+    ctx.fillStyle = hz2;
+    ctx.fillRect(BG_X_MIN, 290, BG_W, 50);
   }
 
   // ── BUILDINGS · BACK TO FRONT ────────────────────────────────────────
@@ -511,15 +571,15 @@ export function drawHamletBackdrop(ctx) {
   // so they sit in front of the tower's upper sprite rather than behind it.)
 
   // ── FOREGROUND AMBIENT PROPS ─────────────────────────────────────────
-  // Subtle stone boulders at the lower corners of the scene, shaded from
-  // below by the firepit light. Replaces the prior square-block columns
-  // that read as unfinished placeholders.
-  drawBoulder(ctx, 58, 628, 28, 18);
-  drawBoulder(ctx, 92, 654, 22, 14);
-  drawBoulder(ctx, 912, 644, 26, 17);
-  drawBoulder(ctx, 948, 660, 18, 11);
-  // Small urn at lower-right — stone texture approximated by two tones.
-  drawUrn(ctx, 900, 608);
+  // Boulders placed at the lower CORNERS of the playable room only — in
+  // the nature-reclaim zone, framing the scene and visually stopping the
+  // eye from wandering off into the void strips. The secondary firepit
+  // gets an urn as its companion prop (one small pottery nod to the
+  // dome's archivist).
+  drawBoulder(ctx, 48, 634, 28, 18);
+  drawBoulder(ctx, 84, 658, 22, 14);
+  drawBoulder(ctx, 920, 648, 26, 17);
+  drawUrn(ctx, 902, 616);
 
   // ── SECONDARY FIREPIT (atmospheric, far-right) ───────────────────────
   const firepit2 = images.hamlet_env_6;
@@ -547,6 +607,137 @@ export function drawHamletBackdrop(ctx) {
     ctx.fillStyle = `rgba(232, 210, 180, ${alpha.toFixed(3)})`;
     ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
   }
+}
+
+// ---- Zone-paint helpers ---------------------------------------------------
+// Small building blocks used by drawHamletBackdrop to compose the ground
+// from NAMED ZONES instead of scattering random overlays. Each helper does
+// one job cleanly so the zone list reads top-to-bottom like a level designer's
+// layer stack.
+
+// Paint a radial gradient on the ground. Used for plaza center, building
+// pads, and the tower damage ring. Mode selects how the zone combines with
+// the base cobble: 'lighter' adds warmth, 'multiply' darkens/desaturates.
+function paintZoneRadial(ctx, x, y, r, { inner, outer, mode = 'lighter' }) {
+  ctx.save();
+  ctx.globalCompositeOperation = mode;
+  const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+  g.addColorStop(0, inner);
+  g.addColorStop(1, outer);
+  ctx.fillStyle = g;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.restore();
+}
+
+// Paint a tapered warm path band between two anchors. Implemented as a
+// chain of overlapping radial stamps along the line, each tapered with a
+// half-sine so the path fades to nothing at both endpoints instead of
+// terminating in a hard blob. Additive.
+function paintPath(ctx, from, to, width) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) { ctx.restore(); return; }
+  const steps = Math.max(6, Math.ceil(len / 18));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = from.x + dx * t;
+    const y = from.y + dy * t;
+    // Half-sine taper: 0 at endpoints, 1 at midpoint.
+    const taper = Math.sin(t * Math.PI);
+    const alpha = 0.19 * taper;
+    if (alpha < 0.01) continue;
+    const g = ctx.createRadialGradient(x, y, 2, x, y, width);
+    g.addColorStop(0, `rgba(230, 178, 112, ${alpha.toFixed(3)})`);
+    g.addColorStop(1, 'rgba(230, 178, 112, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - width, y - width, width * 2, width * 2);
+  }
+  ctx.restore();
+}
+
+// Hand-placed stone rubble ring around the tower base. The tower IS
+// collapsing, so pieces have to go somewhere; each chunk has a drop
+// shadow so it reads as sitting on the cobble instead of floating.
+function drawTowerRubble(ctx, cx, cy) {
+  // Ring of stone chunks at specific angles + distances from the tower
+  // base. Authored, not random — the cluster needs to frame the tower
+  // and not block the path into it.
+  const rubble = [
+    { dx: -64, dy: -12, w: 11, h: 6 },
+    { dx: -44, dy:   8, w:  8, h: 5 },
+    { dx: -28, dy:  22, w:  9, h: 5 },
+    { dx:  24, dy: -18, w: 10, h: 6 },
+    { dx:  52, dy:  -2, w: 12, h: 6 },
+    { dx:  38, dy:  24, w:  9, h: 5 },
+    { dx: -76, dy:  28, w: 14, h: 7 },
+    { dx:  72, dy:  28, w: 13, h: 7 },
+    { dx: -12, dy:  36, w:  7, h: 4 },
+    { dx:  14, dy:  40, w:  8, h: 5 },
+  ];
+  for (const r of rubble) {
+    const x = cx + r.dx, y = cy + r.dy;
+    // Drop shadow
+    ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+    ctx.beginPath();
+    ctx.ellipse(x + 1, y + r.h * 0.6, r.w * 0.85, r.h * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Stone body
+    ctx.fillStyle = '#5a4d4e';
+    ctx.beginPath();
+    ctx.ellipse(x, y, r.w, r.h, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Top highlight
+    ctx.fillStyle = '#7d6e70';
+    ctx.beginPath();
+    ctx.ellipse(x - r.w * 0.15, y - r.h * 0.35, r.w * 0.6, r.h * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Clustered moss tufts — `count` speckles inside a small radius around
+// (cx, cy). Stable per cluster via cellHash so the arrangement doesn't
+// reshuffle each frame. Used at authored zone edges only; no uniform-
+// random scatter across the whole floor.
+function drawMossCluster(ctx, cx, cy, count) {
+  for (let i = 0; i < count; i++) {
+    const h = cellHash(cx + i * 13, cy + i * 17, 1000000);
+    const dx = ((h % 100) - 50) * 0.32;
+    const dy = (((h >>> 8) % 100) - 50) * 0.22;
+    const sz = 2 + ((h >>> 12) & 1);
+    const shade = (h >>> 14) & 3;
+    const col = shade === 0 ? 'rgba(75, 95, 50, 0.75)'
+              : shade === 1 ? 'rgba(95, 115, 60, 0.70)'
+              : shade === 2 ? 'rgba(110, 130, 70, 0.62)'
+              :               'rgba(60, 80, 42, 0.72)';
+    ctx.fillStyle = col;
+    ctx.fillRect((cx + dx) | 0, (cy + dy) | 0, sz, sz);
+  }
+}
+
+// Clustered hairline cracks — `count` dark streaks in a small area around
+// (cx, cy), with a mid-point jog so they don't read as perfect lines.
+// Used only in damage zones (tower base + scene corners), never in paths
+// or plaza.
+function drawCrackCluster(ctx, cx, cy, count) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(18, 12, 14, 0.72)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < count; i++) {
+    const h = cellHash(cx + i * 41, cy + i * 53, 1000000);
+    const dx = ((h % 100) - 50) * 0.42;
+    const dy = (((h >>> 8) % 100) - 50) * 0.28;
+    const angle = (((h >>> 16) % 180) * Math.PI) / 180;
+    const len = 22 + ((h >>> 4) % 18);
+    const ex = Math.cos(angle) * len, ey = Math.sin(angle) * len;
+    ctx.beginPath();
+    ctx.moveTo(cx + dx - ex / 2, cy + dy - ey / 2);
+    ctx.lineTo(cx + dx + ex * 0.1, cy + dy + ey * 0.1 + ((h >>> 24) % 3) - 1);
+    ctx.lineTo(cx + dx + ex / 2, cy + dy + ey / 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ---- Ambient prop helpers --------------------------------------------------
