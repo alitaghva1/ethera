@@ -1,2 +1,9 @@
 node_modules/
 dist/
+# PixelLab API key (+ any other local secrets). Generate your own at
+# https://pixellab.ai/account and drop it into .env — never commit.
+.env
+.env.local
+# PixelLab generation artifacts — intermediate raw outputs. Final
+# assets live under public/assets/characters/ and ARE committed.
+scripts/pixellab/out/

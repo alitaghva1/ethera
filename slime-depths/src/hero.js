@@ -20,7 +20,7 @@ import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
 import { markChainFired, markPyroFired } from './counterPips.js';
 
-const SPR = 100;                  // Tiny RPG native frame size
+const SPR = 128;                  // 8-directional sprite sheet cell size (was 100 for horizontal-strip sheets)
 const HERO_DRAW = 96;              // on-screen hero size (slightly scaled down)
 const HERO_RADIUS = 14;            // collision
 const HERO_SPEED = 230;
@@ -38,6 +38,7 @@ export const hero = {
   x: 0, y: 0,
   vx: 0, vy: 0,
   facing: 1,
+  lastDirection: 4,                 // 8-dir sprite row index (0=N, 2=E, 4=S, 6=W); default SOUTH
   aimX: 1, aimY: 0,
   weapon: 'sword',                   // id into WEAPONS; set by main.js run start
   hp: 8, maxHp: 8,
@@ -1310,6 +1311,45 @@ function heroFrameInfo() {
   }
 }
 
+// Convert a screen-space vector (dx, dy; +Y = down) to a compass bucket index:
+// 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW. Returns null if vector is ~zero.
+function vecToDirection(dx, dy) {
+  if (!isFinite(dx) || !isFinite(dy)) return null;
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return null;
+  // atan2 gives [-π, π] with 0=EAST, +Y=SOUTH (screen space).
+  // Shift by +π/2 so NORTH becomes 0 radians, then normalize to [0, 2π),
+  // divide by (π/4), round, mod 8. 0=N → 2=E → 4=S → 6=W as required.
+  let a = Math.atan2(dy, dx) + Math.PI / 2;
+  const TAU = Math.PI * 2;
+  a = ((a % TAU) + TAU) % TAU;
+  const bucket = Math.round(a / (Math.PI / 4)) % 8;
+  return bucket;
+}
+
+// Return an integer 0–7 row index for the current hero state. Uses aim vector
+// during attack/dodge/dashStrike (dashStrike lives under state==='dodge' with
+// dashStrikeTime>0; aim is still the correct source). Uses velocity during
+// walk. Falls back to hero.lastDirection for idle/hurt/dead or ambiguous input.
+// Side effect: updates hero.lastDirection whenever a valid new direction is
+// derived, so subsequent idle/hurt frames have a sensible facing to resume.
+export function heroDirection(h = hero) {
+  let dir = null;
+  const st = h.state;
+  if (st === 'attack' || st === 'dodge') {
+    // Aim is already a unit vector pointing hero → mouse. Dash-strike uses the
+    // locked-at-activation dir, but aim follows the cursor — using aim here
+    // keeps the swing/dodge facing the player's intent either way.
+    dir = vecToDirection(h.aimX, h.aimY);
+  } else if (st === 'walk') {
+    dir = vecToDirection(h.vx, h.vy);
+    if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
+  }
+  // idle / hurt / dead and any fallback: keep previous direction.
+  if (dir === null) return h.lastDirection ?? 4;
+  h.lastDirection = dir;
+  return dir;
+}
+
 export function drawHero(ctx) {
   const info = heroFrameInfo();
   const img = info.img;
@@ -1322,6 +1362,7 @@ export function drawHero(ctx) {
     f = Math.min(frames - 1, Math.floor(hero.stateTime * info.fps));
   }
   const sx = f * SPR;
+  const sy = heroDirection(hero) * SPR;
   // I-frame flicker
   const flicker = hero.iframes > 0 && Math.floor(hero.stateTime * 20) % 2 === 0;
   ctx.save();
@@ -1368,12 +1409,11 @@ export function drawHero(ctx) {
   sg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = sg;
   ctx.fillRect(shX - 20, shY - 6, 40, 12);
-  // Sprite (flipped if facing left). Apply weapon-tint filter for build readability.
+  // 8-directional sprites handle facing natively — no horizontal flip.
   // Idle bob — subtle sinusoidal y offset when not attacking/dodging, for a
   // "breathing" character. Tiny (< 2px) so it doesn't look floaty.
   const idleBob = (hero.state === 'idle') ? Math.sin(hero.animTime * 2.6) * 1.2 : 0;
   ctx.translate(hero.x, hero.y + idleBob);
-  ctx.scale(hero.facing, 1);
   // Rim light pass — draw sprite offset in 4 directions with a warm tint to create
   // an outline. Makes hero pop off the floor, AAA-style silhouette polish.
   // Skip during i-frame flicker or dodge to avoid visual clutter.
@@ -1383,16 +1423,16 @@ export function drawHero(ctx) {
     ctx.globalAlpha = 0.55;
     ctx.filter = rimFilter;
     const rim = 1.2;
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2 - rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2 + rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 - rim, HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 + rim, HERO_DRAW, HERO_DRAW);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2 - rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2 + rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 - rim, HERO_DRAW, HERO_DRAW);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 + rim, HERO_DRAW, HERO_DRAW);
     ctx.filter = 'none';
     ctx.restore();
   }
   const wf = weaponDef().heroFilter;
   if (wf) ctx.filter = wf;
-  ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2, -HERO_DRAW * 0.75, HERO_DRAW, HERO_DRAW);
+  ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2, -HERO_DRAW * 0.75, HERO_DRAW, HERO_DRAW);
   if (wf) ctx.filter = 'none';
   ctx.restore();
 }
