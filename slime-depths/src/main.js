@@ -1206,12 +1206,14 @@ document.getElementById('hamletBackBtn').addEventListener('mouseleave', (e) => {
 });
 
 function showHamlet() {
-  // FEATURE FLAG — `window.__canvasHamlet = true` routes to the canvas-based
-  // walkable hamlet (Approach B). Default path stays DOM for safety.
-  if (window.__canvasHamlet) {
-    enterHamletCanvas();
-    return;
-  }
+  // The hamlet is now a walkable canvas scene — see enterHamletCanvas().
+  // The old DOM overlay path below is retained as dead code for one more
+  // release as an easy revert if the canvas scene turns up a blocker in
+  // playtest. We'll delete the DOM path outright in a follow-up commit.
+  enterHamletCanvas();
+  return;
+
+  // eslint-disable-next-line no-unreachable
   hideAllOverlays();
   // Ambient audio — warmer hamlet pad with soft fire crackles. Crossfades
   // from the menu pad.
