@@ -79,13 +79,64 @@ async function findAnimFolder(prefix) {
   return match;
 }
 
+// PixelLab-native frames have significant transparent padding around the
+// character (headroom for arms extending up during attack/cast). A straight
+// resize leaves the body centered in the cell, which makes the hero
+// appear to FLOAT above its ground shadow in-game. To fix: trim each
+// frame to actual pixel bounds, scale by a CANONICAL scale factor
+// (computed once from rotations/south.png), then bottom-align in the
+// target cell. Feet land at cell-bottom across every frame/direction.
+
+let _canonicalScale = null;
+async function getCanonicalScale() {
+  if (_canonicalScale !== null) return _canonicalScale;
+  const refBuf = await readFile(join(SRC_ROOT, 'rotations', 'south.png'));
+  const trimmed = await sharp(refBuf).trim({ threshold: 1 }).toBuffer();
+  const meta = await sharp(trimmed).metadata();
+  // Scale so canonical body height fills ~92% of cell (8% breathing room)
+  _canonicalScale = (TARGET_CELL * 0.92) / meta.height;
+  return _canonicalScale;
+}
+
 async function resizeToCell(srcBuf) {
-  // Source is 240×240 RGBA; resize to TARGET_CELL²  with nearest-neighbor
-  // so the pixel-art look is preserved. No trim — the character is
-  // already centered in its PixelLab canvas and trimming per-frame
-  // would cause positional jitter across frames.
-  return sharp(srcBuf)
-    .resize(TARGET_CELL, TARGET_CELL, { kernel: sharp.kernel.nearest })
+  const scale = await getCanonicalScale();
+  const trimmed = await sharp(srcBuf).trim({ threshold: 1 }).toBuffer();
+  const meta = await sharp(trimmed).metadata();
+  const newW = Math.max(1, Math.round(meta.width * scale));
+  const newH = Math.max(1, Math.round(meta.height * scale));
+  let scaledBuf = await sharp(trimmed)
+    .resize(newW, newH, { kernel: sharp.kernel.nearest })
+    .toBuffer();
+
+  // If the scaled frame EXCEEDS the cell in either dimension (e.g. attack
+  // poses with arms or spell VFX extending outward), center-crop to fit.
+  // Width: center-crop horizontally. Height: bottom-aligned crop (preserve
+  // the feet, sacrifice headroom — an overflowing pointed hood is fine).
+  let finalW = newW, finalH = newH;
+  if (newW > TARGET_CELL || newH > TARGET_CELL) {
+    const cropW = Math.min(newW, TARGET_CELL);
+    const cropH = Math.min(newH, TARGET_CELL);
+    const cropL = Math.max(0, Math.floor((newW - TARGET_CELL) / 2));
+    const cropT = Math.max(0, newH - TARGET_CELL);    // preserve bottom
+    scaledBuf = await sharp(scaledBuf)
+      .extract({ left: cropL, top: cropT, width: cropW, height: cropH })
+      .toBuffer();
+    finalW = cropW; finalH = cropH;
+  }
+
+  // Horizontal: center. Vertical: bottom-align with 4px ground margin.
+  const left = Math.max(0, Math.floor((TARGET_CELL - finalW) / 2));
+  const top = Math.max(0, TARGET_CELL - finalH - 4);
+  return sharp({
+    create: {
+      width: TARGET_CELL,
+      height: TARGET_CELL,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{ input: scaledBuf, left, top }])
+    .png()
     .toBuffer();
 }
 
