@@ -937,10 +937,10 @@ function hudHexToRgba(hex, a) {
 const HEART_PATTERN = [
   '..XX..XX..',
   '.XOOXXOOX.',
-  'XOOOOOOOO.X'.slice(0,10),
   'XOOOOOOOOX',
   'XOOOOOOOOX',
-  '.XOOOOOOXX'.slice(0,10),
+  'XOOOOOOOOX',
+  '.XOOOOOOX.',
   '..XOOOOOX.',
   '...XOOOX..',
   '....XOX...',

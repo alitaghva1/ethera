@@ -657,6 +657,20 @@ export const RELIC_GLYPHS = {
   gale_step:        'gale',        // swirl / tornado
   bulwark:          'shield',
   second_wind:      'breath',      // wind + heart — recovery identity
+  // Sprint 1 additions — these relics landed without glyph mappings and were
+  // rendering as the undifferentiated base sprite + hue-rotate, defeating
+  // the visual-identity system. Mapped to the closest thematic existing glyph.
+  mirror_shard:         'rune',    // reflection / binding
+  spore_bloom:          'flame',   // on-kill burst
+  oathshield:           'shield',
+  arcane_quiver:        'rune',    // arcane splash
+  marrow_pact:          'skull',   // bones / pact / low-HP
+  gilded_hoard:         'star',    // treasure glint
+  hymn_of_embers:       'flame',   // fire aura
+  temporal_eye:         'eye',     // time dilation
+  whisper_veil:         'cloak',   // veil / phantom
+  stormcaller:          'bolt',    // lightning
+  hourglass_of_respite: 'breath',  // recovery at low HP
 };
 
 export function getRelicGlyph(id) {
