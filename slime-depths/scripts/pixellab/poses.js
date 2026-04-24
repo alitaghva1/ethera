@@ -58,13 +58,20 @@ export function buildFrames(state, rest) {
 // STATE LIBRARY — five animation states + frame counts matching our
 // current hero.js expectations exactly (idle 6, walk 8, attack 7,
 // hurt 4, death 4).
+//
+// Deltas previously too subtle (~0.03-0.05) so the 8 generated frames
+// all looked nearly identical and reads as "static." Bumped 2-3× here.
+// Values are in NORMALIZED image space — 0.08 = ~10 px at 128².
 export const POSES = {
   idle: {
     count: 6,
     tween: 'sin',
     keyframes: [
       { name: 'rest',   delta: {} },
-      { name: 'breath', delta: { NOSE: -0.004, NECK: -0.003 } },
+      { name: 'breath', delta: {
+          NOSE: -0.012, NECK: -0.01,
+          'LEFT SHOULDER': -0.008, 'RIGHT SHOULDER': -0.008,
+        } },
     ],
   },
   walk: {
@@ -73,13 +80,18 @@ export const POSES = {
     keyframes: [
       { name: 'left_stride',
         delta: {
-          'LEFT HIP': -0.008, 'LEFT KNEE': -0.04, 'LEFT LEG': -0.055,
-          'RIGHT HIP': 0.006, 'RIGHT KNEE': 0.02, 'RIGHT LEG': 0.02,
+          'LEFT HIP': -0.02,  'LEFT KNEE': -0.09,  'LEFT LEG': -0.13,
+          'RIGHT HIP': 0.015, 'RIGHT KNEE': 0.05,  'RIGHT LEG': 0.05,
+          // Arm swing opposite the legs for natural walk cycle
+          'LEFT SHOULDER': 0.01,  'LEFT ELBOW': 0.04,  'LEFT ARM': 0.05,
+          'RIGHT SHOULDER': -0.01,'RIGHT ELBOW': -0.04,'RIGHT ARM': -0.05,
         } },
       { name: 'right_stride',
         delta: {
-          'RIGHT HIP': -0.008, 'RIGHT KNEE': -0.04, 'RIGHT LEG': -0.055,
-          'LEFT HIP': 0.006, 'LEFT KNEE': 0.02, 'LEFT LEG': 0.02,
+          'RIGHT HIP': -0.02, 'RIGHT KNEE': -0.09, 'RIGHT LEG': -0.13,
+          'LEFT HIP': 0.015,  'LEFT KNEE': 0.05,   'LEFT LEG': 0.05,
+          'RIGHT SHOULDER': 0.01, 'RIGHT ELBOW': 0.04, 'RIGHT ARM': 0.05,
+          'LEFT SHOULDER': -0.01, 'LEFT ELBOW': -0.04,'LEFT ARM': -0.05,
         } },
     ],
   },
@@ -90,15 +102,15 @@ export const POSES = {
       { name: 'rest',   delta: {} },
       { name: 'windup',
         delta: {
-          'RIGHT ELBOW': -0.05, 'RIGHT ARM': -0.07,
-          'LEFT ELBOW': -0.02,  'LEFT ARM': -0.03,
-          NECK: -0.006,
+          'RIGHT ELBOW': -0.11, 'RIGHT ARM': -0.16,
+          'LEFT ELBOW': -0.04,  'LEFT ARM': -0.06,
+          NECK: -0.015, NOSE: -0.015,
         } },
       { name: 'strike',
         delta: {
-          'RIGHT ELBOW': 0.04,  'RIGHT ARM': 0.08,
-          'LEFT ELBOW': 0.02,   'LEFT ARM': 0.04,
-          NECK: 0.006,
+          'RIGHT ELBOW': 0.10,  'RIGHT ARM': 0.18,
+          'LEFT ELBOW': 0.05,   'LEFT ARM': 0.08,
+          NECK: 0.015, NOSE: 0.015,
         } },
       { name: 'recover', delta: {} },
     ],
@@ -109,9 +121,10 @@ export const POSES = {
     keyframes: [
       { name: 'rest',   delta: {} },
       { name: 'recoil', delta: {
-          NECK: 0.02, NOSE: 0.02,
-          'LEFT SHOULDER': 0.02, 'RIGHT SHOULDER': 0.02,
-          'LEFT ELBOW': 0.015, 'RIGHT ELBOW': 0.015,
+          NECK: 0.04, NOSE: 0.05,
+          'LEFT SHOULDER': 0.04, 'RIGHT SHOULDER': 0.04,
+          'LEFT ELBOW': 0.035, 'RIGHT ELBOW': 0.035,
+          'LEFT ARM': 0.03, 'RIGHT ARM': 0.03,
         } },
       { name: 'recover', delta: {} },
     ],
@@ -121,10 +134,12 @@ export const POSES = {
     tween: 'linear-path',
     keyframes: [
       { name: 'rest',   delta: {} },
-      { name: 'stagger', delta: { NECK: 0.04, NOSE: 0.05 } },
-      { name: 'fall',    delta: { NECK: 0.12, NOSE: 0.18,
-          'LEFT SHOULDER': 0.08, 'RIGHT SHOULDER': 0.08,
-          'LEFT ELBOW': 0.12, 'RIGHT ELBOW': 0.12,
+      { name: 'stagger', delta: { NECK: 0.08, NOSE: 0.10 } },
+      { name: 'fall',    delta: {
+          NECK: 0.25, NOSE: 0.32,
+          'LEFT SHOULDER': 0.20, 'RIGHT SHOULDER': 0.20,
+          'LEFT ELBOW': 0.25, 'RIGHT ELBOW': 0.25,
+          'LEFT ARM': 0.28, 'RIGHT ARM': 0.28,
         } },
     ],
   },
