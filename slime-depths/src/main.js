@@ -34,12 +34,12 @@ import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, spark
 import { drawHud, updateHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
 import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics } from './relics.js';
-import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats.js';
+import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats';
 import { meta, loadMeta, saveMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHeirloom, consumeHeirloom } from './meta.js';
 import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
 import { CURSES, ALL_CURSE_IDS, activeCurses, loadCurses, toggleCurse, isCursed, curseCount, curseEssenceMul } from './curses.js';
 import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked } from './achievements.js';
-import { records, loadRecords, updateRecords, incrementRunsStarted } from './records.js';
+import { records, loadRecords, updateRecords, incrementRunsStarted } from './records';
 import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
@@ -60,6 +60,7 @@ import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, 
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
 import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, hasUnreadDialogue, totalNpcs, presentNpcCount } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
+import { drawFloorCard } from './floorCardRender.js';
 
 // Side-effect: install the localStorage profile-prefix patch NOW, before any
 // other module-body code could touch storage. All load*() funcs in other
@@ -5539,103 +5540,9 @@ function render() {
     ctx.restore();
   }
 
-  // Floor intro card — big splash when a new floor begins. Takes priority
-  // over room-entry labels for ~3s.
-  if (floorCardTime > 0 && floorCardName) {
-    const total = 3.2;
-    const t = 1 - (floorCardTime / total);     // 0 → 1
-    // Alpha curve: ease in quickly, hold, ease out
-    let a;
-    if (t < 0.15) a = t / 0.15;
-    else if (t > 0.82) a = (1 - t) / 0.18;
-    else a = 1;
-    a = Math.max(0, Math.min(1, a));
-    ctx.save();
-    // Zone backdrop — painted scenery behind the veil. The backdrop fills
-    // the canvas and the dark veil above it fades to black at the edges,
-    // so the painting provides atmosphere without fighting the typography.
-    const _fcBackdrop = floorCardBackdrop ? imageCache[floorCardBackdrop] : null;
-    if (_fcBackdrop) {
-      ctx.globalAlpha = a;
-      // Draw full-bleed. Source is 1376x768, canvas is 1280x720 — slight
-      // overscan crops the outer edges, keeping the most-painted center.
-      ctx.drawImage(_fcBackdrop, 0, 0, canvas.width, canvas.height);
-      ctx.globalAlpha = 1;
-    }
-    // Full-screen dark veil — lighter over the backdrop than it was on the
-    // pure-black version so the painting reads through. 0.82 -> 0.58 when
-    // a backdrop is present.
-    const _veilAlpha = _fcBackdrop ? a * 0.58 : a * 0.82;
-    ctx.fillStyle = 'rgba(8, 5, 12, ' + _veilAlpha.toFixed(3) + ')';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Biome-tinted swirl of particles behind the card text — 40 orbiting motes
-    const biomeId = currentBiomePal()._biomeId || 'vault';
-    const swirlCol = biomeId === 'crypt' ? [170, 220, 255]
-                   : biomeId === 'vault' ? [255, 220, 180]
-                   : biomeId === 'abyss' ? [200, 120, 240]
-                   : biomeId === 'inferno' ? [255, 140, 70]
-                   : [220, 200, 180];
-    const swirlCx = canvas.width / 2;
-    const swirlCy = canvas.height / 2;
-    const swirlT = performance.now() / 1000;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 40; i++) {
-      // Each particle orbits with a unique angular velocity and radius
-      const seed = i * 0.7;
-      const baseAng = seed + swirlT * (0.45 + (i % 3) * 0.15);
-      const r = 140 + (i % 5) * 40 + Math.sin(swirlT * 1.3 + seed) * 20;
-      const px = swirlCx + Math.cos(baseAng) * r;
-      const py = swirlCy + Math.sin(baseAng) * r * 0.55;   // ellipse for depth
-      const pulse = 0.5 + 0.5 * Math.sin(swirlT * 2.4 + seed * 2.1);
-      const pa = a * pulse * 0.45;
-      ctx.fillStyle = `rgba(${swirlCol[0]},${swirlCol[1]},${swirlCol[2]},${pa.toFixed(3)})`;
-      const sz = 2 + (i % 3);
-      ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
-    }
-    // A faint halo ring behind the text as a second layer
-    const haloR = 200 + Math.sin(swirlT * 0.8) * 20;
-    const halo = ctx.createRadialGradient(swirlCx, swirlCy, 30, swirlCx, swirlCy, haloR);
-    halo.addColorStop(0, `rgba(${swirlCol[0]},${swirlCol[1]},${swirlCol[2]},${(a * 0.08).toFixed(3)})`);
-    halo.addColorStop(1, `rgba(${swirlCol[0]},${swirlCol[1]},${swirlCol[2]},0)`);
-    ctx.fillStyle = halo;
-    ctx.fillRect(swirlCx - haloR, swirlCy - haloR, haloR * 2, haloR * 2);
-    ctx.restore();
-    ctx.globalAlpha = a;
-    // Top ornament
-    ctx.strokeStyle = 'rgba(201, 168, 106, 0.85)';
-    ctx.lineWidth = 1.2;
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    ctx.beginPath();
-    ctx.moveTo(cx - 220, cy - 96); ctx.lineTo(cx - 40, cy - 96);
-    ctx.moveTo(cx + 40, cy - 96);  ctx.lineTo(cx + 220, cy - 96);
-    ctx.stroke();
-    // Roman numeral
-    ctx.fillStyle = '#c9a86a';
-    ctx.font = 'italic 22px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('FLOOR ' + floorCardRoman, cx, cy - 96);
-    // Big name with soft glow
-    ctx.shadowColor = 'rgba(245, 210, 140, 0.55)';
-    ctx.shadowBlur = 20;
-    ctx.fillStyle = '#f4d9a0';
-    ctx.font = '52px Georgia, serif';
-    ctx.fillText(floorCardName, cx, cy - 24);
-    ctx.shadowBlur = 0;
-    // Bottom flavor
-    ctx.fillStyle = 'rgba(218, 184, 110, 0.75)';
-    ctx.font = 'italic 16px Georgia, serif';
-    ctx.fillText('— ' + floorCardFlavor + ' —', cx, cy + 36);
-    // Bottom ornament
-    ctx.strokeStyle = 'rgba(201, 168, 106, 0.85)';
-    ctx.beginPath();
-    ctx.moveTo(cx - 220, cy + 76); ctx.lineTo(cx - 40, cy + 76);
-    ctx.moveTo(cx + 40, cy + 76);  ctx.lineTo(cx + 220, cy + 76);
-    ctx.stroke();
-    ctx.restore();
-  }
+  // Floor intro card — implementation in floorCardRender.js. Self-gates on
+  // floorCardTime/Name so we don't need a guard here.
+  drawFloorCard(ctx, canvas, { floorCardTime, floorCardName, floorCardBackdrop, floorCardRoman, floorCardFlavor });
 
   // Room-entry label — floats up and fades out over ~1.8s (hidden while floor card shows)
   if (floorCardTime <= 0 && roomLabelTime > 0 && roomLabelText) {

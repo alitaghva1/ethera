@@ -6,7 +6,7 @@ import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tr
 import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
 import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
-import { stats } from './stats.js';
+import { stats } from './stats';
 import { WEAPONS } from './weapons.js';
 import {
   spawnLightningArc, scheduleEchoHit, registerComboHit,

@@ -1,7 +1,7 @@
 // Gold coins — drop from enemies, auto-collect when hero is near. Foundation
 // for a shop system (not yet spent in-game, but counter persists).
 import { hero } from './hero.js';
-import { stats } from './stats.js';
+import { stats } from './stats';
 import { sparkle, dashTrail } from './particles.js';
 import { synthPing } from './synth.js';
 

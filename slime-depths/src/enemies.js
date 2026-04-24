@@ -8,7 +8,7 @@ import { shakeCamera, pulseZoom } from './camera.js';
 import { damageHero, hero } from './hero.js';
 import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
-import { stats } from './stats.js';
+import { stats } from './stats';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
 import { triggerScreenFlash } from './fx.js';
 

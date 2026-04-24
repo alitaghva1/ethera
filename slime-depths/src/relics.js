@@ -2,7 +2,7 @@
 // Registry is pure data; effects live as functions that mutate the hero
 // object when applied. Everything stacks additively so picks always matter.
 import { hero } from './hero.js';
-import { stats } from './stats.js';
+import { stats } from './stats';
 
 export const RELIC_DEFS = {
   serrated_edge: {

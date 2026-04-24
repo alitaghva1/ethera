@@ -9,7 +9,7 @@ import { images } from './loader.js';
 import { applyRelic, rollRelicOffer } from './relics.js';
 import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js';
-import { stats } from './stats.js';
+import { stats } from './stats';
 import { showTip } from './tips.js';
 
 export const wanderer = {
