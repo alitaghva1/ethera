@@ -61,6 +61,7 @@ import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemor
 import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, hasUnreadDialogue, totalNpcs, presentNpcCount } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
+import { updateBossIntro } from './bossIntroDom.js';
 
 // Side-effect: install the localStorage profile-prefix patch NOW, before any
 // other module-body code could touch storage. All load*() funcs in other
@@ -5192,104 +5193,13 @@ function render() {
     }
   }
 
-  // Boss intro overlay — full-bleed painted scene + veil + typography.
-  //
-  // Each boss has a dedicated pre-authored scene (Nano Banana) with the
-  // boss embedded in their thematic environment, baked at 16:9 with the
-  // lower third already shadowed for text. This replaced the previous
-  // portrait + zone-backdrop composite: that approach failed on displays
-  // with aggressive GPU color management (HDR mode, certain Windows
-  // display pipelines) because stacked semi-transparent layers collapsed
-  // dark pixel-art portraits to near-black. A single opaque painted
-  // scene has no compositing to sabotage.
-  if (bossIntroTime > 0 && bossIntroBoss) {
-    const total = 2.2;
-    const t = 1 - (bossIntroTime / total);     // 0 → 1
-    const w = canvas.width, h = canvas.height;
-    // Alpha curve matching the floor card: ease-in, hold, ease-out
-    let a;
-    if (t < 0.12) a = t / 0.12;
-    else if (t > 0.85) a = (1 - t) / 0.15;
-    else a = 1;
-    a = Math.max(0, Math.min(1, a));
-
-    const BOSS_INTRO_IMG = {
-      orc:          'boss_intro_grudnok',
-      bone_captain: 'boss_intro_iron_revenant',
-      broodmother:  'boss_intro_broodmother',
-      ember_tyrant: 'boss_intro_ember_tyrant',
-      echo:         'boss_intro_echo_of_self',
-      hermit:       'boss_intro_hermit',
-    };
-    const sceneKey = BOSS_INTRO_IMG[bossIntroBoss.type];
-    const sceneImg = sceneKey ? imageCache[sceneKey] : null;
-
-    ctx.save();
-    if (sceneImg) {
-      ctx.globalAlpha = a;
-      ctx.drawImage(sceneImg, 0, 0, w, h);
-      ctx.globalAlpha = 1;
-    } else {
-      // No scene image (unmapped boss type) — fall back to a flat dark
-      // panel so there's still something to land the typography on.
-      ctx.globalAlpha = a;
-      ctx.fillStyle = 'rgb(22, 18, 26)';
-      ctx.fillRect(0, 0, w, h);
-      ctx.globalAlpha = 1;
-    }
-
-    // Lower-third darken — the scene art already has a shadowed lower
-    // third, but an additional gradient makes sure the typography has
-    // reliable contrast regardless of the specific image's contrast curve.
-    const titleGrad = ctx.createLinearGradient(0, h * 0.55, 0, h);
-    titleGrad.addColorStop(0, `rgba(8, 5, 12, 0)`);
-    titleGrad.addColorStop(1, `rgba(8, 5, 12, ${(a * 0.55).toFixed(3)})`);
-    ctx.fillStyle = titleGrad;
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.globalAlpha = a;
-
-    // Typography in the lower third. Matches the floor-card pass:
-    // gold "BOSS" tag, cream name with soft shadowBlur glow, amber
-    // flavor, gold ornament strokes.
-    const cx = w / 2;
-    const name = bossIntroBoss.def.displayName || 'BOSS';
-    const nameY = h * 0.82;
-
-    // Top ornament
-    ctx.strokeStyle = 'rgba(201, 168, 106, 0.9)';
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.moveTo(cx - 280, nameY - 50); ctx.lineTo(cx - 60, nameY - 50);
-    ctx.moveTo(cx + 60, nameY - 50);  ctx.lineTo(cx + 280, nameY - 50);
-    ctx.stroke();
-    // "BOSS" tag
-    ctx.fillStyle = '#c9a86a';
-    ctx.font = 'italic 22px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const tag = bossIntroBoss._enraged ? 'AWAKENED' : 'BOSS';
-    ctx.fillText(tag, cx, nameY - 50);
-    // Big name with soft gold glow (shadowBlur on text is safe).
-    ctx.shadowColor = 'rgba(245, 210, 140, 0.6)';
-    ctx.shadowBlur = 22;
-    ctx.fillStyle = '#f4d9a0';
-    ctx.font = 'bold 54px Georgia, serif';
-    ctx.fillText(name, cx, nameY);
-    ctx.shadowBlur = 0;
-    // Flavor
-    ctx.fillStyle = 'rgba(218, 184, 110, 0.85)';
-    ctx.font = 'italic 16px Georgia, serif';
-    const flavor = bossIntroBoss.def.flavor || 'the boss';
-    ctx.fillText('— ' + flavor + ' —', cx, nameY + 46);
-    // Bottom ornament
-    ctx.strokeStyle = 'rgba(201, 168, 106, 0.9)';
-    ctx.beginPath();
-    ctx.moveTo(cx - 280, nameY + 76); ctx.lineTo(cx - 60, nameY + 76);
-    ctx.moveTo(cx + 60, nameY + 76);  ctx.lineTo(cx + 280, nameY + 76);
-    ctx.stroke();
-    ctx.restore();
-  }
+  // Boss intro — routed to a DOM overlay instead of canvas drawImage.
+  // See src/bossIntroDom.js for the rationale; the short version is that
+  // canvas dims the JPG on some GPU pipelines regardless of correct
+  // backing-store pixel values. <img> tags don't hit that path. The
+  // function self-gates on the arguments, so main.js stays render-time
+  // declarative ("here's the current state, sync yourself").
+  updateBossIntro(bossIntroTime, bossIntroBoss);
 
   // FUSION FORMED banner — dramatic center-screen reveal when two relics combine
   if (fusionBannerTime > 0 && fusionBannerFusion) {

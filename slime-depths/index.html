@@ -489,6 +489,109 @@
     #menuSettingsBtn:hover { transform: none !important; }
     .floor-map-node:hover { transform: none !important; }
   }
+
+  /* ========================================================================
+     BOSS INTRO — DOM overlay (not canvas drawImage).
+     Previously the intro was rendered via ctx.drawImage onto the game canvas.
+     On some GPU/driver combos the canvas composite pathway dims the JPG
+     output even when getImageData returns correct bright RGB values — a
+     known Chromium behavior for accelerated 2D canvas. The raw <img> tag
+     bypasses that pathway entirely and renders identically to Chrome's
+     native image viewer, where the JPG always shows bright.
+     ======================================================================== */
+  #bossIntroOverlay {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+    display: none;
+    /* container-type would let us use cqh units for text sizing, but
+       browser support varies — sticking with px + a media query fallback.
+       Values match the canvas version at a 1280x720 baseline. */
+  }
+  #bossIntroOverlay.playing {
+    display: block;
+    animation: bossIntroFade 2.2s ease-out forwards;
+  }
+  @keyframes bossIntroFade {
+    0%   { opacity: 0; }
+    12%  { opacity: 1; }
+    85%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  #bossIntroBackdrop {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Explicit color management: tell the browser the image is sRGB and
+       don't auto-convert. Hedge against the original canvas-dimming issue
+       reappearing under a different code path. */
+    color-profile: sRGB;
+    rendering-intent: absolute-colorimetric;
+  }
+  #bossIntroDim {
+    position: absolute;
+    inset: 55% 0 0 0;
+    background: linear-gradient(to bottom, rgba(8, 5, 12, 0), rgba(8, 5, 12, 0.55));
+    pointer-events: none;
+  }
+  #bossIntroFrame {
+    position: absolute;
+    left: 0; right: 0;
+    top: 72%;
+    text-align: center;
+    color: #f4d9a0;
+    font-family: Georgia, 'Cormorant Garamond', serif;
+  }
+  .bossIntroOrnament {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 120px;
+    color: #c9a86a;
+    font-style: italic;
+    font-size: 22px;
+    letter-spacing: 6px;
+  }
+  .bossIntroOrnament::before,
+  .bossIntroOrnament::after {
+    content: '';
+    width: 220px;
+    height: 1px;
+    background: rgba(201, 168, 106, 0.9);
+  }
+  #bossIntroTag { margin-bottom: 18px; }
+  #bossIntroName {
+    font-weight: bold;
+    font-size: 54px;
+    letter-spacing: 4px;
+    text-shadow: 0 0 22px rgba(245, 210, 140, 0.6);
+  }
+  #bossIntroFlavor {
+    color: rgba(218, 184, 110, 0.85);
+    font-style: italic;
+    font-size: 16px;
+    margin-top: 18px;
+    margin-bottom: 20px;
+  }
+  /* Mobile scale-down — mirrors the menu responsive breakpoints in the
+     doc further up. Under 900px viewport the fixed-px sizes become too
+     big; proportionally reduce. */
+  @media (max-width: 900px) {
+    #bossIntroName { font-size: 42px; }
+    #bossIntroTag, .bossIntroOrnament { font-size: 18px; }
+    .bossIntroOrnament::before,
+    .bossIntroOrnament::after { width: 160px; }
+    .bossIntroOrnament { gap: 80px; }
+  }
+  @media (max-width: 600px) {
+    #bossIntroName { font-size: 32px; letter-spacing: 3px; }
+    #bossIntroFlavor { font-size: 13px; }
+    .bossIntroOrnament::before,
+    .bossIntroOrnament::after { width: 100px; }
+    .bossIntroOrnament { gap: 50px; }
+  }
 </style>
 </head>
 <body>
@@ -509,6 +612,19 @@
     <div id="build">Ethera · v0.1</div>
   </div>
   <div id="loading">Loading…</div>
+  <!-- Boss intro overlay — DOM-based replacement for the canvas drawImage
+       path. See <style> above for the why. Populated dynamically from
+       src/bossIntroDom.js; sits inside #stage so it inherits canvas layout. -->
+  <div id="bossIntroOverlay" aria-hidden="true">
+    <img id="bossIntroBackdrop" alt="">
+    <div id="bossIntroDim"></div>
+    <div id="bossIntroFrame">
+      <div class="bossIntroOrnament" id="bossIntroTag">BOSS</div>
+      <div id="bossIntroName"></div>
+      <div id="bossIntroFlavor"></div>
+      <div class="bossIntroOrnament"></div>
+    </div>
+  </div>
   <div id="deathScreen">
     <h1>YOU DIED</h1>
     <p>the ooze takes you back</p>
