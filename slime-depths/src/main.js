@@ -6,7 +6,7 @@
 // all load funcs are lazy) would need to run after this.
 import { installProfilePrefix, getActiveProfileId, listProfiles, setActiveProfile, deleteProfile, profileLabel } from './profile.js';
 import { loadAll } from './loader.js';
-import { initInput, mouse, endFrameInput } from './input.js';
+import { initInput, mouse, keyJustPressed, endFrameInput } from './input.js';
 import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js';
 import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
@@ -63,6 +63,11 @@ import {
   watcherResetForTesting, watcherTestSpeak, watcherSnapshot,
   watcherLastLine, watcherDescentCount,
 } from './watcher.js';
+import {
+  HAMLET_HERO_SPAWN,
+  updateHamletScene, drawHamletEntities, drawHamletInteractPrompt,
+  consumeHamletInteract,
+} from './hamletScene.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
@@ -1201,6 +1206,12 @@ document.getElementById('hamletBackBtn').addEventListener('mouseleave', (e) => {
 });
 
 function showHamlet() {
+  // FEATURE FLAG — `window.__canvasHamlet = true` routes to the canvas-based
+  // walkable hamlet (Approach B). Default path stays DOM for safety.
+  if (window.__canvasHamlet) {
+    enterHamletCanvas();
+    return;
+  }
   hideAllOverlays();
   // Ambient audio — warmer hamlet pad with soft fire crackles. Crossfades
   // from the menu pad.
@@ -1219,6 +1230,60 @@ function showHamlet() {
   renderHamlet();
   // Onboarding tip — fires once to explain the hamlet as a persistent hub.
   setTimeout(() => showTip('first_hamlet'), 500);
+}
+
+// CANVAS HAMLET ENTRY — Approach B. Feature-flagged via window.__canvasHamlet.
+// Loads a hamlet-kind room, spawns the hero at the entrance tile, and hands
+// control to the hamletScene module (world-positioned NPCs + descent portal +
+// Watcher shrine). Dialogue still opens via the existing dialogueEl DOM
+// overlay when the hero interacts with an NPC; starting a run still routes
+// to the existing startRun() flow when the hero walks into the portal.
+function enterHamletCanvas() {
+  hideAllOverlays();
+  startAmbientPad('hamlet');
+  refreshNpcPresence(records, stats, { seenRelicIds });
+  for (const id of ALL_NPC_IDS) {
+    if (hamletState.npcArcStage[id] !== undefined) tryAdvanceArc(id);
+  }
+
+  // Build the hamlet room and slot it as floor[0]. The standard render +
+  // camera pipeline consumes `room` / `floor[roomIndex]` without special
+  // knowledge of the hamlet kind beyond the drawRoom branch in room.js.
+  floor = [{
+    kind: 'hamlet',
+    pillarTemplate: 0,
+    spawns: [],
+    cleared: true,
+    doors: { north: false, south: false },
+  }];
+  roomIndex = 0;
+  buildRoomFromData(floor[0]);
+
+  // Purge any transient combat state from a prior session (enemies, bullets,
+  // pedestals, flame hazards, transitions, intro timers). The hamlet is a
+  // non-combat room — nothing should carry over.
+  clearEnemies();
+  clearProjectiles();
+  clearPedestals();
+  clearFlames();
+  transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
+  bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
+  floorCardTime = 0;
+  phaseIntroTime = 0; phaseIntroBoss = null; phaseIntroStartedAt = 0;
+
+  // Spawn the hero at the hamlet entrance and snap the camera so there's no
+  // lerp-in from wherever they last were.
+  hero.x = HAMLET_HERO_SPAWN.x;
+  hero.y = HAMLET_HERO_SPAWN.y;
+  hero.state = 'idle';
+  hero.stateTime = 0;
+  hero.vx = 0; hero.vy = 0;
+  hero.iframes = 0;
+  camera.x = hero.x; camera.y = hero.y;
+  camera.targetX = hero.x; camera.targetY = hero.y;
+
+  running = true;
+  paused = false;
 }
 
 function renderHamlet() {
@@ -3075,6 +3140,19 @@ window.addEventListener('keydown', (e) => {
   if (!running) return;
   if (deathEl.style.display !== 'none') return;
   if (winEl.style.display !== 'none') return;
+  // HAMLET CANVAS — ESC returns to the main menu instead of pausing. The
+  // hamlet is a hub, not a combat room; pausing it has no meaning. Close
+  // any open dialogue first so it doesn't linger over the menu.
+  if (room.kind === 'hamlet') {
+    if (dialogueEl && dialogueEl.style.display !== 'none') {
+      dialogueEl.style.display = 'none';
+    } else {
+      running = false;
+      showMainMenu();
+    }
+    e.preventDefault();
+    return;
+  }
   setPaused(!paused);
   e.preventDefault();
 });
@@ -4291,6 +4369,18 @@ function tick(now) {
     updatePedestals(dt);
     updateMusic(realDt);
     tickCounterPips(dt);
+    // HAMLET CANVAS — proximity + interact tracking. Runs on every tick
+    // so the interact prompt appears the moment the hero walks into range.
+    if (room.kind === 'hamlet') {
+      updateHamletScene(dt);
+      if (keyJustPressed('KeyE')) {
+        const act = consumeHamletInteract();
+        if (act) {
+          if (act.action === 'dialogue') openDialogue(act.npcId);
+          else if (act.action === 'portal') { running = false; startRun(); }
+        }
+      }
+    }
 
     gameTime += realDt;
     heroSpikeCD -= dt;
@@ -4937,6 +5027,14 @@ function render() {
   drawPedestals(ctx);
   drawPedestalTeasers(ctx);
   drawWanderer(ctx);
+  // HAMLET CANVAS — world-positioned NPCs, portal, and watcher shrine.
+  // Drawn after drawRoom (which paints the backdrop) but before the hero's
+  // drawList so the hero walks IN FRONT of standing NPCs. Interact prompt
+  // renders after in the same camera transform so it stays anchored to
+  // the highlighted entity.
+  if (room.kind === 'hamlet') {
+    drawHamletEntities(ctx);
+  }
   // Theme ascendance aura — renders below the hero so the sprite sits on
   // the glow. Intentionally drawn before drawList so the hero paints on top.
   drawThemeAura(ctx);
@@ -4966,6 +5064,12 @@ function render() {
   drawCounterIndicator(ctx, hero.x, hero.y);
   drawHitMarkers(ctx);
   drawDamageNumbers(ctx);
+  // HAMLET interact prompt — floating "E · TALK TO THE KEEPER" label above
+  // the nearest interactable. Drawn last inside the camera transform so it
+  // sits on top of entities + the hero.
+  if (room.kind === 'hamlet') {
+    drawHamletInteractPrompt(ctx);
+  }
   ctx.restore();
 
   // INTRO CINEMATIC GATE — when any intro is active (floor card / boss intro
@@ -5189,6 +5293,7 @@ function render() {
     gold: gold.total,
     floorRooms: floor,              // pass full floor so HUD can render a minimap
     introActive: bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0,
+    inHamlet: room.kind === 'hamlet',
   });
   drawPedestalTooltip(ctx, canvas.width, canvas.height, { gold: gold.total, floorLevel: currentFloorLevel });
   drawWandererTooltip(ctx, canvas.width, canvas.height);

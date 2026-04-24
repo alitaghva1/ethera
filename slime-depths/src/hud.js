@@ -40,7 +40,13 @@ const ROOM_LABEL = {
 };
 
 export function drawHud(ctx, w, h, progress = {}) {
-  // Low-HP red pulse — triggers at â‰¤30% HP, intensity scales with HP%.
+  // HAMLET CANVAS — the entire combat HUD is irrelevant in the walkable hub.
+  // Hearts, ability pips, floor label, relic strip, fusions, themes, boss
+  // HP bar, kill streak — all suppressed. The hamlet's own UI (essence,
+  // npc count) still lives in the DOM overlay for now and doesn't interact
+  // with this canvas HUD path.
+  if (progress.inHamlet) return;
+  // Low-HP red pulse — triggers at ≤30% HP, intensity scales with HP%.
   // Vignette stays at the EDGES — the center 60% of screen remains totally clear
   // so threats and combat read fine even when you're near death.
   // Suppressed during any cinematic intro (progress.introActive) — the intro

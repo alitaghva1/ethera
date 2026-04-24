@@ -4,6 +4,7 @@
 // stone look tuned for the Slime Depths palette.
 
 import { setDustBiome, setWeatherBiome } from './particles.js';
+import { images } from './loader.js';
 
 export const TILE = 48;
 export const ROOM_W = 20;
@@ -353,8 +354,13 @@ export function buildRoomFromData(data) {
     }
     tiles.push(r);
   }
-  for (const [px, py] of pillars) {
-    if (px > 0 && py > 0 && px < ROOM_W - 1 && py < ROOM_H - 1) tiles[py][px] = 'pillar';
+  // Hamlet skips pillars entirely — the room is the painted backdrop, a
+  // walkable hub with no combat. Perimeter walls stay so the hero can't
+  // walk off the painted plate.
+  if (data.kind !== 'hamlet') {
+    for (const [px, py] of pillars) {
+      if (px > 0 && py > 0 && px < ROOM_W - 1 && py < ROOM_H - 1) tiles[py][px] = 'pillar';
+    }
   }
 
   const nd = northDoorPos();
@@ -1781,6 +1787,21 @@ function drawTorchSconce(ctx, tx, ty) {
 
 export function drawRoom(ctx) {
   if (!room.tiles) return;
+
+  // Hamlet — paint the full backdrop instead of tile floors, then skip
+  // the rest of the tile/wear/decor rendering. Perimeter walls still
+  // exist for collision but render invisibly (backdrop covers them).
+  if (room.kind === 'hamlet') {
+    const bg = images.hamlet_backdrop;
+    if (bg) {
+      ctx.drawImage(bg, 0, 0, ROOM_W * TILE, ROOM_H * TILE);
+    } else {
+      // Fallback if backdrop didn't load: dim void so the scene still renders.
+      ctx.fillStyle = '#0a0810';
+      ctx.fillRect(0, 0, ROOM_W * TILE, ROOM_H * TILE);
+    }
+    return;
+  }
 
   // Pass 1: every floor cell
   for (let y = 0; y < ROOM_H; y++) {

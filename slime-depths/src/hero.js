@@ -2,7 +2,7 @@
 import { images } from './loader.js';
 import { keys, mouse, keyJustPressed } from './input.js';
 import { playSfx } from './sfx.js';
-import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches } from './room.js';
+import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches, room } from './room.js';
 import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
 import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
@@ -440,8 +440,9 @@ export function updateHero(dt, enemies, mouseWorld) {
   }
 
   if (hero.state !== 'attack' && hero.state !== 'dodge' && hero.state !== 'hurt') {
-    // Dash Strike (Q) — offensive gap-closer: lunges toward aim + 2x damage to all in path
-    if (keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
+    // Dash Strike (Q) — offensive gap-closer: lunges toward aim + 2x damage to all in path.
+    // Suppressed in hamlet (non-combat hub).
+    if (room.kind !== 'hamlet' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
       showTip('first_dash');
       hero.dashStrikeCD = 5.0;
       hero.dashStrikeTime = 0.22;
@@ -541,8 +542,10 @@ export function updateHero(dt, enemies, mouseWorld) {
         spawnExplosion(hero.x, hero.y - 6, 56, dmg, 'shock');
       }
     }
-    // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release
-    else if ((mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= 0.35 && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
+    // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release.
+    // SUPPRESSED IN HAMLET — the canvas hamlet is a non-combat hub; clicks
+    // still consume hero._attackBuffer via mouse.pressed but no swing fires.
+    else if (room.kind !== 'hamlet' && (mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= 0.35 && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
       // Consume the buffer so it doesn't re-trigger on next idle frame
       hero._attackBuffer = 0;
       const w = weaponDef();

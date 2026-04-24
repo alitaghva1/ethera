@@ -56,9 +56,17 @@ function keyMagentaToAlpha(img) {
   return c;
 }
 
-function sliceCanvasGrid(srcCanvas, cols, rows) {
-  const cellW = Math.floor(srcCanvas.width / cols);
-  const cellH = Math.floor(srcCanvas.height / rows);
+// opts.cropBottomFrac (0..1) — trim N% off the bottom of each cell. Used for
+// sprite sheets where Nano Banana ignored the "no labels" negative and painted
+// text captions beneath each figure (we slice them out). opts.cropTopFrac
+// does the same from the top.
+function sliceCanvasGrid(srcCanvas, cols, rows, opts = {}) {
+  const srcCellW = Math.floor(srcCanvas.width / cols);
+  const srcCellH = Math.floor(srcCanvas.height / rows);
+  const topFrac = opts.cropTopFrac || 0;
+  const botFrac = opts.cropBottomFrac || 0;
+  const cellW = srcCellW;
+  const cellH = Math.floor(srcCellH * (1 - topFrac - botFrac));
   const cells = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -66,7 +74,12 @@ function sliceCanvasGrid(srcCanvas, cols, rows) {
       cell.width = cellW;
       cell.height = cellH;
       cell.getContext('2d').drawImage(
-        srcCanvas, c * cellW, r * cellH, cellW, cellH, 0, 0, cellW, cellH,
+        srcCanvas,
+        c * srcCellW,
+        r * srcCellH + Math.floor(srcCellH * topFrac),
+        cellW,
+        cellH,
+        0, 0, cellW, cellH,
       );
       cells.push(cell);
     }
@@ -100,14 +113,16 @@ function loadKeyedImage(key, src) {
 
 // Loads a magenta-keyed sprite sheet and slices it into an N×M grid. Each
 // cell is stored at `images[<baseKey>_<i>]` (row-major, 0-indexed) as a
-// canvas, with an accompanying data URL at `<baseKey>_<i>_url`.
-function loadKeyedGrid(baseKey, src, cols, rows) {
+// canvas, with an accompanying data URL at `<baseKey>_<i>_url`. opts.cropTopFrac
+// and opts.cropBottomFrac trim rows off each cell (used to crop out Nano Banana
+// text labels that slipped through a negative prompt).
+function loadKeyedGrid(baseKey, src, cols, rows, opts = {}) {
   return new Promise((resolve) => {
     const img = new Image();
     const done = (ok) => {
       if (ok) {
         const keyed = keyMagentaToAlpha(img);
-        const cells = sliceCanvasGrid(keyed, cols, rows);
+        const cells = sliceCanvasGrid(keyed, cols, rows, opts);
         for (let i = 0; i < cells.length; i++) {
           images[`${baseKey}_${i}`] = cells[i];
           try { images[`${baseKey}_${i}_url`] = cells[i].toDataURL('image/png'); } catch (e) {}
@@ -365,6 +380,18 @@ export async function loadAll(progressCb) {
     // many milestones the player has heard.
     loadKeyedImage('watcher_sigil',     'assets/hamlet/watcher_sigil.jpg'),
     loadKeyedGrid('shrine_watcher',     'assets/hamlet/shrine_watcher_grid.jpg', 4, 2),
+
+    // HAMLET — canvas-scene assets. Backdrop stretches across the full
+    // 960×672 hamlet room (kept as a regular loadImage — no chroma-key
+    // needed, it's a full-frame painting). Descent portal is a single
+    // painted stairwell the player walks into to begin a run. NPC world
+    // grid is a 4×2 sprite sheet of chibi pixel NPCs (6 canonical + 2
+    // hallucinated extras at indices 3 and 7 — we skip those).
+    // cropBottomFrac: 0.22 trims out the text label band Nano Banana
+    // added despite the negative prompt.
+    loadImage('hamlet_backdrop',        'assets/hamlet/hamlet_backdrop.jpg'),
+    loadKeyedImage('descent_portal',    'assets/hamlet/descent_portal.jpg'),
+    loadKeyedGrid('hamlet_npc',         'assets/hamlet/hamlet_npc_world_grid.jpg', 4, 2, { cropBottomFrac: 0.22 }),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
