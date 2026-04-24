@@ -474,6 +474,13 @@ window.triggerBossPhaseIntro = (boss) => {
   phaseIntroTime = 1.6;
   phaseIntroBoss = boss;
   phaseIntroStartedAt = performance.now();
+  // Same belt-and-suspenders as the boss-room entry intro: grant iframes
+  // covering the phase-2 banner (1.6s intro + 0.4s clamp tail + 0.4s
+  // post-intro buffer). The hero was already trading blows with the boss
+  // when it enraged, so the vulnerability window without this is real —
+  // an enemy swing in flight when phase fires would land the moment the
+  // intro-freeze clears.
+  hero.iframes = Math.max(hero.iframes || 0, 2.4);
 };
 
 // Main menu — shown on page load
@@ -3134,6 +3141,18 @@ function loadRoom(idx, entryFrom) {
     bossIntroTime = 2.2;
     bossIntroBoss = enemies.find(e => e.boss);
     bossIntroStartedAt = performance.now();    // wall-clock mark for the 2.5s clamp
+    // Hero invulnerability that covers the entire intro PLUS a post-intro
+    // buffer (3.0s total: 2.2s intro + 0.3s wall-clock-clamp tail + 0.5s
+    // so the player has time to orient before the boss's first swing lands).
+    // The intro-freeze block in tick() already prevents updateHero/Enemies
+    // from running, but this is belt-and-suspenders against:
+    //   - the single same-frame window where the boss room loads + enemies
+    //     spawn BEFORE the next-frame freeze kicks in
+    //   - the "intro ends, boss swings instantly" micro-gap
+    //   - any future refactor that accidentally lets damage through
+    // Math.max preserves any longer iframes already in flight (e.g. from
+    // a recent post-hurt stagger).
+    hero.iframes = Math.max(hero.iframes || 0, 3.0);
     shakeCamera(14, 0.5);
     pulseZoom(0.14, 1.0);                       // cinematic punch-in on boss entry
     // Audio stinger — deep metal impact to punctuate the intro
