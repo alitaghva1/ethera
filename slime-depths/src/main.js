@@ -59,6 +59,7 @@ import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawW
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
 import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, hasUnreadDialogue, totalNpcs, presentNpcCount } from './hamlet.js';
+import { startMenuEmbers } from './menuEmbers.js';
 
 // Side-effect: install the localStorage profile-prefix patch NOW, before any
 // other module-body code could touch storage. All load*() funcs in other
@@ -484,90 +485,18 @@ menuEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:cente
 menuEl.innerHTML = MENU_SCREEN_HTML;
 document.getElementById('hud').appendChild(menuEl);
 
-// =========================================================================
-// MENU EMBER PARTICLES — warm gold specks that drift up from the bottom of
-// the screen, as if rising from the torches and the glow below the stair.
-// The animation only ticks while the menu is visible (display !== 'none');
-// otherwise it short-circuits to save CPU during play. Particles wrap
-// horizontally for gentle sway; fade in at birth, burn out at the top.
-// =========================================================================
-const _menuEmbers = [];
-function _seedMenuEmber() {
-  _menuEmbers.push({
-    x: Math.random(),                       // 0..1 (fraction of width)
-    y: 0.82 + Math.random() * 0.18,         // start near bottom
-    vy: 0.0006 + Math.random() * 0.0009,    // upward drift speed (frac/frame)
-    vx: (Math.random() - 0.5) * 0.0004,     // slight lateral sway
-    phase: Math.random() * Math.PI * 2,     // for sway oscillation
-    phaseSpeed: 0.015 + Math.random() * 0.025,
-    size: 0.7 + Math.random() * 1.6,        // px radius
-    life: 0,
-    maxLife: 380 + Math.random() * 280,     // frames
-    hue: 28 + Math.random() * 18,           // amber-orange range
-    sat: 75 + Math.random() * 20,
-    lum: 58 + Math.random() * 18,
-  });
-}
-// Seed with a few so the first frame isn't empty
-for (let i = 0; i < 28; i++) { _seedMenuEmber(); _menuEmbers[_menuEmbers.length - 1].y = Math.random(); _menuEmbers[_menuEmbers.length - 1].life = Math.random() * 280; }
-
-function _tickMenuEmbers() {
-  // Route to whichever ember canvas is currently visible: main menu or
-  // hamlet. Skip entirely if both are hidden (saves CPU during play).
-  let cvs = null;
-  if (menuEl.style.display !== 'none') {
-    cvs = document.getElementById('menuEmbers');
-  } else if (typeof hamletEl !== 'undefined' && hamletEl.style.display !== 'none') {
-    cvs = document.getElementById('hamletEmbers');
+// Menu ember particle system — see src/menuEmbers.js. The callback tells
+// the ember loop which canvas to draw to each frame (menu / hamlet / none).
+// `hamletEl` is declared later in this file; the `typeof` guard avoids a
+// temporal-dead-zone error on the first tick if rAF beats module-body
+// completion (unlikely but cheap to protect against).
+startMenuEmbers(() => {
+  if (menuEl.style.display !== 'none') return document.getElementById('menuEmbers');
+  if (typeof hamletEl !== 'undefined' && hamletEl.style.display !== 'none') {
+    return document.getElementById('hamletEmbers');
   }
-  if (!cvs) {
-    requestAnimationFrame(_tickMenuEmbers);
-    return;
-  }
-  // Match canvas resolution to its display size for crisp dots
-  const w = cvs.clientWidth, h = cvs.clientHeight;
-  if (cvs.width !== w || cvs.height !== h) { cvs.width = w; cvs.height = h; }
-  const ctx = cvs.getContext('2d');
-  ctx.clearRect(0, 0, w, h);
-  // Spawn — keep population around 70
-  while (_menuEmbers.length < 70) _seedMenuEmber();
-  for (let i = _menuEmbers.length - 1; i >= 0; i--) {
-    const e = _menuEmbers[i];
-    e.life++;
-    e.phase += e.phaseSpeed;
-    e.y -= e.vy;
-    e.x += e.vx + Math.sin(e.phase) * 0.0005;
-    if (e.y < -0.05 || e.life > e.maxLife || e.x < -0.05 || e.x > 1.05) {
-      _menuEmbers.splice(i, 1);
-      continue;
-    }
-    // Fade in over first 60f, fade out over last 120f
-    const fadeIn = Math.min(1, e.life / 60);
-    const fadeOut = Math.min(1, (e.maxLife - e.life) / 120);
-    const alpha = Math.min(fadeIn, fadeOut) * (0.55 + 0.45 * Math.sin(e.phase * 1.3));
-    const px = e.x * w, py = e.y * h;
-    // Glow — tiny radial
-    const r = e.size;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const grad = ctx.createRadialGradient(px, py, 0, px, py, r * 6);
-    grad.addColorStop(0, `hsla(${e.hue},${e.sat}%,${e.lum}%,${alpha})`);
-    grad.addColorStop(0.4, `hsla(${e.hue - 4},${e.sat}%,${e.lum - 12}%,${alpha * 0.4})`);
-    grad.addColorStop(1, `hsla(${e.hue - 8},${e.sat}%,${e.lum - 24}%,0)`);
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(px, py, r * 6, 0, Math.PI * 2);
-    ctx.fill();
-    // Core pixel
-    ctx.fillStyle = `hsla(${e.hue + 6},${e.sat}%,${Math.min(94, e.lum + 22)}%,${alpha})`;
-    ctx.beginPath();
-    ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-  requestAnimationFrame(_tickMenuEmbers);
-}
-requestAnimationFrame(_tickMenuEmbers);
+  return null;
+});
 
 // Menu mode state — "standard" | "daily" | "tarot". Drives what BEGIN DESCENT does.
 let menuMode = 'standard';
