@@ -55,6 +55,12 @@ import {
 import { drawCounterPips, tickCounterPips } from './counterPips.js';
 import { drawPedestalTeasers } from './pedestalTeaser.js';
 import { drawThemeAura } from './themes.js';
+import {
+  drawWatcher,
+  watcherOnRunStart, watcherOnDeath, watcherOnFloorEnter,
+  watcherOnBossClear, watcherOnFinalBossEnter,
+  watcherResetForTesting, watcherTestSpeak, watcherSnapshot,
+} from './watcher.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
@@ -3146,6 +3152,10 @@ function loadRoom(idx, entryFrom) {
 
   // Boss room — dramatic intro: hold gameplay for ~2s while showing boss name
   if (data.kind === 'boss') {
+    // THE WATCHER — first-time arrival at the final-floor throne is a
+    // milestone utterance. Fires BEFORE the intro so the drawWatcher gate
+    // (defers on bossIntroTime > 0) holds the line until the ceremony ends.
+    if (currentFloorLevel >= MAX_FLOORS) watcherOnFinalBossEnter();
     bossIntroTime = 2.2;
     bossIntroBoss = enemies.find(e => e.boss);
     bossIntroStartedAt = performance.now();    // wall-clock mark for the 2.5s clamp
@@ -3606,6 +3616,8 @@ function startRun() {
   window.__gameMetrics.lastHitFromY = 0;
   window.__gameMetrics.lastKillTime = 0;
   incrementRunsStarted();
+  watcherOnRunStart();
+  watcherOnFloorEnter(currentFloorLevel);
   triggerFloorCard(currentFloorLevel);
   clearPedestals();
   // Apply meta-progression unlocks to fresh run (UNLESS Forsaken curse active)
@@ -3759,6 +3771,7 @@ function beginNextFloor() {
   winEl.style.display = 'none';
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossWinTriggered = false;
+  watcherOnFloorEnter(currentFloorLevel);
   triggerFloorCard(currentFloorLevel);
   loadRoom(0, 'south');
   running = true;
@@ -4489,6 +4502,8 @@ function tick(now) {
       room.cleared = true;
       data.cleared = true;
       stats.roomsCleared++;
+      // THE WATCHER — first boss kill / first final-boss clear milestones.
+      watcherOnBossClear(currentFloorLevel);
       playSfx('click', { volume: 0.6, rate: 1.15 });
       // Spawn legendary reward pedestal for mid-run bosses (not final — final gets end-screen)
       if (currentFloorLevel >= 3 && currentFloorLevel < MAX_FLOORS) {
@@ -4726,6 +4741,15 @@ function tick(now) {
     if (hero.state === 'dead' && hero.stateTime > 0.9 && !deathCeremonyActive && !deathSummaryShown) {
       deathCeremonyActive = true;
       deathCeremonyTime = 0;
+      // THE WATCHER — fires a milestone or death-depth line. "Near final boss"
+      // = dying in the floor-MAX boss room with the boss under 30% HP.
+      try {
+        const bossEnt = enemies.find(e => e.boss);
+        const nearFinalBoss = currentFloorLevel >= MAX_FLOORS
+          && data.kind === 'boss'
+          && bossEnt && (bossEnt.hp / bossEnt.maxHp) < 0.30;
+        watcherOnDeath(currentFloorLevel, !!nearFinalBoss);
+      } catch (e) {}
       // THE RUIN REMEMBERS — record death event into persistent history.
       // Next runs will show a blood stain in this room + journal entry.
       try {
@@ -5068,6 +5092,14 @@ function render() {
   // fight. Drawn after the HUD so it floats above other UI when the cursor
   // is on an elite.
   drawEliteAffixTooltips(ctx, canvas.width, canvas.height);
+  // THE WATCHER — rare, weighty utterance at milestone moments. Defers if
+  // any ceremony is onscreen so it never speaks over a floor card / boss
+  // intro / pickup banner. Render near the end of the HUD pass so the
+  // italic sigil text sits above everything else.
+  drawWatcher(ctx, canvas.width, canvas.height, {
+    floorCardTime, bossIntroTime, phaseIntroTime,
+    pickupFlashActive: false,   // drawPickupFlash reads its own state; we don't gate on it here
+  });
   drawComboOverlay(ctx, canvas.width, canvas.height);
   drawScreenFlash(ctx, canvas.width, canvas.height);
   drawPerfectDodgeOverlay(ctx, canvas.width, canvas.height);
@@ -5940,6 +5972,25 @@ if (import.meta.env.DEV) {
       setPickupFlashForTest(def, tier || relicTier(def.id));
       return { ok: true, relic: def.name, tier: tier || relicTier(def.id) };
     },
+
+    // THE WATCHER — force a test utterance (queued like any real trigger,
+    // defers if a ceremony is onscreen). Pass a string to speak it directly;
+    // omit to hear the default test line.
+    // Usage: __testWatcher() or __testWatcher('You are predictable.')
+    testWatcher: (text) => {
+      watcherTestSpeak(text);
+      return watcherSnapshot();
+    },
+
+    // THE WATCHER — clear persisted state so first-time milestones fire
+    // again. Useful for testing the full milestone progression.
+    watcherReset: () => {
+      watcherResetForTesting();
+      return { ok: true };
+    },
+
+    // Inspect the Watcher's persisted + per-run state.
+    watcherState: () => watcherSnapshot(),
   });
 }
 
