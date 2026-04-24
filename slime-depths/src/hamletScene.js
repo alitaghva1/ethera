@@ -143,77 +143,126 @@ function cellHash(x, y, mod) {
   return Math.abs(h) % mod;
 }
 
+// Overscan bounds — the hamlet paints beyond the 960×672 room into the
+// canvas void strips on either side. Covers viewports up to ~1680px wide
+// without gaps. Everything is extended to [X_MIN, X_MAX] horizontally.
+const BG_X_MIN = -360;
+const BG_X_MAX = 1320;
+const BG_W = BG_X_MAX - BG_X_MIN;
+
 export function drawHamletBackdrop(ctx) {
-  // Ground — sub-tiled cobblestone. Each 80×80 world cell picks a random
-  // sub-tile from the 3×3 variant pack, seeded by cell position so the
-  // layout is stable frame-to-frame but reads as authored variety instead
-  // of a repeating block.
-  const subtiles = ensureCobbleSubtiles();
-  if (subtiles && subtiles.length === 9) {
-    const tileW = 96, tileH = 96;
-    const groundTop = 288;
-    for (let y = groundTop; y < 672; y += tileH) {
-      for (let x = 0; x < 960; x += tileW) {
-        const i = cellHash((x / tileW) | 0, (y / tileH) | 0, 9);
-        ctx.drawImage(subtiles[i], x, y, tileW, tileH);
-      }
-    }
-    // Feathered horizon line — the cobblestone blends into the sky's warm
-    // amber band instead of a hard edge.
-    const hz = ctx.createLinearGradient(0, 278, 0, 340);
-    hz.addColorStop(0, 'rgba(30, 18, 32, 0.85)');
-    hz.addColorStop(1, 'rgba(30, 18, 32, 0)');
-    ctx.fillStyle = hz;
-    ctx.fillRect(0, 278, 960, 62);
+  const now = performance.now() / 1000;
 
-    // Warm-stone PATHS radiating from the portal (centre-back) out to each
-    // destination. Two overlaid radial gradients brighten the cobblestone
-    // without needing new tiles. Reads as "worn walkways polished lighter
-    // by centuries of feet" — and gives the eye clear routes into each
-    // building, which is what the scene was missing before.
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const pathPairs = [
-      [480, 470, 200, 540, 260], // portal → forge
-      [480, 470, 810, 540, 260], // portal → dome
-      [480, 560, 130, 600, 200], // portal-base → shrine
-      [480, 560, 880, 640, 200], // portal-base → secondary firepit
-    ];
-    for (const [x1, y1, x2, y2, rr] of pathPairs) {
-      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-      const g = ctx.createRadialGradient(mx, my, 10, mx, my, rr);
-      g.addColorStop(0, 'rgba(210, 165, 105, 0.18)');
-      g.addColorStop(0.6, 'rgba(160, 115, 70, 0.08)');
-      g.addColorStop(1, 'rgba(120, 70, 40, 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(Math.min(x1, x2) - rr, Math.min(y1, y2) - rr, Math.abs(x2 - x1) + rr * 2, Math.abs(y2 - y1) + rr * 2);
-    }
-    ctx.restore();
-
-    // Moss / fallen-leaf tufts between cobblestones — deterministic sprinkles
-    // that give the ground organic texture without breaking the tile read.
-    // 36 tufts, each 2–4 pixels, varied between muted green (moss) and
-    // amber-brown (dead leaves). Seeded by index so placement is stable.
-    for (let k = 0; k < 36; k++) {
-      const h = cellHash(k * 7 + 3, k * 11 + 17, 1000000);
-      const tx = (h % 960);
-      const ty = 320 + ((h >>> 10) % 340);
-      const sz = 2 + ((h >>> 20) & 1);
-      const isMoss = ((h >>> 22) & 1) === 0;
-      const col = isMoss ? 'rgba(90, 110, 60, 0.55)' : 'rgba(150, 90, 40, 0.45)';
-      ctx.fillStyle = col;
-      ctx.fillRect(tx | 0, ty | 0, sz, sz);
-    }
+  // ── BG-0 · EXTENDED SKY FILL ─────────────────────────────────────────
+  // room.js painted a 960-wide sky; we extend it across the full viewport
+  // with the same palette so the camera doesn't show dead void strips on
+  // wide canvases. Horizon stays at y=300.
+  {
+    const sky = ctx.createLinearGradient(0, 0, 0, 300);
+    sky.addColorStop(0.00, '#0d0818');
+    sky.addColorStop(0.45, '#281638');
+    sky.addColorStop(0.80, '#5a2a40');
+    sky.addColorStop(1.00, '#7a3848');
+    ctx.fillStyle = sky;
+    ctx.fillRect(BG_X_MIN, 0, BG_W, 300);
+    // Dark ground base under the extended strip so gaps between cobble
+    // tiles (if any) don't punch through to the void. Matches room.js.
+    ctx.fillStyle = '#181218';
+    ctx.fillRect(BG_X_MIN, 300, BG_W, 672 - 300);
   }
 
-  // ── HANDCRAFTED DEPTH COMPOSITION ────────────────────────────────────
-  // Layers painted back-to-front. Each building sits on a slightly
-  // different horizon y to break the "three buildings in a row" feel and
-  // imply distance. Scales are also varied — closer buildings larger.
+  // ── BG-1 · AURORA RIBBON ─────────────────────────────────────────────
+  // Slow-waving cool ribbon across the top of the sky. Two sine layers
+  // give it parallax depth. Subtle enough to read as atmosphere rather
+  // than UI. Tinted teal↔violet so it varies over time.
+  {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let layer = 0; layer < 2; layer++) {
+      const yBase = 50 + layer * 30;
+      const freq = 0.004 + layer * 0.002;
+      const amp = 18 + layer * 10;
+      const alpha = layer === 0 ? 0.18 : 0.11;
+      const tintShift = Math.sin(now * 0.15 + layer) * 0.5 + 0.5;
+      const r = (120 * (1 - tintShift) + 180 * tintShift) | 0;
+      const g = (210 * (1 - tintShift) + 150 * tintShift) | 0;
+      const b = (220 * (1 - tintShift) + 230 * tintShift) | 0;
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(BG_X_MIN, yBase);
+      for (let x = BG_X_MIN; x <= BG_X_MAX; x += 20) {
+        const y = yBase + Math.sin(x * freq + now * 0.25 + layer * 1.3) * amp
+                       + Math.sin(x * freq * 2.1 + now * 0.4) * amp * 0.3;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(BG_X_MAX, yBase + 60);
+      ctx.lineTo(BG_X_MIN, yBase + 60);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
-  // Horizon fog — painted mist band at the horizon, behind all buildings.
-  // Adds atmospheric depth and softens the hard tile-to-sky transition.
-  // Slow drift driven by performance.now() so it breathes.
+  // ── BG-2 · DRIFTING CLOUD WISPS ──────────────────────────────────────
+  // 5 deterministic dark cloud silhouettes drifting slowly across the
+  // sky. Each is a soft elliptical radial gradient; they cycle with the
+  // full BG_W range so there are no visual pops at edges.
+  {
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    for (let i = 0; i < 5; i++) {
+      const speed = 12 + i * 3;
+      const phase = i * 0.37;
+      const cx = ((now * speed + phase * BG_W) % BG_W) + BG_X_MIN;
+      const cy = 90 + ((i * 37) % 60);
+      const rx = 140 + (i % 2) * 60;
+      const ry = 24 + (i % 2) * 8;
+      const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, rx);
+      g.addColorStop(0, 'rgba(30, 18, 40, 0.9)');
+      g.addColorStop(1, 'rgba(30, 18, 40, 0)');
+      ctx.fillStyle = g;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(1, ry / rx);
+      ctx.translate(-cx, -cy);
+      ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // ── BG-3 · DISTANT MOUNTAIN RANGE ────────────────────────────────────
+  // Layered silhouettes at the horizon — far layer dark+small, mid layer
+  // slightly warmer+taller. Anchors the scene in a larger world instead
+  // of looking like everything ends at screen edge.
+  {
+    // Far ridge
+    ctx.fillStyle = 'rgba(28, 18, 38, 0.90)';
+    ctx.beginPath();
+    ctx.moveTo(BG_X_MIN, 305);
+    for (let x = BG_X_MIN; x <= BG_X_MAX; x += 40) {
+      const h = (Math.sin(x * 0.006) * 0.5 + Math.sin(x * 0.014 + 1.2) * 0.3
+               + Math.sin(x * 0.031 + 2.7) * 0.2);
+      ctx.lineTo(x, 285 - h * 24);
+    }
+    ctx.lineTo(BG_X_MAX, 305);
+    ctx.closePath();
+    ctx.fill();
+    // Near ridge (taller, darker)
+    ctx.fillStyle = 'rgba(16, 10, 22, 0.95)';
+    ctx.beginPath();
+    ctx.moveTo(BG_X_MIN, 305);
+    for (let x = BG_X_MIN; x <= BG_X_MAX; x += 30) {
+      const h = (Math.sin(x * 0.005 + 3.1) * 0.5 + Math.sin(x * 0.011 + 5.2) * 0.3
+               + Math.sin(x * 0.028 + 1.7) * 0.2);
+      ctx.lineTo(x, 300 - h * 14);
+    }
+    ctx.lineTo(BG_X_MAX, 305);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ── BG-4 · HORIZON FOG BAND ──────────────────────────────────────────
   const fogT = performance.now() / 4000;
   const fogDrift = (fogT % 1) * 80 - 40;
   const fog = ctx.createLinearGradient(0, 260, 0, 430);
@@ -224,150 +273,256 @@ export function drawHamletBackdrop(ctx) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = fog;
-  ctx.fillRect(fogDrift - 80, 260, 960 + 160, 170);
+  ctx.fillRect(BG_X_MIN + fogDrift, 260, BG_W, 170);
   ctx.restore();
 
-  // LAYER A — FAR background silhouette. Second ruined tower dimmed + shrunk
-  // so it reads as "a distant tower just past the ridge" rather than
-  // competing with the foreground. Placed off-center left.
-  const towerBg = images.hamlet_env_3;
-  if (towerBg) {
-    const bw = 110, bh = 155;
+  // ── BG-5 · SKY FIREFLIES ─────────────────────────────────────────────
+  // 10 glowing motes drift slowly through the sky band. Each has a
+  // halo that pulses so they twinkle gently. Placed in the sky ONLY
+  // (y < 280) so they read as "this place is enchanted" not "dust".
+  {
     ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.drawImage(towerBg, Math.round(110 - bw / 2), Math.round(455 - bh), bw, bh);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 10; i++) {
+      const speed = 14 + i * 2.3;
+      const phase = i * 0.29;
+      const x = ((now * speed + phase * BG_W) % BG_W) + BG_X_MIN;
+      const yBase = 140 + ((i * 31) % 120);
+      const y = yBase + Math.sin(now * 0.6 + i * 0.9) * 12;
+      const pulse = 0.55 + 0.45 * Math.sin(now * 2.1 + i * 1.7);
+      // halo
+      const halo = ctx.createRadialGradient(x, y, 0, x, y, 10);
+      halo.addColorStop(0, `rgba(255, 220, 140, ${(0.55 * pulse).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(255, 220, 140, 0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(x - 10, y - 10, 20, 20);
+      // core
+      ctx.fillStyle = `rgba(255, 240, 180, ${(0.9 * pulse).toFixed(3)})`;
+      ctx.fillRect((x | 0) - 1, (y | 0) - 1, 2, 2);
+    }
     ctx.restore();
   }
 
-  // LAYER B — mid-distance building cluster. The DOME sits slightly back
-  // and smaller (~90% forge scale), reinforcing right-side depth recession.
+  // ── GROUND · COBBLESTONE TILES ──────────────────────────────────────
+  // Tiles are 64px (was 96 — that made them read ~hero-height, which
+  // broke scale). Painted across the full extended range so void strips
+  // on wide canvases don't show.
+  const subtiles = ensureCobbleSubtiles();
+  if (subtiles && subtiles.length === 9) {
+    const tileW = 64, tileH = 64;
+    const groundTop = 300;
+    for (let y = groundTop; y < 672; y += tileH) {
+      for (let x = BG_X_MIN; x < BG_X_MAX; x += tileW) {
+        const i = cellHash((x / tileW) | 0, (y / tileH) | 0, 9);
+        ctx.drawImage(subtiles[i], x, y, tileW, tileH);
+      }
+    }
+    // Feathered horizon line — cobble blends into the warm sky amber.
+    const hz = ctx.createLinearGradient(0, 290, 0, 350);
+    hz.addColorStop(0, 'rgba(30, 18, 32, 0.85)');
+    hz.addColorStop(1, 'rgba(30, 18, 32, 0)');
+    ctx.fillStyle = hz;
+    ctx.fillRect(BG_X_MIN, 290, BG_W, 62);
+
+    // Warm-stone PATHS radiating from the portal. Simple radial gradients
+    // brighten the walkways without needing new tiles.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const pathPairs = [
+      [480, 470, 220, 540, 240], // portal → forge
+      [480, 470, 790, 540, 240], // portal → dome
+      [480, 560, 150, 600, 180], // portal-base → shrine
+      [480, 560, 870, 640, 180], // portal-base → secondary firepit
+    ];
+    for (const [x1, y1, x2, y2, rr] of pathPairs) {
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const g = ctx.createRadialGradient(mx, my, 10, mx, my, rr);
+      g.addColorStop(0, 'rgba(210, 165, 105, 0.22)');
+      g.addColorStop(0.6, 'rgba(160, 115, 70, 0.09)');
+      g.addColorStop(1, 'rgba(120, 70, 40, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(Math.min(x1, x2) - rr, Math.min(y1, y2) - rr, Math.abs(x2 - x1) + rr * 2, Math.abs(y2 - y1) + rr * 2);
+    }
+    ctx.restore();
+
+    // Moss / fallen-leaf tufts — across the FULL painted ground so the
+    // extended void-cover strips also look populated. 50 tufts.
+    for (let k = 0; k < 50; k++) {
+      const h = cellHash(k * 7 + 3, k * 11 + 17, 1000000);
+      const tx = BG_X_MIN + (h % BG_W);
+      const ty = 330 + ((h >>> 10) % 330);
+      const sz = 2 + ((h >>> 20) & 1);
+      const isMoss = ((h >>> 22) & 1) === 0;
+      const col = isMoss ? 'rgba(90, 110, 60, 0.55)' : 'rgba(150, 90, 40, 0.45)';
+      ctx.fillStyle = col;
+      ctx.fillRect(tx | 0, ty | 0, sz, sz);
+    }
+  }
+
+  // ── BUILDINGS · BACK TO FRONT ────────────────────────────────────────
+  // Scales chosen so the hero (96px tall) reads roughly 1/2 building
+  // height — proper top-down-hub proportions instead of giant ruins.
+
+  // LAYER A — FAR distant tower (background silhouette)
+  const towerBg = images.hamlet_env_3;
+  if (towerBg) {
+    const bw = 85, bh = 120;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(towerBg, Math.round(100 - bw / 2), Math.round(455 - bh), bw, bh);
+    ctx.restore();
+  }
+
+  // LAYER B — DOME (right-mid), with cool teal interior glow.
   const dome = images.hamlet_env_1;
   if (dome) {
-    const bw = 200, bh = 220;
-    ctx.drawImage(dome, Math.round(810 - bw / 2), Math.round(490 - bh), bw, bh);
-    // Cool teal interior glow bleeding from the dome's doorway — implies
-    // an archive-like space full of lit braziers, hinting at a specific
-    // function rather than just "a building shape".
+    const bw = 160, bh = 175;
+    const dx = 810, dy = 490;
+    ctx.drawImage(dome, Math.round(dx - bw / 2), Math.round(dy - bh), bw, bh);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 700);
-    const g = ctx.createRadialGradient(810, 440, 8, 810, 440, 140);
+    const g = ctx.createRadialGradient(dx, dy - 35, 6, dx, dy - 35, 110);
     g.addColorStop(0, `rgba(120, 200, 210, ${(0.38 * pulse).toFixed(3)})`);
     g.addColorStop(0.6, `rgba(80, 150, 180, ${(0.12 * pulse).toFixed(3)})`);
     g.addColorStop(1, 'rgba(40, 80, 110, 0)');
     ctx.fillStyle = g;
-    ctx.fillRect(670, 300, 280, 280);
+    ctx.fillRect(dx - 120, dy - 150, 240, 200);
     ctx.restore();
   }
 
-  // LAYER C — foreground-LEFT building. FORGE pulled forward and slightly
-  // larger — reads as "near me" at hero scale.
+  // LAYER C — FORGE (left-foreground), with hot orange window flicker.
   const forge = images.hamlet_env_0;
   if (forge) {
-    const bw = 245, bh = 275;
-    ctx.drawImage(forge, Math.round(200 - bw / 2), Math.round(510 - bh), bw, bh);
-    // Forge interior — hot orange window/door glow with flame flicker. The
-    // forge reads inert without this; with it, the scene says "someone is
-    // working in there." Flicker layered from two sines so it never settles.
+    const bw = 200, bh = 225;
+    const fx = 200, fy = 510;
+    ctx.drawImage(forge, Math.round(fx - bw / 2), Math.round(fy - bh), bw, bh);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const t = performance.now() / 1000;
-    const flick = 0.78 + 0.22 * (Math.sin(t * 9.1) * 0.6 + Math.sin(t * 13.7) * 0.4) / 1.0;
-    const g = ctx.createRadialGradient(200, 440, 6, 200, 440, 170);
-    g.addColorStop(0, `rgba(255, 180, 90, ${(0.55 * flick).toFixed(3)})`);
-    g.addColorStop(0.5, `rgba(240, 120, 60, ${(0.22 * flick).toFixed(3)})`);
+    const flick = 0.78 + 0.22 * (Math.sin(now * 9.1) * 0.6 + Math.sin(now * 13.7) * 0.4);
+    const g = ctx.createRadialGradient(fx, fy - 45, 6, fx, fy - 45, 130);
+    g.addColorStop(0, `rgba(255, 180, 90, ${(0.58 * flick).toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(240, 120, 60, ${(0.24 * flick).toFixed(3)})`);
     g.addColorStop(1, 'rgba(200, 60, 30, 0)');
     ctx.fillStyle = g;
-    ctx.fillRect(30, 290, 340, 320);
+    ctx.fillRect(fx - 130, fy - 175, 260, 240);
     ctx.restore();
   }
 
-  // Prayer-flags strung along a line hanging from the central portal-tower
-  // (back of scene). Small colored rectangles with a subtle sway. Adds a
-  // hand-placed cultural touch that tells the eye "this is a place someone
-  // cares about", not just a ruin.
+  // ── PRAYER FLAGS ─────────────────────────────────────────────────────
+  // Strung between the portal tower and a post near the dome. The tower
+  // top sits around y=230 (portal feet y=450, tower height 220). The
+  // flag line hangs in front of the sky, below the tower's top spire.
   {
-    const t = performance.now() / 1000;
     const flagColors = ['#c85050', '#e8b848', '#6eb890', '#5080b8', '#b85080'];
-    const flagCount = 8;
-    const startX = 400, endX = 560;
-    const baseY = 330;
-    for (let i = 0; i < flagCount; i++) {
-      const u = i / (flagCount - 1);
-      const x = startX + (endX - startX) * u;
-      // Catenary sag: centre dips ~10px below endpoints.
-      const sag = Math.sin(u * Math.PI) * 10;
-      const y = baseY + sag + Math.sin(t * 1.1 + i * 0.6) * 1.5;
-      ctx.fillStyle = flagColors[i % flagColors.length];
-      ctx.fillRect((x - 5) | 0, y | 0, 9, 12);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      ctx.fillRect((x - 5) | 0, (y + 12) | 0, 9, 2); // subtle fringe
-    }
-    // Rope itself — thin dark line following the same catenary.
-    ctx.strokeStyle = 'rgba(40, 24, 20, 0.75)';
+    const flagCount = 9;
+    const startX = 430, endX = 600;
+    const startY = 250, endY = 260;
+    // Rope — dark cord with catenary sag.
+    ctx.strokeStyle = 'rgba(30, 20, 18, 0.85)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let i = 0; i <= flagCount - 1; i++) {
-      const u = i / (flagCount - 1);
+    for (let i = 0; i <= flagCount; i++) {
+      const u = i / flagCount;
       const x = startX + (endX - startX) * u;
-      const sag = Math.sin(u * Math.PI) * 10;
-      const y = baseY + sag - 1;
+      const sag = Math.sin(u * Math.PI) * 14;
+      const y = startY + (endY - startY) * u + sag;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
+    // Flags — small colored triangles/rects hanging below the rope.
+    for (let i = 0; i < flagCount; i++) {
+      const u = (i + 0.5) / flagCount;
+      const x = startX + (endX - startX) * u;
+      const sag = Math.sin(u * Math.PI) * 14;
+      const y = startY + (endY - startY) * u + sag;
+      const sway = Math.sin(now * 1.2 + i * 0.7) * 1.2;
+      ctx.fillStyle = flagColors[i % flagColors.length];
+      ctx.fillRect(((x - 4) | 0) + sway, (y | 0) + 1, 7, 10);
+    }
   }
 
-  // Broken-column silhouettes framing the foreground corners. Pure dark
-  // fills — they're fallen ruins, not architectural features. Anchor the
-  // eye at the edges of the scene without competing with the buildings.
-  ctx.fillStyle = 'rgba(18, 12, 20, 0.92)';
-  // Left-foreground column stub
-  ctx.fillRect(40, 520, 30, 110);
-  ctx.fillRect(30, 510, 50, 14); // cap
-  ctx.fillRect(35, 630, 40, 10); // base
-  // Right-foreground column stub (shorter, further back to vary)
-  ctx.fillRect(920, 540, 26, 90);
-  ctx.fillRect(912, 532, 42, 12);
-  ctx.fillRect(916, 630, 34, 8);
-  // A small urn cluster foreground-right, between wanderer and scene edge
-  ctx.fillStyle = 'rgba(50, 30, 20, 0.95)';
-  ctx.fillRect(905, 595, 14, 20);
-  ctx.fillStyle = 'rgba(70, 42, 26, 0.95)';
-  ctx.fillRect(893, 608, 12, 14);
-  // A scattered rubble pile foreground-left, below the gravekeeper
-  ctx.fillStyle = 'rgba(40, 30, 36, 0.85)';
-  ctx.fillRect(165, 638, 34, 8);
-  ctx.fillRect(180, 632, 16, 8);
+  // ── FOREGROUND AMBIENT PROPS ─────────────────────────────────────────
+  // Subtle stone boulders at the lower corners of the scene, shaded from
+  // below by the firepit light. Replaces the prior square-block columns
+  // that read as unfinished placeholders.
+  drawBoulder(ctx, 58, 628, 28, 18);
+  drawBoulder(ctx, 92, 654, 22, 14);
+  drawBoulder(ctx, 912, 644, 26, 17);
+  drawBoulder(ctx, 948, 660, 18, 11);
+  // Small urn at lower-right — stone texture approximated by two tones.
+  drawUrn(ctx, 900, 608);
 
-  // Secondary firepit (foreground-right) — drawn HERE as part of the
-  // backdrop so it sits behind NPCs. This is purely atmospheric; the main
-  // interactive firepit is in the entities layer (center-front).
+  // ── SECONDARY FIREPIT (atmospheric, far-right) ───────────────────────
   const firepit2 = images.hamlet_env_6;
   if (firepit2) {
-    const bw = 80, bh = 80;
+    const bw = 64, bh = 64;
     const fx = 880, fy = 660;
     const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 350);
-    const halo = ctx.createRadialGradient(fx, fy - 10, 4, fx, fy - 10, 64);
-    halo.addColorStop(0, `rgba(255, 160, 80, ${(0.32 * pulse).toFixed(3)})`);
+    const halo = ctx.createRadialGradient(fx, fy - 10, 4, fx, fy - 10, 70);
+    halo.addColorStop(0, `rgba(255, 160, 80, ${(0.35 * pulse).toFixed(3)})`);
     halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
     ctx.fillStyle = halo;
-    ctx.fillRect(fx - 64, fy - 10 - 64, 128, 128);
+    ctx.fillRect(fx - 70, fy - 10 - 70, 140, 140);
     ctx.drawImage(firepit2, Math.round(fx - bw / 2), Math.round(fy - bh + 6), bw, bh);
   }
 
-  // Air dust motes drifting across the scene — drawn LAST so they float on
-  // top of buildings. 14 deterministic specks on slow horizontal drift.
-  const now2 = performance.now() / 1000;
-  for (let i = 0; i < 14; i++) {
-    const baseX = (i * 91) % 960;
-    const baseY = 150 + ((i * 37) % 360);
-    const driftX = (baseX + now2 * 8 + i * 3) % 960;
-    const wobbleY = baseY + Math.sin(now2 * 0.5 + i * 0.7) * 4;
-    const alpha = 0.35 + 0.25 * Math.sin(now2 * 0.8 + i);
+  // ── AIR DUST MOTES ───────────────────────────────────────────────────
+  // Drawn LAST so they drift in front of buildings. Extended across the
+  // full painted range so wide-canvas strips are also populated.
+  for (let i = 0; i < 22; i++) {
+    const baseX = (i * 91) % BG_W;
+    const baseY = 180 + ((i * 37) % 330);
+    const driftX = BG_X_MIN + ((baseX + now * 8 + i * 3) % BG_W);
+    const wobbleY = baseY + Math.sin(now * 0.5 + i * 0.7) * 4;
+    const alpha = 0.35 + 0.25 * Math.sin(now * 0.8 + i);
     ctx.fillStyle = `rgba(232, 210, 180, ${alpha.toFixed(3)})`;
     ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
   }
+}
+
+// ---- Ambient prop helpers --------------------------------------------------
+// Small pixel-art-styled boulders + urn drawn procedurally. Cheaper than
+// commissioning sprites and matches the procedurally-tinted hamlet look.
+function drawBoulder(ctx, cx, cy, rx, ry) {
+  // Shadow
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(cx + 2, cy + ry * 0.4, rx + 2, ry * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Body
+  ctx.fillStyle = '#3b3034';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Top highlight
+  ctx.fillStyle = '#5a4a4c';
+  ctx.beginPath();
+  ctx.ellipse(cx - rx * 0.15, cy - ry * 0.35, rx * 0.7, ry * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Moss accent
+  ctx.fillStyle = 'rgba(90, 120, 70, 0.55)';
+  ctx.fillRect((cx - rx * 0.3) | 0, (cy + ry * 0.25) | 0, 3, 2);
+}
+
+function drawUrn(ctx, cx, cy) {
+  // Shadow
+  ctx.fillStyle = 'rgba(4, 2, 6, 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 14, 10, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Body (wider middle)
+  ctx.fillStyle = '#6a4030';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 4, 9, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Neck
+  ctx.fillStyle = '#583424';
+  ctx.fillRect(cx - 5, cy - 10, 10, 6);
+  // Rim highlight
+  ctx.fillStyle = '#8a5a3c';
+  ctx.fillRect(cx - 6, cy - 11, 12, 2);
 }
 
 // Draw all hamlet entities in world space. Sorted by Y so NPCs that sit
@@ -421,7 +576,7 @@ function drawPortal(ctx, e, now) {
   drawGroundShadow(ctx, e.x, e.y + 6, 52);
 
   if (tower) {
-    const drawH = 270;
+    const drawH = 220;
     const drawW = tower.width * (drawH / tower.height);
     ctx.drawImage(tower, Math.round(e.x - drawW / 2), Math.round(e.y - drawH), drawW, drawH);
   } else if (painted) {
