@@ -21,6 +21,14 @@ const savePath = path.join(app.getPath('userData'), 'saves');
 // IPC: let the preload script request the save path
 ipcMain.handle('get-save-path', () => savePath);
 
+// IPC: synchronous save-path — lets preload.js bootstrap its KV store
+// before the renderer begins making localStorage-style reads, without
+// needing to make every game-side read/write async. The value is static
+// (set at app start), so a blocking sync IPC is safe here.
+ipcMain.on('get-save-path-sync', (event) => {
+  event.returnValue = savePath;
+});
+
 // IPC: install update when player clicks "restart"
 ipcMain.on('install-update', () => {
   if (autoUpdater) autoUpdater.quitAndInstall();
