@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    // Gradual migration posture:
+    // - allowJs: .js files are seen by the compiler so imports resolve
+    // - checkJs: false (default) — .js files are NOT typechecked, so existing
+    //   code doesn't explode the first time `npm run typecheck` runs
+    // - strict: true applies to .ts files only; they get full rigor from day 1
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+
+    "strict": true,
+    // Keep the door open for quick .ts files that don't yet have full types.
+    // As the migration matures, flip this to true for full strictness.
+    "noImplicitAny": false,
+
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // DOM + ES2022 types. No need for Node types on the game side —
+    // this is a browser/canvas game.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.js"],
+  "exclude": ["node_modules", "dist", "public", "sim", "tools"]
+}
