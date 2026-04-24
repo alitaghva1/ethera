@@ -140,6 +140,31 @@ because the built `index.html` references bundled JS. Use `npm run preview`
 (Vite's production preview server) if you need to smoke-test the build.
 Do NOT run plain `python -m http.server`; it lacks the no-cache headers.
 
+## Quality scripts (slime-depths/)
+
+```bash
+npm run lint            # ESLint — 0 errors required, warnings allowed
+npm run lint:fix        # auto-fix what can be fixed safely
+npm run format          # Prettier — writes to files (opt-in globs only)
+npm run format:check    # Prettier — read-only; CI uses this
+npm run typecheck       # tsc --noEmit; checkJs is OFF so .js files don't typecheck
+```
+
+Configs:
+- `eslint.config.js` — flat config. Permissive (warnings not errors on
+  style issues, no-undef IS enforced — that's how the `clearFusions`
+  import bug got caught during initial rollout).
+- `.prettierrc.json` — 100-col, single-quote, 2-space, trailing-comma es5.
+  `src/` is in `.prettierignore` to avoid a mass-reformat that would
+  trash git blame. When you touch a file, format it; retire from the
+  ignore list as you go.
+- `tsconfig.json` — `allowJs: true` + `checkJs: false`. Gradual migration
+  posture: existing .js compiles without typecheck nagging; new .ts
+  files get strict mode from day 1.
+
+CI at `.github/workflows/ci.yml` runs lint + format:check + typecheck +
+build on every PR, plus `npm ci` on `electron/` to catch dependency drift.
+
 ## Core files (in `slime-depths/src/`)
 
 - `main.js` — entry, game loop, boss-clear flow, HUD rendering glue
