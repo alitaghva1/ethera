@@ -6054,56 +6054,75 @@ async function boot() {
   requestAnimationFrame(tick);
 }
 
-// Debug hook — inspect game state from the console
-window.__dbg = () => ({ hero, enemies, camera, running, roomIndex, floor, room, transition,
-                        bossIntroTime, floorCardTime, phaseIntroTime, paused });
-// Debug: clear all active intros so __testBossIntro renders cleanly
-// without the floor card / phase intro fighting it. Useful for A/B'ing
-// boss cinematics in isolation.
-window.__clearIntros = () => { floorCardTime = 0; phaseIntroTime = 0; bossIntroTime = 0; bossIntroBoss = null; };
-// Debug: start a fresh run bypassing the menu (useful for dev + headless tests)
-window.__startRun = () => { hideAllOverlays(); startRun(); };
+// Dev-only debug hooks — see src/debug.js. Stripped from production builds
+// via `import.meta.env.DEV` so `__jumpToBoss` etc. never ship to Steam.
+if (import.meta.env.DEV) {
+  const { installDebugHooks } = await import('./debug.js');
+  installDebugHooks({
+    // Inspect game state
+    dbg: () => ({
+      hero, enemies, camera, running, roomIndex, floor, room, transition,
+      bossIntroTime, floorCardTime, phaseIntroTime, paused,
+    }),
 
-// Debug: directly step the transition state machine (useful when rAF is paused).
-// Calling this will synchronously advance the transition through fade-out,
-// loadRoom, fade-in, and return the new state.
-window.__forceGoto = (targetIdx) => {
-  beginTransition(targetIdx, 'south');
-  // Fast-forward through both fade phases
-  updateTransition(0.4);  // finish fade-out, loads room
-  updateTransition(0.4);  // finish fade-in
-  return { roomIndex, kind: floor[roomIndex]?.kind, enemies: enemies.length, heroPos: [hero.x|0, hero.y|0] };
-};
+    // Zero all active intros — useful for A/B'ing boss cinematics cleanly
+    clearIntros: () => {
+      floorCardTime = 0;
+      phaseIntroTime = 0;
+      bossIntroTime = 0;
+      bossIntroBoss = null;
+    },
 
-// Debug: jump the hero straight into the boss room of the current floor.
-// Uses the actual graph → floor flow (so data.kind==='boss' fires the REAL
-// intro trigger + post-FX stack), unlike __testBossIntro which just sets
-// the intro variables without changing the room. Useful for verifying the
-// boss cinematic in-context without playing through.
-window.__jumpToBoss = () => {
-  if (!currentGraph) return { error: 'no graph — call __startRun first' };
-  const bossNode = currentGraph.nodes.find(n => n.kind === 'boss');
-  if (!bossNode) return { error: 'no boss node in graph' };
-  // Append boss roomData to the floor array + transition to its index.
-  const targetIdx = floor.length;
-  floor.push(bossNode.roomData);
-  currentNodeId = bossNode.id;
-  bossNode.current = true;
-  beginTransition(targetIdx, 'south');
-  updateTransition(0.4);
-  updateTransition(0.4);
-  return { ok: true, roomKind: floor[targetIdx]?.kind, roomIndex };
-};
+    // Skip menu + prologue, jump straight into a fresh run
+    startRun: () => {
+      hideAllOverlays();
+      startRun();
+    },
 
-// Debug: test a boss intro render without playing through. Spawns a fake
-// boss of the requested type + sets the intro state so the next render
-// frame includes the cinematic.
-window.__testBossIntro = (type = 'orc', durationSec = 2.2) => {
-  const def = ENEMY_TYPES[type];
-  if (!def) return { error: 'unknown enemy type: ' + type, available: Object.keys(ENEMY_TYPES) };
-  bossIntroBoss = { type, def, boss: true, x: 0, y: 0, hp: 100, maxHp: 100 };
-  bossIntroTime = durationSec;
-  return { triggered: true, type, durationSec, portraitKey: ENEMY_PORTRAIT_PATH[type] };
-};
+    // Synchronously advance the transition state machine to a target room.
+    // Fast-forwards through fade-out → loadRoom → fade-in.
+    forceGoto: (targetIdx) => {
+      beginTransition(targetIdx, 'south');
+      updateTransition(0.4);
+      updateTransition(0.4);
+      return {
+        roomIndex,
+        kind: floor[roomIndex]?.kind,
+        enemies: enemies.length,
+        heroPos: [hero.x | 0, hero.y | 0],
+      };
+    },
+
+    // Real boss-room entry via graph + loadRoom (fires data.kind==='boss'
+    // intro path, post-FX stack, everything). For testing the cinematic
+    // in-context. Contrast with `testBossIntro` which is synthetic.
+    jumpToBoss: () => {
+      if (!currentGraph) return { error: 'no graph — call __startRun first' };
+      const bossNode = currentGraph.nodes.find((n) => n.kind === 'boss');
+      if (!bossNode) return { error: 'no boss node in graph' };
+      const targetIdx = floor.length;
+      floor.push(bossNode.roomData);
+      currentNodeId = bossNode.id;
+      bossNode.current = true;
+      beginTransition(targetIdx, 'south');
+      updateTransition(0.4);
+      updateTransition(0.4);
+      return { ok: true, roomKind: floor[targetIdx]?.kind, roomIndex };
+    },
+
+    // Synthetic boss-intro trigger — sets the intro timer directly without
+    // changing rooms or spawning the enemy. Quickest way to visually
+    // inspect the intro render itself.
+    testBossIntro: (type = 'orc', durationSec = 2.2) => {
+      const def = ENEMY_TYPES[type];
+      if (!def) {
+        return { error: 'unknown enemy type: ' + type, available: Object.keys(ENEMY_TYPES) };
+      }
+      bossIntroBoss = { type, def, boss: true, x: 0, y: 0, hp: 100, maxHp: 100 };
+      bossIntroTime = durationSec;
+      return { triggered: true, type, durationSec, portraitKey: ENEMY_PORTRAIT_PATH[type] };
+    },
+  });
+}
 
 boot();
