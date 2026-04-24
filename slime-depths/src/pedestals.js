@@ -232,6 +232,17 @@ export function suppressPickupFlash() {
   pickedFlashTime = 0;
 }
 
+// Dev-only: force the pickup-flash banner state for screenshot-based testing.
+// Bypasses applyRelic — just sets the banner's render state directly. Use via
+// the `__testPickupFlash` debug hook (tree-shaken from production).
+// pickedFlashTime is set to 2.2s so the banner is inside the peak-alpha
+// window (0.3s..2.25s) for non-mythic; overridable if you want a specific
+// fade-in / fade-out frame.
+export function setPickupFlashForTest(def, tier, flashTime = 2.2) {
+  lastPickedDef = { ...def, tier };
+  pickedFlashTime = flashTime;
+}
+
 export function hasActivePedestals() {
   return pedestals.length > 0 && pedestals.some(p => !p.picked);
 }
@@ -527,7 +538,25 @@ export function drawPickupFlash(ctx, w, h) {
 
   // Mythic banner is larger — gives the moment more weight on screen
   const boxW = tier === 'mythic' ? 560 : 480;
-  const boxH = tier === 'mythic' ? 200 : 170;
+  // Pre-measure flavor + desc so the frame can grow to fit wrapped lines.
+  // Long descs (e.g. Hourglass of Respite, 72 chars) used to overflow a
+  // fixed-height box into the HUD.
+  const innerPad = 40;
+  const maxTextW = boxW - innerPad * 2;
+  const flavorFont = tier === 'mythic' ? 'italic 14px Georgia, serif' : 'italic 12px Georgia, serif';
+  const descFont = tier === 'mythic' ? 'bold 17px Georgia, serif' : 'bold 15px Georgia, serif';
+  const flavorLh = tier === 'mythic' ? 18 : 15;
+  const descLh = tier === 'mythic' ? 22 : 19;
+  let flavorLines = [];
+  if (lastPickedDef.flavor) {
+    ctx.font = flavorFont;
+    flavorLines = wrapPedestalText(ctx, '\u201C' + lastPickedDef.flavor + '\u201D', maxTextW);
+  }
+  ctx.font = descFont;
+  const descLines = wrapPedestalText(ctx, lastPickedDef.desc || '', maxTextW);
+  const extraFlavorH = Math.max(0, flavorLines.length - 1) * flavorLh;
+  const extraDescH = Math.max(0, descLines.length - 1) * descLh;
+  const boxH = (tier === 'mythic' ? 200 : 170) + extraFlavorH + extraDescH;
   const bx = (w - boxW) / 2;
   const by = (h - boxH) / 2 - 30;
   const pivotX = bx + boxW / 2, pivotY = by + boxH / 2;
@@ -646,16 +675,19 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.fillText(lastPickedDef.name, pivotX, by + (tier === 'mythic' ? 68 : 58));
   ctx.shadowBlur = 0;
 
-  // Flavor line in quotes
-  if (lastPickedDef.flavor) {
+  // Flavor line in quotes — wraps to multiple lines on long quotations
+  if (flavorLines.length) {
     ctx.fillStyle = tier === 'mythic' ? 'rgba(240, 230, 220, 0.95)' : 'rgba(210, 200, 220, 0.82)';
-    ctx.font = tier === 'mythic' ? 'italic 14px Georgia, serif' : 'italic 12px Georgia, serif';
-    ctx.fillText('\u201C' + lastPickedDef.flavor + '\u201D', pivotX, by + (tier === 'mythic' ? 118 : 100));
+    ctx.font = flavorFont;
+    const flavorY = by + (tier === 'mythic' ? 118 : 100);
+    for (let i = 0; i < flavorLines.length; i++) {
+      ctx.fillText(flavorLines[i], pivotX, flavorY + i * flavorLh);
+    }
   }
 
   // Central-diamond divider — hairline with a small diamond at midpoint
   ctx.globalAlpha = a * 0.65;
-  const divY = by + (tier === 'mythic' ? 145 : 122);
+  const divY = by + (tier === 'mythic' ? 145 : 122) + extraFlavorH;
   const divHalfW = 120;
   // left segment
   const lg = ctx.createLinearGradient(pivotX - divHalfW, divY, pivotX - 8, divY);
@@ -678,10 +710,14 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.restore();
   ctx.globalAlpha = a;
 
-  // Mechanic description — tier-tinted bold
+  // Mechanic description — tier-tinted bold; wraps so long descs don't
+  // spill into the HUD.
   ctx.fillStyle = tierColor;
-  ctx.font = tier === 'mythic' ? 'bold 17px Georgia, serif' : 'bold 15px Georgia, serif';
-  ctx.fillText(lastPickedDef.desc, pivotX, by + (tier === 'mythic' ? 158 : 132));
+  ctx.font = descFont;
+  const descY = by + (tier === 'mythic' ? 158 : 132) + extraFlavorH;
+  for (let i = 0; i < descLines.length; i++) {
+    ctx.fillText(descLines[i], pivotX, descY + i * descLh);
+  }
 
   // Tier label at the bottom — diamonds flanking. Replaces the old "· COMMON ·".
   ctx.fillStyle = tierColor;

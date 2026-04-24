@@ -33,7 +33,7 @@ import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
 import { drawHud, updateHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
-import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics } from './relics.js';
+import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics, relicTier } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats';
 import { meta, loadMeta, saveMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHeirloom, consumeHeirloom } from './meta.js';
 import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
@@ -50,6 +50,7 @@ import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick,
 import {
   spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
+  setPickupFlashForTest,
 } from './pedestals.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
@@ -5874,6 +5875,33 @@ if (import.meta.env.DEV) {
       bossIntroBoss = { type, def, boss: true, x: 0, y: 0, hp: 100, maxHp: 100 };
       bossIntroTime = durationSec;
       return { triggered: true, type, durationSec, portraitKey: ENEMY_PORTRAIT_PATH[type] };
+    },
+
+    // Trigger a relic pickup banner in-place — spawns a pedestal under the
+    // hero so the next tick fires the full pickup path (applyRelic + banner).
+    // Usage: __testPickup('hourglass_of_respite')
+    testPickup: (relicId = 'hourglass_of_respite') => {
+      const def = RELIC_DEFS[relicId];
+      if (!def) return { error: 'unknown relic: ' + relicId, available: Object.keys(RELIC_DEFS) };
+      clearPedestals();
+      pedestals.push({
+        x: hero.x, y: hero.y,
+        relic: def,
+        tier: relicTier(def.id),
+        picked: false, bob: 0, glow: 0, hpCost: 0,
+      });
+      return { ok: true, relic: def.name, descLen: def.desc.length };
+    },
+
+    // Force the pickup-flash banner without applying the relic. Seeds the
+    // banner at peak-alpha; the normal decay (-dt per tick) still runs, so
+    // you have ~1.4s of peak window before fade-out. Good for screenshots.
+    // Usage: __testPickupFlash('hourglass_of_respite', 'rare')
+    testPickupFlash: (relicId = 'hourglass_of_respite', tier) => {
+      const def = RELIC_DEFS[relicId];
+      if (!def) return { error: 'unknown relic: ' + relicId };
+      setPickupFlashForTest(def, tier || relicTier(def.id));
+      return { ok: true, relic: def.name, tier: tier || relicTier(def.id) };
     },
   });
 }
