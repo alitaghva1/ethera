@@ -27,7 +27,7 @@ let currentNodeId = null;
 // hero stands at the door, so we must not queue multiple openFloorMap()
 // calls — they'd stack overlays and resolve in the wrong order.
 let _mapPickInFlight = false;
-import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
+import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
@@ -5060,6 +5060,10 @@ function render() {
   drawPedestalTooltip(ctx, canvas.width, canvas.height, { gold: gold.total, floorLevel: currentFloorLevel });
   drawWandererTooltip(ctx, canvas.width, canvas.height);
   drawPickupFlash(ctx, canvas.width, canvas.height);
+  // Elite affix hover — reveals frost / ember / venom / warded before the
+  // fight. Drawn after the HUD so it floats above other UI when the cursor
+  // is on an elite.
+  drawEliteAffixTooltips(ctx, canvas.width, canvas.height);
   drawComboOverlay(ctx, canvas.width, canvas.height);
   drawScreenFlash(ctx, canvas.width, canvas.height);
   drawPerfectDodgeOverlay(ctx, canvas.width, canvas.height);

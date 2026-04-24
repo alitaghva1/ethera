@@ -4,7 +4,8 @@ import { images } from './loader.js';
 import { isWallAtWorld, spawnExtraFirePool } from './room.js';
 import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
-import { shakeCamera, pulseZoom } from './camera.js';
+import { shakeCamera, pulseZoom, worldToScreen } from './camera.js';
+import { mouse } from './input.js';
 import { damageHero, hero } from './hero.js';
 import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
@@ -19,26 +20,30 @@ import { markSoulFired } from './counterPips.js';
 // ============================================================================
 export const ELITE_AFFIXES = {
   frost: {
-    id: 'frost', badge: 'F',
+    id: 'frost', badge: 'F', name: 'Frost',
+    desc: 'Hits chill you \u2014 movement slowed for 0.7s.',
     glow: 'rgba(120, 200, 255, ',
     auraColor: '#72c6ff',
     onHitHero: (_e) => { hero.slowTime = Math.max(hero.slowTime || 0, 0.7); hero.slowMul = 0.45; },
   },
   ember: {
-    id: 'ember', badge: 'E',
+    id: 'ember', badge: 'E', name: 'Ember',
+    desc: 'Leaves a flame trail that burns on contact.',
     glow: 'rgba(255, 130, 70, ',
     auraColor: '#ff7a2a',
     trail: true,
     trailInterval: 0.22,
   },
   venom: {
-    id: 'venom', badge: 'V',
+    id: 'venom', badge: 'V', name: 'Venom',
+    desc: 'Hits poison you for 4 seconds (0.5 dmg/sec).',
     glow: 'rgba(120, 220, 120, ',
     auraColor: '#6ae08a',
     onHitHero: (_e) => { hero.poisonTime = Math.max(hero.poisonTime || 0, 4); hero.poisonRate = 0.5; },
   },
   warded: {
-    id: 'warded', badge: 'W',
+    id: 'warded', badge: 'W', name: 'Warded',
+    desc: 'Halves incoming damage until staggered twice.',
     glow: 'rgba(255, 220, 90, ',
     auraColor: '#ffd855',
     dmgReductionPct: 0.5,
@@ -1925,4 +1930,68 @@ export function drawEnemyTelegraphs(ctx) {
       ctx.restore();
     }
   }
+}
+
+// Elite affix hover tooltip — when the mouse rests over an elite enemy,
+// show its affix name + a one-line description so the player can prepare
+// instead of being surprised by frost / ember / venom / warded mid-fight.
+// Drawn in screen space (after the world camera transform is closed) so
+// the tooltip stays the same size regardless of zoom and never gets
+// occluded by terrain or other enemies. Uses worldToScreen to anchor the
+// tooltip above the elite's head.
+export function drawEliteAffixTooltips(ctx, w, h) {
+  // Find the closest elite within hover range of the mouse cursor (screen px).
+  // Range chosen to be forgiving but not overlapping multiple elites at once.
+  const HOVER_RANGE_PX = 56;
+  let target = null;
+  let bestD2 = HOVER_RANGE_PX * HOVER_RANGE_PX;
+  for (const e of enemies) {
+    if (e.dead || !e.affix) continue;
+    const sp = worldToScreen(e.x, e.y - 8);
+    const dx = sp.x - mouse.x, dy = sp.y - mouse.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; target = e; }
+  }
+  if (!target) return;
+  const a = target.affix;
+  const sp = worldToScreen(target.x, target.y - 36);
+  const tipW = 220;
+  const tipH = 56;
+  // Clamp so the tip doesn't run off-screen
+  const tipX = Math.max(8, Math.min(w - tipW - 8, Math.round(sp.x - tipW / 2)));
+  const tipY = Math.max(8, Math.min(h - tipH - 8, Math.round(sp.y - tipH - 8)));
+
+  ctx.save();
+  // Card backdrop — same grammar as fusion / theme tooltips so the UI reads coherent
+  ctx.fillStyle = 'rgba(14, 18, 26, 0.95)';
+  ctx.fillRect(tipX, tipY, tipW, tipH);
+  ctx.strokeStyle = a.auraColor;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
+  // Affix badge in the top-left corner of the tip
+  ctx.fillStyle = a.auraColor;
+  ctx.fillRect(tipX + 8, tipY + 8, 16, 16);
+  ctx.fillStyle = '#1a0f10';
+  ctx.font = 'bold 11px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(a.badge, tipX + 16, tipY + 16);
+  // Header — affix name + the word ELITE
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = a.auraColor;
+  ctx.font = 'bold 11px Georgia, serif';
+  ctx.fillText(a.name.toUpperCase() + '  ELITE', tipX + 30, tipY + 9);
+  // Description
+  ctx.fillStyle = '#dce4f0';
+  ctx.font = 'italic 10px Georgia, serif';
+  ctx.fillText(a.desc, tipX + 8, tipY + 30);
+  // Warded special: show shield-stagger progress
+  if (a.id === 'warded' && !target._shieldBroken) {
+    const remaining = a.staggersToBreak - (target._staggerCount || 0);
+    ctx.fillStyle = '#ffe495';
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.fillText(`Shield: ${remaining} stagger${remaining === 1 ? '' : 's'} to break`, tipX + 8, tipY + 44);
+  }
+  ctx.restore();
 }
