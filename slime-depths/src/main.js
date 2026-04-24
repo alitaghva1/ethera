@@ -3094,6 +3094,10 @@ function loadRoom(idx, entryFrom) {
   // SYSTEMS PASS — SECOND WIND relic: first dodge per room is free.
   // Refreshes the charge on every room entry.
   if (hero.secondWind) hero.secondWindAvailable = true;
+  // VOW T2 ascendance — "discipline blocks the first strike". Refresh the
+  // per-room shield charge on every room entry. Consumed in damageHero.
+  if ((hero.activeThemes?.vow || 0) >= 2) hero.themeVowShieldAvailable = true;
+  // SHADOW T2 is a short window after dodge, not per-room, so no reset here.
   buildRoomFromData(data);
   clearEnemies();
   clearProjectiles();
@@ -4432,6 +4436,20 @@ function tick(now) {
         // harder difficulty. Still easy to die if you take too many hits.
         if (!isCursed('starving') && hero.hp < hero.maxHp) {
           hero.hp = Math.min(hero.maxHp, hero.hp + 1);
+          // BLOOD T2 ascendance — "killing sustains you" — recover 25% of
+          // remaining missing HP on top of the clear tick. Scales with maxHp
+          // so Ironhide+Vitality builds actually feel it.
+          if ((hero.activeThemes?.blood || 0) >= 2 && hero.hp < hero.maxHp) {
+            const bonus = Math.ceil((hero.maxHp - hero.hp) * 0.25);
+            if (bonus > 0) {
+              hero.hp = Math.min(hero.maxHp, hero.hp + bonus);
+              // A subtle spark burst on the ascendance heal so the player sees it
+              for (let k = 0; k < 6; k++) {
+                const ang = (k / 6) * Math.PI * 2;
+                sparkle(hero.x + Math.cos(ang) * 18, hero.y - 6 + Math.sin(ang) * 14, '#ff8a8a');
+              }
+            }
+          }
         }
         // Celebratory clear fanfare — label + sound + sparkle burst radiating from hero
         const isMiniboss = data.slotLabel === 'miniboss';

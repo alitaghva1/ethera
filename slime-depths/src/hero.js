@@ -329,6 +329,24 @@ export function updateHero(dt, enemies, mouseWorld) {
       }
     }
   }
+  // FLAME T2 ascendance — heat aura: enemies within 50px take 1 dmg/s.
+  // Independent tick from hymn_of_embers so the two stack cleanly when both
+  // are active; smaller radius + lower dps so it complements rather than
+  // replicates hymn. Tagged 'fire' so elemental resists apply.
+  if ((hero.activeThemes?.flame || 0) >= 2 && enemies) {
+    hero.themeFlameTick = (hero.themeFlameTick || 0) - dt;
+    if (hero.themeFlameTick <= 0) {
+      hero.themeFlameTick = 1.0;
+      const r2 = 50 * 50;
+      for (const e of enemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const dx = e.x - hero.x, dy = e.y - hero.y;
+        if (dx * dx + dy * dy <= r2) {
+          e.takeDamage(1 * (hero.damageMul || 1), 0, 0, { damageType: 'fire' });
+        }
+      }
+    }
+  }
   // STORMCALLER — periodic strike on the nearest enemy in range.
   if (hero.stormcaller && enemies) {
     hero.stormcallerTick -= dt;
@@ -504,6 +522,21 @@ export function updateHero(dt, enemies, mouseWorld) {
       }
       // LEGENDARY: Wanderer's Cloak — 2s doubled attack speed post-dodge
       wandererOnDodge();
+      // SHADOW T2 ascendance — 0.8s flanking window: every hit during the
+      // window is forced-crit. Stronger than whisper_veil (which is one hit
+      // only) — ascendance should feel transformative.
+      if ((hero.activeThemes?.shadow || 0) >= 2) {
+        const _now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+        hero.themeShadowFlankingUntil = _now + 0.8;
+      }
+      // STORM T2 ascendance — releases a small shock pulse at the dodge
+      // start point. Tagged 'shock' so it interacts with elemental resists.
+      // Smaller radius/damage than spells; intended as an opportunistic
+      // side-effect of mobility, not a primary DPS source.
+      if ((hero.activeThemes?.storm || 0) >= 2) {
+        const dmg = 14 * (hero.damageMul || 1);
+        spawnExplosion(hero.x, hero.y - 6, 56, dmg, 'shock');
+      }
     }
     // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release
     else if ((mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= 0.35 && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
@@ -805,7 +838,10 @@ export function updateHero(dt, enemies, mouseWorld) {
           // SHADOW set-bonus — flat crit chance add at 3/5 theme stacks
           const _shadowCritBonus = hero.themeCritBonus || 0;
           const _totalCritChance = hero.critChance + _daggerCritBonus + _shadowCritBonus;
-          const isCrit = isCounter || forcedCrit || (_totalCritChance > 0 && Math.random() < _totalCritChance);
+          // SHADOW T2 ascendance — flanking window after dodge: every hit crits
+          const _hcNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+          const _shadowFlanking = hero.themeShadowFlankingUntil > _hcNow;
+          const isCrit = isCounter || forcedCrit || _shadowFlanking || (_totalCritChance > 0 && Math.random() < _totalCritChance);
           const isExec = hero.executeThreshold > 0 && e.hp / e.maxHp < hero.executeThreshold;
           // SYSTEMS PASS — LONG REACH: hits landed past 80% of your reach
           // deal +40% damage. Rewards spacing + positioning. Folded in
@@ -1120,6 +1156,16 @@ export function damageHero(amount, fromX, fromY) {
   }
   if (hero.iframes > 0) return 'absorbed';
   if (window.GOD) return 'absorbed';
+  // VOW T2 ascendance — the first strike in each room is turned aside.
+  // Consumed here (after bulwark/hourglass reductions) so all defensive
+  // relics still get their fractional damage-reduction effect on "what the
+  // shield would have blocked", and THEN the shield eats the remainder.
+  if (hero.themeVowShieldAvailable && (hero.activeThemes?.vow || 0) >= 2) {
+    hero.themeVowShieldAvailable = false;
+    triggerScreenFlash('rgba(190, 210, 240, 0.28)', 0.35);
+    hero.iframes = Math.max(hero.iframes || 0, 0.35);
+    return 'absorbed';
+  }
   // Round damage to integer so HP stays clean (no floating-point HP text).
   // FUSION: Mountain's Heart — at full HP, 15% damage resist.
   // FUSION: Stalwart — below 50% HP, resistance doubles (0.67x multiplier
