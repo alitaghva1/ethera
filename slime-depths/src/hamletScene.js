@@ -102,20 +102,22 @@ export const HAMLET_OBSTACLES = [
 
 // Push the hero out of any obstacle they're currently inside. Cheap
 // per-tick O(N) sweep — N is tiny. Called after the hamlet Y-clamp.
+// Does NOT zero velocity — that blocks the player from moving tangent
+// to an obstacle. Each frame we just position-correct; the input loop
+// re-applies velocity from the key state so the hero slides along
+// walls naturally.
 export function resolveHamletCollision(hero) {
   for (const o of HAMLET_OBSTACLES) {
     const dx = hero.x - o.x;
     const dy = hero.y - o.y;
     const d2 = dx * dx + dy * dy;
-    const rh = 10;   // hero body radius
+    const rh = 10;
     const rr = o.r + rh;
     if (d2 < rr * rr) {
       const d = Math.sqrt(d2) || 0.001;
       const push = (rr - d) / d;
       hero.x += dx * push;
       hero.y += dy * push;
-      // zero velocity component into the obstacle
-      hero.vx = 0; hero.vy = 0;
     }
   }
 }
@@ -163,29 +165,9 @@ export function getNearestHamletEntity() { return _nearest; }
 // (ground layer) first, then buildings (mid layer) on top so building bases
 // sit in front of the cobblestone line.
 
-// Cached cobblestone sub-tiles. The env pack's cobble cell (index 4) is a
-// 3×3 mini-grid of tile variants; we slice it once and randomly pick tiles
-// across the ground to break the "repeating block" pattern the raw stamp
-// produced. Cache is lazy — only populated after images.hamlet_env_4 loads.
-let _cobbleSubtiles = null;
-function ensureCobbleSubtiles() {
-  if (_cobbleSubtiles) return _cobbleSubtiles;
-  const src = images.hamlet_env_4;
-  if (!src) return null;
-  const sw = Math.floor(src.width / 3);
-  const sh = Math.floor(src.height / 3);
-  const cells = [];
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      const cv = document.createElement('canvas');
-      cv.width = sw; cv.height = sh;
-      cv.getContext('2d').drawImage(src, c * sw, r * sh, sw, sh, 0, 0, sw, sh);
-      cells.push(cv);
-    }
-  }
-  _cobbleSubtiles = cells;
-  return cells;
-}
+// (ensureCobbleSubtiles removed — hamlet ground is now solid painted
+// earth, not a tiled stone texture. Stone only appears where something
+// has been CONSTRUCTED: plaza, paths, pads.)
 
 // Deterministic small hash → integer in [0..mod)
 function cellHash(x, y, mod) {
@@ -374,35 +356,52 @@ export function drawHamletBackdrop(ctx) {
   // in intentional clusters.
   // ══════════════════════════════════════════════════════════════════════
 
-  // ── GROUND · BASE COBBLE TILES ───────────────────────────────────────
-  // Same 64px tiling as before with jitter + flips to disguise the
-  // source grid. Keeps the underlying stone texture but is no longer
-  // "the whole ground" — it's just the neutral base.
-  const subtiles = ensureCobbleSubtiles();
-  if (subtiles && subtiles.length === 9) {
-    const tileW = 64, tileH = 64;
-    const drawW = tileW + 4, drawH = tileH + 4;
-    const groundTop = 300;
-    let row = 0;
-    for (let y = groundTop; y < 672; y += tileH, row++) {
-      const xOffset = ((row * 17) % 13) - 6;
-      for (let x = BG_X_MIN - tileW; x < BG_X_MAX + tileW; x += tileW) {
-        const xi = ((x + xOffset) / tileW) | 0;
-        const h = cellHash(xi, (y / tileH) | 0, 1000);
-        const i = h % 9;
-        const yOffset = ((h >>> 8) % 7) - 3;
-        const flipX = ((h >>> 4) & 1) === 0;
-        ctx.save();
-        if (flipX) {
-          ctx.translate(x + xOffset + drawW, y + yOffset);
-          ctx.scale(-1, 1);
-          ctx.drawImage(subtiles[i], 0, 0, drawW, drawH);
-        } else {
-          ctx.drawImage(subtiles[i], x + xOffset, y + yOffset, drawW, drawH);
-        }
-        ctx.restore();
-      }
-    }
+  // ── GROUND · SOLID EARTH BASE ────────────────────────────────────────
+  // Replaces the cobble tile grid that was spraying pattern noise
+  // across the whole ground. The hamlet's "unbuilt" areas are now
+  // dark dirt/earth; stone only appears where something has been
+  // CONSTRUCTED (plaza, paths, pads). Matches the reference — you
+  // see paved ground only on worked surfaces.
+  ctx.fillStyle = '#3a2f26';
+  ctx.fillRect(BG_X_MIN, 300, BG_W, 372);
+  // Soft campfire-warmth wash centered on the plaza. Additive, low
+  // alpha — makes the ground feel lit without a grid pattern.
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  {
+    const warm = ctx.createRadialGradient(480, 540, 40, 480, 540, 520);
+    warm.addColorStop(0,   'rgba(120, 78, 40, 0.25)');
+    warm.addColorStop(0.5, 'rgba(90, 58, 32, 0.10)');
+    warm.addColorStop(1,   'rgba(60, 40, 20, 0)');
+    ctx.fillStyle = warm;
+    ctx.fillRect(BG_X_MIN, 300, BG_W, 372);
+  }
+  ctx.restore();
+  // Dirt speckle texture — 220 small 2px dots at deterministic
+  // positions. Four shade variants. NOT grid-aligned.
+  for (let i = 0; i < 220; i++) {
+    const h = cellHash(i * 31 + 7, i * 47 + 13, 1000000);
+    const x = BG_X_MIN + (h % BG_W);
+    const y = 300 + ((h >>> 10) % 372);
+    const shade = (h >>> 16) & 3;
+    const col = shade === 0 ? 'rgba(70, 58, 44, 0.55)'
+              : shade === 1 ? 'rgba(50, 40, 30, 0.55)'
+              : shade === 2 ? 'rgba(92, 74, 52, 0.42)'
+              :               'rgba(30, 22, 16, 0.65)';
+    ctx.fillStyle = col;
+    ctx.fillRect(x | 0, y | 0, 2, 2);
+  }
+  // Occasional small pebble-clusters — 18 hand-tuned spots
+  // for packed-earth texture without a repeating pattern.
+  for (let i = 0; i < 18; i++) {
+    const h = cellHash(i * 97 + 3, i * 59 + 11, 1000000);
+    const px = BG_X_MIN + (h % BG_W);
+    const py = 320 + ((h >>> 10) % 340);
+    ctx.fillStyle = 'rgba(62, 52, 40, 0.7)';
+    ctx.fillRect(px | 0, py | 0, 3, 2);
+    ctx.fillRect((px + 4) | 0, (py + 1) | 0, 2, 2);
+    ctx.fillStyle = 'rgba(90, 75, 58, 0.5)';
+    ctx.fillRect(px | 0, py | 0, 1, 1);
   }
 
   // ── GROUND · HORIZON FEATHER ─────────────────────────────────────────
@@ -429,17 +428,8 @@ export function drawHamletBackdrop(ctx) {
   const Z_WEST_RUIN = { x: 115, y: 360 };
   const Z_EAST_RUIN = { x: 870, y: 380 };
 
-  // ── ZONE · GROUND LEVEL-TONE ─────────────────────────────────────────
-  // Very subtle desaturation on the base cobble so the district pads
-  // below look cleaner without turning the surrounding ground into
-  // black void. Alpha kept very low — pads + paths are opaque paints,
-  // they don't need the base significantly dimmed to stand out.
-  ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = 'rgba(200, 190, 178, 1)';
-  ctx.globalAlpha = 0.35;
-  ctx.fillRect(BG_X_MIN, 300, BG_W, 372);
-  ctx.restore();
+  // (Ground level-tone multiply removed — earth base is already solid
+  // and uniform; no need to desaturate it.)
 
   // ── ZONE · OVERSCAN STRIPS (outside playable room) ───────────────────
   // The extended -360..0 / 960..1320 strips fill the void on wide
