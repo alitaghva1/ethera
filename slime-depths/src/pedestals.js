@@ -215,6 +215,19 @@ export function spawnBossDrop(bossType, worldX, worldY, opts = {}) {
 
 export function clearPedestals() {
   pedestals.length = 0;
+  // pickedFlashTime / lastPickedDef are INTENTIONALLY preserved here. This
+  // function is called by loadRoom on every room transition. If a player
+  // picks up a relic near the exit and walks through the door within the
+  // banner's 3s (or 5.5s for mythic) lifetime, the celebratory banner
+  // should finish its display in the next room rather than getting cut
+  // mid-animation. The banner decays naturally via updatePedestals.
+  // Use suppressPickupFlash() for full-reset paths (fusion takeover, etc.).
+}
+
+// Explicitly zero the pickup-flash banner — for cases where a DIFFERENT
+// banner (e.g. a fusion banner) should take precedence and the pickup
+// flash would stack visually on top of it.
+export function suppressPickupFlash() {
   lastPickedDef = null;
   pickedFlashTime = 0;
 }
@@ -256,9 +269,12 @@ export function updatePedestals(dt) {
         if (hero.hp <= p.hpCost) continue;    // won't commit suicide; must approach with more HP
         hero.hp -= p.hpCost;
       }
+      // Apply FIRST, mark consumed AFTER. If applyRelic throws (corrupt
+      // state, missing fusion def), the pedestal remains un-picked so the
+      // player can try again on next tick instead of losing the relic.
+      applyRelic(p.relic.id);
       p.picked = true;
       picked = p.relic;
-      applyRelic(p.relic.id);
       const t = p.tier || 'common';
       // MYTHIC — bigger burst, stronger shake, layered sting, extended banner
       if (t === 'mythic') {

@@ -49,7 +49,7 @@ import { loadTips, showTip, updateTips, drawTip } from './tips.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import {
   spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
-  pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip,
+  pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
 } from './pedestals.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
@@ -448,6 +448,11 @@ window.__onEchoDefeated = (echo) => {
 
 // Callback invoked by applyRelic when a fusion activates
 window.__onFusionFormed = (fusion) => {
+  // The pickup that triggered this fusion already set the pickup-flash
+  // banner in pedestals.js. Zero it here so the fusion banner (which is
+  // more dramatic + tells a better story) takes the center-screen slot
+  // alone instead of stacking with the pickup flash.
+  suppressPickupFlash();
   fusionBannerTime = 3.0;
   fusionBannerFusion = fusion;
   // Audio sting — chord on discovery, layered ping for newly-discovered-ever
