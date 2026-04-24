@@ -11,6 +11,7 @@ import { dropGold } from './gold.js';
 import { stats } from './stats';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
 import { triggerScreenFlash } from './fx.js';
+import { markSoulFired } from './counterPips.js';
 
 // ============================================================================
 // ELITE AFFIXES — rolled on elite spawn (floors 2+). Each affix has a unique
@@ -763,6 +764,7 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         if (hero.soulBurst && !this.boss) {
           hero.soulKillCount = (hero.soulKillCount || 0) + 1;
           if (hero.soulKillCount % 5 === 0) {
+            markSoulFired();   // visible pip-row flash
             spawnSoulBurst(this.x, this.y - 12, 8, 18 * (hero.damageMul || 1));
           }
         }

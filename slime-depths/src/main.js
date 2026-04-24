@@ -52,6 +52,8 @@ import {
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
   setPickupFlashForTest,
 } from './pedestals.js';
+import { drawCounterPips, tickCounterPips } from './counterPips.js';
+import { drawPedestalTeasers } from './pedestalTeaser.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
@@ -4165,6 +4167,7 @@ function tick(now) {
     updateHitMarkers(dt);
     updatePedestals(dt);
     updateMusic(realDt);
+    tickCounterPips(dt);
 
     gameTime += realDt;
     heroSpikeCD -= dt;
@@ -4780,6 +4783,7 @@ function render() {
   drawCorpses(ctx);
 
   drawPedestals(ctx);
+  drawPedestalTeasers(ctx);
   drawWanderer(ctx);
 
   const drawList = [];
@@ -4787,6 +4791,9 @@ function render() {
   for (const e of enemies) drawList.push({ y: e.y, draw: (c) => drawEnemy(c, e) });
   drawList.sort((a, b) => a.y - b.y);
   for (const item of drawList) item.draw(ctx);
+
+  // Proc counters — tiny pip rows under the hero (visible "every Nth hit" meters)
+  drawCounterPips(ctx);
 
   drawProjectiles(ctx);
   drawSynergies(ctx);

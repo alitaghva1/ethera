@@ -18,6 +18,7 @@ import { spawnEmberFlame, enemies as activeEnemies } from './enemies.js';
 import { dropGold } from './gold.js';
 import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
+import { markChainFired, markPyroFired } from './counterPips.js';
 
 const SPR = 100;                  // Tiny RPG native frame size
 const HERO_DRAW = 96;              // on-screen hero size (slightly scaled down)
@@ -996,6 +997,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (hero.chainLightning) {
             hero.chainCount = (hero.chainCount + 1) % 3;
             if (hero.chainCount === 0) {
+              markChainFired();   // visible pip-row flash
               let best = null, bestD = 99999;
               for (const other of enemies) {
                 if (other === e || other.dead) continue;
@@ -1037,6 +1039,7 @@ export function updateHero(dt, enemies, mouseWorld) {
             const threshold = hero.fusionConflagration ? 2 : 4;
             hero.pyroCount = (hero.pyroCount + 1) % threshold;
             if (hero.pyroCount === 0) {
+              markPyroFired();   // visible pip-row flash
               const radius = hero.fusionConflagration ? 70 : 52;
               const dmg = (hero.fusionConflagration ? 26 : 18) * (hero.damageMul || 1);
               spawnExplosion(e.x, e.y - 6, radius, dmg, 'fire');
