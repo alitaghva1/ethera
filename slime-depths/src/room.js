@@ -1807,15 +1807,27 @@ export function drawRoom(ctx) {
     // strip; we just need a dark base so any tiling gaps don't show the void.
     ctx.fillStyle = '#181218';
     ctx.fillRect(0, 300, W, H - 300);
-    // Scattered star pinpoints in the sky for atmosphere — deterministic
-    // via simple hash so they don't jitter between frames.
-    ctx.fillStyle = 'rgba(232, 220, 200, 0.65)';
-    for (let i = 0; i < 50; i++) {
-      const h = hash(i * 7 + 3, 11);
-      const sx = (h % 1000) / 1000 * W;
-      const sy = ((h >>> 10) % 1000) / 1000 * 260;
-      const size = ((h >>> 20) & 1) ? 1 : 2;
-      ctx.fillRect(sx | 0, sy | 0, size, size);
+    // Scattered star pinpoints in the sky for atmosphere. Uses a grid-jitter
+    // distribution so stars spread evenly across the full sky band instead
+    // of the clumping the raw hash gave. Deterministic per cell.
+    const cols = 14, rows = 4;
+    const cellW = W / cols;
+    const cellH = 220 / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const h = hash(c * 31 + r * 97, 19);
+        // 70% of cells have a star; 30% empty — breaks the grid feel.
+        if ((h & 15) < 4) continue;
+        const jx = ((h >>> 4) % 1000) / 1000 - 0.5;
+        const jy = ((h >>> 14) % 1000) / 1000 - 0.5;
+        const sx = c * cellW + cellW * 0.5 + jx * cellW * 0.7;
+        const sy = r * cellH + cellH * 0.5 + jy * cellH * 0.7 + 10;
+        const bright = (h >>> 24) & 3;
+        const alpha = bright === 0 ? 0.35 : bright === 1 ? 0.55 : bright === 2 ? 0.75 : 0.95;
+        const size = bright >= 2 ? 2 : 1;
+        ctx.fillStyle = `rgba(232, 220, 200, ${alpha})`;
+        ctx.fillRect(sx | 0, sy | 0, size, size);
+      }
     }
     return;
   }

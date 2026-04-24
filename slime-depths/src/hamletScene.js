@@ -38,8 +38,9 @@ export const HAMLET_HERO_SPAWN = { x: 480, y: 635 };
 // drawn by drawHamletEntities. Feet at y=440 (tower's base on the cobble
 // horizon); interact when hero approaches that base.
 const PORTAL_POS = { x: 480, y: 450 };
-// Watcher shrine — far-left, on the cobblestone.
-const SHRINE_POS = { x: 90, y: 580 };
+// Watcher shrine — left cobblestone, pushed in enough to clear the
+// tile-variant moss patches that sit at the column edge.
+const SHRINE_POS = { x: 130, y: 580 };
 // Firepit — center-front, between NPC row and hero spawn. Decorative only.
 const FIREPIT_POS = { x: 480, y: 600 };
 
@@ -99,50 +100,74 @@ export function getNearestHamletEntity() { return _nearest; }
 // entities + characters. Order inside this function: cobblestone tiles
 // (ground layer) first, then buildings (mid layer) on top so building bases
 // sit in front of the cobblestone line.
+
+// Cached cobblestone sub-tiles. The env pack's cobble cell (index 4) is a
+// 3×3 mini-grid of tile variants; we slice it once and randomly pick tiles
+// across the ground to break the "repeating block" pattern the raw stamp
+// produced. Cache is lazy — only populated after images.hamlet_env_4 loads.
+let _cobbleSubtiles = null;
+function ensureCobbleSubtiles() {
+  if (_cobbleSubtiles) return _cobbleSubtiles;
+  const src = images.hamlet_env_4;
+  if (!src) return null;
+  const sw = Math.floor(src.width / 3);
+  const sh = Math.floor(src.height / 3);
+  const cells = [];
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const cv = document.createElement('canvas');
+      cv.width = sw; cv.height = sh;
+      cv.getContext('2d').drawImage(src, c * sw, r * sh, sw, sh, 0, 0, sw, sh);
+      cells.push(cv);
+    }
+  }
+  _cobbleSubtiles = cells;
+  return cells;
+}
+
+// Deterministic small hash → integer in [0..mod)
+function cellHash(x, y, mod) {
+  let h = (x * 73856093) ^ (y * 19349663);
+  h = (h ^ (h >>> 13)) * 1274126177;
+  return Math.abs(h) % mod;
+}
+
 export function drawHamletBackdrop(ctx) {
-  // Ground — stamp the cobblestone tile cell across the walkable strip.
-  // The env pack tile cell (index 4) is a mini-grid of cobblestone variants;
-  // stamping it repeatedly gives a richer floor than a single repeated tile.
-  const cobble = images.hamlet_env_4;
-  if (cobble) {
-    const tileW = 256, tileH = 200;
-    const groundTop = 280;
+  // Ground — sub-tiled cobblestone. Each 80×80 world cell picks a random
+  // sub-tile from the 3×3 variant pack, seeded by cell position so the
+  // layout is stable frame-to-frame but reads as authored variety instead
+  // of a repeating block.
+  const subtiles = ensureCobbleSubtiles();
+  if (subtiles && subtiles.length === 9) {
+    const tileW = 96, tileH = 96;
+    const groundTop = 288;
     for (let y = groundTop; y < 672; y += tileH) {
       for (let x = 0; x < 960; x += tileW) {
-        ctx.drawImage(cobble, x, y, tileW, tileH);
+        const i = cellHash((x / tileW) | 0, (y / tileH) | 0, 9);
+        ctx.drawImage(subtiles[i], x, y, tileW, tileH);
       }
     }
-    // Soft darkening vignette at the ground edges so the cobblestone doesn't
-    // abruptly stop at the room boundary. Feathered horizon line too.
-    const hz = ctx.createLinearGradient(0, 270, 0, 340);
-    hz.addColorStop(0, 'rgba(24, 16, 28, 0.95)');
-    hz.addColorStop(1, 'rgba(24, 16, 28, 0)');
+    // Feathered horizon line — the cobblestone blends into the sky's warm
+    // amber band instead of a hard edge.
+    const hz = ctx.createLinearGradient(0, 278, 0, 340);
+    hz.addColorStop(0, 'rgba(30, 18, 32, 0.85)');
+    hz.addColorStop(1, 'rgba(30, 18, 32, 0)');
     ctx.fillStyle = hz;
-    ctx.fillRect(0, 270, 960, 70);
+    ctx.fillRect(0, 278, 960, 62);
   }
 
   // Buildings — pixel-art from the env pack. Positioned so their FEET sit
   // on the painted horizon line (~y=460) and they tower upward into the
-  // sky band. The ruined tower sits back-center + acts as the descent
-  // portal's visual anchor (interact logic lives in drawHamletEntities).
+  // sky band.
   const forge = images.hamlet_env_0;
   if (forge) {
     const bw = 230, bh = 260;
-    ctx.drawImage(forge, Math.round(90 - bw / 2 + 115), Math.round(480 - bh), bw, bh);
-    // Position: center at x=205, feet at y=480
+    ctx.drawImage(forge, Math.round(205 - bw / 2), Math.round(480 - bh), bw, bh);
   }
   const dome = images.hamlet_env_1;
   if (dome) {
     const bw = 220, bh = 240;
     ctx.drawImage(dome, Math.round(755 - bw / 2), Math.round(480 - bh), bw, bh);
-    // Position: center at x=755, feet at y=480
-  }
-  // Secondary ruined tower far-right as a background silhouette. Optional
-  // detail — creates more depth and uses the spare env pack cell.
-  const towerBg = images.hamlet_env_3;
-  if (towerBg) {
-    const bw = 140, bh = 200;
-    ctx.drawImage(towerBg, Math.round(440 - bw / 2) - 220, Math.round(470 - bh), bw, bh);
   }
 }
 
@@ -224,6 +249,21 @@ function drawFirepit(ctx, e, now) {
     const drawH = 96;
     const drawW = spr.width * (drawH / spr.height);
     ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 8), drawW, drawH);
+  }
+
+  // Floating embers drifting up from the flame — ambient life. 6 embers
+  // cycle through a 4s loop; deterministic per ember index so they don't
+  // reseed every frame but still spread the visual.
+  for (let i = 0; i < 7; i++) {
+    const phase = ((now + i * 0.57) % 4) / 4;    // 0..1 over 4s per ember
+    const emberY = e.y - 30 - phase * 90;        // rise 90px over lifetime
+    const jx = Math.sin(phase * Math.PI * 3 + i * 1.3) * 12;
+    const emberX = e.x + jx;
+    const alpha = Math.max(0, 0.8 * (1 - phase));
+    const r = phase < 0.4 ? 2 : 1;
+    const tint = phase < 0.5 ? '255, 200, 90' : '255, 130, 60';
+    ctx.fillStyle = `rgba(${tint}, ${alpha.toFixed(3)})`;
+    ctx.fillRect((emberX | 0) - r, (emberY | 0) - r, r * 2, r * 2);
   }
 }
 
