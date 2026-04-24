@@ -30,11 +30,9 @@
 
 import {
   MAX_FLOORS,
-  FLOOR_ENEMY_MULS,
-  makeCombatRoom, makeEventRoom, makeAltarRoom, makeTroveRoom, makeChallengeRoom,
+  makeCombatRoom, makeEventRoom,
   makeBossSpawns,
 } from './floor.js';
-import { ROOM_W, ROOM_H } from './room.js';
 
 // Elite chance per floor (mirrored from floor.js for now — can import later
 // if we decide to expose it). Floor 1 small, ramps up.

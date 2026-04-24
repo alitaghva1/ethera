@@ -8,7 +8,7 @@ import { shakeCamera, pulseZoom } from './camera.js';
 import { damageHero, hero } from './hero.js';
 import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
-import { stats } from './stats.js';
+import { stats } from './stats';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
 import { triggerScreenFlash } from './fx.js';
 
@@ -1056,7 +1056,7 @@ function updateMelee(e, dt) {
   const primaryDx = nx * e.speed * dt + sepX * 40 * dt;
   const primaryDy = ny * e.speed * dt + sepY * 40 * dt;
   const prevX = e.x, prevY = e.y;
-  const moved = tryMove(e, primaryDx, primaryDy);
+  tryMove(e, primaryDx, primaryDy);
   // Obstacle-detour: if primary move was blocked (didn't make meaningful progress),
   // try sliding perpendicular to the goal direction. This steers around pillars.
   const moveDelta = Math.hypot(e.x - prevX, e.y - prevY);
@@ -1290,7 +1290,6 @@ function updatePriest(e, dt) {
       e._swingHit = true;
       const target = e._healTarget;
       if (target && !target.dead && target.hp < target.maxHp) {
-        const before = target.hp;
         target.hp = Math.min(target.maxHp, target.hp + e.def.healAmount);
         // Healed-flash on target (reuse hit flash slot)
         target.hitFlash = 0.14;

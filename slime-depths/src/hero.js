@@ -6,7 +6,7 @@ import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tr
 import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
 import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
-import { stats } from './stats.js';
+import { stats } from './stats';
 import { WEAPONS } from './weapons.js';
 import {
   spawnLightningArc, scheduleEchoHit, registerComboHit,
@@ -471,7 +471,9 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.dodgeDirX = dx / m;
       hero.dodgeDirY = dy / m;
       hero.dodgeCooldown = DODGE_COOLDOWN * hero.dodgeCooldownMul;
-      hero.iframes = DODGE_DUR + 0.05;
+      // Never shorten a longer invuln window already in-flight (post-hurt stagger,
+      // Aegis Pulse, etc.) — take the max so dodging can't strip safety frames.
+      hero.iframes = Math.max(hero.iframes || 0, DODGE_DUR + 0.05);
       // SYSTEMS PASS — NIMBLE STEP now cleanses slow + poison on dodge start.
       if (hero.dodgeCleanses) {
         hero.slowTime = 0;

@@ -7,6 +7,13 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "build:game": "npm run build --prefix ../slime-depths",
+    "prebuild:win": "npm run build:game",
+    "prebuild:mac": "npm run build:game",
+    "prebuild:linux": "npm run build:game",
+    "prepublish:win": "npm run build:game",
+    "prepublish:mac": "npm run build:game",
+    "prepublish:linux": "npm run build:game",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
@@ -30,9 +37,9 @@
     ],
     "extraResources": [
       {
-        "from": "../ethera",
+        "from": "../slime-depths/dist",
         "to": "game",
-        "filter": ["**/*", "!.claude", "!.claude/**", "!.git", "!.git/**", "!node_modules", "!node_modules/**"]
+        "filter": ["**/*"]
       }
     ],
     "win": {

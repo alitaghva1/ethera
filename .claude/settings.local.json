@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git -C \"C:/Users/14164/Documents/Claude/Projects/Project - Ethera/ethera/.claude/worktrees/xenodochial-lehmann/\" status --short)"
+      "Bash(git -C \"C:/Users/14164/Documents/Claude/Projects/Project - Ethera/ethera/.claude/worktrees/xenodochial-lehmann/\" status --short)",
+      "Bash(git fetch *)",
+      "Bash(gh pr *)"
     ]
   }
 }

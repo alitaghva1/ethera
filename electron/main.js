@@ -1,18 +1,33 @@
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 
-// In production, the game lives in extraResources/game.
-// In development, we load directly from ../ethera.
+// Game location:
+// - In development, load from the Vite dev server at localhost:5173.
+//   Start it with `npm run dev` in ../slime-depths (or VITE_DEV_URL override).
+//   This gives us HMR + devtools for free. If Vite isn't running, the window
+//   will show a connection error — start Vite first.
+// - In production (packaged), load the built HTML from extraResources/game.
+//   electron-builder's `build.extraResources` in package.json copies
+//   ../slime-depths/dist into the packaged app's resources at "game/".
+//   Run `npm run build:win` (or :mac / :linux) — the prebuild script will
+//   rebuild slime-depths first automatically.
 const isDev = !app.isPackaged;
-const gamePath = isDev
-  ? path.join(__dirname, '..', 'ethera', 'index.html')
-  : path.join(process.resourcesPath, 'game', 'index.html');
+const DEV_URL = process.env.VITE_DEV_URL || 'http://localhost:5173';
+const prodIndexPath = path.join(process.resourcesPath, 'game', 'index.html');
 
 // Save files go in the user's AppData (persists across updates/reinstalls)
 const savePath = path.join(app.getPath('userData'), 'saves');
 
 // IPC: let the preload script request the save path
 ipcMain.handle('get-save-path', () => savePath);
+
+// IPC: synchronous save-path — lets preload.js bootstrap its KV store
+// before the renderer begins making localStorage-style reads, without
+// needing to make every game-side read/write async. The value is static
+// (set at app start), so a blocking sync IPC is safe here.
+ipcMain.on('get-save-path-sync', (event) => {
+  event.returnValue = savePath;
+});
 
 // IPC: install update when player clicks "restart"
 ipcMain.on('install-update', () => {
@@ -69,7 +84,12 @@ function createWindow() {
     width: Math.min(1280, width),
     height: Math.min(960, height),
     title: 'Ethera - The Awakening',
-    icon: path.join(__dirname, '..', 'ethera', 'assets', 'icon.png'),
+    // Icon source is the electron/build/ folder (used by electron-builder for
+    // the installer). No per-platform inline icon override here — Windows
+    // picks up .ico from the installer, macOS from Info.plist, Linux from
+    // the AppImage metadata. Leaving this line commented as a marker for
+    // where a runtime-override icon path would go if ever needed.
+    // icon: path.join(__dirname, 'build', 'icon.png'),
     backgroundColor: '#000000',
     autoHideMenuBar: true,
     webPreferences: {
@@ -79,7 +99,11 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(gamePath);
+  if (isDev) {
+    mainWindow.loadURL(DEV_URL);
+  } else {
+    mainWindow.loadFile(prodIndexPath);
+  }
 
   // Open DevTools in dev mode only
   if (isDev) {

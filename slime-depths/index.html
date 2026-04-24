@@ -5,6 +5,16 @@
 <!-- Release-prep pass: mobile viewport + iOS safe-area + prevent double-tap zoom on the canvas. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0a0810">
+<!-- Declare that this page is already dark-themed and handles its own palette.
+     Without this, some Chrome builds (esp. Windows 11 24H2 with "Auto Dark Mode
+     for Web Contents" enabled) will apply a force-dark transform on top of the
+     existing canvas art, which crushes mid-tones on our full-frame painted boss
+     intros. This meta causes Chrome to skip that pass. -->
+<meta name="color-scheme" content="dark">
+<!-- Dark Reader & similar browser extensions honor this lock and skip the page
+     entirely. Our page is already styled for dark and Dark Reader's filter
+     pass inverts/darkens our boss-intro JPGs. -->
+<meta name="darkreader-lock">
 <!-- Inline SVG favicon — a gold diamond (matching the START node glyph)
      so the tab icon fits the game's manuscript/gold aesthetic, and no
      extra HTTP request or 404 for favicon.ico. -->

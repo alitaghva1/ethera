@@ -24,10 +24,30 @@ pool, no Ember Tyrant / Hermit / Oracle content) and had to be redone.
 
 **Rule**: if in doubt, switch to the most-recent-open-PR's branch OR ask.
 
-## Session summary (most recent, 2026-04-23/24)
+## Session summary (most recent, 2026-04-24 evening)
 
-PR #3 merged + 11 follow-up commits shipped directly to main. Current HEAD
-is `c9ec21a`. Major changes since PR #3:
+Boss-intro darkness bug — finally resolved. Root-cause diagnosis:
+prior fixes all tried to salvage a multi-layer composite (pixel-art
+portrait on transparent PNG + zone-backdrop + veil + post-FX). Each
+layer was a fresh surface for GPU color management / HDR tone-mapping
+to dim. Portraits themselves were 20–40% mean luminance with magenta-
+flagged transparent corners that bilinear-scaled into dark halos.
+
+Fix (commit `c08c0f1`): 6 dedicated full-frame boss-intro scenes
+(Nano Banana, 1376×768, in `slime-depths/assets/backdrops/boss_intro_
+*.jpg`) with the boss embedded in their thematic environment and the
+lower third pre-shadowed for typography. Intro renders the scene
+full-bleed + a lower-third darken gradient + gold/cream typography.
+No compositing left to sabotage. Intro code ~40% shorter.
+
+Playtest confirmed on the user's display (the one that crushed the old
+composite to black): the new scenes render at correct brightness with
+clean typography.
+
+---
+
+PR #3 merged + 11 follow-up commits shipped directly to main. Previous
+HEAD was `c9ec21a`. Major changes since PR #3:
 
 - **Sprint 1 content**: mythic 4th rarity tier (Eye of Ether, Cataclysm at
   6% per pick on floor 4), floor-clear gold cascade, projectile impact
@@ -55,17 +75,16 @@ is `c9ec21a`. Major changes since PR #3:
 
 Unresolved / needs playtest on non-dev machines:
 
-- Boss intro darkness STILL REPORTED DARK by primary playtester after
-  all fixes above. Cannot reproduce on dev preview (Chromium) — pixel
-  samples show correct brown Grudnok tones. Likely environment-specific
-  (GPU driver / display / cache). Diagnostic hook `__dumpIntroPixels()`
-  was offered to user for telemetry; not yet run. If recurring,
-  consider: re-encoding portrait PNGs with baked-in brightness, or
-  adding an in-game "intro brightness" setting.
-- Preview MCP tool spawns (slime-depths-pr3, slime-depths-main-verify)
-  have been unstable in this session — hung python processes on ports
-  5174/5175. Workaround: `python slime-depths/serve.py 5173` via
-  plain Bash `run_in_background` works reliably.
+- ~~Boss intro darkness~~ — RESOLVED by commit `c08c0f1` via dedicated
+  full-frame boss-intro scenes. See session summary above.
+- Preview MCP tool spawns (slime-depths-pr3, slime-depths-main-verify,
+  plus any MCP-managed preview instance) have been unstable — hung
+  python processes on ports 5174–5177 and intermittent
+  "Unable to connect" errors. Workaround that reliably works:
+  `python slime-depths/serve.py <port>` via plain Bash
+  `run_in_background` on a fresh port (5176/5177/etc.). The
+  `.claude/launch.json` has an extra `slime-depths-5176` config for
+  that use case.
 
 ## Debug hooks (available at runtime from devtools console)
 
@@ -78,6 +97,10 @@ Unresolved / needs playtest on non-dev machines:
 - `window.__jumpToBoss()` — real boss-room entry via graph + loadRoom.
   Triggers the actual `data.kind === 'boss'` branch (portrait + FX +
   enemies spawn). Use this to verify the boss cinematic in-context.
+- `window.__clearIntros()` — zeros all active intro timers
+  (`bossIntroTime`, `floorCardTime`, `phaseIntroTime`) so
+  `__testBossIntro` / `__jumpToBoss` render cleanly without the
+  floor card overlaying. `__dbg()` now includes those timer values.
 
 ## Where the code lives
 
@@ -87,17 +110,107 @@ Unresolved / needs playtest on non-dev machines:
 
 ## Dev server
 
+**Preferred (Vite):**
+
 ```bash
-python slime-depths/serve.py 5173
+cd slime-depths && npm install        # first time only
+cd slime-depths && npm run dev        # port 5173, HMR enabled
 ```
 
-The `serve.py` is a no-cache `http.server` subclass — module edits reload
-without cache-bust tags. Do NOT revert to plain `python -m http.server` or
-the cache-bust sigils will creep back in.
+Vite walks the import graph from `src/main.js` (referenced by `index.html`)
+and serves modules with on-the-fly transforms. Assets in `public/assets/`
+are served verbatim at `/assets/...` — the same URLs the loader uses in
+production.
+
+**Production build:**
+
+```bash
+cd slime-depths && npm run build      # emits dist/ (single bundled JS + copied public/)
+```
+
+**Fallback (legacy Python server):**
+
+```bash
+python slime-depths/serve.py 5173     # ThreadingHTTPServer with WinError catch
+```
+
+`serve.py` is kept around as a dependency-free fallback — it also still
+serves the dev tree. It does NOT serve the production `dist/` correctly
+because the built `index.html` references bundled JS. Use `npm run preview`
+(Vite's production preview server) if you need to smoke-test the build.
+Do NOT run plain `python -m http.server`; it lacks the no-cache headers.
+
+## Quality scripts (slime-depths/)
+
+```bash
+npm run lint            # ESLint — 0 errors required, warnings allowed
+npm run lint:fix        # auto-fix what can be fixed safely
+npm run format          # Prettier — writes to files (opt-in globs only)
+npm run format:check    # Prettier — read-only; CI uses this
+npm run typecheck       # tsc --noEmit; checkJs is OFF so .js files don't typecheck
+```
+
+Configs:
+- `eslint.config.js` — flat config. Permissive (warnings not errors on
+  style issues, no-undef IS enforced — that's how the `clearFusions`
+  import bug got caught during initial rollout).
+- `.prettierrc.json` — 100-col, single-quote, 2-space, trailing-comma es5.
+  `src/` is in `.prettierignore` to avoid a mass-reformat that would
+  trash git blame. When you touch a file, format it; retire from the
+  ignore list as you go.
+- `tsconfig.json` — `allowJs: true` + `checkJs: false`. Gradual migration
+  posture: existing .js compiles without typecheck nagging; new .ts
+  files get strict mode from day 1.
+
+CI at `.github/workflows/ci.yml` runs lint + format:check + typecheck +
+build on every PR, plus `npm ci` on `electron/` to catch dependency drift.
+
+## TypeScript migration status
+
+Three files are `.ts` and strict-typed (settings, stats, records).
+Everything else is `.js` compiled under `allowJs + checkJs: false` so JS
+code still works unchanged. The migration is gradual on purpose — one
+file at a time, small + stable ones first.
+
+When converting a file:
+1. Write `src/<name>.ts` with types (use the settings/stats/records files
+   as templates — interface for shape, return-type annotations, type-only
+   imports where useful)
+2. `git rm src/<name>.js`
+3. Update every consumer: change `from './<name>.js'` to `from './<name>'`
+   (extensionless — Vite + tsconfig bundler resolution handles both dev
+   server and Rollup build)
+4. `npm run lint && npm run typecheck && npm run build` — all green
+5. Smoke-test in browser (the game should load identically)
+
+Next candidates (all small + stable): `meta.js`, `music.js`, `storage.js`,
+`daily.js`, `profile.js`. After those, start on consumers — converting
+a consumer of an already-typed module is where the types start pulling
+their weight (compile errors for typo'd field names, etc.).
+
+## Electron (desktop/Steam target)
+
+- `electron/main.js` — dev loads Vite at `http://localhost:5173`;
+  production loads from the packaged `slime-depths/dist/` at
+  `extraResources/game/index.html`.
+- `electron/preload.js` exposes `window.ethera.*` — both the legacy
+  slot-based save API and a newer `kvGet/kvSet/kvRemove/kvKeys/kvClear`
+  IPC surface. **The KV surface is exposed but NOT YET called from
+  game code.** A future session should wire `storage.js` to dispatch
+  through it when `window.ethera` is present, so Steam packages write
+  to `userData/saves/storage.json` (Steam-Cloud-friendly) instead of
+  Chromium's sandboxed localStorage.
+- Build: `cd electron && npm run build:win` (prebuild hook auto-runs
+  `npm run build` in slime-depths/ first).
 
 ## Core files (in `slime-depths/src/`)
 
 - `main.js` — entry, game loop, boss-clear flow, HUD rendering glue
+  (~5950 lines; shrinking as concerns get extracted — see below)
+- `debug.js` — `window.__startRun/__dbg/__jumpToBoss/etc.` (dev-only,
+  tree-shaken from production builds via `import.meta.env.DEV`)
+- `menuEmbers.js` — ambient gold ember particle system for menu / hamlet
+- `floorCardRender.js` — the "FLOOR I — THE UNDERCROFT" intro card render
 - `hero.js` — hero state + abilities (dodge, dash-strike, weapons)
 - `relics.js` — relic registry, tier weights per floor, rollRelicOffer
 - `pedestals.js` — pickup points, tier-scaled visuals, pickup flash banner
@@ -140,7 +253,7 @@ Include `Co-Authored-By` line for Claude Code commits.
 
 ## Things NOT to do
 
-- Don't run `python -m http.server` on slime-depths — use `serve.py`
+- Don't run `python -m http.server` on slime-depths — use `npm run dev` (or `serve.py` fallback)
 - Don't delete other worktrees under `.claude/worktrees/`
 - Don't force-push to `main` — and NEVER to an open PR branch without asking
 - Don't add features to `ethera/` (the paused ARPG) unless explicitly asked

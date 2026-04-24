@@ -1,0 +1,75 @@
+name: CI
+
+# Runs on every push to main and every PR. Keeps main green by catching:
+# - Lint errors (undefined variables, unreachable code, etc.)
+# - Prettier formatting drift on files we've opted in to format-checking
+# - TypeScript errors (as files migrate from .js to .ts)
+# - Vite build breakage
+# - Electron project integrity (its deps install cleanly)
+#
+# Not yet covered: runtime tests, visual regression, e2e. Add when the
+# test harness is introduced.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  slime-depths:
+    name: slime-depths — lint + typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: slime-depths
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: slime-depths/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Format check (Prettier)
+        run: npm run format:check
+
+      - name: Type check (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Build (Vite)
+        run: npm run build
+
+      # Quick sanity that the built bundle actually exists + has content.
+      - name: Verify dist/ is non-empty
+        run: |
+          test -f dist/index.html
+          test -d dist/assets
+          [ -n "$(find dist/assets -maxdepth 2 -name '*.js')" ]
+          [ -n "$(find dist/assets/backdrops -name '*.jpg')" ]
+
+  electron:
+    name: electron — deps install sanity check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: electron
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci

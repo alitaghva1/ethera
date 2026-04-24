@@ -1,0 +1,11 @@
+dist/
+public/
+node_modules/
+*.min.js
+
+# Existing source is exempted from `prettier --check` initially to avoid
+# forcing a mass-reformat commit that would obliterate git blame. New
+# files (and files you touch) will be formatted via editor-on-save or
+# `npm run format`. As files are modernized / converted to TypeScript,
+# they can be removed from this list one by one.
+src/
