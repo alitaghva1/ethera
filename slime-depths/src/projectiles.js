@@ -2,7 +2,6 @@
 import { isWallAtWorld } from './room.js';
 import { damageHero, hero } from './hero.js';
 import { shakeCamera } from './camera.js';
-import { playSfx } from './sfx.js';
 import { sparkle, hitSpark, deathBurst } from './particles.js';
 import { synthPing, synthThud } from './synth.js';
 

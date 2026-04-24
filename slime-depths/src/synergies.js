@@ -2,11 +2,11 @@
 // Lives separately so relics.js stays just the registry and triggers.
 
 import { enemies } from './enemies.js';
-import { hero, damageHero } from './hero.js';
+import { hero } from './hero.js';
 import { shakeCamera } from './camera.js';
 import { playSfx } from './sfx.js';
 import { hitSpark, deathBurst } from './particles.js';
-import { spawnDamageNumber, triggerHitStop } from './fx.js';
+import { spawnDamageNumber } from './fx.js';
 
 // ======================================================================
 // CHAIN LIGHTNING — cyan zigzag arc between two enemies

@@ -6,7 +6,6 @@ import { mouse } from './input.js';
 import { activeFusions } from './fusions.js';
 import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
-import { getRelicGlyph } from './relics.js';
 import { drawRelicIcon } from './fx.js';
 
 function toRoman(n) {

@@ -190,7 +190,7 @@ function _stopAmbientNodes(fadeSec = 1.0) {
   const ctx = getCtx();
   if (!ctx) { _ambientNodes = null; return; }
   const now = ctx.currentTime;
-  const { oscillators, gains, noiseGain, fade } = _ambientNodes;
+  const { oscillators, fade } = _ambientNodes;
   // Ramp master down, then stop oscillators shortly after.
   if (fade) fade.gain.cancelScheduledValues(now);
   if (fade) fade.gain.setValueAtTime(fade.gain.value, now);

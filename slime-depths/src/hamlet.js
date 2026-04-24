@@ -26,7 +26,7 @@
 //   is met. Final stage's reward can grant a permanent boon.
 // ============================================================================
 
-import { meta, hasUnlock } from './meta.js';
+import { meta } from './meta.js';
 
 const STATE_KEY = 'ethera:hamlet_state:v1';
 

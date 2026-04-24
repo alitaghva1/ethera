@@ -4,7 +4,7 @@
 // module is auto-scoped to the active Volume (I/II/III). Any module
 // that reads localStorage at module-body time (currently none do —
 // all load funcs are lazy) would need to run after this.
-import { installProfilePrefix, getActiveProfileId, listProfiles, setActiveProfile, deleteProfile, profileLabel, PROFILE_IDS } from './profile.js';
+import { installProfilePrefix, getActiveProfileId, listProfiles, setActiveProfile, deleteProfile, profileLabel } from './profile.js';
 import { loadAll } from './loader.js';
 import { initInput, mouse, endFrameInput } from './input.js';
 import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js';
@@ -14,7 +14,7 @@ import {
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom, ROOM_W, ROOM_H,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
 } from './room.js';
-import { generateFloor, MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
+import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
 // of a flat 7-room array. `floor` becomes a dynamic array built up as the
 // player commits to path nodes, which keeps all existing floor[roomIndex]
@@ -30,7 +30,7 @@ let _mapPickInFlight = false;
 import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
-import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, setWeatherBiome, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
+import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
 import { drawHud, updateHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
 import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics } from './relics.js';
@@ -38,9 +38,9 @@ import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats
 import { meta, loadMeta, saveMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHeirloom, consumeHeirloom } from './meta.js';
 import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
 import { CURSES, ALL_CURSE_IDS, activeCurses, loadCurses, toggleCurse, isCursed, curseCount, curseEssenceMul } from './curses.js';
-import { ACHIEVEMENTS, ACH_IDS, unlockedAchievements, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked, unlockAch } from './achievements.js';
+import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked } from './achievements.js';
 import { records, loadRecords, updateRecords, incrementRunsStarted } from './records.js';
-import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, discoveredCount, clearFusions } from './fusions.js';
+import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards, seenTarot } from './tarot.js';
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings.js';
@@ -53,12 +53,12 @@ import {
 } from './pedestals.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, isPerfectDodge, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
 import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, hasUnreadDialogue, hamletGrowthStage, presentNpcs, totalNpcs, presentNpcCount } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, hasUnreadDialogue, totalNpcs, presentNpcCount } from './hamlet.js';
 
 // Side-effect: install the localStorage profile-prefix patch NOW, before any
 // other module-body code could touch storage. All load*() funcs in other
@@ -126,10 +126,10 @@ import { MENU_SCREEN_HTML } from './menuScreen.js';
 // Ascension — systems-roguelite long-tail tiers. Each cleared floor-4 run
 // unlocks the next tier's modifier + essence scaling.
 import {
-  loadAscension, ASCENSION_TIERS, activeAscension,
+  loadAscension, ASCENSION_TIERS,
   ascensionEssenceMul, ascensionModifiers,
   getAscensionTier, getUnlockedTier, setAscensionTier,
-  onRunCompletedAtTier, MAX_ASCENSION,
+  onRunCompletedAtTier,
 } from './ascension.js';
 loadAscension();
 // Expose modifiers to enemies.js / floor.js via a window hook rather than
@@ -3774,9 +3774,6 @@ function startRun() {
   loadRoom(0, 'south');
   running = true;
 }
-
-// Clear drawn tarot on return to menu — so the next run only has cards if tarot run
-function clearTarotOnRunEnd() { clearTarot(); }
 
 // Apply tarot pedestal modifiers — called after spawnRelicOffer/spawnAltarOffer
 function applyTarotPedestalMods() {

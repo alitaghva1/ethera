@@ -1,7 +1,7 @@
 // Relic pedestals — physical pickup points that spawn after combat clears.
 // Walking onto one grants the relic + removes the rest.
 import { images } from './loader.js';
-import { applyRelic, rollRelicOffer, relicTier, getRelicGlyph, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
+import { applyRelic, rollRelicOffer, relicTier, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
 // NOTE: relicTier imported above is what makes altar pedestals respect rarity
 // tiers — without tier on the pedestal, mythic drops at altars render as common.
 import { drawRelicIcon } from './fx.js';

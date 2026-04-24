@@ -6,7 +6,7 @@
 import { hero } from './hero.js';
 import { gold } from './gold.js';
 import { images } from './loader.js';
-import { applyRelic, rollRelicOffer, relicTier } from './relics.js';
+import { applyRelic, rollRelicOffer } from './relics.js';
 import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js';
 import { stats } from './stats.js';
