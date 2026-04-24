@@ -524,7 +524,9 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (isCharged) { hero.chargeReleased = true; showTip('first_charge'); }
       // Cooldown extended a touch on finisher & charged (they're bigger)
       const bigSwingMul = (isFinisher || isCharged) ? 1.35 : 1.0;
-      hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMul * soulreaverMul * bigSwingMul;
+      // STORM set-bonus — faster swings at 3/5 theme stacks
+      const stormAtkSpd = 1 - (hero.themeAtkSpdBonus || 0);
+      hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMul * soulreaverMul * bigSwingMul * stormAtkSpd;
       setState('attack');
       // FUSION: Sparrow's Dance — every 5th attack releases a wind ring that
       // damages all nearby enemies. The counter is tracked independently of
@@ -685,7 +687,9 @@ export function updateHero(dt, enemies, mouseWorld) {
     const t = hero.stateTime / w.swingDur;
     if (t > 0.25 && t < 0.75) {
       const reach = w.reach * hero.reachMul;
-      const damage = w.damage * hero.damageMul;
+      // FLAME set-bonus — +10%/+20% base damage at 3/5 theme stacks
+      const flameMul = 1 + (hero.themeDmgBonus || 0);
+      const damage = w.damage * hero.damageMul * flameMul;
       const arc = w.arc;
       // Torch interaction — swing near a torch spawns sparks once per swing
       if (!hero._torchSparkedThisSwing && roomTorches) {
@@ -798,7 +802,10 @@ export function updateHero(dt, enemies, mouseWorld) {
           // is "the precision weapon" — its identity between finishers is
           // that crits happen more often than with sword or hammer.
           const _daggerCritBonus = (w.id === 'dagger') ? 0.10 : 0;
-          const isCrit = isCounter || forcedCrit || ((hero.critChance + _daggerCritBonus) > 0 && Math.random() < (hero.critChance + _daggerCritBonus));
+          // SHADOW set-bonus — flat crit chance add at 3/5 theme stacks
+          const _shadowCritBonus = hero.themeCritBonus || 0;
+          const _totalCritChance = hero.critChance + _daggerCritBonus + _shadowCritBonus;
+          const isCrit = isCounter || forcedCrit || (_totalCritChance > 0 && Math.random() < _totalCritChance);
           const isExec = hero.executeThreshold > 0 && e.hp / e.maxHp < hero.executeThreshold;
           // SYSTEMS PASS — LONG REACH: hits landed past 80% of your reach
           // deal +40% damage. Rewards spacing + positioning. Folded in
@@ -806,7 +813,9 @@ export function updateHero(dt, enemies, mouseWorld) {
           const speartipBonus = (hero.speartip && dist > reach * 0.8) ? 1.4 : 1.0;
           if (isExec) showTip('first_execute');
           let finalDmg = damage * speartipBonus;
-          if (isCrit) finalDmg *= hero.critMul;
+          // SHADOW T2 — +0.5 crit multiplier bump (so a 2.0× crit becomes 2.5×)
+          const _effectiveCritMul = hero.critMul + (hero.themeCritMulBonus || 0);
+          if (isCrit) finalDmg *= _effectiveCritMul;
           if (isExec) finalDmg *= hero.executeMul;
           // FUSION: Final Verdict — crit on a below-threshold enemy = instakill.
           // Pumps damage to multiples of the target's max HP so nothing survives.
@@ -969,8 +978,10 @@ export function updateHero(dt, enemies, mouseWorld) {
           // FUSION: Blood Moon — scales up to 3× at 25% HP (desperate heal).
           // MEMORY: Hollow — the hollow shape cannot be filled; lifesteal
           // still fires its VFX/sounds (handled elsewhere) but grants no HP.
-          if (hero.lifesteal > 0 && hero.hp < hero.maxHp && !hero.memoryHollow) {
-            let lsRate = hero.lifesteal;
+          // BLOOD set-bonus — folds a flat lifesteal add on top of any relic lifesteal
+          const _effectiveLifesteal = (hero.lifesteal || 0) + (hero.themeLifestealBonus || 0);
+          if (_effectiveLifesteal > 0 && hero.hp < hero.maxHp && !hero.memoryHollow) {
+            let lsRate = _effectiveLifesteal;
             if (hero.fusionBloodMoon) {
               const missingFrac = 1 - (hero.hp / hero.maxHp);
               lsRate *= 1 + missingFrac * 3;          // 1× at full, 4× at 0 HP
@@ -1114,6 +1125,8 @@ export function damageHero(amount, fromX, fromY) {
   // FUSION: Stalwart — below 50% HP, resistance doubles (0.67x multiplier
   //          on takenMul so damageTakenMul 0.75 becomes 0.50 effective).
   let takenMul = hero.damageTakenMul || 1;
+  // VOW set-bonus — flat damage-taken reduction at 3/5 theme stacks
+  if (hero.themeDmgTakenReduction > 0) takenMul *= (1 - hero.themeDmgTakenReduction);
   if (hero.fusionMountainsHeart && hero.hp >= hero.maxHp) takenMul *= 0.85;
   if (hero.fusionStalwart && hero.hp < hero.maxHp * 0.5) takenMul *= 0.67;
   const taken = Math.max(1, Math.round(amount * takenMul));

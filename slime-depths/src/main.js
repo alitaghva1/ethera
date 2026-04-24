@@ -54,6 +54,7 @@ import {
 } from './pedestals.js';
 import { drawCounterPips, tickCounterPips } from './counterPips.js';
 import { drawPedestalTeasers } from './pedestalTeaser.js';
+import { drawThemeAura } from './themes.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
@@ -4785,6 +4786,9 @@ function render() {
   drawPedestals(ctx);
   drawPedestalTeasers(ctx);
   drawWanderer(ctx);
+  // Theme ascendance aura — renders below the hero so the sprite sits on
+  // the glow. Intentionally drawn before drawList so the hero paints on top.
+  drawThemeAura(ctx);
 
   const drawList = [];
   drawList.push({ y: hero.y, draw: (c) => drawHero(c) });

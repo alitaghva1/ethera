@@ -3,6 +3,7 @@
 // object when applied. Everything stacks additively so picks always matter.
 import { hero } from './hero.js';
 import { stats } from './stats';
+import { recomputeThemeTiers } from './themes.js';
 
 export const RELIC_DEFS = {
   serrated_edge: {
@@ -579,6 +580,7 @@ export function resetRelics() {
   equipped.length = 0;
   clearFusions();
   hero.relicCount = 0;
+  recomputeThemeTiers(equipped);   // zeroes all theme bonus fields
 }
 
 // Enforce any memory-imposed max-HP cap AFTER a relic is applied. Called
@@ -766,4 +768,7 @@ export function applyRelic(id) {
       for (const f of formed) window.__onFusionFormed(f);
     }
   } catch (e) {}
+  // Theme set-bonus tiers — recompute AFTER fusion check so fusion-granted
+  // flags don't get overwritten (fusions don't set theme bonus fields).
+  recomputeThemeTiers(equipped);
 }

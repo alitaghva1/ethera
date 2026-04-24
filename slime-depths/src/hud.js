@@ -7,6 +7,7 @@ import { activeFusions } from './fusions.js';
 import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { drawRelicIcon } from './fx.js';
+import { THEMES, getThemeCounts, getThemeTier, TIER_THRESHOLDS } from './themes.js';
 
 function toRoman(n) {
   return n === 1 ? 'I' : n === 2 ? 'II' : n === 3 ? 'III' : n === 4 ? 'IV' : n === 5 ? 'V' : String(n);
@@ -556,6 +557,90 @@ export function drawHud(ctx, w, h, progress = {}) {
       ctx.fillText(c.roman + ' ' + c.name, cx + tcW / 2, tcY + tcH / 2);
     }
     ctx.restore();
+  }
+
+  // THEMES row — shows set-bonus progress across the 5 themes. Chips light
+  // up when a theme has ≥1 owned relic; glow at resonance (3), double-glow
+  // at ascendance (5). Sits above the fusion row + relic strip.
+  if (progress.relics && progress.relics.length > 0) {
+    const themeCounts = getThemeCounts(progress.relics);
+    const visibleThemes = Object.values(THEMES).filter(t => themeCounts[t.id] > 0);
+    if (visibleThemes.length > 0) {
+      const chipW = 52, chipH = 22, chipGap = 4;
+      const themesY = h - chipH - 110;
+      const themesLabelY = themesY - 14;
+      ctx.save();
+      ctx.fillStyle = 'rgba(180, 200, 220, 0.55)';
+      ctx.font = 'bold 9px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('◆ THEMES', 18, themesLabelY);
+      const now = performance.now() / 1000;
+      for (let i = 0; i < visibleThemes.length; i++) {
+        const t = visibleThemes[i];
+        const count = themeCounts[t.id];
+        const tier = getThemeTier(count);
+        const cx = 18 + i * (chipW + chipGap);
+        const cy = themesY;
+        // Backdrop dims with tier
+        const bgA = tier >= 2 ? 0.9 : tier >= 1 ? 0.8 : 0.65;
+        ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
+        ctx.fillRect(cx, cy, chipW, chipH);
+        // Tier glow halo behind chip (ascendance pulses stronger)
+        if (tier >= 1) {
+          const pulse = tier >= 2 ? 0.7 + 0.3 * Math.sin(now * 2.2 + i * 0.6) : 0.6 + 0.2 * Math.sin(now * 1.6 + i * 0.4);
+          const halo = ctx.createRadialGradient(cx + chipW/2, cy + chipH/2, 4, cx + chipW/2, cy + chipH/2, chipW * 0.7);
+          const hex = t.color.replace('#', '');
+          const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+          const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+          const alpha = (tier >= 2 ? 0.5 : 0.3) * pulse;
+          halo.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+          halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
+          ctx.fillStyle = halo;
+          ctx.fillRect(cx - 8, cy - 8, chipW + 16, chipH + 16);
+        }
+        // Border — brighter + thicker at higher tiers
+        ctx.strokeStyle = tier >= 2 ? t.tint : tier >= 1 ? t.color : 'rgba(120, 130, 150, 0.5)';
+        ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.3 : 1;
+        ctx.strokeRect(cx + 0.5, cy + 0.5, chipW - 1, chipH - 1);
+        // Theme name
+        ctx.fillStyle = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.75)';
+        ctx.font = 'bold 9px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(t.name.toUpperCase(), cx + 5, cy + 4);
+        // Count + tier glyphs
+        ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.7)';
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        const glyph = tier >= 2 ? '\u2605\u2605' : tier >= 1 ? '\u2605' : '';
+        const countLabel = `${count}/${TIER_THRESHOLDS.ascendance} ${glyph}`;
+        ctx.fillText(countLabel, cx + 5, cy + 12);
+        // Hover tooltip — name + blurb + current buff text
+        if (mouse.x >= cx && mouse.x <= cx + chipW && mouse.y >= cy && mouse.y <= cy + chipH) {
+          const tipW = 260, tipH = 74;
+          const tipX = Math.max(10, Math.min(w - tipW - 10, cx + chipW/2 - tipW/2));
+          const tipY = cy - tipH - 6;
+          ctx.fillStyle = 'rgba(14, 20, 30, 0.95)';
+          ctx.fillRect(tipX, tipY, tipW, tipH);
+          ctx.strokeStyle = t.tint;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
+          ctx.fillStyle = t.tint;
+          ctx.font = 'bold 12px Georgia, serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(t.name + '  (' + count + '/' + TIER_THRESHOLDS.ascendance + ')', tipX + 10, tipY + 8);
+          ctx.fillStyle = '#d8e4f0';
+          ctx.font = 'italic 10px Georgia, serif';
+          ctx.fillText(t.blurb, tipX + 10, tipY + 25);
+          ctx.fillStyle = tier >= 1 ? '#fff2e0' : 'rgba(200, 200, 210, 0.6)';
+          ctx.font = 'bold 10px system-ui, sans-serif';
+          const tierLabel = tier >= 2 ? '★★ ASCENDANCE active' : tier >= 1 ? '★ RESONANCE active' : `${TIER_THRESHOLDS.resonance - count} more → Resonance`;
+          ctx.fillText(tierLabel, tipX + 10, tipY + 54);
+        }
+      }
+      ctx.restore();
+    }
   }
 
   // Active FUSIONS row — sits above the relic strip, rendered as diamond chips
