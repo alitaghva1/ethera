@@ -44,21 +44,29 @@ const SHRINE_POS = { x: 130, y: 580 };
 // Firepit — center-front, between NPC row and hero spawn. Decorative only.
 const FIREPIT_POS = { x: 480, y: 600 };
 
-// NPC world positions — behind the firepit, spread across the cobblestone
-// in two clusters (forge side + dome side). spriteIdx maps to the
-// hamlet_npc 4×2 sheet (placeholder chibi sprites until user ships proper
-// pixel-art NPCs). We skip idx 3 and 7 (Nano Banana hallucinated extras).
-const NPC_GROUND_Y = 550;
+// NPC world positions — staggered in a HANDCRAFTED diorama rather than a
+// flat row. Each NPC is placed at a spot that fits their role: keeper at
+// the firepit, smith near the forge, archivist near the dome, gravekeeper
+// in the left shadows, oracle in the right corner, wanderer far-right.
+// spriteIdx maps to the pixel-art hamlet_npcp sheet (3×2):
+//   0 keeper | 1 smith  | 2 archivist
+//   3 grave  | 4 oracle | 5 wanderer
 export const HAMLET_ENTITIES = [
   { kind: 'portal',                                 x: PORTAL_POS.x, y: PORTAL_POS.y, interactR: 70 },
   { kind: 'shrine',                                 x: SHRINE_POS.x, y: SHRINE_POS.y, interactR: 0  },
   { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0 },
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 4,   x: 200, y: NPC_GROUND_Y, interactR: 50 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 290, y: NPC_GROUND_Y, interactR: 50 },
-  { kind: 'npc', id: 'oracle',      spriteIdx: 5,   x: 380, y: NPC_GROUND_Y, interactR: 50 },
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 580, y: NPC_GROUND_Y, interactR: 50 },
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 670, y: NPC_GROUND_Y, interactR: 50 },
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 6,   x: 760, y: NPC_GROUND_Y, interactR: 50 },
+  // KEEPER by the firepit — classic Hades-hub staging.
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 540, y: 615, interactR: 50 },
+  // SMITH near the forge doorway.
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 280, y: 525, interactR: 50 },
+  // ARCHIVIST near the dome's steps on the right.
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 720, y: 555, interactR: 50 },
+  // GRAVEKEEPER in the left foreground shadows.
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 220, y: 620, interactR: 50 },
+  // ORACLE in the mid-right zone between portal + dome.
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 640, y: 600, interactR: 50 },
+  // WANDERER far-right corner, closest to the "exit" sight line.
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 830, y: 610, interactR: 50 },
 ];
 
 let _nearest = null;    // cached nearest interactable, updated each tick
@@ -156,18 +164,53 @@ export function drawHamletBackdrop(ctx) {
     ctx.fillRect(0, 278, 960, 62);
   }
 
-  // Buildings — pixel-art from the env pack. Positioned so their FEET sit
-  // on the painted horizon line (~y=460) and they tower upward into the
-  // sky band.
-  const forge = images.hamlet_env_0;
-  if (forge) {
-    const bw = 230, bh = 260;
-    ctx.drawImage(forge, Math.round(205 - bw / 2), Math.round(480 - bh), bw, bh);
+  // ── HANDCRAFTED DEPTH COMPOSITION ────────────────────────────────────
+  // Layers painted back-to-front. Each building sits on a slightly
+  // different horizon y to break the "three buildings in a row" feel and
+  // imply distance. Scales are also varied — closer buildings larger.
+
+  // LAYER A — FAR background silhouette. Second ruined tower dimmed + shrunk
+  // so it reads as "a distant tower just past the ridge" rather than
+  // competing with the foreground. Placed off-center left.
+  const towerBg = images.hamlet_env_3;
+  if (towerBg) {
+    const bw = 110, bh = 155;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(towerBg, Math.round(110 - bw / 2), Math.round(455 - bh), bw, bh);
+    ctx.restore();
   }
+
+  // LAYER B — mid-distance building cluster. The DOME sits slightly back
+  // and smaller (~90% forge scale), reinforcing right-side depth recession.
   const dome = images.hamlet_env_1;
   if (dome) {
-    const bw = 220, bh = 240;
-    ctx.drawImage(dome, Math.round(755 - bw / 2), Math.round(480 - bh), bw, bh);
+    const bw = 200, bh = 220;
+    ctx.drawImage(dome, Math.round(810 - bw / 2), Math.round(490 - bh), bw, bh);
+  }
+
+  // LAYER C — foreground-LEFT building. FORGE pulled forward and slightly
+  // larger — reads as "near me" at hero scale.
+  const forge = images.hamlet_env_0;
+  if (forge) {
+    const bw = 245, bh = 275;
+    ctx.drawImage(forge, Math.round(200 - bw / 2), Math.round(510 - bh), bw, bh);
+  }
+
+  // Secondary firepit (foreground-right) — drawn HERE as part of the
+  // backdrop so it sits behind NPCs. This is purely atmospheric; the main
+  // interactive firepit is in the entities layer (center-front).
+  const firepit2 = images.hamlet_env_6;
+  if (firepit2) {
+    const bw = 80, bh = 80;
+    const fx = 880, fy = 660;
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 350);
+    const halo = ctx.createRadialGradient(fx, fy - 10, 4, fx, fy - 10, 64);
+    halo.addColorStop(0, `rgba(255, 160, 80, ${(0.32 * pulse).toFixed(3)})`);
+    halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(fx - 64, fy - 10 - 64, 128, 128);
+    ctx.drawImage(firepit2, Math.round(fx - bw / 2), Math.round(fy - bh + 6), bw, bh);
   }
 }
 
@@ -299,15 +342,18 @@ function drawShrine(ctx, e) {
 }
 
 function drawNpc(ctx, e, now) {
-  const spr = images[`hamlet_npc_${e.spriteIdx}`];
+  // Prefer the new pixel-art NPC sprite (hamlet_npcp_*) — it matches the
+  // knight's pixel density. Fall back to the old chibi stand-in sheet
+  // (hamlet_npc_*) only if the pixel sheet didn't load.
+  const spr = images[`hamlet_npcp_${e.spriteIdx}`] || images[`hamlet_npc_${e.spriteIdx}`];
   if (!spr) return;
   // Gentle breathing bob so the NPC doesn't feel frozen. Phase offset by x
   // so multiple NPCs don't breathe in sync.
-  const bob = Math.sin(now * 1.5 + e.x * 0.01) * 1.5;
-  // Scaled down to ~65px tall so the NPC sits at hero-ish visual scale
-  // rather than towering over the knight. (Knight renders at 96px square
-  // but the actual knight sprite content is ~40px inside that.)
-  const drawH = 65;
+  const bob = Math.sin(now * 1.5 + e.x * 0.01) * 1.2;
+  // Pixel NPCs render at 80px tall — slightly larger than the old chibi
+  // placeholders (65px) because the new sprites have more silhouette detail
+  // to read at hero scale. Still smaller than the buildings.
+  const drawH = 80;
   const drawW = spr.width * (drawH / spr.height);
   // Ground shadow just below the NPC's feet — anchors them to cobblestone.
   drawGroundShadow(ctx, e.x, e.y + 2, 18, 0.32);

@@ -397,10 +397,13 @@ export async function loadAll(progressCb) {
     // firepit variants, and a pixel-art Watcher shrine. 4×2 = 8 cells:
     //   0 forge        | 1 dome         | 2 tower A      | 3 tower B
     //   4 cobble tile  | 5 firepit A    | 6 firepit B    | 7 shrine (pixel)
-    // NPCs will be a dedicated set when the user provides them — for now
-    // we build the ROOM (sky / buildings / ground / objects) and NPC
-    // rendering stays on the current placeholder chibi sprites.
     loadKeyedGrid('hamlet_env',         'assets/hamlet/hamlet_env_pack.jpg', 4, 2),
+
+    // HAMLET NPCs PIXEL — proper pixel-art NPCs matching the knight's
+    // aesthetic. 3×2 = 6 cells, row-major:
+    //   0 keeper    | 1 smith        | 2 archivist
+    //   3 grave    | 4 oracle        | 5 wanderer
+    loadKeyedGrid('hamlet_npcp',        'assets/hamlet/hamlet_npc_pixel.jpg', 3, 2),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),

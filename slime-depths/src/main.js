@@ -5956,6 +5956,12 @@ function drawMenuEmbers(ctx) {
 }
 
 function drawMenuEdgeTorches(ctx) {
+  // Guard: only the actual main-menu background should render these. The
+  // hamlet canvas was getting "spotlight beams" across its scene because
+  // something in the render pipeline calls this without checking that the
+  // player is on the menu. If we're inside the hamlet (or any live game
+  // room), skip. The menu path (tick early-return) explicitly expects these.
+  if (room && room.kind && room.kind !== 'menu') return;
   // Two torch columns flanking the content. Flicker via layered sine waves.
   const now = _menuFlickerT;
   const flickL = 0.78 + 0.22 * (Math.sin(now * 7.3) * 0.5 + Math.sin(now * 11.7) * 0.4 + Math.sin(now * 17.1) * 0.3) / 1.2;
