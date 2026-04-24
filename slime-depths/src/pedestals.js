@@ -121,25 +121,38 @@ export function spawnRelicOffer(floorLevel = 1) {
 }
 
 // Spawn 2 altar pedestals flanking the obelisk — each costs HP instead of free.
-// Curse: Starving — altar HP cost x2.
-export function spawnAltarOffer(hpCost = 3) {
+// HP cost SCALES WITH TIER so altars become real choices: a common altar
+// is a small bite, a legendary altar is a real gamble. Previously a flat 3
+// regardless of what was on offer, which made high-tier altars feel like
+// theft and common altars feel like nothing.
+//   common    → 2 HP
+//   rare      → 4 HP
+//   legendary → 7 HP
+//   mythic    → 9 HP (rare; mythic at altars is a near-miracle moment)
+// Curse: Starving — altar HP cost ×2 across the board.
+const ALTAR_TIER_COST = { common: 2, rare: 4, legendary: 7, mythic: 9 };
+function altarCostFor(tier) {
+  const base = ALTAR_TIER_COST[tier] || ALTAR_TIER_COST.common;
+  return isCursed('starving') ? base * 2 : base;
+}
+export function spawnAltarOffer(_legacyHpCost) {
   pedestals.length = 0;
   const offers = rollRelicOffer(2);
   if (offers.length === 0) return;
-  const effectiveCost = isCursed('starving') ? hpCost * 2 : hpCost;
   const cols = [7, 12];
   const row = 7;
   for (let i = 0; i < offers.length; i++) {
     const spot = findClearTile(cols[i], row);
+    const tier = relicTier(offers[i].id);
     pedestals.push({
       x: spot.x * TILE + TILE/2,
       y: spot.y * TILE + TILE/2,
       relic: offers[i],
-      tier: relicTier(offers[i].id),    // altar pedestals now carry tier for mythic visuals
+      tier,
       picked: false,
       bob: Math.random() * Math.PI * 2,
       glow: 0,
-      hpCost: effectiveCost,
+      hpCost: altarCostFor(tier),
     });
   }
 }
@@ -471,15 +484,34 @@ export function drawPedestals(ctx) {
       ctx.textBaseline = 'alphabetic';
     }
 
-    // HP cost label above icon for altar pedestals — tracks floating icon
+    // HP cost label above icon for altar pedestals — tracks floating icon.
+    // Scales with cost: legendary (7+ HP) gets bigger text + a pulsing red
+    // halo so the player FEELS the weight of the trade before walking onto it.
     if (isAltar) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(p.x - 18, floatY - 30, 36, 14);
-      ctx.fillStyle = '#ff7a8e';
-      ctx.font = 'bold 11px system-ui, sans-serif';
+      const isHigh = p.hpCost >= 7;
+      const isMid  = p.hpCost >= 4;
+      const labelW = isHigh ? 50 : isMid ? 42 : 36;
+      const labelH = isHigh ? 18 : 14;
+      const labelY = floatY - 30 - (isHigh ? 4 : 0);
+      // Warning halo for high-cost altars — pulses to draw the eye
+      if (isHigh) {
+        const pulse = 0.55 + 0.35 * Math.sin(now * 3.0 + p.bob);
+        const halo = ctx.createRadialGradient(p.x, labelY + labelH / 2, 4, p.x, labelY + labelH / 2, 38);
+        halo.addColorStop(0, `rgba(255, 80, 90, ${(0.45 * pulse).toFixed(3)})`);
+        halo.addColorStop(1, 'rgba(255, 80, 90, 0)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(p.x - 38, labelY - 10, 76, labelH + 20);
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.78)';
+      ctx.fillRect(p.x - labelW / 2, labelY, labelW, labelH);
+      ctx.strokeStyle = isHigh ? 'rgba(255, 100, 110, 0.85)' : 'rgba(255, 130, 140, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - labelW / 2 + 0.5, labelY + 0.5, labelW - 1, labelH - 1);
+      ctx.fillStyle = isHigh ? '#ff8a96' : '#ff7a8e';
+      ctx.font = `bold ${isHigh ? 13 : 11}px system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('-' + p.hpCost + ' HP', p.x, floatY - 23);
+      ctx.fillText('-' + p.hpCost + ' HP', p.x, labelY + labelH / 2 + 0.5);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
     }
