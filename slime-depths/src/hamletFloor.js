@@ -326,6 +326,28 @@ const WALL_FACE_PANELS = [
   // west_ruin south face deepening above.
   { col: 21, row: 12, w: 9, h: 3, capRow: 12 },
   { col: 20, row: 7,  w: 2, h: 4, capRow: 7  },
+  // ══════════════════════════════════════════════════════════════════════
+  // PLAZA ENCLOSURE — Iteration 8. The central plaza (cols 11-19 rows
+  // 9-14) flowed seamlessly into the surrounding corridor grass, which
+  // didn't read as a "courtyard." Demo plazas are enclosed by walls
+  // with specific access gateways. These 6 new panels add brick walls
+  // around all 4 plaza edges, with openings at:
+  //   - NORTH path to shrine (cols 14-16 row 8) — kept walkable
+  //   - WEST stair to west_ruin (col 10 row 11) — already passage
+  //   - EAST stair to east_workshop (col 20 row 11) — already passage
+  //   - SOUTH path to south_entrance (cols 14-16 row 15) — kept walkable
+  // ══════════════════════════════════════════════════════════════════════
+  // North wall — row 8 cols 11-13 + 17-19 (skip cols 14-16 path)
+  { col: 11, row: 8,  w: 3, h: 1, capRow: 8  },
+  { col: 17, row: 8,  w: 3, h: 1, capRow: 8  },
+  // West wall — col 10 rows 12-14 (rows 7-10 already wall_face from
+  // west_ruin east face panel; row 11 stays passage for stair top)
+  { col: 10, row: 12, w: 1, h: 3, capRow: 12 },
+  // East wall — col 20 rows 12-14 (mirror of west)
+  { col: 20, row: 12, w: 1, h: 3, capRow: 12 },
+  // South wall — row 15 cols 11-13 + 17-19 (skip cols 14-16 path)
+  { col: 11, row: 15, w: 3, h: 1, capRow: 15 },
+  { col: 17, row: 15, w: 3, h: 1, capRow: 15 },
   // ── OUTER SOUTH WALL BAND — Iteration 2 (T2b).
   // The demo has a thick brick wall band extending below the silhouette
   // at the south. Ours stopped at the silhouette edge (1-row walls
