@@ -24,7 +24,74 @@ pool, no Ember Tyrant / Hermit / Oracle content) and had to be redone.
 
 **Rule**: if in doubt, switch to the most-recent-open-PR's branch OR ask.
 
-## Session summary (most recent, 2026-04-24 overnight — strategy + relics pass)
+## Session summary (most recent, 2026-04-24 — PixelLab integration + mage hero)
+
+Branch `claude/musing-snyder-c13579`, **15 commits ahead of main**, NOT pushed
+yet. **Read `slime-depths/SESSIONS.md` first** — it's the handoff doc that
+tells you what state the work is in and which of the two pre-planned future
+sessions (hamlet rebuild / dungeon rebuild) you're picking up.
+
+### What landed in this session
+
+- **PixelLab API integration**: `@pixellab-code/pixellab@1.0.2` + `dotenv` + `sharp`
+  installed. API key in `slime-depths/.env` (gitignored). All scripts under
+  `slime-depths/scripts/pixellab/`.
+- **Mage hero replacing the knight**: full 8-directional sprites, 5 animation
+  states (idle/walk/attack/hurt/death), generated via PixelLab's UI Character
+  Creator — NOT the API. The API path was tried first; keyframe authoring via
+  `animate-with-skeleton` was finicky and animations were too subtle to read.
+  UI-driven workflow won. The mage replaces the knight in the `knight_*.png`
+  slot for now (proper class system is future work).
+- **Importers**: `scripts/pixellab/import-character.js` (class-agnostic — reads
+  a PixelLab Character Creator export ZIP/folder, outputs grid sheets at the
+  right SPR with feet bottom-aligned and direction rows remapped to our
+  north-first convention). `scripts/pixellab/import-props.js` (skeleton ready,
+  for the future hamlet rebuild).
+- **Sizing audit (commit `f3e1fe3`)**: background agent measured hero vs.
+  every enemy. Hero was 2-3× taller than every floor boss (74 px hero vs
+  22-36 px bosses). Root cause: mage fills 93% of its 128 cell, Tiny-RPG
+  enemies fill 11-23% of their 100 cells. Fix landed: `HERO_DRAW = 80 → 60`.
+  Boss `drawSize` bumps are queued for the dungeon session — exact target
+  values in `DUNGEON_PLAN.md`.
+- **Hamlet movement bug fix (`2d52cd7`)**: HAMLET_HERO_SPAWN.y was 640, which
+  put the hero inside the south wall row (row 13 = y 624-672). With
+  HERO_RADIUS=14, the upper-edge collision check fired from y-14=626 → still
+  in wall → all moves rejected. Spawn moved to y=602, walk-max to y=608.
+- **Importer's bottom-align fix (`33c5d51`)**: PixelLab exports have lots of
+  transparent padding (headroom for arms during cast). Naive resize made the
+  hero appear to FLOAT above its ground shadow. Importer now trims each
+  frame, applies a canonical scale derived from `rotations/south.png`, and
+  bottom-aligns the body in the cell with a 4px ground margin.
+
+### Two future sessions are pre-planned
+
+**Session A (Hamlet)**: replace procedural floor + procedural building shapes
+with PixelLab-authored pixel art. Read `slime-depths/scripts/pixellab/HAMLET_PLAN.md`.
+User decides Path A (Map Editor → single backdrop PNG) vs Path B (Wang
+tilesets + Sprite Fusion).
+
+**Session B (Dungeon)**: 3 priorities — boss drawSize bumps (5 min instant
+fix), room visual audit, then progressive PixelLab migration of the most
+visible enemies (slime/skeleton/wizard first). Read
+`slime-depths/scripts/pixellab/DUNGEON_PLAN.md`.
+
+Recommended order: **Session B first** (the boss-size fix is the most jarring
+combat readability issue and takes 5 minutes).
+
+### Critical project conventions to remember
+
+- **SPR = 128, HERO_DRAW = 60**. Don't change without re-running the sizing audit.
+- **Direction sheet rows**: N, NE, E, SE, S, SW, W, NW (north-first clockwise).
+  PixelLab UI uses south-first — the importer remaps.
+- **`hero.facing`** still exists and is set by aim direction; preserved for
+  slash VFX consumers, not used for rendering anymore (8-dir sprites handle
+  facing natively).
+- **Knight asset slot reused**: `public/assets/characters/knight_*.png` actually
+  contain the MAGE sprites. When proper class selection lands, run
+  `node scripts/pixellab/import-character.js --char mage --class mage` to
+  output `mage_*.png` alongside real `knight_*.png`.
+
+### Older session summary follows below (2026-04-24 overnight — strategy + relics pass)
 
 Branch `claude/musing-snyder-c13579`, 8 commits ahead of main. Two spec
 agents surveyed the strategy axis (boss phases, DAG branching, room
