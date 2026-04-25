@@ -257,6 +257,12 @@ const STONE_PATCHES = [
   // edge; with them it reads as descending onto a paved courtyard.
   { col: 8, row: 14, w: 3, h: 1 },
   { col: 20, row: 14, w: 2, h: 1 },
+  // Session Q additions: small paving patches in the south-of-plaza
+  // corridor (rows 15-16) so the corridor grass between plaza and
+  // south_entrance has visual variety — currently it's a uniform
+  // grass strip with just the central cobble path.
+  { col: 12, row: 16, w: 1, h: 1 },
+  { col: 18, row: 16, w: 1, h: 1 },
 ];
 
 // WALL FACE PANELS — explicit list of brick-body panels around elevated
@@ -739,10 +745,15 @@ const HAMLET_PROPS = [
   // Rock clusters (3×1, sx=256 sy=480) in the wider grass spans either
   // side of the shrine path. Positioned to NOT overlap the base-of-
   // brick-face tufts added in Session H at cols 13/17 row 7.
+  // West cluster sprite extends across cols 9-11 row 6 (all grass) —
+  // anchor at col 10 row 7 is wall_face after Session P, but only the
+  // sprite's top half renders in the row 6 grass. East cluster moved
+  // from (656, 224) → (608, 224) so its sprite no longer extends to
+  // col 21 row 6 (which is void).
   { sheet: 'cainos_props', sx: 8 * PT, sy: 15 * PT, sw: 3 * PT, sh: PT,
     x: 336, y: 224, scale: 1.0 },
   { sheet: 'cainos_props', sx: 8 * PT, sy: 15 * PT, sw: 3 * PT, sh: PT,
-    x: 656, y: 224, scale: 1.0 },
+    x: 608, y: 224, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
   // BUSHES along grass corridor edges (4 entries) — visual softness.
