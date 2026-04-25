@@ -631,22 +631,35 @@ const HAMLET_PROPS = [
     x: 304, y: 192, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
-  // TREES — strictly on grass corridor tiles, never on stone or in void.
-  // 6 trees distributed across the 3 main grass spans.
+  // FOLIAGE — bushes + rock clusters in grass corridors. NO TREES.
+  //
+  // Trees were removed entirely in Session J: the smallest tree sprite
+  // is 4 tiles tall (128px), and our grass corridors are too narrow for
+  // that height. Trees in the previous layout had foliage extending
+  // INTO elevated platforms or into void above the silhouette, reading
+  // as "cropped at the top." Bushes (1×1) and rock clusters (3×1) sit
+  // on the ground and don't extend upward — they fill the visual
+  // without overflowing.
   // ══════════════════════════════════════════════════════════════════════
 
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+  // Bushes scattered through the upper grass corridor (north of plaza,
+  // around the shrine doorway path).
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT,
     x: 368, y: 256, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 400, y: 224, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT,
     x: 592, y: 256, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 208, y: 448, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 848, y: 448, scale: 1.0 },
-  // (south-plaza trees at (400, 512) + (592, 512) removed — their
-  // 4-row-tall foliage overlapped the new west_ruin / east_workshop
-  // stair sprites at cols 8-11 / 18-21 rows 11-13. Replaced with
-  // base-of-brick-face grass tufts in the polish block below.)
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 624, y: 224, scale: 1.0 },
+
+  // Rock clusters (3×1, sx=256 sy=480) in the wider grass spans either
+  // side of the shrine path. Positioned to NOT overlap the base-of-
+  // brick-face tufts added in Session H at cols 13/17 row 7.
+  { sheet: 'cainos_props', sx: 8 * PT, sy: 15 * PT, sw: 3 * PT, sh: PT,
+    x: 336, y: 224, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 8 * PT, sy: 15 * PT, sw: 3 * PT, sh: PT,
+    x: 656, y: 224, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
   // BUSHES along grass corridor edges (4 entries) — visual softness.
@@ -802,28 +815,30 @@ export function drawHamletFloor(ctx) {
   }
 
   // ─── Pass 3: props (bottom-center anchored) with drop shadows ─────────
-  // Each prop gets a soft elliptical drop shadow rendered just before
-  // its sprite so the prop reads as sitting on the floor instead of
-  // floating. Shadow radius scales with sprite width — wide trees get
-  // bigger shadows than tiny pebbles. The TX Shadow / TX Shadow Plant
-  // sheets ship pre-authored blobs but matching them 1:1 to props is
-  // a lot of coord bookkeeping; an elliptical primitive looks nearly
-  // identical at our render resolution and works for every prop.
+  // Each FREE-STANDING prop gets a soft elliptical drop shadow so it
+  // reads as sitting on the floor. Architectural props (cainos_struct =
+  // stairs, archways, building facades) are SKIPPED — they're already
+  // floor-level structural elements, an elliptical shadow under them
+  // looks like a glitch. Tiny props (1-tile sprites: tufts, pebbles)
+  // also skip shadows — at 32px they're too small for a shadow to
+  // read cleanly, and the existing prop art already has its own
+  // contact shading.
   for (const p of HAMLET_PROPS) {
     const img = images[p.sheet];
     if (!img) continue;
     const w = p.sw * (p.scale || 1);
     const h = p.sh * (p.scale || 1);
-    // Drop shadow — flatter ellipse beneath the prop's foot.
-    const shadowRx = w * 0.42;
-    const shadowRy = Math.max(4, w * 0.14);
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y - 1, shadowRx, shadowRy, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    // The prop sprite.
+    const skipShadow = p.sheet === 'cainos_struct' || (p.sw <= PT && p.sh <= PT);
+    if (!skipShadow) {
+      const shadowRx = w * 0.42;
+      const shadowRy = Math.max(4, w * 0.13);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y - 1, shadowRx, shadowRy, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.drawImage(
       img,
       p.sx, p.sy, p.sw, p.sh,
