@@ -1229,43 +1229,12 @@ function drawBrokenBeam(ctx, cx, cy) {
 // the prayer-flag line stretches across the tower's upper half, and if we
 // drew it in the backdrop it'd get covered by the tower sprite. Called
 // from main.js after drawHamletEntities (inside the camera transform).
-export function drawHamletOverlay(ctx) {
-  const now = performance.now() / 1000;
-
-  // Prayer-flag garland strung ACROSS the plaza (from the plaza lantern
-  // post over to a notional post near the forge). Celebrates the hub's
-  // inhabited heart — not the ominous descent tower like the old version.
-  const flagColors = ['#e06060', '#f4c858', '#7fc898', '#5e90c8', '#c060a0', '#f4c858', '#e06060'];
-  const flagCount = 9;
-  const startX = 585, endX = 340;   // from plaza lantern to forge-side
-  const startY = 488, endY = 498;   // above plaza, below sky
-  // Rope
-  ctx.strokeStyle = 'rgba(22, 16, 14, 0.85)';
-  ctx.lineWidth = 1.3;
-  ctx.beginPath();
-  for (let i = 0; i <= flagCount; i++) {
-    const u = i / flagCount;
-    const x = startX + (endX - startX) * u;
-    const sag = Math.sin(u * Math.PI) * 14;
-    const y = startY + (endY - startY) * u + sag;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-  // Flags
-  for (let i = 0; i < flagCount; i++) {
-    const u = (i + 0.5) / flagCount;
-    const x = startX + (endX - startX) * u;
-    const sag = Math.sin(u * Math.PI) * 14;
-    const y = startY + (endY - startY) * u + sag;
-    const sway = Math.sin(now * 1.3 + i * 0.6) * 1.4;
-    const fx = ((x - 5) | 0) + sway;
-    const fy = (y | 0) + 1;
-    ctx.fillStyle = flagColors[i % flagColors.length];
-    ctx.fillRect(fx, fy, 10, 14);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-    ctx.fillRect(fx, fy + 11, 10, 3);
-  }
+export function drawHamletOverlay(_ctx) {
+  // ── HAMLET REBUILD: prayer-flag garland stripped (the rainbow bunting
+  // strung across the plaza was tied to the old painted lantern post
+  // and forge — neither exists anymore). When we add the Cainos lantern
+  // posts as actual props, we can re-string flags between them with the
+  // sprite sheet's flag tiles.
 }
 
 // Draw all hamlet entities in world space. Sorted by Y so NPCs that sit
@@ -1301,118 +1270,43 @@ function drawGroundShadow(ctx, x, y, radiusX, alpha = 0.38) {
 }
 
 function drawPortal(ctx, e, now) {
-  // The "portal" is visually the central ruined tower — walking up to its
-  // base + pressing E begins the descent. We prefer the pixel-art tower
-  // from the env pack; fall back to the old painted portal if unloaded.
-  const tower = images.hamlet_env_2;
-  const painted = images.descent_portal;
+  // ── HAMLET REBUILD: old painted-tower / env-pack portal stripped. ──
+  // The portal entity still exists for collision + interact (E to descend);
+  // the visual is now just a soft warm halo on the floor where the next
+  // pass will place a Cainos archway / portal prop.
   const pulse = 0.55 + 0.45 * Math.sin(now * 1.3);
-
-  // Warm halo at the tower's base — signals "this is the way forward."
-  const haloR = 140;
-  const halo = ctx.createRadialGradient(e.x, e.y + 4, 10, e.x, e.y + 4, haloR);
-  halo.addColorStop(0, `rgba(255, 180, 90, ${(0.34 * pulse).toFixed(3)})`);
+  const haloR = 60;
+  const halo = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, haloR);
+  halo.addColorStop(0, `rgba(255, 180, 90, ${(0.45 * pulse).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
-
-  drawGroundShadow(ctx, e.x, e.y + 6, 52);
-
-  if (tower) {
-    const drawH = 220;
-    const drawW = tower.width * (drawH / tower.height);
-    ctx.drawImage(tower, Math.round(e.x - drawW / 2), Math.round(e.y - drawH), drawW, drawH);
-  } else if (painted) {
-    const drawH = 160;
-    const drawW = painted.width * (drawH / painted.height);
-    ctx.drawImage(painted, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 6), drawW, drawH);
-  }
+  drawGroundShadow(ctx, e.x, e.y + 6, 32);
 }
 
 function drawFirepit(ctx, e, now) {
-  const spr = images.hamlet_env_5;
-  // Embers pulse — warm radial glow on the cobblestone.
+  // ── HAMLET REBUILD: old hand-drawn stone-ring firepit + flame sprite +
+  // ember particle system stripped. The fountain prop in hamletFloor.js
+  // sits at this same world position (480, 540) and serves as the visual
+  // centerpiece. The firepit ENTITY still exists for "rest at the fire"
+  // interaction logic; only the rendering changed.
+  // Tiny ambient warm glow remains so the plaza center has a focal point.
   const pulse = 0.55 + 0.45 * Math.sin(now * 1.8);
-  const haloR = 110;
+  const haloR = 50;
   const halo = ctx.createRadialGradient(e.x, e.y - 12, 4, e.x, e.y - 12, haloR);
-  halo.addColorStop(0, `rgba(255, 170, 90, ${(0.48 * pulse).toFixed(3)})`);
-  halo.addColorStop(0.55, `rgba(255, 130, 70, ${(0.18 * pulse).toFixed(3)})`);
+  halo.addColorStop(0, `rgba(255, 170, 90, ${(0.22 * pulse).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(255, 100, 60, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y - 12 - haloR, haloR * 2, haloR * 2);
-
-  // STONE RING — flat elliptical base that reads as "this is a built
-  // firepit, not a patch of fire". Dark ring with a lit lip on the side
-  // facing the viewer so it catches the flame glow.
-  ctx.save();
-  ctx.fillStyle = 'rgba(42, 32, 36, 0.96)';
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y + 8, 44, 14, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(80, 58, 52, 0.95)';
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y + 8, 38, 10, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Lit front lip
-  ctx.fillStyle = `rgba(255, 170, 90, ${(0.55 * pulse).toFixed(3)})`;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y + 14, 36, 4, 0, 0, Math.PI);
-  ctx.fill();
-  ctx.restore();
-
-  drawGroundShadow(ctx, e.x, e.y + 4, 34);
-
-  if (spr) {
-    const drawH = 96;
-    const drawW = spr.width * (drawH / spr.height);
-    ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 8), drawW, drawH);
-  }
-
-  // Floating embers drifting up from the flame — ambient life. 6 embers
-  // cycle through a 4s loop; deterministic per ember index so they don't
-  // reseed every frame but still spread the visual.
-  for (let i = 0; i < 7; i++) {
-    const phase = ((now + i * 0.57) % 4) / 4;    // 0..1 over 4s per ember
-    const emberY = e.y - 30 - phase * 90;        // rise 90px over lifetime
-    const jx = Math.sin(phase * Math.PI * 3 + i * 1.3) * 12;
-    const emberX = e.x + jx;
-    const alpha = Math.max(0, 0.8 * (1 - phase));
-    const r = phase < 0.4 ? 2 : 1;
-    const tint = phase < 0.5 ? '255, 200, 90' : '255, 130, 60';
-    ctx.fillStyle = `rgba(${tint}, ${alpha.toFixed(3)})`;
-    ctx.fillRect((emberX | 0) - r, (emberY | 0) - r, r * 2, r * 2);
-  }
 }
 
 function drawShrine(ctx, e) {
-  // Prefer the pixel-art shrine from the env pack (matches the rest of the
-  // pixel-art hamlet). Progression states (8-state grid) will return when we
-  // have pixel-art progression variants; for now it's a single static read.
-  const pix = images.hamlet_env_7;
-  if (pix) {
-    drawGroundShadow(ctx, e.x, e.y + 2, 26);
-    const drawH = 96;
-    const drawW = pix.width * (drawH / pix.height);
-    ctx.drawImage(pix, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 4), drawW, drawH);
-    return;
-  }
-  // Legacy fallback — painted 8-state grid if the pixel shrine isn't loaded.
-  const snap = watcherSnapshot();
-  const seenCount = Object.values(snap.seen || {}).filter(Boolean).length;
-  let stateIdx = 0;
-  if      (seenCount >= 8) stateIdx = 7;
-  else if (seenCount >= 7) stateIdx = 6;
-  else if (seenCount >= 6) stateIdx = 5;
-  else if (seenCount >= 5) stateIdx = 4;
-  else if (seenCount >= 4) stateIdx = 3;
-  else if (seenCount >= 3) stateIdx = 2;
-  else if (seenCount >= 1) stateIdx = 1;
-  const spr = images[`shrine_watcher_${stateIdx}`];
-  if (!spr) return;
-  drawGroundShadow(ctx, e.x, e.y + 2, 28);
-  const drawH = 78;
-  const drawW = spr.width * (drawH / spr.height);
-  ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + 4), drawW, drawH);
+  // ── HAMLET REBUILD: old painted shrine sprite (with the eye sigil) +
+  // 8-state progression grid stripped. Shrine entity still exists for
+  // collision; visual will be replaced with a Cainos statue prop in the
+  // next pass. Just a ground shadow placeholder so NPCs don't visually
+  // overlap an invisible obstacle.
+  drawGroundShadow(ctx, e.x, e.y + 2, 22);
 }
 
 function drawNpc(ctx, e, now) {

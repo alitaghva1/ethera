@@ -147,8 +147,12 @@ const PATH_TARGETS = [
   { col: 7,  row: 18 },    // SMITH (southwest)
   { col: 24, row: 18 },    // ARCHIVIST (southeast)
   { col: 27, row: 13 },    // WANDERER (east)
+  { col: 15, row: 19 },    // SOUTH ENTRANCE (where hero spawns)
 ];
-const PATH_HALF_WIDTH = 1;     // tiles each side of the cobble line
+// Wider paths read as actual roads instead of scattered cobbles. 2 tiles
+// each side = 5-tile-wide path total (was 3). Solid cobble all the way
+// across — no worn-edge variants in the path interior.
+const PATH_HALF_WIDTH = 2;
 
 // Decide what tile type should occupy (col, row).
 // Plaza (stone) > Path (cobble) > Grass (with sparse decoration).
@@ -162,13 +166,12 @@ function tileTypeAt(col, row) {
   }
   // COBBLE PATHS — straight lines from plaza center to each anchor.
   // Tile is on a path if it's within PATH_HALF_WIDTH of any path segment.
+  // The interior of the path uses SOLID cobble (full slabs); the very
+  // outermost ring uses worn cobble for a natural grass-edge transition.
   for (const target of PATH_TARGETS) {
-    if (onPathSegment(col, row, PLAZA_CENTER.col, PLAZA_CENTER.row, target.col, target.row, PATH_HALF_WIDTH)) {
-      // Tiles right at the path edge (1 tile away from the line center)
-      // get the worn variant for an organic edge transition.
-      const distFromCenter = pointToSegmentDist(col, row, PLAZA_CENTER.col, PLAZA_CENTER.row, target.col, target.row);
-      return distFromCenter > 0.7 ? 'cobble_worn' : 'cobble';
-    }
+    const dist = pointToSegmentDist(col, row, PLAZA_CENTER.col, PLAZA_CENTER.row, target.col, target.row);
+    if (dist <= PATH_HALF_WIDTH - 0.4) return 'cobble';
+    if (dist <= PATH_HALF_WIDTH + 0.5) return 'cobble_worn';
   }
   // GRASS with sparse decoration. Only ~6% of grass tiles get the
   // decorative variant so the floor stays calm.
@@ -270,6 +273,11 @@ const HAMLET_PROPS = [
 // Floor + walls are 32px tile blits. Props can be any size and are scaled
 // by their `scale` field (Cainos sprites are large enough that 1.0 = native).
 export function drawHamletFloor(ctx) {
+  // Pixel-art tiles need crisp nearest-neighbor scaling. The default
+  // canvas smoothing creates faint seams between tiles — disable it for
+  // the floor pass and restore on the way out.
+  const prevSmoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
   // ─── Pass 1 + 2: floor + walls in one sweep ────────────────────────────
   for (let row = 0; row < HAMLET_ROWS; row++) {
     for (let col = 0; col < HAMLET_COLS; col++) {
@@ -307,6 +315,7 @@ export function drawHamletFloor(ctx) {
       w, h,
     );
   }
+  ctx.imageSmoothingEnabled = prevSmoothing;
 }
 
 // Debug helper — exposes the layout as a printable grid for inspection.
