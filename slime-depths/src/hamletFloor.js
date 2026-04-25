@@ -284,9 +284,15 @@ const WALL_FACE_PANELS = [
   { col: 0,  row: 12, w: 9, h: 2, capRow: 12 },
   { col: 9,  row: 7,  w: 2, h: 4, capRow: 7  },
   // ── EAST_WORKSHOP — south face (cols 21-29 rows 12-13) + west face.
-  // South panel extended east to col 29 in Session M (was cols 21-27).
+  // West face thickened in Session S from col 20 (1 col) to cols 20-21
+  // (2 cols). Col 21 rows 7-10 was workshop interior stone; converting
+  // to wall_face absorbs that strip into the brick wall, matching
+  // west_ruin's 2-col-thick east face. Workshop loses 4 interior cells
+  // but keeps 41 (out of 45) — still a substantial district. The sign
+  // at col 21 row 11 stays put (row 11 not in panel) and now reads as
+  // a "WORKSHOP" sign mounted in front of the brick stairwell wall.
   { col: 21, row: 12, w: 9, h: 2, capRow: 12 },
-  { col: 20, row: 7,  w: 1, h: 4, capRow: 7  },
+  { col: 20, row: 7,  w: 2, h: 4, capRow: 7  },
 ];
 
 // Path segments — each connects two zones via an axis-aligned route.
