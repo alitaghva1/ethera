@@ -336,10 +336,13 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_props', sx: 11 * PT, sy: 8 * PT, sw: 4 * PT, sh: 3 * PT,
     x: 496, y: 448, scale: 1.0 },
 
-  // Two stone benches south of fountain, facing inward toward it.
-  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
+  // Two stone-slab benches south of fountain, facing inward. Using the
+  // 3×2 sofa/bench sprite (sx=192 sy=0 — the long horizontal bench at
+  // cols 6-8 rows 0-1 of TX Props). Old coords (288, 32) pulled a piece
+  // of the standing-stone area — this is the actual bench sprite.
+  { sheet: 'cainos_props', sx: 6 * PT, sy: 0 * PT, sw: 3 * PT, sh: 2 * PT,
     x: 400, y: 480, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
+  { sheet: 'cainos_props', sx: 6 * PT, sy: 0 * PT, sw: 3 * PT, sh: 2 * PT,
     x: 592, y: 480, scale: 1.0 },
 
   // Two corner lanterns at the plaza's NW + NE corners.
@@ -349,13 +352,20 @@ const HAMLET_PROPS = [
     x: 624, y: 384, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
-  // NORTH SHRINE (cols 13-17, rows 1-4) — the kneeling priestess + 2
-  // flanking lanterns. Stage C will raise this to elevation 1.
+  // NORTH SHRINE (cols 13-17, rows 1-4) — sacred ring under priestess +
+  // priestess statue + 2 flanking lanterns. Stage C will raise this to
+  // elevation 1.
   // ══════════════════════════════════════════════════════════════════════
 
-  // Kneeling priestess statue — 1×4. Anchor at row 4 (south edge of
-  // shrine) so the statue's body fills the shrine's vertical extent.
-  { sheet: 'cainos_props', sx: 14 * PT, sy: 1 * PT, sw: PT, sh: 4 * PT,
+  // Stone halo / ring on the floor — drawn FIRST so the priestess kneels
+  // on it. 2×2 prop from the bottom-right "ruin halo" area of TX Props.
+  { sheet: 'cainos_props', sx: 13 * PT, sy: 11 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 496, y: 144, scale: 1.0 },
+
+  // Kneeling priestess statue — 1×4 at col 10 of TX Props (sx=320 sy=0).
+  // Old coords (sx=448 sy=32) were pulling pixels from the altar/sign
+  // area — this is the actual priestess sprite per visual confirmation.
+  { sheet: 'cainos_props', sx: 10 * PT, sy: 0 * PT, sw: PT, sh: 4 * PT,
     x: 496, y: 144, scale: 1.0 },
 
   // Two lanterns flanking the statue.
@@ -409,16 +419,24 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_props', sx: 3 * PT, sy: 4 * PT, sw: PT, sh: 2 * PT,
     x: 880, y: 352, scale: 1.0 },
 
+  // Sign post advertising the workshop, NW corner.
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 4 * PT, sw: PT, sh: 2 * PT,
+    x: 688, y: 352, scale: 1.0 },
+
   // ══════════════════════════════════════════════════════════════════════
   // SOUTH ENTRANCE (cols 13-17, rows 16-19) — gateway pad, hero spawn.
   // 2 lanterns flanking the entrance lane (centered inside the zone now,
-  // not in void at cols 8/21 like before).
+  // not in void at cols 8/21 like before) + welcome sign post.
   // ══════════════════════════════════════════════════════════════════════
 
   { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
     x: 432, y: 608, scale: 1.0 },
   { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
     x: 560, y: 608, scale: 1.0 },
+
+  // Welcome sign post (1×2) — at col 14 row 18 area, gateway approach.
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 4 * PT, sw: PT, sh: 2 * PT,
+    x: 464, y: 624, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
   // HERB GARDEN (cols 8-11, rows 4-6) — small NW alcove, gravekeeper's
@@ -431,6 +449,11 @@ const HAMLET_PROPS = [
     x: 336, y: 192, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT,
     x: 304, y: 224, scale: 1.0 },
+
+  // Squat rock cluster (3×1 at sx=256 sy=480) — adds organic stone to
+  // the garden's floor. Sits at the south edge of the herb garden.
+  { sheet: 'cainos_props', sx: 8 * PT, sy: 15 * PT, sw: 3 * PT, sh: PT,
+    x: 304, y: 192, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
   // TREES — strictly on grass corridor tiles, never on stone or in void.

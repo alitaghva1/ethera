@@ -59,17 +59,19 @@ export const HAMLET_ENTITIES = [
   { kind: 'portal',                                 x: PORTAL_POS.x,  y: PORTAL_POS.y,  interactR: 80 },
   { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 0  },
   { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0  },
-  // KEEPER — at the plaza, west of fountain. Shop counter in the hub heart.
-  // tile col 13 row 12 = plaza interior.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 432, y: 416, interactR: 50 },
+  // KEEPER — at the plaza, NW of fountain. Shop counter in the hub heart.
+  // tile col 13 row 12 = plaza interior. Moved north so keeper doesn't
+  // visually stand inside the south bench.
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 432, y: 384, interactR: 50 },
   // SMITH — at south_entrance, west side. tile col 14 row 17.
   { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 448, y: 560, interactR: 50 },
   // ARCHIVIST — inside east_workshop near the crates. tile col 23 row 10.
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 752, y: 320, interactR: 50 },
   // GRAVEKEEPER — among the graves in west_ruin. tile col 5 row 10.
   { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 176, y: 320, interactR: 50 },
-  // ORACLE — at the plaza, east of fountain. tile col 17 row 12.
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 560, y: 416, interactR: 50 },
+  // ORACLE — at the plaza, NE of fountain. tile col 17 row 12. Moved
+  // north for the same reason as keeper (doesn't stand inside bench).
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 560, y: 384, interactR: 50 },
   // WANDERER — in horizontal corridor east of plaza. tile col 25 row 13.
   // Literal outsider, on the grass between plaza and workshop.
   { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 816, y: 432, interactR: 50 },
