@@ -4595,8 +4595,10 @@ function tick(now) {
       // viewport (960 vs 1280) so there's a mandatory ~160px side-void.
       // Locking prevents the void from shifting as the hero moves and
       // keeps the painted backdrop perfectly framed.
-      camera.x = 480; camera.targetX = 480;
-      camera.y = 336; camera.targetY = 336;
+      // Stage 1 rebuild: hamlet expanded to 34×24 (world 1088×768).
+      // Camera lock target = center of new bounds = (544, 384).
+      camera.x = 544; camera.targetX = 544;
+      camera.y = 384; camera.targetY = 384;
 
       updateHamletScene(dt);
       if (keyJustPressed('KeyE')) {

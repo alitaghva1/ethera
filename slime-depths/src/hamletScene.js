@@ -26,20 +26,17 @@ import { drawHamletFloor, isHamletWalkable, CAINOS_TILE } from './hamletFloor.js
 // than float over a mural. Camera is locked (see main.js enterHamletCanvas)
 // so the hero can't walk up into the sky.
 //
-// Legacy rect Y-clamp constants — preserved as exports for back-compat
-// with main.js's old call site, but the *actual* boundary check is now
-// the WALKABLE_GRID lookup via isHamletWalkable(). Setting them to
-// extreme values so the legacy clamp is effectively a no-op.
+// Y-clamp bounds — updated in Stage 1 rebuild for new 34×24 grid
+// (world height 768 px). isHamletWalkable() does the real work via
+// WALKABLE_GRID lookup; these are the legacy outer bounds.
 export const HAMLET_WALK_Y_MIN = 0;
-export const HAMLET_WALK_Y_MAX = 672;
+export const HAMLET_WALK_Y_MAX = 768;
 
-// Hero spawn — south-entrance gateway pad at world (480, 576). This is
-// inside the SOUTH_ENTRANCE zone (col 13-17, row 17-19). The plaza sits
-// directly above it so the player walks NORTH from spawn into the hamlet
-// proper. Tile center for col=15, row=18 = (15*32+16, 18*32+16) = (496, 592)
-// but we offset to (480, 576) which keeps the hero clear of the south
-// entrance's southernmost row (row 19) where they could clip into the wall.
-export const HAMLET_HERO_SPAWN = { x: 480, y: 576 };
+// Hero spawn — Stage 1 rebuild: south corridor bottom (col 16, row 22).
+// World coords (16*32+16, 22*32+16) = (528, 720). The new south corridor
+// is cols 15-18 rows 18-22, and spawn at (528, 720) places hero at the
+// south end so they walk N up the corridor → into the compound at row 17.
+export const HAMLET_HERO_SPAWN = { x: 528, y: 720 };
 
 // Zone anchors — named positions for every meaningful location in the
 // hamlet. Each anchor is verified inside its zone's tile range:
