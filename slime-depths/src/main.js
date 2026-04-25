@@ -4345,86 +4345,88 @@ function beginTransition(toIndex, entryFrom) {
 //   4. The new room's south door is in the entry-dwell state — visually
 //      open at first, then animates closed. Player sees the door slam
 //      shut behind them and the old room fade out beyond it.
-// Door pan — drives the smooth camera scroll between two rooms. Without
-// this, hero teleports to the new room and the camera snap reads as a
-// hard cut. With it, the camera stays at the OLD position briefly, then
-// pans to the NEW hero position over ~0.7s while both rooms remain
-// rendered in world space — the player physically WATCHES themselves
-// move from one room to the next.
-let doorPan = null;            // { time, duration, prevHeroX, prevHeroY, freezeUntil }
+// Door pan — drives the smooth scroll between two rooms.
+//
+// CRITICAL: when loadRoom swaps to the new room, the world coordinate
+// system shifts. Hero position (792, 30) in the OLD room's local coords
+// is NOT the same world point after the swap — that local coord now
+// refers to a spot in the NEW room. The prevRoom snapshot is rendered
+// at offset (offsetX, offsetY) which captures the spatial relationship:
+// adding the offset translates an OLD-local position into a NEW-world
+// position that lands inside the prevRoom rendering.
+//
+// During the pan, the hero's world position is LERPED from the
+// translated OLD position into the NEW spawn (south door of new room).
+// Camera follows. Both rooms remain visible because prevRoom renders
+// south of the new room — so the camera scrolls "north" past the
+// closing door and into the new space.
+let doorPan = null;
+// { time, duration, fromX, fromY, toX, toY }
 
 function beginDoorTransition(toIndex, oldDoorTileX) {
-  // Capture where the hero (and therefore the camera) was BEFORE we load
-  // the new room and teleport them to its south door.
-  const prevHeroX = hero.x;
-  const prevHeroY = hero.y;
-  const prevCamX = camera.x;
-  const prevCamY = camera.y;
+  // Capture OLD-LOCAL hero + camera positions BEFORE the swap.
+  const oldHeroX = hero.x;
+  const oldHeroY = hero.y;
+  const oldCamX = camera.x;
+  const oldCamY = camera.y;
 
   // Snapshot the room being LEFT, before loadRoom overwrites it.
-  // Offset is a placeholder — recomputed once we know new room dims.
   snapshotPrevRoom({ offsetX: 0, offsetY: 0 });
   // entryFrom='north' is the existing (inverted-feeling) convention that
-  // makes heroSpawnInRoom place the hero at preferredY=h-2 — i.e. near the
-  // SOUTH wall, one tile inside the door they just entered through.
+  // makes heroSpawnInRoom place the hero at preferredY=h-2 — i.e. near
+  // the SOUTH wall, one tile inside the door they just entered through.
   loadRoom(toIndex, 'north');
-  // Hero is now at south door of new room. Find new room's south door tx,
-  // align prevRoom so the two door tiles overlap in world space.
+  // Hero is now at south door of new room. Compute the prevRoom offset
+  // so its NORTH door tile overlaps the new room's SOUTH door tile in
+  // world space (the "shared threshold").
   const newDoorX = Math.floor(room.w / 2);
   if (prevRoom) {
     prevRoom.offsetX = (newDoorX - oldDoorTileX) * TILE;
     prevRoom.offsetY = (room.h - 1) * TILE;
   }
+  const offsetX = prevRoom ? prevRoom.offsetX : 0;
+  const offsetY = prevRoom ? prevRoom.offsetY : 0;
 
-  // ── SMOOTH CAMERA PAN ─────────────────────────────────────────────────
-  // Reset the camera to its PRE-transition position so the lerp doesn't
-  // start mid-flight. The followCamera target is now the new hero
-  // position (set in tick), so the camera will pan over to it. The pan
-  // takes about 0.7s with the slow lerp — the eye reads it as a deliberate
-  // "scroll between rooms" instead of an instant cut.
-  camera.x = prevCamX;
-  camera.y = prevCamY;
-  // Override the standard lerp speed for the duration of the pan. We
-  // restore the default (6) once the pan finishes (handled in tick).
+  // Translate OLD-local positions → NEW-world positions. Adding the
+  // prevRoom offset lands them inside the prevRoom rendering, which
+  // is the same spot the player just was VISUALLY.
+  const fromX = oldHeroX + offsetX;
+  const fromY = oldHeroY + offsetY;
+  const toX = hero.x;            // already at NEW spawn (south door)
+  const toY = hero.y;
+  const camFromX = oldCamX + offsetX;
+  const camFromY = oldCamY + offsetY;
+
+  // Reset camera to translated-OLD position so the existing lerp
+  // (slowed to 2.0 for this pan) glides to the hero's destination.
+  camera.x = camFromX;
+  camera.y = camFromY;
   camera.lerp = 2.0;
-  doorPan = {
-    time: 0,
-    duration: 0.7,
-    prevHeroX, prevHeroY,
-    // Until this many seconds elapse, the hero is ALSO held visually at
-    // the old world position — otherwise they'd appear at the new south
-    // door before the camera reaches them, ruining the pan. After the
-    // freeze, hero coords return to authoritative state for physics.
-    freezeUntil: 0.55,
-    newHeroX: hero.x,
-    newHeroY: hero.y,
-  };
 
+  doorPan = { time: 0, duration: 0.7, fromX, fromY, toX, toY };
   playSfx('click', { volume: 0.55, rate: 1.05 });
 }
 
-// Tick the pan. While active, holds the hero at the OLD world position
-// for the freeze window so the camera can pan past them, then releases
-// the hero to the new room. After the full duration, restores the
-// default camera lerp so normal play feels snappy again.
+// Tick the pan. Smoothly interpolates hero from the translated OLD
+// position into the NEW spawn over the duration — no freeze, no
+// teleport. Hero "walks through the door" in continuous world space.
 function updateDoorPan(dt) {
   if (!doorPan) return;
   doorPan.time += dt;
-  if (doorPan.time < doorPan.freezeUntil) {
-    // Hold hero visually at the OLD position while camera pans
-    hero.x = doorPan.prevHeroX;
-    hero.y = doorPan.prevHeroY;
-    hero.vx = 0; hero.vy = 0;
-  } else if (doorPan.newHeroX != null) {
-    // Release: snap hero back to the new-room spawn position. Done once.
-    hero.x = doorPan.newHeroX;
-    hero.y = doorPan.newHeroY;
-    doorPan.newHeroX = null;
-    doorPan.newHeroY = null;
-  }
+  const t = Math.min(1, doorPan.time / doorPan.duration);
+  // Ease-out cubic — quick start, gentle settle. Reads as "pushed
+  // through the door" rather than mechanically lerped.
+  const eased = 1 - Math.pow(1 - t, 3);
+  hero.x = doorPan.fromX + (doorPan.toX - doorPan.fromX) * eased;
+  hero.y = doorPan.fromY + (doorPan.toY - doorPan.fromY) * eased;
+  hero.vx = 0;
+  hero.vy = 0;
   if (doorPan.time >= doorPan.duration) {
+    // Snap to exact target then restore normal physics + camera follow.
+    hero.x = doorPan.toX;
+    hero.y = doorPan.toY;
     doorPan = null;
-    camera.lerp = 6.0;       // restore snappy follow
+    camera.lerp = 6.0;
   }
 }
 
