@@ -21,11 +21,17 @@ import { showTip } from './tips.js';
 import { markChainFired, markPyroFired } from './counterPips.js';
 
 const SPR = 128;                  // 8-directional sprite sheet cell size (was 100 for horizontal-strip sheets)
-const HERO_DRAW = 80;              // on-screen hero size. Dropped from 96
-                                   // after the PixelLab migration — the
-                                   // chibi silhouette fills more of the
-                                   // 128px frame than the old Tiny RPG
-                                   // knight did of its 100px frame.
+const HERO_DRAW = 60;              // on-screen hero size. Dropped 80→60
+                                   // after a sizing audit found the hero
+                                   // was 2-3× taller than every boss in
+                                   // the game. The PixelLab mage fills
+                                   // 93% of its 128 cell while Tiny-RPG
+                                   // enemies fill 11-23% of their 100
+                                   // cells — they were never rebalanced.
+                                   // 60 brings hero visible body to ~56
+                                   // px, closer to the heavier minions
+                                   // and below the bosses (boss drawSize
+                                   // tuning is a follow-up pass).
 const HERO_RADIUS = 14;            // collision
 const HERO_SPEED = 230;
 const DODGE_SPEED = 620;
