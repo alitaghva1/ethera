@@ -251,6 +251,12 @@ const STONE_PATCHES = [
   // the platforms.
   { col: 5, row: 14, w: 3, h: 1 },
   { col: 22, row: 14, w: 3, h: 1 },
+  // Session P additions: paving directly under each stair sprite's
+  // south end so the stair descends onto STONE instead of grass.
+  // Without these the stair felt like it just stopped at the grass
+  // edge; with them it reads as descending onto a paved courtyard.
+  { col: 8, row: 14, w: 3, h: 1 },
+  { col: 20, row: 14, w: 2, h: 1 },
 ];
 
 // WALL FACE PANELS — explicit list of brick-body panels around elevated
@@ -263,11 +269,14 @@ const STONE_PATCHES = [
 const WALL_FACE_PANELS = [
   // ── NORTH_SHRINE — south face only (no stairs, doorway access).
   { col: 13, row: 5,  w: 5, h: 2, capRow: 5  },
-  // ── WEST_RUIN — south face (cols 0-8 rows 12-13) + east face (col 9).
-  // South panel extended west to col 0 in Session M to match the
-  // 2-col zone extension (was cols 2-8). East face panel unchanged.
+  // ── WEST_RUIN — south face (cols 0-8 rows 12-13) + east face.
+  // East face thickened in Session P from col 9 → cols 9-10 (2 cols
+  // thick) so the stair sprite at cols 8-11 rows 11-13 has multi-col
+  // brick walls flanking its north side instead of a thin 1-tile
+  // strip — gives the demo's "stairwell tunnel" feel where stairs
+  // descend out of an enclosed brick passage.
   { col: 0,  row: 12, w: 9, h: 2, capRow: 12 },
-  { col: 9,  row: 7,  w: 1, h: 4, capRow: 7  },
+  { col: 9,  row: 7,  w: 2, h: 4, capRow: 7  },
   // ── EAST_WORKSHOP — south face (cols 21-29 rows 12-13) + west face.
   // South panel extended east to col 29 in Session M (was cols 21-27).
   { col: 21, row: 12, w: 9, h: 2, capRow: 12 },
