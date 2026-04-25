@@ -80,17 +80,43 @@ export const TILES = {
   cobble: [
     { sheet: 'cainos_grass', sx: 1 * T, sy: 5 * T },
   ],
-  // ── WALL — outer perimeter brick wall. Body tiles only (no edges
-  // baked in) so we can tile a flat wall band along the room border.
-  wall_body: [
-    { sheet: 'cainos_wall', sx: 1 * T, sy: 7 * T },
-    { sheet: 'cainos_wall', sx: 2 * T, sy: 7 * T },
-    { sheet: 'cainos_wall', sx: 3 * T, sy: 7 * T },
-    { sheet: 'cainos_wall', sx: 4 * T, sy: 7 * T },
+  // ── WALL 9-SLICE AUTOTILE ─────────────────────────────────────────
+  // Sourced from the small-frame block at cols 0-3 rows 0-3 of TX
+  // Tileset Wall.png. The 9 pieces tile around any walkable shape:
+  //
+  //   row 0:  TL  N   N   TR
+  //   row 1:  W   .   .   E
+  //   row 2:  W   .   .   E
+  //   row 3:  SW  S   S   SE
+  //
+  // The interior (cols 1-2 rows 1-2) is hollow (transparent) so we
+  // can't use it as body fill — the long-body band at rows 5-7 of the
+  // sheet provides actual body brick if we ever need it (inner corners
+  // or weird neighbor patterns fall through to `wall_body`).
+  wall_corner_nw: [{ sheet: 'cainos_wall', sx: 0 * T, sy: 0 * T }],
+  wall_corner_ne: [{ sheet: 'cainos_wall', sx: 3 * T, sy: 0 * T }],
+  wall_corner_sw: [{ sheet: 'cainos_wall', sx: 0 * T, sy: 3 * T }],
+  wall_corner_se: [{ sheet: 'cainos_wall', sx: 3 * T, sy: 3 * T }],
+  wall_edge_n: [
+    { sheet: 'cainos_wall', sx: 1 * T, sy: 0 * T },
+    { sheet: 'cainos_wall', sx: 2 * T, sy: 0 * T },
   ],
-  // Wall TOP edge — has the dark capstone trim along its top edge
-  // for the north wall row to look like a finished wall, not a strip.
-  wall_top: [
+  wall_edge_s: [
+    { sheet: 'cainos_wall', sx: 1 * T, sy: 3 * T },
+    { sheet: 'cainos_wall', sx: 2 * T, sy: 3 * T },
+  ],
+  wall_edge_w: [
+    { sheet: 'cainos_wall', sx: 0 * T, sy: 1 * T },
+    { sheet: 'cainos_wall', sx: 0 * T, sy: 2 * T },
+  ],
+  wall_edge_e: [
+    { sheet: 'cainos_wall', sx: 3 * T, sy: 1 * T },
+    { sheet: 'cainos_wall', sx: 3 * T, sy: 2 * T },
+  ],
+  // Body brick fill — only used when neighbor pattern doesn't match a
+  // 9-slice piece (inner corners, surrounded tiles). 4 variants from
+  // the long-body band (rows 6-7 at cols 1-4 of the sheet).
+  wall_body: [
     { sheet: 'cainos_wall', sx: 1 * T, sy: 6 * T },
     { sheet: 'cainos_wall', sx: 2 * T, sy: 6 * T },
     { sheet: 'cainos_wall', sx: 3 * T, sy: 6 * T },
@@ -273,39 +299,62 @@ function tileTypeAt(col, row) {
 }
 
 
-// ─── PERIMETER WALL ────────────────────────────────────────────────────────
-// Inset-by-1 stone perimeter band around the playable area. Two rows thick
-// on the north (so the wall has visible "depth" looking down) and one row
-// thick on the south + sides. The hamlet's interior playable area becomes
-// the inner rectangle (cols 1..w-2, rows 2..h-2).
-// ─── WALL DETECTION — IRREGULAR SILHOUETTE ────────────────────────────
-// Walls live on tiles that are themselves VOID (non-walkable) but whose
-// SOUTH neighbor is walkable. That gives a single row of wall framing
-// the northern edge of every walkable area, without painting a
-// rectangular border. The capstone variant (with the dark trim across
-// its top edge) renders when the tile two rows north is also void —
-// i.e. the wall is at least 2 rows tall, which gives the platform
-// silhouette its visual depth.
+// ─── WALL DETECTION — 9-SLICE AUTOTILE FOR IRREGULAR SILHOUETTE ───────
+// A wall lives on any VOID tile that has at least one orthogonally-
+// adjacent walkable tile. The specific variant comes from the 4-bit
+// neighbor walkability mask (N=1, E=2, S=4, W=8):
 //
-// Side and bottom edges of walkable areas don't render walls — that
-// would close every zone into a fully-enclosed box. The Cainos demo
-// shows side/bottom edges as transitions to grass with TX Struct
-// elevation faces (Stage 3 work).
+//   single neighbor walkable → that face becomes an EDGE tile
+//   two adjacent neighbors walkable → corner tile (NW/NE/SW/SE)
+//   three neighbors walkable → inner corner (rare; falls through to body)
+//
+// Which corner depends on which two neighbors are walkable:
+//   E + S walkable → wall is at the NW void of a walkable platform → CORNER NW
+//   S + W walkable → CORNER NE
+//   N + E walkable → CORNER SW
+//   N + W walkable → CORNER SE
+//
+// This produces full perimeter walls on ALL four sides of every zone
+// + irregular silhouette, with the right corner pieces bridging
+// edges. Compared to the old N-only wall band, this gives every zone
+// the "walled compound" look from the Cainos demo.
 
-function isWallTile(col, row) {
-  if (isWalkable(col, row)) return false;
-  // Wall iff the tile's south neighbor is walkable (this is the "north
-  // wall" of a walkable area, looking at it from the front).
-  return isWalkable(col, row + 1);
-}
-
-// Pick the wall variant: tiles whose own north neighbor is ALSO void
-// (i.e. there's at least one tile of brick above this one) get the
-// CAPSTONE; otherwise plain BODY.
-function wallTileFor(col, row) {
-  const hasNorthVoid = !isWalkable(col, row - 1);
-  const type = hasNorthVoid ? 'wall_top' : 'wall_body';
-  const variants = TILES[type];
+function getWallVariant(col, row) {
+  if (isWalkable(col, row)) return null;
+  const N = isWalkable(col, row - 1);
+  const E = isWalkable(col + 1, row);
+  const S = isWalkable(col, row + 1);
+  const W = isWalkable(col - 1, row);
+  let key;
+  if (N || E || S || W) {
+    // Has orthogonal walkable → standard 9-slice classification.
+    const mask = (N ? 1 : 0) | (E ? 2 : 0) | (S ? 4 : 0) | (W ? 8 : 0);
+    switch (mask) {
+      case 4:  key = 'wall_edge_n';   break;   // S walkable → wall is N-edge
+      case 1:  key = 'wall_edge_s';   break;   // N walkable → wall is S-edge
+      case 2:  key = 'wall_edge_w';   break;   // E walkable → wall is W-edge
+      case 8:  key = 'wall_edge_e';   break;   // W walkable → wall is E-edge
+      case 6:  key = 'wall_corner_nw'; break;  // E+S walkable → NW void corner
+      case 12: key = 'wall_corner_ne'; break;  // S+W walkable → NE void corner
+      case 3:  key = 'wall_corner_sw'; break;  // N+E walkable → SW void corner
+      case 9:  key = 'wall_corner_se'; break;  // N+W walkable → SE void corner
+      default: key = 'wall_body';              // inner corners / surrounded
+    }
+  } else {
+    // No orthogonal walkable — check diagonals for outer corners. This
+    // happens at the diagonal-NW void of a rectangular zone's NW corner
+    // (e.g. col 1 row 6 outside west_ruin's NW corner at col 2 row 7).
+    const NE = isWalkable(col + 1, row - 1);
+    const NW = isWalkable(col - 1, row - 1);
+    const SE = isWalkable(col + 1, row + 1);
+    const SW = isWalkable(col - 1, row + 1);
+    if (SE && !SW && !NE && !NW) key = 'wall_corner_nw';
+    else if (SW && !SE && !NE && !NW) key = 'wall_corner_ne';
+    else if (NE && !NW && !SE && !SW) key = 'wall_corner_sw';
+    else if (NW && !NE && !SE && !SW) key = 'wall_corner_se';
+    else return null;                          // not a wall, just void
+  }
+  const variants = TILES[key];
   return variants[hash2(col, row) % variants.length];
 }
 
@@ -557,11 +606,10 @@ export function drawHamletFloor(ctx) {
   // ─── Pass 1 + 2: floor + walls in one sweep ────────────────────────────
   for (let row = 0; row < HAMLET_ROWS; row++) {
     for (let col = 0; col < HAMLET_COLS; col++) {
-      // Walls take priority — render wall tile over what would have been floor.
-      let variant;
-      if (isWallTile(col, row)) {
-        variant = wallTileFor(col, row);
-      } else {
+      // Walls take priority — render wall tile over what would have been
+      // floor. getWallVariant returns null for non-wall tiles.
+      let variant = getWallVariant(col, row);
+      if (!variant) {
         const type = tileTypeAt(col, row);
         const variants = TILES[type];
         if (!variants || variants.length === 0) continue;
