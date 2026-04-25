@@ -80,27 +80,23 @@ export const HAMLET_ENTITIES = [
 // every building and the two firepits get a footprint so the hero stays
 // in the walkable corridors the paths imply. Called from main.js after
 // the Y-clamp so the hero can't push into a sprite.
+// Stripped to only the obstacles that have a CURRENTLY-RENDERED sprite.
+// All the old hand-drawn buildings (forge, dome, scaffolding, gates,
+// background tower) were removed in the rebuild — keeping their obstacle
+// circles would invisibly block hero pathing across the empty hamlet.
+//
+// Currently active:
+//   - Fountain at the plaza center (the round prop in hamletFloor.js)
+//   - Lantern posts (south entrance flankers)
+// NPCs and the portal/firepit/shrine entities are NOT in this list —
+// the hero is meant to walk THROUGH NPCs (overlapping is fine for a hub
+// area) and onto the portal/firepit tile (that's how interactions fire).
 export const HAMLET_OBSTACLES = [
-  // Descent tower (central, raised disc)
-  { x: 480, y: 430, r: 62 },
-  // Forge hut — wide footprint
-  { x: 185, y: 490, r: 56 },
-  { x: 225, y: 490, r: 56 },
-  // Archive dome
-  { x: 810, y: 490, r: 62 },
-  // Background tower (far-left silhouette)
-  { x: 80,  y: 380, r: 28 },
-  // Main campfire — feet don't walk into the flame
-  { x: 480, y: 540, r: 24 },
-  // Builders' warming fire (rebuild zone)
-  { x: 745, y: 630, r: 22 },
-  // Watcher shrine — small footprint
-  { x: 150, y: 435, r: 22 },
-  // Scaffolding + cut-stone stack + half-wall (rebuild cluster blocks path)
-  { x: 680, y: 610, r: 24 },
-  { x: 720, y: 608, r: 20 },
-  // Collapsed gate (east ruin) — leaning stone
-  { x: 895, y: 375, r: 26 },
+  // Fountain (4-tile-wide round prop at plaza center)
+  { x: 480, y: 540, r: 38 },
+  // South-entrance lantern posts (left + right flankers)
+  { x: 280, y: 615, r: 10 },
+  { x: 680, y: 615, r: 10 },
 ];
 
 // Push the hero out of any obstacle they're currently inside. Cheap
@@ -1281,7 +1277,6 @@ function drawPortal(ctx, e, now) {
   halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
-  drawGroundShadow(ctx, e.x, e.y + 6, 32);
 }
 
 function drawFirepit(ctx, e, now) {
@@ -1304,9 +1299,8 @@ function drawShrine(ctx, e) {
   // ── HAMLET REBUILD: old painted shrine sprite (with the eye sigil) +
   // 8-state progression grid stripped. Shrine entity still exists for
   // collision; visual will be replaced with a Cainos statue prop in the
-  // next pass. Just a ground shadow placeholder so NPCs don't visually
-  // overlap an invisible obstacle.
-  drawGroundShadow(ctx, e.x, e.y + 2, 22);
+  // next pass. Empty body — NPC drawing handles its own shadows.
+  void ctx; void e;
 }
 
 function drawNpc(ctx, e, now) {
@@ -1323,11 +1317,12 @@ function drawNpc(ctx, e, now) {
   // giants. Prior 80px made NPCs taller than the hero's visible silhouette.
   const drawH = 56;
   const drawW = spr.width * (drawH / spr.height);
-  // Ground shadow anchored at the NPC's actual feet. The sprite's feet sit
-  // at e.y + bob (sprite bottom), so shadow center goes there; larger and
-  // darker than before (radius 22, alpha 0.55) so each NPC has clear
-  // visual weight on the cobblestone instead of seeming to hover above it.
-  drawGroundShadow(ctx, e.x, e.y + bob, 22, 0.55);
+  // Ground shadow — kept SUBTLE (smaller + low alpha) so NPCs don't look
+  // like they're floating on a black disc. Previous radius 22 / alpha 0.55
+  // made the elliptical shadow read as bigger than the NPC's feet
+  // silhouette, especially against the new pixel-art floor where every
+  // detail competes for attention.
+  drawGroundShadow(ctx, e.x, e.y + bob - 1, 11, 0.22);
 
   // Warm proximity glow when the hero is close — signals interactivity
   // and makes the scene feel responsive to your presence.

@@ -164,14 +164,16 @@ function tileTypeAt(col, row) {
   ) {
     return 'stone';
   }
-  // COBBLE PATHS — straight lines from plaza center to each anchor.
-  // Tile is on a path if it's within PATH_HALF_WIDTH of any path segment.
-  // The interior of the path uses SOLID cobble (full slabs); the very
-  // outermost ring uses worn cobble for a natural grass-edge transition.
+  // PATHS — straight lines from plaza center to each anchor. Use the
+  // SAME stone tile set as the plaza for visual unity; the path is
+  // "the plaza extending outward as roads" rather than a separate
+  // material. Earlier attempt used cobble_worn for path edges but
+  // those tiles look like scattered cobble in grass (decoration), not
+  // a paved edge — the result read as "two layers of stone overlaid"
+  // instead of one continuous paving.
   for (const target of PATH_TARGETS) {
     const dist = pointToSegmentDist(col, row, PLAZA_CENTER.col, PLAZA_CENTER.row, target.col, target.row);
-    if (dist <= PATH_HALF_WIDTH - 0.4) return 'cobble';
-    if (dist <= PATH_HALF_WIDTH + 0.5) return 'cobble_worn';
+    if (dist <= PATH_HALF_WIDTH) return 'stone';
   }
   // GRASS with sparse decoration. Only ~6% of grass tiles get the
   // decorative variant so the floor stays calm.
@@ -235,14 +237,14 @@ function wallTileFor(col, row) {
 const PT = 32;     // texture tile unit (Cainos sheets use 32px)
 
 const HAMLET_PROPS = [
-  // ── FOUNTAIN at plaza center (bottom-right of TX Props sheet — the
-  // round 4-tile fountain). Drawn at the firepit position so it reads
-  // as the heart of the hamlet.
+  // ── FOUNTAIN at plaza center (the round 4×3 fountain, bottom-right
+  // area of TX Props sheet). The hamlet's heart, where firepit/portal
+  // entities live for interaction.
   { sheet: 'cainos_props', sx: 11 * PT, sy: 8 * PT, sw: 4 * PT, sh: 3 * PT,
     x: 480, y: 540, scale: 1.0 },
 
-  // ── TREES along the back rows (north side). Three trees of varying
-  // size from TX Plant. The tree sprites are 3 tiles wide × 4 tall.
+  // ── TREES along the back rows. Three from TX Plant — small / large /
+  // medium, framing the top of the hamlet.
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
     x: 130, y: 200, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
@@ -251,18 +253,62 @@ const HAMLET_PROPS = [
     x: 830, y: 210, scale: 1.0 },
 
   // ── BUSHES scattered around the perimeter for visual softness.
-  // The bush sprites are 1 tile each — small, so we render them small.
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 100, y: 480, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 130, y: 590, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 870, y: 480, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 880, y: 600, scale: 1.0 },
 
-  // ── LANTERN POST at the south entrance (TX Props — the tall lantern
-  // sprite, 1×3 tile vertical strip on the right side of the sheet).
+  // ── LANTERN POSTS flanking the south entrance.
   { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
     x: 280, y: 620, scale: 1.0 },
   { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
     x: 680, y: 620, scale: 1.0 },
+
+  // ── KNEELING SHRINE STATUE — replaces the old standing stone at the
+  // shrine entity position (~150, 440). 1×4 tile praying figure prop.
+  { sheet: 'cainos_props', sx: 14 * PT, sy: 1 * PT, sw: PT, sh: 4 * PT,
+    x: 150, y: 460, scale: 1.0 },
+
+  // ── GRAVESTONES in the gravekeeper district (NW corner).
+  // Each gravestone is 2×2 tiles. Three variants for visual variety.
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 6 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 80,  y: 360, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 8 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 200, y: 350, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 10 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 270, y: 380, scale: 1.0 },
+
+  // ── STONE BENCHES on the plaza (south side, facing the fountain).
+  // The bench sprite is 2×2 tiles.
+  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 380, y: 605, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 580, y: 605, scale: 1.0 },
+
+  // ── ARCHIVE PROPS (east side near archivist NPC).
+  // Crate + barrel + vases.
+  { sheet: 'cainos_props', sx: 5 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 820, y: 595, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 5 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 870, y: 600, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: PT,
+    x: 750, y: 615, scale: 1.0 },
+
+  // ── FORGE PROPS (SW near smith NPC).
+  // Crate + sign post (sign placed off the south entrance lane).
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 175, y: 615, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: 2 * PT,
+    x: 130, y: 615, scale: 1.0 },
+
+  // ── SCATTERED ROCKS in the grass for organic decoration.
+  // Small pebbles + medium rocks from the bottom row of the props sheet.
+  { sheet: 'cainos_props', sx: 1 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 380, y: 270, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 2 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 600, y: 290, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 220, y: 300, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 750, y: 310, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 5 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 850, y: 320, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 6 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 100, y: 280, scale: 1.0 },
 ];
 
 // ─── RENDER ────────────────────────────────────────────────────────────────
