@@ -189,15 +189,12 @@ function hash2(x, y) {
 // Each zone is a `{ col, row, w, h, terrain, name }` rectangle. `terrain`
 // declares the zone's interior fill (stone for finished, grass for raw).
 
-// STAGE 1 REBUILD — single zone for elevation differentiation only.
-// Walkable silhouette is defined entirely by GRASS_CORRIDORS below.
-// Zones in this rebuild only carry an elevation field for wall_face
-// panel logic to reference. Terrain everywhere defaults to grass.
+// STAGE 1 REVISION — terrace shrunk from 10×5 → 8×5 (cols 14-21) so
+// it doesn't look like a giant flat grass rectangle. Smaller proportions
+// match the demo's "shrine destination" feel. The two-stair split
+// staircase sits at terrace south edge cols 14-21 row 6.
 const ZONES = [
-  // North shrine terrace (raised, elev 1). The wall_face panel south
-  // of this zone gives the visible "platform face" depth. Stair sprite
-  // bridges to the lower compound on the east side (cols 18-21 rows 6-8).
-  { name: 'north_shrine', col: 13, row: 1, w: 10, h: 5, terrain: 'grass', elevation: 1 },
+  { name: 'north_shrine', col: 14, row: 1, w: 8, h: 5, terrain: 'grass', elevation: 1 },
 ];
 
 // STAGE 1: no elevation passage exemptions yet. The single E-facing
@@ -207,12 +204,53 @@ const ZONES = [
 const ELEVATION_PASSAGES = new Set([]);
 function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`); }
 
-// STAGE 1 — broken cobble path patches will be added in Stage 3 along
-// with prop clusters. Path bake (Pass 3) handles the main spine.
+// STAGE 1 REVISION — broken cobble path network. Many small 1-2 tile
+// patches with grass between, replacing the prior solid path bake.
+// Stone classifier (9-slice) gives each patch proper edges so they
+// read as "old stones, grass reclaiming."
 const STONE_PATCHES = [
-  // Plaza paving around well — 6×3 stone block as the "central plaza"
-  // visible base. The well/shrine prop will sit at the center.
-  { col: 14, row: 12, w: 6, h: 3 },
+  // Shrine ritual pad on terrace (3×2 at cols 16-18 rows 2-3) —
+  // gives the terrace a clear "sacred destination" focal area.
+  { col: 16, row: 2, w: 3, h: 2 },
+
+  // Central plaza paving — 3 irregular bands around the well,
+  // not a solid rectangle. Grass shows between rows.
+  { col: 16, row: 12, w: 2, h: 1 },
+  { col: 14, row: 13, w: 6, h: 1 },        // central row, widest
+  { col: 16, row: 14, w: 2, h: 1 },
+
+  // Main spine — broken cobble from spawn (row 22) up to stair base
+  // (row 7), alternating 1-2 tile patches with grass interruptions.
+  { col: 16, row: 21, w: 2, h: 1 },        // near spawn
+  { col: 17, row: 20, w: 1, h: 1 },
+  { col: 16, row: 19, w: 2, h: 1 },
+  { col: 17, row: 18, w: 1, h: 1 },
+  { col: 16, row: 17, w: 2, h: 1 },        // entry to compound
+  { col: 17, row: 16, w: 1, h: 1 },
+  { col: 16, row: 15, w: 2, h: 1 },
+  // (well at rows 12-14, paved above)
+  { col: 17, row: 11, w: 1, h: 1 },
+  { col: 16, row: 10, w: 2, h: 1 },
+  { col: 17, row: 9,  w: 1, h: 1 },
+  { col: 16, row: 8,  w: 2, h: 1 },
+  { col: 17, row: 7,  w: 1, h: 1 },        // stair base
+
+  // E spur to workshop — 3 patches with grass between
+  { col: 19, row: 13, w: 2, h: 1 },
+  { col: 22, row: 13, w: 2, h: 1 },
+  { col: 25, row: 13, w: 2, h: 1 },
+
+  // W spur to cemetery — mirror
+  { col: 12, row: 13, w: 2, h: 1 },
+  { col: 9,  row: 13, w: 2, h: 1 },
+  { col: 6,  row: 13, w: 2, h: 1 },
+
+  // SW spur — broken stones leading west from compound row 17 to
+  // the SW courtyard at row 19-20 cols 4-12. Just 3-4 stones.
+  { col: 14, row: 17, w: 1, h: 1 },
+  { col: 11, row: 17, w: 1, h: 1 },
+  { col: 9,  row: 19, w: 1, h: 1 },
+  { col: 7,  row: 19, w: 1, h: 1 },
 ];
 
 // WALL FACE PANELS — explicit list of brick-body panels around elevated
@@ -222,46 +260,28 @@ const STONE_PATCHES = [
 // capRow is the row that gets the dark trim 'wall_face_top'; other
 // rows get plain 'wall_face_body'. Cells in ELEVATION_PASSAGES are
 // skipped so they remain walkable for stair / doorway access.
-// STAGE 1 — minimal wall_face panels for the new layout.
+// STAGE 1 REVISION — wall_face panels for the new layout:
 //
-// (1) Shrine south face — brick body extending below terrace south
-//     edge (row 6) flanking the stair sprite on east + west sides.
-//     The stair sprite spans cols 18-21 rows 6-8; cells flanking it
-//     (cols 13-17 row 6 west of stair, plus column 22 east of stair
-//     just narrowly) become wall_face_top so the terrace reads as
-//     raised with a clear stair access in the middle-east.
+// (1) Shrine south face flankers — col 13 row 6 (west of W-stair) and
+//     col 22 row 6 (east of E-stair). Two mirrored stairs span cols
+//     14-21 row 6 so the only walls on row 6 are the outermost cols.
 //
-// (2) The wall classifier (getWallVariant) handles all OTHER outer
-//     perimeter walls of the silhouette automatically based on void↔
-//     walkable adjacency. Stage 1 only needs explicit panels for the
-//     shrine elevation visual.
+// (2) Two ruined wall stubs INSIDE the compound suggesting old
+//     foundations / partially-collapsed retaining walls. Defines
+//     space without breaking connectivity (hero detours around).
 const WALL_FACE_PANELS = [
-  // Shrine south face — west of stair (cols 13-17 row 6)
-  { col: 13, row: 6, w: 5, h: 1, capRow: 6 },
-  // Shrine south face — east of stair (col 22 row 6)
-  { col: 22, row: 6, w: 1, h: 1, capRow: 6 },
+  { col: 13, row: 6,  w: 1, h: 1, capRow: 6  },   // west of W-stair
+  { col: 22, row: 6,  w: 1, h: 1, capRow: 6  },   // east of E-stair
+  // Internal ruined wall stubs (1×2 each)
+  { col: 8,  row: 11, w: 1, h: 2, capRow: 11 },   // W stub near cemetery
+  { col: 26, row: 10, w: 1, h: 2, capRow: 10 },   // E stub near workshop
 ];
 
-// STAGE 1 — path network for new layout. PATH_HALF_WIDTH=1 gives
-// 3-tile-wide bands along each segment.
-//
-// IMPORTANT: every path segment must be AXIS-ALIGNED (dx OR dy is 0).
-// Diagonal segments cause an infinite loop in the Pass 3 path bake
-// (the while(true) only breaks when BOTH cx and cy hit target, but
-// diagonal advances at different rates). The SW spur is split into
-// two axis-aligned segments to avoid this.
-const PATH_SEGMENTS = [
-  // Main S-N spine through compound + south corridor
-  { ax: 17, ay: 7,  bx: 17, by: 22 },
-  // E spur from well to workshop area
-  { ax: 17, ay: 13, bx: 28, by: 13 },
-  // W spur from well to cemetery area
-  { ax: 17, ay: 13, bx: 6,  by: 13 },
-  // SW spur — split: first vertical (row 17 → 19), then horizontal
-  // (col 16 → 8) ending at SW courtyard center. Two axis-aligned legs.
-  { ax: 16, ay: 17, bx: 16, by: 19 },
-  { ax: 16, ay: 19, bx: 8,  by: 19 },
-];
+// STAGE 1 REVISION — path bake REMOVED. Solid 3-tile-wide stone bands
+// read as "concrete cross." All paths are now broken cobble via
+// many small STONE_PATCHES with grass between them. Hero pathing is
+// unaffected (cells stay walkable; only terrain changes).
+const PATH_SEGMENTS = [];
 const PATH_HALF_WIDTH = 1;     // 3 tiles wide total (col-1 .. col+1)
 
 // STAGE 1 REBUILD — GRASS_CORRIDORS define the WALKABLE SILHOUETTE.
@@ -539,17 +559,23 @@ const PT = 32;     // texture tile unit (Cainos sheets use 32px)
 // WALKABLE_GRID + TERRAIN_GRID below at module load via the assertProps
 // helper — fail loudly in dev if a prop ever lands on the wrong terrain.
 const HAMLET_PROPS = [
-  // STAGE 1 — only the stair sprite is in HAMLET_PROPS for now. Stage 3
-  // will repopulate with prop clusters (gravestones, crates, lanterns,
-  // shrine, benches, etc.) per the new layout zones.
+  // STAGE 1 REVISION — TWO MIRRORED STAIRS forming a "split staircase"
+  // grand entrance to the terrace. Reads more clearly than a single
+  // off-center east-facing stair.
   //
-  // East-facing stair sprite (TX Struct sx=128 sy=288, 4×3 = 128×96 px)
-  // bridges terrace south edge (cols 18-21 row 6) down to compound
-  // upper grass band (rows 7-8). High end on west, low end on east —
-  // hero ascends west onto the terrace from the east-side compound.
-  // Anchor (640, 288) = bottom-center of cols 18-21 rows 6-8.
-  { sheet: 'cainos_struct', sx: 4 * PT, sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
-    x: 640, y: 288, scale: 1.0 },
+  //  W-facing stair: high end on east col 17, low west col 14
+  //                  spans cols 14-17 rows 6-8
+  //                  back wall on RIGHT side of sprite (east edge)
+  //  E-facing stair: high end on west col 18, low east col 21
+  //                  spans cols 18-21 rows 6-8
+  //                  back wall on LEFT side of sprite (west edge)
+  //
+  // Back walls meet at col 17/18 boundary, forming a continuous
+  // central "platform" silhouette. Hero descends EITHER side.
+  { sheet: 'cainos_struct', sx: 0,         sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
+    x: 512, y: 288, scale: 1.0 },     // W-facing (cols 14-17)
+  { sheet: 'cainos_struct', sx: 4 * PT,    sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
+    x: 640, y: 288, scale: 1.0 },     // E-facing (cols 18-21)
 ];
 
 // ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
