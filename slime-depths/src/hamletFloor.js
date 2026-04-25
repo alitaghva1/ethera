@@ -298,12 +298,25 @@ const WALL_FACE_PANELS = [
   // West face thickened in Session S from col 20 (1 col) to cols 20-21
   // (2 cols). Col 21 rows 7-10 was workshop interior stone; converting
   // to wall_face absorbs that strip into the brick wall, matching
-  // west_ruin's 2-col-thick east face. Workshop loses 4 interior cells
-  // but keeps 41 (out of 45) — still a substantial district. The sign
-  // at col 21 row 11 stays put (row 11 not in panel) and now reads as
-  // a "WORKSHOP" sign mounted in front of the brick stairwell wall.
+  // west_ruin's 2-col-thick east face.
   { col: 21, row: 12, w: 9, h: 2, capRow: 12 },
   { col: 20, row: 7,  w: 2, h: 4, capRow: 7  },
+  // ── OUTER SOUTH WALL BAND — Iteration 2 (T2b).
+  // The demo has a thick brick wall band extending below the silhouette
+  // at the south. Ours stopped at the silhouette edge (1-row walls
+  // around south_entrance + 2 rows south spur grass) — felt unfinished
+  // compared to the demo's "fortified hamlet edge."
+  //
+  // SW outer band: 4 rows × 2 cols of brick body extending south-west
+  // from the south_entrance west edge (col 13). Cells were void; become
+  // wall_face_top (row 17) + body (rows 18-20).
+  { col: 11, row: 17, w: 2, h: 4, capRow: 17 },
+  // South spur conversion: row 20 cols 13-17 (was south spur grass)
+  // becomes wall_face_top — the thick southern brick band the demo
+  // shows at the very bottom of the map.
+  { col: 13, row: 20, w: 5, h: 1, capRow: 20 },
+  // SE outer band: mirror of SW.
+  { col: 18, row: 17, w: 2, h: 4, capRow: 17 },
 ];
 
 // Path segments — each connects two zones via an axis-aligned route.
