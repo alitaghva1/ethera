@@ -64,26 +64,21 @@ export const TILES = {
   // stone tiles as the plaza for visual unity. Those tiles read as
   // "cobble decoration scattered in grass" not "path edge transitions",
   // so they fought with the plaza visually.)
-  // ── STONE PLAZA (Stone Ground sheet — pristine cut stone, used at
-  //    the hamlet's center under firepit + portal).
-  // ALL picks below are verified fully-opaque (≥1018/1024 pixels). The
-  // earlier set hit transparent slots which produced a checkerboard of
-  // black void where the tile failed to render.
+  // ── STONE PLAZA — ONE tile, no variants. The Cainos auto-tile blocks
+  // each contain tiles with DIFFERENT internal grout patterns at slightly
+  // different positions; picking variants randomly produces visible seams
+  // where the internal patterns don't align. Solution: single tile,
+  // perfect repetition. Rich-looking auto-tile transitions with corners
+  // and edges will land when we implement true 9-slice tiling — a
+  // separate pass.
   stone: [
-    // The "small stones" 4×4 block — each tile renders as a 2×2 array of
-    // pristine flat slabs. Tiles cleanly even when picked individually.
-    { sheet: 'cainos_stone_ground', sx: 4 * T, sy: 0 * T },
-    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 0 * T },
-    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 0 * T },
-    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 0 * T },
-    { sheet: 'cainos_stone_ground', sx: 4 * T, sy: 1 * T },
-    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 1 * T },
-    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 1 * T },
-    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 1 * T },
-    { sheet: 'cainos_stone_ground', sx: 4 * T, sy: 2 * T },
-    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 2 * T },
-    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 2 * T },
-    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 2 * T },
+    { sheet: 'cainos_stone_ground', sx: 1 * T, sy: 1 * T },
+  ],
+  // ── COBBLE PATH — same approach: one tile only. Picked from the
+  // interior of the cobble auto-tile block in the Grass sheet
+  // (cols 0-3, rows 4-7). Repeated everywhere a path tile is needed.
+  cobble: [
+    { sheet: 'cainos_grass', sx: 1 * T, sy: 5 * T },
   ],
   // ── WALL — outer perimeter brick wall. Body tiles only (no edges
   // baked in) so we can tile a flat wall band along the room border.
@@ -112,110 +107,190 @@ function hash2(x, y) {
   return ((n * 1274126177) >>> 0) % 0xffff;
 }
 
-// ─── HAMLET TILEMAP (procedural) ───────────────────────────────────────────
-// Anchor positions for the layout, in tile coords (col, row).
-// Centered on the hamlet's NPC anchors so the floor matches where things
-// actually are. PLAZA is the central stone block; PATHS radiate to the
-// listed POIs.
-const PLAZA_CENTER = { col: 15, row: 15 };          // tile world (480, 480)
-const PLAZA_HALF_W = 5;                              // ± from center horizontally
-const PLAZA_HALF_H = 4;                              // ± from center vertically
+// ─── HAMLET LAYOUT — ZONE-BASED IRREGULAR SILHOUETTE ─────────────────────
+// Replaces the previous "single rectangular plaza + radial paths" model
+// with a multi-zone layout that mirrors the Cainos Scene Overview's design
+// logic: distinct districts connected by paths through grass, with an
+// irregular outer boundary instead of a rectangular room.
+//
+// Stage 1 — five zones laid out on a 30×21 grid:
+//
+//   row 1-5   ┌──────┐                      <- NORTH SHRINE (raised in S3)
+//   row 6                                   <- grass corridor (stairs in S3)
+//   row 7-12  ┌───────┐  ┌─────┐  ┌──────┐  <- WEST RUIN, CENTRAL PLAZA, EAST WORKSHOP
+//   row 13-18                               <- grass corridor / SOUTH connector
+//   row 19-20      ┌─────┐                  <- SOUTH ENTRANCE (gateway pad)
+//
+// The outer silhouette is the union of the zones + the grass corridors
+// connecting them. Tiles outside that union render as void (non-walkable).
+//
+// Stage 2 — paths (baked into TERRAIN_GRID at module load):
+//   south_entrance → central_plaza         (main artery)
+//   central_plaza → north_shrine           (north spine)
+//   central_plaza → east_workshop          (east spur)
+//   central_plaza → west_ruin              (west spur)
+//
+// Each zone is a `{ col, row, w, h, terrain, name }` rectangle. `terrain`
+// declares the zone's interior fill (stone for finished, grass for raw).
 
-// ─── PATH GEOMETRY — ORTHOGONAL ────────────────────────────────────────
-// Previous design: radial spokes from plaza center to every NPC anchor.
-// That created overlapping diagonals where multiple paths intersected
-// near the plaza, and read as visual noise rather than designed architecture.
-//
-// New design: paths only run on cardinal axes (N/S/E/W), each leaving
-// from the EDGE of the plaza (not its center) and bending at right
-// angles to reach off-axis NPC anchors. This gives the hamlet a
-// designed-courtyard read — like the Scene Overview where every path
-// is rectilinear.
-//
-// Each path is one or two segments. A two-segment path bends at the
-// "corner" point (col, row) — it's an L-shape from plaza edge to corner
-// to target.
-const PATHS = [
-  // NORTH path → portal (single segment due north)
-  { from: { col: 15, row: 11 }, corner: null, to: { col: 15, row: 7 } },
-  // SOUTH path → south entrance (single segment due south)
-  { from: { col: 15, row: 19 }, corner: null, to: { col: 15, row: 20 } },
-  // WEST path → shrine + gravekeeper area (single west segment)
-  { from: { col: 11, row: 15 }, corner: null, to: { col: 5,  row: 15 } },
-  // EAST path → wanderer + archive (single east segment)
-  { from: { col: 19, row: 15 }, corner: null, to: { col: 27, row: 15 } },
-  // SW spur off the west path → smith (south-southwest)
-  { from: { col: 7,  row: 15 }, corner: null, to: { col: 7,  row: 18 } },
-  // SE spur off the east path → archivist (south-southeast)
-  { from: { col: 24, row: 15 }, corner: null, to: { col: 24, row: 18 } },
+const ZONES = [
+  // CENTRAL PLAZA — visual anchor, where firepit/portal/oracle sit.
+  // Compact 7×5 — much smaller than the prior 11×9 so the rest of the
+  // layout has room to breathe.
+  { name: 'central_plaza', col: 12, row: 9,  w: 7, h: 5, terrain: 'stone' },
+  // NORTH SHRINE — raised platform in Stage 3, containing the shrine.
+  // Slightly off-center to break the symmetric look.
+  { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'stone' },
+  // WEST RUIN — broken courtyard for the gravekeeper / curses.
+  { name: 'west_ruin',     col: 2,  row: 8,  w: 6, h: 4, terrain: 'stone' },
+  // EAST WORKSHOP — trade / archive district.
+  { name: 'east_workshop', col: 22, row: 8,  w: 6, h: 4, terrain: 'stone' },
+  // SOUTH ENTRANCE — gateway pad, hero spawn, exit back to menu.
+  { name: 'south_entrance',col: 13, row: 17, w: 5, h: 3, terrain: 'stone' },
 ];
-// 5-tile wide path total (2 tiles each side of the line center).
-const PATH_HALF_WIDTH = 2;
 
-// Decide what tile type should occupy (col, row).
-// Plaza (stone) > Path (cobble) > Grass (with sparse decoration).
-function tileTypeAt(col, row) {
-  // PLAZA — central rectangle of stone
-  if (
-    col >= PLAZA_CENTER.col - PLAZA_HALF_W && col <= PLAZA_CENTER.col + PLAZA_HALF_W &&
-    row >= PLAZA_CENTER.row - PLAZA_HALF_H && row <= PLAZA_CENTER.row + PLAZA_HALF_H
-  ) {
-    return 'stone';
+// Path segments — each connects two zones via an axis-aligned route.
+// Drawn as 2-tile-wide stone bands overlaying whatever was below.
+const PATH_SEGMENTS = [
+  // SOUTH entrance → CENTRAL plaza (vertical corridor through middle)
+  { ax: 15, ay: 17, bx: 15, by: 14 },
+  // CENTRAL plaza → NORTH shrine (vertical corridor through middle)
+  { ax: 15, ay: 9,  bx: 15, by: 5 },
+  // CENTRAL plaza → EAST workshop (horizontal corridor)
+  { ax: 19, ay: 11, bx: 22, by: 11 },
+  // CENTRAL plaza → WEST ruin (horizontal corridor)
+  { ax: 12, ay: 11, bx: 8,  by: 11 },
+];
+const PATH_HALF_WIDTH = 1;     // 3 tiles wide total (col-1 .. col+1)
+
+// Grass corridors — areas of WALKABLE grass connecting adjacent zones,
+// even where there's no stone path. These define the irregular outer
+// silhouette: any tile inside ANY corridor or any zone is walkable; all
+// other tiles render as void.
+const GRASS_CORRIDORS = [
+  // Vertical corridor down the middle (south entrance → plaza → shrine)
+  { col: 11, row: 5,  w: 8, h: 14 },
+  // Horizontal corridor across the middle (west ruin → plaza → east workshop)
+  { col: 6,  row: 7,  w: 22, h: 7 },
+  // South spur extending down from south entrance (gateway approach)
+  { col: 13, row: 17, w: 5, h: 4 },
+];
+
+// ─── PRECOMPUTED GRIDS ────────────────────────────────────────────────────
+// Built once at module load from ZONES + PATH_SEGMENTS + GRASS_CORRIDORS.
+// `WALKABLE_GRID[row][col] = true` iff the tile is part of the hamlet
+// (not void). `TERRAIN_GRID[row][col] = 'grass'|'stone'|'cobble'|'void'`.
+const WALKABLE_GRID = [];
+const TERRAIN_GRID = [];
+(function buildGrids() {
+  for (let r = 0; r < HAMLET_ROWS; r++) {
+    WALKABLE_GRID.push(new Array(HAMLET_COLS).fill(false));
+    TERRAIN_GRID.push(new Array(HAMLET_COLS).fill('void'));
   }
-  // PATHS — orthogonal rectilinear paths leaving the plaza on the four
-  // cardinal axes. Each path is one or two straight segments (L-shapes
-  // for off-axis targets). All use the SAME stone tile set as the plaza
-  // so the floor reads as one continuous paving with the plaza at the
-  // intersection.
-  for (const p of PATHS) {
-    if (p.corner) {
-      // L-shaped path: two segments meeting at the corner
-      if (pointToSegmentDist(col, row, p.from.col, p.from.row, p.corner.col, p.corner.row) <= PATH_HALF_WIDTH) return 'stone';
-      if (pointToSegmentDist(col, row, p.corner.col, p.corner.row, p.to.col, p.to.row) <= PATH_HALF_WIDTH) return 'stone';
-    } else {
-      // Single straight segment
-      if (pointToSegmentDist(col, row, p.from.col, p.from.row, p.to.col, p.to.row) <= PATH_HALF_WIDTH) return 'stone';
+  // Pass 1: grass corridors define the basic walkable footprint
+  for (const c of GRASS_CORRIDORS) {
+    for (let r = c.row; r < c.row + c.h && r < HAMLET_ROWS; r++) {
+      for (let x = c.col; x < c.col + c.w && x < HAMLET_COLS; x++) {
+        if (r < 0 || x < 0) continue;
+        WALKABLE_GRID[r][x] = true;
+        TERRAIN_GRID[r][x] = 'grass';
+      }
     }
   }
-  // GRASS with sparse decoration. Only ~6% of grass tiles get the
-  // decorative variant so the floor stays calm.
-  const h = hash2(col, row);
-  return (h % 100) < 6 ? 'grass_decor' : 'grass';
+  // Pass 2: zones overwrite their footprint with their terrain
+  for (const z of ZONES) {
+    for (let r = z.row; r < z.row + z.h && r < HAMLET_ROWS; r++) {
+      for (let x = z.col; x < z.col + z.w && x < HAMLET_COLS; x++) {
+        if (r < 0 || x < 0) continue;
+        WALKABLE_GRID[r][x] = true;
+        TERRAIN_GRID[r][x] = z.terrain;
+      }
+    }
+  }
+  // Pass 3: paths bake stone tiles where they cross grass (zones already
+  // have stone, so this is effectively grass→cobble path conversion)
+  for (const p of PATH_SEGMENTS) {
+    const dx = Math.sign(p.bx - p.ax), dy = Math.sign(p.by - p.ay);
+    let cx = p.ax, cy = p.ay;
+    while (true) {
+      for (let oy = -PATH_HALF_WIDTH; oy <= PATH_HALF_WIDTH; oy++) {
+        for (let ox = -PATH_HALF_WIDTH; ox <= PATH_HALF_WIDTH; ox++) {
+          const tx = cx + ox, ty = cy + oy;
+          if (tx < 0 || ty < 0 || tx >= HAMLET_COLS || ty >= HAMLET_ROWS) continue;
+          if (!WALKABLE_GRID[ty][tx]) continue;          // don't paint void
+          // Convert grass tiles along the path to stone (paving extends);
+          // already-stone tiles (zones) stay stone.
+          if (TERRAIN_GRID[ty][tx] === 'grass') TERRAIN_GRID[ty][tx] = 'stone';
+        }
+      }
+      if (cx === p.bx && cy === p.by) break;
+      cx += dx; cy += dy;
+    }
+  }
+})();
+
+// True iff the tile (col, row) is part of the hamlet's walkable area.
+// Used by the wall-detection logic (walls go on void tiles ADJACENT to
+// walkable) and by hero collision via isHamletWalkable below.
+function isWalkable(col, row) {
+  if (col < 0 || row < 0 || col >= HAMLET_COLS || row >= HAMLET_ROWS) return false;
+  return WALKABLE_GRID[row][col];
 }
 
-function pointToSegmentDist(px, py, ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  if (len2 === 0) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  const cx = ax + t * dx, cy = ay + t * dy;
-  return Math.hypot(px - cx, py - cy);
+// World-space walkability for collision. (worldX, worldY) → tile, then
+// checks the grid. Hero is bounded by this, plus the existing prop circles.
+export function isHamletWalkable(worldX, worldY) {
+  const col = Math.floor(worldX / CAINOS_TILE);
+  const row = Math.floor(worldY / CAINOS_TILE);
+  return isWalkable(col, row);
 }
+
+// Decide what tile type should occupy (col, row). Now reads from the
+// precomputed terrain grid instead of computing geometry per-frame.
+function tileTypeAt(col, row) {
+  const t = TERRAIN_GRID[row]?.[col];
+  if (!t || t === 'void') return null;     // outside silhouette — don't render
+  if (t === 'grass') {
+    // ~6% of grass tiles get the decorative variant for sparse life
+    const h = hash2(col, row);
+    return (h % 100) < 6 ? 'grass_decor' : 'grass';
+  }
+  return t;
+}
+
 
 // ─── PERIMETER WALL ────────────────────────────────────────────────────────
 // Inset-by-1 stone perimeter band around the playable area. Two rows thick
 // on the north (so the wall has visible "depth" looking down) and one row
 // thick on the south + sides. The hamlet's interior playable area becomes
 // the inner rectangle (cols 1..w-2, rows 2..h-2).
-const WALL_NORTH_DEPTH = 2;    // top wall is 2 tiles tall (capstone + body)
-const WALL_OTHER_DEPTH = 1;    // sides/bottom are 1 tile thick
+// ─── WALL DETECTION — IRREGULAR SILHOUETTE ────────────────────────────
+// Walls live on tiles that are themselves VOID (non-walkable) but whose
+// SOUTH neighbor is walkable. That gives a single row of wall framing
+// the northern edge of every walkable area, without painting a
+// rectangular border. The capstone variant (with the dark trim across
+// its top edge) renders when the tile two rows north is also void —
+// i.e. the wall is at least 2 rows tall, which gives the platform
+// silhouette its visual depth.
+//
+// Side and bottom edges of walkable areas don't render walls — that
+// would close every zone into a fully-enclosed box. The Cainos demo
+// shows side/bottom edges as transitions to grass with TX Struct
+// elevation faces (Stage 3 work).
 
 function isWallTile(col, row) {
-  // North wall: top WALL_NORTH_DEPTH rows, full width
-  if (row < WALL_NORTH_DEPTH) return true;
-  // South wall: bottom WALL_OTHER_DEPTH rows, full width
-  if (row >= HAMLET_ROWS - WALL_OTHER_DEPTH) return true;
-  // West wall + east wall (single column each)
-  if (col < WALL_OTHER_DEPTH) return true;
-  if (col >= HAMLET_COLS - WALL_OTHER_DEPTH) return true;
-  return false;
+  if (isWalkable(col, row)) return false;
+  // Wall iff the tile's south neighbor is walkable (this is the "north
+  // wall" of a walkable area, looking at it from the front).
+  return isWalkable(col, row + 1);
 }
 
-// Pick the right wall variant: top-row tiles get the capstone (with the
-// dark trim); inner-row tiles get plain wall body.
+// Pick the wall variant: tiles whose own north neighbor is ALSO void
+// (i.e. there's at least one tile of brick above this one) get the
+// CAPSTONE; otherwise plain BODY.
 function wallTileFor(col, row) {
-  const type = (row === 0) ? 'wall_top' : 'wall_body';
+  const hasNorthVoid = !isWalkable(col, row - 1);
+  const type = hasNorthVoid ? 'wall_top' : 'wall_body';
   const variants = TILES[type];
   return variants[hash2(col, row) % variants.length];
 }
@@ -239,14 +314,18 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_props', sx: 11 * PT, sy: 8 * PT, sw: 4 * PT, sh: 3 * PT,
     x: 480, y: 540, scale: 1.0 },
 
-  // ── TREES along the back rows. Three from TX Plant — small / large /
-  // medium, framing the top of the hamlet.
+  // ── TREES along the back rows. Trees ONLY sit on grass (Cainos demo
+  // convention) — the previous middle-tree at x=470 sat directly on the
+  // north path and got visually clipped by the cobble. Moved to x=620
+  // so it stands on grass east of the path.
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
     x: 130, y: 200, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
-    x: 470, y: 180, scale: 1.0 },
+    x: 320, y: 180, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 830, y: 210, scale: 1.0 },
+    x: 620, y: 200, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
+    x: 830, y: 200, scale: 0.85 },
 
   // ── EXTRA TREES — add depth to mid-zones. Two more, smaller than the
   // back-row ones, placed where the grass would otherwise feel empty.
@@ -389,7 +468,7 @@ export function drawHamletFloor(ctx) {
 
 // Debug helper — exposes the layout as a printable grid for inspection.
 export function debugTileGrid() {
-  const symbols = { grass: '.', grass_decor: ',', stone: 'S' };
+  const symbols = { grass: '.', grass_decor: ',', cobble: 'c', stone: 'S' };
   const lines = [];
   for (let r = 0; r < HAMLET_ROWS; r++) {
     let line = '';

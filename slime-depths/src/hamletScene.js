@@ -17,7 +17,7 @@
 import { hero } from './hero.js';
 import { images } from './loader.js';
 import { NPCS } from './hamlet.js';
-import { drawHamletFloor } from './hamletFloor.js';
+import { drawHamletFloor, isHamletWalkable, CAINOS_TILE } from './hamletFloor.js';
 
 // DIORAMA COMPOSITION — the painted backdrop already has three implicit
 // bands: sky (top ~30%), buildings (middle ~40%), and cobblestone ground
@@ -26,22 +26,20 @@ import { drawHamletFloor } from './hamletFloor.js';
 // than float over a mural. Camera is locked (see main.js enterHamletCanvas)
 // so the hero can't walk up into the sky.
 //
-// Walkable Y-band: ~500 (top of painted cobblestone) → ~630 (bottom edge
-// of room interior). All interactable entities live in that band.
-// Walkable band WIDENED (post-Nano-layout pass) so the hamlet is a real
-// place the hero moves through — approaching the tower, walking up into
-// the shrine district, visiting the ruined edges — rather than a narrow
-// strip in front of a backdrop. Obstacle circles below keep the hero out
-// of building footprints so this larger area stays coherent.
-export const HAMLET_WALK_Y_MIN = 340;
-// Y_MAX must stay far enough above row 13 (y=624-672 is the south wall)
-// that the hero-body upper-edge collision check (y − HERO_RADIUS 14)
-// lands in floor tile row 12. 608 keeps y+14=622 clear of the wall.
-export const HAMLET_WALK_Y_MAX = 608;
+// Legacy rect Y-clamp constants — preserved as exports for back-compat
+// with main.js's old call site, but the *actual* boundary check is now
+// the WALKABLE_GRID lookup via isHamletWalkable(). Setting them to
+// extreme values so the legacy clamp is effectively a no-op.
+export const HAMLET_WALK_Y_MIN = 0;
+export const HAMLET_WALK_Y_MAX = 672;
 
-// Hero spawn — bottom-center, on the entrance trail just south of the
-// central plaza. Same wall-clearance constraint as Y_MAX.
-export const HAMLET_HERO_SPAWN = { x: 480, y: 602 };
+// Hero spawn — south-entrance gateway pad at world (480, 576). This is
+// inside the SOUTH_ENTRANCE zone (col 13-17, row 17-19). The plaza sits
+// directly above it so the player walks NORTH from spawn into the hamlet
+// proper. Tile center for col=15, row=18 = (15*32+16, 18*32+16) = (496, 592)
+// but we offset to (480, 576) which keeps the hero clear of the south
+// entrance's southernmost row (row 19) where they could clip into the wall.
+export const HAMLET_HERO_SPAWN = { x: 480, y: 576 };
 
 // Zone anchors — named positions for every meaningful location in the
 // hamlet. Layout mirrors the design reference: plaza at the heart,
@@ -98,13 +96,17 @@ export const HAMLET_OBSTACLES = [
   { x: 680, y: 615, r: 10 },
 ];
 
-// Push the hero out of any obstacle they're currently inside. Cheap
-// per-tick O(N) sweep — N is tiny. Called after the hamlet Y-clamp.
-// Does NOT zero velocity — that blocks the player from moving tangent
-// to an obstacle. Each frame we just position-correct; the input loop
-// re-applies velocity from the key state so the hero slides along
-// walls naturally.
+// Push the hero out of any prop obstacle they're inside, AND clamp them
+// to the walkable area (the irregular silhouette defined by ZONES +
+// GRASS_CORRIDORS in hamletFloor.js). Cheap per-tick correction — both
+// passes are O(N) where N is tiny.
+//
+// The walkable check samples 4 points around the hero's body (radius
+// HR=10) so a single point dipping into void doesn't slip through. If
+// any of the 4 sample points is in void, push the hero by their average
+// dx/dy back toward the nearest walkable tile center.
 export function resolveHamletCollision(hero) {
+  // Pass 1: prop obstacles
   for (const o of HAMLET_OBSTACLES) {
     const dx = hero.x - o.x;
     const dy = hero.y - o.y;
@@ -116,6 +118,27 @@ export function resolveHamletCollision(hero) {
       const push = (rr - d) / d;
       hero.x += dx * push;
       hero.y += dy * push;
+    }
+  }
+  // Pass 2: walkable-grid clamp. Sample 4 points around the hero's
+  // collision radius. If any are in void, snap the hero to the nearest
+  // walkable tile center along that axis.
+  const HR = 10;
+  const samples = [
+    { x: hero.x + HR, y: hero.y, ax: 'x', dir: -1 },
+    { x: hero.x - HR, y: hero.y, ax: 'x', dir: +1 },
+    { x: hero.x, y: hero.y + HR, ax: 'y', dir: -1 },
+    { x: hero.x, y: hero.y - HR, ax: 'y', dir: +1 },
+  ];
+  for (const s of samples) {
+    if (isHamletWalkable(s.x, s.y)) continue;
+    // Push hero back along the axis that's intruding into void.
+    if (s.ax === 'x') {
+      const tileCenter = Math.floor(s.x / CAINOS_TILE) * CAINOS_TILE + CAINOS_TILE / 2;
+      hero.x = tileCenter + s.dir * (CAINOS_TILE / 2 + HR);
+    } else {
+      const tileCenter = Math.floor(s.y / CAINOS_TILE) * CAINOS_TILE + CAINOS_TILE / 2;
+      hero.y = tileCenter + s.dir * (CAINOS_TILE / 2 + HR);
     }
   }
 }
