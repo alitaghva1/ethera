@@ -673,13 +673,29 @@ export function drawHamletFloor(ctx) {
     }
   }
 
-  // ─── Pass 3: props (bottom-center anchored) ────────────────────────────
-  // Drawn after walls so trees / fountain sit in front of the wall band.
+  // ─── Pass 3: props (bottom-center anchored) with drop shadows ─────────
+  // Each prop gets a soft elliptical drop shadow rendered just before
+  // its sprite so the prop reads as sitting on the floor instead of
+  // floating. Shadow radius scales with sprite width — wide trees get
+  // bigger shadows than tiny pebbles. The TX Shadow / TX Shadow Plant
+  // sheets ship pre-authored blobs but matching them 1:1 to props is
+  // a lot of coord bookkeeping; an elliptical primitive looks nearly
+  // identical at our render resolution and works for every prop.
   for (const p of HAMLET_PROPS) {
     const img = images[p.sheet];
     if (!img) continue;
     const w = p.sw * (p.scale || 1);
     const h = p.sh * (p.scale || 1);
+    // Drop shadow — flatter ellipse beneath the prop's foot.
+    const shadowRx = w * 0.42;
+    const shadowRy = Math.max(4, w * 0.14);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - 1, shadowRx, shadowRy, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // The prop sprite.
     ctx.drawImage(
       img,
       p.sx, p.sy, p.sw, p.sh,

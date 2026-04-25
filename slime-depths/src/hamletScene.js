@@ -238,15 +238,25 @@ export function drawHamletBackdrop(ctx) {
   // exports if needed) — declared above the old props block.
 
   // ── AIR DUST MOTES ───────────────────────────────────────────────────
-  // Drawn LAST so they drift in front of buildings. Extended across the
-  // full painted range so wide-canvas strips are also populated.
-  for (let i = 0; i < 22; i++) {
+  // Two depth layers: 36 slow-and-bright motes (foreground) + 24 fast-
+  // and-dim motes (background). Drifts diagonally across the painted
+  // range so wide-canvas strips also populate.
+  for (let i = 0; i < 36; i++) {
     const baseX = (i * 91) % BG_W;
-    const baseY = 180 + ((i * 37) % 330);
+    const baseY = 120 + ((i * 37) % 470);
     const driftX = BG_X_MIN + ((baseX + now * 8 + i * 3) % BG_W);
     const wobbleY = baseY + Math.sin(now * 0.5 + i * 0.7) * 4;
     const alpha = 0.35 + 0.25 * Math.sin(now * 0.8 + i);
     ctx.fillStyle = `rgba(232, 210, 180, ${alpha.toFixed(3)})`;
+    ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
+  }
+  for (let i = 0; i < 24; i++) {
+    const baseX = (i * 137) % BG_W;
+    const baseY = 80 + ((i * 53) % 540);
+    const driftX = BG_X_MIN + ((baseX + now * 18 + i * 5) % BG_W);
+    const wobbleY = baseY + Math.sin(now * 0.9 + i * 1.1) * 2;
+    const alpha = 0.18 + 0.12 * Math.sin(now * 1.4 + i);
+    ctx.fillStyle = `rgba(200, 185, 160, ${alpha.toFixed(3)})`;
     ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
   }
 }
@@ -328,27 +338,40 @@ function drawPortal(ctx, e, now) {
 }
 
 function drawFirepit(ctx, e, now) {
-  // ── HAMLET REBUILD: old hand-drawn stone-ring firepit + flame sprite +
-  // ember particle system stripped. The fountain prop in hamletFloor.js
-  // sits at this same world position (480, 540) and serves as the visual
-  // centerpiece. The firepit ENTITY still exists for "rest at the fire"
-  // interaction logic; only the rendering changed.
-  // Tiny ambient warm glow remains so the plaza center has a focal point.
-  const pulse = 0.55 + 0.45 * Math.sin(now * 1.8);
-  const haloR = 50;
-  const halo = ctx.createRadialGradient(e.x, e.y - 12, 4, e.x, e.y - 12, haloR);
-  halo.addColorStop(0, `rgba(255, 170, 90, ${(0.22 * pulse).toFixed(3)})`);
+  // Warm radial halo for the plaza's hearth corner. Larger + brighter
+  // than before so the plaza has a clear "fire here" focal point even
+  // without an actual flame sprite. Pulse slowed (1.0 vs 1.8) so it
+  // breathes calmly instead of flickering.
+  const pulse = 0.6 + 0.4 * Math.sin(now * 1.0);
+  const haloR = 70;
+  const halo = ctx.createRadialGradient(e.x, e.y - 8, 4, e.x, e.y - 8, haloR);
+  halo.addColorStop(0, `rgba(255, 175, 95, ${(0.36 * pulse).toFixed(3)})`);
+  halo.addColorStop(0.45, `rgba(255, 130, 70, ${(0.18 * pulse).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(255, 100, 60, 0)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = halo;
-  ctx.fillRect(e.x - haloR, e.y - 12 - haloR, haloR * 2, haloR * 2);
+  ctx.fillRect(e.x - haloR, e.y - 8 - haloR, haloR * 2, haloR * 2);
+  ctx.restore();
 }
 
 function drawShrine(ctx, e) {
-  // ── HAMLET REBUILD: old painted shrine sprite (with the eye sigil) +
-  // 8-state progression grid stripped. Shrine entity still exists for
-  // collision; visual will be replaced with a Cainos statue prop in the
-  // next pass. Empty body — NPC drawing handles its own shadows.
-  void ctx; void e;
+  // Cool blue radial — sacred / mystical contrast to the firepit's warm
+  // halo. The kneeling priestess statue (in hamletFloor.js HAMLET_PROPS)
+  // sits at this same world position; this halo makes the shrine read
+  // as a place of worship at a glance.
+  const now = performance.now() / 1000;
+  const pulse = 0.55 + 0.45 * Math.sin(now * 0.7);
+  const haloR = 56;
+  const halo = ctx.createRadialGradient(e.x, e.y - 8, 4, e.x, e.y - 8, haloR);
+  halo.addColorStop(0, `rgba(140, 180, 230, ${(0.30 * pulse).toFixed(3)})`);
+  halo.addColorStop(0.5, `rgba(110, 140, 210, ${(0.14 * pulse).toFixed(3)})`);
+  halo.addColorStop(1, 'rgba(100, 130, 200, 0)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = halo;
+  ctx.fillRect(e.x - haloR, e.y - 8 - haloR, haloR * 2, haloR * 2);
+  ctx.restore();
 }
 
 function drawNpc(ctx, e, now) {
