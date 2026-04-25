@@ -4345,16 +4345,28 @@ function beginTransition(toIndex, entryFrom) {
 //   4. The new room's south door is in the entry-dwell state — visually
 //      open at first, then animates closed. Player sees the door slam
 //      shut behind them and the old room fade out beyond it.
+// Door pan — drives the smooth camera scroll between two rooms. Without
+// this, hero teleports to the new room and the camera snap reads as a
+// hard cut. With it, the camera stays at the OLD position briefly, then
+// pans to the NEW hero position over ~0.7s while both rooms remain
+// rendered in world space — the player physically WATCHES themselves
+// move from one room to the next.
+let doorPan = null;            // { time, duration, prevHeroX, prevHeroY, freezeUntil }
+
 function beginDoorTransition(toIndex, oldDoorTileX) {
+  // Capture where the hero (and therefore the camera) was BEFORE we load
+  // the new room and teleport them to its south door.
+  const prevHeroX = hero.x;
+  const prevHeroY = hero.y;
+  const prevCamX = camera.x;
+  const prevCamY = camera.y;
+
   // Snapshot the room being LEFT, before loadRoom overwrites it.
   // Offset is a placeholder — recomputed once we know new room dims.
   snapshotPrevRoom({ offsetX: 0, offsetY: 0 });
   // entryFrom='north' is the existing (inverted-feeling) convention that
   // makes heroSpawnInRoom place the hero at preferredY=h-2 — i.e. near the
-  // SOUTH wall, one tile inside the door they just entered through. This
-  // is the right spawn for our flow: hero physically arrives at the south
-  // door of the new room, the prevRoom residue is rendered south of them
-  // (where they came from), and the south door animates closed behind them.
+  // SOUTH wall, one tile inside the door they just entered through.
   loadRoom(toIndex, 'north');
   // Hero is now at south door of new room. Find new room's south door tx,
   // align prevRoom so the two door tiles overlap in world space.
@@ -4363,8 +4375,63 @@ function beginDoorTransition(toIndex, oldDoorTileX) {
     prevRoom.offsetX = (newDoorX - oldDoorTileX) * TILE;
     prevRoom.offsetY = (room.h - 1) * TILE;
   }
+
+  // ── SMOOTH CAMERA PAN ─────────────────────────────────────────────────
+  // Reset the camera to its PRE-transition position so the lerp doesn't
+  // start mid-flight. The followCamera target is now the new hero
+  // position (set in tick), so the camera will pan over to it. The pan
+  // takes about 0.7s with the slow lerp — the eye reads it as a deliberate
+  // "scroll between rooms" instead of an instant cut.
+  camera.x = prevCamX;
+  camera.y = prevCamY;
+  // Override the standard lerp speed for the duration of the pan. We
+  // restore the default (6) once the pan finishes (handled in tick).
+  camera.lerp = 2.0;
+  doorPan = {
+    time: 0,
+    duration: 0.7,
+    prevHeroX, prevHeroY,
+    // Until this many seconds elapse, the hero is ALSO held visually at
+    // the old world position — otherwise they'd appear at the new south
+    // door before the camera reaches them, ruining the pan. After the
+    // freeze, hero coords return to authoritative state for physics.
+    freezeUntil: 0.55,
+    newHeroX: hero.x,
+    newHeroY: hero.y,
+  };
+
   playSfx('click', { volume: 0.55, rate: 1.05 });
 }
+
+// Tick the pan. While active, holds the hero at the OLD world position
+// for the freeze window so the camera can pan past them, then releases
+// the hero to the new room. After the full duration, restores the
+// default camera lerp so normal play feels snappy again.
+function updateDoorPan(dt) {
+  if (!doorPan) return;
+  doorPan.time += dt;
+  if (doorPan.time < doorPan.freezeUntil) {
+    // Hold hero visually at the OLD position while camera pans
+    hero.x = doorPan.prevHeroX;
+    hero.y = doorPan.prevHeroY;
+    hero.vx = 0; hero.vy = 0;
+  } else if (doorPan.newHeroX != null) {
+    // Release: snap hero back to the new-room spawn position. Done once.
+    hero.x = doorPan.newHeroX;
+    hero.y = doorPan.newHeroY;
+    doorPan.newHeroX = null;
+    doorPan.newHeroY = null;
+  }
+  if (doorPan.time >= doorPan.duration) {
+    doorPan = null;
+    camera.lerp = 6.0;       // restore snappy follow
+  }
+}
+
+// Returns true while a door pan is in flight — used to suppress hero
+// input + enemy AI so the camera move plays cleanly without combat
+// interference. Exposed so the main tick can gate updates.
+function isDoorPanActive() { return doorPan !== null; }
 
 function updateTransition(dt) {
   if (!transition.active) return;
@@ -4461,17 +4528,26 @@ function tick(now) {
   // to the hero. Extend core updates for ~cascade_duration + 800ms.
   const cascadeActive = !!(window.__cascadeUntil && performance.now() < window.__cascadeUntil);
   if ((running || cascadeActive) && !transition.active && !frozen && !paused) {
-    updateHero(dt, enemies, mw);
-    updateEnemies(dt, hero);
-    updateFlames(dt);
-    updateProjectiles(dt);
-    updateSynergies(dt);
-    updateWanderer(dt);
+    // During a door pan, hero/enemy/projectile updates are paused so the
+    // camera scroll plays cleanly without combat or input interference.
+    // The pan itself is ticked further below (updateDoorPan).
+    const panActive = isDoorPanActive();
+    if (!panActive) {
+      updateHero(dt, enemies, mw);
+      updateEnemies(dt, hero);
+      updateFlames(dt);
+      updateProjectiles(dt);
+      updateSynergies(dt);
+      updateWanderer(dt);
+    }
     updateGold(dt);
     updateHudAnims(realDt);
     // Tick the prevRoom residue (the snapshot of the room we just left,
     // fading out behind the hero for "see where I came from" continuity).
     tickPrevRoom(realDt);
+    // Tick the door pan — if active, this freezes hero in place while the
+    // camera scrolls between rooms, then releases the hero to the new spawn.
+    updateDoorPan(realDt);
     updateParticles(dt);
     updateDust(realDt, camera.x, camera.y);
     updateWeather(realDt, camera.x, camera.y);
