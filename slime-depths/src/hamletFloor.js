@@ -232,17 +232,23 @@ function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`
 // rows get plain 'wall_face_body'. Cells in ELEVATION_PASSAGES are
 // skipped so they remain walkable for stair / doorway access.
 const WALL_FACE_PANELS = [
-  // ── NORTH_SHRINE — south face only (no stairs available, doorway access)
+  // ── NORTH_SHRINE — south face only (no stairs, doorway access).
   { col: 13, row: 5,  w: 5, h: 2, capRow: 5  },
-  // ── WEST_RUIN — south face (rows 12-13) + east face (cols 9-10 rows 7-10)
-  // South face: full zone width below the platform.
+  // ── WEST_RUIN — south face (cols 2-8 rows 12-13) + east face.
+  // East face is JUST col 9 (1 tile thick). The original 2-tile-thick
+  // panel (cols 9-10) overlapped plaza at col 11... no, plaza starts at
+  // col 11 so cols 9-10 is corridor — but a 2-tile-thick wall left no
+  // walkable corridor cells between the brick and plaza. With 1-tile
+  // wall (col 9), col 10 stays walkable as a thin grass strip giving
+  // the eye a transitional space between brick face and plaza stone.
   { col: 2,  row: 12, w: 7, h: 2, capRow: 12 },
-  // East face: 2-tile-thick brick wall along east edge from the platform
-  // top (row 7) down to row 10 (just above where the stair starts).
-  { col: 9,  row: 7,  w: 2, h: 4, capRow: 7  },
-  // ── EAST_WORKSHOP — mirror of west_ruin (south + west face)
+  { col: 9,  row: 7,  w: 1, h: 4, capRow: 7  },
+  // ── EAST_WORKSHOP — south face + west face (col 20, 1 tile thick).
+  // Col 19 was previously in the panel which overlapped plaza (cols
+  // 11-19 rows 9-14). Pass 4 was overwriting plaza interior cells
+  // with wall_face — fixed by narrowing the panel to col 20 only.
   { col: 21, row: 12, w: 7, h: 2, capRow: 12 },
-  { col: 19, row: 7,  w: 2, h: 4, capRow: 7  },
+  { col: 20, row: 7,  w: 1, h: 4, capRow: 7  },
 ];
 
 // Path segments — each connects two zones via an axis-aligned route.
