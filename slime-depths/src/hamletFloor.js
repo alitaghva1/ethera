@@ -193,12 +193,13 @@ const ZONES = [
   // its south edge gets auto-generated wall_face cells. Access via a
   // 1-tile passage at col 15 (a doorway through the south wall).
   { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'stone', elevation: 1 },
-  // WEST RUIN — RAISED graveyard balcony. Access via east-facing stair
-  // on its east edge (placed in Session G).
-  { name: 'west_ruin',     col: 2,  row: 7,  w: 7, h: 5, terrain: 'stone', elevation: 1 },
-  // EAST WORKSHOP — RAISED trade alcove. Access via west-facing stair
-  // on its west edge (placed in Session G).
-  { name: 'east_workshop', col: 21, row: 7,  w: 7, h: 5, terrain: 'stone', elevation: 1 },
+  // WEST RUIN — RAISED graveyard balcony. EXTENDED 2 cols west in
+  // Session M (cols 0-8 was 2-8) so the silhouette breaks the
+  // cross shape and the ruin reads as a wider cemetery district.
+  { name: 'west_ruin',     col: 0,  row: 7,  w: 9, h: 5, terrain: 'stone', elevation: 1 },
+  // EAST WORKSHOP — RAISED trade alcove. EXTENDED 2 cols east in
+  // Session M (cols 21-29 was 21-27).
+  { name: 'east_workshop', col: 21, row: 7,  w: 9, h: 5, terrain: 'stone', elevation: 1 },
   // SOUTH ENTRANCE — ground level gateway pad, hero spawn.
   { name: 'south_entrance',col: 13, row: 16, w: 5, h: 4, terrain: 'stone', elevation: 0 },
   // HERB GARDEN — ground-level NW alcove. Extended to 4 rows tall
@@ -237,20 +238,14 @@ function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`
 const WALL_FACE_PANELS = [
   // ── NORTH_SHRINE — south face only (no stairs, doorway access).
   { col: 13, row: 5,  w: 5, h: 2, capRow: 5  },
-  // ── WEST_RUIN — south face (cols 2-8 rows 12-13) + east face.
-  // East face is JUST col 9 (1 tile thick). The original 2-tile-thick
-  // panel (cols 9-10) overlapped plaza at col 11... no, plaza starts at
-  // col 11 so cols 9-10 is corridor — but a 2-tile-thick wall left no
-  // walkable corridor cells between the brick and plaza. With 1-tile
-  // wall (col 9), col 10 stays walkable as a thin grass strip giving
-  // the eye a transitional space between brick face and plaza stone.
-  { col: 2,  row: 12, w: 7, h: 2, capRow: 12 },
+  // ── WEST_RUIN — south face (cols 0-8 rows 12-13) + east face (col 9).
+  // South panel extended west to col 0 in Session M to match the
+  // 2-col zone extension (was cols 2-8). East face panel unchanged.
+  { col: 0,  row: 12, w: 9, h: 2, capRow: 12 },
   { col: 9,  row: 7,  w: 1, h: 4, capRow: 7  },
-  // ── EAST_WORKSHOP — south face + west face (col 20, 1 tile thick).
-  // Col 19 was previously in the panel which overlapped plaza (cols
-  // 11-19 rows 9-14). Pass 4 was overwriting plaza interior cells
-  // with wall_face — fixed by narrowing the panel to col 20 only.
-  { col: 21, row: 12, w: 7, h: 2, capRow: 12 },
+  // ── EAST_WORKSHOP — south face (cols 21-29 rows 12-13) + west face.
+  // South panel extended east to col 29 in Session M (was cols 21-27).
+  { col: 21, row: 12, w: 9, h: 2, capRow: 12 },
   { col: 20, row: 7,  w: 1, h: 4, capRow: 7  },
 ];
 
@@ -280,8 +275,12 @@ const GRASS_CORRIDORS = [
   // "grass with stone paths" feel rather than "stone with grass spots."
   { col: 10, row: 5,  w: 11, h: 12 },
   // Horizontal corridor (west_ruin ↔ plaza ↔ east_workshop). Taller (8)
-  // for the same reason.
-  { col: 5,  row: 7,  w: 23, h: 8 },
+  // for grass dominance over stone. EXTENDED in Session M to cols 0-29
+  // (was 5-27) so corridor grass reaches the canvas edge below the
+  // newly-extended west_ruin (cols 0-8) and east_workshop (cols 21-29)
+  // platforms — without this the south of those extensions had no
+  // walkable grass below their brick face.
+  { col: 0,  row: 7,  w: 30, h: 8 },
   // South spur extending below south_entrance (gateway approach).
   { col: 13, row: 19, w: 5, h: 2 },
   // West connector — herb_garden ↔ west_ruin link via grass column.
@@ -583,6 +582,16 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_props', sx: 9 * PT, sy: 0 * PT, sw: PT, sh: 3 * PT,
     x: 80, y: 256, scale: 1.0 },
 
+  // West cemetery extension (cols 0-1 rows 7-11, added in Session M).
+  // 1 large gravestone + 2 cross headstones — extends the graveyard
+  // visual into the new western jut.
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 5 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 32, y: 320, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 9 * PT, sw: PT, sh: PT,
+    x: 16, y: 352, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 9 * PT, sw: PT, sh: PT,
+    x: 48, y: 352, scale: 1.0 },
+
   // ══════════════════════════════════════════════════════════════════════
   // EAST WORKSHOP / ARCHIVE (cols 21-27, rows 7-11) — trade district.
   // 2 crate stacks + 3 barrels + vase + sign post.
@@ -606,6 +615,16 @@ const HAMLET_PROPS = [
   // Sign post advertising the workshop, NW corner.
   { sheet: 'cainos_props', sx: 3 * PT, sy: 4 * PT, sw: PT, sh: 2 * PT,
     x: 688, y: 352, scale: 1.0 },
+
+  // East storage extension (cols 28-29 rows 7-11, added in Session M).
+  // 1 more crate stack + 1 barrel + 1 vase — extends the workshop
+  // visual into the new eastern jut.
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 912, y: 288, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 4 * PT, sw: PT, sh: PT,
+    x: 912, y: 336, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 944, y: 320, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
   // SOUTH ENTRANCE (cols 13-17, rows 16-19) — gateway pad, hero spawn.
