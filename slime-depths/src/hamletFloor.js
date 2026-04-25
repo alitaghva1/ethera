@@ -715,7 +715,11 @@ const HAMLET_PROPS = [
 
   { sheet: 'cainos_props', sx: 3 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
     x: 720, y: 288, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 3 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
+  // Iter 7: replaced this crate with the chest variant (sx=32 sy=0) so
+  // the workshop has visual variety instead of three identical crates
+  // lined up across the top row — the "row of identical boxes" was
+  // reading as poorly-placed clutter in the prior screenshot.
+  { sheet: 'cainos_props', sx: 1 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
     x: 816, y: 288, scale: 1.0 },
   { sheet: 'cainos_props', sx: 4 * PT, sy: 4 * PT, sw: PT, sh: PT,
     x: 720, y: 336, scale: 1.0 },
@@ -741,7 +745,9 @@ const HAMLET_PROPS = [
 
   // East storage extension (cols 28-29 rows 7-11, added in Session M).
   // 1 more crate stack + 1 barrel + 1 vase — extends the workshop
-  // visual into the new eastern jut.
+  // visual into the new eastern jut. Iter 7: kept as a CRATE here
+  // (different from the center chest) so the 3 props read as
+  // "crate / chest / crate" trio with visual variety.
   { sheet: 'cainos_props', sx: 3 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
     x: 912, y: 288, scale: 1.0 },
   { sheet: 'cainos_props', sx: 4 * PT, sy: 4 * PT, sw: PT, sh: PT,
@@ -774,10 +780,12 @@ const HAMLET_PROPS = [
   // Scaled-down tree in the garden (sprite is 4×3 tiles native; at
   // scale 0.7 = 67×90 px the foliage span fits inside the now 4-row
   // garden without overflowing into the void cells above row 3).
-  // This brings trees BACK after Session J had to remove all 4 of
-  // them from corridors where they all overflowed.
+  // Iter 7: anchor moved from (304, 192) to (304, 224) so the foliage
+  // is centered DEEPER in the garden (rows 4-6 instead of rows 3-5)
+  // — keeps a buffer row of grass at the top edge so the tree doesn't
+  // visually press up against the void boundary.
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 304, y: 192, scale: 0.7 },
+    x: 304, y: 224, scale: 0.7 },
 
   // Bushes scattered through the garden's bottom rows.
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT,
@@ -895,12 +903,11 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_struct', sx: 0 * PT, sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
     x: 640, y: 448, scale: 1.0 },
 
-  // Small archway framing NORTH_SHRINE's south doorway — the 1-tile
-  // passage at col 15 rows 5-6 reads as a deliberate stone gateway
-  // through the brick face instead of just a hole. 2×2 sprite from
-  // TX Struct's small-archway block (sx=384 sy=96).
-  { sheet: 'cainos_struct', sx: 12 * PT, sy: 3 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 496, y: 224, scale: 1.0 },
+  // (Iter 7: shrine archway prop removed — its 2×2 sprite was overlaying
+  // the wall_face brick at cols 14-16 rows 5-6 with a different brick
+  // texture, creating a visual "double brick / broken stack" effect on
+  // the shrine south face. The 1-tile col-15 passage reads cleanly as a
+  // doorway in the brick wall without the extra archway frame.)
 
   // Wooden doorway tiles cut into the south brick face of west_ruin
   // and east_workshop — gives the brick walls "shop door" detail
