@@ -228,6 +228,31 @@ const ELEVATION_PASSAGES = new Set([
 ]);
 function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`); }
 
+// STONE PATCHES — small irregular paving patches that overlay corridor
+// grass to mimic the demo's "scattered old courtyard" feel. Without
+// these, the corridor grass spans look like uniform fields between
+// zones; with these, the grass reads as overgrown around remnants of
+// old paving. Each patch is { col, row, w, h }; Pass 3.5 converts
+// grass in the patch footprint to stone, then the 9-slice classifier
+// gives them proper edge tiles automatically.
+const STONE_PATCHES = [
+  // North-of-plaza upper grass — 2 small patches flanking the central
+  // shrine path (cols 14-16 rows 5-8 already stone).
+  { col: 11, row: 7, w: 2, h: 2 },
+  { col: 18, row: 7, w: 2, h: 2 },
+  // South-of-plaza grass — small patch flanking the central south path
+  // (cols 14-16 rows 15-16 already stone).
+  { col: 11, row: 15, w: 2, h: 1 },
+  { col: 18, row: 15, w: 2, h: 1 },
+  // Horizontal corridor patches BELOW the south brick face of west_ruin
+  // and east_workshop (row 14, in corridor grass). Without these the
+  // grass strip below each platform's south face was uniform; the
+  // patches read as remnants of old courtyard paving at the foot of
+  // the platforms.
+  { col: 5, row: 14, w: 3, h: 1 },
+  { col: 22, row: 14, w: 3, h: 1 },
+];
+
 // WALL FACE PANELS — explicit list of brick-body panels around elevated
 // zones. The demo's elevation feel comes from MULTIPLE faces of brick
 // wrapping each platform (south + the side that has the stair), not
@@ -336,6 +361,21 @@ const TERRAIN_GRID = [];
       }
       if (cx === p.bx && cy === p.by) break;
       cx += dx; cy += dy;
+    }
+  }
+  // Pass 3.5: stone patches — small irregular paving overlays in
+  // corridor grass for visual variety. Only converts grass to stone
+  // (leaves zone stone, void, and other terrains alone). Runs AFTER
+  // paths bake (Pass 3) and BEFORE elevation faces (Pass 4) so the
+  // patches can fall in places that aren't part of any path or zone
+  // but still get the stone 9-slice edge tiles via classifyStone.
+  for (const patch of STONE_PATCHES) {
+    for (let r = patch.row; r < patch.row + patch.h && r < HAMLET_ROWS; r++) {
+      for (let c = patch.col; c < patch.col + patch.w && c < HAMLET_COLS; c++) {
+        if (c < 0 || r < 0) continue;
+        if (!WALKABLE_GRID[r][c]) continue;          // skip void
+        if (TERRAIN_GRID[r][c] === 'grass') TERRAIN_GRID[r][c] = 'stone';
+      }
     }
   }
   // Pass 4: elevation faces — paint brick body (wall_face) on the panels
