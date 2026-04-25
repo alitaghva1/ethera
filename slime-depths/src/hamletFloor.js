@@ -1040,6 +1040,25 @@ const HAMLET_PROPS = [
     x: 432, y: 96, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 2 * PT, sy: 11 * PT, sw: PT, sh: PT,
     x: 560, y: 96, scale: 1.0 },
+
+  // Iteration 11 — small "lived-in" details to push closer to demo's
+  // cluttered, populated feel. Each adds atmosphere at low overlap risk.
+
+  // Vase / pot at plaza NW inside corner (col 12 row 13).
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 400, y: 416, scale: 1.0 },
+  // Vase at plaza NE inside corner (col 18 row 13).
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 592, y: 416, scale: 1.0 },
+  // Hammer/tool sign on workshop platform — workshop identity marker.
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 6 * PT, sw: PT, sh: PT,
+    x: 720, y: 256, scale: 1.0 },
+  // Pebble cluster inside cemetery — 1 more rock for clutter.
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 64, y: 384, scale: 1.0 },
+  // Bush at south spur (col 14 row 19) — south_entrance approach detail.
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 464, y: 608, scale: 1.0 },
 ];
 
 // ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
