@@ -311,20 +311,18 @@ const STONE_PATCHES = [
 const WALL_FACE_PANELS = [
   // ── NORTH_SHRINE — south face only (no stairs, doorway access).
   { col: 13, row: 5,  w: 5, h: 2, capRow: 5  },
-  // ── WEST_RUIN — south face (cols 0-8 rows 12-14) + east face.
-  // South face deepened from 2 rows → 3 rows in Iteration 3 so the
-  // brick face below the platform reads as substantial like the
-  // demo. Cells at row 14 cols 0-8 were corridor grass / stone
-  // patches; now wall_face_body. Hero loses east-west traversal
-  // along row 14 cols 0-8, but corridor at rows 7-13 + plaza row 14
-  // cols 11-19 + horizontal corridor north (rows 7-13) still
-  // provide ample pathing.
-  { col: 0,  row: 12, w: 9, h: 3, capRow: 12 },
+  // ── WEST_RUIN — south face (cols 0-8 rows 12-15) + east face.
+  // Iteration 12: deepened from 3→4 rows. The 3-row depth ended at
+  // row 14 with row 15 cols 0-8 = pure void (no walkable neighbors,
+  // no wall classifier fires) — that void rendered as black gap
+  // BELOW the brick face, looking like a cropped/missing tile bug.
+  // Adding row 15 as wall_face_body extends the brick into that
+  // void cell so the visible bottom of the brick face is solid.
+  { col: 0,  row: 12, w: 9, h: 4, capRow: 12 },
   { col: 9,  row: 7,  w: 2, h: 4, capRow: 7  },
-  // ── EAST_WORKSHOP — south face (cols 21-29 rows 12-14) + west face.
-  // South face deepened to 3 rows (Iteration 3) — same logic as the
-  // west_ruin south face deepening above.
-  { col: 21, row: 12, w: 9, h: 3, capRow: 12 },
+  // ── EAST_WORKSHOP — south face (cols 21-29 rows 12-15) + west face.
+  // Iter 12: 3→4 rows deep, mirror of west_ruin south face fix.
+  { col: 21, row: 12, w: 9, h: 4, capRow: 12 },
   { col: 20, row: 7,  w: 2, h: 4, capRow: 7  },
   // ══════════════════════════════════════════════════════════════════════
   // PLAZA ENCLOSURE — Iteration 8. The central plaza (cols 11-19 rows
