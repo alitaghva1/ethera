@@ -776,6 +776,13 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
     x: 752, y: 352, scale: 0.7 },
 
+  // Iteration 10 — second tree on east_workshop's east edge for
+  // visual symmetry and "lots of trees" density matching demo.
+  // Anchor at workshop grass; foliage overlaps the M-extension crate
+  // at col 28 row 9 (tree drawn after crate, branches hang over).
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 912, y: 320, scale: 0.6 },
+
   // East storage extension (cols 28-29 rows 7-11, added in Session M).
   // 1 more crate stack + 1 barrel + 1 vase — extends the workshop
   // visual into the new eastern jut. Iter 7: kept as a CRATE here
@@ -1008,6 +1015,17 @@ const HAMLET_PROPS = [
   // Extra bush in vertical corridor at col 17 row 8:
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT,
     x: 560, y: 256, scale: 1.0 },
+
+  // Iteration 10 — 2 trees flanking the south side of the plaza
+  // walls, in the south corridor grass. Adds vertical mass to the
+  // bottom-half of the hamlet which had no trees previously.
+  // Anchors on vertical corridor grass; foliage overlaps the new
+  // plaza south walls (row 15 wall_face) — tree branches hanging
+  // over plaza wall, natural feel.
+  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 336, y: 480, scale: 0.6 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 656, y: 480, scale: 0.6 },
 
   // Iteration 6 — additional bushes/tufts on the new grass platforms
   // to fill the empty grass cells between props.
