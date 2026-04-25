@@ -311,18 +311,18 @@ const STONE_PATCHES = [
 const WALL_FACE_PANELS = [
   // ── NORTH_SHRINE — south face only (no stairs, doorway access).
   { col: 13, row: 5,  w: 5, h: 2, capRow: 5  },
-  // ── WEST_RUIN — south face (cols 0-8 rows 12-15) + east face.
-  // Iteration 12: deepened from 3→4 rows. The 3-row depth ended at
-  // row 14 with row 15 cols 0-8 = pure void (no walkable neighbors,
-  // no wall classifier fires) — that void rendered as black gap
-  // BELOW the brick face, looking like a cropped/missing tile bug.
-  // Adding row 15 as wall_face_body extends the brick into that
-  // void cell so the visible bottom of the brick face is solid.
-  { col: 0,  row: 12, w: 9, h: 4, capRow: 12 },
+  // ── WEST_RUIN — south face (cols 0-8 rows 12-20) + east face.
+  // Iteration 13: deepened ALL THE WAY to canvas bottom (row 20) so
+  // every void cell below the platform becomes solid brick, not
+  // black. The user reported the hamlet "feels buggy" because of
+  // the cascade of void cells with no walkable neighbors below the
+  // south face. With h=9 the brick extends to the canvas edge —
+  // matches the demo's full bottom-edge fortification.
+  { col: 0,  row: 12, w: 9, h: 9, capRow: 12 },
   { col: 9,  row: 7,  w: 2, h: 4, capRow: 7  },
-  // ── EAST_WORKSHOP — south face (cols 21-29 rows 12-15) + west face.
-  // Iter 12: 3→4 rows deep, mirror of west_ruin south face fix.
-  { col: 21, row: 12, w: 9, h: 4, capRow: 12 },
+  // ── EAST_WORKSHOP — south face (cols 21-29 rows 12-20) + west face.
+  // Iter 13: deepened to canvas bottom (mirror of west_ruin fix above).
+  { col: 21, row: 12, w: 9, h: 9, capRow: 12 },
   { col: 20, row: 7,  w: 2, h: 4, capRow: 7  },
   // ══════════════════════════════════════════════════════════════════════
   // PLAZA ENCLOSURE — Iteration 8. The central plaza (cols 11-19 rows
@@ -357,22 +357,18 @@ const WALL_FACE_PANELS = [
   // South gateway jambs (cols 14, 16 row 15)
   { col: 14, row: 15, w: 1, h: 1, capRow: 15 },
   { col: 16, row: 15, w: 1, h: 1, capRow: 15 },
-  // ── OUTER SOUTH WALL BAND — Iteration 2 (T2b).
-  // The demo has a thick brick wall band extending below the silhouette
-  // at the south. Ours stopped at the silhouette edge (1-row walls
-  // around south_entrance + 2 rows south spur grass) — felt unfinished
-  // compared to the demo's "fortified hamlet edge."
-  //
-  // SW outer band: 4 rows × 2 cols of brick body extending south-west
-  // from the south_entrance west edge (col 13). Cells were void; become
-  // wall_face_top (row 17) + body (rows 18-20).
-  { col: 11, row: 17, w: 2, h: 4, capRow: 17 },
-  // South spur conversion: row 20 cols 13-17 (was south spur grass)
-  // becomes wall_face_top — the thick southern brick band the demo
-  // shows at the very bottom of the map.
+  // ── OUTER SOUTH WALL BAND — Iteration 2 + 14.
+  // Iter 14: SW band widened from cols 11-12 → cols 9-12, SE band
+  // widened from cols 18-19 → cols 18-20. Closes the void gaps at
+  // cols 9-10 + col 20 rows 17-20 that the wall classifier couldn't
+  // fill (no walkable neighbors). Now the entire south bottom is
+  // contiguous brick from col 0 to col 29 except for the gateway
+  // path at cols 13-17 (south_entrance + spur).
+  { col: 9, row: 17, w: 4, h: 4, capRow: 17 },
+  // South spur conversion: row 20 cols 13-17 (was south spur grass).
   { col: 13, row: 20, w: 5, h: 1, capRow: 20 },
-  // SE outer band: mirror of SW.
-  { col: 18, row: 17, w: 2, h: 4, capRow: 17 },
+  // SE outer band, widened.
+  { col: 18, row: 17, w: 3, h: 4, capRow: 17 },
 ];
 
 // Path segments — each connects two zones via an axis-aligned route.
