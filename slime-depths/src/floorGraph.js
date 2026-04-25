@@ -33,6 +33,7 @@ import {
   makeCombatRoom, makeEventRoom,
   makeBossSpawns,
 } from './floor.js';
+import { ROOM_SIZES } from './room.js';
 
 // Elite chance per floor (mirrored from floor.js for now — can import later
 // if we decide to expose it). Floor 1 small, ramps up.
@@ -91,11 +92,13 @@ function pickIdx(arr) { return (Math.random() * arr.length) | 0; }
 function buildRoomForKind(kind, level, combatSlot) {
   const eliteChance = ELITE_CHANCE_BY_LEVEL[level] || 0;
   switch (kind) {
-    case 'start':
+    case 'start': {
+      const s = ROOM_SIZES.medium;
       return {
-        kind: 'start', pillarTemplate: 3, spawns: [], cleared: true,
+        kind: 'start', w: s.w, h: s.h, pillarTemplate: 3, spawns: [], cleared: true,
         doors: { north: true, south: false },
       };
+    }
     case 'combat':
       return makeCombatRoom(level, combatSlot || 'combat1', eliteChance);
     case 'elite': {
@@ -108,15 +111,18 @@ function buildRoomForKind(kind, level, combatSlot) {
     }
     case 'event':
       return makeEventRoom(level, eliteChance);
-    case 'sanctuary':
-      // Same as the current linear-floor 'reward' room.
-      return { kind: 'reward', pillarTemplate: 3, spawns: [], cleared: true,
+    case 'sanctuary': {
+      // Same as the current linear-floor 'reward' room — small intimate space.
+      const s = ROOM_SIZES.small;
+      return { kind: 'reward', w: s.w, h: s.h, pillarTemplate: 3, spawns: [], cleared: true,
                doors: { north: true, south: true } };
+    }
     case 'boss': {
       const bossPillarTemplate = (Math.random() * 15) | 0;
+      const s = ROOM_SIZES.large;
       return {
-        kind: 'boss', pillarTemplate: bossPillarTemplate,
-        spawns: makeBossSpawns(level, bossPillarTemplate),
+        kind: 'boss', w: s.w, h: s.h, pillarTemplate: bossPillarTemplate,
+        spawns: makeBossSpawns(level, bossPillarTemplate, s.w, s.h),
         doors: { north: false, south: true },
       };
     }

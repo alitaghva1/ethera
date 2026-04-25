@@ -9,7 +9,7 @@ import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js';
 import { shakeCamera } from './camera.js';
 import { hero } from './hero.js';
-import { TILE, ROOM_W, ROOM_H, room } from './room.js';
+import { TILE, room } from './room.js';
 import { synthChord, synthPing, synthThud, synthFanfare } from './synth.js';
 import { isCursed } from './curses.js';
 import { hasCard } from './tarot.js';
@@ -76,13 +76,13 @@ function findClearTile(px, py, maxR = 4) {
       for (const sign of [1, -1]) {
         const ny = py + dy * sign;
         const nx = px + dx;
-        if (nx < 2 || nx >= ROOM_W - 2 || ny < 2 || ny >= ROOM_H - 2) continue;
+        if (nx < 2 || nx >= room.w - 2 || ny < 2 || ny >= room.h - 2) continue;
         if (tileIsClear(nx, ny)) return { x: nx, y: ny };
       }
     }
   }
   // Fallback: row 4 scanning left-to-right
-  for (let x = 2; x < ROOM_W - 2; x++) {
+  for (let x = 2; x < room.w - 2; x++) {
     if (tileIsClear(x, py)) return { x, y: py };
   }
   // Last resort

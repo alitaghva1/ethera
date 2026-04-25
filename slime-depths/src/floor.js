@@ -8,8 +8,44 @@
 //   6: boss          (unique per floor: orc / bone_captain / broodmother)
 //
 // `level` (1..3) scales enemy composition, elite chance, damage, and HP.
-import { ROOM_W, ROOM_H, getPillarCells } from './room.js';
+import { ROOM_W, ROOM_H, ROOM_SIZES, getPillarCells } from './room.js';
 import { isCursed } from './curses.js';
+
+// HADES-STYLE ROOM SHAPES — pick a size template per room kind so the run
+// reads as a sequence of distinct spaces, not a chain of identical
+// rectangles. Size choice is deterministic by kind + slight randomization so
+// repeat runs feel slightly different. Returns { w, h }.
+//
+// Why per-kind: each room type has a gameplay flavor that benefits from a
+// different scale. Sanctuaries should feel intimate (small). Boss arenas
+// should feel epic (large). Combat rooms vary so you never know if you're
+// stepping into a wide hall or a tight square. This is what gives Hades
+// its room-to-room sense of variety even when individual rooms are simple.
+function pickRoomSize(kind, slot) {
+  // Sanctuaries / rewards — intimate chapel feel
+  if (kind === 'sanctuary' || kind === 'reward' || kind === 'altar') {
+    return ROOM_SIZES.small;
+  }
+  // Boss arena — always large for impact
+  if (kind === 'boss') return ROOM_SIZES.large;
+  // Mini-boss + late-floor combat — wider so you have room to read telegraphs
+  if (slot === 'miniboss' || slot === 'combat3') {
+    return Math.random() < 0.5 ? ROOM_SIZES.wide : ROOM_SIZES.large;
+  }
+  // Trove / event challenge — tall room for verticality
+  if (kind === 'trove' || kind === 'challenge') {
+    return Math.random() < 0.5 ? ROOM_SIZES.medium : ROOM_SIZES.tall;
+  }
+  // Standard combat — mostly medium, occasionally wide for variety
+  if (kind === 'combat') {
+    const r = Math.random();
+    if (r < 0.55) return ROOM_SIZES.medium;
+    if (r < 0.80) return ROOM_SIZES.wide;
+    return ROOM_SIZES.tall;
+  }
+  // Start / hamlet / fallback
+  return ROOM_SIZES.medium;
+}
 
 export const MAX_FLOORS = 4;
 
@@ -100,16 +136,19 @@ function tierForSlot(level, slot) {
   return 'tier3';                        // floor 3: always tier3
 }
 
-function spawnCells(count, pillarTemplate = -1) {
+function spawnCells(count, pillarTemplate = -1, w = ROOM_W, h = ROOM_H) {
   const cells = [];
-  const mid = Math.floor(ROOM_W / 2);
-  // Avoid pillar positions — pillars are blocking geometry; enemies on top are stuck
-  const pillars = pillarTemplate >= 0 ? getPillarCells(pillarTemplate) : [];
+  const mid = Math.floor(w / 2);
+  // Pillar templates are authored at MEDIUM (20×14) — scale to actual room dims.
+  const sx = w / ROOM_W, sy = h / ROOM_H;
+  const pillars = pillarTemplate >= 0
+    ? getPillarCells(pillarTemplate).map(([px, py]) => [Math.round(px * sx), Math.round(py * sy)])
+    : [];
   const isPillar = (x, y) => pillars.some(([px, py]) => px === x && py === y);
   for (let i = 0; i < count * 12 && cells.length < count; i++) {
-    const x = randInt(2, ROOM_W - 3);
-    const y = randInt(3, ROOM_H - 4);
-    if (Math.abs(x - mid) < 2 && Math.abs(y - Math.floor(ROOM_H / 2)) < 2) continue;
+    const x = randInt(2, w - 3);
+    const y = randInt(3, h - 4);
+    if (Math.abs(x - mid) < 2 && Math.abs(y - Math.floor(h / 2)) < 2) continue;
     if (cells.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 3)) continue;
     if (isPillar(x, y)) continue;
     // Also avoid directly-adjacent pillar cells so enemies aren't wedged
@@ -138,9 +177,10 @@ export function makeCombatRoom(level, slot, eliteChance) {
   // CURSE: Ether's Curse — +25% elite chance
   const effEliteChance = isCursed('ethers_curse') ? eliteChance + 0.25 : eliteChance;
 
-  // Pick pillar template up-front so we can avoid spawning enemies ON pillars
+  // Pick room size + pillar template up-front so we can avoid spawning enemies ON pillars
+  const size = pickRoomSize('combat', slot);
   const pillarTemplate = randInt(0, 14);
-  const cells = spawnCells(comp.length, pillarTemplate);
+  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h);
   const spawns = comp.slice(0, cells.length).map((type, i) => ({
     type, x: cells[i].x, y: cells[i].y,
     elite: type !== 'bomber' && Math.random() < effEliteChance,
@@ -158,7 +198,7 @@ export function makeCombatRoom(level, slot, eliteChance) {
                     : ['orc', 'archer', 'bomber', 'lancer'];
     const n = 3 + randInt(0, 2);
     for (let i = 0; i < n; i++) waveComp.push(pick(waveTypes));
-    const waveCells = spawnCells(waveComp.length, pillarTemplate);
+    const waveCells = spawnCells(waveComp.length, pillarTemplate, size.w, size.h);
     wave2 = waveComp.slice(0, waveCells.length).map((type, i) => ({
       type, x: waveCells[i].x, y: waveCells[i].y,
       elite: type !== 'bomber' && Math.random() < effEliteChance,
@@ -170,10 +210,10 @@ export function makeCombatRoom(level, slot, eliteChance) {
   const propUrns = [];
   const propCount = 2 + randInt(0, 3);
   for (let i = 0; i < propCount * 6 && propUrns.length < propCount; i++) {
-    const x = randInt(2, ROOM_W - 3);
-    const y = randInt(3, ROOM_H - 4);
+    const x = randInt(2, size.w - 3);
+    const y = randInt(3, size.h - 4);
     // Avoid center + enemy spawn positions
-    if (Math.abs(x - Math.floor(ROOM_W/2)) < 3 && Math.abs(y - Math.floor(ROOM_H/2)) < 2) continue;
+    if (Math.abs(x - Math.floor(size.w/2)) < 3 && Math.abs(y - Math.floor(size.h/2)) < 2) continue;
     if (cells.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 2)) continue;
     if (propUrns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
     propUrns.push({ x, y, broken: false, variant: randInt(0, 2), isProp: true });
@@ -181,6 +221,7 @@ export function makeCombatRoom(level, slot, eliteChance) {
   return {
     kind: 'combat',
     slotLabel: slot,
+    w: size.w, h: size.h,
     pillarTemplate,                     // already rolled above for spawn validation
     spawns,
     wave2,                                // null if not a wave room
@@ -191,8 +232,10 @@ export function makeCombatRoom(level, slot, eliteChance) {
 
 export function makeAltarRoom() {
   // Two relic pedestals at HP cost, empty center otherwise
+  const size = pickRoomSize('altar');
   return {
     kind: 'altar',
+    w: size.w, h: size.h,
     pillarTemplate: 3,                       // open
     spawns: [],
     doors: { north: true, south: true },
@@ -209,8 +252,9 @@ export function makeChallengeRoom(level, eliteChance) {
   if (isCursed('the_swarm')) {
     comp.push(pick(extraTypes), pick(extraTypes));
   }
+  const size = pickRoomSize('challenge');
   const pillarTemplate = randInt(0, 14);
-  const cells = spawnCells(comp.length, pillarTemplate);
+  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h);
   const spawns = comp.slice(0, cells.length).map((type, i) => ({
     type, x: cells[i].x, y: cells[i].y,
     elite: type !== 'bomber',
@@ -219,6 +263,7 @@ export function makeChallengeRoom(level, eliteChance) {
   }));
   return {
     kind: 'challenge',
+    w: size.w, h: size.h,
     pillarTemplate,
     spawns,
     doors: { north: true, south: true },
@@ -227,18 +272,20 @@ export function makeChallengeRoom(level, eliteChance) {
 
 export function makeTroveRoom() {
   // Generate 10-14 urn positions avoiding center + doors
+  const size = pickRoomSize('trove');
   const count = 10 + randInt(0, 4);
   const urns = [];
-  const mid = Math.floor(ROOM_W / 2);
+  const mid = Math.floor(size.w / 2);
   for (let i = 0; i < count * 8 && urns.length < count; i++) {
-    const x = randInt(2, ROOM_W - 3);
-    const y = randInt(3, ROOM_H - 4);
+    const x = randInt(2, size.w - 3);
+    const y = randInt(3, size.h - 4);
     if (Math.abs(x - mid) < 2 && y < 3) continue;   // keep doorway clear
     if (urns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
     urns.push({ x, y, broken: false, variant: randInt(0, 2) });
   }
   return {
     kind: 'trove',
+    w: size.w, h: size.h,
     pillarTemplate: 3,
     spawns: [],
     urns,
@@ -252,6 +299,7 @@ export function makeTroveRoom() {
 // via room.slotLabel check). Keeps event rooms from feeling like the same
 // three categories after three runs.
 function makeMiniBossRoom(level) {
+  const size = pickRoomSize('combat', 'miniboss');
   const pillarTemplate = randInt(0, 14);
   // Mini-boss type scales with floor — pick a unique-mechanic enemy from
   // the adjacent tier so it's genuinely threatening but not boss-scale.
@@ -266,11 +314,12 @@ function makeMiniBossRoom(level) {
   return {
     kind: 'combat',
     slotLabel: 'miniboss',
+    w: size.w, h: size.h,
     pillarTemplate,
     spawns: [{
       type: miniType,
-      x: Math.floor(ROOM_W / 2),
-      y: Math.floor(ROOM_H / 2),
+      x: Math.floor(size.w / 2),
+      y: Math.floor(size.h / 2),
       elite: true,
       hpMul: 1.8,
       damageMul: 1.2,
@@ -319,15 +368,15 @@ export const BOSS_LOOT_POOL = {
 export const EMBER_TYRANT_MYTHIC_POOL = ['cataclysm', 'eye_of_ether'];
 export const EMBER_TYRANT_MYTHIC_CHANCE = 0.20;
 
-export function makeBossSpawns(level, pillarTemplate = -1) {
+export function makeBossSpawns(level, pillarTemplate = -1, bossW = ROOM_W, bossH = ROOM_H) {
   // Floor 4's THRONE OF RUIN gets its own boss — The Ember Tyrant — instead
   // of falling back to orc. Arena hazards (6 fire pools + 2 spikes) are
   // already wired in room.js:471 for this bossType.
   const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother', 4: 'ember_tyrant' }[level] || 'orc';
   const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'], 4: ['bomber', 'dreadmage'] }[level] || [];
-  const cells = spawnCells(adds.length, pillarTemplate);
+  const cells = spawnCells(adds.length, pillarTemplate, bossW, bossH);
   const spawns = [
-    { type: bossType, x: Math.floor(ROOM_W/2), y: 3, elite: true, boss: true },
+    { type: bossType, x: Math.floor(bossW/2), y: 3, elite: true, boss: true },
   ];
   adds.forEach((t, i) => {
     spawns.push({
@@ -352,14 +401,17 @@ export function generateFloor(level = 1) {
 
   // Boss pillar template rolled first so spawn positions avoid it
   const bossPillarTemplate = randInt(0, 14);
+  const startSize = pickRoomSize('start');
+  const rewardSize = pickRoomSize('reward');
+  const bossSize = pickRoomSize('boss');
   const rooms = [
-    { kind: 'start',  pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: false } },
+    { kind: 'start',  w: startSize.w,  h: startSize.h,  pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: false } },
     makeCombatRoom(lvl, 'combat1', eliteChance),
     makeEventRoom(lvl, eliteChance),
     makeCombatRoom(lvl, 'combat2', eliteChance),
-    { kind: 'reward', pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: true } },
+    { kind: 'reward', w: rewardSize.w, h: rewardSize.h, pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: true } },
     makeCombatRoom(lvl, 'combat3', eliteChance),
-    { kind: 'boss',   pillarTemplate: bossPillarTemplate, spawns: makeBossSpawns(lvl, bossPillarTemplate), doors: { north: false, south: true } },
+    { kind: 'boss',   w: bossSize.w,   h: bossSize.h,   pillarTemplate: bossPillarTemplate, spawns: makeBossSpawns(lvl, bossPillarTemplate, bossSize.w, bossSize.h), doors: { north: false, south: true } },
   ];
   return rooms;
 }

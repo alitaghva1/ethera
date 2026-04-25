@@ -107,7 +107,13 @@ const SPR = 100;
 //   Hit detection uses BOTH distance and angle, so flanking matters.
 export const TYPES = {
   slime:  {
-    prefix: 'slime_',  drawSize: 80, radius: 18, speed: 95,  hp: 70,  damage: 1,
+    // SIZING PASS — Tiny-RPG sprites fill only ~15% of their 100 cell while
+    // the PixelLab mage hero fills 93% of its 128 cell. Without compensation
+    // a minion drawSize of 80 reads as ~12 px visible vs the hero's ~56 px,
+    // making combat unreadable. Bumped 80→200 so visible body lands ~30 px
+    // — still smaller than the hero (intentional: slime is the tutorial mob)
+    // but actually fightable instead of postage-stamp size.
+    prefix: 'slime_',  drawSize: 200, radius: 22, speed: 95,  hp: 70,  damage: 1,
     color: '#6acc78', hitCD: 0.65, fps: 10, behavior: 'melee',
     attackReach: 42, attackArc: Math.PI * 0.42,
     windup: 0.25, swing: 0.22,
@@ -119,7 +125,7 @@ export const TYPES = {
   },
   skel:   {
     element: 'cold',                 // resists cold, weak to fire/shock
-    prefix: 'skel_',   drawSize: 96, radius: 18, speed: 118, hp: 95,  damage: 1,
+    prefix: 'skel_',   drawSize: 220, radius: 22, speed: 118, hp: 95,  damage: 1,
     color: '#cfd4d9', hitCD: 0.80, fps: 10, behavior: 'melee',
     attackReach: 54, attackArc: Math.PI * 0.48,
     windup: 0.28, swing: 0.22,
@@ -133,7 +139,7 @@ export const TYPES = {
     // BALANCE PASS (sim: floor-1 boss p50 TTK was 2.7s — trivial).
     // Raised 150 → 200 for ~3.5s p50 TTK. Then bone_captain was also
     // bumped so floor 2 stays meaningfully tougher than floor 1.
-    prefix: 'orc_',    drawSize: 100, radius: 20, speed: 80, hp: 200, damage: 2,
+    prefix: 'orc_',    drawSize: 220, radius: 26, speed: 80, hp: 200, damage: 2,
     color: '#7fa34a', hitCD: 0.92, fps: 8, behavior: 'melee',
     attackReach: 62, attackArc: Math.PI * 0.60,
     windup: 0.38, swing: 0.26,
@@ -149,7 +155,7 @@ export const TYPES = {
     heavyWindupSfx: { key: 'hero_hurt', rate: 0.38, volume: 0.85 },
   },
   archer: {
-    prefix: 'archer_', drawSize: 96, radius: 16, speed: 100, hp: 60,  damage: 1,
+    prefix: 'archer_', drawSize: 200, radius: 20, speed: 100, hp: 60,  damage: 1,
     color: '#d8c7a8', attackRange: 420, hitCD: 1.0, fps: 10, behavior: 'ranged',
     windup: 0.36, swing: 0.20, preferDist: 220, minDist: 130,
     telegraphColor: 'rgba(220, 60, 70, ',
@@ -158,7 +164,7 @@ export const TYPES = {
     flavor: 'chose the dark over starving. regrets neither.',
   },
   bomber: {
-    prefix: 'slime_',  drawSize: 60, radius: 14, speed: 165, hp: 36,  damage: 2,
+    prefix: 'slime_',  drawSize: 130, radius: 18, speed: 165, hp: 36,  damage: 2,
     color: '#ff9a5a', attackRange: 34, hitCD: 0.5, fps: 16, behavior: 'bomber',
     windup: 0.48, swing: 0.1, blastRadius: 92, blastDamage: 2,
     tintFilter: 'sepia(0.5) hue-rotate(-10deg) saturate(2.5)',
@@ -171,7 +177,7 @@ export const TYPES = {
   // Keeps medium distance, then commits to a 380px linear charge that pierces.
   // Hero must sidestep the line, not dodge behind him.
   lancer: {
-    prefix: 'lancer_', drawSize: 100, radius: 18, speed: 120, hp: 90, damage: 2,
+    prefix: 'lancer_', drawSize: 220, radius: 22, speed: 120, hp: 90, damage: 2,
     color: '#e8d4a0', hitCD: 1.3, fps: 10, behavior: 'lancer',
     chargeRange: 380,           // max charge distance
     chargeWidth: 36,              // line hitbox width
@@ -188,7 +194,7 @@ export const TYPES = {
   // frontal hit costs 1 charge. Once depleted the unit is fully vulnerable.
   // Uses orc sprite with a cold steel tint + visible shield wedge.
   vanguard: {
-    prefix: 'orc_',    drawSize: 100, radius: 20, speed: 70, hp: 120, damage: 2,
+    prefix: 'orc_',    drawSize: 220, radius: 26, speed: 70, hp: 120, damage: 2,
     color: '#a0b8d0', hitCD: 1.10, fps: 8, behavior: 'melee',
     attackReach: 66, attackArc: Math.PI * 0.62,
     windup: 0.50, swing: 0.28,
@@ -206,7 +212,7 @@ export const TYPES = {
   // Hybrid of wizard (casts orbs at distance) and vanguard (frontal damage
   // reduction). Creates a puzzle: dodge orbs while getting behind the mirror.
   reflector: {
-    prefix: 'wiz_',    drawSize: 96, radius: 16, speed: 55, hp: 90, damage: 2,
+    prefix: 'wiz_',    drawSize: 220, radius: 20, speed: 55, hp: 90, damage: 2,
     color: '#c8e0ff',  hitCD: 2.0, fps: 10, behavior: 'wizard',
     preferDist: 320, minDist: 220,
     castRange: 460, castWindup: 0.80, castCount: 1, castSpread: 0,
@@ -224,7 +230,7 @@ export const TYPES = {
   // ---- WIZARD — backline caster. Homing orbs that track the hero. ----
   wizard: {
     element: 'shock',                // resists shock, weak to fire/cold
-    prefix: 'wiz_',    drawSize: 96, radius: 16, speed: 60, hp: 70, damage: 2,
+    prefix: 'wiz_',    drawSize: 200, radius: 20, speed: 60, hp: 70, damage: 2,
     color: '#b89cff', hitCD: 2.4, fps: 10, behavior: 'wizard',
     preferDist: 340, minDist: 240,
     castRange: 500,
@@ -241,7 +247,7 @@ export const TYPES = {
   // Tinted cyan and moves slowly. Kill priority target — hero lives or dies
   // depending on whether she is prioritized fast.
   priest: {
-    prefix: 'priest_', drawSize: 96, radius: 16, speed: 70, hp: 60, damage: 0,
+    prefix: 'priest_', drawSize: 200, radius: 20, speed: 70, hp: 60, damage: 0,
     color: '#c8d4ff', hitCD: 2.2, fps: 10, behavior: 'priest',
     preferDist: 260, minDist: 180,
     healRange: 260,                // how far her heal reaches
@@ -259,7 +265,7 @@ export const TYPES = {
   // Spawned by main.js at run start based on ruin.deaths. Uses orc sprite with
   // a ghostly blue filter. HP/damage scale with how loaded-out the past build was.
   echo: {
-    prefix: 'orc_',    drawSize: 104, radius: 20, speed: 96, hp: 140, damage: 2,
+    prefix: 'orc_',    drawSize: 230, radius: 26, speed: 96, hp: 140, damage: 2,
     color: '#c8d8ff',  hitCD: 1.1, fps: 8, behavior: 'melee',
     attackReach: 68, attackArc: Math.PI * 0.66,
     windup: 0.42, swing: 0.26,
@@ -280,7 +286,7 @@ export const TYPES = {
     // BALANCE PASS — paired with orc HP bump. 180 → 220 keeps floor-2
     // boss meaningfully tougher than floor-1 (660 → 858 effective HP
     // after 3x × 1.3 floor mul).
-    prefix: 'bonecap_', drawSize: 108, radius: 22, speed: 115, hp: 220, damage: 2,
+    prefix: 'bonecap_', drawSize: 240, radius: 28, speed: 115, hp: 220, damage: 2,
     color: '#cfd4d9', hitCD: 1.0, fps: 10, behavior: 'melee',
     attackReach: 72, attackArc: Math.PI * 0.52,
     windup: 0.40, swing: 0.24,
@@ -297,7 +303,7 @@ export const TYPES = {
   },
   // ---- Floor 3 boss: Broodmother — werebear with enrage + spawning bombers ----
   broodmother: {
-    prefix: 'brood_',  drawSize: 134, radius: 28, speed: 58,  hp: 240, damage: 3,
+    prefix: 'brood_',  drawSize: 280, radius: 34, speed: 58,  hp: 240, damage: 3,
     color: '#9a6b56', hitCD: 1.15, fps: 8, behavior: 'melee',
     attackReach: 86, attackArc: Math.PI * 0.70,
     windup: 0.55, swing: 0.32,
@@ -322,7 +328,7 @@ export const TYPES = {
   // ---- Floor 4 boss: EMBER TYRANT — heavily armored, fire-themed ----
   ember_tyrant: {
     element: 'fire',                 // resists fire, weak to cold/shock
-    prefix: 'ember_',  drawSize: 118, radius: 24, speed: 82,  hp: 280, damage: 3,
+    prefix: 'ember_',  drawSize: 280, radius: 30, speed: 82,  hp: 280, damage: 3,
     color: '#e85020', hitCD: 0.95, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.62,
     windup: 0.42, swing: 0.28,
@@ -357,7 +363,7 @@ export const TYPES = {
   // cleave, lower swing cadence than orc. Spawns in floor-2 event rooms as
   // the mini-boss variant (picked by floor.js makeMiniBossRoom).
   warden: {
-    prefix: 'warden_',  drawSize: 110, radius: 22, speed: 65, hp: 140, damage: 2,
+    prefix: 'warden_',  drawSize: 240, radius: 28, speed: 65, hp: 140, damage: 2,
     color: '#8a8098',  hitCD: 1.15, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.68,
     windup: 0.60, swing: 0.32,
@@ -381,7 +387,7 @@ export const TYPES = {
   // both dreadmage and wizard in the same room.
   hermit: {
     element: 'shock',
-    prefix: 'wiz_',      drawSize: 118, radius: 20, speed: 40, hp: 180, damage: 3,
+    prefix: 'wiz_',      drawSize: 240, radius: 24, speed: 40, hp: 180, damage: 3,
     color: '#c9a86a',    hitCD: 2.4, fps: 8, behavior: 'wizard',
     preferDist: 420, minDist: 320,
     castRange: 520,
@@ -401,7 +407,7 @@ export const TYPES = {
   // multi-caster comps (pair with priest or reflector).
   dreadmage: {
     element: 'shock',
-    prefix: 'dreadmage_', drawSize: 102, radius: 16, speed: 72, hp: 95, damage: 2,
+    prefix: 'dreadmage_', drawSize: 220, radius: 20, speed: 72, hp: 95, damage: 2,
     color: '#b060ff',  hitCD: 2.1, fps: 10, behavior: 'wizard',
     preferDist: 340, minDist: 230,
     castRange: 500,
@@ -420,7 +426,7 @@ export const TYPES = {
   // ranged enemy), lower HP, higher speed. Fills the "airborne threat"
   // design gap — nothing else in the roster hovers out of melee range.
   haunt: {
-    prefix: 'haunt_',   drawSize: 86, radius: 14, speed: 130, hp: 55, damage: 1,
+    prefix: 'haunt_',   drawSize: 180, radius: 18, speed: 130, hp: 55, damage: 1,
     color: '#ff8050', attackRange: 320, hitCD: 1.15, fps: 12, behavior: 'ranged',
     windup: 0.32, swing: 0.18, preferDist: 240, minDist: 160,
     telegraphColor: 'rgba(255, 100, 80, ',

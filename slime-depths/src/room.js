@@ -6,8 +6,25 @@
 import { setDustBiome, setWeatherBiome } from './particles.js';
 
 export const TILE = 48;
+// Default room dimensions. Per-room sizes can override via `data.w` / `data.h`
+// in `buildRoomFromData`. The active dimensions live on `room.w` / `room.h`,
+// which all internal helpers (door positions, perimeter, collision) now read
+// from. ROOM_W / ROOM_H stay exported for callers that need the standard
+// medium-room baseline (e.g. floor.js spawn templates).
+//
+// HADES-STYLE ROOM SHAPES — sizes are picked per-kind so the player feels
+// the difference walking between rooms instead of grinding through a chain
+// of identical 20×14 rectangles. See `pickRoomSize` in floor.js.
 export const ROOM_W = 20;
 export const ROOM_H = 14;
+// Size templates exposed for floor.js. Picked per room kind.
+export const ROOM_SIZES = {
+  small:   { w: 16, h: 11 },     // intimate sanctuary / reward — feels like a chapel
+  medium:  { w: 20, h: 14 },     // default combat / event
+  wide:    { w: 26, h: 13 },     // long hall — encourages flanking + ranged play
+  tall:    { w: 18, h: 18 },     // tall arena — vertical movement matters
+  large:   { w: 26, h: 18 },     // boss / mini-boss — epic scale
+};
 
 // Three biome palettes — swapped per floor for visual identity.
 // setBiome(id) switches the active palette which drawRoom + lighting read.
@@ -285,12 +302,16 @@ export const room = {
   entryFrom: 'south',
 };
 
-export function northDoorPos() { return { x: Math.floor(ROOM_W / 2), y: 0 }; }
-export function southDoorPos() { return { x: Math.floor(ROOM_W / 2), y: ROOM_H - 1 }; }
-export function pedestalPos()  { return { x: Math.floor(ROOM_W / 2), y: Math.floor(ROOM_H / 2) }; }
+// Door / pedestal positions now read from the active `room.w / room.h` so a
+// 26×18 boss arena and a 16×11 sanctuary both put their north door at the
+// correct mid-top tile. Falling back to ROOM_W/H if `room` hasn't been
+// initialized yet (the very first call before buildRoomFromData runs).
+export function northDoorPos() { return { x: Math.floor((room.w || ROOM_W) / 2), y: 0 }; }
+export function southDoorPos() { return { x: Math.floor((room.w || ROOM_W) / 2), y: (room.h || ROOM_H) - 1 }; }
+export function pedestalPos()  { return { x: Math.floor((room.w || ROOM_W) / 2), y: Math.floor((room.h || ROOM_H) / 2) }; }
 
-function isPerimeter(x, y) {
-  return x === 0 || y === 0 || x === ROOM_W - 1 || y === ROOM_H - 1;
+function isPerimeter(x, y, w, h) {
+  return x === 0 || y === 0 || x === w - 1 || y === h - 1;
 }
 
 // Pillar layout templates. Some patterns include interior walls (more blocking)
@@ -334,6 +355,12 @@ const PILLAR_TEMPLATES = [
 ];
 
 export function buildRoomFromData(data) {
+  // Per-room dimensions — falls back to ROOM_W/ROOM_H when not specified
+  // (preserves back-compat with old saved data + legacy rooms like hamlet).
+  const w = data.w || ROOM_W;
+  const h = data.h || ROOM_H;
+  room.w = w;
+  room.h = h;
   room.kind = data.kind;
   room.spawns = data.spawns ? data.spawns.slice() : [];
   room.cleared = !!data.cleared;
@@ -346,10 +373,10 @@ export function buildRoomFromData(data) {
 
   const pillars = PILLAR_TEMPLATES[data.pillarTemplate | 0] || [];
   const tiles = [];
-  for (let y = 0; y < ROOM_H; y++) {
+  for (let y = 0; y < h; y++) {
     const r = [];
-    for (let x = 0; x < ROOM_W; x++) {
-      r.push(isPerimeter(x, y) ? 'wall' : 'floor');
+    for (let x = 0; x < w; x++) {
+      r.push(isPerimeter(x, y, w, h) ? 'wall' : 'floor');
     }
     tiles.push(r);
   }
@@ -357,8 +384,17 @@ export function buildRoomFromData(data) {
   // walkable hub with no combat. Perimeter walls stay so the hero can't
   // walk off the painted plate.
   if (data.kind !== 'hamlet') {
+    // Pillar templates are authored at MEDIUM scale (20×14). For larger
+    // rooms, scale pillar coords proportionally so the layout still reads
+    // as designed. For smaller rooms, clamp to the new bounds.
+    const sx = w / ROOM_W;
+    const sy = h / ROOM_H;
     for (const [px, py] of pillars) {
-      if (px > 0 && py > 0 && px < ROOM_W - 1 && py < ROOM_H - 1) tiles[py][px] = 'pillar';
+      const scaledX = Math.round(px * sx);
+      const scaledY = Math.round(py * sy);
+      if (scaledX > 0 && scaledY > 0 && scaledX < w - 1 && scaledY < h - 1) {
+        tiles[scaledY][scaledX] = 'pillar';
+      }
     }
   }
 
@@ -387,12 +423,12 @@ export function buildRoomFromData(data) {
   if (data.kind !== 'hamlet') {
     const crackCount = 3 + (hash(data.pillarTemplate | 0, 7) % 3);
     for (let i = 0; i < crackCount; i++) {
-      const x = 2 + (hash(i + 1, 13) % (ROOM_W - 4));
-      const y = 2 + (hash(i + 2, 17) % (ROOM_H - 4));
+      const x = 2 + (hash(i + 1, 13) % (w - 4));
+      const y = 2 + (hash(i + 2, 17) % (h - 4));
       if (tiles[y][x] === 'floor') room.decor.push({ x, y, kind: 'crack' });
     }
     // Rubble in 1-2 corners for "lived-in" feel
-    const corners = [[1, 1], [ROOM_W - 2, 1], [1, ROOM_H - 2], [ROOM_W - 2, ROOM_H - 2]];
+    const corners = [[1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2]];
     const rubbleCount = 1 + (hash(data.pillarTemplate | 0, 11) % 2);
     for (let i = 0; i < rubbleCount; i++) {
       const c = corners[hash(i, 23) % corners.length];
@@ -412,8 +448,8 @@ export function buildRoomFromData(data) {
       const sideLeft = (hash(tries + 41, 43) & 1) === 0;
       const px = sideLeft
         ? 2 + (hash(tries + 51, 47) % 4)
-        : ROOM_W - 3 - (hash(tries + 53, 49) % 4);
-      const py = 3 + (hash(tries + 57, 53) % (ROOM_H - 6));
+        : w - 3 - (hash(tries + 53, 49) % 4);
+      const py = 3 + (hash(tries + 57, 53) % Math.max(1, h - 6));
       if (tiles[py]?.[px] === 'floor' && !room.decor.some(d => d.x === px && d.y === py)) {
         room.decor.push({ x: px, y: py, kind: propKind });
         break;
@@ -523,8 +559,8 @@ export function buildRoomFromData(data) {
   if (data.kind === 'combat' && Math.random() < 0.3) {
     // Pick a wall cell on one of the side walls (not corners, not the door row)
     const sides = [
-      { x: 0, y: 3 + (hash(data.pillarTemplate | 0, 19) % (ROOM_H - 6)) },       // left wall
-      { x: ROOM_W - 1, y: 3 + (hash(data.pillarTemplate | 0, 23) % (ROOM_H - 6)) }, // right wall
+      { x: 0, y: 3 + (hash(data.pillarTemplate | 0, 19) % Math.max(1, h - 6)) },       // left wall
+      { x: w - 1, y: 3 + (hash(data.pillarTemplate | 0, 23) % Math.max(1, h - 6)) }, // right wall
     ];
     const spot = sides[hash(data.pillarTemplate | 0, 29) & 1];
     if (tiles[spot.y]?.[spot.x] === 'wall') {
@@ -563,12 +599,12 @@ export function isWallAtWorld(wx, wy) {
   if (!room.tiles) return false;
   const tx = Math.floor(wx / TILE);
   const ty = Math.floor(wy / TILE);
-  if (tx < 0 || ty < 0 || tx >= ROOM_W || ty >= ROOM_H) return true;
+  if (tx < 0 || ty < 0 || tx >= room.w || ty >= room.h) return true;
   const t = room.tiles[ty][tx];
   if (t === 'wall' || t === 'pillar') return true;
   if (t === 'crackedwall') return !roomSecrets.broken;
   if (t === 'door') {
-    const isSouth = ty === ROOM_H - 1;
+    const isSouth = ty === room.h - 1;
     return !isSouth && !room.cleared;
   }
   return false;
@@ -612,10 +648,10 @@ export function onDoorWorld(wx, wy) {
   if (!room.tiles) return null;
   const tx = Math.floor(wx / TILE);
   const ty = Math.floor(wy / TILE);
-  if (tx < 0 || ty < 0 || tx >= ROOM_W || ty >= ROOM_H) return null;
+  if (tx < 0 || ty < 0 || tx >= room.w || ty >= room.h) return null;
   if (room.tiles[ty][tx] !== 'door') return null;
   if (ty === 0) return room.cleared ? { dir: 'north' } : null;
-  if (ty === ROOM_H - 1) return { dir: 'south' };
+  if (ty === room.h - 1) return { dir: 'south' };
   return null;
 }
 
@@ -662,8 +698,8 @@ function drawOrganicFloorDetail(ctx) {
   for (let i = 0; i < patchCount; i++) {
     const h = hash(i * 31 + seed, seed * 7 + i);
     // Anchor off-grid — mix tile coordinates with sub-tile offsets
-    const tx = 1 + (h % (ROOM_W - 2));
-    const ty = 1 + ((h >>> 5) % (ROOM_H - 2));
+    const tx = 1 + (h % (room.w - 2));
+    const ty = 1 + ((h >>> 5) % (room.h - 2));
     const kind = room.tiles[ty]?.[tx];
     if (kind !== 'floor') continue;
     // Skip if adjacent cell is a wall-above — those already get shadow
@@ -706,13 +742,13 @@ function drawOrganicFloorDetail(ctx) {
   }
   // Traffic wear — subtle darkening across the central horizontal axis
   // where hero naturally walks. Reads as "this place has been crossed."
-  const centerY = ROOM_H * TILE * 0.5;
+  const centerY = room.h * TILE * 0.5;
   const wearGrad = ctx.createLinearGradient(0, centerY - TILE * 1.5, 0, centerY + TILE * 1.5);
   wearGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
   wearGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.06)');
   wearGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
   ctx.fillStyle = wearGrad;
-  ctx.fillRect(TILE * 2, centerY - TILE * 1.5, (ROOM_W - 4) * TILE, TILE * 3);
+  ctx.fillRect(TILE * 2, centerY - TILE * 1.5, (room.w - 4) * TILE, TILE * 3);
   ctx.restore();
 }
 
@@ -840,7 +876,7 @@ function drawWallTile(ctx, tx, ty) {
 
   // Biome décor — deterministic per-tile extras on interior wall sections
   // Skip corners and door tiles (rough check: only top row of walls).
-  if (ty === 0 && tx > 1 && tx < ROOM_W - 2) {
+  if (ty === 0 && tx > 1 && tx < room.w - 2) {
     const seed = hash(tx * 13, (PAL._biomeId || 'v').charCodeAt(0) + (room.kind || 's').charCodeAt(0));
     const biome = PAL._biomeId || 'vault';
     // Roll a décor slot ~18% chance per tile — keeps room from feeling cluttered
@@ -1687,8 +1723,8 @@ function drawChest(ctx, tx, ty) {
 // Both scale in spread + darkness with intensity (1-3).
 function drawRuinStain(ctx, stain) {
   const intensity = Math.max(1, Math.min(3, stain.intensity | 0 || 1));
-  const cx = Math.floor(ROOM_W / 2) * TILE + TILE / 2;
-  const cy = Math.floor(ROOM_H / 2) * TILE + TILE / 2;
+  const cx = Math.floor(room.w / 2) * TILE + TILE / 2;
+  const cy = Math.floor(room.h / 2) * TILE + TILE / 2;
   // Deterministic splatter pattern — seeded by intensity so it looks "real"
   const seed = 1234 + intensity * 89;
   const splatCount = 5 + intensity * 3;
@@ -2144,9 +2180,9 @@ export function spikeDamageAt(wx, wy, gameTime) {
 }
 
 export function heroSpawnInRoom() {
-  const mid = Math.floor(ROOM_W / 2);
+  const mid = Math.floor((room.w || ROOM_W) / 2);
   // Spawn row is one tile in from the entering door
-  const preferredY = room.entryFrom === 'north' ? (ROOM_H - 2) : 2;
+  const preferredY = room.entryFrom === 'north' ? ((room.h || ROOM_H) - 2) : 2;
   // Walk outward from center along the spawn row to find a clear tile
   const check = (x) => room.tiles?.[preferredY]?.[x] === 'floor';
   if (check(mid)) return { x: mid * TILE + TILE / 2, y: preferredY * TILE + TILE / 2 };
