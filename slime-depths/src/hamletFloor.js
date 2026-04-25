@@ -277,6 +277,25 @@ const STONE_PATCHES = [
   { col: 17, row: 19, w: 1, h: 1 },    // south spur small patch
   { col: 6, row: 5, w: 2, h: 1 },      // west connector grass
   { col: 11, row: 13, w: 2, h: 1 },    // SW corner of plaza-east transition
+  // Iteration 5 — stone bases UNDER each prop on the new grass
+  // platforms. After Iter 4 made platform terrain grass, the grave-
+  // stones and crates were sitting on bare grass which read as scattered
+  // not deliberate. These small patches give each cluster a stone
+  // "plot" or "loading area" base — same approach as the demo's mixed
+  // grass+stone platform tops.
+  // West_ruin (cemetery) — stone bases under each gravestone cluster.
+  { col: 2, row: 7, w: 2, h: 2 },      // under gravestone A (cols 2-3 rows 7-8)
+  { col: 6, row: 7, w: 2, h: 2 },      // under gravestone B (cols 6-7 rows 7-8)
+  { col: 4, row: 9, w: 2, h: 2 },      // under gravestone C (cols 4-5 rows 9-10)
+  { col: 0, row: 10, w: 2, h: 2 },     // cemetery extension (graves+crosses)
+  // East_workshop — stone bases under each crate cluster.
+  { col: 21, row: 7, w: 3, h: 2 },     // under west crate (cols 21-23 rows 7-8)
+  { col: 24, row: 7, w: 3, h: 2 },     // under center crate cluster (cols 24-26)
+  { col: 27, row: 7, w: 3, h: 2 },     // under east crate cluster (cols 27-29)
+  { col: 22, row: 10, w: 1, h: 1 },    // under west barrel
+  { col: 26, row: 10, w: 1, h: 1 },    // under east barrel
+  { col: 28, row: 10, w: 1, h: 1 },    // under far-east barrel
+  { col: 27, row: 11, w: 1, h: 1 },    // under sign post
 ];
 
 // WALL FACE PANELS — explicit list of brick-body panels around elevated
