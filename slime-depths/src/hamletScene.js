@@ -246,7 +246,10 @@ export function drawHamletBackdrop(ctx) {
     const baseY = 120 + ((i * 37) % 470);
     const driftX = BG_X_MIN + ((baseX + now * 8 + i * 3) % BG_W);
     const wobbleY = baseY + Math.sin(now * 0.5 + i * 0.7) * 4;
-    const alpha = 0.35 + 0.25 * Math.sin(now * 0.8 + i);
+    // Damped alpha pulse (was 0.10-0.60, now 0.25-0.45) so motes
+    // don't visibly flicker — contributes to the calmer ambient feel
+    // alongside the halo pulse reductions in Session O.
+    const alpha = 0.35 + 0.10 * Math.sin(now * 0.8 + i);
     ctx.fillStyle = `rgba(232, 210, 180, ${alpha.toFixed(3)})`;
     ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
   }
@@ -255,7 +258,7 @@ export function drawHamletBackdrop(ctx) {
     const baseY = 80 + ((i * 53) % 540);
     const driftX = BG_X_MIN + ((baseX + now * 18 + i * 5) % BG_W);
     const wobbleY = baseY + Math.sin(now * 0.9 + i * 1.1) * 2;
-    const alpha = 0.18 + 0.12 * Math.sin(now * 1.4 + i);
+    const alpha = 0.18 + 0.05 * Math.sin(now * 1.4 + i);
     ctx.fillStyle = `rgba(200, 185, 160, ${alpha.toFixed(3)})`;
     ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
   }
@@ -324,29 +327,30 @@ function drawGroundShadow(ctx, x, y, radiusX, alpha = 0.38) {
 }
 
 function drawPortal(ctx, e, now) {
-  // ── HAMLET REBUILD: old painted-tower / env-pack portal stripped. ──
-  // The portal entity still exists for collision + interact (E to descend);
-  // the visual is now just a soft warm halo on the floor where the next
-  // pass will place a Cainos archway / portal prop.
-  const pulse = 0.55 + 0.45 * Math.sin(now * 1.3);
-  const haloR = 60;
+  // Soft warm halo for the descent point. Pulse is intentionally CALM
+  // (range 0.7-1.0, slow freq) so it reads as ambient atmosphere
+  // rather than active animation. The previous 0.1-1.0 pulse with
+  // additive blend made surrounding tiles visibly brighten/dim every
+  // cycle, which read as the whole map "breathing."
+  const pulse = 0.85 + 0.15 * Math.sin(now * 0.6);
+  const haloR = 56;
   const halo = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, haloR);
-  halo.addColorStop(0, `rgba(255, 180, 90, ${(0.45 * pulse).toFixed(3)})`);
+  halo.addColorStop(0, `rgba(255, 180, 90, ${(0.30 * pulse).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
 }
 
 function drawFirepit(ctx, e, now) {
-  // Warm radial halo for the plaza's hearth corner. Larger + brighter
-  // than before so the plaza has a clear "fire here" focal point even
-  // without an actual flame sprite. Pulse slowed (1.0 vs 1.8) so it
-  // breathes calmly instead of flickering.
-  const pulse = 0.6 + 0.4 * Math.sin(now * 1.0);
-  const haloR = 70;
+  // Warm radial halo. Pulse calmed to 0.7-1.0 range at slow freq so
+  // the plaza area no longer reads as "breathing" with each cycle.
+  // The old 0.2-1.0 pulse with additive blend was the major source
+  // of the whole-map breathing effect — fix Session O.
+  const pulse = 0.85 + 0.15 * Math.sin(now * 0.5);
+  const haloR = 64;
   const halo = ctx.createRadialGradient(e.x, e.y - 8, 4, e.x, e.y - 8, haloR);
-  halo.addColorStop(0, `rgba(255, 175, 95, ${(0.36 * pulse).toFixed(3)})`);
-  halo.addColorStop(0.45, `rgba(255, 130, 70, ${(0.18 * pulse).toFixed(3)})`);
+  halo.addColorStop(0, `rgba(255, 175, 95, ${(0.22 * pulse).toFixed(3)})`);
+  halo.addColorStop(0.45, `rgba(255, 130, 70, ${(0.11 * pulse).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(255, 100, 60, 0)');
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -356,16 +360,15 @@ function drawFirepit(ctx, e, now) {
 }
 
 function drawShrine(ctx, e) {
-  // Cool blue radial — sacred / mystical contrast to the firepit's warm
-  // halo. The kneeling priestess statue (in hamletFloor.js HAMLET_PROPS)
-  // sits at this same world position; this halo makes the shrine read
-  // as a place of worship at a glance.
+  // Cool blue radial. Pulse calmed (0.7-1.0 range, slow freq) for the
+  // same reason as firepit — the previous 0.1-1.0 range with additive
+  // blend was making the shrine area visibly breathe.
   const now = performance.now() / 1000;
-  const pulse = 0.55 + 0.45 * Math.sin(now * 0.7);
-  const haloR = 56;
+  const pulse = 0.85 + 0.15 * Math.sin(now * 0.4);
+  const haloR = 52;
   const halo = ctx.createRadialGradient(e.x, e.y - 8, 4, e.x, e.y - 8, haloR);
-  halo.addColorStop(0, `rgba(140, 180, 230, ${(0.30 * pulse).toFixed(3)})`);
-  halo.addColorStop(0.5, `rgba(110, 140, 210, ${(0.14 * pulse).toFixed(3)})`);
+  halo.addColorStop(0, `rgba(140, 180, 230, ${(0.20 * pulse).toFixed(3)})`);
+  halo.addColorStop(0.5, `rgba(110, 140, 210, ${(0.10 * pulse).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(100, 130, 200, 0)');
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
