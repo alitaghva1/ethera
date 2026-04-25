@@ -631,10 +631,10 @@ const HAMLET_PROPS = [
     x: 208, y: 448, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
     x: 848, y: 448, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 400, y: 512, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 592, y: 512, scale: 1.0 },
+  // (south-plaza trees at (400, 512) + (592, 512) removed — their
+  // 4-row-tall foliage overlapped the new west_ruin / east_workshop
+  // stair sprites at cols 8-11 / 18-21 rows 11-13. Replaced with
+  // base-of-brick-face grass tufts in the polish block below.)
 
   // ══════════════════════════════════════════════════════════════════════
   // BUSHES along grass corridor edges (4 entries) — visual softness.
@@ -714,6 +714,26 @@ const HAMLET_PROPS = [
   // TX Struct's small-archway block (sx=384 sy=96).
   { sheet: 'cainos_struct', sx: 12 * PT, sy: 3 * PT, sw: 2 * PT, sh: 2 * PT,
     x: 496, y: 224, scale: 1.0 },
+
+  // ── BRICK-FACE BASE TUFTS — soft grass at the foot of every elevated
+  // platform's south face, breaking the sharp brick-meets-grass cut.
+  // Two per zone (or fewer where there's no grass below the face).
+  // Shrine base (row 7 — col 13 and col 17 are corridor grass; cols
+  // 14-16 are path bake stone, no tufts there).
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 432, y: 256, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 560, y: 256, scale: 1.0 },
+  // West_ruin base (row 14 — cols 5-7 corridor grass; cols 2-4 are void).
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 176, y: 448, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 240, y: 448, scale: 1.0 },
+  // East_workshop base (row 14 — cols 22-24 corridor grass).
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 720, y: 448, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 784, y: 448, scale: 1.0 },
 ];
 
 // ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
