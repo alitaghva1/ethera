@@ -12,7 +12,7 @@ import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
   spawnExtraFirePool, room, TILE, roomTorches,
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
-  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
+  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, setDoorLookup,
 } from './room.js';
 import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
@@ -20,20 +20,26 @@ import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL,
 // player commits to path nodes, which keeps all existing floor[roomIndex]
 // call sites working unchanged.
 import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js';
-// `openFloorMap` is intentionally still imported — it powers the M-key
-// peek (bird's-eye view of the DAG) wired up below. The PRIMARY path-pick
-// flow is now `doorPortals.js`. See that module for why.
+// `openFloorMap` is still imported — it powers the M-key peek (bird's-eye
+// view of the DAG) wired up below. The PRIMARY path-pick flow is now
+// wall-integrated functional doors (see doorPortals.js — the file name
+// stuck even though it now manages real doors, not floating arches).
 import { openFloorMap } from './mapScreen.js';
-import { spawnDoorsForNode, clearDoors, updateDoors, drawDoors, doorPortals } from './doorPortals.js';
+import {
+  setupRoomDoors, clearDoors, updateDoors, onRoomCleared,
+  drawDoorLabels, getDoorAt, roomDoors,
+} from './doorPortals.js';
+// Wire the room module's lazy door lookup so isWallAtWorld + drawDoor
+// can read the per-door open state without statically importing back.
+setDoorLookup(getDoorAt);
 let currentGraph = null;
 let currentNodeId = null;
-// Re-entrancy guard: the door-transition check runs every frame while the
-// hero stands at the door, so we must not queue multiple openFloorMap()
-// calls — they'd stack overlays and resolve in the wrong order.
+// Re-entrancy guard for the M-key map peek (clicking a node still commits
+// — it's the legacy power-user path).
 let _mapPickInFlight = false;
-// Set true once doors are spawned for the current room so we don't re-spawn
-// them every tick. Reset on room transition.
-let _doorsSpawnedForRoom = false;
+// Tracks whether onRoomCleared has fired for the current room, so we only
+// trigger the open-doors animation once per clear. Reset on transition.
+let _roomClearedNotified = false;
 import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
@@ -3214,13 +3220,35 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
+// Pick N evenly-spaced x-tile positions in the north wall, with min 3-tile
+// padding from each corner so doors never collide with corner-pillar art.
+// Mirrors the picker in doorPortals.js — duplicated here to keep loadRoom
+// free of imports from doorPortals (avoid the lazy-import song-and-dance).
+function computeDoorXs(roomW, n) {
+  if (n <= 0) return [];
+  if (n === 1) return [Math.floor(roomW / 2)];
+  const min = 3;
+  const max = roomW - 4;
+  const span = max - min;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    out.push(Math.round(min + span * t));
+  }
+  for (let i = 1; i < out.length; i++) {
+    if (out[i] - out[i - 1] < 3) out[i] = out[i - 1] + 3;
+  }
+  return out;
+}
+
 function loadRoom(idx, entryFrom) {
   const data = floor[idx];
   data.entryFrom = entryFrom;
-  // HADES DOORS — wipe any stale portals from the previous room and reset
-  // the spawn guard so the new room can spawn its own portals once cleared.
+  // FUNCTIONAL DOORS — wipe stale state. Doors will be re-set up after
+  // buildRoomFromData populates room.tiles + room.doors. The clear flag
+  // resets so onRoomCleared fires once when this new room is finished.
   clearDoors();
-  _doorsSpawnedForRoom = false;
+  _roomClearedNotified = false;
   // Set next-room hint so door preview can render the right icon (unless Blind curse)
   roomNextKind.kind = isCursed('blind') ? null : (floor[idx + 1]?.kind || null);
   // Onboarding — trigger tips based on room kind transitions. Delay the
@@ -3260,7 +3288,27 @@ function loadRoom(idx, entryFrom) {
   // per-room shield charge on every room entry. Consumed in damageHero.
   if ((hero.activeThemes?.vow || 0) >= 2) hero.themeVowShieldAvailable = true;
   // SHADOW T2 is a short window after dodge, not per-room, so no reset here.
+  // ── Compute the door plan from the graph BEFORE building the room ──────
+  // Each outgoing edge of the current node becomes a door tile in the
+  // north wall. The plan is just the list of x-tile positions; the
+  // doorPortals module will turn them into door objects with state.
+  const planNode = currentGraph && currentNodeId != null
+    ? getFloorNode(currentGraph, currentNodeId)
+    : null;
+  const planEdges = planNode && planNode.edges ? planNode.edges : [];
+  if (planEdges.length > 0 && data.doors?.north !== false) {
+    data.doorPlan = data.doorPlan || {};
+    const w = data.w || 20;
+    data.doorPlan.north = computeDoorXs(w, planEdges.length);
+  } else {
+    data.doorPlan = data.doorPlan || {};
+    data.doorPlan.north = null;
+  }
   buildRoomFromData(data);
+  // ── Set up door state objects (now that tiles[] exists) ────────────────
+  setupRoomDoors(currentGraph, currentNodeId, {
+    hasSouthEntry: data.doors?.south !== false && data.kind !== 'start',
+  });
   clearEnemies();
   clearProjectiles();
   clearPedestals();
@@ -4443,7 +4491,7 @@ function tick(now) {
         currentNodeId = pickedId;
         floor.push(picked.roomData);
         clearDoors();
-        _doorsSpawnedForRoom = false;
+        _roomClearedNotified = false;
         beginTransition(floor.length - 1, 'south');
       });
     }
@@ -4809,73 +4857,58 @@ function tick(now) {
       }
     }
 
-    // ─── Door transition (HADES-STYLE PORTALS) ─────────────────────────
-    // Two paths to advance to the next room:
-    //   1. Pre-committed: next room already pushed onto floor[] (e.g. from
-    //      a door portal pick on a previous tick) — walk through the
-    //      north door tile to enter it. Same as the old linear flow.
-    //   2. Cleared room with branching choice: spawn 1-3 in-world door
-    //      portals at the north end. Hero walks INTO a portal to commit.
-    //      No overlay map, no clicking — diegetic.
-    const door = onDoorWorld(hero.x, hero.y);
-    if (door && door.dir === 'north' && roomIndex < floor.length - 1) {
-      beginTransition(roomIndex + 1, 'south');
+    // ─── FUNCTIONAL DOOR FLOW ──────────────────────────────────────────
+    // 1. When room.cleared transitions to true, fire onRoomCleared once
+    //    so doorPortals starts the open-animation on north doors.
+    // 2. Tick door animations + check for hero crossing.
+    // 3. Pre-committed rooms (idx < floor.length - 1, e.g. legacy linear
+    //    fallback) still use the onDoorWorld tile-step path.
+
+    if (room.cleared && !_roomClearedNotified) {
+      onRoomCleared();
+      _roomClearedNotified = true;
     }
 
-    // Spawn door portals once the room is cleared and a graph choice is
-    // pending. Only fires once per room (guarded by _doorsSpawnedForRoom).
-    if (
-      room.cleared &&
-      currentGraph &&
-      currentNodeId !== null &&
-      roomIndex === floor.length - 1 &&        // we're on the latest committed room
-      !_doorsSpawnedForRoom
-    ) {
+    // Tick door animations + check for the hero physically crossing an
+    // open north door. updateDoors returns the targetNodeId once a
+    // crossing is detected.
+    const enteredId = updateDoors(dt);
+    if (enteredId != null && currentGraph && currentNodeId != null) {
       const curNode = getFloorNode(currentGraph, currentNodeId);
-      if (curNode && curNode.edges && curNode.edges.length > 0) {
-        spawnDoorsForNode(currentGraph, currentNodeId);
-        _doorsSpawnedForRoom = true;
+      const picked = getFloorNode(currentGraph, enteredId);
+      if (curNode && picked) {
+        // Hidden-path reveal banner (Ascension VII) — preserved from old flow.
+        if (picked._hidden) {
+          const kindLabel = (picked.kind || '').toUpperCase();
+          const colorByKind = {
+            combat: '#e8d4b4', elite: '#d85a5a', event: '#c8a0ff',
+            sanctuary: '#86e3a8', boss: '#ff9a55',
+          };
+          window.__pendingCodexEntry = {
+            type: 'hidden_path_reveal',
+            name: 'HIDDEN PATH REVEALED',
+            flavor: 'the ' + kindLabel.toLowerCase() + ' was waiting for you',
+            color: colorByKind[picked.kind] || '#d85a6a',
+          };
+          picked._hidden = false;
+        }
+        curNode.visited = true;
+        curNode.current = false;
+        picked.current = true;
+        currentNodeId = enteredId;
+        floor.push(picked.roomData);
+        beginTransition(floor.length - 1, 'south');
       }
     }
 
-    // Tick portals — animation + commit detection. Returns the targetNodeId
-    // once the hero has dwelled inside a portal long enough to commit.
-    if (doorPortals.length > 0) {
-      const enteredId = updateDoors(dt);
-      if (enteredId != null) {
-        const curNode = getFloorNode(currentGraph, currentNodeId);
-        const picked = getFloorNode(currentGraph, enteredId);
-        if (curNode && picked) {
-          // Same hidden-path reveal banner the map flow used — preserved
-          // because Ascension VII still relies on it.
-          if (picked._hidden) {
-            const kindLabel = (picked.kind || '').toUpperCase();
-            const colorByKind = {
-              combat: '#e8d4b4', elite: '#d85a5a', event: '#c8a0ff',
-              sanctuary: '#86e3a8', boss: '#ff9a55',
-            };
-            window.__pendingCodexEntry = {
-              type: 'hidden_path_reveal',
-              name: 'HIDDEN PATH REVEALED',
-              flavor: 'the ' + kindLabel.toLowerCase() + ' was waiting for you',
-              color: colorByKind[picked.kind] || '#d85a6a',
-            };
-            picked._hidden = false;
-          }
-          curNode.visited = true;
-          curNode.current = false;
-          picked.current = true;
-          currentNodeId = enteredId;
-          floor.push(picked.roomData);
-          clearDoors();
-          _doorsSpawnedForRoom = false;
-          beginTransition(floor.length - 1, 'south');
-        } else {
-          // Defensive — if graph data went stale, drop portals so we don't
-          // spam transitions
-          clearDoors();
-        }
-      }
+    // Legacy linear-floor fallback — when next room is already pushed
+    // (e.g. from a save resume or pre-built linear floor), walk through
+    // the literal north door tile to advance. Most modern flows go
+    // through the door-crossing path above.
+    const door = onDoorWorld(hero.x, hero.y);
+    if (door && door.dir === 'north' && roomIndex < floor.length - 1
+        && roomDoors.length === 0) {
+      beginTransition(roomIndex + 1, 'south');
     }
 
     // Evaluate achievements periodically (on room transitions mostly, but cheap to re-evaluate)
@@ -5114,10 +5147,9 @@ function render() {
 
   drawPedestals(ctx);
   drawPedestalTeasers(ctx);
-  // Hades-style door portals — drawn on the floor plane so the hero can
-  // walk in front of them. Hidden during boss intro (boss room has
-  // `north: false` and never spawns portals anyway, but defensive).
-  if (room.kind !== 'hamlet') drawDoors(ctx);
+  // Door labels — sigils + kind text float above each north door tile.
+  // Drawn here so they appear on the wall plane, not blocked by hero/enemies.
+  if (room.kind !== 'hamlet') drawDoorLabels(ctx);
   drawWanderer(ctx);
   // HAMLET CANVAS — layered composition:
   //   Layer 1 (room.js drawRoom hamlet branch): procedural sky + stars + ground slab
@@ -6222,6 +6254,8 @@ if (import.meta.env.DEV) {
     dbg: () => ({
       hero, enemies, camera, running, roomIndex, floor, room, transition,
       bossIntroTime, floorCardTime, phaseIntroTime, paused,
+      currentGraph, currentNodeId,
+      roomDoors,           // direct ref to the doorPortals.js array
     }),
 
     // Zero all active intros — useful for A/B'ing boss cinematics cleanly

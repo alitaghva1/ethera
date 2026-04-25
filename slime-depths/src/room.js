@@ -398,10 +398,28 @@ export function buildRoomFromData(data) {
     }
   }
 
-  const nd = northDoorPos();
+  // ── Door tile placement ────────────────────────────────────────────────
+  // Multi-door support: a graph node with N outgoing edges drops N door
+  // tiles in the north wall (handled by setupRoomDoors in doorPortals.js
+  // *after* this function runs). To make those tiles walkable, the wall
+  // generator marks the planned door positions as 'door' tiles up-front.
+  //
+  // data.doorPlan tells us which positions to mark. If absent, fall back
+  // to the legacy single-center door so non-graph rooms (hamlet, hub)
+  // keep working.
   const sd = southDoorPos();
-  if (room.doors.north) tiles[nd.y][nd.x] = 'door';
   if (room.doors.south) tiles[sd.y][sd.x] = 'door';
+  if (room.doors.north) {
+    const plan = data.doorPlan && data.doorPlan.north;
+    if (plan && plan.length > 0) {
+      for (const tx of plan) {
+        if (tx > 0 && tx < w - 1) tiles[0][tx] = 'door';
+      }
+    } else {
+      const nd = northDoorPos();
+      tiles[nd.y][nd.x] = 'door';
+    }
+  }
 
   if (data.kind === 'reward') {
     const p = pedestalPos();
@@ -594,7 +612,9 @@ const SPIKE_PATTERNS = [
   ],
 ];
 
-// Collision — walls + pillars + cracked walls block; doors gated.
+// Collision — walls + pillars + cracked walls block; doors gated by their
+// per-door state (closed/closing block; opening/open allow). South-side
+// doors that have no door object (legacy fallback) treat as always open.
 export function isWallAtWorld(wx, wy) {
   if (!room.tiles) return false;
   const tx = Math.floor(wx / TILE);
@@ -604,11 +624,29 @@ export function isWallAtWorld(wx, wy) {
   if (t === 'wall' || t === 'pillar') return true;
   if (t === 'crackedwall') return !roomSecrets.broken;
   if (t === 'door') {
+    // Defer to per-door state. The doorPortals module owns the open/closed
+    // animation for each door tile. Lazy-load to avoid a static-import
+    // cycle (room.js ↔ doorPortals.js both pull from each other).
+    const door = _getDoorAt && _getDoorAt(tx, ty);
+    if (door) {
+      // closed + closing block movement; opening + open allow it.
+      if (door.state === 'closed' || door.state === 'closing') return true;
+      return false;
+    }
+    // Legacy fallback for rooms without a door object (e.g. hamlet hub,
+    // start room before setupRoomDoors fired). Use the old single-door
+    // semantics: south door always passable, north only when cleared.
     const isSouth = ty === room.h - 1;
     return !isSouth && !room.cleared;
   }
   return false;
 }
+
+// Lazy door lookup hook — wired by main.js so the room module doesn't
+// import doorPortals.js directly (avoids module init cycles when tests
+// or storybooks load room.js in isolation).
+let _getDoorAt = null;
+export function setDoorLookup(fn) { _getDoorAt = fn; }
 
 // Returns true if the hero's attack swing overlaps the cracked wall — registers a hit.
 export function hitCrackedWall(wx, wy, aimX, aimY, reach) {
@@ -1236,54 +1274,81 @@ function drawDoorPreview(ctx, cx, cy, kind) {
   ctx.restore();
 }
 
-function drawDoor(ctx, tx, ty, open) {
+// Renders a door tile. `openAmount` ∈ [0,1] interpolates between fully
+// closed (wood door + iron bands) and fully open (dark archway). The wood
+// plank lifts upward as the door opens — portcullis-style — so the
+// transition is unambiguous: half-lifted plank = clearly mid-animation.
+function drawDoor(ctx, tx, ty, openAmount) {
   const x = tx * TILE, y = ty * TILE;
-  // Frame outline
+  const a = Math.max(0, Math.min(1, openAmount));
+
+  // Stone frame — outer wall-band that always surrounds the opening
   ctx.fillStyle = PAL.wallBody;
   ctx.fillRect(x, y, TILE, TILE);
-  // Frame sides
   ctx.fillStyle = PAL.doorFrame;
-  ctx.fillRect(x + 4, y + 2, TILE - 8, TILE - 4);
+  ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
 
-  if (open) {
-    // Open archway — dark void with a hint of warm glow
-    const g = ctx.createRadialGradient(x + TILE/2, y + TILE/2, 4, x + TILE/2, y + TILE/2, TILE * 0.55);
-    g.addColorStop(0, 'rgba(60, 30, 15, 0.9)');
-    g.addColorStop(1, 'rgba(10, 6, 4, 1)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x + 8, y + 6, TILE - 16, TILE - 12);
-    // Subtle amber glow at base (suggests torchlight beyond)
-    ctx.fillStyle = 'rgba(255, 160, 70, 0.25)';
-    ctx.fillRect(x + 8, y + TILE - 16, TILE - 16, 10);
-    // Next-room preview icon floats above the open door
-    if (ty === 0 && roomNextKind.kind) {
-      drawDoorPreview(ctx, x + TILE/2, y - 14, roomNextKind.kind);
-    }
-  } else {
-    // Closed wood door with iron bands
-    const wg = ctx.createLinearGradient(x, y, x, y + TILE);
-    wg.addColorStop(0, PAL.doorWoodLit);
-    wg.addColorStop(0.5, PAL.doorWoodMid);
-    wg.addColorStop(1, PAL.doorWoodDark);
+  // ── Archway void — always solid dark, NOT alpha-blended. This is the
+  // "behind the door" plane — a real opening into the next room. Pre-fill
+  // with opaque dark so partially-open doors clearly read as "look, the
+  // door is gone here, you can see through."
+  const innerX = x + 6, innerY = y + 4;
+  const innerW = TILE - 12, innerH = TILE - 8;
+  ctx.fillStyle = '#0a0608';                   // pure void
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+  // Amber torch-glow at the bottom of the archway — brighter as door opens
+  const glow = ctx.createRadialGradient(
+    x + TILE/2, y + TILE * 0.78, 2,
+    x + TILE/2, y + TILE * 0.5, TILE * 0.55,
+  );
+  glow.addColorStop(0, 'rgba(255, 165, 80, ' + (0.55 * (0.3 + a * 0.7)).toFixed(3) + ')');
+  glow.addColorStop(0.5, 'rgba(160, 70, 30, ' + (0.35 * (0.3 + a * 0.7)).toFixed(3) + ')');
+  glow.addColorStop(1, 'rgba(20, 8, 4, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  // ── Door plank — lifts upward as the door opens. At a=1 it's fully out
+  // of frame and we skip drawing entirely (pure archway visible).
+  if (a < 0.99) {
+    const plankH = innerH;
+    const lift = a * (plankH + 4);
+    const px = innerX;
+    const py = innerY - lift;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(innerX, innerY, innerW, plankH);
+    ctx.clip();
+
+    // Wood gradient — explicit hex if PAL is missing the keys (defensive)
+    const wg = ctx.createLinearGradient(px, py, px, py + plankH);
+    wg.addColorStop(0, PAL.doorWoodLit  || '#7a4a26');
+    wg.addColorStop(0.5, PAL.doorWoodMid || '#5a3018');
+    wg.addColorStop(1, PAL.doorWoodDark || '#3a1e0e');
     ctx.fillStyle = wg;
-    ctx.fillRect(x + 8, y + 6, TILE - 16, TILE - 12);
+    ctx.fillRect(px, py, innerW, plankH);
     // Vertical plank lines
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(x + 16, y + 6, 1, TILE - 12);
-    ctx.fillRect(x + 24, y + 6, 1, TILE - 12);
-    ctx.fillRect(x + 32, y + 6, 1, TILE - 12);
-    // Iron bands (top + bottom)
-    const ig = ctx.createLinearGradient(x, y, x, y + 6);
-    ig.addColorStop(0, PAL.doorIronLit);
-    ig.addColorStop(1, PAL.doorIronDark);
-    ctx.fillStyle = ig;
-    ctx.fillRect(x + 8, y + 10, TILE - 16, 4);
-    ctx.fillRect(x + 8, y + TILE - 18, TILE - 16, 4);
-    // Red warning cast (north door when locked)
-    if (ty === 0) {
-      ctx.fillStyle = 'rgba(180, 40, 50, 0.22)';
-      ctx.fillRect(x + 8, y + 6, TILE - 16, TILE - 12);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(px + Math.floor(innerW * 0.25), py, 1, plankH);
+    ctx.fillRect(px + Math.floor(innerW * 0.5),  py, 1, plankH);
+    ctx.fillRect(px + Math.floor(innerW * 0.75), py, 1, plankH);
+    // Iron bands top + bottom
+    ctx.fillStyle = PAL.doorIronDark || '#1a1014';
+    ctx.fillRect(px, py + 2, innerW, 4);
+    ctx.fillRect(px, py + plankH - 8, innerW, 4);
+    ctx.fillStyle = PAL.doorIronLit || '#4a3a44';
+    ctx.fillRect(px, py + 2, innerW, 1);
+    ctx.fillRect(px, py + plankH - 8, innerW, 1);
+    // Red lock-warning cast for north doors still mostly closed
+    if (ty === 0 && a < 0.4) {
+      ctx.fillStyle = 'rgba(180, 40, 50, ' + (0.28 * (1 - a / 0.4)).toFixed(3) + ')';
+      ctx.fillRect(px, py, innerW, plankH);
     }
+    ctx.restore();
+  }
+
+  // Next-room preview pulse — legacy fallback for rooms with no door object.
+  if (a > 0.6 && ty === 0 && roomNextKind.kind && _getDoorAt && !_getDoorAt(tx, ty)) {
+    drawDoorPreview(ctx, x + TILE/2, y - 14, roomNextKind.kind);
   }
 }
 
@@ -1916,15 +1981,15 @@ export function drawRoom(ctx) {
   }
 
   // Pass 3: walls + top-wall frieze
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
       const t = room.tiles[y][x];
       if (t === 'wall') drawWallTile(ctx, x, y);
       else if (t === 'crackedwall') drawCrackedWall(ctx, x, y);
     }
   }
   // Extend north wall upward with a carved frieze (makes top wall thicker)
-  for (let x = 0; x < ROOM_W; x++) {
+  for (let x = 0; x < room.w; x++) {
     if (room.tiles[0][x] === 'wall') drawTopWallFrieze(ctx, x);
   }
 
@@ -1951,11 +2016,23 @@ export function drawRoom(ctx) {
   }
 
   // Pass 5: interactive + decorative props on top
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
       const t = room.tiles[y][x];
       if (t === 'pillar') drawPillar(ctx, x, y);
-      else if (t === 'door') drawDoor(ctx, x, y, y === ROOM_H - 1 || room.cleared);
+      else if (t === 'door') {
+        // Pull the per-door open amount from the doorPortals module via
+        // the lazy lookup. Falls back to legacy "south or cleared = open"
+        // when no door object exists (start room before setup, hamlet, etc.).
+        const door = _getDoorAt && _getDoorAt(x, y);
+        let amount;
+        if (door) {
+          amount = Math.max(0, Math.min(1, door.anim));
+        } else {
+          amount = (y === room.h - 1 || room.cleared) ? 1 : 0;
+        }
+        drawDoor(ctx, x, y, amount);
+      }
       else if (t === 'pedestal') drawPedestal(ctx, x, y);
       else if (t === 'altar') drawAltar(ctx, x, y);
     }
