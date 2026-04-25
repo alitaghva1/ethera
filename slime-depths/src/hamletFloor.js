@@ -263,6 +263,17 @@ const STONE_PATCHES = [
   // grass strip with just the central cobble path.
   { col: 12, row: 16, w: 1, h: 1 },
   { col: 18, row: 16, w: 1, h: 1 },
+  // Iteration 1 additions — more irregular paving in the upper
+  // grass band (between platforms and shrine path) and west connector
+  // grass area, matching the demo's "scattered old courtyard" pattern.
+  { col: 11, row: 6, w: 2, h: 1 },     // north-of-plaza, west of shrine path
+  { col: 18, row: 6, w: 2, h: 1 },     // north-of-plaza, east of shrine path
+  { col: 6, row: 8, w: 2, h: 1 },      // west corridor near west_ruin south
+  { col: 23, row: 8, w: 2, h: 1 },     // east corridor near east_workshop south
+  { col: 13, row: 19, w: 1, h: 1 },    // south spur small patch
+  { col: 17, row: 19, w: 1, h: 1 },    // south spur small patch
+  { col: 6, row: 5, w: 2, h: 1 },      // west connector grass
+  { col: 11, row: 13, w: 2, h: 1 },    // SW corner of plaza-east transition
 ];
 
 // WALL FACE PANELS — explicit list of brick-body panels around elevated
@@ -846,11 +857,16 @@ const HAMLET_PROPS = [
   // (sx=160 sy=224 — body brick with door inset). Anchored at row 14
   // bottom so the sprite spans rows 11-13: row 11 = platform stone
   // (zone), rows 12-13 = wall_face (brick face). The door visual sits
-  // in the brick rows.
+  // in the brick rows. 6 doors total spread along the brick faces —
+  // demo has multiple doors per wall, ours felt sparse with just 2.
+  { sheet: 'cainos_wall', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: 3 * PT,
+    x: 80, y: 448, scale: 1.0 },
   { sheet: 'cainos_wall', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: 3 * PT,
     x: 208, y: 448, scale: 1.0 },
   { sheet: 'cainos_wall', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: 3 * PT,
     x: 816, y: 448, scale: 1.0 },
+  { sheet: 'cainos_wall', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: 3 * PT,
+    x: 944, y: 448, scale: 1.0 },
 
   // ── BRICK-FACE BASE TUFTS — soft grass at the foot of every elevated
   // platform's south face, breaking the sharp brick-meets-grass cut.
