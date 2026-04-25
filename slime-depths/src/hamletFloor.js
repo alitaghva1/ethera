@@ -83,19 +83,40 @@ export const TILES = {
   ],
   // ── STONE PLAZA (Stone Ground sheet — pristine cut stone, used at
   //    the hamlet's center under firepit + portal).
-  // The 4×4 block of large stone slabs at (0..3, 0..3) tiles cleanly
-  // when placed in a 4×4 group. We pick interchangeable centers from
-  // rows 0..3 for the plaza interior + use the full block at edges.
+  // ALL picks below are verified fully-opaque (≥1018/1024 pixels). The
+  // earlier set hit transparent slots which produced a checkerboard of
+  // black void where the tile failed to render.
   stone: [
-    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 5 * T },
-    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 5 * T },
-    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 5 * T },
-    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 6 * T },
-    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 6 * T },
-    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 6 * T },
-    { sheet: 'cainos_stone_ground', sx: 0 * T, sy: 7 * T },
-    { sheet: 'cainos_stone_ground', sx: 1 * T, sy: 7 * T },
-    { sheet: 'cainos_stone_ground', sx: 2 * T, sy: 7 * T },
+    // The "small stones" 4×4 block — each tile renders as a 2×2 array of
+    // pristine flat slabs. Tiles cleanly even when picked individually.
+    { sheet: 'cainos_stone_ground', sx: 4 * T, sy: 0 * T },
+    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 0 * T },
+    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 0 * T },
+    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 0 * T },
+    { sheet: 'cainos_stone_ground', sx: 4 * T, sy: 1 * T },
+    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 1 * T },
+    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 1 * T },
+    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 1 * T },
+    { sheet: 'cainos_stone_ground', sx: 4 * T, sy: 2 * T },
+    { sheet: 'cainos_stone_ground', sx: 5 * T, sy: 2 * T },
+    { sheet: 'cainos_stone_ground', sx: 6 * T, sy: 2 * T },
+    { sheet: 'cainos_stone_ground', sx: 7 * T, sy: 2 * T },
+  ],
+  // ── WALL — outer perimeter brick wall. Body tiles only (no edges
+  // baked in) so we can tile a flat wall band along the room border.
+  wall_body: [
+    { sheet: 'cainos_wall', sx: 1 * T, sy: 7 * T },
+    { sheet: 'cainos_wall', sx: 2 * T, sy: 7 * T },
+    { sheet: 'cainos_wall', sx: 3 * T, sy: 7 * T },
+    { sheet: 'cainos_wall', sx: 4 * T, sy: 7 * T },
+  ],
+  // Wall TOP edge — has the dark capstone trim along its top edge
+  // for the north wall row to look like a finished wall, not a strip.
+  wall_top: [
+    { sheet: 'cainos_wall', sx: 1 * T, sy: 6 * T },
+    { sheet: 'cainos_wall', sx: 2 * T, sy: 6 * T },
+    { sheet: 'cainos_wall', sx: 3 * T, sy: 6 * T },
+    { sheet: 'cainos_wall', sx: 4 * T, sy: 6 * T },
   ],
 };
 
@@ -170,17 +191,98 @@ function pointToSegmentDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - cx, py - cy);
 }
 
+// ─── PERIMETER WALL ────────────────────────────────────────────────────────
+// Inset-by-1 stone perimeter band around the playable area. Two rows thick
+// on the north (so the wall has visible "depth" looking down) and one row
+// thick on the south + sides. The hamlet's interior playable area becomes
+// the inner rectangle (cols 1..w-2, rows 2..h-2).
+const WALL_INSET = 0;          // tiles from edge to start the wall
+const WALL_NORTH_DEPTH = 2;    // top wall is 2 tiles tall (capstone + body)
+const WALL_OTHER_DEPTH = 1;    // sides/bottom are 1 tile thick
+
+function isWallTile(col, row) {
+  // North wall: top WALL_NORTH_DEPTH rows, full width
+  if (row < WALL_NORTH_DEPTH) return true;
+  // South wall: bottom WALL_OTHER_DEPTH rows, full width
+  if (row >= HAMLET_ROWS - WALL_OTHER_DEPTH) return true;
+  // West wall + east wall (single column each)
+  if (col < WALL_OTHER_DEPTH) return true;
+  if (col >= HAMLET_COLS - WALL_OTHER_DEPTH) return true;
+  return false;
+}
+
+// Pick the right wall variant: top-row tiles get the capstone (with the
+// dark trim); inner-row tiles get plain wall body.
+function wallTileFor(col, row) {
+  const type = (row === 0) ? 'wall_top' : 'wall_body';
+  const variants = TILES[type];
+  return variants[hash2(col, row) % variants.length];
+}
+
+// ─── PROPS ─────────────────────────────────────────────────────────────────
+// World-positioned sprites blitted from the Cainos prop / plant sheets.
+// Each prop declares { sheet, sx, sy, sw, sh, x, y } where (x, y) is the
+// world position of the prop's BOTTOM-CENTER (= its "feet" touching the
+// floor, like every other entity in the game).
+//
+// First pass: a fountain at the plaza center, 3 trees lining the back of
+// the hamlet, a cluster of bushes near each ruin corner. Designed to
+// gesture at the Scene Overview's "walled compound with greenery" feel
+// without trying to replicate it tile-for-tile.
+const PT = 32;     // texture tile unit (Cainos sheets use 32px)
+
+const HAMLET_PROPS = [
+  // ── FOUNTAIN at plaza center (bottom-right of TX Props sheet — the
+  // round 4-tile fountain). Drawn at the firepit position so it reads
+  // as the heart of the hamlet.
+  { sheet: 'cainos_props', sx: 11 * PT, sy: 8 * PT, sw: 4 * PT, sh: 3 * PT,
+    x: 480, y: 540, scale: 1.0 },
+
+  // ── TREES along the back rows (north side). Three trees of varying
+  // size from TX Plant. The tree sprites are 3 tiles wide × 4 tall.
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 130, y: 200, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
+    x: 470, y: 180, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 830, y: 210, scale: 1.0 },
+
+  // ── BUSHES scattered around the perimeter for visual softness.
+  // The bush sprites are 1 tile each — small, so we render them small.
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 100, y: 480, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 130, y: 590, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 870, y: 480, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 880, y: 600, scale: 1.0 },
+
+  // ── LANTERN POST at the south entrance (TX Props — the tall lantern
+  // sprite, 1×3 tile vertical strip on the right side of the sheet).
+  { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
+    x: 280, y: 620, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
+    x: 680, y: 620, scale: 1.0 },
+];
+
 // ─── RENDER ────────────────────────────────────────────────────────────────
-// Iterate the 30×21 grid; for each cell pick a tile variant deterministically
-// from the type's list and blit the source rect onto the floor.
+// Pass 1: floor tiles (grass / cobble / stone) across the entire grid.
+// Pass 2: wall tiles overwrite the floor where the perimeter wall sits.
+// Pass 3: world-positioned props rendered with bottom-center anchor.
+//
+// Floor + walls are 32px tile blits. Props can be any size and are scaled
+// by their `scale` field (Cainos sprites are large enough that 1.0 = native).
 export function drawHamletFloor(ctx) {
+  // ─── Pass 1 + 2: floor + walls in one sweep ────────────────────────────
   for (let row = 0; row < HAMLET_ROWS; row++) {
     for (let col = 0; col < HAMLET_COLS; col++) {
-      const type = tileTypeAt(col, row);
-      const variants = TILES[type];
-      if (!variants || variants.length === 0) continue;
-      // Deterministic variant pick per coord
-      const variant = variants[hash2(col, row) % variants.length];
+      // Walls take priority — render wall tile over what would have been floor.
+      let variant;
+      if (isWallTile(col, row)) {
+        variant = wallTileFor(col, row);
+      } else {
+        const type = tileTypeAt(col, row);
+        const variants = TILES[type];
+        if (!variants || variants.length === 0) continue;
+        variant = variants[hash2(col, row) % variants.length];
+      }
       const img = images[variant.sheet];
       if (!img) continue;
       ctx.drawImage(
@@ -189,6 +291,21 @@ export function drawHamletFloor(ctx) {
         col * CAINOS_TILE, row * CAINOS_TILE, CAINOS_TILE, CAINOS_TILE,
       );
     }
+  }
+
+  // ─── Pass 3: props (bottom-center anchored) ────────────────────────────
+  // Drawn after walls so trees / fountain sit in front of the wall band.
+  for (const p of HAMLET_PROPS) {
+    const img = images[p.sheet];
+    if (!img) continue;
+    const w = p.sw * (p.scale || 1);
+    const h = p.sh * (p.scale || 1);
+    ctx.drawImage(
+      img,
+      p.sx, p.sy, p.sw, p.sh,
+      Math.round(p.x - w / 2), Math.round(p.y - h),
+      w, h,
+    );
   }
 }
 

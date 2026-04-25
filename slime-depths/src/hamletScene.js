@@ -348,134 +348,16 @@ export function drawHamletBackdrop(ctx) {
   // sparse decoration filling the rest).
   // ══════════════════════════════════════════════════════════════════════
   drawHamletFloor(ctx);
-
-  // ── ZONE ANCHORS (preserved from old procedural pass) ───────────────
-  // Coordinates the props + buildings code below uses to align with the
-  // tilemap layout. The plaza, tower, forge, archive, shrine, and ruin
-  // anchors are referenced by drawing helpers further down. Kept here
-  // (instead of re-declaring inline) so a single source of truth survives
-  // future hamlet iterations.
-  const Z_TOWER   = { x: 480, y: 400 };
-  const Z_FORGE   = { x: 200, y: 575 };
-  const Z_ARCHIVE = { x: 800, y: 555 };
-  const Z_SHRINE  = { x: 150, y: 440 };
-
-  // ── PROPS · DISTRICT ANCHORS ─────────────────────────────────────────
-  // Every prop tells the district's function:
-  //   plaza: benches + lantern post (people sit here at dusk)
-  //   forge: anvil + woodpile + barrels (smith works outside)
-  //   archive: reading pedestal + cool lantern (scholarship)
-  //   shrine: standing stone + offering bowl (mystical)
-  //   tower: fallen bell on rubble
-  //   rebuild: scaffolding + cut-stone stack + half-wall
-  //   west ruin: grave markers (curses home)
-  //   east ruin: collapsed gate frame (wanderer's "arrival")
-
-  // PLAZA props — benches ring the fire, lantern post east.
-  // Plaza r=124 at (480, 540): inner walkable ring spans ~y 470–610.
-  drawBench(ctx, 442, 488);    // north-west bench
-  drawBench(ctx, 518, 488);    // north-east bench
-  drawBench(ctx, 418, 596);    // south-west bench
-  drawBench(ctx, 542, 596);    // south-east bench
-  drawLanternPost(ctx, 582, 510, 'warm');  // plaza lantern (east, above bench)
-  // FORGE props
-  drawAnvil(ctx, 260, 600);
-  drawWoodpile(ctx, 130, 620);
-  drawBarrel(ctx, 110, 585);
-  // ARCHIVE props
-  drawReadingPedestal(ctx, 740, 580);
-  drawLanternPost(ctx, 860, 580, 'cool');  // archive lantern
-  drawCrateStack(ctx, 870, 610);
-  // SHRINE props
-  drawStandingStone(ctx, Z_SHRINE.x, Z_SHRINE.y - 6);
-  drawOfferingBowl(ctx, Z_SHRINE.x + 16, Z_SHRINE.y + 18);
-  // TOWER props
-  drawFallenBell(ctx, 535, 445);
-  // REBUILD props (scaffolding + cut-stone stack + half-built wall)
-  drawHalfWall(ctx, 680, 615);
-  drawStoneStack(ctx, 640, 625);
-  drawScaffolding(ctx, 720, 608);
-  // WEST RUIN props — tombstones, one toppled
-  drawGraveMarker(ctx, 70, 395, 0);
-  drawGraveMarker(ctx, 125, 360, -0.15);
-  drawGraveMarker(ctx, 170, 420, 0.4);   // toppled
-  // EAST RUIN props — collapsed archway + scattered beams
-  drawCollapsedGate(ctx, 895, 380);
-  drawBrokenBeam(ctx, 845, 430);
-
-  // ── BUILDINGS · BACK TO FRONT ────────────────────────────────────────
-  // Scales chosen so the hero (96px tall) reads roughly 1/2 building
-  // height — proper top-down-hub proportions instead of giant ruins.
-
-  // LAYER A — FAR distant tower (background silhouette)
-  const towerBg = images.hamlet_env_3;
-  if (towerBg) {
-    const bw = 85, bh = 120;
-    ctx.save();
-    ctx.globalAlpha = 0.45;
-    ctx.drawImage(towerBg, Math.round(80 - bw / 2), Math.round(385 - bh), bw, bh);
-    ctx.restore();
-  }
-
-  // LAYER B — DOME (right), with cool teal interior glow.
-  const dome = images.hamlet_env_1;
-  if (dome) {
-    const bw = 165, bh = 180;
-    const dx = Z_ARCHIVE.x + 10, dy = 515;
-    ctx.drawImage(dome, Math.round(dx - bw / 2), Math.round(dy - bh), bw, bh);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 700);
-    const g = ctx.createRadialGradient(dx, dy - 35, 6, dx, dy - 35, 110);
-    g.addColorStop(0, `rgba(120, 200, 210, ${(0.38 * pulse).toFixed(3)})`);
-    g.addColorStop(0.6, `rgba(80, 150, 180, ${(0.12 * pulse).toFixed(3)})`);
-    g.addColorStop(1, 'rgba(40, 80, 110, 0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(dx - 120, dy - 150, 240, 200);
-    ctx.restore();
-  }
-
-  // LAYER C — FORGE (left), with hot orange window flicker.
-  const forge = images.hamlet_env_0;
-  if (forge) {
-    const bw = 210, bh = 235;
-    const fx = Z_FORGE.x, fy = 520;
-    ctx.drawImage(forge, Math.round(fx - bw / 2), Math.round(fy - bh), bw, bh);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const flick = 0.78 + 0.22 * (Math.sin(now * 9.1) * 0.6 + Math.sin(now * 13.7) * 0.4);
-    const g = ctx.createRadialGradient(fx, fy - 45, 6, fx, fy - 45, 130);
-    g.addColorStop(0, `rgba(255, 180, 90, ${(0.58 * flick).toFixed(3)})`);
-    g.addColorStop(0.5, `rgba(240, 120, 60, ${(0.24 * flick).toFixed(3)})`);
-    g.addColorStop(1, 'rgba(200, 60, 30, 0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(fx - 130, fy - 175, 260, 240);
-    ctx.restore();
-  }
-
-  // (Prayer flags are drawn by drawHamletOverlay AFTER the tower entity,
-  // so they sit in front of the tower's upper sprite rather than behind it.)
-
-  // (Foreground ambient boulders removed — the zone-based ruin patches +
-  // authored district props now carry that framing duty without dropping
-  // large dark blobs in the walkable corridor.)
-
-  // ── SECONDARY FIREPIT — rebuild site warming fire ────────────────────
-  // Repurposed as the "builders' warming fire" next to the scaffolding.
-  // Tells the player the rebuild zone is actively being worked on, not
-  // abandoned. Small, functional.
-  const firepit2 = images.hamlet_env_6;
-  if (firepit2) {
-    const bw = 56, bh = 56;
-    const fx = 745, fy = 635;
-    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 350);
-    const halo = ctx.createRadialGradient(fx, fy - 10, 4, fx, fy - 10, 64);
-    halo.addColorStop(0, `rgba(255, 160, 80, ${(0.34 * pulse).toFixed(3)})`);
-    halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
-    ctx.fillStyle = halo;
-    ctx.fillRect(fx - 64, fy - 10 - 64, 128, 128);
-    ctx.drawImage(firepit2, Math.round(fx - bw / 2), Math.round(fy - bh + 6), bw, bh);
-  }
+  // ── OLD PROPS + BUILDINGS — STRIPPED FOR HAMLET REBUILD ─────────────
+  // The old hand-drawn forge / dome / tower / scaffolding / benches /
+  // anvil / gravestones / fallen bell etc. clashed visually with the
+  // Cainos pixel-art floor. Removed in this iteration. Their replacement
+  // (Cainos TX Struct + TX Wall + TX Props sprites) lands in the next
+  // pass once the floor + walls + base prop layout are confirmed.
+  //
+  // Z_TOWER / Z_FORGE / Z_ARCHIVE / Z_SHRINE / Z_PLAZA constants stay
+  // available for the NPC code (which still reads them via hamletScene
+  // exports if needed) — declared above the old props block.
 
   // ── AIR DUST MOTES ───────────────────────────────────────────────────
   // Drawn LAST so they drift in front of buildings. Extended across the
