@@ -134,32 +134,41 @@ function hash2(x, y) {
 // declares the zone's interior fill (stone for finished, grass for raw).
 
 const ZONES = [
-  // CENTRAL PLAZA — visual anchor, where firepit/portal/oracle sit.
-  // Compact 7×5 — much smaller than the prior 11×9 so the rest of the
-  // layout has room to breathe.
-  { name: 'central_plaza', col: 12, row: 9,  w: 7, h: 5, terrain: 'stone' },
-  // NORTH SHRINE — raised platform in Stage 3, containing the shrine.
+  // CENTRAL PLAZA — visual anchor, where fountain/portal/firepit/keeper/oracle
+  // sit. 9×6 (was 7×5) so there's room for fountain centerpiece + benches +
+  // 2 NPCs without crowding.
+  { name: 'central_plaza', col: 11, row: 9,  w: 9, h: 6, terrain: 'stone' },
+  // NORTH SHRINE — raised platform in Stage C, containing the shrine.
   // Slightly off-center to break the symmetric look.
   { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'stone' },
-  // WEST RUIN — broken courtyard for the gravekeeper / curses.
-  { name: 'west_ruin',     col: 2,  row: 8,  w: 6, h: 4, terrain: 'stone' },
-  // EAST WORKSHOP — trade / archive district.
-  { name: 'east_workshop', col: 22, row: 8,  w: 6, h: 4, terrain: 'stone' },
-  // SOUTH ENTRANCE — gateway pad, hero spawn, exit back to menu.
-  { name: 'south_entrance',col: 13, row: 17, w: 5, h: 3, terrain: 'stone' },
+  // WEST RUIN — broken courtyard for the gravekeeper / curses. 7×5 (was
+  // 6×4) so 6+ gravestones + arch + statue cluster without overlap.
+  { name: 'west_ruin',     col: 2,  row: 7,  w: 7, h: 5, terrain: 'stone' },
+  // EAST WORKSHOP — trade / archive district. 7×5 (was 6×4) for crate
+  // stacks + barrels + sign post layout.
+  { name: 'east_workshop', col: 21, row: 7,  w: 7, h: 5, terrain: 'stone' },
+  // SOUTH ENTRANCE — gateway pad, hero spawn, exit back to menu. 5×4
+  // (was 5×3) so lanterns can flank inside the zone instead of in void.
+  { name: 'south_entrance',col: 13, row: 16, w: 5, h: 4, terrain: 'stone' },
+  // HERB GARDEN — small NW alcove for visual asymmetry. The gravekeeper's
+  // private patch — bushes + grass-decor flowers + a pebble cluster. Adds
+  // a jutty bit to the silhouette so it's not 4 zones in a precise cross.
+  { name: 'herb_garden',   col: 8,  row: 4,  w: 4, h: 3, terrain: 'grass' },
 ];
 
 // Path segments — each connects two zones via an axis-aligned route.
 // Drawn as 2-tile-wide stone bands overlaying whatever was below.
 const PATH_SEGMENTS = [
   // SOUTH entrance → CENTRAL plaza (vertical corridor through middle)
-  { ax: 15, ay: 17, bx: 15, by: 14 },
+  { ax: 15, ay: 16, bx: 15, by: 15 },
   // CENTRAL plaza → NORTH shrine (vertical corridor through middle)
   { ax: 15, ay: 9,  bx: 15, by: 5 },
   // CENTRAL plaza → EAST workshop (horizontal corridor)
-  { ax: 19, ay: 11, bx: 22, by: 11 },
+  { ax: 20, ay: 10, bx: 21, by: 10 },
   // CENTRAL plaza → WEST ruin (horizontal corridor)
-  { ax: 12, ay: 11, bx: 8,  by: 11 },
+  { ax: 11, ay: 10, bx: 9,  by: 10 },
+  // (herb_garden intentionally has NO stone path — reached via grass
+  // through west_connector from west_ruin, keeping its garden character.)
 ];
 const PATH_HALF_WIDTH = 1;     // 3 tiles wide total (col-1 .. col+1)
 
@@ -168,12 +177,17 @@ const PATH_HALF_WIDTH = 1;     // 3 tiles wide total (col-1 .. col+1)
 // silhouette: any tile inside ANY corridor or any zone is walkable; all
 // other tiles render as void.
 const GRASS_CORRIDORS = [
-  // Vertical corridor down the middle (south entrance → plaza → shrine)
-  { col: 11, row: 5,  w: 8, h: 14 },
-  // Horizontal corridor across the middle (west ruin → plaza → east workshop)
-  { col: 6,  row: 7,  w: 22, h: 7 },
-  // South spur extending down from south entrance (gateway approach)
-  { col: 13, row: 17, w: 5, h: 4 },
+  // Vertical corridor down the middle (south entrance → plaza → shrine).
+  // Wider (11) so grass dominates over stone — matches the demo's
+  // "grass with stone paths" feel rather than "stone with grass spots."
+  { col: 10, row: 5,  w: 11, h: 12 },
+  // Horizontal corridor (west_ruin ↔ plaza ↔ east_workshop). Taller (8)
+  // for the same reason.
+  { col: 5,  row: 7,  w: 23, h: 8 },
+  // South spur extending below south_entrance (gateway approach).
+  { col: 13, row: 19, w: 5, h: 2 },
+  // West connector — herb_garden ↔ west_ruin link via grass column.
+  { col: 5,  row: 5,  w: 4, h: 3 },
 ];
 
 // ─── PRECOMPUTED GRIDS ────────────────────────────────────────────────────
@@ -307,111 +321,202 @@ function wallTileFor(col, row) {
 // without trying to replicate it tile-for-tile.
 const PT = 32;     // texture tile unit (Cainos sheets use 32px)
 
+// All entries are organized BY ZONE so it's clear-as-day where each prop
+// belongs and what its job is. Every (x, y) is verified against the
+// WALKABLE_GRID + TERRAIN_GRID below at module load via the assertProps
+// helper — fail loudly in dev if a prop ever lands on the wrong terrain.
 const HAMLET_PROPS = [
-  // ── FOUNTAIN at plaza center (the round 4×3 fountain, bottom-right
-  // area of TX Props sheet). The hamlet's heart, where firepit/portal
-  // entities live for interaction.
+  // ══════════════════════════════════════════════════════════════════════
+  // CENTRAL PLAZA (cols 11-19, rows 9-14) — the visual heart of the hub.
+  // Fountain centerpiece + 2 benches facing inward + 2 corner lanterns.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // Fountain — the round 4×3 fountain at plaza center, anchor row 14.
+  // Hero collision via HAMLET_OBSTACLES (r=38 around the same point).
   { sheet: 'cainos_props', sx: 11 * PT, sy: 8 * PT, sw: 4 * PT, sh: 3 * PT,
-    x: 480, y: 540, scale: 1.0 },
+    x: 496, y: 448, scale: 1.0 },
 
-  // ── TREES along the back rows. Trees ONLY sit on grass (Cainos demo
-  // convention) — the previous middle-tree at x=470 sat directly on the
-  // north path and got visually clipped by the cobble. Moved to x=620
-  // so it stands on grass east of the path.
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 130, y: 200, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
-    x: 320, y: 180, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 620, y: 200, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
-    x: 830, y: 200, scale: 0.85 },
+  // Two stone benches south of fountain, facing inward toward it.
+  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 400, y: 480, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 592, y: 480, scale: 1.0 },
 
-  // ── EXTRA TREES — add depth to mid-zones. Two more, smaller than the
-  // back-row ones, placed where the grass would otherwise feel empty.
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 60, y: 300, scale: 0.85 },
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 900, y: 320, scale: 0.85 },
-  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 380, y: 290, scale: 0.7 },
-  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
-    x: 720, y: 310, scale: 0.7 },
-
-  // ── BUSHES — denser scatter around the perimeter and along path edges
-  // for visual softness. The bush sprites are 1 tile each.
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 100, y: 480, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 130, y: 590, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 870, y: 480, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 880, y: 600, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 350, y: 300, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 5 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 620, y: 300, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 70, y: 580, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 920, y: 580, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 250, y: 250, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 770, y: 270, scale: 1.0 },
-
-  // ── GRASS TUFTS — small foliage details from the bottom of TX Plant
-  // (rows 11-14 col 0-2 area). Adds organic texture to large grass spans.
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 11 * PT, sw: PT, sh: PT, x: 280, y: 360, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 1 * PT, sy: 11 * PT, sw: PT, sh: PT, x: 720, y: 380, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 2 * PT, sy: 11 * PT, sw: PT, sh: PT, x: 420, y: 380, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 0 * PT, sy: 12 * PT, sw: PT, sh: PT, x: 540, y: 380, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 1 * PT, sy: 12 * PT, sw: PT, sh: PT, x: 180, y: 540, scale: 1.0 },
-  { sheet: 'cainos_plant', sx: 2 * PT, sy: 12 * PT, sw: PT, sh: PT, x: 800, y: 540, scale: 1.0 },
-
-  // ── LANTERN POSTS flanking the south entrance.
+  // Two corner lanterns at the plaza's NW + NE corners.
   { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
-    x: 280, y: 620, scale: 1.0 },
+    x: 368, y: 384, scale: 1.0 },
   { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
-    x: 680, y: 620, scale: 1.0 },
+    x: 624, y: 384, scale: 1.0 },
 
-  // ── KNEELING SHRINE STATUE — replaces the old standing stone at the
-  // shrine entity position (~150, 440). 1×4 tile praying figure prop.
+  // ══════════════════════════════════════════════════════════════════════
+  // NORTH SHRINE (cols 13-17, rows 1-4) — the kneeling priestess + 2
+  // flanking lanterns. Stage C will raise this to elevation 1.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // Kneeling priestess statue — 1×4. Anchor at row 4 (south edge of
+  // shrine) so the statue's body fills the shrine's vertical extent.
   { sheet: 'cainos_props', sx: 14 * PT, sy: 1 * PT, sw: PT, sh: 4 * PT,
-    x: 150, y: 460, scale: 1.0 },
+    x: 496, y: 144, scale: 1.0 },
 
-  // ── GRAVESTONES in the gravekeeper district (NW corner).
-  // Each gravestone is 2×2 tiles. Three variants for visual variety.
-  { sheet: 'cainos_props', sx: 7 * PT, sy: 6 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 80,  y: 360, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 7 * PT, sy: 8 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 200, y: 350, scale: 1.0 },
+  // Two lanterns flanking the statue.
+  { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
+    x: 432, y: 144, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
+    x: 560, y: 144, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // WEST RUIN / GRAVEYARD (cols 2-8, rows 7-11) — gravekeeper's district.
+  // 3 large gravestones + 3 cross headstones + 1 standing stone.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // Three large 2×2 gravestones, each a different sheet variant.
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 5 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 112, y: 288, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 7 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 224, y: 288, scale: 1.0 },
   { sheet: 'cainos_props', sx: 7 * PT, sy: 10 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 270, y: 380, scale: 1.0 },
+    x: 176, y: 352, scale: 1.0 },
 
-  // ── STONE BENCHES on the plaza (south side, facing the fountain).
-  // The bench sprite is 2×2 tiles.
-  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 380, y: 605, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 9 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 580, y: 605, scale: 1.0 },
+  // Three small cross headstones (1×1 each).
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 9 * PT, sw: PT, sh: PT,
+    x: 80, y: 320, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 9 * PT, sw: PT, sh: PT,
+    x: 240, y: 352, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 7 * PT, sy: 9 * PT, sw: PT, sh: PT,
+    x: 144, y: 320, scale: 1.0 },
 
-  // ── ARCHIVE PROPS (east side near archivist NPC).
-  // Crate + barrel + vases.
-  { sheet: 'cainos_props', sx: 5 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 820, y: 595, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 5 * PT, sy: 5 * PT, sw: PT, sh: PT,
-    x: 870, y: 600, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: PT,
-    x: 750, y: 615, scale: 1.0 },
+  // Standing stone at NW corner — taller silhouette anchors the ruin.
+  { sheet: 'cainos_props', sx: 9 * PT, sy: 0 * PT, sw: PT, sh: 3 * PT,
+    x: 80, y: 256, scale: 1.0 },
 
-  // ── FORGE PROPS (SW near smith NPC).
-  // Crate + sign post (sign placed off the south entrance lane).
-  { sheet: 'cainos_props', sx: 3 * PT, sy: 1 * PT, sw: 2 * PT, sh: 2 * PT,
-    x: 175, y: 615, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: 2 * PT,
-    x: 130, y: 615, scale: 1.0 },
+  // ══════════════════════════════════════════════════════════════════════
+  // EAST WORKSHOP / ARCHIVE (cols 21-27, rows 7-11) — trade district.
+  // 2 crate stacks + 3 barrels + vase + sign post.
+  // ══════════════════════════════════════════════════════════════════════
 
-  // ── SCATTERED ROCKS in the grass for organic decoration.
-  // Small pebbles + medium rocks from the bottom row of the props sheet.
-  { sheet: 'cainos_props', sx: 1 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 380, y: 270, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 2 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 600, y: 290, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 3 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 220, y: 300, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 4 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 750, y: 310, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 5 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 850, y: 320, scale: 1.0 },
-  { sheet: 'cainos_props', sx: 6 * PT, sy: 15 * PT, sw: PT, sh: PT, x: 100, y: 280, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 720, y: 288, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 0 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 816, y: 288, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 4 * PT, sw: PT, sh: PT,
+    x: 720, y: 336, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 4 * PT, sw: PT, sh: PT,
+    x: 848, y: 336, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 4 * PT, sw: PT, sh: PT,
+    x: 784, y: 304, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 784, y: 336, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 4 * PT, sw: PT, sh: 2 * PT,
+    x: 880, y: 352, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // SOUTH ENTRANCE (cols 13-17, rows 16-19) — gateway pad, hero spawn.
+  // 2 lanterns flanking the entrance lane (centered inside the zone now,
+  // not in void at cols 8/21 like before).
+  // ══════════════════════════════════════════════════════════════════════
+
+  { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
+    x: 432, y: 608, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
+    x: 560, y: 608, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // HERB GARDEN (cols 8-11, rows 4-6) — small NW alcove, gravekeeper's
+  // private patch. 3 bushes scattered.
+  // ══════════════════════════════════════════════════════════════════════
+
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 272, y: 192, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 336, y: 192, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 304, y: 224, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // TREES — strictly on grass corridor tiles, never on stone or in void.
+  // 6 trees distributed across the 3 main grass spans.
+  // ══════════════════════════════════════════════════════════════════════
+
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 368, y: 256, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 0 * PT, sw: 4 * PT, sh: 4 * PT,
+    x: 592, y: 256, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 208, y: 448, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 848, y: 448, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 400, y: 512, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 592, y: 512, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // BUSHES along grass corridor edges (4 entries) — visual softness.
+  // ══════════════════════════════════════════════════════════════════════
+
+  { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 304, y: 256, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 688, y: 384, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 5 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 272, y: 384, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 720, y: 416, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // GRASS TUFTS — small foliage details on grass spans (8 entries).
+  // ══════════════════════════════════════════════════════════════════════
+
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 368, y: 224, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 656, y: 256, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 432, y: 192, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 304, y: 416, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 720, y: 448, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 560, y: 192, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 432, y: 480, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 560, y: 480, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // SCATTERED PEBBLES (5 entries) — small organic stone debris on grass.
+  // ══════════════════════════════════════════════════════════════════════
+
+  { sheet: 'cainos_props', sx: 1 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 240, y: 192, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 2 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 624, y: 224, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 3 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 752, y: 416, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 240, y: 416, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 5 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 336, y: 480, scale: 1.0 },
 ];
+
+// ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
+// Catches regressions where a layout edit invalidates a prop's position
+// without the dev noticing. Tree-only-on-grass rule enforced too.
+if (import.meta.env?.DEV) {
+  for (const p of HAMLET_PROPS) {
+    const col = Math.floor(p.x / CAINOS_TILE);
+    const row = Math.floor(p.y / CAINOS_TILE);
+    const t = TERRAIN_GRID[row]?.[col];
+    if (!t || t === 'void') {
+      console.warn(`[hamlet] prop in void: ${p.sheet} at (${p.x},${p.y}) → tile (${col},${row})`);
+    }
+    if (p.sheet === 'cainos_plant' && p.sh >= 4 * PT && t !== 'grass') {
+      // Trees (>=4 tiles tall) only on grass.
+      console.warn(`[hamlet] tree on non-grass: (${p.x},${p.y}) → tile (${col},${row}) terrain=${t}`);
+    }
+  }
+}
 
 // ─── RENDER ────────────────────────────────────────────────────────────────
 // Pass 1: floor tiles (grass / cobble / stone) across the entire grid.

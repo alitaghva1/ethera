@@ -42,35 +42,37 @@ export const HAMLET_WALK_Y_MAX = 672;
 export const HAMLET_HERO_SPAWN = { x: 480, y: 576 };
 
 // Zone anchors — named positions for every meaningful location in the
-// hamlet. Layout mirrors the design reference: plaza at the heart,
-// tower north, forge southwest, archive east, shrine northwest, ruined
-// edges in the back corners, rebuild scaffolding between plaza + archive.
-const PORTAL_POS   = { x: 480, y: 400 };  // descent tower centre
-const SHRINE_POS   = { x: 150, y: 440 };  // watcher shrine, west-mid
-const FIREPIT_POS  = { x: 480, y: 540 };  // plaza campfire, heart
-// (Forge/archive/shrine/ruin anchors live inline in drawHamletBackdrop as
-// Z_* locals — they're only consumed by zone paints, not entities.)
+// hamlet. Each anchor is verified inside its zone's tile range:
+//   PORTAL_POS at col 19 row 13 = central_plaza east side
+//   SHRINE_POS at col 15 row 4  = north_shrine center (statue position)
+//   FIREPIT_POS at col 12 row 13 = central_plaza west side
+const PORTAL_POS   = { x: 608, y: 416 };  // plaza east — descent tile
+const SHRINE_POS   = { x: 496, y: 144 };  // shrine center
+const FIREPIT_POS  = { x: 384, y: 416 };  // plaza west — warm halo
 
-// NPC world positions — one per district, not a service-counter row.
-// spriteIdx maps to the pixel-art hamlet_npcp sheet (3×2):
+// NPC world positions — one per district, every position verified to
+// land in a walkable, terrain-correct tile. spriteIdx maps to the
+// pixel-art hamlet_npcp sheet (3×2):
 //   0 keeper | 1 smith  | 2 archivist
 //   3 grave  | 4 oracle | 5 wanderer
 export const HAMLET_ENTITIES = [
   { kind: 'portal',                                 x: PORTAL_POS.x,  y: PORTAL_POS.y,  interactR: 80 },
   { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 0  },
   { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0  },
-  // KEEPER — at the plaza, east-of-fire. Shop counter in the hub heart.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 560, y: 560, interactR: 50 },
-  // SMITH — at the forge anvil.
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 240, y: 590, interactR: 50 },
-  // ARCHIVIST — beside the archive's reading pedestal.
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 765, y: 585, interactR: 50 },
-  // GRAVEKEEPER — in the WEST RUIN graveyard. Curses belong among the graves.
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 155, y: 395, interactR: 50 },
-  // ORACLE — at the plaza, west-of-fire. Mystic seer by the hearth.
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 400, y: 560, interactR: 50 },
-  // WANDERER — in the EAST RUIN by the collapsed gate. Literal outsider.
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 860, y: 415, interactR: 50 },
+  // KEEPER — at the plaza, west of fountain. Shop counter in the hub heart.
+  // tile col 13 row 12 = plaza interior.
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 432, y: 416, interactR: 50 },
+  // SMITH — at south_entrance, west side. tile col 14 row 17.
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 448, y: 560, interactR: 50 },
+  // ARCHIVIST — inside east_workshop near the crates. tile col 23 row 10.
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 752, y: 320, interactR: 50 },
+  // GRAVEKEEPER — among the graves in west_ruin. tile col 5 row 10.
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 176, y: 320, interactR: 50 },
+  // ORACLE — at the plaza, east of fountain. tile col 17 row 12.
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 560, y: 416, interactR: 50 },
+  // WANDERER — in horizontal corridor east of plaza. tile col 25 row 13.
+  // Literal outsider, on the grass between plaza and workshop.
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 816, y: 432, interactR: 50 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
@@ -90,10 +92,13 @@ export const HAMLET_ENTITIES = [
 // area) and onto the portal/firepit tile (that's how interactions fire).
 export const HAMLET_OBSTACLES = [
   // Fountain (4-tile-wide round prop at plaza center)
-  { x: 480, y: 540, r: 38 },
-  // South-entrance lantern posts (left + right flankers)
-  { x: 280, y: 615, r: 10 },
-  { x: 680, y: 615, r: 10 },
+  { x: 496, y: 448, r: 38 },
+  // South-entrance lantern posts (now flanking inside the zone, not in void)
+  { x: 432, y: 608, r: 10 },
+  { x: 560, y: 608, r: 10 },
+  // Plaza corner lanterns (NW + NE)
+  { x: 368, y: 384, r: 10 },
+  { x: 624, y: 384, r: 10 },
 ];
 
 // Push the hero out of any prop obstacle they're inside, AND clamp them
@@ -200,155 +205,15 @@ const BG_W = BG_X_MAX - BG_X_MIN;
 export function drawHamletBackdrop(ctx) {
   const now = performance.now() / 1000;
 
-  // ── BG-0 · EXTENDED SKY FILL ─────────────────────────────────────────
-  // room.js painted a 960-wide sky; we extend it across the full viewport
-  // with the same palette so the camera doesn't show dead void strips on
-  // wide canvases. Horizon stays at y=300.
-  {
-    const sky = ctx.createLinearGradient(0, 0, 0, 300);
-    sky.addColorStop(0.00, '#0d0818');
-    sky.addColorStop(0.45, '#281638');
-    sky.addColorStop(0.80, '#5a2a40');
-    sky.addColorStop(1.00, '#7a3848');
-    ctx.fillStyle = sky;
-    ctx.fillRect(BG_X_MIN, 0, BG_W, 300);
-    // Dark ground base under the extended strip so gaps between cobble
-    // tiles (if any) don't punch through to the void. Matches room.js.
-    ctx.fillStyle = '#181218';
-    ctx.fillRect(BG_X_MIN, 300, BG_W, 672 - 300);
-  }
+  // ── VOID BACKGROUND ──────────────────────────────────────────────────
+  // The hamlet now has an irregular silhouette (zones + corridors).
+  // Tiles outside the silhouette render as void — we fill the entire
+  // backdrop with solid near-black FIRST so void areas don't show the
+  // procedural sky/clouds/aurora that used to live here. The hamlet
+  // floor tiles overlay this on the walkable cells.
+  ctx.fillStyle = '#08060a';
+  ctx.fillRect(BG_X_MIN, 0, BG_W, 672);
 
-  // ── BG-1 · AURORA RIBBON ─────────────────────────────────────────────
-  // Slow-waving cool ribbon across the top of the sky. Two sine layers
-  // give it parallax depth. Subtle enough to read as atmosphere rather
-  // than UI. Tinted teal↔violet so it varies over time.
-  {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (let layer = 0; layer < 2; layer++) {
-      const yBase = 50 + layer * 30;
-      const freq = 0.004 + layer * 0.002;
-      const amp = 18 + layer * 10;
-      const alpha = layer === 0 ? 0.18 : 0.11;
-      const tintShift = Math.sin(now * 0.15 + layer) * 0.5 + 0.5;
-      const r = (120 * (1 - tintShift) + 180 * tintShift) | 0;
-      const g = (210 * (1 - tintShift) + 150 * tintShift) | 0;
-      const b = (220 * (1 - tintShift) + 230 * tintShift) | 0;
-      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-      ctx.beginPath();
-      ctx.moveTo(BG_X_MIN, yBase);
-      for (let x = BG_X_MIN; x <= BG_X_MAX; x += 20) {
-        const y = yBase + Math.sin(x * freq + now * 0.25 + layer * 1.3) * amp
-                       + Math.sin(x * freq * 2.1 + now * 0.4) * amp * 0.3;
-        ctx.lineTo(x, y);
-      }
-      ctx.lineTo(BG_X_MAX, yBase + 60);
-      ctx.lineTo(BG_X_MIN, yBase + 60);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  // ── BG-2 · DRIFTING CLOUD WISPS ──────────────────────────────────────
-  // 5 deterministic dark cloud silhouettes drifting slowly across the
-  // sky. Each is a soft elliptical radial gradient; they cycle with the
-  // full BG_W range so there are no visual pops at edges.
-  {
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    for (let i = 0; i < 5; i++) {
-      const speed = 12 + i * 3;
-      const phase = i * 0.37;
-      const cx = ((now * speed + phase * BG_W) % BG_W) + BG_X_MIN;
-      const cy = 90 + ((i * 37) % 60);
-      const rx = 140 + (i % 2) * 60;
-      const ry = 24 + (i % 2) * 8;
-      const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, rx);
-      g.addColorStop(0, 'rgba(30, 18, 40, 0.9)');
-      g.addColorStop(1, 'rgba(30, 18, 40, 0)');
-      ctx.fillStyle = g;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.scale(1, ry / rx);
-      ctx.translate(-cx, -cy);
-      ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
-      ctx.restore();
-    }
-    ctx.restore();
-  }
-
-  // ── BG-3 · DISTANT MOUNTAIN RANGE ────────────────────────────────────
-  // Layered silhouettes at the horizon — far layer dark+small, mid layer
-  // slightly warmer+taller. Anchors the scene in a larger world instead
-  // of looking like everything ends at screen edge.
-  {
-    // Far ridge
-    ctx.fillStyle = 'rgba(28, 18, 38, 0.90)';
-    ctx.beginPath();
-    ctx.moveTo(BG_X_MIN, 305);
-    for (let x = BG_X_MIN; x <= BG_X_MAX; x += 40) {
-      const h = (Math.sin(x * 0.006) * 0.5 + Math.sin(x * 0.014 + 1.2) * 0.3
-               + Math.sin(x * 0.031 + 2.7) * 0.2);
-      ctx.lineTo(x, 285 - h * 24);
-    }
-    ctx.lineTo(BG_X_MAX, 305);
-    ctx.closePath();
-    ctx.fill();
-    // Near ridge (taller, darker)
-    ctx.fillStyle = 'rgba(16, 10, 22, 0.95)';
-    ctx.beginPath();
-    ctx.moveTo(BG_X_MIN, 305);
-    for (let x = BG_X_MIN; x <= BG_X_MAX; x += 30) {
-      const h = (Math.sin(x * 0.005 + 3.1) * 0.5 + Math.sin(x * 0.011 + 5.2) * 0.3
-               + Math.sin(x * 0.028 + 1.7) * 0.2);
-      ctx.lineTo(x, 300 - h * 14);
-    }
-    ctx.lineTo(BG_X_MAX, 305);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // ── BG-4 · HORIZON FOG BAND ──────────────────────────────────────────
-  const fogT = performance.now() / 4000;
-  const fogDrift = (fogT % 1) * 80 - 40;
-  const fog = ctx.createLinearGradient(0, 260, 0, 430);
-  fog.addColorStop(0, 'rgba(90, 50, 70, 0.0)');
-  fog.addColorStop(0.35, 'rgba(130, 90, 110, 0.45)');
-  fog.addColorStop(0.75, 'rgba(70, 50, 80, 0.20)');
-  fog.addColorStop(1, 'rgba(70, 50, 80, 0.0)');
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.fillStyle = fog;
-  ctx.fillRect(BG_X_MIN + fogDrift, 260, BG_W, 170);
-  ctx.restore();
-
-  // ── BG-5 · SKY FIREFLIES ─────────────────────────────────────────────
-  // 10 glowing motes drift slowly through the sky band. Each has a
-  // halo that pulses so they twinkle gently. Placed in the sky ONLY
-  // (y < 280) so they read as "this place is enchanted" not "dust".
-  {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 10; i++) {
-      const speed = 14 + i * 2.3;
-      const phase = i * 0.29;
-      const x = ((now * speed + phase * BG_W) % BG_W) + BG_X_MIN;
-      const yBase = 140 + ((i * 31) % 120);
-      const y = yBase + Math.sin(now * 0.6 + i * 0.9) * 12;
-      const pulse = 0.55 + 0.45 * Math.sin(now * 2.1 + i * 1.7);
-      // halo
-      const halo = ctx.createRadialGradient(x, y, 0, x, y, 10);
-      halo.addColorStop(0, `rgba(255, 220, 140, ${(0.55 * pulse).toFixed(3)})`);
-      halo.addColorStop(1, 'rgba(255, 220, 140, 0)');
-      ctx.fillStyle = halo;
-      ctx.fillRect(x - 10, y - 10, 20, 20);
-      // core
-      ctx.fillStyle = `rgba(255, 240, 180, ${(0.9 * pulse).toFixed(3)})`;
-      ctx.fillRect((x | 0) - 1, (y | 0) - 1, 2, 2);
-    }
-    ctx.restore();
-  }
   // ══════════════════════════════════════════════════════════════════════
   // GROUND COMPOSITION — CAINOS PIXEL-ART TILEMAP
   //
