@@ -405,6 +405,21 @@ export async function loadAll(progressCb) {
     //   3 grave    | 4 oracle        | 5 wanderer
     loadKeyedGrid('hamlet_npcp',        'assets/hamlet/hamlet_npc_pixel.jpg', 3, 2),
 
+    // ── CAINOS PIXEL ART TOP DOWN — unified hamlet asset pack ─────────────
+    // 32px-tile sheets used by hamletFloor.js for the tilemap-rendered
+    // hamlet floor. Loaded as plain images; the floor renderer uses
+    // drawImage with sub-rect coords to slice tiles out of the sheets.
+    // (The 'with shadow' variants are pre-baked drop shadows — useful
+    // when we add props/plants in a future pass.)
+    loadImage('cainos_grass',           'assets/hamlet/cainos/TX Tileset Grass.png'),
+    loadImage('cainos_stone_ground',    'assets/hamlet/cainos/TX Tileset Stone Ground.png'),
+    loadImage('cainos_wall',            'assets/hamlet/cainos/TX Tileset Wall.png'),
+    loadImage('cainos_struct',          'assets/hamlet/cainos/TX Struct.png'),
+    loadImage('cainos_props',           'assets/hamlet/cainos/TX Props.png'),
+    loadImage('cainos_props_shadow',    'assets/hamlet/cainos/TX Props with Shadow.png'),
+    loadImage('cainos_plant',           'assets/hamlet/cainos/TX Plant.png'),
+    loadImage('cainos_plant_shadow',    'assets/hamlet/cainos/TX Plant with Shadow.png'),
+
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
     loadAudio('slime_death',  'assets/sfx/slime_death.ogg'),

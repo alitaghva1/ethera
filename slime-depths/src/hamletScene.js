@@ -18,6 +18,7 @@ import { hero } from './hero.js';
 import { images } from './loader.js';
 import { NPCS } from './hamlet.js';
 import { watcherSnapshot } from './watcher.js';
+import { drawHamletFloor } from './hamletFloor.js';
 
 // DIORAMA COMPOSITION — the painted backdrop already has three implicit
 // bands: sky (top ~30%), buildings (middle ~40%), and cobblestone ground
@@ -337,224 +338,27 @@ export function drawHamletBackdrop(ctx) {
     }
     ctx.restore();
   }
-
   // ══════════════════════════════════════════════════════════════════════
-  // GROUND COMPOSITION — ZONE-BASED LEVEL DESIGN
+  // GROUND COMPOSITION — CAINOS PIXEL-ART TILEMAP
   //
-  // Instead of scattering random overlays across the whole ground, the
-  // floor is composed from NAMED ZONES that reflect the story of the
-  // place. Zones are painted back-to-front:
-  //   1. Base cobble tiles (existing tiling, kept subtler)
-  //   2. Horizon feather (cobble→sky blend)
-  //   3. Nature reclaim — moss-tinted edges
-  //   4. Tower damage zone — dark desaturated ring around the ruin
-  //   5. Building pads — warm/cool tints at each building approach
-  //   6. Paths — warm additive bands between anchors
-  //   7. Central plaza — brightest zone around the campfire
-  //   8. Intentional decor clusters (rubble, moss, cracks) at authored
-  //      positions keyed to story, not uniform random
-  //
-  // 70/20/10 rule: 70% base stone read, 20% zone tint, 10% heavy damage
-  // in intentional clusters.
+  // Replaces ~200 lines of procedural cobble + dirt + zone painting with
+  // a single tilemap render call. Tile data lives in src/hamletFloor.js
+  // (a 30x21 grid of 32px Cainos tiles laid out procedurally — central
+  // stone plaza, cobble path radials to each NPC anchor, grass with
+  // sparse decoration filling the rest).
   // ══════════════════════════════════════════════════════════════════════
+  drawHamletFloor(ctx);
 
-  // ── GROUND · SOLID EARTH BASE ────────────────────────────────────────
-  // Replaces the cobble tile grid that was spraying pattern noise
-  // across the whole ground. The hamlet's "unbuilt" areas are now
-  // dark dirt/earth; stone only appears where something has been
-  // CONSTRUCTED (plaza, paths, pads). Matches the reference — you
-  // see paved ground only on worked surfaces.
-  ctx.fillStyle = '#3a2f26';
-  ctx.fillRect(BG_X_MIN, 300, BG_W, 372);
-  // Soft campfire-warmth wash centered on the plaza. Additive, low
-  // alpha — makes the ground feel lit without a grid pattern.
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  {
-    const warm = ctx.createRadialGradient(480, 540, 40, 480, 540, 520);
-    warm.addColorStop(0,   'rgba(120, 78, 40, 0.25)');
-    warm.addColorStop(0.5, 'rgba(90, 58, 32, 0.10)');
-    warm.addColorStop(1,   'rgba(60, 40, 20, 0)');
-    ctx.fillStyle = warm;
-    ctx.fillRect(BG_X_MIN, 300, BG_W, 372);
-  }
-  ctx.restore();
-  // Dirt speckle texture — 220 small 2px dots at deterministic
-  // positions. Four shade variants. NOT grid-aligned.
-  for (let i = 0; i < 220; i++) {
-    const h = cellHash(i * 31 + 7, i * 47 + 13, 1000000);
-    const x = BG_X_MIN + (h % BG_W);
-    const y = 300 + ((h >>> 10) % 372);
-    const shade = (h >>> 16) & 3;
-    const col = shade === 0 ? 'rgba(70, 58, 44, 0.55)'
-              : shade === 1 ? 'rgba(50, 40, 30, 0.55)'
-              : shade === 2 ? 'rgba(92, 74, 52, 0.42)'
-              :               'rgba(30, 22, 16, 0.65)';
-    ctx.fillStyle = col;
-    ctx.fillRect(x | 0, y | 0, 2, 2);
-  }
-  // Occasional small pebble-clusters — 18 hand-tuned spots
-  // for packed-earth texture without a repeating pattern.
-  for (let i = 0; i < 18; i++) {
-    const h = cellHash(i * 97 + 3, i * 59 + 11, 1000000);
-    const px = BG_X_MIN + (h % BG_W);
-    const py = 320 + ((h >>> 10) % 340);
-    ctx.fillStyle = 'rgba(62, 52, 40, 0.7)';
-    ctx.fillRect(px | 0, py | 0, 3, 2);
-    ctx.fillRect((px + 4) | 0, (py + 1) | 0, 2, 2);
-    ctx.fillStyle = 'rgba(90, 75, 58, 0.5)';
-    ctx.fillRect(px | 0, py | 0, 1, 1);
-  }
-
-  // ── GROUND · HORIZON FEATHER ─────────────────────────────────────────
-  // Cobble blends into the warm sky amber instead of a hard edge.
-  {
-    const hz = ctx.createLinearGradient(0, 290, 0, 350);
-    hz.addColorStop(0, 'rgba(30, 18, 32, 0.85)');
-    hz.addColorStop(1, 'rgba(30, 18, 32, 0)');
-    ctx.fillStyle = hz;
-    ctx.fillRect(BG_X_MIN, 290, BG_W, 62);
-  }
-
-  // ── ZONE ANCHORS ─────────────────────────────────────────────────────
-  // Coordinates mirror the Nano design reference. Plaza is the heart;
-  // tower sits on a raised stone disc north of it; three districts
-  // (forge SW, shrine NW, archive E) ring the plaza; rebuild scaffolding
-  // sits on the plaza-to-archive spoke; ruin zones fill the back corners.
-  const Z_PLAZA   = { x: 480, y: 540 };  // campfire — the heart
-  const Z_SPAWN   = { x: 480, y: 644 };  // entrance trail
-  const Z_TOWER   = { x: 480, y: 400 };  // descent tower, raised disc
-  const Z_FORGE   = { x: 200, y: 575 };  // forge anvil / doorway
-  const Z_ARCHIVE = { x: 800, y: 555 };  // archive pedestal
-  const Z_SHRINE  = { x: 150, y: 440 };  // watcher shrine
-  const Z_WEST_RUIN = { x: 115, y: 360 };
-  const Z_EAST_RUIN = { x: 870, y: 380 };
-
-  // (Ground level-tone multiply removed — earth base is already solid
-  // and uniform; no need to desaturate it.)
-
-  // ── ZONE · OVERSCAN STRIPS (outside playable room) ───────────────────
-  // The extended -360..0 / 960..1320 strips fill the void on wide
-  // viewports. Make them visibly DARKER than the settlement — "past the
-  // walls" — so the playable room feels enclosed.
-  {
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    const lg = ctx.createLinearGradient(BG_X_MIN, 400, 0, 400);
-    lg.addColorStop(0, 'rgba(40, 40, 55, 1)');
-    lg.addColorStop(1, 'rgba(130, 135, 140, 1)');
-    ctx.fillStyle = lg;
-    ctx.fillRect(BG_X_MIN, 300, -BG_X_MIN, 372);
-    const rg = ctx.createLinearGradient(960, 400, BG_X_MAX, 400);
-    rg.addColorStop(0, 'rgba(130, 135, 140, 1)');
-    rg.addColorStop(1, 'rgba(40, 40, 55, 1)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(960, 300, BG_X_MAX - 960, 372);
-    ctx.restore();
-  }
-
-  // ── ZONE · WEST & EAST RUIN PATCHES ──────────────────────────────────
-  // Authored material patches in the back corners. West = mossy graveyard
-  // overgrowth; east = tan dirt + collapsed gatehouse. Bigger + more
-  // saturated than the prior pass so the "ruined edge" reads clearly.
-  paintRuinPatch(ctx, Z_WEST_RUIN.x, Z_WEST_RUIN.y, 165, 'west');
-  paintRuinPatch(ctx, Z_EAST_RUIN.x, Z_EAST_RUIN.y, 175, 'east');
-
-  // ── ZONE · PERIMETER RUINS ───────────────────────────────────────────
-  // Broken wall segments running along the BACK of the playable room
-  // (y~330) with visible gaps between them. Tells the player "this
-  // settlement used to be bigger" and gives the hub a defined edge
-  // instead of the back fading into the sky.
-  drawBrokenWallSegment(ctx, 220, 348, 60);
-  drawBrokenWallSegment(ctx, 330, 338, 70);
-  drawBrokenWallSegment(ctx, 575, 348, 65);
-  drawBrokenWallSegment(ctx, 695, 340, 75);
-  drawBrokenWallSegment(ctx, 795, 352, 60);
-
-  // ── ZONE · ENTRANCE DIRT TRAIL ───────────────────────────────────────
-  // Dirt approach from offscreen south widening into the plaza's south
-  // edge. Reads as "the player's path back home" — not cobble, because
-  // outside the hamlet the ground hasn't been paved.
-  paintDirtPad(ctx, 480, 655, 55, 22);
-  paintDirtPad(ctx, 480, 640, 45, 16);
-
-  // ── ZONE · REBUILD DIRT PAD ──────────────────────────────────────────
-  // Construction site has bare earth underfoot — not cobble. The pad
-  // anchors the scaffolding/stone-stack/half-wall cluster as a working
-  // area, not props randomly dropped on stone.
-  paintDirtPad(ctx, 685, 618, 90, 42);
-
-  // ── ZONE · BUILDING PADS (organic ovals) ─────────────────────────────
-  // Each district pad is an OVAL (not a rectangle) so it reads as a
-  // "cleared courtyard" rather than "laid platform". Each has its own
-  // material palette: forge warm gold, archive cool grey, shrine violet.
-  paintOvalPad(ctx, Z_FORGE.x, 568, 98, 61, {
-    body: '#8c7448', inner: '#a48658', edge: 'rgba(58, 44, 26, 1)', hi: '#c4a878',
-  });
-  paintOvalPad(ctx, Z_ARCHIVE.x, 560, 92, 64, {
-    body: '#626672', inner: '#787c88', edge: 'rgba(34, 36, 44, 1)', hi: '#98a0ac',
-  });
-  paintOvalPad(ctx, Z_SHRINE.x, Z_SHRINE.y, 64, 50, {
-    body: '#564866', inner: '#70607e', edge: 'rgba(32, 24, 40, 1)', hi: '#8878a0',
-    tint: 'rgba(160, 120, 200, 0.30)',
-  });
-
-  // ── ZONE · PATHS ─────────────────────────────────────────────────────
-  // Paths painted AFTER pads but BEFORE plaza & tower, so paths feed into
-  // pads and are overlaid by the plaza/tower centers. Primary spine is
-  // widest; spokes narrower; back connector is the narrowest/dimmest.
-  paintPath(ctx, Z_SPAWN,   Z_PLAZA,   72, 'primary');
-  paintPath(ctx, Z_PLAZA,   Z_TOWER,   70, 'primary');
-  paintPath(ctx, Z_PLAZA,   Z_FORGE,   58, 'spoke');
-  paintPath(ctx, Z_PLAZA,   Z_ARCHIVE, 58, 'spoke');
-  paintPath(ctx, Z_PLAZA,   Z_SHRINE,  54, 'spoke');
-  paintPath(ctx, Z_SHRINE,  { x: 330, y: 395 }, 42, 'back');
-  paintPath(ctx, { x: 330, y: 395 }, Z_TOWER,   42, 'back');
-  paintPath(ctx, Z_TOWER,   { x: 640, y: 395 }, 42, 'back');
-  paintPath(ctx, { x: 640, y: 395 }, Z_EAST_RUIN, 42, 'back');
-
-  // ── ZONE · TOWER BASE DISC ───────────────────────────────────────────
-  // Dark scorched stone disc; sits ABOVE the plaza with a 30-40px gap
-  // of path between them (visual separation).
-  paintTowerBase(ctx, Z_TOWER.x, Z_TOWER.y + 40, 72);
-
-  // ── ZONE · CENTRAL PLAZA ─────────────────────────────────────────────
-  // Radial-wedge flagstone plaza with concentric bands. r=130.
-  paintPlazaRing(ctx, Z_PLAZA.x, Z_PLAZA.y, 130);
-
-  // ── CLUSTER DECOR · EDGE MOSS (nature reclaim) ───────────────────────
-  // Moss tufts along the ruin patches + around building back walls.
-  // Denser on the west side (graveyard overgrowth) than the east side.
-  drawMossCluster(ctx, 80,  390, 18);
-  drawMossCluster(ctx, 50,  440, 14);
-  drawMossCluster(ctx, 140, 480, 10);
-  drawMossCluster(ctx, 40,  540, 10);
-  // East side — fewer tufts because east reads as "dirt + collapsed"
-  drawMossCluster(ctx, 915, 460, 8);
-  drawMossCluster(ctx, 895, 600, 10);
-  // Behind-tower subtle reclaim
-  drawMossCluster(ctx, 400, 345, 7);
-  drawMossCluster(ctx, 560, 345, 7);
-
-  // ── CLUSTER DECOR · TOWER RUBBLE ─────────────────────────────────────
-  // Stone chunks ringing the tower base. These sit ON the tower disc.
-  drawTowerRubble(ctx, Z_TOWER.x, Z_TOWER.y + 40);
-
-  // ── CLUSTER DECOR · CRACKS ───────────────────────────────────────────
-  // Cracks only on the tower disc edge and the east-ruin collapse zone.
-  drawCrackCluster(ctx, 450, 490, 3);
-  drawCrackCluster(ctx, 510, 500, 3);
-  drawCrackCluster(ctx, 870, 420, 4);
-  drawCrackCluster(ctx, 900, 480, 3);
-
-  // ── HORIZON FEATHER (top layer) ──────────────────────────────────────
-  {
-    const hz2 = ctx.createLinearGradient(0, 290, 0, 340);
-    hz2.addColorStop(0, 'rgba(30, 18, 32, 0.55)');
-    hz2.addColorStop(1, 'rgba(30, 18, 32, 0)');
-    ctx.fillStyle = hz2;
-    ctx.fillRect(BG_X_MIN, 290, BG_W, 50);
-  }
+  // ── ZONE ANCHORS (preserved from old procedural pass) ───────────────
+  // Coordinates the props + buildings code below uses to align with the
+  // tilemap layout. The plaza, tower, forge, archive, shrine, and ruin
+  // anchors are referenced by drawing helpers further down. Kept here
+  // (instead of re-declaring inline) so a single source of truth survives
+  // future hamlet iterations.
+  const Z_TOWER   = { x: 480, y: 400 };
+  const Z_FORGE   = { x: 200, y: 575 };
+  const Z_ARCHIVE = { x: 800, y: 555 };
+  const Z_SHRINE  = { x: 150, y: 440 };
 
   // ── PROPS · DISTRICT ANCHORS ─────────────────────────────────────────
   // Every prop tells the district's function:
