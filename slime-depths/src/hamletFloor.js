@@ -208,24 +208,42 @@ const ZONES = [
 // ELEVATION PASSAGES — cells where Pass 4 should NOT paint wall_face,
 // keeping them walkable so the hero can enter / cross an elevated zone.
 //
-// - north_shrine: 1-tile-wide doorway at col 15 rows 5-6 (Cainos pack
-//   ships no N/S stair sprite, so it's a passage through the south face)
-// - west_ruin: stair footprint at col 8 rows 12-13 (under the E-facing
-//   stair sprite — cells were wall_face for col 8, become walkable)
-// - east_workshop: stair footprint at col 21 rows 12-13 (under W-facing
-//   stair sprite — same idea, mirrored)
+// - north_shrine doorway: col 15 rows 5-6 (Cainos has no N/S stair
+//   sprite, so a passage through the south face is the access point)
+// - west_ruin stair footprint: col 8 rows 12-13 (under E-stair body)
+//   PLUS cols 9-10 row 11 (under stair high end where it meets platform —
+//   without these, the new east face wall_face would seal the stair top)
+// - east_workshop stair footprint: col 21 rows 12-13 (under W-stair)
+//   PLUS cols 19-20 row 11 (stair high end, same logic)
 const ELEVATION_PASSAGES = new Set([
   '15,5', '15,6',
   '8,12', '8,13',
+  '9,11', '10,11',
   '21,12', '21,13',
+  '19,11', '20,11',
 ]);
 function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`); }
 
-// Depth of brick face south of each elevated zone (in tiles). 2 rows
-// gives the look of "platform with visible side wall under it" from
-// the demo. Going to 3+ would be more dramatic but starts to dominate
-// the corridor space.
-const WALL_FACE_DEPTH = 2;
+// WALL FACE PANELS — explicit list of brick-body panels around elevated
+// zones. The demo's elevation feel comes from MULTIPLE faces of brick
+// wrapping each platform (south + the side that has the stair), not
+// just the south face. Each panel is { col, row, w, h, capRow } where
+// capRow is the row that gets the dark trim 'wall_face_top'; other
+// rows get plain 'wall_face_body'. Cells in ELEVATION_PASSAGES are
+// skipped so they remain walkable for stair / doorway access.
+const WALL_FACE_PANELS = [
+  // ── NORTH_SHRINE — south face only (no stairs available, doorway access)
+  { col: 13, row: 5,  w: 5, h: 2, capRow: 5  },
+  // ── WEST_RUIN — south face (rows 12-13) + east face (cols 9-10 rows 7-10)
+  // South face: full zone width below the platform.
+  { col: 2,  row: 12, w: 7, h: 2, capRow: 12 },
+  // East face: 2-tile-thick brick wall along east edge from the platform
+  // top (row 7) down to row 10 (just above where the stair starts).
+  { col: 9,  row: 7,  w: 2, h: 4, capRow: 7  },
+  // ── EAST_WORKSHOP — mirror of west_ruin (south + west face)
+  { col: 21, row: 12, w: 7, h: 2, capRow: 12 },
+  { col: 19, row: 7,  w: 2, h: 4, capRow: 7  },
+];
 
 // Path segments — each connects two zones via an axis-aligned route.
 // Drawn as 2-tile-wide stone bands overlaying whatever was below.
@@ -312,28 +330,22 @@ const TERRAIN_GRID = [];
       cx += dx; cy += dy;
     }
   }
-  // Pass 4: elevation faces — for every zone with elevation > 0, the
-  // cells immediately SOUTH of its south edge (rows zone.row+zone.h ..
-  // zone.row+zone.h+WALL_FACE_DEPTH-1) become 'wall_face' terrain
-  // (rendered as brick body, not walkable). This is the visible side
-  // of a raised platform from above. Cells in ELEVATION_PASSAGES are
-  // exempt — they remain whatever Pass 1-3 made them, providing access
-  // points (currently just the north_shrine doorway at col 15 rows 5-6).
+  // Pass 4: elevation faces — paint brick body (wall_face) on the panels
+  // listed in WALL_FACE_PANELS. Each panel can wrap any side of an
+  // elevated zone (south, east, west). The demo's depth feel comes from
+  // brick body extending along multiple faces of each platform, with the
+  // stair sprites cutting through them at specific rows.
   //
-  // Cells outside the zone's column range are NOT touched, so the
-  // brick face only extends along the platform's actual width — not
-  // into adjacent corridor space.
-  for (const z of ZONES) {
-    if (!z.elevation || z.elevation <= 0) continue;
-    const southEdgeRow = z.row + z.h;
-    for (let r = southEdgeRow; r < southEdgeRow + WALL_FACE_DEPTH && r < HAMLET_ROWS; r++) {
-      for (let c = z.col; c < z.col + z.w && c < HAMLET_COLS; c++) {
+  // Cells in ELEVATION_PASSAGES are skipped so they remain walkable for
+  // hero access (doorway through north_shrine south face; stair tops on
+  // west_ruin and east_workshop side faces).
+  for (const panel of WALL_FACE_PANELS) {
+    for (let r = panel.row; r < panel.row + panel.h && r < HAMLET_ROWS; r++) {
+      for (let c = panel.col; c < panel.col + panel.w && c < HAMLET_COLS; c++) {
         if (c < 0 || r < 0) continue;
-        if (isPassageCell(c, r)) continue;         // keep passage walkable
+        if (isPassageCell(c, r)) continue;
         WALKABLE_GRID[r][c] = false;
-        // First row below platform = top of the brick face (with cap
-        // trim from row 5 of the sheet). Subsequent rows = body brick.
-        TERRAIN_GRID[r][c] = (r === southEdgeRow) ? 'wall_face_top' : 'wall_face_body';
+        TERRAIN_GRID[r][c] = (r === panel.capRow) ? 'wall_face_top' : 'wall_face_body';
       }
     }
   }
