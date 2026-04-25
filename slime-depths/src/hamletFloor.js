@@ -245,10 +245,11 @@ const WALL_FACE_PANELS = [
 // STAGE 1 — path network for new layout. PATH_HALF_WIDTH=1 gives
 // 3-tile-wide bands along each segment.
 //
-// Main spine: stair base (col 17 row 7) → spawn area (col 16 row 22)
-// E spur: well center → workshop east edge
-// W spur: well center → cemetery west edge
-// SW spur: compound south → SW courtyard
+// IMPORTANT: every path segment must be AXIS-ALIGNED (dx OR dy is 0).
+// Diagonal segments cause an infinite loop in the Pass 3 path bake
+// (the while(true) only breaks when BOTH cx and cy hit target, but
+// diagonal advances at different rates). The SW spur is split into
+// two axis-aligned segments to avoid this.
 const PATH_SEGMENTS = [
   // Main S-N spine through compound + south corridor
   { ax: 17, ay: 7,  bx: 17, by: 22 },
@@ -256,8 +257,10 @@ const PATH_SEGMENTS = [
   { ax: 17, ay: 13, bx: 28, by: 13 },
   // W spur from well to cemetery area
   { ax: 17, ay: 13, bx: 6,  by: 13 },
-  // SW spur — diagonal-ish path to SW courtyard
-  { ax: 16, ay: 17, bx: 8,  by: 19 },
+  // SW spur — split: first vertical (row 17 → 19), then horizontal
+  // (col 16 → 8) ending at SW courtyard center. Two axis-aligned legs.
+  { ax: 16, ay: 17, bx: 16, by: 19 },
+  { ax: 16, ay: 19, bx: 8,  by: 19 },
 ];
 const PATH_HALF_WIDTH = 1;     // 3 tiles wide total (col-1 .. col+1)
 
