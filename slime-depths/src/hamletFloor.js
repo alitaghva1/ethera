@@ -131,6 +131,24 @@ export const TILES = {
     { sheet: 'cainos_wall', sx: 3 * T, sy: 6 * T },
     { sheet: 'cainos_wall', sx: 4 * T, sy: 6 * T },
   ],
+  // ── ELEVATED-PLATFORM SOUTH FACE ───────────────────────────────────
+  // The brick "wall face" rendered in cells south of an elevated zone,
+  // representing the visible side of a raised platform when viewed from
+  // the camera's slight angle. Top row (closest to platform) gets the
+  // CAP variant with the dark trim band so it reads as the platform's
+  // south edge. Lower rows are pure body brick.
+  wall_face_top: [
+    { sheet: 'cainos_wall', sx: 1 * T, sy: 5 * T },
+    { sheet: 'cainos_wall', sx: 2 * T, sy: 5 * T },
+    { sheet: 'cainos_wall', sx: 3 * T, sy: 5 * T },
+    { sheet: 'cainos_wall', sx: 4 * T, sy: 5 * T },
+  ],
+  wall_face_body: [
+    { sheet: 'cainos_wall', sx: 1 * T, sy: 7 * T },
+    { sheet: 'cainos_wall', sx: 2 * T, sy: 7 * T },
+    { sheet: 'cainos_wall', sx: 3 * T, sy: 7 * T },
+    { sheet: 'cainos_wall', sx: 4 * T, sy: 7 * T },
+  ],
 };
 
 // ─── HASH (deterministic noise) ────────────────────────────────────────────
@@ -169,27 +187,43 @@ function hash2(x, y) {
 // declares the zone's interior fill (stone for finished, grass for raw).
 
 const ZONES = [
-  // CENTRAL PLAZA — visual anchor, where fountain/portal/firepit/keeper/oracle
-  // sit. 9×6 (was 7×5) so there's room for fountain centerpiece + benches +
-  // 2 NPCs without crowding.
-  { name: 'central_plaza', col: 11, row: 9,  w: 9, h: 6, terrain: 'stone' },
-  // NORTH SHRINE — raised platform in Stage C, containing the shrine.
-  // Slightly off-center to break the symmetric look.
-  { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'stone' },
-  // WEST RUIN — broken courtyard for the gravekeeper / curses. 7×5 (was
-  // 6×4) so 6+ gravestones + arch + statue cluster without overlap.
-  { name: 'west_ruin',     col: 2,  row: 7,  w: 7, h: 5, terrain: 'stone' },
-  // EAST WORKSHOP — trade / archive district. 7×5 (was 6×4) for crate
-  // stacks + barrels + sign post layout.
-  { name: 'east_workshop', col: 21, row: 7,  w: 7, h: 5, terrain: 'stone' },
-  // SOUTH ENTRANCE — gateway pad, hero spawn, exit back to menu. 5×4
-  // (was 5×3) so lanterns can flank inside the zone instead of in void.
-  { name: 'south_entrance',col: 13, row: 16, w: 5, h: 4, terrain: 'stone' },
-  // HERB GARDEN — small NW alcove for visual asymmetry. The gravekeeper's
-  // private patch — bushes + grass-decor flowers + a pebble cluster. Adds
-  // a jutty bit to the silhouette so it's not 4 zones in a precise cross.
-  { name: 'herb_garden',   col: 8,  row: 4,  w: 4, h: 3, terrain: 'grass' },
+  // CENTRAL PLAZA — ground level (elevation 0), heart of the hamlet.
+  { name: 'central_plaza', col: 11, row: 9,  w: 9, h: 6, terrain: 'stone', elevation: 0 },
+  // NORTH SHRINE — RAISED platform (elevation 1). The brick face under
+  // its south edge gets auto-generated wall_face cells. Access via a
+  // 1-tile passage at col 15 (a doorway through the south wall).
+  { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'stone', elevation: 1 },
+  // WEST RUIN — RAISED graveyard balcony. Access via east-facing stair
+  // on its east edge (placed in Session G).
+  { name: 'west_ruin',     col: 2,  row: 7,  w: 7, h: 5, terrain: 'stone', elevation: 1 },
+  // EAST WORKSHOP — RAISED trade alcove. Access via west-facing stair
+  // on its west edge (placed in Session G).
+  { name: 'east_workshop', col: 21, row: 7,  w: 7, h: 5, terrain: 'stone', elevation: 1 },
+  // SOUTH ENTRANCE — ground level gateway pad, hero spawn.
+  { name: 'south_entrance',col: 13, row: 16, w: 5, h: 4, terrain: 'stone', elevation: 0 },
+  // HERB GARDEN — small ground-level NW alcove for asymmetry.
+  { name: 'herb_garden',   col: 8,  row: 4,  w: 4, h: 3, terrain: 'grass', elevation: 0 },
 ];
+
+// ELEVATION PASSAGE — cells immediately south of an elevated zone that
+// stay walkable so the hero can ENTER the elevated zone. Without these,
+// the auto-generated wall_face would seal the zone off completely.
+//
+// north_shrine: 1-tile-wide passage at col 15 rows 5-6 (a doorway).
+// west_ruin and east_workshop don't need passages — their access is
+// via stair sprites placed on the east/west sides (Session G), and
+// the wall_face on their SOUTH edge can be solid.
+const ELEVATION_PASSAGES = new Set([
+  '15,5',
+  '15,6',
+]);
+function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`); }
+
+// Depth of brick face south of each elevated zone (in tiles). 2 rows
+// gives the look of "platform with visible side wall under it" from
+// the demo. Going to 3+ would be more dramatic but starts to dominate
+// the corridor space.
+const WALL_FACE_DEPTH = 2;
 
 // Path segments — each connects two zones via an axis-aligned route.
 // Drawn as 2-tile-wide stone bands overlaying whatever was below.
@@ -276,6 +310,31 @@ const TERRAIN_GRID = [];
       cx += dx; cy += dy;
     }
   }
+  // Pass 4: elevation faces — for every zone with elevation > 0, the
+  // cells immediately SOUTH of its south edge (rows zone.row+zone.h ..
+  // zone.row+zone.h+WALL_FACE_DEPTH-1) become 'wall_face' terrain
+  // (rendered as brick body, not walkable). This is the visible side
+  // of a raised platform from above. Cells in ELEVATION_PASSAGES are
+  // exempt — they remain whatever Pass 1-3 made them, providing access
+  // points (currently just the north_shrine doorway at col 15 rows 5-6).
+  //
+  // Cells outside the zone's column range are NOT touched, so the
+  // brick face only extends along the platform's actual width — not
+  // into adjacent corridor space.
+  for (const z of ZONES) {
+    if (!z.elevation || z.elevation <= 0) continue;
+    const southEdgeRow = z.row + z.h;
+    for (let r = southEdgeRow; r < southEdgeRow + WALL_FACE_DEPTH && r < HAMLET_ROWS; r++) {
+      for (let c = z.col; c < z.col + z.w && c < HAMLET_COLS; c++) {
+        if (c < 0 || r < 0) continue;
+        if (isPassageCell(c, r)) continue;         // keep passage walkable
+        WALKABLE_GRID[r][c] = false;
+        // First row below platform = top of the brick face (with cap
+        // trim from row 5 of the sheet). Subsequent rows = body brick.
+        TERRAIN_GRID[r][c] = (r === southEdgeRow) ? 'wall_face_top' : 'wall_face_body';
+      }
+    }
+  }
 })();
 
 // True iff the tile (col, row) is part of the hamlet's walkable area.
@@ -310,6 +369,7 @@ function tileTypeAt(col, row) {
   if (t === 'stone') {
     return classifyStone(col, row);
   }
+  // wall_face_top, wall_face_body, etc. — return as-is, TILES has them.
   return t;
 }
 
@@ -369,6 +429,10 @@ function classifyStone(col, row) {
 
 function getWallVariant(col, row) {
   if (isWalkable(col, row)) return null;
+  // wall_face cells already render their own brick (via tileTypeAt) —
+  // don't paint a wall variant on top of the elevated platform's face.
+  const here = TERRAIN_GRID[row]?.[col];
+  if (here === 'wall_face_top' || here === 'wall_face_body') return null;
   const N = isWalkable(col, row - 1);
   const E = isWalkable(col + 1, row);
   const S = isWalkable(col, row + 1);
