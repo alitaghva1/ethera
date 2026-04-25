@@ -348,6 +348,17 @@ const WALL_FACE_PANELS = [
   // South wall — row 15 cols 11-13 + 17-19 (skip cols 14-16 path)
   { col: 11, row: 15, w: 3, h: 1, capRow: 15 },
   { col: 17, row: 15, w: 3, h: 1, capRow: 15 },
+  // ── Iteration 9: Gateway JAMBS — narrow the plaza N/S gateways
+  // from 3-tile path openings to 1-tile doorways with brick jambs
+  // flanking col 15. The user's red markup explicitly showed walls
+  // tightening the gateway entries; their instinct matches the demo's
+  // pattern of narrow framed doorways through brick walls.
+  // North gateway jambs (cols 14, 16 row 8 — col 15 stays path stone)
+  { col: 14, row: 8,  w: 1, h: 1, capRow: 8  },
+  { col: 16, row: 8,  w: 1, h: 1, capRow: 8  },
+  // South gateway jambs (cols 14, 16 row 15)
+  { col: 14, row: 15, w: 1, h: 1, capRow: 15 },
+  { col: 16, row: 15, w: 1, h: 1, capRow: 15 },
   // ── OUTER SOUTH WALL BAND — Iteration 2 (T2b).
   // The demo has a thick brick wall band extending below the silhouette
   // at the south. Ours stopped at the silhouette edge (1-row walls
