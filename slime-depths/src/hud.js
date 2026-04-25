@@ -271,46 +271,35 @@ export function drawHud(ctx, w, h, progress = {}) {
   // this draw pass) can anchor beneath it with a proper margin.
   const abilitiesEndY = dashRowY + pipH;
 
-  // Top-right panel — floor + connected dungeon minimap.
-  // The minimap renders the full graph as a 2D layout (layer = vertical,
-  // index-in-layer = horizontal), with rooms as tiles connected by the
-  // door lines they actually share. Visited rooms fill in. Adjacent
-  // unvisited rooms (one step away) show as outline. Far rooms hide.
-  // This is the "real dungeon revealed as you explore" feel.
+  // Top-right panel — minimal "where am I" indicator only. The full
+  // connected-dungeon minimap was removed from gameplay HUD per user
+  // feedback: it pulled focus away from combat and broke immersion.
+  // The map now only appears as a journey-reveal on death / run-end
+  // (see deathScreen.js / winScreen.js), framed as a retrospective
+  // "look at what you survived" moment.
   const label = ROOM_LABEL[progress.roomKind] || '';
   const floorText = progress.floorLevel ? ('FLOOR ' + toRoman(progress.floorLevel) + ' / ' + toRoman(progress.maxFloors || 4)) : '';
-  const boxW = 240, boxH = 152;
+  const boxW = 200, boxH = 60;
   const bx = w - boxW - 14;
   const by = 14;
-  // Backdrop with gold border accent
+  // Slim backdrop
   ctx.fillStyle = 'rgba(14, 8, 16, 0.72)';
   ctx.fillRect(bx, by, boxW, boxH);
   ctx.strokeStyle = 'rgba(201, 168, 106, 0.35)';
   ctx.lineWidth = 1;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-  // Top gold accent line
-  ctx.strokeStyle = 'rgba(244, 217, 160, 0.5)';
+  // Gold separator
+  ctx.strokeStyle = 'rgba(244, 217, 160, 0.4)';
   ctx.beginPath();
   ctx.moveTo(bx + 12, by + 26);
   ctx.lineTo(bx + boxW - 12, by + 26);
   ctx.stroke();
-  // FLOOR
+  // FLOOR header
   ctx.fillStyle = '#f4d9a0';
   ctx.font = 'bold 14px Georgia, serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
   ctx.fillText(floorText, bx + boxW - 12, by + 8);
-
-  // ── DUNGEON MINIMAP — connected 2D layout ─────────────────────────────
-  // Falls back to the legacy linear minimap if no graph is available
-  // (e.g. running from a save without graph data).
-  const graph = progress.floorGraph;
-  const curId = progress.currentNodeId;
-  if (graph && graph.nodes && graph.nodes.length > 0) {
-    drawDungeonMinimap(ctx, bx, by, boxW, boxH, graph, curId);
-  } else {
-    drawLegacyLinearMinimap(ctx, bx, by, boxW, progress);
-  }
   // Room kind label
   ctx.font = '13px Georgia, serif';
   ctx.fillStyle =
@@ -319,12 +308,12 @@ export function drawHud(ctx, w, h, progress = {}) {
     progress.roomKind === 'altar'     ? '#ff6a85' :
     progress.roomKind === 'challenge' ? '#ffb265' :
     'rgba(210, 190, 220, 0.85)';
-  ctx.fillText(label, bx + boxW - 12, by + 56);
-  // Enemies left (combat only)
+  ctx.fillText(label, bx + boxW - 12, by + 32);
+  // Enemies left (combat only) — slim panel: tucked under the label
   if (progress.roomKind === 'combat' || progress.roomKind === 'boss' || progress.roomKind === 'challenge') {
     ctx.fillStyle = 'rgba(220, 180, 180, 0.7)';
     ctx.font = 'italic 11px Georgia, serif';
-    ctx.fillText(enemies.length + ' enemies remain', bx + boxW - 12, by + 74);
+    ctx.fillText(enemies.length + ' enemies remain', bx + boxW - 12, by + 46);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -1014,7 +1003,9 @@ const KIND_FILL = {
   elite:     '#c04040',
 };
 
-function drawDungeonMinimap(ctx, bx, by, boxW, boxH, graph, currentNodeId) {
+// Exported for the death screen / win screen — those reveal the full
+// dungeon map as a "look at the journey you survived" beat.
+export function drawDungeonMinimap(ctx, bx, by, boxW, boxH, graph, currentNodeId) {
   const padTop = 36;        // below the FLOOR header
   const padBottom = 14;
   const padX = 16;
@@ -1177,36 +1168,3 @@ function drawTinyKindGlyph(ctx, cx, cy, kind, color) {
   }
 }
 
-// Legacy linear-strip minimap — used when no graph is available
-// (save resumes from before the graph era, or the hamlet hub).
-function drawLegacyLinearMinimap(ctx, bx, by, boxW, progress) {
-  const total = progress.totalRooms ?? 1;
-  const roomIdx = progress.roomIndex ?? 0;
-  const miniY = by + 70;
-  const cellW = 16, cellH = 11, cellGap = 4;
-  const totalW = total * cellW + (total - 1) * cellGap;
-  const miniStartX = bx + (boxW - totalW) / 2;
-  const rooms = progress.floorRooms || [];
-  for (let i = 0; i < total; i++) {
-    const dx = miniStartX + i * (cellW + cellGap);
-    const room = rooms[i];
-    const kind = room ? room.kind : 'combat';
-    const fill = KIND_FILL[kind] || '#505060';
-    if (i < roomIdx) {
-      ctx.fillStyle = fill;
-      ctx.globalAlpha = 0.55;
-      ctx.fillRect(dx, miniY, cellW, cellH);
-      ctx.globalAlpha = 1;
-    } else if (i === roomIdx) {
-      ctx.fillStyle = fill;
-      ctx.fillRect(dx, miniY, cellW, cellH);
-      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 240);
-      ctx.strokeStyle = 'rgba(244, 217, 160, ' + pulse.toFixed(3) + ')';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(dx - 1.5, miniY - 1.5, cellW + 3, cellH + 3);
-    } else {
-      ctx.strokeStyle = 'rgba(160, 140, 110, 0.35)';
-      ctx.strokeRect(dx + 0.5, miniY + 0.5, cellW - 1, cellH - 1);
-    }
-  }
-}

@@ -161,10 +161,12 @@ function pickDoorTilePositions(roomW, n) {
 
 // ────────────────────────────────────────────────────────────────────────────
 // Tick — animation + entry door dwell + hero-crossing detection.
-// Returns the targetNodeId once the hero walks through an open north door.
+// Returns { targetNodeId, doorTileX } once the hero walks through an open
+// north door, else null. The doorTileX is used by the transition flow to
+// align the prevRoom residue's door with the new room's south door.
 // ────────────────────────────────────────────────────────────────────────────
 export function updateDoors(dt) {
-  let crossedTarget = null;
+  let crossed = null;
   for (const d of roomDoors) {
     // Animation tick
     if (d.state === 'opening') {
@@ -205,12 +207,12 @@ export function updateDoors(dt) {
       const heroTy = Math.floor(hero.y / TILE);
       // Hero must be on the door tile or one tile below it (entering)
       if (heroTx === d.tx && (heroTy === d.ty || heroTy === d.ty + 1)) {
-        crossedTarget = d.targetNodeId;
+        crossed = { targetNodeId: d.targetNodeId, doorTileX: d.tx };
         _commitInFlight = true;
       }
     }
   }
-  return crossedTarget;
+  return crossed;
 }
 
 // Called by main.js the moment room.cleared flips true. Animates north

@@ -13,6 +13,7 @@ import {
   spawnExtraFirePool, room, TILE, roomTorches,
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, setDoorLookup,
+  snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
 } from './room.js';
 import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
@@ -4327,7 +4328,42 @@ function beginTransition(toIndex, entryFrom) {
   transition.t = 0;
   transition.toIndex = toIndex;
   transition.entryFrom = entryFrom;
+  // Non-door transitions (boss-clear cascade, save-resume, debug) clear
+  // any lingering residue so we don't carry a fading old room into a
+  // fresh fade-in.
+  clearPrevRoom();
   playSfx('click', { volume: 0.7, rate: 0.85 });
+}
+
+// ─── DOOR TRANSITION (continuous, no fade) ────────────────────────────────
+// Hero just walked through an open north door. Instead of the fade-to-black
+// that beginTransition uses, we:
+//   1. Snapshot the current room as residue (prevRoom)
+//   2. Load the new room — hero spawns at south-door tile
+//   3. Position prevRoom in world coords so its NORTH door tile overlaps
+//      the new room's SOUTH door tile (the "shared threshold")
+//   4. The new room's south door is in the entry-dwell state — visually
+//      open at first, then animates closed. Player sees the door slam
+//      shut behind them and the old room fade out beyond it.
+function beginDoorTransition(toIndex, oldDoorTileX) {
+  // Snapshot the room being LEFT, before loadRoom overwrites it.
+  // Offset is a placeholder — recomputed once we know new room dims.
+  snapshotPrevRoom({ offsetX: 0, offsetY: 0 });
+  // entryFrom='north' is the existing (inverted-feeling) convention that
+  // makes heroSpawnInRoom place the hero at preferredY=h-2 — i.e. near the
+  // SOUTH wall, one tile inside the door they just entered through. This
+  // is the right spawn for our flow: hero physically arrives at the south
+  // door of the new room, the prevRoom residue is rendered south of them
+  // (where they came from), and the south door animates closed behind them.
+  loadRoom(toIndex, 'north');
+  // Hero is now at south door of new room. Find new room's south door tx,
+  // align prevRoom so the two door tiles overlap in world space.
+  const newDoorX = Math.floor(room.w / 2);
+  if (prevRoom) {
+    prevRoom.offsetX = (newDoorX - oldDoorTileX) * TILE;
+    prevRoom.offsetY = (room.h - 1) * TILE;
+  }
+  playSfx('click', { volume: 0.55, rate: 1.05 });
 }
 
 function updateTransition(dt) {
@@ -4433,6 +4469,9 @@ function tick(now) {
     updateWanderer(dt);
     updateGold(dt);
     updateHudAnims(realDt);
+    // Tick the prevRoom residue (the snapshot of the room we just left,
+    // fading out behind the hero for "see where I came from" continuity).
+    tickPrevRoom(realDt);
     updateParticles(dt);
     updateDust(realDt, camera.x, camera.y);
     updateWeather(realDt, camera.x, camera.y);
@@ -4870,12 +4909,13 @@ function tick(now) {
     }
 
     // Tick door animations + check for the hero physically crossing an
-    // open north door. updateDoors returns the targetNodeId once a
-    // crossing is detected.
-    const enteredId = updateDoors(dt);
-    if (enteredId != null && currentGraph && currentNodeId != null) {
+    // open north door. Returns { targetNodeId, doorTileX } once a crossing
+    // is detected — both pieces feed into the continuous-transition flow
+    // so the prevRoom residue lines up with the door hero just walked through.
+    const crossed = updateDoors(dt);
+    if (crossed && currentGraph && currentNodeId != null) {
       const curNode = getFloorNode(currentGraph, currentNodeId);
-      const picked = getFloorNode(currentGraph, enteredId);
+      const picked = getFloorNode(currentGraph, crossed.targetNodeId);
       if (curNode && picked) {
         // Hidden-path reveal banner (Ascension VII) — preserved from old flow.
         if (picked._hidden) {
@@ -4895,9 +4935,9 @@ function tick(now) {
         curNode.visited = true;
         curNode.current = false;
         picked.current = true;
-        currentNodeId = enteredId;
+        currentNodeId = crossed.targetNodeId;
         floor.push(picked.roomData);
-        beginTransition(floor.length - 1, 'south');
+        beginDoorTransition(floor.length - 1, crossed.doorTileX);
       }
     }
 
@@ -6260,6 +6300,7 @@ if (import.meta.env.DEV) {
       bossIntroTime, floorCardTime, phaseIntroTime, paused,
       currentGraph, currentNodeId,
       roomDoors,           // direct ref to the doorPortals.js array
+      prevRoom,            // residue snapshot of the room hero just left
     }),
 
     // Zero all active intros — useful for A/B'ing boss cinematics cleanly

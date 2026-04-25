@@ -1894,9 +1894,95 @@ function drawTorchSconce(ctx, tx, ty) {
   ctx.fillRect(cx - 1, cy - 3, 2, 2);
 }
 
+// ─── PREVIOUS-ROOM RESIDUE ──────────────────────────────────────────────
+// When the hero walks through a door, we keep a snapshot of the room they
+// just left around for ~1.5s, rendered at an offset so it appears on the
+// other side of the door from the new current room. This is the "you can
+// see the remnants of the old room as you walk through" beat — what makes
+// the dungeon feel like a connected building instead of a chain of
+// disconnected screens.
+//
+// The snapshot copies tiles + decor + dimensions. The new room loads as
+// the current `room`. drawRoom draws the current room first, then walks
+// the prevRoom snapshot through the same passes with a temporary state
+// swap so we don't have to thread `room` through every drawing helper.
+export let prevRoom = null;
+
+export function snapshotPrevRoom(opts = {}) {
+  if (!room.tiles) return;
+  prevRoom = {
+    tiles: room.tiles.map(r => r.slice()),
+    decor: room.decor ? room.decor.slice() : [],
+    w: room.w, h: room.h,
+    kind: room.kind,
+    // The hero exited this room — it was definitely cleared. Mark so the
+    // drawDoor fallback renders the north door as visually open.
+    cleared: true,
+    // Caller fills in offsetX / offsetY so the door tile in prevRoom
+    // visually overlaps the south door tile of the new current room.
+    offsetX: opts.offsetX || 0,
+    offsetY: opts.offsetY || 0,
+    alpha: 1.0,
+    // 1.8s gives the player time to register "where I came from" without
+    // lingering long enough to feel cluttered. Door close-behind animation
+    // (~1.1s total: 0.55s dwell + 0.55s close) finishes well before fade-out.
+    life: 1.8,
+    lifeMax: 1.8,
+  };
+}
+
+export function tickPrevRoom(dt) {
+  if (!prevRoom) return;
+  prevRoom.life -= dt;
+  prevRoom.alpha = Math.max(0, Math.min(1, prevRoom.life / prevRoom.lifeMax));
+  if (prevRoom.life <= 0) prevRoom = null;
+}
+
+export function clearPrevRoom() { prevRoom = null; }
+
 export function drawRoom(ctx) {
   if (!room.tiles) return;
+  // Draw the current room first
+  drawRoomInner(ctx);
+  // Then draw the prevRoom snapshot as a fading residue, offset so its
+  // door aligns with the current room's south door (handled by caller).
+  if (prevRoom && prevRoom.alpha > 0.01 && prevRoom.tiles && prevRoom.tiles.length > 0) {
+    ctx.save();
+    ctx.globalAlpha = ctx.globalAlpha * prevRoom.alpha;
+    ctx.translate(prevRoom.offsetX, prevRoom.offsetY);
+    // Temporarily swap singleton state so all the existing drawing helpers
+    // (drawWallTile, drawFloorTile, drawDoor, etc.) operate on the snapshot
+    // without any threading work. try/finally ensures restoration even if
+    // an exception fires inside drawRoomInner — otherwise room.tiles would
+    // be left pointing at the snapshot, breaking every subsequent frame.
+    const saved = {
+      tiles: room.tiles, w: room.w, h: room.h,
+      decor: room.decor, kind: room.kind, cleared: room.cleared,
+    };
+    try {
+      room.tiles = prevRoom.tiles;
+      room.w = prevRoom.w; room.h = prevRoom.h;
+      room.decor = prevRoom.decor;
+      room.kind = prevRoom.kind;
+      room.cleared = prevRoom.cleared;
+      drawRoomInner(ctx);
+    } finally {
+      room.tiles = saved.tiles;
+      room.w = saved.w; room.h = saved.h;
+      room.decor = saved.decor;
+      room.kind = saved.kind;
+      room.cleared = saved.cleared;
+      ctx.restore();
+    }
+  }
+}
 
+function drawRoomInner(ctx) {
+  // Defensive guard — drawRoom checks tiles before delegating, but the
+  // prevRoom-swap path could pass through a partially-initialized state
+  // if snapshotPrevRoom is somehow called with no tiles. Bail out early
+  // instead of crashing the render loop.
+  if (!room.tiles) return;
   // Hamlet — procedural gradient sky + dim ground fill. Buildings, cobblestone
   // tiles, firepit, shrine, and portal are drawn ON TOP of this by the
   // hamletScene module (drawHamletBackdrop + drawHamletEntities). Replaces
@@ -1990,7 +2076,7 @@ export function drawRoom(ctx) {
   }
   // Extend north wall upward with a carved frieze (makes top wall thicker)
   for (let x = 0; x < room.w; x++) {
-    if (room.tiles[0][x] === 'wall') drawTopWallFrieze(ctx, x);
+    if (room.tiles[0]?.[x] === 'wall') drawTopWallFrieze(ctx, x);
   }
 
   // Pass 4: floor cracks + corner rubble + set-piece decor (no collision)
