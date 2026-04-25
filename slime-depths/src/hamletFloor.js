@@ -201,8 +201,11 @@ const ZONES = [
   { name: 'east_workshop', col: 21, row: 7,  w: 7, h: 5, terrain: 'stone', elevation: 1 },
   // SOUTH ENTRANCE — ground level gateway pad, hero spawn.
   { name: 'south_entrance',col: 13, row: 16, w: 5, h: 4, terrain: 'stone', elevation: 0 },
-  // HERB GARDEN — small ground-level NW alcove for asymmetry.
-  { name: 'herb_garden',   col: 8,  row: 4,  w: 4, h: 3, terrain: 'grass', elevation: 0 },
+  // HERB GARDEN — ground-level NW alcove. Extended to 4 rows tall
+  // (was 3) so it can hold a scaled tree without foliage overflowing
+  // into void above. Also gives the alcove enough vertical breathing
+  // room to feel like a real garden, not a thin strip.
+  { name: 'herb_garden',   col: 8,  row: 3,  w: 4, h: 4, terrain: 'grass', elevation: 0 },
 ];
 
 // ELEVATION PASSAGES — cells where Pass 4 should NOT paint wall_face,
@@ -620,21 +623,27 @@ const HAMLET_PROPS = [
     x: 464, y: 624, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
-  // HERB GARDEN (cols 8-11, rows 4-6) — small NW alcove, gravekeeper's
-  // private patch. 3 bushes scattered.
+  // HERB GARDEN (cols 8-11, rows 3-6) — NW alcove, gravekeeper's
+  // private patch. Extended to 4 rows tall (was 3) so a small tree
+  // fits without foliage spilling into void above. 3 bushes + 1
+  // scaled tree + a rock cluster.
   // ══════════════════════════════════════════════════════════════════════
 
+  // Scaled-down tree in the garden (sprite is 4×3 tiles native; at
+  // scale 0.7 = 67×90 px the foliage span fits inside the now 4-row
+  // garden without overflowing into the void cells above row 3).
+  // This brings trees BACK after Session J had to remove all 4 of
+  // them from corridors where they all overflowed.
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 304, y: 192, scale: 0.7 },
+
+  // Bushes scattered through the garden's bottom rows.
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT,
     x: 272, y: 192, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT,
-    x: 336, y: 192, scale: 1.0 },
+    x: 368, y: 192, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT,
     x: 304, y: 224, scale: 1.0 },
-
-  // Squat rock cluster (3×1 at sx=256 sy=480) — adds organic stone to
-  // the garden's floor. Sits at the south edge of the herb garden.
-  { sheet: 'cainos_props', sx: 8 * PT, sy: 15 * PT, sw: 3 * PT, sh: PT,
-    x: 304, y: 192, scale: 1.0 },
 
   // ══════════════════════════════════════════════════════════════════════
   // FOLIAGE — bushes + rock clusters in grass corridors. NO TREES.
@@ -746,6 +755,18 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_struct', sx: 12 * PT, sy: 3 * PT, sw: 2 * PT, sh: 2 * PT,
     x: 496, y: 224, scale: 1.0 },
 
+  // Wooden doorway tiles cut into the south brick face of west_ruin
+  // and east_workshop — gives the brick walls "shop door" detail
+  // visible in the demo. Each is the 1×3 doorway sprite from TX Wall
+  // (sx=160 sy=224 — body brick with door inset). Anchored at row 14
+  // bottom so the sprite spans rows 11-13: row 11 = platform stone
+  // (zone), rows 12-13 = wall_face (brick face). The door visual sits
+  // in the brick rows.
+  { sheet: 'cainos_wall', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: 3 * PT,
+    x: 208, y: 448, scale: 1.0 },
+  { sheet: 'cainos_wall', sx: 5 * PT, sy: 7 * PT, sw: PT, sh: 3 * PT,
+    x: 816, y: 448, scale: 1.0 },
+
   // ── BRICK-FACE BASE TUFTS — soft grass at the foot of every elevated
   // platform's south face, breaking the sharp brick-meets-grass cut.
   // Two per zone (or fewer where there's no grass below the face).
@@ -765,6 +786,36 @@ const HAMLET_PROPS = [
     x: 720, y: 448, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 2 * PT, sy: 12 * PT, sw: PT, sh: PT,
     x: 784, y: 448, scale: 1.0 },
+
+  // ── DENSITY BURST — Session L. Bushes, pebbles, and tufts in grass
+  // cells that were too sparse on the prior screenshot review. The
+  // hamlet's grass corridors had a lot of empty strips between the
+  // existing decorations; these fill them at low visual cost.
+  // South-of-plaza grass band (rows 15-16):
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 368, y: 480, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 624, y: 480, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 1 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 336, y: 480, scale: 1.0 },
+  { sheet: 'cainos_props', sx: 4 * PT, sy: 15 * PT, sw: PT, sh: PT,
+    x: 656, y: 480, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 12 * PT, sw: PT, sh: PT,
+    x: 400, y: 480, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 592, y: 480, scale: 1.0 },
+  // Far-south grass tuft (south spur below south_entrance):
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 432, y: 656, scale: 1.0 },
+  // Bush at SE corner of west_ruin's south corridor:
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 256, y: 448, scale: 1.0 },
+  // Bush at SE corner of east_workshop's south corridor:
+  { sheet: 'cainos_plant', sx: 5 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 864, y: 448, scale: 1.0 },
+  // Extra bush in vertical corridor at col 17 row 8:
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 560, y: 256, scale: 1.0 },
 ];
 
 // ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
