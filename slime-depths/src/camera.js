@@ -12,6 +12,12 @@ export const camera = {
   zoomPulseAmt: 0,
   zoomPulseTime: 0,
   zoomPulseDur: 0,
+  // Ambient zoom breathe — the subtle ±0.6% sin oscillation in updateCamera.
+  // Adds a "living" feel during combat lulls. Disabled in static scenes
+  // (hamlet) where the breathe causes visible tile-edge shimmer with
+  // pixel-art at non-integer scales (imageSmoothingEnabled = false +
+  // 0.994-1.006 zoom = pixels snap differently each frame).
+  breatheEnabled: true,
 };
 
 export function setCameraSize(w, h) { camera.viewW = w; camera.viewH = h; }
@@ -60,9 +66,11 @@ export function updateCamera(dt) {
   }
   // Ambient idle breathe — very subtle continuous zoom modulation while no pulse
   // is active. Gives the camera a living quality; adds tension in combat lulls.
-  // Only applied when shakeScale > 0 (accessibility: users who turned off shake
-  // probably don't want camera drift either).
-  const breathe = shakeScale > 0 ? Math.sin(performance.now() / 2400) * 0.006 : 0;
+  // Only applied when shakeScale > 0 AND camera.breatheEnabled (set false in
+  // hamlet so static pixel-art tiles don't shimmer at the ±0.6% scale).
+  const breathe = (shakeScale > 0 && camera.breatheEnabled)
+    ? Math.sin(performance.now() / 2400) * 0.006
+    : 0;
   // Zoom pulse decay — quartic ease-out so pulse snaps in, eases out
   if (camera.zoomPulseTime > 0) {
     camera.zoomPulseTime -= dt;

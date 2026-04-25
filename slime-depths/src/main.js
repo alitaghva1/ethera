@@ -1310,6 +1310,17 @@ function enterHamletCanvas() {
   hero.iframes = 0;
   camera.x = hero.x; camera.y = hero.y;
   camera.targetX = hero.x; camera.targetY = hero.y;
+  // Disable ambient zoom breathe in hamlet — the ±0.6% sin oscillation
+  // in updateCamera causes visible tile-edge shimmer on the pixel-art
+  // tilemap (each frame the canvas scales slightly, snapping pixels to
+  // different positions with imageSmoothingEnabled = false). Re-enabled
+  // in startRun() for combat where the "living camera" feel is wanted.
+  camera.breatheEnabled = false;
+  // Force zoom to a clean integer ratio so any leftover pulse from a
+  // prior dungeon run doesn't carry over.
+  camera.zoom = 1.0;
+  camera.zoomPulseAmt = 0;
+  camera.zoomPulseTime = 0;
 
   running = true;
   paused = false;
@@ -3772,6 +3783,9 @@ function startRun() {
   // Ambient pad fades out as the run begins — the real combat music system
   // (music.js, when OGG tracks land) will take over from here.
   stopAmbientPad();
+  // Re-enable camera breathe for combat (was disabled in hamlet to keep
+  // static tiles from shimmering — see enterHamletCanvas).
+  camera.breatheEnabled = true;
   currentFloorLevel = 1;
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
   window.__currentBiome = BIOME_BY_FLOOR[currentFloorLevel];
