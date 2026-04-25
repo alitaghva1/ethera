@@ -8,7 +8,7 @@
 //   6: boss          (unique per floor: orc / bone_captain / broodmother)
 //
 // `level` (1..3) scales enemy composition, elite chance, damage, and HP.
-import { ROOM_W, ROOM_H, ROOM_SIZES, getPillarCells } from './room.js';
+import { ROOM_W, ROOM_H, ROOM_SIZES, getPillarCells, isCarvedTile } from './room.js';
 import { isCursed } from './curses.js';
 
 // HADES-STYLE ROOM SHAPES — pick a size template per room kind so the run
@@ -45,6 +45,37 @@ function pickRoomSize(kind, slot) {
   }
   // Start / hamlet / fallback
   return ROOM_SIZES.medium;
+}
+
+// Pick a non-rectangular room shape for the given kind + size. Returns
+// one of the keys from ROOM_SHAPES. Weighting goals:
+//   - Plain rectangles still feel familiar (~50% of combat rooms stay rect)
+//   - Heavier shapes (plus, T) only roll in rooms big enough to keep the
+//     remaining floor area playable
+//   - Sanctuary / reward rooms stay rect — the chapel feel benefits from
+//     a clean simple footprint
+//   - Boss arenas stay rect — the spike/fire patterns are hand-tuned for
+//     a rectangular floor and would clip into corner carves
+function pickRoomShape(kind, size) {
+  if (kind === 'sanctuary' || kind === 'reward' || kind === 'altar' || kind === 'boss' || kind === 'start') {
+    return 'rect';
+  }
+  // Trove rooms feel best as rectangles (loot strewn across an open floor)
+  if (kind === 'trove') return 'rect';
+  // For combat / event / challenge rooms, weight by available floor area
+  const floorArea = size.w * size.h;
+  const r = Math.random();
+  // Below ~190 tiles (small/medium-tall), restrict to lighter shapes
+  if (floorArea < 200) {
+    if (r < 0.55) return 'rect';
+    if (r < 0.75) return ['L_NE', 'L_NW', 'L_SE', 'L_SW'][(Math.random() * 4) | 0];
+    return ['T_top', 'T_bottom', 'T_left', 'T_right'][(Math.random() * 4) | 0];
+  }
+  // Larger rooms get the full menu including plus
+  if (r < 0.45) return 'rect';
+  if (r < 0.70) return ['L_NE', 'L_NW', 'L_SE', 'L_SW'][(Math.random() * 4) | 0];
+  if (r < 0.90) return ['T_top', 'T_bottom', 'T_left', 'T_right'][(Math.random() * 4) | 0];
+  return 'plus';
 }
 
 export const MAX_FLOORS = 4;
@@ -136,7 +167,7 @@ function tierForSlot(level, slot) {
   return 'tier3';                        // floor 3: always tier3
 }
 
-function spawnCells(count, pillarTemplate = -1, w = ROOM_W, h = ROOM_H) {
+function spawnCells(count, pillarTemplate = -1, w = ROOM_W, h = ROOM_H, shape = 'rect') {
   const cells = [];
   const mid = Math.floor(w / 2);
   // Pillar templates are authored at MEDIUM (20×14) — scale to actual room dims.
@@ -153,6 +184,8 @@ function spawnCells(count, pillarTemplate = -1, w = ROOM_W, h = ROOM_H) {
     if (isPillar(x, y)) continue;
     // Also avoid directly-adjacent pillar cells so enemies aren't wedged
     if (pillars.some(([px, py]) => Math.abs(px - x) <= 1 && Math.abs(py - y) <= 1)) continue;
+    // Skip cells inside shape carves (those become walls in build pass)
+    if (shape !== 'rect' && isCarvedTile(x, y, w, h, shape)) continue;
     cells.push({ x, y });
   }
   return cells;
@@ -177,10 +210,12 @@ export function makeCombatRoom(level, slot, eliteChance) {
   // CURSE: Ether's Curse — +25% elite chance
   const effEliteChance = isCursed('ethers_curse') ? eliteChance + 0.25 : eliteChance;
 
-  // Pick room size + pillar template up-front so we can avoid spawning enemies ON pillars
+  // Pick room size + shape + pillar template up-front so spawn cells can
+  // avoid both pillar tiles AND carved-corner tiles in one pass.
   const size = pickRoomSize('combat', slot);
+  const shape = pickRoomShape('combat', size);
   const pillarTemplate = randInt(0, 14);
-  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h);
+  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h, shape);
   const spawns = comp.slice(0, cells.length).map((type, i) => ({
     type, x: cells[i].x, y: cells[i].y,
     elite: type !== 'bomber' && Math.random() < effEliteChance,
@@ -198,7 +233,7 @@ export function makeCombatRoom(level, slot, eliteChance) {
                     : ['orc', 'archer', 'bomber', 'lancer'];
     const n = 3 + randInt(0, 2);
     for (let i = 0; i < n; i++) waveComp.push(pick(waveTypes));
-    const waveCells = spawnCells(waveComp.length, pillarTemplate, size.w, size.h);
+    const waveCells = spawnCells(waveComp.length, pillarTemplate, size.w, size.h, shape);
     wave2 = waveComp.slice(0, waveCells.length).map((type, i) => ({
       type, x: waveCells[i].x, y: waveCells[i].y,
       elite: type !== 'bomber' && Math.random() < effEliteChance,
@@ -216,12 +251,15 @@ export function makeCombatRoom(level, slot, eliteChance) {
     if (Math.abs(x - Math.floor(size.w/2)) < 3 && Math.abs(y - Math.floor(size.h/2)) < 2) continue;
     if (cells.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 2)) continue;
     if (propUrns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
+    // Also skip props in carved corners (they would render inside walls)
+    if (shape !== 'rect' && isCarvedTile(x, y, size.w, size.h, shape)) continue;
     propUrns.push({ x, y, broken: false, variant: randInt(0, 2), isProp: true });
   }
   return {
     kind: 'combat',
     slotLabel: slot,
     w: size.w, h: size.h,
+    shape,
     pillarTemplate,                     // already rolled above for spawn validation
     spawns,
     wave2,                                // null if not a wave room
@@ -253,8 +291,9 @@ export function makeChallengeRoom(level, eliteChance) {
     comp.push(pick(extraTypes), pick(extraTypes));
   }
   const size = pickRoomSize('challenge');
+  const shape = pickRoomShape('challenge', size);
   const pillarTemplate = randInt(0, 14);
-  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h);
+  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h, shape);
   const spawns = comp.slice(0, cells.length).map((type, i) => ({
     type, x: cells[i].x, y: cells[i].y,
     elite: type !== 'bomber',
@@ -264,6 +303,7 @@ export function makeChallengeRoom(level, eliteChance) {
   return {
     kind: 'challenge',
     w: size.w, h: size.h,
+    shape,
     pillarTemplate,
     spawns,
     doors: { north: true, south: true },
@@ -300,6 +340,7 @@ export function makeTroveRoom() {
 // three categories after three runs.
 function makeMiniBossRoom(level) {
   const size = pickRoomSize('combat', 'miniboss');
+  const shape = pickRoomShape('combat', size);
   const pillarTemplate = randInt(0, 14);
   // Mini-boss type scales with floor — pick a unique-mechanic enemy from
   // the adjacent tier so it's genuinely threatening but not boss-scale.
@@ -315,6 +356,7 @@ function makeMiniBossRoom(level) {
     kind: 'combat',
     slotLabel: 'miniboss',
     w: size.w, h: size.h,
+    shape,
     pillarTemplate,
     spawns: [{
       type: miniType,

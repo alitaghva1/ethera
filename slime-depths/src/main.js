@@ -14,6 +14,7 @@ import {
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, setDoorLookup,
   snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
+  getValidNorthDoorXRange,
 } from './room.js';
 import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
@@ -3223,18 +3224,20 @@ window.addEventListener('keydown', (e) => {
 
 // Pick N evenly-spaced x-tile positions in the north wall, with min 3-tile
 // padding from each corner so doors never collide with corner-pillar art.
-// Mirrors the picker in doorPortals.js — duplicated here to keep loadRoom
-// free of imports from doorPortals (avoid the lazy-import song-and-dance).
-function computeDoorXs(roomW, n) {
+// For shaped rooms (L / T / plus), the valid door X range narrows so the
+// door tile lands above the floor band, not above a carved corner. Imports
+// the per-shape range from room.js.
+function computeDoorXs(roomW, n, roomH, shape) {
   if (n <= 0) return [];
-  if (n === 1) return [Math.floor(roomW / 2)];
-  const min = 3;
-  const max = roomW - 4;
-  const span = max - min;
+  const validRange = (roomH != null && shape != null)
+    ? getValidNorthDoorXRange(roomW, roomH, shape)
+    : { min: 3, max: roomW - 4 };
+  if (n === 1) return [Math.floor((validRange.min + validRange.max) / 2)];
+  const span = validRange.max - validRange.min;
   const out = [];
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1);
-    out.push(Math.round(min + span * t));
+    out.push(Math.round(validRange.min + span * t));
   }
   for (let i = 1; i < out.length; i++) {
     if (out[i] - out[i - 1] < 3) out[i] = out[i - 1] + 3;
@@ -3300,15 +3303,20 @@ function loadRoom(idx, entryFrom) {
   if (planEdges.length > 0 && data.doors?.north !== false) {
     data.doorPlan = data.doorPlan || {};
     const w = data.w || 20;
-    data.doorPlan.north = computeDoorXs(w, planEdges.length);
+    const h = data.h || 14;
+    data.doorPlan.north = computeDoorXs(w, planEdges.length, h, data.shape || 'rect');
   } else {
     data.doorPlan = data.doorPlan || {};
     data.doorPlan.north = null;
   }
   buildRoomFromData(data);
   // ── Set up door state objects (now that tiles[] exists) ────────────────
+  // Pass the door X positions explicitly so the door OBJECTS sit on the
+  // same tiles the room build pass actually carved as 'door'. Critical
+  // for shaped rooms where the valid door range is narrower than full width.
   setupRoomDoors(currentGraph, currentNodeId, {
     hasSouthEntry: data.doors?.south !== false && data.kind !== 'start',
+    doorXs: data.doorPlan?.north || null,
   });
   clearEnemies();
   clearProjectiles();

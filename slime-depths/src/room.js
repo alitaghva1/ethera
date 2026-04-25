@@ -26,6 +26,98 @@ export const ROOM_SIZES = {
   large:   { w: 26, h: 18 },     // boss / mini-boss — epic scale
 };
 
+// ─── ROOM SHAPES ───────────────────────────────────────────────────────────
+// Beyond size, the playable area can be carved into non-rectangular shapes by
+// walling off corner regions. The carve happens AFTER perimeter walls + pillar
+// placement in buildRoomFromData, so a shape is just "rectangle minus these
+// corner blocks." Doors and pedestal stay in the middle bands so they're
+// never blocked.
+//
+// Carve dimensions scale with room size (~25% width × ~35% height per corner)
+// so the same shape reads consistently in small vs large rooms.
+//
+// Shapes available:
+//   rect      — no carves (default rectangle)
+//   L_NE/NW/SE/SW — one corner walled (creates an L / J / Γ silhouette)
+//   T_top/bottom/left/right — two adjacent corners walled (T silhouette,
+//                              with the "stem" pointing AWAY from the carved side)
+//   plus      — all four corners walled (cross / plus silhouette)
+export const ROOM_SHAPES = {
+  rect:     { carves: [] },
+  L_NE:     { carves: ['NE'] },
+  L_NW:     { carves: ['NW'] },
+  L_SE:     { carves: ['SE'] },
+  L_SW:     { carves: ['SW'] },
+  T_top:    { carves: ['NE', 'NW'] },     // arms extend from the bottom
+  T_bottom: { carves: ['SE', 'SW'] },     // arms extend from the top
+  T_left:   { carves: ['NW', 'SW'] },     // arms extend rightward
+  T_right:  { carves: ['NE', 'SE'] },     // arms extend leftward
+  plus:     { carves: ['NE', 'NW', 'SE', 'SW'] },
+};
+
+// Compute carve block dimensions for a given room. Centralized so doors and
+// spawns and the build pass all reason about the same boundaries.
+export function getCarveSize(w, h) {
+  return {
+    cw: Math.max(2, Math.floor(w * 0.25)),
+    ch: Math.max(2, Math.floor(h * 0.35)),
+  };
+}
+
+// True iff the tile at (x, y) lies inside one of the shape's corner carves.
+// Used by spawnCells (avoid spawning enemies in carved areas) and the door
+// X picker (north door must land in a non-carved column).
+export function isCarvedTile(x, y, w, h, shape) {
+  const def = ROOM_SHAPES[shape] || ROOM_SHAPES.rect;
+  if (!def.carves.length) return false;
+  const { cw, ch } = getCarveSize(w, h);
+  for (const corner of def.carves) {
+    const x0 = corner.includes('W') ? 0 : w - cw;
+    const x1 = x0 + cw;
+    const y0 = corner.includes('N') ? 0 : h - ch;
+    const y1 = y0 + ch;
+    if (x >= x0 && x < x1 && y >= y0 && y < y1) return true;
+  }
+  return false;
+}
+
+// Returns the inclusive [min, max] tile-X range where a NORTH-wall door
+// can be placed for the given shape (i.e. the floor tile directly below
+// the wall row is NOT in a carved area). 3-tile padding from each
+// corner keeps doors away from corner-pillar art. Used by computeDoorXs
+// in main.js.
+export function getValidNorthDoorXRange(w, h, shape) {
+  const def = ROOM_SHAPES[shape] || ROOM_SHAPES.rect;
+  const { cw } = getCarveSize(w, h);
+  const carvesNW = def.carves.includes('NW');
+  const carvesNE = def.carves.includes('NE');
+  return {
+    min: carvesNW ? cw + 1 : 3,
+    max: carvesNE ? w - cw - 2 : w - 4,
+  };
+}
+
+// Apply the shape carves to a tile grid in-place. Run AFTER perimeter walls
+// and pillar placement, so any pillars in the carved region get overwritten
+// by wall (fine — shaped rooms have less empty floor anyway).
+function applyShapeCarves(tiles, w, h, shape) {
+  const def = ROOM_SHAPES[shape] || ROOM_SHAPES.rect;
+  if (!def.carves.length) return;
+  const { cw, ch } = getCarveSize(w, h);
+  for (const corner of def.carves) {
+    const x0 = corner.includes('W') ? 0 : w - cw;
+    const x1 = x0 + cw;
+    const y0 = corner.includes('N') ? 0 : h - ch;
+    const y1 = y0 + ch;
+    for (let y = y0; y < y1; y++) {
+      if (!tiles[y]) continue;
+      for (let x = x0; x < x1; x++) {
+        tiles[y][x] = 'wall';
+      }
+    }
+  }
+}
+
 // Three biome palettes — swapped per floor for visual identity.
 // setBiome(id) switches the active palette which drawRoom + lighting read.
 // Per-biome floor wear overlay — moss in the crypt, blood in the vault, scorch in the abyss.
@@ -295,6 +387,7 @@ export const room = {
   tiles: null,
   decor: [],
   kind: 'start',
+  shape: 'rect',
   spawns: [],
   cleared: false,
   doors: { north: true, south: true },
@@ -396,6 +489,15 @@ export function buildRoomFromData(data) {
         tiles[scaledY][scaledX] = 'pillar';
       }
     }
+    // ── SHAPE CARVES — turn the rectangle into L / T / plus / etc. by
+    // walling off corner regions. Runs AFTER pillar placement so any
+    // pillars that landed in a carved area are simply overwritten with
+    // wall (visually consistent — they were going to be inside the
+    // walled corner anyway).
+    room.shape = data.shape || 'rect';
+    applyShapeCarves(tiles, w, h, room.shape);
+  } else {
+    room.shape = 'rect';
   }
 
   // ── Door tile placement ────────────────────────────────────────────────

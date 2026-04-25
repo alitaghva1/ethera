@@ -100,7 +100,16 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
       const targets = node.edges
         .map(eid => graph.nodes.find(n => n.id === eid))
         .filter(Boolean);
-      const positions = pickDoorTilePositions(w, targets.length);
+      // Prefer the door X positions that the room build pass actually
+      // carved tiles for (data.doorPlan.north). Falls back to the local
+      // picker only when the caller didn't supply explicit positions —
+      // otherwise the door OBJECT positions could disagree with the
+      // door TILE positions (which would happen in shaped rooms where
+      // computeDoorXs accounts for carve regions but pickDoorTilePositions
+      // doesn't).
+      const positions = (opts.doorXs && opts.doorXs.length === targets.length)
+        ? opts.doorXs.slice()
+        : pickDoorTilePositions(w, targets.length);
       for (let i = 0; i < targets.length; i++) {
         const t = targets[i];
         roomDoors.push({
