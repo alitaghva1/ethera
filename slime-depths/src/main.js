@@ -5442,7 +5442,11 @@ function render() {
     floorLevel: currentFloorLevel,
     maxFloors: MAX_FLOORS,
     gold: gold.total,
-    floorRooms: floor,              // pass full floor so HUD can render a minimap
+    floorRooms: floor,              // legacy linear minimap fallback
+    // New: full graph + current position so HUD can render a connected
+    // 2D dungeon minimap (Hades / Isaac style) instead of a linear strip.
+    floorGraph: currentGraph,
+    currentNodeId,
     introActive: bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0,
     inHamlet: room.kind === 'hamlet',
   });

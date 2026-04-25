@@ -271,12 +271,15 @@ export function drawHud(ctx, w, h, progress = {}) {
   // this draw pass) can anchor beneath it with a proper margin.
   const abilitiesEndY = dashRowY + pipH;
 
-  // Top-right panel — floor + room progress with a refined layout
+  // Top-right panel — floor + connected dungeon minimap.
+  // The minimap renders the full graph as a 2D layout (layer = vertical,
+  // index-in-layer = horizontal), with rooms as tiles connected by the
+  // door lines they actually share. Visited rooms fill in. Adjacent
+  // unvisited rooms (one step away) show as outline. Far rooms hide.
+  // This is the "real dungeon revealed as you explore" feel.
   const label = ROOM_LABEL[progress.roomKind] || '';
-  const roomIdx = progress.roomIndex ?? 0;
-  const total = progress.totalRooms ?? 1;
   const floorText = progress.floorLevel ? ('FLOOR ' + toRoman(progress.floorLevel) + ' / ' + toRoman(progress.maxFloors || 4)) : '';
-  const boxW = 240, boxH = 90;
+  const boxW = 240, boxH = 152;
   const bx = w - boxW - 14;
   const by = 14;
   // Backdrop with gold border accent
@@ -297,96 +300,16 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
   ctx.fillText(floorText, bx + boxW - 12, by + 8);
-  // Minimap — small room cells with kind-specific icons and connector lines
-  const miniY = by + 36;
-  const cellW = 16;
-  const cellH = 11;
-  const cellGap = 4;
-  const totalW = total * cellW + (total - 1) * cellGap;
-  const miniStartX = bx + boxW - 12 - totalW;
-  const rooms = progress.floorRooms || [];
-  for (let i = 0; i < total; i++) {
-    const dx = miniStartX + i * (cellW + cellGap);
-    const room = rooms[i];
-    const kind = room ? room.kind : 'combat';
-    // Connector line to next cell (except last)
-    if (i < total - 1) {
-      const past = i < roomIdx;
-      ctx.strokeStyle = past ? 'rgba(201, 168, 106, 0.7)' : 'rgba(201, 168, 106, 0.22)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(dx + cellW, miniY + cellH / 2);
-      ctx.lineTo(dx + cellW + cellGap, miniY + cellH / 2);
-      ctx.stroke();
-    }
-    // Cell color per kind
-    const kindColor = {
-      start:     '#5a4028',
-      combat:    '#a06060',
-      altar:     '#b04880',
-      challenge: '#c08048',
-      reward:    '#4a9070',
-      boss:      '#c04848',
-      event:     '#7060b0',
-      trove:     '#c09050',
-    }[kind] || '#505060';
-    // Room state: past (filled dim) / current (bright + pulse) / future (outline)
-    if (i < roomIdx) {
-      ctx.fillStyle = 'rgba(60, 50, 45, 0.85)';
-      ctx.fillRect(dx, miniY, cellW, cellH);
-      ctx.fillStyle = kindColor;
-      ctx.globalAlpha = 0.5;
-      ctx.fillRect(dx + 1, miniY + 1, cellW - 2, cellH - 2);
-      ctx.globalAlpha = 1;
-    } else if (i === roomIdx) {
-      const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 280);
-      ctx.fillStyle = 'rgba(20, 14, 18, 0.95)';
-      ctx.fillRect(dx, miniY, cellW, cellH);
-      ctx.fillStyle = kindColor;
-      ctx.fillRect(dx + 1, miniY + 1, cellW - 2, cellH - 2);
-      // Bright ring
-      ctx.strokeStyle = `rgba(244, 217, 160, ${pulse.toFixed(3)})`;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(dx - 1.5, miniY - 1.5, cellW + 3, cellH + 3);
-    } else {
-      ctx.strokeStyle = 'rgba(160, 140, 110, 0.35)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(dx + 0.5, miniY + 0.5, cellW - 1, cellH - 1);
-    }
-    // Icon glyph per kind (tiny, centered)
-    if (i <= roomIdx) {
-      ctx.fillStyle = i === roomIdx ? '#fff2e0' : 'rgba(255, 230, 200, 0.45)';
-      const cx = dx + cellW / 2, cy = miniY + cellH / 2;
-      if (kind === 'combat') {
-        // Crossed blades (2px cross)
-        ctx.fillRect(cx - 3, cy - 0.5, 6, 1);
-        ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
-      } else if (kind === 'boss') {
-        // Skull — 3-pixel bulge
-        ctx.fillRect(cx - 2, cy - 2, 4, 3);
-        ctx.fillRect(cx - 1, cy + 1, 2, 1);
-      } else if (kind === 'reward') {
-        // Heart — 3 pixels
-        ctx.fillRect(cx - 2, cy - 1, 2, 2);
-        ctx.fillRect(cx, cy - 1, 2, 2);
-        ctx.fillRect(cx - 1, cy + 1, 2, 1);
-      } else if (kind === 'altar') {
-        // Diamond
-        ctx.fillRect(cx - 0.5, cy - 2, 1, 4);
-        ctx.fillRect(cx - 2, cy - 0.5, 4, 1);
-      } else if (kind === 'challenge') {
-        // Exclamation
-        ctx.fillRect(cx - 0.5, cy - 2, 1, 3);
-        ctx.fillRect(cx - 0.5, cy + 1, 1, 1);
-      } else if (kind === 'event') {
-        ctx.fillRect(cx - 1, cy - 1, 2, 2);
-      } else if (kind === 'trove') {
-        // Coin — circle-ish with dot in center
-        ctx.fillRect(cx - 2, cy - 2, 4, 4);
-        ctx.fillRect(cx - 3, cy - 1, 1, 2);
-        ctx.fillRect(cx + 2, cy - 1, 1, 2);
-      }
-    }
+
+  // ── DUNGEON MINIMAP — connected 2D layout ─────────────────────────────
+  // Falls back to the legacy linear minimap if no graph is available
+  // (e.g. running from a save without graph data).
+  const graph = progress.floorGraph;
+  const curId = progress.currentNodeId;
+  if (graph && graph.nodes && graph.nodes.length > 0) {
+    drawDungeonMinimap(ctx, bx, by, boxW, boxH, graph, curId);
+  } else {
+    drawLegacyLinearMinimap(ctx, bx, by, boxW, progress);
   }
   // Room kind label
   ctx.font = '13px Georgia, serif';
@@ -1062,5 +985,228 @@ function drawHeart(ctx, x, y, s, filled, isLowHP = false) {
     ctx.fillStyle = highlight;
     ctx.fillRect(x + 2 * pixel, y + 2 * pixel, pixel, pixel);
     ctx.fillRect(x + 3 * pixel, y + 1 * pixel, pixel, pixel);
+  }
+}
+
+// ============================================================================
+// DUNGEON MINIMAP — 2D layout of the connected room graph
+//
+// Renders the floor's DAG as a top-down floor plan: rooms are tiles laid
+// out by (layer, indexInLayer) with door-connection lines drawn between
+// connected nodes. The current room highlights with a pulsing ring;
+// visited rooms fill in; rooms one step away from the current node show
+// as outlines (you've seen the door, not the room); far rooms hide.
+//
+// This is the Hades / Binding-of-Isaac feel — every room you walk through
+// expands the map, so the player builds up a mental model of the dungeon
+// as a real layout instead of clicking nodes on a tree.
+// ============================================================================
+const KIND_FILL = {
+  start:     '#5a4028',
+  combat:    '#8a4848',
+  altar:     '#9a3a70',
+  challenge: '#b07038',
+  reward:    '#3a8060',
+  sanctuary: '#3a8060',
+  boss:      '#b03838',
+  event:     '#6050a0',
+  trove:     '#b08040',
+  elite:     '#c04040',
+};
+
+function drawDungeonMinimap(ctx, bx, by, boxW, boxH, graph, currentNodeId) {
+  const padTop = 36;        // below the FLOOR header
+  const padBottom = 14;
+  const padX = 16;
+  const mapX = bx + padX;
+  const mapY = by + padTop;
+  const mapW = boxW - padX * 2;
+  const mapH = boxH - padTop - padBottom;
+
+  // Group nodes by layer to compute layout
+  const layers = {};
+  for (const n of graph.nodes) {
+    (layers[n.layer] = layers[n.layer] || []).push(n);
+  }
+  const maxLayer = graph.maxLayer || 0;
+  const layerCount = maxLayer + 1;
+  // VERTICAL: layer 0 (start) at BOTTOM, max (boss) at TOP — matches
+  // dungeon-descent intuition (you go DOWN the dungeon physically, so the
+  // boss is "deepest" but visually rendered at top because we're looking
+  // at it from outside-in).
+  const layerGap = layerCount > 1 ? mapH / (layerCount - 1) : 0;
+
+  // Compute screen positions for each node
+  const pos = new Map();
+  for (const layerStr of Object.keys(layers)) {
+    const layer = parseInt(layerStr, 10);
+    const nodesInLayer = layers[layer];
+    const count = nodesInLayer.length;
+    const yPx = mapY + mapH - layer * layerGap;          // 0 = bottom
+    const spread = Math.min(mapW * 0.85, mapW - 12);
+    const startX = mapX + mapW / 2 - spread / 2;
+    const stepX = count > 1 ? spread / (count - 1) : 0;
+    nodesInLayer.forEach((n, i) => {
+      const xPx = count === 1 ? mapX + mapW / 2 : startX + i * stepX;
+      pos.set(n.id, { x: xPx, y: yPx });
+    });
+  }
+
+  // Determine which nodes the player has SEEN — visited or one step
+  // away from a visited node (they've seen its door).
+  const seen = new Set();
+  for (const n of graph.nodes) {
+    if (n.visited || n.id === currentNodeId) {
+      seen.add(n.id);
+      // Show neighbors of visited/current too
+      if (n.edges) for (const eid of n.edges) seen.add(eid);
+    }
+  }
+
+  // ── Pass 1: connection lines ──────────────────────────────────────────
+  // Draw lines between connected nodes. Lines from visited→visited are
+  // bright (the path you took); visited→unvisited dim (door you saw).
+  for (const n of graph.nodes) {
+    if (!n.edges || !pos.has(n.id)) continue;
+    const a = pos.get(n.id);
+    const aSeen = seen.has(n.id);
+    for (const eid of n.edges) {
+      if (!pos.has(eid)) continue;
+      const b = pos.get(eid);
+      const bSeen = seen.has(eid);
+      if (!aSeen && !bSeen) continue;
+      const taken = (n.visited || n.id === currentNodeId)
+        && (graph.nodes.find(x => x.id === eid)?.visited || eid === currentNodeId);
+      ctx.strokeStyle = taken
+        ? 'rgba(244, 217, 160, 0.85)'
+        : 'rgba(160, 140, 110, 0.35)';
+      ctx.lineWidth = taken ? 1.6 : 1.0;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+
+  // ── Pass 2: room tiles ─────────────────────────────────────────────────
+  const cellSize = 14;
+  const half = cellSize / 2;
+  for (const n of graph.nodes) {
+    if (!seen.has(n.id) && !n.visited && n.id !== currentNodeId) continue;
+    const p = pos.get(n.id);
+    if (!p) continue;
+    const fill = KIND_FILL[n.kind] || '#505060';
+    const isCurrent = n.id === currentNodeId;
+    const isVisited = !!n.visited;
+
+    // Outer outline (always drawn)
+    ctx.fillStyle = 'rgba(20, 14, 18, 0.95)';
+    ctx.fillRect(p.x - half - 1, p.y - half - 1, cellSize + 2, cellSize + 2);
+
+    if (isCurrent) {
+      // Filled with kind color + pulsing gold ring
+      ctx.fillStyle = fill;
+      ctx.fillRect(p.x - half, p.y - half, cellSize, cellSize);
+      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 240);
+      ctx.strokeStyle = 'rgba(244, 217, 160, ' + pulse.toFixed(3) + ')';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x - half - 2.5, p.y - half - 2.5, cellSize + 5, cellSize + 5);
+    } else if (isVisited) {
+      // Filled at lower opacity
+      ctx.fillStyle = fill;
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(p.x - half, p.y - half, cellSize, cellSize);
+      ctx.globalAlpha = 1;
+    } else {
+      // Unseen-but-adjacent — outline only
+      ctx.strokeStyle = 'rgba(160, 140, 110, 0.65)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - half + 0.5, p.y - half + 0.5, cellSize - 1, cellSize - 1);
+    }
+
+    // Tiny kind glyph centered in tile (only if visited or current)
+    if (isVisited || isCurrent) {
+      drawTinyKindGlyph(ctx, p.x, p.y, n.kind, isCurrent ? '#fff2e0' : 'rgba(255, 230, 200, 0.65)');
+    } else {
+      // Question mark placeholder for unseen neighbors
+      ctx.fillStyle = 'rgba(180, 160, 130, 0.55)';
+      ctx.font = 'bold 9px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', p.x, p.y + 0.5);
+    }
+  }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+// Tiny pixel glyphs — readable at 14px tile size
+function drawTinyKindGlyph(ctx, cx, cy, kind, color) {
+  ctx.fillStyle = color;
+  if (kind === 'combat') {
+    ctx.fillRect(cx - 3, cy - 0.5, 6, 1);          // crossed blades
+    ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
+  } else if (kind === 'elite') {
+    // Elite — diamond with center dot
+    ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
+    ctx.fillRect(cx - 3, cy - 0.5, 6, 1);
+    ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+  } else if (kind === 'boss') {
+    // Crown — 3-bar
+    ctx.fillRect(cx - 3, cy + 1, 6, 1);
+    ctx.fillRect(cx - 3, cy - 2, 1, 3);
+    ctx.fillRect(cx, cy - 3, 1, 4);
+    ctx.fillRect(cx + 2, cy - 2, 1, 3);
+  } else if (kind === 'reward' || kind === 'sanctuary') {
+    // Plus — sanctuary cross
+    ctx.fillRect(cx - 0.5, cy - 2.5, 1, 5);
+    ctx.fillRect(cx - 2.5, cy - 0.5, 5, 1);
+  } else if (kind === 'altar') {
+    ctx.fillRect(cx - 2, cy - 0.5, 4, 1);
+    ctx.fillRect(cx - 0.5, cy - 2, 1, 4);
+  } else if (kind === 'challenge' || kind === 'event') {
+    // Sparkle — diamond
+    ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
+    ctx.fillRect(cx - 3, cy - 0.5, 6, 1);
+  } else if (kind === 'trove') {
+    ctx.fillRect(cx - 2, cy - 2, 4, 4);
+  } else if (kind === 'start') {
+    // Diamond outline-ish
+    ctx.fillRect(cx - 0.5, cy - 2, 1, 4);
+    ctx.fillRect(cx - 2, cy - 0.5, 4, 1);
+  }
+}
+
+// Legacy linear-strip minimap — used when no graph is available
+// (save resumes from before the graph era, or the hamlet hub).
+function drawLegacyLinearMinimap(ctx, bx, by, boxW, progress) {
+  const total = progress.totalRooms ?? 1;
+  const roomIdx = progress.roomIndex ?? 0;
+  const miniY = by + 70;
+  const cellW = 16, cellH = 11, cellGap = 4;
+  const totalW = total * cellW + (total - 1) * cellGap;
+  const miniStartX = bx + (boxW - totalW) / 2;
+  const rooms = progress.floorRooms || [];
+  for (let i = 0; i < total; i++) {
+    const dx = miniStartX + i * (cellW + cellGap);
+    const room = rooms[i];
+    const kind = room ? room.kind : 'combat';
+    const fill = KIND_FILL[kind] || '#505060';
+    if (i < roomIdx) {
+      ctx.fillStyle = fill;
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(dx, miniY, cellW, cellH);
+      ctx.globalAlpha = 1;
+    } else if (i === roomIdx) {
+      ctx.fillStyle = fill;
+      ctx.fillRect(dx, miniY, cellW, cellH);
+      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 240);
+      ctx.strokeStyle = 'rgba(244, 217, 160, ' + pulse.toFixed(3) + ')';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(dx - 1.5, miniY - 1.5, cellW + 3, cellH + 3);
+    } else {
+      ctx.strokeStyle = 'rgba(160, 140, 110, 0.35)';
+      ctx.strokeRect(dx + 0.5, miniY + 0.5, cellW - 1, cellH - 1);
+    }
   }
 }

@@ -1842,13 +1842,13 @@ function drawRuinStain(ctx, stain) {
 function drawRuinCobwebs(ctx, agingLvl) {
   const spots = [
     { x: 1 * TILE, y: 1 * TILE, quadrant: 'tl' },
-    { x: (ROOM_W - 2) * TILE, y: 1 * TILE, quadrant: 'tr' },
+    { x: (room.w - 2) * TILE, y: 1 * TILE, quadrant: 'tr' },
   ];
   if (agingLvl >= 2) {
-    spots.push({ x: 1 * TILE, y: (ROOM_H - 2) * TILE, quadrant: 'bl' });
+    spots.push({ x: 1 * TILE, y: (room.h - 2) * TILE, quadrant: 'bl' });
   }
   if (agingLvl >= 3) {
-    spots.push({ x: (ROOM_W - 2) * TILE, y: (ROOM_H - 2) * TILE, quadrant: 'br' });
+    spots.push({ x: (room.w - 2) * TILE, y: (room.h - 2) * TILE, quadrant: 'br' });
   }
   ctx.save();
   const strands = agingLvl >= 4 ? 6 : agingLvl >= 2 ? 4 : 3;
@@ -1903,7 +1903,7 @@ export function drawRoom(ctx) {
   // the earlier "paint a wide mural" approach — we compose the scene from
   // layers now instead of leaning on a single wide backdrop.
   if (room.kind === 'hamlet') {
-    const W = ROOM_W * TILE, H = ROOM_H * TILE;
+    const W = room.w * TILE, H = room.h * TILE;
     // Sky: deep violet at top → warm dusk amber at horizon. Horizon sits at
     // y=280 (~42% down the room), matching where the building band begins.
     const sky = ctx.createLinearGradient(0, 0, 0, 300);
@@ -1943,8 +1943,8 @@ export function drawRoom(ctx) {
   }
 
   // Pass 1: every floor cell
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
       drawFloorTile(ctx, x, y);
     }
   }
@@ -1953,9 +1953,9 @@ export function drawRoom(ctx) {
   const wearFn = WEAR_BY_BIOME[PAL._biomeId || 'vault'];
   if (wearFn) {
     for (let i = 0; i < 8; i++) {
-      const h = hash(i + 17, (PAL._biomeId || 'vault').length + ROOM_W * ROOM_H);
-      const tx = 1 + (h % (ROOM_W - 2));
-      const ty = 1 + ((h >>> 5) % (ROOM_H - 2));
+      const h = hash(i + 17, (PAL._biomeId || 'vault').length + room.w * room.h);
+      const tx = 1 + (h % (room.w - 2));
+      const ty = 1 + ((h >>> 5) % (room.h - 2));
       const kind = room.tiles[ty]?.[tx];
       if (kind !== 'floor') continue;
       const cx = tx * TILE + TILE / 2 + ((h >>> 10) % 12) - 6;
@@ -1970,9 +1970,9 @@ export function drawRoom(ctx) {
   drawOrganicFloorDetail(ctx);
 
   // Pass 2: shadow strips cast from walls onto floor cells below them
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
-      const t = room.tiles[y][x];
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
+      const t = room.tiles[y]?.[x];
       if (t !== 'wall' && t !== 'pillar') continue;
       const below = room.tiles[y + 1]?.[x];
       if (below === 'wall') continue;
