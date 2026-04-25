@@ -60,27 +60,10 @@ export const TILES = {
     { sheet: 'cainos_grass', sx: 6 * T, sy: 1 * T },
     { sheet: 'cainos_grass', sx: 7 * T, sy: 1 * T },
   ],
-  // ── COBBLE PATH (rows 4-7 of the Grass sheet — full cobble blocks
-  //    in cols 0-3, partially-grown-over variants in cols 4-7).
-  // Pure cobble center — the "this is a path" tile.
-  cobble: [
-    { sheet: 'cainos_grass', sx: 1 * T, sy: 4 * T },
-    { sheet: 'cainos_grass', sx: 2 * T, sy: 4 * T },
-    { sheet: 'cainos_grass', sx: 1 * T, sy: 5 * T },
-    { sheet: 'cainos_grass', sx: 2 * T, sy: 5 * T },
-  ],
-  // Cobble breaking down into grass — used at path edges for organic
-  // transitions instead of a hard line.
-  cobble_worn: [
-    { sheet: 'cainos_grass', sx: 4 * T, sy: 5 * T },
-    { sheet: 'cainos_grass', sx: 5 * T, sy: 5 * T },
-    { sheet: 'cainos_grass', sx: 6 * T, sy: 5 * T },
-    { sheet: 'cainos_grass', sx: 7 * T, sy: 5 * T },
-    { sheet: 'cainos_grass', sx: 0 * T, sy: 6 * T },
-    { sheet: 'cainos_grass', sx: 1 * T, sy: 6 * T },
-    { sheet: 'cainos_grass', sx: 2 * T, sy: 6 * T },
-    { sheet: 'cainos_grass', sx: 3 * T, sy: 6 * T },
-  ],
+  // (cobble + cobble_worn tile sets removed — paths now use the same
+  // stone tiles as the plaza for visual unity. Those tiles read as
+  // "cobble decoration scattered in grass" not "path edge transitions",
+  // so they fought with the plaza visually.)
   // ── STONE PLAZA (Stone Ground sheet — pristine cut stone, used at
   //    the hamlet's center under firepit + portal).
   // ALL picks below are verified fully-opaque (≥1018/1024 pixels). The
@@ -138,20 +121,35 @@ const PLAZA_CENTER = { col: 15, row: 15 };          // tile world (480, 480)
 const PLAZA_HALF_W = 5;                              // ± from center horizontally
 const PLAZA_HALF_H = 4;                              // ± from center vertically
 
-// Path destinations — tile (col, row) of each NPC / POI we want a cobble
-// path leading to. Hand-tuned to match HAMLET_ENTITIES in hamletScene.js.
-const PATH_TARGETS = [
-  { col: 15, row: 6  },    // PORTAL (center-north)
-  { col: 5,  row: 13 },    // SHRINE (west)
-  { col: 5,  row: 12 },    // GRAVEKEEPER (west, north of shrine)
-  { col: 7,  row: 18 },    // SMITH (southwest)
-  { col: 24, row: 18 },    // ARCHIVIST (southeast)
-  { col: 27, row: 13 },    // WANDERER (east)
-  { col: 15, row: 19 },    // SOUTH ENTRANCE (where hero spawns)
+// ─── PATH GEOMETRY — ORTHOGONAL ────────────────────────────────────────
+// Previous design: radial spokes from plaza center to every NPC anchor.
+// That created overlapping diagonals where multiple paths intersected
+// near the plaza, and read as visual noise rather than designed architecture.
+//
+// New design: paths only run on cardinal axes (N/S/E/W), each leaving
+// from the EDGE of the plaza (not its center) and bending at right
+// angles to reach off-axis NPC anchors. This gives the hamlet a
+// designed-courtyard read — like the Scene Overview where every path
+// is rectilinear.
+//
+// Each path is one or two segments. A two-segment path bends at the
+// "corner" point (col, row) — it's an L-shape from plaza edge to corner
+// to target.
+const PATHS = [
+  // NORTH path → portal (single segment due north)
+  { from: { col: 15, row: 11 }, corner: null, to: { col: 15, row: 7 } },
+  // SOUTH path → south entrance (single segment due south)
+  { from: { col: 15, row: 19 }, corner: null, to: { col: 15, row: 20 } },
+  // WEST path → shrine + gravekeeper area (single west segment)
+  { from: { col: 11, row: 15 }, corner: null, to: { col: 5,  row: 15 } },
+  // EAST path → wanderer + archive (single east segment)
+  { from: { col: 19, row: 15 }, corner: null, to: { col: 27, row: 15 } },
+  // SW spur off the west path → smith (south-southwest)
+  { from: { col: 7,  row: 15 }, corner: null, to: { col: 7,  row: 18 } },
+  // SE spur off the east path → archivist (south-southeast)
+  { from: { col: 24, row: 15 }, corner: null, to: { col: 24, row: 18 } },
 ];
-// Wider paths read as actual roads instead of scattered cobbles. 2 tiles
-// each side = 5-tile-wide path total (was 3). Solid cobble all the way
-// across — no worn-edge variants in the path interior.
+// 5-tile wide path total (2 tiles each side of the line center).
 const PATH_HALF_WIDTH = 2;
 
 // Decide what tile type should occupy (col, row).
@@ -164,26 +162,25 @@ function tileTypeAt(col, row) {
   ) {
     return 'stone';
   }
-  // PATHS — straight lines from plaza center to each anchor. Use the
-  // SAME stone tile set as the plaza for visual unity; the path is
-  // "the plaza extending outward as roads" rather than a separate
-  // material. Earlier attempt used cobble_worn for path edges but
-  // those tiles look like scattered cobble in grass (decoration), not
-  // a paved edge — the result read as "two layers of stone overlaid"
-  // instead of one continuous paving.
-  for (const target of PATH_TARGETS) {
-    const dist = pointToSegmentDist(col, row, PLAZA_CENTER.col, PLAZA_CENTER.row, target.col, target.row);
-    if (dist <= PATH_HALF_WIDTH) return 'stone';
+  // PATHS — orthogonal rectilinear paths leaving the plaza on the four
+  // cardinal axes. Each path is one or two straight segments (L-shapes
+  // for off-axis targets). All use the SAME stone tile set as the plaza
+  // so the floor reads as one continuous paving with the plaza at the
+  // intersection.
+  for (const p of PATHS) {
+    if (p.corner) {
+      // L-shaped path: two segments meeting at the corner
+      if (pointToSegmentDist(col, row, p.from.col, p.from.row, p.corner.col, p.corner.row) <= PATH_HALF_WIDTH) return 'stone';
+      if (pointToSegmentDist(col, row, p.corner.col, p.corner.row, p.to.col, p.to.row) <= PATH_HALF_WIDTH) return 'stone';
+    } else {
+      // Single straight segment
+      if (pointToSegmentDist(col, row, p.from.col, p.from.row, p.to.col, p.to.row) <= PATH_HALF_WIDTH) return 'stone';
+    }
   }
   // GRASS with sparse decoration. Only ~6% of grass tiles get the
   // decorative variant so the floor stays calm.
   const h = hash2(col, row);
   return (h % 100) < 6 ? 'grass_decor' : 'grass';
-}
-
-// True iff (x, y) is within `halfW` tiles of the segment from (x0, y0) → (x1, y1).
-function onPathSegment(x, y, x0, y0, x1, y1, halfW) {
-  return pointToSegmentDist(x, y, x0, y0, x1, y1) <= halfW;
 }
 
 function pointToSegmentDist(px, py, ax, ay, bx, by) {
@@ -201,7 +198,6 @@ function pointToSegmentDist(px, py, ax, ay, bx, by) {
 // on the north (so the wall has visible "depth" looking down) and one row
 // thick on the south + sides. The hamlet's interior playable area becomes
 // the inner rectangle (cols 1..w-2, rows 2..h-2).
-const WALL_INSET = 0;          // tiles from edge to start the wall
 const WALL_NORTH_DEPTH = 2;    // top wall is 2 tiles tall (capstone + body)
 const WALL_OTHER_DEPTH = 1;    // sides/bottom are 1 tile thick
 
@@ -252,11 +248,38 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
     x: 830, y: 210, scale: 1.0 },
 
-  // ── BUSHES scattered around the perimeter for visual softness.
+  // ── EXTRA TREES — add depth to mid-zones. Two more, smaller than the
+  // back-row ones, placed where the grass would otherwise feel empty.
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 60, y: 300, scale: 0.85 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 900, y: 320, scale: 0.85 },
+  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 380, y: 290, scale: 0.7 },
+  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 720, y: 310, scale: 0.7 },
+
+  // ── BUSHES — denser scatter around the perimeter and along path edges
+  // for visual softness. The bush sprites are 1 tile each.
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 100, y: 480, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 130, y: 590, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 870, y: 480, scale: 1.0 },
   { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 880, y: 600, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 350, y: 300, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 5 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 620, y: 300, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 70, y: 580, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 920, y: 580, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 250, y: 250, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 3 * PT, sy: 5 * PT, sw: PT, sh: PT, x: 770, y: 270, scale: 1.0 },
+
+  // ── GRASS TUFTS — small foliage details from the bottom of TX Plant
+  // (rows 11-14 col 0-2 area). Adds organic texture to large grass spans.
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 11 * PT, sw: PT, sh: PT, x: 280, y: 360, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 11 * PT, sw: PT, sh: PT, x: 720, y: 380, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 11 * PT, sw: PT, sh: PT, x: 420, y: 380, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 12 * PT, sw: PT, sh: PT, x: 540, y: 380, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 12 * PT, sw: PT, sh: PT, x: 180, y: 540, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 12 * PT, sw: PT, sh: PT, x: 800, y: 540, scale: 1.0 },
 
   // ── LANTERN POSTS flanking the south entrance.
   { sheet: 'cainos_props', sx: 11 * PT, sy: 6 * PT, sw: PT, sh: 2 * PT,
@@ -366,7 +389,7 @@ export function drawHamletFloor(ctx) {
 
 // Debug helper — exposes the layout as a printable grid for inspection.
 export function debugTileGrid() {
-  const symbols = { grass: '.', grass_decor: ',', cobble: 'c', cobble_worn: 'w', stone: 'S' };
+  const symbols = { grass: '.', grass_decor: ',', stone: 'S' };
   const lines = [];
   for (let r = 0; r < HAMLET_ROWS; r++) {
     let line = '';
