@@ -193,13 +193,16 @@ const ZONES = [
   // its south edge gets auto-generated wall_face cells. Access via a
   // 1-tile passage at col 15 (a doorway through the south wall).
   { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'stone', elevation: 1 },
-  // WEST RUIN — RAISED graveyard balcony. EXTENDED 2 cols west in
-  // Session M (cols 0-8 was 2-8) so the silhouette breaks the
-  // cross shape and the ruin reads as a wider cemetery district.
-  { name: 'west_ruin',     col: 0,  row: 7,  w: 9, h: 5, terrain: 'stone', elevation: 1 },
-  // EAST WORKSHOP — RAISED trade alcove. EXTENDED 2 cols east in
-  // Session M (cols 21-29 was 21-27).
-  { name: 'east_workshop', col: 21, row: 7,  w: 9, h: 5, terrain: 'stone', elevation: 1 },
+  // WEST RUIN — RAISED graveyard balcony. Terrain GRASS (Iteration 4) —
+  // matches the demo's grass-topped platforms with stone path entries.
+  // The path bake automatically converts cols 8-12 rows 9-11 to stone
+  // where the plaza→west_ruin path crosses, giving a natural stone
+  // entry path from the east stair into the cemetery grass.
+  { name: 'west_ruin',     col: 0,  row: 7,  w: 9, h: 5, terrain: 'grass', elevation: 1 },
+  // EAST WORKSHOP — RAISED trade alcove. Terrain GRASS (Iteration 4)
+  // for the same reason. Path bake creates a stone entry from the
+  // west stair (cols 19-22 rows 9-11) through the workshop grass.
+  { name: 'east_workshop', col: 21, row: 7,  w: 9, h: 5, terrain: 'grass', elevation: 1 },
   // SOUTH ENTRANCE — ground level gateway pad, hero spawn.
   { name: 'south_entrance',col: 13, row: 16, w: 5, h: 4, terrain: 'stone', elevation: 0 },
   // HERB GARDEN — ground-level NW alcove. Extended to 4 rows tall
