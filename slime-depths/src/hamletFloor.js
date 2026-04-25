@@ -189,10 +189,13 @@ function hash2(x, y) {
 const ZONES = [
   // CENTRAL PLAZA — ground level (elevation 0), heart of the hamlet.
   { name: 'central_plaza', col: 11, row: 9,  w: 9, h: 6, terrain: 'stone', elevation: 0 },
-  // NORTH SHRINE — RAISED platform (elevation 1). The brick face under
-  // its south edge gets auto-generated wall_face cells. Access via a
-  // 1-tile passage at col 15 (a doorway through the south wall).
-  { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'stone', elevation: 1 },
+  // NORTH SHRINE — RAISED platform (elevation 1). Terrain GRASS
+  // (Iteration 6) for consistency with the other elevated platforms
+  // after Iter 4 made them grass. The path bake automatically converts
+  // the central col 14-16 strip from grass to stone where the
+  // plaza→shrine path crosses, giving a stone access path through the
+  // grass shrine top. Priestess + circle prop sit on this stone path.
+  { name: 'north_shrine',  col: 13, row: 1,  w: 5, h: 4, terrain: 'grass', elevation: 1 },
   // WEST RUIN — RAISED graveyard balcony. Terrain GRASS (Iteration 4) —
   // matches the demo's grass-topped platforms with stone path entries.
   // The path bake automatically converts cols 8-12 rows 9-11 to stone
@@ -689,6 +692,12 @@ const HAMLET_PROPS = [
   { sheet: 'cainos_props', sx: 9 * PT, sy: 0 * PT, sw: PT, sh: 3 * PT,
     x: 80, y: 256, scale: 1.0 },
 
+  // Iteration 6 — scaled tree on west_ruin grass top. Foliage extends
+  // through the west connector grass + west_ruin grass. Tree lightly
+  // shades gravestone B to its east — natural cemetery + tree feel.
+  { sheet: 'cainos_plant', sx: 0 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 208, y: 288, scale: 0.7 },
+
   // West cemetery extension (cols 0-1 rows 7-11, added in Session M).
   // 1 large gravestone + 2 cross headstones — extends the graveyard
   // visual into the new western jut.
@@ -722,6 +731,13 @@ const HAMLET_PROPS = [
   // Sign post advertising the workshop, NW corner.
   { sheet: 'cainos_props', sx: 3 * PT, sy: 4 * PT, sw: PT, sh: 2 * PT,
     x: 688, y: 352, scale: 1.0 },
+
+  // Iteration 6 — scaled tree on east_workshop grass top, between
+  // crate clusters. Foliage extends through the workshop grass with
+  // some overlap with crate tops at row 8 — reads as "tree branches
+  // hanging over the loading area," natural for an outdoor workshop.
+  { sheet: 'cainos_plant', sx: 9 * PT, sy: 0 * PT, sw: 3 * PT, sh: 4 * PT,
+    x: 752, y: 352, scale: 0.7 },
 
   // East storage extension (cols 28-29 rows 7-11, added in Session M).
   // 1 more crate stack + 1 barrel + 1 vase — extends the workshop
@@ -952,6 +968,20 @@ const HAMLET_PROPS = [
   // Extra bush in vertical corridor at col 17 row 8:
   { sheet: 'cainos_plant', sx: 0 * PT, sy: 5 * PT, sw: PT, sh: PT,
     x: 560, y: 256, scale: 1.0 },
+
+  // Iteration 6 — additional bushes/tufts on the new grass platforms
+  // to fill the empty grass cells between props.
+  // West_ruin grass (cemetery): bush at east edge (col 8 row 9)
+  { sheet: 'cainos_plant', sx: 4 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 256, y: 320, scale: 1.0 },
+  // East_workshop grass: bush at south edge between sign and crate (col 27 row 10)
+  { sheet: 'cainos_plant', sx: 5 * PT, sy: 5 * PT, sw: PT, sh: PT,
+    x: 864, y: 352, scale: 1.0 },
+  // North_shrine grass (now grass after Iter 6): tufts flanking priestess
+  { sheet: 'cainos_plant', sx: 1 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 432, y: 96, scale: 1.0 },
+  { sheet: 'cainos_plant', sx: 2 * PT, sy: 11 * PT, sw: PT, sh: PT,
+    x: 560, y: 96, scale: 1.0 },
 ];
 
 // ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
