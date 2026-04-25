@@ -369,6 +369,15 @@ const WALL_FACE_PANELS = [
   { col: 13, row: 20, w: 5, h: 1, capRow: 20 },
   // SE outer band, widened.
   { col: 18, row: 17, w: 3, h: 4, capRow: 17 },
+  // ── Iteration 15: fill the void cells NORTH of the cemetery and
+  // workshop platform extensions. Cells cols 0-4 rows 5-6 (cemetery
+  // ext north) and cols 22-28 rows 5-6 (workshop ext north) had no
+  // walkable neighbors AND no walkable diagonals, so the wall
+  // classifier returned null and they rendered as pure black void
+  // adjacent to the platform's north edge — same "cropped wall"
+  // bug as the south side, just at the top.
+  { col: 0,  row: 5, w: 5, h: 2, capRow: 5 },
+  { col: 22, row: 5, w: 7, h: 2, capRow: 5 },
 ];
 
 // Path segments — each connects two zones via an axis-aligned route.
