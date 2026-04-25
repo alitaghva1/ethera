@@ -205,17 +205,19 @@ const ZONES = [
   { name: 'herb_garden',   col: 8,  row: 4,  w: 4, h: 3, terrain: 'grass', elevation: 0 },
 ];
 
-// ELEVATION PASSAGE — cells immediately south of an elevated zone that
-// stay walkable so the hero can ENTER the elevated zone. Without these,
-// the auto-generated wall_face would seal the zone off completely.
+// ELEVATION PASSAGES — cells where Pass 4 should NOT paint wall_face,
+// keeping them walkable so the hero can enter / cross an elevated zone.
 //
-// north_shrine: 1-tile-wide passage at col 15 rows 5-6 (a doorway).
-// west_ruin and east_workshop don't need passages — their access is
-// via stair sprites placed on the east/west sides (Session G), and
-// the wall_face on their SOUTH edge can be solid.
+// - north_shrine: 1-tile-wide doorway at col 15 rows 5-6 (Cainos pack
+//   ships no N/S stair sprite, so it's a passage through the south face)
+// - west_ruin: stair footprint at col 8 rows 12-13 (under the E-facing
+//   stair sprite — cells were wall_face for col 8, become walkable)
+// - east_workshop: stair footprint at col 21 rows 12-13 (under W-facing
+//   stair sprite — same idea, mirrored)
 const ELEVATION_PASSAGES = new Set([
-  '15,5',
-  '15,6',
+  '15,5', '15,6',
+  '8,12', '8,13',
+  '21,12', '21,13',
 ]);
 function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`); }
 
@@ -682,6 +684,36 @@ const HAMLET_PROPS = [
     x: 240, y: 416, scale: 1.0 },
   { sheet: 'cainos_props', sx: 5 * PT, sy: 15 * PT, sw: PT, sh: PT,
     x: 336, y: 480, scale: 1.0 },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ELEVATED PLATFORM ACCESS — stairs (Cainos TX Struct) + shrine doorway
+  // archway. These render LAST in the prop pass so they overlay walls and
+  // the brick face naturally, completing the "raised platform with a way
+  // up" silhouette.
+  //
+  // Each stair sprite is 4×3 tiles (128×96 px). It renders ON TOP of the
+  // existing tiles at its footprint — those cells stay walkable thanks
+  // to ELEVATION_PASSAGES exempting the col under the stair from
+  // Pass 4's wall_face conversion.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // East-facing stair on WEST_RUIN's east edge. High end at col 8 (ruin
+  // east edge), low end at col 11 (plaza side). Hero ascends west onto
+  // the ruin from the plaza-west path. Sprite covers cols 8-11 rows 11-13.
+  { sheet: 'cainos_struct', sx: 4 * PT, sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
+    x: 320, y: 448, scale: 1.0 },
+
+  // West-facing stair on EAST_WORKSHOP's west edge. High end at col 21,
+  // low end at col 18 (plaza side). Sprite covers cols 18-21 rows 11-13.
+  { sheet: 'cainos_struct', sx: 0 * PT, sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
+    x: 640, y: 448, scale: 1.0 },
+
+  // Small archway framing NORTH_SHRINE's south doorway — the 1-tile
+  // passage at col 15 rows 5-6 reads as a deliberate stone gateway
+  // through the brick face instead of just a hole. 2×2 sprite from
+  // TX Struct's small-archway block (sx=384 sy=96).
+  { sheet: 'cainos_struct', sx: 12 * PT, sy: 3 * PT, sw: 2 * PT, sh: 2 * PT,
+    x: 496, y: 224, scale: 1.0 },
 ];
 
 // ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
