@@ -606,13 +606,40 @@ export function buildRoomFromData(data) {
     }
   }
   if (data.kind === 'combat') {
-    const patternIdx = data.spikePattern ?? (hash(data.pillarTemplate | 0, 41) % 4);
-    const pattern = SPIKE_PATTERNS[patternIdx];
-    for (const [sx, sy, phase] of pattern) {
-      if (tiles[sy]?.[sx] === 'floor') {
-        tiles[sy][sx] = 'spike';
-        roomSpikes.push({ x: sx, y: sy, phase });
+    // Archetype may explicitly suppress spikes (data.spikePattern === null)
+    // for a "clean fight" feel (sanctum, crucible, maze). undefined falls
+    // back to a hash-derived random pattern.
+    if (data.spikePattern !== null) {
+      const patternIdx = (data.spikePattern != null)
+        ? data.spikePattern
+        : hash(data.pillarTemplate | 0, 41) % 4;
+      const pattern = SPIKE_PATTERNS[patternIdx % SPIKE_PATTERNS.length];
+      for (const [sx, sy, phase] of pattern) {
+        if (tiles[sy]?.[sx] === 'floor') {
+          tiles[sy][sx] = 'spike';
+          roomSpikes.push({ x: sx, y: sy, phase });
+        }
       }
+    }
+    // CRUCIBLE archetype: fire pools at the cross arms. Honors plus shape.
+    if (data.firePools === 'arms') {
+      const cx = Math.floor(w / 2);
+      const cy = Math.floor(h / 2);
+      const pools = [
+        { tx: cx,         ty: 3 },        // top arm
+        { tx: cx,         ty: h - 4 },    // bottom arm
+        { tx: 3,          ty: cy },       // left arm
+        { tx: w - 4,      ty: cy },       // right arm
+      ];
+      pools.forEach((p, i) => {
+        if (tiles[p.ty]?.[p.tx] === 'floor') {
+          roomFirePools.push({
+            x: p.tx * TILE + TILE / 2,
+            y: p.ty * TILE + TILE / 2,
+            phase: i * 0.5,
+          });
+        }
+      });
     }
   } else if (data.kind === 'boss') {
     // Boss arenas — hazards vary by which boss is in this room

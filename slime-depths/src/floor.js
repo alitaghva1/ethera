@@ -10,6 +10,7 @@
 // `level` (1..3) scales enemy composition, elite chance, damage, and HP.
 import { ROOM_W, ROOM_H, ROOM_SIZES, getPillarCells, isCarvedTile } from './room.js';
 import { isCursed } from './curses.js';
+import { pickArchetype, applyArchetype } from './archetypes.js';
 
 // HADES-STYLE ROOM SHAPES — pick a size template per room kind so the run
 // reads as a sequence of distinct spaces, not a chain of identical
@@ -210,21 +211,52 @@ export function makeCombatRoom(level, slot, eliteChance) {
   // CURSE: Ether's Curse — +25% elite chance
   const effEliteChance = isCursed('ethers_curse') ? eliteChance + 0.25 : eliteChance;
 
-  // Pick room size + shape + pillar template up-front so spawn cells can
-  // avoid both pillar tiles AND carved-corner tiles in one pass.
-  const size = pickRoomSize('combat', slot);
-  const shape = pickRoomShape('combat', size);
-  const pillarTemplate = randInt(0, 14);
-  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h, shape);
-  const spawns = comp.slice(0, cells.length).map((type, i) => ({
-    type, x: cells[i].x, y: cells[i].y,
-    elite: type !== 'bomber' && Math.random() < effEliteChance,
+  // ── ROOM ARCHETYPE — bundle (size, shape, pillarTemplate, spikePattern,
+  // tactical spawn positions) into one named recipe. Falls back to the
+  // independent-roll path if no archetype is eligible (shouldn't happen
+  // for combat/challenge, but defensive).
+  const archetype = pickArchetype('combat', slot, level);
+  let size, shape, pillarTemplate, archetypeSpawns, spikePatternFromArchetype, archetypeFirePools;
+  if (archetype) {
+    const applied = applyArchetype(archetype, comp);
+    size = applied.size;
+    shape = applied.shape;
+    pillarTemplate = applied.pillarTemplate;
+    archetypeSpawns = applied.spawns;
+    spikePatternFromArchetype = applied.spikePattern;
+    archetypeFirePools = applied.firePools;
+  } else {
+    size = pickRoomSize('combat', slot);
+    shape = pickRoomShape('combat', size);
+    pillarTemplate = randInt(0, 14);
+    const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h, shape);
+    archetypeSpawns = comp.slice(0, cells.length).map((type, i) => ({
+      type, x: cells[i].x, y: cells[i].y,
+    }));
+    spikePatternFromArchetype = undefined;     // build pass falls back to random
+    archetypeFirePools = null;
+  }
+
+  const spawns = archetypeSpawns.map((s) => ({
+    type: s.type, x: s.x, y: s.y,
+    elite: s.type !== 'bomber' && Math.random() < effEliteChance,
     hpMul: slotMul.hp,
     damageMul: slotMul.dmg,
   }));
+  // SANCTUM archetype: promote the center enemy to elite for the duel feel
+  if (archetype && archetype.name === 'sanctum' && spawns[0]) {
+    spawns[0].elite = true;
+    spawns[0].hpMul = (spawns[0].hpMul || 1) * 1.5;
+  }
+  // ARENA archetype: promote the heavy melee at center to mini-boss tier
+  if (archetype && archetype.name === 'arena' && spawns[0]) {
+    spawns[0].elite = true;
+    spawns[0].hpMul = (spawns[0].hpMul || 1) * 1.6;
+  }
   // Wave pattern — combat3 slots have a 35% chance to spawn a second wave
   // after the first is cleared. Adds a rhythmic combat beat. Doesn't apply to
-  // floor 1 combat1 (too brutal for beginners).
+  // floor 1 combat1 (too brutal for beginners). Wave reuses the spawn rule
+  // for tactical consistency.
   let wave2 = null;
   if (slot === 'combat3' && Math.random() < 0.35) {
     const waveComp = [];
@@ -233,10 +265,19 @@ export function makeCombatRoom(level, slot, eliteChance) {
                     : ['orc', 'archer', 'bomber', 'lancer'];
     const n = 3 + randInt(0, 2);
     for (let i = 0; i < n; i++) waveComp.push(pick(waveTypes));
-    const waveCells = spawnCells(waveComp.length, pillarTemplate, size.w, size.h, shape);
-    wave2 = waveComp.slice(0, waveCells.length).map((type, i) => ({
-      type, x: waveCells[i].x, y: waveCells[i].y,
-      elite: type !== 'bomber' && Math.random() < effEliteChance,
+    let waveSpawns;
+    if (archetype) {
+      const wave = applyArchetype(archetype, waveComp);
+      waveSpawns = wave.spawns;
+    } else {
+      const waveCells = spawnCells(waveComp.length, pillarTemplate, size.w, size.h, shape);
+      waveSpawns = waveComp.slice(0, waveCells.length).map((type, i) => ({
+        type, x: waveCells[i].x, y: waveCells[i].y,
+      }));
+    }
+    wave2 = waveSpawns.map((s) => ({
+      type: s.type, x: s.x, y: s.y,
+      elite: s.type !== 'bomber' && Math.random() < effEliteChance,
       hpMul: slotMul.hp,
       damageMul: slotMul.dmg,
     }));
@@ -249,7 +290,7 @@ export function makeCombatRoom(level, slot, eliteChance) {
     const y = randInt(3, size.h - 4);
     // Avoid center + enemy spawn positions
     if (Math.abs(x - Math.floor(size.w/2)) < 3 && Math.abs(y - Math.floor(size.h/2)) < 2) continue;
-    if (cells.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 2)) continue;
+    if (spawns.some(s => Math.abs(s.x - x) + Math.abs(s.y - y) < 2)) continue;
     if (propUrns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
     // Also skip props in carved corners (they would render inside walls)
     if (shape !== 'rect' && isCarvedTile(x, y, size.w, size.h, shape)) continue;
@@ -258,12 +299,17 @@ export function makeCombatRoom(level, slot, eliteChance) {
   return {
     kind: 'combat',
     slotLabel: slot,
+    archetype: archetype ? archetype.name : null,    // for debug + future hook
     w: size.w, h: size.h,
     shape,
-    pillarTemplate,                     // already rolled above for spawn validation
+    pillarTemplate,
+    // If the archetype specifies a spike pattern (or null = no spikes),
+    // honor it. undefined falls back to the build-pass random.
+    spikePattern: spikePatternFromArchetype,
+    firePools: archetypeFirePools,                    // 'arms' or null
     spawns,
-    wave2,                                // null if not a wave room
-    urns: propUrns,                     // reuses trove-urn rendering/hit logic
+    wave2,                                              // null if not a wave room
+    urns: propUrns,                                    // reuses trove-urn rendering/hit logic
     doors: { north: true, south: true },
   };
 }
