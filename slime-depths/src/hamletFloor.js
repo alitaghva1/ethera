@@ -64,19 +64,28 @@ export const TILES = {
   // stone tiles as the plaza for visual unity. Those tiles read as
   // "cobble decoration scattered in grass" not "path edge transitions",
   // so they fought with the plaza visually.)
-  // ── STONE PLAZA — ONE tile, no variants. The Cainos auto-tile blocks
-  // each contain tiles with DIFFERENT internal grout patterns at slightly
-  // different positions; picking variants randomly produces visible seams
-  // where the internal patterns don't align. Solution: single tile,
-  // perfect repetition. Rich-looking auto-tile transitions with corners
-  // and edges will land when we implement true 9-slice tiling — a
-  // separate pass.
+  // ── STONE PATH 9-SLICE AUTOTILE ───────────────────────────────────
+  // Sourced from the 3×3 block at cols 0-2 rows 0-2 of TX Tileset Stone
+  // Ground.png. Each piece tiles based on the neighbor mask of stone vs
+  // non-stone in classifyStone(): edges face the side that's NOT stone,
+  // corners are placed where 2 adjacent neighbors are non-stone.
   stone: [
+    { sheet: 'cainos_stone_ground', sx: 1 * T, sy: 1 * T },        // body — fallback
+  ],
+  stone_body: [
     { sheet: 'cainos_stone_ground', sx: 1 * T, sy: 1 * T },
   ],
-  // ── COBBLE PATH — same approach: one tile only. Picked from the
-  // interior of the cobble auto-tile block in the Grass sheet
-  // (cols 0-3, rows 4-7). Repeated everywhere a path tile is needed.
+  stone_corner_nw: [{ sheet: 'cainos_stone_ground', sx: 0 * T, sy: 0 * T }],
+  stone_corner_ne: [{ sheet: 'cainos_stone_ground', sx: 2 * T, sy: 0 * T }],
+  stone_corner_sw: [{ sheet: 'cainos_stone_ground', sx: 0 * T, sy: 2 * T }],
+  stone_corner_se: [{ sheet: 'cainos_stone_ground', sx: 2 * T, sy: 2 * T }],
+  stone_edge_n: [{ sheet: 'cainos_stone_ground', sx: 1 * T, sy: 0 * T }],
+  stone_edge_s: [{ sheet: 'cainos_stone_ground', sx: 1 * T, sy: 2 * T }],
+  stone_edge_w: [{ sheet: 'cainos_stone_ground', sx: 0 * T, sy: 1 * T }],
+  stone_edge_e: [{ sheet: 'cainos_stone_ground', sx: 2 * T, sy: 1 * T }],
+  // ── COBBLE PATH — kept as alias of stone_body for now since paths
+  // bake to terrain='stone' (cobble distinction was removed in
+  // Session A). Reserved for future paving variations.
   cobble: [
     { sheet: 'cainos_grass', sx: 1 * T, sy: 5 * T },
   ],
@@ -287,6 +296,9 @@ export function isHamletWalkable(worldX, worldY) {
 
 // Decide what tile type should occupy (col, row). Now reads from the
 // precomputed terrain grid instead of computing geometry per-frame.
+// For stone tiles, classifies the cell against its 4 orthogonal neighbors
+// and picks a 9-slice variant (corner / edge / body) so paths read as
+// paths instead of solid slabs.
 function tileTypeAt(col, row) {
   const t = TERRAIN_GRID[row]?.[col];
   if (!t || t === 'void') return null;     // outside silhouette — don't render
@@ -295,7 +307,43 @@ function tileTypeAt(col, row) {
     const h = hash2(col, row);
     return (h % 100) < 6 ? 'grass_decor' : 'grass';
   }
+  if (t === 'stone') {
+    return classifyStone(col, row);
+  }
   return t;
+}
+
+// Stone 9-slice classifier. For each STONE cell, build the 4-bit mask
+// of which orthogonal neighbors are NON-stone (i.e. grass or void),
+// then map to the right edge / corner piece. Lookup convention:
+//   bit 0 (1): N is non-stone
+//   bit 1 (2): E is non-stone
+//   bit 2 (4): S is non-stone
+//   bit 3 (8): W is non-stone
+//
+// Two adjacent non-stone bits → outer corner of the stone area facing
+// those directions. Single non-stone bit → straight edge. Multiple
+// non-adjacent or 3+ non-stone bits → body fallback (rare, would only
+// happen for 1-tile-wide paths with weird neighbors).
+function classifyStone(col, row) {
+  const isStone = (c, r) => TERRAIN_GRID[r]?.[c] === 'stone';
+  const N = !isStone(col, row - 1);
+  const E = !isStone(col + 1, row);
+  const S = !isStone(col, row + 1);
+  const W = !isStone(col - 1, row);
+  const mask = (N ? 1 : 0) | (E ? 2 : 0) | (S ? 4 : 0) | (W ? 8 : 0);
+  switch (mask) {
+    case 0:  return 'stone_body';
+    case 1:  return 'stone_edge_n';
+    case 2:  return 'stone_edge_e';
+    case 4:  return 'stone_edge_s';
+    case 8:  return 'stone_edge_w';
+    case 9:  return 'stone_corner_nw';   // N + W non-stone
+    case 3:  return 'stone_corner_ne';   // N + E non-stone
+    case 12: return 'stone_corner_sw';   // S + W non-stone
+    case 6:  return 'stone_corner_se';   // S + E non-stone
+    default: return 'stone_body';        // 3+ edges, opposite edges, or inner corners
+  }
 }
 
 
