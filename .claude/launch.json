@@ -30,6 +30,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "--prefix", "slime-depths", "dev"],
       "port": 5173
+    },
+    {
+      "name": "slime-depths-vite-5180",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "--prefix", "slime-depths", "dev", "--", "--port", "5180", "--strictPort"],
+      "port": 5180
+    },
+    {
+      "name": "slime-depths-vite-5183",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "--prefix", "slime-depths", "dev", "--", "--port", "5183", "--strictPort"],
+      "port": 5183
     }
   ]
 }

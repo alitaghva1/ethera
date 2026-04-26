@@ -381,7 +381,10 @@ export async function loadAll(progressCb) {
     loadKeyedImage('watcher_sigil',     'assets/hamlet/watcher_sigil.jpg'),
     loadKeyedGrid('shrine_watcher',     'assets/hamlet/shrine_watcher_grid.jpg', 4, 2),
 
-    // HAMLET — canvas-scene assets. Backdrop stretches across the full
+    // HAMLET — legacy DOM-overlay scene assets. Kept around because the
+    // old DOM hamlet path still references them. The active canvas hamlet
+    // uses scene_v2.jpg (registered further below). These can be removed
+    // once we confirm the DOM hamlet path is fully retired.
     // 960×672 hamlet room (kept as a regular loadImage — no chroma-key
     // needed, it's a full-frame painting). Descent portal is a single
     // painted stairwell the player walks into to begin a run. NPC world
@@ -419,6 +422,15 @@ export async function loadAll(progressCb) {
     loadImage('cainos_props_shadow',    'assets/hamlet/cainos/TX Props with Shadow.png'),
     loadImage('cainos_plant',           'assets/hamlet/cainos/TX Plant.png'),
     loadImage('cainos_plant_shadow',    'assets/hamlet/cainos/TX Plant with Shadow.png'),
+
+    // ── HAMLET BACKDROP — AI-generated paired scene + walkability mask ────
+    // 1376×768 dark-fantasy hub painted to match the mage hero's aesthetic
+    // (graveyard / smithy / archive / shrine / portal+firepit / wanderer).
+    // The mask is a B&W collision layer at the same dimensions: black =
+    // walkable, white = blocked. Read pixel-wise in hamletFloor.js for
+    // pixel-perfect collision with zero hand-tuned exclusion rectangles.
+    loadImage('hamlet_scene_v2',        'assets/hamlet/scene_v2.jpg'),
+    loadImage('hamlet_scene_v2_mask',   'assets/hamlet/scene_v2_mask.jpg'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),

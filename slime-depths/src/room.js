@@ -744,7 +744,22 @@ const SPIKE_PATTERNS = [
 // Collision — walls + pillars + cracked walls block; doors gated by their
 // per-door state (closed/closing block; opening/open allow). South-side
 // doors that have no door object (legacy fallback) treat as always open.
+// Lazy reference to the hamlet's walkability function. Set by hamletFloor.js
+// at module load via setHamletWalkableFn. Avoids a static circular import
+// (hamletFloor.js consumes nothing from room.js, but room.js needs to call
+// into it for hamlet-specific collision).
+let _hamletWalkableFn = null;
+export function setHamletWalkableFn(fn) { _hamletWalkableFn = fn; }
+
 export function isWallAtWorld(wx, wy) {
+  // Hamlet uses pixel-sampled walkability from the Scene Overview backdrop.
+  // Wall = NOT walkable. Letting isWallAtWorld return the inverse means
+  // hero's per-axis movement check (hero.js) cleanly stops at walls instead
+  // of getting tile-snap-pushed-back each frame in resolveHamletCollision.
+  if (room.kind === 'hamlet') {
+    if (_hamletWalkableFn) return !_hamletWalkableFn(wx, wy);
+    return false;     // before hamletFloor loads its fn, allow movement
+  }
   if (!room.tiles) return false;
   const tx = Math.floor(wx / TILE);
   const ty = Math.floor(wy / TILE);

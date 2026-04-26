@@ -1,51 +1,45 @@
 // ============================================================================
-// HAMLET SCENE — canvas version of the between-run hub (Approach B)
+// HAMLET SCENE — canvas version of the between-run hub
 //
-// Replaces the DOM-overlay hamlet with a walkable room the Knight physically
-// moves through. NPCs are world-positioned chibi sprites. A descent portal
-// is a painted object — walking into it + pressing E starts a run. Dialogue
-// still reuses the existing DOM dialogueEl overlay (so NPC arc content
-// doesn't need to change).
-//
-// Coordinate system: world space, same as combat rooms. Room is 20×14 tiles
-// at 48px = 960×672 world units. NPC x/y values are hand-tuned from the
-// existing DOM hamlet percentages (all bottom-third of backdrop).
-//
-// Feature flag: `window.__canvasHamlet === true` → canvas path; else the
-// original DOM hamlet still runs (safe rollout).
+// The hamlet is rendered from a single 1376×768 AI-generated backdrop
+// (`scene_v2.jpg`) plus a paired collision mask (`scene_v2_mask.jpg`,
+// white = blocked, black = walkable). The hero physically walks through
+// it; NPCs are world-positioned sprites; the descent portal is a painted
+// rune circle that triggers a run when the hero stands on it and presses E.
+// Dialogue reuses the existing DOM dialogueEl overlay.
 // ============================================================================
 import { hero } from './hero.js';
 import { images } from './loader.js';
 import { NPCS } from './hamlet.js';
-import { drawHamletFloor, isHamletWalkable, CAINOS_TILE } from './hamletFloor.js';
+import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 
-// DIORAMA COMPOSITION — the painted backdrop already has three implicit
-// bands: sky (top ~30%), buildings (middle ~40%), and cobblestone ground
-// (bottom ~30%). Characters walk exclusively in the painted ground band
-// so the scene reads as a stage where NPCs stand on real floor rather
-// than float over a mural. Camera is locked (see main.js enterHamletCanvas)
-// so the hero can't walk up into the sky.
-//
-// Y-clamp bounds — updated in Stage 1 rebuild for new 34×24 grid
-// (world height 768 px). isHamletWalkable() does the real work via
-// WALKABLE_GRID lookup; these are the legacy outer bounds.
-export const HAMLET_WALK_Y_MIN = 0;
-export const HAMLET_WALK_Y_MAX = 768;
+// Camera zoom for the hamlet — single source of truth. Imported by main.js
+// in enterHamletCanvas + the hamlet branch of the game loop. Bumped from
+// 1.5 to 1.75 to give hero/NPCs proper visual scale against the painted
+// scene's tile detail.
+export const HAMLET_ZOOM = 1.75;
 
-// Hero spawn — Stage 1 rebuild: south corridor bottom (col 16, row 22).
-// World coords (16*32+16, 22*32+16) = (528, 720). The new south corridor
-// is cols 15-18 rows 18-22, and spawn at (528, 720) places hero at the
-// south end so they walk N up the corridor → into the compound at row 17.
-export const HAMLET_HERO_SPAWN = { x: 528, y: 720 };
+// Y-clamp bounds — tighter than world height (768) to keep the hero inside
+// the camera's visible Y range at HAMLET_ZOOM. Real walkability is the
+// mask-sampled isHamletWalkable() in hamletFloor.js; these are a safety
+// net against ever ending up off-camera.
+export const HAMLET_WALK_Y_MIN = 60;
+export const HAMLET_WALK_Y_MAX = 720;
 
-// Zone anchors — named positions for every meaningful location in the
-// hamlet. Each anchor is verified inside its zone's tile range:
-//   PORTAL_POS at col 19 row 13 = central_plaza east side
-//   SHRINE_POS at col 15 row 4  = north_shrine center (statue position)
-//   FIREPIT_POS at col 12 row 13 = central_plaza west side
-const PORTAL_POS   = { x: 608, y: 416 };  // plaza east — descent tile
-const SHRINE_POS   = { x: 496, y: 144 };  // shrine center
-const FIREPIT_POS  = { x: 384, y: 416 };  // plaza west — warm halo
+// Hero spawn — south entry path, ~80px inside the compound from the south
+// wall gap. Bitmap-validated to land on cobble. See scripts/hamlet_audit.py
+// (analysis script) and scripts/hamlet_audit.json (validated coords).
+export const HAMLET_HERO_SPAWN = { x: 688, y: 687 };
+
+// Zone anchors — pixel-detected positions on the 1376×768 Scene v2 backdrop.
+// Located by scanning the visual for fire-orange + portal-blue color signatures
+// (see __dbg + the fire/portal cluster detection in the hamletFloor module).
+// Earlier values were guessed at y=580; the actual painted features are at
+// y=361 (firepit) and y=367 (portal) — they're in the upper plaza zone, not
+// the lower zone I'd assumed.
+const PORTAL_POS   = { x: 685, y: 367 };   // glowing rune circle
+const SHRINE_POS   = { x: 702, y: 207 };   // top altar candles
+const FIREPIT_POS  = { x: 778, y: 356 };   // stone firepit + flame
 
 // NPC world positions — one per district, every position verified to
 // land in a walkable, terrain-correct tile. spriteIdx maps to the
@@ -56,22 +50,30 @@ export const HAMLET_ENTITIES = [
   { kind: 'portal',                                 x: PORTAL_POS.x,  y: PORTAL_POS.y,  interactR: 80 },
   { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 0  },
   { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0  },
-  // KEEPER — at the plaza, NW of fountain. Shop counter in the hub heart.
-  // tile col 13 row 12 = plaza interior. Moved north so keeper doesn't
-  // visually stand inside the south bench.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 432, y: 384, interactR: 50 },
-  // SMITH — at south_entrance, west side. tile col 14 row 17.
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 448, y: 560, interactR: 50 },
-  // ARCHIVIST — inside east_workshop near the crates. tile col 23 row 10.
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 752, y: 320, interactR: 50 },
-  // GRAVEKEEPER — among the graves in west_ruin. tile col 5 row 10.
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 176, y: 320, interactR: 50 },
-  // ORACLE — at the plaza, NE of fountain. tile col 17 row 12. Moved
-  // north for the same reason as keeper (doesn't stand inside bench).
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 560, y: 384, interactR: 50 },
-  // WANDERER — in horizontal corridor east of plaza. tile col 25 row 13.
-  // Literal outsider, on the grass between plaza and workshop.
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 816, y: 432, interactR: 50 },
+  // Positions on Scene v2 backdrop (1376×768) — each NPC stationed at
+  // the obvious thematic anchor in the painted scene.
+  //   keeper      — central plaza, west of portal/firepit (hub merchant)
+  //   smith       — top-right forge, beside the anvil + brazier
+  //   archivist   — mid-left archive nook, beside bookcase + scrolls
+  //   gravekeeper — top-left graveyard, among headstones + crosses
+  //   oracle      — top-center, beside the shrine altar / standing stone
+  //   wanderer    — south-east tent + bedroll camp
+  // Positions auto-validated by scripts/hamlet_audit.py — each NPC stands
+  // ~40px south of their thematic feature on a walkable cell, padded for
+  // the 14px hero collision radius. Re-run the script if the backdrop is
+  // ever swapped to recompute positions.
+  //   keeper      — south of central plaza firepit (hub merchant)
+  //   smith       — south of the smith forge brazier + anvil
+  //   archivist   — south of the bookcase + scrolls nook
+  //   gravekeeper — south of the graveyard headstones
+  //   oracle      — south of the altar shrine candles
+  //   wanderer    — south of the canvas tent + bedroll camp
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 778, y: 412, interactR: 50 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 992, y: 308, interactR: 50 },
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 464, interactR: 50 },
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 519, y: 288, interactR: 50 },
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 702, y: 276, interactR: 50 },
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 809, y: 484, interactR: 50 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
@@ -90,14 +92,11 @@ export const HAMLET_ENTITIES = [
 // the hero is meant to walk THROUGH NPCs (overlapping is fine for a hub
 // area) and onto the portal/firepit tile (that's how interactions fire).
 export const HAMLET_OBSTACLES = [
-  // Fountain (4-tile-wide round prop at plaza center)
-  { x: 496, y: 448, r: 38 },
-  // South-entrance lantern posts (now flanking inside the zone, not in void)
-  { x: 432, y: 608, r: 10 },
-  { x: 560, y: 608, r: 10 },
-  // Plaza corner lanterns (NW + NE)
-  { x: 368, y: 384, r: 10 },
-  { x: 624, y: 384, r: 10 },
+  // Scene Overview backdrop — props are baked into the image, not real
+  // sprites. No collision circles needed; bounding-rect walkability in
+  // hamletFloor.js handles edge clamping. Add circles back here if the
+  // hero needs to be blocked from a specific painted feature (statue,
+  // tree clump, etc.) that's smaller than a wall.
 ];
 
 // Push the hero out of any prop obstacle they're inside, AND clamp them
@@ -124,25 +123,24 @@ export function resolveHamletCollision(hero) {
       hero.y += dy * push;
     }
   }
-  // Pass 2: walkable-grid clamp. Sample 4 points around the hero's
-  // collision radius. If any are in void, snap the hero to the nearest
-  // walkable tile center along that axis.
-  const HR = 10;
-  const samples = [
-    { x: hero.x + HR, y: hero.y, ax: 'x', dir: -1 },
-    { x: hero.x - HR, y: hero.y, ax: 'x', dir: +1 },
-    { x: hero.x, y: hero.y + HR, ax: 'y', dir: -1 },
-    { x: hero.x, y: hero.y - HR, ax: 'y', dir: +1 },
-  ];
-  for (const s of samples) {
-    if (isHamletWalkable(s.x, s.y)) continue;
-    // Push hero back along the axis that's intruding into void.
-    if (s.ax === 'x') {
-      const tileCenter = Math.floor(s.x / CAINOS_TILE) * CAINOS_TILE + CAINOS_TILE / 2;
-      hero.x = tileCenter + s.dir * (CAINOS_TILE / 2 + HR);
-    } else {
-      const tileCenter = Math.floor(s.y / CAINOS_TILE) * CAINOS_TILE + CAINOS_TILE / 2;
-      hero.y = tileCenter + s.dir * (CAINOS_TILE / 2 + HR);
+  // Pass 2: emergency rescue — if hero is somehow stuck inside a non-walkable
+  // cell (teleported in, spawned inside wall, etc.), nudge them to the nearest
+  // walkable cell. Per-frame wall blocking is handled by isWallAtWorld which
+  // routes to isHamletWalkable for the hamlet (see room.js setHamletWalkableFn);
+  // hero's per-axis movement check rejects the step BEFORE it commits, so
+  // normal walking never lands the hero in void. This Pass 2 is just a safety
+  // net for edge cases.
+  if (!isHamletWalkable(hero.x, hero.y)) {
+    // Spiral search for the nearest walkable cell.
+    for (let r = 8; r <= 100; r += 8) {
+      let found = false;
+      for (const [dx, dy] of [[-r,0],[r,0],[0,-r],[0,r],[-r,-r],[r,r],[-r,r],[r,-r]]) {
+        if (isHamletWalkable(hero.x + dx, hero.y + dy)) {
+          hero.x += dx; hero.y += dy;
+          found = true; break;
+        }
+      }
+      if (found) break;
     }
   }
 }
@@ -194,9 +192,9 @@ export function getNearestHamletEntity() { return _nearest; }
 // earth, not a tiled stone texture. Stone only appears where something
 // has been CONSTRUCTED: plaza, paths, pads.)
 
-// Overscan bounds — the hamlet paints beyond the 960×672 room into the
+// Overscan bounds — the hamlet paints beyond the world bounds into the
 // canvas void strips on either side. Covers viewports up to ~1680px wide
-// without gaps. Everything is extended to [X_MIN, X_MAX] horizontally.
+// without gaps. Used by the dust-mote ambient particle system.
 const BG_X_MIN = -360;
 const BG_X_MAX = 1320;
 const BG_W = BG_X_MAX - BG_X_MIN;
@@ -211,7 +209,7 @@ export function drawHamletBackdrop(ctx) {
   // procedural sky/clouds/aurora that used to live here. The hamlet
   // floor tiles overlay this on the walkable cells.
   ctx.fillStyle = '#08060a';
-  ctx.fillRect(BG_X_MIN, 0, BG_W, 672);
+  ctx.fillRect(BG_X_MIN, 0, BG_W, HAMLET_H);   // covers full new 768px-tall map
 
   // ══════════════════════════════════════════════════════════════════════
   // GROUND COMPOSITION — CAINOS PIXEL-ART TILEMAP
@@ -223,16 +221,9 @@ export function drawHamletBackdrop(ctx) {
   // sparse decoration filling the rest).
   // ══════════════════════════════════════════════════════════════════════
   drawHamletFloor(ctx);
-  // ── OLD PROPS + BUILDINGS — STRIPPED FOR HAMLET REBUILD ─────────────
-  // The old hand-drawn forge / dome / tower / scaffolding / benches /
-  // anvil / gravestones / fallen bell etc. clashed visually with the
-  // Cainos pixel-art floor. Removed in this iteration. Their replacement
-  // (Cainos TX Struct + TX Wall + TX Props sprites) lands in the next
-  // pass once the floor + walls + base prop layout are confirmed.
-  //
-  // Z_TOWER / Z_FORGE / Z_ARCHIVE / Z_SHRINE / Z_PLAZA constants stay
-  // available for the NPC code (which still reads them via hamletScene
-  // exports if needed) — declared above the old props block.
+  // (No old props rendered here — every prop, wall, tree, and structural
+  // feature is baked into the scene_v2.jpg backdrop. NPC sprites + the
+  // descent portal halo are drawn separately by drawHamletEntities.)
 
   // ── AIR DUST MOTES ───────────────────────────────────────────────────
   // Two depth layers: 36 slow-and-bright motes (foreground) + 24 fast-
@@ -314,11 +305,20 @@ export function drawHamletEntities(ctx) {
 // Small elliptical ground shadow under an entity — anchors it to the painted
 // cobblestone so it doesn't feel like it's levitating. Drawn BEFORE the
 // entity sprite so the sprite sits on top of the shadow.
-function drawGroundShadow(ctx, x, y, radiusX, alpha = 0.38) {
+//
+// Soft radial gradient (not solid fill) — blends into the painted scene's
+// own baked shadows without reading as a UI overlay. Same falloff used for
+// both hero (hero.js) and NPCs so all entities share a consistent footprint.
+function drawGroundShadow(ctx, x, y, radiusX, alpha = 0.22) {
+  const radiusY = radiusX * 0.36;
+  const sg = ctx.createRadialGradient(x, y, 1, x, y, radiusX);
+  sg.addColorStop(0, `rgba(4, 2, 6, ${alpha})`);
+  sg.addColorStop(0.6, `rgba(4, 2, 6, ${(alpha * 0.5).toFixed(3)})`);
+  sg.addColorStop(1, 'rgba(4, 2, 6, 0)');
   ctx.save();
-  ctx.fillStyle = `rgba(4, 2, 6, ${alpha})`;
+  ctx.fillStyle = sg;
   ctx.beginPath();
-  ctx.ellipse(x, y, radiusX, radiusX * 0.32, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -399,8 +399,12 @@ function drawNpc(ctx, e, now) {
   // and makes the scene feel responsive to your presence.
   const dx = hero.x - e.x, dy = hero.y - e.y;
   const d = Math.hypot(dx, dy);
-  if (d < e.interactR * 1.6) {
-    const proximity = Math.max(0, 1 - d / (e.interactR * 1.6));
+  // Proximity glow extends 60% beyond the interactR — players see the NPC
+  // light up before they're close enough to trigger the "E · TALK" prompt,
+  // signaling "this is interactive" without being noisy at long range.
+  const NPC_GLOW_RANGE_MULT = 1.6;
+  if (d < e.interactR * NPC_GLOW_RANGE_MULT) {
+    const proximity = Math.max(0, 1 - d / (e.interactR * NPC_GLOW_RANGE_MULT));
     const tint = NPCS[e.id]?.tint || '#f4d9a0';
     const hex = tint.replace('#', '');
     const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);

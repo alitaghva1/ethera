@@ -79,7 +79,7 @@ import {
   watcherLastLine, watcherDescentCount,
 } from './watcher.js';
 import {
-  HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX,
+  HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX, HAMLET_ZOOM,
   updateHamletScene, drawHamletBackdrop, drawHamletEntities, drawHamletOverlay, drawHamletInteractPrompt,
   consumeHamletInteract, resolveHamletCollision,
 } from './hamletScene.js';
@@ -1308,19 +1308,25 @@ function enterHamletCanvas() {
   hero.stateTime = 0;
   hero.vx = 0; hero.vy = 0;
   hero.iframes = 0;
-  camera.x = hero.x; camera.y = hero.y;
-  camera.targetX = hero.x; camera.targetY = hero.y;
+  // Snap camera to spawn-aware initial position with HAMLET_ZOOM clamps.
+  // World is 1376×768; clamps keep the (1280/zoom)×(720/zoom) view inside.
+  camera.zoom = HAMLET_ZOOM;
+  camera.x = Math.max(366, Math.min(1010, hero.x));
+  camera.y = Math.max(206, Math.min(562, hero.y));
+  camera.targetX = camera.x;
+  camera.targetY = camera.y;
   // Disable ambient zoom breathe in hamlet — the ±0.6% sin oscillation
   // in updateCamera causes visible tile-edge shimmer on the pixel-art
   // tilemap (each frame the canvas scales slightly, snapping pixels to
   // different positions with imageSmoothingEnabled = false). Re-enabled
   // in startRun() for combat where the "living camera" feel is wanted.
   camera.breatheEnabled = false;
-  // Force zoom to a clean integer ratio so any leftover pulse from a
-  // prior dungeon run doesn't carry over.
-  camera.zoom = 1.0;
+  // Reset any zoom pulse residue from a prior dungeon run, then re-apply
+  // HAMLET_ZOOM (centralized constant from hamletScene.js — 1.75 gives
+  // hero/NPCs proper visual scale against the painted backdrop).
   camera.zoomPulseAmt = 0;
   camera.zoomPulseTime = 0;
+  camera.zoom = HAMLET_ZOOM;
 
   running = true;
   paused = false;
@@ -4595,10 +4601,18 @@ function tick(now) {
       // viewport (960 vs 1280) so there's a mandatory ~160px side-void.
       // Locking prevents the void from shifting as the hero moves and
       // keeps the painted backdrop perfectly framed.
-      // Stage 1 rebuild: hamlet expanded to 34×24 (world 1088×768).
-      // Camera lock target = center of new bounds = (544, 384).
-      camera.x = 544; camera.targetX = 544;
-      camera.y = 384; camera.targetY = 384;
+      // Scene v2 backdrop is 1376×768. Viewport 1280×720 at HAMLET_ZOOM (1.75)
+      // → visible window ~731×411 of world. Both axes scroll.
+      //   X clamp: camera.x in [366, 1010]
+      //   Y clamp: camera.y in [206, 562]
+      // SNAP both axes — followCamera ran earlier in the tick with the
+      // unclamped hero pos; we override here so the rendered frame uses
+      // our clamped values (no lerp jitter at clamp boundaries).
+      camera.zoom = HAMLET_ZOOM;
+      const camX = Math.max(366, Math.min(1010, hero.x));
+      const camY = Math.max(206, Math.min(562, hero.y));
+      camera.x = camX; camera.targetX = camX;
+      camera.y = camY; camera.targetY = camY;
 
       updateHamletScene(dt);
       if (keyJustPressed('KeyE')) {

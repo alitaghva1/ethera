@@ -21,7 +21,13 @@ import { showTip } from './tips.js';
 import { markChainFired, markPyroFired } from './counterPips.js';
 
 const SPR = 128;                  // 8-directional sprite sheet cell size (was 100 for horizontal-strip sheets)
-const HERO_DRAW = 60;              // on-screen hero size. Dropped 80→60
+const HERO_DRAW = 60;              // on-screen hero size for combat rooms
+const HERO_DRAW_HAMLET = 48;       // smaller in the hub — hamlet NPCs draw at
+                                   // 56px and the painted scene props (anvil,
+                                   // tent, gravestones) read as ~24-32px tall;
+                                   // 60px hero felt oversized vs the scene.
+                                   // 48 puts the hero on parity with NPCs and
+                                   // feels grounded against the painted props.
                                    // after a sizing audit found the hero
                                    // was 2-3× taller than every boss in
                                    // the game. The PixelLab mage fills
@@ -1412,18 +1418,32 @@ export function drawHero(ctx) {
     ctx.restore();
   }
 
-  // Shadow — softer and smaller so hero reads as standing, not levitating
+  // Shadow — soft radial gradient. Sized proportionally to the hero's
+  // current draw size so it reads as standing (not levitating) at any zoom.
+  // Lighter alpha in hamlet so it doesn't fight the painted scene's own
+  // baked shadows under trees/walls.
   const shX = hero.x, shY = hero.y + 14;
-  const sg = ctx.createRadialGradient(shX, shY, 2, shX, shY, 20);
-  sg.addColorStop(0, 'rgba(0,0,0,0.45)');
+  const inHamlet = room.kind === 'hamlet';
+  const shadowR = (inHamlet ? HERO_DRAW_HAMLET : HERO_DRAW) * 0.27;
+  const shadowAlpha = inHamlet ? 0.22 : 0.45;
+  const sg = ctx.createRadialGradient(shX, shY, 1, shX, shY, shadowR);
+  sg.addColorStop(0, `rgba(0,0,0,${shadowAlpha})`);
+  sg.addColorStop(0.6, `rgba(0,0,0,${(shadowAlpha * 0.5).toFixed(3)})`);
   sg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
   ctx.fillStyle = sg;
-  ctx.fillRect(shX - 20, shY - 6, 40, 12);
+  ctx.beginPath();
+  ctx.ellipse(shX, shY, shadowR, shadowR * 0.36, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
   // 8-directional sprites handle facing natively — no horizontal flip.
   // Idle bob — subtle sinusoidal y offset when not attacking/dodging, for a
   // "breathing" character. Tiny (< 2px) so it doesn't look floaty.
   const idleBob = (hero.state === 'idle') ? Math.sin(hero.animTime * 2.6) * 1.2 : 0;
   ctx.translate(hero.x, hero.y + idleBob);
+  // Hamlet uses a smaller draw size so the hero reads at proper scale
+  // against the painted backdrop's NPCs + props (see HERO_DRAW_HAMLET).
+  const drawSize = room.kind === 'hamlet' ? HERO_DRAW_HAMLET : HERO_DRAW;
   // Rim light pass — draw sprite offset in 4 directions with a warm tint to create
   // an outline. Makes hero pop off the floor, AAA-style silhouette polish.
   // Skip during i-frame flicker or dodge to avoid visual clutter.
@@ -1433,16 +1453,16 @@ export function drawHero(ctx) {
     ctx.globalAlpha = 0.55;
     ctx.filter = rimFilter;
     const rim = 1.2;
-    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2 - rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2 + rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 - rim, HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 + rim, HERO_DRAW, HERO_DRAW);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2 - rim, -drawSize * 0.75,        drawSize, drawSize);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2 + rim, -drawSize * 0.75,        drawSize, drawSize);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2,        -drawSize * 0.75 - rim, drawSize, drawSize);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2,        -drawSize * 0.75 + rim, drawSize, drawSize);
     ctx.filter = 'none';
     ctx.restore();
   }
   const wf = weaponDef().heroFilter;
   if (wf) ctx.filter = wf;
-  ctx.drawImage(img, sx, sy, SPR, SPR, -HERO_DRAW/2, -HERO_DRAW * 0.75, HERO_DRAW, HERO_DRAW);
+  ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2, -drawSize * 0.75, drawSize, drawSize);
   if (wf) ctx.filter = 'none';
   ctx.restore();
 }

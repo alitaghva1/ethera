@@ -1,679 +1,206 @@
 // ============================================================================
-// HAMLET FLOOR — tilemap renderer using Cainos pixel-art sheets.
+// HAMLET FLOOR — paired-image renderer (visual + walkability mask).
 //
-// Replaces the procedural cobble + dirt + zone painters in hamletScene.js
-// with a real tilemap. The hamlet is laid out as a 30×21 grid of 32px
-// Cainos tiles, fitting exactly in the existing 960×672 hamlet world
-// (= 20×14 game tiles at 48px). Hero physics still operates on the
-// 48px game tile grid; only the floor RENDERING uses 32px tiles.
-//
-// Tiles are referenced by sub-rect into the Cainos texture sheets — no
-// per-tile PNG splitting required. The lookup tables below name the
-// (sheet, sx, sy) of each tile we use, so editing the tilemap is just
-// editing names in TILE_DEFS or the layout function.
+// Renders the AI-generated scene_v2.jpg as the entire hamlet floor and
+// derives walkability from scene_v2_mask.jpg (B&W mask, same dimensions:
+// white pixels = blocked, black = walkable). Two paired images give us
+// pixel-perfect collision with zero hand-tuning — replaces ~80 lines of
+// luminance-threshold sampling + manual exclusion rectangles from v1.
 // ============================================================================
 
 import { images } from './loader.js';
+import { setHamletWalkableFn } from './room.js';
 
-// Source-tile size in the Cainos sheets.
-export const CAINOS_TILE = 32;
-// Hamlet floor grid — STAGE 1 REBUILD: expanded from 30×21 → 34×24 to give
-// room for the new staggered silhouette (irregular ruined compound with
-// protrusions for cemetery W, workshop E, SW courtyard, and N shrine
-// terrace). World 1088×768 px. Camera lock target is (544, 384) (center
-// of new bounds).
-export const HAMLET_COLS = 34;
-export const HAMLET_ROWS = 24;
-export const HAMLET_W = HAMLET_COLS * CAINOS_TILE;   // 1088
-export const HAMLET_H = HAMLET_ROWS * CAINOS_TILE;   // 768
+// World dimensions match the source images natively (1376×768).
+export const CAINOS_TILE = 32;     // legacy export — used by other modules
+export const HAMLET_W = 1376;
+export const HAMLET_H = 768;
+// Legacy exports — kept in case any external consumer still reads them.
+// (Legacy HAMLET_COLS / HAMLET_ROWS exports were removed — no consumer.
+// World now thinks in pixels, not 32px tiles, since the backdrop is a
+// single-image render and walkability comes from a pixel-sampled mask.)
 
-// ─── TILE LOOKUP ───────────────────────────────────────────────────────────
-// Each tile name resolves to { sheet, sx, sy } — the source rect within a
-// Cainos sheet. sheet keys are the loader.js image keys (cainos_grass etc).
-//
-// Variants are arrays so the renderer can pick one deterministically per
-// (col, row) for visual variation without obvious tiling.
-const T = CAINOS_TILE;
-export const TILES = {
-  // ── GRASS variants (rows 0-3 of the Grass sheet, cols 0-3 = plain;
-  //    cols 4-7 = with debris/flowers).
-  grass: [
-    { sheet: 'cainos_grass', sx: 0 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 1 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 2 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 3 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 0 * T, sy: 1 * T },
-    { sheet: 'cainos_grass', sx: 1 * T, sy: 1 * T },
-    { sheet: 'cainos_grass', sx: 2 * T, sy: 1 * T },
-    { sheet: 'cainos_grass', sx: 3 * T, sy: 1 * T },
-    { sheet: 'cainos_grass', sx: 0 * T, sy: 2 * T },
-    { sheet: 'cainos_grass', sx: 1 * T, sy: 2 * T },
-    { sheet: 'cainos_grass', sx: 2 * T, sy: 2 * T },
-    { sheet: 'cainos_grass', sx: 3 * T, sy: 2 * T },
-  ],
-  // Grass with subtle bone/flower decorations — used sparingly to add
-  // life to the open spaces without making the floor look busy.
-  grass_decor: [
-    { sheet: 'cainos_grass', sx: 4 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 5 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 6 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 7 * T, sy: 0 * T },
-    { sheet: 'cainos_grass', sx: 4 * T, sy: 1 * T },
-    { sheet: 'cainos_grass', sx: 5 * T, sy: 1 * T },
-    { sheet: 'cainos_grass', sx: 6 * T, sy: 1 * T },
-    { sheet: 'cainos_grass', sx: 7 * T, sy: 1 * T },
-  ],
-  // (cobble + cobble_worn tile sets removed — paths now use the same
-  // stone tiles as the plaza for visual unity. Those tiles read as
-  // "cobble decoration scattered in grass" not "path edge transitions",
-  // so they fought with the plaza visually.)
-  // ── STONE PATH 9-SLICE AUTOTILE ───────────────────────────────────
-  // Sourced from the 3×3 block at cols 0-2 rows 0-2 of TX Tileset Stone
-  // Ground.png. Each piece tiles based on the neighbor mask of stone vs
-  // non-stone in classifyStone(): edges face the side that's NOT stone,
-  // corners are placed where 2 adjacent neighbors are non-stone.
-  stone: [
-    { sheet: 'cainos_stone_ground', sx: 1 * T, sy: 1 * T },        // body — fallback
-  ],
-  stone_body: [
-    { sheet: 'cainos_stone_ground', sx: 1 * T, sy: 1 * T },
-  ],
-  stone_corner_nw: [{ sheet: 'cainos_stone_ground', sx: 0 * T, sy: 0 * T }],
-  stone_corner_ne: [{ sheet: 'cainos_stone_ground', sx: 2 * T, sy: 0 * T }],
-  stone_corner_sw: [{ sheet: 'cainos_stone_ground', sx: 0 * T, sy: 2 * T }],
-  stone_corner_se: [{ sheet: 'cainos_stone_ground', sx: 2 * T, sy: 2 * T }],
-  stone_edge_n: [{ sheet: 'cainos_stone_ground', sx: 1 * T, sy: 0 * T }],
-  stone_edge_s: [{ sheet: 'cainos_stone_ground', sx: 1 * T, sy: 2 * T }],
-  stone_edge_w: [{ sheet: 'cainos_stone_ground', sx: 0 * T, sy: 1 * T }],
-  stone_edge_e: [{ sheet: 'cainos_stone_ground', sx: 2 * T, sy: 1 * T }],
-  // ── COBBLE PATH — kept as alias of stone_body for now since paths
-  // bake to terrain='stone' (cobble distinction was removed in
-  // Session A). Reserved for future paving variations.
-  cobble: [
-    { sheet: 'cainos_grass', sx: 1 * T, sy: 5 * T },
-  ],
-  // ── WALL 9-SLICE AUTOTILE ─────────────────────────────────────────
-  // Sourced from the small-frame block at cols 0-3 rows 0-3 of TX
-  // Tileset Wall.png. The 9 pieces tile around any walkable shape:
-  //
-  //   row 0:  TL  N   N   TR
-  //   row 1:  W   .   .   E
-  //   row 2:  W   .   .   E
-  //   row 3:  SW  S   S   SE
-  //
-  // The interior (cols 1-2 rows 1-2) is hollow (transparent) so we
-  // can't use it as body fill — the long-body band at rows 5-7 of the
-  // sheet provides actual body brick if we ever need it (inner corners
-  // or weird neighbor patterns fall through to `wall_body`).
-  wall_corner_nw: [{ sheet: 'cainos_wall', sx: 0 * T, sy: 0 * T }],
-  wall_corner_ne: [{ sheet: 'cainos_wall', sx: 3 * T, sy: 0 * T }],
-  wall_corner_sw: [{ sheet: 'cainos_wall', sx: 0 * T, sy: 3 * T }],
-  wall_corner_se: [{ sheet: 'cainos_wall', sx: 3 * T, sy: 3 * T }],
-  wall_edge_n: [
-    { sheet: 'cainos_wall', sx: 1 * T, sy: 0 * T },
-    { sheet: 'cainos_wall', sx: 2 * T, sy: 0 * T },
-  ],
-  wall_edge_s: [
-    { sheet: 'cainos_wall', sx: 1 * T, sy: 3 * T },
-    { sheet: 'cainos_wall', sx: 2 * T, sy: 3 * T },
-  ],
-  wall_edge_w: [
-    { sheet: 'cainos_wall', sx: 0 * T, sy: 1 * T },
-    { sheet: 'cainos_wall', sx: 0 * T, sy: 2 * T },
-  ],
-  wall_edge_e: [
-    { sheet: 'cainos_wall', sx: 3 * T, sy: 1 * T },
-    { sheet: 'cainos_wall', sx: 3 * T, sy: 2 * T },
-  ],
-  // Body brick fill — only used when neighbor pattern doesn't match a
-  // 9-slice piece (inner corners, surrounded tiles). 4 variants from
-  // the long-body band (rows 6-7 at cols 1-4 of the sheet).
-  wall_body: [
-    { sheet: 'cainos_wall', sx: 1 * T, sy: 6 * T },
-    { sheet: 'cainos_wall', sx: 2 * T, sy: 6 * T },
-    { sheet: 'cainos_wall', sx: 3 * T, sy: 6 * T },
-    { sheet: 'cainos_wall', sx: 4 * T, sy: 6 * T },
-  ],
-  // ── ELEVATED-PLATFORM SOUTH FACE ───────────────────────────────────
-  // The brick "wall face" rendered in cells south of an elevated zone,
-  // representing the visible side of a raised platform when viewed from
-  // the camera's slight angle. Top row (closest to platform) gets the
-  // CAP variant with the dark trim band so it reads as the platform's
-  // south edge. Lower rows are pure body brick.
-  wall_face_top: [
-    { sheet: 'cainos_wall', sx: 1 * T, sy: 5 * T },
-    { sheet: 'cainos_wall', sx: 2 * T, sy: 5 * T },
-    { sheet: 'cainos_wall', sx: 3 * T, sy: 5 * T },
-    { sheet: 'cainos_wall', sx: 4 * T, sy: 5 * T },
-  ],
-  wall_face_body: [
-    { sheet: 'cainos_wall', sx: 1 * T, sy: 7 * T },
-    { sheet: 'cainos_wall', sx: 2 * T, sy: 7 * T },
-    { sheet: 'cainos_wall', sx: 3 * T, sy: 7 * T },
-    { sheet: 'cainos_wall', sx: 4 * T, sy: 7 * T },
-  ],
-};
+// ─── WALKABILITY — SAMPLED FROM B&W MASK IMAGE ────────────────────────────
+// The mask is a paired companion to the visual scene: same dimensions, but
+// every pixel is either pure black (walkable) or pure white (blocked).
+// We build a coarse boolean bitmap once on first use (after the image has
+// loaded) by sampling at SAMPLE_STEP intervals. SAMPLE_STEP = 4 gives a
+// 344×192 grid — fine enough for smooth wall edges, cheap to build (66k
+// samples = single-frame cost).
+const SAMPLE_STEP = 4;
+const BLOCK_THRESHOLD = 128;     // mask pixel > 128 = white = blocked
 
-// ─── HASH (deterministic noise) ────────────────────────────────────────────
-// Variant picker — each tile coord deterministically picks the same variant
-// every frame, so the floor doesn't shimmer between draws.
-function hash2(x, y) {
-  let n = (x * 374761393) ^ (y * 668265263);
-  n = (n ^ (n >>> 13)) >>> 0;
-  return ((n * 1274126177) >>> 0) % 0xffff;
-}
+let walkBits = null;
+let walkBitsCols = 0;
+let walkBitsRows = 0;
 
-// ─── HAMLET LAYOUT — ZONE-BASED IRREGULAR SILHOUETTE ─────────────────────
-// Replaces the previous "single rectangular plaza + radial paths" model
-// with a multi-zone layout that mirrors the Cainos Scene Overview's design
-// logic: distinct districts connected by paths through grass, with an
-// irregular outer boundary instead of a rectangular room.
-//
-// Stage 1 — five zones laid out on a 30×21 grid:
-//
-//   row 1-5   ┌──────┐                      <- NORTH SHRINE (raised in S3)
-//   row 6                                   <- grass corridor (stairs in S3)
-//   row 7-12  ┌───────┐  ┌─────┐  ┌──────┐  <- WEST RUIN, CENTRAL PLAZA, EAST WORKSHOP
-//   row 13-18                               <- grass corridor / SOUTH connector
-//   row 19-20      ┌─────┐                  <- SOUTH ENTRANCE (gateway pad)
-//
-// The outer silhouette is the union of the zones + the grass corridors
-// connecting them. Tiles outside that union render as void (non-walkable).
-//
-// Stage 2 — paths (baked into TERRAIN_GRID at module load):
-//   south_entrance → central_plaza         (main artery)
-//   central_plaza → north_shrine           (north spine)
-//   central_plaza → east_workshop          (east spur)
-//   central_plaza → west_ruin              (west spur)
-//
-// Each zone is a `{ col, row, w, h, terrain, name }` rectangle. `terrain`
-// declares the zone's interior fill (stone for finished, grass for raw).
+// Trees in the painted scene are very dark green/black silhouettes
+// (luminance ~20-40). The AI mask occasionally renders them as black
+// (= walkable in our convention) — a known recurring issue. Sampling
+// the VISUAL scene alongside the mask lets us catch trees automatically:
+// any cell whose visual pixel is darker than this threshold is treated
+// as blocked, even if the mask says walkable.
+const TREE_DARK_THRESHOLD = 45;
 
-// STAGE 1 REVISION — terrace shrunk from 10×5 → 8×5 (cols 14-21) so
-// it doesn't look like a giant flat grass rectangle. Smaller proportions
-// match the demo's "shrine destination" feel. The two-stair split
-// staircase sits at terrace south edge cols 14-21 row 6.
-const ZONES = [
-  { name: 'north_shrine', col: 14, row: 1, w: 8, h: 5, terrain: 'grass', elevation: 1 },
-];
-
-// STAGE 1: no elevation passage exemptions yet. The single E-facing
-// stair on terrace east edge (cols 18-21 rows 6-8) sits on cells that
-// are already walkable via GRASS_CORRIDORS — no wall_face panel
-// covers those cells, so no exemption needed.
-const ELEVATION_PASSAGES = new Set([]);
-function isPassageCell(col, row) { return ELEVATION_PASSAGES.has(`${col},${row}`); }
-
-// STAGE 1 REVISION — broken cobble path network. Many small 1-2 tile
-// patches with grass between, replacing the prior solid path bake.
-// Stone classifier (9-slice) gives each patch proper edges so they
-// read as "old stones, grass reclaiming."
-const STONE_PATCHES = [
-  // Shrine ritual pad on terrace (3×2 at cols 16-18 rows 2-3) —
-  // gives the terrace a clear "sacred destination" focal area.
-  { col: 16, row: 2, w: 3, h: 2 },
-
-  // Central plaza paving — 3 irregular bands around the well,
-  // not a solid rectangle. Grass shows between rows.
-  { col: 16, row: 12, w: 2, h: 1 },
-  { col: 14, row: 13, w: 6, h: 1 },        // central row, widest
-  { col: 16, row: 14, w: 2, h: 1 },
-
-  // Main spine — broken cobble from spawn (row 22) up to stair base
-  // (row 7), alternating 1-2 tile patches with grass interruptions.
-  { col: 16, row: 21, w: 2, h: 1 },        // near spawn
-  { col: 17, row: 20, w: 1, h: 1 },
-  { col: 16, row: 19, w: 2, h: 1 },
-  { col: 17, row: 18, w: 1, h: 1 },
-  { col: 16, row: 17, w: 2, h: 1 },        // entry to compound
-  { col: 17, row: 16, w: 1, h: 1 },
-  { col: 16, row: 15, w: 2, h: 1 },
-  // (well at rows 12-14, paved above)
-  { col: 17, row: 11, w: 1, h: 1 },
-  { col: 16, row: 10, w: 2, h: 1 },
-  { col: 17, row: 9,  w: 1, h: 1 },
-  { col: 16, row: 8,  w: 2, h: 1 },
-  { col: 17, row: 7,  w: 1, h: 1 },        // stair base
-
-  // E spur to workshop — 3 patches with grass between
-  { col: 19, row: 13, w: 2, h: 1 },
-  { col: 22, row: 13, w: 2, h: 1 },
-  { col: 25, row: 13, w: 2, h: 1 },
-
-  // W spur to cemetery — mirror
-  { col: 12, row: 13, w: 2, h: 1 },
-  { col: 9,  row: 13, w: 2, h: 1 },
-  { col: 6,  row: 13, w: 2, h: 1 },
-
-  // SW spur — broken stones leading west from compound row 17 to
-  // the SW courtyard at row 19-20 cols 4-12. Just 3-4 stones.
-  { col: 14, row: 17, w: 1, h: 1 },
-  { col: 11, row: 17, w: 1, h: 1 },
-  { col: 9,  row: 19, w: 1, h: 1 },
-  { col: 7,  row: 19, w: 1, h: 1 },
-];
-
-// WALL FACE PANELS — explicit list of brick-body panels around elevated
-// zones. The demo's elevation feel comes from MULTIPLE faces of brick
-// wrapping each platform (south + the side that has the stair), not
-// just the south face. Each panel is { col, row, w, h, capRow } where
-// capRow is the row that gets the dark trim 'wall_face_top'; other
-// rows get plain 'wall_face_body'. Cells in ELEVATION_PASSAGES are
-// skipped so they remain walkable for stair / doorway access.
-// STAGE 1 REVISION — wall_face panels for the new layout:
-//
-// (1) Shrine south face flankers — col 13 row 6 (west of W-stair) and
-//     col 22 row 6 (east of E-stair). Two mirrored stairs span cols
-//     14-21 row 6 so the only walls on row 6 are the outermost cols.
-//
-// (2) Two ruined wall stubs INSIDE the compound suggesting old
-//     foundations / partially-collapsed retaining walls. Defines
-//     space without breaking connectivity (hero detours around).
-const WALL_FACE_PANELS = [
-  { col: 13, row: 6,  w: 1, h: 1, capRow: 6  },   // west of W-stair
-  { col: 22, row: 6,  w: 1, h: 1, capRow: 6  },   // east of E-stair
-  // Internal ruined wall stubs (1×2 each)
-  { col: 8,  row: 11, w: 1, h: 2, capRow: 11 },   // W stub near cemetery
-  { col: 26, row: 10, w: 1, h: 2, capRow: 10 },   // E stub near workshop
-];
-
-// STAGE 1 REVISION — path bake REMOVED. Solid 3-tile-wide stone bands
-// read as "concrete cross." All paths are now broken cobble via
-// many small STONE_PATCHES with grass between them. Hero pathing is
-// unaffected (cells stay walkable; only terrain changes).
-const PATH_SEGMENTS = [];
-const PATH_HALF_WIDTH = 1;     // 3 tiles wide total (col-1 .. col+1)
-
-// STAGE 1 REBUILD — GRASS_CORRIDORS define the WALKABLE SILHOUETTE.
-// One rectangle per row range in most cases, with col widths varying
-// to create the staggered ruined-compound shape.
-//
-// Walkable shape (row → col range):
-//   rows 1-5  : cols 13-22  (north shrine terrace, raised)
-//   row  6    : cols 14-21  (stair landing — slightly narrower than terrace)
-//   row  7    : cols 9-22   (compound NW shoulder)
-//   row  8    : cols 8-26   (compound widens east)
-//   row  9    : cols 5-29   (wider, both sides bulge out)
-//   rows 10-11: cols 1-30   (cemetery W + workshop E protrude)
-//   rows 12-14: cols 1-31   (widest middle band, workshop bulges 1 more east)
-//   row  15   : cols 2-29   (compound starts narrowing)
-//   row  16   : cols 4-28   (narrower)
-//   row  17   : cols 4-25   (narrower still, workshop ends)
-//   rows 18-20: cols 4-12   (SW courtyard protrusion)
-//             + cols 15-18  (south corridor — DISCONNECTED from SW at 18-20)
-//   rows 21-22: cols 15-18  (south corridor only — courtyard ends at row 21)
-const GRASS_CORRIDORS = [
-  // North shrine terrace (rows 1-5)
-  { col: 13, row: 1,  w: 10, h: 5 },
-  // Stair landing row
-  { col: 14, row: 6,  w: 8,  h: 1 },
-  // Compound body — staggered rows
-  { col: 9,  row: 7,  w: 14, h: 1 },
-  { col: 8,  row: 8,  w: 19, h: 1 },
-  { col: 5,  row: 9,  w: 25, h: 1 },
-  { col: 1,  row: 10, w: 30, h: 2 },     // rows 10-11
-  { col: 1,  row: 12, w: 31, h: 3 },     // rows 12-14 (widest, workshop bulges)
-  { col: 2,  row: 15, w: 28, h: 1 },
-  { col: 4,  row: 16, w: 25, h: 1 },
-  { col: 4,  row: 17, w: 22, h: 1 },
-  // SW courtyard
-  { col: 4,  row: 18, w: 9,  h: 3 },
-  // South corridor (separate, disjoint from SW courtyard at rows 18-20)
-  { col: 15, row: 18, w: 4,  h: 5 },     // rows 18-22
-];
-
-// ─── PRECOMPUTED GRIDS ────────────────────────────────────────────────────
-// Built once at module load from ZONES + PATH_SEGMENTS + GRASS_CORRIDORS.
-// `WALKABLE_GRID[row][col] = true` iff the tile is part of the hamlet
-// (not void). `TERRAIN_GRID[row][col] = 'grass'|'stone'|'cobble'|'void'`.
-const WALKABLE_GRID = [];
-const TERRAIN_GRID = [];
-(function buildGrids() {
-  for (let r = 0; r < HAMLET_ROWS; r++) {
-    WALKABLE_GRID.push(new Array(HAMLET_COLS).fill(false));
-    TERRAIN_GRID.push(new Array(HAMLET_COLS).fill('void'));
+function buildWalkabilityBitmap() {
+  const maskImg = images.hamlet_scene_v2_mask;
+  const visualImg = images.hamlet_scene_v2;
+  if (!maskImg || !maskImg.complete || !maskImg.naturalWidth) return false;
+  if (!visualImg || !visualImg.complete || !visualImg.naturalWidth) return false;
+  // Render both images to canvases to read pixel data.
+  const mcv = document.createElement('canvas');
+  mcv.width = maskImg.naturalWidth; mcv.height = maskImg.naturalHeight;
+  mcv.getContext('2d').drawImage(maskImg, 0, 0);
+  const vcv = document.createElement('canvas');
+  vcv.width = visualImg.naturalWidth; vcv.height = visualImg.naturalHeight;
+  vcv.getContext('2d').drawImage(visualImg, 0, 0);
+  let maskData, visData;
+  try {
+    maskData = mcv.getContext('2d').getImageData(0, 0, mcv.width, mcv.height).data;
+    visData = vcv.getContext('2d').getImageData(0, 0, vcv.width, vcv.height).data;
+  } catch (e) {
+    console.warn('[hamlet] image sample failed:', e);
+    return false;
   }
-  // Pass 1: grass corridors define the basic walkable footprint
-  for (const c of GRASS_CORRIDORS) {
-    for (let r = c.row; r < c.row + c.h && r < HAMLET_ROWS; r++) {
-      for (let x = c.col; x < c.col + c.w && x < HAMLET_COLS; x++) {
-        if (r < 0 || x < 0) continue;
-        WALKABLE_GRID[r][x] = true;
-        TERRAIN_GRID[r][x] = 'grass';
-      }
-    }
-  }
-  // Pass 2: zones overwrite their footprint with their terrain
-  for (const z of ZONES) {
-    for (let r = z.row; r < z.row + z.h && r < HAMLET_ROWS; r++) {
-      for (let x = z.col; x < z.col + z.w && x < HAMLET_COLS; x++) {
-        if (r < 0 || x < 0) continue;
-        WALKABLE_GRID[r][x] = true;
-        TERRAIN_GRID[r][x] = z.terrain;
-      }
-    }
-  }
-  // Pass 3: paths bake stone tiles where they cross grass (zones already
-  // have stone, so this is effectively grass→cobble path conversion)
-  for (const p of PATH_SEGMENTS) {
-    const dx = Math.sign(p.bx - p.ax), dy = Math.sign(p.by - p.ay);
-    let cx = p.ax, cy = p.ay;
-    while (true) {
-      for (let oy = -PATH_HALF_WIDTH; oy <= PATH_HALF_WIDTH; oy++) {
-        for (let ox = -PATH_HALF_WIDTH; ox <= PATH_HALF_WIDTH; ox++) {
-          const tx = cx + ox, ty = cy + oy;
-          if (tx < 0 || ty < 0 || tx >= HAMLET_COLS || ty >= HAMLET_ROWS) continue;
-          if (!WALKABLE_GRID[ty][tx]) continue;          // don't paint void
-          // Convert grass tiles along the path to stone (paving extends);
-          // already-stone tiles (zones) stay stone.
-          if (TERRAIN_GRID[ty][tx] === 'grass') TERRAIN_GRID[ty][tx] = 'stone';
+  walkBitsCols = Math.ceil(HAMLET_W / SAMPLE_STEP);
+  walkBitsRows = Math.ceil(HAMLET_H / SAMPLE_STEP);
+  walkBits = new Uint8Array(walkBitsCols * walkBitsRows);
+  const msx = mcv.width / HAMLET_W, msy = mcv.height / HAMLET_H;
+  const vsx = vcv.width / HAMLET_W, vsy = vcv.height / HAMLET_H;
+  // Pass 1: average pixels within each sample block from BOTH the mask
+  // (collision data) and the visual scene (tree darkness check). A cell
+  // is walkable only if mask says walkable AND visual is brighter than
+  // the tree-dark threshold. JPEG noise is smoothed by averaging.
+  for (let r = 0; r < walkBitsRows; r++) {
+    for (let c = 0; c < walkBitsCols; c++) {
+      // Mask sample block
+      let mSum = 0, mN = 0;
+      const mx0 = Math.floor(c * SAMPLE_STEP * msx);
+      const my0 = Math.floor(r * SAMPLE_STEP * msy);
+      const mx1 = Math.min(mcv.width, Math.ceil((c + 1) * SAMPLE_STEP * msx));
+      const my1 = Math.min(mcv.height, Math.ceil((r + 1) * SAMPLE_STEP * msy));
+      for (let py = my0; py < my1; py++) {
+        for (let px = mx0; px < mx1; px++) {
+          const i = (py * mcv.width + px) * 4;
+          mSum += maskData[i] + maskData[i + 1] + maskData[i + 2];
+          mN += 3;
         }
       }
-      if (cx === p.bx && cy === p.by) break;
-      cx += dx; cy += dy;
+      const maskAvg = mN > 0 ? mSum / mN : 0;
+      const maskWalkable = maskAvg <= BLOCK_THRESHOLD;
+      // Visual sample block — looking for tree darkness
+      let vSum = 0, vN = 0;
+      const vx0 = Math.floor(c * SAMPLE_STEP * vsx);
+      const vy0 = Math.floor(r * SAMPLE_STEP * vsy);
+      const vx1 = Math.min(vcv.width, Math.ceil((c + 1) * SAMPLE_STEP * vsx));
+      const vy1 = Math.min(vcv.height, Math.ceil((r + 1) * SAMPLE_STEP * vsy));
+      for (let py = vy0; py < vy1; py++) {
+        for (let px = vx0; px < vx1; px++) {
+          const i = (py * vcv.width + px) * 4;
+          vSum += visData[i] + visData[i + 1] + visData[i + 2];
+          vN += 3;
+        }
+      }
+      const visAvg = vN > 0 ? vSum / vN : 255;
+      const isTree = visAvg < TREE_DARK_THRESHOLD;
+      walkBits[r * walkBitsCols + c] = (maskWalkable && !isTree) ? 1 : 0;
     }
   }
-  // Pass 3.5: stone patches — small irregular paving overlays in
-  // corridor grass for visual variety. Only converts grass to stone
-  // (leaves zone stone, void, and other terrains alone). Runs AFTER
-  // paths bake (Pass 3) and BEFORE elevation faces (Pass 4) so the
-  // patches can fall in places that aren't part of any path or zone
-  // but still get the stone 9-slice edge tiles via classifyStone.
-  for (const patch of STONE_PATCHES) {
-    for (let r = patch.row; r < patch.row + patch.h && r < HAMLET_ROWS; r++) {
-      for (let c = patch.col; c < patch.col + patch.w && c < HAMLET_COLS; c++) {
-        if (c < 0 || r < 0) continue;
-        if (!WALKABLE_GRID[r][c]) continue;          // skip void
-        if (TERRAIN_GRID[r][c] === 'grass') TERRAIN_GRID[r][c] = 'stone';
+  // Pass 2: 3x3 majority filter. For each cell, take the majority of its
+  // 3x3 neighborhood. Smooths single-cell speckles (a lone walkable pixel
+  // inside a wall, or vice versa) so the playable space is contiguous.
+  // Run twice for stronger smoothing — each pass cleans up speckles up to
+  // size N and exposes the next layer.
+  const tmp = new Uint8Array(walkBits.length);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let r = 0; r < walkBitsRows; r++) {
+      for (let c = 0; c < walkBitsCols; c++) {
+        let walk = 0, blocked = 0;
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = r + dr, nc = c + dc;
+            if (nr < 0 || nc < 0 || nr >= walkBitsRows || nc >= walkBitsCols) {
+              blocked++; continue;     // out-of-bounds counts as blocked
+            }
+            if (walkBits[nr * walkBitsCols + nc]) walk++;
+            else blocked++;
+          }
+        }
+        tmp[r * walkBitsCols + c] = walk > blocked ? 1 : 0;
       }
     }
+    walkBits.set(tmp);
   }
-  // Pass 4: elevation faces — paint brick body (wall_face) on the panels
-  // listed in WALL_FACE_PANELS. Each panel can wrap any side of an
-  // elevated zone (south, east, west). The demo's depth feel comes from
-  // brick body extending along multiple faces of each platform, with the
-  // stair sprites cutting through them at specific rows.
+  return true;
+}
+
+// Manual exclusions — rectangles where the mask classifies pixels as
+// walkable but the painted scene clearly shows a blocking feature. Two
+// classes of issue this handles:
+//   1. Trees inside the compound where the AI mask drew the tree as
+//      black (walkable) — a convention violation we patch in code
+//      rather than re-rolling the mask
+//   2. The firepit ring — the mask leaves walkable pixels above the
+//      flame so the hero could walk INTO the fire from the north
+//
+// Each rect is checked AFTER the mask; if hero is inside any exclusion
+// we treat it as blocked regardless of the mask's verdict.
+const EXCLUSIONS = [
+  // Trees no longer need rects — programmatic detection via the visual
+  // scene's luminance handles them automatically (see TREE_DARK_THRESHOLD
+  // in buildWalkabilityBitmap).
   //
-  // Cells in ELEVATION_PASSAGES are skipped so they remain walkable for
-  // hero access (doorway through north_shrine south face; stair tops on
-  // west_ruin and east_workshop side faces).
-  for (const panel of WALL_FACE_PANELS) {
-    for (let r = panel.row; r < panel.row + panel.h && r < HAMLET_ROWS; r++) {
-      for (let c = panel.col; c < panel.col + panel.w && c < HAMLET_COLS; c++) {
-        if (c < 0 || r < 0) continue;
-        if (isPassageCell(c, r)) continue;
-        WALKABLE_GRID[r][c] = false;
-        TERRAIN_GRID[r][c] = (r === panel.capRow) ? 'wall_face_top' : 'wall_face_body';
-      }
-    }
-  }
-})();
-
-// True iff the tile (col, row) is part of the hamlet's walkable area.
-// Used by the wall-detection logic (walls go on void tiles ADJACENT to
-// walkable) and by hero collision via isHamletWalkable below.
-function isWalkable(col, row) {
-  if (col < 0 || row < 0 || col >= HAMLET_COLS || row >= HAMLET_ROWS) return false;
-  return WALKABLE_GRID[row][col];
-}
-
-// World-space walkability for collision. (worldX, worldY) → tile, then
-// checks the grid. Hero is bounded by this, plus the existing prop circles.
-export function isHamletWalkable(worldX, worldY) {
-  const col = Math.floor(worldX / CAINOS_TILE);
-  const row = Math.floor(worldY / CAINOS_TILE);
-  return isWalkable(col, row);
-}
-
-// Decide what tile type should occupy (col, row). Now reads from the
-// precomputed terrain grid instead of computing geometry per-frame.
-// For stone tiles, classifies the cell against its 4 orthogonal neighbors
-// and picks a 9-slice variant (corner / edge / body) so paths read as
-// paths instead of solid slabs.
-function tileTypeAt(col, row) {
-  const t = TERRAIN_GRID[row]?.[col];
-  if (!t || t === 'void') return null;     // outside silhouette — don't render
-  if (t === 'grass') {
-    // ~6% of grass tiles get the decorative variant for sparse life
-    const h = hash2(col, row);
-    return (h % 100) < 6 ? 'grass_decor' : 'grass';
-  }
-  if (t === 'stone') {
-    return classifyStone(col, row);
-  }
-  // wall_face_top, wall_face_body, etc. — return as-is, TILES has them.
-  return t;
-}
-
-// Stone 9-slice classifier. For each STONE cell, build the 4-bit mask
-// of which orthogonal neighbors are NON-stone (i.e. grass or void),
-// then map to the right edge / corner piece. Lookup convention:
-//   bit 0 (1): N is non-stone
-//   bit 1 (2): E is non-stone
-//   bit 2 (4): S is non-stone
-//   bit 3 (8): W is non-stone
-//
-// Two adjacent non-stone bits → outer corner of the stone area facing
-// those directions. Single non-stone bit → straight edge. Multiple
-// non-adjacent or 3+ non-stone bits → body fallback (rare, would only
-// happen for 1-tile-wide paths with weird neighbors).
-function classifyStone(col, row) {
-  const isStone = (c, r) => TERRAIN_GRID[r]?.[c] === 'stone';
-  const N = !isStone(col, row - 1);
-  const E = !isStone(col + 1, row);
-  const S = !isStone(col, row + 1);
-  const W = !isStone(col - 1, row);
-  const mask = (N ? 1 : 0) | (E ? 2 : 0) | (S ? 4 : 0) | (W ? 8 : 0);
-  switch (mask) {
-    case 0:  return 'stone_body';
-    case 1:  return 'stone_edge_n';
-    case 2:  return 'stone_edge_e';
-    case 4:  return 'stone_edge_s';
-    case 8:  return 'stone_edge_w';
-    case 9:  return 'stone_corner_nw';   // N + W non-stone
-    case 3:  return 'stone_corner_ne';   // N + E non-stone
-    case 12: return 'stone_corner_sw';   // S + W non-stone
-    case 6:  return 'stone_corner_se';   // S + E non-stone
-    default: return 'stone_body';        // 3+ edges, opposite edges, or inner corners
-  }
-}
-
-
-// ─── WALL DETECTION — 9-SLICE AUTOTILE FOR IRREGULAR SILHOUETTE ───────
-// A wall lives on any VOID tile that has at least one orthogonally-
-// adjacent walkable tile. The specific variant comes from the 4-bit
-// neighbor walkability mask (N=1, E=2, S=4, W=8):
-//
-//   single neighbor walkable → that face becomes an EDGE tile
-//   two adjacent neighbors walkable → corner tile (NW/NE/SW/SE)
-//   three neighbors walkable → inner corner (rare; falls through to body)
-//
-// Which corner depends on which two neighbors are walkable:
-//   E + S walkable → wall is at the NW void of a walkable platform → CORNER NW
-//   S + W walkable → CORNER NE
-//   N + E walkable → CORNER SW
-//   N + W walkable → CORNER SE
-//
-// This produces full perimeter walls on ALL four sides of every zone
-// + irregular silhouette, with the right corner pieces bridging
-// edges. Compared to the old N-only wall band, this gives every zone
-// the "walled compound" look from the Cainos demo.
-
-function getWallVariant(col, row) {
-  if (isWalkable(col, row)) return null;
-  // wall_face cells already render their own brick (via tileTypeAt) —
-  // don't paint a wall variant on top of the elevated platform's face.
-  const here = TERRAIN_GRID[row]?.[col];
-  if (here === 'wall_face_top' || here === 'wall_face_body') return null;
-  const N = isWalkable(col, row - 1);
-  const E = isWalkable(col + 1, row);
-  const S = isWalkable(col, row + 1);
-  const W = isWalkable(col - 1, row);
-  let key;
-  if (N || E || S || W) {
-    // Has orthogonal walkable → standard 9-slice classification.
-    const mask = (N ? 1 : 0) | (E ? 2 : 0) | (S ? 4 : 0) | (W ? 8 : 0);
-    switch (mask) {
-      case 4:  key = 'wall_edge_n';   break;   // S walkable → wall is N-edge
-      case 1:  key = 'wall_edge_s';   break;   // N walkable → wall is S-edge
-      case 2:  key = 'wall_edge_w';   break;   // E walkable → wall is W-edge
-      case 8:  key = 'wall_edge_e';   break;   // W walkable → wall is E-edge
-      case 6:  key = 'wall_corner_nw'; break;  // E+S walkable → NW void corner
-      case 12: key = 'wall_corner_ne'; break;  // S+W walkable → NE void corner
-      case 3:  key = 'wall_corner_sw'; break;  // N+E walkable → SW void corner
-      case 9:  key = 'wall_corner_se'; break;  // N+W walkable → SE void corner
-      default: key = 'wall_body';              // inner corners / surrounded
-    }
-  } else {
-    // No orthogonal walkable — check diagonals for outer corners. This
-    // happens at the diagonal-NW void of a rectangular zone's NW corner
-    // (e.g. col 1 row 6 outside west_ruin's NW corner at col 2 row 7).
-    const NE = isWalkable(col + 1, row - 1);
-    const NW = isWalkable(col - 1, row - 1);
-    const SE = isWalkable(col + 1, row + 1);
-    const SW = isWalkable(col - 1, row + 1);
-    if (SE && !SW && !NE && !NW) key = 'wall_corner_nw';
-    else if (SW && !SE && !NE && !NW) key = 'wall_corner_ne';
-    else if (NE && !NW && !SE && !SW) key = 'wall_corner_sw';
-    else if (NW && !NE && !SE && !SW) key = 'wall_corner_se';
-    else return null;                          // not a wall, just void
-  }
-  const variants = TILES[key];
-  return variants[hash2(col, row) % variants.length];
-}
-
-// ─── PROPS ─────────────────────────────────────────────────────────────────
-// World-positioned sprites blitted from the Cainos prop / plant sheets.
-// Each prop declares { sheet, sx, sy, sw, sh, x, y } where (x, y) is the
-// world position of the prop's BOTTOM-CENTER (= its "feet" touching the
-// floor, like every other entity in the game).
-//
-// First pass: a fountain at the plaza center, 3 trees lining the back of
-// the hamlet, a cluster of bushes near each ruin corner. Designed to
-// gesture at the Scene Overview's "walled compound with greenery" feel
-// without trying to replicate it tile-for-tile.
-const PT = 32;     // texture tile unit (Cainos sheets use 32px)
-
-// All entries are organized BY ZONE so it's clear-as-day where each prop
-// belongs and what its job is. Every (x, y) is verified against the
-// WALKABLE_GRID + TERRAIN_GRID below at module load via the assertProps
-// helper — fail loudly in dev if a prop ever lands on the wrong terrain.
-const HAMLET_PROPS = [
-  // STAGE 1 REVISION — TWO MIRRORED STAIRS forming a "split staircase"
-  // grand entrance to the terrace. Reads more clearly than a single
-  // off-center east-facing stair.
-  //
-  //  W-facing stair: high end on east col 17, low west col 14
-  //                  spans cols 14-17 rows 6-8
-  //                  back wall on RIGHT side of sprite (east edge)
-  //  E-facing stair: high end on west col 18, low east col 21
-  //                  spans cols 18-21 rows 6-8
-  //                  back wall on LEFT side of sprite (west edge)
-  //
-  // Back walls meet at col 17/18 boundary, forming a continuous
-  // central "platform" silhouette. Hero descends EITHER side.
-  { sheet: 'cainos_struct', sx: 0,         sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
-    x: 512, y: 288, scale: 1.0 },     // W-facing (cols 14-17)
-  { sheet: 'cainos_struct', sx: 4 * PT,    sy: 9 * PT, sw: 4 * PT, sh: 3 * PT,
-    x: 640, y: 288, scale: 1.0 },     // E-facing (cols 18-21)
+  // Firepit — small rect around the actual painted flame at (782, 361).
+  // Detected fire bbox: (760-804, 340-380). Buffer 15-20px for the stone
+  // ring + body collision. Hero approaches from any side and bumps off.
+  { x1: 745, y1: 325, x2: 820, y2: 400 },
 ];
 
-// ─── DEV ASSERT — every prop must land on a valid (non-void) tile ───
-// Catches regressions where a layout edit invalidates a prop's position
-// without the dev noticing. Tree-only-on-grass rule enforced too.
-if (import.meta.env?.DEV) {
-  for (const p of HAMLET_PROPS) {
-    const col = Math.floor(p.x / CAINOS_TILE);
-    const row = Math.floor(p.y / CAINOS_TILE);
-    const t = TERRAIN_GRID[row]?.[col];
-    if (!t || t === 'void') {
-      console.warn(`[hamlet] prop in void: ${p.sheet} at (${p.x},${p.y}) → tile (${col},${row})`);
-    }
-    if (p.sheet === 'cainos_plant' && p.sh >= 4 * PT && t !== 'grass') {
-      // Trees (>=4 tiles tall) only on grass.
-      console.warn(`[hamlet] tree on non-grass: (${p.x},${p.y}) → tile (${col},${row}) terrain=${t}`);
-    }
+export function isHamletWalkable(worldX, worldY) {
+  if (worldX < 0 || worldX >= HAMLET_W) return false;
+  if (worldY < 0 || worldY >= HAMLET_H) return false;
+  if (!walkBits) {
+    if (!buildWalkabilityBitmap()) return true;     // mask not ready: allow movement
   }
+  const c = Math.floor(worldX / SAMPLE_STEP);
+  const r = Math.floor(worldY / SAMPLE_STEP);
+  if (c < 0 || r < 0 || c >= walkBitsCols || r >= walkBitsRows) return false;
+  if (walkBits[r * walkBitsCols + c] === 0) return false;
+  // Manual exclusion check — overrides mask for known mismatches.
+  for (const e of EXCLUSIONS) {
+    if (worldX >= e.x1 && worldX <= e.x2 && worldY >= e.y1 && worldY <= e.y2) return false;
+  }
+  return true;
 }
 
-// ─── RENDER ────────────────────────────────────────────────────────────────
-// Pass 1: floor tiles (grass / cobble / stone) across the entire grid.
-// Pass 2: wall tiles overwrite the floor where the perimeter wall sits.
-// Pass 3: world-positioned props rendered with bottom-center anchor.
-//
-// Floor + walls are 32px tile blits. Props can be any size and are scaled
-// by their `scale` field (Cainos sprites are large enough that 1.0 = native).
+// Register with room.js so isWallAtWorld can route hamlet wall-checks here.
+// Done at module load; the function works lazily (mask sampled on first call
+// after the mask image has loaded).
+setHamletWalkableFn(isHamletWalkable);
+
+// ─── RENDER ───────────────────────────────────────────────────────────────
+// One drawImage call. The visual scene is a 1376×768 painting with all walls,
+// trees, props, and zone features baked in. Mask is invisible — only used
+// for collision.
 export function drawHamletFloor(ctx) {
-  // Pixel-art tiles need crisp nearest-neighbor scaling. The default
-  // canvas smoothing creates faint seams between tiles — disable it for
-  // the floor pass and restore on the way out.
+  const img = images.hamlet_scene_v2;
+  if (!img) return;
   const prevSmoothing = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
-  // ─── Pass 1 + 2: floor + walls in one sweep ────────────────────────────
-  for (let row = 0; row < HAMLET_ROWS; row++) {
-    for (let col = 0; col < HAMLET_COLS; col++) {
-      // Walls take priority — render wall tile over what would have been
-      // floor. getWallVariant returns null for non-wall tiles.
-      let variant = getWallVariant(col, row);
-      if (!variant) {
-        const type = tileTypeAt(col, row);
-        const variants = TILES[type];
-        if (!variants || variants.length === 0) continue;
-        variant = variants[hash2(col, row) % variants.length];
-      }
-      const img = images[variant.sheet];
-      if (!img) continue;
-      ctx.drawImage(
-        img,
-        variant.sx, variant.sy, CAINOS_TILE, CAINOS_TILE,
-        col * CAINOS_TILE, row * CAINOS_TILE, CAINOS_TILE, CAINOS_TILE,
-      );
-    }
-  }
-
-  // ─── Pass 3: props (bottom-center anchored) with drop shadows ─────────
-  // Each FREE-STANDING prop gets a soft elliptical drop shadow so it
-  // reads as sitting on the floor. Architectural props (cainos_struct =
-  // stairs, archways, building facades) are SKIPPED — they're already
-  // floor-level structural elements, an elliptical shadow under them
-  // looks like a glitch. Tiny props (1-tile sprites: tufts, pebbles)
-  // also skip shadows — at 32px they're too small for a shadow to
-  // read cleanly, and the existing prop art already has its own
-  // contact shading.
-  for (const p of HAMLET_PROPS) {
-    const img = images[p.sheet];
-    if (!img) continue;
-    const w = p.sw * (p.scale || 1);
-    const h = p.sh * (p.scale || 1);
-    const skipShadow = p.sheet === 'cainos_struct' || (p.sw <= PT && p.sh <= PT);
-    if (!skipShadow) {
-      const shadowRx = w * 0.42;
-      const shadowRy = Math.max(4, w * 0.13);
-      ctx.save();
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y - 1, shadowRx, shadowRy, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-    ctx.drawImage(
-      img,
-      p.sx, p.sy, p.sw, p.sh,
-      Math.round(p.x - w / 2), Math.round(p.y - h),
-      w, h,
-    );
-  }
+  ctx.drawImage(img, 0, 0, HAMLET_W, HAMLET_H);
   ctx.imageSmoothingEnabled = prevSmoothing;
 }
 
-// Debug helper — exposes the layout as a printable grid for inspection.
-export function debugTileGrid() {
-  const symbols = { grass: '.', grass_decor: ',', cobble: 'c', stone: 'S' };
-  const lines = [];
-  for (let r = 0; r < HAMLET_ROWS; r++) {
-    let line = '';
-    for (let c = 0; c < HAMLET_COLS; c++) line += symbols[tileTypeAt(c, r)] || '?';
-    lines.push(line);
-  }
-  return lines.join('\n');
+// Debug helper — exposes the walkability bitmap state for inspection.
+export function debugWalkable() {
+  if (!walkBits) return { built: false };
+  let walkable = 0;
+  for (const b of walkBits) if (b) walkable++;
+  return {
+    built: true,
+    cols: walkBitsCols, rows: walkBitsRows,
+    walkable, total: walkBits.length,
+    pct: Math.round((walkable / walkBits.length) * 100),
+    sampleStep: SAMPLE_STEP, threshold: BLOCK_THRESHOLD,
+  };
 }
