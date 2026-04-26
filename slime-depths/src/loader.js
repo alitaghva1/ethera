@@ -443,6 +443,13 @@ export async function loadAll(progressCb) {
     loadImage('npc_v2_oracle',          'assets/hamlet/npc_v2_oracle.png'),
     loadImage('npc_v2_wanderer',        'assets/hamlet/npc_v2_wanderer.png'),
 
+    // ── HAMLET FX — animated sprite sheets ────────────────────────────────
+    // PixelLab Animated Object exports stitched horizontally by
+    // scripts/pixellab/import-fx.js. Frame count + dims declared in the
+    // HAMLET_FX registry in hamletScene.js. Drawn via drawHamletFx as
+    // an overlay pass on top of the painted backdrop.
+    loadImage('fx_firepit',             'assets/hamlet/fx_firepit.png'),
+
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
     loadAudio('slime_death',  'assets/sfx/slime_death.ogg'),

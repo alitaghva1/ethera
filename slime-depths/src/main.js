@@ -80,7 +80,7 @@ import {
 } from './watcher.js';
 import {
   HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX, HAMLET_ZOOM,
-  updateHamletScene, drawHamletBackdrop, drawHamletEntities, drawHamletOverlay, drawHamletInteractPrompt,
+  updateHamletScene, drawHamletBackdrop, drawHamletFx, drawHamletEntities, drawHamletOverlay, drawHamletInteractPrompt,
   consumeHamletInteract, resolveHamletCollision,
 } from './hamletScene.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
@@ -5327,6 +5327,7 @@ function render() {
   //   Layer 5 (drawHamletInteractPrompt):       floating "E · TALK" labels
   if (room.kind === 'hamlet') {
     drawHamletBackdrop(ctx);
+    drawHamletFx(ctx);                  // animated overlays (flames, etc.)
     drawHamletEntities(ctx);
     drawHamletOverlay(ctx);
   }

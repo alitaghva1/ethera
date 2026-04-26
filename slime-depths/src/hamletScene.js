@@ -296,6 +296,59 @@ export function drawHamletOverlay(_ctx) {
   // sprite sheet's flag tiles.
 }
 
+// ─── HAMLET FX ─────────────────────────────────────────────────────────────
+// Animated sprite-sheet overlays that draw on top of the painted backdrop
+// to bring static painted features to life: firepit flame flicker, portal
+// rune pulse, etc. Each entry is one FX:
+//   id            — short label
+//   asset         — loader.js image key (sheet of horizontal frames)
+//   x, y          — world position, CENTER-aligned (not bottom-anchored
+//                   like NPCs — flames/auras have no "feet")
+//   frameW/frameH — single frame dimensions
+//   frameCount    — number of frames in the sheet
+//   fps           — playback speed (12 fps reads as fire flicker; slower
+//                   for ambient pulses, faster for sparks)
+//   scale         — render scale (1.0 = native sheet size)
+//   yOffset       — optional vertical nudge for fine alignment with the
+//                   painted feature underneath
+const HAMLET_FX = [
+  {
+    id: 'firepit', asset: 'fx_firepit',
+    x: 782, y: 356,                    // matches the detected painted-firepit center
+    frameW: 48, frameH: 48,
+    frameCount: 16, fps: 12,
+    scale: 1.4, yOffset: -4,
+  },
+];
+
+// Draw all hamlet FX overlays. Called between drawHamletBackdrop and
+// drawHamletEntities so animated flames sit on top of the painted scene
+// but BENEATH NPCs (so an NPC standing in front of the firepit correctly
+// occludes the flame).
+export function drawHamletFx(ctx) {
+  const now = performance.now() / 1000;
+  const prevSmoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  for (const fx of HAMLET_FX) {
+    const img = images[fx.asset];
+    if (!img) continue;
+    const frame = Math.floor(now * fx.fps) % fx.frameCount;
+    const sx = frame * fx.frameW;
+    const scale = fx.scale || 1;
+    const drawW = fx.frameW * scale;
+    const drawH = fx.frameH * scale;
+    const yOffset = fx.yOffset || 0;
+    ctx.drawImage(
+      img,
+      sx, 0, fx.frameW, fx.frameH,
+      Math.round(fx.x - drawW / 2),
+      Math.round(fx.y - drawH / 2 + yOffset),
+      drawW, drawH,
+    );
+  }
+  ctx.imageSmoothingEnabled = prevSmoothing;
+}
+
 // Draw all hamlet entities in world space. Sorted by Y so NPCs that sit
 // further down paint over NPCs higher up (standard top-down ordering).
 // Called from the in-camera render block in main.js, after drawRoom.
