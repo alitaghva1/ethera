@@ -411,12 +411,14 @@ function drawNpc(ctx, e, now) {
   //   compensate for source-artwork variance (kept for backwards compat).
   const drawH = isV2 ? 52 : 56 * (e.drawScale || 1);
   const drawW = spr.width * (drawH / spr.height);
-  // Ground shadow — kept SUBTLE (smaller + low alpha) so NPCs don't look
-  // like they're floating on a black disc. Previous radius 22 / alpha 0.55
-  // made the elliptical shadow read as bigger than the NPC's feet
-  // silhouette, especially against the new pixel-art floor where every
-  // detail competes for attention.
-  drawGroundShadow(ctx, e.x, e.y + bob - 1, 11, 0.22);
+  // Ground shadow — radius scales with sprite width so wider characters
+  // (smith with hammer-over-shoulder, wanderer with backpack) get
+  // proportionally wider shadows that anchor them visually. Shadow is
+  // STATIONARY (no `bob` offset) so the breathing motion lifts the
+  // character off the shadow each cycle — this is what sells "grounded"
+  // movement vs "shadow-and-character-locked-together" floating feel.
+  const shadowR = Math.max(10, drawW * 0.42);
+  drawGroundShadow(ctx, e.x, e.y - 1, shadowR, 0.28);
 
   // Warm proximity glow when the hero is close — signals interactivity
   // and makes the scene feel responsive to your presence.
