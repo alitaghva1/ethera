@@ -324,11 +324,12 @@ const HAMLET_FX = [
     // — no more visual stacking. v3 layout has the hearth SOUTH of the
     // plaza (at y=554), separate from the portal (y=381).
     id: 'firepit', asset: 'fx_firepit',
-    // SE circular stone pad — pad's bbox center is world (963, 665).
-    // First detection used pixel-weighted centroid which got pulled
-    // upward by brighter pixels in the upper pad region; bbox-geometric
-    // center is the right anchor for visual centering.
-    x: 963, y: 665,
+    // SE circular stone pad. Pad's bbox-geom center is world (963, 665)
+    // but the firepit sprite has its visible mass slightly biased
+    // (obsidian ring sits below the flame), so anchoring at
+    // pad-center pulls the silhouette down-left. Manual offset:
+    // x +7, y -7 to nudge the sprite up-right into visual balance.
+    x: 970, y: 658,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.4, yOffset: 0,
