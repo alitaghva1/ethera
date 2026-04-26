@@ -26,20 +26,18 @@ export const HAMLET_ZOOM = 1.75;
 export const HAMLET_WALK_Y_MIN = 60;
 export const HAMLET_WALK_Y_MAX = 720;
 
-// Hero spawn — south entry path, ~80px inside the compound from the south
-// wall gap. Bitmap-validated to land on cobble. See scripts/hamlet_audit.py
-// (analysis script) and scripts/hamlet_audit.json (validated coords).
-export const HAMLET_HERO_SPAWN = { x: 688, y: 687 };
+// Hero spawn — south entry path on the long cobble corridor leading from
+// the gate to the central plaza. Pixel-detected for v3 layout.
+export const HAMLET_HERO_SPAWN = { x: 700, y: 660 };
 
-// Zone anchors — pixel-detected positions on the 1376×768 Scene v2 backdrop.
-// Located by scanning the visual for fire-orange + portal-blue color signatures
-// (see __dbg + the fire/portal cluster detection in the hamletFloor module).
-// Earlier values were guessed at y=580; the actual painted features are at
-// y=361 (firepit) and y=367 (portal) — they're in the upper plaza zone, not
-// the lower zone I'd assumed.
-const PORTAL_POS   = { x: 685, y: 367 };   // glowing rune circle
-const SHRINE_POS   = { x: 702, y: 207 };   // top altar candles
-const FIREPIT_POS  = { x: 778, y: 356 };   // stone firepit + flame
+// Zone anchors — pixel-detected positions on the 2752×1536 v3 backdrop
+// (rendered at 1376×768 world). Detected via color-signature scan (see
+// scripts/hamlet_audit.py for the technique). v3 has no actual props
+// painted in — these positions point at the GROUND PLACEMENT MARKERS
+// where each feature will be rendered as a sprite overlay.
+const PORTAL_POS   = { x: 687, y: 381 };   // dark circular pad in central plaza
+const SHRINE_POS   = { x: 680, y: 215 };   // top-center altar slab
+const FIREPIT_POS  = { x: 736, y: 554 };   // hearth scorch mark south of plaza
 
 // NPC world positions — one per district, every position verified to
 // land in a walkable, terrain-correct tile. spriteIdx maps to the
@@ -82,12 +80,19 @@ export const HAMLET_ENTITIES = [
   //   wanderer     0.89        0.90 (largest source, smallest scale)
   // Result: all NPCs at ~44-46px visible, within ±1px of hero. Re-measure
   // and recompute if the NPC sheet is ever swapped.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 778, y: 412, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 992, y: 308, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 464, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 519, y: 288, interactR: 50, drawScale: 0.90 },
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 702, y: 276, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 809, y: 484, interactR: 50, drawScale: 0.90 },
+  // Positions match the v3 backdrop's pixel-detected feature anchors:
+  //   keeper      — central plaza near portal (hub merchant)
+  //   smith       — south of smithy foundation pad NE
+  //   archivist   — south of archive ruined-wall nook W
+  //   gravekeeper — south of graveyard plot cluster NW
+  //   oracle      — south of altar slab N (NPC sprite is hidden behind future altar prop)
+  //   wanderer    — south of wanderer dirt patch on right side
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 460, interactR: 50, drawScale: 1.10 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 995, y: 320, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 470, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 293, y: 290, interactR: 50, drawScale: 0.90 },
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 680, y: 260, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 907, y: 480, interactR: 50, drawScale: 0.90 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
@@ -313,17 +318,16 @@ export function drawHamletOverlay(_ctx) {
 //                   painted feature underneath
 const HAMLET_FX = [
   {
+    // Firepit overlay sits ON the painted hearth scorch marker on the
+    // south path. Now properly positioned over a "placement marker"
+    // (charred circle on cobble) instead of an existing painted firepit
+    // — no more visual stacking. v3 layout has the hearth SOUTH of the
+    // plaza (at y=554), separate from the portal (y=381).
     id: 'firepit', asset: 'fx_firepit',
-    // The PixelLab firepit sprite is a COMPLETE unit (obsidian base ring +
-    // red flame). It's drawn directly over the painted firepit at the same
-    // center coords (782, 361 — pixel-detected). Scale 1.6 makes the new
-    // sprite ~77×77, fully eclipsing the painted ~45×40 firepit underneath
-    // so we don't see two stacked stone rings. Effectively "replaces" the
-    // painted firepit with the animated PixelLab version.
-    x: 782, y: 361,
+    x: 736, y: 554,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
-    scale: 1.6, yOffset: 0,
+    scale: 1.4, yOffset: 0,
   },
 ];
 

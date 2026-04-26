@@ -43,8 +43,8 @@ let walkBitsRows = 0;
 const TREE_DARK_THRESHOLD = 45;
 
 function buildWalkabilityBitmap() {
-  const maskImg = images.hamlet_scene_v2_mask;
-  const visualImg = images.hamlet_scene_v2;
+  const maskImg = images.hamlet_scene_v3_mask;
+  const visualImg = images.hamlet_scene_v3;
   if (!maskImg || !maskImg.complete || !maskImg.naturalWidth) return false;
   if (!visualImg || !visualImg.complete || !visualImg.naturalWidth) return false;
   // Render both images to canvases to read pixel data.
@@ -183,7 +183,7 @@ setHamletWalkableFn(isHamletWalkable);
 // trees, props, and zone features baked in. Mask is invisible — only used
 // for collision.
 export function drawHamletFloor(ctx) {
-  const img = images.hamlet_scene_v2;
+  const img = images.hamlet_scene_v3;
   if (!img) return;
   const prevSmoothing = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;

@@ -424,11 +424,15 @@ export async function loadAll(progressCb) {
     loadImage('cainos_plant_shadow',    'assets/hamlet/cainos/TX Plant with Shadow.png'),
 
     // ── HAMLET BACKDROP — AI-generated paired scene + walkability mask ────
-    // 1376×768 dark-fantasy hub painted to match the mage hero's aesthetic
-    // (graveyard / smithy / archive / shrine / portal+firepit / wanderer).
-    // The mask is a B&W collision layer at the same dimensions: black =
-    // walkable, white = blocked. Read pixel-wise in hamletFloor.js for
-    // pixel-perfect collision with zero hand-tuned exclusion rectangles.
+    // v3 (current): 2752×1536 native, world-rendered at 1376×768. Pivoted
+    //               to layered architecture — backdrop has zone PLACEMENT
+    //               MARKERS (charred circles, foundation pads, grave plot
+    //               indents) but NO actual props. Props are sprite-based
+    //               overlays (HAMLET_FX, future HAMLET_OBJECTS).
+    // v2 (legacy): 1376×768 with all props baked into the painting.
+    //              Kept loaded as a fallback; switch in hamletFloor.js.
+    loadImage('hamlet_scene_v3',        'assets/hamlet/scene_v3.jpg'),
+    loadImage('hamlet_scene_v3_mask',   'assets/hamlet/scene_v3_mask.jpg'),
     loadImage('hamlet_scene_v2',        'assets/hamlet/scene_v2.jpg'),
     loadImage('hamlet_scene_v2_mask',   'assets/hamlet/scene_v2_mask.jpg'),
 
