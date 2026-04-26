@@ -63,10 +63,16 @@ for (const n of NPCS) {
     continue;
   }
   const srcBuf = await readFile(srcPath);
-  const meta = await sharp(srcBuf).metadata();
-  const outBuf = await sharp(srcBuf).png().toBuffer();
-  await writeFile(dstPath, outBuf);
-  console.log(`✓ npc_v2_${n.id.padEnd(14)} ${meta.width}×${meta.height} — ${n.role}`);
+  const srcMeta = await sharp(srcBuf).metadata();
+  // TRIM transparent borders — PixelLab includes ~50% headroom padding
+  // for animation. We only need idle, so the padding makes characters
+  // appear half-size and float above their grounded position. Trimming
+  // gives a tight bounding box: 100% fill, feet at bottom of sprite,
+  // bottom-anchored draw lands the character at the right Y.
+  const trimmed = await sharp(srcBuf).trim().png().toBuffer();
+  const outMeta = await sharp(trimmed).metadata();
+  await writeFile(dstPath, trimmed);
+  console.log(`✓ npc_v2_${n.id.padEnd(14)} ${srcMeta.width}×${srcMeta.height} → trimmed ${outMeta.width}×${outMeta.height} — ${n.role}`);
   imported++;
 }
 

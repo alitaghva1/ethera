@@ -401,13 +401,15 @@ function drawNpc(ctx, e, now) {
   // Gentle breathing bob so the NPC doesn't feel frozen. Phase offset by x
   // so multiple NPCs don't breathe in sync.
   const bob = Math.sin(now * 1.5 + e.x * 0.01) * 1.2;
-  // NPC draw height — v2 sprites have uniform proportions (matched to
-  // mage style), so they draw at a consistent 64px (slightly taller than
-  // hero's 48px because hub NPCs benefit from being a touch more imposing).
-  // Old grid sprites fall back to the previous 56px × per-NPC drawScale
-  // compensation (kept for backwards compat if v2 ever fails to load).
-  const baseH = isV2 ? 64 : 56;
-  const drawH = baseH * (isV2 ? 1 : (e.drawScale || 1));
+  // NPC draw height:
+  //   v2 sprites — trimmed at import (no transparent padding), so they
+  //   are 100% content. Drawn at 52px visible height — slightly taller
+  //   than hero's ~45px visible at HERO_DRAW_HAMLET=48 × ~93% fill, which
+  //   gives hub NPCs a touch more imposing presence than the hero passing
+  //   through. Bottom-anchored draw lands feet correctly at e.y.
+  //   Old grid sprites — fall back to 56px × per-NPC drawScale to
+  //   compensate for source-artwork variance (kept for backwards compat).
+  const drawH = isV2 ? 52 : 56 * (e.drawScale || 1);
   const drawW = spr.width * (drawH / spr.height);
   // Ground shadow — kept SUBTLE (smaller + low alpha) so NPCs don't look
   // like they're floating on a black disc. Previous radius 22 / alpha 0.55
