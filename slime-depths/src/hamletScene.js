@@ -330,7 +330,7 @@ const HAMLET_FX = [
     // visible mass biased toward the bottom-left. Final offset is
     // +15 x, -13 y from the detected center to land the firepit's
     // visible silhouette in the pad's true visual middle.
-    x: 965, y: 652,
+    x: 970, y: 652,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.4, yOffset: 0,
