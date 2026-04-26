@@ -389,18 +389,25 @@ function drawShrine(ctx, e) {
 }
 
 function drawNpc(ctx, e, now) {
-  // Prefer the new pixel-art NPC sprite (hamlet_npcp_*) — it matches the
-  // knight's pixel density. Fall back to the old chibi stand-in sheet
-  // (hamlet_npc_*) only if the pixel sheet didn't load.
-  const spr = images[`hamlet_npcp_${e.spriteIdx}`] || images[`hamlet_npc_${e.spriteIdx}`];
+  // Prefer the v2 PixelLab-generated sprite (npc_v2_<id>) — these match
+  // the mage's style (hooded silhouettes, dark fantasy palette, sharp
+  // pixel edges). Fall back to the older grid sprites if v2 didn't load.
+  const spr = images[`npc_v2_${e.id}`]
+    || images[`hamlet_npcp_${e.spriteIdx}`]
+    || images[`hamlet_npc_${e.spriteIdx}`];
   if (!spr) return;
+  // Whether we're drawing the v2 sprite (changes default size + scale).
+  const isV2 = !!images[`npc_v2_${e.id}`];
   // Gentle breathing bob so the NPC doesn't feel frozen. Phase offset by x
   // so multiple NPCs don't breathe in sync.
   const bob = Math.sin(now * 1.5 + e.x * 0.01) * 1.2;
-  // NPC draw height — base 56px, scaled by per-NPC drawScale to compensate
-  // for source-artwork variance (some NPC sprites fill less of their cell
-  // than others, so they look smaller without scaling).
-  const drawH = 56 * (e.drawScale || 1);
+  // NPC draw height — v2 sprites have uniform proportions (matched to
+  // mage style), so they draw at a consistent 64px (slightly taller than
+  // hero's 48px because hub NPCs benefit from being a touch more imposing).
+  // Old grid sprites fall back to the previous 56px × per-NPC drawScale
+  // compensation (kept for backwards compat if v2 ever fails to load).
+  const baseH = isV2 ? 64 : 56;
+  const drawH = baseH * (isV2 ? 1 : (e.drawScale || 1));
   const drawW = spr.width * (drawH / spr.height);
   // Ground shadow — kept SUBTLE (smaller + low alpha) so NPCs don't look
   // like they're floating on a black disc. Previous radius 22 / alpha 0.55

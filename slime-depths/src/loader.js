@@ -432,6 +432,17 @@ export async function loadAll(progressCb) {
     loadImage('hamlet_scene_v2',        'assets/hamlet/scene_v2.jpg'),
     loadImage('hamlet_scene_v2_mask',   'assets/hamlet/scene_v2_mask.jpg'),
 
+    // ── HAMLET NPCs v2 — PixelLab-generated to match the mage's style ─────
+    // Each is a single south-facing idle PNG at ~224-244px, generated via
+    // PixelLab Character Creator using mage_style_ref.png as style anchor.
+    // hamletScene.drawNpc prefers these over the older hamlet_npcp_* grid.
+    loadImage('npc_v2_keeper',          'assets/hamlet/npc_v2_keeper.png'),
+    loadImage('npc_v2_smith',           'assets/hamlet/npc_v2_smith.png'),
+    loadImage('npc_v2_archivist',       'assets/hamlet/npc_v2_archivist.png'),
+    loadImage('npc_v2_gravekeeper',     'assets/hamlet/npc_v2_gravekeeper.png'),
+    loadImage('npc_v2_oracle',          'assets/hamlet/npc_v2_oracle.png'),
+    loadImage('npc_v2_wanderer',        'assets/hamlet/npc_v2_wanderer.png'),
+
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
     loadAudio('slime_death',  'assets/sfx/slime_death.ogg'),
