@@ -314,10 +314,16 @@ export function drawHamletOverlay(_ctx) {
 const HAMLET_FX = [
   {
     id: 'firepit', asset: 'fx_firepit',
-    x: 782, y: 356,                    // matches the detected painted-firepit center
+    // The PixelLab firepit sprite is a COMPLETE unit (obsidian base ring +
+    // red flame). It's drawn directly over the painted firepit at the same
+    // center coords (782, 361 — pixel-detected). Scale 1.6 makes the new
+    // sprite ~77×77, fully eclipsing the painted ~45×40 firepit underneath
+    // so we don't see two stacked stone rings. Effectively "replaces" the
+    // painted firepit with the animated PixelLab version.
+    x: 782, y: 361,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
-    scale: 1.4, yOffset: -4,
+    scale: 1.6, yOffset: 0,
   },
 ];
 
