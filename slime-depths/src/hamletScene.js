@@ -68,11 +68,14 @@ export const HAMLET_ENTITIES = [
   //   gravekeeper — south of the graveyard headstones
   //   oracle      — south of the altar shrine candles
   //   wanderer    — south of the canvas tent + bedroll camp
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 778, y: 412, interactR: 50 },
+  // drawScale lets us compensate for source-artwork variance — some NPC
+  // sprites fill less of their cell than others, so we scale them up
+  // visually without re-authoring the art. 1.0 = default 56px tall.
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 778, y: 412, interactR: 50, drawScale: 1.4 },
   { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 992, y: 308, interactR: 50 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 464, interactR: 50 },
   { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 519, y: 288, interactR: 50 },
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 702, y: 276, interactR: 50 },
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 702, y: 276, interactR: 50, drawScale: 1.4 },
   { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 809, y: 484, interactR: 50 },
 ];
 
@@ -383,10 +386,10 @@ function drawNpc(ctx, e, now) {
   // Gentle breathing bob so the NPC doesn't feel frozen. Phase offset by x
   // so multiple NPCs don't breathe in sync.
   const bob = Math.sin(now * 1.5 + e.x * 0.01) * 1.2;
-  // NPC draw height 56 — distinctly SMALLER than the 96px hero sprite so
-  // the knight reads as the protagonist of the scene, not a dwarf among
-  // giants. Prior 80px made NPCs taller than the hero's visible silhouette.
-  const drawH = 56;
+  // NPC draw height — base 56px, scaled by per-NPC drawScale to compensate
+  // for source-artwork variance (some NPC sprites fill less of their cell
+  // than others, so they look smaller without scaling).
+  const drawH = 56 * (e.drawScale || 1);
   const drawW = spr.width * (drawH / spr.height);
   // Ground shadow — kept SUBTLE (smaller + low alpha) so NPCs don't look
   // like they're floating on a black disc. Previous radius 22 / alpha 0.55

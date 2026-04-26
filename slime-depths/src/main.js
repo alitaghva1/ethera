@@ -525,15 +525,27 @@ menuEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:cente
 menuEl.innerHTML = MENU_SCREEN_HTML;
 document.getElementById('hud').appendChild(menuEl);
 
+// Canvas hamlet ember overlay — separate top-level canvas drawn over the
+// game canvas with mix-blend-mode:screen so it adds warm gold specks
+// without clearing game content. The startMenuEmbers callback below
+// returns this canvas when the canvas hamlet is active.
+const canvasHamletEmbersEl = document.createElement('canvas');
+canvasHamletEmbersEl.id = 'canvasHamletEmbers';
+canvasHamletEmbersEl.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;mix-blend-mode:screen;opacity:0.55;z-index:5;';
+document.body.appendChild(canvasHamletEmbersEl);
+
 // Menu ember particle system — see src/menuEmbers.js. The callback tells
-// the ember loop which canvas to draw to each frame (menu / hamlet / none).
-// `hamletEl` is declared later in this file; the `typeof` guard avoids a
-// temporal-dead-zone error on the first tick if rAF beats module-body
-// completion (unlikely but cheap to protect against).
+// the ember loop which canvas to draw to each frame (menu / DOM hamlet /
+// canvas hamlet / none). `hamletEl` is declared later in this file; the
+// `typeof` guard avoids a temporal-dead-zone error on the first tick.
 startMenuEmbers(() => {
   if (menuEl.style.display !== 'none') return document.getElementById('menuEmbers');
   if (typeof hamletEl !== 'undefined' && hamletEl.style.display !== 'none') {
     return document.getElementById('hamletEmbers');
+  }
+  // Canvas hamlet — embers drawn on the dedicated top-level overlay canvas.
+  if (typeof room !== 'undefined' && room?.kind === 'hamlet' && running) {
+    return canvasHamletEmbersEl;
   }
   return null;
 });
