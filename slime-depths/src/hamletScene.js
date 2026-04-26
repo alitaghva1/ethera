@@ -68,14 +68,22 @@ export const HAMLET_ENTITIES = [
   //   gravekeeper — south of the graveyard headstones
   //   oracle      — south of the altar shrine candles
   //   wanderer    — south of the canvas tent + bedroll camp
-  // drawScale lets us compensate for source-artwork variance — some NPC
-  // sprites fill less of their cell than others, so we scale them up
-  // visually without re-authoring the art. 1.0 = default 56px tall.
+  // drawScale per-NPC normalizes source-artwork variance — some painted
+  // sprites fill 95% of their cell (oracle), others fill 50% (smith,
+  // archivist). Goal: all NPCs render at roughly the hero's visible
+  // height (~48-50px) so the scene reads as one consistent character
+  // scale. 1.0 = default 56px tall. Values tuned visually:
+  //   keeper:      chibi source, 1.4× to reach hero scale
+  //   smith:       small chibi, 1.2× to reach hero scale
+  //   archivist:   smallest source, 1.4× to reach hero scale
+  //   gravekeeper: medium source, 1.0× looks right
+  //   oracle:      tallest source, 0.85× to NOT dwarf the hero
+  //   wanderer:    medium source, 1.0× looks right
   { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 778, y: 412, interactR: 50, drawScale: 1.4 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 992, y: 308, interactR: 50 },
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 464, interactR: 50 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 992, y: 308, interactR: 50, drawScale: 1.2 },
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 464, interactR: 50, drawScale: 1.4 },
   { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 519, y: 288, interactR: 50 },
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 702, y: 276, interactR: 50, drawScale: 1.4 },
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 702, y: 276, interactR: 50, drawScale: 0.85 },
   { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 809, y: 484, interactR: 50 },
 ];
 
