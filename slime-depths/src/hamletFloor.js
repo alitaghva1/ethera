@@ -150,12 +150,12 @@ function buildWalkabilityBitmap() {
 // bbox — so the hero bumps off the visible mass, not the empty air
 // above it.
 const EXCLUSIONS = [
-  // Firepit — base ring at (435, 450) in the W reading-nook zone,
+  // Firepit — base ring at (425, 450) in the W reading-nook zone,
   // beside the archivist on his dirt patch. Sprite 48×48 scaled 1.12×
   // → ~54px rendered, ~40×36 around base.
-  { x1: 415, y1: 432, x2: 455, y2: 468 },
-  // Anvil — full anvil mass at (926, 256) on the NE smithy stone pad.
-  { x1: 900, y1: 237, x2: 952, y2: 287 },
+  { x1: 405, y1: 432, x2: 445, y2: 468 },
+  // Anvil — full anvil mass at (906, 246) on the NE smithy stone pad.
+  { x1: 880, y1: 227, x2: 932, y2: 277 },
   // Cooking pot — full pot body + tripod at (930, 430) on the camp
   // dirt patch. Covers the visible kettle from rim to tripod feet.
   { x1: 903, y1: 408, x2: 958, y2: 463 },
@@ -164,9 +164,9 @@ const EXCLUSIONS = [
   { x1: 635, y1: 230, x2: 665, y2: 260 },
   // Scrying basin RIGHT (twin) at (725, 220).
   { x1: 710, y1: 230, x2: 740, y2: 260 },
-  // Notice board at (688, 320) — north of plaza center on the path
+  // Notice board at (688, 340) — north of plaza center on the path
   // to the shrine. ~50×30 footprint covers the post + sign body.
-  { x1: 663, y1: 305, x2: 713, y2: 335 },
+  { x1: 663, y1: 325, x2: 713, y2: 355 },
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the chromatic

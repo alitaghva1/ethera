@@ -46,7 +46,7 @@ export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 //   graveyard       (569, 211)   NW grass+markers cluster
 const PORTAL_POS   = { x: 964, y: 654 };   // SE portal pad (v4)
 const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
-const FIREPIT_POS  = { x: 435, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
+const FIREPIT_POS  = { x: 425, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
 
 // NPC world positions — one per district, every position verified to
 // land in a walkable, terrain-correct tile. spriteIdx maps to the
@@ -61,7 +61,7 @@ export const HAMLET_ENTITIES = [
   // entry below. Reads a single flavor line via the existing roomLabel
   // text overlay — no full dialogue needed (notice boards in dark-
   // fantasy hamlets are short reads, not chats).
-  { kind: 'noticeboard',                            x: 688, y: 320,  interactR: 60 },
+  { kind: 'noticeboard',                            x: 688, y: 340,  interactR: 60 },
   // Positions on Scene v2 backdrop (1376×768) — each NPC stationed at
   // the obvious thematic anchor in the painted scene.
   //   keeper      — central plaza, west of portal/firepit (hub merchant)
@@ -104,14 +104,14 @@ export const HAMLET_ENTITIES = [
   // v4 NPC positions — each NPC stations at their thematic ground
   // texture zone, slightly offset south so the sprite (bottom-aligned)
   // visually 'stands on' the pad/dirt rather than floating above it.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 320, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 960, y: 300, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 750, y: 340, interactR: 50, drawScale: 1.10 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 940, y: 290, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 470, y: 470, interactR: 50, drawScale: 0.95 },
   // v4 NPC positions continued — gravekeeper at NW grave cluster (569,211),
   // oracle south of N shrine slab (687,201), wanderer at E camp dirt (944,452).
   { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 580, y: 240, interactR: 50, drawScale: 0.90 },
   { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 690, y: 250, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 945, y: 480, interactR: 50, drawScale: 0.90 },
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 965, y: 480, interactR: 50, drawScale: 0.90 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
@@ -346,7 +346,7 @@ const HAMLET_FX = [
     // bleeds onto the archivist for the lit-from-the-side reading look.
     // 48×48 sprite at 1.12× scale.
     id: 'firepit', asset: 'fx_firepit',
-    x: 435, y: 450,
+    x: 425, y: 450,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.12, yOffset: 0,
@@ -418,7 +418,7 @@ const HAMLET_FX = [
     //
     // 9 frames at 6fps continuous loop. Scale 0.6× → ~67px rendered.
     id: 'anvil', asset: 'fx_anvil',
-    x: 926, y: 256,
+    x: 906, y: 246,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
@@ -452,7 +452,7 @@ const HAMLET_FX = [
     // a 'town center bulletin' tucked between the plaza and the shrine
     // approach without overlapping the central cobble star.
     id: 'noticeboard', asset: 'fx_noticeboard',
-    x: 688, y: 320,
+    x: 688, y: 340,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
