@@ -1210,6 +1210,29 @@ const _fx = document.createElement('canvas');
 _fx.width = 200; _fx.height = 200;
 const _fxCtx = _fx.getContext('2d');
 
+// ── RANGED-COUNTER: kite penalty ──────────────────────────────────────
+// When the hero stands still at long range (e.g. wand player camping
+// outside enemy reach), enemies that NEED to close — melee, bombers,
+// lancers in chase phase — get a speed bonus toward the hero. Caps at
+// +35% bonus after 2.5s of stationary kiting at >250px. Ramp-up over
+// the first 1.9s of stillness so a player who pauses briefly to read
+// a relic doesn't get instantly punished.
+//
+// Ranged enemies (wizard, dreadmage, priest, archer, haunt) DON'T get
+// the bonus — they have their own preferDist/minDist and aren't
+// trying to close. Their threat is already projectile-based.
+//
+// Hero stationary tracker is hero._stillT — already maintained by
+// hero.js for iron_resolve parry. Reused here so we don't duplicate
+// state. Reset on movement / dodge / dash by hero.js.
+function kiteCloseSpeedMul(dist) {
+  const stillT = hero._stillT || 0;
+  if (stillT < 0.6 || dist < 250) return 1;
+  // 0% at stillT=0.6, ramps to 35% at stillT=2.5
+  const ramp = Math.min(1, (stillT - 0.6) / 1.9);
+  return 1 + 0.35 * ramp;
+}
+
 function tryMove(e, dx, dy) {
   const nx = e.x + dx, ny = e.y + dy;
   let movedX = false, movedY = false;
@@ -1380,9 +1403,12 @@ function updateMelee(e, dt) {
       sepY += (ody / od) * push;
     }
   }
-  // Primary move attempt toward hero
-  const primaryDx = nx * e.speed * dt + sepX * 40 * dt;
-  const primaryDy = ny * e.speed * dt + sepY * 40 * dt;
+  // Primary move attempt toward hero. Kite-close speed bonus applies
+  // when the hero is stationary at long range — so a wand player can't
+  // just stand still and outrange melee threats indefinitely.
+  const kiteMul = kiteCloseSpeedMul(dist);
+  const primaryDx = nx * e.speed * kiteMul * dt + sepX * 40 * dt;
+  const primaryDy = ny * e.speed * kiteMul * dt + sepY * 40 * dt;
   const prevX = e.x, prevY = e.y;
   tryMove(e, primaryDx, primaryDy);
   // Obstacle-detour: if primary move was blocked (didn't make meaningful progress),
@@ -1392,13 +1418,15 @@ function updateMelee(e, dt) {
     // Perpendicular vectors
     const pxL = -ny, pyL = nx;         // left-perp
     const pxR = ny, pyR = -nx;         // right-perp
-    // Try the side that brings us closer to hero
-    const tryLeft = { x: e.x + pxL * e.speed * dt * 0.85, y: e.y + pyL * e.speed * dt * 0.85 };
-    const tryRight = { x: e.x + pxR * e.speed * dt * 0.85, y: e.y + pyR * e.speed * dt * 0.85 };
+    // Try the side that brings us closer to hero. Same kiteMul so
+    // the perpendicular-slide path also accelerates when needed.
+    const sideStep = e.speed * kiteMul * dt * 0.85;
+    const tryLeft = { x: e.x + pxL * sideStep, y: e.y + pyL * sideStep };
+    const tryRight = { x: e.x + pxR * sideStep, y: e.y + pyR * sideStep };
     const dLeft = Math.hypot(hero.x - tryLeft.x, hero.y - tryLeft.y);
     const dRight = Math.hypot(hero.x - tryRight.x, hero.y - tryRight.y);
-    if (dLeft < dRight) tryMove(e, pxL * e.speed * dt * 0.85, pyL * e.speed * dt * 0.85);
-    else tryMove(e, pxR * e.speed * dt * 0.85, pyR * e.speed * dt * 0.85);
+    if (dLeft < dRight) tryMove(e, pxL * sideStep, pyL * sideStep);
+    else tryMove(e, pxR * sideStep, pyR * sideStep);
   }
   // Stuck detection — if enemy hasn't moved meaningfully for 2.5s, unstick.
   if (e._lastPos === undefined) { e._lastPos = e.x + e.y * 0.01; e._stuckT = 0; }
@@ -1501,7 +1529,11 @@ function updateBomber(e, dt) {
     playWindupSfx(e);
     return;
   }
-  tryMove(e, nx * e.speed * dt, ny * e.speed * dt);
+  // Bombers are pure closers — kite penalty applies to make a
+  // stationary wand player a high-priority target. They explode on
+  // contact so the threat scales with how fast they reach you.
+  const kiteMul = kiteCloseSpeedMul(dist);
+  tryMove(e, nx * e.speed * kiteMul * dt, ny * e.speed * kiteMul * dt);
   setState(e, 'walk');
 }
 
@@ -1544,10 +1576,19 @@ function updateLancer(e, dt) {
   if (dist > pref) { moveX = nx; moveY = ny; }
   else if (dist < mn) { moveX = -nx; moveY = -ny; }
   else { moveX = -ny; moveY = nx; }
-  tryMove(e, moveX * e.speed * dt, moveY * e.speed * dt);
+  // Kite penalty applies during chase movement (pref-distance close).
+  const kiteMul = kiteCloseSpeedMul(dist);
+  tryMove(e, moveX * e.speed * kiteMul * dt, moveY * e.speed * kiteMul * dt);
 
-  // Commit to a charge when aligned + cooldown ready
-  if (dist < e.def.chargeRange && dist > mn && e.attackCD <= 0) {
+  // Commit to a charge when aligned + cooldown ready. Effective charge
+  // range extends by up to +160px when the hero has been stationary
+  // at long range — punishes wand camping. Without this extension a
+  // ranged player can sit at 500px (just past lancer's 380 chargeRange)
+  // and the lancer never commits.
+  const stillT = hero._stillT || 0;
+  const chargeReachBonus = stillT > 0.6 ? Math.min(160, (stillT - 0.6) * 100) : 0;
+  const effectiveChargeRange = e.def.chargeRange + chargeReachBonus;
+  if (dist < effectiveChargeRange && dist > mn && e.attackCD <= 0) {
     e.attackCD = e.def.hitCD + e.def.chargeWindup + e.def.chargeTravel;
     e.aimX = nx; e.aimY = ny;
     e._swingHit = false;
