@@ -446,7 +446,7 @@ const HAMLET_FX = [
     // public/assets/hamlet/fx_lectern.png since the importer expects
     // an animations folder.
     id: 'lectern', asset: 'fx_lectern',
-    x: 440, y: 420,
+    x: 436, y: 412,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
