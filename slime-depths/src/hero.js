@@ -19,6 +19,32 @@ import { dropGold } from './gold.js';
 import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
 import { markChainFired, markPyroFired } from './counterPips.js';
+import { synthSwoosh, synthClick } from './synth.js';
+
+// ── DASH STRIKE → TELEPORT FEEL ─────────────────────────────────────────
+// The dash used to be a 0.22s slide at 900→360 px/s linear-decel — long
+// enough that the player saw the hero interpolate across, short enough
+// that it felt jerky. We rebuilt it as a teleport read:
+//
+//   - 0.10s duration (twice as fast)
+//   - constant 1700 px/s (no decel — teleports don't ease)
+//   - hero sprite SKIPPED during travel (no visible interpolated body)
+//   - afterimage ghost trail captures hero pose at intervals during the
+//     dash; copies render fading 0.5 → 0 over their AFTERIMAGE_LIFE
+//   - magical pop bursts at origin + arrival
+//   - synthSwoosh on cast / synthClick on arrive (replaces sword-swing
+//     audio that read as a melee attack)
+//
+// Total dash distance is ~170px — close to the original ~185px, so the
+// gameplay reach is preserved; only the visual interpretation changes.
+const DASH_DUR = 0.10;
+const DASH_SPEED = 1700;
+const AFTERIMAGE_LIFE = 0.20;
+const AFTERIMAGE_INTERVAL = 0.018;     // capture roughly every other frame
+// Captured during dash advance, drained by drawHero. Each entry:
+// { x, y, dir, frame, age, drawSize }
+const _dashAfterimages = [];
+let _dashAfterimageNextT = 0;          // accumulator vs. AFTERIMAGE_INTERVAL
 
 const SPR = 128;                  // 8-directional sprite sheet cell size (was 100 for horizontal-strip sheets)
 const HERO_DRAW = 60;              // on-screen hero size for combat rooms
@@ -304,6 +330,16 @@ export function updateHero(dt, enemies, mouseWorld) {
   if (hero.dodgeCooldown > 0) hero.dodgeCooldown -= dt;
   if (hero.dashStrikeCD > 0) hero.dashStrikeCD -= dt;
   if (hero.iframes > 0) hero.iframes -= dt;
+  // Age afterimages (teleport ghost trail) — fade out over AFTERIMAGE_LIFE.
+  // Runs every frame so post-dash images keep fading even after
+  // dashStrikeTime hits 0 (otherwise the trail would freeze on screen
+  // for 0.2s as a static row of ghosts at the end of the dash).
+  if (_dashAfterimages.length > 0) {
+    for (let i = _dashAfterimages.length - 1; i >= 0; i--) {
+      _dashAfterimages[i].age += dt;
+      if (_dashAfterimages[i].age >= AFTERIMAGE_LIFE) _dashAfterimages.splice(i, 1);
+    }
+  }
   // INPUT BUFFERING — remember attack presses for 0.15s so snappy combo feel
   // doesn't require pixel-perfect cooldown timing.
   if (mouse.pressed) hero._attackBuffer = 0.15;
@@ -463,19 +499,34 @@ export function updateHero(dt, enemies, mouseWorld) {
     if (room.kind !== 'hamlet' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
       showTip('first_dash');
       hero.dashStrikeCD = 5.0;
-      hero.dashStrikeTime = 0.22;
+      hero.dashStrikeTime = DASH_DUR;
       // Lock direction at aim vector (normalized)
       const m = Math.hypot(hero.aimX, hero.aimY) || 1;
       hero.dashStrikeDirX = hero.aimX / m;
       hero.dashStrikeDirY = hero.aimY / m;
       hero.dashStrikeHit.clear();
+      // Reset afterimage capture cadence + clear stale trail from prior dash
+      _dashAfterimages.length = 0;
+      _dashAfterimageNextT = 0;
       hero.iframes = 0.35;
       setState('dodge');                          // reuse dodge state for anim + invuln
-      playSfx('sword_swing', { rate: 0.6, volume: 1.0 });
-      playSfx('slime_hit', { rate: 0.7, volume: 0.75 });
+      // TELEPORT AUDIO — magical zip + flash thud, replacing the old
+      // sword-swing + slime-hit pair that read as a melee attack.
+      try { synthSwoosh(1.4, 0.85, 0.08); } catch (_e) {}
+      try { synthClick(1.6, 0.7); } catch (_e) {}
       shakeCamera(6, 0.15);
       pulseZoom(0.05, 0.28);
-      // Big slash arc at dash start for visual flair
+      // ORIGIN POP — golden sparkle ring + a few rays where the mage
+      // was standing. Reads as "the cast point" — a place the player
+      // came FROM, not a swing they made. 14 sparkles around an arc
+      // pointing in the dash direction.
+      const ox = hero.x, oy = hero.y - 8;
+      for (let i = 0; i < 14; i++) {
+        const ang = (i / 14) * Math.PI * 2;
+        const r = 16 + Math.random() * 8;
+        sparkle(ox + Math.cos(ang) * r, oy + Math.sin(ang) * r * 0.7, '#ffe5a0');
+      }
+      // Slash arc — kept (still reads as "magical strike in transit")
       spawnSlash(hero.x, hero.y - 8, hero.dashStrikeDirX, hero.dashStrikeDirY, 110, {
         color: 'rgba(255, 200, 120, ',
         width: 14,
@@ -483,8 +534,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         arc: Math.PI * 1.3,
         dur: 0.3,
       });
-      // VFX SUBTRACTION PASS: dash strike flash halved 0.16 → 0.08.
-      // Player action on a 5s cooldown — subtle is enough.
+      // Subtle screen flash (kept from prior pass — 0.08 alpha is fine)
       triggerScreenFlash('rgba(255, 220, 140, 0.08)', 0.18);
     }
     // Dodge — blocked entirely by Memory of Stillness (the pact: you traded
@@ -723,12 +773,27 @@ export function updateHero(dt, enemies, mouseWorld) {
   if (hero.state === 'dodge') {
     const isDashStrike = hero.dashStrikeTime > 0;
     if (isDashStrike) {
-      const dur = 0.22;
-      const t = 1 - (hero.dashStrikeTime / dur);
-      const speed = 900 * (1 - t * 0.6);    // faster than dodge, linear decel
-      moveAxis('x', hero.dashStrikeDirX * speed * dt);
-      moveAxis('y', hero.dashStrikeDirY * speed * dt);
-      // Golden trail
+      // Constant-speed teleport (no decel). The hero sprite is hidden
+      // by drawHero while dashStrikeTime > 0; afterimages do the visual
+      // work and the bursts at start/end frame the moment.
+      moveAxis('x', hero.dashStrikeDirX * DASH_SPEED * dt);
+      moveAxis('y', hero.dashStrikeDirY * DASH_SPEED * dt);
+      // Capture afterimage at intervals — drawHero renders these as
+      // fading copies of the hero's pose so the player reads "where I
+      // just was" instead of an interpolated body sliding through.
+      _dashAfterimageNextT -= dt;
+      if (_dashAfterimageNextT <= 0) {
+        _dashAfterimageNextT = AFTERIMAGE_INTERVAL;
+        _dashAfterimages.push({
+          x: hero.x,
+          y: hero.y,
+          dir: heroDirection(hero),
+          age: 0,
+        });
+      }
+      // Golden trail still runs for extra streak feel (the dashTrail
+      // particles render under the afterimages so they read as motion
+      // exhaust, not the body).
       dashTrail(hero.x, hero.y, '#ffd27a');
       // Hit all enemies along the dash path
       const w = weaponDef();
@@ -750,6 +815,16 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (hero.dashStrikeTime <= 0) {
         setState('idle');
         hero.dashStrikeHit.clear();
+        // ARRIVAL POP — bigger sparkle ring + arrival snap audio.
+        // Frames the moment the player "reappears" instead of just
+        // ending the slide on an idle pose.
+        const ax = hero.x, ay = hero.y - 8;
+        for (let i = 0; i < 18; i++) {
+          const ang = (i / 18) * Math.PI * 2;
+          const r = 18 + Math.random() * 10;
+          sparkle(ax + Math.cos(ang) * r, ay + Math.sin(ang) * r * 0.7, '#fff2c8');
+        }
+        try { synthClick(1.2, 0.6); } catch (_e) {}
       }
     } else {
       const t = hero.stateTime / DODGE_DUR;
@@ -1418,7 +1493,47 @@ export function heroDirection(h = hero) {
   return dir;
 }
 
+// Render the dash afterimage ghost trail. Each entry is a hero pose
+// captured at AFTERIMAGE_INTERVAL during the dash; we render them as
+// fading copies so the player reads "where I just was" instead of an
+// interpolated body sliding through. Drawn BEFORE the main hero sprite
+// so afterimages sit underneath ARRIVED hero (during the few frames
+// after the dash ends and the trail is still draining).
+function drawDashAfterimages(ctx) {
+  if (_dashAfterimages.length === 0) return;
+  const info = heroFrameInfo();
+  const img = info.img;
+  if (!img) return;
+  // For each afterimage, derive a frame number (use the dash idle/walk
+  // pose — frame 0 is fine; the silhouette is the cue). Direction was
+  // captured at the time of the snapshot.
+  const drawSize = room.kind === 'hamlet' ? HERO_DRAW_HAMLET : HERO_DRAW;
+  const sx0 = 0;
+  ctx.save();
+  for (const a of _dashAfterimages) {
+    // Fade curve: opaque when newest, fade to 0 over AFTERIMAGE_LIFE.
+    // 0.5 peak alpha so the trail reads as a ghost, not a solid copy.
+    const lifeFrac = 1 - (a.age / AFTERIMAGE_LIFE);
+    const alpha = 0.5 * lifeFrac * lifeFrac;     // ease-out
+    if (alpha <= 0.02) continue;
+    ctx.globalAlpha = alpha;
+    // Warm tint via canvas filter so the ghosts read as "magical"
+    // not "duplicate hero" — golden hue + slight brightness boost.
+    ctx.filter = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(-10deg) saturate(700%) brightness(1.4)';
+    const sy = a.dir * SPR;
+    ctx.drawImage(img, sx0, sy, SPR, SPR,
+                  a.x - drawSize / 2, a.y - drawSize * 0.75,
+                  drawSize, drawSize);
+  }
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
 export function drawHero(ctx) {
+  // Render dash afterimage ghosts FIRST so they sit beneath the live
+  // hero (which is itself hidden mid-dash). They're in world-space, so
+  // they can't share the ctx.translate further down.
+  drawDashAfterimages(ctx);
   const info = heroFrameInfo();
   const img = info.img;
   if (!img) return;
@@ -1496,6 +1611,15 @@ export function drawHero(ctx) {
   // Hamlet uses a smaller draw size so the hero reads at proper scale
   // against the painted backdrop's NPCs + props (see HERO_DRAW_HAMLET).
   const drawSize = room.kind === 'hamlet' ? HERO_DRAW_HAMLET : HERO_DRAW;
+  // TELEPORT FEEL — during the dash strike, hide the hero sprite
+  // entirely. Afterimages (drawn earlier in drawDashAfterimages) carry
+  // the visual; the live body would otherwise slide across the screen
+  // and break the teleport read. Halo + shadow stay visible (the
+  // teleport leaves a footprint), only the sprite + rim are skipped.
+  if (hero.dashStrikeTime > 0) {
+    ctx.restore();
+    return;
+  }
   // Rim light pass — draw sprite offset in 4 directions with a warm tint to create
   // an outline. Makes hero pop off the floor, AAA-style silhouette polish.
   // Skip during i-frame flicker or dodge to avoid visual clutter.
