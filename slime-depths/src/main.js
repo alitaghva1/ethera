@@ -1263,8 +1263,6 @@ function showHamlet() {
 // overlay when the hero interacts with an NPC; starting a run still routes
 // to the existing startRun() flow when the hero walks into the portal.
 function enterHamletCanvas() {
-  hideAllOverlays();
-
   // FIRST-EVER HAMLET ENTRY — play the "you wake here" cinematic. The
   // prologue prose lives in this moment now; previously it fired inside
   // startRun() (after the player had already toured the hamlet, talked
@@ -1272,6 +1270,15 @@ function enterHamletCanvas() {
   // wound the world calls Ethera" landed AFTER the player had already
   // committed to descending. Moving the gate here puts the wake-up beat
   // on the wake-up screen.
+  //
+  // The gate runs BEFORE hideAllOverlays() so the prologueEl (z-index
+  // 40, opaque dark gradient) covers the still-visible menu directly.
+  // If we hid overlays first, there'd be a one-frame window where the
+  // menu is gone but the prologueEl hasn't laid out yet, exposing the
+  // background canvas (which paints the hero+hamlet every rAF tick) —
+  // a brief mage-flash visible to the player. Showing the prologue
+  // first, then hiding overlays inside the dismiss callback, means
+  // SOMETHING is always covering the canvas during the transition.
   //
   // Note: hasSeen check + markSeen-on-dismiss (rather than isFirstTime
   // up front) so closing the tab mid-prologue does NOT consume the
@@ -1287,6 +1294,7 @@ function enterHamletCanvas() {
     return;
   }
 
+  hideAllOverlays();
   startAmbientPad('hamlet');
   refreshNpcPresence(records, stats, { seenRelicIds });
   for (const id of ALL_NPC_IDS) {
