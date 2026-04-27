@@ -354,14 +354,18 @@ const HAMLET_FX = [
     // circular pit in the central plaza at PORTAL_POS (688, 365).
     // PIL-detected pit center: bbox x[638-737] y[330-410]. Sprite is
     // 112×112 native, scaled 0.8× → ~90px rendered so it fits INSIDE
-    // the painted ring instead of overflowing it. 9 frames at 4fps =
-    // 2.25s loop — slow contemplative pulse (was 8fps, felt strobe-y
-    // for an ambient/dormant gateway).
+    // the painted ring instead of overflowing it.
+    //
+    // Animation rhythm: 9 frames at 5fps = 1.8s active pulse, then
+    // hold on frame 0 (quiet state) for 3s — total 4.8s cycle. Reads
+    // as a slow heartbeat ("pulse... rest... pulse...") rather than
+    // a continuous strobe. holdSeconds is parsed by drawHamletFx.
     id: 'portal', asset: 'fx_portal',
     x: 688, y: 365,
     frameW: 112, frameH: 112,
-    frameCount: 9, fps: 4,
+    frameCount: 9, fps: 5,
     scale: 0.8, yOffset: 0,
+    holdSeconds: 3,
   },
   {
     // Cooking pot (v2 generation — cleaner kettle silhouette). Sits
@@ -389,7 +393,17 @@ export function drawHamletFx(ctx) {
   for (const fx of HAMLET_FX) {
     const img = images[fx.asset];
     if (!img) continue;
-    const frame = Math.floor(now * fx.fps) % fx.frameCount;
+    // Frame computation: if holdSeconds is set, the animation plays through
+    // once, then holds on frame 0 (quiescent state) for holdSeconds before
+    // restarting. Lets us do "occasional pulse" rhythm instead of continuous
+    // looping. holdSeconds=0 (default) is the original continuous-cycle.
+    const activeSec = fx.frameCount / fx.fps;
+    const holdSec = fx.holdSeconds || 0;
+    const cycleSec = activeSec + holdSec;
+    const cyclePos = now % cycleSec;
+    const frame = cyclePos < activeSec
+      ? Math.floor(cyclePos * fx.fps) % fx.frameCount
+      : 0;
     const sx = frame * fx.frameW;
     const scale = fx.scale || 1;
     const drawW = fx.frameW * scale;
