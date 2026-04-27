@@ -4685,12 +4685,18 @@ function tick(now) {
           // MIMIC — damage + spawn enemies
           damageHero(1, hero.x, hero.y + 20);
           const lvl = currentFloorLevel | 0;
-          // Floor-appropriate spawn types
+          // Floor-appropriate spawn types — must match keys in
+          // enemies.js TYPES (verified 2026-04-27 after a P0 bug
+          // where 'skeleton' and 'fire_imp' silently failed to spawn
+          // because spawnEnemy returns early on missing TYPES[type]).
           const spawnType = lvl <= 1 ? 'slime'
-                          : lvl === 2 ? 'skeleton'
+                          : lvl === 2 ? 'skel'      // was 'skeleton' (does not exist)
                           : lvl === 3 ? 'wizard'
-                          : 'fire_imp';
-          const spawnCount = lvl >= 3 ? 2 : 1;
+                          : 'ember';                // was 'fire_imp' (does not exist) — floor 4 fire-themed
+          // Mimic difficulty bumped on floors 1-2: was 1 enemy / floor
+          // (felt trivial for a 1-HP-damage trap). Now 2 normals on
+          // every floor; floor 3+ also gets a 50% elite chance.
+          const spawnCount = 2;
           const elite = lvl >= 3 && Math.random() < 0.5;
           for (let i = 0; i < spawnCount; i++) {
             const ang = (i / spawnCount) * Math.PI * 2 + Math.random() * 0.5;
@@ -5042,6 +5048,17 @@ function tick(now) {
         data.cleared = true;
         stats.roomsCleared++;
       }
+    }
+
+    // Chestroom: starts cleared (no enemies); a mimic chest sets
+    // room.cleared = false + spawns enemies. Once the player kills the
+    // mimic spawns, flip cleared back to true so doors unlock and the
+    // run can continue. Without this, opening a mimic permanently
+    // locks the room (was the case before this clear-check landed).
+    if (data.kind === 'chestroom' && !room.cleared && enemies.length === 0) {
+      room.cleared = true;
+      data.cleared = true;
+      stats.roomsCleared++;
     }
 
     // Boss room: instant clear on all enemies down.
