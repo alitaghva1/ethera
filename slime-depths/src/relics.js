@@ -632,6 +632,24 @@ export const RELIC_DEFS = {
     apply: () => { hero.ringingSteel = true; },
   },
 
+  vow_eternal: {
+    // First hit each room is a guaranteed crit. The "vow" is renewed
+    // every threshold — sword as the disciplined weapon. Lands as
+    // an opener on every encounter, pairs powerfully with Long Reach
+    // (poke from range, opening crit punishes the closing enemy).
+    // hero.vowEternalReady is refreshed by loadRoom() in main.js;
+    // consumed on first damage-dealing hit per room.
+    id: 'vow_eternal',
+    name: 'Vow Eternal',
+    desc: 'First sword hit each room is a guaranteed crit',
+    flavor: 'Spoken once. Kept forever, so long as iron remembers iron.',
+    icon: 'relic_warlord',
+    tint: '#ffd680',
+    tier: 'legendary',
+    weaponOnly: 'sword',
+    apply: () => { hero.vowEternal = true; hero.vowEternalReady = true; },
+  },
+
   // ── DAGGER-THEMED (weaponOnly: 'dagger') ──────────────────────────
   // Dagger is the precision/skirmish weapon — narrow arc, fast swings,
   // higher crit baseline (+10% innate). Dagger-only relics reward the
@@ -669,6 +687,23 @@ export const RELIC_DEFS = {
     apply: () => { hero.flickerStep = true; },
   },
 
+  razor_pace: {
+    // Every 5th dagger hit deals 2.5x damage. Reads as a "rhythm
+    // crescendo" — dagger's fast cadence means the threshold lands
+    // every 1.5–2s of sustained pressure. Counter resets when not
+    // attacking for ~3s so it can't be banked. Pairs with crit /
+    // executioner / shadow theme.
+    id: 'razor_pace',
+    name: 'Razor Pace',
+    desc: 'Every 5th dagger hit deals 2.5× damage',
+    flavor: 'Five strokes to the rhythm. The fifth is the song.',
+    icon: 'relic_ascendant',
+    tint: '#b0e0ff',
+    tier: 'legendary',
+    weaponOnly: 'dagger',
+    apply: () => { hero.razorPace = true; hero.razorPaceHits = 0; },
+  },
+
   // ── HAMMER-THEMED (weaponOnly: 'hammer') ──────────────────────────
   // Hammer is the slow/heavy weapon — wide arc, big damage, long
   // commitment. Hammer-only relics reward landing the big hits.
@@ -703,6 +738,24 @@ export const RELIC_DEFS = {
     tier: 'rare',
     weaponOnly: 'hammer',
     apply: () => { hero.earthenHold = true; },
+  },
+
+  world_ender: {
+    // Hammer finisher swings (every 3rd swing — same beat as the
+    // base finisher VFX) instantly shatter enemy shields. This is
+    // the answer to Warded affixes + future shielded enemies — the
+    // hammer's narrative says "nothing stops it on the third swing".
+    // Reads massive in practice because Warded elites have been a
+    // dagger/wand misery; hammer becomes the shield-buster spec.
+    id: 'world_ender',
+    name: 'World-Ender',
+    desc: 'Hammer finisher swings shatter enemy shields',
+    flavor: 'Three blows for the world below. The third is the door.',
+    icon: 'relic_executioner',
+    tint: '#ffae6c',
+    tier: 'legendary',
+    weaponOnly: 'hammer',
+    apply: () => { hero.worldEnder = true; },
   },
 
   patient_lens: {
@@ -874,12 +927,15 @@ export const RELIC_GLYPHS = {
   // Sword-themed (weaponOnly: 'sword'):
   honest_edge:          'sword',   // finisher always crits
   ringing_steel:        'sword',   // chain damage build
+  vow_eternal:          'sword',   // first hit each room is a guaranteed crit
   // Dagger-themed (weaponOnly: 'dagger'):
   twin_pulse:           'bolt',    // echo-strike to nearest enemy
   flicker_step:         'wind',    // perfect-dodge window doubled
+  razor_pace:           'eye',     // every 5th hit lands a 2.5x crescendo
   // Hammer-themed (weaponOnly: 'hammer'):
   mountain_strike:      'sword',   // shockwave (no shockwave glyph)
   earthen_hold:         'shield',  // stagger / hold the line
+  world_ender:          'sword',   // finisher shatters shields
 };
 
 export function getRelicGlyph(id) {

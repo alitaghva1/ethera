@@ -3190,6 +3190,11 @@ function loadRoom(idx, entryFrom) {
   // VOW T2 ascendance — "discipline blocks the first strike". Refresh the
   // per-room shield charge on every room entry. Consumed in damageHero.
   if ((hero.activeThemes?.vow || 0) >= 2) hero.themeVowShieldAvailable = true;
+  // VOW ETERNAL legendary — first sword hit each room is a guaranteed
+  // crit. Refresh the readiness flag on every room entry; consumed in
+  // updateHero on the first damage-dealing sword swing. Pairs by
+  // intent with the VOW theme — both refresh per-room.
+  if (hero.vowEternal) hero.vowEternalReady = true;
   // SHADOW T2 is a short window after dodge, not per-room, so no reset here.
   // ── Compute the door plan from the graph BEFORE building the room ──────
   // Each outgoing edge of the current node becomes a door tile in the

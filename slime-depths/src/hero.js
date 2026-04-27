@@ -314,14 +314,19 @@ export function resetHero() {
   hero.honestEdge = false;       // finisher swings always crit
   hero.ringingSteel = false;     // chain hits stack +6% dmg, max +30%
   hero.ringingSteelStacks = 0;   // current chain count for ringing_steel
+  hero.vowEternal = false;       // first sword hit each room is a guaranteed crit
+  hero.vowEternalReady = false;  // refreshed by loadRoom in main.js
   // Dagger-themed signature relics:
   hero.twinPulse = false;        // every 2nd hit echoes to nearest enemy
   hero.twinPulseTick = 0;        // alternating counter (0/1)
   hero.flickerStep = false;      // perfect-dodge counter window doubled
+  hero.razorPace = false;        // every 5th dagger hit deals 2.5x damage
+  hero.razorPaceHits = 0;        // hit counter for razor_pace
   // Hammer-themed signature relics:
   hero.mountainStrike = false;        // every 3rd swing spawns shockwave
   hero.mountainStrikeCounter = 0;     // swing counter for mountain_strike
   hero.earthenHold = false;      // charged hits add +0.6s stagger
+  hero.worldEnder = false;       // hammer finishers shatter shields
   // April 2026 content expansion — new relic/fusion state flags.
   hero.mirrorShard = false;       hero.mirrorReflect = 0;     hero.mirrorReflectCrit = 1;
   hero.sporeBloom = false;        hero.sporeDamage = 0;       hero.sporeRadius = 0;
@@ -394,9 +399,12 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.swingIndex = 0;
       // Chain-dependent relic state resets together. Ringing Steel's
       // damage stacks zero out; Twin Pulse's alternating echo tick
-      // also restarts so the next chain begins on the off-beat.
+      // also restarts so the next chain begins on the off-beat;
+      // Razor Pace's 5-hit counter resets so the crescendo can't be
+      // banked across long pauses (would feel like a cheap surprise).
       hero.ringingSteelStacks = 0;
       hero.twinPulseTick = 0;
+      hero.razorPaceHits = 0;
     }
   }
   // Charge attack — accumulate while LMB held, but not during attack/dodge/hurt states
@@ -1123,10 +1131,18 @@ export function updateHero(dt, enemies, mouseWorld) {
             (hero.knockbackCrit && e._kbCritPending) ||
             (hero.movementCrit && (hero._moveTime || 0) >= 2.0) ||
             // HONEST EDGE (sword-only) — finisher swings always crit
-            (hero.honestEdge && hero._swingIsFinisher)
+            (hero.honestEdge && hero._swingIsFinisher) ||
+            // VOW ETERNAL (sword-only legendary) — first sword hit
+            // each room is a guaranteed crit. vowEternalReady is set
+            // on relic pick + refreshed by loadRoom in main.js.
+            // Consumed below on the first damage-dealing hit.
+            (hero.vowEternal && hero.vowEternalReady && w.id === 'sword')
           );
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
+          if (hero.vowEternal && hero.vowEternalReady && w.id === 'sword') {
+            hero.vowEternalReady = false;
+          }
           // DAGGER SIGNATURE — flat +10% crit chance when wielded. Twin Fang
           // is "the precision weapon" — its identity between finishers is
           // that crits happen more often than with sword or hammer.
@@ -1210,6 +1226,40 @@ export function updateHero(dt, enemies, mouseWorld) {
           // FUSION: Mountain's Heart — at full HP, +10% damage
           if (hero.fusionMountainsHeart && hero.hp >= hero.maxHp) {
             finalDmg *= 1.10;
+          }
+          // RAZOR PACE (dagger-only legendary) — every 5th dagger hit
+          // deals 2.5x damage. Counter increments BEFORE the threshold
+          // check so the 5th hit is the one that pops, not the 6th.
+          // Reset is handled by the swing-chain decay block + room
+          // teardown — see the resetHero list and the chainTime guard
+          // earlier in updateHero. razorPaceCrescendo flag cues VFX.
+          let razorPaceCrescendo = false;
+          if (hero.razorPace && w.id === 'dagger') {
+            hero.razorPaceHits = (hero.razorPaceHits | 0) + 1;
+            if (hero.razorPaceHits >= 5) {
+              finalDmg *= 2.5;
+              hero.razorPaceHits = 0;
+              razorPaceCrescendo = true;
+            }
+          }
+          // WORLD-ENDER (hammer-only legendary) — finisher hits instantly
+          // shatter enemy shields (Warded affix + Vanguard def shields).
+          // Breaks happen BEFORE takeDamage runs, so the finisher hit
+          // itself bypasses the shield's damage reduction. Reads as
+          // "the third blow opens the door" — the fantasy is overwhelming
+          // force, not slow grind. Won't double-fire on already-broken.
+          let worldEnderShatter = false;
+          if (hero.worldEnder && w.id === 'hammer' && finisherHit && !e.dead) {
+            if (e.affix && e.affix.id === 'warded' && !e._shieldBroken) {
+              e._shieldBroken = true;
+              e._staggerCount = (e.affix.staggersToBreak | 0) || 99;
+              worldEnderShatter = true;
+            }
+            if (e.def && e.def.shieldCharges && !e._vShieldBroken) {
+              e._vShieldBroken = true;
+              e._shieldChargesLeft = 0;
+              worldEnderShatter = true;
+            }
           }
           // HAMMER SIGNATURE — non-finisher swings get +50% knockback on top
           // of the weapon's base 2.2x. The finisher already has the ground-
@@ -1329,6 +1379,33 @@ export function updateHero(dt, enemies, mouseWorld) {
             e.stagger = Math.max(e.stagger || 0, 0) + 0.6;
             sparkle(e.x, e.y, '#c8a060');
             sparkle(e.x - 4, e.y - 2, '#a07840');
+          }
+
+          // RAZOR PACE crescendo VFX — the 5th-hit pop deserves to read.
+          // Cyan ring + extra hit-stop so the rhythm beat lands in the
+          // player's hands. Fires post-takeDamage so numbers update first.
+          if (razorPaceCrescendo) {
+            for (let k = 0; k < 10; k++) {
+              const ang = (k / 10) * Math.PI * 2;
+              sparkle(e.x + Math.cos(ang) * 18, e.y - 10 + Math.sin(ang) * 18, '#b0e0ff');
+            }
+            sparkle(e.x, e.y - 14, '#ffffff');
+            triggerHitStop(0.07);
+          }
+
+          // WORLD-ENDER shield-shatter VFX — bright sapphire burst at the
+          // shield's spawn point. The fantasy is the door opening; the
+          // burst signals the player can now pour damage into the same
+          // enemy without it being absorbed.
+          if (worldEnderShatter) {
+            for (let k = 0; k < 14; k++) {
+              const ang = Math.random() * Math.PI * 2;
+              const r = 8 + Math.random() * 24;
+              sparkle(e.x + Math.cos(ang) * r, e.y - 12 + Math.sin(ang) * r, '#c8d8ff');
+            }
+            deathBurst(e.x, e.y - 12, '#c8d8ff');
+            shakeCamera(8, 0.18);
+            triggerHitStop(0.1);
           }
           hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
           const wpnShake = w.shakeMul || 1;
