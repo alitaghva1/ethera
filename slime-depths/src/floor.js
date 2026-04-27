@@ -408,6 +408,13 @@ export function makeTreasureChestRoom(level) {
     chests[i].frame = 0;             // current animation frame index
     chests[i].frameTime = 0;         // accumulator for frame advance
   }
+  // Decorative pillars flanking the room (visual only, no collision).
+  // Two pillars near the top corners give the room a 'sacred chamber'
+  // feel — frames the chest area as ceremonial.
+  const decorPillars = [
+    { x: 2, y: 2 },
+    { x: size.w - 3, y: 2 },
+  ];
   return {
     kind: 'chestroom',
     w: size.w, h: size.h,
@@ -415,6 +422,7 @@ export function makeTreasureChestRoom(level) {
     spawns: [],         // mimic enemies spawn on chest-open, not room-load
     urns: [],
     chests,
+    decorPillars,
     level,              // stash floor level for reward scaling
     doors: { north: true, south: true },
     cleared: true,      // no enemies at start; flips to false if mimic spawns

@@ -375,6 +375,9 @@ export const roomUrns = [];
 // All chests look IDENTICAL when closed (gambling tension) — the
 // variant only reveals via the opening animation playing fire vs cold.
 export const roomChests = [];
+// Decorative pillars (visual only, no collision). Used to frame
+// special rooms like chestrooms with a 'sacred chamber' feel.
+export const roomDecorPillars = [];
 const SPIKE_CYCLE = 2.2;          // total seconds per cycle
 const SPIKE_RETRACT = 1.2;          // retracted duration (at phase start)
 const SPIKE_WARNING = 0.4;          // warning / rising
@@ -622,6 +625,13 @@ export function buildRoomFromData(data) {
         frame: c.frame | 0,
         frameTime: c.frameTime || 0,
       });
+    }
+  }
+  // Decorative pillars (visual only)
+  roomDecorPillars.length = 0;
+  if (data.decorPillars) {
+    for (const p of data.decorPillars) {
+      roomDecorPillars.push({ x: p.x, y: p.y });
     }
   }
   if (data.kind === 'combat') {
@@ -2043,9 +2053,38 @@ function drawRuinCobwebs(ctx, agingLvl) {
 
 // Wall-mounted torch — sconce + fuel. Flame color swaps per biome (blue crypt,
 // amber vault, red abyss) so the whole room feels different before you move.
+// Wall torch sconce — animated PixelLab sprite (4 frames × 112×112) at
+// scale 0.45 → ~50px rendered. Replaces a tiny procedural sconce that
+// existed before; the new sprite is detailed pixel art with proper
+// flame flicker. The light halo math (in the lighting pass elsewhere)
+// still keys off roomTorches positions, so gameplay illumination is
+// unchanged — only the visual got upgraded.
+const TORCH_FPS = 6;
+const TORCH_FRAMES = 4;
+const TORCH_NATIVE = 112;
+const TORCH_SCALE = 0.45;
 function drawTorchSconce(ctx, tx, ty) {
-  const cx = tx * TILE + TILE/2;
-  const cy = ty * TILE + TILE * 0.58;
+  const cx = tx * TILE + TILE / 2;
+  const cy = ty * TILE + TILE * 0.7;     // sit slightly into room from wall edge
+  const img = images.fx_dungeon_torch;
+  if (img) {
+    const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+    const frame = (Math.floor(now * TORCH_FPS) + (tx * 7)) % TORCH_FRAMES;     // tx-offset so torches don't all flicker in sync
+    const drawW = TORCH_NATIVE * TORCH_SCALE;
+    const drawH = TORCH_NATIVE * TORCH_SCALE;
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      img,
+      frame * TORCH_NATIVE, 0, TORCH_NATIVE, TORCH_NATIVE,
+      Math.round(cx - drawW / 2),
+      Math.round(cy - drawH / 2),
+      drawW, drawH,
+    );
+    ctx.imageSmoothingEnabled = prevSmoothing;
+    return;
+  }
+  // Fallback: procedural sconce (used before sprite loads, or in tests)
   ctx.fillStyle = PAL.torchMetal;
   ctx.fillRect(cx - 2, cy, 4, 10);
   ctx.fillRect(cx - 5, cy + 9, 10, 3);
@@ -2397,6 +2436,38 @@ export function tryHitUrn(hx, hy, aimX, aimY, reach) {
     return { hit: true, wx: ux, wy: uy, variant: u.variant, isProp: !!u.isProp };
   }
   return { hit: false };
+}
+
+// Decorative pillar rendering (purely visual, no collision). Drawn at
+// roomDecorPillars positions in special rooms like chestroom for a
+// 'sacred chamber' framing. Sprite is 48×48 native, scaled 1.4× → 67px
+// rendered (matches other dungeon prop scale).
+const PILLAR_NATIVE = 48;
+const PILLAR_SCALE = 1.4;
+export function drawDecorPillars(ctx) {
+  const img = images.fx_dungeon_pillar;
+  if (!img) return;
+  const drawW = PILLAR_NATIVE * PILLAR_SCALE;
+  const drawH = PILLAR_NATIVE * PILLAR_SCALE;
+  const prevSmoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  for (const p of roomDecorPillars) {
+    const cx = p.x * TILE + TILE / 2;
+    const cy = p.y * TILE + TILE / 2;
+    // Drop shadow under pillar base
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + drawH / 2 - 6, drawW / 3, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.drawImage(
+      img,
+      0, 0, PILLAR_NATIVE, PILLAR_NATIVE,
+      Math.round(cx - drawW / 2),
+      Math.round(cy - drawH / 2 + 4),     // +4 so base sits ON tile
+      drawW, drawH,
+    );
+  }
+  ctx.imageSmoothingEnabled = prevSmoothing;
 }
 
 // Treasure-chest rendering — both variants share an identical 'closed' look

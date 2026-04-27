@@ -470,6 +470,12 @@ export async function loadAll(progressCb) {
     loadImage('fx_chestfire',           'assets/hamlet/fx_chestfire.png'),
     loadImage('fx_chestcold',           'assets/hamlet/fx_chestcold.png'),
 
+    // ── DUNGEON FX — animated/static props for dungeon rooms ─────────
+    // Stored under hamlet/ for now (single asset folder); future
+    // refactor could split into hamlet/ and dungeon/ subfolders.
+    loadImage('fx_dungeon_torch',       'assets/hamlet/fx_dungeon_torch.png'),
+    loadImage('fx_dungeon_pillar',      'assets/hamlet/fx_dungeon_pillar.png'),
+
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
     loadAudio('slime_death',  'assets/sfx/slime_death.ogg'),
