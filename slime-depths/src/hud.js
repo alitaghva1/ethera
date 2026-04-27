@@ -8,6 +8,7 @@ import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { drawRelicIcon } from './fx.js';
 import { THEMES, getThemeCounts, getThemeTier, TIER_THRESHOLDS } from './themes.js';
+import { isPedestalTooltipActive } from './pedestals.js';
 
 function toRoman(n) {
   return n === 1 ? 'I' : n === 2 ? 'II' : n === 3 ? 'III' : n === 4 ? 'IV' : n === 5 ? 'V' : String(n);
@@ -535,8 +536,12 @@ export function drawHud(ctx, w, h, progress = {}) {
         const glyph = tier >= 2 ? '\u2605\u2605' : tier >= 1 ? '\u2605' : '';
         const countLabel = `${count}/${TIER_THRESHOLDS.ascendance} ${glyph}`;
         ctx.fillText(countLabel, cx + 5, cy + 12);
-        // Hover tooltip — name + blurb + current buff text
-        if (mouse.x >= cx && mouse.x <= cx + chipW && mouse.y >= cy && mouse.y <= cy + chipH) {
+        // Hover tooltip — name + blurb + current buff text. Suppressed
+        // when a pedestal tooltip would also be on screen so the player
+        // doesn't see two tooltips stacked (audit dedup quick-win).
+        // Pedestal tooltip is the "active decision" UI and wins.
+        if (mouse.x >= cx && mouse.x <= cx + chipW && mouse.y >= cy && mouse.y <= cy + chipH
+            && !isPedestalTooltipActive()) {
           const tipW = 260, tipH = 74;
           const tipX = Math.max(10, Math.min(w - tipW - 10, cx + chipW/2 - tipW/2));
           const tipY = cy - tipH - 6;

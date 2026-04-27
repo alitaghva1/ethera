@@ -786,6 +786,21 @@ export function drawPickupFlash(ctx, w, h) {
 let _tooltipCurrent = null;
 let _tooltipSince = 0;
 
+// Lightweight check: does the hero stand within tooltip range of any
+// active pedestal? Used by hud.js to suppress its theme-chip tooltip
+// when a pedestal tooltip would also be on screen — keeps two tooltips
+// from stacking when the player hovers a theme chip while standing on
+// a pedestal. Mirrors the proximity check at the top of
+// drawPedestalTooltip so the gates can never drift.
+export function isPedestalTooltipActive() {
+  for (const p of pedestals) {
+    if (p.picked) continue;
+    const d = Math.hypot(hero.x - p.x, hero.y - p.y);
+    if (d < 90) return true;
+  }
+  return false;
+}
+
 export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   let nearest = null;
   let nearestD = Infinity;

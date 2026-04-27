@@ -2332,14 +2332,19 @@ function drawRoomInner(ctx) {
       if (t === 'pillar') drawPillar(ctx, x, y);
       else if (t === 'door') {
         // Pull the per-door open amount from the doorPortals module via
-        // the lazy lookup. Falls back to legacy "south or cleared = open"
-        // when no door object exists (start room before setup, hamlet, etc.).
+        // the lazy lookup. Falls back to "south door of a cleared room"
+        // when no door object exists (start room before doorPortals
+        // populates, hamlet, etc.). PRIOR fallback was `y === room.h - 1
+        // || room.cleared` which briefly opened the start-room south
+        // door before doorPortals had set anim=0 — read as "wait, can
+        // I go back?" Tightened to require BOTH south-door AND cleared
+        // so uncleared rooms don't flash an open door before lockup.
         const door = _getDoorAt && _getDoorAt(x, y);
         let amount;
         if (door) {
           amount = Math.max(0, Math.min(1, door.anim));
         } else {
-          amount = (y === room.h - 1 || room.cleared) ? 1 : 0;
+          amount = (y === room.h - 1 && room.cleared) ? 1 : 0;
         }
         drawDoor(ctx, x, y, amount);
       }

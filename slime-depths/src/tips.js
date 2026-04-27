@@ -2,6 +2,7 @@
 // Tips are triggered by gameplay events; they appear as a small top-center banner
 // with subtle slide-in + 5s auto-dismiss.
 import { safeLoadJSON, safeSaveJSON } from './storage.js';
+import { synthPing } from './synth.js';
 
 const KEY = 'ethera:seen_tips:v1';
 
@@ -48,7 +49,7 @@ export const TIPS = {
   first_daily:     { text: 'Daily challenges share today\'s curse + relic with all players — build your streak' },
   // ----- Hub + encounters -----
   first_hamlet:    { text: 'The hamlet grows between descents — services persist. Visit when you return' },
-  first_descent_hint: { text: 'WALK TO THE PORTAL AND PRESS E TO DESCEND · NPCS GLOW WHEN YOU\'RE NEAR' },
+  first_descent_hint: { text: 'Walk to the portal and press E to descend. NPCs will glow when you\'re near.' },
   first_wanderer:  { text: 'A wanderer — gold for a trade, only this sanctuary. They do not wait long' },
 };
 
@@ -57,6 +58,11 @@ export function showTip(id) {
   seen.add(id);
   saveTips();
   active = { text: TIPS[id].text, time: 5.5, totalLife: 5.5 };
+  // Subtle synth ping — audio cue draws the eye to the new banner
+  // sliding in. Without this, the tip can fade in unnoticed if the
+  // player isn't already looking at the top of the screen. Tuned to
+  // match the parchment-tome aesthetic: 1100 Hz, 0.2s, low volume.
+  try { synthPing(1100, 0.18, 0.20); } catch (_e) {}
   return true;
 }
 

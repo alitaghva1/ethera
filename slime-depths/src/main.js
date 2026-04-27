@@ -769,7 +769,16 @@ refreshAscensionUI();
     // Mark the flag immediately, not on timer callback, so a fast
     // reload during the 900ms settle delay doesn't re-trigger it.
     try { localStorage.setItem('ethera:seen_welcome:v1', '1'); } catch (_) {}
-    setTimeout(() => showControls(), 900);
+    setTimeout(() => {
+      // Skip if the player already clicked PLAY in the 900ms window —
+      // the controls modal would otherwise stack on top of the wake
+      // prologue (or whatever entered state replaced the menu),
+      // double-binding the player's input. Audit fix: gate on the
+      // menu still being the visible overlay.
+      if (menuEl.style.display !== 'flex') return;
+      if (prologueEl && prologueEl.style.display === 'flex') return;
+      showControls();
+    }, 900);
   } catch (_) {
     // Storage-blocked path (Safari private mode etc.) — just skip the nudge.
   }
@@ -4385,7 +4394,22 @@ function tick(now) {
   // normal per-frame decrement gets stuck (pause mid-intro, rAF throttle,
   // state race), the clamp force-clears the timer so the overlay can never
   // persist past its wall cap.
+  //
+  // PAUSE FIX: when the player ESC-pauses mid-intro, the per-frame decrement
+  // block below is gated on `!paused` (so the overlay holds), but the
+  // wall-clock CLAMP would still fire after its threshold elapsed in real
+  // time — clearing the intro that the player paused over. We work around
+  // this by advancing the *startedAt* timestamps forward by the paused
+  // delta each frame, effectively "stopping the wall clock" during pause.
+  // The clamps still work correctly when not paused; pausing for any
+  // duration just shifts the deadline forward.
   const nowMs = performance.now();
+  if (paused) {
+    const pausedDtMs = realDt * 1000;
+    if (bossIntroStartedAt > 0) bossIntroStartedAt += pausedDtMs;
+    if (floorCardStartedAt > 0) floorCardStartedAt += pausedDtMs;
+    if (phaseIntroStartedAt > 0) phaseIntroStartedAt += pausedDtMs;
+  }
   if (bossIntroTime > 0 && bossIntroStartedAt > 0 && nowMs - bossIntroStartedAt > 2500) {
     bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
   }
@@ -4642,8 +4666,17 @@ function tick(now) {
     } else if (codexBannerTime <= 0) {
       codexBannerEntry = null;
     }
-    // Claim the center banner slot while codex is visible. Tips defer to this.
-    window.__centerBannerActive = (codexBannerTime > 0);
+    // Claim the center banner slot while ANY centered overlay is visible —
+    // codex banner, floor intro card, boss intro, phase-2 banner. Tips
+    // defer to this so they don't fade in UNDER an active intro card.
+    // Previously only the codex banner claimed the slot, which let
+    // first-floor-tip showings (e.g. first_combat at floor-1 entry)
+    // stack invisibly behind the FLOOR I — THE UNDERCROFT card.
+    window.__centerBannerActive =
+      codexBannerTime > 0 ||
+      floorCardTime > 0 ||
+      bossIntroTime > 0 ||
+      phaseIntroTime > 0;
     // Dynamic tab title — reflects run state. Throttled to ~2Hz via gameTime.
     if ((gameTime | 0) !== _lastTitleUpdateSec) {
       _lastTitleUpdateSec = gameTime | 0;
