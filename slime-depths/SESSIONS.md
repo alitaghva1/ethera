@@ -25,6 +25,7 @@ The work has reached a clean handoff point. Two future sessions are pre-planned,
 **Goal**: replace the procedural floor + procedural building shapes with PixelLab-authored pixel art.
 
 **Decision tree at session start**:
+
 1. User opens https://pixellab.ai/maps and tells Claude what the Map Editor lets them do
 2. Based on what's available, pick:
    - **Path A** (Map Editor end-to-end → single backdrop PNG)
@@ -32,10 +33,12 @@ The work has reached a clean handoff point. Two future sessions are pre-planned,
 3. Then user generates assets, drops them in `scripts/pixellab/imports/`, Claude wires them in
 
 **Drop folders ready**:
+
 - `scripts/pixellab/imports/props/` (for individual building/prop PNGs)
 - `scripts/pixellab/imports/hamlet-map/` (for tilemap exports)
 
 **Tools ready**:
+
 - `scripts/pixellab/import-props.js` (props importer, knows which prop maps to which game element)
 
 **Estimated effort**: 1-3 hours of generation + iteration in PixelLab UI; ~30-60 min of Claude integration once assets land.
@@ -55,6 +58,7 @@ The work has reached a clean handoff point. Two future sessions are pre-planned,
 **Drop folders to create**: `scripts/pixellab/imports/enemies/<name>/` (one per enemy character)
 
 **Tools to reuse**:
+
 - `scripts/pixellab/import-character.js` (already class-agnostic — `--char slime --class slime` works)
 
 **Estimated effort**: Priority 1 = 30 min; Priority 2 = 2 hours; Priority 3 = 5-10 sessions over time.
@@ -63,14 +67,14 @@ The work has reached a clean handoff point. Two future sessions are pre-planned,
 
 ## What's already committed and works
 
-| Commit | What | Status |
-|---|---|---|
+| Commit    | What                                        | Status                            |
+| --------- | ------------------------------------------- | --------------------------------- |
 | `075c5cf` | Knight 8-dir API pipeline (deprecated path) | Kept for code, sheets overwritten |
-| `2d52cd7` | Hero spawn-in-wall fix | Live |
-| `479e64b` | Mage UI-pipeline import | Live (knight slot) |
-| `33c5d51` | Sprite bottom-align fix | Live |
-| `fb94a7c` | Hamlet plan + props importer scaffold | Ready to run |
-| `f3e1fe3` | Hero shrink 80→60 | Live |
+| `2d52cd7` | Hero spawn-in-wall fix                      | Live                              |
+| `479e64b` | Mage UI-pipeline import                     | Live (knight slot)                |
+| `33c5d51` | Sprite bottom-align fix                     | Live                              |
+| `fb94a7c` | Hamlet plan + props importer scaffold       | Ready to run                      |
+| `f3e1fe3` | Hero shrink 80→60                           | Live                              |
 
 **All commits are local on `claude/musing-snyder-c13579`.** Not pushed yet — that's an intentional "user pushes when ready" gate. To push:
 
