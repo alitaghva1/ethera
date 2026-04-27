@@ -28,7 +28,7 @@ export const HAMLET_WALK_Y_MAX = 720;
 
 // Hero spawn — south entry path on the long cobble corridor leading from
 // the gate to the central plaza. Pixel-detected for v3 layout.
-export const HAMLET_HERO_SPAWN = { x: 700, y: 660 };
+export const HAMLET_HERO_SPAWN = { x: 700, y: 670 };
 
 // Zone anchors — pixel-detected positions on the 2752×1536 v3 backdrop
 // (rendered at 1376×768 world). Detected via color-signature scan (see
@@ -87,9 +87,9 @@ export const HAMLET_ENTITIES = [
   //   gravekeeper — south of graveyard plot cluster NW
   //   oracle      — south of altar slab N (NPC sprite is hidden behind future altar prop)
   //   wanderer    — south of wanderer dirt patch on right side
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 460, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 987, y: 304, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 470, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 452, interactR: 50, drawScale: 1.10 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 935, y: 310, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 391, y: 470, interactR: 50, drawScale: 0.95 },
   // gravekeeper: lives at the NW graveyard. Position iterated:
   //   (293, 290) → on a tree
   //   (340, 360) → on a ruined wall
@@ -97,15 +97,15 @@ export const HAMLET_ENTITIES = [
   //   (420, 280) → ✓ open grass in the middle of the grave cluster
   // Visual verification via PIL crosshair render: this position lands
   // cleanly among the painted grave markers with no wall/tree overlap.
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 420, y: 280, interactR: 50, drawScale: 0.90 },
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 680, y: 260, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 455, y: 288, interactR: 50, drawScale: 0.90 },
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 680, y: 275, interactR: 50, drawScale: 0.95 },
   // wanderer: shifted east from x=907 to x=985 so they stand BESIDE the
   // cooking pot FX (also at x=907) rather than directly in front of it.
   // y-sort always drew the wanderer on top because their y (480) > pot y
   // (437), occluding most of the kettle. New position: ~78px east, same
   // y, still on the camp dirt patch — reads as "tending the fire from
   // the side" instead of "blocking the view."
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 985, y: 480, interactR: 50, drawScale: 0.90 },
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 947, y: 471, interactR: 50, drawScale: 0.90 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
@@ -129,12 +129,12 @@ export const HAMLET_OBSTACLES = [
   // (hero is pushed back along the radial direction by the resolver
   // in resolveHamletCollision). Positions match HAMLET_ENTITIES NPC
   // coords above. Update both arrays together when moving NPCs.
-  { x: 760, y: 460, r: 18 },     // keeper
-  { x: 987, y: 304, r: 18 },     // smith
-  { x: 380, y: 470, r: 18 },     // archivist
-  { x: 420, y: 280, r: 18 },     // gravekeeper
-  { x: 680, y: 260, r: 18 },     // oracle
-  { x: 985, y: 480, r: 18 },     // wanderer
+  { x: 760, y: 452, r: 18 },     // keeper
+  { x: 935, y: 310, r: 18 },     // smith
+  { x: 391, y: 470, r: 18 },     // archivist
+  { x: 455, y: 288, r: 18 },     // gravekeeper
+  { x: 680, y: 275, r: 18 },     // oracle
+  { x: 947, y: 471, r: 18 },     // wanderer
 ];
 
 // Push the hero out of any prop obstacle they're inside, AND clamp them
@@ -409,7 +409,7 @@ const HAMLET_FX = [
     // Sprite is 112×112 native, scaled 0.6× → ~67px rendered — smaller
     // than the wanderer (~115px) so the NPC stays the visual focus.
     id: 'cookingpot', asset: 'fx_cookingpot',
-    x: 907, y: 437,
+    x: 875, y: 425,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 4,
     scale: 0.6, yOffset: 0,
@@ -425,7 +425,7 @@ const HAMLET_FX = [
     // is ongoing ambient work, not a discrete event. Scale 0.6× →
     // ~67px rendered to match cooking pot / firepit visual weight.
     id: 'anvil', asset: 'fx_anvil',
-    x: 948, y: 316,
+    x: 925, y: 316,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
@@ -446,7 +446,7 @@ const HAMLET_FX = [
     // public/assets/hamlet/fx_lectern.png since the importer expects
     // an animations folder.
     id: 'lectern', asset: 'fx_lectern',
-    x: 436, y: 404,
+    x: 449, y: 398,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
@@ -470,7 +470,7 @@ const HAMLET_FX = [
     // very slow ambient sway/wisp effect — these are stones, not very
     // active. Position picked via PIL composite check.
     id: 'graves', asset: 'fx_graves',
-    x: 370, y: 230,
+    x: 393, y: 230,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 1.5,
     scale: 0.6, yOffset: 0,

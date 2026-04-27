@@ -153,22 +153,20 @@ const EXCLUSIONS = [
   // Firepit — base ring at (970, 654). Sprite is 48×48 scaled 1.4× →
   // 67px rendered. ~50×45 around the stone ring + flame.
   { x1: 945, y1: 635, x2: 995, y2: 680 },
-  // Anvil — full anvil + tree stump at (948, 316). Covers the
+  // Anvil — full anvil + tree stump at (925, 316). Covers the
   // visible mass of the prop so hero bumps off from any direction.
-  { x1: 922, y1: 297, x2: 977, y2: 347 },
-  // Cooking pot — full pot body + tripod at (907, 437). Earlier rect
-  // only covered the lower tripod legs (y=445-470), so the hero could
-  // walk through the upper pot body. Now covers y=415-470 (the full
-  // visible kettle from rim to tripod feet).
-  { x1: 880, y1: 415, x2: 935, y2: 470 },
-  // Lectern (archivist's reading stand) at (436, 404). Tall narrow
+  { x1: 899, y1: 297, x2: 954, y2: 347 },
+  // Cooking pot — full pot body + tripod at (875, 425). Covers the
+  // full visible kettle from rim to tripod feet.
+  { x1: 848, y1: 403, x2: 903, y2: 458 },
+  // Lectern (archivist's reading stand) at (449, 398). Tall narrow
   // stand: blocks ~36px wide × 33px tall around the visible base.
-  { x1: 418, y1: 379, x2: 454, y2: 412 },
+  { x1: 431, y1: 373, x2: 467, y2: 406 },
   // Scrying basin at (680, 220). Tall pedestal — narrow base.
   { x1: 665, y1: 230, x2: 695, y2: 260 },
-  // Gravestones cluster at (370, 230). Three stones spread across
+  // Gravestones cluster at (393, 230). Three stones spread across
   // the lower half of the sprite — wider footprint than singles.
-  { x1: 345, y1: 240, x2: 395, y2: 270 },
+  { x1: 368, y1: 240, x2: 418, y2: 270 },
   // Ancient lantern post at (300, 360). Tall narrow post.
   { x1: 287, y1: 365, x2: 313, y2: 395 },
 ];
