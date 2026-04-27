@@ -4684,10 +4684,15 @@ function tick(now) {
         const cx = nearest.x * TILE + TILE / 2;
         const cy = nearest.y * TILE + TILE / 2;
         if (nearest.variant === 'treasure') {
-          // Floor-scaled gold + relic chance
+          // Floor-scaled gold + relic chance.
+          // Tuned 2026-04-27 (Wave 2): expected value RISES with floor
+          // depth to compensate for the rising mimic ratio. Floor 1-2
+          // chests are gold-only. Floor 3 has 40% relic chance (was
+          // 30%); floor 4 has 70% relic chance (was 50%) — meaningful
+          // jump on the floor where 3 of 5 chests are mimics.
           const lvl = currentFloorLevel | 0;
           const goldAmt = 25 + lvl * 15 + ((Math.random() * 30) | 0);
-          const relicChance = lvl >= 4 ? 0.50 : (lvl >= 3 ? 0.30 : 0);
+          const relicChance = lvl >= 4 ? 0.70 : (lvl >= 3 ? 0.40 : 0);
           if (Math.random() < relicChance) {
             const relic = rollRelicOffer(1, lvl)[0];
             if (relic) {
@@ -4701,8 +4706,15 @@ function tick(now) {
           } else {
             import('./gold.js').then(g => g.dropGold(cx, cy, goldAmt));
           }
-          // Visual jackpot feedback
+          // Visual jackpot feedback — golden flash + cyan/gold sparkle
+          // burst + roomLabel reveals 'TREASURE!' so the player gets a
+          // clear positive payoff moment when the gamble paid off.
+          triggerScreenFlash('rgba(255, 220, 140, 0.20)', 0.35);
           for (let i = 0; i < 12; i++) sparkle(cx + (Math.random() - 0.5) * 40, cy + (Math.random() - 0.5) * 30, '#9ad7ff');
+          for (let i = 0; i < 8; i++) sparkle(cx + (Math.random() - 0.5) * 50, cy + (Math.random() - 0.5) * 36, '#ffe5a0');
+          roomLabelText = '✦ TREASURE ✦';
+          roomLabelColor = '#ffd27a';
+          roomLabelTime = 1.6;
           playSfx('slime_death', { rate: 0.6, volume: 0.7 });
         } else {
           // MIMIC — damage + spawn enemies
@@ -4729,10 +4741,18 @@ function tick(now) {
           }
           // Room becomes uncleared — doors lock until enemies die
           room.cleared = false;
-          // Visual jolt
-          shakeCamera(8, 0.25);
-          triggerScreenFlash('rgba(255, 80, 40, 0.18)', 0.25);
+          // Visual jolt — bigger shake + flash + 'MIMIC!' reveal label
+          // so the player gets the punishment-then-fight beat clearly.
+          shakeCamera(12, 0.32);
+          triggerScreenFlash('rgba(255, 80, 40, 0.28)', 0.35);
+          roomLabelText = '⚠ MIMIC ⚠';
+          roomLabelColor = '#ff6a55';
+          roomLabelTime = 1.6;
           playSfx('hero_hurt', { rate: 0.7, volume: 0.85 });
+          playSfx('slime_death', { rate: 0.35, volume: 0.6 });     // deeper roar
+          // Burst of red death-particles where the chest sat — visual
+          // 'something just came out of this chest' moment
+          for (let i = 0; i < 14; i++) deathBurst(cx, cy - 10, '#ff6a55');
         }
       }
     }

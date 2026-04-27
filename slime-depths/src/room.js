@@ -605,7 +605,7 @@ export function buildRoomFromData(data) {
         // halo + god-ray now anchor where the visible fire actually is.
         // Old value was TILE*0.6 = 28.8 (8px south of new flame).
         y: 21,
-        seed: hash(col, data.kind.length),
+        seed: hash(col, (data.kind || 'combat').length),     // defensive: data.kind can be undefined in early-tick edge cases
       });
     }
   }

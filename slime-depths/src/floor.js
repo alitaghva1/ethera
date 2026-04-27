@@ -410,10 +410,14 @@ export function makeTreasureChestRoom(level) {
   }
   // Decorative pillars flanking the room (visual only, no collision).
   // Two pillars near the top corners give the room a 'sacred chamber'
-  // feel — frames the chest area as ceremonial.
+  // feel — frames the chest area as ceremonial. y=3 keeps them inside
+  // the playable area for both ROOM_SIZES.medium (20×14) and .tall
+  // (18×18), the two sizes pickRoomSize('trove') can return — rows
+  // 0-2 are wall+threshold (compare with the urn placement which uses
+  // y=randInt(3, size.h-4), avoiding the same band).
   const decorPillars = [
-    { x: 2, y: 2 },
-    { x: size.w - 3, y: 2 },
+    { x: 2, y: 3 },
+    { x: size.w - 3, y: 3 },
   ];
   return {
     kind: 'chestroom',
