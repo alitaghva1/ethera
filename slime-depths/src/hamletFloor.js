@@ -153,17 +153,17 @@ const EXCLUSIONS = [
   // Firepit — base ring at (970, 654). Sprite is 48×48 scaled 1.4× →
   // 67px rendered. ~50×45 around the stone ring + flame.
   { x1: 945, y1: 635, x2: 995, y2: 680 },
-  // Anvil — full anvil + tree stump at (956, 324). Covers the
+  // Anvil — full anvil + tree stump at (948, 316). Covers the
   // visible mass of the prop so hero bumps off from any direction.
-  { x1: 930, y1: 305, x2: 985, y2: 355 },
+  { x1: 922, y1: 297, x2: 977, y2: 347 },
   // Cooking pot — full pot body + tripod at (907, 437). Earlier rect
   // only covered the lower tripod legs (y=445-470), so the hero could
   // walk through the upper pot body. Now covers y=415-470 (the full
   // visible kettle from rim to tripod feet).
   { x1: 880, y1: 415, x2: 935, y2: 470 },
-  // Lectern (archivist's reading stand) at (436, 412). Tall narrow
+  // Lectern (archivist's reading stand) at (436, 404). Tall narrow
   // stand: blocks ~36px wide × 33px tall around the visible base.
-  { x1: 418, y1: 387, x2: 454, y2: 420 },
+  { x1: 418, y1: 379, x2: 454, y2: 412 },
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
