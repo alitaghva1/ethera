@@ -417,7 +417,7 @@ const HAMLET_FX = [
     // is ongoing ambient work, not a discrete event. Scale 0.6× →
     // ~67px rendered to match cooking pot / firepit visual weight.
     id: 'anvil', asset: 'fx_anvil',
-    x: 920, y: 340,
+    x: 924, y: 338,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
