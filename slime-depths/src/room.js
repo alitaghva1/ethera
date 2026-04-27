@@ -4,6 +4,7 @@
 // stone look tuned for the Slime Depths palette.
 
 import { setDustBiome, setWeatherBiome } from './particles.js';
+import { images } from './loader.js';
 
 export const TILE = 48;
 // Default room dimensions. Per-room sizes can override via `data.w` / `data.h`
@@ -369,6 +370,11 @@ export const roomSpikes = [];
 export const roomFirePools = [];
 // Trove-room urns — hero can destroy them for loot. Fields: {x, y, broken, variant, breakT}
 export const roomUrns = [];
+// Treasure-chest-room chests. Fields: {x, y, variant: 'treasure'|'mimic',
+// state: 'closed'|'opening'|'opened', frame: 0..15, frameTime: 0}.
+// All chests look IDENTICAL when closed (gambling tension) — the
+// variant only reveals via the opening animation playing fire vs cold.
+export const roomChests = [];
 const SPIKE_CYCLE = 2.2;          // total seconds per cycle
 const SPIKE_RETRACT = 1.2;          // retracted duration (at phase start)
 const SPIKE_WARNING = 0.4;          // warning / rising
@@ -603,6 +609,19 @@ export function buildRoomFromData(data) {
   if (data.urns) {
     for (const u of data.urns) {
       roomUrns.push({ x: u.x, y: u.y, broken: !!u.broken, variant: u.variant || 0, breakT: 0, isProp: !!u.isProp });
+    }
+  }
+  // Treasure-chest-room chests
+  roomChests.length = 0;
+  if (data.chests) {
+    for (const c of data.chests) {
+      roomChests.push({
+        x: c.x, y: c.y,
+        variant: c.variant,
+        state: c.state || 'closed',
+        frame: c.frame | 0,
+        frameTime: c.frameTime || 0,
+      });
     }
   }
   if (data.kind === 'combat') {
@@ -2378,6 +2397,69 @@ export function tryHitUrn(hx, hy, aimX, aimY, reach) {
     return { hit: true, wx: ux, wy: uy, variant: u.variant, isProp: !!u.isProp };
   }
   return { hit: false };
+}
+
+// Treasure-chest rendering — both variants share an identical 'closed' look
+// (gambling tension); their reveal happens through the opening animation.
+//
+// Closed → frame 0 of fx_chestcold (used as the shared 'closed chest'
+// silhouette, since chestcold's first frame is a clean closed box).
+//
+// Opening → animate frames 0→15 of the variant's own sheet (chestcold for
+// treasure, chestfire for mimic). At ~12 fps a 16-frame loop is ~1.3 s — fast
+// enough to feel like a discrete reveal moment, slow enough to register the
+// fire/coin visual.
+//
+// Opened → render frame 15 (last frame) of the variant. Persistent.
+const CHEST_FPS = 12;
+const CHEST_FRAMES = 16;
+const CHEST_W = 48;
+const CHEST_H = 48;
+const CHEST_SCALE = 1.4;     // ~67px rendered, matches hamlet prop scale
+
+export function drawChests(ctx, dt) {
+  const closedAsset = images.fx_chestcold;     // shared closed appearance
+  for (const c of roomChests) {
+    const cx = c.x * TILE + TILE / 2;
+    const cy = c.y * TILE + TILE / 2;
+    let asset, frame;
+    if (c.state === 'closed') {
+      asset = closedAsset;
+      frame = 0;
+    } else {
+      // 'opening' or 'opened' — variant-specific animation
+      asset = c.variant === 'treasure' ? images.fx_chestcold : images.fx_chestfire;
+      if (c.state === 'opening') {
+        c.frameTime += dt;
+        const advance = (c.frameTime * CHEST_FPS) | 0;
+        c.frame = Math.min(CHEST_FRAMES - 1, advance);
+        if (c.frame >= CHEST_FRAMES - 1) {
+          c.state = 'opened';
+        }
+      }
+      frame = c.frame;
+    }
+    if (!asset) continue;     // not loaded yet
+    const drawW = CHEST_W * CHEST_SCALE;
+    const drawH = CHEST_H * CHEST_SCALE;
+    const sx = frame * CHEST_W;
+    // Drop shadow under chest base
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + drawH / 2 - 6, drawW / 3, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Sprite
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      asset,
+      sx, 0, CHEST_W, CHEST_H,
+      Math.round(cx - drawW / 2),
+      Math.round(cy - drawH / 2 + 4),     // +4 so chest base sits ON the tile, not floating above
+      drawW, drawH,
+    );
+    ctx.imageSmoothingEnabled = prevSmoothing;
+  }
 }
 
 // Fire pool hazard — 3-phase cycle: dormant → warning → erupting → dormant.

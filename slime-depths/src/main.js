@@ -12,7 +12,7 @@ import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
   spawnExtraFirePool, room, TILE, roomTorches,
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
-  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, setDoorLookup,
+  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, drawChests, setDoorLookup,
   snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
   getValidNorthDoorXRange,
 } from './room.js';
@@ -5301,6 +5301,7 @@ function render() {
   // Spikes + fire pools draw on top of floor, below sprites
   drawSpikes(ctx, gameTime);
   drawUrns(ctx, 1 / 60);                // fixed small dt — break anim is visual only
+  drawChests(ctx, 1 / 60);               // chest open animation runs frame counters via dt
   drawFirePools(ctx, gameTime);
   // Wanderer halo draws beneath hero so hero sprite still reads
   drawWandererTrail(ctx);
