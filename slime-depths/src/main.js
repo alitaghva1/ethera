@@ -5615,52 +5615,33 @@ function render() {
   ctx.fillStyle = warm;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Wall torch halos — flickering light at each sconce, biome-tinted.
+  // Wall torch halos — soft, warm, ATMOSPHERIC pools of light. NOT
+  // spotlights. Holistic redesign 2026-04-27 after the previous version
+  // was reading as 'stage spotlights thrown around the room':
+  //   - god-ray cones removed entirely (the biggest 'spotlight' offender)
+  //   - halo radius cut 220 -> 100 (each torch lights its own neighborhood,
+  //     not half the room)
+  //   - core alpha cut 0.70 -> 0.28 (no more pure-white blowout under
+  //     the additive blend mode)
+  //   - flicker depth cut 0.28 -> 0.10 (subtle breathing, not strobing)
+  //   - mid-stop pushed wider so the falloff is smoother
+  // Net: each torch contributes a small warm pool that fades naturally
+  // into the room's general dimness. The torch sprite itself remains
+  // the visually-bright element, with a gentle warm halo around it.
   const now = performance.now() / 1000;
   const flameBase = pal.torchFlame || 'rgba(255, 180, 100, ';
   for (const t of roomTorches) {
     const tsx = t.x - camera.x + canvas.width / 2 + camera.offsetX;
     const tsy = t.y - camera.y + canvas.height / 2 + camera.offsetY;
-    const phase = (now * 3 + (t.seed & 0xff) * 0.1);
-    // Flicker tuned for the new sprite's bigger visible flame: deeper
-    // modulation (0.72-1.0 vs old 0.82-1.0) so the halo 'breathes' more
-    // visibly with the visible flame's animation.
-    const flick = 0.72 + 0.28 * (Math.sin(phase * 7.3) * 0.5 + Math.sin(phase * 11.1) * 0.4 + Math.sin(phase * 17.5) * 0.3) / 1.2;
-    // Radius bumped 180 -> 220 base to match the bigger sprite — the
-    // old radius was tuned for a 10px procedural blob.
-    const radius = 220 + flick * 30;
+    const phase = (now * 2.4 + (t.seed & 0xff) * 0.1);
+    const flick = 0.90 + 0.10 * (Math.sin(phase * 7.3) * 0.5 + Math.sin(phase * 11.1) * 0.4 + Math.sin(phase * 17.5) * 0.3) / 1.2;
+    const radius = 100 + flick * 12;
     const g = ctx.createRadialGradient(tsx, tsy, 6, tsx, tsy, radius);
-    // Hot core stop pushed up (0.55 -> 0.7) so the immediate area
-    // around the flame reads as 'I am the light source.'
-    g.addColorStop(0, flameBase + (0.70 * flick).toFixed(3) + ')');
-    g.addColorStop(0.25, flameBase + (0.30 * flick).toFixed(3) + ')');
+    g.addColorStop(0, flameBase + (0.28 * flick).toFixed(3) + ')');
+    g.addColorStop(0.45, flameBase + (0.08 * flick).toFixed(3) + ')');
     g.addColorStop(1, flameBase + '0)');
     ctx.fillStyle = g;
     ctx.fillRect(tsx - radius, tsy - radius, radius * 2, radius * 2);
-
-    // GOD RAY — volumetric light cone streaming down from the torch.
-    // Approximated by a vertical trapezoid with a top-biased gradient and
-    // flicker-modulated alpha. Makes the dust-filled air feel luminous.
-    // Length bumped 260 -> 300 to match the bigger flame's visual reach.
-    const rayLen = 300 + flick * 30;
-    const rayTopW = 22;
-    const rayBotW = 150;
-    const rayAlpha = 0.22 + flick * 0.10;     // bumped 0.18 -> 0.22 for the brighter flame
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const rayGrad = ctx.createLinearGradient(tsx, tsy, tsx, tsy + rayLen);
-    rayGrad.addColorStop(0, flameBase + rayAlpha.toFixed(3) + ')');
-    rayGrad.addColorStop(0.5, flameBase + (rayAlpha * 0.35).toFixed(3) + ')');
-    rayGrad.addColorStop(1, flameBase + '0)');
-    ctx.fillStyle = rayGrad;
-    ctx.beginPath();
-    ctx.moveTo(tsx - rayTopW / 2, tsy);
-    ctx.lineTo(tsx + rayTopW / 2, tsy);
-    ctx.lineTo(tsx + rayBotW / 2, tsy + rayLen);
-    ctx.lineTo(tsx - rayBotW / 2, tsy + rayLen);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
   }
   ctx.restore();
 
