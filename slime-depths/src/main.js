@@ -55,7 +55,7 @@ import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
 import { CURSES, ALL_CURSE_IDS, activeCurses, loadCurses, toggleCurse, isCursed, curseCount, curseEssenceMul } from './curses.js';
 import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked } from './achievements.js';
 import { records, loadRecords, updateRecords, incrementRunsStarted } from './records';
-import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, clearFusions } from './fusions.js';
+import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, discoveredCount, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
@@ -3004,7 +3004,11 @@ function populatePauseRelics() {
   if (activeFusions.length > 0) {
     const fHeader = document.createElement('div');
     fHeader.style.cssText = 'width:100%;font-size:10px;letter-spacing:3px;color:#a0e8ff;text-align:center;margin-bottom:6px;';
-    fHeader.textContent = `⚡ ACTIVE FUSIONS · ${activeFusions.length} / ${totalFusions()} DISCOVERED`;
+    // Header reads: "⚡ ACTIVE: 2  ·  DISCOVERED: 12/30" — splits the
+    // current-run active count from the cumulative codex progress so
+    // both numbers are clearly separate (the prior "2/30 DISCOVERED"
+    // read as "2 of 30 fusions are active", which was misleading).
+    fHeader.textContent = `⚡ ACTIVE: ${activeFusions.length}  ·  DISCOVERED: ${discoveredCount()} / ${totalFusions()}`;
     row.appendChild(fHeader);
     const fGroup = document.createElement('div');
     fGroup.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;width:100%;margin-bottom:14px;';
