@@ -430,14 +430,14 @@ const HAMLET_FX = [
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
   },
+  // Lectern FX removed per user request 2026-04-27 — felt off
+  // visually. Asset fx_lectern.png kept on disk + loader entry intact
+  // so re-adding is just restoring this block.
+  /*
   {
     // Ancient scholar's reading lectern (STATIC, single frame). Sits
     // in front of the L-bend ruined wall ending, on the archivist's
-    // dirt-patch nook (NW area). Earlier (340, 470) was hanging off
-    // the wall edge to the west — moved to (440, 420) so the lectern
-    // sits clearly on the dirt patch with the wall ending behind it.
-    // Archivist NPC at (380, 470) is south-west of the lectern (no
-    // x-overlap, so the archivist sprite doesn't render over it).
+    // dirt-patch nook (NW area).
     //
     // PixelLab Object exports STATIC props as just rotations/ folder
     // (no animations). For our renderer we treat it as a 1-frame
@@ -451,6 +451,7 @@ const HAMLET_FX = [
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
   },
+  */
   {
     // Scrying basin — sits on the top-center altar slab at SHRINE_POS
     // (680, 215). Tall pedestal with a glowing basin on top, used as
@@ -458,7 +459,7 @@ const HAMLET_FX = [
     // 40px south of it on grass, facing north toward the basin.
     // 4 frames at 3fps = 1.3s loop, slow swirl on the basin's surface.
     id: 'scryingbasin', asset: 'fx_scryingbasin',
-    x: 664, y: 220,
+    x: 648, y: 220,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,

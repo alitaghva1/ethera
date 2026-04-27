@@ -159,11 +159,9 @@ const EXCLUSIONS = [
   // Cooking pot — full pot body + tripod at (875, 425). Covers the
   // full visible kettle from rim to tripod feet.
   { x1: 848, y1: 403, x2: 903, y2: 458 },
-  // Lectern (archivist's reading stand) at (449, 398). Tall narrow
-  // stand: blocks ~36px wide × 33px tall around the visible base.
-  { x1: 431, y1: 373, x2: 467, y2: 406 },
-  // Scrying basin at (664, 220). Tall pedestal — narrow base.
-  { x1: 649, y1: 230, x2: 679, y2: 260 },
+  // Lectern EXCLUSION removed (lectern FX entry removed).
+  // Scrying basin at (648, 220). Tall pedestal — narrow base.
+  { x1: 633, y1: 230, x2: 663, y2: 260 },
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 
