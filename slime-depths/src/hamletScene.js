@@ -35,7 +35,7 @@ export const HAMLET_HERO_SPAWN = { x: 700, y: 670 };
 // scripts/hamlet_audit.py for the technique). v3 has no actual props
 // painted in — these positions point at the GROUND PLACEMENT MARKERS
 // where each feature will be rendered as a sprite overlay.
-const PORTAL_POS   = { x: 688, y: 365 };   // dark circular pit — flood-fill detected blob center at (688, 368), micro-tuned -2y to (688, 366) for visual centering (perspective-foreshortened oval reads slightly low at geom-center)
+const PORTAL_POS   = { x: 250, y: 620 };   // moved 2026-04-27 from (688, 365) central plaza to bottom-left grass area. Painted pit at old central location is now masked by fx_pit_cover (which stays at the old position) so the central plaza reads as clean cobble. New portal location is open grass — no painted feature underneath, just the dark shadow + portal FX layered on grass.
 const SHRINE_POS   = { x: 680, y: 215 };   // top-center altar slab
 const FIREPIT_POS  = { x: 736, y: 554 };   // hearth scorch mark south of plaza
 
@@ -364,6 +364,10 @@ const HAMLET_FX = [
     //
     // 240×240 native, scaled 0.5× → 120px rendered. Slightly larger
     // than the painted pit (~100×80) to fully mask it with margin.
+    // pit_cover STAYS at (688, 365) even though the portal moved
+    // to (250, 620). This masks the painted pit at the central plaza
+    // so it reads as clean cobble (no leftover dark hole where the
+    // portal used to be).
     id: 'pit_cover', asset: 'fx_pit_cover',
     x: 688, y: 365,
     frameW: 240, frameH: 240,
@@ -372,14 +376,13 @@ const HAMLET_FX = [
   },
   {
     // Portal shadow (STATIC). Dark circular depression rendered between
-    // the pit cover (clean cobble) and the portal FX. Gives the portal
-    // a deliberate 'set into a dark hollow' look — replaces the messy
-    // painted pit shadow with a clean intentional dark spot.
+    // the grass (no painted pit here) and the portal FX. Gives the
+    // portal a deliberate 'set into a dark hollow' look on grass.
     // 200×200 native dark gradient with feathered edges, scaled 0.6×
     // → 120px rendered (slightly larger than the portal so a thin
     // ring of darkness frames the portal).
     id: 'portal_shadow', asset: 'fx_portal_shadow',
-    x: 688, y: 365,
+    x: 250, y: 620,
     frameW: 200, frameH: 200,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
@@ -403,7 +406,7 @@ const HAMLET_FX = [
     // worth the visual artifact. Pulse rhythm is constant regardless
     // of hero distance — clean and predictable.
     id: 'portal', asset: 'fx_portal',
-    x: 688, y: 365,
+    x: 250, y: 620,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
     scale: 0.9, yOffset: 0,
