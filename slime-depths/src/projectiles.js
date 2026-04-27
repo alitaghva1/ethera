@@ -9,6 +9,7 @@ import { shakeCamera } from './camera.js';
 import { sparkle, hitSpark, deathBurst } from './particles.js';
 import { synthPing, synthThud } from './synth.js';
 import { triggerHitStop, spawnDamageNumber } from './fx.js';
+import { spawnLightningArc } from './synergies.js';
 
 export const projectiles = [];
 const pool = [];
@@ -211,6 +212,55 @@ export function updateProjectiles(dt) {
         });
         triggerHitStop(p.charged ? 0.07 : 0.04);
         synthPing(p.charged ? 720 : 960, p.charged ? 0.45 : 0.32, p.charged ? 0.14 : 0.10);
+
+        // ── WAND RELIC HOOKS — fire on first hit per bolt only ──
+        // Track p._didChain / p._didSplit so a piercing bolt doesn't
+        // re-trigger the proc on every chained enemy (would feel busted).
+
+        // Storm Conduit — arc lightning from the hit enemy to the
+        // nearest other enemy within 140px. Half the bolt's damage,
+        // single chain so it doesn't run away from the player's intent.
+        if (hero.boltChain && !p._didChain) {
+          p._didChain = true;
+          let nearest = null;
+          let nearestD2 = 140 * 140;
+          for (const e2 of enemies) {
+            if (e2.dead || e2 === hitEnemy) continue;
+            const ex = e2.x - hitEnemy.x, ey = e2.y - hitEnemy.y;
+            const d2 = ex * ex + ey * ey;
+            if (d2 < nearestD2) { nearest = e2; nearestD2 = d2; }
+          }
+          if (nearest) {
+            const chainDmg = Math.max(1, Math.round(p.damage * 0.5));
+            spawnLightningArc(hitEnemy.x, hitEnemy.y - 18, nearest.x, nearest.y - 18);
+            nearest.takeDamage(chainDmg, 0, -1);
+            spawnDamageNumber(nearest.x, nearest.y - 36, chainDmg, {
+              elementTag: nearest._lastElementTag,
+            });
+          }
+        }
+
+        // Splintered Light — on first hit, spawn 2 sub-bolts at ±25°
+        // from the original direction. Sub-bolts deal 70% damage and
+        // can't split again (they spawn with split=false). The bolt
+        // itself still resolves its hit + pierce normally.
+        if (hero.boltSplit && !p._didSplit && !p._isSubBolt) {
+          p._didSplit = true;
+          const baseAngle = Math.atan2(p.vy, p.vx);
+          const subSpeed = Math.hypot(p.vx, p.vy);
+          const subDmg = Math.max(1, Math.round(p.damage * 0.7));
+          for (const offset of [-0.44, 0.44]) {     // ±25° in radians
+            const a = baseAngle + offset;
+            const sub = spawnHeroBolt(
+              hitEnemy.x, hitEnemy.y - 8,
+              Math.cos(a), Math.sin(a),
+              subDmg, subSpeed, 0.6,
+              { color: p.color },
+            );
+            sub._isSubBolt = true;     // prevent recursive split
+          }
+        }
+
         // Pierce branch: keep traveling if pierce charges remain.
         if (p.pierce > 0) {
           if (!p.hit) p.hit = new Set();

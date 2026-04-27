@@ -34,7 +34,19 @@ export const RELIC_DEFS = {
     flavor: 'A duelist\u2019s last breath, coiled in iron.',
     icon: 'relic_long_reach',
     tint: '#b49aff',
-    apply: () => { hero.reachMul *= 1.25; hero.speartip = true; },
+    // RANGED branch: when the hero is wielding the wand, +25% reach
+    // doesn't translate to arc geometry (no swing), so we redirect the
+    // benefit to a +30% bolt range via boltLifeMul. Speartip flag (the
+    // outer-20% bonus damage) only fires for melee since it keys off
+    // swing-arc geometry — the wand's bolts have no arc to outer-edge.
+    apply: () => {
+      hero.reachMul *= 1.25;
+      if (hero.weapon === 'wand') {
+        hero.boltLifeMul *= 1.30;
+      } else {
+        hero.speartip = true;
+      }
+    },
   },
   nimble_step: {
     // SYSTEMS PASS — was pure CD -50% (dead stat stick, −12 DPS corr).
@@ -542,6 +554,62 @@ export const RELIC_DEFS = {
     tier: 'common',
     apply: () => { hero.hourglassRespite = true; hero.hourglassReadyAt = 0; },
   },
+
+  // ── WAND-THEMED RELICS (weaponOnly: 'wand') ──────────────────────────
+  // Only roll into the offer pool when the player has the wand
+  // equipped. Sword/dagger/hammer players won't see these in their
+  // pedestal options — keeps offer relevance high regardless of weapon
+  // choice. Synergize with the wand's pierce + charged-bolt mechanics
+  // already shipped in projectiles.js + hero.js.
+
+  splintered_light: {
+    // Bolts split into two smaller bolts on first hit (wall or enemy).
+    // Sub-bolts go at ±25° at 70% damage. Adds tactical AoE potential
+    // — aim at a tight pack and the spread cleans up the survivors.
+    id: 'splintered_light',
+    name: 'Splintered Light',
+    desc: 'Wand bolts split into two on first hit',
+    flavor: 'The light remembered being many before it was taught to be one.',
+    icon: 'relic_attack_speed',
+    tint: '#c0a0ff',
+    tier: 'rare',
+    weaponOnly: 'wand',
+    apply: () => { hero.boltSplit = true; },
+  },
+
+  storm_conduit: {
+    // Bolt hit arcs lightning to the nearest enemy within 140px (1
+    // chain). Reuses the existing spawnLightningArc from synergies.js
+    // so the visual + audio are consistent with chain_lightning relic.
+    // Damage on the chain is 50% of the bolt's damage — meaningful but
+    // not the primary kill source.
+    id: 'storm_conduit',
+    name: 'Storm Conduit',
+    desc: 'Bolt hits arc lightning to the nearest enemy',
+    flavor: 'A weather she had once watched from a window.',
+    icon: 'relic_stormcaller',
+    tint: '#9adfff',
+    tier: 'rare',
+    weaponOnly: 'wand',
+    apply: () => { hero.boltChain = true; },
+  },
+
+  patient_lens: {
+    // Charged shots get a +50% damage bump AND mark the hit as a CRIT
+    // for the damage-number badge + any crit-hit downstream procs. The
+    // legendary tier on this relic pays off the patient playstyle —
+    // sit on charge, time the release, hit hard. Does nothing for
+    // tap-fire bolts (skill expression for charge-release timing).
+    id: 'patient_lens',
+    name: 'Patient Lens',
+    desc: 'Charged wand shots crit · +50% damage',
+    flavor: 'Sight does not hurry. The arrow that flies fastest is rarely seen.',
+    icon: 'relic_eye_of_ether',
+    tint: '#ffd680',
+    tier: 'legendary',
+    weaponOnly: 'wand',
+    apply: () => { hero.boltCritOnCharge = true; },
+  },
 };
 
 export const ALL_RELIC_IDS = Object.keys(RELIC_DEFS);
@@ -688,8 +756,16 @@ export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
   // Mythics are blocked at the same tier (their effect budget is in the same league).
   const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
   const legendaryBlocked = !!(am && am.legendaryDisabled);
+  // Weapon-class filter — relics tagged `weaponOnly: '<id>'` only roll
+  // into the offer pool when the hero has that weapon equipped. Keeps
+  // offer relevance high regardless of weapon choice (a sword player
+  // never sees wand-themed relics; a wand player gets their themed
+  // relics WITHOUT crowding the common pool with sword-only entries).
+  const heroWeapon = hero.weapon || 'sword';
   for (const id of ALL_RELIC_IDS) {
     if (ownedIds.has(id)) continue;
+    const def = RELIC_DEFS[id];
+    if (def.weaponOnly && def.weaponOnly !== heroWeapon) continue;
     const t = relicTier(id);
     if (legendaryBlocked && (t === 'legendary' || t === 'mythic')) continue;
     if (availableByTier[t]) availableByTier[t].push(id);

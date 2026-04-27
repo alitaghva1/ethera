@@ -155,6 +155,18 @@ export const hero = {
   damageMul: 1,
   attackCooldownMul: 1,
   reachMul: 1,
+  // Ranged (wand) — bolt-range multiplier. Long Reach + future range
+  // relics extend a bolt's life (which caps its travel distance) when
+  // the hero has wand equipped, mirroring how reachMul extends melee
+  // arc reach. Defaults 1 so non-wand runs read as no-op.
+  boltLifeMul: 1,
+  // Synergy flags exposed by wand-themed relics:
+  //   boltSplit       — Splintered Light: bolts split on first hit
+  //   boltChain       — Storm Conduit: bolt hit arcs to nearest enemy
+  //   boltCritOnCharge — Patient Lens: charged shots always crit + bonus
+  boltSplit: false,
+  boltChain: false,
+  boltCritOnCharge: false,
   dodgeCooldownMul: 1,
   speedMul: 1,
   lifesteal: 0,
@@ -669,11 +681,18 @@ export function updateHero(dt, enemies, mouseWorld) {
         const dirX = hero.aimX / aimMag;
         const dirY = hero.aimY / aimMag;
         const baseDmg = w.damage * hero.damageMul;
+        // Bolt range modifier — relics like Long Reach (wand-branched)
+        // extend the bolt's life, which caps its travel distance. Same
+        // pattern as melee reachMul scaling the swing-arc reach.
+        const lifeMul = hero.boltLifeMul || 1;
         if (isCharged) {
-          // Charged: 2.5× damage, pierces 3, faster bolt + longer life
-          // (so pierce can connect through 3 spaced enemies in a line).
+          // Charged: 2.5× damage (or +50% more if Patient Lens), pierces
+          // 3, faster bolt + longer life. Patient Lens forces a CRIT
+          // tag on charged hits — the legendary pays off the patient
+          // playstyle of wind-up shots.
+          const chargedMul = hero.boltCritOnCharge ? 2.5 * 1.5 : 2.5;
           spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
-                        dirX, dirY, baseDmg * 2.5, 720, 1.2,
+                        dirX, dirY, baseDmg * chargedMul, 720, 1.2 * lifeMul,
                         { charged: true, pierce: 3 });
           // Heavier audio + camera kick for the charge release moment.
           try { synthClick(1.0, 0.85); } catch (_e) {}
@@ -685,7 +704,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         } else {
           // Tap-fire: standard bolt, no pierce, snappier audio.
           spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
-                        dirX, dirY, baseDmg, w.boltSpeed, w.boltLife);
+                        dirX, dirY, baseDmg, w.boltSpeed, w.boltLife * lifeMul);
           try { synthClick(1.7, 0.6); } catch (_e) {}
           shakeCamera(2.5, 0.10);
         }
