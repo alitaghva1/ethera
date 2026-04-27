@@ -14,6 +14,7 @@ import { synthChord, synthPing, synthThud, synthFanfare } from './synth.js';
 import { isCursed } from './curses.js';
 import { hasCard } from './tarot.js';
 import { getFusionCompletingRelicIds } from './fusions.js';
+import { isFirstTime } from './firstSeen.js';
 
 // THE MAGICIAN tarot — if the offer doesn't already contain a fusion-completing
 // relic, swap one slot with a completer (50% chance). This roughly doubles the
@@ -38,6 +39,12 @@ function applyMagicianBias(offers) {
 export const pedestals = [];
 let lastPickedDef = null;      // for flash-text UI feedback
 let pickedFlashTime = 0;
+// Tracks whether the most recent pickup was the player's first-ever mythic.
+// Captured at pickup time (not at draw time) so the full-screen vignette
+// theatre gates correctly across the entire 5.5s banner lifetime — a
+// per-frame isFirstTime check would fire markSeen on the first frame and
+// then read false for every subsequent frame, killing the vignette mid-banner.
+let lastPickedFirstMythic = false;
 
 // Word-wrap helper — splits `text` into lines that fit within `maxWidth` when
 // rendered with the caller's current ctx.font. Used by drawPedestalTooltip so
@@ -251,6 +258,7 @@ export function clearPedestals() {
 export function suppressPickupFlash() {
   lastPickedDef = null;
   pickedFlashTime = 0;
+  lastPickedFirstMythic = false;
 }
 
 // Dev-only: force the pickup-flash banner state for screenshot-based testing.
@@ -338,6 +346,13 @@ export function updatePedestals(dt) {
       lastPickedDef = p.relic;
       // Mythic banner holds 5.5s vs common 3.0s — more time to read + screenshot.
       pickedFlashTime = t === 'mythic' ? 5.5 : 3.0;
+      // Capture whether THIS specific pickup is the player's first-ever
+      // mythic — gates the full-screen vignette + edge wash in
+      // drawPickupFlash so the "Windforce moment" lands once with full
+      // theatre and de-escalates to a regular (still strong) banner on
+      // subsequent mythics. Snapshotted at pickup time so the per-frame
+      // draw doesn't fight a markSeen race.
+      lastPickedFirstMythic = (t === 'mythic') && isFirstTime('mythic', 'any');
       break;
     }
   }
@@ -622,8 +637,12 @@ export function drawPickupFlash(ctx, w, h) {
     glow.addColorStop(0, `rgba(${tierRgb}, ${(glowA * glowStrength).toFixed(3)})`);
     glow.addColorStop(1, `rgba(${tierRgb}, 0)`);
     ctx.fillStyle = glow;
-    // Mythic: full-screen wash so the background darkens behind the banner.
-    if (tier === 'mythic') {
+    // Mythic: full-screen wash + edge vignette only on the player's
+    // FIRST-EVER mythic (the "Windforce moment") — captured at pickup
+    // time as lastPickedFirstMythic. Subsequent mythics get the
+    // double-frame border + bigger pulse but keep the localized glow,
+    // so the banner stays readable instead of stealing the screen.
+    if (tier === 'mythic' && lastPickedFirstMythic) {
       ctx.fillRect(0, 0, w, h);
       const edgeVg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
       edgeVg.addColorStop(0, 'rgba(0, 0, 0, 0)');

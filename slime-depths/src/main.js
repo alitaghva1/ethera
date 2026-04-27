@@ -61,7 +61,7 @@ import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, load
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
 import { loadTips, showTip, updateTips, drawTip } from './tips.js';
-import { loadFirstSeen, hasSeen, markSeen } from './firstSeen.js';
+import { loadFirstSeen, hasSeen, markSeen, isFirstTime } from './firstSeen.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import {
   spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
@@ -498,22 +498,29 @@ window.__onFusionFormed = (fusion) => {
   pulseZoom(0.1, 0.6);
   triggerScreenFlash('rgba(180, 230, 255, 0.2)', 0.4);
 };
-// Boss phase-transition cinematic (fires when a boss enrages at 50% HP)
-let phaseIntroTime = 0;        // ticks down from ~1.6s while banner shows
+// Boss phase-transition cinematic (fires when a boss enrages at 50% HP).
+// First-encounter gating: full 1.6s banner with PHASE 2 title on first
+// per-boss-type sighting, shorter 0.8s "flash + tag" on subsequent
+// (since the player has already learned what enrage means). Captured
+// at trigger time so the per-frame render stays lock-step.
+let phaseIntroTime = 0;        // ticks down from 1.6s (first) or 0.8s (Nth)
 let phaseIntroBoss = null;
 let phaseIntroStartedAt = 0;   // wall-clock mark for stuck-overlay clamp
+let phaseIntroIsFirstTime = false;
 window.triggerBossPhaseIntro = (boss) => {
   if (!boss) return;
-  phaseIntroTime = 1.6;
+  phaseIntroIsFirstTime = isFirstTime('phase2', boss.type || 'unknown');
+  phaseIntroTime = phaseIntroIsFirstTime ? 1.6 : 0.8;
   phaseIntroBoss = boss;
   phaseIntroStartedAt = performance.now();
   // Same belt-and-suspenders as the boss-room entry intro: grant iframes
-  // covering the phase-2 banner (1.6s intro + 0.4s clamp tail + 0.4s
-  // post-intro buffer). The hero was already trading blows with the boss
-  // when it enraged, so the vulnerability window without this is real —
-  // an enemy swing in flight when phase fires would land the moment the
-  // intro-freeze clears.
-  hero.iframes = Math.max(hero.iframes || 0, 2.4);
+  // covering the phase-2 banner (full or short) plus the post-intro
+  // buffer. The hero was already trading blows with the boss when it
+  // enraged, so the vulnerability window without this is real — an
+  // enemy swing in flight when phase fires would land the moment the
+  // intro-freeze clears. Cap at 2.4s for the long banner; 1.6s for the
+  // short one (still enough to cover the flash + clamp tail).
+  hero.iframes = Math.max(hero.iframes || 0, phaseIntroIsFirstTime ? 2.4 : 1.6);
 };
 
 // Main menu — shown on page load
@@ -6066,9 +6073,16 @@ function render() {
     ctx.restore();
   }
 
-  // PHASE 2 boss banner — mid-fight cinematic when boss enrages
+  // PHASE 2 boss banner — mid-fight cinematic when boss enrages.
+  // First-encounter (per boss type): full 1.6s banner with PHASE 2 title
+  //   + boss-name AWAKENED subtitle + pulsing aura. The "they got worse"
+  //   reveal moment, lands once.
+  // Subsequent encounters: 0.8s of just the letterbox + red flash + a
+  //   small AWAKENED tag — the player has already learned what enrage
+  //   means, so we keep the safety beat (iframes still cover the bar)
+  //   but skip the heavy typography that would slow combat down.
   if (phaseIntroTime > 0 && phaseIntroBoss) {
-    const total = 1.6;
+    const total = phaseIntroIsFirstTime ? 1.6 : 0.8;
     const t = 1 - (phaseIntroTime / total);            // 0 → 1
     const w = canvas.width, h = canvas.height;
     // Red-tinted letterbox that's tighter than the boss intro bars
@@ -6090,40 +6104,56 @@ function render() {
     const veilA = t < 0.15 ? (t / 0.15) * 0.28 : t > 0.82 ? (1 - (t - 0.82) / 0.18) * 0.28 : 0.28;
     ctx.fillStyle = 'rgba(80, 10, 20, ' + veilA.toFixed(3) + ')';
     ctx.fillRect(0, barH, w, h - barH * 2);
-    // Big text — PHASE 2 + AWAKENED subtitle
+    // Big text — only on the first encounter per boss type. Otherwise
+    // we render just a small AWAKENED tag in the bottom letterbox so
+    // the player still gets a moment of "wait, something changed".
     const slideIn = Math.min(1, t / 0.22);
     const slideOut = t > 0.78 ? (t - 0.78) / 0.22 : 0;
     const a = Math.max(0, Math.min(1, slideIn - slideOut));
-    ctx.save();
-    ctx.globalAlpha = a;
-    const cx = w / 2, cy = h / 2;
-    // Pulsing red aura behind text
-    const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 120);
-    const aura = ctx.createRadialGradient(cx, cy, 40, cx, cy, 320);
-    aura.addColorStop(0, `rgba(255, 50, 40, ${(0.25 * pulse).toFixed(3)})`);
-    aura.addColorStop(1, 'rgba(255, 50, 40, 0)');
-    ctx.fillStyle = aura;
-    ctx.fillRect(cx - 400, cy - 160, 800, 320);
-    // PHASE 2 title
-    ctx.font = 'bold 76px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(255, 40, 40, 0.9)';
-    ctx.shadowBlur = 28;
-    ctx.fillStyle = 'rgba(10, 2, 4, 0.8)';
-    ctx.fillText('PHASE 2', cx + 3, cy - 10 + 3);
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(10, 2, 4, 0.85)';
-    ctx.strokeText('PHASE 2', cx, cy - 10);
-    ctx.fillStyle = '#ff9080';
-    ctx.fillText('PHASE 2', cx, cy - 10);
-    // Subtitle: boss name + "AWAKENED"
-    ctx.font = 'italic bold 18px Georgia, serif';
-    ctx.fillStyle = '#ffd0c0';
-    const subtitle = (phaseIntroBoss.def.displayName || 'THE BOSS') + ' — AWAKENED';
-    ctx.fillText(subtitle, cx, cy + 40);
-    ctx.restore();
+    if (phaseIntroIsFirstTime) {
+      ctx.save();
+      ctx.globalAlpha = a;
+      const cx = w / 2, cy = h / 2;
+      // Pulsing red aura behind text
+      const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 120);
+      const aura = ctx.createRadialGradient(cx, cy, 40, cx, cy, 320);
+      aura.addColorStop(0, `rgba(255, 50, 40, ${(0.25 * pulse).toFixed(3)})`);
+      aura.addColorStop(1, 'rgba(255, 50, 40, 0)');
+      ctx.fillStyle = aura;
+      ctx.fillRect(cx - 400, cy - 160, 800, 320);
+      // PHASE 2 title
+      ctx.font = 'bold 76px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(255, 40, 40, 0.9)';
+      ctx.shadowBlur = 28;
+      ctx.fillStyle = 'rgba(10, 2, 4, 0.8)';
+      ctx.fillText('PHASE 2', cx + 3, cy - 10 + 3);
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(10, 2, 4, 0.85)';
+      ctx.strokeText('PHASE 2', cx, cy - 10);
+      ctx.fillStyle = '#ff9080';
+      ctx.fillText('PHASE 2', cx, cy - 10);
+      // Subtitle: boss name + "AWAKENED"
+      ctx.font = 'italic bold 18px Georgia, serif';
+      ctx.fillStyle = '#ffd0c0';
+      const subtitle = (phaseIntroBoss.def.displayName || 'THE BOSS') + ' — AWAKENED';
+      ctx.fillText(subtitle, cx, cy + 40);
+      ctx.restore();
+    } else if (barH > 12) {
+      // Compact AWAKENED tag inside the bottom letterbox. Renders only
+      // once the bar is wide enough to fit the text without clipping.
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.font = 'italic bold 12px Georgia, serif';
+      ctx.fillStyle = '#ff9080';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const tag = '— AWAKENED —';
+      ctx.fillText(tag, w / 2, h - barH / 2);
+      ctx.restore();
+    }
   }
 
   // Floor intro card — implementation in floorCardRender.js. Self-gates on
