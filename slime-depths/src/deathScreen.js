@@ -87,7 +87,12 @@ export const DEATH_SCREEN_HTML = `
     <div id="metaHeader" style="color:#a0e8ff;font-size:10px;letter-spacing:5px;font-weight:bold;text-shadow:0 0 8px rgba(160,232,255,0.35);">\u2727 SANCTUARY OF THE ABYSS \u2727</div>
     <div style="width:60px;height:1px;background:linear-gradient(90deg,#a0e8ff,transparent);"></div>
   </div>
-  <div id="metaShopRow" style="display:flex;gap:10px;margin-bottom:20px;animation:winCardSlide 0.55s ease-out 1.15s both;position:relative;z-index:1;"></div>
+  <!-- Sanctuary unlock cards — wraps to multiple rows when there are too
+       many unlocks to fit a single row. Each card is 170px and the canvas
+       is 1280; with 10+ unlocks the row used to extend ~1790px and clip
+       both edges. max-width 920 fits 5 cards per row (170*5 + 10*4 = 890)
+       so the layout settles to 5+5 (or however many wraps cleanly). -->
+  <div id="metaShopRow" style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:920px;margin-bottom:20px;animation:winCardSlide 0.55s ease-out 1.15s both;position:relative;z-index:1;"></div>
 
   <!-- Button row — "← MAIN MENU" escape hatch next to the primary NEW RUN.
        The menu is where the player goes to switch save slot, pick a memory,

@@ -36,6 +36,10 @@ export const hamletState = {
   npcArrivalRun: {},     // id → runsStarted at which they arrived (for flavor)
   npcServiceCount: {},   // id → how many times you've used their service
   npcDialogueSeen: {},   // id+stage → true (so we know when to show "new" indicator)
+  // Casual chat rotation — index per NPC into their chatLines array.
+  // Bumped each time the player clicks the SPEAK button so the chat
+  // stays fresh across visits without burning all lines in one sitting.
+  npcChatIdx: {},        // id → integer (current line index)
   // Milestone counters for reactive dialogue. Main.js bumps these at the
   // right run-lifecycle events (boss kill, fortune drawn, etc.) so NPC
   // arcStage advance() checks can key off them.
@@ -129,6 +133,18 @@ export const NPCS = {
       label: 'ESSENCE',
       // Click handler set up at hamlet-render site (we route to the existing meta shop).
     },
+    // Casual conversation lines — surfaced via the SPEAK button in the
+    // dialogue modal, distinct from arcStages (story-critical flavor).
+    // Cycles through on each click; persists index in hamletState.
+    // Voice: warm, elegiac, the keeper as steward of small flames.
+    chatLines: [
+      'The fire holds. That is most of my work.',
+      'You came in quieter than usual. Did the ruin not see you out?',
+      'Sometimes I think the candles know when you are coming. They lean toward the door.',
+      'I have been here long enough to remember when the hamlet had names. They will come back.',
+      'Sit a moment. The descent will keep.',
+      'When you go down again, leave the door ajar. The light reaches further than you think.',
+    ],
   },
 
   smith: {
@@ -184,6 +200,15 @@ export const NPCS = {
       // and gets 1 of a higher tier. Phase 2 since it needs a picker UI.
       disabledReason: 'Reforge requires an active run. Speak to me after a descent.',
     },
+    // Voice: terse, blue-collar, fond but unsentimental. Talks about steel.
+    chatLines: [
+      'Mornin\'. Or whatever it is up here.',
+      'Strike\'s easier when the steel knows what you want from it.',
+      'Bring me what doesn\'t serve you anymore. I\'ll find what does.',
+      'The anvil takes two voices — mine, and whatever you laid on it.',
+      'Don\'t flinch when the hammer comes down. You\'re not the one on the block.',
+      'I was a soldier once. Then a smith. Now mostly a smith.',
+    ],
   },
 
   archivist: {
@@ -239,6 +264,15 @@ export const NPCS = {
       type: 'memory_codex',
       label: 'MEMORIES',
     },
+    // Voice: scholarly, careful, fond of margins.
+    chatLines: [
+      'I have written you in. Not to worry — I do not show the book to anyone.',
+      'A relic\'s name is the first thing the ruin tries to take. I keep them here, in case.',
+      'Yesterday I copied a page that had been written before. Identical hand. Different ink.',
+      'Memory is not a record. Memory is a habit of returning to the same room in the head.',
+      'I have a corner reserved for the relics you have not yet found. They are all named in pencil.',
+      'Do you ever wonder which entry of mine is about you?',
+    ],
   },
 
   // ==========================================================================
@@ -295,6 +329,15 @@ export const NPCS = {
       type: 'curses_panel',
       label: 'CURSES',
     },
+    // Voice: grim, watchful, ledger-keeper. Calm where calm should not be.
+    chatLines: [
+      'The ledger does not need your name. It already has it.',
+      'Three more came up the path while you were below. None of them you. Yet.',
+      'Some bargains are paid in advance. Some come due only at the gate.',
+      'I do not bury, here. The ruin keeps what it takes — I only count.',
+      'You stand differently than the last time. That is information.',
+      'I will be watching. Try not to need me before you need me.',
+    ],
   },
 
   // ==========================================================================
@@ -351,6 +394,15 @@ export const NPCS = {
       type: 'oracle_forecast',
       label: 'GAZE',
     },
+    // Voice: cryptic, dryly observational, oddly fond.
+    chatLines: [
+      'I have already seen what you are about to ask. Ask anyway.',
+      'The forward-dark is patient with me. Not always with you.',
+      'A future is the shape of a past that has not arrived yet.',
+      'You glance at the door more than the others. You are nearly ready to go.',
+      'When you survive, it is because someone refused to look. That is not always me.',
+      'Cards do not lie. They do, however, omit a great deal.',
+    ],
   },
 
   // ==========================================================================
@@ -408,6 +460,15 @@ export const NPCS = {
       type: 'wanderer_gift',
       label: 'A GIFT',
     },
+    // Voice: introspective, road-worn, tired in a peaceful way.
+    chatLines: [
+      'My pack is lighter than it was last time. That is what packs do, when stopped.',
+      'Walking is a habit. Stopping is a discipline. I am still learning the second.',
+      'The road home is the one you find on the way to somewhere else.',
+      'I met a wanderer once who did not stop. We did not have much to say.',
+      'You bring news without telling me any. Posture is a kind of map.',
+      'Rest a little. Even the road sleeps, between travelers.',
+    ],
   },
 };
 
@@ -492,3 +553,26 @@ export function presentNpcs() {
 
 export function totalNpcs() { return ALL_NPC_IDS.length; }
 export function presentNpcCount() { return presentNpcs().length; }
+
+// Casual chat — return the next chat line for an NPC and bump the index.
+// Returns null if the NPC has no chatLines (graceful fallback). The index
+// wraps modulo the chatLines length so the conversation stays alive
+// indefinitely; players cycling through eventually see the same line again
+// after a full pass, which is fine — the lines are atmospheric, not unique.
+export function getNextChatLine(npcId) {
+  const def = NPCS[npcId];
+  if (!def || !Array.isArray(def.chatLines) || def.chatLines.length === 0) return null;
+  const cur = hamletState.npcChatIdx[npcId] | 0;
+  const line = def.chatLines[cur % def.chatLines.length];
+  hamletState.npcChatIdx[npcId] = (cur + 1) % def.chatLines.length;
+  saveHamletState();
+  return line;
+}
+
+// Returns true if the NPC has any chatLines defined. Used by the dialogue
+// modal to gate the SPEAK button (no point showing it for an NPC with
+// nothing casual to say).
+export function npcHasChat(npcId) {
+  const def = NPCS[npcId];
+  return !!(def && Array.isArray(def.chatLines) && def.chatLines.length > 0);
+}

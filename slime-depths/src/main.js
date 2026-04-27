@@ -91,7 +91,7 @@ import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
 import { updateBossIntro } from './bossIntroDom.js';
@@ -843,7 +843,7 @@ tarotRevealEl.innerHTML = `
       <p id="tarotSubtitle" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#d8cfae;">three cards drawn \u00b7 three fates set</p>
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
     </div>
-    <div id="tarotCardsRow" style="display:flex;gap:24px;margin-bottom:32px;"></div>
+    <div id="tarotCardsRow" style="display:flex;flex-wrap:wrap;justify-content:center;gap:24px;margin-bottom:32px;max-width:600px;"></div>
     <button id="tarotBeginBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:15px 64px;font-size:15px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 26px rgba(201,168,106,0.3), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">BEGIN DESCENT</button>
     <button id="tarotBackBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;margin-top:14px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 BACK</button>
   </div>
@@ -978,7 +978,7 @@ cursesEl.innerHTML = `
   <h1 style="font-size:48px;margin:0 0 4px;letter-spacing:8px;color:#d85a5a;font-family:Georgia,serif;font-weight:400;text-shadow:0 0 18px rgba(216,90,90,0.45);animation:winFadeIn 0.7s ease-out 0.1s both;">CURSES</h1>
   <p style="margin:0 0 22px;opacity:0.55;letter-spacing:4px;font-size:13px;font-style:italic;animation:winFadeIn 0.6s ease-out 0.2s both;">the ruin remembers every bargain</p>
   <div id="curseEssMul" style="font-size:14px;color:#a0e8ff;letter-spacing:3px;margin-bottom:22px;animation:winFadeIn 0.6s ease-out 0.3s both;min-height:18px;"></div>
-  <div id="cursesRow" style="display:grid;grid-template-columns:repeat(3, 240px);gap:14px;margin-bottom:22px;animation:winCardSlide 0.55s ease-out 0.4s both;"></div>
+  <div id="cursesRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:22px;max-width:760px;width:92vw;animation:winCardSlide 0.55s ease-out 0.4s both;"></div>
   <button id="cursesCloseBtn" style="background:transparent;color:#a97070;border:1px solid #5a3030;padding:10px 32px;font-size:12px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.18s ease;animation:winFadeIn 0.5s ease-out 0.6s both;">← RETURN</button>
 `;
 document.getElementById('hud').appendChild(cursesEl);
@@ -1037,7 +1037,7 @@ memoryEl.innerHTML = `
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
     </div>
     <p style="margin:0 0 22px;opacity:0.6;letter-spacing:2px;font-size:12px;font-style:italic;max-width:620px;text-align:center;line-height:1.55;">A memory is a shape you carry into the dark. A pact with a version of yourself that can no longer speak but can still bargain. Choose one, and descend as that.</p>
-    <div id="memoryGrid" style="display:grid;grid-template-columns:repeat(3, 280px);gap:14px;margin-bottom:22px;max-height:500px;overflow-y:auto;padding:4px;"></div>
+    <div id="memoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:22px;max-height:500px;max-width:880px;width:92vw;overflow-y:auto;padding:4px;"></div>
     <button id="memoryClearBtn" style="background:transparent;color:#8a7a6a;border:1px solid #4a3a2a;padding:8px 24px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;margin-bottom:14px;transition:all 0.2s ease;">— forget them all —</button>
     <button id="memoryCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
@@ -1425,8 +1425,12 @@ dialogueEl.innerHTML = `
     <div style="width:100%;height:1px;background:linear-gradient(90deg, transparent, rgba(201,168,106,0.45), transparent);margin-bottom:18px;"></div>
     <!-- Body: stage text -->
     <div id="dialogueText" style="font-size:14px;line-height:1.75;color:#d8cfae;margin-bottom:22px;min-height:120px;font-style:italic;"></div>
-    <!-- Service + close buttons -->
+    <!-- Service / speak / close buttons. SPEAK is the casual-chat path
+         that cycles the NPC's chatLines without leaving the modal \u2014
+         visually muted (text-link style) so the SERVICE button stays
+         the primary action. -->
     <div style="display:flex;gap:14px;justify-content:flex-end;align-items:center;">
+      <button id="dialogueSpeakBtn" style="background:transparent;color:#a89060;border:1px solid rgba(168,144,96,0.4);padding:8px 18px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">SPEAK</button>
       <button id="dialogueServiceBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:12px 28px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:12px;font-weight:bold;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 14px rgba(201,168,106,0.25);transition:all 0.2s ease;">SERVICE</button>
       <button id="dialogueCloseBtn" style="background:transparent;color:#8a7a6a;border:0;padding:8px 16px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">\u2190 FAREWELL</button>
     </div>
@@ -1444,6 +1448,38 @@ document.getElementById('dialogueCloseBtn').addEventListener('mouseleave', (e) =
   e.target.style.color = '#8a7a6a';
   e.target.style.textShadow = 'none';
 });
+// SPEAK button — casual chat. Click cycles to the next chatLine via
+// getNextChatLine(npcId), replacing the body text with that single line
+// rendered in slightly more conversational typography. The current NPC
+// id is stashed on the modal element when openDialogue runs.
+document.getElementById('dialogueSpeakBtn').addEventListener('click', () => {
+  const npcId = dialogueEl.dataset.npcId;
+  if (!npcId) return;
+  const def = NPCS[npcId];
+  if (!def) return;
+  const line = getNextChatLine(npcId);
+  if (!line) return;
+  // Replace body with the chat line. Use a different visual register —
+  // a single-line cream paragraph with an italic dash before, signalling
+  // "this is the NPC speaking now," distinct from the multi-paragraph
+  // arc-stage flavor.
+  const textEl = document.getElementById('dialogueText');
+  textEl.innerHTML = `
+    <p style="margin:0;line-height:1.7;font-style:italic;color:${def.tint || '#d8cfae'};">
+      <span style="opacity:0.6;margin-right:8px;">—</span>${line}
+    </p>
+  `;
+});
+document.getElementById('dialogueSpeakBtn').addEventListener('mouseenter', (e) => {
+  e.target.style.color = '#f4d9a0';
+  e.target.style.borderColor = 'rgba(244,217,160,0.7)';
+  e.target.style.background = 'rgba(244,217,160,0.06)';
+});
+document.getElementById('dialogueSpeakBtn').addEventListener('mouseleave', (e) => {
+  e.target.style.color = '#a89060';
+  e.target.style.borderColor = 'rgba(168,144,96,0.4)';
+  e.target.style.background = 'transparent';
+});
 
 function openDialogue(npcId) {
   const def = NPCS[npcId];
@@ -1451,6 +1487,9 @@ function openDialogue(npcId) {
   const stage = hamletState.npcArcStage[npcId];
   if (stage === undefined) return;
   const stageDef = def.arcStages[stage] || def.arcStages[def.arcStages.length - 1];
+  // Stash current npc id on the modal so the persistent SPEAK click
+  // handler (set up once at module load) knows which NPC to route to.
+  dialogueEl.dataset.npcId = npcId;
   // Name + title
   document.getElementById('dialogueName').textContent = def.name;
   document.getElementById('dialogueName').style.color = def.tint || '#f4d9a0';
@@ -1477,6 +1516,11 @@ function openDialogue(npcId) {
     dialogueEl.style.display = 'none';
     runNpcService(npcId);
   };
+  // SPEAK button visibility — only show for NPCs with chatLines defined.
+  // Lets future NPCs opt out of casual chat (e.g. silent NPCs) without
+  // breaking the modal for existing roster.
+  const speakBtn = document.getElementById('dialogueSpeakBtn');
+  speakBtn.style.display = npcHasChat(npcId) ? '' : 'none';
 
   dialogueEl.style.display = 'flex';
 }
@@ -1886,7 +1930,7 @@ volumesEl.innerHTML = `
     </div>
     <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">JOURNALS</h1>
     <p style="margin:14px 0 26px;opacity:0.6;letter-spacing:2px;font-size:12px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Each journal keeps its own record of the ruin. Switching closes one and opens another. Deleting erases that journal forever.</p>
-    <div id="volumesGrid" style="display:grid;grid-template-columns:repeat(3, 240px);gap:18px;margin-bottom:28px;"></div>
+    <div id="volumesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:28px;max-width:780px;width:92vw;"></div>
     <button id="volumesCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
 `;
@@ -2035,7 +2079,7 @@ smithEl.innerHTML = `
 
     <p style="margin:0 0 22px;opacity:0.6;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:620px;text-align:center;line-height:1.55;">Bring me weight you have carried. I will fold it into something that travels with you into the next descent.</p>
 
-    <div id="smithGrid" style="display:grid;grid-template-columns:repeat(5, 168px);gap:12px;margin-bottom:22px;max-height:520px;overflow-y:auto;padding:6px;"></div>
+    <div id="smithGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:22px;max-height:520px;max-width:920px;width:92vw;overflow-y:auto;padding:6px;"></div>
     <button id="smithCloseBtn" style="background:transparent;color:#a97070;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 STEP AWAY FROM THE FORGE</button>
   </div>
 `;
@@ -2223,7 +2267,7 @@ achEl.innerHTML = `
       <button class="chronTab" data-tab="fusions" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Fusions</button>
     </div>
     <!-- Shared content grid — repopulated per tab. -->
-    <div id="achRow" style="display:grid;grid-template-columns:repeat(3, 280px);gap:12px;margin-bottom:22px;max-height:520px;overflow-y:auto;padding:4px;"></div>
+    <div id="achRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:22px;max-height:520px;max-width:880px;width:92vw;overflow-y:auto;padding:4px;"></div>
     <button id="achCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
 `;
