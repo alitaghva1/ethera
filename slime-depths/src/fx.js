@@ -455,10 +455,15 @@ let _perfectFlash = 0;
 let _counterWindow = 0;
 const COUNTER_WINDOW = 2.0;
 
-export function triggerPerfectDodge() {
+// Optional windowMul scales the COUNTER_WINDOW for relics that extend
+// the perfect-dodge window (e.g. dagger's Flicker Step doubles it). The
+// perfect-dodge slowmo + flash always run at the base duration —
+// they're presentation, not gameplay reward — so windowMul only
+// affects the counter-attack arming time.
+export function triggerPerfectDodge(windowMul = 1) {
   _perfectDodge = PERFECT_DODGE_DUR;
   _perfectFlash = 0.3;
-  _counterWindow = COUNTER_WINDOW;
+  _counterWindow = COUNTER_WINDOW * windowMul;
 }
 
 export function hasCounterAttack() { return _counterWindow > 0; }

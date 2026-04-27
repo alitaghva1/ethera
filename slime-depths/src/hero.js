@@ -310,6 +310,18 @@ export function resetHero() {
   hero.boltSplit = false;
   hero.boltChain = false;
   hero.boltCritOnCharge = false;
+  // Sword-themed signature relics:
+  hero.honestEdge = false;       // finisher swings always crit
+  hero.ringingSteel = false;     // chain hits stack +6% dmg, max +30%
+  hero.ringingSteelStacks = 0;   // current chain count for ringing_steel
+  // Dagger-themed signature relics:
+  hero.twinPulse = false;        // every 2nd hit echoes to nearest enemy
+  hero.twinPulseTick = 0;        // alternating counter (0/1)
+  hero.flickerStep = false;      // perfect-dodge counter window doubled
+  // Hammer-themed signature relics:
+  hero.mountainStrike = false;        // every 3rd swing spawns shockwave
+  hero.mountainStrikeCounter = 0;     // swing counter for mountain_strike
+  hero.earthenHold = false;      // charged hits add +0.6s stagger
   // April 2026 content expansion — new relic/fusion state flags.
   hero.mirrorShard = false;       hero.mirrorReflect = 0;     hero.mirrorReflectCrit = 1;
   hero.sporeBloom = false;        hero.sporeDamage = 0;       hero.sporeRadius = 0;
@@ -378,7 +390,14 @@ export function updateHero(dt, enemies, mouseWorld) {
   // Swing chain window decays — drops swingIndex to 0 after 0.8s of no attacks
   if (hero.swingChainTime > 0) {
     hero.swingChainTime -= dt;
-    if (hero.swingChainTime <= 0) hero.swingIndex = 0;
+    if (hero.swingChainTime <= 0) {
+      hero.swingIndex = 0;
+      // Chain-dependent relic state resets together. Ringing Steel's
+      // damage stacks zero out; Twin Pulse's alternating echo tick
+      // also restarts so the next chain begins on the off-beat.
+      hero.ringingSteelStacks = 0;
+      hero.twinPulseTick = 0;
+    }
   }
   // Charge attack — accumulate while LMB held, but not during attack/dodge/hurt states
   if (mouse.down && hero.state !== 'attack' && hero.state !== 'dodge' && hero.state !== 'hurt' && hero.attackCooldown <= 0) {
@@ -1102,7 +1121,9 @@ export function updateHero(dt, enemies, mouseWorld) {
           //   IRON GREAVES: first hit after 2+ seconds of continuous motion
           const forcedCrit = (
             (hero.knockbackCrit && e._kbCritPending) ||
-            (hero.movementCrit && (hero._moveTime || 0) >= 2.0)
+            (hero.movementCrit && (hero._moveTime || 0) >= 2.0) ||
+            // HONEST EDGE (sword-only) — finisher swings always crit
+            (hero.honestEdge && hero._swingIsFinisher)
           );
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
@@ -1123,7 +1144,15 @@ export function updateHero(dt, enemies, mouseWorld) {
           // below alongside the other pre-multiplier adjustments.
           const speartipBonus = (hero.speartip && dist > reach * 0.8) ? 1.4 : 1.0;
           if (isExec) showTip('first_execute');
-          let finalDmg = damage * speartipBonus;
+          // RINGING STEEL (sword-only) — chained hits add +6% damage
+          // each, max +30% (5 stacks). Stacks read from
+          // hero.ringingSteelStacks, capped before the multiplier.
+          // Stacks reset when the swing chain expires (handled in the
+          // chainTime decay block at top of updateHero).
+          const ringingSteelMul = hero.ringingSteel
+            ? 1 + 0.06 * Math.min(5, hero.ringingSteelStacks | 0)
+            : 1;
+          let finalDmg = damage * speartipBonus * ringingSteelMul;
           // SHADOW T2 — +0.5 crit multiplier bump (so a 2.0× crit becomes 2.5×)
           const _effectiveCritMul = hero.critMul + (hero.themeCritMulBonus || 0);
           if (isCrit) finalDmg *= _effectiveCritMul;
@@ -1237,6 +1266,69 @@ export function updateHero(dt, enemies, mouseWorld) {
                 sparkle(splashTarget.x, splashTarget.y - 14, '#ffffff');
               }
             }
+          }
+
+          // ── WEAPON SIGNATURE RELIC HOOKS — fire after damage resolves
+          // so the relic effects layer on top of base damage rather than
+          // changing the headline number. All gated on weapon class +
+          // relic flag so they're no-ops when not applicable.
+
+          // RINGING STEEL (sword-only) — increment chain stack to feed
+          // the next hit's damage multiplier. Cap at 5 stacks (+30%).
+          // Reset is handled by the swingChainTime decay block.
+          if (hero.ringingSteel && w.id === 'sword') {
+            hero.ringingSteelStacks = Math.min(5, (hero.ringingSteelStacks | 0) + 1);
+          }
+
+          // TWIN PULSE (dagger-only) — every 2nd dagger hit echoes
+          // damage to nearest other enemy within 80px for 60%. The
+          // 80px range is tighter than Arcane Quiver's 260 because
+          // dagger's identity is precision/short-range — the echo
+          // cleans up adjacent enemies, not a room-wide AOE.
+          if (hero.twinPulse && w.id === 'dagger' && !e.dead) {
+            hero.twinPulseTick = (hero.twinPulseTick + 1) | 0;
+            if (hero.twinPulseTick % 2 === 0) {
+              let echoTarget = null, echoD2 = 80 * 80;
+              for (const other of enemies) {
+                if (other === e || other.dead || other.state === 'dead') continue;
+                const dx = other.x - e.x, dy = other.y - e.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < echoD2) { echoTarget = other; echoD2 = d2; }
+              }
+              if (echoTarget) {
+                echoTarget.takeDamage(finalDmg * 0.6, 0, 0);
+                sparkle(echoTarget.x, echoTarget.y - 8, '#a0e8ff');
+                sparkle(echoTarget.x, echoTarget.y - 14, '#ffffff');
+              }
+            }
+          }
+
+          // MOUNTAIN STRIKE (hammer-only) — every 3rd hammer hit spawns
+          // a 70px shockwave at impact for 50% weapon damage. Fire the
+          // explosion via the synergies system (same path as pyromancer
+          // / soul_burst) so it integrates cleanly with affixes.
+          if (hero.mountainStrike && w.id === 'hammer' && !e.dead) {
+            hero.mountainStrikeCounter = (hero.mountainStrikeCounter | 0) + 1;
+            if (hero.mountainStrikeCounter % 3 === 0) {
+              const shockDmg = (w.damage * (hero.damageMul || 1)) * 0.5;
+              spawnExplosion(e.x, e.y - 6, 70, shockDmg, 'physical');
+              // Visual punch — extra dust burst for the ground-strike
+              // read, plus a heavier hit-stop than the regular swing.
+              for (let k = 0; k < 8; k++) {
+                sparkle(e.x + (Math.random() - 0.5) * 40, e.y + 4 + (Math.random() - 0.5) * 16, '#ffae6c');
+              }
+              triggerHitStop(0.06);
+            }
+          }
+
+          // EARTHEN HOLD (hammer-only) — charged hammer hits add +0.6s
+          // stagger on top of whatever stagger the base hit applied.
+          // Stagger is already a field that enemies' AI reads (e.stagger
+          // ticks down per frame, gates attack/movement while > 0).
+          if (hero.earthenHold && w.id === 'hammer' && chargedHit && !e.dead) {
+            e.stagger = Math.max(e.stagger || 0, 0) + 0.6;
+            sparkle(e.x, e.y, '#c8a060');
+            sparkle(e.x - 4, e.y - 2, '#a07840');
           }
           hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
           const wpnShake = w.shakeMul || 1;
@@ -1390,7 +1482,10 @@ export function damageHero(amount, fromX, fromY) {
   // own iframes for safety; the damage gets absorbed lower in the
   // function via the iframes check.
   if (hero.state === 'dodge' && hero.dashStrikeTime <= 0) {
-    triggerPerfectDodge();
+    // FLICKER STEP (dagger-only) — doubles the perfect-dodge counter
+    // window. Counter-attack stays viable for 4.0s instead of 2.0s.
+    const counterWindowMul = (hero.flickerStep && hero.weapon === 'dagger') ? 2 : 1;
+    triggerPerfectDodge(counterWindowMul);
     stats.perfectDodges++;
     // SYSTEMS PASS — DASH MASTER: perfect dodges refund the dodge cooldown,
     // letting expert play chain perfect-dodges indefinitely. Pairs great

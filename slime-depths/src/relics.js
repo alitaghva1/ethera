@@ -594,6 +594,117 @@ export const RELIC_DEFS = {
     apply: () => { hero.boltChain = true; },
   },
 
+  // ── SWORD-THEMED (weaponOnly: 'sword') ────────────────────────────
+  // Sword is the balanced "default" weapon. Its identity is reliable
+  // mid-range damage with a 3-swing combo finisher. Sword-only relics
+  // reward learning the swing-chain rhythm.
+
+  honest_edge: {
+    // Finisher swings (every 3rd hit) ALWAYS crit. Sword's identity is
+    // its 3-swing combo; this relic doubles down — committing to the
+    // full chain reliably crits the third hit. Pairs with executioner
+    // for a real "wind up the finisher on bosses" playstyle.
+    id: 'honest_edge',
+    name: 'Honest Edge',
+    desc: 'Sword finishers (3rd hit in chain) always crit',
+    flavor: 'A lie cuts only once. The truth, three times.',
+    icon: 'relic_keen_edge',
+    tint: '#ffe5a0',
+    tier: 'rare',
+    weaponOnly: 'sword',
+    apply: () => { hero.honestEdge = true; },
+  },
+
+  ringing_steel: {
+    // Each hit in a continuous chain (within swingChainTime window)
+    // adds +6% damage to the next swing, capped at +30% (5 stacks).
+    // Reset when chain expires. Rewards uninterrupted offense — sword
+    // is the "stay on target" weapon. Pairs with attack speed relics
+    // for a building-DPS feel.
+    id: 'ringing_steel',
+    name: 'Ringing Steel',
+    desc: 'Sword chain hits add +6% damage each, max +30%',
+    flavor: 'The blade hums when struck, and remembers the song.',
+    icon: 'relic_serrated_edge',
+    tint: '#ffd27a',
+    tier: 'rare',
+    weaponOnly: 'sword',
+    apply: () => { hero.ringingSteel = true; },
+  },
+
+  // ── DAGGER-THEMED (weaponOnly: 'dagger') ──────────────────────────
+  // Dagger is the precision/skirmish weapon — narrow arc, fast swings,
+  // higher crit baseline (+10% innate). Dagger-only relics reward the
+  // weave/dodge/strike playstyle.
+
+  twin_pulse: {
+    // Every 2nd dagger hit ALSO damages the nearest other enemy within
+    // 80px for 60% damage. Reads as "the strike echoes" — narrow-arc
+    // dagger lets you tag a single target while the echo cleans up
+    // adjacent enemies. Pairs with shadow theme for crit-spread.
+    id: 'twin_pulse',
+    name: 'Twin Pulse',
+    desc: 'Every 2nd dagger hit echoes to nearest enemy (60% dmg)',
+    flavor: 'Two breaths. Two cuts. The same heart, twice.',
+    icon: 'relic_serrated_edge',
+    tint: '#a0e8ff',
+    tier: 'rare',
+    weaponOnly: 'dagger',
+    apply: () => { hero.twinPulse = true; },
+  },
+
+  flicker_step: {
+    // Perfect-dodge counter window 1.5s → 3.0s. Dagger's identity is
+    // weaving between attacks; this gives the player twice as long to
+    // capitalize on a perfect dodge. Pairs with whisper_veil + shadow
+    // theme for a "every dodge becomes a kill" build.
+    id: 'flicker_step',
+    name: 'Flicker Step',
+    desc: 'Dagger doubles the perfect-dodge counter window',
+    flavor: 'A breath taken between two heartbeats. Time enough to answer.',
+    icon: 'relic_nimble_step',
+    tint: '#b0e0ff',
+    tier: 'rare',
+    weaponOnly: 'dagger',
+    apply: () => { hero.flickerStep = true; },
+  },
+
+  // ── HAMMER-THEMED (weaponOnly: 'hammer') ──────────────────────────
+  // Hammer is the slow/heavy weapon — wide arc, big damage, long
+  // commitment. Hammer-only relics reward landing the big hits.
+
+  mountain_strike: {
+    // Every 3rd hammer swing spawns a 70px shockwave at impact for
+    // 50% weapon damage. Reads as "the ground answers" — hammer is
+    // the AoE weapon, this relic adds AoE on a rhythm. Pairs with
+    // heavy_blow for a "knockback + shockwave" combo.
+    id: 'mountain_strike',
+    name: 'Mountain Strike',
+    desc: 'Every 3rd hammer swing spawns a shockwave',
+    flavor: 'The mountain answers in kind. A blow for a blow.',
+    icon: 'relic_heavy_blow',
+    tint: '#ffae6c',
+    tier: 'rare',
+    weaponOnly: 'hammer',
+    apply: () => { hero.mountainStrike = true; },
+  },
+
+  earthen_hold: {
+    // Charged hammer hits stagger enemies for +0.6s on top of the
+    // base stagger. Hammer's charge is already a commitment — this
+    // makes the payoff harder to escape. Pairs with iron_resolve for
+    // a "tank charge → counter-attack" stance build.
+    id: 'earthen_hold',
+    name: 'Earthen Hold',
+    desc: 'Charged hammer hits stagger enemies for +0.6s',
+    flavor: 'Stand still, the earth tells them. They obey, briefly.',
+    icon: 'relic_ironhide',
+    tint: '#c8a060',
+    tier: 'rare',
+    weaponOnly: 'hammer',
+    apply: () => { hero.earthenHold = true; },
+  },
+
   patient_lens: {
     // Charged shots get a +50% damage bump AND mark the hit as a CRIT
     // for the damage-number badge + any crit-hit downstream procs. The
@@ -760,6 +871,15 @@ export const RELIC_GLYPHS = {
   splintered_light:     'star',    // shattered/dispersed magical light
   storm_conduit:        'bolt',    // lightning chain on bolt hit
   patient_lens:         'eye',     // patient sight, charged-shot crit
+  // Sword-themed (weaponOnly: 'sword'):
+  honest_edge:          'sword',   // finisher always crits
+  ringing_steel:        'sword',   // chain damage build
+  // Dagger-themed (weaponOnly: 'dagger'):
+  twin_pulse:           'bolt',    // echo-strike to nearest enemy
+  flicker_step:         'wind',    // perfect-dodge window doubled
+  // Hammer-themed (weaponOnly: 'hammer'):
+  mountain_strike:      'sword',   // shockwave (no shockwave glyph)
+  earthen_hold:         'shield',  // stagger / hold the line
 };
 
 export function getRelicGlyph(id) {
