@@ -56,6 +56,7 @@ export const hero = {
   facing: 1,
   lastDirection: 4,                 // 8-dir sprite row index (0=N, 2=E, 4=S, 6=W); default SOUTH
   aimX: 1, aimY: 0,
+  attackFacingX: 1, attackFacingY: 0,     // body facing locked at swing trigger; see heroDirection()
   weapon: 'sword',                   // id into WEAPONS; set by main.js run start
   hp: 8, maxHp: 8,
   state: 'idle',                     // idle | walk | attack | dodge | hurt | dead
@@ -584,6 +585,13 @@ export function updateHero(dt, enemies, mouseWorld) {
       const stormAtkSpd = 1 - (hero.themeAtkSpdBonus || 0);
       hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMul * soulreaverMul * bigSwingMul * stormAtkSpd;
       setState('attack');
+      // Lock the body's facing direction at trigger time. heroDirection()
+      // reads these instead of the live aim during the swing so the sprite
+      // commits to the swing direction — flicking the mouse mid-swing no
+      // longer rotates the body (the slash arc is also locked at trigger,
+      // so body + slash now stay in sync).
+      hero.attackFacingX = hero.aimX;
+      hero.attackFacingY = hero.aimY;
       // FUSION: Sparrow's Dance — every 5th attack releases a wind ring that
       // damages all nearby enemies. The counter is tracked independently of
       // the swing-chain index so combos don't interfere.
@@ -653,10 +661,20 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (m > 0) {
         dx /= m; dy /= m;
         const slowMul = hero.slowTime > 0 ? hero.slowMul : 1;
-        const spd = HERO_SPEED * hero.speedMul * slowMul;
+        // Attack-commit slow: while in 'attack' state the hero plants
+        // their feet for the swing — full-speed running while sword is
+        // mid-arc reads as 'moonwalking with weapon turned the wrong way.'
+        // 35% speed during attack matches Hades/Diablo/PoE 'committed-
+        // swing' feel without removing all repositioning. State stays
+        // 'attack' (sprite still faces the locked attack direction); only
+        // velocity is reduced.
+        const attackSlowMul = hero.state === 'attack' ? 0.35 : 1;
+        const spd = HERO_SPEED * hero.speedMul * slowMul * attackSlowMul;
         moveAxis('x', dx * spd * dt);
         moveAxis('y', dy * spd * dt);
-        setState('walk');
+        // Don't downgrade state to 'walk' if we're mid-attack — body
+        // sprite + animation should keep the attack frames + locked dir.
+        if (hero.state !== 'attack') setState('walk');
         // SYSTEMS PASS — IRON GREAVES: track continuous movement time.
         // Reset on any non-walk transition (attack/dodge/idle below).
         hero._moveTime = (hero._moveTime || 0) + dt;
@@ -1351,10 +1369,16 @@ function vecToDirection(dx, dy) {
 export function heroDirection(h = hero) {
   let dir = null;
   const st = h.state;
-  if (st === 'attack' || st === 'dodge') {
-    // Aim is already a unit vector pointing hero → mouse. Dash-strike uses the
-    // locked-at-activation dir, but aim follows the cursor — using aim here
-    // keeps the swing/dodge facing the player's intent either way.
+  if (st === 'attack') {
+    // Body locks to the aim direction sampled at swing-trigger time so
+    // the body commits to the swing — flicking the mouse mid-attack no
+    // longer rotates the sprite. Falls back to live aim if the locked
+    // values aren't set yet (first frame of an attack).
+    dir = vecToDirection(h.attackFacingX ?? h.aimX, h.attackFacingY ?? h.aimY);
+  } else if (st === 'dodge') {
+    // Dodge keeps live aim — the dash-strike direction is locked
+    // separately on dashStrikeDirX/Y; this is just the body sprite
+    // and reading current aim feels right for a quick dodge.
     dir = vecToDirection(h.aimX, h.aimY);
   } else if (st === 'walk') {
     dir = vecToDirection(h.vx, h.vy);
