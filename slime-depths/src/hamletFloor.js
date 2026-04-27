@@ -150,13 +150,13 @@ function buildWalkabilityBitmap() {
 // bbox — so the hero bumps off the visible mass, not the empty air
 // above it.
 const EXCLUSIONS = [
-  // Firepit — base ring at (980, 470) in the E camp dirt zone. Sprite
-  // 48×48 scaled 1.12× → ~54px rendered, ~40×36 around base.
-  { x1: 960, y1: 452, x2: 1000, y2: 488 },
-  // Anvil — full anvil mass at (966, 216) on the NE smithy stone pad.
-  // Slightly tighter footprint than v3 since the painted anvil
-  // silhouette underneath gives the bump a clear visual referent.
-  { x1: 940, y1: 197, x2: 992, y2: 247 },
+  // Firepit — base ring at (415, 470) in the W reading-nook zone,
+  // beside the archivist on his dirt patch. Sprite 48×48 scaled 1.12×
+  // → ~54px rendered, ~40×36 around base.
+  { x1: 395, y1: 452, x2: 435, y2: 488 },
+  // Anvil — full anvil mass at (966, 256) on the NE smithy stone pad
+  // (nudged south +40 from the v4 default to read as the working area).
+  { x1: 940, y1: 237, x2: 992, y2: 287 },
   // Cooking pot — full pot body + tripod at (910, 430) on the camp
   // dirt patch. Covers the visible kettle from rim to tripod feet.
   { x1: 883, y1: 408, x2: 938, y2: 463 },

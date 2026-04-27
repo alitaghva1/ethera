@@ -46,7 +46,7 @@ export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 //   graveyard       (569, 211)   NW grass+markers cluster
 const PORTAL_POS   = { x: 964, y: 654 };   // SE portal pad (v4)
 const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
-const FIREPIT_POS  = { x: 980, y: 470 };   // E camp painted fire ring (v4 — moved from v3 hearth scorch)
+const FIREPIT_POS  = { x: 415, y: 470 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
 
 // NPC world positions — one per district, every position verified to
 // land in a walkable, terrain-correct tile. spriteIdx maps to the
@@ -104,8 +104,8 @@ export const HAMLET_ENTITIES = [
   // v4 NPC positions — each NPC stations at their thematic ground
   // texture zone, slightly offset south so the sprite (bottom-aligned)
   // visually 'stands on' the pad/dirt rather than floating above it.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 688, y: 470, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 1000, y: 260, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 320, interactR: 50, drawScale: 1.10 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 1000, y: 300, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 470, y: 470, interactR: 50, drawScale: 0.95 },
   // v4 NPC positions continued — gravekeeper at NW grave cluster (569,211),
   // oracle south of N shrine slab (687,201), wanderer at E camp dirt (944,452).
@@ -339,11 +339,14 @@ export function drawHamletOverlay(_ctx) {
 //                   painted feature underneath
 const HAMLET_FX = [
   {
-    // Firepit FX — sits in the camp dirt at the painted fire-ring
-    // (E zone). v4 layout has a stone-ring fire pit baked into the
-    // camp dirt at ~(980, 470). 48×48 sprite at 1.12× scale.
+    // Firepit FX — reading-nook brazier beside the archivist (W zone).
+    // Position (415, 470) sits on the dirt patch just west of the
+    // archivist NPC at (470, 470), illuminating his open book and
+    // anchoring the W zone as a "scholar's hearth". Halo (radius 64)
+    // bleeds onto the archivist for the lit-from-the-side reading look.
+    // 48×48 sprite at 1.12× scale.
     id: 'firepit', asset: 'fx_firepit',
-    x: 980, y: 470,
+    x: 415, y: 470,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.12, yOffset: 0,
@@ -408,15 +411,14 @@ const HAMLET_FX = [
     scale: 0.6, yOffset: 0,
   },
   {
-    // Anvil — sits on the NE smithy stone pad. v4 layout has the
-    // smithy foundation centered at (966, 216) with a painted anvil
-    // silhouette baked into the stone; the anvil FX overlays directly
-    // on top so it reads as the working anvil rather than empty stone.
-    // Smith NPC at (1000, 260) stands south of the anvil.
+    // Anvil — sits on the NE smithy stone pad. Nudged south +40px
+    // from the v4 default to read as "smith's working area" rather
+    // than tucked at the north edge of the pad. Smith NPC at
+    // (1000, 300) stands south of the anvil.
     //
     // 9 frames at 6fps continuous loop. Scale 0.6× → ~67px rendered.
     id: 'anvil', asset: 'fx_anvil',
-    x: 966, y: 216,
+    x: 966, y: 256,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
