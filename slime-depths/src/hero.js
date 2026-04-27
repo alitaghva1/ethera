@@ -646,32 +646,56 @@ export function updateHero(dt, enemies, mouseWorld) {
       // add a "charged bolt" via mouse hold, but v1 keeps the rhythm
       // simple: tap LMB, fire bolt, repeat.
       if (w.ranged) {
+        // CHARGED SHOT: hold LMB ≥0.35s to fire an empowered bolt on
+        // release. 2.5× damage, pierces 3 enemies, gold-tinted, slightly
+        // faster. Reuses the existing chargeTime accumulator + charge-
+        // ring UI from melee — same skill ceiling, ranged flavor.
+        // Cooldown after a charged shot is 1.4× normal (commitment
+        // trade — you can't spam them).
+        const isCharged = hero.chargeTime >= 0.35;
         const stormAtkSpd = 1 - (hero.themeAtkSpdBonus || 0);
         const wandererMulR = hero.wandererBuffTime > 0 ? 0.5 : 1;
-        hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMulR * stormAtkSpd;
+        const cooldownMul = isCharged ? 1.4 : 1.0;
+        hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMulR * stormAtkSpd * cooldownMul;
         setState('attack');
         hero.attackFacingX = hero.aimX;
         hero.attackFacingY = hero.aimY;
+        // Lock the charge state so the player can't trigger a second
+        // shot from the same hold + reset the accumulator on release.
+        if (isCharged) { hero.chargeReleased = true; showTip('first_charge'); }
         // Spawn the bolt from a "cast point" slightly forward of the
         // hero so it doesn't visually emit from inside the body.
         const aimMag = Math.hypot(hero.aimX, hero.aimY) || 1;
         const dirX = hero.aimX / aimMag;
         const dirY = hero.aimY / aimMag;
-        const dmg = w.damage * hero.damageMul;
-        spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
-                      dirX, dirY, dmg, w.boltSpeed, w.boltLife);
-        // Cast SFX — synthClick at high pitch reads as a sharp magical
-        // snap. No sword_swing here; the wand is a different fingerprint.
-        try { synthClick(1.7, 0.6); } catch (_e) {}
-        // Light camera shake so each shot has tactile bite.
-        shakeCamera(2.5, 0.10);
-        // Tip on first cast (reuse first_combat slot — it's the
-        // "press LMB to attack" educational beat).
+        const baseDmg = w.damage * hero.damageMul;
+        if (isCharged) {
+          // Charged: 2.5× damage, pierces 3, faster bolt + longer life
+          // (so pierce can connect through 3 spaced enemies in a line).
+          spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
+                        dirX, dirY, baseDmg * 2.5, 720, 1.2,
+                        { charged: true, pierce: 3 });
+          // Heavier audio + camera kick for the charge release moment.
+          try { synthClick(1.0, 0.85); } catch (_e) {}
+          try { synthSwoosh(0.9, 0.6, 0.18); } catch (_e) {}
+          shakeCamera(6, 0.18);
+          pulseZoom(0.04, 0.22);
+          // Brief gold flash so the release reads as a committed beat.
+          triggerScreenFlash('rgba(255, 220, 140, 0.07)', 0.18);
+        } else {
+          // Tap-fire: standard bolt, no pierce, snappier audio.
+          spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
+                        dirX, dirY, baseDmg, w.boltSpeed, w.boltLife);
+          try { synthClick(1.7, 0.6); } catch (_e) {}
+          shakeCamera(2.5, 0.10);
+        }
         showTip('first_combat');
-        // Stash flags so downstream finisher/charged readers see them
-        // false (ranged has no finishers in v1).
+        // Reset charge state so the next cycle starts fresh
+        hero.chargeTime = 0;
+        // Stash flags — charged ranged sets the charged flag so any
+        // downstream consumer (themes, hooks) sees a charged release.
         hero._swingIsFinisher = false;
-        hero._swingIsCharged = false;
+        hero._swingIsCharged = isCharged;
         // NOTE: we deliberately fall through to the rest of the
         // updateHero body so the attack-state END block (line ~1311)
         // still runs to transition state back to idle when the

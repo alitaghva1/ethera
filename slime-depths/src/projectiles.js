@@ -57,24 +57,40 @@ export function spawnOrb(x, y, targetX, targetY, damage = 2) {
 // the wand's WEAPONS def so balance changes can live in weapons.js
 // instead of being scattered through projectiles.js.
 //
-//   x, y      — origin (hero center)
-//   dirX,dirY — normalized aim direction (already unit-length from caller)
+// CHARGED variant (opts.charged === true): deeper damage, pierces up
+// to opts.pierce enemies before despawning, gold-tinted. Reuses the
+// existing hero.chargeTime accumulator from melee weapons so charge-
+// attack relics + the existing charge-ring UI work for wand without
+// new infrastructure.
+//
+//   x, y      — origin (hero center, slightly forward of body)
+//   dirX,dirY — normalized aim direction (unit-length from caller)
 //   damage    — pre-multiplied damage (caller applies hero.damageMul)
-//   speed     — bolt travel speed in px/s (default 600)
-//   life      — seconds before despawn (default 1.0 — caps effective range)
-export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life = 1.0) {
+//   speed     — bolt travel speed in px/s (default 600 / 720 charged)
+//   life      — seconds before despawn (default 1.0 / 1.2 charged)
+//   opts      — { charged?: bool, pierce?: number, color?: string }
+export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life = 1.0, opts = {}) {
   const p = pool.pop() || {};
   p.kind = 'bolt';
   p.friendly = true;
+  p.charged = !!opts.charged;
   p.x = x; p.y = y;
   p.vx = dirX * speed;
   p.vy = dirY * speed;
   p.angle = Math.atan2(dirY, dirX);
   p.life = life;
   p.damage = damage;
-  p.radius = 7;
+  p.radius = p.charged ? 10 : 7;     // bigger hitbox on charged
   p.affix = null;
-  p.color = '#d4b8ff';     // arcane violet
+  // Pierce count: how many enemies a single bolt can hit before
+  // despawning. Default tap-fire = 0 (despawn on first hit). Charged
+  // = caller passes opts.pierce (typically 3). Hit-tracking via
+  // p.hit Set so a single enemy doesn't get multi-hit by one bolt.
+  p.pierce = opts.pierce | 0;
+  p.hit = null;     // lazily allocated when pierce > 0
+  // Color: opts.color overrides for special bolts (synergies, theme
+  // procs); default tap = arcane violet, default charged = warm gold.
+  p.color = opts.color || (p.charged ? '#ffd980' : '#d4b8ff');
   // Trail of recent positions for the comet-tail render.
   p.trail = [];
   projectiles.push(p);
@@ -155,12 +171,18 @@ export function updateProjectiles(dt) {
       pool.push(p);
       continue;
     }
-    // Collision: friendly bolts hit the FIRST enemy along the path;
-    // unfriendly projectiles hit the hero.
+    // Collision: friendly bolts hit enemies; unfriendly projectiles
+    // hit the hero.
+    //
+    // Pierce: if p.pierce > 0, the bolt damages an enemy but keeps
+    // traveling (subtract one pierce; track hit enemies in p.hit so
+    // a single enemy isn't multi-hit by one bolt). When pierce hits
+    // 0, the bolt despawns on its next enemy hit.
     if (p.friendly) {
       let hitEnemy = null;
       for (const e of enemies) {
         if (e.dead) continue;
+        if (p.hit && p.hit.has(e)) continue;
         const dx = p.x - e.x, dy = p.y - e.y;
         const r = (p.radius + (e.radius || 18));
         if (dx * dx + dy * dy < r * r) {
@@ -176,13 +198,29 @@ export function updateProjectiles(dt) {
         // a consistent push direction so hits read as "shot from over
         // there" instead of random knockback.
         hitEnemy.takeDamage(p.damage, p.vx / speed, p.vy / speed);
-        hitSpark(hitEnemy.x, hitEnemy.y - 18, impactNx, impactNy, '#e8c8ff');
+        // Spark color matches the bolt tint so hits read as "this
+        // weapon's bolt landed" not "generic hit".
+        const sparkColor = p.charged ? '#ffe8a0' : '#e8c8ff';
+        hitSpark(hitEnemy.x, hitEnemy.y - 18, impactNx, impactNy, sparkColor);
         spawnDamageNumber(hitEnemy.x, hitEnemy.y - 36, p.damage, {
           dir: { x: p.vx / speed, y: p.vy / speed },
           elementTag: hitEnemy._lastElementTag,
+          // Charged shots are the wand's "big swing" — get the CRIT
+          // badge treatment so the player feels the empowered hit.
+          crit: !!p.charged,
         });
-        triggerHitStop(0.04);
-        synthPing(960, 0.32, 0.10);
+        triggerHitStop(p.charged ? 0.07 : 0.04);
+        synthPing(p.charged ? 720 : 960, p.charged ? 0.45 : 0.32, p.charged ? 0.14 : 0.10);
+        // Pierce branch: keep traveling if pierce charges remain.
+        if (p.pierce > 0) {
+          if (!p.hit) p.hit = new Set();
+          p.hit.add(hitEnemy);
+          p.pierce -= 1;
+          // Bolt continues — fall through to next iteration without
+          // splice/pool. The next collision check on a future tick
+          // will re-enter this block.
+          continue;
+        }
         projectiles.splice(i, 1);
         pool.push(p);
         continue;
@@ -245,36 +283,50 @@ export function drawProjectiles(ctx) {
       ctx.fillRect(-14, 1, 4, 2);
       ctx.restore();
     } else if (p.kind === 'bolt') {
-      // Hero arcane bolt — comet-tail of past positions + bright violet
-      // core + outer glow. The trail captures its own past so the bolt
-      // reads as a streak of magic, not a single dot.
+      // Hero arcane bolt — comet-tail of past positions + bright core
+      // + outer glow. Charged bolts use a warm-gold palette + bigger
+      // glow + thicker trail so the player reads "this is the empowered
+      // shot" at a glance. Tap-fire bolts stay arcane-violet.
       const c = p.color || '#d4b8ff';
+      const isCharged = !!p.charged;
+      const trailRGB = isCharged ? '255, 220, 140' : '212, 184, 255';
+      const trailAlphaScale = isCharged ? 0.75 : 0.55;
+      const trailRadiusBase = isCharged ? 3 : 2;
+      const trailRadiusGrow = isCharged ? 0.5 : 0.3;
       // Trail
       if (p.trail) {
         for (let j = 0; j < p.trail.length; j++) {
           const pt = p.trail[j];
-          const a = (j / p.trail.length) * 0.55;
-          ctx.fillStyle = `rgba(212, 184, 255, ${a.toFixed(3)})`;
+          const a = (j / p.trail.length) * trailAlphaScale;
+          ctx.fillStyle = `rgba(${trailRGB}, ${a.toFixed(3)})`;
           ctx.beginPath();
-          ctx.arc(pt.x, pt.y, 2 + j * 0.3, 0, Math.PI * 2);
+          ctx.arc(pt.x, pt.y, trailRadiusBase + j * trailRadiusGrow, 0, Math.PI * 2);
           ctx.fill();
         }
       }
-      // Outer glow (smaller than orbs — bolt is a single-target snap)
-      const glow = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, 14);
-      glow.addColorStop(0, 'rgba(220, 200, 255, 0.85)');
-      glow.addColorStop(0.5, 'rgba(160, 120, 240, 0.35)');
-      glow.addColorStop(1, 'rgba(100, 70, 200, 0)');
+      // Outer glow (charged is bigger + warmer — reads as "big shot")
+      const glowR = isCharged ? 22 : 14;
+      const glow = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, glowR);
+      if (isCharged) {
+        glow.addColorStop(0, 'rgba(255, 240, 200, 0.95)');
+        glow.addColorStop(0.5, 'rgba(255, 200, 100, 0.45)');
+        glow.addColorStop(1, 'rgba(220, 160, 60, 0)');
+      } else {
+        glow.addColorStop(0, 'rgba(220, 200, 255, 0.85)');
+        glow.addColorStop(0.5, 'rgba(160, 120, 240, 0.35)');
+        glow.addColorStop(1, 'rgba(100, 70, 200, 0)');
+      }
       ctx.fillStyle = glow;
-      ctx.fillRect(p.x - 14, p.y - 14, 28, 28);
+      ctx.fillRect(p.x - glowR, p.y - glowR, glowR * 2, glowR * 2);
       // Core
       ctx.fillStyle = c;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, isCharged ? 5 : 3, 0, Math.PI * 2);
       ctx.fill();
-      // Bright pip in the center for that "spell projectile" snap
+      // Bright pip — slightly bigger on charged for extra punch
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+      const pipSz = isCharged ? 3 : 2;
+      ctx.fillRect(p.x - pipSz / 2, p.y - pipSz / 2, pipSz, pipSz);
     } else if (p.kind === 'orb') {
       // Purple-blue arcane orb with trailing wisp
       // Trail
