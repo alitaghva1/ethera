@@ -90,13 +90,14 @@ export const HAMLET_ENTITIES = [
   { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 460, interactR: 50, drawScale: 1.10 },
   { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 995, y: 320, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 470, interactR: 50, drawScale: 0.95 },
-  // gravekeeper: lives at the NW graveyard. Detection on scene_v3.jpg
-  // shows the actual grave-stump cluster at y=50-220 (luminance < 60
-  // sustained block). Earlier (340, 360) put her south of that cluster
-  // on a ruined-wall structure. New position (350, 200) lands her in
-  // the middle of the graves with a slight east bias toward the path
-  // back to the plaza.
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 350, y: 200, interactR: 50, drawScale: 0.90 },
+  // gravekeeper: lives at the NW graveyard. Position iterated:
+  //   (293, 290) → on a tree
+  //   (340, 360) → on a ruined wall
+  //   (350, 200) → on the L-bend stone wall at the graveyard edge
+  //   (420, 280) → ✓ open grass in the middle of the grave cluster
+  // Visual verification via PIL crosshair render: this position lands
+  // cleanly among the painted grave markers with no wall/tree overlap.
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 420, y: 280, interactR: 50, drawScale: 0.90 },
   { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 680, y: 260, interactR: 50, drawScale: 0.95 },
   // wanderer: shifted east from x=907 to x=985 so they stand BESIDE the
   // cooking pot FX (also at x=907) rather than directly in front of it.
