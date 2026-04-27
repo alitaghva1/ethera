@@ -620,7 +620,15 @@ export function drawPickupFlash(ctx, w, h) {
   const extraDescH = Math.max(0, descLines.length - 1) * descLh;
   const boxH = (tier === 'mythic' ? 200 : 170) + extraFlavorH + extraDescH;
   const bx = (w - boxW) / 2;
-  const by = (h - boxH) / 2 - 30;
+  // Anchor the banner in the upper third of the screen instead of
+  // dead-center. Previously `(h - boxH) / 2 - 30` placed the banner
+  // straddling y≈245 on a 720h canvas — the box covered ~33% of the
+  // play area while it was visible (3s common, 5.5s mythic), hiding
+  // the floor + remaining pedestals during the most "I want to see
+  // what's around me" moment of the run. h*0.20 puts the top edge
+  // around y=144 on the standard canvas, leaving the bottom ~55%
+  // of vertical fully clear for the room read.
+  const by = Math.round(h * 0.20);
   const pivotX = bx + boxW / 2, pivotY = by + boxH / 2;
   ctx.translate(pivotX, pivotY);
   ctx.scale(scaleBump, scaleBump);
@@ -975,8 +983,17 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
     ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textCenter, cursorY + 4);
   }
   if (rerollable) {
-    ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.5)';
-    ctx.font = 'bold 11px system-ui, sans-serif';
+    // Reroll hint — bumped from 11px sans @ 50%-alpha-when-affordable
+    // to 13px italic-bold serif @ 0.95 alpha. The most agency-laden
+    // line on the hover card (it's a real choice the player can make)
+    // was previously the hardest to read; the new weight matches the
+    // relic name + desc above so the option doesn't get tuned out.
+    ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.55)';
+    ctx.font = 'italic bold 13px Georgia, serif';
+    ctx.globalAlpha = canReroll ? 0.95 : 0.6;
+    // globalAlpha mutation is scoped by drawPedestalTooltip's outer
+    // ctx.save() / ctx.restore() pair, so callers downstream are not
+    // affected.
     const hintY = by + boxH - 14;
     ctx.fillText(`\u27F3 Press R to reroll \u00b7 ${rerollCost}g`, textCenter, hintY);
   }
