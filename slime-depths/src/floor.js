@@ -492,14 +492,15 @@ function makeMiniBossRoom(level) {
 
 export function makeEventRoom(level, eliteChance) {
   const kind = Math.random();
-  // 15% mini-boss, 25% altar, 15% trove, 20% chestroom, 25% challenge.
-  // Stole 5% from altar + 10% from trove to seat the new chest room
-  // at a meaningful 1-in-5 event rate. Chestroom is gambling tension —
-  // see makeTreasureChestRoom for per-floor scaling.
+  // 15% mini-boss, 22% altar, 13% trove, 30% chestroom, 20% challenge.
+  // Bumped chestroom 20% -> 30% per producer review: with ~1 event slot
+  // per floor (×4 floors = ~4 events per run), 20% meant a player might
+  // not see a chest room in 4-5 runs. 30% gives them a real shot at
+  // hitting one each run + means the gambling mechanic gets practiced.
   if (kind < 0.15) return makeMiniBossRoom(level);
-  if (kind < 0.40) return makeAltarRoom();
-  if (kind < 0.55) return makeTroveRoom();
-  if (kind < 0.75) return makeTreasureChestRoom(level);
+  if (kind < 0.37) return makeAltarRoom();
+  if (kind < 0.50) return makeTroveRoom();
+  if (kind < 0.80) return makeTreasureChestRoom(level);
   return makeChallengeRoom(level, eliteChance);
 }
 

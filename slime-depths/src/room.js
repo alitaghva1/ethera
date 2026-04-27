@@ -2075,7 +2075,13 @@ function drawTorchSconce(ctx, tx, ty) {
   const img = images.fx_dungeon_torch;
   if (img) {
     const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
-    const frame = (Math.floor(now * TORCH_FPS) + (tx * 7)) % TORCH_FRAMES;     // tx-offset so torches don't all flicker in sync
+    // Phase offset per-torch via tx + ty + a prime multiplier so torches
+    // on different walls/columns don't tick to the next animation frame
+    // in lockstep. The light halo math (in main.js) already staggers via
+    // a similar tx*7 offset; this keeps sprite + halo flicker visually
+    // synced per-torch but offset BETWEEN torches.
+    const phaseOffset = tx * 7 + ty * 13;
+    const frame = (Math.floor(now * TORCH_FPS) + phaseOffset) % TORCH_FRAMES;
     const drawW = TORCH_NATIVE * TORCH_SCALE;
     const drawH = TORCH_NATIVE * TORCH_SCALE;
     const prevSmoothing = ctx.imageSmoothingEnabled;
