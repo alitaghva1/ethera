@@ -405,6 +405,22 @@ const HAMLET_FX = [
     frameCount: 9, fps: 4,
     scale: 0.6, yOffset: 0,
   },
+  {
+    // Anvil — sits at the smithy. Smith NPC is at (995, 320); anvil
+    // 40px south at (995, 360) so y-sort renders the anvil OVER the
+    // smith's lower legs, reading as "smith standing behind the anvil
+    // hammering it." 9 frames at 6fps gives a rhythmic hammer-spark
+    // cadence; continuous loop (no holdSeconds) since smithing is
+    // ongoing background work, not a discrete event. Sprite is
+    // 112×112 native, scaled 0.6× → ~67px rendered to match the
+    // visual scale of cooking pot / firepit and keep the smith NPC
+    // (~121px tall) as the primary visual anchor at the smithy.
+    id: 'anvil', asset: 'fx_anvil',
+    x: 995, y: 360,
+    frameW: 112, frameH: 112,
+    frameCount: 9, fps: 6,
+    scale: 0.6, yOffset: 0,
+  },
 ];
 
 // Resolve proximity tiers → effective {peakAlpha, fps, holdSec} based on
