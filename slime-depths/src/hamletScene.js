@@ -355,13 +355,14 @@ const HAMLET_FX = [
     scale: 1.4, yOffset: 0,
   },
   {
-    // Portal (v4 — magical descent portal embedded with hexagram +
-    // runes). Larger 160×160 sprite (was 112×112 in v3). Sits on the
-    // dark circular pit in the central plaza at PORTAL_POS (688, 365).
-    // PIL-detected pit center: bbox x[638-737] y[330-410]. Sprite is
-    // 160×160 native, scaled 0.55× → ~88px rendered so it fits INSIDE
-    // the painted ring (same rendered size as v3 since native size
-    // grew but scale shrunk proportionally).
+    // Portal (v4 — corrected: NEW subtle muted runic glyph circle).
+    // 4 frames × 112×112 native (slower paced animation than the
+    // 9-frame v3). Sits on the dark circular pit in the central plaza
+    // at PORTAL_POS (688, 365). PIL-detected pit center: bbox
+    // x[638-737] y[330-410]. Scaled 0.8× → ~90px rendered, fits inside
+    // the painted ring. Shorter frame count means proximity fps tiers
+    // were tuned down (2/3/4 instead of 4/5/6) so the active phase
+    // doesn't blow through the loop in under a second.
     //
     // Animation rhythm uses three layered systems (all optional, all
     // parsed by drawHamletFx — see that function for the math):
@@ -387,14 +388,15 @@ const HAMLET_FX = [
     // hero walks toward it.
     id: 'portal', asset: 'fx_portal',
     x: 688, y: 365,
-    frameW: 160, frameH: 160,
-    frameCount: 9,
-    scale: 0.55, yOffset: 0,
+    frameW: 112, frameH: 112,
+    frameCount: 4,
+    scale: 0.8, yOffset: 0,
     proximity: [
       // Tiers ordered far → near. Distance in world px from FX center.
-      { dist: 320, alpha: 0.35, fps: 4, holdSeconds: 8 },     // dormant
-      { dist: 160, alpha: 0.65, fps: 5, holdSeconds: 4 },     // warming
-      { dist:  40, alpha: 1.00, fps: 6, holdSeconds: 1 },     // responsive
+      // fps tuned down vs v3 since the loop is only 4 frames now.
+      { dist: 320, alpha: 0.35, fps: 2, holdSeconds: 8 },     // dormant
+      { dist: 160, alpha: 0.65, fps: 3, holdSeconds: 4 },     // warming
+      { dist:  40, alpha: 1.00, fps: 4, holdSeconds: 1 },     // responsive
     ],
     restAlphaMul: 0.4,
     fadeSeconds: 0.5,
