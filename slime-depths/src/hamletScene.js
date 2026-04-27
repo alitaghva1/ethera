@@ -440,6 +440,63 @@ function resolveProximity(fx) {
   return { peakAlpha: tiers[last].alpha, fps: tiers[last].fps, holdSec: tiers[last].holdSeconds };
 }
 
+// Per-FX persistent animation state. Keyed by fx.id. Built lazily on
+// first access. Each entry tracks where we are in the current cycle:
+//   inActive    — true during the playing phase, false during the hold
+//   framePhase  — float ∈ [0, frameCount). Position in the active anim.
+//                 Advances by dt*fps each frame while active.
+//   restElapsed — seconds spent in current rest phase. Advances by dt.
+//   lastTime    — wall-clock timestamp of last update (for dt calc).
+//
+// Why state-based instead of stateless `now % cycleSec`? Because fps
+// and holdSec change continuously with hero distance (proximity tiers).
+// Stateless math would cause the computed frame to jump as inputs shift.
+// State-based math means proximity changes the ADVANCEMENT RATE, never
+// the current frame number — animation always plays smoothly through.
+const fxStates = new Map();
+function getFxState(fx) {
+  let s = fxStates.get(fx.id);
+  if (!s) {
+    s = { inActive: true, framePhase: 0, restElapsed: 0, lastTime: -1 };
+    fxStates.set(fx.id, s);
+  }
+  return s;
+}
+
+// Advance the per-FX state by the wall-clock delta since the last
+// update. fps and holdSec are the CURRENT (proximity-resolved) values
+// — they may differ from frame to frame, which is fine: framePhase
+// just advances at the new rate next tick.
+function tickFxState(state, fx, fps, holdSec, now) {
+  if (state.lastTime < 0) {
+    state.lastTime = now;
+    return;
+  }
+  // Clamp dt so a paused/inactive tab resuming doesn't fast-forward
+  // through dozens of cycles in one frame.
+  const dt = Math.min(now - state.lastTime, 0.1);
+  state.lastTime = now;
+
+  if (state.inActive) {
+    state.framePhase += dt * fps;
+    if (state.framePhase >= fx.frameCount) {
+      state.inActive = false;
+      state.framePhase = fx.frameCount;     // pin at end (used by fade-out)
+      state.restElapsed = 0;
+    }
+  } else {
+    state.restElapsed += dt;
+    // If holdSec shrinks (e.g. hero approached the portal during rest)
+    // and we're already past the new threshold, exit rest immediately.
+    // Reads as "the portal woke up because you walked over."
+    if (state.restElapsed >= holdSec) {
+      state.inActive = true;
+      state.framePhase = 0;
+      state.restElapsed = 0;
+    }
+  }
+}
+
 // Draw all hamlet FX overlays. Called between drawHamletBackdrop and
 // drawHamletEntities so animated flames sit on top of the painted scene
 // but BENEATH NPCs (so an NPC standing in front of the firepit correctly
@@ -459,25 +516,28 @@ export function drawHamletFx(ctx) {
     const holdSec = p.holdSec;
     const peakAlpha = p.peakAlpha;
 
-    // Cycle: active phase plays the frames at fps, then holds frame 0
-    // for holdSec. cyclePos∈[0, cycleSec) is where we are in the cycle.
-    const activeSec = fx.frameCount / fps;
-    const cycleSec = activeSec + holdSec;
-    const cyclePos = cycleSec > 0 ? now % cycleSec : 0;
-    const isActive = cyclePos < activeSec;
-    const frame = isActive
-      ? Math.floor(cyclePos * fps) % fx.frameCount
+    // Advance persistent animation state
+    const state = getFxState(fx);
+    tickFxState(state, fx, fps, holdSec, now);
+
+    // Frame to render: derived from framePhase (which is continuous
+    // across fps changes, so no jumps even as proximity shifts the rate)
+    const frame = state.inActive
+      ? Math.min(Math.floor(state.framePhase), fx.frameCount - 1)
       : 0;
 
     // activeFactor: 0 in mid-rest, 1 at full active. Smooth fade at
     // the active/rest boundaries (over fadeSec) avoids hard cuts.
+    // Convert framePhase (frames) to time-in-active (seconds) via fps.
     const fadeSec = fx.fadeSeconds || 0;
     let activeFactor;
-    if (!isActive) {
+    if (!state.inActive) {
       activeFactor = 0;
     } else if (fadeSec > 0) {
-      const into = cyclePos;                     // time since active started
-      const outOf = activeSec - cyclePos;        // time until active ends
+      const timeInActive = state.framePhase / fps;
+      const activeSec = fx.frameCount / fps;
+      const into = timeInActive;
+      const outOf = activeSec - timeInActive;
       if (into < fadeSec) activeFactor = into / fadeSec;
       else if (outOf < fadeSec) activeFactor = outOf / fadeSec;
       else activeFactor = 1;
