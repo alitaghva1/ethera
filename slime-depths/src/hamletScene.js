@@ -428,6 +428,25 @@ const HAMLET_FX = [
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
   },
+  {
+    // Ancient scholar's reading lectern (STATIC, single frame). Tucked
+    // into the L-bend ruined wall nook at the archive (NW area). The
+    // archivist NPC at (380, 470) stands 40px east of it, facing west
+    // to read the open tome on the lectern. Reads as 'archivist's
+    // private reading station' against the broken wall.
+    //
+    // PixelLab Object exports STATIC props as just rotations/ folder
+    // (no animations). For our renderer we treat it as a 1-frame
+    // animation: frameCount=1, fps doesn't matter (cycle never advances
+    // past frame 0). The south.png rotation was copied directly to
+    // public/assets/hamlet/fx_lectern.png since the importer expects
+    // an animations folder.
+    id: 'lectern', asset: 'fx_lectern',
+    x: 340, y: 470,
+    frameW: 112, frameH: 112,
+    frameCount: 1, fps: 1,
+    scale: 0.6, yOffset: 0,
+  },
 ];
 
 // Resolve proximity tiers → effective {peakAlpha, fps, holdSec} based on
