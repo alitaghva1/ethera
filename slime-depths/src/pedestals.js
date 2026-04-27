@@ -184,24 +184,39 @@ export function spawnBossDrop(bossType, worldX, worldY, opts = {}) {
   if (pool.length === 0 && !mythicPool) return null;
 
   const ownedIds = new Set(equippedRelics.map(r => r.id));
+  // Filter: relic exists + not owned + compatible with hero's weapon.
+  // Sword players shouldn't get a wand-only mythic from Ember Tyrant
+  // (Eye of Ether / Cataclysm don't currently have weaponOnly so they
+  // pass through; this gate is forward-compat for any future
+  // weapon-only mythic / boss drops).
+  const heroWeapon = hero.weapon || 'sword';
+  const compatible = (id) => {
+    const def = RELIC_DEFS[id];
+    if (!def) return false;
+    if (def.weaponOnly && def.weaponOnly !== heroWeapon) return false;
+    return true;
+  };
 
   // Mythic roll first (if configured)
   let chosenId = null;
   if (mythicPool && Math.random() < mythicChance) {
-    const available = mythicPool.filter(id => !ownedIds.has(id) && RELIC_DEFS[id]);
+    const available = mythicPool.filter(id => !ownedIds.has(id) && compatible(id));
     if (available.length > 0) {
       chosenId = available[(Math.random() * available.length) | 0];
     }
   }
 
-  // Fall back to themed pool — shuffle then pick first unowned
+  // Fall back to themed pool — shuffle then pick first unowned + compatible
   if (!chosenId) {
     for (let i = pool.length - 1; i > 0; i--) {
       const j = (Math.random() * (i + 1)) | 0;
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    chosenId = pool.find(id => !ownedIds.has(id) && RELIC_DEFS[id]) || null;
-    // All pool relics owned → fall back to any pool relic (duplicate OK)
+    chosenId = pool.find(id => !ownedIds.has(id) && compatible(id)) || null;
+    // All pool relics owned → fall back to any compatible pool relic
+    // (duplicate OK). Final fallback: any pool relic at all (degenerate
+    // case, never expected past intended progression curve).
+    if (!chosenId) chosenId = pool.find(id => compatible(id));
     if (!chosenId) chosenId = pool.find(id => RELIC_DEFS[id]);
   }
   if (!chosenId) return null;

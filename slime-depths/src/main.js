@@ -48,7 +48,7 @@ import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
 import { drawHud, updateHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
-import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics, relicTier } from './relics.js';
+import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics, relicTier, isRelicForWeapon } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats';
 import { meta, loadMeta, saveMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHeirloom, consumeHeirloom } from './meta.js';
 import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
@@ -1788,10 +1788,13 @@ document.getElementById('oracleFortuneAcceptBtn').addEventListener('click', () =
 const WANDERER_GIFT_COST = 30;
 
 function showWandererGift() {
-  // Pull common relics the player has actually seen
+  // Pull common relics the player has actually seen + that work with
+  // their current weapon (no wand-only gifts for sword players, etc.).
   const pool = ALL_RELIC_IDS.filter(id => {
     const def = RELIC_DEFS[id];
-    return seenRelicIds.has(id) && (def.tier || 'common') === 'common';
+    return seenRelicIds.has(id)
+      && (def.tier || 'common') === 'common'
+      && isRelicForWeapon(id, hero.weapon);
   });
   if (!pool.length) {
     alert('The Wanderer rummages in his pack, frowns, and shakes his head. "Nothing to give you yet. Come back when you have seen more.');
@@ -3771,7 +3774,11 @@ function startRun() {
     if (hasUnlock('purse_of_depths')) { gold.total += 50; }
     if (hasUnlock('blessed_greaves')) { applyRelic('iron_greaves'); }
     if (hasUnlock('ancient_pact')) {
-      const pool = ALL_RELIC_IDS.filter(id => !equippedRelics.find(r => r.id === id));
+      // Filter for weapon compatibility — don't grant a wand-only relic
+      // to a sword player (would be a dead pick they didn't choose).
+      const pool = ALL_RELIC_IDS.filter(id =>
+        !equippedRelics.find(r => r.id === id) && isRelicForWeapon(id, hero.weapon),
+      );
       if (pool.length) applyRelic(pool[(Math.random() * pool.length) | 0]);
     }
   }
@@ -3798,7 +3805,9 @@ function startRun() {
     if (hasCard('the_sun')) {
       const rares = ALL_RELIC_IDS.filter(id => {
         const def = RELIC_DEFS[id];
-        return def && def.tier === 'rare' && !equippedRelics.find(r => r.id === id);
+        return def && def.tier === 'rare'
+          && !equippedRelics.find(r => r.id === id)
+          && isRelicForWeapon(id, hero.weapon);
       });
       if (rares.length) applyRelic(rares[(Math.random() * rares.length) | 0]);
     }
@@ -5027,14 +5036,22 @@ function tick(now) {
       playSfx('click', { volume: 0.6, rate: 1.15 });
       // Spawn legendary reward pedestal for mid-run bosses (not final — final gets end-screen)
       if (currentFloorLevel >= 3 && currentFloorLevel < MAX_FLOORS) {
-        // Pick a legendary the player doesn't already have, else any legendary
+        // Pick a legendary the player doesn't already have, weapon-compatible.
+        // Fallback: any weapon-compatible legendary (even if owned). Final
+        // fallback: any legendary at all — we always want a reward, even if
+        // somehow every weapon-legendary is owned, which is a degenerate
+        // edge case past the player's intended progression curve.
         const owned = new Set(equippedRelics.map(r => r.id));
         const legendaryPool = ALL_RELIC_IDS.filter(id => {
           const def = RELIC_DEFS[id];
-          return def && def.tier === 'legendary' && !owned.has(id);
+          return def && def.tier === 'legendary'
+            && !owned.has(id)
+            && isRelicForWeapon(id, hero.weapon);
         });
-        const legendaryId = legendaryPool.length ? legendaryPool[(Math.random() * legendaryPool.length) | 0]
-                          : ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary');
+        const legendaryId = legendaryPool.length
+          ? legendaryPool[(Math.random() * legendaryPool.length) | 0]
+          : (ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary' && isRelicForWeapon(id, hero.weapon))
+             || ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary'));
         if (legendaryId) {
           const center = { x: Math.floor(room.w / 2) * TILE + TILE / 2, y: Math.floor(room.h / 2) * TILE + TILE / 2 };
           pedestals.push({

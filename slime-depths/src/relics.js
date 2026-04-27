@@ -620,6 +620,21 @@ export function relicTier(id) {
   return def && def.tier ? def.tier : 'common';
 }
 
+// Returns true if a relic is compatible with the hero's currently
+// equipped weapon — i.e. either it has no `weaponOnly` field (works
+// for everything) or its `weaponOnly` matches the weapon. Used by
+// every relic-pool filter in the codebase (rollRelicOffer, boss
+// rewards, tarot start-with bonuses, daily challenge relic, etc.) so
+// a sword/dagger/hammer player never gets handed a wand-only relic
+// as a guaranteed pickup. Defaults `weapon` to 'sword' when the hero
+// hasn't selected one yet (e.g. menu-time daily preview).
+export function isRelicForWeapon(id, weapon) {
+  const def = RELIC_DEFS[id];
+  if (!def) return false;
+  if (!def.weaponOnly) return true;
+  return def.weaponOnly === (weapon || 'sword');
+}
+
 // Tier weight distribution per floor — higher floors see more rare/legendary.
 // MYTHIC appears only on floor 4 and is rare (~6%). This is the Diablo
 // "Windforce moment" — the unique drop players screenshot and remember.
