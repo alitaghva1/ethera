@@ -372,32 +372,23 @@ const HAMLET_FX = [
     scale: 0.5, yOffset: 0,
   },
   {
-    // Portal shadow — LAYERED PIXEL-ART CRATER (rebuilt 2026-04-27).
-    // 240×240 native × 16 frames at 4 fps, scale 0.5× → 120px rendered
-    // (same effective size as the previous 200×200 at 0.6×).
+    // Portal shadow (ANIMATED breathing void). 16 frames × 200×200
+    // native, sine-wave breath cycle. Scale 0.6× → 120px rendered.
     //
-    // The previous version was a single feathered radial gradient that
-    // read as 'grime' or 'vague dark blur.' This rebuild composes the
-    // base as 5 distinct bands so the portal reads as a sunken
-    // ritual site instead of a smudge:
+    // Color tuned: deep midnight violet (RGB 10,6,24) instead of the
+    // earlier brownish (25,20,18) which read as 'grime' or 'stain.'
+    // The cooler tone + zero green channel kills brown undertones —
+    // reads as 'magical void' rather than 'dirty spot.'
     //
-    //   inner void   (r 0-50)    deep shadow under the portal stone
-    //   purple glow  (r 50-60)   rune-light influence on the rim,
-    //                            pulses in counter-phase to alpha
-    //   inner lip    (r 60-75)   sharp dark edge — the 'carved' lip
-    //   middle earth (r 75-100)  dark stone/dirt with pixel-dither
-    //                            texture (hash-based, deterministic)
-    //   outer wash   (r 100-115) faint dark fade into grass
-    //
-    // Asymmetry: angular noise sin(3.7θ)+sin(7.1θ) warps band radii
-    // per pixel — silhouette is overall symmetric but has 'wear marks'
-    // that read as magical erosion. Animation: 16-frame breath alpha
-    // 0.85→1.0 + counter-phase purple-glow intensity 0.6→1.0.
+    // Animation: each frame's gradient pulses subtly — alpha 220-250
+    // and radius ±2px — over a 4s cycle (16 frames at 4fps). Reads
+    // as 'dark energy slowly pulling inward,' an alive magical
+    // boundary rather than a static texture.
     id: 'portal_shadow', asset: 'fx_portal_shadow',
     x: 962, y: 653,
-    frameW: 240, frameH: 240,
+    frameW: 200, frameH: 200,
     frameCount: 16, fps: 4,
-    scale: 0.5, yOffset: 0,
+    scale: 0.6, yOffset: 0,
   },
   {
     // Portal (simplified holistic config). 4 frames × 112×112 native,
