@@ -449,28 +449,6 @@ const HAMLET_FX = [
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
   },
-  // Lectern FX removed per user request 2026-04-27 — felt off
-  // visually. Asset fx_lectern.png kept on disk + loader entry intact
-  // so re-adding is just restoring this block.
-  /*
-  {
-    // Ancient scholar's reading lectern (STATIC, single frame). Sits
-    // in front of the L-bend ruined wall ending, on the archivist's
-    // dirt-patch nook (NW area).
-    //
-    // PixelLab Object exports STATIC props as just rotations/ folder
-    // (no animations). For our renderer we treat it as a 1-frame
-    // animation: frameCount=1, fps doesn't matter (cycle never advances
-    // past frame 0). The south.png rotation was copied directly to
-    // public/assets/hamlet/fx_lectern.png since the importer expects
-    // an animations folder.
-    id: 'lectern', asset: 'fx_lectern',
-    x: 449, y: 398,
-    frameW: 112, frameH: 112,
-    frameCount: 1, fps: 1,
-    scale: 0.6, yOffset: 0,
-  },
-  */
   {
     // Scrying basin (LEFT) — sits on the top-center altar slab at
     // SHRINE_POS (680, 215). Tall pedestal with a glowing basin on
@@ -493,31 +471,6 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
-  // Well removed per user request 2026-04-27. Asset fx_well.png +
-  // loader entry kept on disk for easy re-add.
-  /*
-  {
-    id: 'well', asset: 'fx_well',
-    x: 590, y: 600,
-    frameW: 112, frameH: 112,
-    frameCount: 1, fps: 1,
-    scale: 0.6, yOffset: 0,
-  },
-  */
-  // Save gem REMOVED 2026-04-27 (Phase A stabilize). The save system
-  // is auto-save (run start + floor transitions); the gem implied
-  // manual-save functionality that didn't exist. Asset fx_savegem.png
-  // + loader entry kept on disk for a future 'save indicator' use
-  // (e.g. brief glow when auto-save fires).
-  /*
-  {
-    id: 'savegem', asset: 'fx_savegem',
-    x: 600, y: 600,
-    frameW: 112, frameH: 112,
-    frameCount: 1, fps: 1,
-    scale: 0.44, yOffset: 0,
-  },
-  */
   {
     // Notice board (STATIC). Quest/info board for the hamlet. 112×112
     // native, scaled 0.6× → 67px rendered. Placed at (688, 430) —
@@ -530,52 +483,25 @@ const HAMLET_FX = [
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
   },
-  // Chests REPURPOSED as DUNGEON ASSETS 2026-04-27. Used by the
-  // Treasure Chest Room (makeTreasureChestRoom in floor.js). Removed
-  // from HAMLET_FX since they're not hamlet décor — they're
-  // interactive dungeon props with reward logic. Assets fx_chestfire +
-  // fx_chestcold + loader entries kept on disk; the room generator
-  // pulls them by name when populating treasure rooms.
-  //   fx_chestcold = TREASURE chest (cold mist = riches/coin gleam)
-  //   fx_chestfire = MIMIC chest    (fire = trap warning)
-  // Flaming skull saved for DUNGEON use 2026-04-27. Was at (425, 460)
-  // beside the archivist; firepit moved there instead. Asset
-  // fx_flameskull.png + loader entry kept on disk so dungeon code
-  // can drop it into a future dungeon FX registry.
-  /*
-  {
-    id: 'flameskull', asset: 'fx_flameskull',
-    x: 425, y: 460,
-    frameW: 48, frameH: 48,
-    frameCount: 16, fps: 12,
-    scale: 0.8, yOffset: 0,
-  },
-  */
-  // Bookcase + study desk removed per user request 2026-04-27.
-  // Assets fx_bookcase.png + fx_studydesk.png kept on disk + loader
-  // entries intact so re-adding is just restoring this block.
-  /*
-  {
-    id: 'bookcase', asset: 'fx_bookcase',
-    x: 360, y: 440,
-    frameW: 48, frameH: 48,
-    frameCount: 1, fps: 1,
-    scale: 1.4, yOffset: 0,
-  },
-  {
-    id: 'studydesk', asset: 'fx_studydesk',
-    x: 470, y: 395,
-    frameW: 48, frameH: 48,
-    frameCount: 1, fps: 1,
-    scale: 1.4, yOffset: 0,
-  },
-  */
-  // Gravestones FX removed per user request 2026-04-27 — felt off
-  // visually. Asset fx_graves.png kept on disk + loader entry intact
-  // so re-adding is just restoring this block.
-  // Lantern post removed per user request 2026-04-27 — was at (300, 360).
-  // Asset fx_lanternpost.png still on disk + registered in loader if we
-  // want to re-add it later; just delete this block to disable.
+  // Parked assets (kept on disk + registered in loader so re-add is
+  // just restoring an FX entry; removed from HAMLET_FX because they
+  // didn't fit the current hamlet composition):
+  //   fx_lectern        — archivist's reading stand (felt visually off)
+  //   fx_well           — village well prop (didn't fit current layout)
+  //   fx_savegem        — save anchor (no manual save mechanic to wire)
+  //   fx_bookcase       — archive bookcase (visual didn't fit)
+  //   fx_studydesk      — paired w/ bookcase, removed together
+  //   fx_graves         — graveyard cluster (felt off vs gravekeeper sprite)
+  //   fx_lanternpost    — atmospheric lonely lantern post
+  //   fx_pit_cover      — actively renders, masks the painted central pit
+  //   fx_portal_shadow  — actively renders, the dark crater under portal
+  //
+  // Repurposed as DUNGEON props (used by floor.js room generators):
+  //   fx_chestcold      — TREASURE chest (cold mist = riches gleam)
+  //   fx_chestfire      — MIMIC chest    (fire = trap warning)
+  //   fx_flameskull     — parked, future dungeon ambient prop
+  //   fx_dungeon_torch  — animated wall torch in dungeon rooms
+  //   fx_dungeon_pillar — decorative pillars in chestrooms
 ];
 
 // Resolve proximity tiers → effective {peakAlpha, fps, holdSec} based on
