@@ -46,7 +46,7 @@ export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 //   graveyard       (569, 211)   NW grass+markers cluster
 const PORTAL_POS   = { x: 964, y: 654 };   // SE portal pad (v4)
 const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
-const FIREPIT_POS  = { x: 425, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
+const FIREPIT_POS  = { x: 435, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
 
 // NPC world positions — one per district, every position verified to
 // land in a walkable, terrain-correct tile. spriteIdx maps to the
@@ -106,7 +106,7 @@ export const HAMLET_ENTITIES = [
   // visually 'stands on' the pad/dirt rather than floating above it.
   { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 750, y: 340, interactR: 50, drawScale: 1.10 },
   { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 940, y: 290, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 470, y: 470, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 480, y: 470, interactR: 50, drawScale: 0.95 },
   // v4 NPC positions continued — gravekeeper at NW grave cluster (569,211),
   // oracle south of N shrine slab (687,201), wanderer at E camp dirt (944,452).
   { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 580, y: 240, interactR: 50, drawScale: 0.90 },
@@ -346,7 +346,7 @@ const HAMLET_FX = [
     // bleeds onto the archivist for the lit-from-the-side reading look.
     // 48×48 sprite at 1.12× scale.
     id: 'firepit', asset: 'fx_firepit',
-    x: 425, y: 450,
+    x: 435, y: 450,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.12, yOffset: 0,
@@ -370,7 +370,7 @@ const HAMLET_FX = [
     x: 964, y: 654,
     frameW: 200, frameH: 200,
     frameCount: 16, fps: 4,
-    scale: 0.6, yOffset: 0,
+    scale: 0.63, yOffset: 0,
   },
   {
     // Portal (simplified holistic config). 4 frames × 112×112 native,
@@ -394,7 +394,7 @@ const HAMLET_FX = [
     x: 964, y: 654,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
-    scale: 0.89, yOffset: 0,
+    scale: 0.93, yOffset: 0,
     holdSeconds: 10,
   },
   {

@@ -150,10 +150,10 @@ function buildWalkabilityBitmap() {
 // bbox — so the hero bumps off the visible mass, not the empty air
 // above it.
 const EXCLUSIONS = [
-  // Firepit — base ring at (425, 450) in the W reading-nook zone,
+  // Firepit — base ring at (435, 450) in the W reading-nook zone,
   // beside the archivist on his dirt patch. Sprite 48×48 scaled 1.12×
   // → ~54px rendered, ~40×36 around base.
-  { x1: 405, y1: 432, x2: 445, y2: 468 },
+  { x1: 415, y1: 432, x2: 455, y2: 468 },
   // Anvil — full anvil mass at (906, 246) on the NE smithy stone pad.
   { x1: 880, y1: 227, x2: 932, y2: 277 },
   // Cooking pot — full pot body + tripod at (930, 430) on the camp
