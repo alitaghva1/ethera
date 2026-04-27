@@ -88,7 +88,7 @@ export const HAMLET_ENTITIES = [
   //   oracle      — south of altar slab N (NPC sprite is hidden behind future altar prop)
   //   wanderer    — south of wanderer dirt patch on right side
   { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 460, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 995, y: 320, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 987, y: 320, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 470, interactR: 50, drawScale: 0.95 },
   // gravekeeper: lives at the NW graveyard. Position iterated:
   //   (293, 290) → on a tree
