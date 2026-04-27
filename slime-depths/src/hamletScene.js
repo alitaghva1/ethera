@@ -459,7 +459,7 @@ const HAMLET_FX = [
     // they read as a ceremonial pair flanking the altar threshold.
     // 4 frames at 3fps = 1.3s loop, slow swirl on the basin's surface.
     id: 'scryingbasin', asset: 'fx_scryingbasin',
-    x: 644, y: 220,
+    x: 652, y: 224,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
@@ -469,19 +469,26 @@ const HAMLET_FX = [
     // the altar slab center (~x=680). Same animation, same scale.
     // Different id so the FX state Map tracks them independently.
     id: 'scryingbasin2', asset: 'fx_scryingbasin',
-    x: 716, y: 220,
+    x: 724, y: 224,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
   {
-    // Tall wooden archive bookcase (STATIC, single frame). Sits in
-    // the archivist's nook in front of the L-bend ruined wall corner.
-    // Replaces the lectern that was in the same spot — bookcase
-    // reads better as the archivist's primary station. Archivist NPC
-    // at (391, 470) stands south of the bookcase.
+    // Bookcase pair (STATIC, single frame each). Two tall wooden
+    // archive bookcases side by side in the archivist's nook in
+    // front of the L-bend ruined wall corner. 68px x-spacing reads
+    // as a natural 'library row' rather than overlapping silhouettes.
+    // Archivist NPC at (391, 470) stands south of the row.
     id: 'bookcase', asset: 'fx_bookcase',
-    x: 449, y: 398,
+    x: 415, y: 398,
+    frameW: 112, frameH: 112,
+    frameCount: 1, fps: 1,
+    scale: 0.6, yOffset: 0,
+  },
+  {
+    id: 'bookcase2', asset: 'fx_bookcase',
+    x: 483, y: 398,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
