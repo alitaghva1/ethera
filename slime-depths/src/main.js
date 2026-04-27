@@ -5674,6 +5674,19 @@ function render() {
   warm.addColorStop(1, 'rgba(255, 140, 80, 0)');
   ctx.fillStyle = warm;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // CHESTROOM ambient — subtle violet wash so the gambling-tension room
+  // reads atmospherically distinct from regular combat/event rooms even
+  // before the player sees the chests. Corner-to-corner falloff, gentle
+  // alpha, additive blend. Same render slot as the warm tint above.
+  if (kind === 'chestroom') {
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const vio = ctx.createRadialGradient(cx, cy, 60, cx, cy, Math.max(canvas.width, canvas.height) * 0.7);
+    vio.addColorStop(0, 'rgba(170, 110, 220, 0.06)');
+    vio.addColorStop(0.5, 'rgba(140, 90, 200, 0.04)');
+    vio.addColorStop(1, 'rgba(110, 70, 180, 0)');
+    ctx.fillStyle = vio;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
   // Wall torch halos — soft, warm, ATMOSPHERIC pools of light. NOT
   // spotlights. Holistic redesign 2026-04-27 after the previous version
