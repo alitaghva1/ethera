@@ -498,14 +498,28 @@ const HAMLET_FX = [
     scale: 0.6, yOffset: 0,
   },
   {
-    // Save gem (STATIC). 112×112 native, scaled 0.4× → 45px rendered
-    // (smaller than other props since it's a magical gem, not a building
-    // feature). Starting position central-west — user will iterate.
+    // Save gem (STATIC). 112×112 native, scaled 0.4× → 45px rendered.
+    // Moved to (500, 295) — east of gravekeeper NPC at (455, 288) for
+    // narrative pairing (gravekeeper tends the save gem alongside the
+    // graves; gem reads as 'an anchor for travelers' across-from-death
+    // theme).
     id: 'savegem', asset: 'fx_savegem',
-    x: 560, y: 380,
+    x: 500, y: 295,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.4, yOffset: 0,
+  },
+  {
+    // Notice board (STATIC). Quest/info board for the hamlet. 112×112
+    // native, scaled 0.6× → 67px rendered. Placed at (688, 430) —
+    // visual center of the plaza, on cobble between the masked pit
+    // (where the portal used to be) and the south path. Reads as
+    // 'town center bulletin' for hub-area atmosphere.
+    id: 'noticeboard', asset: 'fx_noticeboard',
+    x: 688, y: 430,
+    frameW: 112, frameH: 112,
+    frameCount: 1, fps: 1,
+    scale: 0.6, yOffset: 0,
   },
   // Chests REPURPOSED as DUNGEON ASSETS 2026-04-27. Used by the
   // Treasure Chest Room (makeTreasureChestRoom in floor.js). Removed

@@ -168,8 +168,11 @@ const EXCLUSIONS = [
   // Flameskull EXCLUSION removed (FX entry parked for dungeon use).
   // Well at (590, 600) — circular base ~40×30.
   { x1: 570, y1: 588, x2: 610, y2: 618 },
-  // Save gem at (560, 380) — small base ~20×15.
-  { x1: 550, y1: 374, x2: 570, y2: 389 },
+  // Save gem at (500, 295) — small base ~20×15. Moved from (560, 380)
+  // to be near the gravekeeper NPC at (455, 288).
+  { x1: 490, y1: 289, x2: 510, y2: 304 },
+  // Notice board at (688, 430) — wider footprint than gem ~50×30.
+  { x1: 663, y1: 415, x2: 713, y2: 445 },
   // Chest EXCLUSIONS removed (FX entries removed — chests are dungeon
   // props now, see makeTreasureChestRoom in floor.js).
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).

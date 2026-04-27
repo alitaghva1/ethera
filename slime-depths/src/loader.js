@@ -475,6 +475,7 @@ export async function loadAll(progressCb) {
     // refactor could split into hamlet/ and dungeon/ subfolders.
     loadImage('fx_dungeon_torch',       'assets/hamlet/fx_dungeon_torch.png'),
     loadImage('fx_dungeon_pillar',      'assets/hamlet/fx_dungeon_pillar.png'),
+    loadImage('fx_noticeboard',         'assets/hamlet/fx_noticeboard.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
