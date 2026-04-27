@@ -488,6 +488,45 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
+  {
+    // Well (STATIC). 112×112 native, scaled 0.6× → 67px rendered.
+    // Starting position south of plaza on grass — user will iterate.
+    id: 'well', asset: 'fx_well',
+    x: 590, y: 600,
+    frameW: 112, frameH: 112,
+    frameCount: 1, fps: 1,
+    scale: 0.6, yOffset: 0,
+  },
+  {
+    // Save gem (STATIC). 112×112 native, scaled 0.4× → 45px rendered
+    // (smaller than other props since it's a magical gem, not a building
+    // feature). Starting position central-west — user will iterate.
+    id: 'savegem', asset: 'fx_savegem',
+    x: 560, y: 380,
+    frameW: 112, frameH: 112,
+    frameCount: 1, fps: 1,
+    scale: 0.4, yOffset: 0,
+  },
+  {
+    // Chest with fire (animated). 16 frames × 48×48, scaled 1.2× →
+    // 58px rendered. 12fps for fast flame flicker. Starting position
+    // west grass area — user will iterate.
+    id: 'chestfire', asset: 'fx_chestfire',
+    x: 260, y: 420,
+    frameW: 48, frameH: 48,
+    frameCount: 16, fps: 12,
+    scale: 1.2, yOffset: 0,
+  },
+  {
+    // Chest with cold/frost (animated). 16 frames × 48×48, scaled 1.2×
+    // → 58px rendered. 8fps for slower cold-mist effect. Starting
+    // position south of plaza — user will iterate.
+    id: 'chestcold', asset: 'fx_chestcold',
+    x: 560, y: 600,
+    frameW: 48, frameH: 48,
+    frameCount: 16, fps: 8,
+    scale: 1.2, yOffset: 0,
+  },
   // Flaming skull saved for DUNGEON use 2026-04-27. Was at (425, 460)
   // beside the archivist; firepit moved there instead. Asset
   // fx_flameskull.png + loader entry kept on disk so dungeon code

@@ -166,6 +166,14 @@ const EXCLUSIONS = [
   { x1: 711, y1: 236, x2: 741, y2: 266 },
   // Bookcase + studydesk EXCLUSIONS removed (FX entries removed).
   // Flameskull EXCLUSION removed (FX entry parked for dungeon use).
+  // Well at (590, 600) — circular base ~40×30.
+  { x1: 570, y1: 588, x2: 610, y2: 618 },
+  // Save gem at (560, 380) — small base ~20×15.
+  { x1: 550, y1: 374, x2: 570, y2: 389 },
+  // Chest fire at (260, 420) — chest base ~40×30.
+  { x1: 240, y1: 408, x2: 280, y2: 438 },
+  // Chest cold at (560, 600) — chest base ~40×30.
+  { x1: 540, y1: 588, x2: 580, y2: 618 },
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 

@@ -465,6 +465,10 @@ export async function loadAll(progressCb) {
     loadImage('fx_pit_cover',           'assets/hamlet/fx_pit_cover.png'),
     loadImage('fx_portal_shadow',       'assets/hamlet/fx_portal_shadow.png'),
     loadImage('fx_flameskull',          'assets/hamlet/fx_flameskull.png'),
+    loadImage('fx_well',                'assets/hamlet/fx_well.png'),
+    loadImage('fx_savegem',             'assets/hamlet/fx_savegem.png'),
+    loadImage('fx_chestfire',           'assets/hamlet/fx_chestfire.png'),
+    loadImage('fx_chestcold',           'assets/hamlet/fx_chestcold.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
