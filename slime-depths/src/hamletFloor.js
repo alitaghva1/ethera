@@ -156,20 +156,47 @@ const EXCLUSIONS = [
   { x1: 745, y1: 325, x2: 820, y2: 400 },
 ];
 
+// Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
+// mask classifies dark painted features as blocked but they SHOULD be
+// walkable. Two cases right now:
+//   1. Portal pad at (687, 381) — the painted dark ring/disc on the
+//      cobble plaza is dark-on-dark, so the mask flagged it as wall.
+//      The hero needs to step onto it to trigger E·DESCEND.
+//   2. Old firepit scorch mark at (736, 554) — leftover painted scorch
+//      from before the firepit FX moved to the SE pad at (970, 654).
+//      The dark mark on cobble was being read as a wall, leaving an
+//      invisible no-walk donut where there's no longer any fire.
+//
+// These are checked BEFORE the mask sample; if the hero is inside any
+// rect, we return walkable regardless of luminance. EXCLUSIONS still
+// take precedence (checked first) so this can't accidentally re-open
+// a deliberate block like the new firepit ring.
+const ALWAYS_WALKABLE = [
+  { x1: 632, y1: 326, x2: 742, y2: 436 },     // portal pad (110×110 around 687,381)
+  { x1: 696, y1: 514, x2: 776, y2: 594 },     // old firepit scorch (80×80 around 736,554)
+];
+
 export function isHamletWalkable(worldX, worldY) {
   if (worldX < 0 || worldX >= HAMLET_W) return false;
   if (worldY < 0 || worldY >= HAMLET_H) return false;
   if (!walkBits) {
     if (!buildWalkabilityBitmap()) return true;     // mask not ready: allow movement
   }
+  // EXCLUSIONS take precedence — deliberate blocks (e.g. firepit ring)
+  // override both ALWAYS_WALKABLE and the mask.
+  for (const e of EXCLUSIONS) {
+    if (worldX >= e.x1 && worldX <= e.x2 && worldY >= e.y1 && worldY <= e.y2) return false;
+  }
+  // ALWAYS_WALKABLE overrides the mask — for spots where dark painted
+  // features got mis-classified as walls.
+  for (const w of ALWAYS_WALKABLE) {
+    if (worldX >= w.x1 && worldX <= w.x2 && worldY >= w.y1 && worldY <= w.y2) return true;
+  }
+  // Otherwise fall back to the mask.
   const c = Math.floor(worldX / SAMPLE_STEP);
   const r = Math.floor(worldY / SAMPLE_STEP);
   if (c < 0 || r < 0 || c >= walkBitsCols || r >= walkBitsRows) return false;
   if (walkBits[r * walkBitsCols + c] === 0) return false;
-  // Manual exclusion check — overrides mask for known mismatches.
-  for (const e of EXCLUSIONS) {
-    if (worldX >= e.x1 && worldX <= e.x2 && worldY >= e.y1 && worldY <= e.y2) return false;
-  }
   return true;
 }
 
