@@ -356,6 +356,71 @@ export function makeChallengeRoom(level, eliteChance) {
   };
 }
 
+// Treasure Chest Room — gambling-tension event variant. Multiple
+// identical-looking chests; some are TREASURE (gold or relic) and some
+// are MIMICS (damage + enemy spawn on open). Player can't tell which
+// until they commit by opening one.
+//
+// Per-floor scaling (deeper floors = more chests, more mimics, better
+// rewards in the treasures):
+//
+//   floor 1 — 3 chests, 2T/1M, gold only           (intro)
+//   floor 2 — 3 chests, 2T/1M, gold only           (settle in)
+//   floor 3 — 4 chests, 2T/2M, treasures 30% relic (real gamble)
+//   floor 4 — 5 chests, 2T/3M, treasures 50% relic (endgame)
+//
+// Always 2+ treasures so a 'whole room is mimic' scenario is impossible
+// — the room is meaningful gamble, not pure punishment. Chest variant
+// is randomly distributed across positions (shuffle the array before
+// assignment).
+export function makeTreasureChestRoom(level) {
+  const size = pickRoomSize('trove');     // similar feel: small grid prop room
+  // Floor-scaled count + treasure ratio (always ≥2 treasures)
+  let total, treasures;
+  if (level <= 2) { total = 3; treasures = 2; }
+  else if (level === 3) { total = 4; treasures = 2; }
+  else { total = 5; treasures = 2; }
+  // Generate non-overlapping chest positions, avoiding doorways
+  const chests = [];
+  const mid = Math.floor(size.w / 2);
+  for (let i = 0; i < total * 16 && chests.length < total; i++) {
+    const x = randInt(2, size.w - 3);
+    const y = randInt(3, size.h - 4);
+    // Keep north + south doorways clear for hero pathing
+    if (Math.abs(x - mid) < 2 && y < 3) continue;
+    if (Math.abs(x - mid) < 2 && y > size.h - 5) continue;
+    // Spacing: at least 4 manhattan from any other chest (gives breathing
+    // room so chests don't visually overlap and player can target each
+    // one individually)
+    if (chests.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 4)) continue;
+    chests.push({ x, y });
+  }
+  // Assign variants. Shuffle positions, then assign first N as treasure
+  // and rest as mimic — randomizes WHICH cells are which without
+  // changing the count guarantee.
+  for (let i = chests.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [chests[i], chests[j]] = [chests[j], chests[i]];
+  }
+  for (let i = 0; i < chests.length; i++) {
+    chests[i].variant = i < treasures ? 'treasure' : 'mimic';
+    chests[i].state = 'closed';      // 'closed' | 'opening' | 'opened'
+    chests[i].frame = 0;             // current animation frame index
+    chests[i].frameTime = 0;         // accumulator for frame advance
+  }
+  return {
+    kind: 'chestroom',
+    w: size.w, h: size.h,
+    pillarTemplate: 3,
+    spawns: [],         // mimic enemies spawn on chest-open, not room-load
+    urns: [],
+    chests,
+    level,              // stash floor level for reward scaling
+    doors: { north: true, south: true },
+    cleared: true,      // no enemies at start; flips to false if mimic spawns
+  };
+}
+
 export function makeTroveRoom() {
   // Generate 10-14 urn positions avoiding center + doors
   const size = pickRoomSize('trove');
@@ -419,12 +484,14 @@ function makeMiniBossRoom(level) {
 
 export function makeEventRoom(level, eliteChance) {
   const kind = Math.random();
-  // ~15% mini-boss, ~30% altar, ~25% trove, ~30% challenge. Rebalanced
-  // from the original 35/25/40 to add variety without starving the
-  // existing three from roll share.
+  // 15% mini-boss, 25% altar, 15% trove, 20% chestroom, 25% challenge.
+  // Stole 5% from altar + 10% from trove to seat the new chest room
+  // at a meaningful 1-in-5 event rate. Chestroom is gambling tension —
+  // see makeTreasureChestRoom for per-floor scaling.
   if (kind < 0.15) return makeMiniBossRoom(level);
-  if (kind < 0.45) return makeAltarRoom();
-  if (kind < 0.70) return makeTroveRoom();
+  if (kind < 0.40) return makeAltarRoom();
+  if (kind < 0.55) return makeTroveRoom();
+  if (kind < 0.75) return makeTreasureChestRoom(level);
   return makeChallengeRoom(level, eliteChance);
 }
 
