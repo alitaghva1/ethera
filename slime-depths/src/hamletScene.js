@@ -35,7 +35,7 @@ export const HAMLET_HERO_SPAWN = { x: 700, y: 660 };
 // scripts/hamlet_audit.py for the technique). v3 has no actual props
 // painted in — these positions point at the GROUND PLACEMENT MARKERS
 // where each feature will be rendered as a sprite overlay.
-const PORTAL_POS   = { x: 688, y: 366 };   // dark circular pit — flood-fill detected blob center at (688, 368), micro-tuned -2y to (688, 366) for visual centering (perspective-foreshortened oval reads slightly low at geom-center)
+const PORTAL_POS   = { x: 688, y: 365 };   // dark circular pit — flood-fill detected blob center at (688, 368), micro-tuned -2y to (688, 366) for visual centering (perspective-foreshortened oval reads slightly low at geom-center)
 const SHRINE_POS   = { x: 680, y: 215 };   // top-center altar slab
 const FIREPIT_POS  = { x: 736, y: 554 };   // hearth scorch mark south of plaza
 
@@ -357,7 +357,7 @@ const HAMLET_FX = [
     // the painted ring instead of overflowing it. 9 frames at 8fps
     // for a slow rune pulse.
     id: 'portal', asset: 'fx_portal',
-    x: 688, y: 366,
+    x: 688, y: 365,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 8,
     scale: 0.8, yOffset: 0,
