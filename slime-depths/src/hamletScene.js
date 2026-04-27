@@ -372,16 +372,22 @@ const HAMLET_FX = [
     scale: 0.5, yOffset: 0,
   },
   {
-    // Portal shadow (STATIC). Dark circular depression rendered between
-    // the grass (no painted pit here) and the portal FX. Gives the
-    // portal a deliberate 'set into a dark hollow' look on grass.
-    // 200×200 native dark gradient with feathered edges, scaled 0.6×
-    // → 120px rendered (slightly larger than the portal so a thin
-    // ring of darkness frames the portal).
+    // Portal shadow (ANIMATED breathing void). 16 frames × 200×200
+    // native, sine-wave breath cycle. Scale 0.6× → 120px rendered.
+    //
+    // Color tuned: deep midnight violet (RGB 10,6,24) instead of the
+    // earlier brownish (25,20,18) which read as 'grime' or 'stain.'
+    // The cooler tone + zero green channel kills brown undertones —
+    // reads as 'magical void' rather than 'dirty spot.'
+    //
+    // Animation: each frame's gradient pulses subtly — alpha 220-250
+    // and radius ±2px — over a 4s cycle (16 frames at 4fps). Reads
+    // as 'dark energy slowly pulling inward,' an alive magical
+    // boundary rather than a static texture.
     id: 'portal_shadow', asset: 'fx_portal_shadow',
     x: 963, y: 653,
     frameW: 200, frameH: 200,
-    frameCount: 1, fps: 1,
+    frameCount: 16, fps: 4,
     scale: 0.6, yOffset: 0,
   },
   {
