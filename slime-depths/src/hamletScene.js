@@ -27,17 +27,26 @@ export const HAMLET_WALK_Y_MIN = 60;
 export const HAMLET_WALK_Y_MAX = 720;
 
 // Hero spawn — south entry path on the long cobble corridor leading from
-// the gate to the central plaza. Pixel-detected for v3 layout.
-export const HAMLET_HERO_SPAWN = { x: 700, y: 670 };
+// the gate to the central plaza. Pixel-detected for v4 layout (no-wall
+// hamlet, octagonal perimeter, cobble star plaza).
+export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 
 // Zone anchors — pixel-detected positions on the 2752×1536 v3 backdrop
 // (rendered at 1376×768 world). Detected via color-signature scan (see
 // scripts/hamlet_audit.py for the technique). v3 has no actual props
 // painted in — these positions point at the GROUND PLACEMENT MARKERS
 // where each feature will be rendered as a sprite overlay.
-const PORTAL_POS   = { x: 962, y: 653 };   // moved 2026-04-27 from (688, 365) central plaza to bottom-left grass area. Painted pit at old central location is now masked by fx_pit_cover (which stays at the old position) so the central plaza reads as clean cobble. New portal location is open grass — no painted feature underneath, just the dark shadow + portal FX layered on grass.
-const SHRINE_POS   = { x: 680, y: 215 };   // top-center altar slab
-const FIREPIT_POS  = { x: 736, y: 554 };   // hearth scorch mark south of plaza
+// v4 layout pixel-detected anchors (no-wall hamlet):
+//   plaza center    (689, 378)   round cobble star
+//   shrine slab     (687, 201)   N pedestal
+//   smithy pad      (966, 216)   NE square stone foundation w/ anvil silhouette
+//   reading nook    (431, 449)   W dirt+stone patch
+//   camp dirt       (944, 452)   E rough dirt+bedroll+fire-ring
+//   portal pad      (964, 654)   SE grass clearing w/ ritual ring
+//   graveyard       (569, 211)   NW grass+markers cluster
+const PORTAL_POS   = { x: 964, y: 654 };   // SE portal pad (v4)
+const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
+const FIREPIT_POS  = { x: 980, y: 470 };   // E camp painted fire ring (v4 — moved from v3 hearth scorch)
 
 // NPC world positions — one per district, every position verified to
 // land in a walkable, terrain-correct tile. spriteIdx maps to the
@@ -52,7 +61,7 @@ export const HAMLET_ENTITIES = [
   // entry below. Reads a single flavor line via the existing roomLabel
   // text overlay — no full dialogue needed (notice boards in dark-
   // fantasy hamlets are short reads, not chats).
-  { kind: 'noticeboard',                            x: 688, y: 360,  interactR: 60 },
+  { kind: 'noticeboard',                            x: 688, y: 320,  interactR: 60 },
   // Positions on Scene v2 backdrop (1376×768) — each NPC stationed at
   // the obvious thematic anchor in the painted scene.
   //   keeper      — central plaza, west of portal/firepit (hub merchant)
@@ -92,25 +101,17 @@ export const HAMLET_ENTITIES = [
   //   gravekeeper — south of graveyard plot cluster NW
   //   oracle      — south of altar slab N (NPC sprite is hidden behind future altar prop)
   //   wanderer    — south of wanderer dirt patch on right side
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 756, y: 382, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 975, y: 310, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 391, y: 470, interactR: 50, drawScale: 0.95 },
-  // gravekeeper: lives at the NW graveyard. Position iterated:
-  //   (293, 290) → on a tree
-  //   (340, 360) → on a ruined wall
-  //   (350, 200) → on the L-bend stone wall at the graveyard edge
-  //   (420, 280) → ✓ open grass in the middle of the grave cluster
-  // Visual verification via PIL crosshair render: this position lands
-  // cleanly among the painted grave markers with no wall/tree overlap.
-  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 455, y: 288, interactR: 50, drawScale: 0.90 },
-  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 680, y: 275, interactR: 50, drawScale: 0.95 },
-  // wanderer: shifted east from x=907 to x=985 so they stand BESIDE the
-  // cooking pot FX (also at x=907) rather than directly in front of it.
-  // y-sort always drew the wanderer on top because their y (480) > pot y
-  // (437), occluding most of the kettle. New position: ~78px east, same
-  // y, still on the camp dirt patch — reads as "tending the fire from
-  // the side" instead of "blocking the view."
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 947, y: 471, interactR: 50, drawScale: 0.90 },
+  // v4 NPC positions — each NPC stations at their thematic ground
+  // texture zone, slightly offset south so the sprite (bottom-aligned)
+  // visually 'stands on' the pad/dirt rather than floating above it.
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 688, y: 470, interactR: 50, drawScale: 1.10 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 1000, y: 260, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 470, y: 470, interactR: 50, drawScale: 0.95 },
+  // v4 NPC positions continued — gravekeeper at NW grave cluster (569,211),
+  // oracle south of N shrine slab (687,201), wanderer at E camp dirt (944,452).
+  { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 580, y: 240, interactR: 50, drawScale: 0.90 },
+  { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 690, y: 250, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 920, y: 480, interactR: 50, drawScale: 0.90 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
@@ -338,40 +339,17 @@ export function drawHamletOverlay(_ctx) {
 //                   painted feature underneath
 const HAMLET_FX = [
   {
-    // Firepit overlay sits ON the painted hearth scorch marker on the
-    // south path. Now properly positioned over a "placement marker"
-    // (charred circle on cobble) instead of an existing painted firepit
-    // — no more visual stacking. v3 layout has the hearth SOUTH of the
-    // plaza (at y=554), separate from the portal (y=381).
+    // Firepit FX — sits in the camp dirt at the painted fire-ring
+    // (E zone). v4 layout has a stone-ring fire pit baked into the
+    // camp dirt at ~(980, 470). 48×48 sprite at 1.12× scale.
     id: 'firepit', asset: 'fx_firepit',
-    // Moved to where the flameskull was, then nudged +10x -10y to
-    // (435, 450). Scale shrunk 20% (1.4 -> 1.12) → ~54px rendered.
-    // Sits beside the archivist as their fire companion.
-    x: 435, y: 450,
+    x: 980, y: 470,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.12, yOffset: 0,
   },
-  {
-    // Pit cover (STATIC, single frame). Sampled clean cobble patch
-    // from elsewhere in v3, masked to a circle with feathered edges.
-    // Sits AT PORTAL_POS but rendered FIRST (before the portal FX
-    // entry below) so it visually erases the painted dark pit. The
-    // portal FX then renders on top, sitting on what reads as
-    // unbroken cobble — no shadow halo around the portal.
-    //
-    // 240×240 native, scaled 0.5× → 120px rendered. Slightly larger
-    // than the painted pit (~100×80) to fully mask it with margin.
-    // pit_cover STAYS at (688, 365) even though the portal moved
-    // to (250, 620). This masks the painted pit at the central plaza
-    // so it reads as clean cobble (no leftover dark hole where the
-    // portal used to be).
-    id: 'pit_cover', asset: 'fx_pit_cover',
-    x: 688, y: 365,
-    frameW: 240, frameH: 240,
-    frameCount: 1, fps: 1,
-    scale: 0.5, yOffset: 0,
-  },
+  // pit_cover REMOVED for v4 — there's no painted pit at the central
+  // plaza in the no-wall layout. Asset + loader entry kept on disk.
   {
     // Portal shadow (ANIMATED breathing void). 16 frames × 200×200
     // native, sine-wave breath cycle. Scale 0.6× → 120px rendered.
@@ -386,15 +364,15 @@ const HAMLET_FX = [
     // as 'dark energy slowly pulling inward,' an alive magical
     // boundary rather than a static texture.
     id: 'portal_shadow', asset: 'fx_portal_shadow',
-    x: 962, y: 653,
+    x: 964, y: 654,
     frameW: 200, frameH: 200,
     frameCount: 16, fps: 4,
     scale: 0.6, yOffset: 0,
   },
   {
     // Portal (simplified holistic config). 4 frames × 112×112 native,
-    // scaled 0.9× → ~101px rendered. Position (688, 365) sits on the
-    // pit cover (which has erased the painted pit underneath).
+    // scaled 0.9× → ~101px rendered. v4 position (964, 654) sits on the
+    // SE portal pad — the painted ritual ring on the grass clearing.
     //
     // Animation philosophy: SIMPLE. Constant alpha=1.0 always (no
     // proximity tiers, no restAlphaMul, no fadeSeconds). Continuous
@@ -410,71 +388,69 @@ const HAMLET_FX = [
     // worth the visual artifact. Pulse rhythm is constant regardless
     // of hero distance — clean and predictable.
     id: 'portal', asset: 'fx_portal',
-    x: 962, y: 653,
+    x: 964, y: 654,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
     scale: 0.89, yOffset: 0,
     holdSeconds: 10,
   },
   {
-    // Cooking pot (v2 generation — cleaner kettle silhouette). Sits
-    // at the wanderer's camp (NPC at y=480), bubbling in place just
-    // north of the bedroll on the dirt patch. 9 frames at 4fps reads
-    // as a slow lazy simmer (slower than the firepit's flicker).
-    // Sprite is 112×112 native, scaled 0.6× → ~67px rendered — smaller
-    // than the wanderer (~115px) so the NPC stays the visual focus.
+    // Cooking pot — sits at the wanderer's camp (E zone, painted dirt
+    // patch with bedroll + fire ring). v4 layout has the camp dirt at
+    // (944, 452); we offset the pot west to ~(910, 430) so it sits on
+    // the dirt next to the painted fire ring at FIREPIT_POS (980, 470)
+    // without occluding it. Wanderer NPC at (920, 480) stands south
+    // of the pot. 9 frames at 4fps = slow lazy simmer.
     id: 'cookingpot', asset: 'fx_cookingpot',
-    x: 987, y: 413,
+    x: 910, y: 430,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 4,
     scale: 0.6, yOffset: 0,
   },
   {
-    // Anvil — sits to the LEFT of the smith on grass. Position (920,
-    // 340) puts it ~75px west and ~20px south of the smith NPC at
-    // (995, 320). The painted stone foundation pad to the north is
-    // RESERVED for a future furnace prop, so the anvil lives off-pad.
-    // PIL composite confirms no body overlap with the smith.
+    // Anvil — sits on the NE smithy stone pad. v4 layout has the
+    // smithy foundation centered at (966, 216) with a painted anvil
+    // silhouette baked into the stone; the anvil FX overlays directly
+    // on top so it reads as the working anvil rather than empty stone.
+    // Smith NPC at (1000, 260) stands south of the anvil.
     //
-    // 9 frames at 6fps continuous loop. No proximity tiers — smithing
-    // is ongoing ambient work, not a discrete event. Scale 0.6× →
-    // ~67px rendered to match cooking pot / firepit visual weight.
+    // 9 frames at 6fps continuous loop. Scale 0.6× → ~67px rendered.
     id: 'anvil', asset: 'fx_anvil',
-    x: 925, y: 316,
+    x: 966, y: 216,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
   },
   {
-    // Scrying basin (LEFT) — sits on the top-center altar slab at
-    // SHRINE_POS (680, 215). Tall pedestal with a glowing basin on
-    // top. Paired with a twin basin to the east (see next entry) so
-    // they read as a ceremonial pair flanking the altar threshold.
+    // Scrying basin (LEFT) — flanks the N shrine slab at SHRINE_POS
+    // (687, 201). Twin basins at x=650 + x=725 frame the altar so they
+    // read as a ceremonial pair guarding the threshold. Oracle NPC at
+    // (690, 250) stands south of the slab.
     // 4 frames at 3fps = 1.3s loop, slow swirl on the basin's surface.
     id: 'scryingbasin', asset: 'fx_scryingbasin',
-    x: 650, y: 226,
+    x: 650, y: 220,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
   {
     // Scrying basin (RIGHT, twin) — mirror of the left basin across
-    // the altar slab center (~x=680). Same animation, same scale.
+    // the altar slab center (~x=687). Same animation, same scale.
     // Different id so the FX state Map tracks them independently.
     id: 'scryingbasin2', asset: 'fx_scryingbasin',
-    x: 726, y: 226,
+    x: 725, y: 220,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
   {
     // Notice board (STATIC). Quest/info board for the hamlet. 112×112
-    // native, scaled 0.6× → 67px rendered. Placed at (688, 430) —
-    // visual center of the plaza, on cobble between the masked pit
-    // (where the portal used to be) and the south path. Reads as
-    // 'town center bulletin' for hub-area atmosphere.
+    // native, scaled 0.6× → 67px rendered. v4 plaza centers on (689, 378);
+    // notice board sits north of plaza center at (688, 320), reading as
+    // a 'town center bulletin' tucked between the plaza and the shrine
+    // approach without overlapping the central cobble star.
     id: 'noticeboard', asset: 'fx_noticeboard',
-    x: 688, y: 360,
+    x: 688, y: 320,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,

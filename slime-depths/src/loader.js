@@ -424,13 +424,17 @@ export async function loadAll(progressCb) {
     loadImage('cainos_plant_shadow',    'assets/hamlet/cainos/TX Plant with Shadow.png'),
 
     // ── HAMLET BACKDROP — AI-generated paired scene + walkability mask ────
-    // v3 (current): 2752×1536 native, world-rendered at 1376×768. Pivoted
-    //               to layered architecture — backdrop has zone PLACEMENT
-    //               MARKERS (charred circles, foundation pads, grave plot
-    //               indents) but NO actual props. Props are sprite-based
-    //               overlays (HAMLET_FX, future HAMLET_OBJECTS).
+    // v4 (current): 2752×1536 native, world-rendered at 1376×768. No-wall
+    //               octagonal layout — single perimeter ring with no
+    //               fragmented inner walls. Cleaner walkability (chromatic
+    //               classifier handles grass/dirt/wall directly).
+    // v3 (legacy): backdrop with charred circles, foundation pads, grave
+    //              plot indents but had inner-wall fragments that broke
+    //              the walkability mask. Kept loaded for asset history.
     // v2 (legacy): 1376×768 with all props baked into the painting.
     //              Kept loaded as a fallback; switch in hamletFloor.js.
+    loadImage('hamlet_scene_v4',        'assets/hamlet/scene_v4.jpg'),
+    loadImage('hamlet_scene_v4_mask',   'assets/hamlet/scene_v4_mask.jpg'),
     loadImage('hamlet_scene_v3',        'assets/hamlet/scene_v3.jpg'),
     loadImage('hamlet_scene_v3_mask',   'assets/hamlet/scene_v3_mask.jpg'),
     loadImage('hamlet_scene_v2',        'assets/hamlet/scene_v2.jpg'),

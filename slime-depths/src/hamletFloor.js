@@ -43,8 +43,8 @@ let walkBitsRows = 0;
 const TREE_DARK_THRESHOLD = 45;
 
 function buildWalkabilityBitmap() {
-  const maskImg = images.hamlet_scene_v3_mask;
-  const visualImg = images.hamlet_scene_v3;
+  const maskImg = images.hamlet_scene_v4_mask;
+  const visualImg = images.hamlet_scene_v4;
   if (!maskImg || !maskImg.complete || !maskImg.naturalWidth) return false;
   if (!visualImg || !visualImg.complete || !visualImg.naturalWidth) return false;
   // Render both images to canvases to read pixel data.
@@ -150,53 +150,49 @@ function buildWalkabilityBitmap() {
 // bbox — so the hero bumps off the visible mass, not the empty air
 // above it.
 const EXCLUSIONS = [
-  // Firepit — base ring at (435, 450), beside archivist's dirt patch.
-  // Sprite 48×48 scaled 1.12× → ~54px rendered, ~40×36 around base.
-  { x1: 415, y1: 432, x2: 455, y2: 468 },
-  // Anvil — full anvil + tree stump at (925, 316). Covers the
-  // visible mass of the prop so hero bumps off from any direction.
-  { x1: 899, y1: 297, x2: 954, y2: 347 },
-  // Cooking pot — full pot body + tripod at (987, 413). Covers the
-  // full visible kettle from rim to tripod feet.
-  { x1: 960, y1: 391, x2: 1015, y2: 446 },
-  // Lectern EXCLUSION removed (lectern FX entry removed).
-  // Scrying basin LEFT at (650, 226). Tall pedestal — narrow base.
-  { x1: 635, y1: 236, x2: 665, y2: 266 },
-  // Scrying basin RIGHT (twin) at (726, 226).
-  { x1: 711, y1: 236, x2: 741, y2: 266 },
-  // Bookcase + studydesk EXCLUSIONS removed (FX entries removed).
-  // Flameskull EXCLUSION removed (FX entry parked for dungeon use).
-  // Well EXCLUSION removed (FX entry removed).
-  // Save gem EXCLUSION removed (FX entry parked — see hamletScene.js).
-  // Notice board at (688, 360) — wider footprint than gem ~50×30.
-  { x1: 663, y1: 345, x2: 713, y2: 375 },
-  // Chest EXCLUSIONS removed (FX entries removed — chests are dungeon
-  // props now, see makeTreasureChestRoom in floor.js).
-  // Graves + lantern post EXCLUSIONS removed (FX entries removed).
+  // Firepit — base ring at (980, 470) in the E camp dirt zone. Sprite
+  // 48×48 scaled 1.12× → ~54px rendered, ~40×36 around base.
+  { x1: 960, y1: 452, x2: 1000, y2: 488 },
+  // Anvil — full anvil mass at (966, 216) on the NE smithy stone pad.
+  // Slightly tighter footprint than v3 since the painted anvil
+  // silhouette underneath gives the bump a clear visual referent.
+  { x1: 940, y1: 197, x2: 992, y2: 247 },
+  // Cooking pot — full pot body + tripod at (910, 430) on the camp
+  // dirt patch. Covers the visible kettle from rim to tripod feet.
+  { x1: 883, y1: 408, x2: 938, y2: 463 },
+  // Scrying basin LEFT at (650, 220) — flanks the N shrine slab.
+  // Tall pedestal — narrow base.
+  { x1: 635, y1: 230, x2: 665, y2: 260 },
+  // Scrying basin RIGHT (twin) at (725, 220).
+  { x1: 710, y1: 230, x2: 740, y2: 260 },
+  // Notice board at (688, 320) — north of plaza center on the path
+  // to the shrine. ~50×30 footprint covers the post + sign body.
+  { x1: 663, y1: 305, x2: 713, y2: 335 },
 ];
 
-// Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
-// mask classifies dark painted features as blocked but they SHOULD be
-// walkable. Two regions in v3 right now:
-//   1. Portal pad at (687, 381) — the painted dark ring/disc on the
-//      cobble plaza is dark-on-dark, so the mask flagged it as wall.
-//      The hero needs to step onto it to trigger E·DESCEND.
-//   2. Wanderer's camp dirt patch (~860, 540) — this is the brown/dirt
-//      area where the cooking pot FX + wanderer NPC live. Detection
-//      shows luminance 22-60 across x=820-1010, y=460-620 (it's the
-//      darkest contiguous patch in the south-east plaza). Without
-//      this override, the hero gets blocked from approaching the
-//      wanderer or interacting with the pot. (User called this
-//      "where the fire was" — referring to the visible scorched-dirt
-//      area, not the legacy FIREPIT_POS constant.)
+// Manual ALWAYS-WALKABLE overrides — rectangles where the chromatic
+// classifier classifies dark painted features as blocked but they
+// SHOULD be walkable. v4 layout uses a chromatic walkability classifier
+// (green-dominant = grass walkable, brown-dominant = dirt walkable,
+// dark non-green/non-brown = wall blocked) so most formerly problematic
+// dark zones are already correctly classified.
+//
+// Active overrides for v4:
+//   1. Portal pad at PORTAL_POS (964, 654) — the painted ritual ring
+//      on the SE grass clearing has dark stone borders that the mask
+//      may flag as blocked. Override ensures the hero can stand on
+//      the ring to trigger E·DESCEND.
+//   2. Shrine slab at SHRINE_POS (687, 201) — the painted altar stone
+//      is light grey but its border ring may be dark; override
+//      ensures hero can approach it for shrine interactions.
 //
 // These are checked BEFORE the mask sample; if the hero is inside any
-// rect, we return walkable regardless of luminance. EXCLUSIONS still
+// rect, we return walkable regardless of mask. EXCLUSIONS still
 // take precedence (checked first) so this can't accidentally re-open
-// a deliberate block like the new firepit ring.
+// a deliberate prop block like the firepit ring.
 const ALWAYS_WALKABLE = [
-  { x1: 632, y1: 326, x2: 742, y2: 436 },     // portal pad (110×110 around 687,381)
-  { x1: 820, y1: 460, x2: 1010, y2: 620 },    // wanderer's camp dirt patch (190×160)
+  { x1: 920, y1: 614, x2: 1008, y2: 694 },    // portal pad (88×80 around 964,654)
+  { x1: 660, y1: 175, x2: 715, y2: 230 },     // shrine approach (55×55 around 687,201)
 ];
 
 export function isHamletWalkable(worldX, worldY) {
@@ -233,7 +229,7 @@ setHamletWalkableFn(isHamletWalkable);
 // trees, props, and zone features baked in. Mask is invisible — only used
 // for collision.
 export function drawHamletFloor(ctx) {
-  const img = images.hamlet_scene_v3;
+  const img = images.hamlet_scene_v4;
   if (!img) return;
   const prevSmoothing = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
