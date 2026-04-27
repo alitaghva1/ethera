@@ -1534,7 +1534,12 @@ export function damageHero(amount, fromX, fromY) {
       if (hero.phoenixCloak) {
         spawnExplosion(hero.x, hero.y, 180, 80);
       }
-      return;
+      // Return 'hit' (not undefined) — the damage DID land before
+      // the revive consumed it. Callers that key off the result
+      // (e.g. projectiles.js running affix.onHitHero on real hits)
+      // would otherwise silently skip their on-hit triggers when a
+      // revived hit was the proc. Bug found in smoothing review.
+      return 'hit';
     }
     hero.hp = 0;
     setState('dead');
