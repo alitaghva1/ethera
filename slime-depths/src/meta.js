@@ -94,6 +94,15 @@ export const UNLOCKS = {
     tint: '#ffb265',
     icon: 'relic_max_hp',
   },
+  weapon_wand: {
+    id: 'weapon_wand',
+    name: 'Arcane Wand',
+    desc: 'Unlock wand — ranged bolts',
+    flavor: 'The teacher kept this. The teaching ended without her.',
+    cost: 65,
+    tint: '#c0a0ff',
+    icon: 'relic_attack_speed',
+  },
 };
 
 import { safeLoadJSON, safeSaveJSON } from './storage.js';

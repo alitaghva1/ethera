@@ -20,6 +20,7 @@ import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
 import { markChainFired, markPyroFired } from './counterPips.js';
 import { synthSwoosh, synthClick } from './synth.js';
+import { spawnHeroBolt } from './projectiles.js';
 
 // ── DASH STRIKE + DODGE — AFTERIMAGE GHOST TRAILS ───────────────────────
 // Both abilities capture hero pose at intervals during travel and render
@@ -629,6 +630,55 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Consume the buffer so it doesn't re-trigger on next idle frame
       hero._attackBuffer = 0;
       const w = weaponDef();
+
+      // ── RANGED WEAPON BRANCH (wand) ─────────────────────────────────
+      // Bypasses the entire melee swing flow — no swing index, no
+      // finisher logic, no slash arc, no charge AoE. The bolt is a
+      // single-shot projectile spawned in the aim direction; cooldown
+      // comes straight from the weapon's `cooldown` field (with the
+      // standard hero.attackCooldownMul + STORM atk-spd theme bonus
+      // applied so existing relics still affect ranged cadence).
+      //
+      // Combo / charge / finisher beats explicitly NOT supported in v1
+      // — players choosing the wand are signing up for a different
+      // playstyle, and the existing "every 3rd swing is a finisher"
+      // rhythm doesn't translate to projectile spam. Future work could
+      // add a "charged bolt" via mouse hold, but v1 keeps the rhythm
+      // simple: tap LMB, fire bolt, repeat.
+      if (w.ranged) {
+        const stormAtkSpd = 1 - (hero.themeAtkSpdBonus || 0);
+        const wandererMulR = hero.wandererBuffTime > 0 ? 0.5 : 1;
+        hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMulR * stormAtkSpd;
+        setState('attack');
+        hero.attackFacingX = hero.aimX;
+        hero.attackFacingY = hero.aimY;
+        // Spawn the bolt from a "cast point" slightly forward of the
+        // hero so it doesn't visually emit from inside the body.
+        const aimMag = Math.hypot(hero.aimX, hero.aimY) || 1;
+        const dirX = hero.aimX / aimMag;
+        const dirY = hero.aimY / aimMag;
+        const dmg = w.damage * hero.damageMul;
+        spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
+                      dirX, dirY, dmg, w.boltSpeed, w.boltLife);
+        // Cast SFX — synthClick at high pitch reads as a sharp magical
+        // snap. No sword_swing here; the wand is a different fingerprint.
+        try { synthClick(1.7, 0.6); } catch (_e) {}
+        // Light camera shake so each shot has tactile bite.
+        shakeCamera(2.5, 0.10);
+        // Tip on first cast (reuse first_combat slot — it's the
+        // "press LMB to attack" educational beat).
+        showTip('first_combat');
+        // Stash flags so downstream finisher/charged readers see them
+        // false (ranged has no finishers in v1).
+        hero._swingIsFinisher = false;
+        hero._swingIsCharged = false;
+        // NOTE: we deliberately fall through to the rest of the
+        // updateHero body so the attack-state END block (line ~1311)
+        // still runs to transition state back to idle when the
+        // animation finishes. The melee code below is wrapped in
+        // !w.ranged so it doesn't execute.
+      } else {
+
       const wandererMul = hero.wandererBuffTime > 0 ? 0.5 : 1;
       const soulreaverMul = Math.max(0.55, 1 - hero.soulreaverStacks * 0.15);
       // Charge release: any LMB state with chargeTime accumulated
@@ -711,6 +761,7 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Stash flags that hit logic reads during the swing window
       hero._swingIsFinisher = isFinisher;
       hero._swingIsCharged = isCharged;
+      } // end melee branch (else of if (w.ranged))
     }
     // Movement
     else {
@@ -880,11 +931,16 @@ export function updateHero(dt, enemies, mouseWorld) {
     }
   }
 
-  // Attack hitbox — active in middle of the swing
+  // Attack hitbox — active in middle of the swing.
+  // Ranged weapons (wand) skip the arc hitbox entirely — they damage
+  // via the projectile collision in projectiles.js, not the swing-arc
+  // sweep. The state-end transition at the bottom of this block still
+  // runs so the wand's "attack" state cleanly transitions back to idle
+  // when stateTime exceeds w.swingDur.
   if (hero.state === 'attack') {
     const w = weaponDef();
     const t = hero.stateTime / w.swingDur;
-    if (t > 0.25 && t < 0.75) {
+    if (!w.ranged && t > 0.25 && t < 0.75) {
       const reach = w.reach * hero.reachMul;
       // FLAME set-bonus — +10%/+20% base damage at 3/5 theme stacks
       const flameMul = 1 + (hero.themeDmgBonus || 0);

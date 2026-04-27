@@ -1,9 +1,14 @@
-// Enemy projectiles (arrows, fireballs, etc.). Fire-and-forget, pooled.
+// Projectiles — enemy-launched (arrows, orbs) and hero-launched (bolts).
+// Fire-and-forget, pooled. Collision target depends on `friendly`:
+//   - false/undefined: hits hero (default — enemy projectiles)
+//   - true:            hits enemies (hero bolts from the wand)
 import { isWallAtWorld } from './room.js';
 import { damageHero, hero } from './hero.js';
+import { enemies } from './enemies.js';
 import { shakeCamera } from './camera.js';
 import { sparkle, hitSpark, deathBurst } from './particles.js';
 import { synthPing, synthThud } from './synth.js';
+import { triggerHitStop, spawnDamageNumber } from './fx.js';
 
 export const projectiles = [];
 const pool = [];
@@ -46,6 +51,36 @@ export function spawnOrb(x, y, targetX, targetY, damage = 2) {
   return p;
 }
 
+// Hero arcane bolt — fired by the wand weapon class. `friendly: true`
+// flips the collision target so this bolt looks for ENEMIES (not the
+// hero) along its path. Travel speed + lifetime are tuned per-shot via
+// the wand's WEAPONS def so balance changes can live in weapons.js
+// instead of being scattered through projectiles.js.
+//
+//   x, y      — origin (hero center)
+//   dirX,dirY — normalized aim direction (already unit-length from caller)
+//   damage    — pre-multiplied damage (caller applies hero.damageMul)
+//   speed     — bolt travel speed in px/s (default 600)
+//   life      — seconds before despawn (default 1.0 — caps effective range)
+export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life = 1.0) {
+  const p = pool.pop() || {};
+  p.kind = 'bolt';
+  p.friendly = true;
+  p.x = x; p.y = y;
+  p.vx = dirX * speed;
+  p.vy = dirY * speed;
+  p.angle = Math.atan2(dirY, dirX);
+  p.life = life;
+  p.damage = damage;
+  p.radius = 7;
+  p.affix = null;
+  p.color = '#d4b8ff';     // arcane violet
+  // Trail of recent positions for the comet-tail render.
+  p.trail = [];
+  projectiles.push(p);
+  return p;
+}
+
 export function clearProjectiles() {
   while (projectiles.length) pool.push(projectiles.pop());
 }
@@ -82,18 +117,33 @@ export function updateProjectiles(dt) {
     if (p.kind === 'arrow') {
       // Rare dust puffs from arrow tail
       if (Math.random() < dt * 6) sparkle(p.x - p.vx * 0.02, p.y - p.vy * 0.02, '#a89070');
+    } else if (p.kind === 'bolt') {
+      // Hero arcane bolt — keep a short trail of past positions for the
+      // comet-tail render in drawProjectiles, plus occasional sparkles
+      // along the path so the bolt reads as "spell" rather than "arrow".
+      p.trail = p.trail || [];
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > 7) p.trail.shift();
+      if (Math.random() < dt * 24) sparkle(p.x, p.y, p.color || '#d4b8ff');
     } else if (p.homing) {
       // Orbs leave a denser magical wisp trail
       if (Math.random() < dt * 20) sparkle(p.x, p.y, p.color || '#c0a0ff');
     }
     if (isWallAtWorld(p.x, p.y)) {
-      // IMPACT VFX — projectile hits a wall. Arrows shatter with dust sparks
-      // along the wall normal; orbs dissipate with a purple burst + soft thud.
+      // IMPACT VFX — projectile hits a wall. Arrows shatter with dust
+      // sparks along the wall normal; orbs dissipate with a purple
+      // burst + soft thud; hero bolts pop in a small violet flare.
       const speed = Math.hypot(p.vx, p.vy) || 1;
       const nx = -p.vx / speed, ny = -p.vy / speed;
       if (p.kind === 'arrow') {
         hitSpark(p.x, p.y, nx, ny, '#c9a36a');
         synthPing(1600, 0.35, 0.12);
+      } else if (p.kind === 'bolt') {
+        hitSpark(p.x, p.y, nx, ny, p.color || '#d4b8ff');
+        for (let k = 0; k < 4; k++) {
+          sparkle(p.x + (Math.random() - 0.5) * 12, p.y + (Math.random() - 0.5) * 12, p.color || '#d4b8ff');
+        }
+        synthPing(1100, 0.28, 0.10);
       } else if (p.homing) {
         deathBurst(p.x, p.y, p.color || '#c0a0ff');
         for (let k = 0; k < 6; k++) {
@@ -105,8 +155,39 @@ export function updateProjectiles(dt) {
       pool.push(p);
       continue;
     }
-    // Collision: hero
-    if (hero.state !== 'dead') {
+    // Collision: friendly bolts hit the FIRST enemy along the path;
+    // unfriendly projectiles hit the hero.
+    if (p.friendly) {
+      let hitEnemy = null;
+      for (const e of enemies) {
+        if (e.dead) continue;
+        const dx = p.x - e.x, dy = p.y - e.y;
+        const r = (p.radius + (e.radius || 18));
+        if (dx * dx + dy * dy < r * r) {
+          hitEnemy = e;
+          break;
+        }
+      }
+      if (hitEnemy) {
+        const speed = Math.hypot(p.vx, p.vy) || 1;
+        const impactNx = -p.vx / speed, impactNy = -p.vy / speed;
+        // Apply damage. takeDamage signature mirrors what the dash-strike
+        // path uses (damage, knockX, knockY) — the bolt's velocity gives
+        // a consistent push direction so hits read as "shot from over
+        // there" instead of random knockback.
+        hitEnemy.takeDamage(p.damage, p.vx / speed, p.vy / speed);
+        hitSpark(hitEnemy.x, hitEnemy.y - 18, impactNx, impactNy, '#e8c8ff');
+        spawnDamageNumber(hitEnemy.x, hitEnemy.y - 36, p.damage, {
+          dir: { x: p.vx / speed, y: p.vy / speed },
+          elementTag: hitEnemy._lastElementTag,
+        });
+        triggerHitStop(0.04);
+        synthPing(960, 0.32, 0.10);
+        projectiles.splice(i, 1);
+        pool.push(p);
+        continue;
+      }
+    } else if (hero.state !== 'dead') {
       const dx = p.x - hero.x, dy = p.y - hero.y;
       if (dx*dx + dy*dy < (p.radius + 14) * (p.radius + 14)) {
         // IMPACT VFX — projectile hits the hero. Spark direction pushes back
@@ -163,6 +244,37 @@ export function drawProjectiles(ctx) {
       ctx.fillRect(-14, -3, 4, 2);
       ctx.fillRect(-14, 1, 4, 2);
       ctx.restore();
+    } else if (p.kind === 'bolt') {
+      // Hero arcane bolt — comet-tail of past positions + bright violet
+      // core + outer glow. The trail captures its own past so the bolt
+      // reads as a streak of magic, not a single dot.
+      const c = p.color || '#d4b8ff';
+      // Trail
+      if (p.trail) {
+        for (let j = 0; j < p.trail.length; j++) {
+          const pt = p.trail[j];
+          const a = (j / p.trail.length) * 0.55;
+          ctx.fillStyle = `rgba(212, 184, 255, ${a.toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 2 + j * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // Outer glow (smaller than orbs — bolt is a single-target snap)
+      const glow = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, 14);
+      glow.addColorStop(0, 'rgba(220, 200, 255, 0.85)');
+      glow.addColorStop(0.5, 'rgba(160, 120, 240, 0.35)');
+      glow.addColorStop(1, 'rgba(100, 70, 200, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(p.x - 14, p.y - 14, 28, 28);
+      // Core
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      // Bright pip in the center for that "spell projectile" snap
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
     } else if (p.kind === 'orb') {
       // Purple-blue arcane orb with trailing wisp
       // Trail
