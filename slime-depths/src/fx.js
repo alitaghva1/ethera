@@ -473,6 +473,12 @@ export function consumeCounterAttack() {
   return had;
 }
 export function counterWindowRemaining() { return _counterWindow; }
+// Grants a counter-attack window without playing the perfect-dodge
+// presentation (slowmo, flash, screen pulse). Used by Sworn Reply to
+// have Vow Eternal's opening crit also arm the counter-attack hook.
+export function grantCounterAttack(windowMul = 1) {
+  _counterWindow = Math.max(_counterWindow, COUNTER_WINDOW * windowMul);
+}
 
 // Time-dilation factor applied to gameplay dt. 0.25 during perfect dodge,
 // ramping back up over the last 150ms so it doesn't snap.

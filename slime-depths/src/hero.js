@@ -5,7 +5,7 @@ import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches, room } from './room.js';
 import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
-import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
+import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, grantCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
 import { stats } from './stats';
 import { WEAPONS } from './weapons.js';
 import {
@@ -342,6 +342,12 @@ export function resetHero() {
   hero.fusionWildfireChoir = false;
   hero.fusionMartyrBloom = false;
   hero.fusionStormveil = false;
+  // Weapon-signature fusions (April 2026)
+  hero.fusionSwornReply = false;
+  hero.fusionMortalCadence = false;
+  hero.fusionAvalanche = false;
+  hero.fusionCrescendo = false;
+  hero.fusionForkedSky = false;
   // Orphan-icon rehomes
   hero.hourglassRespite = false; hero.hourglassReadyAt = 0;
   hero.fusionRingbearer = false;
@@ -402,7 +408,11 @@ export function updateHero(dt, enemies, mouseWorld) {
       // also restarts so the next chain begins on the off-beat;
       // Razor Pace's 5-hit counter resets so the crescendo can't be
       // banked across long pauses (would feel like a cheap surprise).
-      hero.ringingSteelStacks = 0;
+      // FUSION: Crescendo — Ringing Steel stacks PERSIST across the
+      // chain decay (and across kills). The pact is "the bell, struck
+      // once, rings until the song is over" — only a death/run-end
+      // resets the chain.
+      if (!hero.fusionCrescendo) hero.ringingSteelStacks = 0;
       hero.twinPulseTick = 0;
       hero.razorPaceHits = 0;
     }
@@ -1142,6 +1152,11 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
           if (hero.vowEternal && hero.vowEternalReady && w.id === 'sword') {
             hero.vowEternalReady = false;
+            // FUSION: Sworn Reply — opening crit also opens the
+            // counter-attack window. Lets the player chain the
+            // first-hit crit into a full counter-attack on the next
+            // swing, which extends the opening into an opening burst.
+            if (hero.fusionSwornReply) grantCounterAttack();
           }
           // DAGGER SIGNATURE — flat +10% crit chance when wielded. Twin Fang
           // is "the precision weapon" — its identity between finishers is
@@ -1233,11 +1248,15 @@ export function updateHero(dt, enemies, mouseWorld) {
           // Reset is handled by the swing-chain decay block + room
           // teardown — see the resetHero list and the chainTime guard
           // earlier in updateHero. razorPaceCrescendo flag cues VFX.
+          // FUSION: Mortal Cadence — 5th hit always counts as a
+          // crescendo execute, jumping damage to 4×. Bosses still
+          // have their HP pool, but for everything else the rhythm
+          // beat is the kill.
           let razorPaceCrescendo = false;
           if (hero.razorPace && w.id === 'dagger') {
             hero.razorPaceHits = (hero.razorPaceHits | 0) + 1;
             if (hero.razorPaceHits >= 5) {
-              finalDmg *= 2.5;
+              finalDmg *= hero.fusionMortalCadence ? 4.0 : 2.5;
               hero.razorPaceHits = 0;
               razorPaceCrescendo = true;
             }
@@ -1368,13 +1387,29 @@ export function updateHero(dt, enemies, mouseWorld) {
             hero.mountainStrikeCounter = (hero.mountainStrikeCounter | 0) + 1;
             if (hero.mountainStrikeCounter % 3 === 0) {
               const shockDmg = (w.damage * (hero.damageMul || 1)) * 0.5;
-              spawnExplosion(e.x, e.y - 6, 70, shockDmg, 'physical');
+              // FUSION: Avalanche — radius doubles (70 → 140) and
+              // hits inside the shockwave are marked for next-hit
+              // crit (the heavy_blow knockback-crit hook).
+              const shockR = hero.fusionAvalanche ? 140 : 70;
+              spawnExplosion(e.x, e.y - 6, shockR, shockDmg, 'physical');
+              if (hero.fusionAvalanche) {
+                // Mark every enemy inside the shockwave for crit on
+                // next hit — turns the 3rd-swing tremor into a setup
+                // for a room-wide burst on the FOLLOWING swing.
+                const r2 = shockR * shockR;
+                for (const other of enemies) {
+                  if (other.dead || other.state === 'dead') continue;
+                  const dx = other.x - e.x, dy = other.y - (e.y - 6);
+                  if (dx * dx + dy * dy <= r2) other._kbCritPending = true;
+                }
+              }
               // Visual punch — extra dust burst for the ground-strike
               // read, plus a heavier hit-stop than the regular swing.
-              for (let k = 0; k < 8; k++) {
-                sparkle(e.x + (Math.random() - 0.5) * 40, e.y + 4 + (Math.random() - 0.5) * 16, '#ffae6c');
+              const dustCount = hero.fusionAvalanche ? 14 : 8;
+              for (let k = 0; k < dustCount; k++) {
+                sparkle(e.x + (Math.random() - 0.5) * (shockR * 0.6), e.y + 4 + (Math.random() - 0.5) * 16, '#ffae6c');
               }
-              triggerHitStop(0.06);
+              triggerHitStop(hero.fusionAvalanche ? 0.10 : 0.06);
               markMountainFired();   // visible pip-row flash
             }
           }

@@ -3967,6 +3967,12 @@ function startRun() {
   hero.fusionMountainsHeart = false;
   hero.fusionObsidianEdge = false;
   hero.fusionTempest = false;
+  // Weapon-signature fusion flags (April 2026 — see fusions.js)
+  hero.fusionSwornReply = false;
+  hero.fusionMortalCadence = false;
+  hero.fusionAvalanche = false;
+  hero.fusionCrescendo = false;
+  hero.fusionForkedSky = false;
   loadRoom(0, 'south');
   // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
   // previous run doesn't trigger a phantom heart-sparkle on the first

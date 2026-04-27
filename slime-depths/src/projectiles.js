@@ -220,23 +220,33 @@ export function updateProjectiles(dt) {
         // Storm Conduit — arc lightning from the hit enemy to the
         // nearest other enemy within 140px. Half the bolt's damage,
         // single chain so it doesn't run away from the player's intent.
+        // FUSION: Forked Sky — chain count goes 1 → 3, so a single
+        // bolt-hit sets off a 4-target sequence (hit, chain, chain,
+        // chain). Sub-bolts ALSO inherit the 3-chain count, so a
+        // splintered bolt fan can clear an entire room in one volley.
         if (hero.boltChain && !p._didChain) {
           p._didChain = true;
-          let nearest = null;
-          let nearestD2 = 140 * 140;
-          for (const e2 of enemies) {
-            if (e2.dead || e2 === hitEnemy) continue;
-            const ex = e2.x - hitEnemy.x, ey = e2.y - hitEnemy.y;
-            const d2 = ex * ex + ey * ey;
-            if (d2 < nearestD2) { nearest = e2; nearestD2 = d2; }
-          }
-          if (nearest) {
+          const chainCount = hero.fusionForkedSky ? 3 : 1;
+          const visited = new Set([hitEnemy]);
+          let from = hitEnemy;
+          for (let c = 0; c < chainCount; c++) {
+            let nearest = null;
+            let nearestD2 = 140 * 140;
+            for (const e2 of enemies) {
+              if (e2.dead || visited.has(e2)) continue;
+              const ex = e2.x - from.x, ey = e2.y - from.y;
+              const d2 = ex * ex + ey * ey;
+              if (d2 < nearestD2) { nearest = e2; nearestD2 = d2; }
+            }
+            if (!nearest) break;
             const chainDmg = Math.max(1, Math.round(p.damage * 0.5));
-            spawnLightningArc(hitEnemy.x, hitEnemy.y - 18, nearest.x, nearest.y - 18);
+            spawnLightningArc(from.x, from.y - 18, nearest.x, nearest.y - 18);
             nearest.takeDamage(chainDmg, 0, -1);
             spawnDamageNumber(nearest.x, nearest.y - 36, chainDmg, {
               elementTag: nearest._lastElementTag,
             });
+            visited.add(nearest);
+            from = nearest;
           }
         }
 

@@ -306,6 +306,84 @@ export const FUSIONS = {
     icon: 'fusion_spare_star',
     apply: (hero) => { hero.fusionStarweave = true; hero.critChance = (hero.critChance || 0) + 0.05; },
   },
+
+  // ==========================================================================
+  // WEAPON-SIGNATURE FUSIONS — paired off the new sword/dagger/hammer/wand
+  // identity relics. Each pairs a new signature relic with an existing relic
+  // that synergizes naturally. All fusion icons reuse existing slot keys —
+  // see relic_glyphs / fusion icons in pickupBanner for fallback rendering.
+  // ==========================================================================
+
+  // Sworn Reply (Vow Eternal + Counterstrike) — the opening crit also opens
+  // the perfect-dodge counter window. Reads: every room starts with both
+  // a guaranteed crit AND a free counter, then the loop continues from there.
+  sworn_reply: {
+    id: 'sworn_reply',
+    components: ['vow_eternal', 'counterstrike'],
+    name: 'Sworn Reply',
+    desc: 'Vow Eternal’s opening crit also grants a perfect-dodge counter',
+    flavor: 'The first word is iron. The answer to it is iron, twice.',
+    tint: '#ffe0a0',
+    icon: 'fusion_riposte',
+    apply: (hero) => { hero.fusionSwornReply = true; },
+  },
+
+  // Mortal Cadence (Razor Pace + Executioner) — every 5th dagger hit
+  // executes regardless of the executeThreshold. Reads as: rhythm
+  // becomes the threshold; play the beat and bosses lose phases.
+  mortal_cadence: {
+    id: 'mortal_cadence',
+    components: ['razor_pace', 'executioner'],
+    name: 'Mortal Cadence',
+    desc: 'Razor Pace’s 5th-hit pop always executes (4× damage)',
+    flavor: 'Five strokes are a sentence. The fifth is the period.',
+    tint: '#b0e0ff',
+    icon: 'fusion_final_verdict',
+    apply: (hero) => { hero.fusionMortalCadence = true; },
+  },
+
+  // Avalanche (Mountain Strike + Heavy Blow) — shockwaves double in
+  // radius and apply heavy_blow knockback-crit marking to enemies hit.
+  // Reads as: every 3rd hammer hit becomes a room-clearing tremor.
+  avalanche: {
+    id: 'avalanche',
+    components: ['mountain_strike', 'heavy_blow'],
+    name: 'Avalanche',
+    desc: 'Mountain Strike shockwaves grow to 140px and mark hits for crit',
+    flavor: 'The mountain woke up. It has not stopped walking since.',
+    tint: '#ffae6c',
+    icon: 'fusion_tempest',
+    apply: (hero) => { hero.fusionAvalanche = true; },
+  },
+
+  // Crescendo (Ringing Steel + Soulreaver) — ringing-steel chain stacks
+  // persist through kills (don't reset on the swing-chain decay block
+  // when soulreaver atk-spd is active). Solves the natural frustration:
+  // "I worked up 5 stacks on the elite, then it died and they vanished."
+  crescendo: {
+    id: 'crescendo',
+    components: ['ringing_steel', 'soulreaver'],
+    name: 'Crescendo',
+    desc: 'Ringing Steel stacks persist across kills',
+    flavor: 'The bell, struck once, rings until the song is over.',
+    tint: '#ffd680',
+    icon: 'fusion_phantom_blade',
+    apply: (hero) => { hero.fusionCrescendo = true; },
+  },
+
+  // Forked Sky (Splintered Light + Chain Lightning) — every wand bolt
+  // fragment chains lightning independently. Reads as the wand build's
+  // identity capstone: "the storm has three mouths."
+  forked_sky: {
+    id: 'forked_sky',
+    components: ['splintered_light', 'chain_lightning'],
+    name: 'Forked Sky',
+    desc: 'Wand bolt fragments each chain lightning to nearby enemies',
+    flavor: 'Three forks in the sky. Three reasons to look up.',
+    tint: '#a0d8ff',
+    icon: 'fusion_storm_dance',
+    apply: (hero) => { hero.fusionForkedSky = true; },
+  },
 };
 
 // Build a map of pair-key → fusionId for quick lookup
