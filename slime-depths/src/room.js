@@ -593,9 +593,19 @@ export function buildRoomFromData(data) {
   roomTorches.length = 0;
   if (data.kind !== 'hamlet') {
     const torchCols = (data.kind === 'boss') ? [3, 8, 11, 16] : [5, 14];
-    const skipDoor = northDoorPos();
+    // Collect ALL north-wall door columns. data.doorPlan.north is an
+    // array of door tile x-positions in graph rooms (legacy single
+    // center door uses northDoorPos()). Previously we only skipped the
+    // legacy center door column — torches still landed right next to
+    // doors when the doorPlan placed multiple doors at non-center
+    // columns. Now we skip torch columns within ±2 of ANY door so
+    // there's clear breathing room around each doorway.
+    const doorCols = (data.doorPlan && data.doorPlan.north && data.doorPlan.north.length > 0)
+      ? data.doorPlan.north
+      : [northDoorPos().x];
     for (const col of torchCols) {
-      if (col === skipDoor.x) continue;
+      const tooCloseToDoor = doorCols.some(dc => Math.abs(col - dc) <= 2);
+      if (tooCloseToDoor) continue;
       roomTorches.push({
         x: col * TILE + TILE/2,
         // y aligned with the NEW torch sprite's visible flame center.
