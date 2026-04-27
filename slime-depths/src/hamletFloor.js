@@ -161,9 +161,9 @@ const EXCLUSIONS = [
   // walk through the upper pot body. Now covers y=415-470 (the full
   // visible kettle from rim to tripod feet).
   { x1: 880, y1: 415, x2: 935, y2: 470 },
-  // Lectern (archivist's reading stand) at (340, 470). Tall narrow
-  // stand: blocks ~30px wide × 40px tall around the visible base.
-  { x1: 322, y1: 445, x2: 358, y2: 478 },
+  // Lectern (archivist's reading stand) at (440, 420). Tall narrow
+  // stand: blocks ~36px wide × 33px tall around the visible base.
+  { x1: 422, y1: 395, x2: 458, y2: 428 },
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based

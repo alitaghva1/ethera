@@ -355,13 +355,13 @@ const HAMLET_FX = [
     scale: 1.4, yOffset: 0,
   },
   {
-    // Portal (v3 — subtle muted runic glyph circle). Replaces the
-    // saturated magenta swirl that was reading as cartoon-emoji style
-    // and clashing with the painterly backdrop. Sits on the dark
-    // circular pit in the central plaza at PORTAL_POS (688, 365).
+    // Portal (v4 — magical descent portal embedded with hexagram +
+    // runes). Larger 160×160 sprite (was 112×112 in v3). Sits on the
+    // dark circular pit in the central plaza at PORTAL_POS (688, 365).
     // PIL-detected pit center: bbox x[638-737] y[330-410]. Sprite is
-    // 112×112 native, scaled 0.8× → ~90px rendered so it fits INSIDE
-    // the painted ring instead of overflowing it.
+    // 160×160 native, scaled 0.55× → ~88px rendered so it fits INSIDE
+    // the painted ring (same rendered size as v3 since native size
+    // grew but scale shrunk proportionally).
     //
     // Animation rhythm uses three layered systems (all optional, all
     // parsed by drawHamletFx — see that function for the math):
@@ -387,9 +387,9 @@ const HAMLET_FX = [
     // hero walks toward it.
     id: 'portal', asset: 'fx_portal',
     x: 688, y: 365,
-    frameW: 112, frameH: 112,
+    frameW: 160, frameH: 160,
     frameCount: 9,
-    scale: 0.8, yOffset: 0,
+    scale: 0.55, yOffset: 0,
     proximity: [
       // Tiers ordered far → near. Distance in world px from FX center.
       { dist: 320, alpha: 0.35, fps: 4, holdSeconds: 8 },     // dormant
@@ -429,11 +429,13 @@ const HAMLET_FX = [
     scale: 0.6, yOffset: 0,
   },
   {
-    // Ancient scholar's reading lectern (STATIC, single frame). Tucked
-    // into the L-bend ruined wall nook at the archive (NW area). The
-    // archivist NPC at (380, 470) stands 40px east of it, facing west
-    // to read the open tome on the lectern. Reads as 'archivist's
-    // private reading station' against the broken wall.
+    // Ancient scholar's reading lectern (STATIC, single frame). Sits
+    // in front of the L-bend ruined wall ending, on the archivist's
+    // dirt-patch nook (NW area). Earlier (340, 470) was hanging off
+    // the wall edge to the west — moved to (440, 420) so the lectern
+    // sits clearly on the dirt patch with the wall ending behind it.
+    // Archivist NPC at (380, 470) is south-west of the lectern (no
+    // x-overlap, so the archivist sprite doesn't render over it).
     //
     // PixelLab Object exports STATIC props as just rotations/ folder
     // (no animations). For our renderer we treat it as a 1-frame
@@ -442,7 +444,7 @@ const HAMLET_FX = [
     // public/assets/hamlet/fx_lectern.png since the importer expects
     // an animations folder.
     id: 'lectern', asset: 'fx_lectern',
-    x: 340, y: 470,
+    x: 440, y: 420,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
