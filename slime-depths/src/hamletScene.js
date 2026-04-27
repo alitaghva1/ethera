@@ -409,7 +409,7 @@ const HAMLET_FX = [
     // Sprite is 112×112 native, scaled 0.6× → ~67px rendered — smaller
     // than the wanderer (~115px) so the NPC stays the visual focus.
     id: 'cookingpot', asset: 'fx_cookingpot',
-    x: 875, y: 425,
+    x: 883, y: 425,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 4,
     scale: 0.6, yOffset: 0,
