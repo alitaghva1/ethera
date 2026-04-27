@@ -167,10 +167,10 @@ const EXCLUSIONS = [
   // Bookcase + studydesk EXCLUSIONS removed (FX entries removed).
   // Flameskull EXCLUSION removed (FX entry parked for dungeon use).
   // Well EXCLUSION removed (FX entry removed).
-  // Save gem at (380, 255) — small base ~20×15.
-  { x1: 370, y1: 249, x2: 390, y2: 264 },
-  // Notice board at (688, 375) — wider footprint than gem ~50×30.
-  { x1: 663, y1: 360, x2: 713, y2: 390 },
+  // Save gem at (400, 235) — small base ~20×15.
+  { x1: 390, y1: 229, x2: 410, y2: 244 },
+  // Notice board at (688, 365) — wider footprint than gem ~50×30.
+  { x1: 663, y1: 350, x2: 713, y2: 380 },
   // Chest EXCLUSIONS removed (FX entries removed — chests are dungeon
   // props now, see makeTreasureChestRoom in floor.js).
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
