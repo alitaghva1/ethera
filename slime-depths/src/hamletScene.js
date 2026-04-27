@@ -35,7 +35,7 @@ export const HAMLET_HERO_SPAWN = { x: 700, y: 670 };
 // scripts/hamlet_audit.py for the technique). v3 has no actual props
 // painted in — these positions point at the GROUND PLACEMENT MARKERS
 // where each feature will be rendered as a sprite overlay.
-const PORTAL_POS   = { x: 960, y: 654 };   // moved 2026-04-27 from (688, 365) central plaza to bottom-left grass area. Painted pit at old central location is now masked by fx_pit_cover (which stays at the old position) so the central plaza reads as clean cobble. New portal location is open grass — no painted feature underneath, just the dark shadow + portal FX layered on grass.
+const PORTAL_POS   = { x: 970, y: 648 };   // moved 2026-04-27 from (688, 365) central plaza to bottom-left grass area. Painted pit at old central location is now masked by fx_pit_cover (which stays at the old position) so the central plaza reads as clean cobble. New portal location is open grass — no painted feature underneath, just the dark shadow + portal FX layered on grass.
 const SHRINE_POS   = { x: 680, y: 215 };   // top-center altar slab
 const FIREPIT_POS  = { x: 736, y: 554 };   // hearth scorch mark south of plaza
 
@@ -379,7 +379,7 @@ const HAMLET_FX = [
     // → 120px rendered (slightly larger than the portal so a thin
     // ring of darkness frames the portal).
     id: 'portal_shadow', asset: 'fx_portal_shadow',
-    x: 960, y: 654,
+    x: 970, y: 648,
     frameW: 200, frameH: 200,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
@@ -403,10 +403,10 @@ const HAMLET_FX = [
     // worth the visual artifact. Pulse rhythm is constant regardless
     // of hero distance — clean and predictable.
     id: 'portal', asset: 'fx_portal',
-    x: 960, y: 654,
+    x: 970, y: 648,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
-    scale: 0.9, yOffset: 0,
+    scale: 0.81, yOffset: 0,
     holdSeconds: 10,
   },
   {
