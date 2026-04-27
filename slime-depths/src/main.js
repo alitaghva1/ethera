@@ -907,7 +907,7 @@ settingsEl.innerHTML = `
     <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
   </div>
 
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
+  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
       <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
       <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">tune the descent</div>
@@ -2519,7 +2519,7 @@ weaponPickerEl.innerHTML = `
     <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
   </div>
 
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
+  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
       <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
       <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">the forge waits</div>
