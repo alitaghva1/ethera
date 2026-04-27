@@ -46,7 +46,7 @@ export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 //   graveyard       (569, 211)   NW grass+markers cluster
 const PORTAL_POS   = { x: 964, y: 654 };   // SE portal pad (v4)
 const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
-const FIREPIT_POS  = { x: 435, y: 460 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup, nudged +20x -10y)
+const FIREPIT_POS  = { x: 435, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
 
 // NPC world positions — one per district, every position verified to
 // land in a walkable, terrain-correct tile. spriteIdx maps to the
@@ -105,13 +105,13 @@ export const HAMLET_ENTITIES = [
   // texture zone, slightly offset south so the sprite (bottom-aligned)
   // visually 'stands on' the pad/dirt rather than floating above it.
   { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 320, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 980, y: 300, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 960, y: 300, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 470, y: 470, interactR: 50, drawScale: 0.95 },
   // v4 NPC positions continued — gravekeeper at NW grave cluster (569,211),
   // oracle south of N shrine slab (687,201), wanderer at E camp dirt (944,452).
   { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 580, y: 240, interactR: 50, drawScale: 0.90 },
   { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 690, y: 250, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 920, y: 480, interactR: 50, drawScale: 0.90 },
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 945, y: 480, interactR: 50, drawScale: 0.90 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
@@ -346,7 +346,7 @@ const HAMLET_FX = [
     // bleeds onto the archivist for the lit-from-the-side reading look.
     // 48×48 sprite at 1.12× scale.
     id: 'firepit', asset: 'fx_firepit',
-    x: 435, y: 460,
+    x: 435, y: 450,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.12, yOffset: 0,
@@ -405,7 +405,7 @@ const HAMLET_FX = [
     // without occluding it. Wanderer NPC at (920, 480) stands south
     // of the pot. 9 frames at 4fps = slow lazy simmer.
     id: 'cookingpot', asset: 'fx_cookingpot',
-    x: 910, y: 430,
+    x: 930, y: 430,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 4,
     scale: 0.6, yOffset: 0,
@@ -418,7 +418,7 @@ const HAMLET_FX = [
     //
     // 9 frames at 6fps continuous loop. Scale 0.6× → ~67px rendered.
     id: 'anvil', asset: 'fx_anvil',
-    x: 946, y: 256,
+    x: 926, y: 256,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
