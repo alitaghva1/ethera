@@ -459,7 +459,7 @@ const HAMLET_FX = [
     // they read as a ceremonial pair flanking the altar threshold.
     // 4 frames at 3fps = 1.3s loop, slow swirl on the basin's surface.
     id: 'scryingbasin', asset: 'fx_scryingbasin',
-    x: 652, y: 224,
+    x: 650, y: 226,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
@@ -469,7 +469,7 @@ const HAMLET_FX = [
     // the altar slab center (~x=680). Same animation, same scale.
     // Different id so the FX state Map tracks them independently.
     id: 'scryingbasin2', asset: 'fx_scryingbasin',
-    x: 724, y: 224,
+    x: 726, y: 226,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
@@ -481,14 +481,14 @@ const HAMLET_FX = [
     // as a natural 'library row' rather than overlapping silhouettes.
     // Archivist NPC at (391, 470) stands south of the row.
     id: 'bookcase', asset: 'fx_bookcase',
-    x: 415, y: 398,
+    x: 425, y: 398,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
   },
   {
     id: 'bookcase2', asset: 'fx_bookcase',
-    x: 483, y: 398,
+    x: 475, y: 398,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
