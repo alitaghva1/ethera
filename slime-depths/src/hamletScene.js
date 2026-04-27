@@ -351,15 +351,16 @@ const HAMLET_FX = [
     // Portal (v3 — subtle muted runic glyph circle). Replaces the
     // saturated magenta swirl that was reading as cartoon-emoji style
     // and clashing with the painterly backdrop. Sits on the dark
-    // circular pit in the central plaza at PORTAL_POS (688, 370).
+    // circular pit in the central plaza at PORTAL_POS (688, 365).
     // PIL-detected pit center: bbox x[638-737] y[330-410]. Sprite is
     // 112×112 native, scaled 0.8× → ~90px rendered so it fits INSIDE
-    // the painted ring instead of overflowing it. 9 frames at 8fps
-    // for a slow rune pulse.
+    // the painted ring instead of overflowing it. 9 frames at 4fps =
+    // 2.25s loop — slow contemplative pulse (was 8fps, felt strobe-y
+    // for an ambient/dormant gateway).
     id: 'portal', asset: 'fx_portal',
     x: 688, y: 365,
     frameW: 112, frameH: 112,
-    frameCount: 9, fps: 8,
+    frameCount: 9, fps: 4,
     scale: 0.8, yOffset: 0,
   },
   {
