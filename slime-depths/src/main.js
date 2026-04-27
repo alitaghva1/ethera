@@ -3564,6 +3564,32 @@ function saveRunSnapshot() {
       tarotIds: drawnCards.map(c => c.id),
       dailyActive: !!daily.activeForRun,
       timestamp: Date.now(),
+      // Multiplier bundle — captures the FINAL run-start state of every
+      // hero stat that gets mutated by non-relic sources (meta unlocks,
+      // curse modifiers, tarot effects, memory bonuses). Without these,
+      // resumeRun could only rebuild multipliers from the relics list,
+      // silently losing every other multiplicative source. Per-bug
+      // example: a glass_blade + sharpened_edge + the_hanged_man run
+      // would lose damageMul × 1.4 × 1.10 × 1.30 = 2.002× → only the
+      // relic part remained on resume. Same applies to damageTakenMul,
+      // dodgeCooldownMul, etc.
+      mods: {
+        damageMul: hero.damageMul,
+        damageTakenMul: hero.damageTakenMul,
+        attackCooldownMul: hero.attackCooldownMul,
+        dodgeCooldownMul: hero.dodgeCooldownMul,
+        speedMul: hero.speedMul,
+        reachMul: hero.reachMul,
+        knockbackMul: hero.knockbackMul,
+        dodgeDistMul: hero.dodgeDistMul,
+        critChance: hero.critChance,
+        critMul: hero.critMul,
+        lifesteal: hero.lifesteal,
+        regenRate: hero.regenRate,
+        executeThreshold: hero.executeThreshold,
+        executeMul: hero.executeMul,
+        boltLifeMul: hero.boltLifeMul,
+      },
     };
     localStorage.setItem(RUN_SNAPSHOT_KEY, JSON.stringify(snap));
   } catch (e) {}
@@ -3617,24 +3643,36 @@ function resumeRun(snap) {
   hero.hp = Math.min(hero.maxHp, Math.max(1, snap.hp || hero.maxHp));
   gold.total = snap.gold | 0;
   daily.activeForRun = !!snap.dailyActive;
-  // DAILY CURSE — re-apply the inline-only effects that startRun does
-  // when daily.activeForRun is set (damageMul / damageTakenMul / maxHp
-  // tweaks). The daily relic is preserved via snap.relicIds; the
-  // inline curse modifiers are NOT, so without this they're lost on
-  // resume (e.g. resumed glass_blade day → no +40% dmg / +60% dmg-
-  // taken). Mirrors the same `if/else if` chain in startRun:3805-3812.
-  // window.__dailyCurseId still drives the curse-flag readers in the
-  // generation pipeline (room rolls, etc.).
+  // Multiplier bundle — restore AFTER relics have applied. Snap.mods
+  // captures the FINAL run-start state of every multiplier the hero
+  // accumulated (relic + meta unlocks + curse modifiers + tarot
+  // effects + memory bonuses). Without this, resumeRun could only
+  // rebuild multipliers from relics, silently losing the rest.
+  // Restoring AFTER applyRelic clobbers the relic-only rebuild with
+  // the correct final values; flag fields set by relic.apply() (e.g.
+  // hero.chainLightning, hero.executeThreshold gates) are preserved
+  // because they're not in snap.mods.
+  if (snap.mods) {
+    if (typeof snap.mods.damageMul === 'number')        hero.damageMul = snap.mods.damageMul;
+    if (typeof snap.mods.damageTakenMul === 'number')   hero.damageTakenMul = snap.mods.damageTakenMul;
+    if (typeof snap.mods.attackCooldownMul === 'number') hero.attackCooldownMul = snap.mods.attackCooldownMul;
+    if (typeof snap.mods.dodgeCooldownMul === 'number') hero.dodgeCooldownMul = snap.mods.dodgeCooldownMul;
+    if (typeof snap.mods.speedMul === 'number')         hero.speedMul = snap.mods.speedMul;
+    if (typeof snap.mods.reachMul === 'number')         hero.reachMul = snap.mods.reachMul;
+    if (typeof snap.mods.knockbackMul === 'number')     hero.knockbackMul = snap.mods.knockbackMul;
+    if (typeof snap.mods.dodgeDistMul === 'number')     hero.dodgeDistMul = snap.mods.dodgeDistMul;
+    if (typeof snap.mods.critChance === 'number')       hero.critChance = snap.mods.critChance;
+    if (typeof snap.mods.critMul === 'number')          hero.critMul = snap.mods.critMul;
+    if (typeof snap.mods.lifesteal === 'number')        hero.lifesteal = snap.mods.lifesteal;
+    if (typeof snap.mods.regenRate === 'number')        hero.regenRate = snap.mods.regenRate;
+    if (typeof snap.mods.executeThreshold === 'number') hero.executeThreshold = snap.mods.executeThreshold;
+    if (typeof snap.mods.executeMul === 'number')       hero.executeMul = snap.mods.executeMul;
+    if (typeof snap.mods.boltLifeMul === 'number')      hero.boltLifeMul = snap.mods.boltLifeMul;
+  }
+  // Daily challenge curse-id flag — drives generation-pipeline readers
+  // even though the inline modifiers are now captured in snap.mods.
   if (daily.activeForRun) {
     const todaysChallenge = getTodayChallenge();
-    if (todaysChallenge.curseId === 'glass_blade' && !isCursed('glass_blade')) {
-      hero.damageMul *= 1.4;
-      hero.damageTakenMul *= 1.6;
-    } else if (todaysChallenge.curseId === 'starving' && !isCursed('starving')) {
-      // maxHp/hp already restored from snap; leave alone — the
-      // starving cap was already in effect when the snapshot was
-      // taken. Re-applying here would double-decrement.
-    }
     window.__dailyCurseId = todaysChallenge.curseId;
   } else {
     window.__dailyCurseId = null;
