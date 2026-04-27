@@ -468,6 +468,17 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
+  {
+    // Flaming skull — sits east of the archivist NPC at (391, 470)
+    // on the dirt-patch nook. 16 frames × 48×48 native, scaled 1.4×
+    // → 67px rendered. 12fps for a fast flicker (fire animation).
+    // Reads as a creepy reading companion in the archivist's space.
+    id: 'flameskull', asset: 'fx_flameskull',
+    x: 445, y: 470,
+    frameW: 48, frameH: 48,
+    frameCount: 16, fps: 12,
+    scale: 1.4, yOffset: 0,
+  },
   // Bookcase + study desk removed per user request 2026-04-27.
   // Assets fx_bookcase.png + fx_studydesk.png kept on disk + loader
   // entries intact so re-adding is just restoring this block.

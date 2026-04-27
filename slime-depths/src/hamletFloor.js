@@ -165,6 +165,8 @@ const EXCLUSIONS = [
   // Scrying basin RIGHT (twin) at (726, 226).
   { x1: 711, y1: 236, x2: 741, y2: 266 },
   // Bookcase + studydesk EXCLUSIONS removed (FX entries removed).
+  // Flaming skull at (445, 470) — small base ~30×25px around the skull.
+  { x1: 430, y1: 460, x2: 460, y2: 485 },
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 
