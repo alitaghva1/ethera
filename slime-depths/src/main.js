@@ -3595,9 +3595,16 @@ function resumeRun(snap) {
   hero.weapon = snap.weapon || 'sword';
   // Curses
   for (const cid of (snap.curseIds || [])) activeCurses.add(cid);
-  // Tarot (re-apply run effects via existing reveal path would be ideal, but
-  // for a resume we just restore the flags via tarot.js state re-population)
-  // — applied later by the existing tarot active checks in game logic
+  // Tarot — restore drawn cards from the snapshot. The previous code
+  // had a misleading comment claiming this was "applied later by the
+  // existing tarot active checks" but there was no such path: hasCard
+  // / isTarotRun / drawnCards is the source of truth, and clearTarot()
+  // above zeroed it. Without this push, a resumed run lost every
+  // tarot effect (THE EMPRESS gold-double, THE FOOL no-weapon-start,
+  // THE STAR extra sanctuary, THE HANGED MAN dmg-vs-HP cost, etc.).
+  for (const tid of (snap.tarotIds || [])) {
+    if (TAROT[tid]) drawnCards.push(TAROT[tid]);
+  }
   // Relics (apply each one; fusion hooks fire as expected)
   for (const rid of (snap.relicIds || [])) {
     if (RELIC_DEFS[rid]) applyRelic(rid);
