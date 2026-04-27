@@ -164,9 +164,7 @@ const EXCLUSIONS = [
   { x1: 635, y1: 230, x2: 665, y2: 260 },
   // Scrying basin RIGHT (twin) at (725, 220).
   { x1: 710, y1: 230, x2: 740, y2: 260 },
-  // Notice board at (688, 340) — north of plaza center on the path
-  // to the shrine. ~50×30 footprint covers the post + sign body.
-  { x1: 663, y1: 325, x2: 713, y2: 355 },
+  // (Notice board EXCLUSION removed — entity + FX removed in same pass.)
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the chromatic

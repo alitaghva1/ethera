@@ -44,7 +44,7 @@ export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 //   camp dirt       (944, 452)   E rough dirt+bedroll+fire-ring
 //   portal pad      (964, 654)   SE grass clearing w/ ritual ring
 //   graveyard       (569, 211)   NW grass+markers cluster
-const PORTAL_POS   = { x: 964, y: 654 };   // SE portal pad (v4)
+const PORTAL_POS   = { x: 963, y: 654 };   // SE portal pad (v4)
 const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
 const FIREPIT_POS  = { x: 435, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
 
@@ -57,11 +57,11 @@ export const HAMLET_ENTITIES = [
   { kind: 'portal',                                 x: PORTAL_POS.x,  y: PORTAL_POS.y,  interactR: 80 },
   { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 0  },
   { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0  },
-  // Notice board interactable. Position mirrors the fx_noticeboard FX
-  // entry below. Reads a single flavor line via the existing roomLabel
-  // text overlay — no full dialogue needed (notice boards in dark-
-  // fantasy hamlets are short reads, not chats).
-  { kind: 'noticeboard',                            x: 688, y: 340,  interactR: 60 },
+  // (Notice board entity removed — the painted plaza reads cleaner
+  // without an extra prop blocking the central cobble star. The
+  // noticeboard interact-handler plumbing in consumeHamletInteract
+  // + drawHamletInteractPrompt is left in place so the prop can be
+  // re-added later by restoring this entry + the fx entry below.)
   // Positions on Scene v2 backdrop (1376×768) — each NPC stationed at
   // the obvious thematic anchor in the painted scene.
   //   keeper      — central plaza, west of portal/firepit (hub merchant)
@@ -104,7 +104,7 @@ export const HAMLET_ENTITIES = [
   // v4 NPC positions — each NPC stations at their thematic ground
   // texture zone, slightly offset south so the sprite (bottom-aligned)
   // visually 'stands on' the pad/dirt rather than floating above it.
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 750, y: 340, interactR: 50, drawScale: 1.10 },
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 820, y: 600, interactR: 50, drawScale: 1.10 },
   { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 940, y: 290, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 480, y: 470, interactR: 50, drawScale: 0.95 },
   // v4 NPC positions continued — gravekeeper at NW grave cluster (569,211),
@@ -367,7 +367,7 @@ const HAMLET_FX = [
     // as 'dark energy slowly pulling inward,' an alive magical
     // boundary rather than a static texture.
     id: 'portal_shadow', asset: 'fx_portal_shadow',
-    x: 964, y: 654,
+    x: 963, y: 654,
     frameW: 200, frameH: 200,
     frameCount: 16, fps: 4,
     scale: 0.63, yOffset: 0,
@@ -391,7 +391,7 @@ const HAMLET_FX = [
     // worth the visual artifact. Pulse rhythm is constant regardless
     // of hero distance — clean and predictable.
     id: 'portal', asset: 'fx_portal',
-    x: 964, y: 654,
+    x: 963, y: 654,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
     scale: 0.93, yOffset: 0,
@@ -445,18 +445,7 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
-  {
-    // Notice board (STATIC). Quest/info board for the hamlet. 112×112
-    // native, scaled 0.6× → 67px rendered. v4 plaza centers on (689, 378);
-    // notice board sits north of plaza center at (688, 320), reading as
-    // a 'town center bulletin' tucked between the plaza and the shrine
-    // approach without overlapping the central cobble star.
-    id: 'noticeboard', asset: 'fx_noticeboard',
-    x: 688, y: 340,
-    frameW: 112, frameH: 112,
-    frameCount: 1, fps: 1,
-    scale: 0.6, yOffset: 0,
-  },
+  // Notice board FX REMOVED — see HAMLET_ENTITIES comment above.
   // Parked assets (kept on disk + registered in loader so re-add is
   // just restoring an FX entry; removed from HAMLET_FX because they
   // didn't fit the current hamlet composition):
