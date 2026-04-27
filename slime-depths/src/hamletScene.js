@@ -474,12 +474,11 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
+  // Bookcase + study desk removed per user request 2026-04-27.
+  // Assets fx_bookcase.png + fx_studydesk.png kept on disk + loader
+  // entries intact so re-adding is just restoring this block.
+  /*
   {
-    // Bookcase v2 (STATIC, single frame). 48×48 native, scaled 1.4×
-    // → 67px rendered. Anchored to the WEST wall of the archivist's
-    // L-shaped nook at (360, 440). Paired with the study desk on the
-    // NORTH wall — together they wrap the corner of the nook into
-    // a proper library/study station around the archivist NPC.
     id: 'bookcase', asset: 'fx_bookcase',
     x: 360, y: 440,
     frameW: 48, frameH: 48,
@@ -487,16 +486,13 @@ const HAMLET_FX = [
     scale: 1.4, yOffset: 0,
   },
   {
-    // Study desk (STATIC, single frame). Anchored to the NORTH wall
-    // of the archivist nook at (470, 395). Bookcase on west wall +
-    // desk on north wall = L-shape reading station around the
-    // archivist NPC at (391, 470).
     id: 'studydesk', asset: 'fx_studydesk',
     x: 470, y: 395,
     frameW: 48, frameH: 48,
     frameCount: 1, fps: 1,
     scale: 1.4, yOffset: 0,
   },
+  */
   // Gravestones FX removed per user request 2026-04-27 — felt off
   // visually. Asset fx_graves.png kept on disk + loader entry intact
   // so re-adding is just restoring this block.
