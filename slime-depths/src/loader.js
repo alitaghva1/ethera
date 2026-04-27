@@ -463,6 +463,7 @@ export async function loadAll(progressCb) {
     loadImage('fx_bookcase',            'assets/hamlet/fx_bookcase.png'),
     loadImage('fx_studydesk',           'assets/hamlet/fx_studydesk.png'),
     loadImage('fx_pit_cover',           'assets/hamlet/fx_pit_cover.png'),
+    loadImage('fx_portal_shadow',       'assets/hamlet/fx_portal_shadow.png'),
     loadImage('fx_flameskull',          'assets/hamlet/fx_flameskull.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),

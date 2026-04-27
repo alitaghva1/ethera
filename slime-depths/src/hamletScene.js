@@ -371,6 +371,20 @@ const HAMLET_FX = [
     scale: 0.5, yOffset: 0,
   },
   {
+    // Portal shadow (STATIC). Dark circular depression rendered between
+    // the pit cover (clean cobble) and the portal FX. Gives the portal
+    // a deliberate 'set into a dark hollow' look — replaces the messy
+    // painted pit shadow with a clean intentional dark spot.
+    // 200×200 native dark gradient with feathered edges, scaled 0.6×
+    // → 120px rendered (slightly larger than the portal so a thin
+    // ring of darkness frames the portal).
+    id: 'portal_shadow', asset: 'fx_portal_shadow',
+    x: 688, y: 365,
+    frameW: 200, frameH: 200,
+    frameCount: 1, fps: 1,
+    scale: 0.6, yOffset: 0,
+  },
+  {
     // Portal (simplified holistic config). 4 frames × 112×112 native,
     // scaled 0.9× → ~101px rendered. Position (688, 365) sits on the
     // pit cover (which has erased the painted pit underneath).
