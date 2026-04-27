@@ -2,6 +2,8 @@
 // Walking onto one grants the relic + removes the rest.
 import { images } from './loader.js';
 import { applyRelic, rollRelicOffer, relicTier, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
+import { THEMES, getThemeCounts, getThemeTier } from './themes.js';
+import { activeFusions } from './fusions.js';
 // NOTE: relicTier imported above is what makes altar pedestals respect rarity
 // tiers — without tier on the pedestal, mythic drops at altars render as common.
 import { drawRelicIcon } from './fx.js';
@@ -45,6 +47,19 @@ let pickedFlashTime = 0;
 // per-frame isFirstTime check would fire markSeen on the first frame and
 // then read false for every subsequent frame, killing the vignette mid-banner.
 let lastPickedFirstMythic = false;
+// Most-meaningful structural event from the most recent pickup. Captured
+// by computeRelicEvent() at pickup time and rendered as a chip above the
+// relic name in drawPickupFlash. Reads as the "WHY this pickup matters"
+// signal — fusion forged, theme advanced to Resonance/Ascendance.
+//
+// Shape: { label: 'STORM ASCENDANCE', tint: '#80c8ff' } | null
+//
+// Priority order (only ONE event per pickup, picks highest):
+//   1. FUSION FORGED (mechanical breakthrough — biggest effect)
+//   2. THEME ASCENDANCE (3→5 stack on a theme — big mid/late game)
+//   3. THEME RESONANCE (0→3 stack — meaningful early game)
+//   4. (none — relic just adds stats; no event chip)
+let lastPickedEvent = null;
 
 // Word-wrap helper — splits `text` into lines that fit within `maxWidth` when
 // rendered with the caller's current ctx.font. Used by drawPedestalTooltip so
@@ -274,6 +289,7 @@ export function suppressPickupFlash() {
   lastPickedDef = null;
   pickedFlashTime = 0;
   lastPickedFirstMythic = false;
+  lastPickedEvent = null;
 }
 
 // Dev-only: force the pickup-flash banner state for screenshot-based testing.
@@ -334,7 +350,13 @@ export function updatePedestals(dt) {
       // Apply FIRST, mark consumed AFTER. If applyRelic throws (corrupt
       // state, missing fusion def), the pedestal remains un-picked so the
       // player can try again on next tick instead of losing the relic.
+      // Snapshot the structural state BEFORE applying so we can diff
+      // post-apply to detect "this pickup formed a fusion / advanced
+      // a theme tier" — the relicEvent chip rendered in drawPickupFlash.
+      const beforeFusionIds = new Set(activeFusions.map(f => f.id));
+      const beforeThemeTiers = computeThemeTiers();
       applyRelic(p.relic.id);
+      lastPickedEvent = computeRelicEvent(beforeFusionIds, beforeThemeTiers, p.relic.id);
       p.picked = true;
       picked = p.relic;
       const t = p.tier || 'common';
@@ -751,10 +773,29 @@ export function drawPickupFlash(ctx, w, h) {
 
   // Header — "RELIC ACQUIRED" usually. Mythic gets "A LEGEND AWAKES" to sell
   // that this is a named, storied artifact, not loot.
-  ctx.fillStyle = tier === 'mythic' ? tierColor : '#c9a86a';
-  ctx.font = tier === 'mythic' ? 'italic bold 11px Georgia, serif' : 'italic bold 10px Georgia, serif';
-  const header = tier === 'mythic' ? '\u2014 A LEGEND AWAKES \u2014' : '\u2014 RELIC ACQUIRED \u2014';
-  ctx.fillText(header, pivotX, by + (tier === 'mythic' ? 50 : 42));
+  // EVENT CHIP \u2014 if this pickup formed a fusion or advanced a theme
+  // tier (Resonance/Ascendance), render the structural-event label
+  // here INSTEAD of the generic header. The event chip is the most
+  // important info on the banner \u2014 it tells the player WHY this
+  // pickup matters mechanically. Color uses the event's tint
+  // (fusion or theme color) so it reads as "this build moved".
+  const headerY = by + (tier === 'mythic' ? 50 : 42);
+  if (lastPickedEvent) {
+    const evPulse = 0.85 + 0.15 * Math.sin(performance.now() / 120);
+    ctx.shadowColor = lastPickedEvent.tint;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = lastPickedEvent.tint;
+    ctx.font = tier === 'mythic' ? 'italic bold 13px Georgia, serif' : 'italic bold 12px Georgia, serif';
+    ctx.globalAlpha = a * evPulse;
+    ctx.fillText(lastPickedEvent.label, pivotX, headerY);
+    ctx.globalAlpha = a;
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = tier === 'mythic' ? tierColor : '#c9a86a';
+    ctx.font = tier === 'mythic' ? 'italic bold 11px Georgia, serif' : 'italic bold 10px Georgia, serif';
+    const header = tier === 'mythic' ? '\u2014 A LEGEND AWAKES \u2014' : '\u2014 RELIC ACQUIRED \u2014';
+    ctx.fillText(header, pivotX, headerY);
+  }
 
   // Big relic name — shadowed glow in tier color. Mythic is larger + stronger glow.
   ctx.shadowColor = tierColor;
@@ -827,6 +868,65 @@ export function drawPickupFlash(ctx, w, h) {
 // a discrete UI element rather than appearing mid-render.
 let _tooltipCurrent = null;
 let _tooltipSince = 0;
+
+// ── RELIC EVENT DETECTION (relicEvent chip) ──────────────────────────
+// Snapshots theme-tier state to compare before/after applyRelic. Fusion
+// detection uses the activeFusions module-level array directly.
+function computeThemeTiers() {
+  const counts = getThemeCounts(equippedRelics);
+  return {
+    storm:  getThemeTier(counts.storm),
+    flame:  getThemeTier(counts.flame),
+    blood:  getThemeTier(counts.blood),
+    vow:    getThemeTier(counts.vow),
+    shadow: getThemeTier(counts.shadow),
+  };
+}
+
+// Compares the post-applyRelic state with the pre-snapshot to determine
+// the most-meaningful structural event from this pickup. Returns the
+// event object (rendered as a chip above the relic name) or null if
+// the relic was a pure stat pickup with no structural change.
+//
+// Priority (only ONE event picked, highest wins):
+//   1. FUSION FORGED         — the most significant; entire new mechanic
+//   2. THEME ASCENDANCE      — 5-stack tier-2 hit on a theme
+//   3. THEME RESONANCE       — 3-stack tier-1 hit on a theme
+//   4. (null — relic was a pure stat boost)
+function computeRelicEvent(beforeFusionIds, beforeThemeTiers, _pickedId) {
+  // Fusion forging — first new fusion id in activeFusions wins.
+  for (const f of activeFusions) {
+    if (!beforeFusionIds.has(f.id)) {
+      return {
+        label: 'FUSION FORGED — ' + (f.name || f.id).toUpperCase(),
+        tint: f.tint || '#ffd27a',
+      };
+    }
+  }
+  // Theme advancement — find the highest-tier change. Prefer
+  // ascendance over resonance even if both happened (rare, but
+  // possible if multiple themes hit thresholds simultaneously).
+  const after = computeThemeTiers();
+  let best = null;
+  for (const themeId of Object.keys(THEMES)) {
+    const beforeT = beforeThemeTiers[themeId] | 0;
+    const afterT = after[themeId] | 0;
+    if (afterT > beforeT) {
+      const label = afterT === 2 ? 'ASCENDANCE' : 'RESONANCE';
+      const candidate = {
+        label: themeId.toUpperCase() + ' ' + label,
+        tint: (THEMES[themeId] && THEMES[themeId].tint) || '#c9a86a',
+        priority: afterT,
+      };
+      if (!best || candidate.priority > best.priority) best = candidate;
+    }
+  }
+  if (best) {
+    const { label, tint } = best;
+    return { label, tint };
+  }
+  return null;
+}
 
 // Lightweight check: does the hero stand within tooltip range of any
 // active pedestal? Used by hud.js to suppress its theme-chip tooltip
