@@ -18,16 +18,35 @@ function toRoman(n) {
 let heartShakeTime = 0;
 let heartSparkleTime = 0;
 let lastSeenHp = -1;
+let lastSeenMaxHp = -1;
+
+// Reset the HP-tracking baseline. Called from main.js on each new run +
+// resume so the leftover lastSeenHp from a prior run doesn't trigger a
+// phantom heart-sparkle on the first frame of fresh state.
+export function resetHudAnims() {
+  heartShakeTime = 0;
+  heartSparkleTime = 0;
+  lastSeenHp = -1;
+  lastSeenMaxHp = -1;
+}
 
 export function updateHudAnims(dt) {
   if (heartShakeTime > 0) heartShakeTime -= dt;
   if (heartSparkleTime > 0) heartSparkleTime -= dt;
-  // Detect HP changes: damage → shake, heal → sparkle
+  // Detect HP changes: damage → shake, heal → sparkle.
+  //
+  // Suppress the heal-sparkle when maxHp ALSO grew this frame — that
+  // signals a maxHp increase from a relic pickup (Ironhide, Vitality,
+  // etc.) which auto-fills hp to maxHp. Without this guard, every
+  // maxHp-pickup would falsely trigger a heart-sparkle as a "heal"
+  // even though the player didn't gain proportional health.
   if (lastSeenHp >= 0 && hero.hp !== lastSeenHp) {
+    const maxHpGrew = lastSeenMaxHp >= 0 && hero.maxHp > lastSeenMaxHp;
     if (hero.hp < lastSeenHp) heartShakeTime = 0.3;
-    else if (hero.hp > lastSeenHp) heartSparkleTime = 0.6;
+    else if (hero.hp > lastSeenHp && !maxHpGrew) heartSparkleTime = 0.6;
   }
   lastSeenHp = hero.hp;
+  lastSeenMaxHp = hero.maxHp;
 }
 
 const ROOM_LABEL = {

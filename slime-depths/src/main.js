@@ -46,7 +46,7 @@ import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawEliteAff
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
-import { drawHud, updateHudAnims } from './hud.js';
+import { drawHud, updateHudAnims, resetHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
 import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics, relicTier, isRelicForWeapon } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats';
@@ -3712,6 +3712,10 @@ function resumeRun(snap) {
   watcherOnFloorEnter(currentFloorLevel);
   triggerFloorCard(currentFloorLevel);
   loadRoom(0, 'south');
+  // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
+  // previous run doesn't trigger a phantom heart-sparkle on the first
+  // frame of resumed state.
+  resetHudAnims();
   running = true;
   // Snapshot at run start so a player who quits floor 1 can resume floor 1.
   saveRunSnapshot();
@@ -3925,6 +3929,10 @@ function startRun() {
   hero.fusionObsidianEdge = false;
   hero.fusionTempest = false;
   loadRoom(0, 'south');
+  // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
+  // previous run doesn't trigger a phantom heart-sparkle on the first
+  // frame of a fresh run.
+  resetHudAnims();
   running = true;
 }
 
