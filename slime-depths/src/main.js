@@ -3614,6 +3614,28 @@ function resumeRun(snap) {
   hero.hp = Math.min(hero.maxHp, Math.max(1, snap.hp || hero.maxHp));
   gold.total = snap.gold | 0;
   daily.activeForRun = !!snap.dailyActive;
+  // DAILY CURSE — re-apply the inline-only effects that startRun does
+  // when daily.activeForRun is set (damageMul / damageTakenMul / maxHp
+  // tweaks). The daily relic is preserved via snap.relicIds; the
+  // inline curse modifiers are NOT, so without this they're lost on
+  // resume (e.g. resumed glass_blade day → no +40% dmg / +60% dmg-
+  // taken). Mirrors the same `if/else if` chain in startRun:3805-3812.
+  // window.__dailyCurseId still drives the curse-flag readers in the
+  // generation pipeline (room rolls, etc.).
+  if (daily.activeForRun) {
+    const todaysChallenge = getTodayChallenge();
+    if (todaysChallenge.curseId === 'glass_blade' && !isCursed('glass_blade')) {
+      hero.damageMul *= 1.4;
+      hero.damageTakenMul *= 1.6;
+    } else if (todaysChallenge.curseId === 'starving' && !isCursed('starving')) {
+      // maxHp/hp already restored from snap; leave alone — the
+      // starving cap was already in effect when the snapshot was
+      // taken. Re-applying here would double-decrement.
+    }
+    window.__dailyCurseId = todaysChallenge.curseId;
+  } else {
+    window.__dailyCurseId = null;
+  }
   // Enter floor N
   currentFloorLevel = Math.max(1, Math.min(MAX_FLOORS, snap.floorLevel));
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
