@@ -427,7 +427,15 @@
     padding: 24px;
     letter-spacing: 4px;
   }
-  @media (max-width: 700px) and (orientation: portrait) {
+  /* Rotate prompt fires when the viewport is in portrait orientation
+     on a TOUCH device. Previously gated on max-width:700, which
+     excluded modern phones (Pixel 8 Pro, iPhone 16 Pro Max) running
+     768-790px in portrait — those got the squished-canvas experience
+     instead of the rotate prompt.
+     The pointer:coarse + hover:none combo restricts to touch devices
+     so a desktop user with a tall narrow window doesn't get a rotate
+     prompt they can't act on. */
+  @media (orientation: portrait) and (max-aspect-ratio: 1/1) and (hover: none) and (pointer: coarse) {
     #rotatePrompt { display: flex; }
   }
   #rotatePrompt .ico {

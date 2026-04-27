@@ -30,12 +30,24 @@ function cornerOrnament(position) {
 }
 
 export const DEATH_SCREEN_HTML = `
-  <!-- Deep vignette + page-frame corners (shared discipline) -->
+  <!-- Deep vignette + page-frame corners (shared discipline). These stay
+       OUTSIDE the responsive scale wrapper so the corner flourishes hug
+       the actual viewport edge regardless of viewport size. -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
   ${cornerOrnament('tl')}
   ${cornerOrnament('tr')}
   ${cornerOrnament('bl')}
   ${cornerOrnament('br')}
+
+  <!-- Responsive scale wrapper — uses the same .menuContent class as the
+       main menu so the @media transform:scale rules at 900/600/450
+       breakpoints apply uniformly to the death screen content too.
+       Without this, on a narrow viewport the YOU DIED title (56px) +
+       the stats grid + relics row + near-miss strip overflow the
+       CSS-shrunk canvas. The wrapper itself is a flex column so the
+       children keep the same vertical layout #deathScreen would give
+       them as direct children. -->
+  <div class="menuContent" style="display:flex;flex-direction:column;align-items:center;position:relative;z-index:1;">
 
   <!-- Ornamental frame above the title — color set per result (death/victory)
        by showEndOfRun. Crimson-on-death, gold-on-victory. -->
@@ -85,4 +97,6 @@ export const DEATH_SCREEN_HTML = `
     <button id="deathMenuBtn" style="background:transparent;color:#8a7a5a;border:0;padding:8px 18px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:opacity 0.22s ease;opacity:0.7;">\u2190 MAIN MENU</button>
     <button id="restartBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:14px 56px;font-size:15px;cursor:pointer;letter-spacing:6px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 22px rgba(201,168,106,0.25), inset 0 0 12px rgba(244,217,160,0.06);position:relative;z-index:1;">NEW RUN</button>
   </div>
+
+  </div><!-- /menuContent -->
 `;

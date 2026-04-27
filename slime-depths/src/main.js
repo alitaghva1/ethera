@@ -2800,8 +2800,11 @@ pauseEl.innerHTML = `
     <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
   </div>
 
-  <!-- Content column, z above ambient. -->
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
+  <!-- Content column, z above ambient. The "menuContent" class is shared
+       with the main menu so the same @media (max-width) scale rules
+       (0.72 / 0.52 / 0.38 at 900/600/450 breakpoints) keep the pause
+       overlay readable on narrow viewports. -->
+  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
     <!-- Ornamental frame above the title — gold, not purple. -->
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.7;animation:winFadeIn 0.6s ease-out;">
       <div style="width:90px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>

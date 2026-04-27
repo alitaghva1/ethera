@@ -635,8 +635,12 @@ export function drawPickupFlash(ctx, w, h) {
   ctx.save();
   ctx.globalAlpha = a;
 
-  // Mythic banner is larger — gives the moment more weight on screen
-  const boxW = tier === 'mythic' ? 560 : 480;
+  // Mythic banner is larger — gives the moment more weight on screen.
+  // Defensive cap against the canvas width: the canvas is 1280 today so
+  // 560/480 always fits, but if a future build shrinks the internal
+  // resolution (e.g. 800x450 mode for a low-end target) the banner
+  // would clip without this guard.
+  const boxW = Math.min(tier === 'mythic' ? 560 : 480, w - 80);
   // Pre-measure flavor + desc so the frame can grow to fit wrapped lines.
   // Long descs (e.g. Hourglass of Respite, 72 chars) used to overflow a
   // fixed-height box into the HUD.
@@ -983,7 +987,10 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   // for flavor + desc so box height can adapt (previously desc could overflow
   // the box right edge on long relics like "Knockback ×2.5 · hitting a
   // knocked-back enemy is a guaranteed crit").
-  const boxW = 520;
+  // Defensive cap on box width so the tooltip never wider than the
+  // canvas — current canvas is 1280 so 520 always fits, future mode
+  // would benefit.
+  const boxW = Math.min(520, w - 80);
   // Text column: box minus the icon-slot region (icon ~60px + gutter + padding).
   const textColW = boxW - 90;
   ctx.font = 'italic 11px Georgia, serif';
