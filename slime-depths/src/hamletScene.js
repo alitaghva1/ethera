@@ -377,7 +377,8 @@ const HAMLET_FX = [
     x: 688, y: 365,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
-    scale: 1.1, yOffset: 0,
+    scale: 1.0, yOffset: 0,
+    holdSeconds: 10,
   },
   {
     // Cooking pot (v2 generation — cleaner kettle silhouette). Sits
