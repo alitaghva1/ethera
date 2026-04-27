@@ -343,13 +343,13 @@ const HAMLET_FX = [
     // — no more visual stacking. v3 layout has the hearth SOUTH of the
     // plaza (at y=554), separate from the portal (y=381).
     id: 'firepit', asset: 'fx_firepit',
-    // Moved to where the flameskull was (425, 460) — near the
-    // archivist's dirt-patch nook. Replaces the skull as the
-    // archivist's fire companion.
-    x: 425, y: 460,
+    // Moved to where the flameskull was, then nudged +10x -10y to
+    // (435, 450). Scale shrunk 20% (1.4 -> 1.12) → ~54px rendered.
+    // Sits beside the archivist as their fire companion.
+    x: 435, y: 450,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
-    scale: 1.4, yOffset: 0,
+    scale: 1.12, yOffset: 0,
   },
   {
     // Pit cover (STATIC, single frame). Sampled clean cobble patch
