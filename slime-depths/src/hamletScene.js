@@ -88,7 +88,7 @@ export const HAMLET_ENTITIES = [
   //   oracle      — south of altar slab N (NPC sprite is hidden behind future altar prop)
   //   wanderer    — south of wanderer dirt patch on right side
   { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 452, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 959, y: 310, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 975, y: 310, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 391, y: 470, interactR: 50, drawScale: 0.95 },
   // gravekeeper: lives at the NW graveyard. Position iterated:
   //   (293, 290) → on a tree
@@ -130,7 +130,7 @@ export const HAMLET_OBSTACLES = [
   // in resolveHamletCollision). Positions match HAMLET_ENTITIES NPC
   // coords above. Update both arrays together when moving NPCs.
   { x: 760, y: 452, r: 18 },     // keeper
-  { x: 959, y: 310, r: 18 },     // smith
+  { x: 975, y: 310, r: 18 },     // smith
   { x: 391, y: 470, r: 18 },     // archivist
   { x: 455, y: 288, r: 18 },     // gravekeeper
   { x: 680, y: 275, r: 18 },     // oracle
@@ -463,18 +463,9 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
-  {
-    // Gravestones cluster — three weathered grave markers in the NW
-    // graveyard cluster. Sits north of the gravekeeper NPC (420, 280)
-    // so she stands 'tending the graves.' 4 frames at 1.5fps for a
-    // very slow ambient sway/wisp effect — these are stones, not very
-    // active. Position picked via PIL composite check.
-    id: 'graves', asset: 'fx_graves',
-    x: 409, y: 230,
-    frameW: 112, frameH: 112,
-    frameCount: 4, fps: 1.5,
-    scale: 0.6, yOffset: 0,
-  },
+  // Gravestones FX removed per user request 2026-04-27 — felt off
+  // visually. Asset fx_graves.png kept on disk + loader entry intact
+  // so re-adding is just restoring this block.
   // Lantern post removed per user request 2026-04-27 — was at (300, 360).
   // Asset fx_lanternpost.png still on disk + registered in loader if we
   // want to re-add it later; just delete this block to disable.

@@ -164,10 +164,7 @@ const EXCLUSIONS = [
   { x1: 431, y1: 373, x2: 467, y2: 406 },
   // Scrying basin at (664, 220). Tall pedestal — narrow base.
   { x1: 649, y1: 230, x2: 679, y2: 260 },
-  // Gravestones cluster at (409, 230). Three stones spread across
-  // the lower half of the sprite — wider footprint than singles.
-  { x1: 384, y1: 240, x2: 434, y2: 270 },
-  // Lantern post EXCLUSION removed (lantern FX entry removed).
+  // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
