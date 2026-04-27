@@ -158,14 +158,18 @@ const EXCLUSIONS = [
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
 // mask classifies dark painted features as blocked but they SHOULD be
-// walkable. Two cases right now:
+// walkable. Two regions in v3 right now:
 //   1. Portal pad at (687, 381) — the painted dark ring/disc on the
 //      cobble plaza is dark-on-dark, so the mask flagged it as wall.
 //      The hero needs to step onto it to trigger E·DESCEND.
-//   2. Old firepit scorch mark at (736, 554) — leftover painted scorch
-//      from before the firepit FX moved to the SE pad at (970, 654).
-//      The dark mark on cobble was being read as a wall, leaving an
-//      invisible no-walk donut where there's no longer any fire.
+//   2. Wanderer's camp dirt patch (~860, 540) — this is the brown/dirt
+//      area where the cooking pot FX + wanderer NPC live. Detection
+//      shows luminance 22-60 across x=820-1010, y=460-620 (it's the
+//      darkest contiguous patch in the south-east plaza). Without
+//      this override, the hero gets blocked from approaching the
+//      wanderer or interacting with the pot. (User called this
+//      "where the fire was" — referring to the visible scorched-dirt
+//      area, not the legacy FIREPIT_POS constant.)
 //
 // These are checked BEFORE the mask sample; if the hero is inside any
 // rect, we return walkable regardless of luminance. EXCLUSIONS still
@@ -173,7 +177,7 @@ const EXCLUSIONS = [
 // a deliberate block like the new firepit ring.
 const ALWAYS_WALKABLE = [
   { x1: 632, y1: 326, x2: 742, y2: 436 },     // portal pad (110×110 around 687,381)
-  { x1: 696, y1: 514, x2: 776, y2: 594 },     // old firepit scorch (80×80 around 736,554)
+  { x1: 820, y1: 460, x2: 1010, y2: 620 },    // wanderer's camp dirt patch (190×160)
 ];
 
 export function isHamletWalkable(worldX, worldY) {
