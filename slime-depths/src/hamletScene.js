@@ -445,20 +445,6 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
-  // Notice board FX REMOVED — see HAMLET_ENTITIES comment above.
-  // Parked assets (kept on disk + registered in loader so re-add is
-  // just restoring an FX entry; removed from HAMLET_FX because they
-  // didn't fit the current hamlet composition):
-  //   fx_lectern        — archivist's reading stand (felt visually off)
-  //   fx_well           — village well prop (didn't fit current layout)
-  //   fx_savegem        — save anchor (no manual save mechanic to wire)
-  //   fx_bookcase       — archive bookcase (visual didn't fit)
-  //   fx_studydesk      — paired w/ bookcase, removed together
-  //   fx_graves         — graveyard cluster (felt off vs gravekeeper sprite)
-  //   fx_lanternpost    — atmospheric lonely lantern post
-  //   fx_pit_cover      — actively renders, masks the painted central pit
-  //   fx_portal_shadow  — actively renders, the dark crater under portal
-  //
   // Repurposed as DUNGEON props (used by floor.js room generators):
   //   fx_chestcold      — TREASURE chest (cold mist = riches gleam)
   //   fx_chestfire      — MIMIC chest    (fire = trap warning)

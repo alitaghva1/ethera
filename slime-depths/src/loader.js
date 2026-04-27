@@ -428,17 +428,11 @@ export async function loadAll(progressCb) {
     //               octagonal layout — single perimeter ring with no
     //               fragmented inner walls. Cleaner walkability (chromatic
     //               classifier handles grass/dirt/wall directly).
-    // v3 (legacy): backdrop with charred circles, foundation pads, grave
-    //              plot indents but had inner-wall fragments that broke
-    //              the walkability mask. Kept loaded for asset history.
-    // v2 (legacy): 1376×768 with all props baked into the painting.
-    //              Kept loaded as a fallback; switch in hamletFloor.js.
+    // (v2 + v3 legacy backdrops removed in cleanup pass — assets deleted
+    //  from disk; if you need them back, the previous git history has
+    //  scene_v2.jpg / scene_v3.jpg under their respective commits.)
     loadImage('hamlet_scene_v4',        'assets/hamlet/scene_v4.jpg'),
     loadImage('hamlet_scene_v4_mask',   'assets/hamlet/scene_v4_mask.jpg'),
-    loadImage('hamlet_scene_v3',        'assets/hamlet/scene_v3.jpg'),
-    loadImage('hamlet_scene_v3_mask',   'assets/hamlet/scene_v3_mask.jpg'),
-    loadImage('hamlet_scene_v2',        'assets/hamlet/scene_v2.jpg'),
-    loadImage('hamlet_scene_v2_mask',   'assets/hamlet/scene_v2_mask.jpg'),
 
     // ── HAMLET NPCs v2 — PixelLab-generated to match the mage's style ─────
     // Each is a single south-facing idle PNG at ~224-244px, generated via
@@ -460,26 +454,21 @@ export async function loadAll(progressCb) {
     loadImage('fx_portal',              'assets/hamlet/fx_portal.png'),
     loadImage('fx_cookingpot',          'assets/hamlet/fx_cookingpot.png'),
     loadImage('fx_anvil',               'assets/hamlet/fx_anvil.png'),
-    loadImage('fx_lectern',             'assets/hamlet/fx_lectern.png'),
     loadImage('fx_scryingbasin',        'assets/hamlet/fx_scryingbasin.png'),
-    loadImage('fx_graves',              'assets/hamlet/fx_graves.png'),
-    loadImage('fx_lanternpost',         'assets/hamlet/fx_lanternpost.png'),
-    loadImage('fx_bookcase',            'assets/hamlet/fx_bookcase.png'),
-    loadImage('fx_studydesk',           'assets/hamlet/fx_studydesk.png'),
-    loadImage('fx_pit_cover',           'assets/hamlet/fx_pit_cover.png'),
     loadImage('fx_portal_shadow',       'assets/hamlet/fx_portal_shadow.png'),
     loadImage('fx_flameskull',          'assets/hamlet/fx_flameskull.png'),
-    loadImage('fx_well',                'assets/hamlet/fx_well.png'),
-    loadImage('fx_savegem',             'assets/hamlet/fx_savegem.png'),
     loadImage('fx_chestfire',           'assets/hamlet/fx_chestfire.png'),
     loadImage('fx_chestcold',           'assets/hamlet/fx_chestcold.png'),
+    // (Removed in cleanup pass: fx_lectern, fx_graves, fx_lanternpost,
+    //  fx_bookcase, fx_studydesk, fx_pit_cover, fx_well, fx_savegem,
+    //  fx_noticeboard. These were parked — loaded but no longer referenced
+    //  by HAMLET_FX. Re-add a loadImage line + an FX entry to bring back.)
 
     // ── DUNGEON FX — animated/static props for dungeon rooms ─────────
     // Stored under hamlet/ for now (single asset folder); future
     // refactor could split into hamlet/ and dungeon/ subfolders.
     loadImage('fx_dungeon_torch',       'assets/hamlet/fx_dungeon_torch.png'),
     loadImage('fx_dungeon_pillar',      'assets/hamlet/fx_dungeon_pillar.png'),
-    loadImage('fx_noticeboard',         'assets/hamlet/fx_noticeboard.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),

@@ -12,6 +12,14 @@ Desktop.ini
 _server.js
 _push.bat
 
+# Debug PNGs left at the worktree root or under public/assets/hamlet/
+# from interactive walkability/tile/wall/zone analysis sessions. These
+# are scratch files — never commit them.
+*_inspect.png
+*_self_test.png
+wall_grid.png
+slime-depths/public/assets/hamlet/scene_overview.png
+
 # Python bytecode
 __pycache__/
 *.pyc

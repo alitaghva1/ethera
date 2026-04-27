@@ -91,7 +91,7 @@ import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, hasUnreadDialogue, totalNpcs, presentNpcCount } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
 import { updateBossIntro } from './bossIntroDom.js';
@@ -1197,12 +1197,11 @@ hamletEl.innerHTML = `
        as you discover more of the ruin's secret combinations. -->
   <div id="hamletFusionShrines" style="position:absolute;left:0;right:0;bottom:12%;height:8%;z-index:2;pointer-events:none;"></div>
 
-  <!-- THE WATCHER'S SHRINE — a weathered standing stone tucked in the
-       hamlet's far-left ruins above the NPC row (so it doesn't collide with
-       the Gravekeeper portrait). Its appearance deepens as the player hears
-       more of the Watcher's first-time milestones. 0 seen = faint, overgrown;
-       all 9 seen = transfigured, gold-veined. Populated by renderHamlet() —
-       see watcher.js seen flags. -->
+  <!-- THE WATCHER'S SHRINE — legacy DOM hamlet element. The canvas
+       hamlet renders the shrine via drawHamletEntities; this DOM div
+       is unused (the populator went with renderHamlet). Left in place
+       to be removed alongside the rest of the legacy hamlet HTML in a
+       future cleanup pass. -->
   <div id="hamletWatcherShrine" style="position:absolute;left:2%;bottom:40%;width:9%;height:28%;z-index:2;pointer-events:auto;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;"></div>
 
   <!-- NPC LAYER — each NPC is positioned absolutely per their data.x/y% -->
@@ -1246,32 +1245,15 @@ document.getElementById('hamletBackBtn').addEventListener('mouseleave', (e) => {
 });
 
 function showHamlet() {
-  // The hamlet is now a walkable canvas scene — see enterHamletCanvas().
-  // The old DOM overlay path below is retained as dead code for one more
-  // release as an easy revert if the canvas scene turns up a blocker in
-  // playtest. We'll delete the DOM path outright in a follow-up commit.
+  // Thin wrapper around enterHamletCanvas. The legacy DOM-overlay hamlet
+  // path used to live inline here behind a `return;` and was kept as
+  // unreachable code for one release as a fast revert if the canvas
+  // hamlet turned up a blocker. The canvas hamlet has shipped multiple
+  // sessions in production now — the dead DOM path is gone. NPC-arc
+  // sweep + the first-hamlet onboarding tip live inside
+  // enterHamletCanvas (first_descent_hint covers the canvas-specific
+  // "walk to portal, press E" cue).
   enterHamletCanvas();
-  return;
-
-  // eslint-disable-next-line no-unreachable
-  hideAllOverlays();
-  // Ambient audio — warmer hamlet pad with soft fire crackles. Crossfades
-  // from the menu pad.
-  startAmbientPad('hamlet');
-  // Re-check NPC presence in case records advanced since last visit
-  refreshNpcPresence(records, stats, { seenRelicIds });
-  // Also sweep each present NPC's arc — milestone stages (4th stage,
-  // added April 2026) unlock from run-state conditions like "any boss
-  // killed" or "3+ curses active" rather than from service use, so
-  // they'd otherwise never trigger unless the player happened to use
-  // the service after the milestone was hit.
-  for (const id of ALL_NPC_IDS) {
-    if (hamletState.npcArcStage[id] !== undefined) tryAdvanceArc(id);
-  }
-  hamletEl.style.display = 'flex';
-  renderHamlet();
-  // Onboarding tip — fires once to explain the hamlet as a persistent hub.
-  setTimeout(() => showTip('first_hamlet'), 500);
 }
 
 // CANVAS HAMLET ENTRY — Approach B. Feature-flagged via window.__canvasHamlet.
@@ -1373,178 +1355,6 @@ function enterHamletCanvas() {
   paused = false;
 }
 
-function renderHamlet() {
-  // Header progress line
-  const prog = document.getElementById('hamletProgress');
-  const npcN = presentNpcCount();
-  const npcT = totalNpcs();
-  if (prog) {
-    prog.textContent = npcN >= npcT
-      ? 'every lantern kindled'
-      : `${npcN} of ${npcT} souls returned`;
-  }
-  document.getElementById('hamletEssenceValue').textContent = (meta.essence | 0);
-  document.getElementById('hamletNpcCount').textContent = npcN;
-  document.getElementById('hamletNpcTotal').textContent = npcT;
-
-  // Dim/brighten ambient light pools based on which NPCs are present
-  const forgeGlow = document.getElementById('hamletForgeGlow');
-  const archGlow = document.getElementById('hamletArchiveGlow');
-  if (forgeGlow) forgeGlow.style.opacity = hamletState.npcArcStage.smith !== undefined ? '1' : '0';
-  if (archGlow) archGlow.style.opacity = hamletState.npcArcStage.archivist !== undefined ? '1' : '0';
-
-  // FUSION SHRINES — one small glowing pedestal per discovered fusion,
-  // scattered across the foreground of the hamlet. Each shrine uses its
-  // fusion's tint so they read as a constellation of your discoveries.
-  // Hamlet literally grows prettier with every new fusion you find.
-  const shrines = document.getElementById('hamletFusionShrines');
-  if (shrines) {
-    shrines.innerHTML = '';
-    const fusionIds = [...discoveredFusions];
-    // Deterministic left-to-right placement across 15%..85% so shrines don't
-    // jump around as new ones are discovered (they only ever append).
-    const n = fusionIds.length;
-    if (n > 0) {
-      const slotWidth = Math.min(70 / n, 9);        // % width per shrine slot
-      for (let i = 0; i < n; i++) {
-        const id = fusionIds[i];
-        const fusion = FUSIONS[id];
-        if (!fusion) continue;
-        const xPct = 15 + slotWidth * (i + 0.5);
-        const shrine = document.createElement('div');
-        const tint = fusion.tint || '#c9a86a';
-        shrine.style.cssText = `
-          position:absolute;
-          left:${xPct}%;
-          bottom:0;
-          transform:translateX(-50%);
-          width:24px;height:40px;
-          pointer-events:none;
-          display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-        `;
-        shrine.title = fusion.name;      // native tooltip
-        shrine.innerHTML = `
-          <!-- Orb glow -->
-          <div style="position:absolute;bottom:14px;width:40px;height:40px;background:radial-gradient(circle, ${tint}aa 0%, ${tint}44 40%, transparent 75%);filter:blur(1px);animation:ctaHaloBreathe 3.2s ease-in-out infinite;"></div>
-          <!-- Orb core -->
-          <div style="position:absolute;bottom:22px;width:10px;height:10px;background:${tint};border-radius:50%;box-shadow:0 0 8px ${tint};"></div>
-          <!-- Pedestal -->
-          <div style="width:12px;height:14px;background:linear-gradient(180deg, rgba(80,70,60,0.9), rgba(40,30,25,0.9));box-shadow:inset 0 0 0 1px rgba(180,150,110,0.4);"></div>
-        `;
-        shrines.appendChild(shrine);
-      }
-    }
-  }
-
-  // THE WATCHER'S SHRINE — progression art, keyed to how many of the
-  // entity's milestones the player has heard. Grid has 8 states (0..7);
-  // we map 0-9 seen flags to states as:
-  //   0 seen   → state 0 (nascent, moss-eaten)
-  //   1-2 seen → state 1 (noticed)
-  //   3 seen   → state 2 (seen)
-  //   4 seen   → state 3 (learned)
-  //   5 seen   → state 4 (revered)
-  //   6 seen   → state 5 (celebrated)
-  //   7 seen   → state 6 (honored)
-  //   8+ seen  → state 7 (crowned)
-  // Hover = brief tooltip with the Watcher's descent count + last line.
-  const shrineEl = document.getElementById('hamletWatcherShrine');
-  if (shrineEl) {
-    const snap = watcherSnapshot();
-    const seenCount = Object.values(snap.seen || {}).filter(Boolean).length;
-    let stateIdx = 0;
-    if      (seenCount >= 8) stateIdx = 7;
-    else if (seenCount >= 7) stateIdx = 6;
-    else if (seenCount >= 6) stateIdx = 5;
-    else if (seenCount >= 5) stateIdx = 4;
-    else if (seenCount >= 4) stateIdx = 3;
-    else if (seenCount >= 3) stateIdx = 2;
-    else if (seenCount >= 1) stateIdx = 1;
-    const url = imageCache[`shrine_watcher_${stateIdx}_url`];
-    // Warm halo that scales with progression — intensifies as the shrine wakes.
-    const haloAlpha = 0.05 + stateIdx * 0.04;
-    const haloColor = stateIdx >= 5 ? '255, 180, 100' : stateIdx >= 3 ? '255, 200, 140' : '255, 220, 180';
-    shrineEl.innerHTML = url
-      ? `
-        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 70%, rgba(${haloColor}, ${haloAlpha.toFixed(3)}) 0%, transparent 60%);pointer-events:none;mix-blend-mode:screen;filter:blur(6px);"></div>
-        <img src="${url}" alt="" draggable="false" style="position:relative;max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 6px 18px rgba(0,0,0,0.6));pointer-events:none;" />
-      `
-      : '';
-    if (url) {
-      const last = snap.lastSpokenLine || '';
-      const descents = snap.runs || 0;
-      shrineEl.title = last
-        ? `The Watcher has marked ${descents} descent${descents === 1 ? '' : 's'}.\nLast seen to say: "${last}"`
-        : `A shrine, watching. ${descents} descent${descents === 1 ? '' : 's'} recorded.`;
-    }
-  }
-
-  // NPC hotspots — render a larger framed portrait for each present NPC,
-  // grounded in the village scene with a warm light pool + parchment plaque.
-  const layer = document.getElementById('hamletNpcLayer');
-  layer.innerHTML = '';
-  for (const id of ALL_NPC_IDS) {
-    const def = NPCS[id];
-    const present = hamletState.npcArcStage[id] !== undefined;
-    if (!present) continue;
-
-    const hotspot = document.createElement('button');
-    const unread = hasUnreadDialogue(id);
-    // Six NPCs fit across the painted hamlet at 2000px viewport: 170px per
-    // hotspot × 6 + ~200px gaps. Portrait is 128px (was 160); readable and
-    // stylized, pixel art reads even at small sizes thanks to the tinted frame.
-    hotspot.style.cssText = `
-      position:absolute;
-      left:${def.x}%;
-      top:${def.y}%;
-      transform:translate(-50%,-50%);
-      width:170px;height:220px;
-      background:transparent;
-      border:0;
-      cursor:pointer;
-      padding:0;
-      display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-      transition:all 0.3s ease;
-      z-index:3;
-    `;
-    hotspot.onmouseenter = () => {
-      hotspot.style.transform = 'translate(-50%,-50%) scale(1.05)';
-      hotspot.style.filter = `brightness(1.18) drop-shadow(0 0 24px ${def.tint}88)`;
-    };
-    hotspot.onmouseleave = () => {
-      hotspot.style.transform = 'translate(-50%,-50%)';
-      hotspot.style.filter = '';
-    };
-    // Portrait — 128px square with tint-colored frame. Silhouette fallback
-    // if the image hasn't loaded (e.g. before Nano Banana portraits arrive).
-    const portraitImg = imageCache[def.portrait];
-    const portraitHtml = portraitImg
-      ? `<img class="hamletNpcPortrait" src="${portraitImg.src}" style="width:128px;height:128px;object-fit:cover;background:radial-gradient(ellipse at 50% 55%, ${def.tint}22 0%, rgba(8,4,12,0.85) 70%);box-shadow:inset 0 0 0 2px ${def.tint}, 0 0 22px ${def.tint}55, 0 6px 18px rgba(0,0,0,0.55);"/>`
-      : `<div style="width:128px;height:128px;background:radial-gradient(ellipse at 40% 35%, ${def.tint}55, rgba(14,8,18,0.9) 70%);box-shadow:inset 0 0 0 2px ${def.tint}, 0 0 22px ${def.tint}55, 0 6px 18px rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;color:${def.tint};font-size:40px;font-weight:bold;font-family:Georgia,serif;">${def.name.charAt(4) || def.name.charAt(0)}</div>`;
-    // Warm ground glow pooled UNDER the NPC — makes them feel grounded on
-    // the stone square rather than floating in space.
-    const groundGlow = `<div style="position:absolute;bottom:28px;left:50%;transform:translateX(-50%);width:180px;height:24px;background:radial-gradient(ellipse at 50% 50%, ${def.tint}55 0%, ${def.tint}22 40%, transparent 80%);pointer-events:none;filter:blur(3px);"></div>`;
-    // Unread-dialogue pulsing gold dot
-    const unreadDot = unread ? `<div style="position:absolute;top:-4px;right:12px;width:12px;height:12px;background:#f4d9a0;border-radius:50%;box-shadow:0 0 12px rgba(244,217,160,0.9);animation:ctaHaloBreathe 1.8s ease-in-out infinite;"></div>` : '';
-    // Illuminated-manuscript plaque below the portrait — parchment-toned
-    // backing with gold serif name and subtle gold hairline.
-    const plaqueHtml = `
-      <div style="position:relative;margin-top:10px;padding:6px 18px;background:linear-gradient(180deg, rgba(40,28,18,0.92) 0%, rgba(22,14,8,0.95) 100%);box-shadow:inset 0 0 0 1px ${def.tint}aa, 0 0 14px ${def.tint}44;">
-        <div style="color:${def.tint};font-size:12px;letter-spacing:4px;font-weight:bold;font-family:Georgia,serif;text-shadow:0 0 6px ${def.tint}77;">${def.name.replace(/^The /,'').toUpperCase()}</div>
-      </div>
-    `;
-    hotspot.innerHTML = `
-      ${groundGlow}
-      <div style="position:relative;">
-        ${portraitHtml}
-        ${unreadDot}
-      </div>
-      ${plaqueHtml}
-    `;
-    hotspot.onclick = () => openDialogue(id);
-    layer.appendChild(hotspot);
-  }
-}
 
 // ============================================================================
 // DIALOGUE PANEL — overlay that opens when the player clicks an NPC. Shows
@@ -3500,14 +3310,9 @@ function triggerFloorCard(level) {
 // in it instead of after they've already toured the place and pressed E
 // to descend. Gated by firstSeen('hamlet', 'wake'); see enterHamletCanvas.
 // Click or press any key to advance.
-const PROLOGUE_KEY = 'ethera:seen_prologue:v1';
-// hasSeenPrologue() removed \u2014 prologue gating moved to firstSeen
-// (kind: 'hamlet', id: 'wake'). markPrologueSeen() retained as a
-// harmless write for back-compat with any external tooling that
-// inspects the legacy key.
-function markPrologueSeen() {
-  try { localStorage.setItem(PROLOGUE_KEY, '1'); } catch (e) {}
-}
+// (Legacy 'ethera:seen_prologue:v1' localStorage flag retired alongside
+// markPrologueSeen()/hasSeenPrologue() in the cleanup pass \u2014 firstSeen
+// owns the prologue gate now.)
 
 const PROLOGUE_BEATS = [
   'You wake here.',
@@ -3559,7 +3364,10 @@ function playPrologue(onDone) {
   const done = () => {
     if (dismissed) return;
     dismissed = true;
-    markPrologueSeen();
+    // (markSeen('hamlet', 'wake') is the caller's responsibility — see
+    // enterHamletCanvas. Keeps playPrologue agnostic about which
+    // firstSeen kind/id the cinematic is gating, so it's reusable for
+    // any future intro that needs the staged-beat treatment.)
     prologueEl.style.display = 'none';
     document.removeEventListener('keydown', keyHandler);
     prologueEl.removeEventListener('click', clickHandler);
@@ -3608,13 +3416,9 @@ function playPrologue(onDone) {
 // EPILOGUE — shown once, ever, on the first full clear. Counterpart to the
 // prologue: the prologue frames entering the ruin; the epilogue frames
 // reaching the bottom. After dismissal, flow continues to showEndOfRun.
-const EPILOGUE_KEY = 'ethera:seen_epilogue:v1';
-function hasSeenEpilogue() {
-  try { return !!localStorage.getItem(EPILOGUE_KEY); } catch (e) { return false; }
-}
-function markEpilogueSeen() {
-  try { localStorage.setItem(EPILOGUE_KEY, '1'); } catch (e) {}
-}
+// Gated by firstSeen('epilogue', 'first_clear') — see hasSeen check at
+// the win-call site below. The legacy 'ethera:seen_epilogue:v1' flag was
+// retired in the same cleanup pass; firstSeen owns this beat now.
 const EPILOGUE_BEATS = [
   'You walked to the bottom.',
   'For a moment, the ruin forgot its hunger.',
@@ -3666,7 +3470,7 @@ function playEpilogue(onDone) {
   const done = () => {
     if (dismissed) return;
     dismissed = true;
-    markEpilogueSeen();
+    markSeen('epilogue', 'first_clear');
     epilogueEl.style.display = 'none';
     document.removeEventListener('keydown', keyHandler);
     epilogueEl.removeEventListener('click', clickHandler);
@@ -5318,7 +5122,7 @@ function tick(now) {
           try { recordRunComplete(); } catch (e) {}
           evaluateAchievements(stats, meta);
           hideShop();
-          if (!hasSeenEpilogue()) {
+          if (!hasSeen('epilogue', 'first_clear')) {
             playEpilogue(() => showEndOfRun(true));
           } else {
             showEndOfRun(true);
