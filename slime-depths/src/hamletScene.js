@@ -48,6 +48,11 @@ export const HAMLET_ENTITIES = [
   { kind: 'portal',                                 x: PORTAL_POS.x,  y: PORTAL_POS.y,  interactR: 80 },
   { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 0  },
   { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0  },
+  // Notice board interactable. Position mirrors the fx_noticeboard FX
+  // entry below. Reads a single flavor line via the existing roomLabel
+  // text overlay — no full dialogue needed (notice boards in dark-
+  // fantasy hamlets are short reads, not chats).
+  { kind: 'noticeboard',                            x: 688, y: 360,  interactR: 60 },
   // Positions on Scene v2 backdrop (1376×768) — each NPC stationed at
   // the obvious thematic anchor in the painted scene.
   //   keeper      — central plaza, west of portal/firepit (hub merchant)
@@ -499,18 +504,20 @@ const HAMLET_FX = [
     scale: 0.6, yOffset: 0,
   },
   */
+  // Save gem REMOVED 2026-04-27 (Phase A stabilize). The save system
+  // is auto-save (run start + floor transitions); the gem implied
+  // manual-save functionality that didn't exist. Asset fx_savegem.png
+  // + loader entry kept on disk for a future 'save indicator' use
+  // (e.g. brief glow when auto-save fires).
+  /*
   {
-    // Save gem (STATIC). 112×112 native, scaled 0.4× → 45px rendered.
-    // Moved to (500, 295) — east of gravekeeper NPC at (455, 288) for
-    // narrative pairing (gravekeeper tends the save gem alongside the
-    // graves; gem reads as 'an anchor for travelers' across-from-death
-    // theme).
     id: 'savegem', asset: 'fx_savegem',
     x: 600, y: 600,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.44, yOffset: 0,
   },
+  */
   {
     // Notice board (STATIC). Quest/info board for the hamlet. 112×112
     // native, scaled 0.6× → 67px rendered. Placed at (688, 430) —
@@ -894,13 +901,15 @@ export function drawHamletInteractPrompt(ctx) {
     label = 'E  \u00b7  ' + name.toUpperCase();
   } else if (_nearest.kind === 'portal') {
     label = 'E  \u00b7  DESCEND';
+  } else if (_nearest.kind === 'noticeboard') {
+    label = 'E  \u00b7  READ';
   } else {
     return;
   }
 
   const now = performance.now() / 1000;
   const floatOff = Math.sin(now * 2.2) * 3;
-  const promptY = _nearest.y - (_nearest.kind === 'portal' ? 110 : 82) + floatOff;
+  const promptY = _nearest.y - (_nearest.kind === 'portal' ? 110 : _nearest.kind === 'noticeboard' ? 60 : 82) + floatOff;
 
   ctx.save();
   ctx.font = 'bold 11px Georgia, serif';
@@ -929,5 +938,6 @@ export function consumeHamletInteract() {
   if (!_nearest) return null;
   if (_nearest.kind === 'portal') return { action: 'portal' };
   if (_nearest.kind === 'npc') return { action: 'dialogue', npcId: _nearest.id };
+  if (_nearest.kind === 'noticeboard') return { action: 'noticeboard' };
   return null;
 }

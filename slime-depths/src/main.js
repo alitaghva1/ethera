@@ -4632,6 +4632,23 @@ function tick(now) {
         if (act) {
           if (act.action === 'dialogue') openDialogue(act.npcId);
           else if (act.action === 'portal') { running = false; beginDescent(); }
+          else if (act.action === 'noticeboard') {
+            // Cycle through a small pool of flavor lines so re-reads
+            // aren't always the same. Lines are short enough for the
+            // 30px italic roomLabel without wrapping.
+            const lines = [
+              'BEWARE: SOME CHESTS BITE BACK',
+              '"DESCEND. RETURN. THE SPARK GROWS."',
+              'TIP: HOLD LMB TO CHARGE A HEAVIER SWING',
+              '"THE FIRE HERE BURNS SMALL — BUT IT BURNS."',
+              'TIP: DODGE GIVES BRIEF I-FRAMES',
+            ];
+            const i = (Math.floor(performance.now() / 1000) ^ 0x5b) % lines.length;
+            roomLabelText = lines[i];
+            roomLabelColor = '#c9a86a';
+            roomLabelTime = 3.0;
+            playSfx('click', { volume: 0.6, rate: 0.95 });
+          }
         }
       }
     }
