@@ -150,9 +150,9 @@ function buildWalkabilityBitmap() {
 // bbox — so the hero bumps off the visible mass, not the empty air
 // above it.
 const EXCLUSIONS = [
-  // Firepit — base ring at (970, 654). Sprite is 48×48 scaled 1.4× →
-  // 67px rendered. ~50×45 around the stone ring + flame.
-  { x1: 945, y1: 635, x2: 995, y2: 680 },
+  // Firepit — base ring at (400, 675), swapped with portal location.
+  // Sprite 48×48 scaled 1.4× → 67px rendered, ~50×45 around base.
+  { x1: 375, y1: 656, x2: 425, y2: 701 },
   // Anvil — full anvil + tree stump at (925, 316). Covers the
   // visible mass of the prop so hero bumps off from any direction.
   { x1: 899, y1: 297, x2: 954, y2: 347 },
