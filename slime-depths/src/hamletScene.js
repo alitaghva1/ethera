@@ -506,7 +506,7 @@ const HAMLET_FX = [
     // graves; gem reads as 'an anchor for travelers' across-from-death
     // theme).
     id: 'savegem', asset: 'fx_savegem',
-    x: 620, y: 610,
+    x: 600, y: 600,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.44, yOffset: 0,

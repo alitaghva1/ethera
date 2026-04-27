@@ -167,8 +167,8 @@ const EXCLUSIONS = [
   // Bookcase + studydesk EXCLUSIONS removed (FX entries removed).
   // Flameskull EXCLUSION removed (FX entry parked for dungeon use).
   // Well EXCLUSION removed (FX entry removed).
-  // Save gem at (620, 610) — south entrance area, west side of path.
-  { x1: 609, y1: 602, x2: 631, y2: 619 },
+  // Save gem at (600, 600) — south entrance area, west side of path.
+  { x1: 589, y1: 592, x2: 611, y2: 609 },
   // Notice board at (688, 360) — wider footprint than gem ~50×30.
   { x1: 663, y1: 345, x2: 713, y2: 375 },
   // Chest EXCLUSIONS removed (FX entries removed — chests are dungeon
