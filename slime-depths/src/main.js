@@ -61,6 +61,7 @@ import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, load
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
 import { loadTips, showTip, updateTips, drawTip } from './tips.js';
+import { loadFirstSeen, hasSeen, markSeen } from './firstSeen.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import {
   spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
@@ -1281,6 +1282,29 @@ function showHamlet() {
 // to the existing startRun() flow when the hero walks into the portal.
 function enterHamletCanvas() {
   hideAllOverlays();
+
+  // FIRST-EVER HAMLET ENTRY — play the "you wake here" cinematic. The
+  // prologue prose lives in this moment now; previously it fired inside
+  // startRun() (after the player had already toured the hamlet, talked
+  // to NPCs, walked onto the portal, and pressed E), so the line "the
+  // wound the world calls Ethera" landed AFTER the player had already
+  // committed to descending. Moving the gate here puts the wake-up beat
+  // on the wake-up screen.
+  //
+  // Note: hasSeen check + markSeen-on-dismiss (rather than isFirstTime
+  // up front) so closing the tab mid-prologue does NOT consume the
+  // cinematic — same forgiving semantics as the old PROLOGUE_KEY flow.
+  // Re-enter via the same function on dismiss so the rest of the entry
+  // setup (ambient pad, NPC sweep, room build, hero spawn, etc.) runs
+  // exactly once per actual entry.
+  if (!hasSeen('hamlet', 'wake')) {
+    playPrologue(() => {
+      markSeen('hamlet', 'wake');
+      enterHamletCanvas();
+    });
+    return;
+  }
+
   startAmbientPad('hamlet');
   refreshNpcPresence(records, stats, { seenRelicIds });
   for (const id of ALL_NPC_IDS) {
@@ -3470,23 +3494,27 @@ function triggerFloorCard(level) {
   hero.vx = 0; hero.vy = 0;
 }
 
-// PROLOGUE — shown once, ever, before the first run. Sets the tone of the
-// world in 5 staged beats. Persisted via localStorage so veterans don't
-// see it again. Click or press any key to advance.
+// PROLOGUE — shown once, ever, on first hamlet entry. Sets the tone of the
+// world in 5 staged beats from the player's "you wake here" perspective —
+// the hamlet IS the wake-moment, so the prose lands while they're standing
+// in it instead of after they've already toured the place and pressed E
+// to descend. Gated by firstSeen('hamlet', 'wake'); see enterHamletCanvas.
+// Click or press any key to advance.
 const PROLOGUE_KEY = 'ethera:seen_prologue:v1';
-function hasSeenPrologue() {
-  try { return !!localStorage.getItem(PROLOGUE_KEY); } catch (e) { return false; }
-}
+// hasSeenPrologue() removed \u2014 prologue gating moved to firstSeen
+// (kind: 'hamlet', id: 'wake'). markPrologueSeen() retained as a
+// harmless write for back-compat with any external tooling that
+// inspects the legacy key.
 function markPrologueSeen() {
   try { localStorage.setItem(PROLOGUE_KEY, '1'); } catch (e) {}
 }
 
 const PROLOGUE_BEATS = [
-  'The old world has ended.',
-  'What remains is called Ethera \u2014',
-  'a ruin that remembers every soul that descends,',
-  'and sharpens itself against you.',
-  'You are not the first. You will not be the last.',
+  'You wake here.',
+  'The hamlet barely remembers your face.',
+  'Below \u2014 the wound the world calls Ethera.',
+  'It remembers every soul that descends.',
+  'And it has been waiting for you.',
 ];
 
 const prologueEl = document.createElement('div');
@@ -3789,12 +3817,8 @@ function resumeRun(snap) {
 }
 
 function startRun() {
-  // Gate: play the prologue once, ever, before the first run begins.
-  if (!hasSeenPrologue()) {
-    hideAllOverlays();
-    playPrologue(() => startRun());    // re-enter after dismiss (flag now set)
-    return;
-  }
+  // (Prologue gate moved to enterHamletCanvas — the prose lands when the
+  // player wakes in the hamlet, not after they've already toured it.)
   // ORACLE'S FORTUNES — if a card was drawn in the hamlet, push it into the
   // tarot active set so the existing tarot-hook plumbing (hasCard() checks
   // across hero.js and main.js) fires the card's effects automatically.
@@ -6567,6 +6591,7 @@ async function boot() {
   loadSettings();
   loadDaily();
   loadTips();
+  loadFirstSeen();
   loadDiscoveredFusions();
   loadRuin();
   loadCodex();
