@@ -507,26 +507,14 @@ const HAMLET_FX = [
     frameCount: 1, fps: 1,
     scale: 0.4, yOffset: 0,
   },
-  {
-    // Chest with fire (animated). 16 frames × 48×48, scaled 1.2× →
-    // 58px rendered. 12fps for fast flame flicker. Starting position
-    // west grass area — user will iterate.
-    id: 'chestfire', asset: 'fx_chestfire',
-    x: 260, y: 420,
-    frameW: 48, frameH: 48,
-    frameCount: 16, fps: 12,
-    scale: 1.2, yOffset: 0,
-  },
-  {
-    // Chest with cold/frost (animated). 16 frames × 48×48, scaled 1.2×
-    // → 58px rendered. 8fps for slower cold-mist effect. Starting
-    // position south of plaza — user will iterate.
-    id: 'chestcold', asset: 'fx_chestcold',
-    x: 560, y: 600,
-    frameW: 48, frameH: 48,
-    frameCount: 16, fps: 8,
-    scale: 1.2, yOffset: 0,
-  },
+  // Chests REPURPOSED as DUNGEON ASSETS 2026-04-27. Used by the
+  // Treasure Chest Room (makeTreasureChestRoom in floor.js). Removed
+  // from HAMLET_FX since they're not hamlet décor — they're
+  // interactive dungeon props with reward logic. Assets fx_chestfire +
+  // fx_chestcold + loader entries kept on disk; the room generator
+  // pulls them by name when populating treasure rooms.
+  //   fx_chestcold = TREASURE chest (cold mist = riches/coin gleam)
+  //   fx_chestfire = MIMIC chest    (fire = trap warning)
   // Flaming skull saved for DUNGEON use 2026-04-27. Was at (425, 460)
   // beside the archivist; firepit moved there instead. Asset
   // fx_flameskull.png + loader entry kept on disk so dungeon code
