@@ -88,7 +88,7 @@ export const HAMLET_ENTITIES = [
   //   oracle      — south of altar slab N (NPC sprite is hidden behind future altar prop)
   //   wanderer    — south of wanderer dirt patch on right side
   { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 460, interactR: 50, drawScale: 1.10 },
-  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 987, y: 320, interactR: 50, drawScale: 0.95 },
+  { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 987, y: 308, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 470, interactR: 50, drawScale: 0.95 },
   // gravekeeper: lives at the NW graveyard. Position iterated:
   //   (293, 290) → on a tree
@@ -130,7 +130,7 @@ export const HAMLET_OBSTACLES = [
   // in resolveHamletCollision). Positions match HAMLET_ENTITIES NPC
   // coords above. Update both arrays together when moving NPCs.
   { x: 760, y: 460, r: 18 },     // keeper
-  { x: 987, y: 320, r: 18 },     // smith
+  { x: 987, y: 308, r: 18 },     // smith
   { x: 380, y: 470, r: 18 },     // archivist
   { x: 420, y: 280, r: 18 },     // gravekeeper
   { x: 680, y: 260, r: 18 },     // oracle
@@ -425,7 +425,7 @@ const HAMLET_FX = [
     // is ongoing ambient work, not a discrete event. Scale 0.6× →
     // ~67px rendered to match cooking pot / firepit visual weight.
     id: 'anvil', asset: 'fx_anvil',
-    x: 956, y: 334,
+    x: 956, y: 324,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,

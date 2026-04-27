@@ -153,9 +153,9 @@ const EXCLUSIONS = [
   // Firepit — base ring at (970, 654). Sprite is 48×48 scaled 1.4× →
   // 67px rendered. ~50×45 around the stone ring + flame.
   { x1: 945, y1: 635, x2: 995, y2: 680 },
-  // Anvil — full anvil + tree stump at (956, 334). Covers the
+  // Anvil — full anvil + tree stump at (956, 324). Covers the
   // visible mass of the prop so hero bumps off from any direction.
-  { x1: 930, y1: 315, x2: 985, y2: 365 },
+  { x1: 930, y1: 305, x2: 985, y2: 355 },
   // Cooking pot — full pot body + tripod at (907, 437). Earlier rect
   // only covered the lower tripod legs (y=445-470), so the hero could
   // walk through the upper pot body. Now covers y=415-470 (the full
