@@ -29,7 +29,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SLIME_DEPTHS_DIR = os.path.dirname(SCRIPT_DIR)
 # The source art packs live at the git-repo root (two levels up from here).
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SLIME_DEPTHS_DIR))))
-GAME_ENEMIES_DIR = os.path.join(SLIME_DEPTHS_DIR, 'assets', 'enemies')
+GAME_ENEMIES_DIR = os.path.join(SLIME_DEPTHS_DIR, 'public', 'assets', 'enemies')
 
 TARGET_FRAME_SIZE = 100  # game renders everyone in 100x100 cells
 
@@ -84,6 +84,85 @@ PACKS = {
             'walk':   'FLYING.png',
             'attack': 'ATTACK.png',
             'death':  'DEATH.png',
+        },
+    },
+
+    # ============================================================
+    # TINY RPG CHARACTER PACK v1.03b — six new enemy types ingested
+    # from the existing Tiny RPG kit. Source frames are already
+    # 100x100 (the kit's namesake frame size), so the ingest is
+    # essentially a 1:1 copy. We pick Attack01 over Attack02 for
+    # consistency — Attack01 is the basic "swing" telegraph; Attack02
+    # is a heavier follow-up that's not used at this layer.
+    # ============================================================
+    'werewolf': {
+        # Fast bestial skirmisher for floor 3 abyss. Pairs with werebear.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Werewolf/Werewolf',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Werewolf-Idle.png',
+            'walk':   'Werewolf-Walk.png',
+            'attack': 'Werewolf-Attack01.png',
+            'death':  'Werewolf-Death.png',
+        },
+    },
+    'werebear': {
+        # Heavy bestial brute for floor 3+4. Pairs with werewolf.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Werebear/Werebear',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Werebear-Idle.png',
+            'walk':   'Werebear-Walk.png',
+            'attack': 'Werebear-Attack01.png',
+            'death':  'Werebear-Death.png',
+        },
+    },
+    'skel_archer': {
+        # Bone-themed ranged unit. Replaces human archer in floor-1 crypt
+        # comps where a human archer reads as tonally off.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Skeleton Archer/Skeleton Archer',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Skeleton Archer-Idle.png',
+            'walk':   'Skeleton Archer-Walk.png',
+            'attack': 'Skeleton Archer-Attack.png',
+            'death':  'Skeleton Archer-Death.png',
+        },
+    },
+    'knight': {
+        # Armored melee — replaces vanguard's orc-retint hack with a
+        # sprite that actually has a shield. Floor 2 garrison theme.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Knight/Knight',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Knight-Idle.png',
+            'walk':   'Knight-Walk.png',
+            'attack': 'Knight-Attack01.png',
+            'death':  'Knight-Death.png',
+        },
+    },
+    'armored_skeleton': {
+        # Heavy bone melee for floor 2 vault. Distinct from skel (light)
+        # and bone_captain (boss). Anchors the "former garrison" feel.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Armored Skeleton/Armored Skeleton',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Armored Skeleton-Idle.png',
+            'walk':   'Armored Skeleton-Walk.png',
+            'attack': 'Armored Skeleton-Attack01.png',
+            'death':  'Armored Skeleton-Death.png',
+        },
+    },
+    'greatsword_skeleton': {
+        # Heavy cleaver — elite-tier bone wrecker. Floor 2 elite slot,
+        # floor 3 tier-3 backline.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Greatsword Skeleton/Greatsword Skeleton',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Greatsword Skeleton-Idle.png',
+            'walk':   'Greatsword Skeleton-Walk.png',
+            'attack': 'Greatsword Skeleton-Attack01.png',
+            'death':  'Greatsword Skeleton-Death.png',
         },
     },
 }

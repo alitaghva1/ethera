@@ -231,6 +231,38 @@ export async function loadAll(progressCb) {
     loadImage('haunt_walk',    'assets/enemies/haunt_walk.png'),
     loadImage('haunt_attack',  'assets/enemies/haunt_attack.png'),
     loadImage('haunt_death',   'assets/enemies/haunt_death.png'),
+    // Tiny RPG kit ingest (cleanup pass — wires 6 previously-unused
+    // characters from the kit into the roster):
+    //   werewolf            — fast bestial skirmisher (F3 abyss)
+    //   werebear            — heavy bestial brute (F3+F4)
+    //   skel_archer         — bone-themed ranged (replaces archer in F1 crypt)
+    //   knight              — armored melee (replaces vanguard's orc-retint)
+    //   armored_skeleton    — heavy bone melee (F2 vault garrison)
+    //   greatsword_skeleton — heavy bone cleaver (F2/F3 elite slot)
+    loadImage('werewolf_idle',           'assets/enemies/werewolf_idle.png'),
+    loadImage('werewolf_walk',           'assets/enemies/werewolf_walk.png'),
+    loadImage('werewolf_attack',         'assets/enemies/werewolf_attack.png'),
+    loadImage('werewolf_death',          'assets/enemies/werewolf_death.png'),
+    loadImage('werebear_idle',           'assets/enemies/werebear_idle.png'),
+    loadImage('werebear_walk',           'assets/enemies/werebear_walk.png'),
+    loadImage('werebear_attack',         'assets/enemies/werebear_attack.png'),
+    loadImage('werebear_death',          'assets/enemies/werebear_death.png'),
+    loadImage('skel_archer_idle',        'assets/enemies/skel_archer_idle.png'),
+    loadImage('skel_archer_walk',        'assets/enemies/skel_archer_walk.png'),
+    loadImage('skel_archer_attack',      'assets/enemies/skel_archer_attack.png'),
+    loadImage('skel_archer_death',       'assets/enemies/skel_archer_death.png'),
+    loadImage('knight_enemy_idle',       'assets/enemies/knight_idle.png'),
+    loadImage('knight_enemy_walk',       'assets/enemies/knight_walk.png'),
+    loadImage('knight_enemy_attack',     'assets/enemies/knight_attack.png'),
+    loadImage('knight_enemy_death',      'assets/enemies/knight_death.png'),
+    loadImage('armored_skel_idle',       'assets/enemies/armored_skeleton_idle.png'),
+    loadImage('armored_skel_walk',       'assets/enemies/armored_skeleton_walk.png'),
+    loadImage('armored_skel_attack',     'assets/enemies/armored_skeleton_attack.png'),
+    loadImage('armored_skel_death',      'assets/enemies/armored_skeleton_death.png'),
+    loadImage('greatsword_skel_idle',    'assets/enemies/greatsword_skeleton_idle.png'),
+    loadImage('greatsword_skel_walk',    'assets/enemies/greatsword_skeleton_walk.png'),
+    loadImage('greatsword_skel_attack',  'assets/enemies/greatsword_skeleton_attack.png'),
+    loadImage('greatsword_skel_death',   'assets/enemies/greatsword_skeleton_death.png'),
     loadImage('dungeon_tiles','assets/tiles/dungeon.png'),
 
     // Legacy shared-icon PNGs — kept as fallbacks if a dedicated per-relic

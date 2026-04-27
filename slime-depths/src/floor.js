@@ -106,12 +106,32 @@ const COMBAT_SLOT_MULS = {
 function randInt(min, max) { return (min + Math.random() * (max - min + 1)) | 0; }
 function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 
+// COMP — enemy composition pools per difficulty tier. Each entry is one
+// possible spawn list for a combat room; floor.js / floorGraph.js pick
+// from these by floor level + room slot via tierForSlot.
+//
+// Per-floor enemy identity (Tiny RPG kit pass — six new enemies wired
+// from the kit replace several "<orc retint>" / "<wiz retint>" stand-ins):
+//
+//   tier1 (F1 crypt):  slime + skel + skel_archer + lancer + bomber
+//                      — bone-themed; the human archer was retired here
+//                        because it read tonally off in the crypt.
+//   tier2 (F2 vault):  + orc, archer, vanguard, knight_enemy, armored_skel,
+//                        priest, wizard, haunt
+//                      — "former garrison" theme; armor + shield variety.
+//   tier3 (F3 abyss):  + reflector, dreadmage, warden, werewolf, werebear,
+//                        greatsword_skel
+//                      — bestial + warped; chase/corner dynamic.
+//   tier4 (F4 inferno):drops slime/skel-light, biases ember + heavy bone +
+//                        dreadmage + werebear into a dense roster. NEW —
+//                        floor 4 used to recycle tier3 with stat multipliers.
 const COMP = {
   tier1: [
     ['slime', 'slime', 'slime'],
     ['slime', 'slime', 'bomber'],
-    ['slime', 'skel', 'archer'],
-    ['lancer', 'slime', 'slime'],              // lancer introduces itself on floor 1
+    ['slime', 'skel', 'skel_archer'],            // crypt-native bone ranged
+    ['lancer', 'slime', 'slime'],                 // lancer introduces itself on floor 1
+    ['skel', 'skel_archer', 'slime'],             // bone duo + slime
   ],
   tier2: [
     ['skel', 'skel', 'archer'],
@@ -121,12 +141,16 @@ const COMP = {
     ['orc', 'slime', 'bomber'],
     ['lancer', 'archer', 'slime'],
     ['priest', 'skel', 'skel', 'archer'],
-    ['wizard', 'skel', 'slime'],                // wizard introduced in tier2
-    ['vanguard', 'archer', 'archer'],          // vanguard + 2 archers — flank while dodging arrows
-    ['vanguard', 'skel', 'slime'],              // vanguard with light support
-    // Content pass B3 — new enemies enter the pool at tier2:
-    ['haunt', 'skel', 'archer'],                // airborne harasser + ground pressure
-    ['haunt', 'haunt', 'slime'],                // two aerials force ranged response
+    ['wizard', 'skel', 'slime'],                  // wizard introduced in tier2
+    ['knight_enemy', 'archer', 'archer'],         // knight + 2 archers — flank while dodging arrows
+    ['knight_enemy', 'skel', 'slime'],            // knight with light support
+    ['vanguard', 'archer', 'archer'],             // vanguard retained for variety
+    ['armored_skel', 'archer', 'skel'],           // F2 garrison — armored bone leads
+    ['armored_skel', 'priest', 'skel_archer'],    // healer-backed armored push
+    ['knight_enemy', 'armored_skel', 'archer'],   // double-shielded front line
+    // Content pass B3 — airborne harasser:
+    ['haunt', 'skel', 'archer'],
+    ['haunt', 'haunt', 'slime'],
   ],
   tier3: [
     ['orc', 'orc', 'archer'],
@@ -137,21 +161,43 @@ const COMP = {
     ['priest', 'orc', 'archer', 'lancer'],
     ['priest', 'priest', 'skel', 'skel', 'archer'],
     ['lancer', 'lancer', 'archer', 'bomber'],
-    ['wizard', 'wizard', 'priest', 'skel'],     // double wizard — orbs everywhere
+    ['wizard', 'wizard', 'priest', 'skel'],       // double wizard — orbs everywhere
     ['wizard', 'lancer', 'orc', 'archer'],
-    ['vanguard', 'vanguard', 'archer', 'archer'],  // double shield wall
-    ['vanguard', 'wizard', 'skel', 'archer'],       // vanguard protects caster
-    ['vanguard', 'priest', 'lancer', 'bomber'],
-    ['reflector', 'archer', 'skel', 'bomber'],      // flank the mirror-mage
-    ['reflector', 'reflector', 'orc'],               // twin mirrors
-    ['reflector', 'vanguard', 'archer', 'archer'],  // tank + caster — hardest comp
-    // Content pass B3 — the harder new enemies enter here:
-    ['warden', 'archer', 'skel'],                    // warden anchors a slow push
-    ['warden', 'priest', 'archer'],                  // healer keeps the warden up
-    ['dreadmage', 'vanguard', 'archer'],             // caster behind tank
-    ['dreadmage', 'haunt', 'skel'],                  // two ranged threats + air
-    ['dreadmage', 'dreadmage', 'priest'],            // triple-caster nightmare
-    ['warden', 'haunt', 'haunt'],                    // ground + air combo
+    ['knight_enemy', 'knight_enemy', 'archer', 'archer'],  // double shield wall
+    ['knight_enemy', 'wizard', 'skel', 'archer'],          // tank protects caster
+    ['knight_enemy', 'priest', 'lancer', 'bomber'],
+    ['reflector', 'archer', 'skel', 'bomber'],    // flank the mirror-mage
+    ['reflector', 'reflector', 'orc'],             // twin mirrors
+    ['reflector', 'knight_enemy', 'archer', 'archer'],  // tank + caster — hardest comp
+    ['warden', 'archer', 'skel'],                  // warden anchors a slow push
+    ['warden', 'priest', 'archer'],                // healer keeps the warden up
+    ['dreadmage', 'knight_enemy', 'archer'],       // caster behind tank
+    ['dreadmage', 'haunt', 'skel'],                // two ranged threats + air
+    ['dreadmage', 'dreadmage', 'priest'],          // triple-caster nightmare
+    ['warden', 'haunt', 'haunt'],                  // ground + air combo
+    // Tiny RPG kit additions — bestial chase pair + heavy cleaver:
+    ['werewolf', 'werewolf', 'archer'],            // fast skirmisher pair + ranged
+    ['werewolf', 'werebear', 'priest'],            // chase / corner / heal
+    ['werebear', 'archer', 'archer'],              // brute + double ranged
+    ['werewolf', 'haunt', 'haunt'],                // air + ground chase pressure
+    ['greatsword_skel', 'skel_archer', 'skel'],    // heavy bone cleaver anchors
+    ['greatsword_skel', 'priest', 'archer'],
+  ],
+  // Floor 4 (Inferno / Throne of Ruin) — distinct enemy mix from tier3,
+  // not just stat-scaled. Drops light slime/lancer/skel comps; biases
+  // toward heavy hitters + casters + the bestial pair. Average roster
+  // size is one larger to match the floor-4 difficulty curve.
+  tier4: [
+    ['greatsword_skel', 'wizard', 'archer', 'archer'],
+    ['knight_enemy', 'knight_enemy', 'dreadmage', 'priest'],
+    ['werebear', 'werewolf', 'werewolf', 'archer'],   // bestial swarm
+    ['werebear', 'dreadmage', 'priest', 'haunt'],
+    ['warden', 'greatsword_skel', 'priest', 'archer'],
+    ['armored_skel', 'armored_skel', 'reflector', 'haunt'],
+    ['dreadmage', 'dreadmage', 'reflector', 'priest'],  // pure-caster wall
+    ['knight_enemy', 'warden', 'haunt', 'haunt'],
+    ['werebear', 'werebear', 'priest'],                  // twin brute
+    ['greatsword_skel', 'greatsword_skel', 'dreadmage'], // twin heavy + caster
   ],
   boss: [
     ['orc', 'archer', 'archer'],
@@ -161,11 +207,17 @@ const COMP = {
   ],
 };
 
-// Which tier a combat slot rolls from, based on floor level + slot
+// Which tier a combat slot rolls from, based on floor level + slot.
+// Pre-Tiny-RPG-pass this returned tier3 for both floors 3 AND 4 — the
+// tier4 table didn't exist, so floor 4 was "tier3 with 1.6× HP/dmg".
+// Now floor 4 has its own composition pool with bias toward heavy
+// hitters + casters + bestial; the stat multipliers in COMBAT_SLOT_MULS
+// stack on top.
 function tierForSlot(level, slot) {
   if (level === 1) return slot === 'combat3' ? 'tier2' : 'tier1';
   if (level === 2) return slot === 'combat1' ? 'tier2' : 'tier3';
-  return 'tier3';                        // floor 3: always tier3
+  if (level === 3) return 'tier3';
+  return 'tier4';                        // floor 4: dedicated tier4 mix
 }
 
 function spawnCells(count, pillarTemplate = -1, w = ROOM_W, h = ROOM_H, shape = 'rect') {

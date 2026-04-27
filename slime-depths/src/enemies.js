@@ -436,6 +436,138 @@ export const TYPES = {
     flavor: 'a hunger with wings. it has time.',
     flies: true,                     // future-proof flag for airborne collision
   },
+
+  // ==========================================================================
+  // TINY RPG KIT — six characters from the existing kit that were sitting
+  // unused. Wired in by tools/ingest_enemy_pack.py. Each fills a specific
+  // role gap from the audit:
+  //   werewolf            — fast bestial skirmisher (F3 abyss)
+  //   werebear            — heavy bestial brute (F3+F4)
+  //   skel_archer         — bone ranged (replaces archer in F1 crypt)
+  //   knight_enemy        — proper armored melee (retires vanguard's orc-retint)
+  //   armored_skel        — heavy bone melee (F2 vault garrison)
+  //   greatsword_skel     — heavy bone cleaver (F2/F3 elite slot)
+  // All six bind to the existing behavior updaters (melee, ranged) — no new
+  // combat code. Loader keys live at loader.js with a `_enemy` suffix where
+  // they would otherwise collide with the player's knight slot.
+  // ==========================================================================
+
+  // ---- WEREWOLF — F3 fast bestial skirmisher. Closes gaps fast, short
+  // windup makes it punishing if the player commits the wrong attack arc.
+  // Pairs with werebear (slow brute) for the Spire's chase/corner dynamic.
+  werewolf: {
+    prefix: 'werewolf_', drawSize: 220, radius: 22, speed: 150, hp: 110, damage: 2,
+    color: '#8a6a4a', hitCD: 0.70, fps: 12, behavior: 'melee',
+    attackReach: 56, attackArc: Math.PI * 0.45,
+    windup: 0.22, swing: 0.20,
+    telegraphColor: 'rgba(220, 100, 80, ',
+    windupSfx: { key: 'slime_hit', rate: 1.4, volume: 0.55 },
+    bloodColor: '#5a3a28',
+    displayName: 'WEREWOLF',
+    flavor: 'the moon does not rise here. it does not need to.',
+  },
+
+  // ---- WEREBEAR — F3+F4 heavy bestial brute. Massive HP and damage,
+  // very slow speed. Heavy variant on every third swing creates the
+  // "wide telegraph, do not stand here" beat the audit flagged as
+  // missing on floor 3. Reuses orc's heavy fields (no new combat code).
+  werebear: {
+    prefix: 'werebear_', drawSize: 250, radius: 30, speed: 60, hp: 180, damage: 3,
+    color: '#6a5040', hitCD: 1.20, fps: 8, behavior: 'melee',
+    attackReach: 80, attackArc: Math.PI * 0.65,
+    windup: 0.55, swing: 0.32,
+    telegraphColor: 'rgba(220, 80, 60, ',
+    heavyChance: 0.35,
+    heavyReach: 110, heavyArc: Math.PI * 0.95,
+    heavyWindup: 0.85, heavySwing: 0.40,
+    heavyDamage: 4,
+    heavyColor: 'rgba(255, 110, 50, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.65 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.40, volume: 0.85 },
+    bloodColor: '#3a2818',
+    displayName: 'WEREBEAR',
+    flavor: 'remembers being a man. uses it for nothing.',
+  },
+
+  // ---- SKEL_ARCHER — bone-themed ranged unit. Same kit as the human
+  // archer but reads as crypt-native instead of "guard who got lost".
+  // Cold-element resistance matches skel; otherwise statline mirrors
+  // archer so the COMP slots are drop-in compatible.
+  skel_archer: {
+    element: 'cold',
+    prefix: 'skel_archer_', drawSize: 200, radius: 20, speed: 100, hp: 60, damage: 1,
+    color: '#cfd4d9', attackRange: 420, hitCD: 1.0, fps: 10, behavior: 'ranged',
+    windup: 0.36, swing: 0.20, preferDist: 220, minDist: 130,
+    telegraphColor: 'rgba(220, 60, 70, ',
+    windupSfx: { key: 'click', rate: 0.7, volume: 0.5 },
+    displayName: 'BONE ARCHER',
+    bloodColor: '#4a4038',
+    flavor: 'the bow remembered the hand. the hand was new.',
+  },
+
+  // ---- KNIGHT_ENEMY — proper armored melee with a real shield in the
+  // sprite. Drop-in replacement for vanguard's "orc with cyan filter"
+  // hack. Same shield mechanics (4 charges, 140° arc, 82% reduction)
+  // as vanguard so existing flank-to-break tactics still work. The
+  // `_enemy` suffix in the prefix avoids collision with player knight
+  // sprite keys (assets/characters/knight_*.png).
+  knight_enemy: {
+    prefix: 'knight_enemy_', drawSize: 220, radius: 24, speed: 75, hp: 130, damage: 2,
+    color: '#b8c4d0', hitCD: 1.10, fps: 8, behavior: 'melee',
+    attackReach: 64, attackArc: Math.PI * 0.60,
+    windup: 0.45, swing: 0.26,
+    telegraphColor: 'rgba(200, 220, 240, ',
+    shieldCharges: 4,
+    shieldArc: Math.PI * 0.78,
+    shieldReduction: 0.82,
+    windupSfx: { key: 'footstep_0', rate: 1.0, volume: 0.6 },
+    displayName: 'KNIGHT',
+    bloodColor: '#7a6a58',
+    flavor: 'sworn to the gate that no longer holds.',
+  },
+
+  // ---- ARMORED_SKEL — heavy bone melee. F2 vault "former garrison"
+  // theme. Lighter shield than knight (3 charges, narrower arc, less
+  // reduction) so it dies faster but reads as the same "flank to
+  // break" puzzle. Cold resist matches the skel family.
+  armored_skel: {
+    element: 'cold',
+    prefix: 'armored_skel_', drawSize: 220, radius: 22, speed: 70, hp: 130, damage: 2,
+    color: '#a8b4c0', hitCD: 1.05, fps: 9, behavior: 'melee',
+    attackReach: 60, attackArc: Math.PI * 0.55,
+    windup: 0.40, swing: 0.24,
+    telegraphColor: 'rgba(200, 200, 230, ',
+    shieldCharges: 3,
+    shieldArc: Math.PI * 0.62,
+    shieldReduction: 0.65,
+    windupSfx: { key: 'footstep_0', rate: 1.4, volume: 0.55 },
+    displayName: 'ARMORED SKELETON',
+    bloodColor: '#4a4038',
+    flavor: 'the garrison kept its post. the world changed around it.',
+  },
+
+  // ---- GREATSWORD_SKEL — heavy cleaver elite. Slow melee with massive
+  // heavy-variant cleave (50% chance, 180° arc). Sits between bone_captain
+  // (boss) and skel (light) in the bone-tier ladder. Floor 2 elite slot
+  // and floor 3 tier-3 backline. Cold resist matches skel family.
+  greatsword_skel: {
+    element: 'cold',
+    prefix: 'greatsword_skel_', drawSize: 240, radius: 26, speed: 70, hp: 170, damage: 3,
+    color: '#b0b8c0', hitCD: 1.20, fps: 8, behavior: 'melee',
+    attackReach: 70, attackArc: Math.PI * 0.65,
+    windup: 0.55, swing: 0.30,
+    telegraphColor: 'rgba(220, 200, 200, ',
+    heavyChance: 0.50,
+    heavyReach: 100, heavyArc: Math.PI * 1.0,
+    heavyWindup: 0.85, heavySwing: 0.40,
+    heavyDamage: 4,
+    heavyColor: 'rgba(255, 100, 60, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.65 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.40, volume: 0.85 },
+    bloodColor: '#4a4038',
+    displayName: 'GREATSWORD SKELETON',
+    flavor: 'a blade too heavy for the living. perfect, then, for the dead.',
+  },
 };
 
 // ============================================================================
