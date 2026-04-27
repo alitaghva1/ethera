@@ -40,6 +40,11 @@ export const hamletState = {
   // Bumped each time the player clicks the SPEAK button so the chat
   // stays fresh across visits without burning all lines in one sitting.
   npcChatIdx: {},        // id → integer (current line index)
+  // Topic dialogue (Morrowind-style) — track which topic answers
+  // the player has already heard from each NPC. Used to render
+  // a subtle "new topic" dot on chips the player hasn't clicked yet.
+  // Key shape: `${npcId}_${topicId}`. Persisted across runs.
+  npcTopicSeen: {},
   // Milestone counters for reactive dialogue. Main.js bumps these at the
   // right run-lifecycle events (boss kill, fortune drawn, etc.) so NPC
   // arcStage advance() checks can key off them.
@@ -69,6 +74,61 @@ export function loadHamletState() {
 export function saveHamletState() {
   safeSaveJSON(STATE_KEY, hamletState);
 }
+
+// ============================================================================
+// TOPIC CATALOG — Morrowind/Skyrim-style dialogue system.
+//
+// The hamlet's NPCs share a small set of subjects they can speak about. Each
+// topic is a clickable chip in the dialogue modal. When the player clicks
+// a topic chip, the NPC's answer for that topic replaces the body text.
+// Different NPCs have different perspectives on the SAME topic — the Smith,
+// the Wanderer, and the Keeper might each describe the others, building up
+// a layered picture of the hamlet through gossip and memory.
+//
+// `visible(state, ctx)` gates topic availability:
+//   - Universal topics (the_ruin, the_hamlet) are always visible.
+//   - Cross-NPC topics (the_smith, the_oracle) appear only after that NPC
+//     has arrived in the hamlet.
+//   - Watcher-related topics gate on watcher state (player must have heard
+//     at least one utterance).
+//
+// `label` is the chip text. Kept short for layout density — the modal can
+// fit ~6-8 chips comfortably without wrapping awkwardly.
+// ============================================================================
+export const TOPICS = {
+  // ---- Universal ----------------------------------------------------------
+  the_ruin: {
+    label: 'The Ruin',
+    visible: () => true,
+  },
+  the_hamlet: {
+    label: 'This Place',
+    visible: () => true,
+  },
+  the_watcher: {
+    label: 'The Watcher',
+    // Only available after the player has heard the watcher speak at least
+    // once. Lazy-load watcher state to avoid a circular import.
+    visible: () => {
+      try {
+        const w = safeLoadJSON('watcher_v1', null);
+        return !!(w && (w.runs | 0) >= 1 && typeof w.lastSpokenLine === 'string' && w.lastSpokenLine.length > 0);
+      } catch (_e) { return false; }
+    },
+  },
+  yourself: {
+    label: 'Myself',
+    visible: () => true,
+  },
+  // ---- Cross-NPC subjects (gated on NPC presence) -------------------------
+  the_keeper:      { label: 'The Keeper',      visible: () => true },   // always present
+  the_smith:       { label: 'The Smith',       visible: (s) => s.npcArcStage.smith !== undefined },
+  the_archivist:   { label: 'The Archivist',   visible: (s) => s.npcArcStage.archivist !== undefined },
+  the_gravekeeper: { label: 'The Gravekeeper', visible: (s) => s.npcArcStage.gravekeeper !== undefined },
+  the_oracle:      { label: 'The Oracle',      visible: (s) => s.npcArcStage.oracle !== undefined },
+  the_wanderer:    { label: 'The Wanderer',    visible: (s) => s.npcArcStage.wanderer !== undefined },
+};
+export const ALL_TOPIC_IDS = Object.keys(TOPICS);
 
 // ============================================================================
 // NPC ROSTER — shipped Phase 1
@@ -145,6 +205,21 @@ export const NPCS = {
       'Sit a moment. The descent will keep.',
       'When you go down again, leave the door ajar. The light reaches further than you think.',
     ],
+    // Topic answers — Morrowind-style. Click a chip in the dialogue
+    // modal to hear the Keeper's take on each subject. Voice stays
+    // warm + elegiac. She knows everyone and the place.
+    topics: {
+      the_ruin: 'The ruin was here before the hamlet, and the hamlet was here before the village, and the village was here before the name. We have always been at the lip of it. I do not know if it watches. I know it remembers.',
+      the_hamlet: 'A name we lost. A fire we kept. Some of the houses are still standing because we set them on fire, briefly, every winter — to remind them they are houses. It works.',
+      the_watcher: 'I have not heard the voice. You have. That is your part of the work, not mine. I tend the door.',
+      yourself: 'You came in barefoot, the first time. I do not think you noticed. The fire did. It still leans when you arrive.',
+      the_keeper: 'I tend the fire. There is no other name beneath that one. Someone called me a different word, once, in a different season. I have forgotten which.',
+      the_smith: 'He came down the road with soot on him and did not say from where. I gave him soup. He still has not told me. I do not need him to.',
+      the_archivist: 'She writes you in. She has told me. I do not look at the pages. The book belongs to her.',
+      the_gravekeeper: 'He arrived the way a bell arrives — heard before seen. We made room. Someone has to count, even here.',
+      the_oracle: 'She came back from somewhere most do not return from. I watched her step over the threshold. She paused, the way a guest pauses, and then came in anyway.',
+      the_wanderer: 'He stopped walking. It is rarer than you think. Most who pass through stop only long enough to ask the road.',
+    },
   },
 
   smith: {
@@ -209,6 +284,20 @@ export const NPCS = {
       'Don\'t flinch when the hammer comes down. You\'re not the one on the block.',
       'I was a soldier once. Then a smith. Now mostly a smith.',
     ],
+    // Voice: brevity. He answers what he knows and shrugs at the rest.
+    // He sees the others as bodies in a room, not as personalities.
+    topics: {
+      the_ruin: 'It eats things. Some of those things come back as steel. The rest don\'t come back at all. That is a metallurgist\'s way of looking at it. It is also true.',
+      the_hamlet: 'It needed a forge. I had a hammer. The arrangement was not complicated.',
+      the_watcher: 'Heard about it. Don\'t know it. Doesn\'t come down for steel.',
+      yourself: 'You hit harder when you carry less doubt. I notice. Not many notice that about themselves.',
+      the_keeper: 'Fed me. Didn\'t ask. I owe her a roof beam if the place ever needs one.',
+      the_smith: 'I was a soldier once. Then a smith. Now mostly a smith. The other parts went into the work.',
+      the_archivist: 'Reads. A lot. I\'ve never read a book that improved a hammer. I assume the books are doing other things.',
+      the_gravekeeper: 'He counts. I appreciate someone who counts. Means he\'ll notice if I go missing.',
+      the_oracle: 'She told me my next strike would land slightly left. She was right. I do not know how I feel about it.',
+      the_wanderer: 'Walks lighter than a man with a pack should. He\'ll move on when he\'s done. They always do.',
+    },
   },
 
   archivist: {
@@ -273,6 +362,20 @@ export const NPCS = {
       'I have a corner reserved for the relics you have not yet found. They are all named in pencil.',
       'Do you ever wonder which entry of mine is about you?',
     ],
+    // Voice: precise. She has notes on everything and lets you read
+    // some of them. The others are her colleagues; she has opinions.
+    topics: {
+      the_ruin: 'The ruin is older than its name and the name is old. I have a section of the book devoted to its etymologies. None of them agree, and that is the most useful thing they say about it.',
+      the_hamlet: 'The hamlet is a place that decided not to be a memory. Every place gets that choice exactly once. Most do not take it. This one did.',
+      the_watcher: 'I have a page for it. The page is mostly empty. It is one of my favorite pages.',
+      yourself: 'I have written more about you than about anyone else who has come through, including the ones who left famous. I will not show you the entries. They are not for you yet.',
+      the_keeper: 'She is older than she looks. I have not asked how. I do not think she would lie about it; I think she would simply not know what year to give me.',
+      the_smith: 'Soldier first. There are knots in the hammer-arc he makes that come from carrying a longer, lighter blade. He doesn\'t know I noticed. I have not told him.',
+      the_archivist: 'I read. I write. I have argued with the book three times this week and been correct only twice. The book has a vote.',
+      the_gravekeeper: 'He counts the dead. He counts the LIVING too, but only when they are alone. I caught him counting me once. I forgave him. I think.',
+      the_oracle: 'She knows things I would have to read three books to know. I have asked her where she got them. She said: from below. I have been thinking about that for some time.',
+      the_wanderer: 'I have a list of the roads he has walked, by inference from his pack. Eleven so far. I will not show him.',
+    },
   },
 
   // ==========================================================================
@@ -338,6 +441,20 @@ export const NPCS = {
       'You stand differently than the last time. That is information.',
       'I will be watching. Try not to need me before you need me.',
     ],
+    // Voice: clinical, watchful. He likes precision; he treats the
+    // others as entries in a different ledger — kindly, but at remove.
+    topics: {
+      the_ruin: 'The ruin is the most honest thing in this region. It does not pretend to be anything other than what it is, and what it is, is hungry. Most things lie about that.',
+      the_hamlet: 'A boundary. Where the count ends and the count keeps going. We pretend the line is a door. The line is a number, written on the air.',
+      the_watcher: 'It does not deal with me. We are in similar work but not the same work. I count the lost. It counts something else. I have not asked which side of the line.',
+      yourself: 'Three hundred and twelve breaths above resting, when you arrive. Two hundred and four when you leave. You sleep here, briefly, and you do not know it. Your counts say so.',
+      the_keeper: 'Older than her ledger would be, if she kept one. I asked her once if she counted candles. She said she counts mornings. That is the same thing.',
+      the_smith: 'Has more weight in him than the work suggests. I have not asked what it is. I think he carries it on purpose.',
+      the_archivist: 'A counter, like me, but with more letters. Different inventory. We have an understanding. We do not compare books.',
+      the_gravekeeper: 'I count what is gone and what is still here. Eventually those two columns balance. Until then, I work.',
+      the_oracle: 'She sees forward. I see backward. We do not interfere with each other\'s ranges. It is a courtesy I appreciate.',
+      the_wanderer: 'A long traveler stopping is rarer than a tower falling. He is in my ledger as an event, not a person.',
+    },
   },
 
   // ==========================================================================
@@ -403,6 +520,21 @@ export const NPCS = {
       'When you survive, it is because someone refused to look. That is not always me.',
       'Cards do not lie. They do, however, omit a great deal.',
     ],
+    // Voice: she has been below — actually through. Most of her answers
+    // come from the other side of the ruin, not the near side. She is
+    // the only NPC who can speak to the watcher with familiarity.
+    topics: {
+      the_ruin: 'The ruin is a corridor with two doors. I came in through one and out through the other. I came back the long way. That is what makes me an oracle and not a survivor.',
+      the_hamlet: 'A door. The hamlet is a door. We pretend it is a building because we live in it, but every wall is a frame and every window is a glance. We are all on the threshold of somewhere.',
+      the_watcher: 'It spoke to me when I went through. It still speaks, occasionally, when it has nothing better to do. We are not friends. We are colleagues.',
+      yourself: 'You are a question the ruin keeps asking. I have not yet decided what the answer is. That is not pessimism. That is craft.',
+      the_keeper: 'The Keeper is the door. The fire is the hinge. I do not say that to be cryptic; I say it because it is the simplest summary I have.',
+      the_smith: 'Carries an old grief politely. He will not name it. Naming it would cost more than carrying it. I respect this.',
+      the_archivist: 'She writes down what I tell her. She thinks I do not know. I always know. She writes it differently than I said it. That is also fine.',
+      the_gravekeeper: 'The most honest man here. He has invented a way of looking at the world that does not require him to lie to himself. I am still working on mine.',
+      the_oracle: 'I do not predict. I REMEMBER FORWARD. Different craft, same stillness. I will tell you what I saw if you can pay for the seeing.',
+      the_wanderer: 'He has walked all the way around the place his life is going. Now he is sitting at the center. He has not noticed yet. He will.',
+    },
   },
 
   // ==========================================================================
@@ -469,6 +601,21 @@ export const NPCS = {
       'You bring news without telling me any. Posture is a kind of map.',
       'Rest a little. Even the road sleeps, between travelers.',
     ],
+    // Voice: introspective. He knows everyone the way travelers know
+    // the towns they pass through — by the marks on the road, the
+    // shape of the people, the way doors are hung.
+    topics: {
+      the_ruin: 'The ruin is the only road I have not walked. I came up to the lip of it once. Looked down. Decided I was carrying enough already. That is not cowardice. That is inventory.',
+      the_hamlet: 'The hamlet is what happens when a place has been lived in long enough that the place starts living back. I have seen this maybe four times. It is always the same shape and always different.',
+      the_watcher: 'Heard about it. Some travelers say they hear it most clearly at altitude — on a pass, near a peak. Down here, it is muffled. That suits me.',
+      yourself: 'You walk like someone who has not yet decided whether they are coming home or leaving. I know that walk well. It changes only when you decide.',
+      the_keeper: 'The fire is what stopped me. Most fires are owned by someone who would rather you stand outside it. This one was not.',
+      the_smith: 'A soldier who became a smith. There is a road from the one to the other. I have walked it. Not for myself — for a friend.',
+      the_archivist: 'She has written about me, I think. I do not mind. There are worse fates than being indexed.',
+      the_gravekeeper: 'He counts people the way I count miles. We have the same hands.',
+      the_oracle: 'She has been down further than I have ever walked. I respect a traveler who came back. Most do not. That is what makes them travelers.',
+      the_wanderer: 'I have stopped. Not for good. For long enough. The road will be there when I want it. The road is patient. That is most of what the road is.',
+    },
   },
 };
 
@@ -575,4 +722,68 @@ export function getNextChatLine(npcId) {
 export function npcHasChat(npcId) {
   const def = NPCS[npcId];
   return !!(def && Array.isArray(def.chatLines) && def.chatLines.length > 0);
+}
+
+// ============================================================================
+// TOPIC DIALOGUE HELPERS
+//
+// availableTopicsForNpc — the set of topic chips the modal should render
+// for a given NPC. Filtered by:
+//   1. NPC has an answer for the topic (def.topics[topicId] is a non-empty
+//      string)
+//   2. The topic's visible() gate passes (cross-NPC topics gate on whether
+//      that NPC has arrived; the_watcher gates on watcher state)
+//   3. We never show the chip for the NPC's own topic about themselves
+//      (e.g. the Smith answers `the_smith` about the Smith — already
+//      covered by chatLines/arcStages, no need for self-referential chip)
+//
+// getTopicAnswer — returns the answer string and marks the topic as seen.
+//
+// hasUnseenTopics — used by the SPEAK/topic-button area to render a
+// "•" indicator hinting "there's something new to ask about."
+// ============================================================================
+
+export function availableTopicsForNpc(npcId) {
+  const def = NPCS[npcId];
+  if (!def || !def.topics) return [];
+  const out = [];
+  for (const tid of ALL_TOPIC_IDS) {
+    const topic = TOPICS[tid];
+    if (!topic) continue;
+    // Skip self-reference — Smith's "the_smith" topic is suppressed
+    // when the Smith is the speaker (it would be circular).
+    if (tid === `the_${npcId}`) continue;
+    // NPC must have an answer
+    const answer = def.topics[tid];
+    if (typeof answer !== 'string' || answer.length === 0) continue;
+    // Topic must pass visibility gate
+    try {
+      if (!topic.visible(hamletState)) continue;
+    } catch (_e) { continue; }
+    out.push({ id: tid, label: topic.label });
+  }
+  return out;
+}
+
+export function getTopicAnswer(npcId, topicId) {
+  const def = NPCS[npcId];
+  if (!def || !def.topics) return null;
+  const answer = def.topics[topicId];
+  if (typeof answer !== 'string' || answer.length === 0) return null;
+  // Mark seen
+  hamletState.npcTopicSeen[`${npcId}_${topicId}`] = true;
+  saveHamletState();
+  return answer;
+}
+
+export function isTopicSeen(npcId, topicId) {
+  return !!hamletState.npcTopicSeen[`${npcId}_${topicId}`];
+}
+
+export function hasUnseenTopics(npcId) {
+  const topics = availableTopicsForNpc(npcId);
+  for (const t of topics) {
+    if (!isTopicSeen(npcId, t.id)) return true;
+  }
+  return false;
 }

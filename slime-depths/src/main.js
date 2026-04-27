@@ -91,7 +91,7 @@ import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
 import { updateBossIntro } from './bossIntroDom.js';
@@ -1424,7 +1424,13 @@ dialogueEl.innerHTML = `
     <!-- Gold hairline divider -->
     <div style="width:100%;height:1px;background:linear-gradient(90deg, transparent, rgba(201,168,106,0.45), transparent);margin-bottom:18px;"></div>
     <!-- Body: stage text -->
-    <div id="dialogueText" style="font-size:14px;line-height:1.75;color:#d8cfae;margin-bottom:22px;min-height:120px;font-style:italic;"></div>
+    <div id="dialogueText" style="font-size:14px;line-height:1.75;color:#d8cfae;margin-bottom:18px;min-height:120px;font-style:italic;"></div>
+    <!-- Topic chips \u2014 Morrowind-style "ask about X" affordance. Filtered
+         per-NPC by availableTopicsForNpc() (the NPC must have an answer +
+         the topic's visibility gate must pass). Click swaps the body text
+         to the topic's answer. Empty (display:none) when the NPC has no
+         topics defined or no topics pass the gate. -->
+    <div id="dialogueTopics" style="display:none;flex-wrap:wrap;gap:6px 8px;margin-bottom:18px;padding-top:14px;border-top:1px solid rgba(201,168,106,0.18);"></div>
     <!-- Service / speak / close buttons. SPEAK is the casual-chat path
          that cycles the NPC's chatLines without leaving the modal \u2014
          visually muted (text-link style) so the SERVICE button stays
@@ -1521,6 +1527,74 @@ function openDialogue(npcId) {
   // breaking the modal for existing roster.
   const speakBtn = document.getElementById('dialogueSpeakBtn');
   speakBtn.style.display = npcHasChat(npcId) ? '' : 'none';
+
+  // Topic chips — Morrowind-style "ask about X" subjects. Each NPC has
+  // their own perspective on the shared catalog (the_ruin, the_keeper,
+  // the_watcher, etc.). Render as a wrap-flow row of subtle chips.
+  // Unseen topics get a small dot to the right of the label.
+  const topicsRow = document.getElementById('dialogueTopics');
+  const topics = availableTopicsForNpc(npcId);
+  topicsRow.innerHTML = '';
+  if (topics.length > 0) {
+    topicsRow.style.display = 'flex';
+    for (const t of topics) {
+      const chip = document.createElement('button');
+      const seen = isTopicSeen(npcId, t.id);
+      chip.className = 'dialogueTopicChip';
+      chip.dataset.topicId = t.id;
+      chip.style.cssText = `
+        background:transparent;
+        color:${seen ? '#8a7a5a' : '#c9a86a'};
+        border:1px solid rgba(201,168,106,${seen ? 0.22 : 0.45});
+        padding:5px 12px 5px 12px;
+        font-size:10px;
+        cursor:pointer;
+        letter-spacing:2.5px;
+        font-family:Georgia,serif;
+        font-style:italic;
+        transition:all 0.18s ease;
+        white-space:nowrap;
+      `;
+      // Unseen indicator — small bullet on the right side. Removed
+      // visually after the player clicks the chip + reopens modal.
+      const dot = seen ? '' : '<span style="margin-left:6px;color:#a0e8ff;text-shadow:0 0 4px rgba(160,232,255,0.6);">•</span>';
+      chip.innerHTML = `<span style="text-transform:uppercase;">${t.label}</span>${dot}`;
+      chip.addEventListener('click', () => {
+        const ans = getTopicAnswer(npcId, t.id);
+        if (!ans) return;
+        // Replace body with the topic answer + a header line that
+        // reads as "they're now speaking about X". The header is
+        // small + tinted with the NPC color so it reads as a frame
+        // around the answer text.
+        const def2 = NPCS[npcId];
+        const tint = def2.tint || '#c9a86a';
+        const textEl2 = document.getElementById('dialogueText');
+        textEl2.innerHTML = `
+          <div style="font-size:9px;letter-spacing:4px;color:${tint};opacity:0.65;margin-bottom:10px;font-style:italic;text-transform:uppercase;font-weight:bold;">on ${t.label.toLowerCase()}</div>
+          <p style="margin:0;line-height:1.7;color:#d8cfae;font-style:italic;">${ans}</p>
+        `;
+        // Update this chip's visual state — it's been seen now.
+        chip.style.color = '#8a7a5a';
+        chip.style.borderColor = 'rgba(201,168,106,0.22)';
+        const dotEl = chip.querySelector('span:last-child');
+        if (dotEl && dotEl.textContent.trim() === '•') dotEl.remove();
+      });
+      chip.addEventListener('mouseenter', (e) => {
+        e.currentTarget.style.background = 'rgba(201,168,106,0.10)';
+        e.currentTarget.style.borderColor = 'rgba(201,168,106,0.7)';
+        e.currentTarget.style.color = '#f4d9a0';
+      });
+      chip.addEventListener('mouseleave', (e) => {
+        const stillSeen = isTopicSeen(npcId, e.currentTarget.dataset.topicId);
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.borderColor = `rgba(201,168,106,${stillSeen ? 0.22 : 0.45})`;
+        e.currentTarget.style.color = stillSeen ? '#8a7a5a' : '#c9a86a';
+      });
+      topicsRow.appendChild(chip);
+    }
+  } else {
+    topicsRow.style.display = 'none';
+  }
 
   dialogueEl.style.display = 'flex';
 }
