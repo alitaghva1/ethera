@@ -19,7 +19,7 @@ import { dropGold } from './gold.js';
 import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
 import { markChainFired, markPyroFired, markQuiverFired, markRingingFired, markTwinFired, markMountainFired, markRazorFired } from './counterPips.js';
-import { synthSwoosh, synthClick } from './synth.js';
+import { synthSwoosh, synthClick, synthPing, synthThud, synthChord } from './synth.js';
 import { spawnHeroBolt } from './projectiles.js';
 
 // ── DASH STRIKE + DODGE — AFTERIMAGE GHOST TRAILS ───────────────────────
@@ -746,10 +746,19 @@ export function updateHero(dt, enemies, mouseWorld) {
           // Heavier audio + camera kick for the charge release moment.
           try { synthClick(1.0, 0.85); } catch (_e) {}
           try { synthSwoosh(0.9, 0.6, 0.18); } catch (_e) {}
+          // Patient Lens — distinct gold ping over the swoosh, telegraphs
+          // "this bolt will crit" before it lands. Pairs with the stronger
+          // gold flash below so the release feels different from a base
+          // charged shot.
+          if (hero.boltCritOnCharge) {
+            try { synthPing(1980, 0.55, 0.22); } catch (_e) {}
+          }
           shakeCamera(6, 0.18);
           pulseZoom(0.04, 0.22);
           // Brief gold flash so the release reads as a committed beat.
-          triggerScreenFlash('rgba(255, 220, 140, 0.07)', 0.18);
+          // Patient Lens brightens the flash so the player learns: "this
+          // is the version that auto-crits."
+          triggerScreenFlash(hero.boltCritOnCharge ? 'rgba(255, 220, 140, 0.16)' : 'rgba(255, 220, 140, 0.07)', 0.18);
         } else {
           // Tap-fire: standard bolt, no pierce, snappier audio.
           spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
@@ -1154,6 +1163,9 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
           if (hero.vowEternal && hero.vowEternalReady && w.id === 'sword') {
             hero.vowEternalReady = false;
+            // Bell-tone on consume — the literal "vow rung" once per
+            // room. High clear ping cuts through the swing audio.
+            try { synthPing(1320, 0.55, 0.32); } catch (_e) {}
             // FUSION: Sworn Reply — opening crit also opens the
             // counter-attack window. Lets the player chain the
             // first-hit crit into a full counter-attack on the next
@@ -1376,6 +1388,9 @@ export function updateHero(dt, enemies, mouseWorld) {
                 echoTarget.takeDamage(finalDmg * 0.6, 0, 0);
                 sparkle(echoTarget.x, echoTarget.y - 8, '#a0e8ff');
                 sparkle(echoTarget.x, echoTarget.y - 14, '#ffffff');
+                // Echo ping — distant cyan note, audibly the "second
+                // voice" of the dagger pair. Quieter than primary hit.
+                try { synthPing(1760, 0.35, 0.10); } catch (_e) {}
               }
               markTwinFired();   // visible pip-row flash
             }
@@ -1394,6 +1409,10 @@ export function updateHero(dt, enemies, mouseWorld) {
               // crit (the heavy_blow knockback-crit hook).
               const shockR = hero.fusionAvalanche ? 140 : 70;
               spawnExplosion(e.x, e.y - 6, shockR, shockDmg, 'physical');
+              // Deep earth thud — short bass pulse so the shockwave
+              // reads in the chest, not just the eyes. Avalanche fires
+              // the same thud at higher volume.
+              try { synthThud(50, hero.fusionAvalanche ? 1.2 : 0.85, 0.28); } catch (_e) {}
               if (hero.fusionAvalanche) {
                 // Mark every enemy inside the shockwave for crit on
                 // next hit — turns the 3rd-swing tremor into a setup
@@ -1424,6 +1443,9 @@ export function updateHero(dt, enemies, mouseWorld) {
             e.stagger = Math.max(e.stagger || 0, 0) + 0.6;
             sparkle(e.x, e.y, '#c8a060');
             sparkle(e.x - 4, e.y - 2, '#a07840');
+            // Stone-grind tone — short low thud that says "the earth
+            // pinned them." Lower than mountain_strike's shock.
+            try { synthThud(75, 0.55, 0.18); } catch (_e) {}
           }
 
           // RAZOR PACE crescendo VFX — the 5th-hit pop deserves to read.
@@ -1436,6 +1458,10 @@ export function updateHero(dt, enemies, mouseWorld) {
             }
             sparkle(e.x, e.y - 14, '#ffffff');
             triggerHitStop(0.07);
+            // Two-note crescendo — the 5th-hit beat rings as a fast
+            // upward third (high cyan tone). Reads as "the song lands."
+            try { synthPing(1480, 0.5, 0.12); } catch (_e) {}
+            try { setTimeout(() => synthPing(1980, 0.45, 0.18), 70); } catch (_e) {}
             markRazorFired();   // visible pip-row flash
           }
 
@@ -1452,6 +1478,10 @@ export function updateHero(dt, enemies, mouseWorld) {
             deathBurst(e.x, e.y - 12, '#c8d8ff');
             shakeCamera(8, 0.18);
             triggerHitStop(0.1);
+            // Glass-crack chord — high splinter tone over a low thud.
+            // The thud lands on the same beat as the camera shake.
+            try { synthThud(60, 0.85, 0.22); } catch (_e) {}
+            try { synthChord(560, 0.6, 0.45); } catch (_e) {}
           }
           hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
           const wpnShake = w.shakeMul || 1;

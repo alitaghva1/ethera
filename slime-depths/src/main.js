@@ -4265,13 +4265,19 @@ function showEndOfRun(isVictory) {
         const missingName = missingDef ? missingDef.name : nm.missingId;
         const known = seenRelicIds.has(nm.missingId);
         const row = document.createElement('div');
-        row.style.cssText = 'font-family:Georgia,serif;font-size:11px;color:#b8b0a0;letter-spacing:0.4px;font-style:italic;text-align:center;';
-        // Cyan fusion name → cream "needs" → cream/red missing relic name.
-        // If the missing relic has never been seen, render as "(unknown)".
+        // Inline-flex so the icon + text render on a single baseline.
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;font-family:Georgia,serif;font-size:11px;color:#b8b0a0;letter-spacing:0.4px;font-style:italic;';
+        // Icon (only for known relics — unknowns stay teasing).
+        let iconHtml = '';
+        if (known && missingDef && missingDef.icon) {
+          const tint = missingDef.tint || '#f4d9a0';
+          iconHtml = `<img src="assets/icons/${missingDef.icon}.png" style="width:18px;height:18px;image-rendering:pixelated;filter:drop-shadow(0 0 3px ${tint}88);vertical-align:middle;display:inline-block;" />`;
+        }
+        // Cyan fusion name → cream "needs" → icon → cream missing-relic name.
         const missingDisplay = known
-          ? `<span style="color:#f4d9a0;">${missingName}</span>`
+          ? `${iconHtml}<span style="color:#f4d9a0;">${missingName}</span>`
           : `<span style="color:#8a7a5a;">an unmet relic</span>`;
-        row.innerHTML = `<span style="color:#a0e8ff;">${nm.fusion.name}</span> · needs ${missingDisplay}`;
+        row.innerHTML = `<span style="color:#a0e8ff;">${nm.fusion.name}</span> <span style="opacity:0.6;">·</span> needs ${missingDisplay}`;
         nearWrap.appendChild(row);
       }
       relicsRow.appendChild(nearWrap);
