@@ -167,10 +167,8 @@ const EXCLUSIONS = [
   // Bookcase + studydesk EXCLUSIONS removed (FX entries removed).
   // Flameskull EXCLUSION removed (FX entry parked for dungeon use).
   // Well EXCLUSION removed (FX entry removed).
-  // Save gem at (700, 690) — south path near hamlet entrance. Player
-  // sees it as they spawn from a descent (hero spawn (700, 670)) and
-  // again when re-entering the hamlet from the dungeon.
-  { x1: 689, y1: 682, x2: 711, y2: 699 },
+  // Save gem at (620, 610) — south entrance area, west side of path.
+  { x1: 609, y1: 602, x2: 631, y2: 619 },
   // Notice board at (688, 360) — wider footprint than gem ~50×30.
   { x1: 663, y1: 345, x2: 713, y2: 375 },
   // Chest EXCLUSIONS removed (FX entries removed — chests are dungeon
