@@ -5622,11 +5622,18 @@ function render() {
     const tsx = t.x - camera.x + canvas.width / 2 + camera.offsetX;
     const tsy = t.y - camera.y + canvas.height / 2 + camera.offsetY;
     const phase = (now * 3 + (t.seed & 0xff) * 0.1);
-    const flick = 0.82 + 0.18 * (Math.sin(phase * 7.3) * 0.5 + Math.sin(phase * 11.1) * 0.4 + Math.sin(phase * 17.5) * 0.3) / 1.2;
-    const radius = 180 + flick * 20;
-    const g = ctx.createRadialGradient(tsx, tsy, 4, tsx, tsy, radius);
-    g.addColorStop(0, flameBase + (0.55 * flick).toFixed(3) + ')');
-    g.addColorStop(0.3, flameBase + (0.22 * flick).toFixed(3) + ')');
+    // Flicker tuned for the new sprite's bigger visible flame: deeper
+    // modulation (0.72-1.0 vs old 0.82-1.0) so the halo 'breathes' more
+    // visibly with the visible flame's animation.
+    const flick = 0.72 + 0.28 * (Math.sin(phase * 7.3) * 0.5 + Math.sin(phase * 11.1) * 0.4 + Math.sin(phase * 17.5) * 0.3) / 1.2;
+    // Radius bumped 180 -> 220 base to match the bigger sprite — the
+    // old radius was tuned for a 10px procedural blob.
+    const radius = 220 + flick * 30;
+    const g = ctx.createRadialGradient(tsx, tsy, 6, tsx, tsy, radius);
+    // Hot core stop pushed up (0.55 -> 0.7) so the immediate area
+    // around the flame reads as 'I am the light source.'
+    g.addColorStop(0, flameBase + (0.70 * flick).toFixed(3) + ')');
+    g.addColorStop(0.25, flameBase + (0.30 * flick).toFixed(3) + ')');
     g.addColorStop(1, flameBase + '0)');
     ctx.fillStyle = g;
     ctx.fillRect(tsx - radius, tsy - radius, radius * 2, radius * 2);
@@ -5634,10 +5641,11 @@ function render() {
     // GOD RAY — volumetric light cone streaming down from the torch.
     // Approximated by a vertical trapezoid with a top-biased gradient and
     // flicker-modulated alpha. Makes the dust-filled air feel luminous.
-    const rayLen = 260 + flick * 30;
+    // Length bumped 260 -> 300 to match the bigger flame's visual reach.
+    const rayLen = 300 + flick * 30;
     const rayTopW = 22;
-    const rayBotW = 140;
-    const rayAlpha = 0.18 + flick * 0.08;
+    const rayBotW = 150;
+    const rayAlpha = 0.22 + flick * 0.10;     // bumped 0.18 -> 0.22 for the brighter flame
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const rayGrad = ctx.createLinearGradient(tsx, tsy, tsx, tsy + rayLen);

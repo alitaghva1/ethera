@@ -598,7 +598,13 @@ export function buildRoomFromData(data) {
       if (col === skipDoor.x) continue;
       roomTorches.push({
         x: col * TILE + TILE/2,
-        y: TILE * 0.6,
+        // y aligned with the NEW torch sprite's visible flame center.
+        // Sprite is rendered at cy = TILE*0.7 = 33.6, scale 0.45 (50.4px
+        // tall), with the flame painted at y=27 within the 112px native
+        // frame. Rendered flame center ≈ 20.5 in screen space → light
+        // halo + god-ray now anchor where the visible fire actually is.
+        // Old value was TILE*0.6 = 28.8 (8px south of new flame).
+        y: 21,
         seed: hash(col, data.kind.length),
       });
     }
