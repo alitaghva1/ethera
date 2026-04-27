@@ -356,16 +356,41 @@ const HAMLET_FX = [
     // 112×112 native, scaled 0.8× → ~90px rendered so it fits INSIDE
     // the painted ring instead of overflowing it.
     //
-    // Animation rhythm: 9 frames at 5fps = 1.8s active pulse, then
-    // hold on frame 0 (quiet state) for 3s — total 4.8s cycle. Reads
-    // as a slow heartbeat ("pulse... rest... pulse...") rather than
-    // a continuous strobe. holdSeconds is parsed by drawHamletFx.
+    // Animation rhythm uses three layered systems (all optional, all
+    // parsed by drawHamletFx — see that function for the math):
+    //
+    //  1. proximity tiers (alpha + fps + holdSeconds change with hero
+    //     distance). Linearly interpolated between adjacent tiers.
+    //     Far: dormant + dim + slow + long rests. Near: responsive +
+    //     bright + fast + short rests. Reads as "the portal noticed
+    //     you" without any explicit player-detection code.
+    //
+    //  2. restAlphaMul (0..1) — during the rest phase between pulses,
+    //     the alpha drops to peakAlpha × this factor. 0.4 means "rest
+    //     state is 40% as bright as the active pulse peak." Keeps the
+    //     portal visible (so the player can find it) without strobing.
+    //
+    //  3. fadeSeconds — smooth alpha lerp at the active/rest boundary
+    //     instead of a hard cut. 0.5s fade in + 0.5s fade out feels
+    //     like a slow breath.
+    //
+    // Tuned with: at far (>320px) portal is barely visible, occasional
+    // soft pulse. At near (<40px, hero standing on pad) portal is fully
+    // bright, pulses every 2.5s. The transition is continuous as the
+    // hero walks toward it.
     id: 'portal', asset: 'fx_portal',
     x: 688, y: 365,
     frameW: 112, frameH: 112,
-    frameCount: 9, fps: 5,
+    frameCount: 9,
     scale: 0.8, yOffset: 0,
-    holdSeconds: 3,
+    proximity: [
+      // Tiers ordered far → near. Distance in world px from FX center.
+      { dist: 320, alpha: 0.35, fps: 4, holdSeconds: 8 },     // dormant
+      { dist: 160, alpha: 0.65, fps: 5, holdSeconds: 4 },     // warming
+      { dist:  40, alpha: 1.00, fps: 6, holdSeconds: 1 },     // responsive
+    ],
+    restAlphaMul: 0.4,
+    fadeSeconds: 0.5,
   },
   {
     // Cooking pot (v2 generation — cleaner kettle silhouette). Sits
@@ -382,6 +407,39 @@ const HAMLET_FX = [
   },
 ];
 
+// Resolve proximity tiers → effective {peakAlpha, fps, holdSec} based on
+// hero distance to the FX center. If fx has no proximity tiers, return
+// the static fx.fps + fx.holdSeconds with peakAlpha 1 (backwards-compat
+// path for firepit/cookingpot which have no proximity behavior).
+function resolveProximity(fx) {
+  if (!fx.proximity || fx.proximity.length === 0) {
+    return { peakAlpha: 1, fps: fx.fps, holdSec: fx.holdSeconds || 0 };
+  }
+  const dx = hero.x - fx.x;
+  const dy = hero.y - fx.y;
+  const dist = Math.hypot(dx, dy);
+  const tiers = fx.proximity;     // ordered far → near
+  if (dist >= tiers[0].dist) {
+    return { peakAlpha: tiers[0].alpha, fps: tiers[0].fps, holdSec: tiers[0].holdSeconds };
+  }
+  const last = tiers.length - 1;
+  if (dist <= tiers[last].dist) {
+    return { peakAlpha: tiers[last].alpha, fps: tiers[last].fps, holdSec: tiers[last].holdSeconds };
+  }
+  for (let i = 0; i < last; i++) {
+    const far = tiers[i], near = tiers[i + 1];
+    if (dist <= far.dist && dist >= near.dist) {
+      const t = (far.dist - dist) / (far.dist - near.dist);
+      return {
+        peakAlpha: far.alpha + t * (near.alpha - far.alpha),
+        fps: far.fps + t * (near.fps - far.fps),
+        holdSec: far.holdSeconds + t * (near.holdSeconds - far.holdSeconds),
+      };
+    }
+  }
+  return { peakAlpha: tiers[last].alpha, fps: tiers[last].fps, holdSec: tiers[last].holdSeconds };
+}
+
 // Draw all hamlet FX overlays. Called between drawHamletBackdrop and
 // drawHamletEntities so animated flames sit on top of the painted scene
 // but BENEATH NPCs (so an NPC standing in front of the firepit correctly
@@ -389,26 +447,55 @@ const HAMLET_FX = [
 export function drawHamletFx(ctx) {
   const now = performance.now() / 1000;
   const prevSmoothing = ctx.imageSmoothingEnabled;
+  const prevAlpha = ctx.globalAlpha;
   ctx.imageSmoothingEnabled = false;
   for (const fx of HAMLET_FX) {
     const img = images[fx.asset];
     if (!img) continue;
-    // Frame computation: if holdSeconds is set, the animation plays through
-    // once, then holds on frame 0 (quiescent state) for holdSeconds before
-    // restarting. Lets us do "occasional pulse" rhythm instead of continuous
-    // looping. holdSeconds=0 (default) is the original continuous-cycle.
-    const activeSec = fx.frameCount / fx.fps;
-    const holdSec = fx.holdSeconds || 0;
+
+    // Resolve effective rhythm + intensity (proximity-aware if configured)
+    const p = resolveProximity(fx);
+    const fps = p.fps;
+    const holdSec = p.holdSec;
+    const peakAlpha = p.peakAlpha;
+
+    // Cycle: active phase plays the frames at fps, then holds frame 0
+    // for holdSec. cyclePos∈[0, cycleSec) is where we are in the cycle.
+    const activeSec = fx.frameCount / fps;
     const cycleSec = activeSec + holdSec;
-    const cyclePos = now % cycleSec;
-    const frame = cyclePos < activeSec
-      ? Math.floor(cyclePos * fx.fps) % fx.frameCount
+    const cyclePos = cycleSec > 0 ? now % cycleSec : 0;
+    const isActive = cyclePos < activeSec;
+    const frame = isActive
+      ? Math.floor(cyclePos * fps) % fx.frameCount
       : 0;
+
+    // activeFactor: 0 in mid-rest, 1 at full active. Smooth fade at
+    // the active/rest boundaries (over fadeSec) avoids hard cuts.
+    const fadeSec = fx.fadeSeconds || 0;
+    let activeFactor;
+    if (!isActive) {
+      activeFactor = 0;
+    } else if (fadeSec > 0) {
+      const into = cyclePos;                     // time since active started
+      const outOf = activeSec - cyclePos;        // time until active ends
+      if (into < fadeSec) activeFactor = into / fadeSec;
+      else if (outOf < fadeSec) activeFactor = outOf / fadeSec;
+      else activeFactor = 1;
+    } else {
+      activeFactor = 1;
+    }
+
+    // Final alpha lerps from rest baseline to peak as activeFactor 0→1.
+    const restMul = fx.restAlphaMul != null ? fx.restAlphaMul : 1;
+    const alpha = peakAlpha * (restMul + (1 - restMul) * activeFactor);
+    if (alpha <= 0.01) continue;     // skip rendering when effectively invisible
+
     const sx = frame * fx.frameW;
     const scale = fx.scale || 1;
     const drawW = fx.frameW * scale;
     const drawH = fx.frameH * scale;
     const yOffset = fx.yOffset || 0;
+    ctx.globalAlpha = prevAlpha * alpha;
     ctx.drawImage(
       img,
       sx, 0, fx.frameW, fx.frameH,
@@ -417,6 +504,7 @@ export function drawHamletFx(ctx) {
       drawW, drawH,
     );
   }
+  ctx.globalAlpha = prevAlpha;
   ctx.imageSmoothingEnabled = prevSmoothing;
 }
 
