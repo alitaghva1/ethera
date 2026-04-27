@@ -348,17 +348,19 @@ const HAMLET_FX = [
     scale: 1.4, yOffset: 0,
   },
   {
-    // Portal swirl (v2 generation — true vortex, no stone frame). Sits
-    // on the dark circular pad in the central plaza at PORTAL_POS
-    // (687, 381). Sprite is 96×96 native, scaled 1.5× to fill the
-    // painted pad's ~140-150px diameter. 9-frame cycle at 8fps reads
-    // as a slow rune pulse — "dormant but alive" between descents.
-    // (Run-commit will trigger a separate burst FX layered on top.)
+    // Portal (v3 — subtle muted runic glyph circle). Replaces the
+    // saturated magenta swirl that was reading as cartoon-emoji style
+    // and clashing with the painterly backdrop. Sits on the dark
+    // circular pad in the central plaza at PORTAL_POS (687, 381).
+    // Sprite is 112×112 native, scaled 0.8× → ~90px rendered so it
+    // fits INSIDE the painted ring instead of overflowing it (v2 was
+    // 1.5× → 144px which was filling the whole plaza). 9 frames at
+    // 8fps for a slow rune pulse.
     id: 'portal', asset: 'fx_portal',
     x: 687, y: 381,
-    frameW: 96, frameH: 96,
+    frameW: 112, frameH: 112,
     frameCount: 9, fps: 8,
-    scale: 1.5, yOffset: 0,
+    scale: 0.8, yOffset: 0,
   },
   {
     // Cooking pot (v2 generation — cleaner kettle silhouette). Sits
