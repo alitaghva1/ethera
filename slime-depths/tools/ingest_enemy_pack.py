@@ -165,6 +165,109 @@ PACKS = {
             'death':  'Greatsword Skeleton-Death.png',
         },
     },
+
+    # ============================================================
+    # TINY RPG KIT — second batch (full-roster pass). The first
+    # batch (above) wired the highest-impact characters; this batch
+    # closes the kit. Pacing-aware introductions:
+    #   F2: + soldier (basic armored)
+    #   F3: + swordsman, armored_axeman, armored_orc
+    #   F4: + knight_templar, orc_rider
+    #   F1 boss: elite_orc (proper boss sprite for Grudnok)
+    # ============================================================
+    'soldier': {
+        # F2 basic armored melee — simpler/lighter than knight, gives
+        # F2 garrison comps an "everyman footsoldier" beneath the elite
+        # knight + armored_skel layer.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Soldier/Soldier',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Soldier-Idle.png',
+            'walk':   'Soldier-Walk.png',
+            'attack': 'Soldier-Attack01.png',
+            'death':  'Soldier-Death.png',
+        },
+    },
+    'swordsman': {
+        # F3 mid-tier agile melee — parry-themed sprite; faster windup
+        # than the heavier armored variants. Sits between werewolf
+        # (skirmisher) and knight (shielded) on the F3 melee spectrum.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Swordsman/Swordsman',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Swordsman-Idle.png',
+            'walk':   'Swordsman-Walk.png',
+            'attack': 'Swordsman-Attack01.png',
+            'death':  'Swordsman-Death.png',
+        },
+    },
+    'armored_axeman': {
+        # F3 heavy axe brute — the human-armor counterpart to
+        # greatsword_skel. Wide cleave, slow windup, big damage.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Armored Axeman/Armored Axeman',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Armored Axeman-Idle.png',
+            'walk':   'Armored Axeman-Walk.png',
+            'attack': 'Armored Axeman-Attack01.png',
+            'death':  'Armored Axeman-Death.png',
+        },
+    },
+    'armored_orc': {
+        # F3 armored orc variant — Grudnok's veterans, post-F1-boss
+        # narrative. Heavier than common orc, gets a shield + the
+        # heavy-swing field. Reads as "this orc came back stronger".
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Armored Orc/Armored Orc',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Armored Orc-Idle.png',
+            'walk':   'Armored Orc-Walk.png',
+            'attack': 'Armored Orc-Attack01.png',
+            'death':  'Armored Orc-Death.png',
+        },
+    },
+    'elite_orc': {
+        # F1 BOSS sprite — proper visual differentiation for WARCHIEF
+        # GRUDNOK. Replaces the orc-def-doubles-as-boss hack so common
+        # orcs in F2-F4 stop tooltipping as "WARCHIEF GRUDNOK".
+        # Also slots into the F2 mini-boss rotation as a callback to
+        # the F1 fight.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Elite Orc/Elite Orc',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Elite Orc-Idle.png',
+            'walk':   'Elite Orc-Walk.png',
+            'attack': 'Elite Orc-Attack01.png',
+            'death':  'Elite Orc-Death.png',
+        },
+    },
+    'knight_templar': {
+        # F4 holy armored elite. Pairs naturally with priest in
+        # "templar guard" comps — the throne's holy garrison. Highest
+        # shield reduction in the kit (0.85), reads as the most
+        # imposing armored unit short of a boss.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Knight Templar/Knight Templar',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Knight Templar-Idle.png',
+            'walk':   'Knight Templar-Walk01.png',     # (templar has Walk01/02; pick 01)
+            'attack': 'Knight Templar-Attack01.png',
+            'death':  'Knight Templar-Death.png',
+        },
+    },
+    'orc_rider': {
+        # F4 rare mounted unit. Lancer-style charge behavior — the
+        # mounted theme reads naturally as "charges in straight lines".
+        # Rare slot in tier4 + alternative F4 mini-boss option.
+        'source_root': 'Tiny RPG Character Asset Pack v1.03b -Full 20 Characters/Tiny RPG Character Asset Pack v1.03 -Full 20 Characters/Characters(100x100)/Orc rider/Orc rider',
+        'anchor': 'bottom',
+        'mappings': {
+            'idle':   'Orc rider-Idle.png',
+            'walk':   'Orc rider-Walk.png',
+            'attack': 'Orc rider-Attack01.png',
+            'death':  'Orc rider-Death.png',
+        },
+    },
 }
 
 

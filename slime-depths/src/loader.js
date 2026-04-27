@@ -263,6 +263,38 @@ export async function loadAll(progressCb) {
     loadImage('greatsword_skel_walk',    'assets/enemies/greatsword_skeleton_walk.png'),
     loadImage('greatsword_skel_attack',  'assets/enemies/greatsword_skeleton_attack.png'),
     loadImage('greatsword_skel_death',   'assets/enemies/greatsword_skeleton_death.png'),
+    // Tiny RPG kit — second batch (full-roster pass). Pacing-aware
+    // introductions: F2 gets soldier; F3 gets swordsman / armored_axeman
+    // / armored_orc; F4 gets knight_templar + orc_rider; elite_orc
+    // becomes the F1 boss sprite (Grudnok visual differentiation).
+    loadImage('soldier_idle',           'assets/enemies/soldier_idle.png'),
+    loadImage('soldier_walk',           'assets/enemies/soldier_walk.png'),
+    loadImage('soldier_attack',         'assets/enemies/soldier_attack.png'),
+    loadImage('soldier_death',          'assets/enemies/soldier_death.png'),
+    loadImage('swordsman_idle',         'assets/enemies/swordsman_idle.png'),
+    loadImage('swordsman_walk',         'assets/enemies/swordsman_walk.png'),
+    loadImage('swordsman_attack',       'assets/enemies/swordsman_attack.png'),
+    loadImage('swordsman_death',        'assets/enemies/swordsman_death.png'),
+    loadImage('armored_axeman_idle',    'assets/enemies/armored_axeman_idle.png'),
+    loadImage('armored_axeman_walk',    'assets/enemies/armored_axeman_walk.png'),
+    loadImage('armored_axeman_attack',  'assets/enemies/armored_axeman_attack.png'),
+    loadImage('armored_axeman_death',   'assets/enemies/armored_axeman_death.png'),
+    loadImage('armored_orc_idle',       'assets/enemies/armored_orc_idle.png'),
+    loadImage('armored_orc_walk',       'assets/enemies/armored_orc_walk.png'),
+    loadImage('armored_orc_attack',     'assets/enemies/armored_orc_attack.png'),
+    loadImage('armored_orc_death',      'assets/enemies/armored_orc_death.png'),
+    loadImage('elite_orc_idle',         'assets/enemies/elite_orc_idle.png'),
+    loadImage('elite_orc_walk',         'assets/enemies/elite_orc_walk.png'),
+    loadImage('elite_orc_attack',       'assets/enemies/elite_orc_attack.png'),
+    loadImage('elite_orc_death',        'assets/enemies/elite_orc_death.png'),
+    loadImage('knight_templar_idle',    'assets/enemies/knight_templar_idle.png'),
+    loadImage('knight_templar_walk',    'assets/enemies/knight_templar_walk.png'),
+    loadImage('knight_templar_attack',  'assets/enemies/knight_templar_attack.png'),
+    loadImage('knight_templar_death',   'assets/enemies/knight_templar_death.png'),
+    loadImage('orc_rider_idle',         'assets/enemies/orc_rider_idle.png'),
+    loadImage('orc_rider_walk',         'assets/enemies/orc_rider_walk.png'),
+    loadImage('orc_rider_attack',       'assets/enemies/orc_rider_attack.png'),
+    loadImage('orc_rider_death',        'assets/enemies/orc_rider_death.png'),
     loadImage('dungeon_tiles','assets/tiles/dungeon.png'),
 
     // Legacy shared-icon PNGs — kept as fallbacks if a dedicated per-relic

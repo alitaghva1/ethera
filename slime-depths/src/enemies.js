@@ -568,6 +568,158 @@ export const TYPES = {
     displayName: 'GREATSWORD SKELETON',
     flavor: 'a blade too heavy for the living. perfect, then, for the dead.',
   },
+
+  // ==========================================================================
+  // TINY RPG KIT — full-roster pass (second batch). Closes the kit:
+  //   F2 introduction:  soldier (basic armored, the "everyman" footsoldier)
+  //   F3 introductions: swordsman, armored_axeman, armored_orc
+  //   F4 introductions: knight_templar (holy elite), orc_rider (rare mounted)
+  //   F1 boss sprite:   elite_orc (proper visual differentiation for Grudnok)
+  // Stat rationale captured in each comment block below.
+  // ==========================================================================
+
+  // ---- SOLDIER — F2 basic armored melee. Lighter than knight_enemy
+  // (no shield, fewer HP) so F2 garrison comps have a "rank-and-file"
+  // tier beneath the elite armored layer. Reads as the "common guard"
+  // archetype the player kills many of, vs knight_enemy as the rarer
+  // shielded officer.
+  soldier: {
+    prefix: 'soldier_', drawSize: 220, radius: 22, speed: 80, hp: 100, damage: 2,
+    color: '#c0c8d0', hitCD: 1.0, fps: 9, behavior: 'melee',
+    attackReach: 60, attackArc: Math.PI * 0.55,
+    windup: 0.38, swing: 0.24,
+    telegraphColor: 'rgba(220, 220, 220, ',
+    windupSfx: { key: 'footstep_0', rate: 1.1, volume: 0.55 },
+    bloodColor: '#7a6a58',
+    displayName: 'SOLDIER',
+    flavor: 'wore the colors of a kingdom that no longer exists.',
+  },
+
+  // ---- SWORDSMAN — F3 agile mid-tier melee. Faster than the heavy
+  // armored variants, shorter windup; rewards aggressive play but
+  // punishes mistakes. Sits between werewolf (skirmisher) and
+  // armored_axeman (heavy) on the F3 melee spectrum.
+  swordsman: {
+    prefix: 'swordsman_', drawSize: 220, radius: 20, speed: 115, hp: 95, damage: 2,
+    color: '#d4c8a0', hitCD: 0.85, fps: 11, behavior: 'melee',
+    attackReach: 62, attackArc: Math.PI * 0.50,
+    windup: 0.26, swing: 0.20,
+    telegraphColor: 'rgba(220, 180, 100, ',
+    windupSfx: { key: 'footstep_0', rate: 1.5, volume: 0.55 },
+    bloodColor: '#7a6a58',
+    displayName: 'SWORDSMAN',
+    flavor: 'practiced the form a thousand times. the form practices back.',
+  },
+
+  // ---- ARMORED_AXEMAN — F3 heavy axe brute. Human-armor counterpart to
+  // greatsword_skel. Massive cleave, slow windup, big damage. Common
+  // F3 elite slot; rewards staying out of the swing arc until commit.
+  armored_axeman: {
+    prefix: 'armored_axeman_', drawSize: 240, radius: 26, speed: 70, hp: 160, damage: 3,
+    color: '#a8b0b8', hitCD: 1.15, fps: 8, behavior: 'melee',
+    attackReach: 76, attackArc: Math.PI * 0.70,
+    windup: 0.55, swing: 0.32,
+    telegraphColor: 'rgba(220, 170, 80, ',
+    heavyChance: 0.40,
+    heavyReach: 110, heavyArc: Math.PI * 0.95,
+    heavyWindup: 0.85, heavySwing: 0.40,
+    heavyDamage: 4,
+    heavyColor: 'rgba(255, 120, 60, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.65 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.38, volume: 0.85 },
+    bloodColor: '#5a4838',
+    displayName: 'ARMORED AXEMAN',
+    flavor: 'the axe is heavy. the doubt is heavier. neither slows him.',
+  },
+
+  // ---- ARMORED_ORC — F3 armored orc variant. Narrative call-back to
+  // Grudnok's veterans: orcs that came back from F1 stronger. Heavier
+  // than common orc, has a shield (3 charges, 65% reduction) plus the
+  // heavy-swing field — combines vanguard mechanics with orc damage.
+  armored_orc: {
+    prefix: 'armored_orc_', drawSize: 230, radius: 28, speed: 75, hp: 180, damage: 2,
+    color: '#9aa8a0', hitCD: 1.0, fps: 9, behavior: 'melee',
+    attackReach: 64, attackArc: Math.PI * 0.60,
+    windup: 0.42, swing: 0.26,
+    telegraphColor: 'rgba(210, 80, 80, ',
+    heavyChance: 0.32,
+    heavyReach: 92, heavyArc: Math.PI * 0.88,
+    heavyWindup: 0.72, heavySwing: 0.34,
+    heavyDamage: 3,
+    heavyColor: 'rgba(255, 130, 50, ',
+    shieldCharges: 3,
+    shieldArc: Math.PI * 0.70,
+    shieldReduction: 0.65,
+    windupSfx: { key: 'hero_hurt', rate: 0.60, volume: 0.6 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.42, volume: 0.85 },
+    bloodColor: '#3a4a3a',
+    displayName: 'ARMORED ORC',
+    flavor: 'survived the warchief. learned what survival costs.',
+  },
+
+  // ---- ELITE_ORC — F1 BOSS sprite (Grudnok). Replaces the orc-def-
+  // doubles-as-boss hack so the F1 boss is visually distinct from the
+  // common orcs the player kills in F2-F4. All boss-fight stats
+  // (heavy variant 30%, the WARCHIEF GRUDNOK display name + flavor)
+  // live here now. Common orc keeps its mid-tier mob role.
+  // Also slots into the F2 mini-boss rotation as a callback to F1.
+  elite_orc: {
+    prefix: 'elite_orc_', drawSize: 230, radius: 28, speed: 85, hp: 200, damage: 2,
+    color: '#7fa34a', hitCD: 0.92, fps: 9, behavior: 'melee',
+    attackReach: 66, attackArc: Math.PI * 0.62,
+    windup: 0.38, swing: 0.26,
+    telegraphColor: 'rgba(210, 45, 55, ',
+    heavyChance: 0.32,
+    heavyReach: 96, heavyArc: Math.PI * 0.90,
+    heavyWindup: 0.70, heavySwing: 0.34,
+    heavyDamage: 3,
+    heavyColor: 'rgba(255, 140, 40, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.6 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.38, volume: 0.85 },
+    bloodColor: '#3a4a30',
+    displayName: 'WARCHIEF GRUDNOK',
+    flavor: 'chieftain of the iron-bone clans',
+    bossTrack: 'boss',
+  },
+
+  // ---- KNIGHT_TEMPLAR — F4 holy armored elite. Pairs with priest
+  // for "templar guard" comps. Highest shield reduction in the kit
+  // (4 charges, 85% reduction) — the most imposing armored unit
+  // short of a boss. Fire element matches the F4 inferno biome.
+  knight_templar: {
+    element: 'fire',
+    prefix: 'knight_templar_', drawSize: 230, radius: 24, speed: 75, hp: 150, damage: 2,
+    color: '#e8d8a0', hitCD: 1.10, fps: 8, behavior: 'melee',
+    attackReach: 66, attackArc: Math.PI * 0.62,
+    windup: 0.48, swing: 0.28,
+    telegraphColor: 'rgba(255, 200, 120, ',
+    shieldCharges: 4,
+    shieldArc: Math.PI * 0.80,
+    shieldReduction: 0.85,
+    windupSfx: { key: 'footstep_0', rate: 0.85, volume: 0.6 },
+    bloodColor: '#c9a86a',
+    displayName: 'KNIGHT TEMPLAR',
+    flavor: 'sworn to a fire that no longer warms anyone.',
+  },
+
+  // ---- ORC_RIDER — F4 rare mounted unit. Lancer-style charge behavior
+  // suits the mounted theme (charges in straight lines, the rider-as-
+  // missile read). Higher HP than lancer, longer charge range. Rare
+  // slot in tier4; alternative F4 mini-boss option vs hermit.
+  orc_rider: {
+    prefix: 'orc_rider_', drawSize: 250, radius: 28, speed: 130, hp: 180, damage: 3,
+    color: '#a89060', hitCD: 1.4, fps: 9, behavior: 'lancer',
+    chargeRange: 460,
+    chargeWidth: 42,
+    chargeWindup: 0.65,
+    chargeTravel: 0.30,
+    preferDist: 320, minDist: 200,
+    telegraphColor: 'rgba(220, 160, 90, ',
+    windupSfx: { key: 'footstep_0', rate: 0.72, volume: 0.65 },
+    bloodColor: '#3a4a30',
+    displayName: 'ORC RIDER',
+    flavor: 'rides a thing that should not still be running.',
+  },
 };
 
 // ============================================================================

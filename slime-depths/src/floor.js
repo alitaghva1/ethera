@@ -110,21 +110,51 @@ function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 // possible spawn list for a combat room; floor.js / floorGraph.js pick
 // from these by floor level + room slot via tierForSlot.
 //
-// Per-floor enemy identity (Tiny RPG kit pass — six new enemies wired
-// from the kit replace several "<orc retint>" / "<wiz retint>" stand-ins):
+// PER-FLOOR ENEMY IDENTITY — staggered introductions. The full Tiny RPG
+// kit (20 characters) is now wired across the four floors. Each floor
+// ADDS a few new types to the prior pool, so the player learns a
+// manageable number of new mechanics per descent rather than seeing the
+// whole roster at F2:
 //
-//   tier1 (F1 crypt):  slime + skel + skel_archer + lancer + bomber
-//                      — bone-themed; the human archer was retired here
-//                        because it read tonally off in the crypt.
-//   tier2 (F2 vault):  + orc, archer, vanguard, knight_enemy, armored_skel,
-//                        priest, wizard, haunt
-//                      — "former garrison" theme; armor + shield variety.
-//   tier3 (F3 abyss):  + reflector, dreadmage, warden, werewolf, werebear,
-//                        greatsword_skel
-//                      — bestial + warped; chase/corner dynamic.
-//   tier4 (F4 inferno):drops slime/skel-light, biases ember + heavy bone +
-//                        dreadmage + werebear into a dense roster. NEW —
-//                        floor 4 used to recycle tier3 with stat multipliers.
+//   tier1 (F1 crypt) — 5 types · bone & ooze
+//     slime, skel, skel_archer, lancer, bomber
+//     The crypt is bone-themed end-to-end (no human archer). Lancer
+//     introduces the "linear charge" telegraph early so it's a known
+//     pattern by F2. Bomber introduces AoE damage.
+//
+//   tier2 (F2 vault) — +9 types · former garrison
+//     + orc, archer, vanguard, knight_enemy, armored_skel, soldier,
+//       priest, wizard, haunt
+//     The "former garrison" theme — the kingdom's old guard, twisted.
+//     Armor variety (soldier as common rank, knight_enemy + armored_skel
+//     as elites), first ranged caster (wizard), first healer (priest),
+//     first aerial threat (haunt).
+//
+//   tier3 (F3 abyss) — +9 types · warped + bestial
+//     + reflector, dreadmage, warden, werewolf, werebear,
+//       greatsword_skel, swordsman, armored_axeman, armored_orc
+//     The Spire's biome twists what F2 brought: bestial pair (werewolf
+//     fast / werebear heavy), heavier armored (greatsword_skel,
+//     armored_axeman), the orc bloodline that survived F1 (armored_orc),
+//     dread casters that punish positioning (dreadmage), and the
+//     reflector / warden mini-boss-tier mechanics.
+//
+//   tier4 (F4 inferno) — +2 types · throne of ruin
+//     + knight_templar, orc_rider
+//     Holy-fire elite (templar pairs with priest in "garrison of ash"
+//     comps) and the rare mounted lancer (orc_rider — a single rider
+//     in a comp is a massive threat). Most F4 comps remix tier2/tier3
+//     bias toward heavy hitters; templar + rider are the only F4-
+//     exclusive new mechanics.
+//
+// BOSSES use distinct sprites:
+//   F1 elite_orc (Grudnok), F2 bone_captain, F3 broodmother, F4 ember_tyrant.
+//
+// MINI-BOSSES rotate per floor (see makeMiniBossRoom):
+//   F1: vanguard / knight_enemy
+//   F2: warden / elite_orc / greatsword_skel
+//   F3: reflector / armored_axeman / werebear
+//   F4: hermit / orc_rider / knight_templar
 const COMP = {
   tier1: [
     ['slime', 'slime', 'slime'],
@@ -148,6 +178,12 @@ const COMP = {
     ['armored_skel', 'archer', 'skel'],           // F2 garrison — armored bone leads
     ['armored_skel', 'priest', 'skel_archer'],    // healer-backed armored push
     ['knight_enemy', 'armored_skel', 'archer'],   // double-shielded front line
+    // Tiny RPG kit second batch — F2 introduces soldier (basic armored
+    // common, beneath the elite knight/armored_skel layer):
+    ['soldier', 'soldier', 'archer'],             // common rank-and-file pair + ranged
+    ['soldier', 'archer', 'archer', 'slime'],     // wide front: 4 enemies, mostly weak
+    ['soldier', 'knight_enemy', 'archer'],        // common + elite — visual hierarchy
+    ['soldier', 'priest', 'skel'],                // healer-backed common push
     // Content pass B3 — airborne harasser:
     ['haunt', 'skel', 'archer'],
     ['haunt', 'haunt', 'slime'],
@@ -182,6 +218,19 @@ const COMP = {
     ['werewolf', 'haunt', 'haunt'],                // air + ground chase pressure
     ['greatsword_skel', 'skel_archer', 'skel'],    // heavy bone cleaver anchors
     ['greatsword_skel', 'priest', 'archer'],
+    // Tiny RPG kit second batch — F3 introduces 3 new types:
+    //   swordsman      — agile mid-tier (between werewolf and knight)
+    //   armored_axeman — heavy axe brute (human counterpart to greatsword_skel)
+    //   armored_orc    — Grudnok's veterans, returned heavier
+    ['swordsman', 'swordsman', 'archer'],          // duelist pair — fast pressure
+    ['swordsman', 'werewolf', 'priest'],           // two skirmishers + healer
+    ['swordsman', 'dreadmage', 'skel'],            // fast melee + caster combo
+    ['armored_axeman', 'priest', 'archer'],        // brute + ranged support
+    ['armored_axeman', 'archer', 'archer', 'skel'],
+    ['armored_axeman', 'dreadmage', 'haunt'],      // brute + caster + air
+    ['armored_orc', 'orc', 'archer'],              // armored elder + common
+    ['armored_orc', 'priest', 'lancer'],
+    ['armored_orc', 'armored_orc', 'haunt'],       // veteran pair — dangerous
   ],
   // Floor 4 (Inferno / Throne of Ruin) — distinct enemy mix from tier3,
   // not just stat-scaled. Drops light slime/lancer/skel comps; biases
@@ -198,6 +247,18 @@ const COMP = {
     ['knight_enemy', 'warden', 'haunt', 'haunt'],
     ['werebear', 'werebear', 'priest'],                  // twin brute
     ['greatsword_skel', 'greatsword_skel', 'dreadmage'], // twin heavy + caster
+    ['armored_orc', 'armored_axeman', 'dreadmage'],      // F3 elite carryover
+    ['armored_orc', 'armored_orc', 'priest', 'haunt'],
+    // Tiny RPG kit second batch — F4 introduces 2 new types:
+    //   knight_templar — holy elite, pairs with priest in "garrison of ash"
+    //   orc_rider      — rare mounted lancer; one rider is a major threat
+    ['knight_templar', 'priest', 'archer'],              // templar guard
+    ['knight_templar', 'knight_templar', 'priest'],      // double templar — heavy block
+    ['knight_templar', 'dreadmage', 'priest'],           // tank + caster + healer
+    ['knight_templar', 'haunt', 'haunt', 'priest'],      // ground tank + air pressure
+    ['orc_rider', 'archer', 'archer'],                    // rider charges + ranged cover
+    ['orc_rider', 'armored_orc', 'priest'],               // rider + veteran + heal
+    ['orc_rider', 'dreadmage', 'haunt'],                  // chaotic mix
   ],
   boss: [
     ['orc', 'archer', 'archer'],
@@ -522,11 +583,18 @@ function makeMiniBossRoom(level) {
   // Warden is our dedicated mini-boss asset; put it at floor 2 where its
   // heavy-telegraph pacing matches player skill. Other floors rotate
   // unique-mechanic enemies.
-  const miniType = level === 1 ? 'vanguard'
-                 : level === 2 ? 'warden'
-                 : level === 3 ? 'reflector'
-                 : level === 4 ? 'hermit'       // floor 4's signature mini-boss
-                 : 'dreadmage';
+  // Mini-boss rotation per floor. Each floor has a primary + a callback
+  // alternative so back-to-back runs don't always show the same elite.
+  // F2 elite_orc as a callback to the F1 fight (Grudnok's surviving
+  // veterans), F3 armored_axeman as a heavy human contrast to the
+  // bestials, F4 orc_rider as a rare mounted alternative to hermit.
+  const F1_OPTIONS = ['vanguard', 'knight_enemy'];
+  const F2_OPTIONS = ['warden', 'elite_orc', 'greatsword_skel'];
+  const F3_OPTIONS = ['reflector', 'armored_axeman', 'werebear'];
+  const F4_OPTIONS = ['hermit', 'orc_rider', 'knight_templar'];
+  const optionsByLevel = { 1: F1_OPTIONS, 2: F2_OPTIONS, 3: F3_OPTIONS, 4: F4_OPTIONS };
+  const opts = optionsByLevel[level] || ['dreadmage'];
+  const miniType = pick(opts);
   return {
     kind: 'combat',
     slotLabel: 'miniboss',
@@ -592,7 +660,12 @@ export function makeBossSpawns(level, pillarTemplate = -1, bossW = ROOM_W, bossH
   // Floor 4's THRONE OF RUIN gets its own boss — The Ember Tyrant — instead
   // of falling back to orc. Arena hazards (6 fire pools + 2 spikes) are
   // already wired in room.js:471 for this bossType.
-  const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother', 4: 'ember_tyrant' }[level] || 'orc';
+  // F1 boss now uses elite_orc (proper Grudnok sprite), retiring the
+  // orc-def-doubles-as-boss hack that made common orcs in F2-F4
+  // tooltip as "WARCHIEF GRUDNOK". elite_orc has the boss fields
+  // (heavyChance, displayName, flavor, bossTrack) — orc def keeps the
+  // mid-tier-mob role.
+  const bossType = { 1: 'elite_orc', 2: 'bone_captain', 3: 'broodmother', 4: 'ember_tyrant' }[level] || 'elite_orc';
   const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'], 4: ['bomber', 'dreadmage'] }[level] || [];
   const cells = spawnCells(adds.length, pillarTemplate, bossW, bossH);
   const spawns = [
