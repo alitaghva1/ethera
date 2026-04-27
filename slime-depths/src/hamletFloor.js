@@ -156,9 +156,9 @@ const EXCLUSIONS = [
   // Anvil — full anvil + tree stump at (925, 316). Covers the
   // visible mass of the prop so hero bumps off from any direction.
   { x1: 899, y1: 297, x2: 954, y2: 347 },
-  // Cooking pot — full pot body + tripod at (891, 425). Covers the
+  // Cooking pot — full pot body + tripod at (907, 421). Covers the
   // full visible kettle from rim to tripod feet.
-  { x1: 864, y1: 403, x2: 919, y2: 458 },
+  { x1: 880, y1: 399, x2: 935, y2: 454 },
   // Lectern EXCLUSION removed (lectern FX entry removed).
   // Scrying basin LEFT at (650, 226). Tall pedestal — narrow base.
   { x1: 635, y1: 236, x2: 665, y2: 266 },
