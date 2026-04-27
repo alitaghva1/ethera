@@ -474,25 +474,29 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
-  // Bookcase pair removed per user request 2026-04-27 — didn't look
-  // good in the archivist nook. Asset fx_bookcase.png kept on disk +
-  // loader entry intact so re-adding is just restoring this block.
-  /*
   {
+    // Bookcase v2 (STATIC, single frame). New 48×48 native sprite
+    // (was 112×112 v1 which was removed). Sits in the archivist's
+    // nook against the L-bend ruined wall. Paired with the study
+    // desk in a stagger layout — bookcase on the wall, desk in the
+    // foreground. Scale 1.4× → 67px rendered (matches other props).
     id: 'bookcase', asset: 'fx_bookcase',
-    x: 425, y: 398,
-    frameW: 112, frameH: 112,
+    x: 425, y: 395,
+    frameW: 48, frameH: 48,
     frameCount: 1, fps: 1,
-    scale: 0.6, yOffset: 0,
+    scale: 1.4, yOffset: 0,
   },
   {
-    id: 'bookcase2', asset: 'fx_bookcase',
-    x: 475, y: 398,
-    frameW: 112, frameH: 112,
+    // Study desk (STATIC, single frame). Sits south of the bookcase
+    // in the archivist's nook. Together they form a 'reading station'
+    // arrangement: bookcase against wall + desk in front. Archivist
+    // NPC at (391, 470) stands south of the desk.
+    id: 'studydesk', asset: 'fx_studydesk',
+    x: 475, y: 425,
+    frameW: 48, frameH: 48,
     frameCount: 1, fps: 1,
-    scale: 0.6, yOffset: 0,
+    scale: 1.4, yOffset: 0,
   },
-  */
   // Gravestones FX removed per user request 2026-04-27 — felt off
   // visually. Asset fx_graves.png kept on disk + loader entry intact
   // so re-adding is just restoring this block.

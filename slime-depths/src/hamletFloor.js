@@ -164,7 +164,10 @@ const EXCLUSIONS = [
   { x1: 635, y1: 236, x2: 665, y2: 266 },
   // Scrying basin RIGHT (twin) at (726, 226).
   { x1: 711, y1: 236, x2: 741, y2: 266 },
-  // Bookcase pair EXCLUSIONS removed (FX entries removed).
+  // Bookcase v2 at (425, 395) — wall side of the archivist nook.
+  { x1: 400, y1: 380, x2: 450, y2: 410 },
+  // Study desk at (475, 425) — foreground south of bookcase.
+  { x1: 450, y1: 410, x2: 500, y2: 440 },
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 
