@@ -453,6 +453,8 @@ export async function loadAll(progressCb) {
     // HAMLET_FX registry in hamletScene.js. Drawn via drawHamletFx as
     // an overlay pass on top of the painted backdrop.
     loadImage('fx_firepit',             'assets/hamlet/fx_firepit.png'),
+    loadImage('fx_portal',              'assets/hamlet/fx_portal.png'),
+    loadImage('fx_cookingpot',          'assets/hamlet/fx_cookingpot.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),
