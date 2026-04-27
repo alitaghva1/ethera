@@ -128,19 +128,15 @@ export const HAMLET_ENTITIES = [
 // NPCs and the portal/firepit/shrine entities are NOT in this list —
 // the hero is meant to walk THROUGH NPCs (overlapping is fine for a hub
 // area) and onto the portal/firepit tile (that's how interactions fire).
-export const HAMLET_OBSTACLES = [
-  // NPC body collision — circles at each NPC's foot position so the
-  // hero can't walk THROUGH them. r=18 gives a soft bump-off feel
-  // (hero is pushed back along the radial direction by the resolver
-  // in resolveHamletCollision). Positions match HAMLET_ENTITIES NPC
-  // coords above. Update both arrays together when moving NPCs.
-  { x: 756, y: 382, r: 18 },     // keeper
-  { x: 975, y: 310, r: 18 },     // smith
-  { x: 391, y: 470, r: 18 },     // archivist
-  { x: 455, y: 288, r: 18 },     // gravekeeper
-  { x: 680, y: 275, r: 18 },     // oracle
-  { x: 947, y: 471, r: 18 },     // wanderer
-];
+// NPC body collision — derived from HAMLET_ENTITIES so the two arrays
+// can never drift. r=18 gives a soft bump-off feel (the resolver in
+// resolveHamletCollision pushes the hero back along the radial
+// direction when overlapping). Previously this was a hand-maintained
+// parallel array that drifted from HAMLET_ENTITIES at least 3 times
+// during recent placement iterations.
+export const HAMLET_OBSTACLES = HAMLET_ENTITIES
+  .filter(e => e.kind === 'npc')
+  .map(e => ({ x: e.x, y: e.y, r: 18 }));
 
 // Push the hero out of any prop obstacle they're inside, AND clamp them
 // to the walkable area (the irregular silhouette defined by ZONES +

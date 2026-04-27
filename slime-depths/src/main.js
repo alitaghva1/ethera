@@ -4588,7 +4588,7 @@ function tick(now) {
       updateSynergies(dt);
       updateWanderer(dt);
     }
-    updateGold(dt);
+    updateGold(dt, hero);
     updateHudAnims(realDt);
     // Tick the prevRoom residue (the snapshot of the room we just left,
     // fading out behind the hero for "see where I came from" continuity).
