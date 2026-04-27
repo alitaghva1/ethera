@@ -92,7 +92,13 @@ export const HAMLET_ENTITIES = [
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 380, y: 470, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'gravekeeper', spriteIdx: 3,   x: 293, y: 290, interactR: 50, drawScale: 0.90 },
   { kind: 'npc', id: 'oracle',      spriteIdx: 4,   x: 680, y: 260, interactR: 50, drawScale: 0.95 },
-  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 907, y: 480, interactR: 50, drawScale: 0.90 },
+  // wanderer: shifted east from x=907 to x=985 so they stand BESIDE the
+  // cooking pot FX (also at x=907) rather than directly in front of it.
+  // y-sort always drew the wanderer on top because their y (480) > pot y
+  // (437), occluding most of the kettle. New position: ~78px east, same
+  // y, still on the camp dirt patch — reads as "tending the fire from
+  // the side" instead of "blocking the view."
+  { kind: 'npc', id: 'wanderer',    spriteIdx: 5,   x: 985, y: 480, interactR: 50, drawScale: 0.90 },
 ];
 
 // Solid obstacles the hero can't walk through. Circle-only for simplicity;
