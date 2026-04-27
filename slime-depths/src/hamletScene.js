@@ -475,24 +475,24 @@ const HAMLET_FX = [
     scale: 0.6, yOffset: 0,
   },
   {
-    // Bookcase v2 (STATIC, single frame). New 48×48 native sprite
-    // (was 112×112 v1 which was removed). Sits in the archivist's
-    // nook against the L-bend ruined wall. Paired with the study
-    // desk in a stagger layout — bookcase on the wall, desk in the
-    // foreground. Scale 1.4× → 67px rendered (matches other props).
+    // Bookcase v2 (STATIC, single frame). 48×48 native, scaled 1.4×
+    // → 67px rendered. Anchored to the WEST wall of the archivist's
+    // L-shaped nook at (360, 440). Paired with the study desk on the
+    // NORTH wall — together they wrap the corner of the nook into
+    // a proper library/study station around the archivist NPC.
     id: 'bookcase', asset: 'fx_bookcase',
-    x: 425, y: 395,
+    x: 360, y: 440,
     frameW: 48, frameH: 48,
     frameCount: 1, fps: 1,
     scale: 1.4, yOffset: 0,
   },
   {
-    // Study desk (STATIC, single frame). Sits south of the bookcase
-    // in the archivist's nook. Together they form a 'reading station'
-    // arrangement: bookcase against wall + desk in front. Archivist
-    // NPC at (391, 470) stands south of the desk.
+    // Study desk (STATIC, single frame). Anchored to the NORTH wall
+    // of the archivist nook at (470, 395). Bookcase on west wall +
+    // desk on north wall = L-shape reading station around the
+    // archivist NPC at (391, 470).
     id: 'studydesk', asset: 'fx_studydesk',
-    x: 475, y: 425,
+    x: 470, y: 395,
     frameW: 48, frameH: 48,
     frameCount: 1, fps: 1,
     scale: 1.4, yOffset: 0,
