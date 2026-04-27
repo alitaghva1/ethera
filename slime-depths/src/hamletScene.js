@@ -355,54 +355,29 @@ const HAMLET_FX = [
     scale: 1.4, yOffset: 0,
   },
   {
-    // Portal (v4 — corrected: NEW subtle muted runic glyph circle).
-    // 4 frames × 112×112 native. Sits on the dark circular pit in the
-    // central plaza at PORTAL_POS (688, 365). PIL-detected pit center:
-    // bbox x[638-737] y[330-410]. Scaled 1.1× → ~123px rendered: the
-    // FX FULLY COVERS the painted pit (which is ~100×80) so no painted
-    // shadow leaks around the FX edges as a 'grimy halo.' Earlier
-    // 0.8× (~90px) left ~15px of pit shadow visible around the FX,
-    // which the user called out as a grimy/dirty halo. Shorter frame
-    // count means proximity fps tiers are tuned down (2/3/4 instead
-    // of 4/5/6) so the active phase doesn't blow through the loop in
-    // under a second.
+    // Portal (simplified holistic config). 4 frames × 112×112 native,
+    // scaled 1.1× → ~123px rendered. Position (688, 365) sits on the
+    // PIL-detected painted pit center (bbox ~100×80). Scale fully
+    // covers the painted pit, so no shadow leaks around the FX.
     //
-    // Animation rhythm uses three layered systems (all optional, all
-    // parsed by drawHamletFx — see that function for the math):
+    // Animation philosophy: SIMPLE. Constant alpha=1.0 always (no
+    // proximity tiers, no restAlphaMul, no fadeSeconds). Continuous
+    // 2fps loop = 4 frames × 2fps = 2s cycle, slow gentle rune drift.
     //
-    //  1. proximity tiers (alpha + fps + holdSeconds change with hero
-    //     distance). Linearly interpolated between adjacent tiers.
-    //     Far: dormant + dim + slow + long rests. Near: responsive +
-    //     bright + fast + short rests. Reads as "the portal noticed
-    //     you" without any explicit player-detection code.
-    //
-    //  2. restAlphaMul (0..1) — during the rest phase between pulses,
-    //     the alpha drops to peakAlpha × this factor. 0.4 means "rest
-    //     state is 40% as bright as the active pulse peak." Keeps the
-    //     portal visible (so the player can find it) without strobing.
-    //
-    //  3. fadeSeconds — smooth alpha lerp at the active/rest boundary
-    //     instead of a hard cut. 0.5s fade in + 0.5s fade out feels
-    //     like a slow breath.
-    //
-    // Tuned with: at far (>320px) portal is barely visible, occasional
-    // soft pulse. At near (<40px, hero standing on pad) portal is fully
-    // bright, pulses every 2.5s. The transition is continuous as the
-    // hero walks toward it.
+    // Why simplified: prior config used proximity-driven alpha to
+    // create a 'portal noticed you' effect, but the alpha modulation
+    // caused 'portal-on-portal' artifacts — when alpha dropped to ~0.35
+    // at far range, the painted pit underneath bled through the FX
+    // center, reading as TWO stacked portal visuals. Removing the
+    // alpha modulation entirely fixes it: FX is always fully opaque,
+    // painted pit is always fully covered. The lost theatrics weren't
+    // worth the visual artifact. Pulse rhythm is constant regardless
+    // of hero distance — clean and predictable.
     id: 'portal', asset: 'fx_portal',
     x: 688, y: 365,
     frameW: 112, frameH: 112,
-    frameCount: 4,
+    frameCount: 4, fps: 2,
     scale: 1.1, yOffset: 0,
-    proximity: [
-      // Tiers ordered far → near. Distance in world px from FX center.
-      // fps tuned down vs v3 since the loop is only 4 frames now.
-      { dist: 320, alpha: 0.35, fps: 2, holdSeconds: 8 },     // dormant
-      { dist: 160, alpha: 0.65, fps: 3, holdSeconds: 4 },     // warming
-      { dist:  40, alpha: 1.00, fps: 4, holdSeconds: 1 },     // responsive
-    ],
-    restAlphaMul: 0.4,
-    fadeSeconds: 0.5,
   },
   {
     // Cooking pot (v2 generation — cleaner kettle silhouette). Sits
