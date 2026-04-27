@@ -1381,7 +1381,15 @@ export function updateHero(dt, enemies, mouseWorld) {
 // Returns: 'hit' | 'absorbed' | 'perfect' — so callers can apply affix effects only on real hits
 export function damageHero(amount, fromX, fromY) {
   if (hero.state === 'dead') return 'absorbed';
-  if (hero.state === 'dodge') {
+  // Perfect dodge: only fires on a TRUE dodge (Space input), not on
+  // dash strikes that reuse the 'dodge' state for animation + iframes.
+  // The dashStrikeTime guard distinguishes them — without it, every
+  // hostile projectile that hit during a dash strike silently triggered
+  // perfect-dodge bonuses (counter crit, whisper veil window, dash
+  // master CD refund, oathshield boost, etc.). Dash strike has its
+  // own iframes for safety; the damage gets absorbed lower in the
+  // function via the iframes check.
+  if (hero.state === 'dodge' && hero.dashStrikeTime <= 0) {
     triggerPerfectDodge();
     stats.perfectDodges++;
     // SYSTEMS PASS — DASH MASTER: perfect dodges refund the dodge cooldown,
