@@ -21,28 +21,30 @@ import { showTip } from './tips.js';
 import { markChainFired, markPyroFired } from './counterPips.js';
 import { synthSwoosh, synthClick } from './synth.js';
 
-// ── DASH STRIKE → TELEPORT FEEL ─────────────────────────────────────────
-// The dash used to be a 0.22s slide at 900→360 px/s linear-decel — long
-// enough that the player saw the hero interpolate across, short enough
-// that it felt jerky. We rebuilt it as a teleport read:
+// ── DASH STRIKE + DODGE — AFTERIMAGE GHOST TRAILS ───────────────────────
+// Both abilities capture hero pose at intervals during travel and render
+// fading copies as a "where I just was" trail. They share the same buffer
+// + render path; the per-entry `kind` field flags 'dash' (golden, hero
+// sprite hidden, magical teleport read) vs 'dodge' (cool blue, hero
+// sprite at 35% alpha, snappy roll read).
 //
-//   - 0.10s duration (twice as fast)
-//   - constant 1700 px/s (no decel — teleports don't ease)
-//   - hero sprite SKIPPED during travel (no visible interpolated body)
-//   - afterimage ghost trail captures hero pose at intervals during the
-//     dash; copies render fading 0.5 → 0 over their AFTERIMAGE_LIFE
-//   - magical pop bursts at origin + arrival
-//   - synthSwoosh on cast / synthClick on arrive (replaces sword-swing
-//     audio that read as a melee attack)
+// DASH (Q): 0.10s @ 1700 px/s constant — teleport read with magical pops.
+// DODGE (Space): 0.32s @ 580 px/s constant — snappier than the old decel
+//                feel (was 620 with quadratic decel — the last third
+//                felt stuck mid-roll). Duration kept at 0.32 to preserve
+//                iframes + perfect-dodge timing window.
 //
-// Total dash distance is ~170px — close to the original ~185px, so the
-// gameplay reach is preserved; only the visual interpretation changes.
+// Total dash distance is ~170px (close to the original ~185px); dodge
+// distance is now ~186px (was ~99px — the decel had been halving the
+// integral). Player feedback flagged dodge as feeling "off" relative
+// to the new dash polish; the new constant speed gives dodge real reach.
 const DASH_DUR = 0.10;
 const DASH_SPEED = 1700;
 const AFTERIMAGE_LIFE = 0.20;
 const AFTERIMAGE_INTERVAL = 0.018;     // capture roughly every other frame
-// Captured during dash advance, drained by drawHero. Each entry:
-// { x, y, dir, frame, age, drawSize }
+const DODGE_AFTERIMAGE_INTERVAL = 0.05;  // sparser captures — dodge isn't a teleport
+// Captured during dash/dodge advance, drained by drawHero. Each entry:
+// { x, y, dir, age, kind ('dash' | 'dodge') }
 const _dashAfterimages = [];
 let _dashAfterimageNextT = 0;          // accumulator vs. AFTERIMAGE_INTERVAL
 
@@ -66,8 +68,14 @@ const HERO_DRAW_HAMLET = 48;       // smaller in the hub — hamlet NPCs draw at
                                    // tuning is a follow-up pass).
 const HERO_RADIUS = 14;            // collision
 const HERO_SPEED = 230;
-const DODGE_SPEED = 620;
-const DODGE_DUR = 0.32;      // was 0.28 — slightly more generous perfect-dodge window
+// Dodge tuning. SPEED was 620 with a `(1 - t*t)` quadratic decel — the
+// last third felt stuck mid-roll. Replaced by constant 580 px/s
+// (effectively reaches further: 0.32 × 580 × dodgeDistMul ≈ 186px,
+// vs the old ~99px under the decel curve). DURATION held at 0.32 to
+// preserve iframes (DODGE_DUR + 0.05 = 0.37s) and the perfect-dodge
+// timing window. Cooldown unchanged.
+const DODGE_SPEED = 580;
+const DODGE_DUR = 0.32;
 const DODGE_COOLDOWN = 0.6;
 const IFRAME_AFTER_HIT = 0.55;
 
@@ -561,6 +569,10 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.dodgeDirX = dx / m;
       hero.dodgeDirY = dy / m;
       hero.dodgeCooldown = DODGE_COOLDOWN * hero.dodgeCooldownMul;
+      // Reset afterimage capture cadence + clear stale trail from a prior
+      // dash/dodge so the new dodge starts with a fresh visual budget.
+      _dashAfterimages.length = 0;
+      _dashAfterimageNextT = 0;
       // Never shorten a longer invuln window already in-flight (post-hurt stagger,
       // Aegis Pulse, etc.) — take the max so dodging can't strip safety frames.
       hero.iframes = Math.max(hero.iframes || 0, DODGE_DUR + 0.05);
@@ -789,6 +801,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           y: hero.y,
           dir: heroDirection(hero),
           age: 0,
+          kind: 'dash',     // golden tint, no live hero sprite
         });
       }
       // Golden trail still runs for extra streak feel (the dashTrail
@@ -827,10 +840,28 @@ export function updateHero(dt, enemies, mouseWorld) {
         try { synthClick(1.2, 0.6); } catch (_e) {}
       }
     } else {
-      const t = hero.stateTime / DODGE_DUR;
-      const speed = DODGE_SPEED * hero.dodgeDistMul * (1 - t * t);
+      // Dodge motion: constant DODGE_SPEED (no decel). dodgeDistMul
+      // stays in the calc so Wanderer's Cloak / boots / memories that
+      // scale dodge distance still work.
+      const speed = DODGE_SPEED * hero.dodgeDistMul;
       moveAxis('x', hero.dodgeDirX * speed * dt);
       moveAxis('y', hero.dodgeDirY * speed * dt);
+      // Capture cool-blue afterimage ghosts. Sparser interval than the
+      // dash (dodge happens 5-10× per fight; we don't want a beefy
+      // golden trail every Space tap). The cool tint distinguishes
+      // dodge from dash visually so the player reads them as different
+      // abilities at a glance.
+      _dashAfterimageNextT -= dt;
+      if (_dashAfterimageNextT <= 0) {
+        _dashAfterimageNextT = DODGE_AFTERIMAGE_INTERVAL;
+        _dashAfterimages.push({
+          x: hero.x,
+          y: hero.y,
+          dir: heroDirection(hero),
+          age: 0,
+          kind: 'dodge',     // cool blue tint, hero sprite stays at low alpha
+        });
+      }
       if (Math.random() < 0.6) dashTrail(hero.x, hero.y);
       // Add a trail point every frame during dodge for Thunder Step
       if (hero.thunderStep) addThunderTrailPoint(hero.x, hero.y);
@@ -1493,33 +1524,44 @@ export function heroDirection(h = hero) {
   return dir;
 }
 
-// Render the dash afterimage ghost trail. Each entry is a hero pose
-// captured at AFTERIMAGE_INTERVAL during the dash; we render them as
-// fading copies so the player reads "where I just was" instead of an
+// Render the dash/dodge afterimage ghost trail. Each entry is a hero
+// pose captured at intervals during travel; we render them as fading
+// copies so the player reads "where I just was" instead of an
 // interpolated body sliding through. Drawn BEFORE the main hero sprite
-// so afterimages sit underneath ARRIVED hero (during the few frames
-// after the dash ends and the trail is still draining).
+// so afterimages sit underneath the arrived hero (during the few frames
+// after the move ends and the trail is still draining).
+//
+// Per-entry `kind` tints + peak alpha differ per ability:
+//   dash  — golden, peak alpha 0.5 (live hero is hidden, ghosts carry
+//           the visual entirely)
+//   dodge — cool blue, peak alpha 0.35 (live hero stays at low alpha,
+//           ghosts add the motion-blur read on top)
+//
+// The two filters use the same hue-rotate technique on a saturated
+// silhouette — sharp tinted ghosts that don't duplicate the hero's
+// detail (which would read as "two heroes" instead of "trail").
+const _AFTERIMAGE_FILTER_GOLD = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(-10deg) saturate(700%) brightness(1.4)';
+const _AFTERIMAGE_FILTER_BLUE = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(170deg) saturate(700%) brightness(1.4)';
 function drawDashAfterimages(ctx) {
   if (_dashAfterimages.length === 0) return;
   const info = heroFrameInfo();
   const img = info.img;
   if (!img) return;
-  // For each afterimage, derive a frame number (use the dash idle/walk
-  // pose — frame 0 is fine; the silhouette is the cue). Direction was
-  // captured at the time of the snapshot.
   const drawSize = room.kind === 'hamlet' ? HERO_DRAW_HAMLET : HERO_DRAW;
   const sx0 = 0;
   ctx.save();
   for (const a of _dashAfterimages) {
     // Fade curve: opaque when newest, fade to 0 over AFTERIMAGE_LIFE.
-    // 0.5 peak alpha so the trail reads as a ghost, not a solid copy.
+    // Peak alpha differs per kind — dash trails carry the visual alone
+    // so they're brighter; dodge ghosts share the screen with a
+    // dimmed live hero so they're more subdued.
+    const isDash = a.kind === 'dash';
+    const peakAlpha = isDash ? 0.5 : 0.35;
     const lifeFrac = 1 - (a.age / AFTERIMAGE_LIFE);
-    const alpha = 0.5 * lifeFrac * lifeFrac;     // ease-out
+    const alpha = peakAlpha * lifeFrac * lifeFrac;     // ease-out
     if (alpha <= 0.02) continue;
     ctx.globalAlpha = alpha;
-    // Warm tint via canvas filter so the ghosts read as "magical"
-    // not "duplicate hero" — golden hue + slight brightness boost.
-    ctx.filter = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(-10deg) saturate(700%) brightness(1.4)';
+    ctx.filter = isDash ? _AFTERIMAGE_FILTER_GOLD : _AFTERIMAGE_FILTER_BLUE;
     const sy = a.dir * SPR;
     ctx.drawImage(img, sx0, sy, SPR, SPR,
                   a.x - drawSize / 2, a.y - drawSize * 0.75,
@@ -1620,10 +1662,20 @@ export function drawHero(ctx) {
     ctx.restore();
     return;
   }
+  // DODGE — hero sprite renders at low alpha so the live body reads as
+  // motion-blurred instead of a fully-visible slide. Afterimage ghosts
+  // (cool blue, dropped at intervals during the dodge) do most of the
+  // visual work; the live sprite stays partly visible so the player
+  // still reads the hero's rough position. Skipping the rim pass too
+  // since rim-on-translucent-body looks broken.
+  let dodgeAlpha = 1;
+  if (hero.state === 'dodge') {
+    dodgeAlpha = 0.35;
+  }
   // Rim light pass — draw sprite offset in 4 directions with a warm tint to create
   // an outline. Makes hero pop off the floor, AAA-style silhouette polish.
-  // Skip during i-frame flicker or dodge to avoid visual clutter.
-  if (!flicker && hero.state !== 'dead') {
+  // Skip during i-frame flicker, dodge state, or death.
+  if (!flicker && hero.state !== 'dead' && hero.state !== 'dodge') {
     const rimFilter = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(-10deg) saturate(800%) brightness(1.6)';
     ctx.save();
     ctx.globalAlpha = 0.55;
@@ -1638,6 +1690,7 @@ export function drawHero(ctx) {
   }
   const wf = weaponDef().heroFilter;
   if (wf) ctx.filter = wf;
+  if (dodgeAlpha < 1) ctx.globalAlpha = (ctx.globalAlpha || 1) * dodgeAlpha;
   ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2, -drawSize * 0.75, drawSize, drawSize);
   if (wf) ctx.filter = 'none';
   ctx.restore();
