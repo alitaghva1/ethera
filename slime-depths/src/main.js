@@ -3595,6 +3595,24 @@ function saveRunSnapshot() {
         executeMul: hero.executeMul,
         boltLifeMul: hero.boltLifeMul,
       },
+      // Rhythm-counter state — ALL of these decay to 0 across rooms
+      // anyway (chain decay, swingChainTime), but a player who picks a
+      // legendary like Vow Eternal during floor 2 and resumes from the
+      // main menu rightfully expects the readiness flag to be honored.
+      // Same for arcaneQuiverHits / pyroCount / chainCount — without
+      // these, resume always wipes counter progress to zero, making a
+      // mid-room interrupt feel like a silent regression.
+      counters: {
+        chainCount: hero.chainCount | 0,
+        pyroCount: hero.pyroCount | 0,
+        soulKillCount: hero.soulKillCount | 0,
+        arcaneQuiverHits: hero.arcaneQuiverHits | 0,
+        ringingSteelStacks: hero.ringingSteelStacks | 0,
+        twinPulseTick: hero.twinPulseTick | 0,
+        mountainStrikeCounter: hero.mountainStrikeCounter | 0,
+        razorPaceHits: hero.razorPaceHits | 0,
+        vowEternalReady: !!hero.vowEternalReady,
+      },
     };
     localStorage.setItem(RUN_SNAPSHOT_KEY, JSON.stringify(snap));
   } catch (e) {}
@@ -3673,6 +3691,22 @@ function resumeRun(snap) {
     if (typeof snap.mods.executeThreshold === 'number') hero.executeThreshold = snap.mods.executeThreshold;
     if (typeof snap.mods.executeMul === 'number')       hero.executeMul = snap.mods.executeMul;
     if (typeof snap.mods.boltLifeMul === 'number')      hero.boltLifeMul = snap.mods.boltLifeMul;
+  }
+  // Rhythm-counter restore — applyRelic re-runs each relic's apply()
+  // which re-zeros counters (e.g. razor_pace.apply sets razorPaceHits = 0).
+  // Restoring here AFTER applyRelic preserves the snapshot's state.
+  // Each field guarded by typeof so older snapshots without `counters`
+  // don't break (defaults to 0/false from resetHero).
+  if (snap.counters) {
+    if (typeof snap.counters.chainCount === 'number')         hero.chainCount = snap.counters.chainCount;
+    if (typeof snap.counters.pyroCount === 'number')          hero.pyroCount = snap.counters.pyroCount;
+    if (typeof snap.counters.soulKillCount === 'number')      hero.soulKillCount = snap.counters.soulKillCount;
+    if (typeof snap.counters.arcaneQuiverHits === 'number')   hero.arcaneQuiverHits = snap.counters.arcaneQuiverHits;
+    if (typeof snap.counters.ringingSteelStacks === 'number') hero.ringingSteelStacks = snap.counters.ringingSteelStacks;
+    if (typeof snap.counters.twinPulseTick === 'number')      hero.twinPulseTick = snap.counters.twinPulseTick;
+    if (typeof snap.counters.mountainStrikeCounter === 'number') hero.mountainStrikeCounter = snap.counters.mountainStrikeCounter;
+    if (typeof snap.counters.razorPaceHits === 'number')      hero.razorPaceHits = snap.counters.razorPaceHits;
+    if (typeof snap.counters.vowEternalReady === 'boolean')   hero.vowEternalReady = snap.counters.vowEternalReady;
   }
   // Daily challenge curse-id flag — drives generation-pipeline readers
   // even though the inline modifiers are now captured in snap.mods.

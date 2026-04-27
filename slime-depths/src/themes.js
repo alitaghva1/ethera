@@ -46,7 +46,7 @@ export const THEMES = {
 // Relic → theme. One theme per relic. Relics not listed here have no theme
 // (e.g. gilded_hoard is pure utility).
 export const RELIC_THEMES = {
-  // STORM (7) — lightning, speed, shock, dash
+  // STORM (8) — lightning, speed, shock, dash
   chain_lightning:      'storm',
   stormcaller:          'storm',
   thunder_step:         'storm',
@@ -54,6 +54,7 @@ export const RELIC_THEMES = {
   swift_arm:            'storm',
   gale_step:            'storm',
   dash_master:          'storm',
+  storm_conduit:        'storm',  // wand: bolt chains lightning to nearest
 
   // FLAME (8) — fire, explosion, burn, cascade
   pyromancer:           'flame',
@@ -78,7 +79,7 @@ export const RELIC_THEMES = {
   vitality:             'blood',
   soul_burst:           'blood',
 
-  // VOW (12) — defense, block, stance, stoic strikes
+  // VOW (18) — defense, block, stance, stoic strikes, hammer earth + sword discipline
   iron_resolve:         'vow',
   ironhide:             'vow',
   oathshield:           'vow',
@@ -91,8 +92,14 @@ export const RELIC_THEMES = {
   heavy_blow:           'vow',
   long_reach:           'vow',
   warlord:              'vow',
+  honest_edge:          'vow',    // sword: finisher always crits — disciplined strikes
+  ringing_steel:        'vow',    // sword: chain stacks — disciplined sustain
+  vow_eternal:          'vow',    // sword: opening crit — literal vow
+  mountain_strike:      'vow',    // hammer: earth shockwave — earthen discipline
+  earthen_hold:         'vow',    // hammer: stagger — "stand still, the earth tells them"
+  world_ender:          'vow',    // hammer: finisher shatters shields — disciplined finisher
 
-  // SHADOW (8) — crit, arcane, dodge, echo
+  // SHADOW (13) — crit, arcane, dodge, echo, dagger precision + wand arcane
   keen_edge:            'shadow',
   eye_of_ether:         'shadow',
   echoing_strike:       'shadow',
@@ -101,6 +108,11 @@ export const RELIC_THEMES = {
   wanderers_cloak:      'shadow',
   nimble_step:          'shadow',
   temporal_eye:         'shadow',
+  twin_pulse:           'shadow',  // dagger: echo strike — precision arcane
+  flicker_step:         'shadow',  // dagger: doubled dodge window
+  razor_pace:           'shadow',  // dagger: 5th-hit crescendo — precision rhythm
+  splintered_light:     'shadow',  // wand: bolt splits — arcane fan
+  patient_lens:         'shadow',  // wand: charged crit — precision arcane
 
   // Unthemed: gilded_hoard — pure utility, intentionally excluded.
 };

@@ -18,7 +18,7 @@ import { spawnEmberFlame, enemies as activeEnemies } from './enemies.js';
 import { dropGold } from './gold.js';
 import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
-import { markChainFired, markPyroFired } from './counterPips.js';
+import { markChainFired, markPyroFired, markQuiverFired, markRingingFired, markTwinFired, markMountainFired, markRazorFired } from './counterPips.js';
 import { synthSwoosh, synthClick } from './synth.js';
 import { spawnHeroBolt } from './projectiles.js';
 
@@ -1315,6 +1315,7 @@ export function updateHero(dt, enemies, mouseWorld) {
                 sparkle(splashTarget.x, splashTarget.y - 8, '#c8a0ff');
                 sparkle(splashTarget.x, splashTarget.y - 14, '#ffffff');
               }
+              markQuiverFired();   // visible pip-row flash
             }
           }
 
@@ -1327,7 +1328,12 @@ export function updateHero(dt, enemies, mouseWorld) {
           // the next hit's damage multiplier. Cap at 5 stacks (+30%).
           // Reset is handled by the swingChainTime decay block.
           if (hero.ringingSteel && w.id === 'sword') {
+            const wasMax = (hero.ringingSteelStacks | 0) >= 5;
             hero.ringingSteelStacks = Math.min(5, (hero.ringingSteelStacks | 0) + 1);
+            // Pip flash fires once when the chain first hits max stacks
+            // — telegraphs the "fully wound up" moment without spamming
+            // the row on every sustained-chain swing.
+            if (!wasMax && hero.ringingSteelStacks >= 5) markRingingFired();
           }
 
           // TWIN PULSE (dagger-only) — every 2nd dagger hit echoes
@@ -1350,6 +1356,7 @@ export function updateHero(dt, enemies, mouseWorld) {
                 sparkle(echoTarget.x, echoTarget.y - 8, '#a0e8ff');
                 sparkle(echoTarget.x, echoTarget.y - 14, '#ffffff');
               }
+              markTwinFired();   // visible pip-row flash
             }
           }
 
@@ -1368,6 +1375,7 @@ export function updateHero(dt, enemies, mouseWorld) {
                 sparkle(e.x + (Math.random() - 0.5) * 40, e.y + 4 + (Math.random() - 0.5) * 16, '#ffae6c');
               }
               triggerHitStop(0.06);
+              markMountainFired();   // visible pip-row flash
             }
           }
 
@@ -1391,6 +1399,7 @@ export function updateHero(dt, enemies, mouseWorld) {
             }
             sparkle(e.x, e.y - 14, '#ffffff');
             triggerHitStop(0.07);
+            markRazorFired();   // visible pip-row flash
           }
 
           // WORLD-ENDER shield-shatter VFX — bright sapphire burst at the
