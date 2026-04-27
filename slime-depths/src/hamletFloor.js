@@ -160,8 +160,13 @@ const EXCLUSIONS = [
   // full visible kettle from rim to tripod feet.
   { x1: 848, y1: 403, x2: 903, y2: 458 },
   // Lectern EXCLUSION removed (lectern FX entry removed).
-  // Scrying basin at (644, 220). Tall pedestal — narrow base.
+  // Scrying basin LEFT at (644, 220). Tall pedestal — narrow base.
   { x1: 629, y1: 230, x2: 659, y2: 260 },
+  // Scrying basin RIGHT (twin) at (716, 220).
+  { x1: 701, y1: 230, x2: 731, y2: 260 },
+  // Bookcase at (449, 398). Wider footprint than the lectern that
+  // was previously here — full ~50px wide × 30px tall base.
+  { x1: 424, y1: 380, x2: 474, y2: 410 },
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 

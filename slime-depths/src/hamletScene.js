@@ -453,15 +453,37 @@ const HAMLET_FX = [
   },
   */
   {
-    // Scrying basin — sits on the top-center altar slab at SHRINE_POS
-    // (680, 215). Tall pedestal with a glowing basin on top, used as
-    // the oracle's scrying station. Oracle NPC at (680, 260) stands
-    // 40px south of it on grass, facing north toward the basin.
+    // Scrying basin (LEFT) — sits on the top-center altar slab at
+    // SHRINE_POS (680, 215). Tall pedestal with a glowing basin on
+    // top. Paired with a twin basin to the east (see next entry) so
+    // they read as a ceremonial pair flanking the altar threshold.
     // 4 frames at 3fps = 1.3s loop, slow swirl on the basin's surface.
     id: 'scryingbasin', asset: 'fx_scryingbasin',
     x: 644, y: 220,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
+    scale: 0.6, yOffset: 0,
+  },
+  {
+    // Scrying basin (RIGHT, twin) — mirror of the left basin across
+    // the altar slab center (~x=680). Same animation, same scale.
+    // Different id so the FX state Map tracks them independently.
+    id: 'scryingbasin2', asset: 'fx_scryingbasin',
+    x: 716, y: 220,
+    frameW: 112, frameH: 112,
+    frameCount: 4, fps: 3,
+    scale: 0.6, yOffset: 0,
+  },
+  {
+    // Tall wooden archive bookcase (STATIC, single frame). Sits in
+    // the archivist's nook in front of the L-bend ruined wall corner.
+    // Replaces the lectern that was in the same spot — bookcase
+    // reads better as the archivist's primary station. Archivist NPC
+    // at (391, 470) stands south of the bookcase.
+    id: 'bookcase', asset: 'fx_bookcase',
+    x: 449, y: 398,
+    frameW: 112, frameH: 112,
+    frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
   },
   // Gravestones FX removed per user request 2026-04-27 — felt off
