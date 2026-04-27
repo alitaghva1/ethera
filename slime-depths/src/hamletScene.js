@@ -407,20 +407,17 @@ const HAMLET_FX = [
     scale: 0.6, yOffset: 0,
   },
   {
-    // Anvil — sits on the painted smithy foundation pad in the upper
-    // smithy area at (960, 220). PIL composite verification: this
-    // position centers the anvil sprite (with its tree-stump base) on
-    // the painted stone pad, with no overlap onto the wall above or
-    // grass below. Smith NPC at (995, 320) is south-east of the anvil
-    // on grass — separated cleanly so the anvil doesn't obscure the
-    // smith body anymore. (Earlier (995, 360) had the anvil covering
-    // the smith's lower legs because they shared the same x.)
+    // Anvil — sits to the LEFT of the smith on grass. Position (920,
+    // 340) puts it ~75px west and ~20px south of the smith NPC at
+    // (995, 320). The painted stone foundation pad to the north is
+    // RESERVED for a future furnace prop, so the anvil lives off-pad.
+    // PIL composite confirms no body overlap with the smith.
     //
     // 9 frames at 6fps continuous loop. No proximity tiers — smithing
     // is ongoing ambient work, not a discrete event. Scale 0.6× →
     // ~67px rendered to match cooking pot / firepit visual weight.
     id: 'anvil', asset: 'fx_anvil',
-    x: 960, y: 220,
+    x: 920, y: 340,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
