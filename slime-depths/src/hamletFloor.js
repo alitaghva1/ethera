@@ -164,9 +164,7 @@ const EXCLUSIONS = [
   { x1: 635, y1: 236, x2: 665, y2: 266 },
   // Scrying basin RIGHT (twin) at (726, 226).
   { x1: 711, y1: 236, x2: 741, y2: 266 },
-  // Bookcase pair touching, side by side at (425, 398) and (475, 398).
-  { x1: 400, y1: 380, x2: 450, y2: 410 },
-  { x1: 450, y1: 380, x2: 500, y2: 410 },
+  // Bookcase pair EXCLUSIONS removed (FX entries removed).
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 

@@ -474,12 +474,11 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
+  // Bookcase pair removed per user request 2026-04-27 — didn't look
+  // good in the archivist nook. Asset fx_bookcase.png kept on disk +
+  // loader entry intact so re-adding is just restoring this block.
+  /*
   {
-    // Bookcase pair (STATIC, single frame each). Two tall wooden
-    // archive bookcases side by side in the archivist's nook in
-    // front of the L-bend ruined wall corner. 68px x-spacing reads
-    // as a natural 'library row' rather than overlapping silhouettes.
-    // Archivist NPC at (391, 470) stands south of the row.
     id: 'bookcase', asset: 'fx_bookcase',
     x: 425, y: 398,
     frameW: 112, frameH: 112,
@@ -493,6 +492,7 @@ const HAMLET_FX = [
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
   },
+  */
   // Gravestones FX removed per user request 2026-04-27 — felt off
   // visually. Asset fx_graves.png kept on disk + loader entry intact
   // so re-adding is just restoring this block.
