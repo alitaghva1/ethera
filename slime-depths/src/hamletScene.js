@@ -35,7 +35,7 @@ export const HAMLET_HERO_SPAWN = { x: 700, y: 660 };
 // scripts/hamlet_audit.py for the technique). v3 has no actual props
 // painted in — these positions point at the GROUND PLACEMENT MARKERS
 // where each feature will be rendered as a sprite overlay.
-const PORTAL_POS   = { x: 687, y: 381 };   // dark circular pad in central plaza
+const PORTAL_POS   = { x: 688, y: 370 };   // dark circular pit in central plaza (PIL-detected center, bbox 100×80)
 const SHRINE_POS   = { x: 680, y: 215 };   // top-center altar slab
 const FIREPIT_POS  = { x: 736, y: 554 };   // hearth scorch mark south of plaza
 
@@ -351,13 +351,13 @@ const HAMLET_FX = [
     // Portal (v3 — subtle muted runic glyph circle). Replaces the
     // saturated magenta swirl that was reading as cartoon-emoji style
     // and clashing with the painterly backdrop. Sits on the dark
-    // circular pad in the central plaza at PORTAL_POS (687, 381).
-    // Sprite is 112×112 native, scaled 0.8× → ~90px rendered so it
-    // fits INSIDE the painted ring instead of overflowing it (v2 was
-    // 1.5× → 144px which was filling the whole plaza). 9 frames at
-    // 8fps for a slow rune pulse.
+    // circular pit in the central plaza at PORTAL_POS (688, 370).
+    // PIL-detected pit center: bbox x[638-737] y[330-410]. Sprite is
+    // 112×112 native, scaled 0.8× → ~90px rendered so it fits INSIDE
+    // the painted ring instead of overflowing it. 9 frames at 8fps
+    // for a slow rune pulse.
     id: 'portal', asset: 'fx_portal',
-    x: 687, y: 381,
+    x: 688, y: 370,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 8,
     scale: 0.8, yOffset: 0,
