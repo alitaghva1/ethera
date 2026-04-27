@@ -98,7 +98,13 @@ export function spawnRelicOffer(floorLevel = 1, opts = {}) {
   const offers = applyMagicianBias(rollRelicOffer(3, floorLevel, opts));
   if (offers.length === 0) return;
   const cols = [6, 10, 14];
-  const row = 4;
+  // Pedestal row pushed from 4 to 5 — one tile south of the dense
+  // enemy-spawn band (`spawnCells` in floor.js scatters enemies across
+  // y=3..h-4, with the largest density around y=3-5). Keeping pedestals
+  // at row 4 caused them to share floor with corpses + sparkle + tier-
+  // ring particles; row 5 puts the reward pickup in cleaner space while
+  // still being the player's first visual on entering the cleared room.
+  const row = 5;
   const placed = [];
   for (let i = 0; i < offers.length; i++) {
     const spot = findClearTile(cols[i], row);

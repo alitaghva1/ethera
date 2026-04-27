@@ -1128,11 +1128,34 @@ function pushCorpse(e) {
   if (corpses.length > MAX_CORPSES) corpses.shift();
 }
 
+// Fade duration after room.cleared flips. After this many seconds the
+// corpse is rendered at alpha 0 (effectively gone). Tuned so the room
+// reads as "battle ended" within ~1.2s instead of "battle still
+// happening" for the entire reward-pickup phase. Keeps the silhouette
+// briefly so the player sees "where the fights were" without the red
+// splatter clutter that competes with pedestal beams.
+const CORPSE_FADE_DUR = 1.2;
+
 // Draw corpses on the floor — call BEFORE drawEnemy so living enemies render on top.
 // Blood pool + darker splatter dots + faint body silhouette, all with slight
 // per-corpse jitter from the seed.
-export function drawCorpses(ctx) {
+//
+// `room` is optional: when present, corpses fade out over CORPSE_FADE_DUR
+// once room.cleared is true (room.clearedAt timestamp drives the fade).
+// Splatter dots are skipped entirely once cleared so the post-combat
+// reward-pickup phase doesn't have red dots competing with pedestal
+// beams + tier rings + sparkle particles in the same north-center band.
+export function drawCorpses(ctx, room = null) {
   const now = performance.now() / 1000;
+  const cleared = !!(room && room.cleared);
+  const clearedAt = (room && room.clearedAt) || 0;
+  // Compute the global fade multiplier ONCE (same for every corpse this
+  // frame — we don't fade individual corpses by their own death time).
+  let fadeAlpha = 1;
+  if (cleared && clearedAt > 0) {
+    fadeAlpha = Math.max(0, 1 - (now - clearedAt) / CORPSE_FADE_DUR);
+    if (fadeAlpha <= 0) return;     // fully faded — skip all rendering
+  }
   for (const c of corpses) {
     const age = now - c.spawnTime;
     // Blood pool expands for the first 0.4s, then holds steady
@@ -1142,11 +1165,12 @@ export function drawCorpses(ctx) {
     const splatterR = baseR * 1.35;
     ctx.save();
     // Faint drop shadow where the body fell
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillStyle = `rgba(0,0,0,${(0.25 * fadeAlpha).toFixed(3)})`;
     ctx.beginPath();
     ctx.ellipse(c.x, c.y + 6, baseR * 1.2, baseR * 0.45, 0, 0, Math.PI * 2);
     ctx.fill();
     // Main blood pool
+    ctx.globalAlpha = fadeAlpha;
     const g = ctx.createRadialGradient(c.x, c.y + 4, 1, c.x, c.y + 4, splatterR);
     g.addColorStop(0, c.color);
     g.addColorStop(0.7, c.color + (c.color.length === 7 ? 'aa' : ''));
@@ -1155,21 +1179,25 @@ export function drawCorpses(ctx) {
     ctx.beginPath();
     ctx.ellipse(c.x, c.y + 4, splatterR, splatterR * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Splatter dots around the pool
-    const dots = c.boss ? 10 : c.elite ? 6 : 4;
-    for (let i = 0; i < dots; i++) {
-      const a = (c.seed * 13 + i * 1.7) * Math.PI;
-      const r = splatterR * (0.8 + ((c.seed * (i + 1)) % 1) * 0.7);
-      const px = c.x + Math.cos(a) * r;
-      const py = c.y + 4 + Math.sin(a) * r * 0.45;
-      const ds = 1.4 + ((c.seed * (i + 3)) % 1) * 2.2;
-      ctx.fillStyle = c.color;
-      ctx.globalAlpha = 0.7;
-      ctx.fillRect(px - ds / 2, py - ds / 2, ds, ds);
+    // Splatter dots around the pool — SKIPPED ENTIRELY ONCE CLEARED so
+    // they don't visually compete with pedestal beams + sparkle particles
+    // in the post-combat reward-pickup phase.
+    if (!cleared) {
+      const dots = c.boss ? 10 : c.elite ? 6 : 4;
+      for (let i = 0; i < dots; i++) {
+        const a = (c.seed * 13 + i * 1.7) * Math.PI;
+        const r = splatterR * (0.8 + ((c.seed * (i + 1)) % 1) * 0.7);
+        const px = c.x + Math.cos(a) * r;
+        const py = c.y + 4 + Math.sin(a) * r * 0.45;
+        const ds = 1.4 + ((c.seed * (i + 3)) % 1) * 2.2;
+        ctx.fillStyle = c.color;
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(px - ds / 2, py - ds / 2, ds, ds);
+      }
     }
     ctx.globalAlpha = 1;
     // Dark silhouette lump where the body collapsed — very faint
-    ctx.fillStyle = 'rgba(10, 4, 8, 0.35)';
+    ctx.fillStyle = `rgba(10, 4, 8, ${(0.35 * fadeAlpha).toFixed(3)})`;
     ctx.beginPath();
     ctx.ellipse(c.x + jitter * 0.4, c.y, c.size * 0.18, c.size * 0.1, 0, 0, Math.PI * 2);
     ctx.fill();

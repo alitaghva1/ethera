@@ -1315,12 +1315,15 @@ function enterHamletCanvas() {
   buildRoomFromData(floor[0]);
 
   // Purge any transient combat state from a prior session (enemies, bullets,
-  // pedestals, flame hazards, transitions, intro timers). The hamlet is a
-  // non-combat room — nothing should carry over.
+  // pedestals, flame hazards, transitions, intro timers, pickup banner).
+  // The hamlet is a non-combat room — nothing should carry over. Without
+  // suppressPickupFlash a banner in flight when the player dies or quits
+  // will animate over the hamlet on return (audit quick-win).
   clearEnemies();
   clearProjectiles();
   clearPedestals();
   clearFlames();
+  suppressPickupFlash();
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
   floorCardTime = 0;
@@ -4880,6 +4883,7 @@ function tick(now) {
         }
       } else if (!hasActivePedestals()) {
         room.cleared = true;
+        room.clearedAt = performance.now() / 1000;     // drives corpse fade
         data.cleared = true;
         stats.roomsCleared++;
         // Small HP regen on clear — +1 HP (not starving cursed) to soften the
@@ -4924,6 +4928,7 @@ function tick(now) {
         playSfx('click', { volume: 0.9, rate: 1.1 });
       } else if (!hasActivePedestals()) {
         room.cleared = true;
+        room.clearedAt = performance.now() / 1000;
         data.cleared = true;
         stats.roomsCleared++;
       }
@@ -4936,6 +4941,7 @@ function tick(now) {
     // locks the room (was the case before this clear-check landed).
     if (data.kind === 'chestroom' && !room.cleared && enemies.length === 0) {
       room.cleared = true;
+      room.clearedAt = performance.now() / 1000;
       data.cleared = true;
       stats.roomsCleared++;
     }
@@ -4944,6 +4950,7 @@ function tick(now) {
     // Floor 3+ bosses drop a guaranteed legendary pedestal as reward.
     if (data.kind === 'boss' && !room.cleared && enemies.length === 0) {
       room.cleared = true;
+      room.clearedAt = performance.now() / 1000;
       data.cleared = true;
       stats.roomsCleared++;
       // THE WATCHER — first boss kill / first final-boss clear milestones.
@@ -5281,7 +5288,8 @@ function render() {
 
   // Corpse stains sit on the floor beneath everything — drawn after telegraphs
   // (which render on the floor plane too) but before pedestals/wanderer/actors.
-  drawCorpses(ctx);
+  // Pass `room` so drawCorpses can fade them out over 1.2s once cleared.
+  drawCorpses(ctx, room);
 
   drawPedestals(ctx);
   drawPedestalTeasers(ctx);
