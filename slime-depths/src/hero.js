@@ -660,6 +660,13 @@ export function updateHero(dt, enemies, mouseWorld) {
       const m = Math.hypot(dx, dy);
       if (m > 0) {
         dx /= m; dy /= m;
+        // Persist normalized input direction so heroDirection() can read
+        // it during walk state. Without this, hero.vx/vy stay at 0 and
+        // vecToDirection() falls through to AIM direction, making the
+        // body always face the mouse — the bug behind 'moves left/right
+        // without facing that direction.'
+        hero.vx = dx;
+        hero.vy = dy;
         const slowMul = hero.slowTime > 0 ? hero.slowMul : 1;
         // Attack-commit slow: while in 'attack' state the hero plants
         // their feet for the swing — full-speed running while sword is
@@ -700,6 +707,14 @@ export function updateHero(dt, enemies, mouseWorld) {
         // Iron Resolve parry — track "stance time" while idle. The parry
         // window opens at ≥0.3s of uninterrupted stillness.
         hero._stillT = (hero._stillT || 0) + dt;
+        // Clear movement velocity so heroDirection() stops reading a
+        // stale walk direction once the player releases WASD. Without
+        // this, the body keeps facing the last walk direction during
+        // idle (which is fine semantically — heroDirection falls back
+        // to lastDirection — but lastDirection is updated every frame
+        // anyway, so clearing vx/vy keeps the state honest).
+        hero.vx = 0;
+        hero.vy = 0;
       }
     }
   }
