@@ -407,17 +407,20 @@ const HAMLET_FX = [
     scale: 0.6, yOffset: 0,
   },
   {
-    // Anvil — sits at the smithy. Smith NPC is at (995, 320); anvil
-    // 40px south at (995, 360) so y-sort renders the anvil OVER the
-    // smith's lower legs, reading as "smith standing behind the anvil
-    // hammering it." 9 frames at 6fps gives a rhythmic hammer-spark
-    // cadence; continuous loop (no holdSeconds) since smithing is
-    // ongoing background work, not a discrete event. Sprite is
-    // 112×112 native, scaled 0.6× → ~67px rendered to match the
-    // visual scale of cooking pot / firepit and keep the smith NPC
-    // (~121px tall) as the primary visual anchor at the smithy.
+    // Anvil — sits on the painted smithy foundation pad in the upper
+    // smithy area at (960, 220). PIL composite verification: this
+    // position centers the anvil sprite (with its tree-stump base) on
+    // the painted stone pad, with no overlap onto the wall above or
+    // grass below. Smith NPC at (995, 320) is south-east of the anvil
+    // on grass — separated cleanly so the anvil doesn't obscure the
+    // smith body anymore. (Earlier (995, 360) had the anvil covering
+    // the smith's lower legs because they shared the same x.)
+    //
+    // 9 frames at 6fps continuous loop. No proximity tiers — smithing
+    // is ongoing ambient work, not a discrete event. Scale 0.6× →
+    // ~67px rendered to match cooking pot / firepit visual weight.
     id: 'anvil', asset: 'fx_anvil',
-    x: 995, y: 360,
+    x: 960, y: 220,
     frameW: 112, frameH: 112,
     frameCount: 9, fps: 6,
     scale: 0.6, yOffset: 0,
