@@ -336,13 +336,12 @@ const HAMLET_FX = [
     scale: 1.4, yOffset: 0,
   },
   {
-    // Portal swirl — sits on the dark circular pad in the central plaza
-    // (the "PORTAL_POS" runic-circle marker, x=687 y=381). Sprite is
-    // 96×96 native, scaled 1.5× to fill the painted pad's ~140-150px
-    // diameter. 9-frame cycle at 8fps reads as a slow rune pulse, not
-    // a fast strobe — gives the portal a "dormant but alive" feel
-    // between descents. (When the player commits to a run, we'll
-    // trigger a separate burst FX layered on top.)
+    // Portal swirl (v2 generation — true vortex, no stone frame). Sits
+    // on the dark circular pad in the central plaza at PORTAL_POS
+    // (687, 381). Sprite is 96×96 native, scaled 1.5× to fill the
+    // painted pad's ~140-150px diameter. 9-frame cycle at 8fps reads
+    // as a slow rune pulse — "dormant but alive" between descents.
+    // (Run-commit will trigger a separate burst FX layered on top.)
     id: 'portal', asset: 'fx_portal',
     x: 687, y: 381,
     frameW: 96, frameH: 96,
@@ -350,16 +349,16 @@ const HAMLET_FX = [
     scale: 1.5, yOffset: 0,
   },
   {
-    // Cooking pot on tripod — sits at the wanderer's camp (NPC at
-    // y=480). Pot bubbles in place just north of the wanderer's
-    // bedroll on the camp dirt patch. 16 frames at 6fps reads as a
-    // gentle simmer (slower than the firepit's flicker). Sprite is
-    // 112×112 native, scaled 0.6× → ~67px rendered — smaller than
-    // the wanderer NPC (~115px) so the NPC stays the visual focus.
+    // Cooking pot (v2 generation — cleaner kettle silhouette). Sits
+    // at the wanderer's camp (NPC at y=480), bubbling in place just
+    // north of the bedroll on the dirt patch. 9 frames at 4fps reads
+    // as a slow lazy simmer (slower than the firepit's flicker).
+    // Sprite is 112×112 native, scaled 0.6× → ~67px rendered — smaller
+    // than the wanderer (~115px) so the NPC stays the visual focus.
     id: 'cookingpot', asset: 'fx_cookingpot',
     x: 907, y: 437,
     frameW: 112, frameH: 112,
-    frameCount: 16, fps: 6,
+    frameCount: 9, fps: 4,
     scale: 0.6, yOffset: 0,
   },
 ];
