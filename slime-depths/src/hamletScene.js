@@ -355,10 +355,25 @@ const HAMLET_FX = [
     scale: 1.4, yOffset: 0,
   },
   {
+    // Pit cover (STATIC, single frame). Sampled clean cobble patch
+    // from elsewhere in v3, masked to a circle with feathered edges.
+    // Sits AT PORTAL_POS but rendered FIRST (before the portal FX
+    // entry below) so it visually erases the painted dark pit. The
+    // portal FX then renders on top, sitting on what reads as
+    // unbroken cobble — no shadow halo around the portal.
+    //
+    // 240×240 native, scaled 0.5× → 120px rendered. Slightly larger
+    // than the painted pit (~100×80) to fully mask it with margin.
+    id: 'pit_cover', asset: 'fx_pit_cover',
+    x: 688, y: 365,
+    frameW: 240, frameH: 240,
+    frameCount: 1, fps: 1,
+    scale: 0.5, yOffset: 0,
+  },
+  {
     // Portal (simplified holistic config). 4 frames × 112×112 native,
-    // scaled 1.1× → ~123px rendered. Position (688, 365) sits on the
-    // PIL-detected painted pit center (bbox ~100×80). Scale fully
-    // covers the painted pit, so no shadow leaks around the FX.
+    // scaled 0.9× → ~101px rendered. Position (688, 365) sits on the
+    // pit cover (which has erased the painted pit underneath).
     //
     // Animation philosophy: SIMPLE. Constant alpha=1.0 always (no
     // proximity tiers, no restAlphaMul, no fadeSeconds). Continuous
@@ -377,7 +392,7 @@ const HAMLET_FX = [
     x: 688, y: 365,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
-    scale: 1.0, yOffset: 0,
+    scale: 0.9, yOffset: 0,
     holdSeconds: 10,
   },
   {
