@@ -150,9 +150,9 @@ function buildWalkabilityBitmap() {
 // bbox — so the hero bumps off the visible mass, not the empty air
 // above it.
 const EXCLUSIONS = [
-  // Firepit — base ring at (400, 675), swapped with portal location.
+  // Firepit — base ring at (425, 460), beside archivist's dirt patch.
   // Sprite 48×48 scaled 1.4× → 67px rendered, ~50×45 around base.
-  { x1: 375, y1: 656, x2: 425, y2: 701 },
+  { x1: 400, y1: 441, x2: 450, y2: 486 },
   // Anvil — full anvil + tree stump at (925, 316). Covers the
   // visible mass of the prop so hero bumps off from any direction.
   { x1: 899, y1: 297, x2: 954, y2: 347 },
@@ -165,8 +165,7 @@ const EXCLUSIONS = [
   // Scrying basin RIGHT (twin) at (726, 226).
   { x1: 711, y1: 236, x2: 741, y2: 266 },
   // Bookcase + studydesk EXCLUSIONS removed (FX entries removed).
-  // Flaming skull at (425, 460) — small base ~22×22 around the skull.
-  { x1: 414, y1: 452, x2: 436, y2: 474 },
+  // Flameskull EXCLUSION removed (FX entry parked for dungeon use).
   // Graves + lantern post EXCLUSIONS removed (FX entries removed).
 ];
 

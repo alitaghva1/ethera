@@ -35,7 +35,7 @@ export const HAMLET_HERO_SPAWN = { x: 700, y: 670 };
 // scripts/hamlet_audit.py for the technique). v3 has no actual props
 // painted in — these positions point at the GROUND PLACEMENT MARKERS
 // where each feature will be rendered as a sprite overlay.
-const PORTAL_POS   = { x: 970, y: 654 };   // moved 2026-04-27 from (688, 365) central plaza to bottom-left grass area. Painted pit at old central location is now masked by fx_pit_cover (which stays at the old position) so the central plaza reads as clean cobble. New portal location is open grass — no painted feature underneath, just the dark shadow + portal FX layered on grass.
+const PORTAL_POS   = { x: 960, y: 654 };   // moved 2026-04-27 from (688, 365) central plaza to bottom-left grass area. Painted pit at old central location is now masked by fx_pit_cover (which stays at the old position) so the central plaza reads as clean cobble. New portal location is open grass — no painted feature underneath, just the dark shadow + portal FX layered on grass.
 const SHRINE_POS   = { x: 680, y: 215 };   // top-center altar slab
 const FIREPIT_POS  = { x: 736, y: 554 };   // hearth scorch mark south of plaza
 
@@ -343,9 +343,10 @@ const HAMLET_FX = [
     // — no more visual stacking. v3 layout has the hearth SOUTH of the
     // plaza (at y=554), separate from the portal (y=381).
     id: 'firepit', asset: 'fx_firepit',
-    // Swapped 2026-04-27 with the portal: firepit was at (970, 654)
-    // SE ritual pad, now at (400, 675) where the portal used to be.
-    x: 400, y: 675,
+    // Moved to where the flameskull was (425, 460) — near the
+    // archivist's dirt-patch nook. Replaces the skull as the
+    // archivist's fire companion.
+    x: 425, y: 460,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 1.4, yOffset: 0,
@@ -378,7 +379,7 @@ const HAMLET_FX = [
     // → 120px rendered (slightly larger than the portal so a thin
     // ring of darkness frames the portal).
     id: 'portal_shadow', asset: 'fx_portal_shadow',
-    x: 970, y: 654,
+    x: 960, y: 654,
     frameW: 200, frameH: 200,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
@@ -402,7 +403,7 @@ const HAMLET_FX = [
     // worth the visual artifact. Pulse rhythm is constant regardless
     // of hero distance — clean and predictable.
     id: 'portal', asset: 'fx_portal',
-    x: 970, y: 654,
+    x: 960, y: 654,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
     scale: 0.9, yOffset: 0,
@@ -481,17 +482,19 @@ const HAMLET_FX = [
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
   },
+  // Flaming skull saved for DUNGEON use 2026-04-27. Was at (425, 460)
+  // beside the archivist; firepit moved there instead. Asset
+  // fx_flameskull.png + loader entry kept on disk so dungeon code
+  // can drop it into a future dungeon FX registry.
+  /*
   {
-    // Flaming skull — sits east of the archivist NPC at (391, 470)
-    // on the dirt-patch nook. 16 frames × 48×48 native, scaled 1.4×
-    // → 67px rendered. 12fps for a fast flicker (fire animation).
-    // Reads as a creepy reading companion in the archivist's space.
     id: 'flameskull', asset: 'fx_flameskull',
     x: 425, y: 460,
     frameW: 48, frameH: 48,
     frameCount: 16, fps: 12,
     scale: 0.8, yOffset: 0,
   },
+  */
   // Bookcase + study desk removed per user request 2026-04-27.
   // Assets fx_bookcase.png + fx_studydesk.png kept on disk + loader
   // entries intact so re-adding is just restoring this block.
