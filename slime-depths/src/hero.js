@@ -721,7 +721,9 @@ export function updateHero(dt, enemies, mouseWorld) {
         hero.attackFacingY = hero.aimY;
         // Lock the charge state so the player can't trigger a second
         // shot from the same hold + reset the accumulator on release.
-        if (isCharged) { hero.chargeReleased = true; showTip('first_charge'); }
+        // first_wand_charge tip — distinct from first_charge (melee
+        // is a wide AoE blow, wand is a piercing damage burst).
+        if (isCharged) { hero.chargeReleased = true; showTip('first_wand_charge'); }
         // Spawn the bolt from a "cast point" slightly forward of the
         // hero so it doesn't visually emit from inside the body.
         const aimMag = Math.hypot(hero.aimX, hero.aimY) || 1;

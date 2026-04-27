@@ -30,6 +30,7 @@ export const TIPS = {
   first_dodge:     { text: 'Press SPACE to dodge — time it with an enemy attack for a PERFECT DODGE' },
   first_dash:      { text: 'Press Q to dash-strike through enemies (2x damage, 5s cooldown)' },
   first_charge:    { text: 'Hold LMB for a charged heavy swing — releases a big AoE blow' },
+  first_wand_charge: { text: 'Hold LMB for a charged wand bolt — pierces three enemies and hits harder' },
   // ----- Hit feedback (review #5 onboarding pass) -----
   first_crit:      { text: 'Chain attacks rapidly to build combo — at CHAIN 5+ you deal bonus damage' },
   first_counter:   { text: 'Perfect dodge → next hit is a COUNTER — guaranteed crit and heavier knockback' },
@@ -38,6 +39,10 @@ export const TIPS = {
   // ----- Enemies & affixes -----
   first_vanguard:  { text: 'Shielded enemies block frontal attacks — flank them to break through' },
   first_elite:     { text: 'Elite affixes — F(rost) slows · E(mber) burns · V(enom) poisons · W(arded) resists' },
+  // ----- Build / discovery -----
+  first_fusion:    { text: 'FUSION FORGED — two relics combine into a named effect. Find more by stacking compatible picks' },
+  first_resonance: { text: 'RESONANCE — owning 3 relics of one theme grants a passive bonus. 5 reaches ASCENDANCE' },
+  first_weaponOnly:{ text: 'Some relics only appear for your weapon class — sword, dagger, hammer, or wand' },
   // ----- Rooms -----
   first_pedestal:  { text: 'Walk onto a pedestal to claim the relic' },
   first_altar:     { text: 'Altar room — relics here cost HP, not gold. The ruin prefers deliberate pacts' },

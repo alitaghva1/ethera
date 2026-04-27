@@ -998,6 +998,7 @@ export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
 }
 
 import { checkFusionsOnPickup, clearFusions } from './fusions.js';
+import { showTip } from './tips.js';
 
 // Persistent "ever seen" set — drives the Chronicles relicpedia. Every relic
 // the player has ever picked up gets stored here across runs.
@@ -1037,6 +1038,10 @@ export function applyRelic(id) {
     seenRelicIds.add(id);
     saveSeenRelics();
   }
+  // Onboarding — first time the player picks a weaponOnly relic, drop a
+  // tip explaining why some relics don't show up for them ("only sword,
+  // dagger, hammer or wand variants appear for your class").
+  if (def.weaponOnly) showTip('first_weaponOnly');
   // Check for fusion formations after this relic joins the build
   try {
     const equippedIds = equipped.map(r => r.id);
@@ -1047,5 +1052,15 @@ export function applyRelic(id) {
   } catch (e) {}
   // Theme set-bonus tiers — recompute AFTER fusion check so fusion-granted
   // flags don't get overwritten (fusions don't set theme bonus fields).
+  // Snapshot prior tiers so we can detect a 0→≥1 transition for the
+  // first_resonance onboarding tip.
+  const priorTiers = hero.activeThemes ? { ...hero.activeThemes } : null;
   recomputeThemeTiers(equipped);
+  if (priorTiers && hero.activeThemes) {
+    for (const k of Object.keys(hero.activeThemes)) {
+      const before = priorTiers[k] | 0;
+      const after = hero.activeThemes[k] | 0;
+      if (before < 1 && after >= 1) { showTip('first_resonance'); break; }
+    }
+  }
 }

@@ -497,6 +497,10 @@ window.__onFusionFormed = (fusion) => {
   }
   pulseZoom(0.1, 0.6);
   triggerScreenFlash('rgba(180, 230, 255, 0.2)', 0.4);
+  // Onboarding — first time a fusion ever forms in any run, drop a
+  // tip so the player understands what just happened. Subsequent
+  // fusions are silent (the banner + chord do the talking).
+  showTip('first_fusion');
 };
 // Boss phase-transition cinematic (fires when a boss enrages at 50% HP).
 // First-encounter gating: full 1.6s banner with PHASE 2 title on first
