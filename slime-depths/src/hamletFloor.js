@@ -134,26 +134,34 @@ function buildWalkabilityBitmap() {
   return true;
 }
 
-// Manual exclusions — rectangles where the mask classifies pixels as
-// walkable but the painted scene clearly shows a blocking feature. Two
-// classes of issue this handles:
+// Manual exclusions — rectangles where the hero must be blocked from
+// walking, regardless of what the luminance mask says. Two cases:
 //   1. Trees inside the compound where the AI mask drew the tree as
-//      black (walkable) — a convention violation we patch in code
-//      rather than re-rolling the mask
-//   2. The firepit ring — the mask leaves walkable pixels above the
-//      flame so the hero could walk INTO the fire from the north
+//      black (walkable) — handled programmatically via TREE_DARK_THRESHOLD,
+//      no rects needed
+//   2. Animated FX overlays (firepit, anvil, cookingpot) — these are
+//      drawn on top of the painted backdrop, but the painted backdrop
+//      under them is just walkable cobble/grass, so without manual
+//      exclusions the hero would walk THROUGH the firepit, anvil, etc.
 //
 // Each rect is checked AFTER the mask; if hero is inside any exclusion
-// we treat it as blocked regardless of the mask's verdict.
+// we treat it as blocked regardless of the mask's verdict. Rects are
+// tight to the FX BASE (the part on the ground) — not the full sprite
+// bbox — so the hero bumps off the visible mass, not the empty air
+// above it.
 const EXCLUSIONS = [
-  // Trees no longer need rects — programmatic detection via the visual
-  // scene's luminance handles them automatically (see TREE_DARK_THRESHOLD
-  // in buildWalkabilityBitmap).
-  //
-  // Firepit — small rect around the actual painted flame at (782, 361).
-  // Detected fire bbox: (760-804, 340-380). Buffer 15-20px for the stone
-  // ring + body collision. Hero approaches from any side and bumps off.
-  { x1: 745, y1: 325, x2: 820, y2: 400 },
+  // Firepit — base ring at (970, 654). Sprite is 48×48 scaled 1.4× →
+  // 67px rendered, but the actual stone-ring + flame footprint is
+  // smaller. ~50×40 around the base.
+  { x1: 945, y1: 635, x2: 995, y2: 680 },
+  // Anvil — tree-stump base at (956, 334). Sprite is 112×112 scaled
+  // 0.6× → 67px rendered. The stump itself is roughly the lower 25px
+  // and middle 40px of the sprite. Hero bumps off the visible stump.
+  { x1: 936, y1: 340, x2: 980, y2: 365 },
+  // Cooking pot — tripod base at (907, 437). Tripod legs splay across
+  // the lower 25px of the 67px-rendered sprite. Block that base so
+  // hero can't walk through the pot.
+  { x1: 884, y1: 445, x2: 930, y2: 470 },
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
