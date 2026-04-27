@@ -459,7 +459,7 @@ const HAMLET_FX = [
     // 40px south of it on grass, facing north toward the basin.
     // 4 frames at 3fps = 1.3s loop, slow swirl on the basin's surface.
     id: 'scryingbasin', asset: 'fx_scryingbasin',
-    x: 648, y: 220,
+    x: 644, y: 220,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 3,
     scale: 0.6, yOffset: 0,
