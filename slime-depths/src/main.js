@@ -12,7 +12,7 @@ import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
   spawnExtraFirePool, room, TILE, roomTorches,
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
-  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, drawChests, setDoorLookup,
+  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, drawChests, roomChests, setDoorLookup,
   snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
   getValidNorthDoorXRange,
 } from './room.js';
@@ -4636,6 +4636,78 @@ function tick(now) {
       }
     }
 
+    // ─── TREASURE CHEST INTERACTION (DUNGEON ONLY) ─────────────────────
+    // E pressed near a closed chest in a chestroom → open it + apply
+    // reward immediately (animation is purely visual feedback).
+    //
+    // Treasure: drop gold scaled by floor; floor 3+ has a chance to roll
+    //   a relic pedestal instead.
+    // Mimic: damage hero 1 HP + spawn 1-2 floor-appropriate enemies near
+    //   the chest. Room flips to !cleared so doors lock until enemies die.
+    if (room.kind === 'chestroom' && keyJustPressed('KeyE')) {
+      const HR = 80;     // interact range from hero center to chest center
+      let nearest = null, nearestD2 = HR * HR;
+      for (const c of roomChests) {
+        if (c.state !== 'closed') continue;
+        const cx = c.x * TILE + TILE / 2;
+        const cy = c.y * TILE + TILE / 2;
+        const dx = hero.x - cx, dy = hero.y - cy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < nearestD2) { nearest = c; nearestD2 = d2; }
+      }
+      if (nearest) {
+        nearest.state = 'opening';
+        nearest.frameTime = 0;
+        const cx = nearest.x * TILE + TILE / 2;
+        const cy = nearest.y * TILE + TILE / 2;
+        if (nearest.variant === 'treasure') {
+          // Floor-scaled gold + relic chance
+          const lvl = currentFloorLevel | 0;
+          const goldAmt = 25 + lvl * 15 + ((Math.random() * 30) | 0);
+          const relicChance = lvl >= 4 ? 0.50 : (lvl >= 3 ? 0.30 : 0);
+          if (Math.random() < relicChance) {
+            const relic = rollRelicOffer(1, lvl)[0];
+            if (relic) {
+              pedestals.push({
+                x: cx, y: cy + 8,     // slight offset so pedestal sits south of chest
+                relic, picked: false, bob: 0, glow: 0, hpCost: 0,
+              });
+            } else {
+              import('./gold.js').then(g => g.dropGold(cx, cy, goldAmt));
+            }
+          } else {
+            import('./gold.js').then(g => g.dropGold(cx, cy, goldAmt));
+          }
+          // Visual jackpot feedback
+          for (let i = 0; i < 12; i++) sparkle(cx + (Math.random() - 0.5) * 40, cy + (Math.random() - 0.5) * 30, '#9ad7ff');
+          playSfx('slime_death', { rate: 0.6, volume: 0.7 });
+        } else {
+          // MIMIC — damage + spawn enemies
+          damageHero(1, hero.x, hero.y + 20);
+          const lvl = currentFloorLevel | 0;
+          // Floor-appropriate spawn types
+          const spawnType = lvl <= 1 ? 'slime'
+                          : lvl === 2 ? 'skeleton'
+                          : lvl === 3 ? 'wizard'
+                          : 'fire_imp';
+          const spawnCount = lvl >= 3 ? 2 : 1;
+          const elite = lvl >= 3 && Math.random() < 0.5;
+          for (let i = 0; i < spawnCount; i++) {
+            const ang = (i / spawnCount) * Math.PI * 2 + Math.random() * 0.5;
+            const sx = cx + Math.cos(ang) * 60;
+            const sy = cy + Math.sin(ang) * 60;
+            spawnEnemy(spawnType, sx, sy, { elite });
+          }
+          // Room becomes uncleared — doors lock until enemies die
+          room.cleared = false;
+          // Visual jolt
+          shakeCamera(8, 0.25);
+          triggerScreenFlash('rgba(255, 80, 40, 0.18)', 0.25);
+          playSfx('hero_hurt', { rate: 0.7, volume: 0.85 });
+        }
+      }
+    }
+
     // ─── M-KEY MAP PEEK ────────────────────────────────────────────────
     // The clickable floor-map overlay is no longer the primary path picker
     // (doors do that now), but it's still useful as a "where am I in this
@@ -5366,6 +5438,45 @@ function render() {
   // sits on top of entities + the hero.
   if (room.kind === 'hamlet') {
     drawHamletInteractPrompt(ctx);
+  }
+  // Treasure chest interact prompt — "E · OPEN" floating above the
+  // nearest closed chest within range. Same visual style as hamlet
+  // interact labels for player-facing consistency.
+  if (room.kind === 'chestroom') {
+    const HR = 80;
+    let nearest = null, nearestD2 = HR * HR;
+    for (const c of roomChests) {
+      if (c.state !== 'closed') continue;
+      const cx = c.x * TILE + TILE / 2;
+      const cy = c.y * TILE + TILE / 2;
+      const dx = hero.x - cx, dy = hero.y - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < nearestD2) { nearest = c; nearestD2 = d2; }
+    }
+    if (nearest) {
+      const cx = nearest.x * TILE + TILE / 2;
+      const cy = nearest.y * TILE + TILE / 2;
+      const now = performance.now() / 1000;
+      const floatOff = Math.sin(now * 2.2) * 3;
+      const promptY = cy - 56 + floatOff;
+      const label = 'E  ·  OPEN';
+      ctx.save();
+      ctx.font = 'bold 11px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const m = ctx.measureText(label);
+      const padX = 10;
+      const w = m.width + padX * 2;
+      const h = 20;
+      ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
+      ctx.fillRect(cx - w / 2, promptY - h / 2, w, h);
+      ctx.strokeStyle = 'rgba(201, 168, 106, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - w / 2 + 0.5, promptY - h / 2 + 0.5, w - 1, h - 1);
+      ctx.fillStyle = '#f4d9a0';
+      ctx.fillText(label, cx, promptY);
+      ctx.restore();
+    }
   }
   ctx.restore();
 
