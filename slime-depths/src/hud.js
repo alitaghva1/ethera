@@ -37,6 +37,7 @@ const ROOM_LABEL = {
   altar:     'ALTAR OF EXCHANGE',
   challenge: 'CHALLENGE',
   trove:     'TROVE',
+  chestroom: 'TREASURE CHESTS',
 };
 
 export function drawHud(ctx, w, h, progress = {}) {
@@ -307,6 +308,7 @@ export function drawHud(ctx, w, h, progress = {}) {
     progress.roomKind === 'reward'    ? '#86e3a8' :
     progress.roomKind === 'altar'     ? '#ff6a85' :
     progress.roomKind === 'challenge' ? '#ffb265' :
+    progress.roomKind === 'chestroom' ? '#d8a8ff' :     // violet — gambling tension
     'rgba(210, 190, 220, 0.85)';
   ctx.fillText(label, bx + boxW - 12, by + 32);
   // Enemies left (combat only) — slim panel: tucked under the label
