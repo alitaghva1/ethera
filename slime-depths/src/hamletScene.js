@@ -124,11 +124,17 @@ export const HAMLET_ENTITIES = [
 // the hero is meant to walk THROUGH NPCs (overlapping is fine for a hub
 // area) and onto the portal/firepit tile (that's how interactions fire).
 export const HAMLET_OBSTACLES = [
-  // Scene Overview backdrop — props are baked into the image, not real
-  // sprites. No collision circles needed; bounding-rect walkability in
-  // hamletFloor.js handles edge clamping. Add circles back here if the
-  // hero needs to be blocked from a specific painted feature (statue,
-  // tree clump, etc.) that's smaller than a wall.
+  // NPC body collision — circles at each NPC's foot position so the
+  // hero can't walk THROUGH them. r=18 gives a soft bump-off feel
+  // (hero is pushed back along the radial direction by the resolver
+  // in resolveHamletCollision). Positions match HAMLET_ENTITIES NPC
+  // coords above. Update both arrays together when moving NPCs.
+  { x: 760, y: 460, r: 18 },     // keeper
+  { x: 987, y: 320, r: 18 },     // smith
+  { x: 380, y: 470, r: 18 },     // archivist
+  { x: 420, y: 280, r: 18 },     // gravekeeper
+  { x: 680, y: 260, r: 18 },     // oracle
+  { x: 985, y: 480, r: 18 },     // wanderer
 ];
 
 // Push the hero out of any prop obstacle they're inside, AND clamp them

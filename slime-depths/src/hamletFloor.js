@@ -151,17 +151,16 @@ function buildWalkabilityBitmap() {
 // above it.
 const EXCLUSIONS = [
   // Firepit — base ring at (970, 654). Sprite is 48×48 scaled 1.4× →
-  // 67px rendered, but the actual stone-ring + flame footprint is
-  // smaller. ~50×40 around the base.
+  // 67px rendered. ~50×45 around the stone ring + flame.
   { x1: 945, y1: 635, x2: 995, y2: 680 },
-  // Anvil — tree-stump base at (956, 334). Sprite is 112×112 scaled
-  // 0.6× → 67px rendered. The stump itself is roughly the lower 25px
-  // and middle 40px of the sprite. Hero bumps off the visible stump.
-  { x1: 936, y1: 340, x2: 980, y2: 365 },
-  // Cooking pot — tripod base at (907, 437). Tripod legs splay across
-  // the lower 25px of the 67px-rendered sprite. Block that base so
-  // hero can't walk through the pot.
-  { x1: 884, y1: 445, x2: 930, y2: 470 },
+  // Anvil — full anvil + tree stump at (956, 334). Covers the
+  // visible mass of the prop so hero bumps off from any direction.
+  { x1: 930, y1: 315, x2: 985, y2: 365 },
+  // Cooking pot — full pot body + tripod at (907, 437). Earlier rect
+  // only covered the lower tripod legs (y=445-470), so the hero could
+  // walk through the upper pot body. Now covers y=415-470 (the full
+  // visible kettle from rim to tripod feet).
+  { x1: 880, y1: 415, x2: 935, y2: 470 },
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
