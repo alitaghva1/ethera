@@ -300,6 +300,16 @@ export function resetHero() {
   hero.dashStrikeCD = 0;
   hero.dashStrikeTime = 0;
   hero.dashStrikeHit.clear();
+  // RANGED (wand) — must reset or these leak across runs as a phantom
+  // build (same bug pattern called out in the FUSION FLAGS comment at
+  // line 246). long_reach branches on weapon and writes boltLifeMul;
+  // splintered_light/storm_conduit/patient_lens write the boolean
+  // flags. Without reset, a run-1 wand build with these picks would
+  // pass the buffs into run-2 even on a sword class.
+  hero.boltLifeMul = 1;
+  hero.boltSplit = false;
+  hero.boltChain = false;
+  hero.boltCritOnCharge = false;
   // April 2026 content expansion — new relic/fusion state flags.
   hero.mirrorShard = false;       hero.mirrorReflect = 0;     hero.mirrorReflectCrit = 1;
   hero.sporeBloom = false;        hero.sporeDamage = 0;       hero.sporeRadius = 0;

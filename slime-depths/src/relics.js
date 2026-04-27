@@ -741,6 +741,10 @@ export const RELIC_GLYPHS = {
   whisper_veil:         'cloak',   // veil / phantom
   stormcaller:          'bolt',    // lightning
   hourglass_of_respite: 'breath',  // recovery at low HP
+  // Wand-themed (weaponOnly: 'wand') — see RELIC_DEFS additions:
+  splintered_light:     'star',    // shattered/dispersed magical light
+  storm_conduit:        'bolt',    // lightning chain on bolt hit
+  patient_lens:         'eye',     // patient sight, charged-shot crit
 };
 
 export function getRelicGlyph(id) {
