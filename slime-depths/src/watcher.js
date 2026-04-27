@@ -19,15 +19,25 @@
 // italic serif voice. The name "The Watcher" only lives in this file and
 // future hamlet dialogue; the player builds the association over time.
 //
-// Visual grammar: top-18% band of screen, free-floating italic Georgia text
-// with a small sigil to the left. No box, no corners, no tier-color border.
-// Slow fade-in (0.8s), hold (4.5s), slow fade-out (1.2s). If an intro
-// (floorCard/bossIntro/phaseIntro) or pickup banner is onscreen, the
-// utterance defers until the ceremony ends.
+// Visual grammar (post-polish pass): top-7% band of screen — out of the
+// combat eye-zone, into the upper-letterbox area where subtitles live.
+// Free-floating italic Georgia text at 14px (was 20) with a smaller
+// sigil to the left (was 11px ring → 7px). Reads as "subtitle / inner
+// monologue" rather than a center-screen banner.
+//
+// Reveal: short sigil fade-in (0.3s) + character-by-character type-on
+// reveal of the text (~0.5s) so it reads as the watcher SPEAKING, not
+// a banner appearing all at once. A soft synthPing chime fires on
+// speak() — non-intrusive eye-draw like a distant bell. Hold 3.0s,
+// fade-out 1.0s. Total dwell 4.3s (was 6.5s).
+//
+// Defers behind floorCard/bossIntro/phaseIntro/pickup-flash so the
+// utterance never speaks over a higher-priority ceremony.
 // ============================================================================
 
 import { safeLoadJSON, safeSaveJSON } from './storage.js';
 import { images } from './loader.js';
+import { synthPing } from './synth.js';
 
 const STORAGE_KEY = 'watcher_v1';
 
@@ -101,10 +111,18 @@ let currentStart = 0;        // performance.now()/1000 when current line began f
 // while the pause overlay is up.
 let lastPausedStamp = 0;
 
-const FADE_IN_SEC = 0.8;
-const HOLD_SEC = 4.5;
-const FADE_OUT_SEC = 1.2;
+// Timing (post-polish pass — total dwell cut 6.5s → 4.3s):
+//   FADE_IN — sigil fades in (text uses TYPE_ON instead of fade)
+//   TYPE_ON — characters reveal one-by-one; reads as "spoken" not "shown"
+//   HOLD    — full text held; player has time to read 1-2 wrapped lines
+//   FADE_OUT— sigil + text fade together
+const FADE_IN_SEC = 0.3;
+const TYPE_ON_SEC = 0.5;     // text reveals char-by-char over this duration
+const HOLD_SEC = 3.0;
+const FADE_OUT_SEC = 1.0;
 const TOTAL_SEC = FADE_IN_SEC + HOLD_SEC + FADE_OUT_SEC;
+// Note: TYPE_ON overlaps with FADE_IN + early HOLD, so it's not added
+// to TOTAL_SEC — see render code in drawWatcher.
 
 function speak(text) {
   if (!text) return;
@@ -121,6 +139,16 @@ function speak(text) {
     state.lastSpokenLine = text;
     saveState();
   }
+}
+
+// Soft "distant bell" chime that announces a Watcher utterance. Tuned to
+// be eye-drawing without alarming — 760 Hz is a low brassy tone, low
+// volume so it sits behind ambient pad without clipping over it. Fired
+// at the moment a queued line PROMOTES to currentLine (i.e. when it
+// actually starts displaying), not on speak() — so deferred lines
+// don't ring while a ceremony is still on screen.
+function playWatcherChime() {
+  try { synthPing(760, 0.32, 0.55); } catch (_e) {}
 }
 
 // ---- Trigger API -----------------------------------------------------------
@@ -361,6 +389,11 @@ export function drawWatcher(ctx, w, h, flags = {}) {
   if (!currentLine && pendingQueue.length > 0 && !ceremonyActive) {
     currentLine = pendingQueue.shift();
     currentStart = performance.now() / 1000;
+    // Audio cue fires when the line actually starts displaying — not in
+    // speak() — so deferred utterances ring at the right moment (when
+    // the player can actually see them) rather than during a ceremony
+    // they're hidden behind.
+    playWatcherChime();
   }
   if (!currentLine) return;
 
@@ -371,78 +404,93 @@ export function drawWatcher(ctx, w, h, flags = {}) {
     return;
   }
 
+  // Container alpha: short fade-in (0.3s) for the sigil + text, hold,
+  // fade-out (1.0s). The text additionally has a TYPE_ON reveal that
+  // overlays this fade-in for the spoken-not-shown read.
   let alpha;
   if (t < FADE_IN_SEC) alpha = t / FADE_IN_SEC;
   else if (t < FADE_IN_SEC + HOLD_SEC) alpha = 1;
   else alpha = 1 - (t - FADE_IN_SEC - HOLD_SEC) / FADE_OUT_SEC;
   alpha = Math.max(0, Math.min(1, alpha));
 
-  const fontSize = 20;
-  const maxW = Math.min(560, w - 160);
+  // Smaller, higher, more "subtitle" — italic body text in the upper
+  // letterbox band rather than a center-banner above the action.
+  const fontSize = 14;
+  const maxW = Math.min(620, w - 200);
   const cx = w / 2;
-  const cy = Math.round(h * 0.18);   // top 18% — above combat action, clear of HUD
+  const cy = Math.round(h * 0.07);   // top 7% — out of combat eye-zone
 
   ctx.save();
   ctx.font = `italic ${fontSize}px Georgia, serif`;
   const lines = wrapText(ctx, currentLine, maxW);
-  const lineH = fontSize * 1.35;
+  const lineH = fontSize * 1.4;
   const totalH = lines.length * lineH;
 
-  // Sigil — a watching eye, positioned to the left of the text block.
-  // Outer thin ring, inner dot, subtle breathing halo. Pulses at ~0.8 Hz.
-  const sigilX = Math.round(cx - maxW / 2 - 28);
+  // Type-on reveal — characters appear one by one over TYPE_ON_SEC.
+  // Reveal progresses through the FULL string (across wrap), using
+  // simple character-count math. Once revealed, the full line stays
+  // for the remainder of HOLD + FADE_OUT.
+  const totalChars = currentLine.length;
+  const typeOnT = Math.max(0, Math.min(1, t / TYPE_ON_SEC));
+  // Slight ease-out so the last few chars don't dribble; reveal feels
+  // like a paced spoken cadence instead of a constant typewriter.
+  const easedT = 1 - Math.pow(1 - typeOnT, 1.6);
+  const charsToShow = Math.floor(totalChars * easedT);
+  const revealLine = currentLine.slice(0, charsToShow);
+  // Re-wrap the partial string so wrapping points stay consistent
+  // with the full string's geometry (width-based wrap is monotonic).
+  const revealLines = wrapText(ctx, revealLine, maxW);
+
+  // Sigil — smaller eye carving + lighter halo. Reads as "presence",
+  // not "broadcast". Pulses subtly so it feels alive rather than static.
+  const sigilX = Math.round(cx - maxW / 2 - 22);
   const sigilY = Math.round(cy);
-  const sigilR = 11;
-  const breath = 0.75 + 0.25 * Math.sin(now * 1.6);
+  const sigilR = 7;
+  const breath = 0.80 + 0.20 * Math.sin(now * 1.6);
   const sigilAlpha = alpha * breath;
 
-  // Breathing halo (behind whichever sigil render we use)
-  const halo = ctx.createRadialGradient(sigilX, sigilY, 2, sigilX, sigilY, sigilR * 3.2);
-  halo.addColorStop(0, `rgba(236, 224, 196, ${(alpha * 0.22).toFixed(3)})`);
+  // Breathing halo — smaller + dimmer than before. The sigil should
+  // suggest a watching eye, not announce itself.
+  const halo = ctx.createRadialGradient(sigilX, sigilY, 1, sigilX, sigilY, sigilR * 2.6);
+  halo.addColorStop(0, `rgba(236, 224, 196, ${(alpha * 0.14).toFixed(3)})`);
   halo.addColorStop(1, 'rgba(236, 224, 196, 0)');
   ctx.fillStyle = halo;
-  ctx.fillRect(sigilX - sigilR * 3.2, sigilY - sigilR * 3.2, sigilR * 6.4, sigilR * 6.4);
+  ctx.fillRect(sigilX - sigilR * 2.6, sigilY - sigilR * 2.6, sigilR * 5.2, sigilR * 5.2);
 
-  // Prefer the painted sigil asset if loaded; fall back to procedural rings
-  // when the image hasn't loaded yet (or in tests). The asset is a keyed
-  // canvas from loader.js — drawImage accepts canvases just like images.
+  // Prefer the painted sigil asset if loaded; fall back to procedural
+  // rings when the image hasn't loaded yet.
   const sigilImg = images.watcher_sigil;
   if (sigilImg) {
-    // Slight size bump + breath-pulse so the painted carving feels alive.
-    const artSize = Math.round(sigilR * 4.4 * (0.9 + 0.1 * Math.sin(now * 1.6)));
+    const artSize = Math.round(sigilR * 3.6 * (0.9 + 0.1 * Math.sin(now * 1.6)));
     ctx.save();
-    ctx.globalAlpha = alpha * 0.95;
+    ctx.globalAlpha = alpha * 0.85;
     ctx.drawImage(sigilImg, sigilX - artSize / 2, sigilY - artSize / 2, artSize, artSize);
     ctx.restore();
   } else {
-    // Procedural fallback — two concentric rings + pupil.
-    ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.85).toFixed(3)})`;
-    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.80).toFixed(3)})`;
+    ctx.lineWidth = 1.0;
     ctx.beginPath();
     ctx.arc(sigilX, sigilY, sigilR, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.35).toFixed(3)})`;
-    ctx.lineWidth = 0.8;
+    ctx.fillStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.90).toFixed(3)})`;
     ctx.beginPath();
-    ctx.arc(sigilX, sigilY, sigilR * 0.55, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.95).toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(sigilX, sigilY, 2.2, 0, Math.PI * 2);
+    ctx.arc(sigilX, sigilY, 1.6, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Text — italic serif, cream, warm drop shadow
+  // Text — italic serif, cream, gentler shadow than before. Renders the
+  // partially-revealed `revealLines` so the player sees the watcher
+  // SPEAK each character as it appears.
   ctx.fillStyle = `rgba(236, 224, 196, ${alpha.toFixed(3)})`;
   ctx.font = `italic ${fontSize}px Georgia, serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetY = 2;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 1;
   const startY = cy - totalH / 2 + lineH / 2;
-  for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], cx, startY + i * lineH);
+  for (let i = 0; i < revealLines.length; i++) {
+    ctx.fillText(revealLines[i], cx, startY + i * lineH);
   }
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
