@@ -451,6 +451,41 @@ const HAMLET_FX = [
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
   },
+  {
+    // Scrying basin — sits on the top-center altar slab at SHRINE_POS
+    // (680, 215). Tall pedestal with a glowing basin on top, used as
+    // the oracle's scrying station. Oracle NPC at (680, 260) stands
+    // 40px south of it on grass, facing north toward the basin.
+    // 4 frames at 3fps = 1.3s loop, slow swirl on the basin's surface.
+    id: 'scryingbasin', asset: 'fx_scryingbasin',
+    x: 680, y: 220,
+    frameW: 112, frameH: 112,
+    frameCount: 4, fps: 3,
+    scale: 0.6, yOffset: 0,
+  },
+  {
+    // Gravestones cluster — three weathered grave markers in the NW
+    // graveyard cluster. Sits north of the gravekeeper NPC (420, 280)
+    // so she stands 'tending the graves.' 4 frames at 1.5fps for a
+    // very slow ambient sway/wisp effect — these are stones, not very
+    // active. Position picked via PIL composite check.
+    id: 'graves', asset: 'fx_graves',
+    x: 370, y: 230,
+    frameW: 112, frameH: 112,
+    frameCount: 4, fps: 1.5,
+    scale: 0.6, yOffset: 0,
+  },
+  {
+    // Ancient lantern post — 'last lit thing in a forgotten place.'
+    // Stood at the W path edge near the graveyard, leaning slightly,
+    // a lonely beacon. 4 frames at 4fps for the candle flame flicker.
+    // Atmospheric companion to the gravekeeper's lantern.
+    id: 'lanternpost', asset: 'fx_lanternpost',
+    x: 300, y: 360,
+    frameW: 112, frameH: 112,
+    frameCount: 4, fps: 4,
+    scale: 0.6, yOffset: 0,
+  },
 ];
 
 // Resolve proximity tiers → effective {peakAlpha, fps, holdSec} based on

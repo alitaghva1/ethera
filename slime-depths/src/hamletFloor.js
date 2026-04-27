@@ -164,6 +164,13 @@ const EXCLUSIONS = [
   // Lectern (archivist's reading stand) at (436, 404). Tall narrow
   // stand: blocks ~36px wide × 33px tall around the visible base.
   { x1: 418, y1: 379, x2: 454, y2: 412 },
+  // Scrying basin at (680, 220). Tall pedestal — narrow base.
+  { x1: 665, y1: 230, x2: 695, y2: 260 },
+  // Gravestones cluster at (370, 230). Three stones spread across
+  // the lower half of the sprite — wider footprint than singles.
+  { x1: 345, y1: 240, x2: 395, y2: 270 },
+  // Ancient lantern post at (300, 360). Tall narrow post.
+  { x1: 287, y1: 365, x2: 313, y2: 395 },
 ];
 
 // Manual ALWAYS-WALKABLE overrides — rectangles where the luminance-based
