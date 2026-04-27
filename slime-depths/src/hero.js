@@ -1391,10 +1391,23 @@ export function heroDirection(h = hero) {
     // values aren't set yet (first frame of an attack).
     dir = vecToDirection(h.attackFacingX ?? h.aimX, h.attackFacingY ?? h.aimY);
   } else if (st === 'dodge') {
-    // Dodge keeps live aim — the dash-strike direction is locked
-    // separately on dashStrikeDirX/Y; this is just the body sprite
-    // and reading current aim feels right for a quick dodge.
-    dir = vecToDirection(h.aimX, h.aimY);
+    // Dodge body locks to the LOCKED direction (set at activation),
+    // not live aim. Two flavors:
+    //   - Dash-strike (offensive lunge, Q key): body faces the
+    //     dash direction (dashStrikeDirX/Y, derived from aim at trigger).
+    //   - Regular dodge (Space): body faces the roll direction
+    //     (dodgeDirX/Y, derived from WASD input at trigger, falls
+    //     back to aim if no WASD held).
+    // Reads as 'the hero commits to the maneuver they triggered' —
+    // the body doesn't pirouette to chase the mouse mid-dodge.
+    if (h.dashStrikeTime > 0) {
+      dir = vecToDirection(h.dashStrikeDirX, h.dashStrikeDirY);
+    } else {
+      dir = vecToDirection(h.dodgeDirX, h.dodgeDirY);
+    }
+    // Final fallback — if both lock vectors are stale (zero), fall
+    // back to live aim so we never return null from this branch.
+    if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
   } else if (st === 'walk') {
     dir = vecToDirection(h.vx, h.vy);
     if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
