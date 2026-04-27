@@ -87,7 +87,7 @@ export const HAMLET_ENTITIES = [
   //   gravekeeper — south of graveyard plot cluster NW
   //   oracle      — south of altar slab N (NPC sprite is hidden behind future altar prop)
   //   wanderer    — south of wanderer dirt patch on right side
-  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 417, interactR: 50, drawScale: 1.10 },
+  { kind: 'npc', id: 'keeper',      spriteIdx: 0,   x: 760, y: 397, interactR: 50, drawScale: 1.10 },
   { kind: 'npc', id: 'smith',       spriteIdx: 1,   x: 975, y: 310, interactR: 50, drawScale: 0.95 },
   { kind: 'npc', id: 'archivist',   spriteIdx: 2,   x: 391, y: 470, interactR: 50, drawScale: 0.95 },
   // gravekeeper: lives at the NW graveyard. Position iterated:
@@ -129,7 +129,7 @@ export const HAMLET_OBSTACLES = [
   // (hero is pushed back along the radial direction by the resolver
   // in resolveHamletCollision). Positions match HAMLET_ENTITIES NPC
   // coords above. Update both arrays together when moving NPCs.
-  { x: 760, y: 417, r: 18 },     // keeper
+  { x: 760, y: 397, r: 18 },     // keeper
   { x: 975, y: 310, r: 18 },     // smith
   { x: 391, y: 470, r: 18 },     // archivist
   { x: 455, y: 288, r: 18 },     // gravekeeper
@@ -506,7 +506,7 @@ const HAMLET_FX = [
     // graves; gem reads as 'an anchor for travelers' across-from-death
     // theme).
     id: 'savegem', asset: 'fx_savegem',
-    x: 500, y: 295,
+    x: 380, y: 255,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.4, yOffset: 0,
@@ -518,7 +518,7 @@ const HAMLET_FX = [
     // (where the portal used to be) and the south path. Reads as
     // 'town center bulletin' for hub-area atmosphere.
     id: 'noticeboard', asset: 'fx_noticeboard',
-    x: 688, y: 395,
+    x: 688, y: 375,
     frameW: 112, frameH: 112,
     frameCount: 1, fps: 1,
     scale: 0.6, yOffset: 0,
