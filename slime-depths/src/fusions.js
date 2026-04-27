@@ -414,7 +414,12 @@ export function checkFusionsOnPickup(newRelicId, equippedRelicIds, hero) {
     if (activeFusions.some(f => f.id === fusionId)) continue;
     const fusion = FUSIONS[fusionId];
     activeFusions.push(fusion);
-    try { fusion.apply(hero); } catch (e) {}
+    // Don't swallow errors silently — a buggy apply() would silently no-op
+    // (banner says FUSION FORGED but nothing changed). Log so future broken
+    // fusions surface in devtools instead of lurking.
+    try { fusion.apply(hero); } catch (e) {
+      console.warn(`[fusions] apply() failed for ${fusion.id}:`, e);
+    }
     // First-ever discovery — persist
     if (!discoveredFusions.has(fusionId)) {
       discoveredFusions.add(fusionId);

@@ -348,6 +348,17 @@ export function resetHero() {
   hero.fusionAvalanche = false;
   hero.fusionCrescendo = false;
   hero.fusionForkedSky = false;
+  // Wired-up dead fusions (kingslayer / weaving_step) per bug review
+  hero.fusionKingslayer = false;
+  hero.fusionWeavingStep = false;
+  hero.weavingStepReady = false;
+  // VOW T2 + SHADOW T2 + FLAME ascendance auxiliary fields — gated by
+  // hero.activeThemes everywhere they're read, so a stale value can't
+  // leak the actual buff. Reset here as defense in depth so future
+  // refactors that drop the activeThemes gate don't silently inherit.
+  hero.themeShadowFlankingUntil = 0;
+  hero.themeVowShieldAvailable = false;
+  hero.themeFlameTick = 0;
   // Orphan-icon rehomes
   hero.hourglassRespite = false; hero.hourglassReadyAt = 0;
   hero.fusionRingbearer = false;
@@ -640,6 +651,12 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (hero.dodgeCleanses) {
         hero.slowTime = 0;
         hero.poisonTime = 0;
+        // FUSION: Weaving Step — cleansing dodges arm a flag that
+        // grants 0.3s of i-frames on the player's next melee hit. The
+        // "cleansing" here means "any dodge while nimble_step is
+        // owned" since dodgeCleanses is the gate flag. Consumed on
+        // first damage-landed swing in the hero attack hook.
+        if (hero.fusionWeavingStep) hero.weavingStepReady = true;
       }
       // CONTENT PASS B1 — MEMORY OF THE HUNGRY BLADE: every dodge costs 1 HP.
       // Forces aggressive play so the buffed lifesteal has teeth to matter.
@@ -1178,7 +1195,11 @@ export function updateHero(dt, enemies, mouseWorld) {
           const _daggerCritBonus = (w.id === 'dagger') ? 0.10 : 0;
           // SHADOW set-bonus — flat crit chance add at 3/5 theme stacks
           const _shadowCritBonus = hero.themeCritBonus || 0;
-          const _totalCritChance = hero.critChance + _daggerCritBonus + _shadowCritBonus;
+          // FUSION: Kingslayer — speartip hits past 80% reach get +15%
+          // crit chance on top of the +40% damage. Pairs with the
+          // existing speartipBonus block below.
+          const _kingslayerCritBonus = (hero.fusionKingslayer && hero.speartip && dist > reach * 0.8) ? 0.15 : 0;
+          const _totalCritChance = hero.critChance + _daggerCritBonus + _shadowCritBonus + _kingslayerCritBonus;
           // SHADOW T2 ascendance — flanking window after dodge: every hit crits
           const _hcNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
           const _shadowFlanking = hero.themeShadowFlankingUntil > _hcNow;
@@ -1308,6 +1329,13 @@ export function updateHero(dt, enemies, mouseWorld) {
           // the enemy so the NEXT hero hit on them forces a crit.
           if (hero.knockbackCrit && kbScale >= 2 && !e.dead) {
             e._kbCritPending = true;
+          }
+          // FUSION: Weaving Step — first hit after a cleansing dodge
+          // grants 0.3s of i-frames. Consumed on first damage-landed
+          // swing. Stacks with existing iframes (Math.max).
+          if (hero.weavingStepReady) {
+            hero.weavingStepReady = false;
+            hero.iframes = Math.max(hero.iframes || 0, 0.3);
           }
           // SYSTEMS PASS — BLOODSTONE: kills of enemies under 25% HP heal +3.
           // Applies only when THIS hit is the killing blow on an already-

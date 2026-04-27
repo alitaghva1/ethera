@@ -383,6 +383,12 @@ let roomIndex = 0;
 let currentFloorLevel = 1;       // 1..MAX_FLOORS
 let transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
 let running = false;
+// Monotonic run sequence — increments every time startRun / resumeRun
+// begins a new run. Used by deferred timeouts/intervals (boss-drop
+// poll, wave-2 spawn) to detect "this callback fired AFTER the run
+// it was scheduled in ended" and bail cleanly. Without this guard,
+// a 15s boss-drop poll can fire openFloorUi against a fresh run.
+let _runSeq = 0;
 let bossWinTriggered = false;
 let gameTime = 0;
 let heroSpikeCD = 0;
@@ -3605,6 +3611,11 @@ function saveRunSnapshot() {
         executeThreshold: hero.executeThreshold,
         executeMul: hero.executeMul,
         boltLifeMul: hero.boltLifeMul,
+        // CONSUMABLE — revives are added by phoenix_cloak.apply() and
+        // phoenix_tear.apply() at +1 each. Without persisting the live
+        // count, a resume re-fires applyRelic and restores any revives
+        // the player has already consumed (free phoenix on every resume).
+        revives: hero.revives | 0,
       },
       // Rhythm-counter state — ALL of these decay to 0 across rooms
       // anyway (chain decay, swingChainTime), but a player who picks a
@@ -3645,6 +3656,9 @@ function clearRunSnapshot() {
 // Rebuilds the hero loadout from the snapshot then enters floor N as if the
 // player had just descended into it (fresh rooms, fresh enemies).
 function resumeRun(snap) {
+  // New run number — same rationale as startRun: invalidate stale
+  // deferred callbacks from a prior aborted run.
+  _runSeq++;
   hideAllOverlays();
   // Reset baseline first
   resetHero();
@@ -3702,6 +3716,7 @@ function resumeRun(snap) {
     if (typeof snap.mods.executeThreshold === 'number') hero.executeThreshold = snap.mods.executeThreshold;
     if (typeof snap.mods.executeMul === 'number')       hero.executeMul = snap.mods.executeMul;
     if (typeof snap.mods.boltLifeMul === 'number')      hero.boltLifeMul = snap.mods.boltLifeMul;
+    if (typeof snap.mods.revives === 'number')          hero.revives = snap.mods.revives;
   }
   // Rhythm-counter restore — applyRelic re-runs each relic's apply()
   // which re-zeros counters (e.g. razor_pace.apply sets razorPaceHits = 0).
@@ -3772,6 +3787,10 @@ function resumeRun(snap) {
 }
 
 function startRun() {
+  // New run number — invalidates any stale timeouts/intervals from prior
+  // runs (boss-drop poll, wave-2 spawn). They'll bail at the top of the
+  // callback when they see _runSeq has moved past their captured value.
+  _runSeq++;
   // (Prologue gate moved to enterHamletCanvas — the prose lands when the
   // player wakes in the hamlet, not after they've already toured it.)
   // ORACLE'S FORTUNES — if a card was drawn in the hamlet, push it into the
@@ -3984,6 +4003,11 @@ function startRun() {
   hero.fusionAvalanche = false;
   hero.fusionCrescendo = false;
   hero.fusionForkedSky = false;
+  // Previously dead fusions, now wired (Kingslayer adds speartip crit
+  // bonus, Weaving Step adds post-cleansing-dodge i-frames):
+  hero.fusionKingslayer = false;
+  hero.fusionWeavingStep = false;
+  hero.weavingStepReady = false;
   loadRoom(0, 'south');
   // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
   // previous run doesn't trigger a phantom heart-sparkle on the first
@@ -5087,8 +5111,16 @@ function tick(now) {
         shakeCamera(10, 0.3);
         triggerScreenFlash('rgba(255, 90, 60, 0.25)', 0.3);
         playSfx('slime_death', { rate: 0.4, volume: 0.85 });
-        // Spawn after small delay with spawn burst on each
+        // Spawn after small delay with spawn burst on each.
+        // Run-sequence + room-index guard — if the player dies/quits/
+        // restarts in the 650ms window OR transitions to a different
+        // room, the captured run/room won't match and the spawn bails.
+        // Without this, phantom enemies could spawn on a stale `data`
+        // reference into the now-active room.
+        const wave2RunSeq = _runSeq;
+        const wave2RoomIdx = roomIndex;
         setTimeout(() => {
+          if (_runSeq !== wave2RunSeq || roomIndex !== wave2RoomIdx || !running) return;
           for (const s of data.wave2) {
             const sx = s.x * TILE + TILE / 2;
             const sy = s.y * TILE + TILE / 2;
@@ -5425,17 +5457,24 @@ function tick(now) {
         // Poll for pickup (or timeout). Once the pedestal is picked up, the
         // banner runs ~3s; add extra breath before opening the UI so banner
         // + transition don't overlap.
+        // Run-sequence guard — if the player dies/quits/restarts during the
+        // 15s timeout window, the captured _runSeq won't match and the poll
+        // bails without firing openFloorUi against a fresh run state.
         const pollStart = performance.now() + dropDelay;
+        const pollRunSeq = _runSeq;
         const poll = setInterval(() => {
+          if (_runSeq !== pollRunSeq || !running) { clearInterval(poll); return; }
           const now = performance.now();
           if (now < pollStart) return;                          // wait for spawn
           if (!hasActivePedestals() && pedestals.length > 0) {
             // All spawned pedestals are picked (length>0 guards against pre-spawn state)
             clearInterval(poll);
-            setTimeout(openFloorUi, 3800);
+            setTimeout(() => {
+              if (_runSeq === pollRunSeq && running) openFloorUi();
+            }, 3800);
           } else if (now - pollStart > 15000) {
             clearInterval(poll);
-            openFloorUi();
+            if (running) openFloorUi();
           }
         }, 200);
       } else {
