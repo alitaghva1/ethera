@@ -4220,6 +4220,62 @@ function showEndOfRun(isVictory) {
       trophyRow.appendChild(card);
     }
     relicsRow.appendChild(trophyRow);
+
+    // ── NEAR-MISS FUSIONS — "you were one pick away from..." hint ─────────
+    // Surfaces fusions the player owned exactly one component of. Drives
+    // discovery + builds the "next run" pull: the player learns there's
+    // a Tesla Storm waiting if they pair Chain Lightning with Explosive
+    // Kill, even if they never knew the recipe before. Skips fusions
+    // that are already active (the player formed them this run).
+    const ownedIds = new Set(equippedRelics.map(r => r.id));
+    const activeIds = new Set(activeFusions.map(f => f.id));
+    const nearMisses = [];
+    for (const fid in FUSIONS) {
+      if (activeIds.has(fid)) continue;
+      const f = FUSIONS[fid];
+      const [a, b] = f.components;
+      const ownedA = ownedIds.has(a), ownedB = ownedIds.has(b);
+      // XOR — exactly one component was owned
+      if (ownedA !== ownedB) {
+        nearMisses.push({ fusion: f, missingId: ownedA ? b : a });
+      }
+    }
+    if (nearMisses.length > 0) {
+      // Sort by whether the missing relic is in the player's seenRelicIds
+      // — known relics first (they're more "achievable" feeling). Then cap
+      // at 3 to avoid wall-of-text on a relic-heavy run.
+      nearMisses.sort((x, y) => {
+        const xKnown = seenRelicIds.has(x.missingId) ? 0 : 1;
+        const yKnown = seenRelicIds.has(y.missingId) ? 0 : 1;
+        return xKnown - yKnown;
+      });
+      const top = nearMisses.slice(0, 3);
+      const nearWrap = document.createElement('div');
+      nearWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:10px;animation:winFadeIn 0.6s ease-out 1.0s both;';
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex;align-items:center;gap:10px;opacity:0.55;margin-bottom:2px;';
+      header.innerHTML = `
+        <div style="width:30px;height:1px;background:linear-gradient(90deg,transparent,#9098a8);"></div>
+        <div style="color:#9098a8;font-size:9px;letter-spacing:3px;font-style:italic;font-family:Georgia,serif;">ONE PICK AWAY</div>
+        <div style="width:30px;height:1px;background:linear-gradient(90deg,#9098a8,transparent);"></div>
+      `;
+      nearWrap.appendChild(header);
+      for (const nm of top) {
+        const missingDef = RELIC_DEFS[nm.missingId];
+        const missingName = missingDef ? missingDef.name : nm.missingId;
+        const known = seenRelicIds.has(nm.missingId);
+        const row = document.createElement('div');
+        row.style.cssText = 'font-family:Georgia,serif;font-size:11px;color:#b8b0a0;letter-spacing:0.4px;font-style:italic;text-align:center;';
+        // Cyan fusion name → cream "needs" → cream/red missing relic name.
+        // If the missing relic has never been seen, render as "(unknown)".
+        const missingDisplay = known
+          ? `<span style="color:#f4d9a0;">${missingName}</span>`
+          : `<span style="color:#8a7a5a;">an unmet relic</span>`;
+        row.innerHTML = `<span style="color:#a0e8ff;">${nm.fusion.name}</span> · needs ${missingDisplay}`;
+        nearWrap.appendChild(row);
+      }
+      relicsRow.appendChild(nearWrap);
+    }
   }
 
   // Essence earned + add to persistent total. Curse AND Ascension
