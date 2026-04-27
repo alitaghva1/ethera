@@ -136,16 +136,19 @@ export const TYPES = {
     flavor: 'the dead who were promised rest, and given knives',
   },
   orc:    {
-    // BALANCE PASS (sim: floor-1 boss p50 TTK was 2.7s — trivial).
-    // Raised 150 → 200 for ~3.5s p50 TTK. Then bone_captain was also
-    // bumped so floor 2 stays meaningfully tougher than floor 1.
+    // Common mid-tier melee. Boss-tier fields (WARCHIEF GRUDNOK display
+    // name, boss flavor) moved to elite_orc when the boss sprite split
+    // landed — orc def is now common-mob-only. Keeps the heavy-variant
+    // swing for combat variety; HP stays at 200 (highest of the common
+    // mobs) so the player feels orcs as the "heavy guy" tier in F2-F4
+    // comps. SFX kept on hero_hurt so the windup still reads heavy.
     prefix: 'orc_',    drawSize: 220, radius: 26, speed: 80, hp: 200, damage: 2,
     color: '#7fa34a', hitCD: 0.92, fps: 8, behavior: 'melee',
     attackReach: 62, attackArc: Math.PI * 0.60,
     windup: 0.38, swing: 0.26,
     telegraphColor: 'rgba(210, 45, 55, ',
-    displayName: 'WARCHIEF GRUDNOK',
-    flavor: 'chieftain of the iron-bone clans',
+    displayName: 'ORC',
+    flavor: 'iron-bone clansman. fights long after the chieftain falls.',
     heavyChance: 0.30,
     heavyReach: 90, heavyArc: Math.PI * 0.85,
     heavyWindup: 0.70, heavySwing: 0.32,
