@@ -46,7 +46,7 @@ export const TIPS = {
   first_finisher:  { text: 'Every 3rd swing is a FINISHER — each weapon pays off differently' },
   // ----- Enemies & affixes -----
   first_vanguard:  { text: 'Shielded enemies block frontal attacks — flank them to break through' },
-  first_elite:     { text: 'Elite affixes — F(rost) slows · E(mber) burns · V(enom) poisons · W(arded) resists' },
+  first_elite:     { text: 'Elite affixes — F(rost) · E(mber) · V(enom) · W(arded). Hold TAB to inspect any elite.' },
   // ----- Build / discovery -----
   first_fusion:    { text: 'FUSION FORGED — two relics combine into a named effect. Find more by stacking compatible picks' },
   first_resonance: { text: 'RESONANCE — owning 3 relics of one theme grants a passive bonus. 5 reaches ASCENDANCE' },

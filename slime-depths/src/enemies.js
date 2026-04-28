@@ -5,7 +5,7 @@ import { isWallAtWorld, spawnExtraFirePool } from './room.js';
 import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
 import { shakeCamera, pulseZoom, worldToScreen } from './camera.js';
-import { mouse } from './input.js';
+import { mouse, keys } from './input.js';
 import { damageHero, hero } from './hero.js';
 import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
@@ -2294,14 +2294,20 @@ export function drawEnemyTelegraphs(ctx) {
   }
 }
 
-// Elite affix hover tooltip — when the mouse rests over an elite enemy,
-// show its affix name + a one-line description so the player can prepare
-// instead of being surprised by frost / ember / venom / warded mid-fight.
-// Drawn in screen space (after the world camera transform is closed) so
-// the tooltip stays the same size regardless of zoom and never gets
-// occluded by terrain or other enemies. Uses worldToScreen to anchor the
-// tooltip above the elite's head.
+// Elite affix info tooltip — gated on the player HOLDING TAB so it
+// surfaces on demand rather than firing every time the mouse drifts
+// near an elite mid-combat. Reading "F SLOWS / E BURNS / V POISONS /
+// W RESISTS" was useful as a teach-this-once cue but became noise
+// during sustained fights — hover-pan-throughs would pop the card
+// over the action. New rule: hold TAB (or Shift) to ENTER inspect
+// mode; release to dismiss. Cursor still drives "which elite";
+// mouse-near logic preserved.
 export function drawEliteAffixTooltips(ctx, w, h) {
+  // Gate — only render if the player is explicitly asking via Tab/Shift.
+  // Either key works: Tab is the canonical "info" key, Shift is the
+  // ergonomic alternative for mouse-heavy players.
+  const inspectHeld = keys['Tab'] || keys['ShiftLeft'] || keys['ShiftRight'];
+  if (!inspectHeld) return;
   // Find the closest elite within hover range of the mouse cursor (screen px).
   // Range chosen to be forgiving but not overlapping multiple elites at once.
   const HOVER_RANGE_PX = 56;

@@ -4933,88 +4933,38 @@ function showEndOfRun(isVictory) {
                      :                         { label: '\u00B7 COMMON',   color: '#b0c0d0', glow: 'rgba(176,192,208,0.3)',  pulse: false };
       const card = document.createElement('div');
       const stagger = 0.8 + i * 0.08;
+      // Trophy cards compressed (72w -> 56w, padding 8/6 -> 4/4, icon
+      // 40 -> 28, name min-height 22 -> 14) so the strip + the rest of
+      // the death modal fits in 720 design height without scroll.
+      // Tier label dropped from face — full name + tier still surface
+      // in the hover tooltip via card.title.
       card.style.cssText = `
-        display:flex;flex-direction:column;align-items:center;gap:4px;
-        width:72px;padding:8px 6px;
+        display:flex;flex-direction:column;align-items:center;gap:2px;
+        width:56px;padding:4px;
         background:linear-gradient(180deg,rgba(30,22,28,0.9),rgba(14,10,16,0.9));
         border:1px solid ${r.tint || tierMeta.color};
-        box-shadow:0 0 12px ${tierMeta.glow}, inset 0 0 8px rgba(0,0,0,0.5);
+        box-shadow:0 0 10px ${tierMeta.glow}, inset 0 0 8px rgba(0,0,0,0.5);
         font-family:Georgia,serif;
         animation:winCardSlide 0.5s ease-out ${stagger}s both${(tier === 'legendary' || tier === 'mythic') ? ', legendPulse 2.4s ease-in-out infinite' : ''};
       `;
       card.title = r.name + (r.flavor ? '\n\u201C' + r.flavor + '\u201D\n' : '\n') + r.desc;
       card.innerHTML = `
-        <div style="font-size:7px;letter-spacing:2px;color:${tierMeta.color};opacity:0.85;font-weight:bold;white-space:nowrap;">${tierMeta.label}</div>
-        <div style="padding:3px;background:radial-gradient(circle,${(r.tint||tierMeta.color)}33,transparent 70%);">
-          <img src="assets/icons/${r.icon}.png" style="width:40px;height:40px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15) drop-shadow(0 0 6px ${(r.tint||tierMeta.color)}aa);display:block;" />
+        <div style="padding:2px;background:radial-gradient(circle,${(r.tint||tierMeta.color)}33,transparent 70%);">
+          <img src="assets/icons/${r.icon}.png" style="width:28px;height:28px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15) drop-shadow(0 0 5px ${(r.tint||tierMeta.color)}aa);display:block;" />
         </div>
-        <div style="font-size:9px;color:${r.tint || tierMeta.color};text-align:center;letter-spacing:0.5px;line-height:1.15;min-height:22px;font-weight:bold;">${r.name}</div>
+        <div style="font-size:8px;color:${r.tint || tierMeta.color};text-align:center;letter-spacing:0.3px;line-height:1.15;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${r.name}</div>
       `;
       trophyRow.appendChild(card);
     }
     relicsRow.appendChild(trophyRow);
 
-    // ── NEAR-MISS FUSIONS — "you were one pick away from..." hint ─────────
-    // Surfaces fusions the player owned exactly one component of. Drives
-    // discovery + builds the "next run" pull: the player learns there's
-    // a Tesla Storm waiting if they pair Chain Lightning with Explosive
-    // Kill, even if they never knew the recipe before. Skips fusions
-    // that are already active (the player formed them this run).
-    const ownedIds = new Set(equippedRelics.map(r => r.id));
-    const activeIds = new Set(activeFusions.map(f => f.id));
-    const nearMisses = [];
-    for (const fid in FUSIONS) {
-      if (activeIds.has(fid)) continue;
-      const f = FUSIONS[fid];
-      const [a, b] = f.components;
-      const ownedA = ownedIds.has(a), ownedB = ownedIds.has(b);
-      // XOR — exactly one component was owned
-      if (ownedA !== ownedB) {
-        nearMisses.push({ fusion: f, missingId: ownedA ? b : a });
-      }
-    }
-    if (nearMisses.length > 0) {
-      // Sort by whether the missing relic is in the player's seenRelicIds
-      // — known relics first (they're more "achievable" feeling). Then cap
-      // at 3 to avoid wall-of-text on a relic-heavy run.
-      nearMisses.sort((x, y) => {
-        const xKnown = seenRelicIds.has(x.missingId) ? 0 : 1;
-        const yKnown = seenRelicIds.has(y.missingId) ? 0 : 1;
-        return xKnown - yKnown;
-      });
-      const top = nearMisses.slice(0, 3);
-      const nearWrap = document.createElement('div');
-      nearWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:10px;animation:winFadeIn 0.6s ease-out 1.0s both;';
-      const header = document.createElement('div');
-      header.style.cssText = 'display:flex;align-items:center;gap:10px;opacity:0.55;margin-bottom:2px;';
-      header.innerHTML = `
-        <div style="width:30px;height:1px;background:linear-gradient(90deg,transparent,#9098a8);"></div>
-        <div style="color:#9098a8;font-size:9px;letter-spacing:3px;font-style:italic;font-family:Georgia,serif;">ONE PICK AWAY</div>
-        <div style="width:30px;height:1px;background:linear-gradient(90deg,#9098a8,transparent);"></div>
-      `;
-      nearWrap.appendChild(header);
-      for (const nm of top) {
-        const missingDef = RELIC_DEFS[nm.missingId];
-        const missingName = missingDef ? missingDef.name : nm.missingId;
-        const known = seenRelicIds.has(nm.missingId);
-        const row = document.createElement('div');
-        // Inline-flex so the icon + text render on a single baseline.
-        row.style.cssText = 'display:flex;align-items:center;gap:6px;font-family:Georgia,serif;font-size:11px;color:#b8b0a0;letter-spacing:0.4px;font-style:italic;';
-        // Icon (only for known relics — unknowns stay teasing).
-        let iconHtml = '';
-        if (known && missingDef && missingDef.icon) {
-          const tint = missingDef.tint || '#f4d9a0';
-          iconHtml = `<img src="assets/icons/${missingDef.icon}.png" style="width:18px;height:18px;image-rendering:pixelated;filter:drop-shadow(0 0 3px ${tint}88);vertical-align:middle;display:inline-block;" />`;
-        }
-        // Cyan fusion name → cream "needs" → icon → cream missing-relic name.
-        const missingDisplay = known
-          ? `${iconHtml}<span style="color:#f4d9a0;">${missingName}</span>`
-          : `<span style="color:#8a7a5a;">an unmet relic</span>`;
-        row.innerHTML = `<span style="color:#a0e8ff;">${nm.fusion.name}</span> <span style="opacity:0.6;">·</span> needs ${missingDisplay}`;
-        nearWrap.appendChild(row);
-      }
-      relicsRow.appendChild(nearWrap);
-    }
+    // (Removed) The "ONE PICK AWAY" near-miss fusion hint used to render
+    // here — listed up to N fusions where the player owned exactly one
+    // component, as a "next run" hook. Removed from the death screen so
+    // the modal fits within 720 design without scrolling. The same
+    // discovery affordance lives in Chronicles -> Fusions: hover any
+    // undiscovered fusion to see its recipe, so players can still build
+    // toward fusions they're missing pieces of.
   }
 
   // Essence earned + add to persistent total. Curse AND Ascension

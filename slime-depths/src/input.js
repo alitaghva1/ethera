@@ -10,8 +10,10 @@ export function initInput(canvas) {
   window.addEventListener('keydown', (e) => {
     if (!keys[e.code]) justPressed.add(e.code);
     keys[e.code] = true;
-    // Prevent arrow/WASD/space scrolling
-    if (['Space','KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+    // Prevent arrow/WASD/space scrolling. Also Tab — held to inspect
+    // elite affixes (enemies.js drawEliteAffixTooltips); browser-default
+    // is to move focus, which would steal the held-key state.
+    if (['Space','KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code)) e.preventDefault();
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
