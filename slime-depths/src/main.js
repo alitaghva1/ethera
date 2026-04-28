@@ -237,13 +237,12 @@ deathEl.style.flexDirection = 'column';
 deathEl.style.padding = '20px';
 deathEl.style.boxSizing = 'border-box';
 // Tall-content modal: stats grid + relics + watcher ledger + essence row +
-// sanctuary unlock cards + button row totals ~900px in design space — more
-// than the 720 design height of #hud. Without `overflow-y: auto` the
-// flex-center default would clip ~90px from BOTH the top (YOU DIED title)
-// AND the bottom (UNLOCK buttons). Top-aligned + scrollable matches the
-// pattern memoryEl / smithEl already use, and lets the modal work at any
-// viewport from 480p to 4K+.
-deathEl.style.justifyContent = 'flex-start';
+// sanctuary unlock cards + button row can total 720+ design px depending on
+// run length. Use `safe center` for justify (browsers anchor overflowing
+// content to start instead of clipping both edges with regular center) +
+// overflow-y:auto so any tail spillover scrolls instead of clipping. The
+// hidden scrollbar style on #hud children keeps it visually clean.
+deathEl.style.justifyContent = 'safe center';
 deathEl.style.overflowY = 'auto';
 deathEl.innerHTML = DEATH_SCREEN_HTML;
 // restartBtn is shared between the real death-screen ("NEW RUN") and the
@@ -277,11 +276,10 @@ document.getElementById('deathMenuBtn')?.addEventListener('mouseleave', (e) => {
 // Between-floor + victory screen — includes a shop row between floors.
 // Ornamented dramatic screen matching the main-menu aesthetic.
 const winEl = document.createElement('div');
-// Between-floor / victory screen — top-aligned + scrollable for the same
-// reason as deathEl: when the shop row is shown, content can exceed the
-// 720 design-space height. Without overflow-y:auto the bottom of the
-// shop or the DESCEND button would clip on tall configurations.
-winEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:flex-start;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
+// Between-floor / victory screen — `safe center` keeps content centered
+// when it fits, and anchors-to-start (no clip-both-ends) when it doesn't.
+// overflow-y:auto handles tall shop rows. Same pattern as deathEl.
+winEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 winEl.innerHTML = WIN_SCREEN_HTML;
 document.getElementById('hud').appendChild(winEl);
 document.getElementById('winRestartBtn').addEventListener('click', () => {
@@ -587,7 +585,7 @@ const menuEl = document.createElement('div');
 // torches and descending stair. UI overlays sit above dark areas at top
 // (title crown) and bottom (cards + chrome). Fallback radial-gradient
 // preserved in case the image fails to load.
-menuEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:#050308 url(assets/menu/menu_backdrop.jpg) center/cover no-repeat;color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow:hidden;';
+menuEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:#050308 url(assets/menu/menu_backdrop.jpg) center/cover no-repeat;color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow:hidden;';
 menuEl.innerHTML = MENU_SCREEN_HTML;
 document.getElementById('hud').appendChild(menuEl);
 
@@ -851,7 +849,7 @@ refreshMenuModeChips();
 
 // TAROT REVEAL — dramatic 3-card draw modal before the run begins
 const tarotRevealEl = document.createElement('div');
-tarotRevealEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;overflow:hidden;';
+tarotRevealEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;overflow:hidden;';
 tarotRevealEl.innerHTML = `
   <!-- Deep vignette + page-frame corners. -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -934,7 +932,7 @@ function showTarotReveal() {
 
 // Settings modal — accessible from main menu (same panel as pause menu)
 const settingsEl = document.createElement('div');
-settingsEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;';
+settingsEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 settingsEl.innerHTML = `
   <!-- Page frame + vignette -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -1014,7 +1012,7 @@ function showSettingsModal() {
 
 // Curses modal — toggle run-difficulty modifiers
 const cursesEl = document.createElement('div');
-cursesEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0a10 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;';
+cursesEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0a10 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 cursesEl.innerHTML = `
   <!-- Ornamental frame -->
   <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
@@ -1047,7 +1045,7 @@ function showCursesModal() {
 // cryptic hint. Picking one persists the choice; picking "(none)" clears it.
 // ============================================================================
 const memoryEl = document.createElement('div');
-memoryEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
+memoryEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
 memoryEl.innerHTML = `
   <!-- Page-frame corners + deep vignette — shared manuscript grammar -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -1772,7 +1770,7 @@ function showCursesFromHamlet() {
 // service, not an essence sink.
 // ============================================================================
 const oracleEl = document.createElement('div');
-oracleEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#181022 0%,#0a0814 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;';
+oracleEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#181022 0%,#0a0814 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
 oracleEl.innerHTML = `
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
   <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
@@ -1894,7 +1892,7 @@ function showOracleForecast() {
 // the hidden tarot-mode used to provide, now accessed via a worldly NPC.
 // ============================================================================
 const oracleFortuneEl = document.createElement('div');
-oracleFortuneEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0f28 0%,#0c0614 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:30;';
+oracleFortuneEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0f28 0%,#0c0614 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:30;overflow-y:auto;';
 oracleFortuneEl.innerHTML = `
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
   <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:960px;width:100%;">
@@ -2091,7 +2089,7 @@ function showMemoryFromHamlet() {
 // each with its own independent progress. Switching reloads the page.
 // ============================================================================
 const volumesEl = document.createElement('div');
-volumesEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;';
+volumesEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
 volumesEl.innerHTML = `
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
   <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
@@ -2231,7 +2229,7 @@ function renderVolumesGrid() {
 const REFORGE_COST = { common: 40, rare: 80, legendary: 140 };
 
 const smithEl = document.createElement('div');
-smithEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a1008 0%,#0a0608 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
+smithEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#1a1008 0%,#0a0608 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
 smithEl.innerHTML = `
   <!-- Corners + vignette — shared manuscript grammar -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -2414,7 +2412,7 @@ function updateMenuMemoryLabel() {
 // the manuscript grammar: page-frame corners, deep vignette, inset strokes,
 // Georgia typography.
 const achEl = document.createElement('div');
-achEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
+achEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
 achEl.innerHTML = `
   <!-- Deep vignette + page-frame corners (shared discipline). -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -2740,7 +2738,7 @@ function updateCurseEssMul() {
 
 // Weapon picker — shown between main menu and run start
 const weaponPickerEl = document.createElement('div');
-weaponPickerEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;';
+weaponPickerEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 weaponPickerEl.innerHTML = `
   <!-- Deep vignette + page-frame corners (shared discipline). -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -3018,7 +3016,7 @@ function hideAllOverlays() {
 
 // Pause menu overlay — ESC to toggle
 const pauseEl = document.createElement('div');
-pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;';
+pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 pauseEl.innerHTML = `
   <!-- Deep vignette frame — same discipline as main menu. -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -3108,7 +3106,7 @@ document.getElementById('pauseJournalBtn').addEventListener('click', () => {
 
 // JOURNAL OF THE RUIN — scrollable auto-generated history modal
 const journalEl = document.createElement('div');
-journalEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:20;';
+journalEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:20;overflow-y:auto;';
 journalEl.innerHTML = `
   <!-- Page frame + vignette -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -3801,7 +3799,7 @@ const EPILOGUE_BEATS = [
   'and the dark, when it wakes, will remember your name.',
 ];
 const epilogueEl = document.createElement('div');
-epilogueEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0a0e 0%,#0a0610 60%,#020104 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px;box-sizing:border-box;cursor:pointer;z-index:40;';
+epilogueEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0a0e 0%,#0a0610 60%,#020104 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px;box-sizing:border-box;cursor:pointer;z-index:40;overflow-y:auto;';
 epilogueEl.innerHTML = `
   <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
     <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
