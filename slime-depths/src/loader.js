@@ -533,6 +533,12 @@ export async function loadAll(progressCb) {
     // refactor could split into hamlet/ and dungeon/ subfolders.
     loadImage('fx_dungeon_torch',       'assets/hamlet/fx_dungeon_torch.png'),
     loadImage('fx_dungeon_pillar',      'assets/hamlet/fx_dungeon_pillar.png'),
+    // Dungeon door — 4-frame open/close sprite atlas (112x112 native,
+    // 448x112 strip from the side-view ancient-stone door asset's
+    // south rotation). Replaces the hand-coded plank-slide doors in
+    // room.js drawDoor. See drawDoor for frame interpolation + amber
+    // glow overlay layering.
+    loadImage('dungeon_door',           'assets/dungeon/door.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),

@@ -1471,71 +1471,88 @@ function drawDoor(ctx, tx, ty, openAmount) {
   const x = tx * TILE, y = ty * TILE;
   const a = Math.max(0, Math.min(1, openAmount));
 
-  // Stone frame — outer wall-band that always surrounds the opening
+  // Sprite-based render: side-view dungeon door with 4-frame open/close
+  // atlas (112×112 each). Replaces the hand-coded "stone frame +
+  // sliding wood plank" geometry. Three core poses are used (closed /
+  // ajar / open); the asset's frame 3 is a swing-back artwork variant
+  // we currently skip — could be wired into a closing-specific lerp
+  // later for extra polish, but snap-to-nearest reads fine for pixel
+  // art at the OPEN_DURATION speed.
+  const sprite = images.dungeon_door;
+
+  // Stone wall band behind the sprite — fills the wall tile so a small
+  // sprite never leaves a transparent square. Visible only at the
+  // edges where the sprite's transparent margin lands.
   ctx.fillStyle = PAL.wallBody;
   ctx.fillRect(x, y, TILE, TILE);
-  ctx.fillStyle = PAL.doorFrame;
-  ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
 
-  // ── Archway void — always solid dark, NOT alpha-blended. This is the
-  // "behind the door" plane — a real opening into the next room. Pre-fill
-  // with opaque dark so partially-open doors clearly read as "look, the
-  // door is gone here, you can see through."
-  const innerX = x + 6, innerY = y + 4;
-  const innerW = TILE - 12, innerH = TILE - 8;
-  ctx.fillStyle = '#0a0608';                   // pure void
-  ctx.fillRect(innerX, innerY, innerW, innerH);
-  // Amber torch-glow at the bottom of the archway — brighter as door opens
-  const glow = ctx.createRadialGradient(
-    x + TILE/2, y + TILE * 0.78, 2,
-    x + TILE/2, y + TILE * 0.5, TILE * 0.55,
-  );
-  glow.addColorStop(0, 'rgba(255, 165, 80, ' + (0.55 * (0.3 + a * 0.7)).toFixed(3) + ')');
-  glow.addColorStop(0.5, 'rgba(160, 70, 30, ' + (0.35 * (0.3 + a * 0.7)).toFixed(3) + ')');
-  glow.addColorStop(1, 'rgba(20, 8, 4, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(innerX, innerY, innerW, innerH);
-
-  // ── Door plank — lifts upward as the door opens. At a=1 it's fully out
-  // of frame and we skip drawing entirely (pure archway visible).
-  if (a < 0.99) {
-    const plankH = innerH;
-    const lift = a * (plankH + 4);
-    const px = innerX;
-    const py = innerY - lift;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(innerX, innerY, innerW, plankH);
-    ctx.clip();
-
-    // Wood gradient — explicit hex if PAL is missing the keys (defensive)
-    const wg = ctx.createLinearGradient(px, py, px, py + plankH);
-    wg.addColorStop(0, PAL.doorWoodLit  || '#7a4a26');
-    wg.addColorStop(0.5, PAL.doorWoodMid || '#5a3018');
-    wg.addColorStop(1, PAL.doorWoodDark || '#3a1e0e');
-    ctx.fillStyle = wg;
-    ctx.fillRect(px, py, innerW, plankH);
-    // Vertical plank lines
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(px + Math.floor(innerW * 0.25), py, 1, plankH);
-    ctx.fillRect(px + Math.floor(innerW * 0.5),  py, 1, plankH);
-    ctx.fillRect(px + Math.floor(innerW * 0.75), py, 1, plankH);
-    // Iron bands top + bottom
-    ctx.fillStyle = PAL.doorIronDark || '#1a1014';
-    ctx.fillRect(px, py + 2, innerW, 4);
-    ctx.fillRect(px, py + plankH - 8, innerW, 4);
-    ctx.fillStyle = PAL.doorIronLit || '#4a3a44';
-    ctx.fillRect(px, py + 2, innerW, 1);
-    ctx.fillRect(px, py + plankH - 8, innerW, 1);
-    // Red lock-warning cast for north doors still mostly closed
-    if (ty === 0 && a < 0.4) {
-      ctx.fillStyle = 'rgba(180, 40, 50, ' + (0.28 * (1 - a / 0.4)).toFixed(3) + ')';
-      ctx.fillRect(px, py, innerW, plankH);
-    }
-    ctx.restore();
+  // Loader miss fallback: keep the previous procedural geometry's "stone
+  // frame + dark void" minimum so nothing visibly breaks if the asset
+  // didn't load. (Pre-sprite drawDoor's full body is retired.)
+  if (!sprite || sprite.width < 448) {
+    ctx.fillStyle = PAL.doorFrame;
+    ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
+    ctx.fillStyle = '#0a0608';
+    ctx.fillRect(x + 6, y + 4, TILE - 12, TILE - 8);
+    return;
   }
 
-  // Next-room preview pulse — legacy fallback for rooms with no door object.
+  const FW = 112, FH = 112;
+  // Snap to nearest of 3 frames (closed / ajar / open). Cross-fade was
+  // considered but pixel art reads worse with half-alpha frames stacked.
+  const frameIdx = Math.min(2, Math.round(a * 2));
+  const sx = frameIdx * FW;
+
+  // Render at 73px → fills the wall row + slight overflow into the
+  // floor tile (the threshold step + arch keystone extend just beyond
+  // a single TILE box, which gives doors visual prominence as the
+  // landmarks they are. Identical scale on north + south walls).
+  const RENDER = 73;
+  const cx = x + TILE / 2;
+  const cy = y + TILE / 2;
+  const dx = Math.round(cx - RENDER / 2);
+  const dy = Math.round(cy - RENDER / 2);
+
+  // South-wall doors get a vertical flip so the door face points UP
+  // (toward the player, who is north of it). North-wall doors render
+  // the south-rotation as-is (door face points DOWN toward the player,
+  // who is south of it). Either way, the player always sees the door
+  // facing them.
+  const isSouthWall = ty === room.h - 1;
+
+  ctx.save();
+  if (isSouthWall) {
+    ctx.translate(cx, cy);
+    ctx.scale(1, -1);
+    ctx.translate(-cx, -cy);
+  }
+  ctx.drawImage(sprite, sx, 0, FW, FH, dx, dy, RENDER, RENDER);
+  ctx.restore();
+
+  // Amber torch glow — preserved from the old drawDoor. Sells "another
+  // room awaits" by warm-tinting the door interior. Stronger when
+  // open. Painted over the sprite (bottom-anchored radial), bleeding
+  // ~12px into adjacent tiles for a soft falloff.
+  const glow = ctx.createRadialGradient(
+    cx, y + TILE * 0.78, 2,
+    cx, y + TILE * 0.5, TILE * 0.55,
+  );
+  glow.addColorStop(0, 'rgba(255, 165, 80, ' + (0.45 * (0.3 + a * 0.7)).toFixed(3) + ')');
+  glow.addColorStop(0.5, 'rgba(160, 70, 30, ' + (0.26 * (0.3 + a * 0.7)).toFixed(3) + ')');
+  glow.addColorStop(1, 'rgba(20, 8, 4, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 12, y - 8, TILE + 24, TILE + 16);
+
+  // Red lock-warning cast for north doors still mostly closed —
+  // preserved from the old drawDoor. Renders over the sprite as a
+  // thin tint when the room hasn't yet been cleared.
+  if (ty === 0 && a < 0.4) {
+    ctx.fillStyle = 'rgba(180, 40, 50, ' + (0.24 * (1 - a / 0.4)).toFixed(3) + ')';
+    ctx.fillRect(dx, dy, RENDER, RENDER);
+  }
+
+  // Next-room preview pulse — legacy fallback for rooms with no door
+  // object. Kept since some legacy spawn paths still rely on it.
   if (a > 0.6 && ty === 0 && roomNextKind.kind && _getDoorAt && !_getDoorAt(tx, ty)) {
     drawDoorPreview(ctx, x + TILE/2, y - 14, roomNextKind.kind);
   }
