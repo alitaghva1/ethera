@@ -34,6 +34,23 @@
   @supports not (aspect-ratio: 16 / 9) {
     canvas { max-width: 177.78vh; max-height: 56.25vw; }
   }
+  /* Tall modals (deathScreen / winEl / memoryEl / smithEl / achEl /
+     bossIntroOverlay) live inside #hud, which is locked to a 1280x720
+     design space and scaled up for larger viewports. When their content
+     overflows 720 design px they need to scroll — but a 15px design-space
+     scrollbar becomes 45px wide at 4K (--ui-scale 3.0) and looks broken.
+     Hide it; mousewheel + touch + arrow-key scroll still work. The
+     internal grids inside memoryEl / smithEl / achEl already had
+     overflow-y:auto on their inner containers; this also hides those. */
+  #hud div::-webkit-scrollbar,
+  #hud div::-webkit-scrollbar-thumb,
+  #hud div::-webkit-scrollbar-track {
+    width: 0;
+    height: 0;
+    background: transparent;
+  }
+  #hud div { scrollbar-width: none; }
+
   /* ==========================================================================
      UI SCALE LAYER — design-resolution overlay container. The canvas inside
      #stage auto-stretches to viewport (1920x1080 on 1080p, 3840x2160 on 4K)

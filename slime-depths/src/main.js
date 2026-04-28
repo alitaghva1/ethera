@@ -236,6 +236,15 @@ const deathEl = document.getElementById('deathScreen');
 deathEl.style.flexDirection = 'column';
 deathEl.style.padding = '20px';
 deathEl.style.boxSizing = 'border-box';
+// Tall-content modal: stats grid + relics + watcher ledger + essence row +
+// sanctuary unlock cards + button row totals ~900px in design space — more
+// than the 720 design height of #hud. Without `overflow-y: auto` the
+// flex-center default would clip ~90px from BOTH the top (YOU DIED title)
+// AND the bottom (UNLOCK buttons). Top-aligned + scrollable matches the
+// pattern memoryEl / smithEl already use, and lets the modal work at any
+// viewport from 480p to 4K+.
+deathEl.style.justifyContent = 'flex-start';
+deathEl.style.overflowY = 'auto';
 deathEl.innerHTML = DEATH_SCREEN_HTML;
 // restartBtn is shared between the real death-screen ("NEW RUN") and the
 // sanctuary-opened-from-hamlet ("← MAIN MENU") re-skins. The sanctuary re-
@@ -268,7 +277,11 @@ document.getElementById('deathMenuBtn')?.addEventListener('mouseleave', (e) => {
 // Between-floor + victory screen — includes a shop row between floors.
 // Ornamented dramatic screen matching the main-menu aesthetic.
 const winEl = document.createElement('div');
-winEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;';
+// Between-floor / victory screen — top-aligned + scrollable for the same
+// reason as deathEl: when the shop row is shown, content can exceed the
+// 720 design-space height. Without overflow-y:auto the bottom of the
+// shop or the DESCEND button would clip on tall configurations.
+winEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:flex-start;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 winEl.innerHTML = WIN_SCREEN_HTML;
 document.getElementById('hud').appendChild(winEl);
 document.getElementById('winRestartBtn').addEventListener('click', () => {
@@ -4480,21 +4493,33 @@ function showEndOfRun(isVictory) {
   refreshNpcPresence(records, stats, { seenRelicIds });
   const newBestMark = (key) => beatenRecords.includes(key)
     ? ' <span style="color:#ffe070;font-size:10px;letter-spacing:1px;text-shadow:0 0 8px rgba(255,224,112,0.8);">★ BEST</span>' : '';
-  grid.innerHTML = `
-    <div><span style="opacity:0.6;">Floor Reached</span></div><div style="text-align:right;color:#ffd68a;">${stats.floorReached} / ${MAX_FLOORS}${newBestMark('maxFloor')}</div>
-    <div><span style="opacity:0.6;">Run Time</span></div><div style="text-align:right;">${duration}${isVictory ? newBestMark('fastestClear') : ''}</div>
-    <div><span style="opacity:0.6;">Rooms Cleared</span></div><div style="text-align:right;">${stats.roomsCleared}</div>
-    <div><span style="opacity:0.6;">Enemies Slain</span></div><div style="text-align:right;">${stats.enemiesDefeated}${stats.elitesDefeated ? ' (' + stats.elitesDefeated + ' elite)' : ''}${newBestMark('mostEnemies')}</div>
-    <div><span style="opacity:0.6;">Bosses Felled</span></div><div style="text-align:right;color:#ff9085;">${stats.bossesKilled}${newBestMark('mostBosses')}</div>
-    <div><span style="opacity:0.6;">Damage Dealt</span></div><div style="text-align:right;">${stats.damageDealt | 0}</div>
-    <div><span style="opacity:0.6;">Damage Taken</span></div><div style="text-align:right;">${stats.damageTaken | 0}</div>
-    <div><span style="opacity:0.6;">Biggest Hit</span></div><div style="text-align:right;color:#ff9066;">${stats.biggestHit | 0}${newBestMark('biggestHit')}</div>
-    <div><span style="opacity:0.6;">Gold Collected</span></div><div style="text-align:right;color:#ffd68a;">🪙 ${stats.goldCollected}${newBestMark('mostGold')}</div>
-    <div><span style="opacity:0.6;">Relics Acquired</span></div><div style="text-align:right;">${stats.relicsObtained}${newBestMark('mostRelics')}</div>
-    <div><span style="opacity:0.6;">Perfect Dodges</span></div><div style="text-align:right;color:#a0e8ff;">${stats.perfectDodges}</div>
-    <div><span style="opacity:0.6;">Max Combo</span></div><div style="text-align:right;">${mc}${comboTag}${newBestMark('maxCombo')}</div>
-    ${stats.wandererTrades ? `<div><span style="opacity:0.6;">Wanderer Trades</span></div><div style="text-align:right;color:#c9a86a;">${stats.wandererTrades}</div>` : ''}
-  `;
+  // Stats rows — drop zero-value rows for short / failed runs so the modal
+  // fits within the 720 design-space height. Long / late-floor runs still
+  // get the full breakdown because their stats are non-zero. "Floor
+  // Reached" and "Run Time" always show — they're the run's signature.
+  // Zero-display rule: skip a row if its primary value is 0/null. Each row
+  // is built as a template string so we can filter().join() into the grid.
+  const _row = (label, val, color = '') => `
+    <div><span style="opacity:0.6;">${label}</span></div>
+    <div style="text-align:right;${color ? `color:${color};` : ''}">${val}</div>`;
+  const _rows = [
+    _row('Floor Reached', `${stats.floorReached} / ${MAX_FLOORS}${newBestMark('maxFloor')}`, '#ffd68a'),
+    _row('Run Time', `${duration}${isVictory ? newBestMark('fastestClear') : ''}`),
+    stats.roomsCleared      ? _row('Rooms Cleared', stats.roomsCleared)                                                              : '',
+    stats.enemiesDefeated   ? _row('Enemies Slain', `${stats.enemiesDefeated}${stats.elitesDefeated ? ' (' + stats.elitesDefeated + ' elite)' : ''}${newBestMark('mostEnemies')}`) : '',
+    stats.bossesKilled      ? _row('Bosses Felled', `${stats.bossesKilled}${newBestMark('mostBosses')}`, '#ff9085')                  : '',
+    stats.damageDealt       ? _row('Damage Dealt', stats.damageDealt | 0)                                                             : '',
+    stats.damageTaken       ? _row('Damage Taken', stats.damageTaken | 0)                                                             : '',
+    stats.biggestHit        ? _row('Biggest Hit', `${stats.biggestHit | 0}${newBestMark('biggestHit')}`, '#ff9066')                  : '',
+    stats.goldCollected     ? _row('Gold Collected', `🪙 ${stats.goldCollected}${newBestMark('mostGold')}`, '#ffd68a')              : '',
+    stats.relicsObtained    ? _row('Relics Acquired', `${stats.relicsObtained}${newBestMark('mostRelics')}`)                         : '',
+    stats.perfectDodges     ? _row('Perfect Dodges', stats.perfectDodges, '#a0e8ff')                                                 : '',
+    mc                      ? _row('Max Combo', `${mc}${comboTag}${newBestMark('maxCombo')}`)                                        : '',
+    stats.wandererTrades    ? _row('Wanderer Trades', stats.wandererTrades, '#c9a86a')                                               : '',
+  ].filter(Boolean);
+  grid.innerHTML = _rows.join('');
+  // Empty-state: a no-action run still has Floor + Run Time, so the panel
+  // never collapses to zero rows.
 
   // THE WATCHER LEDGER — a quiet line from the entity: "The Watcher marks
   // your Nth descent." + the most recent utterance, requoted with its sigil.
@@ -4756,27 +4781,31 @@ function renderMetaShop(animate = false) {
     // Tier-colored frame with gradient depth + staggered slide matching shop cards
     const staggerDelay = 1.2 + staggerIdx * 0.1;
     staggerIdx++;
+    // Card layout compressed twice now (was 155\u2192125, now 125\u2192105) so the
+    // long-run case (stats panel populated + watcher present + 8 unlocks)
+    // also fits within 720 design space without scrolling. Smaller flavor
+    // and desc rows + tighter gap + padding 6 (was 8) net ~20px per card.
     card.style.cssText = `
-      width:170px;
+      width:160px;
       background:linear-gradient(180deg,rgba(30,20,38,0.95),rgba(16,8,20,0.95));
       border:2px solid ${u.tint};
-      padding:12px 10px;
-      display:flex;flex-direction:column;align-items:center;gap:5px;
+      padding:6px 8px;
+      display:flex;flex-direction:column;align-items:center;gap:2px;
       box-shadow:0 0 16px ${u.tint}55, 0 4px 14px rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.3);
       font-family:Georgia,serif;
       ${animate ? `animation:winCardSlide 0.5s ease-out ${staggerDelay}s both;` : ''}
       ${owned ? 'opacity:0.55;' : ''}
     `;
     card.innerHTML = `
-      <div style="padding:4px;background:radial-gradient(circle,${u.tint}33,transparent 70%);">
-        <img src="assets/icons/${u.icon}.png" style="width:32px;height:32px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(u.tint)}deg) saturate(1.15) drop-shadow(0 0 5px ${u.tint}88);" />
+      <div style="padding:1px;background:radial-gradient(circle,${u.tint}33,transparent 70%);">
+        <img src="assets/icons/${u.icon}.png" style="width:24px;height:24px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(u.tint)}deg) saturate(1.15) drop-shadow(0 0 5px ${u.tint}88);" />
       </div>
-      <div style="font-size:12px;font-weight:bold;color:${u.tint};letter-spacing:1px;text-align:center;text-shadow:0 0 4px ${u.tint}44;">${u.name}</div>
-      ${u.flavor ? `<div style="font-size:9px;color:rgba(200,190,210,0.7);text-align:center;min-height:24px;line-height:1.3;font-style:italic;padding:0 2px;">${u.flavor}</div>` : ''}
-      <div style="height:1px;width:70%;background:linear-gradient(90deg,transparent,${u.tint}aa,transparent);margin:2px 0;"></div>
-      <div style="font-size:10px;color:${u.tint};text-align:center;min-height:24px;line-height:1.3;font-weight:bold;">${u.desc}</div>
-      <div style="font-size:13px;color:${owned ? '#8ad4a2' : '#a0e8ff'};text-shadow:0 0 6px ${owned ? 'rgba(138,212,162,0.4)' : 'rgba(160,232,255,0.4)'};">${owned ? '\u2713 OWNED' : '\u2728 ' + u.cost}</div>
-      ${owned ? '' : `<button class="metaBuyBtn" ${canAfford ? '' : 'disabled'} style="background:linear-gradient(180deg,${u.tint},${darkenHex(u.tint, 0.6)});color:#1a1220;border:0;padding:5px 14px;cursor:${canAfford ? 'pointer' : 'not-allowed'};font-weight:bold;letter-spacing:1.5px;font-size:11px;font-family:Georgia,serif;opacity:${canAfford ? 1 : 0.4};transition:transform 0.15s ease, box-shadow 0.15s ease;">UNLOCK</button>`}
+      <div style="font-size:11px;font-weight:bold;color:${u.tint};letter-spacing:0.8px;text-align:center;text-shadow:0 0 4px ${u.tint}44;">${u.name}</div>
+      ${u.flavor ? `<div style="font-size:9px;color:rgba(200,190,210,0.7);text-align:center;min-height:14px;line-height:1.2;font-style:italic;padding:0 2px;">${u.flavor}</div>` : ''}
+      <div style="height:1px;width:70%;background:linear-gradient(90deg,transparent,${u.tint}aa,transparent);"></div>
+      <div style="font-size:10px;color:${u.tint};text-align:center;min-height:14px;line-height:1.2;font-weight:bold;">${u.desc}</div>
+      <div style="font-size:11px;color:${owned ? '#8ad4a2' : '#a0e8ff'};text-shadow:0 0 6px ${owned ? 'rgba(138,212,162,0.4)' : 'rgba(160,232,255,0.4)'};">${owned ? '\u2713 OWNED' : '\u2728 ' + u.cost}</div>
+      ${owned ? '' : `<button class="metaBuyBtn" ${canAfford ? '' : 'disabled'} style="background:linear-gradient(180deg,${u.tint},${darkenHex(u.tint, 0.6)});color:#1a1220;border:0;padding:3px 10px;cursor:${canAfford ? 'pointer' : 'not-allowed'};font-weight:bold;letter-spacing:1.2px;font-size:10px;font-family:Georgia,serif;opacity:${canAfford ? 1 : 0.4};transition:transform 0.15s ease, box-shadow 0.15s ease;">UNLOCK</button>`}
     `;
     const btn = card.querySelector('.metaBuyBtn');
     if (btn) {
