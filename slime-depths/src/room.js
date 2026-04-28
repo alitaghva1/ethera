@@ -1543,18 +1543,80 @@ function drawDoor(ctx, tx, ty, openAmount) {
   ctx.fillStyle = glow;
   ctx.fillRect(x - 12, y - 8, TILE + 24, TILE + 16);
 
-  // Red lock-warning cast for north doors still mostly closed —
-  // preserved from the old drawDoor. Renders over the sprite as a
-  // thin tint when the room hasn't yet been cleared.
-  if (ty === 0 && a < 0.4) {
-    ctx.fillStyle = 'rgba(180, 40, 50, ' + (0.24 * (1 - a / 0.4)).toFixed(3) + ')';
-    ctx.fillRect(dx, dy, RENDER, RENDER);
-  }
+  // (Removed) Red lock-warning cast — the old hand-coded drawDoor
+  // tinted closed north doors red to telegraph "still locked." With
+  // the sprite-based door, the red rectangle covered the full 73×73
+  // RENDER box (vs the smaller inner-door area before), reading as
+  // a debug/error overlay rather than a subtle gameplay cue. The
+  // closed door silhouette already conveys "not yet open" — the red
+  // wasn't earning its visual cost.
 
   // Next-room preview pulse — legacy fallback for rooms with no door
   // object. Kept since some legacy spawn paths still rely on it.
   if (a > 0.6 && ty === 0 && roomNextKind.kind && _getDoorAt && !_getDoorAt(tx, ty)) {
     drawDoorPreview(ctx, x + TILE/2, y - 14, roomNextKind.kind);
+  }
+}
+
+// ─── DOOR LINTEL OCCLUSION PASS ──────────────────────────────────────────────
+// Re-draws just the TOP HALF of each door's sprite (the lintel + arch
+// keystone). Called from main.js AFTER the hero/enemy drawList renders,
+// so when the player stands in a door tile their head reads as BEHIND
+// the lintel — selling the "I'm in the doorway" feel rather than
+// "I'm a sprite painted on top of a door image."
+//
+// Implementation: iterate the room's tiles array, find every 'door'
+// tile, look up its current open amount via _getDoorAt, snap to the
+// same 3-frame index drawDoor uses, and blit the top half. South-wall
+// doors flip vertically to match the main drawDoor flip.
+//
+// No new state: openAmount is always derived from the live door object,
+// so the occlusion pass animates with the door and never goes stale.
+export function drawDoorLintels(ctx) {
+  if (!room.tiles) return;
+  const sprite = images.dungeon_door;
+  if (!sprite || sprite.width < 448) return;
+  const FW = 112, FH = 112;
+  const RENDER = 73;
+  // Top portion: ~55% of the sprite carries the lintel + upper arch
+  // and the top of the door panel. That's the slice we want over the
+  // hero's head/upper torso. Snapping to even px keeps pixel art crisp.
+  const topFracDst = 0.55;
+  const dstH = Math.round(RENDER * topFracDst);
+  const srcH = Math.round(FH * topFracDst);
+
+  for (let ty = 0; ty < room.h; ty++) {
+    const row = room.tiles[ty];
+    if (!row) continue;
+    for (let tx = 0; tx < room.w; tx++) {
+      if (row[tx] !== 'door') continue;
+      const door = _getDoorAt && _getDoorAt(tx, ty);
+      let a;
+      if (door) a = Math.max(0, Math.min(1, door.anim));
+      else a = (ty === room.h - 1 && room.cleared) ? 1 : 0;
+      const frameIdx = Math.min(2, Math.round(a * 2));
+      const sx = frameIdx * FW;
+      const x = tx * TILE, y = ty * TILE;
+      const cx = x + TILE / 2;
+      const cy = y + TILE / 2;
+      const dx = Math.round(cx - RENDER / 2);
+      const dy = Math.round(cy - RENDER / 2);
+      const isSouthWall = ty === room.h - 1;
+
+      ctx.save();
+      if (isSouthWall) {
+        // Mirror the south-wall flip used in drawDoor — and slice
+        // from the BOTTOM of the source so the post-flip-top still
+        // captures the lintel/arch end of the door.
+        ctx.translate(cx, cy);
+        ctx.scale(1, -1);
+        ctx.translate(-cx, -cy);
+        ctx.drawImage(sprite, sx, FH - srcH, FW, srcH, dx, dy + (RENDER - dstH), RENDER, dstH);
+      } else {
+        ctx.drawImage(sprite, sx, 0, FW, srcH, dx, dy, RENDER, dstH);
+      }
+      ctx.restore();
+    }
   }
 }
 

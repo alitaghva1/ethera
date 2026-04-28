@@ -14,7 +14,7 @@ import {
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, drawChests, drawDecorPillars, roomChests, setDoorLookup,
   snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
-  getValidNorthDoorXRange,
+  getValidNorthDoorXRange, drawDoorLintels,
 } from './room.js';
 import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
@@ -5863,6 +5863,14 @@ function render() {
   for (const e of enemies) drawList.push({ y: e.y, draw: (c) => drawEnemy(c, e) });
   drawList.sort((a, b) => a.y - b.y);
   for (const item of drawList) item.draw(ctx);
+
+  // Door lintel occlusion pass — re-draws just the top half of each
+  // door sprite over whatever the drawList put down. When the hero
+  // (or an enemy) stands in a door tile, their head reads as BEHIND
+  // the lintel/arch, selling "I'm IN the doorway" instead of "I'm
+  // a sprite painted on top of the door." Cheap (tile scan + small
+  // blit per door, rooms have at most ~5 door tiles).
+  drawDoorLintels(ctx);
 
   // Proc counters — tiny pip rows under the hero (visible "every Nth hit" meters)
   drawCounterPips(ctx);
