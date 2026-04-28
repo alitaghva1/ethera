@@ -2624,29 +2624,32 @@ achEl.innerHTML = `
   </div>
 
   <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;width:100%;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">deeds remembered</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+    <!-- Title block compressed: h1 48->32, ornament 100->80, gaps tightened
+         so the content grid below has more breathing room within 720
+         design height. -->
+    <div style="display:flex;align-items:center;gap:18px;margin-bottom:4px;opacity:0.75;">
+      <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+      <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-style:italic;">deeds remembered</div>
+      <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
     </div>
-    <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">CHRONICLES</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 18px;opacity:0.65;">
+    <h1 style="font-size:32px;margin:0;letter-spacing:9px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">CHRONICLES</h1>
+    <div style="display:flex;align-items:center;gap:10px;margin:6px 0 8px;opacity:0.65;">
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p id="achProgress" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#d8cfae;"></p>
+      <p id="achProgress" style="margin:0;letter-spacing:4px;font-size:11px;font-style:italic;color:#d8cfae;"></p>
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
     </div>
     <!-- Tab row — four codex sections. Active tab is gold filled, others muted. -->
-    <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <button class="chronTab" data-tab="achievements" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Deeds</button>
+    <div style="display:flex;gap:4px;margin-bottom:10px;">
+      <button class="chronTab" data-tab="achievements" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Deeds</button>
       <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="bestiary" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Bestiary</button>
+      <button class="chronTab" data-tab="bestiary" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Bestiary</button>
       <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="relics" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Relicpedia</button>
+      <button class="chronTab" data-tab="relics" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Relicpedia</button>
       <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="fusions" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Fusions</button>
+      <button class="chronTab" data-tab="fusions" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Fusions</button>
     </div>
     <!-- Shared content grid — repopulated per tab. -->
-    <div id="achRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:22px;max-height:520px;max-width:880px;width:100%;overflow-y:auto;padding:4px;"></div>
+    <div id="achRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:14px;max-width:920px;width:100%;padding:4px;"></div>
     <button id="achCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
 `;
@@ -6561,6 +6564,15 @@ function render() {
   // HUD (below transition veil). introActive flag lets the HUD suppress
   // combat-state overlays (low-HP red pulse, damage arrow) that would
   // otherwise double-dim the boss intro portrait.
+  // SUPPRESS during the Keeper wake cinematic: the wake's vignette uses
+  // a radial gradient at 92% center opacity (intentional, for the slow
+  // candle-glow look), so canvas-rendered HUD elements (hearts, dodge/
+  // dash binds) bleed through faintly at top-left. Skip the draw entirely
+  // while the cinematic is active.
+  if (_wakeCinematicActive) {
+    // Fall through to the wake's DOM cinematic only. Canvas pipe still
+    // ran for any hamlet ambient FX, but the HUD/UI layer is suppressed.
+  } else {
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
     roomKind: floor[roomIndex]?.kind,
@@ -6595,6 +6607,8 @@ function render() {
   drawComboOverlay(ctx, canvas.width, canvas.height);
   drawScreenFlash(ctx, canvas.width, canvas.height);
   drawPerfectDodgeOverlay(ctx, canvas.width, canvas.height);
+  } // end if !_wakeCinematicActive
+
   // DEATH CEREMONY overlay — desaturating red veil that ramps in, vignette crush
   if (deathCeremonyActive) {
     const t = Math.min(1, deathCeremonyTime / 1.8);
