@@ -3851,23 +3851,65 @@ let _wakeCinematicActive = false;
 // subsequent entries spawn at the regular HAMLET_HERO_SPAWN.
 let _freshFromWake = false;
 
+// REDESIGNED intro layout. Previous version (faint candle sigil + tiny
+// "THE KEEPER" label at top + subtitle stuck at 78% y + skip-hint that
+// only fades in on the FINAL beat) didn't telegraph "click to advance"
+// — players reported the screen looking confused, not even knowing to
+// progress. New layout: solid opaque backdrop (no canvas bleed-through),
+// letterbox bars top + bottom for clear "cutscene" framing, speaker
+// label inside the top bar, subtitle vertically centered with larger
+// 24px italic, AND a continue prompt visible from beat 1 (pulses, says
+// "click or SPACE" while typing-done OR "click to skip" while typing).
+// Plus an always-visible "ESC skip" hint in the top-right.
 const keeperWakeEl = document.createElement('div');
-keeperWakeEl.style.cssText = 'position:absolute;inset:0;display:none;flex-direction:column;justify-content:flex-end;align-items:center;background:radial-gradient(ellipse at 50% 60%, rgba(20,12,18,0.92) 0%, rgba(8,4,12,0.97) 60%, rgba(2,1,4,1) 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;cursor:pointer;z-index:40;';
+keeperWakeEl.style.cssText = 'position:absolute;inset:0;display:none;flex-direction:column;align-items:stretch;background:#0a0610;color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;cursor:pointer;z-index:40;';
 keeperWakeEl.innerHTML = `
-  <!-- Speaker plate: small candle-flame sigil + KEEPER name. -->
-  <div id="wakeSpeaker" style="position:absolute;top:64px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:14px;opacity:0;transition:opacity 1.2s ease;">
-    <div style="position:relative;width:18px;height:18px;">
-      <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 60%, #ffd680 0%, #c9a86a 35%, transparent 75%);box-shadow:0 0 16px rgba(255,214,128,0.55);"></div>
-      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:5px;height:9px;background:radial-gradient(circle at 50% 75%, #fff2c0 0%, #ffd680 60%, #c9a86a 100%);border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;"></div>
+  <!-- Subtle radial gold-warm wash over the solid backdrop. Reads as
+       firelight in a dark room without making the backdrop translucent
+       (the prior 92% gradient let the canvas world bleed through). -->
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%, rgba(40,28,20,0.55) 0%, rgba(12,6,14,0.0) 65%);pointer-events:none;"></div>
+
+  <!-- TOP LETTERBOX — solid black bar with the speaker label centered. -->
+  <div style="position:relative;height:64px;background:#000;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-bottom:1px solid rgba(201,168,106,0.18);">
+    <div id="wakeSpeaker" style="display:flex;align-items:center;gap:14px;opacity:0;transition:opacity 1s ease;">
+      <!-- Small candle flame sigil to the LEFT of the name — a single
+           flicker of warmth in the bar. -->
+      <div style="position:relative;width:14px;height:14px;">
+        <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 60%, #ffd680 0%, #c9a86a 40%, transparent 75%);box-shadow:0 0 10px rgba(255,214,128,0.5);"></div>
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:4px;height:7px;background:radial-gradient(circle at 50% 75%, #fff2c0 0%, #ffd680 60%, #c9a86a 100%);border-radius:50%/60% 60% 40% 40%;"></div>
+      </div>
+      <div style="font-size:13px;letter-spacing:9px;color:#c9a86a;font-style:italic;text-shadow:0 0 8px rgba(201,168,106,0.4);">THE KEEPER</div>
     </div>
-    <div style="font-size:11px;letter-spacing:8px;color:#c9a86a;font-style:italic;text-shadow:0 0 8px rgba(201,168,106,0.4);">THE KEEPER</div>
+    <!-- Always-visible Esc hint in the top-right of the letterbox. -->
+    <div style="position:absolute;right:24px;top:50%;transform:translateY(-50%);font-size:9px;letter-spacing:3px;color:rgba(201,168,106,0.45);font-style:italic;">ESC TO SKIP</div>
   </div>
-  <!-- Subtitle band at y=78%. Italic body, type-on reveal. -->
-  <div id="wakeSubtitle" style="position:relative;max-width:760px;width:88%;text-align:center;font-size:18px;line-height:1.55;font-style:italic;color:#f4d9a0;text-shadow:0 0 10px rgba(0,0,0,0.7);letter-spacing:0.5px;margin-bottom:78px;min-height:84px;display:flex;align-items:center;justify-content:center;"></div>
-  <!-- Skip hint, fades in only after the final beat finishes typing. -->
-  <div id="wakeSkip" style="position:absolute;bottom:40px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:6px;color:#c9a86a;opacity:0;font-style:italic;transition:opacity 0.6s ease;">click or press any key to continue</div>
+
+  <!-- CENTER STAGE — subtitle vertically centered between the bars. -->
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;padding:20px;">
+    <div id="wakeSubtitle" style="max-width:840px;width:90%;text-align:center;font-size:24px;line-height:1.55;font-style:italic;color:#f4d9a0;text-shadow:0 0 14px rgba(0,0,0,0.8);letter-spacing:0.5px;"></div>
+  </div>
+
+  <!-- BOTTOM LETTERBOX — continue prompt centered in the bar. Visible
+       from beat 1 (gentle pulse) so the player always knows clicking
+       advances. Text swaps between "click to skip" (typing) and
+       "click or SPACE to continue" (typing-done). -->
+  <div style="position:relative;height:64px;background:#000;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-top:1px solid rgba(201,168,106,0.18);">
+    <div id="wakePrompt" style="display:flex;align-items:center;gap:12px;opacity:0;transition:opacity 0.4s ease;">
+      <span style="font-size:14px;color:#c9a86a;text-shadow:0 0 8px rgba(201,168,106,0.55);animation:wakePromptPulse 1.6s ease-in-out infinite;">▾</span>
+      <span id="wakePromptText" style="font-size:11px;letter-spacing:5px;color:#c9a86a;font-style:italic;text-shadow:0 0 6px rgba(201,168,106,0.35);">CLICK OR PRESS SPACE TO CONTINUE</span>
+      <span style="font-size:14px;color:#c9a86a;text-shadow:0 0 8px rgba(201,168,106,0.55);animation:wakePromptPulse 1.6s ease-in-out infinite;">▾</span>
+    </div>
+  </div>
 `;
 document.getElementById('hud').appendChild(keeperWakeEl);
+
+// Inject the wake-prompt pulse keyframes once. Pulses opacity between
+// 0.5 and 1.0 so the prompt feels alive without strobing.
+(() => {
+  const style = document.createElement('style');
+  style.textContent = `@keyframes wakePromptPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }`;
+  document.head.appendChild(style);
+})();
 
 function playKeeperWake(onDone) {
   if (_wakeCinematicActive) return;
@@ -3876,10 +3918,11 @@ function playKeeperWake(onDone) {
   // tips (first_descent_hint, etc.) don’t fire over the cinematic.
   window.__centerBannerActive = true;
   const subtitleEl = document.getElementById('wakeSubtitle');
-  const skipEl = document.getElementById('wakeSkip');
+  const promptEl = document.getElementById('wakePrompt');
+  const promptTextEl = document.getElementById('wakePromptText');
   const speakerEl = document.getElementById('wakeSpeaker');
   subtitleEl.textContent = '';
-  skipEl.style.opacity = '0';
+  promptEl.style.opacity = '0';
   speakerEl.style.opacity = '0';
   keeperWakeEl.style.display = 'flex';
   let idx = 0;
@@ -3918,16 +3961,26 @@ function playKeeperWake(onDone) {
   // the full beat instead of accidentally skipping past beat 0.
   const typeBeat = (text, onTypeDone, initialDelay = 0) => {
     typing = true;
+    // While typing, the prompt says "click to skip" — clearer than
+    // having it read "continue" while a beat is still mid-reveal.
+    promptTextEl.textContent = 'CLICK OR PRESS SPACE TO SKIP TYPING';
     let i = 0;
     const tick = () => {
       if (dismissed) return;
       if (i < text.length) {
         subtitleEl.textContent = text.slice(0, ++i);
+        // Reveal the prompt the moment the FIRST character types — the
+        // player always sees a visible "click to advance" affordance.
+        if (i === 1 && promptEl.style.opacity !== '1') {
+          promptEl.style.opacity = '1';
+        }
         const ch = text[i - 1];
         const delay = (ch === ',' || ch === ';') ? 110 : (ch === '.' || ch === '?' || ch === '!') ? 240 : 28;
         typeTimer = setTimeout(tick, delay);
       } else {
         typing = false;
+        // Typing done — swap prompt to "continue" wording.
+        promptTextEl.textContent = 'CLICK OR PRESS SPACE TO CONTINUE';
         if (onTypeDone) onTypeDone();
       }
     };
@@ -3942,7 +3995,10 @@ function playKeeperWake(onDone) {
   // stuck — no auto-dismiss timer ever scheduled.
   const armFinalBeatDismiss = () => {
     reachedFinal = true;
-    skipEl.style.opacity = '0.75';
+    // Final beat — swap the prompt to make the "this ends here" beat
+    // explicit instead of just looking like another mid-cinematic
+    // continue. Auto-dismiss safety timer still runs at 10s.
+    promptTextEl.textContent = 'CLICK OR PRESS SPACE TO ENTER THE HAMLET';
     typeTimer = setTimeout(done, 10000);
   };
   const advance = () => {
