@@ -73,6 +73,12 @@ let _timer = 0;
 let _pulse = 0;
 let _beatIndex = 0;
 let _musicStarted = false;
+// Diagnostic flags — fire one log on the first update tick and one on
+// the first draw frame after startIntro, so a player reporting "no
+// cinematic" can paste their console and we can see exactly where the
+// chain stops (handler → start → tick → draw).
+let _loggedFirstUpdate = false;
+let _loggedFirstDraw = false;
 
 export function startIntro() {
   _active = true;
@@ -80,6 +86,9 @@ export function startIntro() {
   _pulse = 0;
   _beatIndex = 0;
   _musicStarted = false;
+  _loggedFirstUpdate = false;
+  _loggedFirstDraw = false;
+  console.info('[INTRO] startIntro fired — _active=true, timer=0');
 }
 
 export function isIntroActive() { return _active; }
@@ -103,6 +112,10 @@ export function skipIntro() {
 // fight through the intro.
 export function updateIntro(dt) {
   if (!_active) return;
+  if (!_loggedFirstUpdate) {
+    _loggedFirstUpdate = true;
+    console.info('[INTRO] first updateIntro tick — dt=', dt);
+  }
   _timer += dt;
   const t = _timer;
 
@@ -150,6 +163,10 @@ export function updateIntro(dt) {
 // behind the overlay during 26-28s while the HUD stays suppressed.
 export function drawIntro(ctx, w, h) {
   if (!_active) return;
+  if (!_loggedFirstDraw) {
+    _loggedFirstDraw = true;
+    console.info('[INTRO] first drawIntro frame — canvas=', w, 'x', h, 'timer=', _timer);
+  }
   const t = _timer;
   ctx.save();
 

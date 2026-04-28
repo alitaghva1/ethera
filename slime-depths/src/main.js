@@ -752,7 +752,12 @@ document.getElementById('menuNewRunBtn').addEventListener('click', () => {
   // pre-loaded as exposition. Restructure ported from ethera (intro.js
   // owns the overlay; the death-bypass below routes the first death to
   // enterHamletCanvas which plays the keeper wake on its own gate).
-  if (!hasSeen('hamlet', 'wake')) {
+  // Diagnostic logging — gates the first-run flow on this branch and
+  // tells us at-a-glance which path AWAKEN took if a player reports
+  // "no cinematic." Cheap (one console.info per click), non-invasive.
+  const firstTime = !hasSeen('hamlet', 'wake');
+  console.info('[INTRO] AWAKEN clicked. hasSeen(hamlet,wake)=', !firstTime, '· branch=', firstTime ? 'INTRO+RUN' : 'HAMLET');
+  if (firstTime) {
     hideAllOverlays();
     startRun();         // drop into floor 1, hero spawned in start room
     // Suppress the floor card — the intro overlay owns the screen for
@@ -7684,8 +7689,20 @@ if (import.meta.env.DEV) {
     // firstSeen.js re-hydrates from disk. Intended for testing the
     // restructured intro flow — without this, you'd have to delete the
     // active profile to re-trigger the cinematic.
+    //
+    // Logs before/after so the player can confirm the clear actually
+    // touched the right key (the localStorage patch silently scopes by
+    // profile id; an unprefixed string from devtools should still
+    // resolve correctly through the patch, but we log to verify).
     resetFirstRun: () => {
-      try { localStorage.removeItem('ethera:first_seen:v1'); } catch (_e) {}
+      try {
+        const before = localStorage.getItem('ethera:first_seen:v1');
+        console.info('[RESET] before:', before);
+        localStorage.removeItem('ethera:first_seen:v1');
+        const after = localStorage.getItem('ethera:first_seen:v1');
+        console.info('[RESET] after:', after, '· hasSeen(hamlet,wake)=', hasSeen('hamlet', 'wake'));
+        console.info('[RESET] reloading…');
+      } catch (_e) {}
       window.location.reload();
     },
 
