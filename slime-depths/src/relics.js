@@ -1083,7 +1083,7 @@ export function applyRelic(id) {
       // Inject into the live TIPS registry once per theme so each
       // ascendance reads as a moment with its own first-seen lock.
       try {
-        TIPS[tipKey] = { text: `${themeName} ASCENDED - five-relic theme bonus active. The aura thickens.` };
+        TIPS[tipKey] = { text: `${themeName} ASCENDED — the fifth relic settles. The aura you carry deepens.` };
         showTip(tipKey);
       } catch (_e) {}
     }

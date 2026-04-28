@@ -86,7 +86,7 @@ import {
 } from './hamletScene.js';
 import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL, spawnDamageNumber } from './fx.js';
 import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
@@ -113,16 +113,51 @@ setCameraSize(canvas.width, canvas.height);
 // Camera only reads width/height in world units, so no real size change —
 // but input.js maps clientX/Y via getBoundingClientRect() which DOES depend
 // on the laid-out size, so we force a layout settle by re-running setCameraSize.
+//
+// SECOND CONCERN — UI scale: the canvas auto-stretches to viewport
+// (1920x1080 on 1080p, 3840x2160 on 4K) via CSS aspect-ratio, but DOM
+// overlays (death screen / dialogue / menu / pause / etc.) had FIXED pixel
+// typography and looked tiny on a 4K monitor. We measure the canvas's
+// actual rendered width and set --ui-scale = renderedWidth / designWidth
+// (designWidth = 1280). #hud (which contains every overlay) applies that
+// scale via a single CSS transform — every modal size-matches the canvas
+// at any viewport from 480p to 4K+ with zero per-element changes.
+const DESIGN_WIDTH = 1280;
+function _updateUiScale() {
+  // getBoundingClientRect respects the canvas's CSS aspect-ratio rule, so
+  // on a 21:9 ultrawide we get the LETTERBOXED canvas width (not viewport
+  // width) — the HUD scales to match the visible canvas, not the empty
+  // letterbox bars.
+  const r = canvas.getBoundingClientRect();
+  if (r.width <= 0) return;
+  const scale = r.width / DESIGN_WIDTH;
+  document.documentElement.style.setProperty('--ui-scale', String(scale));
+}
 let _resizeT = 0;
-window.addEventListener('resize', () => {
+const _onResize = (settleMs) => {
   clearTimeout(_resizeT);
-  _resizeT = setTimeout(() => setCameraSize(canvas.width, canvas.height), 100);
-});
+  _resizeT = setTimeout(() => {
+    setCameraSize(canvas.width, canvas.height);
+    _updateUiScale();
+  }, settleMs);
+};
+window.addEventListener('resize', () => _onResize(100));
 // Orientation change fires slightly ahead of resize on mobile — belt-and-braces.
-window.addEventListener('orientationchange', () => {
-  clearTimeout(_resizeT);
-  _resizeT = setTimeout(() => setCameraSize(canvas.width, canvas.height), 300);
-});
+window.addEventListener('orientationchange', () => _onResize(300));
+// ResizeObserver on the canvas catches every size change — initial layout,
+// dev-tools open/close, devicePixelRatio shifts, fullscreen toggles. Without
+// this, the initial paint of modals could land at the wrong scale (canvas
+// size at DOMContentLoaded isn't always final on first frame).
+if (typeof ResizeObserver !== 'undefined') {
+  const _ro = new ResizeObserver(() => _updateUiScale());
+  _ro.observe(canvas);
+}
+// Belt-and-braces initial sync — run once on script load and once on full
+// load. Either path catches the case where the canvas is already sized.
+_updateUiScale();
+if (document.readyState !== 'complete') {
+  window.addEventListener('load', _updateUiScale, { once: true });
+}
 
 // Post-FX pipeline (bloom + chromatic aberration) moved to ./postfx.js
 // as part of review #4 (main.js split). main.js still owns the render-loop
@@ -851,6 +886,7 @@ document.getElementById('tarotBeginBtn').addEventListener('click', () => {
   startRun();
 });
 document.getElementById('tarotBackBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   clearTarot();
   tarotRevealEl.style.display = 'none';
   menuEl.style.display = 'flex';
@@ -933,6 +969,7 @@ settingsEl.innerHTML = `
 `;
 document.getElementById('hud').appendChild(settingsEl);
 document.getElementById('menuSettingsBackBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   settingsEl.style.display = 'none';
   menuEl.style.display = 'flex';
 });
@@ -975,11 +1012,12 @@ cursesEl.innerHTML = `
   <h1 style="font-size:48px;margin:0 0 4px;letter-spacing:8px;color:#d85a5a;font-family:Georgia,serif;font-weight:400;text-shadow:0 0 18px rgba(216,90,90,0.45);animation:winFadeIn 0.7s ease-out 0.1s both;">CURSES</h1>
   <p style="margin:0 0 22px;opacity:0.55;letter-spacing:4px;font-size:13px;font-style:italic;animation:winFadeIn 0.6s ease-out 0.2s both;">the ruin remembers every bargain</p>
   <div id="curseEssMul" style="font-size:14px;color:#a0e8ff;letter-spacing:3px;margin-bottom:22px;animation:winFadeIn 0.6s ease-out 0.3s both;min-height:18px;"></div>
-  <div id="cursesRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:22px;max-width:760px;width:92vw;animation:winCardSlide 0.55s ease-out 0.4s both;"></div>
+  <div id="cursesRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:22px;max-width:760px;width:100%;animation:winCardSlide 0.55s ease-out 0.4s both;"></div>
   <button id="cursesCloseBtn" style="background:transparent;color:#a97070;border:1px solid #5a3030;padding:10px 32px;font-size:12px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.18s ease;animation:winFadeIn 0.5s ease-out 0.6s both;">← RETURN</button>
 `;
 document.getElementById('hud').appendChild(cursesEl);
 document.getElementById('cursesCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   cursesEl.style.display = 'none';
   showMainMenu();
 });
@@ -1034,13 +1072,14 @@ memoryEl.innerHTML = `
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
     </div>
     <p style="margin:0 0 22px;opacity:0.6;letter-spacing:2px;font-size:12px;font-style:italic;max-width:620px;text-align:center;line-height:1.55;">A memory is a shape you carry into the dark. A pact with a version of yourself that can no longer speak but can still bargain. Choose one, and descend as that.</p>
-    <div id="memoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:22px;max-height:500px;max-width:880px;width:92vw;overflow-y:auto;padding:4px;"></div>
+    <div id="memoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:22px;max-height:500px;max-width:880px;width:100%;overflow-y:auto;padding:4px;"></div>
     <button id="memoryClearBtn" style="background:transparent;color:#8a7a6a;border:1px solid #4a3a2a;padding:8px 24px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;margin-bottom:14px;transition:all 0.2s ease;">— forget them all —</button>
     <button id="memoryCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
 `;
 document.getElementById('hud').appendChild(memoryEl);
 document.getElementById('memoryCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   memoryEl.style.display = 'none';
   showMainMenu();
 });
@@ -1321,7 +1360,7 @@ dialogueEl.style.cssText = `
 `;
 dialogueEl.innerHTML = `
   <div id="dialoguePanel" style="
-    max-width:640px;width:92vw;
+    max-width:640px;width:100%;
     background:linear-gradient(180deg, rgba(24,18,14,0.97), rgba(12,8,10,0.98));
     box-shadow:0 0 30px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(201,168,106,0.4), inset 0 0 18px rgba(0,0,0,0.5);
     padding:28px 32px;
@@ -1456,12 +1495,28 @@ function openDialogue(npcId) {
   // player can feel the relationship deepen as familiarity grows.
   const titleText = def.title ? `${def.title} · ${familiarityLabel}` : familiarityLabel;
   document.getElementById('dialogueTitle').textContent = titleText;
-  // Portrait
+  // Portrait. Last innerHTML-interpolation site in this modal; the rest
+  // of the body was migrated to createElement+textContent in earlier
+  // commits (02a2797 / b70835e). Keep the same defensive pattern here:
+  // both branches build via createElement so def.name / def.tint /
+  // portraitImg.src stay inert (author-controlled today, but consistent
+  // with the rest of the dialogue body). innerHTML-clear first to wipe
+  // any stale node from a previous NPC.
   const portraitEl = document.getElementById('dialoguePortrait');
   const portraitImg = imageCache[def.portrait];
-  portraitEl.innerHTML = portraitImg
-    ? `<img src="${portraitImg.src}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};"/>`
-    : `<div style="width:72px;height:72px;border-radius:50%;background:radial-gradient(ellipse at 40% 35%, ${def.tint}55, rgba(14,8,18,0.9) 70%);box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};display:flex;align-items:center;justify-content:center;color:${def.tint};font-size:26px;font-weight:bold;font-family:Georgia,serif;">${def.name.charAt(4) || def.name.charAt(0)}</div>`;
+  portraitEl.innerHTML = '';
+  if (portraitImg) {
+    const imgEl = document.createElement('img');
+    imgEl.src = portraitImg.src;
+    imgEl.style.cssText = `width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};`;
+    portraitEl.appendChild(imgEl);
+  } else {
+    const initial = def.name.charAt(4) || def.name.charAt(0);
+    const fallback = document.createElement('div');
+    fallback.style.cssText = `width:72px;height:72px;border-radius:50%;background:radial-gradient(ellipse at 40% 35%, ${def.tint}55, rgba(14,8,18,0.9) 70%);box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};display:flex;align-items:center;justify-content:center;color:${def.tint};font-size:26px;font-weight:bold;font-family:Georgia,serif;`;
+    fallback.textContent = initial;
+    portraitEl.appendChild(fallback);
+  }
 
   // Body — three layers, top to bottom:
   //   1. Reactive greeting (if a trigger fires) — prepended in NPC tint
@@ -1746,6 +1801,7 @@ oracleEl.innerHTML = `
 `;
 document.getElementById('hud').appendChild(oracleEl);
 document.getElementById('oracleCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   oracleEl.style.display = 'none';
   showHamlet();
 });
@@ -2054,12 +2110,13 @@ volumesEl.innerHTML = `
     </div>
     <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">JOURNALS</h1>
     <p style="margin:14px 0 26px;opacity:0.6;letter-spacing:2px;font-size:12px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Each journal keeps its own record of the ruin. Switching closes one and opens another. Deleting erases that journal forever.</p>
-    <div id="volumesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:28px;max-width:780px;width:92vw;"></div>
+    <div id="volumesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:28px;max-width:780px;width:100%;"></div>
     <button id="volumesCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
 `;
 document.getElementById('hud').appendChild(volumesEl);
 document.getElementById('volumesCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   volumesEl.style.display = 'none';
   showMainMenu();
 });
@@ -2203,12 +2260,13 @@ smithEl.innerHTML = `
 
     <p style="margin:0 0 22px;opacity:0.6;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:620px;text-align:center;line-height:1.55;">Bring me weight you have carried. I will fold it into something that travels with you into the next descent.</p>
 
-    <div id="smithGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:22px;max-height:520px;max-width:920px;width:92vw;overflow-y:auto;padding:6px;"></div>
+    <div id="smithGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:22px;max-height:520px;max-width:920px;width:100%;overflow-y:auto;padding:6px;"></div>
     <button id="smithCloseBtn" style="background:transparent;color:#a97070;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 STEP AWAY FROM THE FORGE</button>
   </div>
 `;
 document.getElementById('hud').appendChild(smithEl);
 document.getElementById('smithCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   smithEl.style.display = 'none';
   // Return to hamlet so the player sees the Smith again (service call came from there)
   showHamlet();
@@ -2391,12 +2449,13 @@ achEl.innerHTML = `
       <button class="chronTab" data-tab="fusions" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Fusions</button>
     </div>
     <!-- Shared content grid — repopulated per tab. -->
-    <div id="achRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:22px;max-height:520px;max-width:880px;width:92vw;overflow-y:auto;padding:4px;"></div>
+    <div id="achRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:22px;max-height:520px;max-width:880px;width:100%;overflow-y:auto;padding:4px;"></div>
     <button id="achCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
 `;
 document.getElementById('hud').appendChild(achEl);
 document.getElementById('achCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   achEl.style.display = 'none';
   showMainMenu();
 });
@@ -3068,12 +3127,12 @@ journalEl.innerHTML = `
       <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
     </div>
     <h1 style="font-size:42px;margin:0;letter-spacing:8px;color:#c9a86a;text-shadow:0 0 14px rgba(201,168,106,0.45);font-weight:400;line-height:1;">JOURNAL OF THE RUIN</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 22px;opacity:0.65;max-width:90vw;text-align:center;">
+    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 22px;opacity:0.65;max-width:100%;text-align:center;">
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);flex-shrink:0;"></span>
       <p id="journalSubtitle" style="margin:0;letter-spacing:3px;font-size:11px;font-style:italic;color:#d8cfae;"></p>
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);flex-shrink:0;"></span>
     </div>
-    <div id="journalEntries" style="width:720px;max-width:90vw;max-height:60vh;overflow-y:auto;padding:22px 24px;background:linear-gradient(180deg,rgba(30,22,16,0.75),rgba(14,10,8,0.8));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.28), inset 0 0 18px rgba(0,0,0,0.5);font-size:13px;color:#d8cfae;font-family:Georgia,serif;line-height:1.6;"></div>
+    <div id="journalEntries" style="width:720px;max-width:100%;max-height:60%;overflow-y:auto;padding:22px 24px;background:linear-gradient(180deg,rgba(30,22,16,0.75),rgba(14,10,8,0.8));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.28), inset 0 0 18px rgba(0,0,0,0.5);font-size:13px;color:#d8cfae;font-family:Georgia,serif;line-height:1.6;"></div>
     <button id="journalBackBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;margin-top:22px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 CLOSE</button>
   </div>
 `;
@@ -3256,6 +3315,9 @@ window.addEventListener('keydown', (e) => {
   // any open dialogue first so it doesn't linger over the menu.
   if (room.kind === 'hamlet') {
     if (dialogueEl && dialogueEl.style.display !== 'none') {
+      // Mirror the close-button click feedback so Esc-close (the more
+      // common dismissal path for keyboard users) feels equally tactile.
+      try { synthClick(0.9, 0.25); } catch (_e) {}
       dialogueEl.style.display = 'none';
     } else {
       running = false;
@@ -5584,7 +5646,12 @@ function tick(now) {
         if (am && am.sanctuaryHealMul) baseHeal = Math.max(1, Math.floor(baseHeal * am.sanctuaryHealMul));
         const healed = Math.min(baseHeal, hero.maxHp - hero.hp);
         hero.hp = Math.min(hero.maxHp, hero.hp + healed);
-        playSfx('click', { volume: 0.8, rate: 1.4 });
+        // Heal feedback — was a generic playSfx('click') that felt like UI
+        // noise. Warm chord (440Hz / 0.5s / 0.8 vol) reads as restoration,
+        // and a green floating "+N HP" floats up from the hero so the
+        // gain registers visually even mid-combat-pickup transitions.
+        try { synthChord(440, 0.5, 0.8); } catch (_e) {}
+        spawnDamageNumber(hero.x, hero.y - 24, healed, { text: '+' + healed + ' HP', color: '#86e3a8' });
       }
     }
 

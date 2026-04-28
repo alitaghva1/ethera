@@ -89,7 +89,7 @@ export const CONTROLS_SCREEN_HTML = `
   ${cornerOrnament('bl')}
   ${cornerOrnament('br')}
 
-  <div style="position:relative;z-index:1;max-width:720px;width:88vw;display:flex;flex-direction:column;align-items:center;max-height:88vh;overflow:hidden;">
+  <div style="position:relative;z-index:1;max-width:720px;width:100%;display:flex;flex-direction:column;align-items:center;max-height:88%;overflow:hidden;">
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
       <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
       <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">a brief primer</div>

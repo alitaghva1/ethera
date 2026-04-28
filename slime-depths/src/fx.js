@@ -576,7 +576,9 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   }
   p.life = opts.counter || opts.exec ? 1.1 : (opts.charged || opts.finisher) ? 0.95 : 0.85;
   p.maxLife = p.life;
-  p.text = String(amount | 0);
+  // `opts.text` lets non-damage callers (sanctuary heal, gold pickup, etc.)
+  // pass an explicit label like "+3 HP" instead of the number-only render.
+  p.text = opts.text || String(amount | 0);
   // HUD LEGIBILITY PASS (review #2): size/color/badge priority picks the
   // SINGLE most informative tag to show, in player-intent order:
   //   counter > exec > charge > finisher > crit
@@ -585,7 +587,11 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   // (their action, not RNG).
   const sizeBoost = opts.counter ? 6 : opts.exec ? 5 : opts.charged ? 4 : opts.finisher ? 3 : opts.crit ? 2 : 0;
   p.size = (amount >= 50 ? 20 : amount >= 30 ? 17 : 14) + sizeBoost;
-  p.color = opts.counter ? '#ffeb99'
+  // Explicit `opts.color` wins over the per-attribute palette below — used
+  // by non-damage callers (heal, pickups) to opt out of the damage colorway.
+  p.color = opts.color
+          ? opts.color
+          : opts.counter ? '#ffeb99'
           : opts.exec ? '#ff7a55'
           : opts.charged ? '#ffea80'
           : opts.finisher ? '#c8a8ff'

@@ -11,6 +11,7 @@ import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js';
 import { stats } from './stats';
 import { showTip } from './tips.js';
+import { keyJustPressed } from './input.js';
 
 export const wanderer = {
   active: false,
@@ -67,8 +68,8 @@ export function maybeSpawnWanderer(roomKind, wh, floorLevel) {
     wanderer.offer = {
       kind: 'gamble',
       cost,
-      label: 'ROLL THE DICE',
-      desc: '25% chance to gain a random relic. Otherwise, lose 50 gold.',
+      label: 'STAKE 50',
+      desc: 'a coin in the dark — one in four returns a gift',
       tint: '#c49aff',
     };
   }
@@ -86,10 +87,15 @@ export function updateWanderer(dt) {
   if (!wanderer.consumed && Math.random() < dt * 4) {
     sparkle(wanderer.x + (Math.random() - 0.5) * 26, wanderer.y - 8 + (Math.random() - 0.5) * 22, '#f4d9a0');
   }
-  // Interaction trigger: if hero close enough and clicks or moves onto tile
+  // Interaction trigger: hero close enough AND presses E to confirm.
+  // Previously this fired purely on proximity (auto-pay on walk-by) which
+  // silently drained 50/80/140g + locked the player into an unwanted
+  // gamble (25% return) on a casual pass-through. The E gate matches the
+  // hamlet portal interaction pattern + every other deliberate-action UI.
   const dx = hero.x - wanderer.x, dy = hero.y - wanderer.y;
   const d = Math.hypot(dx, dy);
-  if (d < 28 && !wanderer.consumed && gold.total >= wanderer.offer.cost) {
+  if (d < 32 && !wanderer.consumed && gold.total >= wanderer.offer.cost
+      && keyJustPressed('KeyE')) {
     executeWandererTrade();
   }
 }
@@ -184,7 +190,14 @@ export function drawWandererTooltip(ctx, w, h) {
   // Cost
   ctx.fillStyle = canAfford ? '#ffd68a' : '#d85a5a';
   ctx.font = 'bold 13px Georgia, serif';
-  ctx.fillText('🪙 ' + o.cost + (canAfford ? '  · walk to pay' : '  · need more gold'), bx + boxW / 2, by + 72);
+  // Tooltip CTA matches the new explicit-input model — "press E" reads
+  // as deliberate action, replacing the old "walk to pay" copy that had
+  // already mis-fired on a player walking past and silently auto-paid.
+  const inRange = d < 32;
+  const cta = canAfford
+    ? (inRange ? 'press E to accept' : 'step closer')
+    : 'need more gold';
+  ctx.fillText('🪙 ' + o.cost + '  · ' + cta, bx + boxW / 2, by + 72);
   ctx.textAlign = 'left';
   ctx.restore();
 }

@@ -34,7 +34,27 @@
   @supports not (aspect-ratio: 16 / 9) {
     canvas { max-width: 177.78vh; max-height: 56.25vw; }
   }
-  #hud { position: absolute; inset: 0; pointer-events: none; font-family: system-ui, sans-serif; }
+  /* ==========================================================================
+     UI SCALE LAYER — design-resolution overlay container. The canvas inside
+     #stage auto-stretches to viewport (1920x1080 on 1080p, 3840x2160 on 4K)
+     via the aspect-ratio rule above; the DOM overlays did NOT keep up — fixed
+     pixel typography (death screen h1: 48px, etc.) looked postage-stamp-sized
+     on a 4K monitor inside the canvas-stretched art. Fix: lock the entire
+     overlay layer to the 1280x720 design space and scale it via CSS transform
+     by `--ui-scale` (set by main.js on window resize). All DOM overlays nest
+     inside #hud so a single transform handles every modal, button, and HUD
+     element with zero per-element changes. The canvas itself keeps its
+     aspect-ratio auto-scaling — image-rendering: pixelated stays crisp.
+     ========================================================================= */
+  #hud {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1280px; height: 720px;
+    pointer-events: none;
+    font-family: system-ui, sans-serif;
+    transform: scale(var(--ui-scale, 1));
+    transform-origin: top left;
+  }
   /* Loading screen — "opening the book" moment. Radial gradient, centered
      serif italic, gold hairline above the progress text. Matches the
      manuscript grammar used throughout the rest of the game. */
@@ -372,38 +392,16 @@
      state information (e.g. door-ready pulse) stay on.
      ========================================================================= */
   /* ==========================================================================
-     RESPONSIVE / MOBILE — menu + overlay scaling for narrow viewports.
-     Strategy: let the canvas CSS aspect-ratio keep the game area 16:9
-     automatically (already wired above). Then scale the menu content
-     column DOWN proportionally when the canvas is smaller than the
-     design baseline (1280px wide). One CSS transform rule handles every
-     menu element without per-pixel tweaks.
+     RESPONSIVE / VIEWPORT SCALING.
+     Replaced an older approach that scaled .menuContent / .menuCorner DOWN
+     via media queries at <900/600/450px breakpoints. That approach had two
+     problems: (1) only scaled the menu, leaving every other modal at fixed
+     pixels, and (2) didn't scale UP for large monitors — death screen at
+     48px h1 looked postage-stamp-sized on 4K. The new approach scales the
+     entire #hud overlay layer uniformly via `--ui-scale` (set by main.js on
+     window resize). One transform handles every modal, button, and HUD
+     element across the full viewport range from 480p to 4K+.
      ========================================================================= */
-  @media (max-width: 900px) {
-    .menuContent {
-      transform: scale(0.72);
-      transform-origin: center center;
-    }
-    /* Shrink the corner flourishes too so they don't eat the small viewport */
-    .menuCorner {
-      transform: scale(0.6);
-      transform-origin: top left;
-    }
-  }
-  @media (max-width: 600px) {
-    .menuContent {
-      transform: scale(0.52);
-      transform-origin: center center;
-    }
-    .menuCorner { transform: scale(0.45); }
-  }
-  @media (max-width: 450px) {
-    .menuContent {
-      transform: scale(0.38);
-      transform-origin: center center;
-    }
-    .menuCorner { transform: scale(0.32); }
-  }
 
   /* ==========================================================================
      ROTATE-TO-LANDSCAPE PROMPT — phone portrait orientation covers the game
@@ -612,31 +610,35 @@
 </div>
 <div id="stage">
   <canvas id="game" width="1280" height="720"></canvas>
+  <!-- All DOM overlays nest inside #hud so the single CSS transform on
+       #hud (scale by --ui-scale) handles every modal at any viewport size.
+       Previously deathScreen / bossIntroOverlay / loading were siblings of
+       #hud and kept fixed pixel typography that crushed at 4K. -->
   <div id="hud">
     <!-- Controls reminder removed — tips.js's contextual onboarding system
          (showTip('first_dodge') etc.) surfaces the relevant control the first
          time each mechanic fires, which is less cluttery than a permanent
          bottom-left legend. How-to-play modal is available from the menu. -->
     <div id="build">Ethera · v0.1</div>
-  </div>
-  <div id="loading">Loading…</div>
-  <!-- Boss intro overlay — DOM-based replacement for the canvas drawImage
-       path. See <style> above for the why. Populated dynamically from
-       src/bossIntroDom.js; sits inside #stage so it inherits canvas layout. -->
-  <div id="bossIntroOverlay" aria-hidden="true">
-    <img id="bossIntroBackdrop" alt="">
-    <div id="bossIntroDim"></div>
-    <div id="bossIntroFrame">
-      <div class="bossIntroOrnament" id="bossIntroTag">BOSS</div>
-      <div id="bossIntroName"></div>
-      <div id="bossIntroFlavor"></div>
-      <div class="bossIntroOrnament"></div>
+    <div id="loading">Loading…</div>
+    <!-- Boss intro overlay — DOM-based replacement for the canvas drawImage
+         path. See <style> above for the why. Populated dynamically from
+         src/bossIntroDom.js; nested in #hud for the unified UI-scale transform. -->
+    <div id="bossIntroOverlay" aria-hidden="true">
+      <img id="bossIntroBackdrop" alt="">
+      <div id="bossIntroDim"></div>
+      <div id="bossIntroFrame">
+        <div class="bossIntroOrnament" id="bossIntroTag">BOSS</div>
+        <div id="bossIntroName"></div>
+        <div id="bossIntroFlavor"></div>
+        <div class="bossIntroOrnament"></div>
+      </div>
     </div>
-  </div>
-  <div id="deathScreen">
-    <h1>YOU DIED</h1>
-    <p>the ooze takes you back</p>
-    <button id="restartBtn">RESTART</button>
+    <div id="deathScreen">
+      <h1>YOU DIED</h1>
+      <p>the ooze takes you back</p>
+      <button id="restartBtn">RESTART</button>
+    </div>
   </div>
 </div>
 <script type="module" src="./src/main.js"></script>

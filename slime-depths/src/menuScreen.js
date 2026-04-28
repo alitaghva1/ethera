@@ -26,7 +26,7 @@ export const MENU_SCREEN_HTML = `
   <div style="position:absolute;inset:0;background:linear-gradient(90deg, transparent 0%, rgba(4,2,8,0.28) 28%, rgba(4,2,8,0.42) 50%, rgba(4,2,8,0.28) 72%, transparent 100%);pointer-events:none;"></div>
   <!-- Soft center vignette — pulls a breath of darkness in right under the
        title + CTA so they have air above the stonework. -->
-  <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,80vw);height:min(620px,70vh);background:radial-gradient(ellipse at center, rgba(4,2,8,0.55) 0%, rgba(4,2,8,0.25) 45%, transparent 75%);pointer-events:none;"></div>
+  <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,100%);height:min(620px,100%);background:radial-gradient(ellipse at center, rgba(4,2,8,0.55) 0%, rgba(4,2,8,0.25) 45%, transparent 75%);pointer-events:none;"></div>
 
   <!-- AMBIENT SIGIL — kept as a faint overlay (0.025) so it reads as a
        mystical diagram etched into the air above the archway. Dimmer
