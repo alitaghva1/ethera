@@ -1644,6 +1644,16 @@ function openDialogue(npcId) {
   svcBtn.style.color = def.tint || '#f4d9a0';
   svcBtn.style.boxShadow = `inset 0 0 0 1px ${def.tint || '#c9a86a'}, 0 0 14px ${def.tint || '#c9a86a'}44`;
   svcBtn.onclick = () => {
+    // Wanderer's gift flow stays inside the dialogue — its responses
+    // (heirloom prompt, success line, can't-afford notice) update the
+    // body in-place via showNpcResponse / showNpcConfirm. Closing the
+    // dialogue would orphan those responses against the bare hamlet.
+    // Other services (smith, oracle, etc.) open their own modals, so
+    // closing the dialogue first prevents two stacked panels.
+    if (def.service && def.service.type === 'wanderer_gift') {
+      runNpcService(npcId);
+      return;
+    }
     dialogueEl.style.display = 'none';
     runNpcService(npcId);
   };
@@ -1773,6 +1783,88 @@ function openDialogue(npcId) {
   }
 
   dialogueEl.style.display = 'flex';
+}
+
+// ============================================================================
+// NPC RESPONSE HELPERS — replace native alert() / confirm() with in-dialogue
+// body updates so service-flow responses stay inside the dialogue panel
+// instead of breaking immersion with browser-chrome popups. The dialogue
+// modal stays OPEN; only the body content changes. Player dismisses via
+// FAREWELL / Esc / backdrop click as usual.
+//
+// `showNpcResponse(npcId, message)` — drop a single italic line into the
+// body styled to match the NPC's tint (matches how the SPEAK button
+// renders chatLines). Replaces alert().
+//
+// `showNpcConfirm(npcId, prompt, onYes, onNo)` — body shows a prompt
+// followed by two inline YES / NO buttons. Replaces confirm().
+//
+// Topics list is hidden during a confirm prompt — we don't want the
+// player accidentally clicking a topic chip and losing the confirmation
+// state. Restored on next openDialogue / response.
+// ============================================================================
+function showNpcResponse(npcId, message) {
+  const def = NPCS[npcId];
+  if (!def) return;
+  const tint = def.tint || '#c9a86a';
+  const textEl = document.getElementById('dialogueText');
+  if (!textEl) return;
+  textEl.innerHTML = '';
+  const p = document.createElement('p');
+  p.style.cssText = `margin:0;line-height:1.7;font-style:italic;color:${tint};`;
+  // Same opening-dash convention as SPEAK lines so the text reads as
+  // "the NPC speaking" rather than a flat status string.
+  const dash = document.createElement('span');
+  dash.style.cssText = 'opacity:0.6;margin-right:8px;';
+  dash.textContent = '—';
+  p.appendChild(dash);
+  p.appendChild(document.createTextNode(message));
+  textEl.appendChild(p);
+}
+
+function showNpcConfirm(npcId, prompt, onYes, onNo) {
+  const def = NPCS[npcId];
+  if (!def) return;
+  const tint = def.tint || '#c9a86a';
+  const textEl = document.getElementById('dialogueText');
+  if (!textEl) return;
+  textEl.innerHTML = '';
+  const p = document.createElement('p');
+  p.style.cssText = 'margin:0 0 16px;line-height:1.7;color:#d8cfae;font-style:italic;';
+  p.appendChild(document.createTextNode(prompt));
+  textEl.appendChild(p);
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:14px;justify-content:flex-start;align-items:center;margin-top:6px;';
+  const yesBtn = document.createElement('button');
+  yesBtn.textContent = 'YES';
+  yesBtn.style.cssText = `background:linear-gradient(180deg,${tint}33,rgba(10,6,16,0.85));color:${tint};border:0;padding:9px 26px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:11px;font-weight:bold;box-shadow:inset 0 0 0 1px ${tint}, 0 0 12px ${tint}33;transition:all 0.18s ease;`;
+  yesBtn.addEventListener('click', () => {
+    try { synthClick(1.0, 0.4); } catch (_e) {}
+    if (onYes) onYes();
+  });
+  yesBtn.addEventListener('mouseenter', (e) => { e.currentTarget.style.transform = 'translateY(-1px)'; });
+  yesBtn.addEventListener('mouseleave', (e) => { e.currentTarget.style.transform = 'translateY(0)'; });
+  const noBtn = document.createElement('button');
+  noBtn.textContent = 'NO';
+  noBtn.style.cssText = 'background:transparent;color:#8a7a6a;border:1px solid rgba(168,144,96,0.4);padding:9px 26px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:11px;font-style:italic;transition:all 0.18s ease;';
+  noBtn.addEventListener('click', () => {
+    try { synthClick(0.9, 0.25); } catch (_e) {}
+    if (onNo) onNo();
+  });
+  noBtn.addEventListener('mouseenter', (e) => { e.currentTarget.style.color = '#c9a86a'; e.currentTarget.style.borderColor = '#c9a86a'; });
+  noBtn.addEventListener('mouseleave', (e) => { e.currentTarget.style.color = '#8a7a6a'; e.currentTarget.style.borderColor = 'rgba(168,144,96,0.4)'; });
+  btnRow.appendChild(yesBtn);
+  btnRow.appendChild(noBtn);
+  textEl.appendChild(btnRow);
+  // Suppress topic clicks during a confirm — easy way: hide the topic
+  // column (the panel collapses to single column). Restored on next
+  // openDialogue or showNpcResponse.
+  const dpEl = document.getElementById('dialoguePanel');
+  const tEl = document.getElementById('dialogueTopics');
+  if (dpEl && tEl) {
+    dpEl.style.gridTemplateColumns = '1fr';
+    tEl.style.display = 'none';
+  }
 }
 
 function runNpcService(npcId) {
@@ -2101,28 +2193,39 @@ function showWandererGift() {
       && (def.tier || 'common') === 'common'
       && isRelicForWeapon(id, hero.weapon);
   });
+  // Hand off the actual gift bestowal so the heirloom-replacement confirm
+  // can re-enter cleanly via the YES button without nesting flow.
+  const _giveGift = () => {
+    const rollId = pool[(Math.random() * pool.length) | 0];
+    const rollDef = RELIC_DEFS[rollId];
+    if (bankHeirloom(rollId, WANDERER_GIFT_COST)) {
+      recordServiceUse('wanderer');
+      try { synthChord(523, 0.7, 0.8); } catch (e) {}
+      showNpcResponse('wanderer', `I hand you ${rollDef.name}. Carry it for me. It belongs on the road more than on a shelf.`);
+    }
+  };
   if (!pool.length) {
-    alert('The Wanderer rummages in his pack, frowns, and shakes his head. "Nothing to give you yet. Come back when you have seen more."');
+    showNpcResponse('wanderer', 'I rummage through my pack, frown, shake my head. Nothing to give you yet. Come back when you have seen more.');
     return;
   }
   if (meta.essence < WANDERER_GIFT_COST) {
-    alert(`The Wanderer waits patiently. You cannot spare the ${WANDERER_GIFT_COST} essence this requires. Return when you have more.`);
+    showNpcResponse('wanderer', `I wait patiently. You cannot spare the ${WANDERER_GIFT_COST} essence this requires. Return when you have more.`);
     return;
   }
-  // Confirm if overwriting existing heirloom
+  // Confirm if overwriting existing heirloom — inline YES/NO in the
+  // dialogue body, no native browser popup.
   if (meta.heirloom) {
     const hDef = RELIC_DEFS[meta.heirloom];
     const hName = hDef ? hDef.name : meta.heirloom;
-    const ok = confirm(`You already carry ${hName} as an heirloom. Accept a random gift from the Wanderer instead, replacing it? (Your essence is not refunded.)`);
-    if (!ok) return;
+    showNpcConfirm(
+      'wanderer',
+      `You already carry ${hName} as an heirloom. Accept a random gift from me instead, replacing it? Your essence is not refunded.`,
+      () => _giveGift(),
+      () => showNpcResponse('wanderer', 'Then keep what you have. Both of us travel a road. We need not always trade.'),
+    );
+    return;
   }
-  const rollId = pool[(Math.random() * pool.length) | 0];
-  const rollDef = RELIC_DEFS[rollId];
-  if (bankHeirloom(rollId, WANDERER_GIFT_COST)) {
-    recordServiceUse('wanderer');
-    try { synthChord(523, 0.7, 0.8); } catch (e) {}
-    alert(`The Wanderer hands you ${rollDef.name}. "Carry it for me. It belongs on the road more than on a shelf."`);
-  }
+  _giveGift();
 }
 
 function showSanctuaryFromHamlet() {
