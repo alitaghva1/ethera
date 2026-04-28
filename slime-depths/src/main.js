@@ -91,7 +91,7 @@ import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen, getFamiliarityLabel, bumpFamiliarity, buildGreetingContext, resolveReactiveGreeting, getCurrentPreoccupation, stampVisit, recordRunEnd } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
 import { updateBossIntro } from './bossIntroDom.js';
@@ -1496,23 +1496,58 @@ function openDialogue(npcId) {
   // Stash current npc id on the modal so the persistent SPEAK click
   // handler (set up once at module load) knows which NPC to route to.
   dialogueEl.dataset.npcId = npcId;
-  // Name + title
+
+  // ── DEPTH PASS — build the reactive context BEFORE any state writes
+  // (greeting/preoccupation/visit-stamp). The greeting needs to read
+  // the OLD lastVisit timestamp (for longAbsence detection) and the
+  // OLD familiarity counter; the visit stamp + bump fire after the
+  // body is composed.
+  const ctx = { seenRelicIds };
+  const greetCtx = buildGreetingContext(records, ctx);
+  const greeting = resolveReactiveGreeting(npcId, greetCtx);
+  const preoccupation = getCurrentPreoccupation(npcId, greetCtx);
+  const familiarityLabel = getFamiliarityLabel(npcId);
+
+  // Name + familiarity-aware title
   document.getElementById('dialogueName').textContent = def.name;
   document.getElementById('dialogueName').style.color = def.tint || '#f4d9a0';
   document.getElementById('dialogueName').style.textShadow = `0 0 10px ${def.tint || '#c9a86a'}66`;
-  document.getElementById('dialogueTitle').textContent = def.title || '';
+  // Subtitle now layers the role title + the relationship status, so the
+  // player can feel the relationship deepen as familiarity grows.
+  const titleText = def.title ? `${def.title} · ${familiarityLabel}` : familiarityLabel;
+  document.getElementById('dialogueTitle').textContent = titleText;
   // Portrait
   const portraitEl = document.getElementById('dialoguePortrait');
   const portraitImg = imageCache[def.portrait];
   portraitEl.innerHTML = portraitImg
     ? `<img src="${portraitImg.src}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};"/>`
     : `<div style="width:72px;height:72px;border-radius:50%;background:radial-gradient(ellipse at 40% 35%, ${def.tint}55, rgba(14,8,18,0.9) 70%);box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};display:flex;align-items:center;justify-content:center;color:${def.tint};font-size:26px;font-weight:bold;font-family:Georgia,serif;">${def.name.charAt(4) || def.name.charAt(0)}</div>`;
-  // Body text
+
+  // Body — three layers, top to bottom:
+  //   1. Reactive greeting (if a trigger fires) — prepended in NPC tint
+  //      as a quoted italic line, sits as a "they noticed something"
+  //      preface to the regular flavor.
+  //   2. Preoccupation (every ~3rd visit) — a small italic "they are
+  //      thinking about X" line, distinct visual register from greeting.
+  //   3. ArcStage paragraphs (the existing flavor for this milestone).
   const textEl = document.getElementById('dialogueText');
   const paras = Array.isArray(stageDef.text) ? stageDef.text : [stageDef.text];
-  textEl.innerHTML = paras.map(p => `<p style="margin:0 0 12px;">${p}</p>`).join('');
+  const tint = def.tint || '#c9a86a';
+  let bodyHtml = '';
+  if (greeting) {
+    bodyHtml += `<p style="margin:0 0 14px;color:${tint};font-style:italic;line-height:1.55;font-size:13px;border-left:2px solid ${tint}77;padding-left:12px;opacity:0.95;">${greeting}</p>`;
+  }
+  if (preoccupation) {
+    bodyHtml += `<p style="margin:0 0 12px;color:#a89070;font-style:italic;font-size:11px;letter-spacing:0.3px;opacity:0.75;">— ${preoccupation}</p>`;
+  }
+  bodyHtml += paras.map(p => `<p style="margin:0 0 12px;">${p}</p>`).join('');
+  textEl.innerHTML = bodyHtml;
   // Mark this stage as read — removes the unread dot on return
   markDialogueSeen(npcId);
+  // Bump familiarity + stamp visit. Done AFTER greeting + preoccupation
+  // resolved so they see the OLD state.
+  bumpFamiliarity(npcId);
+  stampVisit(npcId);
   // Wire the service button based on NPC service type
   const svcBtn = document.getElementById('dialogueServiceBtn');
   svcBtn.textContent = def.service.label || 'SERVICE';
@@ -5537,6 +5572,10 @@ function tick(now) {
           try { recordRunComplete(); } catch (e) {}
           evaluateAchievements(stats, meta);
           hideShop();
+          // DEPTH PASS — record victory for hamlet reactive greetings.
+          // Fires "you took the path I refused to look at" type lines
+          // on the next NPC visit chain after a run completion.
+          recordRunEnd('victory', currentFloorLevel, stats.bossesKilled | 0, equippedRelics.length | 0);
           if (!hasSeen('epilogue', 'first_clear')) {
             playEpilogue(() => showEndOfRun(true));
           } else {
@@ -5643,6 +5682,12 @@ function tick(now) {
         deathSummaryShown = true;
         running = false;
         daily.activeForRun = false;
+        // DEPTH PASS — record the run end so the next hamlet visit
+        // fires reactive greetings tied to the outcome ("you came back
+        // without all of yourself", "Mm. Try a heavier weapon next
+        // time"). recordRunEnd also clears the per-NPC greeting-shown
+        // map so each NPC reacts fresh.
+        recordRunEnd('death', currentFloorLevel, stats.bossesKilled | 0, equippedRelics.length | 0);
         showEndOfRun(false);
       }
     }

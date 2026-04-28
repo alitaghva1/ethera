@@ -45,6 +45,30 @@ export const hamletState = {
   // a subtle "new topic" dot on chips the player hasn't clicked yet.
   // Key shape: `${npcId}_${topicId}`. Persisted across runs.
   npcTopicSeen: {},
+  // Familiarity counter — bumped on every dialogue open. Tier
+  // thresholds at FAMILIARITY_TIERS gate deeper topics + soften
+  // the displayed status label ("a stranger" → "trusted").
+  npcFamiliarity: {},
+  // Last-visit timestamp (ms epoch) per NPC — drives the
+  // "longAbsence" reactive greeting trigger. Updated on
+  // dialogue open, AFTER the reactive greeting check.
+  npcLastVisit: {},
+  // Last-seen-greeting key per NPC — prevents the same reactive
+  // greeting from re-firing on consecutive opens within a session.
+  // Cleared on run lifecycle events (death, victory) so a new
+  // run state can trigger fresh greetings.
+  npcGreetingShown: {},
+  // Preoccupation rotation — the NPC's current "thinking about X"
+  // index. Bumped occasionally so the line surfaces on some opens
+  // and the NPC's apparent attention drifts between visits.
+  npcPreoccupationIdx: {},
+  // Last-run summary — written by main.js at run end (death + victory
+  // paths). Cleared after the next run starts so each outcome triggers
+  // exactly one wave of reactive greetings across the hamlet visits.
+  lastRunOutcome: null,        // 'death' | 'victory' | null
+  lastRunFloor: 0,             // floor reached at run end
+  lastRunBossesKilled: 0,      // bosses killed in that run
+  lastRunRelics: 0,            // relics picked in that run
   // Milestone counters for reactive dialogue. Main.js bumps these at the
   // right run-lifecycle events (boss kill, fortune drawn, etc.) so NPC
   // arcStage advance() checks can key off them.
@@ -73,6 +97,201 @@ export function loadHamletState() {
 }
 export function saveHamletState() {
   safeSaveJSON(STATE_KEY, hamletState);
+}
+
+// ============================================================================
+// FAMILIARITY TIERS — Skyrim disposition + Stardew heart-style relationship.
+//
+// Bumped by 1 on each dialogue open (capped at 30 to keep the system from
+// running away). Tier crossings unlock deeper topics on each NPC and
+// adjust the displayed status label ("a stranger" → "trusted") so the
+// player can feel the relationship deepen.
+//
+// Tier 0 stranger:    just met or rarely visited — only universal topics
+// Tier 1 acquainted:  5+ visits — first deeper topic unlocks per NPC
+// Tier 2 friend:      15+ visits — second deeper topic unlocks
+// Tier 3 trusted:     30+ visits — final personal topic unlocks
+// ============================================================================
+export const FAMILIARITY_TIERS = [
+  { min: 0,  id: 'stranger',   label: 'a stranger' },
+  { min: 5,  id: 'acquainted', label: 'an acquaintance' },
+  { min: 15, id: 'friend',     label: 'a friend' },
+  { min: 30, id: 'trusted',    label: 'trusted' },
+];
+export function getFamiliarityTier(npcId) {
+  const n = (hamletState.npcFamiliarity[npcId] | 0);
+  let tier = 0;
+  for (let i = 0; i < FAMILIARITY_TIERS.length; i++) {
+    if (n >= FAMILIARITY_TIERS[i].min) tier = i;
+  }
+  return tier;
+}
+export function getFamiliarityLabel(npcId) {
+  return FAMILIARITY_TIERS[getFamiliarityTier(npcId)].label;
+}
+// Bump familiarity on dialogue open. Capped so a determined player can't
+// inflate it indefinitely with empty visits — at 30 the relationship is
+// "trusted" and there's nothing more to unlock anyway.
+export function bumpFamiliarity(npcId) {
+  const cur = hamletState.npcFamiliarity[npcId] | 0;
+  if (cur >= 30) return cur;
+  hamletState.npcFamiliarity[npcId] = cur + 1;
+  saveHamletState();
+  return cur + 1;
+}
+
+// ============================================================================
+// REACTIVE GREETING CONTEXT — built once per dialogue open.
+//
+// Inspects player records + last-run summary + last-visit time to flag
+// which reactive triggers are "live" right now. Each NPC's
+// reactiveGreetings array is filtered against this context; the first
+// matching line wins.
+//
+// Run-end summary fields (lastRunOutcome, lastRunFloor, lastRunRelics,
+// lastRunBossesKilled) live on hamletState — main.js writes them at
+// run end (death + victory paths). They're cleared after the next
+// run starts so a death-greeting only fires ONCE between runs.
+// ============================================================================
+export function buildGreetingContext(records, ctx) {
+  return {
+    runs:           (records && records.runsStarted) | 0,
+    runsCompleted:  (records && records.runsCompleted) | 0,
+    maxFloor:       (records && records.maxFloor) | 0,
+    bossKills:      (records && records.bossKillsAllTime) | 0,
+    seenRelicCount: (ctx && ctx.seenRelicIds) ? ctx.seenRelicIds.size : 0,
+    // Convenience flags pre-computed for greeting `when` predicates.
+    // The lastRun* fields are written by main.js on run end. They're
+    // ephemeral — cleared after the next run starts so each death
+    // gets exactly one "you fell" greeting per NPC visit chain.
+    justDied:    hamletState.lastRunOutcome === 'death',
+    justVictory: hamletState.lastRunOutcome === 'victory',
+    narrowDeath: hamletState.lastRunOutcome === 'death' && (hamletState.lastRunFloor | 0) >= 3,
+    mythicTouched: !!(ctx && ctx.seenRelicIds && (ctx.seenRelicIds.has('eye_of_ether') || ctx.seenRelicIds.has('cataclysm'))),
+    // longAbsence + isFirstMeeting resolved per-NPC at filter time.
+  };
+}
+// Per-NPC long-absence helper — true if it's been more than `hours`
+// since the player last opened this NPC's dialogue. Returns true on
+// first visit too (no prior timestamp).
+export function isLongAbsence(npcId, hours = 72) {
+  const last = hamletState.npcLastVisit[npcId] || 0;
+  if (!last) return false;     // first visit isn't a "long absence" — that's its own trigger
+  const ms = Date.now() - last;
+  return ms >= hours * 3600 * 1000;
+}
+// First-meeting helper — true if we've never recorded a visit to this NPC.
+// The greeting "first meeting" only fires once. After that, npcLastVisit
+// is set and subsequent opens read as "you returned."
+export function isFirstMeeting(npcId) {
+  return !hamletState.npcLastVisit[npcId];
+}
+// Stamp a visit. Called from openDialogue AFTER the greeting + preoccupation
+// have been resolved (so they read against the OLD state, not the new).
+export function stampVisit(npcId) {
+  hamletState.npcLastVisit[npcId] = Date.now();
+  saveHamletState();
+}
+
+// Run-lifecycle hooks — main.js calls these on death + victory + run start.
+// The lastRun* state is ephemeral: written at end-of-run, persists into the
+// hamlet visits, then cleared when a new run starts so the next set of
+// reactive greetings can fire fresh on the NEXT death/victory.
+export function recordRunEnd(outcome, floor, bossesKilled, relics) {
+  hamletState.lastRunOutcome = outcome;             // 'death' | 'victory'
+  hamletState.lastRunFloor = floor | 0;
+  hamletState.lastRunBossesKilled = bossesKilled | 0;
+  hamletState.lastRunRelics = relics | 0;
+  // Clear the per-NPC greeting-shown map so reactive greetings can
+  // fire afresh on the first visit after this run-end.
+  hamletState.npcGreetingShown = {};
+  saveHamletState();
+}
+export function clearLastRun() {
+  hamletState.lastRunOutcome = null;
+  hamletState.lastRunFloor = 0;
+  hamletState.lastRunBossesKilled = 0;
+  hamletState.lastRunRelics = 0;
+  hamletState.npcGreetingShown = {};
+  saveHamletState();
+}
+
+// ============================================================================
+// REACTIVE GREETING RESOLVER
+//
+// Returns the first greeting line whose `when` predicate matches the current
+// context, OR null if no reactive greeting applies. Each NPC's greeting is
+// shown at most once per "run-end wave" — once the player has seen a
+// greeting for a given key, it doesn't re-fire until the wave is cleared.
+//
+// Predicate forms supported (any field on the def):
+//   when: 'firstMeeting'         — function shorthand
+//   when: 'longAbsence'
+//   when: 'justDied'
+//   when: 'justVictory'
+//   when: 'narrowDeath'
+//   when: 'mythicTouched'
+//   when: (ctx, npcId) => bool   — function form
+// ============================================================================
+function _matchPredicate(when, ctx, npcId) {
+  if (typeof when === 'function') {
+    try { return !!when(ctx, npcId); } catch (_e) { return false; }
+  }
+  if (typeof when !== 'string') return false;
+  switch (when) {
+    case 'firstMeeting':  return isFirstMeeting(npcId);
+    case 'longAbsence':   return isLongAbsence(npcId);
+    case 'justDied':      return !!ctx.justDied;
+    case 'justVictory':   return !!ctx.justVictory;
+    case 'narrowDeath':   return !!ctx.narrowDeath;
+    case 'mythicTouched': return !!ctx.mythicTouched;
+    default: return false;
+  }
+}
+export function resolveReactiveGreeting(npcId, ctx) {
+  const def = NPCS[npcId];
+  if (!def || !Array.isArray(def.reactiveGreetings)) return null;
+  // Per-NPC suppression: don't repeat the same greeting twice in a row
+  // within a single run-end wave (cleared on new run-end).
+  const shownKey = hamletState.npcGreetingShown[npcId];
+  for (let i = 0; i < def.reactiveGreetings.length; i++) {
+    const g = def.reactiveGreetings[i];
+    if (!g || !g.text) continue;
+    if (!_matchPredicate(g.when, ctx, npcId)) continue;
+    const key = g.key || `${i}_${g.when}`;
+    if (key === shownKey) continue;     // already shown this wave
+    // Stamp the greeting key so we don't fire it again until the wave clears
+    hamletState.npcGreetingShown[npcId] = key;
+    saveHamletState();
+    return g.text;
+  }
+  return null;
+}
+
+// ============================================================================
+// PREOCCUPATION RESOLVER — Pyre-style "what they're thinking about today."
+// Returns one current preoccupation line (or null) and bumps the rotation
+// index. Renders as a small italic preface above the body when a preoccupation
+// is "active." We don't surface it on EVERY open — every 3rd visit feels
+// natural — so the line lands as observation, not announcement.
+// ============================================================================
+export function getCurrentPreoccupation(npcId, ctx) {
+  const def = NPCS[npcId];
+  if (!def || !Array.isArray(def.preoccupations) || def.preoccupations.length === 0) return null;
+  const visits = (hamletState.npcFamiliarity[npcId] | 0);
+  // Surface roughly every 3rd visit (1/3 chance) — feels organic, not promo.
+  if (visits === 0 || (visits % 3) !== 0) return null;
+  // Filter to preoccupations whose `when` predicate (if present) matches.
+  const eligible = def.preoccupations.filter(p => {
+    if (!p || !p.text) return false;
+    if (!p.when) return true;       // unconditional preoccupation
+    return _matchPredicate(p.when, ctx, npcId);
+  });
+  if (eligible.length === 0) return null;
+  const idx = (hamletState.npcPreoccupationIdx[npcId] | 0) % eligible.length;
+  hamletState.npcPreoccupationIdx[npcId] = (idx + 1) % eligible.length;
+  saveHamletState();
+  return eligible[idx].text;
 }
 
 // ============================================================================
@@ -220,6 +439,34 @@ export const NPCS = {
       the_oracle: 'She came back from somewhere most do not return from. I watched her step over the threshold. She paused, the way a guest pauses, and then came in anyway.',
       the_wanderer: 'He stopped walking. It is rarer than you think. Most who pass through stop only long enough to ask the road.',
     },
+    // Reactive greetings — first matching predicate is shown ONCE per
+    // run-end wave, prepended to the arcStage as a small italic preface.
+    // Order matters: more specific triggers first, generic last.
+    reactiveGreetings: [
+      { when: 'firstMeeting', text: 'You are new. The fire knows you anyway. Sit, traveler.' },
+      { when: 'narrowDeath',  text: 'You were close, were you not. I felt the air change.' },
+      { when: 'justVictory',  text: 'Something happened down there. I can see it on you. Tell me later — first, the fire.' },
+      { when: 'justDied',     text: 'You came back without all of yourself. Sit. The fire is warm enough for two.' },
+      { when: 'longAbsence',  text: 'You were gone a long time. The candles waited. So did I.' },
+      { when: 'mythicTouched',text: 'You carry something the others have not. The candles bend toward it. Be careful.' },
+    ],
+    // Preoccupations — surface ~1-in-3 visits, render as a small
+    // italic line above the body. Voice: warm, observational, slightly
+    // worried about the others.
+    preoccupations: [
+      { text: 'I have been thinking about the smith. He has not eaten today.' },
+      { text: 'The wanderer settled differently this morning. Like he intends to stay.' },
+      { text: 'The book is heavier than yesterday. The archivist has been busy.' },
+      { when: 'justDied', text: 'I have been thinking about how I would tell the others, if you did not come back. I am glad I did not have to.' },
+    ],
+    // Personal topics — gated by familiarity tier. Stranger = nothing
+    // unlocked. Acquaintance = first deep topic. Friend = second.
+    // Trusted = the most personal disclosure.
+    personalTopics: {
+      the_name: { label: 'Your Name', minTier: 1, text: 'What did people call you, before? Not your name. The other one — the one only the people who fed you used. I had one of those. I have forgotten the people who used it. I have not forgotten the word.' },
+      the_door: { label: 'The Door',  minTier: 2, text: 'Behind that door is not a room. It is a way out of the hamlet that does not go down. You have not asked about it. I respect that. When you are ready, ask.' },
+      the_keeper_was: { label: 'Who You Were', minTier: 3, text: 'I was a girl who tended a fire in a different town. The town is gone. The fire — this fire — is the same one. I do not know how. I no longer try to know.' },
+    },
   },
 
   smith: {
@@ -297,6 +544,24 @@ export const NPCS = {
       the_gravekeeper: 'He counts. I appreciate someone who counts. Means he\'ll notice if I go missing.',
       the_oracle: 'She told me my next strike would land slightly left. She was right. I do not know how I feel about it.',
       the_wanderer: 'Walks lighter than a man with a pack should. He\'ll move on when he\'s done. They always do.',
+    },
+    reactiveGreetings: [
+      { when: 'firstMeeting', text: 'You\'re new. Mind the slag. Bring me what doesn\'t serve.' },
+      { when: 'narrowDeath',  text: 'You came up bleeding. Don\'t bleed on the steel.' },
+      { when: 'justVictory',  text: 'Something\'s different. You walk like you\'ve been listened to.' },
+      { when: 'justDied',     text: 'Mm. Try a heavier weapon next time. Or a lighter one. Whichever you didn\'t.' },
+      { when: 'longAbsence',  text: 'Thought you were dead. Glad to be wrong. Anvil missed you. So did I, a little.' },
+    ],
+    preoccupations: [
+      { text: 'Anvil sang the wrong note this morning. Means weather\'s coming.' },
+      { text: 'The wanderer asked me what war I fought in. I told him: the boring one.' },
+      { text: 'Saw the keeper carry an empty pail. Either she forgot what she was doing or she was hauling something invisible. Both happen, here.' },
+      { when: 'justDied', text: 'Hammer feels heavier when you don\'t come back. Don\'t make it a habit.' },
+    ],
+    personalTopics: {
+      the_war: { label: 'The War', minTier: 1, text: 'It was a small one. Cities you\'ve never heard of fighting other cities you\'ve never heard of. We won. I do not know what we won. The man I was before came home with a hammer and an anvil. The man I was during did not come home at all.' },
+      the_friend: { label: 'A Friend', minTier: 2, text: 'There was a man in my unit who could not hit anything. I taught him. He hit the wrong thing, eventually. That is why I am a smith. Not why I left the army — that came later. But why I am a smith.' },
+      the_blade: { label: 'The Blade', minTier: 3, text: 'I made one weapon worth keeping in my whole life. I gave it to my friend before he died. It is somewhere in the ruin now. If you find it, do not bring it back. I do not want to see it. I want to know it is still being used.' },
     },
   },
 
@@ -376,6 +641,25 @@ export const NPCS = {
       the_oracle: 'She knows things I would have to read three books to know. I have asked her where she got them. She said: from below. I have been thinking about that for some time.',
       the_wanderer: 'I have a list of the roads he has walked, by inference from his pack. Eleven so far. I will not show him.',
     },
+    reactiveGreetings: [
+      { when: 'firstMeeting', text: 'A new entry. I will need a fresh page. Sit, please — I will not be long.' },
+      { when: 'narrowDeath',  text: 'I marked the page on which you nearly did not return. The ink is still wet.' },
+      { when: 'justVictory',  text: 'You added a footnote to your own entry today. Not many do. Tell me the texture of it later.' },
+      { when: 'justDied',     text: 'I have written you in again. The verb tense was easy this time. You will use the present tense for me.' },
+      { when: 'longAbsence',  text: 'I had begun a new section about you. It is mostly questions. Now you are here to answer some.' },
+      { when: 'mythicTouched',text: 'The book named what you carry before you brought it back. That has not happened in some time. I want to ask you about it.' },
+    ],
+    preoccupations: [
+      { text: 'I copied a page wrong this morning, then realized I had copied it correctly. The original was wrong. The book has begun correcting me by my mistakes.' },
+      { text: 'There is a margin in the codex where someone has been writing in pencil. It is not me. The handwriting matches mine.' },
+      { text: 'The keeper read over my shoulder yesterday. I let her. She did not say anything. I think she liked it.' },
+      { when: 'mythicTouched', text: 'The relic you carry has a long entry already. I had filed it under "rumors." Now I have a witness.' },
+    ],
+    personalTopics: {
+      the_other_book: { label: 'The Other Book', minTier: 1, text: 'There is a second book. It is the same book. Different pages. The same spine. I do not know how that works. I keep them on different shelves so they do not argue.' },
+      the_first_entry: { label: 'The First Page', minTier: 2, text: 'The first entry in the codex is about a relic that does not exist. I have never seen it. The entry is in my hand. I do not remember writing it. The hamlet had two NPCs when I arrived. The first entry is dated three years before that.' },
+      the_archivist_was: { label: 'Before The Book', minTier: 3, text: 'I was a librarian in a city that no longer has a name. The library survived the city. I survived the library. The book — this book — is one of the volumes I rescued. The other volumes are still down there. I will not look for them. I have made my peace with what I saved.' },
+    },
   },
 
   // ==========================================================================
@@ -454,6 +738,24 @@ export const NPCS = {
       the_gravekeeper: 'I count what is gone and what is still here. Eventually those two columns balance. Until then, I work.',
       the_oracle: 'She sees forward. I see backward. We do not interfere with each other\'s ranges. It is a courtesy I appreciate.',
       the_wanderer: 'A long traveler stopping is rarer than a tower falling. He is in my ledger as an event, not a person.',
+    },
+    reactiveGreetings: [
+      { when: 'firstMeeting', text: 'I have your column ready. It is empty for now. I find that comforting. You may not.' },
+      { when: 'narrowDeath',  text: 'I almost wrote your line. I had the quill down. Then you were here.' },
+      { when: 'justVictory',  text: 'A boss\'s entry is heavier than a knight\'s. I added the weight just now.' },
+      { when: 'justDied',     text: 'You returned. The ledger does not always allow returns. Whatever you bargained, the ruin honored.' },
+      { when: 'longAbsence',  text: 'Your column had grown still. I was beginning to round it down.' },
+    ],
+    preoccupations: [
+      { text: 'The smith\'s column has not changed in some time. That is information. Either he is being careful, or he is becoming the kind of person who does not show in ledgers.' },
+      { text: 'A name appeared in the count this morning that I did not write. I will leave it. The ledger has the right to amend itself.' },
+      { text: 'I counted the keeper\'s heartbeats once, while she slept by the fire. She has more than she should. I have not asked.' },
+      { when: 'narrowDeath', text: 'Three close calls in the same descent leaves a residue on the page. I have been looking at yours.' },
+    ],
+    personalTopics: {
+      the_count_in_you: { label: 'What He Counts', minTier: 1, text: 'I do not count your hours. I count the hours BETWEEN your descents. The waiting. That is the part most counters miss. The dead, after all, are easy to count. The not-yet-dead are the discipline.' },
+      the_first_grave: { label: 'The First Grave', minTier: 2, text: 'I started counting because I lost a number, once. A number that would not let me sleep. I added one to it. The math relaxed. I am still adding. The number is no longer the original number, but the addition has become the work.' },
+      the_gravekeeper_was: { label: 'Before The Ledger', minTier: 3, text: 'I was a soldier. I was a general. I was the man whose orders meant the columns of dead I now keep. I learned to count in the only school that teaches it correctly. I am here, in the hamlet, because counting backward is the only way I know to atone. I am very nearly back to zero.' },
     },
   },
 
@@ -535,6 +837,25 @@ export const NPCS = {
       the_oracle: 'I do not predict. I REMEMBER FORWARD. Different craft, same stillness. I will tell you what I saw if you can pay for the seeing.',
       the_wanderer: 'He has walked all the way around the place his life is going. Now he is sitting at the center. He has not noticed yet. He will.',
     },
+    reactiveGreetings: [
+      { when: 'firstMeeting', text: 'I saw you arrive. Three times, in fact, in three different futures. Sit. Two of the three were pleasant.' },
+      { when: 'narrowDeath',  text: 'You almost. I told you. I told you the card and you nodded and then almost. That is how the deck works.' },
+      { when: 'justVictory',  text: 'You took the path I refused to look at. I was right not to look. You were right to walk.' },
+      { when: 'justDied',     text: 'I drew the card I drew. You did what you did. The forward-dark is patient with neither of us.' },
+      { when: 'longAbsence',  text: 'You returned. I had stopped predicting your visits, which is when they become predictable.' },
+      { when: 'mythicTouched',text: 'The cards rearranged themselves last night. I think you were the cause. I am not displeased.' },
+    ],
+    preoccupations: [
+      { text: 'The deck shuffled itself this morning. It does this. I let it.' },
+      { text: 'The wanderer has been dreaming of a road I have already walked. I have decided not to tell him.' },
+      { text: 'A card I have not seen before fell out of the deck this week. I have not put it back. I have not yet looked at it.' },
+      { when: 'longAbsence', text: 'I drew you, in your absence. The card I got was a door. Standing open.' },
+    ],
+    personalTopics: {
+      the_door_below: { label: 'The Door Below', minTier: 1, text: 'Most who reach the throne stop there. I went past. There is a door behind the throne. It opens both ways. I came back through it. I do not know if I closed it.' },
+      the_corridor: { label: 'The Corridor', minTier: 2, text: 'The ruin is not, in fact, a depth. It is a CORRIDOR. The descent is a foreshortening — you walk a long way and call it down. I walked the actual length once. It took longer than the descent. It taught me to read sideways.' },
+      the_oracle_returned: { label: 'Why She Returned', minTier: 3, text: 'I came back because I saw, on the other side, what stopping doing this would look like. It looked like a quiet life I could live for as many years as I wanted, in a place that was kind. I came back to refuse it. I do not know if I will refuse it forever. But I refused it that day.' },
+    },
   },
 
   // ==========================================================================
@@ -615,6 +936,24 @@ export const NPCS = {
       the_gravekeeper: 'He counts people the way I count miles. We have the same hands.',
       the_oracle: 'She has been down further than I have ever walked. I respect a traveler who came back. Most do not. That is what makes them travelers.',
       the_wanderer: 'I have stopped. Not for good. For long enough. The road will be there when I want it. The road is patient. That is most of what the road is.',
+    },
+    reactiveGreetings: [
+      { when: 'firstMeeting', text: 'A new walker. Sit by the pack — that is where the conversations happen. Don\'t mind the road dust; it remembers being a road.' },
+      { when: 'narrowDeath',  text: 'You came up close. I have come up close, in my walking. The trick is not to let it become a habit.' },
+      { when: 'justVictory',  text: 'You walked further than most. The road I would offer you is shorter, and easier. Hear me out before you refuse it.' },
+      { when: 'justDied',     text: 'The pack is here. Sit. Walking starts again when sitting ends — there\'s no hurry.' },
+      { when: 'longAbsence',  text: 'You\'ve been on a road of your own. Tell me where it goes, when you have words for it.' },
+    ],
+    preoccupations: [
+      { text: 'I dreamed of a road I have already walked, last night. That used to mean it was time to leave. Now I think it just means I have walked a lot of roads.' },
+      { text: 'The smith asked me what war I fought in. I gave him the polite answer. He gave me the quiet of a man who heard the impolite one anyway.' },
+      { text: 'The keeper sets aside soup for me, even when I tell her I have eaten. She is right and I am lying. I do not know how she knows.' },
+      { when: 'firstMeeting', text: 'I have not introduced myself to a new traveler in a long time. I am out of practice with the opening.' },
+    ],
+    personalTopics: {
+      the_friend_for: { label: 'For Whom He Walked', minTier: 1, text: 'I walked the road for someone who could not. I do not say her name. The roads remember names. I would rather they remembered her face.' },
+      the_road_home: { label: 'The Road Home', minTier: 2, text: 'There is a road that goes back to where I started. I have not walked it. I will, some day. Not yet. Some roads you walk last because you want them to be the last thing.' },
+      the_wanderer_was: { label: 'Before The Pack', minTier: 3, text: 'I was a man with a fixed address. A small one. Two rooms. A garden the size of a coin. I left it because someone needed someone to walk somewhere very far. I have been walking for years. The garden is gone. The two rooms are gone. The person I was walking for has been gone for longer than the garden. The walking is what I have left of all of them. I am not sad about this. I am, in fact, quite well.' },
     },
   },
 };
@@ -746,31 +1085,43 @@ export function npcHasChat(npcId) {
 export function availableTopicsForNpc(npcId) {
   const def = NPCS[npcId];
   if (!def || !def.topics) return [];
+  const tier = getFamiliarityTier(npcId);
   const out = [];
+  // Universal topics from the global TOPICS catalog
   for (const tid of ALL_TOPIC_IDS) {
     const topic = TOPICS[tid];
     if (!topic) continue;
-    // Skip self-reference — Smith's "the_smith" topic is suppressed
-    // when the Smith is the speaker (it would be circular).
-    if (tid === `the_${npcId}`) continue;
-    // NPC must have an answer
+    if (tid === `the_${npcId}`) continue;     // suppress self-reference
     const answer = def.topics[tid];
     if (typeof answer !== 'string' || answer.length === 0) continue;
-    // Topic must pass visibility gate
     try {
       if (!topic.visible(hamletState)) continue;
     } catch (_e) { continue; }
     out.push({ id: tid, label: topic.label });
+  }
+  // Per-NPC personal topics, keyed under def.personalTopics. Each entry is
+  // { label, minTier, text } where minTier gates visibility on familiarity.
+  // Reads as deeper conversation only the NPC's friends would hear.
+  if (def.personalTopics) {
+    for (const tid in def.personalTopics) {
+      const t = def.personalTopics[tid];
+      if (!t || typeof t.text !== 'string' || t.text.length === 0) continue;
+      if ((t.minTier | 0) > tier) continue;
+      out.push({ id: tid, label: t.label || tid, personal: true });
+    }
   }
   return out;
 }
 
 export function getTopicAnswer(npcId, topicId) {
   const def = NPCS[npcId];
-  if (!def || !def.topics) return null;
-  const answer = def.topics[topicId];
+  if (!def) return null;
+  // Try universal topic first, then fall back to per-NPC personal topic.
+  let answer = (def.topics && def.topics[topicId]) || null;
+  if (!answer && def.personalTopics && def.personalTopics[topicId]) {
+    answer = def.personalTopics[topicId].text;
+  }
   if (typeof answer !== 'string' || answer.length === 0) return null;
-  // Mark seen
   hamletState.npcTopicSeen[`${npcId}_${topicId}`] = true;
   saveHamletState();
   return answer;
