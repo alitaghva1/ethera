@@ -44,7 +44,7 @@ export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 //   camp dirt       (944, 452)   E rough dirt+bedroll+fire-ring
 //   portal pad      (964, 654)   SE grass clearing w/ ritual ring
 //   graveyard       (569, 211)   NW grass+markers cluster
-const PORTAL_POS   = { x: 961, y: 634 };   // SE portal pad (v4) — y up 20 from 654, x left 2 from 963 (small nudge to center on painted pad)
+const PORTAL_POS   = { x: 965, y: 634 };   // SE portal pad (v4) — y up 20 from 654, x at 965 after right-4 producer nudge from 961
 const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
 const FIREPIT_POS  = { x: 435, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
 
@@ -395,7 +395,7 @@ const HAMLET_FX = [
     //   fps: 5 — 9 frames @ 5fps = 1.8s cycle. Slow enough to read
     //   the door open + swirl, fast enough to feel alive.
     id: 'portal', asset: 'fx_portal',
-    x: 961, y: 634,
+    x: 965, y: 634,
     frameW: 96, frameH: 96,
     frameCount: 9, fps: 5,
     scale: 0.74, yOffset: 0,
