@@ -68,20 +68,24 @@ const MECHANICS = [
 
 function keybindRow(kb) {
   return `
-  <div style="display:grid;grid-template-columns:140px 1fr;gap:16px;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(201,168,106,0.12);">
-    <div style="color:#f4d9a0;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-weight:bold;text-align:right;">${kb.key}</div>
-    <div style="color:#d8cfae;font-family:Georgia,serif;font-size:12px;letter-spacing:1px;">${kb.action}</div>
+  <div style="display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;padding:4px 12px;border-bottom:1px solid rgba(201,168,106,0.12);">
+    <div style="color:#f4d9a0;font-family:Georgia,serif;font-size:11px;letter-spacing:2.5px;font-weight:bold;text-align:right;">${kb.key}</div>
+    <div style="color:#d8cfae;font-family:Georgia,serif;font-size:11px;letter-spacing:0.8px;">${kb.action}</div>
   </div>`;
 }
 
 function mechanicCard(m) {
   return `
-  <div style="background:linear-gradient(180deg,rgba(30,22,16,0.75),rgba(14,10,8,0.8));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.24),inset 0 0 14px rgba(0,0,0,0.4);padding:10px 16px;font-family:Georgia,serif;">
-    <div style="color:#c9a86a;font-size:9px;letter-spacing:4px;font-weight:bold;margin-bottom:4px;">${m.title}</div>
-    <div style="color:#d8cfae;font-size:11px;letter-spacing:0.5px;line-height:1.5;">${m.body}</div>
+  <div style="background:linear-gradient(180deg,rgba(30,22,16,0.75),rgba(14,10,8,0.8));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.24),inset 0 0 14px rgba(0,0,0,0.4);padding:7px 12px;font-family:Georgia,serif;">
+    <div style="color:#c9a86a;font-size:9px;letter-spacing:3px;font-weight:bold;margin-bottom:3px;">${m.title}</div>
+    <div style="color:#d8cfae;font-size:10px;letter-spacing:0.4px;line-height:1.45;">${m.body}</div>
   </div>`;
 }
 
+// Layout fits in 720 design height without scrolling:
+//   title block ~92px + controls ~210px + mechanics (3-col x 2-row) ~150px
+//   + return button ~30px + paddings/gaps ~40px = ~520px. Comfortably under
+//   the design height even with breathing room.
 export const CONTROLS_SCREEN_HTML = `
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
   ${cornerOrnament('tl')}
@@ -89,41 +93,47 @@ export const CONTROLS_SCREEN_HTML = `
   ${cornerOrnament('bl')}
   ${cornerOrnament('br')}
 
-  <div style="position:relative;z-index:1;max-width:720px;width:100%;display:flex;flex-direction:column;align-items:center;max-height:88%;overflow:hidden;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">a brief primer</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+  <div style="position:relative;z-index:1;max-width:780px;width:100%;display:flex;flex-direction:column;align-items:center;">
+    <div style="display:flex;align-items:center;gap:18px;margin-bottom:6px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
+      <div style="width:90px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+      <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-style:italic;">a brief primer</div>
+      <div style="width:90px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
     </div>
-    <h1 style="font-size:38px;margin:0 0 6px;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 22px rgba(244,217,160,0.45);font-weight:400;animation:winFadeIn 0.7s ease-out 0.1s both;font-family:Georgia,serif;">HOW TO PLAY</h1>
-    <div style="color:#a89b82;font-size:11px;letter-spacing:4px;font-style:italic;margin-bottom:18px;font-family:Georgia,serif;">\u2666 ETHERA remembers your blade \u2666</div>
+    <h1 style="font-size:32px;margin:0 0 4px;letter-spacing:9px;color:#f4d9a0;text-shadow:0 0 22px rgba(244,217,160,0.45);font-weight:400;animation:winFadeIn 0.7s ease-out 0.1s both;font-family:Georgia,serif;">HOW TO PLAY</h1>
+    <div style="color:#a89b82;font-size:10px;letter-spacing:4px;font-style:italic;margin-bottom:14px;font-family:Georgia,serif;">\u2666 ETHERA remembers your blade \u2666</div>
 
-    <div style="display:grid;grid-template-columns:1fr;gap:18px;width:100%;overflow-y:auto;padding:2px 6px 22px;animation:winCardSlide 0.55s ease-out 0.25s both;">
+    <!-- Single column at top level \u2014 but each section's INNER layout is
+         a tight grid so all six mechanic cards fit in two rows of three
+         and the eight keybind rows fit at compressed line-height. No
+         scrollbar; everything visible at once on a 720 design height. -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:100%;animation:winCardSlide 0.55s ease-out 0.25s both;">
       <!-- Keybinds -->
       <div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
           <div style="width:40px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a);"></div>
-          <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-weight:bold;">\u2666 CONTROLS \u2666</div>
+          <div style="color:#c9a86a;font-size:9px;letter-spacing:4px;font-weight:bold;">\u2666 CONTROLS \u2666</div>
           <div style="width:40px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);flex:1;"></div>
         </div>
-        <div style="background:linear-gradient(180deg,rgba(30,22,16,0.72),rgba(14,10,8,0.78));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.22),inset 0 0 14px rgba(0,0,0,0.4);padding:8px 0;">
+        <div style="background:linear-gradient(180deg,rgba(30,22,16,0.72),rgba(14,10,8,0.78));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.22),inset 0 0 14px rgba(0,0,0,0.4);padding:5px 0;">
           ${KEYBINDS.map(keybindRow).join('')}
         </div>
       </div>
 
-      <!-- Mechanics -->
+      <!-- Mechanics \u2014 3 columns x 2 rows for the 6 cards. Fixed col count
+           keeps the layout stable; auto-fit tended to wrap to 4+1+1 at
+           tight container widths which read as broken rather than tidy. -->
       <div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
           <div style="width:40px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a);"></div>
-          <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-weight:bold;">\u2666 WHAT TO KNOW \u2666</div>
+          <div style="color:#c9a86a;font-size:9px;letter-spacing:4px;font-weight:bold;">\u2666 WHAT TO KNOW \u2666</div>
           <div style="width:40px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);flex:1;"></div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
           ${MECHANICS.map(mechanicCard).join('')}
         </div>
       </div>
     </div>
 
-    <button id="controlsCloseBtn" style="background:transparent;border:0;margin-top:8px;padding:8px 18px;cursor:pointer;color:#c8a8a8;font-family:Georgia,serif;font-size:12px;letter-spacing:4px;font-style:italic;transition:all 0.22s ease;animation:winFadeIn 0.6s ease-out 0.55s both;">\u2190 return</button>
+    <button id="controlsCloseBtn" style="background:transparent;border:0;margin-top:14px;padding:6px 16px;cursor:pointer;color:#c8a8a8;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;font-style:italic;transition:all 0.22s ease;animation:winFadeIn 0.6s ease-out 0.55s both;">\u2190 return</button>
   </div>
 `;
