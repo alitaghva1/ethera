@@ -1309,6 +1309,14 @@ function enterHamletCanvas() {
   bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
   floorCardTime = 0;
   phaseIntroTime = 0; phaseIntroBoss = null; phaseIntroStartedAt = 0;
+  // Death-ceremony residue — without this reset, a player who died,
+  // clicked MAIN MENU, then re-entered hamlet would see the red
+  // "YOU HAVE FALLEN" canvas overlay stuck on top of the hamlet (the
+  // ceremony's draw path keys off `deathCeremonyActive`, which only
+  // got reset by startRun / resumeRun, not by hamlet re-entry).
+  deathCeremonyActive = false;
+  deathCeremonyTime = 0;
+  deathSummaryShown = false;
 
   // Spawn the hero at the hamlet entrance and snap the camera so there's no
   // lerp-in from wherever they last were. EXCEPTION: if this entry is
@@ -4768,50 +4776,73 @@ function showEndOfRun(isVictory) {
 }
 
 function renderMetaShop(animate = false) {
+  // Compact LIST layout (replaced the prior card-grid). Each unlock is a
+  // single horizontal row: [icon] [name + tooltip] [cost] [UNLOCK btn].
+  // Two columns side-by-side so 10 unlocks fit in 5 rows \u2248 175 design px,
+  // saving ~110px vs the 2-row card grid (~285 design px). The full
+  // description hovers as a native title-tooltip \u2014 keeps info available
+  // without dominating screen space when the player only wants to scan.
   const row = document.getElementById('metaShopRow');
   row.innerHTML = '';
+  // 2-col grid; each cell is one unlock-row.
+  row.style.display = 'grid';
+  row.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+  row.style.gap = '4px 12px';
+  row.style.maxWidth = '780px';
+  row.style.width = '100%';
   let staggerIdx = 0;
   for (const id in UNLOCKS) {
     const u = UNLOCKS[id];
     const owned = hasUnlock(id);
     const canAfford = meta.essence >= u.cost;
-    const card = document.createElement('div');
-    // Tier-colored frame with gradient depth + staggered slide matching shop cards
-    const staggerDelay = 1.2 + staggerIdx * 0.1;
+    const rowEl = document.createElement('button');
+    rowEl.title = u.flavor ? `${u.name} \u2014 ${u.desc}\n${u.flavor}` : `${u.name} \u2014 ${u.desc}`;
+    rowEl.disabled = owned || !canAfford;
+    const staggerDelay = 1.2 + staggerIdx * 0.04;
     staggerIdx++;
-    // Card layout compressed twice now (was 155\u2192125, now 125\u2192105) so the
-    // long-run case (stats panel populated + watcher present + 8 unlocks)
-    // also fits within 720 design space without scrolling. Smaller flavor
-    // and desc rows + tighter gap + padding 6 (was 8) net ~20px per card.
-    card.style.cssText = `
-      width:160px;
-      background:linear-gradient(180deg,rgba(30,20,38,0.95),rgba(16,8,20,0.95));
-      border:2px solid ${u.tint};
-      padding:6px 8px;
-      display:flex;flex-direction:column;align-items:center;gap:2px;
-      box-shadow:0 0 16px ${u.tint}55, 0 4px 14px rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.3);
+    // Whole row IS the buy button \u2014 saves the dedicated UNLOCK button's
+    // width and gives a bigger click target. Disabled when owned or
+    // can't afford (visual: dimmed + no hover).
+    rowEl.style.cssText = `
+      display:grid;
+      grid-template-columns:24px 1fr auto;
+      align-items:center;
+      gap:8px;
+      background:linear-gradient(90deg,rgba(30,20,38,0.7),rgba(16,8,20,0.55));
+      border:1px solid ${u.tint}55;
+      border-left:3px solid ${u.tint};
+      padding:5px 10px;
+      cursor:${canAfford && !owned ? 'pointer' : 'default'};
       font-family:Georgia,serif;
-      ${animate ? `animation:winCardSlide 0.5s ease-out ${staggerDelay}s both;` : ''}
-      ${owned ? 'opacity:0.55;' : ''}
+      transition:background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+      text-align:left;
+      ${animate ? `animation:winCardSlide 0.45s ease-out ${staggerDelay}s both;` : ''}
+      ${owned ? 'opacity:0.5;' : (canAfford ? '' : 'opacity:0.55;')}
     `;
-    card.innerHTML = `
-      <div style="padding:1px;background:radial-gradient(circle,${u.tint}33,transparent 70%);">
-        <img src="assets/icons/${u.icon}.png" style="width:24px;height:24px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(u.tint)}deg) saturate(1.15) drop-shadow(0 0 5px ${u.tint}88);" />
-      </div>
-      <div style="font-size:11px;font-weight:bold;color:${u.tint};letter-spacing:0.8px;text-align:center;text-shadow:0 0 4px ${u.tint}44;">${u.name}</div>
-      ${u.flavor ? `<div style="font-size:9px;color:rgba(200,190,210,0.7);text-align:center;min-height:14px;line-height:1.2;font-style:italic;padding:0 2px;">${u.flavor}</div>` : ''}
-      <div style="height:1px;width:70%;background:linear-gradient(90deg,transparent,${u.tint}aa,transparent);"></div>
-      <div style="font-size:10px;color:${u.tint};text-align:center;min-height:14px;line-height:1.2;font-weight:bold;">${u.desc}</div>
-      <div style="font-size:11px;color:${owned ? '#8ad4a2' : '#a0e8ff'};text-shadow:0 0 6px ${owned ? 'rgba(138,212,162,0.4)' : 'rgba(160,232,255,0.4)'};">${owned ? '\u2713 OWNED' : '\u2728 ' + u.cost}</div>
-      ${owned ? '' : `<button class="metaBuyBtn" ${canAfford ? '' : 'disabled'} style="background:linear-gradient(180deg,${u.tint},${darkenHex(u.tint, 0.6)});color:#1a1220;border:0;padding:3px 10px;cursor:${canAfford ? 'pointer' : 'not-allowed'};font-weight:bold;letter-spacing:1.2px;font-size:10px;font-family:Georgia,serif;opacity:${canAfford ? 1 : 0.4};transition:transform 0.15s ease, box-shadow 0.15s ease;">UNLOCK</button>`}
+    rowEl.innerHTML = `
+      <img src="assets/icons/${u.icon}.png" style="width:24px;height:24px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(u.tint)}deg) saturate(1.15) drop-shadow(0 0 4px ${u.tint}88);" />
+      <span style="display:flex;flex-direction:column;gap:0;min-width:0;">
+        <span style="font-size:11px;font-weight:bold;color:${u.tint};letter-spacing:0.8px;text-shadow:0 0 4px ${u.tint}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.name}</span>
+        <span style="font-size:9px;color:rgba(200,190,210,0.65);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.desc}</span>
+      </span>
+      <span style="font-size:11px;color:${owned ? '#8ad4a2' : (canAfford ? '#a0e8ff' : '#7a6065')};letter-spacing:0.5px;text-shadow:0 0 6px ${owned ? 'rgba(138,212,162,0.4)' : (canAfford ? 'rgba(160,232,255,0.4)' : 'rgba(0,0,0,0.5)')};white-space:nowrap;font-weight:bold;">${owned ? '\u2713' : '\u2728 ' + u.cost}</span>
     `;
-    const btn = card.querySelector('.metaBuyBtn');
-    if (btn) {
-      btn.addEventListener('click', () => {
+    if (!owned && canAfford) {
+      rowEl.addEventListener('click', () => {
         if (purchaseUnlock(id)) renderMetaShop();
       });
+      rowEl.addEventListener('mouseenter', () => {
+        rowEl.style.background = `linear-gradient(90deg,${u.tint}22,${u.tint}11)`;
+        rowEl.style.borderColor = `${u.tint}aa`;
+        rowEl.style.transform = 'translateX(2px)';
+      });
+      rowEl.addEventListener('mouseleave', () => {
+        rowEl.style.background = `linear-gradient(90deg,rgba(30,20,38,0.7),rgba(16,8,20,0.55))`;
+        rowEl.style.borderColor = `${u.tint}55`;
+        rowEl.style.transform = 'translateX(0)';
+      });
     }
-    row.appendChild(card);
+    row.appendChild(rowEl);
   }
 }
 

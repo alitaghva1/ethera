@@ -94,12 +94,14 @@ export const DEATH_SCREEN_HTML = `
     <div id="metaHeader" style="color:#a0e8ff;font-size:10px;letter-spacing:5px;font-weight:bold;text-shadow:0 0 8px rgba(160,232,255,0.35);">\u2727 SANCTUARY OF THE ABYSS \u2727</div>
     <div style="width:60px;height:1px;background:linear-gradient(90deg,#a0e8ff,transparent);"></div>
   </div>
-  <!-- Sanctuary unlock cards. Max-width sized to fit 5 cards per row with
-       the new compressed cards (outer ~180 = 160 content + 16 padding +
-       4 border), so 10 unlocks settle into 2 rows of 5 instead of 3 rows
-       of 4. The 3-row case overflowed the 720 design space; 2 rows fit.
-       Math: 5 * 180 + 4 * 8 (gap) = 932 -> max-width 960 leaves headroom. -->
-  <div id="metaShopRow" style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:960px;margin-bottom:14px;animation:winCardSlide 0.55s ease-out 1.15s both;position:relative;z-index:1;"></div>
+  <!-- Sanctuary unlock list. The renderMetaShop function in main.js now
+       builds a 2-column COMPACT LIST (one row per unlock with icon, name,
+       desc, cost, click-to-buy) instead of the prior card grid. The grid
+       layout properties below are placeholders — renderMetaShop overwrites
+       them on each render via direct style assignment. Saves ~110 design
+       px vs the 2-row card grid, leaving the death modal more breathing
+       room around the stats / watcher / essence sections. -->
+  <div id="metaShopRow" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;max-width:780px;width:100%;margin-bottom:14px;animation:winCardSlide 0.55s ease-out 1.15s both;position:relative;z-index:1;"></div>
 
   <!-- Button row — "← MAIN MENU" escape hatch next to the primary NEW RUN.
        The menu is where the player goes to switch save slot, pick a memory,
