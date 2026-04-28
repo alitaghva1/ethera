@@ -502,6 +502,12 @@ let bossIntroStartedAt = 0;           // wall-clock timestamp — clamps intro a
 let deathCeremonyActive = false;
 let deathCeremonyTime = 0;
 let deathSummaryShown = false;
+// First-run intro — track previous-frame active state so the tick loop
+// can detect the cinematic's end (true→false edge) and resume the
+// silenced biome music. The AWAKEN handler kills audio on intro start
+// to leave the heartbeat alone; the resume needs to happen exactly
+// once when the intro finishes.
+let _wasIntroActive = false;
 // Tab-title update throttle
 let _lastTitleUpdateSec = -1;
 // Pedestal/altar proximity hum timer + low-HP heartbeat timer
@@ -742,6 +748,13 @@ document.getElementById('menuNewRunBtn').addEventListener('click', () => {
     floorCardTime = 0;
     floorCardStartedAt = 0;
     startIntro();       // overlay heartbeat + text on top of the live world
+    // Silence everything underneath the cinematic — startRun -> loadRoom
+    // already fired playTrack('crypt') for floor 1, and the menu pad
+    // is still running from the title screen. The heartbeat is the
+    // ONLY thing the player should hear during the intro. Tick loop
+    // will resume the biome track when the cinematic ends.
+    stopAmbientPad();
+    playTrack(null);
     return;
   }
   // Returning player — standard flow: hamlet hub, descend via portal.
@@ -5430,6 +5443,17 @@ function tick(now) {
     // gates above. Uses realDt (not dt) so it ignores hit-stop time
     // dilation.
     if (wakeIntroActive) updateIntro(realDt);
+    // Music resume — when the cinematic finishes, fire the floor's
+    // biome track. AWAKEN handler killed the music to leave the
+    // heartbeat alone in the soundscape; the cinematic ends with the
+    // player in floor 1's start room with no transition pending, so
+    // nothing else would re-trigger playTrack on its own. Detect the
+    // true→false edge and resume.
+    if (_wasIntroActive && !wakeIntroActive) {
+      const biomeTrack = BIOME_BY_FLOOR[currentFloorLevel] || 'ambient';
+      playTrack(biomeTrack);
+    }
+    _wasIntroActive = wakeIntroActive;
     updateGold(dt, hero);
     updateHudAnims(realDt);
     // Tick the prevRoom residue (the snapshot of the room we just left,

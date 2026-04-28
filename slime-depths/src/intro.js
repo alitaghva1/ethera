@@ -34,8 +34,19 @@ const SKIP_AFTER = 4.0;
 const SKIP_BEFORE = 24.0;
 
 // Music kicks in at 24s as the heartbeat fades — the gameplay-music
-// handoff. Intro is dead silent before this.
+// handoff. Intro is dead silent before this. (Music suppression itself
+// is handled by main.js: it stops the ambient pad + biome track on
+// startIntro and resumes them when the cinematic ends. The heartbeat
+// is the ONLY audio playing during the cinematic.)
 const MUSIC_AT = 24.0;
+
+// Heartbeat gain — multiplier on each scheduled beat's `vol` field. The
+// original ethera tuning peaked at vol ~0.9 inside a louder soundscape;
+// here the cinematic is otherwise silent (no music underneath), so the
+// beats can run hotter without crowding anything else. 1.7x lifts the
+// final crescendo into "felt in the chest" territory while keeping the
+// opening beats at "barely alive" intimacy.
+const HEARTBEAT_GAIN = 1.7;
 
 // Heartbeat sequence — accelerating cadence + rising volume + escalating
 // pulse intensity (0.15 -> 1.0). Carries the player from "barely alive"
@@ -106,7 +117,7 @@ export function updateIntro(dt) {
   // beat's intensity; exponential decay below produces the falloff.
   while (_beatIndex < INTRO_BEATS.length && t >= INTRO_BEATS[_beatIndex].time) {
     const beat = INTRO_BEATS[_beatIndex];
-    try { synthHeartbeat(beat.vol); } catch (_e) {}
+    try { synthHeartbeat(beat.vol * HEARTBEAT_GAIN); } catch (_e) {}
     _pulse = beat.pulse;
     _beatIndex++;
   }
