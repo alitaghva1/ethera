@@ -122,7 +122,7 @@ export const KEEPER_WAKE_BEATS = [
   'I pulled you up the stairs four nights ago. You were not breathing. The ruin had taken most of what you were carrying — your sword, your boots, your name. You came back without them.',
   'The fire here is small. It is also patient. So am I.',
   'You will want to go back down. They always do. The place below has had many names. Ethera is the one we are using this season. The wound, in its own language.',
-  'When you are ready, the door is to the south. You will need to find what is yours again — or what will pass for yours.',
+  'When you are ready, the door waits where the path drops away. You will need to find what is yours again — or what will pass for yours.',
   'I am the Keeper. I will be here when you come back. I am always here when you come back.',
 ];
 
@@ -220,25 +220,19 @@ export function stampVisit(npcId) {
   saveHamletState();
 }
 
-// Run-lifecycle hooks — main.js calls these on death + victory + run start.
-// The lastRun* state is ephemeral: written at end-of-run, persists into the
-// hamlet visits, then cleared when a new run starts so the next set of
-// reactive greetings can fire fresh on the NEXT death/victory.
+// Run-lifecycle hook — main.js calls this on death + victory.
+// The lastRun* state persists from run-end through the next hamlet
+// visit chain; it is OVERWRITTEN by the next recordRunEnd, not
+// explicitly cleared. The per-NPC `npcGreetingShown` map is reset
+// here so reactive greetings can fire afresh on the next visits.
+// Practical effect: each death or victory triggers exactly one
+// fresh wave of greetings across the NPCs, then the wave settles
+// until the player ends another run.
 export function recordRunEnd(outcome, floor, bossesKilled, relics) {
   hamletState.lastRunOutcome = outcome;             // 'death' | 'victory'
   hamletState.lastRunFloor = floor | 0;
   hamletState.lastRunBossesKilled = bossesKilled | 0;
   hamletState.lastRunRelics = relics | 0;
-  // Clear the per-NPC greeting-shown map so reactive greetings can
-  // fire afresh on the first visit after this run-end.
-  hamletState.npcGreetingShown = {};
-  saveHamletState();
-}
-export function clearLastRun() {
-  hamletState.lastRunOutcome = null;
-  hamletState.lastRunFloor = 0;
-  hamletState.lastRunBossesKilled = 0;
-  hamletState.lastRunRelics = 0;
   hamletState.npcGreetingShown = {};
   saveHamletState();
 }

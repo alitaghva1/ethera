@@ -1620,14 +1620,22 @@ function openDialogue(npcId) {
         // Replace body with the topic answer + a header line that
         // reads as "they're now speaking about X". The header is
         // small + tinted with the NPC color so it reads as a frame
-        // around the answer text.
+        // around the answer text. Body uses textContent (not
+        // innerHTML interpolation) so any future answer that
+        // accidentally contains HTML chars stays inert text rather
+        // than rendering as markup.
         const def2 = NPCS[npcId];
         const tint = def2.tint || '#c9a86a';
         const textEl2 = document.getElementById('dialogueText');
-        textEl2.innerHTML = `
-          <div style="font-size:9px;letter-spacing:4px;color:${tint};opacity:0.65;margin-bottom:10px;font-style:italic;text-transform:uppercase;font-weight:bold;">on ${t.label.toLowerCase()}</div>
-          <p style="margin:0;line-height:1.7;color:#d8cfae;font-style:italic;">${ans}</p>
-        `;
+        textEl2.innerHTML = '';
+        const headerEl = document.createElement('div');
+        headerEl.style.cssText = `font-size:9px;letter-spacing:4px;color:${tint};opacity:0.65;margin-bottom:10px;font-style:italic;text-transform:uppercase;font-weight:bold;`;
+        headerEl.textContent = `on ${t.label.toLowerCase()}`;
+        textEl2.appendChild(headerEl);
+        const bodyP = document.createElement('p');
+        bodyP.style.cssText = 'margin:0;line-height:1.7;color:#d8cfae;font-style:italic;';
+        bodyP.textContent = ans;
+        textEl2.appendChild(bodyP);
         // Update this chip's visual state — it's been seen now.
         chip.style.color = '#8a7a5a';
         chip.style.borderColor = 'rgba(201,168,106,0.22)';
@@ -3553,10 +3561,14 @@ function triggerFloorCard(level) {
 //     reveal so each beat reads as SPOKEN, advanced by click/space/enter.
 //   - Skip hint fades in after the final beat finishes typing.
 //
-// Input lock: _wakeCinematicActive flag is checked by the hamlet update
-// branch (E-key dispatch + hero movement) so the player can’t walk
-// away or open another NPC’s dialogue mid-monologue. Capture-phase
-// keydown handler eats keys before any gameplay handler can react.
+// Input lock: the wake fires from the menu state where `running=false`
+// already gates hero update + the hamlet update branch. The capture-
+// phase keydown handler in playKeeperWake eats Space/Enter/E/WASD
+// before any gameplay handler could see them anyway. The
+// `_wakeCinematicActive` flag is read by ONE consumer downstream:
+// the per-tick `__centerBannerActive` recompute (~line 5125), so
+// contextual tips (showTip) defer beneath the cinematic instead
+// of stacking under the overlay.
 // ============================================================================
 let _wakeCinematicActive = false;
 // One-shot flag: true for the single re-entry that follows the wake
@@ -3614,7 +3626,12 @@ function playKeeperWake(onDone) {
   // Type out the current beat. ~28ms per char, slowed on punctuation,
   // reads as paced speech. Returns control to the advance handler when
   // the full beat is on screen.
-  const typeBeat = (text, onTypeDone) => {
+  // initialDelay (default 0) is the pause BEFORE the first character
+  // appears. Used by the very first beat to give the open chord 1.1s
+  // of lead-in before the keeper "speaks." typing is set true even
+  // during this pause so an early click/keypress fast-forwards to
+  // the full beat instead of accidentally skipping past beat 0.
+  const typeBeat = (text, onTypeDone, initialDelay = 0) => {
     typing = true;
     let i = 0;
     const tick = () => {
@@ -3629,7 +3646,8 @@ function playKeeperWake(onDone) {
         if (onTypeDone) onTypeDone();
       }
     };
-    tick();
+    if (initialDelay > 0) typeTimer = setTimeout(tick, initialDelay);
+    else tick();
   };
   const advance = () => {
     if (dismissed) return;
@@ -3661,10 +3679,15 @@ function playKeeperWake(onDone) {
   // dismiss; Esc is an immediate skip.
   const keyHandler = (e) => {
     if (e.code === 'Escape') { e.preventDefault(); e.stopPropagation(); return done(); }
-    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE' || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD') {
+    // Eat all gameplay-relevant keys so they don't accumulate in
+    // input.js's keys[] map under the cinematic. Space/Enter/E
+    // advance the beat; WASD + arrow keys are eaten silently so
+    // the hero doesn't walk the moment the cinematic dismisses.
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE'
+      || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
+      || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
       e.preventDefault();
       e.stopPropagation();
-      // WASD also advances rather than walking the hero around.
       if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') advance();
     }
   };
@@ -3673,12 +3696,13 @@ function playKeeperWake(onDone) {
   keeperWakeEl.addEventListener('click', clickHandler);
   // Open chord — low, slow, the same warmth as the keeper’s tone.
   try { synthChord(196, 0.75, 1.8); } catch (e) {}
-  // Speaker plate fades in first (0.4s) then the first beat starts typing
-  // (1.1s) — small staggered reveal sells the "she begins speaking" beat.
+  // Speaker plate fades in first (0.4s); the first beat kicks off
+  // typing 1.1s after that, giving the open chord lead-time. Using
+  // typeBeat's initialDelay rather than a separate setTimeout means
+  // an early advance (player rushing through) fast-forwards the
+  // first beat instead of skipping past it to beat 1.
   setTimeout(() => { speakerEl.style.opacity = '1'; }, 400);
-  setTimeout(() => {
-    typeBeat(KEEPER_WAKE_BEATS[0]);
-  }, 1100);
+  typeBeat(KEEPER_WAKE_BEATS[0], null, 1100);
 }
 
 // EPILOGUE — shown once, ever, on the first full clear. Counterpart to the
@@ -5116,16 +5140,22 @@ function tick(now) {
       codexBannerEntry = null;
     }
     // Claim the center banner slot while ANY centered overlay is visible —
-    // codex banner, floor intro card, boss intro, phase-2 banner. Tips
-    // defer to this so they don't fade in UNDER an active intro card.
+    // codex banner, floor intro card, boss intro, phase-2 banner, OR the
+    // Keeper wake cinematic (first-ever entry monologue). Tips defer to
+    // this so they don't fade in UNDER an active intro card.
     // Previously only the codex banner claimed the slot, which let
     // first-floor-tip showings (e.g. first_combat at floor-1 entry)
     // stack invisibly behind the FLOOR I — THE UNDERCROFT card.
+    // Wake-cinematic-active was a per-frame fix: playKeeperWake sets
+    // window.__centerBannerActive = true on start, but THIS block was
+    // overwriting it every tick before the cinematic dismissed —
+    // letting tips silently fire under the wake overlay.
     window.__centerBannerActive =
       codexBannerTime > 0 ||
       floorCardTime > 0 ||
       bossIntroTime > 0 ||
-      phaseIntroTime > 0;
+      phaseIntroTime > 0 ||
+      _wakeCinematicActive;
     // Dynamic tab title — reflects run state. Throttled to ~2Hz via gameTime.
     if ((gameTime | 0) !== _lastTitleUpdateSec) {
       _lastTitleUpdateSec = gameTime | 0;
