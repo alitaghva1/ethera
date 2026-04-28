@@ -508,6 +508,20 @@ let deathSummaryShown = false;
 // to leave the heartbeat alone; the resume needs to happen exactly
 // once when the intro finishes.
 let _wasIntroActive = false;
+// First-death emotional-weight beat — only fires once per profile, when
+// the player dies on their very first run. Holds "YOU HAVE FALLEN" on
+// the red ceremony screen for an extra second, then fades the whole
+// frame to pure black, THEN hands off to enterHamletCanvas (which
+// brings up the keeper wake). Without this, the ceremony's text only
+// gets ~0.9s of read time before the keeper's first letterbox bar
+// snaps in and clobbers the moment. The fade-to-black gives the
+// keeper wake a clean canvas to fade into instead of cutting from a
+// red-saturated frame.
+let _firstDeathFadeActive = false;
+let _firstDeathFadeTime = 0;
+const FIRST_DEATH_HOLD = 1.0;        // seconds: extra "YOU HAVE FALLEN" hold
+const FIRST_DEATH_FADE = 1.2;        // seconds: red veil fading to pure black
+const FIRST_DEATH_TOTAL = FIRST_DEATH_HOLD + FIRST_DEATH_FADE;
 // Tab-title update throttle
 let _lastTitleUpdateSec = -1;
 // Pedestal/altar proximity hum timer + low-HP heartbeat timer
@@ -1367,6 +1381,10 @@ function enterHamletCanvas() {
   deathCeremonyActive = false;
   deathCeremonyTime = 0;
   deathSummaryShown = false;
+  // Same hygiene for the first-death fade beat. Hamlet-entry resets it
+  // so the black overlay doesn't bleed across into the hamlet view.
+  _firstDeathFadeActive = false;
+  _firstDeathFadeTime = 0;
 
   // Spawn the hero at the hamlet entrance and snap the camera so there's no
   // lerp-in from wherever they last were. EXCEPTION: if this entry is
@@ -6339,13 +6357,16 @@ function tick(now) {
         recordRunEnd('death', currentFloorLevel, stats.bossesKilled | 0, equippedRelics.length | 0);
         // FIRST-DEATH BYPASS — if the player has never seen the keeper
         // wake (i.e., this is their first run, started via the heartbeat
-        // intro), skip the death/sanctuary modal entirely and route
-        // straight to the hamlet. enterHamletCanvas's existing first-
-        // time gate plays the keeper wake on entry, which is the
-        // cinematic the player has been earning by dying. The wake's
-        // onDone callback drops them next to the Keeper via _freshFromWake.
+        // intro), skip the death/sanctuary modal and route to the
+        // hamlet via a smoothing beat: hold "YOU HAVE FALLEN" for an
+        // extra second, then fade the whole frame to pure black, THEN
+        // call enterHamletCanvas (which fades the keeper wake in over
+        // the already-black canvas). Without this beat, the keeper's
+        // first letterbox bar snaps in over a still-red ceremony frame,
+        // which undercuts the weight of the death.
         if (!hasSeen('hamlet', 'wake')) {
-          enterHamletCanvas();
+          _firstDeathFadeActive = true;
+          _firstDeathFadeTime = 0;
         } else {
           showEndOfRun(false);
         }
@@ -6363,6 +6384,21 @@ function tick(now) {
   } else if (paused) {
     // Keep music flowing during pause (so it doesn't cut out)
     updateMusic(realDt);
+  }
+
+  // First-death fade beat — runs OUTSIDE the running/transition/paused
+  // chain because the moment we kick it off, running flips false and
+  // none of those branches fire anymore. We need this to advance every
+  // frame regardless of game state, so it lives next to render().
+  // Holds the death screen, fades to pure black, then hands off to
+  // enterHamletCanvas (which fires the keeper wake). See declaration
+  // above for the full timing rationale.
+  if (_firstDeathFadeActive) {
+    _firstDeathFadeTime += realDt;
+    if (_firstDeathFadeTime >= FIRST_DEATH_TOTAL) {
+      _firstDeathFadeActive = false;
+      enterHamletCanvas();
+    }
   }
 
   render();
@@ -6824,6 +6860,20 @@ function render() {
       ctx.fillText('YOU HAVE FALLEN', canvas.width / 2, canvas.height / 2);
       ctx.restore();
     }
+  }
+  // First-death fade-to-black — only fires once per profile. Holds
+  // for FIRST_DEATH_HOLD seconds after the ceremony hits 1.8 (so
+  // "YOU HAVE FALLEN" gets full read-time on the red veil), then
+  // progressively covers the entire frame in opaque black across
+  // FIRST_DEATH_FADE seconds. By the time enterHamletCanvas fires,
+  // the canvas is solid black and the keeper wake's letterbox bars
+  // can fade in from black instead of cutting from a red ceremony
+  // frame. The text inherently fades with the screen because it's
+  // drawn before this overlay.
+  if (_firstDeathFadeActive && _firstDeathFadeTime > FIRST_DEATH_HOLD) {
+    const fadeT = Math.min(1, (_firstDeathFadeTime - FIRST_DEATH_HOLD) / FIRST_DEATH_FADE);
+    ctx.fillStyle = `rgba(0, 0, 0, ${fadeT})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
   // FIRST-RUN INTRO overlay — black backdrop + cardiac glow + 3 text
   // beats. Drawn over the world but BEFORE drawTip so the cinematic
