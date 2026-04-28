@@ -91,7 +91,7 @@ import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen, getFamiliarityLabel, bumpFamiliarity, buildGreetingContext, resolveReactiveGreeting, getCurrentPreoccupation, stampVisit, recordRunEnd } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen, getFamiliarityLabel, bumpFamiliarity, buildGreetingContext, resolveReactiveGreeting, getCurrentPreoccupation, stampVisit, recordRunEnd, KEEPER_WAKE_BEATS } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
 import { updateBossIntro } from './bossIntroDom.js';
@@ -793,7 +793,7 @@ refreshAscensionUI();
       // double-binding the player's input. Audit fix: gate on the
       // menu still being the visible overlay.
       if (menuEl.style.display !== 'flex') return;
-      if (prologueEl && prologueEl.style.display === 'flex') return;
+      if (keeperWakeEl && keeperWakeEl.style.display === 'flex') return;
       showControls();
     }, 900);
   } catch (_) {
@@ -1289,32 +1289,42 @@ function showHamlet() {
 // overlay when the hero interacts with an NPC; starting a run still routes
 // to the existing startRun() flow when the hero walks into the portal.
 function enterHamletCanvas() {
-  // FIRST-EVER HAMLET ENTRY — play the "you wake here" cinematic. The
-  // prologue prose lives in this moment now; previously it fired inside
-  // startRun() (after the player had already toured the hamlet, talked
-  // to NPCs, walked onto the portal, and pressed E), so the line "the
-  // wound the world calls Ethera" landed AFTER the player had already
-  // committed to descending. Moving the gate here puts the wake-up beat
-  // on the wake-up screen.
+  // FIRST-EVER HAMLET ENTRY runs the Keeper wake cinematic — see
+  // playKeeperWake() further down for the full block of design notes.
+  // Short version: the player wakes from unconsciousness; thematically
+  // they should see DARKNESS first, then hear the Keeper's voice,
+  // then the hamlet itself. So we hide all overlays first (menu's
+  // gold UI must not bleed through the wake's vignette), play the
+  // wake (heavy radial gradient covers whatever the canvas is
+  // painting pre-hamlet), and the re-entry on dismiss runs the
+  // regular hamlet setup which renders the painted scene + NPCs +
+  // hero next to the Keeper (via _freshFromWake spawn override).
   //
-  // The gate runs BEFORE hideAllOverlays() so the prologueEl (z-index
-  // 40, opaque dark gradient) covers the still-visible menu directly.
-  // If we hid overlays first, there'd be a one-frame window where the
-  // menu is gone but the prologueEl hasn't laid out yet, exposing the
-  // background canvas (which paints the hero+hamlet every rAF tick) —
-  // a brief mage-flash visible to the player. Showing the prologue
-  // first, then hiding overlays inside the dismiss callback, means
-  // SOMETHING is always covering the canvas during the transition.
-  //
-  // Note: hasSeen check + markSeen-on-dismiss (rather than isFirstTime
-  // up front) so closing the tab mid-prologue does NOT consume the
-  // cinematic — same forgiving semantics as the old PROLOGUE_KEY flow.
-  // Re-enter via the same function on dismiss so the rest of the entry
-  // setup (ambient pad, NPC sweep, room build, hero spawn, etc.) runs
-  // exactly once per actual entry.
+  // Gate semantics: hasSeen check + markSeen-on-dismiss (not
+  // isFirstTime up front) so closing the tab mid-cinematic does NOT
+  // consume it — the player gets the wake on their next launch.
   if (!hasSeen('hamlet', 'wake')) {
-    playPrologue(() => {
+    hideAllOverlays();
+    playKeeperWake(() => {
       markSeen('hamlet', 'wake');
+      // The Keeper has just spoken at length about the player; even
+      // before the first proper dialogue she is no longer a stranger.
+      // Pre-seed her familiarity counter to acquainted-tier (5+) so
+      // the player's first walk-up dialogue starts at "an acquaintance"
+      // and her first personal topic (the_name) is already unlocked.
+      // This rewards the cinematic with immediately-visible UI depth.
+      hamletState.npcFamiliarity = hamletState.npcFamiliarity || {};
+      if ((hamletState.npcFamiliarity.keeper | 0) < 5) {
+        hamletState.npcFamiliarity.keeper = 5;
+      }
+      // Stamp a recent visit so the longAbsence reactive greeting
+      // doesn't fire on the player's very next walk-up to her.
+      hamletState.npcLastVisit = hamletState.npcLastVisit || {};
+      hamletState.npcLastVisit.keeper = Date.now();
+      saveHamletState();
+      // One-shot flag — spawn override fires on the immediate
+      // re-entry below so the hero appears next to the Keeper.
+      _freshFromWake = true;
       enterHamletCanvas();
     });
     return;
@@ -1356,9 +1366,19 @@ function enterHamletCanvas() {
   phaseIntroTime = 0; phaseIntroBoss = null; phaseIntroStartedAt = 0;
 
   // Spawn the hero at the hamlet entrance and snap the camera so there's no
-  // lerp-in from wherever they last were.
-  hero.x = HAMLET_HERO_SPAWN.x;
-  hero.y = HAMLET_HERO_SPAWN.y;
+  // lerp-in from wherever they last were. EXCEPTION: if this entry is
+  // the one immediately following the Keeper wake cinematic, spawn the
+  // hero next to the Keeper (her painted position is ~820, 600) so the
+  // "I pulled you up the stairs" framing has visual continuity — the
+  // player wakes up next to her, not down at the southern entrance.
+  if (_freshFromWake) {
+    _freshFromWake = false;
+    hero.x = 790;
+    hero.y = 660;
+  } else {
+    hero.x = HAMLET_HERO_SPAWN.x;
+    hero.y = HAMLET_HERO_SPAWN.y;
+  }
   hero.state = 'idle';
   hero.stateTime = 0;
   hero.vx = 0; hero.vy = 0;
@@ -3509,113 +3529,156 @@ function triggerFloorCard(level) {
   hero.vx = 0; hero.vy = 0;
 }
 
-// PROLOGUE — shown once, ever, on first hamlet entry. Sets the tone of the
-// world in 5 staged beats from the player's "you wake here" perspective —
-// the hamlet IS the wake-moment, so the prose lands while they're standing
-// in it instead of after they've already toured the place and pressed E
-// to descend. Gated by firstSeen('hamlet', 'wake'); see enterHamletCanvas.
-// Click or press any key to advance.
-// (Legacy 'ethera:seen_prologue:v1' localStorage flag retired alongside
-// markPrologueSeen()/hasSeenPrologue() in the cleanup pass \u2014 firstSeen
-// owns the prologue gate now.)
+// (Old abstract Ethera prologue retired. The Keeper wake cinematic
+// in playKeeperWake() below is the new first-entry intro — see the
+// large block further down with the full design rationale.)
 
-const PROLOGUE_BEATS = [
-  'You wake here.',
-  'The hamlet barely remembers your face.',
-  'Below \u2014 the wound the world calls Ethera.',
-  'It remembers every soul that descends.',
-  'And it has been waiting for you.',
-];
+// ============================================================================
+// KEEPER WAKE CINEMATIC — first-ever hamlet entry monologue.
+//
+// Replaces the abstract Ethera prologue (text on a black screen with no
+// speaker). The Keeper is the actual speaker now; her lines play over a
+// translucent darkness that LETS THE HAMLET SHOW THROUGH so the player
+// sees her in the scene as she talks. Reframes the whole roguelite:
+// the player’s first run isn’t an introduction to the ruin — it’s
+// their SECOND descent. The Keeper has already pulled them out once.
+// Every subsequent death + return is more of the same thing she has
+// been doing all along.
+//
+// Visual structure:
+//   - Translucent gradient overlay (lighter top, heavier bottom) so the
+//     subtitle band reads cleanly without obscuring the painted scene.
+//   - Speaker plate at top: small candle-flame sigil + "THE KEEPER".
+//   - Subtitle band at y=78%: italic body text, type-on character
+//     reveal so each beat reads as SPOKEN, advanced by click/space/enter.
+//   - Skip hint fades in after the final beat finishes typing.
+//
+// Input lock: _wakeCinematicActive flag is checked by the hamlet update
+// branch (E-key dispatch + hero movement) so the player can’t walk
+// away or open another NPC’s dialogue mid-monologue. Capture-phase
+// keydown handler eats keys before any gameplay handler can react.
+// ============================================================================
+let _wakeCinematicActive = false;
+// One-shot flag: true for the single re-entry that follows the wake
+// cinematic, then cleared. Spawns the hero NEXT TO the Keeper for that
+// entry (sells the "she pulled you up the stairs" framing). All
+// subsequent entries spawn at the regular HAMLET_HERO_SPAWN.
+let _freshFromWake = false;
 
-const prologueEl = document.createElement('div');
-prologueEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 60%,#020104 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px;box-sizing:border-box;cursor:pointer;z-index:40;';
-prologueEl.innerHTML = `
-  <!-- Corner flourishes matching every other page. -->
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
+const keeperWakeEl = document.createElement('div');
+keeperWakeEl.style.cssText = 'position:absolute;inset:0;display:none;flex-direction:column;justify-content:flex-end;align-items:center;background:radial-gradient(ellipse at 50% 60%, rgba(20,12,18,0.92) 0%, rgba(8,4,12,0.97) 60%, rgba(2,1,4,1) 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;cursor:pointer;z-index:40;';
+keeperWakeEl.innerHTML = `
+  <!-- Speaker plate: small candle-flame sigil + KEEPER name. -->
+  <div id="wakeSpeaker" style="position:absolute;top:64px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:14px;opacity:0;transition:opacity 1.2s ease;">
+    <div style="position:relative;width:18px;height:18px;">
+      <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 60%, #ffd680 0%, #c9a86a 35%, transparent 75%);box-shadow:0 0 16px rgba(255,214,128,0.55);"></div>
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:5px;height:9px;background:radial-gradient(circle at 50% 75%, #fff2c0 0%, #ffd680 60%, #c9a86a 100%);border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;"></div>
+    </div>
+    <div style="font-size:11px;letter-spacing:8px;color:#c9a86a;font-style:italic;text-shadow:0 0 8px rgba(201,168,106,0.4);">THE KEEPER</div>
   </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <!-- Central narrative column -->
-  <div id="prologueLines" style="display:flex;flex-direction:column;align-items:center;gap:28px;text-align:center;max-width:720px;"></div>
-  <div id="prologueSkip" style="position:absolute;bottom:42px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:6px;color:#c9a86a;opacity:0;font-style:italic;transition:opacity 0.6s ease;">click or press any key to continue</div>
+  <!-- Subtitle band at y=78%. Italic body, type-on reveal. -->
+  <div id="wakeSubtitle" style="position:relative;max-width:760px;width:88%;text-align:center;font-size:18px;line-height:1.55;font-style:italic;color:#f4d9a0;text-shadow:0 0 10px rgba(0,0,0,0.7);letter-spacing:0.5px;margin-bottom:78px;min-height:84px;display:flex;align-items:center;justify-content:center;"></div>
+  <!-- Skip hint, fades in only after the final beat finishes typing. -->
+  <div id="wakeSkip" style="position:absolute;bottom:40px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:6px;color:#c9a86a;opacity:0;font-style:italic;transition:opacity 0.6s ease;">click or press any key to continue</div>
 `;
-document.getElementById('hud').appendChild(prologueEl);
+document.getElementById('hud').appendChild(keeperWakeEl);
 
-// Reveal prologue beats one by one, then enable dismissal.
-function playPrologue(onDone) {
-  const lines = document.getElementById('prologueLines');
-  const skip = document.getElementById('prologueSkip');
-  lines.innerHTML = '';
-  prologueEl.style.display = 'flex';
+function playKeeperWake(onDone) {
+  if (_wakeCinematicActive) return;
+  _wakeCinematicActive = true;
+  // Tip system listens for window.__centerBannerActive so contextual
+  // tips (first_descent_hint, etc.) don’t fire over the cinematic.
+  window.__centerBannerActive = true;
+  const subtitleEl = document.getElementById('wakeSubtitle');
+  const skipEl = document.getElementById('wakeSkip');
+  const speakerEl = document.getElementById('wakeSpeaker');
+  subtitleEl.textContent = '';
+  skipEl.style.opacity = '0';
+  speakerEl.style.opacity = '0';
+  keeperWakeEl.style.display = 'flex';
   let idx = 0;
+  let typing = false;
+  let typeTimer = 0;
   let dismissed = false;
   const done = () => {
     if (dismissed) return;
     dismissed = true;
-    // (markSeen('hamlet', 'wake') is the caller's responsibility — see
-    // enterHamletCanvas. Keeps playPrologue agnostic about which
-    // firstSeen kind/id the cinematic is gating, so it's reusable for
-    // any future intro that needs the staged-beat treatment.)
-    prologueEl.style.display = 'none';
-    document.removeEventListener('keydown', keyHandler);
-    prologueEl.removeEventListener('click', clickHandler);
+    _wakeCinematicActive = false;
+    window.__centerBannerActive = false;
+    keeperWakeEl.style.display = 'none';
+    document.removeEventListener('keydown', keyHandler, true);
+    keeperWakeEl.removeEventListener('click', clickHandler);
+    if (typeTimer) clearTimeout(typeTimer);
     if (onDone) onDone();
   };
-  const keyHandler = () => done();
-  const clickHandler = () => done();
-  const revealNext = () => {
-    if (idx >= PROLOGUE_BEATS.length) {
-      // All beats revealed — show skip hint + arm dismissal.
-      skip.style.opacity = '0.75';
-      document.addEventListener('keydown', keyHandler);
-      prologueEl.addEventListener('click', clickHandler);
-      // Auto-dismiss after 6s if the player doesn't act.
-      setTimeout(done, 6000);
+  // Type out the current beat. ~28ms per char, slowed on punctuation,
+  // reads as paced speech. Returns control to the advance handler when
+  // the full beat is on screen.
+  const typeBeat = (text, onTypeDone) => {
+    typing = true;
+    let i = 0;
+    const tick = () => {
+      if (dismissed) return;
+      if (i < text.length) {
+        subtitleEl.textContent = text.slice(0, ++i);
+        const ch = text[i - 1];
+        const delay = (ch === ',' || ch === ';') ? 110 : (ch === '.' || ch === '?' || ch === '!') ? 240 : 28;
+        typeTimer = setTimeout(tick, delay);
+      } else {
+        typing = false;
+        if (onTypeDone) onTypeDone();
+      }
+    };
+    tick();
+  };
+  const advance = () => {
+    if (dismissed) return;
+    // Mid-typing advance fast-forwards to the end of the current beat.
+    if (typing) {
+      if (typeTimer) clearTimeout(typeTimer);
+      subtitleEl.textContent = KEEPER_WAKE_BEATS[idx];
+      typing = false;
       return;
     }
-    const line = document.createElement('div');
-    const isLast = idx === PROLOGUE_BEATS.length - 1;
-    line.textContent = PROLOGUE_BEATS[idx];
-    line.style.cssText = `
-      font-size:${isLast ? 22 : 20}px;
-      letter-spacing:${isLast ? 4 : 2}px;
-      color:${isLast ? '#f4d9a0' : '#d8cfae'};
-      font-style:${isLast ? 'normal' : 'italic'};
-      opacity:0;
-      transform:translateY(12px);
-      transition:opacity 1.2s ease, transform 1.2s ease;
-      text-shadow:${isLast ? '0 0 14px rgba(244,217,160,0.45)' : '0 0 8px rgba(0,0,0,0.6)'};
-      line-height:1.5;
-    `;
-    lines.appendChild(line);
-    // Trigger reveal next frame
-    requestAnimationFrame(() => {
-      line.style.opacity = '1';
-      line.style.transform = 'translateY(0)';
-    });
     idx++;
-    setTimeout(revealNext, isLast ? 1500 : 1600);
+    if (idx >= KEEPER_WAKE_BEATS.length) {
+      done();
+      return;
+    }
+    const isLast = idx === KEEPER_WAKE_BEATS.length - 1;
+    typeBeat(KEEPER_WAKE_BEATS[idx], () => {
+      if (isLast) {
+        skipEl.style.opacity = '0.75';
+        // Auto-dismiss after 10s on the final beat in case the player
+        // set the game down. The line "I am always here when you come
+        // back" deserves to land — but not to trap a player.
+        typeTimer = setTimeout(done, 10000);
+      }
+    });
   };
-  // Start a low, ominous chord as the prologue opens.
-  try { synthChord(220, 1.2, 1.4); } catch (e) {}
-  setTimeout(revealNext, 600);
+  // Capture-phase keydown so the cinematic eats keys before gameplay
+  // handlers (WASD, E-interact). Same handler covers advance + final
+  // dismiss; Esc is an immediate skip.
+  const keyHandler = (e) => {
+    if (e.code === 'Escape') { e.preventDefault(); e.stopPropagation(); return done(); }
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE' || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD') {
+      e.preventDefault();
+      e.stopPropagation();
+      // WASD also advances rather than walking the hero around.
+      if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') advance();
+    }
+  };
+  const clickHandler = () => advance();
+  document.addEventListener('keydown', keyHandler, true);
+  keeperWakeEl.addEventListener('click', clickHandler);
+  // Open chord — low, slow, the same warmth as the keeper’s tone.
+  try { synthChord(196, 0.75, 1.8); } catch (e) {}
+  // Speaker plate fades in first (0.4s) then the first beat starts typing
+  // (1.1s) — small staggered reveal sells the "she begins speaking" beat.
+  setTimeout(() => { speakerEl.style.opacity = '1'; }, 400);
+  setTimeout(() => {
+    typeBeat(KEEPER_WAKE_BEATS[0]);
+  }, 1100);
 }
 
 // EPILOGUE — shown once, ever, on the first full clear. Counterpart to the

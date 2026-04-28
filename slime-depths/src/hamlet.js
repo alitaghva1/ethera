@@ -100,6 +100,33 @@ export function saveHamletState() {
 }
 
 // ============================================================================
+// KEEPER WAKE MONOLOGUE — first-ever entry cinematic.
+//
+// Replaces the abstract "ETHERA / a wound the world remembers" prologue
+// (text on a black screen with no speaker). Now the Keeper herself is
+// the speaker; the lines play in the live hamlet over a translucent
+// darkness, with a sigil halo on her painted position. Reframes the
+// whole roguelite: the player's first run isn't an introduction to
+// the ruin — it's their SECOND descent. The Keeper has already pulled
+// them out once. Every subsequent death + return is more of the same
+// thing she has been doing all along.
+//
+// 7 beats, advanced by click/space/enter, type-on character reveal so
+// each line reads as SPOKEN. The final beat — "I am always here when
+// you come back" — is the load-bearing line; it makes every future
+// roguelite death have a witness.
+// ============================================================================
+export const KEEPER_WAKE_BEATS = [
+  'You are awake.',
+  'I was beginning to think you would not be.',
+  'I pulled you up the stairs four nights ago. You were not breathing. The ruin had taken most of what you were carrying — your sword, your boots, your name. You came back without them.',
+  'The fire here is small. It is also patient. So am I.',
+  'You will want to go back down. They always do. The place below has had many names. Ethera is the one we are using this season. The wound, in its own language.',
+  'When you are ready, the door is to the south. You will need to find what is yours again — or what will pass for yours.',
+  'I am the Keeper. I will be here when you come back. I am always here when you come back.',
+];
+
+// ============================================================================
 // FAMILIARITY TIERS — Skyrim disposition + Stardew heart-style relationship.
 //
 // Bumped by 1 on each dialogue open (capped at 30 to keep the system from
@@ -374,10 +401,14 @@ export const NPCS = {
     arcStages: [
       {
         advance: () => true,           // first meet, always
+        // Stage 0 reads as "the introduction is over, here is the
+        // ongoing thing." The wake-cinematic monologue (KEEPER_WAKE_BEATS,
+        // first-ever entry only) does the heavy narrative lift —
+        // stage 0 just establishes the loop.
         text: [
-          'You return, traveler.',
-          'The fire here burns small, but it burns. That is thanks to what you carry back — every time you return, a little of the ruin comes with you, and a little of the light returns in trade.',
-          'Essence, they call it. I can shape it into things that endure between your descents. Speak to me when you have it to spend.',
+          'You return.',
+          'Every time you come back, a little of the ruin comes with you, and a little of the light returns in trade. They call it essence. I can shape it into things that endure between your descents.',
+          'Speak when you have it to spend. The fire is patient.',
         ],
       },
       {
