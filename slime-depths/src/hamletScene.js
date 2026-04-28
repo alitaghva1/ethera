@@ -379,25 +379,24 @@ const HAMLET_FX = [
     // painted pit is always fully covered. The lost theatrics weren't
     // worth the visual artifact. Pulse rhythm is constant regardless
     // of hero distance — clean and predictable.
-    // Position + scale tuned to the new cellar-archway sprite:
-    //   y: 634 (up 20 from 654) — the previous y was tuned for the flat
-    //   ritual ring whose visual mass sat at its center; the new sprite's
-    //   visual mass is lower (the archway base + flagstones), so seating
-    //   the sprite slightly higher centers the perceived prop on the pad.
-    //   scale: 0.744 (was 0.93) — reduced 20% per producer review;
-    //   the ring sprite was scaled to ~104px to match the painted pad
-    //   diameter, but the new archway reads heavier and only needs ~83px
-    //   to feel grounded without dominating the SE corner of the plaza.
-    //   frameCount: 1 — switched from south-rotation 4-frame open/close
-    //   animation to the north rotation, which only ships as a single
-    //   static frame in the asset bundle. Door is permanently closed
-    //   visually; ambient blue halo (drawPortal) carries the
-    //   "something happens here" cue instead.
+    // New cellar-archway portal (v2 asset — Apr 28 regen). 96×96 native
+    // with a 9-frame open/swirl/close cycle (closed → ajar → stairs →
+    // magical purple swirl active → unwind → closed). The asset was
+    // re-prompted to RENDER ONLY THE ARCHWAY (no flagstone base),
+    // fixing the v1 palette clash where a square grey stone floor
+    // baked into the sprite fought the painted plaza beneath.
+    //   scale: 0.87 — keeps rendered size at ~83px (96 × 0.87) to
+    //   match the v1 visual footprint after the producer's -20%.
+    //   y: 634 — held over from v1 tuning. The new sprite has its
+    //   archway mass roughly centered (no base offset), so this
+    //   places the threshold at the painted pad. Tune later if needed.
+    //   fps: 5 — 9 frames @ 5fps = 1.8s cycle. Slow enough to read
+    //   the door open + swirl, fast enough to feel alive.
     id: 'portal', asset: 'fx_portal',
     x: 963, y: 634,
-    frameW: 112, frameH: 112,
-    frameCount: 1, fps: 1,
-    scale: 0.744, yOffset: 0,
+    frameW: 96, frameH: 96,
+    frameCount: 9, fps: 5,
+    scale: 0.87, yOffset: 0,
     holdSeconds: 10,
   },
   {
