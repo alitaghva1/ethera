@@ -353,25 +353,14 @@ const HAMLET_FX = [
   },
   // pit_cover REMOVED for v4 — there's no painted pit at the central
   // plaza in the no-wall layout. Asset + loader entry kept on disk.
-  {
-    // Portal shadow (ANIMATED breathing void). 16 frames × 200×200
-    // native, sine-wave breath cycle. Scale 0.6× → 120px rendered.
-    //
-    // Color tuned: deep midnight violet (RGB 10,6,24) instead of the
-    // earlier brownish (25,20,18) which read as 'grime' or 'stain.'
-    // The cooler tone + zero green channel kills brown undertones —
-    // reads as 'magical void' rather than 'dirty spot.'
-    //
-    // Animation: each frame's gradient pulses subtly — alpha 220-250
-    // and radius ±2px — over a 4s cycle (16 frames at 4fps). Reads
-    // as 'dark energy slowly pulling inward,' an alive magical
-    // boundary rather than a static texture.
-    id: 'portal_shadow', asset: 'fx_portal_shadow',
-    x: 963, y: 654,
-    frameW: 200, frameH: 200,
-    frameCount: 16, fps: 4,
-    scale: 0.63, yOffset: 0,
-  },
+  // Portal shadow REMOVED in the new-portal pass. The previous portal
+  // was a flat ritual ring + violet breathing void underneath. The
+  // new portal sprite (stone cellar archway with descending stairs and
+  // a cold blue glow rising from below) is its OWN visual — flagstones
+  // built into the sprite, blue glow internal. A purple breathing void
+  // around it would clash both in palette (violet vs cold-blue) and
+  // in concept (no painted ritual ring to embellish anymore).
+  // Asset (fx_portal_shadow) stays in loader.js for future rooms.
   {
     // Portal (simplified holistic config). 4 frames × 112×112 native,
     // scaled 0.9× → ~101px rendered. v4 position (964, 654) sits on the
@@ -656,16 +645,17 @@ function drawGroundShadow(ctx, x, y, radiusX, alpha = 0.22) {
 }
 
 function drawPortal(ctx, e, now) {
-  // Soft warm halo for the descent point. Pulse is intentionally CALM
-  // (range 0.7-1.0, slow freq) so it reads as ambient atmosphere
-  // rather than active animation. The previous 0.1-1.0 pulse with
-  // additive blend made surrounding tiles visibly brighten/dim every
-  // cycle, which read as the whole map "breathing."
+  // Soft cold halo for the descent point — recolored cold blue to match
+  // the new portal sprite's "blue glow rising from below" identity (the
+  // cellar entrance with stairs going down into pitch-black depths
+  // illuminated by a faint blue glow). Pulse stays CALM (range 0.7-1.0,
+  // slow freq) so it reads as ambient atmosphere rather than animation.
   const pulse = 0.85 + 0.15 * Math.sin(now * 0.6);
   const haloR = 56;
   const halo = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, haloR);
-  halo.addColorStop(0, `rgba(255, 180, 90, ${(0.30 * pulse).toFixed(3)})`);
-  halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
+  halo.addColorStop(0, `rgba(120, 170, 230, ${(0.32 * pulse).toFixed(3)})`);
+  halo.addColorStop(0.5, `rgba(100, 150, 220, ${(0.16 * pulse).toFixed(3)})`);
+  halo.addColorStop(1, 'rgba(90, 140, 210, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
 }
