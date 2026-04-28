@@ -1470,25 +1470,34 @@ function drawDoorPreview(ctx, cx, cy, kind) {
 function drawDoor(ctx, tx, ty, openAmount) {
   const x = tx * TILE, y = ty * TILE;
   const a = Math.max(0, Math.min(1, openAmount));
+  const isSouthWall = ty === room.h - 1;
 
-  // Sprite-based render: side-view dungeon door with 4-frame open/close
-  // atlas (112×112 each). Replaces the hand-coded "stone frame +
-  // sliding wood plank" geometry. Three core poses are used (closed /
-  // ajar / open); the asset's frame 3 is a swing-back artwork variant
-  // we currently skip — could be wired into a closing-specific lerp
-  // later for extra polish, but snap-to-nearest reads fine for pixel
-  // art at the OPEN_DURATION speed.
-  const sprite = images.dungeon_door;
-
-  // Stone wall band behind the sprite — fills the wall tile so a small
-  // sprite never leaves a transparent square. Visible only at the
-  // edges where the sprite's transparent margin lands.
+  // Stone wall band behind everything — fills the wall tile so any
+  // sprite/transparent-margin never leaves a hole.
   ctx.fillStyle = PAL.wallBody;
   ctx.fillRect(x, y, TILE, TILE);
 
-  // Loader miss fallback: keep the previous procedural geometry's "stone
-  // frame + dark void" minimum so nothing visibly breaks if the asset
-  // didn't load. (Pre-sprite drawDoor's full body is retired.)
+  // SOUTH-WALL CLOSED DOOR → render as plain wall.
+  // Design: south doors are entry doors that close behind the player.
+  // Once closed, "you can't go back" is the game-design beat — there's
+  // no functional or visual reason to show a door panel. Showing one
+  // (especially the previous vertical-flip-of-south-rotation) read as
+  // an awkward "upside-down 3/4 angle" door. Now: door is visible
+  // during the entry-dwell + closing animation, then becomes wall.
+  if (isSouthWall && a < 0.04) {
+    drawWallTile(ctx, tx, ty);
+    return;
+  }
+
+  // Pick rotation atlas by wall side. South rotation = door face down
+  // (used for NORTH-wall doors — player is south of the door, sees it
+  // facing them). North rotation = door face up (used for SOUTH-wall
+  // doors — player is north of the door, sees it facing them). No
+  // runtime vertical flip — looks natural at every angle.
+  const sprite = isSouthWall ? images.dungeon_door_n : images.dungeon_door_s;
+
+  // Loader miss fallback: minimal stone frame + void so nothing
+  // visibly breaks if the asset didn't load.
   if (!sprite || sprite.width < 448) {
     ctx.fillStyle = PAL.doorFrame;
     ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
@@ -1498,43 +1507,28 @@ function drawDoor(ctx, tx, ty, openAmount) {
   }
 
   const FW = 112, FH = 112;
-  // Snap to nearest of 3 frames (closed / ajar / open). Cross-fade was
-  // considered but pixel art reads worse with half-alpha frames stacked.
+  // Snap to nearest of 3 frames (closed / ajar / open). Cross-fade
+  // reads worse than snap on pixel art at this size.
   const frameIdx = Math.min(2, Math.round(a * 2));
   const sx = frameIdx * FW;
 
-  // Render at 73px → fills the wall row + slight overflow into the
-  // floor tile (the threshold step + arch keystone extend just beyond
-  // a single TILE box, which gives doors visual prominence as the
-  // landmarks they are. Identical scale on north + south walls).
+  // Render at 73px → fills the wall row + slight overflow into floor.
   const RENDER = 73;
   const cx = x + TILE / 2;
   const cy = y + TILE / 2;
   const dx = Math.round(cx - RENDER / 2);
   const dy = Math.round(cy - RENDER / 2);
 
-  // South-wall doors get a vertical flip so the door face points UP
-  // (toward the player, who is north of it). North-wall doors render
-  // the south-rotation as-is (door face points DOWN toward the player,
-  // who is south of it). Either way, the player always sees the door
-  // facing them.
-  const isSouthWall = ty === room.h - 1;
-
-  ctx.save();
-  if (isSouthWall) {
-    ctx.translate(cx, cy);
-    ctx.scale(1, -1);
-    ctx.translate(-cx, -cy);
-  }
   ctx.drawImage(sprite, sx, 0, FW, FH, dx, dy, RENDER, RENDER);
-  ctx.restore();
 
-  // Amber torch glow — preserved from the old drawDoor. Sells "another
-  // room awaits" by warm-tinting the door interior. Stronger when
-  // open. Painted over the sprite (bottom-anchored radial), bleeding
-  // ~12px into adjacent tiles for a soft falloff.
+  // Amber torch glow — sells "another room awaits" by warm-tinting
+  // the door interior. Stronger when open. Painted over the sprite
+  // (bottom-anchored radial for north walls; top-anchored for south
+  // walls so the warm light spills into the room from the matching
+  // side of the doorway).
+  const glowAnchorY = isSouthWall ? (y + TILE * 0.22) : (y + TILE * 0.78);
   const glow = ctx.createRadialGradient(
-    cx, y + TILE * 0.78, 2,
+    cx, glowAnchorY, 2,
     cx, y + TILE * 0.5, TILE * 0.55,
   );
   glow.addColorStop(0, 'rgba(255, 165, 80, ' + (0.45 * (0.3 + a * 0.7)).toFixed(3) + ')');
@@ -1542,14 +1536,6 @@ function drawDoor(ctx, tx, ty, openAmount) {
   glow.addColorStop(1, 'rgba(20, 8, 4, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(x - 12, y - 8, TILE + 24, TILE + 16);
-
-  // (Removed) Red lock-warning cast — the old hand-coded drawDoor
-  // tinted closed north doors red to telegraph "still locked." With
-  // the sprite-based door, the red rectangle covered the full 73×73
-  // RENDER box (vs the smaller inner-door area before), reading as
-  // a debug/error overlay rather than a subtle gameplay cue. The
-  // closed door silhouette already conveys "not yet open" — the red
-  // wasn't earning its visual cost.
 
   // Next-room preview pulse — legacy fallback for rooms with no door
   // object. Kept since some legacy spawn paths still rely on it.
@@ -1562,25 +1548,22 @@ function drawDoor(ctx, tx, ty, openAmount) {
 // Re-draws just the TOP HALF of each door's sprite (the lintel + arch
 // keystone). Called from main.js AFTER the hero/enemy drawList renders,
 // so when the player stands in a door tile their head reads as BEHIND
-// the lintel — selling the "I'm in the doorway" feel rather than
-// "I'm a sprite painted on top of a door image."
+// the lintel — "I'm in the doorway" rather than "I'm a sprite painted
+// on top of a door image."
 //
-// Implementation: iterate the room's tiles array, find every 'door'
-// tile, look up its current open amount via _getDoorAt, snap to the
-// same 3-frame index drawDoor uses, and blit the top half. South-wall
-// doors flip vertically to match the main drawDoor flip.
+// Two skips:
+//   - 'wall' tiles: not doors, no lintel needed
+//   - South-wall doors at openAmount<0.04: drawDoor renders these as
+//     plain wall (player can't go back), so there's no door sprite to
+//     occlude with — and re-blitting a lintel here would show a stone
+//     arch on top of a wall, breaking the "this is a wall" illusion.
 //
-// No new state: openAmount is always derived from the live door object,
-// so the occlusion pass animates with the door and never goes stale.
+// Atlas selection: north-wall doors use door_s, south-wall doors use
+// door_n (matches drawDoor — no vertical flip artifact).
 export function drawDoorLintels(ctx) {
   if (!room.tiles) return;
-  const sprite = images.dungeon_door;
-  if (!sprite || sprite.width < 448) return;
   const FW = 112, FH = 112;
   const RENDER = 73;
-  // Top portion: ~55% of the sprite carries the lintel + upper arch
-  // and the top of the door panel. That's the slice we want over the
-  // hero's head/upper torso. Snapping to even px keeps pixel art crisp.
   const topFracDst = 0.55;
   const dstH = Math.round(RENDER * topFracDst);
   const srcH = Math.round(FH * topFracDst);
@@ -1594,6 +1577,14 @@ export function drawDoorLintels(ctx) {
       let a;
       if (door) a = Math.max(0, Math.min(1, door.anim));
       else a = (ty === room.h - 1 && room.cleared) ? 1 : 0;
+      const isSouthWall = ty === room.h - 1;
+      // Skip occlusion for closed south-wall doors — drawDoor rendered
+      // them as plain wall, so there's no door sprite below the hero
+      // for a lintel to occlude. Re-blitting a stone arch over a wall
+      // tile would look like a phantom arch glued on the floor.
+      if (isSouthWall && a < 0.04) continue;
+      const sprite = isSouthWall ? images.dungeon_door_n : images.dungeon_door_s;
+      if (!sprite || sprite.width < 448) continue;
       const frameIdx = Math.min(2, Math.round(a * 2));
       const sx = frameIdx * FW;
       const x = tx * TILE, y = ty * TILE;
@@ -1601,21 +1592,11 @@ export function drawDoorLintels(ctx) {
       const cy = y + TILE / 2;
       const dx = Math.round(cx - RENDER / 2);
       const dy = Math.round(cy - RENDER / 2);
-      const isSouthWall = ty === room.h - 1;
-
-      ctx.save();
-      if (isSouthWall) {
-        // Mirror the south-wall flip used in drawDoor — and slice
-        // from the BOTTOM of the source so the post-flip-top still
-        // captures the lintel/arch end of the door.
-        ctx.translate(cx, cy);
-        ctx.scale(1, -1);
-        ctx.translate(-cx, -cy);
-        ctx.drawImage(sprite, sx, FH - srcH, FW, srcH, dx, dy + (RENDER - dstH), RENDER, dstH);
-      } else {
-        ctx.drawImage(sprite, sx, 0, FW, srcH, dx, dy, RENDER, dstH);
-      }
-      ctx.restore();
+      // No vertical flip needed now — both atlases already point the
+      // door face the right direction. The TOP of each atlas IS the
+      // lintel/arch keystone for that rotation, so a top-source slice
+      // captures the right pixels for both walls.
+      ctx.drawImage(sprite, sx, 0, FW, srcH, dx, dy, RENDER, dstH);
     }
   }
 }
