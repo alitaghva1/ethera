@@ -357,3 +357,40 @@ export function synthFanfare(volume = 1.0) {
     osc.stop(now + i * 0.08 + 0.22);
   }
 }
+
+// Cinematic heartbeat — deep chest thump used by the first-run intro
+// (intro.js). Composed of a primary LUB beat (sine 70Hz body + triangle
+// 110Hz/200Hz mid-knock + sub 40Hz rumble for headphones) plus a softer
+// DUB beat 320ms later. Ported from ethera/src/sfx.js — the LUB-DUB
+// harmonic stack was tuned by ear in the original game and feels
+// substantially more cardiac than a single thud.
+export function synthHeartbeat(volume = 0.5) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const v = volume;
+  const playOne = (type, freqStart, freqEnd, dur, vol, attack, decay) => {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(freqStart, now);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, now + dur);
+    const gain = ctx.createGain();
+    const peak = vol * masterVol();
+    envelope(gain, ctx, attack, decay, peak);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
+  };
+  // LUB — primary beat (heard at the moment the heartbeat fires)
+  playOne('sine',     70,  35,  0.45, v * 1.0,  0.01,  0.4);   // deep bass body
+  playOne('triangle', 110, 55,  0.20, v * 0.45, 0.01,  0.15);  // low-mid knock
+  playOne('triangle', 200, 120, 0.12, v * 0.35, 0.005, 0.08);  // mid thump (laptop speakers)
+  playOne('sine',     40,  25,  0.50, v * 0.25, 0.01,  0.45);  // sub rumble (headphones)
+  // DUB — secondary beat 320ms later, softer (the natural "ka" after "tha")
+  setTimeout(() => {
+    if (!getCtx()) return;
+    playOne('sine',     75,  40,  0.35, v * 0.7,  0.005, 0.3);
+    playOne('triangle', 115, 60,  0.15, v * 0.35, 0.005, 0.12);
+    playOne('triangle', 190, 110, 0.10, v * 0.25, 0.005, 0.06);
+  }, 320);
+}

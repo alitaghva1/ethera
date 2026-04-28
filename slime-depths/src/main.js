@@ -63,6 +63,7 @@ import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedTo
 import { loadTips, showTip, updateTips, drawTip, TIPS } from './tips.js';
 import { loadFirstSeen, hasSeen, markSeen, isFirstTime } from './firstSeen.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
+import { startIntro, updateIntro, drawIntro, isIntroActive, skipIntro } from './intro.js';
 import {
   spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
@@ -725,11 +726,25 @@ function beginDescent() {
 }
 
 document.getElementById('menuNewRunBtn').addEventListener('click', () => {
-  // New flow: the menu CTA takes the player to the hamlet. The descent
-  // portal inside the hamlet is what actually begins a run (routing
-  // through beginDescent). This collapses "visit hamlet" + "begin
-  // descent" into one entry point and makes the hamlet the canonical
-  // starting point of every run instead of a separate side-trip.
+  // FIRST-EVER AWAKEN — drop the player straight into floor 1 with the
+  // intro cinematic playing over their first room. The Keeper wake (and
+  // the hamlet introduction itself) is now earned on first DEATH, not
+  // pre-loaded as exposition. Restructure ported from ethera (intro.js
+  // owns the overlay; the death-bypass below routes the first death to
+  // enterHamletCanvas which plays the keeper wake on its own gate).
+  if (!hasSeen('hamlet', 'wake')) {
+    hideAllOverlays();
+    startRun();         // drop into floor 1, hero spawned in start room
+    // Suppress the floor card — the intro overlay owns the screen for
+    // the next 28s. The floor-card "FLOOR I — THE UNDERCROFT" reveal
+    // is what the intro IS doing thematically; running both would
+    // double-up the cinematic.
+    floorCardTime = 0;
+    floorCardStartedAt = 0;
+    startIntro();       // overlay heartbeat + text on top of the live world
+    return;
+  }
+  // Returning player — standard flow: hamlet hub, descend via portal.
   showHamlet();
 });
 document.getElementById('menuMetaBtn').addEventListener('click', () => {
@@ -3598,6 +3613,21 @@ function populatePauseRelics() {
   }
 }
 
+// First-run intro skip — any key during the SKIP_AFTER..SKIP_BEFORE
+// window jumps to the reveal phase. Capture phase so we eat the input
+// before gameplay handlers (e.g. WASD) see it. Mouse click skip is
+// handled by a canvas pointerdown listener below.
+window.addEventListener('keydown', (e) => {
+  if (!isIntroActive()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  skipIntro();
+}, true);
+canvas.addEventListener('pointerdown', () => {
+  if (!isIntroActive()) return;
+  skipIntro();
+});
+
 // Hook ESC key to toggle pause (only when game is actively running)
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape') return;
@@ -5362,6 +5392,14 @@ function tick(now) {
     // camera scroll plays cleanly without combat or input interference.
     // The pan itself is ticked further below (updateDoorPan).
     const panActive = isDoorPanActive();
+    // First-run intro lock — the heartbeat cinematic plays over a live
+    // dungeon room (hero pre-spawned). Hero/enemy updates freeze for
+    // the 28s of cinematic + the 2s reveal so the player isn't getting
+    // chewed on by a slime while reading "they left you for dead". The
+    // intro tick advances regardless of this gate.
+    // Renamed from `introActive` to avoid shadowing the outer
+    // `introActive` (boss/floor card cinematics, line ~5371).
+    const wakeIntroActive = isIntroActive();
     // Hub-modal lock — when a dialogue or NPC-service modal is on screen
     // (player chatting with an NPC, browsing the smith forge, reading
     // the oracle, etc.), the hero must not respond to WASD or LMB. The
@@ -5379,7 +5417,7 @@ function tick(now) {
       (achEl && achEl.style.display !== 'none') ||
       (volumesEl && volumesEl.style.display !== 'none')
     );
-    if (!panActive && !hubModalOpen) {
+    if (!panActive && !hubModalOpen && !wakeIntroActive) {
       updateHero(dt, enemies, mw);
       updateEnemies(dt, hero);
       updateFlames(dt);
@@ -5387,6 +5425,11 @@ function tick(now) {
       updateSynergies(dt);
       updateWanderer(dt);
     }
+    // Intro cinematic — advance the heartbeat-pulse + text-fade clock
+    // every frame the cinematic is active, regardless of pause/transition
+    // gates above. Uses realDt (not dt) so it ignores hit-stop time
+    // dilation.
+    if (wakeIntroActive) updateIntro(realDt);
     updateGold(dt, hero);
     updateHudAnims(realDt);
     // Tick the prevRoom residue (the snapshot of the room we just left,
@@ -6270,7 +6313,18 @@ function tick(now) {
         // time"). recordRunEnd also clears the per-NPC greeting-shown
         // map so each NPC reacts fresh.
         recordRunEnd('death', currentFloorLevel, stats.bossesKilled | 0, equippedRelics.length | 0);
-        showEndOfRun(false);
+        // FIRST-DEATH BYPASS — if the player has never seen the keeper
+        // wake (i.e., this is their first run, started via the heartbeat
+        // intro), skip the death/sanctuary modal entirely and route
+        // straight to the hamlet. enterHamletCanvas's existing first-
+        // time gate plays the keeper wake on entry, which is the
+        // cinematic the player has been earning by dying. The wake's
+        // onDone callback drops them next to the Keeper via _freshFromWake.
+        if (!hasSeen('hamlet', 'wake')) {
+          enterHamletCanvas();
+        } else {
+          showEndOfRun(false);
+        }
       }
     }
   } else if (transition.active) {
@@ -6670,9 +6724,12 @@ function render() {
   // candle-glow look), so canvas-rendered HUD elements (hearts, dodge/
   // dash binds) bleed through faintly at top-left. Skip the draw entirely
   // while the cinematic is active.
-  if (_wakeCinematicActive) {
-    // Fall through to the wake's DOM cinematic only. Canvas pipe still
-    // ran for any hamlet ambient FX, but the HUD/UI layer is suppressed.
+  if (_wakeCinematicActive || isIntroActive()) {
+    // Fall through to the cinematic only. Canvas pipe still ran for the
+    // world (so the reveal at 26-28s shows the live dungeon room), but
+    // the HUD/UI layer is suppressed. Same gate covers the keeper wake
+    // (DOM-based) and the first-run intro (canvas-based) — both want
+    // the screen visually clean during their cinematic phase.
   } else {
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
@@ -6744,6 +6801,10 @@ function render() {
       ctx.restore();
     }
   }
+  // FIRST-RUN INTRO overlay — black backdrop + cardiac glow + 3 text
+  // beats. Drawn over the world but BEFORE drawTip so the cinematic
+  // dominates the screen. Self-dismisses after INTRO_DURATION.
+  drawIntro(ctx, canvas.width, canvas.height);
   drawTip(ctx, canvas.width);
 
   // Achievement unlock popups — top-right toasts, positioned BELOW the floor
