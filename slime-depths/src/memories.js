@@ -352,13 +352,18 @@ export function checkMemoryUnlocks(records, stats, ctx) {
   return newly;
 }
 
-// Apply the currently-selected memory to the hero (called at run start, AFTER
-// base hero reset + meta bonuses, so the memory's modifiers stack on top).
-export function applySelectedMemory(ctx) {
-  if (!selectedMemoryId) return null;
-  const def = MEMORIES[selectedMemoryId];
+// Apply a memory to the hero (called at run start, AFTER base hero reset +
+// meta bonuses, so the memory's modifiers stack on top).
+// `overrideId` lets resumeRun replay the memory the run STARTED with, even
+// if the player changed their selection between save and resume — without
+// it, resumeRun would either apply the player's CURRENT selection (a
+// different memory) or nothing at all (the bug this fixes).
+export function applySelectedMemory(ctx, overrideId) {
+  const id = overrideId || selectedMemoryId;
+  if (!id) return null;
+  const def = MEMORIES[id];
   if (!def) return null;
-  if (!unlockedMemories.has(selectedMemoryId)) return null;   // safety
+  if (!unlockedMemories.has(id)) return null;   // safety
   // ASCENSION V — "The Silent Pact": Memory slot neutralized. Skip the
   // apply entirely at this tier — no gift, no pact. Player still sees
   // their selected memory on the menu so they can choose differently

@@ -165,9 +165,15 @@ function altarCostFor(tier) {
   const base = ALTAR_TIER_COST[tier] || ALTAR_TIER_COST.common;
   return isCursed('starving') ? base * 2 : base;
 }
-export function spawnAltarOffer(_legacyHpCost) {
+export function spawnAltarOffer(_legacyHpCost, floorLevel = 1) {
   pedestals.length = 0;
-  const offers = rollRelicOffer(2);
+  // Pass floorLevel through to the tier-weighted roll. Without this, the
+  // default floorLevel=1 in rollRelicOffer means altars on every floor
+  // offered 100% commons — a 2-HP altar offered the same pool as a
+  // floor-1 reward room, making higher floors' altars feel like theft
+  // (HP cost scales by tier, but the offered tier never moved past
+  // common). Floor passes through from main.js.
+  const offers = rollRelicOffer(2, floorLevel);
   if (offers.length === 0) return;
   const cols = [7, 12];
   const row = 7;

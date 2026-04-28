@@ -323,6 +323,16 @@ export function clearDoors() {
   _commitInFlight = false;
 }
 
+// Release ONLY the crossing-detection lock without clearing roomDoors.
+// Called by main.js when a hero-crossing event was reported by updateDoors
+// but the caller could not dispatch a transition (e.g. graph state went
+// stale, target node missing). Without this, _commitInFlight stays true
+// forever and updateDoors stops reporting crossings — softlock with the
+// hero standing on an open door.
+export function releaseCrossingLock() {
+  _commitInFlight = false;
+}
+
 // ── helper ──────────────────────────────────────────────────────────────────
 function hexA(hex, a) {
   const r = parseInt(hex.slice(1, 3), 16);

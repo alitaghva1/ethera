@@ -29,7 +29,7 @@ import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js';
 import { openFloorMap } from './mapScreen.js';
 import {
   setupRoomDoors, clearDoors, updateDoors, onRoomCleared,
-  drawDoorLabels, getDoorAt, roomDoors,
+  drawDoorLabels, getDoorAt, roomDoors, releaseCrossingLock,
 } from './doorPortals.js';
 // Wire the room module's lazy door lookup so isWallAtWorld + drawDoor
 // can read the per-door open state without statically importing back.
@@ -1245,6 +1245,16 @@ function enterHamletCanvas() {
   clearPedestals();
   clearFlames();
   suppressPickupFlash();
+  // Door-transition residue must be wiped explicitly — neither loadRoom
+  // nor buildRoomFromData touches doorPan / prevRoom (they're owned by
+  // the transition flow, not the room flow). Without this, a hero who
+  // died mid-pan or quit-to-menu mid-pan keeps `doorPan` non-null;
+  // isDoorPanActive() then freezes hero/enemies/projectiles indefinitely
+  // on the next tick after hamlet entry. Same for prevRoom: a stale
+  // dungeon snapshot would render at offset coords across the hamlet
+  // for ~1.8s of life before tickPrevRoom self-cleared.
+  doorPan = null;
+  clearPrevRoom();
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
   floorCardTime = 0;
@@ -1493,7 +1503,13 @@ function openDialogue(npcId) {
     // the existing showTip channel so it auto-dismisses cleanly. The
     // tip key is dynamic so each tier-up reads as a fresh beat.
     const tierKey = `familiarity_${tierCrossing.id}_${npcId}`;
-    const npcName = (def.name || 'They').toUpperCase();
+    // Strip the "The " article from "The Keeper" / "The Smith" / etc.
+    // before uppercasing — without this the banner reads "THE KEEPER
+    // now sees you as..." with a redundant determiner that adds no
+    // meaning and breaks the cadence ("KEEPER now sees you as..." is
+    // tighter and matches how the player names them mentally).
+    const rawName = def.name || 'They';
+    const npcName = rawName.replace(/^The /, '').toUpperCase();
     setTimeout(() => {
       try {
         TIPS[tierKey] = { text: `${npcName} now sees you as ${tierCrossing.label}` };
@@ -1935,7 +1951,7 @@ function showWandererGift() {
       && isRelicForWeapon(id, hero.weapon);
   });
   if (!pool.length) {
-    alert('The Wanderer rummages in his pack, frowns, and shakes his head. "Nothing to give you yet. Come back when you have seen more.');
+    alert('The Wanderer rummages in his pack, frowns, and shakes his head. "Nothing to give you yet. Come back when you have seen more."');
     return;
   }
   if (meta.essence < WANDERER_GIFT_COST) {
@@ -3406,9 +3422,11 @@ function loadRoom(idx, entryFrom) {
     synthChord(440, 1.0, 1.0);      // mournful chord
     setTimeout(() => synthGloom(210, 0.7, 0.9), 400);
   }
-  // Altar rooms spawn their 2 HP-cost pedestals immediately on entry
+  // Altar rooms spawn their tier-weighted pedestals immediately on entry.
+  // Pass currentFloorLevel through so the roll respects the floor (legacy
+  // `3` HP-cost arg is ignored; pedestals.js scales cost by drawn tier).
   if (data.kind === 'altar') {
-    spawnAltarOffer(3);    // -3 HP per relic
+    spawnAltarOffer(3, currentFloorLevel);
   }
 
   // Boss room — dramatic intro: hold gameplay for ~2s while showing boss name
@@ -3789,6 +3807,14 @@ function saveRunSnapshot() {
       relicIds: equippedRelics.map(r => r.id),
       curseIds: [...activeCurses],
       tarotIds: drawnCards.map(c => c.id),
+      // Memory the run STARTED with — pinned to snap so resumeRun can
+      // replay applySelectedMemory(memoryId) and re-set the flag fields
+      // (memoryBell, memoryNine, memoryHungryBlade, memoryHermit,
+      // memoryHanged, etc.) that resetHero zeroes. Without this, every
+      // memory's flag-driven behavior dies on resume — only the multiplier
+      // bonuses survive (via snap.mods). Also preserves the run's memory
+      // identity if the player swaps selection between save and resume.
+      memoryId: selectedMemoryId,
       dailyActive: !!daily.activeForRun,
       timestamp: Date.now(),
       // Multiplier bundle — captures the FINAL run-start state of every
@@ -3887,6 +3913,15 @@ function resumeRun(snap) {
   for (const tid of (snap.tarotIds || [])) {
     if (TAROT[tid]) drawnCards.push(TAROT[tid]);
   }
+  // MEMORY — replay the memory the run STARTED with, BEFORE the relic
+  // loop. resetHero zeroes memoryBell / memoryNine / memoryHungryBlade /
+  // memoryHermit / memoryHanged etc.; without this replay every memory's
+  // flag-driven behavior is silently dead on resume even though the
+  // multiplier bonuses survive via snap.mods. The override id ignores
+  // the player's CURRENT selection in case they swapped memories
+  // between save and resume — the run continues with the memory it
+  // started with.
+  applySelectedMemory({ seenRelicIds }, snap.memoryId);
   // Relics (apply each one; fusion hooks fire as expected)
   for (const rid of (snap.relicIds || [])) {
     if (RELIC_DEFS[rid]) applyRelic(rid);
@@ -3981,6 +4016,12 @@ function resumeRun(snap) {
   watcherOnRunResume();
   watcherOnFloorEnter(currentFloorLevel);
   triggerFloorCard(currentFloorLevel);
+  // Wipe any leftover transition residue (door pan + prevRoom snapshot)
+  // — same guard as startRun. Without this, a player who saved mid-pan
+  // and resumes finds the hero frozen by isDoorPanActive() with the
+  // previous dungeon room still rendering as a fading ghost.
+  doorPan = null;
+  clearPrevRoom();
   loadRoom(0, 'south');
   // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
   // previous run doesn't trigger a phantom heart-sparkle on the first
@@ -4081,6 +4122,13 @@ function startRun() {
   try { watcherOnAscensionStart(getAscensionTier() || 0); } catch (e) {}
   triggerFloorCard(currentFloorLevel);
   clearPedestals();
+  // Wipe any leftover transition residue from a prior run that ended
+  // mid-pan (death during door pan, or quit-to-menu). Without this,
+  // doorPan stays non-null and isDoorPanActive() freezes the new run
+  // on its first tick; prevRoom would render the previous run's last
+  // dungeon room as a fading ghost over the new floor.
+  doorPan = null;
+  clearPrevRoom();
   // Apply meta-progression unlocks to fresh run (UNLESS Forsaken curse active)
   if (!isCursed('forsaken')) {
     if (hasUnlock('vitality_charm')) { hero.maxHp += 3; hero.hp = hero.maxHp; }
@@ -4888,7 +4936,24 @@ function tick(now) {
     // camera scroll plays cleanly without combat or input interference.
     // The pan itself is ticked further below (updateDoorPan).
     const panActive = isDoorPanActive();
-    if (!panActive) {
+    // Hub-modal lock — when a dialogue or NPC-service modal is on screen
+    // (player chatting with an NPC, browsing the smith forge, reading
+    // the oracle, etc.), the hero must not respond to WASD or LMB. The
+    // dialogue overlay traps mouse events but does NOT block keyboard,
+    // so a player who held W while the modal opened would silently walk
+    // behind it — sometimes off the NPC, sometimes onto the descent
+    // portal, triggering a run start.
+    const hubModalOpen = (
+      (dialogueEl && dialogueEl.style.display !== 'none') ||
+      (smithEl && smithEl.style.display !== 'none') ||
+      (typeof oracleEl !== 'undefined' && oracleEl && oracleEl.style.display !== 'none') ||
+      (cursesEl && cursesEl.style.display !== 'none') ||
+      (memoryEl && memoryEl.style.display !== 'none') ||
+      (settingsEl && settingsEl.style.display !== 'none') ||
+      (achEl && achEl.style.display !== 'none') ||
+      (volumesEl && volumesEl.style.display !== 'none')
+    );
+    if (!panActive && !hubModalOpen) {
       updateHero(dt, enemies, mw);
       updateEnemies(dt, hero);
       updateFlames(dt);
@@ -5516,10 +5581,22 @@ function tick(now) {
     // is detected — both pieces feed into the continuous-transition flow
     // so the prevRoom residue lines up with the door hero just walked through.
     const crossed = updateDoors(dt);
+    // Crossing lock release — three failure paths can leave the
+    // doorPortals module's _commitInFlight stuck true (softlock):
+    //   (1) crossed reported but currentGraph / currentNodeId missing
+    //   (2) crossed dispatched but graph nodes can't be resolved
+    //   (3) caller can't push the new room (e.g. linear-only floor)
+    // releaseCrossingLock() in each branch lets updateDoors retry next
+    // frame instead of leaving the hero frozen on an open door tile.
+    if (crossed && (!currentGraph || currentNodeId == null)) {
+      releaseCrossingLock();
+    }
     if (crossed && currentGraph && currentNodeId != null) {
       const curNode = getFloorNode(currentGraph, currentNodeId);
       const picked = getFloorNode(currentGraph, crossed.targetNodeId);
-      if (curNode && picked) {
+      if (!curNode || !picked) {
+        releaseCrossingLock();
+      } else {
         // Hidden-path reveal banner (Ascension VII) — preserved from old flow.
         if (picked._hidden) {
           const kindLabel = (picked.kind || '').toUpperCase();

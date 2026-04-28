@@ -19,6 +19,14 @@ function saveTips() {
 
 // Active tip state — one at a time, auto-dismiss
 let active = null;       // { text, time, totalLife }
+// Pending tip queue — tips that fired while another was active. A single
+// pickup can fire two tips simultaneously (e.g. first_resonance +
+// ascendance_<theme> on a relic that crosses both tier thresholds, or
+// first_fusion + first_resonance on a fusion-crystallizing pickup).
+// Without queueing, the second tip clobbers the first — both get marked
+// seen, but only one ever displays. FIFO ordering keeps semantic priority
+// in caller-order (the resonance tip lands before the ascendance one).
+const pending = [];      // [{ text, time, totalLife }, ...]
 
 // Predefined tips for recognition & prevention of typos.
 // Voice rules: restrained, specific, second-person implied. Under ~90 chars
@@ -62,12 +70,21 @@ export function showTip(id) {
   if (!TIPS[id] || seen.has(id)) return false;
   seen.add(id);
   saveTips();
-  active = { text: TIPS[id].text, time: 5.5, totalLife: 5.5 };
-  // Subtle synth ping — audio cue draws the eye to the new banner
-  // sliding in. Without this, the tip can fade in unnoticed if the
-  // player isn't already looking at the top of the screen. Tuned to
-  // match the parchment-tome aesthetic: 1100 Hz, 0.2s, low volume.
-  try { synthPing(1100, 0.18, 0.20); } catch (_e) {}
+  const entry = { text: TIPS[id].text, time: 5.5, totalLife: 5.5 };
+  if (active) {
+    // Another tip is on screen — queue this one so it lands after
+    // the active one auto-dismisses. The synth ping fires when the
+    // queued tip becomes active (in updateTips), not now, so the
+    // audio cue arrives WITH the banner.
+    pending.push(entry);
+  } else {
+    active = entry;
+    // Subtle synth ping — audio cue draws the eye to the new banner
+    // sliding in. Without this, the tip can fade in unnoticed if the
+    // player isn't already looking at the top of the screen. Tuned to
+    // match the parchment-tome aesthetic: 1100 Hz, 0.2s, low volume.
+    try { synthPing(1100, 0.18, 0.20); } catch (_e) {}
+  }
   return true;
 }
 
@@ -78,7 +95,16 @@ export function updateTips(dt) {
   // while hidden. It'll render naturally after the slot frees.
   if (typeof window !== 'undefined' && window.__centerBannerActive) return;
   active.time -= dt;
-  if (active.time <= 0) active = null;
+  if (active.time <= 0) {
+    active = null;
+    // Dequeue next pending tip if any. The synth ping fires here so
+    // the audio lands with the new banner's slide-in, matching the
+    // first-tip cue in showTip.
+    if (pending.length > 0) {
+      active = pending.shift();
+      try { synthPing(1100, 0.18, 0.20); } catch (_e) {}
+    }
+  }
 }
 
 // Draws a top-center banner with slide-in + fade. Call from HUD-space (not world).
