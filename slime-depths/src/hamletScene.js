@@ -776,25 +776,33 @@ function drawNpc(ctx, e, now) {
   // and open the modal to discover something was new. This surfaces it
   // at-a-glance from across the plaza.
   //
-  // Cyan dot for new TOPICS (matches the in-modal chip dot color). Dot
-  // pulses subtly so it draws the eye without being noisy. Suppressed
-  // when the hero is currently within interact range — at that point
-  // the player is already engaging, no need for a "look here" cue.
-  const hasNew = (typeof hasUnseenTopics === 'function' && hasUnseenTopics(e.id))
-              || (typeof hasUnreadDialogue === 'function' && hasUnreadDialogue(e.id));
-  if (hasNew && d > e.interactR) {
+  // Unread-content dot. Two distinct colors so the player can tell at
+  // a glance WHICH kind of new content is waiting:
+  //   CYAN  = unseen TOPIC (new chip in the modal — discrete, novel)
+  //   GOLD  = unread arc-stage paragraph (the NPC has advanced)
+  // Cyan takes priority when both apply, since topics are what the
+  // player will actively click on. Without the split, a player walked
+  // up expecting new chips, found them all grey, and lost trust in
+  // the cue. Suppressed when within interact range — the player is
+  // already engaging.
+  const hasTopic = (typeof hasUnseenTopics === 'function' && hasUnseenTopics(e.id));
+  const hasArc = (typeof hasUnreadDialogue === 'function' && hasUnreadDialogue(e.id));
+  if ((hasTopic || hasArc) && d > e.interactR) {
     const pulse = 0.7 + 0.3 * Math.sin(now * 3.5 + e.x * 0.01);
     const dotX = Math.round(e.x);
     const dotY = Math.round(e.y - drawH - 14 + bob * 0.6);
+    // Pick palette by precedence: topic > arc.
+    const haloColor = hasTopic ? '160, 232, 255' : '244, 217, 160';   // cyan vs gold
+    const coreColor = hasTopic ? '220, 245, 255' : '255, 240, 200';
     // Soft halo behind the dot for visibility against the painted scene
     const halo = ctx.createRadialGradient(dotX, dotY, 1, dotX, dotY, 12);
-    halo.addColorStop(0, `rgba(160, 232, 255, ${(0.55 * pulse).toFixed(3)})`);
-    halo.addColorStop(1, 'rgba(160, 232, 255, 0)');
+    halo.addColorStop(0, `rgba(${haloColor}, ${(0.55 * pulse).toFixed(3)})`);
+    halo.addColorStop(1, `rgba(${haloColor}, 0)`);
     ctx.fillStyle = halo;
     ctx.fillRect(dotX - 12, dotY - 12, 24, 24);
     // Crisp pixel dot core — 3px square at integer coords stays sharp
     // through the camera zoom without bilinear smear.
-    ctx.fillStyle = `rgba(220, 245, 255, ${(0.85 * pulse).toFixed(3)})`;
+    ctx.fillStyle = `rgba(${coreColor}, ${(0.85 * pulse).toFixed(3)})`;
     ctx.fillRect(dotX - 1, dotY - 1, 3, 3);
   }
 }

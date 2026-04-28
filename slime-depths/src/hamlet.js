@@ -318,17 +318,26 @@ export function getCurrentPreoccupation(npcId, ctx) {
   const visits = (hamletState.npcFamiliarity[npcId] | 0);
   // Surface roughly every 3rd visit (1/3 chance) — feels organic, not promo.
   if (visits === 0 || (visits % 3) !== 0) return null;
-  // Filter to preoccupations whose `when` predicate (if present) matches.
-  const eligible = def.preoccupations.filter(p => {
-    if (!p || !p.text) return false;
-    if (!p.when) return true;       // unconditional preoccupation
-    return _matchPredicate(p.when, ctx, npcId);
-  });
-  if (eligible.length === 0) return null;
-  const idx = (hamletState.npcPreoccupationIdx[npcId] | 0) % eligible.length;
-  hamletState.npcPreoccupationIdx[npcId] = (idx + 1) % eligible.length;
-  saveHamletState();
-  return eligible[idx].text;
+  // Rotate against the FULL preoccupation array (not the filtered eligible
+  // set) so the saved index stays stable across visits whose `when` ctx
+  // changes. Without this, the index `2` could point at preoccupation A
+  // on a visit where one entry filters out, then preoccupation B on the
+  // next when context shifts the eligible set — surfacing the wrong line
+  // (e.g. an everyday line right after a death when a death-flavored
+  // entry was meant to fire). Entries without text are always skipped.
+  const all = def.preoccupations.filter(p => p && p.text);
+  if (all.length === 0) return null;
+  const start = (hamletState.npcPreoccupationIdx[npcId] | 0) % all.length;
+  for (let step = 0; step < all.length; step++) {
+    const i = (start + step) % all.length;
+    const p = all[i];
+    if (!p.when || _matchPredicate(p.when, ctx, npcId)) {
+      hamletState.npcPreoccupationIdx[npcId] = (i + 1) % all.length;
+      saveHamletState();
+      return p.text;
+    }
+  }
+  return null;
 }
 
 // ============================================================================

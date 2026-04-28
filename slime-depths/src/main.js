@@ -1359,7 +1359,22 @@ dialogueEl.innerHTML = `
 `;
 document.getElementById('hud').appendChild(dialogueEl);
 document.getElementById('dialogueCloseBtn').addEventListener('click', () => {
+  // Quiet click feedback so closing the modal feels as tactile as
+  // opening it. Pitch slightly lower than SPEAK / topic-chip clicks
+  // so the close reads as "step back" rather than "discover."
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   dialogueEl.style.display = 'none';
+});
+// Click-outside-to-close — backdrop dismiss is the standard modal
+// idiom; players try it instinctively. Without this, they hunt for
+// FAREWELL or hit Esc. Only fires when the click target is the
+// backdrop itself (not the inner panel) to avoid swallowing button
+// or chip clicks that bubble up.
+dialogueEl.addEventListener('click', (e) => {
+  if (e.target === dialogueEl) {
+    try { synthClick(0.9, 0.22); } catch (_e) {}
+    dialogueEl.style.display = 'none';
+  }
 });
 document.getElementById('dialogueCloseBtn').addEventListener('mouseenter', (e) => {
   e.target.style.color = '#ff9a9a';
@@ -1481,8 +1496,17 @@ function openDialogue(npcId) {
     p.textContent = para;
     textEl.appendChild(p);
   }
-  // Mark this stage as read — removes the unread dot on return
-  markDialogueSeen(npcId);
+  // Mark this stage as read — removes the unread dot on return.
+  // Deferred 1.5s and re-checked: a player who pops the modal and
+  // immediately Esc-closes shouldn't lose the unread cue without
+  // having actually read the body. The dataset check guards against
+  // a quick switch to a different NPC (dataset.npcId moves).
+  setTimeout(() => {
+    if (dialogueEl.style.display !== 'none'
+        && dialogueEl.dataset.npcId === npcId) {
+      markDialogueSeen(npcId);
+    }
+  }, 1500);
   // Bump familiarity + stamp visit. Done AFTER greeting + preoccupation
   // resolved so they see the OLD state.
   // Detect tier crossings BEFORE bump so we can fire a "we know each
@@ -5773,12 +5797,21 @@ function tick(now) {
             }, 3800);
           } else if (now - pollStart > 15000) {
             clearInterval(poll);
-            if (running) openFloorUi();
+            // Same run-seq guard as the natural-pickup branch — without
+            // it, a 15s-AFK-then-die-then-new-run race would fire
+            // openFloorUi against a fresh run state and overlay the
+            // between-floors shop on a player who hadn't earned it.
+            if (_runSeq === pollRunSeq && running) openFloorUi();
           }
         }, 200);
       } else {
         // No loot pool for this boss type → fall back to original timing.
-        setTimeout(openFloorUi, cascadeDurationMs + 600);
+        // Pin the run-seq so a death+new-run race during the cascade
+        // window doesn't fire openFloorUi on the fresh run.
+        const fallbackRunSeq = _runSeq;
+        setTimeout(() => {
+          if (_runSeq === fallbackRunSeq && running) openFloorUi();
+        }, cascadeDurationMs + 600);
       }
       if (isFinal) return;     // preserve the original early-return for final
     }
