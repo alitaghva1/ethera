@@ -253,6 +253,16 @@ deathEl.innerHTML = DEATH_SCREEN_HTML;
 // set by showSanctuary / showSanctuaryFromHamlet to suppress startRun when
 // the button is in overlay-exit mode instead of actual-new-run mode.
 let _restartBtnOverridden = false;
+// When set, NPC service modals (curses / memory / sanctuary / smith /
+// oracle) close back to the LIVE hamlet canvas underneath rather than
+// re-entering the hamlet via showHamlet/enterHamletCanvas (which respawns
+// the hero at the entrance, losing their position next to the NPC). The
+// hamlet's render loop keeps drawing the canvas while a modal sits over
+// it, so simply hiding the modal restores the player's view exactly
+// where they left it. Each from-hamlet wrapper sets this true; the
+// default close handler reads + clears it. Default false = main-menu
+// access path (close goes to main menu as before).
+let _serviceCloseToHamlet = false;
 document.getElementById('restartBtn').addEventListener('click', () => {
   if (_restartBtnOverridden) return;
   startRun();
@@ -1030,7 +1040,14 @@ document.getElementById('hud').appendChild(cursesEl);
 document.getElementById('cursesCloseBtn').addEventListener('click', () => {
   try { synthClick(0.9, 0.25); } catch (_e) {}
   cursesEl.style.display = 'none';
-  showMainMenu();
+  if (_serviceCloseToHamlet) {
+    // Opened from the Gravekeeper NPC — hamlet canvas is still drawing
+    // underneath; just hide the modal to reveal it (preserves the hero's
+    // position next to the NPC). showHamlet would respawn at entrance.
+    _serviceCloseToHamlet = false;
+  } else {
+    showMainMenu();
+  }
 });
 
 function showCursesModal() {
@@ -1092,7 +1109,12 @@ document.getElementById('hud').appendChild(memoryEl);
 document.getElementById('memoryCloseBtn').addEventListener('click', () => {
   try { synthClick(0.9, 0.25); } catch (_e) {}
   memoryEl.style.display = 'none';
-  showMainMenu();
+  if (_serviceCloseToHamlet) {
+    // Opened from the Archivist NPC — hamlet still drawing underneath.
+    _serviceCloseToHamlet = false;
+  } else {
+    showMainMenu();
+  }
 });
 document.getElementById('memoryClearBtn').addEventListener('click', () => {
   setSelectedMemory(null);
@@ -1906,12 +1928,13 @@ function runNpcService(npcId) {
 
 // Gravekeeper → existing curses modal with hamlet return routing.
 function showCursesFromHamlet() {
+  // Set the close-route flag BEFORE showing the modal — the modal's
+  // close button reads it on click and routes to "stay on hamlet
+  // canvas" instead of "show main menu". Replaces the old onclick-
+  // override pattern (which doubled with the addEventListener and
+  // also called showHamlet, respawning the hero at the entrance).
+  _serviceCloseToHamlet = true;
   showCursesModal();
-  const btn = document.getElementById('cursesCloseBtn');
-  if (btn) {
-    const prev = btn.onclick;
-    btn.onclick = () => { btn.onclick = prev; cursesEl.style.display = 'none'; showHamlet(); };
-  }
 }
 
 // ============================================================================
@@ -1966,7 +1989,9 @@ document.getElementById('hud').appendChild(oracleEl);
 document.getElementById('oracleCloseBtn').addEventListener('click', () => {
   try { synthClick(0.9, 0.25); } catch (_e) {}
   oracleEl.style.display = 'none';
-  showHamlet();
+  // Oracle is NPC-only (no main-menu access). Hamlet canvas is still
+  // rendering underneath; hiding the modal returns the player exactly
+  // where they left off next to the Oracle. No re-entry needed.
 });
 document.getElementById('oracleDrawBtn').addEventListener('click', () => {
   oracleEl.style.display = 'none';
@@ -2230,21 +2255,29 @@ function showWandererGift() {
 
 function showSanctuaryFromHamlet() {
   showSanctuary();
-  // Re-bind the restart button to return to hamlet on click. The override
-  // flag keeps the module-level addEventListener from ALSO firing startRun
-  // alongside this handler (that race caused the "farewell → wake +
-  // back to hamlet" bug).
-  _restartBtnOverridden = true;
+  // showSanctuary just set _restartBtnOverridden=true and rebound
+  // restartBtn.onclick to showMainMenu (the from-menu route). Replace
+  // that onclick with the hamlet-stay variant so the player returns to
+  // the live hamlet canvas underneath instead of being yanked to the
+  // main menu. The hamlet's render loop never stopped — just hide the
+  // sanctuary panel (deathEl) and the canvas reveals the hero where
+  // they were standing next to the Keeper.
   const btn = document.getElementById('restartBtn');
-  btn.onclick = () => { _restartBtnOverridden = false; btn.onclick = null; showHamlet(); };
+  btn.onclick = () => {
+    try { synthClick(0.9, 0.25); } catch (_e) {}
+    _restartBtnOverridden = false;
+    btn.onclick = null;
+    deathEl.style.display = 'none';
+  };
 }
 
 function showMemoryFromHamlet() {
+  // Set close-route flag BEFORE showing — memoryCloseBtn reads it and
+  // routes "stay on hamlet" instead of "show main menu". Replaces the
+  // old onclick-override pattern (which doubled with the
+  // addEventListener and also called showHamlet, respawning the hero).
+  _serviceCloseToHamlet = true;
   showMemoryModal();
-  // Re-bind the memory close button to return to hamlet on click
-  const btn = document.getElementById('memoryCloseBtn');
-  const prev = btn.onclick;
-  btn.onclick = () => { btn.onclick = prev; memoryEl.style.display = 'none'; showHamlet(); };
 }
 
 // ============================================================================
@@ -2442,8 +2475,9 @@ document.getElementById('hud').appendChild(smithEl);
 document.getElementById('smithCloseBtn').addEventListener('click', () => {
   try { synthClick(0.9, 0.25); } catch (_e) {}
   smithEl.style.display = 'none';
-  // Return to hamlet so the player sees the Smith again (service call came from there)
-  showHamlet();
+  // Smith is NPC-only (no main-menu access). Hamlet canvas is still
+  // rendering underneath; hiding the modal returns the player exactly
+  // where they left off next to the Smith. No re-entry needed.
 });
 
 function showSmithModal() {
