@@ -2,7 +2,7 @@
 // Walking onto one grants the relic + removes the rest.
 import { images } from './loader.js';
 import { applyRelic, rollRelicOffer, relicTier, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
-import { THEMES, getThemeCounts, getThemeTier } from './themes.js';
+import { THEMES, RELIC_THEMES, getThemeCounts, getThemeTier } from './themes.js';
 import { activeFusions } from './fusions.js';
 // NOTE: relicTier imported above is what makes altar pedestals respect rarity
 // tiers — without tier on the pedestal, mythic drops at altars render as common.
@@ -1006,9 +1006,17 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   const flavorH = flavorLines.length * 14;
   const descH = descLines.length * 14;
   const extraH = rerollable ? 20 : 0;
+  // Trap-pick warning: BLOOD-themed relic + Memory of the Hollow active
+  // means this relic's lifesteal will fire VFX/sounds but grant no HP.
+  // All 11 BLOOD relics + the BLOOD theme's lifesteal/HP-on-kill all
+  // route through the same gate (hero.memoryHollow), so a Hollow run
+  // with a BLOOD pedestal stream is trap pick after trap pick. Show a
+  // visible red warning line so the player knows the cost upfront.
+  const isBloodTrap = !!hero.memoryHollow && RELIC_THEMES[r.id] === 'blood';
+  const warningH = isBloodTrap ? 18 : 0;
   // Box height: 18 (tier badge) + 22 (name) + flavor lines + 6 gap + desc
-  // lines + 12 bottom padding + reroll-hint extra + altar extra.
-  let boxH = 18 + 22 + flavorH + (flavorH ? 6 : 0) + descH + 12 + extraH + (isAltar ? 18 : 0);
+  // lines + 12 bottom padding + reroll-hint extra + altar extra + warning.
+  let boxH = 18 + 22 + flavorH + (flavorH ? 6 : 0) + descH + 12 + extraH + (isAltar ? 18 : 0) + warningH;
   if (boxH < 76) boxH = 76;      // floor for layout stability
   const bx = (w - boxW) / 2;
   const by = h - (isAltar ? 200 : 180) - extraH + riseOffset;
@@ -1109,6 +1117,14 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
     ctx.fillStyle = '#ff7a8e';
     ctx.font = 'bold 12px Georgia, serif';
     ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textCenter, cursorY + 4);
+  }
+  if (isBloodTrap) {
+    // Render BEFORE reroll hint, AFTER desc. Crimson italic so it reads
+    // as a warning without competing with the gold accent palette.
+    ctx.fillStyle = '#ff7a7a';
+    ctx.font = 'italic bold 11px Georgia, serif';
+    ctx.fillText('\u26a0  Hollow voids the lifesteal', textCenter, cursorY + 4);
+    cursorY += 16;
   }
   if (rerollable) {
     // Reroll hint — bumped from 11px sans @ 50%-alpha-when-affordable

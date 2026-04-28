@@ -986,6 +986,13 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         window.__gameMetrics.killStreakShowUntil = now + 1.2;         // HUD shows for 1.2s after last kill
         if (this.boss) stats.bossesKilled++;
         else if (this.elite) stats.elitesDefeated++;
+        // BLOOD ASCENDANCE — flat HP-on-kill at theme tier 2. Set by
+        // themes.js applyThemeTiers; 0 unless 5/5 BLOOD relics are owned.
+        // Memory of the Hollow gates this off (matches the lifesteal
+        // gate at hero.js:1567) so the trap-pick warning is consistent.
+        if (hero.themeLifeOnKill > 0 && !hero.memoryHollow && hero.hp < hero.maxHp) {
+          hero.hp = Math.min(hero.maxHp, hero.hp + hero.themeLifeOnKill);
+        }
         if (def.behavior === 'bomber') {
           this.state = 'exploding';
           this.stateTime = 0;

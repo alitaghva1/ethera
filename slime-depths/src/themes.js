@@ -173,8 +173,14 @@ export function recomputeThemeTiers(equipped) {
   // FLAME — base damage
   hero.themeDmgBonus = tiers.flame >= 2 ? 0.20 : tiers.flame >= 1 ? 0.10 : 0;
 
-  // BLOOD — lifesteal
-  hero.themeLifestealBonus = tiers.blood >= 2 ? 0.07 : tiers.blood >= 1 ? 0.03 : 0;
+  // BLOOD — lifesteal + flat HP-on-kill at T2.
+  // Originally T1 +3%, T2 +7% — only +4% delta for the 2 extra picks
+  // it costs to ascend. Other themes' T2 deltas are 2× their T1
+  // (storm 0.10→0.25, flame 0.10→0.20, vow 0.10→0.20). Bumped T2 to
+  // +12% to match the rhythm, and added +1 flat HP-on-kill to give
+  // BLOOD a mechanical identity beyond percentage lifesteal.
+  hero.themeLifestealBonus = tiers.blood >= 2 ? 0.12 : tiers.blood >= 1 ? 0.03 : 0;
+  hero.themeLifeOnKill = tiers.blood >= 2 ? 1 : 0;
 
   // VOW — damage taken reduction
   hero.themeDmgTakenReduction = tiers.vow >= 2 ? 0.20 : tiers.vow >= 1 ? 0.10 : 0;

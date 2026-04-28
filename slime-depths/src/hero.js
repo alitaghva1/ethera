@@ -1165,17 +1165,22 @@ export function updateHero(dt, enemies, mouseWorld) {
           // SYSTEMS PASS — forced-crit sources stack with RNG crit:
           //   HEAVY BLOW: first hit on a knocked-back enemy
           //   IRON GREAVES: first hit after 2+ seconds of continuous motion
-          const forcedCrit = (
-            (hero.knockbackCrit && e._kbCritPending) ||
-            (hero.movementCrit && (hero._moveTime || 0) >= 2.0) ||
-            // HONEST EDGE (sword-only) — finisher swings always crit
-            (hero.honestEdge && hero._swingIsFinisher) ||
-            // VOW ETERNAL (sword-only legendary) — first sword hit
-            // each room is a guaranteed crit. vowEternalReady is set
-            // on relic pick + refreshed by loadRoom in main.js.
-            // Consumed below on the first damage-dealing hit.
-            (hero.vowEternal && hero.vowEternalReady && w.id === 'sword')
-          );
+          //   HONEST EDGE: finisher swings (sword-only)
+          //   VOW ETERNAL: first sword hit each room (sword-only legendary)
+          // Count active sources so the crit multiplier scales when MULTIPLE
+          // forced-crit relics fire on the same swing — without this, a sword
+          // player with both Iron Greaves and Vow Eternal would consume both
+          // flags on their room-opener but only get a single crit's worth of
+          // damage. +0.25× per extra source rewards stacking without making
+          // a single crit relic feel weak.
+          const _fcMove = !!(hero.movementCrit && (hero._moveTime || 0) >= 2.0);
+          const _fcKB = !!(hero.knockbackCrit && e._kbCritPending);
+          const _fcHE = !!(hero.honestEdge && hero._swingIsFinisher);
+          const _fcVE = !!(hero.vowEternal && hero.vowEternalReady && w.id === 'sword');
+          const _forcedCount = (_fcMove ? 1 : 0) + (_fcKB ? 1 : 0) + (_fcHE ? 1 : 0) + (_fcVE ? 1 : 0);
+          const forcedCrit = _forcedCount > 0;
+          // Extra crit multiplier when ≥2 forced-crit sources fire together.
+          const _forcedCritBonus = Math.max(0, _forcedCount - 1) * 0.25;
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
           if (hero.vowEternal && hero.vowEternalReady && w.id === 'sword') {
@@ -1220,7 +1225,9 @@ export function updateHero(dt, enemies, mouseWorld) {
             : 1;
           let finalDmg = damage * speartipBonus * ringingSteelMul;
           // SHADOW T2 — +0.5 crit multiplier bump (so a 2.0× crit becomes 2.5×)
-          const _effectiveCritMul = hero.critMul + (hero.themeCritMulBonus || 0);
+          // Forced-crit overlap bonus — see _forcedCritBonus computation above.
+          // Two forced-crit sources firing together → 2.25×; three → 2.5×.
+          const _effectiveCritMul = hero.critMul + (hero.themeCritMulBonus || 0) + _forcedCritBonus;
           if (isCrit) finalDmg *= _effectiveCritMul;
           if (isExec) finalDmg *= hero.executeMul;
           // FUSION: Final Verdict — crit on a below-threshold enemy = instakill.

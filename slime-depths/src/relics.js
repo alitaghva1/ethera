@@ -189,7 +189,16 @@ export const RELIC_DEFS = {
     flavor: 'Every treasure at your belt sings when you swing.',
     icon: 'relic_warlord',
     tint: '#ffb065',
-    apply: () => { hero.damageMul *= (1 + 0.08 * equipped.length); },
+    // apply() runs BEFORE the relic is pushed into `equipped`, so a
+    // first-pick Warlord would see length=0 and grant +0%. Past that,
+    // the original code never re-multiplied for future picks. Fix:
+    // (1) retroactive bonus for relics ALREADY equipped at pickup;
+    // (2) flag so applyRelic() multiplies on EVERY subsequent pickup
+    //     (matching the memoryBell pattern at line ~1032).
+    apply: () => {
+      hero.warlord = true;
+      if (equipped.length > 0) hero.damageMul *= (1 + 0.08 * equipped.length);
+    },
   },
   reaver: {
     id: 'reaver',
@@ -1030,6 +1039,10 @@ export function applyRelic(id) {
   // apply() retroactively multiplies for any relics already equipped when
   // the memory first activates.
   if (hero.memoryBell) hero.damageMul *= 1.08;
+  // WARLORD relic — same pattern. Once Warlord is owned, every future
+  // pickup adds +8% dmg. The relic's own apply() handles the retroactive
+  // bonus for relics already owned at the moment Warlord is picked.
+  if (hero.warlord && def.id !== 'warlord') hero.damageMul *= 1.08;
   // Enforce memory-imposed max-HP caps AFTER each relic applies, so that
   // later relics with +maxHp effects can't silently undo the cap.
   enforceMemoryMaxHpCap();
