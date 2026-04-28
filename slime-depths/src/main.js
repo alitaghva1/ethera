@@ -1413,12 +1413,14 @@ dialogueEl.innerHTML = `
     <!-- LEFT COLUMN: portrait + name + body + action buttons -->
     <div style="padding:24px 28px;display:flex;flex-direction:column;min-width:0;">
       <!-- Top row: portrait + name -->
-      <div style="display:flex;align-items:center;gap:18px;margin-bottom:14px;">
-        <div id="dialoguePortrait" style="width:72px;height:72px;flex-shrink:0;"></div>
-        <div style="flex:1;min-width:0;">
-          <div id="dialogueName" style="font-size:22px;letter-spacing:5px;color:#f4d9a0;font-weight:400;margin-bottom:2px;"></div>
-          <div id="dialogueTitle" style="font-size:11px;letter-spacing:3px;font-style:italic;opacity:0.6;"></div>
-        </div>
+      <!-- Header: NPC name + subtitle. Portrait removed (was a circular
+           crop of the v2 sprite, but the head-zoom never landed cleanly
+           across the varied aspect ratios — pixel-art crops at this size
+           read as muddy rather than evocative). The name typography
+           carries the identity. -->
+      <div style="margin-bottom:14px;">
+        <div id="dialogueName" style="font-size:22px;letter-spacing:5px;color:#f4d9a0;font-weight:400;margin-bottom:2px;"></div>
+        <div id="dialogueTitle" style="font-size:11px;letter-spacing:3px;font-style:italic;opacity:0.6;"></div>
       </div>
       <!-- Gold hairline divider -->
       <div style="width:100%;height:1px;background:linear-gradient(90deg, transparent, rgba(201,168,106,0.45), transparent);margin-bottom:14px;"></div>
@@ -1559,48 +1561,15 @@ function openDialogue(npcId) {
   // player can feel the relationship deepen as familiarity grows.
   const titleText = def.title ? `${def.title} · ${familiarityLabel}` : familiarityLabel;
   document.getElementById('dialogueTitle').textContent = titleText;
-  // Portrait. Last innerHTML-interpolation site in this modal; the rest
-  // of the body was migrated to createElement+textContent in earlier
-  // commits (02a2797 / b70835e). Keep the same defensive pattern here:
-  // both branches build via createElement so def.name / def.tint /
-  // portraitImg.src stay inert (author-controlled today, but consistent
-  // with the rest of the dialogue body). innerHTML-clear first to wipe
-  // any stale node from a previous NPC.
-  const portraitEl = document.getElementById('dialoguePortrait');
-  const portraitImg = imageCache[def.portrait];
-  portraitEl.innerHTML = '';
-  if (portraitImg) {
-    // Headshot crop — the v2 NPC sprites are full-body (head + torso
-    // + robe) at varying aspect ratios (keeper 70x116, smith 99x110,
-    // gravekeeper 73x115, etc.). A plain `object-fit: cover` showed
-    // the upper body with the head shrunk to ~30% of the portrait.
-    //
-    // Use a background-image with HEIGHT-based scaling (`auto 350%`)
-    // so the visible vertical source range stays consistent across
-    // aspect ratios — every NPC shows ~28-32 source px from the top,
-    // which is the head zone of every sprite (heads are at y≈5-35
-    // across the v2 set). Width auto-scales and may exceed the
-    // container; the 50% horizontal position centers the face.
-    // Pixelated rendering preserves the pixel-art crispness through
-    // the 3.5x zoom.
-    const imgWrap = document.createElement('div');
-    imgWrap.style.cssText = `
-      width:72px;height:72px;border-radius:50%;
-      background-image:url(${portraitImg.src});
-      background-size:auto 350%;
-      background-position:50% 5%;
-      background-repeat:no-repeat;
-      image-rendering:pixelated;
-      box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};
-    `;
-    portraitEl.appendChild(imgWrap);
-  } else {
-    const initial = def.name.charAt(4) || def.name.charAt(0);
-    const fallback = document.createElement('div');
-    fallback.style.cssText = `width:72px;height:72px;border-radius:50%;background:radial-gradient(ellipse at 40% 35%, ${def.tint}55, rgba(14,8,18,0.9) 70%);box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};display:flex;align-items:center;justify-content:center;color:${def.tint};font-size:26px;font-weight:bold;font-family:Georgia,serif;`;
-    fallback.textContent = initial;
-    portraitEl.appendChild(fallback);
-  }
+  // (Portrait removed) Previously rendered the v2 NPC sprite as a
+  // circular head-zoom crop, but the result read as muddy across the
+  // varied aspect ratios — the sprites are designed for in-world
+  // 100-px rendering, not for tight 72-px circular portraits. The
+  // name typography + the NPC's tint color carry the identity now.
+  // Both the dialoguePortrait DOM node and the per-render image build
+  // were removed; the loader still ships the v2 portraits in case we
+  // revisit (e.g. larger headshot panels keyed off a portrait
+  // re-render of just the head region).
 
   // Body — three layers, top to bottom:
   //   1. Reactive greeting (if a trigger fires) — prepended in NPC tint
