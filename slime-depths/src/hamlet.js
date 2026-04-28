@@ -167,6 +167,22 @@ export function bumpFamiliarity(npcId) {
   return cur + 1;
 }
 
+// True if the next bump would CROSS into a higher familiarity tier
+// (stranger → acquainted at 5, acquainted → friend at 15, friend →
+// trusted at 30). Used by openDialogue to fire a tier-up chord +
+// brief banner so the relationship's deepening is felt, not just
+// silently reflected in the subtitle label.
+export function nextBumpCrossesTier(npcId) {
+  const cur = hamletState.npcFamiliarity[npcId] | 0;
+  if (cur >= 30) return false;
+  const next = cur + 1;
+  // Tier mins (must mirror FAMILIARITY_TIERS)
+  for (const t of FAMILIARITY_TIERS) {
+    if (cur < t.min && next >= t.min) return t;
+  }
+  return false;
+}
+
 // ============================================================================
 // REACTIVE GREETING CONTEXT — built once per dialogue open.
 //

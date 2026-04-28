@@ -998,7 +998,7 @@ export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
 }
 
 import { checkFusionsOnPickup, clearFusions } from './fusions.js';
-import { showTip } from './tips.js';
+import { showTip, TIPS } from './tips.js';
 
 // Persistent "ever seen" set — drives the Chronicles relicpedia. Every relic
 // the player has ever picked up gets stored here across runs.
@@ -1052,15 +1052,40 @@ export function applyRelic(id) {
   } catch (e) {}
   // Theme set-bonus tiers — recompute AFTER fusion check so fusion-granted
   // flags don't get overwritten (fusions don't set theme bonus fields).
-  // Snapshot prior tiers so we can detect a 0→≥1 transition for the
-  // first_resonance onboarding tip.
+  // Snapshot prior tiers so we can detect transitions:
+  //   0→≥1 = first_resonance tip (3-of-a-theme, RESONANCE active)
+  //   1→2  = ascendance tip (5-of-a-theme, ASCENDANCE active — the
+  //          rarer/bigger payoff that previously had NO feedback,
+  //          only the aura quietly thickened. Now lands as a moment.)
   const priorTiers = hero.activeThemes ? { ...hero.activeThemes } : null;
   recomputeThemeTiers(equipped);
   if (priorTiers && hero.activeThemes) {
+    let firedResonance = false;
+    let ascendedTheme = null;
     for (const k of Object.keys(hero.activeThemes)) {
       const before = priorTiers[k] | 0;
       const after = hero.activeThemes[k] | 0;
-      if (before < 1 && after >= 1) { showTip('first_resonance'); break; }
+      if (before < 1 && after >= 1 && !firedResonance) {
+        showTip('first_resonance');
+        firedResonance = true;
+      }
+      if (before < 2 && after >= 2 && !ascendedTheme) {
+        ascendedTheme = k;
+      }
+    }
+    if (ascendedTheme) {
+      // Ascendance is the player's 5-of-a-theme payoff. Fire a
+      // dedicated tip per-theme so each theme's first ascendance
+      // reads as a moment ("STORM ASCENDED", "FLAME ASCENDED",
+      // etc.) — and only ONCE per theme via the firstSeen registry.
+      const tipKey = `ascendance_${ascendedTheme}`;
+      const themeName = (ascendedTheme[0].toUpperCase() + ascendedTheme.slice(1)).toUpperCase();
+      // Inject into the live TIPS registry once per theme so each
+      // ascendance reads as a moment with its own first-seen lock.
+      try {
+        TIPS[tipKey] = { text: `${themeName} ASCENDED - five-relic theme bonus active. The aura thickens.` };
+        showTip(tipKey);
+      } catch (_e) {}
     }
   }
 }

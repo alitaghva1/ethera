@@ -60,7 +60,7 @@ import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoom
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
-import { loadTips, showTip, updateTips, drawTip } from './tips.js';
+import { loadTips, showTip, updateTips, drawTip, TIPS } from './tips.js';
 import { loadFirstSeen, hasSeen, markSeen, isFirstTime } from './firstSeen.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import {
@@ -91,7 +91,7 @@ import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen, getFamiliarityLabel, bumpFamiliarity, buildGreetingContext, resolveReactiveGreeting, getCurrentPreoccupation, stampVisit, recordRunEnd, KEEPER_WAKE_BEATS } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen, getFamiliarityLabel, bumpFamiliarity, nextBumpCrossesTier, buildGreetingContext, resolveReactiveGreeting, getCurrentPreoccupation, stampVisit, recordRunEnd, KEEPER_WAKE_BEATS } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
 import { updateBossIntro } from './bossIntroDom.js';
@@ -553,14 +553,11 @@ canvasHamletEmbersEl.style.cssText = 'position:fixed;inset:0;width:100%;height:1
 document.body.appendChild(canvasHamletEmbersEl);
 
 // Menu ember particle system — see src/menuEmbers.js. The callback tells
-// the ember loop which canvas to draw to each frame (menu / DOM hamlet /
-// canvas hamlet / none). `hamletEl` is declared later in this file; the
-// `typeof` guard avoids a temporal-dead-zone error on the first tick.
+// the ember loop which canvas to draw to each frame (menu / canvas hamlet
+// / none). Used to also branch to a DOM-hamlet ember canvas; the DOM
+// hamlet was retired in the same pass that drops `hamletEl`.
 startMenuEmbers(() => {
   if (menuEl.style.display !== 'none') return document.getElementById('menuEmbers');
-  if (typeof hamletEl !== 'undefined' && hamletEl.style.display !== 'none') {
-    return document.getElementById('hamletEmbers');
-  }
   // Canvas hamlet — embers drawn on the dedicated top-level overlay canvas.
   if (typeof room !== 'undefined' && room?.kind === 'hamlet' && running) {
     return canvasHamletEmbersEl;
@@ -1144,131 +1141,19 @@ function renderMemoryGrid() {
 }
 
 // ============================================================================
-// LIVING HAMLET — hub screen between main menu and descent. Painted backdrop
-// with clickable NPC hotspots. Replaces the flat essence shop (the Keeper
-// NPC now holds the essence shop as HIS service). As more NPCs arrive
-// (triggered by player records), the hamlet visibly grows.
+// LIVING HAMLET - hub screen between main menu and descent.
 //
-// Phase 1 ships Keeper + Smith + Archivist + placeholder painted backdrop.
-// Phase 2 will add Oracle, Gravekeeper, Wanderer, and multi-state backdrops.
+// Implementation: hamlet is a regular `room` with `kind: 'hamlet'` rendered
+// through the standard canvas pipeline (see hamletScene.js + room.js).
+// Entry: `showHamlet()` -> `enterHamletCanvas()` -> loadRoom(hamletRoom).
+//
+// HISTORY: this used to be a DOM overlay (`hamletEl`, ~120 LOC of innerHTML
+// templating + CSS-in-JS) layered over the menu, with a painted JPG backdrop
+// and absolute-positioned NPC <button>s. The canvas hamlet shipped multiple
+// sessions ago and the DOM path was retired. The DOM block was kept around
+// for one release as a fast-revert hatch; that window has long closed and
+// the dead code was removed in this pass.
 // ============================================================================
-const hamletEl = document.createElement('div');
-// Painted hamlet backdrop (Nano Banana, Apr 2026) — dusk-lit ruined village
-// with a forge on the left, a central firepit, and a domed scriptorium on
-// the right. Characters layer on top. The painting carries the scene; we
-// only overlay: a breathing firepit flicker for the center flame, two
-// conditional NPC-activated light pools, and ember particles for motion.
-hamletEl.style.cssText = `
-  position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
-  background:#050308 url(assets/hamlet/hamlet_backdrop.jpg) center/cover no-repeat;
-  color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow:hidden;
-`;
-hamletEl.innerHTML = `
-  <!-- CENTRAL FIREPIT FLICKER — overlays the painted firepit so the flame
-       breathes instead of sitting static. Small footprint, tucked right
-       over the painted flame location. -->
-  <div id="hamletFirePit" style="position:absolute;left:50%;bottom:26%;transform:translate(-50%,0);width:240px;height:180px;background:
-    radial-gradient(ellipse at 50% 100%, rgba(255,150,60,0.45) 0%, rgba(255,100,40,0.18) 30%, rgba(200,70,30,0.05) 60%, transparent 85%);
-    pointer-events:none;filter:blur(2px);animation:hamletFireBreathe 2.6s ease-in-out infinite;mix-blend-mode:screen;"></div>
-
-  <!-- Secondary light pools — brighten the painted forge doorway / painted
-       scriptorium windows when the relevant NPC is present. Adds a small
-       "the hamlet is a little warmer now that X arrived" feedback loop. -->
-  <div id="hamletForgeGlow" style="position:absolute;left:13%;bottom:30%;width:200px;height:180px;background:radial-gradient(ellipse at 50% 60%, rgba(255,120,60,0.35), transparent 70%);pointer-events:none;opacity:0;transition:opacity 1.2s ease;filter:blur(3px);mix-blend-mode:screen;"></div>
-  <div id="hamletArchiveGlow" style="position:absolute;right:13%;bottom:30%;width:200px;height:180px;background:radial-gradient(ellipse at 50% 60%, rgba(150,190,240,0.28), transparent 70%);pointer-events:none;opacity:0;transition:opacity 1.2s ease;filter:blur(3px);mix-blend-mode:screen;"></div>
-
-  <!-- EMBER PARTICLES (same style as menu) -->
-  <canvas id="hamletEmbers" width="1280" height="720" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;mix-blend-mode:screen;opacity:0.85;"></canvas>
-
-  <!-- Page-frame corners -->
-  <div style="position:absolute;top:28px;left:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:70px;height:1px;background:linear-gradient(90deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:70px;background:linear-gradient(180deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:28px;right:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:70px;height:1px;background:linear-gradient(270deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:70px;background:linear-gradient(180deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:28px;left:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:70px;height:1px;background:linear-gradient(90deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:70px;background:linear-gradient(0deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:28px;right:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:70px;height:1px;background:linear-gradient(270deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:70px;background:linear-gradient(0deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-
-  <!-- Header (top, floats above backdrop) -->
-  <div style="position:absolute;top:40px;left:0;right:0;text-align:center;z-index:2;pointer-events:none;">
-    <div style="display:flex;align-items:center;justify-content:center;gap:22px;margin-bottom:8px;opacity:0.75;">
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">what was undone, being undone less</div>
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:54px;margin:0;letter-spacing:12px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">HAMLET</h1>
-    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;opacity:0.65;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p id="hamletProgress" style="margin:0;letter-spacing:4px;font-size:11px;font-style:italic;color:#d8cfae;"></p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-  </div>
-
-  <!-- FUSION SHRINES — for each discovered fusion, a small glowing pedestal
-       appears in the hamlet, commemorating the pair of relics that forged
-       it. Visible world-state feedback: the hamlet literally grows prettier
-       as you discover more of the ruin's secret combinations. -->
-  <div id="hamletFusionShrines" style="position:absolute;left:0;right:0;bottom:12%;height:8%;z-index:2;pointer-events:none;"></div>
-
-  <!-- THE WATCHER'S SHRINE — legacy DOM hamlet element. The canvas
-       hamlet renders the shrine via drawHamletEntities; this DOM div
-       is unused (the populator went with renderHamlet). Left in place
-       to be removed alongside the rest of the legacy hamlet HTML in a
-       future cleanup pass. -->
-  <div id="hamletWatcherShrine" style="position:absolute;left:2%;bottom:40%;width:9%;height:28%;z-index:2;pointer-events:auto;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;"></div>
-
-  <!-- NPC LAYER — each NPC is positioned absolutely per their data.x/y% -->
-  <div id="hamletNpcLayer" style="position:absolute;inset:0;z-index:2;"></div>
-
-  <!-- Hamlet essence + chronicles counters, bottom-left/right -->
-  <div style="position:absolute;bottom:58px;left:120px;display:flex;gap:12px;align-items:center;font-family:Georgia,serif;z-index:2;">
-    <span style="width:4px;height:4px;background:#a0e8ff;transform:rotate(45deg);opacity:0.7;"></span>
-    <div>
-      <div style="color:#c9a86a;font-size:9px;letter-spacing:4px;font-weight:bold;opacity:0.7;">ESSENCE BANKED</div>
-      <div style="color:#a0e8ff;font-size:16px;font-weight:bold;letter-spacing:2px;text-shadow:0 0 8px rgba(160,232,255,0.35);"><span id="hamletEssenceValue">0</span></div>
-    </div>
-  </div>
-  <div style="position:absolute;bottom:58px;right:120px;display:flex;gap:12px;align-items:center;font-family:Georgia,serif;z-index:2;text-align:right;">
-    <div>
-      <div style="color:#c9a86a;font-size:9px;letter-spacing:4px;font-weight:bold;opacity:0.7;">NPCS ARRIVED</div>
-      <div style="color:#f4d9a0;font-size:16px;font-weight:bold;letter-spacing:2px;"><span id="hamletNpcCount">0</span><span style="opacity:0.4;font-size:12px;"> / <span id="hamletNpcTotal">0</span></span></div>
-    </div>
-    <span style="width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);opacity:0.7;"></span>
-  </div>
-
-  <!-- Return link, bottom center -->
-  <button id="hamletBackBtn" style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);background:transparent;color:#8a7a6a;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;z-index:2;">\u2190 LEAVE THE HAMLET</button>
-`;
-document.getElementById('hud').appendChild(hamletEl);
-document.getElementById('hamletBackBtn').addEventListener('click', () => {
-  hamletEl.style.display = 'none';
-  showMainMenu();
-});
-
-// Hover style on the hamlet back button
-document.getElementById('hamletBackBtn').addEventListener('mouseenter', (e) => {
-  e.target.style.color = '#f4d9a0';
-  e.target.style.opacity = '1';
-  e.target.style.textShadow = '0 0 10px rgba(244,217,160,0.45)';
-});
-document.getElementById('hamletBackBtn').addEventListener('mouseleave', (e) => {
-  e.target.style.color = '#8a7a6a';
-  e.target.style.opacity = '0.75';
-  e.target.style.textShadow = 'none';
-});
 
 function showHamlet() {
   // Thin wrapper around enterHamletCanvas. The legacy DOM-overlay hamlet
@@ -1485,16 +1370,26 @@ document.getElementById('dialogueSpeakBtn').addEventListener('click', () => {
   if (!def) return;
   const line = getNextChatLine(npcId);
   if (!line) return;
-  // Replace body with the chat line. Use a different visual register —
+  // Soft click feedback - same synthClick the topic chips use, slightly
+  // muted so the SPEAK button reads as a quieter "they're chatting"
+  // beat vs. the SERVICE button's louder commit click.
+  try { synthClick(1.05, 0.32); } catch (_e) {}
+  // Replace body with the chat line. Use a different visual register -
   // a single-line cream paragraph with an italic dash before, signalling
   // "this is the NPC speaking now," distinct from the multi-paragraph
-  // arc-stage flavor.
+  // arc-stage flavor. Build via createElement + textContent so the line
+  // string stays inert text (matches the same defensive pattern the
+  // topic-answer + dialogue-body paths use).
   const textEl = document.getElementById('dialogueText');
-  textEl.innerHTML = `
-    <p style="margin:0;line-height:1.7;font-style:italic;color:${def.tint || '#d8cfae'};">
-      <span style="opacity:0.6;margin-right:8px;">—</span>${line}
-    </p>
-  `;
+  textEl.innerHTML = '';
+  const p = document.createElement('p');
+  p.style.cssText = `margin:0;line-height:1.7;font-style:italic;color:${def.tint || '#d8cfae'};`;
+  const dash = document.createElement('span');
+  dash.style.cssText = 'opacity:0.6;margin-right:8px;';
+  dash.textContent = '—';
+  p.appendChild(dash);
+  p.appendChild(document.createTextNode(line));
+  textEl.appendChild(p);
 });
 document.getElementById('dialogueSpeakBtn').addEventListener('mouseenter', (e) => {
   e.target.style.color = '#f4d9a0';
@@ -1580,8 +1475,32 @@ function openDialogue(npcId) {
   markDialogueSeen(npcId);
   // Bump familiarity + stamp visit. Done AFTER greeting + preoccupation
   // resolved so they see the OLD state.
+  // Detect tier crossings BEFORE bump so we can fire a "we know each
+  // other better now" beat - chord + delayed banner. Without this, the
+  // tier transitions (stranger -> acquainted at 5, etc.) only surfaced
+  // as a quietly-changed subtitle label; players didn't notice.
+  const tierCrossing = nextBumpCrossesTier(npcId);
   bumpFamiliarity(npcId);
   stampVisit(npcId);
+  if (tierCrossing) {
+    // Warm chord at the crossing - same primitive the wake cinematic
+    // uses, dropped to a lower volume so it lands as "moment" not
+    // "event." Fires inside the dialogue modal so the player hears
+    // it overlap with reading the greeting.
+    try { synthChord(330, 0.5, 1.4); } catch (_e) {}
+    // Brief banner after the modal closes - queued via setTimeout so
+    // it doesn't compete with the modal text for attention. Reuses
+    // the existing showTip channel so it auto-dismisses cleanly. The
+    // tip key is dynamic so each tier-up reads as a fresh beat.
+    const tierKey = `familiarity_${tierCrossing.id}_${npcId}`;
+    const npcName = (def.name || 'They').toUpperCase();
+    setTimeout(() => {
+      try {
+        TIPS[tierKey] = { text: `${npcName} now sees you as ${tierCrossing.label}` };
+        showTip(tierKey);
+      } catch (_e) {}
+    }, 1100);
+  }
   // Wire the service button based on NPC service type
   const svcBtn = document.getElementById('dialogueServiceBtn');
   svcBtn.textContent = def.service.label || 'SERVICE';
@@ -1641,6 +1560,10 @@ function openDialogue(npcId) {
       chip.addEventListener('click', () => {
         const ans = getTopicAnswer(npcId, t.id);
         if (!ans) return;
+        // Click feedback - slightly higher pitch on UNSEEN topics
+        // (a small "you discovered something" bell), softer on
+        // already-seen so revisiting old answers stays mellow.
+        try { synthClick(seen ? 1.0 : 1.4, seen ? 0.28 : 0.45); } catch (_e) {}
         // Replace body with the topic answer + a header line that
         // reads as "they're now speaking about X". The header is
         // small + tinted with the NPC color so it reads as a frame
@@ -2973,7 +2896,6 @@ function hideAllOverlays() {
   if (settingsEl) settingsEl.style.display = 'none';
   if (tarotRevealEl) tarotRevealEl.style.display = 'none';
   if (memoryEl) memoryEl.style.display = 'none';
-  if (hamletEl) hamletEl.style.display = 'none';
   if (dialogueEl) dialogueEl.style.display = 'none';
   if (volumesEl) volumesEl.style.display = 'none';
   if (smithEl) smithEl.style.display = 'none';
@@ -3636,6 +3558,11 @@ function playKeeperWake(onDone) {
   let typing = false;
   let typeTimer = 0;
   let dismissed = false;
+  // Tracks whether the player heard the final beat. Set true when
+  // armFinalBeatDismiss fires (final beat fully on screen). Used by
+  // done() to decide whether to play the closing chord - natural
+  // completion gets a sting; Esc skip mid-cinematic stays silent.
+  let reachedFinal = false;
   const done = () => {
     if (dismissed) return;
     dismissed = true;
@@ -3645,6 +3572,12 @@ function playKeeperWake(onDone) {
     document.removeEventListener('keydown', keyHandler, true);
     keeperWakeEl.removeEventListener('click', clickHandler);
     if (typeTimer) clearTimeout(typeTimer);
+    // Closing chord - a fifth above the open chord (196 -> 294 Hz, perfect
+    // fifth) lands as resolution. Only fires on natural completion so
+    // Esc-skip mid-cinematic stays silent.
+    if (reachedFinal) {
+      try { synthChord(294, 0.6, 1.6); } catch (_e) {}
+    }
     if (onDone) onDone();
   };
   // Type out the current beat. ~28ms per char, slowed on punctuation,
@@ -3680,6 +3613,7 @@ function playKeeperWake(onDone) {
   // Space-spammed through and clicked once on the final beat got
   // stuck — no auto-dismiss timer ever scheduled.
   const armFinalBeatDismiss = () => {
+    reachedFinal = true;
     skipEl.style.opacity = '0.75';
     typeTimer = setTimeout(done, 10000);
   };

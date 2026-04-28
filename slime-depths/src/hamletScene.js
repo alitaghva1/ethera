@@ -10,7 +10,7 @@
 // ============================================================================
 import { hero } from './hero.js';
 import { images } from './loader.js';
-import { NPCS } from './hamlet.js';
+import { NPCS, hasUnseenTopics, hasUnreadDialogue } from './hamlet.js';
 import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 
 // Camera zoom for the hamlet — single source of truth. Imported by main.js
@@ -768,6 +768,35 @@ function drawNpc(ctx, e, now) {
   }
 
   ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + bob), drawW, drawH);
+
+  // ── Unread-content indicator ─────────────────────────────────────────
+  // Floats a small "•" above the NPC's head when they have an unseen
+  // topic OR an unread arc-stage. Both helpers are exported by hamlet.js
+  // but were never wired into the world view — players had to walk up
+  // and open the modal to discover something was new. This surfaces it
+  // at-a-glance from across the plaza.
+  //
+  // Cyan dot for new TOPICS (matches the in-modal chip dot color). Dot
+  // pulses subtly so it draws the eye without being noisy. Suppressed
+  // when the hero is currently within interact range — at that point
+  // the player is already engaging, no need for a "look here" cue.
+  const hasNew = (typeof hasUnseenTopics === 'function' && hasUnseenTopics(e.id))
+              || (typeof hasUnreadDialogue === 'function' && hasUnreadDialogue(e.id));
+  if (hasNew && d > e.interactR) {
+    const pulse = 0.7 + 0.3 * Math.sin(now * 3.5 + e.x * 0.01);
+    const dotX = Math.round(e.x);
+    const dotY = Math.round(e.y - drawH - 14 + bob * 0.6);
+    // Soft halo behind the dot for visibility against the painted scene
+    const halo = ctx.createRadialGradient(dotX, dotY, 1, dotX, dotY, 12);
+    halo.addColorStop(0, `rgba(160, 232, 255, ${(0.55 * pulse).toFixed(3)})`);
+    halo.addColorStop(1, 'rgba(160, 232, 255, 0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(dotX - 12, dotY - 12, 24, 24);
+    // Crisp pixel dot core — 3px square at integer coords stays sharp
+    // through the camera zoom without bilinear smear.
+    ctx.fillStyle = `rgba(220, 245, 255, ${(0.85 * pulse).toFixed(3)})`;
+    ctx.fillRect(dotX - 1, dotY - 1, 3, 3);
+  }
 }
 
 // Interact prompt — floating pill above the nearest interactable. Drawn in
