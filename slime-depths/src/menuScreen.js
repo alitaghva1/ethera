@@ -225,7 +225,7 @@ export const MENU_SCREEN_HTML = `
   <!-- Footer row — onboarding + legal. Tiny and quiet; these aren't
        gameplay destinations so they don't earn a spot in the main links
        row. The controls cheatsheet that used to live here was redundant
-       with both the how-to-play page and the first-boot prologue. -->
+       with both the how-to-play page and the first-boot wake cinematic. -->
   <div style="position:absolute;bottom:32px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:18px;font-family:Georgia,serif;font-style:italic;color:#8a7a5a;pointer-events:auto;">
     <button id="menuControlsLink" style="background:transparent;border:0;padding:4px 6px;cursor:pointer;color:inherit;font-family:inherit;font-size:10px;letter-spacing:2.5px;font-style:italic;transition:opacity 0.22s ease;opacity:0.5;">how to play</button>
     <span style="width:3px;height:3px;background:#8a7a5a;transform:rotate(45deg);opacity:0.4;"></span>

@@ -205,7 +205,7 @@ deathEl.innerHTML = DEATH_SCREEN_HTML;
 // restartBtn is shared between the real death-screen ("NEW RUN") and the
 // sanctuary-opened-from-hamlet ("← MAIN MENU") re-skins. The sanctuary re-
 // skins override btn.onclick, but this addEventListener stays attached and
-// would fire startRun() alongside the override — playing the prologue while
+// would fire startRun() alongside the override — playing the wake while
 // the override simultaneously returns to hamlet. `_restartBtnOverridden` is
 // set by showSanctuary / showSanctuaryFromHamlet to suppress startRun when
 // the button is in overlay-exit mode instead of actual-new-run mode.
@@ -789,7 +789,7 @@ refreshAscensionUI();
     setTimeout(() => {
       // Skip if the player already clicked PLAY in the 900ms window —
       // the controls modal would otherwise stack on top of the wake
-      // prologue (or whatever entered state replaced the menu),
+      // cinematic (or whatever entered state replaced the menu),
       // double-binding the player's input. Audit fix: gate on the
       // menu still being the visible overlay.
       if (menuEl.style.display !== 'flex') return;
@@ -1550,18 +1550,32 @@ function openDialogue(npcId) {
   //   2. Preoccupation (every ~3rd visit) — a small italic "they are
   //      thinking about X" line, distinct visual register from greeting.
   //   3. ArcStage paragraphs (the existing flavor for this milestone).
+  // Build body via createElement + .textContent so greeting/preoccupation/
+  // arc-stage strings stay inert text. All current strings are author-
+  // controlled, but matching the same defensive pattern the topic-click
+  // path uses (commit 02a2797) closes a class of future XSS risk.
   const textEl = document.getElementById('dialogueText');
   const paras = Array.isArray(stageDef.text) ? stageDef.text : [stageDef.text];
   const tint = def.tint || '#c9a86a';
-  let bodyHtml = '';
+  textEl.innerHTML = '';
   if (greeting) {
-    bodyHtml += `<p style="margin:0 0 14px;color:${tint};font-style:italic;line-height:1.55;font-size:13px;border-left:2px solid ${tint}77;padding-left:12px;opacity:0.95;">${greeting}</p>`;
+    const gp = document.createElement('p');
+    gp.style.cssText = `margin:0 0 14px;color:${tint};font-style:italic;line-height:1.55;font-size:13px;border-left:2px solid ${tint}77;padding-left:12px;opacity:0.95;`;
+    gp.textContent = greeting;
+    textEl.appendChild(gp);
   }
   if (preoccupation) {
-    bodyHtml += `<p style="margin:0 0 12px;color:#a89070;font-style:italic;font-size:11px;letter-spacing:0.3px;opacity:0.75;">— ${preoccupation}</p>`;
+    const pp = document.createElement('p');
+    pp.style.cssText = 'margin:0 0 12px;color:#a89070;font-style:italic;font-size:11px;letter-spacing:0.3px;opacity:0.75;';
+    pp.textContent = `— ${preoccupation}`;
+    textEl.appendChild(pp);
   }
-  bodyHtml += paras.map(p => `<p style="margin:0 0 12px;">${p}</p>`).join('');
-  textEl.innerHTML = bodyHtml;
+  for (const para of paras) {
+    const p = document.createElement('p');
+    p.style.cssText = 'margin:0 0 12px;';
+    p.textContent = para;
+    textEl.appendChild(p);
+  }
   // Mark this stage as read — removes the unread dot on return
   markDialogueSeen(npcId);
   // Bump familiarity + stamp visit. Done AFTER greeting + preoccupation
@@ -1610,10 +1624,20 @@ function openDialogue(npcId) {
         transition:all 0.18s ease;
         white-space:nowrap;
       `;
-      // Unseen indicator — small bullet on the right side. Removed
-      // visually after the player clicks the chip + reopens modal.
-      const dot = seen ? '' : '<span style="margin-left:6px;color:#a0e8ff;text-shadow:0 0 4px rgba(160,232,255,0.6);">•</span>';
-      chip.innerHTML = `<span style="text-transform:uppercase;">${t.label}</span>${dot}`;
+      // Build chip via createElement + textContent for label + appended
+      // bullet span — same defensive pattern as the topic-answer body
+      // (commit 02a2797). Topic labels are author-controlled today;
+      // staying off innerHTML interpolation keeps that future-proof.
+      const labelEl = document.createElement('span');
+      labelEl.style.textTransform = 'uppercase';
+      labelEl.textContent = t.label;
+      chip.appendChild(labelEl);
+      if (!seen) {
+        const dotEl = document.createElement('span');
+        dotEl.style.cssText = 'margin-left:6px;color:#a0e8ff;text-shadow:0 0 4px rgba(160,232,255,0.6);';
+        dotEl.textContent = '•';   // U+2022 BULLET
+        chip.appendChild(dotEl);
+      }
       chip.addEventListener('click', () => {
         const ans = getTopicAnswer(npcId, t.id);
         if (!ans) return;
@@ -2015,7 +2039,7 @@ function showSanctuaryFromHamlet() {
   showSanctuary();
   // Re-bind the restart button to return to hamlet on click. The override
   // flag keeps the module-level addEventListener from ALSO firing startRun
-  // alongside this handler (that race caused the "farewell → prologue +
+  // alongside this handler (that race caused the "farewell → wake +
   // back to hamlet" bug).
   _restartBtnOverridden = true;
   const btn = document.getElementById('restartBtn');
@@ -3649,6 +3673,16 @@ function playKeeperWake(onDone) {
     if (initialDelay > 0) typeTimer = setTimeout(tick, initialDelay);
     else tick();
   };
+  // Fires the "final beat is fully on screen" payload — show skip hint +
+  // arm 10s auto-dismiss safety. Lifted out of typeBeat's onTypeDone so
+  // the fast-forward branch (advance during typing) can also call it
+  // when fast-forwarding the LAST beat. Without this, a player who
+  // Space-spammed through and clicked once on the final beat got
+  // stuck — no auto-dismiss timer ever scheduled.
+  const armFinalBeatDismiss = () => {
+    skipEl.style.opacity = '0.75';
+    typeTimer = setTimeout(done, 10000);
+  };
   const advance = () => {
     if (dismissed) return;
     // Mid-typing advance fast-forwards to the end of the current beat.
@@ -3656,6 +3690,9 @@ function playKeeperWake(onDone) {
       if (typeTimer) clearTimeout(typeTimer);
       subtitleEl.textContent = KEEPER_WAKE_BEATS[idx];
       typing = false;
+      // If we just fast-forwarded the FINAL beat, arm the same dismiss
+      // safety the natural-end onTypeDone would have armed.
+      if (idx === KEEPER_WAKE_BEATS.length - 1) armFinalBeatDismiss();
       return;
     }
     idx++;
@@ -3665,13 +3702,7 @@ function playKeeperWake(onDone) {
     }
     const isLast = idx === KEEPER_WAKE_BEATS.length - 1;
     typeBeat(KEEPER_WAKE_BEATS[idx], () => {
-      if (isLast) {
-        skipEl.style.opacity = '0.75';
-        // Auto-dismiss after 10s on the final beat in case the player
-        // set the game down. The line "I am always here when you come
-        // back" deserves to land — but not to trap a player.
-        typeTimer = setTimeout(done, 10000);
-      }
+      if (isLast) armFinalBeatDismiss();
     });
   };
   // Capture-phase keydown so the cinematic eats keys before gameplay
@@ -4737,8 +4768,15 @@ function beginDoorTransition(toIndex, oldDoorTileX) {
   const oldCamX = camera.x;
   const oldCamY = camera.y;
 
-  // Snapshot the room being LEFT, before loadRoom overwrites it.
-  snapshotPrevRoom({ offsetX: 0, offsetY: 0 });
+  // Snapshot the room being LEFT, before loadRoom overwrites it. Pass
+  // a per-door-tile open-amount map so the prev-room render keeps the
+  // exit door visibly open during the 1.8s fade. Without this, the
+  // live _getDoorAt callback (which queries the NEW room's doors)
+  // would resolve null for the prev tile coords and the fallback
+  // would render the just-used door as closed.
+  const doorOpenAt = {};
+  for (const d of roomDoors) doorOpenAt[d.tx + ',' + d.ty] = d.anim;
+  snapshotPrevRoom({ offsetX: 0, offsetY: 0, doorOpenAt });
   // entryFrom='north' is the existing (inverted-feeling) convention that
   // makes heroSpawnInRoom place the hero at preferredY=h-2 — i.e. near
   // the SOUTH wall, one tile inside the door they just entered through.
@@ -7036,7 +7074,7 @@ if (import.meta.env.DEV) {
       bossIntroBoss = null;
     },
 
-    // Skip menu + prologue, jump straight into a fresh run
+    // Skip menu + wake cinematic, jump straight into a fresh run
     startRun: () => {
       hideAllOverlays();
       startRun();

@@ -1463,10 +1463,14 @@ function drawDoorPreview(ctx, cx, cy, kind) {
   ctx.restore();
 }
 
-// Renders a door tile. `openAmount` ∈ [0,1] interpolates between fully
-// closed (wood door + iron bands) and fully open (dark archway). The wood
-// plank lifts upward as the door opens — portcullis-style — so the
-// transition is unambiguous: half-lifted plank = clearly mid-animation.
+// Renders a door tile. `openAmount` ∈ [0,1] interpolates the sprite
+// atlas frame (snapped to 3 poses: closed / ajar / open). North-wall
+// doors use the south-rotation atlas (door face points toward the
+// player who is south of the wall); south-wall doors use the
+// north-rotation atlas (no runtime flip). Once a south-wall door has
+// fully closed, drawDoor swaps to drawWallTile — the entry door
+// becomes a wall, communicating "you can't go back." Amber torch glow
+// is layered over the sprite, anchored at the room-interior side.
 function drawDoor(ctx, tx, ty, openAmount) {
   const x = tx * TILE, y = ty * TILE;
   const a = Math.max(0, Math.min(1, openAmount));
@@ -1484,7 +1488,11 @@ function drawDoor(ctx, tx, ty, openAmount) {
   // (especially the previous vertical-flip-of-south-rotation) read as
   // an awkward "upside-down 3/4 angle" door. Now: door is visible
   // during the entry-dwell + closing animation, then becomes wall.
-  if (isSouthWall && a < 0.04) {
+  // Threshold 0.005 (was 0.04) so the swap happens when the door is
+  // already effectively invisible — eliminates the visible "door
+  // silhouette suddenly becomes brick wall" pop at the end of the
+  // 0.55s close animation.
+  if (isSouthWall && a < 0.005) {
     drawWallTile(ctx, tx, ty);
     return;
   }
@@ -1581,8 +1589,9 @@ export function drawDoorLintels(ctx) {
       // Skip occlusion for closed south-wall doors — drawDoor rendered
       // them as plain wall, so there's no door sprite below the hero
       // for a lintel to occlude. Re-blitting a stone arch over a wall
-      // tile would look like a phantom arch glued on the floor.
-      if (isSouthWall && a < 0.04) continue;
+      // tile would look like a phantom arch glued on the floor. Same
+      // 0.005 threshold drawDoor uses so the two passes flip in sync.
+      if (isSouthWall && a < 0.005) continue;
       const sprite = isSouthWall ? images.dungeon_door_n : images.dungeon_door_s;
       if (!sprite || sprite.width < 448) continue;
       const frameIdx = Math.min(2, Math.round(a * 2));
@@ -2202,6 +2211,15 @@ export function snapshotPrevRoom(opts = {}) {
     // The hero exited this room — it was definitely cleared. Mark so the
     // drawDoor fallback renders the north door as visually open.
     cleared: true,
+    // Per-door-tile open amount snapshot. Without this, drawing prevRoom
+    // would query the CURRENT room's roomDoors (via the live _getDoorAt
+    // callback), which has different tile positions, so prevRoom's door
+    // tiles fell back to "closed unless south + cleared" — meaning the
+    // very door the player just walked through visibly RESETS to closed
+    // during the 1.8s fade-out residue. The doorOpenAt map preserves the
+    // exit door's open state so it stays visually open through the fade.
+    // Shape: { 'tx,ty': openAmount } — used by drawRoom's prevRoom pass.
+    doorOpenAt: opts.doorOpenAt || {},
     // Caller fills in offsetX / offsetY so the door tile in prevRoom
     // visually overlaps the south door tile of the new current room.
     offsetX: opts.offsetX || 0,
@@ -2242,6 +2260,12 @@ export function drawRoom(ctx) {
     const saved = {
       tiles: room.tiles, w: room.w, h: room.h,
       decor: room.decor, kind: room.kind, cleared: room.cleared,
+      // _getDoorAt is module-private; swap into a stub that resolves
+      // from the prevRoom.doorOpenAt snapshot so the just-used north
+      // door reads as still-open through the fade-out, not as a fresh
+      // closed door (which it would otherwise, since the live
+      // _getDoorAt now queries the NEW room's door list).
+      getDoorAt: _getDoorAt,
     };
     try {
       room.tiles = prevRoom.tiles;
@@ -2249,6 +2273,10 @@ export function drawRoom(ctx) {
       room.decor = prevRoom.decor;
       room.kind = prevRoom.kind;
       room.cleared = prevRoom.cleared;
+      _getDoorAt = (tx, ty) => {
+        const a = prevRoom.doorOpenAt && prevRoom.doorOpenAt[tx + ',' + ty];
+        return (a !== undefined) ? { anim: a } : null;
+      };
       drawRoomInner(ctx);
     } finally {
       room.tiles = saved.tiles;
@@ -2256,6 +2284,7 @@ export function drawRoom(ctx) {
       room.decor = saved.decor;
       room.kind = saved.kind;
       room.cleared = saved.cleared;
+      _getDoorAt = saved.getDoorAt;
       ctx.restore();
     }
   }

@@ -73,7 +73,10 @@ const KIND_COLORS = {
 // Active doors for the current room. Cleared between rooms.
 // Each entry: { tx, ty, side: 'north'|'south', state, anim,
 //               targetNodeId, kind, label, color, glyph,
-//               heroPassedAt: number|null, sparkleAcc: number }
+//               sparkleAcc: number }
+// (`heroPassedAt` was previously documented here but never written or
+// read — hero-crossing detection uses the module-level _commitInFlight
+// flag instead. Removed from the doc so the shape matches reality.)
 export const roomDoors = [];
 
 // One-shot guard to track that the hero stepped THROUGH (crossed the
