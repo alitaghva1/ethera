@@ -7603,6 +7603,18 @@ if (import.meta.env.DEV) {
       startRun();
     },
 
+    // Reset the first-run gate so the heartbeat intro + Keeper wake fire
+    // again on the next AWAKEN. Drops the `ethera:first_seen:v1` key (the
+    // profile-prefix patch routes it to the active profile's namespace
+    // automatically) and reloads so the in-memory `seen` Set in
+    // firstSeen.js re-hydrates from disk. Intended for testing the
+    // restructured intro flow — without this, you'd have to delete the
+    // active profile to re-trigger the cinematic.
+    resetFirstRun: () => {
+      try { localStorage.removeItem('ethera:first_seen:v1'); } catch (_e) {}
+      window.location.reload();
+    },
+
     // Synchronously advance the transition state machine to a target room.
     // Fast-forwards through fade-out → loadRoom → fade-in.
     forceGoto: (targetIdx) => {
