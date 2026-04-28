@@ -587,7 +587,10 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Reset afterimage capture cadence + clear stale trail from prior dash
       _dashAfterimages.length = 0;
       _dashAfterimageNextT = 0;
-      hero.iframes = 0.35;
+      // Never shorten an existing longer iframe window (post-hurt stagger,
+      // Aegis Pulse, etc.). Mirrors the dodge guard at line ~649. Without
+      // this, dashing into a hit-cleanup window would strip safety frames.
+      hero.iframes = Math.max(hero.iframes || 0, 0.35);
       setState('dodge');                          // reuse dodge state for anim + invuln
       // TELEPORT AUDIO — magical zip + flash thud, replacing the old
       // sword-swing + slime-hit pair that read as a melee attack.

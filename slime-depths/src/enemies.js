@@ -1782,10 +1782,13 @@ export function updateEnemies(dt, _hero) {
       e._enraged = true;
       e.speed *= e.def.enrageSpeedMul;
       e.damage *= e.def.enrageDamageMul;
-      // Dramatic enrage: shake, screen flash, shockwave burst, roar + zoom punch
+      // Dramatic enrage: shake, screen flash, shockwave burst, roar + zoom punch.
+      // Flash alpha dropped 0.55 → 0.30 — at 0.55 the red wash + shake 22 +
+      // zoom 0.18 stacked into "blinded for 0.5s" territory. Player needs
+      // to read the boss's new attack pattern in the same beat.
       shakeCamera(22, 0.55);
       pulseZoom(0.18, 1.2);
-      triggerScreenFlash('rgba(255, 50, 30, 0.55)', 0.5);
+      triggerScreenFlash('rgba(255, 50, 30, 0.30)', 0.5);
       for (let k = 0; k < 32; k++) deathBurst(e.x, e.y - 8, '#ff4030');
       // Trigger the cinematic PHASE 2 banner if main.js is listening
       if (typeof window !== 'undefined' && window.triggerBossPhaseIntro) {

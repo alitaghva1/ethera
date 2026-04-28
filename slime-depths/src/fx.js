@@ -435,8 +435,14 @@ let _hitStop = 0;
 // but can trigger vestibular discomfort when they compound with shake.
 let _hitStopScale = 1.0;
 export function setHitStopScale(v) { _hitStopScale = Math.max(0, Math.min(1.5, v)); }
+// Aggregate cap on hit-stop — keep total freeze under ~0.18s per hit
+// regardless of how many sources fire. Hammer counter (0.18) + Mountain
+// Strike (0.10) + charged (0.09) was stacking via Math.max into "stutter,
+// not punch" territory; the cap keeps the punchiness without losing
+// the feel of a heavy hit.
+const HIT_STOP_CAP = 0.18;
 export function triggerHitStop(seconds = 0.05) {
-  _hitStop = Math.max(_hitStop, seconds * _hitStopScale);
+  _hitStop = Math.min(HIT_STOP_CAP, Math.max(_hitStop, seconds * _hitStopScale));
 }
 export function consumeHitStop(dt) {
   if (_hitStop > 0) {
@@ -628,9 +634,29 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
 let _screenFlashColor = null;
 let _screenFlashTime = 0;
 let _screenFlashDur = 0;
+// Color-priority table — higher priority flashes can replace a longer
+// in-flight lower-priority flash. Without this, a fresh red hurt-flash
+// would silently no-op when a 0.4s gold theme flash is mid-play (the
+// `dur > _screenFlashTime` guard rejected anything shorter), dropping
+// low-HP feedback exactly when the player needs it most.
+function _flashPriority(color) {
+  if (!color) return 0;
+  // Lower-cased substring match — the colors throughout the code are
+  // rgba() strings; we just look for the dominant channel.
+  const c = String(color).toLowerCase();
+  // Red / crimson — hurt, enrage, danger
+  if (/rgba\(\s*(2[0-9]{2}|1[8-9][0-9])\s*,\s*([0-9]|[1-9][0-9])\s*,/.test(c)) return 3;
+  // Gold / yellow — counter, finisher, theme cue
+  if (/rgba\(\s*255\s*,\s*(2[0-3][0-9]|2[0-9]{2})\s*,\s*[01]?[0-9]{1,2}\s*,/.test(c)) return 2;
+  return 1;
+}
 export function triggerScreenFlash(color, dur = 0.2) {
-  // Accumulate: take the longer, stronger effect rather than reset
-  if (dur > _screenFlashTime) {
+  // Replace if (a) the new flash is longer than what's left, OR (b) the
+  // new flash is a higher-priority color (red beats gold beats other).
+  // The duration check still wins for same-priority ties.
+  const newPri = _flashPriority(color);
+  const curPri = _flashPriority(_screenFlashColor);
+  if (newPri > curPri || dur > _screenFlashTime) {
     _screenFlashColor = color;
     _screenFlashTime = dur;
     _screenFlashDur = dur;
