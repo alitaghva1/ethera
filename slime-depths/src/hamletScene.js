@@ -12,6 +12,7 @@ import { hero } from './hero.js';
 import { images } from './loader.js';
 import { NPCS, hasUnseenTopics, hasUnreadDialogue } from './hamlet.js';
 import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
+import { showTip } from './tips.js';
 
 // Camera zoom for the hamlet — single source of truth. Imported by main.js
 // in enterHamletCanvas + the hamlet branch of the game loop. Bumped from
@@ -216,6 +217,13 @@ export function updateHamletScene() {
       bestD2 = d2;
       nearest = e;
     }
+  }
+  // First-time descent hint — fire ONCE the very first time the player
+  // walks into portal range. Tip system has its own seen-set guard so
+  // this is a no-op on subsequent visits. Without this hook, the
+  // `first_descent_hint` tip was defined in tips.js but never wired.
+  if (nearest && nearest.kind === 'portal') {
+    showTip('first_descent_hint');
   }
   _nearest = nearest;
 }

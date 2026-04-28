@@ -589,7 +589,7 @@ export const NPCS = {
       the_watcher: 'Heard about it. Don\'t know it. Doesn\'t come down for steel.',
       yourself: 'You hit harder when you carry less doubt. I notice. Not many notice that about themselves.',
       the_keeper: 'Fed me. Didn\'t ask. I owe her a roof beam if the place ever needs one.',
-      the_smith: 'I was a soldier once. Then a smith. Now mostly a smith. The other parts went into the work.',
+      the_smith: 'Soldier, then smith. The middle stretch I keep to myself. The other parts went into the work.',
       the_archivist: 'Reads. A lot. I\'ve never read a book that improved a hammer. I assume the books are doing other things.',
       the_gravekeeper: 'He counts. I appreciate someone who counts. Means he\'ll notice if I go missing.',
       the_oracle: 'She told me my next strike would land slightly left. She was right. I do not know how I feel about it.',

@@ -100,7 +100,7 @@ export const MEMORIES = {
     id: 'stillness',
     name: 'Memory of Stillness',
     tint: '#a0c8d8',
-    flavor: 'She learned to let the blade come to her. Only the once.',
+    flavor: 'She learned to let the blade come to her. It came once.',
     gift: '+3 max HP · +15% damage',
     constraint: 'Dodge disabled',
     apply: (h) => {
@@ -169,7 +169,7 @@ export const MEMORIES = {
     id: 'stone',
     name: 'Memory of Stone',
     tint: '#8a9098',
-    flavor: 'A thing that does not bleed cannot be hurried.',
+    flavor: 'What does not move cannot be flanked.',
     gift: 'Damage taken −35%',
     constraint: 'Move speed −25% · dodge distance −25%',
     apply: (h) => {
@@ -238,7 +238,7 @@ export const MEMORIES = {
     tint: '#e6c8ff',
     flavor: 'She struck the great bell, and the world answered for a heartbeat.',
     gift: '+8% damage per relic owned (incl. starter)',
-    constraint: 'Begin with 0 HP regen · Vitality disabled',
+    constraint: 'Begin with 0 HP regen · the bell does not heal',
     apply: (h) => {
       h.memoryBell = true;
       // Retroactively apply the per-relic bonus for any relics already

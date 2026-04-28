@@ -57,12 +57,12 @@ export const TIPS = {
   first_trove:     { text: 'Trove room — the urns are worth your time. Gold, hearts, and larger coin hide inside' },
   first_chestroom: { text: 'Treasure chest room — most chests are real. SOME are MIMICS. You learn by opening' },
   first_boss:      { text: 'Boss — watch the telegraph color. A wider red arc signals a heavier attack' },
-  first_low_hp:    { text: 'At or below 30% HP: your screen pulses red — sanctuaries heal between floors' },
+  first_low_hp:    { text: 'At or below 30% HP: your screen pulses red — sanctuaries mend what they can' },
   // ----- Modes -----
   first_daily:     { text: 'Daily challenges share today\'s curse + relic with all players — build your streak' },
   // ----- Hub + encounters -----
   first_hamlet:    { text: 'The hamlet grows between descents — services persist. Visit when you return' },
-  first_descent_hint: { text: 'Walk to the portal and press E to descend. NPCs will glow when you\'re near.' },
+  first_descent_hint: { text: 'Walk to the portal to descend. Press E near any NPC to speak with them.' },
   first_wanderer:  { text: 'A wanderer — gold for a trade, only this sanctuary. They do not wait long' },
 };
 
