@@ -1570,10 +1570,30 @@ function openDialogue(npcId) {
   const portraitImg = imageCache[def.portrait];
   portraitEl.innerHTML = '';
   if (portraitImg) {
-    const imgEl = document.createElement('img');
-    imgEl.src = portraitImg.src;
-    imgEl.style.cssText = `width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};`;
-    portraitEl.appendChild(imgEl);
+    // Headshot crop — the v2 NPC sprites are full-body (head + torso
+    // + robe) at varying aspect ratios (keeper 70x116, smith 99x110,
+    // gravekeeper 73x115, etc.). A plain `object-fit: cover` showed
+    // the upper body with the head shrunk to ~30% of the portrait.
+    //
+    // Use a background-image with HEIGHT-based scaling (`auto 350%`)
+    // so the visible vertical source range stays consistent across
+    // aspect ratios — every NPC shows ~28-32 source px from the top,
+    // which is the head zone of every sprite (heads are at y≈5-35
+    // across the v2 set). Width auto-scales and may exceed the
+    // container; the 50% horizontal position centers the face.
+    // Pixelated rendering preserves the pixel-art crispness through
+    // the 3.5x zoom.
+    const imgWrap = document.createElement('div');
+    imgWrap.style.cssText = `
+      width:72px;height:72px;border-radius:50%;
+      background-image:url(${portraitImg.src});
+      background-size:auto 350%;
+      background-position:50% 5%;
+      background-repeat:no-repeat;
+      image-rendering:pixelated;
+      box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};
+    `;
+    portraitEl.appendChild(imgWrap);
   } else {
     const initial = def.name.charAt(4) || def.name.charAt(0);
     const fallback = document.createElement('div');
