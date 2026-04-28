@@ -752,13 +752,27 @@ document.getElementById('menuNewRunBtn').addEventListener('click', () => {
   // pre-loaded as exposition. Restructure ported from ethera (intro.js
   // owns the overlay; the death-bypass below routes the first death to
   // enterHamletCanvas which plays the keeper wake on its own gate).
-  // Diagnostic logging — gates the first-run flow on this branch and
-  // tells us at-a-glance which path AWAKEN took if a player reports
-  // "no cinematic." Cheap (one console.info per click), non-invasive.
-  const firstTime = !hasSeen('hamlet', 'wake');
-  console.info('[INTRO] AWAKEN clicked. hasSeen(hamlet,wake)=', !firstTime, '· branch=', firstTime ? 'INTRO+RUN' : 'HAMLET');
+  //
+  // Double-click guard — bug-hunter audit P0. The button has no debounce,
+  // so a fast double-click would run startRun() / startIntro() / stopMusic()
+  // twice, double-applying memory effects and resetting the intro timer to
+  // zero mid-cinematic. Hide the menu synchronously before mutating state;
+  // the second click hits a hidden menu and bails.
+  if (menuEl.style.display === 'none') return;
+  menuEl.style.display = 'none';
+  // Use a SEPARATE gate ('intro:heartbeat') for the cinematic, distinct
+  // from 'hamlet:wake' (which gates the keeper wake fired on first
+  // death). Without separate gates, marking the intro as seen here
+  // would also skip the keeper wake on first death — they need to fire
+  // independently on the first run.
+  const firstTime = !hasSeen('intro', 'heartbeat');
   if (firstTime) {
     hideAllOverlays();
+    // Mark the intro-gate satisfied at the START of the first run, NOT
+    // after the cinematic completes. Without this, a player who
+    // reloads mid-floor-1 would re-enter the menu, click AWAKEN, and
+    // get a duplicate intro cinematic on top of their resumed run.
+    markSeen('intro', 'heartbeat');
     startRun();         // drop into floor 1, hero spawned in start room
     // Suppress the floor card — the intro overlay owns the screen for
     // the next 28s. The floor-card "FLOOR I — THE UNDERCROFT" reveal
@@ -3952,6 +3966,13 @@ function triggerFloorCard(level) {
   // Hero should NOT be moving while the card reads — zero velocity so the
   // freeze reads as a deliberate hold, not a pause at mid-stride.
   hero.vx = 0; hero.vy = 0;
+  // Audio "lift" for the typography moment — without this, the splashy
+  // 3.2s reveal reads as a silent freeze. A low resonant chord (E2 = 165Hz)
+  // sells the descent's gravity. Pitched lower for floor 1 and rising
+  // pentatonically per floor so the audio mirrors the descent.
+  const baseFreq = 165;
+  const freq = baseFreq * Math.pow(1.25, Math.max(0, level - 1));   // 165, 206, 258, 322
+  synthChord(freq, 0.55, 1.6);
 }
 
 // (Old abstract Ethera prologue retired. The Keeper wake cinematic
@@ -6101,6 +6122,16 @@ function tick(now) {
     if (room.cleared && !_roomClearedNotified) {
       onRoomCleared();
       _roomClearedNotified = true;
+      // Audio confirmation — combat just ended and the doors are about
+      // to open. Without this chord, the world becomes traversable in
+      // silence and the player has no auditory cue that the encounter
+      // actually finished. Boss clears get full SFX cascades elsewhere;
+      // this is the equivalent for normal combat rooms. Skip on boss
+      // rooms (boss-clear triggers its own fanfare via bossWinTriggered)
+      // and start rooms (cleared from the start, no encounter to "end").
+      if (data.kind !== 'boss' && data.kind !== 'start') {
+        synthChord(523, 0.55, 0.65);
+      }
     }
 
     // Tick door animations + check for the hero physically crossing an
@@ -6404,10 +6435,21 @@ function tick(now) {
   // Holds the death screen, fades to pure black, then hands off to
   // enterHamletCanvas (which fires the keeper wake). See declaration
   // above for the full timing rationale.
-  if (_firstDeathFadeActive) {
+  //
+  // Pause hygiene: skip the tick while paused (so the player can't burn
+  // through the cinematic by tab-switching), AND defensively unpause +
+  // hide the pause overlay right before handoff to the keeper wake. The
+  // blur/visibilitychange auto-pause path could otherwise deadlock the
+  // wake under a stuck pause modal — bug-hunter audit P0.
+  if (_firstDeathFadeActive && !paused) {
     _firstDeathFadeTime += realDt;
     if (_firstDeathFadeTime >= FIRST_DEATH_TOTAL) {
       _firstDeathFadeActive = false;
+      // Belt-and-suspenders: even if a future code path lets the timer
+      // tick past TOTAL while paused was true, this guarantees we hand
+      // off cleanly with no overlay residue.
+      if (paused) setPaused(false);
+      pauseEl.style.display = 'none';
       enterHamletCanvas();
     }
   }
@@ -7694,21 +7736,9 @@ if (import.meta.env.DEV) {
     // automatically) and reloads so the in-memory `seen` Set in
     // firstSeen.js re-hydrates from disk. Intended for testing the
     // restructured intro flow — without this, you'd have to delete the
-    // active profile to re-trigger the cinematic.
-    //
-    // Logs before/after so the player can confirm the clear actually
-    // touched the right key (the localStorage patch silently scopes by
-    // profile id; an unprefixed string from devtools should still
-    // resolve correctly through the patch, but we log to verify).
+    // active profile to re-trigger the cinematics.
     resetFirstRun: () => {
-      try {
-        const before = localStorage.getItem('ethera:first_seen:v1');
-        console.info('[RESET] before:', before);
-        localStorage.removeItem('ethera:first_seen:v1');
-        const after = localStorage.getItem('ethera:first_seen:v1');
-        console.info('[RESET] after:', after, '· hasSeen(hamlet,wake)=', hasSeen('hamlet', 'wake'));
-        console.info('[RESET] reloading…');
-      } catch (_e) {}
+      try { localStorage.removeItem('ethera:first_seen:v1'); } catch (_e) {}
       window.location.reload();
     },
 
