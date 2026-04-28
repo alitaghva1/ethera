@@ -385,8 +385,10 @@ const HAMLET_FX = [
     // re-prompted to RENDER ONLY THE ARCHWAY (no flagstone base),
     // fixing the v1 palette clash where a square grey stone floor
     // baked into the sprite fought the painted plaza beneath.
-    //   scale: 0.87 — keeps rendered size at ~83px (96 × 0.87) to
-    //   match the v1 visual footprint after the producer's -20%.
+    //   scale: 0.74 — second producer reduction (-15% from 0.87).
+    //   Rendered size now ~71px (96 × 0.74), down from ~83px after
+    //   the v1 -20% pass; sits cleanly on the painted SE pad without
+    //   crowding the wanderer's nearby cookpot or the path approach.
     //   y: 634 — held over from v1 tuning. The new sprite has its
     //   archway mass roughly centered (no base offset), so this
     //   places the threshold at the painted pad. Tune later if needed.
@@ -396,7 +398,7 @@ const HAMLET_FX = [
     x: 963, y: 634,
     frameW: 96, frameH: 96,
     frameCount: 9, fps: 5,
-    scale: 0.87, yOffset: 0,
+    scale: 0.74, yOffset: 0,
     holdSeconds: 10,
   },
   {
