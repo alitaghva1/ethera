@@ -2738,6 +2738,58 @@ function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette, 
   return card;
 }
 
+// Compact icon tile — used by the Relics tab where we have ~50 items
+// to display. The card-style chronCard layout doesn't scale that
+// densely; even at 4 cols x ~50px height the grid runs ~13 rows tall
+// and breaks past the 720 design height. The tile shows ONLY the icon
+// (silhouetted when locked) with the name as a small label below;
+// flavor + desc surface on hover via the title attribute. Click could
+// later expand into a detail panel; for now hover serves the lookup
+// affordance.
+function chronTile({ title, locked, accentColor, thumb, silhouette, tooltip }) {
+  const tile = document.createElement('div');
+  const border = locked ? 'rgba(80,60,40,0.3)' : (accentColor ? accentColor + '88' : 'rgba(201,168,106,0.55)');
+  const glow = locked ? '' : `, 0 0 12px ${accentColor ? accentColor + '33' : 'rgba(201,168,106,0.12)'}`;
+  // Pure ICON tile — no inline name. With 50+ relics in a 10-col grid,
+  // each tile is ~52 design px — too small for a readable name without
+  // wrapping/clipping. Hover tooltip carries the full name + flavor +
+  // desc instead. The icon's silhouette + tier-color border + (when
+  // discovered) tier-tinted glow are enough to identify the relic at
+  // a glance for players who already know the roster.
+  tile.style.cssText = `
+    width:52px;height:52px;
+    background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.88));
+    display:flex;align-items:center;justify-content:center;
+    font-family:Georgia,serif;
+    box-shadow:inset 0 0 0 1px ${border}, inset 0 0 8px rgba(0,0,0,0.5)${glow};
+    box-sizing:border-box;
+    ${locked ? 'opacity:0.55;' : ''}
+    cursor:default;
+    transition:transform 0.15s ease, box-shadow 0.15s ease;
+  `;
+  if (tooltip) tile.title = tooltip;
+  const thumbBg = locked
+    ? 'radial-gradient(circle,rgba(80,60,40,0.25),transparent 70%)'
+    : `radial-gradient(circle,${accentColor || '#c9a86a'}33,transparent 70%)`;
+  const thumbFilter = silhouette ? 'brightness(0) contrast(0.4)' : 'none';
+  tile.innerHTML = thumb ? `
+    <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
+      <img src="${thumb}" style="width:36px;height:36px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
+    </div>
+  ` : `<div style="width:40px;height:40px;background:${thumbBg};"></div>`;
+  if (!locked) {
+    tile.addEventListener('mouseenter', () => {
+      tile.style.transform = 'translateY(-1px)';
+      tile.style.boxShadow = `inset 0 0 0 1px ${accentColor || '#c9a86a'}, 0 0 16px ${accentColor ? accentColor + '55' : 'rgba(201,168,106,0.3)'}`;
+    });
+    tile.addEventListener('mouseleave', () => {
+      tile.style.transform = 'translateY(0)';
+      tile.style.boxShadow = `inset 0 0 0 1px ${border}, inset 0 0 8px rgba(0,0,0,0.5)${glow}`;
+    });
+  }
+  return tile;
+}
+
 function renderChroniclesTab() {
   // Sync tab highlight — active is filled gold, others are muted
   const tabs = document.querySelectorAll('.chronTab');
@@ -2751,6 +2803,24 @@ function renderChroniclesTab() {
   const row = document.getElementById('achRow');
   const progress = document.getElementById('achProgress');
   row.innerHTML = '';
+  // Per-tab grid layout — relics use a denser ICON GRID (8 cols of
+  // ~75px square tiles) since there are 50+ items; the other tabs
+  // keep the wider card layout (auto-fill minmax 220px) since they
+  // have fewer items and benefit from inline body text.
+  if (chronTab === 'relics') {
+    // 10 cols of 52px tiles + 9 × 4px gaps = 556px wide. Fits 50-60
+    // relics in 6 rows × 52 = 312 design px tall — comfortable margin
+    // under the 720 design height after title + tabs + button.
+    row.style.gridTemplateColumns = 'repeat(10, 52px)';
+    row.style.gap = '4px';
+    row.style.maxWidth = '600px';
+    row.style.justifyContent = 'center';
+  } else {
+    row.style.gridTemplateColumns = 'repeat(auto-fill, minmax(220px, 1fr))';
+    row.style.gap = '8px';
+    row.style.maxWidth = '920px';
+    row.style.justifyContent = 'normal';
+  }
 
   if (chronTab === 'achievements') {
     for (const id of ACH_IDS) {
@@ -2818,21 +2888,22 @@ function renderChroniclesTab() {
       const seen = seenRelicIds.has(id);
       if (seen) seenN++;
       const name = seen ? def.name : '???';
-      const body = seen
-        ? (def.flavor ? `<div style="font-style:italic;margin-bottom:3px;">${def.flavor}</div><div style="color:${def.tint || '#c9a86a'};font-weight:bold;font-style:normal;">${def.desc}</div>` : def.desc)
-        : '';
+      // ICON GRID layout — body text moves to hover tooltip below.
       // Locked-state hint moved to hover tooltip \u2014 kept the prompt info
       // but stopped the verbose "undiscovered..." line bloating cards.
-      const tooltipR = seen ? null : 'undiscovered \u2014 a relic you have yet to claim';
+      // Tooltip \u2014 for seen relics combines name + flavor + desc; for
+      // locked, generic prompt. Native title attribute = browser
+      // tooltip on hover, no extra UI cost.
+      const tooltipR = seen
+        ? `${def.name}${def.flavor ? '\n' + def.flavor : ''}${def.desc ? '\n\n' + def.desc : ''}`
+        : 'undiscovered \u2014 a relic you have yet to claim';
       // Dedicated per-relic art — bypass glyph/hue overlay (pass null,null).
       const baseImg = imageCache[def.icon];
       const thumb = baseImg ? composeRelicThumbDataURL(baseImg, null, null, id, 48) : null;
-      row.appendChild(chronCard({
+      row.appendChild(chronTile({
         title: name,
-        body: body,
         locked: !seen,
         accentColor: seen ? (def.tint || '#c9a86a') : null,
-        icon: '',
         thumb,
         silhouette: !seen,
         tooltip: tooltipR,
