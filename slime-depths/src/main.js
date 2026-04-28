@@ -85,7 +85,7 @@ import {
   updateHamletScene, drawHamletBackdrop, drawHamletFx, drawHamletEntities, drawHamletOverlay, drawHamletInteractPrompt,
   consumeHamletInteract, resolveHamletCollision,
 } from './hamletScene.js';
-import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
+import { initMusic, playTrack, stopMusic, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL, spawnDamageNumber } from './fx.js';
 import { images as imageCache } from './loader.js';
@@ -772,8 +772,14 @@ document.getElementById('menuNewRunBtn').addEventListener('click', () => {
     // is still running from the title screen. The heartbeat is the
     // ONLY thing the player should hear during the intro. Tick loop
     // will resume the biome track when the cinematic ends.
+    //
+    // stopMusic (not playTrack(null)) is critical here — playTrack
+    // pauses all tracks but leaves `current` set to 'crypt', which
+    // would make our subsequent end-of-intro playTrack('crypt')
+    // resume call no-op via the `current === name` guard. stopMusic
+    // explicitly nulls `current` so the resume actually fires.
     stopAmbientPad();
-    playTrack(null);
+    stopMusic();
     return;
   }
   // Returning player — standard flow: hamlet hub, descend via portal.
