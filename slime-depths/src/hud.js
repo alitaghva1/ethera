@@ -132,45 +132,13 @@ export function drawHud(ctx, w, h, progress = {}) {
     }
   }
 
-  // DAMAGE-SOURCE ARROW — brief red chevron on screen edge pointing to whatever
-  // just hit the hero. Fades over 1s. Critical for off-screen threats.
-  // Suppressed during cinematic intros (progress.introActive) so it doesn't
-  // sit on top of the boss portrait frame.
-  const hitT = (typeof window !== 'undefined' && window.__gameMetrics.lastHitTime) ? (performance.now() - window.__gameMetrics.lastHitTime) / 1000 : Infinity;
-  if (!progress.introActive && hitT < 1.0 && window.__gameMetrics.lastHitFromX !== undefined) {
-    const dx = window.__gameMetrics.lastHitFromX - hero.x;
-    const dy = window.__gameMetrics.lastHitFromY - hero.y;
-    const mag = Math.hypot(dx, dy);
-    if (mag > 1) {
-      const nx = dx / mag, ny = dy / mag;
-      // Alpha fades quartic over lifetime
-      const fadeT = Math.max(0, 1 - hitT);
-      const alpha = fadeT * fadeT;
-      // Place on edge — 130px in from edge, at angle toward threat
-      const radius = Math.min(w, h) * 0.35;
-      const cx = w / 2 + nx * radius;
-      const cy = h / 2 + ny * radius;
-      const ang = Math.atan2(ny, nx);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.translate(cx, cy);
-      ctx.rotate(ang);
-      // Red chevron (2 triangles)
-      ctx.fillStyle = '#ff4a4a';
-      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-      ctx.lineWidth = 2;
-      const sz = 18;
-      ctx.beginPath();
-      ctx.moveTo(-sz, -sz);
-      ctx.lineTo(sz, 0);
-      ctx.lineTo(-sz, sz);
-      ctx.lineTo(-sz * 0.4, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
+  // (Removed) Damage-source arrow — used to draw a brief red chevron on the
+  // screen edge pointing to whatever just hit the hero, intended for
+  // off-screen threats. In practice it fired on EVERY hit including from
+  // visible enemies, where it was just visual noise. The screen-edge red
+  // pulse + heart shake already convey "you got hit"; the existing red
+  // pulse + screen wash on damage covers the "from where" cue when it
+  // matters via biome / room context. Removed per user feedback.
 
   // â”€â”€ LEFT-TOP HUD PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Contains: hearts (compact), dodge pip, dash-strike pip.
