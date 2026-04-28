@@ -412,7 +412,7 @@ export const NPCS = {
     name: 'The Keeper',
     title: 'of the last candle',
     role: 'Tends the hamlet. Trades essence for permanent boons.',
-    portrait: 'npc_keeper',
+    portrait: 'npc_v2_keeper',
     x: 54, y: 74,                      // at the central firepit (painted backdrop)
     tint: '#f4d9a0',
     unlockCheck: () => true,           // always present
@@ -524,7 +524,7 @@ export const NPCS = {
     name: 'The Smith',
     title: 'reforger of broken oaths',
     role: 'Melts two relics into one of higher tier.',
-    portrait: 'npc_smith',
+    portrait: 'npc_v2_smith',
     x: 24, y: 74,                      // at the painted forge doorway (left)
     tint: '#ff8a60',
     unlockCheck: (records) => records.maxFloor >= 2,
@@ -620,7 +620,7 @@ export const NPCS = {
     name: 'The Archivist',
     title: 'of names half-remembered',
     role: 'Reveals Memory unlock conditions. Keeps the codex.',
-    portrait: 'npc_archivist',
+    portrait: 'npc_v2_archivist',
     x: 72, y: 74,                      // at the painted scriptorium dome (right)
     tint: '#b0c8ff',
     unlockCheck: (_records, _stats, ctx) => {
@@ -722,7 +722,7 @@ export const NPCS = {
     name: 'The Gravekeeper',
     title: 'who counts the vanished',
     role: 'Trades hardship for reward. Owns the curses.',
-    portrait: 'npc_gravekeeper',
+    portrait: 'npc_v2_gravekeeper',
     x: 10, y: 74,
     tint: '#d85a5a',
     unlockCheck: (records) => records.runsStarted >= 5 || records.bossKillsAllTime >= 2,
@@ -820,7 +820,7 @@ export const NPCS = {
     name: 'The Oracle',
     title: 'of the forward-looking dark',
     role: 'Shows what lies in the next descent.',
-    portrait: 'npc_oracle',
+    portrait: 'npc_v2_oracle',
     x: 38, y: 74,                      // between the forge and the firepit
     tint: '#b49aff',
     unlockCheck: (records) => records.maxFloor >= 3,
@@ -919,7 +919,7 @@ export const NPCS = {
     name: 'The Wanderer',
     title: 'who has stopped walking',
     role: 'Offers a random gift from the road.',
-    portrait: 'npc_wanderer_hamlet',
+    portrait: 'npc_v2_wanderer',
     x: 89, y: 74,                      // far right, past the scriptorium
     tint: '#ffc880',
     unlockCheck: (records) => records.runsCompleted >= 1 || records.runsStarted >= 10,

@@ -1379,39 +1379,44 @@ dialogueEl.style.cssText = `
 `;
 dialogueEl.innerHTML = `
   <div id="dialoguePanel" style="
-    max-width:640px;width:100%;
+    max-width:880px;width:96%;
+    display:grid;
+    grid-template-columns:1fr 220px;
+    gap:0;
     background:linear-gradient(180deg, rgba(24,18,14,0.97), rgba(12,8,10,0.98));
     box-shadow:0 0 30px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(201,168,106,0.4), inset 0 0 18px rgba(0,0,0,0.5);
-    padding:28px 32px;
     position:relative;
     animation:modalFadeIn 0.3s ease-out;
   ">
-    <!-- Top row: portrait + name -->
-    <div style="display:flex;align-items:center;gap:18px;margin-bottom:18px;">
-      <div id="dialoguePortrait" style="width:72px;height:72px;flex-shrink:0;"></div>
-      <div style="flex:1;">
-        <div id="dialogueName" style="font-size:22px;letter-spacing:5px;color:#f4d9a0;font-weight:400;margin-bottom:2px;"></div>
-        <div id="dialogueTitle" style="font-size:11px;letter-spacing:3px;font-style:italic;opacity:0.6;"></div>
+    <!-- LEFT COLUMN: portrait + name + body + action buttons -->
+    <div style="padding:24px 28px;display:flex;flex-direction:column;min-width:0;">
+      <!-- Top row: portrait + name -->
+      <div style="display:flex;align-items:center;gap:18px;margin-bottom:14px;">
+        <div id="dialoguePortrait" style="width:72px;height:72px;flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;">
+          <div id="dialogueName" style="font-size:22px;letter-spacing:5px;color:#f4d9a0;font-weight:400;margin-bottom:2px;"></div>
+          <div id="dialogueTitle" style="font-size:11px;letter-spacing:3px;font-style:italic;opacity:0.6;"></div>
+        </div>
+      </div>
+      <!-- Gold hairline divider -->
+      <div style="width:100%;height:1px;background:linear-gradient(90deg, transparent, rgba(201,168,106,0.45), transparent);margin-bottom:14px;"></div>
+      <!-- Body: stage text -->
+      <div id="dialogueText" style="font-size:14px;line-height:1.7;color:#d8cfae;margin-bottom:16px;min-height:120px;font-style:italic;flex:1;"></div>
+      <!-- Service / speak / close buttons. SPEAK is the casual-chat path
+           that cycles the NPC's chatLines without leaving the modal \u2014
+           visually muted (text-link style) so the SERVICE button stays
+           the primary action. -->
+      <div style="display:flex;gap:12px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
+        <button id="dialogueSpeakBtn" style="background:transparent;color:#a89060;border:1px solid rgba(168,144,96,0.4);padding:8px 16px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">SPEAK</button>
+        <button id="dialogueServiceBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:11px 24px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:12px;font-weight:bold;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 14px rgba(201,168,106,0.25);transition:all 0.2s ease;">SERVICE</button>
+        <button id="dialogueCloseBtn" style="background:transparent;color:#8a7a6a;border:0;padding:8px 14px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">\u2190 FAREWELL</button>
       </div>
     </div>
-    <!-- Gold hairline divider -->
-    <div style="width:100%;height:1px;background:linear-gradient(90deg, transparent, rgba(201,168,106,0.45), transparent);margin-bottom:18px;"></div>
-    <!-- Body: stage text -->
-    <div id="dialogueText" style="font-size:14px;line-height:1.75;color:#d8cfae;margin-bottom:18px;min-height:120px;font-style:italic;"></div>
-    <!-- Topic chips \u2014 Morrowind-style "ask about X" affordance. Filtered
-         per-NPC by availableTopicsForNpc() (the NPC must have an answer +
-         the topic's visibility gate must pass). Click swaps the body text
-         to the topic's answer. Empty (display:none) when the NPC has no
-         topics defined or no topics pass the gate. -->
-    <div id="dialogueTopics" style="display:none;flex-wrap:wrap;gap:6px 8px;margin-bottom:18px;padding-top:14px;border-top:1px solid rgba(201,168,106,0.18);"></div>
-    <!-- Service / speak / close buttons. SPEAK is the casual-chat path
-         that cycles the NPC's chatLines without leaving the modal \u2014
-         visually muted (text-link style) so the SERVICE button stays
-         the primary action. -->
-    <div style="display:flex;gap:14px;justify-content:flex-end;align-items:center;">
-      <button id="dialogueSpeakBtn" style="background:transparent;color:#a89060;border:1px solid rgba(168,144,96,0.4);padding:8px 18px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">SPEAK</button>
-      <button id="dialogueServiceBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:12px 28px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:12px;font-weight:bold;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 14px rgba(201,168,106,0.25);transition:all 0.2s ease;">SERVICE</button>
-      <button id="dialogueCloseBtn" style="background:transparent;color:#8a7a6a;border:0;padding:8px 16px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">\u2190 FAREWELL</button>
+    <!-- RIGHT COLUMN: numbered topic list (Morrowind / CRPG style).
+         Click a topic OR press the matching number key (1-9) to ask.
+         Empty (display:none) when the NPC has no topics. -->
+    <div id="dialogueTopics" style="display:none;flex-direction:column;gap:4px;padding:24px 22px 24px 18px;border-left:1px solid rgba(201,168,106,0.22);background:linear-gradient(90deg, rgba(0,0,0,0.18), transparent);">
+      <div style="font-size:9px;letter-spacing:4px;color:#c9a86a;font-weight:bold;opacity:0.65;margin-bottom:8px;text-align:center;">\u2014 ASK ABOUT \u2014</div>
     </div>
   </div>
 `;
@@ -1434,6 +1439,24 @@ dialogueEl.addEventListener('click', (e) => {
     dialogueEl.style.display = 'none';
   }
 });
+// Keyboard shortcuts — 1-9 select numbered topic chips while the
+// dialogue is open. Matches the CRPG/Morrowind affordance the
+// vertical numbered list implies. Captures on document so input.js's
+// in-game number-key handlers (none today, but defensive) don't
+// double-fire. The click() call drives the same path as a mouse
+// click — including click sfx + body swap + seen-state update.
+document.addEventListener('keydown', (e) => {
+  if (dialogueEl.style.display === 'none') return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  // Digit row only — Digit1..Digit9 maps to index 1..9.
+  if (!/^Digit[1-9]$/.test(e.code)) return;
+  const idx = parseInt(e.code.slice(5), 10);
+  const chip = document.querySelector(`#dialogueTopics .dialogueTopicChip[data-topic-index="${idx}"]`);
+  if (chip) {
+    e.preventDefault();
+    chip.click();
+  }
+}, true);
 document.getElementById('dialogueCloseBtn').addEventListener('mouseenter', (e) => {
   e.target.style.color = '#ff9a9a';
   e.target.style.textShadow = '0 0 10px rgba(216,128,128,0.5)';
@@ -1634,43 +1657,69 @@ function openDialogue(npcId) {
   // their own perspective on the shared catalog (the_ruin, the_keeper,
   // the_watcher, etc.). Render as a wrap-flow row of subtle chips.
   // Unseen topics get a small dot to the right of the label.
+  // Topic LIST — Morrowind / CRPG style. Each available topic renders as
+  // a numbered button on the right column. Click OR press the matching
+  // number key (1-9) to ask. Replaces the prior wrap-flow chip row that
+  // didn't scale well and lost identity once stuffed alongside dense
+  // body text. Empty state hides the whole right column.
   const topicsRow = document.getElementById('dialogueTopics');
   const topics = availableTopicsForNpc(npcId);
   topicsRow.innerHTML = '';
+  // Reflow the panel grid based on topic availability — single column
+  // when an NPC has no topics so the body uses the full panel width.
+  const dialoguePanelEl = document.getElementById('dialoguePanel');
   if (topics.length > 0) {
+    if (dialoguePanelEl) dialoguePanelEl.style.gridTemplateColumns = '1fr 220px';
     topicsRow.style.display = 'flex';
-    for (const t of topics) {
+    // Re-add the section header that lives inside topicsRow (cleared by
+    // innerHTML='' above).
+    const head = document.createElement('div');
+    head.style.cssText = 'font-size:9px;letter-spacing:4px;color:#c9a86a;font-weight:bold;opacity:0.65;margin-bottom:8px;text-align:center;';
+    head.textContent = '— ASK ABOUT —';
+    topicsRow.appendChild(head);
+    // Build numbered buttons. Index limit 9 — keyboard shortcuts only go
+    // up to digit-9; if any NPC ever exceeds 9 topics, additional ones
+    // still render but lose the keyboard hotkey.
+    topics.forEach((t, idx) => {
+      const num = idx + 1;
       const chip = document.createElement('button');
       const seen = isTopicSeen(npcId, t.id);
       chip.className = 'dialogueTopicChip';
       chip.dataset.topicId = t.id;
+      chip.dataset.topicIndex = String(num);
       chip.style.cssText = `
+        display:grid;
+        grid-template-columns:18px 1fr auto;
+        align-items:center;
+        gap:8px;
         background:transparent;
         color:${seen ? '#8a7a5a' : '#c9a86a'};
-        border:1px solid rgba(201,168,106,${seen ? 0.22 : 0.45});
-        padding:5px 12px 5px 12px;
+        border:1px solid rgba(201,168,106,${seen ? 0.18 : 0.4});
+        border-left:2px solid ${seen ? 'rgba(201,168,106,0.3)' : '#c9a86a'};
+        padding:7px 10px;
         font-size:10px;
         cursor:pointer;
-        letter-spacing:2.5px;
+        letter-spacing:2px;
         font-family:Georgia,serif;
         font-style:italic;
         transition:all 0.18s ease;
-        white-space:nowrap;
+        text-align:left;
+        width:100%;
       `;
-      // Build chip via createElement + textContent for label + appended
-      // bullet span — same defensive pattern as the topic-answer body
-      // (commit 02a2797). Topic labels are author-controlled today;
-      // staying off innerHTML interpolation keeps that future-proof.
+      // Build via createElement + textContent — defensive pattern
+      // (commit 02a2797). Topic labels are author-controlled today; the
+      // pattern keeps that future-proof.
+      const numEl = document.createElement('span');
+      numEl.style.cssText = `font-size:10px;color:${seen ? '#7a6a5a' : '#a0e8ff'};font-weight:bold;font-style:normal;text-shadow:0 0 4px rgba(160,232,255,${seen ? 0 : 0.4});letter-spacing:0;`;
+      numEl.textContent = num <= 9 ? String(num) : '·';
+      chip.appendChild(numEl);
       const labelEl = document.createElement('span');
-      labelEl.style.textTransform = 'uppercase';
+      labelEl.style.cssText = 'text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
       labelEl.textContent = t.label;
       chip.appendChild(labelEl);
-      if (!seen) {
-        const dotEl = document.createElement('span');
-        dotEl.style.cssText = 'margin-left:6px;color:#a0e8ff;text-shadow:0 0 4px rgba(160,232,255,0.6);';
-        dotEl.textContent = '•';   // U+2022 BULLET
-        chip.appendChild(dotEl);
-      }
+      const dotEl = document.createElement('span');
+      dotEl.style.cssText = `width:6px;height:6px;border-radius:50%;${seen ? 'background:transparent;' : 'background:#a0e8ff;box-shadow:0 0 4px rgba(160,232,255,0.7);'}`;
+      chip.appendChild(dotEl);
       chip.addEventListener('click', () => {
         const ans = getTopicAnswer(npcId, t.id);
         if (!ans) return;
@@ -1679,12 +1728,7 @@ function openDialogue(npcId) {
         // already-seen so revisiting old answers stays mellow.
         try { synthClick(seen ? 1.0 : 1.4, seen ? 0.28 : 0.45); } catch (_e) {}
         // Replace body with the topic answer + a header line that
-        // reads as "they're now speaking about X". The header is
-        // small + tinted with the NPC color so it reads as a frame
-        // around the answer text. Body uses textContent (not
-        // innerHTML interpolation) so any future answer that
-        // accidentally contains HTML chars stays inert text rather
-        // than rendering as markup.
+        // reads as "they're now speaking about X".
         const def2 = NPCS[npcId];
         const tint = def2.tint || '#c9a86a';
         const textEl2 = document.getElementById('dialogueText');
@@ -1699,24 +1743,32 @@ function openDialogue(npcId) {
         textEl2.appendChild(bodyP);
         // Update this chip's visual state — it's been seen now.
         chip.style.color = '#8a7a5a';
-        chip.style.borderColor = 'rgba(201,168,106,0.22)';
-        const dotEl = chip.querySelector('span:last-child');
-        if (dotEl && dotEl.textContent.trim() === '•') dotEl.remove();
+        chip.style.borderColor = 'rgba(201,168,106,0.18)';
+        chip.style.borderLeftColor = 'rgba(201,168,106,0.3)';
+        numEl.style.color = '#7a6a5a';
+        numEl.style.textShadow = 'none';
+        dotEl.style.background = 'transparent';
+        dotEl.style.boxShadow = 'none';
       });
       chip.addEventListener('mouseenter', (e) => {
-        e.currentTarget.style.background = 'rgba(201,168,106,0.10)';
-        e.currentTarget.style.borderColor = 'rgba(201,168,106,0.7)';
+        e.currentTarget.style.background = 'rgba(201,168,106,0.08)';
+        e.currentTarget.style.borderColor = 'rgba(201,168,106,0.6)';
+        e.currentTarget.style.borderLeftColor = '#f4d9a0';
         e.currentTarget.style.color = '#f4d9a0';
+        e.currentTarget.style.transform = 'translateX(-2px)';
       });
       chip.addEventListener('mouseleave', (e) => {
         const stillSeen = isTopicSeen(npcId, e.currentTarget.dataset.topicId);
         e.currentTarget.style.background = 'transparent';
-        e.currentTarget.style.borderColor = `rgba(201,168,106,${stillSeen ? 0.22 : 0.45})`;
+        e.currentTarget.style.borderColor = `rgba(201,168,106,${stillSeen ? 0.18 : 0.4})`;
+        e.currentTarget.style.borderLeftColor = stillSeen ? 'rgba(201,168,106,0.3)' : '#c9a86a';
         e.currentTarget.style.color = stillSeen ? '#8a7a5a' : '#c9a86a';
+        e.currentTarget.style.transform = 'translateX(0)';
       });
       topicsRow.appendChild(chip);
-    }
+    });
   } else {
+    if (dialoguePanelEl) dialoguePanelEl.style.gridTemplateColumns = '1fr';
     topicsRow.style.display = 'none';
   }
 
