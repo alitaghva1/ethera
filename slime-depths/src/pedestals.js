@@ -622,6 +622,12 @@ export function drawPedestals(ctx) {
 // common a muted bronze.
 export function drawPickupFlash(ctx, w, h) {
   if (pickedFlashTime <= 0 || !lastPickedDef) return;
+  // Defer when another system owns the center banner slot (boss intro,
+  // floor card, keeper wake, tip, etc.). Without this gate, a pedestal
+  // grabbed near a door could send the 3-5.5s pickup banner stacking on
+  // top of a boss portrait or floor-card reveal. Tip system already
+  // does this same defer; pickup banner now matches.
+  if (typeof window !== 'undefined' && window.__centerBannerActive) return;
   const tier = lastPickedDef.tier || 'common';
   // Mythic holds the banner 5.5s; everything else 3.0s.
   const life = tier === 'mythic' ? 5.5 : 3.0;
@@ -692,16 +698,19 @@ export function drawPickupFlash(ctx, w, h) {
     glow.addColorStop(0, `rgba(${tierRgb}, ${(glowA * glowStrength).toFixed(3)})`);
     glow.addColorStop(1, `rgba(${tierRgb}, 0)`);
     ctx.fillStyle = glow;
-    // Mythic: full-screen wash + edge vignette only on the player's
-    // FIRST-EVER mythic (the "Windforce moment") — captured at pickup
-    // time as lastPickedFirstMythic. Subsequent mythics get the
-    // double-frame border + bigger pulse but keep the localized glow,
-    // so the banner stays readable instead of stealing the screen.
+    // Mythic: enlarged glow halo around the banner (no longer the full
+    // 1280×720 wash). Earlier passes painted the entire screen on first
+    // mythic for the "Windforce moment", but during the 5.5s banner
+    // window the player still needs to see remaining enemies + door
+    // positions. Cap the wash to a generous box-relative region so the
+    // banner is unambiguously the loudest thing on screen WITHOUT
+    // hiding the rest of the world. First-mythic still gets the
+    // larger glow vs subsequent mythics.
     if (tier === 'mythic' && lastPickedFirstMythic) {
-      ctx.fillRect(0, 0, w, h);
+      ctx.fillRect(bx - 220, by - 140, boxW + 440, boxH + 280);
       const edgeVg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
       edgeVg.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      edgeVg.addColorStop(1, `rgba(0, 0, 0, ${(glowA * 0.45).toFixed(3)})`);
+      edgeVg.addColorStop(1, `rgba(0, 0, 0, ${(glowA * 0.25).toFixed(3)})`);
       ctx.fillStyle = edgeVg;
       ctx.fillRect(0, 0, w, h);
     } else {
@@ -1019,7 +1028,14 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   let boxH = 18 + 22 + flavorH + (flavorH ? 6 : 0) + descH + 12 + extraH + (isAltar ? 18 : 0) + warningH;
   if (boxH < 76) boxH = 76;      // floor for layout stability
   const bx = (w - boxW) / 2;
-  const by = h - (isAltar ? 200 : 180) - extraH + riseOffset;
+  // Anchor the BOTTOM of the tooltip above the HUD strips (themes ~h-132,
+  // fusions ~h-88, relics ~h-48 with multi-row wrap pushing higher). The
+  // old `by = h - 180` anchored the TOP, so long descs grew DOWN into
+  // the relic strip and hid the reroll hint behind it. Now we compute
+  // bottom-up: tooltip bottom sits at h-160 (clear of all HUD bands),
+  // and the tooltip grows UPWARD as desc/flavor expands.
+  const tooltipBottomY = h - 160;
+  const by = tooltipBottomY - boxH + riseOffset;
   const frameColor = isAltar ? '#ff6080' : (r.tint || '#ffffff');
 
   // Outer tint-colored glow

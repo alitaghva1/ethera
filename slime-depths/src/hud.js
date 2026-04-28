@@ -635,18 +635,33 @@ export function drawHud(ctx, w, h, progress = {}) {
   if (progress.relics && progress.relics.length > 0) {
     const icSize = 30;
     const gap = 4;
-    const y0 = h - icSize - 18;
-    // Frame backdrop
-    const frameW = progress.relics.length * (icSize + gap) + 8;
+    // Wrap into rows to keep the strip from overflowing the canvas at
+    // endgame relic counts (a 30-relic build was running off the right
+    // edge into the FUSIONS row). PER_ROW chosen so 16 icons + gaps +
+    // frame padding stay well clear of the boss HP bar at right.
+    // Layout direction: index 0 top-left, index N bottom-right — older
+    // relics stack upward, newest pickup always at the same baseline
+    // the player's eye returns to.
+    const PER_ROW = 16;
+    const totalRows = Math.max(1, Math.ceil(progress.relics.length / PER_ROW));
+    const rowH = icSize + 4;
+    const yBase = h - icSize - 18;                       // baseline (bottom-most row)
+    const yTop = yBase - (totalRows - 1) * rowH;         // top-most row
+    const itemsInTopRow = progress.relics.length - (totalRows - 1) * PER_ROW;
+    const widestRow = totalRows > 1 ? PER_ROW : itemsInTopRow;
+    const frameW = widestRow * (icSize + gap) + 8;
     ctx.fillStyle = 'rgba(14, 8, 16, 0.7)';
-    ctx.fillRect(12, y0 - 4, frameW, icSize + 8);
+    ctx.fillRect(12, yTop - 4, frameW, totalRows * rowH + 4);
     ctx.strokeStyle = 'rgba(201, 168, 106, 0.35)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(12.5, y0 - 3.5, frameW - 1, icSize + 7);
+    ctx.strokeRect(12.5, yTop - 3.5, frameW - 1, totalRows * rowH + 3);
     const now = performance.now() / 1000;
     for (let i = 0; i < progress.relics.length; i++) {
       const r = progress.relics[i];
-      const x = 16 + i * (icSize + gap);
+      const row = Math.floor(i / PER_ROW);
+      const col = i - row * PER_ROW;
+      const x = 16 + col * (icSize + gap);
+      const y0 = yTop + row * rowH;
       // Rarity glow — pulsing halo for rare/legendary/mythic relics
       if (r.tier === 'mythic' || r.tier === 'legendary' || r.tier === 'rare') {
         const pulseRate = r.tier === 'mythic' ? 3.5 : r.tier === 'legendary' ? 2.8 : 1.9;
