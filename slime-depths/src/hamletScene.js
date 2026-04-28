@@ -44,7 +44,7 @@ export const HAMLET_HERO_SPAWN = { x: 688, y: 700 };
 //   camp dirt       (944, 452)   E rough dirt+bedroll+fire-ring
 //   portal pad      (964, 654)   SE grass clearing w/ ritual ring
 //   graveyard       (569, 211)   NW grass+markers cluster
-const PORTAL_POS   = { x: 963, y: 654 };   // SE portal pad (v4)
+const PORTAL_POS   = { x: 963, y: 634 };   // SE portal pad (v4) — bumped up 20px to seat the new cellar archway sprite
 const SHRINE_POS   = { x: 687, y: 201 };   // N shrine slab (v4)
 const FIREPIT_POS  = { x: 435, y: 450 };   // W reading-nook brazier — beside the archivist on his dirt patch (v4 cleanup)
 
@@ -379,11 +379,20 @@ const HAMLET_FX = [
     // painted pit is always fully covered. The lost theatrics weren't
     // worth the visual artifact. Pulse rhythm is constant regardless
     // of hero distance — clean and predictable.
+    // Position + scale tuned to the new cellar-archway sprite:
+    //   y: 634 (up 20 from 654) — the previous y was tuned for the flat
+    //   ritual ring whose visual mass sat at its center; the new sprite's
+    //   visual mass is lower (the archway base + flagstones), so seating
+    //   the sprite slightly higher centers the perceived prop on the pad.
+    //   scale: 0.744 (was 0.93) — reduced 20% per producer review;
+    //   the ring sprite was scaled to ~104px to match the painted pad
+    //   diameter, but the new archway reads heavier and only needs ~83px
+    //   to feel grounded without dominating the SE corner of the plaza.
     id: 'portal', asset: 'fx_portal',
-    x: 963, y: 654,
+    x: 963, y: 634,
     frameW: 112, frameH: 112,
     frameCount: 4, fps: 2,
-    scale: 0.93, yOffset: 0,
+    scale: 0.744, yOffset: 0,
     holdSeconds: 10,
   },
   {
