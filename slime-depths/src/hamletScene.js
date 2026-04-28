@@ -388,10 +388,15 @@ const HAMLET_FX = [
     //   the ring sprite was scaled to ~104px to match the painted pad
     //   diameter, but the new archway reads heavier and only needs ~83px
     //   to feel grounded without dominating the SE corner of the plaza.
+    //   frameCount: 1 — switched from south-rotation 4-frame open/close
+    //   animation to the north rotation, which only ships as a single
+    //   static frame in the asset bundle. Door is permanently closed
+    //   visually; ambient blue halo (drawPortal) carries the
+    //   "something happens here" cue instead.
     id: 'portal', asset: 'fx_portal',
     x: 963, y: 634,
     frameW: 112, frameH: 112,
-    frameCount: 4, fps: 2,
+    frameCount: 1, fps: 1,
     scale: 0.744, yOffset: 0,
     holdSeconds: 10,
   },
