@@ -2695,18 +2695,26 @@ document.querySelectorAll('#achEl .chronTab, .chronTab').forEach(btn => {
 // `seen` gold-glows + shows full text. Optional `thumb` (data URL) shows the
 // composed icon/sprite at top-left with a tint-colored halo. `silhouette:true`
 // darkens the thumbnail for "undiscovered" visual cue.
-function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette }) {
+function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette, tooltip }) {
   const card = document.createElement('div');
   const border = locked ? 'rgba(80,60,40,0.3)' : (accentColor ? accentColor + '88' : 'rgba(201,168,106,0.55)');
   const glow = locked ? '' : `, 0 0 14px ${accentColor ? accentColor + '33' : 'rgba(201,168,106,0.12)'}`;
+  // Tightened from 12/14 padding + 52px thumb + 14/11 fonts to 7/9 padding +
+  // 40px thumb + 12/10 fonts so the chronicles grid fits more cards per
+  // viewport. With 5 cols of 180-px cards × 6 rows, all 28 fusions/relics
+  // become visible without scrolling instead of 4 cols × 7 rows + scroll.
   card.style.cssText = `
     background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.88));
-    padding:12px 14px;
-    display:flex;${thumb ? 'flex-direction:row;align-items:flex-start;gap:12px;' : 'flex-direction:column;gap:5px;'}
+    padding:7px 9px;
+    display:flex;${thumb ? 'flex-direction:row;align-items:flex-start;gap:8px;' : 'flex-direction:column;gap:3px;'}
     font-family:Georgia,serif;
     box-shadow:inset 0 0 0 1px ${border}, inset 0 0 12px rgba(0,0,0,0.5)${glow};
     ${locked ? 'opacity:0.55;' : ''}
   `;
+  // Optional native tooltip — used by undiscovered fusions/relics so the
+  // recipe / hint text moves OUT of the card body and into a hover popup.
+  // Keeps the card visually compact while preserving the lookup info.
+  if (tooltip) card.title = tooltip;
   const titleColor = locked ? '#7a7060' : (accentColor || '#f4d9a0');
   const titleShadow = locked ? 'none' : `0 0 6px ${accentColor ? accentColor + '55' : 'rgba(244,217,160,0.3)'}`;
   const bodyColor = locked ? 'rgba(140,130,110,0.7)' : 'rgba(200,190,170,0.85)';
@@ -2716,14 +2724,14 @@ function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette }
     : `radial-gradient(circle,${accentColor || '#c9a86a'}33,transparent 70%)`;
   const thumbFilter = silhouette ? 'brightness(0) contrast(0.4)' : 'none';
   const thumbHtml = thumb ? `
-    <div style="flex-shrink:0;width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
-      <img src="${thumb}" style="width:48px;height:48px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
+    <div style="flex-shrink:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
+      <img src="${thumb}" style="width:36px;height:36px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
     </div>
   ` : '';
   const textBlock = `
-    <div style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0;">
-      <div style="font-size:14px;font-weight:bold;color:${titleColor};letter-spacing:1px;text-shadow:${titleShadow};">${icon || ''}${title}</div>
-      ${body ? `<div style="font-size:11px;color:${bodyColor};line-height:1.35;font-style:italic;">${body}</div>` : ''}
+    <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;">
+      <div style="font-size:12px;font-weight:bold;color:${titleColor};letter-spacing:0.8px;text-shadow:${titleShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${icon || ''}${title}</div>
+      ${body ? `<div style="font-size:10px;color:${bodyColor};line-height:1.3;font-style:italic;">${body}</div>` : ''}
     </div>
   `;
   card.innerHTML = thumbHtml + textBlock;
@@ -2773,7 +2781,11 @@ function renderChroniclesTab() {
       const seen = isBoss ? bossKilled.has(id) : seenEnemyTypes.has(id);
       if (seen) seenN++;
       const name = seen ? (def.displayName || id.toUpperCase()) : '???';
-      const body = seen ? (def.flavor || '') : 'undiscovered \u2014 meet this adversary in the ruin to learn its nature';
+      // Locked: NO body, hint moves to hover tooltip \u2014 same compression
+      // pass as relics + fusions tabs. "???" title + silhouetted thumb
+      // already convey "undiscovered" without consuming card height.
+      const body = seen ? (def.flavor || '') : '';
+      const tooltipE = seen ? null : 'undiscovered \u2014 meet this adversary in the ruin to learn its nature';
       let thumb = null;
       if (isBoss && portraitUrl) {
         // Boss: use the hand-drawn portrait directly (already a PNG)
@@ -2792,6 +2804,7 @@ function renderChroniclesTab() {
         icon: '',
         thumb,
         silhouette: !seen,
+        tooltip: tooltipE,
       }));
     }
     progress.textContent = `${seenN} of ${typeIds.length} adversaries catalogued`;
@@ -2807,7 +2820,10 @@ function renderChroniclesTab() {
       const name = seen ? def.name : '???';
       const body = seen
         ? (def.flavor ? `<div style="font-style:italic;margin-bottom:3px;">${def.flavor}</div><div style="color:${def.tint || '#c9a86a'};font-weight:bold;font-style:normal;">${def.desc}</div>` : def.desc)
-        : 'undiscovered \u2014 a relic you have yet to claim';
+        : '';
+      // Locked-state hint moved to hover tooltip \u2014 kept the prompt info
+      // but stopped the verbose "undiscovered..." line bloating cards.
+      const tooltipR = seen ? null : 'undiscovered \u2014 a relic you have yet to claim';
       // Dedicated per-relic art — bypass glyph/hue overlay (pass null,null).
       const baseImg = imageCache[def.icon];
       const thumb = baseImg ? composeRelicThumbDataURL(baseImg, null, null, id, 48) : null;
@@ -2819,6 +2835,7 @@ function renderChroniclesTab() {
         icon: '',
         thumb,
         silhouette: !seen,
+        tooltip: tooltipR,
       }));
     }
     progress.textContent = `${seenN} of ${ALL_RELIC_IDS.length} relics recovered`;
@@ -2836,9 +2853,15 @@ function renderChroniclesTab() {
         return d ? d.name : cid;
       }).join(' + ');
       const name = seen ? f.name : '???';
+      // Discovered: rich body (flavor + effect + recipe). Locked: NO
+      // body \u2014 the verbose "undiscovered \u2014 combine X + Y to form this
+      // fusion" used 3-4 lines per card and bloated the grid. The
+      // recipe moves to a hover tooltip; the title "???" + silhouetted
+      // thumb already say "undiscovered" without the prose.
       const body = seen
         ? `<div style="font-style:italic;margin-bottom:3px;color:rgba(200,190,170,0.75);">${f.flavor || ''}</div><div style="font-style:normal;color:${f.tint || '#c9a86a'};font-weight:bold;margin-bottom:3px;">${f.desc}</div><div style="font-style:normal;color:rgba(160,148,130,0.7);font-size:10px;letter-spacing:1px;">${compNames}</div>`
-        : `undiscovered \u2014 combine ${compNames} to form this fusion`;
+        : '';
+      const tooltipF = seen ? null : `combine ${compNames}`;
       // Fusion thumb — the fusion now has its own dedicated icon (Nano Banana
       // hand-drawn). Fall back to component-composed icon only if the PNG
       // didn't load for some reason.
@@ -2859,6 +2882,7 @@ function renderChroniclesTab() {
         icon: '',
         thumb,
         silhouette: !seen,
+        tooltip: tooltipF,
       }));
     }
     progress.textContent = `${seenN} of ${ids.length} fusions discovered`;
