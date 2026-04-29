@@ -29,6 +29,11 @@ export interface Settings {
   // charge). 'short' lowers the threshold to 0.15s so players with
   // limited grip strength can still trigger charged attacks.
   chargeMode: 'hold' | 'short';
+  // Mobile control overlay — 'auto' (default) detects via matchMedia
+  // pointer:coarse + hover:none; 'on' forces virtual controls (touchscreen
+  // laptop owners who want them); 'off' forces WASD/mouse (tablet users
+  // with a keyboard who don't want the overlay).
+  mobileControls: 'auto' | 'on' | 'off';
 }
 
 const KEY = 'ethera:settings:v1';
@@ -41,6 +46,7 @@ export const settings: Settings = {
   reduceFlashes: false,
   colorBlindMode: false,
   chargeMode: 'hold',
+  mobileControls: 'auto',
 };
 
 function _isSettingsShape(v: unknown): boolean {
@@ -57,6 +63,9 @@ export function loadSettings(): void {
     if (typeof parsed.reduceFlashes === 'boolean') settings.reduceFlashes = parsed.reduceFlashes;
     if (typeof parsed.colorBlindMode === 'boolean') settings.colorBlindMode = parsed.colorBlindMode;
     if (parsed.chargeMode === 'short') settings.chargeMode = 'short';
+    if (parsed.mobileControls === 'on' || parsed.mobileControls === 'off') {
+      settings.mobileControls = parsed.mobileControls;
+    }
   }
   applySettings();
 }
@@ -77,6 +86,11 @@ export function setColorBlindMode(v: boolean): void {
 }
 export function setChargeMode(v: 'hold' | 'short'): void {
   settings.chargeMode = v === 'short' ? 'short' : 'hold';
+  saveSettings();
+}
+
+export function setMobileControls(v: 'auto' | 'on' | 'off'): void {
+  settings.mobileControls = v === 'on' ? 'on' : v === 'off' ? 'off' : 'auto';
   saveSettings();
 }
 

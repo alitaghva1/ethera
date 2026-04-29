@@ -615,6 +615,19 @@
     .bossIntroOrnament::after { width: 100px; }
     .bossIntroOrnament { gap: 50px; }
   }
+
+  /* Mobile virtual control overlay (joystick + action buttons). Hidden
+     by default; revealed only when src/mobileMode.js sets
+     body.mobile-controls based on detection (matchMedia pointer:coarse +
+     hover:none) or the settings.mobileControls override.
+
+     The actual control DOM doesn't exist yet — this rule is the hook
+     for the upcoming virtual-controls implementation. Keeping the
+     selector live now so the detection layer can be tested with a
+     temporary debug element (e.g. via __forceMobileMode()) before the
+     real controls UI lands. */
+  #mobileControls { display: none; }
+  body.mobile-controls #mobileControls { display: block; }
 </style>
 </head>
 <body>

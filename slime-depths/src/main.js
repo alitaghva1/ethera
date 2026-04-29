@@ -59,6 +59,7 @@ import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, total
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
+import { applyMobileMode, installFirstTouchFallback } from './mobileMode.js';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
 import { loadTips, showTip, updateTips, drawTip, TIPS } from './tips.js';
 import { updateNotifications, drawNotifications, clearNotifications, getNotificationStackBottom, pushNotification } from './notifications.js';
@@ -7742,6 +7743,11 @@ async function boot() {
   loadAchievements();
   loadRecords();
   loadSettings();
+  // Mobile-mode detection — toggles `body.mobile-controls` based on the
+  // device + the user's settings.mobileControls preference. Must run
+  // AFTER loadSettings so the setting's value is in effect.
+  applyMobileMode();
+  installFirstTouchFallback();
   loadDaily();
   loadTips();
   loadFirstSeen();
@@ -7831,6 +7837,29 @@ if (import.meta.env.DEV) {
       pushNotification({ kind: 'tip', body: 'Third tip — still waiting.' });
       pushNotification({ kind: 'tip', body: 'Fourth tip — last in line.' });
       return { ok: true, queued: 4 };
+    },
+
+    // Inspect / force mobile mode without a real phone — useful for
+    // testing the virtual-control overlay on desktop. Reads the three
+    // detection layers + the resolved state. Pass 'on' / 'off' / 'auto'
+    // to override settings.mobileControls and re-apply.
+    //   __mobileMode()           -> { coarse, noHover, override, resolved }
+    //   __mobileMode('on')       -> forces virtual controls visible
+    //   __mobileMode('auto')     -> back to auto-detect
+    mobileMode: (override) => {
+      if (override === 'on' || override === 'off' || override === 'auto') {
+        settings.mobileControls = override;
+        applyMobileMode();
+      }
+      const coarse = window.matchMedia('(pointer: coarse)').matches;
+      const noHover = window.matchMedia('(hover: none)').matches;
+      return {
+        coarse,
+        noHover,
+        autoDetect: coarse && noHover,
+        override: settings.mobileControls,
+        resolved: document.body.classList.contains('mobile-controls'),
+      };
     },
 
     // Synchronously advance the transition state machine to a target room.
