@@ -38,8 +38,32 @@ const RAIL_X_MARGIN = 16;          // distance from right edge of canvas
 const RAIL_Y_TOP = 120;            // first slot y (below floor panel which is y=14..104)
 const RAIL_GAP = 10;               // vertical gap between stacked entries
 const ENTRY_W = 360;               // standard entry width
-const MAX_VISIBLE = 4;              // hard cap on live entries
-const MAX_BACKLOG = 8;             // how many we'll buffer before dropping
+const MAX_VISIBLE = 4;              // hard cap on live entries (any kind)
+const MAX_BACKLOG = 12;            // how many we'll buffer before dropping
+
+// Per-kind concurrency cap. Tips are tutorial content and feel like a
+// "tutorial dump" if four fire at once on the first combat encounter.
+// Limiting tips to 1 visible at a time forces them to play in series:
+// one slides in, dwells, fades, then the next one promotes (with a small
+// gap, see KIND_MIN_GAP). Pickups DON'T throttle — a player smashing a
+// trove room or grabbing back-to-back altars wants to see every banner.
+const KIND_CONCURRENCY = {
+  tip: 1,
+  pickup: 4,
+  fusion: 2,
+  codex: 2,
+  theme: 1,
+  watcher: 1,
+  achievement: 4,
+};
+
+// Minimum delay (seconds) between consecutive entries of the same kind
+// finishing and the next one promoting from backlog. Tips read more like
+// considered teaching moments than a queue when there's a beat between
+// each. Other kinds default to 0 (back-to-back is fine).
+const KIND_MIN_GAP = {
+  tip: 0.8,
+};
 
 // Per-kind defaults — kind name -> { life, tint, header }. Callers can
 // override any field per-notification. `header` is the small italic-cap
@@ -68,6 +92,28 @@ const _backlog = [];    // waiting queue
 
 // Frame-stable counter; used to break id collisions on rapid bursts.
 let _idSeq = 0;
+
+// Wall-clock seconds when the most recent entry of each kind FINISHED
+// (was removed from _active). Used by KIND_MIN_GAP to delay the next
+// same-kind promotion. 0 means "no gap pending."
+const _lastEndByKind = Object.create(null);
+
+// Returns true if a notification of `kind` can be promoted into _active
+// right now. Must satisfy both the global slot cap AND the per-kind
+// concurrency cap AND the per-kind min-gap since last fade.
+function _canActivate(kind) {
+  if (_active.length >= MAX_VISIBLE) return false;
+  const cap = KIND_CONCURRENCY[kind] ?? MAX_VISIBLE;
+  let count = 0;
+  for (const n of _active) if (n.kind === kind) count++;
+  if (count >= cap) return false;
+  const minGap = KIND_MIN_GAP[kind] || 0;
+  if (minGap > 0 && _lastEndByKind[kind]) {
+    const now = performance.now() / 1000;
+    if (now - _lastEndByKind[kind] < minGap) return false;
+  }
+  return true;
+}
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -108,8 +154,10 @@ export function pushNotification(opts = {}) {
     // Slot index assigned at promote time; drives stack-y position.
     slot: -1,
   };
-  // Promote immediately if there's room.
-  if (_active.length < MAX_VISIBLE) {
+  // Promote immediately ONLY if the kind's concurrency rules allow it.
+  // Otherwise the entry queues in backlog and gets promoted by the next
+  // updateNotifications tick that finds a free slot.
+  if (_canActivate(note.kind)) {
     _promote(note);
   } else if (_backlog.length < MAX_BACKLOG) {
     _backlog.push(note);
@@ -126,18 +174,36 @@ export function updateNotifications(realDt) {
   // Notifications queue but neither advance their lifespan nor render.
   if (typeof window !== 'undefined' && window.__centerBannerActive) return;
   // Tick lifespans.
+  const nowSec = performance.now() / 1000;
   for (let i = _active.length - 1; i >= 0; i--) {
     const n = _active[i];
     n.age += realDt;
     if (n.age >= n.totalLife) {
+      // Stamp the kind's "last end" timestamp so KIND_MIN_GAP can delay
+      // the next same-kind promotion. Only matters for kinds that
+      // declare a min-gap (tips, today).
+      _lastEndByKind[n.kind] = nowSec;
       _active.splice(i, 1);
     }
   }
   // Re-pack slot indices so stacking stays stable after a middle entry drops.
   for (let i = 0; i < _active.length; i++) _active[i].slot = i;
-  // Promote backlog entries into freed slots.
-  while (_active.length < MAX_VISIBLE && _backlog.length > 0) {
-    _promote(_backlog.shift());
+  // Promote backlog entries into freed slots — but ONLY ones whose kind
+  // satisfies the concurrency + min-gap rules. Walk the backlog in order
+  // and promote the first promotable one, repeating until either we've
+  // filled all slots or no remaining backlog entry can promote yet.
+  // (The latter is what creates the staggered cadence — a deferred tip
+  // sits in backlog until its previous-tip's gap timer expires.)
+  let promoted = true;
+  while (promoted && _active.length < MAX_VISIBLE && _backlog.length > 0) {
+    promoted = false;
+    for (let i = 0; i < _backlog.length; i++) {
+      if (_canActivate(_backlog[i].kind)) {
+        _promote(_backlog.splice(i, 1)[0]);
+        promoted = true;
+        break;
+      }
+    }
   }
 }
 
@@ -150,6 +216,10 @@ export function drawNotifications(ctx, w, h) {
 export function clearNotifications() {
   _active.length = 0;
   _backlog.length = 0;
+  // Wipe the per-kind "last end" stamps so the next same-kind notification
+  // after the reset isn't artificially delayed by a gap timer left over
+  // from the previous run.
+  for (const k of Object.keys(_lastEndByKind)) delete _lastEndByKind[k];
 }
 
 // Convenience helpers for callers that don't want to remember the kind set.

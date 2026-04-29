@@ -7822,6 +7822,17 @@ if (import.meta.env.DEV) {
       return { ok: true, kind, tier };
     },
 
+    // Fire 4 tips at once — verifies the staggering behavior. Tips have
+    // concurrency cap 1 + 0.8s gap, so they should play one-at-a-time
+    // in order. The tutorial-dump scenario the player flagged.
+    testTipBurst: () => {
+      pushNotification({ kind: 'tip', body: 'First tip — should appear immediately.' });
+      pushNotification({ kind: 'tip', body: 'Second tip — should wait its turn.' });
+      pushNotification({ kind: 'tip', body: 'Third tip — still waiting.' });
+      pushNotification({ kind: 'tip', body: 'Fourth tip — last in line.' });
+      return { ok: true, queued: 4 };
+    },
+
     // Synchronously advance the transition state machine to a target room.
     // Fast-forwards through fade-out → loadRoom → fade-in.
     forceGoto: (targetIdx) => {
