@@ -90,7 +90,7 @@ import {
 } from './hamletScene.js';
 import { initMusic, playTrack, stopMusic, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL, spawnDamageNumber } from './fx.js';
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL, spawnDamageNumber, updateSoulTethers, drawSoulTethers, clearSoulTethers } from './fx.js';
 import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
@@ -3876,6 +3876,7 @@ function loadRoom(idx, entryFrom) {
   clearProjectiles();
   clearPedestals();
   clearFx();
+  clearSoulTethers();
   clearFlames();
   clearSynergies();
   clearWanderer();
@@ -5415,6 +5416,7 @@ function tick(now) {
   // Perfect-dodge time dilation runs on real time so it unwinds predictably.
   updatePerfectDodge(realDt);
   updateScreenFlash(realDt);
+  updateSoulTethers(realDt);
   updateTips(realDt);                  // no-op shim; real tip lifecycle is in notifications.js
   updateNotifications(realDt);         // unified top-right rail (tips, pickups, etc.)
   // Death ceremony slow-mo ramp (0.25x for first 1.2s, then ramps back)
@@ -6600,6 +6602,10 @@ function render() {
   drawHeroShield(ctx);
   drawGold(ctx);
   drawSlashes(ctx);
+  // Soul tethers — Iron Revenant's life-drain VFX (and any future
+  // hero↔enemy line). World-space, drawn after enemies/hero but before
+  // particles so death-bursts can still pop on top.
+  drawSoulTethers(ctx);
   drawParticles(ctx);
   drawDust(ctx);
   // Biome weather — ice motes, ash, embers. Drawn on top of gameplay so the

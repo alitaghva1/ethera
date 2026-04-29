@@ -1,6 +1,64 @@
 // Combat-feel FX — damage numbers, sword slashes, and a global hit-stop timer.
 // All pooled / freelisted; runs beside the particle system in main.js.
 
+// ─── SOUL TETHER ─────────────────────────────────────────────────────────────
+// Curved colored line from one world point to another, fading over a short
+// life. Used by Iron Revenant's life-drain to visualize "your HP is being
+// pulled into the boss." Generic enough that any future boss/relic can
+// emit one — it's just a transient curved line + glow.
+const _tethers = [];
+
+/**
+ * @param {number} fromX  source world coord
+ * @param {number} fromY
+ * @param {number} toX    target world coord
+ * @param {number} toY
+ * @param {object} [opts] { color, life }
+ */
+export function spawnSoulTether(fromX, fromY, toX, toY, opts = {}) {
+  _tethers.push({
+    fromX, fromY, toX, toY,
+    color: opts.color || 'rgba(220, 60, 80, 1)',
+    life: opts.life || 0.55,
+    totalLife: opts.life || 0.55,
+  });
+}
+
+export function updateSoulTethers(dt) {
+  for (let i = _tethers.length - 1; i >= 0; i--) {
+    _tethers[i].life -= dt;
+    if (_tethers[i].life <= 0) _tethers.splice(i, 1);
+  }
+}
+
+// Drawn in WORLD space (inside camera transform), AFTER enemies + hero so
+// the line sits visually on top.
+export function drawSoulTethers(ctx) {
+  if (_tethers.length === 0) return;
+  ctx.save();
+  for (const t of _tethers) {
+    const a = t.life / t.totalLife;
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = t.color;
+    ctx.lineWidth = 3 * a + 1;
+    ctx.shadowColor = t.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    // Slight upward curve for an organic "soul being pulled" feel.
+    const mx = (t.fromX + t.toX) / 2;
+    const my = (t.fromY + t.toY) / 2 - 14;
+    ctx.moveTo(t.fromX, t.fromY);
+    ctx.quadraticCurveTo(mx, my, t.toX, t.toY);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+export function clearSoulTethers() {
+  _tethers.length = 0;
+}
+
 // ============================================================================
 // RELIC ICON RENDERING — draw a relic's base sprite with a hue-shift tint +
 // small distinguishing glyph overlaid on top. Makes 34 relics visually

@@ -11,7 +11,7 @@ import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
 import { stats } from './stats';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
-import { triggerScreenFlash } from './fx.js';
+import { triggerScreenFlash, spawnSoulTether, spawnDamageNumber } from './fx.js';
 import { markSoulFired } from './counterPips.js';
 
 // ============================================================================
@@ -303,6 +303,26 @@ export const TYPES = {
     displayName: 'THE IRON REVENANT',
     flavor: 'a king who refused to stay buried',
     bossTrack: 'boss',
+    // LIFE-DRAIN — every successful hit on the hero heals the boss for
+    // 4 HP (8 on enrage) and spawns a red soul-tether VFX from hero to
+    // boss. The flavor + boss-clear loot pool ("life-drain: bloodstone,
+    // reaver, bloodrite") promise this mechanic; this is its actual
+    // implementation. Without it the floor-2 boss had zero mechanical
+    // identity vs a generic captain.
+    onHitHero: (e) => {
+      const heal = e._enraged ? 8 : 4;
+      e.hp = Math.min(e.maxHp, e.hp + heal);
+      try { spawnSoulTether(hero.x, hero.y - 8, e.x, e.y - 12, {
+        color: 'rgba(220, 60, 80, 0.9)',
+        life: 0.55,
+      }); } catch (_) {}
+      // Floating green heal number above the boss so the player SEES
+      // the cost of getting hit. Scales with enrage.
+      try { spawnDamageNumber(e.x, e.y - 28, heal, {
+        text: '+' + heal,
+        color: '#86e3a8',
+      }); } catch (_) {}
+    },
   },
   // ---- Floor 3 boss: Broodmother — werebear with enrage + spawning bombers ----
   broodmother: {
@@ -683,6 +703,17 @@ export const TYPES = {
     displayName: 'WARCHIEF GRUDNOK',
     flavor: 'chieftain of the iron-bone clans',
     bossTrack: 'boss',
+    // PHASE 2 — boss audit P1. Grudnok had no enrageAt at all so the
+    // existing phase-intro audio sting + iframe scaffolding never fired
+    // for the floor-1 boss. He was a pure stat-stick. Now: at 45% HP,
+    // enrage triggers a "warchief roar" — heavyChance jumps from 0.32
+    // to 0.65 so the slow heavy-cleave windup dominates phase 2, and
+    // basic stat multipliers go up too. The roar effect (extra heavy
+    // bias + 4 summoned orcs on FIRST enrage) lives in the enrage
+    // hook in updateEnemies.
+    enrageAt: 0.45, enrageSpeedMul: 1.25, enrageDamageMul: 1.20,
+    enrageHeavyChance: 0.65,
+    enrageSummonOrcs: 4,
   },
 
   // ---- KNIGHT_TEMPLAR — F4 holy armored elite. Pairs with priest
@@ -1352,6 +1383,12 @@ function updateMelee(e, dt) {
           if (wasHit !== 'absorbed' && e.affix && e.affix.onHitHero) {
             e.affix.onHitHero(e);
           }
+          // Boss-def onHitHero — Iron Revenant uses this to heal himself
+          // (life-drain mechanic). Defined per-def so any future boss can
+          // hook in without changes here.
+          if (wasHit !== 'absorbed' && e.def && e.def.onHitHero) {
+            e.def.onHitHero(e);
+          }
         }
       }
     }
@@ -1369,7 +1406,14 @@ function updateMelee(e, dt) {
   const dashRange  = e.def.dashEvery ? 380 : swingRange;
   if (dist < swingRange && e.attackCD <= 0) {
     if (e.forceHeavy && e.def.heavyReach) e._heavy = true;
-    else e._heavy = e.def.heavyChance ? Math.random() < e.def.heavyChance : false;
+    else {
+      // Enraged Grudnok biases hard toward heavy swings — visible
+      // rhythm change in phase 2 instead of just stat multipliers.
+      const heavyChance = (e._enraged && e.def.enrageHeavyChance)
+        ? e.def.enrageHeavyChance
+        : e.def.heavyChance;
+      e._heavy = heavyChance ? Math.random() < heavyChance : false;
+    }
     const prof = currentAttackProfile(e);
     e.attackCD = e.def.hitCD + prof.windup + prof.swing;
     e.aimX = nx; e.aimY = ny;
@@ -1808,6 +1852,22 @@ export function updateEnemies(dt, _hero) {
           const fy = e.y + Math.sin(ang) * ringR * 0.6;   // slight isometric squash
           spawnExtraFirePool(fx, fy, k * 0.4);
         }
+      }
+      // GRUDNOK — "warchief roar" on enrage: heavyChance jumps from base
+      // (read directly off the def at attack-roll time, see currentAttackProfile)
+      // and 4 orcs spawn around him as reinforcements. The heavy-bias
+      // shifts him from "swing-swing-swing" to "wind up the cleave" in
+      // phase 2 — visibly different rhythm without inventing a new move.
+      if (e.type === 'elite_orc' && e.def.enrageSummonOrcs) {
+        const ringR = 100;
+        for (let k = 0; k < e.def.enrageSummonOrcs; k++) {
+          const ang = (k / e.def.enrageSummonOrcs) * Math.PI * 2;
+          const sx = e.x + Math.cos(ang) * ringR;
+          const sy = e.y + Math.sin(ang) * ringR * 0.6;
+          spawnEnemy('orc', sx, sy);
+        }
+        // Roar audio — deeper than the standard hit sound, layered for weight.
+        playSfx('hero_hurt', { rate: 0.25, volume: 1.0 });
       }
     }
     // Animate the enrage shockwave decay
