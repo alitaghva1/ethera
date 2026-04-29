@@ -7314,13 +7314,13 @@ function render() {
     const tint = E.color || '#c0b090';
     ctx.save();
     ctx.globalAlpha = a;
-    // Soft outer glow — parchment feel
-    const glow = ctx.createRadialGradient(bx + boxW / 2, by + boxH / 2, boxW * 0.2,
-                                           bx + boxW / 2, by + boxH / 2, boxW * 0.75);
-    glow.addColorStop(0, 'rgba(201, 168, 106, 0.14)');
-    glow.addColorStop(1, 'rgba(201, 168, 106, 0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(bx - 40, by - 24, boxW + 80, boxH + 48);
+    // Outer gold halo REMOVED — the previous radial-gradient-in-fillRect
+    // approach created a rectangular ghost outline around the box: the
+    // radial alpha was still non-zero at the rect edges, so the soft
+    // gradient terminated at hard rectangular boundaries (the
+    // "ghost block" the player flagged), then bloom amplified the
+    // contrast. The gold parchment border + corner diamonds carry the
+    // tome aesthetic without needing an outer glow.
     // Tome-style vertical gradient body
     const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
     bg.addColorStop(0, 'rgba(28, 18, 26, 0.93)');
