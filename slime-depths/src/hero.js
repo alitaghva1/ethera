@@ -189,6 +189,8 @@ export const hero = {
   regenCD: 0,                  // timer for next regen tick
   knockbackMul: 1,             // Heavy Blow: ×2.5
   dodgeDistMul: 1,             // Dash Master: ×1.35
+  galeStep: false,             // Gale Step (Round-6 retune): post-dodge speed burst
+  galeBurstTime: 0,            // remaining seconds on the post-dodge burst (0 = inactive)
   executeThreshold: 0,         // Executioner: 0.4
   executeMul: 1.5,             // damage multiplier below threshold
 };
@@ -225,6 +227,8 @@ export function resetHero() {
   hero.regenCD = 0;
   hero.knockbackMul = 1;
   hero.dodgeDistMul = 1;
+  hero.galeStep = false;
+  hero.galeBurstTime = 0;
   hero.executeThreshold = 0;
   hero.executeMul = 1.5;
   // Reset synergy flags
@@ -405,6 +409,7 @@ export function updateHero(dt, enemies, mouseWorld) {
   if (hero.dodgeCooldown > 0) hero.dodgeCooldown -= dt;
   if (hero.dashStrikeCD > 0) hero.dashStrikeCD -= dt;
   if (hero.iframes > 0) hero.iframes -= dt;
+  if (hero.galeBurstTime > 0) hero.galeBurstTime -= dt;
   // Age afterimages (teleport ghost trail) — fade out over AFTERIMAGE_LIFE.
   // Runs every frame so post-dash images keep fading even after
   // dashStrikeTime hits 0 (otherwise the trail would freeze on screen
@@ -1030,7 +1035,11 @@ export function updateHero(dt, enemies, mouseWorld) {
         // 'attack' (sprite still faces the locked attack direction); only
         // velocity is reduced.
         const attackSlowMul = hero.state === 'attack' ? 0.35 : 1;
-        const spd = HERO_SPEED * hero.speedMul * slowMul * attackSlowMul;
+        // GALE STEP — Round-6 retune. While galeBurstTime > 0, hero
+        // moves at +30% speed. Set on dodge end (DODGE_DUR boundary
+        // above), ticked down further down in the per-frame block.
+        const galeMul = hero.galeBurstTime > 0 ? 1.30 : 1;
+        const spd = HERO_SPEED * hero.speedMul * slowMul * attackSlowMul * galeMul;
         moveAxis('x', dx * spd * dt);
         moveAxis('y', dy * spd * dt);
         // Don't downgrade state to 'walk' if we're mid-attack — body
@@ -1167,6 +1176,12 @@ export function updateHero(dt, enemies, mouseWorld) {
                         : biome === 'inferno' ? '#6a3020'
                         : '#9a8a6a';
         landingBurst(hero.x, hero.y + 12, hero.dodgeDirX, hero.dodgeDirY, dustColor);
+        // GALE STEP — Round-6 retune. On dodge end, kick a 0.4s speed
+        // burst so chained dodges read as flow rather than discrete
+        // teleports. Pure tempo mechanic; sits beside nimble_step's
+        // cleanse and dash_master's cooldown refund. galeBurstTime is
+        // ticked + consumed in the movement section below.
+        if (hero.galeStep) hero.galeBurstTime = 0.4;
         setState('idle');
       }
     }
@@ -1380,7 +1395,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
           if (isCounter) finalDmg *= (hero.counterstrike ? 2.0 : 1.5);
           // BLOODRITE — +15% damage while below 50% HP
-          if (hero.bloodrite && hero.hp < hero.maxHp * 0.5) finalDmg *= 1.15;
+          if (hero.bloodrite && hero.hp < hero.maxHp * 0.5) finalDmg *= 1.25;
           // MARROW PACT — +40% damage at or below 50% HP. Stacks with Bloodrite.
           if (hero.marrowPact && hero.hp <= hero.maxHp * 0.5) finalDmg *= (1 + hero.marrowPactBonus);
           // OATHSHIELD / WHISPER VEIL — both open a post-dodge window.
@@ -1575,17 +1590,21 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
 
           // MOUNTAIN STRIKE (hammer-only) — every 3rd hammer hit spawns
-          // a 70px shockwave at impact for 50% weapon damage. Fire the
-          // explosion via the synergies system (same path as pyromancer
-          // / soul_burst) so it integrates cleanly with affixes.
+          // a shockwave at impact. Round-6 economy retune: base radius
+          // bumped 70 → 110 (still smaller than the Avalanche-fusion
+          // 160) so the shockwave actually extends beyond the hammer's
+          // own 120-140px swing arc. Was previously a sub-arc cosmetic
+          // pulse on most hits — now meaningfully reaches enemies the
+          // swing missed. Damage stays at 50% so single-target builds
+          // don't get over-buffed.
           if (hero.mountainStrike && w.id === 'hammer' && !e.dead) {
             hero.mountainStrikeCounter = (hero.mountainStrikeCounter | 0) + 1;
             if (hero.mountainStrikeCounter % 3 === 0) {
               const shockDmg = (w.damage * (hero.damageMul || 1)) * 0.5;
-              // FUSION: Avalanche — radius doubles (70 → 140) and
+              // FUSION: Avalanche — radius doubles (110 → 160) and
               // hits inside the shockwave are marked for next-hit
               // crit (the heavy_blow knockback-crit hook).
-              const shockR = hero.fusionAvalanche ? 140 : 70;
+              const shockR = hero.fusionAvalanche ? 160 : 110;
               spawnExplosion(e.x, e.y - 6, shockR, shockDmg, 'physical');
               // Deep earth thud — short bass pulse so the shockwave
               // reads in the chest, not just the eyes. Avalanche fires

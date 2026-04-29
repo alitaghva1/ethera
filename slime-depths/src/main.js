@@ -6281,13 +6281,17 @@ function tick(now) {
     // reset. Starving curse disables it entirely.
     if (data.kind === 'reward' && onPedestalWorld(hero.x, hero.y) && hero.hp < hero.maxHp) {
       if (!isCursed('starving') && consumePedestal()) {
-        // Sanctuary heal — pacing review P1. Original formula was a
-        // flat 3 HP regardless of maxHp, which is a 100% heal at
-        // base maxHp 3 but only ~25% at endgame maxHp 12 (Vitality +
-        // Ironhide + Fortitude builds). Players reached F4 boss at
-        // 40-60% HP routinely. Now scales: max(3, floor(maxHp × 0.4)).
+        // Sanctuary heal — Round-6 economy retune.
+        //   Round-1 : flat 3 HP — 100% at maxHp=3, ~25% at maxHp=12.
+        //   Round-3 : max(3, floor(maxHp × 0.4)) — fixed F4 tank bracket
+        //             but inverted incentives (low-HP got 100% restore,
+        //             high-HP got tax-bracketed at ~40%).
+        //   Round-6 : max(3, floor(maxHp × 0.5)) — same 100% at maxHp=3,
+        //             50% across all higher pools. F4 tank with maxHp=10
+        //             now heals 5 (was 4); maxHp=12 heals 6 (was 4).
+        //             Cleaner curve, no anti-tank tax.
         // ASCENSION III — "The Half Rest": sanctuary healing halved.
-        let baseHeal = Math.max(3, Math.floor(hero.maxHp * 0.4));
+        let baseHeal = Math.max(3, Math.floor(hero.maxHp * 0.5));
         const am = window.__ascensionModifiers && window.__ascensionModifiers();
         if (am && am.sanctuaryHealMul) baseHeal = Math.max(1, Math.floor(baseHeal * am.sanctuaryHealMul));
         const healed = Math.min(baseHeal, hero.maxHp - hero.hp);

@@ -257,16 +257,22 @@ export function updateProjectiles(dt) {
           }
         }
 
-        // Splintered Light — on first hit, spawn 2 sub-bolts at ±25°
-        // from the original direction. Sub-bolts deal 70% damage and
-        // can't split again (they spawn with split=false). The bolt
+        // Splintered Light — on first hit, spawn 2 sub-bolts. Sub-bolts
+        // can't split again (spawned with _isSubBolt=true). The bolt
         // itself still resolves its hit + pierce normally.
+        //
+        // Round-6 economy retune — sub-bolts were ±25° at 70% damage,
+        // which often missed against single targets (sub-bolt fan
+        // spread wider than enemy hitboxes). Tightened the angle to
+        // ±15° AND bumped damage to 85% so single-target builds gain
+        // ~70% extra damage on first hit (was effectively 0% in 1v1).
+        // Dense rooms still get 2 splash bolts per hit.
         if (hero.boltSplit && !p._didSplit && !p._isSubBolt) {
           p._didSplit = true;
           const baseAngle = Math.atan2(p.vy, p.vx);
           const subSpeed = Math.hypot(p.vx, p.vy);
-          const subDmg = Math.max(1, Math.round(p.damage * 0.7));
-          for (const offset of [-0.44, 0.44]) {     // ±25° in radians
+          const subDmg = Math.max(1, Math.round(p.damage * 0.85));
+          for (const offset of [-0.26, 0.26]) {     // ±15° in radians
             const a = baseAngle + offset;
             const sub = spawnHeroBolt(
               hitEnemy.x, hitEnemy.y - 8,

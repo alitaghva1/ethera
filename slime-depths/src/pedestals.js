@@ -145,10 +145,25 @@ export function spawnRelicOffer(floorLevel = 1, opts = {}) {
 //   legendary → 7 HP
 //   mythic    → 9 HP (rare; mythic at altars is a near-miracle moment)
 // Curse: Starving — altar HP cost ×2 across the board.
+//
+// Round-6 economy retune — clamp the post-curse cost to floor(maxHp × 0.65)
+// so legendary altars on F2-3 stay actionable. Without this clamp, a F2
+// hero at maxHp=4 facing a 7-HP legendary altar trips the "won't suicide"
+// guard in main.js and silently skips the offer; with Starving the cost
+// doubles to 14 HP and even a maxHp=8 hero can't engage. The clamp keeps
+// at least 2 HP of cost so commons don't go free, and bottoms out at 65%
+// of maxHp so the player still feels the bite without bricking the run.
 const ALTAR_TIER_COST = { common: 2, rare: 4, legendary: 7, mythic: 9 };
 function altarCostFor(tier) {
   const base = ALTAR_TIER_COST[tier] || ALTAR_TIER_COST.common;
-  return isCursed('starving') ? base * 2 : base;
+  const cursed = isCursed('starving') ? base * 2 : base;
+  // Clamp by current maxHp so legendary altars stay reachable for thin
+  // builds. The cap floors at 2 (common-equivalent) so a 3-HP hero on
+  // floor 1 still feels the cost. 65% chosen empirically: 2-HP floor
+  // for maxHp=3, 3-HP floor for maxHp=5, 5-HP floor for maxHp=8 — keeps
+  // the relative bite consistent across HP tiers.
+  const maxByHp = Math.max(2, Math.floor((hero?.maxHp || 3) * 0.65));
+  return Math.min(cursed, maxByHp);
 }
 export function spawnAltarOffer(_legacyHpCost, floorLevel = 1) {
   pedestals.length = 0;

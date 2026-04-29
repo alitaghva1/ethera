@@ -205,11 +205,17 @@ export const RELIC_DEFS = {
   reaver: {
     id: 'reaver',
     name: 'Reaver',
-    desc: '+15% lifesteal on crit',
+    // Round-6 economy retune — was +15% lifesteal + 8% crit floor,
+    // measured at ~5.75% effective lifesteal stacked with bloodstone +
+    // keen_edge (the canonical lifesteal-on-crit pair). Audit flagged
+    // it as a strict downgrade. Bumped to 25% lifesteal + 12% crit
+    // floor so reaver actually lifts a no-keen-edge build into crit
+    // territory and outpaces bloodstone's 10% flat lifesteal.
+    desc: '+25% lifesteal on crit',
     flavor: 'The wound breathes — so do you.',
     icon: 'relic_reaver',
     tint: '#ff6a8e',
-    apply: () => { hero.lifesteal += 0.15; hero.critChance = Math.max(hero.critChance, 0.08); },
+    apply: () => { hero.lifesteal += 0.25; hero.critChance = Math.max(hero.critChance, 0.12); },
   },
   // ---------- EFFECT RELICS — synergies & spectacle ----------
   chain_lightning: {
@@ -381,7 +387,12 @@ export const RELIC_DEFS = {
   bloodrite: {
     id: 'bloodrite',
     name: 'Bloodrite',
-    desc: '+15% damage while below 50% HP',
+    // Round-6 economy retune — was +15% below 50% HP. Marrow Pact (also
+    // common) gives +40% at the same threshold, making bloodrite a
+    // strict downgrade. Bumped to +25% so bloodrite stacks meaningfully
+    // with marrow_pact (+65% combined) for a real sub-50% glass-cannon
+    // identity rather than picking marrow_pact and ignoring bloodrite.
+    desc: '+25% damage while below 50% HP',
     flavor: 'Offer your own blood. The gods of Ethera listen.',
     icon: 'relic_bloodrite',
     tint: '#d85a5a',
@@ -391,12 +402,19 @@ export const RELIC_DEFS = {
   gale_step: {
     id: 'gale_step',
     name: 'Gale Step',
-    desc: 'Dodge distance +35%',
+    // Round-6 economy retune — was a flat +35% dodge distance with no
+    // hook. nimble_step (cleanse) and dash_master (cooldown refund)
+    // both ate its niche. Bumped to +55% AND adds a brief post-dodge
+    // speed burst (+30% for 0.4s) so gale_step becomes the "tempo"
+    // dodge relic — chain dodges into runs, kite swarms, reposition
+    // mid-combat. nimble_step still owns "cleanse on dodge",
+    // dash_master still owns "shorter cooldown".
+    desc: 'Dodge distance +55%; brief speed burst after dodging',
     flavor: 'Ride the breath the ruin exhales between killings.',
     icon: 'relic_gale_step',
     tint: '#b0e8ff',
     tier: 'common',
-    apply: () => { hero.dodgeDistMul *= 1.35; },
+    apply: () => { hero.dodgeDistMul *= 1.55; hero.galeStep = true; },
   },
 
   // ==========================================================================
@@ -498,12 +516,18 @@ export const RELIC_DEFS = {
   gilded_hoard: {
     id: 'gilded_hoard',
     name: 'Gilded Hoard',
-    desc: '+30% gold from all sources',
+    // Round-6 economy retune — was rare-tier with +30% gold. With
+    // reroll + altar economy, +30% gold compounds into ~2 free rerolls
+    // per floor, which is roughly the value of a legendary stat-stick.
+    // Audit measured this as the single most run-warping rare. Bumped
+    // to +40% gold AND reclassed to legendary so the tier reflects
+    // its actual impact.
+    desc: '+40% gold from all sources',
     flavor: 'The chalice never empties; it remembers what was poured.',
     icon: 'relic_gilded_hoard',
     tint: '#f4d9a0',
-    tier: 'rare',
-    apply: () => { hero.gildedHoard = true; hero.goldMul = (hero.goldMul || 1) * 1.3; },
+    tier: 'legendary',
+    apply: () => { hero.gildedHoard = true; hero.goldMul = (hero.goldMul || 1) * 1.4; },
   },
   // Ambient fire aura — passive DPS while moving through combat rooms.
   hymn_of_embers: {
