@@ -619,15 +619,87 @@
   /* Mobile virtual control overlay (joystick + action buttons). Hidden
      by default; revealed only when src/mobileMode.js sets
      body.mobile-controls based on detection (matchMedia pointer:coarse +
-     hover:none) or the settings.mobileControls override.
-
-     The actual control DOM doesn't exist yet — this rule is the hook
-     for the upcoming virtual-controls implementation. Keeping the
-     selector live now so the detection layer can be tested with a
-     temporary debug element (e.g. via __forceMobileMode()) before the
-     real controls UI lands. */
-  #mobileControls { display: none; }
+     hover:none) or the settings.mobileControls override. */
+  #mobileControls {
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;     /* container is transparent to clicks */
+    z-index: 50;              /* above HUD chrome, below modals */
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;       /* prevent browser default scroll/zoom */
+  }
   body.mobile-controls #mobileControls { display: block; }
+  /* Two zones split the screen — left thumb runs the joystick, right
+     thumb hits action buttons. Pointer-events: auto on the zones so
+     touches register; the rest of the overlay stays transparent. */
+  #mobileLeft, #mobileRight {
+    position: absolute;
+    bottom: 0;
+    height: 56%;             /* lower half of viewport */
+    pointer-events: auto;
+    touch-action: none;
+  }
+  #mobileLeft  { left: 0;  width: 42%; }
+  #mobileRight { right: 0; width: 32%; }
+  /* Floating analog joystick — appears at the touch-down point. Hidden
+     until the user touches; mobileControls.js positions and shows it
+     dynamically. */
+  #joystickBase {
+    position: absolute;
+    width: 140px; height: 140px;
+    margin-left: -70px; margin-top: -70px;
+    border: 2px solid rgba(201, 168, 106, 0.55);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(20, 14, 24, 0.55), rgba(8, 6, 12, 0.30));
+    display: none;
+    box-shadow: 0 0 28px rgba(201, 168, 106, 0.18);
+  }
+  #joystickBase.active { display: block; }
+  #joystickStick {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 60px; height: 60px;
+    margin-left: -30px; margin-top: -30px;
+    background: radial-gradient(closest-side, rgba(244, 217, 160, 0.85), rgba(201, 168, 106, 0.55));
+    border: 1.5px solid rgba(255, 230, 170, 0.85);
+    border-radius: 50%;
+    transform: translate(0, 0);
+    box-shadow: 0 0 18px rgba(244, 217, 160, 0.45);
+  }
+  /* Action button column on the right side. Buttons stack vertically;
+     attack is largest + bottom-most (where the thumb naturally rests),
+     dodge above it, dash on top. */
+  #mobileRight .mobile-btn {
+    position: absolute;
+    right: 24px;
+    border: 2px solid rgba(201, 168, 106, 0.7);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(28, 20, 26, 0.75), rgba(10, 8, 14, 0.55));
+    color: #f4d9a0;
+    font: bold 26px Georgia, serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.05s ease-out, background 0.05s ease-out;
+  }
+  #mobileRight .mobile-btn.pressed {
+    transform: scale(0.92);
+    background: radial-gradient(closest-side, rgba(60, 40, 32, 0.95), rgba(20, 12, 18, 0.85));
+    box-shadow: 0 0 24px rgba(244, 217, 160, 0.45);
+  }
+  #mobileAttack { width: 110px; height: 110px; bottom: 32px; font-size: 36px; }
+  #mobileDodge  { width: 86px;  height: 86px;  bottom: 160px; }
+  #mobileDash   { width: 86px;  height: 86px;  bottom: 256px; }
+  /* When mobile controls are on, push the relic strip + fusions row + theme
+     chips up out of the joystick zone. The HUD canvas-side renderer keys
+     off body.mobile-controls in hud.js to compute its baseline. The CSS
+     here only handles DOM overlays; canvas-rendered HUD is JS-driven. */
+  body.mobile-controls #hud { /* reserved for future HUD-shift CSS */ }
 </style>
 </head>
 <body>
@@ -637,6 +709,24 @@
   <div class="ico"></div>
   <h2>— ROTATE YOUR DEVICE —</h2>
   <p>Ethera is a landscape game · turn your phone sideways to begin the descent</p>
+</div>
+<!-- Mobile virtual control overlay. Hidden via CSS unless body has the
+     `mobile-controls` class (set by src/mobileMode.js based on touch
+     detection or settings override). Inside: two pointer zones (left
+     joystick, right action buttons) with multi-touch support so a
+     player can hold the joystick with their left thumb and tap attack
+     with their right at the same time. -->
+<div id="mobileControls" aria-hidden="true">
+  <div id="mobileLeft">
+    <div id="joystickBase">
+      <div id="joystickStick"></div>
+    </div>
+  </div>
+  <div id="mobileRight">
+    <button id="mobileDash" class="mobile-btn" type="button" aria-label="Dash">⇶</button>
+    <button id="mobileDodge" class="mobile-btn" type="button" aria-label="Dodge">⤿</button>
+    <button id="mobileAttack" class="mobile-btn" type="button" aria-label="Attack">⚔</button>
+  </div>
 </div>
 <div id="stage">
   <canvas id="game" width="1280" height="720"></canvas>

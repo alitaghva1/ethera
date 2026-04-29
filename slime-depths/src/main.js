@@ -60,6 +60,7 @@ import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoom
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
 import { applyMobileMode, installFirstTouchFallback } from './mobileMode.js';
+import { initMobileControls } from './mobileControls.js';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
 import { loadTips, showTip, updateTips, drawTip, TIPS } from './tips.js';
 import { updateNotifications, drawNotifications, clearNotifications, getNotificationStackBottom, pushNotification } from './notifications.js';
@@ -7748,6 +7749,10 @@ async function boot() {
   // AFTER loadSettings so the setting's value is in effect.
   applyMobileMode();
   installFirstTouchFallback();
+  // Wire the virtual-control DOM (joystick + action buttons). Listeners
+  // are always installed; the overlay's CSS visibility is gated by
+  // body.mobile-controls so desktop users never see/feel them.
+  initMobileControls();
   loadDaily();
   loadTips();
   loadFirstSeen();

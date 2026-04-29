@@ -1,6 +1,7 @@
 // Hero controller — top-down movement, directional attack, dodge roll
 import { images } from './loader.js';
-import { keys, mouse, keyJustPressed } from './input.js';
+import { keys, mouse, keyJustPressed, virtualMove } from './input.js';
+import { isMobileMode } from './mobileMode.js';
 import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches, room } from './room.js';
 import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
@@ -560,12 +561,53 @@ export function updateHero(dt, enemies, mouseWorld) {
 
   if (hero.state === 'dead') return;
 
-  // Aim vector (toward mouse world pos)
-  const ax = mouseWorld.x - hero.x;
-  const ay = mouseWorld.y - hero.y;
-  const am = Math.hypot(ax, ay) || 1;
-  hero.aimX = ax / am;
-  hero.aimY = ay / am;
+  // Aim vector. Default: toward mouse world pos. On mobile (no mouse), we
+  // auto-aim toward the nearest live enemy in a generous radius; if no
+  // enemy is in range we aim in the joystick movement direction (so
+  // attacks fire forward as you move). Falling back further to the last
+  // facing keeps the swing direction stable when the player is idle.
+  let useAutoAim = false;
+  if (isMobileMode()) {
+    // Heuristic: if the mouse hasn't moved into the canvas yet (player
+    // is touch-only), or virtualMove is active, auto-aim wins. The
+    // canvas's pointer listeners still update mouseWorld for taps,
+    // but on a phone there's no hover, so the position will be wherever
+    // the last touch was — not useful for aim. Auto-aim is the correct
+    // default for touch.
+    useAutoAim = true;
+  }
+  if (useAutoAim) {
+    let bestE = null;
+    let bestD2 = 380 * 380;     // ~380px aim radius — generous, enemies usually closer
+    for (let i = 0; i < activeEnemies.length; i++) {
+      const e = activeEnemies[i];
+      if (!e || e.dead || e.hp <= 0) continue;
+      const dx = e.x - hero.x;
+      const dy = e.y - hero.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { bestD2 = d2; bestE = e; }
+    }
+    if (bestE) {
+      const dx = bestE.x - hero.x;
+      const dy = bestE.y - hero.y;
+      const m = Math.hypot(dx, dy) || 1;
+      hero.aimX = dx / m;
+      hero.aimY = dy / m;
+    } else if (virtualMove.active && (virtualMove.x !== 0 || virtualMove.y !== 0)) {
+      // No enemy nearby — aim in the direction the joystick is pushing
+      // so charged attacks/dashes fire where the player is heading.
+      const m = Math.hypot(virtualMove.x, virtualMove.y) || 1;
+      hero.aimX = virtualMove.x / m;
+      hero.aimY = virtualMove.y / m;
+    }
+    // else: hero.aimX/aimY retain last frame's value — stable idle facing.
+  } else {
+    const ax = mouseWorld.x - hero.x;
+    const ay = mouseWorld.y - hero.y;
+    const am = Math.hypot(ax, ay) || 1;
+    hero.aimX = ax / am;
+    hero.aimY = ay / am;
+  }
   hero.facing = hero.aimX >= 0 ? 1 : -1;
 
   // State transitions
@@ -633,12 +675,17 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Consume the Second Wind charge if we used it.
       const usedSecondWind = hero.dodgeCooldown > 0 && hero.secondWind && hero.secondWindAvailable;
       if (usedSecondWind) hero.secondWindAvailable = false;
-      // Dodge in move direction or aim direction
+      // Dodge in move direction or aim direction. Same dual-input pattern
+      // as the main movement block above — joystick wins when active.
       let dx = 0, dy = 0;
       if (keys.KeyW) dy -= 1;
       if (keys.KeyS) dy += 1;
       if (keys.KeyA) dx -= 1;
       if (keys.KeyD) dx += 1;
+      if (virtualMove.active && (virtualMove.x !== 0 || virtualMove.y !== 0)) {
+        dx = virtualMove.x;
+        dy = virtualMove.y;
+      }
       if (dx === 0 && dy === 0) { dx = hero.aimX; dy = hero.aimY; }
       const m = Math.hypot(dx, dy) || 1;
       hero.dodgeDirX = dx / m;
@@ -897,6 +944,15 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (keys.KeyS) dy += 1;
       if (keys.KeyA) dx -= 1;
       if (keys.KeyD) dx += 1;
+      // Mobile virtual joystick — supplements keyboard. If the joystick
+      // is being used (virtualMove.active), its analog deflection
+      // overrides whatever the WASD keys read. Magnitude is in [-1, 1]
+      // per axis already, so no normalization needed beyond what the
+      // shared `m = hypot` step does below.
+      if (virtualMove.active) {
+        dx = virtualMove.x;
+        dy = virtualMove.y;
+      }
       const m = Math.hypot(dx, dy);
       if (m > 0) {
         dx /= m; dy /= m;
