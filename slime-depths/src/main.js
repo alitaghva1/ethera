@@ -7340,9 +7340,12 @@ function render() {
     ctx.strokeStyle = 'rgba(201, 168, 106, 0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-    // Corner accent diamonds — keep in tint, small enough that bloom
-    // doesn't over-expose them.
-    ctx.fillStyle = tint;
+    // Corner accent diamonds — gold parchment, NOT per-enemy tint. Even
+    // tiny 2×1 px fills at full saturation get extracted by the bloom
+    // pass and smeared into 4 corner halos that trace the box perimeter
+    // (the "ghost outline" the player flagged). Keeping them gold lets
+    // bloom paint them as warm parchment glow, matching the box frame.
+    ctx.fillStyle = '#c9a86a';
     const accents = [[bx + 5, by + 5], [bx + boxW - 5, by + 5], [bx + 5, by + boxH - 5], [bx + boxW - 5, by + boxH - 5]];
     for (const [cx, cy] of accents) {
       ctx.fillRect(cx - 1, cy, 2, 1);
