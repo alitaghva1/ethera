@@ -25,6 +25,7 @@ function saveTips() {
 export const TIPS = {
   // ----- Controls & core combat (shown on first use) -----
   first_combat:    { text: 'Move with WASD · Attack with LMB · Aim with mouse' },
+  first_starting_hp: { text: 'Three hearts is your starting pool. Sanctuaries mend; relics expand. Be careful early.' },
   first_dodge:     { text: 'Press SPACE to dodge — time it with an enemy attack for a PERFECT DODGE' },
   first_dash:      { text: 'Press Q to dash-strike through enemies (2x damage, 5s cooldown)' },
   first_charge:    { text: 'Hold LMB for a charged heavy swing — releases a big AoE blow' },
@@ -43,7 +44,7 @@ export const TIPS = {
   first_weaponOnly:{ text: 'Some relics only appear for your weapon class — sword, dagger, hammer, or wand' },
   // ----- Rooms -----
   first_descent_dungeon: { text: 'A door waits north. Walk through to descend.' },
-  first_pedestal:  { text: 'Walk onto a pedestal to claim the relic' },
+  first_pedestal:  { text: 'Pedestals come in groups — claiming one removes the others. Press R to reroll the offer (gold cost scales with floor).' },
   first_altar:     { text: 'Altar room — relics here cost HP, not gold. The ruin prefers deliberate pacts' },
   first_trove:     { text: 'Trove room — the urns are worth your time. Gold, hearts, and larger coin hide inside' },
   first_chestroom: { text: 'Treasure chest room — most chests are real. SOME are MIMICS. You learn by opening' },

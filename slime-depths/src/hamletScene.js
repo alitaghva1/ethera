@@ -10,9 +10,19 @@
 // ============================================================================
 import { hero } from './hero.js';
 import { images } from './loader.js';
-import { NPCS, hasUnseenTopics, hasUnreadDialogue } from './hamlet.js';
+import { NPCS, hamletState, hasUnseenTopics, hasUnreadDialogue } from './hamlet.js';
 import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 import { showTip } from './tips.js';
+
+// A locked NPC is one whose arc-stage hasn't been initialized yet
+// (refreshNpcPresence hasn't ticked their unlockCheck to true). They
+// still render in-world for compositional reasons, but get a shrouded
+// visual treatment + a different interact prompt + an unlockHint card
+// when the player presses E. Single helper so the three rendering paths
+// stay in lockstep.
+function isNpcUnlocked(id) {
+  return hamletState.npcArcStage[id] !== undefined;
+}
 
 // Camera zoom for the hamlet — single source of truth. Imported by main.js
 // in enterHamletCanvas + the hamlet branch of the game loop. Bumped from
@@ -727,6 +737,12 @@ function drawNpc(ctx, e, now) {
     || images[`hamlet_npcp_${e.spriteIdx}`]
     || images[`hamlet_npc_${e.spriteIdx}`];
   if (!spr) return;
+  // Shroud treatment — NPCs whose unlock condition hasn't been met yet
+  // render at lower opacity with no warm proximity tint, signaling
+  // "present but not yet arrived". The player can still walk up + press E
+  // to read their unlockHint as a card. Keeper is always unlocked, so
+  // this only affects the other five.
+  const unlocked = isNpcUnlocked(e.id);
   // Whether we're drawing the v2 sprite (changes default size + scale).
   const isV2 = !!images[`npc_v2_${e.id}`];
   // Gentle breathing bob so the NPC doesn't feel frozen. Phase offset by x
@@ -758,15 +774,26 @@ function drawNpc(ctx, e, now) {
   // Proximity glow extends 60% beyond the interactR — players see the NPC
   // light up before they're close enough to trigger the "E · TALK" prompt,
   // signaling "this is interactive" without being noisy at long range.
+  // Locked NPCs use a cool muted halo instead of the NPC's warm tint so
+  // they read as "withdrawn" rather than "ready to chat".
   const NPC_GLOW_RANGE_MULT = 1.6;
   if (d < e.interactR * NPC_GLOW_RANGE_MULT) {
     const proximity = Math.max(0, 1 - d / (e.interactR * NPC_GLOW_RANGE_MULT));
-    const tint = NPCS[e.id]?.tint || '#f4d9a0';
-    const hex = tint.replace('#', '');
-    const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
-    const R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;
+    let R, G, B, alpha;
+    if (unlocked) {
+      const tint = NPCS[e.id]?.tint || '#f4d9a0';
+      const hex = tint.replace('#', '');
+      const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+      R = (n >> 16) & 255; G = (n >> 8) & 255; B = n & 255;
+      alpha = 0.28;
+    } else {
+      // Muted slate-blue for shrouded figures — reads as "veiled" against
+      // the warm hamlet palette without going so dark it feels broken.
+      R = 120; G = 130; B = 160;
+      alpha = 0.18;
+    }
     const glow = ctx.createRadialGradient(e.x, e.y, 4, e.x, e.y, 44);
-    glow.addColorStop(0, `rgba(${R},${G},${B},${(0.28 * proximity).toFixed(3)})`);
+    glow.addColorStop(0, `rgba(${R},${G},${B},${(alpha * proximity).toFixed(3)})`);
     glow.addColorStop(1, `rgba(${R},${G},${B},0)`);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -775,7 +802,42 @@ function drawNpc(ctx, e, now) {
     ctx.restore();
   }
 
-  ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + bob), drawW, drawH);
+  // Shroud the sprite itself — locked NPCs draw at 55% alpha so their
+  // silhouette is still readable for compositional balance, but they
+  // visibly "haven't arrived yet". Saves/restores around drawImage so
+  // the alpha doesn't leak to the unread-content dot below.
+  if (!unlocked) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + bob), drawW, drawH);
+    ctx.restore();
+  } else {
+    ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + bob), drawW, drawH);
+  }
+
+  // Locked-NPC question mark — small dim "?" floating above the sprite,
+  // reusing the unread-dot positioning logic. Tells the player at a
+  // glance "there is someone here, but they are waiting for something".
+  // Suppressed when in interact range so the prompt below takes over.
+  if (!unlocked && d > e.interactR) {
+    const pulse = 0.55 + 0.25 * Math.sin(now * 1.6 + e.x * 0.013);
+    const qX = Math.round(e.x);
+    const qY = Math.round(e.y - drawH - 10 + bob * 0.6);
+    ctx.save();
+    ctx.font = 'bold 14px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Soft halo behind the glyph for legibility against the painted scene.
+    const halo = ctx.createRadialGradient(qX, qY, 1, qX, qY, 14);
+    halo.addColorStop(0, `rgba(180, 190, 220, ${(0.32 * pulse).toFixed(3)})`);
+    halo.addColorStop(1, 'rgba(180, 190, 220, 0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(qX - 14, qY - 14, 28, 28);
+    ctx.fillStyle = `rgba(210, 215, 235, ${(0.78 * pulse).toFixed(3)})`;
+    ctx.fillText('?', qX, qY);
+    ctx.restore();
+    return;   // skip the unread-content dot path for locked NPCs
+  }
 
   // ── Unread-content indicator ─────────────────────────────────────────
   // Floats a small "•" above the NPC's head when they have an unseen
@@ -822,8 +884,15 @@ export function drawHamletInteractPrompt(ctx) {
   if (!_nearest) return;
   let label;
   if (_nearest.kind === 'npc') {
-    const name = NPCS[_nearest.id]?.name || 'Traveler';
-    label = 'E  \u00b7  ' + name.toUpperCase();
+    // Locked NPCs render as "A SHROUDED FIGURE" \u2014 preserves the surprise
+    // of the named arrival cinematic when they finally unlock, while
+    // still letting the player E-press to read the unlock condition.
+    if (!isNpcUnlocked(_nearest.id)) {
+      label = 'E  \u00b7  A SHROUDED FIGURE';
+    } else {
+      const name = NPCS[_nearest.id]?.name || 'Traveler';
+      label = 'E  \u00b7  ' + name.toUpperCase();
+    }
   } else if (_nearest.kind === 'portal') {
     label = 'E  \u00b7  DESCEND';
   } else if (_nearest.kind === 'noticeboard') {

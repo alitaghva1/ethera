@@ -1625,7 +1625,22 @@ function openDialogue(npcId) {
   const def = NPCS[npcId];
   if (!def) return;
   const stage = hamletState.npcArcStage[npcId];
-  if (stage === undefined) return;
+  if (stage === undefined) {
+    // Locked NPC — surface their unlockHint as a notification card so the
+    // E-press isn't silent. Previously this returned without any feedback,
+    // leaving the player to guess why the dialogue modal didn't open.
+    // The card is intentionally muted (slate-blue tint, "SHROUDED FIGURE"
+    // header) so it reads as "not yet" rather than "broken".
+    pushNotification({
+      kind: 'tip',
+      header: '— A SHROUDED FIGURE —',
+      title: 'They will not yet meet your eye.',
+      body: def.unlockHint || 'Their hour has not yet come.',
+      tint: '#8a96b6',
+      life: 5.0,
+    });
+    return;
+  }
   const stageDef = def.arcStages[stage] || def.arcStages[def.arcStages.length - 1];
   // Stash current npc id on the modal so the persistent SPEAK click
   // handler (set up once at module load) knows which NPC to route to.
@@ -3840,6 +3855,11 @@ function loadRoom(idx, entryFrom) {
   // the player still has full HP and can read it.
   if (data.kind === 'combat' && currentFloorLevel === 1) {
     setTimeout(() => showTip('first_combat'), 400);
+    // Playtest report: "3 max HP. From a knight-fantasy menu I expected
+    // 8-10. The game never told me this is intentional." Fires after
+    // the controls tip so the staggered notification rail (1 tip at a
+    // time, 0.8s gap) lands the HP context as the second beat.
+    setTimeout(() => showTip('first_starting_hp'), 600);
   }
   // Start room — give the player a "walk through the door north" cue.
   // Onboarding audit P0. The start room is a non-combat tile so
