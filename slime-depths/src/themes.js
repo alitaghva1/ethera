@@ -64,6 +64,14 @@ export const RELIC_THEMES = {
   phoenix_cloak:        'flame',
   phoenix_tear:         'flame',
   cataclysm:            'flame',
+  // Round-6 mythic additions — fire-flavored regardless of mechanical
+  // identity, since they're all Ember Tyrant pool drops thematically.
+  // stride_of_ash literally lays fire trails; heart_of_wound's flavor
+  // is "the wound learned a name" (the fire that burned the city);
+  // coin_of_tyrant is the Tyrant's coin specifically.
+  stride_of_ash:        'flame',
+  heart_of_wound:       'flame',
+  coin_of_tyrant:       'flame',
   spore_bloom:          'flame',
   serrated_edge:        'flame',  // pure +30% dmg — raw aggression, not discipline
 
