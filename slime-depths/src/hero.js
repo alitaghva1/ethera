@@ -1605,10 +1605,23 @@ export function updateHero(dt, enemies, mouseWorld) {
             try { synthThud(60, 0.85, 0.22); } catch (_e) {}
             try { synthChord(560, 0.6, 0.45); } catch (_e) {}
           }
-          hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
+          // Special-hit sparks keep their identity colors (counter gold,
+          // exec red); generic hits now pull the enemy's bloodColor so a
+          // wizard pop reads visibly purple, an orc strike visibly red,
+          // a slime smack green. Falls back to enemy.color when no
+          // bloodColor is defined. Game-feel audit P0.
+          const sparkColor = isCounter ? '#ffeb99'
+                           : isExec ? '#ff6a55'
+                           : (e.def && (e.def.bloodColor || e.def.color)) || '#ffddaa';
+          hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, sparkColor);
           const wpnShake = w.shakeMul || 1;
           const wpnHs = w.hitStopMul || 1;
-          shakeCamera((isCounter ? 10 : isCrit ? 7 : 4.5) * wpnShake, (isCounter ? 0.2 : 0.14) * Math.max(0.85, wpnShake));
+          // Per-enemy weight multiplier — a slime tap shouldn't shake
+          // the camera as hard as a vanguard slam. Read from def.weight
+          // (defaults 1.0). Game-feel audit P0.
+          const enemyWeight = (e.def && e.def.weight) || 1.0;
+          shakeCamera((isCounter ? 10 : isCrit ? 7 : 4.5) * wpnShake * enemyWeight,
+                      (isCounter ? 0.2 : 0.14) * Math.max(0.85, wpnShake));
           // Weapon-specific hit audio — dagger rings high and sharp, hammer thuds deep
           const wpnHitBase = w.id === 'dagger' ? 1.4 : w.id === 'hammer' ? 0.55 : 1.0;
           const wpnHitVol  = w.id === 'hammer' ? 1.05 : w.id === 'dagger' ? 0.75 : 0.9;
@@ -1630,12 +1643,17 @@ export function updateHero(dt, enemies, mouseWorld) {
           spawnDamageNumber(e.x, e.y - 36, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, charged: chargedHit, finisher: finisherHit, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
           spawnHitMarker(e.x, e.y - 20, isCrit || isCounter || isExec || chargedHit || finisherHit);
           triggerHitStop((isCounter ? 0.12 : isCrit ? 0.08 : 0.045) * wpnHs);
-          // Camera zoom-in pulse on big hits — counter/exec/finisher/charged all pop
-          if (isCounter) pulseZoom(0.06, 0.3);
-          else if (isExec) pulseZoom(0.05, 0.25);
-          else if (chargedHit) pulseZoom(0.05, 0.28);
+          // Camera zoom-in pulse on big hits — counter/exec/finisher/charged all pop.
+          // Game-feel audit P0: previous values clustered within 0.01 of
+          // each other (0.06/0.05/0.05/0.04/0.03) — players couldn't read
+          // which special hit type fired from camera punch alone. New
+          // ladder spreads them so counter feels ~3× crit, exec feels
+          // distinctly weighty, charged sits between counter + exec.
+          if (isCounter) pulseZoom(0.09, 0.40);
+          else if (isExec) pulseZoom(0.07, 0.30);
+          else if (chargedHit) pulseZoom(0.06, 0.32);
           else if (finisherHit) pulseZoom(0.04, 0.22);
-          else if (isCrit) pulseZoom(0.03, 0.18);
+          else if (isCrit) pulseZoom(0.025, 0.15);
           // COUNTERSTRIKE — counter-hits detonate with a small AoE when relic owned
           if (isCounter && hero.counterstrike) {
             spawnExplosion(e.x, e.y - 8, 64, finalDmg * 0.7);

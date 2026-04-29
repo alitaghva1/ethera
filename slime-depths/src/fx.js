@@ -650,7 +650,15 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   // and finisher outrank crit so the player sees WHY the hit was big
   // (their action, not RNG).
   const sizeBoost = opts.counter ? 6 : opts.exec ? 5 : opts.charged ? 4 : opts.finisher ? 3 : opts.crit ? 2 : 0;
-  p.size = (amount >= 50 ? 20 : amount >= 30 ? 17 : 14) + sizeBoost;
+  // Logarithmic damage scale — game-feel audit P1. Old bucketed
+  // formula (≥50→20px, ≥30→17px, else 14px) collapsed big hits into
+  // the same size: a 100-dmg hit and a 50-dmg hit rendered identical
+  // (both 20px), and a counter at 12 dmg + boost 6 = 20px matched a
+  // non-special 50-dmg hit. Now scales smoothly: 1dmg≈12px,
+  // 10dmg≈22px, 100dmg≈32px. Cap at 32 so massive damage doesn't
+  // eat the screen.
+  const _logSize = 12 + Math.log2(Math.max(1, amount)) * 3;
+  p.size = Math.min(32, _logSize + sizeBoost);
   // Explicit `opts.color` wins over the per-attribute palette below — used
   // by non-damage callers (heal, pickups) to opt out of the damage colorway.
   p.color = opts.color

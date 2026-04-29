@@ -107,6 +107,10 @@ const SPR = 100;
 //   Hit detection uses BOTH distance and angle, so flanking matters.
 export const TYPES = {
   slime:  {
+    // weight: per-enemy hit-shake multiplier consumed by hero.js's
+    // melee swing handler. 0.6 = soft tap (slime). Heavier enemies
+    // override this; bosses default to 1.0 explicit. Game-feel audit P0.
+    weight: 0.6,
     // SIZING PASS — Tiny-RPG sprites fill only ~15% of their 100 cell while
     // the PixelLab mage hero fills 93% of its 128 cell. Without compensation
     // a minion drawSize of 80 reads as ~12 px visible vs the hero's ~56 px,
@@ -124,6 +128,7 @@ export const TYPES = {
     flavor: 'what the ruin makes when it forgets what living was for',
   },
   skel:   {
+    weight: 0.85,
     element: 'cold',                 // resists cold, weak to fire/shock
     prefix: 'skel_',   drawSize: 220, radius: 22, speed: 118, hp: 95,  damage: 1,
     color: '#cfd4d9', hitCD: 0.80, fps: 10, behavior: 'melee',
@@ -136,6 +141,7 @@ export const TYPES = {
     flavor: 'the dead who were promised rest, and given knives',
   },
   orc:    {
+    weight: 1.15,
     // Common mid-tier melee. Boss-tier fields (WARCHIEF GRUDNOK display
     // name, boss flavor) moved to elite_orc when the boss sprite split
     // landed — orc def is now common-mob-only. Keeps the heavy-variant
@@ -197,6 +203,7 @@ export const TYPES = {
   // frontal hit costs 1 charge. Once depleted the unit is fully vulnerable.
   // Uses orc sprite with a cold steel tint + visible shield wedge.
   vanguard: {
+    weight: 1.25,
     prefix: 'orc_',    drawSize: 220, radius: 26, speed: 70, hp: 120, damage: 2,
     color: '#a0b8d0', hitCD: 1.10, fps: 8, behavior: 'melee',
     attackReach: 66, attackArc: Math.PI * 0.62,
@@ -1289,7 +1296,18 @@ function explode(e) {
   const dam = e.def.blastDamage * (e.elite ? 1.5 : 1);
   // Visual
   for (let i = 0; i < 24; i++) deathBurst(e.x, e.y - 8, e.def.color);
-  shakeCamera(12, 0.3);
+  // Distance-falloff shake — game-feel audit P1. Old code shook the
+  // camera 12 amp / 0.3s for EVERY bomber explosion regardless of
+  // distance. In Broodmother rooms with 3-4 bombers detonating, four
+  // 12-amp shakes inside 2 seconds was unreadable. Now scales by
+  // hero-distance: nearby explosions still slam (12 amp at point-blank),
+  // far-off bombers (300px+) drop to ~3.6 amp — present but not
+  // dominant. Threshold at 0.3 floor so even a far-off explosion has
+  // SOME camera response (it's still an explosion).
+  const _bdx = hero.x - e.x, _bdy = hero.y - e.y;
+  const _bdist = Math.hypot(_bdx, _bdy);
+  const _shakeFalloff = Math.max(0.3, 1 - _bdist / 300);
+  shakeCamera(12 * _shakeFalloff, 0.25);
   playSfx('slime_death', { rate: 0.6, rateJitter: 0.08, volume: 1.0 });
   playSfx('hero_hurt',   { rate: 0.7, rateJitter: 0.05, volume: 0.6 });
   // Damage hero
