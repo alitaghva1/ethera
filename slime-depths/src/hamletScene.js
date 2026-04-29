@@ -13,6 +13,7 @@ import { images } from './loader.js';
 import { NPCS, hamletState, hasUnseenTopics, hasUnreadDialogue } from './hamlet.js';
 import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 import { showTip } from './tips.js';
+import { records } from './records';
 
 // A locked NPC is one whose arc-stage hasn't been initialized yet
 // (refreshNpcPresence hasn't ticked their unlockCheck to true). They
@@ -683,12 +684,29 @@ function drawPortal(ctx, e, now) {
   // cellar entrance with stairs going down into pitch-black depths
   // illuminated by a faint blue glow). Pulse stays CALM (range 0.7-1.0,
   // slow freq) so it reads as ambient atmosphere rather than animation.
+  //
+  // ROUND-6 ENDGAME RETUNE — once the player has cleared at least one
+  // ascent (records.runsCompleted >= 1, the canonical "beat the game"
+  // signal), the portal halo shifts cold blue → smouldering ember red.
+  // The wound looks back through the door now. It's a one-line visual
+  // change but it's the only persistent "the hamlet knows you killed
+  // the Ember Tyrant" beat in the world — gives ascent #2's player a
+  // visible artifact of their first victory every time they walk to
+  // the gate. Faint enough not to clash with the cold portal sprite
+  // itself; layered enough to read as "something has changed here".
+  const cleared = (records.runsCompleted | 0) >= 1;
   const pulse = 0.85 + 0.15 * Math.sin(now * 0.6);
   const haloR = 56;
   const halo = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, haloR);
-  halo.addColorStop(0, `rgba(120, 170, 230, ${(0.32 * pulse).toFixed(3)})`);
-  halo.addColorStop(0.5, `rgba(100, 150, 220, ${(0.16 * pulse).toFixed(3)})`);
-  halo.addColorStop(1, 'rgba(90, 140, 210, 0)');
+  if (cleared) {
+    halo.addColorStop(0, `rgba(220, 110, 60, ${(0.34 * pulse).toFixed(3)})`);
+    halo.addColorStop(0.5, `rgba(190, 80, 50, ${(0.18 * pulse).toFixed(3)})`);
+    halo.addColorStop(1, 'rgba(160, 60, 50, 0)');
+  } else {
+    halo.addColorStop(0, `rgba(120, 170, 230, ${(0.32 * pulse).toFixed(3)})`);
+    halo.addColorStop(0.5, `rgba(100, 150, 220, ${(0.16 * pulse).toFixed(3)})`);
+    halo.addColorStop(1, 'rgba(90, 140, 210, 0)');
+  }
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
 }
