@@ -592,9 +592,15 @@ export const NPCS = {
     service: {
       type: 'reforge',
       label: 'REFORGE',
-      // Click handler: opens a UI where the player picks 2 equipped relics
-      // and gets 1 of a higher tier. Phase 2 since it needs a picker UI.
-      disabledReason: 'Reforge requires an active run. Speak to me after a descent.',
+      // Click handler opens showSmithModal — picker over previously-
+      // discovered relics, pay essence by tier (40/80/140), the chosen
+      // relic banks as next-run heirloom. Works between runs by design;
+      // the heirloom flow is a meta-progression sink.
+      //
+      // (Removed: stale `disabledReason` field. Round-6 audit flagged
+      // it as a between-run gate, but the svcBtn handler in main.js
+      // never reads disabledReason — it was dead text from an earlier
+      // design where reforge needed an active-run state.)
     },
     // Voice: terse, blue-collar, fond but unsentimental. Talks about steel.
     chatLines: [
@@ -753,8 +759,13 @@ export const NPCS = {
     portrait: 'npc_v2_gravekeeper',
     x: 10, y: 74,
     tint: '#d85a5a',
-    unlockCheck: (records) => records.runsStarted >= 5 || records.bossKillsAllTime >= 2,
-    unlockHint: 'He arrives when you have left enough behind. Descend five times.',
+    // Gravekeeper unlock — Round-6 audit: previously gated at 5 runs OR 2
+    // boss kills, which meant the death-themed NPC arrived AFTER the
+    // player had stopped feeling fragile. He's the consolation; gating
+    // him behind 5 deaths gates the consolation behind the wound. Drops
+    // to 2 runs so he's typically present by the player's 2nd return.
+    unlockCheck: (records) => records.runsStarted >= 2 || records.bossKillsAllTime >= 2,
+    unlockHint: 'He arrives when you have left enough behind. Descend twice.',
     arcStages: [
       {
         advance: () => true,

@@ -5,6 +5,7 @@ import { hero } from './hero.js';
 import { stats } from './stats';
 import { recomputeThemeTiers, THEMES } from './themes.js';
 import { pushNotification } from './notifications.js';
+import { synthChord, synthPing } from './synth.js';
 
 export const RELIC_DEFS = {
   serrated_edge: {
@@ -1117,6 +1118,13 @@ export function applyRelic(id) {
             tint: themeColor,
             life: 3.5,
           });
+          // Audio cue — Round-6 AV audit: the resonance moment is
+          // visually rich (toast + aura under hero) but was completely
+          // silent. A run-defining 3-of-a-theme threshold deserves a
+          // beat the player hears. Mid-warm chord at G3 (196 Hz) — sits
+          // beneath any concurrent crit/pickup pings without crowding
+          // the music bed.
+          synthChord(196, 0.55, 0.9);
         } catch (_e) {}
       }
       if (before < 2 && after >= 2 && !ascendedTheme) {
@@ -1145,6 +1153,13 @@ export function applyRelic(id) {
           life: 4.5,
           header: '— A NEW POWER STIRS —',
         });
+        // Audio cue — ascendance is the bigger payoff (5-of-a-theme,
+        // adds tier-2 mechanics like the STORM dodge-shock or BLOOD
+        // room-clear regen). Larger chord at C4 (262 Hz) + a bright
+        // ping 200ms later for the "lift" moment, mirroring how the
+        // mythic-pickup banner pairs a chord with a sub-bell.
+        synthChord(262, 0.7, 1.1);
+        setTimeout(() => synthPing(1320, 0.18, 0.45), 200);
       } catch (_e) {}
     }
   }

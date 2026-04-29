@@ -269,6 +269,27 @@ let _restartBtnOverridden = false;
 let _serviceCloseToHamlet = false;
 document.getElementById('restartBtn').addEventListener('click', () => {
   if (_restartBtnOverridden) return;
+  // Post-DEATH path now detours through the hamlet so the authored
+  // reactive-greeting wave (Keeper "you came back without all of yourself",
+  // Smith "Mm. Try a heavier weapon", Gravekeeper ledger lines) actually
+  // fires. recordRunEnd('death', ...) sets up `lastRunOutcome = 'death'`
+  // + clears npcGreetingShown so a fresh wave is queued — but the previous
+  // restartBtn → startRun() path skipped past the hamlet entirely, leaving
+  // the wave permanently un-triggered. Round-6 player-sim audit flagged
+  // this as the single highest-impact fix in the codebase: every
+  // hand-authored death-aware NPC line was queued and never read.
+  //
+  // Victory still goes straight to startRun() — players who just won have
+  // already seen the epilogue + animated meta shop on the death modal,
+  // and a between-ascent hamlet detour breaks the "run it back" momentum
+  // that Slay-the-Spire-style victory loops want. The hamlet still gains
+  // the post-victory NPC reactions on whoever's next return; we just
+  // don't force the walk on the immediate retry.
+  if (hamletState.lastRunOutcome === 'death') {
+    deathEl.style.display = 'none';
+    showHamlet();
+    return;
+  }
   startRun();
 });
 // Escape hatch from the death/victory screen back to the main menu. Essence
@@ -3794,13 +3815,19 @@ window.addEventListener('keydown', (e) => {
   // Detect via hpCost === 0 on ALL active pedestals.
   const activeStd = pedestals.filter(p => !p.picked && p.hpCost === 0);
   if (activeStd.length < 2) return;       // need multi-choice context
-  // Cost scales with floor depth — pacing review P1. Old formula was
-  // 15 + floor*5 (20/25/30/35), too expensive on floor 1 where players
-  // sit on ~20g and too cheap on floor 4 where they sit on ~250g+.
-  // New formula 30 + floor*15 (45/60/75/90) keeps the cost at ~25-40%
-  // of typical available gold across all floors, so the choice
-  // "reroll vs keep" stays a meaningful tradeoff at every depth.
-  const cost = 30 + currentFloorLevel * 15;
+  // Cost scales with floor depth.
+  //   Round-1 formula  : 15 + floor*5  (20/25/30/35) — too cheap on F4
+  //   Round-3 formula  : 30 + floor*15 (45/60/75/90) — too expensive on F1
+  //   Round-6 formula  : 20 + floor*15 (35/50/65/80) — fits typical yields
+  //
+  // Round-6 economy audit measured F1's typical run yield at 50-90g (25
+  // kills × 2g + 0-1 chest). The Round-3 cost of 45g routinely consumed
+  // the entire F1 wallet, leaving the player bankrupt entering F2 where
+  // the next reroll cost 60g + altar HP costs 2-7 HP from a 3-6 HP hero.
+  // Dropping the base to 20 (so F1=35) keeps the cost meaningful (~40%
+  // of typical F1 yield) without bricking the next-floor economy. F4
+  // stays at 80g, still ~30% of typical F4 wallet.
+  const cost = 20 + currentFloorLevel * 15;
   if (gold.total < cost) {
     // Feedback: brief label + denied chirp
     roomLabelText = `REROLL NEEDS ${cost}g (you have ${gold.total})`;
