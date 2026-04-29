@@ -144,6 +144,14 @@ export const hero = {
   // so each weapon can deliver a distinct 3rd-hit "finisher".
   swingIndex: 0,                     // 0 / 1 / 2 — cycles 1→2→FINISHER→reset
   swingChainTime: 0,                 // decays; resets swingIndex to 0 when it hits 0
+  // Wand-only counterpart to the melee 3-swing rhythm. Round-6 combat
+  // audit flagged that wand had NO combo cadence — sword/dagger/hammer
+  // all reward a 3rd-hit finisher, but wand was tap-tap-tap forever.
+  // Now every 3rd bolt fires as a "SPELL WEAVE" with +60% damage and
+  // an amber tint so the rhythm muscle memory carries across all four
+  // weapon classes. Counter increments on tap-fire only (charged shots
+  // bypass — they're already a committed beat with their own visuals).
+  boltIndex: 0,                      // 0 / 1 / 2 — every 3rd bolt is woven
   // Charge attack — hold LMB past a threshold to unleash a heavy strike
   chargeTime: 0,                     // accumulated while LMB held during idle
   chargeReleased: false,             // snap once charged release is triggered
@@ -808,6 +816,11 @@ export function updateHero(dt, enemies, mouseWorld) {
         const stormAtkSpd = 1 - (hero.themeAtkSpdBonus || 0);
         const wandererMulR = hero.wandererBuffTime > 0 ? 0.5 : 1;
         const cooldownMul = isCharged ? 1.4 : 1.0;
+        // Captured here so the post-spawn flag block (which previously
+        // hardcoded _swingIsFinisher = false) can route the woven bolt
+        // through the same finisher-treatment downstream consumers
+        // already understand. Defaults to false for charged shots.
+        let isWoven = false;
         hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMulR * stormAtkSpd * cooldownMul;
         setState('attack');
         hero.attackFacingX = hero.aimX;
@@ -854,17 +867,40 @@ export function updateHero(dt, enemies, mouseWorld) {
           triggerScreenFlash(hero.boltCritOnCharge ? 'rgba(255, 220, 140, 0.16)' : 'rgba(255, 220, 140, 0.07)', 0.18);
         } else {
           // Tap-fire: standard bolt, no pierce, snappier audio.
+          // SPELL WEAVE — every 3rd tap-bolt fires as a heavier woven
+          // shot. +60% damage, amber tint, slightly larger sprite, a
+          // distinct mid-pitched ping. Mirrors the melee 3-hit-finisher
+          // rhythm so wand carries the same muscle memory. Bypassed on
+          // charged shots (those are already a committed beat).
+          hero.boltIndex = (hero.boltIndex + 1) % 3;
+          isWoven = hero.boltIndex === 0;     // 0 = the freshly-rolled-over slot, i.e. the 3rd bolt
+          const wovenMul = isWoven ? 1.6 : 1.0;
           spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
-                        dirX, dirY, baseDmg, w.boltSpeed, w.boltLife * lifeMul);
-          try { synthClick(1.7, 0.6); } catch (_e) {}
-          shakeCamera(2.5, 0.10);
+                        dirX, dirY, baseDmg * wovenMul, w.boltSpeed, w.boltLife * lifeMul,
+                        isWoven ? { woven: true } : undefined);
+          if (isWoven) {
+            // Layered audio for the woven beat — the click is the same
+            // tap-fire snap, but a chord-ish ping sells the "heavier"
+            // bolt at a different register. Camera shake is 1.4× the
+            // normal tap so the player FEELS the rhythm beat without
+            // jarring out of repeat-tap flow.
+            try { synthClick(1.7, 0.6); } catch (_e) {}
+            try { synthPing(820, 0.14, 0.28); } catch (_e) {}
+            shakeCamera(3.5, 0.12);
+          } else {
+            try { synthClick(1.7, 0.6); } catch (_e) {}
+            shakeCamera(2.5, 0.10);
+          }
         }
         showTip('first_combat');
         // Reset charge state so the next cycle starts fresh
         hero.chargeTime = 0;
         // Stash flags — charged ranged sets the charged flag so any
         // downstream consumer (themes, hooks) sees a charged release.
-        hero._swingIsFinisher = false;
+        // Woven tap-bolts get the _swingIsFinisher tag so existing
+        // combo-tracker / relic-on-finisher consumers fire on the
+        // wand's 3-bolt rhythm, matching melee's 3rd-hit treatment.
+        hero._swingIsFinisher = isWoven;
         hero._swingIsCharged = isCharged;
         // NOTE: we deliberately fall through to the rest of the
         // updateHero body so the attack-state END block (line ~1311)
@@ -1166,13 +1202,33 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
         }
       }
-      // Cracked wall — single hit per swing
+      // Cracked wall — single hit per swing.
+      // Round-6 AV audit: cracked-wall break used pitched-down `slime_hit`,
+      // identical to a slime body hit. Players couldn't audibly tell
+      // they'd just opened a secret room from "I hit a slime." Now uses
+      // a synthThud sub-bass + synthClick for the "break" beat — more
+      // architecturally distinct and unmistakably "stone gave way".
+      // Mid-progress hits still get a shorter thud for tactile feedback.
       if (!hero._wallHitThisSwing && hitCrackedWall(hero.x, hero.y, hero.aimX, hero.aimY, reach)) {
         hero._wallHitThisSwing = true;
         const res = damageCrackedWall();
         hitSpark(roomSecrets.crackX * TILE + TILE/2, roomSecrets.crackY * TILE + TILE/2, -hero.aimX, -hero.aimY, '#ffe5a0');
         shakeCamera(res === 'broken' ? 12 : 5, 0.2);
-        playSfx('slime_hit', { rate: res === 'broken' ? 0.6 : 1.3, volume: 0.9 });
+        if (res === 'broken') {
+          // Wall collapses — layered sub-bass thud + dust-fall chord
+          // sells "stone gave way to something behind it". The player
+          // hears this once per secret-room reveal so it earns the
+          // dedicated audio moment.
+          try { synthThud(70, 0.95, 0.5); } catch (_e) {}
+          try { synthThud(45, 0.7, 0.7); } catch (_e) {}
+          try { synthClick(0.45, 0.55); } catch (_e) {}
+        } else {
+          // Mid-progress hit — chunkier than a slime tap, lighter than
+          // the break. synthThud at higher freq + click stack reads as
+          // "this is masonry, not flesh".
+          try { synthThud(120, 0.55, 0.18); } catch (_e) {}
+          try { synthClick(0.7, 0.5); } catch (_e) {}
+        }
       }
       // Trove urns — break on hit, spawn loot burst
       if (!hero._urnHitThisSwing) {

@@ -42,7 +42,7 @@ let _mapPickInFlight = false;
 // Tracks whether onRoomCleared has fired for the current room, so we only
 // trigger the open-doors animation once per clear. Reset on transition.
 let _roomClearedNotified = false;
-import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
+import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawPerfectDodgeRing, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
@@ -6739,6 +6739,13 @@ function render() {
   drawProjectiles(ctx);
   drawSynergies(ctx);
   drawHeroShield(ctx);
+  // Perfect-dodge ring — gold pulse around the hero in the last 0.15s
+  // of any enemy's melee windup. Round-6 combat-feel audit: the
+  // perfect-dodge mechanic had no pre-strike telegraph, so the timing
+  // window was effectively invisible. This teaches the player WHEN to
+  // press SPACE for the counter bonus. Drawn after drawHeroShield so
+  // the ring sits on top of the shield aura in the rare overlap.
+  drawPerfectDodgeRing(ctx, hero);
   drawGold(ctx);
   drawSlashes(ctx);
   // Soul tethers — Iron Revenant's life-drain VFX (and any future

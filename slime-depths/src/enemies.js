@@ -121,7 +121,15 @@ export const TYPES = {
     color: '#6acc78', hitCD: 0.65, fps: 10, behavior: 'melee',
     attackReach: 42, attackArc: Math.PI * 0.42,
     windup: 0.25, swing: 0.22,
-    telegraphColor: 'rgba(220, 80, 80, ',
+    // Round-6 AV audit — F1/F2 melee telegraphs were all monochrome red
+    // (slime/skel/orc/archer all in the rgba(220,60-80,55-80) range), so
+    // 4-6 winding enemies blurred into "general red soup" with no per-
+    // enemy reading. Slime gets acidic green-yellow to match its body
+    // tint (#6acc78); skeleton gets bone-white; orc stays canonical
+    // melee-red; archer gets amber for "ranged threat". Heavy attacks
+    // still flash orange via heavyColor across all enemies, preserving
+    // the universal "this hits hard" reading.
+    telegraphColor: 'rgba(170, 220, 90, ',
     windupSfx: { key: 'slime_hit', rate: 0.75, volume: 0.4 },
     bloodColor: '#3a7a42',
     displayName: 'SLIME',
@@ -134,7 +142,11 @@ export const TYPES = {
     color: '#cfd4d9', hitCD: 0.80, fps: 10, behavior: 'melee',
     attackReach: 54, attackArc: Math.PI * 0.48,
     windup: 0.28, swing: 0.22,
-    telegraphColor: 'rgba(220, 60, 70, ',
+    // Bone-white telegraph — matches the dust-and-bone body palette,
+    // visually distinct from slime's acid-green and orc's blood-red so
+    // a 3-skel + 2-orc + 1-slime room reads as three separate threats
+    // not one red blob. (See slime def for the full Round-6 rationale.)
+    telegraphColor: 'rgba(225, 215, 195, ',
     windupSfx: { key: 'footstep_0', rate: 1.7, volume: 0.55 },
     bloodColor: '#4a4038',             // skeletons leave dust and old bone-dark
     displayName: 'SKELETON',
@@ -167,7 +179,11 @@ export const TYPES = {
     prefix: 'archer_', drawSize: 200, radius: 20, speed: 100, hp: 60,  damage: 1,
     color: '#d8c7a8', attackRange: 420, hitCD: 1.0, fps: 10, behavior: 'ranged',
     windup: 0.36, swing: 0.20, preferDist: 220, minDist: 130,
-    telegraphColor: 'rgba(220, 60, 70, ',
+    // Amber telegraph — Round-6 AV diversification. Distinguishes the
+    // archer's nock-and-loose from the melee red palette so the player
+    // can tell "ranged threat at distance" from "melee about to swing"
+    // without checking sprite identity in heavy combat.
+    telegraphColor: 'rgba(245, 175, 80, ',
     windupSfx: { key: 'click', rate: 0.7, volume: 0.5 },
     displayName: 'ARCHER',
     flavor: 'chose the dark over starving. regrets neither.',
@@ -2390,6 +2406,80 @@ export function drawEnemyTelegraphs(ctx) {
       ctx.restore();
     }
   }
+}
+
+// Perfect-dodge ring — Round-6 combat audit. Perfect dodge is the
+// highest-skill mechanic in the game (i-frame swap to a counter that
+// crits + heavy-knockbacks the attacker), but the timing window had no
+// player-facing telegraph. The DANGER SNAP visual on the enemy's arc
+// (lines 2233-2238) tells you "this hits in a moment" but doesn't say
+// "dodge NOW for the perfect-dodge bonus". Players were learning the
+// timing across ~20 attempts instead of ~3.
+//
+// This function draws a thin gold ring around the hero whenever any
+// enemy's melee windup has 0.15s or less remaining — the exact width
+// of the perfect-dodge sweet spot. The ring pulses in sync with the
+// pre-strike beat, sitting just outside the hero's collision radius so
+// it reads as "your shield raises now" rather than "you got hit".
+//
+// Suppressed when:
+//   - hero is currently mid-dodge (the slow-mo + counter celebration
+//     already covers that case visually)
+//   - hero has any iframes already (post-counter buffer, boss-intro,
+//     etc. — drawing the ring during invuln would be misleading)
+//   - the threat is bomber/ranged/dash (perfect dodge is melee-vs-arc;
+//     bombers explode, archers fire, dashers commit linear; none gain
+//     a perfect-dodge benefit, so the ring would teach the wrong thing)
+export function drawPerfectDodgeRing(ctx, hero) {
+  if (!hero || hero.dead) return;
+  if (hero.state === 'dodge') return;
+  if ((hero.iframes || 0) > 0.05) return;
+  let bestRemain = Infinity;
+  for (const e of enemies) {
+    if (e.dead || e.state !== 'attack') continue;
+    if (e.def.behavior !== 'melee') continue;
+    const prof = currentAttackProfile(e);
+    const remain = prof.windup - e.stateTime;
+    // Window: ring appears in the last 0.15s of windup, mirroring the
+    // dodge i-frame envelope. Shorter than DANGER SNAP (which fires at
+    // 25% remaining ~= up to 0.10s on slime, 0.18s on orc) so the ring
+    // is a STRICTER signal: "perfect-dodge sweet spot is RIGHT NOW".
+    if (remain < 0 || remain > 0.15) continue;
+    // Only show the ring if the enemy is actually targeting our hero —
+    // for the typical "1 hero in the room" case this is always true,
+    // but in case of future per-enemy aim divergence we read e.aimX/Y
+    // and confirm the strike vector intersects the hero. Cheap dot
+    // check: the strike's normalized aim vs (hero - enemy) vector must
+    // share a positive cosine, i.e. enemy is "facing" the hero.
+    const dx = hero.x - e.x;
+    const dy = hero.y - e.y;
+    const aimMag = Math.hypot(e.aimX, e.aimY) || 1;
+    const facing = (dx * e.aimX + dy * e.aimY) / aimMag;
+    if (facing < 0) continue;
+    if (remain < bestRemain) bestRemain = remain;
+  }
+  if (bestRemain === Infinity) return;
+  // Ring opacity ramps as the perfect-dodge moment approaches — soft
+  // at 0.15s, peak at 0.05s. The pulse rate (10 Hz) is fast enough to
+  // read as "act now" but not seizure-flickery.
+  const t = 1 - Math.min(1, bestRemain / 0.15);    // 0 -> 1 over the window
+  const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.062);  // ~10 Hz
+  const alpha = (0.35 + 0.45 * t) * pulse;
+  const r = (hero.radius || 14) + 8;
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 220, 130, ${alpha.toFixed(3)})`;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(hero.x, hero.y + 2, r, 0, Math.PI * 2);
+  ctx.stroke();
+  // Inner halo — softer gold gradient so the ring reads layered, not
+  // a flat dotted circle. Same color, lower alpha, smaller radius.
+  ctx.strokeStyle = `rgba(255, 240, 180, ${(alpha * 0.45).toFixed(3)})`;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(hero.x, hero.y + 2, r - 3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 // Elite affix info tooltip — gated on the player HOLDING TAB so it

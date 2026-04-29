@@ -75,13 +75,18 @@ export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life =
   p.kind = 'bolt';
   p.friendly = true;
   p.charged = !!opts.charged;
+  // Round-6 wand spell-weave — every 3rd tap-fire bolt is "woven", a
+  // mid-tier bolt that's heavier than a tap but lighter than a charge.
+  // Visual tier: tap (violet, r=7) < woven (amber, r=8.5) < charged
+  // (gold, r=10). Damage scaling lives in hero.js.
+  p.woven = !!opts.woven;
   p.x = x; p.y = y;
   p.vx = dirX * speed;
   p.vy = dirY * speed;
   p.angle = Math.atan2(dirY, dirX);
   p.life = life;
   p.damage = damage;
-  p.radius = p.charged ? 10 : 7;     // bigger hitbox on charged
+  p.radius = p.charged ? 10 : (p.woven ? 8.5 : 7);     // size ladder: tap < woven < charged
   p.affix = null;
   // Pierce count: how many enemies a single bolt can hit before
   // despawning. Default tap-fire = 0 (despawn on first hit). Charged
@@ -90,8 +95,10 @@ export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life =
   p.pierce = opts.pierce | 0;
   p.hit = null;     // lazily allocated when pierce > 0
   // Color: opts.color overrides for special bolts (synergies, theme
-  // procs); default tap = arcane violet, default charged = warm gold.
-  p.color = opts.color || (p.charged ? '#ffd980' : '#d4b8ff');
+  // procs); default tap = arcane violet, default charged = warm gold,
+  // default woven = warm amber (sits between violet + gold so the
+  // 3-bolt rhythm reads as a chromatic ladder).
+  p.color = opts.color || (p.charged ? '#ffd980' : (p.woven ? '#ffb265' : '#d4b8ff'));
   // Trail of recent positions for the comet-tail render.
   p.trail = [];
   projectiles.push(p);
