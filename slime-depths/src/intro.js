@@ -105,7 +105,14 @@ export function skipIntro() {
 // fight through the intro.
 export function updateIntro(dt) {
   if (!_active) return;
-  _timer += dt;
+  // Clamp dt — bug-hunt P1. Browser tab-throttling pauses rAF; on focus
+  // return, the first dt can be 0.5s-60s depending on the platform's
+  // visibility hint. Without a clamp, _timer skipped past INTRO_DURATION
+  // in one frame AND the heartbeat scheduler's while-loop fired all 12
+  // queued beats in <16ms (audio garbage). 0.1s cap means after a long
+  // tab-out the intro resumes from where it was, walking through the
+  // remaining beats one frame at a time instead of burst-firing them.
+  _timer += Math.min(dt, 0.1);
   const t = _timer;
 
   // Baseline breathing pulse 0-8s — the player is barely alive, slow

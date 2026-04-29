@@ -1386,7 +1386,17 @@ function updateMelee(e, dt) {
           // Boss-def onHitHero — Iron Revenant uses this to heal himself
           // (life-drain mechanic). Defined per-def so any future boss can
           // hook in without changes here.
-          if (wasHit !== 'absorbed' && e.def && e.def.onHitHero) {
+          //
+          // Bug-hunt P0 gates:
+          // (a) skip if boss is dead — a swing can land mid-death-anim
+          //     and the dead boss would heal back to alive frame.
+          // (b) skip if hero.hp is 0 — phoenix-revive sets hp to 30%
+          //     AFTER damageHero returns 'hit'; in revival cases the
+          //     player didn't pay HP for the hit, so the boss shouldn't
+          //     gain from it. Guard on hero.hp > 0 catches the brief
+          //     death-state window.
+          if (wasHit !== 'absorbed' && !e.dead && hero.hp > 0
+              && e.def && e.def.onHitHero) {
             e.def.onHitHero(e);
           }
         }

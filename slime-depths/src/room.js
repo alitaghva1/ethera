@@ -924,6 +924,9 @@ export function consumePedestal() {
   if (room.tiles[p.y][p.x] === 'pedestal') {
     room.tiles[p.y][p.x] = 'floor';
     room.pedestalUsed = true;
+    // Note: no tile-cache invalidation needed — pedestals draw in
+    // drawRoomDynamicLayers (pass 5, not cached). The next frame's
+    // dynamic loop reads 'floor' for this tile and skips the pedestal.
     return true;
   }
   return false;

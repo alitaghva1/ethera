@@ -964,12 +964,14 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (keys.KeyS) dy += 1;
       if (keys.KeyA) dx -= 1;
       if (keys.KeyD) dx += 1;
-      // Mobile virtual joystick — supplements keyboard. If the joystick
-      // is being used (virtualMove.active), its analog deflection
-      // overrides whatever the WASD keys read. Magnitude is in [-1, 1]
-      // per axis already, so no normalization needed beyond what the
-      // shared `m = hypot` step does below.
-      if (virtualMove.active) {
+      // Mobile virtual joystick — supplements keyboard. Joystick wins
+      // ONLY when it has a non-zero deflection. If the player is
+      // touching the stick but holding it inside the dead zone, both
+      // x and y are 0 and we fall back to whatever WASD said —
+      // important for hybrid setups (Steam Deck etc.) where the
+      // player might use both inputs and a deadzoned touch shouldn't
+      // freeze movement. Bug-hunt P2.
+      if (virtualMove.active && (virtualMove.x !== 0 || virtualMove.y !== 0)) {
         dx = virtualMove.x;
         dy = virtualMove.y;
       }

@@ -399,7 +399,7 @@ export const ALL_TOPIC_IDS = Object.keys(TOPICS);
 // NPC ROSTER — shipped Phase 1
 //
 // Keeper (always present) — wraps the existing essence shop.
-// Smith (floor 2 clear) — reforge two relics into one higher-tier.
+// Smith (floor 2 clear) — bank a chosen relic as next-run heirloom.
 // Archivist (10 relics seen) — surfaces Memory unlock hints + codex access.
 //
 // Phase 2+ roster (planned, not shipped):
@@ -522,8 +522,8 @@ export const NPCS = {
   smith: {
     id: 'smith',
     name: 'The Smith',
-    title: 'reforger of broken oaths',
-    role: 'Melts two relics into one of higher tier.',
+    title: 'keeper of warm steel',
+    role: 'Bank one relic by the forge — it returns to you on your next descent.',
     portrait: 'npc_v2_smith',
     x: 24, y: 74,                      // at the painted forge doorway (left)
     tint: '#ff8a60',
@@ -532,10 +532,16 @@ export const NPCS = {
     arcStages: [
       {
         advance: () => true,
+        // Hamlet-audit P0 — first-meeting dialogue used to promise a
+        // two-relic merge that doesn't exist; the actual service banks
+        // a single chosen relic (the heirloom) for next descent. Now
+        // honest about the mechanic; the "anvil takes two voices"
+        // flavor in chatLines + topics still holds at the abstract
+        // level (smith + steel as two voices).
         text: [
           'You walked far enough to find me.',
           'That means something. Not many do — the ruin eats the ones who turn back.',
-          'Bring me two relics. I will give you one that is more than both. The older name for this was reforging. I do it with a hammer and a little blood, and I do not ask which of the two was yours to begin with.',
+          'Bring me one piece you would carry again. I will keep it warm by the door. When you walk down next, it will go with you. The older name for this was an heirloom. I do not ask where it came from.',
         ],
       },
       {
