@@ -181,6 +181,20 @@ export const hero = {
   speedMul: 1,
   lifesteal: 0,
   revives: 0,
+  // Round-6 mythic relics (Ember Tyrant pool expansion):
+  //   heartOfWoundAvailable — first lethal hit reduces to 1 HP + push
+  //     attackers + iframes (consumed on use, like phoenix_cloak revive
+  //     except it doesn't restore HP).
+  //   strideOfAsh — dodging spawns 3 ember flames along the dodge path
+  //     (uses spawnEmberFlame from enemies.js, the bomber-trail system).
+  //   coinOfTyrant — kills tick a counter; every 8th drops a free
+  //     common relic on the floor. Also bumps goldMul by 1.5× (set in
+  //     the relic's apply() — no separate flag needed for that part).
+  //   coinOfTyrantCounter — the kill-tick counter (0..7).
+  heartOfWoundAvailable: false,
+  strideOfAsh: false,
+  coinOfTyrant: false,
+  coinOfTyrantCounter: 0,
   // Expanded pool stats
   damageTakenMul: 1,          // Iron Resolve: ×0.75
   critChance: 0,               // Keen Edge: +0.15
@@ -229,6 +243,10 @@ export function resetHero() {
   hero.dodgeDistMul = 1;
   hero.galeStep = false;
   hero.galeBurstTime = 0;
+  hero.heartOfWoundAvailable = false;
+  hero.strideOfAsh = false;
+  hero.coinOfTyrant = false;
+  hero.coinOfTyrantCounter = 0;
   hero.executeThreshold = 0;
   hero.executeMul = 1.5;
   // Reset synergy flags
@@ -1166,6 +1184,20 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (Math.random() < 0.6) dashTrail(hero.x, hero.y);
       // Add a trail point every frame during dodge for Thunder Step
       if (hero.thunderStep) addThunderTrailPoint(hero.x, hero.y);
+      // STRIDE OF ASH (mythic) — drop a friendly fire pool every ~3
+      // frames along the dodge path. Damage 2 with a 1.4s lifetime; the
+      // hero will already have moved on by the time the pool ticks, so
+      // the pool reads as "you left a path through the wound" rather
+      // than "you stand inside a burn lane". Per-enemy one-tick rule
+      // in updateFlames keeps it from melting bosses solo.
+      if (hero.strideOfAsh) {
+        if (!hero._strideAshT || hero._strideAshT <= 0) {
+          spawnEmberFlame(hero.x, hero.y + 4, { friendly: true, damage: 2, life: 1.4, radius: 26 });
+          hero._strideAshT = 0.05;     // ~3 frames at 60fps -> ~6 pools per dodge at ×1 distance
+        } else {
+          hero._strideAshT -= dt;
+        }
+      }
       if (hero.stateTime >= DODGE_DUR) {
         if (hero.thunderStep) endThunderTrail();
         // Landing burst — dust kicks opposite to the dodge direction, grounding
@@ -2010,6 +2042,30 @@ export function damageHero(amount, fromX, fromY) {
   }
   playSfx('hero_hurt', { rate: 1.0, rateJitter: 0.05, volume: 0.9 });
   if (hero.hp <= 0) {
+    // HEART OF THE WOUND (mythic) — once-per-run pseudo-revive that
+    // leaves the hero at 1 HP instead of the 30% Phoenix Cloak grant.
+    // Pushes attackers back via the same explosion the cloak uses (no
+    // damage component on the push) and burns 1.6s of iframes for
+    // recovery. Fires BEFORE phoenix_cloak.revives so the cheaper
+    // 1-HP save is used first; if both are equipped the player gets
+    // two saves total (heart at 1 HP, then a cloak revive at 30%).
+    if (hero.heartOfWoundAvailable) {
+      hero.heartOfWoundAvailable = false;
+      hero.hp = 1;
+      hero.iframes = 1.6;
+      setState('hurt');
+      shakeCamera(20, 0.45);
+      // Explosion-style push (uses 0 damage so the survival doesn't
+      // contribute to "I killed myself by clutch-saving into my own
+      // proc"). Same 200px radius as the agent spec.
+      spawnExplosion(hero.x, hero.y, 200, 0);
+      // Audio + screen — heavy, distinct from a normal hurt. Mid-bass
+      // thud + a high "spared" chord sells the moment.
+      try { synthThud(45, 1.0, 0.6); } catch (_e) {}
+      try { synthChord(330, 0.8, 1.0); } catch (_e) {}
+      try { triggerScreenFlash('rgba(255, 80, 110, 0.20)', 0.5); } catch (_e) {}
+      return 'hit';
+    }
     if (hero.revives > 0) {
       hero.revives -= 1;
       hero.hp = Math.max(1, Math.ceil(hero.maxHp * 0.3));         // Phoenix Cloak revives at 30%

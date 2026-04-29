@@ -676,7 +676,24 @@ export const BOSS_LOOT_POOL = {
 
 // On Ember Tyrant (final boss) clear, 20% chance to roll from the mythic
 // pool instead of the themed legendary pool — the true "Windforce moment".
-export const EMBER_TYRANT_MYTHIC_POOL = ['cataclysm', 'eye_of_ether'];
+//
+// Round-6 endgame audit retune: pool was 2 relics (cataclysm + eye_of_ether,
+// both fire-themed AoE). Players who rolled mythic got one of two and on
+// second runs already knew both. Expanded to 5 with thematic spread:
+//   cataclysm        — offensive (eruption every 10 hits)
+//   eye_of_ether     — offensive (crit + crit pierce)
+//   heart_of_wound   — defensive (1× lethal-blow save)
+//   stride_of_ash    — control (dodge fire trail)
+//   coin_of_tyrant   — economy (gold mult + free relics on kill chain)
+// A mythic-blessed run now picks ONE of five identity-shaping relics,
+// making the "did I roll mythic" moment carry actual replay variance.
+export const EMBER_TYRANT_MYTHIC_POOL = [
+  'cataclysm',
+  'eye_of_ether',
+  'heart_of_wound',
+  'stride_of_ash',
+  'coin_of_tyrant',
+];
 export const EMBER_TYRANT_MYTHIC_CHANCE = 0.20;
 
 export function makeBossSpawns(level, pillarTemplate = -1, bossW = ROOM_W, bossH = ROOM_H) {

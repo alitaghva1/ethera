@@ -42,7 +42,7 @@ let _mapPickInFlight = false;
 // Tracks whether onRoomCleared has fired for the current room, so we only
 // trigger the open-doors animation once per clear. Reset on transition.
 let _roomClearedNotified = false;
-import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawPerfectDodgeRing, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
+import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawPerfectDodgeRing, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, updateEmberRings, drawEmberRings, clearEmberRings, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
@@ -620,6 +620,34 @@ window.__onFusionFormed = (fusion) => {
   // tip so the player understands what just happened. Subsequent
   // fusions are silent (the banner + chord do the talking).
   showTip('first_fusion');
+};
+
+// MYTHIC: Coin of the Tyrant kill-chain reward. Called from enemies.js
+// every 8th kill while the relic is owned. Drops a free common-tier
+// relic on the floor at the kill position; walking onto it auto-applies
+// like any other pedestal pickup.
+window.__coinOfTyrantSpawnRelic = (x, y) => {
+  // Roll one common relic. rollRelicOffer picks tier-weighted; on common
+  // tier we just take whatever it returns and force a single result.
+  // The dropped relic skips the magician-bias / theme-bias machinery —
+  // it's a "free" pickup, not a strategic offer.
+  const rolled = rollRelicOffer(1, 1);     // floor=1 → 100% common weight
+  if (!rolled.length) return;
+  pedestals.push({
+    x, y,
+    relic: rolled[0],
+    tier: 'common',
+    picked: false,
+    bob: Math.random() * Math.PI * 2,
+    glow: 0,
+    hpCost: 0,
+  });
+  // Brief flair — gold sparkle burst at the drop position so the player
+  // sees the coin "fall" rather than just appearing on the floor.
+  for (let k = 0; k < 12; k++) deathBurst(x, y, '#ffd070');
+  for (let k = 0; k < 8; k++) sparkle(x + (Math.random() - 0.5) * 28, y + (Math.random() - 0.5) * 18, '#ffe5a0');
+  try { synthPing(880, 0.32, 0.35); } catch (_e) {}
+  try { synthClick(0.85, 0.55); } catch (_e) {}
 };
 // Boss phase-transition cinematic (fires when a boss enrages at 50% HP).
 // First-encounter gating: full 1.6s banner with PHASE 2 title on first
@@ -1430,6 +1458,7 @@ function enterHamletCanvas() {
   clearProjectiles();
   clearPedestals();
   clearFlames();
+  clearEmberRings();
   suppressPickupFlash();
   // Door-transition residue must be wiped explicitly — neither loadRoom
   // nor buildRoomFromData touches doorPan / prevRoom (they're owned by
@@ -3976,6 +4005,7 @@ function loadRoom(idx, entryFrom) {
   clearFx();
   clearSoulTethers();
   clearFlames();
+  clearEmberRings();
   clearSynergies();
   clearWanderer();
   clearAmbientCreatures();   // fresh bat/raven cycle per room
@@ -5661,6 +5691,7 @@ function tick(now) {
       updateHero(dt, enemies, mw);
       updateEnemies(dt, hero);
       updateFlames(dt);
+      updateEmberRings(dt);
       updateProjectiles(dt);
       updateSynergies(dt);
       updateWanderer(dt);
@@ -6779,6 +6810,11 @@ function render() {
   // press SPACE for the counter bonus. Drawn after drawHeroShield so
   // the ring sits on top of the shield aura in the rare overlap.
   drawPerfectDodgeRing(ctx, hero);
+  // Ember Tyrant phase-2 rings — drawn above actors so the wavefront
+  // reads as a SCREEN-LEVEL hazard the player must dodge through, not
+  // a floor decal hidden under enemy sprites. Drawn before slashes so
+  // the hero's swing VFX still pop on top.
+  drawEmberRings(ctx);
   drawGold(ctx);
   drawSlashes(ctx);
   // Soul tethers — Iron Revenant's life-drain VFX (and any future

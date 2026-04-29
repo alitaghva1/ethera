@@ -52,22 +52,50 @@ export const ELITE_AFFIXES = {
 };
 const AFFIX_IDS = Object.keys(ELITE_AFFIXES);
 
-// ---- Flame trail hazards spawned by ember elites ----
+// ---- Flame trail hazards spawned by ember elites (and Stride of Ash) ----
+//
+// Round-6 Stride of Ash mythic — hero-side flames fire on dodge end and
+// damage ENEMIES, not the hero. Same visual + lifecycle as the bomber-
+// elite flames; just flipped damage target via the `friendly` flag. The
+// flag defaults false to preserve the original ember-elite behavior.
 const _flames = [];
-export function spawnEmberFlame(x, y) {
-  _flames.push({ x, y, t: 0, life: 2.0, radius: 22 });
+export function spawnEmberFlame(x, y, opts = {}) {
+  _flames.push({
+    x, y, t: 0,
+    life: opts.life || 2.0,
+    radius: opts.radius || 22,
+    friendly: !!opts.friendly,
+    damage: opts.damage || 1,
+    hitSet: opts.friendly ? new Set() : null,    // per-enemy hit cooldown for friendly flames
+  });
 }
 export function updateFlames(dt) {
   for (let i = _flames.length - 1; i >= 0; i--) {
     const f = _flames[i];
     f.t += dt;
     if (f.t >= f.life) { _flames.splice(i, 1); continue; }
-    // Damage hero on contact (cooldown to prevent tick-spam)
-    if (!hero._flameCD || hero._flameCD <= 0) {
-      const dx = hero.x - f.x, dy = hero.y - f.y;
-      if (dx*dx + dy*dy < (f.radius + 14) * (f.radius + 14) && hero.state !== 'dodge') {
-        damageHero(1, f.x, f.y);
-        hero._flameCD = 0.5;
+    if (f.friendly) {
+      // Damage enemies in range. Per-flame hitSet limits each enemy to
+      // a single tick per flame (vs the once-every-0.5s pattern for the
+      // hero-damage path) — Stride of Ash is meant to enable kiting,
+      // not pin enemies in 30-tick burn lanes.
+      const r2 = (f.radius + 14) * (f.radius + 14);
+      for (const e of enemies) {
+        if (e.dead || f.hitSet.has(e)) continue;
+        const dx = e.x - f.x, dy = e.y - f.y;
+        if (dx*dx + dy*dy < r2) {
+          e.takeDamage(f.damage, 0, 0);
+          f.hitSet.add(e);
+        }
+      }
+    } else {
+      // Damage hero on contact (cooldown to prevent tick-spam).
+      if (!hero._flameCD || hero._flameCD <= 0) {
+        const dx = hero.x - f.x, dy = hero.y - f.y;
+        if (dx*dx + dy*dy < (f.radius + 14) * (f.radius + 14) && hero.state !== 'dodge') {
+          damageHero(f.damage, f.x, f.y);
+          hero._flameCD = 0.5;
+        }
       }
     }
   }
@@ -93,6 +121,80 @@ export function drawFlames(ctx) {
   }
 }
 export function clearFlames() { _flames.length = 0; }
+
+// ---- Ember Tyrant phase-2 fire rings ----
+// Round-6 endgame audit: Ember Tyrant's enrage was mechanically thin
+// (just speed +35% and a static 6-pillar fire ring, no new attack
+// pattern). The rings here are a recurring radial wavefront — every
+// emberRingInterval seconds while enraged, a new ring spawns at the
+// boss's position and expands outward, dealing damage to anyone caught
+// in the wavefront band [r-tol, r+tol]. Player must read the windup
+// and step OFF the radial line, not just outrun it.
+//
+// Damage is resolved by per-ring "did we hit hero this pulse" flag —
+// a single ring can hit the hero exactly once even if their position
+// drifts back into the wavefront. Prevents the cheap multi-tick that
+// would happen if hero stood still inside a slow-moving band.
+const _emberRings = [];
+const EMBER_RING_BAND = 28;        // hit tolerance — hero must clear ±28px of the leading edge
+
+export function spawnEmberRing(x, y, maxR = 280, dur = 0.85, damage = 4) {
+  _emberRings.push({ x, y, t: 0, dur, maxR, damage, hit: false });
+}
+
+export function updateEmberRings(dt) {
+  for (let i = _emberRings.length - 1; i >= 0; i--) {
+    const r = _emberRings[i];
+    r.t += dt;
+    if (r.t >= r.dur) { _emberRings.splice(i, 1); continue; }
+    if (r.hit) continue;
+    // Current ring radius — eased outward so the wavefront slows as it
+    // reaches max range (gives the player a slightly longer reaction
+    // window on the outer edge, where they're most likely to be).
+    const k = r.t / r.dur;
+    const ease = 1 - (1 - k) * (1 - k);    // ease-out quad
+    const curR = ease * r.maxR;
+    const dx = hero.x - r.x, dy = hero.y - r.y;
+    const dh = Math.hypot(dx, dy);
+    if (Math.abs(dh - curR) < EMBER_RING_BAND && hero.state !== 'dodge') {
+      damageHero(r.damage, r.x, r.y);
+      r.hit = true;     // one-shot per ring
+    }
+  }
+}
+
+export function drawEmberRings(ctx) {
+  for (const r of _emberRings) {
+    const k = r.t / r.dur;
+    const ease = 1 - (1 - k) * (1 - k);
+    const curR = ease * r.maxR;
+    const a = (1 - k) * 0.85;
+    // Outer glow band — wide gradient for the expanding wavefront.
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 140, 60, ${(a * 0.9).toFixed(3)})`;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, curR, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner bright leading edge — thinner, brighter, sells the fire crest.
+    ctx.strokeStyle = `rgba(255, 220, 160, ${(a * 0.85).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, curR - 2, 0, Math.PI * 2);
+    ctx.stroke();
+    // Trailing soft afterglow — thinner band behind the leading edge.
+    if (curR > 30) {
+      ctx.strokeStyle = `rgba(220, 80, 30, ${(a * 0.45).toFixed(3)})`;
+      ctx.lineWidth = 14;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, curR - 12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+export function clearEmberRings() { _emberRings.length = 0; }
 
 const SPR = 100;
 
@@ -372,6 +474,15 @@ export const TYPES = {
     bossTrack: 'boss',
   },
   // ---- Floor 4 boss: EMBER TYRANT — heavily armored, fire-themed ----
+  // Round-6 endgame audit retune (commit b5ca19d era):
+  //   - heavyDamage 4 → 5: matches Broodmother's heavy bite. Final boss
+  //     should never hit softer than the floor-3 boss.
+  //   - emberRingInterval added: while enraged, the boss pulses an
+  //     expanding fire ring from his position every 4s. Distinct from
+  //     the floor-fire static pillars (which spawn on enrage but DO NOT
+  //     change the boss's swing rhythm). The ring forces the player to
+  //     find a kiting line away from the boss every cycle, which gives
+  //     the climactic phase a mechanical identity beyond "+35% speed".
   ember_tyrant: {
     element: 'fire',                 // resists fire, weak to cold/shock
     prefix: 'ember_',  drawSize: 280, radius: 30, speed: 82,  hp: 280, damage: 3,
@@ -383,7 +494,7 @@ export const TYPES = {
     heavyChance: 0.40,
     heavyReach: 104, heavyArc: Math.PI * 0.90,
     heavyWindup: 0.68, heavySwing: 0.34,
-    heavyDamage: 4,
+    heavyDamage: 5,
     heavyColor: 'rgba(255, 80, 30, ',
     // Boss phases — spawn bombers at thresholds + enrage
     enrageAt: 0.5,
@@ -391,6 +502,16 @@ export const TYPES = {
     enrageDamageMul: 1.25,
     bomberAt: [0.75, 0.50, 0.25],
     summonAt: [0.33],               // also summons an archer once
+    // Phase-2 fire-ring pulse — every emberRingInterval seconds while
+    // the boss is enraged, an expanding ring of fire emanates from his
+    // body. emberRingMaxR is the outer reach of the ring; the visual
+    // grows from 0 to maxR over emberRingDur seconds, dealing damage
+    // to anyone caught in the wavefront. Hero must read the windup
+    // tell + sidestep along the radial line. See updateBossPhases.
+    emberRingInterval: 4.0,
+    emberRingDur: 0.85,
+    emberRingMaxR: 280,
+    emberRingDamage: 4,
     windupSfx: { key: 'hero_hurt', rate: 0.42, volume: 0.9 },
     heavyWindupSfx: { key: 'hero_hurt', rate: 0.30, volume: 1.0 },
     tintFilter: 'hue-rotate(-18deg) saturate(1.4) brightness(1.05)',
@@ -1129,6 +1250,18 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         }
         // LEGENDARY: Ethereal Binding — every 3rd kill grants 1s i-frames
         etherealRegisterKill();
+        // MYTHIC: Coin of the Tyrant — every 8th kill drops a free common
+        // relic at the corpse. Routed through a window callback set up in
+        // main.js so enemies.js doesn't need to import pedestals/relics
+        // directly (avoids the circular dep that bit us last time).
+        if (hero.coinOfTyrant) {
+          hero.coinOfTyrantCounter = (hero.coinOfTyrantCounter || 0) + 1;
+          if (hero.coinOfTyrantCounter % 8 === 0
+              && typeof window !== 'undefined'
+              && typeof window.__coinOfTyrantSpawnRelic === 'function') {
+            window.__coinOfTyrantSpawnRelic(this.x, this.y);
+          }
+        }
         // SOULREAVER — kill stacks attack speed buff (max 3 stacks, refreshes timer)
         if (hero.soulreaver) {
           hero.soulreaverStacks = Math.min(3, hero.soulreaverStacks + 1);
@@ -1916,6 +2049,37 @@ export function updateEnemies(dt, _hero) {
     }
     // Animate the enrage shockwave decay
     if (e._enrageShockTime && e._enrageShockTime > 0) e._enrageShockTime -= dt;
+
+    // EMBER TYRANT phase-2 fire-ring pulse — see _emberRings system at
+    // top of file. While the boss is enraged, every emberRingInterval
+    // seconds a new ring emanates from his current position. Static
+    // floor pillars from the enrage burst stay where they were spawned;
+    // these rings track the boss as he pursues the hero, so the player
+    // is forced to break the radial line instead of just standing in a
+    // safe corner. Initial counter value gives the player a 1.5s
+    // breathing window after the phase-2 cinematic before the first
+    // ring fires (counter starts at interval - WARMUP).
+    if (e._enraged && e.type === 'ember_tyrant' && !e.dead) {
+      const interval = e.def.emberRingInterval || 4.0;
+      const WARMUP = 1.5;
+      if (e._emberRingT == null) e._emberRingT = interval - WARMUP;
+      e._emberRingT += dt;
+      if (e._emberRingT >= interval) {
+        e._emberRingT = 0;
+        spawnEmberRing(
+          e.x, e.y - 4,
+          e.def.emberRingMaxR || 280,
+          e.def.emberRingDur || 0.85,
+          e.def.emberRingDamage || 4,
+        );
+        // Audio + camera tell — a low whoosh + small shake cues the
+        // player's eye to the boss right as the ring spawns. Without
+        // this the wavefront could be the first thing they see at
+        // their feet, with no anticipation.
+        playSfx('hero_hurt', { rate: 0.32, volume: 0.5 });
+        shakeCamera(4, 0.18);
+      }
+    }
 
     // Elite boss phase 2 — spawn 2 slimes at 50% HP (once)
     if (e.elite && !e.phase2Triggered && e.hp <= e.maxHp * 0.5) {

@@ -303,6 +303,62 @@ export const RELIC_DEFS = {
     tier: 'mythic',
     apply: () => { hero.cataclysm = true; },
   },
+  // Round-6 endgame audit added 3 new mythics. Old pool was 2 (cataclysm
+  // + eye_of_ether), making a "mythic-blessed" run binary — players
+  // either rolled one of two fire-themed AoE relics or felt mythic-less.
+  // These three add a defensive identity (heart_of_wound), a movement /
+  // control identity (stride_of_ash), and an economy identity
+  // (coin_of_tyrant) so a mythic roll has thematic variety.
+  heart_of_wound: {
+    id: 'heart_of_wound',
+    name: 'Heart of the Wound',
+    // Once-per-run pseudo-revive — when the next lethal hit lands, the
+    // hero is reduced to 1 HP instead of dying AND a 200px shockwave
+    // pushes nearby enemies back + grants 1.6s of iframes to recover.
+    // Distinct from phoenix_cloak (which gives a full revive at 30%);
+    // heart_of_wound is the "skin of your teeth" survival, the kind of
+    // moment players will tell each other about. Wired in hero.js's
+    // damage path right alongside hero.revives.
+    desc: 'First lethal blow leaves you at 1 HP and pushes back attackers',
+    flavor: 'The wound learned a name. You. It will not let you go.',
+    icon: 'relic_phoenix_cloak',     // shared icon — phoenix imagery fits both revival relics
+    tint: '#ff5070',
+    tier: 'mythic',
+    apply: () => { hero.heartOfWoundAvailable = true; },
+  },
+  stride_of_ash: {
+    id: 'stride_of_ash',
+    name: 'Stride of Ash',
+    // Dodge / dash leaves a trail of fire pools (uses the existing
+    // ember-flame system — same hazard tile bombers leave behind, just
+    // hero-side this time). Pools deal 1 dmg/tick to enemies, last 1.4s
+    // each, drop ~3 along the dodge path. Turns the hero's evasive
+    // mechanic into an offensive lane closer.
+    desc: 'Dodging leaves a trail of fire that scorches enemies',
+    flavor: 'You walked through the wound, and the wound learned to walk with you.',
+    icon: 'relic_avatar_of_flame',
+    tint: '#ff8a40',
+    tier: 'mythic',
+    apply: () => { hero.strideOfAsh = true; },
+  },
+  coin_of_tyrant: {
+    id: 'coin_of_tyrant',
+    name: 'Coin of the Tyrant',
+    // Kills drop +50% gold AND every 8th kill drops a free random
+    // common relic on the floor (auto-applies on contact). Fills the
+    // economy slot in the mythic pool — a player rolling Coin of the
+    // Tyrant is making bank for the rest of the descent and starting
+    // builds they couldn't afford otherwise.
+    desc: 'Kills drop +50% gold; every 8th kill drops a free relic',
+    flavor: 'He counted his dead in coins. The coins remember.',
+    icon: 'relic_gilded_hoard',
+    tint: '#ffd070',
+    tier: 'mythic',
+    apply: () => {
+      hero.coinOfTyrant = true;
+      hero.goldMul = (hero.goldMul || 1) * 1.5;
+    },
+  },
   wanderers_cloak: {
     id: 'wanderers_cloak',
     name: "Wanderer's Cloak",
