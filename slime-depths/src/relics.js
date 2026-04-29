@@ -799,12 +799,20 @@ export function relicTier(id) {
 // every relic-pool filter in the codebase (rollRelicOffer, boss
 // rewards, tarot start-with bonuses, daily challenge relic, etc.) so
 // a sword/dagger/hammer player never gets handed a wand-only relic
-// as a guaranteed pickup. Defaults `weapon` to 'sword' when the hero
-// hasn't selected one yet (e.g. menu-time daily preview).
+// as a guaranteed pickup.
+//
+// THE FOOL tarot starts the player with `hero.weapon = null` until the
+// first room clear grants one. While weapon is null, we allow ALL
+// weapon-only relics through — the FOOL player should be able to pick
+// any weapon-themed relic and have it MATTER once they earn a weapon.
+// (Previously, null fell through to 'sword' here, which meant a FOOL
+// player saw only sword-themed picks regardless of what weapon they'd
+// eventually be granted — silent build trap.)
 export function isRelicForWeapon(id, weapon) {
   const def = RELIC_DEFS[id];
   if (!def) return false;
   if (!def.weaponOnly) return true;
+  if (weapon === null) return true;     // FOOL: weapon-pending, allow all
   return def.weaponOnly === (weapon || 'sword');
 }
 

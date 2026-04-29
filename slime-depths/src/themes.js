@@ -56,7 +56,7 @@ export const RELIC_THEMES = {
   dash_master:          'storm',
   storm_conduit:        'storm',  // wand: bolt chains lightning to nearest
 
-  // FLAME (8) — fire, explosion, burn, cascade
+  // FLAME (9) — fire, explosion, burn, cascade, raw aggression
   pyromancer:           'flame',
   explosive_kill:       'flame',
   avatar_of_flame:      'flame',
@@ -65,8 +65,9 @@ export const RELIC_THEMES = {
   phoenix_tear:         'flame',
   cataclysm:            'flame',
   spore_bloom:          'flame',
+  serrated_edge:        'flame',  // pure +30% dmg — raw aggression, not discipline
 
-  // BLOOD (11) — lifesteal, kill trigger, low-HP, regen
+  // BLOOD (13) — lifesteal, kill trigger, low-HP, regen, kill-pressure tools
   bloodstone:           'blood',
   reaver:               'blood',
   vampiric_aura:        'blood',
@@ -78,8 +79,10 @@ export const RELIC_THEMES = {
   hourglass_of_respite: 'blood',
   vitality:             'blood',
   soul_burst:           'blood',
+  warlord:              'blood',  // per-relic dmg — "treasure on belt sings", kill-pressure
+  heavy_blow:           'blood',  // knockback crit — kill-pressure finisher
 
-  // VOW (18) — defense, block, stance, stoic strikes, hammer earth + sword discipline
+  // VOW (15) — defense, block, stance, stoic strikes, hammer earth + sword discipline
   iron_resolve:         'vow',
   ironhide:             'vow',
   oathshield:           'vow',
@@ -88,18 +91,15 @@ export const RELIC_THEMES = {
   iron_greaves:         'vow',
   mirror_shard:         'vow',
   counterstrike:        'vow',
-  serrated_edge:        'vow',
-  heavy_blow:           'vow',
-  long_reach:           'vow',
-  warlord:              'vow',
   honest_edge:          'vow',    // sword: finisher always crits — disciplined strikes
   ringing_steel:        'vow',    // sword: chain stacks — disciplined sustain
   vow_eternal:          'vow',    // sword: opening crit — literal vow
   mountain_strike:      'vow',    // hammer: earth shockwave — earthen discipline
   earthen_hold:         'vow',    // hammer: stagger — "stand still, the earth tells them"
   world_ender:          'vow',    // hammer: finisher shatters shields — disciplined finisher
+  gilded_hoard:         'vow',    // hoard discipline — patience to gather, not to spend
 
-  // SHADOW (13) — crit, arcane, dodge, echo, dagger precision + wand arcane
+  // SHADOW (14) — crit, arcane, dodge, echo, dagger precision + wand arcane
   keen_edge:            'shadow',
   eye_of_ether:         'shadow',
   echoing_strike:       'shadow',
@@ -113,8 +113,11 @@ export const RELIC_THEMES = {
   razor_pace:           'shadow',  // dagger: 5th-hit crescendo — precision rhythm
   splintered_light:     'shadow',  // wand: bolt splits — arcane fan
   patient_lens:         'shadow',  // wand: charged crit — precision arcane
+  long_reach:           'shadow',  // hits past 80% reach +40% — precision spacing
 
-  // Unthemed: gilded_hoard — pure utility, intentionally excluded.
+  // All in-play relics now carry a theme. The previous "intentionally
+  // excluded" gilded_hoard was an orphan in the resonance system —
+  // tagged VOW above (hoard discipline reads naturally with the set).
 };
 
 // Tier thresholds — 3 → resonance, 5 → ascendance.

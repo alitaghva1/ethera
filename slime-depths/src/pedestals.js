@@ -1015,14 +1015,24 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   const flavorH = flavorLines.length * 14;
   const descH = descLines.length * 14;
   const extraH = rerollable ? 20 : 0;
-  // Trap-pick warning: BLOOD-themed relic + Memory of the Hollow active
-  // means this relic's lifesteal will fire VFX/sounds but grant no HP.
-  // All 11 BLOOD relics + the BLOOD theme's lifesteal/HP-on-kill all
-  // route through the same gate (hero.memoryHollow), so a Hollow run
-  // with a BLOOD pedestal stream is trap pick after trap pick. Show a
-  // visible red warning line so the player knows the cost upfront.
+  // Trap-pick warnings — match the Hollow+BLOOD pattern for any memory
+  // that voids a relic's mechanic. Currently two memories silently kill
+  // entire relic clusters:
+  //   memoryHollow → BLOOD theme (lifesteal voided, all 13 relics affected)
+  //   memoryStillness → dodge-keyed relics (Space disabled, dodge-window
+  //     and dodge-trigger relics are dead picks)
   const isBloodTrap = !!hero.memoryHollow && RELIC_THEMES[r.id] === 'blood';
-  const warningH = isBloodTrap ? 18 : 0;
+  // Dodge-keyed set — relics whose effect requires the dodge button. Stone
+  // disables dodge entirely, so these become inert. Listed explicitly
+  // rather than read from a flag so the warning fires only on real
+  // dodge-window relics, not "i happen to gain a thing on dodge."
+  const DODGE_KEYED = new Set([
+    'whisper_veil', 'flicker_step', 'temporal_eye', 'wanderers_cloak',
+    'dash_master', 'thunder_step', 'second_wind', 'gale_step',
+    'nimble_step', 'oathshield',
+  ]);
+  const isStillnessTrap = !!hero.memoryStillness && DODGE_KEYED.has(r.id);
+  const warningH = (isBloodTrap || isStillnessTrap) ? 18 : 0;
   // Box height: 18 (tier badge) + 22 (name) + flavor lines + 6 gap + desc
   // lines + 12 bottom padding + reroll-hint extra + altar extra + warning.
   let boxH = 18 + 22 + flavorH + (flavorH ? 6 : 0) + descH + 12 + extraH + (isAltar ? 18 : 0) + warningH;
@@ -1140,6 +1150,12 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
     ctx.fillStyle = '#ff7a7a';
     ctx.font = 'italic bold 11px Georgia, serif';
     ctx.fillText('\u26a0  Hollow voids the lifesteal', textCenter, cursorY + 4);
+    cursorY += 16;
+  }
+  if (isStillnessTrap) {
+    ctx.fillStyle = '#ff7a7a';
+    ctx.font = 'italic bold 11px Georgia, serif';
+    ctx.fillText('\u26a0  Stillness disables this dodge effect', textCenter, cursorY + 4);
     cursorY += 16;
   }
   if (rerollable) {

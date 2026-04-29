@@ -6132,6 +6132,22 @@ function tick(now) {
       if (data.kind !== 'boss' && data.kind !== 'start') {
         synthChord(523, 0.55, 0.65);
       }
+      // THE FOOL tarot — "Begin with no weapon, granted after first clear."
+      // The original code nulled hero.weapon at run start but never
+      // re-granted it; the player walked the rest of the run swinging on
+      // the sword fallback in weaponDef() with no actual weapon owned.
+      // Grant a random unlocked weapon now. Refresh relic offers so
+      // newly-eligible weapon-themed picks aren't filtered out next room.
+      if (hero.weapon === null && data.kind !== 'start') {
+        const choices = availableWeapons();
+        const granted = choices[(Math.random() * choices.length) | 0] || 'sword';
+        hero.weapon = granted;
+        try { synthFanfare(0.55); synthChord(523, 0.7, 0.7); } catch (_e) {}
+        spawnDamageNumber(hero.x, hero.y - 32, 0, {
+          text: 'WEAPON: ' + granted.toUpperCase(),
+          color: '#f4d9a0',
+        });
+      }
     }
 
     // Tick door animations + check for the hero physically crossing an
