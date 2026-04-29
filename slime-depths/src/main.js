@@ -463,6 +463,11 @@ let floorCardRoman = '';
 let floorCardName = '';
 let floorCardFlavor = '';
 let floorCardBackdrop = '';
+// Total duration for the active floor card. 3.2s on first sight; 1.6s
+// on repeat (cinematic skip-on-repeat — see triggerFloorCard). Drives
+// both the timer countdown AND the alpha-curve normalization in
+// floorCardRender, so they have to stay in sync.
+let floorCardTotal = 3.2;
 
 const FLOOR_CARD_DATA = {
   1: { roman: 'I',   name: 'THE UNDERCROFT',    flavor: 'cold stone remembers the dead',         backdrop: 'zone_undercroft' },
@@ -496,6 +501,13 @@ const VICTORY_MESSAGES = [
 ];
 // Boss intro cinematic — delay gameplay briefly when entering a boss room
 let bossIntroTime = 0;                // ticks down from ~2.2s while intro plays
+// Total duration for the active boss intro. 2.2s on first sight; 1.3s
+// on repeat. Mirrors the floorCardTotal pattern — the timer needs to
+// stay in sync with the CSS animation length picked by bossIntroDom.js.
+let bossIntroTotal = 2.2;
+// Whether the active boss intro is using the fast repeat-sighting variant.
+// Routed to bossIntroDom.updateBossIntro every render frame.
+let bossIntroFast = false;
 let bossIntroBoss = null;             // reference to the boss for name display
 let bossIntroStartedAt = 0;           // wall-clock timestamp — clamps intro at
                                        // 2.5s real-time even if the game pauses
@@ -3985,8 +3997,18 @@ function loadRoom(idx, entryFrom) {
     // milestone utterance. Fires BEFORE the intro so the drawWatcher gate
     // (defers on bossIntroTime > 0) holds the line until the ceremony ends.
     if (currentFloorLevel >= MAX_FLOORS) watcherOnFinalBossEnter();
-    bossIntroTime = 2.2;
     bossIntroBoss = enemies.find(e => e.boss);
+    // Cinematic skip-on-repeat — first time the player meets this boss
+    // type they get the full 2.2s theatre treatment (full epithet read,
+    // backdrop fade, name typography). Subsequent runs against the same
+    // boss cut to ~1.3s — still long enough to register the threat
+    // without making the player tap through the same cinematic on every
+    // descent. markSeen returns true on first sight; we invert it.
+    const _bossKey = bossIntroBoss?.type || 'unknown';
+    const _firstBoss = markSeen('boss_intro', _bossKey);
+    bossIntroFast = !_firstBoss;
+    bossIntroTotal = _firstBoss ? 2.2 : 1.3;
+    bossIntroTime = bossIntroTotal;
     bossIntroStartedAt = performance.now();    // wall-clock mark for the 2.5s clamp
     // Hero invulnerability that covers the entire intro PLUS a post-intro
     // buffer (3.0s total: 2.2s intro + 0.3s wall-clock-clamp tail + 0.5s
@@ -3998,8 +4020,11 @@ function loadRoom(idx, entryFrom) {
     //   - the "intro ends, boss swings instantly" micro-gap
     //   - any future refactor that accidentally lets damage through
     // Math.max preserves any longer iframes already in flight (e.g. from
-    // a recent post-hurt stagger).
-    hero.iframes = Math.max(hero.iframes || 0, 3.0);
+    // a recent post-hurt stagger). Scales with bossIntroTotal so the
+    // skip-on-repeat fast intro doesn't strand the player with leftover
+    // invuln (1.3s intro + 0.3s tail + 0.5s orient = 2.1s on repeat;
+    // 3.0s on first sight as before).
+    hero.iframes = Math.max(hero.iframes || 0, bossIntroTotal + 0.8);
     shakeCamera(14, 0.5);
     pulseZoom(0.14, 1.0);                       // cinematic punch-in on boss entry
     // Audio stinger — deep metal impact to punctuate the intro
@@ -4044,7 +4069,14 @@ function triggerFloorCard(level) {
   floorCardName = d.name;
   floorCardFlavor = d.flavor;
   floorCardBackdrop = d.backdrop || '';
-  floorCardTime = 3.2;
+  // Cinematic skip-on-repeat — first time you see this floor's card it
+  // gets the full 3.2s theatre treatment so the typography + zone
+  // backdrop land. Subsequent runs through the same floor cut to ~half
+  // (1.6s) so the player isn't paying a tax on the cinematic every loop.
+  // markSeen returns true on first sight; we invert it for the duration.
+  const firstTime = markSeen('floor_card', level);
+  floorCardTotal = firstTime ? 3.2 : 1.6;
+  floorCardTime = floorCardTotal;
   floorCardStartedAt = performance.now();    // wall-clock mark for the clamp
   // Hero should NOT be moving while the card reads — zero velocity so the
   // freeze reads as a deliberate hold, not a pause at mid-stride.
@@ -5535,10 +5567,15 @@ function tick(now) {
     if (floorCardStartedAt > 0) floorCardStartedAt += pausedDtMs;
     if (phaseIntroStartedAt > 0) phaseIntroStartedAt += pausedDtMs;
   }
-  if (bossIntroTime > 0 && bossIntroStartedAt > 0 && nowMs - bossIntroStartedAt > 2500) {
+  // Wall-clock clamp scales with bossIntroTotal — 300ms safety past the
+  // natural end on both 2.2s (first-time) and 1.3s (repeat) durations.
+  if (bossIntroTime > 0 && bossIntroStartedAt > 0 && nowMs - bossIntroStartedAt > bossIntroTotal * 1000 + 300) {
     bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
   }
-  if (floorCardTime > 0 && floorCardStartedAt > 0 && nowMs - floorCardStartedAt > 4500) {
+  // Wall-clock clamp scales with floorCardTotal — we want a 1.3s safety
+  // buffer past the natural end on both the 3.2s (first-time) and 1.6s
+  // (repeat) durations.
+  if (floorCardTime > 0 && floorCardStartedAt > 0 && nowMs - floorCardStartedAt > floorCardTotal * 1000 + 1300) {
     floorCardTime = 0; floorCardStartedAt = 0;
   }
   if (phaseIntroTime > 0 && phaseIntroStartedAt > 0 && nowMs - phaseIntroStartedAt > 2000) {
@@ -7235,7 +7272,7 @@ function render() {
   // backing-store pixel values. <img> tags don't hit that path. The
   // function self-gates on the arguments, so main.js stays render-time
   // declarative ("here's the current state, sync yourself").
-  updateBossIntro(bossIntroTime, bossIntroBoss);
+  updateBossIntro(bossIntroTime, bossIntroBoss, bossIntroFast);
 
   // FUSION FORMED banner — dramatic center-screen reveal when two relics combine
   if (fusionBannerTime > 0 && fusionBannerFusion) {
@@ -7526,7 +7563,7 @@ function render() {
 
   // Floor intro card — implementation in floorCardRender.js. Self-gates on
   // floorCardTime/Name so we don't need a guard here.
-  drawFloorCard(ctx, canvas, { floorCardTime, floorCardName, floorCardBackdrop, floorCardRoman, floorCardFlavor });
+  drawFloorCard(ctx, canvas, { floorCardTime, floorCardTotal, floorCardName, floorCardBackdrop, floorCardRoman, floorCardFlavor });
 
   // Room-entry label — floats up and fades out over ~1.8s (hidden while floor card shows)
   if (floorCardTime <= 0 && roomLabelTime > 0 && roomLabelText) {

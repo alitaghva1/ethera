@@ -536,6 +536,14 @@
     display: block;
     animation: bossIntroFade 2.2s ease-out forwards;
   }
+  /* Cinematic skip-on-repeat — bosses you've already met this profile
+     get a faster ~1.3s pass through the same fade curve. The proportions
+     (12% in, 85% hold-end) match the slow variant so the visual rhythm
+     reads consistently shortened, not chopped. */
+  #bossIntroOverlay.playing-fast {
+    display: block;
+    animation: bossIntroFade 1.3s ease-out forwards;
+  }
   @keyframes bossIntroFade {
     0%   { opacity: 0; }
     12%  { opacity: 1; }
