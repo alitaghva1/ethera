@@ -30,8 +30,14 @@ let _initialized = false;
 // MAX_RADIUS pixel distance. Pointer captured on touch-down; released
 // on up/cancel. The base sprite spawns at the touch-down point (floating
 // joystick model) so the user doesn't have to find a fixed origin.
-const MAX_RADIUS = 60;       // pixels at which deflection saturates to 1.0
-const DEAD_ZONE  = 8;        // ignore deflection below this many pixels
+//
+// Tuning per mobile UX audit P1: 8px deadzone on a 3× DPR phone reads
+// as ~2.6 CSS pixels — too tight; every micro-tremor registers as
+// movement. Industry norm is 10-15% of base radius. MAX_RADIUS bumped
+// to match the visual base (140px diameter = 70px radius) so the stick
+// actually reaches the rim at full deflection.
+const MAX_RADIUS = 70;       // pixels at which deflection saturates to 1.0
+const DEAD_ZONE  = 14;       // ignore deflection below this many pixels
 let _joyPointerId = null;
 let _joyOriginX = 0;
 let _joyOriginY = 0;
@@ -165,6 +171,12 @@ function _wireActionButton(elId, mode, keyCode) {
   el.addEventListener('pointerdown', press);
   el.addEventListener('pointerup', release);
   el.addEventListener('pointercancel', release);
-  // If the finger slides off the button without lifting, treat as release.
-  el.addEventListener('pointerleave', release);
+  // NOTE: pointerleave intentionally NOT wired. Mobile UX audit P0:
+  // the attack button is 110px and the charge threshold is 0.35s, so
+  // a thumb sliding off the button mid-charge is common — wiring
+  // pointerleave to release() killed hold-to-charge in practice.
+  // setPointerCapture (in `press` above) keeps pointer events flowing
+  // to this element even when the touch leaves the bounding box, so
+  // pointerup/pointercancel still fire correctly when the player
+  // genuinely releases.
 }

@@ -578,14 +578,34 @@ export function updateHero(dt, enemies, mouseWorld) {
   }
   if (useAutoAim) {
     let bestE = null;
-    let bestD2 = 380 * 380;     // ~380px aim radius — generous, enemies usually closer
+    let bestScore = 380 * 380;  // ~380px aim radius — generous, enemies usually closer
+    // Mobile UX audit P0 — naive "nearest enemy" sent charged swings
+    // INTO bombers (which explode on contact) and made vanguards
+    // (frontal-block 0 dmg) preferred targets. Score adjustments:
+    //   - Bombers: ×1.6 on the squared-distance score so they're
+    //     deprioritized unless they're the only thing around.
+    //   - Vanguards facing the hero: ×2.0 (treated as "very far") since
+    //     hitting their front is wasted; the player has to flank manually.
     for (let i = 0; i < activeEnemies.length; i++) {
       const e = activeEnemies[i];
       if (!e || e.dead || e.hp <= 0) continue;
       const dx = e.x - hero.x;
       const dy = e.y - hero.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) { bestD2 = d2; bestE = e; }
+      let score = dx * dx + dy * dy;
+      const beh = e.def && e.def.behavior;
+      if (beh === 'bomber') score *= 1.6;
+      // Vanguards have a frontal block — if their facing dot the
+      // hero-toward-vanguard vector is positive, the hero would be
+      // approaching their shield. Push them way down the aim list.
+      if (e.type === 'vanguard') {
+        const facingX = e.facing || 1;
+        // dot of facing vector and (hero -> enemy) — positive = enemy
+        // is facing AWAY from hero (so vulnerable from behind), negative
+        // = enemy is facing toward hero (shield-up).
+        const heroToEnemy = -dx;     // facing is just X-flipped 1/-1
+        if (facingX * heroToEnemy < 0) score *= 2.0;
+      }
+      if (score < bestScore) { bestScore = score; bestE = e; }
     }
     if (bestE) {
       const dx = bestE.x - hero.x;

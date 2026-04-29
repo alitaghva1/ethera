@@ -642,7 +642,10 @@
     touch-action: none;
   }
   #mobileLeft  { left: 0;  width: 42%; }
-  #mobileRight { right: 0; width: 32%; }
+  /* Right zone widened from 32% → 38% so the 110px attack button +
+     margin (158px total) doesn't overflow on narrow phones (iPhone SE
+     is ~360 CSS px wide; 32% = 115px, button overflowed). */
+  #mobileRight { right: 0; width: 38%; }
   /* Floating analog joystick — appears at the touch-down point. Hidden
      until the user touches; mobileControls.js positions and shows it
      dynamically. */
@@ -692,9 +695,14 @@
     background: radial-gradient(closest-side, rgba(60, 40, 32, 0.95), rgba(20, 12, 18, 0.85));
     box-shadow: 0 0 24px rgba(244, 217, 160, 0.45);
   }
-  #mobileAttack { width: 110px; height: 110px; bottom: 32px; font-size: 36px; }
-  #mobileDodge  { width: 86px;  height: 86px;  bottom: 160px; }
-  #mobileDash   { width: 86px;  height: 86px;  bottom: 256px; }
+  /* Buttons hug the bottom-right corner with env(safe-area-inset-*) so
+     iPhone X+ home-indicator doesn't overlap the attack tap-zone (a
+     swipe-up from there opens App Switcher). Vertical spacing tightened
+     in the mobile UX audit so dash + dodge sit closer to the natural
+     thumb-pivot arc instead of forcing a regrip. */
+  #mobileAttack { width: 110px; height: 110px; bottom: calc(24px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); font-size: 36px; }
+  #mobileDodge  { width: 86px;  height: 86px;  bottom: calc(92px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
+  #mobileDash   { width: 86px;  height: 86px;  bottom: calc(180px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
   /* When mobile controls are on, push the relic strip + fusions row + theme
      chips up out of the joystick zone. The HUD canvas-side renderer keys
      off body.mobile-controls in hud.js to compute its baseline. The CSS
