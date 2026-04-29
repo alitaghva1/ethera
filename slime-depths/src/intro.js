@@ -18,6 +18,8 @@
 // ============================================================================
 
 import { synthHeartbeat } from './synth.js';
+import { prefersReducedMotion } from './a11y.js';
+import { settings } from './settings';
 
 // Total cinematic duration. After this, the intro is fully dismissed and
 // normal gameplay (hero update, enemy AI, HUD) resumes.
@@ -165,11 +167,19 @@ export function drawIntro(ctx, w, h) {
     ctx.fillRect(0, 0, w, h);
   }
 
+  // Accessibility (a11y review P1) — strobing radial glow synced to the
+  // 12 escalating heartbeats is a photosensitive/migraine trigger. When
+  // the user has prefers-reduced-motion set OR the in-game reduceFlashes
+  // toggle, suppress the cardiac glow entirely. Heartbeat audio still
+  // plays so the cinematic still has its emotional cadence; just no
+  // strobe. Text beats render normally.
+  const flashSafe = prefersReducedMotion() || settings.reduceFlashes;
+
   // Cardiac pulse — radial amber glow at center, crimson mid, dark red
   // outer. Driven by _pulse (0-1). At rest (between beats) it's 0; on
   // beat spike it's the beat's pulse value, decaying exponentially. The
   // visual reads as "warmth flowing back into the body" with each beat.
-  if (_pulse > 0.005) {
+  if (_pulse > 0.005 && !flashSafe) {
     ctx.globalCompositeOperation = 'lighter';
     const cx = w / 2, cy = h / 2;
     // Center glow scales 15%->60% of screen with pulse intensity.

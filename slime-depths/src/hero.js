@@ -21,6 +21,7 @@ import { showTip } from './tips.js';
 import { markChainFired, markPyroFired, markQuiverFired, markRingingFired, markTwinFired, markMountainFired, markRazorFired } from './counterPips.js';
 import { synthSwoosh, synthClick, synthPing, synthThud, synthChord } from './synth.js';
 import { spawnHeroBolt } from './projectiles.js';
+import { settings } from './settings';
 
 // ── DASH STRIKE + DODGE — AFTERIMAGE GHOST TRAILS ───────────────────────
 // Both abilities capture hero pose at intervals during travel and render
@@ -705,7 +706,12 @@ export function updateHero(dt, enemies, mouseWorld) {
     // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release.
     // SUPPRESSED IN HAMLET — the canvas hamlet is a non-combat hub; clicks
     // still consume hero._attackBuffer via mouse.pressed but no swing fires.
-    else if (room.kind !== 'hamlet' && (mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= 0.35 && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
+    //
+    // Accessibility — settings.chargeMode = 'short' lowers the hold-to-charge
+    // threshold to 0.15s for players with limited grip strength. Default
+    // 'hold' keeps the original 0.35s threshold so existing muscle memory
+    // is preserved.
+    else if (room.kind !== 'hamlet' && (mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= (settings.chargeMode === 'short' ? 0.15 : 0.35) && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
       // Consume the buffer so it doesn't re-trigger on next idle frame
       hero._attackBuffer = 0;
       const w = weaponDef();

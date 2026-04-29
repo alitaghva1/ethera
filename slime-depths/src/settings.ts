@@ -19,6 +19,16 @@ export interface Settings {
   sfxVolume: number; // 0..1
   musicVolume: number; // 0..1
   shakeScale: number; // 0..1.5 (multiplier applied to shakeCamera amplitude)
+  // Accessibility toggles — added in the a11y review pass. Each one
+  // overrides or supplements the OS-level prefers-reduced-motion path
+  // for players whose OS pref isn't set or who want finer control.
+  reduceMotion: boolean;       // mirrors prefers-reduced-motion when true
+  reduceFlashes: boolean;      // caps screen-flash + mythic vignette + intro strobe
+  colorBlindMode: boolean;     // adds shape glyphs to tier-coded UI
+  // Charge mode — 'hold' is default (sustained LMB ≥0.35s releases the
+  // charge). 'short' lowers the threshold to 0.15s so players with
+  // limited grip strength can still trigger charged attacks.
+  chargeMode: 'hold' | 'short';
 }
 
 const KEY = 'ethera:settings:v1';
@@ -27,6 +37,10 @@ export const settings: Settings = {
   sfxVolume: 0.45,
   musicVolume: 0.3,
   shakeScale: 1.0,
+  reduceMotion: false,
+  reduceFlashes: false,
+  colorBlindMode: false,
+  chargeMode: 'hold',
 };
 
 function _isSettingsShape(v: unknown): boolean {
@@ -39,8 +53,31 @@ export function loadSettings(): void {
     if (typeof parsed.sfxVolume === 'number') settings.sfxVolume = parsed.sfxVolume;
     if (typeof parsed.musicVolume === 'number') settings.musicVolume = parsed.musicVolume;
     if (typeof parsed.shakeScale === 'number') settings.shakeScale = parsed.shakeScale;
+    if (typeof parsed.reduceMotion === 'boolean') settings.reduceMotion = parsed.reduceMotion;
+    if (typeof parsed.reduceFlashes === 'boolean') settings.reduceFlashes = parsed.reduceFlashes;
+    if (typeof parsed.colorBlindMode === 'boolean') settings.colorBlindMode = parsed.colorBlindMode;
+    if (parsed.chargeMode === 'short') settings.chargeMode = 'short';
   }
   applySettings();
+}
+
+// Setters for the new a11y toggles. Each saves on change so the
+// player's preference persists across reloads.
+export function setReduceMotion(v: boolean): void {
+  settings.reduceMotion = !!v;
+  saveSettings();
+}
+export function setReduceFlashes(v: boolean): void {
+  settings.reduceFlashes = !!v;
+  saveSettings();
+}
+export function setColorBlindMode(v: boolean): void {
+  settings.colorBlindMode = !!v;
+  saveSettings();
+}
+export function setChargeMode(v: 'hold' | 'short'): void {
+  settings.chargeMode = v === 'short' ? 'short' : 'hold';
+  saveSettings();
 }
 
 export function saveSettings(): void {

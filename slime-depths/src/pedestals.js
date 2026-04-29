@@ -993,7 +993,16 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   ctx.globalAlpha = fadeIn;
 
   const tier = (r.tier || 'common').toUpperCase();   // 'COMMON' | 'RARE' | 'LEGENDARY' | 'MYTHIC'
-  const tierText = isAltar ? 'ALTAR' : (tier + ' RELIC');
+  // Tier shape glyphs (a11y review P0). Hue alone (gold/cream/pink-white)
+  // collapses for protanopia/deuteranopia/tritanopia players. Always-on
+  // glyph prefix differentiates tiers by SHAPE: ◇ common, ◆ rare, ★
+  // legendary, ✦ mythic. Cheap; works for everyone, including players
+  // with no color-blindness who get an extra at-a-glance signal.
+  const tierGlyph = tier === 'MYTHIC' ? '✦ '
+                  : tier === 'LEGENDARY' ? '★ '
+                  : tier === 'RARE' ? '◆ '
+                  : '◇ ';
+  const tierText = isAltar ? '☠ ALTAR' : (tierGlyph + tier + ' RELIC');
   const tierColor = isAltar ? '#ff8a9a'
                   : tier === 'MYTHIC'    ? '#fff2e0'
                   : tier === 'LEGENDARY' ? '#c8a0ff'

@@ -4185,9 +4185,12 @@ function playKeeperWake(onDone) {
     reachedFinal = true;
     // Final beat — swap the prompt to make the "this ends here" beat
     // explicit instead of just looking like another mid-cinematic
-    // continue. Auto-dismiss safety timer still runs at 10s.
+    // continue. The 10s auto-dismiss safety timer was REMOVED in the
+    // accessibility pass: it dumped slow readers into the hamlet
+    // mid-thought (a11y review P0). The "CLICK OR PRESS SPACE" prompt
+    // is enough — players who want to leave can; players who want to
+    // sit with the moment can.
     promptTextEl.textContent = 'CLICK OR PRESS SPACE TO ENTER THE HAMLET';
-    typeTimer = setTimeout(done, 10000);
   };
   const advance = () => {
     if (dismissed) return;
