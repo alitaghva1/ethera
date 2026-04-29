@@ -313,10 +313,15 @@ function spawnCells(count, pillarTemplate = -1, w = ROOM_W, h = ROOM_H, shape = 
 
 // Exported so floorGraph.js can reuse the exact same combat composition
 // logic when building branching DAGs. Same pacing, different run shape.
-export function makeCombatRoom(level, slot, eliteChance) {
-  const tier = tierForSlot(level, slot);
+export function makeCombatRoom(level, slot, eliteChance, tierSlotOverride) {
+  // tierSlotOverride lets the caller decouple ARCHETYPE selection (`slot`)
+  // from TIER selection. Elite rooms pass slot='elite' (for archetype
+  // bias) but want their tier/multipliers to follow the underlying
+  // combat-slot they replaced (combat2 most of the time). Without this,
+  // elite-as-slot would fall through tierForSlot's default branch.
+  const tier = tierForSlot(level, tierSlotOverride || slot);
   const comp = pick(COMP[tier]).slice();
-  const slotMul = COMBAT_SLOT_MULS[slot] || COMBAT_SLOT_MULS.combat1;
+  const slotMul = COMBAT_SLOT_MULS[tierSlotOverride || slot] || COMBAT_SLOT_MULS.combat1;
   // Add extra enemies based on slot difficulty
   if (slotMul.count > 0) {
     const extraTypes = tier === 'tier1' ? ['slime', 'skel'] : tier === 'tier2' ? ['skel', 'orc'] : ['orc', 'archer'];
@@ -362,6 +367,18 @@ export function makeCombatRoom(level, slot, eliteChance) {
     hpMul: slotMul.hp,
     damageMul: slotMul.dmg,
   }));
+  // Floor-1 elite intro — level review P1. Floor 1's per-spawn elite
+  // chance is 8%, so a brand-new player can finish floor 1 without
+  // seeing a single elite affix (= no controlled introduction to
+  // F/E/V/W before the floor-2 difficulty bump). Force at least one
+  // elite on floor-1 combat3 (the final combat room before the boss) —
+  // a deliberate, isolated affix encounter that teaches the system.
+  if (level === 1 && (tierSlotOverride || slot) === 'combat3') {
+    const eligibleIdx = spawns.findIndex((s) => s.type !== 'bomber');
+    if (eligibleIdx >= 0 && !spawns.some((s) => s.elite)) {
+      spawns[eligibleIdx].elite = true;
+    }
+  }
   // SANCTUM archetype: promote the center enemy to elite for the duel feel
   if (archetype && archetype.name === 'sanctum' && spawns[0]) {
     spawns[0].elite = true;
@@ -688,6 +705,30 @@ export function makeBossSpawns(level, pillarTemplate = -1, bossW = ROOM_W, bossH
   return spawns;
 }
 
+// Reward room (sanctuary) — was a featureless rectangle the player walked
+// through to touch a heal pedestal. Level review P0: 4-6 seconds of dead
+// time between combat3 and the boss. Now seeded with 2 decor urns
+// (reuses the trove urn renderer; can be smashed for gold/heart) and a
+// pillar cluster so the space reads as a chapel rather than a hallway.
+export function makeRewardRoom(size) {
+  const urns = [];
+  // Seed a pair of urns symmetric around the heal pedestal at room
+  // center. Variant + broken false matches the rest of the urn API.
+  const cx = Math.floor(size.w / 2);
+  const cy = Math.floor(size.h / 2);
+  urns.push({ x: cx - 4, y: cy - 1, broken: false, variant: 0, isProp: false });
+  urns.push({ x: cx + 4, y: cy - 1, broken: false, variant: 1, isProp: false });
+  return {
+    kind: 'reward',
+    w: size.w, h: size.h,
+    pillarTemplate: 7,    // mid-room column cluster — gives the chapel its bones
+    spawns: [],
+    urns,
+    cleared: true,
+    doors: { north: true, south: true },
+  };
+}
+
 export function generateFloor(level = 1) {
   const lvl = Math.max(1, Math.min(MAX_FLOORS, level | 0));
   let eliteChance = ELITE_CHANCE_BY_LEVEL[lvl] || 0;
@@ -708,7 +749,7 @@ export function generateFloor(level = 1) {
     makeCombatRoom(lvl, 'combat1', eliteChance),
     makeEventRoom(lvl, eliteChance),
     makeCombatRoom(lvl, 'combat2', eliteChance),
-    { kind: 'reward', w: rewardSize.w, h: rewardSize.h, pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: true } },
+    makeRewardRoom(rewardSize),
     makeCombatRoom(lvl, 'combat3', eliteChance),
     { kind: 'boss',   w: bossSize.w,   h: bossSize.h,   pillarTemplate: bossPillarTemplate, spawns: makeBossSpawns(lvl, bossPillarTemplate, bossSize.w, bossSize.h), doors: { north: false, south: true } },
   ];

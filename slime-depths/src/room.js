@@ -703,10 +703,25 @@ export function buildRoomFromData(data) {
         }
       }
     } else if (bossType === 'bone_captain') {
-      // Extra spike columns in the arena — captain's dashes can push you into them
+      // Iron Revenant arena — life-drain boss with dashes + projectiles.
+      // Level review P1: original arena had 8 spike columns and no
+      // line-of-sight breakers, so the player ate every projectile in
+      // the open. Now: 4 LOS-break pillars at quarter/three-quarter
+      // positions form an inner cross, plus 4 spike pairs on the outer
+      // edges so dashes still threaten boundary play. Pillar positions
+      // reference room dimensions so they land symmetrically on the
+      // 26×18 large arena (instead of clustering at 20×14 coords).
+      const cx = (w / 2) | 0, cy = (h / 2) | 0;
+      const pillarSpots = [
+        [cx - 6, cy - 3], [cx + 6, cy - 3],
+        [cx - 6, cy + 3], [cx + 6, cy + 3],
+      ];
+      for (const [px, py] of pillarSpots) {
+        if (tiles[py]?.[px] === 'floor') tiles[py][px] = 'wall';
+      }
       const bossPattern = [
-        [6, 6, 0], [9, 6, 0.7], [12, 6, 0], [15, 6, 0.7],
-        [6, 9, 1.1], [9, 9, 0.4], [12, 9, 1.1], [15, 9, 0.4],
+        [3, 4, 0.3], [w - 4, 4, 1.1],
+        [3, h - 5, 0.7], [w - 4, h - 5, 1.5],
       ];
       for (const [sx, sy, phase] of bossPattern) {
         if (tiles[sy]?.[sx] === 'floor') {
@@ -715,26 +730,34 @@ export function buildRoomFromData(data) {
         }
       }
     } else if (bossType === 'broodmother') {
-      // Fire pools that erupt on a cycle. Start with 4 — broodmother's enrage
-      // spawns more via main.js.
+      // Fire pools at the four quadrant centers — recomputed from actual
+      // room dimensions (26×18 large) instead of the old hardcoded
+      // 20×14 medium-room coords that clustered everything top-left.
+      const qx1 = Math.floor(w * 0.25), qx2 = Math.floor(w * 0.75);
+      const qy1 = Math.floor(h * 0.30), qy2 = Math.floor(h * 0.70);
       roomFirePools.push(
-        { x: 5 * TILE + TILE/2, y: 5 * TILE + TILE/2, phase: 0.0 },
-        { x: 14 * TILE + TILE/2, y: 5 * TILE + TILE/2, phase: 1.0 },
-        { x: 5 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 1.5 },
-        { x: 14 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 0.5 },
+        { x: qx1 * TILE + TILE/2, y: qy1 * TILE + TILE/2, phase: 0.0 },
+        { x: qx2 * TILE + TILE/2, y: qy1 * TILE + TILE/2, phase: 1.0 },
+        { x: qx1 * TILE + TILE/2, y: qy2 * TILE + TILE/2, phase: 1.5 },
+        { x: qx2 * TILE + TILE/2, y: qy2 * TILE + TILE/2, phase: 0.5 },
       );
     } else if (bossType === 'ember_tyrant') {
-      // Ember Tyrant arena — 6 fire pools + spike rows. Most brutal.
+      // Ember Tyrant arena — 6 fire pools + spike rows. Same dimension-
+      // relative recompute as broodmother so the layout reads right
+      // on the 26×18 boss room instead of clustering top-left.
+      const c1x = Math.floor(w * 0.18), c2x = Math.floor(w * 0.50), c3x = Math.floor(w * 0.82);
+      const ry1 = Math.floor(h * 0.25), ry2 = Math.floor(h * 0.70);
       roomFirePools.push(
-        { x: 4 * TILE + TILE/2, y: 4 * TILE + TILE/2, phase: 0.0 },
-        { x: 9 * TILE + TILE/2, y: 4 * TILE + TILE/2, phase: 0.8 },
-        { x: 15 * TILE + TILE/2, y: 4 * TILE + TILE/2, phase: 1.6 },
-        { x: 4 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 1.2 },
-        { x: 9 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 0.4 },
-        { x: 15 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 2.0 },
+        { x: c1x * TILE + TILE/2, y: ry1 * TILE + TILE/2, phase: 0.0 },
+        { x: c2x * TILE + TILE/2, y: ry1 * TILE + TILE/2, phase: 0.8 },
+        { x: c3x * TILE + TILE/2, y: ry1 * TILE + TILE/2, phase: 1.6 },
+        { x: c1x * TILE + TILE/2, y: ry2 * TILE + TILE/2, phase: 1.2 },
+        { x: c2x * TILE + TILE/2, y: ry2 * TILE + TILE/2, phase: 0.4 },
+        { x: c3x * TILE + TILE/2, y: ry2 * TILE + TILE/2, phase: 2.0 },
       );
       const bossPattern = [
-        [7, 7, 0.0], [12, 7, 1.1],
+        [Math.floor(w * 0.30), Math.floor(h * 0.50), 0.0],
+        [Math.floor(w * 0.65), Math.floor(h * 0.50), 1.1],
       ];
       for (const [sx, sy, phase] of bossPattern) {
         if (tiles[sy]?.[sx] === 'floor') {

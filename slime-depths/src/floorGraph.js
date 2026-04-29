@@ -30,7 +30,7 @@
 
 import {
   MAX_FLOORS,
-  makeCombatRoom, makeEventRoom,
+  makeCombatRoom, makeEventRoom, makeRewardRoom,
   makeBossSpawns,
 } from './floor.js';
 import { ROOM_SIZES } from './room.js';
@@ -45,9 +45,14 @@ const ELITE_CHANCE_BY_LEVEL = [0, 0.08, 0.25, 0.40, 0.55];
 // fed into makeCombatRoom (combat1/combat2/combat3) to match difficulty.
 //
 // forkKinds — if set, REPLACES random picks with this exact array when the
-// floor level is >= forkMinLevel. Used to guarantee a meaningful first fork
-// on floors 2+ (was [combat, combat] — two identical choices; now [combat,
-// elite] so the player actually picks risk vs safety on turn 1).
+// floor level is >= forkMinLevel. Used to guarantee a meaningful first fork.
+//
+// Floor 1 used to ramp [combat, combat] / event / [combat, combat] /
+// sanctuary / [combat, combat] — no elite fork until floor 2, and with
+// random elite chance only 8%, a brand-new player could finish floor 1
+// without seeing a single elite affix. Layer 5 now offers [combat,
+// elite] on floor 1 too, so first-floor players get a controlled
+// introduction to the affix system before the floor-2 difficulty bump.
 const LAYER_RECIPE = [
   { layer: 1, options: ['combat', 'combat'],             count: 2, combatSlot: 'combat1',
     forkKinds: ['combat', 'elite'], forkMinLevel: 2 },
@@ -102,20 +107,22 @@ function buildRoomForKind(kind, level, combatSlot) {
     case 'combat':
       return makeCombatRoom(level, combatSlot || 'combat1', eliteChance);
     case 'elite': {
-      // "Elite" is a combat room that forces elites via a bumped chance.
-      // Reuses makeCombatRoom but overrides post-gen so every spawn rolls elite.
-      const room = makeCombatRoom(level, combatSlot || 'combat2', Math.max(eliteChance, 0.65));
-      // Mark for UI differentiation; keep kind 'combat' so combat logic works.
+      // Elite rooms carry the 'elite' slot through to pickArchetype
+      // which biases toward arena/gauntlet/sanctum/crucible — the
+      // perilous set. This gives elite rooms a distinct spatial
+      // signature instead of reusing the standard combat archetype
+      // pool. Tier scaling still uses the underlying combatSlot so
+      // enemy difficulty matches the floor depth.
+      const room = makeCombatRoom(level, 'elite', Math.max(eliteChance, 0.65), combatSlot || 'combat2');
       room.eliteRoom = true;
       return room;
     }
     case 'event':
       return makeEventRoom(level, eliteChance);
     case 'sanctuary': {
-      // Same as the current linear-floor 'reward' room — small intimate space.
-      const s = ROOM_SIZES.small;
-      return { kind: 'reward', w: s.w, h: s.h, pillarTemplate: 3, spawns: [], cleared: true,
-               doors: { north: true, south: true } };
+      // Reward room — delegates to makeRewardRoom so the sanctuary
+      // node and the linear-fallback reward share identical layout.
+      return makeRewardRoom(ROOM_SIZES.small);
     }
     case 'boss': {
       const bossPillarTemplate = (Math.random() * 15) | 0;

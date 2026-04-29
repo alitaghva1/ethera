@@ -147,6 +147,18 @@ export function pickArchetype(kind, slot, level) {
     // Difficulty-based gating
     if (slot === 'combat1' && (name === 'arena' || name === 'crucible')) w = 0;
     if (slot === 'miniboss' && name !== 'arena' && name !== 'sanctum') w *= 0.3;
+    // ELITE rooms (slot === 'elite') get the perilous archetype set —
+    // arena / gauntlet / sanctum / crucible. The skull on the map
+    // promised danger; elite rooms now deliver a distinct spatial
+    // signature instead of reusing the standard combat archetype pool.
+    // Level review P0.
+    if (slot === 'elite') {
+      if (name === 'arena' || name === 'gauntlet' || name === 'sanctum' || name === 'crucible') {
+        w *= 2.0;     // bias hard toward the perilous set
+      } else {
+        w = 0;        // exclude domestic-feeling archetypes
+      }
+    }
     if (level === 1 && (name === 'crucible' || name === 'sanctum')) w *= 0.4;
     if (w > 0) eligible.push({ archetype: a, w });
   }
