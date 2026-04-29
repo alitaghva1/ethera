@@ -583,7 +583,7 @@ export function drawPerfectDodgeOverlay(ctx, w, h) {
     ctx.save();
     const a = Math.min(1, (r - 0.55) / 0.3 + 0.3);
     ctx.globalAlpha = a;
-    ctx.font = 'bold 44px system-ui, sans-serif';
+    ctx.font = 'bold 44px Georgia, serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#1a2a3a';

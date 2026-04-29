@@ -560,7 +560,7 @@ export function drawPedestals(ctx) {
         ctx.globalAlpha = 1;
       }
       ctx.fillStyle = labelColor;
-      ctx.font = tier === 'mythic' ? 'italic bold 9px Georgia, serif' : 'bold 9px system-ui, sans-serif';
+      ctx.font = tier === 'mythic' ? 'italic bold 9px Georgia, serif' : 'bold 10px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, p.x, floatY - 18);
@@ -592,7 +592,7 @@ export function drawPedestals(ctx) {
       ctx.lineWidth = 1;
       ctx.strokeRect(p.x - labelW / 2 + 0.5, labelY + 0.5, labelW - 1, labelH - 1);
       ctx.fillStyle = isHigh ? '#ff8a96' : '#ff7a8e';
-      ctx.font = `bold ${isHigh ? 13 : 11}px system-ui, sans-serif`;
+      ctx.font = `bold ${isHigh ? 14 : 12}px Georgia, serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('-' + p.hpCost + ' HP', p.x, labelY + labelH / 2 + 0.5);
@@ -1127,7 +1127,7 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
 
   // Tier badge (small caps label above name)
   ctx.fillStyle = tierColor;
-  ctx.font = 'bold 9px system-ui, sans-serif';
+  ctx.font = 'bold 10px Georgia, serif';
   ctx.textAlign = 'center';
   ctx.fillText(tierText, textCenter, by + 18);
   // Hairline above tier text for ornament

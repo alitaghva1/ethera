@@ -377,7 +377,7 @@ export function drawHud(ctx, w, h, progress = {}) {
       ctx.lineWidth = 2;
       ctx.strokeRect(bx - 0.5, by - 0.5, barW + 1, barH + 1);
       // HP number (right-side, small)
-      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.font = 'bold 12px Georgia, serif';
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
@@ -479,7 +479,7 @@ export function drawHud(ctx, w, h, progress = {}) {
       const themesLabelY = themesY - 14;
       ctx.save();
       ctx.fillStyle = 'rgba(180, 200, 220, 0.55)';
-      ctx.font = 'bold 9px system-ui, sans-serif';
+      ctx.font = 'bold 10px Georgia, serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText('◆ THEMES', 18, themesLabelY);
@@ -513,13 +513,13 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.strokeRect(cx + 0.5, cy + 0.5, chipW - 1, chipH - 1);
         // Theme name
         ctx.fillStyle = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.75)';
-        ctx.font = 'bold 9px system-ui, sans-serif';
+        ctx.font = 'bold 10px Georgia, serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         ctx.fillText(t.name.toUpperCase(), cx + 5, cy + 4);
         // Count + tier glyphs
         ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.7)';
-        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.font = 'bold 11px Georgia, serif';
         const glyph = tier >= 2 ? '\u2605\u2605' : tier >= 1 ? '\u2605' : '';
         const countLabel = `${count}/${TIER_THRESHOLDS.ascendance} ${glyph}`;
         ctx.fillText(countLabel, cx + 5, cy + 12);
@@ -546,7 +546,7 @@ export function drawHud(ctx, w, h, progress = {}) {
           ctx.font = 'italic 10px Georgia, serif';
           ctx.fillText(t.blurb, tipX + 10, tipY + 25);
           ctx.fillStyle = tier >= 1 ? '#fff2e0' : 'rgba(200, 200, 210, 0.6)';
-          ctx.font = 'bold 10px system-ui, sans-serif';
+          ctx.font = 'bold 11px Georgia, serif';
           const tierLabel = tier >= 2 ? '★★ ASCENDANCE active' : tier >= 1 ? '★ RESONANCE active' : `${TIER_THRESHOLDS.resonance - count} more → Resonance`;
           ctx.fillText(tierLabel, tipX + 10, tipY + 54);
         }
@@ -565,7 +565,7 @@ export function drawHud(ctx, w, h, progress = {}) {
     ctx.save();
     // Small header
     ctx.fillStyle = 'rgba(180, 220, 240, 0.6)';
-    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.font = 'bold 10px Georgia, serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText('⚡ FUSIONS', 18, fLabelY);
@@ -611,7 +611,7 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.lineWidth = 1.5;
         ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
         ctx.fillStyle = tint;
-        ctx.font = 'bold 9px system-ui, sans-serif';
+        ctx.font = 'bold 10px Georgia, serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         ctx.fillText('⚡ FUSION', tipX + 10, tipY + 8);
@@ -741,7 +741,7 @@ export function drawHud(ctx, w, h, progress = {}) {
     // Tier label
     const tierLabel = r.tier === 'mythic' ? '\u2605\u2605 MYTHIC \u2605\u2605' : r.tier === 'legendary' ? '\u2605 LEGENDARY' : r.tier === 'rare' ? '\u25C6 RARE' : '\u00b7 COMMON';
     ctx.fillStyle = r.tier === 'mythic' ? '#fff2e0' : r.tier === 'legendary' ? '#ffc8ff' : r.tier === 'rare' ? '#f4d9a0' : '#b4c8d8';
-    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.font = 'bold 10px Georgia, serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(tierLabel, tipX + padding, tipY + padding);

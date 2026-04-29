@@ -2128,7 +2128,7 @@ export function drawEnemy(ctx, e) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(bx + 1, by + bs - 2, bs - 2, 1);
       // Letter
-      ctx.font = 'bold 9px system-ui, sans-serif';
+      ctx.font = 'bold 10px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#1a0f10';
@@ -2410,7 +2410,7 @@ export function drawEliteAffixTooltips(ctx, w, h) {
   ctx.fillStyle = a.auraColor;
   ctx.fillRect(tipX + 8, tipY + 8, 16, 16);
   ctx.fillStyle = '#1a0f10';
-  ctx.font = 'bold 11px system-ui, sans-serif';
+  ctx.font = 'bold 12px Georgia, serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(a.badge, tipX + 16, tipY + 16);
@@ -2428,7 +2428,7 @@ export function drawEliteAffixTooltips(ctx, w, h) {
   if (a.id === 'warded' && !target._shieldBroken) {
     const remaining = a.staggersToBreak - (target._staggerCount || 0);
     ctx.fillStyle = '#ffe495';
-    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.font = 'bold 10px Georgia, serif';
     ctx.fillText(`Shield: ${remaining} stagger${remaining === 1 ? '' : 's'} to break`, tipX + 8, tipY + 44);
   }
   ctx.restore();
