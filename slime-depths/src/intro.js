@@ -208,12 +208,18 @@ export function drawIntro(ctx, w, h) {
   // (>24s) when the player is meant to feel the climax, not be invited
   // to skip past it.
   if (t > SKIP_AFTER && t < SKIP_BEFORE) {
-    const skipAlpha = Math.min(0.2, (t - SKIP_AFTER) * 0.06);
+    // Onboarding audit P1 — was alpha-capped at 0.20 and 11px which
+    // made the skip affordance nearly invisible (~10% perceived
+    // contrast on the black overlay). Bumped to 0.45 + 13px italic
+    // serif so the player can actually read "press any key to skip"
+    // during the cardiac pulse build. Using Georgia keeps it
+    // visually consistent with the rest of the cinematic typography.
+    const skipAlpha = Math.min(0.45, (t - SKIP_AFTER) * 0.12);
     ctx.globalAlpha = skipAlpha;
-    ctx.font = '11px monospace';
+    ctx.font = 'italic 13px Georgia, serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = '#888';
+    ctx.fillStyle = '#bbaa88';
     ctx.fillText('press any key to skip', w - 24, h - 18);
   }
 

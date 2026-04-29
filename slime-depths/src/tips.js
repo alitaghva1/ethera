@@ -42,6 +42,7 @@ export const TIPS = {
   first_resonance: { text: 'RESONANCE — owning 3 relics of one theme grants a passive bonus. 5 reaches ASCENDANCE' },
   first_weaponOnly:{ text: 'Some relics only appear for your weapon class — sword, dagger, hammer, or wand' },
   // ----- Rooms -----
+  first_descent_dungeon: { text: 'A door waits north. Walk through to descend.' },
   first_pedestal:  { text: 'Walk onto a pedestal to claim the relic' },
   first_altar:     { text: 'Altar room — relics here cost HP, not gold. The ruin prefers deliberate pacts' },
   first_trove:     { text: 'Trove room — the urns are worth your time. Gold, hearts, and larger coin hide inside' },

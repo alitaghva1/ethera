@@ -3803,12 +3803,23 @@ function loadRoom(idx, entryFrom) {
   _roomClearedNotified = false;
   // Set next-room hint so door preview can render the right icon (unless Blind curse)
   roomNextKind.kind = isCursed('blind') ? null : (floor[idx + 1]?.kind || null);
-  // Onboarding — trigger tips based on room kind transitions. Delay the
-  // first_combat tip so it doesn't collide with the codex banner + enemy
-  // spawn rush. By ~2s the player has seen the slime card and is ready for
-  // gameplay reminders.
+  // Onboarding — trigger tips based on room kind transitions.
+  //
+  // first_combat fires PRE-AGGRO (0.4s after room load) on the first
+  // combat room, not 2.2s in. Onboarding audit P1: the old delay let
+  // a brand-new player lose half their HP before reading "Move with
+  // WASD." Now the tip appears as enemies are still settling, while
+  // the player still has full HP and can read it.
   if (data.kind === 'combat' && currentFloorLevel === 1) {
-    setTimeout(() => showTip('first_combat'), 2200);
+    setTimeout(() => showTip('first_combat'), 400);
+  }
+  // Start room — give the player a "walk through the door north" cue.
+  // Onboarding audit P0. The start room is a non-combat tile so
+  // first_combat won't fire here; new players sat there waiting for
+  // something to happen. This explicit dungeon-descent hint fires
+  // 1.2s after the heartbeat reveal to nudge them toward the door.
+  if (data.kind === 'start' && currentFloorLevel === 1) {
+    setTimeout(() => showTip('first_descent_dungeon'), 1200);
   }
   if (data.kind === 'reward') showTip('first_pedestal');
   // Room-kind onboarding tips (review onboarding pass) — fire once per player,
