@@ -1678,6 +1678,11 @@ export function damageHero(amount, fromX, fromY) {
     const counterWindowMul = (hero.flickerStep && hero.weapon === 'dagger') ? 2 : 1;
     triggerPerfectDodge(counterWindowMul);
     stats.perfectDodges++;
+    // Audio cue — was previously silent (audio review P0). The skill-
+    // reward beat had unmissable visual feedback (slow-mo, chrom-aberr,
+    // bright text) but headphones were quiet. High-pitched ping cuts
+    // through any combat audio + sells the "you nailed it" moment.
+    try { synthPing(1980, 0.6, 0.22); } catch (_e) {}
     // SYSTEMS PASS — DASH MASTER: perfect dodges refund the dodge cooldown,
     // letting expert play chain perfect-dodges indefinitely. Pairs great
     // with counterstrike (explosion every counter-hit).

@@ -600,6 +600,17 @@ window.triggerBossPhaseIntro = (boss) => {
   phaseIntroTime = phaseIntroIsFirstTime ? 1.6 : 0.8;
   phaseIntroBoss = boss;
   phaseIntroStartedAt = performance.now();
+  // Audio sting — was previously silent (audio review P0). The 1.6s/0.8s
+  // letterbox + iframe grant fired with no audio at all, so the dramatic
+  // beat where the boss's behavior changes had no sonic counterpart.
+  // Descending dread synth + low thud for the first-time encounter; just
+  // the thud for repeat phases. setMusicIntensity bumps the swell so
+  // combat music grows with the threat.
+  try {
+    if (phaseIntroIsFirstTime) synthGloom(180, 1.0, 1.4);
+    synthThud(60, 1.2, 0.4);
+  } catch (_e) {}
+  setMusicIntensity(1.0);
   // Same belt-and-suspenders as the boss-room entry intro: grant iframes
   // covering the phase-2 banner (full or short) plus the post-intro
   // buffer. The hero was already trading blows with the boss when it
@@ -4145,6 +4156,14 @@ function playKeeperWake(onDone) {
         }
         const ch = text[i - 1];
         const delay = (ch === ',' || ch === ';') ? 110 : (ch === '.' || ch === '?' || ch === '!') ? 240 : 28;
+        // Soft per-punctuation tick — audio review P1. Without this the
+        // mid-cinematic typewriter is silent between the open and close
+        // chords, which feels muted. Click is low-volume (0.04) so it
+        // reads as a soft breath/pause rather than a UI click — same
+        // technique used by classic story-typewriter games.
+        if (ch === '.' || ch === '?' || ch === '!' || ch === ',') {
+          try { synthClick(2.0, 0.04); } catch (_e) {}
+        }
         typeTimer = setTimeout(tick, delay);
       } else {
         typing = false;
@@ -5766,11 +5785,19 @@ function tick(now) {
         if (d < nearestPedestalD) nearestPedestalD = d;
       }
       if (nearestPedestalD < 140) {
-        _proximityHumT -= realDt;
-        if (_proximityHumT <= 0) {
-          const closeness = 1 - nearestPedestalD / 140;
-          synthPing(600 + closeness * 400, 0.25 + closeness * 0.3, 0.2);
-          _proximityHumT = 0.75 - closeness * 0.3;
+        // Audio review P1: don't ping during active combat — the hum
+        // metronome stacks with low-HP heartbeat + fusion banner audio +
+        // healchord into a noisy mix. In safe rooms (no live enemies)
+        // the ping draws the player's eye to the pedestal; in combat
+        // it just adds clutter. Suppress while any enemy is alive.
+        const liveEnemyCount = enemies.filter((e) => !e.dead).length;
+        if (liveEnemyCount === 0) {
+          _proximityHumT -= realDt;
+          if (_proximityHumT <= 0) {
+            const closeness = 1 - nearestPedestalD / 140;
+            synthPing(600 + closeness * 400, 0.25 + closeness * 0.3, 0.2);
+            _proximityHumT = 0.75 - closeness * 0.3;
+          }
         }
       }
     }
