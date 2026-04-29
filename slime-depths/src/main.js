@@ -5785,7 +5785,8 @@ function tick(now) {
       floorCardTime > 0 ||
       bossIntroTime > 0 ||
       phaseIntroTime > 0 ||
-      _wakeCinematicActive;
+      _wakeCinematicActive ||
+      isIntroActive();    // heartbeat intro — defer notifications until reveal
     // Dynamic tab title — reflects run state. Throttled to ~2Hz via gameTime.
     if ((gameTime | 0) !== _lastTitleUpdateSec) {
       _lastTitleUpdateSec = gameTime | 0;
