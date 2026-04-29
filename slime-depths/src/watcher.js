@@ -38,6 +38,7 @@
 import { safeLoadJSON, safeSaveJSON } from './storage.js';
 import { images } from './loader.js';
 import { synthPing } from './synth.js';
+import { wrapText } from './textLayout.js';
 
 const STORAGE_KEY = 'watcher_v1';
 
@@ -335,24 +336,7 @@ export function watcherDescentCount() {
 
 // ---- Render ----------------------------------------------------------------
 
-// wrapText — simple word-boundary wrap. Kept local so the watcher module has
-// no dependency on pedestals.js's helper.
-function wrapText(ctx, text, maxWidth) {
-  const words = String(text).split(' ');
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const test = cur ? cur + ' ' + w : w;
-    if (cur && ctx.measureText(test).width > maxWidth) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
+// wrapText moved to src/textLayout.js — see import at top of file.
 
 /**
  * Render the Watcher utterance, if any, in screen space.

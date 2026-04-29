@@ -30,8 +30,7 @@
 // older entries DOWN. 5th+ entries wait in a backlog until a slot frees.
 // ============================================================================
 
-// (wrapText helper inlined at the bottom of this file — keeps the rail
-// self-contained and avoids depending on pedestals.js / hud.js privates.)
+import { wrapText } from './textLayout.js';
 
 // ─── Tunables ────────────────────────────────────────────────────────────────
 const RAIL_X_MARGIN = 16;          // distance from right edge of canvas
@@ -291,7 +290,7 @@ function _drawOne(ctx, n, w, h) {
   // stays predictable; longer descs use the third line via "..." truncate.
   ctx.font = 'italic 12px Georgia, serif';
   const innerW = ENTRY_W - 32;     // padding 16 each side
-  const bodyLines = n.body ? _wrapText(ctx, n.body, innerW) : [];
+  const bodyLines = n.body ? wrapText(ctx, n.body, innerW) : [];
   const maxLines = 3;
   const visibleLines = bodyLines.slice(0, maxLines);
   if (bodyLines.length > maxLines) {
@@ -405,7 +404,7 @@ function _drawOne(ctx, n, w, h) {
 function _measureBoxH(ctx, n, innerW) {
   const prevFont = ctx.font;
   ctx.font = 'italic 12px Georgia, serif';
-  const lines = n.body ? _wrapText(ctx, n.body, innerW).slice(0, 3) : [];
+  const lines = n.body ? wrapText(ctx, n.body, innerW).slice(0, 3) : [];
   const bodyH = lines.length * 14;
   ctx.font = prevFont;
   const titleH = n.title ? 18 : 0;
@@ -414,25 +413,7 @@ function _measureBoxH(ctx, n, innerW) {
   return 10 + headerH + 2 + titleH + innerGap + bodyH + 10;
 }
 
-// Word-wrap to pixel width using the current ctx.font. Mirrors the
-// pedestals.js / hud.js helpers but lives here so this module has no
-// internal dependencies. Returns an array of lines.
-function _wrapText(ctx, text, maxWidth) {
-  const words = String(text).split(' ');
-  const lines = [];
-  let cur = '';
-  for (const word of words) {
-    const test = cur ? cur + ' ' + word : word;
-    if (ctx.measureText(test).width <= maxWidth) {
-      cur = test;
-    } else {
-      if (cur) lines.push(cur);
-      cur = word;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines.length ? lines : [''];
-}
+// wrapText now lives in src/textLayout.js — see import at top.
 
 // Tiny hex-to-rgb-tuple — only for the tint halo. Returns "r, g, b"
 // strings since that's the format every rgba() call site already uses.

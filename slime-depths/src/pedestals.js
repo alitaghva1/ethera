@@ -4,6 +4,7 @@ import { images } from './loader.js';
 import { applyRelic, rollRelicOffer, relicTier, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
 import { THEMES, RELIC_THEMES, getThemeCounts, getThemeTier } from './themes.js';
 import { pushNotification } from './notifications.js';
+import { wrapText } from './textLayout.js';
 import { activeFusions } from './fusions.js';
 // NOTE: relicTier imported above is what makes altar pedestals respect rarity
 // tiers — without tier on the pedestal, mythic drops at altars render as common.
@@ -63,24 +64,7 @@ let lastPickedFirstMythic = false;
 let lastPickedEvent = null;
 
 // Word-wrap helper — splits `text` into lines that fit within `maxWidth` when
-// rendered with the caller's current ctx.font. Used by drawPedestalTooltip so
-// long relic descriptions don't overflow the box frame.
-function wrapPedestalText(ctx, text, maxWidth) {
-  const words = String(text).split(' ');
-  const lines = [];
-  let cur = '';
-  for (const word of words) {
-    const test = cur ? cur + ' ' + word : word;
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = word;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
+// wrapText moved to src/textLayout.js — see import at top.
 
 // Is a tile passable (floor) AND has at least one passable neighbor for approach?
 function tileIsClear(tx, ty) {
@@ -676,10 +660,10 @@ export function drawPickupFlash(ctx, w, h) {
   let flavorLines = [];
   if (lastPickedDef.flavor) {
     ctx.font = flavorFont;
-    flavorLines = wrapPedestalText(ctx, '\u201C' + lastPickedDef.flavor + '\u201D', maxTextW);
+    flavorLines = wrapText(ctx, '\u201C' + lastPickedDef.flavor + '\u201D', maxTextW);
   }
   ctx.font = descFont;
-  const descLines = wrapPedestalText(ctx, lastPickedDef.desc || '', maxTextW);
+  const descLines = wrapText(ctx, lastPickedDef.desc || '', maxTextW);
   const extraFlavorH = Math.max(0, flavorLines.length - 1) * flavorLh;
   const extraDescH = Math.max(0, descLines.length - 1) * descLh;
   const boxH = (tier === 'mythic' ? 200 : 170) + extraFlavorH + extraDescH;
@@ -1031,9 +1015,9 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   // Text column: box minus the icon-slot region (icon ~60px + gutter + padding).
   const textColW = boxW - 90;
   ctx.font = 'italic 11px Georgia, serif';
-  const flavorLines = r.flavor ? wrapPedestalText(ctx, r.flavor, textColW) : [];
+  const flavorLines = r.flavor ? wrapText(ctx, r.flavor, textColW) : [];
   ctx.font = 'bold 12px Georgia, serif';
-  const descLines = wrapPedestalText(ctx, r.desc || '', textColW);
+  const descLines = wrapText(ctx, r.desc || '', textColW);
   const flavorH = flavorLines.length * 14;
   const descH = descLines.length * 14;
   const extraH = rerollable ? 20 : 0;

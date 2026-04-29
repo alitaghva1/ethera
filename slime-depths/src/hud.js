@@ -8,6 +8,7 @@ import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { drawRelicIcon } from './fx.js';
 import { THEMES, getThemeCounts, getThemeTier, TIER_THRESHOLDS } from './themes.js';
+import { wrapText } from './textLayout.js';
 import { isPedestalTooltipActive } from './pedestals.js';
 
 function toRoman(n) {
@@ -916,23 +917,8 @@ function drawAscensionHUD(ctx, w, h) {
   }
 }
 
-// Simple word-wrap helper for tooltip descriptions
-function wrapText(ctx, text, maxWidth) {
-  const words = String(text).split(' ');
-  const lines = [];
-  let cur = '';
-  for (const word of words) {
-    const test = cur ? cur + ' ' + word : word;
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = word;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
+// wrapText now lives in src/textLayout.js — see the import at the top of
+// this file. Removed the local copy as part of the dedupe pass.
 
 function hudHexToRgba(hex, a) {
   if (!hex) return 'rgba(255,255,255,' + a + ')';
