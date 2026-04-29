@@ -5923,11 +5923,40 @@ function tick(now) {
       document.title = `${warn}Ethera · ${floorStr} · ${hpStr} HP`;
     }
 
-    // MUSIC INTENSITY — swell during active combat/boss, drop when cleared
+    // MUSIC INTENSITY — Round-6 AV audit retune. Old formula was
+    // `aliveCount / 5`, which gave a boss alone at full HP intensity
+    // 0.2 while a trash room with 5 slimes hit 1.0 — bosses didn't
+    // swell harder than chaff, and the music never reacted to the
+    // hero's own peril. New formula composes three signals:
+    //
+    //   1. Density   — alive enemy count, capped at 0.7 (chaff alone
+    //                  can't max the swell; that's reserved for bosses
+    //                  + low-HP states).
+    //   2. Boss tier — any boss in the room raises the floor to 0.65;
+    //                  an ENRAGED (phase-2) boss forces 1.0 outright.
+    //   3. Peril     — hero HP below 50% adds up to +0.35 linearly,
+    //                  topping out at 0 HP. The music recognises that
+    //                  the player is bleeding without needing the boss
+    //                  to do anything.
+    //
+    // The smoothed, per-frame swell applied in music.js still tops out
+    // at +35% volume (no new max). This change just makes the right
+    // beats trigger it.
     const _roomKind = floor[roomIndex]?.kind;
     const aliveCount = enemies.filter(e => !e.dead).length;
     const isCombatRoom = _roomKind === 'combat' || _roomKind === 'boss' || _roomKind === 'challenge';
-    setMusicIntensity(isCombatRoom && aliveCount > 0 ? Math.min(1, aliveCount / 5) : 0);
+    let _musicIntensity = 0;
+    if (isCombatRoom && aliveCount > 0) {
+      let density = Math.min(0.7, aliveCount / 5);
+      const bossAlive = enemies.some(e => e.boss && !e.dead);
+      if (bossAlive) density = Math.max(density, 0.65);
+      const bossEnraged = enemies.some(e => e.boss && e._enraged && !e.dead);
+      if (bossEnraged) density = 1.0;
+      const hpFrac = hero.hp / Math.max(1, hero.maxHp);
+      const peril = hpFrac < 0.5 ? (1 - hpFrac / 0.5) * 0.35 : 0;
+      _musicIntensity = Math.min(1, density + peril);
+    }
+    setMusicIntensity(_musicIntensity);
 
     // PROXIMITY HUM — subtle pedestal/altar/wanderer hum when hero is near.
     // Implemented as an intermittent low-volume ping that ramps with closeness.
