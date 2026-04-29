@@ -784,6 +784,9 @@ export function buildRoomFromData(data) {
       roomSecrets.crackY = spot.y;
     }
   }
+  // Tile cache — fresh room means fresh static layers. Mark dirty so
+  // the next render rebuilds.
+  invalidateTileCache();
 }
 
 // Spike trap patterns. Each entry: [tileX, tileY, phaseOffsetSeconds].
@@ -889,6 +892,8 @@ export function damageCrackedWall() {
     roomSecrets.broken = true;
     // Replace tile with floor so hero can walk through / through the aesthetic gap
     room.tiles[roomSecrets.crackY][roomSecrets.crackX] = 'floor';
+    // Tile changed — invalidate cache so the next draw rebuilds with floor here.
+    invalidateTileCache();
     return 'broken';
   }
   return 'damaged';
@@ -2265,6 +2270,51 @@ export function tickPrevRoom(dt) {
 
 export function clearPrevRoom() { prevRoom = null; }
 
+// ─── TILE CACHE — perf P0 ────────────────────────────────────────────────────
+// Renders the room's static layers (floor + wear + organic detail + wall
+// shadows + walls + frieze + decor + ruin stains) ONCE to an offscreen
+// canvas and reuses that image every frame as a single drawImage call.
+// Without this, ~700-1000 canvas ops per frame are spent redrawing
+// geometry that doesn't change. The dynamic layers (doors animating,
+// pedestals bobbing, torches flickering) still draw live each frame on
+// top of the cache.
+//
+// Invalidated on:
+//   - buildRoomFromData (room load — tiles + decor reset)
+//   - damageCrackedWall (a tile flips from 'crackedwall' to 'floor')
+//
+// The prevRoom snapshot path bypasses the cache (forceFullDraw=true) so
+// the fading old-room render doesn't accidentally show the live room.
+let _tileCache = null;
+let _tileCacheCtx = null;
+let _tileCacheW = 0;
+let _tileCacheH = 0;
+let _tileCacheDirty = true;
+
+export function invalidateTileCache() { _tileCacheDirty = true; }
+
+function _ensureTileCache() {
+  if (typeof document === 'undefined') return false;
+  const w = room.w * TILE, h = room.h * TILE;
+  if (!_tileCache || _tileCacheW !== w || _tileCacheH !== h) {
+    _tileCache = document.createElement('canvas');
+    _tileCache.width = w;
+    _tileCache.height = h;
+    _tileCacheCtx = _tileCache.getContext('2d');
+    if (_tileCacheCtx) _tileCacheCtx.imageSmoothingEnabled = false;
+    _tileCacheW = w;
+    _tileCacheH = h;
+    _tileCacheDirty = true;
+  }
+  if (!_tileCacheCtx) return false;
+  if (_tileCacheDirty) {
+    _tileCacheCtx.clearRect(0, 0, w, h);
+    drawRoomStaticLayers(_tileCacheCtx);
+    _tileCacheDirty = false;
+  }
+  return true;
+}
+
 export function drawRoom(ctx) {
   if (!room.tiles) return;
   // Draw the current room first
@@ -2300,7 +2350,9 @@ export function drawRoom(ctx) {
         const a = prevRoom.doorOpenAt && prevRoom.doorOpenAt[tx + ',' + ty];
         return (a !== undefined) ? { anim: a } : null;
       };
-      drawRoomInner(ctx);
+      // forceFullDraw: skip the tile cache so the snapshot renders the
+      // OLD room, not the live one whose static layers are cached.
+      drawRoomInner(ctx, true);
     } finally {
       room.tiles = saved.tiles;
       room.w = saved.w; room.h = saved.h;
@@ -2313,11 +2365,39 @@ export function drawRoom(ctx) {
   }
 }
 
-function drawRoomInner(ctx) {
-  // Defensive guard — drawRoom checks tiles before delegating, but the
-  // prevRoom-swap path could pass through a partially-initialized state
-  // if snapshotPrevRoom is somehow called with no tiles. Bail out early
-  // instead of crashing the render loop.
+// Caller-facing wrapper. Routes to the cached path for normal rendering
+// (huge perf win — single drawImage instead of ~1000 ops/frame), or to
+// the direct path when the prevRoom snapshot has temporarily swapped
+// `room.*` state and the cache would render the wrong room.
+function drawRoomInner(ctx, forceFullDraw = false) {
+  if (!room.tiles) return;
+  // Hamlet has its own gradient sky path that doesn't use tiles. Falls
+  // through to the legacy hamlet branch below — no cache.
+  if (room.kind === 'hamlet') {
+    drawRoomDirect(ctx, true);  // hamlet branch returns early inside
+    return;
+  }
+  if (forceFullDraw) {
+    drawRoomStaticLayers(ctx);
+    drawRoomDynamicLayers(ctx);
+    return;
+  }
+  // Cached path — static layers come from the offscreen canvas, dynamic
+  // layers (doors, pedestals, torches) overlay on top.
+  if (_ensureTileCache()) {
+    ctx.drawImage(_tileCache, 0, 0);
+  } else {
+    drawRoomStaticLayers(ctx);
+  }
+  drawRoomDynamicLayers(ctx);
+}
+
+// Renders the FULL pipeline directly to the given ctx (no cache). Used
+// only by the prevRoom-snapshot fade and the hamlet branch. The
+// `_unused` parameter slot remains for potential future "render only
+// hamlet sky" gating; currently the hamlet branch self-detects via
+// room.kind.
+function drawRoomDirect(ctx, _unused) {
   if (!room.tiles) return;
   // Hamlet — procedural gradient sky + dim ground fill. Buildings, cobblestone
   // tiles, firepit, shrine, and portal are drawn ON TOP of this by the
@@ -2364,6 +2444,15 @@ function drawRoomInner(ctx) {
     return;
   }
 
+  drawRoomStaticLayers(ctx);
+  drawRoomDynamicLayers(ctx);
+}
+
+// Static layers — passes 1-4 + ruin stains/cobwebs. Stable for the
+// duration of a room (no animation, no per-frame mutation), so safe to
+// cache to an offscreen canvas and reuse with one drawImage call.
+function drawRoomStaticLayers(ctx) {
+  if (!room.tiles || room.kind === 'hamlet') return;
   // Pass 1: every floor cell
   for (let y = 0; y < room.h; y++) {
     for (let x = 0; x < room.w; x++) {
@@ -2426,7 +2515,7 @@ function drawRoomInner(ctx) {
     else if (d.kind === 'chest')  drawChest(ctx, d.x, d.y);
   }
 
-  // â”€â”€ THE RUIN REMEMBERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── THE RUIN REMEMBERS ────────────────────────────────────────────────────
   // Render persistent stains from past runs. Blood = where you died.
   // Scorch = where a boss fell. Intensity 1-3 controls darkness/spread.
   if (room.ruinStain) {
@@ -2436,7 +2525,14 @@ function drawRoomInner(ctx) {
   if (room.ruinAging > 0) {
     drawRuinCobwebs(ctx, room.ruinAging);
   }
+}
 
+// Dynamic layers — pillars, doors (animated open amount), pedestals
+// (bob/glow), altars (pulse), torches (flicker). Anything that mutates
+// frame-to-frame goes here so the cached static base never needs
+// invalidation for normal play.
+function drawRoomDynamicLayers(ctx) {
+  if (!room.tiles || room.kind === 'hamlet') return;
   // Pass 5: interactive + decorative props on top
   for (let y = 0; y < room.h; y++) {
     for (let x = 0; x < room.w; x++) {
@@ -2446,11 +2542,7 @@ function drawRoomInner(ctx) {
         // Pull the per-door open amount from the doorPortals module via
         // the lazy lookup. Falls back to "south door of a cleared room"
         // when no door object exists (start room before doorPortals
-        // populates, hamlet, etc.). PRIOR fallback was `y === room.h - 1
-        // || room.cleared` which briefly opened the start-room south
-        // door before doorPortals had set anim=0 — read as "wait, can
-        // I go back?" Tightened to require BOTH south-door AND cleared
-        // so uncleared rooms don't flash an open door before lockup.
+        // populates, hamlet, etc.).
         const door = _getDoorAt && _getDoorAt(x, y);
         let amount;
         if (door) {

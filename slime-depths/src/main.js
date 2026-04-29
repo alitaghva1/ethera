@@ -58,7 +58,7 @@ import { records, loadRecords, updateRecords, incrementRunsStarted } from './rec
 import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, discoveredCount, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
-import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
+import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting, resolvePerfMode } from './settings';
 import { applyMobileMode, installFirstTouchFallback } from './mobileMode.js';
 import { initMobileControls } from './mobileControls.js';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
@@ -167,7 +167,7 @@ if (document.readyState !== 'complete') {
 // as part of review #4 (main.js split). main.js still owns the render-loop
 // order and keeps the window assignment below so hero.js can trigger the
 // RGB split on damage without importing main.js.
-import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom } from './postfx.js';
+import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom, setPostfxPerfMode } from './postfx.js';
 window.__triggerChromAberr = triggerChromAberr;
 
 // Per-run gameplay metrics — collapsed from 7 individual window.__ globals
@@ -7766,6 +7766,10 @@ async function boot() {
   // AFTER loadSettings so the setting's value is in effect.
   applyMobileMode();
   installFirstTouchFallback();
+  // Performance mode — resolved here so postfx.js can early-return on
+  // mid-range mobile / low-core-count devices. Default 'auto' enables
+  // when hardwareConcurrency <= 4 OR primary touch device.
+  setPostfxPerfMode(resolvePerfMode());
   // Wire the virtual-control DOM (joystick + action buttons). Listeners
   // are always installed; the overlay's CSS visibility is gated by
   // body.mobile-controls so desktop users never see/feel them.

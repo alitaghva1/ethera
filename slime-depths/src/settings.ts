@@ -34,6 +34,11 @@ export interface Settings {
   // laptop owners who want them); 'off' forces WASD/mouse (tablet users
   // with a keyboard who don't want the overlay).
   mobileControls: 'auto' | 'on' | 'off';
+  // Performance mode — when true, postfx pipeline (bloom, chromatic
+  // aberration) is skipped. Useful on mid-range mobile / integrated GPUs
+  // where the 4-stage filter chain in postfx.js drops frame rate. Default
+  // 'auto' enables based on hardwareConcurrency + mobile mode at boot.
+  perfMode: 'auto' | 'on' | 'off';
 }
 
 const KEY = 'ethera:settings:v1';
@@ -47,7 +52,26 @@ export const settings: Settings = {
   colorBlindMode: false,
   chargeMode: 'hold',
   mobileControls: 'auto',
+  perfMode: 'auto',
 };
+
+// Resolved at boot in main.js — true when postfx should be skipped.
+// Computed from settings.perfMode + device heuristics; see resolvePerfMode.
+export function resolvePerfMode(): boolean {
+  if (settings.perfMode === 'on') return true;
+  if (settings.perfMode === 'off') return false;
+  // 'auto' — enable on devices that are likely to struggle with the
+  // 4-stage postfx filter chain. Heuristic: low core count OR primary
+  // touch (mobile) device.
+  try {
+    const lowCores = (navigator.hardwareConcurrency || 8) <= 4;
+    const touch = window.matchMedia('(pointer: coarse)').matches
+                  && window.matchMedia('(hover: none)').matches;
+    return lowCores || touch;
+  } catch {
+    return false;
+  }
+}
 
 function _isSettingsShape(v: unknown): boolean {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -65,6 +89,9 @@ export function loadSettings(): void {
     if (parsed.chargeMode === 'short') settings.chargeMode = 'short';
     if (parsed.mobileControls === 'on' || parsed.mobileControls === 'off') {
       settings.mobileControls = parsed.mobileControls;
+    }
+    if (parsed.perfMode === 'on' || parsed.perfMode === 'off') {
+      settings.perfMode = parsed.perfMode;
     }
   }
   applySettings();
