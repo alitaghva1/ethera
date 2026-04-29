@@ -821,9 +821,19 @@ export function isRelicForWeapon(id, weapon) {
 // "Windforce moment" — the unique drop players screenshot and remember.
 const TIER_WEIGHTS_BY_FLOOR = {
   1: { common: 1.0,  rare: 0.0,  legendary: 0.0,  mythic: 0.0 },
-  2: { common: 0.65, rare: 0.35, legendary: 0.0,  mythic: 0.0 },
+  // Pacing review P0 — floor 2 had 0% legendary alongside the tier3
+  // enemy difficulty bump, so a player who hit the cliff couldn't roll
+  // a build-defining piece to compensate. 5% legendary gives roughly
+  // 1-in-20 picks a chance to land hot, without disrupting the
+  // common→rare progression rhythm.
+  2: { common: 0.60, rare: 0.35, legendary: 0.05, mythic: 0.0 },
   3: { common: 0.45, rare: 0.40, legendary: 0.15, mythic: 0.0 },
-  4: { common: 0.28, rare: 0.44, legendary: 0.22, mythic: 0.06 },
+  // Pacing review P1 — mythic was 6% on floor 4 = ~0.54 expected per
+  // run, so half of victorious players never saw the "Windforce
+  // moment" they were ostensibly working toward. 10% raises expected
+  // to ~0.9 — most successful F4 runs see one without it becoming
+  // routine. The Ember Tyrant 20% boss-drop is unchanged.
+  4: { common: 0.25, rare: 0.42, legendary: 0.23, mythic: 0.10 },
 };
 
 function weightedTier(floorLevel) {

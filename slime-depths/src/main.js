@@ -3721,8 +3721,13 @@ window.addEventListener('keydown', (e) => {
   // Detect via hpCost === 0 on ALL active pedestals.
   const activeStd = pedestals.filter(p => !p.picked && p.hpCost === 0);
   if (activeStd.length < 2) return;       // need multi-choice context
-  // Cost scales with floor depth
-  const cost = 15 + currentFloorLevel * 5;
+  // Cost scales with floor depth — pacing review P1. Old formula was
+  // 15 + floor*5 (20/25/30/35), too expensive on floor 1 where players
+  // sit on ~20g and too cheap on floor 4 where they sit on ~250g+.
+  // New formula 30 + floor*15 (45/60/75/90) keeps the cost at ~25-40%
+  // of typical available gold across all floors, so the choice
+  // "reroll vs keep" stays a meaningful tradeoff at every depth.
+  const cost = 30 + currentFloorLevel * 15;
   if (gold.total < cost) {
     // Feedback: brief label + denied chirp
     roomLabelText = `REROLL NEEDS ${cost}g (you have ${gold.total})`;
@@ -6095,10 +6100,13 @@ function tick(now) {
     // reset. Starving curse disables it entirely.
     if (data.kind === 'reward' && onPedestalWorld(hero.x, hero.y) && hero.hp < hero.maxHp) {
       if (!isCursed('starving') && consumePedestal()) {
-        // Partial heal: restore 3 HP for free (was: full heal).
-        // Wanderer NPC still offers paid full-heal trade.
+        // Sanctuary heal — pacing review P1. Original formula was a
+        // flat 3 HP regardless of maxHp, which is a 100% heal at
+        // base maxHp 3 but only ~25% at endgame maxHp 12 (Vitality +
+        // Ironhide + Fortitude builds). Players reached F4 boss at
+        // 40-60% HP routinely. Now scales: max(3, floor(maxHp × 0.4)).
         // ASCENSION III — "The Half Rest": sanctuary healing halved.
-        let baseHeal = 3;
+        let baseHeal = Math.max(3, Math.floor(hero.maxHp * 0.4));
         const am = window.__ascensionModifiers && window.__ascensionModifiers();
         if (am && am.sanctuaryHealMul) baseHeal = Math.max(1, Math.floor(baseHeal * am.sanctuaryHealMul));
         const healed = Math.min(baseHeal, hero.maxHp - hero.hp);

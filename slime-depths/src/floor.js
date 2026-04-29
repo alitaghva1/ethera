@@ -276,7 +276,13 @@ const COMP = {
 // stack on top.
 function tierForSlot(level, slot) {
   if (level === 1) return slot === 'combat3' ? 'tier2' : 'tier1';
-  if (level === 2) return slot === 'combat1' ? 'tier2' : 'tier3';
+  // FLOOR-2 CLIFF FIX (pacing review P0): combat2 used to jump to tier3
+  // (wizards/dreadmages/reflectors — 9 new mechanics in one room) while
+  // floor-2 loot weights still had 0% legendary, so the player couldn't
+  // out-power the difficulty bump. Move combat2 down to tier2 and only
+  // unlock tier3 in combat3. Floor 2 now ramps tier2 → tier2 → tier3
+  // instead of tier2 → tier3 → tier3.
+  if (level === 2) return slot === 'combat3' ? 'tier3' : 'tier2';
   if (level === 3) return 'tier3';
   return 'tier4';                        // floor 4: dedicated tier4 mix
 }

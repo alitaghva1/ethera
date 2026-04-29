@@ -974,7 +974,9 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   const r = nearest.relic;
   const isAltar = nearest.hpCost > 0;
   const rerollable = !isAltar && pedestals.filter(p => !p.picked && p.hpCost === 0).length >= 2;
-  const rerollCost = 15 + (opts.floorLevel || 1) * 5;
+  // Match main.js's reroll cost formula (30 + floor*15) — see the
+  // pacing rationale at the keydown handler in main.js.
+  const rerollCost = 30 + (opts.floorLevel || 1) * 15;
   const canReroll = rerollable && (opts.gold || 0) >= rerollCost;
 
   // Fade-in — restart when the hovered pedestal changes.
