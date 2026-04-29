@@ -1,8 +1,10 @@
 // Onboarding tips — show each tip at most once per player (persisted to localStorage).
-// Tips are triggered by gameplay events; they appear as a small top-center banner
-// with subtle slide-in + 5s auto-dismiss.
+// Tips are triggered by gameplay events; rendering goes through the unified
+// top-right notification rail (notifications.js) so they share an anchor
+// zone with relic pickups, fusion announcements, and codex unlocks.
 import { safeLoadJSON, safeSaveJSON } from './storage.js';
 import { synthPing } from './synth.js';
+import { pushNotification } from './notifications.js';
 
 const KEY = 'ethera:seen_tips:v1';
 
@@ -17,21 +19,9 @@ function saveTips() {
   safeSaveJSON(KEY, [...seen]);
 }
 
-// Active tip state — one at a time, auto-dismiss
-let active = null;       // { text, time, totalLife }
-// Pending tip queue — tips that fired while another was active. A single
-// pickup can fire two tips simultaneously (e.g. first_resonance +
-// ascendance_<theme> on a relic that crosses both tier thresholds, or
-// first_fusion + first_resonance on a fusion-crystallizing pickup).
-// Without queueing, the second tip clobbers the first — both get marked
-// seen, but only one ever displays. FIFO ordering keeps semantic priority
-// in caller-order (the resonance tip lands before the ascendance one).
-const pending = [];      // [{ text, time, totalLife }, ...]
-
 // Predefined tips for recognition & prevention of typos.
 // Voice rules: restrained, specific, second-person implied. Under ~90 chars
-// each (fits the 580px banner without wrapping). One mechanic per tip —
-// don't cram two lessons together.
+// each. One mechanic per tip — don't cram two lessons together.
 export const TIPS = {
   // ----- Controls & core combat (shown on first use) -----
   first_combat:    { text: 'Move with WASD · Attack with LMB · Aim with mouse' },
@@ -66,110 +56,23 @@ export const TIPS = {
   first_wanderer:  { text: 'A wanderer — gold for a trade, only this sanctuary. They do not wait long' },
 };
 
+// Public API. Routes the tip text through the unified notification rail.
+// Returns true if the tip is freshly fired (first time seen this profile);
+// false if it's a repeat or unknown id.
 export function showTip(id) {
   if (!TIPS[id] || seen.has(id)) return false;
   seen.add(id);
   saveTips();
-  const entry = { text: TIPS[id].text, time: 5.5, totalLife: 5.5 };
-  if (active) {
-    // Another tip is on screen — queue this one so it lands after
-    // the active one auto-dismisses. The synth ping fires when the
-    // queued tip becomes active (in updateTips), not now, so the
-    // audio cue arrives WITH the banner.
-    pending.push(entry);
-  } else {
-    active = entry;
-    // Subtle synth ping — audio cue draws the eye to the new banner
-    // sliding in. Without this, the tip can fade in unnoticed if the
-    // player isn't already looking at the top of the screen. Tuned to
-    // match the parchment-tome aesthetic: 1100 Hz, 0.2s, low volume.
-    try { synthPing(1100, 0.18, 0.20); } catch (_e) {}
-  }
+  // Subtle synth ping — audio cue draws the eye to the new banner sliding
+  // in. Tuned to match the parchment-tome aesthetic: 1100 Hz, 0.18s, low vol.
+  try { synthPing(1100, 0.18, 0.20); } catch (_e) {}
+  pushNotification({ kind: 'tip', body: TIPS[id].text });
   return true;
 }
 
-export function updateTips(dt) {
-  if (!active) return;
-  // Defer: when the center banner slot is claimed by another system (codex
-  // entry, room label, etc.), pause the tip timer so we don't burn its life
-  // while hidden. It'll render naturally after the slot frees.
-  if (typeof window !== 'undefined' && window.__centerBannerActive) return;
-  active.time -= dt;
-  if (active.time <= 0) {
-    active = null;
-    // Dequeue next pending tip if any. The synth ping fires here so
-    // the audio lands with the new banner's slide-in, matching the
-    // first-tip cue in showTip.
-    if (pending.length > 0) {
-      active = pending.shift();
-      try { synthPing(1100, 0.18, 0.20); } catch (_e) {}
-    }
-  }
-}
-
-// Draws a top-center banner with slide-in + fade. Call from HUD-space (not world).
-// Tome-style parchment look: vertical gradient, gold border with end-caps,
-// soft outer glow, and a bounce-back slide so the tip lands like it's being
-// set down on the page.
-export function drawTip(ctx, w) {
-  if (!active) return;
-  // Hide while another system owns the center banner slot.
-  if (typeof window !== 'undefined' && window.__centerBannerActive) return;
-  const t = active.time / active.totalLife;
-  // Fade in first 0.35, hold, fade out last 0.25
-  const p = 1 - t;
-  const inA = Math.min(1, p / 0.12);
-  const outA = t < 0.2 ? t / 0.2 : 1;
-  const a = Math.max(0, Math.min(1, Math.min(inA, outA)));
-  // Slide down from above with a small bounce-back overshoot
-  const slideProgress = Math.min(1, p / 0.35);
-  const bounce = slideProgress < 0.75
-    ? (1 - Math.cos(slideProgress * Math.PI * 1.3)) * -26
-    : (1 - slideProgress) * 6;     // overshoot and settle
-  const slideY = bounce;
-  ctx.save();
-  ctx.globalAlpha = a;
-  const boxW = 580;
-  const boxH = 46;
-  const bx = (w - boxW) / 2;
-  const by = 60 + slideY;
-  // Soft outer glow — parchment feel
-  const glow = ctx.createRadialGradient(bx + boxW / 2, by + boxH / 2, boxW * 0.2,
-                                         bx + boxW / 2, by + boxH / 2, boxW * 0.7);
-  glow.addColorStop(0, 'rgba(201, 168, 106, 0.18)');
-  glow.addColorStop(1, 'rgba(201, 168, 106, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(bx - 40, by - 30, boxW + 80, boxH + 60);
-  // Tome-style vertical gradient
-  const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
-  bg.addColorStop(0, 'rgba(28, 18, 26, 0.95)');
-  bg.addColorStop(1, 'rgba(14, 8, 16, 0.95)');
-  ctx.fillStyle = bg;
-  ctx.fillRect(bx, by, boxW, boxH);
-  // Gold border
-  ctx.strokeStyle = 'rgba(201, 168, 106, 0.75)';
-  ctx.lineWidth = 1.3;
-  ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-  // Inner stripe
-  ctx.strokeStyle = 'rgba(201, 168, 106, 0.32)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-  // Ornate corner diamonds — tiny accents at each corner
-  ctx.fillStyle = '#c9a86a';
-  const corner = [[bx + 5, by + 5], [bx + boxW - 5, by + 5], [bx + 5, by + boxH - 5], [bx + boxW - 5, by + boxH - 5]];
-  for (const [cx, cy] of corner) {
-    ctx.fillRect(cx - 1, cy, 2, 1);
-    ctx.fillRect(cx, cy - 1, 1, 2);
-  }
-  // TIP label with ornamental bracket
-  ctx.fillStyle = '#c9a86a';
-  ctx.font = 'italic bold 10px Georgia, serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('\u2014 A WORD OF GUIDANCE \u2014', bx + 16, by + 14);
-  // Tip body — italic serif for "journal entry" feel
-  ctx.fillStyle = '#f4d9a0';
-  ctx.font = 'italic 13px Georgia, serif';
-  ctx.fillText(active.text, bx + 16, by + 31);
-  ctx.restore();
-}
+// Back-compat shims — main.js still calls updateTips(realDt) and
+// drawTip(ctx, w) in its tick + render pipeline. Real lifecycle now lives
+// in notifications.js, so these are no-ops. Keeping them avoids a
+// cross-file refactor; the next cleanup pass can drop the call sites.
+export function updateTips(_dt) { /* no-op — see notifications.js */ }
+export function drawTip(_ctx, _w) { /* no-op — see notifications.js */ }

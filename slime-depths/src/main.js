@@ -61,6 +61,7 @@ import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, load
 import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
 import { loadTips, showTip, updateTips, drawTip, TIPS } from './tips.js';
+import { updateNotifications, drawNotifications, clearNotifications, getNotificationStackBottom, pushNotification } from './notifications.js';
 import { loadFirstSeen, hasSeen, markSeen, isFirstTime } from './firstSeen.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import { startIntro, updateIntro, drawIntro, isIntroActive, skipIntro } from './intro.js';
@@ -1421,6 +1422,10 @@ function enterHamletCanvas() {
   // so the black overlay doesn't bleed across into the hamlet view.
   _firstDeathFadeActive = false;
   _firstDeathFadeTime = 0;
+  // Drop any pending top-right rail entries — a relic picked up in the
+  // last dungeon room shouldn't keep its notification visible across
+  // the hamlet transition.
+  clearNotifications();
 
   // Spawn the hero at the hamlet entrance and snap the camera so there's no
   // lerp-in from wherever they last were. EXCEPTION: if this entry is
@@ -4560,6 +4565,8 @@ function resumeRun(snap) {
   deathCeremonyActive = false;
   deathCeremonyTime = 0;
   deathSummaryShown = false;
+  // Notification rail — drop stale entries from the previous run.
+  clearNotifications();
   phaseIntroTime = 0;
   phaseIntroBoss = null;
   phaseIntroStartedAt = 0;
@@ -5406,7 +5413,8 @@ function tick(now) {
   // Perfect-dodge time dilation runs on real time so it unwinds predictably.
   updatePerfectDodge(realDt);
   updateScreenFlash(realDt);
-  updateTips(realDt);
+  updateTips(realDt);                  // no-op shim; real tip lifecycle is in notifications.js
+  updateNotifications(realDt);         // unified top-right rail (tips, pickups, etc.)
   // Death ceremony slow-mo ramp (0.25x for first 1.2s, then ramps back)
   let deathSlowmo = 1;
   if (deathCeremonyActive) {
@@ -6986,7 +6994,11 @@ function render() {
   // beats. Drawn over the world but BEFORE drawTip so the cinematic
   // dominates the screen. Self-dismisses after INTRO_DURATION.
   drawIntro(ctx, canvas.width, canvas.height);
-  drawTip(ctx, canvas.width);
+  drawTip(ctx, canvas.width);                    // no-op shim
+  // Top-right notification rail — tips, relic pickups (non-first-mythic),
+  // fusion forged, codex unlocks. Suppressed during cinematics by the
+  // module's own __centerBannerActive guard.
+  drawNotifications(ctx, canvas.width, canvas.height);
 
   // Achievement unlock popups — top-right toasts, positioned BELOW the floor
   // panel so they don't overlap it. Shared visual grammar with tip/codex:
@@ -7033,9 +7045,12 @@ function render() {
       ctx.globalAlpha = opacity;
       const bw = 300, bh = 62;
       const bx = canvas.width - bw - 16 + slideX;
-      // Floor panel occupies y=14..104 (90 high); anchor toasts at y=120
-      // with a small vertical gap. Multiple stack downward.
-      const by = 120 + yOff;
+      // Stack achievements BELOW the notifications rail (tips, pickups, etc.)
+      // so they don't overlap. The rail sits at y=120+; achievements anchor
+      // at the rail's bottom edge + small gap. Falls through to y=120
+      // when the rail is empty.
+      const railBottom = getNotificationStackBottom(ctx);
+      const by = railBottom + 6 + yOff;
       const pivotX = bx + bw / 2, pivotY = by + bh / 2;
       ctx.translate(pivotX, pivotY);
       ctx.scale(entryBump, entryBump);
@@ -7794,6 +7809,17 @@ if (import.meta.env.DEV) {
     resetFirstRun: () => {
       try { localStorage.removeItem('ethera:first_seen:v1'); } catch (_e) {}
       window.location.reload();
+    },
+
+    // Push a notification onto the unified top-right rail. Useful for
+    // visually testing the rail stacking + per-kind styling without
+    // having to actually trigger gameplay events.
+    //   __testNotification('common pickup', 'pickup', 'common')
+    //   __testNotification('hello world', 'tip')
+    //   __testNotification('Sworn Reply', 'fusion', null, 'two relics fused')
+    testNotification: (title = 'Test entry', kind = 'tip', tier = null, body = '') => {
+      pushNotification({ kind, tier, title, body: body || (tier ? 'tier ' + tier : '') });
+      return { ok: true, kind, tier };
     },
 
     // Synchronously advance the transition state machine to a target room.

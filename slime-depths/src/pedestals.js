@@ -3,6 +3,7 @@
 import { images } from './loader.js';
 import { applyRelic, rollRelicOffer, relicTier, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
 import { THEMES, RELIC_THEMES, getThemeCounts, getThemeTier } from './themes.js';
+import { pushNotification } from './notifications.js';
 import { activeFusions } from './fusions.js';
 // NOTE: relicTier imported above is what makes altar pedestals respect rarity
 // tiers — without tier on the pedestal, mythic drops at altars render as common.
@@ -387,15 +388,25 @@ export function updatePedestals(dt) {
       }
       playSfx('click', { volume: 0.9, rate: p.hpCost > 0 ? 0.8 : 1.2 });
       lastPickedDef = p.relic;
-      // Mythic banner holds 5.5s vs common 3.0s — more time to read + screenshot.
-      pickedFlashTime = t === 'mythic' ? 5.5 : 3.0;
-      // Capture whether THIS specific pickup is the player's first-ever
-      // mythic — gates the full-screen vignette + edge wash in
-      // drawPickupFlash so the "Windforce moment" lands once with full
-      // theatre and de-escalates to a regular (still strong) banner on
-      // subsequent mythics. Snapshotted at pickup time so the per-frame
-      // draw doesn't fight a markSeen race.
+      // First-ever mythic still earns the center "Windforce moment"
+      // cinematic. Every other pickup (common/rare/legendary, plus
+      // subsequent mythics) routes to the unified top-right
+      // notification rail so combat readability stays intact during
+      // the 3-5s banner window.
       lastPickedFirstMythic = (t === 'mythic') && isFirstTime('mythic', 'any');
+      if (lastPickedFirstMythic) {
+        // Keeps drawPickupFlash drawing the full center treatment.
+        pickedFlashTime = 5.5;
+      } else {
+        // Suppress center banner; route to the rail.
+        pickedFlashTime = 0;
+        pushNotification({
+          kind: 'pickup',
+          tier: t,
+          title: p.relic.name || 'RELIC',
+          body: p.relic.desc || '',
+        });
+      }
       break;
     }
   }
