@@ -3,7 +3,8 @@
 // object when applied. Everything stacks additively so picks always matter.
 import { hero } from './hero.js';
 import { stats } from './stats';
-import { recomputeThemeTiers } from './themes.js';
+import { recomputeThemeTiers, THEMES } from './themes.js';
+import { pushNotification } from './notifications.js';
 
 export const RELIC_DEFS = {
   serrated_edge: {
@@ -1096,26 +1097,54 @@ export function applyRelic(id) {
     for (const k of Object.keys(hero.activeThemes)) {
       const before = priorTiers[k] | 0;
       const after = hero.activeThemes[k] | 0;
-      if (before < 1 && after >= 1 && !firedResonance) {
-        showTip('first_resonance');
-        firedResonance = true;
+      if (before < 1 && after >= 1) {
+        // First-time tip is one-shot per profile (educational beat). But
+        // every subsequent resonance proc gets a per-run rail toast so
+        // the moment is never silent. Playtest report: "Resonance kicked
+        // in two relics ago and I didn't notice. No toast, no '+lifesteal'
+        // floater. Whisper of an aura."
+        if (!firedResonance) {
+          showTip('first_resonance');
+          firedResonance = true;
+        }
+        try {
+          const themeName = k.toUpperCase();
+          const themeColor = (THEMES[k] && THEMES[k].color) || '#c9a86a';
+          pushNotification({
+            kind: 'theme',
+            title: `${themeName} · RESONANCE`,
+            body: 'Three relics align. The aura settles under your feet.',
+            tint: themeColor,
+            life: 3.5,
+          });
+        } catch (_e) {}
       }
       if (before < 2 && after >= 2 && !ascendedTheme) {
         ascendedTheme = k;
       }
     }
     if (ascendedTheme) {
-      // Ascendance is the player's 5-of-a-theme payoff. Fire a
-      // dedicated tip per-theme so each theme's first ascendance
-      // reads as a moment ("STORM ASCENDED", "FLAME ASCENDED",
-      // etc.) — and only ONCE per theme via the firstSeen registry.
+      // Ascendance is the player's 5-of-a-theme payoff. The first-ever
+      // ascendance per theme still fires its educational tip via the
+      // injected TIPS entry (one-shot per profile). Every ascendance
+      // proc — first or repeat — also fires a rail toast so the moment
+      // never goes silent on later runs.
       const tipKey = `ascendance_${ascendedTheme}`;
-      const themeName = (ascendedTheme[0].toUpperCase() + ascendedTheme.slice(1)).toUpperCase();
-      // Inject into the live TIPS registry once per theme so each
-      // ascendance reads as a moment with its own first-seen lock.
+      const themeName = ascendedTheme.toUpperCase();
       try {
         TIPS[tipKey] = { text: `${themeName} ASCENDED — the fifth relic settles. The aura you carry deepens.` };
         showTip(tipKey);
+      } catch (_e) {}
+      try {
+        const themeColor = (THEMES[ascendedTheme] && THEMES[ascendedTheme].color) || '#f4d9a0';
+        pushNotification({
+          kind: 'theme',
+          title: `${themeName} · ASCENDED`,
+          body: 'Five relics. The aura deepens. Mechanics shift.',
+          tint: themeColor,
+          life: 4.5,
+          header: '— A NEW POWER STIRS —',
+        });
       } catch (_e) {}
     }
   }
