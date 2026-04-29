@@ -7327,14 +7327,21 @@ function render() {
     bg.addColorStop(1, 'rgba(14, 8, 16, 0.93)');
     ctx.fillStyle = bg;
     ctx.fillRect(bx, by, boxW, boxH);
-    // Tint-colored border + gold inner stripe
-    ctx.strokeStyle = tint;
+    // Border: gold parchment frame (matches every other tome UI in the
+    // game) instead of full-saturation per-enemy tint. The previous
+    // tint-on-tint border + shadowBlur stack was getting bloomed by
+    // postfx into a neon halo on saturated enemy colors — slime green
+    // turned cyan-green, the codex banner read as a glowing rave sign
+    // rather than parchment. Per-enemy color signal is preserved via
+    // the corner diamonds + name fill below.
+    ctx.strokeStyle = '#c9a86a';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
     ctx.strokeStyle = 'rgba(201, 168, 106, 0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-    // Corner accent diamonds
+    // Corner accent diamonds — keep in tint, small enough that bloom
+    // doesn't over-expose them.
     ctx.fillStyle = tint;
     const accents = [[bx + 5, by + 5], [bx + boxW - 5, by + 5], [bx + 5, by + boxH - 5], [bx + boxW - 5, by + boxH - 5]];
     for (const [cx, cy] of accents) {
@@ -7347,13 +7354,18 @@ function render() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText('\u2014 A NEW ADVERSARY \u2014', bx + boxW / 2, by + 8);
-    // Enemy name — tint-colored, bold
+    // Enemy name — tint-colored bold, with a SUBTLE black drop-shadow
+    // for legibility (was tint-on-tint shadowBlur=8 → bloom amplified
+    // into a neon halo). Black shadow + small offset reads as "lit
+    // text" without competing with the bloom pass.
     ctx.fillStyle = tint;
     ctx.font = 'bold 18px Georgia, serif';
-    ctx.shadowColor = tint;
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1;
     ctx.fillText(E.name, bx + boxW / 2, by + 22);
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
     // Flavor — italic, faded
     ctx.fillStyle = 'rgba(220, 210, 230, 0.78)';
     ctx.font = 'italic 11px Georgia, serif';
