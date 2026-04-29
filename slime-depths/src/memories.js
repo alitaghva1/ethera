@@ -265,9 +265,14 @@ export const MEMORIES = {
     apply: (h) => {
       h.memoryNine = true;        // read by enemy spawn wiring
     },
-    unlockCheck: (records) => records.bossKillsAllTime >= 9,
-    unlockHint: 'Slay 9 bosses to remember…',
-    unlockProgress: (records) => ({ current: records.bossKillsAllTime || 0, target: 9, unit: 'bosses' }),
+    // Long-tail audit P1 — was 9 boss kills (≈3 floor-4 wins). At a
+    // median win curve of ~run 8-12, that gated the memory until the
+    // climb was ALREADY over. Dropped to 5 so it lands ~run 5-7 where
+    // the player is just starting to specialize. The "nine doors"
+    // theming still resonates abstractly.
+    unlockCheck: (records) => records.bossKillsAllTime >= 5,
+    unlockHint: 'Slay 5 bosses to remember…',
+    unlockProgress: (records) => ({ current: records.bossKillsAllTime || 0, target: 5, unit: 'bosses' }),
   },
 
   hungry_blade: {

@@ -210,7 +210,25 @@ export function buildGreetingContext(records, ctx) {
     justDied:    hamletState.lastRunOutcome === 'death',
     justVictory: hamletState.lastRunOutcome === 'victory',
     narrowDeath: hamletState.lastRunOutcome === 'death' && (hamletState.lastRunFloor | 0) >= 3,
-    mythicTouched: !!(ctx && ctx.seenRelicIds && (ctx.seenRelicIds.has('eye_of_ether') || ctx.seenRelicIds.has('cataclysm'))),
+    // mythicTouched: originally gated on the player having seen any
+    // mythic relic (eye_of_ether / cataclysm). Mythics roll only on
+    // floor 4 at ~6%, so most players never tripped this flag and the
+    // four mythic-tier reactive greetings sat dead. Hamlet audit P0 —
+    // also flag on first legendary discovery so the "you carry
+    // something the others have not" beat fires earlier in the climb.
+    mythicTouched: !!(ctx && ctx.seenRelicIds && (
+      ctx.seenRelicIds.has('eye_of_ether') ||
+      ctx.seenRelicIds.has('cataclysm') ||
+      // any legendary in the seen set is rare enough to count
+      ctx.seenRelicIds.has('avatar_of_flame') ||
+      ctx.seenRelicIds.has('phoenix_cloak') ||
+      ctx.seenRelicIds.has('wanderers_cloak') ||
+      ctx.seenRelicIds.has('ethereal_binding') ||
+      ctx.seenRelicIds.has('aegis_pulse') ||
+      ctx.seenRelicIds.has('vow_eternal') ||
+      ctx.seenRelicIds.has('honest_edge') ||
+      ctx.seenRelicIds.has('ringing_steel')
+    )),
     // longAbsence + isFirstMeeting resolved per-NPC at filter time.
   };
 }
@@ -514,7 +532,7 @@ export const NPCS = {
     // Trusted = the most personal disclosure.
     personalTopics: {
       the_name: { label: 'Your Name', minTier: 1, text: 'What did people call you, before? Not your name. The other one — the one only the people who fed you used. I had one of those. I have forgotten the people who used it. I have not forgotten the word.' },
-      the_door: { label: 'The Door',  minTier: 2, text: 'Behind that door is not a room. It is a way out of the hamlet that does not go down. You have not asked about it. I respect that. When you are ready, ask.' },
+      the_door: { label: 'A Way Out',  minTier: 2, text: 'There is a way out of this season that does not go down. I will not name it. I will not point to it. You have not asked. I respect that. When you are ready, ask.' },
       the_keeper_was: { label: 'Who You Were', minTier: 3, text: 'I was a girl who tended a fire in a different town. The town is gone. The fire — this fire — is the same one. I do not know how. I no longer try to know.' },
     },
   },
@@ -596,8 +614,12 @@ export const NPCS = {
       yourself: 'You hit harder when you carry less doubt. I notice. Not many notice that about themselves.',
       the_keeper: 'Fed me. Didn\'t ask. I owe her a roof beam if the place ever needs one.',
       the_smith: 'Soldier, then smith. The middle stretch I keep to myself. The other parts went into the work.',
+      // Hamlet-audit P1 — smith + gravekeeper were both veterans whose
+      // personalTopics confirmed military pasts (the_war / the_gravekeeper_was)
+      // but the cross-NPC topics never acknowledged the recognition.
+      // Biggest available narrative win in the hamlet's social graph.
       the_archivist: 'Reads. A lot. I\'ve never read a book that improved a hammer. I assume the books are doing other things.',
-      the_gravekeeper: 'He counts. I appreciate someone who counts. Means he\'ll notice if I go missing.',
+      the_gravekeeper: 'He counts. I appreciate someone who counts. Means he\'ll notice if I go missing. He carries himself like a man who gave the orders. I carried out enough of them to recognize the posture. We have not spoken about it. We will not.',
       the_oracle: 'She told me my next strike would land slightly left. She was right. I do not know how I feel about it.',
       the_wanderer: 'Walks lighter than a man with a pack should. He\'ll move on when he\'s done. They always do.',
     },
@@ -789,7 +811,7 @@ export const NPCS = {
       the_watcher: 'It does not deal with me. We are in similar work but not the same work. I count the lost. It counts something else. I have not asked which side of the line.',
       yourself: 'Three hundred and twelve breaths above resting, when you arrive. Two hundred and four when you leave. You sleep here, briefly, and you do not know it. Your counts say so.',
       the_keeper: 'Older than her ledger would be, if she kept one. I asked her once if she counted candles. She said she counts mornings. That is the same thing.',
-      the_smith: 'Has more weight in him than the work suggests. I have not asked what it is. I think he carries it on purpose.',
+      the_smith: 'Has more weight in him than the work suggests. He was a soldier — I know the gait, the way men walk who have stood in lines. We were almost certainly in the same war, on the same side or the other. I have not asked. He has not offered. We make space for each other. That is enough.',
       the_archivist: 'A counter, like me, but with more letters. Different inventory. We have an understanding. We do not compare books.',
       the_gravekeeper: 'I count what is gone and what is still here. Eventually those two columns balance. Until then, I work.',
       the_oracle: 'She sees forward. I see backward. We do not interfere with each other\'s ranges. It is a courtesy I appreciate.',
