@@ -3729,6 +3729,34 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
+// Mobile pause button — bridges ESC for touch devices. Calls the same
+// path the keyboard handler uses (with the same hamlet-returns-to-menu
+// + death/win-modal-blocked guards) so mobile and desktop pause flow
+// through one toggle. Without this, the mobile player has no way to
+// pause/quit/check the journal mid-run; their only quit-flow is closing
+// the tab and losing the run.
+const mobilePauseBtn = document.getElementById('mobilePauseBtn');
+if (mobilePauseBtn) {
+  mobilePauseBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!running) return;
+    if (deathEl.style.display !== 'none') return;
+    if (winEl.style.display !== 'none') return;
+    if (room.kind === 'hamlet') {
+      if (dialogueEl && dialogueEl.style.display !== 'none') {
+        try { synthClick(0.9, 0.25); } catch (_e) {}
+        dialogueEl.style.display = 'none';
+      } else {
+        running = false;
+        showMainMenu();
+      }
+      return;
+    }
+    setPaused(!paused);
+  });
+}
+
 // R — reroll pedestal offers for gold. Cost scales with floor (15g base).
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyR') return;

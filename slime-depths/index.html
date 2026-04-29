@@ -708,6 +708,28 @@
      off body.mobile-controls in hud.js to compute its baseline. The CSS
      here only handles DOM overlays; canvas-rendered HUD is JS-driven. */
   body.mobile-controls #hud { /* reserved for future HUD-shift CSS */ }
+  /* Mobile pause/menu button — without this there's no way for a touch
+     player to access pause / journal / end-run on mobile (ESC isn't
+     available). Top-right corner, modest size, hit-target 44px+ per
+     Apple HIG. Hidden on desktop entirely. */
+  #mobilePauseBtn {
+    display: none;
+    position: absolute;
+    top: calc(8px + env(safe-area-inset-top));
+    right: calc(8px + env(safe-area-inset-right));
+    width: 48px; height: 48px;
+    border: 1.5px solid rgba(201, 168, 106, 0.7);
+    border-radius: 8px;
+    background: radial-gradient(closest-side, rgba(28, 20, 26, 0.85), rgba(10, 8, 14, 0.65));
+    color: #f4d9a0;
+    font: bold 22px Georgia, serif;
+    pointer-events: auto;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 51;
+  }
+  body.mobile-controls #mobilePauseBtn { display: flex; align-items: center; justify-content: center; }
+  #mobilePauseBtn:active { transform: scale(0.94); }
 </style>
 </head>
 <body>
@@ -736,6 +758,11 @@
     <button id="mobileAttack" class="mobile-btn" type="button" aria-label="Attack">⚔</button>
   </div>
 </div>
+<!-- Mobile pause button — bridges ESC for touch devices. Lives outside
+     #mobileControls so it can render on top of any in-game state. The
+     click handler in main.js calls the same setPaused() the keyboard
+     ESC handler uses, so both paths flow through one toggle. -->
+<button id="mobilePauseBtn" type="button" aria-label="Pause">⏸</button>
 <div id="stage">
   <canvas id="game" width="1280" height="720"></canvas>
   <!-- All DOM overlays nest inside #hud so the single CSS transform on

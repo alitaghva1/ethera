@@ -20,6 +20,7 @@
 import { synthHeartbeat } from './synth.js';
 import { prefersReducedMotion } from './a11y.js';
 import { settings } from './settings';
+import { isMobileMode } from './mobileMode.js';
 
 // Total cinematic duration. After this, the intro is fully dismissed and
 // normal gameplay (hero update, enemy AI, HUD) resumes.
@@ -221,13 +222,19 @@ export function drawIntro(ctx, w, h) {
     // serif so the player can actually read "press any key to skip"
     // during the cardiac pulse build. Using Georgia keeps it
     // visually consistent with the rest of the cinematic typography.
-    const skipAlpha = Math.min(0.45, (t - SKIP_AFTER) * 0.12);
+    // Visibility bump: alpha cap 0.45 → 0.65, font 13px → 15px so the
+    // skip affordance is actually readable on phones at low scale.
+    // Also: device-aware copy ("tap to skip" on mobile, "press any key
+    // to skip" on desktop) — playtest had a mobile player misread the
+    // keyboard-language hint as not applying to them.
+    const skipAlpha = Math.min(0.65, (t - SKIP_AFTER) * 0.16);
     ctx.globalAlpha = skipAlpha;
-    ctx.font = 'italic 13px Georgia, serif';
+    ctx.font = 'italic 15px Georgia, serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = '#bbaa88';
-    ctx.fillText('press any key to skip', w - 24, h - 18);
+    ctx.fillStyle = '#d4c5a0';
+    const skipText = isMobileMode() ? 'tap to skip' : 'press any key to skip';
+    ctx.fillText(skipText, w - 24, h - 18);
   }
 
   // ── TEXT LINES ──────────────────────────────────────────────────────

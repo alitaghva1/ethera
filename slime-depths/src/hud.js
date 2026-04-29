@@ -10,6 +10,7 @@ import { drawRelicIcon } from './fx.js';
 import { THEMES, getThemeCounts, getThemeTier, TIER_THRESHOLDS } from './themes.js';
 import { wrapText } from './textLayout.js';
 import { isPedestalTooltipActive } from './pedestals.js';
+import { isMobileMode } from './mobileMode.js';
 
 function toRoman(n) {
   return n === 1 ? 'I' : n === 2 ? 'II' : n === 3 ? 'III' : n === 4 ? 'IV' : n === 5 ? 'V' : String(n);
@@ -146,9 +147,12 @@ export function drawHud(ctx, w, h, progress = {}) {
   // Layout is deterministic based on maxHp, so pips always sit below hearts
   // with a clear gap and never overlap.
   const pad = 18;
-  // Smaller hearts (17px) with perRow=14 fits up to 14 HP in one row.
-  // At 14+ hp the second row begins; we cap HP visual to 2 rows max.
-  const sz = 17;
+  // Heart size — base 17px on desktop. On mobile the canvas auto-scales
+  // (--ui-scale ≈ 0.30 on a 390px-wide phone), so 17px renders as
+  // ~14 actual pixels — unreadable. Bump to 26px in mobile mode for
+  // a ~22-actual-pixel render. Same trade as the relic strip below.
+  const _hudMobile = isMobileMode();
+  const sz = _hudMobile ? 26 : 17;
   const gap = 4;
   const perRow = 14;
   const heartRowH = sz + gap;
@@ -634,7 +638,10 @@ export function drawHud(ctx, w, h, progress = {}) {
   let hoveredRelic = null;
   let hoveredRelicPos = null;
   if (progress.relics && progress.relics.length > 0) {
-    const icSize = 30;
+    // Mobile: icon goes 30px → 44px so it actually reads at low UI scale.
+    // PER_ROW reduced 16 → 11 to keep the wider icons inside the same
+    // bottom-left footprint without overflowing into the fusion row.
+    const icSize = _hudMobile ? 44 : 30;
     const gap = 4;
     // Wrap into rows to keep the strip from overflowing the canvas at
     // endgame relic counts (a 30-relic build was running off the right
@@ -643,7 +650,7 @@ export function drawHud(ctx, w, h, progress = {}) {
     // Layout direction: index 0 top-left, index N bottom-right — older
     // relics stack upward, newest pickup always at the same baseline
     // the player's eye returns to.
-    const PER_ROW = 16;
+    const PER_ROW = _hudMobile ? 11 : 16;
     const totalRows = Math.max(1, Math.ceil(progress.relics.length / PER_ROW));
     const rowH = icSize + 4;
     const yBase = h - icSize - 18;                       // baseline (bottom-most row)
