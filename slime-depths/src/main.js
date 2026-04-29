@@ -5133,6 +5133,7 @@ function showEndOfRun(isVictory) {
   const earned = Math.round(base * cMul * aMul);
   addEssence(earned);
   // On a floor-4 victory, unlock the next Ascension tier if applicable.
+  let ascensionUnlockHtml = '';
   if (isVictory) {
     const cleared = getAscensionTier();
     const unlockedNew = onRunCompletedAtTier(cleared);
@@ -5144,6 +5145,20 @@ function showEndOfRun(isVictory) {
         flavor: ASCENSION_TIERS[cleared + 1].short,
         color: '#f4d9a0',
       };
+      // Long-tail audit P0: the ascension unlock used to ONLY surface
+      // as a banner on next-run start. By that time the player has
+      // already returned to the hamlet and forgotten the moment. Now
+      // headline the unlock in the end-of-run modal so victory and
+      // tier-up land together as one beat.
+      const next = ASCENSION_TIERS[cleared + 1];
+      ascensionUnlockHtml = `
+        <div style="margin-top:14px;padding:12px 18px;border:1.5px solid #c9a86a;background:linear-gradient(180deg,rgba(40,28,18,0.85),rgba(20,12,10,0.85));text-align:center;">
+          <div style="font-size:10px;letter-spacing:5px;color:#c9a86a;font-style:italic;">— A NEW TIER UNLOCKED —</div>
+          <div style="font-size:18px;letter-spacing:2px;color:#f4d9a0;font-family:Georgia,serif;font-weight:bold;margin-top:4px;">${next.name}</div>
+          <div style="font-size:11px;font-style:italic;opacity:0.8;color:#e8d3a6;margin-top:4px;">${next.short}</div>
+          <div style="font-size:10px;opacity:0.6;color:#bbaa88;margin-top:6px;">attempt this tier from the main menu</div>
+        </div>
+      `;
     }
   }
   const essEl = document.getElementById('endEssence');
@@ -5188,7 +5203,7 @@ function showEndOfRun(isVictory) {
     ).join('');
     memoryHtml = `<div style="margin-top:12px;display:flex;flex-direction:column;gap:3px;">${lines}</div>`;
   }
-  essEl.innerHTML = `+${earned} essence earned${curseTag}   <span style="opacity:0.6;font-size:14px;">(Total: ${meta.essence})</span>${progressHtml}${memoryHtml}`;
+  essEl.innerHTML = `+${earned} essence earned${curseTag}   <span style="opacity:0.6;font-size:14px;">(Total: ${meta.essence})</span>${ascensionUnlockHtml}${progressHtml}${memoryHtml}`;
 
   // Meta shop row — animate on initial reveal only; re-renders after an
   // unlock purchase re-use renderMetaShop(false) so cards don't re-slide.
