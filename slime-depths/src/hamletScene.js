@@ -686,6 +686,34 @@ export function drawHamletEntities(ctx) {
       drawNpc(ctx, e, now);
     }
   }
+
+  // Round-7 hamlet visible-growth — Smith brazier. The Smith arrives at
+  // floor-2 clear (records.maxFloor >= 2). His forge anchor in the
+  // painted scene_v2.jpg shows a cold, dark hearth before he arrives;
+  // when he's present, this small flame halo lights up next to him,
+  // selling "the forge is hot now." Smaller + dimmer than the central
+  // plaza firepit so the eye still reads the firepit as the main warm
+  // anchor; this is a secondary warm point that joins the composition.
+  // Position offset (-12, +6) from Smith's coords places the halo on
+  // his anvil side, just behind his shoulder in the painted scene.
+  if (isNpcUnlocked('smith')) {
+    const smith = HAMLET_ENTITIES.find(e => e.kind === 'npc' && e.id === 'smith');
+    if (smith) {
+      const bx = smith.x - 12;
+      const by = smith.y + 6;
+      const pulse = 0.78 + 0.18 * Math.sin(now * 0.7 + 1.3);
+      const haloR = 38;
+      const halo = ctx.createRadialGradient(bx, by - 6, 3, bx, by - 6, haloR);
+      halo.addColorStop(0, `rgba(255, 165, 90, ${(0.30 * pulse).toFixed(3)})`);
+      halo.addColorStop(0.5, `rgba(255, 120, 60, ${(0.14 * pulse).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(255, 90, 50, 0)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = halo;
+      ctx.fillRect(bx - haloR, by - 6 - haloR, haloR * 2, haloR * 2);
+      ctx.restore();
+    }
+  }
 }
 
 // Small elliptical ground shadow under an entity — anchors it to the painted
