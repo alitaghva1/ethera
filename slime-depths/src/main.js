@@ -59,7 +59,10 @@ import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats
 // rest of the smith UI (heirloom refund path); no other main.js caller
 // needed it. bankHeirloom is still used by the Wanderer's gift service.
 import { meta, loadMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHeirloom, consumeHeirloom } from './meta.js';
-import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
+// Round-7 Sprint B refactor — WEAPONS + ALL_WEAPON_IDS + WEAPON_UNLOCKS
+// moved to src/modals/weaponPickerModal.js (along with availableWeapons,
+// re-exported for the two non-picker callers in main.js: the menu START
+// short-circuit + loadRoom's null-weapon fallback grant).
 // Round-7 Sprint B refactor — CURSES + ALL_CURSE_IDS + toggleCurse
 // moved to src/modals/cursesModal.js along with the rest of the
 // curses UI; isCursed / curseCount / curseEssenceMul / activeCurses
@@ -67,10 +70,19 @@ import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
 import { activeCurses, loadCurses, isCursed, curseCount, curseEssenceMul } from './curses.js';
 import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked } from './achievements.js';
 import { records, loadRecords, updateRecords, incrementRunsStarted } from './records';
-import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, discoveredCount, clearFusions } from './fusions.js';
+// Round-7 Sprint B refactor — totalFusions + discoveredCount moved to
+// src/modals/pauseModal.js with the rest of the relic-strip render.
+import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
-import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
-import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting, resolvePerfMode } from './settings';
+// Round-7 Sprint B refactor — seenCount + totalCards moved to
+// src/modals/tarotRevealModal.js with the reveal render. drawnCards
+// stays here: run snapshot/resume serializes it, and the Oracle's
+// gift NPC mutates it post-pick.
+import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot } from './tarot.js';
+// Round-7 Sprint B refactor — setSfxVolume + setMusicVolumeSetting +
+// setShakeScaleSetting moved to src/modals/{settings,pause}Modal.js
+// (both modals own their own slider triplet).
+import { settings, loadSettings, resolvePerfMode } from './settings';
 import { applyMobileMode, installFirstTouchFallback } from './mobileMode.js';
 import { initMobileControls } from './mobileControls.js';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
@@ -127,6 +139,10 @@ import { cursesEl, showCursesModal as _showCursesModal, setCursesOnClose } from 
 import { showJournalModal as _showJournalModal, setJournalOnClose } from './modals/journalModal.js';
 import { smithEl, showSmithModal as _showSmithModal } from './modals/smithModal.js';
 import { memoryEl, showMemoryModal as _showMemoryModal, setMemoryOnClose, setMemoryOnPick } from './modals/memoryModal.js';
+import { tarotRevealEl, showTarotRevealModal as _showTarotRevealModal, setTarotOnBegin, setTarotOnBack } from './modals/tarotRevealModal.js';
+import { settingsEl, showSettingsModal as _showSettingsModal, setSettingsOnClose } from './modals/settingsModal.js';
+import { weaponPickerEl, showWeaponPickerModal as _showWeaponPickerModal, setWeaponOnPick, setWeaponOnBack, availableWeapons } from './modals/weaponPickerModal.js';
+import { pauseEl, setPauseVisible, setPauseOnResume, setPauseOnQuit, setPauseOnJournal } from './modals/pauseModal.js';
 
 // Side-effect: install the localStorage profile-prefix patch NOW, before any
 // other module-body code could touch storage. All load*() funcs in other
@@ -1032,167 +1048,31 @@ refreshAscensionUI();
 // Initial state — sets chip highlight + CTA tint
 refreshMenuModeChips();
 
-// TAROT REVEAL — dramatic 3-card draw modal before the run begins
-const tarotRevealEl = document.createElement('div');
-tarotRevealEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;overflow:hidden;';
-tarotRevealEl.innerHTML = `
-  <!-- Deep vignette + page-frame corners. -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">the cards are drawn</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.5);font-weight:400;line-height:1;">TAROT DESCENT</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 34px;opacity:0.65;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p id="tarotSubtitle" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#d8cfae;">three cards drawn \u00b7 three fates set</p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-    <div id="tarotCardsRow" style="display:flex;flex-wrap:wrap;justify-content:center;gap:24px;margin-bottom:32px;max-width:600px;"></div>
-    <button id="tarotBeginBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:15px 64px;font-size:15px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 26px rgba(201,168,106,0.3), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">BEGIN DESCENT</button>
-    <button id="tarotBackBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;margin-top:14px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 BACK</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(tarotRevealEl);
-document.getElementById('tarotBeginBtn').addEventListener('click', () => {
-  tarotRevealEl.style.display = 'none';
+// TAROT REVEAL — extracted to src/modals/tarotRevealModal.js (Round-7
+// Sprint B). main.js retains the wrapper to preserve the
+// hideAllOverlays-before-show contract + wire onBegin (start the run)
+// and onBack (clear the drawn hand + return to menu) callbacks.
+setTarotOnBegin(() => {
   startRun();
 });
-document.getElementById('tarotBackBtn').addEventListener('click', () => {
-  try { synthClick(0.9, 0.25); } catch (_e) {}
+setTarotOnBack(() => {
   clearTarot();
-  tarotRevealEl.style.display = 'none';
   menuEl.style.display = 'flex';
 });
-
 function showTarotReveal() {
   hideAllOverlays();
-  tarotRevealEl.style.display = 'flex';
-  const row = document.getElementById('tarotCardsRow');
-  row.innerHTML = '';
-  for (let i = 0; i < drawnCards.length; i++) {
-    const c = drawnCards[i];
-    const card = document.createElement('div');
-    // Card styling — vintage tarot feel
-    card.style.cssText = `width:180px;background:linear-gradient(180deg,#2a1418,#140a0d);border:2px solid ${c.tint};padding:18px 14px;text-align:center;display:flex;flex-direction:column;gap:6px;box-shadow:0 0 20px ${c.tint}44;transform:translateY(20px) rotate(-3deg);opacity:0;animation:cardReveal 0.6s ease-out ${i * 0.25}s forwards;`;
-    card.innerHTML = `
-      <div style="font-size:10px;letter-spacing:3px;color:${c.tint};opacity:0.8;">${c.roman}</div>
-      <div style="font-size:18px;font-weight:bold;letter-spacing:3px;color:${c.tint};text-shadow:0 0 8px ${c.tint};">${c.name}</div>
-      <div style="font-size:10px;font-style:italic;color:#aaa;padding:6px 0;letter-spacing:1px;">${c.flavor}</div>
-      <div style="border-top:1px solid ${c.tint}55;margin:2px 0;padding-top:6px;font-size:11px;color:#d8d4ea;line-height:1.4;min-height:42px;">${c.desc}</div>
-      <div style="font-size:9px;letter-spacing:2px;color:${c.positive ? '#86e3a8' : '#d85a5a'};opacity:0.7;margin-top:2px;">${c.positive ? '◆ BOON' : '◆ BURDEN'}</div>
-    `;
-    row.appendChild(card);
-  }
-  // Subtitle updates with how many cards seen
-  document.getElementById('tarotSubtitle').innerHTML = `three cards drawn. three fates set.<br/><span style="font-size:10px;opacity:0.55;letter-spacing:2px;margin-top:4px;display:inline-block;">${seenCount()} / ${totalCards()} cards glimpsed in the deck</span>`;
-  // Audio sting
-  synthChord(440, 1.0, 1.4);
-  setTimeout(() => synthChord(659, 0.8, 1.2), 250);
-  setTimeout(() => synthChord(880, 0.6, 1.0), 500);
+  _showTarotRevealModal();
 }
 
-// Settings modal — accessible from main menu (same panel as pause menu)
-const settingsEl = document.createElement('div');
-settingsEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
-settingsEl.innerHTML = `
-  <!-- Page frame + vignette -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">tune the descent</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:44px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 14px rgba(244,217,160,0.4);font-weight:400;line-height:1;">SETTINGS</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 32px;opacity:0.6;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p style="margin:0;letter-spacing:5px;font-size:11px;font-style:italic;color:#d8cfae;">adjust to taste</p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-    <div style="display:grid;grid-template-columns:auto 220px auto;gap:16px 20px;background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.9));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.28), inset 0 0 14px rgba(0,0,0,0.5);padding:22px 30px;font-size:13px;color:#d8cfae;align-items:center;font-family:Georgia,serif;">
-      <div style="opacity:0.7;letter-spacing:2px;">SFX Volume</div><input id="menuSetSfx" type="range" min="0" max="100" step="1" style="accent-color:#c9a86a;" /><div id="menuSetSfxVal" style="opacity:0.6;font-size:11px;width:36px;text-align:right;color:#c9a86a;"></div>
-      <div style="opacity:0.7;letter-spacing:2px;">Music Volume</div><input id="menuSetMusic" type="range" min="0" max="100" step="1" style="accent-color:#c9a86a;" /><div id="menuSetMusicVal" style="opacity:0.6;font-size:11px;width:36px;text-align:right;color:#c9a86a;"></div>
-      <div style="opacity:0.7;letter-spacing:2px;">Screen Shake</div><input id="menuSetShake" type="range" min="0" max="150" step="1" style="accent-color:#c9a86a;" /><div id="menuSetShakeVal" style="opacity:0.6;font-size:11px;width:36px;text-align:right;color:#c9a86a;"></div>
-    </div>
-    <div style="font-size:10px;opacity:0.5;margin-top:18px;max-width:440px;text-align:center;font-style:italic;letter-spacing:2px;line-height:1.5;color:#c9a86a;">shake also scales the camera zoom-pulse \u00b7 set to 0 to disable all screen motion</div>
-    <button id="menuSettingsBackBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;margin-top:32px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 BACK</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(settingsEl);
-document.getElementById('menuSettingsBackBtn').addEventListener('click', () => {
-  try { synthClick(0.9, 0.25); } catch (_e) {}
-  settingsEl.style.display = 'none';
+// Settings modal — extracted to src/modals/settingsModal.js (Round-7
+// Sprint B). main.js retains the wrapper to preserve the
+// hideAllOverlays-before-show contract + restore the main menu on close.
+setSettingsOnClose(() => {
   menuEl.style.display = 'flex';
 });
-// Wire sliders to the same settings system as pause menu
-document.getElementById('menuSetSfx').addEventListener('input', (e) => {
-  setSfxVolume(parseInt(e.target.value, 10) / 100);
-  document.getElementById('menuSetSfxVal').textContent = e.target.value + '%';
-});
-document.getElementById('menuSetMusic').addEventListener('input', (e) => {
-  setMusicVolumeSetting(parseInt(e.target.value, 10) / 100);
-  document.getElementById('menuSetMusicVal').textContent = e.target.value + '%';
-});
-document.getElementById('menuSetShake').addEventListener('input', (e) => {
-  setShakeScaleSetting(parseInt(e.target.value, 10) / 100);
-  document.getElementById('menuSetShakeVal').textContent = e.target.value + '%';
-});
-
 function showSettingsModal() {
   hideAllOverlays();
-  settingsEl.style.display = 'flex';
-  // Sync slider positions with current settings
-  document.getElementById('menuSetSfx').value = Math.round(settings.sfxVolume * 100);
-  document.getElementById('menuSetMusic').value = Math.round(settings.musicVolume * 100);
-  document.getElementById('menuSetShake').value = Math.round(settings.shakeScale * 100);
-  document.getElementById('menuSetSfxVal').textContent = Math.round(settings.sfxVolume * 100) + '%';
-  document.getElementById('menuSetMusicVal').textContent = Math.round(settings.musicVolume * 100) + '%';
-  document.getElementById('menuSetShakeVal').textContent = Math.round(settings.shakeScale * 100) + '%';
+  _showSettingsModal();
 }
 
 // ============================================================================
@@ -2742,118 +2622,21 @@ function renderChroniclesTab() {
   }
 }
 
-// Weapon picker — shown between main menu and run start
-const weaponPickerEl = document.createElement('div');
-weaponPickerEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
-weaponPickerEl.innerHTML = `
-  <!-- Deep vignette + page-frame corners (shared discipline). -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">the forge waits</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;font-weight:400;line-height:1;text-shadow:0 0 20px rgba(244,217,160,0.5);animation:winFadeIn 0.7s ease-out 0.1s both;">CHOOSE YOUR ARMS</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 36px;opacity:0.6;animation:winFadeIn 0.6s ease-out 0.22s both;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#d8cfae;">each shapes the descent differently</p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-    <div id="weaponPickerRow" style="display:flex;gap:18px;"></div>
-    <button id="weaponBackBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;margin-top:32px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;animation:winFadeIn 0.55s ease-out 1.1s both;">\u2190 BACK</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(weaponPickerEl);
-document.getElementById('weaponBackBtn').addEventListener('click', () => {
-  weaponPickerEl.style.display = 'none';
+// Weapon picker — extracted to src/modals/weaponPickerModal.js (Round-7
+// Sprint B). main.js retains the wrapper to preserve the menu-hide-before-
+// show contract + wire onPick (set hero.weapon, kick startRun via
+// hideAllOverlays) and onBack (restore the main menu) callbacks.
+setWeaponOnPick((weaponId) => {
+  hero.weapon = weaponId;
+  hideAllOverlays();
+  startRun();
+});
+setWeaponOnBack(() => {
   menuEl.style.display = 'flex';
 });
-
-function availableWeapons() {
-  return ALL_WEAPON_IDS.filter(id => {
-    if (id === 'sword') return true;
-    const u = WEAPON_UNLOCKS[id];
-    return u && hasUnlock(u.metaId);
-  });
-}
-
 function showWeaponPicker() {
   menuEl.style.display = 'none';
-  weaponPickerEl.style.display = 'flex';
-  const row = document.getElementById('weaponPickerRow');
-  row.innerHTML = '';
-  let staggerIdx = 0;
-  for (const id of availableWeapons()) {
-    const w = WEAPONS[id];
-    const card = document.createElement('div');
-    const delay = 0.35 + staggerIdx * 0.1;
-    staggerIdx++;
-    card.style.cssText = `
-      width:220px;
-      background:linear-gradient(180deg,rgba(40,28,48,0.95),rgba(18,10,22,0.95));
-      border:2px solid ${w.tint};
-      padding:18px;
-      display:flex;flex-direction:column;align-items:center;gap:9px;
-      box-shadow:0 0 20px ${w.tint}55, 0 4px 16px rgba(0,0,0,0.5), inset 0 0 14px rgba(0,0,0,0.35);
-      cursor:pointer;
-      font-family:Georgia,serif;
-      transition:transform 0.18s ease, box-shadow 0.18s ease;
-      animation:winCardSlide 0.55s ease-out ${delay}s both;
-    `;
-    card.addEventListener('mouseenter', () => {
-      card.style.transform = 'translateY(-6px) scale(1.02)';
-      card.style.boxShadow = `0 0 32px ${w.tint}, 0 4px 22px rgba(0,0,0,0.55), inset 0 0 16px rgba(0,0,0,0.3)`;
-    });
-    card.addEventListener('mouseleave', () => {
-      card.style.transform = 'none';
-      card.style.boxShadow = `0 0 20px ${w.tint}55, 0 4px 16px rgba(0,0,0,0.5), inset 0 0 14px rgba(0,0,0,0.35)`;
-    });
-    card.innerHTML = `
-      <div style="padding:6px;background:radial-gradient(circle,${w.tint}33,transparent 70%);">
-        <img src="assets/icons/${w.icon}.png" style="width:52px;height:52px;image-rendering:pixelated;filter:drop-shadow(0 0 8px ${w.tint}aa);" />
-      </div>
-      <div style="font-size:19px;font-weight:bold;color:${w.tint};letter-spacing:3px;text-shadow:0 0 6px ${w.tint}66;">${w.name.toUpperCase()}</div>
-      ${w.flavor ? `<div style="font-size:11px;color:rgba(200,190,210,0.75);text-align:center;line-height:1.4;min-height:32px;font-style:italic;padding:0 4px;">${w.flavor}</div>` : ''}
-      <div style="height:1px;width:70%;background:linear-gradient(90deg,transparent,${w.tint}aa,transparent);margin:2px 0;"></div>
-      <div style="font-size:11px;color:#ccc;text-align:center;line-height:1.4;min-height:28px;">${w.desc}</div>
-      <div style="height:1px;width:100%;background:linear-gradient(90deg,transparent,${w.tint}66,transparent);margin:2px 0;"></div>
-      <div style="display:grid;grid-template-columns:auto auto;gap:3px 18px;font-size:11px;color:#aaa;margin-top:2px;">
-        <span style="opacity:0.6;letter-spacing:1px;">DAMAGE</span><span style="text-align:right;color:${w.tint};font-weight:bold;">${w.damage}</span>
-        <span style="opacity:0.6;letter-spacing:1px;">REACH</span><span style="text-align:right;color:${w.tint};font-weight:bold;">${w.reach}px</span>
-        <span style="opacity:0.6;letter-spacing:1px;">ARC</span><span style="text-align:right;color:${w.tint};font-weight:bold;">${Math.round(w.arc * 180 / Math.PI)}\u00B0</span>
-        <span style="opacity:0.6;letter-spacing:1px;">COOLDOWN</span><span style="text-align:right;color:${w.tint};font-weight:bold;">${w.cooldown.toFixed(2)}s</span>
-      </div>
-    `;
-    card.addEventListener('click', () => {
-      hero.weapon = id;
-      try { synthPing(520, 0.9, 0.5); synthChord(392, 0.7, 0.7); } catch (e) {}
-      hideAllOverlays();
-      startRun();
-    });
-    row.appendChild(card);
-  }
+  _showWeaponPickerModal();
 }
 
 function showMainMenu() {
@@ -3020,114 +2803,26 @@ function hideAllOverlays() {
   winEl.style.display = 'none';
 }
 
-// Pause menu overlay — ESC to toggle
-const pauseEl = document.createElement('div');
-pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
-pauseEl.innerHTML = `
-  <!-- Deep vignette frame — same discipline as main menu. -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-
-  <!-- Page-frame corner flourishes (4 L-shapes) — mark this as a page. -->
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;animation:winFadeIn 0.7s ease-out both;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <!-- Content column, z above ambient. The "menuContent" class is shared
-       with the main menu so the same @media (max-width) scale rules
-       (0.72 / 0.52 / 0.38 at 900/600/450 breakpoints) keep the pause
-       overlay readable on narrow viewports. -->
-  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
-    <!-- Ornamental frame above the title — gold, not purple. -->
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.7;animation:winFadeIn 0.6s ease-out;">
-      <div style="width:90px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">the descent halts</div>
-      <div style="width:90px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:56px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;animation:winFadeIn 0.7s ease-out 0.1s both;">PAUSED</h1>
-    <!-- Subtitle with diamond flanks — same grammar as main menu. -->
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 26px;opacity:0.55;animation:winFadeIn 0.6s ease-out 0.2s both;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <span style="color:#d8cfae;font-size:11px;letter-spacing:6px;font-style:italic;">press ESC to resume</span>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-
-    <!-- Relic strip (decor, shown during run) -->
-    <div id="pauseRelics" style="display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap;justify-content:center;max-width:640px;animation:winFadeIn 0.6s ease-out 0.3s both;"></div>
-
-    <!-- Two plaques: CONTROLS + SETTINGS — borderless, inset-stroke plate treatment. -->
-    <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:26px;animation:winCardSlide 0.55s ease-out 0.4s both;">
-      <div style="display:grid;grid-template-columns:auto auto;gap:7px 24px;background:linear-gradient(180deg,rgba(30,22,16,0.8),rgba(14,10,8,0.85));padding:16px 26px;font-size:13px;color:#d8cfae;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px rgba(201,168,106,0.28), inset 0 0 14px rgba(0,0,0,0.45);">
-        <div style="grid-column:1/-1;color:#c9a86a;letter-spacing:5px;font-size:9px;margin-bottom:8px;font-weight:bold;text-align:center;opacity:0.85;">\u2666 CONTROLS \u2666</div>
-        <div style="opacity:0.55;">Move</div><div>WASD</div>
-        <div style="opacity:0.55;">Attack</div><div>LMB (hold: charge)</div>
-        <div style="opacity:0.55;">Aim</div><div>Mouse</div>
-        <div style="opacity:0.55;">Dodge</div><div>Space</div>
-        <div style="opacity:0.55;">Dash Strike</div><div>Q</div>
-        <div style="opacity:0.55;">Pause</div><div>Esc</div>
-      </div>
-      <div style="display:grid;grid-template-columns:auto 140px auto;gap:11px 14px;background:linear-gradient(180deg,rgba(30,22,16,0.8),rgba(14,10,8,0.85));padding:16px 26px;font-size:13px;color:#d8cfae;align-items:center;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px rgba(201,168,106,0.28), inset 0 0 14px rgba(0,0,0,0.45);">
-        <div style="grid-column:1/-1;color:#c9a86a;letter-spacing:5px;font-size:9px;margin-bottom:8px;font-weight:bold;text-align:center;opacity:0.85;">\u2666 SETTINGS \u2666</div>
-        <div style="opacity:0.65;">SFX</div><input id="setSfx" type="range" min="0" max="100" step="1" style="accent-color:#c9a86a;" /><div id="setSfxVal" style="opacity:0.55;font-size:11px;width:32px;text-align:right;"></div>
-        <div style="opacity:0.65;">Music</div><input id="setMusic" type="range" min="0" max="100" step="1" style="accent-color:#c9a86a;" /><div id="setMusicVal" style="opacity:0.55;font-size:11px;width:32px;text-align:right;"></div>
-        <div style="opacity:0.65;">Shake</div><input id="setShake" type="range" min="0" max="150" step="1" style="accent-color:#c9a86a;" /><div id="setShakeVal" style="opacity:0.55;font-size:11px;width:32px;text-align:right;"></div>
-      </div>
-    </div>
-
-    <!-- Resume button — same gold CTA treatment as main menu's BEGIN DESCENT. -->
-    <button id="pauseResumeBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:14px 56px;font-size:15px;cursor:pointer;letter-spacing:6px;margin-bottom:14px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 20px rgba(201,168,106,0.22), inset 0 0 12px rgba(244,217,160,0.06);animation:winFadeIn 0.55s ease-out 0.6s both;">RESUME</button>
-    <!-- Secondary text links — no boxes, just gold/crimson text. -->
-    <button id="pauseJournalBtn" style="background:transparent;color:#c9a86a;border:0;padding:6px 16px;font-size:11px;cursor:pointer;letter-spacing:4px;margin-bottom:6px;font-family:Georgia,serif;font-style:italic;transition:all 0.22s ease;opacity:0.75;animation:winFadeIn 0.55s ease-out 0.7s both;">JOURNAL OF THE RUIN</button>
-    <button id="pauseQuitBtn" style="background:transparent;color:#8a4848;border:0;padding:6px 16px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.22s ease;opacity:0.75;animation:winFadeIn 0.55s ease-out 0.8s both;">\u2620 END RUN</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(pauseEl);
-document.getElementById('pauseResumeBtn').addEventListener('click', () => setPaused(false));
-document.getElementById('pauseQuitBtn').addEventListener('click', () => {
+// Pause modal — extracted to src/modals/pauseModal.js (Round-7 Sprint B).
+// main.js retains the `paused` flag + setPaused(p) since dozens of
+// game-loop branches read paused. Pause modal exports setPauseVisible(p)
+// which we call from setPaused to keep DOM in sync. Three button
+// callbacks: resume (clear paused), quit (kill the run), journal (open
+// the journal modal — its onClose restores pauseEl visibility).
+setPauseOnResume(() => setPaused(false));
+setPauseOnQuit(() => {
   paused = false;
-  pauseEl.style.display = 'none';
   hero.hp = 0;
   hero.state = 'dead';
   hero.stateTime = 1;          // force immediate end-of-run
 });
-document.getElementById('pauseJournalBtn').addEventListener('click', () => {
+setPauseOnJournal(() => {
   showJournalModal();
-});
-
-// Settings sliders — live-update + persist
-document.getElementById('setSfx').addEventListener('input', (e) => {
-  setSfxVolume(parseInt(e.target.value, 10) / 100);
-  document.getElementById('setSfxVal').textContent = e.target.value + '%';
-});
-document.getElementById('setMusic').addEventListener('input', (e) => {
-  setMusicVolumeSetting(parseInt(e.target.value, 10) / 100);
-  document.getElementById('setMusicVal').textContent = e.target.value + '%';
-});
-document.getElementById('setShake').addEventListener('input', (e) => {
-  setShakeScaleSetting(parseInt(e.target.value, 10) / 100);
-  document.getElementById('setShakeVal').textContent = e.target.value + '%';
 });
 
 function setPaused(p) {
   paused = p;
-  pauseEl.style.display = p ? 'flex' : 'none';
-  if (p) { populatePauseRelics(); syncSettingsSliders(); }
+  setPauseVisible(p);
 }
 
 // AUTO-PAUSE ON WINDOW BLUR — if the tab/window loses focus while the player
@@ -3153,93 +2848,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-function syncSettingsSliders() {
-  const sfx = document.getElementById('setSfx');
-  const music = document.getElementById('setMusic');
-  const shake = document.getElementById('setShake');
-  if (!sfx) return;
-  sfx.value = Math.round(settings.sfxVolume * 100);
-  music.value = Math.round(settings.musicVolume * 100);
-  shake.value = Math.round(settings.shakeScale * 100);
-  document.getElementById('setSfxVal').textContent = sfx.value + '%';
-  document.getElementById('setMusicVal').textContent = music.value + '%';
-  document.getElementById('setShakeVal').textContent = shake.value + '%';
-}
-
-function populatePauseRelics() {
-  const row = document.getElementById('pauseRelics');
-  row.innerHTML = '';
-  if (equippedRelics.length === 0) {
-    row.innerHTML = '<div style="opacity:0.5;font-size:13px;letter-spacing:2px;padding:20px 0;">NO RELICS YET — defeat enemies and claim pedestals</div>';
-    return;
-  }
-  // FUSIONS — shown first as standout section when any are active
-  if (activeFusions.length > 0) {
-    const fHeader = document.createElement('div');
-    fHeader.style.cssText = 'width:100%;font-size:10px;letter-spacing:3px;color:#a0e8ff;text-align:center;margin-bottom:6px;';
-    // Header reads: "⚡ ACTIVE: 2  ·  DISCOVERED: 12/30" — splits the
-    // current-run active count from the cumulative codex progress so
-    // both numbers are clearly separate (the prior "2/30 DISCOVERED"
-    // read as "2 of 30 fusions are active", which was misleading).
-    fHeader.textContent = `⚡ ACTIVE: ${activeFusions.length}  ·  DISCOVERED: ${discoveredCount()} / ${totalFusions()}`;
-    row.appendChild(fHeader);
-    const fGroup = document.createElement('div');
-    fGroup.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;width:100%;margin-bottom:14px;';
-    for (const f of activeFusions) {
-      const tile = document.createElement('div');
-      tile.title = f.desc;
-      const comps = f.components.map(id => RELIC_DEFS[id]?.name || id).join(' + ');
-      tile.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:4px;background:linear-gradient(180deg,rgba(20,30,40,0.9),rgba(10,14,22,0.9));border:2px solid ${f.tint};padding:8px 10px;font-size:11px;color:${f.tint};width:190px;box-shadow:0 0 10px ${f.tint}44;`;
-      tile.innerHTML = `
-        <div style="font-size:9px;letter-spacing:2px;opacity:0.7;">⚡ FUSION</div>
-        <div style="font-weight:bold;font-size:14px;color:#fff8e8;letter-spacing:1px;text-shadow:0 0 8px ${f.tint};">${f.name}</div>
-        <div style="font-size:9px;color:#a0b4c8;font-style:italic;">${comps}</div>
-        <div style="font-size:10px;color:#d0d8e4;text-align:center;margin-top:2px;line-height:1.3;">${f.desc}</div>
-      `;
-      fGroup.appendChild(tile);
-    }
-    row.appendChild(fGroup);
-  }
-  // Group by tier for a cleaner build overview
-  const tiers = { legendary: [], rare: [], common: [] };
-  for (const r of equippedRelics) {
-    const t = r.tier || 'common';
-    (tiers[t] || tiers.common).push(r);
-  }
-  const label = { legendary: '★ LEGENDARY', rare: '◆ RARE', common: '· COMMON' };
-  const tierColor = { legendary: '#ffc8ff', rare: '#f4d9a0', common: '#b4c8d8' };
-  // Title bar
-  const header = document.createElement('div');
-  header.style.cssText = 'width:100%;font-size:10px;letter-spacing:3px;opacity:0.5;text-align:center;margin-bottom:4px;';
-  header.textContent = `CURRENT BUILD · ${equippedRelics.length} RELIC${equippedRelics.length === 1 ? '' : 'S'}`;
-  row.appendChild(header);
-  for (const tKey of ['legendary', 'rare', 'common']) {
-    const tierRelics = tiers[tKey];
-    if (!tierRelics || tierRelics.length === 0) continue;
-    // Group container
-    const group = document.createElement('div');
-    group.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;width:100%;margin-bottom:4px;';
-    // Tier label
-    const labelEl = document.createElement('div');
-    labelEl.style.cssText = `width:100%;font-size:9px;letter-spacing:3px;color:${tierColor[tKey]};opacity:0.8;text-align:center;`;
-    labelEl.textContent = label[tKey];
-    group.appendChild(labelEl);
-    for (const r of tierRelics) {
-      const tile = document.createElement('div');
-      tile.title = r.desc;
-      tile.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(20,14,25,0.85);border:1px solid ${r.tint};padding:6px 8px 6px;font-size:11px;color:${r.tint};width:160px;max-width:160px;`;
-      tile.innerHTML = `
-        <div style="display:flex;align-items:center;gap:6px;width:100%;">
-          <img src="assets/icons/${r.icon}.png" style="width:22px;height:22px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15);" />
-          <span style="font-weight:bold;font-size:11px;">${r.name}</span>
-        </div>
-        <div style="font-size:9px;color:#bbb;line-height:1.3;text-align:center;opacity:0.85;">${r.desc}</div>
-      `;
-      group.appendChild(tile);
-    }
-    row.appendChild(group);
-  }
-}
 
 // First-run intro skip — any key during the SKIP_AFTER..SKIP_BEFORE
 // window jumps to the reveal phase. Capture phase so we eat the input
