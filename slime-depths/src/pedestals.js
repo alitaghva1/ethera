@@ -3,6 +3,7 @@
 import { images } from './loader.js';
 import { applyRelic, rollRelicOffer, relicTier, RELIC_DEFS, equipped as equippedRelics } from './relics.js';
 import { THEMES, RELIC_THEMES, getThemeCounts, getThemeTier } from './themes.js';
+import { SLOTS, getSlotCounts, getSlotTier } from './slots.js';
 import { pushNotification } from './notifications.js';
 import { wrapText } from './textLayout.js';
 import { activeFusions } from './fusions.js';
@@ -518,8 +519,9 @@ export function consumePendingPickup() {
   // player can try again on next tick instead of losing the relic.
   const beforeFusionIds = new Set(activeFusions.map(f => f.id));
   const beforeThemeTiers = computeThemeTiers();
+  const beforeSlotTiers = computeSlotTiers();
   applyRelic(p.relic.id);
-  lastPickedEvent = computeRelicEvent(beforeFusionIds, beforeThemeTiers, p.relic.id);
+  lastPickedEvent = computeRelicEvent(beforeFusionIds, beforeThemeTiers, beforeSlotTiers, p.relic.id);
   p.picked = true;
   const picked = p.relic;
   const t = p.tier || 'common';
@@ -1193,17 +1195,38 @@ function computeThemeTiers() {
   };
 }
 
+// Snapshot helper for SLOT (sword/blast/shield) tier state. Mirrors
+// computeThemeTiers — used by computeRelicEvent so slot resonance/
+// ascendance moments get their own pickup-banner chip alongside theme
+// + fusion events. Phase 2 audit fix: was theme-only; slots are the
+// PRIMARY build axis (wizard-kit slots — sword/blast/shield) but their
+// tier-ups were silent at pickup-event time.
+function computeSlotTiers() {
+  const counts = getSlotCounts(equippedRelics);
+  return {
+    sword:  getSlotTier(counts.sword | 0),
+    blast:  getSlotTier(counts.blast | 0),
+    shield: getSlotTier(counts.shield | 0),
+  };
+}
+
 // Compares the post-applyRelic state with the pre-snapshot to determine
 // the most-meaningful structural event from this pickup. Returns the
 // event object (rendered as a chip above the relic name) or null if
 // the relic was a pure stat pickup with no structural change.
 //
 // Priority (only ONE event picked, highest wins):
-//   1. FUSION FORGED         — the most significant; entire new mechanic
-//   2. THEME ASCENDANCE      — 5-stack tier-2 hit on a theme
-//   3. THEME RESONANCE       — 3-stack tier-1 hit on a theme
+//   1. FUSION FORGED              — the most significant; entire new mechanic
+//   2. ASCENDANCE (slot or theme) — tier-2 (5-stack) hit on slot/theme
+//   3. RESONANCE  (slot or theme) — tier-1 (3-stack) hit on slot/theme
 //   4. (null — relic was a pure stat boost)
-function computeRelicEvent(beforeFusionIds, beforeThemeTiers, _pickedId) {
+//
+// At equal tier, SLOT events outrank THEME events because slots are the
+// primary wizard-kit build axis (sword/blast/shield correspond to the
+// hero's three abilities) — their resonance bonuses (hitstop, pierce,
+// perfect-block window) compose the kit feel, while theme bonuses are
+// flavor stat-boosts on top.
+function computeRelicEvent(beforeFusionIds, beforeThemeTiers, beforeSlotTiers, _pickedId) {
   // Fusion forging — first new fusion id in activeFusions wins.
   for (const f of activeFusions) {
     if (!beforeFusionIds.has(f.id)) {
@@ -1213,20 +1236,36 @@ function computeRelicEvent(beforeFusionIds, beforeThemeTiers, _pickedId) {
       };
     }
   }
-  // Theme advancement — find the highest-tier change. Prefer
-  // ascendance over resonance even if both happened (rare, but
-  // possible if multiple themes hit thresholds simultaneously).
-  const after = computeThemeTiers();
+  // Slot + theme advancement — find the highest-tier change. Slots
+  // tie-break above themes at equal tier (see priority comment above).
   let best = null;
+  // Slots first — same scan pattern as themes; SLOTS axis evaluated
+  // first so a slot ascendance ties win over a theme ascendance.
+  const afterSlots = computeSlotTiers();
+  for (const slotId of Object.keys(SLOTS)) {
+    const beforeT = beforeSlotTiers[slotId] | 0;
+    const afterT = afterSlots[slotId] | 0;
+    if (afterT > beforeT) {
+      const label = afterT === 2 ? 'ASCENDANCE' : 'RESONANCE';
+      const candidate = {
+        label: slotId.toUpperCase() + ' SLOT ' + label,
+        tint: (SLOTS[slotId] && SLOTS[slotId].color) || '#c9a86a',
+        priority: afterT * 2 + 1,    // slot ties beat theme ties (+1 nudge)
+      };
+      if (!best || candidate.priority > best.priority) best = candidate;
+    }
+  }
+  // Themes — same scan, lower tie-break priority.
+  const afterThemes = computeThemeTiers();
   for (const themeId of Object.keys(THEMES)) {
     const beforeT = beforeThemeTiers[themeId] | 0;
-    const afterT = after[themeId] | 0;
+    const afterT = afterThemes[themeId] | 0;
     if (afterT > beforeT) {
       const label = afterT === 2 ? 'ASCENDANCE' : 'RESONANCE';
       const candidate = {
         label: themeId.toUpperCase() + ' ' + label,
         tint: (THEMES[themeId] && THEMES[themeId].tint) || '#c9a86a',
-        priority: afterT,
+        priority: afterT * 2,        // theme ties (no nudge)
       };
       if (!best || candidate.priority > best.priority) best = candidate;
     }
