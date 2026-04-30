@@ -134,6 +134,7 @@ import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, 
 // + selectedMemoryId still used here for run-state setup, save snapshot,
 // and the menu chip's updateMenuMemoryLabel readout.
 import { selectedMemoryId, loadMemories, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory } from './memories.js';
+import { loadDeathTips, recordKilledBy, fireDeathTipIfReady } from './deathTips.js';
 import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen, getFamiliarityLabel, bumpFamiliarity, nextBumpCrossesTier, buildGreetingContext, resolveReactiveGreeting, getCurrentPreoccupation, stampVisit, recordRunEnd, KEEPER_WAKE_BEATS } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
@@ -3463,6 +3464,14 @@ function startRun() {
   // frame of a fresh run.
   resetHudAnims();
   running = true;
+  // Phase 4 — surface death-counsel if the player has fallen to the
+  // same enemy/hazard 3+ times. Defers naturally during the floor-card
+  // cinematic (notification rail respects __centerBannerActive) and
+  // appears once the cinematic clears. Fires once per run start so
+  // veterans don't get re-prompted with advice they already know;
+  // showTip-style de-dup isn't needed because the tip is gated on
+  // accumulated death count and re-evaluated each run.
+  try { fireDeathTipIfReady(); } catch (e) {}
 }
 
 // Apply tarot pedestal modifiers — called after spawnRelicOffer/spawnAltarOffer
@@ -5367,6 +5376,12 @@ function tick(now) {
           damageDealt: stats.damageDealt | 0,
         });
       } catch (e) {}
+      // Phase 4 — record per-killer death count for the death-tips
+      // system. Increments the count for hero._lastHurtBy (set by the
+      // damageHero call that landed the killing blow). On NEXT run
+      // start, if this killer's total >= THRESHOLD, a contextual tip
+      // surfaces in the rail.
+      try { recordKilledBy(hero._lastHurtBy); } catch (e) {}
       pulseZoom(0.22, 3.2);                  // slow held zoom-in
       shakeCamera(16, 0.5);
       triggerScreenFlash('rgba(180, 30, 40, 0.35)', 0.5);
@@ -6656,6 +6671,7 @@ async function boot() {
   loadSeenRelics();
   loadSeenTarot();
   loadMemories();          // Memory Weave: unlocked set + last selection
+  loadDeathTips();         // Phase 4: per-killer death counts → tips
   loadHamletState();       // Living Hamlet: NPC arc stages + service counts
   // First-time setup — Keeper is always present. Any higher-tier NPCs whose
   // unlock conditions are already met will arrive here too (catches players
