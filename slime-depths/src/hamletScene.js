@@ -14,6 +14,7 @@ import { NPCS, hamletState, hasUnseenTopics, hasUnreadDialogue, hamletGrowthStag
 import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 import { showTip } from './tips.js';
 import { records } from './records';
+import { daily, getTodayChallenge, hasCompletedToday } from './daily.js';
 
 // A locked NPC is one whose arc-stage hasn't been initialized yet
 // (refreshNpcPresence hasn't ticked their unlockCheck to true). They
@@ -1000,6 +1001,13 @@ export function drawHamletInteractPrompt(ctx) {
   // amber that reads as "what's down there is hot."
   let subtext = null;
   let subtextRgb = '180, 190, 220';     // slate-blue default for locked NPCs
+  // Phase 4.6 (deferred) — secondary subtext for the daily-rite teaser
+  // at the portal. Two-line format: portal subtext = lore line, dailyText
+  // = today's challenge / streak. Only set when player is at the portal,
+  // not currently on a daily run, and the day's rite hasn't been
+  // completed yet. The daily lives in its own line + color so it
+  // visually sits as a "second beat" beneath the lore subtitle.
+  let dailyText = null;
   if (_nearest.kind === 'npc') {
     // Locked NPCs render as "A SHROUDED FIGURE" \u2014 preserves the surprise
     // of the named arrival cinematic when they finally unlock, while
@@ -1047,6 +1055,32 @@ export function drawHamletInteractPrompt(ctx) {
     // (mid-saturation, mid-brightness) so it doesn't overpower the gold
     // primary label.
     subtextRgb = '210, 160, 110';
+    // Phase 4.6 (deferred) — daily-rite teaser. Surfaces today's challenge
+    // (curse + relic) AND the player's current streak so the hub
+    // acknowledges the daily as a meta-loop, not just a menu mode. Three
+    // states with priority:
+    //   1. activeForRun → "the rite is upon you" (already inside a daily)
+    //   2. completedToday → "✓ today's rite mastered · X-day streak"
+    //   3. otherwise → "today's rite: <curse> + <relic>  ·  X-day streak"
+    // Only the third state should nudge the player toward the menu, so
+    // it appends a quiet "menu → daily" cue at the end. The other two
+    // are status reads, not calls-to-action.
+    try {
+      if (daily && daily.activeForRun) {
+        dailyText = 'the rite is upon you.';
+      } else if (typeof hasCompletedToday === 'function' && hasCompletedToday()) {
+        const streakStr = (daily && daily.streak > 0) ? `   ·   ${daily.streak}-day streak` : '';
+        dailyText = `✓ today's rite mastered${streakStr}`;
+      } else {
+        const c = getTodayChallenge();
+        if (c) {
+          const streakStr = (daily && daily.streak > 0) ? `   ·   ${daily.streak}-day streak` : '';
+          const curse = (c.curseName || '').toLowerCase();
+          const relic = (c.relicName || '').toLowerCase();
+          dailyText = `today's rite: ${curse} + ${relic}${streakStr}`;
+        }
+      }
+    } catch (_e) { /* daily not loaded yet — show no teaser */ }
   } else if (_nearest.kind === 'noticeboard') {
     label = 'E  \u00b7  READ';
   } else {
@@ -1094,6 +1128,30 @@ export function drawHamletInteractPrompt(ctx) {
     ctx.fillRect(_nearest.x - subW / 2, subY - 7, subW, 14);
     ctx.fillStyle = `rgba(${subtextRgb}, ${(0.78 * pulse).toFixed(3)})`;
     ctx.fillText(subtext, _nearest.x, subY);
+  }
+  // Phase 4.6 (deferred) \u2014 daily-rite second line under the lore subtitle.
+  // Cyan tint distinguishes it from the lore line above (warm amber):
+  // lore is "what's down there in general," daily is "what's down there
+  // SPECIFICALLY today." Same backdrop strip pattern keeps it legible
+  // against the painted backdrop. Pulse slower (1.0 vs 1.3) so the two
+  // lines breathe at slightly different rhythms \u2014 reads as separate
+  // information, not one stuttering line.
+  if (dailyText) {
+    ctx.font = 'italic 9px Georgia, serif';
+    // Stack 12px below the lore subtext when both exist; otherwise
+    // sit at the same height the lore would have used.
+    const subY = promptY + h / 2 + (subtext ? 21 : 9);
+    const sm = ctx.measureText(dailyText);
+    const subPad = 8;
+    const subW = sm.width + subPad * 2;
+    const pulse = 0.70 + 0.15 * Math.sin(now * 1.0);
+    ctx.fillStyle = 'rgba(10, 10, 16, 0.55)';
+    ctx.fillRect(_nearest.x - subW / 2, subY - 6, subW, 13);
+    // Cyan-cream \u2014 matches the essence-trade colour family used elsewhere
+    // for "meta-loop" UI (death screen essence header, daily-mode menu
+    // hint). Player learns "this colour means meta-progression."
+    ctx.fillStyle = `rgba(160, 220, 230, ${(0.82 * pulse).toFixed(3)})`;
+    ctx.fillText(dailyText, _nearest.x, subY);
   }
   ctx.restore();
 }
