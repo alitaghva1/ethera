@@ -57,17 +57,28 @@ const CLOSE_DURATION = 0.55;            // open → closed
 // invite walking back through.
 const ENTRY_OPEN_DWELL = 0.55;
 
+// Round-7 — extended kind tables to cover the resolved sub-kinds that
+// makeEventRoom returns (altar / trove / chestroom / challenge / miniboss).
+// Previously all these hid behind a single "MYSTERY" label, defeating the
+// Hades-style "see your reward type" play. Each now has a distinct glyph,
+// label, and color so the door reads its room identity at a glance.
 const KIND_GLYPHS = {
-  combat:    '⚔', elite: '☠', event: '✦',
-  sanctuary: '✚', reward: '✚', boss: '♛',
+  combat:    '⚔', elite:     '☠',  event:     '✦',
+  sanctuary: '✚', reward:    '✚',  boss:      '♛',
+  altar:     '⛧', trove:     '◈',  chestroom: '⊟', challenge: '⚐',
+  miniboss:  '♜', start:     '◇',
 };
 const KIND_LABELS = {
-  combat:    'COMBAT',    elite: 'ELITE',  event: 'MYSTERY',
-  sanctuary: 'REST',      reward: 'REST',  boss: 'THE BOSS',
+  combat:    'COMBAT',    elite:     'ELITE',     event:     'MYSTERY',
+  sanctuary: 'REST',      reward:    'REST',      boss:      'THE BOSS',
+  altar:     'ALTAR',     trove:     'TROVE',     chestroom: 'CHEST',
+  challenge: 'CHALLENGE', miniboss:  'MINI-BOSS', start:     'START',
 };
 const KIND_COLORS = {
-  combat:    '#c8b894',   elite: '#e07070', event: '#c8a0ff',
-  sanctuary: '#86e3a8',   reward: '#86e3a8', boss: '#ff9a55',
+  combat:    '#c8b894',   elite:     '#e07070',   event:     '#c8a0ff',
+  sanctuary: '#86e3a8',   reward:    '#86e3a8',   boss:      '#ff9a55',
+  altar:     '#ff6a85',   trove:     '#f4d9a0',   chestroom: '#ffd680',
+  challenge: '#ffb265',   miniboss:  '#e07070',   start:     '#c9a86a',
 };
 // Round-7 reward-chip palette — second tint per door, used for the
 // reward suffix ("· GOLD ·" etc.). Sits BELOW the kind label so the
@@ -142,6 +153,12 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
         : pickDoorTilePositions(w, targets.length);
       for (let i = 0; i < targets.length; i++) {
         const t = targets[i];
+        // Round-7 — actualKind exposes the resolved sub-kind for event
+        // nodes (altar / trove / chestroom / challenge / miniboss) so
+        // the door label reads "ALTAR" / "TROVE" instead of generic
+        // "MYSTERY". Falls back to the graph kind for non-event nodes
+        // and for any future kind that hasn't been wired through.
+        const displayKind = t.actualKind || t.kind;
         // Reward suffix — Round-7 Phase-1 of the rooms-redesign plan.
         // The reward chip tells the player WHAT they'll find before
         // walking through the door, turning every fork from "which
@@ -175,12 +192,12 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
           // player reads the THREAT before the destination type. (After
           // breaking the seal, the door reverts to its target kind so
           // the player can see what they unlocked.)
-          label: sealed ? 'BLOOD GATE' : (KIND_LABELS[t.kind] || (t.kind || '?').toUpperCase()),
+          label: sealed ? 'BLOOD GATE' : (KIND_LABELS[displayKind] || displayKind.toUpperCase()),
           // Crimson tint for sealed doors — visually distinct from the
           // existing elite-room red so the player learns the BLOOD GATE
           // signature is "red AND extra ornate".
-          color: sealed ? '#d04050' : (KIND_COLORS[t.kind] || '#cccccc'),
-          glyph: sealed ? '⛧' : (KIND_GLYPHS[t.kind] || '?'),
+          color: sealed ? '#d04050' : (KIND_COLORS[displayKind] || '#cccccc'),
+          glyph: sealed ? '⛧' : (KIND_GLYPHS[displayKind] || '?'),
           rewardLabel: sealed ? `PAY ${sealCost} HP` : rewardLabel,
           rewardColor: sealed ? '#ff8088' : rewardColor,
           // Persist these so tryBreakSealNear can read sealCost and the
@@ -188,10 +205,10 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
           // real kind/reward.
           sealed,
           sealCost,
-          targetKind: t.kind,
-          targetLabel: KIND_LABELS[t.kind] || (t.kind || '?').toUpperCase(),
-          targetColor: KIND_COLORS[t.kind] || '#cccccc',
-          targetGlyph: KIND_GLYPHS[t.kind] || '?',
+          targetKind: displayKind,
+          targetLabel: KIND_LABELS[displayKind] || displayKind.toUpperCase(),
+          targetColor: KIND_COLORS[displayKind] || '#cccccc',
+          targetGlyph: KIND_GLYPHS[displayKind] || '?',
           targetRewardLabel: rewardLabel,
           targetRewardColor: rewardColor,
           sparkleAcc: 0,

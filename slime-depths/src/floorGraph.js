@@ -280,6 +280,7 @@ export function generateFloorGraph(level = 1, opts = {}) {
   // of truth at run-time; the node lives on the graph but roomData is
   // what gets pushed into the floor[] array.
   if (start.roomData) start.roomData.roomReward = start.roomReward;
+  start.actualKind = 'start';
   const nodes = [start];
 
   // Build body layers.
@@ -298,6 +299,20 @@ export function generateFloorGraph(level = 1, opts = {}) {
       n.roomData = buildRoomForKind(kind, lvl, recipe.combatSlot);
       // Round-7 reward propagation onto roomData — see Layer 0 comment.
       if (n.roomData) n.roomData.roomReward = n.roomReward;
+      // Round-7 — surface the actual room kind on the node when the
+      // graph kind is the catch-all 'event'. makeEventRoom rolls into
+      // altar / trove / chestroom / challenge / miniboss internally
+      // and the actual kind hides behind a generic "MYSTERY" door
+      // label — defeating the Hades-style "see your reward type" play.
+      // Persisting the resolved kind on n.actualKind lets door rendering
+      // + map sub-labels read the real type without changing the
+      // graph-traversal kind (which stays 'event' so the layer recipe
+      // logic doesn't get confused).
+      if (kind === 'event' && n.roomData?.kind) {
+        n.actualKind = n.roomData.kind;
+      } else {
+        n.actualKind = kind;
+      }
       nodes.push(n);
       layerNodes.push(n);
     }
@@ -307,6 +322,7 @@ export function generateFloorGraph(level = 1, opts = {}) {
       const sanc = makeNode('sanctuary', recipe.layer);
       sanc.roomData = buildRoomForKind('sanctuary', lvl, null);
       if (sanc.roomData) sanc.roomData.roomReward = sanc.roomReward;
+      sanc.actualKind = 'sanctuary';
       nodes.push(sanc);
       layerNodes.push(sanc);
     }
@@ -318,6 +334,7 @@ export function generateFloorGraph(level = 1, opts = {}) {
   const boss = makeNode('boss', BOSS_LAYER);
   boss.roomData = buildRoomForKind('boss', lvl, null);
   if (boss.roomData) boss.roomData.roomReward = boss.roomReward;
+  boss.actualKind = 'boss';
   nodes.push(boss);
   for (const pre of layerToNodes[layerToNodes.length - 1]) pre.edges.push(boss.id);
 

@@ -34,6 +34,34 @@ const NODE_GLYPHS = {
   boss:      '\u265B', // ♛ queen/crown
 };
 
+// Round-7 — resolved sub-kinds for event nodes (altar / trove / chestroom /
+// challenge / miniboss). When a node's actualKind is one of these, the map
+// reads through these tables instead of the generic 'event' entry above.
+// Kept as separate consts because the original NODE_GLYPHS uses \uXXXX
+// escapes for cross-platform safety; mixing literals into the existing
+// table caused encoding mismatches at file-write time.
+const SUBKIND_GLYPHS = {
+  altar:     '⛧', // flame-altar (occult symbol)
+  trove:     '◈', // gem
+  chestroom: '⊞', // chest (squared plus)
+  challenge: '⚐', // flag
+  miniboss:  '♜', // rook
+};
+const SUBKIND_LABELS = {
+  altar:     'ALTAR',
+  trove:     'TROVE',
+  chestroom: 'CHEST',
+  challenge: 'CHALLENGE',
+  miniboss:  'MINI-BOSS',
+};
+const SUBKIND_COLORS = {
+  altar:     '#ff6a85',
+  trove:     '#f4d9a0',
+  chestroom: '#ffd680',
+  challenge: '#ffb265',
+  miniboss:  '#e07070',
+};
+
 // Per-kind accent color — legible against the card's dark gradient.
 // COMBAT is deliberately muted cream (not gold) so START stays the one
 // gold node on the map — anchors read as special, combats as routine.
@@ -216,8 +244,14 @@ function renderNode(n, p, currentNode) {
   // to it. Kind-specific flourishes are suppressed for hidden nodes so the
   // player can't plan around them.
   const hidden = n._hidden && !n.visited && !isCurrent;
-  const color = hidden ? '#8a7a5a' : (NODE_COLORS[n.kind] || '#c9a86a');
-  const glyph = hidden ? '?' : (NODE_GLYPHS[n.kind] || '?');
+  // Round-7 — read through actualKind first (the resolved sub-kind for
+  // event nodes), falling back to the graph kind. SUBKIND_* tables hold
+  // the per-altar/trove/chest/challenge/miniboss visuals.
+  const displayKind = n.actualKind || n.kind;
+  const color = hidden ? '#8a7a5a'
+    : (SUBKIND_COLORS[displayKind] || NODE_COLORS[displayKind] || '#c9a86a');
+  const glyph = hidden ? '?'
+    : (SUBKIND_GLYPHS[displayKind] || NODE_GLYPHS[displayKind] || '?');
   const s = hidden
     ? { badgeSize: 44, glyphSize: 22, wrapperSize: 56, ringWidth: 1.5,
         ringStyle: 'solid', extraShadow: '', extraAnimation: '', halo: '' }
@@ -260,7 +294,7 @@ function renderNode(n, p, currentNode) {
       font-size:9.5px;letter-spacing:2.2px;font-weight:bold;
       opacity:${clickable || isCurrent ? 0.95 : 0.65};
       font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
-    ">${NODE_LABELS[n.kind] || ''}</div>
+    ">${SUBKIND_LABELS[displayKind] || NODE_LABELS[displayKind] || ''}</div>
     ${hidden ? '' : pathSublabelHtml(n, clickable, isCurrent, color)}
   </div>`;
 }
