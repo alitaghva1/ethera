@@ -45,7 +45,14 @@ export const WEAPONS = {
     swingRate: 1.45,
     heroFilter: 'hue-rotate(190deg) saturate(0.9) brightness(0.95)',
     shakeMul: 0.6,                  // light, snappy
-    hitStopMul: 0.55,               // brief hit-stop keeps combos flowing
+    // Phase 2 audit fix #5 — hit-stop normalization. Was 0.55, which felt
+    // FLOATY against sword's 1.0 baseline; the cross-weapon spread of
+    // 0.55→1.50 (2.7×) made swapping weapons read as "the game's rhythm
+    // changed" rather than "this weapon feels different." Bumped 0.55 →
+    // 0.80 (-20% from sword baseline). Daggers still hit faster than
+    // they freeze (combo flow preserved) but each hit registers as a
+    // proper ping rather than a passing tap.
+    hitStopMul: 0.80,
   },
   hammer: {
     id: 'hammer',
@@ -66,7 +73,13 @@ export const WEAPONS = {
     swingRate: 0.75,
     heroFilter: 'hue-rotate(-20deg) saturate(1.2) brightness(1.05)',
     shakeMul: 1.55,                 // heavy impact
-    hitStopMul: 1.5,                // long hit-stop makes every blow FEEL
+    // Phase 2 audit fix #5 — hit-stop normalization. Was 1.50; the
+    // cross-weapon spread (0.55 dagger → 1.50 hammer = 2.7×) read as
+    // rhythm desynchronization on swap rather than weapon distinction.
+    // Bumped 1.50 → 1.30 (+30% over sword baseline). Hammer still feels
+    // weightier than every other weapon, just not 50% weightier — the
+    // shake + knockback already do most of the "thunk" work.
+    hitStopMul: 1.30,
   },
   // ── WAND — first ranged weapon class ────────────────────────────────
   // Trades melee reach + per-hit damage for safety + range. The mage
