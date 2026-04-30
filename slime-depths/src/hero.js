@@ -614,6 +614,10 @@ export function updateHero(dt, enemies, mouseWorld) {
     }
     if (wantSwap && wantSwap !== hero.activeWeapon) {
       hero.activeWeapon = wantSwap;
+      // First-swap onboarding tip — confirms the input registered and
+      // teaches all four ways to trigger it. Subsequent swaps stay
+      // silent (showTip() de-dupes via localStorage).
+      showTip('first_swap');
       // Clear any in-flight LMB-charge so the new weapon doesn't
       // inherit the prior weapon's charge meter.
       hero.chargeTime = 0;
@@ -965,6 +969,11 @@ export function updateHero(dt, enemies, mouseWorld) {
       keyJustPressed('KeyQ') &&
       hero.blinkCD <= 0
     ) {
+      // First-blink onboarding tip — players who learned `Q = dash` with
+      // sword equipped need to know it MUTATES into a no-damage teleport
+      // when blast is active. Without this, Q-with-blast feels like the
+      // dash got broken.
+      showTip('first_blink');
       hero.blinkCD = hero.blinkMaxCD;
       hero.blinkTime = 0.15;          // visual-window duration
       const m = Math.hypot(hero.aimX, hero.aimY) || 1;

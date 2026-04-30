@@ -31,6 +31,16 @@ export const TIPS = {
   // first 0.10s is a perfect-block that grants a counter window.
   first_dodge:     { text: 'Press SPACE to raise your SHIELD — face an enemy attack to PERFECT-BLOCK' },
   first_dash:      { text: 'Press Q to dash-strike through enemies (sword only · 2x damage · 5s CD)' },
+  // Wizard-kit Sprint 2B: Q changes meaning by active weapon. Sword Q =
+  // dash strike (commit + damage); Blast Q = blink (escape + reposition).
+  // Without this tip, a player who swaps to blast and presses Q expecting
+  // dash damage gets a teleport-with-no-hit and may think Q is broken.
+  first_blink:     { text: 'Q while BLAST is active → BLINK — short teleport, no damage, 3.5s CD' },
+  // Wizard-kit Sprint 2A: weapon swap is fundamental to the build but
+  // discoverable only via first_combat's terse mention. This tip fires
+  // on the FIRST successful swap so the player knows the input registered
+  // and can rely on it (vs assuming the swap failed).
+  first_swap:      { text: 'Weapon SWAPPED — sword and blast share the same hand. RMB / 1 / 2 / wheel any time' },
   first_charge:    { text: 'Hold LMB for a charged heavy swing — releases a big AoE blow' },
   // Now applies to BLAST charged bolts (formerly wand-only). The relic
   // hero.boltCritOnCharge fires for any blast bolt regardless of slot.
