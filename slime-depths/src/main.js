@@ -3877,6 +3877,19 @@ function showEndOfRun(isVictory) {
       try {
         synthChord(440, 0.85, 1.0);              // gentle gold-tier chord
       } catch (_e) {}
+      // Noise-floor reduction: stamp a window-level marker AT FIRE TIME
+      // so the daily completion fanfare (which fires at openFloorUi
+      // +1800ms ≈ 300ms AFTER the memory chord) can check "did memory
+      // just fire?" and suppress its own sting. Without this, a
+      // victory run that BOTH unlocks a memory AND completes the
+      // daily fires 6 audio events across 800ms — too thick.
+      // Memory takes priority because the unlock is rarer + more
+      // meaningful; daily already had the streak HUD beat at portal
+      // entry and a completion line in the run-end summary HTML, so
+      // dropping the audio doesn't lose information.
+      if (typeof window !== 'undefined') {
+        window.__memoryChordFiredAt = performance.now();
+      }
       setTimeout(() => { try { synthPing(880, 0.5, 0.32); } catch (_e) {} }, 220);
       if (newlyRememberedMemories.length > 1) {
         setTimeout(() => { try { synthPing(1040, 0.4, 0.28); } catch (_e) {} }, 440);
@@ -5503,9 +5516,32 @@ function _tickInner(now) {
             // (warm chord + bright high ping at +280ms) on top of
             // the existing victory cascade so the daily-specific
             // beat reads distinctly even amid the gold rain.
-            setTimeout(() => { try { synthChord(659, 1.0, 1.4); } catch (_e) {} }, 1800);
-            setTimeout(() => { try { synthPing(1760, 0.55, 0.28); } catch (_e) {} }, 2080);
-            setTimeout(() => { try { synthPing(2200, 0.45, 0.24); } catch (_e) {} }, 2280);
+            //
+            // Noise-floor reduction: each daily-fanfare beat checks at
+            // FIRE time whether the memory chord just landed in the
+            // recent past (memory chord fires at showEndOfRun+1500ms,
+            // daily chord at openFloorUi+1800ms — both run synchronously
+            // in the cascade callback so daily lands ~300ms after
+            // memory). If memory just played, drop the daily beat —
+            // 6 audio events in 800ms is too thick. Memory takes
+            // priority because the unlock is rarer + more meaningful;
+            // daily already has the streak HUD beat at portal entry
+            // and a completion line in the run-end summary HTML.
+            const _memoryJustFired = () => (typeof window !== 'undefined')
+              && typeof window.__memoryChordFiredAt === 'number'
+              && (performance.now() - window.__memoryChordFiredAt) < 600;
+            setTimeout(() => {
+              if (_memoryJustFired()) return;
+              try { synthChord(659, 1.0, 1.4); } catch (_e) {}
+            }, 1800);
+            setTimeout(() => {
+              if (_memoryJustFired()) return;
+              try { synthPing(1760, 0.55, 0.28); } catch (_e) {}
+            }, 2080);
+            setTimeout(() => {
+              if (_memoryJustFired()) return;
+              try { synthPing(2200, 0.45, 0.24); } catch (_e) {}
+            }, 2280);
           }
           daily.activeForRun = false;
           try { recordRunComplete(); } catch (e) {}

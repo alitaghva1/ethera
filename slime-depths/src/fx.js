@@ -628,7 +628,27 @@ const dmgLive = [];
 // Rendered at a fixed offset above the number's start, with a drop-shadow + scale-pop.
 export function spawnDamageNumber(x, y, amount, opts = {}) {
   const p = dmgPool.pop() || {};
-  p.x = x; p.y = y;
+  // Noise-floor reduction: vertical stagger when multiple numbers spawn
+  // at nearly the same point in rapid succession (multi-hit relics like
+  // Chain Lightning + Pyromancer + Echoing Strike all hitting one
+  // enemy). Without stagger they pile vertically into an unreadable
+  // blur. Scan recent live numbers within a small horizontal window;
+  // count "young" ones (just-spawned, life > 70% of maxLife) and offset
+  // y upward 14px per match, capped at 4 stacks. After 4 the new
+  // number ignores stagger so the column doesn't run forever.
+  let _stack = 0;
+  for (let i = dmgLive.length - 1; i >= 0; i--) {
+    const o = dmgLive[i];
+    if (!o || o.life <= 0) continue;
+    if (o.life < o.maxLife * 0.65) continue;     // not "young"
+    if (Math.abs(o.x - x) > 28) continue;
+    if (Math.abs((o._spawnY != null ? o._spawnY : o.y) - y) > 14) continue;
+    _stack++;
+    if (_stack >= 4) break;
+  }
+  const _stagger = _stack * 14;
+  p._spawnY = y;            // remember pre-stagger spawn y for future stack checks
+  p.x = x; p.y = y - _stagger;
   // Directional arc if dir provided, else random. Counter hits fly opposite of hit vector for drama.
   const dir = opts.dir;
   if (dir) {
