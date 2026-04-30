@@ -267,42 +267,54 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.textBaseline = 'middle';
   ctx.fillText('SPACE · SHIELD', labelInlineX, dodgeRowY + pipH / 2);
 
-  // ── ACTIVE WEAPON pip — wizard-kit Sprint 2A ─────────────────
-  // Two-slot weapon system: 1=Sword / 2=Blast / mouse wheel cycle.
-  // The ACTIVE weapon's RMB cooldown is shown here (lunge for sword,
-  // chain cast for blast). Clicking the slot label or pressing 1/2
-  // swaps which weapon is on LMB+RMB.
+  // ── ACTIVE WEAPON RMB pip — wizard-kit Sprint 2A ─────────────
+  // The ACTIVE weapon's RMB cooldown. Sword RMB is currently empty
+  // (Lunge was removed because it overlapped with Dash Strike on Q);
+  // when sword is equipped the pip renders dimmed with label
+  // "RMB · (sprint 2B)" so the player understands the slot is
+  // intentionally unfilled, not broken. Blast RMB → Chain Cast.
   const isSword = hero.activeWeapon === 'sword';
-  const rmbCDMax = isSword ? (hero.lungeMaxCD || 2.5) : (hero.chainCastMaxCD || 3.5);
-  const rmbCD = isSword ? (hero.lungeCD || 0) : (hero.chainCastCD || 0);
+  const swordRmbEmpty = isSword;          // true until Sprint 2B fills sword RMB
+  const rmbCDMax = isSword ? 1 : (hero.chainCastMaxCD || 3.5);
+  const rmbCD = isSword ? 0 : (hero.chainCastCD || 0);
   const rmbReady = rmbCD <= 0;
   const blastRowY = dodgeRowY + pipH + pipGap;
+  // Empty sword RMB → render the row at low alpha as a placeholder.
+  ctx.globalAlpha = swordRmbEmpty ? 0.32 : 1;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(pad, blastRowY, pipW, pipH);
-  // Pip color theming: sword RMB = pale-gold (matches energy-blade
-  // tint); blast RMB = electric-cyan-violet (matches chain cast bolt).
-  const rmbReadyTint = isSword ? 'rgba(255, 220, 180, ' : 'rgba(160, 200, 255, ';
-  const rmbFillTint = isSword ? 'rgba(200, 170, 120, 0.85)' : 'rgba(120, 150, 220, 0.85)';
-  if (rmbReady) {
-    const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 340);
-    ctx.fillStyle = rmbReadyTint + glowPulse.toFixed(3) + ')';
+  if (swordRmbEmpty) {
+    // Dim grey fill — no glow, no animation.
+    ctx.fillStyle = 'rgba(120, 110, 90, 0.4)';
     ctx.fillRect(pad + 1, blastRowY + 1, pipW - 2, pipH - 2);
   } else {
-    const frac = 1 - (rmbCD / rmbCDMax);
-    ctx.fillStyle = rmbFillTint;
-    ctx.fillRect(pad + 1, blastRowY + 1, (pipW - 2) * frac, pipH - 2);
+    // Blast RMB chain cast — electric-cyan-violet tint.
+    const rmbReadyTint = 'rgba(160, 200, 255, ';
+    const rmbFillTint = 'rgba(120, 150, 220, 0.85)';
+    if (rmbReady) {
+      const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 340);
+      ctx.fillStyle = rmbReadyTint + glowPulse.toFixed(3) + ')';
+      ctx.fillRect(pad + 1, blastRowY + 1, pipW - 2, pipH - 2);
+    } else {
+      const frac = 1 - (rmbCD / rmbCDMax);
+      ctx.fillStyle = rmbFillTint;
+      ctx.fillRect(pad + 1, blastRowY + 1, (pipW - 2) * frac, pipH - 2);
+    }
   }
-  ctx.strokeStyle = isSword ? 'rgba(240, 210, 160, 0.55)' : 'rgba(180, 200, 240, 0.55)';
+  ctx.strokeStyle = swordRmbEmpty
+    ? 'rgba(160, 150, 130, 0.4)'
+    : 'rgba(180, 200, 240, 0.55)';
   ctx.lineWidth = 1;
   ctx.strokeRect(pad + 0.5, blastRowY + 0.5, pipW - 1, pipH - 1);
-  ctx.fillStyle = rmbReady
-    ? (isSword ? 'rgba(255, 230, 190, 0.9)' : 'rgba(220, 230, 255, 0.9)')
-    : (isSword ? 'rgba(200, 180, 140, 0.5)' : 'rgba(180, 190, 230, 0.5)');
+  ctx.fillStyle = swordRmbEmpty
+    ? 'rgba(160, 150, 130, 0.55)'
+    : (rmbReady ? 'rgba(220, 230, 255, 0.9)' : 'rgba(180, 190, 230, 0.5)');
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  const rmbLabel = isSword ? 'RMB · LUNGE' : 'RMB · CHAIN CAST';
+  const rmbLabel = swordRmbEmpty ? 'RMB · —' : 'RMB · CHAIN CAST';
   ctx.fillText(rmbLabel, labelInlineX, blastRowY + pipH / 2);
+  ctx.globalAlpha = 1;
 
 
   // DASH STRIKE (Q) pip — third row, SWORD-ONLY (wizard-kit Sprint 2A
