@@ -94,6 +94,16 @@ export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life =
   // p.hit Set so a single enemy doesn't get multi-hit by one bolt.
   p.pierce = opts.pierce | 0;
   p.hit = null;     // lazily allocated when pierce > 0
+  // Wizard-kit Sprint 2A — Blast RMB Chain Cast metadata. When a bolt
+  // is spawned with `chainCast: true`, the bolt-hit handler fires a
+  // damage chain to up to chainCount nearby enemies within chainRange,
+  // each dealing chainDamage. Visualized via spawnLightningArc.
+  // Fields are undefined for non-chain-cast bolts; the hit handler
+  // gates on p.chainCast so vanilla bolts don't accidentally chain.
+  p.chainCast = !!opts.chainCast;
+  p.chainCount = opts.chainCount | 0;
+  p.chainDamage = opts.chainDamage || 0;
+  p.chainRange = opts.chainRange || 0;
   // Color: opts.color overrides for special bolts (synergies, theme
   // procs); default tap = arcane violet, default charged = warm gold,
   // default woven = warm amber (sits between violet + gold so the
@@ -250,6 +260,44 @@ export function updateProjectiles(dt) {
             spawnLightningArc(from.x, from.y - 18, nearest.x, nearest.y - 18);
             nearest.takeDamage(chainDmg, 0, -1);
             spawnDamageNumber(nearest.x, nearest.y - 36, chainDmg, {
+              elementTag: nearest._lastElementTag,
+            });
+            visited.add(nearest);
+            from = nearest;
+          }
+        }
+
+        // ── BLAST RMB CHAIN CAST — wizard-kit Sprint 2A ─────────────
+        // Fires when the bolt was spawned by the blast RMB cast (flag
+        // `chainCast` set on opts). Same lightning-arc visual as Storm
+        // Conduit but with caller-supplied damage + range + chain
+        // count, so the chain cast can be relic-scaled independently
+        // of the Storm Conduit relic. Stacks ADDITIVELY: a player who
+        // owns Storm Conduit AND fires a chain cast gets BOTH chains
+        // (Storm Conduit's 1-2 hops + chain cast's 2 hops) since they
+        // gate on different flags (boltChain vs chainCast) and use
+        // separate visited sets.
+        if (p.chainCast && !p._didChainCast) {
+          p._didChainCast = true;
+          const chainCount = p.chainCount | 0;
+          const chainDamage = p.chainDamage || Math.max(1, Math.round(p.damage * 0.7));
+          const chainRange = p.chainRange || 150;
+          const visited = new Set([hitEnemy]);
+          let from = hitEnemy;
+          for (let c = 0; c < chainCount; c++) {
+            let nearest = null;
+            let nearestD2 = chainRange * chainRange;
+            for (const e2 of enemies) {
+              if (e2.dead || visited.has(e2)) continue;
+              const ex = e2.x - from.x, ey = e2.y - from.y;
+              const d2 = ex * ex + ey * ey;
+              if (d2 < nearestD2) { nearest = e2; nearestD2 = d2; }
+            }
+            if (!nearest) break;
+            spawnLightningArc(from.x, from.y - 18, nearest.x, nearest.y - 18);
+            nearest.takeDamage(chainDamage, 0, -1);
+            hitSpark(nearest.x, nearest.y - 18, 0, -1, '#d8f0ff');
+            spawnDamageNumber(nearest.x, nearest.y - 36, chainDamage, {
               elementTag: nearest._lastElementTag,
             });
             visited.add(nearest);

@@ -8,8 +8,15 @@
 // in the virtual controls overlay; desktop uses RMB. Existing LMB
 // (mouse.down/pressed) is unchanged so all attack/charge code paths
 // keep working.
+//
+// Wizard-kit Sprint 2A — added `wheelDelta` (one-shot, set on each
+// scroll event, consumed at frame end) for weapon-swap. Positive =
+// scroll down = next weapon; negative = scroll up = previous weapon.
+// hero.js reads this to cycle hero.activeWeapon between 'sword' and
+// 'blast'. Number-key swap (1 / 2) uses the existing keys[] map.
 export const keys = {};
 export const mouse = { x: 0, y: 0, down: false, pressed: false, rightDown: false, rightPressed: false };
+export const wheel = { delta: 0 };
 const justPressed = new Set();
 
 // ─── VIRTUAL INPUT (mobile controls) ────────────────────────────────────────
@@ -123,6 +130,23 @@ export function initInput(canvas) {
   // charge; with the new blast on RMB, suppressing default also
   // prevents the browser context menu from popping up mid-cast.
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // Wizard-kit Sprint 2A — mouse wheel cycles weapons. Capture the
+  // event on the canvas + preventDefault so the browser doesn't
+  // page-scroll the host document under the canvas. Sign convention:
+  // deltaY > 0 (scroll down) advances forward; deltaY < 0 cycles
+  // backward. hero.js consumes wheel.delta each frame and resets it.
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      // Accumulate so a fast-scroll (multiple events per frame)
+      // doesn't lose ticks; hero.js reads + resets after consume.
+      if (e.deltaY > 0) wheel.delta += 1;
+      else if (e.deltaY < 0) wheel.delta -= 1;
+    },
+    { passive: false }
+  );
 }
 
 // Call once per frame AFTER update to consume per-frame edges

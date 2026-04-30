@@ -243,32 +243,50 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.textBaseline = 'middle';
   ctx.fillText('SPACE · SHIELD', labelInlineX, dodgeRowY + pipH / 2);
 
-  // ── BLAST pip — wizard-kit Sprint 1 ─────────────────────────────
-  // RMB cooldown indicator. Cyan-violet tint to differentiate from
-  // the cyan SHIELD pip above and the gold DASH STRIKE pip below.
-  const blastCDMax = hero.blastMaxCD || 1.5;
-  const blastCD = hero.blastCD || 0;
-  const blastReady = blastCD <= 0;
+  // ── ACTIVE WEAPON pip — wizard-kit Sprint 2A ─────────────────
+  // Two-slot weapon system: 1=Sword / 2=Blast / mouse wheel cycle.
+  // The ACTIVE weapon's RMB cooldown is shown here (lunge for sword,
+  // chain cast for blast). Clicking the slot label or pressing 1/2
+  // swaps which weapon is on LMB+RMB.
+  const isSword = hero.activeWeapon === 'sword';
+  const rmbCDMax = isSword ? (hero.lungeMaxCD || 2.5) : (hero.chainCastMaxCD || 3.5);
+  const rmbCD = isSword ? (hero.lungeCD || 0) : (hero.chainCastCD || 0);
+  const rmbReady = rmbCD <= 0;
   const blastRowY = dodgeRowY + pipH + pipGap;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(pad, blastRowY, pipW, pipH);
-  if (blastReady) {
-    const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 360);
-    ctx.fillStyle = `rgba(160, 200, 255, ${glowPulse.toFixed(3)})`;
+  // Pip color theming: sword RMB = pale-gold (matches energy-blade
+  // tint); blast RMB = electric-cyan-violet (matches chain cast bolt).
+  const rmbReadyTint = isSword ? 'rgba(255, 220, 180, ' : 'rgba(160, 200, 255, ';
+  const rmbFillTint = isSword ? 'rgba(200, 170, 120, 0.85)' : 'rgba(120, 150, 220, 0.85)';
+  if (rmbReady) {
+    const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 340);
+    ctx.fillStyle = rmbReadyTint + glowPulse.toFixed(3) + ')';
     ctx.fillRect(pad + 1, blastRowY + 1, pipW - 2, pipH - 2);
   } else {
-    const frac = 1 - (blastCD / blastCDMax);
-    ctx.fillStyle = 'rgba(120, 150, 220, 0.85)';
+    const frac = 1 - (rmbCD / rmbCDMax);
+    ctx.fillStyle = rmbFillTint;
     ctx.fillRect(pad + 1, blastRowY + 1, (pipW - 2) * frac, pipH - 2);
   }
-  ctx.strokeStyle = 'rgba(180, 200, 240, 0.55)';
+  ctx.strokeStyle = isSword ? 'rgba(240, 210, 160, 0.55)' : 'rgba(180, 200, 240, 0.55)';
   ctx.lineWidth = 1;
   ctx.strokeRect(pad + 0.5, blastRowY + 0.5, pipW - 1, pipH - 1);
-  ctx.fillStyle = blastReady ? 'rgba(220, 230, 255, 0.9)' : 'rgba(180, 190, 230, 0.5)';
+  ctx.fillStyle = rmbReady
+    ? (isSword ? 'rgba(255, 230, 190, 0.9)' : 'rgba(220, 230, 255, 0.9)')
+    : (isSword ? 'rgba(200, 180, 140, 0.5)' : 'rgba(180, 190, 230, 0.5)');
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('RMB · BLAST', labelInlineX, blastRowY + pipH / 2);
+  const rmbLabel = isSword ? 'RMB · LUNGE' : 'RMB · CHAIN CAST';
+  ctx.fillText(rmbLabel, labelInlineX, blastRowY + pipH / 2);
+
+  // Active-weapon slot indicator — small label to the right of the
+  // pip showing which slot is loaded. [1] sword vs [2] blast.
+  ctx.fillStyle = 'rgba(220, 200, 160, 0.6)';
+  ctx.font = 'italic 9px Georgia, serif';
+  ctx.textBaseline = 'top';
+  const slotLabel = isSword ? '◆ [1] SWORD  · [2] blast' : '[1] sword ·  ◆ [2] BLAST';
+  ctx.fillText(slotLabel, pad, blastRowY - 11);
 
   // DASH STRIKE (Q) pip — third row
   const dashCDMax = 5.0;

@@ -1,6 +1,6 @@
 // Hero controller — top-down movement, directional attack, dodge roll
 import { images } from './loader.js';
-import { keys, mouse, keyJustPressed, virtualMove } from './input.js';
+import { keys, mouse, keyJustPressed, virtualMove, wheel } from './input.js';
 import { isMobileMode } from './mobileMode.js';
 import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches, room } from './room.js';
@@ -116,17 +116,14 @@ export const hero = {
   attackFacingX: 1, attackFacingY: 0,     // body facing locked at swing trigger; see heroDirection()
   weapon: 'sword',                   // id into WEAPONS; set by main.js run start
   hp: 8, maxHp: 8,
-  // Wizard-kit Sprint 1 — state values:
+  // Wizard-kit Sprint 1+2A — state values:
   //   idle / walk     — ambient
   //   attack          — sword swing in progress
   //   shield          — Space-tap defensive stance (stationary, ~0.35s,
-  //                     replaces the old 'dodge' role: same key, same CD,
-  //                     same iframe behavior, but no movement and a front-
-  //                     180° directional check in damageHero. Perfect
-  //                     block triggers in the first 0.10s.)
+  //                     front-180° directional check; first 0.10s = perfect)
   //   dash            — Q dash-strike's iframe + animation window
-  //                     (formerly piggybacked on 'dodge' state; split out
-  //                     so 'shield' and dash visuals don't collide).
+  //   lunge           — Sword RMB lunge thrust: forward dash + extended
+  //                     reach thrust, brief i-frames during travel
   //   hurt / dead     — knockback + run-end
   state: 'idle',
   stateTime: 0,
@@ -250,28 +247,57 @@ export const hero = {
   executeThreshold: 0,         // Executioner: 0.4
   executeMul: 1.5,             // damage multiplier below threshold
 
-  // ── WIZARD KIT (Sprint 1) ────────────────────────────────────────
-  // Hand Blast (RMB): cooldown-gated ranged cast, dummy implementation
-  // for Sprint 1 — single homing-less bolt, fixed damage, fixed CD.
-  // Future sprints scale damage/charges/multi-bolt via the existing
-  // STORM/FLAME relic lines (currently they only buff the wand).
-  blastCD: 0,                  // remaining seconds; 0 = ready
-  blastMaxCD: 1.5,             // base cooldown
-  blastDamage: 14,             // dummy base damage; ~50% of sword tap
-  blastSpeed: 700,             // px/s — slightly faster than wand bolt
-  blastLife: 1.0,              // seconds — caps travel distance
-  blastRadius: 6,              // collision radius
+  // ── WIZARD KIT v2 (Sprint 2A) ────────────────────────────────────
+  // Two-weapon slot architecture: 'sword' (slot 1) and 'blast' (slot 2)
+  // are loaded simultaneously. Press 1 / 2 / mouse wheel to make one
+  // ACTIVE — LMB and RMB then route to the active weapon's primary +
+  // secondary actions. Shield (Space) and Dash Strike (Q) are utility
+  // abilities that work weapon-agnostically.
+  //
+  //   activeWeapon === 'sword':
+  //     LMB tap   = sword swing (uses hero.weapon variant: sword/dagger/hammer)
+  //     LMB hold  = charged heavy strike
+  //     RMB       = LUNGE THRUST (forward dash + extended reach)
+  //   activeWeapon === 'blast':
+  //     LMB tap   = single bolt cast (~0.4s cadence)
+  //     LMB hold  = charged sniper bolt (planned, Sprint 2B)
+  //     RMB       = CHAIN CAST (heavier bolt that arcs to 2 more enemies)
+  activeWeapon: 'sword',       // 'sword' | 'blast'
 
-  // Shield (Space): stationary defensive stance. The old dodge state
-  // is gone — Space now raises a front-cone block instead of an
-  // omnidirectional roll. The CD lives on `dodgeCooldown` (legacy
-  // name; see comment near hp/state above).
-  // shieldPerfectWindow: first 0.10s of the raise — any incoming
-  // damage during this window triggers a PERFECT BLOCK (counter-
-  // attack granted, slow-mo, all the existing perfect-dodge relic
-  // hooks fire). After the window, hits in the front 180° still
-  // block (absorbed via iframes) but don't grant counter; hits
-  // from behind/side land normally.
+  // Sword RMB — Lunge Thrust (offensive forward thrust; like a
+  // shorter dash strike with a wider hitbox at the apex).
+  lungeCD: 0,                  // cooldown timer; 0 = ready
+  lungeMaxCD: 2.5,
+  lungeTime: 0,                // remaining travel time during execution
+  lungeDirX: 0, lungeDirY: 0,  // locked direction at activation
+  lungeHit: new Set(),         // enemies already hit this lunge
+
+  // Blast LMB — single bolt tap-fire. Tap-press cadence (mouse.pressed),
+  // not held auto-fire — matches wand muscle memory.
+  blastBoltCD: 0,              // cadence between LMB taps
+  blastBoltMaxCD: 0.4,
+  blastBoltDamage: 14,         // ~50% sword tap damage
+  blastBoltSpeed: 700,
+  blastBoltLife: 1.0,
+  blastBoltRadius: 6,
+
+  // Blast RMB — Chain Cast. Spawns one heavier bolt that, on first
+  // enemy hit, deals damage and arcs to 2 nearby enemies for
+  // diminished follow-up damage. Visualized via spawnLightningArc.
+  chainCastCD: 0,
+  chainCastMaxCD: 3.5,
+  chainCastDamage: 22,         // primary hit
+  chainCastChainDamage: 16,    // each follow-up hop (slightly weaker)
+  chainCastChainCount: 2,      // additional enemies after primary (3 total)
+  chainCastChainRange: 150,    // max distance from primary hit to chain target
+
+  // Legacy fields kept for save-data compatibility / Sprint 1 rollback —
+  // blastCD / blastMaxCD were the Sprint 1 RMB-only blast cast. Sprint 2A
+  // splits this into LMB tap (blastBoltCD) and RMB chain (chainCastCD).
+  // The old field names stay on the object so any stray reader doesn't
+  // crash; they're never written by Sprint 2A code.
+  blastCD: 0,
+  blastMaxCD: 1.5,
 };
 
 export function resetHero() {
@@ -288,7 +314,17 @@ export function resetHero() {
   hero.hp = hero.maxHp;
   hero.state = 'idle'; hero.stateTime = 0; hero.animTime = 0;
   hero.attackCooldown = 0; hero.dodgeCooldown = 0;
-  hero.blastCD = 0;                                 // wizard-kit: blast cast ready
+  // Wizard-kit Sprint 2A — weapon slots reset to sword equipped, all
+  // weapon CDs cleared. activeWeapon persists across rooms within a
+  // run (intentional — last-equipped sticks); only resetHero rolls
+  // it back to sword default.
+  hero.activeWeapon = 'sword';
+  hero.lungeCD = 0;
+  hero.lungeTime = 0;
+  hero.lungeHit && hero.lungeHit.clear && hero.lungeHit.clear();
+  hero.blastBoltCD = 0;
+  hero.chainCastCD = 0;
+  hero.blastCD = 0;
   hero.iframes = 0;
   hero.hitThisSwing.clear();
   hero.attackHitDone = false;
@@ -491,11 +527,63 @@ export function updateHero(dt, enemies, mouseWorld) {
   hero.animTime += dt;
   if (hero.attackCooldown > 0) hero.attackCooldown -= dt;
   if (hero.dodgeCooldown > 0) hero.dodgeCooldown -= dt;
-  // Wizard-kit Sprint 1 — blast cooldown ticks the same way.
+  // Wizard-kit Sprint 2A — weapon-slot cooldowns. Each weapon's RMB
+  // and the blast LMB tap-cadence tick down independently of which
+  // weapon is currently active (so swapping mid-fight doesn't pause
+  // a recovering CD on the inactive slot — this matches Borderlands /
+  // Diablo weapon-swap behavior where the off-hand recharges in your
+  // pocket).
+  if (hero.lungeCD > 0) hero.lungeCD -= dt;
+  if (hero.blastBoltCD > 0) hero.blastBoltCD -= dt;
+  if (hero.chainCastCD > 0) hero.chainCastCD -= dt;
+  // Legacy Sprint 1 field — kept ticking so any old code path still
+  // reads sensible values; Sprint 2A doesn't write to it.
   if (hero.blastCD > 0) hero.blastCD -= dt;
   if (hero.dashStrikeCD > 0) hero.dashStrikeCD -= dt;
   if (hero.iframes > 0) hero.iframes -= dt;
   if (hero.galeBurstTime > 0) hero.galeBurstTime -= dt;
+
+  // ── WEAPON SWAP — wizard-kit Sprint 2A ──────────────────────────
+  // Number keys 1 / 2 directly select a slot; mouse wheel cycles
+  // forward/back. Suppressed in hamlet (the canvas hub is a non-
+  // combat scene; pressing 1 there does nothing). Free swap, no CD,
+  // no lockout — Borderlands-style. The wheel.delta accumulator from
+  // input.js is consumed + reset here so a fast scroll registers
+  // exactly one swap per discrete tick.
+  //
+  // 1 → Sword. 2 → Blast. Each press snaps directly to that slot
+  // (re-pressing the active weapon's number is a no-op — no audio
+  // double-cue, no stateTime reset). Wheel scrolls between the two
+  // slots; the 2-slot system makes scroll-forward and scroll-back
+  // both effectively a toggle, but the future-3-slot direction is
+  // baked in so wheel ergonomics scale.
+  if (room.kind !== 'hamlet') {
+    let wantSwap = null;
+    if (keyJustPressed('Digit1') && hero.activeWeapon !== 'sword') wantSwap = 'sword';
+    else if (keyJustPressed('Digit2') && hero.activeWeapon !== 'blast') wantSwap = 'blast';
+    else if (wheel.delta !== 0) {
+      wantSwap = hero.activeWeapon === 'sword' ? 'blast' : 'sword';
+      wheel.delta = 0;
+    }
+    if (wantSwap && wantSwap !== hero.activeWeapon) {
+      hero.activeWeapon = wantSwap;
+      // Clear any in-flight LMB-charge so the new weapon doesn't
+      // inherit the prior weapon's charge meter (a sword charge
+      // mid-build → swap to blast → release blast LMB shouldn't
+      // fire a charged-bolt with sword timing).
+      hero.chargeTime = 0;
+      hero.chargeReleased = false;
+      // Audio cue — light "shing" for the swap. Reuse synthClick
+      // at a higher pitch so the moment reads tactile without
+      // needing a dedicated synth preset yet.
+      try { synthClick(1.5, 0.35); } catch (_e) {}
+    } else if (wheel.delta !== 0) {
+      // Same-weapon scroll (only possible on the 2-slot system if
+      // one direction wraps to itself) — clear the accumulator
+      // anyway so it doesn't stack across frames.
+      wheel.delta = 0;
+    }
+  }
   // Age afterimages (teleport ghost trail) — fade out over AFTERIMAGE_LIFE.
   // Runs every frame so post-dash images keep fading even after
   // dashStrikeTime hits 0 (otherwise the trail would freeze on screen
@@ -529,8 +617,13 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.razorPaceHits = 0;
     }
   }
-  // Charge attack — accumulate while LMB held, but not during attack/shield/dash/hurt states
-  if (mouse.down && hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'hurt' && hero.attackCooldown <= 0) {
+  // Charge attack — accumulate while LMB held, but not during attack/shield/dash/lunge/hurt states.
+  // Wizard-kit Sprint 2A: also gated on activeWeapon === 'sword'.
+  // When BLAST is the active weapon, holding LMB does NOT charge (Sprint 2B
+  // adds blast charged-bolt as a separate accumulator); the sword's charge
+  // meter would otherwise tick under a wrong-weapon hold and surprise the
+  // player on next swap.
+  if (mouse.down && hero.activeWeapon === 'sword' && hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'lunge' && hero.state !== 'hurt' && hero.attackCooldown <= 0) {
     hero.chargeTime += dt;
   }
   // Reset charge when LMB released without triggering
@@ -734,7 +827,7 @@ export function updateHero(dt, enemies, mouseWorld) {
     if (hero.stateTime > 0.22) setState('idle');
   }
 
-  if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'hurt') {
+  if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'lunge' && hero.state !== 'hurt') {
     // Dash Strike (Q) — offensive gap-closer: lunges toward aim + 2x damage to all in path.
     // Suppressed in hamlet (non-combat hub).
     if (room.kind !== 'hamlet' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
@@ -871,53 +964,150 @@ export function updateHero(dt, enemies, mouseWorld) {
         spawnExplosion(hero.x, hero.y - 6, 56, dmg, 'shock');
       }
     }
-    // ── HAND BLAST (RMB) — wizard-kit Sprint 1 ────────────────────
-    // Independent of action-state. Fires a single bolt toward aim,
-    // ~50% of sword tap damage, 1.5s base CD. Suppressed in hamlet
-    // and during charge-attack (LMB held) so the player can't
-    // accidentally cast a blast while building up a charged swing
-    // — a concrete "feel" issue if both fire simultaneously. Does
-    // NOT consume an action slot: shield can be up while RMB fires
-    // (defensive cast doesn't lock out offensive cast).
-    if (
+    // ── BLAST LMB — tap-fire single bolt (wizard-kit Sprint 2A) ───
+    // Fires only when the BLAST slot is the active weapon. Tap-fire
+    // (mouse.pressed, not mouse.down — sustained holds do NOT auto-
+    // fire; matches wand muscle memory). Each bolt is gated by
+    // blastBoltCD (~0.4s cadence) — independent of attackCooldown
+    // which governs sword swings on the OTHER slot.
+    //
+    // This block sits ahead of the sword attack block in the if-else
+    // chain so when blast is active, the sword swing branch is never
+    // reached — keeps the rhythms cleanly separated per weapon.
+    else if (
       room.kind !== 'hamlet' &&
-      mouse.rightPressed &&
-      hero.blastCD <= 0 &&
+      hero.activeWeapon === 'blast' &&
+      mouse.pressed &&
+      hero.blastBoltCD <= 0 &&
       hero.state !== 'hurt' &&
       hero.state !== 'dead'
     ) {
-      hero.blastCD = hero.blastMaxCD;
+      hero.blastBoltCD = hero.blastBoltMaxCD;
       const m = Math.hypot(hero.aimX, hero.aimY) || 1;
       const dx = hero.aimX / m, dy = hero.aimY / m;
-      // Spawn the blast bolt — re-uses spawnHeroBolt so projectile
-      // collision, friendly-fire flag, and on-hit relic hooks all
-      // work without rewriting that pipeline. opts.color tints it
-      // electric-cyan so it reads as a cast, not a wand bolt.
       spawnHeroBolt(
         hero.x,
         hero.y - 6,
         dx,
         dy,
-        hero.blastDamage * (hero.damageMul || 1),
-        hero.blastSpeed,
-        hero.blastLife,
+        hero.blastBoltDamage * (hero.damageMul || 1),
+        hero.blastBoltSpeed,
+        hero.blastBoltLife,
         { color: '#a0e8ff', pierce: 0 }
       );
-      // Brief audio + light shake — "cast" feel. Ping pitch matches
-      // the wand tap-fire (~520Hz). Sprint 2 will swap to a
-      // dedicated synth preset.
+      // Light "cast" feel — same primitives as wand tap-fire. Sprint
+      // 2B will swap to a dedicated synth preset distinct from wand.
       try { synthPing(620, 0.65, 0.18); } catch (_e) {}
       shakeCamera(2, 0.05);
     }
-    // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release.
-    // SUPPRESSED IN HAMLET — the canvas hamlet is a non-combat hub; clicks
-    // still consume hero._attackBuffer via mouse.pressed but no swing fires.
+    // ── BLAST RMB — Chain Cast (wizard-kit Sprint 2A) ──────────────
+    // Fires only when BLAST slot is active. Spawns one heavier bolt
+    // toward aim; on first enemy hit, the blast jumps to up to 2
+    // nearby enemies (within chainCastChainRange) for diminished
+    // damage. Visualized via spawnLightningArc between primary +
+    // chain targets. The chain logic itself lives below in the
+    // bolt-collision handler in projectiles.js — this block only
+    // spawns the bolt with a `chainCast: true` flag the projectile
+    // pipeline detects on impact.
+    //
+    // Future Sprint 4 idea: STORM theme bolts apply elemental shock
+    // to chained enemies; FLAME theme bolts leave fire pools at hop
+    // points. For Sprint 2A, the chain is pure damage + arc VFX.
+    else if (
+      room.kind !== 'hamlet' &&
+      hero.activeWeapon === 'blast' &&
+      mouse.rightPressed &&
+      hero.chainCastCD <= 0 &&
+      hero.state !== 'hurt' &&
+      hero.state !== 'dead'
+    ) {
+      hero.chainCastCD = hero.chainCastMaxCD;
+      const m = Math.hypot(hero.aimX, hero.aimY) || 1;
+      const dx = hero.aimX / m, dy = hero.aimY / m;
+      // Heavier bolt — bigger radius, slightly faster, distinct
+      // brighter cyan tint so the player visually distinguishes a
+      // chain cast from a tap bolt mid-flight.
+      spawnHeroBolt(
+        hero.x,
+        hero.y - 6,
+        dx,
+        dy,
+        hero.chainCastDamage * (hero.damageMul || 1),
+        hero.blastBoltSpeed * 1.05,
+        hero.blastBoltLife,
+        {
+          color: '#d8f0ff',
+          pierce: 0,
+          chainCast: true,
+          chainCount: hero.chainCastChainCount,
+          chainDamage: hero.chainCastChainDamage * (hero.damageMul || 1),
+          chainRange: hero.chainCastChainRange,
+        }
+      );
+      // Heavier audio sting — drop the pitch + boost volume for the
+      // committed cast feel.
+      try { synthPing(420, 0.95, 0.32); } catch (_e) {}
+      try { synthChord(330, 0.5, 0.5); } catch (_e) {}
+      shakeCamera(4, 0.10);
+    }
+    // ── SWORD RMB — Lunge Thrust (wizard-kit Sprint 2A) ───────────
+    // Fires only when SWORD slot is active. Forward dash + extended
+    // reach thrust: 110px reach, +50% damage to first enemy hit,
+    // brief i-frames during travel. Reuses dashStrike-style state
+    // machine (a new 'lunge' state with its own motion block below)
+    // so it gets afterimage trail + sword-swing visual continuity.
+    else if (
+      room.kind !== 'hamlet' &&
+      hero.activeWeapon === 'sword' &&
+      mouse.rightPressed &&
+      hero.lungeCD <= 0 &&
+      hero.state !== 'hurt' &&
+      hero.state !== 'dead' &&
+      hero.state !== 'lunge' &&
+      hero.state !== 'dash'
+    ) {
+      hero.lungeCD = hero.lungeMaxCD;
+      hero.lungeTime = 0.18;          // travel duration
+      const m = Math.hypot(hero.aimX, hero.aimY) || 1;
+      hero.lungeDirX = hero.aimX / m;
+      hero.lungeDirY = hero.aimY / m;
+      hero.lungeHit.clear();
+      // Brief i-frames during the lunge so the player can't be
+      // freely chunked while committing forward. Shorter than the
+      // dash strike's 0.35s — lunge is tactical, not invulnerable.
+      hero.iframes = Math.max(hero.iframes || 0, 0.20);
+      setState('lunge');
+      // Audio + visual cue — mid-pitch "shing" plus a slash arc that
+      // reads as a thrust line rather than the standard wide swing.
+      try { synthSwoosh(1.0, 0.7, 0.10); } catch (_e) {}
+      shakeCamera(4, 0.10);
+      // A short forward slash arc at the lunge START telegraphs the
+      // commit. The actual hitbox is the per-frame radius check
+      // during the lunge motion below — this is just visual lead-in.
+      spawnSlash(hero.x, hero.y - 8, hero.lungeDirX, hero.lungeDirY, 100, {
+        color: 'rgba(220, 240, 255, ',
+        width: 9,
+        trailCount: 3,
+        arc: Math.PI * 0.35,
+        dur: 0.18,
+      });
+    }
+    // ── SWORD LMB — fresh tap, buffered tap, combo follow-up, charge release ──
+    // Only fires when the SWORD slot is active (wizard-kit Sprint 2A
+    // gate). When BLAST is active, the LMB tap goes through the blast
+    // bolt branch above; this block is skipped entirely. Suppressed
+    // in hamlet (non-combat hub).
     //
     // Accessibility — settings.chargeMode = 'short' lowers the hold-to-charge
     // threshold to 0.15s for players with limited grip strength. Default
     // 'hold' keeps the original 0.35s threshold so existing muscle memory
     // is preserved.
-    else if (room.kind !== 'hamlet' && (mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= (settings.chargeMode === 'short' ? 0.15 : 0.35) && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
+    else if (
+      room.kind !== 'hamlet' &&
+      hero.activeWeapon === 'sword' &&
+      (mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= (settings.chargeMode === 'short' ? 0.15 : 0.35) && !hero.chargeReleased)) &&
+      hero.attackCooldown <= 0
+    ) {
       // Consume the buffer so it doesn't re-trigger on next idle frame
       hero._attackBuffer = 0;
       const w = weaponDef();
@@ -1181,7 +1371,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         // states. Shield-walk is movement-DURING-shield (state stays
         // 'shield' so the cone keeps drawing + iframes keep applying);
         // dash is teleport motion driven by its own block above.
-        if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash') setState('walk');
+        if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'lunge') setState('walk');
         // SYSTEMS PASS — IRON GREAVES: track continuous movement time.
         // Reset on any non-walk transition (attack/dodge/idle below).
         hero._moveTime = (hero._moveTime || 0) + dt;
@@ -1205,7 +1395,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         // active ability state. Shield + dash motion blocks below
         // own the state-exit timing; if we forced idle here the
         // shield would lift the moment the player released WASD.
-        if (hero.state !== 'shield' && hero.state !== 'dash') setState('idle');
+        if (hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'lunge') setState('idle');
         // Iron Greaves movement streak resets when the hero stops moving.
         hero._moveTime = 0;
         // Iron Resolve parry — track "stance time" while idle. The parry
@@ -1281,6 +1471,57 @@ export function updateHero(dt, enemies, mouseWorld) {
         sparkle(ax + Math.cos(ang) * r, ay + Math.sin(ang) * r * 0.7, '#fff2c8');
       }
       try { synthClick(1.2, 0.6); } catch (_e) {}
+    }
+  }
+
+  // ── LUNGE motion — Sword RMB, forward thrust (wizard-kit Sprint 2A) ──
+  // Shorter, narrower version of dash strike. The hero moves forward
+  // along lungeDir at LUNGE_SPEED for lungeTime seconds; per-frame
+  // capsule check catches enemies in a 110px reach in front of the
+  // moving hero. First enemy in lungeHit gets +50% damage of the
+  // base sword swing; subsequent enemies during the same lunge get
+  // standard sword damage. State exits to 'idle' on time-out and
+  // clears the hit set.
+  if (hero.state === 'lunge') {
+    const LUNGE_SPEED = 720;
+    const LUNGE_REACH = 110;
+    moveAxis('x', hero.lungeDirX * LUNGE_SPEED * dt);
+    moveAxis('y', hero.lungeDirY * LUNGE_SPEED * dt);
+    // Light dash trail for motion read — uses the same particle
+    // primitive as dash strike but with a cool-blue tint to match
+    // the energy-sword aesthetic.
+    if (Math.random() < 0.55) dashTrail(hero.x, hero.y, '#cce8ff');
+    // Per-frame hit detection. Reach extends forward in lunge dir.
+    const w = weaponDef();
+    const baseDmg = w.damage * hero.damageMul;
+    for (const e of enemies) {
+      if (e.dead || hero.lungeHit.has(e)) continue;
+      // Enemy must be in front of hero (positive dot with lungeDir)
+      // AND within reach distance of an extended forward ray.
+      const ex = e.x - hero.x, ey = e.y - hero.y;
+      const fwd = ex * hero.lungeDirX + ey * hero.lungeDirY;
+      if (fwd < 0) continue;                      // behind us
+      // Perpendicular distance from the lunge ray
+      const perp = Math.abs(ex * (-hero.lungeDirY) + ey * hero.lungeDirX);
+      if (fwd <= LUNGE_REACH && perp <= e.radius + 18) {
+        const isFirst = hero.lungeHit.size === 0;
+        const dmg = baseDmg * (isFirst ? 1.5 : 1.0);
+        hero.lungeHit.add(e);
+        e.takeDamage(dmg, hero.lungeDirX, hero.lungeDirY);
+        hitSpark(e.x, e.y - 18, -hero.lungeDirX, -hero.lungeDirY, '#cce8ff');
+        spawnDamageNumber(e.x, e.y - 36, dmg, {
+          crit: isFirst,
+          dir: { x: hero.lungeDirX, y: hero.lungeDirY },
+          elementTag: e._lastElementTag,
+        });
+        triggerHitStop(0.04);
+        registerComboHit();
+      }
+    }
+    hero.lungeTime -= dt;
+    if (hero.lungeTime <= 0) {
+      setState('idle');
+      hero.lungeHit.clear();
     }
   }
 
@@ -2240,6 +2481,10 @@ function heroFrameInfo() {
     // the visual; the live sprite is hidden during dash anyway).
     case 'shield': return { img: images.knight_idle,   fps: 6,  loop: true };
     case 'dash':   return { img: images.knight_walk,   fps: 12, loop: true };
+    // Wizard-kit Sprint 2A — lunge uses the attack sheet so the
+    // hero's body reads as committed-mid-swing during the thrust
+    // (matches the visual spec: forward thrust ≠ teleport).
+    case 'lunge':  return { img: images.knight_attack, fps: 18, loop: false };
     default:       return { img: images.knight_idle,   fps: 6,  loop: true };
   }
 }
@@ -2286,6 +2531,12 @@ export function heroDirection(h = hero) {
     dir = vecToDirection(h.dashStrikeDirX, h.dashStrikeDirY);
     // Final fallback — if both lock vectors are stale (zero), fall
     // back to live aim so we never return null from this branch.
+    if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
+  } else if (st === 'lunge') {
+    // Wizard-kit Sprint 2A — lunge body locks to the lunge direction
+    // (lungeDirX/Y, derived from aim at trigger). Same commit pattern
+    // as dash: body stays facing forward through the thrust.
+    dir = vecToDirection(h.lungeDirX, h.lungeDirY);
     if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
   } else if (st === 'walk') {
     dir = vecToDirection(h.vx, h.vy);

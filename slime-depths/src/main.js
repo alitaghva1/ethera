@@ -4664,7 +4664,7 @@ function tick(now) {
     // Spike damage — hero or enemy standing on an active spike
     if (heroSpikeCD <= 0) {
       const dmg = spikeDamageAt(hero.x, hero.y, gameTime);
-      if (dmg > 0 && hero.state !== 'shield' && hero.state !== 'dash') {
+      if (dmg > 0 && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'lunge') {
         heroSpikeCD = 0.5;
         damageHero(dmg, hero.x, hero.y + 20);
       }
@@ -4672,7 +4672,7 @@ function tick(now) {
     // Fire pool damage (Broodmother arena)
     if (heroSpikeCD <= 0) {
       const fdmg = firePoolDamageAt(hero.x, hero.y, gameTime);
-      if (fdmg > 0 && hero.state !== 'shield' && hero.state !== 'dash') {
+      if (fdmg > 0 && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'lunge') {
         heroSpikeCD = 0.5;
         damageHero(fdmg, hero.x, hero.y + 20);
       }
@@ -5642,10 +5642,9 @@ function render() {
     } else if (attacking) {
       reticleR = 10;
       reticleAlpha = 0.45;
-    } else if (hero.state === 'shield' || hero.state === 'dash') {
-      // Reticle fades during shield/dash — player focus is elsewhere
-      // (defending or teleporting). Wizard-kit Sprint 1: split out
-      // from the unified 'dodge' state.
+    } else if (hero.state === 'shield' || hero.state === 'dash' || hero.state === 'lunge') {
+      // Reticle fades during shield/dash/lunge — player focus is
+      // elsewhere (defending or committing forward).
       reticleAlpha = 0.25;
     }
     ctx.save();
