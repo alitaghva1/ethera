@@ -2944,6 +2944,10 @@ function saveRunSnapshot() {
       hp: hero.hp,
       gold: gold.total,
       weapon: hero.weapon || 'sword',
+      // Wizard-kit Sprint 3D — activeWeapon persists across save/resume.
+      // Without this field, a player with blast equipped who quits/resumes
+      // would silently lose their slot (resetHero defaults to 'sword').
+      activeWeapon: hero.activeWeapon || 'sword',
       relicIds: equippedRelics.map(r => r.id),
       curseIds: [...activeCurses],
       tarotIds: drawnCards.map(c => c.id),
@@ -3071,6 +3075,12 @@ function resumeRun(snap) {
   hero.hp = Math.min(hero.maxHp, Math.max(1, snap.hp || hero.maxHp));
   gold.total = snap.gold | 0;
   daily.activeForRun = !!snap.dailyActive;
+  // Wizard-kit Sprint 3D — restore weapon slot. Older saves (pre-3D)
+  // won't have this field; default to 'sword' for backward compat.
+  if (typeof snap.activeWeapon === 'string'
+      && (snap.activeWeapon === 'sword' || snap.activeWeapon === 'blast')) {
+    hero.activeWeapon = snap.activeWeapon;
+  }
   // Multiplier bundle — restore AFTER relics have applied. Snap.mods
   // captures the FINAL run-start state of every multiplier the hero
   // accumulated (relic + meta unlocks + curse modifiers + tarot
