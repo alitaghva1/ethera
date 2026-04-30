@@ -559,6 +559,9 @@ export function resetHero() {
   hero._attackBuffer = 0;
   hero._shieldBuffer = 0;
   hero._qBuffer = 0;
+  // Blast facing window — sub-second commitment timestamp written each
+  // bolt cast. Same defensive-reset rationale as the input buffers.
+  hero._blastFacingUntil = 0;
   // Cross-ability relic windows (Sprint 3C). Each is a sub-second armed
   // state that decays naturally during a run, but if a run ends MID-
   // window (e.g., perfect-block timer alive at death) the value lingers
@@ -1340,6 +1343,20 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Wizard-kit Sprint 3B — blast slot resonance T1 (3 blast relics)
       // shrinks bolt cadence by 15% (slotBoltCDMul = 0.85).
       hero.blastBoltCD = hero.blastBoltMaxCD * (hero.slotBoltCDMul || 1);
+      // Direction commitment — feel-feedback fix. Sword swings set
+      // state='attack' which locks the body facing to attackFacingX/Y
+      // (heroDirection ~line 2995). Blast was MISSING that commitment:
+      // walking west + shooting east left the sprite facing west while
+      // bolts emerged from the back of the hero. The fix can't use
+      // state='attack' because blast is hold-to-autofire — that would
+      // freeze movement at 3.5Hz cadence. Instead: stamp a 0.32s
+      // "blast facing window." heroDirection's walk-state branch
+      // checks this and returns the aim direction during the window,
+      // restoring sword-like commit-the-body-to-aim feel without
+      // restricting movement. Window slightly longer than the bolt CD
+      // (0.28s base) so sustained fire never gaps back to walk-facing.
+      const _bfNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+      hero._blastFacingUntil = _bfNow + 0.32;
       // ── AIM ASSIST — wizard-kit Sprint 2B ───────────────────────
       // Standard action-roguelite affordance: when the player fires a
       // bolt, snap the bolt's direction toward the closest enemy
@@ -3007,10 +3024,28 @@ export function heroDirection(h = hero) {
     // back to live aim so we never return null from this branch.
     if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
   } else if (st === 'walk') {
-    dir = vecToDirection(h.vx, h.vy);
+    // Blast firing window — when the player just fired a bolt within
+    // the last ~0.32s, body commits to the aim direction (matches the
+    // sword's attackFacingX/Y commitment, but doesn't lock movement).
+    // Without this, walking west while shooting east left the sprite
+    // facing west — bolts came out of the back of the hero. Window
+    // outlasts the bolt CD (0.28s base) so sustained fire never gaps
+    // back to walk-facing mid-volley.
+    const _bfNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+    if (h._blastFacingUntil && _bfNow < h._blastFacingUntil) {
+      dir = vecToDirection(h.aimX, h.aimY);
+    }
+    if (dir === null) dir = vecToDirection(h.vx, h.vy);
     if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
+  } else if (st === 'idle') {
+    // Same blast facing window for idle — player stops walking but
+    // keeps firing; body should still face the bolt direction.
+    const _bfNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+    if (h._blastFacingUntil && _bfNow < h._blastFacingUntil) {
+      dir = vecToDirection(h.aimX, h.aimY);
+    }
   }
-  // idle / hurt / dead and any fallback: keep previous direction.
+  // idle (without blast facing) / hurt / dead and any fallback: keep previous direction.
   if (dir === null) return h.lastDirection ?? 4;
   h.lastDirection = dir;
   return dir;
