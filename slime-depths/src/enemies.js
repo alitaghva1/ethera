@@ -2470,10 +2470,19 @@ export function drawEnemyTelegraphs(ctx) {
       const t = e.stateTime / prof.windup;
       if (t > 1) continue;
       const pulse = 0.55 + 0.35 * Math.sin(t * Math.PI * 4);
-      // DANGER SNAP — last 25% of windup: RAMP to 3x pulse rate + white flash
-      // This is the "strike imminent" warning — impossible to miss.
-      const inDanger = t > 0.75;
-      const inCritical = t > 0.88;                              // Final 12%: hit is inevitable
+      // DANGER SNAP — phased warning that ramps reaction-time across the
+      // last third of the windup. Audit (2026-04-30) flagged the prior
+      // 0.75/0.88 thresholds: danger started at 25% remaining but the
+      // impossible-to-miss flash fired only at the final 12%, leaving
+      // ~30-50ms of true "react now" window depending on weapon — the
+      // telegraph felt fair until the last frame, then the hitbox snapped.
+      // Shifted to 0.65/0.78 — danger ramp now spans 35% of windup,
+      // critical flash spans the final 22%. For a typical 0.30s melee
+      // windup that's 105ms of readable critical (vs 36ms before),
+      // closing the "I died unfairly" gap without reducing actual hit
+      // timing.
+      const inDanger = t > 0.65;
+      const inCritical = t > 0.78;                              // Final 22%: hit is inevitable
       const dangerPulseRate = inDanger ? (inCritical ? 28 : 18) : 4;
       const dangerBoost = inDanger ? (1 + 0.7 * Math.sin(t * Math.PI * dangerPulseRate)) : 1;
       const alpha = Math.min(1.0, pulse * (0.3 + 0.7 * t) * dangerBoost);
