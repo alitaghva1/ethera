@@ -43,7 +43,7 @@ export const TIPS = {
   first_resonance: { text: 'RESONANCE — owning 3 relics of one theme grants a passive bonus. 5 reaches ASCENDANCE' },
   first_weaponOnly:{ text: 'Some relics only appear for your weapon class — sword, dagger, hammer, or wand' },
   // ----- Rooms -----
-  first_descent_dungeon: { text: 'A door waits north. Walk through to descend.' },
+  first_descent_dungeon: { text: 'A door waits north. Walk through to descend. Press M anytime to see the floor map.' },
   first_blood_gate: { text: 'A BLOOD GATE — pay HP to break the seal. The room beyond holds something legendary.' },
   first_pedestal:  { text: 'Pedestals come in groups — claim one with E (the others vanish). Press R to reroll the offer (gold cost scales with floor).' },
   first_altar:     { text: 'Altar room — relics here cost HP, not gold. The ruin prefers deliberate pacts' },

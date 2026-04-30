@@ -270,20 +270,62 @@ function renderNode(n, p, currentNode) {
 // ("combat vs combat"). Only shown on elite (perilous) + sanctuary (safe)
 // since standard combat/event are the implicit baseline.
 function pathSublabelHtml(n, clickable, isCurrent, color) {
+  // Round-7 \u2014 sealed nodes render their BLOOD GATE chip first, in
+  // crimson, so the HP cost is visible from the M-key map BEFORE
+  // committing to that path. Players can plan "do I have enough HP
+  // to break this seal AND survive the room?" multiple steps ahead.
+  if (n.sealed) {
+    const cost = n.sealCost || 1;
+    const alive = clickable || isCurrent;
+    const alpha = alive ? 0.95 : 0.55;
+    return `
+      <div style="
+        color:${alive ? '#ff8088' : '#7a5050'};
+        font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
+        opacity:${alpha};margin-top:-1px;
+        font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+      ">SEAL \u00b7 ${cost} HP \u00b7 LEGENDARY</div>`;
+  }
+  // Non-sealed \u2014 read from the per-node roomReward tag (Phase 1 of the
+  // rooms-redesign plan). Was previously hardcoded "RISK \u00b7 RARE+" for
+  // every elite, which became stale once roomReward varied per-node;
+  // now reads the actual tag. Sanctuaries fall back to "REST" since
+  // their roomReward is null by design (kind label "REST" already
+  // implies the heal).
   let text = null;
-  if (n.kind === 'elite')     text = 'RISK \u00b7 RARE+';
-  else if (n.kind === 'sanctuary') text = 'REST';
+  let chipColor = color;
+  if (n.kind === 'sanctuary') text = 'REST';
+  else if (n.roomReward) {
+    text = REWARD_LABELS[n.roomReward] || n.roomReward.toUpperCase();
+    chipColor = REWARD_COLORS[n.roomReward] || color;
+  }
   if (!text) return '';
   const alive = clickable || isCurrent;
   const alpha = alive ? 0.85 : 0.5;
   return `
     <div style="
-      color:${alive ? color : '#8a7c5e'};
+      color:${alive ? chipColor : '#8a7c5e'};
       font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
       opacity:${alpha};margin-top:-1px;
       font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
     ">${text}</div>`;
 }
+// Reward palettes for the map sub-labels \u2014 kept parallel to doorPortals.js
+// REWARD_COLORS so the chip on the door + the chip on the map look the
+// same color to the player. (Could share via a tiny module but the maps
+// are tiny and divergence has been low historically.)
+const REWARD_LABELS = {
+  gold:      'GOLD',
+  'rare+':   'RARE+',
+  legendary: 'LEGENDARY',
+  fusion:    'FUSION',
+};
+const REWARD_COLORS = {
+  gold:      '#f4d9a0',
+  'rare+':   '#ffd680',
+  legendary: '#ffc8ff',
+  fusion:    '#ffb265',
+};
 
 // ============================================================================
 // CARD SHELL — parchment frame around the graph
