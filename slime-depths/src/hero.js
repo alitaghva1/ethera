@@ -462,8 +462,11 @@ export function resetHero() {
   // SYSTEMS PASS — relic mechanical variety. All flags reset per run.
   hero.speartip = false;
   hero.dodgeCleanses = false;
-  hero.movementCrit = false;
-  hero._moveTime = 0;
+  // Iron Greaves — first-strike-on-each-enemy crit flag (replaces the
+  // earlier invisible 2s-motion trigger). Per-enemy `_heroFirstStrike`
+  // flags live on the enemy objects and are naturally cleaned up when
+  // the enemy dies; no global tracking needed beyond this gate.
+  hero.firstStrikeOnEnemy = false;
   hero.finisherHeal = 0;
   hero.knockbackCrit = false;
   hero.perfectDodgeRefund = false;
@@ -1642,9 +1645,6 @@ export function updateHero(dt, enemies, mouseWorld) {
         // 'shield' so the cone keeps drawing + iframes keep applying);
         // dash is teleport motion driven by its own block above.
         if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'blink') setState('walk');
-        // SYSTEMS PASS — IRON GREAVES: track continuous movement time.
-        // Reset on any non-walk transition (attack/dodge/idle below).
-        hero._moveTime = (hero._moveTime || 0) + dt;
         hero._stillT = 0;   // iron_resolve parry window resets on motion
         hero.footstepT -= dt;
         if (hero.footstepT <= 0) {
@@ -1666,8 +1666,6 @@ export function updateHero(dt, enemies, mouseWorld) {
         // own the state-exit timing; if we forced idle here the
         // shield would lift the moment the player released WASD.
         if (hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'blink') setState('idle');
-        // Iron Greaves movement streak resets when the hero stops moving.
-        hero._moveTime = 0;
         // Iron Resolve parry — track "stance time" while idle. The parry
         // window opens at ≥0.3s of uninterrupted stillness.
         hero._stillT = (hero._stillT || 0) + dt;
@@ -1931,7 +1929,10 @@ export function updateHero(dt, enemies, mouseWorld) {
           // flags on their room-opener but only get a single crit's worth of
           // damage. +0.25× per extra source rewards stacking without making
           // a single crit relic feel weak.
-          const _fcMove = !!(hero.movementCrit && (hero._moveTime || 0) >= 2.0);
+          // Iron Greaves — first sword hit on each enemy crits. Per-enemy
+          // `_heroFirstStrike` flag, set on consume below. Naturally
+          // dies with the enemy; no per-room reset needed.
+          const _fcMove = !!(hero.firstStrikeOnEnemy && !e._heroFirstStrike);
           const _fcKB = !!(hero.knockbackCrit && e._kbCritPending);
           const _fcHE = !!(hero.honestEdge && hero._swingIsFinisher);
           const _fcVE = !!(hero.vowEternal && hero.vowEternalReady && w.id === 'sword');
@@ -1949,7 +1950,9 @@ export function updateHero(dt, enemies, mouseWorld) {
           // Extra crit multiplier when ≥2 forced-crit sources fire together.
           const _forcedCritBonus = Math.max(0, _forcedCount - 1) * 0.25;
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
-          if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
+          // Iron Greaves consume — mark this enemy as first-struck so
+          // subsequent hits on the same enemy don't re-fire the crit.
+          if (_fcMove) e._heroFirstStrike = true;
           if (hero.vowEternal && hero.vowEternalReady && w.id === 'sword') {
             hero.vowEternalReady = false;
             // Bell-tone on consume — the literal "vow rung" once per

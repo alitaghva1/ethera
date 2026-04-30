@@ -222,6 +222,18 @@ export function updateProjectiles(dt) {
       if (hitEnemy) {
         const speed = Math.hypot(p.vx, p.vy) || 1;
         const impactNx = -p.vx / speed, impactNy = -p.vy / speed;
+        // Iron Greaves — first bolt to hit a given enemy crits. Same
+        // per-enemy `_heroFirstStrike` flag the sword path consumes;
+        // either weapon can be the "first strike," after which neither
+        // re-fires on this enemy. Multiplied at hit time (vs spawn time
+        // like Resonance Stone) because the target is only known here.
+        let _ironGreavesCrit = false;
+        if (hero.firstStrikeOnEnemy && !hitEnemy._heroFirstStrike) {
+          _ironGreavesCrit = true;
+          const _critMul = hero.critMul + (hero.themeCritMulBonus || 0);
+          p.damage = Math.max(1, Math.round(p.damage * _critMul));
+          hitEnemy._heroFirstStrike = true;
+        }
         // Apply damage. takeDamage signature mirrors what the dash-strike
         // path uses (damage, knockX, knockY) — the bolt's velocity gives
         // a consistent push direction so hits read as "shot from over
@@ -248,8 +260,10 @@ export function updateProjectiles(dt) {
           // badge treatment so the player feels the empowered hit.
           // p.forcedCrit (Sprint 3C) marks bolts whose damage was
           // already pre-multiplied at spawn (Resonance Stone) — the
-          // damage number gets the crit badge to match.
-          crit: !!p.charged || !!p.forcedCrit,
+          // damage number gets the crit badge to match. _ironGreavesCrit
+          // is the per-enemy first-strike crit (Iron Greaves rework
+          // 2026-04-30 — replaces the invisible 2s-motion trigger).
+          crit: !!p.charged || !!p.forcedCrit || _ironGreavesCrit,
         });
         triggerHitStop(p.charged ? 0.07 : 0.04);
         synthPing(p.charged ? 720 : 960, p.charged ? 0.45 : 0.32, p.charged ? 0.14 : 0.10);

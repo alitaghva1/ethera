@@ -69,17 +69,30 @@ export const RELIC_DEFS = {
     apply: () => { hero.dodgeCooldownMul *= 0.50; hero.dodgeCleanses = true; },
   },
   iron_greaves: {
-    // SYSTEMS PASS — was pure +20% move speed (dead stat stick, −16 DPS).
-    // Now rewards CONTINUOUS MOVEMENT: first hit after 2s of non-stop
-    // motion is a guaranteed crit. Creates kiting / hit-and-run identity.
+    // BALANCE PASS (3000-run sim, 2026-04-30) — Iron Greaves was the only
+    // relic <30% pick rate across ALL five player heuristics (random,
+    // greedy, synergy-fusion, theme, slot). Root cause: the previous
+    // "first hit after 2s of continuous motion" trigger was invisible
+    // to the player — no UI counter, no telegraph, just an internal
+    // _moveTime accumulator. The crit fired but felt random.
+    //
+    // NEW TRIGGER — per-enemy first-strike. The first hit you land on
+    // any enemy crits. Mental model: "the boots open the engagement."
+    // Visible in every fight (yellow CRIT damage number on each
+    // enemy's first hit) without needing a UI counter.
+    //
+    // Pairs naturally with the kiting/skirmish identity the +20% speed
+    // is already pushing — engage a new target, free crit, disengage,
+    // repeat. Multi-enemy rooms get N free crits at the open beat,
+    // rewarding "fight the whole room" play over "tunnel one target."
     id: 'iron_greaves',
     affects: ['sword', 'blast'],
     name: 'Iron Greaves',
-    desc: '+20% speed · first hit after 2s of movement crits',
+    desc: '+20% speed · first strike on each enemy crits',
     flavor: 'They never rusted. Perhaps they never touched the earth.',
     icon: 'relic_iron_greaves',
     tint: '#9bd8ff',
-    apply: () => { hero.speedMul *= 1.20; hero.movementCrit = true; },
+    apply: () => { hero.speedMul *= 1.20; hero.firstStrikeOnEnemy = true; },
   },
   ironhide: {
     // BALANCE PASS — was pure +2 maxHp stat stick with −14 DPS corr.
