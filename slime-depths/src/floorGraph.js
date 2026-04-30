@@ -143,11 +143,46 @@ function makeNode(kind, layer) {
     layer,
     path,                       // 'safe' | 'standard' | 'perilous'
     roomReward: rollRoomReward(kind, path),   // 'gold'|'rare+'|'legendary'|'heal'|'fusion'|null
+    // Round-7 Phase 5 — Blood Door seal. When `sealed: true`, the door
+    // leading INTO this node renders as a "BLOOD GATE" and stays closed
+    // until the player breaks the seal with E (pays sealCost HP).
+    // sealedFor / sealCost set during graph generation by sealNodes()
+    // pass below; default false. Seal only fires on perilous-path
+    // nodes since sealing the safe-path heal would be cruel.
+    sealed: false,
+    sealCost: 0,
     edges: [],
     roomData: null,
     visited: false,
     current: false,
   };
+}
+
+// Round-7 Phase 5 — sprinkle Blood Door seals across perilous-path nodes.
+// Per-floor target: ~1-2 sealed doors. Cost scales by floor (F1=1 HP,
+// F2=1, F3=2, F4=2). Sealed nodes also get their roomReward promoted to
+// legendary (over-riding the original 'rare+'/'gold' roll) so the cost
+// pays out — a sealed door MUST lead to something obviously valuable
+// or the mechanic feels punitive.
+function sealNodes(nodes, level) {
+  const candidates = nodes.filter(n => n.path === 'perilous' && n.kind !== 'boss');
+  if (candidates.length === 0) return;
+  // Floor 1 always seals exactly 1 (teaches the mechanic on the most
+  // common run). Higher floors get 1-2 with 50% chance for a second.
+  const target = level === 1 ? 1 : (Math.random() < 0.5 ? 2 : 1);
+  const sealCost = level >= 3 ? 2 : 1;
+  // Shuffle candidates so the same node doesn't always seal.
+  const pool = candidates.slice();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  for (let i = 0; i < Math.min(target, pool.length); i++) {
+    const n = pool[i];
+    n.sealed = true;
+    n.sealCost = sealCost;
+    n.roomReward = 'legendary';   // promoted reward — sealed = legendary
+  }
 }
 
 function pickIdx(arr) { return (Math.random() * arr.length) | 0; }
@@ -285,6 +320,17 @@ export function generateFloorGraph(level = 1, opts = {}) {
   if (boss.roomData) boss.roomData.roomReward = boss.roomReward;
   nodes.push(boss);
   for (const pre of layerToNodes[layerToNodes.length - 1]) pre.edges.push(boss.id);
+
+  // Round-7 Phase 5 — apply Blood Door seals AFTER all nodes exist +
+  // before propagating roomReward into roomData (so the seal's reward-
+  // promotion sticks). Re-sync roomData.roomReward for sealed nodes
+  // since sealNodes() mutates n.roomReward in place.
+  sealNodes(nodes, lvl);
+  for (const n of nodes) {
+    if (n.sealed && n.roomData) {
+      n.roomData.roomReward = n.roomReward;
+    }
+  }
 
   start.current = true;
   return { nodes, startId: start.id, bossId: boss.id, maxLayer: BOSS_LAYER };

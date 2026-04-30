@@ -152,22 +152,48 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
           ? (REWARD_LABELS[t.roomReward] || t.roomReward.toUpperCase())
           : null;
         const rewardColor = t.roomReward ? (REWARD_COLORS[t.roomReward] || '#cccccc') : null;
+        // Round-7 Phase 5 — Blood Door seals. Sealed targets render
+        // their door as a BLOOD GATE (red glyph + crimson tint + the
+        // "PAY N HP" sub-label). The door stays closed even after
+        // room.cleared until the player presses E to break the seal
+        // (pays sealCost HP, see tryBreakSealNear).
+        const sealed = !!t.sealed;
+        const sealCost = sealed ? (t.sealCost || 1) : 0;
         roomDoors.push({
           tx: positions[i],
           ty: 0,
           side: 'north',
           // North doors stay CLOSED until room is cleared. If the room
           // arrives already cleared (start room, sanctuary, trove), open
-          // immediately so the hero can leave.
-          state: room.cleared ? 'open' : 'closed',
-          anim: room.cleared ? 1 : 0,
+          // immediately so the hero can leave. Sealed doors override:
+          // they stay 'sealed' until the player pays the cost.
+          state: sealed ? 'sealed' : (room.cleared ? 'open' : 'closed'),
+          anim: !sealed && room.cleared ? 1 : 0,
           targetNodeId: t.id,
           kind: t.kind,
-          label: KIND_LABELS[t.kind] || (t.kind || '?').toUpperCase(),
-          color: KIND_COLORS[t.kind] || '#cccccc',
-          glyph: KIND_GLYPHS[t.kind] || '?',
-          rewardLabel,
-          rewardColor,
+          // Sealed doors override the kind label with BLOOD GATE so the
+          // player reads the THREAT before the destination type. (After
+          // breaking the seal, the door reverts to its target kind so
+          // the player can see what they unlocked.)
+          label: sealed ? 'BLOOD GATE' : (KIND_LABELS[t.kind] || (t.kind || '?').toUpperCase()),
+          // Crimson tint for sealed doors — visually distinct from the
+          // existing elite-room red so the player learns the BLOOD GATE
+          // signature is "red AND extra ornate".
+          color: sealed ? '#d04050' : (KIND_COLORS[t.kind] || '#cccccc'),
+          glyph: sealed ? '⛧' : (KIND_GLYPHS[t.kind] || '?'),
+          rewardLabel: sealed ? `PAY ${sealCost} HP` : rewardLabel,
+          rewardColor: sealed ? '#ff8088' : rewardColor,
+          // Persist these so tryBreakSealNear can read sealCost and the
+          // post-break path can swap label/glyph back to the target's
+          // real kind/reward.
+          sealed,
+          sealCost,
+          targetKind: t.kind,
+          targetLabel: KIND_LABELS[t.kind] || (t.kind || '?').toUpperCase(),
+          targetColor: KIND_COLORS[t.kind] || '#cccccc',
+          targetGlyph: KIND_GLYPHS[t.kind] || '?',
+          targetRewardLabel: rewardLabel,
+          targetRewardColor: rewardColor,
           sparkleAcc: 0,
         });
       }
@@ -269,6 +295,11 @@ export function updateDoors(dt) {
 // Called by main.js the moment room.cleared flips true. Animates north
 // doors from closed → opening. Uses a small stagger so multi-door walls
 // have a satisfying ripple instead of all unlocking on the same frame.
+//
+// Round-7 Phase 5 — sealed doors stay 'sealed' through this transition;
+// they only become passable after the player explicitly breaks the
+// seal via tryBreakSealNear. The state-machine guard at the top of the
+// loop (`if (d.state === 'closed')`) skips them naturally.
 export function onRoomCleared() {
   let stagger = 0;
   for (const d of roomDoors) {
@@ -282,6 +313,61 @@ export function onRoomCleared() {
   if (roomDoors.some(d => d.side === 'north')) {
     playSfx('click', { rate: 0.35, volume: 0.5 });
   }
+}
+
+// Round-7 Phase 5 — Blood Door interaction.
+//
+// Returns the nearest unsealed BLOOD GATE within `interactR` of the
+// hero's world position, or null if none. Used to:
+//   1. Render the "E · PAY N HP · BREAK SEAL" hover prompt.
+//   2. Resolve the E-press handler in main.js (calls breakSealAt with
+//      the door's tile coords once the player commits).
+//
+// 56px range matches the hamlet-NPC interactR — the player should see
+// the prompt as they walk up to the wall, before they're inside the
+// door tile. Closest-door tie-break so a multi-door wall doesn't fight
+// over which prompt to show.
+export function getNearbySealedDoor(heroWx, heroWy, interactR = 56) {
+  let best = null;
+  let bestD = Infinity;
+  for (const d of roomDoors) {
+    if (d.state !== 'sealed') continue;
+    const cx = d.tx * TILE + TILE / 2;
+    const cy = d.ty * TILE + TILE;       // door bottom edge — closer to hero pathing
+    const dx = heroWx - cx, dy = heroWy - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist < interactR && dist < bestD) {
+      best = d;
+      bestD = dist;
+    }
+  }
+  return best;
+}
+
+// Break the seal on a sealed door. Caller (main.js E-handler) owns the
+// HP-cost gate — this function trusts that the caller has paid the
+// price and is just flipping the door's state machine. Returns true if
+// the door transitioned from sealed → opening, false if the door
+// wasn't sealed (defensive double-press guard).
+export function breakSeal(door) {
+  if (!door || door.state !== 'sealed') return false;
+  // Unmask the cosmetics — the door reverts to its target kind so the
+  // player can SEE what they unlocked (e.g. "ELITE · LEGENDARY") rather
+  // than walking through a still-red gate. Cosmetics were stashed in
+  // door.targetX during setupRoomDoors so the swap is just field
+  // reassignment.
+  door.label = door.targetLabel;
+  door.color = door.targetColor;
+  door.glyph = door.targetGlyph;
+  door.rewardLabel = door.targetRewardLabel;
+  door.rewardColor = door.targetRewardColor;
+  door.state = 'opening';
+  door.anim = 0;
+  // Fan-out audio + camera tells — this is a meaningful run beat. A
+  // bass-heavy thud announces the seal cracking; a higher chord layers
+  // the "ah, the door opens" lift on top.
+  playSfx('click', { rate: 0.32, volume: 0.7 });
+  return true;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -328,11 +414,17 @@ export function drawDoorLabels(ctx) {
     const cy = d.ty * TILE - 6;
     const openness = Math.max(0, Math.min(1, d.anim));
 
-    // Sigil — color brightens as door opens
-    const alpha = 0.55 + openness * 0.45;
+    // Sigil — color brightens as door opens. Sealed doors get the
+    // sigil at full alpha + a faster pulse so the BLOOD GATE reads
+    // immediately on room entry, even before the room is cleared.
+    let alpha = 0.55 + openness * 0.45;
+    if (d.state === 'sealed') {
+      const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.003);
+      alpha = pulse;
+    }
     ctx.save();
     ctx.shadowColor = hexA(d.color, alpha);
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = d.state === 'sealed' ? 18 : 12;
     ctx.fillStyle = hexA(d.color, alpha);
     ctx.font = 'bold 22px serif';
     ctx.textAlign = 'center';
@@ -340,8 +432,13 @@ export function drawDoorLabels(ctx) {
     ctx.fillText(d.glyph, cx, cy - 4);
     ctx.restore();
 
-    // Label — gentle fade-in once door is partly open
-    const labelAlpha = openness * 0.95;
+    // Label — gentle fade-in once door is partly open. Round-7 Phase 5:
+    // sealed doors force-show the label at full alpha so the player
+    // can READ "BLOOD GATE · PAY N HP" before clearing the room. The
+    // existing openness gate would otherwise hide the label until the
+    // door opens, defeating the whole "informed risk gate" mechanic.
+    const sealedShowLabel = d.state === 'sealed';
+    const labelAlpha = sealedShowLabel ? 0.95 : openness * 0.95;
     if (labelAlpha > 0.1) {
       ctx.save();
       ctx.font = '10px Georgia, "Cormorant Garamond", serif';
@@ -362,6 +459,37 @@ export function drawDoorLabels(ctx) {
         ctx.fillText('· ' + d.rewardLabel + ' ·', cx, cy - 14);
       }
       ctx.restore();
+    }
+    // Round-7 Phase 5 — sealed door interact prompt. Renders an "E ·
+    // BREAK SEAL" pill above the door when hero is in interact range.
+    // Mirrors drawPedestalPrompt's pill styling for player-facing
+    // consistency. Skipped if door is no longer sealed (after break).
+    if (d.state === 'sealed') {
+      const dx = hero.x - cx;
+      const dy = hero.y - (d.ty * TILE + TILE);
+      const dist = Math.hypot(dx, dy);
+      if (dist < 56) {
+        const promptY = cy - 56 + Math.sin(performance.now() / 1000 * 2.2) * 3;
+        const label = `E  ·  BREAK SEAL`;
+        ctx.save();
+        ctx.font = 'bold 11px Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const m = ctx.measureText(label);
+        const padX = 12;
+        const w = m.width + padX * 2;
+        const h = 22;
+        const px = cx - w / 2;
+        const py = promptY - h / 2;
+        ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
+        ctx.fillRect(px, py, w, h);
+        ctx.strokeStyle = '#d04050';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
+        ctx.fillStyle = '#ff8088';
+        ctx.fillText(label, cx, promptY);
+        ctx.restore();
+      }
     }
   }
 }

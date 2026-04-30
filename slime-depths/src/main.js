@@ -30,6 +30,7 @@ import { openFloorMap } from './mapScreen.js';
 import {
   setupRoomDoors, clearDoors, updateDoors, onRoomCleared,
   drawDoorLabels, getDoorAt, roomDoors, releaseCrossingLock,
+  getNearbySealedDoor, breakSeal,
 } from './doorPortals.js';
 // Wire the room module's lazy door lookup so isWallAtWorld + drawDoor
 // can read the per-door open state without statically importing back.
@@ -3939,6 +3940,20 @@ function loadRoom(idx, entryFrom) {
     setTimeout(() => showTip('first_descent_dungeon'), 1200);
   }
   if (data.kind === 'reward') showTip('first_pedestal');
+  // Round-7 Phase 5 — first BLOOD GATE encounter. Fires if any of the
+  // outgoing edges from this room target a sealed node. setupRoomDoors
+  // hasn't run yet at this point in loadRoom, so we read directly off
+  // the graph node's edges list and check each target's `sealed` flag.
+  if (currentGraph && currentNodeId != null) {
+    const planNode = getFloorNode(currentGraph, currentNodeId);
+    if (planNode && planNode.edges?.length) {
+      const hasSealed = planNode.edges.some(eid => {
+        const t = getFloorNode(currentGraph, eid);
+        return t && t.sealed;
+      });
+      if (hasSealed) setTimeout(() => showTip('first_blood_gate'), 1400);
+    }
+  }
   // Room-kind onboarding tips (review onboarding pass) — fire once per player,
   // a short delay so the room settles before the banner appears.
   if (data.kind === 'altar')      setTimeout(() => showTip('first_altar'),      1200);
@@ -5800,13 +5815,19 @@ function tick(now) {
       }
     }
 
-    // ─── PEDESTAL PICKUP CONFIRMATION (DUNGEON ONLY) ───────────────────
+    // ─── PEDESTAL PICKUP + BLOOD GATE INTERACTION (DUNGEON ONLY) ───────
     // Round-7 user feedback — walking onto a pedestal used to be an
     // INSTANT pickup, which players said felt like an accidental claim
     // when traversing rooms quickly. Now the player must press E to
     // commit. consumePendingPickup is null-safe (returns null when no
     // pedestal is hovered) so the gate is cheap; we just skip during
     // hamlet/menu/dead states to keep keypresses scoped.
+    //
+    // Phase 5 of the rooms-redesign plan adds Blood Door seal-breaking
+    // to the same E-press handler. Pedestal hover takes priority: if
+    // a pedestal is in range, that's what the player meant; if not,
+    // and a sealed door is in range, treat it as a seal-break attempt.
+    // Single keypress, single intent.
     if (room.kind !== 'hamlet' && hero.state !== 'dead' && keyJustPressed('KeyE')) {
       const result = consumePendingPickup();
       if (result === 'denied_hp') {
@@ -5817,9 +5838,40 @@ function tick(now) {
         roomLabelColor = '#d85a5a';
         roomLabelTime = 1.6;
         synthClick(0.5, 1.0);
+      } else if (result === null) {
+        // No pedestal hovered — fall through to the seal-break path so
+        // the same key opens the same intent ("interact with whatever
+        // I'm standing near"). Returns null when no door is sealed +
+        // in range, so this is also cheap.
+        const sealedDoor = getNearbySealedDoor(hero.x, hero.y);
+        if (sealedDoor) {
+          if (hero.hp <= sealedDoor.sealCost) {
+            roomLabelText = `NOT ENOUGH HP TO BREAK THIS SEAL`;
+            roomLabelColor = '#d85a5a';
+            roomLabelTime = 1.6;
+            synthClick(0.5, 1.0);
+          } else {
+            // Pay the cost and break the seal. damageHero would route
+            // through the hurt SFX + screen flash + iframes — wrong
+            // for a deliberate trade. Decrement hero.hp directly so
+            // the cost reads as a willing offering, not an attack.
+            hero.hp -= sealedDoor.sealCost;
+            breakSeal(sealedDoor);
+            // Custom audio for the seal break: sub-bass thud + a
+            // rising chord layered for the "the gate cracks" beat.
+            try { synthThud(60, 1.0, 0.4); } catch (_e) {}
+            try { synthChord(440, 0.7, 0.7); } catch (_e) {}
+            shakeCamera(8, 0.3);
+            triggerScreenFlash('rgba(220, 80, 90, 0.18)', 0.35);
+            roomLabelText = `✦ SEAL BROKEN ✦`;
+            roomLabelColor = '#ff8088';
+            roomLabelTime = 1.6;
+          }
+        }
       }
-      // result === non-null relic def or null — both are silent here;
-      // the pickup itself fires its own banner + sfx via pedestals.js.
+      // result === non-null relic def: pedestal pickup happened, no
+      // additional action needed — the pickup itself fires its own
+      // banner + sfx via pedestals.js.
     }
 
     // ─── TREASURE CHEST INTERACTION (DUNGEON ONLY) ─────────────────────
