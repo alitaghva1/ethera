@@ -1230,6 +1230,20 @@ export function updateHero(dt, enemies, mouseWorld) {
         const _otherCount = hero.adaptiveEdgeSwordSideCount | 0;
         if (_otherCount > 0) _boltDmg *= (1 + 0.05 * _otherCount);
       }
+      // RESONANCE STONE (Sprint 3C bug-fix) — armed at swap when the
+      // OTHER weapon (sword) landed a recent kill. Was previously
+      // consumed only in the sword swing handler, which meant
+      // sword-kill→swap-to-blast→shoot didn't actually crit. Now the
+      // bolt damage is pre-multiplied by the crit multiplier and
+      // p.forcedCrit is set so the damage number reads CRIT.
+      let _boltForcedCrit = false;
+      if (hero.resonanceCritReady) {
+        _boltForcedCrit = true;
+        const _critMul = hero.critMul + (hero.themeCritMulBonus || 0);
+        _boltDmg *= _critMul;
+        hero.resonanceCritReady = false;
+        hero.resonanceKillWeapon = null;     // reset arming
+      }
       // PHASE FLICKER (Sprint 3C) — armed by blink-after-perfect-block.
       // Consume on the next blast tap: spawn an empowered chain bolt
       // (chainCast pipeline) and refund the CD spent on this tap.
@@ -1247,7 +1261,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         hero.blastBoltSpeed,
         hero.blastBoltLife,
         {
-          color: _phaseFlickerFire ? '#d8f0ff' : '#a0e8ff',
+          color: _phaseFlickerFire ? '#d8f0ff' : (_boltForcedCrit ? '#ffe5a0' : '#a0e8ff'),
           // Slot ascendance T2: bolts pierce 1 extra enemy.
           // Phase Flicker also adds chain to 2 nearby foes.
           pierce: hero.slotBoltPierceBonus || 0,
@@ -1256,6 +1270,10 @@ export function updateHero(dt, enemies, mouseWorld) {
           chainCount: _phaseFlickerFire ? 2 : 0,
           chainDamage: _phaseFlickerFire ? Math.round(_boltDmg * 0.7) : 0,
           chainRange: _phaseFlickerFire ? 150 : 0,
+          // Resonance Stone-fueled bolts read as CRIT in the damage
+          // number. Tinted gold instead of cyan to telegraph the
+          // resonance moment mid-flight.
+          forcedCrit: _boltForcedCrit,
         }
       );
       // Muzzle flash — small sparkle burst at the spawn point so the
@@ -2877,6 +2895,75 @@ export function drawHero(ctx) {
   halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(hx - 46, hy - 46, 92, 92);
+
+  // ── CROSS-ABILITY RELIC AURAS (Sprint 3C polish) ────────────────
+  // Visual telegraphs for armed / windowed states so the player
+  // FEELS the relic procs.
+  const _auraNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+
+  // Twin Fang Pact — 0.4s post-swap warm-amber pulse aura. Reads as
+  // "your weapons are in resonance right now" — distinct from the
+  // base warm halo because the pulse is amplitude-modulated.
+  if (hero.twinFangPact && _auraNow < hero.twinFangBuffUntil) {
+    const t = 1 - (hero.twinFangBuffUntil - _auraNow) / 0.4;
+    const pulse = Math.sin(t * Math.PI);          // peaks mid-window, fades end
+    const r = 60 + pulse * 14;
+    const g = ctx.createRadialGradient(hx, hy, 6, hx, hy, r);
+    g.addColorStop(0, `rgba(255, 220, 140, ${(0.45 * pulse).toFixed(3)})`);
+    g.addColorStop(0.6, `rgba(255, 180, 100, ${(0.20 * pulse).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(255, 150, 60, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(hx - r, hy - r, r * 2, r * 2);
+  }
+
+  // Echo Step — 2s post-blink cyan ring trailing the hero, indicates
+  // the next-hit-is-perfect-block grace window.
+  if (hero.echoStep && hero.echoStepUntil > _auraNow) {
+    const remain = hero.echoStepUntil - _auraNow;
+    const fade = Math.min(1, remain / 0.6);        // fade in last 0.6s
+    const baseR = 38;
+    const ringR = baseR + Math.sin(_auraNow * 4.5) * 3;
+    ctx.save();
+    ctx.strokeStyle = `rgba(160, 220, 255, ${(0.55 * fade).toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.arc(hx, hy, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Phase Flicker — 1.0s post-perfect-block window: faint cyan halo
+  // that reads "blink to consume." Only shows while the player has
+  // blast equipped (the only weapon that can blink).
+  if (hero.phaseFlicker && hero.phaseFlickerArmedUntil > _auraNow && hero.activeWeapon === 'blast') {
+    const remain = hero.phaseFlickerArmedUntil - _auraNow;
+    const fade = Math.min(1, remain / 0.4);
+    const r = 52 + Math.sin(_auraNow * 5) * 4;
+    const g = ctx.createRadialGradient(hx, hy, 8, hx, hy, r);
+    g.addColorStop(0, `rgba(170, 230, 255, ${(0.30 * fade).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(150, 200, 240, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(hx - r, hy - r, r * 2, r * 2);
+  }
+
+  // Phase Flicker — armed-next-blast indicator: pulsing cyan dot
+  // above the hero that reads "your next blast is empowered."
+  if (hero.phaseFlickerNextBlast) {
+    const pp = 0.6 + 0.4 * Math.sin(_auraNow * 5.5);
+    ctx.save();
+    ctx.fillStyle = `rgba(220, 240, 255, ${(0.85 * pp).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(hx, hy - 50, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(140, 200, 255, ${(0.6 * pp).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(hx, hy - 50, 7, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // ── SHIELD ARC CONE — wizard-kit Sprint 1 ──────────────────────
   // Draws a translucent blue 180° arc in front of the hero while the

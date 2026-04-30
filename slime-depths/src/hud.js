@@ -203,25 +203,52 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.fillText(`${Math.max(0, Math.round(hero.hp))} / ${hero.maxHp}`, hpTextX, hpTextY);
   ctx.restore();
 
-  // ── WEAPON SLOT HEADER — wizard-kit Sprint 2A/2B ────────────────
+  // ── WEAPON SLOT HEADER — wizard-kit Sprint 2A/2B/3C ─────────────
   // Two-slot weapon system displayed as a single compact row above
   // the pip stack. Active weapon is bold + tinted; the other is dim.
   // RMB / 1 / 2 / mouse-wheel all swap; the subtitle hints at RMB.
+  //
+  // Sprint 3C polish — when Resonance Stone is armed (the OFF-weapon
+  // landed a recent kill, the player has the relic, and the window
+  // hasn't expired), the OFF-weapon's name glows pulsing gold to
+  // telegraph "swap to me for a free crit." Without this, the relic
+  // proc fires invisibly and players miss the moment.
   ctx.save();
   const weaponHeaderY = pad + heartRows * heartRowH + 8;
   const isSwordActive = hero.activeWeapon === 'sword';
+  // Resonance Stone armed indicator — true when:
+  //   1. relic is owned
+  //   2. there's a kill weapon stamped (hero.resonanceKillWeapon)
+  //   3. the kill weapon is the OFF slot (different from active)
+  //   4. the 3s window hasn't expired
+  const _whNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+  const rsArmed = !!hero.resonanceStone
+    && !!hero.resonanceKillWeapon
+    && hero.resonanceKillWeapon !== hero.activeWeapon
+    && hero.resonanceKillUntil > _whNow;
+  const rsPulse = rsArmed ? (0.6 + 0.4 * Math.sin(_whNow * 6)) : 1;
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  // [1] SWORD slot
-  ctx.fillStyle = isSwordActive ? 'rgba(255, 220, 160, 0.95)' : 'rgba(140, 130, 110, 0.45)';
-  ctx.fillText(isSwordActive ? '◆ 1·SWORD' : '1·sword', pad, weaponHeaderY);
+  // [1] SWORD slot — armed-indicator if RS targets sword (i.e. blast killed)
+  const swordArmed = rsArmed && hero.resonanceKillWeapon === 'blast';
+  ctx.fillStyle = isSwordActive
+    ? 'rgba(255, 220, 160, 0.95)'
+    : swordArmed
+      ? `rgba(255, 230, 160, ${(0.5 + 0.5 * rsPulse).toFixed(3)})`
+      : 'rgba(140, 130, 110, 0.45)';
+  ctx.fillText(isSwordActive ? '◆ 1·SWORD' : (swordArmed ? '★ 1·SWORD' : '1·sword'), pad, weaponHeaderY);
   // separator
   ctx.fillStyle = 'rgba(140, 130, 110, 0.35)';
   ctx.fillText('|', pad + 88, weaponHeaderY);
-  // [2] BLAST slot
-  ctx.fillStyle = isSwordActive ? 'rgba(140, 130, 110, 0.45)' : 'rgba(180, 220, 255, 0.95)';
-  ctx.fillText(isSwordActive ? '2·blast' : '◆ 2·BLAST', pad + 100, weaponHeaderY);
+  // [2] BLAST slot — armed-indicator if RS targets blast (i.e. sword killed)
+  const blastArmed = rsArmed && hero.resonanceKillWeapon === 'sword';
+  ctx.fillStyle = isSwordActive
+    ? blastArmed
+      ? `rgba(180, 240, 255, ${(0.5 + 0.5 * rsPulse).toFixed(3)})`
+      : 'rgba(140, 130, 110, 0.45)'
+    : 'rgba(180, 220, 255, 0.95)';
+  ctx.fillText(isSwordActive ? (blastArmed ? '★ 2·BLAST' : '2·blast') : '◆ 2·BLAST', pad + 100, weaponHeaderY);
   // RMB-swap hint to the right of the slot row
   ctx.fillStyle = 'rgba(140, 130, 110, 0.55)';
   ctx.font = 'italic 9px Georgia, serif';

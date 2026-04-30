@@ -109,6 +109,12 @@ export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life =
   p.chainCount = opts.chainCount | 0;
   p.chainDamage = opts.chainDamage || 0;
   p.chainRange = opts.chainRange || 0;
+  // Wizard-kit Sprint 3C — forcedCrit flag for bolts whose damage was
+  // pre-multiplied at spawn (e.g. Resonance Stone armed at swap).
+  // The hit handler reads this to flag the damage-number badge so
+  // the player sees CRIT feedback even though the bolt isn't
+  // visually charged.
+  p.forcedCrit = !!opts.forcedCrit;
   // Color: opts.color overrides for special bolts (synergies, theme
   // procs); default tap = arcane violet, default charged = warm gold,
   // default woven = warm amber (sits between violet + gold so the
@@ -221,6 +227,16 @@ export function updateProjectiles(dt) {
         // a consistent push direction so hits read as "shot from over
         // there" instead of random knockback.
         hitEnemy.takeDamage(p.damage, p.vx / speed, p.vy / speed);
+        // ── RESONANCE STONE kill-tracking (Sprint 3C bug-fix) ────
+        // The bolt-hit path was missing the kill hook the sword
+        // swing handler has — a blast kill never armed the
+        // resonance stone window. Without this, the relic was
+        // half-broken (only fired in one swap direction).
+        if (hero.resonanceStone && hitEnemy.dead) {
+          const _rsNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+          hero.resonanceKillWeapon = hero.activeWeapon;     // 'blast' here
+          hero.resonanceKillUntil = _rsNow + 3.0;
+        }
         // Spark color matches the bolt tint so hits read as "this
         // weapon's bolt landed" not "generic hit".
         const sparkColor = p.charged ? '#ffe8a0' : '#e8c8ff';
@@ -230,7 +246,10 @@ export function updateProjectiles(dt) {
           elementTag: hitEnemy._lastElementTag,
           // Charged shots are the wand's "big swing" — get the CRIT
           // badge treatment so the player feels the empowered hit.
-          crit: !!p.charged,
+          // p.forcedCrit (Sprint 3C) marks bolts whose damage was
+          // already pre-multiplied at spawn (Resonance Stone) — the
+          // damage number gets the crit badge to match.
+          crit: !!p.charged || !!p.forcedCrit,
         });
         triggerHitStop(p.charged ? 0.07 : 0.04);
         synthPing(p.charged ? 720 : 960, p.charged ? 0.45 : 0.32, p.charged ? 0.14 : 0.10);
