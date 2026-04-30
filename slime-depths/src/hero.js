@@ -844,7 +844,16 @@ export function updateHero(dt, enemies, mouseWorld) {
   if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'lunge' && hero.state !== 'hurt') {
     // Dash Strike (Q) — offensive gap-closer: lunges toward aim + 2x damage to all in path.
     // Suppressed in hamlet (non-combat hub).
-    if (room.kind !== 'hamlet' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
+    //
+    // Wizard-kit Sprint 2A polish — SWORD-ONLY ability. Gated on
+    // activeWeapon === 'sword' because melee mobility belongs to
+    // the sword kit conceptually (sword's role is close-up / dive,
+    // blast's role is static / range). When the player has blast
+    // equipped, pressing Q is a null input — they have to swap to
+    // sword first (1 / wheel) to commit a dash strike. Future
+    // Sprint 2B may add a blast-flavored Q ("Phase Step" blink, no
+    // damage, short teleport) so the caster has SOME mobility tool.
+    if (room.kind !== 'hamlet' && hero.activeWeapon === 'sword' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
       showTip('first_dash');
       hero.dashStrikeCD = 5.0;
       hero.dashStrikeTime = DASH_DUR;

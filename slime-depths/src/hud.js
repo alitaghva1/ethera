@@ -305,14 +305,27 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.fillText(rmbLabel, labelInlineX, blastRowY + pipH / 2);
 
 
-  // DASH STRIKE (Q) pip — third row
+  // DASH STRIKE (Q) pip — third row, SWORD-ONLY (wizard-kit Sprint 2A
+  // polish). When blast is equipped Q is a null input; the pip is
+  // rendered DIMMED + greyed to telegraph "not available right now"
+  // instead of being hidden — keeps the layout stable across swaps
+  // (a vanishing row would shift the gold counter beneath, which
+  // reads as bug not feature).
   const dashCDMax = 5.0;
   const dashCD = hero.dashStrikeCD || 0;
   const dashReady = dashCD <= 0;
   const dashRowY = blastRowY + pipH + pipGap;
+  // Backdrop. When blast is active, pull the row's alpha down so it
+  // reads as inert.
+  const dashGated = !isSword;
+  ctx.globalAlpha = dashGated ? 0.32 : 1;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(pad, dashRowY, pipW, pipH);
-  if (dashReady) {
+  if (dashGated) {
+    // Dim grey fill — no glow, no animation. "Locked while blast equipped."
+    ctx.fillStyle = 'rgba(120, 110, 90, 0.4)';
+    ctx.fillRect(pad + 1, dashRowY + 1, pipW - 2, pipH - 2);
+  } else if (dashReady) {
     const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 280);
     ctx.fillStyle = `rgba(255, 210, 120, ${glowPulse.toFixed(3)})`;
     ctx.fillRect(pad + 1, dashRowY + 1, pipW - 2, pipH - 2);
@@ -321,14 +334,21 @@ export function drawHud(ctx, w, h, progress = {}) {
     ctx.fillStyle = 'rgba(180, 140, 80, 0.85)';
     ctx.fillRect(pad + 1, dashRowY + 1, (pipW - 2) * frac, pipH - 2);
   }
-  ctx.strokeStyle = 'rgba(240, 200, 140, 0.55)';
+  ctx.strokeStyle = dashGated ? 'rgba(160, 150, 130, 0.4)' : 'rgba(240, 200, 140, 0.55)';
   ctx.lineWidth = 1;
   ctx.strokeRect(pad + 0.5, dashRowY + 0.5, pipW - 1, pipH - 1);
-  ctx.fillStyle = dashReady ? 'rgba(255, 225, 170, 0.9)' : 'rgba(200, 170, 130, 0.5)';
+  ctx.fillStyle = dashGated
+    ? 'rgba(160, 150, 130, 0.55)'
+    : (dashReady ? 'rgba(255, 225, 170, 0.9)' : 'rgba(200, 170, 130, 0.5)');
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Q · DASH STRIKE', labelInlineX, dashRowY + pipH / 2);
+  // Label hints at the gating: when blast is active the label reads
+  // "(SWAP TO SWORD)" instead of the keybind, so the player knows
+  // why Q is doing nothing.
+  const dashLabel = dashGated ? 'Q · (sword only)' : 'Q · DASH STRIKE';
+  ctx.fillText(dashLabel, labelInlineX, dashRowY + pipH / 2);
+  ctx.globalAlpha = 1;
   ctx.restore();
   // Expose the bottom of the dash row so the gold counter (further down in
   // this draw pass) can anchor beneath it with a proper margin.
