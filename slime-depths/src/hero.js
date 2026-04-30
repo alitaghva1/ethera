@@ -550,6 +550,15 @@ export function resetHero() {
   // rare but possible (timer-based ascension death, curse drain).
   // Defensive reset in resetHero keeps the field run-local.
   hero._lastHurtBy = null;
+  // Input buffers (Phase 2.1) — same defensive-reset rationale. Each
+  // ticks down at 0.15s/frame so any buffer normally expires across
+  // the multi-second transition between runs (death ceremony + menu
+  // + new-run setup), but a tight resume-from-menu path could in
+  // principle preserve a stale press. Cheaper to clear than to
+  // reason through every transition.
+  hero._attackBuffer = 0;
+  hero._shieldBuffer = 0;
+  hero._qBuffer = 0;
   hero.startingGold = 0;
   hero.relicCount = 0;     // maintained by relics.js for Memory of the Bell
   hero.swingIndex = 0;
