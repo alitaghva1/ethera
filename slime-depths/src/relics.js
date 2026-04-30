@@ -8,6 +8,37 @@ import { recomputeSlotTiers } from './slots.js';
 import { pushNotification } from './notifications.js';
 import { synthChord, synthPing } from './synth.js';
 
+/**
+ * Phase 5 audit fix #6 — RelicDef shape, documented as a typedef.
+ * RELIC_DEFS holds 67 entries; each is structurally identical and
+ * applied via def.apply(hero) at pickup. The simulator (scripts/
+ * relic_sim.py) and pedestal renderer + fusion graph all consume
+ * this shape.
+ *
+ * `affects` is the ability-slot mask (Sprint 3B) — used by:
+ *   - HUD slot-resonance chips (sword/blast/shield counts)
+ *   - Pedestal teaser-particle visualization
+ *   - Adaptive Edge's off-slot scaling
+ *   - The simulator's slot-stacker heuristic
+ *
+ * `weaponOnly` gates a relic to a specific weapon class. Set when the
+ * relic's effect only makes sense with that weapon (e.g. Razor Pace's
+ * "every 5th dagger hit" doesn't translate to sword/wand). The
+ * rollRelicOffer pool filters these out for non-matching weapons.
+ *
+ * @typedef {Object} RelicDef
+ * @property {string} id                  - stable key matching the registry slot
+ * @property {string} name                - display name on pedestal + HUD
+ * @property {string} desc                - one-line mechanic description
+ * @property {string} flavor              - italic lore line shown on hover
+ * @property {('common'|'rare'|'legendary'|'mythic')} tier - rarity tier
+ * @property {string[]} affects           - slot mask: ['sword'|'blast'|'shield'|'any'] (Sprint 3B)
+ * @property {?string} weaponOnly         - 'sword'|'dagger'|'hammer'|'wand' to gate by weapon class
+ * @property {string} icon                - loader.js sprite key
+ * @property {string} tint                - hex color for HUD strip + pickup banner
+ * @property {(hero: Hero) => void} apply - mutate hero at pickup time
+ */
+
 export const RELIC_DEFS = {
   serrated_edge: {
     id: 'serrated_edge',

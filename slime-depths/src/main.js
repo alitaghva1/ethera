@@ -2982,6 +2982,64 @@ function playEpilogue(onDone) {
 // ============================================================================
 const RUN_SNAPSHOT_KEY = 'ethera:run_snapshot:v1';
 
+/**
+ * Phase 5 audit fix #6 — RunSnapshot shape, documented as the
+ * authoritative schema. Future migrations + new fields land in this
+ * typedef alongside the migration entry. Lives near the save/load
+ * code so the contract + the consumers stay co-located.
+ *
+ * `_schema` increments per breaking change; see RUN_SNAPSHOT_SCHEMA
+ * comment block below. Currently 1.
+ *
+ * @typedef {Object} RunSnapshot
+ * @property {number} _schema             - schema version (RUN_SNAPSHOT_SCHEMA at write time)
+ * @property {number} floorLevel          - floor index 1..MAX_FLOORS
+ * @property {number} maxHp               - hero max HP at save time
+ * @property {number} hp                  - hero current HP at save time
+ * @property {number} gold                - gold.total
+ * @property {string} weapon              - hero.weapon (sword/dagger/hammer/wand)
+ * @property {('sword'|'blast')} activeWeapon - wizard-kit slot
+ * @property {string[]} relicIds          - equipped relic ids in pickup order
+ * @property {string[]} curseIds          - active curse ids
+ * @property {string[]} tarotIds          - drawn tarot card ids
+ * @property {?string} memoryId           - selected memory id (null if none)
+ * @property {boolean} dailyActive        - run is the daily seed
+ * @property {number} timestamp           - Date.now() at save
+ * @property {RunSnapshotMods} mods       - non-relic multiplier bundle
+ * @property {RunSnapshotCounters} counters - rhythm-counter state
+ *
+ * @typedef {Object} RunSnapshotMods
+ * @property {number} damageMul
+ * @property {number} damageTakenMul
+ * @property {number} attackCooldownMul
+ * @property {number} dodgeCooldownMul
+ * @property {number} speedMul
+ * @property {number} reachMul
+ * @property {number} knockbackMul
+ * @property {number} dodgeDistMul
+ * @property {number} critChance
+ * @property {number} critMul
+ * @property {number} lifesteal
+ * @property {number} regenRate
+ * @property {number} executeThreshold
+ * @property {number} executeMul
+ * @property {number} boltLifeMul
+ * @property {number} revives             - consumable count (phoenix saves)
+ *
+ * @typedef {Object} RunSnapshotCounters
+ * @property {number} chainCount
+ * @property {number} pyroCount
+ * @property {number} soulKillCount
+ * @property {number} arcaneQuiverHits
+ * @property {number} ringingSteelStacks
+ * @property {number} twinPulseTick
+ * @property {number} mountainStrikeCounter
+ * @property {number} razorPaceHits
+ * @property {boolean} vowEternalReady
+ *
+ * @typedef {{from: number, to: number, migrate: (snap: any) => any}} RunSnapshotMigration
+ */
+
 // Phase 5 audit fix #1 — internal schema version stamped on each saved
 // snapshot. Distinct from the `:v1` suffix in RUN_SNAPSHOT_KEY (that's
 // the storage-bucket version; bumping it discards old data wholesale).

@@ -107,6 +107,70 @@ export const DODGE_COOLDOWN_BASE = DODGE_COOLDOWN;
 // Weapon accessor — hero.weapon stores the id; this reads the def.
 function weaponDef() { return WEAPONS[hero.weapon] || WEAPONS.sword; }
 
+/**
+ * Phase 5 audit fix #6 — Hero shape, documented as a typedef. The hero
+ * is a singleton mutable object with 100+ fields touched by 30+ modules.
+ * No runtime guards, no validation, no setter discipline — any module
+ * that imports `hero` can mutate any field. This typedef captures the
+ * SHAPE so consumers (and humans reading the code) have a contract,
+ * even though tsconfig has checkJs:false (so it's documentation, not
+ * enforcement).
+ *
+ * Bumping fields:
+ *   - New stat field → add under the matching category (vital signs,
+ *     multipliers, counters, flags) so groupings stay readable.
+ *   - New flag for a relic effect → goes under "relic flags." Most
+ *     are booleans; a few are numbers (counter values).
+ *   - New ability state → if it persists across rooms, add to the
+ *     RunSnapshot typedef in main.js too (and bump RUN_SNAPSHOT_SCHEMA
+ *     + add a migration if old saves should still load).
+ *
+ * @typedef {Object} Hero
+ * @property {number} x                   - world position
+ * @property {number} y                   - world position
+ * @property {number} vx                  - velocity (computed each frame)
+ * @property {number} vy                  - velocity (computed each frame)
+ * @property {number} aimX                - normalized aim vector x
+ * @property {number} aimY                - normalized aim vector y
+ * @property {('sword'|'dagger'|'hammer'|'wand')} weapon - weapon class id
+ * @property {('sword'|'blast')} activeWeapon - wizard-kit slot
+ * @property {number} hp                  - current HP
+ * @property {number} maxHp               - max HP
+ * @property {string} state               - idle/walk/attack/shield/dash/blink/hurt/dead
+ * @property {number} stateTime           - seconds since state entered
+ * @property {number} attackCooldown      - seconds remaining until next swing
+ * @property {number} dodgeCooldown       - shield CD (legacy field name)
+ * @property {number} iframes             - invulnerability seconds remaining
+ * @property {number} damageMul           - outgoing damage multiplier (cumulative)
+ * @property {number} damageTakenMul      - incoming damage multiplier (cumulative)
+ * @property {number} attackCooldownMul   - swing cooldown multiplier
+ * @property {number} dodgeCooldownMul    - shield cooldown multiplier
+ * @property {number} speedMul            - move speed multiplier
+ * @property {number} reachMul            - sword reach multiplier
+ * @property {number} knockbackMul        - knockback magnitude multiplier
+ * @property {number} dodgeDistMul        - shield duration multiplier (legacy name)
+ * @property {number} critChance          - 0..1 crit roll probability
+ * @property {number} critMul             - crit damage multiplier
+ * @property {number} lifesteal           - 0..1 fraction of damage healed
+ * @property {number} regenRate           - HP regen per second
+ * @property {number} executeThreshold    - HP fraction below which execute fires
+ * @property {number} executeMul          - execute damage multiplier
+ * @property {number} revives             - phoenix consumable count
+ * @property {?string} _lastHurtBy        - enemy/hazard type id of last damage source (for run-end narrative)
+ * @property {number} relicCount          - len(equipped relics) — read by Memory of the Bell + Warlord
+ * @property {Object<string,number>} activeThemes - { storm, flame, blood, vow, shadow } → tier 0/1/2
+ * @property {Set} hitThisSwing           - per-swing dedup set
+ * @property {boolean} chainLightning     - example flag (one of 60+ relic flags)
+ * @property {boolean} firstStrikeOnEnemy - Iron Greaves armed
+ * @property {boolean} resonanceStone     - Sprint 3C cross-ability flag
+ * @property {boolean} twinFangPact       - Sprint 3C cross-ability flag
+ * @property {boolean} phaseFlicker       - Sprint 3C cross-ability flag
+ * @property {boolean} echoStep           - Sprint 3C cross-ability flag
+ * @property {boolean} adaptiveEdge       - Sprint 3C cross-ability flag
+ *
+ * (Many fields elided for brevity — the full set is the literal below.
+ * Add new ones via category, keep groupings together.)
+ */
 export const hero = {
   x: 0, y: 0,
   vx: 0, vy: 0,
