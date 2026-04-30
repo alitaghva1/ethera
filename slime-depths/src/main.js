@@ -2982,9 +2982,40 @@ function playEpilogue(onDone) {
 // ============================================================================
 const RUN_SNAPSHOT_KEY = 'ethera:run_snapshot:v1';
 
+// Phase 5 audit fix #1 — internal schema version stamped on each saved
+// snapshot. Distinct from the `:v1` suffix in RUN_SNAPSHOT_KEY (that's
+// the storage-bucket version; bumping it discards old data wholesale).
+// SCHEMA_VERSION is a soft version that lets loadRunSnapshot detect
+// "this snapshot was written by an older shape of the code" and run
+// migrations or gracefully drop the snapshot rather than restoring
+// half a build.
+//
+// Bump SCHEMA_VERSION when ANY of the following change in a way that
+// post-load resumeRun can't reconstruct cleanly:
+//   - shape of snap.mods (add/remove a multiplier field)
+//   - shape of snap.counters
+//   - top-level snapshot fields (memoryId, weapon, activeWeapon, etc.)
+//   - meaning of an existing field (e.g. floorLevel encoding changes)
+//
+// Do NOT bump for additive-only changes that older code would silently
+// ignore (e.g. adding a new relic id — relicIds is a string array,
+// resumeRun's RELIC_DEFS lookup handles unknown ids gracefully).
+//
+// Add migrations to RUN_SNAPSHOT_MIGRATIONS in chronological order;
+// each takes a snap pre-migration + returns the snap post-migration.
+const RUN_SNAPSHOT_SCHEMA = 1;
+// (currently empty — populated as schema bumps land)
+const RUN_SNAPSHOT_MIGRATIONS = [
+  // Example shape:
+  // { from: 1, to: 2, migrate: (snap) => ({ ...snap, newField: defaultValue }) },
+];
+
 function saveRunSnapshot() {
   try {
     const snap = {
+      // Schema version stamp — read by loadRunSnapshot to detect stale
+      // shapes and (in the future) run migrations.
+      _schema: RUN_SNAPSHOT_SCHEMA,
       floorLevel: currentFloorLevel,
       maxHp: hero.maxHp,
       hp: hero.hp,
@@ -3064,8 +3095,44 @@ function loadRunSnapshot() {
   try {
     const raw = localStorage.getItem(RUN_SNAPSHOT_KEY);
     if (!raw) return null;
-    const s = JSON.parse(raw);
+    let s = JSON.parse(raw);
     if (!s || !s.floorLevel || s.floorLevel < 1 || s.floorLevel > MAX_FLOORS) return null;
+    // Phase 5 audit fix #1 — schema-version validation + migration.
+    // Snapshots without _schema are pre-versioning (legacy). Treat them
+    // as schema=1 so the load path is forward-compatible from day one;
+    // future bumps then have a clear "from=1" baseline to migrate
+    // through. Snapshots from a NEWER schema than the running code
+    // are dropped — the player's save is from a future version of the
+    // code that this build doesn't know how to interpret.
+    const incomingSchema = (typeof s._schema === 'number') ? s._schema : 1;
+    if (incomingSchema > RUN_SNAPSHOT_SCHEMA) {
+      // Forward-version save (e.g. player downgraded the game). Don't
+      // try to interpret — fall through to fresh run.
+      try { console.warn('[run snapshot] Drop save: schema', incomingSchema, '> current', RUN_SNAPSHOT_SCHEMA); } catch (_e) {}
+      return null;
+    }
+    if (incomingSchema < RUN_SNAPSHOT_SCHEMA) {
+      // Walk migrations chronologically. Each one takes a snap of its
+      // .from version + returns a snap at .to. A missing migration
+      // step is a logic bug (the dev added a SCHEMA bump but forgot
+      // the migration); drop the save and warn loudly so it surfaces
+      // in playtest rather than silently corrupting state.
+      let cur = incomingSchema;
+      while (cur < RUN_SNAPSHOT_SCHEMA) {
+        const m = RUN_SNAPSHOT_MIGRATIONS.find(mm => mm.from === cur);
+        if (!m) {
+          try { console.warn('[run snapshot] Drop save: no migration from schema', cur, 'to', RUN_SNAPSHOT_SCHEMA); } catch (_e) {}
+          return null;
+        }
+        try {
+          s = m.migrate(s);
+          cur = m.to;
+        } catch (_err) {
+          try { console.warn('[run snapshot] Migration', cur, '→', m.to, 'threw — drop save'); } catch (_e) {}
+          return null;
+        }
+      }
+    }
     return s;
   } catch (e) { return null; }
 }
