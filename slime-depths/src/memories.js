@@ -102,12 +102,15 @@ export const MEMORIES = {
     tint: '#a0c8d8',
     flavor: 'She learned to let the blade come to her. It came once.',
     gift: '+3 max HP · +15% damage',
-    constraint: 'Dodge disabled',
+    // Wizard-kit Sprint 1: memoryStillness now gates SHIELD raise
+    // (formerly dodge). Player-facing copy follows the rebind; the
+    // flag name stays for save-data compat.
+    constraint: 'Shield disabled — no defensive cast',
     apply: (h) => {
       h.maxHp += 3;
       h.hp = h.maxHp;
       h.damageMul *= 1.15;
-      h.memoryStillness = true;     // checked in dodge handler
+      h.memoryStillness = true;     // checked in shield-raise handler
     },
     unlockCheck: (records) => records.maxFloor >= 2,
     unlockHint: 'Reach floor 2 to remember…',
@@ -171,7 +174,9 @@ export const MEMORIES = {
     tint: '#8a9098',
     flavor: 'What does not move cannot be flanked.',
     gift: 'Damage taken −35%',
-    constraint: 'Move speed −25% · dodge distance −25%',
+    // dodgeDistMul scales SHIELD duration in the wizard-kit (Sprint 1
+    // legacy field name). The constraint reads accordingly.
+    constraint: 'Move speed −25% · shield duration −25%',
     apply: (h) => {
       h.damageTakenMul *= 0.65;
       h.speedMul *= 0.75;
@@ -285,11 +290,15 @@ export const MEMORIES = {
     tint: '#ff5078',
     flavor: 'It drank, and the blade wanted more.',
     gift: '+25% lifesteal · +15% attack speed',
-    constraint: 'Each dodge costs 1 HP — retreat is never free',
+    // Wizard-kit Sprint 1: memoryHungryBlade is read by the SHIELD
+    // raise handler now (was the dodge handler) and costs 1 HP per
+    // shield cast. Same aggressive-play forcing function under the
+    // new defensive cast architecture.
+    constraint: 'Each shield raise costs 1 HP — defense has weight',
     apply: (h) => {
       h.lifesteal += 0.25;
       h.attackCooldownMul *= 0.85;
-      h.memoryHungryBlade = true;     // read by dodge handler in hero.js
+      h.memoryHungryBlade = true;     // read by shield-raise handler in hero.js
     },
     unlockCheck: (records, _stats, ctx) => ctx && ctx.seenRelicIds && ctx.seenRelicIds.has('vampiric_aura'),
     unlockHint: 'Find Vampiric Aura to remember…',
