@@ -3133,6 +3133,47 @@ export function drawHero(ctx) {
   // FEELS the relic procs.
   const _auraNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
 
+  // Hymn of Embers — passive 80px fire aura. The damage mechanic was
+  // wired correctly (every 1s, 2 dmg to enemies in range) but had NO
+  // visual indicator at all — players couldn't tell the relic was
+  // working or what its actual range was. User feedback on the aura
+  // led to this fix. Render: faint orange ring at the EXACT damage
+  // radius (so the player learns "this is the kill zone"), pulsing
+  // with the 1s tick rhythm so the moment the damage lands also has
+  // a visual peak. hero.hymnTick counts DOWN from 1.0 → 0; we use
+  // (1 - tick) for a pulse that ramps up to the strike. Ticks +
+  // damage are computed in updateHero ~line 881; this is render-only.
+  if (hero.hymnOfEmbers && hero.hymnRadius > 0) {
+    const r = hero.hymnRadius;
+    // Tick phase: 0 = just damaged (peak alpha), 1 = next damage incoming.
+    // hymnTick decays 1.0 → 0 over 1s, so (1 - hymnTick) reads as
+    // "fraction of the cycle elapsed since last strike." Inverted
+    // sine peaks at the moment damage lands — visual peaks with the
+    // mechanical beat.
+    const tickPhase = 1 - (hero.hymnTick || 0);    // 0 → 1 across 1s
+    const peak = Math.sin(tickPhase * Math.PI);     // 0 → 1 → 0 arc
+    // Subtle base glow + tick pulse on top. Outer ring at exact 80px
+    // radius so the player sees the kill zone. Inner gradient adds
+    // warmth without overwhelming the floor tint.
+    const inner = ctx.createRadialGradient(hx, hy, 4, hx, hy, r);
+    inner.addColorStop(0, `rgba(255, 160, 80, ${(0.06 + peak * 0.08).toFixed(3)})`);
+    inner.addColorStop(0.65, `rgba(255, 130, 60, ${(0.03 + peak * 0.05).toFixed(3)})`);
+    inner.addColorStop(1, 'rgba(255, 100, 40, 0)');
+    ctx.fillStyle = inner;
+    ctx.fillRect(hx - r, hy - r, r * 2, r * 2);
+    // Outer rim — faint dashed ring at exact damage radius. Visible
+    // boundary so the player can position to clip / avoid the line.
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 160, 80, ${(0.18 + peak * 0.20).toFixed(3)})`;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 7]);
+    ctx.beginPath();
+    ctx.arc(hx, hy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   // Twin Fang Pact — 0.4s post-swap warm-amber pulse aura. Reads as
   // "your weapons are in resonance right now" — distinct from the
   // base warm halo because the pulse is amplitude-modulated.
