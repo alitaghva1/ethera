@@ -106,7 +106,10 @@ function executeWandererTrade() {
   if (gold.total < o.cost) return;
   gold.total -= o.cost;
   wanderer.consumed = true;
-  stats.wandererTrades = (stats.wandererTrades | 0) + 1;
+  // Defensive `| 0` coercion removed — stats is always initialized via
+  // resetStats() so wandererTrades is guaranteed numeric. Matches the
+  // increment pattern used by relicsObtained / bossesKilled / etc.
+  stats.wandererTrades++;
   // Effect burst
   deathBurst(wanderer.x, wanderer.y - 20, o.tint || '#c9a86a');
   playSfx('click', { rate: 1.3, volume: 0.8 });

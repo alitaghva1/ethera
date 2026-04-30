@@ -2379,6 +2379,15 @@ function loadRoom(idx, entryFrom) {
     // frequency than the combat-clear chord (392 vs 523) so the two
     // beats stay distinct in the player's ear.
     setTimeout(() => { try { synthChord(392, 0.55, 1.2); } catch (_e) {} }, 300);
+    // Stat tracking — sanctuariesVisited was declared in stats.ts +
+    // reset every run but NEVER incremented anywhere (system audit
+    // found dead). Wired up here on first entry per room so re-loads
+    // (save/resume mid-sanctuary) don't double-count. Surfaces in the
+    // run-end summary alongside wandererTrades.
+    if (!data._sanctuaryCounted) {
+      data._sanctuaryCounted = true;
+      stats.sanctuariesVisited++;
+    }
   }
   // Round-7 Phase 5 — first BLOOD GATE encounter. Fires if any of the
   // outgoing edges from this room target a sealed node. setupRoomDoors
@@ -3923,6 +3932,7 @@ function showEndOfRun(isVictory) {
     stats.relicsObtained    ? _row('Relics Acquired', `${stats.relicsObtained}${newBestMark('mostRelics')}`)                         : '',
     stats.perfectDodges     ? _row('Perfect Dodges', stats.perfectDodges, '#a0e8ff')                                                 : '',
     mc                      ? _row('Max Combo', `${mc}${comboTag}${newBestMark('maxCombo')}`)                                        : '',
+    stats.sanctuariesVisited ? _row('Sanctuaries Visited', stats.sanctuariesVisited, '#86e3a8')                                     : '',
     stats.wandererTrades    ? _row('Wanderer Trades', stats.wandererTrades, '#c9a86a')                                               : '',
   ].filter(Boolean);
   grid.innerHTML = _rows.join('');

@@ -34,6 +34,18 @@ export interface Stats {
   _runComplete: boolean;
   _cursedFloorClear: number;
 
+  // Achievement-gate aux tracking. Audit found these were written
+  // by main.js + read by achievements.js but NOT declared in this
+  // interface — checkJs:false on the .js consumers meant the type
+  // checker silently allowed it. Any rename of these fields would
+  // have broken 5 achievements without surfacing in CI. Now declared
+  // so future renames trigger a real type error.
+  _maxLegendariesHeld: number;     // peak count of legendary relics held in this run
+  _mythicEquipped: boolean;         // any mythic relic ever equipped this run
+  _bothMythicsHeld: boolean;        // cataclysm + eye_of_ether both held simultaneously
+  _maxFusions: number;              // peak count of active fusions in this run
+  _ascensionAtWin: number;          // ascension tier at the moment of victory
+
   // Added later for achievements + summary flavor.
   biggestHit: number;
   sanctuariesVisited: number;
@@ -56,6 +68,11 @@ export const stats: Stats = {
   _legendaryEquipped: false,
   _runComplete: false,
   _cursedFloorClear: 0,
+  _maxLegendariesHeld: 0,
+  _mythicEquipped: false,
+  _bothMythicsHeld: false,
+  _maxFusions: 0,
+  _ascensionAtWin: 0,
   biggestHit: 0,
   sanctuariesVisited: 0,
   wandererTrades: 0,
@@ -77,6 +94,11 @@ export function resetStats(): void {
   stats._legendaryEquipped = false;
   stats._runComplete = false;
   stats._cursedFloorClear = 0;
+  stats._maxLegendariesHeld = 0;
+  stats._mythicEquipped = false;
+  stats._bothMythicsHeld = false;
+  stats._maxFusions = 0;
+  stats._ascensionAtWin = 0;
   stats.biggestHit = 0;
   stats.sanctuariesVisited = 0;
   stats.wandererTrades = 0;
