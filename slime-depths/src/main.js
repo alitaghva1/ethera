@@ -276,7 +276,7 @@ showStorageWarningIfBlocked();
 // Global error boundary — catches uncaught exceptions and unhandled promise
 // rejections and renders a friendly "something went wrong" overlay instead
 // of leaving the player staring at a frozen black canvas.
-import { installErrorBoundary } from './errorBoundary.js';
+import { installErrorBoundary, guardRender } from './errorBoundary.js';
 installErrorBoundary();
 
 // Accessibility: apply prefers-reduced-motion preference once at boot.
@@ -4216,7 +4216,14 @@ function transitionAlpha() {
 }
 
 let lastT = performance.now();
-function tick(now) {
+// Phase 5 audit fix #3 — guardRender wraps the rAF body so any thrown
+// exception surfaces to the error overlay rather than freezing the
+// canvas mid-frame. window.onerror at the top of this file catches
+// non-rAF throws but rAF callbacks are queued by the browser and
+// throws inside them silently kill the loop. Renamed the inner body
+// to `_tickInner`; the exported `tick` is the wrapped version that
+// existing `requestAnimationFrame(tick)` call sites pick up unchanged.
+function _tickInner(now) {
   const realDt = Math.min(0.033, (now - lastT) / 1000);
   lastT = now;
 
@@ -5531,6 +5538,14 @@ function tick(now) {
   endFrameInput();
   requestAnimationFrame(tick);
 }
+
+// Phase 5 audit fix #3 — exported `tick` is the guarded wrapper. All
+// existing `requestAnimationFrame(tick)` call sites (4 inside
+// _tickInner's branches + 1 at boot kickstart) pick up the wrap
+// unchanged. A thrown exception during rendering kills the loop and
+// surfaces the error overlay; subsequent rAF calls become no-ops so
+// the page doesn't enter an infinite-overlay-stack state.
+const tick = guardRender(_tickInner);
 
 function render() {
   ctx.fillStyle = '#0a0810';

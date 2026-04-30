@@ -34,6 +34,64 @@ export function installErrorBoundary() {
   });
 }
 
+/**
+ * Phase 5 audit fix #3 — wrap a function in try/catch so render-loop
+ * exceptions surface to the error overlay instead of leaving a frozen
+ * canvas. The window-level handlers above catch uncaught exceptions
+ * outside requestAnimationFrame, but a throw INSIDE the rAF callback
+ * tears down the loop silently — the canvas freezes mid-frame and
+ * window.onerror doesn't fire because rAF callbacks are wrapped in
+ * the browser's own queue. This guard makes the catch explicit.
+ *
+ * Usage:
+ *   const tick = guardRender(_tickInner);
+ *   requestAnimationFrame(tick);
+ *
+ * The first thrown exception triggers the overlay; subsequent throws
+ * are swallowed (overlay already shows, no point cascading). The
+ * callback is NOT re-scheduled after a throw — letting the loop die
+ * is the right call when state may be corrupted.
+ *
+ * @param {Function} fn
+ * @returns {Function}
+ */
+export function guardRender(fn) {
+  let _renderDied = false;
+  return function (...args) {
+    if (_renderDied) return;     // halt rAF chain after first fatal
+    try {
+      return fn.apply(this, args);
+    } catch (err) {
+      _renderDied = true;
+      console.error('[boundary] render-loop fatal:', err);
+      showErrorOverlay(err?.message || String(err) || 'render-loop fatal');
+    }
+  };
+}
+
+/**
+ * Sentinel check for asset references. Pass the image (or any value)
+ * + a name; warns ONCE per name and returns false when missing so
+ * callers can early-return their draw without ctx.drawImage(undefined).
+ * Failure mode the audit identified: a sprite that fails to load
+ * silently makes ctx.drawImage a no-op, leaving the player to wonder
+ * why their hero or enemy is invisible. This makes the gap audible
+ * (in the dev console) without flooding it with repeated warnings.
+ *
+ * @param {*} value
+ * @param {string} name
+ * @returns {boolean} true when value is truthy
+ */
+const _warnedAssets = new Set();
+export function assertAsset(value, name) {
+  if (value) return true;
+  if (!_warnedAssets.has(name)) {
+    _warnedAssets.add(name);
+    try { console.warn('[boundary] missing asset:', name); } catch (_e) {}
+  }
+  return false;
+}
+
 function showErrorOverlay(message) {
   // Only show the first fatal once — repeated errors in a render loop would
   // stack overlays infinitely. Subsequent errors still log to console.
