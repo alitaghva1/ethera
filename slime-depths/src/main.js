@@ -4480,7 +4480,15 @@ function tick(now) {
       bossIntroTime > 0 ||
       phaseIntroTime > 0 ||
       _wakeCinematicActive ||
-      isIntroActive();    // heartbeat intro — defer notifications until reveal
+      isIntroActive() ||    // heartbeat intro — defer notifications until reveal
+      // Wizard-kit Sprint 3D UX audit — run-end states own the screen.
+      // Suppresses pickup banner, notifications, tips so they don't
+      // stack on top of "YOU HAVE FALLEN" / floor-clear / win modals.
+      hero.state === 'dead' ||
+      deathCeremonyActive ||
+      _firstDeathFadeActive ||
+      (deathEl && deathEl.style.display === 'flex') ||
+      (winEl && winEl.style.display === 'flex');
     // Dynamic tab title — reflects run state. Throttled to ~2Hz via gameTime.
     if ((gameTime | 0) !== _lastTitleUpdateSec) {
       _lastTitleUpdateSec = gameTime | 0;
@@ -5188,6 +5196,15 @@ function tick(now) {
     if (hero.state === 'dead' && hero.stateTime > 0.9 && !deathCeremonyActive && !deathSummaryShown) {
       deathCeremonyActive = true;
       deathCeremonyTime = 0;
+      // Wizard-kit Sprint 3D UX audit — actively cancel any in-flight
+      // transient banners so they can't visibly persist into the death
+      // ceremony / "YOU HAVE FALLEN" overlay. Belt-and-suspenders on
+      // top of the __centerBannerActive suppression: the suppression
+      // hides the banner mid-decay; this stops the timer entirely so
+      // a stale pickedFlashTime can't pop back if the player goes
+      // back to a state where the suppression is off (e.g. resume).
+      suppressPickupFlash();
+      clearNotifications();
       // THE WATCHER — fires a milestone or death-depth line. "Near final boss"
       // = dying in the floor-MAX boss room with the boss under 30% HP.
       try {
@@ -5407,7 +5424,13 @@ function render() {
   // pickups now require an E-press confirmation. Skip during hamlet
   // (no pedestals there); chestroom pedestals reuse the same prompt
   // since they're regular pedestal entries spawned from the chest reward.
-  if (room.kind !== 'hamlet') {
+  //
+  // Wizard-kit Sprint 3D UX audit — also skip during run-end states
+  // (death ceremony, fallen overlay, win screen). The player can't
+  // pick up a pedestal while the run-end UI owns the screen, and
+  // the floating "E · TAKE" label was visibly stacking on top of
+  // the death-fallen banner during pre-death pedestal hover.
+  if (room.kind !== 'hamlet' && !window.__centerBannerActive) {
     drawPedestalPrompt(ctx);
   }
   // Treasure chest interact prompt — "E · OPEN" floating above the
@@ -5717,8 +5740,15 @@ function render() {
     introActive: bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0,
     inHamlet: room.kind === 'hamlet',
   });
-  drawPedestalTooltip(ctx, canvas.width, canvas.height, { gold: gold.total, floorLevel: currentFloorLevel });
-  drawWandererTooltip(ctx, canvas.width, canvas.height);
+  // Wizard-kit Sprint 3D UX audit — pedestal + wanderer hover tooltips
+  // and the pickup banner all suppress during run-end states so they
+  // don't stack on top of "YOU HAVE FALLEN" / floor-clear / win modals.
+  // drawPickupFlash already gates internally on __centerBannerActive;
+  // hover tooltips need explicit gates here.
+  if (!window.__centerBannerActive) {
+    drawPedestalTooltip(ctx, canvas.width, canvas.height, { gold: gold.total, floorLevel: currentFloorLevel });
+    drawWandererTooltip(ctx, canvas.width, canvas.height);
+  }
   drawPickupFlash(ctx, canvas.width, canvas.height);
   // Elite affix hover — reveals frost / ember / venom / warded before the
   // fight. Drawn after the HUD so it floats above other UI when the cursor
