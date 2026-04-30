@@ -552,22 +552,22 @@ export function consumePendingPickup() {
   }
   playSfx('click', { volume: 0.9, rate: p.hpCost > 0 ? 0.8 : 1.2 });
   lastPickedDef = p.relic;
-  // First-ever mythic still earns the center "Windforce moment"
-  // cinematic. Every other pickup (common/rare/legendary, plus
-  // subsequent mythics) routes to the unified top-right notification
-  // rail so combat readability stays intact during the 3-5s banner.
+  // Wizard-kit Sprint 3D UX cleanup — ALL pickups route to the top-right
+  // notification rail, including first-ever mythic. Was: first-ever mythic
+  // played a centered "Windforce moment" cinematic for 5.5s. Problem:
+  // when Eye of Ether is the first mythic AND it completes a fusion (e.g.
+  // + Executioner = Final Verdict), the fusion banner ALSO centered, and
+  // the two banners stacked into unreadable visual chaos. The rail still
+  // gives the moment dignity — mythic tier already gets a 5.5s life,
+  // ✦ glyph, white-gold tint that's visibly distinct from common/rare.
   lastPickedFirstMythic = (t === 'mythic') && isFirstTime('mythic', 'any');
-  if (lastPickedFirstMythic) {
-    pickedFlashTime = 5.5;
-  } else {
-    pickedFlashTime = 0;
-    pushNotification({
-      kind: 'pickup',
-      tier: t,
-      title: p.relic.name || 'RELIC',
-      body: p.relic.desc || '',
-    });
-  }
+  pickedFlashTime = 0;
+  pushNotification({
+    kind: 'pickup',
+    tier: t,
+    title: p.relic.name || 'RELIC',
+    body: p.relic.desc || '',
+  });
   // Mark sibling pedestals as picked too — the offer-set is committed
   // on the first claim, mirroring the original "claiming one removes
   // the others" pedestal-group rule.

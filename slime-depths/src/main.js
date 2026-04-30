@@ -493,9 +493,11 @@ let _lastTitleUpdateSec = -1;
 // Pedestal/altar proximity hum timer + low-HP heartbeat timer
 let _proximityHumT = 0;
 let _heartbeatT = 0;
-// Fusion-formed banner — dramatic announcement when a new fusion activates
+// Wizard-kit Sprint 3D UX cleanup — fusion banner moved to the rail.
+// fusionBannerTime kept as a no-op timer (other code resets it during
+// run start / death; ticker decays the value harmlessly). fusionBannerFusion
+// removed entirely (not read anywhere now).
 let fusionBannerTime = 0;
-let fusionBannerFusion = null;
 // Enemy codex banner — small "bestiary entry" card for first-time encounters.
 // Queued by enemies.js via window.__pendingCodexEntry; we dequeue here and
 // animate a top-center reveal. Multiple can be queued if a combat spawns
@@ -532,25 +534,39 @@ window.__onEchoDefeated = (echo) => {
 
 // Callback invoked by applyRelic when a fusion activates
 window.__onFusionFormed = (fusion) => {
-  // The pickup that triggered this fusion already set the pickup-flash
-  // banner in pedestals.js. Zero it here so the fusion banner (which is
-  // more dramatic + tells a better story) takes the center-screen slot
-  // alone instead of stacking with the pickup flash.
-  suppressPickupFlash();
-  fusionBannerTime = 3.0;
-  fusionBannerFusion = fusion;
-  // Audio sting — chord on discovery, layered ping for newly-discovered-ever
+  // Wizard-kit Sprint 3D UX cleanup — fusion announcement routes to the
+  // top-right rail (with kind: 'fusion' getting the FUSION FORGED header,
+  // 4s life, amber tint). Was: centered manuscript banner with pulsing
+  // icon, 3s, full-screen halo — stacked with the first-mythic banner
+  // when both fired on the same pickup, creating unreadable visual
+  // chaos. The non-blocking effects (audio, zoom, screen flash) stay —
+  // they amplify the moment without claiming the screen.
+  pushNotification({
+    kind: 'fusion',
+    title: fusion.name || 'Fusion',
+    body: fusion.desc || '',
+    tint: fusion.tint || '#ffb265',
+    // First-ever discovery gets longer dwell so the player has time
+    // to read it; repeat activations get standard 4s.
+    life: fusion._firstDiscovery ? 6.0 : 4.0,
+    header: fusion._firstDiscovery ? '— NEW FUSION DISCOVERED —' : '— FUSION FORGED —',
+  });
+  // Non-blocking effects amplify the moment without claiming the screen.
   synthChord(fusion._firstDiscovery ? 880 : 659, 1.0, fusion._firstDiscovery ? 1.2 : 0.8);
   if (fusion._firstDiscovery) {
     setTimeout(() => synthFanfare(1.0), 200);
   }
   pulseZoom(0.1, 0.6);
   triggerScreenFlash('rgba(180, 230, 255, 0.2)', 0.4);
-  // Onboarding — first time a fusion ever forms in any run, drop a
-  // tip so the player understands what just happened. Subsequent
-  // fusions are silent (the banner + chord do the talking).
-  showTip('first_fusion');
+  // Skip first_fusion tip — the rail entry IS the explanation now.
+  // (Old code routed both an explanatory tip + a centered banner; the
+  // tip became redundant once the banner moved to the same rail.)
 };
+
+// Suppressed: fusionBannerTime / fusionBannerFusion are kept as no-ops
+// for backward compat with any save snapshot reset paths that zero
+// them. Render block below skips entirely. Remove in a future cleanup
+// once it's clear nothing else reads the names.
 
 // MYTHIC: Coin of the Tyrant kill-chain reward. Called from enemies.js
 // every 8th kill while the relic is owned. Drops a free common-tier
@@ -3390,7 +3406,6 @@ function startRun() {
   floorCardStartedAt = 0;
   bossIntroStartedAt = 0;
   fusionBannerTime = 0;
-  fusionBannerFusion = null;
   // Clear fusion hero flags that might have stuck from a previous run
   hero.fusionTeslaStorm = false;
   hero.fusionBloodMoon = false;
@@ -6001,123 +6016,12 @@ function render() {
   // declarative ("here's the current state, sync yourself").
   updateBossIntro(bossIntroTime, bossIntroBoss, bossIntroFast);
 
-  // FUSION FORMED banner — dramatic center-screen reveal when two relics combine
-  if (fusionBannerTime > 0 && fusionBannerFusion) {
-    const total = 3.0;
-    const r = 1 - (fusionBannerTime / total);   // 0 → 1
-    let a;
-    if (r < 0.1) a = r / 0.1;
-    else if (r > 0.8) a = (1 - r) / 0.2;
-    else a = 1;
-    a = Math.max(0, Math.min(1, a));
-    const scaleBump = r < 0.2 ? 1 + Math.sin((r / 0.2) * Math.PI) * 0.12 : 1;
-    const F = fusionBannerFusion;
-    const isFirst = F._firstDiscovery;
-    const w = canvas.width, h = canvas.height;
-    // First-time discovery gets a taller banner to fit the flavor line;
-    // repeat activations are briefer. Extra height to accommodate the
-    // floating fusion icon at the top.
-    const boxW = 560, boxH = isFirst && F.flavor ? 210 : 170;
-    const bx = (w - boxW) / 2;
-    const by = (h - boxH) / 2 - 40;
-    const pivotX = bx + boxW / 2, pivotY = by + boxH / 2;
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.translate(pivotX, pivotY);
-    ctx.scale(scaleBump, scaleBump);
-    ctx.translate(-pivotX, -pivotY);
-    // Radial halo
-    const pulseT = performance.now() / 240;
-    const pulse = 0.6 + 0.4 * Math.sin(pulseT);
-    const halo = ctx.createRadialGradient(pivotX, pivotY, 40, pivotX, pivotY, boxW * 0.85);
-    const tint = F.tint || '#a0e8ff';
-    const hex = tint.replace('#', '');
-    const nH = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
-    const tr = (nH >> 16) & 255, tg = (nH >> 8) & 255, tb = nH & 255;
-    halo.addColorStop(0, `rgba(${tr},${tg},${tb},${(0.5 * pulse * a).toFixed(3)})`);
-    halo.addColorStop(1, `rgba(${tr},${tg},${tb},0)`);
-    ctx.fillStyle = halo;
-    ctx.fillRect(bx - 120, by - 80, boxW + 240, boxH + 160);
-    // Frame
-    const frameG = ctx.createLinearGradient(bx, by, bx, by + boxH);
-    frameG.addColorStop(0, 'rgba(20, 30, 40, 0.96)');
-    frameG.addColorStop(1, 'rgba(8, 12, 18, 0.96)');
-    ctx.fillStyle = frameG;
-    ctx.fillRect(bx, by, boxW, boxH);
-    ctx.strokeStyle = tint;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-    ctx.strokeStyle = 'rgba(201, 168, 106, 0.4)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 5.5, by + 5.5, boxW - 11, boxH - 11);
-    // FLOATING FUSION ICON — hand-drawn fusion art as a seal on the top
-    // of the banner. Pulses with tint halo. Huge visual upgrade from text-only.
-    const fusionImg = imageCache[F.icon];
-    if (fusionImg) {
-      const iconSize = 72;
-      const iconX = pivotX - iconSize / 2;
-      const iconY = by - iconSize / 2 + 4;
-      // Pulsing halo behind icon
-      const hr = parseInt(tint.slice(1, 3), 16);
-      const hg = parseInt(tint.slice(3, 5), 16);
-      const hb = parseInt(tint.slice(5, 7), 16);
-      const seal = ctx.createRadialGradient(pivotX, iconY + iconSize / 2, 8, pivotX, iconY + iconSize / 2, iconSize * 1.4);
-      seal.addColorStop(0, `rgba(${hr}, ${hg}, ${hb}, ${(0.6 * pulse).toFixed(3)})`);
-      seal.addColorStop(1, `rgba(${hr}, ${hg}, ${hb}, 0)`);
-      ctx.fillStyle = seal;
-      ctx.fillRect(iconX - iconSize, iconY - iconSize, iconSize * 3, iconSize * 3);
-      // Icon itself
-      ctx.drawImage(fusionImg, iconX, iconY, iconSize, iconSize);
-      // Tint-colored ring around icon
-      ctx.strokeStyle = tint;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(pivotX, iconY + iconSize / 2, iconSize / 2 + 4, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    // Header — NEW FUSION or FUSION
-    ctx.fillStyle = tint;
-    ctx.font = 'italic bold 10px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(isFirst ? '\u2014 NEW FUSION DISCOVERED \u2014' : '\u2014 FUSION ACTIVATED \u2014', pivotX, by + 52);
-    // Big fusion name with shadowed glow
-    ctx.shadowColor = tint;
-    ctx.shadowBlur = 20;
-    ctx.fillStyle = '#fff8e8';
-    ctx.font = 'bold 34px Georgia, serif';
-    ctx.fillText(F.name, pivotX, by + 72);
-    ctx.shadowBlur = 0;
-    // Components line
-    ctx.fillStyle = 'rgba(180, 200, 220, 0.8)';
-    ctx.font = 'italic 12px Georgia, serif';
-    const compText = F.components
-      .map(id => RELIC_DEFS[id]?.name || id)
-      .join(' + ');
-    ctx.fillText(compText, pivotX, by + 116);
-    // Flavor line (first-discovery only) — lore that elevates the moment
-    let descY = by + 150;
-    if (isFirst && F.flavor) {
-      ctx.fillStyle = 'rgba(220, 210, 230, 0.75)';
-      ctx.font = 'italic 13px Georgia, serif';
-      ctx.fillText('\u201C' + F.flavor + '\u201D', pivotX, by + 138);
-      descY = by + 180;
-    }
-    // Separator
-    ctx.strokeStyle = tint;
-    ctx.globalAlpha = a * 0.6;
-    ctx.beginPath();
-    ctx.moveTo(bx + 70, descY - 18); ctx.lineTo(bx + boxW - 70, descY - 18);
-    ctx.stroke();
-    ctx.globalAlpha = a;
-    // Description (mechanic) — tinted, bolder
-    ctx.fillStyle = tint;
-    ctx.font = 'bold 13px Georgia, serif';
-    ctx.fillText(F.desc, pivotX, descY);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
-  }
+  // Wizard-kit Sprint 3D UX cleanup — fusion announcement moved to the
+  // top-right notification rail (see __onFusionFormed callback). The
+  // centered manuscript banner with pulsing icon stacked with the
+  // first-mythic pickup banner when both fired on the same pickup;
+  // routing to the rail consolidates all transient announcements
+  // into one consistent lane.
 
   // ENEMY CODEX banner — small bestiary card at top-center when a new enemy
   // type is first encountered. Slides in from above, holds ~2s, slides out.
