@@ -23,7 +23,12 @@ import { settings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } f
 import { SLOTS, getSlotCounts, getSlotTier, SLOT_THRESHOLDS } from '../slots.js';
 
 export const pauseEl = document.createElement('div');
-pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
+// Polish round 2 — modal fade-in via CSS keyframe (defined in
+// index.html as `@keyframes modalFadeIn`). Without this, the pause
+// modal snapped on with no transition; Hades / Diablo pattern is
+// always a brief fade so the screen has time to read. The animation
+// re-fires every time display flips from 'none' to 'flex'.
+pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;animation:modalFadeIn 0.22s ease-out;';
 pauseEl.innerHTML = `
   <!-- Deep vignette frame — same discipline as main menu. -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>

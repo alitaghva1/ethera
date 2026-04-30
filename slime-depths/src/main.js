@@ -873,7 +873,7 @@ function showCredits() {
   hideAllInfoModals();
   if (!creditsEl) {
     creditsEl = document.createElement('div');
-    creditsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;';
+    creditsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;animation:modalFadeIn 0.22s ease-out;';
     creditsEl.innerHTML = CREDITS_SCREEN_HTML;
     document.getElementById('hud').appendChild(creditsEl);
     creditsEl.querySelector('#creditsCloseBtn')?.addEventListener('click', () => {
@@ -888,7 +888,7 @@ function showControls() {
   hideAllInfoModals();
   if (!controlsEl) {
     controlsEl = document.createElement('div');
-    controlsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;';
+    controlsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;animation:modalFadeIn 0.22s ease-out;';
     controlsEl.innerHTML = CONTROLS_SCREEN_HTML;
     document.getElementById('hud').appendChild(controlsEl);
     controlsEl.querySelector('#controlsCloseBtn')?.addEventListener('click', () => {
@@ -3667,6 +3667,23 @@ function beginNextFloor() {
   // Snapshot at floor boundary — this is the resume point if the player
   // closes the browser now.
   saveRunSnapshot();
+  // Polish round 2 — quiet "run saved" toast at the floor boundary so
+  // players know quitting now preserves their progress. Hades/Dead
+  // Cells pattern: lower-priority confirmation that doesn't compete
+  // with the floor card cinematic. Fires through the rail (which
+  // queues during cinematics and drains after) so the floor card
+  // gets the screen first; the save toast lands in its wake.
+  // Short life (2.0s) — confirmation, not a story beat.
+  try {
+    pushNotification({
+      kind: 'tip',
+      header: '— RUN SAVED —',
+      title: '',
+      body: 'progress preserved.   you may quit if you must.',
+      tint: '#86e3a8',     // sanctuary green — matches the "safe to leave" beat
+      life: 2.5,
+    });
+  } catch (_e) {}
 }
 
 // Format a duration like 2:43
@@ -5764,6 +5781,56 @@ function render() {
   for (const e of enemies) drawList.push({ y: e.y, draw: (c) => drawEnemy(c, e) });
   drawList.sort((a, b) => a.y - b.y);
   for (const item of drawList) item.draw(ctx);
+
+  // Polish round 2 — enemy hover glow. Hades / Diablo / Path of Exile
+  // pattern: cursor-over-enemy gets a soft outline so the player has
+  // immediate visual confirmation of "this is what I'm aiming at."
+  // Was missing here — players had to infer hover from the cursor
+  // position alone. Renders AFTER the drawList sort so the glow lands
+  // on top of the enemy sprite. Only when alive + non-cinematic +
+  // dungeon (hamlet has no combat hover).
+  if (running && !paused && hero.state !== 'dead' && room.kind !== 'hamlet'
+      && bossIntroTime <= 0 && !window.__centerBannerActive) {
+    const _mw = screenToWorld(mouse.x, mouse.y);
+    let _hoveredEnemy = null;
+    let _hoveredD2 = 36 * 36;       // squared hover radius — generous so high-speed cursor still catches
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const dx = e.x - _mw.x;
+      const dy = (e.y - 14) - _mw.y;     // bias up-by-14 so the cursor-over-body reads, not cursor-on-shadow
+      const d2 = dx * dx + dy * dy;
+      const r = (e.radius || 18) + 12;
+      const cap = r * r;
+      if (d2 < cap && d2 < _hoveredD2) {
+        _hoveredEnemy = e;
+        _hoveredD2 = d2;
+      }
+    }
+    if (_hoveredEnemy) {
+      const e = _hoveredEnemy;
+      const r = (e.radius || 18);
+      const pulse = 0.55 + 0.20 * Math.sin(performance.now() / 220);
+      // Soft outer halo — radial gradient, tint reads "selected target."
+      // Boss-hover is more saturated to read the same intent against
+      // larger sprites.
+      const haloR = r + (e.boss ? 28 : 18);
+      const halo = ctx.createRadialGradient(e.x, e.y - 8, r * 0.5, e.x, e.y - 8, haloR);
+      const tintRgb = e.boss ? '255, 200, 120' : e.elite ? '255, 220, 140' : '220, 220, 255';
+      halo.addColorStop(0, `rgba(${tintRgb}, ${(0.15 * pulse).toFixed(3)})`);
+      halo.addColorStop(0.6, `rgba(${tintRgb}, ${(0.08 * pulse).toFixed(3)})`);
+      halo.addColorStop(1, `rgba(${tintRgb}, 0)`);
+      ctx.fillStyle = halo;
+      ctx.fillRect(e.x - haloR, e.y - 8 - haloR, haloR * 2, haloR * 2);
+      // Crisp inner ring — selection reticle, dashed for strategic feel.
+      ctx.strokeStyle = `rgba(${tintRgb}, ${(0.65 * pulse).toFixed(3)})`;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y - 8, r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
 
   // Door lintel occlusion pass — re-draws just the top half of each
   // door sprite over whatever the drawList put down. When the hero
