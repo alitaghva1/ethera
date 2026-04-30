@@ -2361,6 +2361,42 @@ export function drawEnemy(ctx, e) {
   // Bomber "about to blow" pulse — visible from afar
   if (e.type === 'bomber' && e.state === 'attack') {
     const t = e.stateTime / e.def.windup;
+    // Phase 1 audit fix #3 — DANGER ZONE telegraph. Players couldn't tell
+    // where they were safe vs caught: the existing pulse only showed the
+    // bomber's body radius (~18px), not the actual blast radius (92px,
+    // 138px on elites). Adding a faint danger-zone ring sized to the
+    // exact `blastRadius * blastRadiusMul` so the player can read "I'm
+    // outside" or "I need to MOVE" at a glance.
+    //
+    // Opacity ramps 0 → 0.32 across windup so it's a building presence
+    // rather than a sudden frame-1 splat. Outline + faint radial fill
+    // together read as "danger area," matching the existing dashed-arc
+    // telegraph language used for melee proximity.
+    const blastR = (e.def.blastRadius || 0) * (e.blastRadiusMul || 1);
+    if (blastR > 0) {
+      const ramp = Math.min(1, t * 1.4);   // saturate by ~70% of windup
+      // Outline ring — dashed to match the family of telegraph rings
+      // already used for melee proximity (drawEnemyAttackTelegraphs).
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 130, 60, ${(ramp * 0.55).toFixed(3)})`;
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, blastR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Faint radial fill — saturated near the bomber, fading outward.
+      // Reads as the danger SURFACE, not a hard line.
+      const fill = ctx.createRadialGradient(e.x, e.y, blastR * 0.15, e.x, e.y, blastR);
+      fill.addColorStop(0, `rgba(255, 90, 40, ${(ramp * 0.18).toFixed(3)})`);
+      fill.addColorStop(1, 'rgba(255, 90, 40, 0)');
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, blastR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Existing inner pulse — keeps the "bomber is winding up" body cue.
     const r = 18 + 6 * Math.sin(t * 40);
     ctx.strokeStyle = 'rgba(255, 120, 60, ' + (0.4 + 0.4 * Math.sin(t * 25)).toFixed(3) + ')';
     ctx.lineWidth = 2;
