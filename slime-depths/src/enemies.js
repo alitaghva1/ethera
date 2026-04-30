@@ -2122,6 +2122,16 @@ export function updateEnemies(dt, _hero) {
         // Roar audio — deeper than the standard hit sound, layered for weight.
         playSfx('hero_hurt', { rate: 0.25, volume: 1.0 });
       }
+      // Phase 1 audit fix #4 — skip the rest of THIS frame's update for the
+      // boss after enrage fires. The next-frame tick early-return (main.js
+      // ~4093, gates on phaseIntroTime > 0) already pauses subsequent
+      // updates, but within this same frame the for-loop body would still
+      // run movement, AI choices, and attack-swing resolution after the
+      // cinematic was triggered. Iframes cover the damage side, but the
+      // boss visually appearing to swing during the "the world stopped"
+      // cinematic broke the beat. `continue` here freezes the boss mid-
+      // roar instead of mid-swing.
+      continue;
     }
     // Animate the enrage shockwave decay
     if (e._enrageShockTime && e._enrageShockTime > 0) e._enrageShockTime -= dt;
