@@ -2116,7 +2116,22 @@ export function updateHero(dt, enemies, mouseWorld) {
           // SYSTEMS PASS — BLOODSTONE: capture enemy HP pre-hit for the
           // sub-25% finisher-heal check after takeDamage resolves.
           const eHpBefore = e.hp;
-          e.takeDamage(finalDmg, hero.aimX * kbScale, hero.aimY * kbScale);
+          // Phase 1 audit fix #5 — knockback direction is IMPACT NORMAL
+          // (vector from hero to enemy), not hero.aim. The previous aim-
+          // based code pushed enemies in the direction the hero was
+          // facing, regardless of WHERE on the swing arc they were. For
+          // an enemy at the rim of the cone (offset up to ~85° from
+          // aim on sword's wide swing), that meant the knockback
+          // shoved them sideways instead of away — felt arbitrary and
+          // broke the "I hit it, it flew" intuition. Now: enemy at the
+          // edge of the arc gets pushed AWAY from the impact point.
+          // Magnitude formula (kbScale) untouched.
+          const _kbDx = e.x - hero.x;
+          const _kbDy = e.y - hero.y;
+          const _kbMag = Math.hypot(_kbDx, _kbDy) || 1;
+          const _kbNx = _kbDx / _kbMag;
+          const _kbNy = _kbDy / _kbMag;
+          e.takeDamage(finalDmg, _kbNx * kbScale, _kbNy * kbScale);
           // SYSTEMS PASS — HEAVY BLOW: after a hit with big knockback, mark
           // the enemy so the NEXT hero hit on them forces a crit.
           if (hero.knockbackCrit && kbScale >= 2 && !e.dead) {
