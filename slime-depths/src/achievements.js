@@ -62,7 +62,7 @@ export const ACHIEVEMENTS = {
   untouchable: {
     id: 'untouchable',
     name: 'Untouchable',
-    desc: 'Pull off 10 Perfect Dodges in one run',
+    desc: 'Pull off 10 Perfect Blocks in one run',
     check: (s) => s.perfectDodges >= 10,
   },
   scholar_of_relics: {
@@ -133,10 +133,14 @@ export const ACHIEVEMENTS = {
     check: (s) => s._maxFusions >= 3,
   },
   perfect_dodger: {
+    // ID kept (achievement persists in player save data); display copy
+    // updated for the shield-replaces-dodge architecture. Trigger
+    // condition `s.perfectDodges >= 25` still works because the stats
+    // counter retained its legacy field name.
     id: 'perfect_dodger',
-    name: 'Perfect Dodger',
-    desc: 'Pull off 25 Perfect Dodges in one run',
-    hint: 'the steps you never took',
+    name: 'Perfect Blocker',
+    desc: 'Pull off 25 Perfect Blocks in one run',
+    hint: 'the strikes that never reached you',
     hidden: true,
     check: (s) => s.perfectDodges >= 25,
   },

@@ -26,13 +26,19 @@ function cornerOrnament(position) {
 
 // Keybind rows — left: key glyph, right: action.
 // Kept terse — fits on one line each.
+// Wizard-kit Sprint 2A/2B/3C — controls reflect the new weapon-swap kit:
+//   LMB fires the active weapon's primary (sword swing or blast bolt)
+//   RMB swaps active weapon between sword + blast slots
+//   SPACE raises the directional shield (front cone, perfect-block window)
+//   Q is dash strike when sword equipped, blink when blast equipped
 const KEYBINDS = [
   { key: 'WASD',     action: 'Move' },
   { key: 'MOUSE',    action: 'Aim' },
-  { key: 'LMB',      action: 'Attack' },
-  { key: 'LMB (hold)', action: 'Charged heavy swing (release to strike)' },
-  { key: 'SPACE',    action: 'Dodge roll — time it on an enemy attack for a PERFECT DODGE' },
-  { key: 'Q',        action: 'Dash strike — lunge through enemies for 2x damage (5s cooldown)' },
+  { key: 'LMB',      action: 'Active weapon — sword swing OR blast bolt' },
+  { key: 'LMB (hold)', action: 'Sword: charged heavy swing · Blast: charged bolt (pierce)' },
+  { key: 'RMB',      action: 'Swap active weapon (Sword ↔ Blast) — also 1 / 2 / mouse-wheel' },
+  { key: 'SPACE',    action: 'SHIELD — front-cone block. First 0.10s = PERFECT BLOCK + counter window' },
+  { key: 'Q',        action: 'Sword: Dash Strike (2x dmg, 5s) · Blast: Blink (no dmg, 3.5s)' },
   { key: 'ESC',      action: 'Pause / menu' },
   { key: 'TAP',      action: 'Mobile: tap to attack, hold to charge' },
 ];
@@ -49,8 +55,12 @@ const MECHANICS = [
     body: 'Landing hits in quick succession builds CHAIN. At 5/10/20/40 the damage bonus escalates (+5% to +35%).',
   },
   {
-    title: 'PERFECT DODGE',
-    body: 'Dodging through an enemy attack grants your next hit a guaranteed COUNTER — +50% damage, louder hit.',
+    title: 'PERFECT BLOCK',
+    body: 'Raising the shield as an attack lands grants a guaranteed COUNTER — +50% damage. Hits MUST come from the front 180° cone.',
+  },
+  {
+    title: 'WEAPON SWAP',
+    body: 'RMB / 1 / 2 / mouse-wheel swap between Sword and Blast. Free, instant — relics like Resonance Stone reward swap-rhythm play.',
   },
   {
     title: 'EXECUTE',

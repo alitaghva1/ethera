@@ -20,6 +20,7 @@ import { equipped as equippedRelics, RELIC_DEFS } from '../relics.js';
 import { activeFusions, discoveredCount, totalFusions } from '../fusions.js';
 import { hueRotateForTint } from '../fx.js';
 import { settings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from '../settings';
+import { SLOTS, getSlotCounts, getSlotTier, SLOT_THRESHOLDS } from '../slots.js';
 
 export const pauseEl = document.createElement('div');
 pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
@@ -196,38 +197,77 @@ function populatePauseRelics() {
     }
     row.appendChild(fGroup);
   }
-  // Group by tier for a cleaner build overview
-  const tiers = { legendary: [], rare: [], common: [] };
+  // ── Group relics by ABILITY SLOT (wizard-kit Sprint 3D) ────────
+  // Was grouped by tier (Legendary / Rare / Common) which read as
+  // "rarity hierarchy" — the right axis is build identity. Slot
+  // grouping lets the player see "I have 4 sword, 2 blast, 1 shield"
+  // and immediately understand their build axis. Resonance progress
+  // is shown next to each slot label so the player tracks
+  // ascendance from the pause screen too.
+  //
+  // Multi-slot relics ['sword', 'blast'] are placed in BOTH groups
+  // (the relic shows up twice, once per affected slot — clear visual
+  // of "this picks scales both weapons"). 'any'-tagged relics get
+  // their own UNIVERSAL bucket at the end.
+  const slotGroups = { sword: [], blast: [], shield: [], any: [] };
   for (const r of equippedRelics) {
-    const t = r.tier || 'common';
-    (tiers[t] || tiers.common).push(r);
+    const tags = r.affects && r.affects.length ? r.affects : ['any'];
+    let placed = false;
+    for (const t of tags) {
+      if (slotGroups[t]) {
+        slotGroups[t].push(r);
+        placed = true;
+      }
+    }
+    if (!placed) slotGroups.any.push(r);
   }
-  const label = { legendary: '★ LEGENDARY', rare: '◆ RARE', common: '· COMMON' };
-  const tierColor = { legendary: '#ffc8ff', rare: '#f4d9a0', common: '#b4c8d8' };
+  const slotCounts = getSlotCounts(equippedRelics);
+  // Slot order: sword → blast → shield → any. Empty slots skip.
+  const slotOrder = [
+    { id: 'sword',  meta: SLOTS.sword,  glyph: '⚔', label: 'SWORD' },
+    { id: 'blast',  meta: SLOTS.blast,  glyph: '⚡', label: 'BLAST' },
+    { id: 'shield', meta: SLOTS.shield, glyph: '◈', label: 'SHIELD' },
+    { id: 'any',    meta: { color: '#a0a8b8' }, glyph: '✦', label: 'UNIVERSAL' },
+  ];
   // Title bar
   const header = document.createElement('div');
   header.style.cssText = 'width:100%;font-size:10px;letter-spacing:3px;opacity:0.5;text-align:center;margin-bottom:4px;';
   header.textContent = `CURRENT BUILD · ${equippedRelics.length} RELIC${equippedRelics.length === 1 ? '' : 'S'}`;
   row.appendChild(header);
-  for (const tKey of ['legendary', 'rare', 'common']) {
-    const tierRelics = tiers[tKey];
-    if (!tierRelics || tierRelics.length === 0) continue;
-    // Group container
+  for (const slot of slotOrder) {
+    const slotRelics = slotGroups[slot.id];
+    if (!slotRelics || slotRelics.length === 0) continue;
+    const slotColor = slot.meta.color;
     const group = document.createElement('div');
-    group.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;width:100%;margin-bottom:4px;';
-    // Tier label
+    group.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;width:100%;margin-bottom:8px;';
+    // Slot label with resonance/ascendance progress (sword/blast/shield only)
     const labelEl = document.createElement('div');
-    labelEl.style.cssText = `width:100%;font-size:9px;letter-spacing:3px;color:${tierColor[tKey]};opacity:0.8;text-align:center;`;
-    labelEl.textContent = label[tKey];
+    labelEl.style.cssText = `width:100%;font-size:10px;letter-spacing:3px;color:${slotColor};opacity:0.95;text-align:center;font-weight:bold;`;
+    if (slot.id === 'any') {
+      labelEl.textContent = `${slot.glyph}  ${slot.label}  (${slotRelics.length})`;
+    } else {
+      const count = slotCounts[slot.id] | 0;
+      const tier = getSlotTier(count);
+      const tierGlyph = tier >= 2 ? '★★' : tier >= 1 ? '★' : '';
+      const tierTxt = tier >= 2 ? '· ASCENDANCE' : tier >= 1 ? '· RESONANCE' : '';
+      labelEl.textContent = `${slot.glyph}  ${slot.label}  ${count}/${SLOT_THRESHOLDS.ascendance}  ${tierGlyph}${tierTxt}`;
+    }
     group.appendChild(labelEl);
-    for (const r of tierRelics) {
+    for (const r of slotRelics) {
       const tile = document.createElement('div');
       tile.title = r.desc;
       tile.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(20,14,25,0.85);border:1px solid ${r.tint};padding:6px 8px 6px;font-size:11px;color:${r.tint};width:160px;max-width:160px;`;
+      // Tier badge inline so the player still sees rarity at a glance
+      // even though we're grouping by slot now.
+      const tierBadge = r.tier === 'mythic' ? '★ M'
+                      : r.tier === 'legendary' ? '★ L'
+                      : r.tier === 'rare' ? '◆ R'
+                      : '·';
       tile.innerHTML = `
         <div style="display:flex;align-items:center;gap:6px;width:100%;">
           <img src="assets/icons/${r.icon}.png" style="width:22px;height:22px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15);" />
-          <span style="font-weight:bold;font-size:11px;">${r.name}</span>
+          <span style="font-weight:bold;font-size:11px;flex:1;">${r.name}</span>
+          <span style="font-size:9px;opacity:0.6;">${tierBadge}</span>
         </div>
         <div style="font-size:9px;color:#bbb;line-height:1.3;text-align:center;opacity:0.85;">${r.desc}</div>
       `;

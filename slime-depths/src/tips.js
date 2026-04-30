@@ -24,15 +24,20 @@ function saveTips() {
 // each. One mechanic per tip — don't cram two lessons together.
 export const TIPS = {
   // ----- Controls & core combat (shown on first use) -----
-  first_combat:    { text: 'Move with WASD · Attack with LMB · Aim with mouse' },
+  first_combat:    { text: 'WASD move · LMB primary · Space SHIELD · Q dash · RMB swap weapons' },
   first_starting_hp: { text: 'Three hearts is your starting pool. Sanctuaries mend; relics expand. Be careful early.' },
-  first_dodge:     { text: 'Press SPACE to dodge — time it with an enemy attack for a PERFECT DODGE' },
-  first_dash:      { text: 'Press Q to dash-strike through enemies (2x damage, 5s cooldown)' },
+  // Was first_dodge — kept the ID so save data + tip-seen flags persist.
+  // The mechanic is now SHIELD: Space raises a front-cone block, and the
+  // first 0.10s is a perfect-block that grants a counter window.
+  first_dodge:     { text: 'Press SPACE to raise your SHIELD — face an enemy attack to PERFECT-BLOCK' },
+  first_dash:      { text: 'Press Q to dash-strike through enemies (sword only · 2x damage · 5s CD)' },
   first_charge:    { text: 'Hold LMB for a charged heavy swing — releases a big AoE blow' },
-  first_wand_charge: { text: 'Hold LMB for a charged wand bolt — pierces three enemies and hits harder' },
+  // Now applies to BLAST charged bolts (formerly wand-only). The relic
+  // hero.boltCritOnCharge fires for any blast bolt regardless of slot.
+  first_wand_charge: { text: 'Hold LMB while wielding BLAST for a charged bolt — pierces enemies, crits' },
   // ----- Hit feedback (review #5 onboarding pass) -----
   first_crit:      { text: 'Chain attacks rapidly to build combo — at CHAIN 5+ you deal bonus damage' },
-  first_counter:   { text: 'Perfect dodge → next hit is a COUNTER — guaranteed crit and heavier knockback' },
+  first_counter:   { text: 'Perfect-block → next hit is a COUNTER — guaranteed crit and heavier knockback' },
   first_execute:   { text: 'Enemies below 40% HP take +50% damage — finish the wounded first' },
   first_finisher:  { text: 'Every 3rd swing is a FINISHER — each weapon pays off differently' },
   // ----- Enemies & affixes -----
@@ -41,7 +46,9 @@ export const TIPS = {
   // ----- Build / discovery -----
   first_fusion:    { text: 'FUSION FORGED — two relics combine into a named effect. Find more by stacking compatible picks' },
   first_resonance: { text: 'RESONANCE — owning 3 relics of one theme grants a passive bonus. 5 reaches ASCENDANCE' },
-  first_weaponOnly:{ text: 'Some relics only appear for your weapon class — sword, dagger, hammer, or wand' },
+  // Wand class retired — sword variants (sword/dagger/hammer) and the
+  // BLAST slot are both paths now. Most relics affect both weapons.
+  first_weaponOnly:{ text: 'Some relics scale a specific ability — your SWORD, BLAST, SHIELD, or all three' },
   // ----- Rooms -----
   first_descent_dungeon: { text: 'A door waits north. Walk through to descend. Press M anytime to see the floor map.' },
   first_blood_gate: { text: 'A BLOOD GATE — offer HP to break the seal. The room beyond holds something legendary.' },

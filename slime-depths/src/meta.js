@@ -49,7 +49,10 @@ export const UNLOCKS = {
   swift_boots: {
     id: 'swift_boots',
     name: 'Swift Boots',
-    desc: 'Dodge cooldown reduced by 20%',
+    // Wizard-kit Sprint 1 retroactively rebound this from dodge → shield
+    // (the underlying `dodgeCooldownMul` field is still the legacy name
+    // but now governs shield-raise CD). Player-facing copy follows.
+    desc: 'Shield cooldown reduced by 20%',
     flavor: 'The dead cannot catch what will not stand still.',
     cost: 35,
     tint: '#a0e8c8',
