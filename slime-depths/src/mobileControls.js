@@ -3,15 +3,19 @@
 //
 // Wires the DOM overlay (#mobileControls in index.html) into the existing
 // input model. Multi-touch via pointerId tracking so a player can hold
-// the joystick with their left thumb while tapping the attack/dodge/dash
-// buttons with their right thumb simultaneously.
+// the joystick with their left thumb while tapping the attack/shield/swap/
+// dash buttons with their right thumb simultaneously.
 //
 // Output channels:
 //   - virtualMove.x/y — set by joystick deflection in [-1, 1]
 //   - injectMouseDown/Up — fired by the attack button (hold to charge,
 //     release for swing); same path as desktop LMB.
-//   - injectKeyDown('Space') — fired by dodge button.
+//   - injectKeyDown('Space') — fired by shield button (legacy DOM id
+//     `mobileDodge`; renamed display-side in Sprint 1, kept the id).
 //   - injectKeyDown('KeyQ')  — fired by dash button.
+//   - injectRightMouseDown/Up — fired by swap button (mirrors desktop
+//     RMB → weapon-swap path in hero.js Sprint 2A). Without this, phone
+//     players were locked into whatever weapon the run started in.
 //
 // Only initialized when body.mobile-controls is present (set by
 // mobileMode.js). Calling initMobileControls() is idempotent — safe to
@@ -21,6 +25,7 @@
 import {
   virtualMove,
   injectMouseDown, injectMouseUp,
+  injectRightMouseDown, injectRightMouseUp,
   injectKeyDown, injectKeyUp,
 } from './input.js';
 
@@ -52,6 +57,12 @@ export function initMobileControls() {
   _wireJoystick();
   _wireActionButton('mobileAttack', 'mouse');
   _wireActionButton('mobileDodge',  'key', 'Space');
+  // Wizard-kit Sprint 1 — swap button mirrors desktop RMB. mouse.right
+  // {Down,Pressed} are the canonical swap-input signals consumed by
+  // hero.js (alongside Digit1/Digit2 + wheel.delta). Tap = one swap
+  // (toggles between sword and blast). Hold-to-spam is harmless: the
+  // edge-detected `rightPressed` flag fires once per fresh down.
+  _wireActionButton('mobileSwap',   'rmouse');
   // Dash button doubles as the hamlet "interact" button: injects KeyQ
   // (dash-strike in dungeon, suppressed in hamlet) AND KeyE (interact
   // with NPC / portal in hamlet, no-op in dungeon). Both fire together
@@ -131,7 +142,7 @@ function _wireJoystick() {
 // Each button captures its OWN pointerId so left-thumb joystick and
 // right-thumb taps don't fight each other. press/release pair injects
 // into the existing input model (mouse-down for attack, key-down for
-// dodge/dash) so the rest of the game doesn't need to know about mobile.
+// shield/swap/dash) so the rest of the game doesn't need to know about mobile.
 
 function _wireActionButton(elId, mode, keyCode) {
   const el = document.getElementById(elId);
@@ -141,6 +152,11 @@ function _wireActionButton(elId, mode, keyCode) {
   const fire = (down) => {
     if (mode === 'mouse') {
       if (down) injectMouseDown(); else injectMouseUp();
+    } else if (mode === 'rmouse') {
+      // Right-mouse equivalent — used by the swap button. The down
+      // edge sets rightPressed (consumed once by hero.js), the up
+      // clears rightDown so a re-tap fires fresh.
+      if (down) injectRightMouseDown(); else injectRightMouseUp();
     } else if (mode === 'key') {
       if (down) injectKeyDown(keyCode); else injectKeyUp(keyCode);
     } else if (mode === 'multikey') {

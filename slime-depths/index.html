@@ -681,7 +681,10 @@
   }
   /* Action button column on the right side. Buttons stack vertically;
      attack is largest + bottom-most (where the thumb naturally rests),
-     dodge above it, dash on top. */
+     shield above it, dash on top. Swap sits inboard of attack at the
+     same baseline so the thumb can flick LEFT to swap weapons mid-
+     combat without leaving the action zone — wizard-kit P0: phone
+     players were stuck with whichever weapon the run started in. */
   #mobileRight .mobile-btn {
     position: absolute;
     right: 24px;
@@ -711,6 +714,13 @@
   #mobileAttack { width: 110px; height: 110px; bottom: calc(24px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); font-size: 36px; }
   #mobileDodge  { width: 86px;  height: 86px;  bottom: calc(92px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
   #mobileDash   { width: 86px;  height: 86px;  bottom: calc(180px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
+  /* Swap weapons — sits inboard of mobileAttack at a smaller diameter so
+     the thumb can flick LEFT from attack to swap without regripping. The
+     glyph ⇄ reads as "exchange/swap" across iOS + Android default fonts.
+     Auto-hidden until at least one swap-capable input has been used in
+     play (i.e. the player has both Sword + Blast unlocked) — managed by
+     mobileControls.js; CSS just provides the position + base style. */
+  #mobileSwap   { width: 70px;  height: 70px;  bottom: calc(34px + env(safe-area-inset-bottom)); right: calc(140px + env(safe-area-inset-right)); font-size: 24px; }
   /* When mobile controls are on, push the relic strip + fusions row + theme
      chips up out of the joystick zone. The HUD canvas-side renderer keys
      off body.mobile-controls in hud.js to compute its baseline. The CSS
@@ -761,8 +771,14 @@
     </div>
   </div>
   <div id="mobileRight">
-    <button id="mobileDash" class="mobile-btn" type="button" aria-label="Dash">⇶</button>
-    <button id="mobileDodge" class="mobile-btn" type="button" aria-label="Dodge">⤿</button>
+    <button id="mobileDash" class="mobile-btn" type="button" aria-label="Dash Strike or Blink">⇶</button>
+    <!-- Wizard-kit Sprint 1 renamed dodge → shield. DOM id stays
+         `mobileDodge` because mobileControls.js + the existing CSS rule
+         already key off it; renaming the id would force CSS + JS churn
+         for zero functional gain. The aria-label + glyph are the
+         user-visible parts and DO get updated. -->
+    <button id="mobileDodge" class="mobile-btn" type="button" aria-label="Shield">⛨</button>
+    <button id="mobileSwap" class="mobile-btn" type="button" aria-label="Swap weapon">⇄</button>
     <button id="mobileAttack" class="mobile-btn" type="button" aria-label="Attack">⚔</button>
   </div>
 </div>

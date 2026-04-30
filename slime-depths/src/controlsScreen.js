@@ -40,7 +40,7 @@ const KEYBINDS = [
   { key: 'SPACE',    action: 'SHIELD — front-cone block. First 0.10s = PERFECT BLOCK + counter window' },
   { key: 'Q',        action: 'Sword: Dash Strike (2x dmg, 5s) · Blast: Blink (no dmg, 3.5s)' },
   { key: 'ESC',      action: 'Pause / menu' },
-  { key: 'TAP',      action: 'Mobile: tap to attack, hold to charge' },
+  { key: 'TAP',      action: 'Mobile: ⚔ attack · ⛨ shield · ⇄ swap weapon · ⇶ Q-ability' },
 ];
 
 // Mechanic cards — the non-obvious stuff you can only learn by playing.
