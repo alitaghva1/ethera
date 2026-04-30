@@ -1,0 +1,113 @@
+Running 3000 runs/heuristic with seed=42
+
+# RELIC SIMULATION REPORT - 3000 runs/heuristic, weapon=sword
+
+Total relics in pool: 67 (sword-class only — 61 eligible)
+Per-run pedestal count: 10 (F1:1 + F2:3 + F3:3 + F4:3)
+
+## 1. SUMMARY PER HEURISTIC
+
+| Heuristic       | Avg fusions/run | Runs w/ >=1 fusion | Themes T1+ | Themes T2 | Slots T1+ | Slots T2 |
+|-----------------|-----------------|--------------------|------------|-----------|-----------|----------|
+| random          |            0.72 |              53.3% |      1.36× |     0.13× |     2.44× |    1.24× |
+| greedy_tier     |            0.61 |              46.3% |      1.25× |     0.09× |     2.28× |    1.15× |
+| synergy_fusion  |            1.84 |              88.1% |      1.36× |     0.13× |     2.28× |    1.21× |
+| theme_stacker   |            1.06 |              68.8% |      1.71× |     0.79× |     2.24× |    1.23× |
+| slot_stacker    |            0.80 |              58.0% |      1.37× |     0.14× |     1.84× |    1.52× |
+
+## 2. PICK-RATE WHEN OFFERED (greedy_tier heuristic)
+A relic offered N times, picked K times -> pick rate K/N.
+
+### Bottom 15 (DEAD PICKS — never chosen):
+| Relic | Tier | Pick rate | Offered |
+|-------|------|-----------|---------|
+| bloodrite                 | common     |   0.0% |   1849 |
+| bloodstone                | common     |   0.0% |   1944 |
+| bulwark                   | common     |   0.1% |   1889 |
+| dash_master               | common     |   0.4% |   1941 |
+| executioner               | common     |   1.1% |   1919 |
+| gale_step                 | common     |   1.6% |   1974 |
+| heavy_blow                | common     |   2.8% |   1886 |
+| hourglass_of_respite      | common     |   3.7% |   1915 |
+| iron_greaves              | common     |   4.4% |   1972 |
+| iron_resolve              | common     |   5.7% |   1912 |
+| ironhide                  | common     |   8.4% |   1889 |
+| keen_edge                 | common     |   8.8% |   1842 |
+| long_reach                | common     |  10.3% |   1817 |
+| mirror_shard              | common     |  13.1% |   1858 |
+| nimble_step               | common     |  14.1% |   1898 |
+
+### Top 15 (AUTO-PICKS — always chosen):
+| Relic | Tier | Pick rate | Offered |
+|-------|------|-----------|---------|
+| stride_of_ash             | mythic     | 100.0% |    562 |
+| heart_of_wound            | mythic     |  94.5% |    528 |
+| whisper_veil              | legendary  |  90.9% |    920 |
+| eye_of_ether              | mythic     |  90.1% |    576 |
+| wanderers_cloak           | legendary  |  87.1% |    933 |
+| coin_of_tyrant            | mythic     |  85.1% |    518 |
+| vow_eternal               | legendary  |  84.0% |    864 |
+| twin_fang_pact            | legendary  |  79.7% |    965 |
+| cataclysm                 | mythic     |  79.7% |    526 |
+| stormcaller               | legendary  |  77.3% |    916 |
+| temporal_eye              | legendary  |  76.5% |    972 |
+| phoenix_cloak             | legendary  |  75.7% |    936 |
+| phase_flicker             | legendary  |  70.7% |    987 |
+| vampiric_aura             | rare       |  68.9% |   1448 |
+| gilded_hoard              | legendary  |  66.6% |    989 |
+
+## 3. UNIVERSALLY-WEAK RELICS (low pick-rate across ALL heuristics)
+A relic chosen <30% of the time across EVERY heuristic is structurally weak.
+
+| Relic | Tier | random | greedy | synergy | theme | slot |
+|-------|------|--------|--------|---------|-------|------|
+
+## 4. FUSION-COMPLETION RATE PER HEURISTIC
+% of runs that closed each fusion. <5% = fusion is functionally invisible to that player.
+
+| Fusion | random | greedy | synergy | theme | slot |
+|--------|--------|--------|---------|-------|------|
+| aegis_wall         |   3.8% |   0.0% |   1.6% |   3.2% |   1.4% |
+| avalanche          |   0.0% |   0.0% |   0.0% |   0.0% |   0.0% |
+| blood_moon         |   2.9% |   0.0% |   4.8% |   6.2% |   1.0% |
+| conflagration      |   2.0% |   3.3% |   7.5% |   4.9% |   4.3% |
+| crescendo          |   2.5% |   6.4% |  13.4% |   5.7% |   8.0% |
+| final_verdict      |   1.3% |   0.1% |   0.4% |   1.2% |   0.7% |
+| forked_sky         |   2.9% |   4.5% |  13.2% |   2.5% |   3.8% |
+| kingslayer         |   4.0% |   1.0% |   7.2% |   1.9% |   3.4% |
+| martyr_bloom       |   2.8% |   7.0% |  12.8% |  11.1% |   6.7% |
+| mortal_cadence     |   0.0% |   0.0% |   0.0% |   0.0% |   0.0% |
+| mountains_heart    |   3.7% |   1.0% |   8.1% |   1.9% |   4.7% |
+| obsidian_edge      |   3.5% |   0.7% |   7.3% |   1.7% |   2.8% |
+| phantom_blade      |   2.8% |   4.1% |  10.9% |   4.1% |   6.5% |
+| rebirth_pyre       |   0.4% |   3.0% |   3.7% |   1.9% |   2.8% |
+| ringbearer         |   3.0% |   0.0% |   6.4% |   7.0% |   1.0% |
+| riposte            |   1.6% |   3.7% |   7.0% |   2.3% |   2.0% |
+| shatterpoint       |   3.5% |   1.0% |   5.0% |   6.1% |   3.4% |
+| sparrows_dance     |   4.0% |   0.2% |   6.0% |   4.2% |   0.1% |
+| stalwart           |   3.3% |   0.5% |   3.5% |   0.9% |   1.9% |
+| starweave          |   1.3% |   0.8% |   2.0% |   1.4% |   1.6% |
+| storm_dance        |   3.0% |   4.5% |  12.7% |   6.0% |   1.0% |
+| stormveil          |   1.0% |   6.3% |   6.9% |   1.8% |   2.6% |
+| sworn_reply        |   1.3% |   3.4% |   7.0% |   4.2% |   1.6% |
+| tempest            |   3.9% |   0.3% |   7.6% |   8.7% |   1.7% |
+| tesla_storm        |   2.8% |   2.4% |   9.1% |   1.7% |   4.9% |
+| weaving_step       |   3.9% |   0.9% |   6.4% |   1.5% |   4.5% |
+| wildfire_choir     |   3.1% |   4.9% |  10.2% |   6.6% |   7.0% |
+| witness            |   2.0% |   0.0% |   3.1% |   3.7% |   1.2% |
+
+## 5. THEME ACHIEVEMENT RATE (per heuristic)
+Pct of runs that hit T1 (3-relic resonance) or T2 (5-relic ascendance) per theme.
+
+| Theme  |       | random | greedy | synergy | theme | slot |
+|--------|-------|--------|--------|---------|-------|------|
+| storm  | T1+   |  13.7% |  11.2% |  14.9% |  21.0% |   8.8% |
+| storm  | T2    |   3.1% |   2.0% |   3.6% |  10.6% |   1.2% |
+| flame  | T1+   |  19.1% |  37.4% |  33.4% |  32.0% |  43.9% |
+| flame  | T2    |   0.6% |   3.3% |   2.9% |  10.5% |   4.0% |
+| blood  | T1+   |  46.6% |  28.5% |  36.0% |  53.8% |  46.3% |
+| blood  | T2    |   5.9% |   1.2% |   4.2% |  32.0% |   6.5% |
+| vow    | T1+   |  36.3% |  16.7% |  20.4% |  37.5% |  24.0% |
+| vow    | T2    |   3.1% |   0.4% |   0.7% |  18.6% |   2.4% |
+| shadow | T1+   |  20.1% |  31.6% |  31.5% |  26.4% |  14.5% |
+| shadow | T2    |   0.7% |   2.0% |   1.3% |   7.7% |   0.4% |

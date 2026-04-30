@@ -128,8 +128,34 @@ export const RELIC_THEMES = {
   // tagged VOW above (hoard discipline reads naturally with the set).
 };
 
-// Tier thresholds — 3 → resonance, 5 → ascendance.
+// Default tier thresholds — 3 → resonance, 5 → ascendance.
+// Kept as the canonical "common case" constant so any consumer that
+// just wants the default thresholds (e.g. tooltips for the 4 large
+// themes) can read it directly.
 export const TIER_THRESHOLDS = { resonance: 3, ascendance: 5 };
+
+// Per-theme threshold overrides. Storm has 8 tagged relics — substantially
+// fewer than blood (13), vow (15), shadow (14), flame (12). Under uniform
+// 3/5 thresholds a player needed nearly the entire storm pool to ascend,
+// and the 3000-run simulator (scripts/relic_sim.py) showed storm T2 hit
+// only 3.8% of theme-stacker runs vs 32% for blood — an 8× gap. Lowering
+// storm's ascendance threshold to 4 brings T2 to ~10.6%, parity with
+// flame's 10.5%. Resonance stays uniform at 3 so the "first commitment
+// beat" reads the same across every theme — only the deepest tier
+// scales with pool size.
+export const THEME_THRESHOLDS = {
+  storm:  { resonance: 3, ascendance: 4 },   // smaller pool — see comment above
+  flame:  { resonance: 3, ascendance: 5 },
+  blood:  { resonance: 3, ascendance: 5 },
+  vow:    { resonance: 3, ascendance: 5 },
+  shadow: { resonance: 3, ascendance: 5 },
+};
+
+// Lookup helper — returns the threshold object for a theme. Falls back
+// to TIER_THRESHOLDS for unknown themes (defensive).
+export function getThemeThresholds(theme) {
+  return THEME_THRESHOLDS[theme] || TIER_THRESHOLDS;
+}
 
 // Returns { storm, flame, blood, vow, shadow } count map.
 export function getThemeCounts(equipped) {
@@ -141,10 +167,14 @@ export function getThemeCounts(equipped) {
   return counts;
 }
 
-// Returns 0 (none), 1 (resonance), or 2 (ascendance) for a count.
-export function getThemeTier(count) {
-  if (count >= TIER_THRESHOLDS.ascendance) return 2;
-  if (count >= TIER_THRESHOLDS.resonance) return 1;
+// Returns 0 (none), 1 (resonance), or 2 (ascendance) for a count + theme.
+// `theme` is a required argument now — without it the function can't
+// pick the right threshold table. Callers that operated on count alone
+// (legacy) should be updated to pass the theme they're checking.
+export function getThemeTier(theme, count) {
+  const t = getThemeThresholds(theme);
+  if (count >= t.ascendance) return 2;
+  if (count >= t.resonance) return 1;
   return 0;
 }
 
@@ -152,11 +182,11 @@ export function getThemeTier(count) {
 export function getThemeTiers(equipped) {
   const counts = getThemeCounts(equipped);
   return {
-    storm:  getThemeTier(counts.storm),
-    flame:  getThemeTier(counts.flame),
-    blood:  getThemeTier(counts.blood),
-    vow:    getThemeTier(counts.vow),
-    shadow: getThemeTier(counts.shadow),
+    storm:  getThemeTier('storm',  counts.storm),
+    flame:  getThemeTier('flame',  counts.flame),
+    blood:  getThemeTier('blood',  counts.blood),
+    vow:    getThemeTier('vow',    counts.vow),
+    shadow: getThemeTier('shadow', counts.shadow),
   };
 }
 

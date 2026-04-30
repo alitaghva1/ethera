@@ -7,7 +7,7 @@ import { activeFusions } from './fusions.js';
 import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { drawRelicIcon } from './fx.js';
-import { THEMES, getThemeCounts, getThemeTier, TIER_THRESHOLDS } from './themes.js';
+import { THEMES, getThemeCounts, getThemeTier, getThemeThresholds } from './themes.js';
 import { SLOTS, getSlotCounts, getSlotTier, SLOT_THRESHOLDS } from './slots.js';
 import { wrapText } from './textLayout.js';
 import { isPedestalTooltipActive } from './pedestals.js';
@@ -667,7 +667,10 @@ export function drawHud(ctx, w, h, progress = {}) {
       for (let i = 0; i < visibleThemes.length; i++) {
         const t = visibleThemes[i];
         const count = themeCounts[t.id];
-        const tier = getThemeTier(count);
+        const tier = getThemeTier(t.id, count);
+        // Per-theme thresholds — storm uses 3/4 (smaller pool), others
+        // use 3/5. See themes.js THEME_THRESHOLDS comment for rationale.
+        const thresh = getThemeThresholds(t.id);
         const cx = 18 + i * (chipW + chipGap);
         const cy = themesY;
         // Backdrop dims with tier
@@ -676,13 +679,14 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.fillRect(cx, cy, chipW, chipH);
         // Round-7-audit POLISH — "almost-there" telegraph. One pickup
         // from the next tier (count 2 -> Resonance, count 4 ->
-        // Ascendance) the chip was visually IDENTICAL to count 0 / 3
-        // respectively — players didn't see the strategic moment
-        // building. Now a soft pre-tier pulse halo appears ONE pickup
-        // before each threshold so the player can read "I'm one
-        // FLAME relic from Resonance" at a glance.
-        const almostResonance = tier === 0 && count === TIER_THRESHOLDS.resonance - 1;
-        const almostAscendance = tier === 1 && count === TIER_THRESHOLDS.ascendance - 1;
+        // Ascendance for the default 3/5 themes) the chip was
+        // visually IDENTICAL to count 0 / 3 respectively — players
+        // didn't see the strategic moment building. Now a soft
+        // pre-tier pulse halo appears ONE pickup before each
+        // threshold (theme-aware so storm's 3-from-asc lights up at
+        // count=3 instead of count=4).
+        const almostResonance = tier === 0 && count === thresh.resonance - 1;
+        const almostAscendance = tier === 1 && count === thresh.ascendance - 1;
         // Tier glow halo behind chip — ascendance pulses strongest;
         // resonance medium; "almost-tier" gets a faint preview halo.
         if (tier >= 1 || almostResonance) {
@@ -725,7 +729,9 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.7)';
         ctx.font = 'bold 11px Georgia, serif';
         const glyph = tier >= 2 ? '\u2605\u2605' : tier >= 1 ? '\u2605' : '';
-        const countLabel = `${count}/${TIER_THRESHOLDS.ascendance} ${glyph}`;
+        // Per-theme ascendance cap in the count display \u2014 storm
+        // shows X/4, others show X/5 (matches THEME_THRESHOLDS).
+        const countLabel = `${count}/${thresh.ascendance} ${glyph}`;
         ctx.fillText(countLabel, cx + 5, cy + 12);
         // Hover tooltip — name + blurb + current buff text. Suppressed
         // when a pedestal tooltip would also be on screen so the player
@@ -745,13 +751,13 @@ export function drawHud(ctx, w, h, progress = {}) {
           ctx.font = 'bold 12px Georgia, serif';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
-          ctx.fillText(t.name + '  (' + count + '/' + TIER_THRESHOLDS.ascendance + ')', tipX + 10, tipY + 8);
+          ctx.fillText(t.name + '  (' + count + '/' + thresh.ascendance + ')', tipX + 10, tipY + 8);
           ctx.fillStyle = '#d8e4f0';
           ctx.font = 'italic 10px Georgia, serif';
           ctx.fillText(t.blurb, tipX + 10, tipY + 25);
           ctx.fillStyle = tier >= 1 ? '#fff2e0' : 'rgba(200, 200, 210, 0.6)';
           ctx.font = 'bold 11px Georgia, serif';
-          const tierLabel = tier >= 2 ? '★★ ASCENDANCE active' : tier >= 1 ? '★ RESONANCE active' : `${TIER_THRESHOLDS.resonance - count} more → Resonance`;
+          const tierLabel = tier >= 2 ? '★★ ASCENDANCE active' : tier >= 1 ? '★ RESONANCE active' : `${thresh.resonance - count} more → Resonance`;
           ctx.fillText(tierLabel, tipX + 10, tipY + 54);
         }
       }

@@ -1185,11 +1185,11 @@ let _tooltipSince = 0;
 function computeThemeTiers() {
   const counts = getThemeCounts(equippedRelics);
   return {
-    storm:  getThemeTier(counts.storm),
-    flame:  getThemeTier(counts.flame),
-    blood:  getThemeTier(counts.blood),
-    vow:    getThemeTier(counts.vow),
-    shadow: getThemeTier(counts.shadow),
+    storm:  getThemeTier('storm',  counts.storm),
+    flame:  getThemeTier('flame',  counts.flame),
+    blood:  getThemeTier('blood',  counts.blood),
+    vow:    getThemeTier('vow',    counts.vow),
+    shadow: getThemeTier('shadow', counts.shadow),
   };
 }
 
