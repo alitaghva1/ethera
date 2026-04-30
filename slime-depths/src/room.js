@@ -1063,13 +1063,40 @@ function drawFloorTile(ctx, tx, ty) {
 function drawCrackedWall(ctx, tx, ty) {
   // Base wall
   drawWallTile(ctx, tx, ty);
-  // Overlay crack glyph
   const x = tx * TILE, y = ty * TILE;
   const cx = x + TILE/2, cy = y + TILE/2;
   const hits = roomSecrets.hits;
-  // Subtle gold hint — "there's something here"
   ctx.save();
-  ctx.strokeStyle = 'rgba(255, 220, 120, ' + (0.3 + hits * 0.2) + ')';
+  // Phase 1 audit fix #2 — discoverability. Cracked walls had visual cues
+  // (gold cracks + warm glow) but too subtle to read across a room. Players
+  // were finding secrets by accident or not at all. Strengthened pre-hit
+  // visibility by:
+  //   1. Subtle DARK weathered-stone wash so the tile reads as damaged
+  //      structural fault before any gold hint registers (diegetic — the
+  //      stone is broken, not "X marks the spot").
+  //   2. Vertical dark hairline (the structural seam) — drawn at any hit
+  //      count so the silhouette breaks up regardless of damage state.
+  //   3. Bumped gold crack alpha from 0.3 → 0.50 so the warm hint is
+  //      visible from outside swinging range.
+  // Net effect: the player sees a damaged wall with golden glints in it
+  // before they're close enough to touch — the discovery cue happens at
+  // SIGHT distance, not SWING distance.
+  // Weathered stone wash — dark rectangle subtly ages the tile.
+  ctx.fillStyle = 'rgba(10, 8, 14, 0.22)';
+  ctx.fillRect(x, y, TILE, TILE);
+  // Vertical structural seam — thin dark hairline that reads as a fault
+  // line in the masonry. Drawn on a slight angle for masonry-ness.
+  ctx.strokeStyle = 'rgba(8, 6, 10, 0.55)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 1, y + 4);
+  ctx.lineTo(cx + 2, y + TILE * 0.45);
+  ctx.lineTo(cx - 3, y + TILE - 5);
+  ctx.stroke();
+  // Gold crack — primary "there's something here" hint. Bumped alpha
+  // from 0.3 → 0.5 base so it reads from across the room. Still scales
+  // with hits for the "I'm breaking through" feedback.
+  ctx.strokeStyle = 'rgba(255, 220, 120, ' + (0.50 + hits * 0.18) + ')';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(cx - 10, cy - 8);
@@ -1078,7 +1105,7 @@ function drawCrackedWall(ctx, tx, ty) {
   ctx.lineTo(cx - 2, cy + 16);
   ctx.stroke();
   if (hits >= 1) {
-    ctx.strokeStyle = 'rgba(255, 230, 140, ' + (0.2 + hits * 0.25) + ')';
+    ctx.strokeStyle = 'rgba(255, 230, 140, ' + (0.4 + hits * 0.25) + ')';
     ctx.beginPath();
     ctx.moveTo(cx + 2, cy - 16);
     ctx.lineTo(cx + 8, cy - 2);
@@ -1086,16 +1113,18 @@ function drawCrackedWall(ctx, tx, ty) {
     ctx.stroke();
   }
   if (hits >= 2) {
-    ctx.strokeStyle = 'rgba(255, 240, 160, 0.7)';
+    ctx.strokeStyle = 'rgba(255, 240, 160, 0.85)';
     ctx.beginPath();
     ctx.moveTo(cx - 14, cy + 2);
     ctx.lineTo(cx - 4, cy + 10);
     ctx.lineTo(cx + 6, cy + 14);
     ctx.stroke();
   }
-  // Warm glow hinting at the reward
+  // Warm glow hinting at the reward — slightly punchier base so the
+  // promise reads at sight distance. Still gentle compared to the
+  // weathered-stone wash so it doesn't dominate.
   const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, TILE * 0.9);
-  glow.addColorStop(0, 'rgba(255, 200, 100, ' + (0.15 + hits * 0.08).toFixed(3) + ')');
+  glow.addColorStop(0, 'rgba(255, 200, 100, ' + (0.22 + hits * 0.10).toFixed(3) + ')');
   glow.addColorStop(1, 'rgba(255, 200, 100, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(x - 10, y - 10, TILE + 20, TILE + 20);
