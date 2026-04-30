@@ -709,6 +709,37 @@ function drawPortal(ctx, e, now) {
   }
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
+
+  // Round-7 hamlet visible-growth — post-ascent ember motes drifting
+  // up from the portal pad. Builds on the Round-6 halo color shift
+  // (cold blue → ember red after first ascent): now embers literally
+  // rise from the gate, reinforcing "the wound looks back through
+  // this door". Pure stateless math — 6 motes phased on `now`, no
+  // array maintenance, no per-frame allocation. Skipped pre-ascent;
+  // the cold portal stays calm.
+  if (cleared) {
+    const MOTE_LIFE = 4.0;            // seconds per mote cycle
+    for (let i = 0; i < 6; i++) {
+      // Each mote cycles independently — staggered start phases so
+      // the rise reads as continuous, not synchronized.
+      const phase = ((now * 0.42 + i * (MOTE_LIFE / 6)) % MOTE_LIFE) / MOTE_LIFE;
+      const sway = Math.sin(now * 0.35 + i * 1.7) * 14;
+      const mx = e.x + sway + ((i % 2) * 2 - 1) * 6;
+      // Rises 44px over the cycle, fading as it rises.
+      const my = e.y - 4 - phase * 44;
+      const a = (1 - phase) * 0.55 * pulse;       // halo's pulse keeps the embers in sync
+      if (a < 0.04) continue;
+      const sz = 1.6 + (i % 3) * 0.4;
+      // Warm-to-bright gradient through the mote's lifetime: hot
+      // orange at spawn, cooling to cream as it rises (matches real
+      // ember physics — bright at the source, paler at the top).
+      const r = 255;
+      const g = Math.round(140 + phase * 60);
+      const b = Math.round(60 + phase * 50);
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
+      ctx.fillRect(Math.round(mx - sz / 2), Math.round(my - sz / 2), sz, sz);
+    }
+  }
 }
 
 function drawFirepit(ctx, e, now) {
