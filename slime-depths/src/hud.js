@@ -1000,12 +1000,90 @@ export function drawHud(ctx, w, h, progress = {}) {
   }
 
   // ==========================================================================
+  // ACTIVE-MEMORY HUD — Phase 4 polish pass.
+  // The memory system was already a deep run-identity layer (14 unlockable
+  // memories, each a constraint+gift pact that reshapes a run) — but during
+  // play the active memory was completely invisible. Players who declared
+  // "Memory of Stillness" at run start had no on-screen reminder of WHY
+  // their shield was disabled. The chip is small, sits between the floor
+  // panel and ascension panel, and tooltips on hover with the memory's
+  // gift + constraint text.
+  // ==========================================================================
+  drawMemoryHUD(ctx, w, h);
+  // ==========================================================================
   // ASCENSION FEEDBACK HUD — Session A polish pass.
   // Shows the active ascension tier + any rules currently pressing on the run
   // (floor timer, legendary-disabled, memory-disabled, hidden map nodes, etc.)
   // so the player always knows why their run is harder.
   // ==========================================================================
   drawAscensionHUD(ctx, w, h);
+}
+
+// Compact active-memory chip — just beneath the top-right floor/minimap box.
+// Only visible when a memory is selected for this run. Hover tooltip shows
+// the gift + constraint text so the player can re-read their pact mid-run.
+function drawMemoryHUD(ctx, w, _h) {
+  const mem = (typeof window !== 'undefined') ? window.__activeMemory : null;
+  if (!mem) return;
+  // Position: between the floor panel (ends y=74) and the ascension chip
+  // (starts y=110, see drawAscensionHUD). Memory chip sits at y=80, h=24,
+  // ends y=104 with 6px gap before ascension. When ascension is absent,
+  // the chip just floats with the floor panel above.
+  const boxW = 200, boxH = 24;
+  const bx = w - boxW - 14;
+  const by = 14 + 60 + 6;             // 80px from top
+  const tint = mem.tint || '#c9a86a';
+  // Plate
+  ctx.fillStyle = 'rgba(14, 8, 16, 0.82)';
+  ctx.fillRect(bx, by, boxW, boxH);
+  ctx.strokeStyle = tint + '88';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
+  // Left ornamental diamond — same visual language as the ascension chip
+  // so the two stack as siblings.
+  ctx.fillStyle = tint;
+  ctx.save();
+  ctx.translate(bx + 10, by + boxH / 2);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillRect(-3, -3, 6, 6);
+  ctx.restore();
+  // Memory name — italic to read as a "declared identity" rather than a
+  // stat readout. Shortened "Memory of X" → just "X" so the chip stays
+  // narrow enough to fit the 200px width.
+  const shortName = (mem.name || '').replace(/^Memory of (?:the )?/i, '').toUpperCase();
+  ctx.fillStyle = '#f4d9a0';
+  ctx.font = 'italic bold 11px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(shortName || 'MEMORY', bx + 22, by + boxH / 2);
+  // Hover tooltip — gift + constraint text. Suppressed when a pedestal
+  // tooltip would be on screen (active-decision UI wins).
+  if (mouse.x >= bx && mouse.x <= bx + boxW && mouse.y >= by && mouse.y <= by + boxH
+      && !isPedestalTooltipActive()) {
+    const tipW = 320, tipH = 92;
+    const tipX = Math.max(10, Math.min(w - tipW - 10, bx + boxW / 2 - tipW / 2));
+    const tipY = by + boxH + 6;
+    ctx.fillStyle = 'rgba(14, 20, 30, 0.95)';
+    ctx.fillRect(tipX, tipY, tipW, tipH);
+    ctx.strokeStyle = tint;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
+    ctx.fillStyle = tint;
+    ctx.font = 'bold 12px Georgia, serif';
+    ctx.fillText(mem.name || 'Memory', tipX + 10, tipY + 8);
+    if (mem.flavor) {
+      ctx.fillStyle = '#d8c6f0';
+      ctx.font = 'italic 10px Georgia, serif';
+      ctx.fillText(mem.flavor, tipX + 10, tipY + 26);
+    }
+    ctx.fillStyle = '#a8e0a8';     // green-positive for the gift
+    ctx.font = 'bold 10.5px Georgia, serif';
+    ctx.fillText('+ ' + (mem.gift || '—'), tipX + 10, tipY + 48);
+    ctx.fillStyle = '#e0a8a8';     // red-negative for the constraint
+    ctx.fillText('− ' + (mem.constraint || '—'), tipX + 10, tipY + 66);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
 }
 
 // Render a compact ascension chip just beneath the top-right floor/minimap box.
