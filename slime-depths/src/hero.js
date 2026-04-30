@@ -713,10 +713,18 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (_dashAfterimages[i].age >= AFTERIMAGE_LIFE) _dashAfterimages.splice(i, 1);
     }
   }
-  // INPUT BUFFERING — remember attack presses for 0.15s so snappy combo feel
-  // doesn't require pixel-perfect cooldown timing.
+  // INPUT BUFFERING — remember presses for 0.15s so snappy feel
+  // doesn't require pixel-perfect cooldown timing. Phase 2 audit fix: was
+  // attack-only; players who pressed Space (shield) or Q (dash/blink) at
+  // the tail of an attack lockout had the input silently eaten — felt
+  // like a class of "I pressed it, the game ate it" frustrations. Now
+  // all three combat keys carry the same 150ms grace.
   if (mouse.pressed) hero._attackBuffer = 0.15;
   if (hero._attackBuffer > 0) hero._attackBuffer -= dt;
+  if (keyJustPressed('Space')) hero._shieldBuffer = 0.15;
+  if (hero._shieldBuffer > 0) hero._shieldBuffer -= dt;
+  if (keyJustPressed('KeyQ')) hero._qBuffer = 0.15;
+  if (hero._qBuffer > 0) hero._qBuffer -= dt;
   // Swing chain window decays — drops swingIndex to 0 after 0.8s of no attacks
   if (hero.swingChainTime > 0) {
     hero.swingChainTime -= dt;
@@ -956,7 +964,8 @@ export function updateHero(dt, enemies, mouseWorld) {
     //
     // Both share the Q keybind to keep muscle memory clean. The
     // active-weapon gate routes the input to the right handler.
-    if (room.kind !== 'hamlet' && hero.activeWeapon === 'sword' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
+    if (room.kind !== 'hamlet' && hero.activeWeapon === 'sword' && (keyJustPressed('KeyQ') || hero._qBuffer > 0) && hero.dashStrikeCD <= 0) {
+      hero._qBuffer = 0;     // consume buffered press
       showTip('first_dash');
       hero.dashStrikeCD = 5.0;
       hero.dashStrikeTime = DASH_DUR;
@@ -1017,9 +1026,10 @@ export function updateHero(dt, enemies, mouseWorld) {
     else if (
       room.kind !== 'hamlet' &&
       hero.activeWeapon === 'blast' &&
-      keyJustPressed('KeyQ') &&
+      (keyJustPressed('KeyQ') || hero._qBuffer > 0) &&
       hero.blinkCD <= 0
     ) {
+      hero._qBuffer = 0;     // consume buffered press
       // First-blink onboarding tip — players who learned `Q = dash` with
       // sword equipped need to know it MUTATES into a no-damage teleport
       // when blast is active. Without this, Q-with-blast feels like the
@@ -1128,10 +1138,11 @@ export function updateHero(dt, enemies, mouseWorld) {
     // traded your defensive cast for other gifts).
     // Second Wind still grants a free first-shield-per-room.
     else if (
-      keyJustPressed('Space') &&
+      (keyJustPressed('Space') || hero._shieldBuffer > 0) &&
       !hero.memoryStillness &&
       (hero.dodgeCooldown <= 0 || (hero.secondWind && hero.secondWindAvailable))
     ) {
+      hero._shieldBuffer = 0;     // consume buffered press
       showTip('first_dodge');
       // Consume the Second Wind charge if we used it.
       const usedSecondWind = hero.dodgeCooldown > 0 && hero.secondWind && hero.secondWindAvailable;
