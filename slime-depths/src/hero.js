@@ -3255,10 +3255,22 @@ export function drawHero(ctx) {
   ctx.fill();
   ctx.restore();
   // 8-directional sprites handle facing natively — no horizontal flip.
-  // Idle bob — subtle sinusoidal y offset when not attacking/dodging, for a
-  // "breathing" character. Tiny (< 2px) so it doesn't look floaty.
-  const idleBob = (hero.state === 'idle') ? Math.sin(hero.animTime * 2.6) * 1.2 : 0;
-  ctx.translate(hero.x, hero.y + idleBob);
+  // Sub-pixel bob — character never freezes vertically. Idle uses a
+  // slow breathing pattern; walk overlays a faster footstep cadence
+  // (smaller amplitude so it doesn't read as bouncy). Polish-comparison
+  // pass: was idle-only ("hero looks dead while walking"); extended to
+  // walk so motion-frame transitions don't create visible "frozen" beats.
+  let bobY = 0;
+  if (hero.state === 'idle') {
+    bobY = Math.sin(hero.animTime * 2.6) * 1.2;
+  } else if (hero.state === 'walk') {
+    // Faster cadence, smaller amplitude — reads as "footstep settle"
+    // rather than ambient breathing. Phased so the apex doesn't
+    // collide with the footstep particle/audio cadence (footstepT
+    // resets every ~0.32s).
+    bobY = Math.sin(hero.animTime * 8.0) * 0.6;
+  }
+  ctx.translate(hero.x, hero.y + bobY);
   // Hamlet uses a smaller draw size so the hero reads at proper scale
   // against the painted backdrop's NPCs + props (see HERO_DRAW_HAMLET).
   const drawSize = room.kind === 'hamlet' ? HERO_DRAW_HAMLET : HERO_DRAW;

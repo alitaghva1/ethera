@@ -79,9 +79,18 @@ export function updateGold(dt, hero) {
       const magnetR = 140 + (window.__currentFloorLevel || 1) * 20;
       if (d < magnetR) c.magnetized = true;
       if (c.magnetized) {
-        const pullSpeed = 260 + Math.min(400, (160 - d) * 4);
-        c.x += (dx / (d || 1)) * pullSpeed * dt;
-        c.y += (dy / (d || 1)) * pullSpeed * dt;
+        // Genre-comparison polish: previously constant velocity (target
+        // pullSpeed applied directly, every frame). Now lerped — coin's
+        // CURRENT speed (c._magnetSpeed) ramps toward target, giving a
+        // springy "pulled in by vacuum" feel rather than a uniform slide.
+        // Target speed still scales with proximity (closer = faster) so
+        // last-second sweeps still feel snappy. Lerp factor 0.18 picked
+        // to feel responsive without overshooting (~5 frames to reach
+        // 90% of target at 60fps).
+        const targetSpeed = 260 + Math.min(400, (160 - d) * 4);
+        c._magnetSpeed = (c._magnetSpeed || targetSpeed * 0.5) * 0.82 + targetSpeed * 0.18;
+        c.x += (dx / (d || 1)) * c._magnetSpeed * dt;
+        c.y += (dy / (d || 1)) * c._magnetSpeed * dt;
         // Sparkle trail — a small glint emitted roughly every 60ms while flying
         if (c._trailT > 0.06) {
           c._trailT = 0;

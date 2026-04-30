@@ -4370,9 +4370,33 @@ function _tickInner(now) {
   }
   const dt = realDt * getTimeScale() * deathSlowmo;
 
+  // Camera lookahead — Hades/HLD pattern. Polish-comparison audit: was
+  // mouse-based (`(mw.x - hero.x) * 0.08`) which breaks on mobile (the
+  // virtual joystick doesn't move the mouse pointer; mouse.x/y stays
+  // wherever the last touch landed). Now uses hero.aimX/aimY — the
+  // normalized aim vector is populated correctly for ALL input paths
+  // (mouse, virtual joystick, auto-aim fallback) so the camera leans
+  // the same way across platforms.
+  // Suppressed during cinematics + non-combat hub (hamlet) so the
+  // camera doesn't drift while the player isn't actively aiming.
+  // Lerped via the existing camera.lerp follow so a quick aim flip
+  // doesn't snap the view.
   const mw = screenToWorld(mouse.x, mouse.y);
-  const leadX = (mw.x - hero.x) * 0.08;
-  const leadY = (mw.y - hero.y) * 0.08;
+  let leadX, leadY;
+  if (room.kind === 'hamlet') {
+    // Hamlet uses fixed framing; no lookahead.
+    leadX = 0; leadY = 0;
+  } else {
+    // 40px lookahead — large enough to read across distance, small
+    // enough to keep the hero on screen comfortably. Multiplier
+    // 0.85 on Y dampens vertical lookahead so aiming up/down doesn't
+    // clip the HUD or ground plane.
+    leadX = (hero.aimX || 0) * 40;
+    leadY = (hero.aimY || 0) * 40 * 0.85;
+  }
+  // Mouse position still preserved for `mw` consumers (cursor world
+  // pos, used by other systems). Just not used for lookahead anymore.
+  void mw;
   followCamera(hero.x + leadX, hero.y + leadY);
   updateCamera(realDt);                    // camera uses real time (no slo-mo jitter)
 

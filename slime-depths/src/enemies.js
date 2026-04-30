@@ -2368,8 +2368,24 @@ export function drawEnemy(ctx, e) {
     hitPopScaleY = 1 + popCurve * 0.06;
   }
 
+  // STAGGER ROTATION — subtle wiggle while the enemy is recovering from a
+  // hit. Genre-comparison polish: knockback was positional + brief hit-pop
+  // but no "I got rocked" pose change. Now stagger time drives a tiny
+  // sinusoidal rotation that decays over the stagger window, selling the
+  // "took a hit, finding their feet" beat. Bosses + dead enemies skip
+  // (bosses own their stance; dead enemies are mid-fade).
+  let staggerRot = 0;
+  if (e.stagger && e.stagger > 0 && !e.dead && !e.boss) {
+    // Stagger fades from full to 0 across e.stagger remaining time.
+    // Sin oscillation ~12Hz inside that window — fast enough to read
+    // as "rocked," slow enough not to read as buggy.
+    const staggerStrength = Math.min(1, e.stagger / 0.25);
+    staggerRot = Math.sin(e.animTime * 14) * 0.06 * staggerStrength;
+  }
+
   ctx.save();
   ctx.translate(e.x, e.y + tremble);
+  if (staggerRot !== 0) ctx.rotate(staggerRot);
   ctx.scale(e.facing * hitPopScaleX, hitPopScaleY);
 
   // Death fade — if the enemy is dying, fade alpha + squish vertically
