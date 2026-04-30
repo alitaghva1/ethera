@@ -2889,6 +2889,20 @@ export function spawnExtraFirePool(wx, wy, phase = 0) {
   roomFirePools.push({ x: wx, y: wy, phase });
 }
 
+// Phase 3 audit fix #2 — boss phase-2 escalation helper. Spawns a new
+// active spike at the given tile coords (NOT world coords like the fire-
+// pool helper — spikes are tile-aligned for the existing spikeDamageAt
+// lookup). Marks the underlying tile as 'spike' so the renderer picks
+// it up. Caller is responsible for running this only on a tile that
+// was previously 'floor' (the conditional check below skips wall/door
+// tiles defensively in case the boss's enrage-trigger position drifts).
+export function spawnExtraSpike(tx, ty, phase = 0) {
+  if (!room.tiles || !room.tiles[ty]) return;
+  if (room.tiles[ty][tx] !== 'floor') return;
+  room.tiles[ty][tx] = 'spike';
+  roomSpikes.push({ x: tx, y: ty, phase });
+}
+
 // Check if a world position is on an ACTIVE spike. Returns damage or 0.
 export function spikeDamageAt(wx, wy, gameTime) {
   const tx = Math.floor(wx / TILE);

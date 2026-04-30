@@ -1,7 +1,7 @@
 // Enemies — Tiny RPG sprites (100x100). Types now include melee, ranged, and
 // explosive behaviors with attack telegraphs to make combat readable.
 import { images } from './loader.js';
-import { isWallAtWorld, spawnExtraFirePool } from './room.js';
+import { isWallAtWorld, spawnExtraFirePool, spawnExtraSpike, room } from './room.js';
 import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
 import { synthThud, synthChord } from './synth.js';
@@ -2121,6 +2121,55 @@ export function updateEnemies(dt, _hero) {
         }
         // Roar audio — deeper than the standard hit sound, layered for weight.
         playSfx('hero_hurt', { rate: 0.25, volume: 1.0 });
+        // Phase 3 audit fix #2 — Grudnok arena escalation. Existing
+        // arena was a 4-spike diamond (room.js:692-704); on enrage we
+        // erupt 4 ADDITIONAL spikes at the corners of the larger
+        // diamond, expanding the dangerous orbit area. Player can no
+        // longer kite to the perimeter; the safe corridor narrows
+        // alongside the boss's new heavy-bias rhythm.
+        const cx = (room.w / 2) | 0, cy = (room.h / 2) | 0;
+        const grudnokExtraSpikes = [
+          [cx - 4, cy - 3, 0.0], [cx + 4, cy - 3, 0.5],
+          [cx - 4, cy + 3, 1.0], [cx + 4, cy + 3, 1.5],
+        ];
+        for (const [tx, ty, ph] of grudnokExtraSpikes) {
+          spawnExtraSpike(tx, ty, ph);
+        }
+      }
+      // Phase 3 audit fix #2 — Iron Revenant arena escalation. Adds 4
+      // outer spike pairs along the room perimeter on enrage so dash
+      // attacks have new boundary danger. The boss's existing dash-
+      // windup now carries proximity-spike risk that wasn't present
+      // in phase 1, escalating the arena without changing the boss
+      // moveset.
+      if (e.type === 'bone_captain') {
+        const cx = (room.w / 2) | 0, cy = (room.h / 2) | 0;
+        const captainSpikes = [
+          [cx - 8, cy - 5, 0.0], [cx + 8, cy - 5, 0.6],
+          [cx - 8, cy + 5, 1.2], [cx + 8, cy + 5, 1.8],
+        ];
+        for (const [tx, ty, ph] of captainSpikes) {
+          spawnExtraSpike(tx, ty, ph);
+        }
+        // Audio sting — bone-grind / rumble, distinct from the swing sfx.
+        playSfx('slime_death', { rate: 0.32, volume: 0.85 });
+      }
+      // Broodmother already gets 2 extra fire pools via main.js:4743
+      // (the _arenaEscalated flag in tick) when she first enrages. Add
+      // 2 spike pairs alongside so the arena delta reads as "the floor
+      // is not safe" rather than just "more fire." Spikes erupt at
+      // mid-room offsets so the player has visible "the room got
+      // smaller" cue without the spawn locations colliding with the
+      // existing fire pool positions.
+      if (e.type === 'broodmother') {
+        const cx = (room.w / 2) | 0, cy = (room.h / 2) | 0;
+        const broodSpikes = [
+          [cx - 3, cy - 2, 0.0], [cx + 3, cy - 2, 0.6],
+          [cx - 3, cy + 2, 1.2], [cx + 3, cy + 2, 1.8],
+        ];
+        for (const [tx, ty, ph] of broodSpikes) {
+          spawnExtraSpike(tx, ty, ph);
+        }
       }
       // Phase 1 audit fix #4 — skip the rest of THIS frame's update for the
       // boss after enrage fires. The next-frame tick early-return (main.js
