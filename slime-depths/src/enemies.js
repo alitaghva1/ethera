@@ -93,7 +93,7 @@ export function updateFlames(dt) {
       // Damage hero on contact (cooldown to prevent tick-spam).
       if (!hero._flameCD || hero._flameCD <= 0) {
         const dx = hero.x - f.x, dy = hero.y - f.y;
-        if (dx*dx + dy*dy < (f.radius + 14) * (f.radius + 14) && hero.state !== 'dodge') {
+        if (dx*dx + dy*dy < (f.radius + 14) * (f.radius + 14) && hero.state !== 'shield' && hero.state !== 'dash') {
           damageHero(f.damage, f.x, f.y);
           hero._flameCD = 0.5;
         }
@@ -157,7 +157,7 @@ export function updateEmberRings(dt) {
     const curR = ease * r.maxR;
     const dx = hero.x - r.x, dy = hero.y - r.y;
     const dh = Math.hypot(dx, dy);
-    if (Math.abs(dh - curR) < EMBER_RING_BAND && hero.state !== 'dodge') {
+    if (Math.abs(dh - curR) < EMBER_RING_BAND && hero.state !== 'shield' && hero.state !== 'dash') {
       damageHero(r.damage, r.x, r.y);
       r.hit = true;     // one-shot per ring
     }
@@ -2672,7 +2672,10 @@ export function drawEnemyTelegraphs(ctx) {
 //     a perfect-dodge benefit, so the ring would teach the wrong thing)
 export function drawPerfectDodgeRing(ctx, hero) {
   if (!hero || hero.dead) return;
-  if (hero.state === 'dodge') return;
+  // Wizard-kit: ring is the perfect-block telegraph now. Hide while
+  // already shielding/dashing — same intent (don't re-teach the
+  // mechanic mid-cast).
+  if (hero.state === 'shield' || hero.state === 'dash') return;
   if ((hero.iframes || 0) > 0.05) return;
   let bestRemain = Infinity;
   for (const e of enemies) {

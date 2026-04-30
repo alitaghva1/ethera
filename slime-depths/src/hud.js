@@ -210,15 +210,22 @@ export function drawHud(ctx, w, h, progress = {}) {
   const labelInlineX = pad + pipW + 8;
   ctx.save();
 
-  // DODGE pip
+  // ── SHIELD pip — wizard-kit Sprint 1 ────────────────────────────
+  // Was the DODGE pip; same field names (dodgeCooldown / dodgeCooldownMul)
+  // because relics + save data still use the legacy names. The label
+  // reads SHIELD now, and the pip glows brighter while shielding so the
+  // player gets visible state-read confirmation that the cast is active.
   const dodgeCDMax = 0.6 * (hero.dodgeCooldownMul || 1);
   const dodgeCD = hero.dodgeCooldown || 0;
   const dodgeReady = dodgeCD <= 0;
+  const inShield = hero.state === 'shield';
   const dodgeRowY = abilitiesY;
-  // Backdrop
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(pad, dodgeRowY, pipW, pipH);
-  if (dodgeReady) {
+  if (inShield) {
+    ctx.fillStyle = 'rgba(220, 240, 255, 0.95)';
+    ctx.fillRect(pad + 1, dodgeRowY + 1, pipW - 2, pipH - 2);
+  } else if (dodgeReady) {
     const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 320);
     ctx.fillStyle = `rgba(130, 210, 255, ${glowPulse.toFixed(3)})`;
     ctx.fillRect(pad + 1, dodgeRowY + 1, pipW - 2, pipH - 2);
@@ -230,17 +237,44 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.strokeStyle = 'rgba(160, 200, 230, 0.55)';
   ctx.lineWidth = 1;
   ctx.strokeRect(pad + 0.5, dodgeRowY + 0.5, pipW - 1, pipH - 1);
-  ctx.fillStyle = dodgeReady ? 'rgba(200, 230, 255, 0.9)' : 'rgba(160, 190, 220, 0.5)';
+  ctx.fillStyle = (dodgeReady || inShield) ? 'rgba(200, 230, 255, 0.9)' : 'rgba(160, 190, 220, 0.5)';
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('SPACE \u00b7 DODGE', labelInlineX, dodgeRowY + pipH / 2);
+  ctx.fillText('SPACE · SHIELD', labelInlineX, dodgeRowY + pipH / 2);
 
-  // DASH STRIKE (Q) pip — one row below
+  // ── BLAST pip — wizard-kit Sprint 1 ─────────────────────────────
+  // RMB cooldown indicator. Cyan-violet tint to differentiate from
+  // the cyan SHIELD pip above and the gold DASH STRIKE pip below.
+  const blastCDMax = hero.blastMaxCD || 1.5;
+  const blastCD = hero.blastCD || 0;
+  const blastReady = blastCD <= 0;
+  const blastRowY = dodgeRowY + pipH + pipGap;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+  ctx.fillRect(pad, blastRowY, pipW, pipH);
+  if (blastReady) {
+    const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 360);
+    ctx.fillStyle = `rgba(160, 200, 255, ${glowPulse.toFixed(3)})`;
+    ctx.fillRect(pad + 1, blastRowY + 1, pipW - 2, pipH - 2);
+  } else {
+    const frac = 1 - (blastCD / blastCDMax);
+    ctx.fillStyle = 'rgba(120, 150, 220, 0.85)';
+    ctx.fillRect(pad + 1, blastRowY + 1, (pipW - 2) * frac, pipH - 2);
+  }
+  ctx.strokeStyle = 'rgba(180, 200, 240, 0.55)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(pad + 0.5, blastRowY + 0.5, pipW - 1, pipH - 1);
+  ctx.fillStyle = blastReady ? 'rgba(220, 230, 255, 0.9)' : 'rgba(180, 190, 230, 0.5)';
+  ctx.font = 'italic bold 10px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('RMB · BLAST', labelInlineX, blastRowY + pipH / 2);
+
+  // DASH STRIKE (Q) pip — third row
   const dashCDMax = 5.0;
   const dashCD = hero.dashStrikeCD || 0;
   const dashReady = dashCD <= 0;
-  const dashRowY = dodgeRowY + pipH + pipGap;
+  const dashRowY = blastRowY + pipH + pipGap;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(pad, dashRowY, pipW, pipH);
   if (dashReady) {
@@ -259,7 +293,7 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Q \u00b7 DASH STRIKE', labelInlineX, dashRowY + pipH / 2);
+  ctx.fillText('Q · DASH STRIKE', labelInlineX, dashRowY + pipH / 2);
   ctx.restore();
   // Expose the bottom of the dash row so the gold counter (further down in
   // this draw pass) can anchor beneath it with a proper margin.

@@ -4,7 +4,12 @@ import { keys, mouse, keyJustPressed, virtualMove } from './input.js';
 import { isMobileMode } from './mobileMode.js';
 import { playSfx } from './sfx.js';
 import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches, room } from './room.js';
-import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
+// Wizard-kit Sprint 1 — landingBurst is no longer used. The old dodge
+// fired a landing-dust burst when it ended; the shield is stationary
+// so there's no landing to mark. Sprint 2 may reintroduce a small
+// "shield down" dust on shield-end if the lift transition needs more
+// weight — for now the cone fade-out handles it.
+import { hitSpark, dashTrail, footPuff, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
 import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, grantCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
 import { stats } from './stats';
@@ -45,7 +50,12 @@ const DASH_DUR = 0.10;
 const DASH_SPEED = 1700;
 const AFTERIMAGE_LIFE = 0.20;
 const AFTERIMAGE_INTERVAL = 0.018;     // capture roughly every other frame
-const DODGE_AFTERIMAGE_INTERVAL = 0.05;  // sparser captures — dodge isn't a teleport
+// Wizard-kit Sprint 1 — was used for the cool-blue afterimage trail
+// on the old movement-dodge. Shield is stationary (no afterimages),
+// so this constant has no consumer. Kept as `_DODGE_AFTERIMAGE_INTERVAL`
+// for one release in case Sprint 2 needs it back for sustained-block
+// VFX, then can be deleted.
+const _DODGE_AFTERIMAGE_INTERVAL = 0.05;
 // Captured during dash/dodge advance, drained by drawHero. Each entry:
 // { x, y, dir, age, kind ('dash' | 'dodge') }
 const _dashAfterimages = [];
@@ -77,9 +87,19 @@ const HERO_SPEED = 230;
 // vs the old ~99px under the decel curve). DURATION held at 0.32 to
 // preserve iframes (DODGE_DUR + 0.05 = 0.37s) and the perfect-dodge
 // timing window. Cooldown unchanged.
-const DODGE_SPEED = 580;
-const DODGE_DUR = 0.32;
+// Legacy dodge constants — kept under DODGE_* names because save data,
+// relics, and meta unlocks all reference the legacy `dodgeCooldown` /
+// `dodgeCooldownMul` fields. DODGE_COOLDOWN drives the shield CD now
+// (same 0.6s base; relic multipliers stack the same way). The shield
+// uses its own SHIELD_DUR / SHIELD_PERFECT_WINDOW constants below —
+// 0.32s dodge duration was tuned for movement-with-iframes, the shield
+// is stationary so 0.35s reads as a clearer defensive beat.
+const _DODGE_SPEED = 580;             // unused since shield is stationary
+const _DODGE_DUR = 0.32;              // unused; SHIELD_DUR replaces it
 const DODGE_COOLDOWN = 0.6;
+const SHIELD_DUR = 0.35;
+const SHIELD_PERFECT_WINDOW = 0.10;
+const SHIELD_MOVE_MUL = 0.5;        // hero moves at half speed while shielding
 const IFRAME_AFTER_HIT = 0.55;
 
 export const DODGE_COOLDOWN_BASE = DODGE_COOLDOWN;
@@ -96,14 +116,36 @@ export const hero = {
   attackFacingX: 1, attackFacingY: 0,     // body facing locked at swing trigger; see heroDirection()
   weapon: 'sword',                   // id into WEAPONS; set by main.js run start
   hp: 8, maxHp: 8,
-  state: 'idle',                     // idle | walk | attack | dodge | hurt | dead
+  // Wizard-kit Sprint 1 — state values:
+  //   idle / walk     — ambient
+  //   attack          — sword swing in progress
+  //   shield          — Space-tap defensive stance (stationary, ~0.35s,
+  //                     replaces the old 'dodge' role: same key, same CD,
+  //                     same iframe behavior, but no movement and a front-
+  //                     180° directional check in damageHero. Perfect
+  //                     block triggers in the first 0.10s.)
+  //   dash            — Q dash-strike's iframe + animation window
+  //                     (formerly piggybacked on 'dodge' state; split out
+  //                     so 'shield' and dash visuals don't collide).
+  //   hurt / dead     — knockback + run-end
+  state: 'idle',
   stateTime: 0,
   animTime: 0,
   attackCooldown: 0,
+  // Cooldown timer for the shield raise. The legacy field name is kept
+  // because save snapshots, relic apply() functions (nimble_step,
+  // dash_master, gale_step, second_wind), and meta unlocks (swift_boots)
+  // all read/write `dodgeCooldown` / `dodgeCooldownMul`. Migrating the
+  // names would break save compat for in-flight runs. Semantically these
+  // now control the shield's CD; the variable name is legacy.
   dodgeCooldown: 0,
   iframes: 0,
   attackHitDone: false,
   hitThisSwing: new Set(),
+  // Wizard-kit Sprint 1 — dodgeDirX/Y are unused now (shield is
+  // stationary, no direction vector). Kept on the object to avoid
+  // breaking any code path that still reads them; the dash-strike
+  // path uses dashStrikeDirX/Y instead.
   dodgeDirX: 0, dodgeDirY: 0,
   footstepT: 0,
   // Debuffs from elite affixes (frost/venom). Tick down over time.
@@ -207,6 +249,29 @@ export const hero = {
   galeBurstTime: 0,            // remaining seconds on the post-dodge burst (0 = inactive)
   executeThreshold: 0,         // Executioner: 0.4
   executeMul: 1.5,             // damage multiplier below threshold
+
+  // ── WIZARD KIT (Sprint 1) ────────────────────────────────────────
+  // Hand Blast (RMB): cooldown-gated ranged cast, dummy implementation
+  // for Sprint 1 — single homing-less bolt, fixed damage, fixed CD.
+  // Future sprints scale damage/charges/multi-bolt via the existing
+  // STORM/FLAME relic lines (currently they only buff the wand).
+  blastCD: 0,                  // remaining seconds; 0 = ready
+  blastMaxCD: 1.5,             // base cooldown
+  blastDamage: 14,             // dummy base damage; ~50% of sword tap
+  blastSpeed: 700,             // px/s — slightly faster than wand bolt
+  blastLife: 1.0,              // seconds — caps travel distance
+  blastRadius: 6,              // collision radius
+
+  // Shield (Space): stationary defensive stance. The old dodge state
+  // is gone — Space now raises a front-cone block instead of an
+  // omnidirectional roll. The CD lives on `dodgeCooldown` (legacy
+  // name; see comment near hp/state above).
+  // shieldPerfectWindow: first 0.10s of the raise — any incoming
+  // damage during this window triggers a PERFECT BLOCK (counter-
+  // attack granted, slow-mo, all the existing perfect-dodge relic
+  // hooks fire). After the window, hits in the front 180° still
+  // block (absorbed via iframes) but don't grant counter; hits
+  // from behind/side land normally.
 };
 
 export function resetHero() {
@@ -223,6 +288,7 @@ export function resetHero() {
   hero.hp = hero.maxHp;
   hero.state = 'idle'; hero.stateTime = 0; hero.animTime = 0;
   hero.attackCooldown = 0; hero.dodgeCooldown = 0;
+  hero.blastCD = 0;                                 // wizard-kit: blast cast ready
   hero.iframes = 0;
   hero.hitThisSwing.clear();
   hero.attackHitDone = false;
@@ -425,6 +491,8 @@ export function updateHero(dt, enemies, mouseWorld) {
   hero.animTime += dt;
   if (hero.attackCooldown > 0) hero.attackCooldown -= dt;
   if (hero.dodgeCooldown > 0) hero.dodgeCooldown -= dt;
+  // Wizard-kit Sprint 1 — blast cooldown ticks the same way.
+  if (hero.blastCD > 0) hero.blastCD -= dt;
   if (hero.dashStrikeCD > 0) hero.dashStrikeCD -= dt;
   if (hero.iframes > 0) hero.iframes -= dt;
   if (hero.galeBurstTime > 0) hero.galeBurstTime -= dt;
@@ -461,8 +529,8 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.razorPaceHits = 0;
     }
   }
-  // Charge attack — accumulate while LMB held, but not during attack/dodge/hurt states
-  if (mouse.down && hero.state !== 'attack' && hero.state !== 'dodge' && hero.state !== 'hurt' && hero.attackCooldown <= 0) {
+  // Charge attack — accumulate while LMB held, but not during attack/shield/dash/hurt states
+  if (mouse.down && hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'hurt' && hero.attackCooldown <= 0) {
     hero.chargeTime += dt;
   }
   // Reset charge when LMB released without triggering
@@ -666,7 +734,7 @@ export function updateHero(dt, enemies, mouseWorld) {
     if (hero.stateTime > 0.22) setState('idle');
   }
 
-  if (hero.state !== 'attack' && hero.state !== 'dodge' && hero.state !== 'hurt') {
+  if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'hurt') {
     // Dash Strike (Q) — offensive gap-closer: lunges toward aim + 2x damage to all in path.
     // Suppressed in hamlet (non-combat hub).
     if (room.kind !== 'hamlet' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
@@ -685,7 +753,13 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Aegis Pulse, etc.). Mirrors the dodge guard at line ~649. Without
       // this, dashing into a hit-cleanup window would strip safety frames.
       hero.iframes = Math.max(hero.iframes || 0, 0.35);
-      setState('dodge');                          // reuse dodge state for anim + invuln
+      // Wizard-kit Sprint 1 — dash strike now uses its own 'dash'
+      // state instead of piggybacking on 'dodge' (which became the
+      // SHIELD state). Splitting them out lets the perfect-block
+      // detection in damageHero be unambiguous: only 'shield' state
+      // triggers perfect-block; 'dash' just gets normal iframe
+      // absorption via the iframes path.
+      setState('dash');
       // TELEPORT AUDIO — magical zip + flash thud, replacing the old
       // sword-swing + slime-hit pair that read as a melee attack.
       try { synthSwoosh(1.4, 0.85, 0.08); } catch (_e) {}
@@ -713,10 +787,19 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Subtle screen flash (kept from prior pass — 0.08 alpha is fine)
       triggerScreenFlash('rgba(255, 220, 140, 0.08)', 0.18);
     }
-    // Dodge — blocked entirely by Memory of Stillness (the pact: you traded
-    // your dodge for other gifts; pressing Space is a null input).
-    // SYSTEMS PASS — SECOND WIND relic gates a free first-dodge-per-room,
-    // so the CD check also passes when secondWindAvailable is true.
+    // Shield (Space) — wizard-kit Sprint 1. Replaces the old dodge:
+    // same key, same cooldown timing, same iframe behavior, but the
+    // hero is stationary and a directional front-cone block applies
+    // in damageHero. The first 0.10s of the raise is a PERFECT BLOCK
+    // window that grants the same counter-attack hooks the old
+    // perfect-dodge granted. All existing relic triggers (thunder
+    // step, wanderer cloak, stride of ash, storm/shadow ascendance,
+    // weaving step) fire on shield raise — they were ability-start
+    // hooks, not movement hooks, so the rebind is automatic.
+    //
+    // Memory of Stillness still gates the input (the pact: you
+    // traded your defensive cast for other gifts).
+    // Second Wind still grants a free first-shield-per-room.
     else if (
       keyJustPressed('Space') &&
       !hero.memoryStillness &&
@@ -726,80 +809,105 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Consume the Second Wind charge if we used it.
       const usedSecondWind = hero.dodgeCooldown > 0 && hero.secondWind && hero.secondWindAvailable;
       if (usedSecondWind) hero.secondWindAvailable = false;
-      // Dodge in move direction or aim direction. Same dual-input pattern
-      // as the main movement block above — joystick wins when active.
-      let dx = 0, dy = 0;
-      if (keys.KeyW) dy -= 1;
-      if (keys.KeyS) dy += 1;
-      if (keys.KeyA) dx -= 1;
-      if (keys.KeyD) dx += 1;
-      if (virtualMove.active && (virtualMove.x !== 0 || virtualMove.y !== 0)) {
-        dx = virtualMove.x;
-        dy = virtualMove.y;
-      }
-      if (dx === 0 && dy === 0) { dx = hero.aimX; dy = hero.aimY; }
-      const m = Math.hypot(dx, dy) || 1;
-      hero.dodgeDirX = dx / m;
-      hero.dodgeDirY = dy / m;
+      // Shield CD — uses the legacy `dodgeCooldownMul` field name so
+      // nimble_step / dash_master / swift_boots all keep working.
+      // dodgeDistMul (was dodge distance) now scales the SHIELD
+      // duration — relics that "made you dodge further" instead make
+      // the shield linger longer. Same ×1.35 / ×1.55 multipliers,
+      // same player intuition: "this relic stretches my defensive
+      // ability."
       hero.dodgeCooldown = DODGE_COOLDOWN * hero.dodgeCooldownMul;
-      // Reset afterimage capture cadence + clear stale trail from a prior
-      // dash/dodge so the new dodge starts with a fresh visual budget.
-      _dashAfterimages.length = 0;
-      _dashAfterimageNextT = 0;
-      // Never shorten a longer invuln window already in-flight (post-hurt stagger,
-      // Aegis Pulse, etc.) — take the max so dodging can't strip safety frames.
-      hero.iframes = Math.max(hero.iframes || 0, DODGE_DUR + 0.05);
-      // SYSTEMS PASS — NIMBLE STEP now cleanses slow + poison on dodge start.
+      // Iframes for the shield duration + a short trailing window.
+      // The directional check in damageHero blocks frontal hits via
+      // the iframes path; back/side hits get the front-cone check
+      // (see damageHero perfect-block branch).
+      const shieldDur = SHIELD_DUR * (hero.dodgeDistMul || 1);
+      hero.iframes = Math.max(hero.iframes || 0, shieldDur + 0.05);
+      // NIMBLE STEP cleanses slow + poison on shield raise (same
+      // behavior the old dodge had — relic gate is `dodgeCleanses`).
       if (hero.dodgeCleanses) {
         hero.slowTime = 0;
         hero.poisonTime = 0;
-        // FUSION: Weaving Step — cleansing dodges arm a flag that
-        // grants 0.3s of i-frames on the player's next melee hit. The
-        // "cleansing" here means "any dodge while nimble_step is
-        // owned" since dodgeCleanses is the gate flag. Consumed on
-        // first damage-landed swing in the hero attack hook.
+        // FUSION: Weaving Step — cleansing shield raise arms a flag
+        // that grants 0.3s of i-frames on the player's next melee
+        // hit. Consumed on first damage-landed swing.
         if (hero.fusionWeavingStep) hero.weavingStepReady = true;
       }
-      // CONTENT PASS B1 — MEMORY OF THE HUNGRY BLADE: every dodge costs 1 HP.
-      // Forces aggressive play so the buffed lifesteal has teeth to matter.
-      // Never self-kills: dodges at 1 HP are prevented entirely.
+      // MEMORY OF THE HUNGRY BLADE: shield raise costs 1 HP (was
+      // dodge cost). Same aggressive-play forcing function — the
+      // memory pays for buffed lifesteal with HP-per-defensive-cast.
+      // Never self-kills: skip the cost at 1 HP.
       if (hero.memoryHungryBlade && hero.hp > 1) {
         hero.hp -= 1;
       }
-      setState('dodge');
-      hero._stillT = 0;   // iron_resolve parry window resets on dodge
+      setState('shield');
+      hero._stillT = 0;   // iron_resolve parry window resets on shield raise
+      // Audio — reuse the footstep_1 sample at lower rate as a "raise"
+      // thunk. Sprint 2 will add a dedicated shield-raise synth preset.
       playSfx('footstep_1', { rate: 0.85, volume: 0.8 });
-      // Departure burst — dust kicks in the direction the hero is leaving FROM
-      // (opposite of dodge direction). Grounds the dodge in physical weight.
-      const biome = (typeof window !== 'undefined' && window.__currentBiome) || 'vault';
-      const dustColor = biome === 'crypt' ? '#7a8a9a'
-                      : biome === 'abyss' ? '#6a4050'
-                      : biome === 'inferno' ? '#6a3020'
-                      : '#9a8a6a';
-      landingBurst(hero.x, hero.y + 12, hero.dodgeDirX, hero.dodgeDirY, dustColor);
-      // SYNERGY: Thunder Step — start a lightning trail along dodge path
+      // SYNERGY: Thunder Step — fires a single lightning pulse at the
+      // raise point (no trail since the hero doesn't move). Reads as
+      // "the shield discharges static when raised."
       if (hero.thunderStep) {
         const dmg = 20 * (hero.damageMul || 1);
         beginThunderTrail(dmg);
         addThunderTrailPoint(hero.x, hero.y);
+        // End immediately — no path to trace, just a single discharge point.
+        endThunderTrail();
       }
-      // LEGENDARY: Wanderer's Cloak — 2s doubled attack speed post-dodge
+      // LEGENDARY: Wanderer's Cloak — 2s doubled attack speed post-shield
       wandererOnDodge();
-      // SHADOW T2 ascendance — 0.8s flanking window: every hit during the
-      // window is forced-crit. Stronger than whisper_veil (which is one hit
-      // only) — ascendance should feel transformative.
+      // SHADOW T2 ascendance — 0.8s flanking window after shield raise.
       if ((hero.activeThemes?.shadow || 0) >= 2) {
         const _now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
         hero.themeShadowFlankingUntil = _now + 0.8;
       }
-      // STORM T2 ascendance — releases a small shock pulse at the dodge
-      // start point. Tagged 'shock' so it interacts with elemental resists.
-      // Smaller radius/damage than spells; intended as an opportunistic
-      // side-effect of mobility, not a primary DPS source.
+      // STORM T2 ascendance — small shock pulse at the shield raise
+      // point. Reads as "the static collapses outward when the shield
+      // forms." Sprint 2 may relocate this to perfect-block to make
+      // it feel earned rather than spammable.
       if ((hero.activeThemes?.storm || 0) >= 2) {
         const dmg = 14 * (hero.damageMul || 1);
         spawnExplosion(hero.x, hero.y - 6, 56, dmg, 'shock');
       }
+    }
+    // ── HAND BLAST (RMB) — wizard-kit Sprint 1 ────────────────────
+    // Independent of action-state. Fires a single bolt toward aim,
+    // ~50% of sword tap damage, 1.5s base CD. Suppressed in hamlet
+    // and during charge-attack (LMB held) so the player can't
+    // accidentally cast a blast while building up a charged swing
+    // — a concrete "feel" issue if both fire simultaneously. Does
+    // NOT consume an action slot: shield can be up while RMB fires
+    // (defensive cast doesn't lock out offensive cast).
+    if (
+      room.kind !== 'hamlet' &&
+      mouse.rightPressed &&
+      hero.blastCD <= 0 &&
+      hero.state !== 'hurt' &&
+      hero.state !== 'dead'
+    ) {
+      hero.blastCD = hero.blastMaxCD;
+      const m = Math.hypot(hero.aimX, hero.aimY) || 1;
+      const dx = hero.aimX / m, dy = hero.aimY / m;
+      // Spawn the blast bolt — re-uses spawnHeroBolt so projectile
+      // collision, friendly-fire flag, and on-hit relic hooks all
+      // work without rewriting that pipeline. opts.color tints it
+      // electric-cyan so it reads as a cast, not a wand bolt.
+      spawnHeroBolt(
+        hero.x,
+        hero.y - 6,
+        dx,
+        dy,
+        hero.blastDamage * (hero.damageMul || 1),
+        hero.blastSpeed,
+        hero.blastLife,
+        { color: '#a0e8ff', pierce: 0 }
+      );
+      // Brief audio + light shake — "cast" feel. Ping pitch matches
+      // the wand tap-fire (~520Hz). Sprint 2 will swap to a
+      // dedicated synth preset.
+      try { synthPing(620, 0.65, 0.18); } catch (_e) {}
+      shakeCamera(2, 0.05);
     }
     // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release.
     // SUPPRESSED IN HAMLET — the canvas hamlet is a non-combat hub; clicks
@@ -1057,12 +1165,23 @@ export function updateHero(dt, enemies, mouseWorld) {
         // moves at +30% speed. Set on dodge end (DODGE_DUR boundary
         // above), ticked down further down in the per-frame block.
         const galeMul = hero.galeBurstTime > 0 ? 1.30 : 1;
-        const spd = HERO_SPEED * hero.speedMul * slowMul * attackSlowMul * galeMul;
+        // Wizard-kit Sprint 1 — half-speed shield-walk. The hero
+        // isn't rooted (rooting felt punishing in playtest reasoning)
+        // but movement is committed: you trade speed for a directional
+        // block. The shield arc still tracks live aim, so swiveling
+        // to redirect protection is free; positional repositioning
+        // costs the move-speed penalty.
+        const shieldSlowMul = hero.state === 'shield' ? SHIELD_MOVE_MUL : 1;
+        const spd = HERO_SPEED * hero.speedMul * slowMul * attackSlowMul * galeMul * shieldSlowMul;
         moveAxis('x', dx * spd * dt);
         moveAxis('y', dy * spd * dt);
         // Don't downgrade state to 'walk' if we're mid-attack — body
         // sprite + animation should keep the attack frames + locked dir.
-        if (hero.state !== 'attack') setState('walk');
+        // Wizard-kit Sprint 1 — also preserve 'shield' and 'dash'
+        // states. Shield-walk is movement-DURING-shield (state stays
+        // 'shield' so the cone keeps drawing + iframes keep applying);
+        // dash is teleport motion driven by its own block above.
+        if (hero.state !== 'attack' && hero.state !== 'shield' && hero.state !== 'dash') setState('walk');
         // SYSTEMS PASS — IRON GREAVES: track continuous movement time.
         // Reset on any non-walk transition (attack/dodge/idle below).
         hero._moveTime = (hero._moveTime || 0) + dt;
@@ -1082,7 +1201,11 @@ export function updateHero(dt, enemies, mouseWorld) {
           footPuff(hero.x, hero.y + 14, dustColor);
         }
       } else {
-        setState('idle');
+        // Wizard-kit Sprint 1 — only downgrade to idle if NOT in an
+        // active ability state. Shield + dash motion blocks below
+        // own the state-exit timing; if we forced idle here the
+        // shield would lift the moment the player released WASD.
+        if (hero.state !== 'shield' && hero.state !== 'dash') setState('idle');
         // Iron Greaves movement streak resets when the hero stops moving.
         hero._moveTime = 0;
         // Iron Resolve parry — track "stance time" while idle. The parry
@@ -1100,122 +1223,94 @@ export function updateHero(dt, enemies, mouseWorld) {
     }
   }
 
-  // Dodge / Dash Strike motion — shared state, different behavior
-  if (hero.state === 'dodge') {
-    const isDashStrike = hero.dashStrikeTime > 0;
-    if (isDashStrike) {
-      // Constant-speed teleport (no decel). The hero sprite is hidden
-      // by drawHero while dashStrikeTime > 0; afterimages do the visual
-      // work and the bursts at start/end frame the moment.
-      moveAxis('x', hero.dashStrikeDirX * DASH_SPEED * dt);
-      moveAxis('y', hero.dashStrikeDirY * DASH_SPEED * dt);
-      // Capture afterimage at intervals — drawHero renders these as
-      // fading copies of the hero's pose so the player reads "where I
-      // just was" instead of an interpolated body sliding through.
-      _dashAfterimageNextT -= dt;
-      if (_dashAfterimageNextT <= 0) {
-        _dashAfterimageNextT = AFTERIMAGE_INTERVAL;
-        _dashAfterimages.push({
-          x: hero.x,
-          y: hero.y,
-          dir: heroDirection(hero),
-          age: 0,
-          kind: 'dash',     // golden tint, no live hero sprite
-        });
+  // ── DASH STRIKE motion — Q ability, offensive teleport ──────────
+  // Wizard-kit Sprint 1 — split out from the old combined dodge/dash
+  // block. Now uses its own state value 'dash' so the perfect-block
+  // detection on 'shield' is unambiguous.
+  if (hero.state === 'dash') {
+    // Constant-speed teleport (no decel). The hero sprite is hidden
+    // by drawHero while dashStrikeTime > 0; afterimages do the visual
+    // work and the bursts at start/end frame the moment.
+    moveAxis('x', hero.dashStrikeDirX * DASH_SPEED * dt);
+    moveAxis('y', hero.dashStrikeDirY * DASH_SPEED * dt);
+    // Capture afterimage at intervals — drawHero renders these as
+    // fading copies of the hero's pose so the player reads "where I
+    // just was" instead of an interpolated body sliding through.
+    _dashAfterimageNextT -= dt;
+    if (_dashAfterimageNextT <= 0) {
+      _dashAfterimageNextT = AFTERIMAGE_INTERVAL;
+      _dashAfterimages.push({
+        x: hero.x,
+        y: hero.y,
+        dir: heroDirection(hero),
+        age: 0,
+        kind: 'dash',     // golden tint, no live hero sprite
+      });
+    }
+    // Golden trail still runs for extra streak feel (the dashTrail
+    // particles render under the afterimages so they read as motion
+    // exhaust, not the body).
+    dashTrail(hero.x, hero.y, '#ffd27a');
+    // Hit all enemies along the dash path
+    const w = weaponDef();
+    const reach = 42;
+    const dmg = w.damage * hero.damageMul * 2.0;
+    for (const e of enemies) {
+      if (e.dead || hero.dashStrikeHit.has(e)) continue;
+      const dx = e.x - hero.x, dy = e.y - hero.y;
+      if (dx * dx + dy * dy < (reach + e.radius) * (reach + e.radius)) {
+        hero.dashStrikeHit.add(e);
+        e.takeDamage(dmg, hero.dashStrikeDirX, hero.dashStrikeDirY);
+        hitSpark(e.x, e.y - 18, -hero.dashStrikeDirX, -hero.dashStrikeDirY, '#ffeb99');
+        spawnDamageNumber(e.x, e.y - 36, dmg, { crit: true, dir: { x: hero.dashStrikeDirX, y: hero.dashStrikeDirY }, elementTag: e._lastElementTag });
+        triggerHitStop(0.05);
+        registerComboHit();
       }
-      // Golden trail still runs for extra streak feel (the dashTrail
-      // particles render under the afterimages so they read as motion
-      // exhaust, not the body).
-      dashTrail(hero.x, hero.y, '#ffd27a');
-      // Hit all enemies along the dash path
-      const w = weaponDef();
-      const reach = 42;
-      const dmg = w.damage * hero.damageMul * 2.0;
-      for (const e of enemies) {
-        if (e.dead || hero.dashStrikeHit.has(e)) continue;
-        const dx = e.x - hero.x, dy = e.y - hero.y;
-        if (dx * dx + dy * dy < (reach + e.radius) * (reach + e.radius)) {
-          hero.dashStrikeHit.add(e);
-          e.takeDamage(dmg, hero.dashStrikeDirX, hero.dashStrikeDirY);
-          hitSpark(e.x, e.y - 18, -hero.dashStrikeDirX, -hero.dashStrikeDirY, '#ffeb99');
-          spawnDamageNumber(e.x, e.y - 36, dmg, { crit: true, dir: { x: hero.dashStrikeDirX, y: hero.dashStrikeDirY }, elementTag: e._lastElementTag });
-          triggerHitStop(0.05);
-          registerComboHit();
-        }
+    }
+    hero.dashStrikeTime -= dt;
+    if (hero.dashStrikeTime <= 0) {
+      setState('idle');
+      hero.dashStrikeHit.clear();
+      // ARRIVAL POP — bigger sparkle ring + arrival snap audio.
+      // Frames the moment the player "reappears" instead of just
+      // ending the slide on an idle pose.
+      const ax = hero.x, ay = hero.y - 8;
+      for (let i = 0; i < 18; i++) {
+        const ang = (i / 18) * Math.PI * 2;
+        const r = 18 + Math.random() * 10;
+        sparkle(ax + Math.cos(ang) * r, ay + Math.sin(ang) * r * 0.7, '#fff2c8');
       }
-      hero.dashStrikeTime -= dt;
-      if (hero.dashStrikeTime <= 0) {
-        setState('idle');
-        hero.dashStrikeHit.clear();
-        // ARRIVAL POP — bigger sparkle ring + arrival snap audio.
-        // Frames the moment the player "reappears" instead of just
-        // ending the slide on an idle pose.
-        const ax = hero.x, ay = hero.y - 8;
-        for (let i = 0; i < 18; i++) {
-          const ang = (i / 18) * Math.PI * 2;
-          const r = 18 + Math.random() * 10;
-          sparkle(ax + Math.cos(ang) * r, ay + Math.sin(ang) * r * 0.7, '#fff2c8');
-        }
-        try { synthClick(1.2, 0.6); } catch (_e) {}
-      }
-    } else {
-      // Dodge motion: constant DODGE_SPEED (no decel). dodgeDistMul
-      // stays in the calc so Wanderer's Cloak / boots / memories that
-      // scale dodge distance still work.
-      const speed = DODGE_SPEED * hero.dodgeDistMul;
-      moveAxis('x', hero.dodgeDirX * speed * dt);
-      moveAxis('y', hero.dodgeDirY * speed * dt);
-      // Capture cool-blue afterimage ghosts. Sparser interval than the
-      // dash (dodge happens 5-10× per fight; we don't want a beefy
-      // golden trail every Space tap). The cool tint distinguishes
-      // dodge from dash visually so the player reads them as different
-      // abilities at a glance.
-      _dashAfterimageNextT -= dt;
-      if (_dashAfterimageNextT <= 0) {
-        _dashAfterimageNextT = DODGE_AFTERIMAGE_INTERVAL;
-        _dashAfterimages.push({
-          x: hero.x,
-          y: hero.y,
-          dir: heroDirection(hero),
-          age: 0,
-          kind: 'dodge',     // cool blue tint, hero sprite stays at low alpha
-        });
-      }
-      if (Math.random() < 0.6) dashTrail(hero.x, hero.y);
-      // Add a trail point every frame during dodge for Thunder Step
-      if (hero.thunderStep) addThunderTrailPoint(hero.x, hero.y);
-      // STRIDE OF ASH (mythic) — drop a friendly fire pool every ~3
-      // frames along the dodge path. Damage 2 with a 1.4s lifetime; the
-      // hero will already have moved on by the time the pool ticks, so
-      // the pool reads as "you left a path through the wound" rather
-      // than "you stand inside a burn lane". Per-enemy one-tick rule
-      // in updateFlames keeps it from melting bosses solo.
-      if (hero.strideOfAsh) {
-        if (!hero._strideAshT || hero._strideAshT <= 0) {
-          spawnEmberFlame(hero.x, hero.y + 4, { friendly: true, damage: 2, life: 1.4, radius: 26 });
-          hero._strideAshT = 0.05;     // ~3 frames at 60fps -> ~6 pools per dodge at ×1 distance
-        } else {
-          hero._strideAshT -= dt;
-        }
-      }
-      if (hero.stateTime >= DODGE_DUR) {
-        if (hero.thunderStep) endThunderTrail();
-        // Landing burst — dust kicks opposite to the dodge direction, grounding
-        // the landing. Biome-tinted so it matches the floor surface.
-        const biome = (typeof window !== 'undefined' && window.__currentBiome) || 'vault';
-        const dustColor = biome === 'crypt' ? '#7a8a9a'
-                        : biome === 'abyss' ? '#6a4050'
-                        : biome === 'inferno' ? '#6a3020'
-                        : '#9a8a6a';
-        landingBurst(hero.x, hero.y + 12, hero.dodgeDirX, hero.dodgeDirY, dustColor);
-        // GALE STEP — Round-6 retune. On dodge end, kick a 0.4s speed
-        // burst so chained dodges read as flow rather than discrete
-        // teleports. Pure tempo mechanic; sits beside nimble_step's
-        // cleanse and dash_master's cooldown refund. galeBurstTime is
-        // ticked + consumed in the movement section below.
-        if (hero.galeStep) hero.galeBurstTime = 0.4;
-        setState('idle');
-      }
+      try { synthClick(1.2, 0.6); } catch (_e) {}
+    }
+  }
+
+  // ── SHIELD motion — Space ability, stationary defensive cast ────
+  // Wizard-kit Sprint 1 — replaces the old dodge motion block. Hero
+  // is stationary (the regular movement block above runs at half
+  // speed via SHIELD_MOVE_MUL when state==='shield'; this block
+  // handles state-exit + relic ticks). Iframes are already set on
+  // raise; the directional-cone check lives in damageHero.
+  if (hero.state === 'shield') {
+    // STRIDE OF ASH — instead of laying flames along a dodge path,
+    // the shield raise drops one ember pool BENEATH the hero on
+    // entry. We arm _strideAshT on raise (in the trigger block above)
+    // — actually, simpler: drop a single pool here on the FIRST tick
+    // of the shield state, then no more. Reads as "the shield
+    // discharges heat outward when it forms."
+    if (hero.strideOfAsh && hero.stateTime <= 0.02 && !hero._strideAshDropped) {
+      spawnEmberFlame(hero.x, hero.y + 4, { friendly: true, damage: 2, life: 1.4, radius: 30 });
+      hero._strideAshDropped = true;
+    }
+    // Exit at SHIELD_DUR scaled by dodgeDistMul (relic-stretched).
+    const shieldDur = SHIELD_DUR * (hero.dodgeDistMul || 1);
+    if (hero.stateTime >= shieldDur) {
+      hero._strideAshDropped = false;
+      // GALE STEP — post-shield 0.4s speed burst. Same intent as the
+      // old post-dodge burst: chained casts read as flow, not as
+      // discrete commits. galeBurstTime is consumed in the movement
+      // block above.
+      if (hero.galeStep) hero.galeBurstTime = 0.4;
+      setState('idle');
     }
   }
 
@@ -1873,45 +1968,77 @@ export function updateHero(dt, enemies, mouseWorld) {
 // Returns: 'hit' | 'absorbed' | 'perfect' — so callers can apply affix effects only on real hits
 export function damageHero(amount, fromX, fromY) {
   if (hero.state === 'dead') return 'absorbed';
-  // Perfect dodge: only fires on a TRUE dodge (Space input), not on
-  // dash strikes that reuse the 'dodge' state for animation + iframes.
-  // The dashStrikeTime guard distinguishes them — without it, every
-  // hostile projectile that hit during a dash strike silently triggered
-  // perfect-dodge bonuses (counter crit, whisper veil window, dash
-  // master CD refund, oathshield boost, etc.). Dash strike has its
-  // own iframes for safety; the damage gets absorbed lower in the
-  // function via the iframes check.
-  if (hero.state === 'dodge' && hero.dashStrikeTime <= 0) {
-    // FLICKER STEP (dagger-only) — doubles the perfect-dodge counter
-    // window. Counter-attack stays viable for 4.0s instead of 2.0s.
-    const counterWindowMul = (hero.flickerStep && hero.weapon === 'dagger') ? 2 : 1;
-    triggerPerfectDodge(counterWindowMul);
-    stats.perfectDodges++;
-    // Audio cue — was previously silent (audio review P0). The skill-
-    // reward beat had unmissable visual feedback (slow-mo, chrom-aberr,
-    // bright text) but headphones were quiet. High-pitched ping cuts
-    // through any combat audio + sells the "you nailed it" moment.
-    try { synthPing(1980, 0.6, 0.22); } catch (_e) {}
-    // SYSTEMS PASS — DASH MASTER: perfect dodges refund the dodge cooldown,
-    // letting expert play chain perfect-dodges indefinitely. Pairs great
-    // with counterstrike (explosion every counter-hit).
-    if (hero.perfectDodgeRefund) hero.dodgeCooldown = 0;
-    // TEMPORAL EYE — brief slow-motion on perfect dodge. Uses the
-    // hit-stop pipeline already wired in fx.js (drives getTimeScale()).
-    if (hero.temporalEye) { triggerHitStop(hero.temporalSlowDuration || 0.35); }
-    // Chromatic aberration accent on perfect dodge — subtle 0.18 strength.
-    // Makes the reward beat for frame-tight play visibly distinct.
-    if (window.__triggerChromAberr) window.__triggerChromAberr(0.35, 0.18);
-    // WHISPER VEIL — open a post-dodge window where the next hit is a crit.
-    if (hero.whisperVeil) {
-      hero.whisperVeilUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + hero.whisperVeilWindow : 0;
-      hero.whisperVeilNextCrit = true;
+  // ── PERFECT BLOCK — wizard-kit Sprint 1 ─────────────────────────
+  // Renamed from "perfect dodge" with the same downstream hooks:
+  // counter-attack window, slow-mo, chrom-aberr, whisper veil,
+  // oathshield, dash-master CD refund. Triggers when:
+  //   1. hero.state === 'shield' (the Space-tap defensive cast)
+  //   2. shield is in its first SHIELD_PERFECT_WINDOW (0.10s) of life
+  //   3. the damage source is in the front 180° (the cone the
+  //      shield faces, locked to aim direction).
+  // Hits AFTER the perfect window but during shield, in the front
+  // cone, fall through to the iframes check below (absorbed but no
+  // counter granted). Hits from behind/side bypass the shield
+  // entirely — they take damage normally. This is the directional
+  // depth the design relies on: facing matters, panic-mashing Space
+  // doesn't grant omnidirectional immunity.
+  //
+  // Dash strike (state==='dash') gets its own iframes via the
+  // existing iframes check below — it does NOT trigger perfect-block
+  // (the player isn't shielding, just teleporting through).
+  if (hero.state === 'shield') {
+    // Front-cone check first — applies to BOTH perfect window and
+    // post-perfect block. If outside the front 180° the shield does
+    // nothing for this hit.
+    const dxF = fromX - hero.x, dyF = fromY - hero.y;
+    const srcA = Math.atan2(dyF, dxF);
+    const aimA = Math.atan2(hero.aimY, hero.aimX);
+    let diffA = srcA - aimA;
+    while (diffA > Math.PI) diffA -= Math.PI * 2;
+    while (diffA < -Math.PI) diffA += Math.PI * 2;
+    const inFrontCone = Math.abs(diffA) <= Math.PI / 2;   // ±90° = 180° front cone
+    if (inFrontCone) {
+      // Inside the perfect window → grant counter + all the relic hooks.
+      // After the perfect window → fall through to iframes (absorbed
+      // silently, no counter, no whisper-veil etc.). The iframes set
+      // on shield raise are what carries non-perfect blocks.
+      if (hero.stateTime <= SHIELD_PERFECT_WINDOW) {
+        // FLICKER STEP (dagger-only) — doubles the counter window.
+        // Counter-attack stays viable for 4.0s instead of 2.0s.
+        const counterWindowMul = (hero.flickerStep && hero.weapon === 'dagger') ? 2 : 1;
+        triggerPerfectDodge(counterWindowMul);
+        stats.perfectDodges++;
+        // Audio cue — high-pitched ping. Same primitive perfect-dodge
+        // used; sells the "you nailed it" moment over combat audio.
+        try { synthPing(1980, 0.6, 0.22); } catch (_e) {}
+        // DASH MASTER — perfect block refunds the shield CD so expert
+        // play can chain perfect blocks indefinitely (the relic
+        // gate is `perfectDodgeRefund`, kept name for save compat).
+        if (hero.perfectDodgeRefund) hero.dodgeCooldown = 0;
+        // TEMPORAL EYE — brief slow-motion on perfect block.
+        if (hero.temporalEye) { triggerHitStop(hero.temporalSlowDuration || 0.35); }
+        // Chromatic aberration accent — subtle 0.18 strength.
+        if (window.__triggerChromAberr) window.__triggerChromAberr(0.35, 0.18);
+        // WHISPER VEIL — post-block window where next hit is a crit.
+        if (hero.whisperVeil) {
+          hero.whisperVeilUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + hero.whisperVeilWindow : 0;
+          hero.whisperVeilNextCrit = true;
+        }
+        // OATHSHIELD — next hit within 1s deals +50% damage.
+        if (hero.oathshield) {
+          hero.oathshieldUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + 1.0 : 0;
+        }
+        return 'perfect';
+      }
+      // Past perfect window but still in shield + front cone →
+      // damage is absorbed via iframes (set on shield raise).
+      // Returns 'absorbed' so affix effects (frost slow, venom DOT)
+      // also skip — same as old dodge iframes did.
+      return 'absorbed';
     }
-    // OATHSHIELD — next hit within 1s deals +50% damage.
-    if (hero.oathshield) {
-      hero.oathshieldUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + 1.0 : 0;
-    }
-    return 'perfect';
+    // Outside the front cone — shield does nothing. Fall through to
+    // normal damage processing (bulwark / iron resolve / iframes
+    // / actual HP loss).
   }
   // SYSTEMS PASS — BULWARK: damage from within the frontal arc (aim-facing
   // cone, default ~120°) is halved. Rewards active positioning.
@@ -2106,8 +2233,13 @@ function heroFrameInfo() {
     case 'attack': return { img: images.knight_attack, fps: 18, loop: false };
     case 'hurt':   return { img: images.knight_hurt,   fps: 12, loop: false };
     case 'dead':   return { img: images.knight_death,  fps: 8,  loop: false };
-    case 'walk':
-    case 'dodge':  return { img: images.knight_walk,   fps: 12, loop: true };
+    case 'walk':   return { img: images.knight_walk,   fps: 12, loop: true };
+    // Wizard-kit: 'shield' uses idle pose (hero is mostly rooted —
+    // shield-walk is half-speed, idle anim still reads as right).
+    // 'dash' uses the walk sheet (afterimage trail does most of
+    // the visual; the live sprite is hidden during dash anyway).
+    case 'shield': return { img: images.knight_idle,   fps: 6,  loop: true };
+    case 'dash':   return { img: images.knight_walk,   fps: 12, loop: true };
     default:       return { img: images.knight_idle,   fps: 6,  loop: true };
   }
 }
@@ -2128,9 +2260,9 @@ function vecToDirection(dx, dy) {
 }
 
 // Return an integer 0–7 row index for the current hero state. Uses aim vector
-// during attack/dodge/dashStrike (dashStrike lives under state==='dodge' with
-// dashStrikeTime>0; aim is still the correct source). Uses velocity during
-// walk. Falls back to hero.lastDirection for idle/hurt/dead or ambiguous input.
+// during attack and shield (shield faces aim — the cone the block covers).
+// Uses dashStrikeDirX/Y during dash. Uses velocity during walk. Falls back
+// to hero.lastDirection for idle/hurt/dead or ambiguous input.
 // Side effect: updates hero.lastDirection whenever a valid new direction is
 // derived, so subsequent idle/hurt frames have a sensible facing to resume.
 export function heroDirection(h = hero) {
@@ -2142,21 +2274,16 @@ export function heroDirection(h = hero) {
     // longer rotates the sprite. Falls back to live aim if the locked
     // values aren't set yet (first frame of an attack).
     dir = vecToDirection(h.attackFacingX ?? h.aimX, h.attackFacingY ?? h.aimY);
-  } else if (st === 'dodge') {
-    // Dodge body locks to the LOCKED direction (set at activation),
-    // not live aim. Two flavors:
-    //   - Dash-strike (offensive lunge, Q key): body faces the
-    //     dash direction (dashStrikeDirX/Y, derived from aim at trigger).
-    //   - Regular dodge (Space): body faces the roll direction
-    //     (dodgeDirX/Y, derived from WASD input at trigger, falls
-    //     back to aim if no WASD held).
-    // Reads as 'the hero commits to the maneuver they triggered' —
-    // the body doesn't pirouette to chase the mouse mid-dodge.
-    if (h.dashStrikeTime > 0) {
-      dir = vecToDirection(h.dashStrikeDirX, h.dashStrikeDirY);
-    } else {
-      dir = vecToDirection(h.dodgeDirX, h.dodgeDirY);
-    }
+  } else if (st === 'shield') {
+    // Wizard-kit: shield faces live aim direction. Player can swivel
+    // mid-shield to redirect the front-cone block toward incoming
+    // threats — that's the core of the directional defense design.
+    dir = vecToDirection(h.aimX, h.aimY);
+  } else if (st === 'dash') {
+    // Dash strike body locks to the dash direction (dashStrikeDirX/Y,
+    // derived from aim at trigger). Body commits to the maneuver — no
+    // mid-dash pirouette to chase the mouse.
+    dir = vecToDirection(h.dashStrikeDirX, h.dashStrikeDirY);
     // Final fallback — if both lock vectors are stale (zero), fall
     // back to live aim so we never return null from this branch.
     if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
@@ -2247,6 +2374,53 @@ export function drawHero(ctx) {
   ctx.fillStyle = halo;
   ctx.fillRect(hx - 46, hy - 46, 92, 92);
 
+  // ── SHIELD ARC CONE — wizard-kit Sprint 1 ──────────────────────
+  // Draws a translucent blue 180° arc in front of the hero while the
+  // shield is up. The cone faces aimX/aimY (live aim, not locked at
+  // raise) so the player can swivel to redirect protection. Brighter
+  // during the perfect-block window (first 0.10s) to telegraph the
+  // skill-test moment; fades to a calmer band after. Sprint 2 will
+  // add particles, ripple-on-impact, and a meter for sustained-block
+  // (hold-Space).
+  if (hero.state === 'shield') {
+    const aim = Math.atan2(hero.aimY || 0, hero.aimX || 1);
+    const inPerfect = hero.stateTime <= SHIELD_PERFECT_WINDOW;
+    const lifeT = Math.min(1, hero.stateTime / SHIELD_DUR);
+    const fade = 1 - lifeT * 0.6;                  // shrinks from 1.0 → 0.4 over duration
+    const innerR = 18;
+    const outerR = 30;
+    const arc = Math.PI;                            // 180° front cone
+    ctx.save();
+    // Outer band — softer translucent blue, shows the cone reach
+    ctx.fillStyle = inPerfect
+      ? `rgba(180, 230, 255, ${(0.32 * fade).toFixed(3)})`
+      : `rgba(140, 200, 240, ${(0.20 * fade).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + 4);
+    ctx.arc(hx, hy + 4, outerR, aim - arc / 2, aim + arc / 2);
+    ctx.closePath();
+    ctx.fill();
+    // Inner band — denser cyan core, makes the cone feel "solid"
+    ctx.fillStyle = inPerfect
+      ? `rgba(220, 240, 255, ${(0.45 * fade).toFixed(3)})`
+      : `rgba(180, 220, 250, ${(0.30 * fade).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + 4);
+    ctx.arc(hx, hy + 4, innerR, aim - arc / 2, aim + arc / 2);
+    ctx.closePath();
+    ctx.fill();
+    // Edge stroke — bright cyan rim. Stronger during perfect window
+    // so the player can see the skill-test indicator without UI text.
+    ctx.strokeStyle = inPerfect
+      ? `rgba(255, 255, 255, ${(0.85 * fade).toFixed(3)})`
+      : `rgba(180, 220, 250, ${(0.55 * fade).toFixed(3)})`;
+    ctx.lineWidth = inPerfect ? 2.2 : 1.4;
+    ctx.beginPath();
+    ctx.arc(hx, hy + 4, outerR, aim - arc / 2, aim + arc / 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // Charge-up ring — fills around hero while LMB is held, locks golden once armed
   if (hero.chargeTime > 0.08 && !hero.chargeReleased) {
     const t = Math.min(1, hero.chargeTime / 0.35);
@@ -2315,13 +2489,18 @@ export function drawHero(ctx) {
   // still reads the hero's rough position. Skipping the rim pass too
   // since rim-on-translucent-body looks broken.
   let dodgeAlpha = 1;
-  if (hero.state === 'dodge') {
+  // Wizard-kit: 'dash' state is the only one that hides the live sprite
+  // (afterimage trail does the visual work). 'shield' state KEEPS the
+  // sprite at full alpha — the player needs to see the hero clearly to
+  // aim the front-cone block. Sprint 2 adds the shield arc cone visual
+  // in front; until then the hero just stands at full alpha.
+  if (hero.state === 'dash') {
     dodgeAlpha = 0.35;
   }
   // Rim light pass — draw sprite offset in 4 directions with a warm tint to create
   // an outline. Makes hero pop off the floor, AAA-style silhouette polish.
-  // Skip during i-frame flicker, dodge state, or death.
-  if (!flicker && hero.state !== 'dead' && hero.state !== 'dodge') {
+  // Skip during i-frame flicker, dash teleport, or death.
+  if (!flicker && hero.state !== 'dead' && hero.state !== 'dash') {
     const rimFilter = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(-10deg) saturate(800%) brightness(1.6)';
     ctx.save();
     ctx.globalAlpha = 0.55;

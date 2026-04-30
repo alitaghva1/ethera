@@ -2,8 +2,14 @@
 // The `mouse` export name is kept for backward compatibility with every
 // consumer that reads it, but the implementation is pointer-event based
 // so the game works on phones and tablets too.
+//
+// Wizard-kit Sprint 1 — added `mouse.right{Down,Pressed}` to track RMB
+// for the new Hand Blast cast. Mobile binds blast to a dedicated button
+// in the virtual controls overlay; desktop uses RMB. Existing LMB
+// (mouse.down/pressed) is unchanged so all attack/charge code paths
+// keep working.
 export const keys = {};
-export const mouse = { x: 0, y: 0, down: false, pressed: false };
+export const mouse = { x: 0, y: 0, down: false, pressed: false, rightDown: false, rightPressed: false };
 const justPressed = new Set();
 
 // ─── VIRTUAL INPUT (mobile controls) ────────────────────────────────────────
@@ -37,6 +43,16 @@ export function injectMouseDown() {
 export function injectMouseUp() {
   mouse.down = false;
 }
+// Wizard-kit — RMB injection for the mobile blast button. Same
+// edge-detection pattern as injectMouseDown: rightPressed fires once
+// per fresh press, rightDown stays true while the button is held.
+export function injectRightMouseDown() {
+  if (!mouse.rightDown) mouse.rightPressed = true;
+  mouse.rightDown = true;
+}
+export function injectRightMouseUp() {
+  mouse.rightDown = false;
+}
 
 export function initInput(canvas) {
   window.addEventListener('keydown', (e) => {
@@ -66,22 +82,46 @@ export function initInput(canvas) {
   canvas.addEventListener('pointermove', updatePointerPosition);
   canvas.addEventListener('pointerdown', (e) => {
     if (!e.isPrimary) return;                             // ignore secondary touches
-    if (e.pointerType === 'mouse' && e.button !== 0) return; // LMB only for mouse
     updatePointerPosition(e);
-    mouse.down = true;
-    mouse.pressed = true;
+    if (e.pointerType === 'mouse') {
+      // Mouse: LMB (button 0) → mouse.down (attack/charge); RMB
+      // (button 2) → mouse.rightDown (blast cast). Other buttons
+      // (middle, side) are ignored.
+      if (e.button === 0) {
+        mouse.down = true;
+        mouse.pressed = true;
+      } else if (e.button === 2) {
+        mouse.rightDown = true;
+        mouse.rightPressed = true;
+      } else {
+        return;
+      }
+    } else {
+      // Touch / pen: single-finger contact maps to LMB. Two-finger
+      // and stylus side-button gestures aren't surfaced here; blast
+      // on mobile uses the dedicated on-screen button instead.
+      mouse.down = true;
+      mouse.pressed = true;
+    }
     // Keep receiving pointermove even if the finger/cursor leaves the canvas.
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   });
   // Pointer up/cancel listen on window so releases outside the canvas still register.
   const endPress = (e) => {
     if (!e.isPrimary) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    mouse.down = false;
+    if (e.pointerType === 'mouse') {
+      if (e.button === 0) mouse.down = false;
+      else if (e.button === 2) mouse.rightDown = false;
+    } else {
+      mouse.down = false;
+    }
   };
   window.addEventListener('pointerup', endPress);
   window.addEventListener('pointercancel', endPress);
-  // Suppress the iOS long-press context menu on the canvas — it breaks hold-to-charge.
+  // Suppress the iOS long-press context menu AND right-click context
+  // menu on the canvas — the long-press path used to break hold-to-
+  // charge; with the new blast on RMB, suppressing default also
+  // prevents the browser context menu from popping up mid-cast.
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
@@ -89,6 +129,7 @@ export function initInput(canvas) {
 export function endFrameInput() {
   justPressed.clear();
   mouse.pressed = false;
+  mouse.rightPressed = false;
 }
 
 export function keyJustPressed(code) {
