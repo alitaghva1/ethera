@@ -541,6 +541,15 @@ export function resetHero() {
   hero.secondWindAvailable = false;
   hero.ironResolveParry = false;   // conditional parry on face+hold-still
   hero._stillT = 0;
+  // Death-cause attribution — clear between runs so the run-end
+  // narrative beat (composeDefiningMoment in main.js) and the death-
+  // tip system can't read a stale killer from a prior run. Edge case:
+  // a player wins run 1 without taking damage (so _lastHurtBy is null
+  // already) followed by a run 2 zero-hit win — both fine. The leak
+  // only matters if run 2 dies without ever taking damage, which is
+  // rare but possible (timer-based ascension death, curse drain).
+  // Defensive reset in resetHero keeps the field run-local.
+  hero._lastHurtBy = null;
   hero.startingGold = 0;
   hero.relicCount = 0;     // maintained by relics.js for Memory of the Bell
   hero.swingIndex = 0;

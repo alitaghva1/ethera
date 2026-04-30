@@ -3236,7 +3236,16 @@ function resumeRun(snap) {
   // the player's CURRENT selection in case they swapped memories
   // between save and resume — the run continues with the memory it
   // started with.
-  applySelectedMemory({ seenRelicIds }, snap.memoryId);
+  // Bug fix: capture the return value + write to window.__activeMemory
+  // so the run-time HUD chip (drawMemoryHUD in hud.js) renders after
+  // a resume. Previously startRun set this but resumeRun discarded the
+  // return — the memory's mechanical effects survived a save/resume,
+  // but the on-screen reminder of WHICH memory was active vanished
+  // until the player restarted from the menu.
+  const _resumedMemory = applySelectedMemory({ seenRelicIds }, snap.memoryId);
+  if (typeof window !== 'undefined') {
+    window.__activeMemory = _resumedMemory || null;
+  }
   // Relics (apply each one; fusion hooks fire as expected)
   for (const rid of (snap.relicIds || [])) {
     if (RELIC_DEFS[rid]) applyRelic(rid);
