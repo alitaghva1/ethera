@@ -14,6 +14,7 @@ import { deathBurst, sparkle } from './particles.js';
 import { shakeCamera } from './camera.js';
 import { hero } from './hero.js';
 import { TILE, room } from './room.js';
+import { gold } from './gold.js';
 import { synthChord, synthPing, synthThud, synthFanfare } from './synth.js';
 import { isCursed } from './curses.js';
 import { hasCard } from './tarot.js';
@@ -208,6 +209,51 @@ export function spawnAltarOffer(_legacyHpCost, floorLevel = 1, opts = {}) {
   }
 }
 
+// Round-7 Phase 4-lite — CHARON-style in-floor SHOP. Spawn 3 pedestals
+// each priced in GOLD (not HP, not free). Reuses the same pedestal data
+// shape as spawnRelicOffer but flips two key behaviors:
+//
+//   1. p.shop = true   — consumePendingPickup skips the "claim one
+//                        removes the others" rule. Player can buy
+//                        multiple items if they have the gold.
+//   2. p.goldCost = N  — purchase gates on hero's gold balance instead
+//                        of HP (altar) or free (combat reward).
+//
+// Pricing imports SHOP_PRICES from floor.js so the merchant + the
+// floor-generator agree on what the player pays.
+import { SHOP_PRICES } from './floor.js';
+export function spawnShopOffer(floorLevel = 1) {
+  pedestals.length = 0;
+  const offers = rollRelicOffer(3, floorLevel);
+  if (offers.length === 0) return;
+  // 3-column shop layout — slightly wider than the standard offer row
+  // so the price tags don't overlap with adjacent pedestal sparkles.
+  const cols = [5, 10, 15];
+  const row = 5;
+  const placed = [];
+  for (let i = 0; i < offers.length; i++) {
+    const spot = findClearTile(cols[i], row);
+    if (placed.some(p => p.x === spot.x && p.y === spot.y)) {
+      const alt = findClearTile(cols[i] + (i === 0 ? -1 : 1), row);
+      spot.x = alt.x; spot.y = alt.y;
+    }
+    placed.push(spot);
+    const tier = relicTier(offers[i].id);
+    pedestals.push({
+      x: spot.x * TILE + TILE/2,
+      y: spot.y * TILE + TILE/2,
+      relic: offers[i],
+      tier,
+      picked: false,
+      bob: Math.random() * Math.PI * 2,
+      glow: 0,
+      hpCost: 0,
+      shop: true,
+      goldCost: SHOP_PRICES[tier] || SHOP_PRICES.common,
+    });
+  }
+}
+
 // Spawn a SINGLE guaranteed-relic pedestal from a boss's thematic pool.
 // Rolls the first unowned id from the pool; falls back to any unowned in
 // the pool if shuffled pick is already held. Optional mythicPool + chance
@@ -393,10 +439,11 @@ const PEDESTAL_HOVER_R = 36;
 export function getHoveredPedestalIndex() { return _hoveredIndex; }
 
 // E-key handler — call from main.js when the player presses E in a
-// combat/altar/reward/boss room. Returns the picked relic def, or null
-// if nothing was hovered, or 'denied_hp' if the hovered pedestal is an
-// altar the player can't afford. Caller decides what to do with the
-// denial reason (e.g. brief room-label "NOT ENOUGH HP" feedback).
+// combat/altar/reward/boss/shop room. Returns the picked relic def, or
+// null if nothing was hovered, 'denied_hp' if the hovered pedestal is
+// an altar the player can't afford, or 'denied_gold' if the hovered
+// pedestal is a shop item the player can't afford. Caller decides what
+// to do with the denial reason (room-label feedback).
 export function consumePendingPickup() {
   if (_hoveredIndex < 0) return null;
   const p = pedestals[_hoveredIndex];
@@ -405,6 +452,14 @@ export function consumePendingPickup() {
   if (p.hpCost > 0) {
     if (hero.hp <= p.hpCost) return 'denied_hp';
     hero.hp -= p.hpCost;
+  }
+  // Round-7 — Shop pedestals cost gold. Refuse if hero can't afford.
+  // Charged AT confirm time so a player who walks past a shop pedestal
+  // doesn't accidentally lose gold (the same protection the pedestal
+  // E-confirm flow gives for relic claims).
+  if (p.shop && p.goldCost > 0) {
+    if (gold.total < p.goldCost) return 'denied_gold';
+    gold.total -= p.goldCost;
   }
   // Apply FIRST, mark consumed AFTER. If applyRelic throws (corrupt
   // state, missing fusion def), the pedestal remains un-picked so the
@@ -456,7 +511,13 @@ export function consumePendingPickup() {
   // Mark sibling pedestals as picked too — the offer-set is committed
   // on the first claim, mirroring the original "claiming one removes
   // the others" pedestal-group rule.
-  for (const other of pedestals) other.picked = true;
+  //
+  // Round-7 — Shop pedestals OPT OUT of this rule. Player can buy
+  // multiple items if they have the gold, just like Charon's shop in
+  // Hades. Only the just-purchased pedestal flips to picked.
+  if (!p.shop) {
+    for (const other of pedestals) other.picked = true;
+  }
   _hoveredIndex = -1;
   return picked;
 }
@@ -479,14 +540,23 @@ export function drawPedestalPrompt(ctx) {
   const p = pedestals[_hoveredIndex];
   if (!p || p.picked) return;
   const isAltar = p.hpCost > 0;
+  const isShop = !!p.shop;
   const tierTint = p.relic?.tint || (p.tier === 'mythic' ? '#fff2e0'
                                     : p.tier === 'legendary' ? '#ffc8ff'
                                     : p.tier === 'rare' ? '#f4d9a0'
                                     : '#c9a86a');
   const name = (p.relic?.name || 'RELIC').toUpperCase();
-  const label = isAltar
-    ? `E  ·  PAY ${p.hpCost} HP · ${name}`
-    : `E  ·  TAKE ${name}`;
+  // Round-7 — shop pedestals show "E · BUY · N gold · NAME" so the
+  // cost is visible before commit. Color the entire pill green when
+  // affordable, red when not (mirrors the gold-deny pattern).
+  let label;
+  if (isShop) {
+    label = `E  ·  BUY ${p.goldCost}g · ${name}`;
+  } else if (isAltar) {
+    label = `E  ·  PAY ${p.hpCost} HP · ${name}`;
+  } else {
+    label = `E  ·  TAKE ${name}`;
+  }
   const now = performance.now() / 1000;
   const floatOff = Math.sin(now * 2.2) * 3;
   const promptY = p.y - 56 + floatOff;
@@ -503,18 +573,20 @@ export function drawPedestalPrompt(ctx) {
   // Background pill
   ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
   ctx.fillRect(x, y, w, h);
-  // Tier-tinted border — colors echo the pedestal's rarity ring so the
-  // prompt visually keys to what you're picking up.
-  ctx.strokeStyle = tierTint;
+  // Border tint — altar=tier, shop=affordable-state, default=tier.
+  let borderColor = tierTint;
+  let textColor = tierTint;
+  if (isShop) {
+    const canAfford = gold.total >= p.goldCost;
+    borderColor = canAfford ? '#86e3a8' : '#d85a5a';
+    textColor = canAfford ? '#a8f0c4' : '#ff8088';
+  } else if (isAltar) {
+    textColor = '#ff8088';
+  }
+  ctx.strokeStyle = borderColor;
   ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-  // Label text — altars get red text on the HP cost, everything else
-  // uses the tier tint for the name. Two-pass render for color split.
-  if (isAltar) {
-    ctx.fillStyle = '#ff8088';
-  } else {
-    ctx.fillStyle = tierTint;
-  }
+  ctx.fillStyle = textColor;
   ctx.fillText(label, p.x, promptY);
   ctx.restore();
 }
@@ -699,6 +771,29 @@ export function drawPedestals(ctx) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('-' + p.hpCost + ' HP', p.x, labelY + labelH / 2 + 0.5);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    // Round-7 — Shop pedestals show a permanent gold price tag above
+    // the floating icon, tinted by affordability. Always-visible so the
+    // player can scan the room and prioritise BEFORE walking up — the
+    // hover prompt confirms intent, this label is the price list.
+    if (p.shop) {
+      const canAfford = gold.total >= p.goldCost;
+      const labelW = 56;
+      const labelH = 14;
+      const labelY = floatY - 30;
+      ctx.fillStyle = 'rgba(0,0,0,0.78)';
+      ctx.fillRect(p.x - labelW / 2, labelY, labelW, labelH);
+      ctx.strokeStyle = canAfford ? '#86e3a8' : '#d85a5a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - labelW / 2 + 0.5, labelY + 0.5, labelW - 1, labelH - 1);
+      ctx.fillStyle = canAfford ? '#a8f0c4' : '#ff8088';
+      ctx.font = 'bold 11px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.goldCost + 'g', p.x, labelY + labelH / 2 + 0.5);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
     }

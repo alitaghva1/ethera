@@ -66,19 +66,21 @@ const KIND_GLYPHS = {
   combat:    '⚔', elite:     '☠',  event:     '✦',
   sanctuary: '✚', reward:    '✚',  boss:      '♛',
   altar:     '⛧', trove:     '◈',  chestroom: '⊟', challenge: '⚐',
-  miniboss:  '♜', start:     '◇',
+  miniboss:  '♜', start:     '◇',  shop:      '⚖',
 };
 const KIND_LABELS = {
   combat:    'COMBAT',    elite:     'ELITE',     event:     'MYSTERY',
   sanctuary: 'REST',      reward:    'REST',      boss:      'THE BOSS',
   altar:     'ALTAR',     trove:     'TROVE',     chestroom: 'CHEST',
   challenge: 'CHALLENGE', miniboss:  'MINI-BOSS', start:     'START',
+  shop:      'SHOP',
 };
 const KIND_COLORS = {
   combat:    '#c8b894',   elite:     '#e07070',   event:     '#c8a0ff',
   sanctuary: '#86e3a8',   reward:    '#86e3a8',   boss:      '#ff9a55',
   altar:     '#ff6a85',   trove:     '#f4d9a0',   chestroom: '#ffd680',
   challenge: '#ffb265',   miniboss:  '#e07070',   start:     '#c9a86a',
+  shop:      '#86e3a8',   // sanctuary green tint — calm, transactional
 };
 // Round-7 reward-chip palette — second tint per door, used for the
 // reward suffix ("· GOLD ·" etc.). Sits BELOW the kind label so the

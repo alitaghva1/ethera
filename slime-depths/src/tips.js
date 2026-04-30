@@ -45,6 +45,7 @@ export const TIPS = {
   // ----- Rooms -----
   first_descent_dungeon: { text: 'A door waits north. Walk through to descend. Press M anytime to see the floor map.' },
   first_blood_gate: { text: 'A BLOOD GATE — pay HP to break the seal. The room beyond holds something legendary.' },
+  first_shop: { text: 'A SHOP — three relics at gold prices. Buy any, all, or none. The unsold relics stay until you leave.' },
   first_pedestal:  { text: 'Pedestals come in groups — claim one with E (the others vanish). Press R to reroll the offer (gold cost scales with floor).' },
   first_altar:     { text: 'Altar room — relics here cost HP, not gold. The ruin prefers deliberate pacts' },
   first_trove:     { text: 'Trove room — the urns are worth your time. Gold, hearts, and larger coin hide inside' },

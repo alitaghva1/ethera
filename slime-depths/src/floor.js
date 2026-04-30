@@ -593,6 +593,49 @@ export function makeTroveRoom() {
   };
 }
 
+// Round-7 Phase 4-lite — CHARON-style in-floor SHOP room. Mid-run merchant
+// where the player spends gold (existing in-run currency, no new currency
+// authoring needed) on relics. Distinct from the meta shop between floors
+// (essence, persistent across runs); this one is THIS-RUN gold pressure
+// against THIS-RUN reroll cost. Adds the "save for the reroll or buy now?"
+// strategic decision Hades pioneered.
+//
+// Shape: small room, no enemies (cleared on entry), 3 pedestals each
+// priced by tier. Tiers respect floor weights (rollRelicOffer with
+// floorLevel) so a F1 shop sells mostly commons, F4 mostly legendaries.
+// Shop pedestals carry a goldCost field; pedestals.js consumePendingPickup
+// reads it and gates the purchase on hero gold.
+//
+// Pricing — Round-7 economy audit measured F1 typical yield at 50-90g,
+// F2 at 100-150g, F3 at 150-200g, F4 at 200-300g. Shop prices below
+// keep a single common purchase under ~50% of typical floor yield so
+// the player can still afford the next reroll.
+//   common    = 40g  (~50% of F1 yield)
+//   rare      = 90g  (~70% of F2 yield)
+//   legendary = 180g (~80-100% of F3-F4 yield)
+//   mythic    = 320g (rare; F4 only)
+//
+// Crucial design: shop pedestals do NOT trigger the "claim one removes
+// the others" rule — player can buy multiple items if they have the
+// gold. Set p.shop = true so consumePendingPickup skips that loop.
+export const SHOP_PRICES = {
+  common: 40,
+  rare: 90,
+  legendary: 180,
+  mythic: 320,
+};
+export function makeShopRoom() {
+  const size = pickRoomSize('reward');     // re-uses sanctuary size — small + calm
+  return {
+    kind: 'shop',
+    w: size.w, h: size.h,
+    pillarTemplate: 3,
+    spawns: [],
+    doors: { north: true, south: true },
+    cleared: true,            // no enemies, doors stay open from entry
+  };
+}
+
 // CONTENT PASS B2 — MINI-BOSS event variant. A solo elite encounter with
 // no adds; rewards a guaranteed relic pedestal on clear (wiring in main.js
 // via room.slotLabel check). Keeps event rooms from feeling like the same
@@ -639,16 +682,17 @@ function makeMiniBossRoom(level) {
 
 export function makeEventRoom(level, eliteChance) {
   const kind = Math.random();
-  // 15% mini-boss, 22% altar, 13% trove, 30% chestroom, 20% challenge.
-  // Bumped chestroom 20% -> 30% per producer review: with ~1 event slot
-  // per floor (×4 floors = ~4 events per run), 20% meant a player might
-  // not see a chest room in 4-5 runs. 30% gives them a real shot at
-  // hitting one each run + means the gambling mechanic gets practiced.
-  if (kind < 0.15) return makeMiniBossRoom(level);
-  if (kind < 0.37) return makeAltarRoom();
-  if (kind < 0.50) return makeTroveRoom();
-  if (kind < 0.80) return makeTreasureChestRoom(level);
-  return makeChallengeRoom(level, eliteChance);
+  // 12% mini-boss, 18% altar, 12% trove, 25% chestroom, 18% challenge,
+  // 15% shop. Round-7 added the shop slot — 15% per event slot × ~3
+  // events per run = roughly 0.45 expected shop visits per run. A
+  // player who opts for event-heavy paths will see ~1 shop per run;
+  // a perilous-only player may go runs without one.
+  if (kind < 0.12) return makeMiniBossRoom(level);
+  if (kind < 0.30) return makeAltarRoom();
+  if (kind < 0.42) return makeTroveRoom();
+  if (kind < 0.67) return makeTreasureChestRoom(level);
+  if (kind < 0.85) return makeChallengeRoom(level, eliteChance);
+  return makeShopRoom();
 }
 
 // ============================================================================

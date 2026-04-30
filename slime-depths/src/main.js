@@ -69,7 +69,7 @@ import { loadFirstSeen, hasSeen, markSeen, isFirstTime } from './firstSeen.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
 import { startIntro, updateIntro, drawIntro, isIntroActive, skipIntro } from './intro.js';
 import {
-  spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
+  spawnRelicOffer, spawnAltarOffer, spawnShopOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
   setPickupFlashForTest, isPickupFlashActive,
   consumePendingPickup, drawPedestalPrompt,
@@ -4080,6 +4080,17 @@ function loadRoom(idx, entryFrom) {
     spawnAltarOffer(3, currentFloorLevel, altarOpts);
   }
 
+  // Round-7 Phase 4-lite — SHOP rooms spawn 3 priced pedestals on entry.
+  // No enemies; cleared from the start so doors never close. Player can
+  // buy any number of items (or none) and walk through the north door.
+  // first_shop tip fires 1.2s after load — long enough for the room to
+  // settle, short enough that a quick player still reads it before
+  // pressing E.
+  if (data.kind === 'shop') {
+    spawnShopOffer(currentFloorLevel);
+    setTimeout(() => showTip('first_shop'), 1200);
+  }
+
   // Boss room — dramatic intro: hold gameplay for ~2s while showing boss name
   if (data.kind === 'boss') {
     // THE WATCHER — first-time arrival at the final-floor throne is a
@@ -5835,6 +5846,15 @@ function tick(now) {
         // player understands why their press did nothing. Mirrors
         // the reroll "NOT ENOUGH GOLD" pattern.
         roomLabelText = `NOT ENOUGH HP TO PAY THIS ALTAR`;
+        roomLabelColor = '#d85a5a';
+        roomLabelTime = 1.6;
+        synthClick(0.5, 1.0);
+      } else if (result === 'denied_gold') {
+        // Round-7 — Shop pedestal with insufficient gold. Mirrors the
+        // altar deny pattern. The pedestal already shows a red border
+        // on its price tag while affordable would be green, so this
+        // label confirms what the player already saw visually.
+        roomLabelText = `NOT ENOUGH GOLD`;
         roomLabelColor = '#d85a5a';
         roomLabelTime = 1.6;
         synthClick(0.5, 1.0);

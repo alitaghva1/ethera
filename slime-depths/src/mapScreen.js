@@ -46,6 +46,7 @@ const SUBKIND_GLYPHS = {
   chestroom: '⊞', // chest (squared plus)
   challenge: '⚐', // flag
   miniboss:  '♜', // rook
+  shop:      '⚖', // scales — merchant
 };
 const SUBKIND_LABELS = {
   altar:     'ALTAR',
@@ -53,6 +54,7 @@ const SUBKIND_LABELS = {
   chestroom: 'CHEST',
   challenge: 'CHALLENGE',
   miniboss:  'MINI-BOSS',
+  shop:      'SHOP',
 };
 const SUBKIND_COLORS = {
   altar:     '#ff6a85',
@@ -60,6 +62,7 @@ const SUBKIND_COLORS = {
   chestroom: '#ffd680',
   challenge: '#ffb265',
   miniboss:  '#e07070',
+  shop:      '#86e3a8',
 };
 
 // Per-kind accent color — legible against the card's dark gradient.
