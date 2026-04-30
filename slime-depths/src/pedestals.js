@@ -254,6 +254,51 @@ export function spawnShopOffer(floorLevel = 1) {
   }
 }
 
+// Round-7-audit factory — single source of truth for non-spawnRelicOffer
+// pedestal pushes. Five hand-rolled `pedestals.push({...})` sites in
+// main.js had drifted from `spawnRelicOffer`'s shape: three forgot the
+// `tier` field (mythic chest pickups silently downgraded to common-tier
+// sparkle + audio + missing the "Windforce" cinematic), two had
+// `bob: 0` (sync-bobbing visual glitch), one omitted findClearTile
+// (boss-center pedestal could spawn embedded in a pillar).
+//
+// `bonus: true` tags the pedestal as a free drop (Coin of the Tyrant
+// kill-chain, secret-wall reward, echo-defeat, mimic treasure). Bonus
+// pedestals OPT OUT of the "claim one removes the others" sibling-pick
+// rule in consumePendingPickup, so a bonus drop landing in the same
+// room as standard offer pedestals doesn't wipe the offer when picked.
+//
+// snapToClearTile=true runs the position through findClearTile so the
+// pedestal nudges to a walkable tile if the spawn point lands on a
+// pillar or wall (used by the boss-center legendary drop).
+export function pushPedestal(opts = {}) {
+  const relic = opts.relic;
+  if (!relic) return null;
+  let px = opts.x;
+  let py = opts.y;
+  if (opts.snapToClearTile) {
+    const tx = Math.floor(px / TILE);
+    const ty = Math.floor(py / TILE);
+    const spot = findClearTile(tx, ty);
+    px = spot.x * TILE + TILE / 2;
+    py = spot.y * TILE + TILE / 2;
+  }
+  const p = {
+    x: px, y: py,
+    relic,
+    tier: opts.tier || relicTier(relic.id) || 'common',
+    picked: false,
+    bob: Math.random() * Math.PI * 2,
+    glow: 0,
+    hpCost: opts.hpCost || 0,
+    goldCost: opts.goldCost || 0,
+    shop: !!opts.shop,
+    bonus: !!opts.bonus,
+  };
+  pedestals.push(p);
+  return p;
+}
+
 // Spawn a SINGLE guaranteed-relic pedestal from a boss's thematic pool.
 // Rolls the first unowned id from the pool; falls back to any unowned in
 // the pool if shuffled pick is already held. Optional mythicPool + chance
@@ -370,9 +415,16 @@ export function setPickupFlashForTest(def, tier, flashTime = 2.2) {
   pickedFlashTime = flashTime;
 }
 
-// True while the celebratory pickup banner is fading in/holding/fading out.
-// Used by systems that should DEFER their own onscreen UI until the banner
-// clears (e.g. The Watcher defers utterances while this is true).
+// True while the FIRST-MYTHIC center-stage banner is active (5.5s) — NOT
+// while ordinary pickup notifications are on the top-right rail. This is
+// intentional: the Watcher and other defer-on-banner consumers should
+// only hold back when something is claiming the CENTER of the screen
+// (cinematics, first-mythic). The notification rail is non-blocking and
+// can co-exist with Watcher utterances.
+//
+// Round-7 audit flagged this name as misleading (the function reads like
+// "any pickup flash"); kept the name to avoid a cross-module rename, but
+// the behavior is correct as-is.
 export function isPickupFlashActive() {
   return pickedFlashTime > 0;
 }
@@ -515,7 +567,13 @@ export function consumePendingPickup() {
   // Round-7 — Shop pedestals OPT OUT of this rule. Player can buy
   // multiple items if they have the gold, just like Charon's shop in
   // Hades. Only the just-purchased pedestal flips to picked.
-  if (!p.shop) {
+  //
+  // Round-7-audit — BONUS pedestals (Coin of Tyrant kill-chain drops,
+  // secret-wall rewards, echo-defeat drops, chest treasure) ALSO opt
+  // out. Without this, picking up a free bonus relic that landed in
+  // the same room as a standard offer would wipe the offer to picked,
+  // making the bonus a stealth penalty.
+  if (!p.shop && !p.bonus) {
     for (const other of pedestals) other.picked = true;
   }
   _hoveredIndex = -1;

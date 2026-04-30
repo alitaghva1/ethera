@@ -346,6 +346,31 @@ export function onRoomCleared() {
   }
 }
 
+// Round-7-audit fix — inverse of onRoomCleared. Closes any currently-
+// open or opening north doors and resets them to 'closed' so the
+// existing `if (room.cleared && !_roomClearedNotified)` block in
+// main.js naturally re-opens them once the new combat resolves.
+//
+// Required for the mimic-escape bug: chest rooms ship `cleared: true`
+// so onRoomCleared fires on entry and opens the doors. When a mimic
+// spawns it flips `room.cleared = false`, but without this inverse
+// the doors STAY OPEN and the player can walk straight out of the
+// fight. Sealed doors are intentionally left alone — once a player
+// has paid HP to break a seal, that commitment shouldn't be undone
+// by a transient combat re-engagement.
+export function onRoomLocked() {
+  for (const d of roomDoors) {
+    if (d.side !== 'north') continue;
+    if (d.state === 'sealed') continue;     // committed payment, leave alone
+    if (d.state === 'open' || d.state === 'opening') {
+      d.state = 'closing';
+    }
+  }
+  if (roomDoors.some(d => d.side === 'north' && d.state === 'closing')) {
+    playSfx('click', { rate: 0.85, volume: 0.45 });
+  }
+}
+
 // Round-7 Phase 5 — Blood Door interaction.
 //
 // Returns the nearest unsealed BLOOD GATE within `interactR` of the
@@ -686,9 +711,15 @@ export function releaseCrossingLock() {
 }
 
 // ── helper ──────────────────────────────────────────────────────────────────
+// Round-7 audit: 3-digit hex inputs ('#fff') silently produced wrong
+// rgba — slice(1,3) read 'ff', slice(3,5) read '', etc. All current
+// callers pass 6-digit hex but a future tint added via theme palette
+// could regress. Now expands shorthand to 6-digit before slicing.
 function hexA(hex, a) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
+  let h = (hex || '#000').replace('#', '');
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
   return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
 }

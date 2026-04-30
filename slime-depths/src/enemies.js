@@ -1048,6 +1048,21 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
     phase2Triggered: false,
     takeDamage(amount, dirX, dirY, opts = {}) {
       if (this.dead) return;
+      // Round-7-audit fix: push-only callers (Heart of the Wound's
+      // 200px shockwave, Phoenix Cloak's explosive revive at radius=180
+      // with damage=0) need knockback + brief stagger to displace
+      // attackers, but should NOT trigger hit-streak / hit-flash /
+      // hit-pop. The full hit-reaction at the bottom of this function
+      // would fire for amount=0 — counter incremented, hitFlash 0.14,
+      // _hitPopT 0.06 — making "I survived a lethal hit" look like
+      // "I tickled the orc." Early-return here keeps the knockback
+      // intent without the cosmetic crosstalk.
+      if (amount <= 0) {
+        this.knockbackX = (dirX || 0) * 320;
+        this.knockbackY = (dirY || 0) * 320;
+        this.stagger = Math.max(this.stagger || 0, 0.18);
+        return;
+      }
       // Warded affix: reduces incoming damage until enough staggers break it
       if (this.affix && this.affix.id === 'warded' && !this._shieldBroken) {
         amount *= (1 - this.affix.dmgReductionPct);

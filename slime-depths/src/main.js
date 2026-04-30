@@ -28,7 +28,7 @@ import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js';
 // stuck even though it now manages real doors, not floating arches).
 import { openFloorMap } from './mapScreen.js';
 import {
-  setupRoomDoors, clearDoors, updateDoors, onRoomCleared,
+  setupRoomDoors, clearDoors, updateDoors, onRoomCleared, onRoomLocked,
   drawDoorLabels, getDoorAt, roomDoors, releaseCrossingLock,
   getNearbySealedDoor, breakSeal,
 } from './doorPortals.js';
@@ -72,7 +72,7 @@ import {
   spawnRelicOffer, spawnAltarOffer, spawnShopOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
   setPickupFlashForTest, isPickupFlashActive,
-  consumePendingPickup, drawPedestalPrompt,
+  consumePendingPickup, drawPedestalPrompt, pushPedestal,
 } from './pedestals.js';
 import { drawCounterPips, tickCounterPips } from './counterPips.js';
 import { drawPedestalTeasers } from './pedestalTeaser.js';
@@ -586,11 +586,11 @@ window.__onEchoDefeated = (echo) => {
   const relicId = unowned.length ? unowned[(Math.random() * unowned.length) | 0] : build[0];
   const relicDef = RELIC_DEFS[relicId];
   if (!relicDef) return;
-  pedestals.push({
+  pushPedestal({
     x: echo.x, y: echo.y,
     relic: relicDef,
     tier: relicDef.tier || 'common',
-    picked: false, bob: 0, glow: 0, hpCost: 0,
+    bonus: true,        // free drop, won't wipe sibling offers
   });
   // Dramatic feedback
   for (let k = 0; k < 18; k++) deathBurst(echo.x, echo.y - 8, '#c8d8ff');
@@ -635,14 +635,11 @@ window.__coinOfTyrantSpawnRelic = (x, y) => {
   // it's a "free" pickup, not a strategic offer.
   const rolled = rollRelicOffer(1, 1);     // floor=1 → 100% common weight
   if (!rolled.length) return;
-  pedestals.push({
+  pushPedestal({
     x, y,
     relic: rolled[0],
     tier: 'common',
-    picked: false,
-    bob: Math.random() * Math.PI * 2,
-    glow: 0,
-    hpCost: 0,
+    bonus: true,        // free drop, won't wipe sibling offers
   });
   // Brief flair — gold sparkle burst at the drop position so the player
   // sees the coin "fall" rather than just appearing on the floor.
@@ -3870,9 +3867,27 @@ window.addEventListener('keydown', (e) => {
   }
   gold.total -= cost;
   // Spawn fresh offers — route based on room context.
+  // Round-7-audit HIGH-2 fix: the original `spawnRelicOffer(level)`
+  // call passed NO opts, so a re-rolled offer in an elite (perilous-
+  // path) room lost minTier='rare', a roomReward='fusion' room lost
+  // fusionBias=true, and a roomReward='legendary' room lost
+  // minTier='legendary'. The player paid 35-80g for a downgraded
+  // offer set, breaking the door's reward promise. Re-derive the
+  // current room's opts from `data` (same logic as the post-clear
+  // path at the combat-clear branch) and thread them through.
   clearPedestals();
-  if (inShop) spawnShopOffer(currentFloorLevel);
-  else spawnRelicOffer(currentFloorLevel);
+  if (inShop) {
+    spawnShopOffer(currentFloorLevel);
+  } else {
+    const _data = floor[roomIndex];
+    const _isElitePath = !!_data?.eliteRoom;
+    const _reward = _data?.roomReward;
+    const _opts = {};
+    if (_reward === 'legendary') _opts.minTier = 'legendary';
+    else if (_isElitePath || _reward === 'rare+') _opts.minTier = 'rare';
+    if (_reward === 'fusion') _opts.fusionBias = true;
+    spawnRelicOffer(currentFloorLevel, _opts);
+  }
   // Feedback
   roomLabelText = `✦ REROLLED · -${cost}g ✦`;
   roomLabelColor = '#c9a86a';
@@ -5933,9 +5948,14 @@ function tick(now) {
           if (Math.random() < relicChance) {
             const relic = rollRelicOffer(1, lvl)[0];
             if (relic) {
-              pedestals.push({
+              // Round-7-audit fix: factory infers `tier` from relic.id
+              // so a mythic-pool chest pickup gets full mythic-tier
+              // visuals + audio + cinematic. Was rendering as common
+              // because the manual push omitted the tier field.
+              pushPedestal({
                 x: cx, y: cy + 8,     // slight offset so pedestal sits south of chest
-                relic, picked: false, bob: 0, glow: 0, hpCost: 0,
+                relic,
+                bonus: true,          // free drop, won't wipe sibling offers
               });
             } else {
               import('./gold.js').then(g => g.dropGold(cx, cy, goldAmt));
@@ -5978,6 +5998,16 @@ function tick(now) {
           }
           // Room becomes uncleared — doors lock until enemies die
           room.cleared = false;
+          // Round-7-audit HIGH-3 fix: chest rooms ship `cleared: true`
+          // so doors auto-open on entry. Without these two lines, the
+          // mimic spawn flips cleared:false but the doors stay OPEN
+          // and the player just walks out of the fight (free skip on
+          // a 1-HP-trap encounter). onRoomLocked closes the doors
+          // immediately; the _roomClearedNotified reset lets the
+          // existing post-clear block at line 6502 fire onRoomCleared
+          // again when the mimic dies and `cleared` flips back.
+          onRoomLocked();
+          _roomClearedNotified = false;
           // Visual jolt — bigger shake + flash + 'MIMIC!' reveal label
           // so the player gets the punishment-then-fight beat clearly.
           shakeCamera(12, 0.32);
@@ -6224,12 +6254,13 @@ function tick(now) {
       const wy = roomSecrets.crackY * TILE + TILE/2;
       // Pedestal spawned INSIDE the wall position (now floor) — tier-bumped reward
       // to reward curious players. Uses floor-level-appropriate roll.
-      pedestals.push({
-        x: wx, y: wy,
-        relic: rollRelicOffer(1, currentFloorLevel)[0] || null,
-        picked: false, bob: 0, glow: 0, hpCost: 0,
-      });
-      if (pedestals[pedestals.length - 1].relic == null) pedestals.pop();
+      // Round-7-audit: factory infers tier so mythic secret-wall drops
+      // (rare on F4) get full mythic-tier visual treatment. `bonus`
+      // tag opts out of the sibling-pick wipe.
+      const _secretRelic = rollRelicOffer(1, currentFloorLevel)[0];
+      if (_secretRelic) {
+        pushPedestal({ x: wx, y: wy, relic: _secretRelic, bonus: true });
+      }
       // Fat gold pile — 30 coins now (was 15)
       gold.total += 0;        // no-op; guards against import issue
       import('./gold.js').then(g => g.dropGold(wx, wy, 30));
@@ -6448,12 +6479,16 @@ function tick(now) {
           : (ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary' && isRelicForWeapon(id, hero.weapon))
              || ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary'));
         if (legendaryId) {
+          // Round-7-audit fix: snapToClearTile nudges the pedestal to a
+          // walkable cell if the geometric center happens to be a
+          // pillar. Was a real bug on certain pillarTemplate values.
           const center = { x: Math.floor(room.w / 2) * TILE + TILE / 2, y: Math.floor(room.h / 2) * TILE + TILE / 2 };
-          pedestals.push({
+          pushPedestal({
             x: center.x, y: center.y,
             relic: RELIC_DEFS[legendaryId],
-            picked: false, bob: 0, glow: 0, hpCost: 0,
             tier: 'legendary',
+            bonus: true,        // mid-run boss reward, won't wipe sibling offers
+            snapToClearTile: true,
           });
           // Extra flourish
           for (let i = 0; i < 20; i++) deathBurst(center.x, center.y, '#ffc8ff');
