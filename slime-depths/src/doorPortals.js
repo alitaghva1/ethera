@@ -109,6 +109,18 @@ const REWARD_LABELS = {
   heal:      'HEAL',
   fusion:    'FUSION',
 };
+// Phase R-1 — reward sigils for the floating door card. Each reward type
+// gets a unique iconographic glyph that's the player's primary read at
+// the door, with the kind label as a secondary line beneath. Distinct
+// from the kind glyphs (⚔/☠/✦) which sit in the corner badge of the
+// card; these are the BIG icons the player sees from across the room.
+const REWARD_SIGILS = {
+  gold:      '◈',     // gem / coin (warm yellow)
+  'rare+':   '✦',     // 4-point star
+  legendary: '✸',     // 8-point sunburst — distinct from rare's 4-point
+  heal:      '✚',     // cross (matches sanctuary)
+  fusion:    '⊗',     // circled cross — chain / bond imagery
+};
 
 // Active doors for the current room. Cleared between rooms.
 // Each entry: { tx, ty, side: 'north'|'south', state, anim,
@@ -426,69 +438,191 @@ export function getDoorMeta(tx, ty) {
 // Render — sigil + label above each north door. Called inside the camera
 // transform from main.js, after drawRoom (so labels float over the wall).
 // ────────────────────────────────────────────────────────────────────────────
+// Phase R-1 — icon-first door card render. Replaces the previous
+// stacked-text approach (a small wall-tile glyph + a label line + an
+// italic reward chip + bullet decorators) with a single floating card
+// per door, positioned ABOVE the door arch in clear sky-space rather
+// than competing with the door's own architectural detail.
+//
+// Design (per the player-feedback review):
+//
+//   ┌──────────────┐
+//   │      ◈       │   ← reward sigil (28px, dominant, glowing)
+//   │     GOLD     │   ← reward caption (11px bold, single line)
+//   └──────────────┘
+//          │
+//          v             ← small chevron pointing to the door arch
+//        🚪 (door)
+//
+// Key principles:
+//   1. ONE bold thing per door, not three small things.
+//   2. Reward (the player's actual decision driver) is dominant; kind
+//      label is secondary, fade-in only when hero approaches.
+//   3. Saturated unique fills per reward — the card's BACKGROUND tells
+//      the story at a screen-glance, not just the text.
+//   4. Always visible (was openness-gated; combat-time players couldn't
+//      plan their next move because the labels hid until the door
+//      opened). Plan-while-fighting is a Hades staple.
+//   5. Sealed doors keep their distinct crimson treatment + the
+//      "PAY N HP" sub-line. Approach reveal swaps in "E · BREAK SEAL"
+//      replacing the floating prompt.
+//
+// Card geometry: 84w × 46h, centered horizontally over the door tile,
+// floating ~38px above the wall plane. Tighter than the design draft
+// (52px) because the camera Y-clamp can put the door near the top of
+// the visible frame when the hero stands at the south end of the room
+// — too much elevation above the wall pushes the card off-screen.
+// 38px keeps the card visible across all camera positions while still
+// reading as "above the arch" rather than "on the wall."
+const CARD_W = 84;
+const CARD_H = 46;
+const CARD_OFFSET_Y = 38;
+
 export function drawDoorLabels(ctx) {
+  const now = performance.now() / 1000;
   for (const d of roomDoors) {
     if (d.side !== 'north') continue;
     const cx = d.tx * TILE + TILE / 2;
-    const cy = d.ty * TILE - 6;
-    const openness = Math.max(0, Math.min(1, d.anim));
+    const doorTop = d.ty * TILE;
+    const cardCY = doorTop - CARD_OFFSET_Y;
+    const isSealed = d.state === 'sealed';
 
-    // Sigil — color brightens as door opens. Sealed doors get the
-    // sigil at full alpha + a faster pulse so the BLOOD GATE reads
-    // immediately on room entry, even before the room is cleared.
-    let alpha = 0.55 + openness * 0.45;
-    if (d.state === 'sealed') {
-      const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.003);
-      alpha = pulse;
+    // Pick the dominant signal for this door. Sealed > reward > kind.
+    let sigil, caption, fillColor, borderColor, captionColor, subLine;
+    if (isSealed) {
+      sigil = '⛧';
+      caption = 'BLOOD';
+      borderColor = '#d04050';
+      captionColor = '#ff8088';
+      fillColor = 'rgba(80, 16, 24, 0.92)';
+      subLine = `PAY ${d.sealCost || 1} HP`;
+    } else if (d.rewardLabel) {
+      // Map the rewardColor (already a hex string) into a soft fill +
+      // the saturated border. rewardLabel like "GOLD" / "RARE+" /
+      // "LEGENDARY" / "FUSION" / "PAY N HP" (sealed-after-break).
+      // Look up the reward sigil from the reward TYPE not the label —
+      // door.rewardLabel was set to the human label; lowercasing it
+      // matches the REWARD_SIGILS keys ("GOLD" -> "gold", "RARE+" ->
+      // "rare+"). Falls back to the kind glyph if no reward sigil exists.
+      const rewardKey = (d.rewardLabel || '').toLowerCase();
+      sigil = REWARD_SIGILS[rewardKey] || d.glyph || '?';
+      caption = d.rewardLabel;
+      borderColor = d.rewardColor || d.color || '#cccccc';
+      captionColor = borderColor;
+      fillColor = hexA(borderColor, 0.18);
+      subLine = null;
+    } else {
+      // No reward chip — render the kind label directly. Common case
+      // for default-no-bonus combat rooms (the 20% null-reward roll)
+      // and for start/sanctuary nodes that don't carry a reward tag.
+      sigil = d.glyph || '?';
+      caption = d.label || 'ROOM';
+      borderColor = d.color || '#cccccc';
+      captionColor = borderColor;
+      fillColor = hexA(borderColor, 0.14);
+      subLine = null;
     }
+
+    // Pulse — sealed doors pulse faster + stronger so the BLOOD GATE
+    // reads as urgent. Other doors get a calmer ambient throb.
+    const pulseRate = isSealed ? 2.4 : 1.4;
+    const pulseAmp = isSealed ? 0.20 : 0.10;
+    const pulse = (1 - pulseAmp) + pulseAmp * Math.sin(now * pulseRate);
+
     ctx.save();
-    ctx.shadowColor = hexA(d.color, alpha);
-    ctx.shadowBlur = d.state === 'sealed' ? 18 : 12;
-    ctx.fillStyle = hexA(d.color, alpha);
-    ctx.font = 'bold 22px serif';
+    // Card body — rounded rect with a dark base, tinted fill on top,
+    // tinted border. Two-layer fill so the dark base keeps text legible
+    // even when the reward color is light (e.g. cream-yellow GOLD).
+    const cardX = cx - CARD_W / 2;
+    const cardY = cardCY - CARD_H / 2;
+    ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
+    roundRect(ctx, cardX, cardY, CARD_W, CARD_H, 6);
+    ctx.fill();
+    ctx.fillStyle = fillColor;
+    roundRect(ctx, cardX, cardY, CARD_W, CARD_H, 6);
+    ctx.fill();
+    ctx.strokeStyle = hexA(borderColor, 0.88 * pulse);
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, cardX + 0.5, cardY + 0.5, CARD_W - 1, CARD_H - 1, 6);
+    ctx.stroke();
+
+    // Sigil — the dominant glyph. Sized 24px so it fits in a 46-tall
+    // card alongside the caption (and the sub-line on sealed doors).
+    // Positioned in the upper portion; sealed doors push it slightly
+    // higher to make room for the "PAY N HP" line.
+    ctx.fillStyle = hexA(borderColor, pulse);
+    ctx.shadowColor = hexA(borderColor, pulse * 0.8);
+    ctx.shadowBlur = isSealed ? 14 : 10;
+    ctx.font = 'bold 24px serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(d.glyph, cx, cy - 4);
+    ctx.fillText(sigil, cx, cardCY - (subLine ? 10 : 5));
+    ctx.shadowBlur = 0;
+
+    // Caption — single bold line below the sigil. No bullet decorators,
+    // no italics; the bold serif reads as a primary label, not a
+    // subtitle. Position adjusts when a sub-line follows so all three
+    // tiers (sigil / caption / sub) fit within the card height.
+    ctx.fillStyle = captionColor;
+    ctx.font = 'bold 11px Georgia, "Cormorant Garamond", serif';
+    ctx.fillText(caption, cx, cardCY + (subLine ? 6 : 13));
+
+    // Sub-line — only sealed doors get this (the "PAY N HP" cost).
+    // Sized small (8px) so it sits as the "fine print" of the trade
+    // without competing with BLOOD. Stays inside the 46-tall card box.
+    if (subLine) {
+      ctx.font = 'bold 8px Georgia, serif';
+      ctx.fillStyle = '#ff8088';
+      ctx.fillText(subLine, cx, cardCY + 17);
+    }
+
+    // Chevron — small downward triangle pointing from card to door
+    // arch, makes the spatial association explicit. Same tint as the
+    // border, drawn in the gap between card and door.
+    const chevronY = cardY + CARD_H + 4;
+    ctx.fillStyle = hexA(borderColor, 0.7 * pulse);
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, chevronY);
+    ctx.lineTo(cx + 5, chevronY);
+    ctx.lineTo(cx, chevronY + 6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Approach reveal — kind label fades in ABOVE the card when the
+    // hero is within 200px. Lets a player who's about to walk through
+    // see "you're heading into an ELITE with a LEGENDARY reward" at
+    // commit time. Hidden at distance so the card stays uncluttered.
+    // Positioned ABOVE the card (not below) because below the card is
+    // the chevron + door arch — overlapping the wall sprite reads as
+    // a render bug. Above the card sits in clean negative space.
+    if (!isSealed && d.rewardLabel && d.label && d.label !== d.rewardLabel) {
+      const dx = hero.x - cx;
+      const dy = hero.y - doorTop;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 200) {
+        const reveal = Math.max(0, Math.min(1, (200 - dist) / 60));
+        if (reveal > 0.05) {
+          ctx.font = 'italic 9px Georgia, serif';
+          ctx.fillStyle = hexA(d.color || borderColor, reveal * 0.85);
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+          ctx.shadowBlur = 3;
+          ctx.fillText(d.label, cx, cardY - 10);
+          ctx.shadowBlur = 0;
+        }
+      }
+    }
     ctx.restore();
 
-    // Label — gentle fade-in once door is partly open. Round-7 Phase 5:
-    // sealed doors force-show the label at full alpha so the player
-    // can READ "BLOOD GATE · PAY N HP" before clearing the room. The
-    // existing openness gate would otherwise hide the label until the
-    // door opens, defeating the whole "informed risk gate" mechanic.
-    const sealedShowLabel = d.state === 'sealed';
-    const labelAlpha = sealedShowLabel ? 0.95 : openness * 0.95;
-    if (labelAlpha > 0.1) {
-      ctx.save();
-      ctx.font = '10px Georgia, "Cormorant Garamond", serif';
-      ctx.fillStyle = hexA(d.color, labelAlpha);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-      ctx.shadowBlur = 4;
-      ctx.fillText(d.label, cx, cy - 26);
-      // Reward chip — Round-7 Phase 1. Reads as a second line below
-      // the kind label, in the reward's own tint, so the player can
-      // quick-scan "COMBAT · GOLD" at a glance. Null reward means the
-      // room is a "default" combat with no special bias — render only
-      // the kind label in that case (no empty chip line).
-      if (d.rewardLabel) {
-        ctx.font = 'italic 9px Georgia, "Cormorant Garamond", serif';
-        ctx.fillStyle = hexA(d.rewardColor || d.color, labelAlpha * 0.92);
-        ctx.fillText('· ' + d.rewardLabel + ' ·', cx, cy - 14);
-      }
-      ctx.restore();
-    }
-    // Round-7 Phase 5 — sealed door interact prompt. Renders an "E ·
-    // BREAK SEAL" pill above the door when hero is in interact range.
-    // Mirrors drawPedestalPrompt's pill styling for player-facing
-    // consistency. Skipped if door is no longer sealed (after break).
-    if (d.state === 'sealed') {
+    // Phase 5 sealed door E-prompt — kept separate from the card so
+    // the interactive prompt (action verb) doesn't compete with the
+    // informational card (state). Renders the "E · BREAK SEAL" pill
+    // BELOW the card when hero is in 56px range.
+    if (isSealed) {
       const dx = hero.x - cx;
       const dy = hero.y - (d.ty * TILE + TILE);
       const dist = Math.hypot(dx, dy);
       if (dist < 56) {
-        const promptY = cy - 56 + Math.sin(performance.now() / 1000 * 2.2) * 3;
+        const promptY = cardY + CARD_H + 22 + Math.sin(now * 2.2) * 2;
         const label = `E  ·  BREAK SEAL`;
         ctx.save();
         ctx.font = 'bold 11px Georgia, serif';
@@ -511,6 +645,28 @@ export function drawDoorLabels(ctx) {
       }
     }
   }
+}
+
+// Helper — draw a rounded rectangle path. Uses ctx.roundRect when
+// available (modern browsers), falls back to manual arc-drawn corners.
+// Path is left on the context for the caller to fill or stroke.
+function roundRect(ctx, x, y, w, h, r) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 // Wipe state — called at the start of every loadRoom before re-setup.
