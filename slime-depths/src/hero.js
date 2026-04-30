@@ -1080,7 +1080,9 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.state !== 'hurt' &&
       hero.state !== 'dead'
     ) {
-      hero.blastBoltCD = hero.blastBoltMaxCD;
+      // Wizard-kit Sprint 3B — blast slot resonance T1 (3 blast relics)
+      // shrinks bolt cadence by 15% (slotBoltCDMul = 0.85).
+      hero.blastBoltCD = hero.blastBoltMaxCD * (hero.slotBoltCDMul || 1);
       // ── AIM ASSIST — wizard-kit Sprint 2B ───────────────────────
       // Standard action-roguelite affordance: when the player fires a
       // bolt, snap the bolt's direction toward the closest enemy
@@ -1140,7 +1142,12 @@ export function updateHero(dt, enemies, mouseWorld) {
         hero.blastBoltDamage * (hero.damageMul || 1),
         hero.blastBoltSpeed,
         hero.blastBoltLife,
-        { color: '#a0e8ff', pierce: 0, radius: hero.blastBoltRadius }
+        {
+          color: '#a0e8ff',
+          // Slot ascendance T2: bolts pierce 1 extra enemy.
+          pierce: hero.slotBoltPierceBonus || 0,
+          radius: hero.blastBoltRadius,
+        }
       );
       // Muzzle flash — small sparkle burst at the spawn point so the
       // player sees instant feedback on click (vs the bolt traveling
@@ -2126,7 +2133,13 @@ export function updateHero(dt, enemies, mouseWorld) {
           // as just "a big crit" to the player.
           spawnDamageNumber(e.x, e.y - 36, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, charged: chargedHit, finisher: finisherHit, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
           spawnHitMarker(e.x, e.y - 20, isCrit || isCounter || isExec || chargedHit || finisherHit);
-          triggerHitStop((isCounter ? 0.12 : isCrit ? 0.08 : 0.045) * wpnHs);
+          // Wizard-kit Sprint 3B — slot resonance T1 adds +0.05s hit-stop
+          // to all sword hits (additive on top of the base hit-stop).
+          // Only applies on the SWORD slot (this code path is the sword
+          // swing handler — blast bolts have their own hit-stop in
+          // projectiles.js).
+          const slotHitStopBonus = (hero.slotSwordHitStopBonus || 0);
+          triggerHitStop(((isCounter ? 0.12 : isCrit ? 0.08 : 0.045) + slotHitStopBonus) * wpnHs);
           // Camera zoom-in pulse on big hits — counter/exec/finisher/charged all pop.
           // Game-feel audit P0: previous values clustered within 0.01 of
           // each other (0.06/0.05/0.05/0.04/0.03) — players couldn't read
@@ -2146,6 +2159,25 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (finisherHit && w.id === 'hammer') {
             spawnExplosion(e.x, e.y - 6, 96, finalDmg * 0.45);
             shakeCamera(12, 0.28);
+          }
+          // Wizard-kit Sprint 3B — slot ascendance T2 (5 sword relics)
+          // empowers every finisher swing: spark burst around impact +
+          // bonus knockback. Smaller than hammer's full AoE so it doesn't
+          // overshadow weapon-specific finisher VFX, but visible enough
+          // that the player reads "this is the sword build paying off."
+          if (finisherHit && hero.slotSwordEmpowered) {
+            for (let _k = 0; _k < 8; _k++) {
+              const _ang = (_k / 8) * Math.PI * 2;
+              const _r = 28 + Math.random() * 8;
+              hitSpark(
+                e.x + Math.cos(_ang) * _r,
+                e.y - 16 + Math.sin(_ang) * _r * 0.7,
+                Math.cos(_ang),
+                Math.sin(_ang),
+                '#ffe5a0'
+              );
+            }
+            shakeCamera(6, 0.14);
           }
           // CHARGE ATTACK — explosion on hit for screen-clearing feel
           if (chargedHit) {
@@ -2278,13 +2310,20 @@ export function damageHero(amount, fromX, fromY) {
     let diffA = srcA - aimA;
     while (diffA > Math.PI) diffA -= Math.PI * 2;
     while (diffA < -Math.PI) diffA += Math.PI * 2;
-    const inFrontCone = Math.abs(diffA) <= Math.PI / 2;   // ±90° = 180° front cone
+    // Wizard-kit Sprint 3B — slot ascendance T2 (5 shield relics)
+    // widens the front cone by +20° (Math.PI/9). Default is ±90°
+    // (180° total); ascendance pushes to ±110° (220° total).
+    const coneHalf = Math.PI / 2 + (hero.slotShieldConeBonus || 0);
+    const inFrontCone = Math.abs(diffA) <= coneHalf;
     if (inFrontCone) {
+      // Wizard-kit Sprint 3B — slot resonance T1 (3 shield relics)
+      // extends the perfect-block window by +0.05s (0.10s → 0.15s).
+      const perfectWin = SHIELD_PERFECT_WINDOW + (hero.slotShieldPerfectBonus || 0);
       // Inside the perfect window → grant counter + all the relic hooks.
       // After the perfect window → fall through to iframes (absorbed
       // silently, no counter, no whisper-veil etc.). The iframes set
       // on shield raise are what carries non-perfect blocks.
-      if (hero.stateTime <= SHIELD_PERFECT_WINDOW) {
+      if (hero.stateTime <= perfectWin) {
         // FLICKER STEP (dagger-only) — doubles the counter window.
         // Counter-attack stays viable for 4.0s instead of 2.0s.
         const counterWindowMul = (hero.flickerStep && hero.weapon === 'dagger') ? 2 : 1;
@@ -2671,12 +2710,15 @@ export function drawHero(ctx) {
   // (hold-Space).
   if (hero.state === 'shield') {
     const aim = Math.atan2(hero.aimY || 0, hero.aimX || 1);
-    const inPerfect = hero.stateTime <= SHIELD_PERFECT_WINDOW;
+    // Wizard-kit Sprint 3B — slot bonuses widen the perfect window AND
+    // the front cone visually so the player sees the ascendance pay off.
+    const perfectWin = SHIELD_PERFECT_WINDOW + (hero.slotShieldPerfectBonus || 0);
+    const inPerfect = hero.stateTime <= perfectWin;
     const lifeT = Math.min(1, hero.stateTime / SHIELD_DUR);
     const fade = 1 - lifeT * 0.6;                  // shrinks from 1.0 → 0.4 over duration
     const innerR = 18;
     const outerR = 30;
-    const arc = Math.PI;                            // 180° front cone
+    const arc = Math.PI + (hero.slotShieldConeBonus || 0) * 2; // +20° at T2 (each side)
     ctx.save();
     // Outer band — softer translucent blue, shows the cone reach
     ctx.fillStyle = inPerfect

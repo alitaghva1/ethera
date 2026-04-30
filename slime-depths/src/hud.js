@@ -8,6 +8,7 @@ import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { drawRelicIcon } from './fx.js';
 import { THEMES, getThemeCounts, getThemeTier, TIER_THRESHOLDS } from './themes.js';
+import { SLOTS, getSlotCounts, getSlotTier, SLOT_THRESHOLDS } from './slots.js';
 import { wrapText } from './textLayout.js';
 import { isPedestalTooltipActive } from './pedestals.js';
 import { isMobileMode } from './mobileMode.js';
@@ -516,6 +517,97 @@ export function drawHud(ctx, w, h, progress = {}) {
       ctx.strokeRect(cx + 0.5, tcY + 0.5, tcW - 1, tcH - 1);
       ctx.fillStyle = c.tint;
       ctx.fillText(c.roman + ' ' + c.name, cx + tcW / 2, tcY + tcH / 2);
+    }
+    ctx.restore();
+  }
+
+  // ── SLOTS row — wizard-kit Sprint 3B ──────────────────────────
+  // Per-ability-slot resonance progress (sword / blast / shield).
+  // Sits above the themes row as the PRIMARY build axis. Each chip
+  // shows count/5 with star glyphs at Resonance (3) + Ascendance (5).
+  // Bigger + brighter than the themes chips so the player reads slot
+  // progress first; themes are flavor identity below.
+  if (progress.relics && progress.relics.length > 0) {
+    const slotCounts = getSlotCounts(progress.relics);
+    const slotList = Object.values(SLOTS);
+    const sChipW = 64, sChipH = 26, sChipGap = 5;
+    const slotsY = h - sChipH - 152;       // 42px above the themes row
+    const slotsLabelY = slotsY - 14;
+    ctx.save();
+    ctx.fillStyle = 'rgba(220, 200, 160, 0.65)';
+    ctx.font = 'bold 10px Georgia, serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('◆ SLOTS', 18, slotsLabelY);
+    const sNow = performance.now() / 1000;
+    for (let i = 0; i < slotList.length; i++) {
+      const s = slotList[i];
+      const count = slotCounts[s.id] | 0;
+      const tier = getSlotTier(count);
+      const cx = 18 + i * (sChipW + sChipGap);
+      const cy = slotsY;
+      // Backdrop
+      const bgA = tier >= 2 ? 0.92 : tier >= 1 ? 0.82 : 0.65;
+      ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
+      ctx.fillRect(cx, cy, sChipW, sChipH);
+      // Almost-tier preview pulse — same telegraph pattern as themes.
+      const almostRes = tier === 0 && count === SLOT_THRESHOLDS.resonance - 1;
+      const almostAsc = tier === 1 && count === SLOT_THRESHOLDS.ascendance - 1;
+      if (tier >= 1 || almostRes) {
+        const baseRate = tier >= 2 ? 2.2 : tier >= 1 ? 1.6 : 1.4;
+        const rate = almostAsc ? 2.6 : almostRes ? 1.8 : baseRate;
+        const baseAmp = tier >= 2 ? 0.32 : tier >= 1 ? 0.22 : 0.16;
+        const ampMod = almostAsc || almostRes ? 0.06 : 0;
+        const pulse = (1 - baseAmp) + (baseAmp + ampMod) * Math.sin(sNow * rate + i * 0.4);
+        const halo = ctx.createRadialGradient(cx + sChipW / 2, cy + sChipH / 2, 4, cx + sChipW / 2, cy + sChipH / 2, sChipW * 0.7);
+        const hex = s.color.replace('#', '');
+        const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+        const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        const alphaMul = tier >= 2 ? 0.55 : tier >= 1 ? 0.34 : 0.20;
+        const alpha = alphaMul * pulse;
+        halo.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+        halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = halo;
+        ctx.fillRect(cx - 8, cy - 8, sChipW + 16, sChipH + 16);
+      }
+      ctx.strokeStyle = tier >= 2 ? '#ffffff' : tier >= 1 ? s.color : 'rgba(120, 130, 150, 0.6)';
+      ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.4 : 1;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, sChipW - 1, sChipH - 1);
+      ctx.fillStyle = tier >= 1 ? s.color : 'rgba(170, 180, 195, 0.8)';
+      ctx.font = 'bold 11px Georgia, serif';
+      ctx.fillText(s.name.toUpperCase(), cx + 6, cy + 4);
+      ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.75)';
+      ctx.font = 'bold 11px Georgia, serif';
+      const glyph = tier >= 2 ? '★★' : tier >= 1 ? '★' : '';
+      ctx.fillText(`${count}/${SLOT_THRESHOLDS.ascendance} ${glyph}`, cx + 6, cy + 14);
+      // Hover tooltip — name + blurb + tier-progress text.
+      if (mouse.x >= cx && mouse.x <= cx + sChipW && mouse.y >= cy && mouse.y <= cy + sChipH
+          && !isPedestalTooltipActive()) {
+        const tipW = 280, tipH = 80;
+        const tipX = Math.max(10, Math.min(w - tipW - 10, cx + sChipW / 2 - tipW / 2));
+        const tipY = cy - tipH - 6;
+        ctx.fillStyle = 'rgba(14, 20, 30, 0.95)';
+        ctx.fillRect(tipX, tipY, tipW, tipH);
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
+        ctx.fillStyle = s.color;
+        ctx.font = 'bold 12px Georgia, serif';
+        ctx.fillText(`${s.name} slot  (${count}/${SLOT_THRESHOLDS.ascendance})`, tipX + 10, tipY + 8);
+        ctx.fillStyle = '#d8e4f0';
+        ctx.font = 'italic 10px Georgia, serif';
+        ctx.fillText(s.blurb, tipX + 10, tipY + 26);
+        ctx.fillStyle = tier >= 1 ? '#fff2e0' : 'rgba(200, 200, 210, 0.6)';
+        ctx.font = 'bold 11px Georgia, serif';
+        const tLbl = tier >= 2
+          ? '★★ ASCENDANCE active'
+          : tier >= 1
+            ? `★ RESONANCE · ${SLOT_THRESHOLDS.ascendance - count} more → Ascendance`
+            : count > 0
+              ? `${SLOT_THRESHOLDS.resonance - count} more → Resonance`
+              : 'No relics in this slot';
+        ctx.fillText(tLbl, tipX + 10, tipY + 56);
+      }
     }
     ctx.restore();
   }

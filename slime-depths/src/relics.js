@@ -4,6 +4,7 @@
 import { hero } from './hero.js';
 import { stats } from './stats';
 import { recomputeThemeTiers, THEMES } from './themes.js';
+import { recomputeSlotTiers } from './slots.js';
 import { pushNotification } from './notifications.js';
 import { synthChord, synthPing } from './synth.js';
 
@@ -997,6 +998,7 @@ export function resetRelics() {
   clearFusions();
   hero.relicCount = 0;
   recomputeThemeTiers(equipped);   // zeroes all theme bonus fields
+  recomputeSlotTiers(equipped);    // zeroes all slot bonus fields (Sprint 3B)
 }
 
 // Enforce any memory-imposed max-HP cap AFTER a relic is applied. Called
@@ -1231,7 +1233,47 @@ export function applyRelic(id) {
   //          rarer/bigger payoff that previously had NO feedback,
   //          only the aura quietly thickened. Now lands as a moment.)
   const priorTiers = hero.activeThemes ? { ...hero.activeThemes } : null;
+  // Wizard-kit Sprint 3B — slot resonance also recomputes on every
+  // pickup. Tracked in parallel with theme tiers; transitions can
+  // surface as their own toast + audio in a future polish pass.
+  const priorSlotTiers = hero.slotTiers ? { ...hero.slotTiers } : null;
   recomputeThemeTiers(equipped);
+  recomputeSlotTiers(equipped);
+  // Sprint 3B — slot resonance/ascendance toast. Mirrors the theme
+  // toast pattern: 0→≥1 = "RESONANCE active"; 1→2 = "ASCENDANCE
+  // active." Lighter audio than theme since multiple slots can fire
+  // per pickup (a multi-slot relic could push BOTH sword + blast
+  // tiers in one beat).
+  if (priorSlotTiers && hero.slotTiers) {
+    for (const k of Object.keys(hero.slotTiers)) {
+      const before = priorSlotTiers[k] | 0;
+      const after = hero.slotTiers[k] | 0;
+      if (before < 1 && after >= 1) {
+        try {
+          pushNotification({
+            kind: 'slot',
+            title: `${k.toUpperCase()} · RESONANCE`,
+            body: 'Three relics align. The ability sharpens.',
+            tint: k === 'sword' ? '#ffd680' : k === 'blast' ? '#a0e8ff' : '#b0c8d8',
+            life: 3.0,
+          });
+          synthChord(220, 0.5, 1.0);
+        } catch (_e) {}
+      } else if (before < 2 && after >= 2) {
+        try {
+          pushNotification({
+            kind: 'slot',
+            title: `${k.toUpperCase()} · ASCENDANCE`,
+            body: 'Five relics shape this craft. Your ability transforms.',
+            tint: k === 'sword' ? '#ffe5a0' : k === 'blast' ? '#d8f0ff' : '#d0e0f0',
+            life: 4.5,
+          });
+          synthChord(294, 0.7, 1.4);
+          synthPing(880, 0.8, 0.4);
+        } catch (_e) {}
+      }
+    }
+  }
   if (priorTiers && hero.activeThemes) {
     let firedResonance = false;
     let ascendedTheme = null;
