@@ -991,12 +991,24 @@ function drawNpc(ctx, e, now) {
 export function drawHamletInteractPrompt(ctx) {
   if (!_nearest) return;
   let label;
+  // Subtext: a small italic line shown UNDER the pill. Used for locked
+  // NPCs to surface the unlock-hint passively (the writing is great \u2014
+  // it deserves to read at a glance, not be gated behind a button-press
+  // that pushes a notification card).
+  let subtext = null;
   if (_nearest.kind === 'npc') {
     // Locked NPCs render as "A SHROUDED FIGURE" \u2014 preserves the surprise
     // of the named arrival cinematic when they finally unlock, while
     // still letting the player E-press to read the unlock condition.
     if (!isNpcUnlocked(_nearest.id)) {
       label = 'E  \u00b7  A SHROUDED FIGURE';
+      // Pull the diegetic unlock hint into a passive subline. This is
+      // the same string that pushNotification() shows on E-press in
+      // openDialogue() \u2014 surfacing it ambiently means a player can
+      // tour the hamlet, see all five locked figures, and learn what
+      // each is waiting on without firing five notifications.
+      const hint = NPCS[_nearest.id]?.unlockHint;
+      if (hint) subtext = hint;
     } else {
       const name = NPCS[_nearest.id]?.name || 'Traveler';
       label = 'E  \u00b7  ' + name.toUpperCase();
@@ -1031,6 +1043,26 @@ export function drawHamletInteractPrompt(ctx) {
   ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   ctx.fillStyle = '#f4d9a0';
   ctx.fillText(label, _nearest.x, promptY);
+
+  // Subtext line \u2014 only renders when set (currently locked NPCs only).
+  // Italic 9.5px Georgia, soft slate halo for legibility against the
+  // painted backdrop. No pill \u2014 the line is meant to read as quiet
+  // hand-written counsel under the louder label.
+  if (subtext) {
+    ctx.font = 'italic 9.5px Georgia, serif';
+    const subY = promptY + h / 2 + 9;
+    const sm = ctx.measureText(subtext);
+    const subPad = 8;
+    const subW = sm.width + subPad * 2;
+    const pulse = 0.65 + 0.20 * Math.sin(now * 1.3);
+    // Faint dark backdrop strip \u2014 keeps the words legible against busy
+    // regions of the painted scene without weighting the prompt the way
+    // a full pill would.
+    ctx.fillStyle = 'rgba(10, 10, 16, 0.55)';
+    ctx.fillRect(_nearest.x - subW / 2, subY - 7, subW, 14);
+    ctx.fillStyle = `rgba(180, 190, 220, ${(0.78 * pulse).toFixed(3)})`;
+    ctx.fillText(subtext, _nearest.x, subY);
+  }
   ctx.restore();
 }
 

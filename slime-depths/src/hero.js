@@ -590,6 +590,54 @@ export function updateHero(dt, enemies, mouseWorld) {
   if (hero.iframes > 0) hero.iframes -= dt;
   if (hero.galeBurstTime > 0) hero.galeBurstTime -= dt;
 
+  // ── HAMLET — SOFT REFUSAL OF COMBAT INPUTS ────────────────────────
+  // The hamlet is a non-combat hub: LMB swing, LMB blast, RMB / 1 / 2 /
+  // wheel swap, and Q (dash strike or blink) all hit `room.kind !==
+  // 'hamlet'` gate clauses below and silently no-op. Without
+  // acknowledgment, an attempt feels like the controller broke —
+  // so this block runs FIRST and confirms the input registered:
+  //
+  //   • Once-per-profile tip the very first attempt:
+  //     "Your blade rests here — the hamlet keeps no quarrel with itself"
+  //   • Throttled (0.18s) muffled-tap audio — synthClick at low pitch
+  //     reads as cloth/sheath, not a metallic clang.
+  //   • Two warm sparkles around the hero's chest, drifting INWARD
+  //     so the visual reads "the impulse settled" rather than "the
+  //     swing escaped." Particles already gated to dt-based fade so
+  //     they cost almost nothing per frame.
+  //
+  // Space (shield) is NOT included — the shield raise produces a
+  // visible cone in hamlet too, so it's already self-acknowledging.
+  // Movement keys are obviously not combat. Only the truly silent
+  // inputs get the cue.
+  if (room.kind === 'hamlet') {
+    const triedCombat = mouse.pressed
+      || mouse.rightPressed
+      || keyJustPressed('KeyQ')
+      || keyJustPressed('Digit1')
+      || keyJustPressed('Digit2')
+      || wheel.delta !== 0;
+    if (triedCombat) {
+      // Diegetic teaching beat — fires once per profile via showTip's
+      // localStorage-backed seen-set. Subsequent attempts get only
+      // the audio + sparkle (no rail spam).
+      showTip('first_hamlet_peace');
+      // Throttle audio + visual to one cue per 0.18s so a player who
+      // mashes attack doesn't get a stack of clicks.
+      const _hnow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+      if (!hero._hamletRefuseUntil || _hnow >= hero._hamletRefuseUntil) {
+        hero._hamletRefuseUntil = _hnow + 0.18;
+        try { synthClick(0.55, 0.25); } catch (_e) {}
+        sparkle(hero.x - 6, hero.y - 14, '#c9a86a');
+        sparkle(hero.x + 6, hero.y - 10, '#d8b87a');
+      }
+      // Eat the wheel accumulator so a single scroll doesn't keep
+      // re-firing the cue across frames (the swap branch below
+      // would also eat it but only when in dungeon — gate-mismatch).
+      if (wheel.delta !== 0) wheel.delta = 0;
+    }
+  }
+
   // ── WEAPON SWAP — wizard-kit Sprint 2B ──────────────────────────
   // Multiple inputs all swap weapons (free, no CD, no lockout):
   //   • RMB (mouse.rightPressed)  — primary input. Single-button,

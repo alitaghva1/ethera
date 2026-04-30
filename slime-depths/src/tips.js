@@ -73,6 +73,11 @@ export const TIPS = {
   first_daily:     { text: 'Daily challenges share today\'s curse + relic with all players — build your streak' },
   // ----- Hub + encounters -----
   first_hamlet:    { text: 'The hamlet grows between descents — services persist. Visit when you return' },
+  // Fired the FIRST time a player tries a combat input (LMB / RMB / Q /
+  // 1 / 2 / wheel) inside the hamlet. Without this beat, suppressed
+  // inputs feel like the controller broke. The line is diegetic — the
+  // hamlet is at peace, the blade settles — rather than a UI scold.
+  first_hamlet_peace: { text: 'Your blade rests here — the hamlet keeps no quarrel with itself' },
   first_descent_hint: { text: 'Walk to the portal to descend. Press E near any NPC to speak with them.' },
   first_wanderer:  { text: 'A wanderer — gold for a trade, only this sanctuary. They do not wait long' },
 };
