@@ -3513,6 +3513,95 @@ function fmtTime(seconds) {
   return m + ':' + (s < 10 ? '0' : '') + s;
 }
 
+// Phase 4 work — narrative subtitle composer. Picks a 1-line "defining
+// moment" describing how the run ended + what was most impressive about
+// it. Returns a string OR null (caller falls back to the random
+// DEATH/VICTORY flavor lines for runs with no notable moments).
+//
+// Article-handling note: TYPES.displayName is uppercase ("SLIME"). The
+// composer lowercases for narrative flow ("a slime") except for unique
+// boss names which stay capitalized ("the Broodmother", "Iron Revenant").
+function composeDefiningMoment(s, killerType, isVictory) {
+  // Map enemy-type id → narrative phrase. Unique bosses use their
+  // proper noun; minions get an article. Unknown types fall back to
+  // a generic "the depths" so the line still reads.
+  const KILLER_PHRASES = {
+    slime:         'a slime',
+    skel:          'a skeleton',
+    orc:           'an orc',
+    archer:        'a skeleton archer',
+    bomber:        'a bomber',
+    lancer:        'a lancer',
+    vanguard:      'a vanguard',
+    reflector:     'a reflector',
+    wizard:        'a wizard',
+    priest:        'a priest',
+    elite_orc:     'Grudnok',
+    bone_captain:  'Iron Revenant',
+    broodmother:   'the Broodmother',
+    ember_tyrant:  'the Ember Tyrant',
+    hermit:        'the Hermit',
+    haunt:         'a haunt',
+    werewolf:      'a werewolf',
+    werebear:      'a werebear',
+    dreadmage:     'a dreadmage',
+    knight_enemy:  'a knight',
+    armored_skel:  'an armored skeleton',
+    greatsword_skel: 'a greatsword skeleton',
+    soldier:       'a soldier',
+    swordsman:     'a swordsman',
+    armored_axeman: 'an armored axeman',
+    armored_orc:   'an armored orc',
+    knight_templar: 'a templar',
+    orc_rider:     'an orc rider',
+    spike:         'the spikes',
+    fire_pool:     'the flames',
+    fire_ring:     'the fire ring',
+    flame_trail:   'a flame trail',
+    mimic:         'a mimic',
+    projectile:    'a stray bolt',
+  };
+  const killerPhrase = KILLER_PHRASES[killerType] || null;
+  // Pick the most-impressive run metric. Priority order — bosses >
+  // CARNAGE combo > biggest hit > rampage combo > enemies-defeated
+  // milestone > perfect dodges. First match wins.
+  const mc = s._maxCombo | 0;
+  const bh = s.biggestHit | 0;
+  const ed = s.enemiesDefeated | 0;
+  const pd = s.perfectDodges | 0;
+  const bk = s.bossesKilled | 0;
+  let beat = null;
+  if (bk >= 1) {
+    beat = bk >= 2 ? `you felled ${bk} bosses` : 'you felled a boss';
+  } else if (mc >= 40) {
+    beat = `your chain reached carnage — ${mc} hits`;
+  } else if (bh >= 200) {
+    beat = `your largest blow took ${bh}`;
+  } else if (mc >= 20) {
+    beat = `your chain reached rampage — ${mc} hits`;
+  } else if (mc >= 10) {
+    beat = `your chain held — ${mc} hits`;
+  } else if (bh >= 80) {
+    beat = `your largest blow took ${bh}`;
+  } else if (ed >= 50) {
+    beat = `you felled ${ed}`;
+  } else if (pd >= 5) {
+    beat = `you read ${pd} strikes`;
+  }
+  // Compose. Death cause leads when present; victory always leads with
+  // its own clause. Only return a line when we have at least ONE element
+  // (cause OR beat) — otherwise the random flavor message reads better
+  // than a stat-less template.
+  if (isVictory) {
+    if (beat) return `the depths yielded — ${beat}`;
+    return null;     // caller uses random VICTORY_MESSAGES
+  }
+  if (killerPhrase && beat) return `felled by ${killerPhrase} — ${beat}`;
+  if (killerPhrase) return `felled by ${killerPhrase}`;
+  if (beat) return beat;
+  return null;       // caller uses random DEATH_MESSAGES
+}
+
 // Populate the end-of-run summary panel (death OR final victory)
 function showEndOfRun(isVictory) {
   // Run ended — clear any resume snapshot. Fresh start from now on.
@@ -3529,12 +3618,20 @@ function showEndOfRun(isVictory) {
   const lineR = document.getElementById('endOrnamentLineR');
   const dotL = document.getElementById('endSubtitleDotL');
   const dotR = document.getElementById('endSubtitleDotR');
+  // Phase 4 work — defining-moment narrative beat. The audit asked for
+  // "narrative beats, not stats page" — the run-end was previously a
+  // generic flavor line ("the ooze takes you back") + a stats grid.
+  // The flavor was random, not specific to THIS run. Now we compose a
+  // run-specific subtitle that names the death cause AND the most
+  // impressive moment. Keeps the stats grid; just upgrades the subtitle
+  // from generic → narrative.
+  const _definingLine = composeDefiningMoment(stats, hero._lastHurtBy, isVictory);
   if (isVictory) {
     // VICTORY — pure gold palette, triumphant
     title.textContent = 'THE DEPTHS YIELD';
     title.style.color = '#f4d9a0';
     title.style.textShadow = '0 0 22px rgba(244,217,160,0.7)';
-    subtitle.textContent = VICTORY_MESSAGES[(Math.random() * VICTORY_MESSAGES.length) | 0];
+    subtitle.textContent = _definingLine || VICTORY_MESSAGES[(Math.random() * VICTORY_MESSAGES.length) | 0];
     subtitle.style.color = '#d8cfae';
     if (ornamentText) {
       ornamentText.textContent = 'the depths have yielded';
@@ -3554,7 +3651,7 @@ function showEndOfRun(isVictory) {
     title.textContent = 'YOU DIED';
     title.style.color = '#d8556a';
     title.style.textShadow = '0 0 18px rgba(216,85,106,0.6)';
-    const line = DEATH_MESSAGES[(Math.random() * DEATH_MESSAGES.length) | 0];
+    const line = _definingLine || DEATH_MESSAGES[(Math.random() * DEATH_MESSAGES.length) | 0];
     subtitle.textContent = line;
     subtitle.style.color = '#c8a8a8';
     if (ornamentText) {
@@ -4412,7 +4509,7 @@ function tick(now) {
           playSfx('slime_death', { rate: 0.6, volume: 0.7 });
         } else {
           // MIMIC — damage + spawn enemies
-          damageHero(1, hero.x, hero.y + 20);
+          damageHero(1, hero.x, hero.y + 20, 'mimic');
           const lvl = currentFloorLevel | 0;
           // Floor-appropriate spawn types — must match keys in
           // enemies.js TYPES (verified 2026-04-27 after a P0 bug
@@ -4728,7 +4825,7 @@ function tick(now) {
       const dmg = spikeDamageAt(hero.x, hero.y, gameTime);
       if (dmg > 0 && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'blink') {
         heroSpikeCD = 0.5;
-        damageHero(dmg, hero.x, hero.y + 20);
+        damageHero(dmg, hero.x, hero.y + 20, 'spike');
       }
     }
     // Fire pool damage (Broodmother arena)
@@ -4736,7 +4833,7 @@ function tick(now) {
       const fdmg = firePoolDamageAt(hero.x, hero.y, gameTime);
       if (fdmg > 0 && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'blink') {
         heroSpikeCD = 0.5;
-        damageHero(fdmg, hero.x, hero.y + 20);
+        damageHero(fdmg, hero.x, hero.y + 20, 'fire_pool');
       }
     }
     // Broodmother enrage — spawn 2 more fire pools when she first enrages

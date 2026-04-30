@@ -94,7 +94,7 @@ export function updateFlames(dt) {
       if (!hero._flameCD || hero._flameCD <= 0) {
         const dx = hero.x - f.x, dy = hero.y - f.y;
         if (dx*dx + dy*dy < (f.radius + 14) * (f.radius + 14) && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'blink') {
-          damageHero(f.damage, f.x, f.y);
+          damageHero(f.damage, f.x, f.y, 'flame_trail');
           hero._flameCD = 0.5;
         }
       }
@@ -158,7 +158,7 @@ export function updateEmberRings(dt) {
     const dx = hero.x - r.x, dy = hero.y - r.y;
     const dh = Math.hypot(dx, dy);
     if (Math.abs(dh - curR) < EMBER_RING_BAND && hero.state !== 'shield' && hero.state !== 'dash' && hero.state !== 'blink') {
-      damageHero(r.damage, r.x, r.y);
+      damageHero(r.damage, r.x, r.y, 'fire_ring');
       r.hit = true;     // one-shot per ring
     }
   }
@@ -1529,7 +1529,7 @@ function explode(e) {
   playSfx('hero_hurt',   { rate: 0.7, rateJitter: 0.05, volume: 0.6 });
   // Damage hero
   const dhx = hero.x - e.x, dhy = hero.y - e.y;
-  if (dhx*dhx + dhy*dhy < R * R) damageHero(dam, e.x, e.y);
+  if (dhx*dhx + dhy*dhy < R * R) damageHero(dam, e.x, e.y, e.type);
   // Damage other enemies
   for (const other of enemies) {
     if (other === e || other.dead) continue;
@@ -1613,7 +1613,7 @@ function updateMelee(e, dt) {
         while (diff >  Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
         if (Math.abs(diff) <= prof.arc / 2) {
-          const wasHit = damageHero(prof.damage | 0, e.x, e.y);
+          const wasHit = damageHero(prof.damage | 0, e.x, e.y, e.type);
           // Affix onHitHero — frost/venom apply debuffs when a hit lands
           if (wasHit !== 'absorbed' && e.affix && e.affix.onHitHero) {
             e.affix.onHitHero(e);
@@ -1766,7 +1766,7 @@ function updateRanged(e, dt) {
         const a = baseAngle + offset;
         const tx = e.x + Math.cos(a) * 600;
         const ty = (e.y - 20) + Math.sin(a) * 600;
-        const arrow = spawnArrow(e.x, e.y - 20, tx, ty, e.damage);
+        const arrow = spawnArrow(e.x, e.y - 20, tx, ty, e.damage, e.type);
         // Tag arrow with its source's affix so projectile-hit can apply debuffs
         if (arrow && e.affix) arrow.affix = e.affix;
       }
@@ -1857,7 +1857,7 @@ function updateLancer(e, dt) {
       const halfW = e.def.chargeWidth / 2 + 12;
       if (Math.abs(along) < 50 && perp < halfW && !e._swingHit) {
         e._swingHit = true;
-        damageHero(e.damage, e.x, e.y);
+        damageHero(e.damage, e.x, e.y, e.type);
         shakeCamera(7, 0.2);
       }
     } else {
@@ -1914,7 +1914,7 @@ function updateWizard(e, dt) {
         const a = baseAngle + offset;
         const tx = e.x + Math.cos(a) * 400;
         const ty = (e.y - 20) + Math.sin(a) * 400;
-        const orb = spawnOrb(e.x, e.y - 20, tx, ty, e.damage);
+        const orb = spawnOrb(e.x, e.y - 20, tx, ty, e.damage, e.type);
         if (orb && e.affix) orb.affix = e.affix;
       }
       playSfx('click', { rate: 0.9, volume: 0.6 });

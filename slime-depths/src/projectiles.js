@@ -14,7 +14,7 @@ import { spawnLightningArc } from './synergies.js';
 export const projectiles = [];
 const pool = [];
 
-export function spawnArrow(x, y, targetX, targetY, damage = 1) {
+export function spawnArrow(x, y, targetX, targetY, damage = 1, sourceType = null) {
   const dx = targetX - x, dy = targetY - y;
   const m = Math.hypot(dx, dy) || 1;
   const p = pool.pop() || {};
@@ -27,12 +27,13 @@ export function spawnArrow(x, y, targetX, targetY, damage = 1) {
   p.damage = damage;
   p.radius = 6;
   p.affix = null;
+  p.sourceType = sourceType;     // for death-cause attribution
   projectiles.push(p);
   return p;
 }
 
 // Wizard homing orb — slow, curves toward the hero, bigger splash, more dangerous
-export function spawnOrb(x, y, targetX, targetY, damage = 2) {
+export function spawnOrb(x, y, targetX, targetY, damage = 2, sourceType = null) {
   const dx = targetX - x, dy = targetY - y;
   const m = Math.hypot(dx, dy) || 1;
   const p = pool.pop() || {};
@@ -48,6 +49,7 @@ export function spawnOrb(x, y, targetX, targetY, damage = 2) {
   p.affix = null;
   p.trail = [];                     // trail of recent positions for FX
   p.t = 0;
+  p.sourceType = sourceType;        // for death-cause attribution
   projectiles.push(p);
   return p;
 }
@@ -405,7 +407,7 @@ export function updateProjectiles(dt) {
           synthThud(180, 0.35, 0.28);
           shakeCamera(4, 0.15);
         }
-        const result = damageHero(p.damage, p.x, p.y);
+        const result = damageHero(p.damage, p.x, p.y, p.sourceType || 'projectile');
         if (result === 'hit' && p.affix && p.affix.onHitHero) p.affix.onHitHero();
         projectiles.splice(i, 1);
         pool.push(p);

@@ -2526,7 +2526,14 @@ export function updateHero(dt, enemies, mouseWorld) {
 }
 
 // Returns: 'hit' | 'absorbed' | 'perfect' — so callers can apply affix effects only on real hits
-export function damageHero(amount, fromX, fromY) {
+// Phase 4 work — optional `sourceType` (e.g. 'slime', 'orc', 'bomber',
+// 'wizard', 'broodmother', 'spike', 'fire_pool') is recorded on
+// hero._lastHurtBy so the death-cause tracker + run-end narrative can
+// describe what actually killed you. Callers that don't supply it just
+// leave the prior value (which is fine for environmental stragglers
+// after a real kill source already landed).
+export function damageHero(amount, fromX, fromY, sourceType = null) {
+  if (sourceType) hero._lastHurtBy = sourceType;
   if (hero.state === 'dead') return 'absorbed';
 
   // ── ECHO STEP (Sprint 3C) ─────────────────────────────────────
