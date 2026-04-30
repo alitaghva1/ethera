@@ -61,6 +61,14 @@ function drawPipRow(ctx, cx, y, filled, total, color, flashT) {
   const isFlash = flashT > 0;
   // Flash pulses across the full row during FLASH_DURATION, fading out.
   const flashAlpha = isFlash ? Math.min(1, flashT / (FLASH_DURATION * 0.6)) : 0;
+  // Round-7-audit POLISH — proc-imminent telegraph. When the row is
+  // ONE pip from full (`filled === total - 1`), a gentle anticipation
+  // halo appears under the row signaling "the next hit/kill will
+  // trigger the proc." Mirrors the theme HUD chip's "almost-Resonance"
+  // telegraph (same commit pattern: surface the previously-invisible
+  // "one more away" state). Suppressed during the post-proc flash so
+  // the two halos don't fight for the same screen real estate.
+  const procImminent = !isFlash && filled === total - 1 && filled > 0;
 
   for (let i = 0; i < total; i++) {
     const x = x0 + i * (PIP_W + PIP_GAP);
@@ -90,6 +98,22 @@ function drawPipRow(ctx, cx, y, filled, total, color, flashT) {
     ctx.globalAlpha = 0.55 * flashAlpha;
     ctx.fillStyle = g;
     ctx.fillRect(glowX, y - 4, glowW, PIP_H + 8);
+  } else if (procImminent) {
+    // Pre-proc anticipation halo — same shape as the post-proc halo
+    // but quieter alpha (0.30 vs 0.55) and a slower pulse, so the
+    // visual hierarchy reads "subtle build-up → bright payoff" not
+    // "two equally bright glows." Pulse rate 0.005 (≈0.8 Hz at 60fps)
+    // is fast enough to register as anticipation, slow enough not to
+    // strobe.
+    const procPulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.005);
+    const glowW = total * PIP_W + (total - 1) * PIP_GAP + 6;
+    const glowX = x0 - 3;
+    const g = ctx.createRadialGradient(cx, y + PIP_H / 2, 2, cx, y + PIP_H / 2, glowW / 2);
+    g.addColorStop(0, color + '99');
+    g.addColorStop(1, color + '00');
+    ctx.globalAlpha = 0.30 * procPulse;
+    ctx.fillStyle = g;
+    ctx.fillRect(glowX, y - 3, glowW, PIP_H + 6);
   }
   ctx.globalAlpha = 1;
 }
