@@ -202,11 +202,10 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.fillText(`${Math.max(0, Math.round(hero.hp))} / ${hero.maxHp}`, hpTextX, hpTextY);
   ctx.restore();
 
-  // ── WEAPON SLOT HEADER — wizard-kit Sprint 2A ───────────────────
+  // ── WEAPON SLOT HEADER — wizard-kit Sprint 2A/2B ────────────────
   // Two-slot weapon system displayed as a single compact row above
   // the pip stack. Active weapon is bold + tinted; the other is dim.
-  // 1 / 2 keybinds tell the player how to swap; mouse-wheel works
-  // too. Sprint 2B may add weapon icons here when art exists.
+  // RMB / 1 / 2 / mouse-wheel all swap; the subtitle hints at RMB.
   ctx.save();
   const weaponHeaderY = pad + heartRows * heartRowH + 8;
   const isSwordActive = hero.activeWeapon === 'sword';
@@ -222,6 +221,10 @@ export function drawHud(ctx, w, h, progress = {}) {
   // [2] BLAST slot
   ctx.fillStyle = isSwordActive ? 'rgba(140, 130, 110, 0.45)' : 'rgba(180, 220, 255, 0.95)';
   ctx.fillText(isSwordActive ? '2·blast' : '◆ 2·BLAST', pad + 100, weaponHeaderY);
+  // RMB-swap hint to the right of the slot row
+  ctx.fillStyle = 'rgba(140, 130, 110, 0.55)';
+  ctx.font = 'italic 9px Georgia, serif';
+  ctx.fillText('RMB · swap', pad + 178, weaponHeaderY + 1);
   ctx.restore();
 
   // Ability pips row — placed below the weapon header with a small gap.
@@ -267,100 +270,44 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.textBaseline = 'middle';
   ctx.fillText('SPACE · SHIELD', labelInlineX, dodgeRowY + pipH / 2);
 
-  // ── ACTIVE WEAPON RMB pip — wizard-kit Sprint 2A ─────────────
-  // The ACTIVE weapon's RMB cooldown. Sword RMB is currently empty
-  // (Lunge was removed because it overlapped with Dash Strike on Q);
-  // when sword is equipped the pip renders dimmed with label
-  // "RMB · (sprint 2B)" so the player understands the slot is
-  // intentionally unfilled, not broken. Blast RMB → Chain Cast.
+  // ── Q ABILITY pip — wizard-kit Sprint 2B ──────────────────────
+  // Single pip whose label + CD scale by active weapon:
+  //   Sword equipped → Q · DASH STRIKE  (5s CD, gold tint)
+  //   Blast equipped → Q · BLINK        (3.5s CD, cyan tint)
+  //
+  // The RMB pip from Sprint 2A is gone — RMB is now bound to
+  // weapon-swap (with 1/2/wheel as alternate inputs). The active
+  // weapon's primary attack is implicit on LMB and doesn't need
+  // its own CD pip (sword swing CD is too short for a meter to
+  // be useful; blast bolt cadence is the same).
   const isSword = hero.activeWeapon === 'sword';
-  const swordRmbEmpty = isSword;          // true until Sprint 2B fills sword RMB
-  const rmbCDMax = isSword ? 1 : (hero.chainCastMaxCD || 3.5);
-  const rmbCD = isSword ? 0 : (hero.chainCastCD || 0);
-  const rmbReady = rmbCD <= 0;
-  const blastRowY = dodgeRowY + pipH + pipGap;
-  // Empty sword RMB → render the row at low alpha as a placeholder.
-  ctx.globalAlpha = swordRmbEmpty ? 0.32 : 1;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-  ctx.fillRect(pad, blastRowY, pipW, pipH);
-  if (swordRmbEmpty) {
-    // Dim grey fill — no glow, no animation.
-    ctx.fillStyle = 'rgba(120, 110, 90, 0.4)';
-    ctx.fillRect(pad + 1, blastRowY + 1, pipW - 2, pipH - 2);
-  } else {
-    // Blast RMB chain cast — electric-cyan-violet tint.
-    const rmbReadyTint = 'rgba(160, 200, 255, ';
-    const rmbFillTint = 'rgba(120, 150, 220, 0.85)';
-    if (rmbReady) {
-      const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 340);
-      ctx.fillStyle = rmbReadyTint + glowPulse.toFixed(3) + ')';
-      ctx.fillRect(pad + 1, blastRowY + 1, pipW - 2, pipH - 2);
-    } else {
-      const frac = 1 - (rmbCD / rmbCDMax);
-      ctx.fillStyle = rmbFillTint;
-      ctx.fillRect(pad + 1, blastRowY + 1, (pipW - 2) * frac, pipH - 2);
-    }
-  }
-  ctx.strokeStyle = swordRmbEmpty
-    ? 'rgba(160, 150, 130, 0.4)'
-    : 'rgba(180, 200, 240, 0.55)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(pad + 0.5, blastRowY + 0.5, pipW - 1, pipH - 1);
-  ctx.fillStyle = swordRmbEmpty
-    ? 'rgba(160, 150, 130, 0.55)'
-    : (rmbReady ? 'rgba(220, 230, 255, 0.9)' : 'rgba(180, 190, 230, 0.5)');
-  ctx.font = 'italic bold 10px Georgia, serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  const rmbLabel = swordRmbEmpty ? 'RMB · —' : 'RMB · CHAIN CAST';
-  ctx.fillText(rmbLabel, labelInlineX, blastRowY + pipH / 2);
-  ctx.globalAlpha = 1;
-
-
-  // DASH STRIKE (Q) pip — third row, SWORD-ONLY (wizard-kit Sprint 2A
-  // polish). When blast is equipped Q is a null input; the pip is
-  // rendered DIMMED + greyed to telegraph "not available right now"
-  // instead of being hidden — keeps the layout stable across swaps
-  // (a vanishing row would shift the gold counter beneath, which
-  // reads as bug not feature).
-  const dashCDMax = 5.0;
-  const dashCD = hero.dashStrikeCD || 0;
+  const dashCDMax = isSword ? 5.0 : (hero.blinkMaxCD || 3.5);
+  const dashCD = isSword ? (hero.dashStrikeCD || 0) : (hero.blinkCD || 0);
   const dashReady = dashCD <= 0;
-  const dashRowY = blastRowY + pipH + pipGap;
-  // Backdrop. When blast is active, pull the row's alpha down so it
-  // reads as inert.
-  const dashGated = !isSword;
-  ctx.globalAlpha = dashGated ? 0.32 : 1;
+  const dashRowY = dodgeRowY + pipH + pipGap;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(pad, dashRowY, pipW, pipH);
-  if (dashGated) {
-    // Dim grey fill — no glow, no animation. "Locked while blast equipped."
-    ctx.fillStyle = 'rgba(120, 110, 90, 0.4)';
-    ctx.fillRect(pad + 1, dashRowY + 1, pipW - 2, pipH - 2);
-  } else if (dashReady) {
+  const qReadyTint = isSword ? 'rgba(255, 210, 120, ' : 'rgba(160, 220, 255, ';
+  const qFillTint  = isSword ? 'rgba(180, 140, 80, 0.85)' : 'rgba(120, 170, 220, 0.85)';
+  if (dashReady) {
     const glowPulse = 0.7 + 0.3 * Math.sin(performance.now() / 280);
-    ctx.fillStyle = `rgba(255, 210, 120, ${glowPulse.toFixed(3)})`;
+    ctx.fillStyle = qReadyTint + glowPulse.toFixed(3) + ')';
     ctx.fillRect(pad + 1, dashRowY + 1, pipW - 2, pipH - 2);
   } else {
     const frac = 1 - (dashCD / dashCDMax);
-    ctx.fillStyle = 'rgba(180, 140, 80, 0.85)';
+    ctx.fillStyle = qFillTint;
     ctx.fillRect(pad + 1, dashRowY + 1, (pipW - 2) * frac, pipH - 2);
   }
-  ctx.strokeStyle = dashGated ? 'rgba(160, 150, 130, 0.4)' : 'rgba(240, 200, 140, 0.55)';
+  ctx.strokeStyle = isSword ? 'rgba(240, 200, 140, 0.55)' : 'rgba(180, 220, 240, 0.55)';
   ctx.lineWidth = 1;
   ctx.strokeRect(pad + 0.5, dashRowY + 0.5, pipW - 1, pipH - 1);
-  ctx.fillStyle = dashGated
-    ? 'rgba(160, 150, 130, 0.55)'
-    : (dashReady ? 'rgba(255, 225, 170, 0.9)' : 'rgba(200, 170, 130, 0.5)');
+  ctx.fillStyle = dashReady
+    ? (isSword ? 'rgba(255, 225, 170, 0.9)' : 'rgba(200, 230, 255, 0.9)')
+    : (isSword ? 'rgba(200, 170, 130, 0.5)' : 'rgba(170, 200, 230, 0.5)');
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  // Label hints at the gating: when blast is active the label reads
-  // "(SWAP TO SWORD)" instead of the keybind, so the player knows
-  // why Q is doing nothing.
-  const dashLabel = dashGated ? 'Q · (sword only)' : 'Q · DASH STRIKE';
-  ctx.fillText(dashLabel, labelInlineX, dashRowY + pipH / 2);
-  ctx.globalAlpha = 1;
+  ctx.fillText(isSword ? 'Q · DASH STRIKE' : 'Q · BLINK', labelInlineX, dashRowY + pipH / 2);
   ctx.restore();
   // Expose the bottom of the dash row so the gold counter (further down in
   // this draw pass) can anchor beneath it with a proper margin.
