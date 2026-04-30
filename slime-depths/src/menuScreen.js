@@ -155,9 +155,18 @@ export const MENU_SCREEN_HTML = `
          dim text. Differentiation by weight, not by outline. -->
     <div id="menuModeRow" style="display:flex;gap:3px;margin-top:12px;margin-bottom:0;align-items:center;">
       <button class="menuModeChip" data-mode="standard" style="background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">STANDARD</button>
-      <span style="opacity:0.3;color:#c9a86a;font-size:9px;">\u2666</span>
-      <button class="menuModeChip" data-mode="daily" style="background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
-      <span style="opacity:0.3;color:#c9a86a;font-size:9px;">\u2666</span>
+      <!-- ROUND-7 SCOPE PASS: DAILY mode chip hidden (matches the prior
+           TAROT hiding below). Daily challenges added a third menu mode
+           that competed for new-player attention with STANDARD without
+           delivering on the promise \u2014 community/streak features that
+           require a backend the project doesn't have. The chip is
+           hidden (not deleted) so daily.js stays dormant and any old
+           save data continues to load via the LEGACY_KEYS migration in
+           profile.js. To re-enable: remove the display:none on this
+           button + restore the adjacent diamond separators. The
+           supporting code (run-state forking, completion tracking,
+           streak persistence) is intact in daily.js + main.js. -->
+      <button class="menuModeChip" data-mode="daily" style="display:none;background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
       <!-- META CONSOLIDATION PASS (review #3): TAROT mode chip hidden.
            Tarot's 8 cards overlapped Memory's identity-modifier role; the
            main menu had one too many entry points for new players. The
