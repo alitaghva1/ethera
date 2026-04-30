@@ -1232,8 +1232,15 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         playSfx('slime_death', { rate: elite ? 0.85 : 1.0, rateJitter: 0.1, volume: 0.9 });
 
         // Gold drops — scale with elite/boss. Tarot EMPRESS doubles drops.
+        // Round-7 ROOM REWARD — gold-flagged rooms (door label "GOLD")
+        // multiply per-kill drops by 1.5x so the door's promise matches
+        // reality. Composes with EMPRESS (×2) and Coin of the Tyrant
+        // (×1.5 via hero.goldMul, applied downstream in dropGold's
+        // consumer logic).
         let coinCount = this.boss ? 40 : this.elite ? (6 + (Math.random() * 5 | 0)) : (1 + (Math.random() * 3 | 0));
         if (typeof window !== 'undefined' && window.__tarotEmpress) coinCount *= 2;
+        const roomMul = (typeof window !== 'undefined' && window.__roomGoldMul) || 1;
+        if (roomMul !== 1) coinCount = Math.max(1, Math.round(coinCount * roomMul));
         dropGold(this.x, this.y - 8, coinCount);
 
         // SYNERGY: Explosive Kill — detonate on death

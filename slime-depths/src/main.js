@@ -4042,11 +4042,27 @@ function loadRoom(idx, entryFrom) {
     synthChord(440, 1.0, 1.0);      // mournful chord
     setTimeout(() => synthGloom(210, 0.7, 0.9), 400);
   }
+  // Round-7 ROOM REWARD globals — set on every loadRoom so per-kill +
+  // per-event hooks (e.g. enemies.js's gold drop) can read the active
+  // room's bias without needing to walk the graph or refetch data.
+  // Cleared (multiplier = 1) on rooms with no reward bias so the buff
+  // doesn't leak past a single room. Only 'gold' rooms multiply gold;
+  // other rewards are applied at clear time via the spawnRelicOffer
+  // path (see post-clear block) or at altar spawn (legendary tier).
+  if (typeof window !== 'undefined') {
+    window.__roomGoldMul = data.roomReward === 'gold' ? 1.5 : 1;
+  }
+
   // Altar rooms spawn their tier-weighted pedestals immediately on entry.
   // Pass currentFloorLevel through so the roll respects the floor (legacy
   // `3` HP-cost arg is ignored; pedestals.js scales cost by drawn tier).
+  // Round-7 — roomReward='legendary' forces minTier='legendary' so the
+  // door's "LEGENDARY" promise matches the offered relics. Without this
+  // an altar door labeled LEGENDARY could roll a common+rare offer pair
+  // on F2-F3 (since altars use floor weights, not the door reward tag).
   if (data.kind === 'altar') {
-    spawnAltarOffer(3, currentFloorLevel);
+    const altarOpts = data.roomReward === 'legendary' ? { minTier: 'legendary' } : {};
+    spawnAltarOffer(3, currentFloorLevel, altarOpts);
   }
 
   // Boss room — dramatic intro: hold gameplay for ~2s while showing boss name
@@ -6230,11 +6246,25 @@ function tick(now) {
         // is harder than a normal combat slot so the reward should reflect
         // that (higher rare + legendary chance, even a shot at mythic on F4).
         // Elite (perilous-path) rooms guarantee rare+ pedestals — risk pays.
-        // Standard combat rooms still roll on the current floor.
+        // Round-7 ROOM REWARD bias — composed on top of the elite/miniboss
+        // baseline. roomReward='rare+' adds minTier promotion (matches
+        // elite-path treatment); roomReward='fusion' adds forced fusion-
+        // completer bias; roomReward='gold' drops bonus gold here so the
+        // door's "GOLD" chip matches reality on clear.
         const isMiniboss = data.slotLabel === 'miniboss';
         const isElitePath = !!data.eliteRoom;
+        const reward = data.roomReward;
         const offerLevel = isMiniboss ? 4 : currentFloorLevel;
-        const offerOpts = isElitePath ? { minTier: 'rare' } : {};
+        const offerOpts = {};
+        if (reward === 'legendary') offerOpts.minTier = 'legendary';
+        else if (isElitePath || reward === 'rare+') offerOpts.minTier = 'rare';
+        if (reward === 'fusion') offerOpts.fusionBias = true;
+        if (reward === 'gold') {
+          // Bonus gold pile — extra coins drop at hero center, on top of
+          // the per-kill drops the gold-mul applied during combat. Gives
+          // the room a tactile "the chest opens" beat.
+          import('./gold.js').then(g => g.dropGold(hero.x, hero.y - 12, 12));
+        }
         spawnRelicOffer(offerLevel, offerOpts);
         applyTarotPedestalMods();
         if (isMiniboss) {

@@ -23,8 +23,15 @@ import { isFirstTime } from './firstSeen.js';
 // THE MAGICIAN tarot — if the offer doesn't already contain a fusion-completing
 // relic, swap one slot with a completer (50% chance). This roughly doubles the
 // odds of an offer including a fusion-completer vs a standard rollRelicOffer.
-function applyMagicianBias(offers) {
-  if (!hasCard('the_magician')) return offers;
+//
+// Round-7 Phase-2 — `force=true` skips the 50% gate AND the tarot-card check,
+// guaranteeing a fusion-completer in the offer when set. Used by combat rooms
+// flagged with roomReward='fusion' so the door's "FUSION" promise actually
+// pays out. Falls back to a no-op if the player has no fusion-completing
+// relics in candidate territory.
+function applyMagicianBias(offers, opts = {}) {
+  const force = !!opts.force;
+  if (!force && !hasCard('the_magician')) return offers;
   const offerIds = new Set(offers.map(o => o.id));
   const completers = getFusionCompletingRelicIds(equippedRelics.map(r => r.id));
   // Strip ids the hero already owns or that are already in the offer
@@ -33,7 +40,7 @@ function applyMagicianBias(offers) {
   if (candidates.length === 0) return offers;
   const anyInOffer = offers.some(o => completers.has(o.id));
   if (anyInOffer) return offers;                         // already has one, nothing to do
-  if (Math.random() > 0.5) return offers;                 // 50% bias — doubles vs baseline
+  if (!force && Math.random() > 0.5) return offers;       // 50% bias — doubles vs baseline (skipped on force)
   const pickId = candidates[(Math.random() * candidates.length) | 0];
   const swapIdx = (Math.random() * offers.length) | 0;
   offers[swapIdx] = RELIC_DEFS[pickId];
@@ -102,7 +109,10 @@ function findClearTile(px, py, maxR = 4) {
 // elite (perilous-path) rooms to guarantee meaningful rewards for extra risk.
 export function spawnRelicOffer(floorLevel = 1, opts = {}) {
   pedestals.length = 0;
-  const offers = applyMagicianBias(rollRelicOffer(3, floorLevel, opts));
+  // Forced fusion bias for room-reward 'fusion' rooms (Round-7) is
+  // routed through the same applyMagicianBias helper with a force flag
+  // so the bias pipeline stays single-source-of-truth.
+  const offers = applyMagicianBias(rollRelicOffer(3, floorLevel, opts), { force: !!opts.fusionBias });
   if (offers.length === 0) return;
   const cols = [6, 10, 14];
   // Pedestal row pushed from 4 to 5 — one tile south of the dense
@@ -165,7 +175,7 @@ function altarCostFor(tier) {
   const maxByHp = Math.max(2, Math.floor((hero?.maxHp || 3) * 0.65));
   return Math.min(cursed, maxByHp);
 }
-export function spawnAltarOffer(_legacyHpCost, floorLevel = 1) {
+export function spawnAltarOffer(_legacyHpCost, floorLevel = 1, opts = {}) {
   pedestals.length = 0;
   // Pass floorLevel through to the tier-weighted roll. Without this, the
   // default floorLevel=1 in rollRelicOffer means altars on every floor
@@ -173,7 +183,12 @@ export function spawnAltarOffer(_legacyHpCost, floorLevel = 1) {
   // floor-1 reward room, making higher floors' altars feel like theft
   // (HP cost scales by tier, but the offered tier never moved past
   // common). Floor passes through from main.js.
-  const offers = rollRelicOffer(2, floorLevel);
+  //
+  // Round-7 — opts.minTier forces a tier floor on the offer roll. Used
+  // by altar nodes flagged with roomReward='legendary' so the door's
+  // "LEGENDARY" promise matches the offered relics.
+  const rollOpts = opts.minTier ? { minTier: opts.minTier } : {};
+  const offers = rollRelicOffer(2, floorLevel, rollOpts);
   if (offers.length === 0) return;
   const cols = [7, 12];
   const row = 7;

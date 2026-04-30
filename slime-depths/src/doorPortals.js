@@ -69,6 +69,33 @@ const KIND_COLORS = {
   combat:    '#c8b894',   elite: '#e07070', event: '#c8a0ff',
   sanctuary: '#86e3a8',   reward: '#86e3a8', boss: '#ff9a55',
 };
+// Round-7 reward-chip palette — second tint per door, used for the
+// reward suffix ("· GOLD ·" etc.). Sits BELOW the kind label so the
+// player reads room type first, reward type second. Each color
+// matches the reward's gameplay flavor:
+//   gold      — warm gold, the coin pile
+//   rare+     — soft gold-cream, matches the rare-tier pedestal ring
+//   legendary — pink-lavender, matches the legendary-tier ring
+//   heal      — sanctuary green, mirrors REST tint
+//   fusion    — ember orange, matches the fusion banner
+const REWARD_COLORS = {
+  gold:      '#f4d9a0',
+  'rare+':   '#ffd680',
+  legendary: '#ffc8ff',
+  heal:      '#86e3a8',
+  fusion:    '#ffb265',
+};
+// Render-side labels for the reward chip. floorGraph.js maintains its
+// own REWARD_LABELS for the game-internal API (rewardLabel(reward)) but
+// duplicating the map here keeps doorPortals.js self-contained — the
+// labels are display-only strings, not gameplay data.
+const REWARD_LABELS = {
+  gold:      'GOLD',
+  'rare+':   'RARE+',
+  legendary: 'LEGENDARY',
+  heal:      'HEAL',
+  fusion:    'FUSION',
+};
 
 // Active doors for the current room. Cleared between rooms.
 // Each entry: { tx, ty, side: 'north'|'south', state, anim,
@@ -115,6 +142,16 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
         : pickDoorTilePositions(w, targets.length);
       for (let i = 0; i < targets.length; i++) {
         const t = targets[i];
+        // Reward suffix — Round-7 Phase-1 of the rooms-redesign plan.
+        // The reward chip tells the player WHAT they'll find before
+        // walking through the door, turning every fork from "which
+        // room kind?" into "which reward do I need right now?". Null
+        // for boss + start; standard combat rooms can also be null
+        // (the 20% no-bonus default — those just show "COMBAT").
+        const rewardLabel = t.roomReward
+          ? (REWARD_LABELS[t.roomReward] || t.roomReward.toUpperCase())
+          : null;
+        const rewardColor = t.roomReward ? (REWARD_COLORS[t.roomReward] || '#cccccc') : null;
         roomDoors.push({
           tx: positions[i],
           ty: 0,
@@ -129,6 +166,8 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
           label: KIND_LABELS[t.kind] || (t.kind || '?').toUpperCase(),
           color: KIND_COLORS[t.kind] || '#cccccc',
           glyph: KIND_GLYPHS[t.kind] || '?',
+          rewardLabel,
+          rewardColor,
           sparkleAcc: 0,
         });
       }
@@ -312,6 +351,16 @@ export function drawDoorLabels(ctx) {
       ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
       ctx.shadowBlur = 4;
       ctx.fillText(d.label, cx, cy - 26);
+      // Reward chip — Round-7 Phase 1. Reads as a second line below
+      // the kind label, in the reward's own tint, so the player can
+      // quick-scan "COMBAT · GOLD" at a glance. Null reward means the
+      // room is a "default" combat with no special bias — render only
+      // the kind label in that case (no empty chip line).
+      if (d.rewardLabel) {
+        ctx.font = 'italic 9px Georgia, "Cormorant Garamond", serif';
+        ctx.fillStyle = hexA(d.rewardColor || d.color, labelAlpha * 0.92);
+        ctx.fillText('· ' + d.rewardLabel + ' ·', cx, cy - 14);
+      }
       ctx.restore();
     }
   }

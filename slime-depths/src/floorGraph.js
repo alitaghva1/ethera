@@ -74,13 +74,75 @@ export function pathForKind(kind) {
   return 'standard';
 }
 
+// Round-7 ROOM REWARD assignment — Hades-inspired Phase 1+2 of the
+// rooms-redesign plan. Each non-start, non-boss node carries a
+// `roomReward` tag that:
+//   1. Tells the player WHAT they'll get before walking through the
+//      door (rendered as a chip on the door label, see doorPortals.js).
+//   2. Biases the actual loot/effect that fires in the room (see
+//      main.js loadRoom for spawn-time application).
+//
+// Distribution rules — keyed on path so safe / standard / perilous
+// each have a coherent identity:
+//   safe       -> heal           (sanctuary always heals on clear)
+//   standard   -> 50/30/20 gold / fusion / none
+//   perilous   -> 60/30/10 rare+ / legendary / gold
+//   boss       -> 'boss-pool'    (dedicated themed-loot path; not a
+//                                 chip on the door, just metadata)
+//
+// Reward types are SUFFIXES — combat with gold reward is still combat,
+// just with a 1.5x gold drop multiplier. Altars with legendary reward
+// still cost HP, just guaranteed legendary tier.
+const REWARD_GLYPHS = {
+  gold:      '◈',
+  'rare+':   '✦',
+  legendary: '★',
+  heal:      '✚',
+  fusion:    '⊗',
+};
+const REWARD_LABELS = {
+  gold:      'GOLD',
+  'rare+':   'RARE+',
+  legendary: 'LEGENDARY',
+  heal:      'HEAL',
+  fusion:    'FUSION',
+};
+function rollRoomReward(kind, path) {
+  if (kind === 'start' || kind === 'boss') return null;
+  // Sanctuary already says "REST" on the door label and the room itself
+  // heals the player on touch — a redundant "HEAL" chip just adds noise.
+  // Future content session can introduce sanctuary variants (centaur
+  // heart, fountain) that DO need distinguishing chips; until then the
+  // kind label carries the meaning solo.
+  if (kind === 'sanctuary' || kind === 'reward') return null;
+  // Altar nodes (handled inside event rooms) get legendary if perilous,
+  // otherwise no reward chip — the altar tier itself is the reward.
+  if (path === 'perilous') {
+    const r = Math.random();
+    if (r < 0.60) return 'rare+';
+    if (r < 0.90) return 'legendary';
+    return 'gold';
+  }
+  if (path === 'standard') {
+    const r = Math.random();
+    if (r < 0.50) return 'gold';
+    if (r < 0.80) return 'fusion';
+    return null;     // 20% standard-no-bonus combat (the "default" room)
+  }
+  return null;
+}
+export function rewardGlyph(reward) { return reward ? (REWARD_GLYPHS[reward] || '?') : null; }
+export function rewardLabel(reward) { return reward ? (REWARD_LABELS[reward] || reward.toUpperCase()) : null; }
+
 let _nextNodeId = 0;
 function makeNode(kind, layer) {
+  const path = pathForKind(kind);
   return {
     id: _nextNodeId++,
     kind,
     layer,
-    path: pathForKind(kind),    // 'safe' | 'standard' | 'perilous'
+    path,                       // 'safe' | 'standard' | 'perilous'
+    roomReward: rollRoomReward(kind, path),   // 'gold'|'rare+'|'legendary'|'heal'|'fusion'|null
     edges: [],
     roomData: null,
     visited: false,
@@ -177,6 +239,12 @@ export function generateFloorGraph(level = 1, opts = {}) {
   // Layer 0: start (exactly one node).
   const start = makeNode('start', 0);
   start.roomData = buildRoomForKind('start', lvl, null);
+  // Round-7 — propagate the node's roomReward onto roomData so downstream
+  // loadRoom code (main.js, pedestals.js) can read `data.roomReward`
+  // without needing the graph reference. roomData IS the per-room source
+  // of truth at run-time; the node lives on the graph but roomData is
+  // what gets pushed into the floor[] array.
+  if (start.roomData) start.roomData.roomReward = start.roomReward;
   const nodes = [start];
 
   // Build body layers.
@@ -193,6 +261,8 @@ export function generateFloorGraph(level = 1, opts = {}) {
         : recipe.options[pickIdx(recipe.options)];
       const n = makeNode(kind, recipe.layer);
       n.roomData = buildRoomForKind(kind, lvl, recipe.combatSlot);
+      // Round-7 reward propagation onto roomData — see Layer 0 comment.
+      if (n.roomData) n.roomData.roomReward = n.roomReward;
       nodes.push(n);
       layerNodes.push(n);
     }
@@ -201,6 +271,7 @@ export function generateFloorGraph(level = 1, opts = {}) {
     if (extraSanctuary && recipe.layer === 5) {
       const sanc = makeNode('sanctuary', recipe.layer);
       sanc.roomData = buildRoomForKind('sanctuary', lvl, null);
+      if (sanc.roomData) sanc.roomData.roomReward = sanc.roomReward;
       nodes.push(sanc);
       layerNodes.push(sanc);
     }
@@ -211,6 +282,7 @@ export function generateFloorGraph(level = 1, opts = {}) {
   // Final: boss layer. All pre-boss nodes connect here so every path ends at boss.
   const boss = makeNode('boss', BOSS_LAYER);
   boss.roomData = buildRoomForKind('boss', lvl, null);
+  if (boss.roomData) boss.roomData.roomReward = boss.roomReward;
   nodes.push(boss);
   for (const pre of layerToNodes[layerToNodes.length - 1]) pre.edges.push(boss.id);
 
