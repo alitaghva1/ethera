@@ -691,10 +691,24 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   // VFX SUBTRACTION PASS: per-hit flash alpha halved — these fire multiple
   // times per second in intense combat and were stacking with bloom+shake
   // into illegibility. Durations unchanged so the moments still register.
+  //
+  // Round-7-audit POLISH: per-crit flash is now rate-limited to once per
+  // 250ms. Round-6 already cut alpha to 0.06, but during a Ringing Steel
+  // chain (3+ crits per second) the flash still strobed. Counter and
+  // exec stay un-throttled — they fire less often (counter requires a
+  // perfect dodge, exec requires the target below 40% HP) and their
+  // moments deserve to land every time.
   if (opts.counter) triggerScreenFlash('rgba(255, 230, 150, 0.14)', 0.28);
   else if (opts.exec) triggerScreenFlash('rgba(255, 90, 70, 0.11)', 0.22);
-  else if (opts.crit) triggerScreenFlash('rgba(255, 210, 120, 0.06)', 0.15);
+  else if (opts.crit) {
+    const _now = performance.now();
+    if (!_lastCritFlashAt || _now - _lastCritFlashAt >= 250) {
+      triggerScreenFlash('rgba(255, 210, 120, 0.06)', 0.15);
+      _lastCritFlashAt = _now;
+    }
+  }
 }
+let _lastCritFlashAt = 0;
 
 // Screen flash — brief colored overlay for big hits
 let _screenFlashColor = null;

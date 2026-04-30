@@ -537,7 +537,15 @@ export function consumePendingPickup() {
     setTimeout(() => synthFanfare(0.6), 560);
   } else {
     deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
-    shakeCamera(p.hpCost > 0 ? 6 : 3, 0.15);
+    // Round-7-audit POLISH — common pickups skip camera shake.
+    // Common-tier pickups fire on every standard offer claim AND on
+    // every Coin-of-the-Tyrant kill-chain drop AND on every chest
+    // treasure roll AND on every shop purchase under 90g — that's a
+    // lot of shakes per run. Save the shake budget for tiers that
+    // are actually rare moments. Altar HP-cost pickups still shake
+    // (a deliberate trade deserves the punch).
+    if (p.hpCost > 0) shakeCamera(6, 0.15);
+    else if (t !== 'common') shakeCamera(3, 0.15);
     if (t === 'legendary') synthChord(880, 1.0, 1.0);
     else if (t === 'rare') synthChord(659, 0.9, 0.75);
     else synthPing(1100, 0.9, 0.3);

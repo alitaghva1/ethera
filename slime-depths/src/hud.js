@@ -475,9 +475,17 @@ export function drawHud(ctx, w, h, progress = {}) {
   // THEMES row — shows set-bonus progress across the 5 themes. Chips light
   // up when a theme has ≥1 owned relic; glow at resonance (3), double-glow
   // at ascendance (5). Sits above the fusion row + relic strip.
+  //
+  // Round-7-audit fix: was filtering to `themeCounts[t.id] > 0` so only
+  // the themes the player had relics in were visible. Players never
+  // learned the 5-theme system exists until they accidentally tripped
+  // a Resonance. Now ALL FIVE chips render once the player has any
+  // relic at all — 0-count chips render in muted gray. This is the
+  // game's primary build-craft system; making it visible up-front is
+  // the highest-leverage legibility win in the codebase.
   if (progress.relics && progress.relics.length > 0) {
     const themeCounts = getThemeCounts(progress.relics);
-    const visibleThemes = Object.values(THEMES).filter(t => themeCounts[t.id] > 0);
+    const visibleThemes = Object.values(THEMES);
     if (visibleThemes.length > 0) {
       const chipW = 52, chipH = 22, chipGap = 4;
       const themesY = h - chipH - 110;

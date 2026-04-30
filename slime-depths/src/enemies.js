@@ -4,6 +4,7 @@ import { images } from './loader.js';
 import { isWallAtWorld, spawnExtraFirePool } from './room.js';
 import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
+import { synthThud, synthChord } from './synth.js';
 import { shakeCamera, pulseZoom, worldToScreen } from './camera.js';
 import { mouse, keys } from './input.js';
 import { damageHero, hero } from './hero.js';
@@ -1133,6 +1134,19 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
       this.knockbackX = (dirX || 0) * 320 * weightMul;
       this.knockbackY = (dirY || 0) * 320 * weightMul;
       this.stagger = Math.max(this.stagger || 0, 0.12 + damageRatio * 0.25);
+      // Round-7-audit POLISH — boss flinch. The original hit reaction
+      // applied uniformly to slimes and bosses; bosses null out the
+      // knockback (mass) so a heavy hit on Ember Tyrant felt identical
+      // to a slime tap. Now any hit doing >= 10% of a boss's maxHp
+      // additionally fires a small camera shake + sub-bass thud +
+      // doubles the hit-pop, so the world reacts when the boss takes
+      // a real bite. Threshold-gated so flame-tick / chip damage
+      // doesn't spam shakes during sustained fights.
+      if (this.boss && damageRatio >= 0.10) {
+        this._hitPopT = Math.min(0.20, this._hitPopT * 2);
+        try { shakeCamera(3, 0.14); } catch (_e) {}
+        try { synthThud(70, 0.55, 0.18); } catch (_e) {}
+      }
       // Warded — count staggers toward shield break
       if (this.affix && this.affix.id === 'warded' && !this._shieldBroken) {
         this._staggerCount++;
@@ -1174,6 +1188,17 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         }
         window.__gameMetrics.lastKillTime = now;
         window.__gameMetrics.killStreakShowUntil = now + 1.2;         // HUD shows for 1.2s after last kill
+        // Round-7-audit POLISH — kill-streak audio swell at 5 / 10 / 15.
+        // The HUD label color was the only feedback for crossing these
+        // thresholds; the player's ears got nothing. Rising chord
+        // (440 / 523 / 659 Hz = A4 / C5 / E5 — A-minor triad ascending)
+        // marks each milestone; non-blocking, doesn't fire if the
+        // streak SOMEHOW reaches a higher tier without crossing the
+        // earlier ones (defensive against ramp-up edge cases).
+        const ks = window.__gameMetrics.killStreak;
+        if (ks === 5) try { synthChord(440, 0.55, 0.45); } catch (_e) {}
+        else if (ks === 10) try { synthChord(523, 0.65, 0.55); } catch (_e) {}
+        else if (ks === 15) try { synthChord(659, 0.75, 0.65); } catch (_e) {}
         if (this.boss) stats.bossesKilled++;
         else if (this.elite) stats.elitesDefeated++;
         // BLOOD ASCENDANCE — flat HP-on-kill at theme tier 2. Set by
@@ -1239,9 +1264,30 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         const killColor = this.boss ? '#ff9066' : this.elite ? '#ffd27a' : '#fff2e0';
         const killIntensity = this.boss ? 3 : this.elite ? 2 : 1;
         killRing(this.x, this.y - 8, killColor, killIntensity);
+        // Round-7-audit POLISH — last-hit kill juice. The swing that
+        // ends combat got the same death effects as the first kill,
+        // so the player's "I cleared the room!" moment was silent on
+        // its specialness (the room-clear fanfare arrives ~50ms LATER
+        // via the post-clear block in main.js — too late to feel like
+        // a connected reward). Detect "this kill empties the room"
+        // before the regular death-shake fires + add a deeper thud +
+        // pulseZoom + a small post-kill hit-stop. Bosses are excluded
+        // because they already get pulseZoom + their own cinematic.
+        const _aliveAfter = enemies.filter(e => !e.dead && e !== this).length;
+        const _isLastKill = !this.boss && _aliveAfter === 0;
+        if (_isLastKill) {
+          try { synthThud(55, 0.8, 0.32); } catch (_e) {}
+          pulseZoom(0.06, 0.5);
+        }
         // Camera punch — bosses + elites shake harder; also push a brief zoom
         // pulse for bosses so the screen feels like it's inhaling.
-        shakeCamera(this.boss ? 14 : this.elite ? 7 : 4.5, this.boss ? 0.35 : 0.16);
+        // Last-hit common kills get a slightly bigger shake than usual
+        // (5.5 vs 4.5) so the room-emptying swing feels more decisive.
+        const _killShake = this.boss ? 14
+                          : this.elite ? 7
+                          : _isLastKill ? 5.5
+                          : 4.5;
+        shakeCamera(_killShake, this.boss ? 0.35 : 0.16);
         if (this.boss) pulseZoom(0.10, 0.9);
         else if (this.elite) pulseZoom(0.04, 0.4);
         playSfx('slime_death', { rate: elite ? 0.85 : 1.0, rateJitter: 0.1, volume: 0.9 });
