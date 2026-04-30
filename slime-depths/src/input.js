@@ -6,12 +6,46 @@ export const keys = {};
 export const mouse = { x: 0, y: 0, down: false, pressed: false };
 const justPressed = new Set();
 
+// ─── VIRTUAL INPUT (mobile controls) ────────────────────────────────────────
+// The mobile virtual-controls overlay (mobileControls.js) writes movement
+// into virtualMove and uses the injectKey/injectMouse helpers below to
+// fake keyboard/mouse events from finger taps. Hero.js + main.js read
+// from these alongside the regular keys + mouse state — virtual input
+// supplements rather than replaces. virtualMove magnitude is in [-1, 1]
+// per axis matching the joystick deflection.
+export const virtualMove = { x: 0, y: 0, active: false };
+
+// Inject a key-down state. Mirrors the natural keydown handler — adds to
+// `keys` map and fires a justPressed edge if the key wasn't already held.
+// Used by the dodge / dash buttons on the mobile overlay (Space, KeyQ).
+export function injectKeyDown(code) {
+  if (!keys[code]) justPressed.add(code);
+  keys[code] = true;
+}
+export function injectKeyUp(code) {
+  keys[code] = false;
+}
+
+// Inject a mouse-down state at an optional canvas position. The mobile
+// attack button calls injectMouseDown (on touch-down) and injectMouseUp
+// (on touch-up). hold-to-charge naturally falls out: while the button is
+// held, mouse.down stays true, hero.chargeTime accumulates.
+export function injectMouseDown() {
+  if (!mouse.down) mouse.pressed = true;
+  mouse.down = true;
+}
+export function injectMouseUp() {
+  mouse.down = false;
+}
+
 export function initInput(canvas) {
   window.addEventListener('keydown', (e) => {
     if (!keys[e.code]) justPressed.add(e.code);
     keys[e.code] = true;
-    // Prevent arrow/WASD/space scrolling
-    if (['Space','KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+    // Prevent arrow/WASD/space scrolling. Also Tab — held to inspect
+    // elite affixes (enemies.js drawEliteAffixTooltips); browser-default
+    // is to move focus, which would steal the held-key state.
+    if (['Space','KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code)) e.preventDefault();
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 

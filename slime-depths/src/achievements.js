@@ -14,25 +14,25 @@ export const ACHIEVEMENTS = {
   floor_one_down: {
     id: 'floor_one_down',
     name: 'Into the Dark',
-    desc: 'Clear Floor I',
+    desc: 'Clear the Undercroft',
     check: (s) => s.floorReached >= 2 || s.bossesKilled >= 1,
   },
   the_vault_breaker: {
     id: 'the_vault_breaker',
-    name: 'The Vault Breaker',
-    desc: 'Clear Floor II',
+    name: 'The Tower Falls',
+    desc: 'Clear the Ruined Tower',
     check: (s) => s.floorReached >= 3 || s.bossesKilled >= 2,
   },
   depths_reached: {
     id: 'depths_reached',
     name: 'Depths Reached',
-    desc: 'Survive to the Abyss',
+    desc: 'Survive to the Spire',
     check: (s) => s.floorReached >= 3,
   },
   eternal_descent: {
     id: 'eternal_descent',
     name: 'Eternal Descent',
-    desc: 'Reach The Inferno',
+    desc: 'Reach the Throne of Ruin',
     check: (s) => s.floorReached >= 4,
   },
   ethera_cleansed: {

@@ -4,10 +4,120 @@
 // stone look tuned for the Slime Depths palette.
 
 import { setDustBiome, setWeatherBiome } from './particles.js';
+import { images } from './loader.js';
 
 export const TILE = 48;
+// Default room dimensions. Per-room sizes can override via `data.w` / `data.h`
+// in `buildRoomFromData`. The active dimensions live on `room.w` / `room.h`,
+// which all internal helpers (door positions, perimeter, collision) now read
+// from. ROOM_W / ROOM_H stay exported for callers that need the standard
+// medium-room baseline (e.g. floor.js spawn templates).
+//
+// HADES-STYLE ROOM SHAPES — sizes are picked per-kind so the player feels
+// the difference walking between rooms instead of grinding through a chain
+// of identical 20×14 rectangles. See `pickRoomSize` in floor.js.
 export const ROOM_W = 20;
 export const ROOM_H = 14;
+// Size templates exposed for floor.js. Picked per room kind.
+export const ROOM_SIZES = {
+  small:   { w: 16, h: 11 },     // intimate sanctuary / reward — feels like a chapel
+  medium:  { w: 20, h: 14 },     // default combat / event
+  wide:    { w: 26, h: 13 },     // long hall — encourages flanking + ranged play
+  tall:    { w: 18, h: 18 },     // tall arena — vertical movement matters
+  large:   { w: 26, h: 18 },     // boss / mini-boss — epic scale
+};
+
+// ─── ROOM SHAPES ───────────────────────────────────────────────────────────
+// Beyond size, the playable area can be carved into non-rectangular shapes by
+// walling off corner regions. The carve happens AFTER perimeter walls + pillar
+// placement in buildRoomFromData, so a shape is just "rectangle minus these
+// corner blocks." Doors and pedestal stay in the middle bands so they're
+// never blocked.
+//
+// Carve dimensions scale with room size (~25% width × ~35% height per corner)
+// so the same shape reads consistently in small vs large rooms.
+//
+// Shapes available:
+//   rect      — no carves (default rectangle)
+//   L_NE/NW/SE/SW — one corner walled (creates an L / J / Γ silhouette)
+//   T_top/bottom/left/right — two adjacent corners walled (T silhouette,
+//                              with the "stem" pointing AWAY from the carved side)
+//   plus      — all four corners walled (cross / plus silhouette)
+export const ROOM_SHAPES = {
+  rect:     { carves: [] },
+  L_NE:     { carves: ['NE'] },
+  L_NW:     { carves: ['NW'] },
+  L_SE:     { carves: ['SE'] },
+  L_SW:     { carves: ['SW'] },
+  T_top:    { carves: ['NE', 'NW'] },     // arms extend from the bottom
+  T_bottom: { carves: ['SE', 'SW'] },     // arms extend from the top
+  T_left:   { carves: ['NW', 'SW'] },     // arms extend rightward
+  T_right:  { carves: ['NE', 'SE'] },     // arms extend leftward
+  plus:     { carves: ['NE', 'NW', 'SE', 'SW'] },
+};
+
+// Compute carve block dimensions for a given room. Centralized so doors and
+// spawns and the build pass all reason about the same boundaries.
+export function getCarveSize(w, h) {
+  return {
+    cw: Math.max(2, Math.floor(w * 0.25)),
+    ch: Math.max(2, Math.floor(h * 0.35)),
+  };
+}
+
+// True iff the tile at (x, y) lies inside one of the shape's corner carves.
+// Used by spawnCells (avoid spawning enemies in carved areas) and the door
+// X picker (north door must land in a non-carved column).
+export function isCarvedTile(x, y, w, h, shape) {
+  const def = ROOM_SHAPES[shape] || ROOM_SHAPES.rect;
+  if (!def.carves.length) return false;
+  const { cw, ch } = getCarveSize(w, h);
+  for (const corner of def.carves) {
+    const x0 = corner.includes('W') ? 0 : w - cw;
+    const x1 = x0 + cw;
+    const y0 = corner.includes('N') ? 0 : h - ch;
+    const y1 = y0 + ch;
+    if (x >= x0 && x < x1 && y >= y0 && y < y1) return true;
+  }
+  return false;
+}
+
+// Returns the inclusive [min, max] tile-X range where a NORTH-wall door
+// can be placed for the given shape (i.e. the floor tile directly below
+// the wall row is NOT in a carved area). 3-tile padding from each
+// corner keeps doors away from corner-pillar art. Used by computeDoorXs
+// in main.js.
+export function getValidNorthDoorXRange(w, h, shape) {
+  const def = ROOM_SHAPES[shape] || ROOM_SHAPES.rect;
+  const { cw } = getCarveSize(w, h);
+  const carvesNW = def.carves.includes('NW');
+  const carvesNE = def.carves.includes('NE');
+  return {
+    min: carvesNW ? cw + 1 : 3,
+    max: carvesNE ? w - cw - 2 : w - 4,
+  };
+}
+
+// Apply the shape carves to a tile grid in-place. Run AFTER perimeter walls
+// and pillar placement, so any pillars in the carved region get overwritten
+// by wall (fine — shaped rooms have less empty floor anyway).
+function applyShapeCarves(tiles, w, h, shape) {
+  const def = ROOM_SHAPES[shape] || ROOM_SHAPES.rect;
+  if (!def.carves.length) return;
+  const { cw, ch } = getCarveSize(w, h);
+  for (const corner of def.carves) {
+    const x0 = corner.includes('W') ? 0 : w - cw;
+    const x1 = x0 + cw;
+    const y0 = corner.includes('N') ? 0 : h - ch;
+    const y1 = y0 + ch;
+    for (let y = y0; y < y1; y++) {
+      if (!tiles[y]) continue;
+      for (let x = x0; x < x1; x++) {
+        tiles[y][x] = 'wall';
+      }
+    }
+  }
+}
 
 // Three biome palettes — swapped per floor for visual identity.
 // setBiome(id) switches the active palette which drawRoom + lighting read.
@@ -260,6 +370,14 @@ export const roomSpikes = [];
 export const roomFirePools = [];
 // Trove-room urns — hero can destroy them for loot. Fields: {x, y, broken, variant, breakT}
 export const roomUrns = [];
+// Treasure-chest-room chests. Fields: {x, y, variant: 'treasure'|'mimic',
+// state: 'closed'|'opening'|'opened', frame: 0..15, frameTime: 0}.
+// All chests look IDENTICAL when closed (gambling tension) — the
+// variant only reveals via the opening animation playing fire vs cold.
+export const roomChests = [];
+// Decorative pillars (visual only, no collision). Used to frame
+// special rooms like chestrooms with a 'sacred chamber' feel.
+export const roomDecorPillars = [];
 const SPIKE_CYCLE = 2.2;          // total seconds per cycle
 const SPIKE_RETRACT = 1.2;          // retracted duration (at phase start)
 const SPIKE_WARNING = 0.4;          // warning / rising
@@ -278,6 +396,7 @@ export const room = {
   tiles: null,
   decor: [],
   kind: 'start',
+  shape: 'rect',
   spawns: [],
   cleared: false,
   doors: { north: true, south: true },
@@ -285,12 +404,16 @@ export const room = {
   entryFrom: 'south',
 };
 
-export function northDoorPos() { return { x: Math.floor(ROOM_W / 2), y: 0 }; }
-export function southDoorPos() { return { x: Math.floor(ROOM_W / 2), y: ROOM_H - 1 }; }
-export function pedestalPos()  { return { x: Math.floor(ROOM_W / 2), y: Math.floor(ROOM_H / 2) }; }
+// Door / pedestal positions now read from the active `room.w / room.h` so a
+// 26×18 boss arena and a 16×11 sanctuary both put their north door at the
+// correct mid-top tile. Falling back to ROOM_W/H if `room` hasn't been
+// initialized yet (the very first call before buildRoomFromData runs).
+export function northDoorPos() { return { x: Math.floor((room.w || ROOM_W) / 2), y: 0 }; }
+export function southDoorPos() { return { x: Math.floor((room.w || ROOM_W) / 2), y: (room.h || ROOM_H) - 1 }; }
+export function pedestalPos()  { return { x: Math.floor((room.w || ROOM_W) / 2), y: Math.floor((room.h || ROOM_H) / 2) }; }
 
-function isPerimeter(x, y) {
-  return x === 0 || y === 0 || x === ROOM_W - 1 || y === ROOM_H - 1;
+function isPerimeter(x, y, w, h) {
+  return x === 0 || y === 0 || x === w - 1 || y === h - 1;
 }
 
 // Pillar layout templates. Some patterns include interior walls (more blocking)
@@ -334,6 +457,12 @@ const PILLAR_TEMPLATES = [
 ];
 
 export function buildRoomFromData(data) {
+  // Per-room dimensions — falls back to ROOM_W/ROOM_H when not specified
+  // (preserves back-compat with old saved data + legacy rooms like hamlet).
+  const w = data.w || ROOM_W;
+  const h = data.h || ROOM_H;
+  room.w = w;
+  room.h = h;
   room.kind = data.kind;
   room.spawns = data.spawns ? data.spawns.slice() : [];
   room.cleared = !!data.cleared;
@@ -346,21 +475,62 @@ export function buildRoomFromData(data) {
 
   const pillars = PILLAR_TEMPLATES[data.pillarTemplate | 0] || [];
   const tiles = [];
-  for (let y = 0; y < ROOM_H; y++) {
+  for (let y = 0; y < h; y++) {
     const r = [];
-    for (let x = 0; x < ROOM_W; x++) {
-      r.push(isPerimeter(x, y) ? 'wall' : 'floor');
+    for (let x = 0; x < w; x++) {
+      r.push(isPerimeter(x, y, w, h) ? 'wall' : 'floor');
     }
     tiles.push(r);
   }
-  for (const [px, py] of pillars) {
-    if (px > 0 && py > 0 && px < ROOM_W - 1 && py < ROOM_H - 1) tiles[py][px] = 'pillar';
+  // Hamlet skips pillars entirely — the room is the painted backdrop, a
+  // walkable hub with no combat. Perimeter walls stay so the hero can't
+  // walk off the painted plate.
+  if (data.kind !== 'hamlet') {
+    // Pillar templates are authored at MEDIUM scale (20×14). For larger
+    // rooms, scale pillar coords proportionally so the layout still reads
+    // as designed. For smaller rooms, clamp to the new bounds.
+    const sx = w / ROOM_W;
+    const sy = h / ROOM_H;
+    for (const [px, py] of pillars) {
+      const scaledX = Math.round(px * sx);
+      const scaledY = Math.round(py * sy);
+      if (scaledX > 0 && scaledY > 0 && scaledX < w - 1 && scaledY < h - 1) {
+        tiles[scaledY][scaledX] = 'pillar';
+      }
+    }
+    // ── SHAPE CARVES — turn the rectangle into L / T / plus / etc. by
+    // walling off corner regions. Runs AFTER pillar placement so any
+    // pillars that landed in a carved area are simply overwritten with
+    // wall (visually consistent — they were going to be inside the
+    // walled corner anyway).
+    room.shape = data.shape || 'rect';
+    applyShapeCarves(tiles, w, h, room.shape);
+  } else {
+    room.shape = 'rect';
   }
 
-  const nd = northDoorPos();
+  // ── Door tile placement ────────────────────────────────────────────────
+  // Multi-door support: a graph node with N outgoing edges drops N door
+  // tiles in the north wall (handled by setupRoomDoors in doorPortals.js
+  // *after* this function runs). To make those tiles walkable, the wall
+  // generator marks the planned door positions as 'door' tiles up-front.
+  //
+  // data.doorPlan tells us which positions to mark. If absent, fall back
+  // to the legacy single-center door so non-graph rooms (hamlet, hub)
+  // keep working.
   const sd = southDoorPos();
-  if (room.doors.north) tiles[nd.y][nd.x] = 'door';
   if (room.doors.south) tiles[sd.y][sd.x] = 'door';
+  if (room.doors.north) {
+    const plan = data.doorPlan && data.doorPlan.north;
+    if (plan && plan.length > 0) {
+      for (const tx of plan) {
+        if (tx > 0 && tx < w - 1) tiles[0][tx] = 'door';
+      }
+    } else {
+      const nd = northDoorPos();
+      tiles[nd.y][nd.x] = 'door';
+    }
+  }
 
   if (data.kind === 'reward') {
     const p = pedestalPos();
@@ -375,22 +545,26 @@ export function buildRoomFromData(data) {
 
   room.tiles = tiles;
 
-  // Procedural tiny cracks — subtle floor wear.
+  // Procedural tiny cracks — subtle floor wear. Hamlet skips these; it
+  // has its own painted ground layer and dungeon cracks/rubble look out
+  // of place on the cobblestone plaza.
   room.decor = [];
-  const crackCount = 3 + (hash(data.pillarTemplate | 0, 7) % 3);
-  for (let i = 0; i < crackCount; i++) {
-    const x = 2 + (hash(i + 1, 13) % (ROOM_W - 4));
-    const y = 2 + (hash(i + 2, 17) % (ROOM_H - 4));
-    if (tiles[y][x] === 'floor') room.decor.push({ x, y, kind: 'crack' });
-  }
-  // Rubble in 1-2 corners for "lived-in" feel
-  const corners = [[1, 1], [ROOM_W - 2, 1], [1, ROOM_H - 2], [ROOM_W - 2, ROOM_H - 2]];
-  const rubbleCount = 1 + (hash(data.pillarTemplate | 0, 11) % 2);
-  for (let i = 0; i < rubbleCount; i++) {
-    const c = corners[hash(i, 23) % corners.length];
-    const [cx, cy] = c;
-    if (tiles[cy][cx] === 'floor' && !room.decor.some(d => d.x === cx && d.y === cy)) {
-      room.decor.push({ x: cx, y: cy, kind: 'rubble' });
+  if (data.kind !== 'hamlet') {
+    const crackCount = 3 + (hash(data.pillarTemplate | 0, 7) % 3);
+    for (let i = 0; i < crackCount; i++) {
+      const x = 2 + (hash(i + 1, 13) % (w - 4));
+      const y = 2 + (hash(i + 2, 17) % (h - 4));
+      if (tiles[y][x] === 'floor') room.decor.push({ x, y, kind: 'crack' });
+    }
+    // Rubble in 1-2 corners for "lived-in" feel
+    const corners = [[1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2]];
+    const rubbleCount = 1 + (hash(data.pillarTemplate | 0, 11) % 2);
+    for (let i = 0; i < rubbleCount; i++) {
+      const c = corners[hash(i, 23) % corners.length];
+      const [cx, cy] = c;
+      if (tiles[cy][cx] === 'floor' && !room.decor.some(d => d.x === cx && d.y === cy)) {
+        room.decor.push({ x: cx, y: cy, kind: 'rubble' });
+      }
     }
   }
   // SET-PIECE DECOR — 40% chance of a distinctive prop per room to break
@@ -403,8 +577,8 @@ export function buildRoomFromData(data) {
       const sideLeft = (hash(tries + 41, 43) & 1) === 0;
       const px = sideLeft
         ? 2 + (hash(tries + 51, 47) % 4)
-        : ROOM_W - 3 - (hash(tries + 53, 49) % 4);
-      const py = 3 + (hash(tries + 57, 53) % (ROOM_H - 6));
+        : w - 3 - (hash(tries + 53, 49) % 4);
+      const py = 3 + (hash(tries + 57, 53) % Math.max(1, h - 6));
       if (tiles[py]?.[px] === 'floor' && !room.decor.some(d => d.x === px && d.y === py)) {
         room.decor.push({ x: px, y: py, kind: propKind });
         break;
@@ -412,17 +586,38 @@ export function buildRoomFromData(data) {
     }
   }
 
-  // Wall torches
+  // Wall torches. The hamlet is an outdoor scene with its own lighting
+  // (painted sky + firepits + building glows) — it must NOT get the dungeon
+  // wall sconces or their vertical god-ray cones, which otherwise read as
+  // phantom spotlight beams across the open-sky hub.
   roomTorches.length = 0;
-  const torchCols = (data.kind === 'boss') ? [3, 8, 11, 16] : [5, 14];
-  const skipDoor = northDoorPos();
-  for (const col of torchCols) {
-    if (col === skipDoor.x) continue;
-    roomTorches.push({
-      x: col * TILE + TILE/2,
-      y: TILE * 0.6,
-      seed: hash(col, data.kind.length),
-    });
+  if (data.kind !== 'hamlet') {
+    const torchCols = (data.kind === 'boss') ? [3, 8, 11, 16] : [5, 14];
+    // Collect ALL north-wall door columns. data.doorPlan.north is an
+    // array of door tile x-positions in graph rooms (legacy single
+    // center door uses northDoorPos()). Previously we only skipped the
+    // legacy center door column — torches still landed right next to
+    // doors when the doorPlan placed multiple doors at non-center
+    // columns. Now we skip torch columns within ±2 of ANY door so
+    // there's clear breathing room around each doorway.
+    const doorCols = (data.doorPlan && data.doorPlan.north && data.doorPlan.north.length > 0)
+      ? data.doorPlan.north
+      : [northDoorPos().x];
+    for (const col of torchCols) {
+      const tooCloseToDoor = doorCols.some(dc => Math.abs(col - dc) <= 2);
+      if (tooCloseToDoor) continue;
+      roomTorches.push({
+        x: col * TILE + TILE/2,
+        // y aligned with the NEW torch sprite's visible flame center.
+        // Sprite is rendered at cy = TILE*0.7 = 33.6, scale 0.45 (50.4px
+        // tall), with the flame painted at y=27 within the 112px native
+        // frame. Rendered flame center ≈ 20.5 in screen space → light
+        // halo + god-ray now anchor where the visible fire actually is.
+        // Old value was TILE*0.6 = 28.8 (8px south of new flame).
+        y: 21,
+        seed: hash(col, (data.kind || 'combat').length),     // defensive: data.kind can be undefined in early-tick edge cases
+      });
+    }
   }
 
   // Spike trap patterns — in combat + boss rooms.
@@ -435,14 +630,61 @@ export function buildRoomFromData(data) {
       roomUrns.push({ x: u.x, y: u.y, broken: !!u.broken, variant: u.variant || 0, breakT: 0, isProp: !!u.isProp });
     }
   }
+  // Treasure-chest-room chests
+  roomChests.length = 0;
+  if (data.chests) {
+    for (const c of data.chests) {
+      roomChests.push({
+        x: c.x, y: c.y,
+        variant: c.variant,
+        state: c.state || 'closed',
+        frame: c.frame | 0,
+        frameTime: c.frameTime || 0,
+      });
+    }
+  }
+  // Decorative pillars (visual only)
+  roomDecorPillars.length = 0;
+  if (data.decorPillars) {
+    for (const p of data.decorPillars) {
+      roomDecorPillars.push({ x: p.x, y: p.y });
+    }
+  }
   if (data.kind === 'combat') {
-    const patternIdx = data.spikePattern ?? (hash(data.pillarTemplate | 0, 41) % 4);
-    const pattern = SPIKE_PATTERNS[patternIdx];
-    for (const [sx, sy, phase] of pattern) {
-      if (tiles[sy]?.[sx] === 'floor') {
-        tiles[sy][sx] = 'spike';
-        roomSpikes.push({ x: sx, y: sy, phase });
+    // Archetype may explicitly suppress spikes (data.spikePattern === null)
+    // for a "clean fight" feel (sanctum, crucible, maze). undefined falls
+    // back to a hash-derived random pattern.
+    if (data.spikePattern !== null) {
+      const patternIdx = (data.spikePattern != null)
+        ? data.spikePattern
+        : hash(data.pillarTemplate | 0, 41) % 4;
+      const pattern = SPIKE_PATTERNS[patternIdx % SPIKE_PATTERNS.length];
+      for (const [sx, sy, phase] of pattern) {
+        if (tiles[sy]?.[sx] === 'floor') {
+          tiles[sy][sx] = 'spike';
+          roomSpikes.push({ x: sx, y: sy, phase });
+        }
       }
+    }
+    // CRUCIBLE archetype: fire pools at the cross arms. Honors plus shape.
+    if (data.firePools === 'arms') {
+      const cx = Math.floor(w / 2);
+      const cy = Math.floor(h / 2);
+      const pools = [
+        { tx: cx,         ty: 3 },        // top arm
+        { tx: cx,         ty: h - 4 },    // bottom arm
+        { tx: 3,          ty: cy },       // left arm
+        { tx: w - 4,      ty: cy },       // right arm
+      ];
+      pools.forEach((p, i) => {
+        if (tiles[p.ty]?.[p.tx] === 'floor') {
+          roomFirePools.push({
+            x: p.tx * TILE + TILE / 2,
+            y: p.ty * TILE + TILE / 2,
+            phase: i * 0.5,
+          });
+        }
+      });
     }
   } else if (data.kind === 'boss') {
     // Boss arenas — hazards vary by which boss is in this room
@@ -461,10 +703,25 @@ export function buildRoomFromData(data) {
         }
       }
     } else if (bossType === 'bone_captain') {
-      // Extra spike columns in the arena — captain's dashes can push you into them
+      // Iron Revenant arena — life-drain boss with dashes + projectiles.
+      // Level review P1: original arena had 8 spike columns and no
+      // line-of-sight breakers, so the player ate every projectile in
+      // the open. Now: 4 LOS-break pillars at quarter/three-quarter
+      // positions form an inner cross, plus 4 spike pairs on the outer
+      // edges so dashes still threaten boundary play. Pillar positions
+      // reference room dimensions so they land symmetrically on the
+      // 26×18 large arena (instead of clustering at 20×14 coords).
+      const cx = (w / 2) | 0, cy = (h / 2) | 0;
+      const pillarSpots = [
+        [cx - 6, cy - 3], [cx + 6, cy - 3],
+        [cx - 6, cy + 3], [cx + 6, cy + 3],
+      ];
+      for (const [px, py] of pillarSpots) {
+        if (tiles[py]?.[px] === 'floor') tiles[py][px] = 'wall';
+      }
       const bossPattern = [
-        [6, 6, 0], [9, 6, 0.7], [12, 6, 0], [15, 6, 0.7],
-        [6, 9, 1.1], [9, 9, 0.4], [12, 9, 1.1], [15, 9, 0.4],
+        [3, 4, 0.3], [w - 4, 4, 1.1],
+        [3, h - 5, 0.7], [w - 4, h - 5, 1.5],
       ];
       for (const [sx, sy, phase] of bossPattern) {
         if (tiles[sy]?.[sx] === 'floor') {
@@ -473,26 +730,34 @@ export function buildRoomFromData(data) {
         }
       }
     } else if (bossType === 'broodmother') {
-      // Fire pools that erupt on a cycle. Start with 4 — broodmother's enrage
-      // spawns more via main.js.
+      // Fire pools at the four quadrant centers — recomputed from actual
+      // room dimensions (26×18 large) instead of the old hardcoded
+      // 20×14 medium-room coords that clustered everything top-left.
+      const qx1 = Math.floor(w * 0.25), qx2 = Math.floor(w * 0.75);
+      const qy1 = Math.floor(h * 0.30), qy2 = Math.floor(h * 0.70);
       roomFirePools.push(
-        { x: 5 * TILE + TILE/2, y: 5 * TILE + TILE/2, phase: 0.0 },
-        { x: 14 * TILE + TILE/2, y: 5 * TILE + TILE/2, phase: 1.0 },
-        { x: 5 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 1.5 },
-        { x: 14 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 0.5 },
+        { x: qx1 * TILE + TILE/2, y: qy1 * TILE + TILE/2, phase: 0.0 },
+        { x: qx2 * TILE + TILE/2, y: qy1 * TILE + TILE/2, phase: 1.0 },
+        { x: qx1 * TILE + TILE/2, y: qy2 * TILE + TILE/2, phase: 1.5 },
+        { x: qx2 * TILE + TILE/2, y: qy2 * TILE + TILE/2, phase: 0.5 },
       );
     } else if (bossType === 'ember_tyrant') {
-      // Ember Tyrant arena — 6 fire pools + spike rows. Most brutal.
+      // Ember Tyrant arena — 6 fire pools + spike rows. Same dimension-
+      // relative recompute as broodmother so the layout reads right
+      // on the 26×18 boss room instead of clustering top-left.
+      const c1x = Math.floor(w * 0.18), c2x = Math.floor(w * 0.50), c3x = Math.floor(w * 0.82);
+      const ry1 = Math.floor(h * 0.25), ry2 = Math.floor(h * 0.70);
       roomFirePools.push(
-        { x: 4 * TILE + TILE/2, y: 4 * TILE + TILE/2, phase: 0.0 },
-        { x: 9 * TILE + TILE/2, y: 4 * TILE + TILE/2, phase: 0.8 },
-        { x: 15 * TILE + TILE/2, y: 4 * TILE + TILE/2, phase: 1.6 },
-        { x: 4 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 1.2 },
-        { x: 9 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 0.4 },
-        { x: 15 * TILE + TILE/2, y: 10 * TILE + TILE/2, phase: 2.0 },
+        { x: c1x * TILE + TILE/2, y: ry1 * TILE + TILE/2, phase: 0.0 },
+        { x: c2x * TILE + TILE/2, y: ry1 * TILE + TILE/2, phase: 0.8 },
+        { x: c3x * TILE + TILE/2, y: ry1 * TILE + TILE/2, phase: 1.6 },
+        { x: c1x * TILE + TILE/2, y: ry2 * TILE + TILE/2, phase: 1.2 },
+        { x: c2x * TILE + TILE/2, y: ry2 * TILE + TILE/2, phase: 0.4 },
+        { x: c3x * TILE + TILE/2, y: ry2 * TILE + TILE/2, phase: 2.0 },
       );
       const bossPattern = [
-        [7, 7, 0.0], [12, 7, 1.1],
+        [Math.floor(w * 0.30), Math.floor(h * 0.50), 0.0],
+        [Math.floor(w * 0.65), Math.floor(h * 0.50), 1.1],
       ];
       for (const [sx, sy, phase] of bossPattern) {
         if (tiles[sy]?.[sx] === 'floor') {
@@ -509,8 +774,8 @@ export function buildRoomFromData(data) {
   if (data.kind === 'combat' && Math.random() < 0.3) {
     // Pick a wall cell on one of the side walls (not corners, not the door row)
     const sides = [
-      { x: 0, y: 3 + (hash(data.pillarTemplate | 0, 19) % (ROOM_H - 6)) },       // left wall
-      { x: ROOM_W - 1, y: 3 + (hash(data.pillarTemplate | 0, 23) % (ROOM_H - 6)) }, // right wall
+      { x: 0, y: 3 + (hash(data.pillarTemplate | 0, 19) % Math.max(1, h - 6)) },       // left wall
+      { x: w - 1, y: 3 + (hash(data.pillarTemplate | 0, 23) % Math.max(1, h - 6)) }, // right wall
     ];
     const spot = sides[hash(data.pillarTemplate | 0, 29) & 1];
     if (tiles[spot.y]?.[spot.x] === 'wall') {
@@ -519,6 +784,9 @@ export function buildRoomFromData(data) {
       roomSecrets.crackY = spot.y;
     }
   }
+  // Tile cache — fresh room means fresh static layers. Mark dirty so
+  // the next render rebuilds.
+  invalidateTileCache();
 }
 
 // Spike trap patterns. Each entry: [tileX, tileY, phaseOffsetSeconds].
@@ -544,21 +812,56 @@ const SPIKE_PATTERNS = [
   ],
 ];
 
-// Collision — walls + pillars + cracked walls block; doors gated.
+// Collision — walls + pillars + cracked walls block; doors gated by their
+// per-door state (closed/closing block; opening/open allow). South-side
+// doors that have no door object (legacy fallback) treat as always open.
+// Lazy reference to the hamlet's walkability function. Set by hamletFloor.js
+// at module load via setHamletWalkableFn. Avoids a static circular import
+// (hamletFloor.js consumes nothing from room.js, but room.js needs to call
+// into it for hamlet-specific collision).
+let _hamletWalkableFn = null;
+export function setHamletWalkableFn(fn) { _hamletWalkableFn = fn; }
+
 export function isWallAtWorld(wx, wy) {
+  // Hamlet uses pixel-sampled walkability from the Scene Overview backdrop.
+  // Wall = NOT walkable. Letting isWallAtWorld return the inverse means
+  // hero's per-axis movement check (hero.js) cleanly stops at walls instead
+  // of getting tile-snap-pushed-back each frame in resolveHamletCollision.
+  if (room.kind === 'hamlet') {
+    if (_hamletWalkableFn) return !_hamletWalkableFn(wx, wy);
+    return false;     // before hamletFloor loads its fn, allow movement
+  }
   if (!room.tiles) return false;
   const tx = Math.floor(wx / TILE);
   const ty = Math.floor(wy / TILE);
-  if (tx < 0 || ty < 0 || tx >= ROOM_W || ty >= ROOM_H) return true;
+  if (tx < 0 || ty < 0 || tx >= room.w || ty >= room.h) return true;
   const t = room.tiles[ty][tx];
   if (t === 'wall' || t === 'pillar') return true;
   if (t === 'crackedwall') return !roomSecrets.broken;
   if (t === 'door') {
-    const isSouth = ty === ROOM_H - 1;
+    // Defer to per-door state. The doorPortals module owns the open/closed
+    // animation for each door tile. Lazy-load to avoid a static-import
+    // cycle (room.js ↔ doorPortals.js both pull from each other).
+    const door = _getDoorAt && _getDoorAt(tx, ty);
+    if (door) {
+      // closed + closing block movement; opening + open allow it.
+      if (door.state === 'closed' || door.state === 'closing') return true;
+      return false;
+    }
+    // Legacy fallback for rooms without a door object (e.g. hamlet hub,
+    // start room before setupRoomDoors fired). Use the old single-door
+    // semantics: south door always passable, north only when cleared.
+    const isSouth = ty === room.h - 1;
     return !isSouth && !room.cleared;
   }
   return false;
 }
+
+// Lazy door lookup hook — wired by main.js so the room module doesn't
+// import doorPortals.js directly (avoids module init cycles when tests
+// or storybooks load room.js in isolation).
+let _getDoorAt = null;
+export function setDoorLookup(fn) { _getDoorAt = fn; }
 
 // Returns true if the hero's attack swing overlaps the cracked wall — registers a hit.
 export function hitCrackedWall(wx, wy, aimX, aimY, reach) {
@@ -589,6 +892,8 @@ export function damageCrackedWall() {
     roomSecrets.broken = true;
     // Replace tile with floor so hero can walk through / through the aesthetic gap
     room.tiles[roomSecrets.crackY][roomSecrets.crackX] = 'floor';
+    // Tile changed — invalidate cache so the next draw rebuilds with floor here.
+    invalidateTileCache();
     return 'broken';
   }
   return 'damaged';
@@ -598,10 +903,10 @@ export function onDoorWorld(wx, wy) {
   if (!room.tiles) return null;
   const tx = Math.floor(wx / TILE);
   const ty = Math.floor(wy / TILE);
-  if (tx < 0 || ty < 0 || tx >= ROOM_W || ty >= ROOM_H) return null;
+  if (tx < 0 || ty < 0 || tx >= room.w || ty >= room.h) return null;
   if (room.tiles[ty][tx] !== 'door') return null;
   if (ty === 0) return room.cleared ? { dir: 'north' } : null;
-  if (ty === ROOM_H - 1) return { dir: 'south' };
+  if (ty === room.h - 1) return { dir: 'south' };
   return null;
 }
 
@@ -619,6 +924,9 @@ export function consumePedestal() {
   if (room.tiles[p.y][p.x] === 'pedestal') {
     room.tiles[p.y][p.x] = 'floor';
     room.pedestalUsed = true;
+    // Note: no tile-cache invalidation needed — pedestals draw in
+    // drawRoomDynamicLayers (pass 5, not cached). The next frame's
+    // dynamic loop reads 'floor' for this tile and skips the pedestal.
     return true;
   }
   return false;
@@ -648,8 +956,8 @@ function drawOrganicFloorDetail(ctx) {
   for (let i = 0; i < patchCount; i++) {
     const h = hash(i * 31 + seed, seed * 7 + i);
     // Anchor off-grid — mix tile coordinates with sub-tile offsets
-    const tx = 1 + (h % (ROOM_W - 2));
-    const ty = 1 + ((h >>> 5) % (ROOM_H - 2));
+    const tx = 1 + (h % (room.w - 2));
+    const ty = 1 + ((h >>> 5) % (room.h - 2));
     const kind = room.tiles[ty]?.[tx];
     if (kind !== 'floor') continue;
     // Skip if adjacent cell is a wall-above — those already get shadow
@@ -692,13 +1000,13 @@ function drawOrganicFloorDetail(ctx) {
   }
   // Traffic wear — subtle darkening across the central horizontal axis
   // where hero naturally walks. Reads as "this place has been crossed."
-  const centerY = ROOM_H * TILE * 0.5;
+  const centerY = room.h * TILE * 0.5;
   const wearGrad = ctx.createLinearGradient(0, centerY - TILE * 1.5, 0, centerY + TILE * 1.5);
   wearGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
   wearGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.06)');
   wearGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
   ctx.fillStyle = wearGrad;
-  ctx.fillRect(TILE * 2, centerY - TILE * 1.5, (ROOM_W - 4) * TILE, TILE * 3);
+  ctx.fillRect(TILE * 2, centerY - TILE * 1.5, (room.w - 4) * TILE, TILE * 3);
   ctx.restore();
 }
 
@@ -826,7 +1134,7 @@ function drawWallTile(ctx, tx, ty) {
 
   // Biome décor — deterministic per-tile extras on interior wall sections
   // Skip corners and door tiles (rough check: only top row of walls).
-  if (ty === 0 && tx > 1 && tx < ROOM_W - 2) {
+  if (ty === 0 && tx > 1 && tx < room.w - 2) {
     const seed = hash(tx * 13, (PAL._biomeId || 'v').charCodeAt(0) + (room.kind || 's').charCodeAt(0));
     const biome = PAL._biomeId || 'vault';
     // Roll a décor slot ~18% chance per tile — keeps room from feeling cluttered
@@ -1186,53 +1494,149 @@ function drawDoorPreview(ctx, cx, cy, kind) {
   ctx.restore();
 }
 
-function drawDoor(ctx, tx, ty, open) {
+// Renders a door tile. `openAmount` ∈ [0,1] interpolates the sprite
+// atlas frame (snapped to 3 poses: closed / ajar / open). North-wall
+// doors use the south-rotation atlas (door face points toward the
+// player who is south of the wall); south-wall doors use the
+// north-rotation atlas (no runtime flip). Once a south-wall door has
+// fully closed, drawDoor swaps to drawWallTile — the entry door
+// becomes a wall, communicating "you can't go back." Amber torch glow
+// is layered over the sprite, anchored at the room-interior side.
+function drawDoor(ctx, tx, ty, openAmount) {
   const x = tx * TILE, y = ty * TILE;
-  // Frame outline
+  const a = Math.max(0, Math.min(1, openAmount));
+  const isSouthWall = ty === room.h - 1;
+
+  // Stone wall band behind everything — fills the wall tile so any
+  // sprite/transparent-margin never leaves a hole.
   ctx.fillStyle = PAL.wallBody;
   ctx.fillRect(x, y, TILE, TILE);
-  // Frame sides
-  ctx.fillStyle = PAL.doorFrame;
-  ctx.fillRect(x + 4, y + 2, TILE - 8, TILE - 4);
 
-  if (open) {
-    // Open archway — dark void with a hint of warm glow
-    const g = ctx.createRadialGradient(x + TILE/2, y + TILE/2, 4, x + TILE/2, y + TILE/2, TILE * 0.55);
-    g.addColorStop(0, 'rgba(60, 30, 15, 0.9)');
-    g.addColorStop(1, 'rgba(10, 6, 4, 1)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x + 8, y + 6, TILE - 16, TILE - 12);
-    // Subtle amber glow at base (suggests torchlight beyond)
-    ctx.fillStyle = 'rgba(255, 160, 70, 0.25)';
-    ctx.fillRect(x + 8, y + TILE - 16, TILE - 16, 10);
-    // Next-room preview icon floats above the open door
-    if (ty === 0 && roomNextKind.kind) {
-      drawDoorPreview(ctx, x + TILE/2, y - 14, roomNextKind.kind);
-    }
-  } else {
-    // Closed wood door with iron bands
-    const wg = ctx.createLinearGradient(x, y, x, y + TILE);
-    wg.addColorStop(0, PAL.doorWoodLit);
-    wg.addColorStop(0.5, PAL.doorWoodMid);
-    wg.addColorStop(1, PAL.doorWoodDark);
-    ctx.fillStyle = wg;
-    ctx.fillRect(x + 8, y + 6, TILE - 16, TILE - 12);
-    // Vertical plank lines
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(x + 16, y + 6, 1, TILE - 12);
-    ctx.fillRect(x + 24, y + 6, 1, TILE - 12);
-    ctx.fillRect(x + 32, y + 6, 1, TILE - 12);
-    // Iron bands (top + bottom)
-    const ig = ctx.createLinearGradient(x, y, x, y + 6);
-    ig.addColorStop(0, PAL.doorIronLit);
-    ig.addColorStop(1, PAL.doorIronDark);
-    ctx.fillStyle = ig;
-    ctx.fillRect(x + 8, y + 10, TILE - 16, 4);
-    ctx.fillRect(x + 8, y + TILE - 18, TILE - 16, 4);
-    // Red warning cast (north door when locked)
-    if (ty === 0) {
-      ctx.fillStyle = 'rgba(180, 40, 50, 0.22)';
-      ctx.fillRect(x + 8, y + 6, TILE - 16, TILE - 12);
+  // SOUTH-WALL CLOSED DOOR → render as plain wall.
+  // Design: south doors are entry doors that close behind the player.
+  // Once closed, "you can't go back" is the game-design beat — there's
+  // no functional or visual reason to show a door panel. Showing one
+  // (especially the previous vertical-flip-of-south-rotation) read as
+  // an awkward "upside-down 3/4 angle" door. Now: door is visible
+  // during the entry-dwell + closing animation, then becomes wall.
+  // Threshold 0.005 (was 0.04) so the swap happens when the door is
+  // already effectively invisible — eliminates the visible "door
+  // silhouette suddenly becomes brick wall" pop at the end of the
+  // 0.55s close animation.
+  if (isSouthWall && a < 0.005) {
+    drawWallTile(ctx, tx, ty);
+    return;
+  }
+
+  // Pick rotation atlas by wall side. South rotation = door face down
+  // (used for NORTH-wall doors — player is south of the door, sees it
+  // facing them). North rotation = door face up (used for SOUTH-wall
+  // doors — player is north of the door, sees it facing them). No
+  // runtime vertical flip — looks natural at every angle.
+  const sprite = isSouthWall ? images.dungeon_door_n : images.dungeon_door_s;
+
+  // Loader miss fallback: minimal stone frame + void so nothing
+  // visibly breaks if the asset didn't load.
+  if (!sprite || sprite.width < 448) {
+    ctx.fillStyle = PAL.doorFrame;
+    ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
+    ctx.fillStyle = '#0a0608';
+    ctx.fillRect(x + 6, y + 4, TILE - 12, TILE - 8);
+    return;
+  }
+
+  const FW = 112, FH = 112;
+  // Snap to nearest of 3 frames (closed / ajar / open). Cross-fade
+  // reads worse than snap on pixel art at this size.
+  const frameIdx = Math.min(2, Math.round(a * 2));
+  const sx = frameIdx * FW;
+
+  // Render at 73px → fills the wall row + slight overflow into floor.
+  const RENDER = 73;
+  const cx = x + TILE / 2;
+  const cy = y + TILE / 2;
+  const dx = Math.round(cx - RENDER / 2);
+  const dy = Math.round(cy - RENDER / 2);
+
+  ctx.drawImage(sprite, sx, 0, FW, FH, dx, dy, RENDER, RENDER);
+
+  // Amber torch glow — sells "another room awaits" by warm-tinting
+  // the door interior. Stronger when open. Painted over the sprite
+  // (bottom-anchored radial for north walls; top-anchored for south
+  // walls so the warm light spills into the room from the matching
+  // side of the doorway).
+  const glowAnchorY = isSouthWall ? (y + TILE * 0.22) : (y + TILE * 0.78);
+  const glow = ctx.createRadialGradient(
+    cx, glowAnchorY, 2,
+    cx, y + TILE * 0.5, TILE * 0.55,
+  );
+  glow.addColorStop(0, 'rgba(255, 165, 80, ' + (0.45 * (0.3 + a * 0.7)).toFixed(3) + ')');
+  glow.addColorStop(0.5, 'rgba(160, 70, 30, ' + (0.26 * (0.3 + a * 0.7)).toFixed(3) + ')');
+  glow.addColorStop(1, 'rgba(20, 8, 4, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 12, y - 8, TILE + 24, TILE + 16);
+
+  // Next-room preview pulse — legacy fallback for rooms with no door
+  // object. Kept since some legacy spawn paths still rely on it.
+  if (a > 0.6 && ty === 0 && roomNextKind.kind && _getDoorAt && !_getDoorAt(tx, ty)) {
+    drawDoorPreview(ctx, x + TILE/2, y - 14, roomNextKind.kind);
+  }
+}
+
+// ─── DOOR LINTEL OCCLUSION PASS ──────────────────────────────────────────────
+// Re-draws just the TOP HALF of each door's sprite (the lintel + arch
+// keystone). Called from main.js AFTER the hero/enemy drawList renders,
+// so when the player stands in a door tile their head reads as BEHIND
+// the lintel — "I'm in the doorway" rather than "I'm a sprite painted
+// on top of a door image."
+//
+// Two skips:
+//   - 'wall' tiles: not doors, no lintel needed
+//   - South-wall doors at openAmount<0.04: drawDoor renders these as
+//     plain wall (player can't go back), so there's no door sprite to
+//     occlude with — and re-blitting a lintel here would show a stone
+//     arch on top of a wall, breaking the "this is a wall" illusion.
+//
+// Atlas selection: north-wall doors use door_s, south-wall doors use
+// door_n (matches drawDoor — no vertical flip artifact).
+export function drawDoorLintels(ctx) {
+  if (!room.tiles) return;
+  const FW = 112, FH = 112;
+  const RENDER = 73;
+  const topFracDst = 0.55;
+  const dstH = Math.round(RENDER * topFracDst);
+  const srcH = Math.round(FH * topFracDst);
+
+  for (let ty = 0; ty < room.h; ty++) {
+    const row = room.tiles[ty];
+    if (!row) continue;
+    for (let tx = 0; tx < room.w; tx++) {
+      if (row[tx] !== 'door') continue;
+      const door = _getDoorAt && _getDoorAt(tx, ty);
+      let a;
+      if (door) a = Math.max(0, Math.min(1, door.anim));
+      else a = (ty === room.h - 1 && room.cleared) ? 1 : 0;
+      const isSouthWall = ty === room.h - 1;
+      // Skip occlusion for closed south-wall doors — drawDoor rendered
+      // them as plain wall, so there's no door sprite below the hero
+      // for a lintel to occlude. Re-blitting a stone arch over a wall
+      // tile would look like a phantom arch glued on the floor. Same
+      // 0.005 threshold drawDoor uses so the two passes flip in sync.
+      if (isSouthWall && a < 0.005) continue;
+      const sprite = isSouthWall ? images.dungeon_door_n : images.dungeon_door_s;
+      if (!sprite || sprite.width < 448) continue;
+      const frameIdx = Math.min(2, Math.round(a * 2));
+      const sx = frameIdx * FW;
+      const x = tx * TILE, y = ty * TILE;
+      const cx = x + TILE / 2;
+      const cy = y + TILE / 2;
+      const dx = Math.round(cx - RENDER / 2);
+      const dy = Math.round(cy - RENDER / 2);
+      // No vertical flip needed now — both atlases already point the
+      // door face the right direction. The TOP of each atlas IS the
+      // lintel/arch keystone for that rotation, so a top-source slice
+      // captures the right pixels for both walls.
+      ctx.drawImage(sprite, sx, 0, FW, srcH, dx, dy, RENDER, dstH);
     }
   }
 }
@@ -1673,8 +2077,8 @@ function drawChest(ctx, tx, ty) {
 // Both scale in spread + darkness with intensity (1-3).
 function drawRuinStain(ctx, stain) {
   const intensity = Math.max(1, Math.min(3, stain.intensity | 0 || 1));
-  const cx = Math.floor(ROOM_W / 2) * TILE + TILE / 2;
-  const cy = Math.floor(ROOM_H / 2) * TILE + TILE / 2;
+  const cx = Math.floor(room.w / 2) * TILE + TILE / 2;
+  const cy = Math.floor(room.h / 2) * TILE + TILE / 2;
   // Deterministic splatter pattern — seeded by intensity so it looks "real"
   const seed = 1234 + intensity * 89;
   const splatCount = 5 + intensity * 3;
@@ -1727,13 +2131,13 @@ function drawRuinStain(ctx, stain) {
 function drawRuinCobwebs(ctx, agingLvl) {
   const spots = [
     { x: 1 * TILE, y: 1 * TILE, quadrant: 'tl' },
-    { x: (ROOM_W - 2) * TILE, y: 1 * TILE, quadrant: 'tr' },
+    { x: (room.w - 2) * TILE, y: 1 * TILE, quadrant: 'tr' },
   ];
   if (agingLvl >= 2) {
-    spots.push({ x: 1 * TILE, y: (ROOM_H - 2) * TILE, quadrant: 'bl' });
+    spots.push({ x: 1 * TILE, y: (room.h - 2) * TILE, quadrant: 'bl' });
   }
   if (agingLvl >= 3) {
-    spots.push({ x: (ROOM_W - 2) * TILE, y: (ROOM_H - 2) * TILE, quadrant: 'br' });
+    spots.push({ x: (room.w - 2) * TILE, y: (room.h - 2) * TILE, quadrant: 'br' });
   }
   ctx.save();
   const strands = agingLvl >= 4 ? 6 : agingLvl >= 2 ? 4 : 3;
@@ -1765,9 +2169,44 @@ function drawRuinCobwebs(ctx, agingLvl) {
 
 // Wall-mounted torch — sconce + fuel. Flame color swaps per biome (blue crypt,
 // amber vault, red abyss) so the whole room feels different before you move.
+// Wall torch sconce — animated PixelLab sprite (4 frames × 112×112) at
+// scale 0.45 → ~50px rendered. Replaces a tiny procedural sconce that
+// existed before; the new sprite is detailed pixel art with proper
+// flame flicker. The light halo math (in the lighting pass elsewhere)
+// still keys off roomTorches positions, so gameplay illumination is
+// unchanged — only the visual got upgraded.
+const TORCH_FPS = 6;
+const TORCH_FRAMES = 4;
+const TORCH_NATIVE = 112;
+const TORCH_SCALE = 0.45;
 function drawTorchSconce(ctx, tx, ty) {
-  const cx = tx * TILE + TILE/2;
-  const cy = ty * TILE + TILE * 0.58;
+  const cx = tx * TILE + TILE / 2;
+  const cy = ty * TILE + TILE * 0.7;     // sit slightly into room from wall edge
+  const img = images.fx_dungeon_torch;
+  if (img) {
+    const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+    // Phase offset per-torch via tx + ty + a prime multiplier so torches
+    // on different walls/columns don't tick to the next animation frame
+    // in lockstep. The light halo math (in main.js) already staggers via
+    // a similar tx*7 offset; this keeps sprite + halo flicker visually
+    // synced per-torch but offset BETWEEN torches.
+    const phaseOffset = tx * 7 + ty * 13;
+    const frame = (Math.floor(now * TORCH_FPS) + phaseOffset) % TORCH_FRAMES;
+    const drawW = TORCH_NATIVE * TORCH_SCALE;
+    const drawH = TORCH_NATIVE * TORCH_SCALE;
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      img,
+      frame * TORCH_NATIVE, 0, TORCH_NATIVE, TORCH_NATIVE,
+      Math.round(cx - drawW / 2),
+      Math.round(cy - drawH / 2),
+      drawW, drawH,
+    );
+    ctx.imageSmoothingEnabled = prevSmoothing;
+    return;
+  }
+  // Fallback: procedural sconce (used before sprite loads, or in tests)
   ctx.fillStyle = PAL.torchMetal;
   ctx.fillRect(cx - 2, cy, 4, 10);
   ctx.fillRect(cx - 5, cy + 9, 10, 3);
@@ -1779,12 +2218,247 @@ function drawTorchSconce(ctx, tx, ty) {
   ctx.fillRect(cx - 1, cy - 3, 2, 2);
 }
 
+// ─── PREVIOUS-ROOM RESIDUE ──────────────────────────────────────────────
+// When the hero walks through a door, we keep a snapshot of the room they
+// just left around for ~1.5s, rendered at an offset so it appears on the
+// other side of the door from the new current room. This is the "you can
+// see the remnants of the old room as you walk through" beat — what makes
+// the dungeon feel like a connected building instead of a chain of
+// disconnected screens.
+//
+// The snapshot copies tiles + decor + dimensions. The new room loads as
+// the current `room`. drawRoom draws the current room first, then walks
+// the prevRoom snapshot through the same passes with a temporary state
+// swap so we don't have to thread `room` through every drawing helper.
+export let prevRoom = null;
+
+export function snapshotPrevRoom(opts = {}) {
+  if (!room.tiles) return;
+  prevRoom = {
+    tiles: room.tiles.map(r => r.slice()),
+    decor: room.decor ? room.decor.slice() : [],
+    w: room.w, h: room.h,
+    kind: room.kind,
+    // The hero exited this room — it was definitely cleared. Mark so the
+    // drawDoor fallback renders the north door as visually open.
+    cleared: true,
+    // Per-door-tile open amount snapshot. Without this, drawing prevRoom
+    // would query the CURRENT room's roomDoors (via the live _getDoorAt
+    // callback), which has different tile positions, so prevRoom's door
+    // tiles fell back to "closed unless south + cleared" — meaning the
+    // very door the player just walked through visibly RESETS to closed
+    // during the 1.8s fade-out residue. The doorOpenAt map preserves the
+    // exit door's open state so it stays visually open through the fade.
+    // Shape: { 'tx,ty': openAmount } — used by drawRoom's prevRoom pass.
+    doorOpenAt: opts.doorOpenAt || {},
+    // Caller fills in offsetX / offsetY so the door tile in prevRoom
+    // visually overlaps the south door tile of the new current room.
+    offsetX: opts.offsetX || 0,
+    offsetY: opts.offsetY || 0,
+    alpha: 1.0,
+    // 1.8s gives the player time to register "where I came from" without
+    // lingering long enough to feel cluttered. Door close-behind animation
+    // (~1.1s total: 0.55s dwell + 0.55s close) finishes well before fade-out.
+    life: 1.8,
+    lifeMax: 1.8,
+  };
+}
+
+export function tickPrevRoom(dt) {
+  if (!prevRoom) return;
+  prevRoom.life -= dt;
+  prevRoom.alpha = Math.max(0, Math.min(1, prevRoom.life / prevRoom.lifeMax));
+  if (prevRoom.life <= 0) prevRoom = null;
+}
+
+export function clearPrevRoom() { prevRoom = null; }
+
+// ─── TILE CACHE — perf P0 ────────────────────────────────────────────────────
+// Renders the room's static layers (floor + wear + organic detail + wall
+// shadows + walls + frieze + decor + ruin stains) ONCE to an offscreen
+// canvas and reuses that image every frame as a single drawImage call.
+// Without this, ~700-1000 canvas ops per frame are spent redrawing
+// geometry that doesn't change. The dynamic layers (doors animating,
+// pedestals bobbing, torches flickering) still draw live each frame on
+// top of the cache.
+//
+// Invalidated on:
+//   - buildRoomFromData (room load — tiles + decor reset)
+//   - damageCrackedWall (a tile flips from 'crackedwall' to 'floor')
+//
+// The prevRoom snapshot path bypasses the cache (forceFullDraw=true) so
+// the fading old-room render doesn't accidentally show the live room.
+let _tileCache = null;
+let _tileCacheCtx = null;
+let _tileCacheW = 0;
+let _tileCacheH = 0;
+let _tileCacheDirty = true;
+
+export function invalidateTileCache() { _tileCacheDirty = true; }
+
+function _ensureTileCache() {
+  if (typeof document === 'undefined') return false;
+  const w = room.w * TILE, h = room.h * TILE;
+  if (!_tileCache || _tileCacheW !== w || _tileCacheH !== h) {
+    _tileCache = document.createElement('canvas');
+    _tileCache.width = w;
+    _tileCache.height = h;
+    _tileCacheCtx = _tileCache.getContext('2d');
+    if (_tileCacheCtx) _tileCacheCtx.imageSmoothingEnabled = false;
+    _tileCacheW = w;
+    _tileCacheH = h;
+    _tileCacheDirty = true;
+  }
+  if (!_tileCacheCtx) return false;
+  if (_tileCacheDirty) {
+    _tileCacheCtx.clearRect(0, 0, w, h);
+    drawRoomStaticLayers(_tileCacheCtx);
+    _tileCacheDirty = false;
+  }
+  return true;
+}
+
 export function drawRoom(ctx) {
   if (!room.tiles) return;
+  // Draw the current room first
+  drawRoomInner(ctx);
+  // Then draw the prevRoom snapshot as a fading residue, offset so its
+  // door aligns with the current room's south door (handled by caller).
+  if (prevRoom && prevRoom.alpha > 0.01 && prevRoom.tiles && prevRoom.tiles.length > 0) {
+    ctx.save();
+    ctx.globalAlpha = ctx.globalAlpha * prevRoom.alpha;
+    ctx.translate(prevRoom.offsetX, prevRoom.offsetY);
+    // Temporarily swap singleton state so all the existing drawing helpers
+    // (drawWallTile, drawFloorTile, drawDoor, etc.) operate on the snapshot
+    // without any threading work. try/finally ensures restoration even if
+    // an exception fires inside drawRoomInner — otherwise room.tiles would
+    // be left pointing at the snapshot, breaking every subsequent frame.
+    const saved = {
+      tiles: room.tiles, w: room.w, h: room.h,
+      decor: room.decor, kind: room.kind, cleared: room.cleared,
+      // _getDoorAt is module-private; swap into a stub that resolves
+      // from the prevRoom.doorOpenAt snapshot so the just-used north
+      // door reads as still-open through the fade-out, not as a fresh
+      // closed door (which it would otherwise, since the live
+      // _getDoorAt now queries the NEW room's door list).
+      getDoorAt: _getDoorAt,
+    };
+    try {
+      room.tiles = prevRoom.tiles;
+      room.w = prevRoom.w; room.h = prevRoom.h;
+      room.decor = prevRoom.decor;
+      room.kind = prevRoom.kind;
+      room.cleared = prevRoom.cleared;
+      _getDoorAt = (tx, ty) => {
+        const a = prevRoom.doorOpenAt && prevRoom.doorOpenAt[tx + ',' + ty];
+        return (a !== undefined) ? { anim: a } : null;
+      };
+      // forceFullDraw: skip the tile cache so the snapshot renders the
+      // OLD room, not the live one whose static layers are cached.
+      drawRoomInner(ctx, true);
+    } finally {
+      room.tiles = saved.tiles;
+      room.w = saved.w; room.h = saved.h;
+      room.decor = saved.decor;
+      room.kind = saved.kind;
+      room.cleared = saved.cleared;
+      _getDoorAt = saved.getDoorAt;
+      ctx.restore();
+    }
+  }
+}
 
+// Caller-facing wrapper. Routes to the cached path for normal rendering
+// (huge perf win — single drawImage instead of ~1000 ops/frame), or to
+// the direct path when the prevRoom snapshot has temporarily swapped
+// `room.*` state and the cache would render the wrong room.
+function drawRoomInner(ctx, forceFullDraw = false) {
+  if (!room.tiles) return;
+  // Hamlet has its own gradient sky path that doesn't use tiles. Falls
+  // through to the legacy hamlet branch below — no cache.
+  if (room.kind === 'hamlet') {
+    drawRoomDirect(ctx, true);  // hamlet branch returns early inside
+    return;
+  }
+  if (forceFullDraw) {
+    drawRoomStaticLayers(ctx);
+    drawRoomDynamicLayers(ctx);
+    return;
+  }
+  // Cached path — static layers come from the offscreen canvas, dynamic
+  // layers (doors, pedestals, torches) overlay on top.
+  if (_ensureTileCache()) {
+    ctx.drawImage(_tileCache, 0, 0);
+  } else {
+    drawRoomStaticLayers(ctx);
+  }
+  drawRoomDynamicLayers(ctx);
+}
+
+// Renders the FULL pipeline directly to the given ctx (no cache). Used
+// only by the prevRoom-snapshot fade and the hamlet branch. The
+// `_unused` parameter slot remains for potential future "render only
+// hamlet sky" gating; currently the hamlet branch self-detects via
+// room.kind.
+function drawRoomDirect(ctx, _unused) {
+  if (!room.tiles) return;
+  // Hamlet — procedural gradient sky + dim ground fill. Buildings, cobblestone
+  // tiles, firepit, shrine, and portal are drawn ON TOP of this by the
+  // hamletScene module (drawHamletBackdrop + drawHamletEntities). Replaces
+  // the earlier "paint a wide mural" approach — we compose the scene from
+  // layers now instead of leaning on a single wide backdrop.
+  if (room.kind === 'hamlet') {
+    const W = room.w * TILE, H = room.h * TILE;
+    // Sky: deep violet at top → warm dusk amber at horizon. Horizon sits at
+    // y=280 (~42% down the room), matching where the building band begins.
+    const sky = ctx.createLinearGradient(0, 0, 0, 300);
+    sky.addColorStop(0.00, '#0d0818');
+    sky.addColorStop(0.45, '#281638');
+    sky.addColorStop(0.80, '#5a2a40');
+    sky.addColorStop(1.00, '#7a3848');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, 300);
+    // Ground slab below the horizon — cobblestone tiles will overpaint this
+    // strip; we just need a dark base so any tiling gaps don't show the void.
+    ctx.fillStyle = '#181218';
+    ctx.fillRect(0, 300, W, H - 300);
+    // Scattered star pinpoints in the sky for atmosphere. Uses a grid-jitter
+    // distribution so stars spread evenly across the full sky band instead
+    // of the clumping the raw hash gave. Deterministic per cell.
+    const cols = 14, rows = 4;
+    const cellW = W / cols;
+    const cellH = 220 / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const h = hash(c * 31 + r * 97, 19);
+        // 70% of cells have a star; 30% empty — breaks the grid feel.
+        if ((h & 15) < 4) continue;
+        const jx = ((h >>> 4) % 1000) / 1000 - 0.5;
+        const jy = ((h >>> 14) % 1000) / 1000 - 0.5;
+        const sx = c * cellW + cellW * 0.5 + jx * cellW * 0.7;
+        const sy = r * cellH + cellH * 0.5 + jy * cellH * 0.7 + 10;
+        const bright = (h >>> 24) & 3;
+        const alpha = bright === 0 ? 0.35 : bright === 1 ? 0.55 : bright === 2 ? 0.75 : 0.95;
+        const size = bright >= 2 ? 2 : 1;
+        ctx.fillStyle = `rgba(232, 220, 200, ${alpha})`;
+        ctx.fillRect(sx | 0, sy | 0, size, size);
+      }
+    }
+    return;
+  }
+
+  drawRoomStaticLayers(ctx);
+  drawRoomDynamicLayers(ctx);
+}
+
+// Static layers — passes 1-4 + ruin stains/cobwebs. Stable for the
+// duration of a room (no animation, no per-frame mutation), so safe to
+// cache to an offscreen canvas and reuse with one drawImage call.
+function drawRoomStaticLayers(ctx) {
+  if (!room.tiles || room.kind === 'hamlet') return;
   // Pass 1: every floor cell
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
       drawFloorTile(ctx, x, y);
     }
   }
@@ -1793,9 +2467,9 @@ export function drawRoom(ctx) {
   const wearFn = WEAR_BY_BIOME[PAL._biomeId || 'vault'];
   if (wearFn) {
     for (let i = 0; i < 8; i++) {
-      const h = hash(i + 17, (PAL._biomeId || 'vault').length + ROOM_W * ROOM_H);
-      const tx = 1 + (h % (ROOM_W - 2));
-      const ty = 1 + ((h >>> 5) % (ROOM_H - 2));
+      const h = hash(i + 17, (PAL._biomeId || 'vault').length + room.w * room.h);
+      const tx = 1 + (h % (room.w - 2));
+      const ty = 1 + ((h >>> 5) % (room.h - 2));
       const kind = room.tiles[ty]?.[tx];
       if (kind !== 'floor') continue;
       const cx = tx * TILE + TILE / 2 + ((h >>> 10) % 12) - 6;
@@ -1810,9 +2484,9 @@ export function drawRoom(ctx) {
   drawOrganicFloorDetail(ctx);
 
   // Pass 2: shadow strips cast from walls onto floor cells below them
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
-      const t = room.tiles[y][x];
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
+      const t = room.tiles[y]?.[x];
       if (t !== 'wall' && t !== 'pillar') continue;
       const below = room.tiles[y + 1]?.[x];
       if (below === 'wall') continue;
@@ -1821,16 +2495,16 @@ export function drawRoom(ctx) {
   }
 
   // Pass 3: walls + top-wall frieze
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
       const t = room.tiles[y][x];
       if (t === 'wall') drawWallTile(ctx, x, y);
       else if (t === 'crackedwall') drawCrackedWall(ctx, x, y);
     }
   }
   // Extend north wall upward with a carved frieze (makes top wall thicker)
-  for (let x = 0; x < ROOM_W; x++) {
-    if (room.tiles[0][x] === 'wall') drawTopWallFrieze(ctx, x);
+  for (let x = 0; x < room.w; x++) {
+    if (room.tiles[0]?.[x] === 'wall') drawTopWallFrieze(ctx, x);
   }
 
   // Pass 4: floor cracks + corner rubble + set-piece decor (no collision)
@@ -1844,7 +2518,7 @@ export function drawRoom(ctx) {
     else if (d.kind === 'chest')  drawChest(ctx, d.x, d.y);
   }
 
-  // â”€â”€ THE RUIN REMEMBERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── THE RUIN REMEMBERS ────────────────────────────────────────────────────
   // Render persistent stains from past runs. Blood = where you died.
   // Scorch = where a boss fell. Intensity 1-3 controls darkness/spread.
   if (room.ruinStain) {
@@ -1854,13 +2528,33 @@ export function drawRoom(ctx) {
   if (room.ruinAging > 0) {
     drawRuinCobwebs(ctx, room.ruinAging);
   }
+}
 
+// Dynamic layers — pillars, doors (animated open amount), pedestals
+// (bob/glow), altars (pulse), torches (flicker). Anything that mutates
+// frame-to-frame goes here so the cached static base never needs
+// invalidation for normal play.
+function drawRoomDynamicLayers(ctx) {
+  if (!room.tiles || room.kind === 'hamlet') return;
   // Pass 5: interactive + decorative props on top
-  for (let y = 0; y < ROOM_H; y++) {
-    for (let x = 0; x < ROOM_W; x++) {
+  for (let y = 0; y < room.h; y++) {
+    for (let x = 0; x < room.w; x++) {
       const t = room.tiles[y][x];
       if (t === 'pillar') drawPillar(ctx, x, y);
-      else if (t === 'door') drawDoor(ctx, x, y, y === ROOM_H - 1 || room.cleared);
+      else if (t === 'door') {
+        // Pull the per-door open amount from the doorPortals module via
+        // the lazy lookup. Falls back to "south door of a cleared room"
+        // when no door object exists (start room before doorPortals
+        // populates, hamlet, etc.).
+        const door = _getDoorAt && _getDoorAt(x, y);
+        let amount;
+        if (door) {
+          amount = Math.max(0, Math.min(1, door.anim));
+        } else {
+          amount = (y === room.h - 1 && room.cleared) ? 1 : 0;
+        }
+        drawDoor(ctx, x, y, amount);
+      }
       else if (t === 'pedestal') drawPedestal(ctx, x, y);
       else if (t === 'altar') drawAltar(ctx, x, y);
     }
@@ -1978,6 +2672,101 @@ export function tryHitUrn(hx, hy, aimX, aimY, reach) {
   return { hit: false };
 }
 
+// Decorative pillar rendering (purely visual, no collision). Drawn at
+// roomDecorPillars positions in special rooms like chestroom for a
+// 'sacred chamber' framing. Sprite is 48×48 native, scaled 1.4× → 67px
+// rendered (matches other dungeon prop scale).
+const PILLAR_NATIVE = 48;
+const PILLAR_SCALE = 1.4;
+export function drawDecorPillars(ctx) {
+  const img = images.fx_dungeon_pillar;
+  if (!img) return;
+  const drawW = PILLAR_NATIVE * PILLAR_SCALE;
+  const drawH = PILLAR_NATIVE * PILLAR_SCALE;
+  const prevSmoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  for (const p of roomDecorPillars) {
+    const cx = p.x * TILE + TILE / 2;
+    const cy = p.y * TILE + TILE / 2;
+    // Drop shadow under pillar base
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + drawH / 2 - 6, drawW / 3, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.drawImage(
+      img,
+      0, 0, PILLAR_NATIVE, PILLAR_NATIVE,
+      Math.round(cx - drawW / 2),
+      Math.round(cy - drawH / 2 + 4),     // +4 so base sits ON tile
+      drawW, drawH,
+    );
+  }
+  ctx.imageSmoothingEnabled = prevSmoothing;
+}
+
+// Treasure-chest rendering — both variants share an identical 'closed' look
+// (gambling tension); their reveal happens through the opening animation.
+//
+// Closed → frame 0 of fx_chestcold (used as the shared 'closed chest'
+// silhouette, since chestcold's first frame is a clean closed box).
+//
+// Opening → animate frames 0→15 of the variant's own sheet (chestcold for
+// treasure, chestfire for mimic). At ~12 fps a 16-frame loop is ~1.3 s — fast
+// enough to feel like a discrete reveal moment, slow enough to register the
+// fire/coin visual.
+//
+// Opened → render frame 15 (last frame) of the variant. Persistent.
+const CHEST_FPS = 12;
+const CHEST_FRAMES = 16;
+const CHEST_W = 48;
+const CHEST_H = 48;
+const CHEST_SCALE = 1.4;     // ~67px rendered, matches hamlet prop scale
+
+export function drawChests(ctx, dt) {
+  const closedAsset = images.fx_chestcold;     // shared closed appearance
+  for (const c of roomChests) {
+    const cx = c.x * TILE + TILE / 2;
+    const cy = c.y * TILE + TILE / 2;
+    let asset, frame;
+    if (c.state === 'closed') {
+      asset = closedAsset;
+      frame = 0;
+    } else {
+      // 'opening' or 'opened' — variant-specific animation
+      asset = c.variant === 'treasure' ? images.fx_chestcold : images.fx_chestfire;
+      if (c.state === 'opening') {
+        c.frameTime += dt;
+        const advance = (c.frameTime * CHEST_FPS) | 0;
+        c.frame = Math.min(CHEST_FRAMES - 1, advance);
+        if (c.frame >= CHEST_FRAMES - 1) {
+          c.state = 'opened';
+        }
+      }
+      frame = c.frame;
+    }
+    if (!asset) continue;     // not loaded yet
+    const drawW = CHEST_W * CHEST_SCALE;
+    const drawH = CHEST_H * CHEST_SCALE;
+    const sx = frame * CHEST_W;
+    // Drop shadow under chest base
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + drawH / 2 - 6, drawW / 3, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Sprite
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      asset,
+      sx, 0, CHEST_W, CHEST_H,
+      Math.round(cx - drawW / 2),
+      Math.round(cy - drawH / 2 + 4),     // +4 so chest base sits ON the tile, not floating above
+      drawW, drawH,
+    );
+    ctx.imageSmoothingEnabled = prevSmoothing;
+  }
+}
+
 // Fire pool hazard — 3-phase cycle: dormant → warning → erupting → dormant.
 const FIRE_DORMANT = 1.6;
 const FIRE_WARNING = 0.5;
@@ -2085,9 +2874,9 @@ export function spikeDamageAt(wx, wy, gameTime) {
 }
 
 export function heroSpawnInRoom() {
-  const mid = Math.floor(ROOM_W / 2);
+  const mid = Math.floor((room.w || ROOM_W) / 2);
   // Spawn row is one tile in from the entering door
-  const preferredY = room.entryFrom === 'north' ? (ROOM_H - 2) : 2;
+  const preferredY = room.entryFrom === 'north' ? ((room.h || ROOM_H) - 2) : 2;
   // Walk outward from center along the spawn row to find a clear tile
   const check = (x) => room.tiles?.[preferredY]?.[x] === 'floor';
   if (check(mid)) return { x: mid * TILE + TILE / 2, y: preferredY * TILE + TILE / 2 };

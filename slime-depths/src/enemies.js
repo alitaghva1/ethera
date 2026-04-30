@@ -4,13 +4,16 @@ import { images } from './loader.js';
 import { isWallAtWorld, spawnExtraFirePool } from './room.js';
 import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
-import { shakeCamera, pulseZoom } from './camera.js';
+import { synthThud, synthChord } from './synth.js';
+import { shakeCamera, pulseZoom, worldToScreen } from './camera.js';
+import { mouse, keys } from './input.js';
 import { damageHero, hero } from './hero.js';
 import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
 import { stats } from './stats';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
-import { triggerScreenFlash } from './fx.js';
+import { triggerScreenFlash, spawnSoulTether, spawnDamageNumber } from './fx.js';
+import { markSoulFired } from './counterPips.js';
 
 // ============================================================================
 // ELITE AFFIXES — rolled on elite spawn (floors 2+). Each affix has a unique
@@ -18,26 +21,30 @@ import { triggerScreenFlash } from './fx.js';
 // ============================================================================
 export const ELITE_AFFIXES = {
   frost: {
-    id: 'frost', badge: 'F',
+    id: 'frost', badge: 'F', name: 'Frost',
+    desc: 'Hits chill you \u2014 movement slowed for 0.7s.',
     glow: 'rgba(120, 200, 255, ',
     auraColor: '#72c6ff',
     onHitHero: (_e) => { hero.slowTime = Math.max(hero.slowTime || 0, 0.7); hero.slowMul = 0.45; },
   },
   ember: {
-    id: 'ember', badge: 'E',
+    id: 'ember', badge: 'E', name: 'Ember',
+    desc: 'Leaves a flame trail that burns on contact.',
     glow: 'rgba(255, 130, 70, ',
     auraColor: '#ff7a2a',
     trail: true,
     trailInterval: 0.22,
   },
   venom: {
-    id: 'venom', badge: 'V',
+    id: 'venom', badge: 'V', name: 'Venom',
+    desc: 'Hits poison you for 4 seconds (0.5 dmg/sec).',
     glow: 'rgba(120, 220, 120, ',
     auraColor: '#6ae08a',
     onHitHero: (_e) => { hero.poisonTime = Math.max(hero.poisonTime || 0, 4); hero.poisonRate = 0.5; },
   },
   warded: {
-    id: 'warded', badge: 'W',
+    id: 'warded', badge: 'W', name: 'Warded',
+    desc: 'Halves incoming damage until staggered twice.',
     glow: 'rgba(255, 220, 90, ',
     auraColor: '#ffd855',
     dmgReductionPct: 0.5,
@@ -46,22 +53,50 @@ export const ELITE_AFFIXES = {
 };
 const AFFIX_IDS = Object.keys(ELITE_AFFIXES);
 
-// ---- Flame trail hazards spawned by ember elites ----
+// ---- Flame trail hazards spawned by ember elites (and Stride of Ash) ----
+//
+// Round-6 Stride of Ash mythic — hero-side flames fire on dodge end and
+// damage ENEMIES, not the hero. Same visual + lifecycle as the bomber-
+// elite flames; just flipped damage target via the `friendly` flag. The
+// flag defaults false to preserve the original ember-elite behavior.
 const _flames = [];
-export function spawnEmberFlame(x, y) {
-  _flames.push({ x, y, t: 0, life: 2.0, radius: 22 });
+export function spawnEmberFlame(x, y, opts = {}) {
+  _flames.push({
+    x, y, t: 0,
+    life: opts.life || 2.0,
+    radius: opts.radius || 22,
+    friendly: !!opts.friendly,
+    damage: opts.damage || 1,
+    hitSet: opts.friendly ? new Set() : null,    // per-enemy hit cooldown for friendly flames
+  });
 }
 export function updateFlames(dt) {
   for (let i = _flames.length - 1; i >= 0; i--) {
     const f = _flames[i];
     f.t += dt;
     if (f.t >= f.life) { _flames.splice(i, 1); continue; }
-    // Damage hero on contact (cooldown to prevent tick-spam)
-    if (!hero._flameCD || hero._flameCD <= 0) {
-      const dx = hero.x - f.x, dy = hero.y - f.y;
-      if (dx*dx + dy*dy < (f.radius + 14) * (f.radius + 14) && hero.state !== 'dodge') {
-        damageHero(1, f.x, f.y);
-        hero._flameCD = 0.5;
+    if (f.friendly) {
+      // Damage enemies in range. Per-flame hitSet limits each enemy to
+      // a single tick per flame (vs the once-every-0.5s pattern for the
+      // hero-damage path) — Stride of Ash is meant to enable kiting,
+      // not pin enemies in 30-tick burn lanes.
+      const r2 = (f.radius + 14) * (f.radius + 14);
+      for (const e of enemies) {
+        if (e.dead || f.hitSet.has(e)) continue;
+        const dx = e.x - f.x, dy = e.y - f.y;
+        if (dx*dx + dy*dy < r2) {
+          e.takeDamage(f.damage, 0, 0);
+          f.hitSet.add(e);
+        }
+      }
+    } else {
+      // Damage hero on contact (cooldown to prevent tick-spam).
+      if (!hero._flameCD || hero._flameCD <= 0) {
+        const dx = hero.x - f.x, dy = hero.y - f.y;
+        if (dx*dx + dy*dy < (f.radius + 14) * (f.radius + 14) && hero.state !== 'dodge') {
+          damageHero(f.damage, f.x, f.y);
+          hero._flameCD = 0.5;
+        }
       }
     }
   }
@@ -88,6 +123,80 @@ export function drawFlames(ctx) {
 }
 export function clearFlames() { _flames.length = 0; }
 
+// ---- Ember Tyrant phase-2 fire rings ----
+// Round-6 endgame audit: Ember Tyrant's enrage was mechanically thin
+// (just speed +35% and a static 6-pillar fire ring, no new attack
+// pattern). The rings here are a recurring radial wavefront — every
+// emberRingInterval seconds while enraged, a new ring spawns at the
+// boss's position and expands outward, dealing damage to anyone caught
+// in the wavefront band [r-tol, r+tol]. Player must read the windup
+// and step OFF the radial line, not just outrun it.
+//
+// Damage is resolved by per-ring "did we hit hero this pulse" flag —
+// a single ring can hit the hero exactly once even if their position
+// drifts back into the wavefront. Prevents the cheap multi-tick that
+// would happen if hero stood still inside a slow-moving band.
+const _emberRings = [];
+const EMBER_RING_BAND = 28;        // hit tolerance — hero must clear ±28px of the leading edge
+
+export function spawnEmberRing(x, y, maxR = 280, dur = 0.85, damage = 4) {
+  _emberRings.push({ x, y, t: 0, dur, maxR, damage, hit: false });
+}
+
+export function updateEmberRings(dt) {
+  for (let i = _emberRings.length - 1; i >= 0; i--) {
+    const r = _emberRings[i];
+    r.t += dt;
+    if (r.t >= r.dur) { _emberRings.splice(i, 1); continue; }
+    if (r.hit) continue;
+    // Current ring radius — eased outward so the wavefront slows as it
+    // reaches max range (gives the player a slightly longer reaction
+    // window on the outer edge, where they're most likely to be).
+    const k = r.t / r.dur;
+    const ease = 1 - (1 - k) * (1 - k);    // ease-out quad
+    const curR = ease * r.maxR;
+    const dx = hero.x - r.x, dy = hero.y - r.y;
+    const dh = Math.hypot(dx, dy);
+    if (Math.abs(dh - curR) < EMBER_RING_BAND && hero.state !== 'dodge') {
+      damageHero(r.damage, r.x, r.y);
+      r.hit = true;     // one-shot per ring
+    }
+  }
+}
+
+export function drawEmberRings(ctx) {
+  for (const r of _emberRings) {
+    const k = r.t / r.dur;
+    const ease = 1 - (1 - k) * (1 - k);
+    const curR = ease * r.maxR;
+    const a = (1 - k) * 0.85;
+    // Outer glow band — wide gradient for the expanding wavefront.
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 140, 60, ${(a * 0.9).toFixed(3)})`;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, curR, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner bright leading edge — thinner, brighter, sells the fire crest.
+    ctx.strokeStyle = `rgba(255, 220, 160, ${(a * 0.85).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, curR - 2, 0, Math.PI * 2);
+    ctx.stroke();
+    // Trailing soft afterglow — thinner band behind the leading edge.
+    if (curR > 30) {
+      ctx.strokeStyle = `rgba(220, 80, 30, ${(a * 0.45).toFixed(3)})`;
+      ctx.lineWidth = 14;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, curR - 12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+export function clearEmberRings() { _emberRings.length = 0; }
+
 const SPR = 100;
 
 // Behaviors:
@@ -101,39 +210,66 @@ const SPR = 100;
 //   Hit detection uses BOTH distance and angle, so flanking matters.
 export const TYPES = {
   slime:  {
-    prefix: 'slime_',  drawSize: 80, radius: 18, speed: 95,  hp: 70,  damage: 1,
+    // weight: per-enemy hit-shake multiplier consumed by hero.js's
+    // melee swing handler. 0.6 = soft tap (slime). Heavier enemies
+    // override this; bosses default to 1.0 explicit. Game-feel audit P0.
+    weight: 0.6,
+    // SIZING PASS — Tiny-RPG sprites fill only ~15% of their 100 cell while
+    // the PixelLab mage hero fills 93% of its 128 cell. Without compensation
+    // a minion drawSize of 80 reads as ~12 px visible vs the hero's ~56 px,
+    // making combat unreadable. Bumped 80→200 so visible body lands ~30 px
+    // — still smaller than the hero (intentional: slime is the tutorial mob)
+    // but actually fightable instead of postage-stamp size.
+    prefix: 'slime_',  drawSize: 200, radius: 22, speed: 95,  hp: 70,  damage: 1,
     color: '#6acc78', hitCD: 0.65, fps: 10, behavior: 'melee',
     attackReach: 42, attackArc: Math.PI * 0.42,
     windup: 0.25, swing: 0.22,
-    telegraphColor: 'rgba(220, 80, 80, ',
+    // Round-6 AV audit — F1/F2 melee telegraphs were all monochrome red
+    // (slime/skel/orc/archer all in the rgba(220,60-80,55-80) range), so
+    // 4-6 winding enemies blurred into "general red soup" with no per-
+    // enemy reading. Slime gets acidic green-yellow to match its body
+    // tint (#6acc78); skeleton gets bone-white; orc stays canonical
+    // melee-red; archer gets amber for "ranged threat". Heavy attacks
+    // still flash orange via heavyColor across all enemies, preserving
+    // the universal "this hits hard" reading.
+    telegraphColor: 'rgba(170, 220, 90, ',
     windupSfx: { key: 'slime_hit', rate: 0.75, volume: 0.4 },
     bloodColor: '#3a7a42',
     displayName: 'SLIME',
     flavor: 'what the ruin makes when it forgets what living was for',
   },
   skel:   {
+    weight: 0.85,
     element: 'cold',                 // resists cold, weak to fire/shock
-    prefix: 'skel_',   drawSize: 96, radius: 18, speed: 118, hp: 95,  damage: 1,
+    prefix: 'skel_',   drawSize: 220, radius: 22, speed: 118, hp: 95,  damage: 1,
     color: '#cfd4d9', hitCD: 0.80, fps: 10, behavior: 'melee',
     attackReach: 54, attackArc: Math.PI * 0.48,
     windup: 0.28, swing: 0.22,
-    telegraphColor: 'rgba(220, 60, 70, ',
+    // Bone-white telegraph — matches the dust-and-bone body palette,
+    // visually distinct from slime's acid-green and orc's blood-red so
+    // a 3-skel + 2-orc + 1-slime room reads as three separate threats
+    // not one red blob. (See slime def for the full Round-6 rationale.)
+    telegraphColor: 'rgba(225, 215, 195, ',
     windupSfx: { key: 'footstep_0', rate: 1.7, volume: 0.55 },
     bloodColor: '#4a4038',             // skeletons leave dust and old bone-dark
     displayName: 'SKELETON',
     flavor: 'the dead who were promised rest, and given knives',
   },
   orc:    {
-    // BALANCE PASS (sim: floor-1 boss p50 TTK was 2.7s — trivial).
-    // Raised 150 → 200 for ~3.5s p50 TTK. Then bone_captain was also
-    // bumped so floor 2 stays meaningfully tougher than floor 1.
-    prefix: 'orc_',    drawSize: 100, radius: 20, speed: 80, hp: 200, damage: 2,
+    weight: 1.15,
+    // Common mid-tier melee. Boss-tier fields (WARCHIEF GRUDNOK display
+    // name, boss flavor) moved to elite_orc when the boss sprite split
+    // landed — orc def is now common-mob-only. Keeps the heavy-variant
+    // swing for combat variety; HP stays at 200 (highest of the common
+    // mobs) so the player feels orcs as the "heavy guy" tier in F2-F4
+    // comps. SFX kept on hero_hurt so the windup still reads heavy.
+    prefix: 'orc_',    drawSize: 220, radius: 26, speed: 80, hp: 200, damage: 2,
     color: '#7fa34a', hitCD: 0.92, fps: 8, behavior: 'melee',
     attackReach: 62, attackArc: Math.PI * 0.60,
     windup: 0.38, swing: 0.26,
     telegraphColor: 'rgba(210, 45, 55, ',
-    displayName: 'WARCHIEF GRUDNOK',
-    flavor: 'chieftain of the iron-bone clans',
+    displayName: 'ORC',
+    flavor: 'iron-bone clansman. fights long after the chieftain falls.',
     heavyChance: 0.30,
     heavyReach: 90, heavyArc: Math.PI * 0.85,
     heavyWindup: 0.70, heavySwing: 0.32,
@@ -143,16 +279,20 @@ export const TYPES = {
     heavyWindupSfx: { key: 'hero_hurt', rate: 0.38, volume: 0.85 },
   },
   archer: {
-    prefix: 'archer_', drawSize: 96, radius: 16, speed: 100, hp: 60,  damage: 1,
+    prefix: 'archer_', drawSize: 200, radius: 20, speed: 100, hp: 60,  damage: 1,
     color: '#d8c7a8', attackRange: 420, hitCD: 1.0, fps: 10, behavior: 'ranged',
     windup: 0.36, swing: 0.20, preferDist: 220, minDist: 130,
-    telegraphColor: 'rgba(220, 60, 70, ',
+    // Amber telegraph — Round-6 AV diversification. Distinguishes the
+    // archer's nock-and-loose from the melee red palette so the player
+    // can tell "ranged threat at distance" from "melee about to swing"
+    // without checking sprite identity in heavy combat.
+    telegraphColor: 'rgba(245, 175, 80, ',
     windupSfx: { key: 'click', rate: 0.7, volume: 0.5 },
     displayName: 'ARCHER',
     flavor: 'chose the dark over starving. regrets neither.',
   },
   bomber: {
-    prefix: 'slime_',  drawSize: 60, radius: 14, speed: 165, hp: 36,  damage: 2,
+    prefix: 'slime_',  drawSize: 130, radius: 18, speed: 165, hp: 36,  damage: 2,
     color: '#ff9a5a', attackRange: 34, hitCD: 0.5, fps: 16, behavior: 'bomber',
     windup: 0.48, swing: 0.1, blastRadius: 92, blastDamage: 2,
     tintFilter: 'sepia(0.5) hue-rotate(-10deg) saturate(2.5)',
@@ -165,7 +305,7 @@ export const TYPES = {
   // Keeps medium distance, then commits to a 380px linear charge that pierces.
   // Hero must sidestep the line, not dodge behind him.
   lancer: {
-    prefix: 'lancer_', drawSize: 100, radius: 18, speed: 120, hp: 90, damage: 2,
+    prefix: 'lancer_', drawSize: 220, radius: 22, speed: 120, hp: 90, damage: 2,
     color: '#e8d4a0', hitCD: 1.3, fps: 10, behavior: 'lancer',
     chargeRange: 380,           // max charge distance
     chargeWidth: 36,              // line hitbox width
@@ -182,7 +322,8 @@ export const TYPES = {
   // frontal hit costs 1 charge. Once depleted the unit is fully vulnerable.
   // Uses orc sprite with a cold steel tint + visible shield wedge.
   vanguard: {
-    prefix: 'orc_',    drawSize: 100, radius: 20, speed: 70, hp: 120, damage: 2,
+    weight: 1.25,
+    prefix: 'orc_',    drawSize: 220, radius: 26, speed: 70, hp: 120, damage: 2,
     color: '#a0b8d0', hitCD: 1.10, fps: 8, behavior: 'melee',
     attackReach: 66, attackArc: Math.PI * 0.62,
     windup: 0.50, swing: 0.28,
@@ -200,7 +341,7 @@ export const TYPES = {
   // Hybrid of wizard (casts orbs at distance) and vanguard (frontal damage
   // reduction). Creates a puzzle: dodge orbs while getting behind the mirror.
   reflector: {
-    prefix: 'wiz_',    drawSize: 96, radius: 16, speed: 55, hp: 90, damage: 2,
+    prefix: 'wiz_',    drawSize: 220, radius: 20, speed: 55, hp: 90, damage: 2,
     color: '#c8e0ff',  hitCD: 2.0, fps: 10, behavior: 'wizard',
     preferDist: 320, minDist: 220,
     castRange: 460, castWindup: 0.80, castCount: 1, castSpread: 0,
@@ -218,7 +359,7 @@ export const TYPES = {
   // ---- WIZARD — backline caster. Homing orbs that track the hero. ----
   wizard: {
     element: 'shock',                // resists shock, weak to fire/cold
-    prefix: 'wiz_',    drawSize: 96, radius: 16, speed: 60, hp: 70, damage: 2,
+    prefix: 'wiz_',    drawSize: 200, radius: 20, speed: 60, hp: 70, damage: 2,
     color: '#b89cff', hitCD: 2.4, fps: 10, behavior: 'wizard',
     preferDist: 340, minDist: 240,
     castRange: 500,
@@ -235,7 +376,7 @@ export const TYPES = {
   // Tinted cyan and moves slowly. Kill priority target — hero lives or dies
   // depending on whether she is prioritized fast.
   priest: {
-    prefix: 'priest_', drawSize: 96, radius: 16, speed: 70, hp: 60, damage: 0,
+    prefix: 'priest_', drawSize: 200, radius: 20, speed: 70, hp: 60, damage: 0,
     color: '#c8d4ff', hitCD: 2.2, fps: 10, behavior: 'priest',
     preferDist: 260, minDist: 180,
     healRange: 260,                // how far her heal reaches
@@ -253,7 +394,7 @@ export const TYPES = {
   // Spawned by main.js at run start based on ruin.deaths. Uses orc sprite with
   // a ghostly blue filter. HP/damage scale with how loaded-out the past build was.
   echo: {
-    prefix: 'orc_',    drawSize: 104, radius: 20, speed: 96, hp: 140, damage: 2,
+    prefix: 'orc_',    drawSize: 230, radius: 26, speed: 96, hp: 140, damage: 2,
     color: '#c8d8ff',  hitCD: 1.1, fps: 8, behavior: 'melee',
     attackReach: 68, attackArc: Math.PI * 0.66,
     windup: 0.42, swing: 0.26,
@@ -274,7 +415,7 @@ export const TYPES = {
     // BALANCE PASS — paired with orc HP bump. 180 → 220 keeps floor-2
     // boss meaningfully tougher than floor-1 (660 → 858 effective HP
     // after 3x × 1.3 floor mul).
-    prefix: 'bonecap_', drawSize: 108, radius: 22, speed: 115, hp: 220, damage: 2,
+    prefix: 'bonecap_', drawSize: 240, radius: 28, speed: 115, hp: 220, damage: 2,
     color: '#cfd4d9', hitCD: 1.0, fps: 10, behavior: 'melee',
     attackReach: 72, attackArc: Math.PI * 0.52,
     windup: 0.40, swing: 0.24,
@@ -288,10 +429,30 @@ export const TYPES = {
     displayName: 'THE IRON REVENANT',
     flavor: 'a king who refused to stay buried',
     bossTrack: 'boss',
+    // LIFE-DRAIN — every successful hit on the hero heals the boss for
+    // 4 HP (8 on enrage) and spawns a red soul-tether VFX from hero to
+    // boss. The flavor + boss-clear loot pool ("life-drain: bloodstone,
+    // reaver, bloodrite") promise this mechanic; this is its actual
+    // implementation. Without it the floor-2 boss had zero mechanical
+    // identity vs a generic captain.
+    onHitHero: (e) => {
+      const heal = e._enraged ? 8 : 4;
+      e.hp = Math.min(e.maxHp, e.hp + heal);
+      try { spawnSoulTether(hero.x, hero.y - 8, e.x, e.y - 12, {
+        color: 'rgba(220, 60, 80, 0.9)',
+        life: 0.55,
+      }); } catch (_) {}
+      // Floating green heal number above the boss so the player SEES
+      // the cost of getting hit. Scales with enrage.
+      try { spawnDamageNumber(e.x, e.y - 28, heal, {
+        text: '+' + heal,
+        color: '#86e3a8',
+      }); } catch (_) {}
+    },
   },
   // ---- Floor 3 boss: Broodmother — werebear with enrage + spawning bombers ----
   broodmother: {
-    prefix: 'brood_',  drawSize: 134, radius: 28, speed: 58,  hp: 240, damage: 3,
+    prefix: 'brood_',  drawSize: 280, radius: 34, speed: 58,  hp: 240, damage: 3,
     color: '#9a6b56', hitCD: 1.15, fps: 8, behavior: 'melee',
     attackReach: 86, attackArc: Math.PI * 0.70,
     windup: 0.55, swing: 0.32,
@@ -314,9 +475,18 @@ export const TYPES = {
     bossTrack: 'boss',
   },
   // ---- Floor 4 boss: EMBER TYRANT — heavily armored, fire-themed ----
+  // Round-6 endgame audit retune (commit b5ca19d era):
+  //   - heavyDamage 4 → 5: matches Broodmother's heavy bite. Final boss
+  //     should never hit softer than the floor-3 boss.
+  //   - emberRingInterval added: while enraged, the boss pulses an
+  //     expanding fire ring from his position every 4s. Distinct from
+  //     the floor-fire static pillars (which spawn on enrage but DO NOT
+  //     change the boss's swing rhythm). The ring forces the player to
+  //     find a kiting line away from the boss every cycle, which gives
+  //     the climactic phase a mechanical identity beyond "+35% speed".
   ember_tyrant: {
     element: 'fire',                 // resists fire, weak to cold/shock
-    prefix: 'ember_',  drawSize: 118, radius: 24, speed: 82,  hp: 280, damage: 3,
+    prefix: 'ember_',  drawSize: 280, radius: 30, speed: 82,  hp: 280, damage: 3,
     color: '#e85020', hitCD: 0.95, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.62,
     windup: 0.42, swing: 0.28,
@@ -325,7 +495,7 @@ export const TYPES = {
     heavyChance: 0.40,
     heavyReach: 104, heavyArc: Math.PI * 0.90,
     heavyWindup: 0.68, heavySwing: 0.34,
-    heavyDamage: 4,
+    heavyDamage: 5,
     heavyColor: 'rgba(255, 80, 30, ',
     // Boss phases — spawn bombers at thresholds + enrage
     enrageAt: 0.5,
@@ -333,6 +503,16 @@ export const TYPES = {
     enrageDamageMul: 1.25,
     bomberAt: [0.75, 0.50, 0.25],
     summonAt: [0.33],               // also summons an archer once
+    // Phase-2 fire-ring pulse — every emberRingInterval seconds while
+    // the boss is enraged, an expanding ring of fire emanates from his
+    // body. emberRingMaxR is the outer reach of the ring; the visual
+    // grows from 0 to maxR over emberRingDur seconds, dealing damage
+    // to anyone caught in the wavefront. Hero must read the windup
+    // tell + sidestep along the radial line. See updateBossPhases.
+    emberRingInterval: 4.0,
+    emberRingDur: 0.85,
+    emberRingMaxR: 280,
+    emberRingDamage: 4,
     windupSfx: { key: 'hero_hurt', rate: 0.42, volume: 0.9 },
     heavyWindupSfx: { key: 'hero_hurt', rate: 0.30, volume: 1.0 },
     tintFilter: 'hue-rotate(-18deg) saturate(1.4) brightness(1.05)',
@@ -351,7 +531,7 @@ export const TYPES = {
   // cleave, lower swing cadence than orc. Spawns in floor-2 event rooms as
   // the mini-boss variant (picked by floor.js makeMiniBossRoom).
   warden: {
-    prefix: 'warden_',  drawSize: 110, radius: 22, speed: 65, hp: 140, damage: 2,
+    prefix: 'warden_',  drawSize: 240, radius: 28, speed: 65, hp: 140, damage: 2,
     color: '#8a8098',  hitCD: 1.15, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.68,
     windup: 0.60, swing: 0.32,
@@ -375,7 +555,7 @@ export const TYPES = {
   // both dreadmage and wizard in the same room.
   hermit: {
     element: 'shock',
-    prefix: 'wiz_',      drawSize: 118, radius: 20, speed: 40, hp: 180, damage: 3,
+    prefix: 'wiz_',      drawSize: 240, radius: 24, speed: 40, hp: 180, damage: 3,
     color: '#c9a86a',    hitCD: 2.4, fps: 8, behavior: 'wizard',
     preferDist: 420, minDist: 320,
     castRange: 520,
@@ -395,7 +575,7 @@ export const TYPES = {
   // multi-caster comps (pair with priest or reflector).
   dreadmage: {
     element: 'shock',
-    prefix: 'dreadmage_', drawSize: 102, radius: 16, speed: 72, hp: 95, damage: 2,
+    prefix: 'dreadmage_', drawSize: 220, radius: 20, speed: 72, hp: 95, damage: 2,
     color: '#b060ff',  hitCD: 2.1, fps: 10, behavior: 'wizard',
     preferDist: 340, minDist: 230,
     castRange: 500,
@@ -414,7 +594,7 @@ export const TYPES = {
   // ranged enemy), lower HP, higher speed. Fills the "airborne threat"
   // design gap — nothing else in the roster hovers out of melee range.
   haunt: {
-    prefix: 'haunt_',   drawSize: 86, radius: 14, speed: 130, hp: 55, damage: 1,
+    prefix: 'haunt_',   drawSize: 180, radius: 18, speed: 130, hp: 55, damage: 1,
     color: '#ff8050', attackRange: 320, hitCD: 1.15, fps: 12, behavior: 'ranged',
     windup: 0.32, swing: 0.18, preferDist: 240, minDist: 160,
     telegraphColor: 'rgba(255, 100, 80, ',
@@ -423,6 +603,301 @@ export const TYPES = {
     bloodColor: '#c8503a',
     flavor: 'a hunger with wings. it has time.',
     flies: true,                     // future-proof flag for airborne collision
+  },
+
+  // ==========================================================================
+  // TINY RPG KIT — six characters from the existing kit that were sitting
+  // unused. Wired in by tools/ingest_enemy_pack.py. Each fills a specific
+  // role gap from the audit:
+  //   werewolf            — fast bestial skirmisher (F3 abyss)
+  //   werebear            — heavy bestial brute (F3+F4)
+  //   skel_archer         — bone ranged (replaces archer in F1 crypt)
+  //   knight_enemy        — proper armored melee (retires vanguard's orc-retint)
+  //   armored_skel        — heavy bone melee (F2 vault garrison)
+  //   greatsword_skel     — heavy bone cleaver (F2/F3 elite slot)
+  // All six bind to the existing behavior updaters (melee, ranged) — no new
+  // combat code. Loader keys live at loader.js with a `_enemy` suffix where
+  // they would otherwise collide with the player's knight slot.
+  // ==========================================================================
+
+  // ---- WEREWOLF — F3 fast bestial skirmisher. Closes gaps fast, short
+  // windup makes it punishing if the player commits the wrong attack arc.
+  // Pairs with werebear (slow brute) for the Spire's chase/corner dynamic.
+  werewolf: {
+    prefix: 'werewolf_', drawSize: 220, radius: 22, speed: 150, hp: 110, damage: 2,
+    color: '#8a6a4a', hitCD: 0.70, fps: 12, behavior: 'melee',
+    attackReach: 56, attackArc: Math.PI * 0.45,
+    windup: 0.22, swing: 0.20,
+    telegraphColor: 'rgba(220, 100, 80, ',
+    windupSfx: { key: 'slime_hit', rate: 1.4, volume: 0.55 },
+    bloodColor: '#5a3a28',
+    displayName: 'WEREWOLF',
+    flavor: 'the moon does not rise here. it does not need to.',
+  },
+
+  // ---- WEREBEAR — F3+F4 heavy bestial brute. Massive HP and damage,
+  // very slow speed. Heavy variant on every third swing creates the
+  // "wide telegraph, do not stand here" beat the audit flagged as
+  // missing on floor 3. Reuses orc's heavy fields (no new combat code).
+  werebear: {
+    prefix: 'werebear_', drawSize: 250, radius: 30, speed: 60, hp: 180, damage: 3,
+    color: '#6a5040', hitCD: 1.20, fps: 8, behavior: 'melee',
+    attackReach: 80, attackArc: Math.PI * 0.65,
+    windup: 0.55, swing: 0.32,
+    telegraphColor: 'rgba(220, 80, 60, ',
+    heavyChance: 0.35,
+    heavyReach: 110, heavyArc: Math.PI * 0.95,
+    heavyWindup: 0.85, heavySwing: 0.40,
+    heavyDamage: 4,
+    heavyColor: 'rgba(255, 110, 50, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.65 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.40, volume: 0.85 },
+    bloodColor: '#3a2818',
+    displayName: 'WEREBEAR',
+    flavor: 'remembers being a man. uses it for nothing.',
+  },
+
+  // ---- SKEL_ARCHER — bone-themed ranged unit. Same kit as the human
+  // archer but reads as crypt-native instead of "guard who got lost".
+  // Cold-element resistance matches skel; otherwise statline mirrors
+  // archer so the COMP slots are drop-in compatible.
+  skel_archer: {
+    element: 'cold',
+    prefix: 'skel_archer_', drawSize: 200, radius: 20, speed: 100, hp: 60, damage: 1,
+    color: '#cfd4d9', attackRange: 420, hitCD: 1.0, fps: 10, behavior: 'ranged',
+    windup: 0.36, swing: 0.20, preferDist: 220, minDist: 130,
+    telegraphColor: 'rgba(220, 60, 70, ',
+    windupSfx: { key: 'click', rate: 0.7, volume: 0.5 },
+    displayName: 'BONE ARCHER',
+    bloodColor: '#4a4038',
+    flavor: 'the bow remembered the hand. the hand was new.',
+  },
+
+  // ---- KNIGHT_ENEMY — proper armored melee with a real shield in the
+  // sprite. Drop-in replacement for vanguard's "orc with cyan filter"
+  // hack. Same shield mechanics (4 charges, 140° arc, 82% reduction)
+  // as vanguard so existing flank-to-break tactics still work. The
+  // `_enemy` suffix in the prefix avoids collision with player knight
+  // sprite keys (assets/characters/knight_*.png).
+  knight_enemy: {
+    prefix: 'knight_enemy_', drawSize: 220, radius: 24, speed: 75, hp: 130, damage: 2,
+    color: '#b8c4d0', hitCD: 1.10, fps: 8, behavior: 'melee',
+    attackReach: 64, attackArc: Math.PI * 0.60,
+    windup: 0.45, swing: 0.26,
+    telegraphColor: 'rgba(200, 220, 240, ',
+    shieldCharges: 4,
+    shieldArc: Math.PI * 0.78,
+    shieldReduction: 0.82,
+    windupSfx: { key: 'footstep_0', rate: 1.0, volume: 0.6 },
+    displayName: 'KNIGHT',
+    bloodColor: '#7a6a58',
+    flavor: 'sworn to the gate that no longer holds.',
+  },
+
+  // ---- ARMORED_SKEL — heavy bone melee. F2 vault "former garrison"
+  // theme. Lighter shield than knight (3 charges, narrower arc, less
+  // reduction) so it dies faster but reads as the same "flank to
+  // break" puzzle. Cold resist matches the skel family.
+  armored_skel: {
+    element: 'cold',
+    prefix: 'armored_skel_', drawSize: 220, radius: 22, speed: 70, hp: 130, damage: 2,
+    color: '#a8b4c0', hitCD: 1.05, fps: 9, behavior: 'melee',
+    attackReach: 60, attackArc: Math.PI * 0.55,
+    windup: 0.40, swing: 0.24,
+    telegraphColor: 'rgba(200, 200, 230, ',
+    shieldCharges: 3,
+    shieldArc: Math.PI * 0.62,
+    shieldReduction: 0.65,
+    windupSfx: { key: 'footstep_0', rate: 1.4, volume: 0.55 },
+    displayName: 'ARMORED SKELETON',
+    bloodColor: '#4a4038',
+    flavor: 'the garrison kept its post. the world changed around it.',
+  },
+
+  // ---- GREATSWORD_SKEL — heavy cleaver elite. Slow melee with massive
+  // heavy-variant cleave (50% chance, 180° arc). Sits between bone_captain
+  // (boss) and skel (light) in the bone-tier ladder. Floor 2 elite slot
+  // and floor 3 tier-3 backline. Cold resist matches skel family.
+  greatsword_skel: {
+    element: 'cold',
+    prefix: 'greatsword_skel_', drawSize: 240, radius: 26, speed: 70, hp: 170, damage: 3,
+    color: '#b0b8c0', hitCD: 1.20, fps: 8, behavior: 'melee',
+    attackReach: 70, attackArc: Math.PI * 0.65,
+    windup: 0.55, swing: 0.30,
+    telegraphColor: 'rgba(220, 200, 200, ',
+    heavyChance: 0.50,
+    heavyReach: 100, heavyArc: Math.PI * 1.0,
+    heavyWindup: 0.85, heavySwing: 0.40,
+    heavyDamage: 4,
+    heavyColor: 'rgba(255, 100, 60, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.65 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.40, volume: 0.85 },
+    bloodColor: '#4a4038',
+    displayName: 'GREATSWORD SKELETON',
+    flavor: 'a blade too heavy for the living. perfect, then, for the dead.',
+  },
+
+  // ==========================================================================
+  // TINY RPG KIT — full-roster pass (second batch). Closes the kit:
+  //   F2 introduction:  soldier (basic armored, the "everyman" footsoldier)
+  //   F3 introductions: swordsman, armored_axeman, armored_orc
+  //   F4 introductions: knight_templar (holy elite), orc_rider (rare mounted)
+  //   F1 boss sprite:   elite_orc (proper visual differentiation for Grudnok)
+  // Stat rationale captured in each comment block below.
+  // ==========================================================================
+
+  // ---- SOLDIER — F2 basic armored melee. Lighter than knight_enemy
+  // (no shield, fewer HP) so F2 garrison comps have a "rank-and-file"
+  // tier beneath the elite armored layer. Reads as the "common guard"
+  // archetype the player kills many of, vs knight_enemy as the rarer
+  // shielded officer.
+  soldier: {
+    prefix: 'soldier_', drawSize: 220, radius: 22, speed: 80, hp: 100, damage: 2,
+    color: '#c0c8d0', hitCD: 1.0, fps: 9, behavior: 'melee',
+    attackReach: 60, attackArc: Math.PI * 0.55,
+    windup: 0.38, swing: 0.24,
+    telegraphColor: 'rgba(220, 220, 220, ',
+    windupSfx: { key: 'footstep_0', rate: 1.1, volume: 0.55 },
+    bloodColor: '#7a6a58',
+    displayName: 'SOLDIER',
+    flavor: 'wore the colors of a kingdom that no longer exists.',
+  },
+
+  // ---- SWORDSMAN — F3 agile mid-tier melee. Faster than the heavy
+  // armored variants, shorter windup; rewards aggressive play but
+  // punishes mistakes. Sits between werewolf (skirmisher) and
+  // armored_axeman (heavy) on the F3 melee spectrum.
+  swordsman: {
+    prefix: 'swordsman_', drawSize: 220, radius: 20, speed: 115, hp: 95, damage: 2,
+    color: '#d4c8a0', hitCD: 0.85, fps: 11, behavior: 'melee',
+    attackReach: 62, attackArc: Math.PI * 0.50,
+    windup: 0.26, swing: 0.20,
+    telegraphColor: 'rgba(220, 180, 100, ',
+    windupSfx: { key: 'footstep_0', rate: 1.5, volume: 0.55 },
+    bloodColor: '#7a6a58',
+    displayName: 'SWORDSMAN',
+    flavor: 'practiced the form a thousand times. the form practices back.',
+  },
+
+  // ---- ARMORED_AXEMAN — F3 heavy axe brute. Human-armor counterpart to
+  // greatsword_skel. Massive cleave, slow windup, big damage. Common
+  // F3 elite slot; rewards staying out of the swing arc until commit.
+  armored_axeman: {
+    prefix: 'armored_axeman_', drawSize: 240, radius: 26, speed: 70, hp: 160, damage: 3,
+    color: '#a8b0b8', hitCD: 1.15, fps: 8, behavior: 'melee',
+    attackReach: 76, attackArc: Math.PI * 0.70,
+    windup: 0.55, swing: 0.32,
+    telegraphColor: 'rgba(220, 170, 80, ',
+    heavyChance: 0.40,
+    heavyReach: 110, heavyArc: Math.PI * 0.95,
+    heavyWindup: 0.85, heavySwing: 0.40,
+    heavyDamage: 4,
+    heavyColor: 'rgba(255, 120, 60, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.65 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.38, volume: 0.85 },
+    bloodColor: '#5a4838',
+    displayName: 'ARMORED AXEMAN',
+    flavor: 'the axe is heavy. the doubt is heavier. neither slows him.',
+  },
+
+  // ---- ARMORED_ORC — F3 armored orc variant. Narrative call-back to
+  // Grudnok's veterans: orcs that came back from F1 stronger. Heavier
+  // than common orc, has a shield (3 charges, 65% reduction) plus the
+  // heavy-swing field — combines vanguard mechanics with orc damage.
+  armored_orc: {
+    prefix: 'armored_orc_', drawSize: 230, radius: 28, speed: 75, hp: 180, damage: 2,
+    color: '#9aa8a0', hitCD: 1.0, fps: 9, behavior: 'melee',
+    attackReach: 64, attackArc: Math.PI * 0.60,
+    windup: 0.42, swing: 0.26,
+    telegraphColor: 'rgba(210, 80, 80, ',
+    heavyChance: 0.32,
+    heavyReach: 92, heavyArc: Math.PI * 0.88,
+    heavyWindup: 0.72, heavySwing: 0.34,
+    heavyDamage: 3,
+    heavyColor: 'rgba(255, 130, 50, ',
+    shieldCharges: 3,
+    shieldArc: Math.PI * 0.70,
+    shieldReduction: 0.65,
+    windupSfx: { key: 'hero_hurt', rate: 0.60, volume: 0.6 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.42, volume: 0.85 },
+    bloodColor: '#3a4a3a',
+    displayName: 'ARMORED ORC',
+    flavor: 'survived the warchief. learned what survival costs.',
+  },
+
+  // ---- ELITE_ORC — F1 BOSS sprite (Grudnok). Replaces the orc-def-
+  // doubles-as-boss hack so the F1 boss is visually distinct from the
+  // common orcs the player kills in F2-F4. All boss-fight stats
+  // (heavy variant 30%, the WARCHIEF GRUDNOK display name + flavor)
+  // live here now. Common orc keeps its mid-tier mob role.
+  // Also slots into the F2 mini-boss rotation as a callback to F1.
+  elite_orc: {
+    prefix: 'elite_orc_', drawSize: 230, radius: 28, speed: 85, hp: 200, damage: 2,
+    color: '#7fa34a', hitCD: 0.92, fps: 9, behavior: 'melee',
+    attackReach: 66, attackArc: Math.PI * 0.62,
+    windup: 0.38, swing: 0.26,
+    telegraphColor: 'rgba(210, 45, 55, ',
+    heavyChance: 0.32,
+    heavyReach: 96, heavyArc: Math.PI * 0.90,
+    heavyWindup: 0.70, heavySwing: 0.34,
+    heavyDamage: 3,
+    heavyColor: 'rgba(255, 140, 40, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.6 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.38, volume: 0.85 },
+    bloodColor: '#3a4a30',
+    displayName: 'WARCHIEF GRUDNOK',
+    flavor: 'chieftain of the iron-bone clans',
+    bossTrack: 'boss',
+    // PHASE 2 — boss audit P1. Grudnok had no enrageAt at all so the
+    // existing phase-intro audio sting + iframe scaffolding never fired
+    // for the floor-1 boss. He was a pure stat-stick. Now: at 45% HP,
+    // enrage triggers a "warchief roar" — heavyChance jumps from 0.32
+    // to 0.65 so the slow heavy-cleave windup dominates phase 2, and
+    // basic stat multipliers go up too. The roar effect (extra heavy
+    // bias + 4 summoned orcs on FIRST enrage) lives in the enrage
+    // hook in updateEnemies.
+    enrageAt: 0.45, enrageSpeedMul: 1.25, enrageDamageMul: 1.20,
+    enrageHeavyChance: 0.65,
+    enrageSummonOrcs: 4,
+  },
+
+  // ---- KNIGHT_TEMPLAR — F4 holy armored elite. Pairs with priest
+  // for "templar guard" comps. Highest shield reduction in the kit
+  // (4 charges, 85% reduction) — the most imposing armored unit
+  // short of a boss. Fire element matches the F4 inferno biome.
+  knight_templar: {
+    element: 'fire',
+    prefix: 'knight_templar_', drawSize: 230, radius: 24, speed: 75, hp: 150, damage: 2,
+    color: '#e8d8a0', hitCD: 1.10, fps: 8, behavior: 'melee',
+    attackReach: 66, attackArc: Math.PI * 0.62,
+    windup: 0.48, swing: 0.28,
+    telegraphColor: 'rgba(255, 200, 120, ',
+    shieldCharges: 4,
+    shieldArc: Math.PI * 0.80,
+    shieldReduction: 0.85,
+    windupSfx: { key: 'footstep_0', rate: 0.85, volume: 0.6 },
+    bloodColor: '#c9a86a',
+    displayName: 'KNIGHT TEMPLAR',
+    flavor: 'sworn to a fire that no longer warms anyone.',
+  },
+
+  // ---- ORC_RIDER — F4 rare mounted unit. Lancer-style charge behavior
+  // suits the mounted theme (charges in straight lines, the rider-as-
+  // missile read). Higher HP than lancer, longer charge range. Rare
+  // slot in tier4; alternative F4 mini-boss option vs hermit.
+  orc_rider: {
+    prefix: 'orc_rider_', drawSize: 250, radius: 28, speed: 130, hp: 180, damage: 3,
+    color: '#a89060', hitCD: 1.4, fps: 9, behavior: 'lancer',
+    chargeRange: 460,
+    chargeWidth: 42,
+    chargeWindup: 0.65,
+    chargeTravel: 0.30,
+    preferDist: 320, minDist: 200,
+    telegraphColor: 'rgba(220, 160, 90, ',
+    windupSfx: { key: 'footstep_0', rate: 0.72, volume: 0.65 },
+    bloodColor: '#3a4a30',
+    displayName: 'ORC RIDER',
+    flavor: 'rides a thing that should not still be running.',
   },
 };
 
@@ -574,6 +1049,21 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
     phase2Triggered: false,
     takeDamage(amount, dirX, dirY, opts = {}) {
       if (this.dead) return;
+      // Round-7-audit fix: push-only callers (Heart of the Wound's
+      // 200px shockwave, Phoenix Cloak's explosive revive at radius=180
+      // with damage=0) need knockback + brief stagger to displace
+      // attackers, but should NOT trigger hit-streak / hit-flash /
+      // hit-pop. The full hit-reaction at the bottom of this function
+      // would fire for amount=0 — counter incremented, hitFlash 0.14,
+      // _hitPopT 0.06 — making "I survived a lethal hit" look like
+      // "I tickled the orc." Early-return here keeps the knockback
+      // intent without the cosmetic crosstalk.
+      if (amount <= 0) {
+        this.knockbackX = (dirX || 0) * 320;
+        this.knockbackY = (dirY || 0) * 320;
+        this.stagger = Math.max(this.stagger || 0, 0.18);
+        return;
+      }
       // Warded affix: reduces incoming damage until enough staggers break it
       if (this.affix && this.affix.id === 'warded' && !this._shieldBroken) {
         amount *= (1 - this.affix.dmgReductionPct);
@@ -644,6 +1134,19 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
       this.knockbackX = (dirX || 0) * 320 * weightMul;
       this.knockbackY = (dirY || 0) * 320 * weightMul;
       this.stagger = Math.max(this.stagger || 0, 0.12 + damageRatio * 0.25);
+      // Round-7-audit POLISH — boss flinch. The original hit reaction
+      // applied uniformly to slimes and bosses; bosses null out the
+      // knockback (mass) so a heavy hit on Ember Tyrant felt identical
+      // to a slime tap. Now any hit doing >= 10% of a boss's maxHp
+      // additionally fires a small camera shake + sub-bass thud +
+      // doubles the hit-pop, so the world reacts when the boss takes
+      // a real bite. Threshold-gated so flame-tick / chip damage
+      // doesn't spam shakes during sustained fights.
+      if (this.boss && damageRatio >= 0.10) {
+        this._hitPopT = Math.min(0.20, this._hitPopT * 2);
+        try { shakeCamera(3, 0.14); } catch (_e) {}
+        try { synthThud(70, 0.55, 0.18); } catch (_e) {}
+      }
       // Warded — count staggers toward shield break
       if (this.affix && this.affix.id === 'warded' && !this._shieldBroken) {
         this._staggerCount++;
@@ -685,8 +1188,26 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         }
         window.__gameMetrics.lastKillTime = now;
         window.__gameMetrics.killStreakShowUntil = now + 1.2;         // HUD shows for 1.2s after last kill
+        // Round-7-audit POLISH — kill-streak audio swell at 5 / 10 / 15.
+        // The HUD label color was the only feedback for crossing these
+        // thresholds; the player's ears got nothing. Rising chord
+        // (440 / 523 / 659 Hz = A4 / C5 / E5 — A-minor triad ascending)
+        // marks each milestone; non-blocking, doesn't fire if the
+        // streak SOMEHOW reaches a higher tier without crossing the
+        // earlier ones (defensive against ramp-up edge cases).
+        const ks = window.__gameMetrics.killStreak;
+        if (ks === 5) try { synthChord(440, 0.55, 0.45); } catch (_e) {}
+        else if (ks === 10) try { synthChord(523, 0.65, 0.55); } catch (_e) {}
+        else if (ks === 15) try { synthChord(659, 0.75, 0.65); } catch (_e) {}
         if (this.boss) stats.bossesKilled++;
         else if (this.elite) stats.elitesDefeated++;
+        // BLOOD ASCENDANCE — flat HP-on-kill at theme tier 2. Set by
+        // themes.js applyThemeTiers; 0 unless 5/5 BLOOD relics are owned.
+        // Memory of the Hollow gates this off (matches the lifesteal
+        // gate at hero.js:1567) so the trap-pick warning is consistent.
+        if (hero.themeLifeOnKill > 0 && !hero.memoryHollow && hero.hp < hero.maxHp) {
+          hero.hp = Math.min(hero.maxHp, hero.hp + hero.themeLifeOnKill);
+        }
         if (def.behavior === 'bomber') {
           this.state = 'exploding';
           this.stateTime = 0;
@@ -743,16 +1264,44 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         const killColor = this.boss ? '#ff9066' : this.elite ? '#ffd27a' : '#fff2e0';
         const killIntensity = this.boss ? 3 : this.elite ? 2 : 1;
         killRing(this.x, this.y - 8, killColor, killIntensity);
+        // Round-7-audit POLISH — last-hit kill juice. The swing that
+        // ends combat got the same death effects as the first kill,
+        // so the player's "I cleared the room!" moment was silent on
+        // its specialness (the room-clear fanfare arrives ~50ms LATER
+        // via the post-clear block in main.js — too late to feel like
+        // a connected reward). Detect "this kill empties the room"
+        // before the regular death-shake fires + add a deeper thud +
+        // pulseZoom + a small post-kill hit-stop. Bosses are excluded
+        // because they already get pulseZoom + their own cinematic.
+        const _aliveAfter = enemies.filter(e => !e.dead && e !== this).length;
+        const _isLastKill = !this.boss && _aliveAfter === 0;
+        if (_isLastKill) {
+          try { synthThud(55, 0.8, 0.32); } catch (_e) {}
+          pulseZoom(0.06, 0.5);
+        }
         // Camera punch — bosses + elites shake harder; also push a brief zoom
         // pulse for bosses so the screen feels like it's inhaling.
-        shakeCamera(this.boss ? 14 : this.elite ? 7 : 4.5, this.boss ? 0.35 : 0.16);
+        // Last-hit common kills get a slightly bigger shake than usual
+        // (5.5 vs 4.5) so the room-emptying swing feels more decisive.
+        const _killShake = this.boss ? 14
+                          : this.elite ? 7
+                          : _isLastKill ? 5.5
+                          : 4.5;
+        shakeCamera(_killShake, this.boss ? 0.35 : 0.16);
         if (this.boss) pulseZoom(0.10, 0.9);
         else if (this.elite) pulseZoom(0.04, 0.4);
         playSfx('slime_death', { rate: elite ? 0.85 : 1.0, rateJitter: 0.1, volume: 0.9 });
 
         // Gold drops — scale with elite/boss. Tarot EMPRESS doubles drops.
+        // Round-7 ROOM REWARD — gold-flagged rooms (door label "GOLD")
+        // multiply per-kill drops by 1.5x so the door's promise matches
+        // reality. Composes with EMPRESS (×2) and Coin of the Tyrant
+        // (×1.5 via hero.goldMul, applied downstream in dropGold's
+        // consumer logic).
         let coinCount = this.boss ? 40 : this.elite ? (6 + (Math.random() * 5 | 0)) : (1 + (Math.random() * 3 | 0));
         if (typeof window !== 'undefined' && window.__tarotEmpress) coinCount *= 2;
+        const roomMul = (typeof window !== 'undefined' && window.__roomGoldMul) || 1;
+        if (roomMul !== 1) coinCount = Math.max(1, Math.round(coinCount * roomMul));
         dropGold(this.x, this.y - 8, coinCount);
 
         // SYNERGY: Explosive Kill — detonate on death
@@ -763,11 +1312,24 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         if (hero.soulBurst && !this.boss) {
           hero.soulKillCount = (hero.soulKillCount || 0) + 1;
           if (hero.soulKillCount % 5 === 0) {
+            markSoulFired();   // visible pip-row flash
             spawnSoulBurst(this.x, this.y - 12, 8, 18 * (hero.damageMul || 1));
           }
         }
         // LEGENDARY: Ethereal Binding — every 3rd kill grants 1s i-frames
         etherealRegisterKill();
+        // MYTHIC: Coin of the Tyrant — every 8th kill drops a free common
+        // relic at the corpse. Routed through a window callback set up in
+        // main.js so enemies.js doesn't need to import pedestals/relics
+        // directly (avoids the circular dep that bit us last time).
+        if (hero.coinOfTyrant) {
+          hero.coinOfTyrantCounter = (hero.coinOfTyrantCounter || 0) + 1;
+          if (hero.coinOfTyrantCounter % 8 === 0
+              && typeof window !== 'undefined'
+              && typeof window.__coinOfTyrantSpawnRelic === 'function') {
+            window.__coinOfTyrantSpawnRelic(this.x, this.y);
+          }
+        }
         // SOULREAVER — kill stacks attack speed buff (max 3 stacks, refreshes timer)
         if (hero.soulreaver) {
           hero.soulreaverStacks = Math.min(3, hero.soulreaverStacks + 1);
@@ -828,11 +1390,34 @@ function pushCorpse(e) {
   if (corpses.length > MAX_CORPSES) corpses.shift();
 }
 
+// Fade duration after room.cleared flips. After this many seconds the
+// corpse is rendered at alpha 0 (effectively gone). Tuned so the room
+// reads as "battle ended" within ~1.2s instead of "battle still
+// happening" for the entire reward-pickup phase. Keeps the silhouette
+// briefly so the player sees "where the fights were" without the red
+// splatter clutter that competes with pedestal beams.
+const CORPSE_FADE_DUR = 1.2;
+
 // Draw corpses on the floor — call BEFORE drawEnemy so living enemies render on top.
 // Blood pool + darker splatter dots + faint body silhouette, all with slight
 // per-corpse jitter from the seed.
-export function drawCorpses(ctx) {
+//
+// `room` is optional: when present, corpses fade out over CORPSE_FADE_DUR
+// once room.cleared is true (room.clearedAt timestamp drives the fade).
+// Splatter dots are skipped entirely once cleared so the post-combat
+// reward-pickup phase doesn't have red dots competing with pedestal
+// beams + tier rings + sparkle particles in the same north-center band.
+export function drawCorpses(ctx, room = null) {
   const now = performance.now() / 1000;
+  const cleared = !!(room && room.cleared);
+  const clearedAt = (room && room.clearedAt) || 0;
+  // Compute the global fade multiplier ONCE (same for every corpse this
+  // frame — we don't fade individual corpses by their own death time).
+  let fadeAlpha = 1;
+  if (cleared && clearedAt > 0) {
+    fadeAlpha = Math.max(0, 1 - (now - clearedAt) / CORPSE_FADE_DUR);
+    if (fadeAlpha <= 0) return;     // fully faded — skip all rendering
+  }
   for (const c of corpses) {
     const age = now - c.spawnTime;
     // Blood pool expands for the first 0.4s, then holds steady
@@ -842,11 +1427,12 @@ export function drawCorpses(ctx) {
     const splatterR = baseR * 1.35;
     ctx.save();
     // Faint drop shadow where the body fell
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillStyle = `rgba(0,0,0,${(0.25 * fadeAlpha).toFixed(3)})`;
     ctx.beginPath();
     ctx.ellipse(c.x, c.y + 6, baseR * 1.2, baseR * 0.45, 0, 0, Math.PI * 2);
     ctx.fill();
     // Main blood pool
+    ctx.globalAlpha = fadeAlpha;
     const g = ctx.createRadialGradient(c.x, c.y + 4, 1, c.x, c.y + 4, splatterR);
     g.addColorStop(0, c.color);
     g.addColorStop(0.7, c.color + (c.color.length === 7 ? 'aa' : ''));
@@ -855,21 +1441,25 @@ export function drawCorpses(ctx) {
     ctx.beginPath();
     ctx.ellipse(c.x, c.y + 4, splatterR, splatterR * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Splatter dots around the pool
-    const dots = c.boss ? 10 : c.elite ? 6 : 4;
-    for (let i = 0; i < dots; i++) {
-      const a = (c.seed * 13 + i * 1.7) * Math.PI;
-      const r = splatterR * (0.8 + ((c.seed * (i + 1)) % 1) * 0.7);
-      const px = c.x + Math.cos(a) * r;
-      const py = c.y + 4 + Math.sin(a) * r * 0.45;
-      const ds = 1.4 + ((c.seed * (i + 3)) % 1) * 2.2;
-      ctx.fillStyle = c.color;
-      ctx.globalAlpha = 0.7;
-      ctx.fillRect(px - ds / 2, py - ds / 2, ds, ds);
+    // Splatter dots around the pool — SKIPPED ENTIRELY ONCE CLEARED so
+    // they don't visually compete with pedestal beams + sparkle particles
+    // in the post-combat reward-pickup phase.
+    if (!cleared) {
+      const dots = c.boss ? 10 : c.elite ? 6 : 4;
+      for (let i = 0; i < dots; i++) {
+        const a = (c.seed * 13 + i * 1.7) * Math.PI;
+        const r = splatterR * (0.8 + ((c.seed * (i + 1)) % 1) * 0.7);
+        const px = c.x + Math.cos(a) * r;
+        const py = c.y + 4 + Math.sin(a) * r * 0.45;
+        const ds = 1.4 + ((c.seed * (i + 3)) % 1) * 2.2;
+        ctx.fillStyle = c.color;
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(px - ds / 2, py - ds / 2, ds, ds);
+      }
     }
     ctx.globalAlpha = 1;
     // Dark silhouette lump where the body collapsed — very faint
-    ctx.fillStyle = 'rgba(10, 4, 8, 0.35)';
+    ctx.fillStyle = `rgba(10, 4, 8, ${(0.35 * fadeAlpha).toFixed(3)})`;
     ctx.beginPath();
     ctx.ellipse(c.x + jitter * 0.4, c.y, c.size * 0.18, c.size * 0.1, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -881,6 +1471,29 @@ export function drawCorpses(ctx) {
 const _fx = document.createElement('canvas');
 _fx.width = 200; _fx.height = 200;
 const _fxCtx = _fx.getContext('2d');
+
+// ── RANGED-COUNTER: kite penalty ──────────────────────────────────────
+// When the hero stands still at long range (e.g. wand player camping
+// outside enemy reach), enemies that NEED to close — melee, bombers,
+// lancers in chase phase — get a speed bonus toward the hero. Caps at
+// +35% bonus after 2.5s of stationary kiting at >250px. Ramp-up over
+// the first 1.9s of stillness so a player who pauses briefly to read
+// a relic doesn't get instantly punished.
+//
+// Ranged enemies (wizard, dreadmage, priest, archer, haunt) DON'T get
+// the bonus — they have their own preferDist/minDist and aren't
+// trying to close. Their threat is already projectile-based.
+//
+// Hero stationary tracker is hero._stillT — already maintained by
+// hero.js for iron_resolve parry. Reused here so we don't duplicate
+// state. Reset on movement / dodge / dash by hero.js.
+function kiteCloseSpeedMul(dist) {
+  const stillT = hero._stillT || 0;
+  if (stillT < 0.6 || dist < 250) return 1;
+  // 0% at stillT=0.6, ramps to 35% at stillT=2.5
+  const ramp = Math.min(1, (stillT - 0.6) / 1.9);
+  return 1 + 0.35 * ramp;
+}
 
 function tryMove(e, dx, dy) {
   const nx = e.x + dx, ny = e.y + dy;
@@ -900,7 +1513,18 @@ function explode(e) {
   const dam = e.def.blastDamage * (e.elite ? 1.5 : 1);
   // Visual
   for (let i = 0; i < 24; i++) deathBurst(e.x, e.y - 8, e.def.color);
-  shakeCamera(12, 0.3);
+  // Distance-falloff shake — game-feel audit P1. Old code shook the
+  // camera 12 amp / 0.3s for EVERY bomber explosion regardless of
+  // distance. In Broodmother rooms with 3-4 bombers detonating, four
+  // 12-amp shakes inside 2 seconds was unreadable. Now scales by
+  // hero-distance: nearby explosions still slam (12 amp at point-blank),
+  // far-off bombers (300px+) drop to ~3.6 amp — present but not
+  // dominant. Threshold at 0.3 floor so even a far-off explosion has
+  // SOME camera response (it's still an explosion).
+  const _bdx = hero.x - e.x, _bdy = hero.y - e.y;
+  const _bdist = Math.hypot(_bdx, _bdy);
+  const _shakeFalloff = Math.max(0.3, 1 - _bdist / 300);
+  shakeCamera(12 * _shakeFalloff, 0.25);
   playSfx('slime_death', { rate: 0.6, rateJitter: 0.08, volume: 1.0 });
   playSfx('hero_hurt',   { rate: 0.7, rateJitter: 0.05, volume: 0.6 });
   // Damage hero
@@ -994,6 +1618,22 @@ function updateMelee(e, dt) {
           if (wasHit !== 'absorbed' && e.affix && e.affix.onHitHero) {
             e.affix.onHitHero(e);
           }
+          // Boss-def onHitHero — Iron Revenant uses this to heal himself
+          // (life-drain mechanic). Defined per-def so any future boss can
+          // hook in without changes here.
+          //
+          // Bug-hunt P0 gates:
+          // (a) skip if boss is dead — a swing can land mid-death-anim
+          //     and the dead boss would heal back to alive frame.
+          // (b) skip if hero.hp is 0 — phoenix-revive sets hp to 30%
+          //     AFTER damageHero returns 'hit'; in revival cases the
+          //     player didn't pay HP for the hit, so the boss shouldn't
+          //     gain from it. Guard on hero.hp > 0 catches the brief
+          //     death-state window.
+          if (wasHit !== 'absorbed' && !e.dead && hero.hp > 0
+              && e.def && e.def.onHitHero) {
+            e.def.onHitHero(e);
+          }
         }
       }
     }
@@ -1011,7 +1651,14 @@ function updateMelee(e, dt) {
   const dashRange  = e.def.dashEvery ? 380 : swingRange;
   if (dist < swingRange && e.attackCD <= 0) {
     if (e.forceHeavy && e.def.heavyReach) e._heavy = true;
-    else e._heavy = e.def.heavyChance ? Math.random() < e.def.heavyChance : false;
+    else {
+      // Enraged Grudnok biases hard toward heavy swings — visible
+      // rhythm change in phase 2 instead of just stat multipliers.
+      const heavyChance = (e._enraged && e.def.enrageHeavyChance)
+        ? e.def.enrageHeavyChance
+        : e.def.heavyChance;
+      e._heavy = heavyChance ? Math.random() < heavyChance : false;
+    }
     const prof = currentAttackProfile(e);
     e.attackCD = e.def.hitCD + prof.windup + prof.swing;
     e.aimX = nx; e.aimY = ny;
@@ -1052,9 +1699,12 @@ function updateMelee(e, dt) {
       sepY += (ody / od) * push;
     }
   }
-  // Primary move attempt toward hero
-  const primaryDx = nx * e.speed * dt + sepX * 40 * dt;
-  const primaryDy = ny * e.speed * dt + sepY * 40 * dt;
+  // Primary move attempt toward hero. Kite-close speed bonus applies
+  // when the hero is stationary at long range — so a wand player can't
+  // just stand still and outrange melee threats indefinitely.
+  const kiteMul = kiteCloseSpeedMul(dist);
+  const primaryDx = nx * e.speed * kiteMul * dt + sepX * 40 * dt;
+  const primaryDy = ny * e.speed * kiteMul * dt + sepY * 40 * dt;
   const prevX = e.x, prevY = e.y;
   tryMove(e, primaryDx, primaryDy);
   // Obstacle-detour: if primary move was blocked (didn't make meaningful progress),
@@ -1064,13 +1714,15 @@ function updateMelee(e, dt) {
     // Perpendicular vectors
     const pxL = -ny, pyL = nx;         // left-perp
     const pxR = ny, pyR = -nx;         // right-perp
-    // Try the side that brings us closer to hero
-    const tryLeft = { x: e.x + pxL * e.speed * dt * 0.85, y: e.y + pyL * e.speed * dt * 0.85 };
-    const tryRight = { x: e.x + pxR * e.speed * dt * 0.85, y: e.y + pyR * e.speed * dt * 0.85 };
+    // Try the side that brings us closer to hero. Same kiteMul so
+    // the perpendicular-slide path also accelerates when needed.
+    const sideStep = e.speed * kiteMul * dt * 0.85;
+    const tryLeft = { x: e.x + pxL * sideStep, y: e.y + pyL * sideStep };
+    const tryRight = { x: e.x + pxR * sideStep, y: e.y + pyR * sideStep };
     const dLeft = Math.hypot(hero.x - tryLeft.x, hero.y - tryLeft.y);
     const dRight = Math.hypot(hero.x - tryRight.x, hero.y - tryRight.y);
-    if (dLeft < dRight) tryMove(e, pxL * e.speed * dt * 0.85, pyL * e.speed * dt * 0.85);
-    else tryMove(e, pxR * e.speed * dt * 0.85, pyR * e.speed * dt * 0.85);
+    if (dLeft < dRight) tryMove(e, pxL * sideStep, pyL * sideStep);
+    else tryMove(e, pxR * sideStep, pyR * sideStep);
   }
   // Stuck detection — if enemy hasn't moved meaningfully for 2.5s, unstick.
   if (e._lastPos === undefined) { e._lastPos = e.x + e.y * 0.01; e._stuckT = 0; }
@@ -1173,7 +1825,11 @@ function updateBomber(e, dt) {
     playWindupSfx(e);
     return;
   }
-  tryMove(e, nx * e.speed * dt, ny * e.speed * dt);
+  // Bombers are pure closers — kite penalty applies to make a
+  // stationary wand player a high-priority target. They explode on
+  // contact so the threat scales with how fast they reach you.
+  const kiteMul = kiteCloseSpeedMul(dist);
+  tryMove(e, nx * e.speed * kiteMul * dt, ny * e.speed * kiteMul * dt);
   setState(e, 'walk');
 }
 
@@ -1216,10 +1872,19 @@ function updateLancer(e, dt) {
   if (dist > pref) { moveX = nx; moveY = ny; }
   else if (dist < mn) { moveX = -nx; moveY = -ny; }
   else { moveX = -ny; moveY = nx; }
-  tryMove(e, moveX * e.speed * dt, moveY * e.speed * dt);
+  // Kite penalty applies during chase movement (pref-distance close).
+  const kiteMul = kiteCloseSpeedMul(dist);
+  tryMove(e, moveX * e.speed * kiteMul * dt, moveY * e.speed * kiteMul * dt);
 
-  // Commit to a charge when aligned + cooldown ready
-  if (dist < e.def.chargeRange && dist > mn && e.attackCD <= 0) {
+  // Commit to a charge when aligned + cooldown ready. Effective charge
+  // range extends by up to +160px when the hero has been stationary
+  // at long range — punishes wand camping. Without this extension a
+  // ranged player can sit at 500px (just past lancer's 380 chargeRange)
+  // and the lancer never commits.
+  const stillT = hero._stillT || 0;
+  const chargeReachBonus = stillT > 0.6 ? Math.min(160, (stillT - 0.6) * 100) : 0;
+  const effectiveChargeRange = e.def.chargeRange + chargeReachBonus;
+  if (dist < effectiveChargeRange && dist > mn && e.attackCD <= 0) {
     e.attackCD = e.def.hitCD + e.def.chargeWindup + e.def.chargeTravel;
     e.aimX = nx; e.aimY = ny;
     e._swingHit = false;
@@ -1406,17 +2071,28 @@ export function updateEnemies(dt, _hero) {
       e._enraged = true;
       e.speed *= e.def.enrageSpeedMul;
       e.damage *= e.def.enrageDamageMul;
-      // Dramatic enrage: shake, screen flash, shockwave burst, roar + zoom punch
+      // Dramatic enrage: shake, screen flash, shockwave burst, roar + zoom punch.
+      // Flash alpha dropped 0.55 → 0.30 — at 0.55 the red wash + shake 22 +
+      // zoom 0.18 stacked into "blinded for 0.5s" territory. Player needs
+      // to read the boss's new attack pattern in the same beat.
       shakeCamera(22, 0.55);
       pulseZoom(0.18, 1.2);
-      triggerScreenFlash('rgba(255, 50, 30, 0.55)', 0.5);
+      triggerScreenFlash('rgba(255, 50, 30, 0.30)', 0.5);
       for (let k = 0; k < 32; k++) deathBurst(e.x, e.y - 8, '#ff4030');
       // Trigger the cinematic PHASE 2 banner if main.js is listening
       if (typeof window !== 'undefined' && window.triggerBossPhaseIntro) {
         window.triggerBossPhaseIntro(e);
       }
-      // Shockwave ring — knock enemies & damage nothing, just visual
-      e._enrageShockTime = 0.8;
+      // Shockwave ring — knock enemies & damage nothing, just visual.
+      // Round-7-audit fix: was 0.8 but the draw code at line 2182
+      // normalizes against 0.6 (`t = 1 - e._enrageShockTime / 0.6`),
+      // so for the first 0.2s the ring rendered at NEGATIVE radius
+      // (invisible / undefined behavior). Setting timer to match
+      // draw-normalization makes the ring visible from frame 1 of
+      // enrage AND avoids the visual overlap with the Ember Tyrant
+      // pillar spawn that polish-audit flagged. 0.6s is plenty for
+      // the ring to expand + decay before pillars start animating.
+      e._enrageShockTime = 0.6;
       playSfx('hero_hurt', { rate: 0.28, volume: 1.0 });
       playSfx('slime_death', { rate: 0.35, volume: 0.9 });
       // EMBER TYRANT — summons a ring of 6 fire pillars around itself on enrage.
@@ -1430,9 +2106,56 @@ export function updateEnemies(dt, _hero) {
           spawnExtraFirePool(fx, fy, k * 0.4);
         }
       }
+      // GRUDNOK — "warchief roar" on enrage: heavyChance jumps from base
+      // (read directly off the def at attack-roll time, see currentAttackProfile)
+      // and 4 orcs spawn around him as reinforcements. The heavy-bias
+      // shifts him from "swing-swing-swing" to "wind up the cleave" in
+      // phase 2 — visibly different rhythm without inventing a new move.
+      if (e.type === 'elite_orc' && e.def.enrageSummonOrcs) {
+        const ringR = 100;
+        for (let k = 0; k < e.def.enrageSummonOrcs; k++) {
+          const ang = (k / e.def.enrageSummonOrcs) * Math.PI * 2;
+          const sx = e.x + Math.cos(ang) * ringR;
+          const sy = e.y + Math.sin(ang) * ringR * 0.6;
+          spawnEnemy('orc', sx, sy);
+        }
+        // Roar audio — deeper than the standard hit sound, layered for weight.
+        playSfx('hero_hurt', { rate: 0.25, volume: 1.0 });
+      }
     }
     // Animate the enrage shockwave decay
     if (e._enrageShockTime && e._enrageShockTime > 0) e._enrageShockTime -= dt;
+
+    // EMBER TYRANT phase-2 fire-ring pulse — see _emberRings system at
+    // top of file. While the boss is enraged, every emberRingInterval
+    // seconds a new ring emanates from his current position. Static
+    // floor pillars from the enrage burst stay where they were spawned;
+    // these rings track the boss as he pursues the hero, so the player
+    // is forced to break the radial line instead of just standing in a
+    // safe corner. Initial counter value gives the player a 1.5s
+    // breathing window after the phase-2 cinematic before the first
+    // ring fires (counter starts at interval - WARMUP).
+    if (e._enraged && e.type === 'ember_tyrant' && !e.dead) {
+      const interval = e.def.emberRingInterval || 4.0;
+      const WARMUP = 1.5;
+      if (e._emberRingT == null) e._emberRingT = interval - WARMUP;
+      e._emberRingT += dt;
+      if (e._emberRingT >= interval) {
+        e._emberRingT = 0;
+        spawnEmberRing(
+          e.x, e.y - 4,
+          e.def.emberRingMaxR || 280,
+          e.def.emberRingDur || 0.85,
+          e.def.emberRingDamage || 4,
+        );
+        // Audio + camera tell — a low whoosh + small shake cues the
+        // player's eye to the boss right as the ring spawns. Without
+        // this the wavefront could be the first thing they see at
+        // their feet, with no anticipation.
+        playSfx('hero_hurt', { rate: 0.32, volume: 0.5 });
+        shakeCamera(4, 0.18);
+      }
+    }
 
     // Elite boss phase 2 — spawn 2 slimes at 50% HP (once)
     if (e.elite && !e.phase2Triggered && e.hp <= e.maxHp * 0.5) {
@@ -1689,7 +2412,7 @@ export function drawEnemy(ctx, e) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(bx + 1, by + bs - 2, bs - 2, 1);
       // Letter
-      ctx.font = 'bold 9px system-ui, sans-serif';
+      ctx.font = 'bold 10px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#1a0f10';
@@ -1923,4 +2646,148 @@ export function drawEnemyTelegraphs(ctx) {
       ctx.restore();
     }
   }
+}
+
+// Perfect-dodge ring — Round-6 combat audit. Perfect dodge is the
+// highest-skill mechanic in the game (i-frame swap to a counter that
+// crits + heavy-knockbacks the attacker), but the timing window had no
+// player-facing telegraph. The DANGER SNAP visual on the enemy's arc
+// (lines 2233-2238) tells you "this hits in a moment" but doesn't say
+// "dodge NOW for the perfect-dodge bonus". Players were learning the
+// timing across ~20 attempts instead of ~3.
+//
+// This function draws a thin gold ring around the hero whenever any
+// enemy's melee windup has 0.15s or less remaining — the exact width
+// of the perfect-dodge sweet spot. The ring pulses in sync with the
+// pre-strike beat, sitting just outside the hero's collision radius so
+// it reads as "your shield raises now" rather than "you got hit".
+//
+// Suppressed when:
+//   - hero is currently mid-dodge (the slow-mo + counter celebration
+//     already covers that case visually)
+//   - hero has any iframes already (post-counter buffer, boss-intro,
+//     etc. — drawing the ring during invuln would be misleading)
+//   - the threat is bomber/ranged/dash (perfect dodge is melee-vs-arc;
+//     bombers explode, archers fire, dashers commit linear; none gain
+//     a perfect-dodge benefit, so the ring would teach the wrong thing)
+export function drawPerfectDodgeRing(ctx, hero) {
+  if (!hero || hero.dead) return;
+  if (hero.state === 'dodge') return;
+  if ((hero.iframes || 0) > 0.05) return;
+  let bestRemain = Infinity;
+  for (const e of enemies) {
+    if (e.dead || e.state !== 'attack') continue;
+    if (e.def.behavior !== 'melee') continue;
+    const prof = currentAttackProfile(e);
+    const remain = prof.windup - e.stateTime;
+    // Window: ring appears in the last 0.15s of windup, mirroring the
+    // dodge i-frame envelope. Shorter than DANGER SNAP (which fires at
+    // 25% remaining ~= up to 0.10s on slime, 0.18s on orc) so the ring
+    // is a STRICTER signal: "perfect-dodge sweet spot is RIGHT NOW".
+    if (remain < 0 || remain > 0.15) continue;
+    // Only show the ring if the enemy is actually targeting our hero —
+    // for the typical "1 hero in the room" case this is always true,
+    // but in case of future per-enemy aim divergence we read e.aimX/Y
+    // and confirm the strike vector intersects the hero. Cheap dot
+    // check: the strike's normalized aim vs (hero - enemy) vector must
+    // share a positive cosine, i.e. enemy is "facing" the hero.
+    const dx = hero.x - e.x;
+    const dy = hero.y - e.y;
+    const aimMag = Math.hypot(e.aimX, e.aimY) || 1;
+    const facing = (dx * e.aimX + dy * e.aimY) / aimMag;
+    if (facing < 0) continue;
+    if (remain < bestRemain) bestRemain = remain;
+  }
+  if (bestRemain === Infinity) return;
+  // Ring opacity ramps as the perfect-dodge moment approaches — soft
+  // at 0.15s, peak at 0.05s. The pulse rate (10 Hz) is fast enough to
+  // read as "act now" but not seizure-flickery.
+  const t = 1 - Math.min(1, bestRemain / 0.15);    // 0 -> 1 over the window
+  const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.062);  // ~10 Hz
+  const alpha = (0.35 + 0.45 * t) * pulse;
+  const r = (hero.radius || 14) + 8;
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 220, 130, ${alpha.toFixed(3)})`;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(hero.x, hero.y + 2, r, 0, Math.PI * 2);
+  ctx.stroke();
+  // Inner halo — softer gold gradient so the ring reads layered, not
+  // a flat dotted circle. Same color, lower alpha, smaller radius.
+  ctx.strokeStyle = `rgba(255, 240, 180, ${(alpha * 0.45).toFixed(3)})`;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(hero.x, hero.y + 2, r - 3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Elite affix info tooltip — gated on the player HOLDING TAB so it
+// surfaces on demand rather than firing every time the mouse drifts
+// near an elite mid-combat. Reading "F SLOWS / E BURNS / V POISONS /
+// W RESISTS" was useful as a teach-this-once cue but became noise
+// during sustained fights — hover-pan-throughs would pop the card
+// over the action. New rule: hold TAB (or Shift) to ENTER inspect
+// mode; release to dismiss. Cursor still drives "which elite";
+// mouse-near logic preserved.
+export function drawEliteAffixTooltips(ctx, w, h) {
+  // Gate — only render if the player is explicitly asking via Tab/Shift.
+  // Either key works: Tab is the canonical "info" key, Shift is the
+  // ergonomic alternative for mouse-heavy players.
+  const inspectHeld = keys['Tab'] || keys['ShiftLeft'] || keys['ShiftRight'];
+  if (!inspectHeld) return;
+  // Find the closest elite within hover range of the mouse cursor (screen px).
+  // Range chosen to be forgiving but not overlapping multiple elites at once.
+  const HOVER_RANGE_PX = 56;
+  let target = null;
+  let bestD2 = HOVER_RANGE_PX * HOVER_RANGE_PX;
+  for (const e of enemies) {
+    if (e.dead || !e.affix) continue;
+    const sp = worldToScreen(e.x, e.y - 8);
+    const dx = sp.x - mouse.x, dy = sp.y - mouse.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; target = e; }
+  }
+  if (!target) return;
+  const a = target.affix;
+  const sp = worldToScreen(target.x, target.y - 36);
+  const tipW = 220;
+  const tipH = 56;
+  // Clamp so the tip doesn't run off-screen
+  const tipX = Math.max(8, Math.min(w - tipW - 8, Math.round(sp.x - tipW / 2)));
+  const tipY = Math.max(8, Math.min(h - tipH - 8, Math.round(sp.y - tipH - 8)));
+
+  ctx.save();
+  // Card backdrop — same grammar as fusion / theme tooltips so the UI reads coherent
+  ctx.fillStyle = 'rgba(14, 18, 26, 0.95)';
+  ctx.fillRect(tipX, tipY, tipW, tipH);
+  ctx.strokeStyle = a.auraColor;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
+  // Affix badge in the top-left corner of the tip
+  ctx.fillStyle = a.auraColor;
+  ctx.fillRect(tipX + 8, tipY + 8, 16, 16);
+  ctx.fillStyle = '#1a0f10';
+  ctx.font = 'bold 12px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(a.badge, tipX + 16, tipY + 16);
+  // Header — affix name + the word ELITE
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = a.auraColor;
+  ctx.font = 'bold 11px Georgia, serif';
+  ctx.fillText(a.name.toUpperCase() + '  ELITE', tipX + 30, tipY + 9);
+  // Description
+  ctx.fillStyle = '#dce4f0';
+  ctx.font = 'italic 10px Georgia, serif';
+  ctx.fillText(a.desc, tipX + 8, tipY + 30);
+  // Warded special: show shield-stagger progress
+  if (a.id === 'warded' && !target._shieldBroken) {
+    const remaining = a.staggersToBreak - (target._staggerCount || 0);
+    ctx.fillStyle = '#ffe495';
+    ctx.font = 'bold 10px Georgia, serif';
+    ctx.fillText(`Shield: ${remaining} stagger${remaining === 1 ? '' : 's'} to break`, tipX + 8, tipY + 44);
+  }
+  ctx.restore();
 }

@@ -43,6 +43,7 @@ export function triggerChromAberr(dur = 0.35, strength = 1) {
 }
 
 export function applyChromAberr(mainCtx, mainCanvas) {
+  if (_perfMode) return;       // perf-mode: skip RGB-split filter
   if (_chromTime <= 0) return;
   const t = Math.max(0, _chromTime / _chromDur);    // 1 → 0 over lifetime
   const intensity = t * t;                            // quartic ease-out
@@ -74,7 +75,14 @@ export function updateChromAberr(dt) {
   if (_chromTime <= 0) _chromTime = 0;
 }
 
+// Module-level perf-mode flag — set once at boot from settings.perfMode
+// resolution. When true, applyBloom + applyChromAberr early-return so
+// the entire postfx pipeline is skipped on lower-end devices.
+let _perfMode = false;
+export function setPostfxPerfMode(v) { _perfMode = !!v; }
+
 export function applyBloom(targetCtx, sourceCanvas, intensity = 0.55) {
+  if (_perfMode) return;       // perf-mode: skip the 4-stage filter chain
   const W = sourceCanvas.width, H = sourceCanvas.height;
   const BW = W >> 1, BH = H >> 1;   // half-resolution for perf
   if (_bloomA.width !== BW) {

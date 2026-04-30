@@ -100,7 +100,7 @@ export const MEMORIES = {
     id: 'stillness',
     name: 'Memory of Stillness',
     tint: '#a0c8d8',
-    flavor: 'She learned to let the blade come to her. Only the once.',
+    flavor: 'She learned to let the blade come to her. It came once.',
     gift: '+3 max HP · +15% damage',
     constraint: 'Dodge disabled',
     apply: (h) => {
@@ -169,7 +169,7 @@ export const MEMORIES = {
     id: 'stone',
     name: 'Memory of Stone',
     tint: '#8a9098',
-    flavor: 'A thing that does not bleed cannot be hurried.',
+    flavor: 'What does not move cannot be flanked.',
     gift: 'Damage taken −35%',
     constraint: 'Move speed −25% · dodge distance −25%',
     apply: (h) => {
@@ -238,7 +238,7 @@ export const MEMORIES = {
     tint: '#e6c8ff',
     flavor: 'She struck the great bell, and the world answered for a heartbeat.',
     gift: '+8% damage per relic owned (incl. starter)',
-    constraint: 'Begin with 0 HP regen · Vitality disabled',
+    constraint: 'Begin with 0 HP regen · the bell does not heal',
     apply: (h) => {
       h.memoryBell = true;
       // Retroactively apply the per-relic bonus for any relics already
@@ -265,9 +265,14 @@ export const MEMORIES = {
     apply: (h) => {
       h.memoryNine = true;        // read by enemy spawn wiring
     },
-    unlockCheck: (records) => records.bossKillsAllTime >= 9,
-    unlockHint: 'Slay 9 bosses to remember…',
-    unlockProgress: (records) => ({ current: records.bossKillsAllTime || 0, target: 9, unit: 'bosses' }),
+    // Long-tail audit P1 — was 9 boss kills (≈3 floor-4 wins). At a
+    // median win curve of ~run 8-12, that gated the memory until the
+    // climb was ALREADY over. Dropped to 5 so it lands ~run 5-7 where
+    // the player is just starting to specialize. The "nine doors"
+    // theming still resonates abstractly.
+    unlockCheck: (records) => records.bossKillsAllTime >= 5,
+    unlockHint: 'Slay 5 bosses to remember…',
+    unlockProgress: (records) => ({ current: records.bossKillsAllTime || 0, target: 5, unit: 'bosses' }),
   },
 
   hungry_blade: {
@@ -352,13 +357,18 @@ export function checkMemoryUnlocks(records, stats, ctx) {
   return newly;
 }
 
-// Apply the currently-selected memory to the hero (called at run start, AFTER
-// base hero reset + meta bonuses, so the memory's modifiers stack on top).
-export function applySelectedMemory(ctx) {
-  if (!selectedMemoryId) return null;
-  const def = MEMORIES[selectedMemoryId];
+// Apply a memory to the hero (called at run start, AFTER base hero reset +
+// meta bonuses, so the memory's modifiers stack on top).
+// `overrideId` lets resumeRun replay the memory the run STARTED with, even
+// if the player changed their selection between save and resume — without
+// it, resumeRun would either apply the player's CURRENT selection (a
+// different memory) or nothing at all (the bug this fixes).
+export function applySelectedMemory(ctx, overrideId) {
+  const id = overrideId || selectedMemoryId;
+  if (!id) return null;
+  const def = MEMORIES[id];
   if (!def) return null;
-  if (!unlockedMemories.has(selectedMemoryId)) return null;   // safety
+  if (!unlockedMemories.has(id)) return null;   // safety
   // ASCENSION V — "The Silent Pact": Memory slot neutralized. Skip the
   // apply entirely at this tier — no gift, no pact. Player still sees
   // their selected memory on the menu so they can choose differently

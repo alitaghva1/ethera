@@ -4,15 +4,21 @@
 // module is auto-scoped to the active Volume (I/II/III). Any module
 // that reads localStorage at module-body time (currently none do —
 // all load funcs are lazy) would need to run after this.
-import { installProfilePrefix, getActiveProfileId, listProfiles, setActiveProfile, deleteProfile, profileLabel } from './profile.js';
+// Round-7 Sprint B refactor — listProfiles / setActiveProfile /
+// deleteProfile moved to src/modals/volumesModal.js along with the
+// rest of the volumes UI; profileLabel + getActiveProfileId still
+// used here for the menu's "JOURNAL II" subtitle.
+import { installProfilePrefix, getActiveProfileId, profileLabel } from './profile.js';
 import { loadAll } from './loader.js';
-import { initInput, mouse, endFrameInput } from './input.js';
+import { initInput, mouse, keyJustPressed, endFrameInput } from './input.js';
 import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js';
 import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
   spawnExtraFirePool, room, TILE, roomTorches,
-  onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom, ROOM_W, ROOM_H,
-  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns,
+  onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
+  setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, drawChests, drawDecorPillars, roomChests, setDoorLookup,
+  snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
+  getValidNorthDoorXRange, drawDoorLintels,
 } from './room.js';
 import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
@@ -20,48 +26,107 @@ import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL,
 // player commits to path nodes, which keeps all existing floor[roomIndex]
 // call sites working unchanged.
 import { generateFloorGraph, getNode as getFloorNode } from './floorGraph.js';
+// `openFloorMap` is still imported — it powers the M-key peek (bird's-eye
+// view of the DAG) wired up below. The PRIMARY path-pick flow is now
+// wall-integrated functional doors (see doorPortals.js — the file name
+// stuck even though it now manages real doors, not floating arches).
 import { openFloorMap } from './mapScreen.js';
+import {
+  setupRoomDoors, clearDoors, updateDoors, onRoomCleared, onRoomLocked,
+  drawDoorLabels, getDoorAt, roomDoors, releaseCrossingLock,
+  getNearbySealedDoor, breakSeal,
+} from './doorPortals.js';
+// Wire the room module's lazy door lookup so isWallAtWorld + drawDoor
+// can read the per-door open state without statically importing back.
+setDoorLookup(getDoorAt);
 let currentGraph = null;
 let currentNodeId = null;
-// Re-entrancy guard: the door-transition check runs every frame while the
-// hero stands at the door, so we must not queue multiple openFloorMap()
-// calls — they'd stack overlays and resolve in the wrong order.
+// Re-entrancy guard for the M-key map peek (clicking a node still commits
+// — it's the legacy power-user path).
 let _mapPickInFlight = false;
-import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
+// Tracks whether onRoomCleared has fired for the current room, so we only
+// trigger the open-doors animation once per clear. Reset on transition.
+let _roomClearedNotified = false;
+import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawPerfectDodgeRing, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, updateEmberRings, drawEmberRings, clearEmberRings, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
-import { drawHud, updateHudAnims } from './hud.js';
+import { drawHud, updateHudAnims, resetHudAnims } from './hud.js';
 import { setMasterVolume, playSfx } from './sfx.js';
-import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics } from './relics.js';
+import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics, relicTier, isRelicForWeapon } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats';
-import { meta, loadMeta, saveMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHeirloom, consumeHeirloom } from './meta.js';
+// Round-7 Sprint B refactor — saveMeta moved to smithModal.js with the
+// rest of the smith UI (heirloom refund path); no other main.js caller
+// needed it. bankHeirloom is still used by the Wanderer's gift service.
+import { meta, loadMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHeirloom, consumeHeirloom } from './meta.js';
 import { WEAPONS, ALL_WEAPON_IDS, WEAPON_UNLOCKS } from './weapons.js';
-import { CURSES, ALL_CURSE_IDS, activeCurses, loadCurses, toggleCurse, isCursed, curseCount, curseEssenceMul } from './curses.js';
+// Round-7 Sprint B refactor — CURSES + ALL_CURSE_IDS + toggleCurse
+// moved to src/modals/cursesModal.js along with the rest of the
+// curses UI; isCursed / curseCount / curseEssenceMul / activeCurses
+// / loadCurses still used here for run-state checks + save/load.
+import { activeCurses, loadCurses, isCursed, curseCount, curseEssenceMul } from './curses.js';
 import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked } from './achievements.js';
 import { records, loadRecords, updateRecords, incrementRunsStarted } from './records';
-import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, clearFusions } from './fusions.js';
+import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, totalFusions, discoveredCount, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 import { TAROT, drawnCards, drawTarotHand, hasCard, isTarotRun, clearTarot, loadSeenTarot, seenCount, totalCards } from './tarot.js';
-import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting } from './settings';
+import { settings, loadSettings, setSfxVolume, setMusicVolumeSetting, setShakeScaleSetting, resolvePerfMode } from './settings';
+import { applyMobileMode, installFirstTouchFallback } from './mobileMode.js';
+import { initMobileControls } from './mobileControls.js';
 import { daily, loadDaily, getTodayChallenge, markDailyCompleted, hasCompletedToday } from './daily.js';
-import { loadTips, showTip, updateTips, drawTip } from './tips.js';
+import { loadTips, showTip, updateTips, drawTip, TIPS } from './tips.js';
+import { updateNotifications, drawNotifications, clearNotifications, getNotificationStackBottom, pushNotification } from './notifications.js';
+import { loadFirstSeen, hasSeen, markSeen, isFirstTime } from './firstSeen.js';
 import { synthChord, synthFanfare, synthPing, synthGloom, synthThud, synthClick, startAmbientPad, stopAmbientPad } from './synth.js';
+import { startIntro, updateIntro, drawIntro, isIntroActive, skipIntro } from './intro.js';
 import {
-  spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
+  spawnRelicOffer, spawnAltarOffer, spawnShopOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
+  setPickupFlashForTest, isPickupFlashActive,
+  consumePendingPickup, drawPedestalPrompt, pushPedestal,
 } from './pedestals.js';
-import { initMusic, playTrack, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
+import { drawCounterPips, tickCounterPips } from './counterPips.js';
+import { drawPedestalTeasers } from './pedestalTeaser.js';
+import { drawThemeAura } from './themes.js';
+import {
+  drawWatcher,
+  watcherOnRunStart, watcherOnRunResume,
+  watcherOnDeath, watcherOnFloorEnter,
+  watcherOnBossClear, watcherOnFinalBossEnter, watcherOnAscensionStart,
+  watcherResetForTesting, watcherTestSpeak, watcherSnapshot,
+  watcherLastLine, watcherDescentCount,
+} from './watcher.js';
+import {
+  HAMLET_HERO_SPAWN, HAMLET_WALK_Y_MIN, HAMLET_WALK_Y_MAX, HAMLET_ZOOM,
+  updateHamletScene, drawHamletBackdrop, drawHamletFx, drawHamletEntities, drawHamletOverlay, drawHamletInteractPrompt,
+  consumeHamletInteract, resolveHamletCollision,
+} from './hamletScene.js';
+import { initMusic, playTrack, stopMusic, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL } from './fx.js';
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL, spawnDamageNumber, updateSoulTethers, drawSoulTethers, clearSoulTethers } from './fx.js';
 import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
-import { MEMORIES, ALL_MEMORY_IDS, unlockedMemories, selectedMemoryId, loadMemories, setSelectedMemory, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory, totalMemories, unlockedCount as memoriesUnlockedCount } from './memories.js';
-import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, hasUnreadDialogue, totalNpcs, presentNpcCount } from './hamlet.js';
+// Round-7 Sprint B refactor — MEMORIES + ALL_MEMORY_IDS + unlockedMemories
+// + selectedMemoryId + setSelectedMemory + memoriesUnlockedCount + totalMemories
+// moved to src/modals/memoryModal.js with the rest of the memory UI.
+// loadMemories + checkMemoryUnlocks + applySelectedMemory + getSelectedMemory
+// + selectedMemoryId still used here for run-state setup, save snapshot,
+// and the menu chip's updateMenuMemoryLabel readout.
+import { selectedMemoryId, loadMemories, checkMemoryUnlocks, applySelectedMemory, getSelectedMemory } from './memories.js';
+import { NPCS, ALL_NPC_IDS, hamletState, loadHamletState, saveHamletState, refreshNpcPresence, tryAdvanceArc, recordServiceUse, markDialogueSeen, getNextChatLine, npcHasChat, availableTopicsForNpc, getTopicAnswer, isTopicSeen, getFamiliarityLabel, bumpFamiliarity, nextBumpCrossesTier, buildGreetingContext, resolveReactiveGreeting, getCurrentPreoccupation, stampVisit, recordRunEnd, KEEPER_WAKE_BEATS } from './hamlet.js';
 import { startMenuEmbers } from './menuEmbers.js';
 import { drawFloorCard } from './floorCardRender.js';
 import { updateBossIntro } from './bossIntroDom.js';
+// Round-7 Sprint B refactor — modal extractions. Each module owns its
+// own DOM construction + render logic; main.js wires onClose callbacks
+// at boot since the modals can't import showMainMenu without creating
+// a circular dep.
+import { volumesEl, showVolumesModal as _showVolumesModal, setVolumesOnClose } from './modals/volumesModal.js';
+import { cursesEl, showCursesModal as _showCursesModal, setCursesOnClose } from './modals/cursesModal.js';
+import { showJournalModal as _showJournalModal, setJournalOnClose } from './modals/journalModal.js';
+import { smithEl, showSmithModal as _showSmithModal } from './modals/smithModal.js';
+import { memoryEl, showMemoryModal as _showMemoryModal, setMemoryOnClose, setMemoryOnPick } from './modals/memoryModal.js';
 
 // Side-effect: install the localStorage profile-prefix patch NOW, before any
 // other module-body code could touch storage. All load*() funcs in other
@@ -80,22 +145,57 @@ setCameraSize(canvas.width, canvas.height);
 // Camera only reads width/height in world units, so no real size change —
 // but input.js maps clientX/Y via getBoundingClientRect() which DOES depend
 // on the laid-out size, so we force a layout settle by re-running setCameraSize.
+//
+// SECOND CONCERN — UI scale: the canvas auto-stretches to viewport
+// (1920x1080 on 1080p, 3840x2160 on 4K) via CSS aspect-ratio, but DOM
+// overlays (death screen / dialogue / menu / pause / etc.) had FIXED pixel
+// typography and looked tiny on a 4K monitor. We measure the canvas's
+// actual rendered width and set --ui-scale = renderedWidth / designWidth
+// (designWidth = 1280). #hud (which contains every overlay) applies that
+// scale via a single CSS transform — every modal size-matches the canvas
+// at any viewport from 480p to 4K+ with zero per-element changes.
+const DESIGN_WIDTH = 1280;
+function _updateUiScale() {
+  // getBoundingClientRect respects the canvas's CSS aspect-ratio rule, so
+  // on a 21:9 ultrawide we get the LETTERBOXED canvas width (not viewport
+  // width) — the HUD scales to match the visible canvas, not the empty
+  // letterbox bars.
+  const r = canvas.getBoundingClientRect();
+  if (r.width <= 0) return;
+  const scale = r.width / DESIGN_WIDTH;
+  document.documentElement.style.setProperty('--ui-scale', String(scale));
+}
 let _resizeT = 0;
-window.addEventListener('resize', () => {
+const _onResize = (settleMs) => {
   clearTimeout(_resizeT);
-  _resizeT = setTimeout(() => setCameraSize(canvas.width, canvas.height), 100);
-});
+  _resizeT = setTimeout(() => {
+    setCameraSize(canvas.width, canvas.height);
+    _updateUiScale();
+  }, settleMs);
+};
+window.addEventListener('resize', () => _onResize(100));
 // Orientation change fires slightly ahead of resize on mobile — belt-and-braces.
-window.addEventListener('orientationchange', () => {
-  clearTimeout(_resizeT);
-  _resizeT = setTimeout(() => setCameraSize(canvas.width, canvas.height), 300);
-});
+window.addEventListener('orientationchange', () => _onResize(300));
+// ResizeObserver on the canvas catches every size change — initial layout,
+// dev-tools open/close, devicePixelRatio shifts, fullscreen toggles. Without
+// this, the initial paint of modals could land at the wrong scale (canvas
+// size at DOMContentLoaded isn't always final on first frame).
+if (typeof ResizeObserver !== 'undefined') {
+  const _ro = new ResizeObserver(() => _updateUiScale());
+  _ro.observe(canvas);
+}
+// Belt-and-braces initial sync — run once on script load and once on full
+// load. Either path catches the case where the canvas is already sized.
+_updateUiScale();
+if (document.readyState !== 'complete') {
+  window.addEventListener('load', _updateUiScale, { once: true });
+}
 
 // Post-FX pipeline (bloom + chromatic aberration) moved to ./postfx.js
 // as part of review #4 (main.js split). main.js still owns the render-loop
 // order and keeps the window assignment below so hero.js can trigger the
 // RGB split on damage without importing main.js.
-import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom } from './postfx.js';
+import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom, setPostfxPerfMode } from './postfx.js';
 window.__triggerChromAberr = triggerChromAberr;
 
 // Per-run gameplay metrics — collapsed from 7 individual window.__ globals
@@ -168,17 +268,56 @@ const deathEl = document.getElementById('deathScreen');
 deathEl.style.flexDirection = 'column';
 deathEl.style.padding = '20px';
 deathEl.style.boxSizing = 'border-box';
+// Tall-content modal: stats grid + relics + watcher ledger + essence row +
+// sanctuary unlock cards + button row can total 720+ design px depending on
+// run length. Use `safe center` for justify (browsers anchor overflowing
+// content to start instead of clipping both edges with regular center) +
+// overflow-y:auto so any tail spillover scrolls instead of clipping. The
+// hidden scrollbar style on #hud children keeps it visually clean.
+deathEl.style.justifyContent = 'safe center';
+deathEl.style.overflowY = 'auto';
 deathEl.innerHTML = DEATH_SCREEN_HTML;
 // restartBtn is shared between the real death-screen ("NEW RUN") and the
 // sanctuary-opened-from-hamlet ("← MAIN MENU") re-skins. The sanctuary re-
 // skins override btn.onclick, but this addEventListener stays attached and
-// would fire startRun() alongside the override — playing the prologue while
+// would fire startRun() alongside the override — playing the wake while
 // the override simultaneously returns to hamlet. `_restartBtnOverridden` is
 // set by showSanctuary / showSanctuaryFromHamlet to suppress startRun when
 // the button is in overlay-exit mode instead of actual-new-run mode.
 let _restartBtnOverridden = false;
+// When set, NPC service modals (curses / memory / sanctuary / smith /
+// oracle) close back to the LIVE hamlet canvas underneath rather than
+// re-entering the hamlet via showHamlet/enterHamletCanvas (which respawns
+// the hero at the entrance, losing their position next to the NPC). The
+// hamlet's render loop keeps drawing the canvas while a modal sits over
+// it, so simply hiding the modal restores the player's view exactly
+// where they left it. Each from-hamlet wrapper sets this true; the
+// default close handler reads + clears it. Default false = main-menu
+// access path (close goes to main menu as before).
+let _serviceCloseToHamlet = false;
 document.getElementById('restartBtn').addEventListener('click', () => {
   if (_restartBtnOverridden) return;
+  // Post-DEATH path now detours through the hamlet so the authored
+  // reactive-greeting wave (Keeper "you came back without all of yourself",
+  // Smith "Mm. Try a heavier weapon", Gravekeeper ledger lines) actually
+  // fires. recordRunEnd('death', ...) sets up `lastRunOutcome = 'death'`
+  // + clears npcGreetingShown so a fresh wave is queued — but the previous
+  // restartBtn → startRun() path skipped past the hamlet entirely, leaving
+  // the wave permanently un-triggered. Round-6 player-sim audit flagged
+  // this as the single highest-impact fix in the codebase: every
+  // hand-authored death-aware NPC line was queued and never read.
+  //
+  // Victory still goes straight to startRun() — players who just won have
+  // already seen the epilogue + animated meta shop on the death modal,
+  // and a between-ascent hamlet detour breaks the "run it back" momentum
+  // that Slay-the-Spire-style victory loops want. The hamlet still gains
+  // the post-victory NPC reactions on whoever's next return; we just
+  // don't force the walk on the immediate retry.
+  if (hamletState.lastRunOutcome === 'death') {
+    deathEl.style.display = 'none';
+    showHamlet();
+    return;
+  }
   startRun();
 });
 // Escape hatch from the death/victory screen back to the main menu. Essence
@@ -200,7 +339,10 @@ document.getElementById('deathMenuBtn')?.addEventListener('mouseleave', (e) => {
 // Between-floor + victory screen — includes a shop row between floors.
 // Ornamented dramatic screen matching the main-menu aesthetic.
 const winEl = document.createElement('div');
-winEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;';
+// Between-floor / victory screen — `safe center` keeps content centered
+// when it fits, and anchors-to-start (no clip-both-ends) when it doesn't.
+// overflow-y:auto handles tall shop rows. Same pattern as deathEl.
+winEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 winEl.innerHTML = WIN_SCREEN_HTML;
 document.getElementById('hud').appendChild(winEl);
 document.getElementById('winRestartBtn').addEventListener('click', () => {
@@ -350,6 +492,12 @@ let roomIndex = 0;
 let currentFloorLevel = 1;       // 1..MAX_FLOORS
 let transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
 let running = false;
+// Monotonic run sequence — increments every time startRun / resumeRun
+// begins a new run. Used by deferred timeouts/intervals (boss-drop
+// poll, wave-2 spawn) to detect "this callback fired AFTER the run
+// it was scheduled in ended" and bail cleanly. Without this guard,
+// a 15s boss-drop poll can fire openFloorUi against a fresh run.
+let _runSeq = 0;
 let bossWinTriggered = false;
 let gameTime = 0;
 let heroSpikeCD = 0;
@@ -364,6 +512,11 @@ let floorCardRoman = '';
 let floorCardName = '';
 let floorCardFlavor = '';
 let floorCardBackdrop = '';
+// Total duration for the active floor card. 3.2s on first sight; 1.6s
+// on repeat (cinematic skip-on-repeat — see triggerFloorCard). Drives
+// both the timer countdown AND the alpha-curve normalization in
+// floorCardRender, so they have to stay in sync.
+let floorCardTotal = 3.2;
 
 const FLOOR_CARD_DATA = {
   1: { roman: 'I',   name: 'THE UNDERCROFT',    flavor: 'cold stone remembers the dead',         backdrop: 'zone_undercroft' },
@@ -372,15 +525,23 @@ const FLOOR_CARD_DATA = {
   4: { roman: 'IV',  name: 'THE THRONE OF RUIN', flavor: 'the wound at the world\u2019s heart',  backdrop: 'zone_throne_of_ruin' },
 };
 
+// Round-7 design-team narrative audit — replaced 5 of 13 lines that
+// read as genre filler ("dust returns to dust", "ash to ash. ruin to
+// ruin.", "the depths consume another", "the world continues without
+// you", "another soul for the ruin", "even the brave fall here") with
+// imagery rooted in the game's own world (the Keeper, the Watcher, the
+// lantern, the stones, the ruin's reclaiming) so the death subtitle
+// — the LAST thing the player reads on a run — earns its weight
+// instead of recycling tropes any roguelite could write.
 const DEATH_MESSAGES = [
   'your journey into Ethera ends',
-  'the depths consume another',
-  'dust returns to dust',
-  'the world continues without you',
-  'another soul for the ruin',
-  'even the brave fall here',
+  'the keeper sets her cup down. she does not look up.',
+  'the lantern leans toward the next traveler',
+  'your weight leaves the floor. nothing else moves.',
+  'the watcher does not turn its head',
+  'the ruin does not eulogize',
   'the dark will remember you, for a while',
-  'ash to ash. ruin to ruin.',
+  'the stones note your absence and forget you in the same breath',
   'you hear the door close behind you, unseen',
   'your name is already fading',
   'the wound at the heart of Ethera grows',
@@ -397,6 +558,13 @@ const VICTORY_MESSAGES = [
 ];
 // Boss intro cinematic — delay gameplay briefly when entering a boss room
 let bossIntroTime = 0;                // ticks down from ~2.2s while intro plays
+// Total duration for the active boss intro. 2.2s on first sight; 1.3s
+// on repeat. Mirrors the floorCardTotal pattern — the timer needs to
+// stay in sync with the CSS animation length picked by bossIntroDom.js.
+let bossIntroTotal = 2.2;
+// Whether the active boss intro is using the fast repeat-sighting variant.
+// Routed to bossIntroDom.updateBossIntro every render frame.
+let bossIntroFast = false;
 let bossIntroBoss = null;             // reference to the boss for name display
 let bossIntroStartedAt = 0;           // wall-clock timestamp — clamps intro at
                                        // 2.5s real-time even if the game pauses
@@ -406,6 +574,26 @@ let bossIntroStartedAt = 0;           // wall-clock timestamp — clamps intro a
 let deathCeremonyActive = false;
 let deathCeremonyTime = 0;
 let deathSummaryShown = false;
+// First-run intro — track previous-frame active state so the tick loop
+// can detect the cinematic's end (true→false edge) and resume the
+// silenced biome music. The AWAKEN handler kills audio on intro start
+// to leave the heartbeat alone; the resume needs to happen exactly
+// once when the intro finishes.
+let _wasIntroActive = false;
+// First-death emotional-weight beat — only fires once per profile, when
+// the player dies on their very first run. Holds "YOU HAVE FALLEN" on
+// the red ceremony screen for an extra second, then fades the whole
+// frame to pure black, THEN hands off to enterHamletCanvas (which
+// brings up the keeper wake). Without this, the ceremony's text only
+// gets ~0.9s of read time before the keeper's first letterbox bar
+// snaps in and clobbers the moment. The fade-to-black gives the
+// keeper wake a clean canvas to fade into instead of cutting from a
+// red-saturated frame.
+let _firstDeathFadeActive = false;
+let _firstDeathFadeTime = 0;
+const FIRST_DEATH_HOLD = 1.0;        // seconds: extra "YOU HAVE FALLEN" hold
+const FIRST_DEATH_FADE = 1.2;        // seconds: red veil fading to pure black
+const FIRST_DEATH_TOTAL = FIRST_DEATH_HOLD + FIRST_DEATH_FADE;
 // Tab-title update throttle
 let _lastTitleUpdateSec = -1;
 // Pedestal/altar proximity hum timer + low-HP heartbeat timer
@@ -432,11 +620,11 @@ window.__onEchoDefeated = (echo) => {
   const relicId = unowned.length ? unowned[(Math.random() * unowned.length) | 0] : build[0];
   const relicDef = RELIC_DEFS[relicId];
   if (!relicDef) return;
-  pedestals.push({
+  pushPedestal({
     x: echo.x, y: echo.y,
     relic: relicDef,
     tier: relicDef.tier || 'common',
-    picked: false, bob: 0, glow: 0, hpCost: 0,
+    bonus: true,        // free drop, won't wipe sibling offers
   });
   // Dramatic feedback
   for (let k = 0; k < 18; k++) deathBurst(echo.x, echo.y - 8, '#c8d8ff');
@@ -464,23 +652,70 @@ window.__onFusionFormed = (fusion) => {
   }
   pulseZoom(0.1, 0.6);
   triggerScreenFlash('rgba(180, 230, 255, 0.2)', 0.4);
+  // Onboarding — first time a fusion ever forms in any run, drop a
+  // tip so the player understands what just happened. Subsequent
+  // fusions are silent (the banner + chord do the talking).
+  showTip('first_fusion');
 };
-// Boss phase-transition cinematic (fires when a boss enrages at 50% HP)
-let phaseIntroTime = 0;        // ticks down from ~1.6s while banner shows
+
+// MYTHIC: Coin of the Tyrant kill-chain reward. Called from enemies.js
+// every 8th kill while the relic is owned. Drops a free common-tier
+// relic on the floor at the kill position; walking onto it auto-applies
+// like any other pedestal pickup.
+window.__coinOfTyrantSpawnRelic = (x, y) => {
+  // Roll one common relic. rollRelicOffer picks tier-weighted; on common
+  // tier we just take whatever it returns and force a single result.
+  // The dropped relic skips the magician-bias / theme-bias machinery —
+  // it's a "free" pickup, not a strategic offer.
+  const rolled = rollRelicOffer(1, 1);     // floor=1 → 100% common weight
+  if (!rolled.length) return;
+  pushPedestal({
+    x, y,
+    relic: rolled[0],
+    tier: 'common',
+    bonus: true,        // free drop, won't wipe sibling offers
+  });
+  // Brief flair — gold sparkle burst at the drop position so the player
+  // sees the coin "fall" rather than just appearing on the floor.
+  for (let k = 0; k < 12; k++) deathBurst(x, y, '#ffd070');
+  for (let k = 0; k < 8; k++) sparkle(x + (Math.random() - 0.5) * 28, y + (Math.random() - 0.5) * 18, '#ffe5a0');
+  try { synthPing(880, 0.32, 0.35); } catch (_e) {}
+  try { synthClick(0.85, 0.55); } catch (_e) {}
+};
+// Boss phase-transition cinematic (fires when a boss enrages at 50% HP).
+// First-encounter gating: full 1.6s banner with PHASE 2 title on first
+// per-boss-type sighting, shorter 0.8s "flash + tag" on subsequent
+// (since the player has already learned what enrage means). Captured
+// at trigger time so the per-frame render stays lock-step.
+let phaseIntroTime = 0;        // ticks down from 1.6s (first) or 0.8s (Nth)
 let phaseIntroBoss = null;
 let phaseIntroStartedAt = 0;   // wall-clock mark for stuck-overlay clamp
+let phaseIntroIsFirstTime = false;
 window.triggerBossPhaseIntro = (boss) => {
   if (!boss) return;
-  phaseIntroTime = 1.6;
+  phaseIntroIsFirstTime = isFirstTime('phase2', boss.type || 'unknown');
+  phaseIntroTime = phaseIntroIsFirstTime ? 1.6 : 0.8;
   phaseIntroBoss = boss;
   phaseIntroStartedAt = performance.now();
+  // Audio sting — was previously silent (audio review P0). The 1.6s/0.8s
+  // letterbox + iframe grant fired with no audio at all, so the dramatic
+  // beat where the boss's behavior changes had no sonic counterpart.
+  // Descending dread synth + low thud for the first-time encounter; just
+  // the thud for repeat phases. setMusicIntensity bumps the swell so
+  // combat music grows with the threat.
+  try {
+    if (phaseIntroIsFirstTime) synthGloom(180, 1.0, 1.4);
+    synthThud(60, 1.2, 0.4);
+  } catch (_e) {}
+  setMusicIntensity(1.0);
   // Same belt-and-suspenders as the boss-room entry intro: grant iframes
-  // covering the phase-2 banner (1.6s intro + 0.4s clamp tail + 0.4s
-  // post-intro buffer). The hero was already trading blows with the boss
-  // when it enraged, so the vulnerability window without this is real —
-  // an enemy swing in flight when phase fires would land the moment the
-  // intro-freeze clears.
-  hero.iframes = Math.max(hero.iframes || 0, 2.4);
+  // covering the phase-2 banner (full or short) plus the post-intro
+  // buffer. The hero was already trading blows with the boss when it
+  // enraged, so the vulnerability window without this is real — an
+  // enemy swing in flight when phase fires would land the moment the
+  // intro-freeze clears. Cap at 2.4s for the long banner; 1.6s for the
+  // short one (still enough to cover the flash + clamp tail).
+  hero.iframes = Math.max(hero.iframes || 0, phaseIntroIsFirstTime ? 2.4 : 1.6);
 };
 
 // Main menu — shown on page load
@@ -489,19 +724,28 @@ const menuEl = document.createElement('div');
 // torches and descending stair. UI overlays sit above dark areas at top
 // (title crown) and bottom (cards + chrome). Fallback radial-gradient
 // preserved in case the image fails to load.
-menuEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:#050308 url(assets/menu/menu_backdrop.jpg) center/cover no-repeat;color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow:hidden;';
+menuEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:#050308 url(assets/menu/menu_backdrop.jpg) center/cover no-repeat;color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow:hidden;';
 menuEl.innerHTML = MENU_SCREEN_HTML;
 document.getElementById('hud').appendChild(menuEl);
 
+// Canvas hamlet ember overlay — separate top-level canvas drawn over the
+// game canvas with mix-blend-mode:screen so it adds warm gold specks
+// without clearing game content. The startMenuEmbers callback below
+// returns this canvas when the canvas hamlet is active.
+const canvasHamletEmbersEl = document.createElement('canvas');
+canvasHamletEmbersEl.id = 'canvasHamletEmbers';
+canvasHamletEmbersEl.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;mix-blend-mode:screen;opacity:0.55;z-index:5;';
+document.body.appendChild(canvasHamletEmbersEl);
+
 // Menu ember particle system — see src/menuEmbers.js. The callback tells
-// the ember loop which canvas to draw to each frame (menu / hamlet / none).
-// `hamletEl` is declared later in this file; the `typeof` guard avoids a
-// temporal-dead-zone error on the first tick if rAF beats module-body
-// completion (unlikely but cheap to protect against).
+// the ember loop which canvas to draw to each frame (menu / canvas hamlet
+// / none). Used to also branch to a DOM-hamlet ember canvas; the DOM
+// hamlet was retired in the same pass that drops `hamletEl`.
 startMenuEmbers(() => {
   if (menuEl.style.display !== 'none') return document.getElementById('menuEmbers');
-  if (typeof hamletEl !== 'undefined' && hamletEl.style.display !== 'none') {
-    return document.getElementById('hamletEmbers');
+  // Canvas hamlet — embers drawn on the dedicated top-level overlay canvas.
+  if (typeof room !== 'undefined' && room?.kind === 'hamlet' && running) {
+    return canvasHamletEmbersEl;
   }
   return null;
 });
@@ -590,9 +834,12 @@ document.getElementById('menuResumeBtn').addEventListener('click', () => {
   resumeRun(snap);
 });
 
-document.getElementById('menuNewRunBtn').addEventListener('click', () => {
-  // Route through the currently-selected mode. Tarot detours through a reveal;
-  // daily sets a flag; standard just starts.
+// Shared "begin the descent" routing — consumes the currently-selected menu
+// mode (standard / daily / tarot). Previously only the main-menu BEGIN
+// DESCENT button called this; now the in-hamlet descent portal calls it
+// too, so the player enters the hamlet first, picks mode/ascension there,
+// and steps into the portal to actually start the run.
+function beginDescent() {
   if (menuMode === 'tarot') {
     drawTarotHand(3);
     showTarotReveal();
@@ -604,6 +851,61 @@ document.getElementById('menuNewRunBtn').addEventListener('click', () => {
   }
   if (availableWeapons().length > 1) showWeaponPicker();
   else { hideAllOverlays(); startRun(); }
+}
+
+document.getElementById('menuNewRunBtn').addEventListener('click', () => {
+  // FIRST-EVER AWAKEN — drop the player straight into floor 1 with the
+  // intro cinematic playing over their first room. The Keeper wake (and
+  // the hamlet introduction itself) is now earned on first DEATH, not
+  // pre-loaded as exposition. Restructure ported from ethera (intro.js
+  // owns the overlay; the death-bypass below routes the first death to
+  // enterHamletCanvas which plays the keeper wake on its own gate).
+  //
+  // Double-click guard — bug-hunter audit P0. The button has no debounce,
+  // so a fast double-click would run startRun() / startIntro() / stopMusic()
+  // twice, double-applying memory effects and resetting the intro timer to
+  // zero mid-cinematic. Hide the menu synchronously before mutating state;
+  // the second click hits a hidden menu and bails.
+  if (menuEl.style.display === 'none') return;
+  menuEl.style.display = 'none';
+  // Use a SEPARATE gate ('intro:heartbeat') for the cinematic, distinct
+  // from 'hamlet:wake' (which gates the keeper wake fired on first
+  // death). Without separate gates, marking the intro as seen here
+  // would also skip the keeper wake on first death — they need to fire
+  // independently on the first run.
+  const firstTime = !hasSeen('intro', 'heartbeat');
+  if (firstTime) {
+    hideAllOverlays();
+    // Mark the intro-gate satisfied at the START of the first run, NOT
+    // after the cinematic completes. Without this, a player who
+    // reloads mid-floor-1 would re-enter the menu, click AWAKEN, and
+    // get a duplicate intro cinematic on top of their resumed run.
+    markSeen('intro', 'heartbeat');
+    startRun();         // drop into floor 1, hero spawned in start room
+    // Suppress the floor card — the intro overlay owns the screen for
+    // the next 28s. The floor-card "FLOOR I — THE UNDERCROFT" reveal
+    // is what the intro IS doing thematically; running both would
+    // double-up the cinematic.
+    floorCardTime = 0;
+    floorCardStartedAt = 0;
+    startIntro();       // overlay heartbeat + text on top of the live world
+    // Silence everything underneath the cinematic — startRun -> loadRoom
+    // already fired playTrack('crypt') for floor 1, and the menu pad
+    // is still running from the title screen. The heartbeat is the
+    // ONLY thing the player should hear during the intro. Tick loop
+    // will resume the biome track when the cinematic ends.
+    //
+    // stopMusic (not playTrack(null)) is critical here — playTrack
+    // pauses all tracks but leaves `current` set to 'crypt', which
+    // would make our subsequent end-of-intro playTrack('crypt')
+    // resume call no-op via the `current === name` guard. stopMusic
+    // explicitly nulls `current` so the resume actually fires.
+    stopAmbientPad();
+    stopMusic();
+    return;
+  }
+  // Returning player — standard flow: hamlet hub, descend via portal.
+  showHamlet();
 });
 document.getElementById('menuMetaBtn').addEventListener('click', () => {
   // "SANCTUARY" card now routes into the Living Hamlet hub; the Keeper NPC
@@ -712,7 +1014,16 @@ refreshAscensionUI();
     // Mark the flag immediately, not on timer callback, so a fast
     // reload during the 900ms settle delay doesn't re-trigger it.
     try { localStorage.setItem('ethera:seen_welcome:v1', '1'); } catch (_) {}
-    setTimeout(() => showControls(), 900);
+    setTimeout(() => {
+      // Skip if the player already clicked PLAY in the 900ms window —
+      // the controls modal would otherwise stack on top of the wake
+      // cinematic (or whatever entered state replaced the menu),
+      // double-binding the player's input. Audit fix: gate on the
+      // menu still being the visible overlay.
+      if (menuEl.style.display !== 'flex') return;
+      if (keeperWakeEl && keeperWakeEl.style.display === 'flex') return;
+      showControls();
+    }, 900);
   } catch (_) {
     // Storage-blocked path (Safari private mode etc.) — just skip the nudge.
   }
@@ -723,7 +1034,7 @@ refreshMenuModeChips();
 
 // TAROT REVEAL — dramatic 3-card draw modal before the run begins
 const tarotRevealEl = document.createElement('div');
-tarotRevealEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;overflow:hidden;';
+tarotRevealEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;overflow:hidden;';
 tarotRevealEl.innerHTML = `
   <!-- Deep vignette + page-frame corners. -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -760,7 +1071,7 @@ tarotRevealEl.innerHTML = `
       <p id="tarotSubtitle" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#d8cfae;">three cards drawn \u00b7 three fates set</p>
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
     </div>
-    <div id="tarotCardsRow" style="display:flex;gap:24px;margin-bottom:32px;"></div>
+    <div id="tarotCardsRow" style="display:flex;flex-wrap:wrap;justify-content:center;gap:24px;margin-bottom:32px;max-width:600px;"></div>
     <button id="tarotBeginBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:15px 64px;font-size:15px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 26px rgba(201,168,106,0.3), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">BEGIN DESCENT</button>
     <button id="tarotBackBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;margin-top:14px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 BACK</button>
   </div>
@@ -771,6 +1082,7 @@ document.getElementById('tarotBeginBtn').addEventListener('click', () => {
   startRun();
 });
 document.getElementById('tarotBackBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   clearTarot();
   tarotRevealEl.style.display = 'none';
   menuEl.style.display = 'flex';
@@ -805,7 +1117,7 @@ function showTarotReveal() {
 
 // Settings modal — accessible from main menu (same panel as pause menu)
 const settingsEl = document.createElement('div');
-settingsEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;';
+settingsEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 settingsEl.innerHTML = `
   <!-- Page frame + vignette -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -830,7 +1142,7 @@ settingsEl.innerHTML = `
     <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
   </div>
 
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
+  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
       <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
       <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">tune the descent</div>
@@ -853,6 +1165,7 @@ settingsEl.innerHTML = `
 `;
 document.getElementById('hud').appendChild(settingsEl);
 document.getElementById('menuSettingsBackBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   settingsEl.style.display = 'none';
   menuEl.style.display = 'flex';
 });
@@ -882,454 +1195,190 @@ function showSettingsModal() {
   document.getElementById('menuSetShakeVal').textContent = Math.round(settings.shakeScale * 100) + '%';
 }
 
-// Curses modal — toggle run-difficulty modifiers
-const cursesEl = document.createElement('div');
-cursesEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0a10 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;';
-cursesEl.innerHTML = `
-  <!-- Ornamental frame -->
-  <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
-    <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#a04040,transparent);"></div>
-    <div style="color:#a04040;font-size:12px;letter-spacing:5px;font-style:italic;">— accept suffering, be rewarded —</div>
-    <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#a04040,transparent);"></div>
-  </div>
-  <h1 style="font-size:48px;margin:0 0 4px;letter-spacing:8px;color:#d85a5a;font-family:Georgia,serif;font-weight:400;text-shadow:0 0 18px rgba(216,90,90,0.45);animation:winFadeIn 0.7s ease-out 0.1s both;">CURSES</h1>
-  <p style="margin:0 0 22px;opacity:0.55;letter-spacing:4px;font-size:13px;font-style:italic;animation:winFadeIn 0.6s ease-out 0.2s both;">the ruin remembers every bargain</p>
-  <div id="curseEssMul" style="font-size:14px;color:#a0e8ff;letter-spacing:3px;margin-bottom:22px;animation:winFadeIn 0.6s ease-out 0.3s both;min-height:18px;"></div>
-  <div id="cursesRow" style="display:grid;grid-template-columns:repeat(3, 240px);gap:14px;margin-bottom:22px;animation:winCardSlide 0.55s ease-out 0.4s both;"></div>
-  <button id="cursesCloseBtn" style="background:transparent;color:#a97070;border:1px solid #5a3030;padding:10px 32px;font-size:12px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.18s ease;animation:winFadeIn 0.5s ease-out 0.6s both;">← RETURN</button>
-`;
-document.getElementById('hud').appendChild(cursesEl);
-document.getElementById('cursesCloseBtn').addEventListener('click', () => {
-  cursesEl.style.display = 'none';
-  showMainMenu();
-});
-
-function showCursesModal() {
-  hideAllOverlays();
-  cursesEl.style.display = 'flex';
-  renderCursesGrid();
-}
-
 // ============================================================================
-// MEMORY WEAVE — modal for selecting the Memory that will shape the next run.
-// Unlocked memories show as full cards; locked ones are silhouetted with a
-// cryptic hint. Picking one persists the choice; picking "(none)" clears it.
-// ============================================================================
-const memoryEl = document.createElement('div');
-memoryEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
-memoryEl.innerHTML = `
-  <!-- Page-frame corners + deep vignette — shared manuscript grammar -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;width:100%;max-width:960px;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">what you have forgotten to forget</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">MEMORY</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 18px;opacity:0.65;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p id="memoryProgress" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#d8cfae;"></p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-    <p style="margin:0 0 22px;opacity:0.6;letter-spacing:2px;font-size:12px;font-style:italic;max-width:620px;text-align:center;line-height:1.55;">A memory is a shape you carry into the dark. A pact with a version of yourself that can no longer speak but can still bargain. Choose one, and descend as that.</p>
-    <div id="memoryGrid" style="display:grid;grid-template-columns:repeat(3, 280px);gap:14px;margin-bottom:22px;max-height:500px;overflow-y:auto;padding:4px;"></div>
-    <button id="memoryClearBtn" style="background:transparent;color:#8a7a6a;border:1px solid #4a3a2a;padding:8px 24px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;margin-bottom:14px;transition:all 0.2s ease;">— forget them all —</button>
-    <button id="memoryCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(memoryEl);
-document.getElementById('memoryCloseBtn').addEventListener('click', () => {
-  memoryEl.style.display = 'none';
-  showMainMenu();
-});
-document.getElementById('memoryClearBtn').addEventListener('click', () => {
-  setSelectedMemory(null);
-  renderMemoryGrid();
-  updateMenuMemoryLabel();
-});
-
-function showMemoryModal() {
-  hideAllOverlays();
-  memoryEl.style.display = 'flex';
-  renderMemoryGrid();
-}
-
-function renderMemoryGrid() {
-  const grid = document.getElementById('memoryGrid');
-  const progress = document.getElementById('memoryProgress');
-  grid.innerHTML = '';
-  // ASCENSION V — when Memory is neutralized for this run, communicate
-  // loudly BEFORE the player wastes a pick choosing one. The progress line
-  // doubles as the alert channel; regular text when clean, crimson when the
-  // memory slot is silenced.
-  const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
-  if (am && am.memoryDisabled) {
-    progress.innerHTML = `<span style="color:#d8556a;text-shadow:0 0 10px rgba(216,85,106,0.45);">\u26A0 MEMORY SLOT NEUTRALIZED — Ascension V</span>
-      <span style="display:block;font-size:9px;color:#a89b82;font-style:italic;margin-top:2px;opacity:0.8;">the selection you make will have no effect this descent</span>`;
-  } else {
-    progress.textContent = `${memoriesUnlockedCount()} of ${totalMemories()} remembered`;
-  }
-  for (const id of ALL_MEMORY_IDS) {
-    const def = MEMORIES[id];
-    const unlocked = unlockedMemories.has(id);
-    const selected = selectedMemoryId === id;
-    const card = document.createElement('button');
-    const accent = def.tint || '#c9a86a';
-    card.style.cssText = `
-      background: linear-gradient(180deg, rgba(24,18,14,0.92), rgba(12,8,6,0.95));
-      border: 0;
-      padding: 16px 18px;
-      cursor: ${unlocked ? 'pointer' : 'default'};
-      font-family: Georgia, serif;
-      text-align: left;
-      opacity: ${unlocked ? 1 : 0.45};
-      box-shadow: ${selected
-        ? `inset 0 0 0 2px ${accent}, 0 0 22px ${accent}66, inset 0 0 14px rgba(0,0,0,0.5)`
-        : `inset 0 0 0 1px ${unlocked ? accent+'55' : 'rgba(201,168,106,0.15)'}, inset 0 0 14px rgba(0,0,0,0.5)`};
-      transition: all 0.2s ease;
-      color: #d8cfae;
-    `;
-    if (unlocked) {
-      card.onmouseenter = () => { card.style.transform = 'translateY(-2px)'; card.style.boxShadow = `inset 0 0 0 1px ${accent}, 0 0 20px ${accent}55, inset 0 0 14px rgba(0,0,0,0.5)`; };
-      card.onmouseleave = () => { card.style.transform = ''; renderMemoryGrid(); };
-    }
-    const name = unlocked ? def.name : '— forgotten —';
-    const flavor = unlocked ? def.flavor : def.unlockHint;
-    const gift = unlocked ? `<div style="color:${accent};font-size:10px;letter-spacing:3px;font-weight:bold;margin-top:10px;">GIFT</div><div style="font-size:11px;line-height:1.45;margin-top:3px;">${def.gift}</div>` : '';
-    const constraint = unlocked ? `<div style="color:#a06060;font-size:10px;letter-spacing:3px;font-weight:bold;margin-top:8px;">BOND</div><div style="font-size:11px;line-height:1.45;margin-top:3px;opacity:0.85;">${def.constraint}</div>` : '';
-    const sel = selected ? `<div style="color:${accent};font-size:10px;letter-spacing:4px;font-weight:bold;margin-top:12px;text-shadow:0 0 8px ${accent}88;">\u2766 CHOSEN</div>` : '';
-    // Progress bar for locked memories with numeric unlock conditions — shows
-    // how close the player is instead of a flat "reach floor 2" hint.
-    let progressHtml = '';
-    if (!unlocked && typeof def.unlockProgress === 'function') {
-      try {
-        const prog = def.unlockProgress(records);
-        if (prog && prog.target > 0) {
-          const pct = Math.max(0, Math.min(1, prog.current / prog.target));
-          const pctStr = (pct * 100).toFixed(0);
-          const done = pct >= 1 ? '#86e3a8' : '#c9a86a';
-          progressHtml = `
-            <div style="margin-top:10px;">
-              <div style="font-size:10px;letter-spacing:1px;color:#a89b82;font-family:Georgia,serif;">${prog.current} / ${prog.target} ${prog.unit || ''}</div>
-              <div style="margin-top:4px;height:3px;background:rgba(201,168,106,0.18);overflow:hidden;">
-                <div style="height:100%;width:${pctStr}%;background:${done};box-shadow:0 0 6px ${done}88;"></div>
-              </div>
-            </div>
-          `;
-        }
-      } catch (e) {}
-    }
-    card.innerHTML = `
-      <div style="color:${unlocked ? accent : '#6a5c48'};font-size:13px;letter-spacing:2.5px;font-weight:bold;margin-bottom:6px;${unlocked ? `text-shadow:0 0 8px ${accent}55;` : ''}">${name}</div>
-      <div style="font-size:11px;font-style:italic;opacity:0.7;line-height:1.5;min-height:36px;">${flavor}</div>
-      ${gift}
-      ${constraint}
-      ${progressHtml}
-      ${sel}
-    `;
-    if (unlocked) {
-      card.onclick = () => {
-        setSelectedMemory(selected ? null : id);
-        renderMemoryGrid();
-        updateMenuMemoryLabel();
-      };
-    }
-    grid.appendChild(card);
-  }
-}
-
-// ============================================================================
-// LIVING HAMLET — hub screen between main menu and descent. Painted backdrop
-// with clickable NPC hotspots. Replaces the flat essence shop (the Keeper
-// NPC now holds the essence shop as HIS service). As more NPCs arrive
-// (triggered by player records), the hamlet visibly grows.
+// LIVING HAMLET - hub screen between main menu and descent.
 //
-// Phase 1 ships Keeper + Smith + Archivist + placeholder painted backdrop.
-// Phase 2 will add Oracle, Gravekeeper, Wanderer, and multi-state backdrops.
+// Implementation: hamlet is a regular `room` with `kind: 'hamlet'` rendered
+// through the standard canvas pipeline (see hamletScene.js + room.js).
+// Entry: `showHamlet()` -> `enterHamletCanvas()` -> loadRoom(hamletRoom).
+//
+// HISTORY: this used to be a DOM overlay (`hamletEl`, ~120 LOC of innerHTML
+// templating + CSS-in-JS) layered over the menu, with a painted JPG backdrop
+// and absolute-positioned NPC <button>s. The canvas hamlet shipped multiple
+// sessions ago and the DOM path was retired. The DOM block was kept around
+// for one release as a fast-revert hatch; that window has long closed and
+// the dead code was removed in this pass.
 // ============================================================================
-const hamletEl = document.createElement('div');
-// Painted hamlet backdrop (Nano Banana, Apr 2026) — dusk-lit ruined village
-// with a forge on the left, a central firepit, and a domed scriptorium on
-// the right. Characters layer on top. The painting carries the scene; we
-// only overlay: a breathing firepit flicker for the center flame, two
-// conditional NPC-activated light pools, and ember particles for motion.
-hamletEl.style.cssText = `
-  position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
-  background:#050308 url(assets/hamlet/hamlet_backdrop.jpg) center/cover no-repeat;
-  color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow:hidden;
-`;
-hamletEl.innerHTML = `
-  <!-- CENTRAL FIREPIT FLICKER — overlays the painted firepit so the flame
-       breathes instead of sitting static. Small footprint, tucked right
-       over the painted flame location. -->
-  <div id="hamletFirePit" style="position:absolute;left:50%;bottom:26%;transform:translate(-50%,0);width:240px;height:180px;background:
-    radial-gradient(ellipse at 50% 100%, rgba(255,150,60,0.45) 0%, rgba(255,100,40,0.18) 30%, rgba(200,70,30,0.05) 60%, transparent 85%);
-    pointer-events:none;filter:blur(2px);animation:hamletFireBreathe 2.6s ease-in-out infinite;mix-blend-mode:screen;"></div>
-
-  <!-- Secondary light pools — brighten the painted forge doorway / painted
-       scriptorium windows when the relevant NPC is present. Adds a small
-       "the hamlet is a little warmer now that X arrived" feedback loop. -->
-  <div id="hamletForgeGlow" style="position:absolute;left:13%;bottom:30%;width:200px;height:180px;background:radial-gradient(ellipse at 50% 60%, rgba(255,120,60,0.35), transparent 70%);pointer-events:none;opacity:0;transition:opacity 1.2s ease;filter:blur(3px);mix-blend-mode:screen;"></div>
-  <div id="hamletArchiveGlow" style="position:absolute;right:13%;bottom:30%;width:200px;height:180px;background:radial-gradient(ellipse at 50% 60%, rgba(150,190,240,0.28), transparent 70%);pointer-events:none;opacity:0;transition:opacity 1.2s ease;filter:blur(3px);mix-blend-mode:screen;"></div>
-
-  <!-- EMBER PARTICLES (same style as menu) -->
-  <canvas id="hamletEmbers" width="1280" height="720" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;mix-blend-mode:screen;opacity:0.85;"></canvas>
-
-  <!-- Page-frame corners -->
-  <div style="position:absolute;top:28px;left:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:70px;height:1px;background:linear-gradient(90deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:70px;background:linear-gradient(180deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:28px;right:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:70px;height:1px;background:linear-gradient(270deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:70px;background:linear-gradient(180deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:28px;left:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:70px;height:1px;background:linear-gradient(90deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:70px;background:linear-gradient(0deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:28px;right:28px;width:70px;height:70px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:70px;height:1px;background:linear-gradient(270deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:70px;background:linear-gradient(0deg,#f4d9a0,transparent);box-shadow:0 0 6px rgba(244,217,160,0.4);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:5px;height:5px;background:#f4d9a0;transform:rotate(45deg);"></div>
-  </div>
-
-  <!-- Header (top, floats above backdrop) -->
-  <div style="position:absolute;top:40px;left:0;right:0;text-align:center;z-index:2;pointer-events:none;">
-    <div style="display:flex;align-items:center;justify-content:center;gap:22px;margin-bottom:8px;opacity:0.75;">
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">what was undone, being undone less</div>
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:54px;margin:0;letter-spacing:12px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">HAMLET</h1>
-    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;opacity:0.65;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p id="hamletProgress" style="margin:0;letter-spacing:4px;font-size:11px;font-style:italic;color:#d8cfae;"></p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-  </div>
-
-  <!-- FUSION SHRINES — for each discovered fusion, a small glowing pedestal
-       appears in the hamlet, commemorating the pair of relics that forged
-       it. Visible world-state feedback: the hamlet literally grows prettier
-       as you discover more of the ruin's secret combinations. -->
-  <div id="hamletFusionShrines" style="position:absolute;left:0;right:0;bottom:12%;height:8%;z-index:2;pointer-events:none;"></div>
-
-  <!-- NPC LAYER — each NPC is positioned absolutely per their data.x/y% -->
-  <div id="hamletNpcLayer" style="position:absolute;inset:0;z-index:2;"></div>
-
-  <!-- Hamlet essence + chronicles counters, bottom-left/right -->
-  <div style="position:absolute;bottom:58px;left:120px;display:flex;gap:12px;align-items:center;font-family:Georgia,serif;z-index:2;">
-    <span style="width:4px;height:4px;background:#a0e8ff;transform:rotate(45deg);opacity:0.7;"></span>
-    <div>
-      <div style="color:#c9a86a;font-size:9px;letter-spacing:4px;font-weight:bold;opacity:0.7;">ESSENCE BANKED</div>
-      <div style="color:#a0e8ff;font-size:16px;font-weight:bold;letter-spacing:2px;text-shadow:0 0 8px rgba(160,232,255,0.35);"><span id="hamletEssenceValue">0</span></div>
-    </div>
-  </div>
-  <div style="position:absolute;bottom:58px;right:120px;display:flex;gap:12px;align-items:center;font-family:Georgia,serif;z-index:2;text-align:right;">
-    <div>
-      <div style="color:#c9a86a;font-size:9px;letter-spacing:4px;font-weight:bold;opacity:0.7;">NPCS ARRIVED</div>
-      <div style="color:#f4d9a0;font-size:16px;font-weight:bold;letter-spacing:2px;"><span id="hamletNpcCount">0</span><span style="opacity:0.4;font-size:12px;"> / <span id="hamletNpcTotal">0</span></span></div>
-    </div>
-    <span style="width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);opacity:0.7;"></span>
-  </div>
-
-  <!-- Return link, bottom center -->
-  <button id="hamletBackBtn" style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);background:transparent;color:#8a7a6a;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;z-index:2;">\u2190 LEAVE THE HAMLET</button>
-`;
-document.getElementById('hud').appendChild(hamletEl);
-document.getElementById('hamletBackBtn').addEventListener('click', () => {
-  hamletEl.style.display = 'none';
-  showMainMenu();
-});
-
-// Hover style on the hamlet back button
-document.getElementById('hamletBackBtn').addEventListener('mouseenter', (e) => {
-  e.target.style.color = '#f4d9a0';
-  e.target.style.opacity = '1';
-  e.target.style.textShadow = '0 0 10px rgba(244,217,160,0.45)';
-});
-document.getElementById('hamletBackBtn').addEventListener('mouseleave', (e) => {
-  e.target.style.color = '#8a7a6a';
-  e.target.style.opacity = '0.75';
-  e.target.style.textShadow = 'none';
-});
 
 function showHamlet() {
+  // Thin wrapper around enterHamletCanvas. The legacy DOM-overlay hamlet
+  // path used to live inline here behind a `return;` and was kept as
+  // unreachable code for one release as a fast revert if the canvas
+  // hamlet turned up a blocker. The canvas hamlet has shipped multiple
+  // sessions in production now — the dead DOM path is gone. NPC-arc
+  // sweep + the first-hamlet onboarding tip live inside
+  // enterHamletCanvas (first_descent_hint covers the canvas-specific
+  // "walk to portal, press E" cue).
+  enterHamletCanvas();
+}
+
+// CANVAS HAMLET ENTRY — Approach B. Feature-flagged via window.__canvasHamlet.
+// Loads a hamlet-kind room, spawns the hero at the entrance tile, and hands
+// control to the hamletScene module (world-positioned NPCs + descent portal +
+// Watcher shrine). Dialogue still opens via the existing dialogueEl DOM
+// overlay when the hero interacts with an NPC; starting a run still routes
+// to the existing startRun() flow when the hero walks into the portal.
+function enterHamletCanvas() {
+  // FIRST-EVER HAMLET ENTRY runs the Keeper wake cinematic — see
+  // playKeeperWake() further down for the full block of design notes.
+  // Short version: the player wakes from unconsciousness; thematically
+  // they should see DARKNESS first, then hear the Keeper's voice,
+  // then the hamlet itself. So we hide all overlays first (menu's
+  // gold UI must not bleed through the wake's vignette), play the
+  // wake (heavy radial gradient covers whatever the canvas is
+  // painting pre-hamlet), and the re-entry on dismiss runs the
+  // regular hamlet setup which renders the painted scene + NPCs +
+  // hero next to the Keeper (via _freshFromWake spawn override).
+  //
+  // Gate semantics: hasSeen check + markSeen-on-dismiss (not
+  // isFirstTime up front) so closing the tab mid-cinematic does NOT
+  // consume it — the player gets the wake on their next launch.
+  if (!hasSeen('hamlet', 'wake')) {
+    hideAllOverlays();
+    playKeeperWake(() => {
+      markSeen('hamlet', 'wake');
+      // The Keeper has just spoken at length about the player; even
+      // before the first proper dialogue she is no longer a stranger.
+      // Pre-seed her familiarity counter to acquainted-tier (5+) so
+      // the player's first walk-up dialogue starts at "an acquaintance"
+      // and her first personal topic (the_name) is already unlocked.
+      // This rewards the cinematic with immediately-visible UI depth.
+      hamletState.npcFamiliarity = hamletState.npcFamiliarity || {};
+      if ((hamletState.npcFamiliarity.keeper | 0) < 5) {
+        hamletState.npcFamiliarity.keeper = 5;
+      }
+      // Stamp a recent visit so the longAbsence reactive greeting
+      // doesn't fire on the player's very next walk-up to her.
+      hamletState.npcLastVisit = hamletState.npcLastVisit || {};
+      hamletState.npcLastVisit.keeper = Date.now();
+      saveHamletState();
+      // One-shot flag — spawn override fires on the immediate
+      // re-entry below so the hero appears next to the Keeper.
+      _freshFromWake = true;
+      enterHamletCanvas();
+    });
+    return;
+  }
+
   hideAllOverlays();
-  // Ambient audio — warmer hamlet pad with soft fire crackles. Crossfades
-  // from the menu pad.
   startAmbientPad('hamlet');
-  // Re-check NPC presence in case records advanced since last visit
   refreshNpcPresence(records, stats, { seenRelicIds });
-  // Also sweep each present NPC's arc — milestone stages (4th stage,
-  // added April 2026) unlock from run-state conditions like "any boss
-  // killed" or "3+ curses active" rather than from service use, so
-  // they'd otherwise never trigger unless the player happened to use
-  // the service after the milestone was hit.
   for (const id of ALL_NPC_IDS) {
     if (hamletState.npcArcStage[id] !== undefined) tryAdvanceArc(id);
   }
-  hamletEl.style.display = 'flex';
-  renderHamlet();
-  // Onboarding tip — fires once to explain the hamlet as a persistent hub.
-  setTimeout(() => showTip('first_hamlet'), 500);
+
+  // Build the hamlet room and slot it as floor[0]. The standard render +
+  // camera pipeline consumes `room` / `floor[roomIndex]` without special
+  // knowledge of the hamlet kind beyond the drawRoom branch in room.js.
+  floor = [{
+    kind: 'hamlet',
+    pillarTemplate: 0,
+    spawns: [],
+    cleared: true,
+    doors: { north: false, south: false },
+  }];
+  roomIndex = 0;
+  buildRoomFromData(floor[0]);
+
+  // Purge any transient combat state from a prior session (enemies, bullets,
+  // pedestals, flame hazards, transitions, intro timers, pickup banner).
+  // The hamlet is a non-combat room — nothing should carry over. Without
+  // suppressPickupFlash a banner in flight when the player dies or quits
+  // will animate over the hamlet on return (audit quick-win).
+  clearEnemies();
+  clearProjectiles();
+  clearPedestals();
+  clearFlames();
+  clearEmberRings();
+  suppressPickupFlash();
+  // Door-transition residue must be wiped explicitly — neither loadRoom
+  // nor buildRoomFromData touches doorPan / prevRoom (they're owned by
+  // the transition flow, not the room flow). Without this, a hero who
+  // died mid-pan or quit-to-menu mid-pan keeps `doorPan` non-null;
+  // isDoorPanActive() then freezes hero/enemies/projectiles indefinitely
+  // on the next tick after hamlet entry. Same for prevRoom: a stale
+  // dungeon snapshot would render at offset coords across the hamlet
+  // for ~1.8s of life before tickPrevRoom self-cleared.
+  doorPan = null;
+  clearPrevRoom();
+  transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
+  bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
+  floorCardTime = 0;
+  phaseIntroTime = 0; phaseIntroBoss = null; phaseIntroStartedAt = 0;
+  // Death-ceremony residue — without this reset, a player who died,
+  // clicked MAIN MENU, then re-entered hamlet would see the red
+  // "YOU HAVE FALLEN" canvas overlay stuck on top of the hamlet (the
+  // ceremony's draw path keys off `deathCeremonyActive`, which only
+  // got reset by startRun / resumeRun, not by hamlet re-entry).
+  deathCeremonyActive = false;
+  deathCeremonyTime = 0;
+  deathSummaryShown = false;
+  // Same hygiene for the first-death fade beat. Hamlet-entry resets it
+  // so the black overlay doesn't bleed across into the hamlet view.
+  _firstDeathFadeActive = false;
+  _firstDeathFadeTime = 0;
+  // Drop any pending top-right rail entries — a relic picked up in the
+  // last dungeon room shouldn't keep its notification visible across
+  // the hamlet transition.
+  clearNotifications();
+
+  // Spawn the hero at the hamlet entrance and snap the camera so there's no
+  // lerp-in from wherever they last were. EXCEPTION: if this entry is
+  // the one immediately following the Keeper wake cinematic, spawn the
+  // hero next to the Keeper (her painted position is ~820, 600) so the
+  // "I pulled you up the stairs" framing has visual continuity — the
+  // player wakes up next to her, not down at the southern entrance.
+  if (_freshFromWake) {
+    _freshFromWake = false;
+    hero.x = 790;
+    hero.y = 660;
+  } else {
+    hero.x = HAMLET_HERO_SPAWN.x;
+    hero.y = HAMLET_HERO_SPAWN.y;
+  }
+  hero.state = 'idle';
+  hero.stateTime = 0;
+  hero.vx = 0; hero.vy = 0;
+  hero.iframes = 0;
+  // Snap camera to spawn-aware initial position with HAMLET_ZOOM clamps.
+  // World is 1376×768; clamps keep the (1280/zoom)×(720/zoom) view inside.
+  camera.zoom = HAMLET_ZOOM;
+  camera.x = Math.max(366, Math.min(1010, hero.x));
+  camera.y = Math.max(206, Math.min(562, hero.y));
+  camera.targetX = camera.x;
+  camera.targetY = camera.y;
+  // Disable ambient zoom breathe in hamlet — the ±0.6% sin oscillation
+  // in updateCamera causes visible tile-edge shimmer on the pixel-art
+  // tilemap (each frame the canvas scales slightly, snapping pixels to
+  // different positions with imageSmoothingEnabled = false). Re-enabled
+  // in startRun() for combat where the "living camera" feel is wanted.
+  camera.breatheEnabled = false;
+  // Reset any zoom pulse residue from a prior dungeon run, then re-apply
+  // HAMLET_ZOOM (centralized constant from hamletScene.js — 1.75 gives
+  // hero/NPCs proper visual scale against the painted backdrop).
+  camera.zoomPulseAmt = 0;
+  camera.zoomPulseTime = 0;
+  camera.zoom = HAMLET_ZOOM;
+
+  // Onboarding — first canvas-hamlet entry tells the player the goal
+  // (find the portal, press E). Once-per-player via the seen-set in
+  // tips.js so re-entry between runs doesn't repeat it.
+  setTimeout(() => showTip('first_descent_hint'), 800);
+
+  running = true;
+  paused = false;
 }
 
-function renderHamlet() {
-  // Header progress line
-  const prog = document.getElementById('hamletProgress');
-  const npcN = presentNpcCount();
-  const npcT = totalNpcs();
-  if (prog) {
-    prog.textContent = npcN >= npcT
-      ? 'every lantern kindled'
-      : `${npcN} of ${npcT} souls returned`;
-  }
-  document.getElementById('hamletEssenceValue').textContent = (meta.essence | 0);
-  document.getElementById('hamletNpcCount').textContent = npcN;
-  document.getElementById('hamletNpcTotal').textContent = npcT;
-
-  // Dim/brighten ambient light pools based on which NPCs are present
-  const forgeGlow = document.getElementById('hamletForgeGlow');
-  const archGlow = document.getElementById('hamletArchiveGlow');
-  if (forgeGlow) forgeGlow.style.opacity = hamletState.npcArcStage.smith !== undefined ? '1' : '0';
-  if (archGlow) archGlow.style.opacity = hamletState.npcArcStage.archivist !== undefined ? '1' : '0';
-
-  // FUSION SHRINES — one small glowing pedestal per discovered fusion,
-  // scattered across the foreground of the hamlet. Each shrine uses its
-  // fusion's tint so they read as a constellation of your discoveries.
-  // Hamlet literally grows prettier with every new fusion you find.
-  const shrines = document.getElementById('hamletFusionShrines');
-  if (shrines) {
-    shrines.innerHTML = '';
-    const fusionIds = [...discoveredFusions];
-    // Deterministic left-to-right placement across 15%..85% so shrines don't
-    // jump around as new ones are discovered (they only ever append).
-    const n = fusionIds.length;
-    if (n > 0) {
-      const slotWidth = Math.min(70 / n, 9);        // % width per shrine slot
-      for (let i = 0; i < n; i++) {
-        const id = fusionIds[i];
-        const fusion = FUSIONS[id];
-        if (!fusion) continue;
-        const xPct = 15 + slotWidth * (i + 0.5);
-        const shrine = document.createElement('div');
-        const tint = fusion.tint || '#c9a86a';
-        shrine.style.cssText = `
-          position:absolute;
-          left:${xPct}%;
-          bottom:0;
-          transform:translateX(-50%);
-          width:24px;height:40px;
-          pointer-events:none;
-          display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-        `;
-        shrine.title = fusion.name;      // native tooltip
-        shrine.innerHTML = `
-          <!-- Orb glow -->
-          <div style="position:absolute;bottom:14px;width:40px;height:40px;background:radial-gradient(circle, ${tint}aa 0%, ${tint}44 40%, transparent 75%);filter:blur(1px);animation:ctaHaloBreathe 3.2s ease-in-out infinite;"></div>
-          <!-- Orb core -->
-          <div style="position:absolute;bottom:22px;width:10px;height:10px;background:${tint};border-radius:50%;box-shadow:0 0 8px ${tint};"></div>
-          <!-- Pedestal -->
-          <div style="width:12px;height:14px;background:linear-gradient(180deg, rgba(80,70,60,0.9), rgba(40,30,25,0.9));box-shadow:inset 0 0 0 1px rgba(180,150,110,0.4);"></div>
-        `;
-        shrines.appendChild(shrine);
-      }
-    }
-  }
-
-  // NPC hotspots — render a larger framed portrait for each present NPC,
-  // grounded in the village scene with a warm light pool + parchment plaque.
-  const layer = document.getElementById('hamletNpcLayer');
-  layer.innerHTML = '';
-  for (const id of ALL_NPC_IDS) {
-    const def = NPCS[id];
-    const present = hamletState.npcArcStage[id] !== undefined;
-    if (!present) continue;
-
-    const hotspot = document.createElement('button');
-    const unread = hasUnreadDialogue(id);
-    // Six NPCs fit across the painted hamlet at 2000px viewport: 170px per
-    // hotspot × 6 + ~200px gaps. Portrait is 128px (was 160); readable and
-    // stylized, pixel art reads even at small sizes thanks to the tinted frame.
-    hotspot.style.cssText = `
-      position:absolute;
-      left:${def.x}%;
-      top:${def.y}%;
-      transform:translate(-50%,-50%);
-      width:170px;height:220px;
-      background:transparent;
-      border:0;
-      cursor:pointer;
-      padding:0;
-      display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-      transition:all 0.3s ease;
-      z-index:3;
-    `;
-    hotspot.onmouseenter = () => {
-      hotspot.style.transform = 'translate(-50%,-50%) scale(1.05)';
-      hotspot.style.filter = `brightness(1.18) drop-shadow(0 0 24px ${def.tint}88)`;
-    };
-    hotspot.onmouseleave = () => {
-      hotspot.style.transform = 'translate(-50%,-50%)';
-      hotspot.style.filter = '';
-    };
-    // Portrait — 128px square with tint-colored frame. Silhouette fallback
-    // if the image hasn't loaded (e.g. before Nano Banana portraits arrive).
-    const portraitImg = imageCache[def.portrait];
-    const portraitHtml = portraitImg
-      ? `<img class="hamletNpcPortrait" src="${portraitImg.src}" style="width:128px;height:128px;object-fit:cover;background:radial-gradient(ellipse at 50% 55%, ${def.tint}22 0%, rgba(8,4,12,0.85) 70%);box-shadow:inset 0 0 0 2px ${def.tint}, 0 0 22px ${def.tint}55, 0 6px 18px rgba(0,0,0,0.55);"/>`
-      : `<div style="width:128px;height:128px;background:radial-gradient(ellipse at 40% 35%, ${def.tint}55, rgba(14,8,18,0.9) 70%);box-shadow:inset 0 0 0 2px ${def.tint}, 0 0 22px ${def.tint}55, 0 6px 18px rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;color:${def.tint};font-size:40px;font-weight:bold;font-family:Georgia,serif;">${def.name.charAt(4) || def.name.charAt(0)}</div>`;
-    // Warm ground glow pooled UNDER the NPC — makes them feel grounded on
-    // the stone square rather than floating in space.
-    const groundGlow = `<div style="position:absolute;bottom:28px;left:50%;transform:translateX(-50%);width:180px;height:24px;background:radial-gradient(ellipse at 50% 50%, ${def.tint}55 0%, ${def.tint}22 40%, transparent 80%);pointer-events:none;filter:blur(3px);"></div>`;
-    // Unread-dialogue pulsing gold dot
-    const unreadDot = unread ? `<div style="position:absolute;top:-4px;right:12px;width:12px;height:12px;background:#f4d9a0;border-radius:50%;box-shadow:0 0 12px rgba(244,217,160,0.9);animation:ctaHaloBreathe 1.8s ease-in-out infinite;"></div>` : '';
-    // Illuminated-manuscript plaque below the portrait — parchment-toned
-    // backing with gold serif name and subtle gold hairline.
-    const plaqueHtml = `
-      <div style="position:relative;margin-top:10px;padding:6px 18px;background:linear-gradient(180deg, rgba(40,28,18,0.92) 0%, rgba(22,14,8,0.95) 100%);box-shadow:inset 0 0 0 1px ${def.tint}aa, 0 0 14px ${def.tint}44;">
-        <div style="color:${def.tint};font-size:12px;letter-spacing:4px;font-weight:bold;font-family:Georgia,serif;text-shadow:0 0 6px ${def.tint}77;">${def.name.replace(/^The /,'').toUpperCase()}</div>
-      </div>
-    `;
-    hotspot.innerHTML = `
-      ${groundGlow}
-      <div style="position:relative;">
-        ${portraitHtml}
-        ${unreadDot}
-      </div>
-      ${plaqueHtml}
-    `;
-    hotspot.onclick = () => openDialogue(id);
-    layer.appendChild(hotspot);
-  }
-}
 
 // ============================================================================
 // DIALOGUE PANEL — overlay that opens when the player clicks an NPC. Shows
@@ -1344,36 +1393,86 @@ dialogueEl.style.cssText = `
 `;
 dialogueEl.innerHTML = `
   <div id="dialoguePanel" style="
-    max-width:640px;width:92vw;
+    max-width:880px;width:96%;
+    display:grid;
+    grid-template-columns:1fr 220px;
+    gap:0;
     background:linear-gradient(180deg, rgba(24,18,14,0.97), rgba(12,8,10,0.98));
     box-shadow:0 0 30px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(201,168,106,0.4), inset 0 0 18px rgba(0,0,0,0.5);
-    padding:28px 32px;
     position:relative;
     animation:modalFadeIn 0.3s ease-out;
   ">
-    <!-- Top row: portrait + name -->
-    <div style="display:flex;align-items:center;gap:18px;margin-bottom:18px;">
-      <div id="dialoguePortrait" style="width:72px;height:72px;flex-shrink:0;"></div>
-      <div style="flex:1;">
+    <!-- LEFT COLUMN: portrait + name + body + action buttons -->
+    <div style="padding:24px 28px;display:flex;flex-direction:column;min-width:0;">
+      <!-- Top row: portrait + name -->
+      <!-- Header: NPC name + subtitle. Portrait removed (was a circular
+           crop of the v2 sprite, but the head-zoom never landed cleanly
+           across the varied aspect ratios — pixel-art crops at this size
+           read as muddy rather than evocative). The name typography
+           carries the identity. -->
+      <div style="margin-bottom:14px;">
         <div id="dialogueName" style="font-size:22px;letter-spacing:5px;color:#f4d9a0;font-weight:400;margin-bottom:2px;"></div>
         <div id="dialogueTitle" style="font-size:11px;letter-spacing:3px;font-style:italic;opacity:0.6;"></div>
       </div>
+      <!-- Gold hairline divider -->
+      <div style="width:100%;height:1px;background:linear-gradient(90deg, transparent, rgba(201,168,106,0.45), transparent);margin-bottom:14px;"></div>
+      <!-- Body: stage text -->
+      <div id="dialogueText" style="font-size:14px;line-height:1.7;color:#d8cfae;margin-bottom:16px;min-height:120px;font-style:italic;flex:1;"></div>
+      <!-- Service / speak / close buttons. SPEAK is the casual-chat path
+           that cycles the NPC's chatLines without leaving the modal \u2014
+           visually muted (text-link style) so the SERVICE button stays
+           the primary action. -->
+      <div style="display:flex;gap:12px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
+        <button id="dialogueSpeakBtn" style="background:transparent;color:#a89060;border:1px solid rgba(168,144,96,0.4);padding:8px 16px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">SPEAK</button>
+        <button id="dialogueServiceBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:11px 24px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:12px;font-weight:bold;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 14px rgba(201,168,106,0.25);transition:all 0.2s ease;">SERVICE</button>
+        <button id="dialogueCloseBtn" style="background:transparent;color:#8a7a6a;border:0;padding:8px 14px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">\u2190 FAREWELL</button>
+      </div>
     </div>
-    <!-- Gold hairline divider -->
-    <div style="width:100%;height:1px;background:linear-gradient(90deg, transparent, rgba(201,168,106,0.45), transparent);margin-bottom:18px;"></div>
-    <!-- Body: stage text -->
-    <div id="dialogueText" style="font-size:14px;line-height:1.75;color:#d8cfae;margin-bottom:22px;min-height:120px;font-style:italic;"></div>
-    <!-- Service + close buttons -->
-    <div style="display:flex;gap:14px;justify-content:flex-end;align-items:center;">
-      <button id="dialogueServiceBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:12px 28px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:12px;font-weight:bold;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 14px rgba(201,168,106,0.25);transition:all 0.2s ease;">SERVICE</button>
-      <button id="dialogueCloseBtn" style="background:transparent;color:#8a7a6a;border:0;padding:8px 16px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:all 0.2s ease;">\u2190 FAREWELL</button>
+    <!-- RIGHT COLUMN: numbered topic list (Morrowind / CRPG style).
+         Click a topic OR press the matching number key (1-9) to ask.
+         Empty (display:none) when the NPC has no topics. -->
+    <div id="dialogueTopics" style="display:none;flex-direction:column;gap:4px;padding:24px 22px 24px 18px;border-left:1px solid rgba(201,168,106,0.22);background:linear-gradient(90deg, rgba(0,0,0,0.18), transparent);">
+      <div style="font-size:9px;letter-spacing:4px;color:#c9a86a;font-weight:bold;opacity:0.65;margin-bottom:8px;text-align:center;">\u2014 ASK ABOUT \u2014</div>
     </div>
   </div>
 `;
 document.getElementById('hud').appendChild(dialogueEl);
 document.getElementById('dialogueCloseBtn').addEventListener('click', () => {
+  // Quiet click feedback so closing the modal feels as tactile as
+  // opening it. Pitch slightly lower than SPEAK / topic-chip clicks
+  // so the close reads as "step back" rather than "discover."
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   dialogueEl.style.display = 'none';
 });
+// Click-outside-to-close — backdrop dismiss is the standard modal
+// idiom; players try it instinctively. Without this, they hunt for
+// FAREWELL or hit Esc. Only fires when the click target is the
+// backdrop itself (not the inner panel) to avoid swallowing button
+// or chip clicks that bubble up.
+dialogueEl.addEventListener('click', (e) => {
+  if (e.target === dialogueEl) {
+    try { synthClick(0.9, 0.22); } catch (_e) {}
+    dialogueEl.style.display = 'none';
+  }
+});
+// Keyboard shortcuts — 1-9 select numbered topic chips while the
+// dialogue is open. Matches the CRPG/Morrowind affordance the
+// vertical numbered list implies. Captures on document so input.js's
+// in-game number-key handlers (none today, but defensive) don't
+// double-fire. The click() call drives the same path as a mouse
+// click — including click sfx + body swap + seen-state update.
+document.addEventListener('keydown', (e) => {
+  if (dialogueEl.style.display === 'none') return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  // Digit row only — Digit1..Digit9 maps to index 1..9.
+  if (!/^Digit[1-9]$/.test(e.code)) return;
+  const idx = parseInt(e.code.slice(5), 10);
+  const chip = document.querySelector(`#dialogueTopics .dialogueTopicChip[data-topic-index="${idx}"]`);
+  if (chip) {
+    e.preventDefault();
+    chip.click();
+  }
+}, true);
 document.getElementById('dialogueCloseBtn').addEventListener('mouseenter', (e) => {
   e.target.style.color = '#ff9a9a';
   e.target.style.textShadow = '0 0 10px rgba(216,128,128,0.5)';
@@ -1382,41 +1481,408 @@ document.getElementById('dialogueCloseBtn').addEventListener('mouseleave', (e) =
   e.target.style.color = '#8a7a6a';
   e.target.style.textShadow = 'none';
 });
+// SPEAK button — casual chat. Click cycles to the next chatLine via
+// getNextChatLine(npcId), replacing the body text with that single line
+// rendered in slightly more conversational typography. The current NPC
+// id is stashed on the modal element when openDialogue runs.
+document.getElementById('dialogueSpeakBtn').addEventListener('click', () => {
+  const npcId = dialogueEl.dataset.npcId;
+  if (!npcId) return;
+  const def = NPCS[npcId];
+  if (!def) return;
+  const line = getNextChatLine(npcId);
+  if (!line) return;
+  // Soft click feedback - same synthClick the topic chips use, slightly
+  // muted so the SPEAK button reads as a quieter "they're chatting"
+  // beat vs. the SERVICE button's louder commit click.
+  try { synthClick(1.05, 0.32); } catch (_e) {}
+  // Replace body with the chat line. Use a different visual register -
+  // a single-line cream paragraph with an italic dash before, signalling
+  // "this is the NPC speaking now," distinct from the multi-paragraph
+  // arc-stage flavor. Build via createElement + textContent so the line
+  // string stays inert text (matches the same defensive pattern the
+  // topic-answer + dialogue-body paths use).
+  const textEl = document.getElementById('dialogueText');
+  textEl.innerHTML = '';
+  const p = document.createElement('p');
+  p.style.cssText = `margin:0;line-height:1.7;font-style:italic;color:${def.tint || '#d8cfae'};`;
+  const dash = document.createElement('span');
+  dash.style.cssText = 'opacity:0.6;margin-right:8px;';
+  dash.textContent = '—';
+  p.appendChild(dash);
+  p.appendChild(document.createTextNode(line));
+  textEl.appendChild(p);
+});
+document.getElementById('dialogueSpeakBtn').addEventListener('mouseenter', (e) => {
+  e.target.style.color = '#f4d9a0';
+  e.target.style.borderColor = 'rgba(244,217,160,0.7)';
+  e.target.style.background = 'rgba(244,217,160,0.06)';
+});
+document.getElementById('dialogueSpeakBtn').addEventListener('mouseleave', (e) => {
+  e.target.style.color = '#a89060';
+  e.target.style.borderColor = 'rgba(168,144,96,0.4)';
+  e.target.style.background = 'transparent';
+});
 
 function openDialogue(npcId) {
   const def = NPCS[npcId];
   if (!def) return;
   const stage = hamletState.npcArcStage[npcId];
-  if (stage === undefined) return;
+  if (stage === undefined) {
+    // Locked NPC — surface their unlockHint as a notification card so the
+    // E-press isn't silent. Previously this returned without any feedback,
+    // leaving the player to guess why the dialogue modal didn't open.
+    // The card is intentionally muted (slate-blue tint, "SHROUDED FIGURE"
+    // header) so it reads as "not yet" rather than "broken".
+    pushNotification({
+      kind: 'tip',
+      header: '— A SHROUDED FIGURE —',
+      title: 'They will not yet meet your eye.',
+      body: def.unlockHint || 'Their hour has not yet come.',
+      tint: '#8a96b6',
+      life: 5.0,
+    });
+    return;
+  }
   const stageDef = def.arcStages[stage] || def.arcStages[def.arcStages.length - 1];
-  // Name + title
+  // Stash current npc id on the modal so the persistent SPEAK click
+  // handler (set up once at module load) knows which NPC to route to.
+  dialogueEl.dataset.npcId = npcId;
+
+  // ── DEPTH PASS — build the reactive context BEFORE any state writes
+  // (greeting/preoccupation/visit-stamp). The greeting needs to read
+  // the OLD lastVisit timestamp (for longAbsence detection) and the
+  // OLD familiarity counter; the visit stamp + bump fire after the
+  // body is composed.
+  const ctx = { seenRelicIds };
+  const greetCtx = buildGreetingContext(records, ctx);
+  const greeting = resolveReactiveGreeting(npcId, greetCtx);
+  const preoccupation = getCurrentPreoccupation(npcId, greetCtx);
+  const familiarityLabel = getFamiliarityLabel(npcId);
+
+  // Name + familiarity-aware title
   document.getElementById('dialogueName').textContent = def.name;
   document.getElementById('dialogueName').style.color = def.tint || '#f4d9a0';
   document.getElementById('dialogueName').style.textShadow = `0 0 10px ${def.tint || '#c9a86a'}66`;
-  document.getElementById('dialogueTitle').textContent = def.title || '';
-  // Portrait
-  const portraitEl = document.getElementById('dialoguePortrait');
-  const portraitImg = imageCache[def.portrait];
-  portraitEl.innerHTML = portraitImg
-    ? `<img src="${portraitImg.src}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};"/>`
-    : `<div style="width:72px;height:72px;border-radius:50%;background:radial-gradient(ellipse at 40% 35%, ${def.tint}55, rgba(14,8,18,0.9) 70%);box-shadow:0 0 16px ${def.tint}99, inset 0 0 0 2px ${def.tint};display:flex;align-items:center;justify-content:center;color:${def.tint};font-size:26px;font-weight:bold;font-family:Georgia,serif;">${def.name.charAt(4) || def.name.charAt(0)}</div>`;
-  // Body text
+  // Subtitle now layers the role title + the relationship status, so the
+  // player can feel the relationship deepen as familiarity grows.
+  const titleText = def.title ? `${def.title} · ${familiarityLabel}` : familiarityLabel;
+  document.getElementById('dialogueTitle').textContent = titleText;
+  // (Portrait removed) Previously rendered the v2 NPC sprite as a
+  // circular head-zoom crop, but the result read as muddy across the
+  // varied aspect ratios — the sprites are designed for in-world
+  // 100-px rendering, not for tight 72-px circular portraits. The
+  // name typography + the NPC's tint color carry the identity now.
+  // Both the dialoguePortrait DOM node and the per-render image build
+  // were removed; the loader still ships the v2 portraits in case we
+  // revisit (e.g. larger headshot panels keyed off a portrait
+  // re-render of just the head region).
+
+  // Body — three layers, top to bottom:
+  //   1. Reactive greeting (if a trigger fires) — prepended in NPC tint
+  //      as a quoted italic line, sits as a "they noticed something"
+  //      preface to the regular flavor.
+  //   2. Preoccupation (every ~3rd visit) — a small italic "they are
+  //      thinking about X" line, distinct visual register from greeting.
+  //   3. ArcStage paragraphs (the existing flavor for this milestone).
+  // Build body via createElement + .textContent so greeting/preoccupation/
+  // arc-stage strings stay inert text. All current strings are author-
+  // controlled, but matching the same defensive pattern the topic-click
+  // path uses (commit 02a2797) closes a class of future XSS risk.
   const textEl = document.getElementById('dialogueText');
   const paras = Array.isArray(stageDef.text) ? stageDef.text : [stageDef.text];
-  textEl.innerHTML = paras.map(p => `<p style="margin:0 0 12px;">${p}</p>`).join('');
-  // Mark this stage as read — removes the unread dot on return
-  markDialogueSeen(npcId);
+  const tint = def.tint || '#c9a86a';
+  textEl.innerHTML = '';
+  if (greeting) {
+    const gp = document.createElement('p');
+    gp.style.cssText = `margin:0 0 14px;color:${tint};font-style:italic;line-height:1.55;font-size:13px;border-left:2px solid ${tint}77;padding-left:12px;opacity:0.95;`;
+    gp.textContent = greeting;
+    textEl.appendChild(gp);
+  }
+  if (preoccupation) {
+    const pp = document.createElement('p');
+    pp.style.cssText = 'margin:0 0 12px;color:#a89070;font-style:italic;font-size:11px;letter-spacing:0.3px;opacity:0.75;';
+    pp.textContent = `— ${preoccupation}`;
+    textEl.appendChild(pp);
+  }
+  for (const para of paras) {
+    const p = document.createElement('p');
+    p.style.cssText = 'margin:0 0 12px;';
+    p.textContent = para;
+    textEl.appendChild(p);
+  }
+  // Mark this stage as read — removes the unread dot on return.
+  // Deferred 1.5s and re-checked: a player who pops the modal and
+  // immediately Esc-closes shouldn't lose the unread cue without
+  // having actually read the body. The dataset check guards against
+  // a quick switch to a different NPC (dataset.npcId moves).
+  setTimeout(() => {
+    if (dialogueEl.style.display !== 'none'
+        && dialogueEl.dataset.npcId === npcId) {
+      markDialogueSeen(npcId);
+    }
+  }, 1500);
+  // Bump familiarity + stamp visit. Done AFTER greeting + preoccupation
+  // resolved so they see the OLD state.
+  // Detect tier crossings BEFORE bump so we can fire a "we know each
+  // other better now" beat - chord + delayed banner. Without this, the
+  // tier transitions (stranger -> acquainted at 5, etc.) only surfaced
+  // as a quietly-changed subtitle label; players didn't notice.
+  const tierCrossing = nextBumpCrossesTier(npcId);
+  bumpFamiliarity(npcId);
+  stampVisit(npcId);
+  if (tierCrossing) {
+    // Warm chord at the crossing - same primitive the wake cinematic
+    // uses, dropped to a lower volume so it lands as "moment" not
+    // "event." Fires inside the dialogue modal so the player hears
+    // it overlap with reading the greeting.
+    try { synthChord(330, 0.5, 1.4); } catch (_e) {}
+    // Brief banner after the modal closes - queued via setTimeout so
+    // it doesn't compete with the modal text for attention. Reuses
+    // the existing showTip channel so it auto-dismisses cleanly. The
+    // tip key is dynamic so each tier-up reads as a fresh beat.
+    const tierKey = `familiarity_${tierCrossing.id}_${npcId}`;
+    // Strip the "The " article from "The Keeper" / "The Smith" / etc.
+    // before uppercasing — without this the banner reads "THE KEEPER
+    // now sees you as..." with a redundant determiner that adds no
+    // meaning and breaks the cadence ("KEEPER now sees you as..." is
+    // tighter and matches how the player names them mentally).
+    const rawName = def.name || 'They';
+    const npcName = rawName.replace(/^The /, '').toUpperCase();
+    setTimeout(() => {
+      try {
+        TIPS[tierKey] = { text: `${npcName} now sees you as ${tierCrossing.label}` };
+        showTip(tierKey);
+      } catch (_e) {}
+    }, 1100);
+  }
   // Wire the service button based on NPC service type
   const svcBtn = document.getElementById('dialogueServiceBtn');
   svcBtn.textContent = def.service.label || 'SERVICE';
   svcBtn.style.color = def.tint || '#f4d9a0';
   svcBtn.style.boxShadow = `inset 0 0 0 1px ${def.tint || '#c9a86a'}, 0 0 14px ${def.tint || '#c9a86a'}44`;
   svcBtn.onclick = () => {
+    // Wanderer's gift flow stays inside the dialogue — its responses
+    // (heirloom prompt, success line, can't-afford notice) update the
+    // body in-place via showNpcResponse / showNpcConfirm. Closing the
+    // dialogue would orphan those responses against the bare hamlet.
+    // Other services (smith, oracle, etc.) open their own modals, so
+    // closing the dialogue first prevents two stacked panels.
+    if (def.service && def.service.type === 'wanderer_gift') {
+      runNpcService(npcId);
+      return;
+    }
     dialogueEl.style.display = 'none';
     runNpcService(npcId);
   };
+  // SPEAK button visibility — only show for NPCs with chatLines defined.
+  // Lets future NPCs opt out of casual chat (e.g. silent NPCs) without
+  // breaking the modal for existing roster.
+  const speakBtn = document.getElementById('dialogueSpeakBtn');
+  speakBtn.style.display = npcHasChat(npcId) ? '' : 'none';
+
+  // Topic chips — Morrowind-style "ask about X" subjects. Each NPC has
+  // their own perspective on the shared catalog (the_ruin, the_keeper,
+  // the_watcher, etc.). Render as a wrap-flow row of subtle chips.
+  // Unseen topics get a small dot to the right of the label.
+  // Topic LIST — Morrowind / CRPG style. Each available topic renders as
+  // a numbered button on the right column. Click OR press the matching
+  // number key (1-9) to ask. Replaces the prior wrap-flow chip row that
+  // didn't scale well and lost identity once stuffed alongside dense
+  // body text. Empty state hides the whole right column.
+  const topicsRow = document.getElementById('dialogueTopics');
+  const topics = availableTopicsForNpc(npcId);
+  topicsRow.innerHTML = '';
+  // Reflow the panel grid based on topic availability — single column
+  // when an NPC has no topics so the body uses the full panel width.
+  const dialoguePanelEl = document.getElementById('dialoguePanel');
+  if (topics.length > 0) {
+    if (dialoguePanelEl) dialoguePanelEl.style.gridTemplateColumns = '1fr 220px';
+    topicsRow.style.display = 'flex';
+    // Re-add the section header that lives inside topicsRow (cleared by
+    // innerHTML='' above).
+    const head = document.createElement('div');
+    head.style.cssText = 'font-size:9px;letter-spacing:4px;color:#c9a86a;font-weight:bold;opacity:0.65;margin-bottom:8px;text-align:center;';
+    head.textContent = '— ASK ABOUT —';
+    topicsRow.appendChild(head);
+    // Build numbered buttons. Index limit 9 — keyboard shortcuts only go
+    // up to digit-9; if any NPC ever exceeds 9 topics, additional ones
+    // still render but lose the keyboard hotkey.
+    topics.forEach((t, idx) => {
+      const num = idx + 1;
+      const chip = document.createElement('button');
+      const seen = isTopicSeen(npcId, t.id);
+      chip.className = 'dialogueTopicChip';
+      chip.dataset.topicId = t.id;
+      chip.dataset.topicIndex = String(num);
+      chip.style.cssText = `
+        display:grid;
+        grid-template-columns:18px 1fr auto;
+        align-items:center;
+        gap:8px;
+        background:transparent;
+        color:${seen ? '#8a7a5a' : '#c9a86a'};
+        border:1px solid rgba(201,168,106,${seen ? 0.18 : 0.4});
+        border-left:2px solid ${seen ? 'rgba(201,168,106,0.3)' : '#c9a86a'};
+        padding:7px 10px;
+        font-size:10px;
+        cursor:pointer;
+        letter-spacing:2px;
+        font-family:Georgia,serif;
+        font-style:italic;
+        transition:all 0.18s ease;
+        text-align:left;
+        width:100%;
+      `;
+      // Build via createElement + textContent — defensive pattern
+      // (commit 02a2797). Topic labels are author-controlled today; the
+      // pattern keeps that future-proof.
+      const numEl = document.createElement('span');
+      numEl.style.cssText = `font-size:10px;color:${seen ? '#7a6a5a' : '#a0e8ff'};font-weight:bold;font-style:normal;text-shadow:0 0 4px rgba(160,232,255,${seen ? 0 : 0.4});letter-spacing:0;`;
+      numEl.textContent = num <= 9 ? String(num) : '·';
+      chip.appendChild(numEl);
+      const labelEl = document.createElement('span');
+      labelEl.style.cssText = 'text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
+      labelEl.textContent = t.label;
+      chip.appendChild(labelEl);
+      const dotEl = document.createElement('span');
+      dotEl.style.cssText = `width:6px;height:6px;border-radius:50%;${seen ? 'background:transparent;' : 'background:#a0e8ff;box-shadow:0 0 4px rgba(160,232,255,0.7);'}`;
+      chip.appendChild(dotEl);
+      chip.addEventListener('click', () => {
+        const ans = getTopicAnswer(npcId, t.id);
+        if (!ans) return;
+        // Click feedback - slightly higher pitch on UNSEEN topics
+        // (a small "you discovered something" bell), softer on
+        // already-seen so revisiting old answers stays mellow.
+        try { synthClick(seen ? 1.0 : 1.4, seen ? 0.28 : 0.45); } catch (_e) {}
+        // Replace body with the topic answer + a header line that
+        // reads as "they're now speaking about X".
+        const def2 = NPCS[npcId];
+        const tint = def2.tint || '#c9a86a';
+        const textEl2 = document.getElementById('dialogueText');
+        textEl2.innerHTML = '';
+        const headerEl = document.createElement('div');
+        headerEl.style.cssText = `font-size:9px;letter-spacing:4px;color:${tint};opacity:0.65;margin-bottom:10px;font-style:italic;text-transform:uppercase;font-weight:bold;`;
+        headerEl.textContent = `on ${t.label.toLowerCase()}`;
+        textEl2.appendChild(headerEl);
+        const bodyP = document.createElement('p');
+        bodyP.style.cssText = 'margin:0;line-height:1.7;color:#d8cfae;font-style:italic;';
+        bodyP.textContent = ans;
+        textEl2.appendChild(bodyP);
+        // Update this chip's visual state — it's been seen now.
+        chip.style.color = '#8a7a5a';
+        chip.style.borderColor = 'rgba(201,168,106,0.18)';
+        chip.style.borderLeftColor = 'rgba(201,168,106,0.3)';
+        numEl.style.color = '#7a6a5a';
+        numEl.style.textShadow = 'none';
+        dotEl.style.background = 'transparent';
+        dotEl.style.boxShadow = 'none';
+      });
+      chip.addEventListener('mouseenter', (e) => {
+        e.currentTarget.style.background = 'rgba(201,168,106,0.08)';
+        e.currentTarget.style.borderColor = 'rgba(201,168,106,0.6)';
+        e.currentTarget.style.borderLeftColor = '#f4d9a0';
+        e.currentTarget.style.color = '#f4d9a0';
+        e.currentTarget.style.transform = 'translateX(-2px)';
+      });
+      chip.addEventListener('mouseleave', (e) => {
+        const stillSeen = isTopicSeen(npcId, e.currentTarget.dataset.topicId);
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.borderColor = `rgba(201,168,106,${stillSeen ? 0.18 : 0.4})`;
+        e.currentTarget.style.borderLeftColor = stillSeen ? 'rgba(201,168,106,0.3)' : '#c9a86a';
+        e.currentTarget.style.color = stillSeen ? '#8a7a5a' : '#c9a86a';
+        e.currentTarget.style.transform = 'translateX(0)';
+      });
+      topicsRow.appendChild(chip);
+    });
+  } else {
+    if (dialoguePanelEl) dialoguePanelEl.style.gridTemplateColumns = '1fr';
+    topicsRow.style.display = 'none';
+  }
 
   dialogueEl.style.display = 'flex';
+}
+
+// ============================================================================
+// NPC RESPONSE HELPERS — replace native alert() / confirm() with in-dialogue
+// body updates so service-flow responses stay inside the dialogue panel
+// instead of breaking immersion with browser-chrome popups. The dialogue
+// modal stays OPEN; only the body content changes. Player dismisses via
+// FAREWELL / Esc / backdrop click as usual.
+//
+// `showNpcResponse(npcId, message)` — drop a single italic line into the
+// body styled to match the NPC's tint (matches how the SPEAK button
+// renders chatLines). Replaces alert().
+//
+// `showNpcConfirm(npcId, prompt, onYes, onNo)` — body shows a prompt
+// followed by two inline YES / NO buttons. Replaces confirm().
+//
+// Topics list is hidden during a confirm prompt — we don't want the
+// player accidentally clicking a topic chip and losing the confirmation
+// state. Restored on next openDialogue / response.
+// ============================================================================
+function showNpcResponse(npcId, message) {
+  const def = NPCS[npcId];
+  if (!def) return;
+  const tint = def.tint || '#c9a86a';
+  const textEl = document.getElementById('dialogueText');
+  if (!textEl) return;
+  textEl.innerHTML = '';
+  const p = document.createElement('p');
+  p.style.cssText = `margin:0;line-height:1.7;font-style:italic;color:${tint};`;
+  // Same opening-dash convention as SPEAK lines so the text reads as
+  // "the NPC speaking" rather than a flat status string.
+  const dash = document.createElement('span');
+  dash.style.cssText = 'opacity:0.6;margin-right:8px;';
+  dash.textContent = '—';
+  p.appendChild(dash);
+  p.appendChild(document.createTextNode(message));
+  textEl.appendChild(p);
+}
+
+function showNpcConfirm(npcId, prompt, onYes, onNo) {
+  const def = NPCS[npcId];
+  if (!def) return;
+  const tint = def.tint || '#c9a86a';
+  const textEl = document.getElementById('dialogueText');
+  if (!textEl) return;
+  textEl.innerHTML = '';
+  const p = document.createElement('p');
+  p.style.cssText = 'margin:0 0 16px;line-height:1.7;color:#d8cfae;font-style:italic;';
+  p.appendChild(document.createTextNode(prompt));
+  textEl.appendChild(p);
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:14px;justify-content:flex-start;align-items:center;margin-top:6px;';
+  const yesBtn = document.createElement('button');
+  yesBtn.textContent = 'YES';
+  yesBtn.style.cssText = `background:linear-gradient(180deg,${tint}33,rgba(10,6,16,0.85));color:${tint};border:0;padding:9px 26px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:11px;font-weight:bold;box-shadow:inset 0 0 0 1px ${tint}, 0 0 12px ${tint}33;transition:all 0.18s ease;`;
+  yesBtn.addEventListener('click', () => {
+    try { synthClick(1.0, 0.4); } catch (_e) {}
+    if (onYes) onYes();
+  });
+  yesBtn.addEventListener('mouseenter', (e) => { e.currentTarget.style.transform = 'translateY(-1px)'; });
+  yesBtn.addEventListener('mouseleave', (e) => { e.currentTarget.style.transform = 'translateY(0)'; });
+  const noBtn = document.createElement('button');
+  noBtn.textContent = 'NO';
+  noBtn.style.cssText = 'background:transparent;color:#8a7a6a;border:1px solid rgba(168,144,96,0.4);padding:9px 26px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-size:11px;font-style:italic;transition:all 0.18s ease;';
+  noBtn.addEventListener('click', () => {
+    try { synthClick(0.9, 0.25); } catch (_e) {}
+    if (onNo) onNo();
+  });
+  noBtn.addEventListener('mouseenter', (e) => { e.currentTarget.style.color = '#c9a86a'; e.currentTarget.style.borderColor = '#c9a86a'; });
+  noBtn.addEventListener('mouseleave', (e) => { e.currentTarget.style.color = '#8a7a6a'; e.currentTarget.style.borderColor = 'rgba(168,144,96,0.4)'; });
+  btnRow.appendChild(yesBtn);
+  btnRow.appendChild(noBtn);
+  textEl.appendChild(btnRow);
+  // Suppress topic clicks during a confirm — easy way: hide the topic
+  // column (the panel collapses to single column). Restored on next
+  // openDialogue or showNpcResponse.
+  const dpEl = document.getElementById('dialoguePanel');
+  const tEl = document.getElementById('dialogueTopics');
+  if (dpEl && tEl) {
+    dpEl.style.gridTemplateColumns = '1fr';
+    tEl.style.display = 'none';
+  }
 }
 
 function runNpcService(npcId) {
@@ -1458,12 +1924,13 @@ function runNpcService(npcId) {
 
 // Gravekeeper → existing curses modal with hamlet return routing.
 function showCursesFromHamlet() {
+  // Set the close-route flag BEFORE showing the modal — the modal's
+  // close button reads it on click and routes to "stay on hamlet
+  // canvas" instead of "show main menu". Replaces the old onclick-
+  // override pattern (which doubled with the addEventListener and
+  // also called showHamlet, respawning the hero at the entrance).
+  _serviceCloseToHamlet = true;
   showCursesModal();
-  const btn = document.getElementById('cursesCloseBtn');
-  if (btn) {
-    const prev = btn.onclick;
-    btn.onclick = () => { btn.onclick = prev; cursesEl.style.display = 'none'; showHamlet(); };
-  }
 }
 
 // ============================================================================
@@ -1474,7 +1941,7 @@ function showCursesFromHamlet() {
 // service, not an essence sink.
 // ============================================================================
 const oracleEl = document.createElement('div');
-oracleEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#181022 0%,#0a0814 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;';
+oracleEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#181022 0%,#0a0814 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
 oracleEl.innerHTML = `
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
   <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
@@ -1516,8 +1983,11 @@ oracleEl.innerHTML = `
 `;
 document.getElementById('hud').appendChild(oracleEl);
 document.getElementById('oracleCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   oracleEl.style.display = 'none';
-  showHamlet();
+  // Oracle is NPC-only (no main-menu access). Hamlet canvas is still
+  // rendering underneath; hiding the modal returns the player exactly
+  // where they left off next to the Oracle. No re-entry needed.
 });
 document.getElementById('oracleDrawBtn').addEventListener('click', () => {
   oracleEl.style.display = 'none';
@@ -1595,7 +2065,7 @@ function showOracleForecast() {
 // the hidden tarot-mode used to provide, now accessed via a worldly NPC.
 // ============================================================================
 const oracleFortuneEl = document.createElement('div');
-oracleFortuneEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0f28 0%,#0c0614 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:30;';
+oracleFortuneEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0f28 0%,#0c0614 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:30;overflow-y:auto;';
 oracleFortuneEl.innerHTML = `
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
   <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:960px;width:100%;">
@@ -1736,359 +2206,159 @@ document.getElementById('oracleFortuneAcceptBtn').addEventListener('click', () =
 const WANDERER_GIFT_COST = 30;
 
 function showWandererGift() {
-  // Pull common relics the player has actually seen
+  // Pull common relics the player has actually seen + that work with
+  // their current weapon (no wand-only gifts for sword players, etc.).
   const pool = ALL_RELIC_IDS.filter(id => {
     const def = RELIC_DEFS[id];
-    return seenRelicIds.has(id) && (def.tier || 'common') === 'common';
+    return seenRelicIds.has(id)
+      && (def.tier || 'common') === 'common'
+      && isRelicForWeapon(id, hero.weapon);
   });
+  // Hand off the actual gift bestowal so the heirloom-replacement confirm
+  // can re-enter cleanly via the YES button without nesting flow.
+  const _giveGift = () => {
+    const rollId = pool[(Math.random() * pool.length) | 0];
+    const rollDef = RELIC_DEFS[rollId];
+    if (bankHeirloom(rollId, WANDERER_GIFT_COST)) {
+      recordServiceUse('wanderer');
+      try { synthChord(523, 0.7, 0.8); } catch (e) {}
+      showNpcResponse('wanderer', `I hand you ${rollDef.name}. Carry it for me. It belongs on the road more than on a shelf.`);
+    }
+  };
   if (!pool.length) {
-    alert('The Wanderer rummages in his pack, frowns, and shakes his head. "Nothing to give you yet. Come back when you have seen more.');
+    showNpcResponse('wanderer', 'I rummage through my pack, frown, shake my head. Nothing to give you yet. Come back when you have seen more.');
     return;
   }
   if (meta.essence < WANDERER_GIFT_COST) {
-    alert(`The Wanderer waits patiently. You cannot spare the ${WANDERER_GIFT_COST} essence this requires. Return when you have more.`);
+    showNpcResponse('wanderer', `I wait patiently. You cannot spare the ${WANDERER_GIFT_COST} essence this requires. Return when you have more.`);
     return;
   }
-  // Confirm if overwriting existing heirloom
+  // Confirm if overwriting existing heirloom — inline YES/NO in the
+  // dialogue body, no native browser popup.
   if (meta.heirloom) {
     const hDef = RELIC_DEFS[meta.heirloom];
     const hName = hDef ? hDef.name : meta.heirloom;
-    const ok = confirm(`You already carry ${hName} as an heirloom. Accept a random gift from the Wanderer instead, replacing it? (Your essence is not refunded.)`);
-    if (!ok) return;
+    showNpcConfirm(
+      'wanderer',
+      `You already carry ${hName} as an heirloom. Accept a random gift from me instead, replacing it? Your essence is not refunded.`,
+      () => _giveGift(),
+      () => showNpcResponse('wanderer', 'Then keep what you have. Both of us travel a road. We need not always trade.'),
+    );
+    return;
   }
-  const rollId = pool[(Math.random() * pool.length) | 0];
-  const rollDef = RELIC_DEFS[rollId];
-  if (bankHeirloom(rollId, WANDERER_GIFT_COST)) {
-    recordServiceUse('wanderer');
-    try { synthChord(523, 0.7, 0.8); } catch (e) {}
-    alert(`The Wanderer hands you ${rollDef.name}. "Carry it for me. It belongs on the road more than on a shelf."`);
-  }
+  _giveGift();
 }
 
 function showSanctuaryFromHamlet() {
   showSanctuary();
-  // Re-bind the restart button to return to hamlet on click. The override
-  // flag keeps the module-level addEventListener from ALSO firing startRun
-  // alongside this handler (that race caused the "farewell → prologue +
-  // back to hamlet" bug).
-  _restartBtnOverridden = true;
+  // showSanctuary just set _restartBtnOverridden=true and rebound
+  // restartBtn.onclick to showMainMenu (the from-menu route). Replace
+  // that onclick with the hamlet-stay variant so the player returns to
+  // the live hamlet canvas underneath instead of being yanked to the
+  // main menu. The hamlet's render loop never stopped — just hide the
+  // sanctuary panel (deathEl) and the canvas reveals the hero where
+  // they were standing next to the Keeper.
   const btn = document.getElementById('restartBtn');
-  btn.onclick = () => { _restartBtnOverridden = false; btn.onclick = null; showHamlet(); };
+  btn.onclick = () => {
+    try { synthClick(0.9, 0.25); } catch (_e) {}
+    _restartBtnOverridden = false;
+    btn.onclick = null;
+    deathEl.style.display = 'none';
+  };
 }
 
 function showMemoryFromHamlet() {
+  // Set close-route flag BEFORE showing — memoryCloseBtn reads it and
+  // routes "stay on hamlet" instead of "show main menu". Replaces the
+  // old onclick-override pattern (which doubled with the
+  // addEventListener and also called showHamlet, respawning the hero).
+  _serviceCloseToHamlet = true;
   showMemoryModal();
-  // Re-bind the memory close button to return to hamlet on click
-  const btn = document.getElementById('memoryCloseBtn');
-  const prev = btn.onclick;
-  btn.onclick = () => { btn.onclick = prev; memoryEl.style.display = 'none'; showHamlet(); };
 }
 
 // ============================================================================
-// VOLUMES MODAL — save-slot manager. Three slots (Volumes I / II / III),
-// each with its own independent progress. Switching reloads the page.
+// VOLUMES MODAL — save-slot manager. DOM + grid live in
+// src/modals/volumesModal.js (Round-7 Sprint B refactor). main.js owns
+// the onClose wiring (close button -> showMainMenu) and a thin wrapper
+// that hideAllOverlays-then-shows so existing call sites stay
+// unchanged. volumesEl is re-exported from the modal module so
+// hideAllOverlays + the modal-active visibility check at the top of
+// the tick loop continue to read the live element state.
 // ============================================================================
-const volumesEl = document.createElement('div');
-volumesEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;';
-volumesEl.innerHTML = `
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:840px;width:100%;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">three journals of the ruin</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">JOURNALS</h1>
-    <p style="margin:14px 0 26px;opacity:0.6;letter-spacing:2px;font-size:12px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Each journal keeps its own record of the ruin. Switching closes one and opens another. Deleting erases that journal forever.</p>
-    <div id="volumesGrid" style="display:grid;grid-template-columns:repeat(3, 240px);gap:18px;margin-bottom:28px;"></div>
-    <button id="volumesCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(volumesEl);
-document.getElementById('volumesCloseBtn').addEventListener('click', () => {
-  volumesEl.style.display = 'none';
-  showMainMenu();
-});
-
+setVolumesOnClose(() => showMainMenu());
 function showVolumesModal() {
   hideAllOverlays();
-  volumesEl.style.display = 'flex';
-  renderVolumesGrid();
+  _showVolumesModal();
 }
 
-function renderVolumesGrid() {
-  const grid = document.getElementById('volumesGrid');
-  grid.innerHTML = '';
-  const all = listProfiles();
-  for (const p of all) {
-    const card = document.createElement('div');
-    const label = profileLabel(p.id);
-    const accent = p.isActive ? '#f4d9a0' : (p.exists ? '#c9a86a' : '#5a4c38');
-    const shadowActive = p.isActive
-      ? `inset 0 0 0 2px ${accent}, 0 0 22px ${accent}66, inset 0 0 14px rgba(0,0,0,0.5)`
-      : `inset 0 0 0 1px ${accent}88, inset 0 0 14px rgba(0,0,0,0.5)`;
-    card.style.cssText = `
-      background: linear-gradient(180deg, rgba(24,18,14,0.92), rgba(12,8,6,0.95));
-      padding: 20px 18px 14px;
-      font-family: Georgia, serif;
-      text-align: center;
-      box-shadow: ${shadowActive};
-      transition: all 0.2s ease;
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    `;
-    const bodyHtml = p.exists
-      ? `<div style="color:#d8cfae;font-size:11px;letter-spacing:2px;line-height:1.75;margin:4px 0 10px;">
-           <div><span style="opacity:0.55;">runs:</span> <span style="color:#f4d9a0;">${p.runsStarted}</span></div>
-           <div><span style="opacity:0.55;">deepest:</span> <span style="color:#f4d9a0;">floor ${p.maxFloor} / 4</span></div>
-           <div><span style="opacity:0.55;">essence:</span> <span style="color:#a0e8ff;">${p.essence}</span></div>
-         </div>`
-      : `<div style="color:#6a5c48;font-size:11px;letter-spacing:3px;font-style:italic;margin:14px 0;min-height:60px;display:flex;align-items:center;justify-content:center;">— an empty page —</div>`;
-
-    const actionBtn = p.isActive
-      ? `<button data-action="active" style="background:rgba(244,217,160,0.12);color:#f4d9a0;border:0;padding:9px 14px;font-size:10px;cursor:default;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px ${accent};">\u2766 CURRENT</button>`
-      : p.exists
-        ? `<button data-action="open" data-pid="${p.id}" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:9px 14px;font-size:10px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #c9a86a;transition:all 0.2s ease;">OPEN JOURNAL</button>`
-        : `<button data-action="begin" data-pid="${p.id}" style="background:linear-gradient(180deg,#2a2218,#120a06);color:#c9a86a;border:0;padding:9px 14px;font-size:10px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #5a4c38;transition:all 0.2s ease;">BEGIN ANEW</button>`;
-
-    const deleteBtn = p.exists && !p.isActive
-      ? `<button data-action="delete" data-pid="${p.id}" style="background:transparent;color:#8a4848;border:0;padding:5px;font-size:9px;cursor:pointer;letter-spacing:3px;font-family:Georgia,serif;font-style:italic;opacity:0.6;transition:all 0.2s ease;">erase this journal</button>`
-      : p.exists && p.isActive
-        ? `<button data-action="delete" data-pid="${p.id}" style="background:transparent;color:#8a4848;border:0;padding:5px;font-size:9px;cursor:pointer;letter-spacing:3px;font-family:Georgia,serif;font-style:italic;opacity:0.5;transition:all 0.2s ease;">erase this journal</button>`
-        : '';
-
-    card.innerHTML = `
-      <div style="color:${accent};font-size:14px;letter-spacing:5px;font-weight:bold;${p.isActive ? `text-shadow:0 0 10px ${accent}88;` : ''}">JOURNAL ${label}</div>
-      ${bodyHtml}
-      ${actionBtn}
-      ${deleteBtn}
-    `;
-
-    // Hover effect on openable cards
-    if (!p.isActive && p.exists) {
-      card.onmouseenter = () => { card.style.transform = 'translateY(-2px)'; card.style.boxShadow = `inset 0 0 0 1px ${accent}, 0 0 18px ${accent}55, inset 0 0 14px rgba(0,0,0,0.5)`; };
-      card.onmouseleave = () => { card.style.transform = ''; card.style.boxShadow = shadowActive; };
-    } else if (!p.exists) {
-      card.onmouseenter = () => { card.style.transform = 'translateY(-2px)'; card.style.boxShadow = `inset 0 0 0 1px #c9a86a, 0 0 14px rgba(201,168,106,0.35), inset 0 0 14px rgba(0,0,0,0.5)`; };
-      card.onmouseleave = () => { card.style.transform = ''; card.style.boxShadow = shadowActive; };
-    }
-
-    // Delegated click handler per card
-    card.addEventListener('click', (e) => {
-      const target = e.target.closest('button');
-      if (!target) return;
-      const action = target.dataset.action;
-      const pid = target.dataset.pid;
-      if (action === 'open' || action === 'begin') {
-        setActiveProfile(pid);   // triggers location.reload()
-      } else if (action === 'delete') {
-        // Double-confirm — this is destructive.
-        const label2 = profileLabel(pid);
-        const ok = confirm(`Erase Journal ${label2} forever?\n\nAll progress (essence, records, unlocks, hamlet NPCs, discovered relics) will be permanently deleted.`);
-        if (ok) deleteProfile(pid);   // triggers reload if active
-        renderVolumesGrid();
-      }
-    });
-    grid.appendChild(card);
+// ============================================================================
+// CURSES MODAL — DOM + grid live in src/modals/cursesModal.js
+// (Round-7 Sprint B refactor). Curses has a dual close path: opening
+// from the Gravekeeper NPC just hides the modal so the hamlet
+// canvas underneath shows through (the _serviceCloseToHamlet flag
+// drives this); opening from the main menu routes back to
+// showMainMenu. main.js's onClose closure picks between them.
+// ============================================================================
+setCursesOnClose(() => {
+  if (_serviceCloseToHamlet) {
+    // Opened from the Gravekeeper NPC — hamlet canvas is still drawing
+    // underneath; just hide the modal to reveal it (preserves the hero's
+    // position next to the NPC). showHamlet would respawn at entrance.
+    _serviceCloseToHamlet = false;
+  } else {
+    showMainMenu();
   }
+});
+function showCursesModal() {
+  hideAllOverlays();
+  _showCursesModal();
 }
 
 // ============================================================================
-// SMITH'S FORGE — reforge modal. The Smith accepts essence in exchange for
-// "forging" a specific relic into your next descent. Pick any previously-
-// discovered relic; pay by tier. A single banked heirloom persists on
-// meta.heirloom until consumed at run start.
+// JOURNAL OF THE RUIN — DOM + render live in src/modals/journalModal.js
+// (Round-7 Sprint B refactor). Reached only from the pause modal; close
+// routes BACK to the pause modal (not the main menu), unlike the other
+// modals. main.js's onClose closure restores pauseEl visibility.
 // ============================================================================
+setJournalOnClose(() => { pauseEl.style.display = 'flex'; });
+function showJournalModal() {
+  pauseEl.style.display = 'none';
+  _showJournalModal();
+}
 
-// Reforge cost by relic tier — scales with impact. Common relics are a
-// cheap warm-up; legendaries are a serious essence investment.
-const REFORGE_COST = { common: 40, rare: 80, legendary: 140 };
-
-const smithEl = document.createElement('div');
-smithEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a1008 0%,#0a0608 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
-smithEl.innerHTML = `
-  <!-- Corners + vignette — shared manuscript grammar -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#ff8a60;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#ff8a60;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#ff8a60;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#ff8a60,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#ff8a60;transform:rotate(45deg);"></div>
-  </div>
-
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:980px;width:100%;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#ff8a60,transparent);"></div>
-      <div style="color:#ff8a60;font-size:11px;letter-spacing:6px;font-style:italic;">fold your weight into steel</div>
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#ff8a60,transparent);"></div>
-    </div>
-    <h1 style="font-size:44px;margin:0;letter-spacing:10px;color:#ffbb8a;text-shadow:0 0 18px rgba(255,140,80,0.45);font-weight:400;line-height:1;">THE FORGE</h1>
-
-    <!-- Status bar: current essence + any banked heirloom -->
-    <div style="display:flex;align-items:center;gap:24px;margin-top:16px;margin-bottom:14px;font-family:Georgia,serif;font-size:12px;letter-spacing:2px;">
-      <div><span style="opacity:0.6;">ESSENCE:</span> <span id="smithEssenceVal" style="color:#a0e8ff;font-weight:bold;">0</span></div>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
-      <div id="smithHeirloomStatus" style="color:#ffbb8a;font-style:italic;"></div>
-    </div>
-
-    <p style="margin:0 0 22px;opacity:0.6;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:620px;text-align:center;line-height:1.55;">Bring me weight you have carried. I will fold it into something that travels with you into the next descent.</p>
-
-    <div id="smithGrid" style="display:grid;grid-template-columns:repeat(5, 168px);gap:12px;margin-bottom:22px;max-height:520px;overflow-y:auto;padding:6px;"></div>
-    <button id="smithCloseBtn" style="background:transparent;color:#a97070;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 STEP AWAY FROM THE FORGE</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(smithEl);
-document.getElementById('smithCloseBtn').addEventListener('click', () => {
-  smithEl.style.display = 'none';
-  // Return to hamlet so the player sees the Smith again (service call came from there)
-  showHamlet();
-});
-
+// ============================================================================
+// SMITH'S FORGE — DOM + render live in src/modals/smithModal.js
+// (Round-7 Sprint B refactor). Simplest seam yet: Smith is reachable
+// only from the Smith NPC in the hamlet, so the close button just
+// hides the modal — no onClose callback injection. The hamlet canvas
+// is still rendering underneath; hiding returns the player exactly
+// where they left off next to the Smith.
+// ============================================================================
 function showSmithModal() {
   hideAllOverlays();
-  smithEl.style.display = 'flex';
-  renderSmithGrid();
+  _showSmithModal();
 }
 
-function renderSmithGrid() {
-  const grid = document.getElementById('smithGrid');
-  const essEl = document.getElementById('smithEssenceVal');
-  const statusEl = document.getElementById('smithHeirloomStatus');
-  grid.innerHTML = '';
-  if (essEl) essEl.textContent = meta.essence | 0;
-  if (statusEl) {
-    if (meta.heirloom) {
-      const def = RELIC_DEFS[meta.heirloom];
-      const name = def ? def.name : meta.heirloom;
-      statusEl.innerHTML = `\u2766 HEIRLOOM BANKED: <span style="color:#f4d9a0;font-weight:bold;">${name}</span>`;
-    } else {
-      statusEl.innerHTML = '<span style="opacity:0.5;">no heirloom banked</span>';
-    }
+// ============================================================================
+// MEMORY WEAVE — DOM + grid live in src/modals/memoryModal.js (Round-7
+// Sprint B refactor). Two onCallback injection points:
+//   - onClose: dual path (Archivist NPC just hides; main menu route
+//     calls showMainMenu)
+//   - onPick: fires after a memory is chosen or cleared so the menu's
+//     bottom-left MEMORY chip updates its label/tint to match
+// ============================================================================
+setMemoryOnClose(() => {
+  if (_serviceCloseToHamlet) {
+    // Opened from the Archivist NPC — hamlet still drawing underneath.
+    _serviceCloseToHamlet = false;
+  } else {
+    showMainMenu();
   }
-
-  // Render all discovered relics as clickable cards; undiscovered show
-  // silhouette-style locked placeholders.
-  for (const id of ALL_RELIC_IDS) {
-    const def = RELIC_DEFS[id];
-    const seen = seenRelicIds.has(id);
-    const tier = def.tier || 'common';
-    const cost = REFORGE_COST[tier];
-    const accent = def.tint || '#c9a86a';
-    const tierColor = tier === 'legendary' ? '#e6c8ff' : tier === 'rare' ? '#ffd68a' : '#d8cfae';
-    const canAfford = meta.essence >= cost;
-    const isBanked = meta.heirloom === id;
-
-    const card = document.createElement('button');
-    const boxShadow = isBanked
-      ? `inset 0 0 0 2px #f4d9a0, 0 0 18px rgba(244,217,160,0.55), inset 0 0 14px rgba(0,0,0,0.4)`
-      : seen
-        ? (canAfford
-            ? `inset 0 0 0 1px ${accent}88, inset 0 0 12px rgba(0,0,0,0.4)`
-            : `inset 0 0 0 1px rgba(80,60,44,0.6), inset 0 0 12px rgba(0,0,0,0.45)`)
-        : `inset 0 0 0 1px rgba(60,44,32,0.4), inset 0 0 12px rgba(0,0,0,0.5)`;
-    card.style.cssText = `
-      background: linear-gradient(180deg, rgba(24,18,14,0.9), rgba(12,8,6,0.95));
-      border: 0;
-      padding: 12px 10px;
-      cursor: ${(seen && (canAfford || isBanked)) ? 'pointer' : 'default'};
-      font-family: Georgia, serif;
-      text-align: center;
-      opacity: ${seen ? (canAfford || isBanked ? 1 : 0.55) : 0.35};
-      box-shadow: ${boxShadow};
-      transition: all 0.2s ease;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-    `;
-    if (seen && (canAfford || isBanked)) {
-      card.onmouseenter = () => { card.style.transform = 'translateY(-2px)'; card.style.boxShadow = `inset 0 0 0 1px ${accent}, 0 0 16px ${accent}55, inset 0 0 12px rgba(0,0,0,0.4)`; };
-      card.onmouseleave = () => { card.style.transform = ''; renderSmithGrid(); };
-    }
-
-    // Icon (use the loaded relic PNG)
-    const img = imageCache[def.icon];
-    const iconHtml = seen && img
-      ? `<img src="${img.src}" style="width:56px;height:56px;image-rendering:pixelated;image-rendering:crisp-edges;filter:drop-shadow(0 0 8px ${accent}55);"/>`
-      : `<div style="width:56px;height:56px;display:flex;align-items:center;justify-content:center;color:rgba(80,60,44,0.7);font-size:28px;font-weight:bold;">?</div>`;
-    const name = seen ? def.name : '???';
-    const tierLabel = seen ? tier.toUpperCase() : 'LOCKED';
-    const costLabel = isBanked
-      ? 'CURRENT'
-      : seen
-        ? `${cost} \u2728`
-        : 'find in a run';
-
-    card.innerHTML = `
-      ${iconHtml}
-      <div style="color:${seen ? accent : '#4a3c28'};font-size:11px;letter-spacing:1.5px;font-weight:bold;${seen ? `text-shadow:0 0 6px ${accent}44;` : ''}">${name}</div>
-      <div style="color:${seen ? tierColor : '#4a3c28'};font-size:8px;letter-spacing:3px;opacity:0.75;">${tierLabel}</div>
-      <div style="color:${isBanked ? '#f4d9a0' : canAfford ? '#a0e8ff' : '#6a5c48'};font-size:10px;letter-spacing:2px;font-weight:bold;margin-top:2px;">${costLabel}</div>
-    `;
-    if (seen && canAfford && !isBanked) {
-      card.onclick = () => {
-        // Confirm for legendary purchases (high cost)
-        if (tier === 'legendary') {
-          const ok = confirm(`Forge ${def.name} as your heirloom?\n\nCost: ${cost} essence.`);
-          if (!ok) return;
-        }
-        if (bankHeirloom(id, cost)) {
-          // Advance the Smith's arc on a successful reforge
-          recordServiceUse('smith');
-          renderSmithGrid();
-          try { synthChord(440, 0.6, 0.7); } catch (e) {}
-        }
-      };
-    } else if (seen && isBanked) {
-      card.onclick = () => {
-        // Already banked — click to cancel and refund
-        const ok = confirm(`Cancel this heirloom and refund ${cost} essence?`);
-        if (!ok) return;
-        meta.essence += cost;
-        meta.heirloom = null;
-        saveMeta();
-        renderSmithGrid();
-      };
-    }
-    grid.appendChild(card);
-  }
+});
+setMemoryOnPick(() => updateMenuMemoryLabel());
+function showMemoryModal() {
+  hideAllOverlays();
+  _showMemoryModal();
 }
 
 // Small label updater — the MEMORY button at the bottom-left of the menu
@@ -2110,7 +2380,7 @@ function updateMenuMemoryLabel() {
 // the manuscript grammar: page-frame corners, deep vignette, inset strokes,
 // Georgia typography.
 const achEl = document.createElement('div');
-achEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
+achEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
 achEl.innerHTML = `
   <!-- Deep vignette + page-frame corners (shared discipline). -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -2136,34 +2406,38 @@ achEl.innerHTML = `
   </div>
 
   <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;width:100%;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">deeds remembered</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+    <!-- Title block compressed: h1 48->32, ornament 100->80, gaps tightened
+         so the content grid below has more breathing room within 720
+         design height. -->
+    <div style="display:flex;align-items:center;gap:18px;margin-bottom:4px;opacity:0.75;">
+      <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
+      <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-style:italic;">deeds remembered</div>
+      <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
     </div>
-    <h1 style="font-size:48px;margin:0;letter-spacing:10px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">CHRONICLES</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 18px;opacity:0.65;">
+    <h1 style="font-size:32px;margin:0;letter-spacing:9px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">CHRONICLES</h1>
+    <div style="display:flex;align-items:center;gap:10px;margin:6px 0 8px;opacity:0.65;">
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p id="achProgress" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#d8cfae;"></p>
+      <p id="achProgress" style="margin:0;letter-spacing:4px;font-size:11px;font-style:italic;color:#d8cfae;"></p>
       <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
     </div>
     <!-- Tab row — four codex sections. Active tab is gold filled, others muted. -->
-    <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <button class="chronTab" data-tab="achievements" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Deeds</button>
+    <div style="display:flex;gap:4px;margin-bottom:10px;">
+      <button class="chronTab" data-tab="achievements" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Deeds</button>
       <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="bestiary" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Bestiary</button>
+      <button class="chronTab" data-tab="bestiary" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Bestiary</button>
       <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="relics" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Relicpedia</button>
+      <button class="chronTab" data-tab="relics" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Relicpedia</button>
       <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="fusions" style="background:transparent;border:0;padding:7px 18px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Fusions</button>
+      <button class="chronTab" data-tab="fusions" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Fusions</button>
     </div>
     <!-- Shared content grid — repopulated per tab. -->
-    <div id="achRow" style="display:grid;grid-template-columns:repeat(3, 280px);gap:12px;margin-bottom:22px;max-height:520px;overflow-y:auto;padding:4px;"></div>
+    <div id="achRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:14px;max-width:920px;width:100%;padding:4px;"></div>
     <button id="achCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
   </div>
 `;
 document.getElementById('hud').appendChild(achEl);
 document.getElementById('achCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
   achEl.style.display = 'none';
   showMainMenu();
 });
@@ -2203,18 +2477,26 @@ document.querySelectorAll('#achEl .chronTab, .chronTab').forEach(btn => {
 // `seen` gold-glows + shows full text. Optional `thumb` (data URL) shows the
 // composed icon/sprite at top-left with a tint-colored halo. `silhouette:true`
 // darkens the thumbnail for "undiscovered" visual cue.
-function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette }) {
+function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette, tooltip }) {
   const card = document.createElement('div');
   const border = locked ? 'rgba(80,60,40,0.3)' : (accentColor ? accentColor + '88' : 'rgba(201,168,106,0.55)');
   const glow = locked ? '' : `, 0 0 14px ${accentColor ? accentColor + '33' : 'rgba(201,168,106,0.12)'}`;
+  // Tightened from 12/14 padding + 52px thumb + 14/11 fonts to 7/9 padding +
+  // 40px thumb + 12/10 fonts so the chronicles grid fits more cards per
+  // viewport. With 5 cols of 180-px cards × 6 rows, all 28 fusions/relics
+  // become visible without scrolling instead of 4 cols × 7 rows + scroll.
   card.style.cssText = `
     background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.88));
-    padding:12px 14px;
-    display:flex;${thumb ? 'flex-direction:row;align-items:flex-start;gap:12px;' : 'flex-direction:column;gap:5px;'}
+    padding:7px 9px;
+    display:flex;${thumb ? 'flex-direction:row;align-items:flex-start;gap:8px;' : 'flex-direction:column;gap:3px;'}
     font-family:Georgia,serif;
     box-shadow:inset 0 0 0 1px ${border}, inset 0 0 12px rgba(0,0,0,0.5)${glow};
     ${locked ? 'opacity:0.55;' : ''}
   `;
+  // Optional native tooltip — used by undiscovered fusions/relics so the
+  // recipe / hint text moves OUT of the card body and into a hover popup.
+  // Keeps the card visually compact while preserving the lookup info.
+  if (tooltip) card.title = tooltip;
   const titleColor = locked ? '#7a7060' : (accentColor || '#f4d9a0');
   const titleShadow = locked ? 'none' : `0 0 6px ${accentColor ? accentColor + '55' : 'rgba(244,217,160,0.3)'}`;
   const bodyColor = locked ? 'rgba(140,130,110,0.7)' : 'rgba(200,190,170,0.85)';
@@ -2224,18 +2506,70 @@ function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette }
     : `radial-gradient(circle,${accentColor || '#c9a86a'}33,transparent 70%)`;
   const thumbFilter = silhouette ? 'brightness(0) contrast(0.4)' : 'none';
   const thumbHtml = thumb ? `
-    <div style="flex-shrink:0;width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
-      <img src="${thumb}" style="width:48px;height:48px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
+    <div style="flex-shrink:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
+      <img src="${thumb}" style="width:36px;height:36px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
     </div>
   ` : '';
   const textBlock = `
-    <div style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0;">
-      <div style="font-size:14px;font-weight:bold;color:${titleColor};letter-spacing:1px;text-shadow:${titleShadow};">${icon || ''}${title}</div>
-      ${body ? `<div style="font-size:11px;color:${bodyColor};line-height:1.35;font-style:italic;">${body}</div>` : ''}
+    <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;">
+      <div style="font-size:12px;font-weight:bold;color:${titleColor};letter-spacing:0.8px;text-shadow:${titleShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${icon || ''}${title}</div>
+      ${body ? `<div style="font-size:10px;color:${bodyColor};line-height:1.3;font-style:italic;">${body}</div>` : ''}
     </div>
   `;
   card.innerHTML = thumbHtml + textBlock;
   return card;
+}
+
+// Compact icon tile — used by the Relics tab where we have ~50 items
+// to display. The card-style chronCard layout doesn't scale that
+// densely; even at 4 cols x ~50px height the grid runs ~13 rows tall
+// and breaks past the 720 design height. The tile shows ONLY the icon
+// (silhouetted when locked) with the name as a small label below;
+// flavor + desc surface on hover via the title attribute. Click could
+// later expand into a detail panel; for now hover serves the lookup
+// affordance.
+function chronTile({ title, locked, accentColor, thumb, silhouette, tooltip }) {
+  const tile = document.createElement('div');
+  const border = locked ? 'rgba(80,60,40,0.3)' : (accentColor ? accentColor + '88' : 'rgba(201,168,106,0.55)');
+  const glow = locked ? '' : `, 0 0 12px ${accentColor ? accentColor + '33' : 'rgba(201,168,106,0.12)'}`;
+  // Pure ICON tile — no inline name. With 50+ relics in a 10-col grid,
+  // each tile is ~52 design px — too small for a readable name without
+  // wrapping/clipping. Hover tooltip carries the full name + flavor +
+  // desc instead. The icon's silhouette + tier-color border + (when
+  // discovered) tier-tinted glow are enough to identify the relic at
+  // a glance for players who already know the roster.
+  tile.style.cssText = `
+    width:52px;height:52px;
+    background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.88));
+    display:flex;align-items:center;justify-content:center;
+    font-family:Georgia,serif;
+    box-shadow:inset 0 0 0 1px ${border}, inset 0 0 8px rgba(0,0,0,0.5)${glow};
+    box-sizing:border-box;
+    ${locked ? 'opacity:0.55;' : ''}
+    cursor:default;
+    transition:transform 0.15s ease, box-shadow 0.15s ease;
+  `;
+  if (tooltip) tile.title = tooltip;
+  const thumbBg = locked
+    ? 'radial-gradient(circle,rgba(80,60,40,0.25),transparent 70%)'
+    : `radial-gradient(circle,${accentColor || '#c9a86a'}33,transparent 70%)`;
+  const thumbFilter = silhouette ? 'brightness(0) contrast(0.4)' : 'none';
+  tile.innerHTML = thumb ? `
+    <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
+      <img src="${thumb}" style="width:36px;height:36px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
+    </div>
+  ` : `<div style="width:40px;height:40px;background:${thumbBg};"></div>`;
+  if (!locked) {
+    tile.addEventListener('mouseenter', () => {
+      tile.style.transform = 'translateY(-1px)';
+      tile.style.boxShadow = `inset 0 0 0 1px ${accentColor || '#c9a86a'}, 0 0 16px ${accentColor ? accentColor + '55' : 'rgba(201,168,106,0.3)'}`;
+    });
+    tile.addEventListener('mouseleave', () => {
+      tile.style.transform = 'translateY(0)';
+      tile.style.boxShadow = `inset 0 0 0 1px ${border}, inset 0 0 8px rgba(0,0,0,0.5)${glow}`;
+    });
+  }
+  return tile;
 }
 
 function renderChroniclesTab() {
@@ -2251,6 +2585,24 @@ function renderChroniclesTab() {
   const row = document.getElementById('achRow');
   const progress = document.getElementById('achProgress');
   row.innerHTML = '';
+  // Per-tab grid layout — relics use a denser ICON GRID (8 cols of
+  // ~75px square tiles) since there are 50+ items; the other tabs
+  // keep the wider card layout (auto-fill minmax 220px) since they
+  // have fewer items and benefit from inline body text.
+  if (chronTab === 'relics') {
+    // 10 cols of 52px tiles + 9 × 4px gaps = 556px wide. Fits 50-60
+    // relics in 6 rows × 52 = 312 design px tall — comfortable margin
+    // under the 720 design height after title + tabs + button.
+    row.style.gridTemplateColumns = 'repeat(10, 52px)';
+    row.style.gap = '4px';
+    row.style.maxWidth = '600px';
+    row.style.justifyContent = 'center';
+  } else {
+    row.style.gridTemplateColumns = 'repeat(auto-fill, minmax(220px, 1fr))';
+    row.style.gap = '8px';
+    row.style.maxWidth = '920px';
+    row.style.justifyContent = 'normal';
+  }
 
   if (chronTab === 'achievements') {
     for (const id of ACH_IDS) {
@@ -2281,7 +2633,11 @@ function renderChroniclesTab() {
       const seen = isBoss ? bossKilled.has(id) : seenEnemyTypes.has(id);
       if (seen) seenN++;
       const name = seen ? (def.displayName || id.toUpperCase()) : '???';
-      const body = seen ? (def.flavor || '') : 'undiscovered \u2014 meet this adversary in the ruin to learn its nature';
+      // Locked: NO body, hint moves to hover tooltip \u2014 same compression
+      // pass as relics + fusions tabs. "???" title + silhouetted thumb
+      // already convey "undiscovered" without consuming card height.
+      const body = seen ? (def.flavor || '') : '';
+      const tooltipE = seen ? null : 'undiscovered \u2014 meet this adversary in the ruin to learn its nature';
       let thumb = null;
       if (isBoss && portraitUrl) {
         // Boss: use the hand-drawn portrait directly (already a PNG)
@@ -2300,6 +2656,7 @@ function renderChroniclesTab() {
         icon: '',
         thumb,
         silhouette: !seen,
+        tooltip: tooltipE,
       }));
     }
     progress.textContent = `${seenN} of ${typeIds.length} adversaries catalogued`;
@@ -2313,20 +2670,25 @@ function renderChroniclesTab() {
       const seen = seenRelicIds.has(id);
       if (seen) seenN++;
       const name = seen ? def.name : '???';
-      const body = seen
-        ? (def.flavor ? `<div style="font-style:italic;margin-bottom:3px;">${def.flavor}</div><div style="color:${def.tint || '#c9a86a'};font-weight:bold;font-style:normal;">${def.desc}</div>` : def.desc)
+      // ICON GRID layout — body text moves to hover tooltip below.
+      // Locked-state hint moved to hover tooltip \u2014 kept the prompt info
+      // but stopped the verbose "undiscovered..." line bloating cards.
+      // Tooltip \u2014 for seen relics combines name + flavor + desc; for
+      // locked, generic prompt. Native title attribute = browser
+      // tooltip on hover, no extra UI cost.
+      const tooltipR = seen
+        ? `${def.name}${def.flavor ? '\n' + def.flavor : ''}${def.desc ? '\n\n' + def.desc : ''}`
         : 'undiscovered \u2014 a relic you have yet to claim';
       // Dedicated per-relic art — bypass glyph/hue overlay (pass null,null).
       const baseImg = imageCache[def.icon];
       const thumb = baseImg ? composeRelicThumbDataURL(baseImg, null, null, id, 48) : null;
-      row.appendChild(chronCard({
+      row.appendChild(chronTile({
         title: name,
-        body: body,
         locked: !seen,
         accentColor: seen ? (def.tint || '#c9a86a') : null,
-        icon: '',
         thumb,
         silhouette: !seen,
+        tooltip: tooltipR,
       }));
     }
     progress.textContent = `${seenN} of ${ALL_RELIC_IDS.length} relics recovered`;
@@ -2344,9 +2706,15 @@ function renderChroniclesTab() {
         return d ? d.name : cid;
       }).join(' + ');
       const name = seen ? f.name : '???';
+      // Discovered: rich body (flavor + effect + recipe). Locked: NO
+      // body \u2014 the verbose "undiscovered \u2014 combine X + Y to form this
+      // fusion" used 3-4 lines per card and bloated the grid. The
+      // recipe moves to a hover tooltip; the title "???" + silhouetted
+      // thumb already say "undiscovered" without the prose.
       const body = seen
         ? `<div style="font-style:italic;margin-bottom:3px;color:rgba(200,190,170,0.75);">${f.flavor || ''}</div><div style="font-style:normal;color:${f.tint || '#c9a86a'};font-weight:bold;margin-bottom:3px;">${f.desc}</div><div style="font-style:normal;color:rgba(160,148,130,0.7);font-size:10px;letter-spacing:1px;">${compNames}</div>`
-        : `undiscovered \u2014 combine ${compNames} to form this fusion`;
+        : '';
+      const tooltipF = seen ? null : `combine ${compNames}`;
       // Fusion thumb — the fusion now has its own dedicated icon (Nano Banana
       // hand-drawn). Fall back to component-composed icon only if the PNG
       // didn't load for some reason.
@@ -2367,75 +2735,16 @@ function renderChroniclesTab() {
         icon: '',
         thumb,
         silhouette: !seen,
+        tooltip: tooltipF,
       }));
     }
     progress.textContent = `${seenN} of ${ids.length} fusions discovered`;
   }
 }
 
-function renderCursesGrid() {
-  const row = document.getElementById('cursesRow');
-  row.innerHTML = '';
-  for (const id of ALL_CURSE_IDS) {
-    const c = CURSES[id];
-    const on = isCursed(id);
-    const card = document.createElement('div');
-    card.style.cssText = `
-      background:linear-gradient(180deg,rgba(36,16,20,0.92),rgba(18,8,12,0.92));
-      border:2px solid ${on ? c.tint : 'rgba(90, 60, 60, 0.55)'};
-      padding:14px 12px;
-      display:flex;flex-direction:column;align-items:center;gap:7px;
-      cursor:pointer;
-      transition:transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-      font-family:Georgia,serif;
-      ${on ? `box-shadow: 0 0 18px ${c.tint}55, inset 0 0 12px ${c.tint}22;` : 'box-shadow: inset 0 0 10px rgba(0,0,0,0.4);'}
-    `;
-    card.innerHTML = `
-      <div style="font-size:16px;font-weight:bold;color:${c.tint};letter-spacing:2px;text-align:center;text-shadow:0 0 6px ${c.tint}44;">${c.name}</div>
-      ${c.flavor ? `<div style="font-size:10px;color:rgba(200,190,210,0.75);text-align:center;line-height:1.4;font-style:italic;min-height:38px;padding:0 2px;">${c.flavor}</div>` : ''}
-      <div style="height:1px;width:70%;background:linear-gradient(90deg,transparent,${c.tint}aa,transparent);margin:1px 0;"></div>
-      <div style="font-size:11px;color:${on ? c.tint : '#bbb'};text-align:center;line-height:1.4;min-height:30px;font-weight:bold;">${c.desc}</div>
-      <div style="font-size:13px;color:${on ? '#a0e8ff' : 'rgba(160,232,255,0.4)'};letter-spacing:2px;font-weight:bold;">+${Math.round((c.essenceMul - 1) * 100)}% \u2728 ESSENCE</div>
-      <div style="font-size:10px;letter-spacing:4px;color:${on ? c.tint : 'rgba(140,140,140,0.45)'};font-style:italic;font-weight:bold;">${on ? '\u2620 ACTIVE \u2620' : 'dormant'}</div>
-    `;
-    card.addEventListener('click', () => {
-      toggleCurse(id);
-      renderCursesGrid();
-      updateCurseEssMul();
-    });
-    card.addEventListener('mouseenter', () => {
-      card.style.transform = 'translateY(-3px)';
-      card.style.boxShadow = on
-        ? `0 0 24px ${c.tint}80, inset 0 0 14px ${c.tint}33`
-        : `0 0 14px ${c.tint}33, inset 0 0 10px rgba(0,0,0,0.4)`;
-    });
-    card.addEventListener('mouseleave', () => {
-      card.style.transform = 'none';
-      card.style.boxShadow = on
-        ? `0 0 18px ${c.tint}55, inset 0 0 12px ${c.tint}22`
-        : 'inset 0 0 10px rgba(0,0,0,0.4)';
-    });
-    row.appendChild(card);
-  }
-  updateCurseEssMul();
-}
-
-function updateCurseEssMul() {
-  const mul = curseEssenceMul();
-  const count = curseCount();
-  const essEl = document.getElementById('curseEssMul');
-  if (count === 0) {
-    essEl.textContent = 'no curses active';
-    essEl.style.color = 'rgba(160,232,255,0.4)';
-  } else {
-    essEl.textContent = count + ' curse' + (count > 1 ? 's' : '') + ' active · ✨ ' + mul.toFixed(2) + 'x essence reward';
-    essEl.style.color = '#a0e8ff';
-  }
-}
-
 // Weapon picker — shown between main menu and run start
 const weaponPickerEl = document.createElement('div');
-weaponPickerEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;';
+weaponPickerEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 weaponPickerEl.innerHTML = `
   <!-- Deep vignette + page-frame corners (shared discipline). -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -2460,7 +2769,7 @@ weaponPickerEl.innerHTML = `
     <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
   </div>
 
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
+  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
       <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
       <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">the forge waits</div>
@@ -2703,7 +3012,6 @@ function hideAllOverlays() {
   if (settingsEl) settingsEl.style.display = 'none';
   if (tarotRevealEl) tarotRevealEl.style.display = 'none';
   if (memoryEl) memoryEl.style.display = 'none';
-  if (hamletEl) hamletEl.style.display = 'none';
   if (dialogueEl) dialogueEl.style.display = 'none';
   if (volumesEl) volumesEl.style.display = 'none';
   if (smithEl) smithEl.style.display = 'none';
@@ -2714,7 +3022,7 @@ function hideAllOverlays() {
 
 // Pause menu overlay — ESC to toggle
 const pauseEl = document.createElement('div');
-pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;';
+pauseEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;overflow-y:auto;';
 pauseEl.innerHTML = `
   <!-- Deep vignette frame — same discipline as main menu. -->
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
@@ -2741,8 +3049,11 @@ pauseEl.innerHTML = `
     <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
   </div>
 
-  <!-- Content column, z above ambient. -->
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
+  <!-- Content column, z above ambient. The "menuContent" class is shared
+       with the main menu so the same @media (max-width) scale rules
+       (0.72 / 0.52 / 0.38 at 900/600/450 breakpoints) keep the pause
+       overlay readable on narrow viewports. -->
+  <div class="menuContent" style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;">
     <!-- Ornamental frame above the title — gold, not purple. -->
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.7;animation:winFadeIn 0.6s ease-out;">
       <div style="width:90px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
@@ -2799,85 +3110,6 @@ document.getElementById('pauseJournalBtn').addEventListener('click', () => {
   showJournalModal();
 });
 
-// JOURNAL OF THE RUIN — scrollable auto-generated history modal
-const journalEl = document.createElement('div');
-journalEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:20;';
-journalEl.innerHTML = `
-  <!-- Page frame + vignette -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;width:100%;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:11px;letter-spacing:6px;font-style:italic;">the ruin remembers</div>
-      <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:42px;margin:0;letter-spacing:8px;color:#c9a86a;text-shadow:0 0 14px rgba(201,168,106,0.45);font-weight:400;line-height:1;">JOURNAL OF THE RUIN</h1>
-    <div style="display:flex;align-items:center;gap:12px;margin:10px 0 22px;opacity:0.65;max-width:90vw;text-align:center;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);flex-shrink:0;"></span>
-      <p id="journalSubtitle" style="margin:0;letter-spacing:3px;font-size:11px;font-style:italic;color:#d8cfae;"></p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);flex-shrink:0;"></span>
-    </div>
-    <div id="journalEntries" style="width:720px;max-width:90vw;max-height:60vh;overflow-y:auto;padding:22px 24px;background:linear-gradient(180deg,rgba(30,22,16,0.75),rgba(14,10,8,0.8));box-shadow:inset 0 0 0 1px rgba(201,168,106,0.28), inset 0 0 18px rgba(0,0,0,0.5);font-size:13px;color:#d8cfae;font-family:Georgia,serif;line-height:1.6;"></div>
-    <button id="journalBackBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;margin-top:22px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 CLOSE</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(journalEl);
-document.getElementById('journalBackBtn').addEventListener('click', () => {
-  journalEl.style.display = 'none';
-  pauseEl.style.display = 'flex';
-});
-
-function showJournalModal() {
-  pauseEl.style.display = 'none';
-  journalEl.style.display = 'flex';
-  const subtitle = document.getElementById('journalSubtitle');
-  const entries = document.getElementById('journalEntries');
-  const age = ruin.age | 0;
-  const cleared = ruin.runsCompleted | 0;
-  const bossKills = (ruin.bossKills || []).length;
-  subtitle.textContent = `the dungeon has aged ${age} death${age === 1 ? '' : 's'} \u00b7 ${bossKills} boss${bossKills === 1 ? '' : 'es'} felled \u00b7 ${cleared} full descent${cleared === 1 ? '' : 's'}`;
-  entries.innerHTML = '';
-  if (!ruin.journal || ruin.journal.length === 0) {
-    entries.innerHTML = '<div style="opacity:0.55;font-style:italic;text-align:center;padding:30px 0;">The journal is empty. Die, or defeat a boss, and the ruin will begin to remember.</div>';
-    return;
-  }
-  for (const entry of ruin.journal) {
-    const tint = entry.kind === 'death' ? '#d85a5a'
-               : entry.kind === 'boss' ? '#f4d9a0'
-               : entry.kind === 'milestone' ? '#a0e8ff' : '#d8d4ea';
-    const icon = entry.kind === 'death' ? '✓'
-               : entry.kind === 'boss' ? '†'
-               : entry.kind === 'milestone' ? '✦' : '·';
-    const div = document.createElement('div');
-    div.style.cssText = `display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(100,90,90,0.15);`;
-    div.innerHTML = `
-      <div style="color:${tint};font-size:20px;width:22px;text-align:center;">${icon}</div>
-      <div style="flex:1;font-size:13px;color:#d8cfc4;font-style:italic;line-height:1.5;">${entry.text}</div>
-    `;
-    entries.appendChild(div);
-  }
-}
 // Settings sliders — live-update + persist
 document.getElementById('setSfx').addEventListener('input', (e) => {
   setSfxVolume(parseInt(e.target.value, 10) / 100);
@@ -2945,7 +3177,11 @@ function populatePauseRelics() {
   if (activeFusions.length > 0) {
     const fHeader = document.createElement('div');
     fHeader.style.cssText = 'width:100%;font-size:10px;letter-spacing:3px;color:#a0e8ff;text-align:center;margin-bottom:6px;';
-    fHeader.textContent = `⚡ ACTIVE FUSIONS · ${activeFusions.length} / ${totalFusions()} DISCOVERED`;
+    // Header reads: "⚡ ACTIVE: 2  ·  DISCOVERED: 12/30" — splits the
+    // current-run active count from the cumulative codex progress so
+    // both numbers are clearly separate (the prior "2/30 DISCOVERED"
+    // read as "2 of 30 fusions are active", which was misleading).
+    fHeader.textContent = `⚡ ACTIVE: ${activeFusions.length}  ·  DISCOVERED: ${discoveredCount()} / ${totalFusions()}`;
     row.appendChild(fHeader);
     const fGroup = document.createElement('div');
     fGroup.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;width:100%;margin-bottom:14px;';
@@ -3005,6 +3241,21 @@ function populatePauseRelics() {
   }
 }
 
+// First-run intro skip — any key during the SKIP_AFTER..SKIP_BEFORE
+// window jumps to the reveal phase. Capture phase so we eat the input
+// before gameplay handlers (e.g. WASD) see it. Mouse click skip is
+// handled by a canvas pointerdown listener below.
+window.addEventListener('keydown', (e) => {
+  if (!isIntroActive()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  skipIntro();
+}, true);
+canvas.addEventListener('pointerdown', () => {
+  if (!isIntroActive()) return;
+  skipIntro();
+});
+
 // Hook ESC key to toggle pause (only when game is actively running)
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape') return;
@@ -3012,11 +3263,59 @@ window.addEventListener('keydown', (e) => {
   if (!running) return;
   if (deathEl.style.display !== 'none') return;
   if (winEl.style.display !== 'none') return;
+  // HAMLET CANVAS — ESC returns to the main menu instead of pausing. The
+  // hamlet is a hub, not a combat room; pausing it has no meaning. Close
+  // any open dialogue first so it doesn't linger over the menu.
+  if (room.kind === 'hamlet') {
+    if (dialogueEl && dialogueEl.style.display !== 'none') {
+      // Mirror the close-button click feedback so Esc-close (the more
+      // common dismissal path for keyboard users) feels equally tactile.
+      try { synthClick(0.9, 0.25); } catch (_e) {}
+      dialogueEl.style.display = 'none';
+    } else {
+      running = false;
+      showMainMenu();
+    }
+    e.preventDefault();
+    return;
+  }
   setPaused(!paused);
   e.preventDefault();
 });
 
+// Mobile pause button — bridges ESC for touch devices. Calls the same
+// path the keyboard handler uses (with the same hamlet-returns-to-menu
+// + death/win-modal-blocked guards) so mobile and desktop pause flow
+// through one toggle. Without this, the mobile player has no way to
+// pause/quit/check the journal mid-run; their only quit-flow is closing
+// the tab and losing the run.
+const mobilePauseBtn = document.getElementById('mobilePauseBtn');
+if (mobilePauseBtn) {
+  mobilePauseBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!running) return;
+    if (deathEl.style.display !== 'none') return;
+    if (winEl.style.display !== 'none') return;
+    if (room.kind === 'hamlet') {
+      if (dialogueEl && dialogueEl.style.display !== 'none') {
+        try { synthClick(0.9, 0.25); } catch (_e) {}
+        dialogueEl.style.display = 'none';
+      } else {
+        running = false;
+        showMainMenu();
+      }
+      return;
+    }
+    setPaused(!paused);
+  });
+}
+
 // R — reroll pedestal offers for gold. Cost scales with floor (15g base).
+// Round-7 — also supports shop rooms via a flat-rate reroll. Detection:
+// any active pedestal carries p.shop=true means we're in a shop, route
+// to spawnShopOffer to preserve the goldCost field. Combat reroll path
+// stays untouched.
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyR') return;
   if (!running || paused) return;
@@ -3026,8 +3325,16 @@ window.addEventListener('keydown', (e) => {
   // Detect via hpCost === 0 on ALL active pedestals.
   const activeStd = pedestals.filter(p => !p.picked && p.hpCost === 0);
   if (activeStd.length < 2) return;       // need multi-choice context
-  // Cost scales with floor depth
-  const cost = 15 + currentFloorLevel * 5;
+  const inShop = activeStd.some(p => p.shop);
+  // Cost scales with floor depth for combat rerolls; flat 30g for shops.
+  // Shops are mid-floor encounters where players have less gold than
+  // post-combat clears, so the reroll cost has to be cheaper than a
+  // single-relic price (40g common) to be a real choice.
+  //   Combat   Round-1 formula  : 15 + floor*5  (20/25/30/35) — too cheap on F4
+  //   Combat   Round-3 formula  : 30 + floor*15 (45/60/75/90) — too expensive on F1
+  //   Combat   Round-6 formula  : 20 + floor*15 (35/50/65/80) — fits typical yields
+  //   Shop     Round-7 formula  : flat 30g — cheaper than the cheapest item
+  const cost = inShop ? 30 : (20 + currentFloorLevel * 15);
   if (gold.total < cost) {
     // Feedback: brief label + denied chirp
     roomLabelText = `REROLL NEEDS ${cost}g (you have ${gold.total})`;
@@ -3037,9 +3344,28 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   gold.total -= cost;
-  // Spawn fresh offers
+  // Spawn fresh offers — route based on room context.
+  // Round-7-audit HIGH-2 fix: the original `spawnRelicOffer(level)`
+  // call passed NO opts, so a re-rolled offer in an elite (perilous-
+  // path) room lost minTier='rare', a roomReward='fusion' room lost
+  // fusionBias=true, and a roomReward='legendary' room lost
+  // minTier='legendary'. The player paid 35-80g for a downgraded
+  // offer set, breaking the door's reward promise. Re-derive the
+  // current room's opts from `data` (same logic as the post-clear
+  // path at the combat-clear branch) and thread them through.
   clearPedestals();
-  spawnRelicOffer(currentFloorLevel);
+  if (inShop) {
+    spawnShopOffer(currentFloorLevel);
+  } else {
+    const _data = floor[roomIndex];
+    const _isElitePath = !!_data?.eliteRoom;
+    const _reward = _data?.roomReward;
+    const _opts = {};
+    if (_reward === 'legendary') _opts.minTier = 'legendary';
+    else if (_isElitePath || _reward === 'rare+') _opts.minTier = 'rare';
+    if (_reward === 'fusion') _opts.fusionBias = true;
+    spawnRelicOffer(currentFloorLevel, _opts);
+  }
   // Feedback
   roomLabelText = `✦ REROLLED · -${cost}g ✦`;
   roomLabelColor = '#c9a86a';
@@ -3052,24 +3378,91 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
+// Pick N evenly-spaced x-tile positions in the north wall, with min 3-tile
+// padding from each corner so doors never collide with corner-pillar art.
+// For shaped rooms (L / T / plus), the valid door X range narrows so the
+// door tile lands above the floor band, not above a carved corner. Imports
+// the per-shape range from room.js.
+function computeDoorXs(roomW, n, roomH, shape) {
+  if (n <= 0) return [];
+  const validRange = (roomH != null && shape != null)
+    ? getValidNorthDoorXRange(roomW, roomH, shape)
+    : { min: 3, max: roomW - 4 };
+  if (n === 1) return [Math.floor((validRange.min + validRange.max) / 2)];
+  const span = validRange.max - validRange.min;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    out.push(Math.round(validRange.min + span * t));
+  }
+  for (let i = 1; i < out.length; i++) {
+    if (out[i] - out[i - 1] < 3) out[i] = out[i - 1] + 3;
+  }
+  return out;
+}
+
 function loadRoom(idx, entryFrom) {
   const data = floor[idx];
   data.entryFrom = entryFrom;
+  // Round-7-audit POLISH — stop any lingering 'cleared' ambient pad
+  // from the PREVIOUS room. The pad is started when a combat room
+  // clears (warm post-clear atmosphere); once we're loading a new
+  // room, that purpose is done and the pad shouldn't bleed into
+  // the next encounter's combat audio. No-op if pad isn't running.
+  // Hamlet's pad is unaffected — enterHamletCanvas constructs its
+  // own floor[0] without calling loadRoom.
+  try { stopAmbientPad(); } catch (_e) {}
+  // FUNCTIONAL DOORS — wipe stale state. Doors will be re-set up after
+  // buildRoomFromData populates room.tiles + room.doors. The clear flag
+  // resets so onRoomCleared fires once when this new room is finished.
+  clearDoors();
+  _roomClearedNotified = false;
   // Set next-room hint so door preview can render the right icon (unless Blind curse)
   roomNextKind.kind = isCursed('blind') ? null : (floor[idx + 1]?.kind || null);
-  // Onboarding — trigger tips based on room kind transitions. Delay the
-  // first_combat tip so it doesn't collide with the codex banner + enemy
-  // spawn rush. By ~2s the player has seen the slime card and is ready for
-  // gameplay reminders.
+  // Onboarding — trigger tips based on room kind transitions.
+  //
+  // first_combat fires PRE-AGGRO (0.4s after room load) on the first
+  // combat room, not 2.2s in. Onboarding audit P1: the old delay let
+  // a brand-new player lose half their HP before reading "Move with
+  // WASD." Now the tip appears as enemies are still settling, while
+  // the player still has full HP and can read it.
   if (data.kind === 'combat' && currentFloorLevel === 1) {
-    setTimeout(() => showTip('first_combat'), 2200);
+    setTimeout(() => showTip('first_combat'), 400);
+    // Playtest report: "3 max HP. From a knight-fantasy menu I expected
+    // 8-10. The game never told me this is intentional." Fires after
+    // the controls tip so the staggered notification rail (1 tip at a
+    // time, 0.8s gap) lands the HP context as the second beat.
+    setTimeout(() => showTip('first_starting_hp'), 600);
+  }
+  // Start room — give the player a "walk through the door north" cue.
+  // Onboarding audit P0. The start room is a non-combat tile so
+  // first_combat won't fire here; new players sat there waiting for
+  // something to happen. This explicit dungeon-descent hint fires
+  // 1.2s after the heartbeat reveal to nudge them toward the door.
+  if (data.kind === 'start' && currentFloorLevel === 1) {
+    setTimeout(() => showTip('first_descent_dungeon'), 1200);
   }
   if (data.kind === 'reward') showTip('first_pedestal');
+  // Round-7 Phase 5 — first BLOOD GATE encounter. Fires if any of the
+  // outgoing edges from this room target a sealed node. setupRoomDoors
+  // hasn't run yet at this point in loadRoom, so we read directly off
+  // the graph node's edges list and check each target's `sealed` flag.
+  if (currentGraph && currentNodeId != null) {
+    const planNode = getFloorNode(currentGraph, currentNodeId);
+    if (planNode && planNode.edges?.length) {
+      const hasSealed = planNode.edges.some(eid => {
+        const t = getFloorNode(currentGraph, eid);
+        return t && t.sealed;
+      });
+      if (hasSealed) setTimeout(() => showTip('first_blood_gate'), 1400);
+    }
+  }
   // Room-kind onboarding tips (review onboarding pass) — fire once per player,
   // a short delay so the room settles before the banner appears.
-  if (data.kind === 'altar')  setTimeout(() => showTip('first_altar'),  1200);
-  if (data.kind === 'trove')  setTimeout(() => showTip('first_trove'),  1200);
-  if (data.kind === 'boss')   setTimeout(() => showTip('first_boss'),   1800);
+  if (data.kind === 'altar')      setTimeout(() => showTip('first_altar'),      1200);
+  if (data.kind === 'trove')      setTimeout(() => showTip('first_trove'),      1200);
+  if (data.kind === 'chestroom')  setTimeout(() => showTip('first_chestroom'),  1200);
+  if (data.kind === 'boss')       setTimeout(() => showTip('first_boss'),       1800);
   // Detect vanguard presence for first shielded enemy encounter
   if (data.spawns?.some(s => s.type === 'vanguard')) setTimeout(() => showTip('first_vanguard'), 1500);
   // Detect any elite presence for the affix-badge explainer
@@ -3090,12 +3483,48 @@ function loadRoom(idx, entryFrom) {
   // SYSTEMS PASS — SECOND WIND relic: first dodge per room is free.
   // Refreshes the charge on every room entry.
   if (hero.secondWind) hero.secondWindAvailable = true;
+  // VOW T2 ascendance — "discipline blocks the first strike". Refresh the
+  // per-room shield charge on every room entry. Consumed in damageHero.
+  if ((hero.activeThemes?.vow || 0) >= 2) hero.themeVowShieldAvailable = true;
+  // VOW ETERNAL legendary — first sword hit each room is a guaranteed
+  // crit. Refresh the readiness flag on every room entry; consumed in
+  // updateHero on the first damage-dealing sword swing. Pairs by
+  // intent with the VOW theme — both refresh per-room.
+  if (hero.vowEternal) hero.vowEternalReady = true;
+  // SHADOW T2 is a short window after dodge, not per-room, so no reset here.
+  // ── Compute the door plan from the graph BEFORE building the room ──────
+  // Each outgoing edge of the current node becomes a door tile in the
+  // north wall. The plan is just the list of x-tile positions; the
+  // doorPortals module will turn them into door objects with state.
+  const planNode = currentGraph && currentNodeId != null
+    ? getFloorNode(currentGraph, currentNodeId)
+    : null;
+  const planEdges = planNode && planNode.edges ? planNode.edges : [];
+  if (planEdges.length > 0 && data.doors?.north !== false) {
+    data.doorPlan = data.doorPlan || {};
+    const w = data.w || 20;
+    const h = data.h || 14;
+    data.doorPlan.north = computeDoorXs(w, planEdges.length, h, data.shape || 'rect');
+  } else {
+    data.doorPlan = data.doorPlan || {};
+    data.doorPlan.north = null;
+  }
   buildRoomFromData(data);
+  // ── Set up door state objects (now that tiles[] exists) ────────────────
+  // Pass the door X positions explicitly so the door OBJECTS sit on the
+  // same tiles the room build pass actually carved as 'door'. Critical
+  // for shaped rooms where the valid door range is narrower than full width.
+  setupRoomDoors(currentGraph, currentNodeId, {
+    hasSouthEntry: data.doors?.south !== false && data.kind !== 'start',
+    doorXs: data.doorPlan?.north || null,
+  });
   clearEnemies();
   clearProjectiles();
   clearPedestals();
   clearFx();
+  clearSoulTethers();
   clearFlames();
+  clearEmberRings();
   clearSynergies();
   clearWanderer();
   clearAmbientCreatures();   // fresh bat/raven cycle per room
@@ -3131,15 +3560,58 @@ function loadRoom(idx, entryFrom) {
     synthChord(440, 1.0, 1.0);      // mournful chord
     setTimeout(() => synthGloom(210, 0.7, 0.9), 400);
   }
-  // Altar rooms spawn their 2 HP-cost pedestals immediately on entry
+  // Round-7 ROOM REWARD globals — set on every loadRoom so per-kill +
+  // per-event hooks (e.g. enemies.js's gold drop) can read the active
+  // room's bias without needing to walk the graph or refetch data.
+  // Cleared (multiplier = 1) on rooms with no reward bias so the buff
+  // doesn't leak past a single room. Only 'gold' rooms multiply gold;
+  // other rewards are applied at clear time via the spawnRelicOffer
+  // path (see post-clear block) or at altar spawn (legendary tier).
+  if (typeof window !== 'undefined') {
+    window.__roomGoldMul = data.roomReward === 'gold' ? 1.5 : 1;
+  }
+
+  // Altar rooms spawn their tier-weighted pedestals immediately on entry.
+  // Pass currentFloorLevel through so the roll respects the floor (legacy
+  // `3` HP-cost arg is ignored; pedestals.js scales cost by drawn tier).
+  // Round-7 — roomReward='legendary' forces minTier='legendary' so the
+  // door's "LEGENDARY" promise matches the offered relics. Without this
+  // an altar door labeled LEGENDARY could roll a common+rare offer pair
+  // on F2-F3 (since altars use floor weights, not the door reward tag).
   if (data.kind === 'altar') {
-    spawnAltarOffer(3);    // -3 HP per relic
+    const altarOpts = data.roomReward === 'legendary' ? { minTier: 'legendary' } : {};
+    spawnAltarOffer(3, currentFloorLevel, altarOpts);
+  }
+
+  // Round-7 Phase 4-lite — SHOP rooms spawn 3 priced pedestals on entry.
+  // No enemies; cleared from the start so doors never close. Player can
+  // buy any number of items (or none) and walk through the north door.
+  // first_shop tip fires 1.2s after load — long enough for the room to
+  // settle, short enough that a quick player still reads it before
+  // pressing E.
+  if (data.kind === 'shop') {
+    spawnShopOffer(currentFloorLevel);
+    setTimeout(() => showTip('first_shop'), 1200);
   }
 
   // Boss room — dramatic intro: hold gameplay for ~2s while showing boss name
   if (data.kind === 'boss') {
-    bossIntroTime = 2.2;
+    // THE WATCHER — first-time arrival at the final-floor throne is a
+    // milestone utterance. Fires BEFORE the intro so the drawWatcher gate
+    // (defers on bossIntroTime > 0) holds the line until the ceremony ends.
+    if (currentFloorLevel >= MAX_FLOORS) watcherOnFinalBossEnter();
     bossIntroBoss = enemies.find(e => e.boss);
+    // Cinematic skip-on-repeat — first time the player meets this boss
+    // type they get the full 2.2s theatre treatment (full epithet read,
+    // backdrop fade, name typography). Subsequent runs against the same
+    // boss cut to ~1.3s — still long enough to register the threat
+    // without making the player tap through the same cinematic on every
+    // descent. markSeen returns true on first sight; we invert it.
+    const _bossKey = bossIntroBoss?.type || 'unknown';
+    const _firstBoss = markSeen('boss_intro', _bossKey);
+    bossIntroFast = !_firstBoss;
+    bossIntroTotal = _firstBoss ? 2.2 : 1.3;
+    bossIntroTime = bossIntroTotal;
     bossIntroStartedAt = performance.now();    // wall-clock mark for the 2.5s clamp
     // Hero invulnerability that covers the entire intro PLUS a post-intro
     // buffer (3.0s total: 2.2s intro + 0.3s wall-clock-clamp tail + 0.5s
@@ -3151,8 +3623,11 @@ function loadRoom(idx, entryFrom) {
     //   - the "intro ends, boss swings instantly" micro-gap
     //   - any future refactor that accidentally lets damage through
     // Math.max preserves any longer iframes already in flight (e.g. from
-    // a recent post-hurt stagger).
-    hero.iframes = Math.max(hero.iframes || 0, 3.0);
+    // a recent post-hurt stagger). Scales with bossIntroTotal so the
+    // skip-on-repeat fast intro doesn't strand the player with leftover
+    // invuln (1.3s intro + 0.3s tail + 0.5s orient = 2.1s on repeat;
+    // 3.0s on first sight as before).
+    hero.iframes = Math.max(hero.iframes || 0, bossIntroTotal + 0.8);
     shakeCamera(14, 0.5);
     pulseZoom(0.14, 1.0);                       // cinematic punch-in on boss entry
     // Audio stinger — deep metal impact to punctuate the intro
@@ -3197,130 +3672,287 @@ function triggerFloorCard(level) {
   floorCardName = d.name;
   floorCardFlavor = d.flavor;
   floorCardBackdrop = d.backdrop || '';
-  floorCardTime = 3.2;
+  // Cinematic skip-on-repeat — first time you see this floor's card it
+  // gets the full 3.2s theatre treatment so the typography + zone
+  // backdrop land. Subsequent runs through the same floor cut to ~half
+  // (1.6s) so the player isn't paying a tax on the cinematic every loop.
+  // markSeen returns true on first sight; we invert it for the duration.
+  const firstTime = markSeen('floor_card', level);
+  floorCardTotal = firstTime ? 3.2 : 1.6;
+  floorCardTime = floorCardTotal;
   floorCardStartedAt = performance.now();    // wall-clock mark for the clamp
   // Hero should NOT be moving while the card reads — zero velocity so the
   // freeze reads as a deliberate hold, not a pause at mid-stride.
   hero.vx = 0; hero.vy = 0;
+  // Audio "lift" for the typography moment — without this, the splashy
+  // 3.2s reveal reads as a silent freeze. A low resonant chord (E2 = 165Hz)
+  // sells the descent's gravity. Pitched lower for floor 1 and rising
+  // pentatonically per floor so the audio mirrors the descent.
+  const baseFreq = 165;
+  const freq = baseFreq * Math.pow(1.25, Math.max(0, level - 1));   // 165, 206, 258, 322
+  synthChord(freq, 0.55, 1.6);
 }
 
-// PROLOGUE — shown once, ever, before the first run. Sets the tone of the
-// world in 5 staged beats. Persisted via localStorage so veterans don't
-// see it again. Click or press any key to advance.
-const PROLOGUE_KEY = 'ethera:seen_prologue:v1';
-function hasSeenPrologue() {
-  try { return !!localStorage.getItem(PROLOGUE_KEY); } catch (e) { return false; }
-}
-function markPrologueSeen() {
-  try { localStorage.setItem(PROLOGUE_KEY, '1'); } catch (e) {}
-}
+// (Old abstract Ethera prologue retired. The Keeper wake cinematic
+// in playKeeperWake() below is the new first-entry intro — see the
+// large block further down with the full design rationale.)
 
-const PROLOGUE_BEATS = [
-  'The old world has ended.',
-  'What remains is called Ethera \u2014',
-  'a ruin that remembers every soul that descends,',
-  'and sharpens itself against you.',
-  'You are not the first. You will not be the last.',
-];
+// ============================================================================
+// KEEPER WAKE CINEMATIC — first-ever hamlet entry monologue.
+//
+// Replaces the abstract Ethera prologue (text on a black screen with no
+// speaker). The Keeper is the actual speaker now; her lines play over a
+// translucent darkness that LETS THE HAMLET SHOW THROUGH so the player
+// sees her in the scene as she talks. Reframes the whole roguelite:
+// the player’s first run isn’t an introduction to the ruin — it’s
+// their SECOND descent. The Keeper has already pulled them out once.
+// Every subsequent death + return is more of the same thing she has
+// been doing all along.
+//
+// Visual structure:
+//   - Translucent gradient overlay (lighter top, heavier bottom) so the
+//     subtitle band reads cleanly without obscuring the painted scene.
+//   - Speaker plate at top: small candle-flame sigil + "THE KEEPER".
+//   - Subtitle band at y=78%: italic body text, type-on character
+//     reveal so each beat reads as SPOKEN, advanced by click/space/enter.
+//   - Skip hint fades in after the final beat finishes typing.
+//
+// Input lock: the wake fires from the menu state where `running=false`
+// already gates hero update + the hamlet update branch. The capture-
+// phase keydown handler in playKeeperWake eats Space/Enter/E/WASD
+// before any gameplay handler could see them anyway. The
+// `_wakeCinematicActive` flag is read by ONE consumer downstream:
+// the per-tick `__centerBannerActive` recompute (~line 5125), so
+// contextual tips (showTip) defer beneath the cinematic instead
+// of stacking under the overlay.
+// ============================================================================
+let _wakeCinematicActive = false;
+// One-shot flag: true for the single re-entry that follows the wake
+// cinematic, then cleared. Spawns the hero NEXT TO the Keeper for that
+// entry (sells the "she pulled you up the stairs" framing). All
+// subsequent entries spawn at the regular HAMLET_HERO_SPAWN.
+let _freshFromWake = false;
 
-const prologueEl = document.createElement('div');
-prologueEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 60%,#020104 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px;box-sizing:border-box;cursor:pointer;z-index:40;';
-prologueEl.innerHTML = `
-  <!-- Corner flourishes matching every other page. -->
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
+// REDESIGNED intro layout. Previous version (faint candle sigil + tiny
+// "THE KEEPER" label at top + subtitle stuck at 78% y + skip-hint that
+// only fades in on the FINAL beat) didn't telegraph "click to advance"
+// — players reported the screen looking confused, not even knowing to
+// progress. New layout: solid opaque backdrop (no canvas bleed-through),
+// letterbox bars top + bottom for clear "cutscene" framing, speaker
+// label inside the top bar, subtitle vertically centered with larger
+// 24px italic, AND a continue prompt visible from beat 1 (pulses, says
+// "click or SPACE" while typing-done OR "click to skip" while typing).
+// Plus an always-visible "ESC skip" hint in the top-right.
+const keeperWakeEl = document.createElement('div');
+keeperWakeEl.style.cssText = 'position:absolute;inset:0;display:none;flex-direction:column;align-items:stretch;background:#0a0610;color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;cursor:pointer;z-index:40;';
+keeperWakeEl.innerHTML = `
+  <!-- Subtle radial gold-warm wash over the solid backdrop. Reads as
+       firelight in a dark room without making the backdrop translucent
+       (the prior 92% gradient let the canvas world bleed through). -->
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%, rgba(40,28,20,0.55) 0%, rgba(12,6,14,0.0) 65%);pointer-events:none;"></div>
+
+  <!-- TOP LETTERBOX — solid black bar with the speaker label centered. -->
+  <div style="position:relative;height:64px;background:#000;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-bottom:1px solid rgba(201,168,106,0.18);">
+    <div id="wakeSpeaker" style="display:flex;align-items:center;gap:14px;opacity:0;transition:opacity 1s ease;">
+      <!-- Small candle flame sigil to the LEFT of the name — a single
+           flicker of warmth in the bar. -->
+      <div style="position:relative;width:14px;height:14px;">
+        <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 60%, #ffd680 0%, #c9a86a 40%, transparent 75%);box-shadow:0 0 10px rgba(255,214,128,0.5);"></div>
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:4px;height:7px;background:radial-gradient(circle at 50% 75%, #fff2c0 0%, #ffd680 60%, #c9a86a 100%);border-radius:50%/60% 60% 40% 40%;"></div>
+      </div>
+      <div style="font-size:13px;letter-spacing:9px;color:#c9a86a;font-style:italic;text-shadow:0 0 8px rgba(201,168,106,0.4);">THE KEEPER</div>
+    </div>
+    <!-- Always-visible Esc hint in the top-right of the letterbox. -->
+    <div style="position:absolute;right:24px;top:50%;transform:translateY(-50%);font-size:9px;letter-spacing:3px;color:rgba(201,168,106,0.45);font-style:italic;">ESC TO SKIP</div>
   </div>
 
-  <!-- Central narrative column -->
-  <div id="prologueLines" style="display:flex;flex-direction:column;align-items:center;gap:28px;text-align:center;max-width:720px;"></div>
-  <div id="prologueSkip" style="position:absolute;bottom:42px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:6px;color:#c9a86a;opacity:0;font-style:italic;transition:opacity 0.6s ease;">click or press any key to continue</div>
+  <!-- CENTER STAGE — subtitle vertically centered between the bars. -->
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;padding:20px;">
+    <div id="wakeSubtitle" style="max-width:840px;width:90%;text-align:center;font-size:24px;line-height:1.55;font-style:italic;color:#f4d9a0;text-shadow:0 0 14px rgba(0,0,0,0.8);letter-spacing:0.5px;"></div>
+  </div>
+
+  <!-- BOTTOM LETTERBOX — continue prompt centered in the bar. Visible
+       from beat 1 (gentle pulse) so the player always knows clicking
+       advances. Text swaps between "click to skip" (typing) and
+       "click or SPACE to continue" (typing-done). -->
+  <div style="position:relative;height:64px;background:#000;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-top:1px solid rgba(201,168,106,0.18);">
+    <div id="wakePrompt" style="display:flex;align-items:center;gap:12px;opacity:0;transition:opacity 0.4s ease;">
+      <span style="font-size:14px;color:#c9a86a;text-shadow:0 0 8px rgba(201,168,106,0.55);animation:wakePromptPulse 1.6s ease-in-out infinite;">▾</span>
+      <span id="wakePromptText" style="font-size:11px;letter-spacing:5px;color:#c9a86a;font-style:italic;text-shadow:0 0 6px rgba(201,168,106,0.35);">CLICK OR PRESS SPACE TO CONTINUE</span>
+      <span style="font-size:14px;color:#c9a86a;text-shadow:0 0 8px rgba(201,168,106,0.55);animation:wakePromptPulse 1.6s ease-in-out infinite;">▾</span>
+    </div>
+  </div>
 `;
-document.getElementById('hud').appendChild(prologueEl);
+document.getElementById('hud').appendChild(keeperWakeEl);
 
-// Reveal prologue beats one by one, then enable dismissal.
-function playPrologue(onDone) {
-  const lines = document.getElementById('prologueLines');
-  const skip = document.getElementById('prologueSkip');
-  lines.innerHTML = '';
-  prologueEl.style.display = 'flex';
+// Inject the wake-prompt pulse keyframes once. Pulses opacity between
+// 0.5 and 1.0 so the prompt feels alive without strobing.
+(() => {
+  const style = document.createElement('style');
+  style.textContent = `@keyframes wakePromptPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }`;
+  document.head.appendChild(style);
+})();
+
+function playKeeperWake(onDone) {
+  if (_wakeCinematicActive) return;
+  _wakeCinematicActive = true;
+  // Tip system listens for window.__centerBannerActive so contextual
+  // tips (first_descent_hint, etc.) don’t fire over the cinematic.
+  window.__centerBannerActive = true;
+  const subtitleEl = document.getElementById('wakeSubtitle');
+  const promptEl = document.getElementById('wakePrompt');
+  const promptTextEl = document.getElementById('wakePromptText');
+  const speakerEl = document.getElementById('wakeSpeaker');
+  subtitleEl.textContent = '';
+  promptEl.style.opacity = '0';
+  speakerEl.style.opacity = '0';
+  keeperWakeEl.style.display = 'flex';
   let idx = 0;
+  let typing = false;
+  let typeTimer = 0;
   let dismissed = false;
+  // Tracks whether the player heard the final beat. Set true when
+  // armFinalBeatDismiss fires (final beat fully on screen). Used by
+  // done() to decide whether to play the closing chord - natural
+  // completion gets a sting; Esc skip mid-cinematic stays silent.
+  let reachedFinal = false;
   const done = () => {
     if (dismissed) return;
     dismissed = true;
-    markPrologueSeen();
-    prologueEl.style.display = 'none';
-    document.removeEventListener('keydown', keyHandler);
-    prologueEl.removeEventListener('click', clickHandler);
+    _wakeCinematicActive = false;
+    window.__centerBannerActive = false;
+    keeperWakeEl.style.display = 'none';
+    document.removeEventListener('keydown', keyHandler, true);
+    keeperWakeEl.removeEventListener('click', clickHandler);
+    if (typeTimer) clearTimeout(typeTimer);
+    // Closing chord - a fifth above the open chord (196 -> 294 Hz, perfect
+    // fifth) lands as resolution. Only fires on natural completion so
+    // Esc-skip mid-cinematic stays silent.
+    if (reachedFinal) {
+      try { synthChord(294, 0.6, 1.6); } catch (_e) {}
+    }
     if (onDone) onDone();
   };
-  const keyHandler = () => done();
-  const clickHandler = () => done();
-  const revealNext = () => {
-    if (idx >= PROLOGUE_BEATS.length) {
-      // All beats revealed — show skip hint + arm dismissal.
-      skip.style.opacity = '0.75';
-      document.addEventListener('keydown', keyHandler);
-      prologueEl.addEventListener('click', clickHandler);
-      // Auto-dismiss after 6s if the player doesn't act.
-      setTimeout(done, 6000);
+  // Type out the current beat. ~28ms per char, slowed on punctuation,
+  // reads as paced speech. Returns control to the advance handler when
+  // the full beat is on screen.
+  // initialDelay (default 0) is the pause BEFORE the first character
+  // appears. Used by the very first beat to give the open chord 1.1s
+  // of lead-in before the keeper "speaks." typing is set true even
+  // during this pause so an early click/keypress fast-forwards to
+  // the full beat instead of accidentally skipping past beat 0.
+  const typeBeat = (text, onTypeDone, initialDelay = 0) => {
+    typing = true;
+    // While typing, the prompt says "click to skip" — clearer than
+    // having it read "continue" while a beat is still mid-reveal.
+    promptTextEl.textContent = 'CLICK OR PRESS SPACE TO SKIP TYPING';
+    let i = 0;
+    const tick = () => {
+      if (dismissed) return;
+      if (i < text.length) {
+        subtitleEl.textContent = text.slice(0, ++i);
+        // Reveal the prompt the moment the FIRST character types — the
+        // player always sees a visible "click to advance" affordance.
+        if (i === 1 && promptEl.style.opacity !== '1') {
+          promptEl.style.opacity = '1';
+        }
+        const ch = text[i - 1];
+        const delay = (ch === ',' || ch === ';') ? 110 : (ch === '.' || ch === '?' || ch === '!') ? 240 : 28;
+        // Soft per-punctuation tick — audio review P1. Without this the
+        // mid-cinematic typewriter is silent between the open and close
+        // chords, which feels muted. Click is low-volume (0.04) so it
+        // reads as a soft breath/pause rather than a UI click — same
+        // technique used by classic story-typewriter games.
+        if (ch === '.' || ch === '?' || ch === '!' || ch === ',') {
+          try { synthClick(2.0, 0.04); } catch (_e) {}
+        }
+        typeTimer = setTimeout(tick, delay);
+      } else {
+        typing = false;
+        // Typing done — swap prompt to "continue" wording.
+        promptTextEl.textContent = 'CLICK OR PRESS SPACE TO CONTINUE';
+        if (onTypeDone) onTypeDone();
+      }
+    };
+    if (initialDelay > 0) typeTimer = setTimeout(tick, initialDelay);
+    else tick();
+  };
+  // Fires the "final beat is fully on screen" payload — show skip hint +
+  // arm 10s auto-dismiss safety. Lifted out of typeBeat's onTypeDone so
+  // the fast-forward branch (advance during typing) can also call it
+  // when fast-forwarding the LAST beat. Without this, a player who
+  // Space-spammed through and clicked once on the final beat got
+  // stuck — no auto-dismiss timer ever scheduled.
+  const armFinalBeatDismiss = () => {
+    reachedFinal = true;
+    // Final beat — swap the prompt to make the "this ends here" beat
+    // explicit instead of just looking like another mid-cinematic
+    // continue. The 10s auto-dismiss safety timer was REMOVED in the
+    // accessibility pass: it dumped slow readers into the hamlet
+    // mid-thought (a11y review P0). The "CLICK OR PRESS SPACE" prompt
+    // is enough — players who want to leave can; players who want to
+    // sit with the moment can.
+    promptTextEl.textContent = 'CLICK OR PRESS SPACE TO ENTER THE HAMLET';
+  };
+  const advance = () => {
+    if (dismissed) return;
+    // Mid-typing advance fast-forwards to the end of the current beat.
+    if (typing) {
+      if (typeTimer) clearTimeout(typeTimer);
+      subtitleEl.textContent = KEEPER_WAKE_BEATS[idx];
+      typing = false;
+      // If we just fast-forwarded the FINAL beat, arm the same dismiss
+      // safety the natural-end onTypeDone would have armed.
+      if (idx === KEEPER_WAKE_BEATS.length - 1) armFinalBeatDismiss();
       return;
     }
-    const line = document.createElement('div');
-    const isLast = idx === PROLOGUE_BEATS.length - 1;
-    line.textContent = PROLOGUE_BEATS[idx];
-    line.style.cssText = `
-      font-size:${isLast ? 22 : 20}px;
-      letter-spacing:${isLast ? 4 : 2}px;
-      color:${isLast ? '#f4d9a0' : '#d8cfae'};
-      font-style:${isLast ? 'normal' : 'italic'};
-      opacity:0;
-      transform:translateY(12px);
-      transition:opacity 1.2s ease, transform 1.2s ease;
-      text-shadow:${isLast ? '0 0 14px rgba(244,217,160,0.45)' : '0 0 8px rgba(0,0,0,0.6)'};
-      line-height:1.5;
-    `;
-    lines.appendChild(line);
-    // Trigger reveal next frame
-    requestAnimationFrame(() => {
-      line.style.opacity = '1';
-      line.style.transform = 'translateY(0)';
-    });
     idx++;
-    setTimeout(revealNext, isLast ? 1500 : 1600);
+    if (idx >= KEEPER_WAKE_BEATS.length) {
+      done();
+      return;
+    }
+    const isLast = idx === KEEPER_WAKE_BEATS.length - 1;
+    typeBeat(KEEPER_WAKE_BEATS[idx], () => {
+      if (isLast) armFinalBeatDismiss();
+    });
   };
-  // Start a low, ominous chord as the prologue opens.
-  try { synthChord(220, 1.2, 1.4); } catch (e) {}
-  setTimeout(revealNext, 600);
+  // Capture-phase keydown so the cinematic eats keys before gameplay
+  // handlers (WASD, E-interact). Same handler covers advance + final
+  // dismiss; Esc is an immediate skip.
+  const keyHandler = (e) => {
+    if (e.code === 'Escape') { e.preventDefault(); e.stopPropagation(); return done(); }
+    // Eat all gameplay-relevant keys so they don't accumulate in
+    // input.js's keys[] map under the cinematic. Space/Enter/E
+    // advance the beat; WASD + arrow keys are eaten silently so
+    // the hero doesn't walk the moment the cinematic dismisses.
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE'
+      || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
+      || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') advance();
+    }
+  };
+  const clickHandler = () => advance();
+  document.addEventListener('keydown', keyHandler, true);
+  keeperWakeEl.addEventListener('click', clickHandler);
+  // Open chord — low, slow, the same warmth as the keeper’s tone.
+  try { synthChord(196, 0.75, 1.8); } catch (e) {}
+  // Speaker plate fades in first (0.4s); the first beat kicks off
+  // typing 1.1s after that, giving the open chord lead-time. Using
+  // typeBeat's initialDelay rather than a separate setTimeout means
+  // an early advance (player rushing through) fast-forwards the
+  // first beat instead of skipping past it to beat 1.
+  setTimeout(() => { speakerEl.style.opacity = '1'; }, 400);
+  typeBeat(KEEPER_WAKE_BEATS[0], null, 1100);
 }
 
 // EPILOGUE — shown once, ever, on the first full clear. Counterpart to the
 // prologue: the prologue frames entering the ruin; the epilogue frames
 // reaching the bottom. After dismissal, flow continues to showEndOfRun.
-const EPILOGUE_KEY = 'ethera:seen_epilogue:v1';
-function hasSeenEpilogue() {
-  try { return !!localStorage.getItem(EPILOGUE_KEY); } catch (e) { return false; }
-}
-function markEpilogueSeen() {
-  try { localStorage.setItem(EPILOGUE_KEY, '1'); } catch (e) {}
-}
+// Gated by firstSeen('epilogue', 'first_clear') — see hasSeen check at
+// the win-call site below. The legacy 'ethera:seen_epilogue:v1' flag was
+// retired in the same cleanup pass; firstSeen owns this beat now.
 const EPILOGUE_BEATS = [
   'You walked to the bottom.',
   'For a moment, the ruin forgot its hunger.',
@@ -3329,7 +3961,7 @@ const EPILOGUE_BEATS = [
   'and the dark, when it wakes, will remember your name.',
 ];
 const epilogueEl = document.createElement('div');
-epilogueEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0a0e 0%,#0a0610 60%,#020104 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px;box-sizing:border-box;cursor:pointer;z-index:40;';
+epilogueEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0a0e 0%,#0a0610 60%,#020104 100%);color:#f4d9a0;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px;box-sizing:border-box;cursor:pointer;z-index:40;overflow-y:auto;';
 epilogueEl.innerHTML = `
   <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
     <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
@@ -3372,7 +4004,7 @@ function playEpilogue(onDone) {
   const done = () => {
     if (dismissed) return;
     dismissed = true;
-    markEpilogueSeen();
+    markSeen('epilogue', 'first_clear');
     epilogueEl.style.display = 'none';
     document.removeEventListener('keydown', keyHandler);
     epilogueEl.removeEventListener('click', clickHandler);
@@ -3434,8 +4066,65 @@ function saveRunSnapshot() {
       relicIds: equippedRelics.map(r => r.id),
       curseIds: [...activeCurses],
       tarotIds: drawnCards.map(c => c.id),
+      // Memory the run STARTED with — pinned to snap so resumeRun can
+      // replay applySelectedMemory(memoryId) and re-set the flag fields
+      // (memoryBell, memoryNine, memoryHungryBlade, memoryHermit,
+      // memoryHanged, etc.) that resetHero zeroes. Without this, every
+      // memory's flag-driven behavior dies on resume — only the multiplier
+      // bonuses survive (via snap.mods). Also preserves the run's memory
+      // identity if the player swaps selection between save and resume.
+      memoryId: selectedMemoryId,
       dailyActive: !!daily.activeForRun,
       timestamp: Date.now(),
+      // Multiplier bundle — captures the FINAL run-start state of every
+      // hero stat that gets mutated by non-relic sources (meta unlocks,
+      // curse modifiers, tarot effects, memory bonuses). Without these,
+      // resumeRun could only rebuild multipliers from the relics list,
+      // silently losing every other multiplicative source. Per-bug
+      // example: a glass_blade + sharpened_edge + the_hanged_man run
+      // would lose damageMul × 1.4 × 1.10 × 1.30 = 2.002× → only the
+      // relic part remained on resume. Same applies to damageTakenMul,
+      // dodgeCooldownMul, etc.
+      mods: {
+        damageMul: hero.damageMul,
+        damageTakenMul: hero.damageTakenMul,
+        attackCooldownMul: hero.attackCooldownMul,
+        dodgeCooldownMul: hero.dodgeCooldownMul,
+        speedMul: hero.speedMul,
+        reachMul: hero.reachMul,
+        knockbackMul: hero.knockbackMul,
+        dodgeDistMul: hero.dodgeDistMul,
+        critChance: hero.critChance,
+        critMul: hero.critMul,
+        lifesteal: hero.lifesteal,
+        regenRate: hero.regenRate,
+        executeThreshold: hero.executeThreshold,
+        executeMul: hero.executeMul,
+        boltLifeMul: hero.boltLifeMul,
+        // CONSUMABLE — revives are added by phoenix_cloak.apply() and
+        // phoenix_tear.apply() at +1 each. Without persisting the live
+        // count, a resume re-fires applyRelic and restores any revives
+        // the player has already consumed (free phoenix on every resume).
+        revives: hero.revives | 0,
+      },
+      // Rhythm-counter state — ALL of these decay to 0 across rooms
+      // anyway (chain decay, swingChainTime), but a player who picks a
+      // legendary like Vow Eternal during floor 2 and resumes from the
+      // main menu rightfully expects the readiness flag to be honored.
+      // Same for arcaneQuiverHits / pyroCount / chainCount — without
+      // these, resume always wipes counter progress to zero, making a
+      // mid-room interrupt feel like a silent regression.
+      counters: {
+        chainCount: hero.chainCount | 0,
+        pyroCount: hero.pyroCount | 0,
+        soulKillCount: hero.soulKillCount | 0,
+        arcaneQuiverHits: hero.arcaneQuiverHits | 0,
+        ringingSteelStacks: hero.ringingSteelStacks | 0,
+        twinPulseTick: hero.twinPulseTick | 0,
+        mountainStrikeCounter: hero.mountainStrikeCounter | 0,
+        razorPaceHits: hero.razorPaceHits | 0,
+        vowEternalReady: !!hero.vowEternalReady,
+      },
     };
     localStorage.setItem(RUN_SNAPSHOT_KEY, JSON.stringify(snap));
   } catch (e) {}
@@ -3457,6 +4146,9 @@ function clearRunSnapshot() {
 // Rebuilds the hero loadout from the snapshot then enters floor N as if the
 // player had just descended into it (fresh rooms, fresh enemies).
 function resumeRun(snap) {
+  // New run number — same rationale as startRun: invalidate stale
+  // deferred callbacks from a prior aborted run.
+  _runSeq++;
   hideAllOverlays();
   // Reset baseline first
   resetHero();
@@ -3470,9 +4162,25 @@ function resumeRun(snap) {
   hero.weapon = snap.weapon || 'sword';
   // Curses
   for (const cid of (snap.curseIds || [])) activeCurses.add(cid);
-  // Tarot (re-apply run effects via existing reveal path would be ideal, but
-  // for a resume we just restore the flags via tarot.js state re-population)
-  // — applied later by the existing tarot active checks in game logic
+  // Tarot — restore drawn cards from the snapshot. The previous code
+  // had a misleading comment claiming this was "applied later by the
+  // existing tarot active checks" but there was no such path: hasCard
+  // / isTarotRun / drawnCards is the source of truth, and clearTarot()
+  // above zeroed it. Without this push, a resumed run lost every
+  // tarot effect (THE EMPRESS gold-double, THE FOOL no-weapon-start,
+  // THE STAR extra sanctuary, THE HANGED MAN dmg-vs-HP cost, etc.).
+  for (const tid of (snap.tarotIds || [])) {
+    if (TAROT[tid]) drawnCards.push(TAROT[tid]);
+  }
+  // MEMORY — replay the memory the run STARTED with, BEFORE the relic
+  // loop. resetHero zeroes memoryBell / memoryNine / memoryHungryBlade /
+  // memoryHermit / memoryHanged etc.; without this replay every memory's
+  // flag-driven behavior is silently dead on resume even though the
+  // multiplier bonuses survive via snap.mods. The override id ignores
+  // the player's CURRENT selection in case they swapped memories
+  // between save and resume — the run continues with the memory it
+  // started with.
+  applySelectedMemory({ seenRelicIds }, snap.memoryId);
   // Relics (apply each one; fusion hooks fire as expected)
   for (const rid of (snap.relicIds || [])) {
     if (RELIC_DEFS[rid]) applyRelic(rid);
@@ -3482,6 +4190,57 @@ function resumeRun(snap) {
   hero.hp = Math.min(hero.maxHp, Math.max(1, snap.hp || hero.maxHp));
   gold.total = snap.gold | 0;
   daily.activeForRun = !!snap.dailyActive;
+  // Multiplier bundle — restore AFTER relics have applied. Snap.mods
+  // captures the FINAL run-start state of every multiplier the hero
+  // accumulated (relic + meta unlocks + curse modifiers + tarot
+  // effects + memory bonuses). Without this, resumeRun could only
+  // rebuild multipliers from relics, silently losing the rest.
+  // Restoring AFTER applyRelic clobbers the relic-only rebuild with
+  // the correct final values; flag fields set by relic.apply() (e.g.
+  // hero.chainLightning, hero.executeThreshold gates) are preserved
+  // because they're not in snap.mods.
+  if (snap.mods) {
+    if (typeof snap.mods.damageMul === 'number')        hero.damageMul = snap.mods.damageMul;
+    if (typeof snap.mods.damageTakenMul === 'number')   hero.damageTakenMul = snap.mods.damageTakenMul;
+    if (typeof snap.mods.attackCooldownMul === 'number') hero.attackCooldownMul = snap.mods.attackCooldownMul;
+    if (typeof snap.mods.dodgeCooldownMul === 'number') hero.dodgeCooldownMul = snap.mods.dodgeCooldownMul;
+    if (typeof snap.mods.speedMul === 'number')         hero.speedMul = snap.mods.speedMul;
+    if (typeof snap.mods.reachMul === 'number')         hero.reachMul = snap.mods.reachMul;
+    if (typeof snap.mods.knockbackMul === 'number')     hero.knockbackMul = snap.mods.knockbackMul;
+    if (typeof snap.mods.dodgeDistMul === 'number')     hero.dodgeDistMul = snap.mods.dodgeDistMul;
+    if (typeof snap.mods.critChance === 'number')       hero.critChance = snap.mods.critChance;
+    if (typeof snap.mods.critMul === 'number')          hero.critMul = snap.mods.critMul;
+    if (typeof snap.mods.lifesteal === 'number')        hero.lifesteal = snap.mods.lifesteal;
+    if (typeof snap.mods.regenRate === 'number')        hero.regenRate = snap.mods.regenRate;
+    if (typeof snap.mods.executeThreshold === 'number') hero.executeThreshold = snap.mods.executeThreshold;
+    if (typeof snap.mods.executeMul === 'number')       hero.executeMul = snap.mods.executeMul;
+    if (typeof snap.mods.boltLifeMul === 'number')      hero.boltLifeMul = snap.mods.boltLifeMul;
+    if (typeof snap.mods.revives === 'number')          hero.revives = snap.mods.revives;
+  }
+  // Rhythm-counter restore — applyRelic re-runs each relic's apply()
+  // which re-zeros counters (e.g. razor_pace.apply sets razorPaceHits = 0).
+  // Restoring here AFTER applyRelic preserves the snapshot's state.
+  // Each field guarded by typeof so older snapshots without `counters`
+  // don't break (defaults to 0/false from resetHero).
+  if (snap.counters) {
+    if (typeof snap.counters.chainCount === 'number')         hero.chainCount = snap.counters.chainCount;
+    if (typeof snap.counters.pyroCount === 'number')          hero.pyroCount = snap.counters.pyroCount;
+    if (typeof snap.counters.soulKillCount === 'number')      hero.soulKillCount = snap.counters.soulKillCount;
+    if (typeof snap.counters.arcaneQuiverHits === 'number')   hero.arcaneQuiverHits = snap.counters.arcaneQuiverHits;
+    if (typeof snap.counters.ringingSteelStacks === 'number') hero.ringingSteelStacks = snap.counters.ringingSteelStacks;
+    if (typeof snap.counters.twinPulseTick === 'number')      hero.twinPulseTick = snap.counters.twinPulseTick;
+    if (typeof snap.counters.mountainStrikeCounter === 'number') hero.mountainStrikeCounter = snap.counters.mountainStrikeCounter;
+    if (typeof snap.counters.razorPaceHits === 'number')      hero.razorPaceHits = snap.counters.razorPaceHits;
+    if (typeof snap.counters.vowEternalReady === 'boolean')   hero.vowEternalReady = snap.counters.vowEternalReady;
+  }
+  // Daily challenge curse-id flag — drives generation-pipeline readers
+  // even though the inline modifiers are now captured in snap.mods.
+  if (daily.activeForRun) {
+    const todaysChallenge = getTodayChallenge();
+    window.__dailyCurseId = todaysChallenge.curseId;
+  } else {
+    window.__dailyCurseId = null;
+  }
   // Enter floor N
   currentFloorLevel = Math.max(1, Math.min(MAX_FLOORS, snap.floorLevel));
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
@@ -3503,26 +4262,44 @@ function resumeRun(snap) {
   deathCeremonyActive = false;
   deathCeremonyTime = 0;
   deathSummaryShown = false;
+  // Notification rail — drop stale entries from the previous run.
+  clearNotifications();
   phaseIntroTime = 0;
   phaseIntroBoss = null;
   phaseIntroStartedAt = 0;
   floorCardStartedAt = 0;
   bossIntroStartedAt = 0;
   fusionBannerTime = 0;
+  // THE WATCHER — resume doesn't bump the run counter, but it MUST reset
+  // per-run state (so the death-depth line gate works) and notify the
+  // entity of the current floor (so milestone utterances like first-floor-4
+  // still fire if the player resumes into a not-yet-seen floor).
+  watcherOnRunResume();
+  watcherOnFloorEnter(currentFloorLevel);
   triggerFloorCard(currentFloorLevel);
+  // Wipe any leftover transition residue (door pan + prevRoom snapshot)
+  // — same guard as startRun. Without this, a player who saved mid-pan
+  // and resumes finds the hero frozen by isDoorPanActive() with the
+  // previous dungeon room still rendering as a fading ghost.
+  doorPan = null;
+  clearPrevRoom();
   loadRoom(0, 'south');
+  // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
+  // previous run doesn't trigger a phantom heart-sparkle on the first
+  // frame of resumed state.
+  resetHudAnims();
   running = true;
   // Snapshot at run start so a player who quits floor 1 can resume floor 1.
   saveRunSnapshot();
 }
 
 function startRun() {
-  // Gate: play the prologue once, ever, before the first run begins.
-  if (!hasSeenPrologue()) {
-    hideAllOverlays();
-    playPrologue(() => startRun());    // re-enter after dismiss (flag now set)
-    return;
-  }
+  // New run number — invalidates any stale timeouts/intervals from prior
+  // runs (boss-drop poll, wave-2 spawn). They'll bail at the top of the
+  // callback when they see _runSeq has moved past their captured value.
+  _runSeq++;
+  // (Prologue gate moved to enterHamletCanvas — the prose lands when the
+  // player wakes in the hamlet, not after they've already toured it.)
   // ORACLE'S FORTUNES — if a card was drawn in the hamlet, push it into the
   // tarot active set so the existing tarot-hook plumbing (hasCard() checks
   // across hero.js and main.js) fires the card's effects automatically.
@@ -3535,6 +4312,9 @@ function startRun() {
   // Ambient pad fades out as the run begins — the real combat music system
   // (music.js, when OGG tracks land) will take over from here.
   stopAmbientPad();
+  // Re-enable camera breathe for combat (was disabled in hamlet to keep
+  // static tiles from shimmering — see enterHamletCanvas).
+  camera.breatheEnabled = true;
   currentFloorLevel = 1;
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
   window.__currentBiome = BIOME_BY_FLOOR[currentFloorLevel];
@@ -3598,8 +4378,18 @@ function startRun() {
   window.__gameMetrics.lastHitFromY = 0;
   window.__gameMetrics.lastKillTime = 0;
   incrementRunsStarted();
+  watcherOnRunStart();
+  watcherOnFloorEnter(currentFloorLevel);
+  try { watcherOnAscensionStart(getAscensionTier() || 0); } catch (e) {}
   triggerFloorCard(currentFloorLevel);
   clearPedestals();
+  // Wipe any leftover transition residue from a prior run that ended
+  // mid-pan (death during door pan, or quit-to-menu). Without this,
+  // doorPan stays non-null and isDoorPanActive() freezes the new run
+  // on its first tick; prevRoom would render the previous run's last
+  // dungeon room as a fading ghost over the new floor.
+  doorPan = null;
+  clearPrevRoom();
   // Apply meta-progression unlocks to fresh run (UNLESS Forsaken curse active)
   if (!isCursed('forsaken')) {
     if (hasUnlock('vitality_charm')) { hero.maxHp += 3; hero.hp = hero.maxHp; }
@@ -3609,7 +4399,11 @@ function startRun() {
     if (hasUnlock('purse_of_depths')) { gold.total += 50; }
     if (hasUnlock('blessed_greaves')) { applyRelic('iron_greaves'); }
     if (hasUnlock('ancient_pact')) {
-      const pool = ALL_RELIC_IDS.filter(id => !equippedRelics.find(r => r.id === id));
+      // Filter for weapon compatibility — don't grant a wand-only relic
+      // to a sword player (would be a dead pick they didn't choose).
+      const pool = ALL_RELIC_IDS.filter(id =>
+        !equippedRelics.find(r => r.id === id) && isRelicForWeapon(id, hero.weapon),
+      );
       if (pool.length) applyRelic(pool[(Math.random() * pool.length) | 0]);
     }
   }
@@ -3636,7 +4430,9 @@ function startRun() {
     if (hasCard('the_sun')) {
       const rares = ALL_RELIC_IDS.filter(id => {
         const def = RELIC_DEFS[id];
-        return def && def.tier === 'rare' && !equippedRelics.find(r => r.id === id);
+        return def && def.tier === 'rare'
+          && !equippedRelics.find(r => r.id === id)
+          && isRelicForWeapon(id, hero.weapon);
       });
       if (rares.length) applyRelic(rares[(Math.random() * rares.length) | 0]);
     }
@@ -3715,7 +4511,22 @@ function startRun() {
   hero.fusionMountainsHeart = false;
   hero.fusionObsidianEdge = false;
   hero.fusionTempest = false;
+  // Weapon-signature fusion flags (April 2026 — see fusions.js)
+  hero.fusionSwornReply = false;
+  hero.fusionMortalCadence = false;
+  hero.fusionAvalanche = false;
+  hero.fusionCrescendo = false;
+  hero.fusionForkedSky = false;
+  // Previously dead fusions, now wired (Kingslayer adds speartip crit
+  // bonus, Weaving Step adds post-cleansing-dodge i-frames):
+  hero.fusionKingslayer = false;
+  hero.fusionWeavingStep = false;
+  hero.weavingStepReady = false;
   loadRoom(0, 'south');
+  // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
+  // previous run doesn't trigger a phantom heart-sparkle on the first
+  // frame of a fresh run.
+  resetHudAnims();
   running = true;
 }
 
@@ -3751,6 +4562,7 @@ function beginNextFloor() {
   winEl.style.display = 'none';
   transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
   bossWinTriggered = false;
+  watcherOnFloorEnter(currentFloorLevel);
   triggerFloorCard(currentFloorLevel);
   loadRoom(0, 'south');
   running = true;
@@ -3843,21 +4655,78 @@ function showEndOfRun(isVictory) {
   refreshNpcPresence(records, stats, { seenRelicIds });
   const newBestMark = (key) => beatenRecords.includes(key)
     ? ' <span style="color:#ffe070;font-size:10px;letter-spacing:1px;text-shadow:0 0 8px rgba(255,224,112,0.8);">★ BEST</span>' : '';
-  grid.innerHTML = `
-    <div><span style="opacity:0.6;">Floor Reached</span></div><div style="text-align:right;color:#ffd68a;">${stats.floorReached} / ${MAX_FLOORS}${newBestMark('maxFloor')}</div>
-    <div><span style="opacity:0.6;">Run Time</span></div><div style="text-align:right;">${duration}${isVictory ? newBestMark('fastestClear') : ''}</div>
-    <div><span style="opacity:0.6;">Rooms Cleared</span></div><div style="text-align:right;">${stats.roomsCleared}</div>
-    <div><span style="opacity:0.6;">Enemies Slain</span></div><div style="text-align:right;">${stats.enemiesDefeated}${stats.elitesDefeated ? ' (' + stats.elitesDefeated + ' elite)' : ''}${newBestMark('mostEnemies')}</div>
-    <div><span style="opacity:0.6;">Bosses Felled</span></div><div style="text-align:right;color:#ff9085;">${stats.bossesKilled}${newBestMark('mostBosses')}</div>
-    <div><span style="opacity:0.6;">Damage Dealt</span></div><div style="text-align:right;">${stats.damageDealt | 0}</div>
-    <div><span style="opacity:0.6;">Damage Taken</span></div><div style="text-align:right;">${stats.damageTaken | 0}</div>
-    <div><span style="opacity:0.6;">Biggest Hit</span></div><div style="text-align:right;color:#ff9066;">${stats.biggestHit | 0}${newBestMark('biggestHit')}</div>
-    <div><span style="opacity:0.6;">Gold Collected</span></div><div style="text-align:right;color:#ffd68a;">🪙 ${stats.goldCollected}${newBestMark('mostGold')}</div>
-    <div><span style="opacity:0.6;">Relics Acquired</span></div><div style="text-align:right;">${stats.relicsObtained}${newBestMark('mostRelics')}</div>
-    <div><span style="opacity:0.6;">Perfect Dodges</span></div><div style="text-align:right;color:#a0e8ff;">${stats.perfectDodges}</div>
-    <div><span style="opacity:0.6;">Max Combo</span></div><div style="text-align:right;">${mc}${comboTag}${newBestMark('maxCombo')}</div>
-    ${stats.wandererTrades ? `<div><span style="opacity:0.6;">Wanderer Trades</span></div><div style="text-align:right;color:#c9a86a;">${stats.wandererTrades}</div>` : ''}
-  `;
+  // Stats rows — drop zero-value rows for short / failed runs so the modal
+  // fits within the 720 design-space height. Long / late-floor runs still
+  // get the full breakdown because their stats are non-zero. "Floor
+  // Reached" and "Run Time" always show — they're the run's signature.
+  // Zero-display rule: skip a row if its primary value is 0/null. Each row
+  // is built as a template string so we can filter().join() into the grid.
+  const _row = (label, val, color = '') => `
+    <div><span style="opacity:0.6;">${label}</span></div>
+    <div style="text-align:right;${color ? `color:${color};` : ''}">${val}</div>`;
+  const _rows = [
+    _row('Floor Reached', `${stats.floorReached} / ${MAX_FLOORS}${newBestMark('maxFloor')}`, '#ffd68a'),
+    _row('Run Time', `${duration}${isVictory ? newBestMark('fastestClear') : ''}`),
+    stats.roomsCleared      ? _row('Rooms Cleared', stats.roomsCleared)                                                              : '',
+    stats.enemiesDefeated   ? _row('Enemies Slain', `${stats.enemiesDefeated}${stats.elitesDefeated ? ' (' + stats.elitesDefeated + ' elite)' : ''}${newBestMark('mostEnemies')}`) : '',
+    stats.bossesKilled      ? _row('Bosses Felled', `${stats.bossesKilled}${newBestMark('mostBosses')}`, '#ff9085')                  : '',
+    stats.damageDealt       ? _row('Damage Dealt', stats.damageDealt | 0)                                                             : '',
+    stats.damageTaken       ? _row('Damage Taken', stats.damageTaken | 0)                                                             : '',
+    stats.biggestHit        ? _row('Biggest Hit', `${stats.biggestHit | 0}${newBestMark('biggestHit')}`, '#ff9066')                  : '',
+    stats.goldCollected     ? _row('Gold Collected', `🪙 ${stats.goldCollected}${newBestMark('mostGold')}`, '#ffd68a')              : '',
+    stats.relicsObtained    ? _row('Relics Acquired', `${stats.relicsObtained}${newBestMark('mostRelics')}`)                         : '',
+    stats.perfectDodges     ? _row('Perfect Dodges', stats.perfectDodges, '#a0e8ff')                                                 : '',
+    mc                      ? _row('Max Combo', `${mc}${comboTag}${newBestMark('maxCombo')}`)                                        : '',
+    stats.wandererTrades    ? _row('Wanderer Trades', stats.wandererTrades, '#c9a86a')                                               : '',
+  ].filter(Boolean);
+  grid.innerHTML = _rows.join('');
+  // Empty-state: a no-action run still has Floor + Run Time, so the panel
+  // never collapses to zero rows.
+
+  // THE WATCHER LEDGER — a quiet line from the entity: "The Watcher marks
+  // your Nth descent." + the most recent utterance, requoted with its sigil.
+  // Appears only if the Watcher has ever spoken (keeps first-run summaries
+  // clean). Matches the in-run italic serif grammar.
+  try {
+    const watcherEl = document.getElementById('endWatcher');
+    if (watcherEl) {
+      const last = watcherLastLine();
+      const count = watcherDescentCount();
+      if (last) {
+        const ordinal = (n) => {
+          const j = n % 10, k = n % 100;
+          if (k >= 11 && k <= 13) return n + 'th';
+          if (j === 1) return n + 'st';
+          if (j === 2) return n + 'nd';
+          if (j === 3) return n + 'rd';
+          return n + 'th';
+        };
+        // Prefer the painted sigil asset; fall back to an inline SVG
+        // silhouette if the keyed canvas + data-url isn't loaded yet (first
+        // render during loading, or missing asset).
+        const sigilUrl = (imageCache && imageCache.watcher_sigil_url) || null;
+        const sigilHtml = sigilUrl
+          ? `<img src="${sigilUrl}" alt="" width="26" height="26" style="display:block;filter:drop-shadow(0 0 6px rgba(236,224,196,0.4));" />`
+          : `<svg width="22" height="22" viewBox="0 0 22 22" style="overflow:visible;">
+              <circle cx="11" cy="11" r="9" fill="none" stroke="rgba(236,224,196,0.75)" stroke-width="1"/>
+              <circle cx="11" cy="11" r="5" fill="none" stroke="rgba(236,224,196,0.35)" stroke-width="0.8"/>
+              <circle cx="11" cy="11" r="2" fill="rgba(236,224,196,0.9)"/>
+            </svg>`;
+        watcherEl.style.display = 'block';
+        watcherEl.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;">
+            ${sigilHtml}
+            <span style="opacity:0.55;font-style:normal;letter-spacing:3px;font-size:10px;">
+              THE WATCHER MARKS YOUR ${ordinal(count).toUpperCase()} DESCENT
+            </span>
+          </div>
+          <div style="opacity:0.82;">\u201C${last}\u201D</div>
+        `;
+      } else {
+        watcherEl.style.display = 'none';
+      }
+    }
+  } catch (e) {}
 
   // Relics collected — trophy strip: each relic is a tier-glowing card with
   // name + icon, staggered in. This is the "look at what you built" moment.
@@ -3888,26 +4757,38 @@ function showEndOfRun(isVictory) {
                      :                         { label: '\u00B7 COMMON',   color: '#b0c0d0', glow: 'rgba(176,192,208,0.3)',  pulse: false };
       const card = document.createElement('div');
       const stagger = 0.8 + i * 0.08;
+      // Trophy cards compressed (72w -> 56w, padding 8/6 -> 4/4, icon
+      // 40 -> 28, name min-height 22 -> 14) so the strip + the rest of
+      // the death modal fits in 720 design height without scroll.
+      // Tier label dropped from face — full name + tier still surface
+      // in the hover tooltip via card.title.
       card.style.cssText = `
-        display:flex;flex-direction:column;align-items:center;gap:4px;
-        width:72px;padding:8px 6px;
+        display:flex;flex-direction:column;align-items:center;gap:2px;
+        width:56px;padding:4px;
         background:linear-gradient(180deg,rgba(30,22,28,0.9),rgba(14,10,16,0.9));
         border:1px solid ${r.tint || tierMeta.color};
-        box-shadow:0 0 12px ${tierMeta.glow}, inset 0 0 8px rgba(0,0,0,0.5);
+        box-shadow:0 0 10px ${tierMeta.glow}, inset 0 0 8px rgba(0,0,0,0.5);
         font-family:Georgia,serif;
         animation:winCardSlide 0.5s ease-out ${stagger}s both${(tier === 'legendary' || tier === 'mythic') ? ', legendPulse 2.4s ease-in-out infinite' : ''};
       `;
       card.title = r.name + (r.flavor ? '\n\u201C' + r.flavor + '\u201D\n' : '\n') + r.desc;
       card.innerHTML = `
-        <div style="font-size:7px;letter-spacing:2px;color:${tierMeta.color};opacity:0.85;font-weight:bold;white-space:nowrap;">${tierMeta.label}</div>
-        <div style="padding:3px;background:radial-gradient(circle,${(r.tint||tierMeta.color)}33,transparent 70%);">
-          <img src="assets/icons/${r.icon}.png" style="width:40px;height:40px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15) drop-shadow(0 0 6px ${(r.tint||tierMeta.color)}aa);display:block;" />
+        <div style="padding:2px;background:radial-gradient(circle,${(r.tint||tierMeta.color)}33,transparent 70%);">
+          <img src="assets/icons/${r.icon}.png" style="width:28px;height:28px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15) drop-shadow(0 0 5px ${(r.tint||tierMeta.color)}aa);display:block;" />
         </div>
-        <div style="font-size:9px;color:${r.tint || tierMeta.color};text-align:center;letter-spacing:0.5px;line-height:1.15;min-height:22px;font-weight:bold;">${r.name}</div>
+        <div style="font-size:8px;color:${r.tint || tierMeta.color};text-align:center;letter-spacing:0.3px;line-height:1.15;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${r.name}</div>
       `;
       trophyRow.appendChild(card);
     }
     relicsRow.appendChild(trophyRow);
+
+    // (Removed) The "ONE PICK AWAY" near-miss fusion hint used to render
+    // here — listed up to N fusions where the player owned exactly one
+    // component, as a "next run" hook. Removed from the death screen so
+    // the modal fits within 720 design without scrolling. The same
+    // discovery affordance lives in Chronicles -> Fusions: hover any
+    // undiscovered fusion to see its recipe, so players can still build
+    // toward fusions they're missing pieces of.
   }
 
   // Essence earned + add to persistent total. Curse AND Ascension
@@ -3935,6 +4816,7 @@ function showEndOfRun(isVictory) {
   const earned = Math.round(base * cMul * aMul);
   addEssence(earned);
   // On a floor-4 victory, unlock the next Ascension tier if applicable.
+  let ascensionUnlockHtml = '';
   if (isVictory) {
     const cleared = getAscensionTier();
     const unlockedNew = onRunCompletedAtTier(cleared);
@@ -3946,6 +4828,20 @@ function showEndOfRun(isVictory) {
         flavor: ASCENSION_TIERS[cleared + 1].short,
         color: '#f4d9a0',
       };
+      // Long-tail audit P0: the ascension unlock used to ONLY surface
+      // as a banner on next-run start. By that time the player has
+      // already returned to the hamlet and forgotten the moment. Now
+      // headline the unlock in the end-of-run modal so victory and
+      // tier-up land together as one beat.
+      const next = ASCENSION_TIERS[cleared + 1];
+      ascensionUnlockHtml = `
+        <div style="margin-top:14px;padding:12px 18px;border:1.5px solid #c9a86a;background:linear-gradient(180deg,rgba(40,28,18,0.85),rgba(20,12,10,0.85));text-align:center;">
+          <div style="font-size:10px;letter-spacing:5px;color:#c9a86a;font-style:italic;">— A NEW TIER UNLOCKED —</div>
+          <div style="font-size:18px;letter-spacing:2px;color:#f4d9a0;font-family:Georgia,serif;font-weight:bold;margin-top:4px;">${next.name}</div>
+          <div style="font-size:11px;font-style:italic;opacity:0.8;color:#e8d3a6;margin-top:4px;">${next.short}</div>
+          <div style="font-size:10px;opacity:0.6;color:#bbaa88;margin-top:6px;">attempt this tier from the main menu</div>
+        </div>
+      `;
     }
   }
   const essEl = document.getElementById('endEssence');
@@ -3990,7 +4886,7 @@ function showEndOfRun(isVictory) {
     ).join('');
     memoryHtml = `<div style="margin-top:12px;display:flex;flex-direction:column;gap:3px;">${lines}</div>`;
   }
-  essEl.innerHTML = `+${earned} essence earned${curseTag}   <span style="opacity:0.6;font-size:14px;">(Total: ${meta.essence})</span>${progressHtml}${memoryHtml}`;
+  essEl.innerHTML = `+${earned} essence earned${curseTag}   <span style="opacity:0.6;font-size:14px;">(Total: ${meta.essence})</span>${ascensionUnlockHtml}${progressHtml}${memoryHtml}`;
 
   // Meta shop row — animate on initial reveal only; re-renders after an
   // unlock purchase re-use renderMetaShop(false) so cards don't re-slide.
@@ -4001,46 +4897,73 @@ function showEndOfRun(isVictory) {
 }
 
 function renderMetaShop(animate = false) {
+  // Compact LIST layout (replaced the prior card-grid). Each unlock is a
+  // single horizontal row: [icon] [name + tooltip] [cost] [UNLOCK btn].
+  // Two columns side-by-side so 10 unlocks fit in 5 rows \u2248 175 design px,
+  // saving ~110px vs the 2-row card grid (~285 design px). The full
+  // description hovers as a native title-tooltip \u2014 keeps info available
+  // without dominating screen space when the player only wants to scan.
   const row = document.getElementById('metaShopRow');
   row.innerHTML = '';
+  // 2-col grid; each cell is one unlock-row.
+  row.style.display = 'grid';
+  row.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+  row.style.gap = '4px 12px';
+  row.style.maxWidth = '780px';
+  row.style.width = '100%';
   let staggerIdx = 0;
   for (const id in UNLOCKS) {
     const u = UNLOCKS[id];
     const owned = hasUnlock(id);
     const canAfford = meta.essence >= u.cost;
-    const card = document.createElement('div');
-    // Tier-colored frame with gradient depth + staggered slide matching shop cards
-    const staggerDelay = 1.2 + staggerIdx * 0.1;
+    const rowEl = document.createElement('button');
+    rowEl.title = u.flavor ? `${u.name} \u2014 ${u.desc}\n${u.flavor}` : `${u.name} \u2014 ${u.desc}`;
+    rowEl.disabled = owned || !canAfford;
+    const staggerDelay = 1.2 + staggerIdx * 0.04;
     staggerIdx++;
-    card.style.cssText = `
-      width:170px;
-      background:linear-gradient(180deg,rgba(30,20,38,0.95),rgba(16,8,20,0.95));
-      border:2px solid ${u.tint};
-      padding:12px 10px;
-      display:flex;flex-direction:column;align-items:center;gap:5px;
-      box-shadow:0 0 16px ${u.tint}55, 0 4px 14px rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.3);
+    // Whole row IS the buy button \u2014 saves the dedicated UNLOCK button's
+    // width and gives a bigger click target. Disabled when owned or
+    // can't afford (visual: dimmed + no hover).
+    rowEl.style.cssText = `
+      display:grid;
+      grid-template-columns:24px 1fr auto;
+      align-items:center;
+      gap:8px;
+      background:linear-gradient(90deg,rgba(30,20,38,0.7),rgba(16,8,20,0.55));
+      border:1px solid ${u.tint}55;
+      border-left:3px solid ${u.tint};
+      padding:5px 10px;
+      cursor:${canAfford && !owned ? 'pointer' : 'default'};
       font-family:Georgia,serif;
-      ${animate ? `animation:winCardSlide 0.5s ease-out ${staggerDelay}s both;` : ''}
-      ${owned ? 'opacity:0.55;' : ''}
+      transition:background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+      text-align:left;
+      ${animate ? `animation:winCardSlide 0.45s ease-out ${staggerDelay}s both;` : ''}
+      ${owned ? 'opacity:0.5;' : (canAfford ? '' : 'opacity:0.55;')}
     `;
-    card.innerHTML = `
-      <div style="padding:4px;background:radial-gradient(circle,${u.tint}33,transparent 70%);">
-        <img src="assets/icons/${u.icon}.png" style="width:32px;height:32px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(u.tint)}deg) saturate(1.15) drop-shadow(0 0 5px ${u.tint}88);" />
-      </div>
-      <div style="font-size:12px;font-weight:bold;color:${u.tint};letter-spacing:1px;text-align:center;text-shadow:0 0 4px ${u.tint}44;">${u.name}</div>
-      ${u.flavor ? `<div style="font-size:9px;color:rgba(200,190,210,0.7);text-align:center;min-height:24px;line-height:1.3;font-style:italic;padding:0 2px;">${u.flavor}</div>` : ''}
-      <div style="height:1px;width:70%;background:linear-gradient(90deg,transparent,${u.tint}aa,transparent);margin:2px 0;"></div>
-      <div style="font-size:10px;color:${u.tint};text-align:center;min-height:24px;line-height:1.3;font-weight:bold;">${u.desc}</div>
-      <div style="font-size:13px;color:${owned ? '#8ad4a2' : '#a0e8ff'};text-shadow:0 0 6px ${owned ? 'rgba(138,212,162,0.4)' : 'rgba(160,232,255,0.4)'};">${owned ? '\u2713 OWNED' : '\u2728 ' + u.cost}</div>
-      ${owned ? '' : `<button class="metaBuyBtn" ${canAfford ? '' : 'disabled'} style="background:linear-gradient(180deg,${u.tint},${darkenHex(u.tint, 0.6)});color:#1a1220;border:0;padding:5px 14px;cursor:${canAfford ? 'pointer' : 'not-allowed'};font-weight:bold;letter-spacing:1.5px;font-size:11px;font-family:Georgia,serif;opacity:${canAfford ? 1 : 0.4};transition:transform 0.15s ease, box-shadow 0.15s ease;">UNLOCK</button>`}
+    rowEl.innerHTML = `
+      <img src="assets/icons/${u.icon}.png" style="width:24px;height:24px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(u.tint)}deg) saturate(1.15) drop-shadow(0 0 4px ${u.tint}88);" />
+      <span style="display:flex;flex-direction:column;gap:0;min-width:0;">
+        <span style="font-size:11px;font-weight:bold;color:${u.tint};letter-spacing:0.8px;text-shadow:0 0 4px ${u.tint}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.name}</span>
+        <span style="font-size:9px;color:rgba(200,190,210,0.65);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.desc}</span>
+      </span>
+      <span style="font-size:11px;color:${owned ? '#8ad4a2' : (canAfford ? '#a0e8ff' : '#7a6065')};letter-spacing:0.5px;text-shadow:0 0 6px ${owned ? 'rgba(138,212,162,0.4)' : (canAfford ? 'rgba(160,232,255,0.4)' : 'rgba(0,0,0,0.5)')};white-space:nowrap;font-weight:bold;">${owned ? '\u2713' : '\u2728 ' + u.cost}</span>
     `;
-    const btn = card.querySelector('.metaBuyBtn');
-    if (btn) {
-      btn.addEventListener('click', () => {
+    if (!owned && canAfford) {
+      rowEl.addEventListener('click', () => {
         if (purchaseUnlock(id)) renderMetaShop();
       });
+      rowEl.addEventListener('mouseenter', () => {
+        rowEl.style.background = `linear-gradient(90deg,${u.tint}22,${u.tint}11)`;
+        rowEl.style.borderColor = `${u.tint}aa`;
+        rowEl.style.transform = 'translateX(2px)';
+      });
+      rowEl.addEventListener('mouseleave', () => {
+        rowEl.style.background = `linear-gradient(90deg,rgba(30,20,38,0.7),rgba(16,8,20,0.55))`;
+        rowEl.style.borderColor = `${u.tint}55`;
+        rowEl.style.transform = 'translateX(0)';
+      });
     }
-    row.appendChild(card);
+    row.appendChild(rowEl);
   }
 }
 
@@ -4050,8 +4973,119 @@ function beginTransition(toIndex, entryFrom) {
   transition.t = 0;
   transition.toIndex = toIndex;
   transition.entryFrom = entryFrom;
+  // Non-door transitions (boss-clear cascade, save-resume, debug) clear
+  // any lingering residue so we don't carry a fading old room into a
+  // fresh fade-in.
+  clearPrevRoom();
   playSfx('click', { volume: 0.7, rate: 0.85 });
 }
+
+// ─── DOOR TRANSITION (continuous, no fade) ────────────────────────────────
+// Hero just walked through an open north door. Instead of the fade-to-black
+// that beginTransition uses, we:
+//   1. Snapshot the current room as residue (prevRoom)
+//   2. Load the new room — hero spawns at south-door tile
+//   3. Position prevRoom in world coords so its NORTH door tile overlaps
+//      the new room's SOUTH door tile (the "shared threshold")
+//   4. The new room's south door is in the entry-dwell state — visually
+//      open at first, then animates closed. Player sees the door slam
+//      shut behind them and the old room fade out beyond it.
+// Door pan — drives the smooth scroll between two rooms.
+//
+// CRITICAL: when loadRoom swaps to the new room, the world coordinate
+// system shifts. Hero position (792, 30) in the OLD room's local coords
+// is NOT the same world point after the swap — that local coord now
+// refers to a spot in the NEW room. The prevRoom snapshot is rendered
+// at offset (offsetX, offsetY) which captures the spatial relationship:
+// adding the offset translates an OLD-local position into a NEW-world
+// position that lands inside the prevRoom rendering.
+//
+// During the pan, the hero's world position is LERPED from the
+// translated OLD position into the NEW spawn (south door of new room).
+// Camera follows. Both rooms remain visible because prevRoom renders
+// south of the new room — so the camera scrolls "north" past the
+// closing door and into the new space.
+let doorPan = null;
+// { time, duration, fromX, fromY, toX, toY }
+
+function beginDoorTransition(toIndex, oldDoorTileX) {
+  // Capture OLD-LOCAL hero + camera positions BEFORE the swap.
+  const oldHeroX = hero.x;
+  const oldHeroY = hero.y;
+  const oldCamX = camera.x;
+  const oldCamY = camera.y;
+
+  // Snapshot the room being LEFT, before loadRoom overwrites it. Pass
+  // a per-door-tile open-amount map so the prev-room render keeps the
+  // exit door visibly open during the 1.8s fade. Without this, the
+  // live _getDoorAt callback (which queries the NEW room's doors)
+  // would resolve null for the prev tile coords and the fallback
+  // would render the just-used door as closed.
+  const doorOpenAt = {};
+  for (const d of roomDoors) doorOpenAt[d.tx + ',' + d.ty] = d.anim;
+  snapshotPrevRoom({ offsetX: 0, offsetY: 0, doorOpenAt });
+  // entryFrom='north' is the existing (inverted-feeling) convention that
+  // makes heroSpawnInRoom place the hero at preferredY=h-2 — i.e. near
+  // the SOUTH wall, one tile inside the door they just entered through.
+  loadRoom(toIndex, 'north');
+  // Hero is now at south door of new room. Compute the prevRoom offset
+  // so its NORTH door tile overlaps the new room's SOUTH door tile in
+  // world space (the "shared threshold").
+  const newDoorX = Math.floor(room.w / 2);
+  if (prevRoom) {
+    prevRoom.offsetX = (newDoorX - oldDoorTileX) * TILE;
+    prevRoom.offsetY = (room.h - 1) * TILE;
+  }
+  const offsetX = prevRoom ? prevRoom.offsetX : 0;
+  const offsetY = prevRoom ? prevRoom.offsetY : 0;
+
+  // Translate OLD-local positions → NEW-world positions. Adding the
+  // prevRoom offset lands them inside the prevRoom rendering, which
+  // is the same spot the player just was VISUALLY.
+  const fromX = oldHeroX + offsetX;
+  const fromY = oldHeroY + offsetY;
+  const toX = hero.x;            // already at NEW spawn (south door)
+  const toY = hero.y;
+  const camFromX = oldCamX + offsetX;
+  const camFromY = oldCamY + offsetY;
+
+  // Reset camera to translated-OLD position so the existing lerp
+  // (slowed to 2.0 for this pan) glides to the hero's destination.
+  camera.x = camFromX;
+  camera.y = camFromY;
+  camera.lerp = 2.0;
+
+  doorPan = { time: 0, duration: 0.7, fromX, fromY, toX, toY };
+  playSfx('click', { volume: 0.55, rate: 1.05 });
+}
+
+// Tick the pan. Smoothly interpolates hero from the translated OLD
+// position into the NEW spawn over the duration — no freeze, no
+// teleport. Hero "walks through the door" in continuous world space.
+function updateDoorPan(dt) {
+  if (!doorPan) return;
+  doorPan.time += dt;
+  const t = Math.min(1, doorPan.time / doorPan.duration);
+  // Ease-out cubic — quick start, gentle settle. Reads as "pushed
+  // through the door" rather than mechanically lerped.
+  const eased = 1 - Math.pow(1 - t, 3);
+  hero.x = doorPan.fromX + (doorPan.toX - doorPan.fromX) * eased;
+  hero.y = doorPan.fromY + (doorPan.toY - doorPan.fromY) * eased;
+  hero.vx = 0;
+  hero.vy = 0;
+  if (doorPan.time >= doorPan.duration) {
+    // Snap to exact target then restore normal physics + camera follow.
+    hero.x = doorPan.toX;
+    hero.y = doorPan.toY;
+    doorPan = null;
+    camera.lerp = 6.0;
+  }
+}
+
+// Returns true while a door pan is in flight — used to suppress hero
+// input + enemy AI so the camera move plays cleanly without combat
+// interference. Exposed so the main tick can gate updates.
+function isDoorPanActive() { return doorPan !== null; }
 
 function updateTransition(dt) {
   if (!transition.active) return;
@@ -4091,7 +5125,9 @@ function tick(now) {
   // Perfect-dodge time dilation runs on real time so it unwinds predictably.
   updatePerfectDodge(realDt);
   updateScreenFlash(realDt);
-  updateTips(realDt);
+  updateSoulTethers(realDt);
+  updateTips(realDt);                  // no-op shim; real tip lifecycle is in notifications.js
+  updateNotifications(realDt);         // unified top-right rail (tips, pickups, etc.)
   // Death ceremony slow-mo ramp (0.25x for first 1.2s, then ramps back)
   let deathSlowmo = 1;
   if (deathCeremonyActive) {
@@ -4118,11 +5154,31 @@ function tick(now) {
   // normal per-frame decrement gets stuck (pause mid-intro, rAF throttle,
   // state race), the clamp force-clears the timer so the overlay can never
   // persist past its wall cap.
+  //
+  // PAUSE FIX: when the player ESC-pauses mid-intro, the per-frame decrement
+  // block below is gated on `!paused` (so the overlay holds), but the
+  // wall-clock CLAMP would still fire after its threshold elapsed in real
+  // time — clearing the intro that the player paused over. We work around
+  // this by advancing the *startedAt* timestamps forward by the paused
+  // delta each frame, effectively "stopping the wall clock" during pause.
+  // The clamps still work correctly when not paused; pausing for any
+  // duration just shifts the deadline forward.
   const nowMs = performance.now();
-  if (bossIntroTime > 0 && bossIntroStartedAt > 0 && nowMs - bossIntroStartedAt > 2500) {
+  if (paused) {
+    const pausedDtMs = realDt * 1000;
+    if (bossIntroStartedAt > 0) bossIntroStartedAt += pausedDtMs;
+    if (floorCardStartedAt > 0) floorCardStartedAt += pausedDtMs;
+    if (phaseIntroStartedAt > 0) phaseIntroStartedAt += pausedDtMs;
+  }
+  // Wall-clock clamp scales with bossIntroTotal — 300ms safety past the
+  // natural end on both 2.2s (first-time) and 1.3s (repeat) durations.
+  if (bossIntroTime > 0 && bossIntroStartedAt > 0 && nowMs - bossIntroStartedAt > bossIntroTotal * 1000 + 300) {
     bossIntroTime = 0; bossIntroBoss = null; bossIntroStartedAt = 0;
   }
-  if (floorCardTime > 0 && floorCardStartedAt > 0 && nowMs - floorCardStartedAt > 4500) {
+  // Wall-clock clamp scales with floorCardTotal — we want a 1.3s safety
+  // buffer past the natural end on both the 3.2s (first-time) and 1.6s
+  // (repeat) durations.
+  if (floorCardTime > 0 && floorCardStartedAt > 0 && nowMs - floorCardStartedAt > floorCardTotal * 1000 + 1300) {
     floorCardTime = 0; floorCardStartedAt = 0;
   }
   if (phaseIntroTime > 0 && phaseIntroStartedAt > 0 && nowMs - phaseIntroStartedAt > 2000) {
@@ -4148,14 +5204,68 @@ function tick(now) {
   // to the hero. Extend core updates for ~cascade_duration + 800ms.
   const cascadeActive = !!(window.__cascadeUntil && performance.now() < window.__cascadeUntil);
   if ((running || cascadeActive) && !transition.active && !frozen && !paused) {
-    updateHero(dt, enemies, mw);
-    updateEnemies(dt, hero);
-    updateFlames(dt);
-    updateProjectiles(dt);
-    updateSynergies(dt);
-    updateWanderer(dt);
-    updateGold(dt);
+    // During a door pan, hero/enemy/projectile updates are paused so the
+    // camera scroll plays cleanly without combat or input interference.
+    // The pan itself is ticked further below (updateDoorPan).
+    const panActive = isDoorPanActive();
+    // First-run intro lock — the heartbeat cinematic plays over a live
+    // dungeon room (hero pre-spawned). Hero/enemy updates freeze for
+    // the 28s of cinematic + the 2s reveal so the player isn't getting
+    // chewed on by a slime while reading "they left you for dead". The
+    // intro tick advances regardless of this gate.
+    // Renamed from `introActive` to avoid shadowing the outer
+    // `introActive` (boss/floor card cinematics, line ~5371).
+    const wakeIntroActive = isIntroActive();
+    // Hub-modal lock — when a dialogue or NPC-service modal is on screen
+    // (player chatting with an NPC, browsing the smith forge, reading
+    // the oracle, etc.), the hero must not respond to WASD or LMB. The
+    // dialogue overlay traps mouse events but does NOT block keyboard,
+    // so a player who held W while the modal opened would silently walk
+    // behind it — sometimes off the NPC, sometimes onto the descent
+    // portal, triggering a run start.
+    const hubModalOpen = (
+      (dialogueEl && dialogueEl.style.display !== 'none') ||
+      (smithEl && smithEl.style.display !== 'none') ||
+      (typeof oracleEl !== 'undefined' && oracleEl && oracleEl.style.display !== 'none') ||
+      (cursesEl && cursesEl.style.display !== 'none') ||
+      (memoryEl && memoryEl.style.display !== 'none') ||
+      (settingsEl && settingsEl.style.display !== 'none') ||
+      (achEl && achEl.style.display !== 'none') ||
+      (volumesEl && volumesEl.style.display !== 'none')
+    );
+    if (!panActive && !hubModalOpen && !wakeIntroActive) {
+      updateHero(dt, enemies, mw);
+      updateEnemies(dt, hero);
+      updateFlames(dt);
+      updateEmberRings(dt);
+      updateProjectiles(dt);
+      updateSynergies(dt);
+      updateWanderer(dt);
+    }
+    // Intro cinematic — advance the heartbeat-pulse + text-fade clock
+    // every frame the cinematic is active, regardless of pause/transition
+    // gates above. Uses realDt (not dt) so it ignores hit-stop time
+    // dilation.
+    if (wakeIntroActive) updateIntro(realDt);
+    // Music resume — when the cinematic finishes, fire the floor's
+    // biome track. AWAKEN handler killed the music to leave the
+    // heartbeat alone in the soundscape; the cinematic ends with the
+    // player in floor 1's start room with no transition pending, so
+    // nothing else would re-trigger playTrack on its own. Detect the
+    // true→false edge and resume.
+    if (_wasIntroActive && !wakeIntroActive) {
+      const biomeTrack = BIOME_BY_FLOOR[currentFloorLevel] || 'ambient';
+      playTrack(biomeTrack);
+    }
+    _wasIntroActive = wakeIntroActive;
+    updateGold(dt, hero);
     updateHudAnims(realDt);
+    // Tick the prevRoom residue (the snapshot of the room we just left,
+    // fading out behind the hero for "see where I came from" continuity).
+    tickPrevRoom(realDt);
+    // Tick the door pan — if active, this freezes hero in place while the
+    // camera scrolls between rooms, then releases the hero to the new spawn.
+    updateDoorPan(realDt);
     updateParticles(dt);
     updateDust(realDt, camera.x, camera.y);
     updateWeather(realDt, camera.x, camera.y);
@@ -4164,6 +5274,284 @@ function tick(now) {
     updateHitMarkers(dt);
     updatePedestals(dt);
     updateMusic(realDt);
+    tickCounterPips(dt);
+    // HAMLET CANVAS — proximity + interact tracking. Runs on every tick
+    // so the interact prompt appears the moment the hero walks into range.
+    if (room.kind === 'hamlet') {
+      // Clamp hero to the hamlet's walkable Y band. The band is wide now
+      // (y 340–648) so the hero can approach the tower, visit the shrine,
+      // and wander the ruined edges. Hard Y-clamp first, then obstacle
+      // resolution pushes the hero out of building footprints.
+      if (hero.y < HAMLET_WALK_Y_MIN) { hero.y = HAMLET_WALK_Y_MIN; hero.vy = 0; }
+      if (hero.y > HAMLET_WALK_Y_MAX) { hero.y = HAMLET_WALK_Y_MAX; hero.vy = 0; }
+      resolveHamletCollision(hero);
+      // Lock camera to the room center — the room is narrower than the
+      // viewport (960 vs 1280) so there's a mandatory ~160px side-void.
+      // Locking prevents the void from shifting as the hero moves and
+      // keeps the painted backdrop perfectly framed.
+      // Scene v2 backdrop is 1376×768. Viewport 1280×720 at HAMLET_ZOOM (1.75)
+      // → visible window ~731×411 of world. Both axes scroll.
+      //   X clamp: camera.x in [366, 1010]
+      //   Y clamp: camera.y in [206, 562]
+      // SNAP both axes — followCamera ran earlier in the tick with the
+      // unclamped hero pos; we override here so the rendered frame uses
+      // our clamped values (no lerp jitter at clamp boundaries).
+      camera.zoom = HAMLET_ZOOM;
+      const camX = Math.max(366, Math.min(1010, hero.x));
+      const camY = Math.max(206, Math.min(562, hero.y));
+      camera.x = camX; camera.targetX = camX;
+      camera.y = camY; camera.targetY = camY;
+
+      updateHamletScene(dt);
+      if (keyJustPressed('KeyE')) {
+        const act = consumeHamletInteract();
+        if (act) {
+          if (act.action === 'dialogue') openDialogue(act.npcId);
+          else if (act.action === 'portal') { running = false; beginDescent(); }
+          else if (act.action === 'noticeboard') {
+            // Cycle through a small pool of flavor lines so re-reads
+            // aren't always the same. Lines are short enough for the
+            // 30px italic roomLabel without wrapping.
+            const lines = [
+              'BEWARE: SOME CHESTS BITE BACK',
+              '"DESCEND. RETURN. THE SPARK GROWS."',
+              'TIP: HOLD LMB TO CHARGE A HEAVIER SWING',
+              '"THE FIRE HERE BURNS SMALL — BUT IT BURNS."',
+              'TIP: DODGE GIVES BRIEF I-FRAMES',
+            ];
+            const i = (Math.floor(performance.now() / 1000) ^ 0x5b) % lines.length;
+            roomLabelText = lines[i];
+            roomLabelColor = '#c9a86a';
+            roomLabelTime = 3.0;
+            playSfx('click', { volume: 0.6, rate: 0.95 });
+          }
+        }
+      }
+    }
+
+    // ─── PEDESTAL PICKUP + BLOOD GATE INTERACTION (DUNGEON ONLY) ───────
+    // Round-7 user feedback — walking onto a pedestal used to be an
+    // INSTANT pickup, which players said felt like an accidental claim
+    // when traversing rooms quickly. Now the player must press E to
+    // commit. consumePendingPickup is null-safe (returns null when no
+    // pedestal is hovered) so the gate is cheap; we just skip during
+    // hamlet/menu/dead states to keep keypresses scoped.
+    //
+    // Phase 5 of the rooms-redesign plan adds Blood Door seal-breaking
+    // to the same E-press handler. Pedestal hover takes priority: if
+    // a pedestal is in range, that's what the player meant; if not,
+    // and a sealed door is in range, treat it as a seal-break attempt.
+    // Single keypress, single intent.
+    if (room.kind !== 'hamlet' && hero.state !== 'dead' && keyJustPressed('KeyE')) {
+      const result = consumePendingPickup();
+      if (result === 'denied_hp') {
+        // Altar with insufficient HP — flash a denied label so the
+        // player understands why their press did nothing. Mirrors
+        // the reroll "NOT ENOUGH GOLD" pattern.
+        roomLabelText = `NOT ENOUGH HP TO PAY THIS ALTAR`;
+        roomLabelColor = '#d85a5a';
+        roomLabelTime = 1.6;
+        synthClick(0.5, 1.0);
+      } else if (result === 'denied_gold') {
+        // Round-7 — Shop pedestal with insufficient gold. Mirrors the
+        // altar deny pattern. The pedestal already shows a red border
+        // on its price tag while affordable would be green, so this
+        // label confirms what the player already saw visually.
+        roomLabelText = `NOT ENOUGH GOLD`;
+        roomLabelColor = '#d85a5a';
+        roomLabelTime = 1.6;
+        synthClick(0.5, 1.0);
+      } else if (result === null) {
+        // No pedestal hovered — fall through to the seal-break path so
+        // the same key opens the same intent ("interact with whatever
+        // I'm standing near"). Returns null when no door is sealed +
+        // in range, so this is also cheap.
+        const sealedDoor = getNearbySealedDoor(hero.x, hero.y);
+        if (sealedDoor) {
+          if (hero.hp <= sealedDoor.sealCost) {
+            roomLabelText = `NOT ENOUGH HP TO BREAK THIS SEAL`;
+            roomLabelColor = '#d85a5a';
+            roomLabelTime = 1.6;
+            synthClick(0.5, 1.0);
+          } else {
+            // Pay the cost and break the seal. damageHero would route
+            // through the hurt SFX + screen flash + iframes — wrong
+            // for a deliberate trade. Decrement hero.hp directly so
+            // the cost reads as a willing offering, not an attack.
+            hero.hp -= sealedDoor.sealCost;
+            breakSeal(sealedDoor);
+            // Custom audio for the seal break: sub-bass thud + a
+            // rising chord layered for the "the gate cracks" beat.
+            try { synthThud(60, 1.0, 0.4); } catch (_e) {}
+            try { synthChord(440, 0.7, 0.7); } catch (_e) {}
+            shakeCamera(8, 0.3);
+            triggerScreenFlash('rgba(220, 80, 90, 0.18)', 0.35);
+            // Round-7-audit POLISH — crimson sparkle burst at the door
+            // tile. The audio + camera + flash already framed the
+            // moment; the particle burst gives the SPATIAL anchor —
+            // "the seal cracked HERE, at this gate" — so the player's
+            // eye knows where the threshold opened. 18 sparks in a
+            // splatter pattern centered on the door's bottom edge.
+            const _doorWX = sealedDoor.tx * TILE + TILE / 2;
+            const _doorWY = sealedDoor.ty * TILE + TILE;
+            for (let k = 0; k < 18; k++) {
+              deathBurst(_doorWX, _doorWY, k % 2 === 0 ? '#d04050' : '#ff8088');
+            }
+            for (let k = 0; k < 8; k++) {
+              const ang = (k / 8) * Math.PI * 2;
+              const r = 22 + Math.random() * 14;
+              sparkle(_doorWX + Math.cos(ang) * r, _doorWY + Math.sin(ang) * r * 0.6, '#ffd0d8');
+            }
+            roomLabelText = `✦ SEAL BROKEN ✦`;
+            roomLabelColor = '#ff8088';
+            roomLabelTime = 1.6;
+          }
+        }
+      }
+      // result === non-null relic def: pedestal pickup happened, no
+      // additional action needed — the pickup itself fires its own
+      // banner + sfx via pedestals.js.
+    }
+
+    // ─── TREASURE CHEST INTERACTION (DUNGEON ONLY) ─────────────────────
+    // E pressed near a closed chest in a chestroom → open it + apply
+    // reward immediately (animation is purely visual feedback).
+    //
+    // Treasure: drop gold scaled by floor; floor 3+ has a chance to roll
+    //   a relic pedestal instead.
+    // Mimic: damage hero 1 HP + spawn 1-2 floor-appropriate enemies near
+    //   the chest. Room flips to !cleared so doors lock until enemies die.
+    if (room.kind === 'chestroom' && keyJustPressed('KeyE')) {
+      const HR = 80;     // interact range from hero center to chest center
+      let nearest = null, nearestD2 = HR * HR;
+      for (const c of roomChests) {
+        if (c.state !== 'closed') continue;
+        const cx = c.x * TILE + TILE / 2;
+        const cy = c.y * TILE + TILE / 2;
+        const dx = hero.x - cx, dy = hero.y - cy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < nearestD2) { nearest = c; nearestD2 = d2; }
+      }
+      if (nearest) {
+        nearest.state = 'opening';
+        nearest.frameTime = 0;
+        const cx = nearest.x * TILE + TILE / 2;
+        const cy = nearest.y * TILE + TILE / 2;
+        if (nearest.variant === 'treasure') {
+          // Floor-scaled gold + relic chance.
+          // Tuned 2026-04-27 (Wave 2): expected value RISES with floor
+          // depth to compensate for the rising mimic ratio. Floor 1-2
+          // chests are gold-only. Floor 3 has 40% relic chance (was
+          // 30%); floor 4 has 70% relic chance (was 50%) — meaningful
+          // jump on the floor where 3 of 5 chests are mimics.
+          const lvl = currentFloorLevel | 0;
+          const goldAmt = 25 + lvl * 15 + ((Math.random() * 30) | 0);
+          const relicChance = lvl >= 4 ? 0.70 : (lvl >= 3 ? 0.40 : 0);
+          if (Math.random() < relicChance) {
+            const relic = rollRelicOffer(1, lvl)[0];
+            if (relic) {
+              // Round-7-audit fix: factory infers `tier` from relic.id
+              // so a mythic-pool chest pickup gets full mythic-tier
+              // visuals + audio + cinematic. Was rendering as common
+              // because the manual push omitted the tier field.
+              pushPedestal({
+                x: cx, y: cy + 8,     // slight offset so pedestal sits south of chest
+                relic,
+                bonus: true,          // free drop, won't wipe sibling offers
+              });
+            } else {
+              import('./gold.js').then(g => g.dropGold(cx, cy, goldAmt));
+            }
+          } else {
+            import('./gold.js').then(g => g.dropGold(cx, cy, goldAmt));
+          }
+          // Visual jackpot feedback — golden flash + cyan/gold sparkle
+          // burst + roomLabel reveals 'TREASURE!' so the player gets a
+          // clear positive payoff moment when the gamble paid off.
+          triggerScreenFlash('rgba(255, 220, 140, 0.20)', 0.35);
+          for (let i = 0; i < 12; i++) sparkle(cx + (Math.random() - 0.5) * 40, cy + (Math.random() - 0.5) * 30, '#9ad7ff');
+          for (let i = 0; i < 8; i++) sparkle(cx + (Math.random() - 0.5) * 50, cy + (Math.random() - 0.5) * 36, '#ffe5a0');
+          roomLabelText = '✦ TREASURE ✦';
+          roomLabelColor = '#ffd27a';
+          roomLabelTime = 1.6;
+          playSfx('slime_death', { rate: 0.6, volume: 0.7 });
+        } else {
+          // MIMIC — damage + spawn enemies
+          damageHero(1, hero.x, hero.y + 20);
+          const lvl = currentFloorLevel | 0;
+          // Floor-appropriate spawn types — must match keys in
+          // enemies.js TYPES (verified 2026-04-27 after a P0 bug
+          // where 'skeleton' and 'fire_imp' silently failed to spawn
+          // because spawnEnemy returns early on missing TYPES[type]).
+          const spawnType = lvl <= 1 ? 'slime'
+                          : lvl === 2 ? 'skel'      // was 'skeleton' (does not exist)
+                          : lvl === 3 ? 'wizard'
+                          : 'ember';                // was 'fire_imp' (does not exist) — floor 4 fire-themed
+          // Mimic difficulty bumped on floors 1-2: was 1 enemy / floor
+          // (felt trivial for a 1-HP-damage trap). Now 2 normals on
+          // every floor; floor 3+ also gets a 50% elite chance.
+          const spawnCount = 2;
+          const elite = lvl >= 3 && Math.random() < 0.5;
+          for (let i = 0; i < spawnCount; i++) {
+            const ang = (i / spawnCount) * Math.PI * 2 + Math.random() * 0.5;
+            const sx = cx + Math.cos(ang) * 60;
+            const sy = cy + Math.sin(ang) * 60;
+            spawnEnemy(spawnType, sx, sy, { elite });
+          }
+          // Room becomes uncleared — doors lock until enemies die
+          room.cleared = false;
+          // Round-7-audit HIGH-3 fix: chest rooms ship `cleared: true`
+          // so doors auto-open on entry. Without these two lines, the
+          // mimic spawn flips cleared:false but the doors stay OPEN
+          // and the player just walks out of the fight (free skip on
+          // a 1-HP-trap encounter). onRoomLocked closes the doors
+          // immediately; the _roomClearedNotified reset lets the
+          // existing post-clear block at line 6502 fire onRoomCleared
+          // again when the mimic dies and `cleared` flips back.
+          onRoomLocked();
+          _roomClearedNotified = false;
+          // Visual jolt — bigger shake + flash + 'MIMIC!' reveal label
+          // so the player gets the punishment-then-fight beat clearly.
+          shakeCamera(12, 0.32);
+          triggerScreenFlash('rgba(255, 80, 40, 0.28)', 0.35);
+          roomLabelText = '⚠ MIMIC ⚠';
+          roomLabelColor = '#ff6a55';
+          roomLabelTime = 1.6;
+          playSfx('hero_hurt', { rate: 0.7, volume: 0.85 });
+          playSfx('slime_death', { rate: 0.35, volume: 0.6 });     // deeper roar
+          // Burst of red death-particles where the chest sat — visual
+          // 'something just came out of this chest' moment
+          for (let i = 0; i < 14; i++) deathBurst(cx, cy - 10, '#ff6a55');
+        }
+      }
+    }
+
+    // ─── M-KEY MAP PEEK ────────────────────────────────────────────────
+    // The clickable floor-map overlay is no longer the primary path picker
+    // (doors do that now), but it's still useful as a "where am I in this
+    // dungeon" reference. M opens it; clicking a node still commits — same
+    // as the legacy flow — so power users who prefer the map keep it.
+    if (currentGraph && currentNodeId !== null && keyJustPressed('KeyM') &&
+        !_mapPickInFlight && room.kind !== 'hamlet') {
+      _mapPickInFlight = true;
+      openFloorMap(currentGraph, currentNodeId).then(pickedId => {
+        _mapPickInFlight = false;
+        if (pickedId == null) return;
+        const curNode = getFloorNode(currentGraph, currentNodeId);
+        const picked = getFloorNode(currentGraph, pickedId);
+        if (!curNode || !picked) return;
+        // Only allow committing via map if room is cleared (parity with doors)
+        if (!room.cleared) return;
+        curNode.visited = true;
+        curNode.current = false;
+        picked.current = true;
+        currentNodeId = pickedId;
+        floor.push(picked.roomData);
+        clearDoors();
+        _roomClearedNotified = false;
+        beginTransition(floor.length - 1, 'south');
+      });
+    }
 
     gameTime += realDt;
     heroSpikeCD -= dt;
@@ -4184,8 +5572,24 @@ function tick(now) {
     } else if (codexBannerTime <= 0) {
       codexBannerEntry = null;
     }
-    // Claim the center banner slot while codex is visible. Tips defer to this.
-    window.__centerBannerActive = (codexBannerTime > 0);
+    // Claim the center banner slot while ANY centered overlay is visible —
+    // codex banner, floor intro card, boss intro, phase-2 banner, OR the
+    // Keeper wake cinematic (first-ever entry monologue). Tips defer to
+    // this so they don't fade in UNDER an active intro card.
+    // Previously only the codex banner claimed the slot, which let
+    // first-floor-tip showings (e.g. first_combat at floor-1 entry)
+    // stack invisibly behind the FLOOR I — THE UNDERCROFT card.
+    // Wake-cinematic-active was a per-frame fix: playKeeperWake sets
+    // window.__centerBannerActive = true on start, but THIS block was
+    // overwriting it every tick before the cinematic dismissed —
+    // letting tips silently fire under the wake overlay.
+    window.__centerBannerActive =
+      codexBannerTime > 0 ||
+      floorCardTime > 0 ||
+      bossIntroTime > 0 ||
+      phaseIntroTime > 0 ||
+      _wakeCinematicActive ||
+      isIntroActive();    // heartbeat intro — defer notifications until reveal
     // Dynamic tab title — reflects run state. Throttled to ~2Hz via gameTime.
     if ((gameTime | 0) !== _lastTitleUpdateSec) {
       _lastTitleUpdateSec = gameTime | 0;
@@ -4195,11 +5599,40 @@ function tick(now) {
       document.title = `${warn}Ethera · ${floorStr} · ${hpStr} HP`;
     }
 
-    // MUSIC INTENSITY — swell during active combat/boss, drop when cleared
+    // MUSIC INTENSITY — Round-6 AV audit retune. Old formula was
+    // `aliveCount / 5`, which gave a boss alone at full HP intensity
+    // 0.2 while a trash room with 5 slimes hit 1.0 — bosses didn't
+    // swell harder than chaff, and the music never reacted to the
+    // hero's own peril. New formula composes three signals:
+    //
+    //   1. Density   — alive enemy count, capped at 0.7 (chaff alone
+    //                  can't max the swell; that's reserved for bosses
+    //                  + low-HP states).
+    //   2. Boss tier — any boss in the room raises the floor to 0.65;
+    //                  an ENRAGED (phase-2) boss forces 1.0 outright.
+    //   3. Peril     — hero HP below 50% adds up to +0.35 linearly,
+    //                  topping out at 0 HP. The music recognises that
+    //                  the player is bleeding without needing the boss
+    //                  to do anything.
+    //
+    // The smoothed, per-frame swell applied in music.js still tops out
+    // at +35% volume (no new max). This change just makes the right
+    // beats trigger it.
     const _roomKind = floor[roomIndex]?.kind;
     const aliveCount = enemies.filter(e => !e.dead).length;
     const isCombatRoom = _roomKind === 'combat' || _roomKind === 'boss' || _roomKind === 'challenge';
-    setMusicIntensity(isCombatRoom && aliveCount > 0 ? Math.min(1, aliveCount / 5) : 0);
+    let _musicIntensity = 0;
+    if (isCombatRoom && aliveCount > 0) {
+      let density = Math.min(0.7, aliveCount / 5);
+      const bossAlive = enemies.some(e => e.boss && !e.dead);
+      if (bossAlive) density = Math.max(density, 0.65);
+      const bossEnraged = enemies.some(e => e.boss && e._enraged && !e.dead);
+      if (bossEnraged) density = 1.0;
+      const hpFrac = hero.hp / Math.max(1, hero.maxHp);
+      const peril = hpFrac < 0.5 ? (1 - hpFrac / 0.5) * 0.35 : 0;
+      _musicIntensity = Math.min(1, density + peril);
+    }
+    setMusicIntensity(_musicIntensity);
 
     // PROXIMITY HUM — subtle pedestal/altar/wanderer hum when hero is near.
     // Implemented as an intermittent low-volume ping that ramps with closeness.
@@ -4211,11 +5644,19 @@ function tick(now) {
         if (d < nearestPedestalD) nearestPedestalD = d;
       }
       if (nearestPedestalD < 140) {
-        _proximityHumT -= realDt;
-        if (_proximityHumT <= 0) {
-          const closeness = 1 - nearestPedestalD / 140;
-          synthPing(600 + closeness * 400, 0.25 + closeness * 0.3, 0.2);
-          _proximityHumT = 0.75 - closeness * 0.3;
+        // Audio review P1: don't ping during active combat — the hum
+        // metronome stacks with low-HP heartbeat + fusion banner audio +
+        // healchord into a noisy mix. In safe rooms (no live enemies)
+        // the ping draws the player's eye to the pedestal; in combat
+        // it just adds clutter. Suppress while any enemy is alive.
+        const liveEnemyCount = enemies.filter((e) => !e.dead).length;
+        if (liveEnemyCount === 0) {
+          _proximityHumT -= realDt;
+          if (_proximityHumT <= 0) {
+            const closeness = 1 - nearestPedestalD / 140;
+            synthPing(600 + closeness * 400, 0.25 + closeness * 0.3, 0.2);
+            _proximityHumT = 0.75 - closeness * 0.3;
+          }
         }
       }
     }
@@ -4300,7 +5741,7 @@ function tick(now) {
     // north door. Makes the approach feel heavy.
     if (roomNextKind.kind === 'boss' && room.doors.north) {
       // North door is at center-top of the room; drift embers downward from it.
-      const doorX = Math.floor(ROOM_W / 2) * TILE + TILE / 2;
+      const doorX = Math.floor(room.w / 2) * TILE + TILE / 2;
       const doorY = 0;
       // ~6 embers per second
       if (Math.random() < realDt * 6) {
@@ -4315,12 +5756,13 @@ function tick(now) {
       const wy = roomSecrets.crackY * TILE + TILE/2;
       // Pedestal spawned INSIDE the wall position (now floor) — tier-bumped reward
       // to reward curious players. Uses floor-level-appropriate roll.
-      pedestals.push({
-        x: wx, y: wy,
-        relic: rollRelicOffer(1, currentFloorLevel)[0] || null,
-        picked: false, bob: 0, glow: 0, hpCost: 0,
-      });
-      if (pedestals[pedestals.length - 1].relic == null) pedestals.pop();
+      // Round-7-audit: factory infers tier so mythic secret-wall drops
+      // (rare on F4) get full mythic-tier visual treatment. `bonus`
+      // tag opts out of the sibling-pick wipe.
+      const _secretRelic = rollRelicOffer(1, currentFloorLevel)[0];
+      if (_secretRelic) {
+        pushPedestal({ x: wx, y: wy, relic: _secretRelic, bonus: true });
+      }
       // Fat gold pile — 30 coins now (was 15)
       gold.total += 0;        // no-op; guards against import issue
       import('./gold.js').then(g => g.dropGold(wx, wy, 30));
@@ -4387,8 +5829,16 @@ function tick(now) {
         shakeCamera(10, 0.3);
         triggerScreenFlash('rgba(255, 90, 60, 0.25)', 0.3);
         playSfx('slime_death', { rate: 0.4, volume: 0.85 });
-        // Spawn after small delay with spawn burst on each
+        // Spawn after small delay with spawn burst on each.
+        // Run-sequence + room-index guard — if the player dies/quits/
+        // restarts in the 650ms window OR transitions to a different
+        // room, the captured run/room won't match and the spawn bails.
+        // Without this, phantom enemies could spawn on a stale `data`
+        // reference into the now-active room.
+        const wave2RunSeq = _runSeq;
+        const wave2RoomIdx = roomIndex;
         setTimeout(() => {
+          if (_runSeq !== wave2RunSeq || roomIndex !== wave2RoomIdx || !running) return;
           for (const s of data.wave2) {
             const sx = s.x * TILE + TILE / 2;
             const sy = s.y * TILE + TILE / 2;
@@ -4402,9 +5852,27 @@ function tick(now) {
         // Mini-boss rooms force floor-4 rarity weights — the mini-boss fight
         // is harder than a normal combat slot so the reward should reflect
         // that (higher rare + legendary chance, even a shot at mythic on F4).
-        // Standard combat rooms still roll on the current floor.
+        // Elite (perilous-path) rooms guarantee rare+ pedestals — risk pays.
+        // Round-7 ROOM REWARD bias — composed on top of the elite/miniboss
+        // baseline. roomReward='rare+' adds minTier promotion (matches
+        // elite-path treatment); roomReward='fusion' adds forced fusion-
+        // completer bias; roomReward='gold' drops bonus gold here so the
+        // door's "GOLD" chip matches reality on clear.
         const isMiniboss = data.slotLabel === 'miniboss';
-        spawnRelicOffer(isMiniboss ? 4 : currentFloorLevel);
+        const isElitePath = !!data.eliteRoom;
+        const reward = data.roomReward;
+        const offerLevel = isMiniboss ? 4 : currentFloorLevel;
+        const offerOpts = {};
+        if (reward === 'legendary') offerOpts.minTier = 'legendary';
+        else if (isElitePath || reward === 'rare+') offerOpts.minTier = 'rare';
+        if (reward === 'fusion') offerOpts.fusionBias = true;
+        if (reward === 'gold') {
+          // Bonus gold pile — extra coins drop at hero center, on top of
+          // the per-kill drops the gold-mul applied during combat. Gives
+          // the room a tactile "the chest opens" beat.
+          import('./gold.js').then(g => g.dropGold(hero.x, hero.y - 12, 12));
+        }
+        spawnRelicOffer(offerLevel, offerOpts);
         applyTarotPedestalMods();
         if (isMiniboss) {
           // Extra flourish on mini-boss reward: brighter ping + sparkle burst
@@ -4421,12 +5889,27 @@ function tick(now) {
         }
       } else if (!hasActivePedestals()) {
         room.cleared = true;
+        room.clearedAt = performance.now() / 1000;     // drives corpse fade
         data.cleared = true;
         stats.roomsCleared++;
         // Small HP regen on clear — +1 HP (not starving cursed) to soften the
         // harder difficulty. Still easy to die if you take too many hits.
         if (!isCursed('starving') && hero.hp < hero.maxHp) {
           hero.hp = Math.min(hero.maxHp, hero.hp + 1);
+          // BLOOD T2 ascendance — "killing sustains you" — recover 25% of
+          // remaining missing HP on top of the clear tick. Scales with maxHp
+          // so Ironhide+Vitality builds actually feel it.
+          if ((hero.activeThemes?.blood || 0) >= 2 && hero.hp < hero.maxHp) {
+            const bonus = Math.ceil((hero.maxHp - hero.hp) * 0.25);
+            if (bonus > 0) {
+              hero.hp = Math.min(hero.maxHp, hero.hp + bonus);
+              // A subtle spark burst on the ascendance heal so the player sees it
+              for (let k = 0; k < 6; k++) {
+                const ang = (k / 6) * Math.PI * 2;
+                sparkle(hero.x + Math.cos(ang) * 18, hero.y - 6 + Math.sin(ang) * 14, '#ff8a8a');
+              }
+            }
+          }
         }
         // Celebratory clear fanfare — label + sound + sparkle burst radiating from hero
         const isMiniboss = data.slotLabel === 'miniboss';
@@ -4451,35 +5934,63 @@ function tick(now) {
         playSfx('click', { volume: 0.9, rate: 1.1 });
       } else if (!hasActivePedestals()) {
         room.cleared = true;
+        room.clearedAt = performance.now() / 1000;
         data.cleared = true;
         stats.roomsCleared++;
       }
+    }
+
+    // Chestroom: starts cleared (no enemies); a mimic chest sets
+    // room.cleared = false + spawns enemies. Once the player kills the
+    // mimic spawns, flip cleared back to true so doors unlock and the
+    // run can continue. Without this, opening a mimic permanently
+    // locks the room (was the case before this clear-check landed).
+    if (data.kind === 'chestroom' && !room.cleared && enemies.length === 0) {
+      room.cleared = true;
+      room.clearedAt = performance.now() / 1000;
+      data.cleared = true;
+      stats.roomsCleared++;
     }
 
     // Boss room: instant clear on all enemies down.
     // Floor 3+ bosses drop a guaranteed legendary pedestal as reward.
     if (data.kind === 'boss' && !room.cleared && enemies.length === 0) {
       room.cleared = true;
+      room.clearedAt = performance.now() / 1000;
       data.cleared = true;
       stats.roomsCleared++;
+      // THE WATCHER — first boss kill / first final-boss clear milestones.
+      watcherOnBossClear(currentFloorLevel);
       playSfx('click', { volume: 0.6, rate: 1.15 });
       // Spawn legendary reward pedestal for mid-run bosses (not final — final gets end-screen)
       if (currentFloorLevel >= 3 && currentFloorLevel < MAX_FLOORS) {
-        // Pick a legendary the player doesn't already have, else any legendary
+        // Pick a legendary the player doesn't already have, weapon-compatible.
+        // Fallback: any weapon-compatible legendary (even if owned). Final
+        // fallback: any legendary at all — we always want a reward, even if
+        // somehow every weapon-legendary is owned, which is a degenerate
+        // edge case past the player's intended progression curve.
         const owned = new Set(equippedRelics.map(r => r.id));
         const legendaryPool = ALL_RELIC_IDS.filter(id => {
           const def = RELIC_DEFS[id];
-          return def && def.tier === 'legendary' && !owned.has(id);
+          return def && def.tier === 'legendary'
+            && !owned.has(id)
+            && isRelicForWeapon(id, hero.weapon);
         });
-        const legendaryId = legendaryPool.length ? legendaryPool[(Math.random() * legendaryPool.length) | 0]
-                          : ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary');
+        const legendaryId = legendaryPool.length
+          ? legendaryPool[(Math.random() * legendaryPool.length) | 0]
+          : (ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary' && isRelicForWeapon(id, hero.weapon))
+             || ALL_RELIC_IDS.find(id => RELIC_DEFS[id].tier === 'legendary'));
         if (legendaryId) {
-          const center = { x: Math.floor(ROOM_W / 2) * TILE + TILE / 2, y: Math.floor(ROOM_H / 2) * TILE + TILE / 2 };
-          pedestals.push({
+          // Round-7-audit fix: snapToClearTile nudges the pedestal to a
+          // walkable cell if the geometric center happens to be a
+          // pillar. Was a real bug on certain pillarTemplate values.
+          const center = { x: Math.floor(room.w / 2) * TILE + TILE / 2, y: Math.floor(room.h / 2) * TILE + TILE / 2 };
+          pushPedestal({
             x: center.x, y: center.y,
             relic: RELIC_DEFS[legendaryId],
-            picked: false, bob: 0, glow: 0, hpCost: 0,
             tier: 'legendary',
+            bonus: true,        // mid-run boss reward, won't wipe sibling offers
+            snapToClearTile: true,
           });
           // Extra flourish
           for (let i = 0; i < 20; i++) deathBurst(center.x, center.y, '#ffc8ff');
@@ -4494,63 +6005,130 @@ function tick(now) {
     // reset. Starving curse disables it entirely.
     if (data.kind === 'reward' && onPedestalWorld(hero.x, hero.y) && hero.hp < hero.maxHp) {
       if (!isCursed('starving') && consumePedestal()) {
-        // Partial heal: restore 3 HP for free (was: full heal).
-        // Wanderer NPC still offers paid full-heal trade.
+        // Sanctuary heal — Round-6 economy retune.
+        //   Round-1 : flat 3 HP — 100% at maxHp=3, ~25% at maxHp=12.
+        //   Round-3 : max(3, floor(maxHp × 0.4)) — fixed F4 tank bracket
+        //             but inverted incentives (low-HP got 100% restore,
+        //             high-HP got tax-bracketed at ~40%).
+        //   Round-6 : max(3, floor(maxHp × 0.5)) — same 100% at maxHp=3,
+        //             50% across all higher pools. F4 tank with maxHp=10
+        //             now heals 5 (was 4); maxHp=12 heals 6 (was 4).
+        //             Cleaner curve, no anti-tank tax.
         // ASCENSION III — "The Half Rest": sanctuary healing halved.
-        let baseHeal = 3;
+        let baseHeal = Math.max(3, Math.floor(hero.maxHp * 0.5));
         const am = window.__ascensionModifiers && window.__ascensionModifiers();
         if (am && am.sanctuaryHealMul) baseHeal = Math.max(1, Math.floor(baseHeal * am.sanctuaryHealMul));
         const healed = Math.min(baseHeal, hero.maxHp - hero.hp);
         hero.hp = Math.min(hero.maxHp, hero.hp + healed);
-        playSfx('click', { volume: 0.8, rate: 1.4 });
+        // Heal feedback — was a generic playSfx('click') that felt like UI
+        // noise. Warm chord (440Hz / 0.5s / 0.8 vol) reads as restoration,
+        // and a green floating "+N HP" floats up from the hero so the
+        // gain registers visually even mid-combat-pickup transitions.
+        try { synthChord(440, 0.5, 0.8); } catch (_e) {}
+        spawnDamageNumber(hero.x, hero.y - 24, healed, { text: '+' + healed + ' HP', color: '#86e3a8' });
       }
     }
 
-    // Door transition check
-    // SYSTEMS PASS 2c — branching. If the next room is already committed
-    // (second trip through a pre-picked path, or legacy linear fallback),
-    // advance normally. Otherwise open the floor map for path selection.
-    const door = onDoorWorld(hero.x, hero.y);
-    if (door && door.dir === 'north') {
-      if (roomIndex < floor.length - 1) {
-        beginTransition(roomIndex + 1, 'south');
-      } else if (currentGraph && currentNodeId !== null) {
-        const curNode = getFloorNode(currentGraph, currentNodeId);
-        if (curNode && curNode.edges.length > 0 && !_mapPickInFlight) {
-          _mapPickInFlight = true;
-          openFloorMap(currentGraph, currentNodeId).then(pickedId => {
-            _mapPickInFlight = false;
-            if (pickedId == null) return;
-            const picked = getFloorNode(currentGraph, pickedId);
-            if (!picked) return;
-            // ASCENSION VII — hidden-path reveal moment. If the player just
-            // committed to a node that was hidden on the map, fire a banner
-            // naming what they walked into. Uses the codex-entry queue so it
-            // plays through the same drama pipeline as bestiary reveals.
-            if (picked._hidden) {
-              const kindLabel = (picked.kind || '').toUpperCase();
-              const colorByKind = {
-                combat: '#e8d4b4', elite: '#d85a5a', event: '#c8a0ff',
-                sanctuary: '#86e3a8', boss: '#ff9a55',
-              };
-              window.__pendingCodexEntry = {
-                type: 'hidden_path_reveal',
-                name: 'HIDDEN PATH REVEALED',
-                flavor: 'the ' + kindLabel.toLowerCase() + ' was waiting for you',
-                color: colorByKind[picked.kind] || '#d85a6a',
-              };
-              picked._hidden = false;  // reveal is one-time
-            }
-            // Mark state transition on the graph
-            curNode.visited = true;
-            curNode.current = false;
-            picked.current = true;
-            currentNodeId = pickedId;
-            floor.push(picked.roomData);
-            beginTransition(floor.length - 1, 'south');
-          });
-        }
+    // ─── FUNCTIONAL DOOR FLOW ──────────────────────────────────────────
+    // 1. When room.cleared transitions to true, fire onRoomCleared once
+    //    so doorPortals starts the open-animation on north doors.
+    // 2. Tick door animations + check for hero crossing.
+    // 3. Pre-committed rooms (idx < floor.length - 1, e.g. legacy linear
+    //    fallback) still use the onDoorWorld tile-step path.
+
+    if (room.cleared && !_roomClearedNotified) {
+      onRoomCleared();
+      _roomClearedNotified = true;
+      // Audio confirmation — combat just ended and the doors are about
+      // to open. Without this chord, the world becomes traversable in
+      // silence and the player has no auditory cue that the encounter
+      // actually finished. Boss clears get full SFX cascades elsewhere;
+      // this is the equivalent for normal combat rooms. Skip on boss
+      // rooms (boss-clear triggers its own fanfare via bossWinTriggered)
+      // and start rooms (cleared from the start, no encounter to "end").
+      if (data.kind !== 'boss' && data.kind !== 'start') {
+        synthChord(523, 0.55, 0.65);
+        // Round-7-audit POLISH — cleared-room ambient pad. After the
+        // chord lands, the room had been silent until the next door
+        // animation. Now a brief D-minor warm pad fades in (0.9s)
+        // filling the post-combat moment with atmosphere. Pad gets
+        // stopped on next loadRoom (see start of loadRoom) when the
+        // player enters another combat-style room. Skipped on boss/
+        // start rooms: boss has its own cinematic, start has no
+        // "encounter to end" anyway.
+        try { startAmbientPad('cleared'); } catch (_e) {}
       }
+      // THE FOOL tarot — "Begin with no weapon, granted after first clear."
+      // The original code nulled hero.weapon at run start but never
+      // re-granted it; the player walked the rest of the run swinging on
+      // the sword fallback in weaponDef() with no actual weapon owned.
+      // Grant a random unlocked weapon now. Refresh relic offers so
+      // newly-eligible weapon-themed picks aren't filtered out next room.
+      if (hero.weapon === null && data.kind !== 'start') {
+        const choices = availableWeapons();
+        const granted = choices[(Math.random() * choices.length) | 0] || 'sword';
+        hero.weapon = granted;
+        try { synthFanfare(0.55); synthChord(523, 0.7, 0.7); } catch (_e) {}
+        spawnDamageNumber(hero.x, hero.y - 32, 0, {
+          text: 'WEAPON: ' + granted.toUpperCase(),
+          color: '#f4d9a0',
+        });
+      }
+    }
+
+    // Tick door animations + check for the hero physically crossing an
+    // open north door. Returns { targetNodeId, doorTileX } once a crossing
+    // is detected — both pieces feed into the continuous-transition flow
+    // so the prevRoom residue lines up with the door hero just walked through.
+    const crossed = updateDoors(dt);
+    // Crossing lock release — three failure paths can leave the
+    // doorPortals module's _commitInFlight stuck true (softlock):
+    //   (1) crossed reported but currentGraph / currentNodeId missing
+    //   (2) crossed dispatched but graph nodes can't be resolved
+    //   (3) caller can't push the new room (e.g. linear-only floor)
+    // releaseCrossingLock() in each branch lets updateDoors retry next
+    // frame instead of leaving the hero frozen on an open door tile.
+    if (crossed && (!currentGraph || currentNodeId == null)) {
+      releaseCrossingLock();
+    }
+    if (crossed && currentGraph && currentNodeId != null) {
+      const curNode = getFloorNode(currentGraph, currentNodeId);
+      const picked = getFloorNode(currentGraph, crossed.targetNodeId);
+      if (!curNode || !picked) {
+        releaseCrossingLock();
+      } else {
+        // Hidden-path reveal banner (Ascension VII) — preserved from old flow.
+        if (picked._hidden) {
+          const kindLabel = (picked.kind || '').toUpperCase();
+          const colorByKind = {
+            combat: '#e8d4b4', elite: '#d85a5a', event: '#c8a0ff',
+            sanctuary: '#86e3a8', boss: '#ff9a55',
+          };
+          window.__pendingCodexEntry = {
+            type: 'hidden_path_reveal',
+            name: 'HIDDEN PATH REVEALED',
+            flavor: 'the ' + kindLabel.toLowerCase() + ' was waiting for you',
+            color: colorByKind[picked.kind] || '#d85a6a',
+          };
+          picked._hidden = false;
+        }
+        curNode.visited = true;
+        curNode.current = false;
+        picked.current = true;
+        currentNodeId = crossed.targetNodeId;
+        floor.push(picked.roomData);
+        beginDoorTransition(floor.length - 1, crossed.doorTileX);
+      }
+    }
+
+    // Legacy linear-floor fallback — when next room is already pushed
+    // (e.g. from a save resume or pre-built linear floor), walk through
+    // the literal north door tile to advance. Most modern flows go
+    // through the door-crossing path above.
+    const door = onDoorWorld(hero.x, hero.y);
+    if (door && door.dir === 'north' && roomIndex < floor.length - 1
+        && roomDoors.length === 0) {
+      beginTransition(roomIndex + 1, 'south');
     }
 
     // Evaluate achievements periodically (on room transitions mostly, but cheap to re-evaluate)
@@ -4580,7 +6158,7 @@ function tick(now) {
       // Spawns a staggered chain of coins at the boss corpse + rising chord
       // pings + final fanfare with banner flash. Reuses gold.js's existing
       // streak/magnet logic so the cascade feels musically ascending.
-      const corpse = enemies.find(e => e.boss) || { x: ROOM_W * TILE / 2, y: ROOM_H * TILE / 2 };
+      const corpse = enemies.find(e => e.boss) || { x: room.w * TILE / 2, y: room.h * TILE / 2 };
       const cascadeCount = isFinal ? 24 : 12 + currentFloorLevel * 2;
       const cascadeStep = isFinal ? 55 : 70;
       const cascadeDurationMs = cascadeCount * cascadeStep;
@@ -4636,7 +6214,11 @@ function tick(now) {
           try { recordRunComplete(); } catch (e) {}
           evaluateAchievements(stats, meta);
           hideShop();
-          if (!hasSeenEpilogue()) {
+          // DEPTH PASS — record victory for hamlet reactive greetings.
+          // Fires "you took the path I refused to look at" type lines
+          // on the next NPC visit chain after a run completion.
+          recordRunEnd('victory', currentFloorLevel, stats.bossesKilled | 0, equippedRelics.length | 0);
+          if (!hasSeen('epilogue', 'first_clear')) {
             playEpilogue(() => showEndOfRun(true));
           } else {
             showEndOfRun(true);
@@ -4674,22 +6256,38 @@ function tick(now) {
         // Poll for pickup (or timeout). Once the pedestal is picked up, the
         // banner runs ~3s; add extra breath before opening the UI so banner
         // + transition don't overlap.
+        // Run-sequence guard — if the player dies/quits/restarts during the
+        // 15s timeout window, the captured _runSeq won't match and the poll
+        // bails without firing openFloorUi against a fresh run state.
         const pollStart = performance.now() + dropDelay;
+        const pollRunSeq = _runSeq;
         const poll = setInterval(() => {
+          if (_runSeq !== pollRunSeq || !running) { clearInterval(poll); return; }
           const now = performance.now();
           if (now < pollStart) return;                          // wait for spawn
           if (!hasActivePedestals() && pedestals.length > 0) {
             // All spawned pedestals are picked (length>0 guards against pre-spawn state)
             clearInterval(poll);
-            setTimeout(openFloorUi, 3800);
+            setTimeout(() => {
+              if (_runSeq === pollRunSeq && running) openFloorUi();
+            }, 3800);
           } else if (now - pollStart > 15000) {
             clearInterval(poll);
-            openFloorUi();
+            // Same run-seq guard as the natural-pickup branch — without
+            // it, a 15s-AFK-then-die-then-new-run race would fire
+            // openFloorUi against a fresh run state and overlay the
+            // between-floors shop on a player who hadn't earned it.
+            if (_runSeq === pollRunSeq && running) openFloorUi();
           }
         }, 200);
       } else {
         // No loot pool for this boss type → fall back to original timing.
-        setTimeout(openFloorUi, cascadeDurationMs + 600);
+        // Pin the run-seq so a death+new-run race during the cascade
+        // window doesn't fire openFloorUi on the fresh run.
+        const fallbackRunSeq = _runSeq;
+        setTimeout(() => {
+          if (_runSeq === fallbackRunSeq && running) openFloorUi();
+        }, cascadeDurationMs + 600);
       }
       if (isFinal) return;     // preserve the original early-return for final
     }
@@ -4699,6 +6297,15 @@ function tick(now) {
     if (hero.state === 'dead' && hero.stateTime > 0.9 && !deathCeremonyActive && !deathSummaryShown) {
       deathCeremonyActive = true;
       deathCeremonyTime = 0;
+      // THE WATCHER — fires a milestone or death-depth line. "Near final boss"
+      // = dying in the floor-MAX boss room with the boss under 30% HP.
+      try {
+        const bossEnt = enemies.find(e => e.boss);
+        const nearFinalBoss = currentFloorLevel >= MAX_FLOORS
+          && data.kind === 'boss'
+          && bossEnt && (bossEnt.hp / bossEnt.maxHp) < 0.30;
+        watcherOnDeath(currentFloorLevel, !!nearFinalBoss);
+      } catch (e) {}
       // THE RUIN REMEMBERS — record death event into persistent history.
       // Next runs will show a blood stain in this room + journal entry.
       try {
@@ -4726,7 +6333,27 @@ function tick(now) {
         deathSummaryShown = true;
         running = false;
         daily.activeForRun = false;
-        showEndOfRun(false);
+        // DEPTH PASS — record the run end so the next hamlet visit
+        // fires reactive greetings tied to the outcome ("you came back
+        // without all of yourself", "Mm. Try a heavier weapon next
+        // time"). recordRunEnd also clears the per-NPC greeting-shown
+        // map so each NPC reacts fresh.
+        recordRunEnd('death', currentFloorLevel, stats.bossesKilled | 0, equippedRelics.length | 0);
+        // FIRST-DEATH BYPASS — if the player has never seen the keeper
+        // wake (i.e., this is their first run, started via the heartbeat
+        // intro), skip the death/sanctuary modal and route to the
+        // hamlet via a smoothing beat: hold "YOU HAVE FALLEN" for an
+        // extra second, then fade the whole frame to pure black, THEN
+        // call enterHamletCanvas (which fades the keeper wake in over
+        // the already-black canvas). Without this beat, the keeper's
+        // first letterbox bar snaps in over a still-red ceremony frame,
+        // which undercuts the weight of the death.
+        if (!hasSeen('hamlet', 'wake')) {
+          _firstDeathFadeActive = true;
+          _firstDeathFadeTime = 0;
+        } else {
+          showEndOfRun(false);
+        }
       }
     }
   } else if (transition.active) {
@@ -4741,6 +6368,32 @@ function tick(now) {
   } else if (paused) {
     // Keep music flowing during pause (so it doesn't cut out)
     updateMusic(realDt);
+  }
+
+  // First-death fade beat — runs OUTSIDE the running/transition/paused
+  // chain because the moment we kick it off, running flips false and
+  // none of those branches fire anymore. We need this to advance every
+  // frame regardless of game state, so it lives next to render().
+  // Holds the death screen, fades to pure black, then hands off to
+  // enterHamletCanvas (which fires the keeper wake). See declaration
+  // above for the full timing rationale.
+  //
+  // Pause hygiene: skip the tick while paused (so the player can't burn
+  // through the cinematic by tab-switching), AND defensively unpause +
+  // hide the pause overlay right before handoff to the keeper wake. The
+  // blur/visibilitychange auto-pause path could otherwise deadlock the
+  // wake under a stuck pause modal — bug-hunter audit P0.
+  if (_firstDeathFadeActive && !paused) {
+    _firstDeathFadeTime += realDt;
+    if (_firstDeathFadeTime >= FIRST_DEATH_TOTAL) {
+      _firstDeathFadeActive = false;
+      // Belt-and-suspenders: even if a future code path lets the timer
+      // tick past TOTAL while paused was true, this guarantees we hand
+      // off cleanly with no overlay residue.
+      if (paused) setPaused(false);
+      pauseEl.style.display = 'none';
+      enterHamletCanvas();
+    }
   }
 
   render();
@@ -4766,6 +6419,8 @@ function render() {
   // Spikes + fire pools draw on top of floor, below sprites
   drawSpikes(ctx, gameTime);
   drawUrns(ctx, 1 / 60);                // fixed small dt — break anim is visual only
+  drawDecorPillars(ctx);                  // sacred-chamber pillars in chestrooms / future altars
+  drawChests(ctx, 1 / 60);               // chest open animation runs frame counters via dt
   drawFirePools(ctx, gameTime);
   // Wanderer halo draws beneath hero so hero sprite still reads
   drawWandererTrail(ctx);
@@ -4776,10 +6431,30 @@ function render() {
 
   // Corpse stains sit on the floor beneath everything — drawn after telegraphs
   // (which render on the floor plane too) but before pedestals/wanderer/actors.
-  drawCorpses(ctx);
+  // Pass `room` so drawCorpses can fade them out over 1.2s once cleared.
+  drawCorpses(ctx, room);
 
   drawPedestals(ctx);
+  drawPedestalTeasers(ctx);
+  // Door labels — sigils + kind text float above each north door tile.
+  // Drawn here so they appear on the wall plane, not blocked by hero/enemies.
+  if (room.kind !== 'hamlet') drawDoorLabels(ctx);
   drawWanderer(ctx);
+  // HAMLET CANVAS — layered composition:
+  //   Layer 1 (room.js drawRoom hamlet branch): procedural sky + stars + ground slab
+  //   Layer 2 (drawHamletBackdrop):             cobblestone tiles + buildings
+  //   Layer 3 (drawHamletEntities):             portal-tower, shrine, firepit, NPCs
+  //   Layer 4 (drawList, hero + enemies):       player character on top
+  //   Layer 5 (drawHamletInteractPrompt):       floating "E · TALK" labels
+  if (room.kind === 'hamlet') {
+    drawHamletBackdrop(ctx);
+    drawHamletFx(ctx);                  // animated overlays (flames, etc.)
+    drawHamletEntities(ctx);
+    drawHamletOverlay(ctx);
+  }
+  // Theme ascendance aura — renders below the hero so the sprite sits on
+  // the glow. Intentionally drawn before drawList so the hero paints on top.
+  drawThemeAura(ctx);
 
   const drawList = [];
   drawList.push({ y: hero.y, draw: (c) => drawHero(c) });
@@ -4787,11 +6462,38 @@ function render() {
   drawList.sort((a, b) => a.y - b.y);
   for (const item of drawList) item.draw(ctx);
 
+  // Door lintel occlusion pass — re-draws just the top half of each
+  // door sprite over whatever the drawList put down. When the hero
+  // (or an enemy) stands in a door tile, their head reads as BEHIND
+  // the lintel/arch, selling "I'm IN the doorway" instead of "I'm
+  // a sprite painted on top of the door." Cheap (tile scan + small
+  // blit per door, rooms have at most ~5 door tiles).
+  drawDoorLintels(ctx);
+
+  // Proc counters — tiny pip rows under the hero (visible "every Nth hit" meters)
+  drawCounterPips(ctx);
+
   drawProjectiles(ctx);
   drawSynergies(ctx);
   drawHeroShield(ctx);
+  // Perfect-dodge ring — gold pulse around the hero in the last 0.15s
+  // of any enemy's melee windup. Round-6 combat-feel audit: the
+  // perfect-dodge mechanic had no pre-strike telegraph, so the timing
+  // window was effectively invisible. This teaches the player WHEN to
+  // press SPACE for the counter bonus. Drawn after drawHeroShield so
+  // the ring sits on top of the shield aura in the rare overlap.
+  drawPerfectDodgeRing(ctx, hero);
+  // Ember Tyrant phase-2 rings — drawn above actors so the wavefront
+  // reads as a SCREEN-LEVEL hazard the player must dodge through, not
+  // a floor decal hidden under enemy sprites. Drawn before slashes so
+  // the hero's swing VFX still pop on top.
+  drawEmberRings(ctx);
   drawGold(ctx);
   drawSlashes(ctx);
+  // Soul tethers — Iron Revenant's life-drain VFX (and any future
+  // hero↔enemy line). World-space, drawn after enemies/hero but before
+  // particles so death-bursts can still pop on top.
+  drawSoulTethers(ctx);
   drawParticles(ctx);
   drawDust(ctx);
   // Biome weather — ice motes, ash, embers. Drawn on top of gameplay so the
@@ -4803,6 +6505,59 @@ function render() {
   drawCounterIndicator(ctx, hero.x, hero.y);
   drawHitMarkers(ctx);
   drawDamageNumbers(ctx);
+  // HAMLET interact prompt — floating "E · TALK TO THE KEEPER" label above
+  // the nearest interactable. Drawn last inside the camera transform so it
+  // sits on top of entities + the hero.
+  if (room.kind === 'hamlet') {
+    drawHamletInteractPrompt(ctx);
+  }
+  // PEDESTAL interact prompt — floating "E · TAKE [name]" / "E · PAY N HP
+  // [name]" above the nearest hovered pedestal. Round-7 user feedback:
+  // pickups now require an E-press confirmation. Skip during hamlet
+  // (no pedestals there); chestroom pedestals reuse the same prompt
+  // since they're regular pedestal entries spawned from the chest reward.
+  if (room.kind !== 'hamlet') {
+    drawPedestalPrompt(ctx);
+  }
+  // Treasure chest interact prompt — "E · OPEN" floating above the
+  // nearest closed chest within range. Same visual style as hamlet
+  // interact labels for player-facing consistency.
+  if (room.kind === 'chestroom') {
+    const HR = 80;
+    let nearest = null, nearestD2 = HR * HR;
+    for (const c of roomChests) {
+      if (c.state !== 'closed') continue;
+      const cx = c.x * TILE + TILE / 2;
+      const cy = c.y * TILE + TILE / 2;
+      const dx = hero.x - cx, dy = hero.y - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < nearestD2) { nearest = c; nearestD2 = d2; }
+    }
+    if (nearest) {
+      const cx = nearest.x * TILE + TILE / 2;
+      const cy = nearest.y * TILE + TILE / 2;
+      const now = performance.now() / 1000;
+      const floatOff = Math.sin(now * 2.2) * 3;
+      const promptY = cy - 56 + floatOff;
+      const label = 'E  ·  OPEN';
+      ctx.save();
+      ctx.font = 'bold 11px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const m = ctx.measureText(label);
+      const padX = 10;
+      const w = m.width + padX * 2;
+      const h = 20;
+      ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
+      ctx.fillRect(cx - w / 2, promptY - h / 2, w, h);
+      ctx.strokeStyle = 'rgba(201, 168, 106, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - w / 2 + 0.5, promptY - h / 2 + 0.5, w - 1, h - 1);
+      ctx.fillStyle = '#f4d9a0';
+      ctx.fillText(label, cx, promptY);
+      ctx.restore();
+    }
+  }
   ctx.restore();
 
   // INTRO CINEMATIC GATE — when any intro is active (floor card / boss intro
@@ -4817,16 +6572,20 @@ function render() {
   const introActiveNow = bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0;
 
   const bloomKind = floor[roomIndex]?.kind;
-  if (!introActiveNow) {
+  if (!introActiveNow && bloomKind !== 'hamlet') {
     // BLOOM PASS — bright-pixel bleed (torches, fire, gold). Suppressed
     // during intros so the portrait isn't pre-filtered before compositing.
+    // Also suppressed for the hamlet — that scene is pre-lit by its painted
+    // fire halos and dust motes; a bloom pass blows out the firepit into a
+    // muddy bright blob and shifts the palette toward the dungeon look.
     const bloomIntensity = bloomKind === 'boss' ? 0.68 : bloomKind === 'altar' ? 0.60 : 0.52;
     applyBloom(ctx, canvas, bloomIntensity);
 
     // BIOME COLOR GRADE — two-pass tint giving each floor a distinct mood.
     // Multiply dims shadows/midtones; screen adds highlights. Suppressed
     // during intros because the multiply pass visibly darkens the portrait
-    // even at 0.5× boss-room scale.
+    // even at 0.5× boss-room scale. Also skipped for hamlet — it already
+    // paints its own sky/ground palette.
     const gradePal = currentBiomePal();
     if (gradePal.gradeMultiply) {
       const gradeScale = bloomKind === 'boss' ? 0.5 : 1.0;
@@ -4877,32 +6636,52 @@ function render() {
 
   // Skip darkness layer + vignette entirely during intros — the intro has
   // its own letterbox + veil for framing, any further darkening compounds
-  // into near-black over the portrait.
+  // into near-black over the portrait. The hamlet is an outdoor hub and
+  // gets a much softer treatment (no hero-centered darkness, only a mild
+  // warm vignette) so it reads as welcoming, not dungeon-dim.
   const preBoss = roomNextKind.kind === 'boss' && kind !== 'boss';
-  const vigBase = preBoss ? 'rgba(30, 4, 6, ' : (pal.vignetteBase || 'rgba(4, 4, 8, ');
+  const vigBase = preBoss ? 'rgba(30, 4, 6, '
+    : kind === 'hamlet' ? 'rgba(30, 16, 10, '
+    : (pal.vignetteBase || 'rgba(4, 4, 8, ');
   if (!introActiveNow) {
-    // Darkness layer — edges are dim, center is ALMOST full-bright.
-    const darkAmount = kind === 'boss' ? 0.70 : 0.45;
-    const darkInner  = kind === 'boss' ? 260 : 340;
-    const darkOuter  = kind === 'boss' ? 620 : 760;
-    const dark = ctx.createRadialGradient(hsx, hsy, darkInner, hsx, hsy, darkOuter);
-    dark.addColorStop(0, 'rgba(6, 4, 10, 0)');
-    dark.addColorStop(0.7, 'rgba(6, 4, 10, ' + (darkAmount * 0.4).toFixed(2) + ')');
-    dark.addColorStop(1, 'rgba(6, 4, 10, ' + darkAmount.toFixed(2) + ')');
-    ctx.fillStyle = dark;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (kind === 'hamlet') {
+      // HAMLET — no hero-centered darkness; just a gentle warm edge vignette
+      // so corners don't read as flat. The scene has its own painted fog +
+      // firepit halos; the dungeon darkness pass otherwise crushes the warm
+      // palette we painted on top.
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      const vigInner = Math.min(canvas.width, canvas.height) * 0.35;
+      const vigOuter = Math.max(canvas.width, canvas.height) * 0.80;
+      const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
+      vig.addColorStop(0,    vigBase + '0)');
+      vig.addColorStop(0.65, vigBase + '0.08)');
+      vig.addColorStop(1,    vigBase + '0.28)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      // Darkness layer — edges are dim, center is ALMOST full-bright.
+      const darkAmount = kind === 'boss' ? 0.70 : 0.45;
+      const darkInner  = kind === 'boss' ? 260 : 340;
+      const darkOuter  = kind === 'boss' ? 620 : 760;
+      const dark = ctx.createRadialGradient(hsx, hsy, darkInner, hsx, hsy, darkOuter);
+      dark.addColorStop(0, 'rgba(6, 4, 10, 0)');
+      dark.addColorStop(0.7, 'rgba(6, 4, 10, ' + (darkAmount * 0.4).toFixed(2) + ')');
+      dark.addColorStop(1, 'rgba(6, 4, 10, ' + darkAmount.toFixed(2) + ')');
+      ctx.fillStyle = dark;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // SCREEN-SPACE VIGNETTE — always-on dim corners, biome-tinted.
-    const vigStrength = kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48;
-    const cx = canvas.width / 2, cy = canvas.height / 2;
-    const vigInner = Math.min(canvas.width, canvas.height) * 0.28;
-    const vigOuter = Math.max(canvas.width, canvas.height) * 0.72;
-    const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
-    vig.addColorStop(0,    vigBase + '0)');
-    vig.addColorStop(0.55, vigBase + (vigStrength * 0.25).toFixed(3) + ')');
-    vig.addColorStop(1,    vigBase + vigStrength.toFixed(3) + ')');
-    ctx.fillStyle = vig;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // SCREEN-SPACE VIGNETTE — always-on dim corners, biome-tinted.
+      const vigStrength = kind === 'boss' ? 0.72 : preBoss ? 0.62 : 0.48;
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      const vigInner = Math.min(canvas.width, canvas.height) * 0.28;
+      const vigOuter = Math.max(canvas.width, canvas.height) * 0.72;
+      const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
+      vig.addColorStop(0,    vigBase + '0)');
+      vig.addColorStop(0.55, vigBase + (vigStrength * 0.25).toFixed(3) + ')');
+      vig.addColorStop(1,    vigBase + vigStrength.toFixed(3) + ')');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
   }
 
   // Very subtle warm tint — just warms the center a touch, no halo-looking light
@@ -4914,45 +6693,47 @@ function render() {
   warm.addColorStop(1, 'rgba(255, 140, 80, 0)');
   ctx.fillStyle = warm;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // CHESTROOM ambient — subtle violet wash so the gambling-tension room
+  // reads atmospherically distinct from regular combat/event rooms even
+  // before the player sees the chests. Corner-to-corner falloff, gentle
+  // alpha, additive blend. Same render slot as the warm tint above.
+  if (kind === 'chestroom') {
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const vio = ctx.createRadialGradient(cx, cy, 60, cx, cy, Math.max(canvas.width, canvas.height) * 0.7);
+    vio.addColorStop(0, 'rgba(170, 110, 220, 0.06)');
+    vio.addColorStop(0.5, 'rgba(140, 90, 200, 0.04)');
+    vio.addColorStop(1, 'rgba(110, 70, 180, 0)');
+    ctx.fillStyle = vio;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
-  // Wall torch halos — flickering light at each sconce, biome-tinted.
+  // Wall torch halos — soft, warm, ATMOSPHERIC pools of light. NOT
+  // spotlights. Holistic redesign 2026-04-27 after the previous version
+  // was reading as 'stage spotlights thrown around the room':
+  //   - god-ray cones removed entirely (the biggest 'spotlight' offender)
+  //   - halo radius cut 220 -> 100 (each torch lights its own neighborhood,
+  //     not half the room)
+  //   - core alpha cut 0.70 -> 0.28 (no more pure-white blowout under
+  //     the additive blend mode)
+  //   - flicker depth cut 0.28 -> 0.10 (subtle breathing, not strobing)
+  //   - mid-stop pushed wider so the falloff is smoother
+  // Net: each torch contributes a small warm pool that fades naturally
+  // into the room's general dimness. The torch sprite itself remains
+  // the visually-bright element, with a gentle warm halo around it.
   const now = performance.now() / 1000;
   const flameBase = pal.torchFlame || 'rgba(255, 180, 100, ';
   for (const t of roomTorches) {
     const tsx = t.x - camera.x + canvas.width / 2 + camera.offsetX;
     const tsy = t.y - camera.y + canvas.height / 2 + camera.offsetY;
-    const phase = (now * 3 + (t.seed & 0xff) * 0.1);
-    const flick = 0.82 + 0.18 * (Math.sin(phase * 7.3) * 0.5 + Math.sin(phase * 11.1) * 0.4 + Math.sin(phase * 17.5) * 0.3) / 1.2;
-    const radius = 180 + flick * 20;
-    const g = ctx.createRadialGradient(tsx, tsy, 4, tsx, tsy, radius);
-    g.addColorStop(0, flameBase + (0.55 * flick).toFixed(3) + ')');
-    g.addColorStop(0.3, flameBase + (0.22 * flick).toFixed(3) + ')');
+    const phase = (now * 2.4 + (t.seed & 0xff) * 0.1);
+    const flick = 0.90 + 0.10 * (Math.sin(phase * 7.3) * 0.5 + Math.sin(phase * 11.1) * 0.4 + Math.sin(phase * 17.5) * 0.3) / 1.2;
+    const radius = 100 + flick * 12;
+    const g = ctx.createRadialGradient(tsx, tsy, 6, tsx, tsy, radius);
+    g.addColorStop(0, flameBase + (0.28 * flick).toFixed(3) + ')');
+    g.addColorStop(0.45, flameBase + (0.08 * flick).toFixed(3) + ')');
     g.addColorStop(1, flameBase + '0)');
     ctx.fillStyle = g;
     ctx.fillRect(tsx - radius, tsy - radius, radius * 2, radius * 2);
-
-    // GOD RAY — volumetric light cone streaming down from the torch.
-    // Approximated by a vertical trapezoid with a top-biased gradient and
-    // flicker-modulated alpha. Makes the dust-filled air feel luminous.
-    const rayLen = 260 + flick * 30;
-    const rayTopW = 22;
-    const rayBotW = 140;
-    const rayAlpha = 0.18 + flick * 0.08;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const rayGrad = ctx.createLinearGradient(tsx, tsy, tsx, tsy + rayLen);
-    rayGrad.addColorStop(0, flameBase + rayAlpha.toFixed(3) + ')');
-    rayGrad.addColorStop(0.5, flameBase + (rayAlpha * 0.35).toFixed(3) + ')');
-    rayGrad.addColorStop(1, flameBase + '0)');
-    ctx.fillStyle = rayGrad;
-    ctx.beginPath();
-    ctx.moveTo(tsx - rayTopW / 2, tsy);
-    ctx.lineTo(tsx + rayTopW / 2, tsy);
-    ctx.lineTo(tsx + rayBotW / 2, tsy + rayLen);
-    ctx.lineTo(tsx - rayBotW / 2, tsy + rayLen);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
   }
   ctx.restore();
 
@@ -5017,6 +6798,18 @@ function render() {
   // HUD (below transition veil). introActive flag lets the HUD suppress
   // combat-state overlays (low-HP red pulse, damage arrow) that would
   // otherwise double-dim the boss intro portrait.
+  // SUPPRESS during the Keeper wake cinematic: the wake's vignette uses
+  // a radial gradient at 92% center opacity (intentional, for the slow
+  // candle-glow look), so canvas-rendered HUD elements (hearts, dodge/
+  // dash binds) bleed through faintly at top-left. Skip the draw entirely
+  // while the cinematic is active.
+  if (_wakeCinematicActive || isIntroActive()) {
+    // Fall through to the cinematic only. Canvas pipe still ran for the
+    // world (so the reveal at 26-28s shows the live dungeon room), but
+    // the HUD/UI layer is suppressed. Same gate covers the keeper wake
+    // (DOM-based) and the first-run intro (canvas-based) — both want
+    // the screen visually clean during their cinematic phase.
+  } else {
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
     roomKind: floor[roomIndex]?.kind,
@@ -5024,15 +6817,35 @@ function render() {
     floorLevel: currentFloorLevel,
     maxFloors: MAX_FLOORS,
     gold: gold.total,
-    floorRooms: floor,              // pass full floor so HUD can render a minimap
+    floorRooms: floor,              // legacy linear minimap fallback
+    // New: full graph + current position so HUD can render a connected
+    // 2D dungeon minimap (Hades / Isaac style) instead of a linear strip.
+    floorGraph: currentGraph,
+    currentNodeId,
     introActive: bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0,
+    inHamlet: room.kind === 'hamlet',
   });
   drawPedestalTooltip(ctx, canvas.width, canvas.height, { gold: gold.total, floorLevel: currentFloorLevel });
   drawWandererTooltip(ctx, canvas.width, canvas.height);
   drawPickupFlash(ctx, canvas.width, canvas.height);
+  // Elite affix hover — reveals frost / ember / venom / warded before the
+  // fight. Drawn after the HUD so it floats above other UI when the cursor
+  // is on an elite.
+  drawEliteAffixTooltips(ctx, canvas.width, canvas.height);
+  // THE WATCHER — rare, weighty utterance at milestone moments. Defers if
+  // any ceremony is onscreen so it never speaks over a floor card / boss
+  // intro / pickup banner. Also pause-aware so the fade clock freezes
+  // while the player is in the pause menu.
+  drawWatcher(ctx, canvas.width, canvas.height, {
+    floorCardTime, bossIntroTime, phaseIntroTime,
+    pickupFlashActive: isPickupFlashActive(),
+    paused,
+  });
   drawComboOverlay(ctx, canvas.width, canvas.height);
   drawScreenFlash(ctx, canvas.width, canvas.height);
   drawPerfectDodgeOverlay(ctx, canvas.width, canvas.height);
+  } // end if !_wakeCinematicActive
+
   // DEATH CEREMONY overlay — desaturating red veil that ramps in, vignette crush
   if (deathCeremonyActive) {
     const t = Math.min(1, deathCeremonyTime / 1.8);
@@ -5067,7 +6880,29 @@ function render() {
       ctx.restore();
     }
   }
-  drawTip(ctx, canvas.width);
+  // First-death fade-to-black — only fires once per profile. Holds
+  // for FIRST_DEATH_HOLD seconds after the ceremony hits 1.8 (so
+  // "YOU HAVE FALLEN" gets full read-time on the red veil), then
+  // progressively covers the entire frame in opaque black across
+  // FIRST_DEATH_FADE seconds. By the time enterHamletCanvas fires,
+  // the canvas is solid black and the keeper wake's letterbox bars
+  // can fade in from black instead of cutting from a red ceremony
+  // frame. The text inherently fades with the screen because it's
+  // drawn before this overlay.
+  if (_firstDeathFadeActive && _firstDeathFadeTime > FIRST_DEATH_HOLD) {
+    const fadeT = Math.min(1, (_firstDeathFadeTime - FIRST_DEATH_HOLD) / FIRST_DEATH_FADE);
+    ctx.fillStyle = `rgba(0, 0, 0, ${fadeT})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  // FIRST-RUN INTRO overlay — black backdrop + cardiac glow + 3 text
+  // beats. Drawn over the world but BEFORE drawTip so the cinematic
+  // dominates the screen. Self-dismisses after INTRO_DURATION.
+  drawIntro(ctx, canvas.width, canvas.height);
+  drawTip(ctx, canvas.width);                    // no-op shim
+  // Top-right notification rail — tips, relic pickups (non-first-mythic),
+  // fusion forged, codex unlocks. Suppressed during cinematics by the
+  // module's own __centerBannerActive guard.
+  drawNotifications(ctx, canvas.width, canvas.height);
 
   // Achievement unlock popups — top-right toasts, positioned BELOW the floor
   // panel so they don't overlap it. Shared visual grammar with tip/codex:
@@ -5096,6 +6931,27 @@ function render() {
           playSfx('click', { rate: 0.4, volume: 0.9 });
           synthChord(523, 1.0, 0.7);
         }
+        // Round-7-audit POLISH — achievement unlock should pull the
+        // world's eye for a beat, not just slide a popup into the
+        // top-right rail. A short cream-gold screen wash + a 14-spark
+        // wash at the hero's position turns the milestone into a
+        // moment. Hidden achievements get a slightly cooler tint to
+        // match the synthGloom audio's minor-key feel.
+        try {
+          triggerScreenFlash(
+            isHidden ? 'rgba(180, 200, 255, 0.10)' : 'rgba(244, 217, 160, 0.12)',
+            isHidden ? 0.45 : 0.4,
+          );
+          for (let k = 0; k < 14; k++) {
+            const ang = (k / 14) * Math.PI * 2;
+            const r = 36 + Math.random() * 14;
+            sparkle(
+              hero.x + Math.cos(ang) * r,
+              hero.y - 6 + Math.sin(ang) * r * 0.7,
+              isHidden ? '#b8c8ff' : '#ffe5a0',
+            );
+          }
+        } catch (_e) {}
       }
       // Reveal sting — triggers ONCE when the mystery phase ends
       if (isHidden && !p._revealed && p.t >= revealAt) {
@@ -5114,9 +6970,12 @@ function render() {
       ctx.globalAlpha = opacity;
       const bw = 300, bh = 62;
       const bx = canvas.width - bw - 16 + slideX;
-      // Floor panel occupies y=14..104 (90 high); anchor toasts at y=120
-      // with a small vertical gap. Multiple stack downward.
-      const by = 120 + yOff;
+      // Stack achievements BELOW the notifications rail (tips, pickups, etc.)
+      // so they don't overlap. The rail sits at y=120+; achievements anchor
+      // at the rail's bottom edge + small gap. Falls through to y=120
+      // when the rail is empty.
+      const railBottom = getNotificationStackBottom(ctx);
+      const by = railBottom + 6 + yOff;
       const pivotX = bx + bw / 2, pivotY = by + bh / 2;
       ctx.translate(pivotX, pivotY);
       ctx.scale(entryBump, entryBump);
@@ -5218,7 +7077,7 @@ function render() {
   // backing-store pixel values. <img> tags don't hit that path. The
   // function self-gates on the arguments, so main.js stays render-time
   // declarative ("here's the current state, sync yourself").
-  updateBossIntro(bossIntroTime, bossIntroBoss);
+  updateBossIntro(bossIntroTime, bossIntroBoss, bossIntroFast);
 
   // FUSION FORMED banner — dramatic center-screen reveal when two relics combine
   if (fusionBannerTime > 0 && fusionBannerFusion) {
@@ -5360,28 +7219,38 @@ function render() {
     const tint = E.color || '#c0b090';
     ctx.save();
     ctx.globalAlpha = a;
-    // Soft outer glow — parchment feel
-    const glow = ctx.createRadialGradient(bx + boxW / 2, by + boxH / 2, boxW * 0.2,
-                                           bx + boxW / 2, by + boxH / 2, boxW * 0.75);
-    glow.addColorStop(0, 'rgba(201, 168, 106, 0.14)');
-    glow.addColorStop(1, 'rgba(201, 168, 106, 0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(bx - 40, by - 24, boxW + 80, boxH + 48);
+    // Outer gold halo REMOVED — the previous radial-gradient-in-fillRect
+    // approach created a rectangular ghost outline around the box: the
+    // radial alpha was still non-zero at the rect edges, so the soft
+    // gradient terminated at hard rectangular boundaries (the
+    // "ghost block" the player flagged), then bloom amplified the
+    // contrast. The gold parchment border + corner diamonds carry the
+    // tome aesthetic without needing an outer glow.
     // Tome-style vertical gradient body
     const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
     bg.addColorStop(0, 'rgba(28, 18, 26, 0.93)');
     bg.addColorStop(1, 'rgba(14, 8, 16, 0.93)');
     ctx.fillStyle = bg;
     ctx.fillRect(bx, by, boxW, boxH);
-    // Tint-colored border + gold inner stripe
-    ctx.strokeStyle = tint;
+    // Border: gold parchment frame (matches every other tome UI in the
+    // game) instead of full-saturation per-enemy tint. The previous
+    // tint-on-tint border + shadowBlur stack was getting bloomed by
+    // postfx into a neon halo on saturated enemy colors — slime green
+    // turned cyan-green, the codex banner read as a glowing rave sign
+    // rather than parchment. Per-enemy color signal is preserved via
+    // the corner diamonds + name fill below.
+    ctx.strokeStyle = '#c9a86a';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
     ctx.strokeStyle = 'rgba(201, 168, 106, 0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-    // Corner accent diamonds
-    ctx.fillStyle = tint;
+    // Corner accent diamonds — gold parchment, NOT per-enemy tint. Even
+    // tiny 2×1 px fills at full saturation get extracted by the bloom
+    // pass and smeared into 4 corner halos that trace the box perimeter
+    // (the "ghost outline" the player flagged). Keeping them gold lets
+    // bloom paint them as warm parchment glow, matching the box frame.
+    ctx.fillStyle = '#c9a86a';
     const accents = [[bx + 5, by + 5], [bx + boxW - 5, by + 5], [bx + 5, by + boxH - 5], [bx + boxW - 5, by + boxH - 5]];
     for (const [cx, cy] of accents) {
       ctx.fillRect(cx - 1, cy, 2, 1);
@@ -5393,13 +7262,18 @@ function render() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText('\u2014 A NEW ADVERSARY \u2014', bx + boxW / 2, by + 8);
-    // Enemy name — tint-colored, bold
+    // Enemy name — tint-colored bold, with a SUBTLE black drop-shadow
+    // for legibility (was tint-on-tint shadowBlur=8 → bloom amplified
+    // into a neon halo). Black shadow + small offset reads as "lit
+    // text" without competing with the bloom pass.
     ctx.fillStyle = tint;
     ctx.font = 'bold 18px Georgia, serif';
-    ctx.shadowColor = tint;
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1;
     ctx.fillText(E.name, bx + boxW / 2, by + 22);
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
     // Flavor — italic, faded
     ctx.fillStyle = 'rgba(220, 210, 230, 0.78)';
     ctx.font = 'italic 11px Georgia, serif';
@@ -5409,9 +7283,16 @@ function render() {
     ctx.restore();
   }
 
-  // PHASE 2 boss banner — mid-fight cinematic when boss enrages
+  // PHASE 2 boss banner — mid-fight cinematic when boss enrages.
+  // First-encounter (per boss type): full 1.6s banner with PHASE 2 title
+  //   + boss-name AWAKENED subtitle + pulsing aura. The "they got worse"
+  //   reveal moment, lands once.
+  // Subsequent encounters: 0.8s of just the letterbox + red flash + a
+  //   small AWAKENED tag — the player has already learned what enrage
+  //   means, so we keep the safety beat (iframes still cover the bar)
+  //   but skip the heavy typography that would slow combat down.
   if (phaseIntroTime > 0 && phaseIntroBoss) {
-    const total = 1.6;
+    const total = phaseIntroIsFirstTime ? 1.6 : 0.8;
     const t = 1 - (phaseIntroTime / total);            // 0 → 1
     const w = canvas.width, h = canvas.height;
     // Red-tinted letterbox that's tighter than the boss intro bars
@@ -5433,45 +7314,61 @@ function render() {
     const veilA = t < 0.15 ? (t / 0.15) * 0.28 : t > 0.82 ? (1 - (t - 0.82) / 0.18) * 0.28 : 0.28;
     ctx.fillStyle = 'rgba(80, 10, 20, ' + veilA.toFixed(3) + ')';
     ctx.fillRect(0, barH, w, h - barH * 2);
-    // Big text — PHASE 2 + AWAKENED subtitle
+    // Big text — only on the first encounter per boss type. Otherwise
+    // we render just a small AWAKENED tag in the bottom letterbox so
+    // the player still gets a moment of "wait, something changed".
     const slideIn = Math.min(1, t / 0.22);
     const slideOut = t > 0.78 ? (t - 0.78) / 0.22 : 0;
     const a = Math.max(0, Math.min(1, slideIn - slideOut));
-    ctx.save();
-    ctx.globalAlpha = a;
-    const cx = w / 2, cy = h / 2;
-    // Pulsing red aura behind text
-    const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 120);
-    const aura = ctx.createRadialGradient(cx, cy, 40, cx, cy, 320);
-    aura.addColorStop(0, `rgba(255, 50, 40, ${(0.25 * pulse).toFixed(3)})`);
-    aura.addColorStop(1, 'rgba(255, 50, 40, 0)');
-    ctx.fillStyle = aura;
-    ctx.fillRect(cx - 400, cy - 160, 800, 320);
-    // PHASE 2 title
-    ctx.font = 'bold 76px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(255, 40, 40, 0.9)';
-    ctx.shadowBlur = 28;
-    ctx.fillStyle = 'rgba(10, 2, 4, 0.8)';
-    ctx.fillText('PHASE 2', cx + 3, cy - 10 + 3);
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(10, 2, 4, 0.85)';
-    ctx.strokeText('PHASE 2', cx, cy - 10);
-    ctx.fillStyle = '#ff9080';
-    ctx.fillText('PHASE 2', cx, cy - 10);
-    // Subtitle: boss name + "AWAKENED"
-    ctx.font = 'italic bold 18px Georgia, serif';
-    ctx.fillStyle = '#ffd0c0';
-    const subtitle = (phaseIntroBoss.def.displayName || 'THE BOSS') + ' — AWAKENED';
-    ctx.fillText(subtitle, cx, cy + 40);
-    ctx.restore();
+    if (phaseIntroIsFirstTime) {
+      ctx.save();
+      ctx.globalAlpha = a;
+      const cx = w / 2, cy = h / 2;
+      // Pulsing red aura behind text
+      const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 120);
+      const aura = ctx.createRadialGradient(cx, cy, 40, cx, cy, 320);
+      aura.addColorStop(0, `rgba(255, 50, 40, ${(0.25 * pulse).toFixed(3)})`);
+      aura.addColorStop(1, 'rgba(255, 50, 40, 0)');
+      ctx.fillStyle = aura;
+      ctx.fillRect(cx - 400, cy - 160, 800, 320);
+      // PHASE 2 title
+      ctx.font = 'bold 76px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(255, 40, 40, 0.9)';
+      ctx.shadowBlur = 28;
+      ctx.fillStyle = 'rgba(10, 2, 4, 0.8)';
+      ctx.fillText('PHASE 2', cx + 3, cy - 10 + 3);
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(10, 2, 4, 0.85)';
+      ctx.strokeText('PHASE 2', cx, cy - 10);
+      ctx.fillStyle = '#ff9080';
+      ctx.fillText('PHASE 2', cx, cy - 10);
+      // Subtitle: boss name + "AWAKENED"
+      ctx.font = 'italic bold 18px Georgia, serif';
+      ctx.fillStyle = '#ffd0c0';
+      const subtitle = (phaseIntroBoss.def.displayName || 'THE BOSS') + ' — AWAKENED';
+      ctx.fillText(subtitle, cx, cy + 40);
+      ctx.restore();
+    } else if (barH > 12) {
+      // Compact AWAKENED tag inside the bottom letterbox. Renders only
+      // once the bar is wide enough to fit the text without clipping.
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.font = 'italic bold 12px Georgia, serif';
+      ctx.fillStyle = '#ff9080';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const tag = '— AWAKENED —';
+      ctx.fillText(tag, w / 2, h - barH / 2);
+      ctx.restore();
+    }
   }
 
   // Floor intro card — implementation in floorCardRender.js. Self-gates on
   // floorCardTime/Name so we don't need a guard here.
-  drawFloorCard(ctx, canvas, { floorCardTime, floorCardName, floorCardBackdrop, floorCardRoman, floorCardFlavor });
+  drawFloorCard(ctx, canvas, { floorCardTime, floorCardTotal, floorCardName, floorCardBackdrop, floorCardRoman, floorCardFlavor });
 
   // Room-entry label — floats up and fades out over ~1.8s (hidden while floor card shows)
   if (floorCardTime <= 0 && roomLabelTime > 0 && roomLabelText) {
@@ -5659,6 +7556,12 @@ function drawMenuEmbers(ctx) {
 }
 
 function drawMenuEdgeTorches(ctx) {
+  // Guard: ONLY render when the main-menu DOM overlay is actually visible.
+  // Anything else (hamlet, live run, pause, etc.) gets nothing. This is a
+  // belt-and-suspenders check — the caller (renderMenuBg) already only
+  // runs from the tick's menu-visible early return, but somewhere the
+  // torch cones were still leaking into the hamlet canvas.
+  if (!menuEl || menuEl.style.display === 'none') return;
   // Two torch columns flanking the content. Flicker via layered sine waves.
   const now = _menuFlickerT;
   const flickL = 0.78 + 0.22 * (Math.sin(now * 7.3) * 0.5 + Math.sin(now * 11.7) * 0.4 + Math.sin(now * 17.1) * 0.3) / 1.2;
@@ -5779,8 +7682,22 @@ async function boot() {
   loadAchievements();
   loadRecords();
   loadSettings();
+  // Mobile-mode detection — toggles `body.mobile-controls` based on the
+  // device + the user's settings.mobileControls preference. Must run
+  // AFTER loadSettings so the setting's value is in effect.
+  applyMobileMode();
+  installFirstTouchFallback();
+  // Performance mode — resolved here so postfx.js can early-return on
+  // mid-range mobile / low-core-count devices. Default 'auto' enables
+  // when hardwareConcurrency <= 4 OR primary touch device.
+  setPostfxPerfMode(resolvePerfMode());
+  // Wire the virtual-control DOM (joystick + action buttons). Listeners
+  // are always installed; the overlay's CSS visibility is gated by
+  // body.mobile-controls so desktop users never see/feel them.
+  initMobileControls();
   loadDaily();
   loadTips();
+  loadFirstSeen();
   loadDiscoveredFusions();
   loadRuin();
   loadCodex();
@@ -5816,6 +7733,9 @@ if (import.meta.env.DEV) {
     dbg: () => ({
       hero, enemies, camera, running, roomIndex, floor, room, transition,
       bossIntroTime, floorCardTime, phaseIntroTime, paused,
+      currentGraph, currentNodeId,
+      roomDoors,           // direct ref to the doorPortals.js array
+      prevRoom,            // residue snapshot of the room hero just left
     }),
 
     // Zero all active intros — useful for A/B'ing boss cinematics cleanly
@@ -5826,10 +7746,67 @@ if (import.meta.env.DEV) {
       bossIntroBoss = null;
     },
 
-    // Skip menu + prologue, jump straight into a fresh run
+    // Skip menu + wake cinematic, jump straight into a fresh run
     startRun: () => {
       hideAllOverlays();
       startRun();
+    },
+
+    // Reset the first-run gate so the heartbeat intro + Keeper wake fire
+    // again on the next AWAKEN. Drops the `ethera:first_seen:v1` key (the
+    // profile-prefix patch routes it to the active profile's namespace
+    // automatically) and reloads so the in-memory `seen` Set in
+    // firstSeen.js re-hydrates from disk. Intended for testing the
+    // restructured intro flow — without this, you'd have to delete the
+    // active profile to re-trigger the cinematics.
+    resetFirstRun: () => {
+      try { localStorage.removeItem('ethera:first_seen:v1'); } catch (_e) {}
+      window.location.reload();
+    },
+
+    // Push a notification onto the unified top-right rail. Useful for
+    // visually testing the rail stacking + per-kind styling without
+    // having to actually trigger gameplay events.
+    //   __testNotification('common pickup', 'pickup', 'common')
+    //   __testNotification('hello world', 'tip')
+    //   __testNotification('Sworn Reply', 'fusion', null, 'two relics fused')
+    testNotification: (title = 'Test entry', kind = 'tip', tier = null, body = '') => {
+      pushNotification({ kind, tier, title, body: body || (tier ? 'tier ' + tier : '') });
+      return { ok: true, kind, tier };
+    },
+
+    // Fire 4 tips at once — verifies the staggering behavior. Tips have
+    // concurrency cap 1 + 0.8s gap, so they should play one-at-a-time
+    // in order. The tutorial-dump scenario the player flagged.
+    testTipBurst: () => {
+      pushNotification({ kind: 'tip', body: 'First tip — should appear immediately.' });
+      pushNotification({ kind: 'tip', body: 'Second tip — should wait its turn.' });
+      pushNotification({ kind: 'tip', body: 'Third tip — still waiting.' });
+      pushNotification({ kind: 'tip', body: 'Fourth tip — last in line.' });
+      return { ok: true, queued: 4 };
+    },
+
+    // Inspect / force mobile mode without a real phone — useful for
+    // testing the virtual-control overlay on desktop. Reads the three
+    // detection layers + the resolved state. Pass 'on' / 'off' / 'auto'
+    // to override settings.mobileControls and re-apply.
+    //   __mobileMode()           -> { coarse, noHover, override, resolved }
+    //   __mobileMode('on')       -> forces virtual controls visible
+    //   __mobileMode('auto')     -> back to auto-detect
+    mobileMode: (override) => {
+      if (override === 'on' || override === 'off' || override === 'auto') {
+        settings.mobileControls = override;
+        applyMobileMode();
+      }
+      const coarse = window.matchMedia('(pointer: coarse)').matches;
+      const noHover = window.matchMedia('(hover: none)').matches;
+      return {
+        coarse,
+        noHover,
+        autoDetect: coarse && noHover,
+        override: settings.mobileControls,
+        resolved: document.body.classList.contains('mobile-controls'),
+      };
     },
 
     // Synchronously advance the transition state machine to a target room.
@@ -5875,6 +7852,52 @@ if (import.meta.env.DEV) {
       bossIntroTime = durationSec;
       return { triggered: true, type, durationSec, portraitKey: ENEMY_PORTRAIT_PATH[type] };
     },
+
+    // Trigger a relic pickup banner in-place — spawns a pedestal under the
+    // hero so the next tick fires the full pickup path (applyRelic + banner).
+    // Usage: __testPickup('hourglass_of_respite')
+    testPickup: (relicId = 'hourglass_of_respite') => {
+      const def = RELIC_DEFS[relicId];
+      if (!def) return { error: 'unknown relic: ' + relicId, available: Object.keys(RELIC_DEFS) };
+      clearPedestals();
+      pedestals.push({
+        x: hero.x, y: hero.y,
+        relic: def,
+        tier: relicTier(def.id),
+        picked: false, bob: 0, glow: 0, hpCost: 0,
+      });
+      return { ok: true, relic: def.name, descLen: def.desc.length };
+    },
+
+    // Force the pickup-flash banner without applying the relic. Seeds the
+    // banner at peak-alpha; the normal decay (-dt per tick) still runs, so
+    // you have ~1.4s of peak window before fade-out. Good for screenshots.
+    // Usage: __testPickupFlash('hourglass_of_respite', 'rare')
+    testPickupFlash: (relicId = 'hourglass_of_respite', tier) => {
+      const def = RELIC_DEFS[relicId];
+      if (!def) return { error: 'unknown relic: ' + relicId };
+      setPickupFlashForTest(def, tier || relicTier(def.id));
+      return { ok: true, relic: def.name, tier: tier || relicTier(def.id) };
+    },
+
+    // THE WATCHER — force a test utterance (queued like any real trigger,
+    // defers if a ceremony is onscreen). Pass a string to speak it directly;
+    // omit to hear the default test line.
+    // Usage: __testWatcher() or __testWatcher('You are predictable.')
+    testWatcher: (text) => {
+      watcherTestSpeak(text);
+      return watcherSnapshot();
+    },
+
+    // THE WATCHER — clear persisted state so first-time milestones fire
+    // again. Useful for testing the full milestone progression.
+    watcherReset: () => {
+      watcherResetForTesting();
+      return { ok: true };
+    },
+
+    // Inspect the Watcher's persisted + per-run state.
+    watcherState: () => watcherSnapshot(),
   });
 }
 

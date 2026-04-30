@@ -18,7 +18,8 @@ import { currentBiomePal } from './room.js';
  * @param {CanvasRenderingContext2D} ctx
  * @param {HTMLCanvasElement}        canvas
  * @param {{
- *   floorCardTime:     number,   // seconds remaining on the 3.2s total
+ *   floorCardTime:     number,   // seconds remaining on the total duration
+ *   floorCardTotal:    number,   // total duration (3.2s first time, 1.6s repeat)
  *   floorCardName:     string,   // e.g. "THE UNDERCROFT"
  *   floorCardBackdrop: string,   // imageCache key, or falsy for no backdrop
  *   floorCardRoman:    string,   // e.g. "II"
@@ -29,7 +30,11 @@ export function drawFloorCard(ctx, canvas, state) {
   const { floorCardTime, floorCardName, floorCardBackdrop, floorCardRoman, floorCardFlavor } = state;
   if (!(floorCardTime > 0 && floorCardName)) return;
 
-  const total = 3.2;
+  // Total duration is parameterized so the cinematic skip-on-repeat in
+  // main.js can pass a shorter total (1.6s) for floors the player has
+  // already seen this profile. Defaults to 3.2 to preserve the original
+  // first-time experience.
+  const total = state.floorCardTotal || 3.2;
   const t = 1 - floorCardTime / total; // 0 → 1
   // Alpha curve: ease in quickly, hold, ease out.
   let a;

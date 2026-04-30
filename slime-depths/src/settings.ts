@@ -19,6 +19,26 @@ export interface Settings {
   sfxVolume: number; // 0..1
   musicVolume: number; // 0..1
   shakeScale: number; // 0..1.5 (multiplier applied to shakeCamera amplitude)
+  // Accessibility toggles — added in the a11y review pass. Each one
+  // overrides or supplements the OS-level prefers-reduced-motion path
+  // for players whose OS pref isn't set or who want finer control.
+  reduceMotion: boolean;       // mirrors prefers-reduced-motion when true
+  reduceFlashes: boolean;      // caps screen-flash + mythic vignette + intro strobe
+  colorBlindMode: boolean;     // adds shape glyphs to tier-coded UI
+  // Charge mode — 'hold' is default (sustained LMB ≥0.35s releases the
+  // charge). 'short' lowers the threshold to 0.15s so players with
+  // limited grip strength can still trigger charged attacks.
+  chargeMode: 'hold' | 'short';
+  // Mobile control overlay — 'auto' (default) detects via matchMedia
+  // pointer:coarse + hover:none; 'on' forces virtual controls (touchscreen
+  // laptop owners who want them); 'off' forces WASD/mouse (tablet users
+  // with a keyboard who don't want the overlay).
+  mobileControls: 'auto' | 'on' | 'off';
+  // Performance mode — when true, postfx pipeline (bloom, chromatic
+  // aberration) is skipped. Useful on mid-range mobile / integrated GPUs
+  // where the 4-stage filter chain in postfx.js drops frame rate. Default
+  // 'auto' enables based on hardwareConcurrency + mobile mode at boot.
+  perfMode: 'auto' | 'on' | 'off';
 }
 
 const KEY = 'ethera:settings:v1';
@@ -27,7 +47,31 @@ export const settings: Settings = {
   sfxVolume: 0.45,
   musicVolume: 0.3,
   shakeScale: 1.0,
+  reduceMotion: false,
+  reduceFlashes: false,
+  colorBlindMode: false,
+  chargeMode: 'hold',
+  mobileControls: 'auto',
+  perfMode: 'auto',
 };
+
+// Resolved at boot in main.js — true when postfx should be skipped.
+// Computed from settings.perfMode + device heuristics; see resolvePerfMode.
+export function resolvePerfMode(): boolean {
+  if (settings.perfMode === 'on') return true;
+  if (settings.perfMode === 'off') return false;
+  // 'auto' — enable on devices that are likely to struggle with the
+  // 4-stage postfx filter chain. Heuristic: low core count OR primary
+  // touch (mobile) device.
+  try {
+    const lowCores = (navigator.hardwareConcurrency || 8) <= 4;
+    const touch = window.matchMedia('(pointer: coarse)').matches
+                  && window.matchMedia('(hover: none)').matches;
+    return lowCores || touch;
+  } catch {
+    return false;
+  }
+}
 
 function _isSettingsShape(v: unknown): boolean {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -39,8 +83,42 @@ export function loadSettings(): void {
     if (typeof parsed.sfxVolume === 'number') settings.sfxVolume = parsed.sfxVolume;
     if (typeof parsed.musicVolume === 'number') settings.musicVolume = parsed.musicVolume;
     if (typeof parsed.shakeScale === 'number') settings.shakeScale = parsed.shakeScale;
+    if (typeof parsed.reduceMotion === 'boolean') settings.reduceMotion = parsed.reduceMotion;
+    if (typeof parsed.reduceFlashes === 'boolean') settings.reduceFlashes = parsed.reduceFlashes;
+    if (typeof parsed.colorBlindMode === 'boolean') settings.colorBlindMode = parsed.colorBlindMode;
+    if (parsed.chargeMode === 'short') settings.chargeMode = 'short';
+    if (parsed.mobileControls === 'on' || parsed.mobileControls === 'off') {
+      settings.mobileControls = parsed.mobileControls;
+    }
+    if (parsed.perfMode === 'on' || parsed.perfMode === 'off') {
+      settings.perfMode = parsed.perfMode;
+    }
   }
   applySettings();
+}
+
+// Setters for the new a11y toggles. Each saves on change so the
+// player's preference persists across reloads.
+export function setReduceMotion(v: boolean): void {
+  settings.reduceMotion = !!v;
+  saveSettings();
+}
+export function setReduceFlashes(v: boolean): void {
+  settings.reduceFlashes = !!v;
+  saveSettings();
+}
+export function setColorBlindMode(v: boolean): void {
+  settings.colorBlindMode = !!v;
+  saveSettings();
+}
+export function setChargeMode(v: 'hold' | 'short'): void {
+  settings.chargeMode = v === 'short' ? 'short' : 'hold';
+  saveSettings();
+}
+
+export function setMobileControls(v: 'auto' | 'on' | 'off'): void {
+  settings.mobileControls = v === 'on' ? 'on' : v === 'off' ? 'off' : 'auto';
+  saveSettings();
 }
 
 export function saveSettings(): void {

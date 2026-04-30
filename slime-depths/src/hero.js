@@ -1,11 +1,12 @@
 // Hero controller — top-down movement, directional attack, dodge roll
 import { images } from './loader.js';
-import { keys, mouse, keyJustPressed } from './input.js';
+import { keys, mouse, keyJustPressed, virtualMove } from './input.js';
+import { isMobileMode } from './mobileMode.js';
 import { playSfx } from './sfx.js';
-import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches } from './room.js';
+import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tryHitUrn, roomTorches, room } from './room.js';
 import { hitSpark, dashTrail, footPuff, landingBurst, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
-import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
+import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, grantCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
 import { stats } from './stats';
 import { WEAPONS } from './weapons.js';
 import {
@@ -18,13 +19,66 @@ import { spawnEmberFlame, enemies as activeEnemies } from './enemies.js';
 import { dropGold } from './gold.js';
 import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
+import { markChainFired, markPyroFired, markQuiverFired, markRingingFired, markTwinFired, markMountainFired, markRazorFired } from './counterPips.js';
+import { synthSwoosh, synthClick, synthPing, synthThud, synthChord } from './synth.js';
+import { spawnHeroBolt } from './projectiles.js';
+import { settings } from './settings';
 
-const SPR = 100;                  // Tiny RPG native frame size
-const HERO_DRAW = 96;              // on-screen hero size (slightly scaled down)
+// ── DASH STRIKE + DODGE — AFTERIMAGE GHOST TRAILS ───────────────────────
+// Both abilities capture hero pose at intervals during travel and render
+// fading copies as a "where I just was" trail. They share the same buffer
+// + render path; the per-entry `kind` field flags 'dash' (golden, hero
+// sprite hidden, magical teleport read) vs 'dodge' (cool blue, hero
+// sprite at 35% alpha, snappy roll read).
+//
+// DASH (Q): 0.10s @ 1700 px/s constant — teleport read with magical pops.
+// DODGE (Space): 0.32s @ 580 px/s constant — snappier than the old decel
+//                feel (was 620 with quadratic decel — the last third
+//                felt stuck mid-roll). Duration kept at 0.32 to preserve
+//                iframes + perfect-dodge timing window.
+//
+// Total dash distance is ~170px (close to the original ~185px); dodge
+// distance is now ~186px (was ~99px — the decel had been halving the
+// integral). Player feedback flagged dodge as feeling "off" relative
+// to the new dash polish; the new constant speed gives dodge real reach.
+const DASH_DUR = 0.10;
+const DASH_SPEED = 1700;
+const AFTERIMAGE_LIFE = 0.20;
+const AFTERIMAGE_INTERVAL = 0.018;     // capture roughly every other frame
+const DODGE_AFTERIMAGE_INTERVAL = 0.05;  // sparser captures — dodge isn't a teleport
+// Captured during dash/dodge advance, drained by drawHero. Each entry:
+// { x, y, dir, age, kind ('dash' | 'dodge') }
+const _dashAfterimages = [];
+let _dashAfterimageNextT = 0;          // accumulator vs. AFTERIMAGE_INTERVAL
+
+const SPR = 128;                  // 8-directional sprite sheet cell size (was 100 for horizontal-strip sheets)
+const HERO_DRAW = 60;              // on-screen hero size for combat rooms
+const HERO_DRAW_HAMLET = 48;       // smaller in the hub — hamlet NPCs draw at
+                                   // 56px and the painted scene props (anvil,
+                                   // tent, gravestones) read as ~24-32px tall;
+                                   // 60px hero felt oversized vs the scene.
+                                   // 48 puts the hero on parity with NPCs and
+                                   // feels grounded against the painted props.
+                                   // after a sizing audit found the hero
+                                   // was 2-3× taller than every boss in
+                                   // the game. The PixelLab mage fills
+                                   // 93% of its 128 cell while Tiny-RPG
+                                   // enemies fill 11-23% of their 100
+                                   // cells — they were never rebalanced.
+                                   // 60 brings hero visible body to ~56
+                                   // px, closer to the heavier minions
+                                   // and below the bosses (boss drawSize
+                                   // tuning is a follow-up pass).
 const HERO_RADIUS = 14;            // collision
 const HERO_SPEED = 230;
-const DODGE_SPEED = 620;
-const DODGE_DUR = 0.32;      // was 0.28 — slightly more generous perfect-dodge window
+// Dodge tuning. SPEED was 620 with a `(1 - t*t)` quadratic decel — the
+// last third felt stuck mid-roll. Replaced by constant 580 px/s
+// (effectively reaches further: 0.32 × 580 × dodgeDistMul ≈ 186px,
+// vs the old ~99px under the decel curve). DURATION held at 0.32 to
+// preserve iframes (DODGE_DUR + 0.05 = 0.37s) and the perfect-dodge
+// timing window. Cooldown unchanged.
+const DODGE_SPEED = 580;
+const DODGE_DUR = 0.32;
 const DODGE_COOLDOWN = 0.6;
 const IFRAME_AFTER_HIT = 0.55;
 
@@ -37,7 +91,9 @@ export const hero = {
   x: 0, y: 0,
   vx: 0, vy: 0,
   facing: 1,
+  lastDirection: 4,                 // 8-dir sprite row index (0=N, 2=E, 4=S, 6=W); default SOUTH
   aimX: 1, aimY: 0,
+  attackFacingX: 1, attackFacingY: 0,     // body facing locked at swing trigger; see heroDirection()
   weapon: 'sword',                   // id into WEAPONS; set by main.js run start
   hp: 8, maxHp: 8,
   state: 'idle',                     // idle | walk | attack | dodge | hurt | dead
@@ -88,6 +144,14 @@ export const hero = {
   // so each weapon can deliver a distinct 3rd-hit "finisher".
   swingIndex: 0,                     // 0 / 1 / 2 — cycles 1→2→FINISHER→reset
   swingChainTime: 0,                 // decays; resets swingIndex to 0 when it hits 0
+  // Wand-only counterpart to the melee 3-swing rhythm. Round-6 combat
+  // audit flagged that wand had NO combo cadence — sword/dagger/hammer
+  // all reward a 3rd-hit finisher, but wand was tap-tap-tap forever.
+  // Now every 3rd bolt fires as a "SPELL WEAVE" with +60% damage and
+  // an amber tint so the rhythm muscle memory carries across all four
+  // weapon classes. Counter increments on tap-fire only (charged shots
+  // bypass — they're already a committed beat with their own visuals).
+  boltIndex: 0,                      // 0 / 1 / 2 — every 3rd bolt is woven
   // Charge attack — hold LMB past a threshold to unleash a heavy strike
   chargeTime: 0,                     // accumulated while LMB held during idle
   chargeReleased: false,             // snap once charged release is triggered
@@ -101,10 +165,36 @@ export const hero = {
   damageMul: 1,
   attackCooldownMul: 1,
   reachMul: 1,
+  // Ranged (wand) — bolt-range multiplier. Long Reach + future range
+  // relics extend a bolt's life (which caps its travel distance) when
+  // the hero has wand equipped, mirroring how reachMul extends melee
+  // arc reach. Defaults 1 so non-wand runs read as no-op.
+  boltLifeMul: 1,
+  // Synergy flags exposed by wand-themed relics:
+  //   boltSplit       — Splintered Light: bolts split on first hit
+  //   boltChain       — Storm Conduit: bolt hit arcs to nearest enemy
+  //   boltCritOnCharge — Patient Lens: charged shots always crit + bonus
+  boltSplit: false,
+  boltChain: false,
+  boltCritOnCharge: false,
   dodgeCooldownMul: 1,
   speedMul: 1,
   lifesteal: 0,
   revives: 0,
+  // Round-6 mythic relics (Ember Tyrant pool expansion):
+  //   heartOfWoundAvailable — first lethal hit reduces to 1 HP + push
+  //     attackers + iframes (consumed on use, like phoenix_cloak revive
+  //     except it doesn't restore HP).
+  //   strideOfAsh — dodging spawns 3 ember flames along the dodge path
+  //     (uses spawnEmberFlame from enemies.js, the bomber-trail system).
+  //   coinOfTyrant — kills tick a counter; every 8th drops a free
+  //     common relic on the floor. Also bumps goldMul by 1.5× (set in
+  //     the relic's apply() — no separate flag needed for that part).
+  //   coinOfTyrantCounter — the kill-tick counter (0..7).
+  heartOfWoundAvailable: false,
+  strideOfAsh: false,
+  coinOfTyrant: false,
+  coinOfTyrantCounter: 0,
   // Expanded pool stats
   damageTakenMul: 1,          // Iron Resolve: ×0.75
   critChance: 0,               // Keen Edge: +0.15
@@ -113,6 +203,8 @@ export const hero = {
   regenCD: 0,                  // timer for next regen tick
   knockbackMul: 1,             // Heavy Blow: ×2.5
   dodgeDistMul: 1,             // Dash Master: ×1.35
+  galeStep: false,             // Gale Step (Round-6 retune): post-dodge speed burst
+  galeBurstTime: 0,            // remaining seconds on the post-dodge burst (0 = inactive)
   executeThreshold: 0,         // Executioner: 0.4
   executeMul: 1.5,             // damage multiplier below threshold
 };
@@ -149,6 +241,12 @@ export function resetHero() {
   hero.regenCD = 0;
   hero.knockbackMul = 1;
   hero.dodgeDistMul = 1;
+  hero.galeStep = false;
+  hero.galeBurstTime = 0;
+  hero.heartOfWoundAvailable = false;
+  hero.strideOfAsh = false;
+  hero.coinOfTyrant = false;
+  hero.coinOfTyrantCounter = 0;
   hero.executeThreshold = 0;
   hero.executeMul = 1.5;
   // Reset synergy flags
@@ -223,6 +321,8 @@ export function resetHero() {
   hero.bulwarkReduction = 0.5;
   hero.secondWind = false;
   hero.secondWindAvailable = false;
+  hero.ironResolveParry = false;   // conditional parry on face+hold-still
+  hero._stillT = 0;
   hero.startingGold = 0;
   hero.relicCount = 0;     // maintained by relics.js for Memory of the Bell
   hero.swingIndex = 0;
@@ -232,6 +332,33 @@ export function resetHero() {
   hero.dashStrikeCD = 0;
   hero.dashStrikeTime = 0;
   hero.dashStrikeHit.clear();
+  // RANGED (wand) — must reset or these leak across runs as a phantom
+  // build (same bug pattern called out in the FUSION FLAGS comment at
+  // line 246). long_reach branches on weapon and writes boltLifeMul;
+  // splintered_light/storm_conduit/patient_lens write the boolean
+  // flags. Without reset, a run-1 wand build with these picks would
+  // pass the buffs into run-2 even on a sword class.
+  hero.boltLifeMul = 1;
+  hero.boltSplit = false;
+  hero.boltChain = false;
+  hero.boltCritOnCharge = false;
+  // Sword-themed signature relics:
+  hero.honestEdge = false;       // finisher swings always crit
+  hero.ringingSteel = false;     // chain hits stack +6% dmg, max +30%
+  hero.ringingSteelStacks = 0;   // current chain count for ringing_steel
+  hero.vowEternal = false;       // first sword hit each room is a guaranteed crit
+  hero.vowEternalReady = false;  // refreshed by loadRoom in main.js
+  // Dagger-themed signature relics:
+  hero.twinPulse = false;        // every 2nd hit echoes to nearest enemy
+  hero.twinPulseTick = 0;        // alternating counter (0/1)
+  hero.flickerStep = false;      // perfect-dodge counter window doubled
+  hero.razorPace = false;        // every 5th dagger hit deals 2.5x damage
+  hero.razorPaceHits = 0;        // hit counter for razor_pace
+  // Hammer-themed signature relics:
+  hero.mountainStrike = false;        // every 3rd swing spawns shockwave
+  hero.mountainStrikeCounter = 0;     // swing counter for mountain_strike
+  hero.earthenHold = false;      // charged hits add +0.6s stagger
+  hero.worldEnder = false;       // hammer finishers shatter shields
   // April 2026 content expansion — new relic/fusion state flags.
   hero.mirrorShard = false;       hero.mirrorReflect = 0;     hero.mirrorReflectCrit = 1;
   hero.sporeBloom = false;        hero.sporeDamage = 0;       hero.sporeRadius = 0;
@@ -247,6 +374,23 @@ export function resetHero() {
   hero.fusionWildfireChoir = false;
   hero.fusionMartyrBloom = false;
   hero.fusionStormveil = false;
+  // Weapon-signature fusions (April 2026)
+  hero.fusionSwornReply = false;
+  hero.fusionMortalCadence = false;
+  hero.fusionAvalanche = false;
+  hero.fusionCrescendo = false;
+  hero.fusionForkedSky = false;
+  // Wired-up dead fusions (kingslayer / weaving_step) per bug review
+  hero.fusionKingslayer = false;
+  hero.fusionWeavingStep = false;
+  hero.weavingStepReady = false;
+  // VOW T2 + SHADOW T2 + FLAME ascendance auxiliary fields — gated by
+  // hero.activeThemes everywhere they're read, so a stale value can't
+  // leak the actual buff. Reset here as defense in depth so future
+  // refactors that drop the activeThemes gate don't silently inherit.
+  hero.themeShadowFlankingUntil = 0;
+  hero.themeVowShieldAvailable = false;
+  hero.themeFlameTick = 0;
   // Orphan-icon rehomes
   hero.hourglassRespite = false; hero.hourglassReadyAt = 0;
   hero.fusionRingbearer = false;
@@ -283,6 +427,17 @@ export function updateHero(dt, enemies, mouseWorld) {
   if (hero.dodgeCooldown > 0) hero.dodgeCooldown -= dt;
   if (hero.dashStrikeCD > 0) hero.dashStrikeCD -= dt;
   if (hero.iframes > 0) hero.iframes -= dt;
+  if (hero.galeBurstTime > 0) hero.galeBurstTime -= dt;
+  // Age afterimages (teleport ghost trail) — fade out over AFTERIMAGE_LIFE.
+  // Runs every frame so post-dash images keep fading even after
+  // dashStrikeTime hits 0 (otherwise the trail would freeze on screen
+  // for 0.2s as a static row of ghosts at the end of the dash).
+  if (_dashAfterimages.length > 0) {
+    for (let i = _dashAfterimages.length - 1; i >= 0; i--) {
+      _dashAfterimages[i].age += dt;
+      if (_dashAfterimages[i].age >= AFTERIMAGE_LIFE) _dashAfterimages.splice(i, 1);
+    }
+  }
   // INPUT BUFFERING — remember attack presses for 0.15s so snappy combo feel
   // doesn't require pixel-perfect cooldown timing.
   if (mouse.pressed) hero._attackBuffer = 0.15;
@@ -290,7 +445,21 @@ export function updateHero(dt, enemies, mouseWorld) {
   // Swing chain window decays — drops swingIndex to 0 after 0.8s of no attacks
   if (hero.swingChainTime > 0) {
     hero.swingChainTime -= dt;
-    if (hero.swingChainTime <= 0) hero.swingIndex = 0;
+    if (hero.swingChainTime <= 0) {
+      hero.swingIndex = 0;
+      // Chain-dependent relic state resets together. Ringing Steel's
+      // damage stacks zero out; Twin Pulse's alternating echo tick
+      // also restarts so the next chain begins on the off-beat;
+      // Razor Pace's 5-hit counter resets so the crescendo can't be
+      // banked across long pauses (would feel like a cheap surprise).
+      // FUSION: Crescendo — Ringing Steel stacks PERSIST across the
+      // chain decay (and across kills). The pact is "the bell, struck
+      // once, rings until the song is over" — only a death/run-end
+      // resets the chain.
+      if (!hero.fusionCrescendo) hero.ringingSteelStacks = 0;
+      hero.twinPulseTick = 0;
+      hero.razorPaceHits = 0;
+    }
   }
   // Charge attack — accumulate while LMB held, but not during attack/dodge/hurt states
   if (mouse.down && hero.state !== 'attack' && hero.state !== 'dodge' && hero.state !== 'hurt' && hero.attackCooldown <= 0) {
@@ -324,6 +493,24 @@ export function updateHero(dt, enemies, mouseWorld) {
         const dx = e.x - hero.x, dy = e.y - hero.y;
         if (dx * dx + dy * dy <= r2) {
           e.takeDamage(hero.hymnDps, 0, 0);
+        }
+      }
+    }
+  }
+  // FLAME T2 ascendance — heat aura: enemies within 50px take 1 dmg/s.
+  // Independent tick from hymn_of_embers so the two stack cleanly when both
+  // are active; smaller radius + lower dps so it complements rather than
+  // replicates hymn. Tagged 'fire' so elemental resists apply.
+  if ((hero.activeThemes?.flame || 0) >= 2 && enemies) {
+    hero.themeFlameTick = (hero.themeFlameTick || 0) - dt;
+    if (hero.themeFlameTick <= 0) {
+      hero.themeFlameTick = 1.0;
+      const r2 = 50 * 50;
+      for (const e of enemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const dx = e.x - hero.x, dy = e.y - hero.y;
+        if (dx * dx + dy * dy <= r2) {
+          e.takeDamage(1 * (hero.damageMul || 1), 0, 0, { damageType: 'fire' });
         }
       }
     }
@@ -405,12 +592,73 @@ export function updateHero(dt, enemies, mouseWorld) {
 
   if (hero.state === 'dead') return;
 
-  // Aim vector (toward mouse world pos)
-  const ax = mouseWorld.x - hero.x;
-  const ay = mouseWorld.y - hero.y;
-  const am = Math.hypot(ax, ay) || 1;
-  hero.aimX = ax / am;
-  hero.aimY = ay / am;
+  // Aim vector. Default: toward mouse world pos. On mobile (no mouse), we
+  // auto-aim toward the nearest live enemy in a generous radius; if no
+  // enemy is in range we aim in the joystick movement direction (so
+  // attacks fire forward as you move). Falling back further to the last
+  // facing keeps the swing direction stable when the player is idle.
+  let useAutoAim = false;
+  if (isMobileMode()) {
+    // Heuristic: if the mouse hasn't moved into the canvas yet (player
+    // is touch-only), or virtualMove is active, auto-aim wins. The
+    // canvas's pointer listeners still update mouseWorld for taps,
+    // but on a phone there's no hover, so the position will be wherever
+    // the last touch was — not useful for aim. Auto-aim is the correct
+    // default for touch.
+    useAutoAim = true;
+  }
+  if (useAutoAim) {
+    let bestE = null;
+    let bestScore = 380 * 380;  // ~380px aim radius — generous, enemies usually closer
+    // Mobile UX audit P0 — naive "nearest enemy" sent charged swings
+    // INTO bombers (which explode on contact) and made vanguards
+    // (frontal-block 0 dmg) preferred targets. Score adjustments:
+    //   - Bombers: ×1.6 on the squared-distance score so they're
+    //     deprioritized unless they're the only thing around.
+    //   - Vanguards facing the hero: ×2.0 (treated as "very far") since
+    //     hitting their front is wasted; the player has to flank manually.
+    for (let i = 0; i < activeEnemies.length; i++) {
+      const e = activeEnemies[i];
+      if (!e || e.dead || e.hp <= 0) continue;
+      const dx = e.x - hero.x;
+      const dy = e.y - hero.y;
+      let score = dx * dx + dy * dy;
+      const beh = e.def && e.def.behavior;
+      if (beh === 'bomber') score *= 1.6;
+      // Vanguards have a frontal block — if their facing dot the
+      // hero-toward-vanguard vector is positive, the hero would be
+      // approaching their shield. Push them way down the aim list.
+      if (e.type === 'vanguard') {
+        const facingX = e.facing || 1;
+        // dot of facing vector and (hero -> enemy) — positive = enemy
+        // is facing AWAY from hero (so vulnerable from behind), negative
+        // = enemy is facing toward hero (shield-up).
+        const heroToEnemy = -dx;     // facing is just X-flipped 1/-1
+        if (facingX * heroToEnemy < 0) score *= 2.0;
+      }
+      if (score < bestScore) { bestScore = score; bestE = e; }
+    }
+    if (bestE) {
+      const dx = bestE.x - hero.x;
+      const dy = bestE.y - hero.y;
+      const m = Math.hypot(dx, dy) || 1;
+      hero.aimX = dx / m;
+      hero.aimY = dy / m;
+    } else if (virtualMove.active && (virtualMove.x !== 0 || virtualMove.y !== 0)) {
+      // No enemy nearby — aim in the direction the joystick is pushing
+      // so charged attacks/dashes fire where the player is heading.
+      const m = Math.hypot(virtualMove.x, virtualMove.y) || 1;
+      hero.aimX = virtualMove.x / m;
+      hero.aimY = virtualMove.y / m;
+    }
+    // else: hero.aimX/aimY retain last frame's value — stable idle facing.
+  } else {
+    const ax = mouseWorld.x - hero.x;
+    const ay = mouseWorld.y - hero.y;
+    const am = Math.hypot(ax, ay) || 1;
+    hero.aimX = ax / am;
+    hero.aimY = ay / am;
+  }
   hero.facing = hero.aimX >= 0 ? 1 : -1;
 
   // State transitions
@@ -419,23 +667,42 @@ export function updateHero(dt, enemies, mouseWorld) {
   }
 
   if (hero.state !== 'attack' && hero.state !== 'dodge' && hero.state !== 'hurt') {
-    // Dash Strike (Q) — offensive gap-closer: lunges toward aim + 2x damage to all in path
-    if (keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
+    // Dash Strike (Q) — offensive gap-closer: lunges toward aim + 2x damage to all in path.
+    // Suppressed in hamlet (non-combat hub).
+    if (room.kind !== 'hamlet' && keyJustPressed('KeyQ') && hero.dashStrikeCD <= 0) {
       showTip('first_dash');
       hero.dashStrikeCD = 5.0;
-      hero.dashStrikeTime = 0.22;
+      hero.dashStrikeTime = DASH_DUR;
       // Lock direction at aim vector (normalized)
       const m = Math.hypot(hero.aimX, hero.aimY) || 1;
       hero.dashStrikeDirX = hero.aimX / m;
       hero.dashStrikeDirY = hero.aimY / m;
       hero.dashStrikeHit.clear();
-      hero.iframes = 0.35;
+      // Reset afterimage capture cadence + clear stale trail from prior dash
+      _dashAfterimages.length = 0;
+      _dashAfterimageNextT = 0;
+      // Never shorten an existing longer iframe window (post-hurt stagger,
+      // Aegis Pulse, etc.). Mirrors the dodge guard at line ~649. Without
+      // this, dashing into a hit-cleanup window would strip safety frames.
+      hero.iframes = Math.max(hero.iframes || 0, 0.35);
       setState('dodge');                          // reuse dodge state for anim + invuln
-      playSfx('sword_swing', { rate: 0.6, volume: 1.0 });
-      playSfx('slime_hit', { rate: 0.7, volume: 0.75 });
+      // TELEPORT AUDIO — magical zip + flash thud, replacing the old
+      // sword-swing + slime-hit pair that read as a melee attack.
+      try { synthSwoosh(1.4, 0.85, 0.08); } catch (_e) {}
+      try { synthClick(1.6, 0.7); } catch (_e) {}
       shakeCamera(6, 0.15);
       pulseZoom(0.05, 0.28);
-      // Big slash arc at dash start for visual flair
+      // ORIGIN POP — golden sparkle ring + a few rays where the mage
+      // was standing. Reads as "the cast point" — a place the player
+      // came FROM, not a swing they made. 14 sparkles around an arc
+      // pointing in the dash direction.
+      const ox = hero.x, oy = hero.y - 8;
+      for (let i = 0; i < 14; i++) {
+        const ang = (i / 14) * Math.PI * 2;
+        const r = 16 + Math.random() * 8;
+        sparkle(ox + Math.cos(ang) * r, oy + Math.sin(ang) * r * 0.7, '#ffe5a0');
+      }
+      // Slash arc — kept (still reads as "magical strike in transit")
       spawnSlash(hero.x, hero.y - 8, hero.dashStrikeDirX, hero.dashStrikeDirY, 110, {
         color: 'rgba(255, 200, 120, ',
         width: 14,
@@ -443,8 +710,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         arc: Math.PI * 1.3,
         dur: 0.3,
       });
-      // VFX SUBTRACTION PASS: dash strike flash halved 0.16 → 0.08.
-      // Player action on a 5s cooldown — subtle is enough.
+      // Subtle screen flash (kept from prior pass — 0.08 alpha is fine)
       triggerScreenFlash('rgba(255, 220, 140, 0.08)', 0.18);
     }
     // Dodge — blocked entirely by Memory of Stillness (the pact: you traded
@@ -460,17 +726,26 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Consume the Second Wind charge if we used it.
       const usedSecondWind = hero.dodgeCooldown > 0 && hero.secondWind && hero.secondWindAvailable;
       if (usedSecondWind) hero.secondWindAvailable = false;
-      // Dodge in move direction or aim direction
+      // Dodge in move direction or aim direction. Same dual-input pattern
+      // as the main movement block above — joystick wins when active.
       let dx = 0, dy = 0;
       if (keys.KeyW) dy -= 1;
       if (keys.KeyS) dy += 1;
       if (keys.KeyA) dx -= 1;
       if (keys.KeyD) dx += 1;
+      if (virtualMove.active && (virtualMove.x !== 0 || virtualMove.y !== 0)) {
+        dx = virtualMove.x;
+        dy = virtualMove.y;
+      }
       if (dx === 0 && dy === 0) { dx = hero.aimX; dy = hero.aimY; }
       const m = Math.hypot(dx, dy) || 1;
       hero.dodgeDirX = dx / m;
       hero.dodgeDirY = dy / m;
       hero.dodgeCooldown = DODGE_COOLDOWN * hero.dodgeCooldownMul;
+      // Reset afterimage capture cadence + clear stale trail from a prior
+      // dash/dodge so the new dodge starts with a fresh visual budget.
+      _dashAfterimages.length = 0;
+      _dashAfterimageNextT = 0;
       // Never shorten a longer invuln window already in-flight (post-hurt stagger,
       // Aegis Pulse, etc.) — take the max so dodging can't strip safety frames.
       hero.iframes = Math.max(hero.iframes || 0, DODGE_DUR + 0.05);
@@ -478,6 +753,12 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (hero.dodgeCleanses) {
         hero.slowTime = 0;
         hero.poisonTime = 0;
+        // FUSION: Weaving Step — cleansing dodges arm a flag that
+        // grants 0.3s of i-frames on the player's next melee hit. The
+        // "cleansing" here means "any dodge while nimble_step is
+        // owned" since dodgeCleanses is the gate flag. Consumed on
+        // first damage-landed swing in the hero attack hook.
+        if (hero.fusionWeavingStep) hero.weavingStepReady = true;
       }
       // CONTENT PASS B1 — MEMORY OF THE HUNGRY BLADE: every dodge costs 1 HP.
       // Forces aggressive play so the buffed lifesteal has teeth to matter.
@@ -486,6 +767,7 @@ export function updateHero(dt, enemies, mouseWorld) {
         hero.hp -= 1;
       }
       setState('dodge');
+      hero._stillT = 0;   // iron_resolve parry window resets on dodge
       playSfx('footstep_1', { rate: 0.85, volume: 0.8 });
       // Departure burst — dust kicks in the direction the hero is leaving FROM
       // (opposite of dodge direction). Grounds the dodge in physical weight.
@@ -503,12 +785,153 @@ export function updateHero(dt, enemies, mouseWorld) {
       }
       // LEGENDARY: Wanderer's Cloak — 2s doubled attack speed post-dodge
       wandererOnDodge();
+      // SHADOW T2 ascendance — 0.8s flanking window: every hit during the
+      // window is forced-crit. Stronger than whisper_veil (which is one hit
+      // only) — ascendance should feel transformative.
+      if ((hero.activeThemes?.shadow || 0) >= 2) {
+        const _now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+        hero.themeShadowFlankingUntil = _now + 0.8;
+      }
+      // STORM T2 ascendance — releases a small shock pulse at the dodge
+      // start point. Tagged 'shock' so it interacts with elemental resists.
+      // Smaller radius/damage than spells; intended as an opportunistic
+      // side-effect of mobility, not a primary DPS source.
+      if ((hero.activeThemes?.storm || 0) >= 2) {
+        const dmg = 14 * (hero.damageMul || 1);
+        spawnExplosion(hero.x, hero.y - 6, 56, dmg, 'shock');
+      }
     }
-    // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release
-    else if ((mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= 0.35 && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
+    // Attack — fresh tap, buffered tap (late press honored), combo follow-up, or charge release.
+    // SUPPRESSED IN HAMLET — the canvas hamlet is a non-combat hub; clicks
+    // still consume hero._attackBuffer via mouse.pressed but no swing fires.
+    //
+    // Accessibility — settings.chargeMode = 'short' lowers the hold-to-charge
+    // threshold to 0.15s for players with limited grip strength. Default
+    // 'hold' keeps the original 0.35s threshold so existing muscle memory
+    // is preserved.
+    else if (room.kind !== 'hamlet' && (mouse.pressed || hero._attackBuffer > 0 || (mouse.down && hero.chargeTime >= (settings.chargeMode === 'short' ? 0.15 : 0.35) && !hero.chargeReleased)) && hero.attackCooldown <= 0) {
       // Consume the buffer so it doesn't re-trigger on next idle frame
       hero._attackBuffer = 0;
       const w = weaponDef();
+
+      // ── RANGED WEAPON BRANCH (wand) ─────────────────────────────────
+      // Bypasses the entire melee swing flow — no swing index, no
+      // finisher logic, no slash arc, no charge AoE. The bolt is a
+      // single-shot projectile spawned in the aim direction; cooldown
+      // comes straight from the weapon's `cooldown` field (with the
+      // standard hero.attackCooldownMul + STORM atk-spd theme bonus
+      // applied so existing relics still affect ranged cadence).
+      //
+      // Combo / charge / finisher beats explicitly NOT supported in v1
+      // — players choosing the wand are signing up for a different
+      // playstyle, and the existing "every 3rd swing is a finisher"
+      // rhythm doesn't translate to projectile spam. Future work could
+      // add a "charged bolt" via mouse hold, but v1 keeps the rhythm
+      // simple: tap LMB, fire bolt, repeat.
+      if (w.ranged) {
+        // CHARGED SHOT: hold LMB ≥0.35s to fire an empowered bolt on
+        // release. 2.5× damage, pierces 3 enemies, gold-tinted, slightly
+        // faster. Reuses the existing chargeTime accumulator + charge-
+        // ring UI from melee — same skill ceiling, ranged flavor.
+        // Cooldown after a charged shot is 1.4× normal (commitment
+        // trade — you can't spam them).
+        const isCharged = hero.chargeTime >= 0.35;
+        const stormAtkSpd = 1 - (hero.themeAtkSpdBonus || 0);
+        const wandererMulR = hero.wandererBuffTime > 0 ? 0.5 : 1;
+        const cooldownMul = isCharged ? 1.4 : 1.0;
+        // Captured here so the post-spawn flag block (which previously
+        // hardcoded _swingIsFinisher = false) can route the woven bolt
+        // through the same finisher-treatment downstream consumers
+        // already understand. Defaults to false for charged shots.
+        let isWoven = false;
+        hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMulR * stormAtkSpd * cooldownMul;
+        setState('attack');
+        hero.attackFacingX = hero.aimX;
+        hero.attackFacingY = hero.aimY;
+        // Lock the charge state so the player can't trigger a second
+        // shot from the same hold + reset the accumulator on release.
+        // first_wand_charge tip — distinct from first_charge (melee
+        // is a wide AoE blow, wand is a piercing damage burst).
+        if (isCharged) { hero.chargeReleased = true; showTip('first_wand_charge'); }
+        // Spawn the bolt from a "cast point" slightly forward of the
+        // hero so it doesn't visually emit from inside the body.
+        const aimMag = Math.hypot(hero.aimX, hero.aimY) || 1;
+        const dirX = hero.aimX / aimMag;
+        const dirY = hero.aimY / aimMag;
+        const baseDmg = w.damage * hero.damageMul;
+        // Bolt range modifier — relics like Long Reach (wand-branched)
+        // extend the bolt's life, which caps its travel distance. Same
+        // pattern as melee reachMul scaling the swing-arc reach.
+        const lifeMul = hero.boltLifeMul || 1;
+        if (isCharged) {
+          // Charged: 2.5× damage (or +50% more if Patient Lens), pierces
+          // 3, faster bolt + longer life. Patient Lens forces a CRIT
+          // tag on charged hits — the legendary pays off the patient
+          // playstyle of wind-up shots.
+          const chargedMul = hero.boltCritOnCharge ? 2.5 * 1.5 : 2.5;
+          spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
+                        dirX, dirY, baseDmg * chargedMul, 720, 1.2 * lifeMul,
+                        { charged: true, pierce: 3 });
+          // Heavier audio + camera kick for the charge release moment.
+          try { synthClick(1.0, 0.85); } catch (_e) {}
+          try { synthSwoosh(0.9, 0.6, 0.18); } catch (_e) {}
+          // Patient Lens — distinct gold ping over the swoosh, telegraphs
+          // "this bolt will crit" before it lands. Pairs with the stronger
+          // gold flash below so the release feels different from a base
+          // charged shot.
+          if (hero.boltCritOnCharge) {
+            try { synthPing(1980, 0.55, 0.22); } catch (_e) {}
+          }
+          shakeCamera(6, 0.18);
+          pulseZoom(0.04, 0.22);
+          // Brief gold flash so the release reads as a committed beat.
+          // Patient Lens brightens the flash so the player learns: "this
+          // is the version that auto-crits."
+          triggerScreenFlash(hero.boltCritOnCharge ? 'rgba(255, 220, 140, 0.16)' : 'rgba(255, 220, 140, 0.07)', 0.18);
+        } else {
+          // Tap-fire: standard bolt, no pierce, snappier audio.
+          // SPELL WEAVE — every 3rd tap-bolt fires as a heavier woven
+          // shot. +60% damage, amber tint, slightly larger sprite, a
+          // distinct mid-pitched ping. Mirrors the melee 3-hit-finisher
+          // rhythm so wand carries the same muscle memory. Bypassed on
+          // charged shots (those are already a committed beat).
+          hero.boltIndex = (hero.boltIndex + 1) % 3;
+          isWoven = hero.boltIndex === 0;     // 0 = the freshly-rolled-over slot, i.e. the 3rd bolt
+          const wovenMul = isWoven ? 1.6 : 1.0;
+          spawnHeroBolt(hero.x + dirX * 18, hero.y - 8 + dirY * 12,
+                        dirX, dirY, baseDmg * wovenMul, w.boltSpeed, w.boltLife * lifeMul,
+                        isWoven ? { woven: true } : undefined);
+          if (isWoven) {
+            // Layered audio for the woven beat — the click is the same
+            // tap-fire snap, but a chord-ish ping sells the "heavier"
+            // bolt at a different register. Camera shake is 1.4× the
+            // normal tap so the player FEELS the rhythm beat without
+            // jarring out of repeat-tap flow.
+            try { synthClick(1.7, 0.6); } catch (_e) {}
+            try { synthPing(820, 0.14, 0.28); } catch (_e) {}
+            shakeCamera(3.5, 0.12);
+          } else {
+            try { synthClick(1.7, 0.6); } catch (_e) {}
+            shakeCamera(2.5, 0.10);
+          }
+        }
+        showTip('first_combat');
+        // Reset charge state so the next cycle starts fresh
+        hero.chargeTime = 0;
+        // Stash flags — charged ranged sets the charged flag so any
+        // downstream consumer (themes, hooks) sees a charged release.
+        // Woven tap-bolts get the _swingIsFinisher tag so existing
+        // combo-tracker / relic-on-finisher consumers fire on the
+        // wand's 3-bolt rhythm, matching melee's 3rd-hit treatment.
+        hero._swingIsFinisher = isWoven;
+        hero._swingIsCharged = isCharged;
+        // NOTE: we deliberately fall through to the rest of the
+        // updateHero body so the attack-state END block (line ~1311)
+        // still runs to transition state back to idle when the
+        // animation finishes. The melee code below is wrapped in
+        // !w.ranged so it doesn't execute.
+      } else {
+
       const wandererMul = hero.wandererBuffTime > 0 ? 0.5 : 1;
       const soulreaverMul = Math.max(0.55, 1 - hero.soulreaverStacks * 0.15);
       // Charge release: any LMB state with chargeTime accumulated
@@ -523,8 +946,17 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (isCharged) { hero.chargeReleased = true; showTip('first_charge'); }
       // Cooldown extended a touch on finisher & charged (they're bigger)
       const bigSwingMul = (isFinisher || isCharged) ? 1.35 : 1.0;
-      hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMul * soulreaverMul * bigSwingMul;
+      // STORM set-bonus — faster swings at 3/5 theme stacks
+      const stormAtkSpd = 1 - (hero.themeAtkSpdBonus || 0);
+      hero.attackCooldown = w.cooldown * hero.attackCooldownMul * wandererMul * soulreaverMul * bigSwingMul * stormAtkSpd;
       setState('attack');
+      // Lock the body's facing direction at trigger time. heroDirection()
+      // reads these instead of the live aim during the swing so the sprite
+      // commits to the swing direction — flicking the mouse mid-swing no
+      // longer rotates the body (the slash arc is also locked at trigger,
+      // so body + slash now stay in sync).
+      hero.attackFacingX = hero.aimX;
+      hero.attackFacingY = hero.aimY;
       // FUSION: Sparrow's Dance — every 5th attack releases a wind ring that
       // damages all nearby enemies. The counter is tracked independently of
       // the swing-chain index so combos don't interfere.
@@ -582,6 +1014,7 @@ export function updateHero(dt, enemies, mouseWorld) {
       // Stash flags that hit logic reads during the swing window
       hero._swingIsFinisher = isFinisher;
       hero._swingIsCharged = isCharged;
+      } // end melee branch (else of if (w.ranged))
     }
     // Movement
     else {
@@ -590,17 +1023,50 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (keys.KeyS) dy += 1;
       if (keys.KeyA) dx -= 1;
       if (keys.KeyD) dx += 1;
+      // Mobile virtual joystick — supplements keyboard. Joystick wins
+      // ONLY when it has a non-zero deflection. If the player is
+      // touching the stick but holding it inside the dead zone, both
+      // x and y are 0 and we fall back to whatever WASD said —
+      // important for hybrid setups (Steam Deck etc.) where the
+      // player might use both inputs and a deadzoned touch shouldn't
+      // freeze movement. Bug-hunt P2.
+      if (virtualMove.active && (virtualMove.x !== 0 || virtualMove.y !== 0)) {
+        dx = virtualMove.x;
+        dy = virtualMove.y;
+      }
       const m = Math.hypot(dx, dy);
       if (m > 0) {
         dx /= m; dy /= m;
+        // Persist normalized input direction so heroDirection() can read
+        // it during walk state. Without this, hero.vx/vy stay at 0 and
+        // vecToDirection() falls through to AIM direction, making the
+        // body always face the mouse — the bug behind 'moves left/right
+        // without facing that direction.'
+        hero.vx = dx;
+        hero.vy = dy;
         const slowMul = hero.slowTime > 0 ? hero.slowMul : 1;
-        const spd = HERO_SPEED * hero.speedMul * slowMul;
+        // Attack-commit slow: while in 'attack' state the hero plants
+        // their feet for the swing — full-speed running while sword is
+        // mid-arc reads as 'moonwalking with weapon turned the wrong way.'
+        // 35% speed during attack matches Hades/Diablo/PoE 'committed-
+        // swing' feel without removing all repositioning. State stays
+        // 'attack' (sprite still faces the locked attack direction); only
+        // velocity is reduced.
+        const attackSlowMul = hero.state === 'attack' ? 0.35 : 1;
+        // GALE STEP — Round-6 retune. While galeBurstTime > 0, hero
+        // moves at +30% speed. Set on dodge end (DODGE_DUR boundary
+        // above), ticked down further down in the per-frame block.
+        const galeMul = hero.galeBurstTime > 0 ? 1.30 : 1;
+        const spd = HERO_SPEED * hero.speedMul * slowMul * attackSlowMul * galeMul;
         moveAxis('x', dx * spd * dt);
         moveAxis('y', dy * spd * dt);
-        setState('walk');
+        // Don't downgrade state to 'walk' if we're mid-attack — body
+        // sprite + animation should keep the attack frames + locked dir.
+        if (hero.state !== 'attack') setState('walk');
         // SYSTEMS PASS — IRON GREAVES: track continuous movement time.
         // Reset on any non-walk transition (attack/dodge/idle below).
         hero._moveTime = (hero._moveTime || 0) + dt;
+        hero._stillT = 0;   // iron_resolve parry window resets on motion
         hero.footstepT -= dt;
         if (hero.footstepT <= 0) {
           hero.footstepT = 0.32 / hero.speedMul;
@@ -619,6 +1085,17 @@ export function updateHero(dt, enemies, mouseWorld) {
         setState('idle');
         // Iron Greaves movement streak resets when the hero stops moving.
         hero._moveTime = 0;
+        // Iron Resolve parry — track "stance time" while idle. The parry
+        // window opens at ≥0.3s of uninterrupted stillness.
+        hero._stillT = (hero._stillT || 0) + dt;
+        // Clear movement velocity so heroDirection() stops reading a
+        // stale walk direction once the player releases WASD. Without
+        // this, the body keeps facing the last walk direction during
+        // idle (which is fine semantically — heroDirection falls back
+        // to lastDirection — but lastDirection is updated every frame
+        // anyway, so clearing vx/vy keeps the state honest).
+        hero.vx = 0;
+        hero.vy = 0;
       }
     }
   }
@@ -627,12 +1104,28 @@ export function updateHero(dt, enemies, mouseWorld) {
   if (hero.state === 'dodge') {
     const isDashStrike = hero.dashStrikeTime > 0;
     if (isDashStrike) {
-      const dur = 0.22;
-      const t = 1 - (hero.dashStrikeTime / dur);
-      const speed = 900 * (1 - t * 0.6);    // faster than dodge, linear decel
-      moveAxis('x', hero.dashStrikeDirX * speed * dt);
-      moveAxis('y', hero.dashStrikeDirY * speed * dt);
-      // Golden trail
+      // Constant-speed teleport (no decel). The hero sprite is hidden
+      // by drawHero while dashStrikeTime > 0; afterimages do the visual
+      // work and the bursts at start/end frame the moment.
+      moveAxis('x', hero.dashStrikeDirX * DASH_SPEED * dt);
+      moveAxis('y', hero.dashStrikeDirY * DASH_SPEED * dt);
+      // Capture afterimage at intervals — drawHero renders these as
+      // fading copies of the hero's pose so the player reads "where I
+      // just was" instead of an interpolated body sliding through.
+      _dashAfterimageNextT -= dt;
+      if (_dashAfterimageNextT <= 0) {
+        _dashAfterimageNextT = AFTERIMAGE_INTERVAL;
+        _dashAfterimages.push({
+          x: hero.x,
+          y: hero.y,
+          dir: heroDirection(hero),
+          age: 0,
+          kind: 'dash',     // golden tint, no live hero sprite
+        });
+      }
+      // Golden trail still runs for extra streak feel (the dashTrail
+      // particles render under the afterimages so they read as motion
+      // exhaust, not the body).
       dashTrail(hero.x, hero.y, '#ffd27a');
       // Hit all enemies along the dash path
       const w = weaponDef();
@@ -654,15 +1147,57 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (hero.dashStrikeTime <= 0) {
         setState('idle');
         hero.dashStrikeHit.clear();
+        // ARRIVAL POP — bigger sparkle ring + arrival snap audio.
+        // Frames the moment the player "reappears" instead of just
+        // ending the slide on an idle pose.
+        const ax = hero.x, ay = hero.y - 8;
+        for (let i = 0; i < 18; i++) {
+          const ang = (i / 18) * Math.PI * 2;
+          const r = 18 + Math.random() * 10;
+          sparkle(ax + Math.cos(ang) * r, ay + Math.sin(ang) * r * 0.7, '#fff2c8');
+        }
+        try { synthClick(1.2, 0.6); } catch (_e) {}
       }
     } else {
-      const t = hero.stateTime / DODGE_DUR;
-      const speed = DODGE_SPEED * hero.dodgeDistMul * (1 - t * t);
+      // Dodge motion: constant DODGE_SPEED (no decel). dodgeDistMul
+      // stays in the calc so Wanderer's Cloak / boots / memories that
+      // scale dodge distance still work.
+      const speed = DODGE_SPEED * hero.dodgeDistMul;
       moveAxis('x', hero.dodgeDirX * speed * dt);
       moveAxis('y', hero.dodgeDirY * speed * dt);
+      // Capture cool-blue afterimage ghosts. Sparser interval than the
+      // dash (dodge happens 5-10× per fight; we don't want a beefy
+      // golden trail every Space tap). The cool tint distinguishes
+      // dodge from dash visually so the player reads them as different
+      // abilities at a glance.
+      _dashAfterimageNextT -= dt;
+      if (_dashAfterimageNextT <= 0) {
+        _dashAfterimageNextT = DODGE_AFTERIMAGE_INTERVAL;
+        _dashAfterimages.push({
+          x: hero.x,
+          y: hero.y,
+          dir: heroDirection(hero),
+          age: 0,
+          kind: 'dodge',     // cool blue tint, hero sprite stays at low alpha
+        });
+      }
       if (Math.random() < 0.6) dashTrail(hero.x, hero.y);
       // Add a trail point every frame during dodge for Thunder Step
       if (hero.thunderStep) addThunderTrailPoint(hero.x, hero.y);
+      // STRIDE OF ASH (mythic) — drop a friendly fire pool every ~3
+      // frames along the dodge path. Damage 2 with a 1.4s lifetime; the
+      // hero will already have moved on by the time the pool ticks, so
+      // the pool reads as "you left a path through the wound" rather
+      // than "you stand inside a burn lane". Per-enemy one-tick rule
+      // in updateFlames keeps it from melting bosses solo.
+      if (hero.strideOfAsh) {
+        if (!hero._strideAshT || hero._strideAshT <= 0) {
+          spawnEmberFlame(hero.x, hero.y + 4, { friendly: true, damage: 2, life: 1.4, radius: 26 });
+          hero._strideAshT = 0.05;     // ~3 frames at 60fps -> ~6 pools per dodge at ×1 distance
+        } else {
+          hero._strideAshT -= dt;
+        }
+      }
       if (hero.stateTime >= DODGE_DUR) {
         if (hero.thunderStep) endThunderTrail();
         // Landing burst — dust kicks opposite to the dodge direction, grounding
@@ -673,18 +1208,31 @@ export function updateHero(dt, enemies, mouseWorld) {
                         : biome === 'inferno' ? '#6a3020'
                         : '#9a8a6a';
         landingBurst(hero.x, hero.y + 12, hero.dodgeDirX, hero.dodgeDirY, dustColor);
+        // GALE STEP — Round-6 retune. On dodge end, kick a 0.4s speed
+        // burst so chained dodges read as flow rather than discrete
+        // teleports. Pure tempo mechanic; sits beside nimble_step's
+        // cleanse and dash_master's cooldown refund. galeBurstTime is
+        // ticked + consumed in the movement section below.
+        if (hero.galeStep) hero.galeBurstTime = 0.4;
         setState('idle');
       }
     }
   }
 
-  // Attack hitbox — active in middle of the swing
+  // Attack hitbox — active in middle of the swing.
+  // Ranged weapons (wand) skip the arc hitbox entirely — they damage
+  // via the projectile collision in projectiles.js, not the swing-arc
+  // sweep. The state-end transition at the bottom of this block still
+  // runs so the wand's "attack" state cleanly transitions back to idle
+  // when stateTime exceeds w.swingDur.
   if (hero.state === 'attack') {
     const w = weaponDef();
     const t = hero.stateTime / w.swingDur;
-    if (t > 0.25 && t < 0.75) {
+    if (!w.ranged && t > 0.25 && t < 0.75) {
       const reach = w.reach * hero.reachMul;
-      const damage = w.damage * hero.damageMul;
+      // FLAME set-bonus — +10%/+20% base damage at 3/5 theme stacks
+      const flameMul = 1 + (hero.themeDmgBonus || 0);
+      const damage = w.damage * hero.damageMul * flameMul;
       const arc = w.arc;
       // Torch interaction — swing near a torch spawns sparks once per swing
       if (!hero._torchSparkedThisSwing && roomTorches) {
@@ -701,13 +1249,33 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
         }
       }
-      // Cracked wall — single hit per swing
+      // Cracked wall — single hit per swing.
+      // Round-6 AV audit: cracked-wall break used pitched-down `slime_hit`,
+      // identical to a slime body hit. Players couldn't audibly tell
+      // they'd just opened a secret room from "I hit a slime." Now uses
+      // a synthThud sub-bass + synthClick for the "break" beat — more
+      // architecturally distinct and unmistakably "stone gave way".
+      // Mid-progress hits still get a shorter thud for tactile feedback.
       if (!hero._wallHitThisSwing && hitCrackedWall(hero.x, hero.y, hero.aimX, hero.aimY, reach)) {
         hero._wallHitThisSwing = true;
         const res = damageCrackedWall();
         hitSpark(roomSecrets.crackX * TILE + TILE/2, roomSecrets.crackY * TILE + TILE/2, -hero.aimX, -hero.aimY, '#ffe5a0');
         shakeCamera(res === 'broken' ? 12 : 5, 0.2);
-        playSfx('slime_hit', { rate: res === 'broken' ? 0.6 : 1.3, volume: 0.9 });
+        if (res === 'broken') {
+          // Wall collapses — layered sub-bass thud + dust-fall chord
+          // sells "stone gave way to something behind it". The player
+          // hears this once per secret-room reveal so it earns the
+          // dedicated audio moment.
+          try { synthThud(70, 0.95, 0.5); } catch (_e) {}
+          try { synthThud(45, 0.7, 0.7); } catch (_e) {}
+          try { synthClick(0.45, 0.55); } catch (_e) {}
+        } else {
+          // Mid-progress hit — chunkier than a slime tap, lighter than
+          // the break. synthThud at higher freq + click stack reads as
+          // "this is masonry, not flesh".
+          try { synthThud(120, 0.55, 0.18); } catch (_e) {}
+          try { synthClick(0.7, 0.5); } catch (_e) {}
+        }
       }
       // Trove urns — break on hit, spawn loot burst
       if (!hero._urnHitThisSwing) {
@@ -787,25 +1355,70 @@ export function updateHero(dt, enemies, mouseWorld) {
           // SYSTEMS PASS — forced-crit sources stack with RNG crit:
           //   HEAVY BLOW: first hit on a knocked-back enemy
           //   IRON GREAVES: first hit after 2+ seconds of continuous motion
-          const forcedCrit = (
-            (hero.knockbackCrit && e._kbCritPending) ||
-            (hero.movementCrit && (hero._moveTime || 0) >= 2.0)
-          );
+          //   HONEST EDGE: finisher swings (sword-only)
+          //   VOW ETERNAL: first sword hit each room (sword-only legendary)
+          // Count active sources so the crit multiplier scales when MULTIPLE
+          // forced-crit relics fire on the same swing — without this, a sword
+          // player with both Iron Greaves and Vow Eternal would consume both
+          // flags on their room-opener but only get a single crit's worth of
+          // damage. +0.25× per extra source rewards stacking without making
+          // a single crit relic feel weak.
+          const _fcMove = !!(hero.movementCrit && (hero._moveTime || 0) >= 2.0);
+          const _fcKB = !!(hero.knockbackCrit && e._kbCritPending);
+          const _fcHE = !!(hero.honestEdge && hero._swingIsFinisher);
+          const _fcVE = !!(hero.vowEternal && hero.vowEternalReady && w.id === 'sword');
+          const _forcedCount = (_fcMove ? 1 : 0) + (_fcKB ? 1 : 0) + (_fcHE ? 1 : 0) + (_fcVE ? 1 : 0);
+          const forcedCrit = _forcedCount > 0;
+          // Extra crit multiplier when ≥2 forced-crit sources fire together.
+          const _forcedCritBonus = Math.max(0, _forcedCount - 1) * 0.25;
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
           if (hero.movementCrit && (hero._moveTime || 0) >= 2.0) hero._moveTime = 0;
+          if (hero.vowEternal && hero.vowEternalReady && w.id === 'sword') {
+            hero.vowEternalReady = false;
+            // Bell-tone on consume — the literal "vow rung" once per
+            // room. High clear ping cuts through the swing audio.
+            try { synthPing(1320, 0.55, 0.32); } catch (_e) {}
+            // FUSION: Sworn Reply — opening crit also opens the
+            // counter-attack window. Lets the player chain the
+            // first-hit crit into a full counter-attack on the next
+            // swing, which extends the opening into an opening burst.
+            if (hero.fusionSwornReply) grantCounterAttack();
+          }
           // DAGGER SIGNATURE — flat +10% crit chance when wielded. Twin Fang
           // is "the precision weapon" — its identity between finishers is
           // that crits happen more often than with sword or hammer.
           const _daggerCritBonus = (w.id === 'dagger') ? 0.10 : 0;
-          const isCrit = isCounter || forcedCrit || ((hero.critChance + _daggerCritBonus) > 0 && Math.random() < (hero.critChance + _daggerCritBonus));
+          // SHADOW set-bonus — flat crit chance add at 3/5 theme stacks
+          const _shadowCritBonus = hero.themeCritBonus || 0;
+          // FUSION: Kingslayer — speartip hits past 80% reach get +15%
+          // crit chance on top of the +40% damage. Pairs with the
+          // existing speartipBonus block below.
+          const _kingslayerCritBonus = (hero.fusionKingslayer && hero.speartip && dist > reach * 0.8) ? 0.15 : 0;
+          const _totalCritChance = hero.critChance + _daggerCritBonus + _shadowCritBonus + _kingslayerCritBonus;
+          // SHADOW T2 ascendance — flanking window after dodge: every hit crits
+          const _hcNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+          const _shadowFlanking = hero.themeShadowFlankingUntil > _hcNow;
+          const isCrit = isCounter || forcedCrit || _shadowFlanking || (_totalCritChance > 0 && Math.random() < _totalCritChance);
           const isExec = hero.executeThreshold > 0 && e.hp / e.maxHp < hero.executeThreshold;
           // SYSTEMS PASS — LONG REACH: hits landed past 80% of your reach
           // deal +40% damage. Rewards spacing + positioning. Folded in
           // below alongside the other pre-multiplier adjustments.
           const speartipBonus = (hero.speartip && dist > reach * 0.8) ? 1.4 : 1.0;
           if (isExec) showTip('first_execute');
-          let finalDmg = damage * speartipBonus;
-          if (isCrit) finalDmg *= hero.critMul;
+          // RINGING STEEL (sword-only) — chained hits add +6% damage
+          // each, max +30% (5 stacks). Stacks read from
+          // hero.ringingSteelStacks, capped before the multiplier.
+          // Stacks reset when the swing chain expires (handled in the
+          // chainTime decay block at top of updateHero).
+          const ringingSteelMul = hero.ringingSteel
+            ? 1 + 0.06 * Math.min(5, hero.ringingSteelStacks | 0)
+            : 1;
+          let finalDmg = damage * speartipBonus * ringingSteelMul;
+          // SHADOW T2 — +0.5 crit multiplier bump (so a 2.0× crit becomes 2.5×)
+          // Forced-crit overlap bonus — see _forcedCritBonus computation above.
+          // Two forced-crit sources firing together → 2.25×; three → 2.5×.
+          const _effectiveCritMul = hero.critMul + (hero.themeCritMulBonus || 0) + _forcedCritBonus;
+          if (isCrit) finalDmg *= _effectiveCritMul;
           if (isExec) finalDmg *= hero.executeMul;
           // FUSION: Final Verdict — crit on a below-threshold enemy = instakill.
           // Pumps damage to multiples of the target's max HP so nothing survives.
@@ -814,7 +1427,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           }
           if (isCounter) finalDmg *= (hero.counterstrike ? 2.0 : 1.5);
           // BLOODRITE — +15% damage while below 50% HP
-          if (hero.bloodrite && hero.hp < hero.maxHp * 0.5) finalDmg *= 1.15;
+          if (hero.bloodrite && hero.hp < hero.maxHp * 0.5) finalDmg *= 1.25;
           // MARROW PACT — +40% damage at or below 50% HP. Stacks with Bloodrite.
           if (hero.marrowPact && hero.hp <= hero.maxHp * 0.5) finalDmg *= (1 + hero.marrowPactBonus);
           // OATHSHIELD / WHISPER VEIL — both open a post-dodge window.
@@ -861,6 +1474,44 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (hero.fusionMountainsHeart && hero.hp >= hero.maxHp) {
             finalDmg *= 1.10;
           }
+          // RAZOR PACE (dagger-only legendary) — every 5th dagger hit
+          // deals 2.5x damage. Counter increments BEFORE the threshold
+          // check so the 5th hit is the one that pops, not the 6th.
+          // Reset is handled by the swing-chain decay block + room
+          // teardown — see the resetHero list and the chainTime guard
+          // earlier in updateHero. razorPaceCrescendo flag cues VFX.
+          // FUSION: Mortal Cadence — 5th hit always counts as a
+          // crescendo execute, jumping damage to 4×. Bosses still
+          // have their HP pool, but for everything else the rhythm
+          // beat is the kill.
+          let razorPaceCrescendo = false;
+          if (hero.razorPace && w.id === 'dagger') {
+            hero.razorPaceHits = (hero.razorPaceHits | 0) + 1;
+            if (hero.razorPaceHits >= 5) {
+              finalDmg *= hero.fusionMortalCadence ? 4.0 : 2.5;
+              hero.razorPaceHits = 0;
+              razorPaceCrescendo = true;
+            }
+          }
+          // WORLD-ENDER (hammer-only legendary) — finisher hits instantly
+          // shatter enemy shields (Warded affix + Vanguard def shields).
+          // Breaks happen BEFORE takeDamage runs, so the finisher hit
+          // itself bypasses the shield's damage reduction. Reads as
+          // "the third blow opens the door" — the fantasy is overwhelming
+          // force, not slow grind. Won't double-fire on already-broken.
+          let worldEnderShatter = false;
+          if (hero.worldEnder && w.id === 'hammer' && finisherHit && !e.dead) {
+            if (e.affix && e.affix.id === 'warded' && !e._shieldBroken) {
+              e._shieldBroken = true;
+              e._staggerCount = (e.affix.staggersToBreak | 0) || 99;
+              worldEnderShatter = true;
+            }
+            if (e.def && e.def.shieldCharges && !e._vShieldBroken) {
+              e._vShieldBroken = true;
+              e._shieldChargesLeft = 0;
+              worldEnderShatter = true;
+            }
+          }
           // HAMMER SIGNATURE — non-finisher swings get +50% knockback on top
           // of the weapon's base 2.2x. The finisher already has the ground-
           // slam AoE, so this fills the "middle" swings with weight too —
@@ -875,6 +1526,13 @@ export function updateHero(dt, enemies, mouseWorld) {
           // the enemy so the NEXT hero hit on them forces a crit.
           if (hero.knockbackCrit && kbScale >= 2 && !e.dead) {
             e._kbCritPending = true;
+          }
+          // FUSION: Weaving Step — first hit after a cleansing dodge
+          // grants 0.3s of i-frames. Consumed on first damage-landed
+          // swing. Stacks with existing iframes (Math.max).
+          if (hero.weavingStepReady) {
+            hero.weavingStepReady = false;
+            hero.iframes = Math.max(hero.iframes || 0, 0.3);
           }
           // SYSTEMS PASS — BLOODSTONE: kills of enemies under 25% HP heal +3.
           // Applies only when THIS hit is the killing blow on an already-
@@ -915,12 +1573,162 @@ export function updateHero(dt, enemies, mouseWorld) {
                 sparkle(splashTarget.x, splashTarget.y - 8, '#c8a0ff');
                 sparkle(splashTarget.x, splashTarget.y - 14, '#ffffff');
               }
+              markQuiverFired();   // visible pip-row flash
             }
           }
-          hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, isCounter ? '#ffeb99' : isExec ? '#ff6a55' : '#ffddaa');
+
+          // ── WEAPON SIGNATURE RELIC HOOKS — fire after damage resolves
+          // so the relic effects layer on top of base damage rather than
+          // changing the headline number. All gated on weapon class +
+          // relic flag so they're no-ops when not applicable.
+
+          // RINGING STEEL (sword-only) — increment chain stack to feed
+          // the next hit's damage multiplier. Cap at 5 stacks (+30%).
+          // Reset is handled by the swingChainTime decay block.
+          if (hero.ringingSteel && w.id === 'sword') {
+            const wasMax = (hero.ringingSteelStacks | 0) >= 5;
+            hero.ringingSteelStacks = Math.min(5, (hero.ringingSteelStacks | 0) + 1);
+            // Pip flash fires once when the chain first hits max stacks
+            // — telegraphs the "fully wound up" moment without spamming
+            // the row on every sustained-chain swing.
+            if (!wasMax && hero.ringingSteelStacks >= 5) markRingingFired();
+          }
+
+          // TWIN PULSE (dagger-only) — every 2nd dagger hit echoes
+          // damage to nearest other enemy within 80px for 60%. The
+          // 80px range is tighter than Arcane Quiver's 260 because
+          // dagger's identity is precision/short-range — the echo
+          // cleans up adjacent enemies, not a room-wide AOE.
+          if (hero.twinPulse && w.id === 'dagger' && !e.dead) {
+            hero.twinPulseTick = (hero.twinPulseTick + 1) | 0;
+            if (hero.twinPulseTick % 2 === 0) {
+              let echoTarget = null, echoD2 = 80 * 80;
+              for (const other of enemies) {
+                if (other === e || other.dead || other.state === 'dead') continue;
+                const dx = other.x - e.x, dy = other.y - e.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < echoD2) { echoTarget = other; echoD2 = d2; }
+              }
+              if (echoTarget) {
+                echoTarget.takeDamage(finalDmg * 0.6, 0, 0);
+                sparkle(echoTarget.x, echoTarget.y - 8, '#a0e8ff');
+                sparkle(echoTarget.x, echoTarget.y - 14, '#ffffff');
+                // Echo ping — distant cyan note, audibly the "second
+                // voice" of the dagger pair. Quieter than primary hit.
+                try { synthPing(1760, 0.35, 0.10); } catch (_e) {}
+              }
+              markTwinFired();   // visible pip-row flash
+            }
+          }
+
+          // MOUNTAIN STRIKE (hammer-only) — every 3rd hammer hit spawns
+          // a shockwave at impact. Round-6 economy retune: base radius
+          // bumped 70 → 110 (still smaller than the Avalanche-fusion
+          // 160) so the shockwave actually extends beyond the hammer's
+          // own 120-140px swing arc. Was previously a sub-arc cosmetic
+          // pulse on most hits — now meaningfully reaches enemies the
+          // swing missed. Damage stays at 50% so single-target builds
+          // don't get over-buffed.
+          if (hero.mountainStrike && w.id === 'hammer' && !e.dead) {
+            hero.mountainStrikeCounter = (hero.mountainStrikeCounter | 0) + 1;
+            if (hero.mountainStrikeCounter % 3 === 0) {
+              const shockDmg = (w.damage * (hero.damageMul || 1)) * 0.5;
+              // FUSION: Avalanche — radius doubles (110 → 160) and
+              // hits inside the shockwave are marked for next-hit
+              // crit (the heavy_blow knockback-crit hook).
+              const shockR = hero.fusionAvalanche ? 160 : 110;
+              spawnExplosion(e.x, e.y - 6, shockR, shockDmg, 'physical');
+              // Deep earth thud — short bass pulse so the shockwave
+              // reads in the chest, not just the eyes. Avalanche fires
+              // the same thud at higher volume.
+              try { synthThud(50, hero.fusionAvalanche ? 1.2 : 0.85, 0.28); } catch (_e) {}
+              if (hero.fusionAvalanche) {
+                // Mark every enemy inside the shockwave for crit on
+                // next hit — turns the 3rd-swing tremor into a setup
+                // for a room-wide burst on the FOLLOWING swing.
+                const r2 = shockR * shockR;
+                for (const other of enemies) {
+                  if (other.dead || other.state === 'dead') continue;
+                  const dx = other.x - e.x, dy = other.y - (e.y - 6);
+                  if (dx * dx + dy * dy <= r2) other._kbCritPending = true;
+                }
+              }
+              // Visual punch — extra dust burst for the ground-strike
+              // read, plus a heavier hit-stop than the regular swing.
+              const dustCount = hero.fusionAvalanche ? 14 : 8;
+              for (let k = 0; k < dustCount; k++) {
+                sparkle(e.x + (Math.random() - 0.5) * (shockR * 0.6), e.y + 4 + (Math.random() - 0.5) * 16, '#ffae6c');
+              }
+              triggerHitStop(hero.fusionAvalanche ? 0.10 : 0.06);
+              markMountainFired();   // visible pip-row flash
+            }
+          }
+
+          // EARTHEN HOLD (hammer-only) — charged hammer hits add +0.6s
+          // stagger on top of whatever stagger the base hit applied.
+          // Stagger is already a field that enemies' AI reads (e.stagger
+          // ticks down per frame, gates attack/movement while > 0).
+          if (hero.earthenHold && w.id === 'hammer' && chargedHit && !e.dead) {
+            e.stagger = Math.max(e.stagger || 0, 0) + 0.6;
+            sparkle(e.x, e.y, '#c8a060');
+            sparkle(e.x - 4, e.y - 2, '#a07840');
+            // Stone-grind tone — short low thud that says "the earth
+            // pinned them." Lower than mountain_strike's shock.
+            try { synthThud(75, 0.55, 0.18); } catch (_e) {}
+          }
+
+          // RAZOR PACE crescendo VFX — the 5th-hit pop deserves to read.
+          // Cyan ring + extra hit-stop so the rhythm beat lands in the
+          // player's hands. Fires post-takeDamage so numbers update first.
+          if (razorPaceCrescendo) {
+            for (let k = 0; k < 10; k++) {
+              const ang = (k / 10) * Math.PI * 2;
+              sparkle(e.x + Math.cos(ang) * 18, e.y - 10 + Math.sin(ang) * 18, '#b0e0ff');
+            }
+            sparkle(e.x, e.y - 14, '#ffffff');
+            triggerHitStop(0.07);
+            // Two-note crescendo — the 5th-hit beat rings as a fast
+            // upward third (high cyan tone). Reads as "the song lands."
+            try { synthPing(1480, 0.5, 0.12); } catch (_e) {}
+            try { setTimeout(() => synthPing(1980, 0.45, 0.18), 70); } catch (_e) {}
+            markRazorFired();   // visible pip-row flash
+          }
+
+          // WORLD-ENDER shield-shatter VFX — bright sapphire burst at the
+          // shield's spawn point. The fantasy is the door opening; the
+          // burst signals the player can now pour damage into the same
+          // enemy without it being absorbed.
+          if (worldEnderShatter) {
+            for (let k = 0; k < 14; k++) {
+              const ang = Math.random() * Math.PI * 2;
+              const r = 8 + Math.random() * 24;
+              sparkle(e.x + Math.cos(ang) * r, e.y - 12 + Math.sin(ang) * r, '#c8d8ff');
+            }
+            deathBurst(e.x, e.y - 12, '#c8d8ff');
+            shakeCamera(8, 0.18);
+            triggerHitStop(0.1);
+            // Glass-crack chord — high splinter tone over a low thud.
+            // The thud lands on the same beat as the camera shake.
+            try { synthThud(60, 0.85, 0.22); } catch (_e) {}
+            try { synthChord(560, 0.6, 0.45); } catch (_e) {}
+          }
+          // Special-hit sparks keep their identity colors (counter gold,
+          // exec red); generic hits now pull the enemy's bloodColor so a
+          // wizard pop reads visibly purple, an orc strike visibly red,
+          // a slime smack green. Falls back to enemy.color when no
+          // bloodColor is defined. Game-feel audit P0.
+          const sparkColor = isCounter ? '#ffeb99'
+                           : isExec ? '#ff6a55'
+                           : (e.def && (e.def.bloodColor || e.def.color)) || '#ffddaa';
+          hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, sparkColor);
           const wpnShake = w.shakeMul || 1;
           const wpnHs = w.hitStopMul || 1;
-          shakeCamera((isCounter ? 10 : isCrit ? 7 : 4.5) * wpnShake, (isCounter ? 0.2 : 0.14) * Math.max(0.85, wpnShake));
+          // Per-enemy weight multiplier — a slime tap shouldn't shake
+          // the camera as hard as a vanguard slam. Read from def.weight
+          // (defaults 1.0). Game-feel audit P0.
+          const enemyWeight = (e.def && e.def.weight) || 1.0;
+          shakeCamera((isCounter ? 10 : isCrit ? 7 : 4.5) * wpnShake * enemyWeight,
+                      (isCounter ? 0.2 : 0.14) * Math.max(0.85, wpnShake));
           // Weapon-specific hit audio — dagger rings high and sharp, hammer thuds deep
           const wpnHitBase = w.id === 'dagger' ? 1.4 : w.id === 'hammer' ? 0.55 : 1.0;
           const wpnHitVol  = w.id === 'hammer' ? 1.05 : w.id === 'dagger' ? 0.75 : 0.9;
@@ -942,12 +1750,17 @@ export function updateHero(dt, enemies, mouseWorld) {
           spawnDamageNumber(e.x, e.y - 36, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, charged: chargedHit, finisher: finisherHit, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
           spawnHitMarker(e.x, e.y - 20, isCrit || isCounter || isExec || chargedHit || finisherHit);
           triggerHitStop((isCounter ? 0.12 : isCrit ? 0.08 : 0.045) * wpnHs);
-          // Camera zoom-in pulse on big hits — counter/exec/finisher/charged all pop
-          if (isCounter) pulseZoom(0.06, 0.3);
-          else if (isExec) pulseZoom(0.05, 0.25);
-          else if (chargedHit) pulseZoom(0.05, 0.28);
+          // Camera zoom-in pulse on big hits — counter/exec/finisher/charged all pop.
+          // Game-feel audit P0: previous values clustered within 0.01 of
+          // each other (0.06/0.05/0.05/0.04/0.03) — players couldn't read
+          // which special hit type fired from camera punch alone. New
+          // ladder spreads them so counter feels ~3× crit, exec feels
+          // distinctly weighty, charged sits between counter + exec.
+          if (isCounter) pulseZoom(0.09, 0.40);
+          else if (isExec) pulseZoom(0.07, 0.30);
+          else if (chargedHit) pulseZoom(0.06, 0.32);
           else if (finisherHit) pulseZoom(0.04, 0.22);
-          else if (isCrit) pulseZoom(0.03, 0.18);
+          else if (isCrit) pulseZoom(0.025, 0.15);
           // COUNTERSTRIKE — counter-hits detonate with a small AoE when relic owned
           if (isCounter && hero.counterstrike) {
             spawnExplosion(e.x, e.y - 8, 64, finalDmg * 0.7);
@@ -968,8 +1781,10 @@ export function updateHero(dt, enemies, mouseWorld) {
           // FUSION: Blood Moon — scales up to 3× at 25% HP (desperate heal).
           // MEMORY: Hollow — the hollow shape cannot be filled; lifesteal
           // still fires its VFX/sounds (handled elsewhere) but grants no HP.
-          if (hero.lifesteal > 0 && hero.hp < hero.maxHp && !hero.memoryHollow) {
-            let lsRate = hero.lifesteal;
+          // BLOOD set-bonus — folds a flat lifesteal add on top of any relic lifesteal
+          const _effectiveLifesteal = (hero.lifesteal || 0) + (hero.themeLifestealBonus || 0);
+          if (_effectiveLifesteal > 0 && hero.hp < hero.maxHp && !hero.memoryHollow) {
+            let lsRate = _effectiveLifesteal;
             if (hero.fusionBloodMoon) {
               const missingFrac = 1 - (hero.hp / hero.maxHp);
               lsRate *= 1 + missingFrac * 3;          // 1× at full, 4× at 0 HP
@@ -996,6 +1811,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (hero.chainLightning) {
             hero.chainCount = (hero.chainCount + 1) % 3;
             if (hero.chainCount === 0) {
+              markChainFired();   // visible pip-row flash
               let best = null, bestD = 99999;
               for (const other of enemies) {
                 if (other === e || other.dead) continue;
@@ -1037,6 +1853,7 @@ export function updateHero(dt, enemies, mouseWorld) {
             const threshold = hero.fusionConflagration ? 2 : 4;
             hero.pyroCount = (hero.pyroCount + 1) % threshold;
             if (hero.pyroCount === 0) {
+              markPyroFired();   // visible pip-row flash
               const radius = hero.fusionConflagration ? 70 : 52;
               const dmg = (hero.fusionConflagration ? 26 : 18) * (hero.damageMul || 1);
               spawnExplosion(e.x, e.y - 6, radius, dmg, 'fire');
@@ -1056,9 +1873,25 @@ export function updateHero(dt, enemies, mouseWorld) {
 // Returns: 'hit' | 'absorbed' | 'perfect' — so callers can apply affix effects only on real hits
 export function damageHero(amount, fromX, fromY) {
   if (hero.state === 'dead') return 'absorbed';
-  if (hero.state === 'dodge') {
-    triggerPerfectDodge();
+  // Perfect dodge: only fires on a TRUE dodge (Space input), not on
+  // dash strikes that reuse the 'dodge' state for animation + iframes.
+  // The dashStrikeTime guard distinguishes them — without it, every
+  // hostile projectile that hit during a dash strike silently triggered
+  // perfect-dodge bonuses (counter crit, whisper veil window, dash
+  // master CD refund, oathshield boost, etc.). Dash strike has its
+  // own iframes for safety; the damage gets absorbed lower in the
+  // function via the iframes check.
+  if (hero.state === 'dodge' && hero.dashStrikeTime <= 0) {
+    // FLICKER STEP (dagger-only) — doubles the perfect-dodge counter
+    // window. Counter-attack stays viable for 4.0s instead of 2.0s.
+    const counterWindowMul = (hero.flickerStep && hero.weapon === 'dagger') ? 2 : 1;
+    triggerPerfectDodge(counterWindowMul);
     stats.perfectDodges++;
+    // Audio cue — was previously silent (audio review P0). The skill-
+    // reward beat had unmissable visual feedback (slow-mo, chrom-aberr,
+    // bright text) but headphones were quiet. High-pitched ping cuts
+    // through any combat audio + sells the "you nailed it" moment.
+    try { synthPing(1980, 0.6, 0.22); } catch (_e) {}
     // SYSTEMS PASS — DASH MASTER: perfect dodges refund the dodge cooldown,
     // letting expert play chain perfect-dodges indefinitely. Pairs great
     // with counterstrike (explosion every counter-hit).
@@ -1093,6 +1926,37 @@ export function damageHero(amount, fromX, fromY) {
       amount *= hero.bulwarkReduction;
     }
   }
+  // IRON RESOLVE parry — if the hero has held their ground (≥0.3s still)
+  // AND is facing the attacker (±60°), the hit is turned aside: -85% dmg
+  // + slow the attacker by 60% for 0.5s. Rewards defensive stance play.
+  // Base -20% dmg-taken mul still applies (set in apply()); parry is ON TOP.
+  if (hero.ironResolveParry && (hero._stillT || 0) >= 0.3) {
+    const dxF = fromX - hero.x, dyF = fromY - hero.y;
+    const srcA = Math.atan2(dyF, dxF);
+    const aimA = Math.atan2(hero.aimY, hero.aimX);
+    let diffA = srcA - aimA;
+    while (diffA > Math.PI) diffA -= Math.PI * 2;
+    while (diffA < -Math.PI) diffA += Math.PI * 2;
+    if (Math.abs(diffA) <= Math.PI / 3) {    // ±60° arc
+      amount *= 0.15;                        // -85%
+      // Spark burst + brief slow on the nearest attacker candidate
+      for (let k = 0; k < 8; k++) {
+        const ang = aimA + (k - 4) * 0.12;
+        hitSpark(hero.x + Math.cos(ang) * 18, hero.y + Math.sin(ang) * 18, 0, 0, '#cfe4ff');
+      }
+      // Stagger the nearest enemy near the damage source (uses the existing
+      // stagger duration field the combat system already reads).
+      for (const e of activeEnemies) {
+        if (e.dead || e.state === 'dead') continue;
+        const edx = e.x - fromX, edy = e.y - fromY;
+        if (edx * edx + edy * edy < 36 * 36) {
+          e.stagger = Math.max(e.stagger || 0, 0.45);
+        }
+      }
+      triggerScreenFlash('rgba(180, 210, 240, 0.18)', 0.25);
+      playSfx('click', { rate: 2.4, volume: 0.7 });
+    }
+  }
   // HOURGLASS OF RESPITE — at 30% HP or below, halve incoming damage once
   // per minute. Panic-button safety for low-HP play; cooldown prevents it
   // from trivializing sustained low-HP builds.
@@ -1106,11 +1970,23 @@ export function damageHero(amount, fromX, fromY) {
   }
   if (hero.iframes > 0) return 'absorbed';
   if (window.GOD) return 'absorbed';
+  // VOW T2 ascendance — the first strike in each room is turned aside.
+  // Consumed here (after bulwark/hourglass reductions) so all defensive
+  // relics still get their fractional damage-reduction effect on "what the
+  // shield would have blocked", and THEN the shield eats the remainder.
+  if (hero.themeVowShieldAvailable && (hero.activeThemes?.vow || 0) >= 2) {
+    hero.themeVowShieldAvailable = false;
+    triggerScreenFlash('rgba(190, 210, 240, 0.28)', 0.35);
+    hero.iframes = Math.max(hero.iframes || 0, 0.35);
+    return 'absorbed';
+  }
   // Round damage to integer so HP stays clean (no floating-point HP text).
   // FUSION: Mountain's Heart — at full HP, 15% damage resist.
   // FUSION: Stalwart — below 50% HP, resistance doubles (0.67x multiplier
   //          on takenMul so damageTakenMul 0.75 becomes 0.50 effective).
   let takenMul = hero.damageTakenMul || 1;
+  // VOW set-bonus — flat damage-taken reduction at 3/5 theme stacks
+  if (hero.themeDmgTakenReduction > 0) takenMul *= (1 - hero.themeDmgTakenReduction);
   if (hero.fusionMountainsHeart && hero.hp >= hero.maxHp) takenMul *= 0.85;
   if (hero.fusionStalwart && hero.hp < hero.maxHp * 0.5) takenMul *= 0.67;
   const taken = Math.max(1, Math.round(amount * takenMul));
@@ -1166,6 +2042,30 @@ export function damageHero(amount, fromX, fromY) {
   }
   playSfx('hero_hurt', { rate: 1.0, rateJitter: 0.05, volume: 0.9 });
   if (hero.hp <= 0) {
+    // HEART OF THE WOUND (mythic) — once-per-run pseudo-revive that
+    // leaves the hero at 1 HP instead of the 30% Phoenix Cloak grant.
+    // Pushes attackers back via the same explosion the cloak uses (no
+    // damage component on the push) and burns 1.6s of iframes for
+    // recovery. Fires BEFORE phoenix_cloak.revives so the cheaper
+    // 1-HP save is used first; if both are equipped the player gets
+    // two saves total (heart at 1 HP, then a cloak revive at 30%).
+    if (hero.heartOfWoundAvailable) {
+      hero.heartOfWoundAvailable = false;
+      hero.hp = 1;
+      hero.iframes = 1.6;
+      setState('hurt');
+      shakeCamera(20, 0.45);
+      // Explosion-style push (uses 0 damage so the survival doesn't
+      // contribute to "I killed myself by clutch-saving into my own
+      // proc"). Same 200px radius as the agent spec.
+      spawnExplosion(hero.x, hero.y, 200, 0);
+      // Audio + screen — heavy, distinct from a normal hurt. Mid-bass
+      // thud + a high "spared" chord sells the moment.
+      try { synthThud(45, 1.0, 0.6); } catch (_e) {}
+      try { synthChord(330, 0.8, 1.0); } catch (_e) {}
+      try { triggerScreenFlash('rgba(255, 80, 110, 0.20)', 0.5); } catch (_e) {}
+      return 'hit';
+    }
     if (hero.revives > 0) {
       hero.revives -= 1;
       hero.hp = Math.max(1, Math.ceil(hero.maxHp * 0.3));         // Phoenix Cloak revives at 30%
@@ -1176,7 +2076,12 @@ export function damageHero(amount, fromX, fromY) {
       if (hero.phoenixCloak) {
         spawnExplosion(hero.x, hero.y, 180, 80);
       }
-      return;
+      // Return 'hit' (not undefined) — the damage DID land before
+      // the revive consumed it. Callers that key off the result
+      // (e.g. projectiles.js running affix.onHitHero on real hits)
+      // would otherwise silently skip their on-hit triggers when a
+      // revived hit was the proc. Bug found in smoothing review.
+      return 'hit';
     }
     hero.hp = 0;
     setState('dead');
@@ -1207,7 +2112,116 @@ function heroFrameInfo() {
   }
 }
 
+// Convert a screen-space vector (dx, dy; +Y = down) to a compass bucket index:
+// 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW. Returns null if vector is ~zero.
+function vecToDirection(dx, dy) {
+  if (!isFinite(dx) || !isFinite(dy)) return null;
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return null;
+  // atan2 gives [-π, π] with 0=EAST, +Y=SOUTH (screen space).
+  // Shift by +π/2 so NORTH becomes 0 radians, then normalize to [0, 2π),
+  // divide by (π/4), round, mod 8. 0=N → 2=E → 4=S → 6=W as required.
+  let a = Math.atan2(dy, dx) + Math.PI / 2;
+  const TAU = Math.PI * 2;
+  a = ((a % TAU) + TAU) % TAU;
+  const bucket = Math.round(a / (Math.PI / 4)) % 8;
+  return bucket;
+}
+
+// Return an integer 0–7 row index for the current hero state. Uses aim vector
+// during attack/dodge/dashStrike (dashStrike lives under state==='dodge' with
+// dashStrikeTime>0; aim is still the correct source). Uses velocity during
+// walk. Falls back to hero.lastDirection for idle/hurt/dead or ambiguous input.
+// Side effect: updates hero.lastDirection whenever a valid new direction is
+// derived, so subsequent idle/hurt frames have a sensible facing to resume.
+export function heroDirection(h = hero) {
+  let dir = null;
+  const st = h.state;
+  if (st === 'attack') {
+    // Body locks to the aim direction sampled at swing-trigger time so
+    // the body commits to the swing — flicking the mouse mid-attack no
+    // longer rotates the sprite. Falls back to live aim if the locked
+    // values aren't set yet (first frame of an attack).
+    dir = vecToDirection(h.attackFacingX ?? h.aimX, h.attackFacingY ?? h.aimY);
+  } else if (st === 'dodge') {
+    // Dodge body locks to the LOCKED direction (set at activation),
+    // not live aim. Two flavors:
+    //   - Dash-strike (offensive lunge, Q key): body faces the
+    //     dash direction (dashStrikeDirX/Y, derived from aim at trigger).
+    //   - Regular dodge (Space): body faces the roll direction
+    //     (dodgeDirX/Y, derived from WASD input at trigger, falls
+    //     back to aim if no WASD held).
+    // Reads as 'the hero commits to the maneuver they triggered' —
+    // the body doesn't pirouette to chase the mouse mid-dodge.
+    if (h.dashStrikeTime > 0) {
+      dir = vecToDirection(h.dashStrikeDirX, h.dashStrikeDirY);
+    } else {
+      dir = vecToDirection(h.dodgeDirX, h.dodgeDirY);
+    }
+    // Final fallback — if both lock vectors are stale (zero), fall
+    // back to live aim so we never return null from this branch.
+    if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
+  } else if (st === 'walk') {
+    dir = vecToDirection(h.vx, h.vy);
+    if (dir === null) dir = vecToDirection(h.aimX, h.aimY);
+  }
+  // idle / hurt / dead and any fallback: keep previous direction.
+  if (dir === null) return h.lastDirection ?? 4;
+  h.lastDirection = dir;
+  return dir;
+}
+
+// Render the dash/dodge afterimage ghost trail. Each entry is a hero
+// pose captured at intervals during travel; we render them as fading
+// copies so the player reads "where I just was" instead of an
+// interpolated body sliding through. Drawn BEFORE the main hero sprite
+// so afterimages sit underneath the arrived hero (during the few frames
+// after the move ends and the trail is still draining).
+//
+// Per-entry `kind` tints + peak alpha differ per ability:
+//   dash  — golden, peak alpha 0.5 (live hero is hidden, ghosts carry
+//           the visual entirely)
+//   dodge — cool blue, peak alpha 0.35 (live hero stays at low alpha,
+//           ghosts add the motion-blur read on top)
+//
+// The two filters use the same hue-rotate technique on a saturated
+// silhouette — sharp tinted ghosts that don't duplicate the hero's
+// detail (which would read as "two heroes" instead of "trail").
+const _AFTERIMAGE_FILTER_GOLD = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(-10deg) saturate(700%) brightness(1.4)';
+const _AFTERIMAGE_FILTER_BLUE = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(170deg) saturate(700%) brightness(1.4)';
+function drawDashAfterimages(ctx) {
+  if (_dashAfterimages.length === 0) return;
+  const info = heroFrameInfo();
+  const img = info.img;
+  if (!img) return;
+  const drawSize = room.kind === 'hamlet' ? HERO_DRAW_HAMLET : HERO_DRAW;
+  const sx0 = 0;
+  ctx.save();
+  for (const a of _dashAfterimages) {
+    // Fade curve: opaque when newest, fade to 0 over AFTERIMAGE_LIFE.
+    // Peak alpha differs per kind — dash trails carry the visual alone
+    // so they're brighter; dodge ghosts share the screen with a
+    // dimmed live hero so they're more subdued.
+    const isDash = a.kind === 'dash';
+    const peakAlpha = isDash ? 0.5 : 0.35;
+    const lifeFrac = 1 - (a.age / AFTERIMAGE_LIFE);
+    const alpha = peakAlpha * lifeFrac * lifeFrac;     // ease-out
+    if (alpha <= 0.02) continue;
+    ctx.globalAlpha = alpha;
+    ctx.filter = isDash ? _AFTERIMAGE_FILTER_GOLD : _AFTERIMAGE_FILTER_BLUE;
+    const sy = a.dir * SPR;
+    ctx.drawImage(img, sx0, sy, SPR, SPR,
+                  a.x - drawSize / 2, a.y - drawSize * 0.75,
+                  drawSize, drawSize);
+  }
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
 export function drawHero(ctx) {
+  // Render dash afterimage ghosts FIRST so they sit beneath the live
+  // hero (which is itself hidden mid-dash). They're in world-space, so
+  // they can't share the ctx.translate further down.
+  drawDashAfterimages(ctx);
   const info = heroFrameInfo();
   const img = info.img;
   if (!img) return;
@@ -1219,6 +2233,7 @@ export function drawHero(ctx) {
     f = Math.min(frames - 1, Math.floor(hero.stateTime * info.fps));
   }
   const sx = f * SPR;
+  const sy = heroDirection(hero) * SPR;
   // I-frame flicker
   const flicker = hero.iframes > 0 && Math.floor(hero.stateTime * 20) % 2 === 0;
   ctx.save();
@@ -1258,38 +2273,71 @@ export function drawHero(ctx) {
     ctx.restore();
   }
 
-  // Shadow — softer and smaller so hero reads as standing, not levitating
+  // Shadow — soft radial gradient. Sized proportionally to the hero's
+  // current draw size so it reads as standing (not levitating) at any zoom.
+  // Lighter alpha in hamlet so it doesn't fight the painted scene's own
+  // baked shadows under trees/walls.
   const shX = hero.x, shY = hero.y + 14;
-  const sg = ctx.createRadialGradient(shX, shY, 2, shX, shY, 20);
-  sg.addColorStop(0, 'rgba(0,0,0,0.45)');
+  const inHamlet = room.kind === 'hamlet';
+  const shadowR = (inHamlet ? HERO_DRAW_HAMLET : HERO_DRAW) * 0.27;
+  const shadowAlpha = inHamlet ? 0.22 : 0.45;
+  const sg = ctx.createRadialGradient(shX, shY, 1, shX, shY, shadowR);
+  sg.addColorStop(0, `rgba(0,0,0,${shadowAlpha})`);
+  sg.addColorStop(0.6, `rgba(0,0,0,${(shadowAlpha * 0.5).toFixed(3)})`);
   sg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
   ctx.fillStyle = sg;
-  ctx.fillRect(shX - 20, shY - 6, 40, 12);
-  // Sprite (flipped if facing left). Apply weapon-tint filter for build readability.
+  ctx.beginPath();
+  ctx.ellipse(shX, shY, shadowR, shadowR * 0.36, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // 8-directional sprites handle facing natively — no horizontal flip.
   // Idle bob — subtle sinusoidal y offset when not attacking/dodging, for a
   // "breathing" character. Tiny (< 2px) so it doesn't look floaty.
   const idleBob = (hero.state === 'idle') ? Math.sin(hero.animTime * 2.6) * 1.2 : 0;
   ctx.translate(hero.x, hero.y + idleBob);
-  ctx.scale(hero.facing, 1);
+  // Hamlet uses a smaller draw size so the hero reads at proper scale
+  // against the painted backdrop's NPCs + props (see HERO_DRAW_HAMLET).
+  const drawSize = room.kind === 'hamlet' ? HERO_DRAW_HAMLET : HERO_DRAW;
+  // TELEPORT FEEL — during the dash strike, hide the hero sprite
+  // entirely. Afterimages (drawn earlier in drawDashAfterimages) carry
+  // the visual; the live body would otherwise slide across the screen
+  // and break the teleport read. Halo + shadow stay visible (the
+  // teleport leaves a footprint), only the sprite + rim are skipped.
+  if (hero.dashStrikeTime > 0) {
+    ctx.restore();
+    return;
+  }
+  // DODGE — hero sprite renders at low alpha so the live body reads as
+  // motion-blurred instead of a fully-visible slide. Afterimage ghosts
+  // (cool blue, dropped at intervals during the dodge) do most of the
+  // visual work; the live sprite stays partly visible so the player
+  // still reads the hero's rough position. Skipping the rim pass too
+  // since rim-on-translucent-body looks broken.
+  let dodgeAlpha = 1;
+  if (hero.state === 'dodge') {
+    dodgeAlpha = 0.35;
+  }
   // Rim light pass — draw sprite offset in 4 directions with a warm tint to create
   // an outline. Makes hero pop off the floor, AAA-style silhouette polish.
-  // Skip during i-frame flicker or dodge to avoid visual clutter.
-  if (!flicker && hero.state !== 'dead') {
+  // Skip during i-frame flicker, dodge state, or death.
+  if (!flicker && hero.state !== 'dead' && hero.state !== 'dodge') {
     const rimFilter = 'brightness(0) saturate(100%) sepia(100%) hue-rotate(-10deg) saturate(800%) brightness(1.6)';
     ctx.save();
     ctx.globalAlpha = 0.55;
     ctx.filter = rimFilter;
     const rim = 1.2;
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2 - rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2 + rim, -HERO_DRAW * 0.75,        HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 - rim, HERO_DRAW, HERO_DRAW);
-    ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2,        -HERO_DRAW * 0.75 + rim, HERO_DRAW, HERO_DRAW);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2 - rim, -drawSize * 0.75,        drawSize, drawSize);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2 + rim, -drawSize * 0.75,        drawSize, drawSize);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2,        -drawSize * 0.75 - rim, drawSize, drawSize);
+    ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2,        -drawSize * 0.75 + rim, drawSize, drawSize);
     ctx.filter = 'none';
     ctx.restore();
   }
   const wf = weaponDef().heroFilter;
   if (wf) ctx.filter = wf;
-  ctx.drawImage(img, sx, 0, SPR, SPR, -HERO_DRAW/2, -HERO_DRAW * 0.75, HERO_DRAW, HERO_DRAW);
+  if (dodgeAlpha < 1) ctx.globalAlpha = (ctx.globalAlpha || 1) * dodgeAlpha;
+  ctx.drawImage(img, sx, sy, SPR, SPR, -drawSize/2, -drawSize * 0.75, drawSize, drawSize);
   if (wf) ctx.filter = 'none';
   ctx.restore();
 }

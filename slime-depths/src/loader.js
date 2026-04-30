@@ -22,6 +22,124 @@ function loadImage(key, src) {
   });
 }
 
+// Chroma-key helper — converts pure-magenta (#FF00FF ± tolerance) pixels to
+// transparent alpha with a soft edge feather for anti-aliased fringe pixels.
+// Nano Banana outputs JPG (no alpha), so magenta-background art gets keyed at
+// load time into an offscreen canvas that any ctx.drawImage call can consume.
+// Also exposes a data URL (`<key>_url`) for DOM <img> tags that can't take
+// a canvas directly (hamlet shrine, death-summary sigil).
+function keyMagentaToAlpha(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  const cx = c.getContext('2d');
+  cx.drawImage(img, 0, 0);
+  const data = cx.getImageData(0, 0, c.width, c.height);
+  const p = data.data;
+  // Hue-based magenta detection: any pixel where (red + blue)/2 strongly
+  // exceeds green is "magenta-ish" regardless of overall brightness. Handles
+  // JPEG compression artifacts, anti-aliased fringes, and the pink halo left
+  // by a naive RGB-threshold key. Score 0..100+ where ~50+ starts fading
+  // and ~90+ is full transparency.
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i], g = p[i + 1], b = p[i + 2];
+    const magScore = (r + b) / 2 - g;
+    if (magScore > 90) {
+      p[i + 3] = 0;
+    } else if (magScore > 40) {
+      // Feather zone — linear ramp from fully-opaque (40) to fully-transparent (90).
+      const t = (magScore - 40) / 50;
+      p[i + 3] = Math.max(0, Math.floor(p[i + 3] * (1 - t)));
+    }
+  }
+  cx.putImageData(data, 0, 0);
+  return c;
+}
+
+// opts.cropBottomFrac (0..1) — trim N% off the bottom of each cell. Used for
+// sprite sheets where Nano Banana ignored the "no labels" negative and painted
+// text captions beneath each figure (we slice them out). opts.cropTopFrac
+// does the same from the top.
+function sliceCanvasGrid(srcCanvas, cols, rows, opts = {}) {
+  const srcCellW = Math.floor(srcCanvas.width / cols);
+  const srcCellH = Math.floor(srcCanvas.height / rows);
+  const topFrac = opts.cropTopFrac || 0;
+  const botFrac = opts.cropBottomFrac || 0;
+  const cellW = srcCellW;
+  const cellH = Math.floor(srcCellH * (1 - topFrac - botFrac));
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = document.createElement('canvas');
+      cell.width = cellW;
+      cell.height = cellH;
+      cell.getContext('2d').drawImage(
+        srcCanvas,
+        c * srcCellW,
+        r * srcCellH + Math.floor(srcCellH * topFrac),
+        cellW,
+        cellH,
+        0, 0, cellW, cellH,
+      );
+      cells.push(cell);
+    }
+  }
+  return cells;
+}
+
+// Loads a magenta-keyed image. Stored at `images[key]` as a canvas (drawImage
+// accepts both Image and HTMLCanvasElement). Also populates `images[key_url]`
+// with a data URL for DOM consumption.
+function loadKeyedImage(key, src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = (ok) => {
+      if (ok) {
+        const keyed = keyMagentaToAlpha(img);
+        images[key] = keyed;
+        try { images[key + '_url'] = keyed.toDataURL('image/png'); } catch (e) {}
+      } else {
+        failed.push(src);
+        console.warn('keyed image failed:', src);
+      }
+      bump(src);
+      resolve();
+    };
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = src;
+  });
+}
+
+// Loads a magenta-keyed sprite sheet and slices it into an N×M grid. Each
+// cell is stored at `images[<baseKey>_<i>]` (row-major, 0-indexed) as a
+// canvas, with an accompanying data URL at `<baseKey>_<i>_url`. opts.cropTopFrac
+// and opts.cropBottomFrac trim rows off each cell (used to crop out Nano Banana
+// text labels that slipped through a negative prompt).
+function loadKeyedGrid(baseKey, src, cols, rows, opts = {}) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = (ok) => {
+      if (ok) {
+        const keyed = keyMagentaToAlpha(img);
+        const cells = sliceCanvasGrid(keyed, cols, rows, opts);
+        for (let i = 0; i < cells.length; i++) {
+          images[`${baseKey}_${i}`] = cells[i];
+          try { images[`${baseKey}_${i}_url`] = cells[i].toDataURL('image/png'); } catch (e) {}
+        }
+      } else {
+        failed.push(src);
+        console.warn('keyed grid failed:', src);
+      }
+      bump(src);
+      resolve();
+    };
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = src;
+  });
+}
+
 // Audio loading is tricky: `canplaythrough` may never fire in some browsers
 // before user interaction (autoplay policy) or for streaming .ogg. We resolve
 // on the FIRST of: canplay, loadedmetadata, or a 2.5s timeout. We only need
@@ -113,6 +231,70 @@ export async function loadAll(progressCb) {
     loadImage('haunt_walk',    'assets/enemies/haunt_walk.png'),
     loadImage('haunt_attack',  'assets/enemies/haunt_attack.png'),
     loadImage('haunt_death',   'assets/enemies/haunt_death.png'),
+    // Tiny RPG kit ingest (cleanup pass — wires 6 previously-unused
+    // characters from the kit into the roster):
+    //   werewolf            — fast bestial skirmisher (F3 abyss)
+    //   werebear            — heavy bestial brute (F3+F4)
+    //   skel_archer         — bone-themed ranged (replaces archer in F1 crypt)
+    //   knight              — armored melee (replaces vanguard's orc-retint)
+    //   armored_skeleton    — heavy bone melee (F2 vault garrison)
+    //   greatsword_skeleton — heavy bone cleaver (F2/F3 elite slot)
+    loadImage('werewolf_idle',           'assets/enemies/werewolf_idle.png'),
+    loadImage('werewolf_walk',           'assets/enemies/werewolf_walk.png'),
+    loadImage('werewolf_attack',         'assets/enemies/werewolf_attack.png'),
+    loadImage('werewolf_death',          'assets/enemies/werewolf_death.png'),
+    loadImage('werebear_idle',           'assets/enemies/werebear_idle.png'),
+    loadImage('werebear_walk',           'assets/enemies/werebear_walk.png'),
+    loadImage('werebear_attack',         'assets/enemies/werebear_attack.png'),
+    loadImage('werebear_death',          'assets/enemies/werebear_death.png'),
+    loadImage('skel_archer_idle',        'assets/enemies/skel_archer_idle.png'),
+    loadImage('skel_archer_walk',        'assets/enemies/skel_archer_walk.png'),
+    loadImage('skel_archer_attack',      'assets/enemies/skel_archer_attack.png'),
+    loadImage('skel_archer_death',       'assets/enemies/skel_archer_death.png'),
+    loadImage('knight_enemy_idle',       'assets/enemies/knight_idle.png'),
+    loadImage('knight_enemy_walk',       'assets/enemies/knight_walk.png'),
+    loadImage('knight_enemy_attack',     'assets/enemies/knight_attack.png'),
+    loadImage('knight_enemy_death',      'assets/enemies/knight_death.png'),
+    loadImage('armored_skel_idle',       'assets/enemies/armored_skeleton_idle.png'),
+    loadImage('armored_skel_walk',       'assets/enemies/armored_skeleton_walk.png'),
+    loadImage('armored_skel_attack',     'assets/enemies/armored_skeleton_attack.png'),
+    loadImage('armored_skel_death',      'assets/enemies/armored_skeleton_death.png'),
+    loadImage('greatsword_skel_idle',    'assets/enemies/greatsword_skeleton_idle.png'),
+    loadImage('greatsword_skel_walk',    'assets/enemies/greatsword_skeleton_walk.png'),
+    loadImage('greatsword_skel_attack',  'assets/enemies/greatsword_skeleton_attack.png'),
+    loadImage('greatsword_skel_death',   'assets/enemies/greatsword_skeleton_death.png'),
+    // Tiny RPG kit — second batch (full-roster pass). Pacing-aware
+    // introductions: F2 gets soldier; F3 gets swordsman / armored_axeman
+    // / armored_orc; F4 gets knight_templar + orc_rider; elite_orc
+    // becomes the F1 boss sprite (Grudnok visual differentiation).
+    loadImage('soldier_idle',           'assets/enemies/soldier_idle.png'),
+    loadImage('soldier_walk',           'assets/enemies/soldier_walk.png'),
+    loadImage('soldier_attack',         'assets/enemies/soldier_attack.png'),
+    loadImage('soldier_death',          'assets/enemies/soldier_death.png'),
+    loadImage('swordsman_idle',         'assets/enemies/swordsman_idle.png'),
+    loadImage('swordsman_walk',         'assets/enemies/swordsman_walk.png'),
+    loadImage('swordsman_attack',       'assets/enemies/swordsman_attack.png'),
+    loadImage('swordsman_death',        'assets/enemies/swordsman_death.png'),
+    loadImage('armored_axeman_idle',    'assets/enemies/armored_axeman_idle.png'),
+    loadImage('armored_axeman_walk',    'assets/enemies/armored_axeman_walk.png'),
+    loadImage('armored_axeman_attack',  'assets/enemies/armored_axeman_attack.png'),
+    loadImage('armored_axeman_death',   'assets/enemies/armored_axeman_death.png'),
+    loadImage('armored_orc_idle',       'assets/enemies/armored_orc_idle.png'),
+    loadImage('armored_orc_walk',       'assets/enemies/armored_orc_walk.png'),
+    loadImage('armored_orc_attack',     'assets/enemies/armored_orc_attack.png'),
+    loadImage('armored_orc_death',      'assets/enemies/armored_orc_death.png'),
+    loadImage('elite_orc_idle',         'assets/enemies/elite_orc_idle.png'),
+    loadImage('elite_orc_walk',         'assets/enemies/elite_orc_walk.png'),
+    loadImage('elite_orc_attack',       'assets/enemies/elite_orc_attack.png'),
+    loadImage('elite_orc_death',        'assets/enemies/elite_orc_death.png'),
+    loadImage('knight_templar_idle',    'assets/enemies/knight_templar_idle.png'),
+    loadImage('knight_templar_walk',    'assets/enemies/knight_templar_walk.png'),
+    loadImage('knight_templar_attack',  'assets/enemies/knight_templar_attack.png'),
+    loadImage('knight_templar_death',   'assets/enemies/knight_templar_death.png'),
+    loadImage('orc_rider_idle',         'assets/enemies/orc_rider_idle.png'),
+    loadImage('orc_rider_walk',         'assets/enemies/orc_rider_walk.png'),
+    loadImage('orc_rider_attack',       'assets/enemies/orc_rider_attack.png'),
+    loadImage('orc_rider_death',        'assets/enemies/orc_rider_death.png'),
     loadImage('dungeon_tiles','assets/tiles/dungeon.png'),
 
     // Legacy shared-icon PNGs — kept as fallbacks if a dedicated per-relic
@@ -255,6 +437,111 @@ export async function loadAll(progressCb) {
     loadImage('npc_gravekeeper',        'assets/hamlet/npc_gravekeeper.png'),
     loadImage('npc_oracle',             'assets/hamlet/npc_oracle.png'),
     loadImage('npc_wanderer_hamlet',    'assets/hamlet/npc_wanderer_hamlet.png'),
+
+    // THE WATCHER — magenta-keyed art. Sigil is a single painted eye carved
+    // in stone (used in-game + in the run-summary ledger). Shrine grid is
+    // 4×2 = 8 progression states the hamlet shrine reads from based on how
+    // many milestones the player has heard.
+    loadKeyedImage('watcher_sigil',     'assets/hamlet/watcher_sigil.jpg'),
+    loadKeyedGrid('shrine_watcher',     'assets/hamlet/shrine_watcher_grid.jpg', 4, 2),
+
+    // HAMLET — legacy DOM-overlay scene assets. Kept around because the
+    // old DOM hamlet path still references them. The active canvas hamlet
+    // uses scene_v2.jpg (registered further below). These can be removed
+    // once we confirm the DOM hamlet path is fully retired.
+    // 960×672 hamlet room (kept as a regular loadImage — no chroma-key
+    // needed, it's a full-frame painting). Descent portal is a single
+    // painted stairwell the player walks into to begin a run. NPC world
+    // grid is a 4×2 sprite sheet of chibi pixel NPCs (6 canonical + 2
+    // hallucinated extras at indices 3 and 7 — we skip those).
+    // cropBottomFrac: 0.22 trims out the text label band Nano Banana
+    // added despite the negative prompt.
+    loadImage('hamlet_backdrop',        'assets/hamlet/hamlet_backdrop.jpg'),
+    loadKeyedImage('descent_portal',    'assets/hamlet/descent_portal.jpg'),
+    loadKeyedGrid('hamlet_npc',         'assets/hamlet/hamlet_npc_world_grid.jpg', 4, 2, { cropBottomFrac: 0.22 }),
+
+    // HAMLET ENV PACK — painted pixel-art buildings, cobblestone tile grid,
+    // firepit variants, and a pixel-art Watcher shrine. 4×2 = 8 cells:
+    //   0 forge        | 1 dome         | 2 tower A      | 3 tower B
+    //   4 cobble tile  | 5 firepit A    | 6 firepit B    | 7 shrine (pixel)
+    loadKeyedGrid('hamlet_env',         'assets/hamlet/hamlet_env_pack.jpg', 4, 2),
+
+    // HAMLET NPCs PIXEL — proper pixel-art NPCs matching the knight's
+    // aesthetic. 3×2 = 6 cells, row-major:
+    //   0 keeper    | 1 smith        | 2 archivist
+    //   3 grave    | 4 oracle        | 5 wanderer
+    loadKeyedGrid('hamlet_npcp',        'assets/hamlet/hamlet_npc_pixel.jpg', 3, 2),
+
+    // ── CAINOS PIXEL ART TOP DOWN — unified hamlet asset pack ─────────────
+    // 32px-tile sheets used by hamletFloor.js for the tilemap-rendered
+    // hamlet floor. Loaded as plain images; the floor renderer uses
+    // drawImage with sub-rect coords to slice tiles out of the sheets.
+    // (The 'with shadow' variants are pre-baked drop shadows — useful
+    // when we add props/plants in a future pass.)
+    loadImage('cainos_grass',           'assets/hamlet/cainos/TX Tileset Grass.png'),
+    loadImage('cainos_stone_ground',    'assets/hamlet/cainos/TX Tileset Stone Ground.png'),
+    loadImage('cainos_wall',            'assets/hamlet/cainos/TX Tileset Wall.png'),
+    loadImage('cainos_struct',          'assets/hamlet/cainos/TX Struct.png'),
+    loadImage('cainos_props',           'assets/hamlet/cainos/TX Props.png'),
+    loadImage('cainos_props_shadow',    'assets/hamlet/cainos/TX Props with Shadow.png'),
+    loadImage('cainos_plant',           'assets/hamlet/cainos/TX Plant.png'),
+    loadImage('cainos_plant_shadow',    'assets/hamlet/cainos/TX Plant with Shadow.png'),
+
+    // ── HAMLET BACKDROP — AI-generated paired scene + walkability mask ────
+    // v4 (current): 2752×1536 native, world-rendered at 1376×768. No-wall
+    //               octagonal layout — single perimeter ring with no
+    //               fragmented inner walls. Cleaner walkability (chromatic
+    //               classifier handles grass/dirt/wall directly).
+    // (v2 + v3 legacy backdrops removed in cleanup pass — assets deleted
+    //  from disk; if you need them back, the previous git history has
+    //  scene_v2.jpg / scene_v3.jpg under their respective commits.)
+    loadImage('hamlet_scene_v4',        'assets/hamlet/scene_v4.jpg'),
+    loadImage('hamlet_scene_v4_mask',   'assets/hamlet/scene_v4_mask.jpg'),
+
+    // ── HAMLET NPCs v2 — PixelLab-generated to match the mage's style ─────
+    // Each is a single south-facing idle PNG at ~224-244px, generated via
+    // PixelLab Character Creator using mage_style_ref.png as style anchor.
+    // hamletScene.drawNpc prefers these over the older hamlet_npcp_* grid.
+    loadImage('npc_v2_keeper',          'assets/hamlet/npc_v2_keeper.png'),
+    loadImage('npc_v2_smith',           'assets/hamlet/npc_v2_smith.png'),
+    loadImage('npc_v2_archivist',       'assets/hamlet/npc_v2_archivist.png'),
+    loadImage('npc_v2_gravekeeper',     'assets/hamlet/npc_v2_gravekeeper.png'),
+    loadImage('npc_v2_oracle',          'assets/hamlet/npc_v2_oracle.png'),
+    loadImage('npc_v2_wanderer',        'assets/hamlet/npc_v2_wanderer.png'),
+
+    // ── HAMLET FX — animated sprite sheets ────────────────────────────────
+    // PixelLab Animated Object exports stitched horizontally by
+    // scripts/pixellab/import-fx.js. Frame count + dims declared in the
+    // HAMLET_FX registry in hamletScene.js. Drawn via drawHamletFx as
+    // an overlay pass on top of the painted backdrop.
+    loadImage('fx_firepit',             'assets/hamlet/fx_firepit.png'),
+    loadImage('fx_portal',              'assets/hamlet/fx_portal.png'),
+    loadImage('fx_cookingpot',          'assets/hamlet/fx_cookingpot.png'),
+    loadImage('fx_anvil',               'assets/hamlet/fx_anvil.png'),
+    loadImage('fx_scryingbasin',        'assets/hamlet/fx_scryingbasin.png'),
+    loadImage('fx_portal_shadow',       'assets/hamlet/fx_portal_shadow.png'),
+    loadImage('fx_flameskull',          'assets/hamlet/fx_flameskull.png'),
+    loadImage('fx_chestfire',           'assets/hamlet/fx_chestfire.png'),
+    loadImage('fx_chestcold',           'assets/hamlet/fx_chestcold.png'),
+    // (Removed in cleanup pass: fx_lectern, fx_graves, fx_lanternpost,
+    //  fx_bookcase, fx_studydesk, fx_pit_cover, fx_well, fx_savegem,
+    //  fx_noticeboard. These were parked — loaded but no longer referenced
+    //  by HAMLET_FX. Re-add a loadImage line + an FX entry to bring back.)
+
+    // ── DUNGEON FX — animated/static props for dungeon rooms ─────────
+    // Stored under hamlet/ for now (single asset folder); future
+    // refactor could split into hamlet/ and dungeon/ subfolders.
+    loadImage('fx_dungeon_torch',       'assets/hamlet/fx_dungeon_torch.png'),
+    loadImage('fx_dungeon_pillar',      'assets/hamlet/fx_dungeon_pillar.png'),
+    // Dungeon doors — two 4-frame open/close atlases per rotation.
+    // 'door_s' = south rotation (door face points south toward player
+    // who is south of the wall — used for NORTH-wall doors).
+    // 'door_n' = north rotation (door face points north — used for
+    // SOUTH-wall doors so the player walking out of a room sees the
+    // door face them naturally, no vertical-flip artifact).
+    // Each atlas is 448×112 (4 frames × 112×112 native).
+    loadImage('dungeon_door_s',         'assets/dungeon/door_s.png'),
+    loadImage('dungeon_door_n',         'assets/dungeon/door_n.png'),
 
     loadAudio('sword_swing',  'assets/sfx/sword_swing.ogg'),
     loadAudio('slime_hit',    'assets/sfx/slime_hit.ogg'),

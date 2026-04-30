@@ -8,8 +8,76 @@
 //   6: boss          (unique per floor: orc / bone_captain / broodmother)
 //
 // `level` (1..3) scales enemy composition, elite chance, damage, and HP.
-import { ROOM_W, ROOM_H, getPillarCells } from './room.js';
+import { ROOM_W, ROOM_H, ROOM_SIZES, getPillarCells, isCarvedTile } from './room.js';
 import { isCursed } from './curses.js';
+import { pickArchetype, applyArchetype } from './archetypes.js';
+
+// HADES-STYLE ROOM SHAPES — pick a size template per room kind so the run
+// reads as a sequence of distinct spaces, not a chain of identical
+// rectangles. Size choice is deterministic by kind + slight randomization so
+// repeat runs feel slightly different. Returns { w, h }.
+//
+// Why per-kind: each room type has a gameplay flavor that benefits from a
+// different scale. Sanctuaries should feel intimate (small). Boss arenas
+// should feel epic (large). Combat rooms vary so you never know if you're
+// stepping into a wide hall or a tight square. This is what gives Hades
+// its room-to-room sense of variety even when individual rooms are simple.
+function pickRoomSize(kind, slot) {
+  // Sanctuaries / rewards — intimate chapel feel
+  if (kind === 'sanctuary' || kind === 'reward' || kind === 'altar') {
+    return ROOM_SIZES.small;
+  }
+  // Boss arena — always large for impact
+  if (kind === 'boss') return ROOM_SIZES.large;
+  // Mini-boss + late-floor combat — wider so you have room to read telegraphs
+  if (slot === 'miniboss' || slot === 'combat3') {
+    return Math.random() < 0.5 ? ROOM_SIZES.wide : ROOM_SIZES.large;
+  }
+  // Trove / event challenge — tall room for verticality
+  if (kind === 'trove' || kind === 'challenge') {
+    return Math.random() < 0.5 ? ROOM_SIZES.medium : ROOM_SIZES.tall;
+  }
+  // Standard combat — mostly medium, occasionally wide for variety
+  if (kind === 'combat') {
+    const r = Math.random();
+    if (r < 0.55) return ROOM_SIZES.medium;
+    if (r < 0.80) return ROOM_SIZES.wide;
+    return ROOM_SIZES.tall;
+  }
+  // Start / hamlet / fallback
+  return ROOM_SIZES.medium;
+}
+
+// Pick a non-rectangular room shape for the given kind + size. Returns
+// one of the keys from ROOM_SHAPES. Weighting goals:
+//   - Plain rectangles still feel familiar (~50% of combat rooms stay rect)
+//   - Heavier shapes (plus, T) only roll in rooms big enough to keep the
+//     remaining floor area playable
+//   - Sanctuary / reward rooms stay rect — the chapel feel benefits from
+//     a clean simple footprint
+//   - Boss arenas stay rect — the spike/fire patterns are hand-tuned for
+//     a rectangular floor and would clip into corner carves
+function pickRoomShape(kind, size) {
+  if (kind === 'sanctuary' || kind === 'reward' || kind === 'altar' || kind === 'boss' || kind === 'start') {
+    return 'rect';
+  }
+  // Trove rooms feel best as rectangles (loot strewn across an open floor)
+  if (kind === 'trove') return 'rect';
+  // For combat / event / challenge rooms, weight by available floor area
+  const floorArea = size.w * size.h;
+  const r = Math.random();
+  // Below ~190 tiles (small/medium-tall), restrict to lighter shapes
+  if (floorArea < 200) {
+    if (r < 0.55) return 'rect';
+    if (r < 0.75) return ['L_NE', 'L_NW', 'L_SE', 'L_SW'][(Math.random() * 4) | 0];
+    return ['T_top', 'T_bottom', 'T_left', 'T_right'][(Math.random() * 4) | 0];
+  }
+  // Larger rooms get the full menu including plus
+  if (r < 0.45) return 'rect';
+  if (r < 0.70) return ['L_NE', 'L_NW', 'L_SE', 'L_SW'][(Math.random() * 4) | 0];
+  if (r < 0.90) return ['T_top', 'T_bottom', 'T_left', 'T_right'][(Math.random() * 4) | 0];
+  return 'plus';
+}
 
 export const MAX_FLOORS = 4;
 
@@ -38,12 +106,62 @@ const COMBAT_SLOT_MULS = {
 function randInt(min, max) { return (min + Math.random() * (max - min + 1)) | 0; }
 function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 
+// COMP — enemy composition pools per difficulty tier. Each entry is one
+// possible spawn list for a combat room; floor.js / floorGraph.js pick
+// from these by floor level + room slot via tierForSlot.
+//
+// PER-FLOOR ENEMY IDENTITY — staggered introductions. The full Tiny RPG
+// kit (20 characters) is now wired across the four floors. Each floor
+// ADDS a few new types to the prior pool, so the player learns a
+// manageable number of new mechanics per descent rather than seeing the
+// whole roster at F2:
+//
+//   tier1 (F1 crypt) — 5 types · bone & ooze
+//     slime, skel, skel_archer, lancer, bomber
+//     The crypt is bone-themed end-to-end (no human archer). Lancer
+//     introduces the "linear charge" telegraph early so it's a known
+//     pattern by F2. Bomber introduces AoE damage.
+//
+//   tier2 (F2 vault) — +9 types · former garrison
+//     + orc, archer, vanguard, knight_enemy, armored_skel, soldier,
+//       priest, wizard, haunt
+//     The "former garrison" theme — the kingdom's old guard, twisted.
+//     Armor variety (soldier as common rank, knight_enemy + armored_skel
+//     as elites), first ranged caster (wizard), first healer (priest),
+//     first aerial threat (haunt).
+//
+//   tier3 (F3 abyss) — +9 types · warped + bestial
+//     + reflector, dreadmage, warden, werewolf, werebear,
+//       greatsword_skel, swordsman, armored_axeman, armored_orc
+//     The Spire's biome twists what F2 brought: bestial pair (werewolf
+//     fast / werebear heavy), heavier armored (greatsword_skel,
+//     armored_axeman), the orc bloodline that survived F1 (armored_orc),
+//     dread casters that punish positioning (dreadmage), and the
+//     reflector / warden mini-boss-tier mechanics.
+//
+//   tier4 (F4 inferno) — +2 types · throne of ruin
+//     + knight_templar, orc_rider
+//     Holy-fire elite (templar pairs with priest in "garrison of ash"
+//     comps) and the rare mounted lancer (orc_rider — a single rider
+//     in a comp is a massive threat). Most F4 comps remix tier2/tier3
+//     bias toward heavy hitters; templar + rider are the only F4-
+//     exclusive new mechanics.
+//
+// BOSSES use distinct sprites:
+//   F1 elite_orc (Grudnok), F2 bone_captain, F3 broodmother, F4 ember_tyrant.
+//
+// MINI-BOSSES rotate per floor (see makeMiniBossRoom):
+//   F1: vanguard / knight_enemy
+//   F2: warden / elite_orc / greatsword_skel
+//   F3: reflector / armored_axeman / werebear
+//   F4: hermit / orc_rider / knight_templar
 const COMP = {
   tier1: [
     ['slime', 'slime', 'slime'],
     ['slime', 'slime', 'bomber'],
-    ['slime', 'skel', 'archer'],
-    ['lancer', 'slime', 'slime'],              // lancer introduces itself on floor 1
+    ['slime', 'skel', 'skel_archer'],            // crypt-native bone ranged
+    ['lancer', 'slime', 'slime'],                 // lancer introduces itself on floor 1
+    ['skel', 'skel_archer', 'slime'],             // bone duo + slime
   ],
   tier2: [
     ['skel', 'skel', 'archer'],
@@ -53,12 +171,22 @@ const COMP = {
     ['orc', 'slime', 'bomber'],
     ['lancer', 'archer', 'slime'],
     ['priest', 'skel', 'skel', 'archer'],
-    ['wizard', 'skel', 'slime'],                // wizard introduced in tier2
-    ['vanguard', 'archer', 'archer'],          // vanguard + 2 archers — flank while dodging arrows
-    ['vanguard', 'skel', 'slime'],              // vanguard with light support
-    // Content pass B3 — new enemies enter the pool at tier2:
-    ['haunt', 'skel', 'archer'],                // airborne harasser + ground pressure
-    ['haunt', 'haunt', 'slime'],                // two aerials force ranged response
+    ['wizard', 'skel', 'slime'],                  // wizard introduced in tier2
+    ['knight_enemy', 'archer', 'archer'],         // knight + 2 archers — flank while dodging arrows
+    ['knight_enemy', 'skel', 'slime'],            // knight with light support
+    ['vanguard', 'archer', 'archer'],             // vanguard retained for variety
+    ['armored_skel', 'archer', 'skel'],           // F2 garrison — armored bone leads
+    ['armored_skel', 'priest', 'skel_archer'],    // healer-backed armored push
+    ['knight_enemy', 'armored_skel', 'archer'],   // double-shielded front line
+    // Tiny RPG kit second batch — F2 introduces soldier (basic armored
+    // common, beneath the elite knight/armored_skel layer):
+    ['soldier', 'soldier', 'archer'],             // common rank-and-file pair + ranged
+    ['soldier', 'archer', 'archer', 'slime'],     // wide front: 4 enemies, mostly weak
+    ['soldier', 'knight_enemy', 'archer'],        // common + elite — visual hierarchy
+    ['soldier', 'priest', 'skel'],                // healer-backed common push
+    // Content pass B3 — airborne harasser:
+    ['haunt', 'skel', 'archer'],
+    ['haunt', 'haunt', 'slime'],
   ],
   tier3: [
     ['orc', 'orc', 'archer'],
@@ -69,21 +197,68 @@ const COMP = {
     ['priest', 'orc', 'archer', 'lancer'],
     ['priest', 'priest', 'skel', 'skel', 'archer'],
     ['lancer', 'lancer', 'archer', 'bomber'],
-    ['wizard', 'wizard', 'priest', 'skel'],     // double wizard — orbs everywhere
+    ['wizard', 'wizard', 'priest', 'skel'],       // double wizard — orbs everywhere
     ['wizard', 'lancer', 'orc', 'archer'],
-    ['vanguard', 'vanguard', 'archer', 'archer'],  // double shield wall
-    ['vanguard', 'wizard', 'skel', 'archer'],       // vanguard protects caster
-    ['vanguard', 'priest', 'lancer', 'bomber'],
-    ['reflector', 'archer', 'skel', 'bomber'],      // flank the mirror-mage
-    ['reflector', 'reflector', 'orc'],               // twin mirrors
-    ['reflector', 'vanguard', 'archer', 'archer'],  // tank + caster — hardest comp
-    // Content pass B3 — the harder new enemies enter here:
-    ['warden', 'archer', 'skel'],                    // warden anchors a slow push
-    ['warden', 'priest', 'archer'],                  // healer keeps the warden up
-    ['dreadmage', 'vanguard', 'archer'],             // caster behind tank
-    ['dreadmage', 'haunt', 'skel'],                  // two ranged threats + air
-    ['dreadmage', 'dreadmage', 'priest'],            // triple-caster nightmare
-    ['warden', 'haunt', 'haunt'],                    // ground + air combo
+    ['knight_enemy', 'knight_enemy', 'archer', 'archer'],  // double shield wall
+    ['knight_enemy', 'wizard', 'skel', 'archer'],          // tank protects caster
+    ['knight_enemy', 'priest', 'lancer', 'bomber'],
+    ['reflector', 'archer', 'skel', 'bomber'],    // flank the mirror-mage
+    ['reflector', 'reflector', 'orc'],             // twin mirrors
+    ['reflector', 'knight_enemy', 'archer', 'archer'],  // tank + caster — hardest comp
+    ['warden', 'archer', 'skel'],                  // warden anchors a slow push
+    ['warden', 'priest', 'archer'],                // healer keeps the warden up
+    ['dreadmage', 'knight_enemy', 'archer'],       // caster behind tank
+    ['dreadmage', 'haunt', 'skel'],                // two ranged threats + air
+    ['dreadmage', 'dreadmage', 'priest'],          // triple-caster nightmare
+    ['warden', 'haunt', 'haunt'],                  // ground + air combo
+    // Tiny RPG kit additions — bestial chase pair + heavy cleaver:
+    ['werewolf', 'werewolf', 'archer'],            // fast skirmisher pair + ranged
+    ['werewolf', 'werebear', 'priest'],            // chase / corner / heal
+    ['werebear', 'archer', 'archer'],              // brute + double ranged
+    ['werewolf', 'haunt', 'haunt'],                // air + ground chase pressure
+    ['greatsword_skel', 'skel_archer', 'skel'],    // heavy bone cleaver anchors
+    ['greatsword_skel', 'priest', 'archer'],
+    // Tiny RPG kit second batch — F3 introduces 3 new types:
+    //   swordsman      — agile mid-tier (between werewolf and knight)
+    //   armored_axeman — heavy axe brute (human counterpart to greatsword_skel)
+    //   armored_orc    — Grudnok's veterans, returned heavier
+    ['swordsman', 'swordsman', 'archer'],          // duelist pair — fast pressure
+    ['swordsman', 'werewolf', 'priest'],           // two skirmishers + healer
+    ['swordsman', 'dreadmage', 'skel'],            // fast melee + caster combo
+    ['armored_axeman', 'priest', 'archer'],        // brute + ranged support
+    ['armored_axeman', 'archer', 'archer', 'skel'],
+    ['armored_axeman', 'dreadmage', 'haunt'],      // brute + caster + air
+    ['armored_orc', 'orc', 'archer'],              // armored elder + common
+    ['armored_orc', 'priest', 'lancer'],
+    ['armored_orc', 'armored_orc', 'haunt'],       // veteran pair — dangerous
+  ],
+  // Floor 4 (Inferno / Throne of Ruin) — distinct enemy mix from tier3,
+  // not just stat-scaled. Drops light slime/lancer/skel comps; biases
+  // toward heavy hitters + casters + the bestial pair. Average roster
+  // size is one larger to match the floor-4 difficulty curve.
+  tier4: [
+    ['greatsword_skel', 'wizard', 'archer', 'archer'],
+    ['knight_enemy', 'knight_enemy', 'dreadmage', 'priest'],
+    ['werebear', 'werewolf', 'werewolf', 'archer'],   // bestial swarm
+    ['werebear', 'dreadmage', 'priest', 'haunt'],
+    ['warden', 'greatsword_skel', 'priest', 'archer'],
+    ['armored_skel', 'armored_skel', 'reflector', 'haunt'],
+    ['dreadmage', 'dreadmage', 'reflector', 'priest'],  // pure-caster wall
+    ['knight_enemy', 'warden', 'haunt', 'haunt'],
+    ['werebear', 'werebear', 'priest'],                  // twin brute
+    ['greatsword_skel', 'greatsword_skel', 'dreadmage'], // twin heavy + caster
+    ['armored_orc', 'armored_axeman', 'dreadmage'],      // F3 elite carryover
+    ['armored_orc', 'armored_orc', 'priest', 'haunt'],
+    // Tiny RPG kit second batch — F4 introduces 2 new types:
+    //   knight_templar — holy elite, pairs with priest in "garrison of ash"
+    //   orc_rider      — rare mounted lancer; one rider is a major threat
+    ['knight_templar', 'priest', 'archer'],              // templar guard
+    ['knight_templar', 'knight_templar', 'priest'],      // double templar — heavy block
+    ['knight_templar', 'dreadmage', 'priest'],           // tank + caster + healer
+    ['knight_templar', 'haunt', 'haunt', 'priest'],      // ground tank + air pressure
+    ['orc_rider', 'archer', 'archer'],                    // rider charges + ranged cover
+    ['orc_rider', 'armored_orc', 'priest'],               // rider + veteran + heal
+    ['orc_rider', 'dreadmage', 'haunt'],                  // chaotic mix
   ],
   boss: [
     ['orc', 'archer', 'archer'],
@@ -93,27 +268,44 @@ const COMP = {
   ],
 };
 
-// Which tier a combat slot rolls from, based on floor level + slot
+// Which tier a combat slot rolls from, based on floor level + slot.
+// Pre-Tiny-RPG-pass this returned tier3 for both floors 3 AND 4 — the
+// tier4 table didn't exist, so floor 4 was "tier3 with 1.6× HP/dmg".
+// Now floor 4 has its own composition pool with bias toward heavy
+// hitters + casters + bestial; the stat multipliers in COMBAT_SLOT_MULS
+// stack on top.
 function tierForSlot(level, slot) {
   if (level === 1) return slot === 'combat3' ? 'tier2' : 'tier1';
-  if (level === 2) return slot === 'combat1' ? 'tier2' : 'tier3';
-  return 'tier3';                        // floor 3: always tier3
+  // FLOOR-2 CLIFF FIX (pacing review P0): combat2 used to jump to tier3
+  // (wizards/dreadmages/reflectors — 9 new mechanics in one room) while
+  // floor-2 loot weights still had 0% legendary, so the player couldn't
+  // out-power the difficulty bump. Move combat2 down to tier2 and only
+  // unlock tier3 in combat3. Floor 2 now ramps tier2 → tier2 → tier3
+  // instead of tier2 → tier3 → tier3.
+  if (level === 2) return slot === 'combat3' ? 'tier3' : 'tier2';
+  if (level === 3) return 'tier3';
+  return 'tier4';                        // floor 4: dedicated tier4 mix
 }
 
-function spawnCells(count, pillarTemplate = -1) {
+function spawnCells(count, pillarTemplate = -1, w = ROOM_W, h = ROOM_H, shape = 'rect') {
   const cells = [];
-  const mid = Math.floor(ROOM_W / 2);
-  // Avoid pillar positions — pillars are blocking geometry; enemies on top are stuck
-  const pillars = pillarTemplate >= 0 ? getPillarCells(pillarTemplate) : [];
+  const mid = Math.floor(w / 2);
+  // Pillar templates are authored at MEDIUM (20×14) — scale to actual room dims.
+  const sx = w / ROOM_W, sy = h / ROOM_H;
+  const pillars = pillarTemplate >= 0
+    ? getPillarCells(pillarTemplate).map(([px, py]) => [Math.round(px * sx), Math.round(py * sy)])
+    : [];
   const isPillar = (x, y) => pillars.some(([px, py]) => px === x && py === y);
   for (let i = 0; i < count * 12 && cells.length < count; i++) {
-    const x = randInt(2, ROOM_W - 3);
-    const y = randInt(3, ROOM_H - 4);
-    if (Math.abs(x - mid) < 2 && Math.abs(y - Math.floor(ROOM_H / 2)) < 2) continue;
+    const x = randInt(2, w - 3);
+    const y = randInt(3, h - 4);
+    if (Math.abs(x - mid) < 2 && Math.abs(y - Math.floor(h / 2)) < 2) continue;
     if (cells.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 3)) continue;
     if (isPillar(x, y)) continue;
     // Also avoid directly-adjacent pillar cells so enemies aren't wedged
     if (pillars.some(([px, py]) => Math.abs(px - x) <= 1 && Math.abs(py - y) <= 1)) continue;
+    // Skip cells inside shape carves (those become walls in build pass)
+    if (shape !== 'rect' && isCarvedTile(x, y, w, h, shape)) continue;
     cells.push({ x, y });
   }
   return cells;
@@ -121,10 +313,15 @@ function spawnCells(count, pillarTemplate = -1) {
 
 // Exported so floorGraph.js can reuse the exact same combat composition
 // logic when building branching DAGs. Same pacing, different run shape.
-export function makeCombatRoom(level, slot, eliteChance) {
-  const tier = tierForSlot(level, slot);
+export function makeCombatRoom(level, slot, eliteChance, tierSlotOverride) {
+  // tierSlotOverride lets the caller decouple ARCHETYPE selection (`slot`)
+  // from TIER selection. Elite rooms pass slot='elite' (for archetype
+  // bias) but want their tier/multipliers to follow the underlying
+  // combat-slot they replaced (combat2 most of the time). Without this,
+  // elite-as-slot would fall through tierForSlot's default branch.
+  const tier = tierForSlot(level, tierSlotOverride || slot);
   const comp = pick(COMP[tier]).slice();
-  const slotMul = COMBAT_SLOT_MULS[slot] || COMBAT_SLOT_MULS.combat1;
+  const slotMul = COMBAT_SLOT_MULS[tierSlotOverride || slot] || COMBAT_SLOT_MULS.combat1;
   // Add extra enemies based on slot difficulty
   if (slotMul.count > 0) {
     const extraTypes = tier === 'tier1' ? ['slime', 'skel'] : tier === 'tier2' ? ['skel', 'orc'] : ['orc', 'archer'];
@@ -138,18 +335,64 @@ export function makeCombatRoom(level, slot, eliteChance) {
   // CURSE: Ether's Curse — +25% elite chance
   const effEliteChance = isCursed('ethers_curse') ? eliteChance + 0.25 : eliteChance;
 
-  // Pick pillar template up-front so we can avoid spawning enemies ON pillars
-  const pillarTemplate = randInt(0, 14);
-  const cells = spawnCells(comp.length, pillarTemplate);
-  const spawns = comp.slice(0, cells.length).map((type, i) => ({
-    type, x: cells[i].x, y: cells[i].y,
-    elite: type !== 'bomber' && Math.random() < effEliteChance,
+  // ── ROOM ARCHETYPE — bundle (size, shape, pillarTemplate, spikePattern,
+  // tactical spawn positions) into one named recipe. Falls back to the
+  // independent-roll path if no archetype is eligible (shouldn't happen
+  // for combat/challenge, but defensive).
+  const archetype = pickArchetype('combat', slot, level);
+  let size, shape, pillarTemplate, archetypeSpawns, spikePatternFromArchetype, archetypeFirePools;
+  if (archetype) {
+    const applied = applyArchetype(archetype, comp);
+    size = applied.size;
+    shape = applied.shape;
+    pillarTemplate = applied.pillarTemplate;
+    archetypeSpawns = applied.spawns;
+    spikePatternFromArchetype = applied.spikePattern;
+    archetypeFirePools = applied.firePools;
+  } else {
+    size = pickRoomSize('combat', slot);
+    shape = pickRoomShape('combat', size);
+    pillarTemplate = randInt(0, 14);
+    const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h, shape);
+    archetypeSpawns = comp.slice(0, cells.length).map((type, i) => ({
+      type, x: cells[i].x, y: cells[i].y,
+    }));
+    spikePatternFromArchetype = undefined;     // build pass falls back to random
+    archetypeFirePools = null;
+  }
+
+  const spawns = archetypeSpawns.map((s) => ({
+    type: s.type, x: s.x, y: s.y,
+    elite: s.type !== 'bomber' && Math.random() < effEliteChance,
     hpMul: slotMul.hp,
     damageMul: slotMul.dmg,
   }));
+  // Floor-1 elite intro — level review P1. Floor 1's per-spawn elite
+  // chance is 8%, so a brand-new player can finish floor 1 without
+  // seeing a single elite affix (= no controlled introduction to
+  // F/E/V/W before the floor-2 difficulty bump). Force at least one
+  // elite on floor-1 combat3 (the final combat room before the boss) —
+  // a deliberate, isolated affix encounter that teaches the system.
+  if (level === 1 && (tierSlotOverride || slot) === 'combat3') {
+    const eligibleIdx = spawns.findIndex((s) => s.type !== 'bomber');
+    if (eligibleIdx >= 0 && !spawns.some((s) => s.elite)) {
+      spawns[eligibleIdx].elite = true;
+    }
+  }
+  // SANCTUM archetype: promote the center enemy to elite for the duel feel
+  if (archetype && archetype.name === 'sanctum' && spawns[0]) {
+    spawns[0].elite = true;
+    spawns[0].hpMul = (spawns[0].hpMul || 1) * 1.5;
+  }
+  // ARENA archetype: promote the heavy melee at center to mini-boss tier
+  if (archetype && archetype.name === 'arena' && spawns[0]) {
+    spawns[0].elite = true;
+    spawns[0].hpMul = (spawns[0].hpMul || 1) * 1.6;
+  }
   // Wave pattern — combat3 slots have a 35% chance to spawn a second wave
   // after the first is cleared. Adds a rhythmic combat beat. Doesn't apply to
-  // floor 1 combat1 (too brutal for beginners).
+  // floor 1 combat1 (too brutal for beginners). Wave reuses the spawn rule
+  // for tactical consistency.
   let wave2 = null;
   if (slot === 'combat3' && Math.random() < 0.35) {
     const waveComp = [];
@@ -158,10 +401,19 @@ export function makeCombatRoom(level, slot, eliteChance) {
                     : ['orc', 'archer', 'bomber', 'lancer'];
     const n = 3 + randInt(0, 2);
     for (let i = 0; i < n; i++) waveComp.push(pick(waveTypes));
-    const waveCells = spawnCells(waveComp.length, pillarTemplate);
-    wave2 = waveComp.slice(0, waveCells.length).map((type, i) => ({
-      type, x: waveCells[i].x, y: waveCells[i].y,
-      elite: type !== 'bomber' && Math.random() < effEliteChance,
+    let waveSpawns;
+    if (archetype) {
+      const wave = applyArchetype(archetype, waveComp);
+      waveSpawns = wave.spawns;
+    } else {
+      const waveCells = spawnCells(waveComp.length, pillarTemplate, size.w, size.h, shape);
+      waveSpawns = waveComp.slice(0, waveCells.length).map((type, i) => ({
+        type, x: waveCells[i].x, y: waveCells[i].y,
+      }));
+    }
+    wave2 = waveSpawns.map((s) => ({
+      type: s.type, x: s.x, y: s.y,
+      elite: s.type !== 'bomber' && Math.random() < effEliteChance,
       hpMul: slotMul.hp,
       damageMul: slotMul.dmg,
     }));
@@ -170,29 +422,40 @@ export function makeCombatRoom(level, slot, eliteChance) {
   const propUrns = [];
   const propCount = 2 + randInt(0, 3);
   for (let i = 0; i < propCount * 6 && propUrns.length < propCount; i++) {
-    const x = randInt(2, ROOM_W - 3);
-    const y = randInt(3, ROOM_H - 4);
+    const x = randInt(2, size.w - 3);
+    const y = randInt(3, size.h - 4);
     // Avoid center + enemy spawn positions
-    if (Math.abs(x - Math.floor(ROOM_W/2)) < 3 && Math.abs(y - Math.floor(ROOM_H/2)) < 2) continue;
-    if (cells.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 2)) continue;
+    if (Math.abs(x - Math.floor(size.w/2)) < 3 && Math.abs(y - Math.floor(size.h/2)) < 2) continue;
+    if (spawns.some(s => Math.abs(s.x - x) + Math.abs(s.y - y) < 2)) continue;
     if (propUrns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
+    // Also skip props in carved corners (they would render inside walls)
+    if (shape !== 'rect' && isCarvedTile(x, y, size.w, size.h, shape)) continue;
     propUrns.push({ x, y, broken: false, variant: randInt(0, 2), isProp: true });
   }
   return {
     kind: 'combat',
     slotLabel: slot,
-    pillarTemplate,                     // already rolled above for spawn validation
+    archetype: archetype ? archetype.name : null,    // for debug + future hook
+    w: size.w, h: size.h,
+    shape,
+    pillarTemplate,
+    // If the archetype specifies a spike pattern (or null = no spikes),
+    // honor it. undefined falls back to the build-pass random.
+    spikePattern: spikePatternFromArchetype,
+    firePools: archetypeFirePools,                    // 'arms' or null
     spawns,
-    wave2,                                // null if not a wave room
-    urns: propUrns,                     // reuses trove-urn rendering/hit logic
+    wave2,                                              // null if not a wave room
+    urns: propUrns,                                    // reuses trove-urn rendering/hit logic
     doors: { north: true, south: true },
   };
 }
 
 export function makeAltarRoom() {
   // Two relic pedestals at HP cost, empty center otherwise
+  const size = pickRoomSize('altar');
   return {
     kind: 'altar',
+    w: size.w, h: size.h,
     pillarTemplate: 3,                       // open
     spawns: [],
     doors: { north: true, south: true },
@@ -209,8 +472,10 @@ export function makeChallengeRoom(level, eliteChance) {
   if (isCursed('the_swarm')) {
     comp.push(pick(extraTypes), pick(extraTypes));
   }
+  const size = pickRoomSize('challenge');
+  const shape = pickRoomShape('challenge', size);
   const pillarTemplate = randInt(0, 14);
-  const cells = spawnCells(comp.length, pillarTemplate);
+  const cells = spawnCells(comp.length, pillarTemplate, size.w, size.h, shape);
   const spawns = comp.slice(0, cells.length).map((type, i) => ({
     type, x: cells[i].x, y: cells[i].y,
     elite: type !== 'bomber',
@@ -219,26 +484,107 @@ export function makeChallengeRoom(level, eliteChance) {
   }));
   return {
     kind: 'challenge',
+    w: size.w, h: size.h,
+    shape,
     pillarTemplate,
     spawns,
     doors: { north: true, south: true },
   };
 }
 
+// Treasure Chest Room — gambling-tension event variant. Multiple
+// identical-looking chests; some are TREASURE (gold or relic) and some
+// are MIMICS (damage + enemy spawn on open). Player can't tell which
+// until they commit by opening one.
+//
+// Per-floor scaling (deeper floors = more chests, more mimics, better
+// rewards in the treasures):
+//
+//   floor 1 — 3 chests, 2T/1M, gold only           (intro)
+//   floor 2 — 3 chests, 2T/1M, gold only           (settle in)
+//   floor 3 — 4 chests, 2T/2M, treasures 30% relic (real gamble)
+//   floor 4 — 5 chests, 2T/3M, treasures 50% relic (endgame)
+//
+// Always 2+ treasures so a 'whole room is mimic' scenario is impossible
+// — the room is meaningful gamble, not pure punishment. Chest variant
+// is randomly distributed across positions (shuffle the array before
+// assignment).
+export function makeTreasureChestRoom(level) {
+  const size = pickRoomSize('trove');     // similar feel: small grid prop room
+  // Floor-scaled count + treasure ratio (always ≥2 treasures)
+  let total, treasures;
+  if (level <= 2) { total = 3; treasures = 2; }
+  else if (level === 3) { total = 4; treasures = 2; }
+  else { total = 5; treasures = 2; }
+  // Generate non-overlapping chest positions, avoiding doorways
+  const chests = [];
+  const mid = Math.floor(size.w / 2);
+  for (let i = 0; i < total * 16 && chests.length < total; i++) {
+    const x = randInt(2, size.w - 3);
+    const y = randInt(3, size.h - 4);
+    // Keep north + south doorways clear for hero pathing
+    if (Math.abs(x - mid) < 2 && y < 3) continue;
+    if (Math.abs(x - mid) < 2 && y > size.h - 5) continue;
+    // Spacing: at least 4 manhattan from any other chest (gives breathing
+    // room so chests don't visually overlap and player can target each
+    // one individually)
+    if (chests.some(c => Math.abs(c.x - x) + Math.abs(c.y - y) < 4)) continue;
+    chests.push({ x, y });
+  }
+  // Assign variants. Shuffle positions, then assign first N as treasure
+  // and rest as mimic — randomizes WHICH cells are which without
+  // changing the count guarantee.
+  for (let i = chests.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [chests[i], chests[j]] = [chests[j], chests[i]];
+  }
+  for (let i = 0; i < chests.length; i++) {
+    chests[i].variant = i < treasures ? 'treasure' : 'mimic';
+    chests[i].state = 'closed';      // 'closed' | 'opening' | 'opened'
+    chests[i].frame = 0;             // current animation frame index
+    chests[i].frameTime = 0;         // accumulator for frame advance
+  }
+  // Decorative pillars flanking the room (visual only, no collision).
+  // Two pillars near the top corners give the room a 'sacred chamber'
+  // feel — frames the chest area as ceremonial. y=3 keeps them inside
+  // the playable area for both ROOM_SIZES.medium (20×14) and .tall
+  // (18×18), the two sizes pickRoomSize('trove') can return — rows
+  // 0-2 are wall+threshold (compare with the urn placement which uses
+  // y=randInt(3, size.h-4), avoiding the same band).
+  const decorPillars = [
+    { x: 2, y: 3 },
+    { x: size.w - 3, y: 3 },
+  ];
+  return {
+    kind: 'chestroom',
+    w: size.w, h: size.h,
+    pillarTemplate: 3,
+    spawns: [],         // mimic enemies spawn on chest-open, not room-load
+    urns: [],
+    chests,
+    decorPillars,
+    level,              // stash floor level for reward scaling
+    doors: { north: true, south: true },
+    cleared: true,      // no enemies at start; flips to false if mimic spawns
+  };
+}
+
 export function makeTroveRoom() {
   // Generate 10-14 urn positions avoiding center + doors
+  const size = pickRoomSize('trove');
   const count = 10 + randInt(0, 4);
   const urns = [];
-  const mid = Math.floor(ROOM_W / 2);
+  const mid = Math.floor(size.w / 2);
   for (let i = 0; i < count * 8 && urns.length < count; i++) {
-    const x = randInt(2, ROOM_W - 3);
-    const y = randInt(3, ROOM_H - 4);
+    const x = randInt(2, size.w - 3);
+    const y = randInt(3, size.h - 4);
     if (Math.abs(x - mid) < 2 && y < 3) continue;   // keep doorway clear
     if (urns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
     urns.push({ x, y, broken: false, variant: randInt(0, 2) });
   }
   return {
     kind: 'trove',
+    w: size.w, h: size.h,
     pillarTemplate: 3,
     spawns: [],
     urns,
@@ -247,30 +593,84 @@ export function makeTroveRoom() {
   };
 }
 
+// Round-7 Phase 4-lite — CHARON-style in-floor SHOP room. Mid-run merchant
+// where the player spends gold (existing in-run currency, no new currency
+// authoring needed) on relics. Distinct from the meta shop between floors
+// (essence, persistent across runs); this one is THIS-RUN gold pressure
+// against THIS-RUN reroll cost. Adds the "save for the reroll or buy now?"
+// strategic decision Hades pioneered.
+//
+// Shape: small room, no enemies (cleared on entry), 3 pedestals each
+// priced by tier. Tiers respect floor weights (rollRelicOffer with
+// floorLevel) so a F1 shop sells mostly commons, F4 mostly legendaries.
+// Shop pedestals carry a goldCost field; pedestals.js consumePendingPickup
+// reads it and gates the purchase on hero gold.
+//
+// Pricing — Round-7 economy audit measured F1 typical yield at 50-90g,
+// F2 at 100-150g, F3 at 150-200g, F4 at 200-300g. Shop prices below
+// keep a single common purchase under ~50% of typical floor yield so
+// the player can still afford the next reroll.
+//   common    = 40g  (~50% of F1 yield)
+//   rare      = 90g  (~70% of F2 yield)
+//   legendary = 180g (~80-100% of F3-F4 yield)
+//   mythic    = 320g (rare; F4 only)
+//
+// Crucial design: shop pedestals do NOT trigger the "claim one removes
+// the others" rule — player can buy multiple items if they have the
+// gold. Set p.shop = true so consumePendingPickup skips that loop.
+export const SHOP_PRICES = {
+  common: 40,
+  rare: 90,
+  legendary: 180,
+  mythic: 320,
+};
+export function makeShopRoom() {
+  const size = pickRoomSize('reward');     // re-uses sanctuary size — small + calm
+  return {
+    kind: 'shop',
+    w: size.w, h: size.h,
+    pillarTemplate: 3,
+    spawns: [],
+    doors: { north: true, south: true },
+    cleared: true,            // no enemies, doors stay open from entry
+  };
+}
+
 // CONTENT PASS B2 — MINI-BOSS event variant. A solo elite encounter with
 // no adds; rewards a guaranteed relic pedestal on clear (wiring in main.js
 // via room.slotLabel check). Keeps event rooms from feeling like the same
 // three categories after three runs.
 function makeMiniBossRoom(level) {
+  const size = pickRoomSize('combat', 'miniboss');
+  const shape = pickRoomShape('combat', size);
   const pillarTemplate = randInt(0, 14);
   // Mini-boss type scales with floor — pick a unique-mechanic enemy from
   // the adjacent tier so it's genuinely threatening but not boss-scale.
   // Warden is our dedicated mini-boss asset; put it at floor 2 where its
   // heavy-telegraph pacing matches player skill. Other floors rotate
   // unique-mechanic enemies.
-  const miniType = level === 1 ? 'vanguard'
-                 : level === 2 ? 'warden'
-                 : level === 3 ? 'reflector'
-                 : level === 4 ? 'hermit'       // floor 4's signature mini-boss
-                 : 'dreadmage';
+  // Mini-boss rotation per floor. Each floor has a primary + a callback
+  // alternative so back-to-back runs don't always show the same elite.
+  // F2 elite_orc as a callback to the F1 fight (Grudnok's surviving
+  // veterans), F3 armored_axeman as a heavy human contrast to the
+  // bestials, F4 orc_rider as a rare mounted alternative to hermit.
+  const F1_OPTIONS = ['vanguard', 'knight_enemy'];
+  const F2_OPTIONS = ['warden', 'elite_orc', 'greatsword_skel'];
+  const F3_OPTIONS = ['reflector', 'armored_axeman', 'werebear'];
+  const F4_OPTIONS = ['hermit', 'orc_rider', 'knight_templar'];
+  const optionsByLevel = { 1: F1_OPTIONS, 2: F2_OPTIONS, 3: F3_OPTIONS, 4: F4_OPTIONS };
+  const opts = optionsByLevel[level] || ['dreadmage'];
+  const miniType = pick(opts);
   return {
     kind: 'combat',
     slotLabel: 'miniboss',
+    w: size.w, h: size.h,
+    shape,
     pillarTemplate,
     spawns: [{
       type: miniType,
-      x: Math.floor(ROOM_W / 2),
-      y: Math.floor(ROOM_H / 2),
+      x: Math.floor(size.w / 2),
+      y: Math.floor(size.h / 2),
       elite: true,
       hpMul: 1.8,
       damageMul: 1.2,
@@ -282,13 +682,17 @@ function makeMiniBossRoom(level) {
 
 export function makeEventRoom(level, eliteChance) {
   const kind = Math.random();
-  // ~15% mini-boss, ~30% altar, ~25% trove, ~30% challenge. Rebalanced
-  // from the original 35/25/40 to add variety without starving the
-  // existing three from roll share.
-  if (kind < 0.15) return makeMiniBossRoom(level);
-  if (kind < 0.45) return makeAltarRoom();
-  if (kind < 0.70) return makeTroveRoom();
-  return makeChallengeRoom(level, eliteChance);
+  // 12% mini-boss, 18% altar, 12% trove, 25% chestroom, 18% challenge,
+  // 15% shop. Round-7 added the shop slot — 15% per event slot × ~3
+  // events per run = roughly 0.45 expected shop visits per run. A
+  // player who opts for event-heavy paths will see ~1 shop per run;
+  // a perilous-only player may go runs without one.
+  if (kind < 0.12) return makeMiniBossRoom(level);
+  if (kind < 0.30) return makeAltarRoom();
+  if (kind < 0.42) return makeTroveRoom();
+  if (kind < 0.67) return makeTreasureChestRoom(level);
+  if (kind < 0.85) return makeChallengeRoom(level, eliteChance);
+  return makeShopRoom();
 }
 
 // ============================================================================
@@ -316,18 +720,40 @@ export const BOSS_LOOT_POOL = {
 
 // On Ember Tyrant (final boss) clear, 20% chance to roll from the mythic
 // pool instead of the themed legendary pool — the true "Windforce moment".
-export const EMBER_TYRANT_MYTHIC_POOL = ['cataclysm', 'eye_of_ether'];
+//
+// Round-6 endgame audit retune: pool was 2 relics (cataclysm + eye_of_ether,
+// both fire-themed AoE). Players who rolled mythic got one of two and on
+// second runs already knew both. Expanded to 5 with thematic spread:
+//   cataclysm        — offensive (eruption every 10 hits)
+//   eye_of_ether     — offensive (crit + crit pierce)
+//   heart_of_wound   — defensive (1× lethal-blow save)
+//   stride_of_ash    — control (dodge fire trail)
+//   coin_of_tyrant   — economy (gold mult + free relics on kill chain)
+// A mythic-blessed run now picks ONE of five identity-shaping relics,
+// making the "did I roll mythic" moment carry actual replay variance.
+export const EMBER_TYRANT_MYTHIC_POOL = [
+  'cataclysm',
+  'eye_of_ether',
+  'heart_of_wound',
+  'stride_of_ash',
+  'coin_of_tyrant',
+];
 export const EMBER_TYRANT_MYTHIC_CHANCE = 0.20;
 
-export function makeBossSpawns(level, pillarTemplate = -1) {
+export function makeBossSpawns(level, pillarTemplate = -1, bossW = ROOM_W, bossH = ROOM_H) {
   // Floor 4's THRONE OF RUIN gets its own boss — The Ember Tyrant — instead
   // of falling back to orc. Arena hazards (6 fire pools + 2 spikes) are
   // already wired in room.js:471 for this bossType.
-  const bossType = { 1: 'orc', 2: 'bone_captain', 3: 'broodmother', 4: 'ember_tyrant' }[level] || 'orc';
+  // F1 boss now uses elite_orc (proper Grudnok sprite), retiring the
+  // orc-def-doubles-as-boss hack that made common orcs in F2-F4
+  // tooltip as "WARCHIEF GRUDNOK". elite_orc has the boss fields
+  // (heavyChance, displayName, flavor, bossTrack) — orc def keeps the
+  // mid-tier-mob role.
+  const bossType = { 1: 'elite_orc', 2: 'bone_captain', 3: 'broodmother', 4: 'ember_tyrant' }[level] || 'elite_orc';
   const adds = { 1: ['archer', 'archer'], 2: ['archer', 'slime'], 3: ['skel', 'skel', 'archer'], 4: ['bomber', 'dreadmage'] }[level] || [];
-  const cells = spawnCells(adds.length, pillarTemplate);
+  const cells = spawnCells(adds.length, pillarTemplate, bossW, bossH);
   const spawns = [
-    { type: bossType, x: Math.floor(ROOM_W/2), y: 3, elite: true, boss: true },
+    { type: bossType, x: Math.floor(bossW/2), y: 3, elite: true, boss: true },
   ];
   adds.forEach((t, i) => {
     spawns.push({
@@ -338,6 +764,30 @@ export function makeBossSpawns(level, pillarTemplate = -1) {
     });
   });
   return spawns;
+}
+
+// Reward room (sanctuary) — was a featureless rectangle the player walked
+// through to touch a heal pedestal. Level review P0: 4-6 seconds of dead
+// time between combat3 and the boss. Now seeded with 2 decor urns
+// (reuses the trove urn renderer; can be smashed for gold/heart) and a
+// pillar cluster so the space reads as a chapel rather than a hallway.
+export function makeRewardRoom(size) {
+  const urns = [];
+  // Seed a pair of urns symmetric around the heal pedestal at room
+  // center. Variant + broken false matches the rest of the urn API.
+  const cx = Math.floor(size.w / 2);
+  const cy = Math.floor(size.h / 2);
+  urns.push({ x: cx - 4, y: cy - 1, broken: false, variant: 0, isProp: false });
+  urns.push({ x: cx + 4, y: cy - 1, broken: false, variant: 1, isProp: false });
+  return {
+    kind: 'reward',
+    w: size.w, h: size.h,
+    pillarTemplate: 7,    // mid-room column cluster — gives the chapel its bones
+    spawns: [],
+    urns,
+    cleared: true,
+    doors: { north: true, south: true },
+  };
 }
 
 export function generateFloor(level = 1) {
@@ -352,14 +802,17 @@ export function generateFloor(level = 1) {
 
   // Boss pillar template rolled first so spawn positions avoid it
   const bossPillarTemplate = randInt(0, 14);
+  const startSize = pickRoomSize('start');
+  const rewardSize = pickRoomSize('reward');
+  const bossSize = pickRoomSize('boss');
   const rooms = [
-    { kind: 'start',  pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: false } },
+    { kind: 'start',  w: startSize.w,  h: startSize.h,  pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: false } },
     makeCombatRoom(lvl, 'combat1', eliteChance),
     makeEventRoom(lvl, eliteChance),
     makeCombatRoom(lvl, 'combat2', eliteChance),
-    { kind: 'reward', pillarTemplate: 3, spawns: [], cleared: true, doors: { north: true, south: true } },
+    makeRewardRoom(rewardSize),
     makeCombatRoom(lvl, 'combat3', eliteChance),
-    { kind: 'boss',   pillarTemplate: bossPillarTemplate, spawns: makeBossSpawns(lvl, bossPillarTemplate), doors: { north: false, south: true } },
+    { kind: 'boss',   w: bossSize.w,   h: bossSize.h,   pillarTemplate: bossPillarTemplate, spawns: makeBossSpawns(lvl, bossPillarTemplate, bossSize.w, bossSize.h), doors: { north: false, south: true } },
   ];
   return rooms;
 }

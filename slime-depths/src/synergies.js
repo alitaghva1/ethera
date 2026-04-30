@@ -515,9 +515,33 @@ export function drawSynergies(ctx) {
   }
 }
 
-// Hero shield bubble (Ethereal Binding active)
+// Hero shield bubble — two distinct sources composited together:
+//   1. Ethereal Binding pulses (transient, fire-on-block)
+//   2. VOW T2 ascendance steady-state ring (per-room first-strike absorber)
+// Without the steady-state render, the VOW shield was invisible while up:
+// the player only knew it had been there once it had been spent. The thin
+// silver ring + slow pulse reads as "armor present, intact" without
+// drowning out other VFX or duplicating the gold Ethereal Binding bubble.
 export function drawHeroShield(ctx) {
-  if (shieldPulses.length === 0) return;
+  // VOW T2 steady-state ring — armed at room entry, consumed on first damage.
+  if (hero.themeVowShieldAvailable && (hero.activeThemes?.vow || 0) >= 2) {
+    const breath = 0.6 + 0.4 * Math.sin(performance.now() / 320);
+    const r = 30;
+    ctx.strokeStyle = `rgba(220, 220, 240, ${(0.45 * breath).toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(hero.x, hero.y - 20, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Faint inner sheen so the ring reads as "discipline made visible"
+    // rather than a flat outline.
+    ctx.strokeStyle = `rgba(255, 255, 255, ${(0.12 * breath).toFixed(3)})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(hero.x, hero.y - 20, r - 2.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // Ethereal Binding transient pulses (block hits) — drawn last so they
+  // pop visibly OVER the steady-state ring.
   for (const s of shieldPulses) {
     const t = s.t / s.maxLife;
     const a = (1 - t) * 0.7;

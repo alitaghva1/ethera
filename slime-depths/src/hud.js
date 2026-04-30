@@ -7,6 +7,10 @@ import { activeFusions } from './fusions.js';
 import { drawnCards, isTarotRun } from './tarot.js';
 import { gold } from './gold.js';
 import { drawRelicIcon } from './fx.js';
+import { THEMES, getThemeCounts, getThemeTier, TIER_THRESHOLDS } from './themes.js';
+import { wrapText } from './textLayout.js';
+import { isPedestalTooltipActive } from './pedestals.js';
+import { isMobileMode } from './mobileMode.js';
 
 function toRoman(n) {
   return n === 1 ? 'I' : n === 2 ? 'II' : n === 3 ? 'III' : n === 4 ? 'IV' : n === 5 ? 'V' : String(n);
@@ -16,16 +20,35 @@ function toRoman(n) {
 let heartShakeTime = 0;
 let heartSparkleTime = 0;
 let lastSeenHp = -1;
+let lastSeenMaxHp = -1;
+
+// Reset the HP-tracking baseline. Called from main.js on each new run +
+// resume so the leftover lastSeenHp from a prior run doesn't trigger a
+// phantom heart-sparkle on the first frame of fresh state.
+export function resetHudAnims() {
+  heartShakeTime = 0;
+  heartSparkleTime = 0;
+  lastSeenHp = -1;
+  lastSeenMaxHp = -1;
+}
 
 export function updateHudAnims(dt) {
   if (heartShakeTime > 0) heartShakeTime -= dt;
   if (heartSparkleTime > 0) heartSparkleTime -= dt;
-  // Detect HP changes: damage → shake, heal → sparkle
+  // Detect HP changes: damage → shake, heal → sparkle.
+  //
+  // Suppress the heal-sparkle when maxHp ALSO grew this frame — that
+  // signals a maxHp increase from a relic pickup (Ironhide, Vitality,
+  // etc.) which auto-fills hp to maxHp. Without this guard, every
+  // maxHp-pickup would falsely trigger a heart-sparkle as a "heal"
+  // even though the player didn't gain proportional health.
   if (lastSeenHp >= 0 && hero.hp !== lastSeenHp) {
+    const maxHpGrew = lastSeenMaxHp >= 0 && hero.maxHp > lastSeenMaxHp;
     if (hero.hp < lastSeenHp) heartShakeTime = 0.3;
-    else if (hero.hp > lastSeenHp) heartSparkleTime = 0.6;
+    else if (hero.hp > lastSeenHp && !maxHpGrew) heartSparkleTime = 0.6;
   }
   lastSeenHp = hero.hp;
+  lastSeenMaxHp = hero.maxHp;
 }
 
 const ROOM_LABEL = {
@@ -36,10 +59,17 @@ const ROOM_LABEL = {
   altar:     'ALTAR OF EXCHANGE',
   challenge: 'CHALLENGE',
   trove:     'TROVE',
+  chestroom: 'TREASURE CHESTS',
 };
 
 export function drawHud(ctx, w, h, progress = {}) {
-  // Low-HP red pulse — triggers at â‰¤30% HP, intensity scales with HP%.
+  // HAMLET CANVAS — the entire combat HUD is irrelevant in the walkable hub.
+  // Hearts, ability pips, floor label, relic strip, fusions, themes, boss
+  // HP bar, kill streak — all suppressed. The hamlet's own UI (essence,
+  // npc count) still lives in the DOM overlay for now and doesn't interact
+  // with this canvas HUD path.
+  if (progress.inHamlet) return;
+  // Low-HP red pulse — triggers at ≤30% HP, intensity scales with HP%.
   // Vignette stays at the EDGES — the center 60% of screen remains totally clear
   // so threats and combat read fine even when you're near death.
   // Suppressed during any cinematic intro (progress.introActive) — the intro
@@ -104,54 +134,25 @@ export function drawHud(ctx, w, h, progress = {}) {
     }
   }
 
-  // DAMAGE-SOURCE ARROW — brief red chevron on screen edge pointing to whatever
-  // just hit the hero. Fades over 1s. Critical for off-screen threats.
-  // Suppressed during cinematic intros (progress.introActive) so it doesn't
-  // sit on top of the boss portrait frame.
-  const hitT = (typeof window !== 'undefined' && window.__gameMetrics.lastHitTime) ? (performance.now() - window.__gameMetrics.lastHitTime) / 1000 : Infinity;
-  if (!progress.introActive && hitT < 1.0 && window.__gameMetrics.lastHitFromX !== undefined) {
-    const dx = window.__gameMetrics.lastHitFromX - hero.x;
-    const dy = window.__gameMetrics.lastHitFromY - hero.y;
-    const mag = Math.hypot(dx, dy);
-    if (mag > 1) {
-      const nx = dx / mag, ny = dy / mag;
-      // Alpha fades quartic over lifetime
-      const fadeT = Math.max(0, 1 - hitT);
-      const alpha = fadeT * fadeT;
-      // Place on edge — 130px in from edge, at angle toward threat
-      const radius = Math.min(w, h) * 0.35;
-      const cx = w / 2 + nx * radius;
-      const cy = h / 2 + ny * radius;
-      const ang = Math.atan2(ny, nx);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.translate(cx, cy);
-      ctx.rotate(ang);
-      // Red chevron (2 triangles)
-      ctx.fillStyle = '#ff4a4a';
-      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-      ctx.lineWidth = 2;
-      const sz = 18;
-      ctx.beginPath();
-      ctx.moveTo(-sz, -sz);
-      ctx.lineTo(sz, 0);
-      ctx.lineTo(-sz, sz);
-      ctx.lineTo(-sz * 0.4, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
+  // (Removed) Damage-source arrow — used to draw a brief red chevron on the
+  // screen edge pointing to whatever just hit the hero, intended for
+  // off-screen threats. In practice it fired on EVERY hit including from
+  // visible enemies, where it was just visual noise. The screen-edge red
+  // pulse + heart shake already convey "you got hit"; the existing red
+  // pulse + screen wash on damage covers the "from where" cue when it
+  // matters via biome / room context. Removed per user feedback.
 
   // â”€â”€ LEFT-TOP HUD PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Contains: hearts (compact), dodge pip, dash-strike pip.
   // Layout is deterministic based on maxHp, so pips always sit below hearts
   // with a clear gap and never overlap.
   const pad = 18;
-  // Smaller hearts (17px) with perRow=14 fits up to 14 HP in one row.
-  // At 14+ hp the second row begins; we cap HP visual to 2 rows max.
-  const sz = 17;
+  // Heart size — base 17px on desktop. On mobile the canvas auto-scales
+  // (--ui-scale ≈ 0.30 on a 390px-wide phone), so 17px renders as
+  // ~14 actual pixels — unreadable. Bump to 26px in mobile mode for
+  // a ~22-actual-pixel render. Same trade as the relic strip below.
+  const _hudMobile = isMobileMode();
+  const sz = _hudMobile ? 26 : 17;
   const gap = 4;
   const perRow = 14;
   const heartRowH = sz + gap;
@@ -264,123 +265,35 @@ export function drawHud(ctx, w, h, progress = {}) {
   // this draw pass) can anchor beneath it with a proper margin.
   const abilitiesEndY = dashRowY + pipH;
 
-  // Top-right panel — floor + room progress with a refined layout
+  // Top-right panel — minimal "where am I" indicator only. The full
+  // connected-dungeon minimap was removed from gameplay HUD per user
+  // feedback: it pulled focus away from combat and broke immersion.
+  // The map now only appears as a journey-reveal on death / run-end
+  // (see deathScreen.js / winScreen.js), framed as a retrospective
+  // "look at what you survived" moment.
   const label = ROOM_LABEL[progress.roomKind] || '';
-  const roomIdx = progress.roomIndex ?? 0;
-  const total = progress.totalRooms ?? 1;
   const floorText = progress.floorLevel ? ('FLOOR ' + toRoman(progress.floorLevel) + ' / ' + toRoman(progress.maxFloors || 4)) : '';
-  const boxW = 240, boxH = 90;
+  const boxW = 200, boxH = 60;
   const bx = w - boxW - 14;
   const by = 14;
-  // Backdrop with gold border accent
+  // Slim backdrop
   ctx.fillStyle = 'rgba(14, 8, 16, 0.72)';
   ctx.fillRect(bx, by, boxW, boxH);
   ctx.strokeStyle = 'rgba(201, 168, 106, 0.35)';
   ctx.lineWidth = 1;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-  // Top gold accent line
-  ctx.strokeStyle = 'rgba(244, 217, 160, 0.5)';
+  // Gold separator
+  ctx.strokeStyle = 'rgba(244, 217, 160, 0.4)';
   ctx.beginPath();
   ctx.moveTo(bx + 12, by + 26);
   ctx.lineTo(bx + boxW - 12, by + 26);
   ctx.stroke();
-  // FLOOR
+  // FLOOR header
   ctx.fillStyle = '#f4d9a0';
   ctx.font = 'bold 14px Georgia, serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
   ctx.fillText(floorText, bx + boxW - 12, by + 8);
-  // Minimap — small room cells with kind-specific icons and connector lines
-  const miniY = by + 36;
-  const cellW = 16;
-  const cellH = 11;
-  const cellGap = 4;
-  const totalW = total * cellW + (total - 1) * cellGap;
-  const miniStartX = bx + boxW - 12 - totalW;
-  const rooms = progress.floorRooms || [];
-  for (let i = 0; i < total; i++) {
-    const dx = miniStartX + i * (cellW + cellGap);
-    const room = rooms[i];
-    const kind = room ? room.kind : 'combat';
-    // Connector line to next cell (except last)
-    if (i < total - 1) {
-      const past = i < roomIdx;
-      ctx.strokeStyle = past ? 'rgba(201, 168, 106, 0.7)' : 'rgba(201, 168, 106, 0.22)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(dx + cellW, miniY + cellH / 2);
-      ctx.lineTo(dx + cellW + cellGap, miniY + cellH / 2);
-      ctx.stroke();
-    }
-    // Cell color per kind
-    const kindColor = {
-      start:     '#5a4028',
-      combat:    '#a06060',
-      altar:     '#b04880',
-      challenge: '#c08048',
-      reward:    '#4a9070',
-      boss:      '#c04848',
-      event:     '#7060b0',
-      trove:     '#c09050',
-    }[kind] || '#505060';
-    // Room state: past (filled dim) / current (bright + pulse) / future (outline)
-    if (i < roomIdx) {
-      ctx.fillStyle = 'rgba(60, 50, 45, 0.85)';
-      ctx.fillRect(dx, miniY, cellW, cellH);
-      ctx.fillStyle = kindColor;
-      ctx.globalAlpha = 0.5;
-      ctx.fillRect(dx + 1, miniY + 1, cellW - 2, cellH - 2);
-      ctx.globalAlpha = 1;
-    } else if (i === roomIdx) {
-      const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 280);
-      ctx.fillStyle = 'rgba(20, 14, 18, 0.95)';
-      ctx.fillRect(dx, miniY, cellW, cellH);
-      ctx.fillStyle = kindColor;
-      ctx.fillRect(dx + 1, miniY + 1, cellW - 2, cellH - 2);
-      // Bright ring
-      ctx.strokeStyle = `rgba(244, 217, 160, ${pulse.toFixed(3)})`;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(dx - 1.5, miniY - 1.5, cellW + 3, cellH + 3);
-    } else {
-      ctx.strokeStyle = 'rgba(160, 140, 110, 0.35)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(dx + 0.5, miniY + 0.5, cellW - 1, cellH - 1);
-    }
-    // Icon glyph per kind (tiny, centered)
-    if (i <= roomIdx) {
-      ctx.fillStyle = i === roomIdx ? '#fff2e0' : 'rgba(255, 230, 200, 0.45)';
-      const cx = dx + cellW / 2, cy = miniY + cellH / 2;
-      if (kind === 'combat') {
-        // Crossed blades (2px cross)
-        ctx.fillRect(cx - 3, cy - 0.5, 6, 1);
-        ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
-      } else if (kind === 'boss') {
-        // Skull — 3-pixel bulge
-        ctx.fillRect(cx - 2, cy - 2, 4, 3);
-        ctx.fillRect(cx - 1, cy + 1, 2, 1);
-      } else if (kind === 'reward') {
-        // Heart — 3 pixels
-        ctx.fillRect(cx - 2, cy - 1, 2, 2);
-        ctx.fillRect(cx, cy - 1, 2, 2);
-        ctx.fillRect(cx - 1, cy + 1, 2, 1);
-      } else if (kind === 'altar') {
-        // Diamond
-        ctx.fillRect(cx - 0.5, cy - 2, 1, 4);
-        ctx.fillRect(cx - 2, cy - 0.5, 4, 1);
-      } else if (kind === 'challenge') {
-        // Exclamation
-        ctx.fillRect(cx - 0.5, cy - 2, 1, 3);
-        ctx.fillRect(cx - 0.5, cy + 1, 1, 1);
-      } else if (kind === 'event') {
-        ctx.fillRect(cx - 1, cy - 1, 2, 2);
-      } else if (kind === 'trove') {
-        // Coin — circle-ish with dot in center
-        ctx.fillRect(cx - 2, cy - 2, 4, 4);
-        ctx.fillRect(cx - 3, cy - 1, 1, 2);
-        ctx.fillRect(cx + 2, cy - 1, 1, 2);
-      }
-    }
-  }
   // Room kind label
   ctx.font = '13px Georgia, serif';
   ctx.fillStyle =
@@ -388,13 +301,14 @@ export function drawHud(ctx, w, h, progress = {}) {
     progress.roomKind === 'reward'    ? '#86e3a8' :
     progress.roomKind === 'altar'     ? '#ff6a85' :
     progress.roomKind === 'challenge' ? '#ffb265' :
+    progress.roomKind === 'chestroom' ? '#d8a8ff' :     // violet — gambling tension
     'rgba(210, 190, 220, 0.85)';
-  ctx.fillText(label, bx + boxW - 12, by + 56);
-  // Enemies left (combat only)
+  ctx.fillText(label, bx + boxW - 12, by + 32);
+  // Enemies left (combat only) — slim panel: tucked under the label
   if (progress.roomKind === 'combat' || progress.roomKind === 'boss' || progress.roomKind === 'challenge') {
     ctx.fillStyle = 'rgba(220, 180, 180, 0.7)';
     ctx.font = 'italic 11px Georgia, serif';
-    ctx.fillText(enemies.length + ' enemies remain', bx + boxW - 12, by + 74);
+    ctx.fillText(enemies.length + ' enemies remain', bx + boxW - 12, by + 46);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -468,7 +382,7 @@ export function drawHud(ctx, w, h, progress = {}) {
       ctx.lineWidth = 2;
       ctx.strokeRect(bx - 0.5, by - 0.5, barW + 1, barH + 1);
       // HP number (right-side, small)
-      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.font = 'bold 12px Georgia, serif';
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
@@ -558,6 +472,126 @@ export function drawHud(ctx, w, h, progress = {}) {
     ctx.restore();
   }
 
+  // THEMES row — shows set-bonus progress across the 5 themes. Chips light
+  // up when a theme has ≥1 owned relic; glow at resonance (3), double-glow
+  // at ascendance (5). Sits above the fusion row + relic strip.
+  //
+  // Round-7-audit fix: was filtering to `themeCounts[t.id] > 0` so only
+  // the themes the player had relics in were visible. Players never
+  // learned the 5-theme system exists until they accidentally tripped
+  // a Resonance. Now ALL FIVE chips render once the player has any
+  // relic at all — 0-count chips render in muted gray. This is the
+  // game's primary build-craft system; making it visible up-front is
+  // the highest-leverage legibility win in the codebase.
+  if (progress.relics && progress.relics.length > 0) {
+    const themeCounts = getThemeCounts(progress.relics);
+    const visibleThemes = Object.values(THEMES);
+    if (visibleThemes.length > 0) {
+      const chipW = 52, chipH = 22, chipGap = 4;
+      const themesY = h - chipH - 110;
+      const themesLabelY = themesY - 14;
+      ctx.save();
+      ctx.fillStyle = 'rgba(180, 200, 220, 0.55)';
+      ctx.font = 'bold 10px Georgia, serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('◆ THEMES', 18, themesLabelY);
+      const now = performance.now() / 1000;
+      for (let i = 0; i < visibleThemes.length; i++) {
+        const t = visibleThemes[i];
+        const count = themeCounts[t.id];
+        const tier = getThemeTier(count);
+        const cx = 18 + i * (chipW + chipGap);
+        const cy = themesY;
+        // Backdrop dims with tier
+        const bgA = tier >= 2 ? 0.9 : tier >= 1 ? 0.8 : 0.65;
+        ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
+        ctx.fillRect(cx, cy, chipW, chipH);
+        // Round-7-audit POLISH — "almost-there" telegraph. One pickup
+        // from the next tier (count 2 -> Resonance, count 4 ->
+        // Ascendance) the chip was visually IDENTICAL to count 0 / 3
+        // respectively — players didn't see the strategic moment
+        // building. Now a soft pre-tier pulse halo appears ONE pickup
+        // before each threshold so the player can read "I'm one
+        // FLAME relic from Resonance" at a glance.
+        const almostResonance = tier === 0 && count === TIER_THRESHOLDS.resonance - 1;
+        const almostAscendance = tier === 1 && count === TIER_THRESHOLDS.ascendance - 1;
+        // Tier glow halo behind chip — ascendance pulses strongest;
+        // resonance medium; "almost-tier" gets a faint preview halo.
+        if (tier >= 1 || almostResonance) {
+          // Pulse rate accelerates one pickup from next tier — gives
+          // the chip a visible "anticipation heartbeat" without
+          // over-juicing the steady-state Resonance glow.
+          const baseRate = tier >= 2 ? 2.2 : tier >= 1 ? 1.6 : 1.4;
+          const rate = almostAscendance ? 2.6 : almostResonance ? 1.8 : baseRate;
+          const baseAmp = tier >= 2 ? 0.30 : tier >= 1 ? 0.20 : 0.15;
+          const ampMod = almostAscendance || almostResonance ? 0.05 : 0;
+          const pulse = (1 - baseAmp) + (baseAmp + ampMod) * Math.sin(now * rate + i * 0.5);
+          const halo = ctx.createRadialGradient(cx + chipW/2, cy + chipH/2, 4, cx + chipW/2, cy + chipH/2, chipW * 0.7);
+          const hex = t.color.replace('#', '');
+          const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+          const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+          // Almost-tier halo is dimmer than full Resonance to preserve
+          // the visual hierarchy: 0.18 alpha (almost) < 0.30 (resonance)
+          // < 0.50 (ascendance). The player learns the gradient: faint
+          // glow = one away, steady glow = arrived, double glow = max.
+          const alphaMul = tier >= 2 ? 0.5
+                         : tier >= 1 ? 0.30
+                         : 0.18;
+          const alpha = alphaMul * pulse;
+          halo.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+          halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
+          ctx.fillStyle = halo;
+          ctx.fillRect(cx - 8, cy - 8, chipW + 16, chipH + 16);
+        }
+        // Border — brighter + thicker at higher tiers
+        ctx.strokeStyle = tier >= 2 ? t.tint : tier >= 1 ? t.color : 'rgba(120, 130, 150, 0.5)';
+        ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.3 : 1;
+        ctx.strokeRect(cx + 0.5, cy + 0.5, chipW - 1, chipH - 1);
+        // Theme name
+        ctx.fillStyle = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.75)';
+        ctx.font = 'bold 10px Georgia, serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(t.name.toUpperCase(), cx + 5, cy + 4);
+        // Count + tier glyphs
+        ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.7)';
+        ctx.font = 'bold 11px Georgia, serif';
+        const glyph = tier >= 2 ? '\u2605\u2605' : tier >= 1 ? '\u2605' : '';
+        const countLabel = `${count}/${TIER_THRESHOLDS.ascendance} ${glyph}`;
+        ctx.fillText(countLabel, cx + 5, cy + 12);
+        // Hover tooltip — name + blurb + current buff text. Suppressed
+        // when a pedestal tooltip would also be on screen so the player
+        // doesn't see two tooltips stacked (audit dedup quick-win).
+        // Pedestal tooltip is the "active decision" UI and wins.
+        if (mouse.x >= cx && mouse.x <= cx + chipW && mouse.y >= cy && mouse.y <= cy + chipH
+            && !isPedestalTooltipActive()) {
+          const tipW = 260, tipH = 74;
+          const tipX = Math.max(10, Math.min(w - tipW - 10, cx + chipW/2 - tipW/2));
+          const tipY = cy - tipH - 6;
+          ctx.fillStyle = 'rgba(14, 20, 30, 0.95)';
+          ctx.fillRect(tipX, tipY, tipW, tipH);
+          ctx.strokeStyle = t.tint;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
+          ctx.fillStyle = t.tint;
+          ctx.font = 'bold 12px Georgia, serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(t.name + '  (' + count + '/' + TIER_THRESHOLDS.ascendance + ')', tipX + 10, tipY + 8);
+          ctx.fillStyle = '#d8e4f0';
+          ctx.font = 'italic 10px Georgia, serif';
+          ctx.fillText(t.blurb, tipX + 10, tipY + 25);
+          ctx.fillStyle = tier >= 1 ? '#fff2e0' : 'rgba(200, 200, 210, 0.6)';
+          ctx.font = 'bold 11px Georgia, serif';
+          const tierLabel = tier >= 2 ? '★★ ASCENDANCE active' : tier >= 1 ? '★ RESONANCE active' : `${TIER_THRESHOLDS.resonance - count} more → Resonance`;
+          ctx.fillText(tierLabel, tipX + 10, tipY + 54);
+        }
+      }
+      ctx.restore();
+    }
+  }
+
   // Active FUSIONS row — sits above the relic strip, rendered as diamond chips
   // with fusion name + crackling halo. Marks the run as unique.
   if (activeFusions && activeFusions.length > 0) {
@@ -568,7 +602,7 @@ export function drawHud(ctx, w, h, progress = {}) {
     ctx.save();
     // Small header
     ctx.fillStyle = 'rgba(180, 220, 240, 0.6)';
-    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.font = 'bold 10px Georgia, serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText('⚡ FUSIONS', 18, fLabelY);
@@ -614,7 +648,7 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.lineWidth = 1.5;
         ctx.strokeRect(tipX + 0.5, tipY + 0.5, tipW - 1, tipH - 1);
         ctx.fillStyle = tint;
-        ctx.font = 'bold 9px system-ui, sans-serif';
+        ctx.font = 'bold 10px Georgia, serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         ctx.fillText('⚡ FUSION', tipX + 10, tipY + 8);
@@ -636,20 +670,38 @@ export function drawHud(ctx, w, h, progress = {}) {
   let hoveredRelic = null;
   let hoveredRelicPos = null;
   if (progress.relics && progress.relics.length > 0) {
-    const icSize = 30;
+    // Mobile: icon goes 30px → 44px so it actually reads at low UI scale.
+    // PER_ROW reduced 16 → 11 to keep the wider icons inside the same
+    // bottom-left footprint without overflowing into the fusion row.
+    const icSize = _hudMobile ? 44 : 30;
     const gap = 4;
-    const y0 = h - icSize - 18;
-    // Frame backdrop
-    const frameW = progress.relics.length * (icSize + gap) + 8;
+    // Wrap into rows to keep the strip from overflowing the canvas at
+    // endgame relic counts (a 30-relic build was running off the right
+    // edge into the FUSIONS row). PER_ROW chosen so 16 icons + gaps +
+    // frame padding stay well clear of the boss HP bar at right.
+    // Layout direction: index 0 top-left, index N bottom-right — older
+    // relics stack upward, newest pickup always at the same baseline
+    // the player's eye returns to.
+    const PER_ROW = _hudMobile ? 11 : 16;
+    const totalRows = Math.max(1, Math.ceil(progress.relics.length / PER_ROW));
+    const rowH = icSize + 4;
+    const yBase = h - icSize - 18;                       // baseline (bottom-most row)
+    const yTop = yBase - (totalRows - 1) * rowH;         // top-most row
+    const itemsInTopRow = progress.relics.length - (totalRows - 1) * PER_ROW;
+    const widestRow = totalRows > 1 ? PER_ROW : itemsInTopRow;
+    const frameW = widestRow * (icSize + gap) + 8;
     ctx.fillStyle = 'rgba(14, 8, 16, 0.7)';
-    ctx.fillRect(12, y0 - 4, frameW, icSize + 8);
+    ctx.fillRect(12, yTop - 4, frameW, totalRows * rowH + 4);
     ctx.strokeStyle = 'rgba(201, 168, 106, 0.35)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(12.5, y0 - 3.5, frameW - 1, icSize + 7);
+    ctx.strokeRect(12.5, yTop - 3.5, frameW - 1, totalRows * rowH + 3);
     const now = performance.now() / 1000;
     for (let i = 0; i < progress.relics.length; i++) {
       const r = progress.relics[i];
-      const x = 16 + i * (icSize + gap);
+      const row = Math.floor(i / PER_ROW);
+      const col = i - row * PER_ROW;
+      const x = 16 + col * (icSize + gap);
+      const y0 = yTop + row * rowH;
       // Rarity glow — pulsing halo for rare/legendary/mythic relics
       if (r.tier === 'mythic' || r.tier === 'legendary' || r.tier === 'rare') {
         const pulseRate = r.tier === 'mythic' ? 3.5 : r.tier === 'legendary' ? 2.8 : 1.9;
@@ -729,7 +781,7 @@ export function drawHud(ctx, w, h, progress = {}) {
     // Tier label
     const tierLabel = r.tier === 'mythic' ? '\u2605\u2605 MYTHIC \u2605\u2605' : r.tier === 'legendary' ? '\u2605 LEGENDARY' : r.tier === 'rare' ? '\u25C6 RARE' : '\u00b7 COMMON';
     ctx.fillStyle = r.tier === 'mythic' ? '#fff2e0' : r.tier === 'legendary' ? '#ffc8ff' : r.tier === 'rare' ? '#f4d9a0' : '#b4c8d8';
-    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.font = 'bold 10px Georgia, serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(tierLabel, tipX + padding, tipY + padding);
@@ -904,23 +956,8 @@ function drawAscensionHUD(ctx, w, h) {
   }
 }
 
-// Simple word-wrap helper for tooltip descriptions
-function wrapText(ctx, text, maxWidth) {
-  const words = String(text).split(' ');
-  const lines = [];
-  let cur = '';
-  for (const word of words) {
-    const test = cur ? cur + ' ' + word : word;
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = word;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
+// wrapText now lives in src/textLayout.js — see the import at the top of
+// this file. Removed the local copy as part of the dedupe pass.
 
 function hudHexToRgba(hex, a) {
   if (!hex) return 'rgba(255,255,255,' + a + ')';
@@ -973,3 +1010,195 @@ function drawHeart(ctx, x, y, s, filled, isLowHP = false) {
     ctx.fillRect(x + 3 * pixel, y + 1 * pixel, pixel, pixel);
   }
 }
+
+// ============================================================================
+// DUNGEON MINIMAP — 2D layout of the connected room graph
+//
+// Renders the floor's DAG as a top-down floor plan: rooms are tiles laid
+// out by (layer, indexInLayer) with door-connection lines drawn between
+// connected nodes. The current room highlights with a pulsing ring;
+// visited rooms fill in; rooms one step away from the current node show
+// as outlines (you've seen the door, not the room); far rooms hide.
+//
+// This is the Hades / Binding-of-Isaac feel — every room you walk through
+// expands the map, so the player builds up a mental model of the dungeon
+// as a real layout instead of clicking nodes on a tree.
+// ============================================================================
+const KIND_FILL = {
+  start:     '#5a4028',
+  combat:    '#8a4848',
+  altar:     '#9a3a70',
+  challenge: '#b07038',
+  reward:    '#3a8060',
+  sanctuary: '#3a8060',
+  boss:      '#b03838',
+  event:     '#6050a0',
+  trove:     '#b08040',
+  elite:     '#c04040',
+};
+
+// Exported for the death screen / win screen — those reveal the full
+// dungeon map as a "look at the journey you survived" beat.
+export function drawDungeonMinimap(ctx, bx, by, boxW, boxH, graph, currentNodeId) {
+  const padTop = 36;        // below the FLOOR header
+  const padBottom = 14;
+  const padX = 16;
+  const mapX = bx + padX;
+  const mapY = by + padTop;
+  const mapW = boxW - padX * 2;
+  const mapH = boxH - padTop - padBottom;
+
+  // Group nodes by layer to compute layout
+  const layers = {};
+  for (const n of graph.nodes) {
+    (layers[n.layer] = layers[n.layer] || []).push(n);
+  }
+  const maxLayer = graph.maxLayer || 0;
+  const layerCount = maxLayer + 1;
+  // VERTICAL: layer 0 (start) at BOTTOM, max (boss) at TOP — matches
+  // dungeon-descent intuition (you go DOWN the dungeon physically, so the
+  // boss is "deepest" but visually rendered at top because we're looking
+  // at it from outside-in).
+  const layerGap = layerCount > 1 ? mapH / (layerCount - 1) : 0;
+
+  // Compute screen positions for each node
+  const pos = new Map();
+  for (const layerStr of Object.keys(layers)) {
+    const layer = parseInt(layerStr, 10);
+    const nodesInLayer = layers[layer];
+    const count = nodesInLayer.length;
+    const yPx = mapY + mapH - layer * layerGap;          // 0 = bottom
+    const spread = Math.min(mapW * 0.85, mapW - 12);
+    const startX = mapX + mapW / 2 - spread / 2;
+    const stepX = count > 1 ? spread / (count - 1) : 0;
+    nodesInLayer.forEach((n, i) => {
+      const xPx = count === 1 ? mapX + mapW / 2 : startX + i * stepX;
+      pos.set(n.id, { x: xPx, y: yPx });
+    });
+  }
+
+  // Determine which nodes the player has SEEN — visited or one step
+  // away from a visited node (they've seen its door).
+  const seen = new Set();
+  for (const n of graph.nodes) {
+    if (n.visited || n.id === currentNodeId) {
+      seen.add(n.id);
+      // Show neighbors of visited/current too
+      if (n.edges) for (const eid of n.edges) seen.add(eid);
+    }
+  }
+
+  // ── Pass 1: connection lines ──────────────────────────────────────────
+  // Draw lines between connected nodes. Lines from visited→visited are
+  // bright (the path you took); visited→unvisited dim (door you saw).
+  for (const n of graph.nodes) {
+    if (!n.edges || !pos.has(n.id)) continue;
+    const a = pos.get(n.id);
+    const aSeen = seen.has(n.id);
+    for (const eid of n.edges) {
+      if (!pos.has(eid)) continue;
+      const b = pos.get(eid);
+      const bSeen = seen.has(eid);
+      if (!aSeen && !bSeen) continue;
+      const taken = (n.visited || n.id === currentNodeId)
+        && (graph.nodes.find(x => x.id === eid)?.visited || eid === currentNodeId);
+      ctx.strokeStyle = taken
+        ? 'rgba(244, 217, 160, 0.85)'
+        : 'rgba(160, 140, 110, 0.35)';
+      ctx.lineWidth = taken ? 1.6 : 1.0;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+
+  // ── Pass 2: room tiles ─────────────────────────────────────────────────
+  const cellSize = 14;
+  const half = cellSize / 2;
+  for (const n of graph.nodes) {
+    if (!seen.has(n.id) && !n.visited && n.id !== currentNodeId) continue;
+    const p = pos.get(n.id);
+    if (!p) continue;
+    const fill = KIND_FILL[n.kind] || '#505060';
+    const isCurrent = n.id === currentNodeId;
+    const isVisited = !!n.visited;
+
+    // Outer outline (always drawn)
+    ctx.fillStyle = 'rgba(20, 14, 18, 0.95)';
+    ctx.fillRect(p.x - half - 1, p.y - half - 1, cellSize + 2, cellSize + 2);
+
+    if (isCurrent) {
+      // Filled with kind color + pulsing gold ring
+      ctx.fillStyle = fill;
+      ctx.fillRect(p.x - half, p.y - half, cellSize, cellSize);
+      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 240);
+      ctx.strokeStyle = 'rgba(244, 217, 160, ' + pulse.toFixed(3) + ')';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x - half - 2.5, p.y - half - 2.5, cellSize + 5, cellSize + 5);
+    } else if (isVisited) {
+      // Filled at lower opacity
+      ctx.fillStyle = fill;
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(p.x - half, p.y - half, cellSize, cellSize);
+      ctx.globalAlpha = 1;
+    } else {
+      // Unseen-but-adjacent — outline only
+      ctx.strokeStyle = 'rgba(160, 140, 110, 0.65)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - half + 0.5, p.y - half + 0.5, cellSize - 1, cellSize - 1);
+    }
+
+    // Tiny kind glyph centered in tile (only if visited or current)
+    if (isVisited || isCurrent) {
+      drawTinyKindGlyph(ctx, p.x, p.y, n.kind, isCurrent ? '#fff2e0' : 'rgba(255, 230, 200, 0.65)');
+    } else {
+      // Question mark placeholder for unseen neighbors
+      ctx.fillStyle = 'rgba(180, 160, 130, 0.55)';
+      ctx.font = 'bold 9px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', p.x, p.y + 0.5);
+    }
+  }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+// Tiny pixel glyphs — readable at 14px tile size
+function drawTinyKindGlyph(ctx, cx, cy, kind, color) {
+  ctx.fillStyle = color;
+  if (kind === 'combat') {
+    ctx.fillRect(cx - 3, cy - 0.5, 6, 1);          // crossed blades
+    ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
+  } else if (kind === 'elite') {
+    // Elite — diamond with center dot
+    ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
+    ctx.fillRect(cx - 3, cy - 0.5, 6, 1);
+    ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+  } else if (kind === 'boss') {
+    // Crown — 3-bar
+    ctx.fillRect(cx - 3, cy + 1, 6, 1);
+    ctx.fillRect(cx - 3, cy - 2, 1, 3);
+    ctx.fillRect(cx, cy - 3, 1, 4);
+    ctx.fillRect(cx + 2, cy - 2, 1, 3);
+  } else if (kind === 'reward' || kind === 'sanctuary') {
+    // Plus — sanctuary cross
+    ctx.fillRect(cx - 0.5, cy - 2.5, 1, 5);
+    ctx.fillRect(cx - 2.5, cy - 0.5, 5, 1);
+  } else if (kind === 'altar') {
+    ctx.fillRect(cx - 2, cy - 0.5, 4, 1);
+    ctx.fillRect(cx - 0.5, cy - 2, 1, 4);
+  } else if (kind === 'challenge' || kind === 'event') {
+    // Sparkle — diamond
+    ctx.fillRect(cx - 0.5, cy - 3, 1, 6);
+    ctx.fillRect(cx - 3, cy - 0.5, 6, 1);
+  } else if (kind === 'trove') {
+    ctx.fillRect(cx - 2, cy - 2, 4, 4);
+  } else if (kind === 'start') {
+    // Diamond outline-ish
+    ctx.fillRect(cx - 0.5, cy - 2, 1, 4);
+    ctx.fillRect(cx - 2, cy - 0.5, 4, 1);
+  }
+}
+

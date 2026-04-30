@@ -18,7 +18,13 @@ export const UNLOCKS = {
     name: 'Vitality Charm',
     desc: '+3 max HP at run start',
     flavor: 'A lock of hair from one who refused to die.',
-    cost: 25,
+    // Pacing review P1 — the first hamlet unlock used to be 25 essence,
+    // which a victorious run earns on its own (~88) but a typical
+    // F2-death run leaves at ~30. Players who lost their first run
+    // were 5 essence short of any unlock. Dropping to 15 means even
+    // a rough first run still earns a tangible meta-reward, hooking
+    // the run-1-to-run-2 progression beat hard.
+    cost: 15,
     tint: '#ff9ab4',
     icon: 'relic_max_hp',
   },
@@ -93,6 +99,15 @@ export const UNLOCKS = {
     cost: 75,
     tint: '#ffb265',
     icon: 'relic_max_hp',
+  },
+  weapon_wand: {
+    id: 'weapon_wand',
+    name: 'Arcane Wand',
+    desc: 'Unlock wand — ranged bolts',
+    flavor: 'The teacher kept this. The teaching ended without her.',
+    cost: 65,
+    tint: '#c0a0ff',
+    icon: 'relic_attack_speed',
   },
 };
 

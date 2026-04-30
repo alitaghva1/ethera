@@ -24,7 +24,156 @@ pool, no Ember Tyrant / Hermit / Oracle content) and had to be redone.
 
 **Rule**: if in doubt, switch to the most-recent-open-PR's branch OR ask.
 
-## Session summary (most recent, 2026-04-24 evening)
+## Session summary (most recent, 2026-04-24 — PixelLab integration + mage hero)
+
+Branch `claude/musing-snyder-c13579`, **15 commits ahead of main**, NOT pushed
+yet. **Read `slime-depths/SESSIONS.md` first** — it's the handoff doc that
+tells you what state the work is in and which of the two pre-planned future
+sessions (hamlet rebuild / dungeon rebuild) you're picking up.
+
+### What landed in this session
+
+- **PixelLab API integration**: `@pixellab-code/pixellab@1.0.2` + `dotenv` + `sharp`
+  installed. API key in `slime-depths/.env` (gitignored). All scripts under
+  `slime-depths/scripts/pixellab/`.
+- **Mage hero replacing the knight**: full 8-directional sprites, 5 animation
+  states (idle/walk/attack/hurt/death), generated via PixelLab's UI Character
+  Creator — NOT the API. The API path was tried first; keyframe authoring via
+  `animate-with-skeleton` was finicky and animations were too subtle to read.
+  UI-driven workflow won. The mage replaces the knight in the `knight_*.png`
+  slot for now (proper class system is future work).
+- **Importers**: `scripts/pixellab/import-character.js` (class-agnostic — reads
+  a PixelLab Character Creator export ZIP/folder, outputs grid sheets at the
+  right SPR with feet bottom-aligned and direction rows remapped to our
+  north-first convention). `scripts/pixellab/import-props.js` (skeleton ready,
+  for the future hamlet rebuild).
+- **Sizing audit (commit `f3e1fe3`)**: background agent measured hero vs.
+  every enemy. Hero was 2-3× taller than every floor boss (74 px hero vs
+  22-36 px bosses). Root cause: mage fills 93% of its 128 cell, Tiny-RPG
+  enemies fill 11-23% of their 100 cells. Fix landed: `HERO_DRAW = 80 → 60`.
+  Boss `drawSize` bumps are queued for the dungeon session — exact target
+  values in `DUNGEON_PLAN.md`.
+- **Hamlet movement bug fix (`2d52cd7`)**: HAMLET_HERO_SPAWN.y was 640, which
+  put the hero inside the south wall row (row 13 = y 624-672). With
+  HERO_RADIUS=14, the upper-edge collision check fired from y-14=626 → still
+  in wall → all moves rejected. Spawn moved to y=602, walk-max to y=608.
+- **Importer's bottom-align fix (`33c5d51`)**: PixelLab exports have lots of
+  transparent padding (headroom for arms during cast). Naive resize made the
+  hero appear to FLOAT above its ground shadow. Importer now trims each
+  frame, applies a canonical scale derived from `rotations/south.png`, and
+  bottom-aligns the body in the cell with a 4px ground margin.
+
+### Two future sessions are pre-planned
+
+**Session A (Hamlet)**: replace procedural floor + procedural building shapes
+with PixelLab-authored pixel art. Read `slime-depths/scripts/pixellab/HAMLET_PLAN.md`.
+User decides Path A (Map Editor → single backdrop PNG) vs Path B (Wang
+tilesets + Sprite Fusion).
+
+**Session B (Dungeon)**: 3 priorities — boss drawSize bumps (5 min instant
+fix), room visual audit, then progressive PixelLab migration of the most
+visible enemies (slime/skeleton/wizard first). Read
+`slime-depths/scripts/pixellab/DUNGEON_PLAN.md`.
+
+Recommended order: **Session B first** (the boss-size fix is the most jarring
+combat readability issue and takes 5 minutes).
+
+### Critical project conventions to remember
+
+- **SPR = 128, HERO_DRAW = 60**. Don't change without re-running the sizing audit.
+- **Direction sheet rows**: N, NE, E, SE, S, SW, W, NW (north-first clockwise).
+  PixelLab UI uses south-first — the importer remaps.
+- **`hero.facing`** still exists and is set by aim direction; preserved for
+  slash VFX consumers, not used for rendering anymore (8-dir sprites handle
+  facing natively).
+- **Knight asset slot reused**: `public/assets/characters/knight_*.png` actually
+  contain the MAGE sprites. When proper class selection lands, run
+  `node scripts/pixellab/import-character.js --char mage --class mage` to
+  output `mage_*.png` alongside real `knight_*.png`.
+
+### Older session summary follows below (2026-04-24 overnight — strategy + relics pass)
+
+Branch `claude/musing-snyder-c13579`, 8 commits ahead of main. Two spec
+agents surveyed the strategy axis (boss phases, DAG branching, room
+pacing) and the relics axis (VS/BoI comparison, counter visibility,
+synergies). Plans landed, then the overnight session started shipping:
+
+- **Pickup banner wrap** (`f50cad4`): long relic descs like Hourglass of
+  Respite used to overflow the 480px frame into the HUD. `drawPickupFlash`
+  now pre-measures flavor + desc with the existing `wrapPedestalText`
+  helper and grows `boxH` to fit. Added `__testPickup` / `__testPickupFlash`
+  dev hooks (tree-shaken from production).
+
+- **Visible proc counters + pedestal teasers** (`e9be6fa`):
+  new `counterPips.js` renders themed pip rows under the hero for
+  chain_lightning / pyromancer / soul_burst — fills with each hit/kill,
+  flashes on trigger. New `pedestalTeaser.js` draws looping ghost effects
+  on hovered pedestals (stormcaller bolt, chain arcs, hymn aura, etc.) so
+  the player sees WHAT the relic does before committing.
+
+- **Set-bonus themes** (`d9cb000` + `3fbbc59`): new `themes.js` tags all
+  46 in-play relics into STORM / FLAME / BLOOD / VOW / SHADOW. Own 3 of
+  a theme → RESONANCE (tier-1 stat); own 5 → ASCENDANCE (tier-2 stat +
+  mechanical flavor + visible aura under hero). Tier-2 flavors:
+  - STORM: dodge releases a 56px shock pulse
+  - FLAME: 50px heat aura ticks 1 dmg/s (stacks with hymn)
+  - BLOOD: on room clear, regen 25% of missing HP + spark burst
+  - VOW: first damage each room absorbed entirely (like second_wind for hits)
+  - SHADOW: 0.8s post-dodge flanking window, every hit forced-crit
+  HUD chip strip above the fusions row; hover tooltip explains tier + path.
+
+- **Elite affix hover** (`6dc78c5`): hovering the mouse over an elite
+  shows a card with the affix NAME + a one-line description
+  (Frost/Ember/Venom/Warded). Shifts encounter prep from "die and learn
+  the badge" to "read the threat." `drawEliteAffixTooltips` in
+  enemies.js, called after drawPickupFlash in main.js render.
+
+- **Tier-scaled altar HP cost** (`68bab87`): altar HP cost now matches
+  offered tier (common=2, rare=4, legendary=7, mythic=9; curse: Starving
+  doubles). Legendary+ altars get a pulsing red halo + larger label so
+  the player FEELS the trade before walking on. Existing "won't suicide"
+  guard handles the new costs correctly.
+
+- **Asymmetric DAG — first pass** (`96c39e4`): every non-start node now
+  carries `path: 'safe' | 'standard' | 'perilous'` (via `pathForKind`
+  helper). Floor-2+ layer-1 becomes `[combat, elite]` (was `[combat,
+  combat]` — two identical choices). Elite rooms' pedestal offers
+  use `rollRelicOffer`'s new `opts.minTier = 'rare'` so perilous paths
+  actually pay. Map renders "RISK · RARE+" / "REST" sub-labels on
+  perilous / safe nodes so forks read strategic not aesthetic.
+
+- **iron_resolve retune** (`f1fcfe0`): first stat-stick retune. Base
+  -25% dmg → -20% + conditional PARRY (stand still ≥0.3s AND face the
+  attacker → -85% dmg + stagger attacker 0.45s + spark/flash/SFX).
+  Pattern ready to reuse on keen_edge, warlord, etc.
+
+### Known shape of the branch when pushing forward
+
+- `src/counterPips.js`, `src/pedestalTeaser.js`, `src/themes.js` are the
+  new modules. All gated behind existing imports — zero breakage to
+  existing run flow.
+- `hero.activeThemes` map is the canonical tier state. Any code that
+  needs a theme check reads it as `(hero.activeThemes?.storm || 0) >= 2`
+  etc. Bonus fields (`hero.themeAtkSpdBonus`, etc.) are read in existing
+  combat paths — zero duplication, zero stacking bugs.
+- Elite rooms are still the same makeCombatRoom output (just with
+  `eliteRoom: true` flag); asymmetric DAG is currently cosmetic path
+  + reward-bias only. Deeper asymmetry (per-path spawn pools, extra
+  rooms on perilous, safe-path common-only caps) is teed up for a
+  follow-up session.
+- Dev hooks that exist: `__testPickup(id)`, `__testPickupFlash(id, tier)`
+  for banner layout testing. All gated on `import.meta.env.DEV`.
+
+### Verification status
+
+Lint + typecheck + build all green. Visual verification done for
+themes HUD + ascendance aura via DOM-overlay capture trick. Full
+end-to-end playthrough NOT yet done (preview tab was backgrounded for
+part of the session, throttling rAF). Playtest before landing to main.
+
+---
+
+## Earlier session summary (2026-04-24 evening)
 
 Boss-intro darkness bug — finally resolved. Root-cause diagnosis:
 prior fixes all tried to salvage a multi-layer composite (pixel-art

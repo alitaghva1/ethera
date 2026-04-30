@@ -1,6 +1,10 @@
 // Gold coins — drop from enemies, auto-collect when hero is near. Foundation
 // for a shop system (not yet spent in-game, but counter persists).
-import { hero } from './hero.js';
+//
+// NOTE: this module previously imported `hero` from hero.js, creating a
+// hero ↔ gold circular dep that the build was papering over via manual
+// chunk hints. Refactored 2026-04-27 — updateGold now takes the hero as
+// a parameter so this module no longer imports from hero.js. Cycle gone.
 import { stats } from './stats';
 import { sparkle, dashTrail } from './particles.js';
 import { synthPing } from './synth.js';
@@ -39,7 +43,7 @@ export function dropGold(x, y, amount = 1) {
   }
 }
 
-export function updateGold(dt) {
+export function updateGold(dt, hero) {
   // Tick the streak window — once it elapses, reset the streak.
   if (gold.streak > 0) {
     gold.streakT += dt;

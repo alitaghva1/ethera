@@ -76,7 +76,7 @@ export const ASCENSION_TIERS = [
     tier: 6,
     name: 'Ascension VI — The Purged',
     short: 'the gods will not speak to you',
-    rule: 'Legendary relics removed from the pool',
+    rule: 'Legendary and Mythic relics removed from the pool',
     essenceMul: 1.85,
     modifiers: {
       enemyHpMul: 1.25, eliteFloor1: true, sanctuaryHealMul: 0.5, bossEnrageAt: 0.70,

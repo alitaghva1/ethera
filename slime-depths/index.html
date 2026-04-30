@@ -34,7 +34,44 @@
   @supports not (aspect-ratio: 16 / 9) {
     canvas { max-width: 177.78vh; max-height: 56.25vw; }
   }
-  #hud { position: absolute; inset: 0; pointer-events: none; font-family: system-ui, sans-serif; }
+  /* Tall modals (deathScreen / winEl / memoryEl / smithEl / achEl /
+     bossIntroOverlay) live inside #hud, which is locked to a 1280x720
+     design space and scaled up for larger viewports. When their content
+     overflows 720 design px they need to scroll — but a 15px design-space
+     scrollbar becomes 45px wide at 4K (--ui-scale 3.0) and looks broken.
+     Hide it; mousewheel + touch + arrow-key scroll still work. The
+     internal grids inside memoryEl / smithEl / achEl already had
+     overflow-y:auto on their inner containers; this also hides those. */
+  #hud div::-webkit-scrollbar,
+  #hud div::-webkit-scrollbar-thumb,
+  #hud div::-webkit-scrollbar-track {
+    width: 0;
+    height: 0;
+    background: transparent;
+  }
+  #hud div { scrollbar-width: none; }
+
+  /* ==========================================================================
+     UI SCALE LAYER — design-resolution overlay container. The canvas inside
+     #stage auto-stretches to viewport (1920x1080 on 1080p, 3840x2160 on 4K)
+     via the aspect-ratio rule above; the DOM overlays did NOT keep up — fixed
+     pixel typography (death screen h1: 48px, etc.) looked postage-stamp-sized
+     on a 4K monitor inside the canvas-stretched art. Fix: lock the entire
+     overlay layer to the 1280x720 design space and scale it via CSS transform
+     by `--ui-scale` (set by main.js on window resize). All DOM overlays nest
+     inside #hud so a single transform handles every modal, button, and HUD
+     element with zero per-element changes. The canvas itself keeps its
+     aspect-ratio auto-scaling — image-rendering: pixelated stays crisp.
+     ========================================================================= */
+  #hud {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1280px; height: 720px;
+    pointer-events: none;
+    font-family: system-ui, sans-serif;
+    transform: scale(var(--ui-scale, 1));
+    transform-origin: top left;
+  }
   /* Loading screen — "opening the book" moment. Radial gradient, centered
      serif italic, gold hairline above the progress text. Matches the
      manuscript grammar used throughout the rest of the game. */
@@ -372,38 +409,16 @@
      state information (e.g. door-ready pulse) stay on.
      ========================================================================= */
   /* ==========================================================================
-     RESPONSIVE / MOBILE — menu + overlay scaling for narrow viewports.
-     Strategy: let the canvas CSS aspect-ratio keep the game area 16:9
-     automatically (already wired above). Then scale the menu content
-     column DOWN proportionally when the canvas is smaller than the
-     design baseline (1280px wide). One CSS transform rule handles every
-     menu element without per-pixel tweaks.
+     RESPONSIVE / VIEWPORT SCALING.
+     Replaced an older approach that scaled .menuContent / .menuCorner DOWN
+     via media queries at <900/600/450px breakpoints. That approach had two
+     problems: (1) only scaled the menu, leaving every other modal at fixed
+     pixels, and (2) didn't scale UP for large monitors — death screen at
+     48px h1 looked postage-stamp-sized on 4K. The new approach scales the
+     entire #hud overlay layer uniformly via `--ui-scale` (set by main.js on
+     window resize). One transform handles every modal, button, and HUD
+     element across the full viewport range from 480p to 4K+.
      ========================================================================= */
-  @media (max-width: 900px) {
-    .menuContent {
-      transform: scale(0.72);
-      transform-origin: center center;
-    }
-    /* Shrink the corner flourishes too so they don't eat the small viewport */
-    .menuCorner {
-      transform: scale(0.6);
-      transform-origin: top left;
-    }
-  }
-  @media (max-width: 600px) {
-    .menuContent {
-      transform: scale(0.52);
-      transform-origin: center center;
-    }
-    .menuCorner { transform: scale(0.45); }
-  }
-  @media (max-width: 450px) {
-    .menuContent {
-      transform: scale(0.38);
-      transform-origin: center center;
-    }
-    .menuCorner { transform: scale(0.32); }
-  }
 
   /* ==========================================================================
      ROTATE-TO-LANDSCAPE PROMPT — phone portrait orientation covers the game
@@ -427,7 +442,15 @@
     padding: 24px;
     letter-spacing: 4px;
   }
-  @media (max-width: 700px) and (orientation: portrait) {
+  /* Rotate prompt fires when the viewport is in portrait orientation
+     on a TOUCH device. Previously gated on max-width:700, which
+     excluded modern phones (Pixel 8 Pro, iPhone 16 Pro Max) running
+     768-790px in portrait — those got the squished-canvas experience
+     instead of the rotate prompt.
+     The pointer:coarse + hover:none combo restricts to touch devices
+     so a desktop user with a tall narrow window doesn't get a rotate
+     prompt they can't act on. */
+  @media (orientation: portrait) and (max-aspect-ratio: 1/1) and (hover: none) and (pointer: coarse) {
     #rotatePrompt { display: flex; }
   }
   #rotatePrompt .ico {
@@ -513,6 +536,14 @@
     display: block;
     animation: bossIntroFade 2.2s ease-out forwards;
   }
+  /* Cinematic skip-on-repeat — bosses you've already met this profile
+     get a faster ~1.3s pass through the same fade curve. The proportions
+     (12% in, 85% hold-end) match the slow variant so the visual rhythm
+     reads consistently shortened, not chopped. */
+  #bossIntroOverlay.playing-fast {
+    display: block;
+    animation: bossIntroFade 1.3s ease-out forwards;
+  }
   @keyframes bossIntroFade {
     0%   { opacity: 0; }
     12%  { opacity: 1; }
@@ -592,6 +623,121 @@
     .bossIntroOrnament::after { width: 100px; }
     .bossIntroOrnament { gap: 50px; }
   }
+
+  /* Mobile virtual control overlay (joystick + action buttons). Hidden
+     by default; revealed only when src/mobileMode.js sets
+     body.mobile-controls based on detection (matchMedia pointer:coarse +
+     hover:none) or the settings.mobileControls override. */
+  #mobileControls {
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;     /* container is transparent to clicks */
+    z-index: 50;              /* above HUD chrome, below modals */
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;       /* prevent browser default scroll/zoom */
+  }
+  body.mobile-controls #mobileControls { display: block; }
+  /* Two zones split the screen — left thumb runs the joystick, right
+     thumb hits action buttons. Pointer-events: auto on the zones so
+     touches register; the rest of the overlay stays transparent. */
+  #mobileLeft, #mobileRight {
+    position: absolute;
+    bottom: 0;
+    height: 56%;             /* lower half of viewport */
+    pointer-events: auto;
+    touch-action: none;
+  }
+  #mobileLeft  { left: 0;  width: 42%; }
+  /* Right zone widened from 32% → 38% so the 110px attack button +
+     margin (158px total) doesn't overflow on narrow phones (iPhone SE
+     is ~360 CSS px wide; 32% = 115px, button overflowed). */
+  #mobileRight { right: 0; width: 38%; }
+  /* Floating analog joystick — appears at the touch-down point. Hidden
+     until the user touches; mobileControls.js positions and shows it
+     dynamically. */
+  #joystickBase {
+    position: absolute;
+    width: 140px; height: 140px;
+    margin-left: -70px; margin-top: -70px;
+    border: 2px solid rgba(201, 168, 106, 0.55);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(20, 14, 24, 0.55), rgba(8, 6, 12, 0.30));
+    display: none;
+    box-shadow: 0 0 28px rgba(201, 168, 106, 0.18);
+  }
+  #joystickBase.active { display: block; }
+  #joystickStick {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 60px; height: 60px;
+    margin-left: -30px; margin-top: -30px;
+    background: radial-gradient(closest-side, rgba(244, 217, 160, 0.85), rgba(201, 168, 106, 0.55));
+    border: 1.5px solid rgba(255, 230, 170, 0.85);
+    border-radius: 50%;
+    transform: translate(0, 0);
+    box-shadow: 0 0 18px rgba(244, 217, 160, 0.45);
+  }
+  /* Action button column on the right side. Buttons stack vertically;
+     attack is largest + bottom-most (where the thumb naturally rests),
+     dodge above it, dash on top. */
+  #mobileRight .mobile-btn {
+    position: absolute;
+    right: 24px;
+    border: 2px solid rgba(201, 168, 106, 0.7);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(28, 20, 26, 0.75), rgba(10, 8, 14, 0.55));
+    color: #f4d9a0;
+    font: bold 26px Georgia, serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.05s ease-out, background 0.05s ease-out;
+  }
+  #mobileRight .mobile-btn.pressed {
+    transform: scale(0.92);
+    background: radial-gradient(closest-side, rgba(60, 40, 32, 0.95), rgba(20, 12, 18, 0.85));
+    box-shadow: 0 0 24px rgba(244, 217, 160, 0.45);
+  }
+  /* Buttons hug the bottom-right corner with env(safe-area-inset-*) so
+     iPhone X+ home-indicator doesn't overlap the attack tap-zone (a
+     swipe-up from there opens App Switcher). Vertical spacing tightened
+     in the mobile UX audit so dash + dodge sit closer to the natural
+     thumb-pivot arc instead of forcing a regrip. */
+  #mobileAttack { width: 110px; height: 110px; bottom: calc(24px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); font-size: 36px; }
+  #mobileDodge  { width: 86px;  height: 86px;  bottom: calc(92px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
+  #mobileDash   { width: 86px;  height: 86px;  bottom: calc(180px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
+  /* When mobile controls are on, push the relic strip + fusions row + theme
+     chips up out of the joystick zone. The HUD canvas-side renderer keys
+     off body.mobile-controls in hud.js to compute its baseline. The CSS
+     here only handles DOM overlays; canvas-rendered HUD is JS-driven. */
+  body.mobile-controls #hud { /* reserved for future HUD-shift CSS */ }
+  /* Mobile pause/menu button — without this there's no way for a touch
+     player to access pause / journal / end-run on mobile (ESC isn't
+     available). Top-right corner, modest size, hit-target 44px+ per
+     Apple HIG. Hidden on desktop entirely. */
+  #mobilePauseBtn {
+    display: none;
+    position: absolute;
+    top: calc(8px + env(safe-area-inset-top));
+    right: calc(8px + env(safe-area-inset-right));
+    width: 48px; height: 48px;
+    border: 1.5px solid rgba(201, 168, 106, 0.7);
+    border-radius: 8px;
+    background: radial-gradient(closest-side, rgba(28, 20, 26, 0.85), rgba(10, 8, 14, 0.65));
+    color: #f4d9a0;
+    font: bold 22px Georgia, serif;
+    pointer-events: auto;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 51;
+  }
+  body.mobile-controls #mobilePauseBtn { display: flex; align-items: center; justify-content: center; }
+  #mobilePauseBtn:active { transform: scale(0.94); }
 </style>
 </head>
 <body>
@@ -602,33 +748,60 @@
   <h2>— ROTATE YOUR DEVICE —</h2>
   <p>Ethera is a landscape game · turn your phone sideways to begin the descent</p>
 </div>
+<!-- Mobile virtual control overlay. Hidden via CSS unless body has the
+     `mobile-controls` class (set by src/mobileMode.js based on touch
+     detection or settings override). Inside: two pointer zones (left
+     joystick, right action buttons) with multi-touch support so a
+     player can hold the joystick with their left thumb and tap attack
+     with their right at the same time. -->
+<div id="mobileControls" aria-hidden="true">
+  <div id="mobileLeft">
+    <div id="joystickBase">
+      <div id="joystickStick"></div>
+    </div>
+  </div>
+  <div id="mobileRight">
+    <button id="mobileDash" class="mobile-btn" type="button" aria-label="Dash">⇶</button>
+    <button id="mobileDodge" class="mobile-btn" type="button" aria-label="Dodge">⤿</button>
+    <button id="mobileAttack" class="mobile-btn" type="button" aria-label="Attack">⚔</button>
+  </div>
+</div>
+<!-- Mobile pause button — bridges ESC for touch devices. Lives outside
+     #mobileControls so it can render on top of any in-game state. The
+     click handler in main.js calls the same setPaused() the keyboard
+     ESC handler uses, so both paths flow through one toggle. -->
+<button id="mobilePauseBtn" type="button" aria-label="Pause">⏸</button>
 <div id="stage">
   <canvas id="game" width="1280" height="720"></canvas>
+  <!-- All DOM overlays nest inside #hud so the single CSS transform on
+       #hud (scale by --ui-scale) handles every modal at any viewport size.
+       Previously deathScreen / bossIntroOverlay / loading were siblings of
+       #hud and kept fixed pixel typography that crushed at 4K. -->
   <div id="hud">
     <!-- Controls reminder removed — tips.js's contextual onboarding system
          (showTip('first_dodge') etc.) surfaces the relevant control the first
          time each mechanic fires, which is less cluttery than a permanent
          bottom-left legend. How-to-play modal is available from the menu. -->
     <div id="build">Ethera · v0.1</div>
-  </div>
-  <div id="loading">Loading…</div>
-  <!-- Boss intro overlay — DOM-based replacement for the canvas drawImage
-       path. See <style> above for the why. Populated dynamically from
-       src/bossIntroDom.js; sits inside #stage so it inherits canvas layout. -->
-  <div id="bossIntroOverlay" aria-hidden="true">
-    <img id="bossIntroBackdrop" alt="">
-    <div id="bossIntroDim"></div>
-    <div id="bossIntroFrame">
-      <div class="bossIntroOrnament" id="bossIntroTag">BOSS</div>
-      <div id="bossIntroName"></div>
-      <div id="bossIntroFlavor"></div>
-      <div class="bossIntroOrnament"></div>
+    <div id="loading">Loading…</div>
+    <!-- Boss intro overlay — DOM-based replacement for the canvas drawImage
+         path. See <style> above for the why. Populated dynamically from
+         src/bossIntroDom.js; nested in #hud for the unified UI-scale transform. -->
+    <div id="bossIntroOverlay" aria-hidden="true">
+      <img id="bossIntroBackdrop" alt="">
+      <div id="bossIntroDim"></div>
+      <div id="bossIntroFrame">
+        <div class="bossIntroOrnament" id="bossIntroTag">BOSS</div>
+        <div id="bossIntroName"></div>
+        <div id="bossIntroFlavor"></div>
+        <div class="bossIntroOrnament"></div>
+      </div>
     </div>
-  </div>
-  <div id="deathScreen">
-    <h1>YOU DIED</h1>
-    <p>the ooze takes you back</p>
-    <button id="restartBtn">RESTART</button>
+    <div id="deathScreen">
+      <h1>YOU DIED</h1>
+      <p>the ooze takes you back</p>
+      <button id="restartBtn">RESTART</button>
+    </div>
   </div>
 </div>
 <script type="module" src="./src/main.js"></script>

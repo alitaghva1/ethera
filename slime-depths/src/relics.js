@@ -3,6 +3,9 @@
 // object when applied. Everything stacks additively so picks always matter.
 import { hero } from './hero.js';
 import { stats } from './stats';
+import { recomputeThemeTiers, THEMES } from './themes.js';
+import { pushNotification } from './notifications.js';
+import { synthChord, synthPing } from './synth.js';
 
 export const RELIC_DEFS = {
   serrated_edge: {
@@ -33,7 +36,19 @@ export const RELIC_DEFS = {
     flavor: 'A duelist\u2019s last breath, coiled in iron.',
     icon: 'relic_long_reach',
     tint: '#b49aff',
-    apply: () => { hero.reachMul *= 1.25; hero.speartip = true; },
+    // RANGED branch: when the hero is wielding the wand, +25% reach
+    // doesn't translate to arc geometry (no swing), so we redirect the
+    // benefit to a +30% bolt range via boltLifeMul. Speartip flag (the
+    // outer-20% bonus damage) only fires for melee since it keys off
+    // swing-arc geometry — the wand's bolts have no arc to outer-edge.
+    apply: () => {
+      hero.reachMul *= 1.25;
+      if (hero.weapon === 'wand') {
+        hero.boltLifeMul *= 1.30;
+      } else {
+        hero.speartip = true;
+      }
+    },
   },
   nimble_step: {
     // SYSTEMS PASS — was pure CD -50% (dead stat stick, −12 DPS corr).
@@ -108,11 +123,11 @@ export const RELIC_DEFS = {
   iron_resolve: {
     id: 'iron_resolve',
     name: 'Iron Resolve',
-    desc: 'Incoming damage -25%',
+    desc: '-20% damage taken · facing hits while held still PARRY for -85%',
     flavor: 'The knight still stood, long after the war had ended.',
     icon: 'relic_iron_resolve',
     tint: '#a0c8ff',
-    apply: () => { hero.damageTakenMul *= 0.75; },
+    apply: () => { hero.damageTakenMul *= 0.80; hero.ironResolveParry = true; },
   },
   keen_edge: {
     id: 'keen_edge',
@@ -176,16 +191,31 @@ export const RELIC_DEFS = {
     flavor: 'Every treasure at your belt sings when you swing.',
     icon: 'relic_warlord',
     tint: '#ffb065',
-    apply: () => { hero.damageMul *= (1 + 0.08 * equipped.length); },
+    // apply() runs BEFORE the relic is pushed into `equipped`, so a
+    // first-pick Warlord would see length=0 and grant +0%. Past that,
+    // the original code never re-multiplied for future picks. Fix:
+    // (1) retroactive bonus for relics ALREADY equipped at pickup;
+    // (2) flag so applyRelic() multiplies on EVERY subsequent pickup
+    //     (matching the memoryBell pattern at line ~1032).
+    apply: () => {
+      hero.warlord = true;
+      if (equipped.length > 0) hero.damageMul *= (1 + 0.08 * equipped.length);
+    },
   },
   reaver: {
     id: 'reaver',
     name: 'Reaver',
-    desc: '+15% lifesteal on crit',
+    // Round-6 economy retune — was +15% lifesteal + 8% crit floor,
+    // measured at ~5.75% effective lifesteal stacked with bloodstone +
+    // keen_edge (the canonical lifesteal-on-crit pair). Audit flagged
+    // it as a strict downgrade. Bumped to 25% lifesteal + 12% crit
+    // floor so reaver actually lifts a no-keen-edge build into crit
+    // territory and outpaces bloodstone's 10% flat lifesteal.
+    desc: '+25% lifesteal on crit',
     flavor: 'The wound breathes — so do you.',
     icon: 'relic_reaver',
     tint: '#ff6a8e',
-    apply: () => { hero.lifesteal += 0.15; hero.critChance = Math.max(hero.critChance, 0.08); },
+    apply: () => { hero.lifesteal += 0.25; hero.critChance = Math.max(hero.critChance, 0.12); },
   },
   // ---------- EFFECT RELICS — synergies & spectacle ----------
   chain_lightning: {
@@ -273,6 +303,62 @@ export const RELIC_DEFS = {
     tier: 'mythic',
     apply: () => { hero.cataclysm = true; },
   },
+  // Round-6 endgame audit added 3 new mythics. Old pool was 2 (cataclysm
+  // + eye_of_ether), making a "mythic-blessed" run binary — players
+  // either rolled one of two fire-themed AoE relics or felt mythic-less.
+  // These three add a defensive identity (heart_of_wound), a movement /
+  // control identity (stride_of_ash), and an economy identity
+  // (coin_of_tyrant) so a mythic roll has thematic variety.
+  heart_of_wound: {
+    id: 'heart_of_wound',
+    name: 'Heart of the Wound',
+    // Once-per-run pseudo-revive — when the next lethal hit lands, the
+    // hero is reduced to 1 HP instead of dying AND a 200px shockwave
+    // pushes nearby enemies back + grants 1.6s of iframes to recover.
+    // Distinct from phoenix_cloak (which gives a full revive at 30%);
+    // heart_of_wound is the "skin of your teeth" survival, the kind of
+    // moment players will tell each other about. Wired in hero.js's
+    // damage path right alongside hero.revives.
+    desc: 'First lethal blow leaves you at 1 HP and pushes back attackers',
+    flavor: 'The wound learned a name. You. It will not let you go.',
+    icon: 'relic_phoenix_cloak',     // shared icon — phoenix imagery fits both revival relics
+    tint: '#ff5070',
+    tier: 'mythic',
+    apply: () => { hero.heartOfWoundAvailable = true; },
+  },
+  stride_of_ash: {
+    id: 'stride_of_ash',
+    name: 'Stride of Ash',
+    // Dodge / dash leaves a trail of fire pools (uses the existing
+    // ember-flame system — same hazard tile bombers leave behind, just
+    // hero-side this time). Pools deal 1 dmg/tick to enemies, last 1.4s
+    // each, drop ~3 along the dodge path. Turns the hero's evasive
+    // mechanic into an offensive lane closer.
+    desc: 'Dodging leaves a trail of fire that scorches enemies',
+    flavor: 'You walked through the wound, and the wound learned to walk with you.',
+    icon: 'relic_avatar_of_flame',
+    tint: '#ff8a40',
+    tier: 'mythic',
+    apply: () => { hero.strideOfAsh = true; },
+  },
+  coin_of_tyrant: {
+    id: 'coin_of_tyrant',
+    name: 'Coin of the Tyrant',
+    // Kills drop +50% gold AND every 8th kill drops a free random
+    // common relic on the floor (auto-applies on contact). Fills the
+    // economy slot in the mythic pool — a player rolling Coin of the
+    // Tyrant is making bank for the rest of the descent and starting
+    // builds they couldn't afford otherwise.
+    desc: 'Kills drop +50% gold; every 8th kill drops a free relic',
+    flavor: 'He counted his dead in coins. The coins remember.',
+    icon: 'relic_gilded_hoard',
+    tint: '#ffd070',
+    tier: 'mythic',
+    apply: () => {
+      hero.coinOfTyrant = true;
+      hero.goldMul = (hero.goldMul || 1) * 1.5;
+    },
+  },
   wanderers_cloak: {
     id: 'wanderers_cloak',
     name: "Wanderer's Cloak",
@@ -357,7 +443,12 @@ export const RELIC_DEFS = {
   bloodrite: {
     id: 'bloodrite',
     name: 'Bloodrite',
-    desc: '+15% damage while below 50% HP',
+    // Round-6 economy retune — was +15% below 50% HP. Marrow Pact (also
+    // common) gives +40% at the same threshold, making bloodrite a
+    // strict downgrade. Bumped to +25% so bloodrite stacks meaningfully
+    // with marrow_pact (+65% combined) for a real sub-50% glass-cannon
+    // identity rather than picking marrow_pact and ignoring bloodrite.
+    desc: '+25% damage while below 50% HP',
     flavor: 'Offer your own blood. The gods of Ethera listen.',
     icon: 'relic_bloodrite',
     tint: '#d85a5a',
@@ -367,12 +458,19 @@ export const RELIC_DEFS = {
   gale_step: {
     id: 'gale_step',
     name: 'Gale Step',
-    desc: 'Dodge distance +35%',
+    // Round-6 economy retune — was a flat +35% dodge distance with no
+    // hook. nimble_step (cleanse) and dash_master (cooldown refund)
+    // both ate its niche. Bumped to +55% AND adds a brief post-dodge
+    // speed burst (+30% for 0.4s) so gale_step becomes the "tempo"
+    // dodge relic — chain dodges into runs, kite swarms, reposition
+    // mid-combat. nimble_step still owns "cleanse on dodge",
+    // dash_master still owns "shorter cooldown".
+    desc: 'Dodge distance +55%; brief speed burst after dodging',
     flavor: 'Ride the breath the ruin exhales between killings.',
     icon: 'relic_gale_step',
     tint: '#b0e8ff',
     tier: 'common',
-    apply: () => { hero.dodgeDistMul *= 1.35; },
+    apply: () => { hero.dodgeDistMul *= 1.55; hero.galeStep = true; },
   },
 
   // ==========================================================================
@@ -474,12 +572,18 @@ export const RELIC_DEFS = {
   gilded_hoard: {
     id: 'gilded_hoard',
     name: 'Gilded Hoard',
-    desc: '+30% gold from all sources',
+    // Round-6 economy retune — was rare-tier with +30% gold. With
+    // reroll + altar economy, +30% gold compounds into ~2 free rerolls
+    // per floor, which is roughly the value of a legendary stat-stick.
+    // Audit measured this as the single most run-warping rare. Bumped
+    // to +40% gold AND reclassed to legendary so the tier reflects
+    // its actual impact.
+    desc: '+40% gold from all sources',
     flavor: 'The chalice never empties; it remembers what was poured.',
     icon: 'relic_gilded_hoard',
     tint: '#f4d9a0',
-    tier: 'rare',
-    apply: () => { hero.gildedHoard = true; hero.goldMul = (hero.goldMul || 1) * 1.3; },
+    tier: 'legendary',
+    apply: () => { hero.gildedHoard = true; hero.goldMul = (hero.goldMul || 1) * 1.4; },
   },
   // Ambient fire aura — passive DPS while moving through combat rooms.
   hymn_of_embers: {
@@ -541,6 +645,226 @@ export const RELIC_DEFS = {
     tier: 'common',
     apply: () => { hero.hourglassRespite = true; hero.hourglassReadyAt = 0; },
   },
+
+  // ── WAND-THEMED RELICS (weaponOnly: 'wand') ──────────────────────────
+  // Only roll into the offer pool when the player has the wand
+  // equipped. Sword/dagger/hammer players won't see these in their
+  // pedestal options — keeps offer relevance high regardless of weapon
+  // choice. Synergize with the wand's pierce + charged-bolt mechanics
+  // already shipped in projectiles.js + hero.js.
+
+  splintered_light: {
+    // Bolts split into two smaller bolts on first hit (wall or enemy).
+    // Sub-bolts go at ±25° at 70% damage. Adds tactical AoE potential
+    // — aim at a tight pack and the spread cleans up the survivors.
+    id: 'splintered_light',
+    name: 'Splintered Light',
+    desc: 'Wand bolts split into two on first hit',
+    flavor: 'The light remembered being many before it was taught to be one.',
+    icon: 'relic_attack_speed',
+    tint: '#c0a0ff',
+    tier: 'rare',
+    weaponOnly: 'wand',
+    apply: () => { hero.boltSplit = true; },
+  },
+
+  storm_conduit: {
+    // Bolt hit arcs lightning to the nearest enemy within 140px (1
+    // chain). Reuses the existing spawnLightningArc from synergies.js
+    // so the visual + audio are consistent with chain_lightning relic.
+    // Damage on the chain is 50% of the bolt's damage — meaningful but
+    // not the primary kill source.
+    id: 'storm_conduit',
+    name: 'Storm Conduit',
+    desc: 'Bolt hits arc lightning to the nearest enemy',
+    flavor: 'A weather she had once watched from a window.',
+    icon: 'relic_stormcaller',
+    tint: '#9adfff',
+    tier: 'rare',
+    weaponOnly: 'wand',
+    apply: () => { hero.boltChain = true; },
+  },
+
+  // ── SWORD-THEMED (weaponOnly: 'sword') ────────────────────────────
+  // Sword is the balanced "default" weapon. Its identity is reliable
+  // mid-range damage with a 3-swing combo finisher. Sword-only relics
+  // reward learning the swing-chain rhythm.
+
+  honest_edge: {
+    // Finisher swings (every 3rd hit) ALWAYS crit. Sword's identity is
+    // its 3-swing combo; this relic doubles down — committing to the
+    // full chain reliably crits the third hit. Pairs with executioner
+    // for a real "wind up the finisher on bosses" playstyle.
+    id: 'honest_edge',
+    name: 'Honest Edge',
+    desc: 'Sword finishers (3rd hit in chain) always crit',
+    flavor: 'A lie cuts only once. The truth, three times.',
+    icon: 'relic_keen_edge',
+    tint: '#ffe5a0',
+    tier: 'rare',
+    weaponOnly: 'sword',
+    apply: () => { hero.honestEdge = true; },
+  },
+
+  ringing_steel: {
+    // Each hit in a continuous chain (within swingChainTime window)
+    // adds +6% damage to the next swing, capped at +30% (5 stacks).
+    // Reset when chain expires. Rewards uninterrupted offense — sword
+    // is the "stay on target" weapon. Pairs with attack speed relics
+    // for a building-DPS feel.
+    id: 'ringing_steel',
+    name: 'Ringing Steel',
+    desc: 'Sword chain hits add +6% damage each, max +30%',
+    flavor: 'The blade hums when struck, and remembers the song.',
+    icon: 'relic_serrated_edge',
+    tint: '#ffd27a',
+    tier: 'rare',
+    weaponOnly: 'sword',
+    apply: () => { hero.ringingSteel = true; },
+  },
+
+  vow_eternal: {
+    // First hit each room is a guaranteed crit. The "vow" is renewed
+    // every threshold — sword as the disciplined weapon. Lands as
+    // an opener on every encounter, pairs powerfully with Long Reach
+    // (poke from range, opening crit punishes the closing enemy).
+    // hero.vowEternalReady is refreshed by loadRoom() in main.js;
+    // consumed on first damage-dealing hit per room.
+    id: 'vow_eternal',
+    name: 'Vow Eternal',
+    desc: 'First sword hit each room is a guaranteed crit',
+    flavor: 'Spoken once. Kept forever, so long as iron remembers iron.',
+    icon: 'relic_warlord',
+    tint: '#ffd680',
+    tier: 'legendary',
+    weaponOnly: 'sword',
+    apply: () => { hero.vowEternal = true; hero.vowEternalReady = true; },
+  },
+
+  // ── DAGGER-THEMED (weaponOnly: 'dagger') ──────────────────────────
+  // Dagger is the precision/skirmish weapon — narrow arc, fast swings,
+  // higher crit baseline (+10% innate). Dagger-only relics reward the
+  // weave/dodge/strike playstyle.
+
+  twin_pulse: {
+    // Every 2nd dagger hit ALSO damages the nearest other enemy within
+    // 80px for 60% damage. Reads as "the strike echoes" — narrow-arc
+    // dagger lets you tag a single target while the echo cleans up
+    // adjacent enemies. Pairs with shadow theme for crit-spread.
+    id: 'twin_pulse',
+    name: 'Twin Pulse',
+    desc: 'Every 2nd dagger hit echoes to nearest enemy (60% dmg)',
+    flavor: 'Two breaths. Two cuts. The same heart, twice.',
+    icon: 'relic_serrated_edge',
+    tint: '#a0e8ff',
+    tier: 'rare',
+    weaponOnly: 'dagger',
+    apply: () => { hero.twinPulse = true; },
+  },
+
+  flicker_step: {
+    // Perfect-dodge counter window 1.5s → 3.0s. Dagger's identity is
+    // weaving between attacks; this gives the player twice as long to
+    // capitalize on a perfect dodge. Pairs with whisper_veil + shadow
+    // theme for a "every dodge becomes a kill" build.
+    id: 'flicker_step',
+    name: 'Flicker Step',
+    desc: 'Dagger doubles the perfect-dodge counter window',
+    flavor: 'A breath taken between two heartbeats. Time enough to answer.',
+    icon: 'relic_nimble_step',
+    tint: '#b0e0ff',
+    tier: 'rare',
+    weaponOnly: 'dagger',
+    apply: () => { hero.flickerStep = true; },
+  },
+
+  razor_pace: {
+    // Every 5th dagger hit deals 2.5x damage. Reads as a "rhythm
+    // crescendo" — dagger's fast cadence means the threshold lands
+    // every 1.5–2s of sustained pressure. Counter resets when not
+    // attacking for ~3s so it can't be banked. Pairs with crit /
+    // executioner / shadow theme.
+    id: 'razor_pace',
+    name: 'Razor Pace',
+    desc: 'Every 5th dagger hit deals 2.5× damage',
+    flavor: 'Five strokes to the rhythm. The fifth is the song.',
+    icon: 'relic_ascendant',
+    tint: '#b0e0ff',
+    tier: 'legendary',
+    weaponOnly: 'dagger',
+    apply: () => { hero.razorPace = true; hero.razorPaceHits = 0; },
+  },
+
+  // ── HAMMER-THEMED (weaponOnly: 'hammer') ──────────────────────────
+  // Hammer is the slow/heavy weapon — wide arc, big damage, long
+  // commitment. Hammer-only relics reward landing the big hits.
+
+  mountain_strike: {
+    // Every 3rd hammer swing spawns a 70px shockwave at impact for
+    // 50% weapon damage. Reads as "the ground answers" — hammer is
+    // the AoE weapon, this relic adds AoE on a rhythm. Pairs with
+    // heavy_blow for a "knockback + shockwave" combo.
+    id: 'mountain_strike',
+    name: 'Mountain Strike',
+    desc: 'Every 3rd hammer swing spawns a shockwave',
+    flavor: 'The mountain answers in kind. A blow for a blow.',
+    icon: 'relic_heavy_blow',
+    tint: '#ffae6c',
+    tier: 'rare',
+    weaponOnly: 'hammer',
+    apply: () => { hero.mountainStrike = true; },
+  },
+
+  earthen_hold: {
+    // Charged hammer hits stagger enemies for +0.6s on top of the
+    // base stagger. Hammer's charge is already a commitment — this
+    // makes the payoff harder to escape. Pairs with iron_resolve for
+    // a "tank charge → counter-attack" stance build.
+    id: 'earthen_hold',
+    name: 'Earthen Hold',
+    desc: 'Charged hammer hits stagger enemies for +0.6s',
+    flavor: 'Stand still, the earth tells them. They obey, briefly.',
+    icon: 'relic_ironhide',
+    tint: '#c8a060',
+    tier: 'rare',
+    weaponOnly: 'hammer',
+    apply: () => { hero.earthenHold = true; },
+  },
+
+  world_ender: {
+    // Hammer finisher swings (every 3rd swing — same beat as the
+    // base finisher VFX) instantly shatter enemy shields. This is
+    // the answer to Warded affixes + future shielded enemies — the
+    // hammer's narrative says "nothing stops it on the third swing".
+    // Reads massive in practice because Warded elites have been a
+    // dagger/wand misery; hammer becomes the shield-buster spec.
+    id: 'world_ender',
+    name: 'World-Ender',
+    desc: 'Hammer finisher swings shatter enemy shields',
+    flavor: 'Three blows for the world below. The third is the door.',
+    icon: 'relic_executioner',
+    tint: '#ffae6c',
+    tier: 'legendary',
+    weaponOnly: 'hammer',
+    apply: () => { hero.worldEnder = true; },
+  },
+
+  patient_lens: {
+    // Charged shots get a +50% damage bump AND mark the hit as a CRIT
+    // for the damage-number badge + any crit-hit downstream procs. The
+    // legendary tier on this relic pays off the patient playstyle —
+    // sit on charge, time the release, hit hard. Does nothing for
+    // tap-fire bolts (skill expression for charge-release timing).
+    id: 'patient_lens',
+    name: 'Patient Lens',
+    desc: 'Charged wand shots crit · +50% damage',
+    flavor: 'Sight does not hurry. The arrow that flies fastest is rarely seen.',
+    icon: 'relic_eye_of_ether',
+    tint: '#ffd680',
+    tier: 'legendary',
+    weaponOnly: 'wand',
+    apply: () => { hero.boltCritOnCharge = true; },
+  },
 };
 
 export const ALL_RELIC_IDS = Object.keys(RELIC_DEFS);
@@ -551,14 +875,47 @@ export function relicTier(id) {
   return def && def.tier ? def.tier : 'common';
 }
 
+// Returns true if a relic is compatible with the hero's currently
+// equipped weapon — i.e. either it has no `weaponOnly` field (works
+// for everything) or its `weaponOnly` matches the weapon. Used by
+// every relic-pool filter in the codebase (rollRelicOffer, boss
+// rewards, tarot start-with bonuses, daily challenge relic, etc.) so
+// a sword/dagger/hammer player never gets handed a wand-only relic
+// as a guaranteed pickup.
+//
+// THE FOOL tarot starts the player with `hero.weapon = null` until the
+// first room clear grants one. While weapon is null, we allow ALL
+// weapon-only relics through — the FOOL player should be able to pick
+// any weapon-themed relic and have it MATTER once they earn a weapon.
+// (Previously, null fell through to 'sword' here, which meant a FOOL
+// player saw only sword-themed picks regardless of what weapon they'd
+// eventually be granted — silent build trap.)
+export function isRelicForWeapon(id, weapon) {
+  const def = RELIC_DEFS[id];
+  if (!def) return false;
+  if (!def.weaponOnly) return true;
+  if (weapon === null) return true;     // FOOL: weapon-pending, allow all
+  return def.weaponOnly === (weapon || 'sword');
+}
+
 // Tier weight distribution per floor — higher floors see more rare/legendary.
 // MYTHIC appears only on floor 4 and is rare (~6%). This is the Diablo
 // "Windforce moment" — the unique drop players screenshot and remember.
 const TIER_WEIGHTS_BY_FLOOR = {
   1: { common: 1.0,  rare: 0.0,  legendary: 0.0,  mythic: 0.0 },
-  2: { common: 0.65, rare: 0.35, legendary: 0.0,  mythic: 0.0 },
+  // Pacing review P0 — floor 2 had 0% legendary alongside the tier3
+  // enemy difficulty bump, so a player who hit the cliff couldn't roll
+  // a build-defining piece to compensate. 5% legendary gives roughly
+  // 1-in-20 picks a chance to land hot, without disrupting the
+  // common→rare progression rhythm.
+  2: { common: 0.60, rare: 0.35, legendary: 0.05, mythic: 0.0 },
   3: { common: 0.45, rare: 0.40, legendary: 0.15, mythic: 0.0 },
-  4: { common: 0.28, rare: 0.44, legendary: 0.22, mythic: 0.06 },
+  // Pacing review P1 — mythic was 6% on floor 4 = ~0.54 expected per
+  // run, so half of victorious players never saw the "Windforce
+  // moment" they were ostensibly working toward. 10% raises expected
+  // to ~0.9 — most successful F4 runs see one without it becoming
+  // routine. The Ember Tyrant 20% boss-drop is unchanged.
+  4: { common: 0.25, rare: 0.42, legendary: 0.23, mythic: 0.10 },
 };
 
 function weightedTier(floorLevel) {
@@ -579,6 +936,7 @@ export function resetRelics() {
   equipped.length = 0;
   clearFusions();
   hero.relicCount = 0;
+  recomputeThemeTiers(equipped);   // zeroes all theme bonus fields
 }
 
 // Enforce any memory-imposed max-HP cap AFTER a relic is applied. Called
@@ -671,6 +1029,22 @@ export const RELIC_GLYPHS = {
   whisper_veil:         'cloak',   // veil / phantom
   stormcaller:          'bolt',    // lightning
   hourglass_of_respite: 'breath',  // recovery at low HP
+  // Wand-themed (weaponOnly: 'wand') — see RELIC_DEFS additions:
+  splintered_light:     'star',    // shattered/dispersed magical light
+  storm_conduit:        'bolt',    // lightning chain on bolt hit
+  patient_lens:         'eye',     // patient sight, charged-shot crit
+  // Sword-themed (weaponOnly: 'sword'):
+  honest_edge:          'sword',   // finisher always crits
+  ringing_steel:        'sword',   // chain damage build
+  vow_eternal:          'sword',   // first hit each room is a guaranteed crit
+  // Dagger-themed (weaponOnly: 'dagger'):
+  twin_pulse:           'bolt',    // echo-strike to nearest enemy
+  flicker_step:         'wind',    // perfect-dodge window doubled
+  razor_pace:           'eye',     // every 5th hit lands a 2.5x crescendo
+  // Hammer-themed (weaponOnly: 'hammer'):
+  mountain_strike:      'sword',   // shockwave (no shockwave glyph)
+  earthen_hold:         'shield',  // stagger / hold the line
+  world_ender:          'sword',   // finisher shatters shields
 };
 
 export function getRelicGlyph(id) {
@@ -679,15 +1053,23 @@ export function getRelicGlyph(id) {
 
 // Pick N random relics not already owned, weighted by floor tier distribution.
 // Falls back to next-lower tier if the rolled tier has no available relics.
-export function rollRelicOffer(n, floorLevel = 1) {
+export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
   const ownedIds = new Set(equipped.map(r => r.id));
   const availableByTier = { common: [], rare: [], legendary: [], mythic: [] };
   // ASCENSION VI — "The Purged": legendary relics removed from the pool.
   // Mythics are blocked at the same tier (their effect budget is in the same league).
   const am = (typeof window !== 'undefined' && window.__ascensionModifiers) ? window.__ascensionModifiers() : {};
   const legendaryBlocked = !!(am && am.legendaryDisabled);
+  // Weapon-class filter — relics tagged `weaponOnly: '<id>'` only roll
+  // into the offer pool when the hero has that weapon equipped. Keeps
+  // offer relevance high regardless of weapon choice (a sword player
+  // never sees wand-themed relics; a wand player gets their themed
+  // relics WITHOUT crowding the common pool with sword-only entries).
+  const heroWeapon = hero.weapon || 'sword';
   for (const id of ALL_RELIC_IDS) {
     if (ownedIds.has(id)) continue;
+    const def = RELIC_DEFS[id];
+    if (def.weaponOnly && def.weaponOnly !== heroWeapon) continue;
     const t = relicTier(id);
     if (legendaryBlocked && (t === 'legendary' || t === 'mythic')) continue;
     if (availableByTier[t]) availableByTier[t].push(id);
@@ -703,10 +1085,16 @@ export function rollRelicOffer(n, floorLevel = 1) {
   // Fallback order: mythic → legendary → rare → common (so a missed mythic
   // roll prefers legendary over dropping straight to common).
   const fallbackOrder = ['mythic', 'legendary', 'rare', 'common'];
+  // minTier — skip any tier BELOW this in both primary pick + fallback.
+  // Used by elite/perilous rooms to guarantee rare+ rewards.
+  const minTier = opts.minTier || null;
+  const TIER_ORDER = { common: 0, rare: 1, legendary: 2, mythic: 3 };
+  const belowMin = (t) => minTier != null && TIER_ORDER[t] < TIER_ORDER[minTier];
   const picks = [];
   for (let k = 0; k < n; k++) {
-    const target = weightedTier(floorLevel);
-    const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)];
+    let target = weightedTier(floorLevel);
+    if (belowMin(target)) target = minTier;   // promote the target to at least minTier
+    const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)].filter(t => !belowMin(t));
     let got = null;
     for (const t of tryOrder) {
       got = pickFromTier(t);
@@ -719,6 +1107,7 @@ export function rollRelicOffer(n, floorLevel = 1) {
 }
 
 import { checkFusionsOnPickup, clearFusions } from './fusions.js';
+import { showTip, TIPS } from './tips.js';
 
 // Persistent "ever seen" set — drives the Chronicles relicpedia. Every relic
 // the player has ever picked up gets stored here across runs.
@@ -750,6 +1139,10 @@ export function applyRelic(id) {
   // apply() retroactively multiplies for any relics already equipped when
   // the memory first activates.
   if (hero.memoryBell) hero.damageMul *= 1.08;
+  // WARLORD relic — same pattern. Once Warlord is owned, every future
+  // pickup adds +8% dmg. The relic's own apply() handles the retroactive
+  // bonus for relics already owned at the moment Warlord is picked.
+  if (hero.warlord && def.id !== 'warlord') hero.damageMul *= 1.08;
   // Enforce memory-imposed max-HP caps AFTER each relic applies, so that
   // later relics with +maxHp effects can't silently undo the cap.
   enforceMemoryMaxHpCap();
@@ -758,6 +1151,10 @@ export function applyRelic(id) {
     seenRelicIds.add(id);
     saveSeenRelics();
   }
+  // Onboarding — first time the player picks a weaponOnly relic, drop a
+  // tip explaining why some relics don't show up for them ("only sword,
+  // dagger, hammer or wand variants appear for your class").
+  if (def.weaponOnly) showTip('first_weaponOnly');
   // Check for fusion formations after this relic joins the build
   try {
     const equippedIds = equipped.map(r => r.id);
@@ -766,4 +1163,84 @@ export function applyRelic(id) {
       for (const f of formed) window.__onFusionFormed(f);
     }
   } catch (e) {}
+  // Theme set-bonus tiers — recompute AFTER fusion check so fusion-granted
+  // flags don't get overwritten (fusions don't set theme bonus fields).
+  // Snapshot prior tiers so we can detect transitions:
+  //   0→≥1 = first_resonance tip (3-of-a-theme, RESONANCE active)
+  //   1→2  = ascendance tip (5-of-a-theme, ASCENDANCE active — the
+  //          rarer/bigger payoff that previously had NO feedback,
+  //          only the aura quietly thickened. Now lands as a moment.)
+  const priorTiers = hero.activeThemes ? { ...hero.activeThemes } : null;
+  recomputeThemeTiers(equipped);
+  if (priorTiers && hero.activeThemes) {
+    let firedResonance = false;
+    let ascendedTheme = null;
+    for (const k of Object.keys(hero.activeThemes)) {
+      const before = priorTiers[k] | 0;
+      const after = hero.activeThemes[k] | 0;
+      if (before < 1 && after >= 1) {
+        // First-time tip is one-shot per profile (educational beat). But
+        // every subsequent resonance proc gets a per-run rail toast so
+        // the moment is never silent. Playtest report: "Resonance kicked
+        // in two relics ago and I didn't notice. No toast, no '+lifesteal'
+        // floater. Whisper of an aura."
+        if (!firedResonance) {
+          showTip('first_resonance');
+          firedResonance = true;
+        }
+        try {
+          const themeName = k.toUpperCase();
+          const themeColor = (THEMES[k] && THEMES[k].color) || '#c9a86a';
+          pushNotification({
+            kind: 'theme',
+            title: `${themeName} · RESONANCE`,
+            body: 'Three relics align. The aura settles under your feet.',
+            tint: themeColor,
+            life: 3.5,
+          });
+          // Audio cue — Round-6 AV audit: the resonance moment is
+          // visually rich (toast + aura under hero) but was completely
+          // silent. A run-defining 3-of-a-theme threshold deserves a
+          // beat the player hears. Mid-warm chord at G3 (196 Hz) — sits
+          // beneath any concurrent crit/pickup pings without crowding
+          // the music bed.
+          synthChord(196, 0.55, 0.9);
+        } catch (_e) {}
+      }
+      if (before < 2 && after >= 2 && !ascendedTheme) {
+        ascendedTheme = k;
+      }
+    }
+    if (ascendedTheme) {
+      // Ascendance is the player's 5-of-a-theme payoff. The first-ever
+      // ascendance per theme still fires its educational tip via the
+      // injected TIPS entry (one-shot per profile). Every ascendance
+      // proc — first or repeat — also fires a rail toast so the moment
+      // never goes silent on later runs.
+      const tipKey = `ascendance_${ascendedTheme}`;
+      const themeName = ascendedTheme.toUpperCase();
+      try {
+        TIPS[tipKey] = { text: `${themeName} ASCENDED — the fifth relic settles. The aura you carry deepens.` };
+        showTip(tipKey);
+      } catch (_e) {}
+      try {
+        const themeColor = (THEMES[ascendedTheme] && THEMES[ascendedTheme].color) || '#f4d9a0';
+        pushNotification({
+          kind: 'theme',
+          title: `${themeName} · ASCENDED`,
+          body: 'Five relics. The aura deepens. Mechanics shift.',
+          tint: themeColor,
+          life: 4.5,
+          header: '— A NEW POWER STIRS —',
+        });
+        // Audio cue — ascendance is the bigger payoff (5-of-a-theme,
+        // adds tier-2 mechanics like the STORM dodge-shock or BLOOD
+        // room-clear regen). Larger chord at C4 (262 Hz) + a bright
+        // ping 200ms later for the "lift" moment, mirroring how the
+        // mythic-pickup banner pairs a chord with a sub-bell.
+        synthChord(262, 0.7, 1.1);
+        setTimeout(() => synthPing(1320, 0.18, 0.45), 200);
+      } catch (_e) {}
+    }
+  }
 }
