@@ -65,7 +65,12 @@ const ENTRY_OPEN_DWELL = 0.55;
 const KIND_GLYPHS = {
   combat:    '⚔', elite:     '☠',  event:     '✦',
   sanctuary: '✚', reward:    '✚',  boss:      '♛',
-  altar:     '⛧', trove:     '◈',  chestroom: '⊟', challenge: '⚐',
+  // Phase 3 audit fix #4 — chestroom glyph synced to mapScreen.js
+  // (was ⊟ "squared minus", now ⊞ "squared plus" matching the map).
+  // The squared-plus reads as a chest with a centered hinge/lock; the
+  // minus had no chest-like silhouette. Map and door now show the
+  // same glyph for the same room kind.
+  altar:     '⛧', trove:     '◈',  chestroom: '⊞', challenge: '⚐',
   miniboss:  '♜', start:     '◇',  shop:      '⚖',
 };
 const KIND_LABELS = {
