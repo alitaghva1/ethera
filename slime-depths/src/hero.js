@@ -311,6 +311,43 @@ export const hero = {
   chainCastCD: 0,
   blastCD: 0,
   blastMaxCD: 1.5,
+
+  // ── CROSS-ABILITY SYNERGY RELICS (Sprint 3C) ────────────────────
+  // Each flag is set by the relic's apply() and read in the relevant
+  // hot path. Windows track a deadline (performance.now()/1000) past
+  // which the proc is dead; a value of 0 means "not armed."
+  //
+  // Resonance Stone — kill with one weapon arms a crit on the OTHER
+  // weapon's next attack. resonanceKillWeapon stores which weapon
+  // landed the kill; resonanceKillUntil is the 3s expiry.
+  resonanceStone: false,
+  resonanceKillWeapon: null,
+  resonanceKillUntil: 0,
+  resonanceCritReady: false,        // armed at swap, consumed on next hit
+
+  // Twin Fang Pact — weapon swap grants 0.4s of +50% damage. Window
+  // ticks down purely on wall-clock; no charges to count.
+  twinFangPact: false,
+  twinFangBuffUntil: 0,
+
+  // Phase Flicker — blink within 1s after a perfect-block grants the
+  // next blast a free chain cast (0 CD AND chainCount: 2).
+  phaseFlicker: false,
+  phaseFlickerArmedUntil: 0,        // window opened by perfect-block
+  phaseFlickerNextBlast: false,     // armed by blink-during-window
+
+  // Echo Step — post-blink, the next 2s of incoming damage is treated
+  // as a perfect-block (no front-cone gate). Single-use; consumed on
+  // first eligible hit OR when window expires.
+  echoStep: false,
+  echoStepUntil: 0,
+
+  // Adaptive Edge — passive +5% active-weapon damage per relic owned
+  // of the OFF-slot's affects. Recomputed in applyRelic alongside
+  // theme/slot tiers; written here so attack calc reads it directly.
+  adaptiveEdge: false,
+  adaptiveEdgeBlastSideCount: 0,    // for sword-active reads
+  adaptiveEdgeSwordSideCount: 0,    // for blast-active reads
 };
 
 export function resetHero() {
@@ -585,6 +622,26 @@ export function updateHero(dt, enemies, mouseWorld) {
       // at a higher pitch so the moment reads tactile without
       // needing a dedicated synth preset yet.
       try { synthClick(1.5, 0.35); } catch (_e) {}
+
+      // ── CROSS-ABILITY RELIC HOOKS — Sprint 3C ────────────────
+      const swapNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+
+      // Twin Fang Pact — swap grants 0.4s of +50% damage. The buff
+      // is read in the damage-calc paths (sword swing + blast bolt
+      // spawn) via twinFangBuffUntil > now.
+      if (hero.twinFangPact) {
+        hero.twinFangBuffUntil = swapNow + 0.4;
+      }
+
+      // Resonance Stone — if the swap is into a weapon DIFFERENT from
+      // the one that landed the recent kill, AND we're within the 3s
+      // armed window, prime the next attack to crit.
+      if (hero.resonanceStone
+        && hero.resonanceKillWeapon
+        && hero.resonanceKillWeapon !== hero.activeWeapon
+        && hero.resonanceKillUntil > swapNow) {
+        hero.resonanceCritReady = true;
+      }
     } else if (wheel.delta !== 0) {
       // Wheel-scroll on a 2-slot system already handled above; just
       // ensure the accumulator doesn't stack across frames.
@@ -970,6 +1027,31 @@ export function updateHero(dt, enemies, mouseWorld) {
           );
         }
         triggerScreenFlash('rgba(160, 220, 255, 0.10)', 0.18);
+
+        // ── CROSS-ABILITY RELIC HOOKS (Sprint 3C) ────────────────
+        const _bnow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+
+        // Phase Flicker — if the player blinks during the post-perfect-
+        // block window, arm the next blast for a free chain cast. The
+        // window is consumed AND the chain is queued; if the player
+        // doesn't fire blast soon, the queue persists (no expiry —
+        // intentional: you earned the empowered shot).
+        if (hero.phaseFlicker && _bnow < hero.phaseFlickerArmedUntil) {
+          hero.phaseFlickerArmedUntil = 0;
+          hero.phaseFlickerNextBlast = true;
+          // Distinct audio sting — chord up to mark the moment.
+          try { synthChord(440, 0.55, 0.65); } catch (_e) {}
+          try { synthPing(1480, 0.45, 0.18); } catch (_e) {}
+        }
+
+        // Echo Step — post-blink, the next 2s of incoming damage is
+        // treated as a free perfect-block (no front-cone gate, no
+        // counter consumption — pure absorption with the standard
+        // perfect-block FX). Single-use; the damageHero handler
+        // resets echoStepUntil to 0 on consume.
+        if (hero.echoStep) {
+          hero.echoStepUntil = _bnow + 2.0;
+        }
       }
     }
     // Shield (Space) — wizard-kit Sprint 1. Replaces the old dodge:
@@ -1134,19 +1216,46 @@ export function updateHero(dt, enemies, mouseWorld) {
       // the outstretched hand" instead of from the chest cavity.
       const spawnX = hero.x + ax * 18;
       const spawnY = hero.y - 8 + ay * 12;
+      // Cross-ability damage modifiers (Sprint 3C). Applied at spawn
+      // time so the bolt carries the buff into projectiles.js's hit
+      // resolution. Twin Fang and Adaptive Edge both scale base
+      // damage; consumed by Twin Fang's window-tick (no charges).
+      let _boltDmg = hero.blastBoltDamage * (hero.damageMul || 1);
+      const _boltNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+      if (hero.twinFangPact && _boltNow < hero.twinFangBuffUntil) {
+        _boltDmg *= 1.5;
+      }
+      if (hero.adaptiveEdge) {
+        // Blast active → reads sword-side count.
+        const _otherCount = hero.adaptiveEdgeSwordSideCount | 0;
+        if (_otherCount > 0) _boltDmg *= (1 + 0.05 * _otherCount);
+      }
+      // PHASE FLICKER (Sprint 3C) — armed by blink-after-perfect-block.
+      // Consume on the next blast tap: spawn an empowered chain bolt
+      // (chainCast pipeline) and refund the CD spent on this tap.
+      const _phaseFlickerFire = hero.phaseFlickerNextBlast;
+      if (_phaseFlickerFire) {
+        hero.phaseFlickerNextBlast = false;
+        hero.blastBoltCD = 0;        // refund — free shot
+      }
       spawnHeroBolt(
         spawnX,
         spawnY,
         ax,
         ay,
-        hero.blastBoltDamage * (hero.damageMul || 1),
+        _boltDmg,
         hero.blastBoltSpeed,
         hero.blastBoltLife,
         {
-          color: '#a0e8ff',
+          color: _phaseFlickerFire ? '#d8f0ff' : '#a0e8ff',
           // Slot ascendance T2: bolts pierce 1 extra enemy.
+          // Phase Flicker also adds chain to 2 nearby foes.
           pierce: hero.slotBoltPierceBonus || 0,
-          radius: hero.blastBoltRadius,
+          radius: _phaseFlickerFire ? hero.blastBoltRadius + 2 : hero.blastBoltRadius,
+          chainCast: _phaseFlickerFire,
+          chainCount: _phaseFlickerFire ? 2 : 0,
+          chainDamage: _phaseFlickerFire ? Math.round(_boltDmg * 0.7) : 0,
+          chainRange: _phaseFlickerFire ? 150 : 0,
         }
       );
       // Muzzle flash — small sparkle burst at the spawn point so the
@@ -1751,8 +1860,17 @@ export function updateHero(dt, enemies, mouseWorld) {
           const _fcKB = !!(hero.knockbackCrit && e._kbCritPending);
           const _fcHE = !!(hero.honestEdge && hero._swingIsFinisher);
           const _fcVE = !!(hero.vowEternal && hero.vowEternalReady && w.id === 'sword');
-          const _forcedCount = (_fcMove ? 1 : 0) + (_fcKB ? 1 : 0) + (_fcHE ? 1 : 0) + (_fcVE ? 1 : 0);
+          // RESONANCE STONE (Sprint 3C) — armed at swap when the OTHER
+          // weapon landed a recent kill. First sword hit consumes it.
+          const _fcRS = !!hero.resonanceCritReady;
+          const _forcedCount = (_fcMove ? 1 : 0) + (_fcKB ? 1 : 0) + (_fcHE ? 1 : 0) + (_fcVE ? 1 : 0) + (_fcRS ? 1 : 0);
           const forcedCrit = _forcedCount > 0;
+          // Consume Resonance Stone on the FIRST hit of this swing
+          // (not every enemy in a multi-hit arc — that'd be too strong).
+          if (_fcRS && hero.hitThisSwing.size === 1) {
+            hero.resonanceCritReady = false;
+            hero.resonanceKillWeapon = null;     // reset arming
+          }
           // Extra crit multiplier when ≥2 forced-crit sources fire together.
           const _forcedCritBonus = Math.max(0, _forcedCount - 1) * 0.25;
           if (hero.knockbackCrit && e._kbCritPending) e._kbCritPending = false;
@@ -1819,6 +1937,21 @@ export function updateHero(dt, enemies, mouseWorld) {
           if (hero.oathshield && _hnow < hero.oathshieldUntil) {
             finalDmg *= (1 + hero.oathshieldBonus);
             hero.oathshieldUntil = 0;    // consumed
+          }
+          // TWIN FANG PACT (Sprint 3C) — 0.4s post-swap damage burst.
+          // Window-based, no charge consumption — every hit during the
+          // window benefits, rewarding aggressive post-swap chains.
+          if (hero.twinFangPact && _hnow < hero.twinFangBuffUntil) {
+            finalDmg *= 1.5;
+          }
+          // ADAPTIVE EDGE (Sprint 3C) — +5% per off-slot relic owned.
+          // Sword-active reads blast-side count; blast-active reads
+          // sword-side count. Kept on hero in apply()/recompute path.
+          if (hero.adaptiveEdge) {
+            const _otherCount = hero.activeWeapon === 'sword'
+              ? (hero.adaptiveEdgeBlastSideCount | 0)
+              : (hero.adaptiveEdgeSwordSideCount | 0);
+            if (_otherCount > 0) finalDmg *= (1 + 0.05 * _otherCount);
           }
           if (hero.whisperVeilNextCrit && _hnow < hero.whisperVeilUntil) {
             hero.whisperVeilNextCrit = false;
@@ -1923,6 +2056,15 @@ export function updateHero(dt, enemies, mouseWorld) {
           // weakened target (no farming mid-HP kills).
           if (hero.finisherHeal && e.dead && eHpBefore <= e.maxHp * 0.25 && hero.hp < hero.maxHp) {
             hero.hp = Math.min(hero.maxHp, hero.hp + hero.finisherHeal);
+          }
+          // RESONANCE STONE (Sprint 3C) — sword kill arms a 3s crit
+          // window for the player's next attack with the OTHER
+          // weapon. Captures activeWeapon at kill time so a
+          // mid-swing-into-swap chain doesn't lose the trigger.
+          if (hero.resonanceStone && e.dead) {
+            const _now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+            hero.resonanceKillWeapon = hero.activeWeapon;     // 'sword' here
+            hero.resonanceKillUntil = _now + 3.0;
           }
           // SPORE BLOOM — on kill, release a cloud dealing sporeDamage to all
           // other enemies within sporeRadius. Reuses the dying enemy's position.
@@ -2282,6 +2424,35 @@ export function updateHero(dt, enemies, mouseWorld) {
 // Returns: 'hit' | 'absorbed' | 'perfect' — so callers can apply affix effects only on real hits
 export function damageHero(amount, fromX, fromY) {
   if (hero.state === 'dead') return 'absorbed';
+
+  // ── ECHO STEP (Sprint 3C) ─────────────────────────────────────
+  // Post-blink window: the first hit during the 2s window is treated
+  // as a free perfect-block (no cone gate, no shield needed). Single-
+  // use; consumed on first eligible hit. Fires BEFORE the shield
+  // perfect-block branch so an Echo Step trigger doesn't double up
+  // with a shield perfect during the same frame (the player has
+  // already "earned" the absorb via blink — no additional counter
+  // grant beyond what perfect-block normally gives).
+  const _esNow = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+  if (hero.echoStep && hero.echoStepUntil > _esNow) {
+    hero.echoStepUntil = 0;        // consumed
+    // Same downstream as a normal perfect-block: counter window,
+    // slow-mo, chrom-aberr, etc. Reuses triggerPerfectDodge for the
+    // counter mechanism (legacy name; rebound to perfect-block
+    // semantically since Sprint 1).
+    triggerPerfectDodge(1);
+    stats.perfectDodges++;
+    try { synthPing(1980, 0.6, 0.22); } catch (_e) {}
+    if (hero.perfectDodgeRefund) hero.dodgeCooldown = 0;
+    if (hero.temporalEye) { triggerHitStop(hero.temporalSlowDuration || 0.35); }
+    if (window.__triggerChromAberr) window.__triggerChromAberr(0.35, 0.18);
+    if (hero.whisperVeil) {
+      hero.whisperVeilUntil = _esNow + hero.whisperVeilWindow;
+      hero.whisperVeilNextCrit = true;
+    }
+    return 'perfect';
+  }
+
   // ── PERFECT BLOCK — wizard-kit Sprint 1 ─────────────────────────
   // Renamed from "perfect dodge" with the same downstream hooks:
   // counter-attack window, slow-mo, chrom-aberr, whisper veil,
@@ -2348,6 +2519,13 @@ export function damageHero(amount, fromX, fromY) {
         // OATHSHIELD — next hit within 1s deals +50% damage.
         if (hero.oathshield) {
           hero.oathshieldUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + 1.0 : 0;
+        }
+        // PHASE FLICKER (Sprint 3C) — arm a 1.0s window where a Q
+        // blink (blast slot) will set the next blast LMB up as a free
+        // chain bolt. The window itself doesn't do anything; it
+        // gates the blink trigger below.
+        if (hero.phaseFlicker) {
+          hero.phaseFlickerArmedUntil = (typeof performance !== 'undefined') ? performance.now() / 1000 + 1.0 : 0;
         }
         return 'perfect';
       }

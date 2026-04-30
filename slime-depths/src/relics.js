@@ -926,6 +926,99 @@ export const RELIC_DEFS = {
     tier: 'legendary',
     apply: () => { hero.boltCritOnCharge = true; },
   },
+
+  // ============================================================================
+  // CROSS-ABILITY SYNERGY RELICS — wizard-kit Sprint 3C
+  //
+  // These five relics only matter in the new weapon-swap kit. They reward
+  // swap rhythm play: kill with one weapon, swap, get a buff; blink after a
+  // perfect-block, your next blast empowers; etc. A pure-sword build sees
+  // most of them as dead picks — that's the design (these are the
+  // "balanced kit" payoff, not a mandatory tax).
+  //
+  // affects: ['sword', 'blast'] for the three that buff both weapons; the
+  // two single-slot ones (Phase Flicker = blast, Echo Step = blast/shield)
+  // are tagged where their PAYOFF lands.
+  // ============================================================================
+
+  resonance_stone: {
+    id: 'resonance_stone',
+    affects: ['sword', 'blast'],
+    name: 'Resonance Stone',
+    // Killing with one weapon arms a 3s "echo" window: when you swap to
+    // the OTHER weapon, the next attack is a guaranteed crit. Reads as
+    // "the unused weapon waits its turn — but it remembers."
+    desc: 'Kill with one weapon → next swap-to-other-weapon attack crits (3s)',
+    flavor: 'The unused blade waits its turn. It does not forget.',
+    icon: 'relic_keen_edge',
+    tint: '#e8d8ff',
+    tier: 'rare',
+    apply: () => { hero.resonanceStone = true; },
+  },
+
+  twin_fang_pact: {
+    id: 'twin_fang_pact',
+    affects: ['sword', 'blast'],
+    name: 'Twin Fang Pact',
+    // Swapping weapons grants 0.4s of +50% damage. Active swappers get
+    // burst windows — the more you swap, the more you damage. Pairs
+    // perfectly with Resonance Stone for swap-rhythm builds.
+    desc: 'Swapping weapons grants +50% damage for 0.4s',
+    flavor: 'Two fangs in one mouth. Both teach the same lesson.',
+    icon: 'relic_serrated_edge',
+    tint: '#ffd680',
+    tier: 'legendary',
+    apply: () => { hero.twinFangPact = true; },
+  },
+
+  phase_flicker: {
+    id: 'phase_flicker',
+    affects: ['blast'],
+    name: 'Phase Flicker',
+    // Blink during the 1.0s window after a perfect-block → next blast
+    // costs 0 CD AND chains to 2 nearby enemies. Three-input combo:
+    // shield-perfect → blink → blast. The cool magic-trick relic.
+    desc: 'Blink within 1s of a perfect-block → next blast is a free chain cast',
+    flavor: 'A breath stolen between two heartbeats. The world catches up later.',
+    icon: 'relic_temporal_eye',
+    tint: '#a8e0ff',
+    tier: 'legendary',
+    apply: () => { hero.phaseFlicker = true; },
+  },
+
+  echo_step: {
+    id: 'echo_step',
+    affects: ['shield'],
+    name: 'Echo Step',
+    // Post-blink, the next 2s of incoming damage is a free perfect-
+    // block. Single-use; consumed on first eligible hit. Reads as
+    // "your origin point holds your shape until something strikes
+    // through it." A blast-side defensive option that doesn't need
+    // shield to be raised.
+    desc: 'After blinking, the next hit within 2s is a free perfect-block',
+    flavor: 'You leave a shape behind. The shape catches what hunts you.',
+    icon: 'relic_whisper_veil',
+    tint: '#b0d8ff',
+    tier: 'rare',
+    apply: () => { hero.echoStep = true; },
+  },
+
+  adaptive_edge: {
+    id: 'adaptive_edge',
+    affects: ['sword', 'blast'],
+    name: 'Adaptive Edge',
+    // Active weapon's damage scales by +5% per OFF-SLOT relic owned.
+    // A pure sword build with no blast picks gets 0% bonus (not a stat
+    // stick). A 1-sword + 4-blast hybrid gets +20% on sword swings AND
+    // +5% on bolts (since they have 1 sword-side relic). Rewards
+    // BALANCED builds — the more you spread, the more you scale.
+    desc: 'Active weapon: +5% damage per relic of the OFF-slot',
+    flavor: 'What you have not yet drawn still sharpens what you wield.',
+    icon: 'relic_warlord',
+    tint: '#c8d8ff',
+    tier: 'rare',
+    apply: () => { hero.adaptiveEdge = true; },
+  },
 };
 
 export const ALL_RELIC_IDS = Object.keys(RELIC_DEFS);
@@ -1107,6 +1200,12 @@ export const RELIC_GLYPHS = {
   mountain_strike:      'sword',   // shockwave (no shockwave glyph)
   earthen_hold:         'shield',  // stagger / hold the line
   world_ender:          'sword',   // finisher shatters shields
+  // Cross-ability synergy relics (Sprint 3C):
+  resonance_stone:      'rune',    // binding / echo
+  twin_fang_pact:       'sword',   // double-edged commitment
+  phase_flicker:        'wind',    // teleport / phase
+  echo_step:            'wind',    // afterimage / phase
+  adaptive_edge:        'star',    // shifting / off-axis scaling
 };
 
 export function getRelicGlyph(id) {

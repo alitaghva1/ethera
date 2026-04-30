@@ -142,4 +142,27 @@ export function recomputeSlotTiers(equipped) {
   //          slightly behind the front line, rewarding defensive builds.
   hero.slotShieldPerfectBonus = tiers.shield >= 1 ? 0.05 : 0;
   hero.slotShieldConeBonus = tiers.shield >= 2 ? Math.PI / 9 : 0;
+
+  // ── ADAPTIVE EDGE pre-compute (Sprint 3C) ─────────────────────
+  // The Adaptive Edge relic reads "off-slot relic count" on every
+  // attack. Computing it from `equipped` per-attack would scan the
+  // array every swing. Cache the counts here on each pickup so the
+  // damage path reads a single number.
+  //
+  // For sword-active reads: count relics that affect blast (and
+  // not also sword — pure cross-slot picks count, dual-slot
+  // serrated_edge etc. don't, since they're already buffing your
+  // sword via the standard damage path).
+  let blastSide = 0;
+  let swordSide = 0;
+  for (const r of equipped) {
+    const tags = r && r.affects;
+    if (!tags || !tags.length) continue;
+    const hasSword = tags.indexOf('sword') >= 0;
+    const hasBlast = tags.indexOf('blast') >= 0;
+    if (hasBlast && !hasSword) blastSide++;
+    if (hasSword && !hasBlast) swordSide++;
+  }
+  hero.adaptiveEdgeBlastSideCount = blastSide;
+  hero.adaptiveEdgeSwordSideCount = swordSide;
 }
