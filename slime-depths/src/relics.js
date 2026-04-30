@@ -214,7 +214,7 @@ export const RELIC_DEFS = {
     id: 'heavy_blow',
     affects: ['sword'],
     name: 'Heavy Blow',
-    desc: 'Knockback ×2.5 · hitting a knocked-back enemy is a guaranteed crit',
+    desc: 'Knockback ×2.5 · the next hit on a knocked-back enemy crits',
     flavor: 'Meant for doors. It works on ribs, too.',
     icon: 'relic_heavy_blow',
     tint: '#c86a4a',
@@ -400,11 +400,11 @@ export const RELIC_DEFS = {
     id: 'stride_of_ash',
     affects: ['shield'],
     name: 'Stride of Ash',
-    // Dodge / dash leaves a trail of fire pools (uses the existing
-    // ember-flame system — same hazard tile bombers leave behind, just
-    // hero-side this time). Pools deal 1 dmg/tick to enemies, last 1.4s
-    // each, drop ~3 along the dodge path. Turns the hero's evasive
-    // mechanic into an offensive lane closer.
+    // Wizard-kit Sprint 1 rebind — the trigger is now SHIELD RAISE
+    // (was the legacy dodge-roll motion). Same ember-flame hazard
+    // system as bomber trails, just hero-side. Pools deal 1 dmg/tick
+    // to enemies, last 1.4s each, drop ~3 around the shield raise.
+    // Turns the hero's defensive cast into an offensive lane closer.
     desc: 'Raising your shield scatters embers that scorch nearby enemies',
     flavor: 'You walked through the wound, and the wound learned to walk with you.',
     icon: 'relic_avatar_of_flame',

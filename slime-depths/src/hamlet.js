@@ -1064,7 +1064,18 @@ export function refreshNpcPresence(records, stats, ctx) {
         hamletState.npcServiceCount[id] = 0;
         newlyArrived.push(def);
       }
-    } catch (e) {}
+    } catch (e) {
+      // Bug-hunt audit fix: was silently swallowing. If an NPC's
+      // unlockCheck has a runtime error (e.g. references a renamed
+      // record field), they'd never arrive and the player would
+      // never know. Warn once per id per session so playtest
+      // catches it.
+      const _key = '_warned_arrival_' + id;
+      if (!refreshNpcPresence[_key]) {
+        refreshNpcPresence[_key] = true;
+        try { console.warn('[hamlet] NPC arrival check threw for', id, '—', e?.message || e); } catch (_e) {}
+      }
+    }
   }
   if (newlyArrived.length) saveHamletState();
   return newlyArrived;
@@ -1086,7 +1097,15 @@ export function tryAdvanceArc(npcId) {
       saveHamletState();
       return nextStage;
     }
-  } catch (e) {}
+  } catch (e) {
+    // Bug-hunt audit fix: silent swallow → playtest-detectable warning.
+    // Same once-per-session-per-id discipline as the arrival path.
+    const _key = '_warned_advance_' + npcId;
+    if (!tryAdvanceArc[_key]) {
+      tryAdvanceArc[_key] = true;
+      try { console.warn('[hamlet] arc advance threw for', npcId, '—', e?.message || e); } catch (_e) {}
+    }
+  }
   return -1;
 }
 

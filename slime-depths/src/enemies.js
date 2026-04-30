@@ -1613,7 +1613,11 @@ function updateMelee(e, dt) {
         while (diff >  Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
         if (Math.abs(diff) <= prof.arc / 2) {
-          const wasHit = damageHero(prof.damage | 0, e.x, e.y, e.type);
+          // Math.max(1, Math.round(...)) so a fractional 0.4 dmg from a
+          // weak source still registers as 1 (`| 0` would truncate to
+          // 0 — silent miss). Matches the rounding pattern used in
+          // projectile chain damage (projectiles.js:283).
+          const wasHit = damageHero(Math.max(1, Math.round(prof.damage)), e.x, e.y, e.type);
           // Affix onHitHero — frost/venom apply debuffs when a hit lands
           if (wasHit !== 'absorbed' && e.affix && e.affix.onHitHero) {
             e.affix.onHitHero(e);

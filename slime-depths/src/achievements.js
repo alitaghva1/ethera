@@ -224,7 +224,18 @@ export function evaluateAchievements(stats, meta) {
     if (unlockedAchievements.has(id)) continue;
     try {
       if (ACHIEVEMENTS[id].check(stats, meta)) unlockAch(id);
-    } catch (e) {}
+    } catch (e) {
+      // Bug-hunt audit fix: was silently swallowing the throw. If a
+      // check() function references a renamed/removed stat field, the
+      // achievement would never unlock and the dev would never know.
+      // Warn so playtest catches it. Once-per-session-per-id (a noisy
+      // achievement check would otherwise spam warnings every frame).
+      const _key = '_warned_' + id;
+      if (!evaluateAchievements[_key]) {
+        evaluateAchievements[_key] = true;
+        try { console.warn('[achievements] check threw for', id, '—', e?.message || e); } catch (_e) {}
+      }
+    }
   }
 }
 

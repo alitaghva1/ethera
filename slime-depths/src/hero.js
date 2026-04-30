@@ -872,7 +872,9 @@ export function updateHero(dt, enemies, mouseWorld) {
 
   // HYMN OF EMBERS — passive fire aura. Ticks every 1s for hymnDps damage to
   // every enemy within hymnRadius. Fusion Wildfire Choir bumps the radius
-  // (handled in apply:) and could add a burn-over-time (TODO follow-up round).
+  // (handled in apply:). Burn-over-time was considered but didn't ship —
+  // STRIDE OF ASH already handles "fire trail damage" mechanically and
+  // adding DoT to Hymn would overlap. Removed as a future-work note.
   if (hero.hymnOfEmbers && enemies) {
     hero.hymnTick -= dt;
     if (hero.hymnTick <= 0) {
