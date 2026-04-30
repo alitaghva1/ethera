@@ -557,12 +557,22 @@ export function drawHud(ctx, w, h, progress = {}) {
   if (progress.relics && progress.relics.length > 0) {
     const slotCounts = getSlotCounts(progress.relics);
     const slotList = Object.values(SLOTS);
-    const sChipW = 64, sChipH = 26, sChipGap = 5;
+    // Mobile font bump — hearts already do this (line 156). Without
+    // matching scale on the chip labels, mobile players see hearts
+    // at ~22 actual px but slot/theme chip text at ~9 actual px,
+    // making "SWORD 4/5 ★" basically unreadable. Same trade.
+    const _slotMobile = isMobileMode();
+    const slotLabelFont = _slotMobile ? 'bold 14px Georgia, serif' : 'bold 11px Georgia, serif';
+    const slotCountFont = _slotMobile ? 'bold 14px Georgia, serif' : 'bold 11px Georgia, serif';
+    const slotHeaderFont = _slotMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
+    const sChipW = _slotMobile ? 78 : 64;       // wider chips for the bigger text
+    const sChipH = _slotMobile ? 32 : 26;
+    const sChipGap = 5;
     const slotsY = h - sChipH - 152;       // 42px above the themes row
     const slotsLabelY = slotsY - 14;
     ctx.save();
     ctx.fillStyle = 'rgba(220, 200, 160, 0.65)';
-    ctx.font = 'bold 10px Georgia, serif';
+    ctx.font = slotHeaderFont;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText('◆ SLOTS', 18, slotsLabelY);
@@ -601,12 +611,12 @@ export function drawHud(ctx, w, h, progress = {}) {
       ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.4 : 1;
       ctx.strokeRect(cx + 0.5, cy + 0.5, sChipW - 1, sChipH - 1);
       ctx.fillStyle = tier >= 1 ? s.color : 'rgba(170, 180, 195, 0.8)';
-      ctx.font = 'bold 11px Georgia, serif';
-      ctx.fillText(s.name.toUpperCase(), cx + 6, cy + 4);
+      ctx.font = slotLabelFont;
+      ctx.fillText(s.name.toUpperCase(), cx + 6, cy + (_slotMobile ? 5 : 4));
       ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.75)';
-      ctx.font = 'bold 11px Georgia, serif';
+      ctx.font = slotCountFont;
       const glyph = tier >= 2 ? '★★' : tier >= 1 ? '★' : '';
-      ctx.fillText(`${count}/${SLOT_THRESHOLDS.ascendance} ${glyph}`, cx + 6, cy + 14);
+      ctx.fillText(`${count}/${SLOT_THRESHOLDS.ascendance} ${glyph}`, cx + 6, cy + (_slotMobile ? 18 : 14));
       // Hover tooltip — name + blurb + tier-progress text.
       if (mouse.x >= cx && mouse.x <= cx + sChipW && mouse.y >= cy && mouse.y <= cy + sChipH
           && !isPedestalTooltipActive()) {
@@ -654,12 +664,21 @@ export function drawHud(ctx, w, h, progress = {}) {
     const themeCounts = getThemeCounts(progress.relics);
     const visibleThemes = Object.values(THEMES);
     if (visibleThemes.length > 0) {
-      const chipW = 52, chipH = 22, chipGap = 4;
+      // Mobile font bump — same trade as slot chips (and hearts at line
+      // 156). Without this the chip text renders at sub-readable size
+      // on phone-scale viewports.
+      const _themeMobile = isMobileMode();
+      const themeNameFont  = _themeMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
+      const themeCountFont = _themeMobile ? 'bold 14px Georgia, serif' : 'bold 11px Georgia, serif';
+      const themeHeaderFont = _themeMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
+      const chipW = _themeMobile ? 64 : 52;     // wider for the bigger text
+      const chipH = _themeMobile ? 28 : 22;
+      const chipGap = 4;
       const themesY = h - chipH - 110;
       const themesLabelY = themesY - 14;
       ctx.save();
       ctx.fillStyle = 'rgba(180, 200, 220, 0.55)';
-      ctx.font = 'bold 10px Georgia, serif';
+      ctx.font = themeHeaderFont;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText('◆ THEMES', 18, themesLabelY);
@@ -721,18 +740,18 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.strokeRect(cx + 0.5, cy + 0.5, chipW - 1, chipH - 1);
         // Theme name
         ctx.fillStyle = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.75)';
-        ctx.font = 'bold 10px Georgia, serif';
+        ctx.font = themeNameFont;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.fillText(t.name.toUpperCase(), cx + 5, cy + 4);
+        ctx.fillText(t.name.toUpperCase(), cx + 5, cy + (_themeMobile ? 4 : 4));
         // Count + tier glyphs
         ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.7)';
-        ctx.font = 'bold 11px Georgia, serif';
+        ctx.font = themeCountFont;
         const glyph = tier >= 2 ? '\u2605\u2605' : tier >= 1 ? '\u2605' : '';
         // Per-theme ascendance cap in the count display \u2014 storm
         // shows X/4, others show X/5 (matches THEME_THRESHOLDS).
         const countLabel = `${count}/${thresh.ascendance} ${glyph}`;
-        ctx.fillText(countLabel, cx + 5, cy + 12);
+        ctx.fillText(countLabel, cx + 5, cy + (_themeMobile ? 14 : 12));
         // Hover tooltip — name + blurb + current buff text. Suppressed
         // when a pedestal tooltip would also be on screen so the player
         // doesn't see two tooltips stacked (audit dedup quick-win).
