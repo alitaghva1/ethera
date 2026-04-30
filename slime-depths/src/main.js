@@ -4787,7 +4787,7 @@ function tick(now) {
             const sy = s.y * TILE + TILE / 2;
             // Pre-spawn smoke + pop
             for (let k = 0; k < 10; k++) deathBurst(sx, sy, '#ff6040');
-            spawnEnemy(s.type, sx, sy, { elite: s.elite, hpMul: s.hpMul, damageMul: s.damageMul });
+            spawnEnemy(s.type, sx, sy, { elite: s.elite, hpMul: s.hpMul, damageMul: s.damageMul, affix: s.affixId });
           }
           playSfx('hero_hurt', { rate: 0.38, volume: 0.7 });
         }, 650);

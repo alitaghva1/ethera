@@ -336,7 +336,27 @@ function pathSublabelHtml(n, clickable, isCurrent, color) {
     text = REWARD_LABELS[n.roomReward] || n.roomReward.toUpperCase();
     chipColor = REWARD_COLORS[n.roomReward] || color;
   }
-  if (!text) return '';
+  // Phase 3 audit fix #1 — append an affix sub-label for elite nodes
+  // with a pre-rolled affix. Sits below the reward chip so the order
+  // reads "ELITE / RARE+ / FROST" — kind, then reward, then threat.
+  // Players reading the map can plan "I need fire resist for that
+  // ember room two layers up" before committing to a fork.
+  let affixHtml = '';
+  if (n.eliteAffixId) {
+    const af = AFFIX_LABELS[n.eliteAffixId];
+    if (af) {
+      const alive = clickable || isCurrent;
+      const alpha = alive ? 0.85 : 0.5;
+      affixHtml = `
+    <div style="
+      color:${alive ? af.color : '#7a6d5e'};
+      font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
+      opacity:${alpha};margin-top:-1px;
+      font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+    ">${af.label}</div>`;
+    }
+  }
+  if (!text) return affixHtml;
   const alive = clickable || isCurrent;
   const alpha = alive ? 0.85 : 0.5;
   return `
@@ -345,8 +365,18 @@ function pathSublabelHtml(n, clickable, isCurrent, color) {
       font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
       opacity:${alpha};margin-top:-1px;
       font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
-    ">${text}</div>`;
+    ">${text}</div>${affixHtml}`;
 }
+// Phase 3 audit fix #1 — affix display table mirrored from doorPortals.js
+// AFFIX_LABELS so the door card and the map node show the same label +
+// color for the same affix. Could share via a tiny module but mirroring
+// is cheap and the data is stable (4 affixes total, not changing).
+const AFFIX_LABELS = {
+  frost:  { label: 'FROST',  color: '#72c6ff' },
+  ember:  { label: 'EMBER',  color: '#ff7a2a' },
+  venom:  { label: 'VENOM',  color: '#6ae08a' },
+  warded: { label: 'WARDED', color: '#ffd855' },
+};
 // Reward palettes for the map sub-labels \u2014 kept parallel to doorPortals.js
 // REWARD_COLORS so the chip on the door + the chip on the map look the
 // same color to the player. (Could share via a tiny module but the maps

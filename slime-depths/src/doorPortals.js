@@ -98,6 +98,18 @@ const REWARD_COLORS = {
   heal:      '#86e3a8',
   fusion:    '#ffb265',
 };
+// Phase 3 audit fix #1 — elite affix display table. The renderer reads
+// eliteAffixId off the door object (propagated from t.eliteAffixId,
+// pre-rolled at floorGraph build time) and renders the human-readable
+// label as a sub-line on the door card. The colors mirror the in-game
+// auraColor for each affix in enemies.js ELITE_AFFIXES so the player
+// learns the cross-system color coding (door → enemy aura → badge).
+const AFFIX_LABELS = {
+  frost:  { label: 'FROST',  color: '#72c6ff' },
+  ember:  { label: 'EMBER',  color: '#ff7a2a' },
+  venom:  { label: 'VENOM',  color: '#6ae08a' },
+  warded: { label: 'WARDED', color: '#ffd855' },
+};
 // Render-side labels for the reward chip. floorGraph.js maintains its
 // own REWARD_LABELS for the game-internal API (rewardLabel(reward)) but
 // duplicating the map here keeps doorPortals.js self-contained — the
@@ -214,6 +226,12 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
           glyph: sealed ? '⛧' : (KIND_GLYPHS[displayKind] || '?'),
           rewardLabel: sealed ? `OFFER ${sealCost} HP` : rewardLabel,
           rewardColor: sealed ? '#ff8088' : rewardColor,
+          // Phase 3 audit fix #1 — propagate the pre-rolled elite affix
+          // so drawDoorLabels can render "ELITE · FROST" instead of
+          // generic "ELITE". The affix was rolled at floorGraph build
+          // time and stamped on every elite spawn so display matches
+          // reality at room load.
+          eliteAffixId: t.eliteAffixId || null,
           // Persist these so tryBreakSealNear can read sealCost and the
           // post-break path can swap label/glyph back to the target's
           // real kind/reward.
@@ -513,7 +531,7 @@ export function drawDoorLabels(ctx) {
     const isSealed = d.state === 'sealed';
 
     // Pick the dominant signal for this door. Sealed > reward > kind.
-    let sigil, caption, fillColor, borderColor, captionColor, subLine;
+    let sigil, caption, fillColor, borderColor, captionColor, subLine, subLineColor;
     if (isSealed) {
       sigil = '⛧';
       caption = 'BLOOD';
@@ -521,6 +539,7 @@ export function drawDoorLabels(ctx) {
       captionColor = '#ff8088';
       fillColor = 'rgba(80, 16, 24, 0.92)';
       subLine = `OFFER ${d.sealCost || 1} HP`;
+      subLineColor = '#ff8088';
     } else if (d.rewardLabel) {
       // Map the rewardColor (already a hex string) into a soft fill +
       // the saturated border. rewardLabel like "GOLD" / "RARE+" /
@@ -536,6 +555,7 @@ export function drawDoorLabels(ctx) {
       captionColor = borderColor;
       fillColor = hexA(borderColor, 0.18);
       subLine = null;
+      subLineColor = null;
     } else {
       // No reward chip — render the kind label directly. Common case
       // for default-no-bonus combat rooms (the 20% null-reward roll)
@@ -546,6 +566,21 @@ export function drawDoorLabels(ctx) {
       captionColor = borderColor;
       fillColor = hexA(borderColor, 0.14);
       subLine = null;
+      subLineColor = null;
+    }
+    // Phase 3 audit fix #1 — elite-affix sub-line. Overrides the existing
+    // sub-line (currently only set on sealed doors, where the BLOOD GATE
+    // identity dominates). For non-sealed elite doors, show the affix
+    // (e.g., "FROST") so the player can plan resistance/positioning
+    // before walking through. Subline color matches the affix aura
+    // color so the door's sub-line reads as the same "color language"
+    // as the in-game affix badge + aura ring.
+    if (!isSealed && d.eliteAffixId) {
+      const af = AFFIX_LABELS[d.eliteAffixId];
+      if (af) {
+        subLine = af.label;
+        subLineColor = af.color;
+      }
     }
 
     // Pulse — sealed doors pulse faster + stronger so the BLOOD GATE
@@ -592,12 +627,13 @@ export function drawDoorLabels(ctx) {
     ctx.font = 'bold 11px Georgia, "Cormorant Garamond", serif';
     ctx.fillText(caption, cx, cardCY + (subLine ? 6 : 13));
 
-    // Sub-line — only sealed doors get this (the "PAY N HP" cost).
-    // Sized small (8px) so it sits as the "fine print" of the trade
-    // without competing with BLOOD. Stays inside the 46-tall card box.
+    // Sub-line — sealed doors show "PAY N HP" cost; elite doors show
+    // their pre-rolled affix name. Sized small (8px) so it sits as the
+    // "fine print" of the trade without competing with the primary
+    // caption. Stays inside the 46-tall card box.
     if (subLine) {
       ctx.font = 'bold 8px Georgia, serif';
-      ctx.fillStyle = '#ff8088';
+      ctx.fillStyle = subLineColor || '#ff8088';
       ctx.fillText(subLine, cx, cardCY + 17);
     }
 

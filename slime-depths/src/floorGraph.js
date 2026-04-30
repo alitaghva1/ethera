@@ -39,6 +39,17 @@ import { ROOM_SIZES } from './room.js';
 // if we decide to expose it). Floor 1 small, ramps up.
 const ELITE_CHANCE_BY_LEVEL = [0, 0.08, 0.25, 0.40, 0.55];
 
+// Elite affix IDs — mirrored from enemies.js ELITE_AFFIXES. Hardcoded here
+// to avoid a circular import (floorGraph already imports floor.js, which
+// imports room.js; enemies.js touches hero/relics/synergies). Pre-rolled
+// at graph build time so the door/map render can show "ELITE · FROST"
+// before the player enters the room. The same id is then passed through
+// to spawnEnemy as opts.affix so the displayed affix matches reality.
+const ELITE_AFFIX_IDS = ['frost', 'ember', 'venom', 'warded'];
+function pickEliteAffix() {
+  return ELITE_AFFIX_IDS[(Math.random() * ELITE_AFFIX_IDS.length) | 0];
+}
+
 // Layer recipe — ordered from start+1 up to boss-1. Each entry picks `count`
 // nodes from its `options` pool, with repeats allowed so a layer can have
 // e.g. [combat, combat, elite]. `combatSlot` is the pacing slot name
@@ -212,6 +223,18 @@ function buildRoomForKind(kind, level, combatSlot) {
       // enemy difficulty matches the floor depth.
       const room = makeCombatRoom(level, 'elite', Math.max(eliteChance, 0.65), combatSlot || 'combat2');
       room.eliteRoom = true;
+      // Phase 3 audit fix #1 — pre-roll the affix at graph build time
+      // so the door label and map node can display it before the
+      // player enters. Stamp on every elite spawn so spawnEnemy can
+      // honor the same affix; without the stamp, spawnEnemy rolls a
+      // fresh random affix and the door's promise drifts from reality.
+      const affixId = pickEliteAffix();
+      room.eliteAffixId = affixId;
+      if (Array.isArray(room.spawns)) {
+        for (const s of room.spawns) {
+          if (s && s.elite) s.affixId = affixId;
+        }
+      }
       return room;
     }
     case 'event':
@@ -312,6 +335,13 @@ export function generateFloorGraph(level = 1, opts = {}) {
         n.actualKind = n.roomData.kind;
       } else {
         n.actualKind = kind;
+      }
+      // Phase 3 audit fix #1 — surface the pre-rolled elite affix on the
+      // node so door + map renders can read it without reaching into
+      // roomData. Only set when the room actually has one (elite kind
+      // OR event-room that resolved to a miniboss with an affix).
+      if (n.roomData && n.roomData.eliteAffixId) {
+        n.eliteAffixId = n.roomData.eliteAffixId;
       }
       nodes.push(n);
       layerNodes.push(n);
