@@ -994,8 +994,12 @@ export function drawHamletInteractPrompt(ctx) {
   // Subtext: a small italic line shown UNDER the pill. Used for locked
   // NPCs to surface the unlock-hint passively (the writing is great \u2014
   // it deserves to read at a glance, not be gated behind a button-press
-  // that pushes a notification card).
+  // that pushes a notification card). Phase 3 fix #5 extended this to
+  // the portal too \u2014 the subtext-color triplet defaults to slate-blue
+  // (locked-figure language) but the portal overrides to an embered
+  // amber that reads as "what's down there is hot."
   let subtext = null;
+  let subtextRgb = '180, 190, 220';     // slate-blue default for locked NPCs
   if (_nearest.kind === 'npc') {
     // Locked NPCs render as "A SHROUDED FIGURE" \u2014 preserves the surprise
     // of the named arrival cinematic when they finally unlock, while
@@ -1015,6 +1019,34 @@ export function drawHamletInteractPrompt(ctx) {
     }
   } else if (_nearest.kind === 'portal') {
     label = 'E  \u00b7  DESCEND';
+    // Phase 3 audit fix #5 \u2014 give the portal a one-line subtitle so the
+    // player has a NARRATIVE anchor for the place they're walking into.
+    // Pre-descent the line is a foreboding general descriptor; once the
+    // player has reached deeper floors, the subtitle escalates to name
+    // the next biome they remember; once they've completed a run, it
+    // reads as quiet acknowledgment that the ruin endures and so do
+    // they. Reads diegetic, not gamey ("press E to start floor 1").
+    const _maxFloor = records?.maxFloor | 0;
+    const _runsCompleted = records?.runsCompleted | 0;
+    if (_runsCompleted >= 1) {
+      subtext = 'the ruin endures.   so do you.';
+    } else if (_maxFloor >= 4) {
+      subtext = 'the inferno waits.   the tyrant has not forgotten.';
+    } else if (_maxFloor >= 3) {
+      subtext = 'the abyss listens.   bring no kindness.';
+    } else if (_maxFloor >= 2) {
+      subtext = 'the vault holds its silences still.';
+    } else if (_maxFloor >= 1) {
+      subtext = 'the crypt waits cold below.';
+    } else {
+      subtext = 'below:   the unmade ruins of the city that was.';
+    }
+    // Warm amber for the portal subtitle — matches the post-ascent ember
+    // motes on the portal sprite (hamletScene.js:779-801) so the sub-
+    // line reads as the same "fire below" color language. Stays subtle
+    // (mid-saturation, mid-brightness) so it doesn't overpower the gold
+    // primary label.
+    subtextRgb = '210, 160, 110';
   } else if (_nearest.kind === 'noticeboard') {
     label = 'E  \u00b7  READ';
   } else {
@@ -1060,7 +1092,7 @@ export function drawHamletInteractPrompt(ctx) {
     // a full pill would.
     ctx.fillStyle = 'rgba(10, 10, 16, 0.55)';
     ctx.fillRect(_nearest.x - subW / 2, subY - 7, subW, 14);
-    ctx.fillStyle = `rgba(180, 190, 220, ${(0.78 * pulse).toFixed(3)})`;
+    ctx.fillStyle = `rgba(${subtextRgb}, ${(0.78 * pulse).toFixed(3)})`;
     ctx.fillText(subtext, _nearest.x, subY);
   }
   ctx.restore();
