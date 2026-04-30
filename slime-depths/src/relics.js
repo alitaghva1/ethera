@@ -10,6 +10,7 @@ import { synthChord, synthPing } from './synth.js';
 export const RELIC_DEFS = {
   serrated_edge: {
     id: 'serrated_edge',
+    affects: ['sword', 'blast'],
     name: 'Serrated Edge',
     desc: '+30% attack damage',
     flavor: 'Sharpened on bone. It remembers the screams.',
@@ -19,6 +20,7 @@ export const RELIC_DEFS = {
   },
   swift_arm: {
     id: 'swift_arm',
+    affects: ['sword', 'blast'],
     name: 'Swift Arm',
     desc: 'Attacks -25% cooldown',
     flavor: 'The weight of a hundred duels, forgotten by the shoulder.',
@@ -31,6 +33,7 @@ export const RELIC_DEFS = {
     // Now a real "poke" playstyle: hits landed at the outer 20% of your
     // reach deal bonus damage. Rewards spacing and timing.
     id: 'long_reach',
+    affects: ['sword', 'blast'],
     name: 'Long Reach',
     desc: '+25% range · hits past 80% reach deal +40% damage',
     flavor: 'A duelist\u2019s last breath, coiled in iron.',
@@ -56,8 +59,9 @@ export const RELIC_DEFS = {
     // slow and poison you. Dodging now clears those debuffs, so Nimble
     // Step becomes a COUNTER-PLAY tool to specific threats.
     id: 'nimble_step',
+    affects: ['shield'],
     name: 'Nimble Step',
-    desc: 'Dodge cooldown -50% · dodging cleanses poison/slow',
+    desc: 'Shield cooldown -50% · raising the shield cleanses poison/slow',
     flavor: 'Worn thin by the feet of a thief who never died in a cell.',
     icon: 'relic_nimble_step',
     tint: '#7edfff',
@@ -68,6 +72,7 @@ export const RELIC_DEFS = {
     // Now rewards CONTINUOUS MOVEMENT: first hit after 2s of non-stop
     // motion is a guaranteed crit. Creates kiting / hit-and-run identity.
     id: 'iron_greaves',
+    affects: ['sword', 'blast'],
     name: 'Iron Greaves',
     desc: '+20% speed · first hit after 2s of movement crits',
     flavor: 'They never rusted. Perhaps they never touched the earth.',
@@ -81,6 +86,7 @@ export const RELIC_DEFS = {
     // dmg-reduction multiplier compounds with Iron Resolve / Stalwart
     // fusion for actual tanky-build identity.
     id: 'ironhide',
+    affects: ['any'],
     name: 'Ironhide',
     desc: '+3 max HP · −10% damage taken',
     flavor: 'Skin hardened by a prayer made too late.',
@@ -97,6 +103,7 @@ export const RELIC_DEFS = {
     // added a punchy conditional: kills under 25% HP heal +3 HP. Stacks with
     // Executioner for a real finisher/sustain archetype.
     id: 'bloodstone',
+    affects: ['sword'],
     name: 'Bloodstone',
     desc: '10% lifesteal · finishing kills (target under 25% HP) heal +3 HP',
     flavor: 'What you take from them, you keep.',
@@ -112,6 +119,7 @@ export const RELIC_DEFS = {
     // what the code actually does, which is the minimum needed to SURVIVE
     // the revive beat.
     id: 'phoenix_tear',
+    affects: ['any'],
     name: 'Phoenix Tear',
     desc: 'Revive once at 30% HP · brief invulnerability',
     flavor: 'The last thing she gave the world before the fire took her.',
@@ -122,6 +130,7 @@ export const RELIC_DEFS = {
   // ---------- Expanded pool (floor 1.5+ onward) ----------
   iron_resolve: {
     id: 'iron_resolve',
+    affects: ['shield'],
     name: 'Iron Resolve',
     desc: '-20% damage taken · facing hits while held still PARRY for -85%',
     flavor: 'The knight still stood, long after the war had ended.',
@@ -131,6 +140,7 @@ export const RELIC_DEFS = {
   },
   keen_edge: {
     id: 'keen_edge',
+    affects: ['sword', 'blast'],
     name: 'Keen Edge',
     desc: '15% crit chance, 2x damage',
     flavor: 'Hone it once. It will remember.',
@@ -144,6 +154,7 @@ export const RELIC_DEFS = {
     // imperceptible. Doubled rate to 1HP/4s so it actually closes
     // wounds in the pause between rooms.
     id: 'vitality',
+    affects: ['any'],
     name: 'Vitality',
     desc: 'Regen 1 HP every 4 seconds',
     flavor: 'A moss that closes wounds in exchange for sleep.',
@@ -156,6 +167,7 @@ export const RELIC_DEFS = {
     // the first hit on a KNOCKED-BACK enemy is a guaranteed crit. Rewards
     // you for the hit→chase→hit rhythm the big knockback already creates.
     id: 'heavy_blow',
+    affects: ['sword'],
     name: 'Heavy Blow',
     desc: 'Knockback ×2.5 · hitting a knocked-back enemy is a guaranteed crit',
     flavor: 'Meant for doors. It works on ribs, too.',
@@ -168,8 +180,9 @@ export const RELIC_DEFS = {
     // fully refund the dodge cooldown so chaining perfect-dodges is its
     // own build identity (pairs brilliantly with counterstrike).
     id: 'dash_master',
+    affects: ['shield'],
     name: 'Dash Master',
-    desc: 'Dodge distance +35% · perfect dodges refund the dodge cooldown',
+    desc: 'Shield duration +35% · perfect blocks refund the shield cooldown',
     flavor: 'A step that ends before it begins.',
     icon: 'relic_dash_master',
     tint: '#a0e0ff',
@@ -177,6 +190,7 @@ export const RELIC_DEFS = {
   },
   executioner: {
     id: 'executioner',
+    affects: ['sword', 'blast'],
     name: 'Executioner',
     desc: '+50% dmg vs low-HP enemies',
     flavor: 'Mercy, for those already broken. One clean cut.',
@@ -186,6 +200,7 @@ export const RELIC_DEFS = {
   },
   warlord: {
     id: 'warlord',
+    affects: ['sword', 'blast'],
     name: 'Warlord',
     desc: '+8% dmg per relic owned',
     flavor: 'Every treasure at your belt sings when you swing.',
@@ -204,6 +219,7 @@ export const RELIC_DEFS = {
   },
   reaver: {
     id: 'reaver',
+    affects: ['sword', 'blast'],
     name: 'Reaver',
     // Round-6 economy retune — was +15% lifesteal + 8% crit floor,
     // measured at ~5.75% effective lifesteal stacked with bloodstone +
@@ -220,6 +236,7 @@ export const RELIC_DEFS = {
   // ---------- EFFECT RELICS — synergies & spectacle ----------
   chain_lightning: {
     id: 'chain_lightning',
+    affects: ['sword', 'blast'],
     name: 'Chain Lightning',
     desc: 'Every 3rd hit arcs to a nearby enemy',
     flavor: 'A storm bound to a man\u2019s heart, waiting to be spent.',
@@ -230,6 +247,7 @@ export const RELIC_DEFS = {
   },
   explosive_kill: {
     id: 'explosive_kill',
+    affects: ['sword', 'blast'],
     name: 'Explosive Kill',
     desc: 'Enemies explode on death',
     flavor: 'Their bodies were never meant to hold so much hatred.',
@@ -240,6 +258,7 @@ export const RELIC_DEFS = {
   },
   soul_burst: {
     id: 'soul_burst',
+    affects: ['sword', 'blast'],
     name: 'Soul Burst',
     desc: 'Every 5th kill releases a wave of souls',
     flavor: 'The things you kill do not leave you. They gather.',
@@ -250,8 +269,9 @@ export const RELIC_DEFS = {
   },
   thunder_step: {
     id: 'thunder_step',
+    affects: ['shield'],
     name: 'Thunder Step',
-    desc: 'Dodge leaves a damaging lightning trail',
+    desc: 'Shield raise discharges a lightning pulse',
     flavor: 'The air forgets to close behind her.',
     icon: 'relic_thunder_step',
     tint: '#e8ffff',
@@ -260,6 +280,7 @@ export const RELIC_DEFS = {
   },
   vampiric_aura: {
     id: 'vampiric_aura',
+    affects: ['sword'],
     name: 'Vampiric Aura',
     desc: 'Nearby enemies take damage \u00b7 you heal on hit',
     flavor: 'Their fear is warm. You can feel it from here.',
@@ -270,6 +291,7 @@ export const RELIC_DEFS = {
   },
   echoing_strike: {
     id: 'echoing_strike',
+    affects: ['sword', 'blast'],
     name: 'Echoing Strike',
     desc: 'Your hits echo 0.15s later for 40% damage',
     flavor: 'The blade strikes twice. You only swing once.',
@@ -285,6 +307,7 @@ export const RELIC_DEFS = {
   // Visual + audio treatment is elevated — bell + sub-bass + extended banner.
   eye_of_ether: {
     id: 'eye_of_ether',
+    affects: ['sword', 'blast'],
     name: 'Eye of Ether',
     desc: '+20% crit \u00b7 crits PIERCE through enemies',
     flavor: 'They say she tore it from her own skull the night the city burned.',
@@ -295,6 +318,7 @@ export const RELIC_DEFS = {
   },
   cataclysm: {
     id: 'cataclysm',
+    affects: ['sword', 'blast'],
     name: 'Cataclysm',
     desc: 'Every 10th hit erupts the room',
     flavor: 'The last thing the last god held. He never set it down.',
@@ -311,6 +335,7 @@ export const RELIC_DEFS = {
   // (coin_of_tyrant) so a mythic roll has thematic variety.
   heart_of_wound: {
     id: 'heart_of_wound',
+    affects: ['any'],
     name: 'Heart of the Wound',
     // Once-per-run pseudo-revive — when the next lethal hit lands, the
     // hero is reduced to 1 HP instead of dying AND a 200px shockwave
@@ -328,13 +353,14 @@ export const RELIC_DEFS = {
   },
   stride_of_ash: {
     id: 'stride_of_ash',
+    affects: ['shield'],
     name: 'Stride of Ash',
     // Dodge / dash leaves a trail of fire pools (uses the existing
     // ember-flame system — same hazard tile bombers leave behind, just
     // hero-side this time). Pools deal 1 dmg/tick to enemies, last 1.4s
     // each, drop ~3 along the dodge path. Turns the hero's evasive
     // mechanic into an offensive lane closer.
-    desc: 'Dodging leaves a trail of fire that scorches enemies',
+    desc: 'Raising your shield scatters embers that scorch nearby enemies',
     flavor: 'You walked through the wound, and the wound learned to walk with you.',
     icon: 'relic_avatar_of_flame',
     tint: '#ff8a40',
@@ -343,6 +369,7 @@ export const RELIC_DEFS = {
   },
   coin_of_tyrant: {
     id: 'coin_of_tyrant',
+    affects: ['any'],
     name: 'Coin of the Tyrant',
     // Kills drop +50% gold AND every 8th kill drops a free random
     // common relic on the floor (auto-applies on contact). Fills the
@@ -361,8 +388,9 @@ export const RELIC_DEFS = {
   },
   wanderers_cloak: {
     id: 'wanderers_cloak',
+    affects: ['shield'],
     name: "Wanderer's Cloak",
-    desc: 'Dodge grants 2s of doubled attack speed',
+    desc: 'Shield raise grants 2s of doubled attack speed',
     flavor: 'Whoever wears it was never where you last looked.',
     icon: 'relic_wanderers_cloak',
     tint: '#b4e8ff',
@@ -371,6 +399,7 @@ export const RELIC_DEFS = {
   },
   ethereal_binding: {
     id: 'ethereal_binding',
+    affects: ['any'],
     name: 'Ethereal Binding',
     desc: 'Every 3 kills: 1s invulnerability',
     flavor: 'The dead hold your shape a moment, that you may not die.',
@@ -382,6 +411,7 @@ export const RELIC_DEFS = {
   // ---------- Expanded pool (overnight session) ----------
   phoenix_cloak: {
     id: 'phoenix_cloak',
+    affects: ['any'],
     name: 'Phoenix Cloak',
     desc: 'Revive on death \u00b7 explode on revive',
     flavor: 'Born from ash. What comes back is always a little less human.',
@@ -392,6 +422,7 @@ export const RELIC_DEFS = {
   },
   avatar_of_flame: {
     id: 'avatar_of_flame',
+    affects: ['sword'],
     name: 'Avatar of Flame',
     desc: 'Weapon always ignited \u00b7 trails fire',
     flavor: 'The fire did not take you. It married you.',
@@ -402,6 +433,7 @@ export const RELIC_DEFS = {
   },
   pyromancer: {
     id: 'pyromancer',
+    affects: ['sword', 'blast'],
     name: 'Pyromancer',
     desc: 'Every 4th hit spawns a small explosion',
     flavor: 'Every swing, a promise. Every fourth, a reminder.',
@@ -412,6 +444,7 @@ export const RELIC_DEFS = {
   },
   soulreaver: {
     id: 'soulreaver',
+    affects: ['sword', 'blast'],
     name: 'Soulreaver',
     desc: 'Each kill grants 0.5s attack speed buff (stacks)',
     flavor: 'The blade drinks, and the blade wants more.',
@@ -422,8 +455,9 @@ export const RELIC_DEFS = {
   },
   counterstrike: {
     id: 'counterstrike',
+    affects: ['shield'],
     name: 'Counterstrike',
-    desc: 'Perfect dodge counter hits explode, dealing 2x damage',
+    desc: 'Perfect-block counter hits explode, dealing 2x damage',
     flavor: 'Patience is a blade. The swing is just the punctuation.',
     icon: 'relic_counterstrike',
     tint: '#ffeb99',
@@ -432,6 +466,7 @@ export const RELIC_DEFS = {
   },
   aegis_pulse: {
     id: 'aegis_pulse',
+    affects: ['shield'],
     name: 'Aegis Pulse',
     desc: 'Below 30% HP: every 4s, emit shockwave that staggers nearby enemies',
     flavor: 'A dying heart beats louder. Loud enough to push the world back.',
@@ -442,6 +477,7 @@ export const RELIC_DEFS = {
   },
   bloodrite: {
     id: 'bloodrite',
+    affects: ['sword', 'blast'],
     name: 'Bloodrite',
     // Round-6 economy retune — was +15% below 50% HP. Marrow Pact (also
     // common) gives +40% at the same threshold, making bloodrite a
@@ -457,6 +493,7 @@ export const RELIC_DEFS = {
   },
   gale_step: {
     id: 'gale_step',
+    affects: ['shield'],
     name: 'Gale Step',
     // Round-6 economy retune — was a flat +35% dodge distance with no
     // hook. nimble_step (cleanse) and dash_master (cooldown refund)
@@ -465,7 +502,7 @@ export const RELIC_DEFS = {
     // dodge relic — chain dodges into runs, kite swarms, reposition
     // mid-combat. nimble_step still owns "cleanse on dodge",
     // dash_master still owns "shorter cooldown".
-    desc: 'Dodge distance +55%; brief speed burst after dodging',
+    desc: 'Shield duration +55%; brief speed burst when the shield drops',
     flavor: 'Ride the breath the ruin exhales between killings.',
     icon: 'relic_gale_step',
     tint: '#b0e8ff',
@@ -482,6 +519,7 @@ export const RELIC_DEFS = {
   // ==========================================================================
   bulwark: {
     id: 'bulwark',
+    affects: ['shield'],
     name: 'Bulwark',
     desc: 'Damage from the front is halved',
     flavor: 'A stance older than the word for "no."',
@@ -492,8 +530,9 @@ export const RELIC_DEFS = {
   },
   second_wind: {
     id: 'second_wind',
+    affects: ['shield'],
     name: 'Second Wind',
-    desc: 'The first dodge in every room ignores cooldown',
+    desc: 'The first shield each room ignores cooldown',
     flavor: 'One breath held past the end. One more step taken.',
     icon: 'relic_second_wind',
     tint: '#b0e8a0',
@@ -511,6 +550,7 @@ export const RELIC_DEFS = {
   // (fusion_shatterpoint) for crit-reflection builds.
   mirror_shard: {
     id: 'mirror_shard',
+    affects: ['shield'],
     name: 'Mirror Shard',
     desc: 'Reflect 20% of damage taken back to the attacker',
     flavor: 'It only shows what struck it last.',
@@ -522,6 +562,7 @@ export const RELIC_DEFS = {
   // On-kill area splash — turns every kill into a tiny second strike.
   spore_bloom: {
     id: 'spore_bloom',
+    affects: ['sword', 'blast'],
     name: 'Spore Bloom',
     desc: 'Kills release a spore burst dealing 3 damage in an 80px radius',
     flavor: 'Something feeds on what you end.',
@@ -534,8 +575,9 @@ export const RELIC_DEFS = {
   // Different from Bulwark (passive frontal) — this is an active retaliate.
   oathshield: {
     id: 'oathshield',
+    affects: ['shield'],
     name: 'Oathshield',
-    desc: 'After dodging, your next hit within 1s deals +50% damage',
+    desc: 'After raising your shield, your next hit within 1s deals +50% damage',
     flavor: 'The vow was simple. The blade remembered it.',
     icon: 'relic_oathshield',
     tint: '#9ab0c8',
@@ -548,6 +590,7 @@ export const RELIC_DEFS = {
   // crowd positioning and favors dense rooms.
   arcane_quiver: {
     id: 'arcane_quiver',
+    affects: ['sword'],
     name: 'Arcane Quiver',
     desc: 'Every 4th melee hit splashes to one nearby enemy for 40% damage',
     flavor: 'The string that draws itself.',
@@ -559,6 +602,7 @@ export const RELIC_DEFS = {
   // Low-HP scaling — rewards staying in the red instead of healing up.
   marrow_pact: {
     id: 'marrow_pact',
+    affects: ['sword', 'blast'],
     name: 'Marrow Pact',
     desc: 'At or below 50% HP, your damage dealt is +40%',
     flavor: 'Your bones bargain well.',
@@ -571,6 +615,7 @@ export const RELIC_DEFS = {
   // between-floor shop and the Purse of Depths meta unlock.
   gilded_hoard: {
     id: 'gilded_hoard',
+    affects: ['any'],
     name: 'Gilded Hoard',
     // Round-6 economy retune — was rare-tier with +30% gold. With
     // reroll + altar economy, +30% gold compounds into ~2 free rerolls
@@ -588,6 +633,7 @@ export const RELIC_DEFS = {
   // Ambient fire aura — passive DPS while moving through combat rooms.
   hymn_of_embers: {
     id: 'hymn_of_embers',
+    affects: ['any'],
     name: 'Hymn of Embers',
     desc: 'Enemies within 80px take 2 damage per second',
     flavor: 'The choir sings low. The air forgets how to cool.',
@@ -601,8 +647,9 @@ export const RELIC_DEFS = {
   // Slow-mo on perfect dodge — rewards frame-tight play with stylish payoff.
   temporal_eye: {
     id: 'temporal_eye',
+    affects: ['shield'],
     name: 'Temporal Eye',
-    desc: 'Perfect dodges trigger 0.35s of slow-motion',
+    desc: 'Perfect blocks trigger 0.35s of slow-motion',
     flavor: 'The sand stops for those who see it falling.',
     icon: 'relic_temporal_eye',
     tint: '#a8e0e8',
@@ -613,8 +660,9 @@ export const RELIC_DEFS = {
   // Pairs with mobility-focused builds (nimble_step, gale_step).
   whisper_veil: {
     id: 'whisper_veil',
+    affects: ['shield'],
     name: 'Whisper Veil',
-    desc: 'For 0.5s after a dodge, your next hit is a guaranteed crit',
+    desc: 'For 0.5s after a shield, your next hit is a guaranteed crit',
     flavor: 'She is the space the ruin forgot to fill.',
     icon: 'relic_whisper_veil',
     tint: '#8058c8',
@@ -624,6 +672,7 @@ export const RELIC_DEFS = {
   // Periodic lightning — ambient offensive that scales with room density.
   stormcaller: {
     id: 'stormcaller',
+    affects: ['any'],
     name: 'Stormcaller',
     desc: 'Every 1.5s, strike the nearest enemy within 220px for 8 damage',
     flavor: 'The cloud remembers every name it has spoken.',
@@ -637,6 +686,7 @@ export const RELIC_DEFS = {
   // Panic-button design — once-per-minute damage reduction at low HP.
   hourglass_of_respite: {
     id: 'hourglass_of_respite',
+    affects: ['any'],
     name: 'Hourglass of Respite',
     desc: 'At 30% HP or below, incoming damage is halved. Triggers once per minute.',
     flavor: 'The sand knows when to stop. The hand does not always obey.',
@@ -646,25 +696,26 @@ export const RELIC_DEFS = {
     apply: () => { hero.hourglassRespite = true; hero.hourglassReadyAt = 0; },
   },
 
-  // ── WAND-THEMED RELICS (weaponOnly: 'wand') ──────────────────────────
-  // Only roll into the offer pool when the player has the wand
-  // equipped. Sword/dagger/hammer players won't see these in their
-  // pedestal options — keeps offer relevance high regardless of weapon
-  // choice. Synergize with the wand's pierce + charged-bolt mechanics
-  // already shipped in projectiles.js + hero.js.
+  // ── BLAST-SLOT RELICS (formerly weaponOnly: 'wand') ──────────────────
+  // Wizard-kit Sprint 3A — these were wand-locked when wand was its own
+  // weapon variant. With the new weapon-slot architecture, BLAST is the
+  // ranged option and these relics universally affect it. The hero flags
+  // they set (boltSplit / boltChain / boltCritOnCharge) are read by
+  // spawnHeroBolt + the bolt-collision handler — both apply to blast
+  // bolts unchanged. Pickable on any run.
 
   splintered_light: {
     // Bolts split into two smaller bolts on first hit (wall or enemy).
     // Sub-bolts go at ±25° at 70% damage. Adds tactical AoE potential
     // — aim at a tight pack and the spread cleans up the survivors.
     id: 'splintered_light',
+    affects: ['blast'],
     name: 'Splintered Light',
-    desc: 'Wand bolts split into two on first hit',
+    desc: 'Blast bolts split into two on first hit',
     flavor: 'The light remembered being many before it was taught to be one.',
     icon: 'relic_attack_speed',
     tint: '#c0a0ff',
     tier: 'rare',
-    weaponOnly: 'wand',
     apply: () => { hero.boltSplit = true; },
   },
 
@@ -675,13 +726,13 @@ export const RELIC_DEFS = {
     // Damage on the chain is 50% of the bolt's damage — meaningful but
     // not the primary kill source.
     id: 'storm_conduit',
+    affects: ['blast'],
     name: 'Storm Conduit',
-    desc: 'Bolt hits arc lightning to the nearest enemy',
+    desc: 'Blast hits arc lightning to the nearest enemy',
     flavor: 'A weather she had once watched from a window.',
     icon: 'relic_stormcaller',
     tint: '#9adfff',
     tier: 'rare',
-    weaponOnly: 'wand',
     apply: () => { hero.boltChain = true; },
   },
 
@@ -696,6 +747,7 @@ export const RELIC_DEFS = {
     // full chain reliably crits the third hit. Pairs with executioner
     // for a real "wind up the finisher on bosses" playstyle.
     id: 'honest_edge',
+    affects: ['sword'],
     name: 'Honest Edge',
     desc: 'Sword finishers (3rd hit in chain) always crit',
     flavor: 'A lie cuts only once. The truth, three times.',
@@ -713,6 +765,7 @@ export const RELIC_DEFS = {
     // is the "stay on target" weapon. Pairs with attack speed relics
     // for a building-DPS feel.
     id: 'ringing_steel',
+    affects: ['sword'],
     name: 'Ringing Steel',
     desc: 'Sword chain hits add +6% damage each, max +30%',
     flavor: 'The blade hums when struck, and remembers the song.',
@@ -731,6 +784,7 @@ export const RELIC_DEFS = {
     // hero.vowEternalReady is refreshed by loadRoom() in main.js;
     // consumed on first damage-dealing hit per room.
     id: 'vow_eternal',
+    affects: ['sword'],
     name: 'Vow Eternal',
     desc: 'First sword hit each room is a guaranteed crit',
     flavor: 'Spoken once. Kept forever, so long as iron remembers iron.',
@@ -752,6 +806,7 @@ export const RELIC_DEFS = {
     // dagger lets you tag a single target while the echo cleans up
     // adjacent enemies. Pairs with shadow theme for crit-spread.
     id: 'twin_pulse',
+    affects: ['sword'],
     name: 'Twin Pulse',
     desc: 'Every 2nd dagger hit echoes to nearest enemy (60% dmg)',
     flavor: 'Two breaths. Two cuts. The same heart, twice.',
@@ -768,8 +823,9 @@ export const RELIC_DEFS = {
     // capitalize on a perfect dodge. Pairs with whisper_veil + shadow
     // theme for a "every dodge becomes a kill" build.
     id: 'flicker_step',
+    affects: ['shield'],
     name: 'Flicker Step',
-    desc: 'Dagger doubles the perfect-dodge counter window',
+    desc: 'Dagger doubles the perfect-block counter window',
     flavor: 'A breath taken between two heartbeats. Time enough to answer.',
     icon: 'relic_nimble_step',
     tint: '#b0e0ff',
@@ -785,6 +841,7 @@ export const RELIC_DEFS = {
     // attacking for ~3s so it can't be banked. Pairs with crit /
     // executioner / shadow theme.
     id: 'razor_pace',
+    affects: ['sword'],
     name: 'Razor Pace',
     desc: 'Every 5th dagger hit deals 2.5× damage',
     flavor: 'Five strokes to the rhythm. The fifth is the song.',
@@ -805,6 +862,7 @@ export const RELIC_DEFS = {
     // the AoE weapon, this relic adds AoE on a rhythm. Pairs with
     // heavy_blow for a "knockback + shockwave" combo.
     id: 'mountain_strike',
+    affects: ['sword'],
     name: 'Mountain Strike',
     desc: 'Every 3rd hammer swing spawns a shockwave',
     flavor: 'The mountain answers in kind. A blow for a blow.',
@@ -821,6 +879,7 @@ export const RELIC_DEFS = {
     // makes the payoff harder to escape. Pairs with iron_resolve for
     // a "tank charge → counter-attack" stance build.
     id: 'earthen_hold',
+    affects: ['sword'],
     name: 'Earthen Hold',
     desc: 'Charged hammer hits stagger enemies for +0.6s',
     flavor: 'Stand still, the earth tells them. They obey, briefly.',
@@ -839,6 +898,7 @@ export const RELIC_DEFS = {
     // Reads massive in practice because Warded elites have been a
     // dagger/wand misery; hammer becomes the shield-buster spec.
     id: 'world_ender',
+    affects: ['sword'],
     name: 'World-Ender',
     desc: 'Hammer finisher swings shatter enemy shields',
     flavor: 'Three blows for the world below. The third is the door.',
@@ -856,13 +916,13 @@ export const RELIC_DEFS = {
     // sit on charge, time the release, hit hard. Does nothing for
     // tap-fire bolts (skill expression for charge-release timing).
     id: 'patient_lens',
+    affects: ['blast'],
     name: 'Patient Lens',
-    desc: 'Charged wand shots crit · +50% damage',
+    desc: 'Charged blast bolts crit · +50% damage',
     flavor: 'Sight does not hurry. The arrow that flies fastest is rarely seen.',
     icon: 'relic_eye_of_ether',
     tint: '#ffd680',
     tier: 'legendary',
-    weaponOnly: 'wand',
     apply: () => { hero.boltCritOnCharge = true; },
   },
 };

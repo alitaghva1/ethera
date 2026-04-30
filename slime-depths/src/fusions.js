@@ -34,6 +34,7 @@ export const FUSIONS = {
   // Tesla Storm — chain arcs detonate on impact, spreading damage
   tesla_storm: {
     id: 'tesla_storm',
+    affects: ['sword', 'blast'],
     components: ['chain_lightning', 'explosive_kill'],
     name: 'Tesla Storm',
     desc: 'Chain lightning arcs detonate on impact',
@@ -45,6 +46,7 @@ export const FUSIONS = {
   // ========== Vampiric Aura + Bloodrite ==========
   blood_moon: {
     id: 'blood_moon',
+    affects: ['sword'],
     components: ['vampiric_aura', 'bloodrite'],
     name: 'Blood Moon',
     desc: 'Lifesteal scales up as HP drops (up to 3\u00d7 at 25% HP)',
@@ -56,6 +58,7 @@ export const FUSIONS = {
   // ========== Phoenix Cloak + Cataclysm ==========
   rebirth_pyre: {
     id: 'rebirth_pyre',
+    affects: ['any'],
     components: ['phoenix_cloak', 'cataclysm'],
     name: 'Rebirth Pyre',
     desc: 'Phoenix revive unleashes a 10-pulse cataclysm',
@@ -67,6 +70,7 @@ export const FUSIONS = {
   // ========== Pyromancer + Avatar of Flame ==========
   conflagration: {
     id: 'conflagration',
+    affects: ['sword'],
     components: ['pyromancer', 'avatar_of_flame'],
     name: 'Conflagration',
     desc: 'Fire trail intensifies; every 2nd hit explodes in flame',
@@ -78,6 +82,7 @@ export const FUSIONS = {
   // ========== Soulreaver + Echoing Strike ==========
   phantom_blade: {
     id: 'phantom_blade',
+    affects: ['sword', 'blast'],
     components: ['soulreaver', 'echoing_strike'],
     name: 'Phantom Blade',
     desc: 'Echoing strikes also build Soulreaver stacks',
@@ -89,6 +94,7 @@ export const FUSIONS = {
   // ========== Thunder Step + Chain Lightning ==========
   storm_dance: {
     id: 'storm_dance',
+    affects: ['shield'],
     components: ['chain_lightning', 'thunder_step'],
     name: 'Storm Dance',
     desc: 'Dodge trail arcs lightning to nearby enemies',
@@ -100,6 +106,7 @@ export const FUSIONS = {
   // ========== Counterstrike + Wanderers Cloak ==========
   riposte: {
     id: 'riposte',
+    affects: ['shield'],
     components: ['counterstrike', 'wanderers_cloak'],
     name: 'Riposte',
     desc: 'Counter hits trigger 1.5s attack-speed surge',
@@ -111,6 +118,7 @@ export const FUSIONS = {
   // ========== Vitality + Ironhide ==========
   mountains_heart: {
     id: 'mountains_heart',
+    affects: ['any'],
     components: ['ironhide', 'vitality'],
     name: "Mountain's Heart",
     desc: 'At full HP: +15% damage resist, +10% damage',
@@ -122,6 +130,7 @@ export const FUSIONS = {
   // ========== Keen Edge + Serrated Edge ==========
   obsidian_edge: {
     id: 'obsidian_edge',
+    affects: ['sword', 'blast'],
     components: ['keen_edge', 'serrated_edge'],
     name: 'Obsidian Edge',
     desc: 'Crit chance doubled; crits cause 3s bleed',
@@ -133,6 +142,7 @@ export const FUSIONS = {
   // ========== Heavy Blow + Warlord ==========
   tempest: {
     id: 'tempest',
+    affects: ['sword'],
     components: ['heavy_blow', 'warlord'],
     name: 'Tempest',
     desc: 'Combo bonus doubles at CARNAGE (40+ combo = +70% damage)',
@@ -145,6 +155,7 @@ export const FUSIONS = {
   // Final Verdict — crits below 50% HP instantly kill. The finisher fusion.
   final_verdict: {
     id: 'final_verdict',
+    affects: ['sword', 'blast'],
     components: ['eye_of_ether', 'executioner'],
     name: 'Final Verdict',
     desc: 'Crits on enemies below 50% HP execute instantly',
@@ -161,6 +172,7 @@ export const FUSIONS = {
   // Stalwart — the closer you come to breaking, the harder you are to break.
   stalwart: {
     id: 'stalwart',
+    affects: ['shield'],
     components: ['iron_resolve', 'aegis_pulse'],
     name: 'Stalwart',
     desc: 'Damage resistance doubles while below 50% HP',
@@ -173,6 +185,7 @@ export const FUSIONS = {
   // Sparrow's Dance — every 5th attack releases a gust AoE around the hero.
   sparrows_dance: {
     id: 'sparrows_dance',
+    affects: ['shield'],
     components: ['swift_arm', 'gale_step'],
     name: "Sparrow's Dance",
     desc: 'Every 5th attack releases a ring of wind around you',
@@ -185,6 +198,7 @@ export const FUSIONS = {
   // Witness — each heal from lifesteal grants a breath of invulnerability.
   witness: {
     id: 'witness',
+    affects: ['sword'],
     components: ['bloodstone', 'ethereal_binding'],
     name: 'Witness',
     desc: 'Lifesteal heals grant 0.4s of invulnerability',
@@ -201,6 +215,7 @@ export const FUSIONS = {
   // ==========================================================================
   kingslayer: {
     id: 'kingslayer',
+    affects: ['sword', 'blast'],
     components: ['long_reach', 'serrated_edge'],
     name: 'Kingslayer',
     desc: 'Speartip hits past 80% reach also have +15% crit chance',
@@ -211,6 +226,7 @@ export const FUSIONS = {
   },
   aegis_wall: {
     id: 'aegis_wall',
+    affects: ['shield'],
     components: ['bulwark', 'iron_resolve'],
     name: 'Aegis Wall',
     desc: 'Frontal damage reduced 75% total (stacks Bulwark + Iron Resolve)',
@@ -221,6 +237,7 @@ export const FUSIONS = {
   },
   weaving_step: {
     id: 'weaving_step',
+    affects: ['shield'],
     components: ['second_wind', 'nimble_step'],
     name: 'Weaving Step',
     desc: 'Cleansing dodges grant 0.3s of i-frames on your next hit',
@@ -238,6 +255,7 @@ export const FUSIONS = {
   // Reflected damage crits on return — doubles the retaliation punch.
   shatterpoint: {
     id: 'shatterpoint',
+    affects: ['shield'],
     components: ['mirror_shard', 'counterstrike'],
     name: 'Shatterpoint',
     desc: 'Reflected damage from Mirror Shard always crits (×2.5)',
@@ -250,6 +268,7 @@ export const FUSIONS = {
   // struck by the aura.
   wildfire_choir: {
     id: 'wildfire_choir',
+    affects: ['sword', 'blast'],
     components: ['hymn_of_embers', 'pyromancer'],
     name: 'Wildfire Choir',
     desc: 'Hymn radius +50% and aura damage applies a 1/s burn for 2s',
@@ -262,6 +281,7 @@ export const FUSIONS = {
   // Rewards staying in the red for sustained aggression.
   martyr_bloom: {
     id: 'martyr_bloom',
+    affects: ['sword'],
     components: ['marrow_pact', 'vampiric_aura'],
     name: 'Martyr Bloom',
     desc: 'Lifesteal gains are doubled while at or below 50% HP',
@@ -274,6 +294,7 @@ export const FUSIONS = {
   // post-dodge window. Rewards dodge-aggressive play.
   stormveil: {
     id: 'stormveil',
+    affects: ['shield'],
     components: ['stormcaller', 'whisper_veil'],
     name: 'Stormveil',
     desc: 'Stormcaller strikes twice as often during Whisper Veil window',
@@ -288,6 +309,7 @@ export const FUSIONS = {
   // mechanic on its components rather than inventing a new one.
   ringbearer: {
     id: 'ringbearer',
+    affects: ['sword'],
     components: ['vitality', 'bloodstone'],
     name: 'Ringbearer',
     desc: 'Bloodstone finisher heals +2 (executions now restore 5 HP)',
@@ -298,6 +320,7 @@ export const FUSIONS = {
   },
   starweave: {
     id: 'starweave',
+    affects: ['sword', 'blast'],
     components: ['keen_edge', 'eye_of_ether'],
     name: 'Starweave',
     desc: '+5% crit chance on top of each component relic',
@@ -319,6 +342,7 @@ export const FUSIONS = {
   // a guaranteed crit AND a free counter, then the loop continues from there.
   sworn_reply: {
     id: 'sworn_reply',
+    affects: ['sword', 'shield'],
     components: ['vow_eternal', 'counterstrike'],
     name: 'Sworn Reply',
     desc: 'Vow Eternal’s opening crit also grants a perfect-dodge counter',
@@ -333,6 +357,7 @@ export const FUSIONS = {
   // becomes the threshold; play the beat and bosses lose phases.
   mortal_cadence: {
     id: 'mortal_cadence',
+    affects: ['sword'],
     components: ['razor_pace', 'executioner'],
     name: 'Mortal Cadence',
     desc: 'Razor Pace’s 5th-hit pop always executes (4× damage)',
@@ -347,6 +372,7 @@ export const FUSIONS = {
   // Reads as: every 3rd hammer hit becomes a room-clearing tremor.
   avalanche: {
     id: 'avalanche',
+    affects: ['sword'],
     components: ['mountain_strike', 'heavy_blow'],
     name: 'Avalanche',
     desc: 'Mountain Strike shockwaves grow to 140px and mark hits for crit',
@@ -362,6 +388,7 @@ export const FUSIONS = {
   // "I worked up 5 stacks on the elite, then it died and they vanished."
   crescendo: {
     id: 'crescendo',
+    affects: ['sword'],
     components: ['ringing_steel', 'soulreaver'],
     name: 'Crescendo',
     desc: 'Ringing Steel stacks persist across kills',
@@ -376,6 +403,7 @@ export const FUSIONS = {
   // identity capstone: "the storm has three mouths."
   forked_sky: {
     id: 'forked_sky',
+    affects: ['blast'],
     components: ['splintered_light', 'chain_lightning'],
     name: 'Forked Sky',
     desc: 'Wand bolt fragments each chain lightning to nearby enemies',

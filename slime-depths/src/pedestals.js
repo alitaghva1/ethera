@@ -917,7 +917,23 @@ export function drawPickupFlash(ctx, w, h) {
   const tierColor = tier === 'mythic' ? '#fff2e0' : tier === 'legendary' ? '#ffc8ff' : tier === 'rare' ? '#f4d9a0' : '#c9a86a';
   const tierRgb   = tier === 'mythic' ? '255, 242, 224' : tier === 'legendary' ? '255, 200, 255' : tier === 'rare' ? '244, 217, 160' : '201, 168, 106';
   const tierGlyph = tier === 'mythic' ? '\u2605' : tier === 'legendary' ? '\u2605' : tier === 'rare' ? '\u25C6' : '\u2666';
-  const tierLabel = tier === 'mythic' ? `${tierGlyph}\u2605  MYTHIC  \u2605${tierGlyph}` : tier === 'legendary' ? `${tierGlyph} LEGENDARY ${tierGlyph}` : tier === 'rare' ? `${tierGlyph} RARE ${tierGlyph}` : `${tierGlyph} COMMON ${tierGlyph}`;
+  // Slot prefix from the relic's `affects` tag (wizard-kit Sprint 3A).
+  // Reads as "this pickup buffs my SWORD / BLAST / SHIELD" so the player
+  // gets the build-axis read at first glance, ahead of theme + tier.
+  // Multi-slot relics (e.g. ['sword', 'blast']) show "SWORD+BLAST".
+  // Universal relics (['any']) skip the prefix \u2014 no axis to highlight.
+  const affectsArr = (lastPickedDef.affects && lastPickedDef.affects.length)
+    ? lastPickedDef.affects
+    : null;
+  let slotPrefix = '';
+  if (affectsArr) {
+    if (affectsArr.length === 1 && affectsArr[0] !== 'any') {
+      slotPrefix = affectsArr[0].toUpperCase() + ' \u00b7 ';
+    } else if (affectsArr.length === 2) {
+      slotPrefix = affectsArr.map(s => s.toUpperCase()).join('+') + ' \u00b7 ';
+    }
+  }
+  const tierLabel = tier === 'mythic' ? `${tierGlyph}\u2605  ${slotPrefix}MYTHIC  \u2605${tierGlyph}` : tier === 'legendary' ? `${tierGlyph} ${slotPrefix}LEGENDARY ${tierGlyph}` : tier === 'rare' ? `${tierGlyph} ${slotPrefix}RARE ${tierGlyph}` : `${tierGlyph} ${slotPrefix}COMMON ${tierGlyph}`;
 
   ctx.save();
   ctx.globalAlpha = a;
