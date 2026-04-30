@@ -851,7 +851,25 @@ document.getElementById('menuSettingsBtn')?.addEventListener('click', () => {
 // Credits link → in-game attribution modal. Created lazily on first click
 // so we don't pay the DOM cost for a rarely-opened screen at boot.
 let creditsEl = null;
+let controlsEl = null;
+// Phase 2 audit fix #6 — single-modal-at-a-time enforcement for the
+// "info" modal family (controls + credits). Both are full-screen
+// z-index:30 overlays opened from the menu; nothing in the original
+// show functions closed the other before opening, so a programmatic
+// path could stack them and the close button would only catch the
+// topmost. Now every show* helper closes any currently-displayed info
+// modal first, and the Esc key reaches them when the game isn't
+// running (the regular Esc-pause guard returns early on `!running`).
+function hideAllInfoModals() {
+  if (creditsEl) creditsEl.style.display = 'none';
+  if (controlsEl) controlsEl.style.display = 'none';
+}
+function isAnyInfoModalOpen() {
+  return (creditsEl && creditsEl.style.display !== 'none')
+      || (controlsEl && controlsEl.style.display !== 'none');
+}
 function showCredits() {
+  hideAllInfoModals();
   if (!creditsEl) {
     creditsEl = document.createElement('div');
     creditsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;';
@@ -865,8 +883,8 @@ function showCredits() {
 }
 document.getElementById('menuCreditsLink')?.addEventListener('click', showCredits);
 // How-to-play link → single-reference primer modal. Same lazy-create pattern.
-let controlsEl = null;
 function showControls() {
+  hideAllInfoModals();
   if (!controlsEl) {
     controlsEl = document.createElement('div');
     controlsEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:24px;box-sizing:border-box;z-index:30;';
@@ -879,6 +897,17 @@ function showControls() {
   controlsEl.style.display = 'flex';
 }
 document.getElementById('menuControlsLink')?.addEventListener('click', showControls);
+// Esc-to-close for info modals. Mounted at module load (separate from the
+// game-running Esc handler at ~line 2157, which returns early on !running
+// and so never reached menu-opened modals). Stops propagation so the
+// game-running handler doesn't ALSO process the same Esc.
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape') return;
+  if (!isAnyInfoModalOpen()) return;
+  hideAllInfoModals();
+  e.preventDefault();
+  e.stopPropagation();
+}, true);    // capture phase so we beat the game-pause handler
 
 // Ascension selector — show only if the player has unlocked at least tier 1
 // (i.e. has ever cleared floor 4). Clicking cycles current → next unlocked
