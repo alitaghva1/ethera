@@ -10,7 +10,7 @@
 // ============================================================================
 import { hero } from './hero.js';
 import { images } from './loader.js';
-import { NPCS, hamletState, hasUnseenTopics, hasUnreadDialogue } from './hamlet.js';
+import { NPCS, hamletState, hasUnseenTopics, hasUnreadDialogue, hamletGrowthStage } from './hamlet.js';
 import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 import { showTip } from './tips.js';
 import { records } from './records';
@@ -283,6 +283,37 @@ export function drawHamletBackdrop(ctx) {
   // (No old props rendered here — every prop, wall, tree, and structural
   // feature is baked into the scene_v2.jpg backdrop. NPC sprites + the
   // descent portal halo are drawn separately by drawHamletEntities.)
+
+  // ── GROWTH-STAGE TINT ────────────────────────────────────────────────
+  // Round-7 hamlet visible-growth — the painted backdrop is static but
+  // the world it depicts grows as the player's run-count climbs and
+  // more NPCs arrive. A subtle tinted overlay over the floor reflects
+  // that progression: the empty hamlet (only Keeper present) reads
+  // slightly cooler/dimmer; the restored hamlet (all NPCs arrived)
+  // reads warmer + slightly brighter, like dawn through a doorway.
+  //
+  // Alphas are deliberately tiny (0.04 - 0.08) so the painting carries
+  // the visual identity; this is atmosphere drift, not a re-tint.
+  // Stage 1 (the most common state for new players) leaves the scene
+  // alone — neutral baseline — so the player has a clean reference
+  // before the cool dim and warm glow phases bracket it.
+  //
+  //   stage 0: ruin           — 1 NPC  (just the Keeper)
+  //   stage 1: kindled        — 2 NPCs
+  //   stage 2: thriving       — 3-4 NPCs
+  //   stage 3: restored       — 5+ NPCs
+  const stage = hamletGrowthStage();
+  if (stage === 0) {
+    ctx.fillStyle = 'rgba(60, 78, 100, 0.07)';      // cool dim, "the place is cold"
+    ctx.fillRect(BG_X_MIN, 0, BG_W, HAMLET_H);
+  } else if (stage === 2) {
+    ctx.fillStyle = 'rgba(255, 230, 180, 0.04)';    // first hint of warmth
+    ctx.fillRect(BG_X_MIN, 0, BG_W, HAMLET_H);
+  } else if (stage >= 3) {
+    ctx.fillStyle = 'rgba(255, 218, 150, 0.07)';    // restored — warm hour
+    ctx.fillRect(BG_X_MIN, 0, BG_W, HAMLET_H);
+  }
+  // stage 1 is the neutral baseline — no tint applied.
 
   // ── AIR DUST MOTES ───────────────────────────────────────────────────
   // Two depth layers: 36 slow-and-bright motes (foreground) + 24 fast-
