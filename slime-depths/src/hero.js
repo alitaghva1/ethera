@@ -559,6 +559,26 @@ export function resetHero() {
   hero._attackBuffer = 0;
   hero._shieldBuffer = 0;
   hero._qBuffer = 0;
+  // Cross-ability relic windows (Sprint 3C). Each is a sub-second armed
+  // state that decays naturally during a run, but if a run ends MID-
+  // window (e.g., perfect-block timer alive at death) the value lingers
+  // into the next run. None of these are persisted; they're meant to
+  // be transient. Defensive-reset all 7.
+  hero.resonanceKillWeapon = null;
+  hero.resonanceKillUntil = 0;
+  hero.resonanceCritReady = false;
+  hero.twinFangBuffUntil = 0;
+  hero.phaseFlickerArmedUntil = 0;
+  hero.phaseFlickerNextBlast = false;
+  hero.echoStepUntil = 0;
+  // Elite-affix tick debuffs — set on enemy hit (frost/venom). Decay
+  // naturally each frame, but a player who dies mid-poison would
+  // otherwise resume "still poisoned" until the timer ticked out.
+  // Defensive clear keeps the field run-local.
+  hero.poisonTime = 0;
+  hero.slowTime = 0;
+  hero._poisonTick = 0;
+  hero._flameCD = 0;       // ember trail damage cooldown
   hero.startingGold = 0;
   hero.relicCount = 0;     // maintained by relics.js for Memory of the Bell
   hero.swingIndex = 0;

@@ -3246,6 +3246,16 @@ function resumeRun(snap) {
   if (typeof window !== 'undefined') {
     window.__activeMemory = _resumedMemory || null;
   }
+  // Memory of the Debtor sets hero.startingGold = +100 on apply (it's
+  // consumed by startRun's gold.total += hero.startingGold path at
+  // line ~3556, then zeroed). resumeRun has no equivalent consumer
+  // because gold.total is restored from snap.gold instead. Without
+  // an explicit zero here, hero.startingGold lingers as a non-zero
+  // field after resume — currently no other code reads it but a
+  // future "if (hero.startingGold > 0)" branch would behave wrong.
+  // Defensive clear: the gold has already been counted once when
+  // the run started; the snapshot reflects that final state.
+  hero.startingGold = 0;
   // Relics (apply each one; fusion hooks fire as expected)
   for (const rid of (snap.relicIds || [])) {
     if (RELIC_DEFS[rid]) applyRelic(rid);
