@@ -343,76 +343,165 @@ export function updatePedestals(dt) {
       }
     }
   }
-  let picked = null;
-  for (const p of pedestals) {
+  // Hover detection — find the nearest unclaimed pedestal in interact
+  // range. Round-6 player-feedback: walking onto a pedestal used to be
+  // an instant pickup, which made fast-traversal players accidentally
+  // claim relics they didn't want. Now we mark a "hovered" pedestal
+  // and the player commits via E (consumePendingPickup, called from
+  // main.js's E-key handler). Pickup logic stays identical post-commit;
+  // only the trigger changed.
+  //
+  // PEDESTAL_HOVER_R 36 (vs old 26 auto-pickup) = a slight tolerance
+  // bump now that picking up requires a key press — players can stand
+  // a bit further away and still see the prompt, mirroring NPC
+  // interact ranges in the hamlet (50px there for similar reasons).
+  _hoveredIndex = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < pedestals.length; i++) {
+    const p = pedestals[i];
     if (p.picked) continue;
     const d = Math.hypot(hero.x - p.x, hero.y - p.y);
-    if (d < 26) {
-      // Altar pedestals cost HP. Refuse if hero would die from the trade.
-      if (p.hpCost > 0) {
-        if (hero.hp <= p.hpCost) continue;    // won't commit suicide; must approach with more HP
-        hero.hp -= p.hpCost;
-      }
-      // Apply FIRST, mark consumed AFTER. If applyRelic throws (corrupt
-      // state, missing fusion def), the pedestal remains un-picked so the
-      // player can try again on next tick instead of losing the relic.
-      // Snapshot the structural state BEFORE applying so we can diff
-      // post-apply to detect "this pickup formed a fusion / advanced
-      // a theme tier" — the relicEvent chip rendered in drawPickupFlash.
-      const beforeFusionIds = new Set(activeFusions.map(f => f.id));
-      const beforeThemeTiers = computeThemeTiers();
-      applyRelic(p.relic.id);
-      lastPickedEvent = computeRelicEvent(beforeFusionIds, beforeThemeTiers, p.relic.id);
-      p.picked = true;
-      picked = p.relic;
-      const t = p.tier || 'common';
-      // MYTHIC — bigger burst, stronger shake, layered sting, extended banner
-      if (t === 'mythic') {
-        deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
-        deathBurst(p.x + 12, p.y - 18, '#fff2e0');
-        deathBurst(p.x - 12, p.y - 18, p.relic.tint || '#ffffff');
-        shakeCamera(12, 0.42);
-        // Layered bell: big chord + sub-bass thud + delayed second bell note.
-        // This is the Diablo "Windforce dropped" signature sound.
-        synthChord(1100, 1.3, 1.6);
-        synthThud(70, 1.1, 0.9);
-        setTimeout(() => synthChord(1397, 1.0, 1.2), 220);
-        setTimeout(() => synthFanfare(0.6), 560);
-      } else {
-        deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
-        shakeCamera(p.hpCost > 0 ? 6 : 3, 0.15);
-        if (t === 'legendary') synthChord(880, 1.0, 1.0);
-        else if (t === 'rare') synthChord(659, 0.9, 0.75);
-        else synthPing(1100, 0.9, 0.3);
-      }
-      playSfx('click', { volume: 0.9, rate: p.hpCost > 0 ? 0.8 : 1.2 });
-      lastPickedDef = p.relic;
-      // First-ever mythic still earns the center "Windforce moment"
-      // cinematic. Every other pickup (common/rare/legendary, plus
-      // subsequent mythics) routes to the unified top-right
-      // notification rail so combat readability stays intact during
-      // the 3-5s banner window.
-      lastPickedFirstMythic = (t === 'mythic') && isFirstTime('mythic', 'any');
-      if (lastPickedFirstMythic) {
-        // Keeps drawPickupFlash drawing the full center treatment.
-        pickedFlashTime = 5.5;
-      } else {
-        // Suppress center banner; route to the rail.
-        pickedFlashTime = 0;
-        pushNotification({
-          kind: 'pickup',
-          tier: t,
-          title: p.relic.name || 'RELIC',
-          body: p.relic.desc || '',
-        });
-      }
-      break;
+    if (d < PEDESTAL_HOVER_R && d < bestD) {
+      bestD = d;
+      _hoveredIndex = i;
     }
   }
-  if (picked) {
-    for (const p of pedestals) p.picked = true;
+  return null;
+}
+
+// Hover state — set by updatePedestals each tick, read by:
+//   - drawPedestalPrompt (renders "E · TAKE" label above the pedestal)
+//   - consumePendingPickup (called from main.js E-handler on key press)
+let _hoveredIndex = -1;
+const PEDESTAL_HOVER_R = 36;
+
+export function getHoveredPedestalIndex() { return _hoveredIndex; }
+
+// E-key handler — call from main.js when the player presses E in a
+// combat/altar/reward/boss room. Returns the picked relic def, or null
+// if nothing was hovered, or 'denied_hp' if the hovered pedestal is an
+// altar the player can't afford. Caller decides what to do with the
+// denial reason (e.g. brief room-label "NOT ENOUGH HP" feedback).
+export function consumePendingPickup() {
+  if (_hoveredIndex < 0) return null;
+  const p = pedestals[_hoveredIndex];
+  if (!p || p.picked) return null;
+  // Altar pedestals cost HP. Refuse if hero would die from the trade.
+  if (p.hpCost > 0) {
+    if (hero.hp <= p.hpCost) return 'denied_hp';
+    hero.hp -= p.hpCost;
   }
+  // Apply FIRST, mark consumed AFTER. If applyRelic throws (corrupt
+  // state, missing fusion def), the pedestal remains un-picked so the
+  // player can try again on next tick instead of losing the relic.
+  const beforeFusionIds = new Set(activeFusions.map(f => f.id));
+  const beforeThemeTiers = computeThemeTiers();
+  applyRelic(p.relic.id);
+  lastPickedEvent = computeRelicEvent(beforeFusionIds, beforeThemeTiers, p.relic.id);
+  p.picked = true;
+  const picked = p.relic;
+  const t = p.tier || 'common';
+  // MYTHIC — bigger burst, stronger shake, layered sting, extended banner
+  if (t === 'mythic') {
+    deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
+    deathBurst(p.x + 12, p.y - 18, '#fff2e0');
+    deathBurst(p.x - 12, p.y - 18, p.relic.tint || '#ffffff');
+    shakeCamera(12, 0.42);
+    // Layered bell: big chord + sub-bass thud + delayed second bell note.
+    // This is the Diablo "Windforce dropped" signature sound.
+    synthChord(1100, 1.3, 1.6);
+    synthThud(70, 1.1, 0.9);
+    setTimeout(() => synthChord(1397, 1.0, 1.2), 220);
+    setTimeout(() => synthFanfare(0.6), 560);
+  } else {
+    deathBurst(p.x, p.y - 20, p.relic.tint || '#ffffff');
+    shakeCamera(p.hpCost > 0 ? 6 : 3, 0.15);
+    if (t === 'legendary') synthChord(880, 1.0, 1.0);
+    else if (t === 'rare') synthChord(659, 0.9, 0.75);
+    else synthPing(1100, 0.9, 0.3);
+  }
+  playSfx('click', { volume: 0.9, rate: p.hpCost > 0 ? 0.8 : 1.2 });
+  lastPickedDef = p.relic;
+  // First-ever mythic still earns the center "Windforce moment"
+  // cinematic. Every other pickup (common/rare/legendary, plus
+  // subsequent mythics) routes to the unified top-right notification
+  // rail so combat readability stays intact during the 3-5s banner.
+  lastPickedFirstMythic = (t === 'mythic') && isFirstTime('mythic', 'any');
+  if (lastPickedFirstMythic) {
+    pickedFlashTime = 5.5;
+  } else {
+    pickedFlashTime = 0;
+    pushNotification({
+      kind: 'pickup',
+      tier: t,
+      title: p.relic.name || 'RELIC',
+      body: p.relic.desc || '',
+    });
+  }
+  // Mark sibling pedestals as picked too — the offer-set is committed
+  // on the first claim, mirroring the original "claiming one removes
+  // the others" pedestal-group rule.
+  for (const other of pedestals) other.picked = true;
+  _hoveredIndex = -1;
   return picked;
+}
+
+// Floating "E · TAKE [name]" prompt above the hovered pedestal. Mirrors
+// the hamlet's drawHamletInteractPrompt — pill-shaped label with a
+// subtle bob, tier-tinted name, gentle outline. Drawn in WORLD space so
+// it scales with the camera.
+//
+// Round-7 user feedback added the pickup-confirm flow; this is the
+// player-facing telegraph that teaches the new mechanic. Without it the
+// player would walk onto a pedestal and wonder why nothing happened.
+//
+// Special-case altar prompts to read "E · PAY N HP" so the cost is
+// communicated without needing the existing tooltip — a quick-glance
+// player who skips the tooltip reading still knows what they're agreeing
+// to before pressing E.
+export function drawPedestalPrompt(ctx) {
+  if (_hoveredIndex < 0) return;
+  const p = pedestals[_hoveredIndex];
+  if (!p || p.picked) return;
+  const isAltar = p.hpCost > 0;
+  const tierTint = p.relic?.tint || (p.tier === 'mythic' ? '#fff2e0'
+                                    : p.tier === 'legendary' ? '#ffc8ff'
+                                    : p.tier === 'rare' ? '#f4d9a0'
+                                    : '#c9a86a');
+  const name = (p.relic?.name || 'RELIC').toUpperCase();
+  const label = isAltar
+    ? `E  ·  PAY ${p.hpCost} HP · ${name}`
+    : `E  ·  TAKE ${name}`;
+  const now = performance.now() / 1000;
+  const floatOff = Math.sin(now * 2.2) * 3;
+  const promptY = p.y - 56 + floatOff;
+  ctx.save();
+  ctx.font = 'bold 11px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const m = ctx.measureText(label);
+  const padX = 12;
+  const w = m.width + padX * 2;
+  const h = 22;
+  const x = p.x - w / 2;
+  const y = promptY - h / 2;
+  // Background pill
+  ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
+  ctx.fillRect(x, y, w, h);
+  // Tier-tinted border — colors echo the pedestal's rarity ring so the
+  // prompt visually keys to what you're picking up.
+  ctx.strokeStyle = tierTint;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  // Label text — altars get red text on the HP cost, everything else
+  // uses the tier tint for the name. Two-pass render for color split.
+  if (isAltar) {
+    ctx.fillStyle = '#ff8088';
+  } else {
+    ctx.fillStyle = tierTint;
+  }
+  ctx.fillText(label, p.x, promptY);
+  ctx.restore();
 }
 
 export function drawPedestals(ctx) {

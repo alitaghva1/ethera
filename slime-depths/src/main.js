@@ -71,6 +71,7 @@ import {
   spawnRelicOffer, spawnAltarOffer, spawnBossDrop, updatePedestals, drawPedestals, clearPedestals,
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
   setPickupFlashForTest, isPickupFlashActive,
+  consumePendingPickup, drawPedestalPrompt,
 } from './pedestals.js';
 import { drawCounterPips, tickCounterPips } from './counterPips.js';
 import { drawPedestalTeasers } from './pedestalTeaser.js';
@@ -5783,6 +5784,28 @@ function tick(now) {
       }
     }
 
+    // ─── PEDESTAL PICKUP CONFIRMATION (DUNGEON ONLY) ───────────────────
+    // Round-7 user feedback — walking onto a pedestal used to be an
+    // INSTANT pickup, which players said felt like an accidental claim
+    // when traversing rooms quickly. Now the player must press E to
+    // commit. consumePendingPickup is null-safe (returns null when no
+    // pedestal is hovered) so the gate is cheap; we just skip during
+    // hamlet/menu/dead states to keep keypresses scoped.
+    if (room.kind !== 'hamlet' && hero.state !== 'dead' && keyJustPressed('KeyE')) {
+      const result = consumePendingPickup();
+      if (result === 'denied_hp') {
+        // Altar with insufficient HP — flash a denied label so the
+        // player understands why their press did nothing. Mirrors
+        // the reroll "NOT ENOUGH GOLD" pattern.
+        roomLabelText = `NOT ENOUGH HP TO PAY THIS ALTAR`;
+        roomLabelColor = '#d85a5a';
+        roomLabelTime = 1.6;
+        synthClick(0.5, 1.0);
+      }
+      // result === non-null relic def or null — both are silent here;
+      // the pickup itself fires its own banner + sfx via pedestals.js.
+    }
+
     // ─── TREASURE CHEST INTERACTION (DUNGEON ONLY) ─────────────────────
     // E pressed near a closed chest in a chestroom → open it + apply
     // reward immediately (animation is purely visual feedback).
@@ -6837,6 +6860,14 @@ function render() {
   // sits on top of entities + the hero.
   if (room.kind === 'hamlet') {
     drawHamletInteractPrompt(ctx);
+  }
+  // PEDESTAL interact prompt — floating "E · TAKE [name]" / "E · PAY N HP
+  // [name]" above the nearest hovered pedestal. Round-7 user feedback:
+  // pickups now require an E-press confirmation. Skip during hamlet
+  // (no pedestals there); chestroom pedestals reuse the same prompt
+  // since they're regular pedestal entries spawned from the chest reward.
+  if (room.kind !== 'hamlet') {
+    drawPedestalPrompt(ctx);
   }
   // Treasure chest interact prompt — "E · OPEN" floating above the
   // nearest closed chest within range. Same visual style as hamlet
