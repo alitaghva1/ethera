@@ -3837,6 +3837,10 @@ if (mobilePauseBtn) {
 }
 
 // R — reroll pedestal offers for gold. Cost scales with floor (15g base).
+// Round-7 — also supports shop rooms via a flat-rate reroll. Detection:
+// any active pedestal carries p.shop=true means we're in a shop, route
+// to spawnShopOffer to preserve the goldCost field. Combat reroll path
+// stays untouched.
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyR') return;
   if (!running || paused) return;
@@ -3846,19 +3850,16 @@ window.addEventListener('keydown', (e) => {
   // Detect via hpCost === 0 on ALL active pedestals.
   const activeStd = pedestals.filter(p => !p.picked && p.hpCost === 0);
   if (activeStd.length < 2) return;       // need multi-choice context
-  // Cost scales with floor depth.
-  //   Round-1 formula  : 15 + floor*5  (20/25/30/35) — too cheap on F4
-  //   Round-3 formula  : 30 + floor*15 (45/60/75/90) — too expensive on F1
-  //   Round-6 formula  : 20 + floor*15 (35/50/65/80) — fits typical yields
-  //
-  // Round-6 economy audit measured F1's typical run yield at 50-90g (25
-  // kills × 2g + 0-1 chest). The Round-3 cost of 45g routinely consumed
-  // the entire F1 wallet, leaving the player bankrupt entering F2 where
-  // the next reroll cost 60g + altar HP costs 2-7 HP from a 3-6 HP hero.
-  // Dropping the base to 20 (so F1=35) keeps the cost meaningful (~40%
-  // of typical F1 yield) without bricking the next-floor economy. F4
-  // stays at 80g, still ~30% of typical F4 wallet.
-  const cost = 20 + currentFloorLevel * 15;
+  const inShop = activeStd.some(p => p.shop);
+  // Cost scales with floor depth for combat rerolls; flat 30g for shops.
+  // Shops are mid-floor encounters where players have less gold than
+  // post-combat clears, so the reroll cost has to be cheaper than a
+  // single-relic price (40g common) to be a real choice.
+  //   Combat   Round-1 formula  : 15 + floor*5  (20/25/30/35) — too cheap on F4
+  //   Combat   Round-3 formula  : 30 + floor*15 (45/60/75/90) — too expensive on F1
+  //   Combat   Round-6 formula  : 20 + floor*15 (35/50/65/80) — fits typical yields
+  //   Shop     Round-7 formula  : flat 30g — cheaper than the cheapest item
+  const cost = inShop ? 30 : (20 + currentFloorLevel * 15);
   if (gold.total < cost) {
     // Feedback: brief label + denied chirp
     roomLabelText = `REROLL NEEDS ${cost}g (you have ${gold.total})`;
@@ -3868,9 +3869,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   gold.total -= cost;
-  // Spawn fresh offers
+  // Spawn fresh offers — route based on room context.
   clearPedestals();
-  spawnRelicOffer(currentFloorLevel);
+  if (inShop) spawnShopOffer(currentFloorLevel);
+  else spawnRelicOffer(currentFloorLevel);
   // Feedback
   roomLabelText = `✦ REROLLED · -${cost}g ✦`;
   roomLabelColor = '#c9a86a';
