@@ -202,8 +202,32 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.fillText(`${Math.max(0, Math.round(hero.hp))} / ${hero.maxHp}`, hpTextX, hpTextY);
   ctx.restore();
 
-  // Ability pips row — always placed below the LAST heart row with 14px clear gap
-  const abilitiesY = pad + heartRows * heartRowH + 14;
+  // ── WEAPON SLOT HEADER — wizard-kit Sprint 2A ───────────────────
+  // Two-slot weapon system displayed as a single compact row above
+  // the pip stack. Active weapon is bold + tinted; the other is dim.
+  // 1 / 2 keybinds tell the player how to swap; mouse-wheel works
+  // too. Sprint 2B may add weapon icons here when art exists.
+  ctx.save();
+  const weaponHeaderY = pad + heartRows * heartRowH + 8;
+  const isSwordActive = hero.activeWeapon === 'sword';
+  ctx.font = 'italic bold 10px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  // [1] SWORD slot
+  ctx.fillStyle = isSwordActive ? 'rgba(255, 220, 160, 0.95)' : 'rgba(140, 130, 110, 0.45)';
+  ctx.fillText(isSwordActive ? '◆ 1·SWORD' : '1·sword', pad, weaponHeaderY);
+  // separator
+  ctx.fillStyle = 'rgba(140, 130, 110, 0.35)';
+  ctx.fillText('|', pad + 88, weaponHeaderY);
+  // [2] BLAST slot
+  ctx.fillStyle = isSwordActive ? 'rgba(140, 130, 110, 0.45)' : 'rgba(180, 220, 255, 0.95)';
+  ctx.fillText(isSwordActive ? '2·blast' : '◆ 2·BLAST', pad + 100, weaponHeaderY);
+  ctx.restore();
+
+  // Ability pips row — placed below the weapon header with a small gap.
+  // Was below heart-row directly; bumped down 14px to make room for
+  // the weapon-slot header (wizard-kit Sprint 2A).
+  const abilitiesY = pad + heartRows * heartRowH + 26;
   const pipW = 66;
   const pipH = 7;
   const pipGap = 6;
@@ -280,13 +304,6 @@ export function drawHud(ctx, w, h, progress = {}) {
   const rmbLabel = isSword ? 'RMB · LUNGE' : 'RMB · CHAIN CAST';
   ctx.fillText(rmbLabel, labelInlineX, blastRowY + pipH / 2);
 
-  // Active-weapon slot indicator — small label to the right of the
-  // pip showing which slot is loaded. [1] sword vs [2] blast.
-  ctx.fillStyle = 'rgba(220, 200, 160, 0.6)';
-  ctx.font = 'italic 9px Georgia, serif';
-  ctx.textBaseline = 'top';
-  const slotLabel = isSword ? '◆ [1] SWORD  · [2] blast' : '[1] sword ·  ◆ [2] BLAST';
-  ctx.fillText(slotLabel, pad, blastRowY - 11);
 
   // DASH STRIKE (Q) pip — third row
   const dashCDMax = 5.0;

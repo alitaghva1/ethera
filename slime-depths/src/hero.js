@@ -272,14 +272,28 @@ export const hero = {
   lungeDirX: 0, lungeDirY: 0,  // locked direction at activation
   lungeHit: new Set(),         // enemies already hit this lunge
 
-  // Blast LMB — single bolt tap-fire. Tap-press cadence (mouse.pressed),
-  // not held auto-fire — matches wand muscle memory.
-  blastBoltCD: 0,              // cadence between LMB taps
-  blastBoltMaxCD: 0.4,
-  blastBoltDamage: 14,         // ~50% sword tap damage
-  blastBoltSpeed: 700,
+  // Blast LMB — single bolt cast. Hold-to-autofire (mouse.down) so the
+  // mage's primary attack feels responsive without finger-spam. Each
+  // shot is gated by blastBoltCD; holding LMB just means "fire the
+  // next bolt as soon as the cadence allows." Roguelite players
+  // expect this rhythm (Vampire Survivors / Brotato / Risk of Rain).
+  // Tuning targets:
+  //   - blastBoltCD 0.28s gives ~3.5 bolts/sec sustained — meaningful
+  //     range pressure without trivializing close-quarters trade.
+  //   - blastBoltDamage 18 vs sword tap 32 → 56% sword DPS ratio at
+  //     max cadence, which tracks the design intent ("blast pressures,
+  //     sword finishes").
+  //   - blastBoltSpeed 850 reduces enemy-dodging vs the old 700 (700
+  //     felt slow enough that fast walkers could sidestep).
+  //   - blastBoltRadius 9 vs old 6 — more forgiving hitbox, matches
+  //     the wand-charged radius (10) so the read is "this is real
+  //     range damage, not a pea-shooter."
+  blastBoltCD: 0,
+  blastBoltMaxCD: 0.28,
+  blastBoltDamage: 18,
+  blastBoltSpeed: 850,
   blastBoltLife: 1.0,
-  blastBoltRadius: 6,
+  blastBoltRadius: 9,
 
   // Blast RMB — Chain Cast. Spawns one heavier bolt that, on first
   // enemy hit, deals damage and arcs to 2 nearby enemies for
@@ -964,12 +978,18 @@ export function updateHero(dt, enemies, mouseWorld) {
         spawnExplosion(hero.x, hero.y - 6, 56, dmg, 'shock');
       }
     }
-    // ── BLAST LMB — tap-fire single bolt (wizard-kit Sprint 2A) ───
-    // Fires only when the BLAST slot is the active weapon. Tap-fire
-    // (mouse.pressed, not mouse.down — sustained holds do NOT auto-
-    // fire; matches wand muscle memory). Each bolt is gated by
-    // blastBoltCD (~0.4s cadence) — independent of attackCooldown
-    // which governs sword swings on the OTHER slot.
+    // ── BLAST LMB — hold-to-autofire bolt (wizard-kit Sprint 2A) ──
+    // Fires only when the BLAST slot is the active weapon. Hold-LMB
+    // (mouse.down) auto-fires bolts as soon as blastBoltCD recovers —
+    // matches Vampire Survivors / Risk of Rain mage primary feel. The
+    // 0.28s cadence keeps it responsive without trivializing trades.
+    //
+    // SPAWN POSITION: bolt originates from a point 18px in front of
+    // the hero in the aim direction (matches the wand's spawn pattern
+    // at line ~1170). Spawning AT hero.x put the bolt inside the
+    // sprite, which read as "the bolt drifts off-screen instead of
+    // shooting from the hand" — the user's "aim feels off" complaint
+    // was the missing forward offset, not actual aim math.
     //
     // This block sits ahead of the sword attack block in the if-else
     // chain so when blast is active, the sword swing branch is never
@@ -977,24 +997,37 @@ export function updateHero(dt, enemies, mouseWorld) {
     else if (
       room.kind !== 'hamlet' &&
       hero.activeWeapon === 'blast' &&
-      mouse.pressed &&
+      mouse.down &&
       hero.blastBoltCD <= 0 &&
       hero.state !== 'hurt' &&
       hero.state !== 'dead'
     ) {
       hero.blastBoltCD = hero.blastBoltMaxCD;
-      const m = Math.hypot(hero.aimX, hero.aimY) || 1;
-      const dx = hero.aimX / m, dy = hero.aimY / m;
+      const ax = hero.aimX, ay = hero.aimY;
+      // Spawn IN FRONT of hero — 18px forward + 8px up to read as "from
+      // the outstretched hand" instead of from the chest cavity.
+      const spawnX = hero.x + ax * 18;
+      const spawnY = hero.y - 8 + ay * 12;
       spawnHeroBolt(
-        hero.x,
-        hero.y - 6,
-        dx,
-        dy,
+        spawnX,
+        spawnY,
+        ax,
+        ay,
         hero.blastBoltDamage * (hero.damageMul || 1),
         hero.blastBoltSpeed,
         hero.blastBoltLife,
-        { color: '#a0e8ff', pierce: 0 }
+        { color: '#a0e8ff', pierce: 0, radius: hero.blastBoltRadius }
       );
+      // Muzzle flash — small sparkle burst at the spawn point so the
+      // player sees instant feedback on click (vs the bolt traveling
+      // 100px before the eye registers it). Three sparkles in a tight
+      // cluster forward of the hero.
+      for (let _k = 0; _k < 3; _k++) {
+        const _spread = (Math.random() - 0.5) * 0.4;
+        const _bx = spawnX + (ax + Math.cos(_spread) * 0.2) * 6;
+        const _by = spawnY + (ay + Math.sin(_spread) * 0.2) * 6;
+        sparkle(_bx, _by, '#d8f0ff');
+      }
       // Light "cast" feel — same primitives as wand tap-fire. Sprint
       // 2B will swap to a dedicated synth preset distinct from wand.
       try { synthPing(620, 0.65, 0.18); } catch (_e) {}
@@ -1022,28 +1055,39 @@ export function updateHero(dt, enemies, mouseWorld) {
       hero.state !== 'dead'
     ) {
       hero.chainCastCD = hero.chainCastMaxCD;
-      const m = Math.hypot(hero.aimX, hero.aimY) || 1;
-      const dx = hero.aimX / m, dy = hero.aimY / m;
+      const ax = hero.aimX, ay = hero.aimY;
+      const spawnX = hero.x + ax * 18;
+      const spawnY = hero.y - 8 + ay * 12;
       // Heavier bolt — bigger radius, slightly faster, distinct
       // brighter cyan tint so the player visually distinguishes a
-      // chain cast from a tap bolt mid-flight.
+      // chain cast from a tap bolt mid-flight. Spawned at the same
+      // forward-of-hero offset as the LMB tap so the cast origin
+      // reads consistently across both blast actions.
       spawnHeroBolt(
-        hero.x,
-        hero.y - 6,
-        dx,
-        dy,
+        spawnX,
+        spawnY,
+        ax,
+        ay,
         hero.chainCastDamage * (hero.damageMul || 1),
         hero.blastBoltSpeed * 1.05,
         hero.blastBoltLife,
         {
           color: '#d8f0ff',
           pierce: 0,
+          radius: 11,                 // heavier bolt, larger hitbox
           chainCast: true,
           chainCount: hero.chainCastChainCount,
           chainDamage: hero.chainCastChainDamage * (hero.damageMul || 1),
           chainRange: hero.chainCastChainRange,
         }
       );
+      // Heavier muzzle flash for the committed cast — 6 sparkles in a
+      // wider arc, brighter color. Visual confirms the heavier shot.
+      for (let _k = 0; _k < 6; _k++) {
+        const _ang = Math.atan2(ay, ax) + (Math.random() - 0.5) * 0.6;
+        const _r = 8 + Math.random() * 6;
+        sparkle(spawnX + Math.cos(_ang) * _r, spawnY + Math.sin(_ang) * _r, '#e8f8ff');
+      }
       // Heavier audio sting — drop the pitch + boost volume for the
       // committed cast feel.
       try { synthPing(420, 0.95, 0.32); } catch (_e) {}

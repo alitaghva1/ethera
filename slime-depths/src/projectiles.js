@@ -86,7 +86,12 @@ export function spawnHeroBolt(x, y, dirX, dirY, damage = 16, speed = 600, life =
   p.angle = Math.atan2(dirY, dirX);
   p.life = life;
   p.damage = damage;
-  p.radius = p.charged ? 10 : (p.woven ? 8.5 : 7);     // size ladder: tap < woven < charged
+  // Size ladder: tap < woven < charged; opts.radius overrides for the
+  // blast LMB (wizard-kit Sprint 2A — bumped from 7 to 9 for a more
+  // forgiving hitbox vs the wand's smaller-projectile pea-shooter feel).
+  p.radius = opts.radius !== undefined
+    ? opts.radius
+    : (p.charged ? 10 : (p.woven ? 8.5 : 7));
   p.affix = null;
   // Pierce count: how many enemies a single bolt can hit before
   // despawning. Default tap-fire = 0 (despawn on first hit). Charged
