@@ -47,7 +47,9 @@ let _mapPickInFlight = false;
 // Tracks whether onRoomCleared has fired for the current room, so we only
 // trigger the open-doors animation once per clear. Reset on transition.
 let _roomClearedNotified = false;
-import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawPerfectDodgeRing, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, updateEmberRings, drawEmberRings, clearEmberRings, drawCorpses, loadCodex, TYPES as ENEMY_TYPES, seenEnemyTypes } from './enemies.js';
+// Round-7 Sprint B refactor — seenEnemyTypes moved to
+// src/modals/achievementsModal.js (used only by the bestiary tab).
+import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawPerfectDodgeRing, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, updateEmberRings, drawEmberRings, clearEmberRings, drawCorpses, loadCodex, TYPES as ENEMY_TYPES } from './enemies.js';
 import { updateProjectiles, drawProjectiles, clearProjectiles } from './projectiles.js';
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
@@ -68,11 +70,14 @@ import { meta, loadMeta, addEssence, purchaseUnlock, hasUnlock, UNLOCKS, bankHei
 // curses UI; isCursed / curseCount / curseEssenceMul / activeCurses
 // / loadCurses still used here for run-state checks + save/load.
 import { activeCurses, loadCurses, isCursed, curseCount, curseEssenceMul } from './curses.js';
-import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked, isUnlocked } from './achievements.js';
+// Round-7 Sprint B refactor — isUnlocked moved to achievementsModal
+// (only the chronicles deeds tab calls it).
+import { ACHIEVEMENTS, ACH_IDS, pendingPopups, loadAchievements, evaluateAchievements, totalUnlocked } from './achievements.js';
 import { records, loadRecords, updateRecords, incrementRunsStarted } from './records';
 // Round-7 Sprint B refactor — totalFusions + discoveredCount moved to
 // src/modals/pauseModal.js with the rest of the relic-strip render.
-import { loadDiscoveredFusions, activeFusions, FUSIONS, discoveredFusions, clearFusions } from './fusions.js';
+// FUSIONS + discoveredFusions moved to achievementsModal (fusions tab).
+import { loadDiscoveredFusions, activeFusions, clearFusions } from './fusions.js';
 import { ruin, loadRuin, recordDeath, recordBossKill, recordRunComplete, getRoomStain, getBossRoomStain, agingLevel } from './ruin.js';
 // Round-7 Sprint B refactor — seenCount + totalCards moved to
 // src/modals/tarotRevealModal.js with the reveal render. drawnCards
@@ -115,7 +120,10 @@ import {
 } from './hamletScene.js';
 import { initMusic, playTrack, stopMusic, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
-import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, composeRelicThumbDataURL, composeEnemyThumbDataURL, spawnDamageNumber, updateSoulTethers, drawSoulTethers, clearSoulTethers } from './fx.js';
+// Round-7 Sprint B refactor — composeRelicThumbDataURL +
+// composeEnemyThumbDataURL moved to achievementsModal (used only by
+// the bestiary + relicpedia + fusions tabs to compose grid thumbs).
+import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, spawnDamageNumber, updateSoulTethers, drawSoulTethers, clearSoulTethers } from './fx.js';
 import { images as imageCache } from './loader.js';
 import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
@@ -143,6 +151,8 @@ import { tarotRevealEl, showTarotRevealModal as _showTarotRevealModal, setTarotO
 import { settingsEl, showSettingsModal as _showSettingsModal, setSettingsOnClose } from './modals/settingsModal.js';
 import { weaponPickerEl, showWeaponPickerModal as _showWeaponPickerModal, setWeaponOnPick, setWeaponOnBack, availableWeapons } from './modals/weaponPickerModal.js';
 import { pauseEl, setPauseVisible, setPauseOnResume, setPauseOnQuit, setPauseOnJournal } from './modals/pauseModal.js';
+import { achEl, showAchievementsModal as _showAchievementsModal, setAchievementsOnClose, ENEMY_PORTRAIT_PATH } from './modals/achievementsModal.js';
+import { oracleEl, oracleFortuneEl, showOracleForecast as _showOracleForecast } from './modals/oracleModal.js';
 
 // Side-effect: install the localStorage profile-prefix patch NOW, before any
 // other module-body code could touch storage. All load*() funcs in other
@@ -1813,270 +1823,15 @@ function showCursesFromHamlet() {
   showCursesModal();
 }
 
-// ============================================================================
-// ORACLE FORECAST — shows a static lore-accurate map of the ruin's four
-// floors: biome name, the enemy families that haunt it, the boss at its
-// heart. The forecast is always the same (the ruin doesn't reshape itself)
-// but it's meaningful to a new player. Free to consult — this is her arc
-// service, not an essence sink.
-// ============================================================================
-const oracleEl = document.createElement('div');
-oracleEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#181022 0%,#0a0814 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
-oracleEl.innerHTML = `
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#b49aff;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#b49aff;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#b49aff;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#b49aff,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#b49aff;transform:rotate(45deg);"></div>
-  </div>
-
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:820px;width:100%;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
-      <div style="color:#b49aff;font-size:11px;letter-spacing:6px;font-style:italic;">the forward-dark, remembered</div>
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
-    </div>
-    <h1 style="font-size:44px;margin:0;letter-spacing:10px;color:#d8c4ff;text-shadow:0 0 18px rgba(180,154,255,0.45);font-weight:400;line-height:1;">THE PATH</h1>
-    <p style="margin:14px 0 26px;opacity:0.6;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Four floors. Four shapes of hunger. I cannot tell you how they end — only what they are.</p>
-    <div id="oracleFloors" style="display:flex;flex-direction:column;gap:14px;width:100%;"></div>
-    <div id="oracleFortuneNotice" style="margin-top:10px;min-height:14px;font-size:10.5px;letter-spacing:2px;color:#86e3a8;font-style:italic;opacity:0;transition:opacity 0.3s ease;"></div>
-    <div style="display:flex;gap:18px;margin-top:14px;align-items:center;">
-      <button id="oracleCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 LOOK AWAY</button>
-      <button id="oracleDrawBtn" style="background:linear-gradient(180deg,#2a1840,#14081a);color:#d8c4ff;border:0;padding:10px 28px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #b49aff, 0 0 20px rgba(180,154,255,0.2);transition:all 0.22s ease;">\u2666 DRAW A FORTUNE \u2666</button>
-    </div>
-  </div>
-`;
-document.getElementById('hud').appendChild(oracleEl);
-document.getElementById('oracleCloseBtn').addEventListener('click', () => {
-  try { synthClick(0.9, 0.25); } catch (_e) {}
-  oracleEl.style.display = 'none';
-  // Oracle is NPC-only (no main-menu access). Hamlet canvas is still
-  // rendering underneath; hiding the modal returns the player exactly
-  // where they left off next to the Oracle. No re-entry needed.
-});
-document.getElementById('oracleDrawBtn').addEventListener('click', () => {
-  oracleEl.style.display = 'none';
-  showOracleFortune();
-});
-
-// The forecast is static lore-accurate data. Could be made dynamic later
-// (e.g., different omens per day, tarot-aware), but the "remember forward"
-// framing makes the unchanging nature feel intentional.
-const ORACLE_FORECAST = [
-  { name: 'The Undercroft',      roman: 'I',   enemies: 'slimes, skeletons',
-    bossLine: 'A captain in rusted armor, long unburied, waits in its heart.',
-    tint: '#86e3a8' },
-  { name: 'The Ruined Tower',    roman: 'II',  enemies: 'orcs, archers, bone captains',
-    bossLine: 'The iron king who refused to stop. Blue fire, broken crown.',
-    tint: '#a0d8ff' },
-  { name: 'The Spire',           roman: 'III', enemies: 'bonecaps, brood, lancers',
-    bossLine: 'She waits in her webs. She has waited a very long time.',
-    tint: '#d85a5a' },
-  { name: 'The Throne of Ruin',  roman: 'IV',  enemies: 'priests, wizards, the Hermit',
-    bossLine: 'A throne that forgot it was empty. Red fire answers to its silence.',
-    tint: '#ff8040' },
-];
-
+// Oracle modals (forecast + fortune) — extracted to
+// src/modals/oracleModal.js (Round-7 Sprint B). Both are NPC-only and
+// cross-reference each other; the module owns both DOMs and handles
+// the hand-off internally. main.js retains the wrapper to preserve
+// the hideAllOverlays-before-show contract.
 function showOracleForecast() {
   hideAllOverlays();
-  const listEl = document.getElementById('oracleFloors');
-  listEl.innerHTML = '';
-  for (const f of ORACLE_FORECAST) {
-    const row = document.createElement('div');
-    row.style.cssText = `
-      background: linear-gradient(180deg, rgba(24,18,28,0.88), rgba(12,8,14,0.92));
-      padding: 14px 20px;
-      box-shadow: inset 0 0 0 1px ${f.tint}55, inset 0 0 14px rgba(0,0,0,0.4);
-      font-family: Georgia, serif;
-      display: grid;
-      grid-template-columns: 50px 1fr;
-      gap: 20px;
-      align-items: center;
-    `;
-    row.innerHTML = `
-      <div style="color:${f.tint};font-size:26px;font-weight:400;letter-spacing:4px;text-align:center;text-shadow:0 0 8px ${f.tint}66;">${f.roman}</div>
-      <div>
-        <div style="color:${f.tint};font-size:15px;letter-spacing:4px;font-weight:bold;margin-bottom:4px;text-shadow:0 0 6px ${f.tint}44;">${f.name.toUpperCase()}</div>
-        <div style="color:#d8cfae;font-size:11px;letter-spacing:1.5px;opacity:0.8;margin-bottom:3px;">you will meet: <span style="color:${f.tint};font-style:italic;">${f.enemies}</span></div>
-        <div style="color:#d8cfae;font-size:11px;letter-spacing:1px;opacity:0.7;font-style:italic;line-height:1.5;">${f.bossLine}</div>
-      </div>
-    `;
-    listEl.appendChild(row);
-  }
-  // Carried-fortune hint — if the player has already drawn, surface the fact.
-  const notice = document.getElementById('oracleFortuneNotice');
-  if (notice) {
-    if (window.__oracleCard) {
-      const c = TAROT[window.__oracleCard];
-      notice.textContent = `\u2666 ${c ? c.name : 'A FORTUNE'} is carried into your next descent \u2666`;
-      notice.style.opacity = '0.85';
-    } else {
-      notice.textContent = '';
-      notice.style.opacity = '0';
-    }
-  }
-  oracleEl.style.display = 'flex';
-  // Record service use and advance the Oracle's arc (free service — her
-  // value is narrative, not essence-sunk)
-  recordServiceUse('oracle');
+  _showOracleForecast();
 }
-
-// ============================================================================
-// ORACLE'S FORTUNES — the reintegrated Tarot system. Eight cards from the
-// Major Arcana (tarot.js) shown face-down; player picks one to carry into
-// the next descent. On run start, the carried card is pushed into
-// `drawnCards` so every existing tarot-hook (hasCard checks throughout
-// hero.js and main.js) fires automatically — this is the SAME content
-// the hidden tarot-mode used to provide, now accessed via a worldly NPC.
-// ============================================================================
-const oracleFortuneEl = document.createElement('div');
-oracleFortuneEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#1a0f28 0%,#0c0614 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;z-index:30;overflow-y:auto;';
-oracleFortuneEl.innerHTML = `
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;max-width:960px;width:100%;">
-    <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;">
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
-      <div style="color:#b49aff;font-size:11px;letter-spacing:6px;font-style:italic;">a fortune, for the descent</div>
-      <div style="width:110px;height:1px;background:linear-gradient(90deg,transparent,#b49aff,transparent);"></div>
-    </div>
-    <h1 id="oracleFortuneTitle" style="font-size:40px;margin:0;letter-spacing:10px;color:#d8c4ff;text-shadow:0 0 18px rgba(180,154,255,0.45);font-weight:400;line-height:1;">DRAW ONE</h1>
-    <p id="oracleFortuneSubtitle" style="margin:14px 0 26px;opacity:0.65;letter-spacing:1.5px;font-size:11px;font-style:italic;max-width:560px;text-align:center;line-height:1.55;">Choose a card. It will shape your next descent — you may discard it only by dying.</p>
-    <div id="oracleFortuneCards" style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:900px;"></div>
-    <div id="oracleFortuneReveal" style="display:none;flex-direction:column;align-items:center;margin-top:14px;max-width:520px;text-align:center;"></div>
-    <div style="display:flex;gap:18px;margin-top:22px;align-items:center;">
-      <button id="oracleFortuneCancelBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 NOT TODAY</button>
-      <button id="oracleFortuneAcceptBtn" style="display:none;background:linear-gradient(180deg,#2a1840,#14081a);color:#d8c4ff;border:0;padding:10px 28px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-weight:bold;box-shadow:inset 0 0 0 1px #b49aff, 0 0 20px rgba(180,154,255,0.25);transition:all 0.22s ease;">CARRY IT FORWARD \u2192</button>
-    </div>
-  </div>
-`;
-document.getElementById('hud').appendChild(oracleFortuneEl);
-
-let _oracleFortunePick = null;
-
-function renderOracleFortuneCards() {
-  const listEl = document.getElementById('oracleFortuneCards');
-  listEl.innerHTML = '';
-  // Deterministic shuffle per visit — every time the modal opens, cards
-  // appear in a fresh order so the player's eye doesn't just click the
-  // same slot repeatedly.
-  const order = [...Object.keys(TAROT)];
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
-    [order[i], order[j]] = [order[j], order[i]];
-  }
-  for (const id of order) {
-    const cardEl = document.createElement('button');
-    cardEl.className = 'oracleFortuneCard';
-    cardEl.dataset.cardId = id;
-    cardEl.style.cssText = `
-      width: 96px; height: 150px;
-      background: linear-gradient(180deg, #241833, #0e0818);
-      box-shadow: inset 0 0 0 1px #b49aff, 0 0 18px rgba(180,154,255,0.12), inset 0 0 14px rgba(0,0,0,0.5);
-      border: 0; padding: 0; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      font-family: Georgia, serif; color: #b49aff;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      position: relative;
-    `;
-    // Card-back ornament — gold diamond + fine hairlines
-    cardEl.innerHTML = `
-      <div style="position:absolute;inset:8px;border:1px solid rgba(180,154,255,0.25);"></div>
-      <div style="position:absolute;inset:14px;display:flex;align-items:center;justify-content:center;">
-        <div style="width:14px;height:14px;background:#b49aff;transform:rotate(45deg);opacity:0.5;box-shadow:0 0 8px #b49aff77;"></div>
-      </div>
-      <div style="position:absolute;top:8px;left:8px;right:8px;height:1px;background:linear-gradient(90deg,transparent,#b49aff44,transparent);"></div>
-      <div style="position:absolute;bottom:8px;left:8px;right:8px;height:1px;background:linear-gradient(90deg,transparent,#b49aff44,transparent);"></div>
-    `;
-    cardEl.onmouseenter = () => { cardEl.style.transform = 'translateY(-6px)'; cardEl.style.boxShadow = 'inset 0 0 0 1px #d8c4ff, 0 0 28px rgba(216,196,255,0.35), inset 0 0 14px rgba(0,0,0,0.5)'; };
-    cardEl.onmouseleave = () => { cardEl.style.transform = ''; cardEl.style.boxShadow = 'inset 0 0 0 1px #b49aff, 0 0 18px rgba(180,154,255,0.12), inset 0 0 14px rgba(0,0,0,0.5)'; };
-    cardEl.onclick = () => revealOracleFortuneCard(id, cardEl);
-    listEl.appendChild(cardEl);
-  }
-}
-
-function revealOracleFortuneCard(id, cardEl) {
-  _oracleFortunePick = id;
-  const card = TAROT[id];
-  if (!card) return;
-  // Dim every card, highlight the picked one — reads "this is what you drew"
-  const allCards = document.querySelectorAll('.oracleFortuneCard');
-  for (const el of allCards) {
-    el.style.pointerEvents = 'none';
-    if (el !== cardEl) {
-      el.style.opacity = '0.25';
-      el.style.transform = '';
-    } else {
-      el.style.transform = 'translateY(-14px) scale(1.08)';
-      el.style.boxShadow = `inset 0 0 0 2px ${card.tint}, 0 0 34px ${card.tint}66, inset 0 0 18px rgba(0,0,0,0.4)`;
-      // Flip to face-up: replace inner with typographic card face
-      el.innerHTML = `
-        <div style="position:absolute;inset:8px;border:1px solid ${card.tint}88;"></div>
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:10px;">
-          <div style="color:${card.tint};font-size:12px;letter-spacing:3px;opacity:0.7;margin-bottom:6px;">${card.roman}</div>
-          <div style="width:32px;height:1px;background:${card.tint};opacity:0.4;margin-bottom:8px;"></div>
-          <div style="color:${card.tint};font-size:11px;letter-spacing:2px;font-weight:bold;text-align:center;line-height:1.2;text-shadow:0 0 8px ${card.tint}77;">${card.name}</div>
-        </div>
-      `;
-    }
-  }
-  // Show reveal block with desc + flavor
-  const rev = document.getElementById('oracleFortuneReveal');
-  rev.style.display = 'flex';
-  rev.innerHTML = `
-    <div style="color:${card.tint};font-size:14px;letter-spacing:3px;font-weight:bold;margin-bottom:6px;text-shadow:0 0 10px ${card.tint}66;">${card.name}</div>
-    <div style="color:#c8c0d8;font-size:11px;letter-spacing:1.5px;font-style:italic;opacity:0.75;margin-bottom:10px;">"${card.flavor}"</div>
-    <div style="color:${card.tint};font-size:12px;letter-spacing:1.5px;line-height:1.5;">${card.desc}</div>
-  `;
-  // Swap subtitle + swap button
-  document.getElementById('oracleFortuneSubtitle').textContent = 'This is the card you will carry. Take it, or leave — once you carry one, the Oracle will wait for the next run.';
-  document.getElementById('oracleFortuneAcceptBtn').style.display = 'inline-block';
-  document.getElementById('oracleFortuneCancelBtn').textContent = '\u2190 DISCARD';
-}
-
-function showOracleFortune() {
-  hideAllOverlays();
-  _oracleFortunePick = null;
-  document.getElementById('oracleFortuneReveal').style.display = 'none';
-  document.getElementById('oracleFortuneReveal').innerHTML = '';
-  document.getElementById('oracleFortuneSubtitle').textContent = 'Choose a card. It will shape your next descent — you may discard it only by dying.';
-  document.getElementById('oracleFortuneAcceptBtn').style.display = 'none';
-  document.getElementById('oracleFortuneCancelBtn').textContent = '\u2190 NOT TODAY';
-  renderOracleFortuneCards();
-  oracleFortuneEl.style.display = 'flex';
-  recordServiceUse('oracle');
-}
-
-document.getElementById('oracleFortuneCancelBtn').addEventListener('click', () => {
-  oracleFortuneEl.style.display = 'none';
-  showOracleForecast();   // return to the forecast (visually same modal family)
-});
-document.getElementById('oracleFortuneAcceptBtn').addEventListener('click', () => {
-  if (_oracleFortunePick) {
-    window.__oracleCard = _oracleFortunePick;
-    // Bump the hamlet's persistent fortune counter so the Oracle's
-    // milestone arc stage can unlock at 3+ draws.
-    hamletState.fortunesDrawn = (hamletState.fortunesDrawn | 0) + 1;
-    saveHamletState();
-    tryAdvanceArc('oracle');
-  }
-  oracleFortuneEl.style.display = 'none';
-  showOracleForecast();   // surface the carried-fortune notice
-});
 
 // ============================================================================
 // WANDERER GIFT — pay essence for a random COMMON relic banked as heirloom
@@ -2256,370 +2011,19 @@ function updateMenuMemoryLabel() {
   }
 }
 
-// Chronicles modal — named to match the main-menu card ("CHRONICLES"). Shares
-// the manuscript grammar: page-frame corners, deep vignette, inset strokes,
-// Georgia typography.
-const achEl = document.createElement('div');
-achEl.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;background:radial-gradient(ellipse at center,#140a18 0%,#0a0610 65%,#050308 100%);color:#ddd;pointer-events:auto;font-family:Georgia,"Cormorant Garamond",serif;padding:40px 24px;box-sizing:border-box;overflow-y:auto;';
-achEl.innerHTML = `
-  <!-- Deep vignette + page-frame corners (shared discipline). -->
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 28%, rgba(4,2,6,0.55) 78%, rgba(0,0,0,0.85) 100%);pointer-events:none;"></div>
-  <div style="position:absolute;top:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;left:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;top:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;top:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:0;right:0;width:1px;height:48px;background:linear-gradient(180deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;top:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;left:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;left:0;width:48px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;left:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;left:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-  <div style="position:absolute;bottom:22px;right:22px;width:48px;height:48px;pointer-events:none;">
-    <div style="position:absolute;bottom:0;right:0;width:48px;height:1px;background:linear-gradient(270deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:0;right:0;width:1px;height:48px;background:linear-gradient(0deg,#c9a86a,transparent);"></div>
-    <div style="position:absolute;bottom:-2px;right:-2px;width:4px;height:4px;background:#c9a86a;transform:rotate(45deg);"></div>
-  </div>
-
-  <div style="position:relative;display:flex;flex-direction:column;align-items:center;z-index:1;width:100%;">
-    <!-- Title block compressed: h1 48->32, ornament 100->80, gaps tightened
-         so the content grid below has more breathing room within 720
-         design height. -->
-    <div style="display:flex;align-items:center;gap:18px;margin-bottom:4px;opacity:0.75;">
-      <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-      <div style="color:#c9a86a;font-size:10px;letter-spacing:5px;font-style:italic;">deeds remembered</div>
-      <div style="width:80px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>
-    </div>
-    <h1 style="font-size:32px;margin:0;letter-spacing:9px;color:#f4d9a0;text-shadow:0 0 18px rgba(244,217,160,0.45);font-weight:400;line-height:1;">CHRONICLES</h1>
-    <div style="display:flex;align-items:center;gap:10px;margin:6px 0 8px;opacity:0.65;">
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-      <p id="achProgress" style="margin:0;letter-spacing:4px;font-size:11px;font-style:italic;color:#d8cfae;"></p>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);"></span>
-    </div>
-    <!-- Tab row — four codex sections. Active tab is gold filled, others muted. -->
-    <div style="display:flex;gap:4px;margin-bottom:10px;">
-      <button class="chronTab" data-tab="achievements" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Deeds</button>
-      <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="bestiary" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Bestiary</button>
-      <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="relics" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Relicpedia</button>
-      <span style="opacity:0.3;color:#c9a86a;font-size:10px;align-self:center;">\u2666</span>
-      <button class="chronTab" data-tab="fusions" style="background:transparent;border:0;padding:5px 14px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:10px;letter-spacing:3px;font-weight:bold;transition:all 0.2s ease;text-transform:uppercase;">Fusions</button>
-    </div>
-    <!-- Shared content grid — repopulated per tab. -->
-    <div id="achRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:14px;max-width:920px;width:100%;padding:4px;"></div>
-    <button id="achCloseBtn" style="background:transparent;color:#8a4848;border:0;padding:8px 20px;font-size:11px;cursor:pointer;letter-spacing:5px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:all 0.22s ease;opacity:0.75;">\u2190 RETURN</button>
-  </div>
-`;
-document.getElementById('hud').appendChild(achEl);
-document.getElementById('achCloseBtn').addEventListener('click', () => {
-  try { synthClick(0.9, 0.25); } catch (_e) {}
-  achEl.style.display = 'none';
+// Chronicles modal — extracted to src/modals/achievementsModal.js
+// (Round-7 Sprint B). main.js retains the wrapper to preserve the
+// hideAllOverlays-before-show contract + restore the main menu on close.
+// chronCard / chronTile / renderChroniclesTab / chronTab / ENEMY_PORTRAIT_PATH
+// all moved into the module — only ENEMY_PORTRAIT_PATH is re-imported
+// here for the __testBossIntro debug hook (returns the portrait path
+// in its result blob).
+setAchievementsOnClose(() => {
   showMainMenu();
 });
-
-// Chronicles modal — current tab state. Persists within a session so the
-// player can close and re-open without losing their spot.
-let chronTab = 'achievements';
-
-// Boss portrait paths — used by the Bestiary tab to show hand-drawn portraits
-// instead of pixel-sprite thumbnails for defeated bosses. If a key is present
-// here, that enemy is treated as a boss for bestiary purposes (its "seen"
-// state comes from ruin.bossKills, not seenEnemyTypes).
-const ENEMY_PORTRAIT_PATH = {
-  orc:          'assets/enemies/portrait_grudnok.png',
-  bone_captain: 'assets/enemies/portrait_iron_revenant.png',
-  broodmother:  'assets/enemies/portrait_broodmother.png',
-  ember_tyrant: 'assets/enemies/portrait_ember_tyrant.png',
-  echo:         'assets/enemies/portrait_echo_of_self.png',
-  hermit:       'assets/enemies/portrait_hermit.png',   // floor-4 mini-boss
-};
-
 function showAchievementsModal() {
   hideAllOverlays();
-  achEl.style.display = 'flex';
-  renderChroniclesTab();
-}
-
-// Wire tab clicks on modal creation — once the modal element is in the DOM.
-document.querySelectorAll('#achEl .chronTab, .chronTab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    chronTab = btn.dataset.tab;
-    renderChroniclesTab();
-  });
-});
-
-// Card builder — unified grammar for every tab. `locked` dims + italicizes;
-// `seen` gold-glows + shows full text. Optional `thumb` (data URL) shows the
-// composed icon/sprite at top-left with a tint-colored halo. `silhouette:true`
-// darkens the thumbnail for "undiscovered" visual cue.
-function chronCard({ title, body, locked, accentColor, icon, thumb, silhouette, tooltip }) {
-  const card = document.createElement('div');
-  const border = locked ? 'rgba(80,60,40,0.3)' : (accentColor ? accentColor + '88' : 'rgba(201,168,106,0.55)');
-  const glow = locked ? '' : `, 0 0 14px ${accentColor ? accentColor + '33' : 'rgba(201,168,106,0.12)'}`;
-  // Tightened from 12/14 padding + 52px thumb + 14/11 fonts to 7/9 padding +
-  // 40px thumb + 12/10 fonts so the chronicles grid fits more cards per
-  // viewport. With 5 cols of 180-px cards × 6 rows, all 28 fusions/relics
-  // become visible without scrolling instead of 4 cols × 7 rows + scroll.
-  card.style.cssText = `
-    background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.88));
-    padding:7px 9px;
-    display:flex;${thumb ? 'flex-direction:row;align-items:flex-start;gap:8px;' : 'flex-direction:column;gap:3px;'}
-    font-family:Georgia,serif;
-    box-shadow:inset 0 0 0 1px ${border}, inset 0 0 12px rgba(0,0,0,0.5)${glow};
-    ${locked ? 'opacity:0.55;' : ''}
-  `;
-  // Optional native tooltip — used by undiscovered fusions/relics so the
-  // recipe / hint text moves OUT of the card body and into a hover popup.
-  // Keeps the card visually compact while preserving the lookup info.
-  if (tooltip) card.title = tooltip;
-  const titleColor = locked ? '#7a7060' : (accentColor || '#f4d9a0');
-  const titleShadow = locked ? 'none' : `0 0 6px ${accentColor ? accentColor + '55' : 'rgba(244,217,160,0.3)'}`;
-  const bodyColor = locked ? 'rgba(140,130,110,0.7)' : 'rgba(200,190,170,0.85)';
-  // Optional thumbnail column
-  const thumbBg = locked
-    ? 'radial-gradient(circle,rgba(80,60,40,0.25),transparent 70%)'
-    : `radial-gradient(circle,${accentColor || '#c9a86a'}33,transparent 70%)`;
-  const thumbFilter = silhouette ? 'brightness(0) contrast(0.4)' : 'none';
-  const thumbHtml = thumb ? `
-    <div style="flex-shrink:0;width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
-      <img src="${thumb}" style="width:36px;height:36px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
-    </div>
-  ` : '';
-  const textBlock = `
-    <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;">
-      <div style="font-size:12px;font-weight:bold;color:${titleColor};letter-spacing:0.8px;text-shadow:${titleShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${icon || ''}${title}</div>
-      ${body ? `<div style="font-size:10px;color:${bodyColor};line-height:1.3;font-style:italic;">${body}</div>` : ''}
-    </div>
-  `;
-  card.innerHTML = thumbHtml + textBlock;
-  return card;
-}
-
-// Compact icon tile — used by the Relics tab where we have ~50 items
-// to display. The card-style chronCard layout doesn't scale that
-// densely; even at 4 cols x ~50px height the grid runs ~13 rows tall
-// and breaks past the 720 design height. The tile shows ONLY the icon
-// (silhouetted when locked) with the name as a small label below;
-// flavor + desc surface on hover via the title attribute. Click could
-// later expand into a detail panel; for now hover serves the lookup
-// affordance.
-function chronTile({ title, locked, accentColor, thumb, silhouette, tooltip }) {
-  const tile = document.createElement('div');
-  const border = locked ? 'rgba(80,60,40,0.3)' : (accentColor ? accentColor + '88' : 'rgba(201,168,106,0.55)');
-  const glow = locked ? '' : `, 0 0 12px ${accentColor ? accentColor + '33' : 'rgba(201,168,106,0.12)'}`;
-  // Pure ICON tile — no inline name. With 50+ relics in a 10-col grid,
-  // each tile is ~52 design px — too small for a readable name without
-  // wrapping/clipping. Hover tooltip carries the full name + flavor +
-  // desc instead. The icon's silhouette + tier-color border + (when
-  // discovered) tier-tinted glow are enough to identify the relic at
-  // a glance for players who already know the roster.
-  tile.style.cssText = `
-    width:52px;height:52px;
-    background:linear-gradient(180deg,rgba(30,22,16,0.85),rgba(14,10,8,0.88));
-    display:flex;align-items:center;justify-content:center;
-    font-family:Georgia,serif;
-    box-shadow:inset 0 0 0 1px ${border}, inset 0 0 8px rgba(0,0,0,0.5)${glow};
-    box-sizing:border-box;
-    ${locked ? 'opacity:0.55;' : ''}
-    cursor:default;
-    transition:transform 0.15s ease, box-shadow 0.15s ease;
-  `;
-  if (tooltip) tile.title = tooltip;
-  const thumbBg = locked
-    ? 'radial-gradient(circle,rgba(80,60,40,0.25),transparent 70%)'
-    : `radial-gradient(circle,${accentColor || '#c9a86a'}33,transparent 70%)`;
-  const thumbFilter = silhouette ? 'brightness(0) contrast(0.4)' : 'none';
-  tile.innerHTML = thumb ? `
-    <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:${thumbBg};">
-      <img src="${thumb}" style="width:36px;height:36px;image-rendering:pixelated;filter:${thumbFilter};" alt="" />
-    </div>
-  ` : `<div style="width:40px;height:40px;background:${thumbBg};"></div>`;
-  if (!locked) {
-    tile.addEventListener('mouseenter', () => {
-      tile.style.transform = 'translateY(-1px)';
-      tile.style.boxShadow = `inset 0 0 0 1px ${accentColor || '#c9a86a'}, 0 0 16px ${accentColor ? accentColor + '55' : 'rgba(201,168,106,0.3)'}`;
-    });
-    tile.addEventListener('mouseleave', () => {
-      tile.style.transform = 'translateY(0)';
-      tile.style.boxShadow = `inset 0 0 0 1px ${border}, inset 0 0 8px rgba(0,0,0,0.5)${glow}`;
-    });
-  }
-  return tile;
-}
-
-function renderChroniclesTab() {
-  // Sync tab highlight — active is filled gold, others are muted
-  const tabs = document.querySelectorAll('.chronTab');
-  tabs.forEach(t => {
-    const active = t.dataset.tab === chronTab;
-    t.style.background = active ? 'linear-gradient(180deg,rgba(58,42,32,0.9),rgba(30,20,12,0.9))' : 'transparent';
-    t.style.color = active ? '#f4d9a0' : '#6a5c48';
-    t.style.boxShadow = active ? 'inset 0 0 0 1px #c9a86a, 0 0 10px rgba(201,168,106,0.3)' : 'none';
-    t.style.textShadow = active ? '0 0 6px rgba(244,217,160,0.4)' : 'none';
-  });
-  const row = document.getElementById('achRow');
-  const progress = document.getElementById('achProgress');
-  row.innerHTML = '';
-  // Per-tab grid layout — relics use a denser ICON GRID (8 cols of
-  // ~75px square tiles) since there are 50+ items; the other tabs
-  // keep the wider card layout (auto-fill minmax 220px) since they
-  // have fewer items and benefit from inline body text.
-  if (chronTab === 'relics') {
-    // 10 cols of 52px tiles + 9 × 4px gaps = 556px wide. Fits 50-60
-    // relics in 6 rows × 52 = 312 design px tall — comfortable margin
-    // under the 720 design height after title + tabs + button.
-    row.style.gridTemplateColumns = 'repeat(10, 52px)';
-    row.style.gap = '4px';
-    row.style.maxWidth = '600px';
-    row.style.justifyContent = 'center';
-  } else {
-    row.style.gridTemplateColumns = 'repeat(auto-fill, minmax(220px, 1fr))';
-    row.style.gap = '8px';
-    row.style.maxWidth = '920px';
-    row.style.justifyContent = 'normal';
-  }
-
-  if (chronTab === 'achievements') {
-    for (const id of ACH_IDS) {
-      const a = ACHIEVEMENTS[id];
-      const unlocked = isUnlocked(id);
-      row.appendChild(chronCard({
-        title: a.name,
-        body: a.desc,
-        locked: !unlocked,
-        icon: (unlocked ? '\u2605 ' : '\u2606 '),
-      }));
-    }
-    progress.textContent = `${totalUnlocked()} of ${ACH_IDS.length} deeds earned`;
-
-  } else if (chronTab === 'bestiary') {
-    // Enemies — show ALL types with thumbnails. Regular enemies use idle
-    // sprite frame 0 (composed with tint filter). BOSSES use the hand-
-    // drawn portrait PNG if the player has defeated them.
-    // Bosses aren't in seenEnemyTypes (they're excluded from auto-register
-    // in enemies.js) — we use ruin.bossKills instead to decide "seen".
-    const typeIds = Object.keys(ENEMY_TYPES);
-    const bossKilled = new Set((ruin.bossKills || []).map(k => k.bossType));
-    let seenN = 0;
-    for (const id of typeIds) {
-      const def = ENEMY_TYPES[id];
-      const portraitUrl = ENEMY_PORTRAIT_PATH[id];
-      const isBoss = !!portraitUrl;
-      const seen = isBoss ? bossKilled.has(id) : seenEnemyTypes.has(id);
-      if (seen) seenN++;
-      const name = seen ? (def.displayName || id.toUpperCase()) : '???';
-      // Locked: NO body, hint moves to hover tooltip \u2014 same compression
-      // pass as relics + fusions tabs. "???" title + silhouetted thumb
-      // already convey "undiscovered" without consuming card height.
-      const body = seen ? (def.flavor || '') : '';
-      const tooltipE = seen ? null : 'undiscovered \u2014 meet this adversary in the ruin to learn its nature';
-      let thumb = null;
-      if (isBoss && portraitUrl) {
-        // Boss: use the hand-drawn portrait directly (already a PNG)
-        thumb = portraitUrl;
-      } else {
-        // Regular enemy: compose from idle sprite frame 0
-        const spriteKey = (def.prefix || '') + 'idle';
-        const spriteImg = imageCache[spriteKey];
-        if (spriteImg) thumb = composeEnemyThumbDataURL(def, spriteImg, 48);
-      }
-      row.appendChild(chronCard({
-        title: name,
-        body: body,
-        locked: !seen,
-        accentColor: seen ? (def.color || '#c9a86a') : null,
-        icon: '',
-        thumb,
-        silhouette: !seen,
-        tooltip: tooltipE,
-      }));
-    }
-    progress.textContent = `${seenN} of ${typeIds.length} adversaries catalogued`;
-
-  } else if (chronTab === 'relics') {
-    // Relics — show all with composed thumbnails (tint + glyph). Locked ones
-    // show a silhouette so the shape hints at type without revealing details.
-    let seenN = 0;
-    for (const id of ALL_RELIC_IDS) {
-      const def = RELIC_DEFS[id];
-      const seen = seenRelicIds.has(id);
-      if (seen) seenN++;
-      const name = seen ? def.name : '???';
-      // ICON GRID layout — body text moves to hover tooltip below.
-      // Locked-state hint moved to hover tooltip \u2014 kept the prompt info
-      // but stopped the verbose "undiscovered..." line bloating cards.
-      // Tooltip \u2014 for seen relics combines name + flavor + desc; for
-      // locked, generic prompt. Native title attribute = browser
-      // tooltip on hover, no extra UI cost.
-      const tooltipR = seen
-        ? `${def.name}${def.flavor ? '\n' + def.flavor : ''}${def.desc ? '\n\n' + def.desc : ''}`
-        : 'undiscovered \u2014 a relic you have yet to claim';
-      // Dedicated per-relic art — bypass glyph/hue overlay (pass null,null).
-      const baseImg = imageCache[def.icon];
-      const thumb = baseImg ? composeRelicThumbDataURL(baseImg, null, null, id, 48) : null;
-      row.appendChild(chronTile({
-        title: name,
-        locked: !seen,
-        accentColor: seen ? (def.tint || '#c9a86a') : null,
-        thumb,
-        silhouette: !seen,
-        tooltip: tooltipR,
-      }));
-    }
-    progress.textContent = `${seenN} of ${ALL_RELIC_IDS.length} relics recovered`;
-
-  } else if (chronTab === 'fusions') {
-    // Fusions — show all with the COMPONENTS' icons as a small paired thumb.
-    const ids = Object.keys(FUSIONS);
-    let seenN = 0;
-    for (const id of ids) {
-      const f = FUSIONS[id];
-      const seen = discoveredFusions.has(id);
-      if (seen) seenN++;
-      const compNames = f.components.map(cid => {
-        const d = RELIC_DEFS[cid];
-        return d ? d.name : cid;
-      }).join(' + ');
-      const name = seen ? f.name : '???';
-      // Discovered: rich body (flavor + effect + recipe). Locked: NO
-      // body \u2014 the verbose "undiscovered \u2014 combine X + Y to form this
-      // fusion" used 3-4 lines per card and bloated the grid. The
-      // recipe moves to a hover tooltip; the title "???" + silhouetted
-      // thumb already say "undiscovered" without the prose.
-      const body = seen
-        ? `<div style="font-style:italic;margin-bottom:3px;color:rgba(200,190,170,0.75);">${f.flavor || ''}</div><div style="font-style:normal;color:${f.tint || '#c9a86a'};font-weight:bold;margin-bottom:3px;">${f.desc}</div><div style="font-style:normal;color:rgba(160,148,130,0.7);font-size:10px;letter-spacing:1px;">${compNames}</div>`
-        : '';
-      const tooltipF = seen ? null : `combine ${compNames}`;
-      // Fusion thumb — the fusion now has its own dedicated icon (Nano Banana
-      // hand-drawn). Fall back to component-composed icon only if the PNG
-      // didn't load for some reason.
-      const fusionImg = imageCache[f.icon];
-      let thumb = null;
-      if (fusionImg) {
-        thumb = fusionImg.src;   // direct path to the PNG
-      } else {
-        const firstComp = RELIC_DEFS[f.components[0]];
-        const baseImg = firstComp ? imageCache[firstComp.icon] : null;
-        if (baseImg) thumb = composeRelicThumbDataURL(baseImg, 'star', f.tint, 'fusion_' + id, 48);
-      }
-      row.appendChild(chronCard({
-        title: name,
-        body: body,
-        locked: !seen,
-        accentColor: seen ? (f.tint || '#c9a86a') : null,
-        icon: '',
-        thumb,
-        silhouette: !seen,
-        tooltip: tooltipF,
-      }));
-    }
-    progress.textContent = `${seenN} of ${ids.length} fusions discovered`;
-  }
+  _showAchievementsModal();
 }
 
 // Weapon picker — extracted to src/modals/weaponPickerModal.js (Round-7
@@ -2799,6 +2203,7 @@ function hideAllOverlays() {
   if (volumesEl) volumesEl.style.display = 'none';
   if (smithEl) smithEl.style.display = 'none';
   if (typeof oracleEl !== 'undefined' && oracleEl) oracleEl.style.display = 'none';
+  if (oracleFortuneEl) oracleFortuneEl.style.display = 'none';
   deathEl.style.display = 'none';
   winEl.style.display = 'none';
 }
