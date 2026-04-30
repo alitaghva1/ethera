@@ -2369,7 +2369,17 @@ function loadRoom(idx, entryFrom) {
   if (data.kind === 'start' && currentFloorLevel === 1) {
     setTimeout(() => showTip('first_descent_dungeon'), 1200);
   }
-  if (data.kind === 'reward') showTip('first_pedestal');
+  if (data.kind === 'reward') {
+    showTip('first_pedestal');
+    // Polish: feedback-audit team flagged that sanctuary rooms had no
+    // tonal punctuation. Combat rooms fire a synthChord on clear (the
+    // "exhale" beat); sanctuaries arrived already cleared and stayed
+    // silent. Fire a softer chord on sanctuary entry so the player
+    // hears "you reached safety" as much as they see it. Lower
+    // frequency than the combat-clear chord (392 vs 523) so the two
+    // beats stay distinct in the player's ear.
+    setTimeout(() => { try { synthChord(392, 0.55, 1.2); } catch (_e) {} }, 300);
+  }
   // Round-7 Phase 5 — first BLOOD GATE encounter. Fires if any of the
   // outgoing edges from this room target a sealed node. setupRoomDoors
   // hasn't run yet at this point in loadRoom, so we read directly off
@@ -3838,6 +3848,24 @@ function showEndOfRun(isVictory) {
   // unlocked memories are announced by a small banner above the death panel
   // so the player knows a new option is available for next descent.
   const newlyRememberedMemories = checkMemoryUnlocks(records, stats, { seenRelicIds });
+  // Polish: feedback-audit team flagged that memory unlocks landed
+  // SILENTLY — italic text in the death modal, no audio cue, no
+  // celebratory beat. Memories are major identity unlocks; they
+  // deserve their own sting. Layered chord + ping at +220ms for
+  // resonance, second ping at +440ms when 2+ unlocked simultaneously
+  // (rare but possible). Fires AFTER the run-end gold cascade audio
+  // so the two beats don't muddy each other.
+  if (newlyRememberedMemories && newlyRememberedMemories.length > 0) {
+    setTimeout(() => {
+      try {
+        synthChord(440, 0.85, 1.0);              // gentle gold-tier chord
+      } catch (_e) {}
+      setTimeout(() => { try { synthPing(880, 0.5, 0.32); } catch (_e) {} }, 220);
+      if (newlyRememberedMemories.length > 1) {
+        setTimeout(() => { try { synthPing(1040, 0.4, 0.28); } catch (_e) {} }, 440);
+      }
+    }, 1500);     // delay so the chord lands AFTER the death/victory sting
+  }
   // LIVING HAMLET — check if any new NPCs should arrive based on the
   // refreshed records. They appear when the player next opens the hamlet.
   refreshNpcPresence(records, stats, { seenRelicIds });
@@ -4138,7 +4166,18 @@ function renderMetaShop(animate = false) {
     `;
     if (!owned && canAfford) {
       rowEl.addEventListener('click', () => {
-        if (purchaseUnlock(id)) renderMetaShop();
+        if (purchaseUnlock(id)) {
+          // Polish: feedback-audit team flagged that essence purchases
+          // were the most-silent transaction in the game — UI rerendered
+          // and the unlock applied, but no audio confirmed the spend
+          // landed. Double ping (cyan-coded essence frequency 880 +
+          // higher confirmation 1320 at +120ms) gives the sale its
+          // "transaction received" beat without competing with the
+          // ambient menu pad.
+          try { synthPing(880, 0.45, 0.22); } catch (_e) {}
+          setTimeout(() => { try { synthPing(1320, 0.4, 0.20); } catch (_e) {} }, 120);
+          renderMetaShop();
+        }
       });
       rowEl.addEventListener('mouseenter', () => {
         rowEl.style.background = `linear-gradient(90deg,${u.tint}22,${u.tint}11)`;
@@ -5412,7 +5451,21 @@ function _tickInner(now) {
         if (isFinal) {
           stats._runComplete = true;
           try { stats._ascensionAtWin = getAscensionTier() || 0; } catch (e) {}
-          if (daily.activeForRun) markDailyCompleted();
+          if (daily.activeForRun) {
+            // Capture streak BEFORE bank so the post-bank value reads
+            // the new (incremented) streak — "you mastered today's
+            // rite, your streak now stands at N."
+            markDailyCompleted();
+            // Polish: feedback-audit team flagged that daily completion
+            // banked silently. The streak counter ticked up but the
+            // moment passed without acknowledgment. Layered fanfare
+            // (warm chord + bright high ping at +280ms) on top of
+            // the existing victory cascade so the daily-specific
+            // beat reads distinctly even amid the gold rain.
+            setTimeout(() => { try { synthChord(659, 1.0, 1.4); } catch (_e) {} }, 1800);
+            setTimeout(() => { try { synthPing(1760, 0.55, 0.28); } catch (_e) {} }, 2080);
+            setTimeout(() => { try { synthPing(2200, 0.45, 0.24); } catch (_e) {} }, 2280);
+          }
           daily.activeForRun = false;
           try { recordRunComplete(); } catch (e) {}
           evaluateAchievements(stats, meta);
