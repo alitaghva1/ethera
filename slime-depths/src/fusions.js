@@ -145,7 +145,7 @@ export const FUSIONS = {
     affects: ['sword'],
     components: ['heavy_blow', 'warlord'],
     name: 'Tempest',
-    desc: 'Combo bonus doubles at CARNAGE (40+ combo = +70% damage)',
+    desc: 'Combo bonus doubles past 40-chain (CARNAGE tier · +70% damage)',
     flavor: 'What begins as a swing ends as a season.',
     tint: '#ff9066',
     icon: 'fusion_tempest',

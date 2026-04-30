@@ -29,7 +29,7 @@ export const TIPS = {
   // Was first_dodge — kept the ID so save data + tip-seen flags persist.
   // The mechanic is now SHIELD: Space raises a front-cone block, and the
   // first 0.10s is a perfect-block that grants a counter window.
-  first_dodge:     { text: 'Press SPACE to raise your SHIELD — face an enemy attack to PERFECT-BLOCK' },
+  first_dodge:     { text: 'Press SPACE to raise your SHIELD — time the raise as an attack lands to PERFECT-BLOCK' },
   first_dash:      { text: 'Press Q to dash-strike through enemies (sword only · 2x damage · 5s CD)' },
   // Wizard-kit Sprint 2B: Q changes meaning by active weapon. Sword Q =
   // dash strike (commit + damage); Blast Q = blink (escape + reposition).

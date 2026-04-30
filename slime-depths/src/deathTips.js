@@ -73,7 +73,7 @@ const KILLER_TIPS = {
   werebear: 'Werebears windup is long but the swing is wide. Step inside, not back.',
   dreadmage: 'Dreadmages cast in volleys — kill them first or break sightline.',
   knight_enemy: 'Knights have armour. Stagger them; perfect-block the heavy swing.',
-  armored_skel: 'Armoured skeletons resist front damage. Flank or use shield-counter.',
+  armored_skel: 'Armoured skeletons resist frontal hits. Flank — or perfect-block to break their stance.',
   greatsword_skel: 'Greatswords sweep wide — circle close to the body, not perimeter.',
   soldier: 'Soldiers fight in pairs. Burst the closer one before the second can flank.',
   swordsman: 'Swordsmen punish hesitation. Commit, do not fade.',
