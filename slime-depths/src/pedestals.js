@@ -6,7 +6,7 @@ import { THEMES, RELIC_THEMES, getThemeCounts, getThemeTier } from './themes.js'
 import { SLOTS, getSlotCounts, getSlotTier } from './slots.js';
 import { pushNotification } from './notifications.js';
 import { wrapText } from './textLayout.js';
-import { activeFusions } from './fusions.js';
+import { activeFusions, FUSIONS } from './fusions.js';
 // NOTE: relicTier imported above is what makes altar pedestals respect rarity
 // tiers — without tier on the pedestal, mythic drops at altars render as common.
 import { drawRelicIcon } from './fx.js';
@@ -564,11 +564,39 @@ export function consumePendingPickup() {
   // ✦ glyph, white-gold tint that's visibly distinct from common/rare.
   lastPickedFirstMythic = (t === 'mythic') && isFirstTime('mythic', 'any');
   pickedFlashTime = 0;
+  // Phase 2 audit fix #3 — fusion-partner teaser. Players picking a relic
+  // that's part of an unformed fusion had no signal that the relic was
+  // ALSO a fusion ingredient. The pedestal teaser-particle system hints
+  // at it pre-pickup; the pickup banner itself was silent. Now we look
+  // up which fusions the relic participates in, find any whose partners
+  // are NOT yet owned (fusions JUST formed by this pickup are handled
+  // separately by the FUSION FORGED chip on lastPickedEvent), and append
+  // a "Pairs with: X → Fusion" suffix to the rail body. Capped at 2
+  // partners to keep the rail entry compact.
+  const ownedSet = new Set(equippedRelics.map(r => r.id));
+  const partners = [];
+  for (const f of Object.values(FUSIONS)) {
+    if (!f.components || f.components.length !== 2) continue;
+    const idx = f.components.indexOf(p.relic.id);
+    if (idx === -1) continue;
+    const partnerId = f.components[1 - idx];
+    if (ownedSet.has(partnerId)) continue;       // already owned → fusion just forged or already formed
+    const partnerDef = RELIC_DEFS[partnerId];
+    if (!partnerDef) continue;
+    partners.push({ name: partnerDef.name || partnerId, fusionName: f.name || f.id });
+    if (partners.length >= 2) break;             // cap so the rail entry stays tight
+  }
+  let bodyText = p.relic.desc || '';
+  if (partners.length === 1) {
+    bodyText += `  ·  Pairs with ${partners[0].name} → ${partners[0].fusionName}`;
+  } else if (partners.length >= 2) {
+    bodyText += `  ·  Pairs: ${partners[0].name} → ${partners[0].fusionName} · ${partners[1].name} → ${partners[1].fusionName}`;
+  }
   pushNotification({
     kind: 'pickup',
     tier: t,
     title: p.relic.name || 'RELIC',
-    body: p.relic.desc || '',
+    body: bodyText,
   });
   // Mark sibling pedestals as picked too — the offer-set is committed
   // on the first claim, mirroring the original "claiming one removes
