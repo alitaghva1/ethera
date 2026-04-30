@@ -499,15 +499,23 @@ const FLOOR_CARD_DATA = {
   4: { roman: 'IV',  name: 'THE THRONE OF RUIN', flavor: 'the wound at the world\u2019s heart',  backdrop: 'zone_throne_of_ruin' },
 };
 
+// Round-7 design-team narrative audit — replaced 5 of 13 lines that
+// read as genre filler ("dust returns to dust", "ash to ash. ruin to
+// ruin.", "the depths consume another", "the world continues without
+// you", "another soul for the ruin", "even the brave fall here") with
+// imagery rooted in the game's own world (the Keeper, the Watcher, the
+// lantern, the stones, the ruin's reclaiming) so the death subtitle
+// — the LAST thing the player reads on a run — earns its weight
+// instead of recycling tropes any roguelite could write.
 const DEATH_MESSAGES = [
   'your journey into Ethera ends',
-  'the depths consume another',
-  'dust returns to dust',
-  'the world continues without you',
-  'another soul for the ruin',
-  'even the brave fall here',
+  'the keeper sets her cup down. she does not look up.',
+  'the lantern leans toward the next traveler',
+  'your weight leaves the floor. nothing else moves.',
+  'the watcher does not turn its head',
+  'the ruin does not eulogize',
   'the dark will remember you, for a while',
-  'ash to ash. ruin to ruin.',
+  'the stones note your absence and forget you in the same breath',
   'you hear the door close behind you, unseen',
   'your name is already fading',
   'the wound at the heart of Ethera grows',
@@ -5900,6 +5908,22 @@ function tick(now) {
             try { synthChord(440, 0.7, 0.7); } catch (_e) {}
             shakeCamera(8, 0.3);
             triggerScreenFlash('rgba(220, 80, 90, 0.18)', 0.35);
+            // Round-7-audit POLISH — crimson sparkle burst at the door
+            // tile. The audio + camera + flash already framed the
+            // moment; the particle burst gives the SPATIAL anchor —
+            // "the seal cracked HERE, at this gate" — so the player's
+            // eye knows where the threshold opened. 18 sparks in a
+            // splatter pattern centered on the door's bottom edge.
+            const _doorWX = sealedDoor.tx * TILE + TILE / 2;
+            const _doorWY = sealedDoor.ty * TILE + TILE;
+            for (let k = 0; k < 18; k++) {
+              deathBurst(_doorWX, _doorWY, k % 2 === 0 ? '#d04050' : '#ff8088');
+            }
+            for (let k = 0; k < 8; k++) {
+              const ang = (k / 8) * Math.PI * 2;
+              const r = 22 + Math.random() * 14;
+              sparkle(_doorWX + Math.cos(ang) * r, _doorWY + Math.sin(ang) * r * 0.6, '#ffd0d8');
+            }
             roomLabelText = `✦ SEAL BROKEN ✦`;
             roomLabelColor = '#ff8088';
             roomLabelTime = 1.6;
@@ -7420,6 +7444,27 @@ function render() {
           playSfx('click', { rate: 0.4, volume: 0.9 });
           synthChord(523, 1.0, 0.7);
         }
+        // Round-7-audit POLISH — achievement unlock should pull the
+        // world's eye for a beat, not just slide a popup into the
+        // top-right rail. A short cream-gold screen wash + a 14-spark
+        // wash at the hero's position turns the milestone into a
+        // moment. Hidden achievements get a slightly cooler tint to
+        // match the synthGloom audio's minor-key feel.
+        try {
+          triggerScreenFlash(
+            isHidden ? 'rgba(180, 200, 255, 0.10)' : 'rgba(244, 217, 160, 0.12)',
+            isHidden ? 0.45 : 0.4,
+          );
+          for (let k = 0; k < 14; k++) {
+            const ang = (k / 14) * Math.PI * 2;
+            const r = 36 + Math.random() * 14;
+            sparkle(
+              hero.x + Math.cos(ang) * r,
+              hero.y - 6 + Math.sin(ang) * r * 0.7,
+              isHidden ? '#b8c8ff' : '#ffe5a0',
+            );
+          }
+        } catch (_e) {}
       }
       // Reveal sting — triggers ONCE when the mystery phase ends
       if (isHidden && !p._revealed && p.t >= revealAt) {

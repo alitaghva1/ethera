@@ -212,7 +212,7 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
           // signature is "red AND extra ornate".
           color: sealed ? '#d04050' : (KIND_COLORS[displayKind] || '#cccccc'),
           glyph: sealed ? '⛧' : (KIND_GLYPHS[displayKind] || '?'),
-          rewardLabel: sealed ? `PAY ${sealCost} HP` : rewardLabel,
+          rewardLabel: sealed ? `OFFER ${sealCost} HP` : rewardLabel,
           rewardColor: sealed ? '#ff8088' : rewardColor,
           // Persist these so tryBreakSealNear can read sealCost and the
           // post-break path can swap label/glyph back to the target's
@@ -520,7 +520,7 @@ export function drawDoorLabels(ctx) {
       borderColor = '#d04050';
       captionColor = '#ff8088';
       fillColor = 'rgba(80, 16, 24, 0.92)';
-      subLine = `PAY ${d.sealCost || 1} HP`;
+      subLine = `OFFER ${d.sealCost || 1} HP`;
     } else if (d.rewardLabel) {
       // Map the rewardColor (already a hex string) into a soft fill +
       // the saturated border. rewardLabel like "GOLD" / "RARE+" /
