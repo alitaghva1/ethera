@@ -507,14 +507,38 @@ export function drawHud(ctx, w, h, progress = {}) {
         const bgA = tier >= 2 ? 0.9 : tier >= 1 ? 0.8 : 0.65;
         ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
         ctx.fillRect(cx, cy, chipW, chipH);
-        // Tier glow halo behind chip (ascendance pulses stronger)
-        if (tier >= 1) {
-          const pulse = tier >= 2 ? 0.7 + 0.3 * Math.sin(now * 2.2 + i * 0.6) : 0.6 + 0.2 * Math.sin(now * 1.6 + i * 0.4);
+        // Round-7-audit POLISH — "almost-there" telegraph. One pickup
+        // from the next tier (count 2 -> Resonance, count 4 ->
+        // Ascendance) the chip was visually IDENTICAL to count 0 / 3
+        // respectively — players didn't see the strategic moment
+        // building. Now a soft pre-tier pulse halo appears ONE pickup
+        // before each threshold so the player can read "I'm one
+        // FLAME relic from Resonance" at a glance.
+        const almostResonance = tier === 0 && count === TIER_THRESHOLDS.resonance - 1;
+        const almostAscendance = tier === 1 && count === TIER_THRESHOLDS.ascendance - 1;
+        // Tier glow halo behind chip — ascendance pulses strongest;
+        // resonance medium; "almost-tier" gets a faint preview halo.
+        if (tier >= 1 || almostResonance) {
+          // Pulse rate accelerates one pickup from next tier — gives
+          // the chip a visible "anticipation heartbeat" without
+          // over-juicing the steady-state Resonance glow.
+          const baseRate = tier >= 2 ? 2.2 : tier >= 1 ? 1.6 : 1.4;
+          const rate = almostAscendance ? 2.6 : almostResonance ? 1.8 : baseRate;
+          const baseAmp = tier >= 2 ? 0.30 : tier >= 1 ? 0.20 : 0.15;
+          const ampMod = almostAscendance || almostResonance ? 0.05 : 0;
+          const pulse = (1 - baseAmp) + (baseAmp + ampMod) * Math.sin(now * rate + i * 0.5);
           const halo = ctx.createRadialGradient(cx + chipW/2, cy + chipH/2, 4, cx + chipW/2, cy + chipH/2, chipW * 0.7);
           const hex = t.color.replace('#', '');
           const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
           const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-          const alpha = (tier >= 2 ? 0.5 : 0.3) * pulse;
+          // Almost-tier halo is dimmer than full Resonance to preserve
+          // the visual hierarchy: 0.18 alpha (almost) < 0.30 (resonance)
+          // < 0.50 (ascendance). The player learns the gradient: faint
+          // glow = one away, steady glow = arrived, double glow = max.
+          const alphaMul = tier >= 2 ? 0.5
+                         : tier >= 1 ? 0.30
+                         : 0.18;
+          const alpha = alphaMul * pulse;
           halo.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
           halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
           ctx.fillStyle = halo;
