@@ -3934,6 +3934,14 @@ function computeDoorXs(roomW, n, roomH, shape) {
 function loadRoom(idx, entryFrom) {
   const data = floor[idx];
   data.entryFrom = entryFrom;
+  // Round-7-audit POLISH — stop any lingering 'cleared' ambient pad
+  // from the PREVIOUS room. The pad is started when a combat room
+  // clears (warm post-clear atmosphere); once we're loading a new
+  // room, that purpose is done and the pad shouldn't bleed into
+  // the next encounter's combat audio. No-op if pad isn't running.
+  // Hamlet's pad is unaffected — enterHamletCanvas constructs its
+  // own floor[0] without calling loadRoom.
+  try { stopAmbientPad(); } catch (_e) {}
   // FUNCTIONAL DOORS — wipe stale state. Doors will be re-set up after
   // buildRoomFromData populates room.tiles + room.doors. The clear flag
   // resets so onRoomCleared fires once when this new room is finished.
@@ -6570,6 +6578,15 @@ function tick(now) {
       // and start rooms (cleared from the start, no encounter to "end").
       if (data.kind !== 'boss' && data.kind !== 'start') {
         synthChord(523, 0.55, 0.65);
+        // Round-7-audit POLISH — cleared-room ambient pad. After the
+        // chord lands, the room had been silent until the next door
+        // animation. Now a brief D-minor warm pad fades in (0.9s)
+        // filling the post-combat moment with atmosphere. Pad gets
+        // stopped on next loadRoom (see start of loadRoom) when the
+        // player enters another combat-style room. Skipped on boss/
+        // start rooms: boss has its own cinematic, start has no
+        // "encounter to end" anyway.
+        try { startAmbientPad('cleared'); } catch (_e) {}
       }
       // THE FOOL tarot — "Begin with no weapon, granted after first clear."
       // The original code nulled hero.weapon at run start but never

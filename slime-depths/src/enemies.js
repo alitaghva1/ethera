@@ -2083,8 +2083,16 @@ export function updateEnemies(dt, _hero) {
       if (typeof window !== 'undefined' && window.triggerBossPhaseIntro) {
         window.triggerBossPhaseIntro(e);
       }
-      // Shockwave ring — knock enemies & damage nothing, just visual
-      e._enrageShockTime = 0.8;
+      // Shockwave ring — knock enemies & damage nothing, just visual.
+      // Round-7-audit fix: was 0.8 but the draw code at line 2182
+      // normalizes against 0.6 (`t = 1 - e._enrageShockTime / 0.6`),
+      // so for the first 0.2s the ring rendered at NEGATIVE radius
+      // (invisible / undefined behavior). Setting timer to match
+      // draw-normalization makes the ring visible from frame 1 of
+      // enrage AND avoids the visual overlap with the Ember Tyrant
+      // pillar spawn that polish-audit flagged. 0.6s is plenty for
+      // the ring to expand + decay before pillars start animating.
+      e._enrageShockTime = 0.6;
       playSfx('hero_hurt', { rate: 0.28, volume: 1.0 });
       playSfx('slime_death', { rate: 0.35, volume: 0.9 });
       // EMBER TYRANT — summons a ring of 6 fire pillars around itself on enrage.
