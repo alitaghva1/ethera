@@ -1,5 +1,13 @@
-// Pooled particles — hit sparks, death bursts, dust
-const MAX = 300;
+// Pooled particles — hit sparks, death bursts, dust.
+// Noise-floor audit raised cap 300 → 420: high-proc combos (chain
+// lightning + pyromancer + soul_burst all firing in the same frame
+// during a 5-enemy room) plus the boss-clear cascade (~25 coin
+// sparkles + kill ring + death bursts) regularly pushed past 300,
+// causing the oldest particles (often the player's own crit sparks)
+// to drop mid-animation. 420 covers the worst observed concurrency
+// without measurable perf cost on modern browsers — each particle is
+// a 9-field object, ~80 bytes total = ~33KB pool ceiling.
+const MAX = 420;
 const pool = [];
 const live = [];
 

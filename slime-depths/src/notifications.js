@@ -161,8 +161,25 @@ export function pushNotification(opts = {}) {
   } else if (_backlog.length < MAX_BACKLOG) {
     _backlog.push(note);
   } else {
-    // Queue full — drop the OLDEST backlog item, push the new one.
-    _backlog.shift();
+    // Backlog full — noise-floor audit asked for prioritized drops here
+    // rather than blind FIFO. Theme tier-up notifications are the most
+    // droppable: the THEMES chip strip on the HUD already shows the
+    // tier change visually + the chip pulses, so a player who misses
+    // the rail entry still sees the in-world feedback. Pickup +
+    // fusion + watcher entries carry information NOT shown elsewhere
+    // — preserve those.
+    //
+    // Strategy: scan backlog for a 'theme' kind to drop first. If
+    // none exists, fall back to oldest-wins (original behaviour).
+    let _droppedIdx = -1;
+    for (let i = 0; i < _backlog.length; i++) {
+      if (_backlog[i].kind === 'theme') { _droppedIdx = i; break; }
+    }
+    if (_droppedIdx >= 0) {
+      _backlog.splice(_droppedIdx, 1);
+    } else {
+      _backlog.shift();
+    }
     _backlog.push(note);
   }
   return note.id;
