@@ -418,17 +418,82 @@ export function makeCombatRoom(level, slot, eliteChance, tierSlotOverride) {
       damageMul: slotMul.dmg,
     }));
   }
-  // Destructible props — 2-4 urns tucked in combat room corners for ambient variety
+  // Destructible props — 2-4 urns placed in one of three named patterns
+  // (audit D11). Previously pure Manhattan random scatter — read as
+  // "things to whack" rather than "things that ground the room." Three
+  // patterns rotate based on a per-room dice roll so adjacent combat
+  // rooms have visibly different prop layouts:
+  //   wall_flank      — urns hug both side walls (reads as "furniture")
+  //   corner_cluster  — NW + SE corner clusters (asymmetric, reads as
+  //                     "the room WAS lived in, things got pushed aside")
+  //   diag            — urns along one diagonal (reads as "they tipped
+  //                     over when the floor cracked")
+  // Each pattern fills its candidate list; we then filter for collision
+  // (spawns, center, carved tiles) and trim to propCount. Falls back to
+  // random scatter if the chosen pattern can't yield enough valid spots.
   const propUrns = [];
   const propCount = 2 + randInt(0, 3);
-  for (let i = 0; i < propCount * 6 && propUrns.length < propCount; i++) {
-    const x = randInt(2, size.w - 3);
-    const y = randInt(3, size.h - 4);
-    // Avoid center + enemy spawn positions
+  const URN_PATTERNS = ['wall_flank', 'corner_cluster', 'diag'];
+  const patternKey = URN_PATTERNS[randInt(0, URN_PATTERNS.length - 1)];
+  let candidates = [];
+  if (patternKey === 'wall_flank') {
+    // Two columns hugging the side walls (col 2 left, col w-3 right),
+    // four candidate rows up/down so the count gives flexibility.
+    for (const col of [2, size.w - 3]) {
+      candidates.push(
+        { x: col, y: 3 },
+        { x: col, y: Math.floor(size.h * 0.4) },
+        { x: col, y: Math.floor(size.h * 0.7) },
+        { x: col, y: size.h - 4 },
+      );
+    }
+  } else if (patternKey === 'corner_cluster') {
+    // NW and SE clusters of 3 each — the asymmetry reads better than
+    // four-corners symmetry (which feels like the room was set-dressed).
+    const nw = [
+      { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 2, y: 4 },
+    ];
+    const se = [
+      { x: size.w - 3, y: size.h - 4 }, { x: size.w - 4, y: size.h - 4 }, { x: size.w - 3, y: size.h - 5 },
+    ];
+    candidates = [...nw, ...se];
+  } else {
+    // 'diag' — line of urns along the NW→SE diagonal. Avoid the dead-
+    // center cell (would block combat geometry).
+    const cx = Math.floor(size.w / 2);
+    const cy = Math.floor(size.h / 2);
+    for (let k = -3; k <= 3; k++) {
+      if (k === 0) continue;
+      candidates.push({ x: cx + k * 2, y: cy + k });
+    }
+  }
+  // Shuffle candidates so the same pattern doesn't always start at the
+  // same end (Fisher-Yates).
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = randInt(0, i);
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  // Filter + take propCount.
+  for (const c of candidates) {
+    if (propUrns.length >= propCount) break;
+    const x = c.x, y = c.y;
+    if (x < 2 || x > size.w - 3 || y < 3 || y > size.h - 4) continue;
     if (Math.abs(x - Math.floor(size.w/2)) < 3 && Math.abs(y - Math.floor(size.h/2)) < 2) continue;
     if (spawns.some(s => Math.abs(s.x - x) + Math.abs(s.y - y) < 2)) continue;
     if (propUrns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
-    // Also skip props in carved corners (they would render inside walls)
+    if (shape !== 'rect' && isCarvedTile(x, y, size.w, size.h, shape)) continue;
+    propUrns.push({ x, y, broken: false, variant: randInt(0, 2), isProp: true });
+  }
+  // Random-scatter fallback — if the pattern didn't yield enough urns
+  // (small room shape, high spawn density, etc.), top up with the
+  // legacy random placement so the room always gets at least the
+  // base count.
+  for (let i = 0; i < propCount * 6 && propUrns.length < propCount; i++) {
+    const x = randInt(2, size.w - 3);
+    const y = randInt(3, size.h - 4);
+    if (Math.abs(x - Math.floor(size.w/2)) < 3 && Math.abs(y - Math.floor(size.h/2)) < 2) continue;
+    if (spawns.some(s => Math.abs(s.x - x) + Math.abs(s.y - y) < 2)) continue;
+    if (propUrns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
     if (shape !== 'rect' && isCarvedTile(x, y, size.w, size.h, shape)) continue;
     propUrns.push({ x, y, broken: false, variant: randInt(0, 2), isProp: true });
   }
