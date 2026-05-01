@@ -874,6 +874,93 @@ export function drawHamletEntities(ctx) {
       }
     }
   }
+
+  // ── AMBIENT LIFE PASS — "place, not stations" ─────────────────────────
+  // Audit P3: hamlet was a backdrop with NPC sprites pinned to it. None
+  // of the existing FX sold "this place is INHABITED" — only "specific
+  // NPCs are doing specific things." This pass adds the small ambient
+  // beats that distinguish a place-where-someone-lives from a diorama:
+  // smoke from active fires, crows on the graveyard, etc. Each effect
+  // is pure stateless math — no allocations, drops cleanly when the
+  // gating condition fails.
+
+  // 4. Chimney smoke — thin gray columns rising from active fires.
+  //    Only fires count: archivist's brazier (always lit, west zone),
+  //    smith's brazier (lit when smith arrives, NE), keeper's lantern
+  //    (always lit, central plaza). Each emits 4 phased particles
+  //    drifting up + outward, fading to nothing over a 3 s lifecycle.
+  //    The columns sell "a fire has been tended for hours"; without
+  //    them, the firepit/lantern halos read as static decorative props.
+  const _smokeSources = [
+    // [x, y, color tint, alpha mul, drift rate, gated]
+    [435, 440, '60, 50, 55', 1.0, 1.0, true],            // archivist firepit (always present)
+    [820, 595, '70, 60, 60', 0.55, 0.7, true],           // keeper lantern (small, gentle)
+  ];
+  if (isNpcUnlocked('smith')) {
+    _smokeSources.push([894, 240, '80, 60, 50', 1.1, 1.1, true]);  // smith brazier
+  }
+  for (const [sx, sy, rgb, alphaMul, rateMul] of _smokeSources) {
+    const SMOKE_CYCLE = 3.2;
+    const PARTS_PER_SOURCE = 4;
+    for (let i = 0; i < PARTS_PER_SOURCE; i++) {
+      const phase = (((now * rateMul) + i * (SMOKE_CYCLE / PARTS_PER_SOURCE)) % SMOKE_CYCLE) / SMOKE_CYCLE;
+      const driftSway = Math.sin(now * 0.6 + i * 2.1) * 6;
+      const mx = sx + driftSway * phase;
+      const my = sy - 6 - phase * 38;
+      // Opacity: ramps in over first 15% of life, fades the rest.
+      const fadeIn = Math.min(1, phase / 0.15);
+      const fadeOut = 1 - phase;
+      const a = fadeIn * fadeOut * fadeOut * 0.32 * alphaMul;
+      if (a < 0.02) continue;
+      // Particle expands as it rises (smoke physics).
+      const sz = 2 + phase * 4.5;
+      ctx.fillStyle = `rgba(${rgb}, ${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(Math.round(mx), Math.round(my), sz, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 5. Crows over the graveyard — when gravekeeper is unlocked, a single
+  //    crow silhouette traces an arc above the NW graveyard zone every
+  //    ~22 s. Pure procedural path — no spawn list, no allocations.
+  //    Sells "the dead draw scavengers" and gives the graveyard zone
+  //    its own silent narrative.
+  if (isNpcUnlocked('gravekeeper')) {
+    const CROW_CYCLE = 22.0;
+    const phase = (now % CROW_CYCLE) / CROW_CYCLE;
+    // Crow only visible during the 0.0–0.55 portion of the cycle (it
+    // arcs in, crosses, and exits, then "rests off-screen" for the rest).
+    if (phase < 0.55) {
+      const t = phase / 0.55;       // 0 → 1 across the visible flight
+      // Path: enter from far left, arc over graveyard cluster (cx≈580,
+      // cy≈210), exit to upper-right beyond the visible scene.
+      const cx = 200 + t * 700;
+      const cy = 130 + Math.sin(t * Math.PI) * -60;     // arc UP across the graveyard
+      // Wing flap — quick sine, alternates the silhouette's wing height.
+      const wing = Math.sin(now * 9.2) * 0.5 + 0.5;
+      const wingH = 1 + wing * 3;
+      ctx.save();
+      ctx.globalAlpha = 0.62 * Math.min(1, t * 4) * Math.min(1, (1 - t) * 4);
+      ctx.fillStyle = '#0a0410';
+      // Body
+      ctx.fillRect(Math.round(cx - 3), Math.round(cy - 1), 6, 3);
+      // Wings (flapping triangles)
+      ctx.beginPath();
+      ctx.moveTo(cx - 3, cy);
+      ctx.lineTo(cx - 11, cy - wingH);
+      ctx.lineTo(cx - 7, cy + 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + 3, cy);
+      ctx.lineTo(cx + 11, cy - wingH);
+      ctx.lineTo(cx + 7, cy + 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
 }
 
 // Small elliptical ground shadow under an entity — anchors it to the painted

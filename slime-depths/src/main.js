@@ -1248,6 +1248,27 @@ function enterHamletCanvas() {
   // tips.js so re-entry between runs doesn't repeat it.
   setTimeout(() => showTip('first_descent_hint'), 800);
 
+  // Bell-toll on hamlet entry — distant low chord that lands ~600ms
+  // after the hamlet is on screen. Reads as a place welcoming the
+  // returning player. Suppressed on the first-ever entry (the keeper
+  // wake cinematic owns its own audio space) and on rapid re-entry
+  // within 20s (e.g. the player popped a modal then closed it — the
+  // bell shouldn't ring twice for one continuous "visit").
+  const _now = Date.now();
+  const _lastBellAt = window.__hamletBellAt || 0;
+  const _bellCooldownMs = 20_000;
+  if (!_freshFromWake && _now - _lastBellAt > _bellCooldownMs) {
+    window.__hamletBellAt = _now;
+    setTimeout(() => {
+      try {
+        // Two slightly detuned tones rung 90ms apart for a deeper bell
+        // overtone. Volumes kept low — atmospheric, not announcement.
+        synthChord(196, 1.6, 0.55);          // G3 root
+        setTimeout(() => synthChord(294, 1.4, 0.40), 90);  // D4 fifth
+      } catch (_e) {}
+    }, 600);
+  }
+
   running = true;
   paused = false;
 }
