@@ -1143,6 +1143,12 @@ function enterHamletCanvas() {
     return;
   }
 
+  // Capture _freshFromWake BEFORE the spawn block at line ~1215 resets
+  // it. The bell-toll check below needs the original value, not the
+  // post-spawn reset value, otherwise the wake-cinematic re-entry
+  // would ring a bell on top of the wake's own audio.
+  const _bellWasFreshFromWake = _freshFromWake;
+
   hideAllOverlays();
   startAmbientPad('hamlet');
   refreshNpcPresence(records, stats, { seenRelicIds });
@@ -1257,7 +1263,11 @@ function enterHamletCanvas() {
   const _now = Date.now();
   const _lastBellAt = window.__hamletBellAt || 0;
   const _bellCooldownMs = 20_000;
-  if (!_freshFromWake && _now - _lastBellAt > _bellCooldownMs) {
+  // Use the captured fresh-from-wake value (NOT the live _freshFromWake,
+  // which is reset by the spawn block above). Without this capture, the
+  // wake-cinematic re-entry would ring the bell on top of the wake's own
+  // audio.
+  if (!_bellWasFreshFromWake && _now - _lastBellAt > _bellCooldownMs) {
     window.__hamletBellAt = _now;
     setTimeout(() => {
       // Audit fix: gate at fire time on still-in-hamlet. Without this,
