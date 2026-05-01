@@ -635,18 +635,70 @@ export function makeTreasureChestRoom(level) {
 }
 
 export function makeTroveRoom() {
-  // Generate 10-14 urn positions avoiding center + doors
+  // Trove rooms — "loot strewn across the floor" fantasy.
+  //
+  // Audit D12: previous version was 10-14 urns scattered Manhattan-random.
+  // Read as "urns sprinkled in a box," not as a treasury. Two changes:
+  //   1. Cluster placement — 2-3 cluster anchors get 3-5 urns each in a
+  //      tight radius. Reads as "things were dumped here in piles."
+  //      A few outliers (random placement) suggest "things tumbled
+  //      away from the piles."
+  //   2. Pre-broken urns — ~20% of the urns spawn already broken so
+  //      the trove reads as "already raided; you got here in time
+  //      for what's left." Aligns with the kind's narrative beat.
+  // Total count unchanged (10-14).
   const size = pickRoomSize('trove');
   const count = 10 + randInt(0, 4);
   const urns = [];
   const mid = Math.floor(size.w / 2);
-  for (let i = 0; i < count * 8 && urns.length < count; i++) {
+
+  // 2-3 cluster anchors. Avoid the central doorway corridor so
+  // entry from north stays clear.
+  const clusterCount = 2 + randInt(0, 1);
+  const clusters = [];
+  for (let c = 0; c < clusterCount; c++) {
+    let cx = 0, cy = 0;
+    for (let tries = 0; tries < 12; tries++) {
+      cx = randInt(3, size.w - 4);
+      cy = randInt(4, size.h - 5);
+      // Keep clusters apart (don't pile on top of each other)
+      if (clusters.some(p => Math.abs(p.x - cx) + Math.abs(p.y - cy) < 5)) continue;
+      // Keep cluster off the central corridor
+      if (Math.abs(cx - mid) < 2 && cy < 4) continue;
+      break;
+    }
+    clusters.push({ x: cx, y: cy });
+  }
+
+  // Place 3-5 urns around each cluster anchor (tight radius for "pile" feel).
+  for (const cluster of clusters) {
+    const clusterSize = 3 + randInt(0, 2);
+    for (let i = 0; i < clusterSize * 6 && urns.length < count; i++) {
+      // Bias placements close to cluster center with slight outward fall-off.
+      const dx = randInt(-2, 2);
+      const dy = randInt(-1, 1);
+      const x = cluster.x + dx;
+      const y = cluster.y + dy;
+      if (x < 2 || x > size.w - 3 || y < 3 || y > size.h - 4) continue;
+      if (Math.abs(x - mid) < 2 && y < 3) continue;
+      if (urns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
+      // ~20% pre-broken — reads as "already raided." Variant 3 maps to
+      // the 'broken' shard sprite already shipped on the urn sheet.
+      const broken = Math.random() < 0.20;
+      urns.push({ x, y, broken, variant: randInt(0, 2) });
+    }
+  }
+
+  // Outliers — fill the remaining slots with random-scatter so the
+  // floor feels lived-in, not strictly piled.
+  for (let i = 0; i < count * 6 && urns.length < count; i++) {
     const x = randInt(2, size.w - 3);
     const y = randInt(3, size.h - 4);
-    if (Math.abs(x - mid) < 2 && y < 3) continue;   // keep doorway clear
+    if (Math.abs(x - mid) < 2 && y < 3) continue;
     if (urns.some(u => Math.abs(u.x - x) + Math.abs(u.y - y) < 2)) continue;
-    urns.push({ x, y, broken: false, variant: randInt(0, 2) });
+    urns.push({ x, y, broken: Math.random() < 0.20, variant: randInt(0, 2) });
   }
+
   return {
     kind: 'trove',
     w: size.w, h: size.h,
