@@ -154,15 +154,30 @@ export function rewardLabel(reward) { return reward ? (REWARD_LABELS[reward] || 
 // don't have a "you chose this room for the offer" beat.
 const PEDESTAL_THEMES = ['storm', 'flame', 'blood', 'vow', 'shadow'];
 function rollRoomTheme(kind) {
-  if (kind !== 'sanctuary' && kind !== 'reward'
-      && kind !== 'altar' && kind !== 'shop'
-      && kind !== 'elite') {
+  // Reward-class rooms (sanctuary/reward/altar/shop/elite) — 60% themed.
+  // Players actively chose these for the offer; high theme density makes
+  // the build axis legible at a glance.
+  //
+  // Combat / challenge rooms — 30% themed. Combat is the bulk of rooms;
+  // themed combat is the special case ("ah, this fight rewards a SHADOW
+  // relic"), not the default. The post-clear pedestal spawn at main.js
+  // already passes roomTheme through, so themed combat rooms drop themed
+  // pedestals automatically. Door cards already render the theme glyph
+  // for any door whose target node carries a roomTheme, so the player
+  // sees the theme before walking in.
+  //
+  // Skipped kinds: start, boss, mini, trove, chestroom, hamlet — those
+  // either don't drop pedestals or have their own reward rules.
+  let p;
+  if (kind === 'sanctuary' || kind === 'reward' || kind === 'altar'
+      || kind === 'shop' || kind === 'elite') {
+    p = 0.60;
+  } else if (kind === 'combat' || kind === 'challenge') {
+    p = 0.30;
+  } else {
     return null;
   }
-  // 60% themed, 40% mixed. Mix keeps surprise + fits the "rotating
-  // pantheon" feel — players aren't ALWAYS choosing among themed
-  // rooms.
-  if (Math.random() >= 0.60) return null;
+  if (Math.random() >= p) return null;
   return PEDESTAL_THEMES[(Math.random() * PEDESTAL_THEMES.length) | 0];
 }
 

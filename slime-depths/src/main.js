@@ -54,6 +54,12 @@ import { updateProjectiles, drawProjectiles, clearProjectiles } from './projecti
 import { hero, updateHero, drawHero, resetHero, damageHero } from './hero.js';
 import { updateParticles, drawParticles, updateDust, drawDust, deathBurst, sparkle, updateWeather, drawWeather, updateAmbientCreatures, drawAmbientCreatures, clearAmbientCreatures } from './particles.js';
 import { drawHud, updateHudAnims, resetHudAnims } from './hud.js';
+import {
+  setThemedRoomActive,
+  clearThemedRoom,
+  updateThemedRoomMotes,
+  drawThemedRoomMotes,
+} from './themedRoomMotes.js';
 import { setMasterVolume, playSfx } from './sfx.js';
 import { resetRelics, equipped as equippedRelics, rollRelicOffer, applyRelic, RELIC_DEFS, ALL_RELIC_IDS, seenRelicIds, loadSeenRelics, relicTier, isRelicForWeapon } from './relics.js';
 import { stats, resetStats, calculateEssence, runDurationSeconds } from './stats';
@@ -2549,6 +2555,11 @@ function loadRoom(idx, entryFrom) {
   // on the existing Tarot Hermit path so the Wanderer spawn logic stays
   // in one place.
   maybeSpawnWanderer(data.kind, (isTarotRun() && hasCard('the_hermit')) || !!hero.memoryHermit, currentFloorLevel);
+  // Themed-room ambient motes — drift theme-color particles through the
+  // play space when the active room carries a roomTheme. Skipped on
+  // boss / hamlet / start where it would compete with set-piece visuals.
+  const motesEligible = data.kind !== 'boss' && data.kind !== 'hamlet' && data.kind !== 'start';
+  setThemedRoomActive(motesEligible ? (data.roomTheme || null) : null);
   // Per-floor music: each biome has its own ambient track; all share boss track
   const biomeTrack = BIOME_BY_FLOOR[currentFloorLevel] || 'ambient';
   playTrack(data.kind === 'boss' ? 'boss' : biomeTrack);
@@ -3873,6 +3884,8 @@ function composeDefiningMoment(s, killerType, isVictory) {
 function showEndOfRun(isVictory) {
   // Run ended — clear any resume snapshot. Fresh start from now on.
   clearRunSnapshot();
+  // Themed-room motes shouldn't drift over the run-end overlay.
+  clearThemedRoom();
   // Re-show the "← MAIN MENU" secondary button in case showSanctuary hid it
   // on a previous visit (shared DOM with the death screen).
   const _deathMenuBtn = document.getElementById('deathMenuBtn');
@@ -4652,6 +4665,7 @@ function _tickInner(now) {
     // camera scrolls between rooms, then releases the hero to the new spawn.
     updateDoorPan(realDt);
     updateParticles(dt);
+    updateThemedRoomMotes(realDt, canvas.width, canvas.height);
     updateDust(realDt, camera.x, camera.y);
     updateWeather(realDt, camera.x, camera.y);
     updateAmbientCreatures(realDt, camera.x, camera.y);
@@ -6408,9 +6422,18 @@ function render() {
   // to read them — "I just got hit, what's my HP?". Banner/dodge/combo
   // overlays still draw after the HUD because they're meant to dominate.
   drawScreenFlash(ctx, canvas.width, canvas.height);
+  // Themed room motes — drift theme-color particles across the screen
+  // when the active room carries a roomTheme. Drawn after screen-flash
+  // (so a hurt-flash washes the world only) but before the HUD (so the
+  // motes don't tint hearts / chips). Suppressed during cinematic
+  // intros — same gate as the HUD itself uses just below.
+  if (!(bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0)) {
+    drawThemedRoomMotes(ctx);
+  }
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
     roomKind: floor[roomIndex]?.kind,
+    roomTheme: floor[roomIndex]?.roomTheme || null,
     relics: equippedRelics,
     floorLevel: currentFloorLevel,
     maxFloors: MAX_FLOORS,

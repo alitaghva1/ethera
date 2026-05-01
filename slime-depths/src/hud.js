@@ -17,6 +17,184 @@ function toRoman(n) {
   return n === 1 ? 'I' : n === 2 ? 'II' : n === 3 ? 'III' : n === 4 ? 'IV' : n === 5 ? 'V' : String(n);
 }
 
+// ─── HUD chip glyphs + pip rows ─────────────────────────────────────────
+// Tiny iconography for the SLOTS / THEMES progress chips. Same family as
+// the procedural glyphs in relicChoiceModal.js (modal header) and
+// pedestals.js (pedestal sigil) — keeps the visual language consistent
+// from pedestal → modal → HUD chip.
+
+function _drawHudGlyph(ctx, cx, cy, r, kindId, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.2;
+  switch (kindId) {
+    // ─── Themes ─────────────────────────────────────────────────────
+    case 'storm': {
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.35, cy - r);
+      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
+      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
+      ctx.lineTo(cx - r * 0.35, cy + r);
+      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
+      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'flame': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'blood': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'vow': {
+      // Pentagonal shield (point-down)
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'shadow': {
+      // Crescent — circle minus an offset circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    }
+    // ─── Slots ──────────────────────────────────────────────────────
+    case 'sword': {
+      // Upright sword — long blade + crossguard + small pommel
+      ctx.fillRect(cx - r * 0.12, cy - r,        r * 0.24, r * 1.55);    // blade
+      ctx.fillRect(cx - r * 0.55, cy + r * 0.45, r * 1.10, r * 0.18);    // crossguard
+      ctx.fillRect(cx - r * 0.10, cy + r * 0.62, r * 0.20, r * 0.30);    // grip
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.95, r * 0.18, 0, Math.PI * 2);              // pommel
+      ctx.fill();
+      break;
+    }
+    case 'blast': {
+      // 4-point starburst (two crossed thin diamonds)
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.18, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.18, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx - r, cy);
+      ctx.lineTo(cx, cy + r * 0.18);
+      ctx.lineTo(cx + r, cy);
+      ctx.lineTo(cx, cy - r * 0.18);
+      ctx.closePath();
+      ctx.fill();
+      // Center bright dot
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'shield': {
+      // Heater / hex shield — flat top + tapered bottom (different
+      // silhouette from the VOW pentagonal shield to avoid clash).
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.85, cy - r * 0.85);
+      ctx.lineTo(cx + r * 0.85, cy - r * 0.85);
+      ctx.lineTo(cx + r * 0.65, cy + r * 0.5);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.65, cy + r * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      // Center boss dot for detail
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
+      ctx.beginPath();
+      ctx.arc(cx, cy - r * 0.05, r * 0.20, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    default: {
+      // Fallback dot
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// Draws a row of `max` pips, the first `count` filled with `color`. Empty
+// pips are dim outlined dots. At ascendance (count >= max) the filled pips
+// brighten + render a halo; resonance gets a subtler accent.
+function _drawHudPipRow(ctx, x, y, count, max, color, tier) {
+  const pipR = 2.5;
+  const gap = 3.5;
+  const ascendant = tier >= 2;
+  const resonant = tier >= 1;
+  for (let i = 0; i < max; i++) {
+    const px = x + i * (pipR * 2 + gap) + pipR;
+    const py = y;
+    if (i < count) {
+      // Filled — theme/slot color
+      if (ascendant) {
+        // Halo behind each filled pip at ascendance
+        const hex = color.replace('#', '');
+        const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+        const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        const halo = ctx.createRadialGradient(px, py, 1, px, py, pipR * 2.5);
+        halo.addColorStop(0, `rgba(${r},${g},${b},0.55)`);
+        halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = halo;
+        ctx.fillRect(px - pipR * 2.5, py - pipR * 2.5, pipR * 5, pipR * 5);
+      }
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(px, py, pipR, 0, Math.PI * 2);
+      ctx.fill();
+      if (resonant) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.arc(px, py, pipR + 0.4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    } else {
+      // Empty — dim outlined dot
+      ctx.fillStyle = 'rgba(20, 16, 26, 0.7)';
+      ctx.beginPath();
+      ctx.arc(px, py, pipR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(140, 145, 165, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(px, py, pipR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
 // Heart animation state (mutable, updated by updateHudAnims + trigger helpers)
 let heartShakeTime = 0;
 let heartSparkleTime = 0;
@@ -389,6 +567,48 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
+  // ── Room theme chip (top-right, below the FLOOR panel) ──
+  // When the active room carries a theme (set on rooms by floorGraph
+  // for 60% of reward-class rooms + 30% of combat/challenge rooms),
+  // render a small theme-tinted chip just under the floor panel so the
+  // player has a persistent in-room reminder of what reward awaits.
+  // The door already shows the same glyph at choice time; the chip
+  // bridges the gap between door and pedestal.
+  if (progress.roomTheme && THEMES[progress.roomTheme] && !progress.introActive) {
+    const rt = THEMES[progress.roomTheme];
+    const rtChipW = 130, rtChipH = 26;
+    const rtX = w - rtChipW - 14;
+    const rtY = by + boxH + 8;
+    const rtNow = performance.now() / 1000;
+    const rtPulse = 0.78 + 0.22 * Math.sin(rtNow * 1.5);
+    // Halo behind chip
+    const rtHex = rt.color.replace('#', '');
+    const _rtN = parseInt(rtHex.length === 3 ? rtHex.split('').map(c => c + c).join('') : rtHex, 16);
+    const rtR = (_rtN >> 16) & 255, rtG = (_rtN >> 8) & 255, rtB = _rtN & 255;
+    const rtHalo = ctx.createRadialGradient(rtX + rtChipW / 2, rtY + rtChipH / 2, 4,
+                                             rtX + rtChipW / 2, rtY + rtChipH / 2, rtChipW * 0.55);
+    rtHalo.addColorStop(0, `rgba(${rtR},${rtG},${rtB},${(0.30 * rtPulse).toFixed(3)})`);
+    rtHalo.addColorStop(1, `rgba(${rtR},${rtG},${rtB},0)`);
+    ctx.fillStyle = rtHalo;
+    ctx.fillRect(rtX - 10, rtY - 10, rtChipW + 20, rtChipH + 20);
+    // Chip body
+    ctx.fillStyle = 'rgba(14, 8, 16, 0.85)';
+    ctx.fillRect(rtX, rtY, rtChipW, rtChipH);
+    ctx.strokeStyle = rt.color;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(rtX + 0.5, rtY + 0.5, rtChipW - 1, rtChipH - 1);
+    // Glyph
+    _drawHudGlyph(ctx, rtX + 14, rtY + rtChipH / 2, 8, rt.id, rt.color);
+    // Label
+    ctx.fillStyle = rt.tint || rt.color;
+    ctx.font = 'bold 11px Georgia, serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(rt.name.toUpperCase() + ' ROOM', rtX + 26, rtY + rtChipH / 2);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
   // Boss HP bar — shown during boss rooms, bottom-center
   if (progress.roomKind === 'boss') {
     const boss = enemies.find(e => e.boss);
@@ -563,9 +783,12 @@ export function drawHud(ctx, w, h, progress = {}) {
     // making "SWORD 4/5 ★" basically unreadable. Same trade.
     const _slotMobile = isMobileMode();
     const slotLabelFont = _slotMobile ? 'bold 14px Georgia, serif' : 'bold 11px Georgia, serif';
-    const slotCountFont = _slotMobile ? 'bold 14px Georgia, serif' : 'bold 11px Georgia, serif';
     const slotHeaderFont = _slotMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
-    const sChipW = _slotMobile ? 78 : 64;       // wider chips for the bigger text
+    // Chip wider than the legacy 64/78 — accommodates glyph + name + 5-pip row.
+    // Wizard-kit Sprint 3D HUD pass: we replaced the dense "SWORD 0/5 ★" text
+    // grid with glyph + pips for at-a-glance readability; the extra width
+    // gives the row room to breathe.
+    const sChipW = _slotMobile ? 96 : 78;
     const sChipH = _slotMobile ? 32 : 26;
     const sChipGap = 5;
     const slotsY = h - sChipH - 152;       // 42px above the themes row
@@ -610,13 +833,33 @@ export function drawHud(ctx, w, h, progress = {}) {
       ctx.strokeStyle = tier >= 2 ? '#ffffff' : tier >= 1 ? s.color : 'rgba(120, 130, 150, 0.6)';
       ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.4 : 1;
       ctx.strokeRect(cx + 0.5, cy + 0.5, sChipW - 1, sChipH - 1);
+      // ── Glyph + name + pips ──
+      // Layout: glyph on left, small caps name above pips on right.
+      // Replaces the old "SWORD 0/5 ★" two-row text. Pips give a visual
+      // progress count without the player having to read numbers, and
+      // the glyph anchors identity faster than the name does.
+      const sGlyphR = _slotMobile ? 9 : 7;
+      const sGlyphCx = cx + (_slotMobile ? 14 : 11);
+      const sGlyphCy = cy + sChipH / 2;
+      const sGlyphCol = tier >= 1 ? s.color : 'rgba(170, 180, 195, 0.85)';
+      _drawHudGlyph(ctx, sGlyphCx, sGlyphCy, sGlyphR, s.id, sGlyphCol);
+      const sTextX = sGlyphCx + sGlyphR + 4;
       ctx.fillStyle = tier >= 1 ? s.color : 'rgba(170, 180, 195, 0.8)';
       ctx.font = slotLabelFont;
-      ctx.fillText(s.name.toUpperCase(), cx + 6, cy + (_slotMobile ? 5 : 4));
-      ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.75)';
-      ctx.font = slotCountFont;
-      const glyph = tier >= 2 ? '★★' : tier >= 1 ? '★' : '';
-      ctx.fillText(`${count}/${SLOT_THRESHOLDS.ascendance} ${glyph}`, cx + 6, cy + (_slotMobile ? 18 : 14));
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(s.name.toUpperCase(), sTextX, cy + (_slotMobile ? 4 : 3));
+      const sPipColor = tier >= 1 ? s.color : 'rgba(180, 190, 205, 0.85)';
+      _drawHudPipRow(ctx, sTextX, cy + (_slotMobile ? 22 : 18),
+                     count, SLOT_THRESHOLDS.ascendance, sPipColor, tier);
+      // Ascendance star — top-right corner badge
+      if (tier >= 2) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 10px Georgia, serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText('★', cx + sChipW - 3, cy + 1);
+      }
       // Hover tooltip — name + blurb + tier-progress text.
       if (mouse.x >= cx && mouse.x <= cx + sChipW && mouse.y >= cy && mouse.y <= cy + sChipH
           && !isPedestalTooltipActive()) {
@@ -669,9 +912,10 @@ export function drawHud(ctx, w, h, progress = {}) {
       // on phone-scale viewports.
       const _themeMobile = isMobileMode();
       const themeNameFont  = _themeMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
-      const themeCountFont = _themeMobile ? 'bold 14px Georgia, serif' : 'bold 11px Georgia, serif';
       const themeHeaderFont = _themeMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
-      const chipW = _themeMobile ? 64 : 52;     // wider for the bigger text
+      // Wider than the legacy 52/64 — same reason as slot chips: room
+      // for glyph + pip row instead of the old "STORM 0/4 ★" text grid.
+      const chipW = _themeMobile ? 80 : 66;
       const chipH = _themeMobile ? 28 : 22;
       const chipGap = 4;
       const themesY = h - chipH - 110;
@@ -738,20 +982,33 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.strokeStyle = tier >= 2 ? t.tint : tier >= 1 ? t.color : 'rgba(120, 130, 150, 0.5)';
         ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.3 : 1;
         ctx.strokeRect(cx + 0.5, cy + 0.5, chipW - 1, chipH - 1);
-        // Theme name
+        // \u2500\u2500 Glyph + name + pips \u2500\u2500
+        // Same redesign pattern as the SLOTS row above: replace the dense
+        // "STORM 0/4 \u2605" text grid with glyph + name + pip row. Glyph
+        // anchors identity (matches the pedestal sigil), pips show
+        // progress visually without forcing the player to read numbers.
+        const tGlyphR = _themeMobile ? 8 : 6;
+        const tGlyphCx = cx + (_themeMobile ? 13 : 10);
+        const tGlyphCy = cy + chipH / 2;
+        const tGlyphCol = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.85)';
+        _drawHudGlyph(ctx, tGlyphCx, tGlyphCy, tGlyphR, t.id, tGlyphCol);
+        const tTextX = tGlyphCx + tGlyphR + 4;
         ctx.fillStyle = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.75)';
         ctx.font = themeNameFont;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.fillText(t.name.toUpperCase(), cx + 5, cy + (_themeMobile ? 4 : 4));
-        // Count + tier glyphs
-        ctx.fillStyle = tier >= 1 ? '#ffffff' : 'rgba(200, 210, 220, 0.7)';
-        ctx.font = themeCountFont;
-        const glyph = tier >= 2 ? '\u2605\u2605' : tier >= 1 ? '\u2605' : '';
-        // Per-theme ascendance cap in the count display \u2014 storm
-        // shows X/4, others show X/5 (matches THEME_THRESHOLDS).
-        const countLabel = `${count}/${thresh.ascendance} ${glyph}`;
-        ctx.fillText(countLabel, cx + 5, cy + (_themeMobile ? 14 : 12));
+        ctx.fillText(t.name.toUpperCase(), tTextX, cy + (_themeMobile ? 4 : 3));
+        const tPipColor = tier >= 1 ? t.tint : 'rgba(180, 190, 205, 0.85)';
+        _drawHudPipRow(ctx, tTextX, cy + (_themeMobile ? 20 : 15),
+                       count, thresh.ascendance, tPipColor, tier);
+        // Ascendance star \u2014 top-right corner badge
+        if (tier >= 2) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 9px Georgia, serif';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'top';
+          ctx.fillText('\u2605', cx + chipW - 3, cy + 1);
+        }
         // Hover tooltip — name + blurb + current buff text. Suppressed
         // when a pedestal tooltip would also be on screen so the player
         // doesn't see two tooltips stacked (audit dedup quick-win).
