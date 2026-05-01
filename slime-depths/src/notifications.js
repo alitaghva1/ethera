@@ -267,7 +267,10 @@ export function notifyTheme(label, body) {
 // Returns RAIL_Y_TOP when the rail is empty.
 export function getNotificationStackBottom(ctx) {
   if (_active.length === 0) return RAIL_Y_TOP;
-  const innerW = ENTRY_W - 32;
+  // innerW must match _drawOne's wrap width: padding + the new
+  // 5-px left-edge accent stripe (Session C). If this falls out of
+  // sync, stacking math will be off by the stripe's body-line cost.
+  const innerW = ENTRY_W - 32 - 5;
   let total = 0;
   for (const n of _active) total += _measureBoxH(ctx, n, innerW) + RAIL_GAP;
   return RAIL_Y_TOP + total;
@@ -304,11 +307,19 @@ function _drawOne(ctx, n, w, h) {
   const entryBump = r < 0.18 ? 1 + Math.sin((r / 0.18) * Math.PI) * 0.06 : 1;
 
   // Pre-measure body — wrap to fit. Two-line cap so the rail height
-  // stays predictable; longer descs use the third line via "..." truncate.
+  // stays predictable; longer descs ellipsis-truncate on line 2.
+  // Audit (Session C): was 3 lines which let long bodies (e.g. the
+  // tutorial Blood Gate explanation) build tall cards that pushed
+  // subsequent rail entries down off the screen. 2 lines is enough
+  // for relic descriptions and tutorial taglines; truly long copy
+  // belongs in the codex / bestiary, not in a transient banner.
+  // Inner width also accounts for the new 5-px left-edge accent
+  // stripe (see below) so text stays clear of it.
+  const ACCENT_STRIPE_W = 5;
   ctx.font = 'italic 12px Georgia, serif';
-  const innerW = ENTRY_W - 32;     // padding 16 each side
+  const innerW = ENTRY_W - 32 - ACCENT_STRIPE_W;     // padding 16 each side + stripe
   const bodyLines = n.body ? wrapText(ctx, n.body, innerW) : [];
-  const maxLines = 3;
+  const maxLines = 2;
   const visibleLines = bodyLines.slice(0, maxLines);
   if (bodyLines.length > maxLines) {
     visibleLines[maxLines - 1] = visibleLines[maxLines - 1].replace(/\s*\S+$/, ' …');
@@ -357,6 +368,16 @@ function _drawOne(ctx, n, w, h) {
   frameG.addColorStop(1, 'rgba(12, 8, 14, 0.96)');
   ctx.fillStyle = frameG;
   ctx.fillRect(bx, by, ENTRY_W, boxH);
+
+  // Per-kind accent stripe (Session C): solid colored band on the LEFT
+  // edge of the card in n.tint. Makes per-kind differentiation read at
+  // a glance even when the player is in combat — tip cards have one
+  // visible color, fusion another, codex another. The full-border tint
+  // alone (1.4 px) was too subtle for warm-on-warm tints (gold, amber,
+  // cream) where the eye couldn't tell a fusion from a pickup. Stripe
+  // is 5 px so it's unambiguous without claiming card real estate.
+  ctx.fillStyle = n.tint;
+  ctx.fillRect(bx, by, ACCENT_STRIPE_W, boxH);
 
   // Borders — tier-tinted outer, gold inset
   ctx.strokeStyle = n.tint;
@@ -421,7 +442,10 @@ function _drawOne(ctx, n, w, h) {
 function _measureBoxH(ctx, n, innerW) {
   const prevFont = ctx.font;
   ctx.font = 'italic 12px Georgia, serif';
-  const lines = n.body ? wrapText(ctx, n.body, innerW).slice(0, 3) : [];
+  // 2-line cap matches _drawOne (Session C). Was .slice(0, 3) which
+  // measured boxes 14 px taller than they actually rendered, leaving
+  // visible gaps below stacked entries.
+  const lines = n.body ? wrapText(ctx, n.body, innerW).slice(0, 2) : [];
   const bodyH = lines.length * 14;
   ctx.font = prevFont;
   const titleH = n.title ? 18 : 0;
