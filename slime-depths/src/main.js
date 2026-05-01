@@ -18,7 +18,7 @@ import {
   onDoorWorld, onPedestalWorld, consumePedestal, heroSpawnInRoom,
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, drawChests, drawDecorPillars, roomChests, setDoorLookup,
   snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
-  getValidNorthDoorXRange, drawDoorLintels,
+  getValidNorthDoorXRange, drawDoorLintels, drawTallPropOcclusion,
 } from './room.js';
 import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
@@ -5890,6 +5890,17 @@ function render() {
   // a sprite painted on top of the door." Cheap (tile scan + small
   // blit per door, rooms have at most ~5 door tiles).
   drawDoorLintels(ctx);
+
+  // Tall-prop occlusion pass (audit T2.6). Pillars + chests are tall
+  // enough that an actor north of them should read as BEHIND. Default
+  // render order (props before y-sort) puts the actor on top of the
+  // prop regardless of position. Re-blit each prop conditionally if
+  // any live actor is north of its foot AND in its column. Sells the
+  // "I'm walking behind this column" depth illusion without a full
+  // y-sort refactor of the prop list.
+  if (room.kind !== 'hamlet') {
+    drawTallPropOcclusion(ctx, hero, enemies);
+  }
 
   drawProjectiles(ctx);
   drawSynergies(ctx);

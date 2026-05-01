@@ -2818,27 +2818,130 @@ export function tryHitUrn(hx, hy, aimX, aimY, reach) {
 // rendered (matches other dungeon prop scale).
 const PILLAR_NATIVE = 48;
 const PILLAR_SCALE = 1.4;
+// Per-pillar render — extracted from drawDecorPillars so the occlusion
+// re-blit pass (drawTallPropOcclusion) can call the same logic without
+// duplicating the drawImage. Caller is responsible for the
+// imageSmoothingEnabled toggle.
+function drawPillarAt(ctx, p, img) {
+  const drawW = PILLAR_NATIVE * PILLAR_SCALE;
+  const drawH = PILLAR_NATIVE * PILLAR_SCALE;
+  const cx = p.x * TILE + TILE / 2;
+  const cy = p.y * TILE + TILE / 2;
+  // Drop shadow under pillar base
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + drawH / 2 - 6, drawW / 3, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.drawImage(
+    img,
+    0, 0, PILLAR_NATIVE, PILLAR_NATIVE,
+    Math.round(cx - drawW / 2),
+    Math.round(cy - drawH / 2 + 4),     // +4 so base sits ON tile
+    drawW, drawH,
+  );
+}
+
 export function drawDecorPillars(ctx) {
   const img = images.fx_dungeon_pillar;
   if (!img) return;
-  const drawW = PILLAR_NATIVE * PILLAR_SCALE;
-  const drawH = PILLAR_NATIVE * PILLAR_SCALE;
   const prevSmoothing = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
   for (const p of roomDecorPillars) {
-    const cx = p.x * TILE + TILE / 2;
-    const cy = p.y * TILE + TILE / 2;
-    // Drop shadow under pillar base
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + drawH / 2 - 6, drawW / 3, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
+    drawPillarAt(ctx, p, img);
+  }
+  ctx.imageSmoothingEnabled = prevSmoothing;
+}
+
+// Tall-prop occlusion re-blit (audit T2.6). Pillars + chests are tall
+// enough that an actor positioned NORTH of them (smaller world-Y) should
+// read as standing BEHIND the prop. The default render order draws the
+// prop first then hero/enemies on top — wrong when the actor is north.
+//
+// Door lintels solved this for door tiles via an unconditional re-blit.
+// Here we do it CONDITIONALLY: re-draw a prop only when at least one
+// actor (hero or any live enemy) is north of the prop's foot AND within
+// its visible column. Reads as "things behind the pillar get occluded
+// by it" without the cost of redrawing every prop every frame.
+//
+// Not a full y-sort — props won't intermix with enemies in a complex
+// layered stack — but covers the most visible "hero behind pillar"
+// case. A future pass can extend the y-sort drawList to include props
+// directly; this is the lower-risk first step.
+export function drawTallPropOcclusion(ctx, hero, enemies) {
+  if (!room.tiles) return;
+  const pillarImg = images.fx_dungeon_pillar;
+  const PILLAR_W_HALF = (PILLAR_NATIVE * PILLAR_SCALE) / 2;
+  // Actor is "north of prop" when actor.y < propFootY - margin.
+  // Margin (4 px) avoids flicker right at the boundary.
+  const NORTH_MARGIN = 4;
+  // Column overlap tolerance — actors slightly outside the prop's
+  // sprite width can still need occlusion (their head leaks into the
+  // prop's column). Half-tile of grace.
+  const COLUMN_GRACE = 12;
+
+  // Helper — true if any live actor is north of (footY) AND within
+  // (centerX ± halfW + grace).
+  const anyActorNorth = (centerX, footY, halfW) => {
+    if (hero.state !== 'dead' && hero.y < footY - NORTH_MARGIN
+        && Math.abs(hero.x - centerX) < halfW + COLUMN_GRACE) {
+      return true;
+    }
+    for (const e of enemies) {
+      if (e.dead) continue;
+      if (e.y < footY - NORTH_MARGIN
+          && Math.abs(e.x - centerX) < halfW + COLUMN_GRACE) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Pillars
+  if (pillarImg) {
+    const pillarDrawH = PILLAR_NATIVE * PILLAR_SCALE;
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    for (const p of roomDecorPillars) {
+      const cx = p.x * TILE + TILE / 2;
+      const cy = p.y * TILE + TILE / 2;
+      const footY = cy + pillarDrawH / 2 + 4;     // matches drawPillarAt's bottom edge
+      if (anyActorNorth(cx, footY, PILLAR_W_HALF)) {
+        drawPillarAt(ctx, p, pillarImg);
+      }
+    }
+    ctx.imageSmoothingEnabled = prevSmoothing;
+  }
+
+  // Chests — only RE-DRAW when an actor is north and the chest exists
+  // visibly (closed or opened). The chest's animation state is owned
+  // by drawChests' main pass; the occlusion call here just re-paints
+  // the current frame on top, doesn't advance time.
+  const CHEST_W_HALF = (CHEST_W * CHEST_SCALE) / 2;
+  const chestDrawH = CHEST_H * CHEST_SCALE;
+  const closedAsset = images.fx_chestcold;
+  const prevSmoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  for (const c of roomChests) {
+    const cx = c.x * TILE + TILE / 2;
+    const cy = c.y * TILE + TILE / 2;
+    const footY = cy + chestDrawH / 2 + 4;
+    if (!anyActorNorth(cx, footY, CHEST_W_HALF)) continue;
+    let asset, frame;
+    if (c.state === 'closed') {
+      asset = closedAsset;
+      frame = 0;
+    } else {
+      asset = c.variant === 'treasure' ? images.fx_chestcold : images.fx_chestfire;
+      frame = c.frame | 0;
+    }
+    if (!asset) continue;
+    const sx = frame * CHEST_W;
     ctx.drawImage(
-      img,
-      0, 0, PILLAR_NATIVE, PILLAR_NATIVE,
-      Math.round(cx - drawW / 2),
-      Math.round(cy - drawH / 2 + 4),     // +4 so base sits ON tile
-      drawW, drawH,
+      asset,
+      sx, 0, CHEST_W, CHEST_H,
+      Math.round(cx - CHEST_W_HALF),
+      Math.round(cy - chestDrawH / 2 + 4),
+      CHEST_W * CHEST_SCALE, chestDrawH,
     );
   }
   ctx.imageSmoothingEnabled = prevSmoothing;
