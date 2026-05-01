@@ -2522,21 +2522,23 @@ export function drawEnemy(ctx, e) {
     // them as more important.
     const baseW = Math.max(28, (e.def.radius || 22) * 1.8 + 4);
     const w = e.boss ? baseW + 24 : e.elite ? baseW + 8 : baseW;
-    // Height tightened — 7-px boss bar was a thick band that competed
-    // with portrait + name + affix in the upper screen band. Slimmer
-    // bars read as "status" not as "huge marker."
-    const h = e.boss ? 5 : e.elite ? 4 : 3;
-    // HP-bar Y offset (fix A): previously e.y - size * 0.9 = the TOP of
-    // the source cell, which is mostly empty padding for Tiny-RPG sprites
-    // (visible character fills only ~23% of the 100-px cell). For a
-    // skel at drawSize 220 that put the bar 198 px above the enemy,
-    // and any enemy in the upper third of the room had its bar clamped
-    // off the top of the canvas. Tie the offset to the visible head:
-    // size * 0.27 places the bar just above the character's actual top.
-    // Verified ratios: slime 200→54 px, ember_tyrant 380→103 px above e.y
-    // — sits cleanly above the visible sprite for every enemy regardless
-    // of room position.
-    const yBar = e.y - size * 0.27;
+    // Height: revert to original 4 / 5 / 7 after playtest. The 3-px
+    // tightening read as "stripe of nothing" — too anemic to register
+    // as a status bar against the dark dungeon. 4 px normal is the
+    // genre baseline (Hades minion bars, BoI, Dead Cells).
+    const h = e.boss ? 7 : e.elite ? 5 : 4;
+    // HP-bar Y offset — playtest fix: 0.27 was too LOW. Tiny-RPG sprites
+    // don't bottom-anchor their character in the cell — the visible
+    // body sits roughly mid-cell. With multiplier 0.27 the bar landed
+    // ON the character's head instead of above it ("looks janky af").
+    // 0.45 places the bar clearly above the visible top of the
+    // character for every enemy at every drawSize. Concrete:
+    //   slime  drawSize 200 → bar 90 px above e.y (visible head ~e.y-46)
+    //   skel   drawSize 220 → bar 99 px above (head ~e.y-51)
+    //   ember  drawSize 380 → bar 171 px above (head ~e.y-87)
+    // Still well clear of canvas-top clamping in normal play; a
+    // hero-tier room is 14 tiles × 48 px = 672 tall, plenty of room.
+    const yBar = e.y - size * 0.45;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(e.x - w/2, yBar, w, h);
     // Bar fill — boss red-orange, elite gold (or affix color when

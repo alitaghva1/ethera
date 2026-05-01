@@ -347,7 +347,16 @@ export function watcherDescentCount() {
  * @param {number} h  canvas height
  * @param {object} flags  ceremony flags { floorCardTime, bossIntroTime, phaseIntroTime, pickupFlashActive, paused }
  */
+// Feature flag — TEMPORARILY DISABLED per user request. The keeper-stone
+// narration ("Another one descends..." etc.) at the bottom of the screen
+// was distracting during gameplay. The system stays intact so it can be
+// reintroduced cleanly later — speak() still queues lines, the seen-set
+// still saves, scheduling still ticks. Only the rendering is skipped.
+// To re-enable: flip this constant to true.
+const WATCHER_RENDER_ENABLED = false;
+
 export function drawWatcher(ctx, w, h, flags = {}) {
+  if (!WATCHER_RENDER_ENABLED) return;
   // Pause-aware timing: track wall-clock time spent paused and add it to
   // currentStart so the fade-in/hold/fade-out clock doesn't advance while
   // the player is in the pause menu or alt-tabbed with the pause overlay up.
