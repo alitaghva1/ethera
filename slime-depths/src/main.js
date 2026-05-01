@@ -5886,9 +5886,6 @@ function render() {
   // blit per door, rooms have at most ~5 door tiles).
   drawDoorLintels(ctx);
 
-  // Proc counters — tiny pip rows under the hero (visible "every Nth hit" meters)
-  drawCounterPips(ctx);
-
   drawProjectiles(ctx);
   drawSynergies(ctx);
   drawHeroShield(ctx);
@@ -5906,6 +5903,14 @@ function render() {
   drawEmberRings(ctx);
   drawGold(ctx);
   drawSlashes(ctx);
+  // Proc counters — tiny pip rows under the hero (visible "every Nth
+  // hit" meters for chain_lightning / pyromancer / soul_burst). Moved
+  // ABOVE shield + perfect-dodge ring + ember ring + slashes (audit
+  // T1.5): pips were previously buried under combat VFX exactly when
+  // the player most needs to read them — boss phase 2 with the shield
+  // up and an ember ring expanding. Now they ride on top of all
+  // combat layers so the "next strike will proc" beat stays visible.
+  drawCounterPips(ctx);
   // Soul tethers — Iron Revenant's life-drain VFX (and any future
   // hero↔enemy line). World-space, drawn after enemies/hero but before
   // particles so death-bursts can still pop on top.
