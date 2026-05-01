@@ -6061,7 +6061,24 @@ function render() {
   let wash = null;
   if (kind === 'combat')         wash = 'rgba(80, 20, 28, 0.08)';
   else if (kind === 'reward')    wash = 'rgba(40, 120, 90, 0.10)';
-  else if (kind === 'boss')      wash = 'rgba(140, 18, 24, 0.18)';
+  else if (kind === 'boss') {
+    // Per-boss arena tint (audit T2.4): previously every boss room got
+    // the same generic 'rgba(140, 18, 24, 0.18)' muddy-red wash. The
+    // four floor bosses each have a distinct identity that the floor
+    // wash can amplify without authoring per-boss tile sheets:
+    //   F1 Grudnok (elite_orc) — blood-soaked warchief throne
+    //   F2 Iron Revenant (bone_captain) — cold steel-blue iron plate
+    //   F3 Broodmother — muddy spore green-brown
+    //   F4 Ember Tyrant — cracked ember orange (final boss, hottest)
+    // Tint pulled by currentFloorLevel since the boss is determined by
+    // floor (floor.js:752). Floor-1 default keeps the legacy red so
+    // mini-bosses on F2-3 don't accidentally take F1's tint.
+    if (currentFloorLevel === 1)      wash = 'rgba(110, 30, 28, 0.20)';
+    else if (currentFloorLevel === 2) wash = 'rgba(40, 70, 110, 0.20)';
+    else if (currentFloorLevel === 3) wash = 'rgba(80, 100, 50, 0.18)';
+    else if (currentFloorLevel === 4) wash = 'rgba(180, 70, 30, 0.22)';
+    else                              wash = 'rgba(140, 18, 24, 0.18)';
+  }
   else if (kind === 'altar')     wash = 'rgba(150, 20, 40, 0.12)';
   else if (kind === 'challenge') wash = 'rgba(150, 90, 20, 0.08)';
   if (wash && !introActiveNow) {
