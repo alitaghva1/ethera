@@ -415,7 +415,12 @@ export const TYPES = {
     // BALANCE PASS — paired with orc HP bump. 180 → 220 keeps floor-2
     // boss meaningfully tougher than floor-1 (660 → 858 effective HP
     // after 3x × 1.3 floor mul).
-    prefix: 'bonecap_', drawSize: 240, radius: 28, speed: 115, hp: 220, damage: 2,
+    // BOSS PRESENCE BUMP (Tier 1 art-direction sweep): drawSize 240 → 320.
+    // The Tiny-RPG enemy sheets fill ~23% of their 100-px source cell, so
+    // 240 → ~55 visible pixels — same as the hero. Iron Revenant should
+    // read clearly bigger than the player. Radius (hit + collision) stays
+    // 28 so the bump is purely visual; encounter feel is unchanged.
+    prefix: 'bonecap_', drawSize: 320, radius: 28, speed: 115, hp: 220, damage: 2,
     color: '#cfd4d9', hitCD: 1.0, fps: 10, behavior: 'melee',
     attackReach: 72, attackArc: Math.PI * 0.52,
     windup: 0.40, swing: 0.24,
@@ -452,7 +457,9 @@ export const TYPES = {
   },
   // ---- Floor 3 boss: Broodmother — werebear with enrage + spawning bombers ----
   broodmother: {
-    prefix: 'brood_',  drawSize: 280, radius: 34, speed: 58,  hp: 240, damage: 3,
+    // BOSS PRESENCE BUMP: drawSize 280 → 360. Visible ~85 px, ~1.5× hero.
+    // Radius unchanged.
+    prefix: 'brood_',  drawSize: 360, radius: 34, speed: 58,  hp: 240, damage: 3,
     color: '#9a6b56', hitCD: 1.15, fps: 8, behavior: 'melee',
     attackReach: 86, attackArc: Math.PI * 0.70,
     windup: 0.55, swing: 0.32,
@@ -486,7 +493,9 @@ export const TYPES = {
   //     the climactic phase a mechanical identity beyond "+35% speed".
   ember_tyrant: {
     element: 'fire',                 // resists fire, weak to cold/shock
-    prefix: 'ember_',  drawSize: 280, radius: 30, speed: 82,  hp: 280, damage: 3,
+    // BOSS PRESENCE BUMP: drawSize 280 → 380. Final boss; biggest of the
+    // four. Visible ~90 px, ~1.6× hero. Radius unchanged.
+    prefix: 'ember_',  drawSize: 380, radius: 30, speed: 82,  hp: 280, damage: 3,
     color: '#e85020', hitCD: 0.95, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.62,
     windup: 0.42, swing: 0.28,
@@ -555,7 +564,9 @@ export const TYPES = {
   // both dreadmage and wizard in the same room.
   hermit: {
     element: 'shock',
-    prefix: 'wiz_',      drawSize: 240, radius: 24, speed: 40, hp: 180, damage: 3,
+    // BOSS PRESENCE BUMP (Hermit mini-boss): drawSize 240 → 300.
+    // Visible ~70 px, modestly bigger than hero. Radius unchanged.
+    prefix: 'wiz_',      drawSize: 300, radius: 24, speed: 40, hp: 180, damage: 3,
     color: '#c9a86a',    hitCD: 2.4, fps: 8, behavior: 'wizard',
     preferDist: 420, minDist: 320,
     castRange: 520,
@@ -832,7 +843,10 @@ export const TYPES = {
   // live here now. Common orc keeps its mid-tier mob role.
   // Also slots into the F2 mini-boss rotation as a callback to F1.
   elite_orc: {
-    prefix: 'elite_orc_', drawSize: 230, radius: 28, speed: 85, hp: 200, damage: 2,
+    // BOSS PRESENCE BUMP (Grudnok F1 boss): drawSize 230 → 290.
+    // Visible ~67 px, ~1.2× hero. Floor-1 boss kept slightly smaller than
+    // F2-4 bosses on purpose — it's the tutorial boss. Radius unchanged.
+    prefix: 'elite_orc_', drawSize: 290, radius: 28, speed: 85, hp: 200, damage: 2,
     color: '#7fa34a', hitCD: 0.92, fps: 9, behavior: 'melee',
     attackReach: 66, attackArc: Math.PI * 0.62,
     windup: 0.38, swing: 0.26,
