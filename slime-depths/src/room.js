@@ -1319,7 +1319,13 @@ function drawTopWallBody(ctx, tx) {
   const g = ctx.createLinearGradient(x, y, x, y + 16);
   g.addColorStop(0, PAL.wallTopMid);
   g.addColorStop(0.5, PAL.wallBody);
-  g.addColorStop(1, PAL.wallShadow);
+  // PAL.wallRim is the canonical "deep shadow at wall foot" color —
+  // earlier draft used PAL.wallShadow which doesn't exist on any
+  // biome palette and triggered a CanvasGradient.addColorStop runtime
+  // error. The error broke the boundary on the very first dungeon
+  // room (the crypt floor card → the room → the crash). Caught on
+  // first playtest.
+  g.addColorStop(1, PAL.wallRim);
   ctx.fillStyle = g;
   ctx.fillRect(x, y, TILE, 16);
   // Mortar seam at midline — thin dark stripe so the section reads as
