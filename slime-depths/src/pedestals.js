@@ -906,6 +906,36 @@ export function consumePendingPickup() {
     else if (t === 'rare') synthChord(659, 0.9, 0.75);
     else synthPing(1100, 0.9, 0.3);
   }
+  // Audit-driven addition: HERO-ABSORB beat. Until now, all the pickup
+  // visuals burst at the PEDESTAL — but the relic ends up on the HERO.
+  // The visual loop wasn't closed: pedestal sparkles, then the hero is
+  // the same. Now: tier-tinted sparkle ring expanding from hero feet,
+  // reads as "the relic's power flowed in." Mythic gets a denser ring
+  // (4 layered bursts), legendary 3, rare 2, common 1.
+  const _heroAuraColor = p.relic.tint
+    || (t === 'mythic' ? '#fff2e0'
+       : t === 'legendary' ? '#c8a0ff'
+       : t === 'rare' ? '#f4d9a0'
+       : '#b8c8d8');
+  const _heroAuraCount = t === 'mythic' ? 24 : t === 'legendary' ? 18 : t === 'rare' ? 14 : 12;
+  for (let i = 0; i < _heroAuraCount; i++) {
+    const ang = (i / _heroAuraCount) * Math.PI * 2 + Math.random() * 0.18;
+    const dist = 20 + Math.random() * 14;
+    sparkle(hero.x + Math.cos(ang) * dist, hero.y + 6 + Math.sin(ang) * dist * 0.55, _heroAuraColor);
+  }
+  // Mythic + legendary get a delayed second ring outside the first —
+  // reads as "the absorption rippled outward through the hero". Common
+  // and rare don't get it (their pickup shouldn't dominate combat sounds).
+  if (t === 'mythic' || t === 'legendary') {
+    const _outerCount = t === 'mythic' ? 16 : 10;
+    setTimeout(() => {
+      for (let i = 0; i < _outerCount; i++) {
+        const ang = (i / _outerCount) * Math.PI * 2;
+        const dist = 50 + Math.random() * 12;
+        sparkle(hero.x + Math.cos(ang) * dist, hero.y + 4 + Math.sin(ang) * dist * 0.5, _heroAuraColor);
+      }
+    }, 220);
+  }
   playSfx('click', { volume: 0.9, rate: p.hpCost > 0 ? 0.8 : 1.2 });
   lastPickedDef = p.relic;
   // Wizard-kit Sprint 3D UX cleanup — ALL pickups route to the top-right
