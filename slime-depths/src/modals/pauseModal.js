@@ -210,21 +210,35 @@ function populatePauseRelics() {
   // is shown next to each slot label so the player tracks
   // ascendance from the pause screen too.
   //
-  // Multi-slot relics ['sword', 'blast'] are placed in BOTH groups
-  // (the relic shows up twice, once per affected slot — clear visual
-  // of "this picks scales both weapons"). 'any'-tagged relics get
-  // their own UNIVERSAL bucket at the end.
+  // Multi-slot relics like Keen Edge ['sword', 'blast'] used to appear
+  // in BOTH groups, which read as having TWO copies of the relic — user
+  // feedback: "visually duplicates the same relic two places, confusing
+  // what the player actually has." Dedupe: each relic placed ONCE in
+  // its FIRST affected slot. Other slots still benefit (slot counts in
+  // labels use getSlotCounts which counts each tag independently). The
+  // tile gets a "+SLOT" indicator showing additional slots it touches.
+  // 'any'-tagged relics still get their own UNIVERSAL bucket.
   const slotGroups = { sword: [], blast: [], shield: [], any: [] };
+  // Order tags are checked: sword → blast → shield → any. Same as the
+  // visual slot order so the relic surfaces in the highest-priority
+  // section it affects (a sword+blast relic appears under SWORD).
+  const TAG_PRIORITY = ['sword', 'blast', 'shield', 'any'];
   for (const r of equippedRelics) {
     const tags = r.affects && r.affects.length ? r.affects : ['any'];
-    let placed = false;
-    for (const t of tags) {
-      if (slotGroups[t]) {
-        slotGroups[t].push(r);
-        placed = true;
+    // Pick the first tag in priority order that this relic affects.
+    let placedTag = null;
+    for (const p of TAG_PRIORITY) {
+      if (tags.includes(p) && slotGroups[p]) {
+        placedTag = p;
+        break;
       }
     }
-    if (!placed) slotGroups.any.push(r);
+    if (!placedTag) placedTag = 'any';
+    // Stash the OTHER slots for the indicator badge below. Skip 'any'
+    // (it's not a meaningful "extra" indicator) and skip the placed
+    // tag itself.
+    const otherTags = tags.filter(t => t !== placedTag && t !== 'any' && slotGroups[t]);
+    slotGroups[placedTag].push({ relic: r, otherTags });
   }
   const slotCounts = getSlotCounts(equippedRelics);
   // Slot order: sword → blast → shield → any. Empty slots skip.
@@ -258,7 +272,9 @@ function populatePauseRelics() {
       labelEl.textContent = `${slot.glyph}  ${slot.label}  ${count}/${SLOT_THRESHOLDS.ascendance}  ${tierGlyph}${tierTxt}`;
     }
     group.appendChild(labelEl);
-    for (const r of slotRelics) {
+    for (const entry of slotRelics) {
+      const r = entry.relic || entry;     // back-compat if someday a raw relic gets pushed
+      const otherTags = entry.otherTags || [];
       const tile = document.createElement('div');
       tile.title = r.desc;
       tile.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(20,14,25,0.85);border:1px solid ${r.tint};padding:6px 8px 6px;font-size:11px;color:${r.tint};width:160px;max-width:160px;`;
@@ -268,10 +284,22 @@ function populatePauseRelics() {
                       : r.tier === 'legendary' ? '★ L'
                       : r.tier === 'rare' ? '◆ R'
                       : '·';
+      // Multi-slot indicator — when a relic affects more than one
+      // specific slot (e.g. Keen Edge sword+blast), show the OTHER
+      // slot it touches as a small badge so the player knows the
+      // relic isn't single-slot. No badge for 'any' relics or
+      // single-slot relics. Glyphs match the slot order header.
+      const SLOT_GLYPHS = { sword: '⚔', blast: '⚡', shield: '◈' };
+      const otherBadge = otherTags.length
+        ? otherTags.map(t => SLOT_GLYPHS[t] || t.toUpperCase()[0]).join(' ')
+        : '';
+      const otherBadgeHtml = otherBadge
+        ? `<span style="font-size:9px;opacity:0.55;letter-spacing:1px;margin-left:2px;" title="Also affects: ${otherTags.join(', ')}">+${otherBadge}</span>`
+        : '';
       tile.innerHTML = `
         <div style="display:flex;align-items:center;gap:6px;width:100%;">
           <img src="assets/icons/${r.icon}.png" style="width:22px;height:22px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15);" />
-          <span style="font-weight:bold;font-size:11px;flex:1;">${r.name}</span>
+          <span style="font-weight:bold;font-size:11px;flex:1;">${r.name}${otherBadgeHtml}</span>
           <span style="font-size:9px;opacity:0.6;">${tierBadge}</span>
         </div>
         <div style="font-size:9px;color:#bbb;line-height:1.3;text-align:center;opacity:0.85;">${r.desc}</div>

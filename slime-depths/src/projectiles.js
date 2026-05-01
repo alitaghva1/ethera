@@ -2,7 +2,7 @@
 // Fire-and-forget, pooled. Collision target depends on `friendly`:
 //   - false/undefined: hits hero (default — enemy projectiles)
 //   - true:            hits enemies (hero bolts from the wand)
-import { isWallAtWorld } from './room.js';
+import { isWallAtWorld, tryHitUrnAtPoint } from './room.js';
 import { damageHero, hero } from './hero.js';
 import { enemies } from './enemies.js';
 import { shakeCamera } from './camera.js';
@@ -10,6 +10,8 @@ import { sparkle, hitSpark, deathBurst } from './particles.js';
 import { synthPing, synthThud } from './synth.js';
 import { triggerHitStop, spawnDamageNumber } from './fx.js';
 import { spawnLightningArc } from './synergies.js';
+import { dropGold } from './gold.js';
+import { playSfx } from './sfx.js';
 
 export const projectiles = [];
 const pool = [];
@@ -210,6 +212,57 @@ export function updateProjectiles(dt) {
     // a single enemy isn't multi-hit by one bolt). When pierce hits
     // 0, the bolt despawns on its next enemy hit.
     if (p.friendly) {
+      // Urn break-on-bolt (user feedback: "hand blasts can't damage
+      // the boxes"). The sword-swing path at hero.js:1980 calls
+      // tryHitUrn for cone-shaped melee hits; bolts use the
+      // tryHitUrnAtPoint variant for radius collision. Bolts BREAK
+      // urns and trigger the same loot roll the sword does, but DO
+      // NOT consume the bolt — pierce / damage continues onto the
+      // enemy beyond. Tracked via p._urnsHit so a single bolt can
+      // crack multiple urns if it pierces through them.
+      p._urnsHit = p._urnsHit || 0;
+      if (p._urnsHit < 4) {     // safety cap: 4 urns max per bolt
+        const ur = tryHitUrnAtPoint(p.x, p.y, (p.radius || 13) + 4);
+        if (ur.hit) {
+          p._urnsHit++;
+          hitSpark(ur.wx, ur.wy, -p.vx / (Math.hypot(p.vx, p.vy) || 1), -p.vy / (Math.hypot(p.vx, p.vy) || 1), '#e8c878');
+          deathBurst(ur.wx, ur.wy, '#8a6a3a');
+          shakeCamera(4, 0.10);
+          playSfx('slime_hit', { rate: 0.9, volume: 0.55 });
+          // Loot roll — combat-prop urns sparse (15/8/2/75), trove
+          // urns generous (40/25/8/27). Mirrors hero.js:1988-2015.
+          const rRoll = Math.random();
+          if (ur.isProp) {
+            if (rRoll < 0.15) {
+              dropGold(ur.wx, ur.wy, 2 + (Math.random() * 2 | 0));
+            } else if (rRoll < 0.23) {
+              if (hero.hp < hero.maxHp) hero.hp = Math.min(hero.maxHp, hero.hp + 1);
+              for (let k = 0; k < 4; k++) deathBurst(ur.wx, ur.wy - 10, '#86e3a8');
+              playSfx('click', { rate: 1.8, volume: 0.55 });
+            } else if (rRoll < 0.25) {
+              dropGold(ur.wx, ur.wy, 8 + (Math.random() * 4 | 0));
+              for (let k = 0; k < 6; k++) deathBurst(ur.wx, ur.wy - 4, '#f4d9a0');
+              playSfx('click', { rate: 0.8, volume: 0.75 });
+            }
+          } else {
+            if (rRoll < 0.40) {
+              dropGold(ur.wx, ur.wy, 3 + (Math.random() * 4 | 0));
+            } else if (rRoll < 0.65) {
+              if (hero.hp < hero.maxHp) hero.hp = Math.min(hero.maxHp, hero.hp + 1);
+              for (let k = 0; k < 5; k++) deathBurst(ur.wx, ur.wy - 10, '#86e3a8');
+              playSfx('click', { rate: 1.8, volume: 0.6 });
+            } else if (rRoll < 0.73) {
+              dropGold(ur.wx, ur.wy, 10 + (Math.random() * 6 | 0));
+              for (let k = 0; k < 8; k++) deathBurst(ur.wx, ur.wy - 4, '#f4d9a0');
+              playSfx('click', { rate: 0.8, volume: 0.85 });
+            }
+          }
+          // Bolt continues — don't despawn here. Falls through to
+          // enemy collision below so a bolt cracking an urn in front
+          // of an enemy still damages the enemy.
+        }
+      }
+
       let hitEnemy = null;
       for (const e of enemies) {
         if (e.dead) continue;

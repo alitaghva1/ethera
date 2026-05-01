@@ -2793,6 +2793,24 @@ export function drawUrns(ctx, dt) {
   }
 }
 
+// Point-radius urn collision — used by hero blast bolts (which have a
+// world position + radius, not a swing cone). Mirrors tryHitUrn's
+// return shape so callers can share post-break logic. Marks the
+// matched urn broken on hit.
+export function tryHitUrnAtPoint(wx, wy, radius) {
+  for (const u of roomUrns) {
+    if (u.broken) continue;
+    const ux = u.x * TILE + TILE / 2;
+    const uy = u.y * TILE + TILE / 2;
+    const dx = ux - wx, dy = uy - wy;
+    if (dx * dx + dy * dy > radius * radius) continue;
+    u.broken = true;
+    u.breakT = 0.5;
+    return { hit: true, wx: ux, wy: uy, variant: u.variant, isProp: !!u.isProp };
+  }
+  return { hit: false };
+}
+
 // Hero attack hits an urn if in range. Returns {hit, wx, wy, variant} for loot spawning.
 export function tryHitUrn(hx, hy, aimX, aimY, reach) {
   for (const u of roomUrns) {
