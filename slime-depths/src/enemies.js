@@ -2516,7 +2516,17 @@ export function drawEnemy(ctx, e) {
   if (!e.dead && (e.hp < e.maxHp || e.elite || e.boss)) {
     const w = e.boss ? 72 : e.elite ? 52 : 38;
     const h = e.boss ? 7 : e.elite ? 5 : 4;
-    const yBar = e.y - size * 0.9;
+    // HP-bar Y offset (fix A): previously e.y - size * 0.9 = the TOP of
+    // the source cell, which is mostly empty padding for Tiny-RPG sprites
+    // (visible character fills only ~23% of the 100-px cell). For a
+    // skel at drawSize 220 that put the bar 198 px above the enemy,
+    // and any enemy in the upper third of the room had its bar clamped
+    // off the top of the canvas. Tie the offset to the visible head:
+    // size * 0.27 places the bar just above the character's actual top.
+    // Verified ratios: slime 200→54 px, ember_tyrant 380→103 px above e.y
+    // — sits cleanly above the visible sprite for every enemy regardless
+    // of room position.
+    const yBar = e.y - size * 0.27;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(e.x - w/2, yBar, w, h);
     let barColor = e.boss ? '#ff7a55' : e.elite ? '#ffd155' : '#d8556a';
