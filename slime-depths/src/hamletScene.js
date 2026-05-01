@@ -1034,9 +1034,16 @@ function drawNpc(ctx, e, now) {
   const unlocked = isNpcUnlocked(e.id);
   // Whether we're drawing the v2 sprite (changes default size + scale).
   const isV2 = !!images[`npc_v2_${e.id}`];
-  // Gentle breathing bob so the NPC doesn't feel frozen. Phase offset by x
-  // so multiple NPCs don't breathe in sync.
-  const bob = Math.sin(now * 1.5 + e.x * 0.01) * 1.2;
+  // Breathing bob so the NPC doesn't feel frozen. Phase offset by x so
+  // multiple NPCs don't breathe in sync. Audit H8: previous ±1.2 px was
+  // invisible at HAMLET_ZOOM=1.75 — NPCs read as cardboard standees.
+  // Bumped to ±2.6 px (= ±4.5 px on screen at the hamlet zoom). Adds
+  // a slight horizontal sway component too — sin at a different freq +
+  // tiny amplitude — so the NPC reads as alive rather than mechanically
+  // pumping up and down. Per-NPC phase offset preserved so the line of
+  // figures doesn't sync.
+  const bob = Math.sin(now * 1.5 + e.x * 0.01) * 2.6;
+  const sway = Math.sin(now * 0.9 + e.x * 0.013) * 0.8;
   // NPC draw height:
   //   v2 sprites — trimmed at import (no transparent padding), so they
   //   are 100% content. Drawn at 52px visible height — slightly taller
@@ -1098,10 +1105,10 @@ function drawNpc(ctx, e, now) {
   if (!unlocked) {
     ctx.save();
     ctx.globalAlpha = 0.55;
-    ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + bob), drawW, drawH);
+    ctx.drawImage(spr, Math.round(e.x - drawW / 2 + sway), Math.round(e.y - drawH + bob), drawW, drawH);
     ctx.restore();
   } else {
-    ctx.drawImage(spr, Math.round(e.x - drawW / 2), Math.round(e.y - drawH + bob), drawW, drawH);
+    ctx.drawImage(spr, Math.round(e.x - drawW / 2 + sway), Math.round(e.y - drawH + bob), drawW, drawH);
   }
 
   // Locked-NPC question mark — small dim "?" floating above the sprite,
