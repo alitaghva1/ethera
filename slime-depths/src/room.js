@@ -1277,8 +1277,9 @@ function drawWallTile(ctx, tx, ty) {
   }
 }
 
-// Additional "frieze cap" rendered ABOVE the top wall row so the north border
-// reads as a tall stone lintel, not a thin stripe. Drawn into negative y.
+// "Frieze cap" rendered ABOVE the top wall row — the lit-crown band that
+// caps the wall masonry. Sits between the new upper body section and the
+// regular wall tile. Drawn into negative y at y=-16 to y=0.
 function drawTopWallFrieze(ctx, tx) {
   const x = tx * TILE, y = -16;
   // Lit crown
@@ -1297,6 +1298,39 @@ function drawTopWallFrieze(ctx, tx) {
     ctx.fillRect(x + TILE - 3, y + 4, 2, 6);
     ctx.fillRect(x + 1, y + 4, 2, 6);
   }
+}
+
+// Upper wall body — NEW second-row wall section drawn above the frieze cap.
+// Audit T2.1: previous wall stack was 1 tile body (48 px) + a 16-px frieze
+// stripe = 64 px of wall verticality, which read as a thin stripe in
+// gameplay. Reference top-down dungeons (Hades, BoI, Dead Cells) sit at
+// 1.5-2 tile walls. Adds a 16-px upper body section above the frieze
+// using the wall's base body palette, with a midline mortar seam so the
+// section reads as masonry, not just a slab. Total wall stack is now
+// 80 px (16 upper + 16 frieze + 48 body) — clearly two tiles plus a
+// cap, without changing collision or door-row geometry. Drawn at y=-32
+// to y=-16, only on north-row wall tiles (door columns naturally skip
+// because their tile type is 'door' not 'wall').
+function drawTopWallBody(ctx, tx) {
+  const x = tx * TILE, y = -32;
+  // Body gradient — top slightly brighter (catches "sky" light) so the
+  // section visually anchors above the frieze cap rather than reading
+  // as a separate floating block.
+  const g = ctx.createLinearGradient(x, y, x, y + 16);
+  g.addColorStop(0, PAL.wallTopMid);
+  g.addColorStop(0.5, PAL.wallBody);
+  g.addColorStop(1, PAL.wallShadow);
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, TILE, 16);
+  // Mortar seam at midline — thin dark stripe so the section reads as
+  // stone block masonry, not a flat slab.
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.fillRect(x, y + 8, TILE, 1);
+  // Vertical block divisions every other cell (offset on alternating
+  // tile cols for a brick-stagger feel without needing per-tile state).
+  const offsetX = (tx % 2 === 0) ? 0 : Math.floor(TILE / 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(x + offsetX, y, 1, 16);
 }
 
 // Shadow band cast by a wall onto the floor BELOW it — drawn on the floor tile,
@@ -2594,9 +2628,17 @@ function drawRoomStaticLayers(ctx) {
       else if (t === 'crackedwall') drawCrackedWall(ctx, x, y);
     }
   }
-  // Extend north wall upward with a carved frieze (makes top wall thicker)
+  // Extend north wall upward — TWO sections drawn above the wall row:
+  //   1. Upper body (y=-32 to y=-16) — new 2nd row, masonry gradient
+  //   2. Frieze cap (y=-16 to y=0)   — existing lit crown
+  // Order matters: body THEN cap so the cap's gradient overlaps the body
+  // bottom edge cleanly. Door columns skip both because their tile type
+  // is 'door' not 'wall'.
   for (let x = 0; x < room.w; x++) {
-    if (room.tiles[0]?.[x] === 'wall') drawTopWallFrieze(ctx, x);
+    if (room.tiles[0]?.[x] === 'wall') {
+      drawTopWallBody(ctx, x);
+      drawTopWallFrieze(ctx, x);
+    }
   }
 
   // Pass 4: floor cracks + corner rubble + set-piece decor (no collision)
