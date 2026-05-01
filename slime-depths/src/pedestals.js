@@ -12,7 +12,7 @@ import { activeFusions, FUSIONS } from './fusions.js';
 import { drawRelicIcon } from './fx.js';
 import { playSfx } from './sfx.js';
 import { deathBurst, sparkle } from './particles.js';
-import { shakeCamera } from './camera.js';
+import { shakeCamera, worldToScreen } from './camera.js';
 import { hero } from './hero.js';
 import { TILE, room } from './room.js';
 import { gold } from './gold.js';
@@ -1367,16 +1367,20 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
                   : tier === 'RARE'      ? '#f4d9a0'
                   : '#b8c8d8';             // common: cool neutral
 
-  // Box — wider so longer descriptions fit. Pre-measure wrapped line counts
-  // for flavor + desc so box height can adapt (previously desc could overflow
-  // the box right edge on long relics like "Knockback ×2.5 · hitting a
-  // knocked-back enemy is a guaranteed crit").
-  // Defensive cap on box width so the tooltip never wider than the
-  // canvas — current canvas is 1280 so 520 always fits, future mode
-  // would benefit.
-  const boxW = Math.min(520, w - 80);
-  // Text column: box minus the icon-slot region (icon ~60px + gutter + padding).
-  const textColW = boxW - 90;
+  // Floating card spec (Option C — Pattern 2 from the genre survey).
+  // Was a 520-px center-bottom banner that ate ~30% of the canvas
+  // during the hover decision. Now a 320-px card that floats next to
+  // the hovered pedestal, like Dead Cells / Diablo / Path of Exile.
+  // The card width is fixed; height grows with content.
+  const ICON_SIZE = 64;
+  const PAD_X = 12;
+  const PAD_Y = 10;
+  const ICON_GUTTER = 12;
+  const boxW = Math.min(320, w - 32);
+  // Text column: box minus icon column (12 padding + 64 icon + 12 gutter)
+  // and right padding (12). Total fixed margin = 100. For boxW=320 that
+  // leaves 220 px of text width.
+  const textColW = boxW - PAD_X - ICON_SIZE - ICON_GUTTER - PAD_X;
   ctx.font = 'italic 11px Georgia, serif';
   const flavorLines = r.flavor ? wrapText(ctx, r.flavor, textColW) : [];
   ctx.font = 'bold 12px Georgia, serif';
@@ -1402,20 +1406,63 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   ]);
   const isStillnessTrap = !!hero.memoryStillness && DODGE_KEYED.has(r.id);
   const warningH = (isBloodTrap || isStillnessTrap) ? 18 : 0;
-  // Box height: 18 (tier badge) + 22 (name) + flavor lines + 6 gap + desc
+  // Box height: tier (18) + name (22) + flavor lines + 6 gap + desc
   // lines + 12 bottom padding + reroll-hint extra + altar extra + warning.
   let boxH = 18 + 22 + flavorH + (flavorH ? 6 : 0) + descH + 12 + extraH + (isAltar ? 18 : 0) + warningH;
   if (boxH < 76) boxH = 76;      // floor for layout stability
-  const bx = (w - boxW) / 2;
-  // Anchor the BOTTOM of the tooltip above the HUD strips (themes ~h-132,
-  // fusions ~h-88, relics ~h-48 with multi-row wrap pushing higher). The
-  // old `by = h - 180` anchored the TOP, so long descs grew DOWN into
-  // the relic strip and hid the reroll hint behind it. Now we compute
-  // bottom-up: tooltip bottom sits at h-160 (clear of all HUD bands),
-  // and the tooltip grows UPWARD as desc/flavor expands.
-  const tooltipBottomY = h - 160;
-  const by = tooltipBottomY - boxH + riseOffset;
+
+  // ── ANCHOR: float next to the hovered pedestal in screen space ──────
+  // Convert pedestal world position to screen, then place the card to
+  // the RIGHT by default. Edge-clamp by flipping LEFT if right would
+  // clip; fall back to ABOVE if both sides clip (pedestal near corner).
+  // GAP is the horizontal distance from pedestal-center to card-edge.
+  // The pedestal sprite is bottom-anchored ~16-20 px above its center,
+  // so we anchor against (px, py - 20) so the card sits at "head" level.
+  const GAP = 36;
+  const EDGE_PAD = 12;
+  const ped = worldToScreen(nearest.x, nearest.y - 20);
+  let bx, by;
+  let cardSide = 'right';     // for the connector line below
+  if (ped.x + GAP + boxW <= w - EDGE_PAD) {
+    // Right side fits — preferred placement.
+    bx = ped.x + GAP;
+    by = ped.y - boxH / 2;
+  } else if (ped.x - GAP - boxW >= EDGE_PAD) {
+    // Right would clip; flip to left.
+    bx = ped.x - GAP - boxW;
+    by = ped.y - boxH / 2;
+    cardSide = 'left';
+  } else {
+    // Both sides clip — place ABOVE the pedestal, horizontally
+    // clamped within the canvas.
+    bx = Math.max(EDGE_PAD, Math.min(w - boxW - EDGE_PAD, ped.x - boxW / 2));
+    by = ped.y - boxH - 50;
+    cardSide = 'above';
+  }
+  // Vertical clamp — card must stay on canvas.
+  by = Math.max(EDGE_PAD, Math.min(h - boxH - EDGE_PAD, by));
+  // Apply the entry rise offset (slide up 4 px during fade-in).
+  by += riseOffset;
   const frameColor = isAltar ? '#ff6080' : (r.tint || '#ffffff');
+
+  // Connector line — thin tinted rule from card edge to pedestal.
+  // Reads as "this card describes THAT thing" (Diablo / Slay the Spire
+  // pattern). Skipped on the 'above' fallback because the card is
+  // already sitting close to the pedestal vertically.
+  if (cardSide !== 'above') {
+    const cardEdgeX = cardSide === 'right' ? bx : bx + boxW;
+    const pedEdgeX = ped.x;
+    const lineY = Math.max(by + 16, Math.min(by + boxH - 16, ped.y));
+    ctx.save();
+    ctx.strokeStyle = frameColor;
+    ctx.globalAlpha = 0.5 * fadeIn;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cardEdgeX, lineY);
+    ctx.lineTo(pedEdgeX, lineY);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // Outer tint-colored glow
   const glow = ctx.createRadialGradient(bx + boxW / 2, by + boxH / 2, boxW * 0.15,
@@ -1425,7 +1472,10 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   ctx.fillStyle = glow;
   ctx.fillRect(bx - 30, by - 24, boxW + 60, boxH + 48);
 
-  // Body — vertical gradient
+  // Body — vertical gradient. Smaller card drops the chrome that the
+  // 520-px banner version had (inner gold border + corner brackets) —
+  // those decorative ornaments clutter a 320-px card. Single tint
+  // border carries the frame.
   const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
   bg.addColorStop(0, 'rgba(18, 10, 22, 0.94)');
   bg.addColorStop(1, 'rgba(8, 4, 12, 0.94)');
@@ -1434,22 +1484,6 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   ctx.strokeStyle = frameColor;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-  ctx.strokeStyle = 'rgba(201, 168, 106, 0.35)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-
-  // Corner brackets
-  ctx.fillStyle = frameColor;
-  const cornerAccents = [
-    [bx + 2, by + 2, 1],
-    [bx + boxW - 2, by + 2, -1],
-    [bx + 2, by + boxH - 2, 1],
-    [bx + boxW - 2, by + boxH - 2, -1],
-  ];
-  for (const [cx, cy, dx] of cornerAccents) {
-    ctx.fillRect(cx + (dx === 1 ? 0 : -3), cy, 4, 1);
-    ctx.fillRect(cx, cy + (cy === by + 2 ? 0 : -3), 1, 4);
-  }
 
   // ICON INSET — the relic's painted art on the left side of the box.
   // Audit / user feedback: previously iconSize = boxH - 20, so the
@@ -1460,9 +1494,8 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   // Also: relic icons are circular (shields, vials, gems), but the
   // frame was a square — visible dead space around the circular icon.
   // Frame is now a circle that traces the icon outline.
-  const ICON_TARGET = 64;
-  const iconSize = Math.min(ICON_TARGET, boxH - 20);
-  const iconX = bx + 12;
+  const iconSize = Math.min(ICON_SIZE, boxH - 20);
+  const iconX = bx + PAD_X;
   const iconY = by + Math.round((boxH - iconSize) / 2);
   const iconImg = images[r.icon];
   const iconCx = iconX + iconSize / 2;
@@ -1484,63 +1517,59 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
                   iconX + 3, iconY + 3, iconSize - 6);
   }
 
-  // TEXT COLUMN — centered in the area right of the icon.
-  const textX = iconX + iconSize + 14;
-  const textCenter = (textX + bx + boxW) / 2;
+  // TEXT COLUMN — left-aligned, starts right of the icon. The narrow
+  // 320-px card doesn't have room for centered text in a 220-px column
+  // (everything would feel cramped against the borders). Left-align
+  // for clean reading flow.
+  const textX = iconX + iconSize + ICON_GUTTER;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
 
-  // Tier badge (small caps label above name)
+  // Tier badge — small italic caps
   ctx.fillStyle = tierColor;
-  ctx.font = 'bold 10px Georgia, serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(tierText, textCenter, by + 18);
-  // Hairline above tier text for ornament
-  ctx.fillStyle = tierColor;
-  const tierW = ctx.measureText(tierText).width;
-  ctx.fillRect(textCenter - tierW / 2 - 16, by + 15, 12, 1);
-  ctx.fillRect(textCenter + tierW / 2 + 4, by + 15, 12, 1);
+  ctx.font = 'italic bold 9.5px Georgia, serif';
+  ctx.fillText(tierText, textX, by + PAD_Y);
 
   // Name
   ctx.fillStyle = r.tint || '#ffffff';
-  ctx.font = 'bold 18px Georgia, serif';
-  ctx.fillText(r.name, textCenter, by + 38);
+  ctx.font = 'bold 15px Georgia, serif';
+  ctx.fillText(r.name, textX, by + PAD_Y + 12);
 
   // Flavor (italic) — wrapped lines
-  let cursorY = by + 54;
+  let cursorY = by + PAD_Y + 32;
   if (flavorLines.length) {
     ctx.fillStyle = 'rgba(200, 190, 210, 0.75)';
     ctx.font = 'italic 11px Georgia, serif';
     for (let k = 0; k < flavorLines.length; k++) {
-      ctx.fillText(flavorLines[k], textCenter, cursorY + k * 14);
+      ctx.fillText(flavorLines[k], textX, cursorY + k * 14);
     }
-    cursorY += flavorLines.length * 14 + 6;
-  } else {
-    cursorY = by + 58;
+    cursorY += flavorLines.length * 14 + 4;
   }
-  // Desc (mechanic) — wrapped lines
+  // Desc (mechanic)
   ctx.fillStyle = r.tint || '#f4d9a0';
   ctx.font = 'bold 12px Georgia, serif';
   for (let k = 0; k < descLines.length; k++) {
-    ctx.fillText(descLines[k], textCenter, cursorY + k * 14);
+    ctx.fillText(descLines[k], textX, cursorY + k * 14);
   }
   cursorY += descLines.length * 14 + 2;
 
   if (isAltar) {
     ctx.fillStyle = '#ff7a8e';
     ctx.font = 'bold 12px Georgia, serif';
-    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textCenter, cursorY + 4);
+    ctx.fillText('\u2014 ' + nearest.hpCost + ' HP \u2014', textX, cursorY + 4);
   }
   if (isBloodTrap) {
     // Render BEFORE reroll hint, AFTER desc. Crimson italic so it reads
     // as a warning without competing with the gold accent palette.
     ctx.fillStyle = '#ff7a7a';
     ctx.font = 'italic bold 11px Georgia, serif';
-    ctx.fillText('\u26a0  Hollow voids the lifesteal', textCenter, cursorY + 4);
+    ctx.fillText('\u26a0  Hollow voids the lifesteal', textX, cursorY + 4);
     cursorY += 16;
   }
   if (isStillnessTrap) {
     ctx.fillStyle = '#ff7a7a';
     ctx.font = 'italic bold 11px Georgia, serif';
-    ctx.fillText('\u26a0  Stillness disables this dodge effect', textCenter, cursorY + 4);
+    ctx.fillText('\u26a0  Stillness disables this dodge effect', textX, cursorY + 4);
     cursorY += 16;
   }
   if (rerollable) {
@@ -1556,7 +1585,7 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
     // ctx.save() / ctx.restore() pair, so callers downstream are not
     // affected.
     const hintY = by + boxH - 14;
-    ctx.fillText(`\u27F3 Press R to reroll \u00b7 ${rerollCost}g`, textCenter, hintY);
+    ctx.fillText(`\u27F3 Press R to reroll \u00b7 ${rerollCost}g`, textX, hintY);
   }
 
   ctx.textAlign = 'left';
