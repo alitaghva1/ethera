@@ -978,7 +978,16 @@ export function drawHamletEntities(ctx) {
     [820, 595, '70, 60, 60', 0.55, 0.7, true],           // keeper lantern (small, gentle)
   ];
   if (isNpcUnlocked('smith')) {
-    _smokeSources.push([894, 240, '80, 60, 50', 1.1, 1.1, true]);  // smith brazier
+    // Smith BRAZIER position — matches the brazier halo at (smith.x-12,
+    // smith.y+6) defined above in the brazier-glow block. The earlier
+    // smoke coord (894, 240) was the ANVIL position; smoke from an
+    // anvil reads wrong (anvils get sparks, not columns of smoke).
+    // The brazier is the source of warm smoke + heat. Position via
+    // smith reference so it stays in sync if the smith ever moves.
+    const _smith = HAMLET_ENTITIES.find(e => e.kind === 'npc' && e.id === 'smith');
+    if (_smith) {
+      _smokeSources.push([_smith.x - 12, _smith.y + 6, '80, 60, 50', 1.1, 1.1, true]);
+    }
   }
   for (const [sx, sy, rgb, alphaMul, rateMul] of _smokeSources) {
     const SMOKE_CYCLE = 3.2;

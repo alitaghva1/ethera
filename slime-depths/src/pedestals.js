@@ -926,9 +926,15 @@ export function consumePendingPickup() {
   // Mythic + legendary get a delayed second ring outside the first —
   // reads as "the absorption rippled outward through the hero". Common
   // and rare don't get it (their pickup shouldn't dominate combat sounds).
+  //
+  // Audit fix: gate at fire time on hero-alive. Without this, sparkles
+  // could spawn at the death-position or post-reset hero coords if the
+  // run ended in the 220ms window. Doesn't kill the run but reads as
+  // visual noise.
   if (t === 'mythic' || t === 'legendary') {
     const _outerCount = t === 'mythic' ? 16 : 10;
     setTimeout(() => {
+      if (!hero || hero.state === 'dead' || hero.hp <= 0) return;
       for (let i = 0; i < _outerCount; i++) {
         const ang = (i / _outerCount) * Math.PI * 2;
         const dist = 50 + Math.random() * 12;

@@ -1260,10 +1260,18 @@ function enterHamletCanvas() {
   if (!_freshFromWake && _now - _lastBellAt > _bellCooldownMs) {
     window.__hamletBellAt = _now;
     setTimeout(() => {
+      // Audit fix: gate at fire time on still-in-hamlet. Without this,
+      // a player who descends into the dungeon within 600ms hears a
+      // hamlet bell ring while they're already fighting on F1. Cheap
+      // string check, no hidden state.
+      if (room.kind !== 'hamlet') return;
       try {
         // Two slightly detuned tones rung 90ms apart for a deeper bell
         // overtone. Volumes kept low — atmospheric, not announcement.
         synthChord(196, 1.6, 0.55);          // G3 root
+        // Inner timer for the second tone — fires 90ms later, well
+        // within one frame. No additional gate needed (90ms is too
+        // short for a meaningful state transition).
         setTimeout(() => synthChord(294, 1.4, 0.40), 90);  // D4 fifth
       } catch (_e) {}
     }, 600);
@@ -5404,8 +5412,16 @@ function _tickInner(now) {
         // octave below the fanfare so the room feels released, not
         // continued. Skipped for mini-boss (the fanfare's sustained tail
         // already owns that audio space).
+        //
+        // Audit fix: capture _runSeq + check at fire time. Without the
+        // guard, a player who quits-to-menu / dies in the 220ms window
+        // would hear the chord land into a different scene.
         if (!isMiniboss) {
-          setTimeout(() => { try { synthChord(196, 0.9, 0.35); } catch (_e) {} }, 220);
+          const _exhaleSeq = _runSeq;
+          setTimeout(() => {
+            if (_runSeq !== _exhaleSeq || !running) return;
+            try { synthChord(196, 0.9, 0.35); } catch (_e) {}
+          }, 220);
         }
       }
     }
