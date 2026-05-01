@@ -6591,7 +6591,12 @@ function render() {
 
   // ENEMY CODEX banner — small bestiary card at top-center when a new enemy
   // type is first encountered. Slides in from above, holds ~2s, slides out.
-  // Placed in the top 20% of the screen so it doesn't block combat.
+  //
+  // User feedback: at y=40 the banner sat directly on top of the HUD top
+  // band (hearts ~14, ability pips ~30, relic strip top ~58). Combat
+  // attention competed with banner readability. Move to y=160 — clear
+  // of the HUD with margin, still well above the hero's typical world
+  // position so it doesn't paint over the action.
   if (codexBannerTime > 0 && codexBannerEntry) {
     const total = 3.6;
     const r = 1 - (codexBannerTime / total);   // 0 → 1
@@ -6606,7 +6611,7 @@ function render() {
     const w = canvas.width;
     const boxW = 420, boxH = 64;
     const bx = (w - boxW) / 2;
-    const by = 40 + slide;
+    const by = 160 + slide;
     const E = codexBannerEntry;
     const tint = E.color || '#c0b090';
     ctx.save();

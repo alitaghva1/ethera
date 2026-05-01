@@ -2292,12 +2292,25 @@ export function drawEnemy(ctx, e) {
   }
   const sx = f * SPR;
 
-  // Soft radial shadow
-  const sg = ctx.createRadialGradient(e.x, e.y + 10, 2, e.x, e.y + 10, size * 0.32);
-  sg.addColorStop(0, 'rgba(0,0,0,0.38)');
+  // Soft radial shadow — scaled to the COLLISION RADIUS (e.def.radius),
+  // not drawSize. The Tiny-RPG enemy sheets fill only ~23% of their
+  // 100-px source cell, so when drawSize is upscaled (e.g. ember_tyrant
+  // 380) the resulting shadow at size * 0.32 = 121 px radius painted
+  // a huge dark pool under an 87-px-visible character — reads as
+  // floating in a spotlight instead of grounded. Tie to e.def.radius
+  // (the gameplay collision footprint, ~22-34 across enemies) so the
+  // shadow visibly clings to the character. Mage hero shadow is at
+  // HERO_DRAW * 0.27 = ~16 px under a ~56 px character (ratio 0.29);
+  // we mirror that ratio: shadow radius = collision radius * 1.6,
+  // which gives slime 35 px, ember_tyrant 48 px — proportional, not
+  // overpowering.
+  const shadowR = (e.def.radius || 22) * 1.6;
+  const shadowW = shadowR * 1.6;        // wider than tall (squashed ellipse band)
+  const sg = ctx.createRadialGradient(e.x, e.y + 10, 2, e.x, e.y + 10, shadowR);
+  sg.addColorStop(0, 'rgba(0,0,0,0.42)');
   sg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = sg;
-  ctx.fillRect(e.x - size * 0.35, e.y + 4, size * 0.7, 12);
+  ctx.fillRect(e.x - shadowW / 2, e.y + 4, shadowW, 12);
 
   // Elite glow — affix color if any, else default gold.
   // Kept subtle: small tight halo at feet, not a huge field. Reads as "this
