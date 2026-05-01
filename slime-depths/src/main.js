@@ -2476,6 +2476,15 @@ function loadRoom(idx, entryFrom) {
     // the controls tip so the staggered notification rail (1 tip at a
     // time, 0.8s gap) lands the HP context as the second beat.
     setTimeout(() => showTip('first_starting_hp'), 600);
+    // Gameplay-audit Stage A: actively surface the perfect-block tip
+    // (was first_dodge) on first combat. Previously this tip only fired
+    // AFTER the player pressed Space, so a new player who didn't
+    // discover Space on their own never learned about perfect-block —
+    // the deepest combat mechanic in the game. Now it fires 4s into
+    // the first combat, after the controls + HP tips, while the player
+    // is still alive and engaged. The rail's de-dup prevents repeats
+    // on subsequent runs.
+    setTimeout(() => showTip('first_dodge'), 4000);
   }
   // Start room — give the player a "walk through the door north" cue.
   // Onboarding audit P0. The start room is a non-combat tile so
@@ -3757,6 +3766,29 @@ function startRun() {
   hero.fusionKingslayer = false;
   hero.fusionWeavingStep = false;
   hero.weavingStepReady = false;
+
+  // ── FIRST-3-RUNS HP GRACE ─────────────────────────────────────────
+  // Gameplay-audit fix (Stage A): the canonical 3-HP design is brutal
+  // for new players who haven't yet learned perfect-block rhythm. They
+  // die in 3-4 hits to slimes on F1 with zero mechanical mistakes,
+  // before they've discovered the depth that makes 3 HP feel earned.
+  //
+  // Soft training wheels: first 3 runs of a profile start at +2 HP on
+  // top of all other bonuses. Run 4 onward uses the canonical baseline.
+  // The boost stacks on relics/memories/curses (additive), so a run
+  // with Vitality + Memory of Fortitude still benefits from the grace.
+  //
+  // runsStarted was incremented above (line ~3616). Run 1's value is 1
+  // immediately after; runs 1-3 → grace; run 4+ → no grace.
+  // Skipped for daily and ascension runs — those expect canonical HP.
+  const _isGraceRun = (records.runsStarted | 0) <= 3
+    && !daily.activeForRun
+    && !(getAscensionTier && getAscensionTier() > 0);
+  if (_isGraceRun) {
+    hero.maxHp += 2;
+    hero.hp = hero.maxHp;
+  }
+
   loadRoom(0, 'south');
   // Reset HUD heart-tracking baseline so leftover lastSeenHp from a
   // previous run doesn't trigger a phantom heart-sparkle on the first

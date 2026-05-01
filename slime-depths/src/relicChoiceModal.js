@@ -26,7 +26,11 @@ import { hero } from './hero.js';
 import { images } from './loader.js';
 import { drawRelicIcon } from './fx.js';
 import { wrapText } from './textLayout.js';
-import { RELIC_THEMES, THEMES } from './themes.js';
+import { RELIC_THEMES, THEMES, getThemeCounts, getThemeThresholds, getThemeTier } from './themes.js';
+// Modal trigger-preview support — needs to know currently-owned relics
+// (for fusion detection) and the fusion table itself.
+import { equipped as equippedRelics } from './relics.js';
+import { FUSIONS } from './fusions.js';
 
 // ─── State ────────────────────────────────────────────────────────────────
 let _open = false;
@@ -570,6 +574,79 @@ export function drawModal(ctx, w, h, opts = {}) {
   ctx.restore();
 }
 
+// ─── Card trigger preview ────────────────────────────────────────────────
+// Returns the most build-relevant "this pick will do X" preview for the
+// given card, or null if there's nothing to surface. Priority order:
+//   1. Fusion completion (highest salience — a new fusion forms RIGHT now)
+//   2. Theme ascendance crossover (3 → 2 → tier change)
+//   3. Theme resonance crossover (1 → 2 tier change)
+//   4. null — nothing notable to preview
+//
+// Theme counters use the FRESH owned-relics list at call time, so the
+// preview is always current.
+function _getCardTrigger(card) {
+  const r = card.relic;
+  if (!r || !r.id) return null;
+  const ownedIds = new Set(equippedRelics.map(rel => rel.id));
+  // (1) Fusion check — does picking this complete an unformed fusion?
+  for (const fusion of Object.values(FUSIONS)) {
+    if (!fusion.components || fusion.components.length !== 2) continue;
+    const idx = fusion.components.indexOf(r.id);
+    if (idx === -1) continue;
+    const partnerId = fusion.components[1 - idx];
+    if (ownedIds.has(partnerId) && !ownedIds.has(r.id)) {
+      return {
+        type: 'fusion',
+        label: '→ FUSION: ' + (fusion.name || fusion.id).toUpperCase(),
+        color: fusion.tint || '#a0e8ff',
+      };
+    }
+  }
+  // (2/3) Theme threshold check
+  const themeId = RELIC_THEMES[r.id];
+  if (themeId && THEMES[themeId]) {
+    const theme = THEMES[themeId];
+    const themeCounts = getThemeCounts(equippedRelics.map(rel => rel.id));
+    const currentCount = themeCounts[themeId] | 0;
+    const newCount = ownedIds.has(r.id) ? currentCount : currentCount + 1;
+    const thresh = getThemeThresholds(themeId);
+    const currentTier = getThemeTier(themeId, currentCount);
+    const newTier = getThemeTier(themeId, newCount);
+    if (newTier > currentTier && newTier === 2) {
+      return {
+        type: 'ascendance',
+        label: '→ ' + theme.name.toUpperCase() + ' ASCENDANCE',
+        color: theme.color,
+      };
+    }
+    if (newTier > currentTier && newTier === 1) {
+      return {
+        type: 'resonance',
+        label: '→ ' + theme.name.toUpperCase() + ' RESONANCE',
+        color: theme.color,
+      };
+    }
+    // Almost-there hint — at one pickup from threshold, show progress.
+    // Doesn't trigger UI noise on every themed pickup; only when the
+    // player is genuinely close to a tier change.
+    if (newTier === 0 && newCount === thresh.resonance - 1) {
+      return {
+        type: 'progress',
+        label: theme.name.toUpperCase() + ' ' + newCount + '/' + thresh.resonance,
+        color: theme.color,
+      };
+    }
+    if (newTier === 1 && newCount === thresh.ascendance - 1) {
+      return {
+        type: 'progress',
+        label: theme.name.toUpperCase() + ' ' + newCount + '/' + thresh.ascendance,
+        color: theme.color,
+      };
+    }
+  }
+  return null;
+}
+
 function _drawCard(ctx, x, y, w, h, p, highlighted, modalTheme) {
   const r = p.relic;
   const isAltar = (p.hpCost || 0) > 0;
@@ -705,6 +782,43 @@ function _drawCard(ctx, x, y, w, h, p, highlighted, modalTheme) {
   const descLines = _truncateLines(descAll, DESC_LINES);
   for (let k = 0; k < descLines.length; k++) {
     ctx.fillText(descLines[k], x + w / 2, DESC_Y + k * lineH);
+  }
+
+  // Trigger chip — "→ FUSION: TESLA STORM" or "→ FLAME RESONANCE" or
+  // "→ FLAME ASCENDANCE". Tells the player AT decision time what this
+  // pickup unlocks beyond its base description. Skipped when there's
+  // no notable trigger to surface (most pickups land here).
+  //
+  // Y position is conditional: shop/altar cards have a cost row at the
+  // bottom that we mustn't overlap; reward cards have empty space we
+  // can fill. So shop/altar place above the cost line, reward places
+  // at the bottom.
+  const trigger = _getCardTrigger(p);
+  if (trigger) {
+    const TRIGGER_Y = y + h - ((isShop || isAltar) ? 40 : 18);
+    // Halo background — tint-color rectangle behind text gives the
+    // chip enough presence to read as a CALLOUT, not as flavor.
+    const txt = trigger.label;
+    ctx.font = 'italic bold 10.5px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const txtW = ctx.measureText(txt).width;
+    const padX = 8;
+    const chipW = Math.min(textColW, txtW + padX * 2);
+    const chipH = 14;
+    const chipX = x + (w - chipW) / 2;
+    const chipY = TRIGGER_Y - chipH / 2;
+    const _trigRgb = _hexToRgb(trigger.color);
+    // Backdrop pill — soft tinted rectangle
+    ctx.fillStyle = `rgba(${_trigRgb}, 0.18)`;
+    ctx.fillRect(chipX, chipY, chipW, chipH);
+    // Border hairline
+    ctx.strokeStyle = `rgba(${_trigRgb}, 0.7)`;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(chipX + 0.5, chipY + 0.5, chipW - 1, chipH - 1);
+    // Label
+    ctx.fillStyle = trigger.color;
+    ctx.fillText(txt, x + w / 2, TRIGGER_Y + 1);
   }
 
   // Cost row at bottom — gold for shop, HP for altar.
