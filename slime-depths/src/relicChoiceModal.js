@@ -101,10 +101,15 @@ function _openIfReady(roomKind) {
   if (_open) return;
   if (!_pendingTrigger) return;
   if (_pendingDelay > 0) return;
-  // Need at least one unpicked pedestal in a pedestal-kind room.
+  // Open whenever there are unpicked pedestals — the existence of
+  // pedestals IS the trigger. Earlier draft restricted by room kind
+  // (reward/sanctuary/altar/shop) but combat rooms that just cleared
+  // keep kind='combat' even after pedestals spawn from the post-clear
+  // reward path; the kind whitelist silently rejected those opens.
+  // The only thing we don't want is opening for stale pedestal data
+  // from a previous room — clearModal() on loadRoom handles that.
   const unpicked = pedestals.filter(p => !p.picked);
   if (unpicked.length === 0) return;
-  if (!_isPedestalKind(roomKind)) return;
   // Don't re-fire if we already showed for this kind in this room session
   // unless the pedestals changed identity (reroll case).
   // Simple guard: clearModal on room change zeroes _lastShownForRoomKind.
@@ -128,11 +133,6 @@ function _hasSeenAllPedestalIds(unpicked) {
     if (!_seenPedestalIds.has(id)) return false;
   }
   return true;
-}
-
-function _isPedestalKind(roomKind) {
-  return roomKind === 'reward' || roomKind === 'sanctuary'
-      || roomKind === 'altar' || roomKind === 'shop';
 }
 
 // ─── Theme inference ─────────────────────────────────────────────────────
