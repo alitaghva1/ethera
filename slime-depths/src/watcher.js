@@ -397,18 +397,40 @@ export function drawWatcher(ctx, w, h, flags = {}) {
   else alpha = 1 - (t - FADE_IN_SEC - HOLD_SEC) / FADE_OUT_SEC;
   alpha = Math.max(0, Math.min(1, alpha));
 
-  // Smaller, higher, more "subtitle" — italic body text in the upper
-  // letterbox band rather than a center-banner above the action.
+  // Subtitle position — lower letterbox band where every dialogue
+  // system in every game puts narration. The previous top-7% placement
+  // fought for the same eye-zone as the HUD hearts and the codex
+  // banner; readability suffered against bloom + dust + biome wash.
+  // Below: cy at h*0.86 (lower 14% of canvas, still above the
+  // hero so it doesn't paint over feet).
   const fontSize = 14;
   const maxW = Math.min(620, w - 200);
   const cx = w / 2;
-  const cy = Math.round(h * 0.07);   // top 7% — out of combat eye-zone
+  const cy = Math.round(h * 0.86);
 
   ctx.save();
   ctx.font = `italic ${fontSize}px Georgia, serif`;
   const lines = wrapText(ctx, currentLine, maxW);
   const lineH = fontSize * 1.4;
   const totalH = lines.length * lineH;
+
+  // Subtle dark gradient strip behind the text so the italic cream
+  // serif stays legible in busy scenes (bloom + biome wash + weather
+  // particles otherwise eat the text). Width follows the text block
+  // with side padding; alpha fades at the edges so the strip doesn't
+  // read as a hard banner. Genre reference: Hades / Disco Elysium /
+  // every subtitle system uses some form of this contrast plate.
+  const stripW = Math.min(w - 80, maxW + 120);
+  const stripH = totalH + 16;
+  const stripX = cx - stripW / 2;
+  const stripY = cy - stripH / 2;
+  const stripGrad = ctx.createLinearGradient(stripX, stripY, stripX + stripW, stripY);
+  stripGrad.addColorStop(0,    `rgba(8, 6, 12, 0)`);
+  stripGrad.addColorStop(0.18, `rgba(8, 6, 12, ${(0.55 * alpha).toFixed(3)})`);
+  stripGrad.addColorStop(0.82, `rgba(8, 6, 12, ${(0.55 * alpha).toFixed(3)})`);
+  stripGrad.addColorStop(1,    `rgba(8, 6, 12, 0)`);
+  ctx.fillStyle = stripGrad;
+  ctx.fillRect(stripX, stripY, stripW, stripH);
 
   // Type-on reveal — characters appear one by one over TYPE_ON_SEC.
   // Reveal progresses through the FULL string (across wrap), using
@@ -425,42 +447,15 @@ export function drawWatcher(ctx, w, h, flags = {}) {
   // with the full string's geometry (width-based wrap is monotonic).
   const revealLines = wrapText(ctx, revealLine, maxW);
 
-  // Sigil — smaller eye carving + lighter halo. Reads as "presence",
-  // not "broadcast". Pulses subtly so it feels alive rather than static.
-  const sigilX = Math.round(cx - maxW / 2 - 22);
-  const sigilY = Math.round(cy);
-  const sigilR = 7;
-  const breath = 0.80 + 0.20 * Math.sin(now * 1.6);
-  const sigilAlpha = alpha * breath;
-
-  // Breathing halo — smaller + dimmer than before. The sigil should
-  // suggest a watching eye, not announce itself.
-  const halo = ctx.createRadialGradient(sigilX, sigilY, 1, sigilX, sigilY, sigilR * 2.6);
-  halo.addColorStop(0, `rgba(236, 224, 196, ${(alpha * 0.14).toFixed(3)})`);
-  halo.addColorStop(1, 'rgba(236, 224, 196, 0)');
-  ctx.fillStyle = halo;
-  ctx.fillRect(sigilX - sigilR * 2.6, sigilY - sigilR * 2.6, sigilR * 5.2, sigilR * 5.2);
-
-  // Prefer the painted sigil asset if loaded; fall back to procedural
-  // rings when the image hasn't loaded yet.
-  const sigilImg = images.watcher_sigil;
-  if (sigilImg) {
-    const artSize = Math.round(sigilR * 3.6 * (0.9 + 0.1 * Math.sin(now * 1.6)));
-    ctx.save();
-    ctx.globalAlpha = alpha * 0.85;
-    ctx.drawImage(sigilImg, sigilX - artSize / 2, sigilY - artSize / 2, artSize, artSize);
-    ctx.restore();
-  } else {
-    ctx.strokeStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.80).toFixed(3)})`;
-    ctx.lineWidth = 1.0;
-    ctx.beginPath();
-    ctx.arc(sigilX, sigilY, sigilR, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = `rgba(236, 224, 196, ${(sigilAlpha * 0.90).toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(sigilX, sigilY, 1.6, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Sigil dropped (audit critique). Previously rendered floating 22 px
+  // to the left of the centered text block, reading as two separate
+  // elements glued together rather than one cohesive utterance. The
+  // italic-cream typeface inside the contrast strip carries the
+  // Watcher's voice on its own — sigil added decorative noise without
+  // adding meaning. The painted asset (images.watcher_sigil) is kept
+  // in the loader for a possible future "Watcher avatar" treatment in
+  // the codex screen, just not surfaced here.
+  // (The unused `now` reference still drives the type-on reveal above.)
 
   // Text — italic serif, cream, gentler shadow than before. Renders the
   // partially-revealed `revealLines` so the player sees the watcher
