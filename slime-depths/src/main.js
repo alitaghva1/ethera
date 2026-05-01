@@ -6116,19 +6116,21 @@ function render() {
     }
   }
 
-  // Very subtle warm tint — just warms the center a touch, no halo-looking light
+  // Per-floor biome warmth is the right knob for "this floor feels hot/cold,"
+  // not a hero-centered orange wash. The previous radius-320 warm tint
+  // was painting an orange halo around the hero EVERY floor — F1 crypt
+  // (cool blue) ended up reading warm-orange because the hero halo
+  // dominated. Audit T1.6: removed. F4 inferno still reads hot via its
+  // biome multiply pass + warm vignette base + per-torch halos; F1-3
+  // now read in their intended palette without the hero pulling the
+  // surrounding floor into orange. Hero readability is preserved by
+  // the small 46-radius under-hero halo in drawHero (hero.js:3122).
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const warm = ctx.createRadialGradient(hsx, hsy, 40, hsx, hsy, 320);
-  warm.addColorStop(0, 'rgba(255, 170, 100, 0.11)');
-  warm.addColorStop(0.5, 'rgba(255, 150, 80, 0.04)');
-  warm.addColorStop(1, 'rgba(255, 140, 80, 0)');
-  ctx.fillStyle = warm;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
   // CHESTROOM ambient — subtle violet wash so the gambling-tension room
   // reads atmospherically distinct from regular combat/event rooms even
   // before the player sees the chests. Corner-to-corner falloff, gentle
-  // alpha, additive blend. Same render slot as the warm tint above.
+  // alpha, additive blend.
   if (kind === 'chestroom') {
     const cx = canvas.width / 2, cy = canvas.height / 2;
     const vio = ctx.createRadialGradient(cx, cy, 60, cx, cy, Math.max(canvas.width, canvas.height) * 0.7);
