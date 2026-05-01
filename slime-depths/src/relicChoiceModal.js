@@ -20,7 +20,7 @@
 // gates. Matches the pickup banner / death overlay family.
 // ============================================================================
 
-import { pedestals, pickPedestalByIndex } from './pedestals.js';
+import { pedestals, pickPedestalByIndex, applyChoicePick, rerollChoicePedestal } from './pedestals.js';
 import { gold } from './gold.js';
 import { hero } from './hero.js';
 import { images } from './loader.js';
@@ -49,11 +49,15 @@ let _lastShownForRoomKind = null;
 
 // ─── Public API ──────────────────────────────────────────────────────────
 
-// Request the modal — call from pedestal-spawn sites. Actual open is
-// deferred until conditions are met (no cinematic, no pause).
+// Request the modal — used to be auto-fired at pedestal spawn but is
+// now invoked from the E-press handler in main.js when the hero stands
+// on a choice pedestal. The Hades pattern: walk up to the offering,
+// commit explicitly. _pendingDelay still respected so the modal waits
+// for any in-flight cinematic to clear, but at 0.05 s instead of 0.45
+// because the player has already pressed a deliberate action key.
 export function requestModal() {
   _pendingTrigger = true;
-  _pendingDelay = 0.45;     // give the floor-card / room-intro a moment to clear
+  _pendingDelay = 0.05;
 }
 
 // Force-clear pending and any open state. Called on room change so the
@@ -91,31 +95,18 @@ export function _debugState() {
   return {
     _open, _fading, _fadeT, _pendingTrigger, _pendingDelay,
     _highlightIdx, _lastShownForRoomKind,
-    _seenIds: [..._seenPedestalIds],
+    _cardCount: _getCards().length,
   };
 }
 
 // ─── Open trigger ─────────────────────────────────────────────────────────
 
-function _openIfReady(roomKind) {
+function _openIfReady() {
   if (_open) return;
   if (!_pendingTrigger) return;
   if (_pendingDelay > 0) return;
-  // Open whenever there are unpicked pedestals — the existence of
-  // pedestals IS the trigger. Earlier draft restricted by room kind
-  // (reward/sanctuary/altar/shop) but combat rooms that just cleared
-  // keep kind='combat' even after pedestals spawn from the post-clear
-  // reward path; the kind whitelist silently rejected those opens.
-  // The only thing we don't want is opening for stale pedestal data
-  // from a previous room — clearModal() on loadRoom handles that.
-  const unpicked = pedestals.filter(p => !p.picked);
-  if (unpicked.length === 0) return;
-  // Don't re-fire if we already showed for this kind in this room session
-  // unless the pedestals changed identity (reroll case).
-  // Simple guard: clearModal on room change zeroes _lastShownForRoomKind.
-  if (_lastShownForRoomKind === roomKind && _hasSeenAllPedestalIds(unpicked)) return;
-  _lastShownForRoomKind = roomKind;
-  _seenPedestalIds = new Set(unpicked.map(p => p.relic?.id || p.x + ',' + p.y));
+  const cards = _getCards();
+  if (cards.length === 0) return;
   _open = true;
   _fading = 'in';
   _fadeT = 0;
@@ -126,25 +117,66 @@ function _openIfReady(roomKind) {
   _pendingDelay = 0;
 }
 
-let _seenPedestalIds = new Set();
-function _hasSeenAllPedestalIds(unpicked) {
-  for (const p of unpicked) {
-    const id = p.relic?.id || p.x + ',' + p.y;
-    if (!_seenPedestalIds.has(id)) return false;
+// Flatten pedestals[] into a list of selectable cards. Each card carries
+// (relic, tier, costs, source pedestal idx, source offer idx) so the
+// modal can render + dispatch picks without needing to know whether the
+// source is a choice pedestal (1 ped → N cards) or a legacy shop ped
+// (1 ped → 1 card). Skips picked pedestals.
+function _getCards() {
+  const cards = [];
+  for (let i = 0; i < pedestals.length; i++) {
+    const p = pedestals[i];
+    if (p.picked) continue;
+    if (p.kind === 'choice' && Array.isArray(p.offers)) {
+      for (let j = 0; j < p.offers.length; j++) {
+        cards.push({
+          relic: p.offers[j],
+          tier: p.offerTiers?.[j] || 'common',
+          hpCost: p.altar ? (p.offerHpCosts?.[j] || 0) : 0,
+          goldCost: 0,
+          shop: false,
+          isAltar: !!p.altar,
+          pIdx: i,
+          oIdx: j,
+        });
+      }
+    } else {
+      // Legacy single-relic pedestal (shop / boss bonus / etc.)
+      cards.push({
+        relic: p.relic,
+        tier: p.tier || 'common',
+        hpCost: p.hpCost || 0,
+        goldCost: p.goldCost || 0,
+        shop: !!p.shop,
+        isAltar: (p.hpCost || 0) > 0 && !p.kind,
+        pIdx: i,
+        oIdx: 0,
+      });
+    }
   }
-  return true;
+  return cards;
 }
 
 // ─── Theme inference ─────────────────────────────────────────────────────
-// If all unpicked pedestals share a theme, return its name + tint.
-// Mixed offers return null.
+// Returns the theme to display in the modal header. Prefers the room
+// theme tag stamped on a choice pedestal (the floor-gen-assigned
+// theme), falling back to a per-card scan when all offered relics
+// share a theme. Mixed offers return null.
 
-function _inferTheme(unpicked) {
-  const themes = unpicked
-    .map(p => RELIC_THEMES[p.relic?.id])
-    .filter(Boolean);
-  if (themes.length === 0) return null;
-  if (themes.length !== unpicked.length) return null;     // some untagged
+function _inferTheme(cards) {
+  if (cards.length === 0) return null;
+  // First look at the source pedestal's theme tag — if any choice
+  // pedestal has a theme set, use it (single-source-of-truth).
+  for (const c of cards) {
+    const ped = pedestals[c.pIdx];
+    if (ped && ped.theme && THEMES[ped.theme]) {
+      return { name: ped.theme, ...THEMES[ped.theme] };
+    }
+  }
+  // Fallback: if every card's relic shares the same theme, return
+  // that. Catches mixed-floor combos that happen to align.
+  const themes = cards.map(c => RELIC_THEMES[c.relic?.id]).filter(Boolean);
+  if (themes.length === 0 || themes.length !== cards.length) return null;
   const first = themes[0];
   if (!themes.every(t => t === first)) return null;
   return { name: first, ...THEMES[first] };
@@ -152,11 +184,11 @@ function _inferTheme(unpicked) {
 
 // ─── Update / input ───────────────────────────────────────────────────────
 
-export function updateModal(dt, ctx) {
+export function updateModal(dt) {
   // Tick deferred trigger
   if (_pendingDelay > 0) _pendingDelay -= dt;
-  if (_pendingTrigger && !_open && ctx?.roomKind) {
-    _openIfReady(ctx.roomKind);
+  if (_pendingTrigger && !_open) {
+    _openIfReady();
   }
   // Advance fade
   if (_fading === 'in') {
@@ -174,13 +206,14 @@ export function updateModal(dt, ctx) {
       _fading = null;
     }
   }
-  // Sync highlight clamp — if a pedestal got picked / removed, clamp
-  // the highlight to the remaining unpicked count.
-  const unpicked = pedestals.filter(p => !p.picked);
-  if (unpicked.length === 0) {
+  // Sync highlight clamp — if a card got picked / removed, clamp the
+  // highlight to the remaining card count. Close the modal when no
+  // cards remain (user picked the last offer).
+  const cards = _getCards();
+  if (cards.length === 0) {
     if (_open) closeModal();
-  } else if (_highlightIdx >= unpicked.length) {
-    _highlightIdx = unpicked.length - 1;
+  } else if (_highlightIdx >= cards.length) {
+    _highlightIdx = cards.length - 1;
   }
 }
 
@@ -189,14 +222,14 @@ export function updateModal(dt, ctx) {
 // handler.
 export function handleModalKey(code) {
   if (!isFullyOpen()) return false;
-  const unpicked = pedestals.filter(p => !p.picked);
-  if (unpicked.length === 0) return false;
+  const cards = _getCards();
+  if (cards.length === 0) return false;
   if (code === 'ArrowLeft' || code === 'KeyA') {
-    _highlightIdx = (_highlightIdx - 1 + unpicked.length) % unpicked.length;
+    _highlightIdx = (_highlightIdx - 1 + cards.length) % cards.length;
     return true;
   }
   if (code === 'ArrowRight' || code === 'KeyD') {
-    _highlightIdx = (_highlightIdx + 1) % unpicked.length;
+    _highlightIdx = (_highlightIdx + 1) % cards.length;
     return true;
   }
   if (code === 'KeyE' || code === 'Enter' || code === 'Space') {
@@ -207,7 +240,25 @@ export function handleModalKey(code) {
     closeModal();
     return true;
   }
-  // R reroll falls through to the existing main.js handler.
+  if (code === 'KeyR') {
+    // Reroll the choice pedestal's offers in-place. Doesn't consume
+    // the pedestal — the player's still committed to spending whatever
+    // it costs to interact with the room. Existing main.js R-handler
+    // also handles legacy shop reroll; this one specifically handles
+    // choice pedestals (single-pedestal-with-offers shape).
+    if (cards.length > 0) {
+      const pIdx = cards[_highlightIdx]?.pIdx ?? 0;
+      const ped = pedestals[pIdx];
+      if (ped && ped.kind === 'choice' && !ped.altar) {
+        const ok = rerollChoicePedestal(pIdx, opts => opts);
+        // If reroll fails (insufficient gold, etc.) we let it fall
+        // through to the legacy R-handler in main.js so the same key
+        // can still trigger the existing reroll-cost feedback.
+        if (ok) return true;
+      }
+    }
+    return false;
+  }
   return false;
 }
 
@@ -231,22 +282,27 @@ export function handleModalClick(mx, my, w, h) {
 // ─── Pick ─────────────────────────────────────────────────────────────────
 
 function _commitPick() {
-  const unpicked = pedestals.filter(p => !p.picked);
-  if (_highlightIdx < 0 || _highlightIdx >= unpicked.length) return;
-  const target = unpicked[_highlightIdx];
-  const fullIdx = pedestals.indexOf(target);
-  if (fullIdx < 0) return;
-  const result = pickPedestalByIndex(fullIdx);
-  // 'denied_hp' / 'denied_gold' — keep modal open, the existing label
-  // feedback in pedestals.js / main.js will tell the player why.
+  const cards = _getCards();
+  if (_highlightIdx < 0 || _highlightIdx >= cards.length) return;
+  const card = cards[_highlightIdx];
+  const ped = pedestals[card.pIdx];
+  if (!ped || ped.picked) return;
+  let result;
+  if (ped.kind === 'choice') {
+    // Choice pedestal — apply the specific offer. applyChoicePick
+    // marks the pedestal picked (consuming it) + applies the relic +
+    // debits HP if altar.
+    result = applyChoicePick(card.pIdx, card.oIdx);
+  } else {
+    // Legacy shop pedestal — single-relic, individual purchase.
+    result = pickPedestalByIndex(card.pIdx);
+  }
+  // 'denied_hp' / 'denied_gold' — keep modal open, the in-game label
+  // feedback in pedestals.js / main.js explains why.
   if (result === 'denied_hp' || result === 'denied_gold') return;
   if (!result) return;
-  // Successful pick. Shop pedestals stay open (multi-buy); others close.
-  if (target.shop) {
-    // Fall through — modal stays open, the picked pedestal vanishes
-    // from `unpicked`, highlight clamps.
-    return;
-  }
+  // Shop pedestals stay open so the player can buy multiple items.
+  if (card.shop) return;
   closeModal();
 }
 
@@ -260,8 +316,8 @@ const FOOT_H = 36;
 const CARD_GAP = 12;
 
 function _layout(w, h) {
-  const unpicked = pedestals.filter(p => !p.picked);
-  const n = Math.max(1, unpicked.length);
+  const cards = _getCards();
+  const n = Math.max(1, cards.length);
   const modalW = Math.min(MODAL_W, w - 32);
   const cardsAreaW = modalW - MODAL_PAD_X * 2;
   const cardW = (cardsAreaW - CARD_GAP * (n - 1)) / n;
@@ -291,8 +347,8 @@ function _hitTestCard(mx, my, w, h) {
 
 export function drawModal(ctx, w, h, opts = {}) {
   if (!_open && _fading !== 'out') return;
-  const unpicked = pedestals.filter(p => !p.picked);
-  if (unpicked.length === 0 && !_fading) return;
+  const cards = _getCards();
+  if (cards.length === 0 && !_fading) return;
   const alpha = Math.max(0, Math.min(1, _fadeT));
   const lay = _layout(w, h);
   ctx.save();
@@ -372,7 +428,7 @@ export function drawModal(ctx, w, h, opts = {}) {
   // Big title + theme pill
   const roomKind = opts.roomKind || 'reward';
   const titleText = _titleForKind(roomKind);
-  const theme = _inferTheme(unpicked);
+  const theme = _inferTheme(cards);
   ctx.fillStyle = '#f4d9a0';
   ctx.font = 'bold 22px Georgia, serif';
   const titleW = ctx.measureText(titleText).width;
@@ -412,12 +468,12 @@ export function drawModal(ctx, w, h, opts = {}) {
   // ── CARDS ──────────────────────────────────────────────────────────
   const cardsTop = my + MODAL_PAD_Y + HEAD_H;
   for (let i = 0; i < lay.n; i++) {
-    const p = unpicked[i];
-    if (!p) continue;
+    const card = cards[i];
+    if (!card) continue;
     const cx2 = mx + MODAL_PAD_X + i * (lay.cardW + CARD_GAP);
     const cy = cardsTop;
     const isHi = (i === _highlightIdx) || (i === _hoverCardIdx);
-    _drawCard(ctx, cx2, cy, lay.cardW, lay.cardH, p, isHi);
+    _drawCard(ctx, cx2, cy, lay.cardW, lay.cardH, card, isHi);
   }
 
   // ── FOOTER ─────────────────────────────────────────────────────────
@@ -445,8 +501,8 @@ export function drawModal(ctx, w, h, opts = {}) {
   ctx.fillText('Esc  back out', mx + lay.modalW - MODAL_PAD_X, footTopY);
   // Bottom row CENTER: reroll affordance
   const rerollCost = opts.rerollCost || 45;
-  const canReroll = (gold.total >= rerollCost) && lay.n >= 2 && !_anyAltarOnly(unpicked);
-  if (lay.n >= 2 && !_anyAltarOnly(unpicked)) {
+  const canReroll = (gold.total >= rerollCost) && lay.n >= 2 && !_anyAltarOnlyCards(cards);
+  if (lay.n >= 2 && !_anyAltarOnlyCards(cards)) {
     ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.45)';
     ctx.font = 'italic bold 11px Georgia, serif';
     ctx.textAlign = 'center';
@@ -752,8 +808,8 @@ function _subtitleForKind(kind) {
     default:          return 'choose one. the others fade with the light.';
   }
 }
-function _anyAltarOnly(arr) {
-  return arr.length > 0 && arr.every(p => (p.hpCost || 0) > 0);
+function _anyAltarOnlyCards(cards) {
+  return cards.length > 0 && cards.every(c => (c.hpCost || 0) > 0);
 }
 
 // Tiny hex-to-"r,g,b" converter — same shape as notifications.js's helper.

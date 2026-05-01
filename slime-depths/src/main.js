@@ -101,6 +101,7 @@ import {
   pedestals, hasActivePedestals, drawPickupFlash, drawPedestalTooltip, suppressPickupFlash,
   setPickupFlashForTest, isPickupFlashActive,
   consumePendingPickup, drawPedestalPrompt, pushPedestal,
+  getHoveredPedestalIndex,
 } from './pedestals.js';
 import { drawCounterPips, tickCounterPips } from './counterPips.js';
 import { drawPedestalTeasers } from './pedestalTeaser.js';
@@ -2356,12 +2357,10 @@ window.addEventListener('keydown', (e) => {
     if (_data?.roomTheme) _opts.theme = _data.roomTheme;
     spawnRelicOffer(currentFloorLevel, _opts);
   }
-  // Re-fire the choice modal with the fresh offers — clearModal so the
-  // pedestal-id seen-set forgets the rerolled-away ones, then request a
-  // new open. If the modal was already open the close-then-open pattern
-  // gives the player a clean fade transition into the new offer set.
+  // Reset the modal so a stale seen-set doesn't suppress re-open;
+  // the modal stays closed until the player presses E on the new
+  // choice pedestal.
   clearRelicChoiceModal();
-  requestRelicChoiceModal();
   // Feedback
   roomLabelText = `✦ REROLLED · -${cost}g ✦`;
   roomLabelColor = '#c9a86a';
@@ -2600,7 +2599,7 @@ function loadRoom(idx, entryFrom) {
     const altarOpts = data.roomReward === 'legendary' ? { minTier: 'legendary' } : {};
     if (data.roomTheme) altarOpts.theme = data.roomTheme;
     spawnAltarOffer(3, currentFloorLevel, altarOpts);
-    requestRelicChoiceModal();
+    // Modal opens via E-press on the choice pedestal (not auto-open).
   }
 
   // Round-7 Phase 4-lite — SHOP rooms spawn 3 priced pedestals on entry.
@@ -2612,7 +2611,8 @@ function loadRoom(idx, entryFrom) {
   if (data.kind === 'shop') {
     spawnShopOffer(currentFloorLevel, data.roomTheme ? { theme: data.roomTheme } : {});
     setTimeout(() => showTip('first_shop'), 1200);
-    requestRelicChoiceModal();
+    // Shops are legacy multi-pedestal — no modal trigger here. Each
+    // shop pedestal still uses E-press to buy individually.
   }
 
   // Boss room — dramatic intro: hold gameplay for ~2s while showing boss name
@@ -4728,6 +4728,17 @@ function _tickInner(now) {
     // and a sealed door is in range, treat it as a seal-break attempt.
     // Single keypress, single intent.
     if (room.kind !== 'hamlet' && hero.state !== 'dead' && keyJustPressed('KeyE')) {
+      // Choice pedestal — opens the relic-choice modal instead of
+      // consuming the relic directly. The modal renders the
+      // pedestal's offers as cards; player picks via mouse / keyboard.
+      // Falls through to consumePendingPickup if the hovered pedestal
+      // is not a choice pedestal (legacy shop / boss bonus / etc.).
+      const _hovIdx = getHoveredPedestalIndex();
+      const _hovPed = _hovIdx >= 0 ? pedestals[_hovIdx] : null;
+      if (_hovPed && _hovPed.kind === 'choice' && !_hovPed.picked) {
+        requestRelicChoiceModal();
+        // No fall-through — the modal owns the rest of the interaction.
+      } else {
       const result = consumePendingPickup();
       if (result === 'denied_hp') {
         // Altar with insufficient HP — flash a denied label so the
@@ -4796,6 +4807,7 @@ function _tickInner(now) {
       // result === non-null relic def: pedestal pickup happened, no
       // additional action needed — the pickup itself fires its own
       // banner + sfx via pedestals.js.
+      } // end else (non-choice pedestal path)
     }
 
     // ─── TREASURE CHEST INTERACTION (DUNGEON ONLY) ─────────────────────
@@ -5272,7 +5284,7 @@ function _tickInner(now) {
         }
         spawnRelicOffer(offerLevel, offerOpts);
         applyTarotPedestalMods();
-        requestRelicChoiceModal();
+        // Modal opens via E-press on the choice pedestal (not auto-open).
         if (isMiniboss) {
           // Extra flourish on mini-boss reward: brighter ping + sparkle burst
           // to telegraph "this one's better than the usual drop".
@@ -5330,7 +5342,7 @@ function _tickInner(now) {
       if (pedestals.length === 0) {
         import('./gold.js').then(g => g.dropGold(hero.x, hero.y - 20, 20));
         spawnRelicOffer(currentFloorLevel, data.roomTheme ? { theme: data.roomTheme } : {});
-        requestRelicChoiceModal();
+        // Modal opens via E-press on the choice pedestal.
         playSfx('click', { volume: 0.9, rate: 1.1 });
       } else if (!hasActivePedestals()) {
         room.cleared = true;

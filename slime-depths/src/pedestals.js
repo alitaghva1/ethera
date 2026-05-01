@@ -107,8 +107,15 @@ function findClearTile(px, py, maxR = 4) {
 
 // Spawn 3 relic pedestals laid out across the north side of the room.
 // Pedestals shift to nearby clear tiles if pillars block the preferred cells.
-// opts.minTier promotes the offer pool to rare+ / legendary+ etc. — used by
-// elite (perilous-path) rooms to guarantee meaningful rewards for extra risk.
+// Spawns a single CHOICE pedestal at the room's center carrying 3 relic
+// offers. The player walks up + presses E to open the choice modal,
+// which displays the offers as cards. Picking one applies the relic +
+// consumes the pedestal. Replaces the legacy 3-separate-pedestals
+// pattern (Hades-style "one offering site, multiple gifts inside").
+//
+// opts.minTier promotes the offer pool to rare+ / legendary+ etc. —
+// used by elite (perilous-path) rooms to guarantee meaningful rewards.
+// opts.theme biases the offer pool toward a theme's relic family.
 export function spawnRelicOffer(floorLevel = 1, opts = {}) {
   pedestals.length = 0;
   // Forced fusion bias for room-reward 'fusion' rooms (Round-7) is
@@ -116,35 +123,32 @@ export function spawnRelicOffer(floorLevel = 1, opts = {}) {
   // so the bias pipeline stays single-source-of-truth.
   const offers = applyMagicianBias(rollRelicOffer(3, floorLevel, opts), { force: !!opts.fusionBias });
   if (offers.length === 0) return;
-  const cols = [6, 10, 14];
-  // Pedestal row pushed from 4 to 5 — one tile south of the dense
-  // enemy-spawn band (`spawnCells` in floor.js scatters enemies across
-  // y=3..h-4, with the largest density around y=3-5). Keeping pedestals
-  // at row 4 caused them to share floor with corpses + sparkle + tier-
-  // ring particles; row 5 puts the reward pickup in cleaner space while
-  // still being the player's first visual on entering the cleared room.
-  const row = 5;
-  const placed = [];
-  for (let i = 0; i < offers.length; i++) {
-    const spot = findClearTile(cols[i], row);
-    // Avoid stacking onto an existing pedestal cell
-    if (placed.some(p => p.x === spot.x && p.y === spot.y)) {
-      // Try one more shift outward
-      const alt = findClearTile(cols[i] + (i === 0 ? -1 : 1), row);
-      spot.x = alt.x; spot.y = alt.y;
-    }
-    placed.push(spot);
-    pedestals.push({
-      x: spot.x * TILE + TILE/2,
-      y: spot.y * TILE + TILE/2,
-      relic: offers[i],
-      tier: relicTier(offers[i].id),
-      picked: false,
-      bob: Math.random() * Math.PI * 2,
-      glow: 0,
-      hpCost: 0,
-    });
-  }
+  // Center the pedestal at the room's middle column on row 6 (mid-room
+  // vertically). One focal point instead of three side-by-side
+  // pedestals — reads as "the offering" rather than "three things to
+  // pick from."
+  const w = (room && room.w) || 20;
+  const h = (room && room.h) || 14;
+  const cx = Math.floor(w / 2);
+  const cy = Math.floor(h / 2);
+  const spot = findClearTile(cx, cy);
+  pedestals.push({
+    kind: 'choice',
+    x: spot.x * TILE + TILE/2,
+    y: spot.y * TILE + TILE/2,
+    offers,
+    offerTiers: offers.map(o => relicTier(o.id)),
+    theme: opts.theme || null,        // drives the pedestal's glyph + glow
+    picked: false,
+    pickedOfferIdx: -1,                // which offer was chosen (for replay)
+    bob: Math.random() * Math.PI * 2,
+    glow: 0,
+    hpCost: 0,
+    // Re-roll opts cached so R inside the modal can re-roll with
+    // the same theme + minTier/fusion bias.
+    _rollFloor: floorLevel,
+    _rollOpts: { ...opts },
+  });
 }
 
 // Spawn 2 altar pedestals flanking the obelisk — each costs HP instead of free.
@@ -179,37 +183,43 @@ function altarCostFor(tier) {
 }
 export function spawnAltarOffer(_legacyHpCost, floorLevel = 1, opts = {}) {
   pedestals.length = 0;
-  // Pass floorLevel through to the tier-weighted roll. Without this, the
-  // default floorLevel=1 in rollRelicOffer means altars on every floor
-  // offered 100% commons — a 2-HP altar offered the same pool as a
-  // floor-1 reward room, making higher floors' altars feel like theft
-  // (HP cost scales by tier, but the offered tier never moved past
-  // common). Floor passes through from main.js.
-  //
-  // Round-7 — opts.minTier forces a tier floor on the offer roll. Used
-  // by altar nodes flagged with roomReward='legendary' so the door's
-  // "LEGENDARY" promise matches the offered relics.
   const rollOpts = {};
   if (opts.minTier) rollOpts.minTier = opts.minTier;
   if (opts.theme) rollOpts.theme = opts.theme;
+  // Single ALTAR choice pedestal — same shape as spawnRelicOffer but
+  // each offer carries its tier-scaled HP cost. The modal renders a
+  // per-card "— N HP —" cost; picking a card debits the cost.
   const offers = rollRelicOffer(2, floorLevel, rollOpts);
   if (offers.length === 0) return;
-  const cols = [7, 12];
-  const row = 7;
-  for (let i = 0; i < offers.length; i++) {
-    const spot = findClearTile(cols[i], row);
-    const tier = relicTier(offers[i].id);
-    pedestals.push({
-      x: spot.x * TILE + TILE/2,
-      y: spot.y * TILE + TILE/2,
-      relic: offers[i],
-      tier,
-      picked: false,
-      bob: Math.random() * Math.PI * 2,
-      glow: 0,
-      hpCost: altarCostFor(tier),
-    });
-  }
+  const offerTiers = offers.map(o => relicTier(o.id));
+  const offerHpCosts = offerTiers.map(t => altarCostFor(t));
+  const w = (room && room.w) || 16;
+  const h = (room && room.h) || 11;
+  const cx = Math.floor(w / 2);
+  const cy = Math.floor(h / 2);
+  const spot = findClearTile(cx, cy);
+  pedestals.push({
+    kind: 'choice',
+    altar: true,                       // pedestal-level flag for render branch
+    x: spot.x * TILE + TILE/2,
+    y: spot.y * TILE + TILE/2,
+    offers,
+    offerTiers,
+    offerHpCosts,
+    theme: opts.theme || null,
+    picked: false,
+    pickedOfferIdx: -1,
+    bob: Math.random() * Math.PI * 2,
+    glow: 0,
+    // hpCost stays as 0 on the pedestal itself; per-offer costs live
+    // in offerHpCosts. Existing reroll-eligibility checks gate on
+    // hpCost === 0 — this preserves the rule that altar rooms can't
+    // reroll (the HP investment is the ante). Modal also reads
+    // offerHpCosts[idx] for the per-card cost row.
+    hpCost: offerHpCosts[0] || 0,     // surface SOMETHING for the legacy gate
+    _rollFloor: floorLevel,
+    _rollOpts: { ...opts },
+  });
 }
 
 // Round-7 Phase 4-lite — CHARON-style in-floor SHOP. Spawn 3 pedestals
@@ -447,6 +457,10 @@ export function updatePedestals(dt) {
     p.glow = Math.max(0, 1 - d / 200);
     // Sparkle emission — scales with rarity, reduced when hero is close (visual clutter)
     if (!p.picked) {
+      // Choice pedestals get their own sparkle treatment — themed
+      // _drawChoicePedestal already emits ambient sparkles via its
+      // own logic. Skip the per-tier sparkle here so we don't double.
+      if (p.kind === 'choice') continue;
       const tier = p.tier || 'common';
       // Mythic has a near-constant aurora of sparkles. Legendary is dense, rare
       // moderate, common a trickle.
@@ -493,6 +507,160 @@ export function updatePedestals(dt) {
 let _hoveredIndex = -1;
 const PEDESTAL_HOVER_R = 36;
 
+// ─── CHOICE PEDESTAL RENDER ─────────────────────────────────────────────────
+// Single focal pedestal carrying multiple relic offers — replaces the
+// legacy 3-separate-pedestals visual for sanctuary / reward / altar
+// rooms. Renders a larger pedestal with a theme-color beam + glyph
+// floating above (or warm gold for mixed-theme rooms). The actual
+// offers stay hidden until the player presses E to open the choice
+// modal (Hades pattern: the offering site is one focal point).
+function _drawChoicePedestal(ctx, p, now) {
+  const theme = (p.theme && THEMES[p.theme]) ? THEMES[p.theme] : null;
+  const tintColor = theme ? theme.color : '#f4d9a0';
+  const isAltar = !!p.altar;
+  const baseY = p.y + Math.sin(p.bob) * 2;
+
+  // Floor glow ring — radial pulse in theme color (or warm gold for mixed)
+  const ringPulse = 0.65 + 0.35 * Math.sin(now * 1.6 + p.bob);
+  const ringR = 36 + ringPulse * 6;
+  const tintRgb = _hexToRgbStr(tintColor);
+  const grad = ctx.createRadialGradient(p.x, baseY + 4, 4, p.x, baseY + 4, ringR);
+  grad.addColorStop(0, `rgba(${tintRgb}, ${(0.50 * ringPulse).toFixed(3)})`);
+  grad.addColorStop(0.5, `rgba(${tintRgb}, ${(0.18 * ringPulse).toFixed(3)})`);
+  grad.addColorStop(1, `rgba(${tintRgb}, 0)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(p.x - ringR, baseY - ringR + 4, ringR * 2, ringR * 2);
+
+  // Pedestal base — wider than legacy single-relic pedestals to read
+  // as the room's focal monument.
+  ctx.fillStyle = isAltar ? '#1a0a10' : '#28202c';
+  ctx.fillRect(p.x - 18, baseY + 2, 36, 12);
+  ctx.fillStyle = isAltar ? '#52181f' : '#3e3640';
+  ctx.fillRect(p.x - 16, baseY, 32, 4);
+  // Pedestal-top inset (where the offering "sits")
+  ctx.fillStyle = `rgba(${tintRgb}, 0.55)`;
+  ctx.fillRect(p.x - 12, baseY - 2, 24, 4);
+
+  // Light beam rising — taller than legacy pedestals so it reads as
+  // a beacon visible across the room.
+  const beamPulse = 0.6 + 0.4 * Math.sin(now * 2.2 + p.bob);
+  const beamHeight = 100;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const beamGrad = ctx.createLinearGradient(p.x, baseY - 2, p.x, baseY - beamHeight);
+  beamGrad.addColorStop(0, `rgba(${tintRgb}, ${(0.42 * beamPulse).toFixed(3)})`);
+  beamGrad.addColorStop(0.5, `rgba(${tintRgb}, ${(0.18 * beamPulse).toFixed(3)})`);
+  beamGrad.addColorStop(1, `rgba(${tintRgb}, 0)`);
+  ctx.fillStyle = beamGrad;
+  ctx.fillRect(p.x - 18, baseY - beamHeight, 36, beamHeight);
+  ctx.restore();
+
+  // Theme glyph floating above the pedestal — same canvas-primitive
+  // family as the modal/door theme glyphs. Bobs gently. For
+  // mixed-theme rooms (no theme), draw a generic relic sigil (a
+  // crystal/diamond shape) to mark "this is an offering" without
+  // claiming a theme.
+  const glyphY = baseY - 50 + Math.sin(now * 1.6 + p.bob + 1.2) * 3;
+  const glyphAlpha = 0.85 + 0.15 * beamPulse;
+  ctx.save();
+  ctx.fillStyle = `rgba(${tintRgb}, ${glyphAlpha.toFixed(3)})`;
+  ctx.strokeStyle = `rgba(${tintRgb}, ${glyphAlpha.toFixed(3)})`;
+  ctx.lineWidth = 1.5;
+  if (theme) {
+    _drawThemeGlyphAt(ctx, p.x, glyphY, 14, theme.id);
+  } else {
+    // Generic offering sigil — diamond / four-pointed star
+    const r = 12;
+    ctx.beginPath();
+    ctx.moveTo(p.x, glyphY - r);
+    ctx.lineTo(p.x + r * 0.5, glyphY);
+    ctx.lineTo(p.x, glyphY + r);
+    ctx.lineTo(p.x - r * 0.5, glyphY);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Outer ambient sparkle — occasional theme-tinted pixel motes
+  // around the pedestal. Cheap stateless math; no allocation.
+  if (Math.random() < 0.06) {
+    const a = Math.random() * Math.PI * 2;
+    const dist = 26 + Math.random() * 10;
+    sparkle(p.x + Math.cos(a) * dist, baseY + Math.sin(a) * dist * 0.5 - 4, tintColor);
+  }
+}
+
+// Procedural theme glyph centered at (cx, cy) with size r. Same paths
+// as relicChoiceModal.js's _drawThemeChip and doorPortals.js's
+// _drawDoorThemeGlyph — kept inline here to avoid pulling in another
+// shared module just yet. If a third caller appears, refactor to
+// shared themes-glyph helper.
+function _drawThemeGlyphAt(ctx, cx, cy, r, themeId) {
+  switch (themeId) {
+    case 'storm': {
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.35, cy - r);
+      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
+      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
+      ctx.lineTo(cx - r * 0.35, cy + r);
+      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
+      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'flame': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'blood': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'vow': {
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'shadow': {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    }
+  }
+}
+
+// Tiny hex-to-"r,g,b" — same pattern as relicChoiceModal.js's helper.
+function _hexToRgbStr(hex) {
+  if (typeof hex !== 'string') return '244, 217, 160';
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  const n = parseInt(h, 16);
+  return `${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}`;
+}
+
 export function getHoveredPedestalIndex() { return _hoveredIndex; }
 
 // Pick a pedestal by explicit index — used by the relic-choice modal
@@ -513,6 +681,65 @@ export function pickPedestalByIndex(idx) {
   const result = consumePendingPickup();
   _hoveredIndex = prev;
   return result;
+}
+
+// Choice-pedestal pick — applies the specific offer the player chose
+// from the relic-choice modal. The pedestal carries an array of
+// offers; the modal picks one by (pedestal idx, offer idx). Marks
+// the pedestal picked + applies the relic + (for altars) debits HP.
+// Returns the relic def on success, 'denied_hp' if altar HP cost
+// can't be paid, or null on bad input / already-picked.
+export function applyChoicePick(pedIdx, offerIdx) {
+  if (pedIdx < 0 || pedIdx >= pedestals.length) return null;
+  const p = pedestals[pedIdx];
+  if (!p || p.picked || p.kind !== 'choice') return null;
+  if (offerIdx < 0 || offerIdx >= (p.offers?.length || 0)) return null;
+  const relic = p.offers[offerIdx];
+  if (!relic) return null;
+  // Per-offer HP cost for altars; legacy reward pedestals pay nothing.
+  const hpCost = p.altar ? (p.offerHpCosts?.[offerIdx] || 0) : 0;
+  if (hpCost > 0) {
+    if (hero.hp <= hpCost) return 'denied_hp';
+    hero.hp -= hpCost;
+  }
+  // Promote this pedestal to the "hovered" slot so consumePendingPickup
+  // runs its full side-effect pipeline (fusion / theme / SFX / banner
+  // cascade) using the chosen relic. We swap the pedestal's relic
+  // field to the chosen offer ahead of consume so the existing
+  // applyRelic call lands on the right def.
+  p.relic = relic;
+  p.tier = p.offerTiers?.[offerIdx] || 'common';
+  p.hpCost = 0;     // already debited above; consumePendingPickup re-debit guard
+  p.pickedOfferIdx = offerIdx;
+  const prev = _hoveredIndex;
+  _hoveredIndex = pedIdx;
+  const result = consumePendingPickup();
+  _hoveredIndex = prev;
+  return result;
+}
+
+// Reroll the offers on a choice pedestal in-place. Used by the modal's
+// R-handler (and the legacy main.js R-handler as fallback). Doesn't
+// consume the pedestal — same physical pedestal, fresh offer set.
+// Caller (main.js) handles gold cost; this function just swaps the
+// offers. Returns true on success, false if the pedestal isn't a
+// choice or the roll yielded nothing.
+export function rerollChoicePedestal(pedIdx, _opts = {}) {
+  if (pedIdx < 0 || pedIdx >= pedestals.length) return false;
+  const p = pedestals[pedIdx];
+  if (!p || p.picked || p.kind !== 'choice') return false;
+  // Re-roll using the cached opts from spawn time (preserves theme +
+  // minTier + fusion bias).
+  const rollOpts = p._rollOpts ? { ...p._rollOpts } : {};
+  const floorLevel = p._rollFloor || 1;
+  const newOffers = applyMagicianBias(rollRelicOffer(p.offers.length, floorLevel, rollOpts), { force: !!rollOpts.fusionBias });
+  if (newOffers.length === 0) return false;
+  p.offers = newOffers;
+  p.offerTiers = newOffers.map(o => relicTier(o.id));
+  if (p.altar) {
+    p.offerHpCosts = p.offerTiers.map(t => altarCostFor(t));
+  }
+  return true;
 }
 
 // E-key handler — call from main.js when the player presses E in a
@@ -661,16 +888,22 @@ export function drawPedestalPrompt(ctx) {
   if (!p || p.picked) return;
   const isAltar = p.hpCost > 0;
   const isShop = !!p.shop;
-  const tierTint = p.relic?.tint || (p.tier === 'mythic' ? '#fff2e0'
+  const isChoice = p.kind === 'choice';
+  // Choice pedestals: tint follows the room theme (or warm gold for mixed)
+  // since the prompt represents "open the offering" not a specific relic.
+  const themeTint = (isChoice && p.theme && THEMES[p.theme]) ? THEMES[p.theme].color : null;
+  const tierTint = themeTint || p.relic?.tint || (p.tier === 'mythic' ? '#fff2e0'
                                     : p.tier === 'legendary' ? '#ffc8ff'
                                     : p.tier === 'rare' ? '#f4d9a0'
                                     : '#c9a86a');
-  const name = (p.relic?.name || 'RELIC').toUpperCase();
-  // Round-7 — shop pedestals show "E · BUY · N gold · NAME" so the
-  // cost is visible before commit. Color the entire pill green when
-  // affordable, red when not (mirrors the gold-deny pattern).
+  const name = (p.relic?.name || 'OFFERING').toUpperCase();
   let label;
-  if (isShop) {
+  if (isChoice) {
+    // Choice pedestal — opens the modal. Theme name in the label so
+    // the player knows what they're about to choose from.
+    const themeName = (p.theme && THEMES[p.theme]) ? THEMES[p.theme].name.toUpperCase() : null;
+    label = themeName ? `E  ·  OPEN  ${themeName}  OFFERING` : `E  ·  OPEN  OFFERING`;
+  } else if (isShop) {
     label = `E  ·  BUY ${p.goldCost}g · ${name}`;
   } else if (isAltar) {
     label = `E  ·  PAY ${p.hpCost} HP · ${name}`;
@@ -718,6 +951,12 @@ export function drawPedestals(ctx) {
   const fusionCompleters = getFusionCompletingRelicIds(equippedRelics.map(r => r.id));
   for (const p of pedestals) {
     if (p.picked) continue;
+    // Choice pedestal — single themed pedestal that opens the modal on
+    // E-press. Different render than legacy single-relic pedestals.
+    if (p.kind === 'choice') {
+      _drawChoicePedestal(ctx, p, now);
+      continue;
+    }
     const y = p.y + Math.sin(p.bob) * 3;
     const isAltar = p.hpCost > 0;
     const tier = p.tier || 'common';
@@ -1349,6 +1588,10 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
   let nearestD = Infinity;
   for (const p of pedestals) {
     if (p.picked) continue;
+    // Choice pedestals manage their own UX through the modal — skip
+    // the legacy hover-tooltip render so it doesn't compete with the
+    // choice pedestal's own visual + the upcoming modal.
+    if (p.kind === 'choice') continue;
     const d = Math.hypot(hero.x - p.x, hero.y - p.y);
     if (d < 90 && d < nearestD) { nearest = p; nearestD = d; }
   }
