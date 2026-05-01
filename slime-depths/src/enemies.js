@@ -230,11 +230,14 @@ function _measureSpriteBounds(img, drawSize) {
     _spriteBoundsCtx.drawImage(img, 0, 0, SPR, SPR, 0, 0, SPR, SPR);
     const data = _spriteBoundsCtx.getImageData(0, 0, SPR, SPR).data;
     let topY = SPR, bottomY = -1, leftX = SPR, rightX = -1;
-    // Threshold 40 — ignore very faint anti-aliasing fringe so bounds
-    // hug the actual visible silhouette, not its halo.
+    // Threshold 140 — exclude the soft shadow/halo painted into many
+    // Tiny-RPG sprite cells around the body. Threshold 40 caught those
+    // halos and inflated halfWidth (slimes ended up with bars wider
+    // than the body). 140 is well past AA fringe (40-130) but below the
+    // solid body (200-255), so the box hugs the actual silhouette.
     for (let y = 0; y < SPR; y++) {
       for (let x = 0; x < SPR; x++) {
-        if (data[(y * SPR + x) * 4 + 3] >= 40) {
+        if (data[(y * SPR + x) * 4 + 3] >= 140) {
           if (y < topY) topY = y;
           if (y > bottomY) bottomY = y;
           if (x < leftX) leftX = x;
@@ -322,6 +325,15 @@ export function getEnemyFrame(e) {
       centerOffsetY = -topOffset / 2;
     }
   }
+  // Apply per-instance size scaling (elites = 1.18, bosses = 1.45,
+  // skipped split-slime children = 0.8). The measured bounds are at
+  // base drawSize; multiply by sizeMul so the frame tracks what's
+  // actually drawn on screen for this specific enemy instance.
+  const sizeMul = e.sizeMul || 1;
+  topOffset *= sizeMul;
+  halfWidth *= sizeMul;
+  bottomOffset *= sizeMul;
+  centerOffsetY *= sizeMul;
   return {
     centerX: e.x,
     centerY: e.y + centerOffsetY,
@@ -2671,11 +2683,17 @@ export function drawEnemy(ctx, e) {
   // HP bar — boss red-orange, elite gold (or affix color), normal red.
   // Elites + bosses show bar ALWAYS (threat readability); normals only when hurt.
   if (!e.dead && (e.hp < e.maxHp || e.elite || e.boss)) {
-    // Bar width — derived from the canonical frame's halfWidth so it
-    // tracks the visible body silhouette. Floor at 28 so tiny enemies
-    // still get a readable bar. Boss/elite get a small constant boost
-    // for hierarchy.
-    const baseW = Math.max(28, frame.halfWidth * 1.5 + 4);
+    // Bar width — derived from frame.halfWidth so it tracks the visible
+    // body silhouette. Multiplier 1.1 (was 1.5) keeps the bar readable
+    // as a STATUS INDICATOR above the body, NOT as a banner overlapping
+    // the whole sprite. Floor at 28 so tiny enemies still get a usable
+    // bar. Boss/elite get a small constant boost for hierarchy.
+    //
+    // Worked example after the threshold-140 tightening:
+    //   slime  halfWidth ~22  → bar 28 (floor),     body ~44 → 64% of body
+    //   knight halfWidth ~26  → bar 32.6,           body ~52 → 63%
+    //   ember  halfWidth ~38  → bar 45.8 + 24 = 69, body ~76 → 91% (boss bonus)
+    const baseW = Math.max(28, frame.halfWidth * 1.1 + 4);
     const w = e.boss ? baseW + 24 : e.elite ? baseW + 8 : baseW;
     // Height: revert to original 4 / 5 / 7 after playtest. The 3-px
     // tightening read as "stripe of nothing" — too anemic to register
