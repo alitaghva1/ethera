@@ -311,7 +311,7 @@ function _commitPick() {
 const MODAL_W = 720;
 const MODAL_PAD_X = 28;
 const MODAL_PAD_Y = 24;
-const HEAD_H = 70;
+const HEAD_H = 96;
 const FOOT_H = 36;
 const CARD_GAP = 12;
 
@@ -351,6 +351,11 @@ export function drawModal(ctx, w, h, opts = {}) {
   if (cards.length === 0 && !_fading) return;
   const alpha = Math.max(0, Math.min(1, _fadeT));
   const lay = _layout(w, h);
+  // Compute the modal-level theme up-front so it can drive the halo,
+  // body wash, header copy, and card outer borders consistently.
+  const theme = _inferTheme(cards);
+  const themeRgb = theme ? _hexToRgb(theme.color) : '201, 168, 106';
+  const haloRgb = theme ? themeRgb : '201, 168, 106';
   ctx.save();
 
   // Veil — dims the world. Eye-radial brighter at center so cards
@@ -368,13 +373,14 @@ export function drawModal(ctx, w, h, opts = {}) {
   const mx = lay.mx;
   const my = lay.my - slideY;
 
-  // Outer halo
+  // Outer halo — picks up theme color so the whole frame reads
+  // "FLAME / STORM / etc." rather than generic gold.
   const halo = ctx.createRadialGradient(mx + lay.modalW / 2, my + lay.modalH / 2,
                                          lay.modalW * 0.15,
                                          mx + lay.modalW / 2, my + lay.modalH / 2,
                                          lay.modalW * 0.7);
-  halo.addColorStop(0, 'rgba(201, 168, 106, 0.18)');
-  halo.addColorStop(1, 'rgba(201, 168, 106, 0)');
+  halo.addColorStop(0, `rgba(${haloRgb}, 0.20)`);
+  halo.addColorStop(1, `rgba(${haloRgb}, 0)`);
   ctx.fillStyle = halo;
   ctx.fillRect(mx - 40, my - 28, lay.modalW + 80, lay.modalH + 56);
 
@@ -384,6 +390,24 @@ export function drawModal(ctx, w, h, opts = {}) {
   bg.addColorStop(1, 'rgba(10, 6, 14, 0.97)');
   ctx.fillStyle = bg;
   ctx.fillRect(mx, my, lay.modalW, lay.modalH);
+
+  // Theme wash — additive radial inside the modal body so the SET
+  // reads as one unit. Subtle (~7% peak alpha) so card content stays
+  // legible. Skipped for un-themed (mixed) modals where gold accent
+  // would just be noise.
+  if (theme) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const wash = ctx.createRadialGradient(
+      mx + lay.modalW / 2, my + lay.modalH * 0.32, 40,
+      mx + lay.modalW / 2, my + lay.modalH * 0.32, lay.modalW * 0.55,
+    );
+    wash.addColorStop(0, `rgba(${themeRgb}, 0.07)`);
+    wash.addColorStop(1, `rgba(${themeRgb}, 0)`);
+    ctx.fillStyle = wash;
+    ctx.fillRect(mx, my, lay.modalW, lay.modalH);
+    ctx.restore();
+  }
 
   // Outer gold border
   ctx.strokeStyle = '#c9a86a';
@@ -416,54 +440,86 @@ export function drawModal(ctx, w, h, opts = {}) {
   ctx.stroke();
 
   // ── HEADER ─────────────────────────────────────────────────────────
+  // Layout (theme-led): centered glyph (32 dia) → eyebrow → title →
+  // theme-color underline → subtitle. The glyph is the same family as
+  // the pedestal sigil so the player's eye tracks "same offering" from
+  // pedestal to modal. For un-themed (mixed) modals the glyph slot is
+  // a small generic ruin diamond and copy reverts to gold.
+  const roomKind = opts.roomKind || 'reward';
   const headerY = my + MODAL_PAD_Y;
   const cx = mx + lay.modalW / 2;
-  // Eyebrow label
-  ctx.fillStyle = '#c9a86a';
+  const eyebrowText = _eyebrowCopy(theme, roomKind);
+  const titleText = _titleCopy(theme, roomKind);
+
+  // Glyph row — large theme sigil with breath halo. Center top of header.
+  const glyphCy = headerY + 18;
+  const glyphR = 16;
+  if (theme) {
+    // Backdrop halo so the glyph reads on the modal body
+    const t = (typeof performance !== 'undefined' ? performance.now() / 1000 : Date.now() / 1000);
+    const breath = 0.7 + 0.3 * Math.sin(t * 1.4);
+    const haloR = glyphR + 10;
+    const g = ctx.createRadialGradient(cx, glyphCy, 2, cx, glyphCy, haloR);
+    g.addColorStop(0, `rgba(${themeRgb}, ${(0.32 * breath).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${themeRgb}, 0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - haloR, glyphCy - haloR, haloR * 2, haloR * 2);
+    _drawHeaderGlyph(ctx, cx, glyphCy, glyphR, theme);
+  } else {
+    // Mixed pedestal — generic gold ruin diamond, no halo.
+    ctx.save();
+    ctx.fillStyle = '#c9a86a';
+    ctx.beginPath();
+    ctx.moveTo(cx, glyphCy - glyphR * 0.65);
+    ctx.lineTo(cx + glyphR * 0.5, glyphCy);
+    ctx.lineTo(cx, glyphCy + glyphR * 0.65);
+    ctx.lineTo(cx - glyphR * 0.5, glyphCy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(201, 168, 106, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, glyphCy, glyphR + 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Eyebrow — theme-color italic small caps just below glyph.
+  ctx.fillStyle = theme ? theme.color : '#c9a86a';
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText('— THE RUIN OFFERS —', cx, headerY);
+  ctx.fillText(eyebrowText, cx, headerY + 38);
 
-  // Big title + theme pill
-  const roomKind = opts.roomKind || 'reward';
-  const titleText = _titleForKind(roomKind);
-  const theme = _inferTheme(cards);
+  // Title — gold, big serif. Theme color is in the eyebrow + glyph;
+  // keeping the title gold preserves contrast against any theme color.
   ctx.fillStyle = '#f4d9a0';
   ctx.font = 'bold 22px Georgia, serif';
-  const titleW = ctx.measureText(titleText).width;
-  let titleX = cx;
+  ctx.fillText(titleText, cx, headerY + 54);
+
+  // Theme-color underline beneath the title — thin hairline that
+  // unifies the title with the glyph + cards. Skipped for mixed modals.
   if (theme) {
-    // Reserve room for theme pill on the right
-    const pillTxt = theme.name.toUpperCase();
-    ctx.font = 'italic bold 11px Georgia, serif';
-    const pillW = ctx.measureText(pillTxt).width + 18;
-    titleX = cx - pillW / 2 - 4;
-  }
-  ctx.font = 'bold 22px Georgia, serif';
-  ctx.fillText(titleText, titleX, headerY + 18);
-  if (theme) {
-    // Theme pill — small, tinted to theme color
-    ctx.font = 'italic bold 11px Georgia, serif';
-    const pillTxt = theme.name.toUpperCase();
-    const pillW = ctx.measureText(pillTxt).width + 18;
-    const pillH = 18;
-    const pillX = titleX + titleW / 2 + 8;
-    const pillY = headerY + 22;
-    const tintRgb = _hexToRgb(theme.color || '#c9a86a');
-    ctx.fillStyle = `rgba(${tintRgb}, 0.20)`;
-    ctx.fillRect(pillX, pillY, pillW, pillH);
-    ctx.strokeStyle = `rgba(${tintRgb}, 0.7)`;
+    const titleW = ctx.measureText(titleText).width;
+    const lineY = headerY + 80;
+    const lineW = Math.min(titleW + 28, lay.modalW - MODAL_PAD_X * 2);
+    const grad = ctx.createLinearGradient(cx - lineW / 2, lineY, cx + lineW / 2, lineY);
+    grad.addColorStop(0, `rgba(${themeRgb}, 0)`);
+    grad.addColorStop(0.5, `rgba(${themeRgb}, 0.85)`);
+    grad.addColorStop(1, `rgba(${themeRgb}, 0)`);
+    ctx.strokeStyle = grad;
     ctx.lineWidth = 1;
-    ctx.strokeRect(pillX + 0.5, pillY + 0.5, pillW - 1, pillH - 1);
-    ctx.fillStyle = theme.color || '#c9a86a';
-    ctx.fillText(pillTxt, pillX + pillW / 2, pillY + 4);
+    ctx.beginPath();
+    ctx.moveTo(cx - lineW / 2, lineY);
+    ctx.lineTo(cx + lineW / 2, lineY);
+    ctx.stroke();
   }
 
-  // Subtitle
+  // Subtitle — neutral italic faded. Position fixed to the bottom of
+  // the header band so it sits just above the cards.
   ctx.fillStyle = 'rgba(184, 168, 144, 0.85)';
   ctx.font = 'italic 11px Georgia, serif';
-  ctx.fillText(_subtitleForKind(roomKind), cx, headerY + 50);
+  ctx.fillText(_subtitleForKind(roomKind), cx, headerY + 84);
 
   // ── CARDS ──────────────────────────────────────────────────────────
   const cardsTop = my + MODAL_PAD_Y + HEAD_H;
@@ -473,7 +529,7 @@ export function drawModal(ctx, w, h, opts = {}) {
     const cx2 = mx + MODAL_PAD_X + i * (lay.cardW + CARD_GAP);
     const cy = cardsTop;
     const isHi = (i === _highlightIdx) || (i === _hoverCardIdx);
-    _drawCard(ctx, cx2, cy, lay.cardW, lay.cardH, card, isHi);
+    _drawCard(ctx, cx2, cy, lay.cardW, lay.cardH, card, isHi, theme);
   }
 
   // ── FOOTER ─────────────────────────────────────────────────────────
@@ -514,7 +570,7 @@ export function drawModal(ctx, w, h, opts = {}) {
   ctx.restore();
 }
 
-function _drawCard(ctx, x, y, w, h, p, highlighted) {
+function _drawCard(ctx, x, y, w, h, p, highlighted, modalTheme) {
   const r = p.relic;
   const isAltar = (p.hpCost || 0) > 0;
   const isShop = !!p.shop;
@@ -524,6 +580,12 @@ function _drawCard(ctx, x, y, w, h, p, highlighted) {
                           : tier === 'rare' ? '#f4d9a0'
                           : '#b8c8d8');
   const tintRgb = _hexToRgb(tint);
+  // Outer-border color: when the modal is themed, every card picks up
+  // the modal-level theme color for its frame so the 3 cards read as
+  // one set. Tier ribbon at top + tier label still carry the tier
+  // signal — outer color is the SET signal. Mixed modals fall back
+  // to per-card tier color.
+  const outerCol = modalTheme ? modalTheme.color : tint;
   const tierLabel = tier.toUpperCase();
   const tierGlyph = tier === 'mythic' ? '✦' : tier === 'legendary' ? '★' : tier === 'rare' ? '◆' : '◇';
   const themeId = RELIC_THEMES[r?.id];
@@ -563,8 +625,9 @@ function _drawCard(ctx, x, y, w, h, p, highlighted) {
   ctx.fillStyle = tint;
   ctx.fillRect(x, y, w, 6);
 
-  // Tier-tint border (the rest of the frame)
-  ctx.strokeStyle = tint;
+  // Outer-border — theme color when modal is themed (unifies the 3
+  // cards as a SET), tier color otherwise (mixed modals).
+  ctx.strokeStyle = outerCol;
   ctx.lineWidth = highlighted ? 2 : 1.4;
   ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
@@ -788,15 +851,113 @@ function _drawThemeChip(ctx, bx, by, bs, theme) {
   ctx.restore();
 }
 
+// Header glyph — same family as the chip glyph but rendered at the
+// modal-header scale (no chip backdrop, slightly bolder strokes,
+// drawn as a single bright color directly). Used in drawModal to
+// stamp the theme identity at the top of the modal so the player's
+// eye links the pedestal sigil → modal sigil → set of 3 cards.
+function _drawHeaderGlyph(ctx, cx, cy, r, theme) {
+  ctx.save();
+  ctx.fillStyle = theme.color;
+  ctx.strokeStyle = theme.color;
+  ctx.lineWidth = 1.6;
+  switch (theme.id) {
+    case 'storm': {
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.35, cy - r);
+      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
+      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
+      ctx.lineTo(cx - r * 0.35, cy + r);
+      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
+      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'flame': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'blood': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'vow': {
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'shadow': {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    }
+    default: {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 // ─── Copy ─────────────────────────────────────────────────────────────────
 
-function _titleForKind(kind) {
-  switch (kind) {
-    case 'altar':     return 'AN ALTAR';
-    case 'shop':      return 'WANDERER\'S WARES';
-    case 'sanctuary': return 'A SANCTUARY';
-    case 'reward':
-    default:          return 'A REWARD';
+// Theme-aware copy. Eyebrow names the offering's source (theme or
+// generic ruin). Title names the gift kind, flavored by theme when
+// the room is themed.
+function _eyebrowCopy(theme, kind) {
+  if (kind === 'shop') return '— THE WANDERER WAITS —';
+  if (kind === 'sanctuary') return '— THE RUIN RESTS —';
+  if (theme) return `— THE ${theme.name.toUpperCase()} OFFERS —`;
+  if (kind === 'altar') return '— THE RUIN DEMANDS —';
+  return '— THE RUIN OFFERS —';
+}
+function _titleCopy(theme, kind) {
+  if (kind === 'shop') return "WANDERER'S WARES";
+  if (kind === 'sanctuary') return 'A SANCTUARY';
+  if (kind === 'altar') {
+    if (!theme) return 'A BARGAIN';
+    switch (theme.id) {
+      case 'storm':  return 'A STORM PACT';
+      case 'flame':  return 'A FLAME PACT';
+      case 'blood':  return 'A BLOOD PACT';
+      case 'vow':    return 'A VOW PACT';
+      case 'shadow': return 'A SHADOW PACT';
+      default:       return 'A PACT';
+    }
+  }
+  // reward (default)
+  if (!theme) return 'AN OFFERING';
+  switch (theme.id) {
+    case 'storm':  return 'A GIFT OF STORMS';
+    case 'flame':  return 'A GIFT OF FLAMES';
+    case 'blood':  return 'A GIFT OF BLOOD';
+    case 'vow':    return 'A GIFT OF VOWS';
+    case 'shadow': return 'A GIFT OF SHADOWS';
+    default:       return 'AN OFFERING';
   }
 }
 function _subtitleForKind(kind) {

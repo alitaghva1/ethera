@@ -1279,36 +1279,33 @@ export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
     if (legendaryBlocked && (t === 'legendary' || t === 'mythic')) continue;
     if (availableByTier[t]) availableByTier[t].push(id);
   }
-  // Theme bias — when opts.theme is set, pickFromTier first attempts
-  // the themed sub-pool with THEME_BIAS probability. Falls back to
-  // off-theme uniformly if the sub-pool is empty or the dice rolls
-  // off-theme. Skipped when no theme is requested. The 70% number
-  // matches Hades' "this room offers Athena boons but a few off-god
-  // boons can sneak in" feel — high enough to make the theme matter,
-  // low enough that the player still sees variety.
+  // Theme handling — when opts.theme is set, themed pedestals deliver
+  // a coherent set: every offer is pulled from the requested theme's
+  // sub-pool. The earlier 70% bias produced ~1 off-theme card per
+  // 3-slot modal, which broke the "this is a FLAME offering" contract
+  // the pedestal makes visually. Pool sizes (8 storm, 12 flame, 13
+  // blood, 15 vow, 14 shadow) are comfortable for 3 unseen picks.
+  //
+  // The picks loop runs two passes: first themed-only across all
+  // fallback tiers, then un-themed as a last-resort safety net (only
+  // triggers if every themed tier is exhausted, which is essentially
+  // unreachable at our pool sizes). For un-themed pedestals the
+  // first pass is skipped and the second pass is the only path.
   const themeBias = opts.theme;
-  const THEME_BIAS_P = 0.70;
-  const pickFromTier = (t) => {
+  const pickFromTier = (t, themedOnly) => {
     const arr = availableByTier[t];
     if (!arr || !arr.length) return null;
-    if (themeBias && Math.random() < THEME_BIAS_P) {
-      // Find themed candidates within this tier
-      let pickIdx = -1;
+    if (themedOnly && themeBias) {
+      // Collect every themed index in this tier, pick one uniformly.
+      const themedIdx = [];
       for (let i = 0; i < arr.length; i++) {
-        if (RELIC_THEMES[arr[i]] === themeBias) {
-          // Reservoir-style — we could collect all matches and pick
-          // uniformly, but a single forward scan with rerolling is
-          // good enough at our small pool size (<60 candidates per
-          // tier worst case).
-          if (pickIdx < 0 || Math.random() < 0.5) pickIdx = i;
-        }
+        if (RELIC_THEMES[arr[i]] === themeBias) themedIdx.push(i);
       }
-      if (pickIdx >= 0) {
-        const id = arr[pickIdx];
-        arr.splice(pickIdx, 1);
-        return id;
-      }
-      // Themed sub-pool empty — fall through to uniform pick.
+      if (themedIdx.length === 0) return null;
+      const idx = themedIdx[(Math.random() * themedIdx.length) | 0];
+      const id = arr[idx];
+      arr.splice(idx, 1);
+      return id;
     }
     const i = (Math.random() * arr.length) | 0;
     const id = arr[i];
@@ -1329,9 +1326,23 @@ export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
     if (belowMin(target)) target = minTier;   // promote the target to at least minTier
     const tryOrder = [target, ...fallbackOrder.filter(t => t !== target)].filter(t => !belowMin(t));
     let got = null;
-    for (const t of tryOrder) {
-      got = pickFromTier(t);
-      if (got) break;
+    // Pass 1 — themed only (only when themeBias is set). Guarantees a
+    // coherent set: all offers from the same theme. Walks the tier
+    // fallback order so a missed mythic theme-roll prefers a legendary
+    // theme-roll over dropping to common.
+    if (themeBias) {
+      for (const t of tryOrder) {
+        got = pickFromTier(t, true);
+        if (got) break;
+      }
+    }
+    // Pass 2 — un-themed (uniform). Primary path for un-themed
+    // pedestals; safety net for themed ones if all themed tiers run dry.
+    if (!got) {
+      for (const t of tryOrder) {
+        got = pickFromTier(t, false);
+        if (got) break;
+      }
     }
     if (!got) break;
     picks.push(RELIC_DEFS[got]);
