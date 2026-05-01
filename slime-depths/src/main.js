@@ -6070,8 +6070,28 @@ function render() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
   let wash = null;
+  // Per-kind floor washes (audit D10): event rooms (sanctuary / altar /
+  // reward / shop / trove / chestroom) all share the same 16×11 footprint
+  // with pillarTemplate: 3 — they differ only by their center prop and
+  // this wash. Previously sanctuary + shop had no wash assigned at all,
+  // and altar/reward washes were too mild to register against the floor.
+  // Each kind now has a distinct tonal identity:
+  //   combat       — muted blood (the default, kept subtle so frequent
+  //                  fights don't feel oppressive)
+  //   sanctuary    — cool teal-green (rest, healing)
+  //   reward       — warm gold-green (loot, achievement)
+  //   altar        — deep blood-red (sacrifice, pact)
+  //   shop         — warm amber (commerce, hearth)
+  //   trove        — muted brown-gold (treasure, dust)
+  //   chestroom    — violet (gambling tension)
+  //   challenge    — burnt orange (heat, trial)
+  //   boss         — per-floor (T2.4)
   if (kind === 'combat')         wash = 'rgba(80, 20, 28, 0.08)';
-  else if (kind === 'reward')    wash = 'rgba(40, 120, 90, 0.10)';
+  else if (kind === 'sanctuary') wash = 'rgba(50, 130, 110, 0.14)';
+  else if (kind === 'reward')    wash = 'rgba(110, 150, 70, 0.14)';
+  else if (kind === 'shop')      wash = 'rgba(180, 120, 50, 0.14)';
+  else if (kind === 'trove')     wash = 'rgba(160, 130, 60, 0.12)';
+  else if (kind === 'chestroom') wash = 'rgba(140, 90, 180, 0.14)';
   else if (kind === 'boss') {
     // Per-boss arena tint (audit T2.4): previously every boss room got
     // the same generic 'rgba(140, 18, 24, 0.18)' muddy-red wash. The
@@ -6090,8 +6110,8 @@ function render() {
     else if (currentFloorLevel === 4) wash = 'rgba(180, 70, 30, 0.22)';
     else                              wash = 'rgba(140, 18, 24, 0.18)';
   }
-  else if (kind === 'altar')     wash = 'rgba(150, 20, 40, 0.12)';
-  else if (kind === 'challenge') wash = 'rgba(150, 90, 20, 0.08)';
+  else if (kind === 'altar')     wash = 'rgba(180, 30, 50, 0.18)';
+  else if (kind === 'challenge') wash = 'rgba(180, 100, 30, 0.12)';
   if (wash && !introActiveNow) {
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
