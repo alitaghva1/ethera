@@ -31,8 +31,24 @@ let shakeScale = 1.0;
 export function setShakeScale(v) { shakeScale = Math.max(0, Math.min(1.5, v)); }
 export function getShakeScale() { return shakeScale; }
 
+// Small-shake threshold — calls below this amp are treated as "tiny
+// punctuation" (base hits are 4.5; crits 7; counters 10; boss-events
+// 14-22). When a shake is already in flight, suppress incoming SMALL
+// shakes so spammed base hits during fast attack chains don't keep
+// re-igniting tremor on top of the decaying big shake. Heavy shakes
+// (crit/counter/boss) always fire through. Audit found combat felt
+// like a constant low-grade tremor with Ringing Steel + base hits at
+// 2-3 per second; this is the budget cap.
+const SMALL_SHAKE_AMP = 5.0;
+
 export function shakeCamera(amp, dur) {
   const a = amp * shakeScale;
+  // Budget cap: while a shake is in flight, ignore small (base-hit)
+  // shakes. This is the difference between "every sword swing pumps
+  // the camera" (constant tremor) and "first hit shakes, the rest
+  // ride that decay" (punctuation reads as punctuation). Heavy hits
+  // are unaffected.
+  if (a < SMALL_SHAKE_AMP && camera.shakeDur > 0) return;
   // If a stronger shake is already in flight, don't downgrade to a
   // weaker call. shakeAmp + shakeDur take the max independently so
   // a short-strong call can't truncate a long-decaying one.
@@ -52,7 +68,14 @@ export function shakeCamera(amp, dur) {
 
 // Pulse the camera zoom briefly. amt > 0 zooms in (punch-in), < 0 zooms out.
 // dur is total seconds; amount decays quartic so the kick is front-loaded.
+const SMALL_PULSE_AMT = 0.05;
 export function pulseZoom(amt, dur = 0.25) {
+  // Budget cap (mirrors shakeCamera): if a pulse is in flight at all,
+  // ignore incoming SMALL pulses. Three crits in 250 ms each used to
+  // fire pulseZoom(0.025) which compounded into a strobe punch-in.
+  // Heavy pulses (boss kills, mythic pickups, fusion forge) fire
+  // through unchanged.
+  if (Math.abs(amt) < SMALL_PULSE_AMT && camera.zoomPulseTime > 0) return;
   // Don't override a larger ongoing pulse
   if (Math.abs(amt) > Math.abs(camera.zoomPulseAmt * (camera.zoomPulseTime / Math.max(0.001, camera.zoomPulseDur)))) {
     camera.zoomPulseAmt = amt * shakeScale;      // tie to shake scale for accessibility
