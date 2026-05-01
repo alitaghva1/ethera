@@ -2469,6 +2469,42 @@ export function drawEnemy(ctx, e) {
   // damage number spawn point + everything else in lockstep.
   const frame = getEnemyFrame(e);
 
+  // Dev diagnostic — `window.__drawEnemyFrames = true` in DevTools draws
+  // the canonical frame box (red rect) + center dot (yellow) + topY
+  // line (cyan) + halfWidth bar (magenta) around every enemy. Use this
+  // to identify any enemy whose auto-measured bounds are wrong: the box
+  // should hug the visible body. Anything sticking out is a sprite
+  // whose def.frame override should be set explicitly.
+  if (typeof window !== 'undefined' && window.__drawEnemyFrames) {
+    ctx.save();
+    // Bounding box (red, 1px stroke)
+    ctx.strokeStyle = 'rgba(255, 80, 80, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      Math.round(e.x - frame.halfWidth) + 0.5,
+      Math.round(frame.topY) + 0.5,
+      Math.round(frame.halfWidth * 2),
+      Math.round(frame.bottomY - frame.topY),
+    );
+    // Center dot (yellow)
+    ctx.fillStyle = 'rgba(255, 220, 90, 1)';
+    ctx.fillRect(Math.round(e.x) - 1, Math.round(frame.centerY) - 1, 2, 2);
+    // topY hairline (cyan) — where the HP bar should sit just above
+    ctx.strokeStyle = 'rgba(120, 230, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(e.x - 18, frame.topY);
+    ctx.lineTo(e.x + 18, frame.topY);
+    ctx.stroke();
+    // Type label
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(e.type + (e.elite ? '·E' : '') + (e.boss ? '·B' : ''),
+                 e.x, frame.topY - 12);
+    ctx.restore();
+  }
+
   // Soft radial shadow — sized to the visible body half-width.
   // Squashed ellipse band 16% taller than a circle would be.
   const shadowR = frame.halfWidth * 1.5;
