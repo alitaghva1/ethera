@@ -104,6 +104,17 @@ import {
 } from './pedestals.js';
 import { drawCounterPips, tickCounterPips } from './counterPips.js';
 import { drawPedestalTeasers } from './pedestalTeaser.js';
+import {
+  requestModal as requestRelicChoiceModal,
+  clearModal as clearRelicChoiceModal,
+  isModalOpen as isRelicChoiceModalOpen,
+  isFullyOpen as isRelicChoiceModalFullyOpen,
+  updateModal as updateRelicChoiceModal,
+  drawModal as drawRelicChoiceModal,
+  handleModalKey as handleRelicChoiceModalKey,
+  handleModalMouseMove as handleRelicChoiceModalMouseMove,
+  handleModalClick as handleRelicChoiceModalClick,
+} from './relicChoiceModal.js';
 import { drawThemeAura } from './themes.js';
 import {
   drawWatcher,
@@ -909,6 +920,51 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopPropagation();
 }, true);    // capture phase so we beat the game-pause handler
+
+// Relic-choice modal — capture-phase handler so its keys (←/→ for
+// nav, E/Enter to take, Esc to back out) beat the world input
+// handlers below. R for reroll falls through to the existing
+// pedestal-reroll handler at line ~2258 (gold cost + spawn fresh
+// offers); the modal's clearModal+requestModal in the reroll
+// branch refreshes the visible cards.
+window.addEventListener('keydown', (e) => {
+  if (!isRelicChoiceModalFullyOpen()) return;
+  const handled = handleRelicChoiceModalKey(e.code);
+  if (handled) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
+
+// Mouse-click into a modal card commits the pick. Capture phase so it
+// runs before the world's pointerdown handlers (which would otherwise
+// fire LMB attack on the same frame). Mouse-move updates the modal's
+// hover-card highlight.
+window.addEventListener('pointerdown', (e) => {
+  if (!isRelicChoiceModalFullyOpen()) return;
+  if (e.button !== 0 && e.pointerType === 'mouse') return;     // LMB / touch only
+  // Convert client coords to canvas pixels using the same math as input.js
+  const c = document.querySelector('canvas');
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return;
+  const mx = (e.clientX - r.left) * (c.width / r.width);
+  const my = (e.clientY - r.top) * (c.height / r.height);
+  if (handleRelicChoiceModalClick(mx, my, c.width, c.height)) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
+window.addEventListener('pointermove', (e) => {
+  if (!isRelicChoiceModalFullyOpen()) return;
+  const c = document.querySelector('canvas');
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return;
+  const mx = (e.clientX - r.left) * (c.width / r.width);
+  const my = (e.clientY - r.top) * (c.height / r.height);
+  handleRelicChoiceModalMouseMove(mx, my, c.width, c.height);
+});
 
 // Ascension selector — show only if the player has unlocked at least tier 1
 // (i.e. has ever cleared floor 4). Clicking cycles current → next unlocked
@@ -2293,6 +2349,12 @@ window.addEventListener('keydown', (e) => {
     if (_reward === 'fusion') _opts.fusionBias = true;
     spawnRelicOffer(currentFloorLevel, _opts);
   }
+  // Re-fire the choice modal with the fresh offers — clearModal so the
+  // pedestal-id seen-set forgets the rerolled-away ones, then request a
+  // new open. If the modal was already open the close-then-open pattern
+  // gives the player a clean fade transition into the new offer set.
+  clearRelicChoiceModal();
+  requestRelicChoiceModal();
   // Feedback
   roomLabelText = `✦ REROLLED · -${cost}g ✦`;
   roomLabelColor = '#c9a86a';
@@ -2339,6 +2401,9 @@ function loadRoom(idx, entryFrom) {
   // Hamlet's pad is unaffected — enterHamletCanvas constructs its
   // own floor[0] without calling loadRoom.
   try { stopAmbientPad(); } catch (_e) {}
+  // Reset the relic-choice modal so a stale "seen pedestals" cache from
+  // a previous room can't suppress the modal in the new room.
+  clearRelicChoiceModal();
   // FUNCTIONAL DOORS — wipe stale state. Doors will be re-set up after
   // buildRoomFromData populates room.tiles + room.doors. The clear flag
   // resets so onRoomCleared fires once when this new room is finished.
@@ -2527,6 +2592,7 @@ function loadRoom(idx, entryFrom) {
   if (data.kind === 'altar') {
     const altarOpts = data.roomReward === 'legendary' ? { minTier: 'legendary' } : {};
     spawnAltarOffer(3, currentFloorLevel, altarOpts);
+    requestRelicChoiceModal();
   }
 
   // Round-7 Phase 4-lite — SHOP rooms spawn 3 priced pedestals on entry.
@@ -2538,6 +2604,7 @@ function loadRoom(idx, entryFrom) {
   if (data.kind === 'shop') {
     spawnShopOffer(currentFloorLevel);
     setTimeout(() => showTip('first_shop'), 1200);
+    requestRelicChoiceModal();
   }
 
   // Boss room — dramatic intro: hold gameplay for ~2s while showing boss name
@@ -4402,6 +4469,9 @@ function _tickInner(now) {
   updateSoulTethers(realDt);
   updateTips(realDt);                  // no-op shim; real tip lifecycle is in notifications.js
   updateNotifications(realDt);         // unified top-right rail (tips, pickups, etc.)
+  // Relic-choice modal — fade animations + deferred-trigger advance.
+  // Pass the current room kind so the modal knows what title to show.
+  updateRelicChoiceModal(realDt, { roomKind: floor[roomIndex]?.kind });
   // Death ceremony slow-mo ramp (0.25x for first 1.2s, then ramps back)
   let deathSlowmo = 1;
   if (deathCeremonyActive) {
@@ -4536,7 +4606,11 @@ function _tickInner(now) {
       (achEl && achEl.style.display !== 'none') ||
       (volumesEl && volumesEl.style.display !== 'none')
     );
-    if (!panActive && !hubModalOpen && !wakeIntroActive) {
+    // Relic choice modal pauses world updates so the hero can't drift
+    // around while the player reads the cards. Pedestal rooms have no
+    // enemies so this is a soft pause — visual only, no danger.
+    const choiceModalActive = isRelicChoiceModalOpen();
+    if (!panActive && !hubModalOpen && !wakeIntroActive && !choiceModalActive) {
       updateHero(dt, enemies, mw);
       updateEnemies(dt, hero);
       updateFlames(dt);
@@ -4896,6 +4970,7 @@ function _tickInner(now) {
       phaseIntroTime > 0 ||
       _wakeCinematicActive ||
       isIntroActive() ||    // heartbeat intro — defer notifications until reveal
+      isRelicChoiceModalOpen() ||    // pedestal-choice modal claims the screen
       // Wizard-kit Sprint 3D UX audit — run-end states own the screen.
       // Suppresses pickup banner, notifications, tips so they don't
       // stack on top of "YOU HAVE FALLEN" / floor-clear / win modals.
@@ -5188,6 +5263,7 @@ function _tickInner(now) {
         }
         spawnRelicOffer(offerLevel, offerOpts);
         applyTarotPedestalMods();
+        requestRelicChoiceModal();
         if (isMiniboss) {
           // Extra flourish on mini-boss reward: brighter ping + sparkle burst
           // to telegraph "this one's better than the usual drop".
@@ -5245,6 +5321,7 @@ function _tickInner(now) {
       if (pedestals.length === 0) {
         import('./gold.js').then(g => g.dropGold(hero.x, hero.y - 20, 20));
         spawnRelicOffer(currentFloorLevel);
+        requestRelicChoiceModal();
         playSfx('click', { volume: 0.9, rate: 1.1 });
       } else if (!hasActivePedestals()) {
         room.cleared = true;
@@ -6350,6 +6427,21 @@ function render() {
   });
   drawComboOverlay(ctx, canvas.width, canvas.height);
   drawPerfectDodgeOverlay(ctx, canvas.width, canvas.height);
+  // Relic-choice modal — Hades-style overlay for pedestal rooms.
+  // Drawn AFTER HUD + watcher so it sits on top of everything in the
+  // pedestal-room moment, but BEFORE the death-ceremony overlay
+  // (which lives outside this if-branch and owns the screen on death).
+  // Reroll cost matches main.js's keydown handler formula: shop=30,
+  // combat=20+floor*15.
+  {
+    const _floorData = floor[roomIndex];
+    const _isShop = _floorData?.kind === 'shop';
+    const _rerollCost = _isShop ? 30 : (20 + currentFloorLevel * 15);
+    drawRelicChoiceModal(ctx, canvas.width, canvas.height, {
+      roomKind: _floorData?.kind,
+      rerollCost: _rerollCost,
+    });
+  }
   } // end if !_wakeCinematicActive
 
   // DEATH CEREMONY overlay — desaturating red veil that ramps in, vignette crush

@@ -491,6 +491,26 @@ const PEDESTAL_HOVER_R = 36;
 
 export function getHoveredPedestalIndex() { return _hoveredIndex; }
 
+// Pick a pedestal by explicit index — used by the relic-choice modal
+// (Hades-style overlay) which presents all offers at once and commits
+// the choice via mouse click or keyboard. Internally it temporarily
+// promotes that pedestal to the "hovered" slot, runs the existing
+// pickup logic (which has all the fusion / theme / SFX / banner
+// side-effects baked in), and restores the previous hover. Returns
+// the same shape as consumePendingPickup: relic def on success,
+// 'denied_hp' / 'denied_gold' on insufficient resources, null if the
+// index is out of range or the pedestal is already picked.
+export function pickPedestalByIndex(idx) {
+  if (idx < 0 || idx >= pedestals.length) return null;
+  const p = pedestals[idx];
+  if (!p || p.picked) return null;
+  const prev = _hoveredIndex;
+  _hoveredIndex = idx;
+  const result = consumePendingPickup();
+  _hoveredIndex = prev;
+  return result;
+}
+
 // E-key handler — call from main.js when the player presses E in a
 // combat/altar/reward/boss/shop room. Returns the picked relic def, or
 // null if nothing was hovered, 'denied_hp' if the hovered pedestal is
