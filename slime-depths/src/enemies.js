@@ -2514,8 +2514,18 @@ export function drawEnemy(ctx, e) {
   // HP bar — boss red-orange, elite gold (or affix color), normal red.
   // Elites + bosses show bar ALWAYS (threat readability); normals only when hurt.
   if (!e.dead && (e.hp < e.maxHp || e.elite || e.boss)) {
-    const w = e.boss ? 72 : e.elite ? 52 : 38;
-    const h = e.boss ? 7 : e.elite ? 5 : 4;
+    // Width scales with collision radius so big enemies get bigger bars
+    // and small enemies get smaller bars (instead of a one-size-fits-all
+    // 38 px stripe sitting awkwardly above tiny slimes). Floor at 28
+    // so even radius-18 haunts get a readable bar. Boss + elite get a
+    // small constant boost on top of the radius scale to clearly mark
+    // them as more important.
+    const baseW = Math.max(28, (e.def.radius || 22) * 1.8 + 4);
+    const w = e.boss ? baseW + 24 : e.elite ? baseW + 8 : baseW;
+    // Height tightened — 7-px boss bar was a thick band that competed
+    // with portrait + name + affix in the upper screen band. Slimmer
+    // bars read as "status" not as "huge marker."
+    const h = e.boss ? 5 : e.elite ? 4 : 3;
     // HP-bar Y offset (fix A): previously e.y - size * 0.9 = the TOP of
     // the source cell, which is mostly empty padding for Tiny-RPG sprites
     // (visible character fills only ~23% of the 100-px cell). For a
@@ -2529,7 +2539,11 @@ export function drawEnemy(ctx, e) {
     const yBar = e.y - size * 0.27;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(e.x - w/2, yBar, w, h);
-    let barColor = e.boss ? '#ff7a55' : e.elite ? '#ffd155' : '#d8556a';
+    // Bar fill — boss red-orange, elite gold (or affix color when
+    // affixed), normal saturated red. Previous '#d8556a' read pink
+    // against green slimes; '#e0584c' has more red weight + holds
+    // contrast on green / grey / brown bodies.
+    let barColor = e.boss ? '#ff7a55' : e.elite ? '#ffd155' : '#e0584c';
     if (e.affix) barColor = e.affix.auraColor;
     // Critical pulse — bar flashes brighter red when HP < 33%, drawing the eye
     if (critical) {
@@ -2553,24 +2567,85 @@ export function drawEnemy(ctx, e) {
       ctx.lineWidth = 1;
       ctx.strokeRect(e.x - w/2 - 0.5, yBar - 0.5, w + 1, h + 1);
     }
-    // Affix badge — compact colored pill with a single-letter glyph to the LEFT of the HP bar
+    // Affix badge — small glyph + colored chip, drawn LEFT of the bar.
+    // Previously a single letter on a colored rectangle ('F'/'E'/'V'/'W'),
+    // which read as debug labels rather than iconography (e.g. yellow W
+    // text on green slime body had poor contrast). Each affix now has
+    // a procedural glyph that conveys its theme at a glance:
+    //   frost   — 6-spoke snowflake
+    //   ember   — flame teardrop (pointed up)
+    //   venom   — drop (pointed down)
+    //   warded  — pentagonal shield
+    // Badge: dark chip background with affix-color border + glyph in
+    // affix-color. Reads as a status pip, not a labeled rectangle.
     if (e.affix) {
-      const bx = e.x - w/2 - 14;
-      const by = yBar - 1;
+      ctx.save();              // isolate strokeStyle / lineWidth changes
       const bs = 12;
-      // Filled rounded square
-      ctx.fillStyle = e.affix.auraColor;
+      const bx = e.x - w/2 - bs - 2;
+      // Vertically center the chip on the bar's midline so the
+      // status pip reads as paired with the bar, not above/below it.
+      const by = Math.round(yBar + h / 2 - bs / 2);
+      const cx = bx + bs / 2;
+      const cy = by + bs / 2;
+      const r = (bs - 4) / 2;     // glyph radius inside chip
+      // Chip background (dark, semi-transparent so the affix-color
+      // glyph reads brightly on top)
+      ctx.fillStyle = 'rgba(12, 8, 14, 0.78)';
       ctx.fillRect(bx, by, bs, bs);
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(bx + 1, by + bs - 2, bs - 2, 1);
-      // Letter
-      ctx.font = 'bold 10px Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#1a0f10';
-      ctx.fillText(e.affix.badge, bx + bs/2, by + bs/2 + 0.5);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
+      // Affix-color border ring
+      ctx.strokeStyle = e.affix.auraColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
+      // Glyph — affix-color, drawn with simple primitives at the chip
+      // center. Switched on affix.id (stable string) rather than
+      // affix.badge (a presentation field) so future affix variants
+      // get an explicit glyph case.
+      ctx.fillStyle = e.affix.auraColor;
+      ctx.strokeStyle = e.affix.auraColor;
+      ctx.lineWidth = 1.2;
+      const gid = e.affix.id;
+      if (gid === 'frost') {
+        // 6-spoke snowflake: vertical + horizontal + 2 diagonals
+        const d = r * 0.72;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+        ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+        ctx.moveTo(cx - d, cy - d); ctx.lineTo(cx + d, cy + d);
+        ctx.moveTo(cx + d, cy - d); ctx.lineTo(cx - d, cy + d);
+        ctx.stroke();
+      } else if (gid === 'ember') {
+        // Flame teardrop — pointed top, bulged bottom
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - r);
+        ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
+        ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
+        ctx.closePath();
+        ctx.fill();
+      } else if (gid === 'venom') {
+        // Drop — bulged top, pointed bottom (flame inverted)
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + r);
+        ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
+        ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
+        ctx.closePath();
+        ctx.fill();
+      } else if (gid === 'warded') {
+        // Pentagon shield — flat top, pointed bottom
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
+        ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
+        ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
+        ctx.lineTo(cx, cy + r);
+        ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // Unknown affix — fallback to a dot so badge still has something.
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();           // restore strokeStyle + lineWidth
     }
     // Warded shield indicator — bar above HP bar that depletes with staggers
     if (e.affix && e.affix.id === 'warded' && !e._shieldBroken) {
