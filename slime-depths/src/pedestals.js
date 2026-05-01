@@ -519,73 +519,176 @@ function _drawChoicePedestal(ctx, p, now) {
   const tintColor = theme ? theme.color : '#f4d9a0';
   const isAltar = !!p.altar;
   const baseY = p.y + Math.sin(p.bob) * 2;
-
-  // Floor glow ring — radial pulse in theme color (or warm gold for mixed)
-  const ringPulse = 0.65 + 0.35 * Math.sin(now * 1.6 + p.bob);
-  const ringR = 36 + ringPulse * 6;
   const tintRgb = _hexToRgbStr(tintColor);
-  const grad = ctx.createRadialGradient(p.x, baseY + 4, 4, p.x, baseY + 4, ringR);
-  grad.addColorStop(0, `rgba(${tintRgb}, ${(0.50 * ringPulse).toFixed(3)})`);
-  grad.addColorStop(0.5, `rgba(${tintRgb}, ${(0.18 * ringPulse).toFixed(3)})`);
-  grad.addColorStop(1, `rgba(${tintRgb}, 0)`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(p.x - ringR, baseY - ringR + 4, ringR * 2, ringR * 2);
 
-  // Pedestal base — wider than legacy single-relic pedestals to read
-  // as the room's focal monument.
-  ctx.fillStyle = isAltar ? '#1a0a10' : '#28202c';
-  ctx.fillRect(p.x - 18, baseY + 2, 36, 12);
-  ctx.fillStyle = isAltar ? '#52181f' : '#3e3640';
+  // ── FLOOR AURA — TWO LAYERS ─────────────────────────────────────────
+  // Earlier draft was a single radial gradient that read as a flat
+  // floor wash. Now: an inner saturated "consecration" disc (additive
+  // for the lit-from-below feel) + an outer wider diffuse ring that
+  // bleeds further into the room. Both pulse with the breath rhythm
+  // so the pedestal feels like it's exhaling theme energy.
+  const breath = 0.65 + 0.35 * Math.sin(now * 1.6 + p.bob);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // Outer wide diffuse aura — bigger reach so the pedestal claims
+  // visual ownership of a wider room footprint.
+  const outerR = 70 + breath * 8;
+  const outerG = ctx.createRadialGradient(p.x, baseY + 4, 8, p.x, baseY + 4, outerR);
+  outerG.addColorStop(0, `rgba(${tintRgb}, ${(0.20 * breath).toFixed(3)})`);
+  outerG.addColorStop(0.6, `rgba(${tintRgb}, ${(0.08 * breath).toFixed(3)})`);
+  outerG.addColorStop(1, `rgba(${tintRgb}, 0)`);
+  ctx.fillStyle = outerG;
+  ctx.fillRect(p.x - outerR, baseY - outerR + 4, outerR * 2, outerR * 2);
+  // Inner tight aura — saturated, near the pedestal base
+  const innerR = 36 + breath * 4;
+  const innerG = ctx.createRadialGradient(p.x, baseY + 4, 2, p.x, baseY + 4, innerR);
+  innerG.addColorStop(0, `rgba(${tintRgb}, ${(0.55 * breath).toFixed(3)})`);
+  innerG.addColorStop(0.5, `rgba(${tintRgb}, ${(0.22 * breath).toFixed(3)})`);
+  innerG.addColorStop(1, `rgba(${tintRgb}, 0)`);
+  ctx.fillStyle = innerG;
+  ctx.fillRect(p.x - innerR, baseY - innerR + 4, innerR * 2, innerR * 2);
+  ctx.restore();
+
+  // ── PEDESTAL BASE ─────────────────────────────────────────────────
+  // Stone with theme tint baked in. Replaces the flat dark-stone block
+  // — the stone now reads as carved/branded for this theme. Altar
+  // pedestals retain their crimson cast on top of the theme tint.
+  // Layers:
+  //   1. Dark stone base (full rect)
+  //   2. Theme-tinted overlay at 0.30 alpha (carves the theme into
+  //      the stone's mid-tones)
+  //   3. Cap highlight — slightly desaturated theme color
+  //   4. Top-inset slot — fully theme-colored (where the "offering" sits)
+  //   5. Engraved rune ring on the cap — pulses with the breath
+  ctx.fillStyle = isAltar ? '#1a0a10' : '#1f1822';
+  ctx.fillRect(p.x - 18, baseY + 2, 36, 14);
+  // Theme tint overlay
+  ctx.fillStyle = `rgba(${tintRgb}, 0.30)`;
+  ctx.fillRect(p.x - 18, baseY + 2, 36, 14);
+  // Cap (lighter top edge)
+  ctx.fillStyle = `rgba(${tintRgb}, 0.42)`;
   ctx.fillRect(p.x - 16, baseY, 32, 4);
-  // Pedestal-top inset (where the offering "sits")
-  ctx.fillStyle = `rgba(${tintRgb}, 0.55)`;
+  ctx.fillStyle = isAltar ? '#52181f' : '#36304a';
+  ctx.fillRect(p.x - 16, baseY + 1, 32, 1);     // dark mortar line under cap
+  // Top inset (offering bowl) — fully theme-colored
+  ctx.fillStyle = `rgba(${tintRgb}, 0.78)`;
   ctx.fillRect(p.x - 12, baseY - 2, 24, 4);
+  // Side bevels — slim darker stripes mark the pedestal sides
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.fillRect(p.x - 18, baseY + 2, 2, 14);
+  ctx.fillRect(p.x + 16, baseY + 2, 2, 14);
 
-  // Light beam rising — taller than legacy pedestals so it reads as
-  // a beacon visible across the room.
+  // Engraved rune ring on the cap — short oval glow stroke that
+  // pulses with the breath. Looks like the cap is ritually inscribed.
+  ctx.save();
+  ctx.strokeStyle = `rgba(${tintRgb}, ${(0.85 * breath).toFixed(3)})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(p.x, baseY, 12, 2.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Inner accent — thin gold-tone hairline so the rune doesn't read
+  // as flat color on saturated themes
+  ctx.strokeStyle = 'rgba(255, 235, 200, 0.30)';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.ellipse(p.x, baseY, 9, 1.6, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // ── LIGHT BEAM ──────────────────────────────────────────────────────
   const beamPulse = 0.6 + 0.4 * Math.sin(now * 2.2 + p.bob);
-  const beamHeight = 100;
+  const beamHeight = 110;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   const beamGrad = ctx.createLinearGradient(p.x, baseY - 2, p.x, baseY - beamHeight);
-  beamGrad.addColorStop(0, `rgba(${tintRgb}, ${(0.42 * beamPulse).toFixed(3)})`);
-  beamGrad.addColorStop(0.5, `rgba(${tintRgb}, ${(0.18 * beamPulse).toFixed(3)})`);
+  beamGrad.addColorStop(0, `rgba(${tintRgb}, ${(0.50 * beamPulse).toFixed(3)})`);
+  beamGrad.addColorStop(0.4, `rgba(${tintRgb}, ${(0.22 * beamPulse).toFixed(3)})`);
   beamGrad.addColorStop(1, `rgba(${tintRgb}, 0)`);
   ctx.fillStyle = beamGrad;
-  ctx.fillRect(p.x - 18, baseY - beamHeight, 36, beamHeight);
+  ctx.fillRect(p.x - 20, baseY - beamHeight, 40, beamHeight);
   ctx.restore();
 
-  // Theme glyph floating above the pedestal — same canvas-primitive
-  // family as the modal/door theme glyphs. Bobs gently. For
-  // mixed-theme rooms (no theme), draw a generic relic sigil (a
-  // crystal/diamond shape) to mark "this is an offering" without
-  // claiming a theme.
-  const glyphY = baseY - 50 + Math.sin(now * 1.6 + p.bob + 1.2) * 3;
-  const glyphAlpha = 0.85 + 0.15 * beamPulse;
+  // ── ORBITING MOTES (3) ──────────────────────────────────────────────
+  // Three theme-colored dots in a slow horizontal orbit above the
+  // pedestal. Hints "three offerings wait inside" without revealing
+  // the specific relics (those reveal in the modal). Skipped on
+  // mixed-theme pedestals — the three-mote orbit reads as a "set"
+  // signal that doesn't fit unthemed offers. Mixed pedestals get a
+  // single bigger generic mote instead (handled below).
+  if (theme) {
+    const orbitR = 24;
+    const orbitYOffset = -42;
+    const orbitSpeed = 0.6;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + now * orbitSpeed;
+      const mx = p.x + Math.cos(a) * orbitR;
+      const my = baseY + orbitYOffset + Math.sin(a) * orbitR * 0.45;
+      // Halo
+      const haloR = 7;
+      const halo = ctx.createRadialGradient(mx, my, 1, mx, my, haloR);
+      halo.addColorStop(0, `rgba(${tintRgb}, 0.9)`);
+      halo.addColorStop(1, `rgba(${tintRgb}, 0)`);
+      ctx.fillStyle = halo;
+      ctx.fillRect(mx - haloR, my - haloR, haloR * 2, haloR * 2);
+      // Bright core
+      ctx.fillStyle = `rgba(${tintRgb}, 1)`;
+      ctx.fillRect(Math.round(mx - 1), Math.round(my - 1), 2, 2);
+    }
+  }
+
+  // ── THEME GLYPH ─────────────────────────────────────────────────────
+  // Bigger (28px from center) and higher than before so it reads as
+  // the room's primary identity beacon, not a footnote. Bobbing.
+  // Mixed-theme rooms get a generic diamond at similar size, plus a
+  // single bigger mote to balance the absence of the orbit.
+  const glyphR = 22;
+  const glyphY = baseY - 78 + Math.sin(now * 1.4 + p.bob + 1.2) * 4;
+  const glyphAlpha = 0.92 + 0.08 * beamPulse;
   ctx.save();
   ctx.fillStyle = `rgba(${tintRgb}, ${glyphAlpha.toFixed(3)})`;
   ctx.strokeStyle = `rgba(${tintRgb}, ${glyphAlpha.toFixed(3)})`;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 2;
   if (theme) {
-    _drawThemeGlyphAt(ctx, p.x, glyphY, 14, theme.id);
+    _drawThemeGlyphAt(ctx, p.x, glyphY, glyphR, theme.id);
+    // Subtle backdrop halo behind the glyph so it pops on dark floors
+    const ghR = glyphR + 8;
+    const ghGrad = ctx.createRadialGradient(p.x, glyphY, 4, p.x, glyphY, ghR);
+    ghGrad.addColorStop(0, `rgba(${tintRgb}, 0.22)`);
+    ghGrad.addColorStop(1, `rgba(${tintRgb}, 0)`);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = ghGrad;
+    ctx.fillRect(p.x - ghR, glyphY - ghR, ghR * 2, ghR * 2);
+    // Re-draw the glyph on top of the halo so it stays sharp
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(${tintRgb}, ${glyphAlpha.toFixed(3)})`;
+    _drawThemeGlyphAt(ctx, p.x, glyphY, glyphR, theme.id);
   } else {
-    // Generic offering sigil — diamond / four-pointed star
-    const r = 12;
+    // Mixed-theme generic sigil — bigger 4-point star with halo
+    const r = 18;
     ctx.beginPath();
     ctx.moveTo(p.x, glyphY - r);
-    ctx.lineTo(p.x + r * 0.5, glyphY);
+    ctx.lineTo(p.x + r * 0.45, glyphY);
     ctx.lineTo(p.x, glyphY + r);
-    ctx.lineTo(p.x - r * 0.5, glyphY);
+    ctx.lineTo(p.x - r * 0.45, glyphY);
     ctx.closePath();
     ctx.fill();
+    // Halo
+    const ghR = r + 10;
+    const ghGrad = ctx.createRadialGradient(p.x, glyphY, 4, p.x, glyphY, ghR);
+    ghGrad.addColorStop(0, `rgba(${tintRgb}, 0.20)`);
+    ghGrad.addColorStop(1, `rgba(${tintRgb}, 0)`);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = ghGrad;
+    ctx.fillRect(p.x - ghR, glyphY - ghR, ghR * 2, ghR * 2);
   }
   ctx.restore();
 
-  // Outer ambient sparkle — occasional theme-tinted pixel motes
-  // around the pedestal. Cheap stateless math; no allocation.
-  if (Math.random() < 0.06) {
+  // ── AMBIENT SPARKLE ─────────────────────────────────────────────────
+  // Theme-tinted pixel motes drifting around the base. Bumped rate
+  // 0.06 → 0.10 so the pedestal feels more alive without being noisy.
+  if (Math.random() < 0.10) {
     const a = Math.random() * Math.PI * 2;
-    const dist = 26 + Math.random() * 10;
+    const dist = 28 + Math.random() * 14;
     sparkle(p.x + Math.cos(a) * dist, baseY + Math.sin(a) * dist * 0.5 - 4, tintColor);
   }
 }
