@@ -421,27 +421,37 @@ export function drawModal(ctx, w, h, opts = {}) {
   }
 
   // ── FOOTER ─────────────────────────────────────────────────────────
-  const footY = my + lay.modalH - MODAL_PAD_Y - FOOT_H + 8;
-  ctx.fillStyle = 'rgba(201, 168, 106, 0.6)';
-  ctx.font = 'italic 11px Georgia, serif';
-  ctx.textAlign = 'left';
+  // Two-row layout. Top row: pick controls (left) + Esc back-out (right).
+  // Bottom row: reroll affordance, only when reroll is meaningful.
+  // Replaces the old single-row "click · ← → E take · R reroll · 45g · Esc"
+  // ribbon that read as one cramped line.
+  const footTopY = my + lay.modalH - MODAL_PAD_Y - FOOT_H + 4;
+  const footBotY = footTopY + 16;
   // Hairline above footer
-  ctx.strokeStyle = 'rgba(201, 168, 106, 0.20)';
+  ctx.strokeStyle = 'rgba(201, 168, 106, 0.18)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(mx + MODAL_PAD_X, footY - 6);
-  ctx.lineTo(mx + lay.modalW - MODAL_PAD_X, footY - 6);
+  ctx.moveTo(mx + MODAL_PAD_X, footTopY - 6);
+  ctx.lineTo(mx + lay.modalW - MODAL_PAD_X, footTopY - 6);
   ctx.stroke();
-  // Left: pick + reroll hints
+  ctx.font = 'italic 11px Georgia, serif';
+  ctx.textBaseline = 'top';
+  // Top row LEFT: pick controls
+  ctx.fillStyle = 'rgba(201, 168, 106, 0.7)';
+  ctx.textAlign = 'left';
+  ctx.fillText('click  or  ← →  + E  to take', mx + MODAL_PAD_X, footTopY);
+  // Top row RIGHT: Esc
+  ctx.textAlign = 'right';
+  ctx.fillText('Esc  back out', mx + lay.modalW - MODAL_PAD_X, footTopY);
+  // Bottom row CENTER: reroll affordance
   const rerollCost = opts.rerollCost || 45;
   const canReroll = (gold.total >= rerollCost) && lay.n >= 2 && !_anyAltarOnly(unpicked);
-  ctx.fillText('click  ·  ← →  E   take', mx + MODAL_PAD_X, footY + 6);
-  ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.45)';
-  ctx.fillText(`R   reroll · ${rerollCost}g`, mx + MODAL_PAD_X + 180, footY + 6);
-  // Right: Esc
-  ctx.fillStyle = 'rgba(201, 168, 106, 0.6)';
-  ctx.textAlign = 'right';
-  ctx.fillText('Esc   back out', mx + lay.modalW - MODAL_PAD_X, footY + 6);
+  if (lay.n >= 2 && !_anyAltarOnly(unpicked)) {
+    ctx.fillStyle = canReroll ? '#ffd68a' : 'rgba(180, 140, 100, 0.45)';
+    ctx.font = 'italic bold 11px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`↻  R  reroll · ${rerollCost}g`, mx + lay.modalW / 2, footBotY);
+  }
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -460,6 +470,19 @@ function _drawCard(ctx, x, y, w, h, p, highlighted) {
   const tintRgb = _hexToRgb(tint);
   const tierLabel = tier.toUpperCase();
   const tierGlyph = tier === 'mythic' ? '✦' : tier === 'legendary' ? '★' : tier === 'rare' ? '◆' : '◇';
+  const themeId = RELIC_THEMES[r?.id];
+  const theme = themeId ? THEMES[themeId] : null;
+
+  // Stronger highlight scale — selected card lifts slightly so the eye
+  // tracks the choice (Hades-style). Wrapped in save/translate so all
+  // card content scales with it.
+  const scale = highlighted ? 1.04 : 1;
+  ctx.save();
+  if (scale !== 1) {
+    ctx.translate(x + w / 2, y + h / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-(x + w / 2), -(y + h / 2));
+  }
 
   // Card body
   const bg = ctx.createLinearGradient(0, y, 0, y + h);
@@ -468,44 +491,45 @@ function _drawCard(ctx, x, y, w, h, p, highlighted) {
   ctx.fillStyle = bg;
   ctx.fillRect(x, y, w, h);
 
-  // Highlight ring (cursor or keyboard focus)
+  // Outer glow when highlighted — fuller alpha so the selection
+  // reads at a glance.
   if (highlighted) {
-    ctx.strokeStyle = tint;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
-    // Outer glow
-    const glow = ctx.createRadialGradient(x + w / 2, y + h / 2, w * 0.2, x + w / 2, y + h / 2, w * 0.65);
-    glow.addColorStop(0, `rgba(${tintRgb}, 0.18)`);
+    const glow = ctx.createRadialGradient(x + w / 2, y + h / 2, w * 0.18,
+                                           x + w / 2, y + h / 2, w * 0.75);
+    glow.addColorStop(0, `rgba(${tintRgb}, 0.35)`);
     glow.addColorStop(1, `rgba(${tintRgb}, 0)`);
     ctx.fillStyle = glow;
-    ctx.fillRect(x - 16, y - 16, w + 32, h + 32);
+    ctx.fillRect(x - 24, y - 24, w + 48, h + 48);
   }
 
-  // Tier-tint border
+  // Tier ribbon — 6-px colored band across the top edge. Reads as
+  // "this card is COMMON" instantly without needing to parse text.
+  ctx.fillStyle = tint;
+  ctx.fillRect(x, y, w, 6);
+
+  // Tier-tint border (the rest of the frame)
   ctx.strokeStyle = tint;
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = highlighted ? 2 : 1.4;
   ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
-  // Tier row at top
+  // Tier label — small italic caps just below the ribbon
   ctx.fillStyle = tint;
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillText(`${tierGlyph}  ${tierLabel}`, x + w / 2, y + 12);
 
-  // Icon — circular framed art centered
-  const iconY = y + 32;
-  const iconSize = 72;
+  // Icon — circular framed art, top-aligned in the icon zone
+  const iconY = y + 30;
+  const iconSize = 70;
   const iconX = x + (w - iconSize) / 2;
   const iconCx = iconX + iconSize / 2;
   const iconCy = iconY + iconSize / 2;
   const iconR = iconSize / 2;
-  // Backdrop
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.beginPath();
   ctx.arc(iconCx, iconCy, iconR, 0, Math.PI * 2);
   ctx.fill();
-  // Tinted ring
   ctx.strokeStyle = tint;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -516,30 +540,52 @@ function _drawCard(ctx, x, y, w, h, p, highlighted) {
     drawRelicIcon(ctx, iconImg, null, null, r.id, iconX + 4, iconY + 4, iconSize - 8);
   }
 
-  // Name
-  ctx.fillStyle = tint;
-  ctx.font = 'bold 16px Georgia, serif';
-  ctx.fillText(r?.name || 'RELIC', x + w / 2, iconY + iconSize + 10);
-
-  // Flavor — wrap to 2 lines, faded italic
-  ctx.fillStyle = 'rgba(200, 190, 210, 0.72)';
-  ctx.font = 'italic 10.5px Georgia, serif';
-  const flavorMaxW = w - 20;
-  const flavorLines = r?.flavor ? wrapText(ctx, r.flavor, flavorMaxW).slice(0, 2) : [];
-  let cy2 = iconY + iconSize + 30;
-  for (const line of flavorLines) {
-    ctx.fillText(line, x + w / 2, cy2);
-    cy2 += 14;
+  // Theme glyph chip — bottom-right of the icon ring. Tiny themed
+  // symbol on a dark chip with theme-color border, matches the
+  // affix-glyph pattern from the HP-bar render. Marks "this relic
+  // belongs to BLOOD / STORM / etc." at-a-glance. Skipped when the
+  // relic has no theme tag.
+  if (theme) {
+    const cs = 18;
+    const cx2 = iconCx + iconR - 4;
+    const cy2 = iconCy + iconR - 4;
+    _drawThemeChip(ctx, cx2 - cs / 2, cy2 - cs / 2, cs, theme);
   }
 
-  // Desc — wrap to 3 lines, tier-color bold
+  // ── FIXED-HEIGHT TEXT SECTIONS ─────────────────────────────────────
+  // Section heights are fixed regardless of content variation so cards
+  // are visually uniform. Truncate flavor / desc with " ..." if they
+  // overflow the line cap.
+  const NAME_Y = y + 110;
+  const FLAVOR_Y = y + 132;
+  const FLAVOR_LINES = 2;
+  const DESC_Y = y + 162;
+  const DESC_LINES = 3;
+  const COST_Y = y + h - 16;
+  const lineH = 14;
+  const textColW = w - 20;
+
+  // Name — bold tint-color, centered, single line (truncate if huge)
+  ctx.fillStyle = tint;
+  ctx.font = 'bold 15px Georgia, serif';
+  ctx.fillText(_truncate(ctx, r?.name || 'RELIC', textColW), x + w / 2, NAME_Y);
+
+  // Flavor — italic faded, fixed 2-line area with ellipsis truncate
+  ctx.fillStyle = 'rgba(200, 190, 210, 0.72)';
+  ctx.font = 'italic 10.5px Georgia, serif';
+  const flavorAll = r?.flavor ? wrapText(ctx, r.flavor, textColW) : [];
+  const flavorLines = _truncateLines(flavorAll, FLAVOR_LINES);
+  for (let k = 0; k < flavorLines.length; k++) {
+    ctx.fillText(flavorLines[k], x + w / 2, FLAVOR_Y + k * lineH);
+  }
+
+  // Desc — bold tint-color, fixed 3-line area
   ctx.fillStyle = tint;
   ctx.font = 'bold 11.5px Georgia, serif';
-  cy2 += 4;
-  const descLines = wrapText(ctx, r?.desc || '', flavorMaxW).slice(0, 3);
-  for (const line of descLines) {
-    ctx.fillText(line, x + w / 2, cy2);
-    cy2 += 14;
+  const descAll = wrapText(ctx, r?.desc || '', textColW);
+  const descLines = _truncateLines(descAll, DESC_LINES);
+  for (let k = 0; k < descLines.length; k++) {
+    ctx.fillText(descLines[k], x + w / 2, DESC_Y + k * lineH);
   }
 
   // Cost row at bottom — gold for shop, HP for altar.
@@ -554,17 +600,136 @@ function _drawCard(ctx, x, y, w, h, p, highlighted) {
       const aff = gold.total >= (p.goldCost || 0);
       ctx.fillStyle = aff ? '#ffd68a' : '#d85a5a';
       ctx.font = 'bold 12px Georgia, serif';
-      ctx.fillText(`🪙  ${p.goldCost}g`, x + w / 2, y + h - 18);
+      ctx.fillText(`🪙  ${p.goldCost}g`, x + w / 2, COST_Y);
     } else if (isAltar) {
       const aff = hero.hp > p.hpCost;
       ctx.fillStyle = aff ? '#ff7a8e' : '#d85a5a';
       ctx.font = 'bold 12px Georgia, serif';
-      ctx.fillText(`— ${p.hpCost} HP —`, x + w / 2, y + h - 18);
+      ctx.fillText(`— ${p.hpCost} HP —`, x + w / 2, COST_Y);
     }
   }
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+// Single-line ellipsis truncation. Used for the relic name when a
+// future hyper-long-name relic ships.
+function _truncate(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  const ell = ' …';
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + ell).width <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return text.slice(0, lo) + ell;
+}
+
+// Multi-line ellipsis truncation. If wrapped lines exceed `maxLines`,
+// the last visible line gets " …" appended (replacing trailing whole
+// words until it fits).
+function _truncateLines(lines, maxLines) {
+  if (lines.length <= maxLines) return lines;
+  const visible = lines.slice(0, maxLines);
+  visible[maxLines - 1] = visible[maxLines - 1].replace(/\s*\S+$/, '') + ' …';
+  return visible;
+}
+
+// Theme chip — tiny dark pill with a theme-color border + procedural
+// glyph centered. Same family as the affix-badge glyphs in enemies.js
+// (canvas primitives, no painted assets needed). Glyph picks per
+// theme:
+//   storm   — lightning bolt (zigzag)
+//   flame   — flame teardrop (point up)
+//   blood   — drop (point down, blood red)
+//   vow     — pentagonal shield
+//   shadow  — crescent
+function _drawThemeChip(ctx, bx, by, bs, theme) {
+  ctx.save();
+  // Dark backdrop
+  ctx.fillStyle = 'rgba(12, 8, 14, 0.85)';
+  ctx.fillRect(bx, by, bs, bs);
+  // Theme-color border
+  ctx.strokeStyle = theme.color;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
+  // Glyph
+  const cx = bx + bs / 2;
+  const cy = by + bs / 2;
+  const r = (bs - 6) / 2;
+  ctx.fillStyle = theme.color;
+  ctx.strokeStyle = theme.color;
+  ctx.lineWidth = 1.2;
+  switch (theme.id) {
+    case 'storm': {
+      // Lightning bolt: zigzag from top to bottom
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.35, cy - r);
+      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
+      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
+      ctx.lineTo(cx - r * 0.35, cy + r);
+      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
+      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'flame': {
+      // Flame teardrop pointing up
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'blood': {
+      // Drop pointing down
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'vow': {
+      // Pentagonal shield
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'shadow': {
+      // Crescent — full circle minus an offset circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      // Cut-out — composite-globalDestination
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    }
+    default: {
+      // Unknown — small dot fallback
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 // ─── Copy ─────────────────────────────────────────────────────────────────
