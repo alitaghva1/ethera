@@ -4427,12 +4427,17 @@ function _tickInner(now) {
     // Hamlet uses fixed framing; no lookahead.
     leadX = 0; leadY = 0;
   } else {
-    // 40px lookahead — large enough to read across distance, small
-    // enough to keep the hero on screen comfortably. Multiplier
-    // 0.85 on Y dampens vertical lookahead so aiming up/down doesn't
-    // clip the HUD or ground plane.
-    leadX = (hero.aimX || 0) * 40;
-    leadY = (hero.aimY || 0) * 40 * 0.85;
+    // Lookahead — Hades/HLD pattern, biased toward aim direction so
+    // off-screen threats register before contact. Tier-1 art-direction
+    // sweep bumped from 40 → 80 px after the audit found 40 was on the
+    // edge of perceptible (3% of canvas width); 80 reads as a clear
+    // bias toward where the player is shooting/aiming without ever
+    // taking the hero off-screen at the deepest hero-edge case
+    // (hero radius 14 + 80 lead = 94 px from center, well inside the
+    // 360 px half-canvas-height safe zone). Y multiplier 0.85 dampens
+    // vertical lookahead so aiming up doesn't clip the HUD top band.
+    leadX = (hero.aimX || 0) * 80;
+    leadY = (hero.aimY || 0) * 80 * 0.85;
   }
   // Mouse position still preserved for `mw` consumers (cursor world
   // pos, used by other systems). Just not used for lookahead anymore.
