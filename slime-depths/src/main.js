@@ -5888,6 +5888,16 @@ function _tickInner(now) {
 const tick = guardRender(_tickInner);
 
 function render() {
+  // Cursor restore — index.html sets `canvas { cursor: none }` so the
+  // in-canvas aim crosshair can be the only visible pointer during
+  // play. But when the relic-choice modal is open, the player needs
+  // to see the system cursor to hover-pick a card. Toggle here so the
+  // cursor follows whichever mode the player is in. Cheap to set
+  // every frame (no-op if value matches current).
+  const showSystemCursor = isRelicChoiceModalOpen();
+  const wantedCursor = showSystemCursor ? 'default' : 'none';
+  if (canvas.style.cursor !== wantedCursor) canvas.style.cursor = wantedCursor;
+
   ctx.fillStyle = '#0a0810';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 

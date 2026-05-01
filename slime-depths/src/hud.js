@@ -771,11 +771,21 @@ export function drawHud(ctx, w, h, progress = {}) {
   // Per-ability-slot resonance progress (sword / blast / shield).
   // Sits above the themes row as the PRIMARY build axis. Each chip
   // shows count/5 with star glyphs at Resonance (3) + Ascendance (5).
-  // Bigger + brighter than the themes chips so the player reads slot
-  // progress first; themes are flavor identity below.
+  //
+  // Wizard-kit Sprint 3D playtest fix: only show slots the player has
+  // at least one relic in. Empty slots used to render as ghost chips
+  // (dim glyph + name) but the row of 3 was still consuming HUD real
+  // estate before the player did anything. Now the row scales to
+  // ownership — 0 owned slots → row hidden, 1 owned slot → 1 chip
+  // wide. Discoverability moves to the modal / Chronicles relicpedia
+  // (the slots system is named explicitly there).
   if (progress.relics && progress.relics.length > 0) {
     const slotCounts = getSlotCounts(progress.relics);
-    const slotList = Object.values(SLOTS);
+    const slotList = Object.values(SLOTS).filter(s => (slotCounts[s.id] | 0) > 0);
+    if (slotList.length === 0) {
+      // No owned slots yet — skip the entire row (header included) so
+      // the HUD doesn't reserve dead space.
+    } else {
     // Mobile font bump — hearts already do this (line 156). Without
     // matching scale on the chip labels, mobile players see hearts
     // at ~22 actual px but slot/theme chip text at ~9 actual px,
@@ -911,22 +921,27 @@ export function drawHud(ctx, w, h, progress = {}) {
       }
     }
     ctx.restore();
+    }   // end else (slotList.length > 0)
   }
 
-  // THEMES row — shows set-bonus progress across the 5 themes. Chips light
-  // up when a theme has ≥1 owned relic; glow at resonance (3), double-glow
-  // at ascendance (5). Sits above the fusion row + relic strip.
+  // THEMES row — shows set-bonus progress across the active themes.
+  // Chip lights up when a theme has ≥1 owned relic; glow at resonance
+  // (3), double-glow at ascendance (5).
   //
-  // Round-7-audit fix: was filtering to `themeCounts[t.id] > 0` so only
-  // the themes the player had relics in were visible. Players never
-  // learned the 5-theme system exists until they accidentally tripped
-  // a Resonance. Now ALL FIVE chips render once the player has any
-  // relic at all — 0-count chips render in muted gray. This is the
-  // game's primary build-craft system; making it visible up-front is
-  // the highest-leverage legibility win in the codebase.
+  // Wizard-kit Sprint 3D playtest fix: filter to ONLY themes the
+  // player has relics in. Previously rendered all 5 even when empty
+  // (with ghost styling) for system-discoverability — but on
+  // playtest, those 5 ghost chips read as "wasted UI space" given
+  // most early runs only touch 1-2 themes. Discoverability is now
+  // handled by the choice modal (which names the theme on every
+  // pedestal modal) and the relicpedia, both of which the player
+  // sees long before they care about resonance progression.
   if (progress.relics && progress.relics.length > 0) {
     const themeCounts = getThemeCounts(progress.relics);
-    const visibleThemes = Object.values(THEMES);
+    const visibleThemes = Object.values(THEMES).filter(t => (themeCounts[t.id] | 0) > 0);
+    if (visibleThemes.length === 0) {
+      // No themed relics yet — skip the row entirely.
+    } else {
     if (visibleThemes.length > 0) {
       // Mobile font bump — same trade as slot chips (and hearts at line
       // 156). Without this the chip text renders at sub-readable size
@@ -1082,6 +1097,7 @@ export function drawHud(ctx, w, h, progress = {}) {
       }
       ctx.restore();
     }
+    }   // end else (visibleThemes.length > 0)
   }
 
   // Active FUSIONS row — sits above the relic strip, rendered as diamond chips
