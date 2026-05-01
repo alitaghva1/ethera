@@ -759,6 +759,88 @@ export function drawHamletEntities(ctx) {
       ctx.restore();
     }
   }
+
+  // ── NPC IDLE ATMOSPHERES (Tier 2 hamlet storytelling, audit T2.7) ──
+  // The audit specifically called out: "smith doesn't swing the hammer
+  // (the anvil sprite has its own 9-frame animation, but the smith
+  // himself is static)." NPCs are single-frame PNGs so we can't animate
+  // them frame-by-frame, but we can paint procedural FX at their
+  // positions that read as "the smith is hammering / the keeper has a
+  // lantern / the gravekeeper tends the dead." Pure stateless math —
+  // no allocations, drops cleanly when not rendering.
+  //
+  // 1. Smith — hammer-strike sparks at the anvil. Synced to the anvil
+  //    FX cycle (9 frames @ 6 fps = 1.5 s loop). Sparks burst in the
+  //    first 0.2 s of each phase = "the strike", then fade.
+  if (isNpcUnlocked('smith')) {
+    // Anvil position is (906, 246) — see HAMLET_FX entry for anvil.
+    const ax = 906, ay = 246;
+    const STRIKE_CYCLE = 1.5;
+    const strikePhase = (now % STRIKE_CYCLE) / STRIKE_CYCLE;     // 0 → 1
+    if (strikePhase < 0.18) {
+      // Spawn 5 sparks, deterministic positions per phase tick so they
+      // don't shimmer. Each spark flies up + outward from the anvil.
+      const fade = 1 - (strikePhase / 0.18);                       // 1 → 0
+      for (let i = 0; i < 5; i++) {
+        const angle = -Math.PI * 0.5 + (i - 2) * 0.18 + Math.sin(now * 11 + i) * 0.04;
+        const dist = 6 + i * 3 + (1 - fade) * 16;
+        const sx = ax + Math.cos(angle) * dist;
+        const sy = ay - 4 + Math.sin(angle) * dist;
+        const a = (0.55 + i * 0.05) * fade;
+        const sz = 1 + (i % 2);
+        // Hot orange → cream as fade progresses (real ember physics)
+        const r = 255;
+        const g = Math.round(170 + (1 - fade) * 60);
+        const b = Math.round(80 + (1 - fade) * 60);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
+        ctx.fillRect(Math.round(sx - sz / 2), Math.round(sy - sz / 2), sz, sz);
+      }
+    }
+  }
+  // 2. Keeper — small warm lantern glow at his feet. Always lit (keeper
+  //    is the only always-present NPC), reads as "the keeper has a
+  //    lantern, this is the welcoming hub." Smaller + cooler than the
+  //    smith brazier so the smithy still dominates as the warm anchor.
+  {
+    const keeper = HAMLET_ENTITIES.find(e => e.kind === 'npc' && e.id === 'keeper');
+    if (keeper) {
+      const kx = keeper.x;
+      const ky = keeper.y + 8;
+      const pulse = 0.84 + 0.10 * Math.sin(now * 0.55);
+      const haloR = 28;
+      const halo = ctx.createRadialGradient(kx, ky, 2, kx, ky, haloR);
+      halo.addColorStop(0, `rgba(255, 200, 140, ${(0.20 * pulse).toFixed(3)})`);
+      halo.addColorStop(0.5, `rgba(220, 160, 100, ${(0.10 * pulse).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(180, 120, 80, 0)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = halo;
+      ctx.fillRect(kx - haloR, ky - haloR, haloR * 2, haloR * 2);
+      ctx.restore();
+    }
+  }
+  // 3. Gravekeeper — slow cool soul motes drifting upward beside her,
+  //    gated on her arrival (stage 2+). Reads as "she tends the dead;
+  //    the dead linger near her." 3 motes phased on now over 5 s,
+  //    rising 32 px, fading to zero. Cool violet to contrast with the
+  //    warm halos elsewhere.
+  if (isNpcUnlocked('gravekeeper')) {
+    const grave = HAMLET_ENTITIES.find(e => e.kind === 'npc' && e.id === 'gravekeeper');
+    if (grave) {
+      const MOTE_CYCLE = 5.0;
+      for (let i = 0; i < 3; i++) {
+        const phase = ((now * 0.36 + i * (MOTE_CYCLE / 3)) % MOTE_CYCLE) / MOTE_CYCLE;
+        const sway = Math.sin(now * 0.4 + i * 1.7) * 5;
+        const mx = grave.x + 14 + sway + (i - 1) * 6;
+        const my = grave.y - 4 - phase * 32;
+        const a = (1 - phase) * (1 - phase) * 0.45;
+        if (a < 0.03) continue;
+        const sz = 1.5 + (i % 2) * 0.5;
+        ctx.fillStyle = `rgba(180, 160, 220, ${a.toFixed(3)})`;
+        ctx.fillRect(Math.round(mx - sz / 2), Math.round(my - sz / 2), sz, sz);
+      }
+    }
+  }
 }
 
 // Small elliptical ground shadow under an entity — anchors it to the painted
