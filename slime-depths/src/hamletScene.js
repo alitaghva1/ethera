@@ -15,6 +15,7 @@ import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 import { showTip } from './tips.js';
 import { records } from './records';
 import { daily, getTodayChallenge, hasCompletedToday } from './daily.js';
+import { ruin } from './ruin.js';
 
 // A locked NPC is one whose arc-stage hasn't been initialized yet
 // (refreshNpcPresence hasn't ticked their unlockCheck to true). They
@@ -719,6 +720,86 @@ export function drawHamletFx(ctx) {
 export function drawHamletEntities(ctx) {
   const sorted = HAMLET_ENTITIES.filter(entityAlive).slice().sort((a, b) => a.y - b.y);
   const now = performance.now() / 1000;
+
+  // ── DEATH MOUNDS — graveyard reflects the player's run history ───────
+  // Audit P4: ruin.deaths records every fall (floor, build, combo, epitaph),
+  // but the GRAVEYARD never reflected it. Now: up to 6 mounds rendered in
+  // the NW graveyard zone, each anchored to a deterministic slot from the
+  // death's own timestamp so the same death sits in the same plot every
+  // visit. Newer deaths = fresher dirt + lit candle; older = faded mound,
+  // no flame. The most recent death (deaths[0]) gets the brightest candle.
+  //
+  // Drawn BEFORE the NPC y-sort so headstones sit underneath the
+  // gravekeeper sprite — she stands among them. Pure procedural; no
+  // assets needed.
+  if (isNpcUnlocked('gravekeeper') && ruin.deaths && ruin.deaths.length > 0) {
+    // Deterministic plot positions in the NW graveyard zone. 3 rows × 2
+    // cols, jittered slightly via seed so the layout reads as organic
+    // rather than gridded. Anchored above + west of the gravekeeper's
+    // (580, 240) feet so she visually 'tends' them.
+    const PLOT_BASE_X = 460;
+    const PLOT_BASE_Y = 165;
+    const PLOT_SLOTS = [
+      [0, 0], [1, 0],
+      [0, 1], [1, 1],
+      [0, 2], [1, 2],
+    ];
+    const PLOT_COL_GAP = 38;
+    const PLOT_ROW_GAP = 26;
+    const visibleDeaths = ruin.deaths.slice(0, PLOT_SLOTS.length);
+    for (let i = 0; i < visibleDeaths.length; i++) {
+      const death = visibleDeaths[i];
+      const [col, row] = PLOT_SLOTS[i];
+      // Per-plot jitter from death's own timestamp — same death always
+      // lands at the same exact position. Range ±4 px each axis so the
+      // plot still looks gridded.
+      const seed = (death.timestamp || 0) | 0;
+      const jx = ((seed % 9) - 4);
+      const jy = (((seed >> 4) % 9) - 4);
+      const px = PLOT_BASE_X + col * PLOT_COL_GAP + jx;
+      const py = PLOT_BASE_Y + row * PLOT_ROW_GAP + jy;
+      // Age: 0 = freshest (deaths[0]), 5 = oldest. Drives candle + tint.
+      const age = i;
+      const isFresh = age <= 1;
+      const fade = 1 - (age / (visibleDeaths.length + 1));     // 1 → ~0.2
+      // Mound — squashed ellipse, brown earth, lighter rim
+      ctx.save();
+      ctx.fillStyle = `rgba(${(58 * fade) | 0}, ${(40 * fade) | 0}, ${(28 * fade) | 0}, 0.9)`;
+      ctx.beginPath();
+      ctx.ellipse(px, py + 6, 13, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Mound highlight — top edge catches light
+      ctx.fillStyle = `rgba(${(90 * fade) | 0}, ${(70 * fade) | 0}, ${(52 * fade) | 0}, 0.85)`;
+      ctx.beginPath();
+      ctx.ellipse(px, py + 4, 12, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Cross / marker — vertical post + small crossbar. Stone-grey,
+      // weathered for older plots.
+      const stoneCol = `rgba(${(110 * fade + 30) | 0}, ${(100 * fade + 30) | 0}, ${(95 * fade + 30) | 0}, 1)`;
+      ctx.fillStyle = stoneCol;
+      ctx.fillRect(px - 1, py - 8, 2, 12);              // vertical post
+      ctx.fillRect(px - 4, py - 4, 8, 1);               // crossbar
+      // Candle flame on the freshest 1-2 plots — flickering warm point.
+      if (isFresh) {
+        const flick = 0.7 + 0.3 * Math.sin(now * (8 + i * 1.3) + i * 1.7);
+        const fx = px + 4;
+        const fy = py - 1;
+        // Halo
+        const halo = ctx.createRadialGradient(fx, fy, 0.5, fx, fy, 9);
+        halo.addColorStop(0, `rgba(255, 200, 130, ${(0.75 * flick * (age === 0 ? 1 : 0.6)).toFixed(3)})`);
+        halo.addColorStop(0.5, `rgba(220, 130, 70, ${(0.30 * flick).toFixed(3)})`);
+        halo.addColorStop(1, 'rgba(180, 80, 50, 0)');
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = halo;
+        ctx.fillRect(fx - 9, fy - 9, 18, 18);
+        ctx.globalCompositeOperation = 'source-over';
+        // Bright pixel core
+        ctx.fillStyle = `rgba(255, 230, 170, ${(0.95 * flick).toFixed(3)})`;
+        ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 2, 2);
+      }
+      ctx.restore();
+    }
+  }
 
   for (const e of sorted) {
     if (e.kind === 'portal') {
