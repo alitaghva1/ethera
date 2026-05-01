@@ -304,17 +304,23 @@ export function drawHamletBackdrop(ctx) {
   //   stage 2: thriving       — 3-4 NPCs
   //   stage 3: restored       — 5+ NPCs
   const stage = hamletGrowthStage();
+  // Tier 1 art-direction sweep: the rebuild fiction is the hamlet's
+  // central narrative beat ("the wound the world remembers, slowly
+  // restored"), but the previous 0.04-0.07 alphas were homeopathic
+  // — invisible at glance against the painted green field. Bumped
+  // to 0.10-0.16 so the warm/cool tonal shift between stages
+  // actually reads as the player's progress accumulates. Stage 1
+  // remains the neutral baseline.
   if (stage === 0) {
-    ctx.fillStyle = 'rgba(60, 78, 100, 0.07)';      // cool dim, "the place is cold"
+    ctx.fillStyle = 'rgba(60, 78, 100, 0.16)';      // cool dim — "the place is cold"
     ctx.fillRect(BG_X_MIN, 0, BG_W, HAMLET_H);
   } else if (stage === 2) {
-    ctx.fillStyle = 'rgba(255, 230, 180, 0.04)';    // first hint of warmth
+    ctx.fillStyle = 'rgba(255, 230, 180, 0.10)';    // first hint of warmth
     ctx.fillRect(BG_X_MIN, 0, BG_W, HAMLET_H);
   } else if (stage >= 3) {
-    ctx.fillStyle = 'rgba(255, 218, 150, 0.07)';    // restored — warm hour
+    ctx.fillStyle = 'rgba(255, 218, 150, 0.14)';    // restored — warm hour
     ctx.fillRect(BG_X_MIN, 0, BG_W, HAMLET_H);
   }
-  // stage 1 is the neutral baseline — no tint applied.
 
   // ── AIR DUST MOTES ───────────────────────────────────────────────────
   // Two depth layers: 36 slow-and-bright motes (foreground) + 24 fast-
@@ -340,6 +346,44 @@ export function drawHamletBackdrop(ctx) {
     const alpha = 0.18 + 0.05 * Math.sin(now * 1.4 + i);
     ctx.fillStyle = `rgba(200, 185, 160, ${alpha.toFixed(3)})`;
     ctx.fillRect(driftX | 0, wobbleY | 0, 1, 1);
+  }
+
+  // ── CHIMNEY SMOKE COLUMNS (Tier 1 hamlet amplification) ──────────────
+  // The hamlet has flat slab "pads" at the smithy and shrine where
+  // buildings would stand if they were painted. Until authored
+  // architecture lands, smoke columns rising from those pads sell
+  // "there is a structure here" without needing a building sprite.
+  // Two columns:
+  //   - smithy (906, 246): warm grey-orange — active forge fire
+  //   - shrine (687, 220): cool grey — ceremonial smoke (gated on
+  //     stage 2+, only once the oracle has arrived)
+  // Each column is 8 motes phased on `now`, rising 90 px over a 6 s
+  // cycle, fading to zero. Pure stateless math — no array maintenance,
+  // no per-frame allocation, drops cleanly when the hamlet doesn't
+  // render. Alpha calmed so the smoke reads as ambient haze, not a
+  // foreground prop.
+  const drawSmokeColumn = (baseX, baseY, tint) => {
+    const CYCLE = 6.0;
+    const RISE = 90;
+    for (let i = 0; i < 8; i++) {
+      const phase = ((now * 0.45 + i * (CYCLE / 8)) % CYCLE) / CYCLE;
+      const sway = Math.sin(now * 0.4 + i * 1.3) * 6 + Math.sin(now * 0.9 + i) * 2;
+      const sx = baseX + sway;
+      const sy = baseY - phase * RISE;
+      // Quadratic fade — quick at the source, slow as it rises.
+      const a = (1 - phase) * (1 - phase) * 0.22;
+      if (a < 0.02) continue;
+      const sz = 2 + (i % 3) * 0.6 + phase * 1.2;       // grows as it rises
+      ctx.fillStyle = `rgba(${tint}, ${a.toFixed(3)})`;
+      ctx.fillRect(Math.round(sx - sz / 2), Math.round(sy - sz / 2), Math.round(sz), Math.round(sz));
+    }
+  };
+  // Smithy fire — always lit (forge is the first NPC arc to unlock,
+  // and the smithy pad is painted in the scene regardless).
+  drawSmokeColumn(906, 232, '180, 130, 100');
+  // Shrine ceremonial smoke — only once the oracle is present (stage 2+).
+  if (hamletGrowthStage() >= 2) {
+    drawSmokeColumn(687, 206, '180, 190, 210');
   }
 }
 
@@ -756,19 +800,40 @@ function drawPortal(ctx, e, now) {
   // itself; layered enough to read as "something has changed here".
   const cleared = (records.runsCompleted | 0) >= 1;
   const pulse = 0.85 + 0.15 * Math.sin(now * 0.6);
-  const haloR = 56;
-  const halo = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, haloR);
+  // Hierarchical dominance bump (Tier 1 art-direction sweep): the
+  // descent portal is the single most important interactable in the
+  // hamlet, but at radius 56 + alpha 0.32 it read at the same visible
+  // scale as an NPC. Bumped to 96 + 0.48 so the player's eye lands
+  // here on entry. Keeps the same calm pulse rhythm — louder, not
+  // busier. A thin ring at the EDGE of the halo gives the radius
+  // a clean read (otherwise the gradient just fades into ground).
+  const haloR = 96;
+  const halo = ctx.createRadialGradient(e.x, e.y + 4, 6, e.x, e.y + 4, haloR);
   if (cleared) {
-    halo.addColorStop(0, `rgba(220, 110, 60, ${(0.34 * pulse).toFixed(3)})`);
-    halo.addColorStop(0.5, `rgba(190, 80, 50, ${(0.18 * pulse).toFixed(3)})`);
+    halo.addColorStop(0, `rgba(230, 130, 70, ${(0.48 * pulse).toFixed(3)})`);
+    halo.addColorStop(0.45, `rgba(200, 90, 55, ${(0.24 * pulse).toFixed(3)})`);
     halo.addColorStop(1, 'rgba(160, 60, 50, 0)');
   } else {
-    halo.addColorStop(0, `rgba(120, 170, 230, ${(0.32 * pulse).toFixed(3)})`);
-    halo.addColorStop(0.5, `rgba(100, 150, 220, ${(0.16 * pulse).toFixed(3)})`);
+    halo.addColorStop(0, `rgba(140, 190, 240, ${(0.48 * pulse).toFixed(3)})`);
+    halo.addColorStop(0.45, `rgba(110, 160, 225, ${(0.22 * pulse).toFixed(3)})`);
     halo.addColorStop(1, 'rgba(90, 140, 210, 0)');
   }
   ctx.fillStyle = halo;
   ctx.fillRect(e.x - haloR, e.y + 4 - haloR, haloR * 2, haloR * 2);
+  // Edge ring — thin stroke at the halo radius. Without this, the
+  // halo just fades into the painted ground; the ring gives the
+  // player a clear "this is the descent zone" boundary at 96 px.
+  ctx.save();
+  ctx.strokeStyle = cleared
+    ? `rgba(230, 130, 70, ${(0.30 * pulse).toFixed(3)})`
+    : `rgba(140, 190, 240, ${(0.30 * pulse).toFixed(3)})`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 9]);
+  ctx.beginPath();
+  ctx.arc(e.x, e.y + 4, haloR - 4, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
 
   // Round-7 hamlet visible-growth — post-ascent ember motes drifting
   // up from the portal pad. Builds on the Round-6 halo color shift
