@@ -3270,6 +3270,13 @@ function saveRunSnapshot() {
         mountainStrikeCounter: hero.mountainStrikeCounter | 0,
         razorPaceHits: hero.razorPaceHits | 0,
         vowEternalReady: !!hero.vowEternalReady,
+        // Save-snapshot completeness audit (Stage 1 of audit plan):
+        // these counters all decay-zero on resetHero but represent real
+        // mid-run progress that's worth preserving across browser-quit.
+        // None of them are in `mods` because they're INT counters, not
+        // float multipliers, but they have the same persistence rationale.
+        coinOfTyrantCounter: hero.coinOfTyrantCounter | 0,
+        sparrowCounter: hero.sparrowCounter | 0,
       },
     };
     localStorage.setItem(RUN_SNAPSHOT_KEY, JSON.stringify(snap));
@@ -3439,6 +3446,10 @@ function resumeRun(snap) {
     if (typeof snap.counters.mountainStrikeCounter === 'number') hero.mountainStrikeCounter = snap.counters.mountainStrikeCounter;
     if (typeof snap.counters.razorPaceHits === 'number')      hero.razorPaceHits = snap.counters.razorPaceHits;
     if (typeof snap.counters.vowEternalReady === 'boolean')   hero.vowEternalReady = snap.counters.vowEternalReady;
+    // Save-completeness audit additions (forward-compatible with old snapshots
+    // via typeof guard — pre-audit snapshots simply leave these at 0).
+    if (typeof snap.counters.coinOfTyrantCounter === 'number') hero.coinOfTyrantCounter = snap.counters.coinOfTyrantCounter;
+    if (typeof snap.counters.sparrowCounter === 'number')      hero.sparrowCounter = snap.counters.sparrowCounter;
   }
   // Daily challenge curse-id flag — drives generation-pipeline readers
   // even though the inline modifiers are now captured in snap.mods.
@@ -5369,6 +5380,33 @@ function _tickInner(now) {
         }
         playSfx('click', { volume: 0.8, rate: 1.5 });
         synthFanfare(0.85);            // rising C-major triad
+
+        // ── EXHALE BEAT — combat-room "the room relaxes" pass ──
+        // Audit P3: cleared rooms felt the SAME as active rooms minus the
+        // enemies. No tonal shift, no body-language from the camera, no
+        // lingering sparkle bed. Now: a soft camera pull-in (reads as
+        // "shoulders dropping"), a delayed atmospheric chord (the
+        // dungeon settling), and a gentle dust-mote scatter from the
+        // hero outward. Mini-bosses get more drama.
+        pulseZoom(isMiniboss ? 0.06 : 0.04, 1.4);
+        // Settling dust — 8-12 motes drift outward + downward from the
+        // hero's feet. Reads as "the room exhaling its tension."
+        const exhaleDust = isMiniboss ? 14 : 10;
+        for (let k = 0; k < exhaleDust; k++) {
+          const ang = (k / exhaleDust) * Math.PI * 2 + Math.random() * 0.3;
+          const dist = 30 + Math.random() * 60;
+          // Re-using sparkle for the visible fade — different color
+          // than the celebration burst above so the eye reads them as
+          // two beats (bright triumph, then quiet settle).
+          sparkle(hero.x + Math.cos(ang) * dist, hero.y + 8 + Math.sin(ang) * dist * 0.6, '#a8b0a4');
+        }
+        // Ambient "settle" tone — low atmospheric chord at 200ms. Sub
+        // octave below the fanfare so the room feels released, not
+        // continued. Skipped for mini-boss (the fanfare's sustained tail
+        // already owns that audio space).
+        if (!isMiniboss) {
+          setTimeout(() => { try { synthChord(196, 0.9, 0.35); } catch (_e) {} }, 220);
+        }
       }
     }
 
