@@ -83,6 +83,18 @@ export function isFullyOpen() {
   return _open && _fading == null;
 }
 
+// Dev-only — for debugging from the preview console / __dbg.
+// Reflects current internal state so a console caller can see why
+// the modal hasn't opened (pendingDelay still ticking? lastShownForKind
+// blocking re-open?).
+export function _debugState() {
+  return {
+    _open, _fading, _fadeT, _pendingTrigger, _pendingDelay,
+    _highlightIdx, _lastShownForRoomKind,
+    _seenIds: [..._seenPedestalIds],
+  };
+}
+
 // ─── Open trigger ─────────────────────────────────────────────────────────
 
 function _openIfReady(roomKind) {

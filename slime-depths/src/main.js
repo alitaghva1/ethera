@@ -114,7 +114,13 @@ import {
   handleModalKey as handleRelicChoiceModalKey,
   handleModalMouseMove as handleRelicChoiceModalMouseMove,
   handleModalClick as handleRelicChoiceModalClick,
+  _debugState as _relicChoiceDebugState,
 } from './relicChoiceModal.js';
+// Dev-only — expose modal state for live debugging from devtools.
+if (typeof window !== 'undefined') {
+  window.__relicChoiceDebug = _relicChoiceDebugState;
+  window.__requestRelicChoice = requestRelicChoiceModal;
+}
 import { drawThemeAura } from './themes.js';
 import {
   drawWatcher,
