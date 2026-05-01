@@ -6233,6 +6233,13 @@ function render() {
     // (DOM-based) and the first-run intro (canvas-based) — both want
     // the screen visually clean during their cinematic phase.
   } else {
+  // Screen flash fires BEFORE the HUD so it washes the world only, not the
+  // HUD layer. Previously drawScreenFlash ran after drawHud + tooltips +
+  // banner, which meant a hurt-flash (red rgba ~0.30 alpha) tinted the
+  // hearts, dodge pip, and relic strip exactly when the player most needs
+  // to read them — "I just got hit, what's my HP?". Banner/dodge/combo
+  // overlays still draw after the HUD because they're meant to dominate.
+  drawScreenFlash(ctx, canvas.width, canvas.height);
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
     roomKind: floor[roomIndex]?.kind,
@@ -6272,7 +6279,6 @@ function render() {
     paused,
   });
   drawComboOverlay(ctx, canvas.width, canvas.height);
-  drawScreenFlash(ctx, canvas.width, canvas.height);
   drawPerfectDodgeOverlay(ctx, canvas.width, canvas.height);
   } // end if !_wakeCinematicActive
 
