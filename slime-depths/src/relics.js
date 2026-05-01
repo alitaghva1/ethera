@@ -3,7 +3,7 @@
 // object when applied. Everything stacks additively so picks always matter.
 import { hero } from './hero.js';
 import { stats } from './stats';
-import { recomputeThemeTiers, THEMES } from './themes.js';
+import { recomputeThemeTiers, THEMES, RELIC_THEMES } from './themes.js';
 import { recomputeSlotTiers } from './slots.js';
 import { pushNotification } from './notifications.js';
 import { synthChord, synthPing } from './synth.js';
@@ -1279,9 +1279,37 @@ export function rollRelicOffer(n, floorLevel = 1, opts = {}) {
     if (legendaryBlocked && (t === 'legendary' || t === 'mythic')) continue;
     if (availableByTier[t]) availableByTier[t].push(id);
   }
+  // Theme bias — when opts.theme is set, pickFromTier first attempts
+  // the themed sub-pool with THEME_BIAS probability. Falls back to
+  // off-theme uniformly if the sub-pool is empty or the dice rolls
+  // off-theme. Skipped when no theme is requested. The 70% number
+  // matches Hades' "this room offers Athena boons but a few off-god
+  // boons can sneak in" feel — high enough to make the theme matter,
+  // low enough that the player still sees variety.
+  const themeBias = opts.theme;
+  const THEME_BIAS_P = 0.70;
   const pickFromTier = (t) => {
     const arr = availableByTier[t];
     if (!arr || !arr.length) return null;
+    if (themeBias && Math.random() < THEME_BIAS_P) {
+      // Find themed candidates within this tier
+      let pickIdx = -1;
+      for (let i = 0; i < arr.length; i++) {
+        if (RELIC_THEMES[arr[i]] === themeBias) {
+          // Reservoir-style — we could collect all matches and pick
+          // uniformly, but a single forward scan with rerolling is
+          // good enough at our small pool size (<60 candidates per
+          // tier worst case).
+          if (pickIdx < 0 || Math.random() < 0.5) pickIdx = i;
+        }
+      }
+      if (pickIdx >= 0) {
+        const id = arr[pickIdx];
+        arr.splice(pickIdx, 1);
+        return id;
+      }
+      // Themed sub-pool empty — fall through to uniform pick.
+    }
     const i = (Math.random() * arr.length) | 0;
     const id = arr[i];
     arr.splice(i, 1);

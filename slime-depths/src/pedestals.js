@@ -189,7 +189,9 @@ export function spawnAltarOffer(_legacyHpCost, floorLevel = 1, opts = {}) {
   // Round-7 — opts.minTier forces a tier floor on the offer roll. Used
   // by altar nodes flagged with roomReward='legendary' so the door's
   // "LEGENDARY" promise matches the offered relics.
-  const rollOpts = opts.minTier ? { minTier: opts.minTier } : {};
+  const rollOpts = {};
+  if (opts.minTier) rollOpts.minTier = opts.minTier;
+  if (opts.theme) rollOpts.theme = opts.theme;
   const offers = rollRelicOffer(2, floorLevel, rollOpts);
   if (offers.length === 0) return;
   const cols = [7, 12];
@@ -223,9 +225,11 @@ export function spawnAltarOffer(_legacyHpCost, floorLevel = 1, opts = {}) {
 // Pricing imports SHOP_PRICES from floor.js so the merchant + the
 // floor-generator agree on what the player pays.
 import { SHOP_PRICES } from './floor.js';
-export function spawnShopOffer(floorLevel = 1) {
+export function spawnShopOffer(floorLevel = 1, opts = {}) {
   pedestals.length = 0;
-  const offers = rollRelicOffer(3, floorLevel);
+  const rollOpts = {};
+  if (opts.theme) rollOpts.theme = opts.theme;
+  const offers = rollRelicOffer(3, floorLevel, rollOpts);
   if (offers.length === 0) return;
   // 3-column shop layout — slightly wider than the standard offer row
   // so the price tags don't overlap with adjacent pedestal sparkles.

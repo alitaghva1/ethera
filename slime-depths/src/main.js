@@ -2353,6 +2353,7 @@ window.addEventListener('keydown', (e) => {
     if (_reward === 'legendary') _opts.minTier = 'legendary';
     else if (_isElitePath || _reward === 'rare+') _opts.minTier = 'rare';
     if (_reward === 'fusion') _opts.fusionBias = true;
+    if (_data?.roomTheme) _opts.theme = _data.roomTheme;
     spawnRelicOffer(currentFloorLevel, _opts);
   }
   // Re-fire the choice modal with the fresh offers — clearModal so the
@@ -2597,6 +2598,7 @@ function loadRoom(idx, entryFrom) {
   // on F2-F3 (since altars use floor weights, not the door reward tag).
   if (data.kind === 'altar') {
     const altarOpts = data.roomReward === 'legendary' ? { minTier: 'legendary' } : {};
+    if (data.roomTheme) altarOpts.theme = data.roomTheme;
     spawnAltarOffer(3, currentFloorLevel, altarOpts);
     requestRelicChoiceModal();
   }
@@ -2608,7 +2610,7 @@ function loadRoom(idx, entryFrom) {
   // settle, short enough that a quick player still reads it before
   // pressing E.
   if (data.kind === 'shop') {
-    spawnShopOffer(currentFloorLevel);
+    spawnShopOffer(currentFloorLevel, data.roomTheme ? { theme: data.roomTheme } : {});
     setTimeout(() => showTip('first_shop'), 1200);
     requestRelicChoiceModal();
   }
@@ -5261,6 +5263,7 @@ function _tickInner(now) {
         if (reward === 'legendary') offerOpts.minTier = 'legendary';
         else if (isElitePath || reward === 'rare+') offerOpts.minTier = 'rare';
         if (reward === 'fusion') offerOpts.fusionBias = true;
+        if (data.roomTheme) offerOpts.theme = data.roomTheme;
         if (reward === 'gold') {
           // Bonus gold pile — extra coins drop at hero center, on top of
           // the per-kill drops the gold-mul applied during combat. Gives
@@ -5326,7 +5329,7 @@ function _tickInner(now) {
     if (data.kind === 'challenge' && !room.cleared && enemies.length === 0) {
       if (pedestals.length === 0) {
         import('./gold.js').then(g => g.dropGold(hero.x, hero.y - 20, 20));
-        spawnRelicOffer(currentFloorLevel);
+        spawnRelicOffer(currentFloorLevel, data.roomTheme ? { theme: data.roomTheme } : {});
         requestRelicChoiceModal();
         playSfx('click', { volume: 0.9, rate: 1.1 });
       } else if (!hasActivePedestals()) {

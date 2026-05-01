@@ -48,6 +48,7 @@ import { TILE, room } from './room.js';
 import { hero } from './hero.js';
 import { sparkle } from './particles.js';
 import { playSfx } from './sfx.js';
+import { THEMES } from './themes.js';
 
 // Animation timings (seconds)
 const OPEN_DURATION  = 0.55;            // closed → open
@@ -248,6 +249,13 @@ export function setupRoomDoors(graph, currentNodeId, opts = {}) {
           targetGlyph: KIND_GLYPHS[displayKind] || '?',
           targetRewardLabel: rewardLabel,
           targetRewardColor: rewardColor,
+          // Theme — pre-rolled at floor generation per Phase 2 of the
+          // door-identity pass. When set, the door card renders a small
+          // theme-colored glyph chip in the upper-right corner so the
+          // player knows BEFORE walking through that this room offers
+          // (e.g.) BLOOD-themed relics. null on combat/boss/start
+          // and on the 40% mixed pedestal rooms.
+          roomTheme: t.roomTheme || null,
           sparkleAcc: 0,
         });
       }
@@ -642,6 +650,19 @@ export function drawDoorLabels(ctx) {
       ctx.fillText(subLine, cx, cardCY + 17);
     }
 
+    // Theme glyph — pre-rolled at floor gen, surfaces the room's
+    // theme bias to the player BEFORE walking through. Hades-style
+    // "this is Athena's chamber" door signaling. Skipped on sealed
+    // doors (BLOOD GATE caption already dominates) and on rooms
+    // with no theme tag (40% of pedestal rooms + all combat/boss).
+    if (!isSealed && d.roomTheme && THEMES[d.roomTheme]) {
+      const theme = THEMES[d.roomTheme];
+      const tg = 14;     // chip size — small, doesn't crowd the caption
+      const tgx = cardX + CARD_W - tg - 4;
+      const tgy = cardY + 4;
+      _drawDoorThemeGlyph(ctx, tgx, tgy, tg, theme, pulse);
+    }
+
     // Chevron — small downward triangle pointing from card to door
     // arch, makes the spatial association explicit. Same tint as the
     // border, drawn in the gap between card and door.
@@ -763,4 +784,87 @@ function hexA(hex, a) {
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+}
+
+// Theme glyph — small canvas-rendered icon in the door card's corner.
+// Same procedural-primitive family as the affix HP-bar glyphs and the
+// modal's relic-card theme chip. Caller passes (x,y) top-left of the
+// chip, side length, theme object from THEMES, and the door's pulse
+// modulator. Glyph + border tinted to theme.color; backdrop dark for
+// contrast against the door card's existing tint fill.
+function _drawDoorThemeGlyph(ctx, x, y, size, theme, pulse = 1) {
+  ctx.save();
+  // Backdrop chip — dark + theme-tinted border
+  ctx.fillStyle = 'rgba(8, 6, 12, 0.85)';
+  ctx.fillRect(x, y, size, size);
+  ctx.strokeStyle = hexA(theme.color, 0.85 * pulse);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+  // Glyph — same canvas paths as the modal _drawThemeChip
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  const r = (size - 5) / 2;
+  ctx.fillStyle = hexA(theme.color, pulse);
+  ctx.strokeStyle = hexA(theme.color, pulse);
+  ctx.lineWidth = 1.0;
+  switch (theme.id) {
+    case 'storm': {
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.35, cy - r);
+      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
+      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
+      ctx.lineTo(cx - r * 0.35, cy + r);
+      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
+      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'flame': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'blood': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r);
+      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
+      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'vow': {
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
+      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'shadow': {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    }
+    default: {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }

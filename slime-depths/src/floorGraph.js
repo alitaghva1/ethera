@@ -145,6 +145,27 @@ function rollRoomReward(kind, path) {
 export function rewardGlyph(reward) { return reward ? (REWARD_GLYPHS[reward] || '?') : null; }
 export function rewardLabel(reward) { return reward ? (REWARD_LABELS[reward] || reward.toUpperCase()) : null; }
 
+// Theme assignment — pedestal-bearing rooms get a theme tag with
+// some probability. Themed rooms tell the player at door-preview time
+// what build axis the room favors (Hades-style "Athena chamber"
+// signaling). Mixed-theme rooms stay null. The relic-roll bias in
+// rollRelicOffer({ theme }) routes the actual offers toward the
+// theme. Combat / boss / start / trove / chestroom skip — those
+// don't have a "you chose this room for the offer" beat.
+const PEDESTAL_THEMES = ['storm', 'flame', 'blood', 'vow', 'shadow'];
+function rollRoomTheme(kind) {
+  if (kind !== 'sanctuary' && kind !== 'reward'
+      && kind !== 'altar' && kind !== 'shop'
+      && kind !== 'elite') {
+    return null;
+  }
+  // 60% themed, 40% mixed. Mix keeps surprise + fits the "rotating
+  // pantheon" feel — players aren't ALWAYS choosing among themed
+  // rooms.
+  if (Math.random() >= 0.60) return null;
+  return PEDESTAL_THEMES[(Math.random() * PEDESTAL_THEMES.length) | 0];
+}
+
 let _nextNodeId = 0;
 function makeNode(kind, layer) {
   const path = pathForKind(kind);
@@ -154,6 +175,11 @@ function makeNode(kind, layer) {
     layer,
     path,                       // 'safe' | 'standard' | 'perilous'
     roomReward: rollRoomReward(kind, path),   // 'gold'|'rare+'|'legendary'|'heal'|'fusion'|null
+    // 60% themed pedestal rooms — biases the relic roll toward the
+    // theme + surfaces a glyph on the door so the player can choose
+    // their build axis from the map. null for mixed / combat / boss.
+    roomTheme: rollRoomTheme(kind),
+
     // Round-7 Phase 5 — Blood Door seal. When `sealed: true`, the door
     // leading INTO this node renders as a "BLOOD GATE" and stays closed
     // until the player breaks the seal with E (pays sealCost HP).
@@ -302,7 +328,10 @@ export function generateFloorGraph(level = 1, opts = {}) {
   // without needing the graph reference. roomData IS the per-room source
   // of truth at run-time; the node lives on the graph but roomData is
   // what gets pushed into the floor[] array.
-  if (start.roomData) start.roomData.roomReward = start.roomReward;
+  if (start.roomData) {
+    start.roomData.roomReward = start.roomReward;
+    start.roomData.roomTheme = start.roomTheme;
+  }
   start.actualKind = 'start';
   const nodes = [start];
 
@@ -321,7 +350,10 @@ export function generateFloorGraph(level = 1, opts = {}) {
       const n = makeNode(kind, recipe.layer);
       n.roomData = buildRoomForKind(kind, lvl, recipe.combatSlot);
       // Round-7 reward propagation onto roomData — see Layer 0 comment.
-      if (n.roomData) n.roomData.roomReward = n.roomReward;
+      if (n.roomData) {
+        n.roomData.roomReward = n.roomReward;
+        n.roomData.roomTheme = n.roomTheme;
+      }
       // Round-7 — surface the actual room kind on the node when the
       // graph kind is the catch-all 'event'. makeEventRoom rolls into
       // altar / trove / chestroom / challenge / miniboss internally
@@ -351,7 +383,10 @@ export function generateFloorGraph(level = 1, opts = {}) {
     if (extraSanctuary && recipe.layer === 5) {
       const sanc = makeNode('sanctuary', recipe.layer);
       sanc.roomData = buildRoomForKind('sanctuary', lvl, null);
-      if (sanc.roomData) sanc.roomData.roomReward = sanc.roomReward;
+      if (sanc.roomData) {
+        sanc.roomData.roomReward = sanc.roomReward;
+        sanc.roomData.roomTheme = sanc.roomTheme;
+      }
       sanc.actualKind = 'sanctuary';
       nodes.push(sanc);
       layerNodes.push(sanc);
@@ -363,7 +398,10 @@ export function generateFloorGraph(level = 1, opts = {}) {
   // Final: boss layer. All pre-boss nodes connect here so every path ends at boss.
   const boss = makeNode('boss', BOSS_LAYER);
   boss.roomData = buildRoomForKind('boss', lvl, null);
-  if (boss.roomData) boss.roomData.roomReward = boss.roomReward;
+  if (boss.roomData) {
+    boss.roomData.roomReward = boss.roomReward;
+    boss.roomData.roomTheme = boss.roomTheme;     // null for bosses
+  }
   boss.actualKind = 'boss';
   nodes.push(boss);
   for (const pre of layerToNodes[layerToNodes.length - 1]) pre.edges.push(boss.id);
