@@ -258,6 +258,81 @@ function _measureSpriteBounds(img, drawSize) {
   }
 }
 
+// ─── EnemyFrame — the canonical visual frame ────────────────────────────
+// Single source of truth for "where does this enemy's visible body sit
+// in world space". Every visual system (HP bar, affix badge, elite
+// glow, boss aura, floor shadow, blood drip, damage numbers,
+// telegraph anchors) reads from this function so they all stay in
+// sync. Adjust one thing — the frame data — and every visual that
+// reads from it follows.
+//
+// Returns:
+//   centerX:    visual center X (world)
+//   centerY:    visual center Y of body (NOT e.y, which is collision feet)
+//   topY:       top of visible body (world Y; smaller = higher on screen)
+//   bottomY:    bottom of visible body (world Y)
+//   feetY:      shadow anchor (e.y + small offset)
+//   halfWidth:  visible body half-width (world px)
+//   topOffset:  topY - e.y (negated; positive number meaning "this much
+//               above e.y" — convenient for legacy math that wants the
+//               offset directly)
+//
+// Source priority:
+//   1. def.frame { topOffset, halfWidth, ... }    — manual override
+//   2. measured sprite alpha bounds                — auto-derived
+//   3. heuristic from radius + drawSize            — fallback
+//
+// def.frame override fields:
+//   topOffset:    px above e.y where visible top sits (required)
+//   halfWidth:    px of half-width (required)
+//   bottomOffset: px below e.y where bottom sits (default 4)
+//   centerOffsetY: px above e.y where center sits (default -topOffset/2)
+export function getEnemyFrame(e) {
+  const def = e.def;
+  let topOffset, halfWidth, bottomOffset, centerOffsetY;
+  // (1) Manual override
+  if (def.frame) {
+    topOffset = def.frame.topOffset;
+    halfWidth = def.frame.halfWidth;
+    bottomOffset = def.frame.bottomOffset ?? 4;
+    centerOffsetY = def.frame.centerOffsetY ?? -topOffset / 2;
+  } else {
+    // (2) Sprite alpha measurement
+    const bounds = _getSpriteBounds(def);
+    if (bounds) {
+      topOffset = bounds.topOffset;
+      halfWidth = bounds.halfWidth;
+      bottomOffset = bounds.bottomOffset || 4;
+      centerOffsetY = -topOffset / 2;
+    } else if (def.bodyHeight) {
+      // (2b) Legacy bodyHeight override — kept for backward compat.
+      // Existing data on bonecap/brood/ember/elite_orc/orc_rider.
+      topOffset = def.bodyHeight;
+      halfWidth = def.radius || 22;
+      bottomOffset = 4;
+      centerOffsetY = -topOffset / 2;
+    } else {
+      // (3) Heuristic fallback (slime/skel-class enemies that haven't
+      // been measured yet on first render). Stays close to the v3
+      // formula so first-frame placement isn't catastrophically wrong.
+      const r = def.radius || 22;
+      topOffset = Math.max(r * 2.5, (def.drawSize || 200) * 0.30);
+      halfWidth = r;
+      bottomOffset = 4;
+      centerOffsetY = -topOffset / 2;
+    }
+  }
+  return {
+    centerX: e.x,
+    centerY: e.y + centerOffsetY,
+    topY:    e.y - topOffset,
+    bottomY: e.y + bottomOffset,
+    feetY:   e.y + 4,
+    halfWidth,
+    topOffset,
+  };
+}
+
 // Lazy getter — measures + caches on first call after the sprite loads.
 // Returns null while the sprite is still loading (caller falls back to
 // heuristic in that frame). Marks as "attempted" only when we genuinely
@@ -2377,45 +2452,33 @@ export function drawEnemy(ctx, e) {
   }
   const sx = f * SPR;
 
-  // Soft radial shadow — scaled to the COLLISION RADIUS (e.def.radius),
-  // not drawSize. The Tiny-RPG enemy sheets fill only ~23% of their
-  // 100-px source cell, so when drawSize is upscaled (e.g. ember_tyrant
-  // 380) the resulting shadow at size * 0.32 = 121 px radius painted
-  // a huge dark pool under an 87-px-visible character — reads as
-  // floating in a spotlight instead of grounded. Tie to e.def.radius
-  // (the gameplay collision footprint, ~22-34 across enemies) so the
-  // shadow visibly clings to the character. Mage hero shadow is at
-  // HERO_DRAW * 0.27 = ~16 px under a ~56 px character (ratio 0.29);
-  // we mirror that ratio: shadow radius = collision radius * 1.6,
-  // which gives slime 35 px, ember_tyrant 48 px — proportional, not
-  // overpowering.
-  const shadowR = (e.def.radius || 22) * 1.6;
-  const shadowW = shadowR * 1.6;        // wider than tall (squashed ellipse band)
-  const sg = ctx.createRadialGradient(e.x, e.y + 10, 2, e.x, e.y + 10, shadowR);
+  // Get the canonical visual frame. Every visual system below reads
+  // from this so an HP-bar adjustment moves the affix badge + the
+  // damage number spawn point + everything else in lockstep.
+  const frame = getEnemyFrame(e);
+
+  // Soft radial shadow — sized to the visible body half-width.
+  // Squashed ellipse band 16% taller than a circle would be.
+  const shadowR = frame.halfWidth * 1.5;
+  const shadowW = shadowR * 1.6;        // wider than tall (squashed band)
+  const sg = ctx.createRadialGradient(e.x, frame.feetY + 6, 2, e.x, frame.feetY + 6, shadowR);
   sg.addColorStop(0, 'rgba(0,0,0,0.42)');
   sg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = sg;
-  ctx.fillRect(e.x - shadowW / 2, e.y + 4, shadowW, 12);
+  ctx.fillRect(e.x - shadowW / 2, frame.feetY, shadowW, 12);
 
-  // Elite glow — affix color if any, else default gold.
-  // Kept subtle: small tight halo at feet, not a huge field. Reads as "this
-  // enemy is dangerous" without dominating the screen.
-  //
-  // 2026-05-01 fix: derive radius from the measured sprite half-width so
-  // the aura scales with the actual visible body. Falls back to collision
-  // radius when measurement isn't available yet.
+  // Elite glow — affix color if any, else default gold. Aura sized to
+  // the body silhouette via frame.halfWidth.
   if (e.elite && !e.boss && !e.dead) {
     const pulse = 0.85 + 0.15 * Math.sin(e.animTime * 4);
     const glowBase = e.affix ? e.affix.glow : 'rgba(255, 210, 90, ';
-    const _gb = _getSpriteBounds(e.def);
-    const visHalfW = (_gb && _gb.halfWidth) || (e.def.radius || 22);
-    const r = visHalfW * 1.5;
-    const g = ctx.createRadialGradient(e.x, e.y + 8, 2, e.x, e.y + 8, r);
+    const r = frame.halfWidth * 1.5;
+    const g = ctx.createRadialGradient(e.x, frame.feetY + 4, 2, e.x, frame.feetY + 4, r);
     g.addColorStop(0, glowBase + (0.28 * pulse).toFixed(3) + ')');
     g.addColorStop(0.55, glowBase + (0.08 * pulse).toFixed(3) + ')');
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
-    ctx.fillRect(e.x - r, e.y + 8 - r, r * 2, r * 2);
+    ctx.fillRect(e.x - r, frame.feetY + 4 - r, r * 2, r * 2);
   }
   // Vanguard shield wedge — visual readout of frontal block + charges
   if (e.def.shieldCharges && !e._vShieldBroken && !e.dead) {
@@ -2448,21 +2511,17 @@ export function drawEnemy(ctx, e) {
       if (e._shieldFlash > 0) e._shieldFlash -= 0.016;
     }
   }
-  // Enraged boss — persistent red aura for reads-at-a-glance danger.
-  // Aura radius derived from the measured sprite silhouette, scaled
-  // up enough to read as "boss is enraged" without fully overlapping
-  // adjacent enemies.
+  // Enraged boss — persistent red aura. Sized to body silhouette
+  // (slightly wider than elite glow for a more oppressive read).
   if (e.boss && e._enraged && !e.dead) {
     const pulse = 0.75 + 0.25 * Math.sin(e.animTime * 5);
-    const _bb = _getSpriteBounds(e.def);
-    const visHalfW = (_bb && _bb.halfWidth) || (e.def.radius || 22);
-    const r = visHalfW * 2.0;
-    const g = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, r);
+    const r = frame.halfWidth * 2.0;
+    const g = ctx.createRadialGradient(e.x, frame.feetY, 4, e.x, frame.feetY, r);
     g.addColorStop(0, `rgba(255, 50, 30, ${(0.34 * pulse).toFixed(3)})`);
     g.addColorStop(0.6, `rgba(255, 80, 40, ${(0.14 * pulse).toFixed(3)})`);
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
-    ctx.fillRect(e.x - r, e.y + 4 - r, r * 2, r * 2);
+    ctx.fillRect(e.x - r, frame.feetY - r, r * 2, r * 2);
   }
 
   // Wound tier — drives tint/tremble/blood drip. Elites + bosses still suffer
@@ -2475,7 +2534,9 @@ export function drawEnemy(ctx, e) {
   if (wounded && !e.hitFlash) {
     const chance = critical ? 0.035 : 0.016;
     if (Math.random() < chance) {
-      bloodDrip(e.x + (Math.random() - 0.5) * 10, e.y - size * 0.35, critical ? 2 : 1, e.def.bloodColor || '#8a1a26');
+      // Blood drips from the visible body center, not e.y - size * 0.35
+      // (which floated drips above the body for non-cell-filling sprites).
+      bloodDrip(e.x + (Math.random() - 0.5) * 10, frame.centerY, critical ? 2 : 1, e.def.bloodColor || '#8a1a26');
     }
   }
   // Subtle tremble when critical (not bosses — they own their stance)
@@ -2610,49 +2671,21 @@ export function drawEnemy(ctx, e) {
   // HP bar — boss red-orange, elite gold (or affix color), normal red.
   // Elites + bosses show bar ALWAYS (threat readability); normals only when hurt.
   if (!e.dead && (e.hp < e.maxHp || e.elite || e.boss)) {
-    // Bar width — auto-derived from the sprite's visible silhouette
-    // when measurement succeeded; falls back to a collision-radius
-    // heuristic otherwise. Using the measured halfWidth keeps the bar
-    // proportional to the BODY rather than the gameplay collision
-    // footprint (which can be smaller than the visible width — e.g.
-    // an orc with a shield, or a slime whose paint extends past its
-    // collision radius).
-    //
-    // Floor at 28 so even tiny enemies get a readable bar. Boss / elite
-    // get a small constant boost on top so they read as more important.
-    const _bnd = _getSpriteBounds(e.def);
-    const visHalfW = (_bnd && _bnd.halfWidth) || (e.def.radius || 22);
-    const baseW = Math.max(28, visHalfW * 1.5 + 4);
+    // Bar width — derived from the canonical frame's halfWidth so it
+    // tracks the visible body silhouette. Floor at 28 so tiny enemies
+    // still get a readable bar. Boss/elite get a small constant boost
+    // for hierarchy.
+    const baseW = Math.max(28, frame.halfWidth * 1.5 + 4);
     const w = e.boss ? baseW + 24 : e.elite ? baseW + 8 : baseW;
     // Height: revert to original 4 / 5 / 7 after playtest. The 3-px
     // tightening read as "stripe of nothing" — too anemic to register
     // as a status bar against the dark dungeon. 4 px normal is the
     // genre baseline (Hades minion bars, BoI, Dead Cells).
     const h = e.boss ? 7 : e.elite ? 5 : 4;
-    // HP-bar Y offset — playtest fix #4 (2026-05-01).
-    //
-    // History:
-    //   v1: e.y - size * 0.45 — bar floated 90 px above tiny slimes.
-    //   v2: e.y - radius * 2.0 - 8 — broke tall sprites (orc_rider).
-    //   v3: hybrid + per-enemy bodyHeight — fragile, missed new sprites.
-    //   v4: derive from measured sprite alpha bounds. Whatever the
-    //       sprite's visible silhouette actually is, the bar sits
-    //       8 px above it. Works for any enemy without manual data.
-    //
-    // Fallback chain: measured bounds → def.bodyHeight (legacy
-    // override) → hybrid heuristic. The fallback only runs while the
-    // sprite is loading or if measurement fails; in steady state the
-    // measured value applies to every enemy.
-    const r = e.def.radius || 22;
-    let bodyTop;
-    if (_bnd && _bnd.topOffset > 0) {
-      bodyTop = _bnd.topOffset;
-    } else if (e.def.bodyHeight) {
-      bodyTop = e.def.bodyHeight;
-    } else {
-      bodyTop = Math.max(r * 2.5, (e.def.drawSize || 200) * 0.30);
-    }
-    const yBar = e.y - bodyTop - 8;
+    // HP-bar Y — sits 8 px above the canonical frame's topY.
+    // The frame already encodes the priority chain (def.frame manual
+    // override → measured sprite bounds → legacy bodyHeight → heuristic).
+    const yBar = frame.topY - 8;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(e.x - w/2, yBar, w, h);
     // Bar fill — boss red-orange, elite gold (or affix color when

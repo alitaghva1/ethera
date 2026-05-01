@@ -20,7 +20,7 @@ import {
   cataclysmRegisterHit, pierceLine, wandererOnDodge,
   spawnExplosion, combo,
 } from './synergies.js';
-import { spawnEmberFlame, enemies as activeEnemies } from './enemies.js';
+import { spawnEmberFlame, enemies as activeEnemies, getEnemyFrame } from './enemies.js';
 import { dropGold } from './gold.js';
 import { deathBurst } from './particles.js';
 import { showTip } from './tips.js';
@@ -1851,8 +1851,8 @@ export function updateHero(dt, enemies, mouseWorld) {
       if (dx * dx + dy * dy < (reach + e.radius) * (reach + e.radius)) {
         hero.dashStrikeHit.add(e);
         e.takeDamage(dmg, hero.dashStrikeDirX, hero.dashStrikeDirY);
-        hitSpark(e.x, e.y - 18, -hero.dashStrikeDirX, -hero.dashStrikeDirY, '#ffeb99');
-        spawnDamageNumber(e.x, e.y - 36, dmg, { crit: true, dir: { x: hero.dashStrikeDirX, y: hero.dashStrikeDirY }, elementTag: e._lastElementTag });
+        hitSpark(e.x, getEnemyFrame(e).centerY, -hero.dashStrikeDirX, -hero.dashStrikeDirY, '#ffeb99');
+        spawnDamageNumber(e.x, getEnemyFrame(e).topY - 8, dmg, { crit: true, dir: { x: hero.dashStrikeDirX, y: hero.dashStrikeDirY }, elementTag: e._lastElementTag });
         triggerHitStop(0.05);
         registerComboHit();
       }
@@ -2471,7 +2471,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           const sparkColor = isCounter ? '#ffeb99'
                            : isExec ? '#ff6a55'
                            : (e.def && (e.def.bloodColor || e.def.color)) || '#ffddaa';
-          hitSpark(e.x, e.y - 18, hero.aimX * -1, hero.aimY * -1, sparkColor);
+          hitSpark(e.x, getEnemyFrame(e).centerY, hero.aimX * -1, hero.aimY * -1, sparkColor);
           const wpnShake = w.shakeMul || 1;
           const wpnHs = w.hitStopMul || 1;
           // Per-enemy weight multiplier — a slime tap shouldn't shake
@@ -2498,7 +2498,7 @@ export function updateHero(dt, enemies, mouseWorld) {
           // the damage number surfaces the player-action badges (CHARGE!,
           // FINISH!). Without these, a chargedHit doing 1.85× damage reads
           // as just "a big crit" to the player.
-          spawnDamageNumber(e.x, e.y - 36, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, charged: chargedHit, finisher: finisherHit, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
+          spawnDamageNumber(e.x, getEnemyFrame(e).topY - 8, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, charged: chargedHit, finisher: finisherHit, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
           spawnHitMarker(e.x, e.y - 20, isCrit || isCounter || isExec || chargedHit || finisherHit);
           // Wizard-kit Sprint 3B — slot resonance T1 adds +0.05s hit-stop
           // to all sword hits (additive on top of the base hit-stop).
@@ -2600,7 +2600,7 @@ export function updateHero(dt, enemies, mouseWorld) {
                 // Chain Lightning = shock element: weak vs fire/cold, resisted by shock
                 best.takeDamage(finalDmg * 0.7, (best.x - e.x) * 0.04, (best.y - e.y) * 0.04, { damageType: 'shock' });
                 hitSpark(best.x, best.y - 18, 0, 0, '#a0e8ff');
-                spawnDamageNumber(best.x, best.y - 36, finalDmg * 0.7, { color: '#a0e8ff', elementTag: best._lastElementTag });
+                spawnDamageNumber(best.x, getEnemyFrame(best).topY - 8, finalDmg * 0.7, { color: '#a0e8ff', elementTag: best._lastElementTag });
                 playSfx('click', { rate: 2.4, volume: 0.6 });
                 // FUSION: Tesla Storm — chain arc also detonates as an explosion
                 if (hero.fusionTeslaStorm) {
