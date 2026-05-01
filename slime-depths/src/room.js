@@ -567,21 +567,49 @@ export function buildRoomFromData(data) {
       }
     }
   }
-  // SET-PIECE DECOR — 40% chance of a distinctive prop per room to break
-  // up visual sameness. Placed in safe empty tiles away from pillars/spawns.
-  if ((data.kind === 'combat' || data.kind === 'challenge' || data.kind === 'reward' || data.kind === 'trove') && (hash(data.pillarTemplate | 0, 29) % 100) < 40) {
+  // SET-PIECE DECOR — 100% chance of a distinctive prop on every
+  // applicable room, plus a SECOND prop on medium/large rooms.
+  //
+  // Audit T2.3: previous 40% gate meant 60% of combat rooms had ZERO
+  // set-piece décor — the player's eye had no compositional anchor and
+  // rooms read as "empty box with monsters." Bumping to 100% per room
+  // (and adding a second different-type prop on bigger rooms) gives
+  // every fight a focal element. Sides are preferred so center stays
+  // clear for combat geometry; two props use opposite sides so they
+  // don't bunch.
+  if (data.kind === 'combat' || data.kind === 'challenge' || data.kind === 'reward' || data.kind === 'trove') {
     const propTypes = ['bones', 'banner', 'statue', 'rug', 'chest'];
-    const propKind = propTypes[hash(data.pillarTemplate | 0, 31) % propTypes.length];
-    // Pick a position — prefer sides, avoid center
+    const wantTwo = (w >= 20 && h >= 13);     // medium / wide / large
+    // First prop — random side.
+    const propKindA = propTypes[hash(data.pillarTemplate | 0, 31) % propTypes.length];
+    const sideA = (hash(data.pillarTemplate | 0, 33) & 1) === 0;     // 0=left, 1=right
+    const placed = [];
     for (let tries = 0; tries < 8; tries++) {
-      const sideLeft = (hash(tries + 41, 43) & 1) === 0;
-      const px = sideLeft
+      const px = sideA
         ? 2 + (hash(tries + 51, 47) % 4)
         : w - 3 - (hash(tries + 53, 49) % 4);
       const py = 3 + (hash(tries + 57, 53) % Math.max(1, h - 6));
       if (tiles[py]?.[px] === 'floor' && !room.decor.some(d => d.x === px && d.y === py)) {
-        room.decor.push({ x: px, y: py, kind: propKind });
+        room.decor.push({ x: px, y: py, kind: propKindA });
+        placed.push({ x: px, y: py });
         break;
+      }
+    }
+    // Second prop on bigger rooms — opposite side, different type.
+    if (wantTwo && placed.length > 0) {
+      // Pick a different prop type (skip the one we just placed).
+      const remaining = propTypes.filter(t => t !== propKindA);
+      const propKindB = remaining[hash(data.pillarTemplate | 0, 37) % remaining.length];
+      const sideB = !sideA;
+      for (let tries = 0; tries < 8; tries++) {
+        const px = sideB
+          ? 2 + (hash(tries + 61, 59) % 4)
+          : w - 3 - (hash(tries + 67, 61) % 4);
+        const py = 3 + (hash(tries + 71, 67) % Math.max(1, h - 6));
+        if (tiles[py]?.[px] === 'floor' && !room.decor.some(d => d.x === px && d.y === py)) {
+          room.decor.push({ x: px, y: py, kind: propKindB });
+          break;
+        }
       }
     }
   }
