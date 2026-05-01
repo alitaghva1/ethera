@@ -1,5 +1,6 @@
 // Combat-feel FX — damage numbers, sword slashes, and a global hit-stop timer.
 // All pooled / freelisted; runs beside the particle system in main.js.
+import { camera } from './camera.js';
 
 // ─── SOUL TETHER ─────────────────────────────────────────────────────────────
 // Curved colored line from one world point to another, fading over a short
@@ -792,36 +793,54 @@ export function updateFx(dt) {
   }
 }
 
+// HUD top-band clamp — minimum screen-Y a damage number can reach
+// before the world→screen transform stops carrying it any higher.
+// Audit T2.9: damage numbers fly upward in world space and used to
+// paint OVER the HUD when the hero was near the top of a room (the
+// rising number's screen-Y crossed the hearts/relics band). Now the
+// rendered world-Y is clamped so the result lands at or below this
+// screen-Y. The number visually pauses at the band rather than
+// floating into the HUD. Tuned to 64 px — clears the HUD top zone
+// (hearts at ~14, ability pips at ~30, top of relic strip at ~58)
+// with a small margin.
+const DMG_NUMBER_MIN_SCREEN_Y = 64;
 export function drawDamageNumbers(ctx) {
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  // Compute the world-Y floor that maps to MIN_SCREEN_Y under the
+  // current camera. Damage numbers with world-Y below this floor get
+  // rendered AT this floor instead, so they never paint over the HUD.
+  const z = camera.zoom || 1;
+  const minWorldY = (DMG_NUMBER_MIN_SCREEN_Y - camera.viewH / 2) / z + camera.y - camera.offsetY;
   for (const p of dmgLive) {
     const t = p.life / p.maxLife;
     ctx.globalAlpha = Math.min(1, t * 1.6);
     // Pop scale for crits/execs/counters in first 100ms
     const pop = p.badge ? 1 + Math.max(0, 1 - (p.maxLife - p.life) * 10) * 0.4 : 1;
     ctx.font = 'bold ' + (p.size * pop) + 'px Georgia, "Cormorant Garamond", serif';
+    // Clamp render-Y to minWorldY so the number can't paint over HUD.
+    const ry = Math.max(p.y, minWorldY);
     // Thick dark outline for readability against any floor color
     ctx.lineWidth = 4;
     ctx.strokeStyle = p.outline;
     ctx.lineJoin = 'round';
-    ctx.strokeText(p.text, p.x, p.y);
+    ctx.strokeText(p.text, p.x, ry);
     // Inner fill
     ctx.fillStyle = p.color;
-    ctx.fillText(p.text, p.x, p.y);
+    ctx.fillText(p.text, p.x, ry);
     // Tiny highlight on top-left for depth
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.fillText(p.text, p.x - 1, p.y - 1);
+    ctx.fillText(p.text, p.x - 1, ry - 1);
     // Badge text above the number
     if (p.badge) {
       const badgePop = 1 + Math.max(0, 1 - (p.maxLife - p.life) * 7) * 0.6;
       ctx.font = 'bold ' + (11 * badgePop) + 'px Georgia, serif';
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(10, 5, 10, 0.95)';
-      ctx.strokeText(p.badge, p.x, p.y - p.size * pop - 2);
+      ctx.strokeText(p.badge, p.x, ry - p.size * pop - 2);
       ctx.fillStyle = p.badgeColor;
-      ctx.fillText(p.badge, p.x, p.y - p.size * pop - 2);
+      ctx.fillText(p.badge, p.x, ry - p.size * pop - 2);
     }
     // Element weakness/resist tag — to the right of the number
     if (p.elementTag) {
@@ -829,9 +848,9 @@ export function drawDamageNumbers(ctx) {
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(10, 5, 10, 0.95)';
       const tx = p.x + p.size * pop * 0.7;
-      ctx.strokeText(p.elementTag, tx, p.y + 2);
+      ctx.strokeText(p.elementTag, tx, ry + 2);
       ctx.fillStyle = p.elementColor;
-      ctx.fillText(p.elementTag, tx, p.y + 2);
+      ctx.fillText(p.elementTag, tx, ry + 2);
     }
   }
   ctx.restore();
