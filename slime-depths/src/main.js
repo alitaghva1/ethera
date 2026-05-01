@@ -2484,7 +2484,18 @@ function loadRoom(idx, entryFrom) {
     // the first combat, after the controls + HP tips, while the player
     // is still alive and engaged. The rail's de-dup prevents repeats
     // on subsequent runs.
-    setTimeout(() => showTip('first_dodge'), 4000);
+    //
+    // Audit guard: fire only if player is still alive in combat. A
+    // player who died in <4s would otherwise have the tip seen-marked
+    // without ever seeing it (rail might defer past death anyway, but
+    // this is cleaner). _runSeq capture handles run-restart between
+    // queue and fire.
+    const _firstDodgeSeq = _runSeq;
+    setTimeout(() => {
+      if (_runSeq !== _firstDodgeSeq || !running) return;
+      if (!hero || hero.hp <= 0 || hero.state === 'dead') return;
+      showTip('first_dodge');
+    }, 4000);
   }
   // Start room — give the player a "walk through the door north" cue.
   // Onboarding audit P0. The start room is a non-combat tile so
