@@ -1777,20 +1777,58 @@ export function drawDoorLintels(ctx) {
 function drawSpike(ctx, tx, ty, state) {
   const x = tx * TILE, y = ty * TILE;
   const cx = x + TILE/2;
-  // Base pit (always visible as a darker floor area)
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
+  const cy = y + TILE/2;
   // Spike rises based on state
   let riseT = 0;      // 0 = fully retracted, 1 = fully extended
   if (state.kind === 'warning') riseT = 0.25 + state.progress * 0.35;
   else if (state.kind === 'active') riseT = 0.9 + (1 - state.progress) * 0.1;
+
+  // ── Base pit — INSET MECHANICAL FLOOR PLATE ────────────────────
+  // Reads as "this floor tile is rigged" rather than a flat dark square.
+  // Sequence: outer recessed shadow → inner stone slab → cross slot
+  // (where the spikes emerge) → 4 corner studs (rivets). Same overall
+  // dark mass as before but with enough bevel + detail to communicate
+  // a TRAP rather than "dark patch on floor".
+  // 1) Outer recess — slight ambient occlusion ring around the plate
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  ctx.fillRect(x + 4, y + 4, TILE - 8, TILE - 8);
+  // 2) Inner stone slab — slightly lighter than the recess so the
+  // plate reads as inset into the floor
+  ctx.fillStyle = 'rgba(28, 22, 28, 0.95)';
+  ctx.fillRect(x + 7, y + 7, TILE - 14, TILE - 14);
+  // 3) Top bevel highlight (catches overhead light)
+  ctx.fillStyle = 'rgba(80, 70, 78, 0.55)';
+  ctx.fillRect(x + 7, y + 7, TILE - 14, 1);
+  ctx.fillStyle = 'rgba(80, 70, 78, 0.30)';
+  ctx.fillRect(x + 7, y + 7, 1, TILE - 14);
+  // 4) Bottom-right shadow rim (depth on the opposite edges)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fillRect(x + 7, y + TILE - 8, TILE - 14, 1);
+  ctx.fillRect(x + TILE - 8, y + 7, 1, TILE - 14);
+  // 5) Cross-slot grooves — the seam where the spikes emerge.
+  // Two perpendicular dark lines through the center, calling out
+  // "moving parts inside this plate".
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+  ctx.fillRect(x + 10, cy - 0.5, TILE - 20, 1);    // horizontal slot
+  ctx.fillRect(cx - 0.5, y + 10, 1, TILE - 20);    // vertical slot
+  // 6) 4 corner rivets — small metal studs at the plate corners.
+  // Bigger + more contrasted than the previous 3×3 dots so they read
+  // as iron hardware, not noise.
+  const studPositions = [[12, 12], [TILE - 14, 12], [12, TILE - 14], [TILE - 14, TILE - 14]];
+  for (const [sxOff, syOff] of studPositions) {
+    // Stud body
+    ctx.fillStyle = 'rgba(60, 50, 55, 0.95)';
+    ctx.fillRect(x + sxOff - 1, y + syOff - 1, 4, 4);
+    // Stud highlight
+    ctx.fillStyle = 'rgba(110, 100, 110, 0.85)';
+    ctx.fillRect(x + sxOff - 1, y + syOff - 1, 4, 1);
+    ctx.fillRect(x + sxOff - 1, y + syOff - 1, 1, 3);
+  }
+
   if (riseT <= 0.02) {
-    // Retracted: only 4 small dots
-    ctx.fillStyle = 'rgba(30,20,25,0.75)';
-    ctx.fillRect(x + 12, y + 12, 3, 3);
-    ctx.fillRect(x + 33, y + 12, 3, 3);
-    ctx.fillRect(x + 12, y + 33, 3, 3);
-    ctx.fillRect(x + 33, y + 33, 3, 3);
+    // Fully retracted — base plate above is the entire visual.
+    // The cross-slot + studs make the plate read as a trap mechanism
+    // even when the spikes themselves are hidden.
     return;
   }
   // Warning state tremble

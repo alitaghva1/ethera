@@ -2315,10 +2315,16 @@ export function drawEnemy(ctx, e) {
   // Elite glow — affix color if any, else default gold.
   // Kept subtle: small tight halo at feet, not a huge field. Reads as "this
   // enemy is dangerous" without dominating the screen.
+  //
+  // 2026-05-01 fix: was `size * 0.35` (drawSize-anchored) which produced a
+  // 70-px-radius aura on a slime whose visible body is ~30 px wide — the
+  // aura was 4× the body. Now anchored to collision radius (which tracks
+  // the visible silhouette), * 1.8 → slime radius 22 → 40-px aura,
+  // proportional to the body, not the empty cell padding.
   if (e.elite && !e.boss && !e.dead) {
     const pulse = 0.85 + 0.15 * Math.sin(e.animTime * 4);
     const glowBase = e.affix ? e.affix.glow : 'rgba(255, 210, 90, ';
-    const r = size * 0.35;
+    const r = (e.def.radius || 22) * 1.8;
     const g = ctx.createRadialGradient(e.x, e.y + 8, 2, e.x, e.y + 8, r);
     g.addColorStop(0, glowBase + (0.28 * pulse).toFixed(3) + ')');
     g.addColorStop(0.55, glowBase + (0.08 * pulse).toFixed(3) + ')');
@@ -2357,10 +2363,15 @@ export function drawEnemy(ctx, e) {
       if (e._shieldFlash > 0) e._shieldFlash -= 0.016;
     }
   }
-  // Enraged boss — persistent red aura for reads-at-a-glance danger
+  // Enraged boss — persistent red aura for reads-at-a-glance danger.
+  // 2026-05-01 fix: was `size * 0.55` (drawSize-anchored), which made the
+  // aura on the floor-4 boss radius-30 ember tyrant span ~209 px (drawSize
+  // 380 × 0.55). Way too big for the visible body. Now collision-radius-
+  // anchored so the aura grows with the actual silhouette: ember tyrant
+  // radius 30 → 72-px aura, dense and threatening without overwhelming.
   if (e.boss && e._enraged && !e.dead) {
     const pulse = 0.75 + 0.25 * Math.sin(e.animTime * 5);
-    const r = size * 0.55;
+    const r = (e.def.radius || 22) * 2.4;
     const g = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, r);
     g.addColorStop(0, `rgba(255, 50, 30, ${(0.34 * pulse).toFixed(3)})`);
     g.addColorStop(0.6, `rgba(255, 80, 40, ${(0.14 * pulse).toFixed(3)})`);
@@ -2527,18 +2538,26 @@ export function drawEnemy(ctx, e) {
     // as a status bar against the dark dungeon. 4 px normal is the
     // genre baseline (Hades minion bars, BoI, Dead Cells).
     const h = e.boss ? 7 : e.elite ? 5 : 4;
-    // HP-bar Y offset — playtest fix: 0.27 was too LOW. Tiny-RPG sprites
-    // don't bottom-anchor their character in the cell — the visible
-    // body sits roughly mid-cell. With multiplier 0.27 the bar landed
-    // ON the character's head instead of above it ("looks janky af").
-    // 0.45 places the bar clearly above the visible top of the
-    // character for every enemy at every drawSize. Concrete:
-    //   slime  drawSize 200 → bar 90 px above e.y (visible head ~e.y-46)
-    //   skel   drawSize 220 → bar 99 px above (head ~e.y-51)
-    //   ember  drawSize 380 → bar 171 px above (head ~e.y-87)
-    // Still well clear of canvas-top clamping in normal play; a
-    // hero-tier room is 14 tiles × 48 px = 672 tall, plenty of room.
-    const yBar = e.y - size * 0.45;
+    // HP-bar Y offset — playtest fix #2 (2026-05-01).
+    //
+    // Was: e.y - size * 0.45  (size = drawSize = sprite cell size).
+    // Bug: Tiny-RPG sprites only fill ~11-23% of their drawSize cell, so
+    // tying the bar offset to drawSize put the bar 60-100 px ABOVE the
+    // visible head. A small slime (drawSize 200, visible body ~30 px)
+    // had its bar floating 90 px above its body — close to the top of
+    // the screen. The screenshot bug ("knight HP off, slime bar at top
+    // of screen") was this exact issue.
+    //
+    // Now: anchored to collision radius, which actually tracks the
+    // visible body silhouette (def.radius is the gameplay collision
+    // footprint, ~18-34 across enemies). 2.0× + 8 px clearance puts
+    // the bar just above the visible head:
+    //   slime  radius 22 → bar 52 px above e.y  (was 90)
+    //   skel   radius 22 → bar 52 px above e.y  (was 99)
+    //   lancer radius 22 → bar 52 px above e.y  (was 99)
+    //   ember  radius 30 → bar 68 px above e.y  (was 171)
+    const r = e.def.radius || 22;
+    const yBar = e.y - (r * 2.0 + 8);
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(e.x - w/2, yBar, w, h);
     // Bar fill — boss red-orange, elite gold (or affix color when
