@@ -199,6 +199,87 @@ export function clearEmberRings() { _emberRings.length = 0; }
 
 const SPR = 100;
 
+// ─── Sprite bounds measurement (auto-derived HP bar position/width) ─────
+// Heuristics for HP-bar placement (radius vs drawSize) couldn't reconcile
+// the variation across enemy sprites: Tiny-RPG slimes fill ~15% of their
+// cell, mounted units fill ~80%, bosses fill ~50%. Per-enemy `bodyHeight`
+// overrides worked but required manual data entry per enemy and missed
+// new sprites by default.
+//
+// This measures the actual visible body of each sprite at first draw —
+// the alpha-bounding box of the idle frame — and caches the result on
+// the def. HP bar Y + width then come from real geometry, not guesses.
+//
+// Cost: one ImageData scan of a 100×100 frame per enemy type. Runs once
+// per def (~25 types over a run), then cached. No per-frame cost.
+const _spriteBoundsCanvas = (typeof document !== 'undefined') ? document.createElement('canvas') : null;
+if (_spriteBoundsCanvas) {
+  _spriteBoundsCanvas.width = SPR;
+  _spriteBoundsCanvas.height = SPR;
+}
+const _spriteBoundsCtx = _spriteBoundsCanvas ? _spriteBoundsCanvas.getContext('2d', { willReadFrequently: false }) : null;
+
+// Pulls the alpha-opaque bounding box of the FIRST FRAME of the given
+// sprite sheet. Returns world-space offsets relative to e.y / e.x given
+// the standard drawImage offset (-size/2, -size * 0.78). Returns null on
+// failure (sprite not loaded, CORS, empty alpha).
+function _measureSpriteBounds(img, drawSize) {
+  if (!img || !img.complete || !img.naturalWidth || !_spriteBoundsCtx) return null;
+  try {
+    _spriteBoundsCtx.clearRect(0, 0, SPR, SPR);
+    _spriteBoundsCtx.drawImage(img, 0, 0, SPR, SPR, 0, 0, SPR, SPR);
+    const data = _spriteBoundsCtx.getImageData(0, 0, SPR, SPR).data;
+    let topY = SPR, bottomY = -1, leftX = SPR, rightX = -1;
+    // Threshold 40 — ignore very faint anti-aliasing fringe so bounds
+    // hug the actual visible silhouette, not its halo.
+    for (let y = 0; y < SPR; y++) {
+      for (let x = 0; x < SPR; x++) {
+        if (data[(y * SPR + x) * 4 + 3] >= 40) {
+          if (y < topY) topY = y;
+          if (y > bottomY) bottomY = y;
+          if (x < leftX) leftX = x;
+          if (x > rightX) rightX = x;
+        }
+      }
+    }
+    if (bottomY < 0) return null;        // empty / fully transparent
+    // Sprite drawn at (-size/2, -size * 0.78) → SPR cell maps to size px.
+    // Source y → world Y offset from e.y:
+    //   world_y_offset = (sy / SPR) * size - size * 0.78
+    // For "above e.y" we want a positive value (bodyTopOffset = how far
+    // above e.y the visible top sits).
+    const scale = drawSize / SPR;
+    const topOffset    = (0.78 - topY    / SPR) * drawSize;    // px above e.y
+    const bottomOffset = (bottomY / SPR - 0.78) * drawSize;    // px below e.y (usually small)
+    const halfWidth    = ((rightX - leftX + 1) / 2) * scale;   // visible body half-width in world px
+    return { topOffset, bottomOffset, halfWidth };
+  } catch (_e) {
+    return null;     // CORS or other ImageData failure
+  }
+}
+
+// Lazy getter — measures + caches on first call after the sprite loads.
+// Returns null while the sprite is still loading (caller falls back to
+// heuristic in that frame). Marks as "attempted" only when we genuinely
+// tried with a loaded image and failed (e.g. CORS / empty alpha) so we
+// don't retry the failed measurement every frame, but DO retry if the
+// image just hasn't loaded yet.
+function _getSpriteBounds(def) {
+  if (def._spriteBounds) return def._spriteBounds;
+  if (def._spriteBoundsAttempted) return null;
+  const img = images[def.prefix + 'idle'] || images[def.prefix + 'walk'];
+  if (!img || !img.complete || !img.naturalWidth) return null;     // not loaded yet — retry later
+  const bounds = _measureSpriteBounds(img, def.drawSize || 200);
+  if (bounds) {
+    def._spriteBounds = bounds;
+    return bounds;
+  }
+  // Image was loaded but measurement failed (CORS, empty alpha, etc.) —
+  // mark attempted so we don't keep retrying.
+  def._spriteBoundsAttempted = true;
+  return null;
+}
+
 // Behaviors:
 //   melee   — chase, swing in arc-shaped hitbox
 //   ranged  — keep distance, shoot projectiles
@@ -2320,15 +2401,15 @@ export function drawEnemy(ctx, e) {
   // Kept subtle: small tight halo at feet, not a huge field. Reads as "this
   // enemy is dangerous" without dominating the screen.
   //
-  // 2026-05-01 fix: was `size * 0.35` (drawSize-anchored) which produced a
-  // 70-px-radius aura on a slime whose visible body is ~30 px wide — the
-  // aura was 4× the body. Now anchored to collision radius (which tracks
-  // the visible silhouette), * 1.8 → slime radius 22 → 40-px aura,
-  // proportional to the body, not the empty cell padding.
+  // 2026-05-01 fix: derive radius from the measured sprite half-width so
+  // the aura scales with the actual visible body. Falls back to collision
+  // radius when measurement isn't available yet.
   if (e.elite && !e.boss && !e.dead) {
     const pulse = 0.85 + 0.15 * Math.sin(e.animTime * 4);
     const glowBase = e.affix ? e.affix.glow : 'rgba(255, 210, 90, ';
-    const r = (e.def.radius || 22) * 1.8;
+    const _gb = _getSpriteBounds(e.def);
+    const visHalfW = (_gb && _gb.halfWidth) || (e.def.radius || 22);
+    const r = visHalfW * 1.5;
     const g = ctx.createRadialGradient(e.x, e.y + 8, 2, e.x, e.y + 8, r);
     g.addColorStop(0, glowBase + (0.28 * pulse).toFixed(3) + ')');
     g.addColorStop(0.55, glowBase + (0.08 * pulse).toFixed(3) + ')');
@@ -2368,14 +2449,14 @@ export function drawEnemy(ctx, e) {
     }
   }
   // Enraged boss — persistent red aura for reads-at-a-glance danger.
-  // 2026-05-01 fix: was `size * 0.55` (drawSize-anchored), which made the
-  // aura on the floor-4 boss radius-30 ember tyrant span ~209 px (drawSize
-  // 380 × 0.55). Way too big for the visible body. Now collision-radius-
-  // anchored so the aura grows with the actual silhouette: ember tyrant
-  // radius 30 → 72-px aura, dense and threatening without overwhelming.
+  // Aura radius derived from the measured sprite silhouette, scaled
+  // up enough to read as "boss is enraged" without fully overlapping
+  // adjacent enemies.
   if (e.boss && e._enraged && !e.dead) {
     const pulse = 0.75 + 0.25 * Math.sin(e.animTime * 5);
-    const r = (e.def.radius || 22) * 2.4;
+    const _bb = _getSpriteBounds(e.def);
+    const visHalfW = (_bb && _bb.halfWidth) || (e.def.radius || 22);
+    const r = visHalfW * 2.0;
     const g = ctx.createRadialGradient(e.x, e.y + 4, 4, e.x, e.y + 4, r);
     g.addColorStop(0, `rgba(255, 50, 30, ${(0.34 * pulse).toFixed(3)})`);
     g.addColorStop(0.6, `rgba(255, 80, 40, ${(0.14 * pulse).toFixed(3)})`);
@@ -2529,42 +2610,49 @@ export function drawEnemy(ctx, e) {
   // HP bar — boss red-orange, elite gold (or affix color), normal red.
   // Elites + bosses show bar ALWAYS (threat readability); normals only when hurt.
   if (!e.dead && (e.hp < e.maxHp || e.elite || e.boss)) {
-    // Width scales with collision radius so big enemies get bigger bars
-    // and small enemies get smaller bars (instead of a one-size-fits-all
-    // 38 px stripe sitting awkwardly above tiny slimes). Floor at 28
-    // so even radius-18 haunts get a readable bar. Boss + elite get a
-    // small constant boost on top of the radius scale to clearly mark
-    // them as more important.
-    const baseW = Math.max(28, (e.def.radius || 22) * 1.8 + 4);
+    // Bar width — auto-derived from the sprite's visible silhouette
+    // when measurement succeeded; falls back to a collision-radius
+    // heuristic otherwise. Using the measured halfWidth keeps the bar
+    // proportional to the BODY rather than the gameplay collision
+    // footprint (which can be smaller than the visible width — e.g.
+    // an orc with a shield, or a slime whose paint extends past its
+    // collision radius).
+    //
+    // Floor at 28 so even tiny enemies get a readable bar. Boss / elite
+    // get a small constant boost on top so they read as more important.
+    const _bnd = _getSpriteBounds(e.def);
+    const visHalfW = (_bnd && _bnd.halfWidth) || (e.def.radius || 22);
+    const baseW = Math.max(28, visHalfW * 1.5 + 4);
     const w = e.boss ? baseW + 24 : e.elite ? baseW + 8 : baseW;
     // Height: revert to original 4 / 5 / 7 after playtest. The 3-px
     // tightening read as "stripe of nothing" — too anemic to register
     // as a status bar against the dark dungeon. 4 px normal is the
     // genre baseline (Hades minion bars, BoI, Dead Cells).
     const h = e.boss ? 7 : e.elite ? 5 : 4;
-    // HP-bar Y offset — playtest fix #3 (2026-05-01).
+    // HP-bar Y offset — playtest fix #4 (2026-05-01).
     //
     // History:
-    //  v1: e.y - size * 0.45  → broken: Tiny-RPG slime (drawSize 200,
-    //      visible body ~30 px) had bar 90 px above body, near the
-    //      top of the screen.
-    //  v2: e.y - radius * 2.0 - 8  → fixed slime, broke tall enemies:
-    //      orc_rider (drawSize 250, visible body ~200 px stacked
-    //      knight-on-horse) had bar 64 px above e.y, mid-body. User
-    //      reported "hp for the horse is by its foot" — bar landed
-    //      inside the visible silhouette instead of above it.
-    //  v3: per-enemy bodyHeight override + hybrid default.
+    //   v1: e.y - size * 0.45 — bar floated 90 px above tiny slimes.
+    //   v2: e.y - radius * 2.0 - 8 — broke tall sprites (orc_rider).
+    //   v3: hybrid + per-enemy bodyHeight — fragile, missed new sprites.
+    //   v4: derive from measured sprite alpha bounds. Whatever the
+    //       sprite's visible silhouette actually is, the bar sits
+    //       8 px above it. Works for any enemy without manual data.
     //
-    // Defaults: max(radius * 2.5, drawSize * 0.30) + 8 — lifts the bar
-    // for sprites that fill their cell more (bosses, mounted units)
-    // without pushing it into screen-top dead-space for sprites that
-    // don't (Tiny-RPG minions). Per-enemy `def.bodyHeight` overrides
-    // when the heuristic isn't enough — used for orc_rider and the
-    // floor bosses which have tall non-standard sprites.
+    // Fallback chain: measured bounds → def.bodyHeight (legacy
+    // override) → hybrid heuristic. The fallback only runs while the
+    // sprite is loading or if measurement fails; in steady state the
+    // measured value applies to every enemy.
     const r = e.def.radius || 22;
-    const bodyHeight = e.def.bodyHeight
-      || Math.max(r * 2.5, (e.def.drawSize || 200) * 0.30);
-    const yBar = e.y - bodyHeight - 8;
+    let bodyTop;
+    if (_bnd && _bnd.topOffset > 0) {
+      bodyTop = _bnd.topOffset;
+    } else if (e.def.bodyHeight) {
+      bodyTop = e.def.bodyHeight;
+    } else {
+      bodyTop = Math.max(r * 2.5, (e.def.drawSize || 200) * 0.30);
+    }
+    const yBar = e.y - bodyTop - 8;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(e.x - w/2, yBar, w, h);
     // Bar fill — boss red-orange, elite gold (or affix color when
