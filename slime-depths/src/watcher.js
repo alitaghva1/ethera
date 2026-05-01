@@ -36,7 +36,9 @@
 // ============================================================================
 
 import { safeLoadJSON, safeSaveJSON } from './storage.js';
-import { images } from './loader.js';
+// images import removed — sigil dropped in the lower-letterbox redesign.
+// The painted watcher_sigil.png remains in loader.js for the codex /
+// bestiary screen if we surface a Watcher avatar there later.
 import { synthPing } from './synth.js';
 import { wrapText } from './textLayout.js';
 

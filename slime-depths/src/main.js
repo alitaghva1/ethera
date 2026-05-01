@@ -503,9 +503,9 @@ let fusionBannerTime = 0;
 // Queued by enemies.js via window.__pendingCodexEntry; we dequeue here and
 // animate a top-center reveal. Multiple can be queued if a combat spawns
 // several new types at once (rare, but handled).
-let codexBannerTime = 0;
-let codexBannerEntry = null;
-const codexQueue = [];
+// (Codex banner state removed — codex announcements now flow through
+// the top-right notification rail via pushNotification({ kind: 'codex' }).
+// See the __pendingCodexEntry handler in the tick.)
 // Callback when Echo-of-Self dies — drop a pedestal with a relic from the
 // past death's build as a "reclaim". Turns defeating your past self into a
 // small but meaningful mechanical reward.
@@ -4863,17 +4863,21 @@ function _tickInner(now) {
     if (fusionBannerTime > 0) fusionBannerTime -= realDt;
     updateChromAberr(realDt);
     // Pick up queued codex entries emitted by enemies.spawnEnemy.
+    // Route to the top-right notification rail (same lane as fusions /
+    // pickups / theme unlocks). Was a centered parchment banner that
+    // dominated the upper canvas for 3.6s; rail entries are smaller,
+    // shorter-lived, consistent with every other transient announcement.
     if (window.__pendingCodexEntry) {
-      codexQueue.push(window.__pendingCodexEntry);
+      const E = window.__pendingCodexEntry;
+      pushNotification({
+        kind: 'codex',
+        title: E.name,
+        body: '“' + E.flavor + '”',
+        tint: E.color || '#c0b090',
+        header: '— A NEW ADVERSARY —',
+        life: 4.0,
+      });
       window.__pendingCodexEntry = null;
-    }
-    // Codex banner lifecycle — dequeue next entry when current one finishes.
-    if (codexBannerTime > 0) codexBannerTime -= realDt;
-    if (codexBannerTime <= 0 && codexQueue.length) {
-      codexBannerEntry = codexQueue.shift();
-      codexBannerTime = 3.6;
-    } else if (codexBannerTime <= 0) {
-      codexBannerEntry = null;
     }
     // Claim the center banner slot while ANY centered overlay is visible —
     // codex banner, floor intro card, boss intro, phase-2 banner, OR the
@@ -4887,7 +4891,6 @@ function _tickInner(now) {
     // overwriting it every tick before the cinematic dismissed —
     // letting tips silently fire under the wake overlay.
     window.__centerBannerActive =
-      codexBannerTime > 0 ||
       floorCardTime > 0 ||
       bossIntroTime > 0 ||
       phaseIntroTime > 0 ||
@@ -6589,96 +6592,13 @@ function render() {
   // routing to the rail consolidates all transient announcements
   // into one consistent lane.
 
-  // ENEMY CODEX banner — small bestiary card at top-center when a new enemy
-  // type is first encountered. Slides in from above, holds ~2s, slides out.
-  //
-  // User feedback: at y=40 the banner sat directly on top of the HUD top
-  // band (hearts ~14, ability pips ~30, relic strip top ~58). Combat
-  // attention competed with banner readability. Move to y=160 — clear
-  // of the HUD with margin, still well above the hero's typical world
-  // position so it doesn't paint over the action.
-  if (codexBannerTime > 0 && codexBannerEntry) {
-    const total = 3.6;
-    const r = 1 - (codexBannerTime / total);   // 0 → 1
-    // Alpha: fade in first 0.1, hold, fade out last 0.2
-    let a;
-    if (r < 0.1) a = r / 0.1;
-    else if (r > 0.80) a = (1 - r) / 0.20;
-    else a = 1;
-    a = Math.max(0, Math.min(1, a));
-    // Slide from above in first 0.18, settle
-    const slide = r < 0.18 ? (1 - r / 0.18) * -30 : 0;
-    const w = canvas.width;
-    const boxW = 420, boxH = 64;
-    const bx = (w - boxW) / 2;
-    const by = 160 + slide;
-    const E = codexBannerEntry;
-    const tint = E.color || '#c0b090';
-    ctx.save();
-    ctx.globalAlpha = a;
-    // Outer gold halo REMOVED — the previous radial-gradient-in-fillRect
-    // approach created a rectangular ghost outline around the box: the
-    // radial alpha was still non-zero at the rect edges, so the soft
-    // gradient terminated at hard rectangular boundaries (the
-    // "ghost block" the player flagged), then bloom amplified the
-    // contrast. The gold parchment border + corner diamonds carry the
-    // tome aesthetic without needing an outer glow.
-    // Tome-style vertical gradient body
-    const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
-    bg.addColorStop(0, 'rgba(28, 18, 26, 0.93)');
-    bg.addColorStop(1, 'rgba(14, 8, 16, 0.93)');
-    ctx.fillStyle = bg;
-    ctx.fillRect(bx, by, boxW, boxH);
-    // Border: gold parchment frame (matches every other tome UI in the
-    // game) instead of full-saturation per-enemy tint. The previous
-    // tint-on-tint border + shadowBlur stack was getting bloomed by
-    // postfx into a neon halo on saturated enemy colors — slime green
-    // turned cyan-green, the codex banner read as a glowing rave sign
-    // rather than parchment. Per-enemy color signal is preserved via
-    // the corner diamonds + name fill below.
-    ctx.strokeStyle = '#c9a86a';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-    ctx.strokeStyle = 'rgba(201, 168, 106, 0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 4.5, by + 4.5, boxW - 9, boxH - 9);
-    // Corner accent diamonds — gold parchment, NOT per-enemy tint. Even
-    // tiny 2×1 px fills at full saturation get extracted by the bloom
-    // pass and smeared into 4 corner halos that trace the box perimeter
-    // (the "ghost outline" the player flagged). Keeping them gold lets
-    // bloom paint them as warm parchment glow, matching the box frame.
-    ctx.fillStyle = '#c9a86a';
-    const accents = [[bx + 5, by + 5], [bx + boxW - 5, by + 5], [bx + 5, by + boxH - 5], [bx + boxW - 5, by + boxH - 5]];
-    for (const [cx, cy] of accents) {
-      ctx.fillRect(cx - 1, cy, 2, 1);
-      ctx.fillRect(cx, cy - 1, 1, 2);
-    }
-    // Header — A NEW ADVERSARY
-    ctx.fillStyle = '#c9a86a';
-    ctx.font = 'italic bold 9px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('\u2014 A NEW ADVERSARY \u2014', bx + boxW / 2, by + 8);
-    // Enemy name — tint-colored bold, with a SUBTLE black drop-shadow
-    // for legibility (was tint-on-tint shadowBlur=8 → bloom amplified
-    // into a neon halo). Black shadow + small offset reads as "lit
-    // text" without competing with the bloom pass.
-    ctx.fillStyle = tint;
-    ctx.font = 'bold 18px Georgia, serif';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = 3;
-    ctx.shadowOffsetY = 1;
-    ctx.fillText(E.name, bx + boxW / 2, by + 22);
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    // Flavor — italic, faded
-    ctx.fillStyle = 'rgba(220, 210, 230, 0.78)';
-    ctx.font = 'italic 11px Georgia, serif';
-    ctx.fillText('\u201C' + E.flavor + '\u201D', bx + boxW / 2, by + 46);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
-  }
+  // (Codex banner renderer removed — codex announcements now flow
+  // through pushNotification({ kind: 'codex' }) into the top-right
+  // notification rail. The standalone parchment banner at y=160 was
+  // dominating the upper canvas for 3.6s; rail entries are smaller,
+  // shorter-lived, and consistent with fusion / pickup / theme
+  // announcements that already use the same lane. See the
+  // __pendingCodexEntry handler in the tick.)
 
   // PHASE 2 boss banner — mid-fight cinematic when boss enrages.
   // First-encounter (per boss type): full 1.6s banner with PHASE 2 title
