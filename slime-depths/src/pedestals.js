@@ -1451,18 +1451,34 @@ export function drawPedestalTooltip(ctx, w, h, opts = {}) {
     ctx.fillRect(cx, cy + (cy === by + 2 ? 0 : -3), 1, 4);
   }
 
-  // ICON INSET — the relic's painted art on the left side of the box, with a
-  // tint-framed inner slot that subtly glows to match the pedestal beam.
-  const iconSize = boxH - 20;
-  const iconX = bx + 10;
-  const iconY = by + 10;
+  // ICON INSET — the relic's painted art on the left side of the box.
+  // Audit / user feedback: previously iconSize = boxH - 20, so the
+  // icon GREW with text height. Long-desc relics ended up with huge
+  // 90+ px icons; short-desc relics got tiny 56 px ones — same banner
+  // family, no visual consistency. Cap the icon at a fixed 64 px and
+  // center it vertically when boxH is taller than icon+padding.
+  // Also: relic icons are circular (shields, vials, gems), but the
+  // frame was a square — visible dead space around the circular icon.
+  // Frame is now a circle that traces the icon outline.
+  const ICON_TARGET = 64;
+  const iconSize = Math.min(ICON_TARGET, boxH - 20);
+  const iconX = bx + 12;
+  const iconY = by + Math.round((boxH - iconSize) / 2);
   const iconImg = images[r.icon];
-  // Slot backdrop
+  const iconCx = iconX + iconSize / 2;
+  const iconCy = iconY + iconSize / 2;
+  const iconR = iconSize / 2;
+  // Slot backdrop — circular dark fill
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.fillRect(iconX, iconY, iconSize, iconSize);
+  ctx.beginPath();
+  ctx.arc(iconCx, iconCy, iconR, 0, Math.PI * 2);
+  ctx.fill();
+  // Tinted frame — circular border tracing the icon outline
   ctx.strokeStyle = frameColor;
   ctx.lineWidth = 1;
-  ctx.strokeRect(iconX + 0.5, iconY + 0.5, iconSize - 1, iconSize - 1);
+  ctx.beginPath();
+  ctx.arc(iconCx, iconCy, iconR - 0.5, 0, Math.PI * 2);
+  ctx.stroke();
   if (iconImg) {
     drawRelicIcon(ctx, iconImg, null, null, r.id,
                   iconX + 3, iconY + 3, iconSize - 6);
