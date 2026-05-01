@@ -618,9 +618,29 @@ export function buildRoomFromData(data) {
   // (painted sky + firepits + building glows) — it must NOT get the dungeon
   // wall sconces or their vertical god-ray cones, which otherwise read as
   // phantom spotlight beams across the open-sky hub.
+  //
+  // Audit T2.5: combat rooms used ONE fixed 2-torch layout regardless of
+  // shape or theme. Three named patterns now rotate by room hash:
+  //   'aisle'        — cols 5, 14 (sparse central aisle, the legacy
+  //                    default; reads as a long-corridor look)
+  //   'flanked'      — cols 4, 6, 13, 15 (paired sconces near where
+  //                    doors usually sit; ceremonial / military feel)
+  //   'distributed'  — cols 4, 10, 16 (even spread for evenly-lit
+  //                    rooms; reads as "well-kept" vs ruined)
+  // Door-clearance check (skip cols within ±2 of any door) still runs,
+  // so even the denser patterns stay clear of doorways.
   roomTorches.length = 0;
   if (data.kind !== 'hamlet') {
-    const torchCols = (data.kind === 'boss') ? [3, 8, 11, 16] : [5, 14];
+    const TORCH_PATTERNS = {
+      aisle:       [5, 14],
+      flanked:     [4, 6, 13, 15],
+      distributed: [4, 10, 16],
+    };
+    const patternNames = ['aisle', 'flanked', 'distributed'];
+    const patternKey = patternNames[hash(data.pillarTemplate | 0, 71) % patternNames.length];
+    const torchCols = (data.kind === 'boss')
+      ? [3, 8, 11, 16]                          // boss arenas keep their 4-torch frame
+      : TORCH_PATTERNS[patternKey];
     // Collect ALL north-wall door columns. data.doorPlan.north is an
     // array of door tile x-positions in graph rooms (legacy single
     // center door uses northDoorPos()). Previously we only skipped the
