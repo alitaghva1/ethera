@@ -420,7 +420,7 @@ export const TYPES = {
     // 240 → ~55 visible pixels — same as the hero. Iron Revenant should
     // read clearly bigger than the player. Radius (hit + collision) stays
     // 28 so the bump is purely visual; encounter feel is unchanged.
-    prefix: 'bonecap_', drawSize: 320, radius: 28, speed: 115, hp: 220, damage: 2,
+    prefix: 'bonecap_', drawSize: 320, radius: 28, bodyHeight: 130, speed: 115, hp: 220, damage: 2,
     color: '#cfd4d9', hitCD: 1.0, fps: 10, behavior: 'melee',
     attackReach: 72, attackArc: Math.PI * 0.52,
     windup: 0.40, swing: 0.24,
@@ -459,7 +459,7 @@ export const TYPES = {
   broodmother: {
     // BOSS PRESENCE BUMP: drawSize 280 → 360. Visible ~85 px, ~1.5× hero.
     // Radius unchanged.
-    prefix: 'brood_',  drawSize: 360, radius: 34, speed: 58,  hp: 240, damage: 3,
+    prefix: 'brood_',  drawSize: 360, radius: 34, bodyHeight: 130, speed: 58,  hp: 240, damage: 3,
     color: '#9a6b56', hitCD: 1.15, fps: 8, behavior: 'melee',
     attackReach: 86, attackArc: Math.PI * 0.70,
     windup: 0.55, swing: 0.32,
@@ -495,7 +495,7 @@ export const TYPES = {
     element: 'fire',                 // resists fire, weak to cold/shock
     // BOSS PRESENCE BUMP: drawSize 280 → 380. Final boss; biggest of the
     // four. Visible ~90 px, ~1.6× hero. Radius unchanged.
-    prefix: 'ember_',  drawSize: 380, radius: 30, speed: 82,  hp: 280, damage: 3,
+    prefix: 'ember_',  drawSize: 380, radius: 30, bodyHeight: 150, speed: 82,  hp: 280, damage: 3,
     color: '#e85020', hitCD: 0.95, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.62,
     windup: 0.42, swing: 0.28,
@@ -846,7 +846,7 @@ export const TYPES = {
     // BOSS PRESENCE BUMP (Grudnok F1 boss): drawSize 230 → 290.
     // Visible ~67 px, ~1.2× hero. Floor-1 boss kept slightly smaller than
     // F2-4 bosses on purpose — it's the tutorial boss. Radius unchanged.
-    prefix: 'elite_orc_', drawSize: 290, radius: 28, speed: 85, hp: 200, damage: 2,
+    prefix: 'elite_orc_', drawSize: 290, radius: 28, bodyHeight: 120, speed: 85, hp: 200, damage: 2,
     color: '#7fa34a', hitCD: 0.92, fps: 9, behavior: 'melee',
     attackReach: 66, attackArc: Math.PI * 0.62,
     windup: 0.38, swing: 0.26,
@@ -900,7 +900,11 @@ export const TYPES = {
   // missile read). Higher HP than lancer, longer charge range. Rare
   // slot in tier4; alternative F4 mini-boss option vs hermit.
   orc_rider: {
-    prefix: 'orc_rider_', drawSize: 250, radius: 28, speed: 130, hp: 180, damage: 3,
+    // bodyHeight 170 — orc_rider's sprite is a knight stacked on a horse,
+    // so the visible body is roughly twice as tall as its collision width.
+    // Without this override, the radius * 2.5 default put the HP bar
+    // mid-body ("the horse's foot"); 170 lifts it above the rider's helmet.
+    prefix: 'orc_rider_', drawSize: 250, radius: 28, bodyHeight: 170, speed: 130, hp: 180, damage: 3,
     color: '#a89060', hitCD: 1.4, fps: 9, behavior: 'lancer',
     chargeRange: 460,
     chargeWidth: 42,
@@ -2538,26 +2542,29 @@ export function drawEnemy(ctx, e) {
     // as a status bar against the dark dungeon. 4 px normal is the
     // genre baseline (Hades minion bars, BoI, Dead Cells).
     const h = e.boss ? 7 : e.elite ? 5 : 4;
-    // HP-bar Y offset — playtest fix #2 (2026-05-01).
+    // HP-bar Y offset — playtest fix #3 (2026-05-01).
     //
-    // Was: e.y - size * 0.45  (size = drawSize = sprite cell size).
-    // Bug: Tiny-RPG sprites only fill ~11-23% of their drawSize cell, so
-    // tying the bar offset to drawSize put the bar 60-100 px ABOVE the
-    // visible head. A small slime (drawSize 200, visible body ~30 px)
-    // had its bar floating 90 px above its body — close to the top of
-    // the screen. The screenshot bug ("knight HP off, slime bar at top
-    // of screen") was this exact issue.
+    // History:
+    //  v1: e.y - size * 0.45  → broken: Tiny-RPG slime (drawSize 200,
+    //      visible body ~30 px) had bar 90 px above body, near the
+    //      top of the screen.
+    //  v2: e.y - radius * 2.0 - 8  → fixed slime, broke tall enemies:
+    //      orc_rider (drawSize 250, visible body ~200 px stacked
+    //      knight-on-horse) had bar 64 px above e.y, mid-body. User
+    //      reported "hp for the horse is by its foot" — bar landed
+    //      inside the visible silhouette instead of above it.
+    //  v3: per-enemy bodyHeight override + hybrid default.
     //
-    // Now: anchored to collision radius, which actually tracks the
-    // visible body silhouette (def.radius is the gameplay collision
-    // footprint, ~18-34 across enemies). 2.0× + 8 px clearance puts
-    // the bar just above the visible head:
-    //   slime  radius 22 → bar 52 px above e.y  (was 90)
-    //   skel   radius 22 → bar 52 px above e.y  (was 99)
-    //   lancer radius 22 → bar 52 px above e.y  (was 99)
-    //   ember  radius 30 → bar 68 px above e.y  (was 171)
+    // Defaults: max(radius * 2.5, drawSize * 0.30) + 8 — lifts the bar
+    // for sprites that fill their cell more (bosses, mounted units)
+    // without pushing it into screen-top dead-space for sprites that
+    // don't (Tiny-RPG minions). Per-enemy `def.bodyHeight` overrides
+    // when the heuristic isn't enough — used for orc_rider and the
+    // floor bosses which have tall non-standard sprites.
     const r = e.def.radius || 22;
-    const yBar = e.y - (r * 2.0 + 8);
+    const bodyHeight = e.def.bodyHeight
+      || Math.max(r * 2.5, (e.def.drawSize || 200) * 0.30);
+    const yBar = e.y - bodyHeight - 8;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(e.x - w/2, yBar, w, h);
     // Bar fill — boss red-orange, elite gold (or affix color when
