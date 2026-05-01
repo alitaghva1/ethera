@@ -819,6 +819,39 @@ export function drawHamletEntities(ctx) {
       ctx.restore();
     }
   }
+  // STAGE-3 CAPSTONE — string lanterns around the plaza (audit T2.8).
+  // Once the hamlet is restored (stage 3+, all NPCs arrived), the
+  // rebuild fiction earns a celebratory beat: a ring of small warm
+  // pulses around the plaza at the position where strung lanterns
+  // would hang between rebuilt buildings. Pure dots — no sprite
+  // needed. Tinted warm gold + a slight pulse offset per lantern so
+  // the line shimmers like it's swaying. Drops cleanly at lower
+  // stages — purely additive to the existing scene.
+  if (hamletGrowthStage() >= 3) {
+    const cx = 689, cy = 378;          // plaza center (matches scene_v4)
+    const RING_R = 168;
+    const N = 8;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + Math.PI / 8;     // phase offset so dots sit between paths
+      const lx = cx + Math.cos(a) * RING_R;
+      const ly = cy - 24 + Math.sin(a) * RING_R * 0.55;   // squish vertical for top-down
+      const flick = 0.78 + 0.18 * Math.sin(now * 1.4 + i * 0.7);
+      const haloR = 18;
+      const halo = ctx.createRadialGradient(lx, ly, 1, lx, ly, haloR);
+      halo.addColorStop(0, `rgba(255, 200, 130, ${(0.34 * flick).toFixed(3)})`);
+      halo.addColorStop(0.5, `rgba(220, 160, 90, ${(0.16 * flick).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(180, 120, 70, 0)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = halo;
+      ctx.fillRect(lx - haloR, ly - haloR, haloR * 2, haloR * 2);
+      ctx.restore();
+      // Bright pixel core
+      ctx.fillStyle = `rgba(255, 230, 180, ${(0.88 * flick).toFixed(3)})`;
+      ctx.fillRect(Math.round(lx - 1), Math.round(ly - 1), 2, 2);
+    }
+  }
+
   // 3. Gravekeeper — slow cool soul motes drifting upward beside her,
   //    gated on her arrival (stage 2+). Reads as "she tends the dead;
   //    the dead linger near her." 3 motes phased on now over 5 s,
