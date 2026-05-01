@@ -6010,7 +6010,14 @@ function render() {
     // Also suppressed for the hamlet — that scene is pre-lit by its painted
     // fire halos and dust motes; a bloom pass blows out the firepit into a
     // muddy bright blob and shifts the palette toward the dungeon look.
-    const bloomIntensity = bloomKind === 'boss' ? 0.68 : bloomKind === 'altar' ? 0.60 : 0.52;
+    // Bloom dial-down (Tier 2 atmosphere sweep, audit T2.10): previous
+    // 0.52-0.68 was high for pixel art — bright pixels (torches, embers,
+    // hero halo) were re-amplifying themselves each frame, blooming the
+    // bloom and softening the hard pixel edges that pixel-art identity
+    // depends on. Reference roguelites (Hades, Dead Cells) sit around
+    // 0.20-0.35. Dropped to 0.32 default / 0.42 boss / 0.36 altar — the
+    // bright accents still glow but the world stays crisp.
+    const bloomIntensity = bloomKind === 'boss' ? 0.42 : bloomKind === 'altar' ? 0.36 : 0.32;
     applyBloom(ctx, canvas, bloomIntensity);
 
     // BIOME COLOR GRADE — two-pass tint giving each floor a distinct mood.
