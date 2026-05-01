@@ -181,16 +181,15 @@ function _drawHudPipRow(ctx, x, y, count, max, color, tier) {
         ctx.stroke();
       }
     } else {
-      // Empty — dim outlined dot
-      ctx.fillStyle = 'rgba(20, 16, 26, 0.7)';
+      // Empty — tiny center dot only. The previous outlined-circle
+      // design produced a visually loud row of empty rings, especially
+      // on an inactive chip with 5 zeros. The lone center dot reads
+      // as "slot exists, not yet filled" without screaming for
+      // attention.
+      ctx.fillStyle = 'rgba(160, 165, 180, 0.42)';
       ctx.beginPath();
-      ctx.arc(px, py, pipR, 0, Math.PI * 2);
+      ctx.arc(px, py, 0.9, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(140, 145, 165, 0.45)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(px, py, pipR, 0, Math.PI * 2);
-      ctx.stroke();
     }
   }
 }
@@ -806,10 +805,20 @@ export function drawHud(ctx, w, h, progress = {}) {
       const tier = getSlotTier(count);
       const cx = 18 + i * (sChipW + sChipGap);
       const cy = slotsY;
-      // Backdrop
-      const bgA = tier >= 2 ? 0.92 : tier >= 1 ? 0.82 : 0.65;
-      ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
-      ctx.fillRect(cx, cy, sChipW, sChipH);
+      // ── Ghost-chip mode for empty slots ────────────────────────────
+      // tier 0 + count 0 chips skip the backdrop, border, halo, and pip
+      // row entirely — they recede into the HUD background and only
+      // reserve their layout slot via a dim glyph + dim name. Without
+      // this, a fresh-run HUD shows 8 fully-bordered chips with 25
+      // outlined empty pips, which the player reads as "noisy debug
+      // grid". Once a slot has any progress, the chip lights up.
+      const isGhost = tier === 0 && count === 0;
+      // Backdrop — only for chips with content
+      if (!isGhost) {
+        const bgA = tier >= 2 ? 0.92 : tier >= 1 ? 0.82 : 0.65;
+        ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
+        ctx.fillRect(cx, cy, sChipW, sChipH);
+      }
       // Almost-tier preview pulse — same telegraph pattern as themes.
       const almostRes = tier === 0 && count === SLOT_THRESHOLDS.resonance - 1;
       const almostAsc = tier === 1 && count === SLOT_THRESHOLDS.ascendance - 1;
@@ -830,28 +839,40 @@ export function drawHud(ctx, w, h, progress = {}) {
         ctx.fillStyle = halo;
         ctx.fillRect(cx - 8, cy - 8, sChipW + 16, sChipH + 16);
       }
-      ctx.strokeStyle = tier >= 2 ? '#ffffff' : tier >= 1 ? s.color : 'rgba(120, 130, 150, 0.6)';
-      ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.4 : 1;
-      ctx.strokeRect(cx + 0.5, cy + 0.5, sChipW - 1, sChipH - 1);
+      // Border — only on chips with content. Ghost chips have no
+      // frame so they don't form a visible row of empty boxes.
+      if (!isGhost) {
+        ctx.strokeStyle = tier >= 2 ? '#ffffff' : tier >= 1 ? s.color : 'rgba(120, 130, 150, 0.55)';
+        ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.4 : 1;
+        ctx.strokeRect(cx + 0.5, cy + 0.5, sChipW - 1, sChipH - 1);
+      }
       // ── Glyph + name + pips ──
       // Layout: glyph on left, small caps name above pips on right.
-      // Replaces the old "SWORD 0/5 ★" two-row text. Pips give a visual
-      // progress count without the player having to read numbers, and
-      // the glyph anchors identity faster than the name does.
+      // Ghost chips render glyph + name only (very dim, no pip row);
+      // active chips get the full treatment.
       const sGlyphR = _slotMobile ? 9 : 7;
       const sGlyphCx = cx + (_slotMobile ? 14 : 11);
       const sGlyphCy = cy + sChipH / 2;
-      const sGlyphCol = tier >= 1 ? s.color : 'rgba(170, 180, 195, 0.85)';
+      const sGhostAlpha = isGhost ? 'rgba(170, 175, 190, 0.45)' : 'rgba(170, 180, 195, 0.85)';
+      const sGlyphCol = tier >= 1 ? s.color : sGhostAlpha;
       _drawHudGlyph(ctx, sGlyphCx, sGlyphCy, sGlyphR, s.id, sGlyphCol);
       const sTextX = sGlyphCx + sGlyphR + 4;
-      ctx.fillStyle = tier >= 1 ? s.color : 'rgba(170, 180, 195, 0.8)';
+      ctx.fillStyle = tier >= 1
+        ? s.color
+        : isGhost ? 'rgba(170, 180, 195, 0.40)' : 'rgba(170, 180, 195, 0.8)';
       ctx.font = slotLabelFont;
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(s.name.toUpperCase(), sTextX, cy + (_slotMobile ? 4 : 3));
-      const sPipColor = tier >= 1 ? s.color : 'rgba(180, 190, 205, 0.85)';
-      _drawHudPipRow(ctx, sTextX, cy + (_slotMobile ? 22 : 18),
-                     count, SLOT_THRESHOLDS.ascendance, sPipColor, tier);
+      // Ghost chips center the name vertically since they have no pip row.
+      if (isGhost) {
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s.name.toUpperCase(), sTextX, sGlyphCy);
+      } else {
+        ctx.textBaseline = 'top';
+        ctx.fillText(s.name.toUpperCase(), sTextX, cy + (_slotMobile ? 4 : 3));
+        const sPipColor = tier >= 1 ? s.color : 'rgba(180, 190, 205, 0.85)';
+        _drawHudPipRow(ctx, sTextX, cy + (_slotMobile ? 22 : 18),
+                       count, SLOT_THRESHOLDS.ascendance, sPipColor, tier);
+      }
       // Ascendance star — top-right corner badge
       if (tier >= 2) {
         ctx.fillStyle = '#ffffff';
@@ -936,10 +957,19 @@ export function drawHud(ctx, w, h, progress = {}) {
         const thresh = getThemeThresholds(t.id);
         const cx = 18 + i * (chipW + chipGap);
         const cy = themesY;
-        // Backdrop dims with tier
-        const bgA = tier >= 2 ? 0.9 : tier >= 1 ? 0.8 : 0.65;
-        ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
-        ctx.fillRect(cx, cy, chipW, chipH);
+        // ── Ghost-chip mode for empty themes ──────────────────────────
+        // tier 0 + count 0 chips skip the backdrop / border / halo /
+        // pip row. Same rationale as the SLOTS row above: keep dormant
+        // chips dim so active themes pop. The chip space is reserved
+        // (so the strip layout doesn't shift when a theme activates),
+        // but only shows a faint glyph + name.
+        const isGhost = tier === 0 && count === 0;
+        // Backdrop — only on chips with content
+        if (!isGhost) {
+          const bgA = tier >= 2 ? 0.9 : tier >= 1 ? 0.8 : 0.65;
+          ctx.fillStyle = `rgba(12, 10, 18, ${bgA})`;
+          ctx.fillRect(cx, cy, chipW, chipH);
+        }
         // Round-7-audit POLISH — "almost-there" telegraph. One pickup
         // from the next tier (count 2 -> Resonance, count 4 ->
         // Ascendance for the default 3/5 themes) the chip was
@@ -978,29 +1008,42 @@ export function drawHud(ctx, w, h, progress = {}) {
           ctx.fillStyle = halo;
           ctx.fillRect(cx - 8, cy - 8, chipW + 16, chipH + 16);
         }
-        // Border — brighter + thicker at higher tiers
-        ctx.strokeStyle = tier >= 2 ? t.tint : tier >= 1 ? t.color : 'rgba(120, 130, 150, 0.5)';
-        ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.3 : 1;
-        ctx.strokeRect(cx + 0.5, cy + 0.5, chipW - 1, chipH - 1);
+        // Border — only on chips with content. Ghost chips have no
+        // frame so they don't form a visible row of empty boxes.
+        if (!isGhost) {
+          ctx.strokeStyle = tier >= 2 ? t.tint : tier >= 1 ? t.color : 'rgba(120, 130, 150, 0.45)';
+          ctx.lineWidth = tier >= 2 ? 1.8 : tier >= 1 ? 1.3 : 1;
+          ctx.strokeRect(cx + 0.5, cy + 0.5, chipW - 1, chipH - 1);
+        }
         // \u2500\u2500 Glyph + name + pips \u2500\u2500
         // Same redesign pattern as the SLOTS row above: replace the dense
         // "STORM 0/4 \u2605" text grid with glyph + name + pip row. Glyph
         // anchors identity (matches the pedestal sigil), pips show
         // progress visually without forcing the player to read numbers.
+        // Ghost themes render glyph + name only (very dim, no pip row);
+        // active themes get the full glyph + name + pips treatment.
         const tGlyphR = _themeMobile ? 8 : 6;
         const tGlyphCx = cx + (_themeMobile ? 13 : 10);
         const tGlyphCy = cy + chipH / 2;
-        const tGlyphCol = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.85)';
+        const tGhostAlpha = isGhost ? 'rgba(160, 170, 185, 0.40)' : 'rgba(160, 170, 185, 0.85)';
+        const tGlyphCol = tier >= 1 ? t.tint : tGhostAlpha;
         _drawHudGlyph(ctx, tGlyphCx, tGlyphCy, tGlyphR, t.id, tGlyphCol);
         const tTextX = tGlyphCx + tGlyphR + 4;
-        ctx.fillStyle = tier >= 1 ? t.tint : 'rgba(160, 170, 185, 0.75)';
+        ctx.fillStyle = tier >= 1
+          ? t.tint
+          : isGhost ? 'rgba(160, 170, 185, 0.40)' : 'rgba(160, 170, 185, 0.75)';
         ctx.font = themeNameFont;
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(t.name.toUpperCase(), tTextX, cy + (_themeMobile ? 4 : 3));
-        const tPipColor = tier >= 1 ? t.tint : 'rgba(180, 190, 205, 0.85)';
-        _drawHudPipRow(ctx, tTextX, cy + (_themeMobile ? 20 : 15),
-                       count, thresh.ascendance, tPipColor, tier);
+        if (isGhost) {
+          ctx.textBaseline = 'middle';
+          ctx.fillText(t.name.toUpperCase(), tTextX, tGlyphCy);
+        } else {
+          ctx.textBaseline = 'top';
+          ctx.fillText(t.name.toUpperCase(), tTextX, cy + (_themeMobile ? 4 : 3));
+          const tPipColor = tier >= 1 ? t.tint : 'rgba(180, 190, 205, 0.85)';
+          _drawHudPipRow(ctx, tTextX, cy + (_themeMobile ? 20 : 15),
+                         count, thresh.ascendance, tPipColor, tier);
+        }
         // Ascendance star \u2014 top-right corner badge
         if (tier >= 2) {
           ctx.fillStyle = '#ffffff';

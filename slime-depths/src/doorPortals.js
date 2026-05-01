@@ -137,7 +137,11 @@ const REWARD_SIGILS = {
   'rare+':   '✦',     // 4-point star
   legendary: '✸',     // 8-point sunburst — distinct from rare's 4-point
   heal:      '✚',     // cross (matches sanctuary)
-  fusion:    '⊗',     // circled cross — chain / bond imagery
+  // 'fusion' uses procedural rendering (two interlocked rings) — see
+  // _drawFusionSigil below. The Unicode '⊗' fallback we used to render
+  // looked like a "block / deselect" mark, not a fusion. Setting an
+  // empty key here so the renderer falls into the procedural path.
+  fusion:    '__procedural__',
 };
 
 // Active doors for the current room. Cleared between rooms.
@@ -619,17 +623,49 @@ export function drawDoorLabels(ctx) {
     roundRect(ctx, cardX + 0.5, cardY + 0.5, CARD_W - 1, CARD_H - 1, 6);
     ctx.stroke();
 
+    // ── KIND EYEBROW ────────────────────────────────────────────────
+    // Always-on small-caps label at the top of the card so the player
+    // knows the room kind (COMBAT / REST / ALTAR / SHOP / etc.) from
+    // across the arena, BEFORE the sigil + caption tell them about
+    // reward bias. Previously the kind label only revealed on hero
+    // approach (within 200px), which meant the dominant signal at a
+    // distance was the reward bias — a player saw "FUSION ⊗" and had
+    // to walk close to learn it was a combat fusion room. Bad commit
+    // signal. The eyebrow uses the kind color (e.g. red for elite,
+    // green for rest) so the room kind reads instantly.
+    //
+    // Skipped on sealed doors — the BLOOD GATE caption + crimson
+    // border already broadcast "this is a sealed door, pay HP."
+    if (!isSealed && d.label) {
+      ctx.fillStyle = hexA(d.color || '#cccccc', 0.85 * pulse);
+      ctx.font = 'italic bold 8px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(d.label.toUpperCase(), cx, cardY + 4);
+    }
+
     // Sigil — the dominant glyph. Sized 24px so it fits in a 46-tall
-    // card alongside the caption (and the sub-line on sealed doors).
-    // Positioned in the upper portion; sealed doors push it slightly
-    // higher to make room for the "PAY N HP" line.
+    // card alongside the eyebrow + caption (and the sub-line on
+    // sealed doors). Positioned slightly lower than before to leave
+    // room for the kind eyebrow above; sealed doors push it back up
+    // since they have no eyebrow.
+    const sigilOffsetY = isSealed
+      ? cardCY - (subLine ? 10 : 5)
+      : cardCY - (subLine ? 4 : 0);
     ctx.fillStyle = hexA(borderColor, pulse);
     ctx.shadowColor = hexA(borderColor, pulse * 0.8);
     ctx.shadowBlur = isSealed ? 14 : 10;
-    ctx.font = 'bold 24px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(sigil, cx, cardCY - (subLine ? 10 : 5));
+    if (sigil === '__procedural__' && d.rewardLabel === 'FUSION') {
+      // Procedural fusion sigil — two interlocked rings (Venn-style).
+      // Reads as "two things merging" rather than the old "⊗" which
+      // read as a deselect / block mark.
+      _drawFusionSigil(ctx, cx, sigilOffsetY, 11, hexA(borderColor, pulse));
+    } else {
+      ctx.font = 'bold 24px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sigil, cx, sigilOffsetY);
+    }
     ctx.shadowBlur = 0;
 
     // Caption — single bold line below the sigil. No bullet decorators,
@@ -638,7 +674,12 @@ export function drawDoorLabels(ctx) {
     // tiers (sigil / caption / sub) fit within the card height.
     ctx.fillStyle = captionColor;
     ctx.font = 'bold 11px Georgia, "Cormorant Garamond", serif';
-    ctx.fillText(caption, cx, cardCY + (subLine ? 6 : 13));
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const captionY = isSealed
+      ? cardCY + (subLine ? 6 : 13)
+      : cardCY + (subLine ? 9 : 15);
+    ctx.fillText(caption, cx, captionY);
 
     // Sub-line — sealed doors show "PAY N HP" cost; elite doors show
     // their pre-rolled affix name. Sized small (8px) so it sits as the
@@ -675,29 +716,10 @@ export function drawDoorLabels(ctx) {
     ctx.closePath();
     ctx.fill();
 
-    // Approach reveal — kind label fades in ABOVE the card when the
-    // hero is within 200px. Lets a player who's about to walk through
-    // see "you're heading into an ELITE with a LEGENDARY reward" at
-    // commit time. Hidden at distance so the card stays uncluttered.
-    // Positioned ABOVE the card (not below) because below the card is
-    // the chevron + door arch — overlapping the wall sprite reads as
-    // a render bug. Above the card sits in clean negative space.
-    if (!isSealed && d.rewardLabel && d.label && d.label !== d.rewardLabel) {
-      const dx = hero.x - cx;
-      const dy = hero.y - doorTop;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 200) {
-        const reveal = Math.max(0, Math.min(1, (200 - dist) / 60));
-        if (reveal > 0.05) {
-          ctx.font = 'italic 9px Georgia, serif';
-          ctx.fillStyle = hexA(d.color || borderColor, reveal * 0.85);
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-          ctx.shadowBlur = 3;
-          ctx.fillText(d.label, cx, cardY - 10);
-          ctx.shadowBlur = 0;
-        }
-      }
-    }
+    // (Approach-reveal kind label removed — the kind now lives in the
+    // persistent eyebrow at the top of the card, visible from across
+    // the room. The proximity-reveal was redundant once the eyebrow
+    // always renders.)
     ctx.restore();
 
     // Phase 5 sealed door E-prompt — kept separate from the card so
@@ -784,6 +806,33 @@ function hexA(hex, a) {
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+}
+
+// Fusion sigil — two interlocked rings (Venn-diagram style), drawn
+// procedurally because the unicode "⊗" we used to render reads as a
+// "deny / block" mark, not a "two things merging" mark. Tint is the
+// reward border color; size is the ring radius. The overlapping
+// region gets a brighter highlight so the eye reads "fused", not
+// "two separate things".
+function _drawFusionSigil(ctx, cx, cy, r, color) {
+  ctx.save();
+  const offsetX = r * 0.55;
+  // Outer rings — left and right circles
+  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx - offsetX, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx + offsetX, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  // Overlap highlight — a small filled lens at the intersection so
+  // the "merged" point reads as the bright focus of the sigil.
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 // Theme glyph — small canvas-rendered icon in the door card's corner.
