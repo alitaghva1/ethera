@@ -1253,14 +1253,29 @@ function drawTopWallFrieze(ctx, tx) {
 
 // Shadow band cast by a wall onto the floor BELOW it — drawn on the floor tile,
 // not on the wall. Gives the walls a "standing up" feel.
+//
+// Tier 2 atmosphere sweep (audit T2.2): the previous gradient-only
+// shadow let the wall melt into the floor on biomes where wall body
+// and floor base have similar lightness (crypt: floor #2a2d36 vs
+// wall #242932 — only 6 lightness pts apart). Added a CRISP DARK
+// RIM (the "baseboard") at the very top of the shadow band — a
+// 2 px hard line at near-full opacity gives the seam architectural
+// definition regardless of how close the surface palettes are. The
+// soft gradient still does the cast-shadow falloff below it.
 function drawWallShadowBelow(ctx, tx, ty) {
   const x = tx * TILE, y = ty * TILE;
+  // Soft cast-shadow gradient (existing — wall "standing up" feel).
   const grad = ctx.createLinearGradient(x, y, x, y + 18);
   grad.addColorStop(0, 'rgba(0,0,0,0.65)');
   grad.addColorStop(0.5, 'rgba(0,0,0,0.28)');
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(x, y, TILE, 18);
+  // Baseboard rim — crisp dark line right at the wall foot. This is
+  // the architectural definition that the gradient alone couldn't
+  // provide. 2 px tall, alpha 0.78 — reads as an edge, not a shadow.
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(x, y, TILE, 2);
 }
 
 function drawPillar(ctx, tx, ty) {
