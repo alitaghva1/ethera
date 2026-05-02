@@ -2491,20 +2491,22 @@ function loadRoom(idx, entryFrom) {
   // WASD." Now the tip appears as enemies are still settling, while
   // the player still has full HP and can read it.
   if (data.kind === 'combat' && currentFloorLevel === 1) {
+    // 1-HP design (Path 3): the SURVIVAL tip (first_starting_hp) fires
+    // FIRST — at 200ms — because it covers the most life-critical
+    // teaching: "one heart, time SHIELD to perfect-block." Tips have
+    // concurrency=1 + 5.5s life + 0.8s gap, so they queue serially;
+    // whichever fires first is what the player sees during their
+    // first ~6s of combat. With 1 HP that window may be ALL the
+    // combat they get on run 1, so survival info wins priority.
+    setTimeout(() => showTip('first_starting_hp'), 200);
+    // first_combat (controls) lands second — in 6+ seconds — once
+    // first_starting_hp has cycled out. Player who survives that long
+    // gets reinforcement on the input scheme.
     setTimeout(() => showTip('first_combat'), 400);
-    // Playtest report: "3 max HP. From a knight-fantasy menu I expected
-    // 8-10. The game never told me this is intentional." Fires after
-    // the controls tip so the staggered notification rail (1 tip at a
-    // time, 0.8s gap) lands the HP context as the second beat.
-    setTimeout(() => showTip('first_starting_hp'), 600);
-    // Gameplay-audit Stage A: actively surface the perfect-block tip
-    // (was first_dodge) on first combat. Previously this tip only fired
-    // AFTER the player pressed Space, so a new player who didn't
-    // discover Space on their own never learned about perfect-block —
-    // the deepest combat mechanic in the game. Now it fires 4s into
-    // the first combat, after the controls + HP tips, while the player
-    // is still alive and engaged. The rail's de-dup prevents repeats
-    // on subsequent runs.
+    // first_dodge is the safety net for perfect-block teaching. The
+    // first_starting_hp tip already mentions it; this is redundant
+    // belt-and-suspenders. De-dup ensures it doesn't fire if the
+    // discovery-triggered version (in hero.js) already landed.
     //
     // Audit guard: fire only if player is still alive in combat. A
     // player who died in <4s would otherwise have the tip seen-marked
