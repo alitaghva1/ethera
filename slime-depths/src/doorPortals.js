@@ -534,9 +534,17 @@ export function getDoorMeta(tx, ty) {
 // — too much elevation above the wall pushes the card off-screen.
 // 38px keeps the card visible across all camera positions while still
 // reading as "above the arch" rather than "on the wall."
-const CARD_W = 84;
-const CARD_H = 46;
+// Sealed doors keep the larger frame because BLOOD GATE styling is
+// supposed to dominate visually — a sealed door is a high-stakes
+// commitment beat. Non-sealed doors use the simpler tighter card.
+const CARD_W = 84;          // sealed only
+const CARD_H = 46;          // sealed only
 const CARD_OFFSET_Y = 38;
+// Simplified card for normal doors (Hades-inspired pass): one icon,
+// one optional label, single tinted pill. Tighter dimensions match the
+// reduced visual content. ~24% narrower, ~17% shorter than sealed.
+const SIMPLE_CARD_W = 64;
+const SIMPLE_CARD_H = 38;
 
 export function drawDoorLabels(ctx) {
   const now = performance.now() / 1000;
@@ -547,180 +555,11 @@ export function drawDoorLabels(ctx) {
     const cardCY = doorTop - CARD_OFFSET_Y;
     const isSealed = d.state === 'sealed';
 
-    // Pick the dominant signal for this door. Sealed > reward > kind.
-    let sigil, caption, fillColor, borderColor, captionColor, subLine, subLineColor;
     if (isSealed) {
-      sigil = '⛧';
-      caption = 'BLOOD';
-      borderColor = '#d04050';
-      captionColor = '#ff8088';
-      fillColor = 'rgba(80, 16, 24, 0.92)';
-      subLine = `OFFER ${d.sealCost || 1} HP`;
-      subLineColor = '#ff8088';
-    } else if (d.rewardLabel) {
-      // Map the rewardColor (already a hex string) into a soft fill +
-      // the saturated border. rewardLabel like "GOLD" / "RARE+" /
-      // "LEGENDARY" / "FUSION" / "PAY N HP" (sealed-after-break).
-      // Look up the reward sigil from the reward TYPE not the label —
-      // door.rewardLabel was set to the human label; lowercasing it
-      // matches the REWARD_SIGILS keys ("GOLD" -> "gold", "RARE+" ->
-      // "rare+"). Falls back to the kind glyph if no reward sigil exists.
-      const rewardKey = (d.rewardLabel || '').toLowerCase();
-      sigil = REWARD_SIGILS[rewardKey] || d.glyph || '?';
-      caption = d.rewardLabel;
-      borderColor = d.rewardColor || d.color || '#cccccc';
-      captionColor = borderColor;
-      fillColor = hexA(borderColor, 0.18);
-      subLine = null;
-      subLineColor = null;
+      _drawSealedDoorCard(ctx, d, cx, cardCY, now);
     } else {
-      // No reward chip — render the kind label directly. Common case
-      // for default-no-bonus combat rooms (the 20% null-reward roll)
-      // and for start/sanctuary nodes that don't carry a reward tag.
-      sigil = d.glyph || '?';
-      caption = d.label || 'ROOM';
-      borderColor = d.color || '#cccccc';
-      captionColor = borderColor;
-      fillColor = hexA(borderColor, 0.14);
-      subLine = null;
-      subLineColor = null;
+      _drawSimpleDoorCard(ctx, d, cx, cardCY, now);
     }
-    // Phase 3 audit fix #1 — elite-affix sub-line. Overrides the existing
-    // sub-line (currently only set on sealed doors, where the BLOOD GATE
-    // identity dominates). For non-sealed elite doors, show the affix
-    // (e.g., "FROST") so the player can plan resistance/positioning
-    // before walking through. Subline color matches the affix aura
-    // color so the door's sub-line reads as the same "color language"
-    // as the in-game affix badge + aura ring.
-    if (!isSealed && d.eliteAffixId) {
-      const af = AFFIX_LABELS[d.eliteAffixId];
-      if (af) {
-        subLine = af.label;
-        subLineColor = af.color;
-      }
-    }
-
-    // Pulse — sealed doors pulse faster + stronger so the BLOOD GATE
-    // reads as urgent. Other doors get a calmer ambient throb.
-    const pulseRate = isSealed ? 2.4 : 1.4;
-    const pulseAmp = isSealed ? 0.20 : 0.10;
-    const pulse = (1 - pulseAmp) + pulseAmp * Math.sin(now * pulseRate);
-
-    ctx.save();
-    // Card body — rounded rect with a dark base, tinted fill on top,
-    // tinted border. Two-layer fill so the dark base keeps text legible
-    // even when the reward color is light (e.g. cream-yellow GOLD).
-    const cardX = cx - CARD_W / 2;
-    const cardY = cardCY - CARD_H / 2;
-    ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
-    roundRect(ctx, cardX, cardY, CARD_W, CARD_H, 6);
-    ctx.fill();
-    ctx.fillStyle = fillColor;
-    roundRect(ctx, cardX, cardY, CARD_W, CARD_H, 6);
-    ctx.fill();
-    ctx.strokeStyle = hexA(borderColor, 0.88 * pulse);
-    ctx.lineWidth = 1.5;
-    roundRect(ctx, cardX + 0.5, cardY + 0.5, CARD_W - 1, CARD_H - 1, 6);
-    ctx.stroke();
-
-    // ── KIND EYEBROW ────────────────────────────────────────────────
-    // Always-on small-caps label at the top of the card so the player
-    // knows the room kind (COMBAT / REST / ALTAR / SHOP / etc.) from
-    // across the arena, BEFORE the sigil + caption tell them about
-    // reward bias. Previously the kind label only revealed on hero
-    // approach (within 200px), which meant the dominant signal at a
-    // distance was the reward bias — a player saw "FUSION ⊗" and had
-    // to walk close to learn it was a combat fusion room. Bad commit
-    // signal. The eyebrow uses the kind color (e.g. red for elite,
-    // green for rest) so the room kind reads instantly.
-    //
-    // Skipped on sealed doors — the BLOOD GATE caption + crimson
-    // border already broadcast "this is a sealed door, pay HP."
-    if (!isSealed && d.label) {
-      ctx.fillStyle = hexA(d.color || '#cccccc', 0.85 * pulse);
-      ctx.font = 'italic bold 8px Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(d.label.toUpperCase(), cx, cardY + 4);
-    }
-
-    // Sigil — the dominant glyph. Sized 24px so it fits in a 46-tall
-    // card alongside the eyebrow + caption (and the sub-line on
-    // sealed doors). Positioned slightly lower than before to leave
-    // room for the kind eyebrow above; sealed doors push it back up
-    // since they have no eyebrow.
-    const sigilOffsetY = isSealed
-      ? cardCY - (subLine ? 10 : 5)
-      : cardCY - (subLine ? 4 : 0);
-    ctx.fillStyle = hexA(borderColor, pulse);
-    ctx.shadowColor = hexA(borderColor, pulse * 0.8);
-    ctx.shadowBlur = isSealed ? 14 : 10;
-    if (sigil === '__procedural__' && d.rewardLabel === 'FUSION') {
-      // Procedural fusion sigil — two interlocked rings (Venn-style).
-      // Reads as "two things merging" rather than the old "⊗" which
-      // read as a deselect / block mark.
-      _drawFusionSigil(ctx, cx, sigilOffsetY, 11, hexA(borderColor, pulse));
-    } else {
-      ctx.font = 'bold 24px serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(sigil, cx, sigilOffsetY);
-    }
-    ctx.shadowBlur = 0;
-
-    // Caption — single bold line below the sigil. No bullet decorators,
-    // no italics; the bold serif reads as a primary label, not a
-    // subtitle. Position adjusts when a sub-line follows so all three
-    // tiers (sigil / caption / sub) fit within the card height.
-    ctx.fillStyle = captionColor;
-    ctx.font = 'bold 11px Georgia, "Cormorant Garamond", serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const captionY = isSealed
-      ? cardCY + (subLine ? 6 : 13)
-      : cardCY + (subLine ? 9 : 15);
-    ctx.fillText(caption, cx, captionY);
-
-    // Sub-line — sealed doors show "PAY N HP" cost; elite doors show
-    // their pre-rolled affix name. Sized small (8px) so it sits as the
-    // "fine print" of the trade without competing with the primary
-    // caption. Stays inside the 46-tall card box.
-    if (subLine) {
-      ctx.font = 'bold 8px Georgia, serif';
-      ctx.fillStyle = subLineColor || '#ff8088';
-      ctx.fillText(subLine, cx, cardCY + 17);
-    }
-
-    // Theme glyph — pre-rolled at floor gen, surfaces the room's
-    // theme bias to the player BEFORE walking through. Hades-style
-    // "this is Athena's chamber" door signaling. Skipped on sealed
-    // doors (BLOOD GATE caption already dominates) and on rooms
-    // with no theme tag (40% of pedestal rooms + all combat/boss).
-    if (!isSealed && d.roomTheme && THEMES[d.roomTheme]) {
-      const theme = THEMES[d.roomTheme];
-      const tg = 14;     // chip size — small, doesn't crowd the caption
-      const tgx = cardX + CARD_W - tg - 4;
-      const tgy = cardY + 4;
-      _drawDoorThemeGlyph(ctx, tgx, tgy, tg, theme, pulse);
-    }
-
-    // Chevron — small downward triangle pointing from card to door
-    // arch, makes the spatial association explicit. Same tint as the
-    // border, drawn in the gap between card and door.
-    const chevronY = cardY + CARD_H + 4;
-    ctx.fillStyle = hexA(borderColor, 0.7 * pulse);
-    ctx.beginPath();
-    ctx.moveTo(cx - 5, chevronY);
-    ctx.lineTo(cx + 5, chevronY);
-    ctx.lineTo(cx, chevronY + 6);
-    ctx.closePath();
-    ctx.fill();
-
-    // (Approach-reveal kind label removed — the kind now lives in the
-    // persistent eyebrow at the top of the card, visible from across
-    // the room. The proximity-reveal was redundant once the eyebrow
-    // always renders.)
-    ctx.restore();
 
     // Phase 5 sealed door E-prompt — kept separate from the card so
     // the interactive prompt (action verb) doesn't compete with the
@@ -731,7 +570,10 @@ export function drawDoorLabels(ctx) {
       const dy = hero.y - (d.ty * TILE + TILE);
       const dist = Math.hypot(dx, dy);
       if (dist < 56) {
-        const promptY = cardY + CARD_H + 22 + Math.sin(now * 2.2) * 2;
+        // Card bottom edge for sealed doors: cardCY + CARD_H/2 (sealed
+        // uses the larger dimensions). Position the prompt 22 px below.
+        const sealedCardBottom = cardCY + CARD_H / 2;
+        const promptY = sealedCardBottom + 22 + Math.sin(now * 2.2) * 2;
         const label = `E  ·  BREAK SEAL`;
         ctx.save();
         ctx.font = 'bold 11px Georgia, serif';
@@ -754,6 +596,162 @@ export function drawDoorLabels(ctx) {
       }
     }
   }
+}
+
+// ─── Sealed door card — kept dramatic, BLOOD GATE styling ─────────────
+// Sealed doors are a high-stakes commitment beat. Their card preserves
+// the larger dimensions, two-layer fill, and three-tier sigil/caption/
+// sub-line layout from before the simplification. Crimson border, fast
+// urgent pulse — designed to read DIFFERENT from regular doors.
+function _drawSealedDoorCard(ctx, d, cx, cardCY, now) {
+  const sigil = '⛧';
+  const caption = 'BLOOD';
+  const borderColor = '#d04050';
+  const captionColor = '#ff8088';
+  const fillColor = 'rgba(80, 16, 24, 0.92)';
+  const subLine = `OFFER ${d.sealCost || 1} HP`;
+  const subLineColor = '#ff8088';
+  const pulse = 0.80 + 0.20 * Math.sin(now * 2.4);
+
+  ctx.save();
+  const cardX = cx - CARD_W / 2;
+  const cardY = cardCY - CARD_H / 2;
+  // Two-layer fill — dark base + tinted top — preserves text legibility
+  ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
+  roundRect(ctx, cardX, cardY, CARD_W, CARD_H, 6);
+  ctx.fill();
+  ctx.fillStyle = fillColor;
+  roundRect(ctx, cardX, cardY, CARD_W, CARD_H, 6);
+  ctx.fill();
+  ctx.strokeStyle = hexA(borderColor, 0.88 * pulse);
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, cardX + 0.5, cardY + 0.5, CARD_W - 1, CARD_H - 1, 6);
+  ctx.stroke();
+
+  // Sigil — pushed up to make room for caption + sub-line below
+  ctx.fillStyle = hexA(borderColor, pulse);
+  ctx.shadowColor = hexA(borderColor, pulse * 0.8);
+  ctx.shadowBlur = 14;
+  ctx.font = 'bold 24px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(sigil, cx, cardCY - 10);
+  ctx.shadowBlur = 0;
+
+  // Caption — bold serif, mid-height
+  ctx.fillStyle = captionColor;
+  ctx.font = 'bold 11px Georgia, "Cormorant Garamond", serif';
+  ctx.fillText(caption, cx, cardCY + 6);
+
+  // Sub-line — "OFFER N HP", small italic at bottom
+  ctx.font = 'bold 8px Georgia, serif';
+  ctx.fillStyle = subLineColor;
+  ctx.fillText(subLine, cx, cardCY + 17);
+
+  ctx.restore();
+}
+
+// ─── Simple door card — Hades-style icon-first design ──────────────────
+// One dominant icon + one optional small label. Tinted pill backdrop,
+// no corner brackets, no chevron, no eyebrow. The icon IS the
+// information; the kind/reward is implied by which sigil is shown.
+//
+// Label suppression rule: combat rooms with no reward bias show the
+// icon ONLY (the ⚔ glyph is self-evident — adding "COMBAT" beneath it
+// is redundant). Reward-biased rooms (gold/legendary/fusion) and
+// special kinds (rest/altar/shop/boss) keep their label since the
+// icon alone might not be unambiguous.
+//
+// Affix sub-line for elite doors is preserved — it's genuinely
+// additive info, not redundant with anything else.
+function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
+  // Pick the dominant signal — reward bias if present, else kind glyph
+  const hasReward = !!d.rewardLabel;
+  const kindIsCombat = !d.targetKind || d.targetKind === 'combat';
+  let sigil, label, color;
+  if (hasReward) {
+    const rewardKey = (d.rewardLabel || '').toLowerCase();
+    sigil = REWARD_SIGILS[rewardKey] || d.glyph || '?';
+    label = d.rewardLabel;
+    color = d.rewardColor || d.color || '#cccccc';
+  } else {
+    sigil = d.glyph || '?';
+    // Suppress label for default combat (icon is self-evident).
+    // Special kinds (rest/altar/shop/boss) keep their label.
+    label = kindIsCombat ? null : (d.label || null);
+    color = d.color || '#cccccc';
+  }
+
+  // Affix sub-line for elite doors (kept regardless of reward)
+  let subLine = null, subLineColor = null;
+  if (d.eliteAffixId) {
+    const af = AFFIX_LABELS[d.eliteAffixId];
+    if (af) {
+      subLine = af.label;
+      subLineColor = af.color;
+    }
+  }
+
+  // Calmer pulse than sealed doors — ambient throb, not urgent
+  const pulse = 0.90 + 0.10 * Math.sin(now * 1.4);
+
+  ctx.save();
+  const cardX = cx - SIMPLE_CARD_W / 2;
+  const cardY = cardCY - SIMPLE_CARD_H / 2;
+  // Single tinted pill — no double-layer fill, no corner brackets
+  ctx.fillStyle = 'rgba(14, 10, 16, 0.86)';
+  roundRect(ctx, cardX, cardY, SIMPLE_CARD_W, SIMPLE_CARD_H, 8);
+  ctx.fill();
+  ctx.strokeStyle = hexA(color, 0.65 * pulse);
+  ctx.lineWidth = 1;
+  roundRect(ctx, cardX + 0.5, cardY + 0.5, SIMPLE_CARD_W - 1, SIMPLE_CARD_H - 1, 8);
+  ctx.stroke();
+
+  // Sigil placement — vertically centered when no label/sub-line, lifted
+  // slightly when something sits below
+  const hasLowerText = !!label || !!subLine;
+  const sigilY = cardCY + (hasLowerText ? -6 : 0);
+  ctx.fillStyle = hexA(color, pulse);
+  ctx.shadowColor = hexA(color, pulse * 0.6);
+  ctx.shadowBlur = 8;
+  if (sigil === '__procedural__' && d.rewardLabel === 'FUSION') {
+    _drawFusionSigil(ctx, cx, sigilY, 9, hexA(color, pulse));
+  } else {
+    ctx.font = 'bold 22px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(sigil, cx, sigilY);
+  }
+  ctx.shadowBlur = 0;
+
+  // Label below sigil — only when defined (reward bias / special kind)
+  if (label) {
+    ctx.fillStyle = color;
+    ctx.font = 'bold 10px Georgia, "Cormorant Garamond", serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cardCY + (subLine ? 6 : 9));
+  }
+
+  // Affix sub-line for elite doors (FROST / EMBER / VENOM / WARDED)
+  if (subLine) {
+    ctx.font = 'bold 7px Georgia, serif';
+    ctx.fillStyle = subLineColor || '#ffd855';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(subLine, cx, cardCY + (label ? 14 : 9));
+  }
+
+  // Theme glyph — small chip in upper-right corner if room is themed
+  if (d.roomTheme && THEMES[d.roomTheme]) {
+    const theme = THEMES[d.roomTheme];
+    const tg = 12;
+    const tgx = cardX + SIMPLE_CARD_W - tg - 3;
+    const tgy = cardY + 3;
+    _drawDoorThemeGlyph(ctx, tgx, tgy, tg, theme, pulse);
+  }
+
+  ctx.restore();
 }
 
 // Helper — draw a rounded rectangle path. Uses ctx.roundRect when
