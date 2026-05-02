@@ -381,6 +381,27 @@ document.getElementById('deathMenuBtn')?.addEventListener('click', () => {
   deathEl.style.display = 'none';
   showMainMenu();
 });
+// QUICK RESTART — skip the hamlet detour and go straight to F1. For
+// players who've heard the reactive NPC dialogue and just want to
+// keep running. Genre-fast death-to-respawn loop (~3 sec instead of
+// ~15 sec via the walk-to-portal hamlet path).
+//
+// Honors _restartBtnOverridden — when sanctuary / wanderer-gift screens
+// have temporarily rebound the death modal's primary button, this
+// secondary path stays inert too so we don't bypass an active sub-flow.
+document.getElementById('deathQuickRestartBtn')?.addEventListener('click', () => {
+  if (_restartBtnOverridden) return;
+  deathEl.style.display = 'none';
+  startRun();
+});
+document.getElementById('deathQuickRestartBtn')?.addEventListener('mouseenter', (e) => {
+  e.target.style.opacity = '1';
+  e.target.style.color = '#c9a86a';
+});
+document.getElementById('deathQuickRestartBtn')?.addEventListener('mouseleave', (e) => {
+  e.target.style.opacity = '0.7';
+  e.target.style.color = '#8a7a5a';
+});
 document.getElementById('deathMenuBtn')?.addEventListener('mouseenter', (e) => {
   e.target.style.opacity = '1';
   e.target.style.color = '#c9a86a';
@@ -3778,27 +3799,12 @@ function startRun() {
   hero.fusionWeavingStep = false;
   hero.weavingStepReady = false;
 
-  // ── FIRST-3-RUNS HP GRACE ─────────────────────────────────────────
-  // Gameplay-audit fix (Stage A): the canonical 3-HP design is brutal
-  // for new players who haven't yet learned perfect-block rhythm. They
-  // die in 3-4 hits to slimes on F1 with zero mechanical mistakes,
-  // before they've discovered the depth that makes 3 HP feel earned.
-  //
-  // Soft training wheels: first 3 runs of a profile start at +2 HP on
-  // top of all other bonuses. Run 4 onward uses the canonical baseline.
-  // The boost stacks on relics/memories/curses (additive), so a run
-  // with Vitality + Memory of Fortitude still benefits from the grace.
-  //
-  // runsStarted was incremented above (line ~3616). Run 1's value is 1
-  // immediately after; runs 1-3 → grace; run 4+ → no grace.
-  // Skipped for daily and ascension runs — those expect canonical HP.
-  const _isGraceRun = (records.runsStarted | 0) <= 3
-    && !daily.activeForRun
-    && !(getAscensionTier && getAscensionTier() > 0);
-  if (_isGraceRun) {
-    hero.maxHp += 2;
-    hero.hp = hero.maxHp;
-  }
+  // (HP grace block removed per design audit. Roguelite design wants
+  // difficulty to come from MASTERY + META PROGRESSION, not from
+  // grace HP for new players. Vitality Charm meta unlock — 15 essence,
+  // +3 max HP — is the genre-correct answer to "first runs feel
+  // brutal." Players earn HP by dying and spending essence; they don't
+  // get it for free in their first three attempts.)
 
   loadRoom(0, 'south');
   // Reset HUD heart-tracking baseline so leftover lastSeenHp from a

@@ -25,7 +25,7 @@ function saveTips() {
 export const TIPS = {
   // ----- Controls & core combat (shown on first use) -----
   first_combat:    { text: 'WASD move · LMB primary · Space SHIELD · Q dash · RMB swap weapons' },
-  first_starting_hp: { text: 'Three hearts is your starting pool. Sanctuaries mend; relics expand. Be careful early.' },
+  first_starting_hp: { text: 'One heart. Every unblocked hit ends the run. Time SHIELD to perfect-block — relics + Vitality Charm grow your pool.' },
   // Was first_dodge — kept the ID so save data + tip-seen flags persist.
   // The mechanic is now SHIELD: Space raises a front-cone block, and the
   // first 0.10s is a perfect-block that grants a counter window.

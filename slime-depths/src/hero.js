@@ -417,14 +417,21 @@ export const hero = {
 export function resetHero() {
   hero.x = TILE * 10; hero.y = TILE * 10;
   hero.vx = 0; hero.vy = 0;
-  hero.maxHp = 3;               // bare-bones roguelite start. HP grows via:
-                                //   - Vitality Charm (meta, +3)
-                                //   - Memory of Fortitude (+3)
+  hero.maxHp = 1;               // Sekiro-tier roguelite floor. Every
+                                // unblocked hit ends the run. Players
+                                // earn HP via meta progression + relics:
+                                //   - Vitality Charm (meta unlock, +3 → 4 HP)
+                                //   - Memory of Fortitude (+3 → 4 HP)
                                 //   - Vitality relic (+2)
                                 //   - Bloodstone / regen relics
                                 //   - sanctuary / altar / between-floor heals
-                                // Every HP upgrade feels meaningful because
-                                // 3 is the baseline the curve builds from.
+                                // Design philosophy: difficulty comes from
+                                // MASTERY (perfect-block timing) + META
+                                // PROGRESSION (essence shop), not from a
+                                // forgiving baseline. A fresh profile is
+                                // brutal by design. Vitality Charm at 15
+                                // essence is the first meta unlock most
+                                // players buy after their first death.
   hero.hp = hero.maxHp;
   hero.state = 'idle'; hero.stateTime = 0; hero.animTime = 0;
   hero.attackCooldown = 0; hero.dodgeCooldown = 0;

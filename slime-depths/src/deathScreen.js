@@ -110,6 +110,14 @@ export const DEATH_SCREEN_HTML = `
   <div style="display:flex;align-items:center;gap:28px;margin-bottom:8px;animation:winFadeIn 0.6s ease-out 1.35s both;position:relative;z-index:1;">
     <button id="deathMenuBtn" style="background:transparent;color:#8a7a5a;border:0;padding:8px 18px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:opacity 0.22s ease;opacity:0.7;">\u2190 MAIN MENU</button>
     <button id="restartBtn" style="background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:14px 56px;font-size:15px;cursor:pointer;letter-spacing:6px;font-family:Georgia,serif;font-weight:bold;transition:all 0.22s ease;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 22px rgba(201,168,106,0.25), inset 0 0 12px rgba(244,217,160,0.06);position:relative;z-index:1;">NEW RUN</button>
+    <!-- QUICK RESTART \u2014 skips the hamlet detour for veteran players. The
+         hamlet detour fires reactive NPC dialogue (keeper "you came back
+         without all of yourself", smith comments, gravekeeper ledger) but
+         after the player has heard those lines, the detour is just
+         friction between deaths. Genre-fast loop: die \u2192 quick restart \u2192 F1.
+         Same right-side weight as MAIN MENU on the left, so the button
+         row stays visually balanced. -->
+    <button id="deathQuickRestartBtn" style="background:transparent;color:#8a7a5a;border:0;padding:8px 18px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:opacity 0.22s ease;opacity:0.7;">QUICK RESTART \u2192</button>
   </div>
 
   </div><!-- /menuContent -->
