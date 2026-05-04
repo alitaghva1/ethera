@@ -378,6 +378,98 @@ export const roomChests = [];
 // Decorative pillars (visual only, no collision). Used to frame
 // special rooms like chestrooms with a 'sacred chamber' feel.
 export const roomDecorPillars = [];
+
+// ─── ROOM MARKS — within-room reactive floor effects ──────────────────
+// Marks are blood pools (and future scorch marks, dust scuffs, etc.)
+// pushed by gameplay events: when an enemy dies, push a blood pool;
+// when an explosion lands, push a scorch mark. Marks persist for the
+// duration of the room visit and are cleared when the room reloads.
+//
+// NOT to be confused with `ruin.stains` (ruin.js): those are
+// CROSS-RUN persistent overlays drawn as a separate aging layer.
+// Room marks are PER-VISIT, not per-history. They sell "this fight
+// just happened HERE" — the Noita lesson at our scale.
+//
+// Drawing order: marks render in drawRoomDynamicLayers AFTER the
+// floor cache and BEFORE corpses/props/enemies, so they sit on the
+// floor like real splatter, with corpses + enemies on top of them.
+export const roomMarks = [];
+
+export function clearRoomMarks() {
+  roomMarks.length = 0;
+}
+
+// Push a new mark. If there's already a mark of the same kind within
+// MERGE_DIST px, bump its intensity + radius instead of pushing a new
+// one — reads as "the same spot got bloodier" rather than five
+// separate tiny pools. opts: { color, radius }.
+export function pushRoomMark(x, y, kind, opts = {}) {
+  const MERGE_DIST = 24;
+  const md2 = MERGE_DIST * MERGE_DIST;
+  for (const m of roomMarks) {
+    if (m.kind !== kind) continue;
+    const dx = m.x - x, dy = m.y - y;
+    if (dx * dx + dy * dy < md2) {
+      m.intensity = Math.min(3, m.intensity + 1);
+      m.radius = Math.min(32, m.radius + 4);
+      return;
+    }
+  }
+  roomMarks.push({
+    x, y,
+    kind,
+    color: opts.color || '#8a1a26',
+    radius: Math.min(32, opts.radius || 12),
+    intensity: 1,
+    bornAt: (typeof performance !== 'undefined') ? performance.now() / 1000 : 0,
+  });
+  // Cap total marks per room to prevent unbounded accumulation in long
+  // grindy rooms. Drop the oldest when over cap.
+  const MAX_MARKS = 40;
+  if (roomMarks.length > MAX_MARKS) {
+    roomMarks.splice(0, roomMarks.length - MAX_MARKS);
+  }
+}
+
+// Draw all marks. Called from drawRoomDynamicLayers. Marks fade in
+// over 0.4s when first spawned. Blood pools render as a soft halo
+// gradient + a smaller bright core so they read as wet splatters
+// rather than flat blobs.
+export function drawRoomMarks(ctx) {
+  if (!roomMarks.length) return;
+  const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+  for (const m of roomMarks) {
+    const age = now - m.bornAt;
+    const fadeIn = Math.min(1, age / 0.4);
+    if (fadeIn <= 0) continue;
+    if (m.kind === 'blood') {
+      const r = m.radius;
+      const rgb = _markColorRgb(m.color);
+      // Outer soft halo
+      const halo = ctx.createRadialGradient(m.x, m.y + 4, 0, m.x, m.y + 4, r);
+      halo.addColorStop(0,    `rgba(${rgb}, ${(0.55 * fadeIn).toFixed(3)})`);
+      halo.addColorStop(0.6,  `rgba(${rgb}, ${(0.30 * fadeIn).toFixed(3)})`);
+      halo.addColorStop(1,    `rgba(${rgb}, 0)`);
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.ellipse(m.x, m.y + 4, r, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Inner saturated core (smaller, more opaque)
+      ctx.fillStyle = `rgba(${rgb}, ${(0.65 * fadeIn).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.ellipse(m.x, m.y + 4, r * 0.55, r * 0.30, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function _markColorRgb(hex) {
+  if (typeof hex !== 'string') return '138, 26, 38';
+  const m = hex.replace('#', '').match(/^([0-9a-fA-F]{6})$/);
+  if (!m) return '138, 26, 38';
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
 const SPIKE_CYCLE = 2.2;          // total seconds per cycle
 const SPIKE_RETRACT = 1.2;          // retracted duration (at phase start)
 const SPIKE_WARNING = 0.4;          // warning / rising
@@ -457,6 +549,11 @@ const PILLAR_TEMPLATES = [
 ];
 
 export function buildRoomFromData(data) {
+  // Wipe within-room reactive marks (blood pools, future scorch marks).
+  // These are per-visit only, NOT cross-run persistent — that's
+  // ruin.stains' job in ruin.js.
+  clearRoomMarks();
+
   // Per-room dimensions — falls back to ROOM_W/ROOM_H when not specified
   // (preserves back-compat with old saved data + legacy rooms like hamlet).
   const w = data.w || ROOM_W;
@@ -2714,6 +2811,13 @@ function drawRoomStaticLayers(ctx) {
 // invalidation for normal play.
 function drawRoomDynamicLayers(ctx) {
   if (!room.tiles || room.kind === 'hamlet') return;
+  // Pass 4b: within-room reactive floor marks (blood pools where
+  // enemies died, future scorch/dust marks). Renders ON TOP of the
+  // static floor cache but UNDER pillars/pedestals/doors/decor and
+  // under corpses/enemies — so a slime that died HERE leaves a pool,
+  // and the corpse fades out on top of the pool, leaving the pool
+  // behind to mark the spot.
+  drawRoomMarks(ctx);
   // Pass 5: interactive + decorative props on top
   for (let y = 0; y < room.h; y++) {
     for (let x = 0; x < room.w; x++) {

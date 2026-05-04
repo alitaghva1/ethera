@@ -1,7 +1,7 @@
 // Enemies — Tiny RPG sprites (100x100). Types now include melee, ranged, and
 // explosive behaviors with attack telegraphs to make combat readable.
 import { images } from './loader.js';
-import { isWallAtWorld, spawnExtraFirePool, spawnExtraSpike, room } from './room.js';
+import { isWallAtWorld, spawnExtraFirePool, spawnExtraSpike, room, pushRoomMark } from './room.js';
 import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
 import { playSfx } from './sfx.js';
 import { synthThud, synthChord } from './synth.js';
@@ -1402,6 +1402,20 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
           this.state = 'death';
           this.stateTime = 0;
           this.removeTimer = 0.6;
+        }
+        // Push a within-room blood mark. Per-enemy bloodColor (set on
+        // most defs) drives the pool color so slime death = green pool,
+        // orc = dark red, wizard = purple. Pool size scales with the
+        // enemy's collision radius so big enemies leave bigger pools.
+        // Bombers + spectral types (haunt, dreadmage echo) skip the
+        // pool — they don't leave physical remains.
+        if (def.behavior !== 'bomber' && this.type !== 'haunt') {
+          try {
+            pushRoomMark(this.x, this.y, 'blood', {
+              color: def.bloodColor || '#8a1a26',
+              radius: (def.radius || 22) * 0.55,
+            });
+          } catch (_e) {}
         }
         // Per-type death VFX — each enemy kind has a distinct visual signature
         const t = this.type;
