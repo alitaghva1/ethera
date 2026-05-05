@@ -665,6 +665,17 @@ let phaseIntroTime = 0;        // ticks down from 1.6s (first) or 0.8s (Nth)
 let phaseIntroBoss = null;
 let phaseIntroStartedAt = 0;   // wall-clock mark for stuck-overlay clamp
 let phaseIntroIsFirstTime = false;
+
+// ── Room reveal (camera arrival pan) ─────────────────────────────────
+// Set in loadRoom for non-hamlet/non-start rooms; held for ~0.55s. While
+// active, the followCamera call in the tick is overridden to point at
+// the room center instead of the hero. After the timer expires, normal
+// follow takes over and the camera lerps from center → hero, producing
+// a brief "step into the space" pan. Decremented in real-time so it
+// completes regardless of game-logic freeze (boss intro overlay, etc).
+let _roomRevealTime = 0;
+let _roomRevealCx = 0;
+let _roomRevealCy = 0;
 window.triggerBossPhaseIntro = (boss) => {
   if (!boss) return;
   phaseIntroIsFirstTime = isFirstTime('phase2', boss.type || 'unknown');
@@ -2808,9 +2819,32 @@ function loadRoom(idx, entryFrom) {
   const sp = heroSpawnInRoom();
   hero.x = sp.x; hero.y = sp.y;
   hero.vx = 0; hero.vy = 0;
-  // Snap camera instantly so the new room fills the frame on transition
-  camera.x = hero.x; camera.y = hero.y;
-  camera.targetX = hero.x; camera.targetY = hero.y;
+  // ── Room reveal (Hades/Isaac-tier camera arrival) ─────────────────
+  // Comparison-vs-Hades audit P0: previously the camera SNAPPED to the
+  // hero's spawn position the moment a room loaded. Top roguelites
+  // pause briefly at the room's center so the player can read the
+  // layout (where are the threats? exits? pickups?) before the camera
+  // settles on the hero. Adds a half-beat of "stepping into the
+  // space" without delaying combat — the existing camera lerp does
+  // the smooth pan from center to hero automatically.
+  //
+  // Skipped for hamlet (player owns the framing in a safe space) and
+  // for the dungeon's start room (the FLOOR I card already serves
+  // that role on entry).
+  if (data.kind !== 'hamlet' && data.kind !== 'start') {
+    const cx = ((room.w || 20) * TILE) / 2;
+    const cy = ((room.h || 14) * TILE) / 2;
+    camera.x = cx; camera.y = cy;
+    camera.targetX = cx; camera.targetY = cy;
+    _roomRevealCx = cx;
+    _roomRevealCy = cy;
+    _roomRevealTime = 0.55;
+  } else {
+    // Snap camera instantly so the new room fills the frame on transition
+    camera.x = hero.x; camera.y = hero.y;
+    camera.targetX = hero.x; camera.targetY = hero.y;
+    _roomRevealTime = 0;
+  }
   roomIndex = idx;
 }
 
@@ -4846,7 +4880,23 @@ function _tickInner(now) {
   // Mouse position still preserved for `mw` consumers (cursor world
   // pos, used by other systems). Just not used for lookahead anymore.
   void mw;
-  followCamera(hero.x + leadX, hero.y + leadY);
+  // Room reveal — when active, hold camera target at room center so
+  // the player can read the layout before the camera commits to the
+  // hero. Decremented in real time so the reveal completes even under
+  // a floor-card / boss-intro overlay (the room reveal happens
+  // invisibly in those cases, so when the overlay clears the camera
+  // is already at the hero).
+  if (_roomRevealTime > 0) {
+    _roomRevealTime -= realDt;
+    if (_roomRevealTime > 0) {
+      followCamera(_roomRevealCx, _roomRevealCy);
+    } else {
+      _roomRevealTime = 0;
+      followCamera(hero.x + leadX, hero.y + leadY);
+    }
+  } else {
+    followCamera(hero.x + leadX, hero.y + leadY);
+  }
   updateCamera(realDt);                    // camera uses real time (no slo-mo jitter)
 
   const frozen = consumeHitStop(realDt);
