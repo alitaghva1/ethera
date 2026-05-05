@@ -3275,16 +3275,28 @@ export function drawUrns(ctx, dt) {
       }
       continue;
     }
-    // Warm radial halo — lifts the urn off the dark floor so the treasure
-    // cache reads at a glance. Non-trove rooms get a smaller halo so combat
-    // prop urns still feel like rewards without drowning the fight.
-    const haloR = u.isProp ? 14 : 22;
-    const haloA = u.isProp ? 0.10 : 0.22;
-    const halo = ctx.createRadialGradient(cx, cy + 4, 0, cx, cy + 4, haloR);
-    halo.addColorStop(0, `rgba(255, 180, 90, ${haloA})`);
-    halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
-    ctx.fillStyle = halo;
-    ctx.fillRect(cx - haloR, cy - haloR + 4, haloR * 2, haloR * 2);
+    // (Removed) Warm radial halo around every urn. Combat-room urns
+    // (u.isProp = true) always rendered an `rgba(255, 180, 90, 0.10)`
+    // halo at radius 14, and trove urns rendered the same color at
+    // 0.22 alpha and radius 22. With 5-6 urns per combat room, that
+    // produced 5-6 always-on warm-orange dots scattered across the
+    // playable area — visually indistinguishable from the ambient
+    // mote noise the player has flagged in playtest. The urn body
+    // sprite (warm bronze on dark floor) reads without it. Trove
+    // rooms get a smaller halo back below since trove urns ARE the
+    // room's main attraction and need to draw the eye.
+    if (!u.isProp) {
+      // Trove-only halo — kept smaller + dimmer than the original
+      // (alpha 0.22 → 0.14, radius 22 → 16) so trove rooms still
+      // feel like the loot scene without urn glows reading as
+      // ambient particles.
+      const haloR = 16;
+      const halo = ctx.createRadialGradient(cx, cy + 4, 0, cx, cy + 4, haloR);
+      halo.addColorStop(0, 'rgba(255, 180, 90, 0.14)');
+      halo.addColorStop(1, 'rgba(255, 180, 90, 0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(cx - haloR, cy - haloR + 4, haloR * 2, haloR * 2);
+    }
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.42)';
     ctx.beginPath();
@@ -3311,21 +3323,27 @@ export function drawUrns(ctx, dt) {
     // Decorative band
     ctx.fillStyle = rimCol;
     ctx.fillRect(cx - 9, cy + 5, 18, 2);
-    // Gold glint — twinkle that moves around the rim on a slow phase cycle.
-    // Each urn uses its tile position as a seed so the twinkles are offset.
-    // Trove urns glint brighter; combat-prop urns only glint occasionally.
-    const seed = u.x * 37 + u.y * 53;
-    const phase = (now * 0.9 + seed * 0.11) % (Math.PI * 2);
-    const glintA = Math.max(0, Math.sin(phase)) ** 4;  // sharp peaks, mostly off
-    const glintScale = u.isProp ? 0.35 : 1.0;
-    if (glintA > 0.02) {
-      ctx.save();
-      ctx.globalAlpha = glintA * glintScale;
-      ctx.fillStyle = '#fff2c8';
-      ctx.fillRect(cx - 6 + (seed % 10), cy - 5, 2, 2);
-      ctx.fillStyle = 'rgba(255, 240, 200, 0.7)';
-      ctx.fillRect(cx - 6 + (seed % 10) - 1, cy - 5, 4, 1);
-      ctx.restore();
+    // Gold glint — only on TROVE urns (the loot-scene attraction).
+    // Combat-prop urns dropped their glints in the same pass that
+    // killed their warm halos: with 5-6 prop urns scattered around
+    // the room each periodically firing a 2-3 px bright twinkle, the
+    // playable area read as constantly twinkling, indistinguishable
+    // from ambient particles. The urn body sprite is enough to mark
+    // a destructible prop. Trove urns keep the glint because the
+    // entire room is the loot moment.
+    if (!u.isProp) {
+      const seed = u.x * 37 + u.y * 53;
+      const phase = (now * 0.9 + seed * 0.11) % (Math.PI * 2);
+      const glintA = Math.max(0, Math.sin(phase)) ** 4;  // sharp peaks, mostly off
+      if (glintA > 0.02) {
+        ctx.save();
+        ctx.globalAlpha = glintA;
+        ctx.fillStyle = '#fff2c8';
+        ctx.fillRect(cx - 6 + (seed % 10), cy - 5, 2, 2);
+        ctx.fillStyle = 'rgba(255, 240, 200, 0.7)';
+        ctx.fillRect(cx - 6 + (seed % 10) - 1, cy - 5, 4, 1);
+        ctx.restore();
+      }
     }
   }
 }
