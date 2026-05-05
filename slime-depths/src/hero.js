@@ -3350,22 +3350,30 @@ export function drawHero(ctx) {
     ctx.restore();
   }
 
-  // Shadow — soft radial gradient. Sized proportionally to the hero's
-  // current draw size so it reads as standing (not levitating) at any zoom.
-  // Lighter alpha in hamlet so it doesn't fight the painted scene's own
-  // baked shadows under trees/walls.
-  const shX = hero.x, shY = hero.y + 14;
+  // Hero shadow — tightened per the "grounded contact shadow" pass.
+  // The previous tuning (radius HERO_DRAW * 0.27 ≈ 16, height ratio
+  // 0.36, alpha 0.45) produced a soft moderate ellipse that read as
+  // slightly too floaty alongside the typed enemy contact shadows.
+  // Now matches the contact_humanoid profile in enemies.js: tighter
+  // radius, flatter ratio, slightly stronger alpha.
+  //   radius:  0.27 → 0.23 of HERO_DRAW (~14 px)
+  //   ratio:   0.36 → 0.28 (flatter — proper contact silhouette)
+  //   alpha:   0.45 → 0.55 (more solid contact darkness)
+  //   yOffset: hero.y + 14 → hero.y + 12 (slightly closer to body)
+  // Hamlet stays softer (0.22 alpha) so it doesn't fight the painted
+  // scene's own baked shadows under trees/walls.
+  const shX = hero.x, shY = hero.y + 12;
   const inHamlet = room.kind === 'hamlet';
-  const shadowR = (inHamlet ? HERO_DRAW_HAMLET : HERO_DRAW) * 0.27;
-  const shadowAlpha = inHamlet ? 0.22 : 0.45;
+  const shadowR = (inHamlet ? HERO_DRAW_HAMLET : HERO_DRAW) * 0.23;
+  const shadowAlpha = inHamlet ? 0.22 : 0.55;
   const sg = ctx.createRadialGradient(shX, shY, 1, shX, shY, shadowR);
   sg.addColorStop(0, `rgba(0,0,0,${shadowAlpha})`);
-  sg.addColorStop(0.6, `rgba(0,0,0,${(shadowAlpha * 0.5).toFixed(3)})`);
+  sg.addColorStop(0.55, `rgba(0,0,0,${(shadowAlpha * 0.45).toFixed(3)})`);
   sg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.save();
   ctx.fillStyle = sg;
   ctx.beginPath();
-  ctx.ellipse(shX, shY, shadowR, shadowR * 0.36, 0, 0, Math.PI * 2);
+  ctx.ellipse(shX, shY, shadowR, shadowR * 0.28, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
   // 8-directional sprites handle facing natively — no horizontal flip.

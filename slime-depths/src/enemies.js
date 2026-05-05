@@ -2458,6 +2458,63 @@ function enemyImg(e) {
   return images[key] || images[e.def.prefix + 'idle'];
 }
 
+// ─── Shadow profiles ─────────────────────────────────────────────────
+// Three classes of ground-relationship, each with tuned width/height/
+// alpha/yOffset. Picked per-enemy in _getEnemyShadowProfile.
+//
+// Width is multiplied by frame.halfWidth so all shadows scale with
+// elite/boss size mults automatically. Height is a ratio of width
+// (lower = flatter top-down read). yOffset is added to frame.feetY
+// (which is e.y + 4) for the ellipse anchor.
+const _ENEMY_SHADOW_PROFILES = {
+  // Slimes + bombers (slime sprite with bomb behavior). The shadow
+  // hugs the body base — barely wider than the slime, very flat. The
+  // squish read is sold by the dark-center → faded-edge gradient
+  // landing in a thin band right under the visible body.
+  contact_slime: {
+    widthMul: 1.10,
+    heightRatio: 0.18,
+    alpha: 0.65,
+    yOffset: 1,
+  },
+  // Bipedal melee + ranged enemies (skeletons, orcs, riders, etc.).
+  // Stance is narrower than body (feet under torso), so the shadow
+  // is slightly narrower than halfWidth. Flat but with marginally
+  // more vertical depth than the slime profile.
+  contact_humanoid: {
+    widthMul: 0.95,
+    heightRatio: 0.25,
+    alpha: 0.55,
+    yOffset: 1,
+  },
+  // Explicitly airborne (haunt with flies: true). Detached larger
+  // softer oval — the visible gap between sprite and shadow is the
+  // altitude read.
+  flying: {
+    widthMul: 1.30,
+    heightRatio: 0.32,
+    alpha: 0.40,
+    yOffset: 8,
+  },
+};
+
+// Pick a shadow profile for an enemy. Priority:
+//   1. e.def.shadowProfile (explicit override on the def)
+//   2. e.def.flies          (haunt-class airborne)
+//   3. e.type === 'slime' OR e.def.prefix === 'slime_' (catches the
+//      slime variant + the bomber, which uses slime_ sprites)
+//   4. default → contact_humanoid
+function _getEnemyShadowProfile(e) {
+  if (e.def.shadowProfile && _ENEMY_SHADOW_PROFILES[e.def.shadowProfile]) {
+    return _ENEMY_SHADOW_PROFILES[e.def.shadowProfile];
+  }
+  if (e.def.flies) return _ENEMY_SHADOW_PROFILES.flying;
+  if (e.type === 'slime' || e.def.prefix === 'slime_') {
+    return _ENEMY_SHADOW_PROFILES.contact_slime;
+  }
+  return _ENEMY_SHADOW_PROFILES.contact_humanoid;
+}
+
 export function drawEnemy(ctx, e) {
   const img = enemyImg(e);
   if (!img) return;
@@ -2532,39 +2589,60 @@ export function drawEnemy(ctx, e) {
     ctx.restore();
   }
 
-  // ─── Soft elliptical ground shadow ──────────────────────────────────
-  // The previous render was a radial gradient clipped inside a 12 px
-  // tall strip — the gradient's vertical extent got cut off, leaving a
-  // thin band that read as "barely there" against the dungeon floor.
-  // Worse, with no proper ellipse shape, sprites floated visually
-  // because their feet weren't anchored to the ground.
+  // ─── Typed ground shadow ────────────────────────────────────────────
+  // Previous pass used one big soft ellipse (1.7× halfWidth, 36%
+  // height ratio) for every enemy. Net effect: slimes looked like
+  // they were hovering 6+ px above their shadow — the shadow extended
+  // far below the body, reading as "altitude" not "contact." Fixed
+  // by splitting shadows into typed profiles matched to each enemy's
+  // physical relationship with the floor:
   //
-  // New: ctx.ellipse-based shadow matching the hero's pattern. Soft
-  // radial gradient FILLED into an explicit elliptical path (wide,
-  // ~36% as tall as wide). The combination — radial fade + flat
-  // ellipse silhouette — produces a Hades/Diablo-style ground shadow
-  // that anchors the entity to the floor at door-glance distance.
+  //   contact_slime    — slimes/bombers: squishy ground creatures.
+  //                      Slightly wider than body (1.10×), VERY flat
+  //                      (0.18 height ratio), darker (alpha 0.65),
+  //                      anchored 1 px below feet. Reads as "squishing
+  //                      onto the floor", not hovering.
   //
-  // Sizing: ~1.7× halfWidth horizontal, 0.36× that vertical (proper
-  // top-down "shadow on flat floor" proportions). Alpha 0.55 in the
-  // center, 0.22 at 60% radius, 0 at the edge — lets the shadow
-  // visibly darken the floor without becoming a hard black blob.
+  //   contact_humanoid — skeletons, orcs, riders, all bipedal melee.
+  //                      Slightly narrower than body (0.95×, since feet
+  //                      stance < body width), flat (0.25), alpha 0.55,
+  //                      anchored 1 px below feet.
   //
-  // Boss + elite shadows scale up automatically because halfWidth
-  // already factors sizeMul (1.45 for bosses, 1.18 for elites).
-  const shadowR = frame.halfWidth * 1.7;
-  const shadowH = shadowR * 0.36;
-  const shY = frame.feetY + 4;
+  //   flying           — explicitly airborne (haunt has flies: true).
+  //                      Larger detached oval (1.30×, 0.32 height
+  //                      ratio), lighter (alpha 0.40), anchored 8 px
+  //                      below feet — the gap is the "altitude" read.
+  //
+  // halfWidth already factors sizeMul (1.45 boss, 1.18 elite, 0.8
+  // split-slime), so all shadow profiles auto-scale per instance.
+  const shadowProfile = _getEnemyShadowProfile(e);
+  const shadowR = frame.halfWidth * shadowProfile.widthMul;
+  const shadowH = shadowR * shadowProfile.heightRatio;
+  const shY = frame.feetY + shadowProfile.yOffset;
   const sg = ctx.createRadialGradient(e.x, shY, 1, e.x, shY, shadowR);
-  sg.addColorStop(0,   'rgba(0, 0, 0, 0.55)');
-  sg.addColorStop(0.6, 'rgba(0, 0, 0, 0.22)');
-  sg.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  sg.addColorStop(0,    `rgba(0, 0, 0, ${shadowProfile.alpha})`);
+  sg.addColorStop(0.55, `rgba(0, 0, 0, ${(shadowProfile.alpha * 0.45).toFixed(3)})`);
+  sg.addColorStop(1,    'rgba(0, 0, 0, 0)');
   ctx.save();
   ctx.fillStyle = sg;
   ctx.beginPath();
   ctx.ellipse(e.x, shY, shadowR, shadowH, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+  // Dev diagnostic — `window.__drawEnemyShadows = true` overlays the
+  // shadow ellipse outline + the anchor point so you can verify the
+  // shadow is glued to the enemy's ground footprint.
+  if (typeof window !== 'undefined' && window.__drawEnemyShadows) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 100, 200, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(e.x, shY, shadowR, shadowH, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 220, 90, 0.95)';
+    ctx.fillRect(e.x - 1, shY - 1, 3, 3);
+    ctx.restore();
+  }
 
   // Elite glow — affix color if any, else default gold. Aura sized to
   // the body silhouette via frame.halfWidth.
