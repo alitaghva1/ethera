@@ -75,28 +75,215 @@ export function applyZoneTone(baseColor, zone) {
   return `rgb(${r},${g},${b})`;
 }
 
-// ── FOCAL ASSIGNMENT ─────────────────────────────────────────────────────────
-// Returns { x, y, kind } in TILE coordinates, or null when the room kind
-// shouldn't have one (start, hamlet, trove, chestroom, shop — those rooms
-// have other natural focal points: their own contents).
+// ── ROOM VISUAL PROFILES (room identity system) ─────────────────────────────
+// Each room kind gets a profile that drives its visual + atmospheric
+// signature. The goal: the player feels "I know what kind of room this is"
+// within a 1-second look, without reading the UI label.
+//
+// A profile bundles:
+//   focal           : recipe { kinds[], placement }  | null when chests/
+//                                                      pedestals/urns ARE
+//                                                      the room's natural
+//                                                      attraction
+//   floorTint       : { r, g, b, a }  RGB cast painted as ONE subtle full-
+//                                     room overlay over the static floor.
+//                                     Drives mood (warm = treasure/safety,
+//                                     scorched = elite, cool = mystery).
+//   vignetteScale   : multiplier on the existing edge-darkening pass.
+//                     <1 = softer edges (treasure / sanctuary / shop —
+//                     calmer composition), >1 = stronger edges (elite /
+//                     boss — pressurized space).
+//   propFamily      : metadata describing what KIND of decor reads right
+//                     in this room. The drawing pipeline doesn't strictly
+//                     enforce this yet — it's the spec for the next dressing
+//                     pass — but documenting it here lets us audit at a
+//                     glance whether existing prop placement is on-style.
+//   moodLabel       : short human note for code readers.
+//
+// Design principles:
+//   - The tint alpha is small (≤0.08). The cast is a hint, not a wash.
+//     Enemies, projectiles, and the hero stay readable.
+//   - No new particles, no new glow, no new clutter. Identity is achieved
+//     via floor color + edge framing + focal signature.
+//   - Combat is the BASELINE (zero tint, vignette ×1). Other kinds depart
+//     from baseline in a controlled direction.
+const ROOM_VISUAL_PROFILES = {
+  // ── BASELINE: combat ─────────────────────────────────────────────────
+  // Functional fight space. Clear, readable arena. Off-center focal.
+  // No tint, standard vignette. The reference everyone else departs from.
+  combat: {
+    focal:         { kinds: ['obelisk', 'brazier'], placement: 'off-center' },
+    floorTint:     null,
+    vignetteScale: 1.00,
+    propFamily:    'combat',     // urns + bones/banner/statue/rug/chest decor
+    moodLabel:     'dangerous-but-functional',
+  },
 
-const FOCAL_RULES = {
-  // kind            → focal recipe { kinds, placement }
-  start:      null,
-  hamlet:     null,
-  trove:      null,    // urns ARE the focus
-  chestroom:  null,    // chests ARE the focus
-  shop:       null,    // pedestals ARE the focus
-  altar:      { kinds: ['altar'],            placement: 'center' },
-  sanctuary:  { kinds: ['altar'],            placement: 'center' },
-  reward:     { kinds: ['altar'],            placement: 'center' },
-  combat:     { kinds: ['obelisk', 'brazier'], placement: 'off-center' },
-  challenge:  { kinds: ['brazier'],          placement: 'forward' },
-  elite:      { kinds: ['crater', 'brazier'], placement: 'forward' },
-  event:      { kinds: ['brazier'],          placement: 'center' },
-  miniboss:   { kinds: ['tomb'],             placement: 'center' },
-  boss:       { kinds: ['tomb'],             placement: 'forward' },
+  // ── PRESSURE: challenge ──────────────────────────────────────────────
+  // Forward focal, more wear, dimmer overall. Still combat — just
+  // turned up.
+  challenge: {
+    focal:         { kinds: ['brazier'], placement: 'forward' },
+    floorTint:     { r: -2, g: -3, b: -2, a: 0.06 },     // slight cool dim
+    vignetteScale: 1.20,
+    propFamily:    'combat-heavy',
+    moodLabel:     'pressure-test',
+  },
+
+  // ── THREAT: elite ────────────────────────────────────────────────────
+  // Ritual arena. Crater or brazier centered/forward. Floor reads
+  // scorched. Edges close in.
+  elite: {
+    focal:         { kinds: ['crater', 'brazier'], placement: 'forward' },
+    floorTint:     { r: 8, g: -2, b: -4, a: 0.06 },      // ember-warm scorch cast
+    vignetteScale: 1.35,
+    propFamily:    'sparse-bones',     // no rugs/banners — austere
+    moodLabel:     'ritual-arena',
+  },
+
+  // ── REWARD (loot ceremony): chestroom ────────────────────────────────
+  // Chests are the visual star. Symmetric framing. Cleaner floor,
+  // warmer light, soft edges so the eye reads the chest layout.
+  chestroom: {
+    focal:         null,                                  // chests ARE the focus
+    floorTint:     { r: 8, g: 5, b: -2, a: 0.07 },       // warm gold cast
+    vignetteScale: 0.55,                                  // even, low-pressure
+    propFamily:    'minimal-ceremonial',
+    moodLabel:     'anticipation-of-loot',
+  },
+
+  // ── REWARD (urn pile): trove ─────────────────────────────────────────
+  // Same warm bias as chestroom — urns are the show.
+  trove: {
+    focal:         null,
+    floorTint:     { r: 8, g: 5, b: -2, a: 0.07 },
+    vignetteScale: 0.55,
+    propFamily:    'urn-cluster',
+    moodLabel:     'anticipation-of-loot',
+  },
+
+  // ── SAFETY: sanctuary / reward ───────────────────────────────────────
+  // Calm, reverent, soft. Altar focal centered. Cooler than treasure
+  // (it's about peace, not gold) but still warm at the altar itself
+  // (the altar's halo is its signature).
+  sanctuary: {
+    focal:         { kinds: ['altar'], placement: 'center' },
+    floorTint:     { r: 4, g: 2, b: 0, a: 0.05 },        // gentle warm wash
+    vignetteScale: 0.65,
+    propFamily:    'sparse-ceremonial',
+    moodLabel:     'breath-between-fights',
+  },
+  reward: {     // alias — same identity as sanctuary
+    focal:         { kinds: ['altar'], placement: 'center' },
+    floorTint:     { r: 4, g: 2, b: 0, a: 0.05 },
+    vignetteScale: 0.65,
+    propFamily:    'sparse-ceremonial',
+    moodLabel:     'breath-between-fights',
+  },
+
+  // ── COST: altar (HP-cost relic room) ─────────────────────────────────
+  // Same altar focal, but the floor reads scorched — this is the
+  // dangerous version of sanctuary. Player should feel "this isn't
+  // free" at a glance.
+  altar: {
+    focal:         { kinds: ['altar'], placement: 'center' },
+    floorTint:     { r: 8, g: -2, b: -4, a: 0.06 },      // matches elite scorch
+    vignetteScale: 1.20,
+    propFamily:    'sparse-ceremonial',
+    moodLabel:     'cost-not-gift',
+  },
+
+  // ── TRANSACTION: shop ────────────────────────────────────────────────
+  // Distinct from chestroom — more "browsing display." Brightest
+  // floor, evenest light, lowest vignette. Pedestals are the focus.
+  shop: {
+    focal:         null,
+    floorTint:     { r: 10, g: 6, b: -2, a: 0.07 },      // brightest warm tint
+    vignetteScale: 0.45,                                  // most even lighting
+    propFamily:    'merchant-display',
+    moodLabel:     'transaction-and-curiosity',
+  },
+
+  // ── MYSTERY: event ───────────────────────────────────────────────────
+  // Visual hint that "something strange happens here." Cool/violet
+  // floor cast distinguishes it from combat at a glance. Brazier
+  // focal because it's the most ritual-feeling setpiece we have.
+  event: {
+    focal:         { kinds: ['brazier'], placement: 'center' },
+    floorTint:     { r: -3, g: 0, b: 8, a: 0.06 },       // cool violet wash
+    vignetteScale: 0.95,
+    propFamily:    'minimal-ceremonial',
+    moodLabel:     'choice-and-uncertainty',
+  },
+
+  // ── BOSS / MINIBOSS / START ──────────────────────────────────────────
+  miniboss: {
+    focal:         { kinds: ['tomb'], placement: 'center' },
+    floorTint:     { r: 4, g: -2, b: -2, a: 0.06 },
+    vignetteScale: 1.20,
+    propFamily:    'sparse-bones',
+    moodLabel:     'duel-arena',
+  },
+  boss: {
+    focal:         { kinds: ['tomb'], placement: 'forward' },
+    floorTint:     { r: 6, g: -2, b: -3, a: 0.07 },
+    vignetteScale: 1.40,
+    propFamily:    'sparse-bones',
+    moodLabel:     'final-stand',
+  },
+  start: {
+    focal:         null,
+    floorTint:     null,
+    vignetteScale: 0.85,
+    propFamily:    'minimal',
+    moodLabel:     'arrival',
+  },
+  hamlet: null,    // not a dungeon room
 };
+
+// Default profile for any kind not explicitly listed (defensive fallback).
+const _DEFAULT_PROFILE = ROOM_VISUAL_PROFILES.combat;
+
+// ── ROOM IDENTITY ACCESSORS ──────────────────────────────────────────────
+// Per the design brief — each one reads from the central profile table
+// so all per-kind data lives in one place. Callers should generally use
+// applyRoomKindDressing(room) instead of poking these individually; the
+// accessors are exported for code clarity + targeted use cases.
+
+export function roomKindVisualProfile(kind) {
+  return ROOM_VISUAL_PROFILES[kind] || _DEFAULT_PROFILE;
+}
+
+export function selectFocalForRoomKind(kind) {
+  const profile = roomKindVisualProfile(kind);
+  return profile && profile.focal ? profile.focal : null;
+}
+
+export function selectFloorTreatmentForRoomKind(kind) {
+  const profile = roomKindVisualProfile(kind);
+  return profile && profile.floorTint ? profile.floorTint : null;
+}
+
+export function selectLightingMoodForRoomKind(kind) {
+  const profile = roomKindVisualProfile(kind);
+  return {
+    vignetteScale: profile && Number.isFinite(profile.vignetteScale)
+      ? profile.vignetteScale : 1.0,
+  };
+}
+
+export function selectPropFamilyForRoomKind(kind) {
+  const profile = roomKindVisualProfile(kind);
+  return profile && profile.propFamily ? profile.propFamily : 'combat';
+}
+
+// Sets room.kindProfile so the renderer can read floor tint + vignette
+// scale per-frame without re-resolving the profile each tick. Called
+// from buildRoomFromData after room.kind is set.
+export function applyRoomKindDressing(room) {
+  room.kindProfile = roomKindVisualProfile(room.kind);
+  return room.kindProfile;
+}
 
 // Hash helper — deterministic per room so reloading doesn't shuffle the
 // chosen focal kind.
@@ -107,7 +294,7 @@ function _hash(a, b) {
 }
 
 export function assignRoomFocal(room) {
-  const rule = FOCAL_RULES[room.kind];
+  const rule = selectFocalForRoomKind(room.kind);
   if (!rule) return null;
   const w = room.w | 0, h = room.h | 0;
   // Seed: room dims + kind length so it varies between rooms but is
@@ -345,6 +532,50 @@ export function drawZoneOverlays(ctx, room) {
       }
     }
   }
+  ctx.restore();
+}
+
+// ── FLOOR KIND TINT (STATIC PASS) ───────────────────────────────────────────
+// Subtle full-floor RGB cast that gives each room kind its instant-read
+// identity. Painted as ONE rectangular overlay on top of the floor tile
+// pass, BEFORE walls/decor — so walls + props + focal pieces stay
+// visually anchored at full saturation while the floor takes the cast.
+//
+// Cast values come from room.kindProfile.floorTint (see
+// ROOM_VISUAL_PROFILES). Alphas are kept ≤0.08 by construction so the
+// tint is a hint, not a wash. Skipped for room kinds with floorTint
+// === null (combat, start) — those stay at the baseline floor color.
+//
+// Important: tint covers only the playable floor rect (1..w-1, 1..h-1)
+// and drawn in screen-space order BEFORE walls, so the wall row + frieze
+// do not pick up the tint and start looking like a different biome.
+export function drawFloorKindTint(ctx, room) {
+  if (!room || !room.kindProfile || !room.kindProfile.floorTint) return;
+  const t = room.kindProfile.floorTint;
+  const a = Math.max(0, Math.min(0.12, t.a || 0));
+  if (a <= 0.005) return;
+  // Tint maths — ZONE_TONE-style RGB offsets become an rgba(R,G,B,a)
+  // overlay. Negative offsets flip sign and use the matching dark side
+  // (gives a subtle cool/dim cast) by computing a base tone and biasing.
+  // Simpler approach: render the offset as a solid color whose channels
+  // are biased from mid-grey. Positive r → warm push; negative → cool.
+  // We use absolute additive RGB on a near-mid-grey base.
+  const base = 90;     // mid-grey reference
+  const r = Math.max(0, Math.min(255, base + (t.r | 0)));
+  const g = Math.max(0, Math.min(255, base + (t.g | 0)));
+  const b = Math.max(0, Math.min(255, base + (t.b | 0)));
+  // Only the interior — skip the perimeter wall row/column so walls
+  // don't pick up the tint (would fight the static wall body color).
+  const left   = TILE;
+  const top    = TILE;
+  const width  = (room.w - 2) * TILE;
+  const height = (room.h - 2) * TILE;
+  ctx.save();
+  // 'overlay' would give the strongest tint but at the cost of
+  // contrast spikes; 'multiply' darkens; 'lighter' brightens. Use
+  // plain 'source-over' with low alpha — the most predictable.
+  ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
+  ctx.fillRect(left, top, width, height);
   ctx.restore();
 }
 

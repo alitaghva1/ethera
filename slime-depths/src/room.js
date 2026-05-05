@@ -14,8 +14,10 @@ import {
   buildFloorZones,
   drawZoneWear,
   drawZoneOverlays,
+  drawFloorKindTint,
   drawFocal as drawFocalPiece,
   drawDoorArchitecture,
+  applyRoomKindDressing,
 } from './roomComposition.js';
 
 export const TILE = 48;
@@ -941,17 +943,21 @@ export function buildRoomFromData(data) {
       roomSecrets.crackY = spot.y;
     }
   }
-  // ── COMPOSITION LAYER (Phase 1-3 vertical slice) ──────────────────────
-  // 1. Pick a focal point for eligible room kinds (start/hamlet/trove/
+  // ── COMPOSITION LAYER ─────────────────────────────────────────────────
+  // 1. Apply the room-kind visual profile (floor tint + vignette scale
+  //    + focal recipe + propFamily metadata). Caches the profile on
+  //    room.kindProfile so the renderer doesn't re-resolve per frame.
+  // 2. Pick a focal point for eligible room kinds (start/hamlet/trove/
   //    chestroom/shop return null — those rooms have other natural
   //    focal points: doorways, urn piles, chest arrays, pedestals).
-  // 2. Build floor zones (threshold/combat/focal-frame/alcove/wear)
+  // 3. Build floor zones (threshold/combat/focal-frame/alcove/wear)
   //    based on door positions + focal anchor + room dimensions.
   //
-  // Both run BEFORE the tile cache invalidation so the next static
+  // All run BEFORE the tile cache invalidation so the next static
   // render picks them up. Hamlet rooms get null focal + empty zones —
   // drawRoomDirect's hamlet branch returns before drawFloorTile, so
   // the empty zone array is harmless.
+  applyRoomKindDressing(room);
   room.focal = (data.kind === 'hamlet') ? null : assignRoomFocal(room);
   room.floorZones = buildFloorZones(room);
 
@@ -2880,6 +2886,16 @@ function drawRoomStaticLayers(ctx) {
   // altar, cool mist under tomb). Sits on the focal-frame zone.
   drawZoneWear(ctx, room);
 
+  // Pass 1e: ROOM-KIND FLOOR TINT (room identity system). Subtle
+  // full-floor RGB cast per kind — warm gold for treasure/shop/
+  // sanctuary, ember-scorch for elite/altar/boss, cool violet for
+  // event, baseline (no tint) for combat. Painted as ONE rect over
+  // the playable interior BEFORE walls so the wall row + frieze
+  // don't get re-tinted away from biome palette. The tint is the
+  // primary "I know what kind of room this is" signal, paired with
+  // the focal piece and vignette intensity below.
+  drawFloorKindTint(ctx, room);
+
   // Pass 2: shadow strips cast from walls onto floor cells below them.
   // Tier 1C — extended to all four sides of every wall/pillar tile so
   // walls feel embedded in the floor rather than pasted on top.
@@ -3142,8 +3158,20 @@ function drawRoomVignette(ctx) {
   // room stays fully clear; outer reaches the corners. Alpha ramps from
   // 0 at inner edge to 0.30 at outer (slightly stronger in inferno for
   // the world-wound feel).
+  //
+  // Room-identity layer: vignetteScale from room.kindProfile multiplies
+  // the peak alpha. Treasure/shop/sanctuary use <1 (softer edges, more
+  // even lighting — invites the eye to browse); elite/boss/challenge
+  // use >1 (stronger edges, more pressure). Clamped 0.3..1.5 so the
+  // pass never fully erases the framing or pushes the room into
+  // black-corner territory.
   const isInferno = PAL._biomeId === 'inferno';
-  const maxA = isInferno ? 0.34 : 0.22;
+  const baseA = isInferno ? 0.34 : 0.22;
+  const profileScale = (room.kindProfile && Number.isFinite(room.kindProfile.vignetteScale))
+    ? room.kindProfile.vignetteScale
+    : 1.0;
+  const scale = Math.max(0.3, Math.min(1.5, profileScale));
+  const maxA = baseA * scale;
   const cx = W / 2;
   const cy = H / 2;
   const innerR = Math.min(W, H) * 0.42;
