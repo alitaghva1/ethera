@@ -3006,7 +3006,38 @@ function drawRoomStaticLayers(ctx) {
   }
 
   // Pass 4: floor cracks + corner rubble + set-piece decor (no collision)
+  //
+  // Combat-readability pass — saturated furniture (banners, rugs,
+  // decorative chests in non-chestrooms, statues) compete with enemies
+  // for the eye in active fights because their crimson + gold palette
+  // is louder than the dungeon's gray-stone baseline. Dim those four
+  // kinds in combat-routed rooms so they read as "set dressing" not
+  // "thing to interact with." Atmospheric decor (cracks, rubble,
+  // bones) stays at full alpha — it's already low-saturation and adds
+  // grounding texture rather than visual noise.
+  //
+  // Detection covers both `combat` rooms and `eliteRoom` (whose
+  // data.kind === 'combat' but eliteRoom flag set — same fight read).
+  // Other room kinds (chestroom / sanctuary / shop / event resolved
+  // to altar / etc.) keep their decor at full saturation: a chest in
+  // a chestroom IS the focal point, a rug in a sanctuary IS the warmth
+  // signal.
+  const isCombatRoom = (room.kind === 'combat') || !!room.eliteRoom;
+  const COMBAT_DECOR_ALPHA = {
+    banner: 0.72,                    // crimson + gold — loud in fight
+    rug:    0.72,
+    statue: 0.85,
+    chest:  0.85,                    // decorative chest in combat (not chestroom focal)
+    rubble: 0.92,
+    bones:  1.00,                    // already dark
+    crack:  1.00,                    // floor detail
+  };
   for (const d of room.decor) {
+    const dim = isCombatRoom ? (COMBAT_DECOR_ALPHA[d.kind] ?? 1) : 1;
+    if (dim < 1) {
+      ctx.save();
+      ctx.globalAlpha *= dim;
+    }
     if (d.kind === 'crack')  drawCrack(ctx, d.x, d.y);
     else if (d.kind === 'rubble') drawRubble(ctx, d.x, d.y);
     else if (d.kind === 'bones')  drawBones(ctx, d.x, d.y);
@@ -3014,6 +3045,7 @@ function drawRoomStaticLayers(ctx) {
     else if (d.kind === 'statue') drawStatue(ctx, d.x, d.y);
     else if (d.kind === 'rug')    drawRug(ctx, d.x, d.y);
     else if (d.kind === 'chest')  drawChest(ctx, d.x, d.y);
+    if (dim < 1) ctx.restore();
   }
 
   // ─── THE RUIN REMEMBERS ────────────────────────────────────────────────────

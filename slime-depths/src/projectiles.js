@@ -477,9 +477,40 @@ export function updateProjectiles(dt) {
 export function drawProjectiles(ctx) {
   for (const p of projectiles) {
     if (p.kind === 'arrow') {
+      // Arrows used to draw as flat tan/cream shapes with no outline,
+      // which made them disappear over warm-cream dungeon floors and
+      // door-threshold light pools. Combat readability pass: render a
+      // soft amber motion glow + a 1px dark outline behind the
+      // colored fills so the projectile silhouette pops on every
+      // floor zone (FZ_COMBAT, FZ_THRESHOLD warm patch, FZ_FOCAL_FRAME
+      // chiseled groove, scorch-tinted elite floors).
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.angle);
+      // Soft amber motion glow — radial behind the arrow body so the
+      // overall silhouette pops even before the eye resolves the
+      // shaft/head shapes. Uses the archer telegraph color family for
+      // visual continuity (player thinks "amber arc -> amber arrow").
+      const glow = ctx.createRadialGradient(-2, 0, 1, -2, 0, 14);
+      glow.addColorStop(0, 'rgba(255, 200, 110, 0.45)');
+      glow.addColorStop(0.55, 'rgba(255, 175, 80, 0.18)');
+      glow.addColorStop(1, 'rgba(220, 140, 60, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(-16, -14, 32, 28);
+      // Dark outline pass — slightly larger silhouette behind the
+      // colored fills. Same shapes, +1px in each direction, in
+      // near-black so any lit floor underneath gets defined.
+      ctx.fillStyle = 'rgba(20, 14, 10, 0.85)';
+      ctx.fillRect(-15, -2, 22, 4);                          // shaft outline
+      ctx.beginPath();                                       // head outline
+      ctx.moveTo(5, -4);
+      ctx.lineTo(13, 0);
+      ctx.lineTo(5, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(-15, -4, 6, 3);                           // fletching outline (top)
+      ctx.fillRect(-15, 1, 6, 3);                            // fletching outline (bot)
+      // Original colored fills layered on top of the outline.
       // Shaft
       ctx.fillStyle = '#c9a36a';
       ctx.fillRect(-14, -1, 20, 2);
