@@ -2903,24 +2903,50 @@ function drawTorchLighting(ctx) {
   const torchCore = PAL.torchCore || '#ffb46e';
   const [r, g, b] = _hexToRgb(torchCore);
   const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+  const W = room.w * TILE;
+  const H = room.h * TILE;
   ctx.save();
+  // Clip the lighting pass to the room's playable rect. Without this,
+  // the torch radial gradients spill UP into the dark void above the
+  // wall row (torches sit at y=21, light radius 200 → gradient extends
+  // to y=-179, well outside the room) and create a bright halo where
+  // there's no surface to light. Clip cleanly contains light to the
+  // playable area.
+  //
+  // The TOP edge is set to -16 (slightly above y=0) so the visible
+  // torch sprite's flame anim — which the player sees rendered above
+  // the wall body — still picks up its own glow. The wall row itself
+  // (y=0 to y=48) sits inside the clip, so wall faces below torches
+  // get their warm wash properly.
+  ctx.beginPath();
+  ctx.rect(0, -16, W, H + 16);
+  ctx.clip();
   ctx.globalCompositeOperation = 'lighter';
   for (const t of roomTorches) {
     // Each torch's flicker phase is offset by its placement seed so a
     // row of torches doesn't pulse in unison. 5 Hz sin gives a fire-
     // alive feel without strobing.
     const flicker = 0.93 + 0.07 * Math.sin(now * 5 + t.seed * 0.13);
-    const radius = 170 * flicker;
+    // Larger radius (200 vs prior 170) + softer alpha falloff so the
+    // contrast between lit zones and unlit zones is gentler. Prior
+    // tuning produced a hard "spotlight" feel — areas between torches
+    // looked unlit. The new curve overlaps adjacent torches' fields so
+    // the room feels evenly bathed with intensity peaks at each torch.
+    const radius = 200 * flicker;
     const cx = t.x;
     const cy = t.y;
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    // Strong warm core (alpha ~0.45 at center, controlled so it doesn't
-    // blow out brightly-lit floor tiles like vault gold), soft mid-band,
-    // long fade-out. The 0.7 stop carries most of the perceived light
-    // without overpowering the floor color grade.
-    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${(0.45 * flicker).toFixed(3)})`);
-    grad.addColorStop(0.35, `rgba(${r}, ${g}, ${b}, ${(0.20 * flicker).toFixed(3)})`);
-    grad.addColorStop(0.70, `rgba(${r}, ${g}, ${b}, ${(0.06 * flicker).toFixed(3)})`);
+    // Softened intensity profile:
+    //   center  (0):   0.32 (was 0.45 — too hot at peak)
+    //   mid     (0.35): 0.18 (was 0.20)
+    //   outer   (0.70): 0.07 (was 0.06)
+    //   edge    (1):    0
+    // Net: a less aggressive spotlight, more diffuse warm wash. With
+    // the larger radius, adjacent torches' falloff ranges overlap so
+    // the floor between them isn't "dead zone" between hot spots.
+    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${(0.32 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.35, `rgba(${r}, ${g}, ${b}, ${(0.18 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.70, `rgba(${r}, ${g}, ${b}, ${(0.07 * flicker).toFixed(3)})`);
     grad.addColorStop(1,    `rgba(${r}, ${g}, ${b}, 0)`);
     ctx.fillStyle = grad;
     ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
@@ -2949,7 +2975,16 @@ function drawLavaLighting(ctx) {
   // Slow 0.8 Hz overall pulse so the glow breathes with the lava core
   // pulse already in drawLavaPatch.
   const pulse = 0.82 + 0.18 * Math.sin(now * 0.8);
+  const W = room.w * TILE;
+  const H = room.h * TILE;
   ctx.save();
+  // Same room-bounds clip as torch lighting — lava is on the floor so
+  // there's no upward-bleed concern, but a clip keeps the additive
+  // gradient from leaking past the perimeter walls into the void
+  // beyond. Belt-and-suspenders alongside the torch clip.
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  ctx.clip();
   ctx.globalCompositeOperation = 'lighter';
   // Inferno biome — bright orange, larger radius. Abyss — smaller red-
   // ember radius (it has scorch patches, not lava, so weaker).
