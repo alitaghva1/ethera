@@ -381,14 +381,30 @@ export function updateWeather(dt, cameraX, cameraY) {
   }
 }
 
-export function drawWeather(ctx) {
+// Draw weather. Optional `maskRect` clips the particle rendering to the
+// area OUTSIDE that rectangle — used to keep biome weather in the void
+// around the dungeon instead of letting orange motes drift across the
+// playable floor where they compete with enemy projectiles + telegraphs.
+// Passing null / omitting the rect renders particles everywhere.
+//
+// Format: { left, top, right, bottom } in world-space pixels.
+export function drawWeather(ctx, maskRect = null) {
   const st = WEATHER_STYLES[weatherBiome] || WEATHER_STYLES.vault;
   const [r, g, b] = st.color;
+  // Mask predicate. Hoisted to avoid recomputing the bounds check per
+  // particle per pass when maskRect is null.
+  const hasMask = !!(maskRect
+    && Number.isFinite(maskRect.left) && Number.isFinite(maskRect.right)
+    && Number.isFinite(maskRect.top)  && Number.isFinite(maskRect.bottom));
+  const inMask = hasMask
+    ? (x, y) => x >= maskRect.left && x <= maskRect.right && y >= maskRect.top && y <= maskRect.bottom
+    : () => false;
   // Additive glow pass for hot biomes
   if (st.glow) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const w of weather) {
+      if (inMask(w.x, w.y)) continue;
       const t = w.life / w.maxLife;
       const fade = Math.min(t, 1 - t) * 2;
       const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.55;
@@ -402,6 +418,7 @@ export function drawWeather(ctx) {
   }
   // Solid core pass
   for (const w of weather) {
+    if (inMask(w.x, w.y)) continue;
     const t = w.life / w.maxLife;
     const fade = Math.min(t, 1 - t) * 2;
     const a = Math.max(0, Math.min(st.alpha, fade * st.alpha));

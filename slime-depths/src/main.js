@@ -6388,10 +6388,19 @@ function render() {
   drawSoulTethers(ctx);
   drawParticles(ctx);
   drawDust(ctx);
-  // Biome weather — ice motes, ash, embers. Drawn on top of gameplay so the
-  // atmosphere reads through, but still inside camera transform so parallax
-  // tracks the world, not the screen.
-  drawWeather(ctx);
+  // Biome weather — ice motes, ash, embers. Drawn on top of gameplay so
+  // the atmosphere reads through, but still inside camera transform so
+  // parallax tracks the world, not the screen. The mask rect clips
+  // weather rendering to the VOID outside the playable rectangle: in
+  // dungeon rooms, the orange/embered motes used to drift across combat
+  // space and compete with enemy projectiles + telegraphs for the
+  // player's eye. Now they only show in the dark border around the
+  // walls. Hamlet (room.kind === 'hamlet') gets no mask — its painted
+  // scene IS the world, and weather isn't active there anyway.
+  const _weatherMask = room.kind === 'hamlet'
+    ? null
+    : { left: 0, top: 0, right: room.w * TILE, bottom: room.h * TILE };
+  drawWeather(ctx, _weatherMask);
   // Ambient creatures — bats, ravens, moths passing through. Silhouettes.
   drawAmbientCreatures(ctx);
   drawCounterIndicator(ctx, hero.x, hero.y);
