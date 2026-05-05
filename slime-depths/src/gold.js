@@ -56,8 +56,6 @@ export function updateGold(dt, hero) {
     const c = coins[i];
     c.spawnT += dt;
     c.bob += dt * 5;
-    // Throttled sparkle trail while the coin streams toward the hero
-    c._trailT = (c._trailT || 0) + dt;
 
     // Initial toss: gravity + decay
     if (c.spawnT < 0.5) {
@@ -91,11 +89,15 @@ export function updateGold(dt, hero) {
         c._magnetSpeed = (c._magnetSpeed || targetSpeed * 0.5) * 0.82 + targetSpeed * 0.18;
         c.x += (dx / (d || 1)) * c._magnetSpeed * dt;
         c.y += (dy / (d || 1)) * c._magnetSpeed * dt;
-        // Sparkle trail — a small glint emitted roughly every 60ms while flying
-        if (c._trailT > 0.06) {
-          c._trailT = 0;
-          sparkle(c.x, c.y - 4, '#ffe3a0');
-        }
+        // (Removed) Mid-flight sparkle trail — the coin sprite emitted a
+        // warm-gold sparkle every 60 ms while flying toward the hero. With
+        // 5-10 coins magnetizing simultaneously after a kill, that produced
+        // 80-160 sparkles/sec drifting in random directions, all in the
+        // same warm-gold palette as the vault biome. They blurred with the
+        // actual ambient layer and created the constant warm-mote noise
+        // the player flagged in playtest. The pickup pop on collection
+        // (below) and the final dashTrail still celebrate the moment;
+        // the in-flight sparkle wasn't adding readable information.
         if (d < 18) {
           // GILDED HOARD — multiplies gold pickups. Defaults to 1 (no effect)
           // when the relic isn't equipped.
