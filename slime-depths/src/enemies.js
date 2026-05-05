@@ -2532,15 +2532,39 @@ export function drawEnemy(ctx, e) {
     ctx.restore();
   }
 
-  // Soft radial shadow — sized to the visible body half-width.
-  // Squashed ellipse band 16% taller than a circle would be.
-  const shadowR = frame.halfWidth * 1.5;
-  const shadowW = shadowR * 1.6;        // wider than tall (squashed band)
-  const sg = ctx.createRadialGradient(e.x, frame.feetY + 6, 2, e.x, frame.feetY + 6, shadowR);
-  sg.addColorStop(0, 'rgba(0,0,0,0.42)');
-  sg.addColorStop(1, 'rgba(0,0,0,0)');
+  // ─── Soft elliptical ground shadow ──────────────────────────────────
+  // The previous render was a radial gradient clipped inside a 12 px
+  // tall strip — the gradient's vertical extent got cut off, leaving a
+  // thin band that read as "barely there" against the dungeon floor.
+  // Worse, with no proper ellipse shape, sprites floated visually
+  // because their feet weren't anchored to the ground.
+  //
+  // New: ctx.ellipse-based shadow matching the hero's pattern. Soft
+  // radial gradient FILLED into an explicit elliptical path (wide,
+  // ~36% as tall as wide). The combination — radial fade + flat
+  // ellipse silhouette — produces a Hades/Diablo-style ground shadow
+  // that anchors the entity to the floor at door-glance distance.
+  //
+  // Sizing: ~1.7× halfWidth horizontal, 0.36× that vertical (proper
+  // top-down "shadow on flat floor" proportions). Alpha 0.55 in the
+  // center, 0.22 at 60% radius, 0 at the edge — lets the shadow
+  // visibly darken the floor without becoming a hard black blob.
+  //
+  // Boss + elite shadows scale up automatically because halfWidth
+  // already factors sizeMul (1.45 for bosses, 1.18 for elites).
+  const shadowR = frame.halfWidth * 1.7;
+  const shadowH = shadowR * 0.36;
+  const shY = frame.feetY + 4;
+  const sg = ctx.createRadialGradient(e.x, shY, 1, e.x, shY, shadowR);
+  sg.addColorStop(0,   'rgba(0, 0, 0, 0.55)');
+  sg.addColorStop(0.6, 'rgba(0, 0, 0, 0.22)');
+  sg.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  ctx.save();
   ctx.fillStyle = sg;
-  ctx.fillRect(e.x - shadowW / 2, frame.feetY, shadowW, 12);
+  ctx.beginPath();
+  ctx.ellipse(e.x, shY, shadowR, shadowH, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 
   // Elite glow — affix color if any, else default gold. Aura sized to
   // the body silhouette via frame.halfWidth.
