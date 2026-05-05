@@ -574,7 +574,28 @@ export function drawDoorLabels(ctx) {
         // uses the larger dimensions). Position the prompt 22 px below.
         const sealedCardBottom = cardCY + CARD_H / 2;
         const promptY = sealedCardBottom + 22 + Math.sin(now * 2.2) * 2;
-        const label = `E  ·  BREAK SEAL`;
+        // Effective cost preview — what the player will ACTUALLY pay
+        // when they press E. Mirrors the pity-cost rule in the main
+        // E-handler: cap at hp-1 so the seal can never one-shot the
+        // hero. The static "OFFER N HP" line in the card above shows
+        // what the seal NORMALLY demands; this prompt shows what the
+        // altar will accept from THIS player at THEIR current HP.
+        const askedCost     = d.sealCost | 0;
+        const effectiveCost = Math.max(0, Math.min(askedCost, (hero.hp | 0) - 1));
+        const wasMercy      = effectiveCost < askedCost;
+        // Label format:
+        //   Full cost  -> "E  ·  BREAK SEAL  ·  -2 HP"
+        //   Mercy      -> "E  ·  ACCEPT THE OFFERING"  (free pass at 1 HP)
+        //                 or "E  ·  BREAK SEAL  ·  -1 HP"  (reduced)
+        // The mercy free-pass uses different verb language — "accept"
+        // not "break" — so the player understands the altar is GIVING,
+        // not them taking by force.
+        let label;
+        if (effectiveCost === 0) {
+          label = `E  ·  ACCEPT THE OFFERING`;
+        } else {
+          label = `E  ·  BREAK SEAL  ·  -${effectiveCost} HP`;
+        }
         ctx.save();
         ctx.font = 'bold 11px Georgia, serif';
         ctx.textAlign = 'center';
@@ -587,10 +608,15 @@ export function drawDoorLabels(ctx) {
         const py = promptY - h / 2;
         ctx.fillStyle = 'rgba(14, 10, 16, 0.88)';
         ctx.fillRect(px, py, w, h);
-        ctx.strokeStyle = '#d04050';
+        // Border + text color flip when mercy applies — gold instead
+        // of crimson, so the prompt visually reflects the same
+        // cost-was-spared signal the post-pay banner uses.
+        const borderCol = wasMercy ? '#c9a86a' : '#d04050';
+        const textCol   = wasMercy ? '#f4d9a0' : '#ff8088';
+        ctx.strokeStyle = borderCol;
         ctx.lineWidth = 1;
         ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
-        ctx.fillStyle = '#ff8088';
+        ctx.fillStyle = textCol;
         ctx.fillText(label, cx, promptY);
         ctx.restore();
       }

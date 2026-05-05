@@ -5111,32 +5111,58 @@ function _tickInner(now) {
         // in range, so this is also cheap.
         const sealedDoor = getNearbySealedDoor(hero.x, hero.y);
         if (sealedDoor) {
-          if (hero.hp <= sealedDoor.sealCost) {
-            roomLabelText = `NOT ENOUGH HP TO BREAK THIS SEAL`;
-            roomLabelColor = '#d85a5a';
-            roomLabelTime = 1.6;
-            synthClick(0.5, 1.0);
+          // PITY-COST RULE — the seal can never kill you outright.
+          // Earlier code did `if (hero.hp <= sealCost) BLOCK` which
+          // softlocked any run that reached a blood-altar door at
+          // exactly the door's HP cost (or lower) — there's no
+          // "go around" option in this game's graph. The fix:
+          // effectiveCost = min(sealCost, hp - 1). The door always
+          // opens; you always survive with at least 1 HP; at high
+          // HP you pay the full sacrifice; at low HP the altar
+          // takes only what you can spare.
+          //
+          // Genre-consistent (Hades altars, Slay-the-Spire events,
+          // RoR shrines never one-shot you for accepting). Diegetic
+          // justification: the altar is a TRADE, not an execution.
+          // Adding a small "MERCY" feedback when the cost is
+          // reduced lets the player understand what happened
+          // without making them re-read the rules.
+          const askedCost     = sealedDoor.sealCost | 0;
+          const effectiveCost = Math.max(0, Math.min(askedCost, hero.hp - 1));
+          const wasMercy      = effectiveCost < askedCost;
+          // Pay the cost and break the seal. damageHero would route
+          // through the hurt SFX + screen flash + iframes — wrong
+          // for a deliberate trade. Decrement hero.hp directly so
+          // the cost reads as a willing offering, not an attack.
+          hero.hp -= effectiveCost;
+          breakSeal(sealedDoor);
+          // Audio: full-cost SEAL BROKEN gets the heavy thud + rising
+          // chord. Mercy path uses a softer chord — the altar is
+          // showing kindness, not cracking under pressure.
+          try { synthThud(wasMercy ? 90 : 60, wasMercy ? 0.7 : 1.0, wasMercy ? 0.28 : 0.4); } catch (_e) {}
+          try { synthChord(wasMercy ? 528 : 440, 0.7, 0.7); } catch (_e) {}
+          shakeCamera(wasMercy ? 4 : 8, 0.3);
+          // Mercy uses a warmer flash (gold/amber) instead of crimson
+          // — visually distinct from the heavy "you bled for this" beat.
+          triggerScreenFlash(
+            wasMercy ? 'rgba(255, 200, 130, 0.16)' : 'rgba(220, 80, 90, 0.18)',
+            0.35,
+          );
+          // Crimson sparkle burst at the door tile (mercy path uses
+          // warm gold instead). The audio + camera + flash already
+          // framed the moment; the particle burst anchors WHERE.
+          const _doorWX = sealedDoor.tx * TILE + TILE / 2;
+          const _doorWY = sealedDoor.ty * TILE + TILE;
+          if (wasMercy) {
+            for (let k = 0; k < 14; k++) {
+              deathBurst(_doorWX, _doorWY, k % 2 === 0 ? '#f4c860' : '#ffe098');
+            }
+            for (let k = 0; k < 6; k++) {
+              const ang = (k / 6) * Math.PI * 2;
+              const r = 20 + Math.random() * 12;
+              sparkle(_doorWX + Math.cos(ang) * r, _doorWY + Math.sin(ang) * r * 0.6, '#fff2c8');
+            }
           } else {
-            // Pay the cost and break the seal. damageHero would route
-            // through the hurt SFX + screen flash + iframes — wrong
-            // for a deliberate trade. Decrement hero.hp directly so
-            // the cost reads as a willing offering, not an attack.
-            hero.hp -= sealedDoor.sealCost;
-            breakSeal(sealedDoor);
-            // Custom audio for the seal break: sub-bass thud + a
-            // rising chord layered for the "the gate cracks" beat.
-            try { synthThud(60, 1.0, 0.4); } catch (_e) {}
-            try { synthChord(440, 0.7, 0.7); } catch (_e) {}
-            shakeCamera(8, 0.3);
-            triggerScreenFlash('rgba(220, 80, 90, 0.18)', 0.35);
-            // Round-7-audit POLISH — crimson sparkle burst at the door
-            // tile. The audio + camera + flash already framed the
-            // moment; the particle burst gives the SPATIAL anchor —
-            // "the seal cracked HERE, at this gate" — so the player's
-            // eye knows where the threshold opened. 18 sparks in a
-            // splatter pattern centered on the door's bottom edge.
-            const _doorWX = sealedDoor.tx * TILE + TILE / 2;
-            const _doorWY = sealedDoor.ty * TILE + TILE;
             for (let k = 0; k < 18; k++) {
               deathBurst(_doorWX, _doorWY, k % 2 === 0 ? '#d04050' : '#ff8088');
             }
@@ -5145,10 +5171,16 @@ function _tickInner(now) {
               const r = 22 + Math.random() * 14;
               sparkle(_doorWX + Math.cos(ang) * r, _doorWY + Math.sin(ang) * r * 0.6, '#ffd0d8');
             }
-            roomLabelText = `✦ SEAL BROKEN ✦`;
-            roomLabelColor = '#ff8088';
-            roomLabelTime = 1.6;
           }
+          // Banner copy reflects which path fired:
+          //   Full cost  -> "✦ SEAL BROKEN ✦"          (crimson)
+          //   Mercy      -> "✦ THE ALTAR SPARES YOU ✦"  (warm gold)
+          // The mercy line conveys that the door opened despite the
+          // full price not being met — without exposing the literal
+          // pity-cost mechanic to the player.
+          roomLabelText  = wasMercy ? `✦ THE ALTAR SPARES YOU ✦` : `✦ SEAL BROKEN ✦`;
+          roomLabelColor = wasMercy ? '#f4d9a0' : '#ff8088';
+          roomLabelTime  = 1.8;
         }
       }
       // result === non-null relic def: pedestal pickup happened, no
