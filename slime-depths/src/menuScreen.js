@@ -153,7 +153,14 @@ export const MENU_SCREEN_HTML = `
          clearly read as options FOR the button above, not as a second
          navigation row. Selected chip is filled + glows; unselected is
          dim text. Differentiation by weight, not by outline. -->
-    <div id="menuModeRow" style="display:flex;gap:3px;margin-top:12px;margin-bottom:0;align-items:center;">
+    <!-- The whole mode row is hidden as long as DAILY and TAROT chips
+         are display:none (Round-7 + meta-consolidation pass). With only
+         STANDARD visible, the chip is dead UI — it labels the single
+         option with button styling that pretends to be a choice. When
+         either DAILY or TAROT gets re-enabled (per the comments on
+         their chips below), flip this row back to display:flex so the
+         actual mode-switch beat returns. -->
+    <div id="menuModeRow" style="display:none;gap:3px;margin-top:12px;margin-bottom:0;align-items:center;">
       <button class="menuModeChip" data-mode="standard" style="background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">STANDARD</button>
       <!-- ROUND-7 SCOPE PASS: DAILY mode chip hidden (matches the prior
            TAROT hiding below). Daily challenges added a third menu mode
