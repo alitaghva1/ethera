@@ -288,6 +288,85 @@ export function applyRoomKindDressing(room) {
   return room.kindProfile;
 }
 
+// ── PROTECTED TILES ─────────────────────────────────────────────────────────
+// Some tiles must stay clear of decorative props for either gameplay
+// or composition reasons. This is a unified check used by the dressing
+// pass to filter both data.decor (rugs/banners/statues/chests/etc.)
+// and roomUrns[isProp=true] (combat-prop urns) AFTER they've been
+// placed by floor.js + the existing dressing rules.
+//
+// Protected = ANY of:
+//   1. Pillar / wall / door tile (already non-floor — props couldn't
+//      land here in the first place but defensive coverage helps when
+//      authored shells override the tile grid late)
+//   2. Pedestal / altar tile (gameplay-bearing — never bury under
+//      decoration)
+//   3. The focal anchor itself (room.focal.x, room.focal.y)
+//   4. FZ.FOCAL_FRAME — the 5-tile cross around the focal piece.
+//      Decor here would visually fight the focal silhouette and the
+//      authored framing pattern.
+//   5. FZ.THRESHOLD — 3-tile patches inside each door. Decor at door
+//      threshold blocks line-of-sight to the room and can softly
+//      cramp the door arch's light pool.
+//   6. Authored shell forbidTiles (currently the same set as 1+3, but
+//      future shells may add explicit "keep this lane clear" tiles).
+//
+// Out-of-bounds and non-floor source tiles return true (treat as
+// protected so we never SPAWN decor there even if a glitch happens).
+export function isProtectedRoomTile(room, x, y) {
+  if (!room) return true;
+  const w = room.w | 0, h = room.h | 0;
+  if (x < 0 || x >= w || y < 0 || y >= h) return true;
+
+  // Tile-kind protections (pillar/wall/door/altar/pedestal etc).
+  const tile = room.tiles?.[y]?.[x];
+  if (tile && tile !== 'floor') return true;
+
+  // Focal anchor + focal-frame zone + threshold zone.
+  if (room.focal && room.focal.x === x && room.focal.y === y) return true;
+  if (room.floorZones) {
+    const zone = room.floorZones[y]?.[x];
+    if (zone === FZ.FOCAL_FRAME || zone === FZ.THRESHOLD) return true;
+  }
+
+  // Authored shell forbidTiles (defensive — usually subsumed by above).
+  if (room.authoredForbidTiles) {
+    for (const f of room.authoredForbidTiles) {
+      if (f.x === x && f.y === y) return true;
+    }
+  }
+
+  return false;
+}
+
+// Removes any decor entry sitting on a protected tile. Decor is purely
+// visual (banner / rug / statue / chest / bones / crack / rubble), so
+// dropping a few from any room never affects gameplay — just composition.
+// Cracks specifically are kept even on protected tiles (they're floor
+// detail, not silhouettes that can fight the focal).
+export function filterDecorAgainstProtectedTiles(room) {
+  if (!room || !Array.isArray(room.decor) || room.decor.length === 0) return;
+  room.decor = room.decor.filter(d => {
+    if (d.kind === 'crack') return true;     // crack is floor detail, exempt
+    return !isProtectedRoomTile(room, d.x, d.y);
+  });
+}
+
+// Removes decorative (isProp=true) urns sitting on a protected tile.
+// Gameplay-bearing urns (isProp=false — trove loot, sanctuary altar
+// flair) are NEVER filtered here; they were placed deliberately by
+// the floor planner and may be the room's whole point.
+export function filterUrnsAgainstProtectedTiles(roomUrns, room) {
+  if (!Array.isArray(roomUrns) || roomUrns.length === 0) return;
+  for (let i = roomUrns.length - 1; i >= 0; i--) {
+    const u = roomUrns[i];
+    if (!u.isProp) continue;     // gameplay urn — leave alone
+    if (isProtectedRoomTile(room, u.x, u.y)) {
+      roomUrns.splice(i, 1);
+    }
+  }
+}
+
 // ── PROP DRESSING RULES (composition by room kind) ──────────────────────────
 // The visual profile gives a 1-second color/lighting read; this rule
 // table goes the next step: it changes what props live in the room
@@ -393,71 +472,115 @@ const PROP_DRESSING_RULES = {
 // gameplay-bearing — trove loot containers, sanctuary altar flair).
 // Decorative chests/banners/etc. in room.decor ARE fair game because
 // they don't gate any mechanic.
+//
+// Two phases:
+//   PHASE A — kind-family rules (filter decor allowlist + thin urns +
+//             add merchant-display etc., per PROP_DRESSING_RULES)
+//   PHASE B — protected-tile cleanup (drop decor + isProp urns sitting
+//             on focal-frame, threshold, focal anchor, pillars). Runs
+//             on EVERY room, including 'combat' baseline + fallback
+//             non-shell rooms, so the focal-frame + door threshold
+//             always read clean.
 export function placeRoomKindProps(room, _runtime) {
   if (!room || !room.kindProfile) return;
   const family = room.kindProfile.propFamily;
   const rule = PROP_DRESSING_RULES[family];
-  if (rule === undefined) return;     // unknown family — leave alone
-  if (rule === null) return;          // 'combat' baseline — no changes
+  // PHASE A is gated on the rule existing — unknown families fall
+  // through to PHASE B. PHASE B always runs.
+  const ruleApplies = rule !== undefined && rule !== null;
 
   const w = room.w | 0, h = room.h | 0;
   const seed = (room._detailSeed | 0) ^ ((w * 31 + h) * 13);
 
-  // ── 1. Filter decor by allowlist ─────────────────────────────────────
-  if (room.decor && Array.isArray(room.decor)) {
-    const allowed = new Set(rule.filterDecor || []);
-    room.decor = room.decor.filter(d => allowed.has(d.kind));
-  }
+  // ═════════════════════════════════════════════════════════════════════
+  // PHASE A — kind-family rules (filter, thin, add)
+  // ═════════════════════════════════════════════════════════════════════
 
-  // ── 2. Thin out decorative (isProp=true) urns by density ─────────────
-  // Runtime urn array lives on _runtime.roomUrns (passed in by caller
-  // since the array is module-private to room.js). We mutate length
-  // in place so other room.js helpers (urn collision, urn-hit etc.)
-  // continue to read the same array reference.
-  if (_runtime && _runtime.roomUrns && rule.urnPropDensity < 1) {
-    const urns = _runtime.roomUrns;
-    if (rule.urnPropDensity <= 0) {
-      // Strip ALL decorative urns — keep only isProp=false urns.
-      for (let i = urns.length - 1; i >= 0; i--) {
-        if (urns[i].isProp) urns.splice(i, 1);
-      }
-    } else {
-      // Partial keep — hash-deterministic sampling so reloading a
-      // room produces the same dressed layout.
-      let idx = 0;
-      for (let i = urns.length - 1; i >= 0; i--) {
-        if (!urns[i].isProp) continue;
-        const keep = (_hash(seed + idx * 37, idx * 11) % 1000) < (rule.urnPropDensity * 1000);
-        if (!keep) urns.splice(i, 1);
-        idx++;
+  if (ruleApplies) {
+
+    // ── A1. Filter decor by allowlist ──────────────────────────────────
+    if (room.decor && Array.isArray(room.decor)) {
+      const allowed = new Set(rule.filterDecor || []);
+      room.decor = room.decor.filter(d => allowed.has(d.kind));
+    }
+
+    // ── A2. Thin out decorative (isProp=true) urns by density ──────────
+    // Runtime urn array lives on _runtime.roomUrns (passed in by caller
+    // since the array is module-private to room.js). We mutate length
+    // in place so other room.js helpers (urn collision, urn-hit etc.)
+    // continue to read the same array reference.
+    if (_runtime && _runtime.roomUrns && rule.urnPropDensity < 1) {
+      const urns = _runtime.roomUrns;
+      if (rule.urnPropDensity <= 0) {
+        // Strip ALL decorative urns — keep only isProp=false urns.
+        for (let i = urns.length - 1; i >= 0; i--) {
+          if (urns[i].isProp) urns.splice(i, 1);
+        }
+      } else {
+        // Partial keep — hash-deterministic sampling so reloading a
+        // room produces the same dressed layout.
+        let idx = 0;
+        for (let i = urns.length - 1; i >= 0; i--) {
+          if (!urns[i].isProp) continue;
+          const keep = (_hash(seed + idx * 37, idx * 11) % 1000) < (rule.urnPropDensity * 1000);
+          if (!keep) urns.splice(i, 1);
+          idx++;
+        }
       }
     }
+
+    // ── A3. Add family-specific props ──────────────────────────────────
+    if (rule.addStyle === 'merchant-display' && _runtime && _runtime.roomUrns) {
+      // 4 prop urns positioned symmetrically along the L/R walls,
+      // upper + lower thirds, like merchandise on display. Skipped if
+      // the chosen tile isn't floor (carved-shape rooms) OR if the
+      // chosen slot is now a protected tile (FZ.THRESHOLD around a
+      // door, etc.) so display urns don't crowd doorways.
+      const tiles = room.tiles;
+      const slots = [
+        { x: 2,     y: Math.floor(h * 0.32) },
+        { x: 2,     y: Math.floor(h * 0.66) },
+        { x: w - 3, y: Math.floor(h * 0.32) },
+        { x: w - 3, y: Math.floor(h * 0.66) },
+      ];
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (tiles?.[s.y]?.[s.x] !== 'floor') continue;
+        if (isProtectedRoomTile(room, s.x, s.y)) continue;
+        _runtime.roomUrns.push({
+          x: s.x, y: s.y,
+          broken: false, breakT: 0,
+          // Cycle variants 0..2 so the four display urns don't all
+          // look identical — reads as a varied product line.
+          variant: i % 3,
+          isProp: true,        // sparse loot — these are merchandise, not trove
+        });
+      }
+    }
+
   }
 
-  // ── 3. Add family-specific props ─────────────────────────────────────
-  if (rule.addStyle === 'merchant-display' && _runtime && _runtime.roomUrns) {
-    // 4 prop urns positioned symmetrically along the L/R walls,
-    // upper + lower thirds, like merchandise on display. Skipped if
-    // the chosen tile isn't floor (carved-shape rooms).
-    const tiles = room.tiles;
-    const slots = [
-      { x: 2,     y: Math.floor(h * 0.32) },
-      { x: 2,     y: Math.floor(h * 0.66) },
-      { x: w - 3, y: Math.floor(h * 0.32) },
-      { x: w - 3, y: Math.floor(h * 0.66) },
-    ];
-    for (let i = 0; i < slots.length; i++) {
-      const s = slots[i];
-      if (tiles?.[s.y]?.[s.x] !== 'floor') continue;
-      _runtime.roomUrns.push({
-        x: s.x, y: s.y,
-        broken: false, breakT: 0,
-        // Cycle variants 0..2 so the four display urns don't all
-        // look identical — reads as a varied product line.
-        variant: i % 3,
-        isProp: true,        // sparse loot — these are merchandise, not trove
-      });
-    }
+  // ═════════════════════════════════════════════════════════════════════
+  // PHASE B — protected-tile cleanup (runs on EVERY room, all kinds)
+  // ═════════════════════════════════════════════════════════════════════
+  // Filters props that landed on tiles we want kept clear: pillars,
+  // focal anchor, focal-frame zone (5-tile cross around focal), door
+  // threshold zones (3-tile patches inside each door), and authored
+  // shell forbidTiles. Catches rooms where the kind-family rules left
+  // their decor intact (combat baseline, unknown families) AND
+  // cleans up positions that PHASE A didn't filter even when its
+  // allowlist kept them (e.g., a 'crack' decor entry on the focal
+  // tile — which PHASE A keeps since cracks are atmospheric grit, but
+  // shouldn't sit on the focal piece).
+  //
+  // Filters apply only to:
+  //   - ALL room.decor entries except 'crack' (cracks are floor detail
+  //     and don't visually fight focal silhouettes)
+  //   - isProp=true urns (decorative; gameplay isProp=false urns are
+  //     never touched)
+  filterDecorAgainstProtectedTiles(room);
+  if (_runtime && _runtime.roomUrns) {
+    filterUrnsAgainstProtectedTiles(_runtime.roomUrns, room);
   }
 }
 

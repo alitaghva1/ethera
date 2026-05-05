@@ -124,13 +124,25 @@ export const SHELLS = {
 // fallback) — a reload doesn't shuffle the layout.
 //
 // Probability per kind:
-//   combat              → 50% combat_arena
+//   combat              → 0% (DISABLED — see note below)
 //   challenge / elite   → 60% crucible
 //   sanctuary / reward  → 60% chamber
 //   chestroom           → 60% chamber  (similar ceremonial feel)
 // Anything else: null (use existing generator)
+//
+// Combat shells are disabled until there are at least 3 strong combat
+// shell variants. Playtest of the single combat_arena shell at 50%
+// routing produced visible repetition: combat is the most-common room
+// kind (5-8 per floor), and one authored layout repeated 2-4× per
+// floor reads as a fingerprint instead of a designed feel. Crucible +
+// chamber don't have this problem because their kinds are rare
+// (1-2 per floor) and their symmetry IS the identity.
+//
+// Definition stays in SHELLS so the apply/validate paths still work
+// end-to-end; only the routing chance is zeroed out so the picker
+// never selects it.
 const SHELL_BY_KIND = {
-  combat:    { id: 'combat_arena', chance: 0.50 },
+  combat:    { id: 'combat_arena', chance: 0.00 },
   challenge: { id: 'crucible',     chance: 0.60 },
   elite:     { id: 'crucible',     chance: 0.60 },
   sanctuary: { id: 'chamber',      chance: 0.60 },
