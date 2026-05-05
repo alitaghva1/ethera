@@ -5440,67 +5440,26 @@ function _tickInner(now) {
       }
     }
 
-    // BIOME WEATHER — always-on ambient emitter, not just during combat.
-    // Each biome has a distinct air texture: drips in crypt, dust swirls in
-    // abyss, rising embers in inferno, candle motes in vault.
-    {
-      const biomeId = currentBiomePal()._biomeId || 'vault';
-      const viewLeft = camera.x - canvas.width / 2 - 40;
-      const viewTop = camera.y - canvas.height / 2 - 40;
-      const viewW = canvas.width + 80;
-      const viewH = canvas.height + 80;
-      if (biomeId === 'crypt') {
-        // Water drips from ceiling — 1 drop per 0.4s
-        if (Math.random() < realDt * 2.5) {
-          const dx = viewLeft + Math.random() * viewW;
-          const dy = viewTop + Math.random() * 40;
-          sparkle(dx, dy, '#a0c8e8');
-        }
-      } else if (biomeId === 'vault') {
-        // Candle motes — gold flecks drifting lazily
-        if (Math.random() < realDt * 3.5) {
-          const dx = viewLeft + Math.random() * viewW;
-          const dy = viewTop + Math.random() * viewH;
-          sparkle(dx, dy, '#ffd68a');
-        }
-      } else if (biomeId === 'abyss') {
-        // Purple dust swirls — denser, more frequent
-        if (Math.random() < realDt * 6) {
-          const dx = viewLeft + Math.random() * viewW;
-          const dy = viewTop + Math.random() * viewH;
-          sparkle(dx, dy, '#c870b0');
-        }
-      } else if (biomeId === 'inferno') {
-        // Rising embers + falling ash
-        if (Math.random() < realDt * 10) {
-          const dx = viewLeft + Math.random() * viewW;
-          const dy = viewTop + viewH - Math.random() * 60;    // from bottom, rising
-          sparkle(dx, dy, '#ff8040');
-        }
-        if (Math.random() < realDt * 4) {
-          const dx = viewLeft + Math.random() * viewW;
-          const dy = viewTop + Math.random() * 60;             // from top, falling
-          sparkle(dx, dy, '#6a4a40');                           // ash grey
-        }
-      }
-    }
-    // Ambient combat wisps — drift biome-tinted smoke wisps from random floor
-    // positions during active combat. Increases atmospheric tension.
-    const kindNow = floor[roomIndex]?.kind;
-    if ((kindNow === 'combat' || kindNow === 'boss' || kindNow === 'challenge') && !room.cleared && enemies.some(e => !e.dead)) {
-      const biomeId = currentBiomePal()._biomeId || 'vault';
-      const wispColor = biomeId === 'crypt' ? '#a0c8e8'
-                      : biomeId === 'vault' ? '#d8b890'
-                      : biomeId === 'abyss' ? '#c870b0'
-                      : biomeId === 'inferno' ? '#ff9860'
-                      : '#c0b0a0';
-      // ~4 wisps per second
-      if (Math.random() < realDt * 4) {
-        const wx = hero.x + (Math.random() - 0.5) * 480;
-        const wy = hero.y + (Math.random() - 0.5) * 280;
-        sparkle(wx, wy, wispColor);
-      }
-    }
+    // Two legacy ambient emitters used to live here:
+    //   - "BIOME WEATHER — always-on ambient emitter" — sparkled 3.5
+    //     gold flecks/sec across the whole viewport in vault (more in
+    //     other biomes), via sparkle() into the main particle pool.
+    //   - "Ambient combat wisps" — 4 warm-tan sparkles/sec spawning in
+    //     a 480×280 box around the hero ONLY during active combat.
+    //
+    // Both used the main particle pool, which means they bypassed the
+    // combat-aware atmospheric dim (dim only affects dust/weather/themed
+    // motes). Net effect: combat space stayed cluttered with bright
+    // motes even after the dim refactor — exactly the noise the audit
+    // pass was supposed to clean up.
+    //
+    // They were also doing duplicate work — the dust + weather systems
+    // already cover per-biome ambient texture, and they cleanly fade
+    // during combat. The legacy emitters are pure redundancy with no
+    // visual contribution dust+weather doesn't already make.
+    //
+    // Pre-boss atmosphere embers (next block) are kept — those are a
+    // DIRECTIONAL cue (drift FROM the boss door), not random ambient.
     // PRE-BOSS ATMOSPHERE — when next room is boss, drift red embers from the
     // north door. Makes the approach feel heavy.
     if (roomNextKind.kind === 'boss' && room.doors.north) {
