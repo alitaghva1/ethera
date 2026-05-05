@@ -118,28 +118,29 @@ const REWARD_LABELS = {
   heal:      'HEAL',
   fusion:    'FUSION',
 };
-// Variety guard — after a fork's nodes are populated, dedupe reward
-// biases across siblings so the player isn't choosing between two
-// "GOLD" doors. This maps to the door-signal-priority redesign in
-// doorPortals.js: the door card now intentionally hides substrate
-// signals (combat / gold / chest), so two GOLD doors at the same
-// fork wouldn't EVEN show GOLD anymore — they'd just look identical.
-// Better to spread biases so each fork offers genuinely different
-// choices ("themed combat vs. fusion-bias combat", "altar vs. shop").
+// Variety guard — runs once per layer after siblings are built. Two
+// jobs:
 //
-// Algorithm: walk the layer's nodes; if a reward bias has already
-// been claimed by a sibling, re-roll up to 4 times for something
-// distinct. Falls through to null (no bias) if the dice keep landing
-// on duplicates — null is fine, the door just becomes substrate.
+//   1. DEDUPE — siblings can't share the same theme or reward bias.
+//      Two GOLD doors or two SHADOW doors at the same fork is the
+//      "your choices feel identical" failure mode.
 //
-// Bonus: also dedupes themes. Two SHADOW-themed combat doors at the
-// same fork is the same problem in a different paint job.
+//   2. FORCE-VISIBLE — at least ONE sibling must have visible identity
+//      (theme, reward, or non-combat kind). The architectural-render
+//      system in doorPortals.js intentionally renders nothing on pure-
+//      substrate combat doors; if BOTH siblings at a fork are pure-
+//      substrate, the player sees two visually-identical bare doors
+//      and the generation feels broken. Force at least one to be
+//      themed so the fork is a real choice.
+//
+// Both passes mutate node.roomReward / node.roomTheme in place AND
+// re-propagate to roomData (which is what the runtime renderer reads).
 function dedupeLayerSiblings(layerNodes) {
   if (layerNodes.length < 2) return;
+  // ── Pass 1: dedupe rewards + themes across siblings ──────────────
   const seenReward = new Set();
   const seenTheme = new Set();
   for (const n of layerNodes) {
-    // Reward dedupe
     if (n.roomReward && seenReward.has(n.roomReward)) {
       let fresh = null;
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -150,7 +151,6 @@ function dedupeLayerSiblings(layerNodes) {
       if (n.roomData) n.roomData.roomReward = fresh;
     }
     if (n.roomReward) seenReward.add(n.roomReward);
-    // Theme dedupe
     if (n.roomTheme && seenTheme.has(n.roomTheme)) {
       let fresh = null;
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -161,6 +161,35 @@ function dedupeLayerSiblings(layerNodes) {
       if (n.roomData) n.roomData.roomTheme = fresh;
     }
     if (n.roomTheme) seenTheme.add(n.roomTheme);
+  }
+  // ── Pass 2: force at least one sibling to carry visible identity ──
+  // A "visible" signal is anything the architectural door renderer
+  // will paint marks for: a theme, a build-power reward (FUSION /
+  // LEGENDARY / MYTHIC), or a special kind (anything other than
+  // combat / chestroom / trove). GOLD / RARE+ / HEAL are substrate-
+  // tier rewards and don't count as visible identity.
+  const VISIBLE_REWARDS = new Set(['fusion', 'legendary', 'mythic']);
+  const PLAIN_KINDS = new Set(['combat', 'chestroom', 'trove']);
+  const anyVisible = layerNodes.some(n =>
+    n.roomTheme ||
+    VISIBLE_REWARDS.has(n.roomReward) ||
+    !PLAIN_KINDS.has(n.kind)
+  );
+  if (!anyVisible) {
+    // Pick a random sibling to receive a forced theme. Avoid themes
+    // already claimed by other siblings (rare since this fires when
+    // none have themes, but defensive). No re-propagation tracking
+    // needed — assigning fresh theme is sufficient.
+    const targetIdx = (Math.random() * layerNodes.length) | 0;
+    const target = layerNodes[targetIdx];
+    const POOL = ['storm', 'flame', 'blood', 'vow', 'shadow'];
+    let pick = POOL[(Math.random() * POOL.length) | 0];
+    let attempts = 0;
+    while (seenTheme.has(pick) && attempts++ < 5) {
+      pick = POOL[(Math.random() * POOL.length) | 0];
+    }
+    target.roomTheme = pick;
+    if (target.roomData) target.roomData.roomTheme = pick;
   }
 }
 
