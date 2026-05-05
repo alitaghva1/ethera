@@ -247,6 +247,52 @@ const ROOM_VISUAL_PROFILES = {
 // Default profile for any kind not explicitly listed (defensive fallback).
 const _DEFAULT_PROFILE = ROOM_VISUAL_PROFILES.combat;
 
+// ── EFFECTIVE ROOM KIND ──────────────────────────────────────────────────
+// THE source-of-truth helper for "what kind of room is this REALLY?"
+//
+// Background: floor.js + floorGraph.js generate roomData via archetype
+// builders. Some archetypes overload `data.kind`:
+//
+//   - Elite rooms are produced by makeCombatRoom('elite', ...) — so
+//     `data.kind === 'combat'` even though gameplay calls it an elite.
+//     The elite-ness is signaled by `data.eliteRoom = true`.
+//   - Event rooms (graph kind 'event') are pre-resolved into altar /
+//     trove / chestroom / challenge / miniboss BEFORE buildRoomFromData
+//     ever runs — so by the time we look at roomData, `data.kind` already
+//     names the resolved sub-kind (altar / trove / etc.). The graph node
+//     keeps `actualKind = 'event'` for door labels and map sub-text, but
+//     the room itself IS its resolved kind. (See floorGraph.js around
+//     lines 447-460 for the `n.actualKind` derivation.) That means we
+//     should NOT route events into a separate "event" identity at the
+//     room level — the resolved altar/trove/chestroom IS the right
+//     identity to dress.
+//
+// Pre-fix bug: identity systems (visual profile, focal, propFamily,
+// shell selection) read `data.kind` / `room.kind` directly. Result:
+// elite rooms got the COMBAT profile (no tint, generic combat focal,
+// 0% shell chance) — the most distinctive room kind in the dungeon
+// looked indistinguishable from a regular fight.
+//
+// Post-fix: every identity-driving lookup goes through this helper.
+// Today only the elite case needs special handling; the function is
+// kept future-proof via the `actualKind` hook so the same code keeps
+// working if floorGraph later stamps a non-trivial actualKind onto
+// roomData (e.g., an explicit "this was an event" identity).
+//
+// Accepts either a roomData object (pre-build) or a built room object
+// (post-build) — fields read are interchangeable across both.
+export function getEffectiveRoomKind(dataOrRoom) {
+  if (!dataOrRoom) return null;
+  // Elite rooms generate from the combat archetype but flag eliteRoom=true.
+  // Honor that flag first so identity systems see them as 'elite'.
+  if (dataOrRoom.eliteRoom) return 'elite';
+  // Future hook: if a generator stamps an explicit overriding kind
+  // on roomData, honor it. (Today this is unused at the data layer —
+  // floorGraph.js writes actualKind on the GRAPH NODE, not on roomData.)
+  if (dataOrRoom.actualKind) return dataOrRoom.actualKind;
+  return dataOrRoom.kind;
+}
+
 // ── ROOM IDENTITY ACCESSORS ──────────────────────────────────────────────
 // Per the design brief — each one reads from the central profile table
 // so all per-kind data lives in one place. Callers should generally use
@@ -283,8 +329,14 @@ export function selectPropFamilyForRoomKind(kind) {
 // Sets room.kindProfile so the renderer can read floor tint + vignette
 // scale per-frame without re-resolving the profile each tick. Called
 // from buildRoomFromData after room.kind is set.
+//
+// IMPORTANT: profiles look up via the EFFECTIVE kind, not room.kind, so
+// elite rooms (whose room.kind === 'combat' because they're built from
+// the combat archetype) correctly get the elite profile rather than the
+// combat baseline. See getEffectiveRoomKind for the full rationale.
 export function applyRoomKindDressing(room) {
-  room.kindProfile = roomKindVisualProfile(room.kind);
+  const effective = getEffectiveRoomKind(room);
+  room.kindProfile = roomKindVisualProfile(effective);
   return room.kindProfile;
 }
 
@@ -593,12 +645,15 @@ function _hash(a, b) {
 }
 
 export function assignRoomFocal(room) {
-  const rule = selectFocalForRoomKind(room.kind);
+  // Use effective kind (treats elite rooms as 'elite' even though their
+  // room.kind === 'combat'). See getEffectiveRoomKind for rationale.
+  const effective = getEffectiveRoomKind(room);
+  const rule = selectFocalForRoomKind(effective);
   if (!rule) return null;
   const w = room.w | 0, h = room.h | 0;
   // Seed: room dims + kind length so it varies between rooms but is
   // stable per room.
-  const seed = _hash(w * 31 + h, (room.kind || '').length * 17 + (room._detailSeed | 0));
+  const seed = _hash(w * 31 + h, (effective || '').length * 17 + (room._detailSeed | 0));
   const kind = rule.kinds[seed % rule.kinds.length];
 
   // SHELL OVERRIDE — when the room was routed through an authored shell,

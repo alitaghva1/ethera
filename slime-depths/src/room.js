@@ -19,6 +19,7 @@ import {
   drawDoorArchitecture,
   applyRoomKindDressing,
   placeRoomKindProps,
+  getEffectiveRoomKind,
 } from './roomComposition.js';
 import { pickAuthoredShell, applyAuthoredShell } from './roomShells.js';
 
@@ -596,6 +597,15 @@ export function buildRoomFromData(data) {
   room.w = w;
   room.h = h;
   room.kind = data.kind;
+  // Effective kind drives identity systems (visual profile, focal,
+  // shell selection, prop family). Differs from room.kind for elite
+  // rooms (room.kind === 'combat' but effectiveKind === 'elite').
+  // Stamped on the room for debug/inspection (window.__dbg) and so any
+  // downstream renderer that needs identity-aware behavior can read
+  // a single canonical field instead of re-deriving it. See
+  // getEffectiveRoomKind in roomComposition.js for the rationale.
+  room.eliteRoom = !!data.eliteRoom;
+  room.effectiveKind = getEffectiveRoomKind(data);
   room.spawns = data.spawns ? data.spawns.slice() : [];
   room.cleared = !!data.cleared;
   room.doors = Object.assign({ north: true, south: true }, data.doors || {});

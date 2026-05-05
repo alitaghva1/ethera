@@ -158,9 +158,23 @@ function _hash(a, b) {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
+// Mirror of roomComposition.js's getEffectiveRoomKind, inlined here so
+// this file stays import-free. Elite rooms generate from the combat
+// archetype (data.kind === 'combat') but flag eliteRoom=true; honoring
+// that flag here is what lets crucible shells actually fire on real
+// elite rooms. Pre-fix: SHELL_BY_KIND['combat'] returned chance 0.00,
+// so 0% of elite rooms ever got a shell. Post-fix: SHELL_BY_KIND['elite']
+// returns chance 0.60 — crucibles fire on ~60% of elite rooms as designed.
+function _effectiveKind(data) {
+  if (!data) return null;
+  if (data.eliteRoom) return 'elite';
+  if (data.actualKind) return data.actualKind;
+  return data.kind;
+}
+
 export function pickAuthoredShell(data) {
   if (!data) return null;
-  const rule = SHELL_BY_KIND[data.kind];
+  const rule = SHELL_BY_KIND[_effectiveKind(data)];
   if (!rule) return null;
 
   const shell = SHELLS[rule.id];
@@ -191,8 +205,10 @@ export function pickAuthoredShell(data) {
   // Hash-driven probability roll. data.pillarTemplate is a stable
   // floor-graph-generation field; we mix it with kind length so two
   // rooms with the same pillarTemplate but different kinds get
-  // independent rolls.
-  const seed = (data.pillarTemplate | 0) ^ ((data.kind || '').length * 17 + (srcW * 31 + srcH * 13));
+  // independent rolls. Use effective kind so elite rooms don't share
+  // a roll with combat rooms of the same pillarTemplate.
+  const ek = _effectiveKind(data) || '';
+  const seed = (data.pillarTemplate | 0) ^ (ek.length * 17 + (srcW * 31 + srcH * 13));
   const roll = _hash(seed, 41) % 1000;
   if (roll >= rule.chance * 1000) return null;
 
