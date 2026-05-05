@@ -46,7 +46,6 @@
 
 import { TILE, room } from './room.js';
 import { hero } from './hero.js';
-import { sparkle } from './particles.js';
 import { playSfx } from './sfx.js';
 // THEMES re-imported in the door-signal-priority pass — themes are
 // now Tier 1 build-identity signals (ahead of FUSION/LEGENDARY/etc).
@@ -322,16 +321,19 @@ export function updateDoors(dt) {
       }
     }
 
-    // Ambient particle drift through open north doors
-    if (d.side === 'north' && d.state === 'open') {
-      d.sparkleAcc += dt;
-      if (d.sparkleAcc > 0.18) {
-        d.sparkleAcc = 0;
-        const cx = d.tx * TILE + TILE / 2 + (Math.random() - 0.5) * 18;
-        const cy = d.ty * TILE + TILE / 2 + (Math.random() - 0.5) * 6;
-        sparkle(cx, cy, d.color);
-      }
-    }
+    // (Removed) Ambient particle drift through open north doors. Each
+    // open north door used to spawn a sparkle in d.color every 0.18 s.
+    // With 2-3 open doors per cleared room and ~1 s sparkle lifetime,
+    // ~12 sparkles were continuously alive and drifting into the
+    // playable area — measured at 2300+ fillRect calls/sec for the
+    // combat-door cream color (#c8b894), the dominant ambient noise
+    // source after the dust+weather mask landed. Doors already
+    // communicate "open + traversable" via their kind icon, label,
+    // sealed/cleared state, and the light spill we added earlier;
+    // the drift was redundant flavor adding measurable combat-read
+    // cost. Removed entirely; sparkleAcc field on door objects
+    // intentionally left in place so any persisted door state from
+    // older saves still deserializes cleanly.
 
     // Hero-crossing detection — only for north doors that are FULLY open.
     // Crossed = hero center has moved into the door tile column AND is at

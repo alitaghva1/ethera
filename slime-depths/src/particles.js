@@ -169,17 +169,26 @@ export function sparkle(x, y, color = '#f4d9a0') {
 // Ambient dust motes — long-lived drifting particles for atmosphere.
 // Updated per tick and auto-respawned near camera when they expire.
 // Biome-aware: color + motion changes with the active biome.
-const DUST_COUNT = 36;
+//
+// Counts + alphas were tuned down (DUST_COUNT 36 → 22; alpha values
+// reduced ~30%) after the playable-rect mask landed: with dust now
+// hidden inside the room, the entire population renders in the void
+// edges around the walls. At the previous density that made the void
+// itself feel busy, and dust at low alpha against the dark void was
+// reading as faint greenish optical-illusion dots through screenshot
+// JPEG compression. Quieter atmospheric depth in the void; cleaner
+// visual frame around the playable area.
+const DUST_COUNT = 22;
 const dust = [];
 let dustInit = false;
 let dustBiome = 'vault';
 
 // Per-biome dust style — tuned for atmosphere
 const DUST_STYLES = {
-  crypt:   { color: [170, 220, 255], vyMin: -4,  vyRng: 6,  drift: 3,  sizeBase: 0.7, sizeRng: 1.0, alpha: 0.28, glow: false },
-  vault:   { color: [255, 220, 180], vyMin: -8,  vyRng: 10, drift: 4,  sizeBase: 0.8, sizeRng: 1.2, alpha: 0.32, glow: false },
-  abyss:   { color: [255, 120, 80],  vyMin: -14, vyRng: 14, drift: 6,  sizeBase: 1.0, sizeRng: 1.4, alpha: 0.38, glow: true },
-  inferno: { color: [255, 90, 40],   vyMin: -22, vyRng: 22, drift: 10, sizeBase: 1.2, sizeRng: 1.6, alpha: 0.55, glow: true },
+  crypt:   { color: [170, 220, 255], vyMin: -4,  vyRng: 6,  drift: 3,  sizeBase: 0.7, sizeRng: 1.0, alpha: 0.18, glow: false },
+  vault:   { color: [255, 220, 180], vyMin: -8,  vyRng: 10, drift: 4,  sizeBase: 0.8, sizeRng: 1.2, alpha: 0.22, glow: false },
+  abyss:   { color: [255, 120, 80],  vyMin: -14, vyRng: 14, drift: 6,  sizeBase: 1.0, sizeRng: 1.4, alpha: 0.26, glow: true },
+  inferno: { color: [255, 90, 40],   vyMin: -22, vyRng: 22, drift: 10, sizeBase: 1.2, sizeRng: 1.6, alpha: 0.38, glow: true },
 };
 
 export function setDustBiome(id) {
