@@ -3989,13 +3989,18 @@ function composeDefiningMoment(s, killerType, isVictory) {
   // its own clause. Only return a line when we have at least ONE element
   // (cause OR beat) — otherwise the random flavor message reads better
   // than a stat-less template.
+  //
+  // Returns a structured shape so the subtitle can style "what killed
+  // you" (crimson) differently from "what you accomplished" (cream)
+  // instead of mashing both into one italic prose line. .raw preserves
+  // the legacy string form for any caller that wants the flat text.
   if (isVictory) {
-    if (beat) return `the depths yielded — ${beat}`;
+    if (beat) return { raw: `the depths yielded — ${beat}`, cause: null, beat, isVictory: true };
     return null;     // caller uses random VICTORY_MESSAGES
   }
-  if (killerPhrase && beat) return `felled by ${killerPhrase} — ${beat}`;
-  if (killerPhrase) return `felled by ${killerPhrase}`;
-  if (beat) return beat;
+  if (killerPhrase && beat) return { raw: `felled by ${killerPhrase} — ${beat}`, cause: killerPhrase, beat, isVictory: false };
+  if (killerPhrase) return { raw: `felled by ${killerPhrase}`, cause: killerPhrase, beat: null, isVictory: false };
+  if (beat) return { raw: beat, cause: null, beat, isVictory: false };
   return null;       // caller uses random DEATH_MESSAGES
 }
 
@@ -4025,13 +4030,21 @@ function showEndOfRun(isVictory) {
   // impressive moment. Keeps the stats grid; just upgrades the subtitle
   // from generic → narrative.
   const _definingLine = composeDefiningMoment(stats, hero._lastHurtBy, isVictory);
+  // Helpers for the structured subtitle. The defining-moment object can
+  // be rendered as a tinted two-part line ("FELLED BY {killer} — {beat}")
+  // for death, or a single cream line for victory. Falls back to a flat
+  // random message when no specific beat exists.
+  const _renderSubtitleFlat = (txt, color) => {
+    subtitle.textContent = txt;
+    subtitle.style.color = color;
+  };
   if (isVictory) {
     // VICTORY — pure gold palette, triumphant
     title.textContent = 'THE DEPTHS YIELD';
     title.style.color = '#f4d9a0';
     title.style.textShadow = '0 0 22px rgba(244,217,160,0.7)';
-    subtitle.textContent = _definingLine || VICTORY_MESSAGES[(Math.random() * VICTORY_MESSAGES.length) | 0];
-    subtitle.style.color = '#d8cfae';
+    const _victoryText = (_definingLine && _definingLine.raw) || VICTORY_MESSAGES[(Math.random() * VICTORY_MESSAGES.length) | 0];
+    _renderSubtitleFlat(_victoryText, '#d8cfae');
     if (ornamentText) {
       ornamentText.textContent = 'the depths have yielded';
       ornamentText.style.color = '#c9a86a';
@@ -4050,8 +4063,26 @@ function showEndOfRun(isVictory) {
     title.textContent = 'YOU DIED';
     title.style.color = '#d8556a';
     title.style.textShadow = '0 0 18px rgba(216,85,106,0.6)';
-    const line = _definingLine || DEATH_MESSAGES[(Math.random() * DEATH_MESSAGES.length) | 0];
-    subtitle.textContent = line;
+    // Two-tone subtitle when we have a structured defining moment:
+    //   FELLED BY {crimson killer} — {cream beat}
+    // The visual split is the polish — previously the killer name got
+    // buried in the prose flow ("felled by a slime — your largest..."),
+    // making it hard to glance-read "what killed me?" at a glance.
+    // Crimson on the killer phrase echoes the YOU DIED title color
+    // and the ornament line color, anchoring the eye to the cause first.
+    if (_definingLine && (_definingLine.cause || _definingLine.beat)) {
+      const _causeHtml = _definingLine.cause
+        ? `<span style="color:#e6809a;font-style:normal;font-weight:bold;text-shadow:0 0 6px rgba(216,85,106,0.4);">felled by ${_definingLine.cause}</span>`
+        : '';
+      const _beatHtml = _definingLine.beat
+        ? `<span style="color:#d8cfae;text-shadow:0 0 4px rgba(244,217,160,0.18);">${_definingLine.beat}</span>`
+        : '';
+      const _sep = (_causeHtml && _beatHtml) ? `<span style="color:#7a5050;margin:0 6px;">—</span>` : '';
+      subtitle.innerHTML = `${_causeHtml}${_sep}${_beatHtml}`;
+    } else {
+      // No specific beat or cause — fall back to the random flavor pool.
+      subtitle.textContent = DEATH_MESSAGES[(Math.random() * DEATH_MESSAGES.length) | 0];
+    }
     subtitle.style.color = '#c8a8a8';
     if (ornamentText) {
       ornamentText.textContent = 'your story ends here';
