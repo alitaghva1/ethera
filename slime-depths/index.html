@@ -700,6 +700,15 @@
     touch-action: none;       /* prevent browser default scroll/zoom */
   }
   body.mobile-controls #mobileControls { display: block; }
+  /* Hide mobile control overlay AND pause button outside gameplay —
+     menu, death screen, win screen, hamlet, transitions. body.game-running
+     is toggled by the main tick based on the `running` flag. Without
+     this gate, the entire control stack rendered ON TOP of the title
+     screen, which felt unfinished. */
+  body.mobile-controls:not(.game-running) #mobileControls,
+  body.mobile-controls:not(.game-running) #mobilePauseBtn {
+    display: none !important;
+  }
   /* Two zones split the screen — left thumb runs the joystick, right
      thumb hits action buttons. Pointer-events: auto on the zones so
      touches register; the rest of the overlay stays transparent. */
@@ -748,48 +757,60 @@
      players were stuck with whichever weapon the run started in. */
   #mobileRight .mobile-btn {
     position: absolute;
-    right: 24px;
-    border: 2px solid rgba(201, 168, 106, 0.7);
+    right: 18px;
+    border: 1.5px solid rgba(201, 168, 106, 0.55);
     border-radius: 50%;
-    background: radial-gradient(closest-side, rgba(28, 20, 26, 0.75), rgba(10, 8, 14, 0.55));
+    /* Two-stop radial — slightly more solid center than the prior fill
+       so the button reads as a physical disc against busy floor art
+       instead of "outline with mostly-transparent fill". */
+    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.92), rgba(14, 10, 18, 0.78));
     color: #f4d9a0;
-    font: bold 26px Georgia, serif;
+    font: bold 22px Georgia, serif;
     display: flex;
     align-items: center;
     justify-content: center;
     pointer-events: auto;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
-    transition: transform 0.05s ease-out, background 0.05s ease-out;
+    /* Drop shadow lifts the button off the canvas so it reads as a
+       discrete UI element, not a painted glyph. Subtle gold inner
+       glow at rest hints at "this is interactive" without being noisy. */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45),
+                inset 0 0 6px rgba(244, 217, 160, 0.06);
+    transition: transform 0.05s ease-out, background 0.05s ease-out, box-shadow 0.1s ease-out;
   }
   #mobileRight .mobile-btn.pressed {
     transform: scale(0.92);
-    background: radial-gradient(closest-side, rgba(60, 40, 32, 0.95), rgba(20, 12, 18, 0.85));
-    box-shadow: 0 0 24px rgba(244, 217, 160, 0.45);
+    background: radial-gradient(closest-side, rgba(70, 48, 36, 0.95), rgba(24, 14, 18, 0.88));
+    border-color: rgba(244, 217, 160, 0.95);
+    box-shadow: 0 0 18px rgba(244, 217, 160, 0.55),
+                inset 0 0 10px rgba(244, 217, 160, 0.18);
   }
   /* Buttons hug the bottom-right corner with env(safe-area-inset-*) so
      iPhone X+ home-indicator doesn't overlap the attack tap-zone (a
-     swipe-up from there opens App Switcher). Vertical positions are
-     stacked WITHOUT overlap: each button's bottom sits 4px above the
-     button below it, so touches in any zone reliably hit the intended
-     button. (Earlier values let Dodge overlap Attack by 42px — the
-     lower half of Dodge was occluded by Attack in DOM stacking, so
-     touches there fired Attack instead. Players hitting "obviously
-     dodge" got attack swings; the bug had been hiding under "feels
-     unresponsive on phone" feedback.)
-       Attack:  bottom 24,  top at 134  (height 110)
-       Dodge:   bottom 138, top at 224  (height 86, +4px gap)
-       Dash:    bottom 228, top at 314  (height 86, +4px gap) */
-  #mobileAttack { width: 110px; height: 110px; bottom: calc(24px  + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); font-size: 36px; }
-  #mobileDodge  { width: 86px;  height: 86px;  bottom: calc(138px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
-  #mobileDash   { width: 86px;  height: 86px;  bottom: calc(228px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
+     swipe-up from there opens App Switcher). Sized DOWN ~22% from the
+     prior tuning — phones in landscape (375-430 px tall typical) had
+     the prior 110/86/86 stack reaching 314 px from screen bottom, which
+     pushed the dash button into the upper third of the screen and made
+     the whole right edge feel cramped. New sizes:
+       Attack:  bottom 18,  top at 106  (height 88)
+       Dodge:   bottom 110, top at 178  (height 68, +4 gap)
+       Dash:    bottom 182, top at 250  (height 68, +4 gap)
+     Total stack height drops from 314 → 250 px from screen bottom,
+     freeing ~64 px of vertical headroom on every phone. Touch targets
+     stay well above Apple HIG 44px minimum. */
+  #mobileAttack { width: 88px;  height: 88px;  bottom: calc(18px  + env(safe-area-inset-bottom)); right: calc(18px + env(safe-area-inset-right)); font-size: 30px; }
+  #mobileDodge  { width: 68px;  height: 68px;  bottom: calc(110px + env(safe-area-inset-bottom)); right: calc(18px + env(safe-area-inset-right)); font-size: 22px; }
+  #mobileDash   { width: 68px;  height: 68px;  bottom: calc(182px + env(safe-area-inset-bottom)); right: calc(18px + env(safe-area-inset-right)); font-size: 22px; }
   /* Swap weapons — sits inboard of mobileAttack at a smaller diameter so
      the thumb can flick LEFT from attack to swap without regripping. The
      glyph ⇄ reads as "exchange/swap" across iOS + Android default fonts.
      Auto-hidden until at least one swap-capable input has been used in
      play (i.e. the player has both Sword + Blast unlocked) — managed by
-     mobileControls.js; CSS just provides the position + base style. */
-  #mobileSwap   { width: 70px;  height: 70px;  bottom: calc(34px + env(safe-area-inset-bottom)); right: calc(140px + env(safe-area-inset-right)); font-size: 24px; }
+     mobileControls.js; CSS just provides the position + base style.
+     Position adjusted to match new attack-button geometry: right edge of
+     swap sits 6 px left of attack's left edge (88 + 18 + 6 = 112). */
+  #mobileSwap   { width: 56px;  height: 56px;  bottom: calc(28px  + env(safe-area-inset-bottom)); right: calc(112px + env(safe-area-inset-right)); font-size: 20px; }
   /* When mobile controls are on, push the relic strip + fusions row + theme
      chips up out of the joystick zone. The HUD canvas-side renderer keys
      off body.mobile-controls in hud.js to compute its baseline. The CSS
@@ -804,15 +825,21 @@
     position: absolute;
     top: calc(8px + env(safe-area-inset-top));
     right: calc(8px + env(safe-area-inset-right));
-    width: 48px; height: 48px;
-    border: 1.5px solid rgba(201, 168, 106, 0.7);
+    /* Sized down 48 → 40 to match the action-button slim-down. Still
+       above Apple HIG 44px on the touch target since border + padding
+       extend the effective tappable region. */
+    width: 40px; height: 40px;
+    border: 1.5px solid rgba(201, 168, 106, 0.55);
     border-radius: 8px;
-    background: radial-gradient(closest-side, rgba(28, 20, 26, 0.85), rgba(10, 8, 14, 0.65));
+    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.92), rgba(14, 10, 18, 0.78));
     color: #f4d9a0;
-    font: bold 22px Georgia, serif;
+    font: bold 18px Georgia, serif;
     pointer-events: auto;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    /* Same lift + inner glow as action buttons — visual consistency. */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45),
+                inset 0 0 6px rgba(244, 217, 160, 0.06);
     z-index: 51;
   }
   body.mobile-controls #mobilePauseBtn { display: flex; align-items: center; justify-content: center; }

@@ -4821,6 +4821,14 @@ function _tickInner(now) {
   const realDt = Math.min(0.033, (now - lastT) / 1000);
   lastT = now;
 
+  // Mobile-controls visibility hook — body.game-running is set when the
+  // run is active, cleared on menus / death / win / hamlet. CSS uses
+  // this to hide #mobileControls and #mobilePauseBtn outside gameplay
+  // (they were leaking onto the menu screen, which felt janky on
+  // phone viewports). Cheap: one classList.toggle per frame; browsers
+  // optimize no-op toggles to a tag check.
+  document.body.classList.toggle('game-running', running);
+
   // When main menu / weapon picker is active, just animate dust + music
   if (menuEl.style.display !== 'none' || weaponPickerEl.style.display !== 'none') {
     updateDust(realDt, 0, 0);
