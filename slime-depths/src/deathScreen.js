@@ -59,11 +59,15 @@ export const DEATH_SCREEN_HTML = `
   <h1 id="endTitle" style="font-size:46px;margin:0;letter-spacing:8px;color:#d8556a;text-shadow:0 0 22px rgba(216,85,106,0.6);font-weight:400;line-height:1;animation:winFadeIn 0.7s ease-out 0.15s both;position:relative;z-index:1;">YOU DIED</h1>
   <!-- Subtitle with diamond flanks — same grammar as other overlays.
        Margin tightened (was 10/20) to fit more of the modal in the 720
-       design-space height without scrolling at typical content levels. -->
-  <div id="endSubtitleWrap" style="display:flex;align-items:center;gap:12px;margin:6px 0 12px;opacity:0.7;animation:winFadeIn 0.7s ease-out 0.3s both;position:relative;z-index:1;">
-    <span id="endSubtitleDotL" style="width:3px;height:3px;background:#b05858;transform:rotate(45deg);"></span>
-    <p id="endSubtitle" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#c8a8a8;">the ooze takes you back</p>
-    <span id="endSubtitleDotR" style="width:3px;height:3px;background:#b05858;transform:rotate(45deg);"></span>
+       design-space height without scrolling at typical content levels.
+       max-width on the <p> + flex-shrink:0 on the diamonds keeps the
+       structured forms ("felled by an armored skeleton — your largest
+       blow took 187") from pushing the flex row wider than the modal
+       at narrow viewports. The <p> wraps cleanly when it has to. -->
+  <div id="endSubtitleWrap" style="display:flex;align-items:center;justify-content:center;gap:12px;margin:6px 0 12px;opacity:0.7;animation:winFadeIn 0.7s ease-out 0.3s both;position:relative;z-index:1;max-width:90%;">
+    <span id="endSubtitleDotL" style="width:3px;height:3px;background:#b05858;transform:rotate(45deg);flex-shrink:0;"></span>
+    <p id="endSubtitle" style="margin:0;letter-spacing:5px;font-size:12px;font-style:italic;color:#c8a8a8;max-width:680px;text-align:center;line-height:1.5;">the ooze takes you back</p>
+    <span id="endSubtitleDotR" style="width:3px;height:3px;background:#b05858;transform:rotate(45deg);flex-shrink:0;"></span>
   </div>
 
   <!-- CHRONICLE header — gold, ornamental -->
