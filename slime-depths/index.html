@@ -769,12 +769,20 @@
   }
   /* Buttons hug the bottom-right corner with env(safe-area-inset-*) so
      iPhone X+ home-indicator doesn't overlap the attack tap-zone (a
-     swipe-up from there opens App Switcher). Vertical spacing tightened
-     in the mobile UX audit so dash + dodge sit closer to the natural
-     thumb-pivot arc instead of forcing a regrip. */
-  #mobileAttack { width: 110px; height: 110px; bottom: calc(24px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); font-size: 36px; }
-  #mobileDodge  { width: 86px;  height: 86px;  bottom: calc(92px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
-  #mobileDash   { width: 86px;  height: 86px;  bottom: calc(180px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
+     swipe-up from there opens App Switcher). Vertical positions are
+     stacked WITHOUT overlap: each button's bottom sits 4px above the
+     button below it, so touches in any zone reliably hit the intended
+     button. (Earlier values let Dodge overlap Attack by 42px — the
+     lower half of Dodge was occluded by Attack in DOM stacking, so
+     touches there fired Attack instead. Players hitting "obviously
+     dodge" got attack swings; the bug had been hiding under "feels
+     unresponsive on phone" feedback.)
+       Attack:  bottom 24,  top at 134  (height 110)
+       Dodge:   bottom 138, top at 224  (height 86, +4px gap)
+       Dash:    bottom 228, top at 314  (height 86, +4px gap) */
+  #mobileAttack { width: 110px; height: 110px; bottom: calc(24px  + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); font-size: 36px; }
+  #mobileDodge  { width: 86px;  height: 86px;  bottom: calc(138px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
+  #mobileDash   { width: 86px;  height: 86px;  bottom: calc(228px + env(safe-area-inset-bottom)); right: calc(24px + env(safe-area-inset-right)); }
   /* Swap weapons — sits inboard of mobileAttack at a smaller diameter so
      the thumb can flick LEFT from attack to swap without regripping. The
      glyph ⇄ reads as "exchange/swap" across iOS + Android default fonts.
