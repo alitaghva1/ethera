@@ -247,25 +247,27 @@ export function drawHud(ctx, w, h, progress = {}) {
   // npc count) still lives in the DOM overlay for now and doesn't interact
   // with this canvas HUD path.
   if (progress.inHamlet) return;
-  // Low-HP red pulse — triggers at ≤30% HP OR at literal 1 HP, with
-  // intensity scaling with HP%. Vignette stays at the EDGES — the
-  // center 60% of screen remains totally clear so threats and combat
-  // read fine even when you're near death.
+  // Low-HP red pulse — triggers at ≤30% HP, OR at literal 1 HP when
+  // the player has more than 1 max HP (i.e. they took damage down to
+  // one-shot). Vignette stays at the EDGES — the center 60% of screen
+  // remains totally clear so threats and combat read fine even when
+  // you're near death.
   //
-  // The hp===1 short-circuit covers the 1 HP starting design (Sekiro-
-  // tier maxHp=1). At maxHp=1 the player is ALWAYS at 100% (above the
-  // 30% threshold) until death, so the original gate never fired and
-  // the player got no screen-level "next hit ends you" cue. With the
-  // explicit hp===1 check, the pulse fires at 1/1 (always-on while
-  // alive at 1 HP) and at 1/4+ (Vitality Charm) when down to a single
-  // point. The HUD heart halo I added in hud.js handles the inner
-  // signal; this is the wider screen-level reinforcement.
+  // The (hp===1 && maxHp>1) clause covers the Vitality-Charm case
+  // where the player at 1/4 has hpFrac=0.25 (already below the 30%
+  // threshold so the pulse fires anyway), but more importantly catches
+  // any future case where a player is one hit from death AT a higher
+  // maxHp where 1/X falls between 30% and 100%. The maxHp>1 gate
+  // ensures the BASELINE 1/1 starting design does NOT fire this — at
+  // 1/1 the player is always at the brink, and a permanently-on red
+  // alert dilutes its meaning when it should fire most. The HUD heart
+  // halo (also gated on maxHp>1) handles the inner signal.
   //
   // Suppressed during any cinematic intro (progress.introActive) — the intro
   // has its own framing and the red pulse would double-dim the portrait to
   // near-black on boss-intro entry, which was the persistent playtest bug.
   const hpFrac = hero.hp / Math.max(1, hero.maxHp);
-  const lowHp = hero.hp === 1 || hpFrac <= 0.30;
+  const lowHp = (hero.hp === 1 && hero.maxHp > 1) || hpFrac <= 0.30;
   if (!progress.introActive && hero.hp > 0 && hero.state !== 'dead' && lowHp) {
     // beatRate uses an effective fraction so the 1 HP starting design
     // (maxHp=1, hpFrac=1.0) gets the FASTEST pulse, not the slowest.
@@ -356,11 +358,23 @@ export function drawHud(ctx, w, h, progress = {}) {
   const shake = heartShakeTime > 0 ? (Math.random() * 2 - 1) * heartShakeTime * 6 : 0;
   const heartRows = Math.max(1, Math.ceil(hero.maxHp / perRow));
   // ── ONE-SHOT detection — strongest urgency tier ─────────────────
-  // The 1 HP starting design (Sekiro tier — every unblocked hit ends
-  // the run) needs a louder pulse than the existing "low HP" tier
-  // (hp <= 2). This catches the literal "next hit is run-ending"
-  // state regardless of maxHp, so it generalizes from the no-charm
-  // starting state (1/1) to a Vitality-Charm run currently at 1/4.
+  // Fires when the player is at 1 HP after having had MORE earlier in
+  // the run — i.e., they took damage and are now one hit from death.
+  // A persistent visual urgency overlay only earns its keep when it
+  // signals a CHANGE; firing it as the baseline state at 1/1 (the
+  // hardcore starting design before Vitality Charm) makes every run
+  // start under permanent red-alert, which fatigues fast and dilutes
+  // the warning's meaning when it should fire most.
+  //
+  // Gate: hp <= 1 AND maxHp > 1. So:
+  //   - 1/1  fresh run, no charm:  baseline state, NO urgent overlay
+  //                                 (the regular critical pulse still
+  //                                 runs — see isCritical below)
+  //   - 1/4  charm run, took 3 hits: urgent overlay fires (player
+  //                                   crossed into one-shot from a
+  //                                   higher state, danger is real)
+  //   - 1/7  later charm tier, low: same logic, generalizes
+  //
   // Heart pulses 1.5× faster than the regular critical pulse, with
   // 33% larger amplitude AND a glowing crimson halo behind it.
   const _nowMs = performance.now();
@@ -371,8 +385,14 @@ export function drawHud(ctx, w, h, progress = {}) {
     const y = pad + row * heartRowH;
     const filled = i < hero.hp;
     const isLast = filled && i === Math.ceil(hero.hp) - 1;
+    // isCritical (subtle heart color HSL pulse) stays ungated — even at
+    // 1/1 baseline, the gentle hue/lightness modulation reads as "your
+    // heart is alive at low HP", which is fine flavor without nagging.
+    // Only the LOUDER isOneShot tier (halo + big scale pulse) is gated
+    // so the dramatic warning is reserved for genuine "you crossed
+    // into one-shot from a higher state" danger.
     const isCritical = hero.hp <= 2 && isLast;
-    const isOneShot = hero.hp <= 1 && isLast;
+    const isOneShot = hero.hp <= 1 && isLast && hero.maxHp > 1;
     let scale = 1;
     if (heartSparkleTime > 0 && filled && isLast) {
       const t = heartSparkleTime / 0.6;
