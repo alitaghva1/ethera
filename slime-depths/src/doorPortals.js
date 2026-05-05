@@ -109,18 +109,11 @@ const REWARD_COLORS = {
   heal:      '#86e3a8',
   fusion:    '#ffb265',
 };
-// Phase 3 audit fix #1 — elite affix display table. The renderer reads
-// eliteAffixId off the door object (propagated from t.eliteAffixId,
-// pre-rolled at floorGraph build time) and renders the human-readable
-// label as a sub-line on the door card. The colors mirror the in-game
-// auraColor for each affix in enemies.js ELITE_AFFIXES so the player
-// learns the cross-system color coding (door → enemy aura → badge).
-const AFFIX_LABELS = {
-  frost:  { label: 'FROST',  color: '#72c6ff' },
-  ember:  { label: 'EMBER',  color: '#ff7a2a' },
-  venom:  { label: 'VENOM',  color: '#6ae08a' },
-  warded: { label: 'WARDED', color: '#ffd855' },
-};
+// AFFIX_LABELS retired — the architectural-rendering pass uses the
+// eliteAffixId directly as a switch key (frost / ember / venom /
+// warded) and paints distinct environmental accents per affix
+// (icicles, ember cracks, drips, shield sigils) instead of a text
+// label. The label table is no longer referenced.
 // Render-side labels for the reward chip. floorGraph.js maintains its
 // own REWARD_LABELS for the game-internal API (rewardLabel(reward)) but
 // duplicating the map here keeps doorPortals.js self-contained — the
@@ -137,54 +130,11 @@ const REWARD_LABELS = {
 // the door, with the kind label as a secondary line beneath. Distinct
 // from the kind glyphs (⚔/☠/✦) which sit in the corner badge of the
 // card; these are the BIG icons the player sees from across the room.
-// REWARD_SIGILS retired in the door-signal-priority pass. The new
-// _pickDoorSignal function picks specific sigils inline based on the
-// reward / kind tier, so the centralized lookup table no longer
-// matches usage. Mappings preserved here as documentation:
-//   FUSION    → procedural fusion rings (_drawFusionSigil)
-//   LEGENDARY → '✸' 8-point sunburst
-//   MYTHIC    → '✸' (white-gold tinted, same shape)
-//   GOLD      → no glyph rendered (substrate, dropped from priority)
-//   RARE+     → no glyph rendered (substrate)
-//   HEAL      → '✚' (rolled into the sanctuary tier)
-
-// Per-glyph rendered font size. Different unicode chars have wildly
-// different perceptual weights at the same font-size: ⚔ (combat)
-// renders as a chunky filled icon at 30 px while ◈ (gold) is a thin
-// outlined diamond about half the visual area. Without normalization,
-// combat doors visually dominate every reward door — which inverts
-// the intended hierarchy (rewards should pop, combat is baseline).
-//
-// Two intents folded into the table:
-//   1. Visual normalization — bump light glyphs, reduce heavy ones,
-//      so they reach roughly equal perceptual size on screen.
-//   2. Hierarchy bias — rewards rendered LARGER than the equivalent
-//      kind glyphs. Reward doors are the special moment; the player
-//      should see GOLD / LEGENDARY / FUSION from across the room.
-//
-// Combat / elite / regular kind glyphs are kept smaller so they
-// quietly recede into the background (the player's default
-// expectation when no reward is on offer).
-const SIGIL_FONT_SIZE = {
-  // Heavy filled glyphs — reduced so they don't dominate
-  '⚔': 24,    // combat — crossed swords (HEAVY at default size)
-  '☠': 24,    // elite — skull (HEAVY)
-  '⛧': 26,    // altar — pentagram
-  '♛': 28,    // boss — queen
-  '♜': 26,    // mini-boss — rook
-  '⚖': 26,    // shop — scales
-  // Medium glyphs — close to base
-  '⚐': 28,    // challenge — flag
-  '⊞': 28,    // chestroom — squared plus
-  '✚': 32,    // sanctuary / heal reward — cross (slightly bigger
-              // because heal is a "reward" tier across both contexts)
-  // Light / thin glyphs — bumped so they reach visual parity AND
-  // reward sigils get an extra push so they read as the standout
-  '◈': 36,    // GOLD reward — gem (was rendering tiny at 30)
-  '◇': 28,    // start — small diamond (kept modest, just a marker)
-  '✦': 34,    // event / RARE+ reward — 4-point star
-  '✸': 36,    // LEGENDARY reward — 8-point sunburst (most prominent)
-};
+// SIGIL_FONT_SIZE / REWARD_SIGILS retired — door identity is no longer
+// a font-rendered glyph above the wall. The new layered architectural
+// system in _drawDoorIdentity uses procedural shapes (theme washes,
+// kind details, keystone seals, affix accents) painted directly onto
+// the door tile, so per-unicode-char size normalization is moot.
 
 // Active doors for the current room. Cleared between rooms.
 // Each entry: { tx, ty, side: 'north'|'south', state, anim,
@@ -581,16 +531,19 @@ export function getDoorMeta(tx, ty) {
 // commitment beat. Non-sealed doors use the simpler tighter card.
 const CARD_W = 84;          // sealed only
 const CARD_H = 46;          // sealed only
-// Vertical offset from the door top to the floating glyph / sealed
-// card center. Same value applies to both branches so glyph placement
-// stays consistent if a sealed BLOOD GATE is broken mid-room.
+// Vertical offset from the door top to the sealed-card center. Used
+// only by the sealed BLOOD GATE flow now; non-sealed doors render
+// architectural marks ON the door itself, no offset above the wall.
 const CARD_OFFSET_Y = 38;
-// Proximity radii for the label fade-in on non-sealed doors. Inside
-// NEAR the label is at full opacity; between NEAR and FAR it fades;
-// beyond FAR the label is hidden and only the floating glyph remains.
-const PROX_NEAR = 110;
-const PROX_FAR  = 180;
 
+// drawDoorLabels — entry point called from main.js after drawRoom.
+// Sealed doors keep their dramatic floating card (BLOOD GATE remains
+// a HP-cost commit moment). Non-sealed doors get the new layered
+// architectural identity rendering — theme wash, kind details,
+// keystone seal, affix accents — painted ONTO the door tile, not
+// floating above it. Substrate doors (combat / gold / chest / trove
+// / rare+) intentionally render NO marks at all; they ARE the
+// substrate, not a labeled UI element.
 export function drawDoorLabels(ctx) {
   const now = performance.now() / 1000;
   for (const d of roomDoors) {
@@ -603,7 +556,7 @@ export function drawDoorLabels(ctx) {
     if (isSealed) {
       _drawSealedDoorCard(ctx, d, cx, cardCY, now);
     } else {
-      _drawSimpleDoorCard(ctx, d, cx, cardCY, now);
+      _drawDoorIdentity(ctx, d, now);
     }
 
     // Phase 5 sealed door E-prompt — kept separate from the card so
@@ -696,340 +649,383 @@ function _drawSealedDoorCard(ctx, d, cx, cardCY, now) {
   ctx.restore();
 }
 
-// ─── Door signal priority — what does this door tell the player? ──────
-// The previous design treated every room kind as worth surfacing,
-// which made the door visual a dump of metadata: combat ⚔, gold ◈,
-// chest ⊞, etc. all crowding equally. That's noise. The actual
-// question a player asks at a fork is "will this advance my build?"
-// — and only some signals answer that question.
+// ─── Door Visual Profile — architectural identity layers ─────────────
+// What does this door TELL the player? Four axes of identity, each
+// rendered as a separate ARCHITECTURAL layer painted directly onto
+// the door tile — NO floating UI, NO labels in the dark sky above
+// the wall, NO substrate dim glyphs. The icon IS the door.
 //
-// Tiering, top wins:
-//   1. SEALED        — handled separately (BLOOD GATE dramatic card)
-//   2. BOSS          — existential moment, overrides everything else
-//   3. FUSION        — biggest build push (guaranteed fusion completion)
-//   4. THEME         — build identity (shadow / blood / storm / flame / vow)
-//   5. LEGENDARY     — high-power upgrade (✸)
-//   6. MYTHIC        — top-tier upgrade (∗ — only on F4)
-//   7. ALTAR         — meaningful HP-cost trade
-//   8. SHOP          — choice opportunity
-//   9. EVENT         — mystery/variety
-//  10. SANCTUARY/HEAL — utility decision (rest opportunity)
-//  11. MINIBOSS      — stakes-up moment short of full boss
-//  12. CHALLENGE     — minor variant flag
-//  13. ELITE         — affix sub-line ONLY (no main glyph; door art + tag)
-//   ∅. SUBSTRATE     — combat / gold-bias / chestroom / trove / rare+-bias
-//                      → return null, no floating glyph at all
+// Layers (rendered bottom-up):
+//   1. themeWash        — color tint over door body (storm/flame/etc)
+//   2. kindArchVariant  — encounter-type details (boss = ominous lintel,
+//                          altar = blood drips, shop = lantern glow,
+//                          sanctuary = soft healing light, etc.)
+//   3. specialSeal      — reward-tier marking on the keystone
+//                          (fusion = interlocked rings, legendary = star,
+//                          mythic = sun)
+//   4. affixAccent      — elite-affix edges (frost icicles, ember cracks,
+//                          venom drips, warded shield sigils)
 //
-// Combinations: each door produces ONE signal at the highest tier it
-// qualifies for. A SHADOW + LEGENDARY combat door becomes SHADOW; the
-// proximity label can mention both via the "+L" accent.
-function _pickDoorSignal(d) {
-  // Tier 2 — BOSS overrides everything (final-floor fight or mid-floor
-  // miniboss-class). Recognized by targetKind, since boss rooms always
-  // come through that channel.
-  if (d.targetKind === 'boss') {
-    return { kind: 'boss', sigil: '♛', color: KIND_COLORS.boss, label: 'THE BOSS' };
-  }
-  // Tier 3 — FUSION reward bias is the strongest build push.
-  if (d.rewardLabel === 'FUSION') {
-    return { kind: 'fusion', sigil: '__procedural__', color: d.rewardColor || '#ff8040', label: 'FUSION' };
-  }
-  // Tier 4 — themed rooms: build identity. The room's pedestal will
-  // bias toward this theme's relics, pushing the player toward
-  // Resonance / Ascendance for that set.
-  if (d.roomTheme && THEMES[d.roomTheme]) {
-    const t = THEMES[d.roomTheme];
-    // Compose accent label for theme + reward stacking. SHADOW alone
-    // shows "SHADOW"; SHADOW + LEGENDARY shows "SHADOW · LEGENDARY".
-    let accentLabel = null;
-    if (d.rewardLabel === 'LEGENDARY' || d.rewardLabel === 'MYTHIC') {
-      accentLabel = d.rewardLabel;
-    }
-    return {
-      kind: 'theme',
-      themeId: t.id,
-      color: t.color,
-      label: t.name.toUpperCase(),
-      accentLabel,
-    };
-  }
-  // Tier 5 — LEGENDARY reward bias (untheded room).
-  if (d.rewardLabel === 'LEGENDARY') {
-    return { kind: 'reward', sigil: '✸', color: d.rewardColor || '#ffc8ff', label: 'LEGENDARY' };
-  }
-  // Tier 6 — MYTHIC.
-  if (d.rewardLabel === 'MYTHIC') {
-    return { kind: 'reward', sigil: '✸', color: d.rewardColor || '#fff2e0', label: 'MYTHIC' };
-  }
-  // Tier 7 — ALTAR. HP-cost trade. Encounter type distinct from combat.
-  if (d.targetKind === 'altar') {
-    return { kind: 'altar', sigil: '⛧', color: KIND_COLORS.altar, label: 'ALTAR' };
-  }
-  // Tier 8 — SHOP. The Hades Charon equivalent.
-  if (d.targetKind === 'shop') {
-    return { kind: 'shop', sigil: '⚖', color: KIND_COLORS.shop, label: 'SHOP' };
-  }
-  // Tier 9 — EVENT / MYSTERY. Variety beat.
-  if (d.targetKind === 'event') {
-    return { kind: 'event', sigil: '✦', color: KIND_COLORS.event, label: 'MYSTERY' };
-  }
-  // Tier 10 — SANCTUARY / HEAL room.
-  if (d.targetKind === 'sanctuary' || d.targetKind === 'reward' || d.rewardLabel === 'HEAL') {
-    return { kind: 'sanctuary', sigil: '✚', color: KIND_COLORS.sanctuary, label: 'REST' };
-  }
-  // Tier 11 — MINIBOSS. Stakes up but not floor-finale.
-  if (d.targetKind === 'miniboss') {
-    return { kind: 'miniboss', sigil: '♜', color: KIND_COLORS.miniboss, label: 'MINI-BOSS' };
-  }
-  // Tier 12 — CHALLENGE. Distinctive variant.
-  if (d.targetKind === 'challenge') {
-    return { kind: 'challenge', sigil: '⚐', color: KIND_COLORS.challenge, label: 'CHALLENGE' };
-  }
-  // Tier 13 — ELITE. The affix tag is the actual signal; the elite
-  // sigil itself doesn't add over the door art. Return an affix-only
-  // signal that draws no main glyph.
-  if (d.targetKind === 'elite' && d.eliteAffixId) {
-    const af = AFFIX_LABELS[d.eliteAffixId];
-    if (af) {
-      return { kind: 'affix-only', subLine: af.label, subLineColor: af.color };
-    }
-  }
-  // ── Substrate — small dim glyph (the "yes this is a door" affordance) ──
-  // Earlier design returned null for substrate, which left the door
-  // visually EMPTY. Adjacent to a themed/fusion glyph'd door, the empty
-  // one read as a render bug rather than as "this is the default kind."
-  // Hades' actual pattern is every door has SOMETHING — the hierarchy
-  // is in visual weight, not presence/absence. So substrate gets a
-  // small dim glyph (kind- or reward-appropriate), rendered at ~60%
-  // size and ~0.40 alpha, no glow. The bright signals still pop; the
-  // dim ones whisper.
-  let sg = null, sc = null, slab = null;
-  if (d.rewardLabel === 'GOLD') {
-    sg = '◈'; sc = '#c9a86a'; slab = 'GOLD';
-  } else if (d.rewardLabel === 'RARE+') {
-    sg = '✦'; sc = '#f4d9a0'; slab = 'RARE+';
-  } else if (d.targetKind === 'chestroom') {
-    sg = '⊞'; sc = KIND_COLORS.chestroom; slab = 'CHEST';
-  } else if (d.targetKind === 'trove') {
-    sg = '◈'; sc = KIND_COLORS.trove; slab = 'TROVE';
-  } else if (d.targetKind === 'elite') {
-    // Generic elite (no affix) — faint skull
-    sg = '☠'; sc = KIND_COLORS.elite; slab = 'ELITE';
-  } else {
-    // Plain combat — small swords. No label even on proximity (the
-    // most common door, not worth narrating).
-    sg = '⚔'; sc = KIND_COLORS.combat; slab = null;
-  }
-  return { kind: 'substrate', sigil: sg, color: sc, label: slab, dim: true };
+// `intensity` (0..1) drives overall layer strength. Substrate doors
+// (combat / gold / chestroom / trove / rare+ default) clamp to 0 and
+// render NOTHING — bare door, no marks. They're the substrate, not
+// a labeled UI element. That's intentional — a bare wooden door next
+// to a marked door reads as "this is the default path", not as a
+// render bug, because both halves of the comparison are architectural.
+function _buildDoorVisualProfile(d) {
+  const reward = d.rewardLabel || null;
+  const kind = d.targetKind || 'combat';
+  const profile = {
+    kindArchVariant: kind,
+    themeWash: (d.roomTheme && THEMES[d.roomTheme]) ? d.roomTheme : null,
+    specialSeal: null,
+    affixAccent: (kind === 'elite' && d.eliteAffixId) ? d.eliteAffixId : null,
+    intensity: 0,
+  };
+  // Special seal — top-tier reward only. Fusion is the build moment.
+  // GOLD and RARE+ intentionally don't seal: they're substrate-tier
+  // rewards (just more coins / slightly bumped tier), not build axes.
+  if (reward === 'FUSION') profile.specialSeal = 'fusion';
+  else if (reward === 'MYTHIC') profile.specialSeal = 'mythic';
+  else if (reward === 'LEGENDARY') profile.specialSeal = 'legendary';
+  // Intensity — drives layer strength. Boss is loudest; substrate is
+  // silent. Layer order in _drawDoorIdentity respects this so quiet
+  // tiers don't blow up at the seal/affix passes.
+  if (kind === 'boss') profile.intensity = 1.00;
+  else if (profile.specialSeal === 'fusion' || profile.specialSeal === 'mythic') profile.intensity = 0.95;
+  else if (profile.specialSeal === 'legendary') profile.intensity = 0.85;
+  else if (kind === 'altar' || kind === 'shop') profile.intensity = 0.85;
+  else if (kind === 'sanctuary' || kind === 'reward') profile.intensity = 0.75;
+  else if (kind === 'event' || kind === 'miniboss') profile.intensity = 0.70;
+  else if (kind === 'challenge' || kind === 'elite') profile.intensity = 0.65;
+  else if (profile.themeWash) profile.intensity = 0.60;     // themed combat
+  // else substrate (combat/chestroom/trove/gold/rare+) → stays 0
+  return profile;
 }
 
-// ─── Theme glyph render — procedural paths lifted from themes.js ──────
-// Drawn directly at the door (no chip backdrop) at ~16 px radius. Each
-// theme has its own silhouette so the player learns the visual language
-// without a label. Tinted with theme.color, glowing via shadowBlur.
-function _drawThemeGlyph(ctx, cx, cy, r, themeId, color, alpha) {
+// _drawDoorIdentity — composes the architectural layers per profile.
+// Called from drawDoorLabels for non-sealed doors. World-space coords;
+// each layer paints onto the door tile (tx*TILE, ty*TILE, TILE, TILE).
+function _drawDoorIdentity(ctx, d, now) {
+  const profile = _buildDoorVisualProfile(d);
+  if (profile.intensity <= 0) return;     // substrate — bare door
+  const x = d.tx * TILE;
+  const y = d.ty * TILE;
+  // Layer 1: theme wash (color tint, screen-blend, lifts door art)
+  if (profile.themeWash) _drawThemeWash(ctx, x, y, profile.themeWash, profile.intensity);
+  // Layer 2: kind details (encounter-specific shape language)
+  _drawKindArchDetails(ctx, x, y, profile.kindArchVariant, profile.intensity, now);
+  // Layer 3: keystone seal (special reward marking on the arch top)
+  if (profile.specialSeal) _drawKeystoneSeal(ctx, x, y, profile.specialSeal, profile.intensity, now);
+  // Layer 4: affix accent (elite affix-specific edges/marks)
+  if (profile.affixAccent) _drawAffixAccent(ctx, x, y, profile.affixAccent, now);
+}
+
+// Theme material wash — colored tint over the door body. Reads as
+// "this door's stone has absorbed the storm/flame/blood/etc essence."
+// Composite-screen so the wash LIFTS the underlying door art rather
+// than covering it; the wood/stone texture stays legible.
+function _drawThemeWash(ctx, x, y, themeId, intensity) {
+  const theme = THEMES[themeId];
+  if (!theme) return;
+  const [tr, tg, tb] = _doorHexToRgb(theme.color);
   ctx.save();
-  ctx.fillStyle = hexA(color, alpha);
-  ctx.strokeStyle = hexA(color, alpha);
-  ctx.lineWidth = 2.0;
-  switch (themeId) {
-    case 'storm': {
-      // Lightning bolt — sharper silhouette than the prior version.
-      // The earlier shape had its mid-vertices clustered at y±0.05,
-      // making the bolt read as a flat parallelogram instead of a
-      // jagged flash. New geometry:
-      //   - peaks pushed wider (0.55 vs 0.35) for clearer fork ends
-      //   - mid-vertices spread to y±0.10 for a real bend
-      //   - inner-bridge offsets (cx±0.05) keep the middle thin so
-      //     the eye reads "bolt" not "ribbon"
-      // Tall-narrow ratio (~2:1 height:width) matches the iconic
-      // "thunderbolt" silhouette across pixel-art conventions.
-      ctx.beginPath();
-      ctx.moveTo(cx + r * 0.55, cy - r * 1.00);   // 1: top-right peak
-      ctx.lineTo(cx - r * 0.45, cy - r * 0.10);   // 2: descend hard left
-      ctx.lineTo(cx + r * 0.05, cy - r * 0.10);   // 3: thin bridge right
-      ctx.lineTo(cx - r * 0.55, cy + r * 1.00);   // 4: bottom-left point
-      ctx.lineTo(cx + r * 0.45, cy + r * 0.10);   // 5: ascend hard right
-      ctx.lineTo(cx - r * 0.05, cy + r * 0.10);   // 6: thin bridge left
-      ctx.closePath();
-      ctx.fill();
+  ctx.globalCompositeOperation = 'screen';
+  // Soft radial gradient anchored at door-mid for the wash. Stronger
+  // at the door body, fades out at the edges so the wash doesn't
+  // bleed into adjacent wall tiles.
+  const cx = x + TILE / 2;
+  const cy = y + TILE * 0.55;
+  const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, TILE * 0.55);
+  grad.addColorStop(0,    `rgba(${tr}, ${tg}, ${tb}, ${(0.36 * intensity).toFixed(3)})`);
+  grad.addColorStop(0.6,  `rgba(${tr}, ${tg}, ${tb}, ${(0.18 * intensity).toFixed(3)})`);
+  grad.addColorStop(1,    `rgba(${tr}, ${tg}, ${tb}, 0)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y, TILE, TILE);
+  ctx.restore();
+}
+
+// Hex → RGB triplet, cached. ~5 colors maximum cached (one per theme).
+const _doorHexCache = new Map();
+function _doorHexToRgb(hex) {
+  if (!hex) return [200, 200, 200];
+  const cached = _doorHexCache.get(hex);
+  if (cached) return cached;
+  const h = hex.replace('#', '');
+  const norm = h.length === 3 ? h[0]+h[0]+h[1]+h[1]+h[2]+h[2] : h;
+  const triplet = [parseInt(norm.slice(0, 2), 16), parseInt(norm.slice(2, 4), 16), parseInt(norm.slice(4, 6), 16)];
+  _doorHexCache.set(hex, triplet);
+  return triplet;
+}
+
+// Kind architectural details — encounter-specific decorations painted
+// onto the door tile. These are the SHAPE-LANGUAGE differentiators
+// that make doors readable from across the room without text labels:
+//   boss      — dark lintel band + crimson under-glow + tiny skull
+//   miniboss  — reduced boss: dark band, no skull
+//   altar     — blood drips from keystone, dark ritual base
+//   shop      — warm lantern glow at keystone + tiny coin glint
+//   sanctuary — soft healing light at the threshold (door base)
+//   elite     — spike nails on lintel + dark band
+//   event     — purple-cyan asymmetric rune
+//   challenge — orange diagonal hazard stripes
+//   trove     — gold lock plate on door body
+//   chestroom — same hardware as trove
+function _drawKindArchDetails(ctx, x, y, kind, intensity, now) {
+  const cx = x + TILE / 2;
+  ctx.save();
+  switch (kind) {
+    case 'boss': {
+      ctx.fillStyle = `rgba(20, 8, 12, ${(0.55 * intensity).toFixed(3)})`;
+      ctx.fillRect(x + 2, y + 1, TILE - 4, 4);
+      const grad = ctx.createLinearGradient(x, y + 5, x, y + 14);
+      grad.addColorStop(0, `rgba(220, 60, 70, ${(0.30 * intensity).toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(220, 60, 70, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + 4, y + 5, TILE - 8, 9);
+      // Tiny skull — eye sockets only, very small
+      ctx.fillStyle = `rgba(255, 220, 200, ${(0.85 * intensity).toFixed(3)})`;
+      ctx.fillRect(cx - 3, y + 8, 2, 2);
+      ctx.fillRect(cx + 1, y + 8, 2, 2);
       break;
     }
-    case 'flame': {
-      // Tear-drop pointed up
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
-      ctx.closePath();
-      ctx.fill();
+    case 'miniboss': {
+      ctx.fillStyle = `rgba(40, 20, 24, ${(0.45 * intensity).toFixed(3)})`;
+      ctx.fillRect(x + 4, y + 3, TILE - 8, 4);
+      const grad = ctx.createLinearGradient(x, y + 6, x, y + 12);
+      grad.addColorStop(0, `rgba(180, 80, 80, ${(0.20 * intensity).toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(180, 80, 80, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + 6, y + 6, TILE - 12, 6);
       break;
     }
-    case 'blood': {
-      // Tear-drop pointed DOWN (inverted flame)
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
-      ctx.closePath();
-      ctx.fill();
+    case 'altar': {
+      // Ritual blood drips. Middle drip pulses for "active ritual".
+      const dripPulse = 0.85 + 0.15 * Math.sin(now * 0.8);
+      ctx.fillStyle = `rgba(140, 30, 40, ${(0.78 * intensity).toFixed(3)})`;
+      ctx.fillRect(cx - 6, y + 5, 1, 4);
+      ctx.fillRect(cx,     y + 5, 1, Math.round(7 * dripPulse));
+      ctx.fillRect(cx + 6, y + 5, 1, 5);
+      // Dark ritual base — bottom of door tile
+      const base = ctx.createLinearGradient(x, y + TILE - 8, x, y + TILE);
+      base.addColorStop(0, 'rgba(20, 6, 10, 0)');
+      base.addColorStop(1, `rgba(60, 12, 18, ${(0.50 * intensity).toFixed(3)})`);
+      ctx.fillStyle = base;
+      ctx.fillRect(x + 4, y + TILE - 8, TILE - 8, 8);
       break;
     }
-    case 'vow': {
-      // Heater shield — 5-point silhouette
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
-      ctx.closePath();
-      ctx.fill();
+    case 'shop': {
+      // Lantern flicker — phase offset per-tile so adjacent shops
+      // don't pulse in unison.
+      const phase = ((x | 0) * 73856093 ^ (y | 0) * 19349663) >>> 0;
+      const flicker = 0.85 + 0.15 * Math.sin(now * 4 + phase * 0.0001);
+      const grad = ctx.createRadialGradient(cx, y + 6, 0, cx, y + 6, 16);
+      grad.addColorStop(0,   `rgba(255, 200, 100, ${(0.55 * intensity * flicker).toFixed(3)})`);
+      grad.addColorStop(0.5, `rgba(255, 160, 80,  ${(0.22 * intensity * flicker).toFixed(3)})`);
+      grad.addColorStop(1,   'rgba(255, 160, 80, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - 4, y, TILE + 8, 24);
+      // Tiny coin glint on the door body
+      ctx.fillStyle = `rgba(255, 220, 130, ${(0.70 * intensity).toFixed(3)})`;
+      ctx.fillRect(cx - 1, y + 24, 2, 2);
       break;
     }
-    case 'shadow': {
-      // Crescent moon — solid disc with offset cutout
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
+    case 'sanctuary':
+    case 'reward': {
+      // Soft healing light at the BASE of the door (spills onto floor
+      // like inviting interior light, not a "lintel decoration").
+      const grad = ctx.createRadialGradient(cx, y + TILE * 0.85, 2, cx, y + TILE * 0.7, 24);
+      grad.addColorStop(0,   `rgba(140, 230, 180, ${(0.50 * intensity).toFixed(3)})`);
+      grad.addColorStop(0.5, `rgba(140, 230, 180, ${(0.20 * intensity).toFixed(3)})`);
+      grad.addColorStop(1,   'rgba(140, 230, 180, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - 4, y + TILE - 24, TILE + 8, 28);
       break;
     }
-    default: {
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.fill();
+    case 'elite': {
+      ctx.fillStyle = `rgba(40, 20, 24, ${(0.50 * intensity).toFixed(3)})`;
+      ctx.fillRect(x + 4, y + 3, TILE - 8, 3);
+      ctx.fillStyle = `rgba(200, 60, 60, ${(0.85 * intensity).toFixed(3)})`;
+      for (let i = -1; i <= 1; i++) {
+        const sx = cx + i * 8;
+        ctx.beginPath();
+        ctx.moveTo(sx - 1.2, y + 6);
+        ctx.lineTo(sx + 1.2, y + 6);
+        ctx.lineTo(sx,       y + 11);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
     }
+    case 'event': {
+      const shimmer = 0.85 + 0.15 * Math.sin(now * 1.8);
+      ctx.fillStyle = `rgba(180, 130, 230, ${(0.70 * intensity * shimmer).toFixed(3)})`;
+      // 4-stroke asymmetric rune — left-leaning shape
+      ctx.fillRect(cx - 5, y + 5, 1, 6);
+      ctx.fillRect(cx - 1, y + 7, 1, 5);
+      ctx.fillRect(cx + 3, y + 6, 1, 4);
+      ctx.fillRect(cx - 3, y + 9, 6, 1);
+      break;
+    }
+    case 'challenge': {
+      ctx.fillStyle = `rgba(255, 178, 100, ${(0.60 * intensity).toFixed(3)})`;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillRect(x + 6 + i * 4,      y + 4, 2, 1);
+        ctx.fillRect(x + 6 + i * 4 + 8,  y + 4, 2, 1);
+      }
+      ctx.fillStyle = `rgba(60, 30, 20, ${(0.40 * intensity).toFixed(3)})`;
+      ctx.fillRect(x + 4, y + TILE - 6, TILE - 8, 2);
+      break;
+    }
+    case 'chestroom':
+    case 'trove': {
+      // Gold lock plate — only fires when intensity > 0 (i.e. promoted
+      // beyond substrate via theme or special reward).
+      ctx.fillStyle = `rgba(201, 168, 106, ${(0.75 * intensity).toFixed(3)})`;
+      ctx.fillRect(cx - 3, y + 26, 6, 6);
+      ctx.fillStyle = 'rgba(20, 14, 8, 0.85)';
+      ctx.fillRect(cx - 1, y + 28, 2, 3);
+      break;
+    }
+    // 'combat' / 'start' / unhandled → no decoration (theme wash, if
+    // present, carries the visual on its own).
   }
   ctx.restore();
 }
 
-// ─── Floating glyph — Hades-style icon-first, signal-priority gated ──
-// Rewritten in two passes: the holistic-redesign pass dropped the card
-// frame; this pass adds priority filtering so doors only show what
-// actually matters for build decisions. Combat / gold / chest /
-// generic-elite doors render NOTHING above them — the door art is
-// the indicator, not floating UI.
-function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
-  const sig = _pickDoorSignal(d);
-  // _pickDoorSignal now always returns a signal (substrate case
-  // returns a dim faint glyph instead of null). This branch is kept
-  // as defense in depth in case future kinds slip past.
-  if (!sig) return;
-
-  // Affix-only signal → no main glyph, only the proximity affix tag.
-  // (Elite doors with no other tier match.) Falls through to the
-  // sub-line render path below.
-  const affixOnly = sig.kind === 'affix-only';
-  // Substrate signal (combat / gold / chest / trove / generic elite)
-  // renders dim + smaller — the "yes this is a door" affordance
-  // without competing with the bright tier-1 glyphs above.
-  const dim = !!sig.dim;
-
-  // Proximity check — hero distance to the door's bottom edge. Drives
-  // the label fade so distant doors are quiet (just glyph) and the
-  // player gets full info on approach.
-  const doorBottom = (d.ty + 1) * TILE;
-  const dx = hero.x - cx;
-  const dy = hero.y - doorBottom;
-  const dist = Math.hypot(dx, dy);
-  let proxAlpha = 0;
-  if (dist <= PROX_NEAR) proxAlpha = 1;
-  else if (dist >= PROX_FAR) proxAlpha = 0;
-  else proxAlpha = 1 - (dist - PROX_NEAR) / (PROX_FAR - PROX_NEAR);
-
-  // Per-door bob (1.5 Hz, ±2 px) — magical-waypoint feel, not static UI.
-  // Substrate skips the bob — they're not a "magical waypoint", they're
-  // just a marker. Subtler at rest is the goal.
-  const bob = dim ? 0 : Math.sin(now * 1.5 + d.tx * 0.7) * 2;
-  // Glow pulse — alpha breathes independently of bob.
+// Keystone seal — special-reward marking centered on the door's arch
+// keystone (top-center area, ~y+8 within the door tile). Etched-and-
+// glowing style: dark carved groove first, then bright inner stroke,
+// then small halo. Reads as part of the stone, not floating in front.
+function _drawKeystoneSeal(ctx, x, y, sealKind, intensity, now) {
+  const cx = x + TILE / 2;
+  const cy = y + 8;
   const pulse = 0.85 + 0.15 * Math.sin(now * 1.4);
-
-  // Sub-line: prefer sig.subLine (affix-only), else look up affix from
-  // door state if elite. Themed elite doors get BOTH theme glyph AND
-  // affix sub-line.
-  let subLine = sig.subLine || null;
-  let subLineColor = sig.subLineColor || null;
-  if (!subLine && d.eliteAffixId && d.targetKind === 'elite') {
-    const af = AFFIX_LABELS[d.eliteAffixId];
-    if (af) { subLine = af.label; subLineColor = af.color; }
-  }
-
   ctx.save();
-  const glyphY = cardCY + bob;
-
-  if (!affixOnly) {
-    // ── Main glyph render — theme | fusion | sigil text ──────────────
-    // Bright tier (theme/fusion/legendary/boss/etc): full alpha, glow,
-    // 16 px scale. Dim tier (combat/gold/chest substrate): 0.40 alpha,
-    // no glow, 60% scale — reads as "yes this is a door" without
-    // shouting for attention.
-    if (dim) {
-      ctx.fillStyle = hexA(sig.color, 0.40);
-      // No shadowBlur for dim tier — the faint glyph should sit on
-      // its own without a halo demanding attention.
-    } else {
-      ctx.fillStyle = hexA(sig.color, pulse);
-      ctx.shadowColor = hexA(sig.color, pulse * 0.85);
-      ctx.shadowBlur = 16;
-    }
-
-    if (sig.kind === 'theme') {
-      // Theme glyph — procedural shape (storm bolt, blood drop, etc.).
-      _drawThemeGlyph(ctx, cx, glyphY, dim ? 10 : 16, sig.themeId, sig.color, dim ? 0.40 : pulse);
-    } else if (sig.kind === 'fusion') {
-      // Fusion — interlocked rings. Larger radius (16) than the prior
-      // tuning so it visually peers with the bumped theme glyph.
-      _drawFusionSigil(ctx, cx, glyphY, dim ? 10 : 16, hexA(sig.color, dim ? 0.40 : pulse));
-    } else {
-      // Unicode-sigil glyph (boss ♛, altar ⛧, shop ⚖, event ✦, etc.).
-      // Per-glyph size table keeps visual weight normalized; substrate
-      // halves the size for the "whisper, don't shout" feel.
-      const sigilSize = (SIGIL_FONT_SIZE[sig.sigil] || 28) * (dim ? 0.55 : 1);
-      ctx.font = `bold ${sigilSize}px serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(sig.sigil, cx, glyphY);
-    }
+  if (sealKind === 'fusion') {
+    // Interlocked rings — the build-defining seal.
+    const r = 6.5;
+    const off = r * 0.55;
+    // Dark carved groove
+    ctx.strokeStyle = 'rgba(8, 4, 6, 0.85)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(cx - off, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + off, cy, r, 0, Math.PI * 2); ctx.stroke();
+    // Bright inner ring + glow
+    ctx.shadowColor = `rgba(255, 130, 80, ${(pulse * 0.6).toFixed(3)})`;
+    ctx.shadowBlur = 4;
+    ctx.strokeStyle = `rgba(255, 150, 90, ${(pulse * intensity).toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(cx - off, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + off, cy, r, 0, Math.PI * 2); ctx.stroke();
+    // Center spark — the "fusion point"
+    ctx.fillStyle = `rgba(255, 220, 160, ${(pulse * intensity).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+  } else if (sealKind === 'mythic') {
+    const r = 6;
+    ctx.fillStyle = 'rgba(8, 4, 6, 0.85)';
+    _drawStarPath(ctx, cx, cy, r + 0.5, 6); ctx.fill();
+    ctx.shadowColor = `rgba(255, 240, 180, ${(pulse * 0.7).toFixed(3)})`;
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = `rgba(255, 250, 220, ${(pulse * intensity).toFixed(3)})`;
+    _drawStarPath(ctx, cx, cy, r, 6); ctx.fill();
+    ctx.shadowBlur = 0;
+  } else if (sealKind === 'legendary') {
+    const r = 5.5;
+    ctx.fillStyle = 'rgba(8, 4, 6, 0.85)';
+    _drawStarPath(ctx, cx, cy, r + 0.5, 4); ctx.fill();
+    ctx.shadowColor = `rgba(255, 180, 240, ${(pulse * 0.6).toFixed(3)})`;
+    ctx.shadowBlur = 3.5;
+    ctx.fillStyle = `rgba(255, 210, 250, ${(pulse * intensity).toFixed(3)})`;
+    _drawStarPath(ctx, cx, cy, r, 4); ctx.fill();
     ctx.shadowBlur = 0;
   }
+  ctx.restore();
+}
 
-  // ── Label + sub-line — proximity-gated, no card frame ───────────────
-  if (proxAlpha > 0.01) {
-    if (!affixOnly && sig.label) {
-      ctx.fillStyle = hexA(sig.color, 0.95 * proxAlpha);
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-      ctx.shadowBlur = 4;
-      ctx.font = 'bold 11px Georgia, "Cormorant Garamond", serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      // Theme + reward stacking — SHADOW · LEGENDARY etc.
-      const fullLabel = sig.accentLabel ? `${sig.label} · ${sig.accentLabel}` : sig.label;
-      ctx.fillText(fullLabel, cx, glyphY + 24);
-      if (subLine) {
-        ctx.fillStyle = hexA(subLineColor || '#ffd855', 0.92 * proxAlpha);
-        ctx.font = 'bold 8px Georgia, serif';
-        ctx.fillText(subLine, cx, glyphY + 37);
+// N-point star path helper. Alternates outer/inner radius for star
+// silhouettes — used by legendary (4-point) and mythic (6-point) seals.
+function _drawStarPath(ctx, cx, cy, r, points) {
+  const innerR = r * 0.4;
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+    const radius = i % 2 === 0 ? r : innerR;
+    const px = cx + Math.cos(angle) * radius;
+    const py = cy + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+// Affix accent — environmental decoration for elite affix doors.
+// Layered AFTER kind details so the affix is additive even when 'elite'
+// kind already has its spike-nails decoration. Each affix has a
+// distinct visual language: frost = icicles, ember = glowing coal
+// cracks (flickering), venom = green stained drips, warded = shield
+// sigils on the side jambs.
+function _drawAffixAccent(ctx, x, y, affixId, now) {
+  ctx.save();
+  switch (affixId) {
+    case 'frost': {
+      ctx.fillStyle = 'rgba(180, 220, 255, 0.85)';
+      const positions = [10, 19, 28, 37];
+      const heights   = [4, 5, 3, 4];
+      for (let i = 0; i < positions.length; i++) {
+        const ix = x + positions[i];
+        const ih = heights[i];
+        ctx.beginPath();
+        ctx.moveTo(ix - 1, y + 11);
+        ctx.lineTo(ix + 1, y + 11);
+        ctx.lineTo(ix,     y + 11 + ih);
+        ctx.closePath();
+        ctx.fill();
       }
-      ctx.shadowBlur = 0;
-    } else if (subLine) {
-      // Affix-only door — no main label, just the affix tag floating
-      // above the door.
-      ctx.fillStyle = hexA(subLineColor || '#ffd855', 0.92 * proxAlpha);
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-      ctx.shadowBlur = 4;
-      ctx.font = 'bold 9px Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(subLine, cx, glyphY);
-      ctx.shadowBlur = 0;
+      break;
+    }
+    case 'ember': {
+      const flicker = 0.7 + 0.3 * Math.sin(now * 3);
+      ctx.fillStyle = `rgba(255, 130, 50, ${(0.80 * flicker).toFixed(3)})`;
+      ctx.fillRect(x + 6,  y + 12, 6, 1);
+      ctx.fillRect(x + 16, y + 13, 8, 1);
+      ctx.fillRect(x + 28, y + 12, 6, 1);
+      ctx.fillRect(x + 38, y + 14, 4, 1);
+      ctx.fillStyle = `rgba(255, 200, 100, ${(0.95 * flicker).toFixed(3)})`;
+      ctx.fillRect(x + 9,  y + 12, 1, 1);
+      ctx.fillRect(x + 21, y + 13, 1, 1);
+      ctx.fillRect(x + 31, y + 12, 1, 1);
+      break;
+    }
+    case 'venom': {
+      ctx.fillStyle = 'rgba(140, 230, 100, 0.78)';
+      ctx.fillRect(x + 12, y + 11, 1, 5);
+      ctx.fillRect(x + 24, y + 12, 1, 6);
+      ctx.fillRect(x + 36, y + 11, 1, 4);
+      ctx.fillStyle = 'rgba(100, 160, 60, 0.30)';
+      ctx.fillRect(x + 8,  y + 16, TILE - 16, 2);
+      break;
+    }
+    case 'warded': {
+      ctx.fillStyle = 'rgba(200, 210, 230, 0.78)';
+      // Left side jamb sigil
+      ctx.beginPath();
+      ctx.moveTo(x + 4, y + 12);
+      ctx.lineTo(x + 8, y + 12);
+      ctx.lineTo(x + 6, y + 18);
+      ctx.closePath();
+      ctx.fill();
+      // Right side jamb sigil
+      ctx.beginPath();
+      ctx.moveTo(x + TILE - 8, y + 12);
+      ctx.lineTo(x + TILE - 4, y + 12);
+      ctx.lineTo(x + TILE - 6, y + 18);
+      ctx.closePath();
+      ctx.fill();
+      break;
     }
   }
-
   ctx.restore();
 }
 
@@ -1085,37 +1081,7 @@ function hexA(hex, a) {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
 }
 
-// Fusion sigil — two interlocked rings (Venn-diagram style), drawn
-// procedurally because the unicode "⊗" we used to render reads as a
-// "deny / block" mark, not a "two things merging" mark. Tint is the
-// reward border color; size is the ring radius. The overlapping
-// region gets a brighter highlight so the eye reads "fused", not
-// "two separate things".
-function _drawFusionSigil(ctx, cx, cy, r, color) {
-  ctx.save();
-  const offsetX = r * 0.55;
-  // Outer rings — left and right circles
-  ctx.lineWidth = 2.4;
-  ctx.strokeStyle = color;
-  ctx.beginPath();
-  ctx.arc(cx - offsetX, cy, r, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(cx + offsetX, cy, r, 0, Math.PI * 2);
-  ctx.stroke();
-  // Overlap highlight — a small filled lens at the intersection so
-  // the "merged" point reads as the bright focus of the sigil.
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.28, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// _drawDoorThemeGlyph removed in the door-card holistic redesign. The
-// per-door theme corner-chip was contributing to the card's visual
-// noise; theme info is already conveyed on the floor map and on the
-// pickup banner. If we ever want it back as a floating glyph next to
-// the reward sigil, lift the procedural paths from src/themes.js
-// (drawThemeAura / theme-chip family) which still keeps the same
-// switch on theme.id.
+// _drawFusionSigil retired — _drawKeystoneSeal now renders the fusion
+// rings inline as part of its layered etched-and-glowing pass. The
+// older "Venn rings on a card" sigil isn't called from anywhere now
+// that the floating-glyph rendering path is gone.
