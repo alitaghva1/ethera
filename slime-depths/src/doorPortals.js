@@ -144,6 +144,44 @@ const REWARD_SIGILS = {
   fusion:    '__procedural__',
 };
 
+// Per-glyph rendered font size. Different unicode chars have wildly
+// different perceptual weights at the same font-size: ⚔ (combat)
+// renders as a chunky filled icon at 30 px while ◈ (gold) is a thin
+// outlined diamond about half the visual area. Without normalization,
+// combat doors visually dominate every reward door — which inverts
+// the intended hierarchy (rewards should pop, combat is baseline).
+//
+// Two intents folded into the table:
+//   1. Visual normalization — bump light glyphs, reduce heavy ones,
+//      so they reach roughly equal perceptual size on screen.
+//   2. Hierarchy bias — rewards rendered LARGER than the equivalent
+//      kind glyphs. Reward doors are the special moment; the player
+//      should see GOLD / LEGENDARY / FUSION from across the room.
+//
+// Combat / elite / regular kind glyphs are kept smaller so they
+// quietly recede into the background (the player's default
+// expectation when no reward is on offer).
+const SIGIL_FONT_SIZE = {
+  // Heavy filled glyphs — reduced so they don't dominate
+  '⚔': 24,    // combat — crossed swords (HEAVY at default size)
+  '☠': 24,    // elite — skull (HEAVY)
+  '⛧': 26,    // altar — pentagram
+  '♛': 28,    // boss — queen
+  '♜': 26,    // mini-boss — rook
+  '⚖': 26,    // shop — scales
+  // Medium glyphs — close to base
+  '⚐': 28,    // challenge — flag
+  '⊞': 28,    // chestroom — squared plus
+  '✚': 32,    // sanctuary / heal reward — cross (slightly bigger
+              // because heal is a "reward" tier across both contexts)
+  // Light / thin glyphs — bumped so they reach visual parity AND
+  // reward sigils get an extra push so they read as the standout
+  '◈': 36,    // GOLD reward — gem (was rendering tiny at 30)
+  '◇': 28,    // start — small diamond (kept modest, just a marker)
+  '✦': 34,    // event / RARE+ reward — 4-point star
+  '✸': 36,    // LEGENDARY reward — 8-point sunburst (most prominent)
+};
+
 // Active doors for the current room. Cleared between rooms.
 // Each entry: { tx, ty, side: 'north'|'south', state, anim,
 //               targetNodeId, kind, label, color, glyph,
@@ -725,9 +763,14 @@ function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
   ctx.shadowColor = hexA(color, pulse * 0.6);
   ctx.shadowBlur = 10;
   if (sigil === '__procedural__' && d.rewardLabel === 'FUSION') {
-    _drawFusionSigil(ctx, cx, sigilY, 13, hexA(color, pulse));
+    // Fusion gets reward-tier prominence — radius 14 (matches the
+    // visual scale of the bumped reward sigils above).
+    _drawFusionSigil(ctx, cx, sigilY, 14, hexA(color, pulse));
   } else {
-    ctx.font = 'bold 30px serif';
+    // Per-glyph size lookup so combat ⚔ doesn't dwarf the reward ◈;
+    // falls back to 28 for any unmapped char.
+    const sigilSize = SIGIL_FONT_SIZE[sigil] || 28;
+    ctx.font = `bold ${sigilSize}px serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(sigil, cx, sigilY);
