@@ -4350,10 +4350,74 @@ function renderMetaShop(animate = false) {
   // without dominating screen space when the player only wants to scan.
   const row = document.getElementById('metaShopRow');
   row.innerHTML = '';
-  // 2-col grid; each cell is one unlock-row.
-  row.style.display = 'grid';
-  row.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
-  row.style.gap = '4px 12px';
+
+  // \u2500\u2500 Progress header (audit P1 \u2014 death-screen meta-loop visibility) \u2500\u2500
+  // Without this, a new player on death-screen #1 sees the unlock grid
+  // sitting inert with everything unaffordable and bounces \u2014 they don't
+  // realize essence accumulates toward the upgrades. The header makes
+  // the loop SEEN: shows current essence, names the cheapest unowned
+  // unlock as the "next goal," and renders a progress bar that fills
+  // as essence accumulates death-by-death. Once the next goal becomes
+  // affordable, the bar glows + the row text flips to "READY" so the
+  // player has a clear "click here" moment.
+  const ownedIds = Object.keys(UNLOCKS).filter(id => hasUnlock(id));
+  const unowned = Object.entries(UNLOCKS)
+    .filter(([id]) => !hasUnlock(id))
+    .map(([id, u]) => ({ id, ...u }))
+    .sort((a, b) => a.cost - b.cost);
+  // The "next goal" is the cheapest unowned unlock. If everything is
+  // owned, show a victory state instead.
+  const nextGoal = unowned[0];
+  // Header div sits ABOVE the unlock grid as a separate block.
+  const headerWrap = document.createElement('div');
+  headerWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;width:100%;max-width:780px;margin-bottom:8px;animation:winFadeIn 0.55s ease-out 1.0s both;';
+  if (nextGoal) {
+    const ownedCount = ownedIds.length;
+    const totalUnlocks = Object.keys(UNLOCKS).length;
+    const pct = Math.min(1, meta.essence / nextGoal.cost);
+    const ready = pct >= 1;
+    const remaining = Math.max(0, nextGoal.cost - meta.essence);
+    headerWrap.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:Georgia,serif;font-size:10px;letter-spacing:1.5px;">
+        <span style="color:${ready ? '#a0e8ff' : '#c9a86a'};font-weight:bold;">
+          <span style="color:#a0e8ff;font-size:13px;">\u2726 ${meta.essence}</span>
+          <span style="opacity:0.55;font-size:9px;margin-left:6px;">ESSENCE BANKED</span>
+        </span>
+        <span style="color:rgba(200,190,210,0.55);font-size:9px;">UNLOCKS: ${ownedCount} / ${totalUnlocks}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-family:Georgia,serif;">
+        <span style="font-size:9px;color:rgba(200,190,210,0.55);letter-spacing:1.5px;flex-shrink:0;">NEXT</span>
+        <div style="flex:1;height:6px;background:rgba(20,12,28,0.85);border-radius:3px;overflow:hidden;border:1px solid ${nextGoal.tint}55;position:relative;">
+          <div style="height:100%;width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,${nextGoal.tint}aa,${nextGoal.tint});box-shadow:${ready ? `0 0 12px ${nextGoal.tint}` : 'none'};transition:width 0.4s ease;"></div>
+        </div>
+        <span style="font-size:11px;color:${ready ? '#a0e8ff' : nextGoal.tint};font-weight:bold;letter-spacing:0.5px;flex-shrink:0;text-shadow:0 0 6px ${ready ? 'rgba(160,232,255,0.5)' : (nextGoal.tint + '44')};">
+          ${nextGoal.name}
+        </span>
+        <span style="font-size:10px;color:${ready ? '#a0e8ff' : 'rgba(200,190,210,0.65)'};font-style:italic;flex-shrink:0;min-width:80px;text-align:right;">
+          ${ready ? '\u00b7 READY' : `\u00b7 ${remaining} more`}
+        </span>
+      </div>
+    `;
+  } else {
+    // All unlocks owned \u2014 celebratory header
+    headerWrap.innerHTML = `
+      <div style="text-align:center;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#f4d9a0;font-style:italic;text-shadow:0 0 8px rgba(244,217,160,0.5);">
+        \u2726 ALL UNLOCKS BOUND \u00b7 ${meta.essence} ESSENCE BANKED \u2726
+      </div>
+    `;
+  }
+  row.appendChild(headerWrap);
+
+  // 2-col grid; each cell is one unlock-row. Now nested inside row, with
+  // the header above. Need a separate inner div so the grid layout works.
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:4px 12px;width:100%;';
+  row.appendChild(grid);
+  // Strip the grid layout off the parent \u2014 header + grid stack vertically
+  row.style.display = 'flex';
+  row.style.flexDirection = 'column';
+  row.style.alignItems = 'center';
+  row.style.gap = '0';
   row.style.maxWidth = '780px';
   row.style.width = '100%';
   let staggerIdx = 0;
@@ -4395,16 +4459,41 @@ function renderMetaShop(animate = false) {
     `;
     if (!owned && canAfford) {
       rowEl.addEventListener('click', () => {
+        // Detect FIRST EVER purchase before consumption — the player
+        // crossing this threshold is a major roguelite progression
+        // beat ("permanent power earned") and deserves more than a
+        // double-ping. Subsequent purchases keep the cleaner cue.
+        const isFirstUnlockEver = ownedIds.length === 0;
         if (purchaseUnlock(id)) {
-          // Polish: feedback-audit team flagged that essence purchases
-          // were the most-silent transaction in the game — UI rerendered
-          // and the unlock applied, but no audio confirmed the spend
-          // landed. Double ping (cyan-coded essence frequency 880 +
-          // higher confirmation 1320 at +120ms) gives the sale its
-          // "transaction received" beat without competing with the
-          // ambient menu pad.
-          try { synthPing(880, 0.45, 0.22); } catch (_e) {}
-          setTimeout(() => { try { synthPing(1320, 0.4, 0.20); } catch (_e) {} }, 120);
+          if (isFirstUnlockEver) {
+            // First-purchase celebration — chord + screen flash + a
+            // pickup-banner-style notification announcing what was
+            // bound. This is the moment the meta loop locks in;
+            // it should FEEL like a milestone, not a transaction.
+            try { synthChord(523, 1.2, 0.85); } catch (_e) {}
+            setTimeout(() => { try { synthFanfare(0.65); } catch (_e) {} }, 180);
+            try {
+              // Inline hex → "r,g,b" conversion. Trim "#", parse the
+              // 6-char hex, split into bytes. Falls back to gold on
+              // anything malformed so the flash still fires.
+              const _hx = (u.tint || '#c9a86a').replace('#', '').padStart(6, 'c');
+              const _hn = parseInt(_hx, 16);
+              const _flashRgb = `${(_hn >> 16) & 255},${(_hn >> 8) & 255},${_hn & 255}`;
+              triggerScreenFlash(`rgba(${_flashRgb}, 0.22)`, 0.6);
+            } catch (_e) {}
+            try {
+              pushNotification({
+                kind: 'achievement',
+                title: u.name.toUpperCase() + ' BOUND',
+                body: u.desc + ' — every future descent begins with this.',
+                tint: u.tint,
+              });
+            } catch (_e) {}
+          } else {
+            // Routine purchase — same double-ping as before, no fanfare
+            try { synthPing(880, 0.45, 0.22); } catch (_e) {}
+            setTimeout(() => { try { synthPing(1320, 0.4, 0.20); } catch (_e) {} }, 120);
+          }
           renderMetaShop();
         }
       });
@@ -4419,7 +4508,7 @@ function renderMetaShop(animate = false) {
         rowEl.style.transform = 'translateX(0)';
       });
     }
-    row.appendChild(rowEl);
+    grid.appendChild(rowEl);
   }
 }
 
