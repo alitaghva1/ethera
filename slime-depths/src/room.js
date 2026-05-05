@@ -1767,6 +1767,69 @@ function drawDoorPreview(ctx, cx, cy, kind) {
 // fully closed, drawDoor swaps to drawWallTile — the entry door
 // becomes a wall, communicating "you can't go back." Amber torch glow
 // is layered over the sprite, anchored at the room-interior side.
+// Door light tint table — drives the colored glow each door spills
+// into the room. Top-down priority, same intent as the keystone-seal
+// priority in doorPortals.js: build identity (theme) and special
+// rewards override generic kind, generic kind overrides default.
+//
+// Each entry: { core, mid, boost } where:
+//   core   — RGB triplet for the gradient inner stop (alpha 0.45 * a)
+//   mid    — RGB triplet for the mid stop (alpha 0.26 * a)
+//   boost  — multiplier on alpha (1.0 = default amber, >1.0 makes the
+//            door visibly brighter for build-defining choices so the
+//            player's eye snaps to fusion / boss / themed gates from
+//            across the room)
+const _DOOR_AMBER = {
+  coreR: 255, coreG: 165, coreB: 80,
+  midR:  160, midG:  70,  midB:  30,
+  boost: 1.0,
+};
+const _DOOR_TINT_BY_THEME = {
+  storm:  { coreR: 130, coreG: 200, coreB: 255, midR: 60,  midG: 110, midB: 200, boost: 1.2 },
+  flame:  { coreR: 255, coreG: 130, coreB: 60,  midR: 200, midG: 70,  midB: 30,  boost: 1.2 },
+  blood:  { coreR: 220, coreG: 70,  coreB: 90,  midR: 120, midG: 30,  midB: 50,  boost: 1.2 },
+  vow:    { coreR: 240, coreG: 230, coreB: 180, midR: 180, midG: 160, midB: 110, boost: 1.15 },
+  shadow: { coreR: 180, coreG: 140, coreB: 240, midR: 100, midG: 70,  midB: 160, boost: 1.2 },
+};
+const _DOOR_TINT_BY_SEAL = {
+  fusion:    { coreR: 255, coreG: 150, coreB: 90,  midR: 200, midG: 80,  midB: 40,  boost: 1.45 },
+  legendary: { coreR: 255, coreG: 180, coreB: 240, midR: 180, midG: 100, midB: 200, boost: 1.30 },
+  mythic:    { coreR: 255, coreG: 240, coreB: 200, midR: 220, midG: 180, midB: 130, boost: 1.50 },
+};
+const _DOOR_TINT_BY_KIND = {
+  boss:      { coreR: 220, coreG: 50,  coreB: 60,  midR: 130, midG: 20,  midB: 30,  boost: 1.40 },
+  miniboss:  { coreR: 200, coreG: 80,  coreB: 80,  midR: 130, midG: 40,  midB: 50,  boost: 1.20 },
+  altar:     { coreR: 200, coreG: 60,  coreB: 80,  midR: 110, midG: 25,  midB: 40,  boost: 1.15 },
+  shop:      { coreR: 255, coreG: 200, coreB: 100, midR: 200, midG: 130, midB: 50,  boost: 1.20 },
+  sanctuary: { coreR: 130, coreG: 230, coreB: 170, midR: 60,  midG: 150, midB: 110, boost: 1.15 },
+  reward:    { coreR: 130, coreG: 230, coreB: 170, midR: 60,  midG: 150, midB: 110, boost: 1.15 },
+  event:     { coreR: 200, coreG: 140, coreB: 240, midR: 120, midG: 80,  midB: 180, boost: 1.15 },
+  challenge: { coreR: 255, coreG: 170, coreB: 90,  midR: 180, midG: 110, midB: 50,  boost: 1.10 },
+  elite:     { coreR: 220, coreG: 90,  coreB: 90,  midR: 130, midG: 50,  midB: 50,  boost: 1.15 },
+};
+
+// Resolve a door's spill-light tint via priority: special seal beats
+// theme beats kind beats default amber. Substrate doors (combat /
+// chestroom / trove with no theme/seal) fall through to amber so
+// they keep the warm baseline appearance.
+function _doorLightTint(door) {
+  if (!door) return _DOOR_AMBER;
+  // Special-seal reward doors first — fusion/legendary/mythic.
+  const reward = (door.rewardLabel || '').toLowerCase();
+  if (reward === 'fusion' && _DOOR_TINT_BY_SEAL.fusion) return _DOOR_TINT_BY_SEAL.fusion;
+  if (reward === 'legendary' && _DOOR_TINT_BY_SEAL.legendary) return _DOOR_TINT_BY_SEAL.legendary;
+  if (reward === 'mythic' && _DOOR_TINT_BY_SEAL.mythic) return _DOOR_TINT_BY_SEAL.mythic;
+  // Themed rooms second — build-axis identity.
+  if (door.roomTheme && _DOOR_TINT_BY_THEME[door.roomTheme]) {
+    return _DOOR_TINT_BY_THEME[door.roomTheme];
+  }
+  // Kind-based tints third.
+  const kind = door.targetKind || door.kind;
+  if (kind && _DOOR_TINT_BY_KIND[kind]) return _DOOR_TINT_BY_KIND[kind];
+  // Default amber for substrate combat / chest / trove / start.
+  return _DOOR_AMBER;
+}
+
 function drawDoor(ctx, tx, ty, openAmount) {
   const x = tx * TILE, y = ty * TILE;
   const a = Math.max(0, Math.min(1, openAmount));
@@ -1825,19 +1888,44 @@ function drawDoor(ctx, tx, ty, openAmount) {
 
   ctx.drawImage(sprite, sx, 0, FW, FH, dx, dy, RENDER, RENDER);
 
-  // Amber torch glow — sells "another room awaits" by warm-tinting
-  // the door interior. Stronger when open. Painted over the sprite
-  // (bottom-anchored radial for north walls; top-anchored for south
-  // walls so the warm light spills into the room from the matching
-  // side of the doorway).
+  // Door light spill — the PRIMARY distance-read signal of what's
+  // behind the door. Hades pattern: each room kind / theme floods
+  // its color into the doorway, so the player reads the choice from
+  // across the room before they ever approach.
+  //
+  // Default: warm amber (the prior tuning, kept as the substrate
+  // baseline). Themed/special rooms override with their own color:
+  //   storm     — cool blue-white
+  //   flame     — bright orange-red
+  //   blood     — deep red
+  //   vow       — pale gold-cream
+  //   shadow    — violet
+  //   fusion    — ember orange (build moment)
+  //   legendary — pink-lavender
+  //   mythic    — white-gold
+  //   boss      — crimson dread
+  //   altar     — dark blood-red
+  //   shop      — warm amber-gold (slightly brighter than default)
+  //   sanctuary — soft healing green
+  //
+  // Pulled from the door's roomTheme / rewardLabel / targetKind
+  // (looked up via the same _getDoorAt path the lintel pass uses).
+  // Substrate combat doors keep the original amber so they look
+  // like generic dungeon doors.
+  const tint = _doorLightTint(_getDoorAt && _getDoorAt(tx, ty));
   const glowAnchorY = isSouthWall ? (y + TILE * 0.22) : (y + TILE * 0.78);
   const glow = ctx.createRadialGradient(
     cx, glowAnchorY, 2,
-    cx, y + TILE * 0.5, TILE * 0.55,
+    cx, y + TILE * 0.5, TILE * 0.62,
   );
-  glow.addColorStop(0, 'rgba(255, 165, 80, ' + (0.45 * (0.3 + a * 0.7)).toFixed(3) + ')');
-  glow.addColorStop(0.5, 'rgba(160, 70, 30, ' + (0.26 * (0.3 + a * 0.7)).toFixed(3) + ')');
-  glow.addColorStop(1, 'rgba(20, 8, 4, 0)');
+  // Build alpha from the open-amount (closed doors glow weaker, open
+  // doors blaze through). Apply a slight bump for special tints so
+  // theme/seal doors read more strongly than amber-default ones.
+  const glowAlpha = (0.45 * (0.3 + a * 0.7)) * tint.boost;
+  const midAlpha  = (0.26 * (0.3 + a * 0.7)) * tint.boost;
+  glow.addColorStop(0,   `rgba(${tint.coreR}, ${tint.coreG}, ${tint.coreB}, ${glowAlpha.toFixed(3)})`);
+  glow.addColorStop(0.5, `rgba(${tint.midR}, ${tint.midG}, ${tint.midB}, ${midAlpha.toFixed(3)})`);
+  glow.addColorStop(1,   'rgba(20, 8, 4, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(x - 12, y - 8, TILE + 24, TILE + 16);
 
