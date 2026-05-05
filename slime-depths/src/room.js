@@ -3473,7 +3473,6 @@ export function drawTallPropOcclusion(ctx, hero, enemies) {
   // the current frame on top, doesn't advance time.
   const CHEST_W_HALF = (CHEST_W * CHEST_SCALE) / 2;
   const chestDrawH = CHEST_H * CHEST_SCALE;
-  const closedAsset = images.fx_chestcold;
   const prevSmoothing = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
   for (const c of roomChests) {
@@ -3481,14 +3480,15 @@ export function drawTallPropOcclusion(ctx, hero, enemies) {
     const cy = c.y * TILE + TILE / 2;
     const footY = cy + chestDrawH / 2 + 4;
     if (!anyActorNorth(cx, footY, CHEST_W_HALF)) continue;
-    let asset, frame;
     if (c.state === 'closed') {
-      asset = closedAsset;
-      frame = 0;
-    } else {
-      asset = c.variant === 'treasure' ? images.fx_chestcold : images.fx_chestfire;
-      frame = c.frame | 0;
+      // Procedural closed chest — draw on top of the actor for occlusion.
+      ctx.imageSmoothingEnabled = prevSmoothing;     // procedural draw uses default
+      drawClosedChestSprite(ctx, cx, cy);
+      ctx.imageSmoothingEnabled = false;
+      continue;
     }
+    const asset = c.variant === 'treasure' ? images.fx_chestcold : images.fx_chestfire;
+    const frame = c.frame | 0;
     if (!asset) continue;
     const sx = frame * CHEST_W;
     ctx.drawImage(
@@ -3505,8 +3505,14 @@ export function drawTallPropOcclusion(ctx, hero, enemies) {
 // Treasure-chest rendering — both variants share an identical 'closed' look
 // (gambling tension); their reveal happens through the opening animation.
 //
-// Closed → frame 0 of fx_chestcold (used as the shared 'closed chest'
-// silhouette, since chestcold's first frame is a clean closed box).
+// Closed → procedural pixel-art chest (drawClosedChestSprite below). Earlier
+// versions used frame 0 of fx_chestcold under the assumption that "frame 0
+// is a clean closed box" — but that was wrong: every frame of the asset
+// sheet shows the chest in some OPEN state (lid up, gold visible). Result:
+// the player walked into a treasure room and saw three already-open chests,
+// which kills the entire point of the room. The procedural draw below
+// matches the spritesheet's wood + gold-trim aesthetic so the opening
+// animation feels continuous when the player presses E.
 //
 // Opening → animate frames 0→15 of the variant's own sheet (chestcold for
 // treasure, chestfire for mimic). At ~12 fps a 16-frame loop is ~1.3 s — fast
@@ -3520,28 +3526,133 @@ const CHEST_W = 48;
 const CHEST_H = 48;
 const CHEST_SCALE = 1.4;     // ~67px rendered, matches hamlet prop scale
 
+// Procedural closed chest — chunky pixel-art rectangles. Anchored so the
+// bottom edge aligns with the open-spritesheet's bottom edge (cy + drawH/2 + 4)
+// — the moment the player presses E and the state flips to 'opening', the
+// sprite swap happens at the same baseline so the lid appears to lift from
+// where the closed lid was.
+function drawClosedChestSprite(ctx, cx, cy) {
+  // Footprint matches the spritesheet's apparent body: 56px wide.
+  // Total visible chest is body (24px tall) + domed lid (18px tall) = 42px,
+  // bottom edge at the same y as the open sprite's bottom edge.
+  const drawH = CHEST_H * CHEST_SCALE;     // 67
+  const baseY = Math.round(cy + drawH / 2 + 4) - 4;     // bottom of chest body
+  const W = 56;
+  const bodyH = 24;
+  const lidH = 18;
+  const left = Math.round(cx - W / 2);
+  const right = left + W;
+  const bodyTop = baseY - bodyH;
+  const lidTop = bodyTop - lidH;
+
+  // Drop shadow — same ellipse the open-chest path uses, kept identical so
+  // the chest doesn't visually "jump" when state flips to opening.
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(cx, baseY - 2, W / 3, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Body (the bottom rectangle) ─────────────────────────────────────
+  // Outline (1px dark border)
+  ctx.fillStyle = '#1a0e08';
+  ctx.fillRect(left - 1, bodyTop - 1, W + 2, bodyH + 2);
+  // Mid-tone wood fill
+  ctx.fillStyle = '#3d2818';
+  ctx.fillRect(left, bodyTop, W, bodyH);
+  // Top edge highlight (lighter wood band)
+  ctx.fillStyle = '#5a3a22';
+  ctx.fillRect(left + 2, bodyTop + 2, W - 4, 3);
+
+  // ── Lid (the rounded top half) ──────────────────────────────────────
+  // Lid outline — domed silhouette
+  ctx.fillStyle = '#1a0e08';
+  ctx.beginPath();
+  ctx.moveTo(left - 1, bodyTop + 1);
+  ctx.lineTo(left - 1, lidTop + lidH * 0.55);
+  ctx.quadraticCurveTo(cx, lidTop - 2, right + 1, lidTop + lidH * 0.55);
+  ctx.lineTo(right + 1, bodyTop + 1);
+  ctx.closePath();
+  ctx.fill();
+  // Lid main wood fill
+  ctx.fillStyle = '#3d2818';
+  ctx.beginPath();
+  ctx.moveTo(left, bodyTop);
+  ctx.lineTo(left, lidTop + lidH * 0.55);
+  ctx.quadraticCurveTo(cx, lidTop - 1, right, lidTop + lidH * 0.55);
+  ctx.lineTo(right, bodyTop);
+  ctx.closePath();
+  ctx.fill();
+  // Lid top highlight (small lighter strip across the dome's apex)
+  ctx.fillStyle = '#5a3a22';
+  ctx.beginPath();
+  ctx.moveTo(cx - 12, lidTop + 3);
+  ctx.quadraticCurveTo(cx, lidTop + 1, cx + 12, lidTop + 3);
+  ctx.quadraticCurveTo(cx, lidTop + 2, cx - 12, lidTop + 3);
+  ctx.fill();
+
+  // ── Gold trim ───────────────────────────────────────────────────────
+  ctx.fillStyle = '#c9a86a';
+  // Bottom horizontal band (above the floor line)
+  ctx.fillRect(left + 2, baseY - 4, W - 4, 3);
+  // Lid/body seam — runs across where the lid meets the body
+  ctx.fillRect(left, bodyTop - 2, W, 3);
+  // Vertical corner braces
+  ctx.fillRect(left + 1, bodyTop, 3, bodyH);
+  ctx.fillRect(right - 4, bodyTop, 3, bodyH);
+  // Center vertical reinforcement straps (two narrow bands flanking the lock)
+  ctx.fillRect(cx - 14, bodyTop, 2, bodyH);
+  ctx.fillRect(cx + 12, bodyTop, 2, bodyH);
+
+  // ── Lock plate + keyhole ────────────────────────────────────────────
+  const lockW = 12;
+  const lockH = 10;
+  const lockY = bodyTop - 3;     // straddles the lid/body seam
+  // Lock plate dark background
+  ctx.fillStyle = '#1a0e08';
+  ctx.fillRect(cx - lockW / 2 - 1, lockY - 1, lockW + 2, lockH + 2);
+  // Lock plate gold face
+  ctx.fillStyle = '#d8b878';
+  ctx.fillRect(cx - lockW / 2, lockY, lockW, lockH);
+  // Lock plate inner shadow on the bottom edge
+  ctx.fillStyle = '#9a7a44';
+  ctx.fillRect(cx - lockW / 2, lockY + lockH - 2, lockW, 2);
+  // Keyhole — circle + slot
+  ctx.fillStyle = '#1a0e08';
+  ctx.beginPath();
+  ctx.arc(cx, lockY + 4, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(cx - 1, lockY + 4, 2, 4);
+
+  // ── Glint / shine on the lid (top-left highlight) ──────────────────
+  ctx.fillStyle = 'rgba(255, 230, 170, 0.55)';
+  ctx.fillRect(left + 6, lidTop + 5, 6, 1);
+  ctx.fillRect(left + 7, lidTop + 6, 4, 1);
+  // Subtle gold-corner glint on the front-top corners (reads as "polished metal")
+  ctx.fillStyle = 'rgba(255, 230, 170, 0.4)';
+  ctx.fillRect(left + 1, bodyTop, 3, 1);
+  ctx.fillRect(right - 4, bodyTop, 3, 1);
+}
+
 export function drawChests(ctx, dt) {
-  const closedAsset = images.fx_chestcold;     // shared closed appearance
   for (const c of roomChests) {
     const cx = c.x * TILE + TILE / 2;
     const cy = c.y * TILE + TILE / 2;
-    let asset, frame;
     if (c.state === 'closed') {
-      asset = closedAsset;
-      frame = 0;
-    } else {
-      // 'opening' or 'opened' — variant-specific animation
-      asset = c.variant === 'treasure' ? images.fx_chestcold : images.fx_chestfire;
-      if (c.state === 'opening') {
-        c.frameTime += dt;
-        const advance = (c.frameTime * CHEST_FPS) | 0;
-        c.frame = Math.min(CHEST_FRAMES - 1, advance);
-        if (c.frame >= CHEST_FRAMES - 1) {
-          c.state = 'opened';
-        }
-      }
-      frame = c.frame;
+      // Procedural closed chest. No spritesheet asset needed.
+      drawClosedChestSprite(ctx, cx, cy);
+      continue;
     }
+    // 'opening' or 'opened' — variant-specific animation from spritesheet
+    const asset = c.variant === 'treasure' ? images.fx_chestcold : images.fx_chestfire;
+    if (c.state === 'opening') {
+      c.frameTime += dt;
+      const advance = (c.frameTime * CHEST_FPS) | 0;
+      c.frame = Math.min(CHEST_FRAMES - 1, advance);
+      if (c.frame >= CHEST_FRAMES - 1) {
+        c.state = 'opened';
+      }
+    }
+    const frame = c.frame;
     if (!asset) continue;     // not loaded yet
     const drawW = CHEST_W * CHEST_SCALE;
     const drawH = CHEST_H * CHEST_SCALE;
