@@ -267,12 +267,23 @@ const weather = [];
 let weatherInit = false;
 let weatherBiome = 'vault';
 
+// Lateral drift values are LATERAL SWAY VELOCITY peaks (px/s). Originally
+// tuned at 14-22, but those values produced visibly meandering particles
+// that wandered side-to-side as much as they fell — reading as "drunk
+// mosquito" rather than "atmospheric drift." Especially bad in vault
+// (slow 8-18 px/s fall + 22 px/s sway = particle nearly horizontal).
+// Combined with the 4.8 s sine period, that produced visible direction
+// reversals every ~2.4 s — the "janky at times" symptom in playtest.
+// Halved to ~30-50% of fall speed: particles read as "wind catches them"
+// rather than "actively swinging." Oscillation frequency also slowed
+// from 1.3 to 0.7 in updateWeather (period 4.8 s → 9 s), so reversals
+// are gentler S-curves rather than sharp zigzags.
 const WEATHER_STYLES = {
   crypt: {
     color: [200, 230, 255],       // pale ice blue
     fallDir: 1,                    // +1 = down, -1 = up
     speed: 16, speedRng: 12,
-    drift: 18,                     // lateral sway amplitude
+    drift: 9,
     sizeBase: 1.5, sizeRng: 1.8,
     alpha: 0.55,
     glow: true,
@@ -282,7 +293,7 @@ const WEATHER_STYLES = {
     color: [245, 215, 160],       // warm gold dust
     fallDir: 1,
     speed: 8, speedRng: 10,
-    drift: 22,
+    drift: 6,
     sizeBase: 1.2, sizeRng: 1.2,
     alpha: 0.4,
     glow: false,
@@ -292,7 +303,7 @@ const WEATHER_STYLES = {
     color: [220, 120, 200],       // purple-magenta embers
     fallDir: -1,                   // rise
     speed: 14, speedRng: 14,
-    drift: 20,
+    drift: 8,
     sizeBase: 1.6, sizeRng: 1.8,
     alpha: 0.62,
     glow: true,
@@ -302,7 +313,7 @@ const WEATHER_STYLES = {
     color: [255, 160, 80],        // orange ash
     fallDir: 1,                    // falling — like ash from above
     speed: 20, speedRng: 18,
-    drift: 14,
+    drift: 7,
     sizeBase: 1.8, sizeRng: 2.0,
     alpha: 0.62,
     glow: true,
@@ -349,13 +360,23 @@ export function updateWeather(dt, cameraX, cameraY) {
     weatherInit = true;
   }
   for (const w of weather) {
-    // Lateral drift via sine wave
-    w.x += w.vx * dt + Math.sin(w.phase + w.life * 1.3) * w.driftAmp * dt;
+    // Lateral drift via sine wave. Frequency multiplier 0.7 (was 1.3) —
+    // period extended from 4.8 s to ~9 s so most particles complete only
+    // ONE direction reversal over their 6-13 s lifetime instead of 2-3.
+    // Reads as "particle gets caught by a slow gust" rather than "particle
+    // visibly zigzagging."
+    w.x += w.vx * dt + Math.sin(w.phase + w.life * 0.7) * w.driftAmp * dt;
     w.y += w.vy * dt;
     w.life -= dt;
-    // Offscreen cull
-    const offX = Math.abs(w.x - cameraX) > 720;
-    const offY = Math.abs(w.y - cameraY) > 420;
+    // Offscreen cull. Buffer (1100×640) is intentionally larger than the
+    // 1280×720 design viewport so particles don't pop in/out at the
+    // visible edge on widescreen monitors where the canvas can be wider
+    // than the design width. Previous values (720×420) culled particles
+    // that were still visible inside ultrawide viewports, which combined
+    // with the fade-in alpha produced visible blink-out moments at the
+    // screen edge.
+    const offX = Math.abs(w.x - cameraX) > 1100;
+    const offY = Math.abs(w.y - cameraY) > 640;
     if (w.life <= 0 || offX || offY) respawnWeather(w, cameraX, cameraY);
   }
 }
