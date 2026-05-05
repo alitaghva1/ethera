@@ -47,6 +47,46 @@ let _mapPickInFlight = false;
 // Tracks whether onRoomCleared has fired for the current room, so we only
 // trigger the open-doors animation once per clear. Reset on transition.
 let _roomClearedNotified = false;
+
+// ───── Combat-aware atmospheric dim ─────────────────────────────────────
+// The dungeon used to render dust + weather + themed-room motes at full
+// alpha across the playable area regardless of combat state. With ~62
+// ambient particles drifting through the same screen space as enemy
+// projectiles, the player's eye constantly evaluated motes as
+// "is this a gameplay-relevant object?" — adding cognitive load during
+// combat. Reference roguelites (Hades, Dead Cells, Gungeon) handle this
+// with a clean separation: atmospheric depth lives in a background plane
+// or fades out during combat, never competing with active combat reads.
+//
+// `_atmosphericDim` lerps 0→1 toward 1 when combat is active (combat or
+// boss room with live enemies) and back toward 0 when the room is clear
+// or non-combat. Drives:
+//   - Dust   : maskAlphaInside on the playable rect → 1 when peaceful,
+//              0 when combat (particles inside playable area fade to
+//              invisible during combat, void-edge particles unaffected)
+//   - Weather: same maskAlphaInside on the playable rect (default mask
+//              alpha was 0; now lerps 0 ↔ 1 so the void-only behavior
+//              persists during combat and softly extends during peace)
+//   - Themed room motes: layer alpha multiplier 1.0 → 0.3 (screen-space,
+//              can't be masked, so we just dim the layer during combat)
+//
+// Lerp asymmetric: 0.4s into combat (fast clean-up), 0.9s out (slower
+// "room exhales after the fight" feel).
+let _atmosphericDim = 0;
+function updateAtmosphericDim(dt) {
+  const kind = floor[roomIndex]?.kind;
+  const isCombatRoom = kind === 'combat' || kind === 'boss' || kind === 'challenge';
+  const hasLiveEnemies = enemies.some(e => !e.dead);
+  const target = (isCombatRoom && !room.cleared && hasLiveEnemies) ? 1 : 0;
+  // Asymmetric lerp rates — fade IN faster (cleaner combat reads sooner),
+  // fade OUT slower (the post-clear "exhale" feels more rewarding when it
+  // takes a moment to bloom back).
+  const rate = (target > _atmosphericDim) ? 1 / 0.4 : 1 / 0.9;     // 1/sec
+  const k = 1 - Math.exp(-rate * dt);
+  _atmosphericDim += (target - _atmosphericDim) * k;
+  if (_atmosphericDim < 0.0005) _atmosphericDim = 0;
+  if (_atmosphericDim > 0.9995) _atmosphericDim = 1;
+}
 // Round-7 Sprint B refactor — seenEnemyTypes moved to
 // src/modals/achievementsModal.js (used only by the bestiary tab).
 import { spawnEnemy, updateEnemies, drawEnemy, drawEnemyTelegraphs, drawPerfectDodgeRing, drawEliteAffixTooltips, enemies, clearEnemies, updateFlames, drawFlames, clearFlames, updateEmberRings, drawEmberRings, clearEmberRings, drawCorpses, loadCodex, TYPES as ENEMY_TYPES } from './enemies.js';
@@ -4963,6 +5003,12 @@ function _tickInner(now) {
     updateDust(realDt, camera.x, camera.y);
     updateWeather(realDt, camera.x, camera.y);
     updateAmbientCreatures(realDt, camera.x, camera.y);
+    // Atmospheric dim — drives a smooth 0→1 fade for ambient particle
+    // layers (dust / weather / themed motes) during active combat.
+    // Source of truth lives in the render block (called per frame regardless
+    // of update gating); see _atmosphericDim usage below for the full
+    // contract.
+    updateAtmosphericDim(realDt);
     updateFx(dt);
     updateHitMarkers(dt);
     updatePedestals(dt);
@@ -6387,20 +6433,24 @@ function render() {
   // particles so death-bursts can still pop on top.
   drawSoulTethers(ctx);
   drawParticles(ctx);
-  drawDust(ctx);
-  // Biome weather — ice motes, ash, embers. Drawn on top of gameplay so
-  // the atmosphere reads through, but still inside camera transform so
-  // parallax tracks the world, not the screen. The mask rect clips
-  // weather rendering to the VOID outside the playable rectangle: in
-  // dungeon rooms, the orange/embered motes used to drift across combat
-  // space and compete with enemy projectiles + telegraphs for the
-  // player's eye. Now they only show in the dark border around the
-  // walls. Hamlet (room.kind === 'hamlet') gets no mask — its painted
-  // scene IS the world, and weather isn't active there anyway.
-  const _weatherMask = room.kind === 'hamlet'
+  // Combat-aware atmospheric dim. _atmosphericDim lerps 0 (peaceful)
+  // → 1 (active combat). The playable mask is the dungeon room rect;
+  // hamlet renders without a mask (its scene IS the world).
+  //   - Dust:    inside playable rect = (1 - dim) alpha. Combat = 0
+  //              alpha inside, peaceful = 1. Outside the rect always
+  //              full alpha (atmospheric depth in the void).
+  //   - Weather: same mask, default 0 alpha inside (void-only). During
+  //              peace it lerps up to 1 inside, gently extending the
+  //              biome layer into the playable area.
+  //   - Themed motes: screen-space (can't be masked), so we just dim
+  //              the entire layer to ~30% during combat.
+  const _playableMask = room.kind === 'hamlet'
     ? null
     : { left: 0, top: 0, right: room.w * TILE, bottom: room.h * TILE };
-  drawWeather(ctx, _weatherMask);
+  const _dustInsideAlpha = 1 - _atmosphericDim;
+  const _weatherInsideAlpha = (1 - _atmosphericDim) * 0.6;     // softer extension
+  drawDust(ctx, _playableMask, _dustInsideAlpha);
+  drawWeather(ctx, _playableMask, _weatherInsideAlpha);
   // Ambient creatures — bats, ravens, moths passing through. Silhouettes.
   drawAmbientCreatures(ctx);
   drawCounterIndicator(ctx, hero.x, hero.y);
@@ -6775,9 +6825,13 @@ function render() {
   // when the active room carries a roomTheme. Drawn after screen-flash
   // (so a hurt-flash washes the world only) but before the HUD (so the
   // motes don't tint hearts / chips). Suppressed during cinematic
-  // intros — same gate as the HUD itself uses just below.
+  // intros — same gate as the HUD itself uses just below. Layer alpha
+  // multiplier follows the combat-aware atmospheric dim: full opacity
+  // when peaceful, ~30% during active combat so they don't compete
+  // with enemy projectiles + telegraphs for the player's eye.
   if (!(bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0)) {
-    drawThemedRoomMotes(ctx);
+    const _motesAlpha = 1 - 0.7 * _atmosphericDim;
+    drawThemedRoomMotes(ctx, _motesAlpha);
   }
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,

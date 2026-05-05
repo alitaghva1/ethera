@@ -77,8 +77,16 @@ export function updateThemedRoomMotes(dt, w, h) {
   }
 }
 
-export function drawThemedRoomMotes(ctx) {
+// alphaMul: multiplier applied to every mote's final alpha. Used by the
+// combat-aware atmospheric dim — themed motes are screen-space (can't
+// be masked to the void around the room), so during active combat the
+// caller fades the entire layer to ~30% so the motes don't compete
+// with enemy projectiles + telegraphs for the player's eye. Default 1
+// preserves prior behavior.
+export function drawThemedRoomMotes(ctx, alphaMul = 1) {
   if (!_motes.length) return;
+  const layerMul = Math.max(0, Math.min(1, alphaMul));
+  if (layerMul <= 0.005) return;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const m of _motes) {
@@ -87,7 +95,7 @@ export function drawThemedRoomMotes(ctx) {
     // Fade in for 0.6s then fade out over the last 1.2s
     const fadeIn = Math.min(1, m.life / 0.6);
     const fadeOut = Math.min(1, (m.maxLife - m.life) / 1.2);
-    const a = Math.max(0, Math.min(fadeIn, fadeOut));
+    const a = Math.max(0, Math.min(fadeIn, fadeOut)) * layerMul;
     if (a <= 0) continue;
     const flicker = 0.7 + 0.3 * Math.sin(m.phase + m.life * m.phaseSpeed * 2);
     const r = m.size;

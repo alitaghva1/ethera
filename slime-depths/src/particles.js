@@ -225,17 +225,32 @@ export function updateDust(dt, cameraX, cameraY) {
   }
 }
 
-export function drawDust(ctx) {
+// Draw dust. Optional `maskRect` defines a rectangle inside which
+// particles render at `maskAlphaInside` instead of full alpha — used to
+// fade ambient motes out of the playable dungeon space during combat.
+// No mask = render everywhere (default). maskAlphaInside: 1 = full
+// (visible), 0 = invisible. Smooth fade transitions are driven by the
+// caller lerping maskAlphaInside between 0 and 1 frame-by-frame.
+export function drawDust(ctx, maskRect = null, maskAlphaInside = 1) {
   const st = DUST_STYLES[dustBiome] || DUST_STYLES.vault;
   const [r, g, b] = st.color;
+  const hasMask = !!(maskRect
+    && Number.isFinite(maskRect.left) && Number.isFinite(maskRect.right)
+    && Number.isFinite(maskRect.top)  && Number.isFinite(maskRect.bottom));
+  const inMask = hasMask
+    ? (x, y) => x >= maskRect.left && x <= maskRect.right && y >= maskRect.top && y <= maskRect.bottom
+    : () => false;
+  const insideMul = Math.max(0, Math.min(1, maskAlphaInside));
   // Glow pass (inferno/abyss) — additive-style bloom via white composite
   if (st.glow) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of dust) {
+      const mul = inMask(d.x, d.y) ? insideMul : 1;
+      if (mul <= 0.005) continue;
       const t = d.life / d.maxLife;
       const fade = Math.min(t, 1 - t) * 2;
-      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.6;
+      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.6 * mul;
       if (a <= 0.005) continue;
       ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
       ctx.beginPath();
@@ -245,9 +260,12 @@ export function drawDust(ctx) {
     ctx.restore();
   }
   for (const d of dust) {
+    const mul = inMask(d.x, d.y) ? insideMul : 1;
+    if (mul <= 0.005) continue;
     const t = d.life / d.maxLife;
     const fade = Math.min(t, 1 - t) * 2;
-    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha));
+    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * mul;
+    if (a <= 0.005) continue;
     ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
     ctx.fillRect(d.x, d.y, d.size, d.size);
   }
@@ -381,33 +399,34 @@ export function updateWeather(dt, cameraX, cameraY) {
   }
 }
 
-// Draw weather. Optional `maskRect` clips the particle rendering to the
-// area OUTSIDE that rectangle — used to keep biome weather in the void
-// around the dungeon instead of letting orange motes drift across the
-// playable floor where they compete with enemy projectiles + telegraphs.
-// Passing null / omitting the rect renders particles everywhere.
+// Draw weather. Mirrors drawDust's signature: optional `maskRect`
+// defines a rectangle inside which particles render at maskAlphaInside
+// instead of full alpha. Default maskAlphaInside = 0 preserves the
+// "weather only outside the playable rect" behavior. Caller can lerp
+// maskAlphaInside between 0 and 1 to crossfade weather in/out of the
+// playable area as combat begins/ends.
 //
-// Format: { left, top, right, bottom } in world-space pixels.
-export function drawWeather(ctx, maskRect = null) {
+// Format: maskRect = { left, top, right, bottom } in world-space pixels.
+export function drawWeather(ctx, maskRect = null, maskAlphaInside = 0) {
   const st = WEATHER_STYLES[weatherBiome] || WEATHER_STYLES.vault;
   const [r, g, b] = st.color;
-  // Mask predicate. Hoisted to avoid recomputing the bounds check per
-  // particle per pass when maskRect is null.
   const hasMask = !!(maskRect
     && Number.isFinite(maskRect.left) && Number.isFinite(maskRect.right)
     && Number.isFinite(maskRect.top)  && Number.isFinite(maskRect.bottom));
   const inMask = hasMask
     ? (x, y) => x >= maskRect.left && x <= maskRect.right && y >= maskRect.top && y <= maskRect.bottom
     : () => false;
+  const insideMul = Math.max(0, Math.min(1, maskAlphaInside));
   // Additive glow pass for hot biomes
   if (st.glow) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const w of weather) {
-      if (inMask(w.x, w.y)) continue;
+      const mul = inMask(w.x, w.y) ? insideMul : 1;
+      if (mul <= 0.005) continue;
       const t = w.life / w.maxLife;
       const fade = Math.min(t, 1 - t) * 2;
-      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.55;
+      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.55 * mul;
       if (a <= 0.005) continue;
       ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
       ctx.beginPath();
@@ -418,10 +437,12 @@ export function drawWeather(ctx, maskRect = null) {
   }
   // Solid core pass
   for (const w of weather) {
-    if (inMask(w.x, w.y)) continue;
+    const mul = inMask(w.x, w.y) ? insideMul : 1;
+    if (mul <= 0.005) continue;
     const t = w.life / w.maxLife;
     const fade = Math.min(t, 1 - t) * 2;
-    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha));
+    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * mul;
+    if (a <= 0.005) continue;
     ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
     ctx.fillRect(w.x, w.y, w.size, w.size);
   }
