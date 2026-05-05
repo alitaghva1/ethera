@@ -322,22 +322,22 @@ const deathEl = document.getElementById('deathScreen');
 deathEl.style.flexDirection = 'column';
 deathEl.style.padding = '20px';
 deathEl.style.boxSizing = 'border-box';
-// Tall-content modal: stats grid + relics + watcher ledger + essence row +
-// sanctuary unlock cards + button row can total 720+ design px depending on
-// run length. Use `safe center` for justify (browsers anchor overflowing
-// content to start instead of clipping both edges with regular center) +
-// overflow-y:auto so any tail spillover scrolls instead of clipping. The
-// hidden scrollbar style on #hud children keeps it visually clean.
+// Slim death screen: title + ornament + subtitle + 2-line stats +
+// 1-line essence + optional memory tag + button row ≈ 290 design px.
+// Used to be ~720 px when this panel also hosted the meta-shop and
+// watcher ledger; that content moved to the hamlet shrine. Keep
+// safe-center + overflow-y:auto so the panel still degrades gracefully
+// at narrow viewport scales.
 deathEl.style.justifyContent = 'safe center';
 deathEl.style.overflowY = 'auto';
 deathEl.innerHTML = DEATH_SCREEN_HTML;
-// restartBtn is shared between the real death-screen ("NEW RUN") and the
-// sanctuary-opened-from-hamlet ("← MAIN MENU") re-skins. The sanctuary re-
-// skins override btn.onclick, but this addEventListener stays attached and
-// would fire startRun() alongside the override — playing the wake while
-// the override simultaneously returns to hamlet. `_restartBtnOverridden` is
-// set by showSanctuary / showSanctuaryFromHamlet to suppress startRun when
-// the button is in overlay-exit mode instead of actual-new-run mode.
+// `_restartBtnOverridden` was set by the old showSanctuary re-skin that
+// repainted the death screen as a sanctuary panel. Sanctuary now lives
+// in its own shrine modal, so this flag is currently always false.
+// The click + R-key handlers below still guard on it so a future
+// overlay flow that rebinds restartBtn.onclick can flip it true and
+// suppress the default startRun() / showHamlet() behavior without
+// having to teach every handler about a new flag.
 let _restartBtnOverridden = false;
 // When set, NPC service modals (curses / memory / sanctuary / smith /
 // oracle) close back to the LIVE hamlet canvas underneath rather than
@@ -1504,6 +1504,85 @@ document.getElementById('dialogueSpeakBtn').addEventListener('mouseleave', (e) =
   e.target.style.background = 'transparent';
 });
 
+// ─── Sanctuary Shrine modal ──────────────────────────────────────────────
+// The meta-progression shop. Used to live on the death screen; moved
+// here as part of the "death = a moment, hamlet = the place" split.
+// Players walk to the shrine in the hamlet (north slab, the painted
+// altar prop) and press E to open this modal — same pattern as
+// dialogue with NPCs, just without the conversation chrome.
+//
+// Reuses the existing renderMetaShop function (which now takes a
+// container ID parameter). All purchase logic — first-purchase
+// celebration, row-burst animation, audio cues — works unchanged.
+const shrineEl = document.createElement('div');
+shrineEl.style.cssText = `
+  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(4,2,8,0.78);color:#ddd;pointer-events:auto;font-family:Georgia,serif;
+  z-index:20;backdrop-filter:blur(2px);
+`;
+shrineEl.innerHTML = `
+  <div id="shrinePanel" style="
+    max-width:760px;width:92%;
+    padding:30px 38px 24px;
+    background:linear-gradient(180deg,rgba(20,12,28,0.97),rgba(8,4,12,0.99));
+    box-shadow:0 0 32px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(160,232,255,0.35), inset 0 0 18px rgba(0,0,0,0.5);
+    position:relative;
+    animation:modalFadeIn 0.3s ease-out;
+  ">
+    <!-- Header — cyan ornament (sanctuary palette) -->
+    <div style="display:flex;align-items:center;gap:14px;justify-content:center;margin-bottom:8px;opacity:0.9;">
+      <div style="width:64px;height:1px;background:linear-gradient(90deg,transparent,#a0e8ff);"></div>
+      <div style="color:#a0e8ff;font-size:11px;letter-spacing:5px;font-weight:bold;text-shadow:0 0 8px rgba(160,232,255,0.4);">✧ SANCTUARY OF THE ABYSS ✧</div>
+      <div style="width:64px;height:1px;background:linear-gradient(90deg,#a0e8ff,transparent);"></div>
+    </div>
+    <!-- Flavor line -->
+    <div style="text-align:center;font-size:11px;letter-spacing:3px;font-style:italic;color:rgba(216,207,174,0.65);margin-bottom:18px;">
+      bind the essence you carry back from the depths.
+    </div>
+    <!-- Unlock list — populated by renderMetaShop('shrineUnlockRow') -->
+    <div id="shrineUnlockRow"></div>
+    <!-- Close hint + button row -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;">
+      <div style="font-size:9px;letter-spacing:3px;color:rgba(160,232,255,0.5);font-style:italic;">ESC OR E TO LEAVE</div>
+      <button id="shrineCloseBtn" style="background:transparent;color:#8a7a6a;border:0;padding:8px 14px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;transition:color 0.2s ease;">← LEAVE</button>
+    </div>
+  </div>
+`;
+document.getElementById('hud').appendChild(shrineEl);
+
+document.getElementById('shrineCloseBtn').addEventListener('click', () => {
+  try { synthClick(0.9, 0.25); } catch (_e) {}
+  shrineEl.style.display = 'none';
+});
+document.getElementById('shrineCloseBtn').addEventListener('mouseenter', (e) => {
+  e.target.style.color = '#a0e8ff';
+});
+document.getElementById('shrineCloseBtn').addEventListener('mouseleave', (e) => {
+  e.target.style.color = '#8a7a6a';
+});
+// Click-outside-to-close — backdrop dismiss, same as dialogue.
+shrineEl.addEventListener('click', (e) => {
+  if (e.target === shrineEl) {
+    try { synthClick(0.9, 0.22); } catch (_e) {}
+    shrineEl.style.display = 'none';
+  }
+});
+
+function showSanctuaryShrine() {
+  shrineEl.style.display = 'flex';
+  // Build the unlock list into shrineUnlockRow. Animate on first reveal.
+  renderMetaShop(true, 'shrineUnlockRow');
+}
+// ESC + E both close the shrine while it's open.
+window.addEventListener('keydown', (e) => {
+  if (shrineEl.style.display !== 'flex') return;
+  if (e.code === 'Escape' || e.code === 'KeyE') {
+    e.preventDefault();
+    try { synthClick(0.9, 0.22); } catch (_e) {}
+    shrineEl.style.display = 'none';
+  }
+});
+
 function openDialogue(npcId) {
   const def = NPCS[npcId];
   if (!def) return;
@@ -1975,21 +2054,14 @@ function showWandererGift() {
 }
 
 function showSanctuaryFromHamlet() {
-  showSanctuary();
-  // showSanctuary just set _restartBtnOverridden=true and rebound
-  // restartBtn.onclick to showMainMenu (the from-menu route). Replace
-  // that onclick with the hamlet-stay variant so the player returns to
-  // the live hamlet canvas underneath instead of being yanked to the
-  // main menu. The hamlet's render loop never stopped — just hide the
-  // sanctuary panel (deathEl) and the canvas reveals the hero where
-  // they were standing next to the Keeper.
-  const btn = document.getElementById('restartBtn');
-  btn.onclick = () => {
-    try { synthClick(0.9, 0.25); } catch (_e) {}
-    _restartBtnOverridden = false;
-    btn.onclick = null;
-    deathEl.style.display = 'none';
-  };
+  // Post-rebuild: the Keeper's "ESSENCE" service and the in-hamlet
+  // Sanctuary Shrine slab both converge on a single source of truth —
+  // the shrine modal. The death screen used to double as a sanctuary
+  // panel via DOM reuse (showSanctuary), but that mixed two unrelated
+  // jobs and forced the death-screen template to keep elements like
+  // #endRelics around just so the sanctuary mode could empty them.
+  // The shrine modal owns its own DOM — no template gymnastics.
+  showSanctuaryShrine();
 }
 
 function showMemoryFromHamlet() {
@@ -2251,35 +2323,13 @@ function showMainMenu() {
   }
 }
 
-function showSanctuary() {
-  // Stats zero (no run stats to show); render as a pure sanctuary/meta-only screen
-  resetStats();        // Safe — we haven't started a run
-  hideAllOverlays();
-  // Reuse the death screen panel but fill it with meta-only context
-  const title = document.getElementById('endTitle');
-  const sub = document.getElementById('endSubtitle');
-  title.textContent = 'SANCTUARY';
-  title.style.color = '#a0e8ff';
-  title.style.textShadow = '0 0 18px rgba(160,232,255,0.5)';
-  sub.textContent = 'spend essence on permanent upgrades';
-  document.getElementById('endStats').innerHTML = '';
-  document.getElementById('endRelics').innerHTML = '';
-  document.getElementById('endEssence').textContent = '✨ ' + meta.essence + ' essence banked';
-  renderMetaShop(true);
-  document.getElementById('restartBtn').textContent = '← MAIN MENU';
-  // The death-screen template ships with a small secondary "← MAIN MENU"
-  // next to NEW RUN. Hide it in sanctuary mode — the primary restart button
-  // IS the main-menu return here, so two identical labels would confuse.
-  const menuBtn = document.getElementById('deathMenuBtn');
-  if (menuBtn) menuBtn.style.display = 'none';
-  // Re-bind restart to route to main menu instead of a new run. Flag
-  // suppresses the module-level addEventListener that would otherwise
-  // fire startRun() alongside this onclick.
-  _restartBtnOverridden = true;
-  const btn = document.getElementById('restartBtn');
-  btn.onclick = () => { _restartBtnOverridden = false; btn.onclick = null; showMainMenu(); };
-  deathEl.style.display = 'flex';
-}
+// showSanctuary() removed during the "death = moment, hamlet = place"
+// rebuild. The function used to repaint the death-screen DOM as a
+// sanctuary view, which forced the death-screen template to ship with
+// elements (#endRelics, etc.) that existed only so this function could
+// empty them. Sanctuary now lives entirely in showSanctuaryShrine() —
+// its own modal with its own DOM. showSanctuaryFromHamlet redirects
+// there.
 
 function hideAllOverlays() {
   menuEl.style.display = 'none';
@@ -4062,10 +4112,6 @@ function showEndOfRun(isVictory) {
   clearRunSnapshot();
   // Themed-room motes shouldn't drift over the run-end overlay.
   clearThemedRoom();
-  // Re-show the "← MAIN MENU" secondary button in case showSanctuary hid it
-  // on a previous visit (shared DOM with the death screen).
-  const _deathMenuBtn = document.getElementById('deathMenuBtn');
-  if (_deathMenuBtn) _deathMenuBtn.style.display = '';
   const title = document.getElementById('endTitle');
   const subtitle = document.getElementById('endSubtitle');
   const ornamentText = document.getElementById('endOrnamentText');
@@ -4158,19 +4204,25 @@ function showEndOfRun(isVictory) {
     if (dotL) dotL.style.background = '#b05858';
     if (dotR) dotR.style.background = '#b05858';
     if (restartBtn) {
-      restartBtn.textContent = 'NEW RUN';
+      // CONTINUE on death — the existing handler routes through the
+      // hamlet on death (Keeper / Smith / etc reactive greetings),
+      // which is more accurately a "continue" than a "restart" — the
+      // world goes on, the player goes on, the next descent waits.
+      restartBtn.textContent = 'CONTINUE';
       restartBtn.style.color = '#f4d9a0';
     }
   }
 
-  // Stats grid
+  // ─── Compact two-line stats ──────────────────────────────────────────
+  // Replaced the prior 12-row gold plaque grid with two centered text
+  // lines. Line 1 is the run signature (always); line 2 is whichever
+  // of {enemies / bosses / relics / max combo} earned non-zero values.
+  // Star-best markers render inline next to the value they apply to.
   const grid = document.getElementById('endStats');
   const duration = fmtTime(runDurationSeconds());
-  // Determine combo tier label for display flavor
   const mc = stats._maxCombo | 0;
   const comboTier = mc >= 40 ? 'CARNAGE' : mc >= 20 ? 'RAMPAGE' : mc >= 10 ? 'FLURRY' : mc >= 5 ? 'CHAIN' : '';
   const comboTierColor = mc >= 40 ? '#ff4444' : mc >= 20 ? '#ff9966' : mc >= 10 ? '#ffcc66' : mc >= 5 ? '#88ddff' : '#888';
-  const comboTag = comboTier ? ` <span style="color:${comboTierColor};font-size:11px;letter-spacing:1px;">· ${comboTier}</span>` : '';
   // Evaluate NEW BEST records for this run (saves records to localStorage)
   const beatenRecords = updateRecords(stats, isVictory, runDurationSeconds());
   // MEMORY WEAVE — check if the run earned any new Memory unlocks. Newly-
@@ -4212,143 +4264,49 @@ function showEndOfRun(isVictory) {
   // refreshed records. They appear when the player next opens the hamlet.
   refreshNpcPresence(records, stats, { seenRelicIds });
   const newBestMark = (key) => beatenRecords.includes(key)
-    ? ' <span style="color:#ffe070;font-size:10px;letter-spacing:1px;text-shadow:0 0 8px rgba(255,224,112,0.8);">★ BEST</span>' : '';
-  // Stats rows — drop zero-value rows for short / failed runs so the modal
-  // fits within the 720 design-space height. Long / late-floor runs still
-  // get the full breakdown because their stats are non-zero. "Floor
-  // Reached" and "Run Time" always show — they're the run's signature.
-  // Zero-display rule: skip a row if its primary value is 0/null. Each row
-  // is built as a template string so we can filter().join() into the grid.
-  const _row = (label, val, color = '') => `
-    <div><span style="opacity:0.6;">${label}</span></div>
-    <div style="text-align:right;${color ? `color:${color};` : ''}">${val}</div>`;
-  const _rows = [
-    _row('Floor Reached', `${stats.floorReached} / ${MAX_FLOORS}${newBestMark('maxFloor')}`, '#ffd68a'),
-    _row('Run Time', `${duration}${isVictory ? newBestMark('fastestClear') : ''}`),
-    stats.roomsCleared      ? _row('Rooms Cleared', stats.roomsCleared)                                                              : '',
-    stats.enemiesDefeated   ? _row('Enemies Slain', `${stats.enemiesDefeated}${stats.elitesDefeated ? ' (' + stats.elitesDefeated + ' elite)' : ''}${newBestMark('mostEnemies')}`) : '',
-    stats.bossesKilled      ? _row('Bosses Felled', `${stats.bossesKilled}${newBestMark('mostBosses')}`, '#ff9085')                  : '',
-    stats.damageDealt       ? _row('Damage Dealt', Math.round(stats.damageDealt))                                                     : '',
-    stats.damageTaken       ? _row('Damage Taken', Math.round(stats.damageTaken))                                                     : '',
-    stats.biggestHit        ? _row('Biggest Hit', `${Math.round(stats.biggestHit)}${newBestMark('biggestHit')}`, '#ff9066')           : '',
-    stats.goldCollected     ? _row('Gold Collected', `🪙 ${stats.goldCollected}${newBestMark('mostGold')}`, '#ffd68a')              : '',
-    stats.relicsObtained    ? _row('Relics Acquired', `${stats.relicsObtained}${newBestMark('mostRelics')}`)                         : '',
-    stats.perfectDodges     ? _row('Perfect Dodges', stats.perfectDodges, '#a0e8ff')                                                 : '',
-    mc                      ? _row('Max Combo', `${mc}${comboTag}${newBestMark('maxCombo')}`)                                        : '',
-    stats.sanctuariesVisited ? _row('Sanctuaries Visited', stats.sanctuariesVisited, '#86e3a8')                                     : '',
-    stats.wandererTrades    ? _row('Wanderer Trades', stats.wandererTrades, '#c9a86a')                                               : '',
-  ].filter(Boolean);
-  grid.innerHTML = _rows.join('');
-  // Empty-state: a no-action run still has Floor + Run Time, so the panel
-  // never collapses to zero rows.
-
-  // THE WATCHER LEDGER — a quiet line from the entity: "The Watcher marks
-  // your Nth descent." + the most recent utterance, requoted with its sigil.
-  // Appears only if the Watcher has ever spoken (keeps first-run summaries
-  // clean). Matches the in-run italic serif grammar.
-  try {
-    const watcherEl = document.getElementById('endWatcher');
-    if (watcherEl) {
-      const last = watcherLastLine();
-      const count = watcherDescentCount();
-      if (last) {
-        const ordinal = (n) => {
-          const j = n % 10, k = n % 100;
-          if (k >= 11 && k <= 13) return n + 'th';
-          if (j === 1) return n + 'st';
-          if (j === 2) return n + 'nd';
-          if (j === 3) return n + 'rd';
-          return n + 'th';
-        };
-        // Prefer the painted sigil asset; fall back to an inline SVG
-        // silhouette if the keyed canvas + data-url isn't loaded yet (first
-        // render during loading, or missing asset).
-        const sigilUrl = (imageCache && imageCache.watcher_sigil_url) || null;
-        const sigilHtml = sigilUrl
-          ? `<img src="${sigilUrl}" alt="" width="26" height="26" style="display:block;filter:drop-shadow(0 0 6px rgba(236,224,196,0.4));" />`
-          : `<svg width="22" height="22" viewBox="0 0 22 22" style="overflow:visible;">
-              <circle cx="11" cy="11" r="9" fill="none" stroke="rgba(236,224,196,0.75)" stroke-width="1"/>
-              <circle cx="11" cy="11" r="5" fill="none" stroke="rgba(236,224,196,0.35)" stroke-width="0.8"/>
-              <circle cx="11" cy="11" r="2" fill="rgba(236,224,196,0.9)"/>
-            </svg>`;
-        watcherEl.style.display = 'block';
-        watcherEl.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;">
-            ${sigilHtml}
-            <span style="opacity:0.55;font-style:normal;letter-spacing:3px;font-size:10px;">
-              THE WATCHER MARKS YOUR ${ordinal(count).toUpperCase()} DESCENT
-            </span>
-          </div>
-          <div style="opacity:0.82;">\u201C${last}\u201D</div>
-        `;
-      } else {
-        watcherEl.style.display = 'none';
-      }
-    }
-  } catch (e) {}
-
-  // Relics collected — trophy strip: each relic is a tier-glowing card with
-  // name + icon, staggered in. This is the "look at what you built" moment.
-  const relicsRow = document.getElementById('endRelics');
-  relicsRow.innerHTML = '';
-  relicsRow.style.flexDirection = 'column';
-  relicsRow.style.alignItems = 'center';
-  relicsRow.style.gap = '10px';
-  if (equippedRelics.length) {
-    // Ornamental header
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:12px;opacity:0.6;';
-    header.innerHTML = `
-      <div style="width:40px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a);"></div>
-      <div style="color:#c9a86a;font-size:10px;letter-spacing:4px;font-style:italic;font-family:Georgia,serif;">RELICS OF THE DESCENT</div>
-      <div style="width:40px;height:1px;background:linear-gradient(90deg,#c9a86a,transparent);"></div>
-    `;
-    relicsRow.appendChild(header);
-    // The trophy row itself
-    const trophyRow = document.createElement('div');
-    trophyRow.style.cssText = 'display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;justify-content:center;max-width:720px;';
-    for (let i = 0; i < equippedRelics.length; i++) {
-      const r = equippedRelics[i];
-      const tier = r.tier || 'common';
-      const tierMeta = tier === 'mythic'    ? { label: '\u2605\u2605 MYTHIC \u2605\u2605', color: '#fff2e0', glow: 'rgba(255,242,224,0.75)', pulse: true }
-                     : tier === 'legendary' ? { label: '\u2605 LEGENDARY', color: '#ffc8ff', glow: 'rgba(255,200,255,0.55)', pulse: true }
-                     : tier === 'rare'      ? { label: '\u25C6 RARE',      color: '#f4d9a0', glow: 'rgba(244,217,160,0.45)', pulse: false }
-                     :                         { label: '\u00B7 COMMON',   color: '#b0c0d0', glow: 'rgba(176,192,208,0.3)',  pulse: false };
-      const card = document.createElement('div');
-      const stagger = 0.8 + i * 0.08;
-      // Trophy cards compressed (72w -> 56w, padding 8/6 -> 4/4, icon
-      // 40 -> 28, name min-height 22 -> 14) so the strip + the rest of
-      // the death modal fits in 720 design height without scroll.
-      // Tier label dropped from face — full name + tier still surface
-      // in the hover tooltip via card.title.
-      card.style.cssText = `
-        display:flex;flex-direction:column;align-items:center;gap:2px;
-        width:56px;padding:4px;
-        background:linear-gradient(180deg,rgba(30,22,28,0.9),rgba(14,10,16,0.9));
-        border:1px solid ${r.tint || tierMeta.color};
-        box-shadow:0 0 10px ${tierMeta.glow}, inset 0 0 8px rgba(0,0,0,0.5);
-        font-family:Georgia,serif;
-        animation:winCardSlide 0.5s ease-out ${stagger}s both${(tier === 'legendary' || tier === 'mythic') ? ', legendPulse 2.4s ease-in-out infinite' : ''};
-      `;
-      card.title = r.name + (r.flavor ? '\n\u201C' + r.flavor + '\u201D\n' : '\n') + r.desc;
-      card.innerHTML = `
-        <div style="padding:2px;background:radial-gradient(circle,${(r.tint||tierMeta.color)}33,transparent 70%);">
-          <img src="assets/icons/${r.icon}.png" style="width:28px;height:28px;image-rendering:pixelated;filter:hue-rotate(${hueRotateForTint(r.tint)}deg) saturate(1.15) drop-shadow(0 0 5px ${(r.tint||tierMeta.color)}aa);display:block;" />
-        </div>
-        <div style="font-size:8px;color:${r.tint || tierMeta.color};text-align:center;letter-spacing:0.3px;line-height:1.15;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${r.name}</div>
-      `;
-      trophyRow.appendChild(card);
-    }
-    relicsRow.appendChild(trophyRow);
-
-    // (Removed) The "ONE PICK AWAY" near-miss fusion hint used to render
-    // here — listed up to N fusions where the player owned exactly one
-    // component, as a "next run" hook. Removed from the death screen so
-    // the modal fits within 720 design without scrolling. The same
-    // discovery affordance lives in Chronicles -> Fusions: hover any
-    // undiscovered fusion to see its recipe, so players can still build
-    // toward fusions they're missing pieces of.
+    ? ' <span style="color:#ffe070;font-size:10px;letter-spacing:1px;text-shadow:0 0 8px rgba(255,224,112,0.8);">★</span>' : '';
+  // ── Compact two-line stats ───────────────────────────────────────────
+  // Line 1 always shows: FLOOR · RUN TIME (the signature numbers).
+  // Line 2 shows the highlight counts that earned a non-zero value
+  // (enemies / bosses / relics / max combo). Zero-rows are skipped.
+  const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  const _statVal = (v, color = '#f4d9a0') => `<span style="color:${color};font-weight:bold;">${v}</span>`;
+  const floorVal = ROMAN[stats.floorReached] || stats.floorReached;
+  const _line1 = `FLOOR ${_statVal(floorVal)}${newBestMark('maxFloor')}  ·  RUN ${_statVal(duration)}${isVictory ? newBestMark('fastestClear') : ''}`;
+  const _bits = [];
+  if (stats.enemiesDefeated) {
+    const eliteSuffix = stats.elitesDefeated ? ` <span style="opacity:0.55;font-size:11px;">(${stats.elitesDefeated} elite)</span>` : '';
+    _bits.push(`${_statVal(stats.enemiesDefeated)} slain${eliteSuffix}${newBestMark('mostEnemies')}`);
   }
+  if (stats.bossesKilled) {
+    _bits.push(`${_statVal(stats.bossesKilled, '#ff9085')} ${stats.bossesKilled > 1 ? 'bosses' : 'boss'} felled${newBestMark('mostBosses')}`);
+  }
+  if (stats.relicsObtained) {
+    _bits.push(`${_statVal(stats.relicsObtained)} relics${newBestMark('mostRelics')}`);
+  }
+  if (mc >= 5) {
+    const tagSuffix = comboTier ? ` <span style="font-size:11px;color:${comboTierColor};letter-spacing:1px;">· ${comboTier}</span>` : '';
+    _bits.push(`max combo ${_statVal(mc)}${tagSuffix}${newBestMark('maxCombo')}`);
+  }
+  grid.innerHTML = `<div>${_line1}</div>${_bits.length ? `<div style="opacity:0.85;font-size:12px;">${_bits.join('  ·  ')}</div>` : ''}`;
+  // ── Memory tag — single italic line, hidden if no memory rolled ──
+  const memoryTagEl = document.getElementById('endMemoryTag');
+  if (memoryTagEl) {
+    if (newlyRememberedMemories && newlyRememberedMemories.length > 0) {
+      const names = newlyRememberedMemories.map(m =>
+        `<span style="color:${m.tint};font-weight:bold;text-shadow:0 0 6px ${m.tint}66;">${m.name}</span>`
+      ).join('  ·  ');
+      memoryTagEl.innerHTML = `✦  remembered:  ${names}`;
+      memoryTagEl.style.display = 'block';
+    } else {
+      memoryTagEl.style.display = 'none';
+    }
+  }
+  // The legacy 12-row gold-plaque stats grid lived here. Replaced
+  // by the two-line inline stats above. Watcher ledger paragraph +
+  // trophy strip block also removed (next ~120 lines below). All
+  // three jobs collapsed into the slim death screen.
+
 
   // Essence earned + add to persistent total. Curse AND Ascension
   // multipliers compound — hardcore players stacking A5 + multiple
@@ -4403,55 +4361,19 @@ function showEndOfRun(isVictory) {
       `;
     }
   }
+
+  // Essence display — single line. Progress bar, memory cards, and
+  // meta-shop unlock list all moved to the hamlet Sanctuary Shrine
+  // (N slab, E to interact). Death screen now just shows what was
+  // earned + the running total, with optional curse bonus and the
+  // ascension-tier-unlocked banner if a victory triggered one.
   const essEl = document.getElementById('endEssence');
-  const curseTag = curseCount() > 0 ? ` <span style="color:#d85a5a;font-size:13px;">☠ ${cMul.toFixed(2)}x curse bonus</span>` : '';
-  // Build a "next unlock" progress bar — shows how much more essence until the
-  // cheapest unlocked upgrade. Motivates retry by making progress visible.
-  const unlockedIds = Object.keys(meta.unlocked || {});
-  const remaining = Object.keys(UNLOCKS).filter(id => !unlockedIds.includes(id));
-  // Sort remaining by cost ascending; pick the cheapest next
-  remaining.sort((a, b) => UNLOCKS[a].cost - UNLOCKS[b].cost);
-  const nextUnlock = remaining[0] ? UNLOCKS[remaining[0]] : null;
-  let progressHtml = '';
-  if (nextUnlock) {
-    const pct = Math.max(0, Math.min(1, meta.essence / nextUnlock.cost));
-    const canAfford = meta.essence >= nextUnlock.cost;
-    progressHtml = `
-      <div style="margin-top:10px;display:flex;flex-direction:column;align-items:center;gap:4px;">
-        <div style="font-size:11px;letter-spacing:2px;opacity:0.65;color:${nextUnlock.tint};">
-          NEXT UNLOCK · <span style="font-weight:bold;">${nextUnlock.name}</span>
-          ${canAfford ? ' · <span style="color:#86e3a8;">READY</span>' : ` · <span style="opacity:0.7;">${meta.essence}/${nextUnlock.cost}</span>`}
-        </div>
-        <div style="width:280px;height:8px;background:rgba(20,14,25,0.9);border:1px solid ${nextUnlock.tint};position:relative;">
-          <div style="position:absolute;left:0;top:0;bottom:0;width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,${nextUnlock.tint},rgba(255,255,255,0.85));"></div>
-        </div>
-        <div style="font-size:9px;opacity:0.55;max-width:300px;text-align:center;font-style:italic;">${nextUnlock.desc}</div>
-      </div>
-    `;
-  } else if (unlockedIds.length > 0) {
-    // All unlocked — show congrats
-    progressHtml = `
-      <div style="margin-top:10px;font-size:12px;letter-spacing:2px;color:#ffd68a;font-style:italic;">
-        ✦ ALL UNLOCKS ACQUIRED · YOU ARE READY ✦
-      </div>
-    `;
-  }
-  // Newly-remembered Memories — surface them with a small italic line under
-  // the essence counter so the player knows a new build option is available.
-  let memoryHtml = '';
-  if (newlyRememberedMemories && newlyRememberedMemories.length) {
-    const lines = newlyRememberedMemories.map(m =>
-      `<div style="color:${m.tint};letter-spacing:3px;font-size:12px;font-style:italic;text-shadow:0 0 8px ${m.tint}88;">\u2766 remembered: ${m.name}</div>`
-    ).join('');
-    memoryHtml = `<div style="margin-top:12px;display:flex;flex-direction:column;gap:3px;">${lines}</div>`;
-  }
-  essEl.innerHTML = `+${earned} essence earned${curseTag}   <span style="opacity:0.6;font-size:14px;">(Total: ${meta.essence})</span>${ascensionUnlockHtml}${progressHtml}${memoryHtml}`;
+  const curseTag = curseCount() > 0 ? ` <span style="color:#d85a5a;font-size:12px;">curse ${cMul.toFixed(2)}x</span>` : '';
+  essEl.innerHTML = `+${earned} essence  <span style="opacity:0.55;font-size:13px;">(Total: ${meta.essence})</span>${curseTag}${ascensionUnlockHtml}`;
 
-  // Meta shop row — animate on initial reveal only; re-renders after an
-  // unlock purchase re-use renderMetaShop(false) so cards don't re-slide.
-  renderMetaShop(true);
-
-  // Button text is handled in the isVictory branch above ('BEGIN ANEW' / 'NEW RUN')
+  // Reveal the death screen. Button text already set above ('BEGIN ANEW'
+  // on victory, 'CONTINUE' on death). Meta-shop render call removed —
+  // shop lives in the hamlet shrine now.
   deathEl.style.display = 'flex';
 
   // QUICK-RESTART discoverability nudge — only on DEATH (not victory).
@@ -4471,14 +4393,21 @@ function showEndOfRun(isVictory) {
   }
 }
 
-function renderMetaShop(animate = false) {
+function renderMetaShop(animate = false, containerId = 'shrineUnlockRow') {
   // Compact LIST layout (replaced the prior card-grid). Each unlock is a
   // single horizontal row: [icon] [name + tooltip] [cost] [UNLOCK btn].
   // Two columns side-by-side so 10 unlocks fit in 5 rows \u2248 175 design px,
   // saving ~110px vs the 2-row card grid (~285 design px). The full
   // description hovers as a native title-tooltip \u2014 keeps info available
   // without dominating screen space when the player only wants to scan.
-  const row = document.getElementById('metaShopRow');
+  //
+  // The containerId parameter routes the rendered HTML to either the
+  // hamlet shrine modal (default 'shrineUnlockRow') or any future
+  // alternate container. Used to be hard-coded to 'metaShopRow' on the
+  // death screen; that screen no longer hosts the shop after the
+  // "death = moment, hamlet = place" architectural split.
+  const row = document.getElementById(containerId);
+  if (!row) return;
   row.innerHTML = '';
 
   // \u2500\u2500 Progress header (audit P1 \u2014 death-screen meta-loop visibility) \u2500\u2500
@@ -4634,7 +4563,7 @@ function renderMetaShop(animate = false) {
             try { synthPing(880, 0.45, 0.22); } catch (_e) {}
             setTimeout(() => { try { synthPing(1320, 0.4, 0.20); } catch (_e) {} }, 120);
           }
-          renderMetaShop();
+          renderMetaShop(false, containerId);
           // After the re-render, find the just-bought row by stable id
           // and toggle the burst animation. Has to happen AFTER
           // renderMetaShop() because that call rebuilds the grid and
@@ -5078,6 +5007,7 @@ function _tickInner(now) {
         if (act) {
           if (act.action === 'dialogue') openDialogue(act.npcId);
           else if (act.action === 'portal') { running = false; beginDescent(); }
+          else if (act.action === 'shrine') showSanctuaryShrine();
           else if (act.action === 'noticeboard') {
             // Cycle through a small pool of flavor lines so re-reads
             // aren't always the same. Lines are short enough for the

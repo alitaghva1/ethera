@@ -75,7 +75,13 @@ const FIREPIT_POS  = { x: 435, y: 450 };   // W reading-nook brazier — beside 
 //   3 grave  | 4 oracle | 5 wanderer
 export const HAMLET_ENTITIES = [
   { kind: 'portal',                                 x: PORTAL_POS.x,  y: PORTAL_POS.y,  interactR: 80 },
-  { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 0  },
+  // SANCTUARY SHRINE — interactive (interactR: 70). The shrine slab in
+  // the painted backdrop's north district hosts the meta-progression
+  // shop modal. Used to live on the death screen; moved here as part
+  // of "death = moment, hamlet = place." E-press → showSanctuaryShrine
+  // in main.js. Slightly larger interact radius than the NPCs because
+  // the slab itself is a wider feature than a single NPC sprite.
+  { kind: 'shrine',                                 x: SHRINE_POS.x,  y: SHRINE_POS.y,  interactR: 70 },
   { kind: 'firepit',                                x: FIREPIT_POS.x, y: FIREPIT_POS.y, interactR: 0  },
   // (Notice board entity removed — the painted plaza reads cleaner
   // without an extra prop blocking the central cobble star. The
@@ -1506,13 +1512,26 @@ export function drawHamletInteractPrompt(ctx) {
     } catch (_e) { /* daily not loaded yet — show no teaser */ }
   } else if (_nearest.kind === 'noticeboard') {
     label = 'E  \u00b7  READ';
+  } else if (_nearest.kind === 'shrine') {
+    label = 'E  \u00b7  TEND THE SHRINE';
+    // Quiet flavor under the prompt \u2014 same italic-subline pattern the
+    // portal uses for narrative lore. Tells the player WHY they'd stop
+    // here: the meta-progression shop. Cyan tint matches the essence
+    // currency / sanctuary palette used in the modal itself.
+    subtext = 'bind essence into permanence.';
+    subtextRgb = '160, 232, 255';
   } else {
     return;
   }
 
   const now = performance.now() / 1000;
   const floatOff = Math.sin(now * 2.2) * 3;
-  const promptY = _nearest.y - (_nearest.kind === 'portal' ? 110 : _nearest.kind === 'noticeboard' ? 60 : 82) + floatOff;
+  const promptY = _nearest.y - (
+    _nearest.kind === 'portal' ? 110
+    : _nearest.kind === 'noticeboard' ? 60
+    : _nearest.kind === 'shrine' ? 60
+    : 82
+  ) + floatOff;
 
   ctx.save();
   ctx.font = 'bold 11px Georgia, serif';
@@ -1585,6 +1604,7 @@ export function consumeHamletInteract() {
   if (!_nearest) return null;
   if (_nearest.kind === 'portal') return { action: 'portal' };
   if (_nearest.kind === 'npc') return { action: 'dialogue', npcId: _nearest.id };
+  if (_nearest.kind === 'shrine') return { action: 'shrine' };
   if (_nearest.kind === 'noticeboard') return { action: 'noticeboard' };
   return null;
 }
