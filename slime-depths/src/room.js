@@ -5,6 +5,17 @@
 
 import { setDustBiome, setWeatherBiome } from './particles.js';
 import { images } from './loader.js';
+// Composition layer (Phase 1-3 vertical slice) — adds floor zones, focal
+// points, and door architecture without changing the underlying generator.
+import {
+  FZ,
+  applyZoneTone,
+  assignRoomFocal,
+  buildFloorZones,
+  drawZoneWear,
+  drawFocal as drawFocalPiece,
+  drawDoorArchitecture,
+} from './roomComposition.js';
 
 export const TILE = 48;
 // Default room dimensions. Per-room sizes can override via `data.w` / `data.h`
@@ -929,6 +940,20 @@ export function buildRoomFromData(data) {
       roomSecrets.crackY = spot.y;
     }
   }
+  // ── COMPOSITION LAYER (Phase 1-3 vertical slice) ──────────────────────
+  // 1. Pick a focal point for eligible room kinds (start/hamlet/trove/
+  //    chestroom/shop return null — those rooms have other natural
+  //    focal points: doorways, urn piles, chest arrays, pedestals).
+  // 2. Build floor zones (threshold/combat/focal-frame/alcove/wear)
+  //    based on door positions + focal anchor + room dimensions.
+  //
+  // Both run BEFORE the tile cache invalidation so the next static
+  // render picks them up. Hamlet rooms get null focal + empty zones —
+  // drawRoomDirect's hamlet branch returns before drawFloorTile, so
+  // the empty zone array is harmless.
+  room.focal = (data.kind === 'hamlet') ? null : assignRoomFocal(room);
+  room.floorZones = buildFloorZones(room);
+
   // Tile cache — fresh room means fresh static layers. Mark dirty so
   // the next render rebuilds.
   invalidateTileCache();
@@ -1087,119 +1112,59 @@ function hash(a, b) {
 // RENDERING — fully procedural (no tileset)
 // ============================================================================
 
-// Organic floor detail — breaks up the grid with irregular off-grid patches.
-// Runs after tile pass but before shadows/walls so it sits on the floor only.
-// Each patch is positioned via hash of room seed, so it's deterministic per
-// room but different between rooms. Both dark (dirt/grime) and light (dust
-// highlight) variants for visual rhythm.
-function drawOrganicFloorDetail(ctx) {
-  const seed = (room._detailSeed !== undefined)
-    ? room._detailSeed
-    : (room._detailSeed = Math.floor(Math.random() * 0xffff));
-  ctx.save();
-  const patchCount = 22;
-  for (let i = 0; i < patchCount; i++) {
-    const h = hash(i * 31 + seed, seed * 7 + i);
-    // Anchor off-grid — mix tile coordinates with sub-tile offsets
-    const tx = 1 + (h % (room.w - 2));
-    const ty = 1 + ((h >>> 5) % (room.h - 2));
-    const kind = room.tiles[ty]?.[tx];
-    if (kind !== 'floor') continue;
-    // Skip if adjacent cell is a wall-above — those already get shadow
-    const cxOff = ((h >>> 10) % 40) - 20;
-    const cyOff = ((h >>> 15) % 40) - 20;
-    const cx = tx * TILE + TILE / 2 + cxOff;
-    const cy = ty * TILE + TILE / 2 + cyOff;
-    // Patch type — 0-2: dark smear (dirt), 3-4: light smear (dust highlight), 5: tiny crack
-    const kindRoll = (h >>> 20) & 0x7;
-    const radius = 14 + ((h >>> 22) & 0xf);
-    if (kindRoll <= 2) {
-      // Dirt smear — soft dark radial blob
-      const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, radius);
-      g.addColorStop(0, 'rgba(0, 0, 0, 0.16)');
-      g.addColorStop(0.6, 'rgba(0, 0, 0, 0.07)');
-      g.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
-    } else if (kindRoll <= 4) {
-      // Dust highlight — warm pale blob
-      const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, radius * 0.8);
-      g.addColorStop(0, 'rgba(255, 240, 210, 0.06)');
-      g.addColorStop(1, 'rgba(255, 240, 210, 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
-    } else {
-      // Tiny crack — 2-3 line segments with slight randomization
-      ctx.strokeStyle = 'rgba(10, 6, 12, 0.22)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      const ang = ((h >>> 25) & 0x7) * (Math.PI / 8);
-      const len = 10 + ((h >>> 28) & 0x7) * 2;
-      const dx = Math.cos(ang) * len;
-      const dy = Math.sin(ang) * len;
-      ctx.moveTo(cx - dx, cy - dy);
-      ctx.lineTo(cx, cy);
-      ctx.lineTo(cx + dx * 0.8, cy + dy * 1.1);
-      ctx.stroke();
-    }
-  }
-  // Traffic wear — subtle darkening across the central horizontal axis
-  // where hero naturally walks. Reads as "this place has been crossed."
-  const centerY = room.h * TILE * 0.5;
-  const wearGrad = ctx.createLinearGradient(0, centerY - TILE * 1.5, 0, centerY + TILE * 1.5);
-  wearGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  wearGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.06)');
-  wearGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = wearGrad;
-  ctx.fillRect(TILE * 2, centerY - TILE * 1.5, (room.w - 4) * TILE, TILE * 3);
-  ctx.restore();
-}
+// (Removed) drawOrganicFloorDetail — Phase 1 vertical slice replaced
+// the 22 hash-positioned dirt/dust/crack patches + central traffic
+// wear band with the FZ.WEAR zone (path tiles tinted darker via
+// applyZoneTone) plus a single concentrated stain at the focal anchor
+// (drawZoneWear in roomComposition.js). The earlier system added
+// random visual noise that read as "low quality"; the zone-driven
+// system reads as authored.
 
 function drawFloorTile(ctx, tx, ty) {
   const x = tx * TILE, y = ty * TILE;
-  // Per-tile variance — subtle deviation for base color to avoid flat look
   const h = hash(tx, ty);
-  const v = (h % 100) / 100;
-  let base = PAL.floorBase;
-  if (v > 0.95) base = PAL.floorLit;
-  else if (v > 0.88) base = PAL.floorDark;
+  // ── ZONE-AWARE TONE (Phase 1 vertical slice) ─────────────────────────
+  // Replaces the prior "12% random dark / 5% random light + 15% chance
+  // of an embossed tile-line/tile-quad/tile-diag pattern" with deliberate
+  // zone-driven tinting. The room has been pre-tagged in buildFloorZones:
+  //   - COMBAT      = clean baseline
+  //   - THRESHOLD   = warmer + lighter (swept entry near doors)
+  //   - FOCAL_FRAME = warm hint, suggests focal radiance
+  //   - ALCOVE      = perimeter shadow (deeper)
+  //   - WEAR        = visible scuff path (deliberate, not random)
+  //
+  // Authored zones replace random noise. The dungeon stops looking
+  // "randomly dirtied" and starts looking composed.
+  const zone = (room.floorZones && room.floorZones[ty] && room.floorZones[ty][tx] !== undefined)
+    ? room.floorZones[ty][tx]
+    : FZ.COMBAT;
+  const base = applyZoneTone(PAL.floorBase, zone);
   ctx.fillStyle = base;
   ctx.fillRect(x, y, TILE, TILE);
 
-  // Stone grain — 0-2 tiny specks per tile for texture
-  ctx.fillStyle = 'rgba(200,180,180,0.035)';
-  const n = (h % 3);
-  for (let i = 0; i < n; i++) {
-    const sx = x + 4 + (hash(tx + i, ty * 7 + 1) % (TILE - 8));
-    const sy = y + 4 + (hash(tx * 3 + 2, ty + i) % (TILE - 8));
-    ctx.fillRect(sx, sy, 1, 1);
+  // Stone grain — kept for texture against an otherwise flat tile.
+  // Reduced to 0-1 specks (was 0-2) and only on COMBAT/THRESHOLD zones
+  // since FOCAL_FRAME / ALCOVE / WEAR have their own visual signature.
+  if (zone === FZ.COMBAT || zone === FZ.THRESHOLD) {
+    const n = (h % 4 === 0) ? 1 : 0;
+    if (n > 0) {
+      ctx.fillStyle = 'rgba(200,180,180,0.035)';
+      const sx = x + 4 + (hash(tx, ty * 7 + 1) % (TILE - 8));
+      const sy = y + 4 + (hash(tx * 3 + 2, ty) % (TILE - 8));
+      ctx.fillRect(sx, sy, 1, 1);
+    }
   }
 
-  // TILE VARIANT — ~15% of tiles get a distinctive texture pattern:
-  //   - 'tile-line' : horizontal seams (carved stone slab)
-  //   - 'tile-quad' : 2x2 crossed groove (quadrant tile)
-  //   - 'tile-diag' : diagonal chisel line (worn diagonal cut)
-  // Deterministic per-position, doesn't shift on reload.
-  const variantRoll = (h >> 7) & 0xff;
-  if (variantRoll < 40) {
-    // 'tile-line' — horizontal seam dividing into brick-like slabs
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
-    ctx.fillRect(x, y + TILE * 0.5 - 0.5, TILE, 1);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-    ctx.fillRect(x, y + TILE * 0.5 - 1, TILE, 1);
-  } else if (variantRoll < 60) {
-    // 'tile-quad' — plus sign dividing tile into 4 smaller squares
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+  // ── FOCAL_FRAME tile pattern — only the focal cross gets a subtle
+  // chisel groove, framing the focal piece architecturally. Single
+  // pattern (no random rotation between tile-line/tile-quad/tile-diag),
+  // keeping the focal area visually coherent.
+  if (zone === FZ.FOCAL_FRAME) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.10)';
     ctx.fillRect(x + TILE / 2 - 0.5, y + 4, 1, TILE - 8);
     ctx.fillRect(x + 4, y + TILE / 2 - 0.5, TILE - 8, 1);
-  } else if (variantRoll < 68) {
-    // 'tile-diag' — subtle diagonal scrape
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x + 10, y + TILE - 10);
-    ctx.lineTo(x + TILE - 10, y + 10);
-    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 220, 180, 0.04)';
+    ctx.fillRect(x + 4, y + TILE / 2 - 1, TILE - 8, 1);
   }
 }
 
@@ -2897,10 +2862,15 @@ function drawRoomStaticLayers(ctx) {
     }
   }
 
-  // Pass 1c: organic floor detail — irregular dirt smears + dust patches that
-  // span multiple tiles at off-grid positions. Breaks up the tile grid visually
-  // without relying on biome-specific wear shapes. Deterministic per room seed.
-  drawOrganicFloorDetail(ctx);
+  // Pass 1c: AUTHORED zone wear (Phase 1 vertical slice replacement).
+  // Was 22 hash-positioned dirt/dust/crack patches that read as random
+  // noise. Now: a single concentrated stain UNDER the focal piece,
+  // color-keyed to the focal kind (scorch under crater/brazier, blood
+  // under tomb, faint warm glow under altar, dark grime under
+  // obelisk/plinth). Door→focal traffic wear is communicated via the
+  // FZ.WEAR zone tinting in drawFloorTile, not by drawing extra patches
+  // here. Result: cleaner floor, deliberate not random.
+  drawZoneWear(ctx, room);
 
   // Pass 2: shadow strips cast from walls onto floor cells below them.
   // Tier 1C — extended to all four sides of every wall/pillar tile so
@@ -3185,6 +3155,13 @@ function drawRoomVignette(ctx) {
 // invalidation for normal play.
 function drawRoomDynamicLayers(ctx) {
   if (!room.tiles || room.kind === 'hamlet') return;
+  const _now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+  // Pass 4a: FOCAL PIECE (Phase 2 vertical slice). Drawn BEFORE marks/
+  // pillars/doors/decor so combat sparks, blood pools, and prop overlap
+  // composes ON TOP of the focal — the focal piece sits in the floor
+  // plane visually. Skipped when room.focal is null (start, trove,
+  // chestroom, shop — those rooms have other natural attractions).
+  if (room.focal) drawFocalPiece(ctx, room.focal, _now);
   // Pass 4b: within-room reactive floor marks (blood pools where
   // enemies died, future scorch/dust marks). Renders ON TOP of the
   // static floor cache but UNDER pillars/pedestals/doors/decor and
@@ -3192,6 +3169,12 @@ function drawRoomDynamicLayers(ctx) {
   // and the corpse fades out on top of the pool, leaving the pool
   // behind to mark the spot.
   drawRoomMarks(ctx);
+  // Pass 4c: DOOR ARCHITECTURE (Phase 3 vertical slice). Stone arch
+  // + jamb stones + threshold light pool above each NORTH door. Drawn
+  // BEFORE the door tile fills (pass 5) so the door sprite renders on
+  // top of the arch fill cleanly, but UNDER the pillar/pedestal pass
+  // so doorway light pool blends with floor properly.
+  drawDoorArchitecture(ctx, room, _now);
   // Pass 5: interactive + decorative props on top
   for (let y = 0; y < room.h; y++) {
     for (let x = 0; x < room.w; x++) {
