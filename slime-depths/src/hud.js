@@ -1018,9 +1018,13 @@ export function drawHud(ctx, w, h, progress = {}) {
       const _themeMobile = isMobileMode();
       const themeNameFont  = _themeMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
       const themeHeaderFont = _themeMobile ? 'bold 13px Georgia, serif' : 'bold 10px Georgia, serif';
-      // Wider than the legacy 52/64 — same reason as slot chips: room
-      // for glyph + pip row instead of the old "STORM 0/4 ★" text grid.
-      const chipW = _themeMobile ? 80 : 66;
+      // Chip width tuned to fit the LONGEST theme name with room for
+      // the ascendance star top-right corner. Theme names today: STORM
+      // FLAME BLOOD VOW SHADOW. SHADOW (6 chars) is the outlier — at
+      // bold 10px Georgia + the +12 ascendance-star margin, the prior
+      // 66 px width was clipping. Bumped to 78/94 (desktop/mobile) so
+      // SHADOW fits cleanly without touching the others.
+      const chipW = _themeMobile ? 94 : 78;
       const chipH = _themeMobile ? 28 : 22;
       const chipGap = 4;
       const themesY = h - chipH - 110;

@@ -540,11 +540,13 @@ export function getDoorMeta(tx, ty) {
 const CARD_W = 84;          // sealed only
 const CARD_H = 46;          // sealed only
 const CARD_OFFSET_Y = 38;
-// Simplified card for normal doors (Hades-inspired pass): one icon,
-// one optional label, single tinted pill. Tighter dimensions match the
-// reduced visual content. ~24% narrower, ~17% shorter than sealed.
+// Simplified card for normal doors (Hades-inspired pass): icon-first
+// with the sigil dominant and the label as a small caption beneath.
+// Bumped height (38 → 44) to accommodate the larger sigil without
+// crowding the label. Width unchanged so the card footprint feels
+// the same on the door.
 const SIMPLE_CARD_W = 64;
-const SIMPLE_CARD_H = 38;
+const SIMPLE_CARD_H = 44;
 
 export function drawDoorLabels(ctx) {
   const now = performance.now() / 1000;
@@ -707,30 +709,39 @@ function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
   roundRect(ctx, cardX + 0.5, cardY + 0.5, SIMPLE_CARD_W - 1, SIMPLE_CARD_H - 1, 8);
   ctx.stroke();
 
-  // Sigil placement — vertically centered when no label/sub-line, lifted
-  // slightly when something sits below
+  // Sigil placement — Hades-pattern icon-first: the sigil is the
+  // dominant visual element, the label is a small caption beneath.
+  // Previously sigil was 22px serif and label 10px Georgia bold — close
+  // enough in weight that they read as equal-importance UI. Bumped
+  // sigil to 30px (procedural fusion radius 9 → 13) and dropped label
+  // to 8px so the icon dominates and the word reads as a tag.
+  //
+  // Sigil Y lifted further when label is present (the bigger glyph
+  // needs more room above the caption). Card height bumped to 44
+  // accommodates the larger composition.
   const hasLowerText = !!label || !!subLine;
-  const sigilY = cardCY + (hasLowerText ? -6 : 0);
+  const sigilY = cardCY + (hasLowerText ? -7 : 0);
   ctx.fillStyle = hexA(color, pulse);
   ctx.shadowColor = hexA(color, pulse * 0.6);
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 10;
   if (sigil === '__procedural__' && d.rewardLabel === 'FUSION') {
-    _drawFusionSigil(ctx, cx, sigilY, 9, hexA(color, pulse));
+    _drawFusionSigil(ctx, cx, sigilY, 13, hexA(color, pulse));
   } else {
-    ctx.font = 'bold 22px serif';
+    ctx.font = 'bold 30px serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(sigil, cx, sigilY);
   }
   ctx.shadowBlur = 0;
 
-  // Label below sigil — only when defined (reward bias / special kind)
+  // Label below sigil — small caption, lower opacity so it reads as
+  // metadata rather than competing with the icon.
   if (label) {
-    ctx.fillStyle = color;
-    ctx.font = 'bold 10px Georgia, "Cormorant Garamond", serif';
+    ctx.fillStyle = hexA(color, 0.92);
+    ctx.font = 'bold 8px Georgia, "Cormorant Garamond", serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, cx, cardCY + (subLine ? 6 : 9));
+    ctx.fillText(label, cx, cardCY + (subLine ? 9 : 12));
   }
 
   // Affix sub-line for elite doors (FROST / EMBER / VENOM / WARDED)
@@ -739,7 +750,7 @@ function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
     ctx.fillStyle = subLineColor || '#ffd855';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(subLine, cx, cardCY + (label ? 14 : 9));
+    ctx.fillText(subLine, cx, cardCY + (label ? 17 : 12));
   }
 
   // Theme glyph — small chip in upper-right corner if room is themed
