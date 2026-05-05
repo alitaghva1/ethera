@@ -545,13 +545,47 @@ export function grantCounterAttack(windowMul = 1) {
   _counterWindow = Math.max(_counterWindow, COUNTER_WINDOW * windowMul);
 }
 
-// Time-dilation factor applied to gameplay dt. 0.25 during perfect dodge,
-// ramping back up over the last 150ms so it doesn't snap.
+// ---------- Kill-cam (room-clear final-blow slowmo) ----------
+// Hades / Sekiro / Dead Cells all use a brief time-dilation on the final
+// blow that ends a room. Gives the player a beat to register "I won that
+// fight" before the loot/transition kicks in. We use a SEPARATE timer
+// from the perfect-dodge slowmo so the two effects can stack cleanly
+// (you can perfect-dodge into a kill-cam) and so kill-cam can use a
+// gentler slowdown (0.45 vs 0.25 — softer "savor the moment" instead
+// of the sharper "you read the strike" of perfect-dodge).
+let _killCam = 0;                    // seconds remaining
+const KILL_CAM_DUR = 0.45;
+const KILL_CAM_SCALE = 0.45;         // 45% time-speed at peak
+export function triggerKillCam() {
+  // Don't override a perfect-dodge already in flight — that's the
+  // skill-expression effect and shouldn't get clobbered. Last-kill
+  // hit-stop (called separately) provides the punch in that case.
+  if (_perfectDodge > 0) return;
+  _killCam = Math.max(_killCam, KILL_CAM_DUR);
+}
+export function isKillCam() { return _killCam > 0; }
+
+// Time-dilation factor applied to gameplay dt. Layered:
+// - Perfect dodge: 0.25 during the active window (skill reward)
+// - Kill cam: 0.45 ramping back to 1.0 (room-clear savor)
+// - Both ramp out over their last 150ms / 200ms respectively
+// Whichever is more dilating (lower scale) wins when both are active.
 export function getTimeScale() {
-  if (_perfectDodge <= 0) return 1;
-  const r = _perfectDodge / PERFECT_DODGE_DUR;
-  if (r > 0.4) return 0.25;
-  return 0.25 + (1 - 0.25) * (1 - r / 0.4);
+  let scale = 1;
+  if (_perfectDodge > 0) {
+    const r = _perfectDodge / PERFECT_DODGE_DUR;
+    const pdScale = r > 0.4 ? 0.25 : 0.25 + (1 - 0.25) * (1 - r / 0.4);
+    scale = Math.min(scale, pdScale);
+  }
+  if (_killCam > 0) {
+    const r = _killCam / KILL_CAM_DUR;
+    // Hold the dilation for the first 60% of the window, then ramp
+    // back to 1.0 over the last 40%. Smoother re-acceleration than a
+    // hard cliff so combat doesn't feel like it lurches forward.
+    const kcScale = r > 0.4 ? KILL_CAM_SCALE : KILL_CAM_SCALE + (1 - KILL_CAM_SCALE) * (1 - r / 0.4);
+    scale = Math.min(scale, kcScale);
+  }
+  return scale;
 }
 
 export function updatePerfectDodge(realDt) {
@@ -559,6 +593,7 @@ export function updatePerfectDodge(realDt) {
   if (_perfectDodge > 0) _perfectDodge -= realDt;
   if (_perfectFlash > 0) _perfectFlash -= realDt * 3;
   if (_counterWindow > 0) _counterWindow -= realDt;
+  if (_killCam > 0) _killCam -= realDt;
 }
 
 export function isPerfectDodge() { return _perfectDodge > 0; }

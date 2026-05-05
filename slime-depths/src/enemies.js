@@ -12,7 +12,7 @@ import { spawnArrow, spawnOrb } from './projectiles.js';
 import { dropGold } from './gold.js';
 import { stats } from './stats';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
-import { triggerScreenFlash, spawnSoulTether, spawnDamageNumber } from './fx.js';
+import { triggerScreenFlash, spawnSoulTether, spawnDamageNumber, triggerKillCam, triggerHitStop } from './fx.js';
 import { markSoulFired } from './counterPips.js';
 
 // ============================================================================
@@ -1478,6 +1478,19 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         if (_isLastKill) {
           try { synthThud(55, 0.8, 0.32); } catch (_e) {}
           pulseZoom(0.06, 0.5);
+          // Hades/Sekiro-tier final-blow beat — gentle 0.45-scale slowmo
+          // for 0.45s + a bigger hit-stop than a normal kill. Reads as
+          // "you cleared the room" rather than just "another kill". The
+          // kill-cam ramps back to full speed before the loot phase
+          // kicks in, so it doesn't drag.
+          //   - hit-stop @ 0.14s: punch FREEZE on the moment of the kill
+          //   - kill-cam @ 0.45s: brief slowdown afterward
+          //
+          // Skipped if a perfect-dodge slowmo is already playing
+          // (skill expression takes priority); triggerKillCam guards
+          // for that internally.
+          triggerHitStop(0.14);
+          triggerKillCam();
         }
         // Camera punch — bosses + elites shake harder; also push a brief zoom
         // pulse for bosses so the screen feels like it's inhaling.
