@@ -375,13 +375,28 @@
      secondary button. Visible enough to read as "this is here" on first
      death; fades out after 4 cycles so it doesn't keep tugging the eye on
      subsequent deaths. The button itself stays the muted/italic balance
-     weight against the MAIN MENU button on the other side. */
+     weight against the MAIN MENU button on the other side.
+     0.6s delay lets the modal-fade-in animation (0.35s) settle BEFORE
+     the nudge fires, so the pulse isn't fighting the fade-in opacity
+     curve and reads cleanly. */
   @keyframes quickRestartNudge {
     0%, 100% { opacity: 0.7; }
     50%      { opacity: 1.0; text-shadow: 0 0 10px rgba(201,168,106,0.55); }
   }
   #deathQuickRestartBtn.nudging {
-    animation: quickRestartNudge 1.2s ease-in-out 4;
+    animation: quickRestartNudge 1.2s ease-in-out 0.6s 4;
+  }
+  /* META PROGRESS-BAR READY PULSE — when the next-unlock cost is met, the
+     bar gains a soft cyan halo that breathes. Static glow read as
+     "noticed", not "actionable"; a subtle 1.6s breathing cycle reads as
+     "act on this." Class is toggled by renderMetaShop based on the
+     ready check (meta.essence >= nextGoal.cost). */
+  @keyframes metaReadyBreathe {
+    0%, 100% { box-shadow: 0 0 8px rgba(160,232,255,0.45), inset 0 0 4px rgba(160,232,255,0.20); }
+    50%      { box-shadow: 0 0 18px rgba(160,232,255,0.85), 0 0 4px rgba(160,232,255,0.4), inset 0 0 6px rgba(160,232,255,0.35); }
+  }
+  .metaProgressBarReady {
+    animation: metaReadyBreathe 1.6s ease-in-out infinite;
   }
   /* Shop descend button — richer pulse than the generic pause button rule */
   #winRestartBtn:hover {

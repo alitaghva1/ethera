@@ -4034,17 +4034,23 @@ function showEndOfRun(isVictory) {
   // be rendered as a tinted two-part line ("FELLED BY {killer} — {beat}")
   // for death, or a single cream line for victory. Falls back to a flat
   // random message when no specific beat exists.
-  const _renderSubtitleFlat = (txt, color) => {
+  // letter-spacing override: the structured forms are LONGER than the
+  // random flavor pool (which is what the static 5px CSS was tuned for),
+  // so tighten to 3px when the longer form lands. Keeps the line within
+  // the modal width at all viewport scales.
+  const _renderSubtitleFlat = (txt, color, isStructured) => {
     subtitle.textContent = txt;
     subtitle.style.color = color;
+    subtitle.style.letterSpacing = isStructured ? '3px' : '5px';
   };
   if (isVictory) {
     // VICTORY — pure gold palette, triumphant
     title.textContent = 'THE DEPTHS YIELD';
     title.style.color = '#f4d9a0';
     title.style.textShadow = '0 0 22px rgba(244,217,160,0.7)';
-    const _victoryText = (_definingLine && _definingLine.raw) || VICTORY_MESSAGES[(Math.random() * VICTORY_MESSAGES.length) | 0];
-    _renderSubtitleFlat(_victoryText, '#d8cfae');
+    const _isVictoryStructured = !!(_definingLine && _definingLine.raw);
+    const _victoryText = _isVictoryStructured ? _definingLine.raw : VICTORY_MESSAGES[(Math.random() * VICTORY_MESSAGES.length) | 0];
+    _renderSubtitleFlat(_victoryText, '#d8cfae', _isVictoryStructured);
     if (ornamentText) {
       ornamentText.textContent = 'the depths have yielded';
       ornamentText.style.color = '#c9a86a';
@@ -4079,9 +4085,16 @@ function showEndOfRun(isVictory) {
         : '';
       const _sep = (_causeHtml && _beatHtml) ? `<span style="color:#7a5050;margin:0 6px;">—</span>` : '';
       subtitle.innerHTML = `${_causeHtml}${_sep}${_beatHtml}`;
+      // The structured form can be longer than the legacy flavor lines
+      // ("felled by an armored skeleton — your largest blow took 187"
+      // is ~62 chars vs the random pool's typical ~25). Tighten the
+      // letter-spacing from 5px to 3px in this case so the line stays
+      // readable without overflowing the death modal at narrow scales.
+      subtitle.style.letterSpacing = '3px';
     } else {
       // No specific beat or cause — fall back to the random flavor pool.
       subtitle.textContent = DEATH_MESSAGES[(Math.random() * DEATH_MESSAGES.length) | 0];
+      subtitle.style.letterSpacing = '5px';
     }
     subtitle.style.color = '#c8a8a8';
     if (ornamentText) {
@@ -4442,6 +4455,10 @@ function renderMetaShop(animate = false) {
     const pct = Math.min(1, meta.essence / nextGoal.cost);
     const ready = pct >= 1;
     const remaining = Math.max(0, nextGoal.cost - meta.essence);
+    // Progress-bar shell carries the breathing halo class only when
+    // ready \u2014 pulls the eye to the actionable moment without nagging
+    // when there's no action available yet.
+    const _barShellClass = ready ? 'metaProgressBarReady' : '';
     headerWrap.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:Georgia,serif;font-size:10px;letter-spacing:1.5px;">
         <span style="color:${ready ? '#a0e8ff' : '#c9a86a'};font-weight:bold;">
@@ -4452,8 +4469,8 @@ function renderMetaShop(animate = false) {
       </div>
       <div style="display:flex;align-items:center;gap:8px;font-family:Georgia,serif;">
         <span style="font-size:9px;color:rgba(200,190,210,0.55);letter-spacing:1.5px;flex-shrink:0;">NEXT</span>
-        <div style="flex:1;height:6px;background:rgba(20,12,28,0.85);border-radius:3px;overflow:hidden;border:1px solid ${nextGoal.tint}55;position:relative;">
-          <div style="height:100%;width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,${nextGoal.tint}aa,${nextGoal.tint});box-shadow:${ready ? `0 0 12px ${nextGoal.tint}` : 'none'};transition:width 0.4s ease;"></div>
+        <div class="${_barShellClass}" style="flex:1;height:6px;background:rgba(20,12,28,0.85);border-radius:3px;overflow:hidden;border:1px solid ${nextGoal.tint}55;position:relative;">
+          <div style="height:100%;width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,${nextGoal.tint}aa,${nextGoal.tint});transition:width 0.4s ease;"></div>
         </div>
         <span style="font-size:11px;color:${ready ? '#a0e8ff' : nextGoal.tint};font-weight:bold;letter-spacing:0.5px;flex-shrink:0;text-shadow:0 0 6px ${ready ? 'rgba(160,232,255,0.5)' : (nextGoal.tint + '44')};">
           ${nextGoal.name}
