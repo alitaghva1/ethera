@@ -20,6 +20,7 @@ import {
   applyRoomKindDressing,
   placeRoomKindProps,
 } from './roomComposition.js';
+import { pickAuthoredShell, applyAuthoredShell } from './roomShells.js';
 
 export const TILE = 48;
 // Default room dimensions. Per-room sizes can override via `data.w` / `data.h`
@@ -569,6 +570,25 @@ export function buildRoomFromData(data) {
   // ruin.stains' job in ruin.js.
   clearRoomMarks();
 
+  // ── AUTHORED SHELL SLICE ──────────────────────────────────────────────
+  // Some room kinds (combat / elite / challenge / sanctuary / reward /
+  // chestroom) get a 50-60% chance of being routed through one of three
+  // hand-tuned shells (combat_arena / crucible / chamber). The shell
+  // overrides pillar positions, door columns, and focal anchor — not
+  // dimensions if the source is bigger, and never spawns/decor (those
+  // continue to flow through their own systems).
+  //
+  // applyAuthoredShell mutates `data` in place + runs BFS pathing
+  // validation; if validation fails (which would only happen if the
+  // shell's pillar layout somehow soft-blocked the room — guarded by
+  // the unit-tested layouts in roomShells.js), the function reverts
+  // every mutation and returns false. In that case we silently fall
+  // through to the existing procedural pipeline. Pre-existing rooms
+  // (hamlet, boss, miniboss, trove, shop, altar, event, start) never
+  // route through shells in this slice and behave exactly as before.
+  const shellId = pickAuthoredShell(data);
+  if (shellId) applyAuthoredShell(data, shellId);
+
   // Per-room dimensions — falls back to ROOM_W/ROOM_H when not specified
   // (preserves back-compat with old saved data + legacy rooms like hamlet).
   const w = data.w || ROOM_W;
@@ -584,8 +604,21 @@ export function buildRoomFromData(data) {
   // Persistent run-history stain + aging level (read by drawRoom for overlays)
   room.ruinStain = data.ruinStain || null;
   room.ruinAging = data.ruinAging | 0;
+  // Authored-shell anchor (consumed by assignRoomFocal so the shell's
+  // hand-tuned focal position takes priority over procedural placement).
+  // Cleared if no shell applied this room.
+  room.authoredFocal = data.authoredFocal || null;
+  room.shellId       = data.shellId || null;
 
-  const pillars = PILLAR_TEMPLATES[data.pillarTemplate | 0] || [];
+  // Pillar source: authored shell positions (absolute coords) take
+  // priority over the procedural pillar template (scaled coords). When
+  // a shell is applied via applyAuthoredShell, it writes
+  // data.authoredPillars; otherwise we fall through to the existing
+  // PILLAR_TEMPLATES lookup so unrouted room kinds behave unchanged.
+  const usingAuthoredShell = !!(data.authoredPillars && data.authoredPillars.length > 0);
+  const pillars = usingAuthoredShell
+    ? data.authoredPillars.map(p => [p.x, p.y])
+    : (PILLAR_TEMPLATES[data.pillarTemplate | 0] || []);
   const tiles = [];
   for (let y = 0; y < h; y++) {
     const r = [];
@@ -601,11 +634,13 @@ export function buildRoomFromData(data) {
     // Pillar templates are authored at MEDIUM scale (20×14). For larger
     // rooms, scale pillar coords proportionally so the layout still reads
     // as designed. For smaller rooms, clamp to the new bounds.
-    const sx = w / ROOM_W;
-    const sy = h / ROOM_H;
+    // AUTHORED SHELLS skip the scale (their coords are already absolute
+    // for the shell's own w/h, which becomes the room's w/h).
+    const sx = usingAuthoredShell ? 1 : (w / ROOM_W);
+    const sy = usingAuthoredShell ? 1 : (h / ROOM_H);
     for (const [px, py] of pillars) {
-      const scaledX = Math.round(px * sx);
-      const scaledY = Math.round(py * sy);
+      const scaledX = usingAuthoredShell ? px : Math.round(px * sx);
+      const scaledY = usingAuthoredShell ? py : Math.round(py * sy);
       if (scaledX > 0 && scaledY > 0 && scaledX < w - 1 && scaledY < h - 1) {
         tiles[scaledY][scaledX] = 'pillar';
       }

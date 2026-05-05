@@ -477,6 +477,28 @@ export function assignRoomFocal(room) {
   // stable per room.
   const seed = _hash(w * 31 + h, (room.kind || '').length * 17 + (room._detailSeed | 0));
   const kind = rule.kinds[seed % rule.kinds.length];
+
+  // SHELL OVERRIDE — when the room was routed through an authored shell,
+  // the focal POSITION is pre-authored on room.authoredFocal (the focal
+  // KIND still comes from the visual profile, so each shell can host any
+  // compatible focal piece — combat_arena rooms get obelisk OR brazier
+  // depending on the kindHash, etc.).
+  if (room.authoredFocal
+      && Number.isFinite(room.authoredFocal.x)
+      && Number.isFinite(room.authoredFocal.y)) {
+    const ax = room.authoredFocal.x | 0;
+    const ay = room.authoredFocal.y | 0;
+    // Defensive: only honor if the authored tile is actually floor.
+    const aTile = room.tiles?.[ay]?.[ax];
+    if (aTile === 'floor') {
+      return { kind, x: ax, y: ay };
+    }
+    // If the authored tile is somehow a pillar/wall (shouldn't happen
+    // — applyAuthoredShell + validateShellPathing guarantee it's
+    // floor, but tile placement could still race), fall through to
+    // the procedural placement below.
+  }
+
   const cx = Math.floor(w / 2);
   const cy = Math.floor(h / 2);
   let x = cx, y = cy;
