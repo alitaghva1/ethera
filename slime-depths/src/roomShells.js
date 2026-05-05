@@ -158,6 +158,18 @@ function _hash(a, b) {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
+// String → 32-bit hash (djb2 variant). Stable across runs, no Math.random,
+// safe to mix into the shell-selection seed. Empty string returns the
+// constant 5381 — caller is responsible for guarding so undefined fields
+// don't accidentally salt the seed of rooms that don't have them.
+function _strHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = (((h << 5) + h) ^ s.charCodeAt(i)) >>> 0;
+  }
+  return h >>> 0;
+}
+
 // Mirror of roomComposition.js's getEffectiveRoomKind, inlined here so
 // this file stays import-free. Elite rooms generate from the combat
 // archetype (data.kind === 'combat') but flag eliteRoom=true; honoring
@@ -202,14 +214,36 @@ export function pickAuthoredShell(data) {
   // any compatible shell — the chamber being smaller than a wide
   // combat-3 source is intentional ("treasure rooms are smaller").
 
-  // Hash-driven probability roll. data.pillarTemplate is a stable
-  // floor-graph-generation field; we mix it with kind length so two
-  // rooms with the same pillarTemplate but different kinds get
-  // independent rolls. Use effective kind so elite rooms don't share
-  // a roll with combat rooms of the same pillarTemplate.
+  // Hash-driven probability roll. The seed mixes every stable
+  // identifier we have on roomData so the realized shell rate over a
+  // population of rooms approximates the configured `rule.chance`
+  // (currently 0.60 for crucible / chamber).
+  //
+  // History: an earlier pass used only `pillarTemplate ^ (kindLen + dim)`
+  // — for elites that gave just ~10 distinct seeds (6 pillarTemplates ×
+  // 3 dim variants), each seed deterministically picks "always shell"
+  // or "never shell". Realized rate landed at ~28% instead of the
+  // nominal 60%.
+  //
+  // Fix: mix in archetype (5+ values), eliteAffixId (4 values), and
+  // spikePattern (4-5 values) — all already populated on elite rooms
+  // by makeCombatRoom + floorGraph. That bumps the elite seed space
+  // from ~10 to several hundred buckets, so the population-realized
+  // rate converges close to 0.60.
+  //
+  // CRITICAL: only XOR these fields when they are actually set. For
+  // non-elite rooms (sanctuary / chestroom / etc.) archetype + affix
+  // + spikePattern are typically undefined; XORing the constant
+  // _strHash('') = 5381 into their seed would shift them onto a
+  // different shell-decision bucket and could break Criterion 6's
+  // "calm rooms unaffected" guarantee. Guarding with truthy checks
+  // keeps non-elite seeds byte-identical to the previous version.
   const ek = _effectiveKind(data) || '';
-  const seed = (data.pillarTemplate | 0) ^ (ek.length * 17 + (srcW * 31 + srcH * 13));
-  const roll = _hash(seed, 41) % 1000;
+  let seed = (data.pillarTemplate | 0) ^ (ek.length * 17 + (srcW * 31 + srcH * 13));
+  if (data.archetype)    seed ^= _strHash(data.archetype);
+  if (data.eliteAffixId) seed ^= _strHash(data.eliteAffixId) * 7;
+  if (data.spikePattern) seed ^= (data.spikePattern * 23);
+  const roll = _hash(seed >>> 0, 41) % 1000;
   if (roll >= rule.chance * 1000) return null;
 
   return rule.id;
@@ -254,17 +288,26 @@ export function applyAuthoredShell(data, shellId) {
   data.authoredForbidTiles = shell.forbidTiles.map(t => ({ x: t.x, y: t.y }));
   data.shellId = shellId;
 
-  // Prune spawns that:
-  //   (a) fall on a pillar tile (would freeze the enemy), or
-  //   (b) sit on the focal tile (would block the focal piece visually
-  //       — it's only cosmetic, but readability matters).
-  if (data.spawns) {
-    const pillarSet = new Set(data.authoredPillars.map(p => `${p.x},${p.y}`));
-    const focalKey  = `${shell.focal.x},${shell.focal.y}`;
-    data.spawns = data.spawns.filter(s => {
-      const k = `${s.x},${s.y}`;
-      return !pillarSet.has(k) && k !== focalKey;
-    });
+  // Spawn handling — RELOCATE first, prune as last resort.
+  //
+  // Reasons a spawn may now be invalid after the shell shrinks the
+  // room geometry:
+  //   (a) lands on a new authored pillar tile (would freeze the enemy)
+  //   (b) lands on the focal tile (would block the focal silhouette)
+  //   (c) lands out of bounds — when the source room was bigger than
+  //       the shell (e.g. 26x18 source → 20x14 crucible), spawns at
+  //       x≥20 or y≥14 are now in oblivion. Pre-fix this case was
+  //       silently kept by the old prune-by-filter and presumably
+  //       crashed or invisible-spawned the enemy.
+  //   (d) lands on perimeter / door / threshold / focal-frame tiles
+  //
+  // Earlier passes simply filtered (a) + (b) and lost ~10% of elite
+  // spawns. The relocator BFS-searches outward from each invalid
+  // spawn for the nearest valid combat tile and moves the spawn
+  // there. If no valid tile is reachable within radius, fall back
+  // to pruning so a stuck enemy doesn't ship.
+  if (data.spawns && data.spawns.length > 0) {
+    relocateInvalidSpawnsForShell(data);
   }
 
   // VALIDATE PATHING. If any door or focal would be unreachable from
@@ -354,4 +397,172 @@ export function validateShellPathing(data) {
   if (interiorReached < totalFree * 0.5) return false;
 
   return true;
+}
+
+// ── SPAWN RELOCATION ────────────────────────────────────────────────────────
+// When a shell is applied, spawns generated for the SOURCE room dims may
+// now be out of bounds (smaller shell) or land on new pillars / focal
+// tiles. The old approach was to prune them; the player then fought
+// fewer enemies than the floor planner intended. Relocator: BFS for the
+// nearest valid combat tile and move the spawn there, preserving enemy
+// count where geometry allows.
+//
+// "Valid" means:
+//   - In bounds (1 ≤ x ≤ w-2, 1 ≤ y ≤ h-2 — interior only, no door rows)
+//   - Not on a pillar (data.authoredPillars)
+//   - Not on the focal tile (data.authoredFocal)
+//   - Not on a door tile (data.authoredDoorCols north/south)
+//   - Not on the door threshold (1 tile inside each door — keeps the
+//     door's light pool clear and prevents enemies blocking entry)
+//   - Not on the player spawn buffer (radius 2 around south door
+//     interior — player enters there, enemies right on top is unfair)
+//   - Not on a tile already occupied by another spawn
+//
+// All criteria are derived from `data` fields the shell already wrote,
+// so this works for any shell layout (crucible / chamber / future).
+//
+// Deterministic: BFS visits neighbors in fixed order, so reloading the
+// same room produces the same relocation. No Math.random involved.
+
+// Returns {x, y} of the nearest valid spawn tile to (originalX, originalY)
+// reachable via BFS up to maxRadius steps. Returns null if no such tile
+// exists within radius (caller should fall back to pruning).
+export function findNearestValidSpawnTile(data, originalX, originalY, occupied, maxRadius = 10) {
+  const w = data.w | 0, h = data.h | 0;
+  if (w <= 2 || h <= 2) return null;
+
+  const pillarSet = new Set((data.authoredPillars || []).map(p => `${p.x},${p.y}`));
+  const focal = data.authoredFocal;
+  const focalKey = focal ? `${focal.x},${focal.y}` : null;
+  const northX = data.authoredDoorCols?.north;
+  const southX = data.authoredDoorCols?.south;
+
+  // Player spawn buffer — player enters at south door, walks 1-2 tiles
+  // north on entry. Reserve a 2-tile-radius circle around (southX, h-2)
+  // so enemies don't immediately overlap the player.
+  const playerX = (southX != null) ? southX : Math.floor(w / 2);
+  const playerY = h - 2;
+
+  function isValid(x, y) {
+    // Interior only — perimeter rows + columns are off-limits.
+    if (x < 1 || x > w - 2 || y < 1 || y > h - 2) return false;
+    const k = `${x},${y}`;
+    if (pillarSet.has(k)) return false;
+    if (focalKey === k) return false;
+    if (occupied && occupied.has(k)) return false;
+    // Door threshold — 1 tile inside each door.
+    if (y === 1 && x === northX) return false;
+    if (y === h - 2 && x === southX) return false;
+    // Player spawn buffer.
+    const dpx = x - playerX, dpy = y - playerY;
+    if (dpx * dpx + dpy * dpy < 4) return false;
+    return true;
+  }
+
+  // BFS from origin. The origin itself may or may not be valid — the
+  // caller has already determined this spawn needs relocation, so we
+  // skip the origin and only return at distance ≥ 1.
+  const seen = new Set();
+  seen.add(`${originalX},${originalY}`);
+  const queue = [{ x: originalX, y: originalY, d: 0 }];
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    if (cur.d > 0 && isValid(cur.x, cur.y)) {
+      return { x: cur.x, y: cur.y };
+    }
+    if (cur.d >= maxRadius) continue;
+    // 4-neighborhood, fixed order (E, W, S, N) for determinism.
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of dirs) {
+      const nx = cur.x + dx, ny = cur.y + dy;
+      const nk = `${nx},${ny}`;
+      if (seen.has(nk)) continue;
+      seen.add(nk);
+      queue.push({ x: nx, y: ny, d: cur.d + 1 });
+    }
+  }
+  return null;
+}
+
+// Iterates data.spawns and relocates any that are now invalid post-shell.
+// Mutates data.spawns in place. Returns counts for telemetry.
+//
+// "Invalid" detection mirrors findNearestValidSpawnTile's isValid checks.
+// We separate the two because we want to relocate ONLY spawns that were
+// actually invalid, while letting valid spawns count as "occupied" so
+// the relocator doesn't move two enemies onto the same tile.
+//
+// If a spawn cannot be relocated (no valid tile within maxRadius), it
+// is pruned as a fallback — better to lose one enemy than have a frozen
+// stuck-on-a-pillar enemy ship.
+export function relocateInvalidSpawnsForShell(data) {
+  if (!data || !Array.isArray(data.spawns) || data.spawns.length === 0) {
+    return { relocated: 0, pruned: 0, kept: 0 };
+  }
+  const w = data.w | 0, h = data.h | 0;
+  const pillarSet = new Set((data.authoredPillars || []).map(p => `${p.x},${p.y}`));
+  const focal = data.authoredFocal;
+  const focalKey = focal ? `${focal.x},${focal.y}` : null;
+  const northX = data.authoredDoorCols?.north;
+  const southX = data.authoredDoorCols?.south;
+  const playerX = (southX != null) ? southX : Math.floor(w / 2);
+  const playerY = h - 2;
+
+  function spawnIsInvalid(s) {
+    const x = s.x | 0, y = s.y | 0;
+    if (x < 1 || x > w - 2 || y < 1 || y > h - 2) return true;     // OOB after shrink
+    const k = `${x},${y}`;
+    if (pillarSet.has(k)) return true;
+    if (focalKey === k) return true;
+    if (y === 1 && x === northX) return true;
+    if (y === h - 2 && x === southX) return true;
+    // Player spawn buffer
+    const dpx = x - playerX, dpy = y - playerY;
+    if (dpx * dpx + dpy * dpy < 4) return true;
+    return false;
+  }
+
+  // First pass: walk spawns in original order, classify invalid, build
+  // an "occupied" set from VALID spawns so relocator can avoid stacking
+  // two spawns on the same tile.
+  const occupied = new Set();
+  const invalidIdx = [];
+  for (let i = 0; i < data.spawns.length; i++) {
+    const s = data.spawns[i];
+    if (spawnIsInvalid(s)) {
+      invalidIdx.push(i);
+    } else {
+      occupied.add(`${s.x | 0},${s.y | 0}`);
+    }
+  }
+
+  // Second pass: try to relocate each invalid spawn. On success, mutate
+  // its x/y in place + add to occupied. On failure, mark for prune.
+  const pruneIdx = [];
+  let relocated = 0;
+  for (const i of invalidIdx) {
+    const s = data.spawns[i];
+    const found = findNearestValidSpawnTile(data, s.x | 0, s.y | 0, occupied);
+    if (found) {
+      s.x = found.x;
+      s.y = found.y;
+      occupied.add(`${found.x},${found.y}`);
+      relocated++;
+    } else {
+      pruneIdx.push(i);
+    }
+  }
+
+  // Third pass: actually drop the spawns that couldn't be relocated.
+  // Iterate in reverse so splice indices stay valid.
+  if (pruneIdx.length > 0) {
+    pruneIdx.sort((a, b) => b - a);
+    for (const i of pruneIdx) data.spawns.splice(i, 1);
+  }
+
+  return {
+    relocated,
+    pruned: pruneIdx.length,
+    kept: data.spawns.length,
+  };
 }
