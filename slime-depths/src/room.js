@@ -2805,6 +2805,170 @@ function drawRoomStaticLayers(ctx) {
   }
 }
 
+// ─── DUNGEON VISUAL DEPTH — Tier 1 (room.js) ─────────────────────────
+// Helpers for the comparison-vs-Hades audit Tier 1 sprint:
+//   drawTorchLighting   — additive radial glows around each torch
+//   drawLavaLighting    — additive glows around lava patches (abyss/inferno)
+//   drawRoomVignette    — darken edges, pull eye to center, add staging
+// All three render in drawRoomDynamicLayers (per-frame, post-static),
+// so they composite on top of the cached tile/wall/decor base WITHOUT
+// invalidating the cache. Together they hit the three "feels flat"
+// symptoms identified in the dungeon design audit: no lighting,
+// no depth, no edge framing.
+
+// Cached parsed RGB triplets — color strings parse-once per biome
+// switch, not per-frame. Keyed by hex string. Avoids 60fps×6torches×3
+// channels of parseInt churn per frame.
+const _hexRgbCache = new Map();
+function _hexToRgb(hex) {
+  if (!hex || hex[0] !== '#' || hex.length < 7) return [255, 180, 100];
+  const cached = _hexRgbCache.get(hex);
+  if (cached) return cached;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const triplet = [r, g, b];
+  _hexRgbCache.set(hex, triplet);
+  return triplet;
+}
+
+// Volumetric torch lights — per-torch additive radial gradient. Tinted
+// from PAL.torchCore (the same color that drives flame core sprite),
+// with per-torch flicker (~7% amplitude, offset by torch seed) so the
+// glow breathes alongside the visible flame instead of strobing in
+// lockstep. Composite mode 'lighter' ensures the gradient ADDS to the
+// underlying tiles instead of replacing them — floor, walls, pillars,
+// and decor all pick up the warm wash without clobbering their hue.
+function drawTorchLighting(ctx) {
+  if (!roomTorches.length) return;
+  const torchCore = PAL.torchCore || '#ffb46e';
+  const [r, g, b] = _hexToRgb(torchCore);
+  const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const t of roomTorches) {
+    // Each torch's flicker phase is offset by its placement seed so a
+    // row of torches doesn't pulse in unison. 5 Hz sin gives a fire-
+    // alive feel without strobing.
+    const flicker = 0.93 + 0.07 * Math.sin(now * 5 + t.seed * 0.13);
+    const radius = 170 * flicker;
+    const cx = t.x;
+    const cy = t.y;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    // Strong warm core (alpha ~0.45 at center, controlled so it doesn't
+    // blow out brightly-lit floor tiles like vault gold), soft mid-band,
+    // long fade-out. The 0.7 stop carries most of the perceived light
+    // without overpowering the floor color grade.
+    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${(0.45 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.35, `rgba(${r}, ${g}, ${b}, ${(0.20 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.70, `rgba(${r}, ${g}, ${b}, ${(0.06 * flicker).toFixed(3)})`);
+    grad.addColorStop(1,    `rgba(${r}, ${g}, ${b}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  }
+  ctx.restore();
+}
+
+// Ambient lava glow — abyss + inferno biomes. The procedural lava-patch
+// floor wear (drawLavaPatch) is drawn in the cached static layer, but
+// it doesn't EMIT light. This pass walks the same patch positions
+// (cheap enough — ~8 patches, plus active fire pools) and adds a soft
+// orange glow to the surrounding floor, giving those biomes a second
+// light layer beyond torches. Crypt and vault skip this entirely.
+function drawLavaLighting(ctx) {
+  const biomeId = PAL._biomeId || 'vault';
+  // Inferno gets the strongest glow (the world-wound itself). Abyss
+  // gets a smaller scorch-ember tint via the same path.
+  const isInferno = biomeId === 'inferno';
+  const isAbyss = biomeId === 'abyss';
+  if (!isInferno && !isAbyss) return;
+  // Re-roll the same patch positions the cached static layer used so
+  // the glow lines up with the visible lava cracks (drawRoomStaticLayers
+  // pass 1b uses the same hash + 8 iterations + same offsets).
+  const seedBase = biomeId.length + room.w * room.h;
+  const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
+  // Slow 0.8 Hz overall pulse so the glow breathes with the lava core
+  // pulse already in drawLavaPatch.
+  const pulse = 0.82 + 0.18 * Math.sin(now * 0.8);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // Inferno biome — bright orange, larger radius. Abyss — smaller red-
+  // ember radius (it has scorch patches, not lava, so weaker).
+  const r = isInferno ? 255 : 200;
+  const g = isInferno ? 130 : 70;
+  const b = isInferno ? 50 : 30;
+  const radius = isInferno ? 90 : 56;
+  const baseAlpha = isInferno ? 0.32 : 0.18;
+  for (let i = 0; i < 8; i++) {
+    const h = hash(i + 17, seedBase);
+    const tx = 1 + (h % (room.w - 2));
+    const ty = 1 + ((h >>> 5) % (room.h - 2));
+    if (room.tiles[ty]?.[tx] !== 'floor') continue;
+    const cx = tx * TILE + TILE / 2 + ((h >>> 10) % 12) - 6;
+    const cy = ty * TILE + TILE / 2 + ((h >>> 14) % 12) - 6;
+    const a = baseAlpha * pulse;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`);
+    grad.addColorStop(0.45, `rgba(${r}, ${g}, ${b}, ${(a * 0.4).toFixed(3)})`);
+    grad.addColorStop(1,    `rgba(${r}, ${g}, ${b}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  }
+  // Fire pools also emit light. Even dormant pools (the scorched-floor
+  // phase between erupting cycles) get a subtle glow — they're hot
+  // ground, after all, not just decals. The cycle phase isn't checked
+  // here since gameTime isn't readily available; the static glow reads
+  // fine and ties the inferno biome's hazards into the lighting layer.
+  // Note: roomFirePools elements store world-space x/y already (not
+  // tile coords), unlike the patch loop above.
+  for (const fp of roomFirePools) {
+    const cx = fp.x;
+    const cy = fp.y;
+    const fpRadius = 76 * pulse;
+    const a = 0.42 * pulse;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, fpRadius);
+    grad.addColorStop(0,    `rgba(255, 160, 60, ${a.toFixed(3)})`);
+    grad.addColorStop(0.45, `rgba(255, 100, 40, ${(a * 0.5).toFixed(3)})`);
+    grad.addColorStop(1,    `rgba(255, 80, 30, 0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - fpRadius, cy - fpRadius, fpRadius * 2, fpRadius * 2);
+  }
+  ctx.restore();
+}
+
+// Edge vignette — slight darkening at the room's outer edges. Reads
+// as "the camera is staging this space" rather than "you can see the
+// whole tile grid uniformly." Pulls focus toward the center of play.
+// Uses normal alpha (no composite mode) with biome-tinted dark color
+// so the vignette respects each biome's overall mood (cool blues for
+// crypt, warm browns for vault, etc.).
+function drawRoomVignette(ctx) {
+  const W = room.w * TILE;
+  const H = room.h * TILE;
+  // Biome dark tint — sourced from vignetteBase or default to near-black.
+  // PAL.vignetteBase is a partial rgba string ("rgba(8, 5, 10, ") that
+  // expects an alpha suffix. We append our own alpha here.
+  const darkBase = PAL.vignetteBase || 'rgba(0, 0, 0, ';
+  ctx.save();
+  // Inner-radius starts ~62% of half-diagonal so the center 60% of the
+  // room stays fully clear; outer reaches the corners. Alpha ramps from
+  // 0 at inner edge to 0.30 at outer (slightly stronger in inferno for
+  // the world-wound feel).
+  const isInferno = PAL._biomeId === 'inferno';
+  const maxA = isInferno ? 0.34 : 0.22;
+  const cx = W / 2;
+  const cy = H / 2;
+  const innerR = Math.min(W, H) * 0.42;
+  const outerR = Math.hypot(W, H) * 0.62;
+  const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+  grad.addColorStop(0, darkBase + '0)');
+  grad.addColorStop(0.55, darkBase + (maxA * 0.45).toFixed(3) + ')');
+  grad.addColorStop(1, darkBase + maxA.toFixed(3) + ')');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
 // Dynamic layers — pillars, doors (animated open amount), pedestals
 // (bob/glow), altars (pulse), torches (flicker). Anything that mutates
 // frame-to-frame goes here so the cached static base never needs
@@ -2846,6 +3010,27 @@ function drawRoomDynamicLayers(ctx) {
   for (const t of roomTorches) {
     drawTorchSconce(ctx, Math.floor(t.x / TILE), 0);
   }
+  // Pass 7: VOLUMETRIC TORCH LIGHTING — comparison-vs-Hades audit P0.
+  // Previously torches were animated sprites with no actual illumination
+  // output, so rooms felt evenly lit from nowhere. Drawing additive
+  // radial gradients at each torch position transforms the space from
+  // "uniformly painted" to "lit by these specific sources." Draws AFTER
+  // walls/pillars/decor (so the floor + structures pick up the warm
+  // tint) but UNDER entities (which are drawn in main.js after this
+  // return). Per-biome tint sourced from PAL.torchCore so each floor's
+  // light has its own character — crypt blue moonlight, vault amber,
+  // abyss ember-red, inferno gold.
+  drawTorchLighting(ctx);
+  // Pass 8: ambient lava glow — abyss/inferno biomes get a second
+  // light source from any active lava patches and fire pools, giving
+  // those biomes a second visual layer of illumination beyond just
+  // torches. Skipped for crypt/vault.
+  drawLavaLighting(ctx);
+  // Pass 9: edge vignette — slight room-edge darkening pulls the eye
+  // toward play-area center and adds a depth-staging frame around the
+  // visible space. Subtle (alpha ~0.22), rendered with normal alpha
+  // composite so it darkens without recoloring.
+  drawRoomVignette(ctx);
 }
 
 // Public: draw all spikes at the current game time. Called from main.js so
