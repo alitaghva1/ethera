@@ -336,6 +336,15 @@ export function drawHud(ctx, w, h, progress = {}) {
   const heartRowH = sz + gap;
   const shake = heartShakeTime > 0 ? (Math.random() * 2 - 1) * heartShakeTime * 6 : 0;
   const heartRows = Math.max(1, Math.ceil(hero.maxHp / perRow));
+  // ── ONE-SHOT detection — strongest urgency tier ─────────────────
+  // The 1 HP starting design (Sekiro tier — every unblocked hit ends
+  // the run) needs a louder pulse than the existing "low HP" tier
+  // (hp <= 2). This catches the literal "next hit is run-ending"
+  // state regardless of maxHp, so it generalizes from the no-charm
+  // starting state (1/1) to a Vitality-Charm run currently at 1/4.
+  // Heart pulses 1.5× faster than the regular critical pulse, with
+  // 33% larger amplitude AND a glowing crimson halo behind it.
+  const _nowMs = performance.now();
   for (let i = 0; i < hero.maxHp; i++) {
     const col = i % perRow;
     const row = Math.floor(i / perRow);
@@ -344,13 +353,34 @@ export function drawHud(ctx, w, h, progress = {}) {
     const filled = i < hero.hp;
     const isLast = filled && i === Math.ceil(hero.hp) - 1;
     const isCritical = hero.hp <= 2 && isLast;
+    const isOneShot = hero.hp <= 1 && isLast;
     let scale = 1;
     if (heartSparkleTime > 0 && filled && isLast) {
       const t = heartSparkleTime / 0.6;
       scale = 1 + Math.sin(t * Math.PI) * 0.4;
     }
-    if (isCritical) {
-      scale = Math.max(scale, 1 + Math.sin(performance.now() / 180) * 0.15);
+    if (isOneShot) {
+      // Stronger + faster pulse for the very last point of life
+      scale = Math.max(scale, 1 + Math.sin(_nowMs / 120) * 0.20);
+    } else if (isCritical) {
+      scale = Math.max(scale, 1 + Math.sin(_nowMs / 180) * 0.15);
+    }
+    // Crimson halo behind the one-shot heart — pre-render before scale
+    // applies, anchored at heart center, so the halo doesn't distort
+    // when the heart pulses up and down. Lives in the same scale block
+    // so it shares the post-shake x/y position.
+    if (isOneShot) {
+      const haloPulse = 0.55 + 0.45 * (Math.sin(_nowMs / 120) * 0.5 + 0.5);
+      ctx.save();
+      const cx = x + sz / 2;
+      const cy = y + sz / 2;
+      const grad = ctx.createRadialGradient(cx, cy, 1, cx, cy, sz * 0.85);
+      grad.addColorStop(0, `rgba(255, 90, 110, ${(0.55 * haloPulse).toFixed(3)})`);
+      grad.addColorStop(0.55, `rgba(216, 85, 106, ${(0.28 * haloPulse).toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(216, 85, 106, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(cx - sz, cy - sz, sz * 2, sz * 2);
+      ctx.restore();
     }
     if (scale !== 1) {
       ctx.save();
