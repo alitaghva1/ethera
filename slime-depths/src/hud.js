@@ -247,15 +247,34 @@ export function drawHud(ctx, w, h, progress = {}) {
   // npc count) still lives in the DOM overlay for now and doesn't interact
   // with this canvas HUD path.
   if (progress.inHamlet) return;
-  // Low-HP red pulse — triggers at ≤30% HP, intensity scales with HP%.
-  // Vignette stays at the EDGES — the center 60% of screen remains totally clear
-  // so threats and combat read fine even when you're near death.
+  // Low-HP red pulse — triggers at ≤30% HP OR at literal 1 HP, with
+  // intensity scaling with HP%. Vignette stays at the EDGES — the
+  // center 60% of screen remains totally clear so threats and combat
+  // read fine even when you're near death.
+  //
+  // The hp===1 short-circuit covers the 1 HP starting design (Sekiro-
+  // tier maxHp=1). At maxHp=1 the player is ALWAYS at 100% (above the
+  // 30% threshold) until death, so the original gate never fired and
+  // the player got no screen-level "next hit ends you" cue. With the
+  // explicit hp===1 check, the pulse fires at 1/1 (always-on while
+  // alive at 1 HP) and at 1/4+ (Vitality Charm) when down to a single
+  // point. The HUD heart halo I added in hud.js handles the inner
+  // signal; this is the wider screen-level reinforcement.
+  //
   // Suppressed during any cinematic intro (progress.introActive) — the intro
   // has its own framing and the red pulse would double-dim the portrait to
   // near-black on boss-intro entry, which was the persistent playtest bug.
   const hpFrac = hero.hp / Math.max(1, hero.maxHp);
-  if (!progress.introActive && hero.hp > 0 && hero.state !== 'dead' && hpFrac <= 0.30) {
-    const beatRate = 150 + (hpFrac / 0.30) * 200;
+  const lowHp = hero.hp === 1 || hpFrac <= 0.30;
+  if (!progress.introActive && hero.hp > 0 && hero.state !== 'dead' && lowHp) {
+    // beatRate uses an effective fraction so the 1 HP starting design
+    // (maxHp=1, hpFrac=1.0) gets the FASTEST pulse, not the slowest.
+    // Without the clamp, hpFrac=1.0 fed the formula → beatRate=816ms
+    // (slower than even the 30% threshold case at 350ms), so the
+    // most-critical state visually felt the calmest. Clamp to 0.05
+    // when hp===1 → beatRate=183ms (fast urgent pulse, ~5.5 Hz).
+    const beatHpFrac = hero.hp === 1 ? 0.05 : hpFrac;
+    const beatRate = 150 + (beatHpFrac / 0.30) * 200;
     const pulse = 0.35 + 0.35 * Math.sin(performance.now() / beatRate);
     // Alpha capped lower; play-area visibility prioritized over drama
     const baseA = hero.hp === 1 ? 0.55 : hpFrac <= 0.10 ? 0.45 : hpFrac <= 0.20 ? 0.3 : 0.18;

@@ -29,7 +29,11 @@ export const TIPS = {
   // Was first_dodge — kept the ID so save data + tip-seen flags persist.
   // The mechanic is now SHIELD: Space raises a front-cone block, and the
   // first 0.10s is a perfect-block that grants a counter window.
-  first_dodge:     { text: 'Press SPACE to raise your SHIELD — time the raise as an attack lands to PERFECT-BLOCK' },
+  // Tightened phrasing: dropped redundant "raise" verb (was "raise your
+  // SHIELD ... time the raise") and renamed perfect-block to its visual
+  // bracket "the white ring" — players have just seen the perfect-block
+  // window indicator and can map text→visual cleanly.
+  first_dodge:     { text: 'Press SPACE for SHIELD — time it as an attack lands for a PERFECT-BLOCK + counter' },
   first_dash:      { text: 'Press Q to dash-strike through enemies (sword only · 2x damage · 5s CD)' },
   // Wizard-kit Sprint 2B: Q changes meaning by active weapon. Sword Q =
   // dash strike (commit + damage); Blast Q = blink (escape + reposition).
@@ -60,15 +64,23 @@ export const TIPS = {
   // BLAST slot are both paths now. Most relics affect both weapons.
   first_weaponOnly:{ text: 'Some relics scale a specific ability — your SWORD, BLAST, SHIELD, or all three' },
   // ----- Rooms -----
-  first_descent_dungeon: { text: 'A door waits north. Walk through to descend. Press M anytime to see the floor map.' },
+  first_descent_dungeon: { text: 'A door waits north. Walk through to descend. Press M anytime for the floor map.' },
   first_blood_gate: { text: 'A BLOOD GATE — offer HP to break the seal. The room beyond holds something legendary.' },
   first_shop: { text: 'A SHOP — three relics. Buy what you can afford; the rest stay until you go.' },
-  first_pedestal:  { text: 'Pedestals come in groups — claim one with E (the others vanish). Press R to reroll the offer (gold cost scales with floor).' },
+  // Reroll prompt is rendered ON the pedestal in-context (pedestals.js)
+  // so the tip only needs to teach the claim mechanic — splitting two
+  // lessons across one tip violated the "one mechanic per tip" voice rule.
+  first_pedestal:  { text: 'Pedestals come in groups — claim one with E. The others vanish.' },
   first_altar:     { text: 'Altar room — relics here cost HP, not gold. The ruin prefers deliberate pacts' },
   first_trove:     { text: 'Trove room — the urns are worth your time. Gold, hearts, and larger coin hide inside' },
   first_chestroom: { text: 'Treasure chest room — most chests are real. SOME are MIMICS. You learn by opening' },
   first_boss:      { text: 'Boss — watch the telegraph color. A wider red arc signals a heavier attack' },
-  first_low_hp:    { text: 'At or below 30% HP: your screen pulses red — sanctuaries mend what they can' },
+  // Tip text rewritten alongside the HUD pulse-fix that made the pulse
+  // also fire at literal 1 HP (1 HP design starts at hpFrac 1.0, which
+  // never crossed the old 30% threshold). The text now describes the
+  // SIGNAL ("screen pulses red, heart halos crimson") rather than the
+  // gate, so it reads correctly for both 1/1 and 1/4 cases.
+  first_low_hp:    { text: 'Critical HP — your screen pulses red and the heart halos crimson. Sanctuaries mend what they can.' },
   // ----- Modes -----
   first_daily:     { text: 'Daily challenges share today\'s curse + relic with all players — build your streak' },
   // ----- Hub + encounters -----
