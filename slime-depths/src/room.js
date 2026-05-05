@@ -13,6 +13,7 @@ import {
   assignRoomFocal,
   buildFloorZones,
   drawZoneWear,
+  drawZoneOverlays,
   drawFocal as drawFocalPiece,
   drawDoorArchitecture,
 } from './roomComposition.js';
@@ -2862,14 +2863,21 @@ function drawRoomStaticLayers(ctx) {
     }
   }
 
-  // Pass 1c: AUTHORED zone wear (Phase 1 vertical slice replacement).
-  // Was 22 hash-positioned dirt/dust/crack patches that read as random
-  // noise. Now: a single concentrated stain UNDER the focal piece,
-  // color-keyed to the focal kind (scorch under crater/brazier, blood
-  // under tomb, faint warm glow under altar, dark grime under
-  // obelisk/plinth). Door→focal traffic wear is communicated via the
-  // FZ.WEAR zone tinting in drawFloorTile, not by drawing extra patches
-  // here. Result: cleaner floor, deliberate not random.
+  // Pass 1c: AUTHORED zone overlays (polish-lap replacement of per-tile
+  // ALCOVE/WEAR fills). The earlier per-tile approach stamped 48-px
+  // dark squares scattered along wear paths and at corner alcoves —
+  // exactly the "random dark patches" failure the slice was supposed
+  // to solve. drawZoneOverlays paints SOFT multi-tile gradients
+  // instead: one radial vignette per interior corner (alcove
+  // shadow), one chain of overlapping low-alpha blobs along each
+  // door→focal Manhattan path (wear scuff). Reads as continuous
+  // grime, not as discrete tile defects.
+  drawZoneOverlays(ctx, room);
+
+  // Pass 1d: focal-piece stain. Single concentrated radial stain
+  // under the focal anchor, color-keyed to focal kind (scorch under
+  // crater/brazier, dark grime under obelisk, faint warm wash under
+  // altar, cool mist under tomb). Sits on the focal-frame zone.
   drawZoneWear(ctx, room);
 
   // Pass 2: shadow strips cast from walls onto floor cells below them.

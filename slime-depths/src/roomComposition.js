@@ -41,15 +41,26 @@ export const FZ = Object.freeze({
 });
 
 // Tone offsets per zone (applied as +/- on R/G/B over the base floor color
-// from drawFloorTile's PAL.floorBase). Subtle by design — the zones should
-// SUGGEST authored space without screaming, since the floor is read while
-// fighting and shouldn't pull attention away from enemies/projectiles.
+// in drawFloorTile). KEPT subtle for THRESHOLD only — the warmth around
+// the door reads as "swept entry."
+//
+// ALCOVE and WEAR were originally per-tile fills with offsets of -10 / -14;
+// in playtest they read as discrete dark 1-tile squares scattered through
+// the playable area — exactly the "random dark patches" problem the
+// vertical slice was supposed to solve, just relocated. Polish lap: zero
+// out the per-tile offsets for ALCOVE and WEAR; their visual contribution
+// now comes from drawZoneOverlays (soft multi-tile gradient sweeps), not
+// per-tile fills.
+//
+// FOCAL_FRAME tone offset also dropped — its visual signal is now the
+// chisel-groove pattern in drawFloorTile, not a tone shift, so adjacent
+// tiles don't read as a 5-tile colored cross.
 const ZONE_TONE = {
-  [FZ.COMBAT]:      { r:  0,  g:  0,  b:  0 },     // baseline
-  [FZ.THRESHOLD]:   { r: +6,  g: +5,  b: +3 },     // slightly warmer + lighter — "swept clean"
-  [FZ.FOCAL_FRAME]: { r: +4,  g: +2,  b:  0 },     // warm hint, suggests focal radiance
-  [FZ.ALCOVE]:      { r: -10, g: -10, b: -8 },     // deeper shadow at perimeter pockets
-  [FZ.WEAR]:        { r: -14, g: -14, b: -12 },    // visible dark scuff — DELIBERATE
+  [FZ.COMBAT]:      { r:  0, g:  0, b:  0 },     // baseline
+  [FZ.THRESHOLD]:   { r: +5, g: +4, b: +2 },     // slightly warmer/lighter near doors
+  [FZ.FOCAL_FRAME]: { r:  0, g:  0, b:  0 },     // signal via chisel groove (drawFloorTile), not tone
+  [FZ.ALCOVE]:      { r:  0, g:  0, b:  0 },     // signal via drawZoneOverlays radial vignette
+  [FZ.WEAR]:        { r:  0, g:  0, b:  0 },     // signal via drawZoneOverlays soft path sweep
 };
 
 export function applyZoneTone(baseColor, zone) {
@@ -258,6 +269,85 @@ export function buildFloorZones(room) {
   return zones;
 }
 
+// ── ZONE OVERLAYS (STATIC PASS) ─────────────────────────────────────────────
+// Soft multi-tile gradient sweeps that replace the per-tile color fills
+// for ALCOVE and WEAR. The earlier per-tile approach stamped 48-px solid
+// dark squares scattered along the wear path + 2x2 corner blocks for
+// alcoves, which read as "blocky noise" — same failure mode as the
+// original random-patch system.
+//
+// New approach: paint ONE soft radial vignette per corner (alcove) and
+// ONE soft swept-line gradient per door→focal path (wear). Both use
+// large-radius gradients with low alpha so they fade smoothly across
+// many tiles instead of stamping individual ones.
+export function drawZoneOverlays(ctx, room) {
+  if (!room.tiles) return;
+  const w = room.w, h = room.h;
+  ctx.save();
+
+  // ── ALCOVE corner vignettes — soft radial darkening at each interior
+  // corner. Anchored at the corner-tile center, fades out smoothly over
+  // ~3 tiles. Skipped if the corner tile is wall (carved shape).
+  const corners = [
+    { tx: 1,     ty: 1 },          // NW
+    { tx: w - 2, ty: 1 },          // NE
+    { tx: 1,     ty: h - 2 },      // SW
+    { tx: w - 2, ty: h - 2 },      // SE
+  ];
+  for (const c of corners) {
+    if (room.tiles[c.ty]?.[c.tx] !== 'floor') continue;
+    const cx = c.tx * TILE + TILE / 2;
+    const cy = c.ty * TILE + TILE / 2;
+    const radius = TILE * 2.4;     // ~115 px = 2.4 tiles, fades smoothly
+    const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, radius);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.20)');
+    grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.08)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  }
+
+  // ── WEAR — soft path sweep from each door to the focal anchor. Drawn
+  // as a series of overlapping radial blobs along the Manhattan path
+  // computed in buildFloorZones. Each blob is small (~40 px radius) and
+  // low alpha; the overlap creates a continuous scuff trail rather than
+  // discrete tile patches.
+  if (room.focal) {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        if (room.tiles[dy]?.[dx] !== 'door') continue;
+        const fromY = dy === 0 ? 1 : -1;
+        // Walk from door interior tile toward focal, blob every other step
+        let tx = dx, ty = dy + fromY * 4;
+        const targetX = room.focal.x, targetY = room.focal.y;
+        let step = 0;
+        while (Math.abs(tx - targetX) + Math.abs(ty - targetY) > 1) {
+          if (step % 2 === 0) {
+            const cx = tx * TILE + TILE / 2;
+            const cy = ty * TILE + TILE / 2;
+            // Skip blobs that would land outside the room
+            if (cx >= 0 && cy >= 0 && cx < w * TILE && cy < h * TILE) {
+              const r = TILE * 0.85;
+              const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+              grad.addColorStop(0, 'rgba(0, 0, 0, 0.10)');
+              grad.addColorStop(0.6, 'rgba(0, 0, 0, 0.04)');
+              grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              ctx.fillStyle = grad;
+              ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+            }
+          }
+          if (ty !== targetY) ty += Math.sign(targetY - ty);
+          else if (tx !== targetX) tx += Math.sign(targetX - tx);
+          else break;
+          step++;
+          if (step > w + h) break;
+        }
+      }
+    }
+  }
+  ctx.restore();
+}
+
 // ── ZONE WEAR (STATIC PASS) ─────────────────────────────────────────────────
 // Adds a single concentrated stain UNDER the focal piece, color-keyed to
 // focal kind. Replaces drawOrganicFloorDetail's 22 random patches.
@@ -331,43 +421,52 @@ function _shadow(ctx, cx, cy, w, h, alpha = 0.45) {
 }
 
 // OBELISK — narrow tall stone column with a faint rune. Combat-room flavor.
-// Total visible: 16w × 28h. Stays short enough to not block enemy reads.
+// Total visible: 16w × 28h. Polish lap: lifted body + capstone tones one
+// step lighter so the silhouette reads against the dark floor instead of
+// blending in (#3a2e34 → #4a3a42, #5a4a52 → #6a5a62 etc.). Rune halo
+// radius bumped 10 → 14 and core alpha 0.30 → 0.42 so the focal point
+// catches the eye in 1 second.
 function _drawObelisk(ctx, cx, cy, now) {
-  _shadow(ctx, cx, cy, 12, 4, 0.50);
+  _shadow(ctx, cx, cy, 12, 4, 0.55);
   // Base — wider trapezoidal foot
   ctx.fillStyle = '#1a1218';
   ctx.fillRect(cx - 11, cy + 6, 22, 6);
-  ctx.fillStyle = '#2a2028';
+  ctx.fillStyle = '#3a2e34';
   ctx.fillRect(cx - 10, cy + 7, 20, 4);
-  // Body — tapered column
+  ctx.fillStyle = '#4a3e44';
+  ctx.fillRect(cx - 10, cy + 7, 20, 1);
+  // Body — tapered column. Lifted mid-tone so it reads against dark floor.
   ctx.fillStyle = '#1a1218';
   ctx.fillRect(cx - 7, cy - 14, 14, 22);
-  ctx.fillStyle = '#3a2e34';
+  ctx.fillStyle = '#4a3a42';
   ctx.fillRect(cx - 6, cy - 13, 12, 20);
   // Light edge highlight (left side, simulates upper-left light)
-  ctx.fillStyle = '#5a4a52';
+  ctx.fillStyle = '#6a5a62';
   ctx.fillRect(cx - 6, cy - 13, 2, 20);
-  // Capstone — slightly wider top
+  // Capstone — slightly wider top, brighter cap so apex catches the eye
   ctx.fillStyle = '#1a1218';
   ctx.fillRect(cx - 8, cy - 16, 16, 3);
-  ctx.fillStyle = '#4a3a42';
+  ctx.fillStyle = '#6a5a62';
+  ctx.fillRect(cx - 7, cy - 15, 14, 2);
+  ctx.fillStyle = '#8a7a82';
   ctx.fillRect(cx - 7, cy - 15, 14, 1);
-  // Rune — single bright glyph mid-column. Faint cyan glow when fresh,
-  // dim when old. Static — no animation in vertical slice.
-  ctx.fillStyle = '#a0d8e8';
+  // Rune — single bright glyph mid-column.
+  ctx.fillStyle = '#c0e8f4';
   ctx.fillRect(cx - 1, cy - 6, 2, 2);
   ctx.fillRect(cx - 2, cy - 5, 1, 1);
   ctx.fillRect(cx + 1, cy - 5, 1, 1);
   ctx.fillRect(cx - 1, cy - 4, 2, 1);
-  // Soft cyan glow halo around rune
-  const glow = ctx.createRadialGradient(cx, cy - 5, 1, cx, cy - 5, 10);
-  const pulse = 0.55 + 0.10 * Math.sin(now * 1.4);
-  glow.addColorStop(0, `rgba(160, 216, 232, ${(0.30 * pulse).toFixed(3)})`);
+  // Soft cyan glow halo around rune — bumped radius + alpha so the
+  // focal reads from across the room.
+  const glow = ctx.createRadialGradient(cx, cy - 5, 1, cx, cy - 5, 14);
+  const pulse = 0.65 + 0.15 * Math.sin(now * 1.4);
+  glow.addColorStop(0, `rgba(160, 216, 232, ${(0.42 * pulse).toFixed(3)})`);
+  glow.addColorStop(0.5, `rgba(160, 216, 232, ${(0.18 * pulse).toFixed(3)})`);
   glow.addColorStop(1, 'rgba(160, 216, 232, 0)');
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = glow;
-  ctx.fillRect(cx - 10, cy - 15, 20, 20);
+  ctx.fillRect(cx - 14, cy - 19, 28, 28);
   ctx.restore();
 }
 
