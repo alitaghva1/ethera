@@ -3292,6 +3292,35 @@ export function drawHero(ctx) {
     ctx.beginPath();
     ctx.arc(hx, hy + 4, outerR, aim - arc / 2, aim + arc / 2);
     ctx.stroke();
+
+    // ── PERFECT-BLOCK WINDOW INDICATOR ─────────────────────────────
+    // Audit P1: the 0.10s perfect-block window had only subtle alpha
+    // shifts (0.32 vs 0.20). At 6 frames duration, players couldn't
+    // reliably PERCEIVE the difference and never learned the rhythm.
+    // Now: a bright white pulse ring expands across the outer cone
+    // edge during the window, vanishing exactly when the window
+    // closes. Players see "the bright ring = my shield is armed for
+    // a counter; once it fades, I'm in normal block mode." Same
+    // pattern as Sekiro's parry indicator at our scale.
+    if (inPerfect) {
+      // Window progress 0 → 1 across the perfect duration
+      const winT = Math.min(1, hero.stateTime / perfectWin);
+      // Expanding ring radius — starts at innerR, grows past outerR
+      const ringR = innerR + (outerR - innerR + 6) * winT;
+      // Ring alpha — peaks at start, fades to 0 as window closes
+      const ringA = (1 - winT) * 0.95;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${ringA.toFixed(3)})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(hx, hy + 4, ringR, aim - arc / 2, aim + arc / 2);
+      ctx.stroke();
+      // Inner glow line — gives the ring depth, reads as "energized"
+      ctx.strokeStyle = `rgba(180, 240, 255, ${(ringA * 0.7).toFixed(3)})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(hx, hy + 4, ringR - 2, aim - arc / 2, aim + arc / 2);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
