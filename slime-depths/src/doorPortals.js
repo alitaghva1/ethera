@@ -794,10 +794,33 @@ function _pickDoorSignal(d) {
       return { kind: 'affix-only', subLine: af.label, subLineColor: af.color };
     }
   }
-  // Substrate — combat, gold bias, rare+ bias, chestroom, trove,
-  // generic elite (no affix). Player has nothing meaningful to choose
-  // about this door beyond "sure, more dungeon" — no glyph.
-  return null;
+  // ── Substrate — small dim glyph (the "yes this is a door" affordance) ──
+  // Earlier design returned null for substrate, which left the door
+  // visually EMPTY. Adjacent to a themed/fusion glyph'd door, the empty
+  // one read as a render bug rather than as "this is the default kind."
+  // Hades' actual pattern is every door has SOMETHING — the hierarchy
+  // is in visual weight, not presence/absence. So substrate gets a
+  // small dim glyph (kind- or reward-appropriate), rendered at ~60%
+  // size and ~0.40 alpha, no glow. The bright signals still pop; the
+  // dim ones whisper.
+  let sg = null, sc = null, slab = null;
+  if (d.rewardLabel === 'GOLD') {
+    sg = '◈'; sc = '#c9a86a'; slab = 'GOLD';
+  } else if (d.rewardLabel === 'RARE+') {
+    sg = '✦'; sc = '#f4d9a0'; slab = 'RARE+';
+  } else if (d.targetKind === 'chestroom') {
+    sg = '⊞'; sc = KIND_COLORS.chestroom; slab = 'CHEST';
+  } else if (d.targetKind === 'trove') {
+    sg = '◈'; sc = KIND_COLORS.trove; slab = 'TROVE';
+  } else if (d.targetKind === 'elite') {
+    // Generic elite (no affix) — faint skull
+    sg = '☠'; sc = KIND_COLORS.elite; slab = 'ELITE';
+  } else {
+    // Plain combat — small swords. No label even on proximity (the
+    // most common door, not worth narrating).
+    sg = '⚔'; sc = KIND_COLORS.combat; slab = null;
+  }
+  return { kind: 'substrate', sigil: sg, color: sc, label: slab, dim: true };
 }
 
 // ─── Theme glyph render — procedural paths lifted from themes.js ──────
@@ -811,14 +834,23 @@ function _drawThemeGlyph(ctx, cx, cy, r, themeId, color, alpha) {
   ctx.lineWidth = 2.0;
   switch (themeId) {
     case 'storm': {
-      // Lightning bolt — angular Z silhouette
+      // Lightning bolt — sharper silhouette than the prior version.
+      // The earlier shape had its mid-vertices clustered at y±0.05,
+      // making the bolt read as a flat parallelogram instead of a
+      // jagged flash. New geometry:
+      //   - peaks pushed wider (0.55 vs 0.35) for clearer fork ends
+      //   - mid-vertices spread to y±0.10 for a real bend
+      //   - inner-bridge offsets (cx±0.05) keep the middle thin so
+      //     the eye reads "bolt" not "ribbon"
+      // Tall-narrow ratio (~2:1 height:width) matches the iconic
+      // "thunderbolt" silhouette across pixel-art conventions.
       ctx.beginPath();
-      ctx.moveTo(cx + r * 0.35, cy - r);
-      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
-      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
-      ctx.lineTo(cx - r * 0.35, cy + r);
-      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
-      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
+      ctx.moveTo(cx + r * 0.55, cy - r * 1.00);   // 1: top-right peak
+      ctx.lineTo(cx - r * 0.45, cy - r * 0.10);   // 2: descend hard left
+      ctx.lineTo(cx + r * 0.05, cy - r * 0.10);   // 3: thin bridge right
+      ctx.lineTo(cx - r * 0.55, cy + r * 1.00);   // 4: bottom-left point
+      ctx.lineTo(cx + r * 0.45, cy + r * 0.10);   // 5: ascend hard right
+      ctx.lineTo(cx - r * 0.05, cy + r * 0.10);   // 6: thin bridge left
       ctx.closePath();
       ctx.fill();
       break;
@@ -884,14 +916,19 @@ function _drawThemeGlyph(ctx, cx, cy, r, themeId, color, alpha) {
 // the indicator, not floating UI.
 function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
   const sig = _pickDoorSignal(d);
-  // No signal at all → render nothing. This is the substrate case
-  // (combat / gold / chestroom / trove) — the door IS the indicator.
+  // _pickDoorSignal now always returns a signal (substrate case
+  // returns a dim faint glyph instead of null). This branch is kept
+  // as defense in depth in case future kinds slip past.
   if (!sig) return;
 
   // Affix-only signal → no main glyph, only the proximity affix tag.
   // (Elite doors with no other tier match.) Falls through to the
   // sub-line render path below.
   const affixOnly = sig.kind === 'affix-only';
+  // Substrate signal (combat / gold / chest / trove / generic elite)
+  // renders dim + smaller — the "yes this is a door" affordance
+  // without competing with the bright tier-1 glyphs above.
+  const dim = !!sig.dim;
 
   // Proximity check — hero distance to the door's bottom edge. Drives
   // the label fade so distant doors are quiet (just glyph) and the
@@ -906,7 +943,9 @@ function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
   else proxAlpha = 1 - (dist - PROX_NEAR) / (PROX_FAR - PROX_NEAR);
 
   // Per-door bob (1.5 Hz, ±2 px) — magical-waypoint feel, not static UI.
-  const bob = Math.sin(now * 1.5 + d.tx * 0.7) * 2;
+  // Substrate skips the bob — they're not a "magical waypoint", they're
+  // just a marker. Subtler at rest is the goal.
+  const bob = dim ? 0 : Math.sin(now * 1.5 + d.tx * 0.7) * 2;
   // Glow pulse — alpha breathes independently of bob.
   const pulse = 0.85 + 0.15 * Math.sin(now * 1.4);
 
@@ -925,21 +964,32 @@ function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
 
   if (!affixOnly) {
     // ── Main glyph render — theme | fusion | sigil text ──────────────
-    ctx.fillStyle = hexA(sig.color, pulse);
-    ctx.shadowColor = hexA(sig.color, pulse * 0.85);
-    ctx.shadowBlur = 16;
+    // Bright tier (theme/fusion/legendary/boss/etc): full alpha, glow,
+    // 16 px scale. Dim tier (combat/gold/chest substrate): 0.40 alpha,
+    // no glow, 60% scale — reads as "yes this is a door" without
+    // shouting for attention.
+    if (dim) {
+      ctx.fillStyle = hexA(sig.color, 0.40);
+      // No shadowBlur for dim tier — the faint glyph should sit on
+      // its own without a halo demanding attention.
+    } else {
+      ctx.fillStyle = hexA(sig.color, pulse);
+      ctx.shadowColor = hexA(sig.color, pulse * 0.85);
+      ctx.shadowBlur = 16;
+    }
 
     if (sig.kind === 'theme') {
       // Theme glyph — procedural shape (storm bolt, blood drop, etc.).
-      _drawThemeGlyph(ctx, cx, glyphY, 16, sig.themeId, sig.color, pulse);
+      _drawThemeGlyph(ctx, cx, glyphY, dim ? 10 : 16, sig.themeId, sig.color, dim ? 0.40 : pulse);
     } else if (sig.kind === 'fusion') {
       // Fusion — interlocked rings. Larger radius (16) than the prior
       // tuning so it visually peers with the bumped theme glyph.
-      _drawFusionSigil(ctx, cx, glyphY, 16, hexA(sig.color, pulse));
+      _drawFusionSigil(ctx, cx, glyphY, dim ? 10 : 16, hexA(sig.color, dim ? 0.40 : pulse));
     } else {
       // Unicode-sigil glyph (boss ♛, altar ⛧, shop ⚖, event ✦, etc.).
-      // Per-glyph size table keeps visual weight normalized.
-      const sigilSize = SIGIL_FONT_SIZE[sig.sigil] || 28;
+      // Per-glyph size table keeps visual weight normalized; substrate
+      // halves the size for the "whisper, don't shout" feel.
+      const sigilSize = (SIGIL_FONT_SIZE[sig.sigil] || 28) * (dim ? 0.55 : 1);
       ctx.font = `bold ${sigilSize}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
