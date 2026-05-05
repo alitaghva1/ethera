@@ -797,6 +797,23 @@ const _AFFIX_DISPLAY = {
   warded: { label: 'WARDED', color: '#ffd855' },
 };
 
+// Hex darkener — for the rim 3D shading. Multiplies each channel by
+// `factor` (0..1). Returns a hex string. Cached alongside _doorHexCache
+// so repeated calls don't re-parse the same input.
+const _doorDarkenCache = new Map();
+function _darkenHex(hex, factor) {
+  const key = hex + '|' + factor;
+  const cached = _doorDarkenCache.get(key);
+  if (cached) return cached;
+  const [r, g, b] = _doorHexToRgb(hex);
+  const dr = Math.max(0, Math.min(255, Math.round(r * factor)));
+  const dg = Math.max(0, Math.min(255, Math.round(g * factor)));
+  const db = Math.max(0, Math.min(255, Math.round(b * factor)));
+  const result = '#' + ((dr << 16) | (dg << 8) | db).toString(16).padStart(6, '0');
+  _doorDarkenCache.set(key, result);
+  return result;
+}
+
 // Star path helper for legendary (4-point) and mythic (6-point) icons.
 function _drawStarPath(ctx, cx, cy, r, points) {
   const innerR = r * 0.4;
@@ -827,42 +844,70 @@ function _drawDoorMedallion(ctx, d, profile, now) {
   const x = d.tx * TILE;
   const y = d.ty * TILE;
   const cx = x + TILE / 2;
-  const cy = y - 28;     // 28 px above the wall top — clear of arch decoration
-  const baseR = 16;
+  // Position bumped 28 → 34 so the medallion sits cleanly above the
+  // top-wall body extension (drawTopWallBody renders y=-32 to y=0
+  // above the wall row). At cy=-34, the medallion bottom is at -18,
+  // 2 px below the wall body edge — anchors the disc visually to the
+  // wall edge while leaving the bulk of the medallion in clear sky.
+  const cy = y - 34;
+  const baseR = 17;
 
   // Pulse — special tiers (boss/fusion/legendary/mythic) breathe at
   // 1.6 Hz with ±6% scale for the magical-waypoint feel. Theme + kind
   // tier doesn't pulse (those are identity, not urgency).
   const scale = profile.pulse ? (1 + 0.06 * Math.sin(now * 1.6 + d.tx * 0.3)) : 1;
   const r = baseR * scale;
-  const innerR = r - 2;
+  const innerR = r - 2.5;
 
   ctx.save();
 
   // ── Layer 1: outer halo ─────────────────────────────────────────────
   if (profile.haloColor) {
-    const haloR = r + 10;
-    const halo = ctx.createRadialGradient(cx, cy, r, cx, cy, haloR);
+    const haloR = r + 12;
+    const halo = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, haloR);
     halo.addColorStop(0, profile.haloColor);
-    // Strip the alpha out of the halo color for the outer stop (replace
-    // the closing ", X)" with ", 0)").
+    // Strip the alpha out of the halo color for the outer stop. Robust
+    // to any rgba(R, G, B, A) format including spaces and decimal
+    // alpha values; the trailing alpha-and-paren is replaced with 0.
     halo.addColorStop(1, profile.haloColor.replace(/,\s*[\d.]+\)$/, ', 0)'));
     ctx.fillStyle = halo;
     ctx.fillRect(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
   }
 
   // ── Layer 2: tinted rim disc (the "frame") ─────────────────────────
-  ctx.fillStyle = profile.rimColor;
+  // Two-tone rim: full color on top half, slightly darkened bottom
+  // half for "lit from above" 3D feel. Accomplished via a vertical
+  // gradient instead of a flat fill.
+  const rimGrad = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+  rimGrad.addColorStop(0,    profile.rimColor);
+  rimGrad.addColorStop(0.55, profile.rimColor);
+  rimGrad.addColorStop(1,    _darkenHex(profile.rimColor, 0.55));
+  ctx.fillStyle = rimGrad;
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
 
   // ── Layer 3: dark stone inner disc ─────────────────────────────────
-  // Gradient from upper-light to lower-dark gives the disc apparent
-  // depth (like a stone pressed into a frame, lit from above).
-  const innerGrad = ctx.createRadialGradient(cx, cy - innerR * 0.3, 1, cx, cy, innerR);
-  innerGrad.addColorStop(0, '#2a1f28');
-  innerGrad.addColorStop(1, '#0f0a14');
+  // Radial gradient anchored at upper-third for "stone pressed into
+  // frame, lit from above" depth. Slightly darker bottom edge gives
+  // the inner disc real depth instead of flat fill.
+  const innerGrad = ctx.createRadialGradient(cx, cy - innerR * 0.35, 1, cx, cy, innerR);
+  innerGrad.addColorStop(0, '#3a2a36');
+  innerGrad.addColorStop(0.7, '#1a1018');
+  innerGrad.addColorStop(1, '#0a0610');
   ctx.fillStyle = innerGrad;
   ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, Math.PI * 2); ctx.fill();
+
+  // ── Layer 3b: top-edge highlight ───────────────────────────────────
+  // A thin bright arc on the top-inside of the disc — sells "metal
+  // disc, lit from above". Same color as rim but with a soft alpha.
+  ctx.save();
+  ctx.strokeStyle = profile.rimColor;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  // Arc from upper-left to upper-right (top quarter of the disc edge)
+  ctx.arc(cx, cy, innerR + 0.3, Math.PI * 1.20, Math.PI * 1.80);
+  ctx.stroke();
+  ctx.restore();
 
   // ── Layer 4: icon (kind-specific shape) ────────────────────────────
   const iconR = innerR * 0.65;
@@ -871,15 +916,45 @@ function _drawDoorMedallion(ctx, d, profile, now) {
 
   switch (profile.iconKind) {
     case 'combat': {
-      // Crossed swords — two diagonals + center pommel
-      ctx.lineWidth = 1.8;
+      // Proper crossed-swords silhouette — each sword has a thin blade
+      // (drawn via rotated rect) plus a small crossguard near the hilt.
+      // Blades cross at the center, hilts in opposite corners. Reads as
+      // weapons rather than the previous bare-X.
+      const bladeLen = iconR * 1.6;
+      const bladeW = 1.6;
+      const guardW = iconR * 0.45;
+      const guardH = 1.4;
+      // Sword 1 — top-left to bottom-right diagonal
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-bladeW / 2, -bladeLen / 2, bladeW, bladeLen);
+      // Tip (small triangle at top)
       ctx.beginPath();
-      ctx.moveTo(cx - iconR * 0.7, cy - iconR * 0.7);
-      ctx.lineTo(cx + iconR * 0.7, cy + iconR * 0.7);
-      ctx.moveTo(cx + iconR * 0.7, cy - iconR * 0.7);
-      ctx.lineTo(cx - iconR * 0.7, cy + iconR * 0.7);
-      ctx.stroke();
-      ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.moveTo(0, -bladeLen / 2 - 1.5);
+      ctx.lineTo(-bladeW * 0.9, -bladeLen / 2 + 1);
+      ctx.lineTo(bladeW * 0.9, -bladeLen / 2 + 1);
+      ctx.closePath();
+      ctx.fill();
+      // Crossguard near hilt (bottom)
+      ctx.fillRect(-guardW / 2, bladeLen * 0.28, guardW, guardH);
+      // Pommel (round) at the very bottom
+      ctx.beginPath(); ctx.arc(0, bladeLen * 0.42, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // Sword 2 — top-right to bottom-left diagonal (mirror)
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillRect(-bladeW / 2, -bladeLen / 2, bladeW, bladeLen);
+      ctx.beginPath();
+      ctx.moveTo(0, -bladeLen / 2 - 1.5);
+      ctx.lineTo(-bladeW * 0.9, -bladeLen / 2 + 1);
+      ctx.lineTo(bladeW * 0.9, -bladeLen / 2 + 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(-guardW / 2, bladeLen * 0.28, guardW, guardH);
+      ctx.beginPath(); ctx.arc(0, bladeLen * 0.42, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
       break;
     }
     case 'fusion': {
