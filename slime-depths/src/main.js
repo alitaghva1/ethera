@@ -49,28 +49,20 @@ let _mapPickInFlight = false;
 let _roomClearedNotified = false;
 
 // ───── Combat-aware atmospheric dim ─────────────────────────────────────
-// The dungeon used to render dust + weather + themed-room motes at full
-// alpha across the playable area regardless of combat state. With ~62
-// ambient particles drifting through the same screen space as enemy
-// projectiles, the player's eye constantly evaluated motes as
-// "is this a gameplay-relevant object?" — adding cognitive load during
-// combat. Reference roguelites (Hades, Dead Cells, Gungeon) handle this
-// with a clean separation: atmospheric depth lives in a background plane
-// or fades out during combat, never competing with active combat reads.
+// Drives the themed-room mote layer's "exhale" beat after combat clear.
+// Lerps 0→1 toward 1 when combat is active (combat/boss/challenge room
+// with live enemies, room not cleared) and back toward 0 otherwise.
 //
-// `_atmosphericDim` lerps 0→1 toward 1 when combat is active (combat or
-// boss room with live enemies) and back toward 0 when the room is clear
-// or non-combat. Drives:
-//   - Dust   : maskAlphaInside on the playable rect → 1 when peaceful,
-//              0 when combat (particles inside playable area fade to
-//              invisible during combat, void-edge particles unaffected)
-//   - Weather: same maskAlphaInside on the playable rect (default mask
-//              alpha was 0; now lerps 0 ↔ 1 so the void-only behavior
-//              persists during combat and softly extends during peace)
-//   - Themed room motes: layer alpha multiplier 1.0 → 0.3 (screen-space,
-//              can't be masked, so we just dim the layer during combat)
+// Dust + weather are now masked to outside-the-playable-rect AT ALL
+// TIMES (see render block — `drawDust(..., 0)` / `drawWeather(..., 0)`)
+// so they don't drive any combat-aware logic anymore; the playable
+// area stays clean of ambient particles whether the player is fighting
+// or exploring. The remaining job for the dim is the themed-mote layer
+// alpha — those are theme-tinted (FLAME/STORM/BLOOD/VOW/SHADOW) and
+// read as a magical signature, so dimming them to ~30% during combat
+// and blooming back to 100% post-clear is the visible "exhale."
 //
-// Lerp asymmetric: 0.4s into combat (fast clean-up), 0.9s out (slower
+// Lerp asymmetric: 0.4s into combat (fast cleanup), 0.9s out (slower
 // "room exhales after the fight" feel).
 let _atmosphericDim = 0;
 function updateAtmosphericDim(dt) {
@@ -6392,24 +6384,30 @@ function render() {
   // particles so death-bursts can still pop on top.
   drawSoulTethers(ctx);
   drawParticles(ctx);
-  // Combat-aware atmospheric dim. _atmosphericDim lerps 0 (peaceful)
-  // → 1 (active combat). The playable mask is the dungeon room rect;
-  // hamlet renders without a mask (its scene IS the world).
-  //   - Dust:    inside playable rect = (1 - dim) alpha. Combat = 0
-  //              alpha inside, peaceful = 1. Outside the rect always
-  //              full alpha (atmospheric depth in the void).
-  //   - Weather: same mask, default 0 alpha inside (void-only). During
-  //              peace it lerps up to 1 inside, gently extending the
-  //              biome layer into the playable area.
-  //   - Themed motes: screen-space (can't be masked), so we just dim
-  //              the entire layer to ~30% during combat.
+  // Atmospheric layer split — playable rect stays clean of ambient
+  // particles AT ALL TIMES; the void around the dungeon walls carries
+  // the atmospheric depth. Earlier passes tried to keep dust visible
+  // in the playable area during exploration and only fade it during
+  // combat ("room exhales after the fight"), but in vault biome dust
+  // and weather are both warm-gold tones — even at exploration density
+  // the player flagged the warm motes drifting through the floor as
+  // visual noise. The reference roguelites (Hades, Dead Cells, Risk
+  // of Rain) keep the gameplay plane clear and put atmosphere in the
+  // background plane; this mirrors that.
+  //
+  // The "exhale" beat after combat clear now lives entirely on the
+  // themed-room motes layer — they go from 30% during combat to 100%
+  // post-combat (driven by _atmosphericDim, see below). Themed motes
+  // are theme-tinted (FLAME orange, STORM cyan, etc.) so they read as
+  // a deliberate magical signature, not biome ambience.
+  //
+  // Hamlet is exempt — its painted scene IS the world, and there's no
+  // void around it to host atmospheric depth.
   const _playableMask = room.kind === 'hamlet'
     ? null
     : { left: 0, top: 0, right: room.w * TILE, bottom: room.h * TILE };
-  const _dustInsideAlpha = 1 - _atmosphericDim;
-  const _weatherInsideAlpha = (1 - _atmosphericDim) * 0.6;     // softer extension
-  drawDust(ctx, _playableMask, _dustInsideAlpha);
-  drawWeather(ctx, _playableMask, _weatherInsideAlpha);
+  drawDust(ctx, _playableMask, 0);
+  drawWeather(ctx, _playableMask, 0);
   // Ambient creatures — bats, ravens, moths passing through. Silhouettes.
   drawAmbientCreatures(ctx);
   drawCounterIndicator(ctx, hero.x, hero.y);
