@@ -4428,11 +4428,22 @@ function renderMetaShop(animate = false) {
     const rowEl = document.createElement('button');
     rowEl.title = u.flavor ? `${u.name} \u2014 ${u.desc}\n${u.flavor}` : `${u.name} \u2014 ${u.desc}`;
     rowEl.disabled = owned || !canAfford;
+    // Stable id so the click handler can find this row AGAIN after
+    // renderMetaShop() rebuilds the grid post-purchase. The DOM element
+    // is replaced, but the new one shares this id, which lets us pin a
+    // celebration animation to the just-bought row.
+    rowEl.id = `metaUnlockRow_${id}`;
     const staggerDelay = 1.2 + staggerIdx * 0.04;
     staggerIdx++;
     // Whole row IS the buy button \u2014 saves the dedicated UNLOCK button's
     // width and gives a bigger click target. Disabled when owned or
     // can't afford (visual: dimmed + no hover).
+    // --unlock-tint feeds the unlockBurst keyframe so the celebration
+    // flash matches the unlock's themed color (gold for Vitality Charm,
+    // cyan for future essence-cost reductions, etc.).
+    const _tintR = parseInt((u.tint || '#c9a86a').slice(1, 3), 16);
+    const _tintG = parseInt((u.tint || '#c9a86a').slice(3, 5), 16);
+    const _tintB = parseInt((u.tint || '#c9a86a').slice(5, 7), 16);
     rowEl.style.cssText = `
       display:grid;
       grid-template-columns:24px 1fr auto;
@@ -4446,6 +4457,7 @@ function renderMetaShop(animate = false) {
       font-family:Georgia,serif;
       transition:background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
       text-align:left;
+      --unlock-tint:rgba(${_tintR},${_tintG},${_tintB},0.85);
       ${animate ? `animation:winCardSlide 0.45s ease-out ${staggerDelay}s both;` : ''}
       ${owned ? 'opacity:0.5;' : (canAfford ? '' : 'opacity:0.55;')}
     `;
@@ -4466,21 +4478,15 @@ function renderMetaShop(animate = false) {
         const isFirstUnlockEver = ownedIds.length === 0;
         if (purchaseUnlock(id)) {
           if (isFirstUnlockEver) {
-            // First-purchase celebration — chord + screen flash + a
-            // pickup-banner-style notification announcing what was
-            // bound. This is the moment the meta loop locks in;
-            // it should FEEL like a milestone, not a transaction.
+            // First-purchase celebration — chord + visual burst on the
+            // just-bought row + a pickup-banner-style notification
+            // announcing what was bound. This is the moment the meta
+            // loop locks in; it should FEEL like a milestone, not a
+            // transaction. (Earlier version triggered a canvas screen
+            // flash, but the death modal is a DOM overlay covering the
+            // canvas — flash never showed. Animate the row itself.)
             try { synthChord(523, 1.2, 0.85); } catch (_e) {}
             setTimeout(() => { try { synthFanfare(0.65); } catch (_e) {} }, 180);
-            try {
-              // Inline hex → "r,g,b" conversion. Trim "#", parse the
-              // 6-char hex, split into bytes. Falls back to gold on
-              // anything malformed so the flash still fires.
-              const _hx = (u.tint || '#c9a86a').replace('#', '').padStart(6, 'c');
-              const _hn = parseInt(_hx, 16);
-              const _flashRgb = `${(_hn >> 16) & 255},${(_hn >> 8) & 255},${_hn & 255}`;
-              triggerScreenFlash(`rgba(${_flashRgb}, 0.22)`, 0.6);
-            } catch (_e) {}
             try {
               pushNotification({
                 kind: 'achievement',
@@ -4495,6 +4501,23 @@ function renderMetaShop(animate = false) {
             setTimeout(() => { try { synthPing(1320, 0.4, 0.20); } catch (_e) {} }, 120);
           }
           renderMetaShop();
+          // After the re-render, find the just-bought row by stable id
+          // and toggle the burst animation. Has to happen AFTER
+          // renderMetaShop() because that call rebuilds the grid and
+          // the rowEl in this closure is stale. requestAnimationFrame
+          // ensures the new node is in the layout tree before we
+          // attach the class (otherwise the animation can be skipped
+          // by some browsers when the node is brand-new).
+          requestAnimationFrame(() => {
+            const justBought = document.getElementById(`metaUnlockRow_${id}`);
+            if (justBought) {
+              justBought.classList.remove('unlockJustBought');
+              // Force reflow so re-adding the class restarts the
+              // animation if a player buys two in quick succession.
+              void justBought.offsetWidth;
+              justBought.classList.add('unlockJustBought');
+            }
+          });
         }
       });
       rowEl.addEventListener('mouseenter', () => {

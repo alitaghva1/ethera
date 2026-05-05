@@ -337,6 +337,52 @@
     0%, 100% { box-shadow: 0 0 12px rgba(255,200,255,0.45), inset 0 0 8px rgba(0,0,0,0.5); }
     50%      { box-shadow: 0 0 24px rgba(255,200,255,0.75), 0 0 4px rgba(255,200,255,0.3), inset 0 0 8px rgba(0,0,0,0.5); }
   }
+  /* UNLOCK BURST — first-purchase celebration on the bought sanctuary row.
+     Replaces the prior canvas screen flash, which was invisible on the
+     death modal (the modal is a DOM overlay covering the canvas). The
+     animation flashes a bright halo + scale pulse, then settles into the
+     row's owned state. The CSS variable --unlock-tint is set inline by
+     renderMetaShop so each unlock keeps its themed color. */
+  @keyframes unlockBurst {
+    0%   {
+      transform: translateX(0) scale(1);
+      box-shadow: 0 0 0 rgba(255,255,255,0), inset 0 0 0 rgba(255,255,255,0);
+      filter: brightness(1);
+    }
+    20%  {
+      transform: translateX(0) scale(1.04);
+      box-shadow: 0 0 32px var(--unlock-tint, rgba(201,168,106,0.85)),
+                  0 0 8px rgba(255,255,255,0.6),
+                  inset 0 0 18px rgba(255,255,255,0.35);
+      filter: brightness(1.5);
+    }
+    55% {
+      transform: translateX(0) scale(1.015);
+      box-shadow: 0 0 22px var(--unlock-tint, rgba(201,168,106,0.55)),
+                  inset 0 0 12px rgba(255,255,255,0.18);
+      filter: brightness(1.18);
+    }
+    100% {
+      transform: translateX(0) scale(1);
+      box-shadow: 0 0 0 rgba(255,255,255,0), inset 0 0 0 rgba(255,255,255,0);
+      filter: brightness(1);
+    }
+  }
+  .unlockJustBought {
+    animation: unlockBurst 1.1s cubic-bezier(0.18, 0.84, 0.36, 1) 1 both;
+  }
+  /* QUICK-RESTART NUDGE — subtle pulsing keyboard-hint on the death-screen
+     secondary button. Visible enough to read as "this is here" on first
+     death; fades out after 4 cycles so it doesn't keep tugging the eye on
+     subsequent deaths. The button itself stays the muted/italic balance
+     weight against the MAIN MENU button on the other side. */
+  @keyframes quickRestartNudge {
+    0%, 100% { opacity: 0.7; }
+    50%      { opacity: 1.0; text-shadow: 0 0 10px rgba(201,168,106,0.55); }
+  }
+  #deathQuickRestartBtn.nudging {
+    animation: quickRestartNudge 1.2s ease-in-out 4;
+  }
   /* Shop descend button — richer pulse than the generic pause button rule */
   #winRestartBtn:hover {
     background: linear-gradient(180deg,#5a4030,#2a1f10) !important;
