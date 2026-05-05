@@ -1784,28 +1784,33 @@ const _DOOR_AMBER = {
   midR:  160, midG:  70,  midB:  30,
   boost: 1.0,
 };
+// Boost values bumped 2025-01 — the prior 1.15–1.50 range was too
+// subtle to read from across a 1280-wide canvas. Pushed to 1.7–2.4
+// so themed/special doors visibly bloom while substrate combat keeps
+// its 1.0 baseline. The medallion above the door carries the iconic
+// signal; this light just makes the COLOR snap-readable from afar.
 const _DOOR_TINT_BY_THEME = {
-  storm:  { coreR: 130, coreG: 200, coreB: 255, midR: 60,  midG: 110, midB: 200, boost: 1.2 },
-  flame:  { coreR: 255, coreG: 130, coreB: 60,  midR: 200, midG: 70,  midB: 30,  boost: 1.2 },
-  blood:  { coreR: 220, coreG: 70,  coreB: 90,  midR: 120, midG: 30,  midB: 50,  boost: 1.2 },
-  vow:    { coreR: 240, coreG: 230, coreB: 180, midR: 180, midG: 160, midB: 110, boost: 1.15 },
-  shadow: { coreR: 180, coreG: 140, coreB: 240, midR: 100, midG: 70,  midB: 160, boost: 1.2 },
+  storm:  { coreR: 130, coreG: 200, coreB: 255, midR: 60,  midG: 110, midB: 200, boost: 1.9 },
+  flame:  { coreR: 255, coreG: 130, coreB: 60,  midR: 200, midG: 70,  midB: 30,  boost: 1.9 },
+  blood:  { coreR: 220, coreG: 70,  coreB: 90,  midR: 120, midG: 30,  midB: 50,  boost: 1.9 },
+  vow:    { coreR: 240, coreG: 230, coreB: 180, midR: 180, midG: 160, midB: 110, boost: 1.8 },
+  shadow: { coreR: 180, coreG: 140, coreB: 240, midR: 100, midG: 70,  midB: 160, boost: 1.9 },
 };
 const _DOOR_TINT_BY_SEAL = {
-  fusion:    { coreR: 255, coreG: 150, coreB: 90,  midR: 200, midG: 80,  midB: 40,  boost: 1.45 },
-  legendary: { coreR: 255, coreG: 180, coreB: 240, midR: 180, midG: 100, midB: 200, boost: 1.30 },
-  mythic:    { coreR: 255, coreG: 240, coreB: 200, midR: 220, midG: 180, midB: 130, boost: 1.50 },
+  fusion:    { coreR: 255, coreG: 150, coreB: 90,  midR: 200, midG: 80,  midB: 40,  boost: 2.3 },
+  legendary: { coreR: 255, coreG: 180, coreB: 240, midR: 180, midG: 100, midB: 200, boost: 2.1 },
+  mythic:    { coreR: 255, coreG: 240, coreB: 200, midR: 220, midG: 180, midB: 130, boost: 2.4 },
 };
 const _DOOR_TINT_BY_KIND = {
-  boss:      { coreR: 220, coreG: 50,  coreB: 60,  midR: 130, midG: 20,  midB: 30,  boost: 1.40 },
-  miniboss:  { coreR: 200, coreG: 80,  coreB: 80,  midR: 130, midG: 40,  midB: 50,  boost: 1.20 },
-  altar:     { coreR: 200, coreG: 60,  coreB: 80,  midR: 110, midG: 25,  midB: 40,  boost: 1.15 },
-  shop:      { coreR: 255, coreG: 200, coreB: 100, midR: 200, midG: 130, midB: 50,  boost: 1.20 },
-  sanctuary: { coreR: 130, coreG: 230, coreB: 170, midR: 60,  midG: 150, midB: 110, boost: 1.15 },
-  reward:    { coreR: 130, coreG: 230, coreB: 170, midR: 60,  midG: 150, midB: 110, boost: 1.15 },
-  event:     { coreR: 200, coreG: 140, coreB: 240, midR: 120, midG: 80,  midB: 180, boost: 1.15 },
-  challenge: { coreR: 255, coreG: 170, coreB: 90,  midR: 180, midG: 110, midB: 50,  boost: 1.10 },
-  elite:     { coreR: 220, coreG: 90,  coreB: 90,  midR: 130, midG: 50,  midB: 50,  boost: 1.15 },
+  boss:      { coreR: 220, coreG: 50,  coreB: 60,  midR: 130, midG: 20,  midB: 30,  boost: 2.2 },
+  miniboss:  { coreR: 200, coreG: 80,  coreB: 80,  midR: 130, midG: 40,  midB: 50,  boost: 1.8 },
+  altar:     { coreR: 200, coreG: 60,  coreB: 80,  midR: 110, midG: 25,  midB: 40,  boost: 1.85 },
+  shop:      { coreR: 255, coreG: 200, coreB: 100, midR: 200, midG: 130, midB: 50,  boost: 1.85 },
+  sanctuary: { coreR: 130, coreG: 230, coreB: 170, midR: 60,  midG: 150, midB: 110, boost: 1.8 },
+  reward:    { coreR: 130, coreG: 230, coreB: 170, midR: 60,  midG: 150, midB: 110, boost: 1.8 },
+  event:     { coreR: 200, coreG: 140, coreB: 240, midR: 120, midG: 80,  midB: 180, boost: 1.85 },
+  challenge: { coreR: 255, coreG: 170, coreB: 90,  midR: 180, midG: 110, midB: 50,  boost: 1.7 },
+  elite:     { coreR: 220, coreG: 90,  coreB: 90,  midR: 130, midG: 50,  midB: 50,  boost: 1.8 },
 };
 
 // Resolve a door's spill-light tint via priority: special seal beats
@@ -1914,9 +1919,14 @@ function drawDoor(ctx, tx, ty, openAmount) {
   // like generic dungeon doors.
   const tint = _doorLightTint(_getDoorAt && _getDoorAt(tx, ty));
   const glowAnchorY = isSouthWall ? (y + TILE * 0.22) : (y + TILE * 0.78);
+  // Widened gradient outer radius — was TILE * 0.62 (~30 px), now
+  // TILE * 0.95 (~46 px) so the colored light visibly spills onto the
+  // adjacent wall stones and the floor in front of the door. This is
+  // the Hades distance-read: you see the doorway color before you see
+  // any other detail of the door itself.
   const glow = ctx.createRadialGradient(
     cx, glowAnchorY, 2,
-    cx, y + TILE * 0.5, TILE * 0.62,
+    cx, y + TILE * 0.5, TILE * 0.95,
   );
   // Build alpha from the open-amount (closed doors glow weaker, open
   // doors blaze through). Apply a slight bump for special tints so
@@ -1927,7 +1937,9 @@ function drawDoor(ctx, tx, ty, openAmount) {
   glow.addColorStop(0.5, `rgba(${tint.midR}, ${tint.midG}, ${tint.midB}, ${midAlpha.toFixed(3)})`);
   glow.addColorStop(1,   'rgba(20, 8, 4, 0)');
   ctx.fillStyle = glow;
-  ctx.fillRect(x - 12, y - 8, TILE + 24, TILE + 16);
+  // Wider fillRect to match the wider gradient — light spills onto the
+  // adjacent wall + floor for the distance-read effect.
+  ctx.fillRect(x - 24, y - 14, TILE + 48, TILE + 28);
 
   // Next-room preview pulse — legacy fallback for rooms with no door
   // object. Kept since some legacy spawn paths still rely on it.

@@ -672,80 +672,110 @@ function _drawSealedDoorCard(ctx, d, cx, cardCY, now) {
 // a labeled UI element. That's intentional — a bare wooden door next
 // to a marked door reads as "this is the default path", not as a
 // render bug, because both halves of the comparison are architectural.
+// _buildDoorVisualProfile — every door always gets a medallion. The
+// hierarchy is in colors and rim treatment, NOT presence/absence.
+// Combat doors get crossed swords. Themed get the theme glyph. Boss
+// gets a skull. Etc. This eliminates the "two empty doors look broken"
+// failure mode while keeping the visual hierarchy (special doors have
+// brighter rims, halos, and pulse animations).
+//
+// Priority (top wins):
+//   1. SEALED → handled separately (BLOOD GATE card)
+//   2. BOSS → skull on dark stone, crimson rim, halo + pulse
+//   3. FUSION → interlocked rings on stone, ember rim, halo + pulse
+//   4. MYTHIC → 6-point sun, white-gold rim, halo + pulse
+//   5. LEGENDARY → 4-point star, lavender rim, halo + pulse
+//   6. THEME → theme glyph (bolt/drop/etc), theme-colored rim, halo
+//   7. ALTAR/SHOP/SANCTUARY/EVENT/MINIBOSS/CHALLENGE/ELITE/CHEST/TROVE
+//      → kind-specific glyph, kind-tinted rim
+//   8. COMBAT (default) → crossed swords on stone, neutral rim
 function _buildDoorVisualProfile(d) {
   const reward = d.rewardLabel || null;
   const kind = d.targetKind || 'combat';
+  // Default substrate — combat with crossed swords. Muted bronze/stone
+  // colors so it whispers; brighter tiers below override.
   const profile = {
-    kindArchVariant: kind,
-    themeWash: (d.roomTheme && THEMES[d.roomTheme]) ? d.roomTheme : null,
-    specialSeal: null,
-    affixAccent: (kind === 'elite' && d.eliteAffixId) ? d.eliteAffixId : null,
-    intensity: 0,
+    iconKind: 'combat',
+    rimColor: '#7a6a5a',
+    iconColor: '#c8b894',
+    haloColor: null,
+    pulse: false,
+    affixId: (kind === 'elite' && d.eliteAffixId) ? d.eliteAffixId : null,
   };
-  // Special seal — top-tier reward only. Fusion is the build moment.
-  // GOLD and RARE+ intentionally don't seal: they're substrate-tier
-  // rewards (just more coins / slightly bumped tier), not build axes.
-  if (reward === 'FUSION') profile.specialSeal = 'fusion';
-  else if (reward === 'MYTHIC') profile.specialSeal = 'mythic';
-  else if (reward === 'LEGENDARY') profile.specialSeal = 'legendary';
-  // Intensity — drives layer strength. Boss is loudest; substrate is
-  // silent. Layer order in _drawDoorIdentity respects this so quiet
-  // tiers don't blow up at the seal/affix passes.
-  if (kind === 'boss') profile.intensity = 1.00;
-  else if (profile.specialSeal === 'fusion' || profile.specialSeal === 'mythic') profile.intensity = 0.95;
-  else if (profile.specialSeal === 'legendary') profile.intensity = 0.85;
-  else if (kind === 'altar' || kind === 'shop') profile.intensity = 0.85;
-  else if (kind === 'sanctuary' || kind === 'reward') profile.intensity = 0.75;
-  else if (kind === 'event' || kind === 'miniboss') profile.intensity = 0.70;
-  else if (kind === 'challenge' || kind === 'elite') profile.intensity = 0.65;
-  else if (profile.themeWash) profile.intensity = 0.60;     // themed combat
-  // else substrate (combat/chestroom/trove/gold/rare+) → stays 0
+  // Top-priority overrides — boss + special seals + theme push the
+  // medallion to its loudest state.
+  if (kind === 'boss') {
+    profile.iconKind = 'boss';
+    profile.rimColor = '#dc5a5a'; profile.iconColor = '#ffd0c8';
+    profile.haloColor = 'rgba(220, 70, 80, 0.55)'; profile.pulse = true;
+  } else if (reward === 'FUSION') {
+    profile.iconKind = 'fusion';
+    profile.rimColor = '#ff9050'; profile.iconColor = '#ffc480';
+    profile.haloColor = 'rgba(255, 140, 80, 0.50)'; profile.pulse = true;
+  } else if (reward === 'MYTHIC') {
+    profile.iconKind = 'star6';
+    profile.rimColor = '#fff2c0'; profile.iconColor = '#ffffff';
+    profile.haloColor = 'rgba(255, 240, 200, 0.60)'; profile.pulse = true;
+  } else if (reward === 'LEGENDARY') {
+    profile.iconKind = 'star4';
+    profile.rimColor = '#ffb0e0'; profile.iconColor = '#ffd0f0';
+    profile.haloColor = 'rgba(255, 180, 240, 0.45)'; profile.pulse = true;
+  } else if (d.roomTheme && THEMES[d.roomTheme]) {
+    const theme = THEMES[d.roomTheme];
+    profile.iconKind = 'theme:' + d.roomTheme;
+    profile.rimColor = theme.color;
+    profile.iconColor = theme.tint || theme.color;
+    // Theme halo — subtle, doesn't pulse (themes are identity, not urgency)
+    const [r, g, b] = _doorHexToRgb(theme.color);
+    profile.haloColor = `rgba(${r}, ${g}, ${b}, 0.40)`;
+  } else if (kind === 'altar') {
+    profile.iconKind = 'altar';
+    profile.rimColor = '#d04050'; profile.iconColor = '#ff8088';
+    profile.haloColor = 'rgba(208, 64, 80, 0.40)';
+  } else if (kind === 'shop') {
+    profile.iconKind = 'shop';
+    profile.rimColor = '#e8c080'; profile.iconColor = '#ffd098';
+    profile.haloColor = 'rgba(232, 192, 128, 0.40)';
+  } else if (kind === 'sanctuary' || kind === 'reward') {
+    profile.iconKind = 'sanctuary';
+    profile.rimColor = '#86e3a8'; profile.iconColor = '#a8f0c0';
+    profile.haloColor = 'rgba(134, 227, 168, 0.40)';
+  } else if (kind === 'event') {
+    profile.iconKind = 'event';
+    profile.rimColor = '#b890ff'; profile.iconColor = '#d0b0ff';
+    profile.haloColor = 'rgba(184, 144, 255, 0.40)';
+  } else if (kind === 'miniboss') {
+    profile.iconKind = 'miniboss';
+    profile.rimColor = '#c06060'; profile.iconColor = '#ffb0a0';
+    profile.haloColor = 'rgba(192, 96, 96, 0.40)';
+  } else if (kind === 'challenge') {
+    profile.iconKind = 'challenge';
+    profile.rimColor = '#ffb265'; profile.iconColor = '#ffd098';
+    profile.haloColor = 'rgba(255, 178, 100, 0.35)';
+  } else if (kind === 'elite') {
+    profile.iconKind = 'elite';
+    profile.rimColor = '#e07070'; profile.iconColor = '#ffd0c8';
+    profile.haloColor = 'rgba(224, 112, 112, 0.40)';
+  } else if (kind === 'chestroom') {
+    profile.iconKind = 'chest';
+    profile.rimColor = '#c9a86a'; profile.iconColor = '#ffd680';
+  } else if (kind === 'trove') {
+    profile.iconKind = 'trove';
+    profile.rimColor = '#f4d9a0'; profile.iconColor = '#ffe9b0';
+  }
+  // Otherwise default substrate (combat) — already set
   return profile;
 }
 
-// _drawDoorIdentity — composes the architectural layers per profile.
-// Called from drawDoorLabels for non-sealed doors. World-space coords;
-// each layer paints onto the door tile (tx*TILE, ty*TILE, TILE, TILE).
+// _drawDoorIdentity — single render call: just paint the medallion.
+// Sealed doors go through a separate dramatic-card flow.
 function _drawDoorIdentity(ctx, d, now) {
   const profile = _buildDoorVisualProfile(d);
-  if (profile.intensity <= 0) return;     // substrate — bare door
-  const x = d.tx * TILE;
-  const y = d.ty * TILE;
-  // Layer 1: theme wash (color tint, screen-blend, lifts door art)
-  if (profile.themeWash) _drawThemeWash(ctx, x, y, profile.themeWash, profile.intensity);
-  // Layer 2: kind details (encounter-specific shape language)
-  _drawKindArchDetails(ctx, x, y, profile.kindArchVariant, profile.intensity, now);
-  // Layer 3: keystone seal (special reward marking on the arch top)
-  if (profile.specialSeal) _drawKeystoneSeal(ctx, x, y, profile.specialSeal, profile.intensity, now);
-  // Layer 4: affix accent (elite affix-specific edges/marks)
-  if (profile.affixAccent) _drawAffixAccent(ctx, x, y, profile.affixAccent, now);
+  _drawDoorMedallion(ctx, d, profile, now);
 }
 
-// Theme material wash — colored tint over the door body. Reads as
-// "this door's stone has absorbed the storm/flame/blood/etc essence."
-// Composite-screen so the wash LIFTS the underlying door art rather
-// than covering it; the wood/stone texture stays legible.
-function _drawThemeWash(ctx, x, y, themeId, intensity) {
-  const theme = THEMES[themeId];
-  if (!theme) return;
-  const [tr, tg, tb] = _doorHexToRgb(theme.color);
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  // Soft radial gradient anchored at door-mid for the wash. Stronger
-  // at the door body, fades out at the edges so the wash doesn't
-  // bleed into adjacent wall tiles.
-  const cx = x + TILE / 2;
-  const cy = y + TILE * 0.55;
-  const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, TILE * 0.55);
-  grad.addColorStop(0,    `rgba(${tr}, ${tg}, ${tb}, ${(0.36 * intensity).toFixed(3)})`);
-  grad.addColorStop(0.6,  `rgba(${tr}, ${tg}, ${tb}, ${(0.18 * intensity).toFixed(3)})`);
-  grad.addColorStop(1,    `rgba(${tr}, ${tg}, ${tb}, 0)`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(x, y, TILE, TILE);
-  ctx.restore();
-}
-
-// Hex → RGB triplet, cached. ~5 colors maximum cached (one per theme).
+// Hex → RGB triplet, cached. ~10 colors maximum cached (5 themes + the
+// reward/kind tints that get used in halo composition).
 const _doorHexCache = new Map();
 function _doorHexToRgb(hex) {
   if (!hex) return [200, 200, 200];
@@ -758,194 +788,16 @@ function _doorHexToRgb(hex) {
   return triplet;
 }
 
-// Kind architectural details — encounter-specific decorations painted
-// onto the door tile. These are the SHAPE-LANGUAGE differentiators
-// that make doors readable from across the room without text labels:
-//   boss      — dark lintel band + crimson under-glow + tiny skull
-//   miniboss  — reduced boss: dark band, no skull
-//   altar     — blood drips from keystone, dark ritual base
-//   shop      — warm lantern glow at keystone + tiny coin glint
-//   sanctuary — soft healing light at the threshold (door base)
-//   elite     — spike nails on lintel + dark band
-//   event     — purple-cyan asymmetric rune
-//   challenge — orange diagonal hazard stripes
-//   trove     — gold lock plate on door body
-//   chestroom — same hardware as trove
-function _drawKindArchDetails(ctx, x, y, kind, intensity, now) {
-  const cx = x + TILE / 2;
-  ctx.save();
-  switch (kind) {
-    case 'boss': {
-      ctx.fillStyle = `rgba(20, 8, 12, ${(0.55 * intensity).toFixed(3)})`;
-      ctx.fillRect(x + 2, y + 1, TILE - 4, 4);
-      const grad = ctx.createLinearGradient(x, y + 5, x, y + 14);
-      grad.addColorStop(0, `rgba(220, 60, 70, ${(0.30 * intensity).toFixed(3)})`);
-      grad.addColorStop(1, 'rgba(220, 60, 70, 0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x + 4, y + 5, TILE - 8, 9);
-      // Tiny skull — eye sockets only, very small
-      ctx.fillStyle = `rgba(255, 220, 200, ${(0.85 * intensity).toFixed(3)})`;
-      ctx.fillRect(cx - 3, y + 8, 2, 2);
-      ctx.fillRect(cx + 1, y + 8, 2, 2);
-      break;
-    }
-    case 'miniboss': {
-      ctx.fillStyle = `rgba(40, 20, 24, ${(0.45 * intensity).toFixed(3)})`;
-      ctx.fillRect(x + 4, y + 3, TILE - 8, 4);
-      const grad = ctx.createLinearGradient(x, y + 6, x, y + 12);
-      grad.addColorStop(0, `rgba(180, 80, 80, ${(0.20 * intensity).toFixed(3)})`);
-      grad.addColorStop(1, 'rgba(180, 80, 80, 0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x + 6, y + 6, TILE - 12, 6);
-      break;
-    }
-    case 'altar': {
-      // Ritual blood drips. Middle drip pulses for "active ritual".
-      const dripPulse = 0.85 + 0.15 * Math.sin(now * 0.8);
-      ctx.fillStyle = `rgba(140, 30, 40, ${(0.78 * intensity).toFixed(3)})`;
-      ctx.fillRect(cx - 6, y + 5, 1, 4);
-      ctx.fillRect(cx,     y + 5, 1, Math.round(7 * dripPulse));
-      ctx.fillRect(cx + 6, y + 5, 1, 5);
-      // Dark ritual base — bottom of door tile
-      const base = ctx.createLinearGradient(x, y + TILE - 8, x, y + TILE);
-      base.addColorStop(0, 'rgba(20, 6, 10, 0)');
-      base.addColorStop(1, `rgba(60, 12, 18, ${(0.50 * intensity).toFixed(3)})`);
-      ctx.fillStyle = base;
-      ctx.fillRect(x + 4, y + TILE - 8, TILE - 8, 8);
-      break;
-    }
-    case 'shop': {
-      // Lantern flicker — phase offset per-tile so adjacent shops
-      // don't pulse in unison.
-      const phase = ((x | 0) * 73856093 ^ (y | 0) * 19349663) >>> 0;
-      const flicker = 0.85 + 0.15 * Math.sin(now * 4 + phase * 0.0001);
-      const grad = ctx.createRadialGradient(cx, y + 6, 0, cx, y + 6, 16);
-      grad.addColorStop(0,   `rgba(255, 200, 100, ${(0.55 * intensity * flicker).toFixed(3)})`);
-      grad.addColorStop(0.5, `rgba(255, 160, 80,  ${(0.22 * intensity * flicker).toFixed(3)})`);
-      grad.addColorStop(1,   'rgba(255, 160, 80, 0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x - 4, y, TILE + 8, 24);
-      // Tiny coin glint on the door body
-      ctx.fillStyle = `rgba(255, 220, 130, ${(0.70 * intensity).toFixed(3)})`;
-      ctx.fillRect(cx - 1, y + 24, 2, 2);
-      break;
-    }
-    case 'sanctuary':
-    case 'reward': {
-      // Soft healing light at the BASE of the door (spills onto floor
-      // like inviting interior light, not a "lintel decoration").
-      const grad = ctx.createRadialGradient(cx, y + TILE * 0.85, 2, cx, y + TILE * 0.7, 24);
-      grad.addColorStop(0,   `rgba(140, 230, 180, ${(0.50 * intensity).toFixed(3)})`);
-      grad.addColorStop(0.5, `rgba(140, 230, 180, ${(0.20 * intensity).toFixed(3)})`);
-      grad.addColorStop(1,   'rgba(140, 230, 180, 0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x - 4, y + TILE - 24, TILE + 8, 28);
-      break;
-    }
-    case 'elite': {
-      ctx.fillStyle = `rgba(40, 20, 24, ${(0.50 * intensity).toFixed(3)})`;
-      ctx.fillRect(x + 4, y + 3, TILE - 8, 3);
-      ctx.fillStyle = `rgba(200, 60, 60, ${(0.85 * intensity).toFixed(3)})`;
-      for (let i = -1; i <= 1; i++) {
-        const sx = cx + i * 8;
-        ctx.beginPath();
-        ctx.moveTo(sx - 1.2, y + 6);
-        ctx.lineTo(sx + 1.2, y + 6);
-        ctx.lineTo(sx,       y + 11);
-        ctx.closePath();
-        ctx.fill();
-      }
-      break;
-    }
-    case 'event': {
-      const shimmer = 0.85 + 0.15 * Math.sin(now * 1.8);
-      ctx.fillStyle = `rgba(180, 130, 230, ${(0.70 * intensity * shimmer).toFixed(3)})`;
-      // 4-stroke asymmetric rune — left-leaning shape
-      ctx.fillRect(cx - 5, y + 5, 1, 6);
-      ctx.fillRect(cx - 1, y + 7, 1, 5);
-      ctx.fillRect(cx + 3, y + 6, 1, 4);
-      ctx.fillRect(cx - 3, y + 9, 6, 1);
-      break;
-    }
-    case 'challenge': {
-      ctx.fillStyle = `rgba(255, 178, 100, ${(0.60 * intensity).toFixed(3)})`;
-      for (let i = 0; i < 3; i++) {
-        ctx.fillRect(x + 6 + i * 4,      y + 4, 2, 1);
-        ctx.fillRect(x + 6 + i * 4 + 8,  y + 4, 2, 1);
-      }
-      ctx.fillStyle = `rgba(60, 30, 20, ${(0.40 * intensity).toFixed(3)})`;
-      ctx.fillRect(x + 4, y + TILE - 6, TILE - 8, 2);
-      break;
-    }
-    case 'chestroom':
-    case 'trove': {
-      // Gold lock plate — only fires when intensity > 0 (i.e. promoted
-      // beyond substrate via theme or special reward).
-      ctx.fillStyle = `rgba(201, 168, 106, ${(0.75 * intensity).toFixed(3)})`;
-      ctx.fillRect(cx - 3, y + 26, 6, 6);
-      ctx.fillStyle = 'rgba(20, 14, 8, 0.85)';
-      ctx.fillRect(cx - 1, y + 28, 2, 3);
-      break;
-    }
-    // 'combat' / 'start' / unhandled → no decoration (theme wash, if
-    // present, carries the visual on its own).
-  }
-  ctx.restore();
-}
+// Affix display table — inline since it's only used for the medallion
+// sub-line. Same colors as the in-game elite aura.
+const _AFFIX_DISPLAY = {
+  frost:  { label: 'FROST',  color: '#72c6ff' },
+  ember:  { label: 'EMBER',  color: '#ff7a2a' },
+  venom:  { label: 'VENOM',  color: '#6ae08a' },
+  warded: { label: 'WARDED', color: '#ffd855' },
+};
 
-// Keystone seal — special-reward marking centered on the door's arch
-// keystone (top-center area, ~y+8 within the door tile). Etched-and-
-// glowing style: dark carved groove first, then bright inner stroke,
-// then small halo. Reads as part of the stone, not floating in front.
-function _drawKeystoneSeal(ctx, x, y, sealKind, intensity, now) {
-  const cx = x + TILE / 2;
-  const cy = y + 8;
-  const pulse = 0.85 + 0.15 * Math.sin(now * 1.4);
-  ctx.save();
-  if (sealKind === 'fusion') {
-    // Interlocked rings — the build-defining seal.
-    const r = 6.5;
-    const off = r * 0.55;
-    // Dark carved groove
-    ctx.strokeStyle = 'rgba(8, 4, 6, 0.85)';
-    ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.arc(cx - off, cy, r, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx + off, cy, r, 0, Math.PI * 2); ctx.stroke();
-    // Bright inner ring + glow
-    ctx.shadowColor = `rgba(255, 130, 80, ${(pulse * 0.6).toFixed(3)})`;
-    ctx.shadowBlur = 4;
-    ctx.strokeStyle = `rgba(255, 150, 90, ${(pulse * intensity).toFixed(3)})`;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.arc(cx - off, cy, r, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx + off, cy, r, 0, Math.PI * 2); ctx.stroke();
-    // Center spark — the "fusion point"
-    ctx.fillStyle = `rgba(255, 220, 160, ${(pulse * intensity).toFixed(3)})`;
-    ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
-  } else if (sealKind === 'mythic') {
-    const r = 6;
-    ctx.fillStyle = 'rgba(8, 4, 6, 0.85)';
-    _drawStarPath(ctx, cx, cy, r + 0.5, 6); ctx.fill();
-    ctx.shadowColor = `rgba(255, 240, 180, ${(pulse * 0.7).toFixed(3)})`;
-    ctx.shadowBlur = 5;
-    ctx.fillStyle = `rgba(255, 250, 220, ${(pulse * intensity).toFixed(3)})`;
-    _drawStarPath(ctx, cx, cy, r, 6); ctx.fill();
-    ctx.shadowBlur = 0;
-  } else if (sealKind === 'legendary') {
-    const r = 5.5;
-    ctx.fillStyle = 'rgba(8, 4, 6, 0.85)';
-    _drawStarPath(ctx, cx, cy, r + 0.5, 4); ctx.fill();
-    ctx.shadowColor = `rgba(255, 180, 240, ${(pulse * 0.6).toFixed(3)})`;
-    ctx.shadowBlur = 3.5;
-    ctx.fillStyle = `rgba(255, 210, 250, ${(pulse * intensity).toFixed(3)})`;
-    _drawStarPath(ctx, cx, cy, r, 4); ctx.fill();
-    ctx.shadowBlur = 0;
-  }
-  ctx.restore();
-}
-
-// N-point star path helper. Alternates outer/inner radius for star
-// silhouettes — used by legendary (4-point) and mythic (6-point) seals.
+// Star path helper for legendary (4-point) and mythic (6-point) icons.
 function _drawStarPath(ctx, cx, cy, r, points) {
   const innerR = r * 0.4;
   ctx.beginPath();
@@ -960,74 +812,249 @@ function _drawStarPath(ctx, cx, cy, r, points) {
   ctx.closePath();
 }
 
-// Affix accent — environmental decoration for elite affix doors.
-// Layered AFTER kind details so the affix is additive even when 'elite'
-// kind already has its spike-nails decoration. Each affix has a
-// distinct visual language: frost = icicles, ember = glowing coal
-// cracks (flickering), venom = green stained drips, warded = shield
-// sigils on the side jambs.
-function _drawAffixAccent(ctx, x, y, affixId, now) {
+// Door medallion — circular framed disc above the door, ~32 px diameter.
+// The frame is what makes the medallion feel architectural rather than
+// floating UI: a ceremonial seal mounted in stone above the threshold,
+// like the heraldic plaques over real medieval doorways. Hades pattern.
+//
+// Layers:
+//   1. Outer halo (special tiers only) — soft radial in profile.haloColor
+//   2. Tinted rim disc — full circle in profile.rimColor (the "frame")
+//   3. Dark stone inner disc — gradient from #2a1f28 (top) to #0f0a14
+//   4. Icon — drawn in profile.iconColor, kind-specific shape
+//   5. Affix sub-line (elite only) — small text below the medallion
+function _drawDoorMedallion(ctx, d, profile, now) {
+  const x = d.tx * TILE;
+  const y = d.ty * TILE;
+  const cx = x + TILE / 2;
+  const cy = y - 28;     // 28 px above the wall top — clear of arch decoration
+  const baseR = 16;
+
+  // Pulse — special tiers (boss/fusion/legendary/mythic) breathe at
+  // 1.6 Hz with ±6% scale for the magical-waypoint feel. Theme + kind
+  // tier doesn't pulse (those are identity, not urgency).
+  const scale = profile.pulse ? (1 + 0.06 * Math.sin(now * 1.6 + d.tx * 0.3)) : 1;
+  const r = baseR * scale;
+  const innerR = r - 2;
+
   ctx.save();
-  switch (affixId) {
-    case 'frost': {
-      ctx.fillStyle = 'rgba(180, 220, 255, 0.85)';
-      const positions = [10, 19, 28, 37];
-      const heights   = [4, 5, 3, 4];
-      for (let i = 0; i < positions.length; i++) {
-        const ix = x + positions[i];
-        const ih = heights[i];
-        ctx.beginPath();
-        ctx.moveTo(ix - 1, y + 11);
-        ctx.lineTo(ix + 1, y + 11);
-        ctx.lineTo(ix,     y + 11 + ih);
-        ctx.closePath();
-        ctx.fill();
-      }
-      break;
-    }
-    case 'ember': {
-      const flicker = 0.7 + 0.3 * Math.sin(now * 3);
-      ctx.fillStyle = `rgba(255, 130, 50, ${(0.80 * flicker).toFixed(3)})`;
-      ctx.fillRect(x + 6,  y + 12, 6, 1);
-      ctx.fillRect(x + 16, y + 13, 8, 1);
-      ctx.fillRect(x + 28, y + 12, 6, 1);
-      ctx.fillRect(x + 38, y + 14, 4, 1);
-      ctx.fillStyle = `rgba(255, 200, 100, ${(0.95 * flicker).toFixed(3)})`;
-      ctx.fillRect(x + 9,  y + 12, 1, 1);
-      ctx.fillRect(x + 21, y + 13, 1, 1);
-      ctx.fillRect(x + 31, y + 12, 1, 1);
-      break;
-    }
-    case 'venom': {
-      ctx.fillStyle = 'rgba(140, 230, 100, 0.78)';
-      ctx.fillRect(x + 12, y + 11, 1, 5);
-      ctx.fillRect(x + 24, y + 12, 1, 6);
-      ctx.fillRect(x + 36, y + 11, 1, 4);
-      ctx.fillStyle = 'rgba(100, 160, 60, 0.30)';
-      ctx.fillRect(x + 8,  y + 16, TILE - 16, 2);
-      break;
-    }
-    case 'warded': {
-      ctx.fillStyle = 'rgba(200, 210, 230, 0.78)';
-      // Left side jamb sigil
+
+  // ── Layer 1: outer halo ─────────────────────────────────────────────
+  if (profile.haloColor) {
+    const haloR = r + 10;
+    const halo = ctx.createRadialGradient(cx, cy, r, cx, cy, haloR);
+    halo.addColorStop(0, profile.haloColor);
+    // Strip the alpha out of the halo color for the outer stop (replace
+    // the closing ", X)" with ", 0)").
+    halo.addColorStop(1, profile.haloColor.replace(/,\s*[\d.]+\)$/, ', 0)'));
+    ctx.fillStyle = halo;
+    ctx.fillRect(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
+  }
+
+  // ── Layer 2: tinted rim disc (the "frame") ─────────────────────────
+  ctx.fillStyle = profile.rimColor;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+
+  // ── Layer 3: dark stone inner disc ─────────────────────────────────
+  // Gradient from upper-light to lower-dark gives the disc apparent
+  // depth (like a stone pressed into a frame, lit from above).
+  const innerGrad = ctx.createRadialGradient(cx, cy - innerR * 0.3, 1, cx, cy, innerR);
+  innerGrad.addColorStop(0, '#2a1f28');
+  innerGrad.addColorStop(1, '#0f0a14');
+  ctx.fillStyle = innerGrad;
+  ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, Math.PI * 2); ctx.fill();
+
+  // ── Layer 4: icon (kind-specific shape) ────────────────────────────
+  const iconR = innerR * 0.65;
+  ctx.fillStyle = profile.iconColor;
+  ctx.strokeStyle = profile.iconColor;
+
+  switch (profile.iconKind) {
+    case 'combat': {
+      // Crossed swords — two diagonals + center pommel
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.moveTo(x + 4, y + 12);
-      ctx.lineTo(x + 8, y + 12);
-      ctx.lineTo(x + 6, y + 18);
+      ctx.moveTo(cx - iconR * 0.7, cy - iconR * 0.7);
+      ctx.lineTo(cx + iconR * 0.7, cy + iconR * 0.7);
+      ctx.moveTo(cx + iconR * 0.7, cy - iconR * 0.7);
+      ctx.lineTo(cx - iconR * 0.7, cy + iconR * 0.7);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 'fusion': {
+      // Interlocked rings + center spark
+      const off = iconR * 0.45;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.arc(cx - off, cy, iconR * 0.6, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx + off, cy, iconR * 0.6, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#fff2d0';
+      ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 'star4':
+    case 'star6': {
+      const points = profile.iconKind === 'star6' ? 6 : 4;
+      _drawStarPath(ctx, cx, cy, iconR * 0.85, points);
+      ctx.fill();
+      break;
+    }
+    case 'theme:storm': {
+      ctx.beginPath();
+      ctx.moveTo(cx + iconR * 0.55, cy - iconR);
+      ctx.lineTo(cx - iconR * 0.45, cy - iconR * 0.10);
+      ctx.lineTo(cx + iconR * 0.05, cy - iconR * 0.10);
+      ctx.lineTo(cx - iconR * 0.55, cy + iconR);
+      ctx.lineTo(cx + iconR * 0.45, cy + iconR * 0.10);
+      ctx.lineTo(cx - iconR * 0.05, cy + iconR * 0.10);
       ctx.closePath();
       ctx.fill();
-      // Right side jamb sigil
+      break;
+    }
+    case 'theme:flame': {
       ctx.beginPath();
-      ctx.moveTo(x + TILE - 8, y + 12);
-      ctx.lineTo(x + TILE - 4, y + 12);
-      ctx.lineTo(x + TILE - 6, y + 18);
+      ctx.moveTo(cx, cy - iconR);
+      ctx.bezierCurveTo(cx + iconR*0.85, cy - iconR*0.2, cx + iconR*0.55, cy + iconR*0.7, cx, cy + iconR*0.85);
+      ctx.bezierCurveTo(cx - iconR*0.55, cy + iconR*0.7, cx - iconR*0.85, cy - iconR*0.2, cx, cy - iconR);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'theme:blood': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + iconR);
+      ctx.bezierCurveTo(cx + iconR*0.85, cy + iconR*0.2, cx + iconR*0.55, cy - iconR*0.7, cx, cy - iconR*0.85);
+      ctx.bezierCurveTo(cx - iconR*0.55, cy - iconR*0.7, cx - iconR*0.85, cy + iconR*0.2, cx, cy + iconR);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'theme:vow': {
+      ctx.beginPath();
+      ctx.moveTo(cx - iconR * 0.9, cy - iconR * 0.7);
+      ctx.lineTo(cx + iconR * 0.9, cy - iconR * 0.7);
+      ctx.lineTo(cx + iconR * 0.9, cy + iconR * 0.1);
+      ctx.lineTo(cx, cy + iconR);
+      ctx.lineTo(cx - iconR * 0.9, cy + iconR * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'theme:shadow': {
+      ctx.beginPath(); ctx.arc(cx, cy, iconR * 0.85, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath(); ctx.arc(cx + iconR * 0.45, cy - iconR * 0.15, iconR * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    }
+    case 'boss':
+    case 'miniboss':
+    case 'elite': {
+      // Skull silhouette — cranium + jaw + eye sockets
+      const skullR = iconR * 0.85;
+      ctx.beginPath();
+      ctx.arc(cx, cy - skullR * 0.2, skullR * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(cx - skullR * 0.35, cy + skullR * 0.3, skullR * 0.7, skullR * 0.35);
+      ctx.fillStyle = '#0a0608';
+      ctx.beginPath(); ctx.arc(cx - skullR * 0.32, cy - skullR * 0.2, skullR * 0.18, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + skullR * 0.32, cy - skullR * 0.2, skullR * 0.18, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 'altar': {
+      // Pentagram — inverted-5-point star outline
+      ctx.lineWidth = 1.5;
+      const pts = [];
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        pts.push([cx + Math.cos(a) * iconR * 0.85, cy + Math.sin(a) * iconR * 0.85]);
+      }
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      ctx.lineTo(pts[2][0], pts[2][1]);
+      ctx.lineTo(pts[4][0], pts[4][1]);
+      ctx.lineTo(pts[1][0], pts[1][1]);
+      ctx.lineTo(pts[3][0], pts[3][1]);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    }
+    case 'shop': {
+      // Coin — outer disc + dark inner ring + tiny notches top/bottom
+      ctx.beginPath(); ctx.arc(cx, cy, iconR * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#2a1f10';
+      ctx.beginPath(); ctx.arc(cx, cy, iconR * 0.4, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case 'sanctuary': {
+      // Plus / cross
+      const t = iconR * 0.25;
+      ctx.fillRect(cx - t/2, cy - iconR * 0.85, t, iconR * 1.7);
+      ctx.fillRect(cx - iconR * 0.85, cy - t/2, iconR * 1.7, t);
+      break;
+    }
+    case 'event': {
+      // 8-point sparkle — mystery rune
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - iconR * 0.85);
+      ctx.lineTo(cx + iconR * 0.25, cy - iconR * 0.25);
+      ctx.lineTo(cx + iconR * 0.85, cy);
+      ctx.lineTo(cx + iconR * 0.25, cy + iconR * 0.25);
+      ctx.lineTo(cx, cy + iconR * 0.85);
+      ctx.lineTo(cx - iconR * 0.25, cy + iconR * 0.25);
+      ctx.lineTo(cx - iconR * 0.85, cy);
+      ctx.lineTo(cx - iconR * 0.25, cy - iconR * 0.25);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'challenge': {
+      // Flag silhouette — pole + triangle banner
+      ctx.fillRect(cx - iconR * 0.05, cy - iconR * 0.85, iconR * 0.1, iconR * 1.7);
+      ctx.beginPath();
+      ctx.moveTo(cx + iconR * 0.05, cy - iconR * 0.85);
+      ctx.lineTo(cx + iconR * 0.7, cy - iconR * 0.5);
+      ctx.lineTo(cx + iconR * 0.05, cy - iconR * 0.15);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'chest': {
+      // Chest silhouette
+      ctx.fillRect(cx - iconR * 0.7, cy - iconR * 0.4, iconR * 1.4, iconR * 0.85);
+      ctx.fillStyle = '#1a1208';
+      ctx.fillRect(cx - 1, cy + iconR * 0.05, 2, iconR * 0.3);
+      break;
+    }
+    case 'trove': {
+      // Gem / diamond
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - iconR * 0.85);
+      ctx.lineTo(cx + iconR * 0.7, cy);
+      ctx.lineTo(cx, cy + iconR * 0.85);
+      ctx.lineTo(cx - iconR * 0.7, cy);
       ctx.closePath();
       ctx.fill();
       break;
     }
   }
+
+  // ── Layer 5: affix sub-line (elite affixes only) ───────────────────
+  if (profile.affixId && _AFFIX_DISPLAY[profile.affixId]) {
+    const af = _AFFIX_DISPLAY[profile.affixId];
+    ctx.fillStyle = af.color;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    ctx.shadowBlur = 3;
+    ctx.font = 'bold 8px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(af.label, cx, cy + r + 8);
+    ctx.shadowBlur = 0;
+  }
+
   ctx.restore();
 }
+
 
 // Helper — draw a rounded rectangle path. Uses ctx.roundRect when
 // available (modern browsers), falls back to manual arc-drawn corners.
