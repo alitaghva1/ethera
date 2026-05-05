@@ -1685,33 +1685,26 @@ const _fx = document.createElement('canvas');
 _fx.width = 200; _fx.height = 200;
 const _fxCtx = _fx.getContext('2d');
 
-// Second offscreen buffer for the contact-shadow silhouette pass.
-// Kept separate from _fx so the rim/hit-flash render and the shadow
-// render can both use stale-pixels-don't-matter clearRect semantics
-// without trampling each other.
-const _fxShadow = document.createElement('canvas');
-_fxShadow.width = 200; _fxShadow.height = 200;
-const _fxShadowCtx = _fxShadow.getContext('2d');
-
-// ── ENEMY READABILITY HELPERS ────────────────────────────────────────────
+// ── ENEMY READABILITY HELPER ──────────────────────────────────────────────
 // Combat-readability pass — enemies were blending into dark dungeon floors
 // (skeleton's interior bone-shading is dim on warm gray stone, dreadmage /
-// brood / orc dark bodies disappear in vignette corners). Fix is two
-// subtle treatments applied per enemy at draw time:
+// brood / orc dark bodies disappear in vignette corners). Fix is a single
+// subtle RIM OUTLINE around each enemy sprite. Draw the sprite alpha
+// offset 1px in 4 directions tinted to a contrast color, then draw the
+// actual sprite over it. 1px highlight reads as a soft bevel, defines
+// the silhouette against floor textures.
 //
-//   1. Sprite-silhouette CONTACT SHADOW under each enemy. Mask the
-//      sprite alpha to a dark fill, squash to ~25% height, draw at
-//      feetY with low alpha. Anchors the enemy to the floor without
-//      the "hover gap" issue elliptical shadows had.
+// Computed off the enemy's def.color luminance so light enemies
+// (skeleton bone-white) get a darker rim and dark enemies (orc,
+// dreadmage) get a warm-light rim.
 //
-//   2. RIM OUTLINE around each enemy sprite. Draw the sprite alpha
-//      offset 1px in 4 directions tinted to a contrast color, then
-//      draw the actual sprite over it. 1px highlight reads as a soft
-//      bevel, defines the silhouette against floor textures.
-//
-// Both are computed off the enemy's def.color luminance so light
-// enemies (skeleton bone-white) get a darker rim and dark enemies
-// (orc, dreadmage) get a warm-light rim.
+// Earlier this pass also added a sprite-silhouette contact shadow under
+// grounded enemies. In playtest the dark squash shapes read as ugly
+// black blobs sitting on the floor — the same failure mode the
+// elliptical-shadow attempts hit before. Reverted; grounded enemies
+// continue to render no shadow (only flying enemies get the elliptical
+// hover shadow). See _ENEMY_SHADOW_PROFILES comment block below for
+// the full history.
 
 // Hex string to {r, g, b} integer triple. Returns null on malformed input.
 // Cached to avoid re-parsing the same enemy color each frame.
@@ -1779,48 +1772,6 @@ function _renderSpriteWithRim(img, sx, size, rimColor) {
   // only where the offset draws stick out past the natural alpha.
   _fxCtx.globalCompositeOperation = 'source-over';
   _fxCtx.drawImage(img, sx, 0, SPR, SPR, 0, 0, size, size);
-}
-
-// Draws a sprite-shaped squash shadow at the enemy's feet. Uses the
-// alpha mask of the current frame so the shadow follows the actual
-// silhouette (a swinging skeleton's shadow widens during attack;
-// a slime's stays round). 25% height, low alpha, anchored at feetY.
-//
-// This is the explicit fallback the existing _ENEMY_SHADOW_PROFILES
-// comment suggested for grounded enemies once playtest showed the
-// elliptical placeholder wasn't carrying its weight.
-function _drawEnemyContactShadow(ctx, e, img, sx, size, frame) {
-  // Skip flying enemies — they already get the elliptical hover
-  // shadow above, which is the right read for "this thing is in
-  // the air." Adding a sprite-mask under them on top of that
-  // double-shadows them.
-  if (e.def.flies) return;
-  // Skip mid-death — the death squish handles its own grounding.
-  if (e.dead && (e.state === 'death' || e.state === 'exploding')) return;
-  // Skip enemies whose feetY isn't valid (defensive).
-  if (!Number.isFinite(frame.feetY)) return;
-
-  // Build silhouette in offscreen canvas. source-in masks against the
-  // sprite's alpha — every visible pixel becomes the dark fill, every
-  // transparent pixel stays transparent.
-  _fxShadowCtx.globalCompositeOperation = 'source-over';
-  _fxShadowCtx.clearRect(0, 0, _fxShadow.width, _fxShadow.height);
-  _fxShadowCtx.drawImage(img, sx, 0, SPR, SPR, 0, 0, size, size);
-  _fxShadowCtx.globalCompositeOperation = 'source-in';
-  _fxShadowCtx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-  _fxShadowCtx.fillRect(0, 0, size, size);
-  _fxShadowCtx.globalCompositeOperation = 'source-over';
-
-  // Squash + draw at feet. 25% vertical compression, anchored so the
-  // shadow's bottom edge sits ~3px below feetY — that small offset
-  // sells "shadow IS on the ground, body is standing on it."
-  const sqH = size * 0.25;
-  const dx = e.x - size / 2;
-  const dy = frame.feetY - sqH * 0.55;
-  ctx.save();
-  ctx.globalAlpha *= 0.55;
-  ctx.drawImage(_fxShadow, 0, 0, size, size, dx, dy, size, sqH);
-  ctx.restore();
 }
 
 // ── RANGED-COUNTER: kite penalty ──────────────────────────────────────
@@ -2760,13 +2711,16 @@ export function drawEnemy(ctx, e) {
       ctx.fillRect(e.x - 1, shY - 1, 3, 3);
       ctx.restore();
     }
-  } else {
-    // Sprite-silhouette contact shadow for grounded enemies. Anchors
-    // the body to the floor without the elliptical "hover gap" issue.
-    // Skips flying / dying / death-frames internally so the visual
-    // never doubles up on existing grounding cues.
-    _drawEnemyContactShadow(ctx, e, img, sx, size, frame);
   }
+  // Grounded enemies intentionally render NO shadow. A combat-readability
+  // experiment briefly added a sprite-silhouette squash shadow under
+  // grounded enemies, but in playtest the dark patches read as ugly
+  // black blobs sitting on the floor — exactly the failure mode the
+  // earlier elliptical-shadow attempts hit. Reverted; grounded grounding
+  // continues to come from sprite silhouette + animation + the scene's
+  // existing visual language (torchlight pools, pillar shadows, floor
+  // wear, wall contact AO). See _ENEMY_SHADOW_PROFILES comment for
+  // history.
 
   // Elite glow — affix color if any, else default gold. Aura sized to
   // the body silhouette via frame.halfWidth.
