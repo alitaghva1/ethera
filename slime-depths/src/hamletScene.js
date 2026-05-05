@@ -16,6 +16,12 @@ import { showTip } from './tips.js';
 import { records } from './records';
 import { daily, getTodayChallenge, hasCompletedToday } from './daily.js';
 import { ruin } from './ruin.js';
+// Meta + UNLOCKS imported for the "keeper has goods" pulse — when the
+// player has unspent essence AND an affordable unlock, the keeper's
+// halo brightens + shifts cyan to direct the player to the shop.
+// Without this, new players don't realize the keeper IS the essence
+// shop until they manually try every NPC.
+import { meta, UNLOCKS, hasUnlock } from './meta.js';
 
 // A locked NPC is one whose arc-stage hasn't been initialized yet
 // (refreshNpcPresence hasn't ticked their unlockCheck to true). They
@@ -882,22 +888,75 @@ export function drawHamletEntities(ctx) {
   //    is the only always-present NPC), reads as "the keeper has a
   //    lantern, this is the welcoming hub." Smaller + cooler than the
   //    smith brazier so the smithy still dominates as the warm anchor.
+  //
+  //    HAS-GOODS state: when the player can afford an unowned unlock,
+  //    the halo brightens + adds a cyan tint + an upward-floating ✦
+  //    glyph above the keeper's head. This is the navigation cue the
+  //    new-player simulation review flagged as the highest-leverage
+  //    fix — without it, players who accumulate essence don't know
+  //    the keeper is the shop. Brightening only when there's
+  //    something to BUY (not just essence > 0) keeps the cue
+  //    informative; an idle keeper with no affordable unlocks looks
+  //    normal.
   {
     const keeper = HAMLET_ENTITIES.find(e => e.kind === 'npc' && e.id === 'keeper');
     if (keeper) {
       const kx = keeper.x;
       const ky = keeper.y + 8;
-      const pulse = 0.84 + 0.10 * Math.sin(now * 0.55);
-      const haloR = 28;
+      // Detect "has goods" — at least one unowned unlock the player
+      // can afford right now. Cheap walk, all data already in memory.
+      let hasGoods = false;
+      for (const id in UNLOCKS) {
+        if (hasUnlock(id)) continue;
+        if (meta.essence >= UNLOCKS[id].cost) { hasGoods = true; break; }
+      }
+      const pulse = hasGoods
+        ? 0.78 + 0.22 * Math.sin(now * 1.3)        // faster + bigger amplitude
+        : 0.84 + 0.10 * Math.sin(now * 0.55);
+      const haloR = hasGoods ? 38 : 28;
       const halo = ctx.createRadialGradient(kx, ky, 2, kx, ky, haloR);
-      halo.addColorStop(0, `rgba(255, 200, 140, ${(0.20 * pulse).toFixed(3)})`);
-      halo.addColorStop(0.5, `rgba(220, 160, 100, ${(0.10 * pulse).toFixed(3)})`);
-      halo.addColorStop(1, 'rgba(180, 120, 80, 0)');
+      if (hasGoods) {
+        // Cyan-shifted (essence color) + brighter — "the keeper has
+        // your upgrade" telegraph.
+        halo.addColorStop(0,   `rgba(160, 230, 255, ${(0.42 * pulse).toFixed(3)})`);
+        halo.addColorStop(0.4, `rgba(180, 200, 220, ${(0.22 * pulse).toFixed(3)})`);
+        halo.addColorStop(0.7, `rgba(200, 170, 130, ${(0.14 * pulse).toFixed(3)})`);
+        halo.addColorStop(1,   'rgba(180, 120, 80, 0)');
+      } else {
+        halo.addColorStop(0,   `rgba(255, 200, 140, ${(0.20 * pulse).toFixed(3)})`);
+        halo.addColorStop(0.5, `rgba(220, 160, 100, ${(0.10 * pulse).toFixed(3)})`);
+        halo.addColorStop(1,   'rgba(180, 120, 80, 0)');
+      }
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = halo;
       ctx.fillRect(kx - haloR, ky - haloR, haloR * 2, haloR * 2);
       ctx.restore();
+
+      // Floating ✦ glyph above keeper's head when has-goods. Drifts
+      // gently up + fades, looping every 2.4s. Tells the player
+      // "something here to claim" at a glance, even from across the
+      // hamlet.
+      if (hasGoods) {
+        const FLOAT_CYCLE = 2.4;
+        const phase = (now % FLOAT_CYCLE) / FLOAT_CYCLE;
+        const fadeIn = Math.min(1, phase / 0.2);
+        const fadeOut = Math.min(1, (1 - phase) / 0.3);
+        const a = fadeIn * fadeOut * 0.85;
+        if (a > 0.05) {
+          const fy = keeper.y - 28 - phase * 18;
+          ctx.save();
+          ctx.fillStyle = `rgba(160, 230, 255, ${a.toFixed(3)})`;
+          ctx.font = 'bold 14px Georgia, serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = `rgba(160, 230, 255, ${(a * 0.6).toFixed(3)})`;
+          ctx.shadowBlur = 8;
+          ctx.fillText('✦', keeper.x, fy);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+      }
     }
   }
   // STAGE-3 CAPSTONE — string lanterns around the plaza (audit T2.8).
