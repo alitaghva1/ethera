@@ -1394,7 +1394,37 @@ export function drawPickupFlash(ctx, w, h) {
   const descLines = wrapText(ctx, lastPickedDef.desc || '', maxTextW);
   const extraFlavorH = Math.max(0, flavorLines.length - 1) * flavorLh;
   const extraDescH = Math.max(0, descLines.length - 1) * descLh;
-  const boxH = (tier === 'mythic' ? 200 : 170) + extraFlavorH + extraDescH;
+  // ── Synergy hint — "Pairs with X you own → Fusion Name" ─────────────
+  // Comparison-vs-Hades audit P0: when the player picked up a relic
+  // that paired with one ALREADY OWNED, the rail entry mentioned it
+  // (line 980) but the dramatic center banner went silent. The center
+  // banner is the moment the player is paying full attention — that's
+  // where a "you can fuse this!" hint belongs. Caps at 1 line so the
+  // banner height stays predictable; the rail entry still surfaces
+  // additional partners.
+  const _activeFusionIds = new Set(activeFusions.map(f => f.id));
+  const _ownedIds = new Set(equippedRelics.map(r => r.id));
+  let _synergyText = '';
+  if (lastPickedDef && lastPickedDef.id) {
+    for (const f of Object.values(FUSIONS)) {
+      if (!f.components || f.components.length !== 2) continue;
+      if (_activeFusionIds.has(f.id)) continue;
+      const idx = f.components.indexOf(lastPickedDef.id);
+      if (idx === -1) continue;
+      const partnerId = f.components[1 - idx];
+      // The PICKED relic is now in equippedRelics, so exclude it. We're
+      // looking for partners that exist independently of this pickup.
+      if (partnerId === lastPickedDef.id) continue;
+      if (!_ownedIds.has(partnerId)) continue;
+      const partnerDef = RELIC_DEFS[partnerId];
+      if (!partnerDef) continue;
+      _synergyText = `✦ Synergizes with ${partnerDef.name || partnerId} → ${f.name || f.id}`;
+      break;     // first match wins; keeps banner height predictable
+    }
+  }
+  const synergyFont = tier === 'mythic' ? 'italic bold 12px Georgia, serif' : 'italic bold 11px Georgia, serif';
+  const synergyExtraH = _synergyText ? 22 : 0;
+  const boxH = (tier === 'mythic' ? 200 : 170) + extraFlavorH + extraDescH + synergyExtraH;
   const bx = (w - boxW) / 2;
   // Anchor the banner in the upper third of the screen instead of
   // dead-center. Previously `(h - boxH) / 2 - 30` placed the banner
@@ -1589,6 +1619,22 @@ export function drawPickupFlash(ctx, w, h) {
   const descY = by + (tier === 'mythic' ? 158 : 132) + extraFlavorH;
   for (let i = 0; i < descLines.length; i++) {
     ctx.fillText(descLines[i], pivotX, descY + i * descLh);
+  }
+
+  // Synergy hint — small italic line below the desc, cyan tint to read
+  // as "this is informational, not the primary effect." Rendered only
+  // when the synergy string was computed above (i.e., player owns the
+  // fusion partner). Pulses gently with the banner alpha + a 1.4Hz
+  // breathe so the eye picks it up over the steadier desc text.
+  if (_synergyText) {
+    const synBreathe = 0.78 + 0.22 * Math.sin(performance.now() / 220);
+    ctx.fillStyle = `rgba(160, 232, 255, ${(0.95 * synBreathe).toFixed(3)})`;
+    ctx.shadowColor = 'rgba(160, 232, 255, 0.6)';
+    ctx.shadowBlur = 6;
+    ctx.font = synergyFont;
+    const synY = descY + descLines.length * descLh + 2;
+    ctx.fillText(_synergyText, pivotX, synY);
+    ctx.shadowBlur = 0;
   }
 
   // Tier label at the bottom — diamonds flanking. Replaces the old "· COMMON ·".
