@@ -1893,53 +1893,69 @@ function drawDoor(ctx, tx, ty, openAmount) {
 
   ctx.drawImage(sprite, sx, 0, FW, FH, dx, dy, RENDER, RENDER);
 
-  // Door light spill — the PRIMARY distance-read signal of what's
-  // behind the door. Hades pattern: each room kind / theme floods
-  // its color into the doorway, so the player reads the choice from
-  // across the room before they ever approach.
+  // ─── Door light spill — directional, Hades-style ─────────────────────
+  // Real doorway light spills DOWNWARD onto the floor as a cone, not
+  // sideways into adjacent wall stones. The previous single-radial
+  // approach made an isotropic colored disc that read as a sticker
+  // glued to the door, not as light from inside the room.
   //
-  // Default: warm amber (the prior tuning, kept as the substrate
-  // baseline). Themed/special rooms override with their own color:
-  //   storm     — cool blue-white
-  //   flame     — bright orange-red
-  //   blood     — deep red
-  //   vow       — pale gold-cream
-  //   shadow    — violet
-  //   fusion    — ember orange (build moment)
-  //   legendary — pink-lavender
-  //   mythic    — white-gold
-  //   boss      — crimson dread
-  //   altar     — dark blood-red
-  //   shop      — warm amber-gold (slightly brighter than default)
-  //   sanctuary — soft healing green
+  // Two layers now, both directional:
+  //   1. Interior glow — tight radial ON the door's open area only.
+  //      Tells the player "warm light visible through the doorway."
+  //   2. Floor spill — vertical-gradient trapezoid extending DOWN
+  //      from the door bottom onto the floor in front. This is the
+  //      "carpet of light" Hades uses to make doorways read as
+  //      portals leading to a lit room beyond.
   //
-  // Pulled from the door's roomTheme / rewardLabel / targetKind
-  // (looked up via the same _getDoorAt path the lintel pass uses).
-  // Substrate combat doors keep the original amber so they look
-  // like generic dungeon doors.
+  // Substrate combat doors get warm amber by default. Themed and
+  // special doors override the tint via _doorLightTint, with a
+  // boost multiplier on alpha so build-defining choices visibly
+  // bloom.
   const tint = _doorLightTint(_getDoorAt && _getDoorAt(tx, ty));
-  const glowAnchorY = isSouthWall ? (y + TILE * 0.22) : (y + TILE * 0.78);
-  // Widened gradient outer radius — was TILE * 0.62 (~30 px), now
-  // TILE * 0.95 (~46 px) so the colored light visibly spills onto the
-  // adjacent wall stones and the floor in front of the door. This is
-  // the Hades distance-read: you see the doorway color before you see
-  // any other detail of the door itself.
-  const glow = ctx.createRadialGradient(
-    cx, glowAnchorY, 2,
-    cx, y + TILE * 0.5, TILE * 0.95,
+  const openCurve = 0.3 + a * 0.7;     // 0.3 closed → 1.0 open
+  const baseAlpha = 0.45 * openCurve * tint.boost;
+  const midAlpha  = 0.26 * openCurve * tint.boost;
+  // ── Layer 1: interior glow — tight radial ON the door body only ──
+  // Anchored at the door's center, kept narrow so it doesn't bleed
+  // into the wall stones. Reads as "the next room is lit and visible
+  // through the open doorway."
+  const interior = ctx.createRadialGradient(
+    cx, y + TILE * 0.45, 1,
+    cx, y + TILE * 0.45, TILE * 0.42,
   );
-  // Build alpha from the open-amount (closed doors glow weaker, open
-  // doors blaze through). Apply a slight bump for special tints so
-  // theme/seal doors read more strongly than amber-default ones.
-  const glowAlpha = (0.45 * (0.3 + a * 0.7)) * tint.boost;
-  const midAlpha  = (0.26 * (0.3 + a * 0.7)) * tint.boost;
-  glow.addColorStop(0,   `rgba(${tint.coreR}, ${tint.coreG}, ${tint.coreB}, ${glowAlpha.toFixed(3)})`);
-  glow.addColorStop(0.5, `rgba(${tint.midR}, ${tint.midG}, ${tint.midB}, ${midAlpha.toFixed(3)})`);
-  glow.addColorStop(1,   'rgba(20, 8, 4, 0)');
-  ctx.fillStyle = glow;
-  // Wider fillRect to match the wider gradient — light spills onto the
-  // adjacent wall + floor for the distance-read effect.
-  ctx.fillRect(x - 24, y - 14, TILE + 48, TILE + 28);
+  interior.addColorStop(0,    `rgba(${tint.coreR}, ${tint.coreG}, ${tint.coreB}, ${baseAlpha.toFixed(3)})`);
+  interior.addColorStop(0.55, `rgba(${tint.midR}, ${tint.midG}, ${tint.midB}, ${(midAlpha * 0.85).toFixed(3)})`);
+  interior.addColorStop(1,    'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = interior;
+  // Constrain fill to the door's vertical band so adjacent wall
+  // stones don't pick up significant tint.
+  ctx.fillRect(x - 4, y, TILE + 8, TILE);
+
+  // ── Layer 2: floor spill — directional cone onto the floor ───────
+  // Vertical linear gradient — bright at the door bottom, fading to
+  // transparent over ~28 px going down. Trapezoidal width: as wide
+  // as the door at top, slightly wider at the bottom (perspective
+  // expansion, like a real light cone). Skipped for south-wall doors
+  // (their "spill" would go up into the wall, which doesn't make
+  // sense — south doors are entry doors, not light sources).
+  if (!isSouthWall && a > 0.05) {
+    const spillH = 30;
+    const topY = y + TILE - 2;
+    const topInset = 8;        // narrower at top (door-width)
+    const botInset = -2;       // wider at bottom (light cone expansion)
+    const spillGrad = ctx.createLinearGradient(cx, topY, cx, topY + spillH);
+    spillGrad.addColorStop(0,    `rgba(${tint.coreR}, ${tint.coreG}, ${tint.coreB}, ${(baseAlpha * 0.85).toFixed(3)})`);
+    spillGrad.addColorStop(0.4,  `rgba(${tint.midR}, ${tint.midG}, ${tint.midB}, ${(midAlpha * 0.55).toFixed(3)})`);
+    spillGrad.addColorStop(1,    'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = spillGrad;
+    ctx.beginPath();
+    ctx.moveTo(x + topInset,           topY);
+    ctx.lineTo(x + TILE - topInset,    topY);
+    ctx.lineTo(x + TILE - botInset,    topY + spillH);
+    ctx.lineTo(x + botInset,           topY + spillH);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   // Next-room preview pulse — legacy fallback for rooms with no door
   // object. Kept since some legacy spawn paths still rely on it.
