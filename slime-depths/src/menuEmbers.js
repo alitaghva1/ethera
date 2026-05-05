@@ -46,9 +46,29 @@ export function startMenuEmbers(getActiveCanvas) {
     e.y = Math.random();
     e.life = Math.random() * 280;
   }
+  // Track the last canvas we drew to so we can clear it the moment the
+  // active target changes (or goes null). Without this, the hamlet
+  // overlay canvas (mix-blend-mode: screen, z-index 5) keeps the LAST
+  // FRAME of warm hamlet embers stuck on top of the dungeon view after
+  // the player walks through the portal — exactly the "warm dots come
+  // back after death" leak playtest flagged. Fresh-from-menu runs are
+  // unaffected because they never paint to the hamlet overlay canvas.
+  let _lastTargetCvs = null;
 
   function tick() {
     const cvs = getActiveCanvas();
+    if (cvs !== _lastTargetCvs && _lastTargetCvs) {
+      // Active target switched (hamlet → dungeon, or hamlet/menu → null).
+      // Clear the canvas we WERE drawing to so its last frame doesn't
+      // persist as a stale overlay through mix-blend-mode.
+      try {
+        const w = _lastTargetCvs.width, h = _lastTargetCvs.height;
+        if (w > 0 && h > 0) {
+          _lastTargetCvs.getContext('2d').clearRect(0, 0, w, h);
+        }
+      } catch (_e) {}
+    }
+    _lastTargetCvs = cvs;
     if (!cvs) {
       requestAnimationFrame(tick);
       return;
