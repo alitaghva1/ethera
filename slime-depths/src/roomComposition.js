@@ -206,10 +206,13 @@ const ROOM_VISUAL_PROFILES = {
 
   // ── MYSTERY: event ───────────────────────────────────────────────────
   // Visual hint that "something strange happens here." Cool/violet
-  // floor cast distinguishes it from combat at a glance. Brazier
-  // focal because it's the most ritual-feeling setpiece we have.
+  // floor cast distinguishes it from combat at a glance. Dedicated
+  // GLYPH-CIRCLE focal — a flat-on-floor rune ring with a small standing
+  // stone at center, glow pulsing through fissures in the stone.
+  // Distinct silhouette from any combat focal (vertical) or treasure
+  // focal (chest array) — instantly says "ritual / strange happens here."
   event: {
-    focal:         { kinds: ['brazier'], placement: 'center' },
+    focal:         { kinds: ['glyph_circle'], placement: 'center' },
     floorTint:     { r: -3, g: 0, b: 8, a: 0.06 },       // cool violet wash
     vignetteScale: 0.95,
     propFamily:    'minimal-ceremonial',
@@ -283,6 +286,179 @@ export function selectPropFamilyForRoomKind(kind) {
 export function applyRoomKindDressing(room) {
   room.kindProfile = roomKindVisualProfile(room.kind);
   return room.kindProfile;
+}
+
+// ── PROP DRESSING RULES (composition by room kind) ──────────────────────────
+// The visual profile gives a 1-second color/lighting read; this rule
+// table goes the next step: it changes what props live in the room
+// and where, so a treasure room ISN'T just "combat with a gold tint"
+// and a sanctuary ISN'T just "combat with a soft vignette."
+//
+// Each rule operates on the runtime arrays already populated by
+// buildRoomFromData (roomUrns, room.decor, roomDecorPillars). The
+// rule can:
+//   - filterDecor: keep only decor.kind values in this allowlist (or
+//                  null = keep nothing). Removes unfit prop families
+//                  per room (no "rugs" in elite arenas, no "chests"
+//                  scattered in sanctuaries, etc.).
+//   - urnPropDensity: 0..1 multiplier on isProp=true urns. 0 strips
+//                  all decorative urns; 1 keeps them all. NEVER affects
+//                  isProp=false urns — those are gameplay (trove
+//                  containers, sanctuary altar flair).
+//   - addStyle:    optional family-specific addition (currently only
+//                  'merchant-display' for shops adds 4 prop urns at
+//                  the side walls as merchandise).
+//
+// Density classification by family (target props after dressing):
+//   combat            : medium       — baseline urns + 1-2 décor items
+//   combat-heavy      : medium       — urns kept, soft décor stripped
+//   sparse-bones      : low-medium   — halved urns, austere arena
+//   minimal-ceremonial: very low     — chest array OR setpiece is the show
+//   urn-cluster       : medium-high  — urns ARE the focus (trove)
+//   sparse-ceremonial : very low     — altar carries the room
+//   merchant-display  : medium       — pedestals + 4 display urns
+//   minimal           : very low     — clean entrance
+const PROP_DRESSING_RULES = {
+  // Baseline — combat rooms keep what floor.js placed.
+  'combat': null,
+
+  // Challenge: still combat-shaped, but soft furnishings (rugs, banners,
+  // statues, chests, rubble) read as "decoration in a fight" — strip them
+  // so the room feels harder. Bones + cracks stay because they're
+  // atmospheric grit, not furniture.
+  'combat-heavy': {
+    filterDecor:     ['bones', 'crack'],
+    urnPropDensity:  0.85,
+    addStyle:        null,
+  },
+
+  // Elite / miniboss / boss: ritual arena. No soft décor. Halved urn
+  // count. The crater/tomb/brazier focal carries the room; everything
+  // else gets out of the way.
+  'sparse-bones': {
+    filterDecor:     ['bones', 'crack', 'rubble'],
+    urnPropDensity:  0.50,
+    addStyle:        null,
+  },
+
+  // Treasure / chestroom / event: setpiece-first. Strip decorative urns
+  // entirely; strip soft décor. The chest array, glyph circle, or
+  // story object IS the room.
+  'minimal-ceremonial': {
+    filterDecor:     ['crack'],     // tiny floor cracks ok for atmosphere
+    urnPropDensity:  0,
+    addStyle:        null,
+  },
+
+  // Trove: urn cluster IS the loot. Keep all urns, strip non-urn
+  // décor so the eye reads the urn pile as the show.
+  'urn-cluster': {
+    filterDecor:     ['crack'],
+    urnPropDensity:  1.0,
+    addStyle:        null,
+  },
+
+  // Sanctuary / reward: altar carries the room. Strip prop urns + most
+  // décor; isProp=false sanctuary altar urns survive (they're flair the
+  // generator deliberately placed at the heal pedestal flanks).
+  'sparse-ceremonial': {
+    filterDecor:     ['crack'],
+    urnPropDensity:  0,
+    addStyle:        null,
+  },
+
+  // Shop: merchant display. Strip everything generic, then add 4 prop
+  // urns as "wares laid out for browsing" along the side walls.
+  'merchant-display': {
+    filterDecor:     ['crack'],
+    urnPropDensity:  0,
+    addStyle:        'merchant-display',
+  },
+
+  // Start: clean entrance. Strip everything decorative.
+  'minimal': {
+    filterDecor:     ['crack'],
+    urnPropDensity:  0,
+    addStyle:        null,
+  },
+};
+
+// Mutates the room runtime arrays per the kind's PROP_DRESSING_RULES.
+// Called from buildRoomFromData AFTER the floor.js data has been loaded
+// into roomUrns / room.decor / roomDecorPillars but BEFORE the static
+// tile cache is invalidated, so the next render picks up the dressed
+// composition.
+//
+// Important: this NEVER touches isProp=false urns (those are
+// gameplay-bearing — trove loot containers, sanctuary altar flair).
+// Decorative chests/banners/etc. in room.decor ARE fair game because
+// they don't gate any mechanic.
+export function placeRoomKindProps(room, _runtime) {
+  if (!room || !room.kindProfile) return;
+  const family = room.kindProfile.propFamily;
+  const rule = PROP_DRESSING_RULES[family];
+  if (rule === undefined) return;     // unknown family — leave alone
+  if (rule === null) return;          // 'combat' baseline — no changes
+
+  const w = room.w | 0, h = room.h | 0;
+  const seed = (room._detailSeed | 0) ^ ((w * 31 + h) * 13);
+
+  // ── 1. Filter decor by allowlist ─────────────────────────────────────
+  if (room.decor && Array.isArray(room.decor)) {
+    const allowed = new Set(rule.filterDecor || []);
+    room.decor = room.decor.filter(d => allowed.has(d.kind));
+  }
+
+  // ── 2. Thin out decorative (isProp=true) urns by density ─────────────
+  // Runtime urn array lives on _runtime.roomUrns (passed in by caller
+  // since the array is module-private to room.js). We mutate length
+  // in place so other room.js helpers (urn collision, urn-hit etc.)
+  // continue to read the same array reference.
+  if (_runtime && _runtime.roomUrns && rule.urnPropDensity < 1) {
+    const urns = _runtime.roomUrns;
+    if (rule.urnPropDensity <= 0) {
+      // Strip ALL decorative urns — keep only isProp=false urns.
+      for (let i = urns.length - 1; i >= 0; i--) {
+        if (urns[i].isProp) urns.splice(i, 1);
+      }
+    } else {
+      // Partial keep — hash-deterministic sampling so reloading a
+      // room produces the same dressed layout.
+      let idx = 0;
+      for (let i = urns.length - 1; i >= 0; i--) {
+        if (!urns[i].isProp) continue;
+        const keep = (_hash(seed + idx * 37, idx * 11) % 1000) < (rule.urnPropDensity * 1000);
+        if (!keep) urns.splice(i, 1);
+        idx++;
+      }
+    }
+  }
+
+  // ── 3. Add family-specific props ─────────────────────────────────────
+  if (rule.addStyle === 'merchant-display' && _runtime && _runtime.roomUrns) {
+    // 4 prop urns positioned symmetrically along the L/R walls,
+    // upper + lower thirds, like merchandise on display. Skipped if
+    // the chosen tile isn't floor (carved-shape rooms).
+    const tiles = room.tiles;
+    const slots = [
+      { x: 2,     y: Math.floor(h * 0.32) },
+      { x: 2,     y: Math.floor(h * 0.66) },
+      { x: w - 3, y: Math.floor(h * 0.32) },
+      { x: w - 3, y: Math.floor(h * 0.66) },
+    ];
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      if (tiles?.[s.y]?.[s.x] !== 'floor') continue;
+      _runtime.roomUrns.push({
+        x: s.x, y: s.y,
+        broken: false, breakT: 0,
+        // Cycle variants 0..2 so the four display urns don't all
+        // look identical — reads as a varied product line.
+        variant: i % 3,
+        isProp: true,        // sparse loot — these are merchandise, not trove
+      });
+    }
+  }
 }
 
 // Hash helper — deterministic per room so reloading doesn't shuffle the
@@ -604,6 +780,10 @@ export function drawZoneWear(ctx, room) {
     case 'altar':
       stain = { color: 'rgba(255, 220, 160, 0.06)', innerColor: 'rgba(255, 220, 160, 0.04)', r: 28 };
       break;
+    case 'glyph_circle':
+      // Cool violet ring stain — matches the event-room floor cast
+      stain = { color: 'rgba(60, 30, 100, 0.22)', innerColor: 'rgba(120, 80, 180, 0.10)', r: 30 };
+      break;
     case 'plinth':
     case 'obelisk':
     default:
@@ -634,12 +814,13 @@ export function drawFocal(ctx, focal, now) {
   const cx = focal.x * TILE + TILE / 2;
   const cy = focal.y * TILE + TILE / 2;
   switch (focal.kind) {
-    case 'obelisk': _drawObelisk(ctx, cx, cy, now); break;
-    case 'brazier': _drawBrazier(ctx, cx, cy, now); break;
-    case 'crater':  _drawCrater(ctx, cx, cy, now); break;
-    case 'altar':   _drawFocalAltar(ctx, cx, cy, now); break;
-    case 'tomb':    _drawTomb(ctx, cx, cy, now); break;
-    case 'plinth':  _drawPlinth(ctx, cx, cy, now); break;
+    case 'obelisk':      _drawObelisk(ctx, cx, cy, now); break;
+    case 'brazier':      _drawBrazier(ctx, cx, cy, now); break;
+    case 'crater':       _drawCrater(ctx, cx, cy, now); break;
+    case 'altar':        _drawFocalAltar(ctx, cx, cy, now); break;
+    case 'tomb':         _drawTomb(ctx, cx, cy, now); break;
+    case 'plinth':       _drawPlinth(ctx, cx, cy, now); break;
+    case 'glyph_circle': _drawGlyphCircle(ctx, cx, cy, now); break;
   }
 }
 
@@ -878,6 +1059,99 @@ function _drawTomb(ctx, cx, cy, now) {
   ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = halo;
   ctx.fillRect(cx - 26, cy - 28, 52, 52);
+  ctx.restore();
+}
+
+// GLYPH CIRCLE — flat ground rune ring with a small cracked monolith
+// at center. Event-room signature focal. Distinct silhouette from any
+// other focal: the ring is FLAT (recessed into the floor — no vertical
+// stack), and the center stone is short (~16 px tall) with a glowing
+// vertical fissure that pulses violet/cyan. Reads as "ritual / strange
+// happens here" before the player can read the door label.
+//
+// Composition: outer dark stone ring, inner lighter ring, 4 rune marks
+// at compass points (cycle hue slowly), central monolith with vertical
+// crack, soft violet halo over everything. No fire, no smoke — distinct
+// from brazier. Animated via `now`.
+function _drawGlyphCircle(ctx, cx, cy, now) {
+  // No upward shadow — the ring is INSET into the floor. Use a soft
+  // surrounding darken instead so the circle reads as "carved into stone."
+  ctx.save();
+  // Background recess vignette — slight bowl darkening.
+  const recess = ctx.createRadialGradient(cx, cy, 4, cx, cy, 26);
+  recess.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+  recess.addColorStop(0.7, 'rgba(0, 0, 0, 0.20)');
+  recess.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = recess;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 22, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Outer stone ring — dark carved channel ──────────────────────
+  ctx.strokeStyle = '#1a1018';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 18, 9, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Inner edge highlight — slightly lighter
+  ctx.strokeStyle = '#3a2a3c';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 17, 8.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // ── 4 rune marks at compass points — pulse violet/cyan in unison ─
+  const pulse = 0.55 + 0.30 * Math.sin(now * 1.6);
+  const runeColor = `rgba(170, 130, 230, ${(0.55 + 0.30 * pulse).toFixed(3)})`;
+  // North rune
+  ctx.fillStyle = runeColor;
+  ctx.fillRect(cx - 1, cy - 10, 2, 3);
+  ctx.fillRect(cx - 2, cy - 9, 4, 1);
+  // South rune
+  ctx.fillRect(cx - 1, cy + 7, 2, 3);
+  ctx.fillRect(cx - 2, cy + 9, 4, 1);
+  // East rune
+  ctx.fillRect(cx + 16, cy - 1, 3, 2);
+  ctx.fillRect(cx + 17, cy - 2, 1, 4);
+  // West rune
+  ctx.fillRect(cx - 19, cy - 1, 3, 2);
+  ctx.fillRect(cx - 18, cy - 2, 1, 4);
+
+  // ── Central monolith — short cracked standing stone ──────────────
+  // Compact (~12w × 18h) so it doesn't visually fight the player sprite.
+  const monoTop = cy - 14;
+  // Stone outline
+  ctx.fillStyle = '#0a0810';
+  ctx.fillRect(cx - 6, monoTop, 12, 18);
+  // Stone body
+  ctx.fillStyle = '#2a2034';
+  ctx.fillRect(cx - 5, monoTop + 1, 10, 16);
+  // Light edge (left side)
+  ctx.fillStyle = '#4a3a52';
+  ctx.fillRect(cx - 5, monoTop + 1, 1, 16);
+  // Top capstone
+  ctx.fillStyle = '#3a2a44';
+  ctx.fillRect(cx - 5, monoTop, 10, 1);
+
+  // ── Vertical fissure with glowing core ──────────────────────────
+  ctx.fillStyle = '#0a0810';
+  ctx.fillRect(cx - 1, monoTop + 3, 2, 13);
+  // Glowing core — pulses
+  const corePulse = 0.65 + 0.35 * Math.sin(now * 2.3);
+  ctx.fillStyle = `rgba(180, 140, 240, ${(0.85 * corePulse).toFixed(3)})`;
+  ctx.fillRect(cx, monoTop + 4, 1, 11);
+  // Hot center pixel near monolith middle
+  ctx.fillStyle = `rgba(220, 200, 255, ${(0.95 * corePulse).toFixed(3)})`;
+  ctx.fillRect(cx, monoTop + 8, 1, 3);
+
+  // ── Soft violet halo over the whole setpiece ─────────────────────
+  const halo = ctx.createRadialGradient(cx, cy - 4, 2, cx, cy - 4, 32);
+  halo.addColorStop(0, `rgba(160, 110, 220, ${(0.30 * pulse).toFixed(3)})`);
+  halo.addColorStop(0.5, `rgba(120, 80, 180, ${(0.14 * pulse).toFixed(3)})`);
+  halo.addColorStop(1, 'rgba(80, 50, 140, 0)');
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = halo;
+  ctx.fillRect(cx - 32, cy - 36, 64, 64);
   ctx.restore();
 }
 

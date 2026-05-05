@@ -18,6 +18,7 @@ import {
   drawFocal as drawFocalPiece,
   drawDoorArchitecture,
   applyRoomKindDressing,
+  placeRoomKindProps,
 } from './roomComposition.js';
 
 export const TILE = 48;
@@ -952,6 +953,10 @@ export function buildRoomFromData(data) {
   //    focal points: doorways, urn piles, chest arrays, pedestals).
   // 3. Build floor zones (threshold/combat/focal-frame/alcove/wear)
   //    based on door positions + focal anchor + room dimensions.
+  // 4. Apply prop dressing per room kind: filter decor types unfit
+  //    for the family (no rugs in elite arenas, no scattered urns
+  //    in sanctuaries, etc.), thin out decorative urns, and add
+  //    family-specific extras (shop merchant display urns).
   //
   // All run BEFORE the tile cache invalidation so the next static
   // render picks them up. Hamlet rooms get null focal + empty zones —
@@ -960,6 +965,10 @@ export function buildRoomFromData(data) {
   applyRoomKindDressing(room);
   room.focal = (data.kind === 'hamlet') ? null : assignRoomFocal(room);
   room.floorZones = buildFloorZones(room);
+  // Pass roomUrns by reference so placeRoomKindProps can splice
+  // decorative urns in/out without breaking the export contract
+  // (collision + hit-test code reads from this same array).
+  placeRoomKindProps(room, { roomUrns });
 
   // Tile cache — fresh room means fresh static layers. Mark dirty so
   // the next render rebuilds.
