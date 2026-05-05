@@ -411,6 +411,24 @@ document.getElementById('deathMenuBtn')?.addEventListener('mouseleave', (e) => {
   e.target.style.color = '#8a7a5a';
 });
 
+// R-key shortcut for QUICK RESTART when the death screen is up. The
+// in-game R key (line ~2375) is the pedestal-reroll hotkey, but it
+// guards on `deathEl.style.display !== 'none'` and bails on death — so
+// the keycode is free here. Mirrors the click handler exactly: respect
+// _restartBtnOverridden, hide the modal, kick off a fresh run.
+//
+// Suppressed when the player is in a contextual sub-flow that needs
+// keyboard focus (e.g. typing in a field), but those flows don't share
+// the death screen state, so the deathEl-display check is enough.
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyR') return;
+  if (deathEl.style.display !== 'flex') return;
+  if (_restartBtnOverridden) return;
+  e.preventDefault();
+  deathEl.style.display = 'none';
+  startRun();
+});
+
 // Between-floor + victory screen — extracted to src/modals/winModal.js
 // (Round-7 Sprint B). main.js retains the wrapper so the restart button
 // can decide between startRun() (post-final-floor edge case) and
@@ -4339,6 +4357,22 @@ function showEndOfRun(isVictory) {
 
   // Button text is handled in the isVictory branch above ('BEGIN ANEW' / 'NEW RUN')
   deathEl.style.display = 'flex';
+
+  // QUICK-RESTART discoverability nudge — only on DEATH (not victory).
+  // The button sits at the same italic/muted weight as MAIN MENU on the
+  // other side, which is the right balance (NEW RUN is the dramatic
+  // primary action). But on first death the player may not even notice
+  // the secondary path exists — they default to clicking the big NEW
+  // RUN button + walk through the hamlet. Add a 4-cycle pulsing
+  // text-shadow nudge that draws the eye briefly, then settles.
+  // Subsequent deaths re-trigger the nudge but it's gentle enough to
+  // ignore once the muscle memory is built.
+  const _qrBtn = document.getElementById('deathQuickRestartBtn');
+  if (_qrBtn && !isVictory) {
+    _qrBtn.classList.remove('nudging');
+    void _qrBtn.offsetWidth;            // force reflow → animation restart
+    _qrBtn.classList.add('nudging');
+  }
 }
 
 function renderMetaShop(animate = false) {

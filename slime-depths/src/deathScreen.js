@@ -117,7 +117,7 @@ export const DEATH_SCREEN_HTML = `
          friction between deaths. Genre-fast loop: die \u2192 quick restart \u2192 F1.
          Same right-side weight as MAIN MENU on the left, so the button
          row stays visually balanced. -->
-    <button id="deathQuickRestartBtn" style="background:transparent;color:#8a7a5a;border:0;padding:8px 18px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:opacity 0.22s ease;opacity:0.7;">QUICK RESTART \u2192</button>
+    <button id="deathQuickRestartBtn" style="background:transparent;color:#8a7a5a;border:0;padding:8px 18px;font-size:11px;cursor:pointer;letter-spacing:4px;font-family:Georgia,serif;font-style:italic;font-weight:bold;transition:opacity 0.22s ease;opacity:0.7;">QUICK RESTART <span style="font-size:9px;opacity:0.7;letter-spacing:1px;border:1px solid currentColor;padding:1px 4px;margin-left:2px;border-radius:3px;font-style:normal;">R</span></button>
   </div>
 
   </div><!-- /menuContent -->
