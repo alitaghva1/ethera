@@ -48,7 +48,10 @@ import { TILE, room } from './room.js';
 import { hero } from './hero.js';
 import { sparkle } from './particles.js';
 import { playSfx } from './sfx.js';
-import { THEMES } from './themes.js';
+// THEMES import dropped in the door-card holistic redesign — the
+// per-door theme corner-chip went away with the card, and no other
+// path in this module needed theme data. Re-add if a future change
+// surfaces theme info at the door (e.g. an aura ring on the floor).
 
 // Animation timings (seconds)
 const OPEN_DURATION  = 0.55;            // closed → open
@@ -577,14 +580,15 @@ export function getDoorMeta(tx, ty) {
 // commitment beat. Non-sealed doors use the simpler tighter card.
 const CARD_W = 84;          // sealed only
 const CARD_H = 46;          // sealed only
+// Vertical offset from the door top to the floating glyph / sealed
+// card center. Same value applies to both branches so glyph placement
+// stays consistent if a sealed BLOOD GATE is broken mid-room.
 const CARD_OFFSET_Y = 38;
-// Simplified card for normal doors (Hades-inspired pass): icon-first
-// with the sigil dominant and the label as a small caption beneath.
-// Bumped height (38 → 44) to accommodate the larger sigil without
-// crowding the label. Width unchanged so the card footprint feels
-// the same on the door.
-const SIMPLE_CARD_W = 64;
-const SIMPLE_CARD_H = 44;
+// Proximity radii for the label fade-in on non-sealed doors. Inside
+// NEAR the label is at full opacity; between NEAR and FAR it fades;
+// beyond FAR the label is hidden and only the floating glyph remains.
+const PROX_NEAR = 110;
+const PROX_FAR  = 180;
 
 export function drawDoorLabels(ctx) {
   const now = performance.now() / 1000;
@@ -691,19 +695,29 @@ function _drawSealedDoorCard(ctx, d, cx, cardCY, now) {
   ctx.restore();
 }
 
-// ─── Simple door card — Hades-style icon-first design ──────────────────
-// One dominant icon + one optional small label. Tinted pill backdrop,
-// no corner brackets, no chevron, no eyebrow. The icon IS the
-// information; the kind/reward is implied by which sigil is shown.
+// ─── Floating glyph — holistic redesign (Hades / Isaac / Hollow Knight) ──
+// Replaces the prior _drawSimpleDoorCard. Iterating on per-property
+// sizing of a UI rectangle was solving the wrong problem — top-tier
+// roguelites don't put a card over the door at all. The icon is the
+// indicator; the door art is the architecture; nothing else.
 //
-// Label suppression rule: combat rooms with no reward bias show the
-// icon ONLY (the ⚔ glyph is self-evident — adding "COMBAT" beneath it
-// is redundant). Reward-biased rooms (gold/legendary/fusion) and
-// special kinds (rest/altar/shop/boss) keep their label since the
-// icon alone might not be unambiguous.
+// New design:
+//   • The reward / kind sigil floats above the door with a soft glow
+//     halo. NO frame. NO fill. NO border. NO corner theme glyph.
+//   • Gentle bob animation (1.5 Hz, ±2 px) reads as "magical waypoint"
+//     vs. static UI.
+//   • The label ("GOLD", "REST", "ALTAR", elite affixes) only fades in
+//     when the hero is within ~110 px of the door, fading out by 180 px.
+//     Combat-default doors don't get a label even at proximity (Hades
+//     doesn't label "combat" rooms — the ⚔ is self-evident).
+//   • Elite affix sub-line still surfaces, but as proximity text only.
 //
-// Affix sub-line for elite doors is preserved — it's genuinely
-// additive info, not redundant with anything else.
+// Kept unchanged:
+//   • Sealed-door dramatic card (_drawSealedDoorCard) — earned its
+//     frame for the high-stakes BLOOD GATE commit moment.
+//   • Per-glyph SIGIL_FONT_SIZE table — visual normalization across
+//     unicode chars + reward-vs-combat hierarchy bias.
+//   • E-prompt for sealed doors (rendered separately in drawDoorLabels).
 function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
   // Pick the dominant signal — reward bias if present, else kind glyph
   const hasReward = !!d.rewardLabel;
@@ -732,77 +746,77 @@ function _drawSimpleDoorCard(ctx, d, cx, cardCY, now) {
     }
   }
 
-  // Calmer pulse than sealed doors — ambient throb, not urgent
-  const pulse = 0.90 + 0.10 * Math.sin(now * 1.4);
+  // Proximity check — hero distance to the door's bottom edge (where
+  // the player physically arrives). Drives the label fade so distant
+  // doors are quiet (just a glyph) and the player gets full info
+  // when they actually approach.
+  const doorBottom = (d.ty + 1) * TILE;
+  const dx = hero.x - cx;
+  const dy = hero.y - doorBottom;
+  const dist = Math.hypot(dx, dy);
+  let proxAlpha = 0;
+  if (dist <= PROX_NEAR) proxAlpha = 1;
+  else if (dist >= PROX_FAR) proxAlpha = 0;
+  else proxAlpha = 1 - (dist - PROX_NEAR) / (PROX_FAR - PROX_NEAR);
+
+  // Per-door bob phase via tx so adjacent doors don't pulse in unison.
+  // 1.5 Hz feels alive but not anxious; ±2 px is enough to read as
+  // animated, gentle enough to ignore in peripheral vision.
+  const bob = Math.sin(now * 1.5 + d.tx * 0.7) * 2;
+  // Glow pulse — alpha breathes around the glyph independently of bob.
+  const pulse = 0.85 + 0.15 * Math.sin(now * 1.4);
 
   ctx.save();
-  const cardX = cx - SIMPLE_CARD_W / 2;
-  const cardY = cardCY - SIMPLE_CARD_H / 2;
-  // Single tinted pill — no double-layer fill, no corner brackets
-  ctx.fillStyle = 'rgba(14, 10, 16, 0.86)';
-  roundRect(ctx, cardX, cardY, SIMPLE_CARD_W, SIMPLE_CARD_H, 8);
-  ctx.fill();
-  ctx.strokeStyle = hexA(color, 0.65 * pulse);
-  ctx.lineWidth = 1;
-  roundRect(ctx, cardX + 0.5, cardY + 0.5, SIMPLE_CARD_W - 1, SIMPLE_CARD_H - 1, 8);
-  ctx.stroke();
-
-  // Sigil placement — Hades-pattern icon-first: the sigil is the
-  // dominant visual element, the label is a small caption beneath.
-  // Previously sigil was 22px serif and label 10px Georgia bold — close
-  // enough in weight that they read as equal-importance UI. Bumped
-  // sigil to 30px (procedural fusion radius 9 → 13) and dropped label
-  // to 8px so the icon dominates and the word reads as a tag.
-  //
-  // Sigil Y lifted further when label is present (the bigger glyph
-  // needs more room above the caption). Card height bumped to 44
-  // accommodates the larger composition.
-  const hasLowerText = !!label || !!subLine;
-  const sigilY = cardCY + (hasLowerText ? -7 : 0);
+  // ── Glyph render — large, glowing, framed only by its own shadow ──
+  const glyphY = cardCY + bob;
   ctx.fillStyle = hexA(color, pulse);
-  ctx.shadowColor = hexA(color, pulse * 0.6);
-  ctx.shadowBlur = 10;
+  ctx.shadowColor = hexA(color, pulse * 0.85);
+  ctx.shadowBlur = 16;
   if (sigil === '__procedural__' && d.rewardLabel === 'FUSION') {
-    // Fusion gets reward-tier prominence — radius 14 (matches the
-    // visual scale of the bumped reward sigils above).
-    _drawFusionSigil(ctx, cx, sigilY, 14, hexA(color, pulse));
+    _drawFusionSigil(ctx, cx, glyphY, 14, hexA(color, pulse));
   } else {
-    // Per-glyph size lookup so combat ⚔ doesn't dwarf the reward ◈;
-    // falls back to 28 for any unmapped char.
+    // Per-glyph size lookup keeps visual weight normalized across
+    // unicode chars (the heavy ⚔ doesn't dwarf the thin ◈), with
+    // rewards intentionally rendered larger than kind glyphs.
     const sigilSize = SIGIL_FONT_SIZE[sigil] || 28;
     ctx.font = `bold ${sigilSize}px serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(sigil, cx, sigilY);
+    ctx.fillText(sigil, cx, glyphY);
   }
   ctx.shadowBlur = 0;
 
-  // Label below sigil — small caption, lower opacity so it reads as
-  // metadata rather than competing with the icon.
-  if (label) {
-    ctx.fillStyle = hexA(color, 0.92);
-    ctx.font = 'bold 8px Georgia, "Cormorant Garamond", serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, cx, cardCY + (subLine ? 9 : 12));
-  }
-
-  // Affix sub-line for elite doors (FROST / EMBER / VENOM / WARDED)
-  if (subLine) {
-    ctx.font = 'bold 7px Georgia, serif';
-    ctx.fillStyle = subLineColor || '#ffd855';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(subLine, cx, cardCY + (label ? 17 : 12));
-  }
-
-  // Theme glyph — small chip in upper-right corner if room is themed
-  if (d.roomTheme && THEMES[d.roomTheme]) {
-    const theme = THEMES[d.roomTheme];
-    const tg = 12;
-    const tgx = cardX + SIMPLE_CARD_W - tg - 3;
-    const tgy = cardY + 3;
-    _drawDoorThemeGlyph(ctx, tgx, tgy, tg, theme, pulse);
+  // ── Label + sub-line — proximity-gated, no card frame ───────────────
+  // Only renders when hero is close enough to be reading the door.
+  // Plain centered text with a soft drop shadow for legibility against
+  // floor / wall variation. No background pill, no border.
+  if (proxAlpha > 0.01) {
+    if (label) {
+      ctx.fillStyle = hexA(color, 0.95 * proxAlpha);
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+      ctx.shadowBlur = 4;
+      ctx.font = 'bold 11px Georgia, "Cormorant Garamond", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, cx, glyphY + 22);
+      if (subLine) {
+        ctx.fillStyle = hexA(subLineColor || '#ffd855', 0.92 * proxAlpha);
+        ctx.font = 'bold 8px Georgia, serif';
+        ctx.fillText(subLine, cx, glyphY + 35);
+      }
+    } else if (subLine) {
+      // Combat-default door with elite affix — no main label, but the
+      // affix is genuinely additive info. Render it directly under
+      // the glyph so the player sees "⚔ + FROST" on approach.
+      ctx.fillStyle = hexA(subLineColor || '#ffd855', 0.92 * proxAlpha);
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+      ctx.shadowBlur = 4;
+      ctx.font = 'bold 8px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(subLine, cx, glyphY + 22);
+    }
+    ctx.shadowBlur = 0;
   }
 
   ctx.restore();
@@ -887,85 +901,10 @@ function _drawFusionSigil(ctx, cx, cy, r, color) {
   ctx.restore();
 }
 
-// Theme glyph — small canvas-rendered icon in the door card's corner.
-// Same procedural-primitive family as the affix HP-bar glyphs and the
-// modal's relic-card theme chip. Caller passes (x,y) top-left of the
-// chip, side length, theme object from THEMES, and the door's pulse
-// modulator. Glyph + border tinted to theme.color; backdrop dark for
-// contrast against the door card's existing tint fill.
-function _drawDoorThemeGlyph(ctx, x, y, size, theme, pulse = 1) {
-  ctx.save();
-  // Backdrop chip — dark + theme-tinted border
-  ctx.fillStyle = 'rgba(8, 6, 12, 0.85)';
-  ctx.fillRect(x, y, size, size);
-  ctx.strokeStyle = hexA(theme.color, 0.85 * pulse);
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
-  // Glyph — same canvas paths as the modal _drawThemeChip
-  const cx = x + size / 2;
-  const cy = y + size / 2;
-  const r = (size - 5) / 2;
-  ctx.fillStyle = hexA(theme.color, pulse);
-  ctx.strokeStyle = hexA(theme.color, pulse);
-  ctx.lineWidth = 1.0;
-  switch (theme.id) {
-    case 'storm': {
-      ctx.beginPath();
-      ctx.moveTo(cx + r * 0.35, cy - r);
-      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
-      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
-      ctx.lineTo(cx - r * 0.35, cy + r);
-      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
-      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'flame': {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'blood': {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'vow': {
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'shadow': {
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      break;
-    }
-    default: {
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.restore();
-}
+// _drawDoorThemeGlyph removed in the door-card holistic redesign. The
+// per-door theme corner-chip was contributing to the card's visual
+// noise; theme info is already conveyed on the floor map and on the
+// pickup banner. If we ever want it back as a floating glyph next to
+// the reward sigil, lift the procedural paths from src/themes.js
+// (drawThemeAura / theme-chip family) which still keeps the same
+// switch on theme.id.
