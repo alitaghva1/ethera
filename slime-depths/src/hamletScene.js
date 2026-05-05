@@ -10,7 +10,7 @@
 // ============================================================================
 import { hero } from './hero.js';
 import { images } from './loader.js';
-import { NPCS, hamletState, hasUnseenTopics, hasUnreadDialogue, hamletGrowthStage } from './hamlet.js';
+import { NPCS, ALL_NPC_IDS, hamletState, hasUnseenTopics, hasUnreadDialogue, hamletGrowthStage } from './hamlet.js';
 import { drawHamletFloor, isHamletWalkable, HAMLET_H } from './hamletFloor.js';
 import { showTip } from './tips.js';
 import { records } from './records';
@@ -155,15 +155,15 @@ export const HAMLET_ENTITIES = [
 // NPCs and the portal/firepit/shrine entities are NOT in this list —
 // the hero is meant to walk THROUGH NPCs (overlapping is fine for a hub
 // area) and onto the portal/firepit tile (that's how interactions fire).
-// NPC body collision — derived from HAMLET_ENTITIES so the two arrays
-// can never drift. r=18 gives a soft bump-off feel (the resolver in
-// resolveHamletCollision pushes the hero back along the radial
-// direction when overlapping). Previously this was a hand-maintained
-// parallel array that drifted from HAMLET_ENTITIES at least 3 times
-// during recent placement iterations.
-export const HAMLET_OBSTACLES = HAMLET_ENTITIES
-  .filter(e => e.kind === 'npc')
-  .map(e => ({ x: e.x, y: e.y, r: 18 }));
+// NPC body collision — r=18 gives a soft bump-off feel (the resolver in
+// resolveHamletCollision pushes the hero back along the radial direction
+// when overlapping). Computed live in resolveHamletCollision off the
+// HAMLET_ENTITIES list filtered by isNpcPresent, so locked NPCs (which
+// no longer render in-world) don't invisibly block the hero walking
+// across their pad. Previous version was a frozen-at-load array, which
+// after the "no shrouded figure" rebuild would have left phantom
+// collision circles on every locked NPC's anchor point.
+const NPC_BODY_RADIUS = 18;
 
 // Push the hero out of any prop obstacle they're inside, AND clamp them
 // to the walkable area (the irregular silhouette defined by ZONES +
@@ -175,13 +175,16 @@ export const HAMLET_OBSTACLES = HAMLET_ENTITIES
 // any of the 4 sample points is in void, push the hero by their average
 // dx/dy back toward the nearest walkable tile center.
 export function resolveHamletCollision(hero) {
-  // Pass 1: prop obstacles
-  for (const o of HAMLET_OBSTACLES) {
-    const dx = hero.x - o.x;
-    const dy = hero.y - o.y;
+  // Pass 1: NPC body collision — only present (unlocked) NPCs push the
+  // hero. Locked NPC anchor points pass through transparently.
+  for (const e of HAMLET_ENTITIES) {
+    if (e.kind !== 'npc') continue;
+    if (!isNpcPresent(e.id)) continue;
+    const dx = hero.x - e.x;
+    const dy = hero.y - e.y;
     const d2 = dx * dx + dy * dy;
     const rh = 10;
-    const rr = o.r + rh;
+    const rr = NPC_BODY_RADIUS + rh;
     if (d2 < rr * rr) {
       const d = Math.sqrt(d2) || 0.001;
       const push = (rr - d) / d;
@@ -213,15 +216,16 @@ export function resolveHamletCollision(hero) {
 
 let _nearest = null;    // cached nearest interactable, updated each tick
 
-function isNpcPresent(_id) {
-  // Canvas hamlet: always render all six NPCs. The old DOM overlay gated
-  // NPC visibility on record-based unlocks (Smith = beat floor 2, etc.) —
-  // useful for the DOM version where "1 of 6 souls returned" told a slow
-  // arrival story. For the walkable canvas version we want the full scene
-  // populated immediately so the composition reads right; unlock-based
-  // dialogue gating still applies at interact time (openDialogue handles
-  // the arc stages).
-  return true;
+function isNpcPresent(id) {
+  // Locked NPCs no longer render in-world. The previous "shrouded figure"
+  // treatment (translucent silhouette + ? indicator + slate-blue halo) was
+  // doing two jobs poorly — selling a placeholder and surfacing the unlock
+  // hint — and read as a janky dev artifact rather than a deliberate
+  // narrative choice. The hints now flow through the Keeper's interact
+  // prompt subtext (the village steward knows who's expected); the
+  // arrivals themselves now appear out of nothing the moment they're
+  // earned, which lets the world physically grow as the player progresses.
+  return isNpcUnlocked(id);
 }
 
 function entityAlive(e) {
@@ -1268,13 +1272,11 @@ function drawNpc(ctx, e, now) {
     || images[`hamlet_npcp_${e.spriteIdx}`]
     || images[`hamlet_npc_${e.spriteIdx}`];
   if (!spr) return;
-  // Shroud treatment — NPCs whose unlock condition hasn't been met yet
-  // render at lower opacity with no warm proximity tint, signaling
-  // "present but not yet arrived". The player can still walk up + press E
-  // to read their unlockHint as a card. Keeper is always unlocked, so
-  // this only affects the other five.
-  const unlocked = isNpcUnlocked(e.id);
-  // Whether we're drawing the v2 sprite (changes default size + scale).
+  // drawHamletEntities filters by entityAlive → isNpcPresent, so by the
+  // time we reach drawNpc the NPC is always unlocked. Locked NPCs simply
+  // don't render anymore (replaced the "shrouded figure" placeholder
+  // with absence). Hint surfacing for pending arrivals lives on the
+  // Keeper's interact prompt subtext.
   const isV2 = !!images[`npc_v2_${e.id}`];
   // Breathing bob so the NPC doesn't feel frozen. Phase offset by x so
   // multiple NPCs don't breathe in sync. Audit H8: previous ±1.2 px was
@@ -1306,30 +1308,20 @@ function drawNpc(ctx, e, now) {
   drawGroundShadow(ctx, e.x, e.y - 1, shadowR, 0.28);
 
   // Warm proximity glow when the hero is close — signals interactivity
-  // and makes the scene feel responsive to your presence.
+  // and makes the scene feel responsive to your presence. Tinted from
+  // the NPC's per-character tint so each one has a recognizable color
+  // signature at glance. Extends 60% past interactR so the player sees
+  // the NPC light up before they're close enough to trigger the prompt.
   const dx = hero.x - e.x, dy = hero.y - e.y;
   const d = Math.hypot(dx, dy);
-  // Proximity glow extends 60% beyond the interactR — players see the NPC
-  // light up before they're close enough to trigger the "E · TALK" prompt,
-  // signaling "this is interactive" without being noisy at long range.
-  // Locked NPCs use a cool muted halo instead of the NPC's warm tint so
-  // they read as "withdrawn" rather than "ready to chat".
   const NPC_GLOW_RANGE_MULT = 1.6;
   if (d < e.interactR * NPC_GLOW_RANGE_MULT) {
     const proximity = Math.max(0, 1 - d / (e.interactR * NPC_GLOW_RANGE_MULT));
-    let R, G, B, alpha;
-    if (unlocked) {
-      const tint = NPCS[e.id]?.tint || '#f4d9a0';
-      const hex = tint.replace('#', '');
-      const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
-      R = (n >> 16) & 255; G = (n >> 8) & 255; B = n & 255;
-      alpha = 0.28;
-    } else {
-      // Muted slate-blue for shrouded figures — reads as "veiled" against
-      // the warm hamlet palette without going so dark it feels broken.
-      R = 120; G = 130; B = 160;
-      alpha = 0.18;
-    }
+    const tint = NPCS[e.id]?.tint || '#f4d9a0';
+    const hex = tint.replace('#', '');
+    const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+    const R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;
+    const alpha = 0.28;
     const glow = ctx.createRadialGradient(e.x, e.y, 4, e.x, e.y, 44);
     glow.addColorStop(0, `rgba(${R},${G},${B},${(alpha * proximity).toFixed(3)})`);
     glow.addColorStop(1, `rgba(${R},${G},${B},0)`);
@@ -1340,42 +1332,7 @@ function drawNpc(ctx, e, now) {
     ctx.restore();
   }
 
-  // Shroud the sprite itself — locked NPCs draw at 55% alpha so their
-  // silhouette is still readable for compositional balance, but they
-  // visibly "haven't arrived yet". Saves/restores around drawImage so
-  // the alpha doesn't leak to the unread-content dot below.
-  if (!unlocked) {
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    ctx.drawImage(spr, Math.round(e.x - drawW / 2 + sway), Math.round(e.y - drawH + bob), drawW, drawH);
-    ctx.restore();
-  } else {
-    ctx.drawImage(spr, Math.round(e.x - drawW / 2 + sway), Math.round(e.y - drawH + bob), drawW, drawH);
-  }
-
-  // Locked-NPC question mark — small dim "?" floating above the sprite,
-  // reusing the unread-dot positioning logic. Tells the player at a
-  // glance "there is someone here, but they are waiting for something".
-  // Suppressed when in interact range so the prompt below takes over.
-  if (!unlocked && d > e.interactR) {
-    const pulse = 0.55 + 0.25 * Math.sin(now * 1.6 + e.x * 0.013);
-    const qX = Math.round(e.x);
-    const qY = Math.round(e.y - drawH - 10 + bob * 0.6);
-    ctx.save();
-    ctx.font = 'bold 14px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    // Soft halo behind the glyph for legibility against the painted scene.
-    const halo = ctx.createRadialGradient(qX, qY, 1, qX, qY, 14);
-    halo.addColorStop(0, `rgba(180, 190, 220, ${(0.32 * pulse).toFixed(3)})`);
-    halo.addColorStop(1, 'rgba(180, 190, 220, 0)');
-    ctx.fillStyle = halo;
-    ctx.fillRect(qX - 14, qY - 14, 28, 28);
-    ctx.fillStyle = `rgba(210, 215, 235, ${(0.78 * pulse).toFixed(3)})`;
-    ctx.fillText('?', qX, qY);
-    ctx.restore();
-    return;   // skip the unread-content dot path for locked NPCs
-  }
+  ctx.drawImage(spr, Math.round(e.x - drawW / 2 + sway), Math.round(e.y - drawH + bob), drawW, drawH);
 
   // ── Unread-content indicator ─────────────────────────────────────────
   // Floats a small "•" above the NPC's head when they have an unseen
@@ -1438,21 +1395,28 @@ export function drawHamletInteractPrompt(ctx) {
   // visually sits as a "second beat" beneath the lore subtitle.
   let dailyText = null;
   if (_nearest.kind === 'npc') {
-    // Locked NPCs render as "A SHROUDED FIGURE" \u2014 preserves the surprise
-    // of the named arrival cinematic when they finally unlock, while
-    // still letting the player E-press to read the unlock condition.
-    if (!isNpcUnlocked(_nearest.id)) {
-      label = 'E  \u00b7  A SHROUDED FIGURE';
-      // Pull the diegetic unlock hint into a passive subline. This is
-      // the same string that pushNotification() shows on E-press in
-      // openDialogue() \u2014 surfacing it ambiently means a player can
-      // tour the hamlet, see all five locked figures, and learn what
-      // each is waiting on without firing five notifications.
-      const hint = NPCS[_nearest.id]?.unlockHint;
-      if (hint) subtext = hint;
-    } else {
-      const name = NPCS[_nearest.id]?.name || 'Traveler';
-      label = 'E  \u00b7  ' + name.toUpperCase();
+    // drawHamletEntities filters locked NPCs out via isNpcPresent, so by
+    // the time _nearest.kind === 'npc' resolves the NPC is always
+    // unlocked. Locked NPCs simply don't render in-world anymore — the
+    // previous "shrouded figure" placeholder + ? indicator + slate-blue
+    // halo read as a janky dev artifact. The world physically grows as
+    // arrivals are earned.
+    const name = NPCS[_nearest.id]?.name || 'Traveler';
+    label = 'E  ·  ' + name.toUpperCase();
+    // Keeper-as-steward: the always-present village steward surfaces the
+    // unlock hint of the next pending NPC as a passive subline. Replaces
+    // the old "walk near the shrouded figure to read what they're
+    // waiting on" loop. Cycles every ~4 s so a player standing near him
+    // reads through every pending arrival without having to interact.
+    if (_nearest.id === 'keeper') {
+      const pendingHints = ALL_NPC_IDS
+        .filter(id => id !== 'keeper' && !isNpcUnlocked(id))
+        .map(id => NPCS[id]?.unlockHint)
+        .filter(Boolean);
+      if (pendingHints.length > 0) {
+        const idx = Math.floor(performance.now() / 4000) % pendingHints.length;
+        subtext = pendingHints[idx];
+      }
     }
   } else if (_nearest.kind === 'portal') {
     label = 'E  \u00b7  DESCEND';

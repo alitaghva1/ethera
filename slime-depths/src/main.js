@@ -1588,19 +1588,13 @@ function openDialogue(npcId) {
   if (!def) return;
   const stage = hamletState.npcArcStage[npcId];
   if (stage === undefined) {
-    // Locked NPC — surface their unlockHint as a notification card so the
-    // E-press isn't silent. Previously this returned without any feedback,
-    // leaving the player to guess why the dialogue modal didn't open.
-    // The card is intentionally muted (slate-blue tint, "SHROUDED FIGURE"
-    // header) so it reads as "not yet" rather than "broken".
-    pushNotification({
-      kind: 'tip',
-      header: '— A SHROUDED FIGURE —',
-      title: 'They will not yet meet your eye.',
-      body: def.unlockHint || 'Their hour has not yet come.',
-      tint: '#8a96b6',
-      life: 5.0,
-    });
+    // Defensive — locked NPCs can't reach openDialogue through the normal
+    // flow anymore (drawHamletEntities filters them out → never become
+    // _nearest → consumeHamletInteract never returns their id). The
+    // previous fallback fired a "SHROUDED FIGURE" notification; that
+    // language was retired with the placeholder, so falling through
+    // silently is the right behavior. If this branch ever does fire,
+    // it's a wiring bug — not a player-facing state.
     return;
   }
   const stageDef = def.arcStages[stage] || def.arcStages[def.arcStages.length - 1];
