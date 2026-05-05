@@ -1463,6 +1463,42 @@ function drawWallShadowBelow(ctx, tx, ty) {
   ctx.fillRect(x, y, TILE, 2);
 }
 
+// Side contact shadows — floor tiles adjacent to walls/pillars on the
+// east/west edge get a soft ambient occlusion stripe. Pulled into a
+// separate pass so the existing south-side cast shadow (above) keeps
+// its stronger gradient (walls are taller than wide visually, so south
+// shadows read most), while E/W get a subtler 8 px ambient shade.
+// Comparison-vs-Hades audit Tier 1C: walls had no edge-contact shadow
+// on the LEFT/RIGHT sides — only on the south. Adding all four sides
+// makes walls feel embedded in the floor instead of pasted on top.
+function drawSideContactShadow(ctx, tx, ty, side) {
+  const x = tx * TILE, y = ty * TILE;
+  if (side === 'east') {
+    // Floor tile is east of a wall — shadow on its LEFT (west) edge.
+    const grad = ctx.createLinearGradient(x, y, x + 8, y);
+    grad.addColorStop(0, 'rgba(0,0,0,0.42)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y, 8, TILE);
+  } else if (side === 'west') {
+    // Floor tile is west of a wall — shadow on its RIGHT (east) edge.
+    const grad = ctx.createLinearGradient(x + TILE - 8, y, x + TILE, y);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.42)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x + TILE - 8, y, 8, TILE);
+  } else if (side === 'north') {
+    // Floor tile is north of a wall — bottom-edge ambient occlusion.
+    // Walls south of floor are uncommon (interior pillars, T_top
+    // shapes) but when they happen, the floor needs a contact rim.
+    const grad = ctx.createLinearGradient(x, y + TILE - 6, x, y + TILE);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.36)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y + TILE - 6, TILE, 6);
+  }
+}
+
 function drawPillar(ctx, tx, ty) {
   const x = tx * TILE, y = ty * TILE;
   const cx = x + TILE / 2;
@@ -2750,14 +2786,37 @@ function drawRoomStaticLayers(ctx) {
   // without relying on biome-specific wear shapes. Deterministic per room seed.
   drawOrganicFloorDetail(ctx);
 
-  // Pass 2: shadow strips cast from walls onto floor cells below them
+  // Pass 2: shadow strips cast from walls onto floor cells below them.
+  // Tier 1C — extended to all four sides of every wall/pillar tile so
+  // walls feel embedded in the floor rather than pasted on top.
+  // Previously only the south-side cast shadow rendered; E/W/N floor
+  // tiles adjacent to walls had no contact shadow at all, which is
+  // the giveaway that the world is single-plane.
   for (let y = 0; y < room.h; y++) {
     for (let x = 0; x < room.w; x++) {
       const t = room.tiles[y]?.[x];
+      // Walls AND pillars cast contact shadows. Pedestals/altars don't —
+      // they're props sitting on the floor, not architectural barriers.
       if (t !== 'wall' && t !== 'pillar') continue;
+      // South-side cast shadow (existing behavior — strong vertical
+      // gradient, reads as "wall height projecting down"). Skip when
+      // the cell below is another wall.
       const below = room.tiles[y + 1]?.[x];
-      if (below === 'wall') continue;
-      drawWallShadowBelow(ctx, x, y + 1);
+      if (below !== 'wall') drawWallShadowBelow(ctx, x, y + 1);
+      // East-side contact shadow on the floor tile to the right.
+      // Only fires when the cell EAST is a floor — wall-on-wall horizontals
+      // skip (no shadow needed between adjacent walls).
+      const east = room.tiles[y]?.[x + 1];
+      if (east === 'floor') drawSideContactShadow(ctx, x + 1, y, 'east');
+      // West-side contact shadow on the floor tile to the left.
+      const west = room.tiles[y]?.[x - 1];
+      if (west === 'floor') drawSideContactShadow(ctx, x - 1, y, 'west');
+      // North-side contact shadow — rare (walls are typically perimeter
+      // or pillars, so floor-north-of-wall happens only at T_top shapes
+      // and freestanding pillars). Subtle bottom-rim shadow on the
+      // floor tile above.
+      const north = room.tiles[y - 1]?.[x];
+      if (north === 'floor') drawSideContactShadow(ctx, x, y - 1, 'north');
     }
   }
 
