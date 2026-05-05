@@ -682,6 +682,24 @@ window.triggerBossPhaseIntro = (boss) => {
     synthThud(60, 1.2, 0.4);
   } catch (_e) {}
   setMusicIntensity(1.0);
+  // Visual escalation — comparison-vs-Hades-audit P0. Phase intro had
+  // audio + iframes + behavior change, but no screen-level visual flash
+  // signaling "the threat just escalated." Major-boss-third-phase is
+  // the moment in every action game where the music swells AND the
+  // screen reddens — it's the genre's strongest "watch out" cue.
+  // Crimson screen flash at the moment of intro + a screen shake punch.
+  // The phase-intro letterbox already provides the sustained focus
+  // frame; this just adds the visceral kick at trigger time.
+  try {
+    triggerScreenFlash('rgba(220, 60, 70, 0.28)', 0.55);
+    shakeCamera(phaseIntroIsFirstTime ? 14 : 10, 0.35);
+    // Subtle held-zoom that releases over the intro duration —
+    // mirrors the boss-intro entry rhythm (room reveals, threat
+    // amplifies, then combat resumes). Smaller than boss-entry
+    // (0.10 → 0.07) so the second phase intro doesn't feel as
+    // weighty as meeting the boss for the first time.
+    pulseZoom(phaseIntroIsFirstTime ? 0.08 : 0.06, phaseIntroIsFirstTime ? 1.1 : 0.7);
+  } catch (_e) {}
   // Same belt-and-suspenders as the boss-room entry intro: grant iframes
   // covering the phase-2 banner (full or short) plus the post-intro
   // buffer. The hero was already trading blows with the boss when it
