@@ -118,6 +118,52 @@ const REWARD_LABELS = {
   heal:      'HEAL',
   fusion:    'FUSION',
 };
+// Variety guard — after a fork's nodes are populated, dedupe reward
+// biases across siblings so the player isn't choosing between two
+// "GOLD" doors. This maps to the door-signal-priority redesign in
+// doorPortals.js: the door card now intentionally hides substrate
+// signals (combat / gold / chest), so two GOLD doors at the same
+// fork wouldn't EVEN show GOLD anymore — they'd just look identical.
+// Better to spread biases so each fork offers genuinely different
+// choices ("themed combat vs. fusion-bias combat", "altar vs. shop").
+//
+// Algorithm: walk the layer's nodes; if a reward bias has already
+// been claimed by a sibling, re-roll up to 4 times for something
+// distinct. Falls through to null (no bias) if the dice keep landing
+// on duplicates — null is fine, the door just becomes substrate.
+//
+// Bonus: also dedupes themes. Two SHADOW-themed combat doors at the
+// same fork is the same problem in a different paint job.
+function dedupeLayerSiblings(layerNodes) {
+  if (layerNodes.length < 2) return;
+  const seenReward = new Set();
+  const seenTheme = new Set();
+  for (const n of layerNodes) {
+    // Reward dedupe
+    if (n.roomReward && seenReward.has(n.roomReward)) {
+      let fresh = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const candidate = rollRoomReward(n.kind, n.path);
+        if (!seenReward.has(candidate)) { fresh = candidate; break; }
+      }
+      n.roomReward = fresh;
+      if (n.roomData) n.roomData.roomReward = fresh;
+    }
+    if (n.roomReward) seenReward.add(n.roomReward);
+    // Theme dedupe
+    if (n.roomTheme && seenTheme.has(n.roomTheme)) {
+      let fresh = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const candidate = rollRoomTheme(n.kind);
+        if (!candidate || !seenTheme.has(candidate)) { fresh = candidate; break; }
+      }
+      n.roomTheme = fresh;
+      if (n.roomData) n.roomData.roomTheme = fresh;
+    }
+    if (n.roomTheme) seenTheme.add(n.roomTheme);
+  }
+}
+
 function rollRoomReward(kind, path) {
   if (kind === 'start' || kind === 'boss') return null;
   // Sanctuary already says "REST" on the door label and the room itself
@@ -406,6 +452,11 @@ export function generateFloorGraph(level = 1, opts = {}) {
       nodes.push(sanc);
       layerNodes.push(sanc);
     }
+    // Variety guard — runs AFTER all nodes (including STAR sanctuary)
+    // are pushed for this layer so siblings are evaluated together.
+    // Dedupes both reward and theme biases so the player's fork
+    // choices feel meaningfully distinct instead of two-of-a-kind.
+    dedupeLayerSiblings(layerNodes);
     connectLayers(layerToNodes[layerToNodes.length - 1], layerNodes);
     layerToNodes.push(layerNodes);
   }
