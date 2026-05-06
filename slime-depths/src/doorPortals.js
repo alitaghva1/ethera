@@ -47,6 +47,7 @@
 import { TILE, room } from './room.js';
 import { hero } from './hero.js';
 import { playSfx } from './sfx.js';
+import { images } from './loader.js';
 // THEMES re-imported in the door-signal-priority pass — themes are
 // now Tier 1 build-identity signals (ahead of FUSION/LEGENDARY/etc).
 // The per-door theme glyph renders directly above the door using the
@@ -942,6 +943,57 @@ function _drawDoorMedallion(ctx, d, profile, now) {
   const iconR = innerR * 0.65;
   ctx.fillStyle = profile.iconColor;
   ctx.strokeStyle = profile.iconColor;
+
+  // ── PixelLab sprite first, fall through to procedural if missing ────
+  // Door icons (combat / fusion / mythic / legendary / boss / altar /
+  // shop / sanctuary / event / challenge / chest / trove) optionally
+  // come from imported PixelLab Character sprites. The loader registers
+  // them as door_<id>; if loaded, we blit centered on the medallion at
+  // size 2*iconR. The procedural switch below remains as the fallback
+  // for any iconKind without a sprite (or before the loader resolves
+  // on the very first frames).
+  //
+  // Skull-class icons (boss / miniboss / elite) all key off door_boss
+  // so a single PixelLab generation lights up all three door types.
+  // Theme icons (theme:storm etc.) are handled by drawThemeGlyphAt
+  // below and skip this lookup.
+  const _spriteKeyMap = {
+    'combat':    'door_combat',
+    'fusion':    'door_fusion',
+    'star4':     'door_legendary',
+    'star6':     'door_mythic',
+    'boss':      'door_boss',
+    'miniboss':  'door_miniboss',
+    'elite':     'door_elite',
+    'altar':     'door_altar',
+    'shop':      'door_shop',
+    'sanctuary': 'door_sanctuary',
+    'event':     'door_event',
+    'challenge': 'door_challenge',
+    'chest':     'door_chest',
+    'trove':     'door_trove',
+  };
+  const _spriteKey = _spriteKeyMap[profile.iconKind];
+  const _doorIcon = _spriteKey ? images[_spriteKey] : null;
+  if (_doorIcon && _doorIcon.width > 0) {
+    const size = iconR * 2;
+    ctx.drawImage(_doorIcon, Math.round(cx - iconR), Math.round(cy - iconR), size, size);
+    // Drop straight to the affix sub-line + restore — sprite carries
+    // the full visual, no additional procedural overlay needed.
+    if (profile.affixId && _AFFIX_DISPLAY[profile.affixId]) {
+      const af = _AFFIX_DISPLAY[profile.affixId];
+      ctx.fillStyle = af.color;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      ctx.shadowBlur = 3;
+      ctx.font = 'bold 8px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(af.label, cx, cy + r + 8);
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+    return;
+  }
 
   switch (profile.iconKind) {
     case 'combat': {
