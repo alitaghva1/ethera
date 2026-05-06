@@ -946,30 +946,15 @@ export function drawHamletEntities(ctx) {
       ctx.fillRect(kx - haloR, ky - haloR, haloR * 2, haloR * 2);
       ctx.restore();
 
-      // Floating ✦ glyph above keeper's head when has-goods. Drifts
-      // gently up + fades, looping every 2.4s. Tells the player
-      // "something here to claim" at a glance, even from across the
-      // hamlet.
-      if (hasGoods) {
-        const FLOAT_CYCLE = 2.4;
-        const phase = (now % FLOAT_CYCLE) / FLOAT_CYCLE;
-        const fadeIn = Math.min(1, phase / 0.2);
-        const fadeOut = Math.min(1, (1 - phase) / 0.3);
-        const a = fadeIn * fadeOut * 0.85;
-        if (a > 0.05) {
-          const fy = keeper.y - 28 - phase * 18;
-          ctx.save();
-          ctx.fillStyle = `rgba(160, 230, 255, ${a.toFixed(3)})`;
-          ctx.font = 'bold 14px Georgia, serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.shadowColor = `rgba(160, 230, 255, ${(a * 0.6).toFixed(3)})`;
-          ctx.shadowBlur = 8;
-          ctx.fillText('✦', keeper.x, fy);
-          ctx.shadowBlur = 0;
-          ctx.restore();
-        }
-      }
+      // Pre-2026-05-06 there was a floating ✦ glyph drifting upward above
+      // the keeper's head when has-goods. Playtest read it as a distracting
+      // particle — it pulled the eye away from the keeper sprite + the
+      // dialog (the keeper is also the entity who delivers narrative
+      // hints), and the upward motion looked like a bug or a misplaced
+      // pickup sparkle. The halo brightness + cyan shift above already
+      // says "this NPC has something to claim" — that's a strong enough
+      // cue from across the hamlet without the glyph.
+      // (Removed in commit history; halo cue retained.)
     }
   }
   // STAGE-3 CAPSTONE — string lanterns around the plaza (audit T2.8).

@@ -243,6 +243,21 @@ export function pickAuthoredShell(data) {
   if (data.archetype)    seed ^= _strHash(data.archetype);
   if (data.eliteAffixId) seed ^= _strHash(data.eliteAffixId) * 7;
   if (data.spikePattern) seed ^= (data.spikePattern * 23);
+  // 2026-05-06 — prefer layoutSeed (per-room random stamped by floorGraph)
+  // for full per-room diversity. Closes the 52% → ~60% crucible gap noted
+  // in the prior verification. CRITICAL: layoutSeed is up to 2^31; the
+  // _hash function multiplies its input by 73856093, and JavaScript
+  // Number's 53-bit integer precision overflows when (2^31 * 73856093 ≈
+  // 2^58). Fold the seed via xor-shift to 16 bits before mixing so the
+  // hash arithmetic stays in the safe integer range. nodeId fallback for
+  // saved data without layoutSeed.
+  if (Number.isFinite(data.layoutSeed)) {
+    const ls = data.layoutSeed | 0;
+    seed ^= (((ls >>> 16) ^ ls) & 0xffff);
+  } else if (Number.isFinite(data.nodeId)) {
+    const nid = data.nodeId | 0;
+    seed ^= (((nid >>> 16) ^ nid) & 0xffff);
+  }
   const roll = _hash(seed >>> 0, 41) % 1000;
   if (roll >= rule.chance * 1000) return null;
 

@@ -1455,11 +1455,16 @@ function _drawDoorArch(ctx, tx, ty, now) {
 
   // ── Threshold light pool — soft warm light bleeding from doorway
   // onto the floor tile directly below. Subtle so it doesn't fight the
-  // existing torch/door light spill.
+  // existing torch/door light spill. Cut from 0.18 → 0.11 in the
+  // 2026-05-06 lighting audit: combined with the door's own interior
+  // glow + floor spill, the threshold pool was triple-stacking warm
+  // light at every doorway, making doors compete with wall torches
+  // for visual attention. Subtle is the goal — passage marker, not
+  // a third light source.
   const pulse = 0.85 + 0.10 * Math.sin(now * 2.1 + tx * 0.7);
   const pool = ctx.createRadialGradient(cx, ty * TILE + TILE * 1.1, 4, cx, ty * TILE + TILE * 1.1, 32);
-  pool.addColorStop(0, `rgba(220, 180, 130, ${(0.18 * pulse).toFixed(3)})`);
-  pool.addColorStop(0.5, `rgba(200, 140, 90, ${(0.08 * pulse).toFixed(3)})`);
+  pool.addColorStop(0, `rgba(220, 180, 130, ${(0.11 * pulse).toFixed(3)})`);
+  pool.addColorStop(0.5, `rgba(200, 140, 90, ${(0.05 * pulse).toFixed(3)})`);
   pool.addColorStop(1, 'rgba(160, 100, 60, 0)');
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';

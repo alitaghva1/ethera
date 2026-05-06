@@ -421,6 +421,16 @@ export function generateFloorGraph(level = 1, opts = {}) {
   if (start.roomData) {
     start.roomData.roomReward = start.roomReward;
     start.roomData.roomTheme = start.roomTheme;
+    // 2026-05-06 — per-room hash entropy. nodeId alone is monotonic
+    // within a graph but COLLAPSES across runs for fixed-position kinds
+    // (every sanctuary is layer-4 at id-8, every boss is id-11). To get
+    // diverse rolls across runs and across rooms within a kind, stamp a
+    // random 32-bit layoutSeed too. Fired once at graph-build time and
+    // persisted on roomData, so reload reproduces the same layout. Both
+    // values are consumed by the shell-pick + south-lantern + future
+    // deterministic-roll systems that need per-instance variance.
+    start.roomData.nodeId = start.id;
+    start.roomData.layoutSeed = (Math.random() * 0x7fffffff) | 0;
   }
   start.actualKind = 'start';
   const nodes = [start];
@@ -443,6 +453,9 @@ export function generateFloorGraph(level = 1, opts = {}) {
       if (n.roomData) {
         n.roomData.roomReward = n.roomReward;
         n.roomData.roomTheme = n.roomTheme;
+        // 2026-05-06 — per-room nodeId + layoutSeed stamp (see Layer 0 comment).
+        n.roomData.nodeId = n.id;
+        n.roomData.layoutSeed = (Math.random() * 0x7fffffff) | 0;
       }
       // Round-7 — surface the actual room kind on the node when the
       // graph kind is the catch-all 'event'. makeEventRoom rolls into
@@ -476,6 +489,8 @@ export function generateFloorGraph(level = 1, opts = {}) {
       if (sanc.roomData) {
         sanc.roomData.roomReward = sanc.roomReward;
         sanc.roomData.roomTheme = sanc.roomTheme;
+        sanc.roomData.nodeId = sanc.id;
+        sanc.roomData.layoutSeed = (Math.random() * 0x7fffffff) | 0;
       }
       sanc.actualKind = 'sanctuary';
       nodes.push(sanc);
@@ -496,6 +511,8 @@ export function generateFloorGraph(level = 1, opts = {}) {
   if (boss.roomData) {
     boss.roomData.roomReward = boss.roomReward;
     boss.roomData.roomTheme = boss.roomTheme;     // null for bosses
+    boss.roomData.nodeId = boss.id;
+    boss.roomData.layoutSeed = (Math.random() * 0x7fffffff) | 0;
   }
   boss.actualKind = 'boss';
   nodes.push(boss);

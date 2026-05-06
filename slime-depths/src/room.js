@@ -815,19 +815,24 @@ export function buildRoomFromData(data) {
     // Medium density (combat / event / trove / start) — workmanlike.
     // Low density (elite / miniboss / altar) — oppressive. Stark.
     // Boss keeps its hard-coded 4-frame for theatrical lighting.
+    // South-lantern chances bumped 2026-05-06 (the prior 0.40 default for
+    // combat made most rooms feel "lit from north only" because the south
+    // wall stayed dark in 60% of them). The increase lands south light
+    // in ~3-of-4 calm/combat rooms; elite stays sparse on purpose
+    // ("oppressive ritual arena").
     const TORCH_PROFILES = {
-      sanctuary:  { density: 'high',   sideWalls: true,  southLantern: 0.65 },
-      reward:     { density: 'high',   sideWalls: true,  southLantern: 0.65 },
-      chestroom:  { density: 'high',   sideWalls: true,  southLantern: 0.50 },
-      shop:       { density: 'high',   sideWalls: true,  southLantern: 0.65 },
-      combat:     { density: 'medium', sideWalls: true,  southLantern: 0.40 },
-      challenge:  { density: 'medium', sideWalls: true,  southLantern: 0.30 },
-      event:      { density: 'medium', sideWalls: true,  southLantern: 0.30 },
-      trove:      { density: 'medium', sideWalls: true,  southLantern: 0.40 },
-      start:      { density: 'medium', sideWalls: true,  southLantern: 0.40 },
-      altar:      { density: 'low',    sideWalls: false, southLantern: 0.30 },
-      elite:      { density: 'low',    sideWalls: false, southLantern: 0.20 },
-      miniboss:   { density: 'low',    sideWalls: false, southLantern: 0.15 },
+      sanctuary:  { density: 'high',   sideWalls: true,  southLantern: 0.85 },
+      reward:     { density: 'high',   sideWalls: true,  southLantern: 0.85 },
+      chestroom:  { density: 'high',   sideWalls: true,  southLantern: 0.75 },
+      shop:       { density: 'high',   sideWalls: true,  southLantern: 0.85 },
+      combat:     { density: 'medium', sideWalls: true,  southLantern: 0.70 },
+      challenge:  { density: 'medium', sideWalls: true,  southLantern: 0.55 },
+      event:      { density: 'medium', sideWalls: true,  southLantern: 0.55 },
+      trove:      { density: 'medium', sideWalls: true,  southLantern: 0.70 },
+      start:      { density: 'medium', sideWalls: true,  southLantern: 0.65 },
+      altar:      { density: 'low',    sideWalls: false, southLantern: 0.40 },
+      elite:      { density: 'low',    sideWalls: false, southLantern: 0.30 },
+      miniboss:   { density: 'low',    sideWalls: false, southLantern: 0.25 },
       boss:       { density: 'boss',   sideWalls: false, southLantern: 0    },
     };
     const profile = TORCH_PROFILES[effectiveKind] || TORCH_PROFILES.combat;
@@ -871,11 +876,36 @@ export function buildRoomFromData(data) {
       : [northDoorPos().x];
 
     // ── NORTH WALL ──────────────────────────────────────────────────────
+    // For each desired torch column, check door clearance. If too close,
+    // try nudging the torch ±1, ±2, ±3 columns away from the doors before
+    // giving up — the previous code just dropped the torch silently,
+    // which left rooms with corner doors looking lopsided (e.g. a wide
+    // room with doors at NW + NE corners + medium-density [4, 13, 17]
+    // had col 17 rejected, leaving only 2 north torches asymmetrically
+    // placed). Nudging keeps the wall populated.
+    function _findNonDoorCol(targetCol) {
+      const isClear = (c) => {
+        if (c < 2 || c > w - 3) return false;
+        return !northDoorCols.some(dc => Math.abs(c - dc) <= 2);
+      };
+      if (isClear(targetCol)) return targetCol;
+      // Spiral outward up to ±3 from target, prefer same direction.
+      for (let d = 1; d <= 3; d++) {
+        if (isClear(targetCol - d)) return targetCol - d;
+        if (isClear(targetCol + d)) return targetCol + d;
+      }
+      return null;
+    }
+    const placedNorthCols = new Set();
     for (const col of northCols) {
-      const tooCloseToDoor = northDoorCols.some(dc => Math.abs(col - dc) <= 2);
-      if (tooCloseToDoor) continue;
+      const finalCol = _findNonDoorCol(col);
+      if (finalCol === null) continue;
+      // Avoid duplicate placements when a nudge collapses two desired
+      // cols onto the same actual column.
+      if (placedNorthCols.has(finalCol)) continue;
+      placedNorthCols.add(finalCol);
       roomTorches.push({
-        x: col * TILE + TILE/2,
+        x: finalCol * TILE + TILE/2,
         // y aligned with the torch sprite's visible flame center on the
         // north wall. See the original sprite-anchor comment in git history
         // commit 392470e for the math. Don't change without re-checking
@@ -883,7 +913,7 @@ export function buildRoomFromData(data) {
         y: 21,
         wall: 'north',
         tileRow: 0,
-        seed: hash(col, kindLen),
+        seed: hash(finalCol, kindLen),
       });
     }
 
@@ -919,8 +949,34 @@ export function buildRoomFromData(data) {
     // Single hash-deterministic lantern on the south wall. Sells "this is
     // an enclosed room" by lighting all four sides at least sometimes.
     // Skipped near the south door for threshold clarity.
+    //
+    // Seed source: data.nodeId, stamped by floorGraph.js when building
+    // each graph node. Required because some room kinds (reward, altar,
+    // chestroom, shop) use a single fixed pillarTemplate per generator,
+    // so any seed derived purely from data fields collapses every room
+    // of that kind onto one bucket. nodeId is monotonic across the
+    // graph — every room gets a unique value — so the deterministic
+    // roll lands diversely even for kinds with no template variance.
+    // Falls back to pillarTemplate when nodeId is missing (defensive
+    // for any roomData that doesn't go through the graph).
     if (profile.southLantern > 0) {
-      const roll = (tplHash % 1000) / 1000;
+      // Prefer layoutSeed (per-room random, stamped at graph build) so
+      // every room rolls independently. Fall back through nodeId →
+      // pillarTemplate for any roomData paths that bypass floorGraph.
+      //
+      // CRITICAL: hash() multiplies its input by 73856093 internally,
+      // and JavaScript Number is Float64 with only 53 bits of integer
+      // precision. layoutSeed is up to 2^31, so a*73856093 reaches
+      // ~2^58 — overflows precision and produces biased low-bit values
+      // (the audit before this fix showed 98.7% combat fires when the
+      // target was 70%). Fold layoutSeed via xor-shift to 16 bits before
+      // hashing — that keeps the hash arithmetic in safe integer range.
+      const rawId = Number.isFinite(data.layoutSeed)
+        ? data.layoutSeed
+        : (Number.isFinite(data.nodeId) ? data.nodeId : (data.pillarTemplate | 0));
+      const folded = (((rawId | 0) >>> 16) ^ (rawId | 0)) & 0xffff;
+      const lanternSeed = hash(folded, 71 + kindLen);
+      const roll = (lanternSeed % 1000) / 1000;
       if (roll < profile.southLantern) {
         const southDoorCols = (data.doorPlan && data.doorPlan.south && data.doorPlan.south.length > 0)
           ? data.doorPlan.south
@@ -2091,8 +2147,16 @@ function drawDoor(ctx, tx, ty, openAmount) {
   // bloom.
   const tint = _doorLightTint(_getDoorAt && _getDoorAt(tx, ty));
   const openCurve = 0.3 + a * 0.7;     // 0.3 closed → 1.0 open
-  const baseAlpha = 0.45 * openCurve * tint.boost;
-  const midAlpha  = 0.26 * openCurve * tint.boost;
+  // 2026-05-06 audit: door glows were reading at the same intensity as
+  // wall torches, so the player couldn't tell "passage" from "light
+  // source" at a glance — especially in rooms with corner doors, where
+  // 2 doors + 2 torches looked like 4 evenly-bright spots. Cut both
+  // alphas ~33% so the door sprite reads as the dominant element of
+  // the doorway (the iron grate + arch carry the visual identity), and
+  // the radial just adds a soft warm edge. Themed-door tint.boost
+  // still scales these to make build-defining doors stand out.
+  const baseAlpha = 0.30 * openCurve * tint.boost;
+  const midAlpha  = 0.18 * openCurve * tint.boost;
   // ── Layer 1: interior glow — tight radial ON the door body only ──
   // Anchored at the door's center, kept narrow so it doesn't bleed
   // into the wall stones. Reads as "the next room is lit and visible
@@ -3279,14 +3343,18 @@ function drawTorchLighting(ctx) {
     // perimeter has continuous warm wash with peaks at each sconce.
     // Focal-light torches (brazier/crater): 130px — emits enough to
     // confirm "this fire is a real light source" without dominating
-    // the wall sconces' overall lighting frame. Wide rooms (w >= 24)
-    // bump the wall radius so the cones still reach into the central
-    // play area; the existing 200 was tuned for a 20-wide room.
+    // the wall sconces' overall lighting frame. Wide rooms scale the
+    // wall radius so the cones still reach into the central play area;
+    // the 200 baseline was tuned for a 20-wide room. The 2026-05-06
+    // audit found a 26-wide elite room had a noticeable dark middle
+    // even with side-wall torches added — the cones didn't quite
+    // overlap. Boost goes 1.0 → 1.15 → 1.30 as the room widens, so
+    // wider rooms get progressively more reach.
     let radius;
     if (t.focalLight) {
       radius = 130 * flicker;
     } else {
-      const wideBoost = (room.w >= 24) ? 1.15 : 1.0;
+      const wideBoost = (room.w >= 24) ? 1.30 : (room.w >= 22 ? 1.15 : 1.0);
       radius = 200 * flicker * wideBoost;
     }
     const cx = t.x;
