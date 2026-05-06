@@ -483,7 +483,18 @@ export function drawHud(ctx, w, h, progress = {}) {
     : swordArmed
       ? `rgba(255, 230, 160, ${(0.5 + 0.5 * rsPulse).toFixed(3)})`
       : 'rgba(140, 130, 110, 0.45)';
-  ctx.fillText(isSwordActive ? '◆ 1·SWORD' : (swordArmed ? '★ 1·SWORD' : '1·sword'), pad, weaponHeaderY);
+  // Mobile drops the "1·" / "2·" keyboard prefix (the player isn't using
+  // those keys on touch — the swap button on the right rail handles
+  // weapon-toggle). Active weapon still shows the diamond glyph; armed
+  // (resonance-staged) weapon still shows the star glyph. The "RMB · swap"
+  // hint hides entirely on mobile (no right mouse button on a phone).
+  const _hudMobileWpn = _hudMobile;
+  const swordLabel = isSwordActive
+    ? (_hudMobileWpn ? '◆ SWORD' : '◆ 1·SWORD')
+    : swordArmed
+      ? (_hudMobileWpn ? '★ SWORD' : '★ 1·SWORD')
+      : (_hudMobileWpn ? 'sword' : '1·sword');
+  ctx.fillText(swordLabel, pad, weaponHeaderY);
   // separator
   ctx.fillStyle = 'rgba(140, 130, 110, 0.35)';
   ctx.fillText('|', pad + 88, weaponHeaderY);
@@ -494,11 +505,16 @@ export function drawHud(ctx, w, h, progress = {}) {
       ? `rgba(180, 240, 255, ${(0.5 + 0.5 * rsPulse).toFixed(3)})`
       : 'rgba(140, 130, 110, 0.45)'
     : 'rgba(180, 220, 255, 0.95)';
-  ctx.fillText(isSwordActive ? (blastArmed ? '★ 2·BLAST' : '2·blast') : '◆ 2·BLAST', pad + 100, weaponHeaderY);
-  // RMB-swap hint to the right of the slot row
-  ctx.fillStyle = 'rgba(140, 130, 110, 0.55)';
-  ctx.font = 'italic 9px Georgia, serif';
-  ctx.fillText('RMB · swap', pad + 178, weaponHeaderY + 1);
+  const blastLabel = isSwordActive
+    ? (blastArmed ? (_hudMobileWpn ? '★ BLAST' : '★ 2·BLAST') : (_hudMobileWpn ? 'blast' : '2·blast'))
+    : (_hudMobileWpn ? '◆ BLAST' : '◆ 2·BLAST');
+  ctx.fillText(blastLabel, pad + 100, weaponHeaderY);
+  // RMB-swap hint hidden on mobile — the right-rail swap button does the same job.
+  if (!_hudMobileWpn) {
+    ctx.fillStyle = 'rgba(140, 130, 110, 0.55)';
+    ctx.font = 'italic 9px Georgia, serif';
+    ctx.fillText('RMB · swap', pad + 178, weaponHeaderY + 1);
+  }
   ctx.restore();
 
   // Ability pips row — placed below the weapon header with a small gap.
@@ -542,7 +558,10 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('SPACE · SHIELD', labelInlineX, dodgeRowY + pipH / 2);
+  // Mobile hides the SPACE keyboard prefix — touch player uses the
+  // shield button on the right rail, not the space bar. Same pattern
+  // for Q/dash below.
+  ctx.fillText(_hudMobile ? 'SHIELD' : 'SPACE · SHIELD', labelInlineX, dodgeRowY + pipH / 2);
 
   // ── Q ABILITY pip — wizard-kit Sprint 2B ──────────────────────
   // Single pip whose label + CD scale by active weapon:
@@ -581,7 +600,12 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.font = 'italic bold 10px Georgia, serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(isSword ? 'Q · DASH STRIKE' : 'Q · BLINK', labelInlineX, dashRowY + pipH / 2);
+  ctx.fillText(
+    _hudMobile
+      ? (isSword ? 'DASH STRIKE' : 'BLINK')
+      : (isSword ? 'Q · DASH STRIKE' : 'Q · BLINK'),
+    labelInlineX, dashRowY + pipH / 2,
+  );
   ctx.restore();
   // Expose the bottom of the dash row so the gold counter (further down in
   // this draw pass) can anchor beneath it with a proper margin.
@@ -593,9 +617,13 @@ export function drawHud(ctx, w, h, progress = {}) {
   // The map now only appears as a journey-reveal on death / run-end
   // (see deathScreen.js / winScreen.js), framed as a retrospective
   // "look at what you survived" moment.
+  // On mobile the canvas renders at much smaller actual pixels (a 14px
+  // design font becomes ~7 actual px on a 350px-tall landscape phone),
+  // so the floor panel scales up: bigger box + larger fonts + more padding.
   const label = ROOM_LABEL[progress.roomKind] || '';
   const floorText = progress.floorLevel ? ('FLOOR ' + toRoman(progress.floorLevel) + ' / ' + toRoman(progress.maxFloors || 4)) : '';
-  const boxW = 200, boxH = 60;
+  const boxW = _hudMobile ? 240 : 200;
+  const boxH = _hudMobile ? 76 : 60;
   const bx = w - boxW - 14;
   const by = 14;
   // Slim backdrop
@@ -605,19 +633,20 @@ export function drawHud(ctx, w, h, progress = {}) {
   ctx.lineWidth = 1;
   ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
   // Gold separator
+  const sepY = _hudMobile ? by + 32 : by + 26;
   ctx.strokeStyle = 'rgba(244, 217, 160, 0.4)';
   ctx.beginPath();
-  ctx.moveTo(bx + 12, by + 26);
-  ctx.lineTo(bx + boxW - 12, by + 26);
+  ctx.moveTo(bx + 12, sepY);
+  ctx.lineTo(bx + boxW - 12, sepY);
   ctx.stroke();
   // FLOOR header
   ctx.fillStyle = '#f4d9a0';
-  ctx.font = 'bold 14px Georgia, serif';
+  ctx.font = _hudMobile ? 'bold 19px Georgia, serif' : 'bold 14px Georgia, serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
-  ctx.fillText(floorText, bx + boxW - 12, by + 8);
+  ctx.fillText(floorText, bx + boxW - 12, by + (_hudMobile ? 9 : 8));
   // Room kind label
-  ctx.font = '13px Georgia, serif';
+  ctx.font = _hudMobile ? '17px Georgia, serif' : '13px Georgia, serif';
   ctx.fillStyle =
     progress.roomKind === 'boss'      ? '#ff9085' :
     progress.roomKind === 'reward'    ? '#86e3a8' :
@@ -625,12 +654,12 @@ export function drawHud(ctx, w, h, progress = {}) {
     progress.roomKind === 'challenge' ? '#ffb265' :
     progress.roomKind === 'chestroom' ? '#d8a8ff' :     // violet — gambling tension
     'rgba(210, 190, 220, 0.85)';
-  ctx.fillText(label, bx + boxW - 12, by + 32);
+  ctx.fillText(label, bx + boxW - 12, by + (_hudMobile ? 40 : 32));
   // Enemies left (combat only) — slim panel: tucked under the label
   if (progress.roomKind === 'combat' || progress.roomKind === 'boss' || progress.roomKind === 'challenge') {
     ctx.fillStyle = 'rgba(220, 180, 180, 0.7)';
-    ctx.font = 'italic 11px Georgia, serif';
-    ctx.fillText(enemies.length + ' enemies remain', bx + boxW - 12, by + 46);
+    ctx.font = _hudMobile ? 'italic 14px Georgia, serif' : 'italic 11px Georgia, serif';
+    ctx.fillText(enemies.length + ' enemies remain', bx + boxW - 12, by + (_hudMobile ? 58 : 46));
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
