@@ -815,24 +815,33 @@ export function buildRoomFromData(data) {
     // Medium density (combat / event / trove / start) — workmanlike.
     // Low density (elite / miniboss / altar) — oppressive. Stark.
     // Boss keeps its hard-coded 4-frame for theatrical lighting.
-    // South-lantern chances bumped 2026-05-06 (the prior 0.40 default for
-    // combat made most rooms feel "lit from north only" because the south
-    // wall stayed dark in 60% of them). The increase lands south light
-    // in ~3-of-4 calm/combat rooms; elite stays sparse on purpose
-    // ("oppressive ritual arena").
+    // 2026-05-06 (rev 2) — pulled back from the +side-wall-torches design.
+    // Playtest: 8 torches in a single combat room read as "overkill / spam"
+    // and the side-wall sconces visually misaligned (the vertical-flame
+    // sprite was authored for a north-wall mount; using it on a side wall
+    // looked like a torch sticking out of the wall column). Cleaner
+    // approach: no side-wall sconces at all, slightly brighter individual
+    // torches with longer reach, so 2-3 torches do what 5-7 used to.
+    // Dungeon reads as "north-south axis lit" — which matches real
+    // torch-lit corridor architecture in top-down games.
+    //
+    // sideWalls field kept on the profile struct so a future shell that
+    // genuinely needs side lighting (e.g. a horizontal arena with focal
+    // pieces against the long walls) can opt in by setting it to true,
+    // but every default profile is false now.
     const TORCH_PROFILES = {
-      sanctuary:  { density: 'high',   sideWalls: true,  southLantern: 0.85 },
-      reward:     { density: 'high',   sideWalls: true,  southLantern: 0.85 },
-      chestroom:  { density: 'high',   sideWalls: true,  southLantern: 0.75 },
-      shop:       { density: 'high',   sideWalls: true,  southLantern: 0.85 },
-      combat:     { density: 'medium', sideWalls: true,  southLantern: 0.70 },
-      challenge:  { density: 'medium', sideWalls: true,  southLantern: 0.55 },
-      event:      { density: 'medium', sideWalls: true,  southLantern: 0.55 },
-      trove:      { density: 'medium', sideWalls: true,  southLantern: 0.70 },
-      start:      { density: 'medium', sideWalls: true,  southLantern: 0.65 },
-      altar:      { density: 'low',    sideWalls: false, southLantern: 0.40 },
-      elite:      { density: 'low',    sideWalls: false, southLantern: 0.30 },
-      miniboss:   { density: 'low',    sideWalls: false, southLantern: 0.25 },
+      sanctuary:  { density: 'high',   sideWalls: false, southLantern: 0.55 },
+      reward:     { density: 'high',   sideWalls: false, southLantern: 0.55 },
+      chestroom:  { density: 'high',   sideWalls: false, southLantern: 0.50 },
+      shop:       { density: 'high',   sideWalls: false, southLantern: 0.60 },
+      combat:     { density: 'medium', sideWalls: false, southLantern: 0.45 },
+      challenge:  { density: 'medium', sideWalls: false, southLantern: 0.35 },
+      event:      { density: 'medium', sideWalls: false, southLantern: 0.40 },
+      trove:      { density: 'medium', sideWalls: false, southLantern: 0.50 },
+      start:      { density: 'medium', sideWalls: false, southLantern: 0.40 },
+      altar:      { density: 'low',    sideWalls: false, southLantern: 0.25 },
+      elite:      { density: 'low',    sideWalls: false, southLantern: 0.20 },
+      miniboss:   { density: 'low',    sideWalls: false, southLantern: 0.15 },
       boss:       { density: 'boss',   sideWalls: false, southLantern: 0    },
     };
     const profile = TORCH_PROFILES[effectiveKind] || TORCH_PROFILES.combat;
@@ -3339,38 +3348,29 @@ function drawTorchLighting(ctx) {
     // row of torches doesn't pulse in unison. 5 Hz sin gives a fire-
     // alive feel without strobing.
     const flicker = 0.93 + 0.07 * Math.sin(now * 5 + t.seed * 0.13);
-    // Wall torches: 200px radius — overlaps adjacent torches so the
-    // perimeter has continuous warm wash with peaks at each sconce.
-    // Focal-light torches (brazier/crater): 130px — emits enough to
-    // confirm "this fire is a real light source" without dominating
-    // the wall sconces' overall lighting frame. Wide rooms scale the
-    // wall radius so the cones still reach into the central play area;
-    // the 200 baseline was tuned for a 20-wide room. The 2026-05-06
-    // audit found a 26-wide elite room had a noticeable dark middle
-    // even with side-wall torches added — the cones didn't quite
-    // overlap. Boost goes 1.0 → 1.15 → 1.30 as the room widens, so
-    // wider rooms get progressively more reach.
+    // Wall torches: 230px base radius (was 200) — bigger reach so each
+    // torch covers more ground and we can use fewer of them. Wide-room
+    // boost 1.0 → 1.15 keeps cones overlapping in 24+ wide arenas, but
+    // the new baseline already does most of the work. Focal lights
+    // (brazier/crater) stay smaller so they accent without dominating.
     let radius;
     if (t.focalLight) {
       radius = 130 * flicker;
     } else {
-      const wideBoost = (room.w >= 24) ? 1.30 : (room.w >= 22 ? 1.15 : 1.0);
-      radius = 200 * flicker * wideBoost;
+      const wideBoost = (room.w >= 24) ? 1.15 : 1.0;
+      radius = 230 * flicker * wideBoost;
     }
     const cx = t.x;
     const cy = t.y;
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    // Softened intensity profile:
-    //   center  (0):   0.32 (was 0.45 — too hot at peak)
-    //   mid     (0.35): 0.18 (was 0.20)
-    //   outer   (0.70): 0.07 (was 0.06)
-    //   edge    (1):    0
-    // Net: a less aggressive spotlight, more diffuse warm wash. With
-    // the larger radius, adjacent torches' falloff ranges overlap so
-    // the floor between them isn't "dead zone" between hot spots.
-    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${(0.32 * flicker).toFixed(3)})`);
-    grad.addColorStop(0.35, `rgba(${r}, ${g}, ${b}, ${(0.18 * flicker).toFixed(3)})`);
-    grad.addColorStop(0.70, `rgba(${r}, ${g}, ${b}, ${(0.07 * flicker).toFixed(3)})`);
+    // Intensity profile bumped 0.32→0.38 / 0.18→0.22 / 0.07→0.09 so each
+    // torch contributes more ambient warmth. With the larger radius +
+    // higher per-torch intensity, a 2-torch combat room feels lit
+    // whereas the pre-fix 200px @ 0.32 reading needed 4-5 torches to
+    // achieve the same coverage. Less is more.
+    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${(0.38 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.35, `rgba(${r}, ${g}, ${b}, ${(0.22 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.70, `rgba(${r}, ${g}, ${b}, ${(0.09 * flicker).toFixed(3)})`);
     grad.addColorStop(1,    `rgba(${r}, ${g}, ${b}, 0)`);
     ctx.fillStyle = grad;
     ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
