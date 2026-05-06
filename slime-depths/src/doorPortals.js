@@ -891,6 +891,24 @@ function _drawDoorMedallion(ctx, d, profile, now) {
 
   ctx.save();
 
+  // ── Layer 0: stone tablet backing (anchors medallion to wall) ──────
+  // Without this, the medallion floats in the black void above the wall
+  // and reads as a HUD overlay rather than a physical doorway sign.
+  // The tablet is a procedural carved stone block that sits behind the
+  // medallion, with two bracket pegs visibly bolted into the wall body
+  // so the eye can trace "wall → bracket → tablet → medallion" as one
+  // physical structure.
+  //
+  // Geometry (relative to the medallion at cx, cy=-34, r=17):
+  //   tablet width  ≈ 2r + 14 (44 px) — wider than the medallion so
+  //                                     the disc reads as 'mounted on'
+  //   tablet top    ≈ cy - r - 4  (-55) — slightly above medallion top
+  //   tablet bottom ≈ -8           — overlaps the wall body extension
+  //                                  for visible attachment
+  //   bracket pegs  ≈ -8 to +4    — extend DOWN into the wall body so
+  //                                  the tablet looks bolted on
+  _drawDoorTablet(ctx, cx, cy, baseR);
+
   // ── Layer 1: outer halo ─────────────────────────────────────────────
   if (profile.haloColor) {
     const haloR = r + 12;
@@ -1181,6 +1199,90 @@ function _drawDoorMedallion(ctx, d, profile, now) {
   }
 
   ctx.restore();
+}
+
+// Stone tablet that anchors the medallion to the wall. Painted before
+// the medallion's halo/rim/icon layers so the disc visually sits ON
+// the tablet rather than floating in the void above the wall.
+//
+// Composition:
+//   - 4-px-tall drop shadow on the wall body below the tablet
+//   - dark outline rectangle for the tablet silhouette
+//   - mid-tone stone fill
+//   - lit top edge (1-px highlight)
+//   - small triangular peak at the top center (heraldic shape)
+//   - two short bracket pegs at the bottom corners that extend DOWN
+//     into the wall body, selling "this is bolted to the wall"
+//
+// Colors mirror the wall palette but slightly lighter so the tablet
+// reads as foreground stone, not blending into the wall.
+function _drawDoorTablet(ctx, cx, cy, r) {
+  // Outer rectangle bounds.
+  const tabletW = (r * 2) + 14;            // 48 px @ r=17
+  const tabletH = 50;                      // covers medallion top down through wall body
+  const tabletL = cx - tabletW / 2;
+  const tabletT = cy - r - 5;              // slightly above medallion top
+  const tabletB = tabletT + tabletH;       // ≈ -6 — into wall body
+
+  // Drop shadow on the wall body below the tablet (very subtle —
+  // tablet is "in front of" the wall stone, so a thin band of
+  // dark right under its bottom edge sells depth).
+  ctx.fillStyle = 'rgba(8, 5, 10, 0.55)';
+  ctx.fillRect(tabletL + 2, tabletB, tabletW - 4, 3);
+
+  // Dark outline (1 px border for crisp silhouette).
+  ctx.fillStyle = '#0a0608';
+  ctx.fillRect(tabletL, tabletT, tabletW, tabletH);
+
+  // Top peak — small triangle protruding above the rectangle for a
+  // heraldic / coat-of-arms feel.
+  const peakH = 5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, tabletT);
+  ctx.lineTo(cx + 8, tabletT);
+  ctx.lineTo(cx,     tabletT - peakH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Mid-tone stone fill — slightly lighter than the wall body so the
+  // tablet reads as foreground stone.
+  ctx.fillStyle = '#3a2e34';
+  ctx.fillRect(tabletL + 1, tabletT + 1, tabletW - 2, tabletH - 2);
+  // Peak inner (mid stone)
+  ctx.beginPath();
+  ctx.moveTo(cx - 7, tabletT + 1);
+  ctx.lineTo(cx + 7, tabletT + 1);
+  ctx.lineTo(cx,     tabletT - peakH + 1.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Top-edge highlight — 1 px lighter band along the top inner edge
+  // so the tablet reads "lit from above."
+  ctx.fillStyle = '#5a4a52';
+  ctx.fillRect(tabletL + 1, tabletT + 1, tabletW - 2, 1);
+  // Highlight on the peak's left flank.
+  ctx.fillRect(cx - 6, tabletT, 1, 1);
+
+  // Side edge shadows — 1 px darker on the inner-right and inner-bottom
+  // for chiseled-stone depth.
+  ctx.fillStyle = '#2a1f24';
+  ctx.fillRect(tabletL + tabletW - 2, tabletT + 1, 1, tabletH - 2);
+  ctx.fillRect(tabletL + 1, tabletT + tabletH - 2, tabletW - 2, 1);
+
+  // Bracket pegs — two small dark bars at the bottom corners that
+  // extend DOWN into the wall body, visibly attaching the tablet.
+  // The wall body extension renders y=-32 to y=0; pegs at x=corner,
+  // y=tabletB to y=tabletB+8 sit inside that band.
+  const pegW = 4;
+  const pegH = 8;
+  const pegInset = 4;
+  ctx.fillStyle = '#0a0608';
+  ctx.fillRect(tabletL + pegInset,                 tabletB, pegW, pegH);
+  ctx.fillRect(tabletL + tabletW - pegInset - pegW, tabletB, pegW, pegH);
+  // Peg highlights (cap on top, sells iron rivet)
+  ctx.fillStyle = '#5a4a52';
+  ctx.fillRect(tabletL + pegInset,                 tabletB,     pegW, 1);
+  ctx.fillRect(tabletL + tabletW - pegInset - pegW, tabletB,     pegW, 1);
 }
 
 
