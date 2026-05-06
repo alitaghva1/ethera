@@ -776,53 +776,181 @@ export function buildRoomFromData(data) {
   // wall sconces or their vertical god-ray cones, which otherwise read as
   // phantom spotlight beams across the open-sky hub.
   //
-  // Audit T2.5: combat rooms used ONE fixed 2-torch layout regardless of
-  // shape or theme. Three named patterns now rotate by room hash:
-  //   'aisle'        — cols 5, 14 (sparse central aisle, the legacy
-  //                    default; reads as a long-corridor look)
-  //   'flanked'      — cols 4, 6, 13, 15 (paired sconces near where
-  //                    doors usually sit; ceremonial / military feel)
-  //   'distributed'  — cols 4, 10, 16 (even spread for evenly-lit
-  //                    rooms; reads as "well-kept" vs ruined)
+  // ── PER-KIND DENSITY PROFILE ───────────────────────────────────────────
+  // Real-gameplay audit (2026-05-06): the previous system put all torches
+  // on the north wall only, with hard-coded column patterns built for a
+  // ~20-tile-wide room. In a 26-wide elite room, the right third stayed
+  // pitch black; sanctuary rooms felt as dim as combat rooms; elite rooms
+  // had the same lighting density as a basic combat room.
+  //
+  // New system has two axes:
+  //   1. Per-effective-kind density profile — sanctuary rooms get more
+  //      torches (anticipation/safety), elite rooms get fewer (oppression),
+  //      boss keeps its dramatic 4-frame look.
+  //   2. Width-fractional column positioning — patterns are stored as
+  //      fractions of room width (0..1), so a 16-tile chamber and a 26-
+  //      tile elite arena both get evenly-spaced lighting.
+  //
+  // Plus optional axes:
+  //   - sideWalls: bool — adds 1-2 east + west wall torches for wide
+  //     rooms in calm/combat profiles. Closes the dark-right-third bug.
+  //   - southLantern: 0..1 chance — at this hash-deterministic chance,
+  //     adds one south-wall lantern. Makes rooms feel enclosed instead
+  //     of "lit from north only."
+  //
   // Door-clearance check (skip cols within ±2 of any door) still runs,
   // so even the denser patterns stay clear of doorways.
   roomTorches.length = 0;
   if (data.kind !== 'hamlet') {
-    const TORCH_PATTERNS = {
-      aisle:       [5, 14],
-      flanked:     [4, 6, 13, 15],
-      distributed: [4, 10, 16],
+    const w = data.w | 0, h = data.h | 0;
+    const effectiveKind = getEffectiveRoomKind(data) || 'combat';
+    const kindLen = (effectiveKind || 'combat').length;
+    const tplHash = hash(data.pillarTemplate | 0, 71);
+
+    // Density profile per effective kind. Each row picks a "north pattern"
+    // (fractional column positions on the north wall), whether to add
+    // side-wall torches, and the chance of a south-wall lantern.
+    //
+    // High density (sanctuary / chestroom / shop) — anticipation. Calm.
+    // Medium density (combat / event / trove / start) — workmanlike.
+    // Low density (elite / miniboss / altar) — oppressive. Stark.
+    // Boss keeps its hard-coded 4-frame for theatrical lighting.
+    const TORCH_PROFILES = {
+      sanctuary:  { density: 'high',   sideWalls: true,  southLantern: 0.65 },
+      reward:     { density: 'high',   sideWalls: true,  southLantern: 0.65 },
+      chestroom:  { density: 'high',   sideWalls: true,  southLantern: 0.50 },
+      shop:       { density: 'high',   sideWalls: true,  southLantern: 0.65 },
+      combat:     { density: 'medium', sideWalls: true,  southLantern: 0.40 },
+      challenge:  { density: 'medium', sideWalls: true,  southLantern: 0.30 },
+      event:      { density: 'medium', sideWalls: true,  southLantern: 0.30 },
+      trove:      { density: 'medium', sideWalls: true,  southLantern: 0.40 },
+      start:      { density: 'medium', sideWalls: true,  southLantern: 0.40 },
+      altar:      { density: 'low',    sideWalls: false, southLantern: 0.30 },
+      elite:      { density: 'low',    sideWalls: false, southLantern: 0.20 },
+      miniboss:   { density: 'low',    sideWalls: false, southLantern: 0.15 },
+      boss:       { density: 'boss',   sideWalls: false, southLantern: 0    },
     };
-    const patternNames = ['aisle', 'flanked', 'distributed'];
-    const patternKey = patternNames[hash(data.pillarTemplate | 0, 71) % patternNames.length];
-    const torchCols = (data.kind === 'boss')
-      ? [3, 8, 11, 16]                          // boss arenas keep their 4-torch frame
-      : TORCH_PATTERNS[patternKey];
-    // Collect ALL north-wall door columns. data.doorPlan.north is an
-    // array of door tile x-positions in graph rooms (legacy single
-    // center door uses northDoorPos()). Previously we only skipped the
-    // legacy center door column — torches still landed right next to
-    // doors when the doorPlan placed multiple doors at non-center
-    // columns. Now we skip torch columns within ±2 of ANY door so
-    // there's clear breathing room around each doorway.
-    const doorCols = (data.doorPlan && data.doorPlan.north && data.doorPlan.north.length > 0)
+    const profile = TORCH_PROFILES[effectiveKind] || TORCH_PROFILES.combat;
+
+    // Fractional column positions per density. Boss keeps its hard-coded
+    // 4-frame for the theatrical lighting frame the existing comment
+    // protected. Other densities scale with room width.
+    const DENSITY_FRACS = {
+      high:    [0.18, 0.40, 0.60, 0.82],    // 4 north torches
+      medium:  [0.22, 0.50, 0.78],          // 3 north torches (with hash-rotated alt below)
+      low:     [0.30, 0.70],                // 2 sparse north torches
+    };
+    let northFracs;
+    if (profile.density === 'boss') {
+      // Preserve the existing boss 4-torch frame at fractions of 20-wide.
+      northFracs = [3 / 20, 8 / 20, 11 / 20, 16 / 20];
+    } else if (profile.density === 'medium') {
+      // Two medium variants — alternate by template hash so two adjacent
+      // combat rooms don't have identical sconce columns.
+      const altMedium = [0.15, 0.45, 0.85];
+      northFracs = (tplHash & 1) ? DENSITY_FRACS.medium : altMedium;
+    } else {
+      northFracs = DENSITY_FRACS[profile.density];
+    }
+
+    // Map fractions to integer columns, clamped to interior 2..w-3.
+    // Dedup adjacent collisions on small rooms (a 16-wide chamber maps
+    // 0.18 and 0.40 to similar columns).
+    const colSet = new Set();
+    const northCols = [];
+    for (const f of northFracs) {
+      const col = Math.max(2, Math.min(w - 3, Math.round(f * w)));
+      if (!colSet.has(col)) {
+        colSet.add(col);
+        northCols.push(col);
+      }
+    }
+
+    const northDoorCols = (data.doorPlan && data.doorPlan.north && data.doorPlan.north.length > 0)
       ? data.doorPlan.north
       : [northDoorPos().x];
-    for (const col of torchCols) {
-      const tooCloseToDoor = doorCols.some(dc => Math.abs(col - dc) <= 2);
+
+    // ── NORTH WALL ──────────────────────────────────────────────────────
+    for (const col of northCols) {
+      const tooCloseToDoor = northDoorCols.some(dc => Math.abs(col - dc) <= 2);
       if (tooCloseToDoor) continue;
       roomTorches.push({
         x: col * TILE + TILE/2,
-        // y aligned with the NEW torch sprite's visible flame center.
-        // Sprite is rendered at cy = TILE*0.7 = 33.6, scale 0.45 (50.4px
-        // tall), with the flame painted at y=27 within the 112px native
-        // frame. Rendered flame center ≈ 20.5 in screen space → light
-        // halo + god-ray now anchor where the visible fire actually is.
-        // Old value was TILE*0.6 = 28.8 (8px south of new flame).
+        // y aligned with the torch sprite's visible flame center on the
+        // north wall. See the original sprite-anchor comment in git history
+        // commit 392470e for the math. Don't change without re-checking
+        // the sconce render path.
         y: 21,
-        seed: hash(col, (data.kind || 'combat').length),     // defensive: data.kind can be undefined in early-tick edge cases
+        wall: 'north',
+        tileRow: 0,
+        seed: hash(col, kindLen),
       });
     }
+
+    // ── SIDE WALLS (east + west) ────────────────────────────────────────
+    // Closes the dark-right-third bug in wide elite/chamber rooms. Two
+    // sconces per side wall at vertical thirds, gated on the profile's
+    // sideWalls flag. Wide rooms (w >= 22) always get a pair; narrow
+    // rooms get one centered on each side. Skipped near the south door
+    // tile to avoid crowding the threshold zone.
+    if (profile.sideWalls && h >= 9) {
+      const sideRows = (h >= 14) ? [Math.round(h * 0.32), Math.round(h * 0.68)] : [Math.round(h * 0.50)];
+      for (const row of sideRows) {
+        // West wall sconce — sticks out from x=0 wall into the room.
+        roomTorches.push({
+          x: TILE * 0.55,                       // ~26px from left edge
+          y: row * TILE + 21,
+          wall: 'west',
+          tileRow: row,
+          seed: hash(row * 13, kindLen + 7),
+        });
+        // East wall sconce — symmetric.
+        roomTorches.push({
+          x: (w - 1) * TILE - TILE * 0.05 - 21, // ~26px from right edge
+          y: row * TILE + 21,
+          wall: 'east',
+          tileRow: row,
+          seed: hash(row * 13 + 1, kindLen + 11),
+        });
+      }
+    }
+
+    // ── SOUTH WALL LANTERN ──────────────────────────────────────────────
+    // Single hash-deterministic lantern on the south wall. Sells "this is
+    // an enclosed room" by lighting all four sides at least sometimes.
+    // Skipped near the south door for threshold clarity.
+    if (profile.southLantern > 0) {
+      const roll = (tplHash % 1000) / 1000;
+      if (roll < profile.southLantern) {
+        const southDoorCols = (data.doorPlan && data.doorPlan.south && data.doorPlan.south.length > 0)
+          ? data.doorPlan.south
+          : [];
+        // Pick a column off-center so the lantern doesn't fight a south
+        // door's threshold zone. Prefer the side opposite the closest
+        // north torch, hash-deterministic.
+        const candidate = (tplHash & 2)
+          ? Math.round(w * 0.30)
+          : Math.round(w * 0.70);
+        const col = Math.max(2, Math.min(w - 3, candidate));
+        const tooCloseToDoor = southDoorCols.some(dc => Math.abs(col - dc) <= 2);
+        if (!tooCloseToDoor) {
+          roomTorches.push({
+            x: col * TILE + TILE/2,
+            // South wall: place the flame just inside the room's bottom
+            // edge. Wall row is h-1; flame sits ~21px above that row's
+            // top, which is the same offset as the north flame inside
+            // the north wall row.
+            y: (h - 1) * TILE - 21,
+            wall: 'south',
+            tileRow: h - 1,
+            seed: hash(col + 17, kindLen + 5),
+          });
+        }
+      }
+    }
+
+    // (Focal auto-light is added AFTER assignRoomFocal runs — see the
+    // post-focal block further down in buildRoomFromData.)
   }
 
   // Spike trap patterns — in combat + boss rooms.
@@ -1014,6 +1142,27 @@ export function buildRoomFromData(data) {
   // decorative urns in/out without breaking the export contract
   // (collision + hit-test code reads from this same array).
   placeRoomKindProps(room, { roomUrns });
+
+  // ── FOCAL AUTO-LIGHT ──────────────────────────────────────────────────
+  // Brazier and crater focals are visibly lit fires, but pre-2026-05-06
+  // they didn't contribute to the torch lighting pass — so the central
+  // focal piece looked like "a lit fire that doesn't actually emit light."
+  // Push a virtual torch entry at the focal position with skipSconce=true
+  // so the existing radial-gradient lighting picks it up but the sconce-
+  // sprite render skips it (the focal piece has its own dedicated sprite).
+  // Sized smaller than wall torches via focalLight=true so the focal
+  // complements the wall lighting rather than washing it out.
+  if (room.focal && (room.focal.kind === 'brazier' || room.focal.kind === 'crater')) {
+    const kindLen = (room.kind || 'combat').length;
+    roomTorches.push({
+      x: room.focal.x * TILE + TILE/2,
+      y: room.focal.y * TILE + TILE/2,
+      wall: 'focal',
+      skipSconce: true,
+      focalLight: true,
+      seed: hash(room.focal.x * 31 + room.focal.y, kindLen + 19),
+    });
+  }
 
   // Tile cache — fresh room means fresh static layers. Mark dirty so
   // the next render rebuilds.
@@ -1535,8 +1684,11 @@ function drawPillar(ctx, tx, ty) {
   ctx.ellipse(cx, cy, TILE * 0.42, 9, 0, 0, Math.PI * 2);
   ctx.fill();
   // Directional cast shadow — stretches away from the nearest torch.
-  // Torches live on the north wall, so most shadows stretch SOUTH/SE/SW depending
-  // on torch column. Gives each pillar a per-position directional streak.
+  // The light vector math handles every wall side correctly: torches on
+  // the north wall throw pillar shadows south, side-wall torches throw
+  // them inward toward the room center, and a focal-light brazier
+  // throws RADIAL shadows outward from the room center. No special-
+  // casing needed — the geometry just works.
   if (roomTorches.length > 0) {
     // Find nearest torch to this pillar
     let nearest = roomTorches[0];
@@ -3123,12 +3275,20 @@ function drawTorchLighting(ctx) {
     // row of torches doesn't pulse in unison. 5 Hz sin gives a fire-
     // alive feel without strobing.
     const flicker = 0.93 + 0.07 * Math.sin(now * 5 + t.seed * 0.13);
-    // Larger radius (200 vs prior 170) + softer alpha falloff so the
-    // contrast between lit zones and unlit zones is gentler. Prior
-    // tuning produced a hard "spotlight" feel — areas between torches
-    // looked unlit. The new curve overlaps adjacent torches' fields so
-    // the room feels evenly bathed with intensity peaks at each torch.
-    const radius = 200 * flicker;
+    // Wall torches: 200px radius — overlaps adjacent torches so the
+    // perimeter has continuous warm wash with peaks at each sconce.
+    // Focal-light torches (brazier/crater): 130px — emits enough to
+    // confirm "this fire is a real light source" without dominating
+    // the wall sconces' overall lighting frame. Wide rooms (w >= 24)
+    // bump the wall radius so the cones still reach into the central
+    // play area; the existing 200 was tuned for a 20-wide room.
+    let radius;
+    if (t.focalLight) {
+      radius = 130 * flicker;
+    } else {
+      const wideBoost = (room.w >= 24) ? 1.15 : 1.0;
+      radius = 200 * flicker * wideBoost;
+    }
     const cx = t.x;
     const cy = t.y;
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
@@ -3322,8 +3482,13 @@ function drawRoomDynamicLayers(ctx) {
   }
 
   // Pass 6: wall torches (drawn after walls so the sconce sits on the wall face)
+  // Skip focal-light virtual torches — those are emitter-only entries with
+  // no sprite (the focal piece itself draws the visible flame). Use
+  // t.tileRow to position non-north sconces correctly; falls back to row 0
+  // for legacy entries that pre-date the multi-wall fields.
   for (const t of roomTorches) {
-    drawTorchSconce(ctx, Math.floor(t.x / TILE), 0);
+    if (t.skipSconce) continue;
+    drawTorchSconce(ctx, Math.floor(t.x / TILE), t.tileRow | 0);
   }
   // Pass 7: VOLUMETRIC TORCH LIGHTING — comparison-vs-Hades audit P0.
   // Previously torches were animated sprites with no actual illumination

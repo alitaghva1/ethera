@@ -6715,6 +6715,10 @@ function render() {
   const now = performance.now() / 1000;
   const flameBase = pal.torchFlame || 'rgba(255, 180, 100, ';
   for (const t of roomTorches) {
+    // Focal-light torches (brazier/crater virtual emitters) skip this
+    // small flame halo — the focal piece draws its own flame visual,
+    // so adding the wall-torch halo on top would double-light the spot.
+    if (t.focalLight) continue;
     const tsx = t.x - camera.x + canvas.width / 2 + camera.offsetX;
     const tsy = t.y - camera.y + canvas.height / 2 + camera.offsetY;
     const phase = (now * 2.4 + (t.seed & 0xff) * 0.1);
