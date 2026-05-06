@@ -953,25 +953,32 @@ function _drawDoorMedallion(ctx, d, profile, now) {
   // for any iconKind without a sprite (or before the loader resolves
   // on the very first frames).
   //
-  // Skull-class icons (boss / miniboss / elite) all key off door_boss
-  // so a single PixelLab generation lights up all three door types.
-  // Theme icons (theme:storm etc.) are handled by drawThemeGlyphAt
-  // below and skip this lookup.
+  // Sprite-key aliasing — 4 redundant icons fold into 4 already-distinct
+  // ones because the door's RIM COLOR + HALO PULSE + AFFIX SUB-LABEL
+  // already differentiate them, no separate icon needed:
+  //
+  //   fusion / legendary  → door_mythic (one star sprite, rim color carries tier)
+  //   challenge           → door_boss   (one skull sprite, rim/halo carry intensity)
+  //   trove               → door_chest  (one chest sprite, bronze rim says "loot")
+  //
+  // 12 iconKinds → 8 unique sprites. Skull-class (boss/miniboss/elite)
+  // also share door_boss as before. Theme icons handled separately by
+  // drawThemeGlyphAt — skip this lookup.
   const _spriteKeyMap = {
     'combat':    'door_combat',
-    'fusion':    'door_fusion',
-    'star4':     'door_legendary',
-    'star6':     'door_mythic',
+    'fusion':    'door_mythic',     // alias — same star sprite, rim differentiates
+    'star4':     'door_mythic',     // legendary alias — same star sprite
+    'star6':     'door_mythic',     // mythic — the canonical star
     'boss':      'door_boss',
-    'miniboss':  'door_miniboss',
-    'elite':     'door_elite',
+    'miniboss':  'door_boss',       // alias — share the skull sprite
+    'elite':     'door_boss',       // alias — share the skull sprite (affix sub-label distinguishes)
+    'challenge': 'door_boss',       // alias — share the skull sprite
     'altar':     'door_altar',
     'shop':      'door_shop',
     'sanctuary': 'door_sanctuary',
     'event':     'door_event',
-    'challenge': 'door_challenge',
     'chest':     'door_chest',
-    'trove':     'door_trove',
+    'trove':     'door_chest',      // alias — share the chest sprite
   };
   const _spriteKey = _spriteKeyMap[profile.iconKind];
   const _doorIcon = _spriteKey ? images[_spriteKey] : null;

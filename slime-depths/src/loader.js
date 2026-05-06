@@ -540,30 +540,27 @@ export async function loadAll(progressCb) {
 
     // ── DOOR MEDALLION ICONS — what's beyond each door ──────────────
     // PixelLab-generated 64×64 sprites that replace the procedural
-    // silhouettes in doorPortals.js's iconKind switch (combat / fusion /
-    // mythic / legendary / boss / altar / shop / sanctuary / event /
-    // challenge / chest / trove). Sprite-first lookup with procedural
-    // fallback so missing icons keep the door functional. Generate at
-    // your own pace — see scripts/pixellab/import-door-icons.js.
+    // silhouettes in doorPortals.js's iconKind switch.
     //
-    // boss / miniboss / elite all key off door_boss (single skull
-    // sprite for all three door types — matches the original
-    // procedural design). Generate door_boss alone and the importer
-    // copies it into all three slots.
+    // Reduced from 14 keys to 8 — the door's RIM COLOR + HALO PULSE +
+    // AFFIX SUB-LABEL already distinguish things the icon was also
+    // trying to convey, so 4 icons collapse via aliasing in
+    // doorPortals.js's _spriteKeyMap:
+    //   fusion / legendary  → door_mythic  (star — rim carries tier)
+    //   challenge           → door_boss    (skull — rim/halo carry intensity)
+    //   miniboss / elite    → door_boss    (skull — affix label distinguishes)
+    //   trove               → door_chest   (chest — bronze rim says "loot")
+    //
+    // Sprite-first lookup with procedural fallback — missing PNGs just
+    // log a console warning and the door keeps its current rendering.
     loadImage('door_combat',            'assets/door_icons/door_combat.png'),
-    loadImage('door_fusion',            'assets/door_icons/door_fusion.png'),
     loadImage('door_mythic',            'assets/door_icons/door_mythic.png'),
-    loadImage('door_legendary',         'assets/door_icons/door_legendary.png'),
     loadImage('door_boss',              'assets/door_icons/door_boss.png'),
-    loadImage('door_miniboss',          'assets/door_icons/door_miniboss.png'),
-    loadImage('door_elite',             'assets/door_icons/door_elite.png'),
     loadImage('door_altar',             'assets/door_icons/door_altar.png'),
     loadImage('door_shop',              'assets/door_icons/door_shop.png'),
     loadImage('door_sanctuary',         'assets/door_icons/door_sanctuary.png'),
     loadImage('door_event',             'assets/door_icons/door_event.png'),
-    loadImage('door_challenge',         'assets/door_icons/door_challenge.png'),
     loadImage('door_chest',             'assets/door_icons/door_chest.png'),
-    loadImage('door_trove',             'assets/door_icons/door_trove.png'),
 
     // ── DUNGEON FX — animated/static props for dungeon rooms ─────────
     // Stored under hamlet/ for now (single asset folder); future
