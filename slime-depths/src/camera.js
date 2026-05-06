@@ -20,6 +20,40 @@ export const camera = {
   breatheEnabled: true,
 };
 
+// ── PLATFORM BASELINE ZOOM ────────────────────────────────────────────────
+// Desktop renders the full 1280x720 design canvas at the player's monitor
+// resolution. The hero is ~60 design-pixels tall = ~1/12 of canvas height,
+// which is fine on a 1080p monitor (60 actual pixels) but POSTAGE-STAMP
+// sized on a 5-inch landscape phone (canvas height ~350 actual pixels →
+// hero ~29 actual pixels tall). The mobile baseline zoom multiplies into
+// camera.zoom so combat is readable at hand-held distances without changing
+// the desktop experience or the per-room zoom-pulse.
+//
+// 1.40 was chosen by visual test: at this scale the hero reads at ~40
+// actual pixels on a 350-pixel landscape canvas, doors stay visible, and
+// most rooms still have ~1.5 tiles of margin around the hero. Higher
+// values (1.60+) start clipping doors when the player walks toward the
+// far wall; lower values (1.20) feel insufficient.
+//
+// Exposed as a constant so it's tunable in one place. Consumed from
+// updateCamera below — only multiplied in when isMobileMode() returns
+// true, so desktop math is bit-identical to before this change.
+export const DESKTOP_BASELINE_ZOOM = 1.0;
+export const MOBILE_BASELINE_ZOOM  = 1.40;
+let _baselineZoom = DESKTOP_BASELINE_ZOOM;
+
+/**
+ * Set the platform baseline zoom multiplier. Call from main.js after
+ * applyMobileMode() so the camera matches the chosen control profile.
+ * Idempotent: setting the same value is a no-op.
+ */
+export function setBaselineZoom(z) {
+  if (typeof z === 'number' && Number.isFinite(z) && z > 0) {
+    _baselineZoom = z;
+  }
+}
+export function getBaselineZoom() { return _baselineZoom; }
+
 export function setCameraSize(w, h) { camera.viewW = w; camera.viewH = h; }
 
 export function followCamera(tx, ty) {
@@ -115,21 +149,22 @@ export function updateCamera(dt) {
   const breathe = (shakeScale > 0 && camera.breatheEnabled)
     ? Math.sin(performance.now() / 2400) * 0.006
     : 0;
-  // Zoom pulse decay — quartic ease-out so pulse snaps in, eases out
+  // Zoom pulse decay — quartic ease-out so pulse snaps in, eases out.
+  // Final zoom = baseline (platform-dependent: 1.0 desktop / 1.40 mobile)
+  // times the existing pulse + breathe modulation. Multiplying preserves
+  // the pulse's RELATIVE strength (a 0.10 punch-in feels the same %
+  // change on both platforms) while letting mobile see closer to the hero.
+  const pulseMod = camera.zoomPulseTime > 0
+    ? (camera.zoomPulseAmt * Math.pow(camera.zoomPulseTime / camera.zoomPulseDur, 2))
+    : 0;
   if (camera.zoomPulseTime > 0) {
     camera.zoomPulseTime -= dt;
     if (camera.zoomPulseTime <= 0) {
-      camera.zoom = 1.0 + breathe;
       camera.zoomPulseTime = 0;
       camera.zoomPulseAmt = 0;
-    } else {
-      const t = camera.zoomPulseTime / camera.zoomPulseDur;     // 1 → 0
-      const ease = t * t;                                        // front-loaded decay
-      camera.zoom = 1.0 + camera.zoomPulseAmt * ease + breathe;
     }
-  } else {
-    camera.zoom = 1.0 + breathe;
   }
+  camera.zoom = _baselineZoom * (1.0 + pulseMod + breathe);
 }
 
 // Transform world coords to screen coords (accounts for zoom)

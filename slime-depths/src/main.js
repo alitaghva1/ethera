@@ -11,7 +11,7 @@
 import { installProfilePrefix, getActiveProfileId, profileLabel } from './profile.js';
 import { loadAll } from './loader.js';
 import { initInput, mouse, keyJustPressed, endFrameInput } from './input.js';
-import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom } from './camera.js';
+import { camera, followCamera, updateCamera, screenToWorld, setCameraSize, shakeCamera, pulseZoom, setBaselineZoom, DESKTOP_BASELINE_ZOOM, MOBILE_BASELINE_ZOOM } from './camera.js';
 import {
   buildRoomFromData, drawRoom, drawSpikes, drawFirePools, spikeDamageAt, firePoolDamageAt,
   spawnExtraFirePool, room, TILE, roomTorches,
@@ -7579,6 +7579,12 @@ async function boot() {
   // device + the user's settings.mobileControls preference. Must run
   // AFTER loadSettings so the setting's value is in effect.
   applyMobileMode();
+  // Sync the camera baseline zoom to the resolved mobile-mode state.
+  // Mobile renders the canvas at much smaller actual pixel sizes than
+  // desktop (e.g. ~350px tall on a 5-inch landscape phone vs 1080+ on
+  // a monitor), so a 1.40× baseline zoom keeps the hero / doors / combat
+  // readable at hand-held distances. Desktop stays at 1.0.
+  setBaselineZoom(document.body.classList.contains('mobile-controls') ? MOBILE_BASELINE_ZOOM : DESKTOP_BASELINE_ZOOM);
   installFirstTouchFallback();
   // Performance mode — resolved here so postfx.js can early-return on
   // mid-range mobile / low-core-count devices. Default 'auto' enables
@@ -7691,6 +7697,7 @@ if (import.meta.env.DEV) {
       if (override === 'on' || override === 'off' || override === 'auto') {
         settings.mobileControls = override;
         applyMobileMode();
+        setBaselineZoom(document.body.classList.contains('mobile-controls') ? MOBILE_BASELINE_ZOOM : DESKTOP_BASELINE_ZOOM);
       }
       const coarse = window.matchMedia('(pointer: coarse)').matches;
       const noHover = window.matchMedia('(hover: none)').matches;
