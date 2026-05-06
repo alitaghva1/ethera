@@ -537,6 +537,9 @@ export async function loadAll(progressCb) {
     loadImage('theme_blood',            'assets/themes/theme_blood.png'),
     loadImage('theme_vow',              'assets/themes/theme_vow.png'),
     loadImage('theme_shadow',           'assets/themes/theme_shadow.png'),
+    // 'neutral' = untyped/mixed-theme pedestals. Faceted amber gem
+    // sprite signals "generic offering, any relic from the pool."
+    loadImage('theme_neutral',          'assets/themes/theme_neutral.png'),
 
     // ── DOOR MEDALLION ICONS — what's beyond each door ──────────────
     // PixelLab-generated 64×64 sprites that replace the procedural

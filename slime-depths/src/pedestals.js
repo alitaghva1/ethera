@@ -663,23 +663,39 @@ function _drawChoicePedestal(ctx, p, now) {
     ctx.fillStyle = `rgba(${tintRgb}, ${glyphAlpha.toFixed(3)})`;
     _drawThemeGlyphAt(ctx, p.x, glyphY, glyphR, theme.id);
   } else {
-    // Mixed-theme generic sigil — bigger 4-point star with halo
+    // Mixed-theme / untyped pedestal — generic offering indicator.
+    // PixelLab faceted amber gem sprite when loaded; falls back to
+    // the original procedural 4-point diamond shape otherwise.
+    // Halo backdrop renders BEFORE the sprite (same composite trick
+    // as themed pedestals) so the gem reads against dark floors.
     const r = 18;
-    ctx.beginPath();
-    ctx.moveTo(p.x, glyphY - r);
-    ctx.lineTo(p.x + r * 0.45, glyphY);
-    ctx.lineTo(p.x, glyphY + r);
-    ctx.lineTo(p.x - r * 0.45, glyphY);
-    ctx.closePath();
-    ctx.fill();
-    // Halo
+    const neutralImg = images['theme_neutral'];
+    // Halo backdrop — same gold tint the procedural fallback used.
     const ghR = r + 10;
     const ghGrad = ctx.createRadialGradient(p.x, glyphY, 4, p.x, glyphY, ghR);
     ghGrad.addColorStop(0, `rgba(${tintRgb}, 0.20)`);
     ghGrad.addColorStop(1, `rgba(${tintRgb}, 0)`);
+    ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = ghGrad;
     ctx.fillRect(p.x - ghR, glyphY - ghR, ghR * 2, ghR * 2);
+    ctx.restore();
+    if (neutralImg && neutralImg.width > 0) {
+      // Sprite blit, sized 2r × 2r centered on the glyph anchor.
+      const size = r * 2;
+      ctx.drawImage(neutralImg, Math.round(p.x - r), Math.round(glyphY - r), size, size);
+    } else {
+      // Procedural fallback — original 4-point diamond. Same shape as
+      // pre-PixelLab, kept so the slot doesn't go blank during the
+      // 1-2 frames before the loader resolves.
+      ctx.beginPath();
+      ctx.moveTo(p.x, glyphY - r);
+      ctx.lineTo(p.x + r * 0.45, glyphY);
+      ctx.lineTo(p.x, glyphY + r);
+      ctx.lineTo(p.x - r * 0.45, glyphY);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
   ctx.restore();
 

@@ -45,12 +45,19 @@ const SRC_DIR = join(__dirname, 'imports', 'themes');
 const OUT_DIR = join(__dirname, '..', '..', 'public', 'assets', 'themes');
 
 // Folder name in imports/themes/ → engine theme id.
+//
+// 'neutral' is the untyped/mixed-theme indicator that hovers above
+// pedestals whose offer pool is generic (no theme bias). Drawn at the
+// same size + position as themed pedestal glyphs so the visual rhyme
+// holds — but the sprite is a faceted amber gem instead of a themed
+// symbol, signaling "any kind of relic, fortune of the draw."
 const FOLDER_TO_THEME = {
   'blood':       'blood',
   'fire':        'flame',
   'lightning':   'storm',
   'shadow':      'shadow',
   'vow-shield':  'vow',
+  'neutral':     'neutral',
 };
 
 // Output cell size. Pedestal renders at glyphR=22 (44px diameter), modal
