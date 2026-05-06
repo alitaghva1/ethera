@@ -767,13 +767,15 @@
      players were stuck with whichever weapon the run started in. */
   #mobileRight .mobile-btn {
     position: absolute;
-    right: 18px;
-    border: 1.5px solid rgba(201, 168, 106, 0.55);
+    right: 22px;
+    border: 1.5px solid rgba(201, 168, 106, 0.50);
     border-radius: 50%;
-    /* Two-stop radial — slightly more solid center than the prior fill
-       so the button reads as a physical disc against busy floor art
-       instead of "outline with mostly-transparent fill". */
-    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.92), rgba(14, 10, 18, 0.78));
+    /* Idle opacity dropped from 0.92 → 0.72 so the buttons recede when
+       the player isn't touching them — reads as semi-transparent UI
+       overlay on top of the dungeon, not opaque chrome that competes
+       with the playfield. Pressed state stays nearly solid for tactile
+       feedback. */
+    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.72), rgba(14, 10, 18, 0.58));
     color: #f4d9a0;
     font: bold 22px Georgia, serif;
     display: flex;
@@ -785,7 +787,7 @@
     /* Drop shadow lifts the button off the canvas so it reads as a
        discrete UI element, not a painted glyph. Subtle gold inner
        glow at rest hints at "this is interactive" without being noisy. */
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45),
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.40),
                 inset 0 0 6px rgba(244, 217, 160, 0.06);
     transition: transform 0.05s ease-out, background 0.05s ease-out, box-shadow 0.1s ease-out;
   }
@@ -798,20 +800,25 @@
   }
   /* Buttons hug the bottom-right corner with env(safe-area-inset-*) so
      iPhone X+ home-indicator doesn't overlap the attack tap-zone (a
-     swipe-up from there opens App Switcher). Sized DOWN ~22% from the
-     prior tuning — phones in landscape (375-430 px tall typical) had
-     the prior 110/86/86 stack reaching 314 px from screen bottom, which
-     pushed the dash button into the upper third of the screen and made
-     the whole right edge feel cramped. New sizes:
-       Attack:  bottom 18,  top at 106  (height 88)
-       Dodge:   bottom 110, top at 178  (height 68, +4 gap)
-       Dash:    bottom 182, top at 250  (height 68, +4 gap)
-     Total stack height drops from 314 → 250 px from screen bottom,
-     freeing ~64 px of vertical headroom on every phone. Touch targets
-     stay well above Apple HIG 44px minimum. */
-  #mobileAttack { width: 88px;  height: 88px;  bottom: calc(18px  + env(safe-area-inset-bottom)); right: calc(18px + env(safe-area-inset-right)); font-size: 30px; }
-  #mobileDodge  { width: 68px;  height: 68px;  bottom: calc(110px + env(safe-area-inset-bottom)); right: calc(18px + env(safe-area-inset-right)); font-size: 22px; }
-  #mobileDash   { width: 68px;  height: 68px;  bottom: calc(182px + env(safe-area-inset-bottom)); right: calc(18px + env(safe-area-inset-right)); font-size: 22px; }
+     swipe-up from there opens App Switcher).
+     2026-05-06 mobile pass — second slim-down. Previous tuning had a
+     250-px-tall stack which on a 430px landscape phone reached 58% up
+     the screen, blocking the upper-right of the playfield. Secondary
+     buttons (shield/dash) reduced ~18% from 68 → 56 px (within the
+     20-35% target spec). Swap reduced 56 → 48 px to match. Attack
+     unchanged at 88px (primary action stays prominent). Right inset
+     moved 18 → 22 so the cluster pulls slightly inward from the
+     screen edge for thumb reach.
+
+     New stack geometry:
+       Attack:  88×88, bottom 18,  top at 106
+       Shield:  56×56, bottom 116, top at 172  (10px gap, more breathing)
+       Dash:    56×56, bottom 180, top at 236  (8px gap)
+     Total stack height: 236 px (was 250) → 14 px headroom freed.
+     All touch targets stay well above the Apple HIG 44 px minimum. */
+  #mobileAttack { width: 88px;  height: 88px;  bottom: calc(18px  + env(safe-area-inset-bottom)); right: calc(22px + env(safe-area-inset-right)); font-size: 30px; }
+  #mobileDodge  { width: 56px;  height: 56px;  bottom: calc(116px + env(safe-area-inset-bottom)); right: calc(22px + env(safe-area-inset-right)); font-size: 20px; }
+  #mobileDash   { width: 56px;  height: 56px;  bottom: calc(180px + env(safe-area-inset-bottom)); right: calc(22px + env(safe-area-inset-right)); font-size: 20px; }
   /* Swap weapons — sits inboard of mobileAttack at a smaller diameter so
      the thumb can flick LEFT from attack to swap without regripping. The
      glyph ⇄ reads as "exchange/swap" across iOS + Android default fonts.
@@ -819,8 +826,8 @@
      play (i.e. the player has both Sword + Blast unlocked) — managed by
      mobileControls.js; CSS just provides the position + base style.
      Position adjusted to match new attack-button geometry: right edge of
-     swap sits 6 px left of attack's left edge (88 + 18 + 6 = 112). */
-  #mobileSwap   { width: 56px;  height: 56px;  bottom: calc(28px  + env(safe-area-inset-bottom)); right: calc(112px + env(safe-area-inset-right)); font-size: 20px; }
+     swap sits 6 px left of attack's left edge (88 + 22 + 6 = 116). */
+  #mobileSwap   { width: 48px;  height: 48px;  bottom: calc(34px  + env(safe-area-inset-bottom)); right: calc(116px + env(safe-area-inset-right)); font-size: 18px; }
   /* When mobile controls are on, push the relic strip + fusions row + theme
      chips up out of the joystick zone. The HUD canvas-side renderer keys
      off body.mobile-controls in hud.js to compute its baseline. The CSS
@@ -835,20 +842,22 @@
     position: absolute;
     top: calc(8px + env(safe-area-inset-top));
     right: calc(8px + env(safe-area-inset-right));
-    /* Sized down 48 → 40 to match the action-button slim-down. Still
-       above Apple HIG 44px on the touch target since border + padding
-       extend the effective tappable region. */
-    width: 40px; height: 40px;
-    border: 1.5px solid rgba(201, 168, 106, 0.55);
+    /* 2026-05-06 — slim from 40 → 36 px to match the action-button second
+       slim-down. The button + its border + tap-highlight still gives a
+       ~44 px effective tap target (Apple HIG minimum). Lower opacity
+       (0.72 vs 0.92) matches the action buttons so the chrome cluster
+       reads as a unified semi-transparent UI overlay. */
+    width: 36px; height: 36px;
+    border: 1.5px solid rgba(201, 168, 106, 0.50);
     border-radius: 8px;
-    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.92), rgba(14, 10, 18, 0.78));
+    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.72), rgba(14, 10, 18, 0.58));
     color: #f4d9a0;
-    font: bold 18px Georgia, serif;
+    font: bold 16px Georgia, serif;
     pointer-events: auto;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     /* Same lift + inner glow as action buttons — visual consistency. */
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45),
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.40),
                 inset 0 0 6px rgba(244, 217, 160, 0.06);
     z-index: 51;
   }
@@ -872,17 +881,19 @@
     display: none;
     position: absolute;
     top: calc(8px + env(safe-area-inset-top));
-    right: calc(56px + env(safe-area-inset-right));
-    width: 40px; height: 40px;
-    border: 1.5px solid rgba(201, 168, 106, 0.55);
+    /* Sits 8px to the left of the pause button. Pause is at right=8,
+       width=36, so this clears at right = 8 + 36 + 8 = 52. */
+    right: calc(52px + env(safe-area-inset-right));
+    width: 36px; height: 36px;
+    border: 1.5px solid rgba(201, 168, 106, 0.50);
     border-radius: 8px;
-    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.92), rgba(14, 10, 18, 0.78));
+    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.72), rgba(14, 10, 18, 0.58));
     color: #f4d9a0;
-    font: bold 18px Georgia, serif;
+    font: bold 16px Georgia, serif;
     pointer-events: auto;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45),
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.40),
                 inset 0 0 6px rgba(244, 217, 160, 0.06);
     z-index: 51;
   }
