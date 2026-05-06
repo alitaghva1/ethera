@@ -22,14 +22,24 @@
 <title>Ethera</title>
 <style>
   html, body { margin: 0; padding: 0; background: #0a0810; color: #ddd; font-family: system-ui, sans-serif; overflow: hidden; touch-action: none; overscroll-behavior: none; cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><g fill='none' stroke='%23f4d9a0' stroke-width='1.4' opacity='0.85'><circle cx='14' cy='14' r='9' stroke-dasharray='3 3' opacity='0.45'/><line x1='14' y1='3' x2='14' y2='8'/><line x1='14' y1='20' x2='14' y2='25'/><line x1='3' y1='14' x2='8' y2='14'/><line x1='20' y1='14' x2='25' y2='14'/></g><circle cx='14' cy='14' r='1.4' fill='%23f4d9a0'/></svg>") 14 14, crosshair; }
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  /* 100dvh (dynamic viewport height) instead of 100vh — on mobile browsers
+     100vh is the LARGEST viewport (with browser chrome hidden), but the
+     visible viewport with URL bar showing is smaller, so a 100vh canvas
+     overflows. dvh accounts for collapsing browser chrome. Falls back to
+     100vh on browsers that don't support it (auto-degrade — both rules
+     declared). */
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; }
   #stage { position: relative; }
   /* Canvas sizing: primary rule uses aspect-ratio (Safari 15+, all modern).
      The @supports fallback below covers older WebKit / first-gen iPads by
      using explicit max-width / max-height in viewport units that mathematically
-     preserve 16:9 (177.77vh = 16/9 * 100vh, 56.25vw = 9/16 * 100vw). */
-  canvas { display: block; cursor: none; background: #0a0810; image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 0 80px rgba(140, 60, 180, 0.15); max-width: 100vw; max-height: 100vh; width: 100vw; height: auto; aspect-ratio: 16 / 9; touch-action: none; }
-  @media (min-aspect-ratio: 16/9) { canvas { width: auto; height: 100vh; } }
+     preserve 16:9 (177.77vh = 16/9 * 100vh, 56.25vw = 9/16 * 100vw).
+     Both 100vh and 100dvh declared — older browsers ignore the dvh rule
+     and use vh; modern mobile browsers use dvh and resize when chrome
+     shows/hides. Same trick for max-width using svw (smallest stable
+     viewport width) to avoid horizontal overflow on Safari iOS. */
+  canvas { display: block; cursor: none; background: #0a0810; image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 0 80px rgba(140, 60, 180, 0.15); max-width: 100vw; max-height: 100vh; max-height: 100dvh; width: 100vw; height: auto; aspect-ratio: 16 / 9; touch-action: none; }
+  @media (min-aspect-ratio: 16/9) { canvas { width: auto; height: 100vh; height: 100dvh; } }
   /* Fallback for browsers without aspect-ratio support (Safari <15, older Chromium) */
   @supports not (aspect-ratio: 16 / 9) {
     canvas { max-width: 177.78vh; max-height: 56.25vw; }
@@ -844,6 +854,43 @@
   }
   body.mobile-controls #mobilePauseBtn { display: flex; align-items: center; justify-content: center; }
   #mobilePauseBtn:active { transform: scale(0.94); }
+
+  /* Mobile fullscreen entry button — sits to the LEFT of the pause button,
+     same size + style, so it reads as a paired UI cluster. Critical on
+     mobile because the browser URL bar permanently consumes ~80px of
+     vertical space, which on a typical landscape phone leaves the canvas
+     at ~3/4 of its potential size with letterbox gutters. Tapping this
+     calls element.requestFullscreen() on the page root, which most
+     mobile browsers honor (iOS Safari requires a user gesture, which a
+     click event provides). When document.fullscreenElement is set, the
+     button hides itself via the .in-fullscreen body class so the player
+     doesn't see redundant chrome.
+
+     Hidden on desktop entirely — desktop users have native window
+     resizing + F11; the button would just be visual noise. */
+  #mobileFullscreenBtn {
+    display: none;
+    position: absolute;
+    top: calc(8px + env(safe-area-inset-top));
+    right: calc(56px + env(safe-area-inset-right));
+    width: 40px; height: 40px;
+    border: 1.5px solid rgba(201, 168, 106, 0.55);
+    border-radius: 8px;
+    background: radial-gradient(closest-side, rgba(34, 24, 32, 0.92), rgba(14, 10, 18, 0.78));
+    color: #f4d9a0;
+    font: bold 18px Georgia, serif;
+    pointer-events: auto;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45),
+                inset 0 0 6px rgba(244, 217, 160, 0.06);
+    z-index: 51;
+  }
+  body.mobile-controls #mobileFullscreenBtn { display: flex; align-items: center; justify-content: center; }
+  /* Once in fullscreen there's nothing more to enter — hide the button.
+     The class is toggled by main.js on fullscreenchange. */
+  body.in-fullscreen #mobileFullscreenBtn { display: none !important; }
+  #mobileFullscreenBtn:active { transform: scale(0.94); }
 </style>
 </head>
 <body>
@@ -883,6 +930,12 @@
      click handler in main.js calls the same setPaused() the keyboard
      ESC handler uses, so both paths flow through one toggle. -->
 <button id="mobilePauseBtn" type="button" aria-label="Pause">⏸</button>
+<!-- Mobile fullscreen-entry button — reclaims the ~80px of vertical
+     space that mobile browser chrome (URL bar, navigation gutter)
+     permanently consumes. Wired in main.js to call requestFullscreen
+     on a user-gesture (mobile browsers reject programmatic fullscreen
+     without one). Auto-hides via body.in-fullscreen once active. -->
+<button id="mobileFullscreenBtn" type="button" aria-label="Enter fullscreen">⛶</button>
 <div id="stage">
   <canvas id="game" width="1280" height="720"></canvas>
   <!-- All DOM overlays nest inside #hud so the single CSS transform on

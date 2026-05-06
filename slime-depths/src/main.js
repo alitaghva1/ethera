@@ -2490,6 +2490,50 @@ if (mobilePauseBtn) {
   });
 }
 
+// Mobile fullscreen entry — reclaims the ~80px of vertical browser chrome
+// (URL bar / nav gutter) on mobile. Mobile browsers REQUIRE a user gesture
+// to enter fullscreen, so we wire to the click event of an explicit button
+// rather than calling requestFullscreen at boot.
+//
+// fullscreenchange listener toggles `body.in-fullscreen` so the CSS can
+// hide the entry button once active. Standard + WebKit prefixed events
+// both registered for older Safari.
+const mobileFullscreenBtn = document.getElementById('mobileFullscreenBtn');
+if (mobileFullscreenBtn) {
+  mobileFullscreenBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const root = document.documentElement;
+    const req = root.requestFullscreen || root.webkitRequestFullscreen || root.mozRequestFullScreen || root.msRequestFullscreen;
+    if (!req) return;
+    try {
+      const p = req.call(root);
+      // Modern browsers return a Promise; older Safari returns undefined.
+      // Either path is acceptable — we just don't await.
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // User denied or browser refused (insecure context, etc.) —
+          // silently no-op. The button stays visible so the user can
+          // try again.
+        });
+      }
+    } catch (_e) {
+      // No-op — fullscreen rejection is expected on some configurations.
+    }
+  });
+}
+function _onFullscreenChange() {
+  const fs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+  document.body.classList.toggle('in-fullscreen', fs);
+  // Resize fires naturally after fullscreen toggle; re-run our resize
+  // settle pass so the camera + ui-scale catch up to the new viewport.
+  if (typeof _onResize === 'function') _onResize(50);
+}
+document.addEventListener('fullscreenchange',       _onFullscreenChange);
+document.addEventListener('webkitfullscreenchange', _onFullscreenChange);
+document.addEventListener('mozfullscreenchange',    _onFullscreenChange);
+document.addEventListener('MSFullscreenChange',     _onFullscreenChange);
+
 // R — reroll pedestal offers for gold. Cost scales with floor (15g base).
 // Round-7 — also supports shop rooms via a flat-rate reroll. Detection:
 // any active pedestal carries p.shop=true means we're in a shop, route
