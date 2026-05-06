@@ -64,6 +64,25 @@ async function trimBox(buffer, width, height) {
   return { left, top, w: right - left + 1, h: bottom - top + 1 };
 }
 
+// Chroma-key magenta → transparent. Mirrors keyMagentaToAlpha in
+// src/loader.js so PixelLab Objects-mode sheets (which export with a
+// magenta background) get cleaned up the same way the runtime loader
+// would for Nano-Banana output. Hue-based detection: any pixel where
+// (r+b)/2 - g exceeds 90 → full transparent; 40-90 → linear feather
+// (handles anti-aliased fringe + JPEG-compression artifacts).
+function chromaKeyMagentaInPlace(rgba) {
+  for (let i = 0; i < rgba.length; i += 4) {
+    const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+    const magScore = (r + b) / 2 - g;
+    if (magScore > 90) {
+      rgba[i + 3] = 0;
+    } else if (magScore > 40) {
+      const t = (magScore - 40) / 50;
+      rgba[i + 3] = Math.max(0, Math.floor(rgba[i + 3] * (1 - t)));
+    }
+  }
+}
+
 if (!(await exists(SRC))) {
   console.error(`✗ Sheet not found: ${SRC}`);
   console.error(`  Generate in PixelLab (512×128 canvas, 8 icons in a 4×2 grid).`);
@@ -88,6 +107,19 @@ console.log(`  source: ${SRC}`);
 console.log(`  output: ${OUT_DIR}`);
 console.log('');
 
+// Read the entire sheet as raw RGBA, chroma-key magenta → alpha 0,
+// then re-encode to a PNG buffer. All downstream slice + extract
+// operations work off this transparent-bg buffer.
+const sheetW = meta.width;
+const sheetH = meta.height;
+const sheetRaw = await sharp(SRC).ensureAlpha().raw().toBuffer();
+chromaKeyMagentaInPlace(sheetRaw);
+const sheetClean = await sharp(sheetRaw, {
+  raw: { width: sheetW, height: sheetH, channels: 4 },
+})
+  .png()
+  .toBuffer();
+
 let landed = 0;
 for (let row = 0; row < 2; row++) {
   for (let col = 0; col < 4; col++) {
@@ -95,7 +127,7 @@ for (let row = 0; row < 2; row++) {
     const left = col * cellW;
     const top = row * cellH;
 
-    const cellRaw = await sharp(SRC)
+    const cellRaw = await sharp(sheetClean)
       .extract({ left, top, width: cellW, height: cellH })
       .ensureAlpha()
       .raw()
@@ -112,7 +144,7 @@ for (let row = 0; row < 2; row++) {
     const outW = Math.max(1, Math.round(bbox.w * scale));
     const outH = Math.max(1, Math.round(bbox.h * scale));
 
-    const trimmed = await sharp(SRC)
+    const trimmed = await sharp(sheetClean)
       .ensureAlpha()
       .extract({
         left: left + bbox.left,
