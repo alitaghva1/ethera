@@ -846,75 +846,76 @@ export function buildRoomFromData(data) {
     };
     const profile = TORCH_PROFILES[effectiveKind] || TORCH_PROFILES.combat;
 
-    // Fractional column positions per density. Boss keeps its hard-coded
-    // 4-frame for the theatrical lighting frame the existing comment
-    // protected. Other densities scale with room width.
-    const DENSITY_FRACS = {
-      high:    [0.18, 0.40, 0.60, 0.82],    // 4 north torches
-      medium:  [0.22, 0.50, 0.78],          // 3 north torches (with hash-rotated alt below)
-      low:     [0.30, 0.70],                // 2 sparse north torches
+    // ── DESIRED TORCH COUNT PER DENSITY ─────────────────────────────────
+    // The previous "fractional cols + nudge" approach produced uneven gaps
+    // when door clearance forced multiple torches inward — e.g. a 20-wide
+    // room with doors at corner cols 1+18 nudged the wanted [4, 10, 16]
+    // into [6, 10, 13], leaving the wall ENDS dark and clustering torches
+    // toward the center. Game-design fix: pick N torches EVENLY SPACED
+    // across the valid (non-door-clearance) col set. Result is always
+    // visually balanced regardless of door position.
+    const DENSITY_COUNT = {
+      high:    4,
+      medium:  3,
+      low:     2,
+      boss:    4,
     };
-    let northFracs;
-    if (profile.density === 'boss') {
-      // Preserve the existing boss 4-torch frame at fractions of 20-wide.
-      northFracs = [3 / 20, 8 / 20, 11 / 20, 16 / 20];
-    } else if (profile.density === 'medium') {
-      // Two medium variants — alternate by template hash so two adjacent
-      // combat rooms don't have identical sconce columns.
-      const altMedium = [0.15, 0.45, 0.85];
-      northFracs = (tplHash & 1) ? DENSITY_FRACS.medium : altMedium;
-    } else {
-      northFracs = DENSITY_FRACS[profile.density];
-    }
-
-    // Map fractions to integer columns, clamped to interior 2..w-3.
-    // Dedup adjacent collisions on small rooms (a 16-wide chamber maps
-    // 0.18 and 0.40 to similar columns).
-    const colSet = new Set();
-    const northCols = [];
-    for (const f of northFracs) {
-      const col = Math.max(2, Math.min(w - 3, Math.round(f * w)));
-      if (!colSet.has(col)) {
-        colSet.add(col);
-        northCols.push(col);
-      }
-    }
+    const targetN = DENSITY_COUNT[profile.density] || 3;
 
     const northDoorCols = (data.doorPlan && data.doorPlan.north && data.doorPlan.north.length > 0)
       ? data.doorPlan.north
       : [northDoorPos().x];
 
-    // ── NORTH WALL ──────────────────────────────────────────────────────
-    // For each desired torch column, check door clearance. If too close,
-    // try nudging the torch ±1, ±2, ±3 columns away from the doors before
-    // giving up — the previous code just dropped the torch silently,
-    // which left rooms with corner doors looking lopsided (e.g. a wide
-    // room with doors at NW + NE corners + medium-density [4, 13, 17]
-    // had col 17 rejected, leaving only 2 north torches asymmetrically
-    // placed). Nudging keeps the wall populated.
-    function _findNonDoorCol(targetCol) {
-      const isClear = (c) => {
-        if (c < 2 || c > w - 3) return false;
-        return !northDoorCols.some(dc => Math.abs(c - dc) <= 2);
-      };
-      if (isClear(targetCol)) return targetCol;
-      // Spiral outward up to ±3 from target, prefer same direction.
-      for (let d = 1; d <= 3; d++) {
-        if (isClear(targetCol - d)) return targetCol - d;
-        if (isClear(targetCol + d)) return targetCol + d;
-      }
-      return null;
+    // Build the set of valid columns (interior, not in any door's ±2
+    // clearance). The torches will be picked evenly from this list so
+    // spacing is uniform across the available wall space.
+    const validNorthCols = [];
+    for (let c = 2; c <= w - 3; c++) {
+      const tooCloseToDoor = northDoorCols.some(dc => Math.abs(c - dc) <= 2);
+      if (!tooCloseToDoor) validNorthCols.push(c);
     }
-    const placedNorthCols = new Set();
-    for (const col of northCols) {
-      const finalCol = _findNonDoorCol(col);
-      if (finalCol === null) continue;
-      // Avoid duplicate placements when a nudge collapses two desired
-      // cols onto the same actual column.
-      if (placedNorthCols.has(finalCol)) continue;
-      placedNorthCols.add(finalCol);
+
+    // ── NORTH WALL ──────────────────────────────────────────────────────
+    // Boss density preserves its theatrical 4-torch frame at the original
+    // hard-coded fractions of a 20-wide room (the boss arena scales but
+    // the lighting silhouette stays recognizable).
+    let northTorchCols;
+    if (profile.density === 'boss') {
+      const bossFracs = [3 / 20, 8 / 20, 11 / 20, 16 / 20];
+      northTorchCols = bossFracs
+        .map(f => Math.max(2, Math.min(w - 3, Math.round(f * w))))
+        .filter(c => !northDoorCols.some(dc => Math.abs(c - dc) <= 2));
+    } else if (validNorthCols.length === 0) {
+      // Pathological case (every col is too close to a door): no torches.
+      northTorchCols = [];
+    } else {
+      // Cap N by valid space so torches stay evenly spaced. Each torch
+      // wants ~4 cols of room (covers ~200px = the radial light radius);
+      // packing more than that produces clusters of two close-together
+      // torches, which playtest hated. ceil(validLen / 4) is the most
+      // torches the wall can host without clustering. 16-wide chestroom
+      // with center door has 7 valid cols → max 2; 20-wide combat with
+      // center door has 11 valid cols → max 3; 26-wide elite with two
+      // corner doors has ~16 valid cols → max 4.
+      const widthCap = Math.max(2, Math.ceil(validNorthCols.length / 4));
+      const N = Math.min(targetN, widthCap);
+      northTorchCols = [];
+      for (let i = 0; i < N; i++) {
+        // Even distribution at fractional positions (i + 0.5) / N gives
+        // center-of-each-segment placement. For N=2 across an 11-col
+        // valid set this picks indices 2 and 8 → first-quarter and
+        // third-quarter of available wall, which reads as "balanced
+        // flanking" even when the valid set has a door-zone hole in
+        // the middle.
+        const idx = Math.floor(((i + 0.5) / N) * validNorthCols.length);
+        const col = validNorthCols[Math.min(idx, validNorthCols.length - 1)];
+        if (!northTorchCols.includes(col)) northTorchCols.push(col);
+      }
+    }
+
+    for (const col of northTorchCols) {
       roomTorches.push({
-        x: finalCol * TILE + TILE/2,
+        x: col * TILE + TILE/2,
         // y aligned with the torch sprite's visible flame center on the
         // north wall. See the original sprite-anchor comment in git history
         // commit 392470e for the math. Don't change without re-checking
@@ -922,7 +923,7 @@ export function buildRoomFromData(data) {
         y: 21,
         wall: 'north',
         tileRow: 0,
-        seed: hash(finalCol, kindLen),
+        seed: hash(col, kindLen),
       });
     }
 
@@ -2156,16 +2157,17 @@ function drawDoor(ctx, tx, ty, openAmount) {
   // bloom.
   const tint = _doorLightTint(_getDoorAt && _getDoorAt(tx, ty));
   const openCurve = 0.3 + a * 0.7;     // 0.3 closed → 1.0 open
-  // 2026-05-06 audit: door glows were reading at the same intensity as
-  // wall torches, so the player couldn't tell "passage" from "light
-  // source" at a glance — especially in rooms with corner doors, where
-  // 2 doors + 2 torches looked like 4 evenly-bright spots. Cut both
-  // alphas ~33% so the door sprite reads as the dominant element of
-  // the doorway (the iron grate + arch carry the visual identity), and
-  // the radial just adds a soft warm edge. Themed-door tint.boost
-  // still scales these to make build-defining doors stand out.
-  const baseAlpha = 0.30 * openCurve * tint.boost;
-  const midAlpha  = 0.18 * openCurve * tint.boost;
+  // Two-pass tuning: the original 0.45/0.26 was so bright that doors
+  // competed with wall torches as light sources. The first cut to
+  // 0.30/0.18 went too far the other way — corner-door rooms where
+  // torches cluster centrally left the wall ENDS in shadow because
+  // doors no longer pulled their weight as accent lights. Final value
+  // 0.36/0.21 — doors are passages with warm light visible inside,
+  // they LEAD the eye toward exits, but they don't read as a third
+  // light source equivalent to torches. Themed-door tint.boost still
+  // scales these for build-defining doors.
+  const baseAlpha = 0.36 * openCurve * tint.boost;
+  const midAlpha  = 0.21 * openCurve * tint.boost;
   // ── Layer 1: interior glow — tight radial ON the door body only ──
   // Anchored at the door's center, kept narrow so it doesn't bleed
   // into the wall stones. Reads as "the next room is lit and visible
@@ -3320,7 +3322,10 @@ function _hexToRgb(hex) {
 // underlying tiles instead of replacing them — floor, walls, pillars,
 // and decor all pick up the warm wash without clobbering their hue.
 function drawTorchLighting(ctx) {
-  if (!roomTorches.length) return;
+  // Even when there are no torches, run the ambient lift below so the
+  // room isn't pitch black. (Empty roomTorches is a rare edge case —
+  // hamlet, all-rejected-by-clearance — but the floor should still
+  // not be void.)
   const torchCore = PAL.torchCore || '#ffb46e';
   const [r, g, b] = _hexToRgb(torchCore);
   const now = (typeof performance !== 'undefined') ? performance.now() / 1000 : 0;
@@ -3343,6 +3348,25 @@ function drawTorchLighting(ctx) {
   ctx.rect(0, -16, W, H + 16);
   ctx.clip();
   ctx.globalCompositeOperation = 'lighter';
+
+  // ── AMBIENT ROOM LIFT ──────────────────────────────────────────────
+  // Game-design fix 2026-05-06: torches alone leave the room pitch-black
+  // wherever cones don't reach. Wall-end zones (cols 1-2, w-3..w-1) and
+  // mid-floor sections in wide rooms were dropping below visibility
+  // even with the bumped torch radius. Real games (Hades, HLD, Returnal)
+  // never make their dungeons void-black — they use a low ambient lift
+  // so the player can ALWAYS see their surroundings and the wall lights
+  // work as accents on top of that base.
+  //
+  // Single full-room rect with a very subtle warm wash (alpha 0.06).
+  // Tinted from the same torchCore so it reads as "warmth bleeding
+  // through cracks / glowing moss" rather than a flat lit wash.
+  // Skipped for hamlet (outdoor, has its own lighting) and boss
+  // (the dramatic 4-frame torch arrangement carries the boss arena).
+  if (room.kind !== 'hamlet' && room.kind !== 'boss') {
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.06)`;
+    ctx.fillRect(0, 0, W, H);
+  }
   for (const t of roomTorches) {
     // Each torch's flicker phase is offset by its placement seed so a
     // row of torches doesn't pulse in unison. 5 Hz sin gives a fire-

@@ -3126,14 +3126,23 @@ export function drawHero(ctx) {
   const flicker = hero.iframes > 0 && Math.floor(hero.stateTime * 20) % 2 === 0;
   ctx.save();
   ctx.globalAlpha = flicker ? 0.45 : 1;
-  // Warm halo beneath hero — helps read against dark floor without looking spotlit
+  // Warm halo beneath hero — the foundational lighting layer that
+  // ensures the player is ALWAYS visible regardless of where wall
+  // torches happen to land. Hades / HLD / Returnal pattern: don't let
+  // the player become invisible in any frame. Pre-2026-05-06 this was
+  // r=46 alpha=0.15, which was too subtle to do that job — in dark
+  // corners of dungeon rooms the hero blended into the floor. Bumped
+  // to r=78 alpha=0.22 so the halo reaches ~1.5 tiles around the
+  // hero with enough warmth to define the silhouette without looking
+  // spotlit. Doesn't dominate over wall torches because the falloff
+  // is steep (mid stop at 0.55 → outer stop near 0).
   const hx = hero.x, hy = hero.y - 20;
-  const halo = ctx.createRadialGradient(hx, hy, 4, hx, hy, 46);
-  halo.addColorStop(0, 'rgba(255, 210, 140, 0.15)');
-  halo.addColorStop(0.5, 'rgba(255, 180, 110, 0.06)');
+  const halo = ctx.createRadialGradient(hx, hy, 4, hx, hy, 78);
+  halo.addColorStop(0, 'rgba(255, 210, 140, 0.22)');
+  halo.addColorStop(0.45, 'rgba(255, 180, 110, 0.10)');
   halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
   ctx.fillStyle = halo;
-  ctx.fillRect(hx - 46, hy - 46, 92, 92);
+  ctx.fillRect(hx - 78, hy - 78, 156, 156);
 
   // ── CROSS-ABILITY RELIC AURAS (Sprint 3C polish) ────────────────
   // Visual telegraphs for armed / windowed states so the player
