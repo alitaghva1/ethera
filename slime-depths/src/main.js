@@ -6767,10 +6767,16 @@ function render() {
     const tsy = t.y - camera.y + canvas.height / 2 + camera.offsetY;
     const phase = (now * 2.4 + (t.seed & 0xff) * 0.1);
     const flick = 0.90 + 0.10 * (Math.sin(phase * 7.3) * 0.5 + Math.sin(phase * 11.1) * 0.4 + Math.sin(phase * 17.5) * 0.3) / 1.2;
-    const radius = 100 + flick * 12;
-    const g = ctx.createRadialGradient(tsx, tsy, 6, tsx, tsy, radius);
-    g.addColorStop(0, flameBase + (0.28 * flick).toFixed(3) + ')');
-    g.addColorStop(0.45, flameBase + (0.08 * flick).toFixed(3) + ')');
+    // Tightened from r=100 + 0.28/0.08 to r=70 + 0.16/0.04. Together with
+    // the room-side torch radial reduction (drawTorchLighting in room.js,
+    // 230 → 180 px and alphas halved), a single torch now contributes
+    // sprite + small flame halo + soft warm pool — three layers, each
+    // small. Pre-fix, the same torch contributed sprite + 100 px bright
+    // halo + 230 px bright pool, reading as a stage spotlight.
+    const radius = 70 + flick * 8;
+    const g = ctx.createRadialGradient(tsx, tsy, 4, tsx, tsy, radius);
+    g.addColorStop(0, flameBase + (0.16 * flick).toFixed(3) + ')');
+    g.addColorStop(0.45, flameBase + (0.04 * flick).toFixed(3) + ')');
     g.addColorStop(1, flameBase + '0)');
     ctx.fillStyle = g;
     ctx.fillRect(tsx - radius, tsy - radius, radius * 2, radius * 2);

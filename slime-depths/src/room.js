@@ -2157,17 +2157,21 @@ function drawDoor(ctx, tx, ty, openAmount) {
   // bloom.
   const tint = _doorLightTint(_getDoorAt && _getDoorAt(tx, ty));
   const openCurve = 0.3 + a * 0.7;     // 0.3 closed → 1.0 open
-  // Two-pass tuning: the original 0.45/0.26 was so bright that doors
-  // competed with wall torches as light sources. The first cut to
-  // 0.30/0.18 went too far the other way — corner-door rooms where
-  // torches cluster centrally left the wall ENDS in shadow because
-  // doors no longer pulled their weight as accent lights. Final value
-  // 0.36/0.21 — doors are passages with warm light visible inside,
-  // they LEAD the eye toward exits, but they don't read as a third
-  // light source equivalent to torches. Themed-door tint.boost still
-  // scales these for build-defining doors.
-  const baseAlpha = 0.36 * openCurve * tint.boost;
-  const midAlpha  = 0.21 * openCurve * tint.boost;
+  // Door-glow tuning history:
+  //   0.45/0.26 (original)  — doors blew out, competing with torches
+  //   0.30/0.18 (cut 1)     — too dim, wall ends went dark in corner-door rooms
+  //   0.36/0.21 (cut 2)     — fine alone, but stacked with the +0.06
+  //                           ambient lift + bumped torch alphas the
+  //                           combination read as 'kiln gates' vs 'doors'
+  //   0.26/0.16 (current)   — paired with the May 6 lighting-stack pullback:
+  //                           ambient lift removed, torch radial halved,
+  //                           hero halo reduced. Doors still LEAD the eye
+  //                           toward exits with warm light visible inside,
+  //                           but contribute proportionally less than a
+  //                           torch's own light pool.
+  // Themed-door tint.boost still scales these for build-defining doors.
+  const baseAlpha = 0.26 * openCurve * tint.boost;
+  const midAlpha  = 0.16 * openCurve * tint.boost;
   // ── Layer 1: interior glow — tight radial ON the door body only ──
   // Anchored at the door's center, kept narrow so it doesn't bleed
   // into the wall stones. Reads as "the next room is lit and visible
@@ -3349,52 +3353,44 @@ function drawTorchLighting(ctx) {
   ctx.clip();
   ctx.globalCompositeOperation = 'lighter';
 
-  // ── AMBIENT ROOM LIFT ──────────────────────────────────────────────
-  // Game-design fix 2026-05-06: torches alone leave the room pitch-black
-  // wherever cones don't reach. Wall-end zones (cols 1-2, w-3..w-1) and
-  // mid-floor sections in wide rooms were dropping below visibility
-  // even with the bumped torch radius. Real games (Hades, HLD, Returnal)
-  // never make their dungeons void-black — they use a low ambient lift
-  // so the player can ALWAYS see their surroundings and the wall lights
-  // work as accents on top of that base.
-  //
-  // Single full-room rect with a very subtle warm wash (alpha 0.06).
-  // Tinted from the same torchCore so it reads as "warmth bleeding
-  // through cracks / glowing moss" rather than a flat lit wash.
-  // Skipped for hamlet (outdoor, has its own lighting) and boss
-  // (the dramatic 4-frame torch arrangement carries the boss arena).
-  if (room.kind !== 'hamlet' && room.kind !== 'boss') {
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.06)`;
-    ctx.fillRect(0, 0, W, H);
-  }
+  // (Removed 2026-05-06) — the ambient room lift used to paint a 0.06
+  // alpha warm wash across the whole floor here. Removed because the
+  // multiple lighting layers (per-torch radial + per-torch flame halo
+  // in main.js + hero halo + door glow + door spill + threshold pool)
+  // were compounding into a spotlit-stage look, not a dim dungeon.
+  // The even-spaced torch placement (also 2026-05-06) plus the hero
+  // halo carry per-room visibility now without needing a global lift.
   for (const t of roomTorches) {
     // Each torch's flicker phase is offset by its placement seed so a
     // row of torches doesn't pulse in unison. 5 Hz sin gives a fire-
     // alive feel without strobing.
     const flicker = 0.93 + 0.07 * Math.sin(now * 5 + t.seed * 0.13);
-    // Wall torches: 230px base radius (was 200) — bigger reach so each
-    // torch covers more ground and we can use fewer of them. Wide-room
-    // boost 1.0 → 1.15 keeps cones overlapping in 24+ wide arenas, but
-    // the new baseline already does most of the work. Focal lights
-    // (brazier/crater) stay smaller so they accent without dominating.
+    // Wall torches: 180 px base radius. Earlier passes pushed this to
+    // 230 + alpha 0.38 trying to compensate for an empty middle of the
+    // room when torch placement was uneven; result was the 'TV-studio
+    // spotlights' look the May 6 playtest screenshot exposed. With even
+    // torch spacing landing in 2-3 evenly-distributed slots, a tighter,
+    // dimmer pool reads correctly as 'this is a torch on the wall' not
+    // 'this is a klieg light.' Focal pieces stay even smaller so they
+    // accent without dominating.
     let radius;
     if (t.focalLight) {
-      radius = 130 * flicker;
+      radius = 110 * flicker;
     } else {
-      const wideBoost = (room.w >= 24) ? 1.15 : 1.0;
-      radius = 230 * flicker * wideBoost;
+      const wideBoost = (room.w >= 24) ? 1.10 : 1.0;
+      radius = 180 * flicker * wideBoost;
     }
     const cx = t.x;
     const cy = t.y;
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    // Intensity profile bumped 0.32→0.38 / 0.18→0.22 / 0.07→0.09 so each
-    // torch contributes more ambient warmth. With the larger radius +
-    // higher per-torch intensity, a 2-torch combat room feels lit
-    // whereas the pre-fix 200px @ 0.32 reading needed 4-5 torches to
-    // achieve the same coverage. Less is more.
-    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${(0.38 * flicker).toFixed(3)})`);
-    grad.addColorStop(0.35, `rgba(${r}, ${g}, ${b}, ${(0.22 * flicker).toFixed(3)})`);
-    grad.addColorStop(0.70, `rgba(${r}, ${g}, ${b}, ${(0.09 * flicker).toFixed(3)})`);
+    // Halved from prior 0.38/0.22/0.09 — combined with the 100 px
+    // secondary halo in main.js + the door spill + the hero halo,
+    // 0.38 was way too hot. 0.20 / 0.10 / 0.04 reads as a soft warm
+    // pool, not a spotlight. The per-torch animated sprite still
+    // provides the bright pip at the wick itself.
+    grad.addColorStop(0,    `rgba(${r}, ${g}, ${b}, ${(0.20 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.35, `rgba(${r}, ${g}, ${b}, ${(0.10 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.70, `rgba(${r}, ${g}, ${b}, ${(0.04 * flicker).toFixed(3)})`);
     grad.addColorStop(1,    `rgba(${r}, ${g}, ${b}, 0)`);
     ctx.fillStyle = grad;
     ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);

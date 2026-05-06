@@ -3126,23 +3126,24 @@ export function drawHero(ctx) {
   const flicker = hero.iframes > 0 && Math.floor(hero.stateTime * 20) % 2 === 0;
   ctx.save();
   ctx.globalAlpha = flicker ? 0.45 : 1;
-  // Warm halo beneath hero — the foundational lighting layer that
-  // ensures the player is ALWAYS visible regardless of where wall
-  // torches happen to land. Hades / HLD / Returnal pattern: don't let
-  // the player become invisible in any frame. Pre-2026-05-06 this was
-  // r=46 alpha=0.15, which was too subtle to do that job — in dark
-  // corners of dungeon rooms the hero blended into the floor. Bumped
-  // to r=78 alpha=0.22 so the halo reaches ~1.5 tiles around the
-  // hero with enough warmth to define the silhouette without looking
-  // spotlit. Doesn't dominate over wall torches because the falloff
-  // is steep (mid stop at 0.55 → outer stop near 0).
+  // Warm halo beneath hero — soft anchor so the hero silhouette reads
+  // against the dungeon floor without becoming a stage spotlight.
+  // History: r=46 alpha=0.15 (original) → r=78 alpha=0.22 (May 6 push
+  // when the dungeon was too dark) → r=62 alpha=0.16 (this revision).
+  // The mid-tuning at r=78 was a reaction to a separate problem
+  // (uneven torch placement leaving the player in shadow). With even
+  // torch placement landing now, the hero halo can stay subtle and
+  // play the role it always should have — define the silhouette in
+  // the moments the player walks between torch pools — instead of
+  // contributing to the seven-layer light stack the May 6 screenshot
+  // exposed.
   const hx = hero.x, hy = hero.y - 20;
-  const halo = ctx.createRadialGradient(hx, hy, 4, hx, hy, 78);
-  halo.addColorStop(0, 'rgba(255, 210, 140, 0.22)');
-  halo.addColorStop(0.45, 'rgba(255, 180, 110, 0.10)');
+  const halo = ctx.createRadialGradient(hx, hy, 4, hx, hy, 62);
+  halo.addColorStop(0, 'rgba(255, 210, 140, 0.16)');
+  halo.addColorStop(0.5, 'rgba(255, 180, 110, 0.06)');
   halo.addColorStop(1, 'rgba(255, 160, 80, 0)');
   ctx.fillStyle = halo;
-  ctx.fillRect(hx - 78, hy - 78, 156, 156);
+  ctx.fillRect(hx - 62, hy - 62, 124, 124);
 
   // ── CROSS-ABILITY RELIC AURAS (Sprint 3C polish) ────────────────
   // Visual telegraphs for armed / windowed states so the player
