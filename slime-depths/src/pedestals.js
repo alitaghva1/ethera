@@ -693,12 +693,29 @@ function _drawChoicePedestal(ctx, p, now) {
   }
 }
 
-// Procedural theme glyph centered at (cx, cy) with size r. Same paths
-// as relicChoiceModal.js's _drawThemeChip and doorPortals.js's
-// _drawDoorThemeGlyph — kept inline here to avoid pulling in another
-// shared module just yet. If a third caller appears, refactor to
-// shared themes-glyph helper.
-function _drawThemeGlyphAt(ctx, cx, cy, r, themeId) {
+// Theme glyph centered at (cx, cy) with size r (half-extent — symbol
+// renders 2r × 2r). PixelLab-generated 64×64 sprites loaded as
+// `theme_<id>`; if a sprite isn't loaded yet (very early frames), we
+// fall back to the original procedural shape so nothing renders blank.
+//
+// IMPORTANT: the caller previously set ctx.fillStyle to the theme's
+// tint color before calling — that no longer matters for the sprite
+// blit (the sprite has its color baked in), but we PRESERVE it so the
+// procedural fallback below still tints correctly. The halo backdrop
+// (drawn separately in the caller) still uses the theme tint, which
+// is what carries the pedestal's "this is a STORM room" color cue
+// even after the procedural fill is gone from the silhouette itself.
+//
+// Same shape preserved for relicChoiceModal.js and doorPortals.js
+// callers — they import drawThemeGlyphAt from this module now.
+export function drawThemeGlyphAt(ctx, cx, cy, r, themeId) {
+  const img = images['theme_' + themeId];
+  if (img && img.width > 0) {
+    const size = r * 2;
+    ctx.drawImage(img, Math.round(cx - r), Math.round(cy - r), size, size);
+    return;
+  }
+  // Procedural fallback — used until sprite loads (or if loader fails).
   switch (themeId) {
     case 'storm': {
       ctx.beginPath();
@@ -754,6 +771,10 @@ function _drawThemeGlyphAt(ctx, cx, cy, r, themeId) {
     }
   }
 }
+
+// Local alias so existing internal callers keep working without a
+// breaking edit; new external callers use the exported drawThemeGlyphAt.
+const _drawThemeGlyphAt = drawThemeGlyphAt;
 
 // Tiny hex-to-"r,g,b" — same pattern as relicChoiceModal.js's helper.
 function _hexToRgbStr(hex) {

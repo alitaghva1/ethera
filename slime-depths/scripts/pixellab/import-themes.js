@@ -1,59 +1,81 @@
-// Importer for the PixelLab-generated theme-symbol sheet.
+// Importer for PixelLab-generated theme symbol assets.
 //
-// The theme system has 5 themes (storm/flame/blood/vow/shadow). Each
-// renders a small symbol on pedestals, doors, and the relic-choice
-// modal — currently drawn procedurally by `_drawThemeGlyphAt` in
-// src/pedestals.js (mirrored in relicChoiceModal.js + doorPortals.js).
+// Theme system has 5 themes (storm/flame/blood/vow/shadow). Each renders
+// a small symbol on pedestals, doors, and the relic-choice modal —
+// previously procedural in `_drawThemeGlyphAt` (pedestals.js, mirrored
+// in relicChoiceModal.js + doorPortals.js).
 //
-// Workflow:
-//   1. User generates ONE PixelLab sheet (320×64 PNG, 5 cells × 64px
-//      wide × 64px tall). Prompt is in the chat thread; not committed
-//      to a separate plan file because it's just one prompt.
-//   2. User drops the PNG at:
-//        scripts/pixellab/imports/themes/sheet_themes.png
-//   3. Run: node scripts/pixellab/import-themes.js
+// PixelLab format
+// ----------------
+// User generated each theme via PixelLab's Character tool, which exports
+// a folder containing 8-direction rotations:
 //
-// The script:
-//   - Slices the sheet into 5 cells in fixed left-to-right order:
-//        storm | flame | blood | vow | shadow
-//   - Trims transparent margins per cell (PixelLab leaves padding)
-//   - Resizes the trimmed art to fit within a 64×64 canonical cell
-//     with 4 px padding on each side, centered
-//   - Writes individual PNGs to public/assets/themes/theme_<id>.png
+//   <theme-folder>/
+//     metadata.json
+//     states/
+//       <prompt-derived>/
+//         rotations/
+//           south.png  south-east.png  east.png  ...  (8 total)
 //
-// Re-run safe: re-runs overwrite the outputs cleanly. If you only
-// regenerated the storm symbol, you can drop a new sheet (the other
-// 4 cells just get re-imported identically).
+// For static theme symbols we only need ONE direction. We grab south.png
+// (the canonical front-facing view per the project's PixelLab convention
+// — see CLAUDE.md "north-first clockwise" note) and resize it onto a
+// padded 64×64 cell so the in-game blit has predictable dimensions.
 //
-// After import, Claude wires loader.js + replaces the procedural
-// switch in _drawThemeGlyphAt with image blits — preserving the
-// existing tint/halo wrapper so colors and pulse animation stay
-// in code rather than baked into the sprite.
+// Folder name → theme id mapping
+// ------------------------------
+// User folder names match natural English (fire / lightning / vow-shield)
+// but the engine code uses the theme registry keys (flame / storm / vow).
+// Map at import time so the output filenames match what the loader keys
+// off (theme_flame.png, theme_storm.png, theme_vow.png).
+//
+//   imports/themes/blood        → public/assets/themes/theme_blood.png
+//   imports/themes/fire         → public/assets/themes/theme_flame.png
+//   imports/themes/lightning    → public/assets/themes/theme_storm.png
+//   imports/themes/shadow       → public/assets/themes/theme_shadow.png
+//   imports/themes/vow-shield   → public/assets/themes/theme_vow.png
 
-import { readFile, mkdir, stat } from 'node:fs/promises';
+import { readdir, mkdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SRC = join(__dirname, 'imports', 'themes', 'sheet_themes.png');
+const SRC_DIR = join(__dirname, 'imports', 'themes');
 const OUT_DIR = join(__dirname, '..', '..', 'public', 'assets', 'themes');
 
-// Source sheet layout — 5 cells, 64 px each, horizontal.
-const SHEET_W = 320;
-const SHEET_H = 64;
-const CELL = 64;
-const ORDER = ['storm', 'flame', 'blood', 'vow', 'shadow'];
+// Folder name in imports/themes/ → engine theme id.
+const FOLDER_TO_THEME = {
+  'blood':       'blood',
+  'fire':        'flame',
+  'lightning':   'storm',
+  'shadow':      'shadow',
+  'vow-shield':  'vow',
+};
 
-// Output canonical cell size — same as source. The procedural glyph
-// renderer uses radius 22 (44 px diameter) on pedestals, ~16 on doors,
-// ~30 in the modal chip; 64×64 sprites scale down cleanly to all
-// three with image-rendering: pixelated.
+// Output cell size. Pedestal renders at glyphR=22 (44px diameter), modal
+// chip at ~30px, doors at ~16-24px. 64×64 source scales cleanly to all
+// three with image-rendering: pixelated (the canvas-wide setting in
+// main.js).
 const OUT_CELL = 64;
-const PAD = 4;     // transparent margin around trimmed art
+const PAD = 4;     // transparent margin on each side
 
 async function exists(path) {
   try { await stat(path); return true; } catch { return false; }
+}
+
+// PixelLab nests the rotations under a prompt-derived folder name we
+// can't predict (e.g. "top-down_pixel_art_sprite_of"). Walk down two
+// levels from <theme>/states/ to find the rotations directory.
+async function findSouthPng(themeFolder) {
+  const statesDir = join(themeFolder, 'states');
+  if (!(await exists(statesDir))) return null;
+  const promptDirs = await readdir(statesDir);
+  for (const promptDir of promptDirs) {
+    const candidate = join(statesDir, promptDir, 'rotations', 'south.png');
+    if (await exists(candidate)) return candidate;
+  }
+  return null;
 }
 
 async function trimBox(buffer, width, height) {
@@ -73,66 +95,52 @@ async function trimBox(buffer, width, height) {
   return { left, top, w: right - left + 1, h: bottom - top + 1 };
 }
 
-if (!(await exists(SRC))) {
-  console.error(`✗ Sheet not found: ${SRC}`);
-  console.error(`  Generate the sheet in PixelLab (320×64, 5 horizontal cells)`);
-  console.error(`  and drop it at the path above. Prompt is in the chat thread.`);
-  process.exit(1);
-}
-
-const meta = await sharp(SRC).metadata();
-if (meta.width !== SHEET_W || meta.height !== SHEET_H) {
-  console.warn(
-    `⚠ Sheet is ${meta.width}×${meta.height}, expected ${SHEET_W}×${SHEET_H}. ` +
-    `Continuing — will scale per-cell to fit, but tighter results come ` +
-    `from the canonical 320×64.`
-  );
-}
-
 await mkdir(OUT_DIR, { recursive: true });
 
-console.log(`→ slicing theme symbol sheet`);
-console.log(`  source: ${SRC}`);
+console.log(`→ importing theme symbols`);
+console.log(`  source: ${SRC_DIR}`);
 console.log(`  output: ${OUT_DIR}`);
 console.log('');
 
-// Compute cell dims based on actual sheet size (in case the user gave
-// us 640×128 or similar — we still split into 5 equal-width cells).
-const cellW = Math.floor(meta.width / 5);
-const cellH = meta.height;
+let landed = 0;
+const missing = [];
 
-for (let i = 0; i < 5; i++) {
-  const id = ORDER[i];
-  const cellLeft = i * cellW;
-
-  // Extract the cell raw RGBA, find its trim box, then composite into
-  // a 64×64 padded canvas centered.
-  const cell = await sharp(SRC)
-    .extract({ left: cellLeft, top: 0, width: cellW, height: cellH })
-    .ensureAlpha()
-    .raw()
-    .toBuffer();
-  const bbox = await trimBox(cell, cellW, cellH);
-  if (!bbox) {
-    console.warn(`  [EMPTY] cell ${i} (${id}) is fully transparent — re-export`);
+for (const [folderName, themeId] of Object.entries(FOLDER_TO_THEME)) {
+  const themeFolder = join(SRC_DIR, folderName);
+  if (!(await exists(themeFolder))) {
+    console.log(`  [SKIP]  ${folderName.padEnd(14)} (folder missing)`);
+    missing.push(folderName);
+    continue;
+  }
+  const southPng = await findSouthPng(themeFolder);
+  if (!southPng) {
+    console.log(`  [SKIP]  ${folderName.padEnd(14)} (no states/.../rotations/south.png)`);
+    missing.push(folderName);
     continue;
   }
 
-  // Trim to bbox then scale to fit (OUT_CELL - 2*PAD) on the long axis.
+  // Read the source, find the trim box, scale to fit a (CELL - 2*PAD)
+  // long axis, center on a transparent CELL×CELL canvas.
+  const meta = await sharp(southPng).metadata();
+  const raw = await sharp(southPng).ensureAlpha().raw().toBuffer();
+  const bbox = await trimBox(raw, meta.width, meta.height);
+  if (!bbox) {
+    console.log(`  [EMPTY] ${folderName.padEnd(14)} (south.png is fully transparent)`);
+    missing.push(folderName);
+    continue;
+  }
+
   const targetMax = OUT_CELL - PAD * 2;
   const longAxis = Math.max(bbox.w, bbox.h);
-  const scale = longAxis > targetMax ? targetMax / longAxis : 1;
+  const scale = longAxis > targetMax ? targetMax / longAxis : (targetMax / longAxis);
+  // For symbols smaller than the target we still upscale (nearest-neighbor)
+  // to fill the cell — keeps pixel-art crisp at consistent in-game scale.
   const outW = Math.max(1, Math.round(bbox.w * scale));
   const outH = Math.max(1, Math.round(bbox.h * scale));
 
-  const trimmed = await sharp(SRC)
+  const trimmed = await sharp(southPng)
     .ensureAlpha()
-    .extract({
-      left: cellLeft + bbox.left,
-      top: bbox.top,
-      width: bbox.w,
-      height: bbox.h,
-    })
+    .extract({ left: bbox.left, top: bbox.top, width: bbox.w, height: bbox.h })
     .resize(outW, outH, { kernel: sharp.kernel.nearest })
     .png()
     .toBuffer();
@@ -140,7 +148,7 @@ for (let i = 0; i < 5; i++) {
   const xOff = Math.round((OUT_CELL - outW) / 2);
   const yOff = Math.round((OUT_CELL - outH) / 2);
 
-  const dst = join(OUT_DIR, `theme_${id}.png`);
+  const dst = join(OUT_DIR, `theme_${themeId}.png`);
   await sharp({
     create: { width: OUT_CELL, height: OUT_CELL, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
   })
@@ -149,12 +157,18 @@ for (let i = 0; i < 5; i++) {
     .toFile(dst);
 
   console.log(
-    `  [OK]    theme_${id.padEnd(7)}  art ${bbox.w}×${bbox.h}` +
-    `${scale < 1 ? ` → ${outW}×${outH}` : ''}, centered in ${OUT_CELL}×${OUT_CELL}`
+    `  [OK]    ${folderName.padEnd(14)} → theme_${themeId.padEnd(7)} ` +
+    `(art ${bbox.w}×${bbox.h} → ${outW}×${outH}, centered in ${OUT_CELL}×${OUT_CELL})`
   );
+  landed++;
 }
 
 console.log('');
-console.log(`Wrote 5 theme PNGs to ${OUT_DIR}.`);
-console.log('Next: Claude wires loader.js to register theme_<id>, then');
-console.log('replaces the switch in _drawThemeGlyphAt with image blits.');
+console.log(`Wrote ${landed}/${Object.keys(FOLDER_TO_THEME).length} theme symbols to ${OUT_DIR}.`);
+if (missing.length > 0) {
+  console.log(`Missing: ${missing.join(', ')}`);
+}
+console.log('');
+console.log('Next: Claude wires loader.js to register the new images,');
+console.log('then replaces _drawThemeGlyphAt\'s procedural switch with');
+console.log('ctx.drawImage blits (preserving the existing tint/halo wrapper).');

@@ -53,6 +53,7 @@ import { playSfx } from './sfx.js';
 // procedural paths lifted from themes.js, replacing the prior corner-
 // chip approach that lived inside the (now-deleted) card frame.
 import { THEMES } from './themes.js';
+import { drawThemeGlyphAt } from './pedestals.js';
 
 // Animation timings (seconds)
 const OPEN_DURATION  = 0.55;            // closed → open
@@ -1002,52 +1003,17 @@ function _drawDoorMedallion(ctx, d, profile, now) {
       ctx.fill();
       break;
     }
-    case 'theme:storm': {
-      ctx.beginPath();
-      ctx.moveTo(cx + iconR * 0.55, cy - iconR);
-      ctx.lineTo(cx - iconR * 0.45, cy - iconR * 0.10);
-      ctx.lineTo(cx + iconR * 0.05, cy - iconR * 0.10);
-      ctx.lineTo(cx - iconR * 0.55, cy + iconR);
-      ctx.lineTo(cx + iconR * 0.45, cy + iconR * 0.10);
-      ctx.lineTo(cx - iconR * 0.05, cy + iconR * 0.10);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'theme:flame': {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - iconR);
-      ctx.bezierCurveTo(cx + iconR*0.85, cy - iconR*0.2, cx + iconR*0.55, cy + iconR*0.7, cx, cy + iconR*0.85);
-      ctx.bezierCurveTo(cx - iconR*0.55, cy + iconR*0.7, cx - iconR*0.85, cy - iconR*0.2, cx, cy - iconR);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'theme:blood': {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + iconR);
-      ctx.bezierCurveTo(cx + iconR*0.85, cy + iconR*0.2, cx + iconR*0.55, cy - iconR*0.7, cx, cy - iconR*0.85);
-      ctx.bezierCurveTo(cx - iconR*0.55, cy - iconR*0.7, cx - iconR*0.85, cy + iconR*0.2, cx, cy + iconR);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'theme:vow': {
-      ctx.beginPath();
-      ctx.moveTo(cx - iconR * 0.9, cy - iconR * 0.7);
-      ctx.lineTo(cx + iconR * 0.9, cy - iconR * 0.7);
-      ctx.lineTo(cx + iconR * 0.9, cy + iconR * 0.1);
-      ctx.lineTo(cx, cy + iconR);
-      ctx.lineTo(cx - iconR * 0.9, cy + iconR * 0.1);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
+    case 'theme:storm':
+    case 'theme:flame':
+    case 'theme:blood':
+    case 'theme:vow':
     case 'theme:shadow': {
-      ctx.beginPath(); ctx.arc(cx, cy, iconR * 0.85, 0, Math.PI * 2); ctx.fill();
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath(); ctx.arc(cx + iconR * 0.45, cy - iconR * 0.15, iconR * 0.7, 0, Math.PI * 2); ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
+      // Theme door glyphs delegate to the shared drawThemeGlyphAt helper
+      // (PixelLab sprite when loaded, procedural fallback otherwise). The
+      // door medallion's iconR is slightly smaller than the pedestal's
+      // glyphR (~22), so the sprite scales down naturally.
+      const themeId = profile.iconKind.slice(6);     // strip 'theme:' prefix
+      drawThemeGlyphAt(ctx, cx, cy, iconR * 0.95, themeId);
       break;
     }
     case 'boss':

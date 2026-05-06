@@ -528,6 +528,16 @@ export async function loadAll(progressCb) {
     //  fx_noticeboard. These were parked — loaded but no longer referenced
     //  by HAMLET_FX. Re-add a loadImage line + an FX entry to bring back.)
 
+    // ── THEME SYMBOLS — pedestals + door labels + relic-choice modal ──
+    // PixelLab-generated 64×64 sprites that replace the procedural
+    // shapes in `_drawThemeGlyphAt`. The in-game tint/halo wrapper
+    // stays in code; only the static silhouette gets replaced.
+    loadImage('theme_storm',            'assets/themes/theme_storm.png'),
+    loadImage('theme_flame',            'assets/themes/theme_flame.png'),
+    loadImage('theme_blood',            'assets/themes/theme_blood.png'),
+    loadImage('theme_vow',              'assets/themes/theme_vow.png'),
+    loadImage('theme_shadow',           'assets/themes/theme_shadow.png'),
+
     // ── DUNGEON FX — animated/static props for dungeon rooms ─────────
     // Stored under hamlet/ for now (single asset folder); future
     // refactor could split into hamlet/ and dungeon/ subfolders.

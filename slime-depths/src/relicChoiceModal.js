@@ -20,7 +20,7 @@
 // gates. Matches the pickup banner / death overlay family.
 // ============================================================================
 
-import { pedestals, pickPedestalByIndex, applyChoicePick, rerollChoicePedestal } from './pedestals.js';
+import { pedestals, pickPedestalByIndex, applyChoicePick, rerollChoicePedestal, drawThemeGlyphAt } from './pedestals.js';
 import { gold } from './gold.js';
 import { hero } from './hero.js';
 import { images } from './loader.js';
@@ -889,151 +889,31 @@ function _drawThemeChip(ctx, bx, by, bs, theme) {
   ctx.strokeStyle = theme.color;
   ctx.lineWidth = 1;
   ctx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
-  // Glyph
+  // Glyph — delegates to the shared drawThemeGlyphAt helper which uses
+  // PixelLab sprites when loaded and falls back to procedural shapes
+  // otherwise. Caller no longer needs to set fillStyle/strokeStyle for
+  // the glyph itself (sprite carries its own color); the chip border
+  // above keeps the theme-color framing.
   const cx = bx + bs / 2;
   const cy = by + bs / 2;
   const r = (bs - 6) / 2;
   ctx.fillStyle = theme.color;
   ctx.strokeStyle = theme.color;
   ctx.lineWidth = 1.2;
-  switch (theme.id) {
-    case 'storm': {
-      // Lightning bolt: zigzag from top to bottom
-      ctx.beginPath();
-      ctx.moveTo(cx + r * 0.35, cy - r);
-      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
-      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
-      ctx.lineTo(cx - r * 0.35, cy + r);
-      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
-      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'flame': {
-      // Flame teardrop pointing up
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'blood': {
-      // Drop pointing down
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'vow': {
-      // Pentagonal shield
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'shadow': {
-      // Crescent — full circle minus an offset circle
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      // Cut-out — composite-globalDestination
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      break;
-    }
-    default: {
-      // Unknown — small dot fallback
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
+  drawThemeGlyphAt(ctx, cx, cy, r, theme.id);
   ctx.restore();
 }
 
-// Header glyph — same family as the chip glyph but rendered at the
-// modal-header scale (no chip backdrop, slightly bolder strokes,
-// drawn as a single bright color directly). Used in drawModal to
-// stamp the theme identity at the top of the modal so the player's
-// eye links the pedestal sigil → modal sigil → set of 3 cards.
+// Header glyph — modal-header scale variant. Now delegates to the
+// shared drawThemeGlyphAt helper (sprite when loaded, procedural
+// fallback otherwise). The fillStyle/strokeStyle assignments are
+// preserved so the procedural fallback still renders in theme color.
 function _drawHeaderGlyph(ctx, cx, cy, r, theme) {
   ctx.save();
   ctx.fillStyle = theme.color;
   ctx.strokeStyle = theme.color;
   ctx.lineWidth = 1.6;
-  switch (theme.id) {
-    case 'storm': {
-      ctx.beginPath();
-      ctx.moveTo(cx + r * 0.35, cy - r);
-      ctx.lineTo(cx - r * 0.20, cy - r * 0.05);
-      ctx.lineTo(cx + r * 0.10, cy - r * 0.05);
-      ctx.lineTo(cx - r * 0.35, cy + r);
-      ctx.lineTo(cx + r * 0.20, cy + r * 0.05);
-      ctx.lineTo(cx - r * 0.10, cy + r * 0.05);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'flame': {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy - r * 0.2, cx + r * 0.55, cy + r * 0.7, cx, cy + r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy + r * 0.7, cx - r * 0.85, cy - r * 0.2, cx, cy - r);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'blood': {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + r);
-      ctx.bezierCurveTo(cx + r * 0.85, cy + r * 0.2, cx + r * 0.55, cy - r * 0.7, cx, cy - r * 0.85);
-      ctx.bezierCurveTo(cx - r * 0.55, cy - r * 0.7, cx - r * 0.85, cy + r * 0.2, cx, cy + r);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'vow': {
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy - r * 0.7);
-      ctx.lineTo(cx + r * 0.9, cy + r * 0.1);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r * 0.9, cy + r * 0.1);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'shadow': {
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(cx + r * 0.45, cy - r * 0.15, r * 0.85, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      break;
-    }
-    default: {
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
+  drawThemeGlyphAt(ctx, cx, cy, r, theme.id);
   ctx.restore();
 }
 
