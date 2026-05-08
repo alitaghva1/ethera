@@ -6,7 +6,7 @@ between code and this document should be resolved by aligning code with this
 document, not the other way around — unless this document is explicitly updated
 first.
 
-Last updated: 2026-05-08 (Phase 2 of unification cleanup).
+Last updated: 2026-05-08 (Phases 1-6 of unification cleanup landed; verification pass closed 5 issues).
 
 ## The canonical game
 
@@ -83,16 +83,36 @@ They are scheduled for deletion in a future phase.
 - Add new pedestal-spawn logic gated on `data.kind`. Use the `zoneRunner` callbacks.
 - Reference `public/assets/packs/*` from runtime code (not just from scripts/).
 
-## Open questions / unresolved conflicts
+## Cleanup status (2026-05-08)
 
-These were flagged by the audit but require design input before they can be
-resolved:
+| Phase | Status | Commit |
+|---|---|---|
+| Audit | ✅ Done (analysis only) | — |
+| 1 — Stabilize | ✅ Done | `725a9af` |
+| 2 — Canonical world | ✅ Done | `6f75b28` |
+| 3 — Asset/visual unification | ✅ Done | `fafe53b` |
+| 4 — Menu wired to zones | ✅ Done | `1146e3a` |
+| 5 — Gameplay feel | ✅ Done | `753f0ab` |
+| 6 — Polish (zone-card + boss spawn) | ✅ Done | `caf1f55` |
+| Verification | ✅ Done | `dae969b` |
 
-1. **Cemetery boss identity** — currently uses `bone_captain` placeholder, same as crypt. Needs a unique design or a new enemy.
-2. **Hero/enemy scale band** — mage is 60px, regular enemies 200-250px, bosses 320-380px. Either bump hero to 100+ or shrink enemies. (The DUNGEON_PLAN.md from a prior session has notes on this.)
-3. **Procedural fallback for hamlet** — `hamletFloor.js` uses procedural floor rendering. Either migrate hamlet to a baked TMX too, or accept hamlet as the single legitimate consumer of `room.js` procedural code.
-4. **Top-of-screen HUD layout** — XP bar (full width) + zoneHud (center) overlaps the existing top-right floor panel from `hud.js`. Needs a layout pass in Phase 6.
-5. **Menu CTA** — currently routes to `__startRun()` (legacy). Needs to route to `__startZoneRun()` in Phase 4. Existing intro/heartbeat-seen logic may need to fork.
+The canonical zone flow is now reachable from the menu, fully resets on
+restart, cleans up cleanly on death, and ships visual polish (zone-enter
+cards, boss-spawn impact, scale unification, per-zone difficulty).
+
+## Closed (formerly open) questions
+
+1. ✅ **Cemetery boss identity** — `THE GRAVE WARDEN`, frost-affixed bone_captain (1.4× HP, 0.9× damage). Distinct fight feel without new asset.
+2. ✅ **Hero/enemy scale band** — orc 220→120, wizard 200→110, bone_captain 320→160, broodmother 360→180, ember_tyrant 380→200. Hitboxes unchanged.
+3. ✅ **Top-of-screen HUD layout** — XP bar shrunk to leave 240px right clearance for floor panel; level label compacted to "L7" inset on bar's right edge.
+4. ✅ **Menu CTA** — routes to `beginCanonicalDescent('ruins')`. All 6 entry points updated (menu first-time, beginDescent, weapon picker, tarot, death-restart, R-key).
+
+## Open questions / unresolved (deferred)
+
+1. **Procedural fallback for hamlet** — `hamletFloor.js` still uses procedural floor rendering. Either migrate hamlet to a baked TMX or accept hamlet as the single legitimate consumer of `room.js` procedural code. **Not blocking.**
+2. **HUD `currentFloorLevel` reads stay at 1 during canonical runs** — cosmetic (volcano shows "F1/4" on the floor panel). Telemetry/recordDeath also writes floor=1 for every zone. Fix is a per-call substitution: when `room.kind === 'tmx_crypt_sample'`, derive floor from `getZoneLevel(activeZone)`. Reviewer flagged as HIGH but cosmetic; deferred.
+3. **DAG legacy code still present** — `floor.js`, `floorGraph.js`, `mapScreen.js`, `doorPortals.js`, `roomShells.js` still in `src/`, marked LEGACY but not deleted. They're fully quarantined (zone runs nullify their state, gates exclude them) but the bytes still ship in the bundle. Future cleanup can delete after confidence in canonical flow.
+4. **Pause-modal Quit during zone run** — sets `hero.hp=0; hero.state='dead'`, which triggers FIX-B's death cleanup. Verified working but not exercised in code-review.
 
 ## How to use this document
 
