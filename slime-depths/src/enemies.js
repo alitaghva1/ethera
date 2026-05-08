@@ -2,17 +2,17 @@
 // explosive behaviors with attack telegraphs to make combat readable.
 import { images } from './loader.js';
 import { isWallAtWorld, spawnExtraFirePool, spawnExtraSpike, room, pushRoomMark } from './room.js';
-import { deathBurst, hitSpark, sparkle, bloodDrip, killRing } from './particles.js';
+import { deathBurst, hitSpark, sparkle, bloodDrip, killRing, spawnEliteParticle } from './particles.js';
 import { playSfx } from './sfx.js';
 import { synthThud, synthChord } from './synth.js';
 import { shakeCamera, pulseZoom, worldToScreen } from './camera.js';
 import { mouse, keys } from './input.js';
 import { damageHero, hero } from './hero.js';
-import { spawnArrow, spawnOrb } from './projectiles.js';
+import { spawnArrow, spawnOrb, spawnAcid } from './projectiles.js';
 import { dropGold } from './gold.js';
 import { stats } from './stats';
 import { spawnExplosion, spawnSoulBurst, etherealRegisterKill } from './synergies.js';
-import { triggerScreenFlash, spawnSoulTether, spawnDamageNumber, triggerKillCam, triggerHitStop } from './fx.js';
+import { triggerScreenFlash, spawnSoulTether, spawnDamageNumber, triggerKillCam, triggerHitStop, drawGroundGlow } from './fx.js';
 import { markSoulFired } from './counterPips.js';
 
 // ============================================================================
@@ -60,7 +60,14 @@ const AFFIX_IDS = Object.keys(ELITE_AFFIXES);
 // elite flames; just flipped damage target via the `friendly` flag. The
 // flag defaults false to preserve the original ember-elite behavior.
 const _flames = [];
+// Per-flame randomized phase so adjacent flames in a trail don't all
+// flicker in lockstep (which contributed to the prior "continuous
+// smear" read across multiple flames). Stored on the flame object so
+// it stays stable across frames — no Math.random() inside the per-frame
+// draw loop.
+let _flameSeqId = 0;
 export function spawnEmberFlame(x, y, opts = {}) {
+  _flameSeqId = (_flameSeqId + 1) | 0;
   _flames.push({
     x, y, t: 0,
     life: opts.life || 2.0,
@@ -68,6 +75,8 @@ export function spawnEmberFlame(x, y, opts = {}) {
     friendly: !!opts.friendly,
     damage: opts.damage || 1,
     hitSet: opts.friendly ? new Set() : null,    // per-enemy hit cooldown for friendly flames
+    // Stable per-flame visual seed — drives the desync below.
+    seed: _flameSeqId,
   });
 }
 export function updateFlames(dt) {
@@ -102,23 +111,67 @@ export function updateFlames(dt) {
   }
   if (hero._flameCD > 0) hero._flameCD -= dt;
 }
+// Visual tuning for ember flames. The damage hitbox stays at its
+// gameplay radius (f.radius + 14, ≈36 px) so the player still has to
+// avoid the lane — only the visual is reshaped.
+//
+// Surgical fix (review report 2026-05-06):
+// Previously each flame drew a halo to `f.radius + 6` (28 px from
+// center) with a 0.5-alpha mid stop. Stacked over 9 active flames in
+// a typical ember trail the halos blended into one big smear that
+// read as a floor stain rather than discrete flickers.
+//
+// Now each flame draws:
+//   - A sharper halo capped at `f.radius - 4` (18 px) so adjacent
+//     flames in a trail don't bleed into each other.
+//   - A front-loaded alpha curve — the visual fades MUCH faster than
+//     the 2.0 s damage life, so old flames are barely-visible embers
+//     by the time the player passes the lane (gameplay still active).
+//   - Lower mid-stop alpha (0.25 instead of 0.5).
+//   - A bigger, brighter core flicker that anchors the eye to the
+//     flame center, plus a per-flame seed so adjacent flames don't
+//     pulse in lockstep.
+const FLAME_VISUAL_FADE_POWER = 1.7;       // <1 = lingers, >1 = front-loaded fade
+const FLAME_VISUAL_BASE_ALPHA = 0.55;      // peak alpha at t=0
+const FLAME_HALO_INSET        = -4;        // halo radius = f.radius + INSET (negative = halo INSIDE radius)
+const FLAME_CORE_RADIUS       = 4.5;       // px — central bright flicker
 export function drawFlames(ctx) {
   for (const f of _flames) {
     const t = f.t / f.life;
-    const a = (1 - t) * 0.65;
-    // Outer flicker halo
-    const g = ctx.createRadialGradient(f.x, f.y, 4, f.x, f.y, f.radius + 6);
-    g.addColorStop(0, 'rgba(255, 190, 100, ' + (a * 0.9).toFixed(3) + ')');
-    g.addColorStop(0.6, 'rgba(255, 110, 50, ' + (a * 0.5).toFixed(3) + ')');
-    g.addColorStop(1, 'rgba(255, 60, 20, 0)');
+    if (t >= 1) continue;
+    // Front-loaded fade: alpha = (1-t)^1.7 * base. At t=0.5 alpha is 30 %
+    // of peak (vs. 50 % under the old linear fade), so trail tails dim
+    // out before the next flame pops in to "smear" with them.
+    const a = Math.pow(1 - t, FLAME_VISUAL_FADE_POWER) * FLAME_VISUAL_BASE_ALPHA;
+    const haloR = Math.max(6, f.radius + FLAME_HALO_INSET);
+    // Outer halo — tightened. Mid stop at 0.5 was the main "smear"
+    // contributor; cut to 0.25.
+    const g = ctx.createRadialGradient(f.x, f.y, 2, f.x, f.y, haloR);
+    g.addColorStop(0,   'rgba(255, 200, 110, ' + (a * 0.95).toFixed(3) + ')');
+    g.addColorStop(0.6, 'rgba(255, 110,  50, ' + (a * 0.25).toFixed(3) + ')');
+    g.addColorStop(1,   'rgba(255,  60,  20, 0)');
     ctx.fillStyle = g;
-    ctx.fillRect(f.x - f.radius - 6, f.y - f.radius - 6, (f.radius + 6) * 2, (f.radius + 6) * 2);
-    // Flicker core
-    const jitter = Math.sin(f.t * 40) * 2;
-    ctx.fillStyle = 'rgba(255, 220, 140, ' + (a * 0.9).toFixed(3) + ')';
+    ctx.fillRect(f.x - haloR, f.y - haloR, haloR * 2, haloR * 2);
+    // Flicker core — per-flame seed offsets the flicker phase so
+    // neighboring flames in a trail don't pulse in unison. Tiny
+    // jitter (≤2 px), no horizontal stretch.
+    const phase = (f.seed | 0) * 0.7;
+    const jitterX = Math.sin(f.t * 40 + phase) * 1.4;
+    const jitterY = Math.cos(f.t * 33 + phase) * 0.8;
+    const flicker = 0.92 + 0.10 * Math.sin(f.t * 22 + phase * 1.7);
+    const coreR = FLAME_CORE_RADIUS * flicker;
+    ctx.fillStyle = 'rgba(255, 230, 160, ' + (a * 1.0).toFixed(3) + ')';
     ctx.beginPath();
-    ctx.arc(f.x + jitter, f.y, 5, 0, Math.PI * 2);
+    ctx.arc(f.x + jitterX, f.y + jitterY, coreR, 0, Math.PI * 2);
     ctx.fill();
+    // Tiny hot-white center pip for definition — keeps the flame
+    // legible as a flame even when alpha is low at the tail of life.
+    if (a > 0.18) {
+      ctx.fillStyle = 'rgba(255, 250, 220, ' + (a * 0.9).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(f.x + jitterX * 0.5, f.y + jitterY * 0.5 - 0.5, coreR * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 export function clearFlames() { _flames.length = 0; }
@@ -197,7 +250,32 @@ export function drawEmberRings(ctx) {
 
 export function clearEmberRings() { _emberRings.length = 0; }
 
+// SPR — DEFAULT enemy sprite cell size. Legacy Tiny-RPG enemies and
+// our PixelLab-generated enemies (slime, skeleton) all use 100×100
+// cells. Epic RPG World pack characters use different sizes:
+//   Crypt skeleton:     128×128  (set def.cellSize: 128)
+//   Crypt spider:        64×64   (set def.cellSize: 64)
+//   Crypt big worm:     128×128  (set def.cellSize: 128)
+//   Other ERW enemies:   96×96   (3-tile-tall actors, set def.cellSize: 96)
+//
+// To opt a def into a non-100 cell size, add `cellSize: <N>` to its
+// TYPES entry. The renderer + bounds measurement read getEnemySpr(def)
+// instead of the hardcoded SPR constant. Defs without cellSize keep
+// using SPR=100 — fully backwards compatible with the 25 enemies
+// already shipping.
 const SPR = 100;
+
+/**
+ * Per-def sprite cell size. Returns def.cellSize if set, else the
+ * legacy default (100). Single dispatch point so adding a new cell
+ * size is one constant + one def field, not a code-wide refactor.
+ */
+function getEnemySpr(def) {
+  return (def && def.cellSize) || SPR;
+}
+// Exported for renderer + telegraph code that needs to know an
+// enemy's effective cell size at draw time.
+export { getEnemySpr };
 
 // ─── Sprite bounds measurement (auto-derived HP bar position/width) ─────
 // Heuristics for HP-bar placement (radius vs drawSize) couldn't reconcile
@@ -210,34 +288,47 @@ const SPR = 100;
 // the alpha-bounding box of the idle frame — and caches the result on
 // the def. HP bar Y + width then come from real geometry, not guesses.
 //
-// Cost: one ImageData scan of a 100×100 frame per enemy type. Runs once
-// per def (~25 types over a run), then cached. No per-frame cost.
+// Cost: one ImageData scan of a cellSize×cellSize frame per enemy type.
+// Runs once per def (~25 types over a run), then cached. No per-frame
+// cost.
+//
+// The work canvas is dynamically resized to match each def's cell size
+// (most are 100; pack imports may be 32/64/96/128). Allocation cost is
+// once per type; ImageData scan is the dominant operation either way.
 const _spriteBoundsCanvas = (typeof document !== 'undefined') ? document.createElement('canvas') : null;
-if (_spriteBoundsCanvas) {
-  _spriteBoundsCanvas.width = SPR;
-  _spriteBoundsCanvas.height = SPR;
-}
 const _spriteBoundsCtx = _spriteBoundsCanvas ? _spriteBoundsCanvas.getContext('2d', { willReadFrequently: false }) : null;
 
 // Pulls the alpha-opaque bounding box of the FIRST FRAME of the given
 // sprite sheet. Returns world-space offsets relative to e.y / e.x given
 // the standard drawImage offset (-size/2, -size * 0.78). Returns null on
 // failure (sprite not loaded, CORS, empty alpha).
-function _measureSpriteBounds(img, drawSize) {
+//
+// `spr` is the source-image cell size — defaults to legacy SPR for
+// callers that haven't been migrated to the per-def system yet.
+// Callers that DO know the def should pass getEnemySpr(def).
+function _measureSpriteBounds(img, drawSize, spr = SPR) {
   if (!img || !img.complete || !img.naturalWidth || !_spriteBoundsCtx) return null;
   try {
-    _spriteBoundsCtx.clearRect(0, 0, SPR, SPR);
-    _spriteBoundsCtx.drawImage(img, 0, 0, SPR, SPR, 0, 0, SPR, SPR);
-    const data = _spriteBoundsCtx.getImageData(0, 0, SPR, SPR).data;
-    let topY = SPR, bottomY = -1, leftX = SPR, rightX = -1;
+    // Resize work canvas if this def's cell size differs from the
+    // last measurement. Avoids reallocation when consecutive defs
+    // share the same cell size (very common — most PixelLab enemies
+    // are 100, all ERW worm/skel will be 128, etc.).
+    if (_spriteBoundsCanvas.width !== spr || _spriteBoundsCanvas.height !== spr) {
+      _spriteBoundsCanvas.width = spr;
+      _spriteBoundsCanvas.height = spr;
+    }
+    _spriteBoundsCtx.clearRect(0, 0, spr, spr);
+    _spriteBoundsCtx.drawImage(img, 0, 0, spr, spr, 0, 0, spr, spr);
+    const data = _spriteBoundsCtx.getImageData(0, 0, spr, spr).data;
+    let topY = spr, bottomY = -1, leftX = spr, rightX = -1;
     // Threshold 140 — exclude the soft shadow/halo painted into many
     // Tiny-RPG sprite cells around the body. Threshold 40 caught those
     // halos and inflated halfWidth (slimes ended up with bars wider
     // than the body). 140 is well past AA fringe (40-130) but below the
     // solid body (200-255), so the box hugs the actual silhouette.
-    for (let y = 0; y < SPR; y++) {
-      for (let x = 0; x < SPR; x++) {
-        if (data[(y * SPR + x) * 4 + 3] >= 140) {
+    for (let y = 0; y < spr; y++) {
+      for (let x = 0; x < spr; x++) {
+        if (data[(y * spr + x) * 4 + 3] >= 140) {
           if (y < topY) topY = y;
           if (y > bottomY) bottomY = y;
           if (x < leftX) leftX = x;
@@ -246,14 +337,14 @@ function _measureSpriteBounds(img, drawSize) {
       }
     }
     if (bottomY < 0) return null;        // empty / fully transparent
-    // Sprite drawn at (-size/2, -size * 0.78) → SPR cell maps to size px.
+    // Sprite drawn at (-size/2, -size * 0.78) → cell maps to size px.
     // Source y → world Y offset from e.y:
-    //   world_y_offset = (sy / SPR) * size - size * 0.78
+    //   world_y_offset = (sy / spr) * size - size * 0.78
     // For "above e.y" we want a positive value (bodyTopOffset = how far
     // above e.y the visible top sits).
-    const scale = drawSize / SPR;
-    const topOffset    = (0.78 - topY    / SPR) * drawSize;    // px above e.y
-    const bottomOffset = (bottomY / SPR - 0.78) * drawSize;    // px below e.y (usually small)
+    const scale = drawSize / spr;
+    const topOffset    = (0.78 - topY    / spr) * drawSize;    // px above e.y
+    const bottomOffset = (bottomY / spr - 0.78) * drawSize;    // px below e.y (usually small)
     const halfWidth    = ((rightX - leftX + 1) / 2) * scale;   // visible body half-width in world px
     return { topOffset, bottomOffset, halfWidth };
   } catch (_e) {
@@ -356,7 +447,7 @@ function _getSpriteBounds(def) {
   if (def._spriteBoundsAttempted) return null;
   const img = images[def.prefix + 'idle'] || images[def.prefix + 'walk'];
   if (!img || !img.complete || !img.naturalWidth) return null;     // not loaded yet — retry later
-  const bounds = _measureSpriteBounds(img, def.drawSize || 200);
+  const bounds = _measureSpriteBounds(img, def.drawSize || 200, getEnemySpr(def));
   if (bounds) {
     def._spriteBounds = bounds;
     return bounds;
@@ -382,16 +473,18 @@ export const TYPES = {
     // melee swing handler. 0.6 = soft tap (slime). Heavier enemies
     // override this; bosses default to 1.0 explicit. Game-feel audit P0.
     weight: 0.6,
-    // SIZING PASS — Tiny-RPG sprites fill only ~15% of their 100 cell while
-    // the PixelLab mage hero fills 93% of its 128 cell. Without compensation
-    // a minion drawSize of 80 reads as ~12 px visible vs the hero's ~56 px,
-    // making combat unreadable. Bumped 80→200 so visible body lands ~30 px
-    // — still smaller than the hero (intentional: slime is the tutorial mob)
-    // but actually fightable instead of postage-stamp size.
-    prefix: 'slime_',  drawSize: 200, radius: 22, speed: 95,  hp: 70,  damage: 1,
+    // SIZING PASS (revised 2026-05-07) — slime sheets regenerated via
+    // PixelLab + procedural squash/stretch animator. New sprite fills
+    // ~64% of the 100 cell (after TOP_HEADROOM bump to 32 to prevent
+    // walk-peak clipping), so drawSize is 58 to land at ~37 px visible
+    // body — ~0.65× hero scale, intentional reading as smaller threat.
+    // Old Tiny-RPG sheets backed up at public/assets/enemies/_backup_tinyrpg/.
+    prefix: 'slime_',  drawSize: 58, radius: 22, speed: 95,  hp: 70,  damage: 1,
     color: '#6acc78', hitCD: 0.65, fps: 10, behavior: 'melee',
     attackReach: 42, attackArc: Math.PI * 0.42,
     windup: 0.25, swing: 0.22,
+    // The slime CAN spit acid too — a small subset of slime spawns are
+    // upgraded to slime_spitter. See def below.
     // Round-6 AV audit — F1/F2 melee telegraphs were all monochrome red
     // (slime/skel/orc/archer all in the rgba(220,60-80,55-80) range), so
     // 4-6 winding enemies blurred into "general red soup" with no per-
@@ -406,13 +499,65 @@ export const TYPES = {
     displayName: 'SLIME',
     flavor: 'what the ruin makes when it forgets what living was for',
   },
+  // Slime spitter — ranged variant of the slime. Identical body but
+  // with a TOXIC bell-mouth that projects acid globs across the room.
+  // Mirrors archer's keep-distance kiting AI. Uses the dedicated
+  // slime_cast.png sheet during the attack windup so the animation
+  // reads as "charging up to spit" instead of the melee bite. Fires
+  // a green acid projectile (spawnAcid) that's slower than an arrow
+  // (220 vs 340 px/s) so an alert player can sidestep it; rewards
+  // dodge timing rather than panicking. Damage parity with melee
+  // slime to keep difficulty math clean.
+  slime_spitter: {
+    weight: 0.6,
+    prefix: 'slime_',  drawSize: 58, radius: 22, speed: 75,  hp: 70,  damage: 1,
+    color: '#8aa83a', hitCD: 1.0, fps: 10, behavior: 'ranged',
+    // Ranged kiting params mirror archer (504-505) but tighter — the
+    // spitter is a slow shuffler, not a backpedaller.
+    attackRange: 320, preferDist: 200, minDist: 130,
+    windup: 0.42, swing: 0.18,
+    // Visual hookup — attackSheet swaps slime_attack → slime_cast
+    // during the attack state. projectile selects the spawn function
+    // in updateRanged (spawnArrow vs spawnAcid).
+    attackSheet: 'cast',
+    projectile: 'acid',
+    // Tint filter to differentiate at-a-glance from the melee slime.
+    // The two share the same sprite sheets (slime_*.png) so without
+    // a color shift the two types are indistinguishable in combat.
+    // Hue-rotated +28° pushes the moss-green base toward chartreuse /
+    // toxic-yellow-green, saturated to read as "vivid acid color."
+    // Brightness +8% gives it a faint glowing-from-within feel that
+    // suggests "this slime is full of caustic stuff." Same pattern
+    // the bomber slime uses (line 549) — proven mechanism.
+    tintFilter: 'hue-rotate(28deg) saturate(1.4) brightness(1.08)',
+    telegraphColor: 'rgba(220, 240, 90, ',     // brighter yellow-acid telegraph
+    windupSfx: { key: 'slime_hit', rate: 0.55, volume: 0.45 },
+    bloodColor: '#3a7a42',
+    displayName: 'SLIME SPITTER',
+    flavor: 'a slime that learned to throw what it digests',
+  },
   skel:   {
     weight: 0.85,
     element: 'cold',                 // resists cold, weak to fire/shock
-    prefix: 'skel_',   drawSize: 220, radius: 22, speed: 118, hp: 95,  damage: 1,
+    // EPIC RPG WORLD CRYPT PACK (Phase 2 — 2026-05-07) — replaced the
+    // PixelLab-generated skeleton (with persistent cyan motion-arc
+    // artifacts and "moonwalking" walk frames) with the artist's
+    // proper chibi skeleton. Cells are 128×128 (vs 100 for legacy
+    // PixelLab), so cellSize:128 routes the renderer through the new
+    // per-def SPR system. drawSize ~80 lands ~55px visible body —
+    // approximately hero-tall, as humanoids should be.
+    //
+    // Animation frame counts on the new sheets (auto-detected from
+    // sheet width / cellSize):
+    //   idle: 7    walk: 8    attack: 17    hurt: 11    death: 13
+    // Attack is much longer than the legacy 4 frames — bumped windup
+    // to 0.55 + swing to 0.35 (total 0.9s) so the full swing reads
+    // before the cooldown kicks in. fps stays 10 for idle/walk; the
+    // engine plays attack/death at a fixed 14fps separately.
+    prefix: 'skel_',   cellSize: 128, drawSize: 80, radius: 22, speed: 118, hp: 95,  damage: 1,
     color: '#cfd4d9', hitCD: 0.80, fps: 10, behavior: 'melee',
     attackReach: 54, attackArc: Math.PI * 0.48,
-    windup: 0.28, swing: 0.22,
+    windup: 0.55, swing: 0.35,
     // Bone-white telegraph — matches the dust-and-bone body palette,
     // visually distinct from slime's acid-green and orc's blood-red so
     // a 3-skel + 2-orc + 1-slime room reads as three separate threats
@@ -422,6 +567,35 @@ export const TYPES = {
     bloodColor: '#4a4038',             // skeletons leave dust and old bone-dark
     displayName: 'SKELETON',
     flavor: 'the dead who were promised rest, and given knives',
+  },
+  // EPIC RPG WORLD CRYPT PACK (Phase 2 — 2026-05-07) — Spider, a new
+  // F1 fodder enemy. Smaller and faster than the slime/skeleton: short
+  // squat 8-leg silhouette, rushes the hero. Sprite is 64×64 native
+  // (smaller than other enemies), so cellSize:64 + drawSize:54 lands
+  // ~32px visible body — distinctly small among other enemies, reads
+  // as "scuttling fodder."
+  //
+  // Behavior: melee, fastest crypt enemy (matches scuttling read).
+  // HP intentionally lower than skeleton (50 vs 95) — small means
+  // squishy. Damage 1 (parity). Pink-purple body uses a magenta
+  // telegraph to distinguish from skel/slime/orc when stacked.
+  //
+  // Frame counts (sheet width / 64): idle 8, walk 8, attack 12, death 13.
+  crypt_spider: {
+    weight: 0.55,
+    prefix: 'crypt_spider_', cellSize: 64, drawSize: 54, radius: 16, speed: 145, hp: 50, damage: 1,
+    color: '#a14a78', hitCD: 0.7, fps: 12, behavior: 'melee',
+    attackReach: 38, attackArc: Math.PI * 0.42,
+    windup: 0.30, swing: 0.18,
+    // Magenta-violet telegraph — distinct from the slime green / skel
+    // bone-white / orc blood-red palette already in F1. Spider's red
+    // eyes pop on a violet body so the telegraph color matches its
+    // visual identity.
+    telegraphColor: 'rgba(200, 120, 200, ',
+    windupSfx: { key: 'click', rate: 0.9, volume: 0.4 },
+    bloodColor: '#3a1838',
+    displayName: 'CRYPT SPIDER',
+    flavor: 'eight legs, eight reasons to keep moving',
   },
   orc:    {
     weight: 1.15,
@@ -772,8 +946,19 @@ export const TYPES = {
   // can be read by room-collision code later; for now behaves like a fast
   // ranged enemy), lower HP, higher speed. Fills the "airborne threat"
   // design gap — nothing else in the roster hovers out of melee range.
+  //
+  // 2026-05-06 ASSET REPLACEMENT: previous haunt PNGs (from an earlier
+  // ingest pipeline) had the demon body filling ~80% of the 100-cell
+  // with WINGS CLIPPED at the cell boundary in attack frames — visible
+  // as an "incomplete rotation" mid-swing. Replaced via
+  // scripts/pixellab/import-haunt.js using the clean third-party
+  // "Flying Demon 2D Pixel Art" pack (with_outline variant) — properly
+  // trimmed sprites with full wing extension within the cell. Body
+  // now fills 65 % of cell, leaving wing headroom; drawSize tuned so
+  // visible body is ~65 px (~1.1× hero — appropriately small for a
+  // fast aerial skirmisher).
   haunt: {
-    prefix: 'haunt_',   drawSize: 180, radius: 18, speed: 130, hp: 55, damage: 1,
+    prefix: 'haunt_',   drawSize: 100, radius: 18, speed: 130, hp: 55, damage: 1,
     color: '#ff8050', attackRange: 320, hitCD: 1.15, fps: 12, behavior: 'ranged',
     windup: 0.32, swing: 0.18, preferDist: 240, minDist: 160,
     telegraphColor: 'rgba(255, 100, 80, ',
@@ -856,8 +1041,9 @@ export const TYPES = {
   // sprite. Drop-in replacement for vanguard's "orc with cyan filter"
   // hack. Same shield mechanics (4 charges, 140° arc, 82% reduction)
   // as vanguard so existing flank-to-break tactics still work. The
-  // `_enemy` suffix in the prefix avoids collision with player knight
-  // sprite keys (assets/characters/knight_*.png).
+  // `_enemy` suffix in the prefix is a holdover from when the player
+  // hero slot was also named `knight_*`; that's now `mage_*` (Phase 3
+  // unification), but the enemy prefix is kept as-is to avoid churn.
   knight_enemy: {
     prefix: 'knight_enemy_', drawSize: 220, radius: 24, speed: 75, hp: 130, damage: 2,
     color: '#b8c4d0', hitCD: 1.10, fps: 8, behavior: 'melee',
@@ -1011,21 +1197,60 @@ export const TYPES = {
   // live here now. Common orc keeps its mid-tier mob role.
   // Also slots into the F2 mini-boss rotation as a callback to F1.
   elite_orc: {
-    // BOSS PRESENCE BUMP (Grudnok F1 boss): drawSize 230 → 290.
-    // Visible ~67 px, ~1.2× hero. Floor-1 boss kept slightly smaller than
-    // F2-4 bosses on purpose — it's the tutorial boss. Radius unchanged.
-    prefix: 'elite_orc_', drawSize: 290, radius: 28, bodyHeight: 120, speed: 85, hp: 200, damage: 2,
+    // ASSET UPGRADE 2026-05-06 (round 2): Grudnok rebuilt via PixelLab
+    // (heavy steel plate + closed helm with glowing red visor). Sizing
+    // math accounts for the auto-applied bossSizeMul (1.45) which I
+    // missed on round 1, so drawSize 130 rendered at effective 188 →
+    // visible body 165 px (way too big, ~3× hero).
+    //
+    // Importer also bumped from BODY_HEIGHT_FRAC 0.88 → 0.60 to leave
+    // horizontal headroom for the sword swing arcs (which were getting
+    // center-cropped at the cell edge, the "incomplete rotation" feel).
+    //
+    // Final formula:
+    //   visible body = drawSize × bossSizeMul (1.45) × BODY_HEIGHT_FRAC (0.60)
+    //                = drawSize × 0.87
+    //
+    // Target ~95 px visible (1.6× hero, tutorial-boss imposing size):
+    //   drawSize = 110 → visible body 96 px ✓
+    //
+    // ASSET UPGRADE 2026-05-06 (round 3) — STREAM A boss combat overhaul.
+    // The PixelLab export ships 8-direction frames for every animation;
+    // the importer now produces grid sheets (rows = 8 dirs, cols =
+    // frames) and `grid8: true` tells the renderer to source the row
+    // matching e.aimX/aimY direction. Adds dedicated heavy (hammer-
+    // slam) + cast (energy-attack) sheets so phase 2 reads as a real
+    // moveset shift instead of "stat-stick swings harder".
+    grid8: true,
+    prefix: 'elite_orc_', drawSize: 110, radius: 28, bodyHeight: 120, speed: 85, hp: 200, damage: 3,
     color: '#7fa34a', hitCD: 0.92, fps: 9, behavior: 'melee',
     attackReach: 66, attackArc: Math.PI * 0.62,
     windup: 0.38, swing: 0.26,
     telegraphColor: 'rgba(210, 45, 55, ',
-    heavyChance: 0.32,
-    heavyReach: 96, heavyArc: Math.PI * 0.90,
-    heavyWindup: 0.70, heavySwing: 0.34,
-    heavyDamage: 3,
+    // Heavy attack now resolves via the dedicated 11-frame hammer-slam
+    // animation (heavySprite: 'heavy' → renderer picks elite_orc_heavy.png).
+    // Bigger reach + arc + radius pressure than a regular cleave; the
+    // 1.05s windup is generous so the player has the read on it.
+    heavyChance: 0.20,
+    heavyReach: 110, heavyArc: Math.PI * 1.0,
+    heavyWindup: 1.05, heavySwing: 0.36,
+    heavyDamage: 4,
     heavyColor: 'rgba(255, 140, 40, ',
+    heavySprite: 'heavy',                          // grid8 sheet variant key
+    // Cast attack — long-windup ranged projectile that fires when the
+    // hero is medium-far range (160-540px). 9-frame energy animation
+    // at 16fps = ~0.56s windup, then a homing fire-orb that the player
+    // must move to dodge. Adds range pressure so the player can't kite
+    // forever; without this Grudnok had ZERO answer to wand-camping.
+    castWindup: 0.56,                              // matches 9-frame anim
+    castProjectileDamage: 3,
+    castMinDist: 160, castMaxDist: 540,
+    castCooldown: 5.5,                             // base reload (sec)
+    castCooldownEnraged: 3.5,
+    castSprite: 'cast',                            // grid8 sheet variant key
     windupSfx: { key: 'hero_hurt', rate: 0.55, volume: 0.6 },
     heavyWindupSfx: { key: 'hero_hurt', rate: 0.38, volume: 0.85 },
+    castWindupSfx:  { key: 'hero_hurt', rate: 0.30, volume: 0.85 },
     bloodColor: '#3a4a30',
     displayName: 'WARCHIEF GRUDNOK',
     flavor: 'chieftain of the iron-bone clans',
@@ -1033,13 +1258,13 @@ export const TYPES = {
     // PHASE 2 — boss audit P1. Grudnok had no enrageAt at all so the
     // existing phase-intro audio sting + iframe scaffolding never fired
     // for the floor-1 boss. He was a pure stat-stick. Now: at 45% HP,
-    // enrage triggers a "warchief roar" — heavyChance jumps from 0.32
-    // to 0.65 so the slow heavy-cleave windup dominates phase 2, and
-    // basic stat multipliers go up too. The roar effect (extra heavy
-    // bias + 4 summoned orcs on FIRST enrage) lives in the enrage
-    // hook in updateEnemies.
+    // enrage triggers a "warchief roar" — heavyChance jumps so the slow
+    // heavy-cleave windup dominates phase 2, the cast cooldown drops so
+    // ranged pressure ramps up, and basic stat multipliers go up too.
+    // The roar effect (heavy bias + 4 summoned orcs on FIRST enrage)
+    // lives in the enrage hook in updateEnemies.
     enrageAt: 0.45, enrageSpeedMul: 1.25, enrageDamageMul: 1.20,
-    enrageHeavyChance: 0.65,
+    enrageHeavyChance: 0.55,
     enrageSummonOrcs: 4,
   },
 
@@ -1209,6 +1434,7 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
     type, def, elite, boss,
     affix,                          // elite affix config (or null)
     _trailT: 0,                     // ember trail spawn timer
+    _eliteParticleT: 0,             // elite affix ambient-particle spawn timer
     _staggerCount: 0,               // warded: track staggers for shield break
     _shieldBroken: false,           // warded: true after enough staggers
     x: worldX, y: worldY,
@@ -1387,6 +1613,12 @@ export function spawnEnemy(type, worldX, worldY, opts = {}) {
         else if (ks === 15) try { synthChord(659, 0.75, 0.65); } catch (_e) {}
         if (this.boss) stats.bossesKilled++;
         else if (this.elite) stats.elitesDefeated++;
+        // Stand-and-Hold zone runs use this hook to drop XP gems on kill.
+        // Existing run modes leave the hook unset → no-op. Followed the
+        // window.__onEchoDefeated convention from above for consistency.
+        if (typeof window !== 'undefined' && window.__onEnemyKilled) {
+          try { window.__onEnemyKilled(this); } catch (_e) {}
+        }
         // BLOOD ASCENDANCE — flat HP-on-kill at theme tier 2. Set by
         // themes.js applyThemeTiers; 0 unless 5/5 BLOOD relics are owned.
         // Memory of the Hollow gates this off (matches the lifesteal
@@ -1731,7 +1963,33 @@ function _hexToRgb(hex) {
 // Dark bodies (orc green, dreadmage purple) get a warm light rim that
 // pops against dark floor zones + vignette corners. Mid bodies skip
 // the rim — they already have natural contrast.
+//
+// 2026-05-06 elite-signal pass: ELITE enemies override the luminance
+// rule entirely with a brighter affix-color rim. Frost elites get a
+// pale-blue glow; ember get orange; venom get green; warded get gold.
+// Reads as "this unit is special" at any distance — same visual
+// grammar as Diablo / PoE elite outlines — and replaces the old
+// ground-halo "this elite is hovering on a colored disc" failure
+// mode. Bosses get a brighter cream-gold rim.
 function _pickEnemyRimColor(e) {
+  // Elite override — brighter affix-color rim. Stronger alpha than the
+  // luminance-based rim so it POPS as a "look at me" cue.
+  if (e.elite && !e.boss) {
+    if (e.affix && e.affix.auraColor) {
+      // Use the affix's auraColor with a fixed bright alpha; a slight
+      // pulse drives focus back to the elite during fights.
+      const pulse = 0.78 + 0.22 * Math.sin(e.animTime * 4);
+      const rgb = _hexToRgb(e.affix.auraColor);
+      if (rgb) return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${(0.85 * pulse).toFixed(3)})`;
+    }
+    // Generic elite (no affix) — bright gold rim
+    const pulse = 0.78 + 0.22 * Math.sin(e.animTime * 4);
+    return `rgba(255, 220, 110, ${(0.85 * pulse).toFixed(3)})`;
+  }
+  // Boss — distinctive cream-gold rim for the entire fight
+  if (e.boss) {
+    return 'rgba(255, 230, 160, 0.75)';
+  }
   const rgb = _hexToRgb(e.def.color);
   if (!rgb) return null;
   // Rec.601 luminance — close enough to perceived brightness.
@@ -1756,14 +2014,14 @@ function _pickEnemyRimColor(e) {
 // Cost: 5 drawImage + 1 fillRect per enemy per frame on a 200x200
 // canvas. Cheap enough to run unconditionally; gated on rimColor !=
 // null so most-of-the-time this is a noop early-out.
-function _renderSpriteWithRim(img, sx, size, rimColor) {
+function _renderSpriteWithRim(img, sx, sy, size, rimColor, spr = SPR) {
   _fxCtx.globalCompositeOperation = 'source-over';
   _fxCtx.clearRect(0, 0, _fx.width, _fx.height);
   // Layer 1 — 4 offset draws build a 1px outline silhouette.
-  _fxCtx.drawImage(img, sx, 0, SPR, SPR, -1, 0, size, size);
-  _fxCtx.drawImage(img, sx, 0, SPR, SPR,  1, 0, size, size);
-  _fxCtx.drawImage(img, sx, 0, SPR, SPR,  0, -1, size, size);
-  _fxCtx.drawImage(img, sx, 0, SPR, SPR,  0,  1, size, size);
+  _fxCtx.drawImage(img, sx, sy, spr, spr, -1, 0, size, size);
+  _fxCtx.drawImage(img, sx, sy, spr, spr,  1, 0, size, size);
+  _fxCtx.drawImage(img, sx, sy, spr, spr,  0, -1, size, size);
+  _fxCtx.drawImage(img, sx, sy, spr, spr,  0,  1, size, size);
   // Tint the entire silhouette to rim color via source-in.
   _fxCtx.globalCompositeOperation = 'source-in';
   _fxCtx.fillStyle = rimColor;
@@ -1771,7 +2029,7 @@ function _renderSpriteWithRim(img, sx, size, rimColor) {
   // Layer 2 — the natural sprite paints over the top, leaving rim
   // only where the offset draws stick out past the natural alpha.
   _fxCtx.globalCompositeOperation = 'source-over';
-  _fxCtx.drawImage(img, sx, 0, SPR, SPR, 0, 0, size, size);
+  _fxCtx.drawImage(img, sx, sy, spr, spr, 0, 0, size, size);
 }
 
 // ── RANGED-COUNTER: kite penalty ──────────────────────────────────────
@@ -1795,6 +2053,133 @@ function kiteCloseSpeedMul(dist) {
   // 0% at stillT=0.6, ramps to 35% at stillT=2.5
   const ramp = Math.min(1, (stillT - 0.6) / 1.9);
   return 1 + 0.35 * ramp;
+}
+
+// ── GROUP FLANKING (Phase 1 of the smarter-enemies plan) ─────────────────
+// Without coordination, every melee enemy walked the unit vector toward the
+// hero, and the only thing that kept them apart was a weak per-pair
+// separation force. Result: 5 skeletons would mosh-pit on the hero's face,
+// damage stacked unfairly, and the encounter read as "more of the same"
+// rather than "they're surrounding me."
+//
+// Flanking system: the hero's surroundings are partitioned into 8 fixed
+// angular slots (N, NE, E, SE, S, SW, W, NW). Each living non-boss melee
+// enemy claims the slot CLOSEST to its current position-relative-to-hero,
+// first-claim-wins, sorted by distance-to-hero so the closest threat picks
+// first. The enemy's movement target becomes a point at attackReach × 0.85
+// from hero AT THAT SLOT'S ANGLE — so when they reach the slot, they're
+// inside swing range and commit. With 8 slots and typical encounters of
+// 3-6 melee enemies, the room reads as a deliberate ring closing in
+// rather than a mosh pit.
+//
+// Slot is held during attack windup + swing (no flicker). Released when
+// the attack resolves OR the enemy dies OR the stuck-detection nudge
+// fires (slot may be unreachable due to terrain). Bosses, ranged, bombers,
+// and lancers opt out — they have their own positioning logic.
+const FLANK_ANGLES = 8;
+// Module-level claim set, rebuilt at the top of every updateEnemies tick.
+// Holds slot indices (0..7) currently claimed by ANY enemy this frame.
+const _flankClaimed = new Set();
+
+// Pick the unclaimed slot whose angle is closest to enemy's current
+// angle-from-hero. Returns null if all slots are claimed.
+function _bestAvailableFlankSlot(e) {
+  const dx = e.x - hero.x, dy = e.y - hero.y;
+  if (dx === 0 && dy === 0) return null;     // identical position — defensive
+  const enemyAngle = Math.atan2(dy, dx);
+  const TAU = Math.PI * 2;
+  const normalized = (enemyAngle + TAU) % TAU;
+  let bestIdx = -1, bestDelta = Infinity;
+  for (let i = 0; i < FLANK_ANGLES; i++) {
+    if (_flankClaimed.has(i)) continue;
+    const slotAngle = (i / FLANK_ANGLES) * TAU;
+    let delta = Math.abs(normalized - slotAngle);
+    if (delta > Math.PI) delta = TAU - delta;
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestIdx = i;
+    }
+  }
+  return bestIdx >= 0 ? bestIdx : null;
+}
+
+// Per-frame coordination pass: re-assert existing claims first (so an
+// enemy doesn't lose its slot to a closer one mid-attack), then assign
+// fresh slots to enemies that don't have one. Sorted closest-to-hero
+// first so the highest-threat enemies pick the angles they're already
+// closest to (minimizes wasted travel + jitter).
+function _runFlankClaimPass() {
+  _flankClaimed.clear();
+  // Pass 1: re-assert existing claims, BUT release any slot held by
+  // an enemy that has since transitioned to rage / flee mode (those
+  // modes ignore the flank target so the slot is wasted).
+  for (const e of enemies) {
+    if (e.dead) continue;
+    if (e._flankSlot != null) {
+      const inRage = e._lowHpMode === 'rage';
+      const inFlee = e._lowHpMode === 'flee' && e._fleeT > 0;
+      if (inRage || inFlee) {
+        e._flankSlot = null;
+        continue;
+      }
+      // If somehow two enemies hold the same slot (shouldn't happen but
+      // defensive), only the first one's claim re-asserts; second is
+      // implicitly evicted by the Set contract — they'll re-claim below.
+      if (_flankClaimed.has(e._flankSlot)) e._flankSlot = null;
+      else _flankClaimed.add(e._flankSlot);
+    }
+  }
+  // Pass 2: enemies without a slot, sorted by distance to hero (closest
+  // picks first — they're already at a near-good angle and shouldn't
+  // travel across the room to a far slot).
+  //
+  // Phase 2 mode skip: rage enemies bypass flank (charge straight at
+  // hero) and flee enemies actively run AWAY — both ignore their slot
+  // even if claimed. Excluding them from claim means the 8 slots stay
+  // available for enemies that ACTUALLY want to flank, instead of
+  // being burned by raging/fleeing teammates that won't use them.
+  const eligible = [];
+  for (const e of enemies) {
+    if (e.dead) continue;
+    if (e._flankSlot != null) continue;
+    if (e.boss) continue;
+    if (e.def.behavior !== 'melee') continue;
+    if (e._lowHpMode === 'rage') continue;
+    if (e._lowHpMode === 'flee' && e._fleeT > 0) continue;
+    eligible.push(e);
+  }
+  eligible.sort((a, b) => {
+    const da = (a.x - hero.x) ** 2 + (a.y - hero.y) ** 2;
+    const db = (b.x - hero.x) ** 2 + (b.y - hero.y) ** 2;
+    return da - db;
+  });
+  for (const e of eligible) {
+    const slot = _bestAvailableFlankSlot(e);
+    if (slot != null) {
+      e._flankSlot = slot;
+      _flankClaimed.add(slot);
+    }
+  }
+}
+
+// Movement target for an enemy with a flank slot. Returns world (x, y).
+// If enemy has no slot (or slot index out of range), returns hero's
+// position so the caller falls back to direct chase.
+function _flankTargetFor(e) {
+  if (e._flankSlot == null) return { x: hero.x, y: hero.y };
+  const TAU = Math.PI * 2;
+  const slotAngle = (e._flankSlot / FLANK_ANGLES) * TAU;
+  // Inside attack reach by ~15% so the enemy commits to a swing the
+  // moment it reaches the slot. Squashed Y by 0.7 for the same top-down
+  // perspective the rest of the renderer uses (e.g., ground shadows).
+  // Tuned 0.85 → 0.92 after balance review — at 0.85 enemies overlap
+  // the hero's body radius before swinging, which made the flank ring
+  // tighter than intended.
+  const desiredDist = Math.max(20, e.def.attackReach * 0.92);
+  return {
+    x: hero.x + Math.cos(slotAngle) * desiredDist,
+    y: hero.y + Math.sin(slotAngle) * desiredDist * 0.7,
+  };
 }
 
 function tryMove(e, dx, dy) {
@@ -1881,6 +2266,33 @@ function updateMelee(e, dt) {
   const nx = dx / dist, ny = dy / dist;
   e.facing = nx >= 0 ? 1 : -1;
 
+  // ── PHASE 2: ADAPTIVE LOW-HP BEHAVIOR ─────────────────────────────────
+  // When a non-boss enemy drops below 30% HP, it commits to one of two
+  // behavior modes for the rest of its life. Reads as "the enemy noticed
+  // it's dying" — adds variety to encounter outcomes without per-enemy
+  // scripting. Bosses skip (they have their own enrage system at 50% HP).
+  //
+  // ELITES always rage — affix enemies are presented as "elevated threats"
+  // and a final aggressive push reinforces that identity. No flee branch.
+  //
+  // COMMONS coin-flip rage / flee. Locked in once at the threshold so
+  // an enemy doesn't oscillate between modes as HP fluctuates from
+  // healing affixes (rare but possible).
+  //
+  //   rage  → speed +30%, attackCD ×0.7, ignore flank slot (charge straight in)
+  //   flee  → run AWAY from hero for 1.5s, no attacks during flee. After
+  //           the timer expires, return to normal AI (still <30% HP, but
+  //           the panic moment has passed — enemy fights to the death).
+  if (!e.boss && !e._lowHpDecided && e.hp > 0 && e.hp < e.maxHp * 0.30) {
+    e._lowHpDecided = true;
+    e._lowHpMode = e.elite ? 'rage' : (Math.random() < 0.5 ? 'rage' : 'flee');
+    if (e._lowHpMode === 'flee') {
+      e._fleeT = 1.0;     // tuned 1.5 → 1.0 after balance review (was too long)
+    }
+  }
+  // Decay flee timer (so flee→normal transition is smooth).
+  if (e._fleeT > 0) e._fleeT -= dt;
+
   // Ember affix — drop flame trail while this enemy is moving
   if (e.affix && e.affix.trail) {
     e._trailT -= dt;
@@ -1890,7 +2302,64 @@ function updateMelee(e, dt) {
     }
   }
 
+  // Elite ambient particles — affix-themed motes that emit from the
+  // body silhouette as the "this enemy is special" ambient cue.
+  // Replaces the old ground-halo glow that read as a floating disc.
+  // Spawn cadence ~2.4 / sec while alive; pauses while dead so death
+  // bursts read clearly. Boss enemies skip — they have their own
+  // visual (size, intro, enraged aura) and don't need this layer.
+  if (e.elite && !e.boss && !e.dead) {
+    e._eliteParticleT -= dt;
+    if (e._eliteParticleT <= 0) {
+      // 0.30-0.50 s per particle = 2-3 / sec, randomized so two
+      // adjacent elites don't pulse in lockstep.
+      e._eliteParticleT = 0.30 + Math.random() * 0.20;
+      const affixId = e.affix ? e.affix.id : null;
+      // Spawn from the body center — the enemy frame's centerY is the
+      // canonical body anchor (HP bar uses it too). This keeps motes
+      // emerging from / orbiting the visible body.
+      const frame = getEnemyFrame(e);
+      spawnEliteParticle(e.x, frame.centerY, affixId);
+    }
+  }
+
   if (e.state === 'attack') {
+    // Cast (energy projectile) attack — Grudnok-only ranged option.
+    // Branches off the standard melee attack-state path because it
+    // needs to fire a projectile rather than resolve an arc hitbox.
+    // Keeps using setState('attack') so all the state-machine plumbing
+    // (animTime reset, _swingHit reset, sprite-frame timing) works
+    // unchanged — only the resolution differs.
+    if (e._castAttack) {
+      const wu = e.def.castWindup;
+      if (e.stateTime >= wu && !e._swingHit) {
+        e._swingHit = true;
+        // Fire the orb from the boss's chest, aimed at the hero's
+        // current position. spawnOrb is the wizard-orb projectile —
+        // it homes mildly for a short period, so the player has to
+        // commit to the dodge instead of just side-stepping once.
+        // Scale damage by the same dmgMul that boosted e.damage at
+        // spawn (boss = 2× def.damage), so castProjectileDamage on
+        // the def reads as "damage at boss tier" not "raw value."
+        const tx = hero.x;
+        const ty = hero.y;
+        const dmgScale = (e.def.damage > 0) ? (e.damage / e.def.damage) : 1;
+        const castDmg = Math.max(1, Math.round(
+          e.def.castProjectileDamage * dmgScale * (e._enraged ? e.def.enrageDamageMul : 1)
+        ));
+        const orb = spawnOrb(e.x, e.y - 24, tx, ty, castDmg, e.type);
+        if (orb && e.affix) orb.affix = e.affix;
+        // Recoil camera shake — small, just the cast's "release" beat.
+        shakeCamera(3, 0.10);
+        playSfx('hero_hurt', { rate: 0.45, volume: 0.6 });
+      }
+      if (e.stateTime >= wu + 0.30) {
+        e._castAttack = false;
+        e._attackVariant = null;
+        setState(e, 'idle');
+      }
+      return;
+    }
     const prof = currentAttackProfile(e);
     // Dash-attack phase: enemy moves fast toward locked dash target during windup
     if (e._isDashing) {
@@ -1945,17 +2414,58 @@ function updateMelee(e, dt) {
     }
     if (e.stateTime >= prof.windup + prof.swing) {
       e._heavy = false;
+      e._attackVariant = null;
       e._isDashing = false;
       e._dashWindup = false;
+      // Release flank slot — enemy may need a different angle on the
+      // next approach (hero may have moved during the swing). Letting
+      // the slot re-claim freely after each attack keeps the ring of
+      // enemies dynamically positioned rather than locked into stale
+      // angles.
+      e._flankSlot = null;
       setState(e, 'idle');
     }
     return;
   }
 
+  // RANGED CAST — Grudnok's energy projectile attack. Decoupled from
+  // the swing-range commit so the boss can shoot from medium-far
+  // (160-540px). Probability gated so it doesn't dominate; cooldown
+  // tightens significantly in enrage so phase 2 has both melee and
+  // ranged threat. Without this Grudnok had ZERO range pressure and
+  // the player could kite him indefinitely.
+  if (e.def.castWindup && e.attackCD <= 0
+      && dist >= e.def.castMinDist
+      && dist <= e.def.castMaxDist) {
+    e._castCooldown = (e._castCooldown == null) ? 0 : e._castCooldown;
+    if (e._castCooldown <= 0 && !isWallAtWorld(e.x, e.y)) {
+      const cd = e._enraged ? e.def.castCooldownEnraged : e.def.castCooldown;
+      e._castCooldown = cd;
+      e.attackCD = cd;
+      e.aimX = nx; e.aimY = ny;
+      e._castAttack = true;
+      e._attackVariant = e.def.castSprite || 'cast';
+      e._heavy = false;
+      e._swingHit = false;
+      setState(e, 'attack');
+      // Cast windup SFX — slightly different rate from heavy so the
+      // player learns the audio tell ("low rumble = cleave, high
+      // crackle = fireball").
+      const cfg = e.def.castWindupSfx || e.def.windupSfx;
+      if (cfg) playSfx(cfg.key, { rate: cfg.rate, rateJitter: 0.06, volume: cfg.volume });
+      return;
+    }
+  }
+
+  // Phase 2: while fleeing, refuse to commit to swings — the enemy is
+  // running, not fighting. Once the flee timer expires, normal attack
+  // logic resumes. Skip the entire commit block during active flee.
+  const isFleeing = e._lowHpMode === 'flee' && e._fleeT > 0;
+
   // Commit to a swing when in range (or farther, if dash-capable)
   const swingRange = e.def.attackReach + 12;
   const dashRange  = e.def.dashEvery ? 380 : swingRange;
-  if (dist < swingRange && e.attackCD <= 0) {
+  if (!isFleeing && dist < swingRange && e.attackCD <= 0) {
     if (e.forceHeavy && e.def.heavyReach) e._heavy = true;
     else {
       // Enraged Grudnok biases hard toward heavy swings — visible
@@ -1965,9 +2475,59 @@ function updateMelee(e, dt) {
         : e.def.heavyChance;
       e._heavy = heavyChance ? Math.random() < heavyChance : false;
     }
+    // Pick the sprite-sheet variant key for grid8 bosses with a
+    // dedicated heavy animation (e.g. elite_orc_heavy.png hammer
+    // slam). Renderer reads e._attackVariant in enemyImg().
+    if (e._heavy && e.def.heavySprite) e._attackVariant = e.def.heavySprite;
+    else e._attackVariant = null;
     const prof = currentAttackProfile(e);
     e.attackCD = e.def.hitCD + prof.windup + prof.swing;
-    e.aimX = nx; e.aimY = ny;
+    // Phase 2 rage: faster recovery between swings — the "I have nothing
+    // to lose" final aggression. Tuned per-class after balance review:
+    //   commons     → 0.7 (×1.43 swing rate, very aggressive)
+    //   elites      → 0.85 (×1.18 swing rate — less drastic since elites
+    //                already have predictive aim + affixes stacking up)
+    // Stacks with boss enrage if the enemy is somehow both (shouldn't
+    // happen — bosses skip the lowHp decision — but defensive
+    // multiplication is cheap).
+    if (e._lowHpMode === 'rage') e.attackCD *= e.elite ? 0.85 : 0.7;
+    // ── PHASE 4: ELITE PREDICTIVE AIM ─────────────────────────────────
+    // Common enemies aim at the hero's CURRENT position. Elites lead the
+    // hero — predict where hero will be after the windup based on
+    // current movement direction, and aim THERE. Reads as "the elite
+    // saw my pattern and aimed where I'm going, not where I am" without
+    // needing per-elite scripted AI. Lead is partial (×0.55) so the
+    // prediction feels canny rather than psychic — a player who breaks
+    // their pattern mid-windup still mostly dodges. (Tuned down from
+    // 0.7 after the balance review flagged it as too tight on a 1-HP
+    // hero — at 0.7 a backstep didn't outrun the lead.)
+    //
+    // State gate: only walk/idle hero gets predicted. During dash,
+    // blink, or death, hero.vx/vy retain stale values from BEFORE the
+    // dash (the WASD branch that clears them is bypassed during those
+    // states), so predicting off them would lead the aim in the
+    // pre-dash direction — punishing the player for using a dash even
+    // though they successfully evaded with it.
+    //
+    // Bosses skip — they have their own scripted aim patterns
+    // (Grudnok's heavy slam, Bone Captain's dash, etc.) and shouldn't
+    // double-up on prediction logic.
+    const isMoving = (hero.vx !== 0 || hero.vy !== 0)
+                     && hero.state !== 'dash'
+                     && hero.state !== 'blink'
+                     && hero.state !== 'dead';
+    if (e.elite && !e.boss && isMoving) {
+      // Hero baseline speed ≈ 220 px/s. Lead = speed × windup × 0.55.
+      const HERO_SPEED_APPROX = 220;
+      const lead = HERO_SPEED_APPROX * prof.windup * 0.55;
+      const px = hero.x + hero.vx * lead;
+      const py = hero.y + hero.vy * lead;
+      const pdx = px - e.x, pdy = py - e.y;
+      const pd = Math.hypot(pdx, pdy) || 1;
+      e.aimX = pdx / pd; e.aimY = pdy / pd;
+    } else {
+      e.aimX = nx; e.aimY = ny;
+    }
     e._swingCount = (e._swingCount || 0) + 1;
     setState(e, 'attack');
     playWindupSfx(e);
@@ -2005,28 +2565,72 @@ function updateMelee(e, dt) {
       sepY += (ody / od) * push;
     }
   }
-  // Primary move attempt toward hero. Kite-close speed bonus applies
-  // when the hero is stationary at long range — so a wand player can't
-  // just stand still and outrange melee threats indefinitely.
-  const kiteMul = kiteCloseSpeedMul(dist);
-  const primaryDx = nx * e.speed * kiteMul * dt + sepX * 40 * dt;
-  const primaryDy = ny * e.speed * kiteMul * dt + sepY * 40 * dt;
+  // Primary move attempt toward FLANK SLOT (Phase 1 group coordination)
+  // OR rage/flee target (Phase 2 low-HP behavior).
+  //
+  //   normal   → _flankTargetFor(e) — claimed flank angle around hero
+  //   rage     → straight toward hero, ignore flank (committed final push)
+  //   fleeing  → straight away from hero (180° from hero), no attacks
+  //
+  // _flankSlot is claimed by _runFlankClaimPass at the top of updateEnemies.
+  // For non-flanking enemies (no slot), _flankTargetFor falls back to the
+  // hero's position — same as the previous behavior. Bosses and ranged
+  // enemies route through different update functions and never reach here.
+  let moveTarget;
+  let modeSpeedMul = 1;
+  if (isFleeing) {
+    // Run AWAY from hero — target is "200 px past my current position
+    // in the direction away from hero." Picked far enough that the
+    // enemy keeps moving steadily during the 1.5s flee window without
+    // overshooting and immediately reversing.
+    moveTarget = { x: e.x - nx * 200, y: e.y - ny * 200 };
+    modeSpeedMul = 1.20;
+  } else if (e._lowHpMode === 'rage') {
+    // Charge straight at hero — bypass the flank slot entirely. Rage
+    // is "committed final push" — the enemy doesn't care about
+    // positioning, just wants to land one more hit.
+    //
+    // Per-class speed mul + frost cap (balance review fix). Frost-affix
+    // elites slow the hero, so a frost+rage stack made the elite
+    // un-kiteable on a 1-HP hero. Cap rage speed at 1.15× when frost
+    // is the affix; standard 1.20× for elites otherwise; 1.30× for
+    // commons (their final push should feel scary because they can't
+    // also ignore your dodge).
+    const isFrostElite = e.elite && e.affix && e.affix.id === 'frost';
+    moveTarget = { x: hero.x, y: hero.y };
+    modeSpeedMul = isFrostElite ? 1.15 : (e.elite ? 1.20 : 1.30);
+  } else {
+    moveTarget = _flankTargetFor(e);
+  }
+  const tdx = moveTarget.x - e.x;
+  const tdy = moveTarget.y - e.y;
+  const td = Math.hypot(tdx, tdy) || 1;
+  const tnx = tdx / td, tny = tdy / td;
+  // Kite-close speed bonus stays keyed off distance-to-HERO, not flank
+  // distance — penalty for stationary kiting applies at the encounter
+  // level, not the per-enemy flank-approach level. Suppressed during
+  // flee — the bonus is meant to penalize standing-still-and-kiting
+  // by accelerating CLOSERS; applying it to a fleeing enemy instead
+  // accelerates them AWAY from hero, the opposite of intent.
+  const kiteMul = isFleeing ? 1 : kiteCloseSpeedMul(dist);
+  const primaryDx = tnx * e.speed * kiteMul * modeSpeedMul * dt + sepX * 40 * dt;
+  const primaryDy = tny * e.speed * kiteMul * modeSpeedMul * dt + sepY * 40 * dt;
   const prevX = e.x, prevY = e.y;
   tryMove(e, primaryDx, primaryDy);
   // Obstacle-detour: if primary move was blocked (didn't make meaningful progress),
   // try sliding perpendicular to the goal direction. This steers around pillars.
   const moveDelta = Math.hypot(e.x - prevX, e.y - prevY);
   if (moveDelta < Math.abs(primaryDx) * 0.3 + Math.abs(primaryDy) * 0.3) {
-    // Perpendicular vectors
-    const pxL = -ny, pyL = nx;         // left-perp
-    const pxR = ny, pyR = -nx;         // right-perp
-    // Try the side that brings us closer to hero. Same kiteMul so
-    // the perpendicular-slide path also accelerates when needed.
+    // Perpendicular to FLANK direction (not hero direction) — keeps the
+    // slide consistent with primary intent. If both primary + slide are
+    // blocked the stuck-detect below will free the slot for re-claim.
+    const pxL = -tny, pyL = tnx;
+    const pxR = tny, pyR = -tnx;
     const sideStep = e.speed * kiteMul * dt * 0.85;
     const tryLeft = { x: e.x + pxL * sideStep, y: e.y + pyL * sideStep };
     const tryRight = { x: e.x + pxR * sideStep, y: e.y + pyR * sideStep };
-    const dLeft = Math.hypot(hero.x - tryLeft.x, hero.y - tryLeft.y);
-    const dRight = Math.hypot(hero.x - tryRight.x, hero.y - tryRight.y);
+    const dLeft = (moveTarget.x - tryLeft.x) ** 2 + (moveTarget.y - tryLeft.y) ** 2;
+    const dRight = (moveTarget.x - tryRight.x) ** 2 + (moveTarget.y - tryRight.y) ** 2;
     if (dLeft < dRight) tryMove(e, pxL * sideStep, pyL * sideStep);
     else tryMove(e, pxR * sideStep, pyR * sideStep);
   }
@@ -2036,16 +2640,30 @@ function updateMelee(e, dt) {
   if (Math.abs(curPos - e._lastPos) < 0.2) {
     e._stuckT = (e._stuckT || 0) + dt;
     if (e._stuckT > 2.5) {
-      // Nudge enemy by up to 24px in hero direction to break free
-      const kick = 24;
-      tryMove(e, nx * kick, ny * kick);
-      // If still stuck after nudge, teleport to a slightly-offset cell near hero
-      if (Math.hypot(e.x - prevX, e.y - prevY) < 2) {
-        const tx = hero.x + nx * -50 + (Math.random() - 0.5) * 40;
-        const ty = hero.y + ny * -50 + (Math.random() - 0.5) * 40;
-        if (!isWallAtWorld(tx, ty)) { e.x = tx; e.y = ty; }
+      if (isFleeing) {
+        // Phase 2 fix: during flee, skip the toward-hero nudge + teleport
+        // entirely. The original logic (nudge in nx/ny = direction TO
+        // hero, then teleport to a position derived from hero coords)
+        // was reviewed and concluded to silently un-do the flee — a
+        // fleeing enemy that hit a wall got pushed back toward hero,
+        // defeating the mechanic. Cleanest fix: let the 1.0s flee timer
+        // expire naturally; the enemy will return to normal AI and
+        // pick a fresh flank slot then.
+        e._stuckT = 0;
+        e._flankSlot = null;
+      } else {
+        // Normal stuck recovery (rage + standard chase): nudge toward
+        // hero, then teleport to a near-hero cell if still blocked.
+        const kick = 24;
+        tryMove(e, nx * kick, ny * kick);
+        if (Math.hypot(e.x - prevX, e.y - prevY) < 2) {
+          const tx = hero.x + nx * -50 + (Math.random() - 0.5) * 40;
+          const ty = hero.y + ny * -50 + (Math.random() - 0.5) * 40;
+          if (!isWallAtWorld(tx, ty)) { e.x = tx; e.y = ty; }
+        }
+        e._stuckT = 0;
+        e._flankSlot = null;
       }
-      e._stuckT = 0;
     }
   } else {
     e._stuckT = 0;
@@ -2060,6 +2678,18 @@ function updateRanged(e, dt) {
   const nx = dx / dist, ny = dy / dist;
   e.facing = nx >= 0 ? 1 : -1;
 
+  // Ambient acid-drip emission for slime_spitter — a sparse green
+  // sparkle dripping down near the slime's mouth at random intervals.
+  // Acts as a passive visual cue that this slime is the toxic shooter
+  // type even when not actively casting. Throughput-tuned to ~1
+  // sparkle every ~0.8s so it reads as ambient drool, not a particle
+  // emitter spam. Cheap: just a probability gate per update tick.
+  if (e.def.projectile === 'acid' && Math.random() < dt * 1.2) {
+    const ox = (Math.random() - 0.5) * 16;
+    const oy = -8 + Math.random() * 12;
+    sparkle(e.x + ox, e.y + oy, '#aacc40');
+  }
+
   if (e.state === 'attack') {
     const windup = e.def.windup, swing = e.def.swing;
     if (e.stateTime >= windup && !e._swingHit) {
@@ -2067,16 +2697,24 @@ function updateRanged(e, dt) {
       const n = e.volleyCount || 1;
       const spread = 0.22;
       const baseAngle = Math.atan2(hero.y - (e.y - 20), hero.x - e.x);
+      // Per-def projectile selection. Default = spawnArrow (archer);
+      // slime_spitter overrides via def.projectile = 'acid' to use the
+      // slow green acid glob via spawnAcid. Add new projectile families
+      // here as enemies need them — keeps the dispatch in one place.
+      const spawnFn = e.def.projectile === 'acid' ? spawnAcid : spawnArrow;
+      const fireSfx = e.def.projectile === 'acid'
+        ? { key: 'slime_hit', rate: 0.7, volume: 0.55 }
+        : { key: 'sword_swing', rate: 1.4, rateJitter: 0.08, volume: 0.5 };
       for (let i = 0; i < n; i++) {
         const offset = n === 1 ? 0 : ((i / (n - 1)) - 0.5) * 2 * spread;
         const a = baseAngle + offset;
         const tx = e.x + Math.cos(a) * 600;
         const ty = (e.y - 20) + Math.sin(a) * 600;
-        const arrow = spawnArrow(e.x, e.y - 20, tx, ty, e.damage, e.type);
-        // Tag arrow with its source's affix so projectile-hit can apply debuffs
-        if (arrow && e.affix) arrow.affix = e.affix;
+        const proj = spawnFn(e.x, e.y - 20, tx, ty, e.damage, e.type);
+        // Tag projectile with its source's affix so projectile-hit can apply debuffs
+        if (proj && e.affix) proj.affix = e.affix;
       }
-      playSfx('sword_swing', { rate: 1.4, rateJitter: 0.08, volume: 0.5 });
+      playSfx(fireSfx.key, fireSfx);
     }
     if (e.stateTime >= windup + swing) setState(e, 'idle');
     return;
@@ -2309,6 +2947,10 @@ function updatePriest(e, dt) {
 }
 
 export function updateEnemies(dt, _hero) {
+  // Group flanking coordination — run once per tick before per-enemy
+  // updates so all melee enemies share a consistent slot map this frame.
+  // Negligible cost (max ~16 enemies × 8 slots = 128 angle checks).
+  _runFlankClaimPass();
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     e.animTime += dt;
@@ -2334,6 +2976,10 @@ export function updateEnemies(dt, _hero) {
     }
 
     if (e.attackCD > 0) e.attackCD -= dt;
+    // Cast cooldown — separate from attackCD so a swing landing
+    // doesn't reset the ranged-cast counter (and vice-versa). Lets
+    // Grudnok inter-leave melee + cast attacks naturally.
+    if (e._castCooldown && e._castCooldown > 0) e._castCooldown -= dt;
     if (e.stagger && e.stagger > 0) e.stagger -= dt;
     if (hero.state === 'dead') { setState(e, 'idle'); continue; }
 
@@ -2543,8 +3189,49 @@ export function updateEnemies(dt, _hero) {
 
 function enemyImg(e) {
   const s = e.state;
-  const key = e.def.prefix + (s === 'walk' ? 'walk' : s === 'attack' ? 'attack' : s === 'death' ? 'death' : 'idle');
+  // Attack variants — for grid8 bosses, the renderer can swap to a
+  // dedicated 'heavy' (hammer slam) or 'cast' (energy attack) sheet
+  // when the boss has e._attackVariant set. Falls through to 'attack'
+  // when the variant sheet is missing.
+  if (s === 'attack' && e._attackVariant) {
+    const variantKey = e.def.prefix + e._attackVariant;
+    if (images[variantKey]) return images[variantKey];
+  }
+  // attackSheet: per-def override of which sheet plays during the
+  // attack state. Used by slime_spitter to play `slime_cast.png`
+  // (acid-spit charge) instead of `slime_attack.png` (melee bite).
+  // Distinct from _attackVariant which is a per-instance flag for
+  // boss state machines. attackSheet is set on the def and applies
+  // to every attack action of that enemy.
+  if (s === 'attack' && e.def.attackSheet) {
+    const sheetKey = e.def.prefix + e.def.attackSheet;
+    if (images[sheetKey]) return images[sheetKey];
+  }
+  const key = e.def.prefix + (s === 'walk' ? 'walk' : s === 'attack' ? 'attack' : s === 'death' ? 'death' : s === 'hurt' ? 'hurt' : 'idle');
   return images[key] || images[e.def.prefix + 'idle'];
+}
+
+// Convert an enemy aim/facing vector to a compass-bucket row index for
+// 8-directional grid sheets. Output order matches the sprite-sheet rows
+// produced by import-boss-grudnok.js: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW,
+// 6=W, 7=NW. Falls back to south (4) on near-zero input.
+//
+// This mirrors hero.js vecToDirection — kept as a private helper here
+// to avoid importing from hero.js (circular import risk; enemies.js is
+// already imported by hero.js for getEnemyFrame).
+function enemyDirRow(e) {
+  // Boss aim vector — updated every frame in updateMelee from the
+  // hero-direction unit vector. Use that so the sprite tracks the
+  // hero even when the boss is idle (not actively committing a swing).
+  const dx = e.aimX || 0;
+  const dy = e.aimY || 0;
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return 4;   // south fallback
+  // atan2 gives 0=EAST, +Y=SOUTH (screen). Shift by +π/2 so NORTH=0,
+  // normalize to [0, 2π), bucket into 8 slices.
+  const TAU = Math.PI * 2;
+  let a = Math.atan2(dy, dx) + Math.PI / 2;
+  a = ((a % TAU) + TAU) % TAU;
+  return Math.round(a / (Math.PI / 4)) % 8;
 }
 
 // ─── Shadow profile — flying-only after the reverse-course ──────────
@@ -2613,7 +3300,11 @@ export function drawEnemy(ctx, e) {
     ctx.restore();
   }
   const size = e.def.drawSize * (e.sizeMul || 1);
-  const frames = Math.max(1, Math.floor(img.width / SPR));
+  // Per-def cell size — defaults to 100 (legacy SPR) for enemies
+  // that haven't opted into the new system. Pack-imported enemies
+  // override via def.cellSize.
+  const spr = getEnemySpr(e.def);
+  const frames = Math.max(1, Math.floor(img.width / spr));
   let f;
   if (e.state === 'attack' || e.state === 'death') {
     f = Math.min(frames - 1, Math.floor(e.stateTime * 14));
@@ -2622,7 +3313,14 @@ export function drawEnemy(ctx, e) {
   } else {
     f = Math.floor(e.animTime * e.def.fps) % frames;
   }
-  const sx = f * SPR;
+  const sx = f * spr;
+  // Grid8 sheets — boss sprite sheets are arranged as rows × cols where
+  // rows = 8 directions (N/NE/E/SE/S/SW/W/NW) and cols = animation
+  // frames. Pick the source-y based on the boss's aim direction so the
+  // sprite faces the hero correctly regardless of cardinal direction.
+  // Non-grid sheets stay at sy=0 (single-direction strips).
+  const useGrid = !!e.def.grid8;
+  const sy = useGrid ? enemyDirRow(e) * spr : 0;
 
   // Get the canonical visual frame. Every visual system below reads
   // from this so an HP-bar adjustment moves the affix badge + the
@@ -2682,36 +3380,10 @@ export function drawEnemy(ctx, e) {
   // If a future playtest finds grounded enemies still floating, the
   // fallback is a sprite-silhouette squash shadow (Eastward / HLD
   // pattern) — see _getEnemyShadowProfile comments for hooks.
-  const shadowProfile = _getEnemyShadowProfile(e);
-  if (shadowProfile) {
-    const shadowR = frame.halfWidth * shadowProfile.widthMul;
-    const shadowH = shadowR * shadowProfile.heightRatio;
-    const shY = frame.feetY + shadowProfile.yOffset;
-    const sg = ctx.createRadialGradient(e.x, shY, 1, e.x, shY, shadowR);
-    sg.addColorStop(0,    `rgba(0, 0, 0, ${shadowProfile.alpha})`);
-    sg.addColorStop(0.55, `rgba(0, 0, 0, ${(shadowProfile.alpha * 0.45).toFixed(3)})`);
-    sg.addColorStop(1,    'rgba(0, 0, 0, 0)');
-    ctx.save();
-    ctx.fillStyle = sg;
-    ctx.beginPath();
-    ctx.ellipse(e.x, shY, shadowR, shadowH, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    // Dev diagnostic — `window.__drawEnemyShadows = true` overlays the
-    // shadow ellipse outline + the anchor point. Useful when reactivating
-    // grounded shadows in a future pass.
-    if (typeof window !== 'undefined' && window.__drawEnemyShadows) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255, 100, 200, 0.85)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(e.x, shY, shadowR, shadowH, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255, 220, 90, 0.95)';
-      ctx.fillRect(e.x - 1, shY - 1, 3, 3);
-      ctx.restore();
-    }
-  }
+  // (Enemy ground shadow removed 2026-05-07 — character shadows pulled
+  // across the game per playtest review. Flying-enemy altitude is now
+  // implied by the bob animation alone; previous code anchored a
+  // contact ellipse at frame.feetY for the haunt profile.)
   // Grounded enemies intentionally render NO shadow. A combat-readability
   // experiment briefly added a sprite-silhouette squash shadow under
   // grounded enemies, but in playtest the dark patches read as ugly
@@ -2722,19 +3394,33 @@ export function drawEnemy(ctx, e) {
   // wear, wall contact AO). See _ENEMY_SHADOW_PROFILES comment for
   // history.
 
-  // Elite glow — affix color if any, else default gold. Aura sized to
-  // the body silhouette via frame.halfWidth.
-  if (e.elite && !e.boss && !e.dead) {
-    const pulse = 0.85 + 0.15 * Math.sin(e.animTime * 4);
-    const glowBase = e.affix ? e.affix.glow : 'rgba(255, 210, 90, ';
-    const r = frame.halfWidth * 1.5;
-    const g = ctx.createRadialGradient(e.x, frame.feetY + 4, 2, e.x, frame.feetY + 4, r);
-    g.addColorStop(0, glowBase + (0.28 * pulse).toFixed(3) + ')');
-    g.addColorStop(0.55, glowBase + (0.08 * pulse).toFixed(3) + ')');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(e.x - r, frame.feetY + 4 - r, r * 2, r * 2);
-  }
+  // Elite glow — REMOVED entirely (2026-05-06 round 2).
+  //
+  // History:
+  //   v1: radial gradient + fillRect → spherical sphere of light, made
+  //       enemies hover (the original "floating shadow" complaint).
+  //   v2: drawGroundGlow with elliptical clip → fixed projection geometry
+  //       but the colored halo around small entities (slimes, skeletons,
+  //       skel_archers) STILL read as "this enemy is sitting on a disc
+  //       of light." The fundamental problem isn't the geometry, it's
+  //       the concept: any colored ground patch under a small entity
+  //       reads as "the entity is hovering on a magic disc." Especially
+  //       bad when the entity color is similar to the affix color (e.g.
+  //       venom-green halo around a green slime).
+  //   v3 (current): NO ground glow on elites at all. Elite recognition
+  //       comes from the existing HP-bar affix badge (snowflake / flame /
+  //       drop / shield in affix color) and the affix-themed behavior
+  //       (frost slows on hit, ember leaves flame trail, venom poisons,
+  //       warded halves damage). For ambient "this is special" reads
+  //       at distance, see the alternatives proposed in the chat
+  //       thread (sprite rim outline / themed body particles / body
+  //       tint pulse) — pick a path before re-adding signal.
+  //
+  // Boss enraged aura still uses drawGroundGlow because (1) bosses are
+  // visually large enough that the patch reads as "standing IN" fire
+  // rather than "hovering ON" a disc, and (2) the enraged phase IS the
+  // boss's "I'm in my power form" state, where a ground effect is
+  // narratively appropriate.
   // Vanguard shield wedge — visual readout of frontal block + charges
   if (e.def.shieldCharges && !e._vShieldBroken && !e.dead) {
     const charges = e._shieldChargesLeft === undefined ? e.def.shieldCharges : e._shieldChargesLeft;
@@ -2766,17 +3452,14 @@ export function drawEnemy(ctx, e) {
       if (e._shieldFlash > 0) e._shieldFlash -= 0.016;
     }
   }
-  // Enraged boss — persistent red aura. Sized to body silhouette
-  // (slightly wider than elite glow for a more oppressive read).
+  // Enraged boss — persistent red aura. Sized slightly wider than
+  // elite glow for a more oppressive read. Same ground-projected
+  // ellipse pattern as the elite glow so the boss looks like it's
+  // STANDING IN a pool of fire rather than hovering above one.
   if (e.boss && e._enraged && !e.dead) {
     const pulse = 0.75 + 0.25 * Math.sin(e.animTime * 5);
-    const r = frame.halfWidth * 2.0;
-    const g = ctx.createRadialGradient(e.x, frame.feetY, 4, e.x, frame.feetY, r);
-    g.addColorStop(0, `rgba(255, 50, 30, ${(0.34 * pulse).toFixed(3)})`);
-    g.addColorStop(0.6, `rgba(255, 80, 40, ${(0.14 * pulse).toFixed(3)})`);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(e.x - r, frame.feetY - r, r * 2, r * 2);
+    const r = frame.halfWidth * 1.8;
+    drawGroundGlow(ctx, e.x, frame.feetY + 1, r, 'rgba(255, 70, 30, ', 0.34 * pulse, 0.14 * pulse);
   }
 
   // Wound tier — drives tint/tremble/blood drip. Elites + bosses still suffer
@@ -2829,7 +3512,13 @@ export function drawEnemy(ctx, e) {
   ctx.save();
   ctx.translate(e.x, e.y + tremble);
   if (staggerRot !== 0) ctx.rotate(staggerRot);
-  ctx.scale(e.facing * hitPopScaleX, hitPopScaleY);
+  // Grid8 enemies encode direction in the sprite-sheet row, so we
+  // MUST NOT mirror the X axis with e.facing — that would flip the
+  // already-correct directional sprite. Single-strip enemies still
+  // use facing-mirror (it's how an east-facing strip becomes a west-
+  // facing render). Hit-pop scaling applies in either case.
+  const fxFlip = useGrid ? 1 : e.facing;
+  ctx.scale(fxFlip * hitPopScaleX, hitPopScaleY);
 
   // Death fade — if the enemy is dying, fade alpha + squish vertically
   if (e.dead && (e.state === 'death' || e.state === 'exploding')) {
@@ -2857,7 +3546,7 @@ export function drawEnemy(ctx, e) {
     // Two-phase: first 40% frames full white; then fades to natural color.
     _fxCtx.globalCompositeOperation = 'source-over';
     _fxCtx.clearRect(0, 0, _fx.width, _fx.height);
-    _fxCtx.drawImage(img, sx, 0, SPR, SPR, 0, 0, size, size);
+    _fxCtx.drawImage(img, sx, sy, spr, spr, 0, 0, size, size);
     _fxCtx.globalCompositeOperation = 'source-atop';
     const t = e.hitFlash / 0.22;          // normalize against new max lifetime
     // Full-white snap during first burst, then fades
@@ -2882,10 +3571,10 @@ export function drawEnemy(ctx, e) {
       ? null
       : _pickEnemyRimColor(e);
     if (rimColor) {
-      _renderSpriteWithRim(img, sx, size, rimColor);
+      _renderSpriteWithRim(img, sx, sy, size, rimColor, spr);
       ctx.drawImage(_fx, 0, 0, size, size, -size/2, -size * 0.78, size, size);
     } else {
-      ctx.drawImage(img, sx, 0, SPR, SPR, -size/2, -size * 0.78, size, size);
+      ctx.drawImage(img, sx, sy, spr, spr, -size/2, -size * 0.78, size, size);
     }
     if (combinedFilter) ctx.filter = 'none';
   }
@@ -3118,6 +3807,39 @@ export function drawEnemyTelegraphs(ctx) {
     if (e.state !== 'attack' || e.dead) continue;
 
     if (e.def.behavior === 'melee') {
+      // Cast (ranged) attack on a melee boss — Grudnok fires an
+      // energy projectile from a melee def. The arc-telegraph here
+      // would draw the wrong reach + windup; skip in favor of a
+      // dedicated wizard-style ground circle below.
+      if (e._castAttack) {
+        const t = e.stateTime / e.def.castWindup;
+        if (t > 1) continue;
+        const alpha = Math.min(0.85, (0.3 + 0.5 * Math.sin(t * Math.PI * 4)) * (0.3 + 0.7 * t));
+        const dist = Math.hypot(hero.x - e.x, hero.y - e.y);
+        const tx = e.x + e.aimX * dist;
+        const ty = e.y - 10 + e.aimY * dist;
+        ctx.save();
+        // Ground circle under the boss — windup beat
+        ctx.strokeStyle = 'rgba(255, 140, 60, ' + alpha.toFixed(3) + ')';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath();
+        ctx.arc(e.x, e.y - 4, 28 + t * 14, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Lock-on crosshair at hero's current position
+        ctx.strokeStyle = 'rgba(255, 200, 120, ' + alpha.toFixed(3) + ')';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(tx, ty, 12, 0, Math.PI * 2);
+        ctx.moveTo(tx - 16, ty); ctx.lineTo(tx - 8, ty);
+        ctx.moveTo(tx + 8, ty); ctx.lineTo(tx + 16, ty);
+        ctx.moveTo(tx, ty - 16); ctx.lineTo(tx, ty - 8);
+        ctx.moveTo(tx, ty + 8); ctx.lineTo(tx, ty + 16);
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
       const prof = currentAttackProfile(e);
       const t = e.stateTime / prof.windup;
       if (t > 1) continue;

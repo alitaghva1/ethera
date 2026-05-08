@@ -12,13 +12,14 @@ import { isWallAtWorld, TILE, hitCrackedWall, damageCrackedWall, roomSecrets, tr
 import { hitSpark, dashTrail, footPuff, killRing, sparkle } from './particles.js';
 import { shakeCamera, pulseZoom } from './camera.js';
 import { triggerHitStop, spawnDamageNumber, spawnSlash, triggerPerfectDodge, hasCounterAttack, consumeCounterAttack, grantCounterAttack, triggerScreenFlash, spawnHitMarker } from './fx.js';
+import { composeSlashOpts, composeBoltFlags, applyHitFeedbackTier } from './attackFeel.js';
 import { stats } from './stats';
 import { WEAPONS } from './weapons.js';
 import {
   spawnLightningArc, scheduleEchoHit, registerComboHit,
   beginThunderTrail, addThunderTrailPoint, endThunderTrail,
   cataclysmRegisterHit, pierceLine, wandererOnDodge,
-  spawnExplosion, combo,
+  spawnExplosion, combo, spawnStormcallerCast, spawnFlamePatch,
 } from './synergies.js';
 import { spawnEmberFlame, enemies as activeEnemies, getEnemyFrame } from './enemies.js';
 import { dropGold } from './gold.js';
@@ -918,6 +919,18 @@ export function updateHero(dt, enemies, mouseWorld) {
     }
   }
   // STORMCALLER — periodic strike on the nearest enemy in range.
+  //
+  // Stream-C visibility pass (2026-05-06): the user reported they
+  // "couldn't even see it firing." Two original problems: (a) no cast
+  // point on the hero, so the bolt looked acausal, and (b) the
+  // sparkle-only flash at the target was eaten by combat noise.
+  //
+  // New flow per proc:
+  //   1. spawnStormcallerCast(hero) → 0.18s cyan charge orb at hero
+  //   2. spawnLightningArc(hero, target, 'storm') → beefier arc with
+  //      branches + crackle endpoints, 0.45s lifespan
+  //   3. First proc per ROOM also pushes a "STORMCALLER" floating text
+  //      so the player can NAME the relic that just fired.
   if (hero.stormcaller && enemies) {
     hero.stormcallerTick -= dt;
     if (hero.stormcallerTick <= 0) {
@@ -934,9 +947,24 @@ export function updateHero(dt, enemies, mouseWorld) {
       }
       if (nearest) {
         nearest.takeDamage(hero.stormcallerDamage, 0, 0);
-        // Small visual cue — reuse the sparkle particle for a flash at the target.
-        sparkle(nearest.x, nearest.y - 8, '#80c8ff');
-        sparkle(nearest.x, nearest.y - 2, '#ffffff');
+        // Cast orb on hero — the "I'm firing" tell.
+        spawnStormcallerCast(hero.x, hero.y - 18);
+        // Beefy bolt — uses 'storm' style for the bigger primary +
+        // double branches (see spawnLightningArc in synergies.js).
+        spawnLightningArc(hero.x, hero.y - 18, nearest.x, nearest.y - 8, 'storm');
+        // Damage number tinted cyan so the player can read THIS hit
+        // as stormcaller-sourced (vs sword/blast white numbers).
+        const _frame = getEnemyFrame(nearest);
+        spawnDamageNumber(nearest.x, _frame.topY - 8, hero.stormcallerDamage, { color: '#a0e8ff' });
+        // First proc per room — float "STORMCALLER" label above hero.
+        // Per-room reset sits in main.js loadRoom — we lazy-default to
+        // not-shown on first call so existing runs benefit immediately.
+        // Amount=15 just tunes spawnDamageNumber's log-scale size into the
+        // readable range (~24px), the actual rendered text is the label.
+        if (!hero._stormcallerShownThisRoom) {
+          hero._stormcallerShownThisRoom = true;
+          spawnDamageNumber(hero.x, hero.y - 56, 15, { text: 'STORMCALLER', color: '#a0e8ff' });
+        }
       }
     }
   }
@@ -1473,6 +1501,17 @@ export function updateHero(dt, enemies, mouseWorld) {
           // number. Tinted gold instead of cyan to telegraph the
           // resonance moment mid-flight.
           forcedCrit: _boltForcedCrit,
+          // ATTACK FEEL — visual flag set populated from active relics
+          // + dominant theme. drawProjectiles reads bolt.styleFlags
+          // and layers extra particles per flag (pyromancer = embers,
+          // chain_lightning = arc trails, theme:flame = orange halo,
+          // etc.). Flags are populated at spawn and never mutated.
+          styleFlags: composeBoltFlags(hero),
+          // Damage tier 0..3 — drawProjectiles uses this to scale the
+          // bolt core radius so a 50+ damage bolt visibly reads bigger
+          // than a tap. Computed at spawn so all bolts get the size
+          // proportional to their damage at fire time.
+          dmgTier: _boltDmg >= 50 ? 3 : _boltDmg >= 30 ? 2 : _boltDmg >= 18 ? 1 : 0,
         }
       );
       // Muzzle flash — small sparkle burst at the spawn point so the
@@ -1684,41 +1723,26 @@ export function updateHero(dt, enemies, mouseWorld) {
       playSfx('sword_swing', { rate: swingRate, rateJitter: 0.12, volume: swingVol });
       // Hammer swing adds a deep pre-impact thump
       if (w.id === 'hammer') playSfx('slime_death', { rate: 0.4, volume: 0.35 });
-      // Slash VFX — widen + slow for finisher/charge
-      const slashWidth = w.slashWidth * (isCharged ? 1.6 : isFinisher ? 1.3 : 1);
-      const slashTrails = w.slashTrailCount + (isCharged ? 3 : isFinisher ? 1 : 0);
-      const slashArc = w.arc * (isCharged ? 1.25 : isFinisher ? 1.15 : 1);
-      const slashDur = w.swingDur * 0.65 * (isCharged ? 1.4 : isFinisher ? 1.15 : 1);
-      // Slash color logic:
-      //  - Charged release: gold
-      //  - Finisher (3rd hit): per-weapon "signature color" — sword fiery red,
-      //    dagger electric cyan, hammer molten orange
-      //  - Chain mid-hits (swingIndex 1): slight tinted brightening of base
-      //  - Default: weapon base slashColor
-      let slashColor;
-      if (isCharged) {
-        slashColor = 'rgba(255, 230, 140, ';
-      } else if (isFinisher) {
-        slashColor = w.id === 'sword'  ? 'rgba(255, 120, 80, '       // fiery red
-                   : w.id === 'dagger' ? 'rgba(130, 240, 255, '      // electric cyan
-                   : w.id === 'hammer' ? 'rgba(255, 160, 60, '       // molten orange
-                   : 'rgba(255, 200, 140, ';
-      } else if (hero.swingIndex === 1) {
-        // 2nd-hit — subtle brightening tint to signal a chain is building
-        slashColor = w.id === 'sword'  ? 'rgba(255, 235, 200, '
-                   : w.id === 'dagger' ? 'rgba(210, 240, 255, '
-                   : w.id === 'hammer' ? 'rgba(255, 210, 160, '
-                   : w.slashColor;
-      } else {
-        slashColor = w.slashColor;
-      }
-      spawnSlash(hero.x, hero.y - 8, hero.aimX, hero.aimY, w.reach * hero.reachMul * (isCharged ? 1.15 : 1), {
-        color: slashColor,
-        width: slashWidth,
-        trailCount: slashTrails,
-        arc: slashArc,
-        dur: slashDur,
+      // Slash VFX — composed by attackFeel.js so the visual scales with
+      // build identity (relic count → wider blade, dominant theme →
+      // tinted color, storm → +1 trail, flame T2 → wider arc). Charged
+      // release + finisher per-weapon colors still take precedence over
+      // the theme tint so the player reads "I just released a charged
+      // shot" / "I just landed a finisher" as a brighter moment within
+      // the broader build identity.
+      const slashOpts = composeSlashOpts(hero, w, {
+        isCharged,
+        isFinisher,
+        swingIndex: hero.swingIndex,
       });
+      spawnSlash(
+        hero.x,
+        hero.y - 8,
+        hero.aimX,
+        hero.aimY,
+        w.reach * hero.reachMul * (isCharged ? 1.15 : 1),
+        slashOpts,
+      );
       // Reset charge state after releasing the swing
       hero.chargeTime = 0;
       // Stash flags that hit logic reads during the swing window
@@ -2478,16 +2502,11 @@ export function updateHero(dt, enemies, mouseWorld) {
           const sparkColor = isCounter ? '#ffeb99'
                            : isExec ? '#ff6a55'
                            : (e.def && (e.def.bloodColor || e.def.color)) || '#ffddaa';
-          hitSpark(e.x, getEnemyFrame(e).centerY, hero.aimX * -1, hero.aimY * -1, sparkColor);
           const wpnShake = w.shakeMul || 1;
           const wpnHs = w.hitStopMul || 1;
-          // Per-enemy weight multiplier — a slime tap shouldn't shake
-          // the camera as hard as a vanguard slam. Read from def.weight
-          // (defaults 1.0). Game-feel audit P0.
-          const enemyWeight = (e.def && e.def.weight) || 1.0;
-          shakeCamera((isCounter ? 10 : isCrit ? 7 : 4.5) * wpnShake * enemyWeight,
-                      (isCounter ? 0.2 : 0.14) * Math.max(0.85, wpnShake));
-          // Weapon-specific hit audio — dagger rings high and sharp, hammer thuds deep
+          // Weapon-specific hit audio — dagger rings high and sharp,
+          // hammer thuds deep. Layered SEPARATELY from the tier helper
+          // because per-weapon timbre is identity, not damage scale.
           const wpnHitBase = w.id === 'dagger' ? 1.4 : w.id === 'hammer' ? 0.55 : 1.0;
           const wpnHitVol  = w.id === 'hammer' ? 1.05 : w.id === 'dagger' ? 0.75 : 0.9;
           const critMul = isCrit ? 0.85 : 1.0;
@@ -2507,6 +2526,27 @@ export function updateHero(dt, enemies, mouseWorld) {
           // as just "a big crit" to the player.
           spawnDamageNumber(e.x, getEnemyFrame(e).topY - 8, finalDmg, { crit: isCrit, exec: isExec, counter: isCounter, charged: chargedHit, finisher: finisherHit, dir: { x: hero.aimX, y: hero.aimY }, elementTag: e._lastElementTag });
           spawnHitMarker(e.x, e.y - 20, isCrit || isCounter || isExec || chargedHit || finisherHit);
+          // ATTACK FEEL — single helper for shake + hitspark + hitstop +
+          // crit splash + crit sound. Reads damage/maxHp ratio so a tap
+          // on a boss feels DIFFERENT from a tap on a slime, and a crit
+          // gets a unique red splash ring + brighter sound. Replaces
+          // the prior uniform shake/spark/hitstop formula. Counter +
+          // exec keep their hard-coded heavier shake/stop because they
+          // are "moment" hits with bespoke feedback timing layered on
+          // top of the tier feedback.
+          applyHitFeedbackTier(e, finalDmg, {
+            isCrit: isCrit || isCounter || isExec,
+            dirX: hero.aimX,
+            dirY: hero.aimY,
+            sparkColor: sparkColor,
+          });
+          // Counter / exec extra shake punch on top of the tier shake —
+          // these are CHOICE moments, not just damage tier.
+          if (isCounter || isExec) {
+            const enemyWeight = (e.def && e.def.weight) || 1.0;
+            shakeCamera((isCounter ? 6 : 3) * wpnShake * enemyWeight,
+                        (isCounter ? 0.18 : 0.12));
+          }
           // Wizard-kit Sprint 3B — slot resonance T1 adds +0.05s hit-stop
           // to all sword hits (additive on top of the base hit-stop).
           // Only applies on the SWORD slot (this code path is the sword
@@ -2632,6 +2672,13 @@ export function updateHero(dt, enemies, mouseWorld) {
           cataclysmRegisterHit(hero.damageMul || 1);
           // PYROMANCER: every 4th hit spawns a small fire explosion.
           // FUSION: Conflagration — bumps to every 2nd hit with bigger radius.
+          //
+          // Stream-C visibility pass (2026-05-06): pre-glow on hero is
+          // drawn out of synergies.drawPyroCharge once pyroCount reaches
+          // threshold-1. Here, on the proc itself, we add visible
+          // "+PYRO" floating text + lingering flame patches around the
+          // hit so the impact reads as a relic-sourced burst, not just
+          // a generic explosion.
           if (hero.pyromancer) {
             const threshold = hero.fusionConflagration ? 2 : 4;
             hero.pyroCount = (hero.pyroCount + 1) % threshold;
@@ -2640,6 +2687,17 @@ export function updateHero(dt, enemies, mouseWorld) {
               const radius = hero.fusionConflagration ? 70 : 52;
               const dmg = (hero.fusionConflagration ? 26 : 18) * (hero.damageMul || 1);
               spawnExplosion(e.x, e.y - 6, radius, dmg, 'fire');
+              // Two short-lived flame patches around the hit — 60° offset
+              // from each other, just inside the explosion radius. Pure
+              // visual; no damage. Sells "the floor's on fire now."
+              const ang = Math.random() * Math.PI * 2;
+              spawnFlamePatch(e.x + Math.cos(ang) * radius * 0.6,
+                              e.y + Math.sin(ang) * radius * 0.6 - 4);
+              spawnFlamePatch(e.x + Math.cos(ang + 2.1) * radius * 0.55,
+                              e.y + Math.sin(ang + 2.1) * radius * 0.55 - 4);
+              // Floating "PYRO" label above the impact for clear sourcing.
+              // Amount=10 sizes the text to ~22px via log-scale; render is the label.
+              spawnDamageNumber(e.x, e.y - 32, 10, { text: '+PYRO', color: '#ffb060' });
             }
           }
         }
@@ -2662,6 +2720,13 @@ export function updateHero(dt, enemies, mouseWorld) {
 // after a real kill source already landed).
 export function damageHero(amount, fromX, fromY, sourceType = null) {
   if (sourceType) hero._lastHurtBy = sourceType;
+  // Phase 3 hook: record damage by enemy type for the adaptive-wave-2
+  // composition pass. main.js installs window.__recordCombatDamage
+  // when a combat room loads + reads/clears it at wave 2 spawn.
+  // No-op when not in a combat room (hook is null between rooms).
+  if (sourceType && typeof window !== 'undefined' && window.__recordCombatDamage) {
+    window.__recordCombatDamage(sourceType, amount);
+  }
   if (hero.state === 'dead') return 'absorbed';
 
   // ── ECHO STEP (Sprint 3C) ─────────────────────────────────────
@@ -2965,25 +3030,27 @@ export function damageHero(amount, fromX, fromY, sourceType = null) {
   return 'hit';
 }
 
-// Pick sprite + frame count based on state
+// Pick sprite + frame count based on state.
+// Phase 3 unification — image keys renamed `knight_*` → `mage_*` so the
+// asset slot name matches the actual content (mage sprites, not knight).
 function heroFrameInfo() {
   switch (hero.state) {
-    case 'attack': return { img: images.knight_attack, fps: 18, loop: false };
-    case 'hurt':   return { img: images.knight_hurt,   fps: 12, loop: false };
-    case 'dead':   return { img: images.knight_death,  fps: 8,  loop: false };
-    case 'walk':   return { img: images.knight_walk,   fps: 12, loop: true };
+    case 'attack': return { img: images.mage_attack, fps: 18, loop: false };
+    case 'hurt':   return { img: images.mage_hurt,   fps: 12, loop: false };
+    case 'dead':   return { img: images.mage_death,  fps: 8,  loop: false };
+    case 'walk':   return { img: images.mage_walk,   fps: 12, loop: true };
     // Wizard-kit: 'shield' uses idle pose (hero is mostly rooted —
     // shield-walk is half-speed, idle anim still reads as right).
     // 'dash' uses the walk sheet (afterimage trail does most of
     // the visual; the live sprite is hidden during dash anyway).
-    case 'shield': return { img: images.knight_idle,   fps: 6,  loop: true };
-    case 'dash':   return { img: images.knight_walk,   fps: 12, loop: true };
+    case 'shield': return { img: images.mage_idle,   fps: 6,  loop: true };
+    case 'dash':   return { img: images.mage_walk,   fps: 12, loop: true };
     // Wizard-kit Sprint 2B — blink renders the idle pose: the hero
     // is visible at the ARRIVAL position (post-teleport) for the
     // brief blink-window. Sparkle rings drawn separately convey
     // the teleport effect.
-    case 'blink':  return { img: images.knight_idle,   fps: 6,  loop: true };
-    default:       return { img: images.knight_idle,   fps: 6,  loop: true };
+    case 'blink':  return { img: images.mage_idle,   fps: 6,  loop: true };
+    default:       return { img: images.mage_idle,   fps: 6,  loop: true };
   }
 }
 
@@ -3360,32 +3427,10 @@ export function drawHero(ctx) {
     ctx.restore();
   }
 
-  // Hero shadow — tightened per the "grounded contact shadow" pass.
-  // The previous tuning (radius HERO_DRAW * 0.27 ≈ 16, height ratio
-  // 0.36, alpha 0.45) produced a soft moderate ellipse that read as
-  // slightly too floaty alongside the typed enemy contact shadows.
-  // Now matches the contact_humanoid profile in enemies.js: tighter
-  // radius, flatter ratio, slightly stronger alpha.
-  //   radius:  0.27 → 0.23 of HERO_DRAW (~14 px)
-  //   ratio:   0.36 → 0.28 (flatter — proper contact silhouette)
-  //   alpha:   0.45 → 0.55 (more solid contact darkness)
-  //   yOffset: hero.y + 14 → hero.y + 12 (slightly closer to body)
-  // Hamlet stays softer (0.22 alpha) so it doesn't fight the painted
-  // scene's own baked shadows under trees/walls.
-  const shX = hero.x, shY = hero.y + 12;
-  const inHamlet = room.kind === 'hamlet';
-  const shadowR = (inHamlet ? HERO_DRAW_HAMLET : HERO_DRAW) * 0.23;
-  const shadowAlpha = inHamlet ? 0.22 : 0.55;
-  const sg = ctx.createRadialGradient(shX, shY, 1, shX, shY, shadowR);
-  sg.addColorStop(0, `rgba(0,0,0,${shadowAlpha})`);
-  sg.addColorStop(0.55, `rgba(0,0,0,${(shadowAlpha * 0.45).toFixed(3)})`);
-  sg.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.save();
-  ctx.fillStyle = sg;
-  ctx.beginPath();
-  ctx.ellipse(shX, shY, shadowR, shadowR * 0.28, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  // (Hero ground shadow removed 2026-05-07 — character shadows pulled
+  // across the game per playtest review. The hero sprite's own dark
+  // base + the 1-tile floor wear under the hero spawn carries the
+  // grounding cue.)
   // 8-directional sprites handle facing natively — no horizontal flip.
   // Sub-pixel bob — character never freezes vertically. Idle uses a
   // slow breathing pattern; walk overlays a faster footstep cadence

@@ -1,4 +1,6 @@
 // Asset loader — images + audio buffers
+import { loadAtlas } from './atlas.js';
+
 export const images = {};
 export const audio = {};
 const failed = [];
@@ -166,23 +168,64 @@ function loadAudio(key, src) {
   });
 }
 
+// Room metadata loader — fetches a JSON sidecar (collision grid + room
+// dims) for a baked room PNG. Stored on the shared `images` map under
+// the given key — yes, JSON-on-the-image-map is a slight lie of types,
+// but room rendering already reads images[key] for the PNG so a sibling
+// images[`${key}_meta`] is the cheapest plumb. Object has shape:
+//   { width, height, tileSize, imageWidth, imageHeight, collision: bool[][] }
+function loadRoomMeta(key, src) {
+  return fetch(src)
+    .then((r) => {
+      if (!r.ok) throw new Error(`room meta load failed: ${src} (${r.status})`);
+      return r.json();
+    })
+    .then((data) => {
+      images[key] = data;
+      bump(src);
+    })
+    .catch((e) => {
+      failed.push(src);
+      console.warn('room meta failed:', src, e.message);
+      bump(src);
+    });
+}
+
 export async function loadAll(progressCb) {
   onProgress = progressCb || null;
   loadedCount = 0;
   const promises = [
-    loadImage('knight_idle',  'assets/characters/knight_idle.png'),
-    loadImage('knight_walk',  'assets/characters/knight_walk.png'),
-    loadImage('knight_attack','assets/characters/knight_attack.png'),
-    loadImage('knight_hurt',  'assets/characters/knight_hurt.png'),
-    loadImage('knight_death', 'assets/characters/knight_death.png'),
+    // Phase 3 unification — paths/keys aligned with content. The hero IS
+    // a mage; previously the slot was named `knight_*` (legacy from the
+    // pre-mage-import era) but the PNGs themselves are mage sprites. The
+    // name lie was confusing tooling. Renamed both files + cache keys
+    // here. Enemy `knight_*` entries below are an UNRELATED enemy.
+    loadImage('mage_idle',  'assets/characters/mage_idle.png'),
+    loadImage('mage_walk',  'assets/characters/mage_walk.png'),
+    loadImage('mage_attack','assets/characters/mage_attack.png'),
+    loadImage('mage_hurt',  'assets/characters/mage_hurt.png'),
+    loadImage('mage_death', 'assets/characters/mage_death.png'),
     loadImage('slime_idle',   'assets/enemies/slime_idle.png'),
     loadImage('slime_walk',   'assets/enemies/slime_walk.png'),
     loadImage('slime_attack', 'assets/enemies/slime_attack.png'),
+    // 'cast' = projectile-attack windup sheet for the acid-spitter
+    // slime variant. Used when an enemy's behavior is 'caster' (or
+    // similar) and it needs a visually-distinct charging animation
+    // separate from the melee 'attack' lunge.
+    loadImage('slime_cast',   'assets/enemies/slime_cast.png'),
     loadImage('slime_death',  'assets/enemies/slime_death.png'),
     loadImage('skel_idle',    'assets/enemies/skel_idle.png'),
     loadImage('skel_walk',    'assets/enemies/skel_walk.png'),
     loadImage('skel_attack',  'assets/enemies/skel_attack.png'),
+    loadImage('skel_hurt',    'assets/enemies/skel_hurt.png'),
     loadImage('skel_death',   'assets/enemies/skel_death.png'),
+    // Crypt spider (Phase 2 Epic RPG World import) — 64×64 cells, all
+    // 5 states. Sized as fodder enemy: faster + lower HP than skeleton.
+    loadImage('crypt_spider_idle',   'assets/enemies/crypt_spider_idle.png'),
+    loadImage('crypt_spider_walk',   'assets/enemies/crypt_spider_walk.png'),
+    loadImage('crypt_spider_attack', 'assets/enemies/crypt_spider_attack.png'),
+    loadImage('crypt_spider_hurt',   'assets/enemies/crypt_spider_hurt.png'),
+    loadImage('crypt_spider_death',  'assets/enemies/crypt_spider_death.png'),
     loadImage('orc_idle',     'assets/enemies/orc_idle.png'),
     loadImage('orc_walk',     'assets/enemies/orc_walk.png'),
     loadImage('orc_attack',   'assets/enemies/orc_attack.png'),
@@ -283,10 +326,17 @@ export async function loadAll(progressCb) {
     loadImage('armored_orc_walk',       'assets/enemies/armored_orc_walk.png'),
     loadImage('armored_orc_attack',     'assets/enemies/armored_orc_attack.png'),
     loadImage('armored_orc_death',      'assets/enemies/armored_orc_death.png'),
+    // Grudnok (elite_orc) — 8-direction GRID sheets (rows = N/NE/E/SE/S/SW/W/NW,
+    // cols = animation frames). Renderer reads the directional row when the
+    // def has grid8: true. Extra sheets (hurt/heavy/cast) drive the new attack
+    // patterns + stagger animation; see src/enemies.js elite_orc def.
     loadImage('elite_orc_idle',         'assets/enemies/elite_orc_idle.png'),
     loadImage('elite_orc_walk',         'assets/enemies/elite_orc_walk.png'),
     loadImage('elite_orc_attack',       'assets/enemies/elite_orc_attack.png'),
     loadImage('elite_orc_death',        'assets/enemies/elite_orc_death.png'),
+    loadImage('elite_orc_hurt',         'assets/enemies/elite_orc_hurt.png'),
+    loadImage('elite_orc_heavy',        'assets/enemies/elite_orc_heavy.png'),
+    loadImage('elite_orc_cast',         'assets/enemies/elite_orc_cast.png'),
     loadImage('knight_templar_idle',    'assets/enemies/knight_templar_idle.png'),
     loadImage('knight_templar_walk',    'assets/enemies/knight_templar_walk.png'),
     loadImage('knight_templar_attack',  'assets/enemies/knight_templar_attack.png'),
@@ -295,7 +345,91 @@ export async function loadAll(progressCb) {
     loadImage('orc_rider_walk',         'assets/enemies/orc_rider_walk.png'),
     loadImage('orc_rider_attack',       'assets/enemies/orc_rider_attack.png'),
     loadImage('orc_rider_death',        'assets/enemies/orc_rider_death.png'),
-    loadImage('dungeon_tiles','assets/tiles/dungeon.png'),
+    // Phase 3 unification — REMOVED legacy procedural tile sheets:
+    //   • dungeon_tiles (1 PNG)
+    //   • floor_crypt_0..15 (16 PNGs)
+    //   • wall_crypt_body_0..3 + wall_crypt_corner_{tl,tr,bl,br} (8 PNGs)
+    // These were boot-loaded but had NO `images.*` consumer anywhere in
+    // the codebase — pure orphans. The canonical render path is the baked
+    // zone composite (room.bakedImage), which doesn't need tile-by-tile
+    // sheets. Removed 25 boot HTTP requests + ~200 KB of payload.
+    // Asset files also deleted from public/assets/tiles/.
+
+    // ── EPIC RPG WORLD CRYPT PACK (Phase 1 — 2026-05-07) ────────────────
+    // Master terrain atlas — 50×58 grid of 32px tiles (1600×1856 PNG).
+    // The Pack's `Tilesets/Tileset-Terrain.tsx` enumerates which IDs are
+    // ground vs. transition vs. wall sections; the Sample Map.tmx shows
+    // the canonical "stone ground" pool the artist uses repeatedly:
+    // GIDs 518-520, 469, 569 (subtract 1 for 0-indexed local IDs).
+    // Wall variant atlases (16×15 grids of 32px = 512×480 PNGs) ship
+    // alongside as wall-1/2/3 — used by the Phase 1b Wang autotile.
+    loadAtlas('crypt_terrain', 'assets/packs/crypt/tilesets/Tileset-Terrain.png', {
+      tileSize: 32, cols: 50, rows: 58,
+    }),
+    loadAtlas('crypt_wall_1', 'assets/packs/crypt/tilesets/wall-1.png', {
+      tileSize: 32, cols: 16, rows: 15,
+    }),
+    loadAtlas('crypt_wall_2', 'assets/packs/crypt/tilesets/wall-2.png', {
+      tileSize: 32, cols: 16, rows: 15,
+    }),
+    loadAtlas('crypt_wall_3', 'assets/packs/crypt/tilesets/wall-3.png', {
+      tileSize: 32, cols: 16, rows: 15,
+    }),
+
+    // ── BAKED ROOMS (Phase Path-A — 2026-05-07) ──────────────────────
+    // Pre-rendered hand-composed crypt room from the artist's
+    // Sample Map.tmx. The PNG is the full multi-room composition
+    // (1120×800 native, 32px tiles). Engine renders it as a single
+    // drawImage call when room.bakedImage is set, bypassing per-tile
+    // floor/wall rendering. Collision data is loaded as JSON sibling.
+    loadImage('room_crypt_sample',       'assets/rooms/crypt_sample.png'),
+    loadImage('room_crypt_sample_anims', 'assets/rooms/crypt_sample_anims.png'),
+    loadRoomMeta('room_crypt_sample_meta', 'assets/rooms/crypt_sample.json'),
+    // Cropped chamber from Crypt example map.tmx — a clean,
+    // self-contained sarcophagus chamber. Smaller (~14×12 cells) and
+    // designed as one playable space, vs the multi-chamber Sample Map.
+    loadImage('room_crypt_chamber_01',       'assets/rooms/crypt_chamber_01.png'),
+    loadImage('room_crypt_chamber_01_anims', 'assets/rooms/crypt_chamber_01_anims.png'),
+    loadRoomMeta('room_crypt_chamber_01_meta', 'assets/rooms/crypt_chamber_01.json'),
+    // Main hall — bottom half of the Sample Map, cropped to the
+    // 231-cell single connected component. Pillared corridor + dais
+    // + sarcophagi + animated torch + carpet runner. The artist's
+    // richest playable composition.
+    loadImage('room_crypt_main_hall',       'assets/rooms/crypt_main_hall.png'),
+    loadImage('room_crypt_main_hall_anims', 'assets/rooms/crypt_main_hall_anims.png'),
+    loadRoomMeta('room_crypt_main_hall_meta', 'assets/rooms/crypt_main_hall.json'),
+    // Cemetery Sample Map — outdoor graveyard, 35×20 cells, 573-cell
+    // single connected component. Terrain variety (grass + dirt +
+    // leaves + stone path), tombs/crypts, fences, fall foliage,
+    // stairs. The cleanest pack-quality playable composition we have.
+    loadImage('room_cemetery_sample',       'assets/rooms/cemetery_sample.png'),
+    loadImage('room_cemetery_sample_anims', 'assets/rooms/cemetery_sample_anims.png'),
+    loadRoomMeta('room_cemetery_sample_meta', 'assets/rooms/cemetery_sample.json'),
+    // User-edited Sample Map 2 — same Cemetery base with select objects
+    // removed for cleaner walkability. The user opens this in Tiled,
+    // removes problem objects, saves, we re-bake.
+    loadImage('room_cemetery_sample_2',       'assets/rooms/cemetery_sample_2.png'),
+    loadImage('room_cemetery_sample_2_anims', 'assets/rooms/cemetery_sample_2_anims.png'),
+    loadRoomMeta('room_cemetery_sample_2_meta', 'assets/rooms/cemetery_sample_2.json'),
+    // ── 5-zone progression (2026-05-07) ──────────────────────────────
+    // Floor 1 — Ancient Ruins. Outdoor, sun-baked stone, columns, raised
+    // platforms with stairs, vegetation, waterfall props. 40×24 cells.
+    loadImage('room_ruins_sample',       'assets/rooms/ruins_sample.png'),
+    loadImage('room_ruins_sample_anims', 'assets/rooms/ruins_sample_anims.png'),
+    loadRoomMeta('room_ruins_sample_meta', 'assets/rooms/ruins_sample.json'),
+    // Floor 4 — Depths of the Mountain. Cavernous, throne dais, raised
+    // mining plats, mountain-wall structures. 45×54 cells.
+    loadImage('room_mountain_sample',       'assets/rooms/mountain_sample.png'),
+    loadImage('room_mountain_sample_anims', 'assets/rooms/mountain_sample_anims.png'),
+    loadRoomMeta('room_mountain_sample_meta', 'assets/rooms/mountain_sample.json'),
+    // Floor 5 — Volcano. Magma climax, lava channels (block), floating
+    // basalt platforms, chains, lavafalls. 90×60 cells, 8 connected
+    // components by design (lava splits the islands).
+    loadImage('room_volcano_sample',       'assets/rooms/volcano_sample.png'),
+    loadImage('room_volcano_sample_anims', 'assets/rooms/volcano_sample_anims.png'),
+    loadRoomMeta('room_volcano_sample_meta', 'assets/rooms/volcano_sample.json'),
+
+    // (wall_crypt_* removed in Phase 3 unification — see floor_crypt_* note above)
 
     // Legacy shared-icon PNGs — kept as fallbacks if a dedicated per-relic
     // image ever fails to load. Not referenced by any relic now that all 34
@@ -565,11 +699,77 @@ export async function loadAll(progressCb) {
     loadImage('door_event',             'assets/door_icons/door_event.png'),
     loadImage('door_chest',             'assets/door_icons/door_chest.png'),
 
+    // ── PICKUP DROPS — coin/heart/soul/key ground items ─────────────
+    // Google-Studio-generated 32×32 sprites sliced from sheet_drops.jpg
+    // by scripts/pixellab/import-gs-sheets.js. Currently only `coin` is
+    // wired (gold.js drawGold uses it as a sprite-first lookup with a
+    // procedural fallback for the per-pixel rect coin). heart/soul/key
+    // are loaded so future pickup systems can use images.pickup_<id>
+    // without further loader changes.
+    loadImage('pickup_coin',            'assets/pickups/coin.png'),
+    loadImage('pickup_heart',           'assets/pickups/heart.png'),
+    loadImage('pickup_soul',            'assets/pickups/soul.png'),
+    loadImage('pickup_key',             'assets/pickups/key.png'),
+
+    // ── FLOOR DECALS — atmospheric scatter for dungeon floor tiles ──
+    // Google-Studio-generated 32×32 sprites sliced from
+    // sheet_floor_decals.jpg by scripts/pixellab/import-gs-sheets.js.
+    // Replaces the lone procedural "crack" decor with 16 variants the
+    // room generator scatters. The crack-spawn loop in room.js maps
+    // a hash to one of these decal_<id> keys; missing PNGs fall through
+    // to the procedural drawCrack as a safety net.
+    loadImage('decal_bone',             'assets/decor/decal_bone.png'),
+    loadImage('decal_skull',            'assets/decor/decal_skull.png'),
+    loadImage('decal_crack',            'assets/decor/decal_crack.png'),
+    loadImage('decal_blood',            'assets/decor/decal_blood.png'),
+    loadImage('decal_mushroom',         'assets/decor/decal_mushroom.png'),
+    loadImage('decal_leaves',           'assets/decor/decal_leaves.png'),
+    loadImage('decal_claws',            'assets/decor/decal_claws.png'),
+    loadImage('decal_shards',           'assets/decor/decal_shards.png'),
+    loadImage('decal_arrow',            'assets/decor/decal_arrow.png'),
+    loadImage('decal_web',              'assets/decor/decal_web.png'),
+    loadImage('decal_rune',             'assets/decor/decal_rune.png'),
+    loadImage('decal_candle',           'assets/decor/decal_candle.png'),
+    loadImage('decal_scroll',           'assets/decor/decal_scroll.png'),
+    loadImage('decal_pebbles',          'assets/decor/decal_pebbles.png'),
+    loadImage('decal_scratches',        'assets/decor/decal_scratches.png'),
+    loadImage('decal_dirt',             'assets/decor/decal_dirt.png'),
+
+    // ── WALL SURFACE OVERLAYS — atmospheric stickers on north wall ──
+    // Google-Studio-generated 48×48 sprites sliced from
+    // sheet_wall_overlays.jpg by scripts/pixellab/import-gs-sheets.js.
+    // Drawn ON TOP of north wall tiles (cosmetic only — never on doors)
+    // by drawWallOverlays() in room.js. Per-kind palette filtering
+    // matches the floor-decal system so combat rooms get blood/scorch/
+    // claws/handprint while sanctuaries get ivy/moss/fresco. Cell 8
+    // (crumbling brick) was intentionally skipped — see slicer config.
+    loadImage('wall_overlay_cobweb',    'assets/decor/wall_overlay_cobweb.png'),
+    loadImage('wall_overlay_crack_v',   'assets/decor/wall_overlay_crack_v.png'),
+    loadImage('wall_overlay_crack_d',   'assets/decor/wall_overlay_crack_d.png'),
+    loadImage('wall_overlay_blood',     'assets/decor/wall_overlay_blood.png'),
+    loadImage('wall_overlay_scorch',    'assets/decor/wall_overlay_scorch.png'),
+    loadImage('wall_overlay_claws',     'assets/decor/wall_overlay_claws.png'),
+    loadImage('wall_overlay_arrows',    'assets/decor/wall_overlay_arrows.png'),
+    loadImage('wall_overlay_ivy',       'assets/decor/wall_overlay_ivy.png'),
+    loadImage('wall_overlay_damp',      'assets/decor/wall_overlay_damp.png'),
+    loadImage('wall_overlay_mushroom',  'assets/decor/wall_overlay_mushroom.png'),
+    loadImage('wall_overlay_moss',      'assets/decor/wall_overlay_moss.png'),
+    loadImage('wall_overlay_rune',      'assets/decor/wall_overlay_rune.png'),
+    loadImage('wall_overlay_fresco',    'assets/decor/wall_overlay_fresco.png'),
+    loadImage('wall_overlay_chains',    'assets/decor/wall_overlay_chains.png'),
+    loadImage('wall_overlay_handprint', 'assets/decor/wall_overlay_handprint.png'),
+
     // ── DUNGEON FX — animated/static props for dungeon rooms ─────────
     // Stored under hamlet/ for now (single asset folder); future
     // refactor could split into hamlet/ and dungeon/ subfolders.
     loadImage('fx_dungeon_torch',       'assets/hamlet/fx_dungeon_torch.png'),
-    loadImage('fx_dungeon_pillar',      'assets/hamlet/fx_dungeon_pillar.png'),
+    // PixelLab animated brazier sheets — KEPT (these read fine as
+    // focal pieces; no playtest complaints). 7 horizontal frames ×
+    // 64×64 native, base bottom-aligned. fx_dungeon_brazier is the
+    // squat iron tripod (ambient room focal); fx_dungeon_pillar_brazier
+    // is the tall stone column with flaming bowl (corridor focal).
+    loadImage('fx_dungeon_brazier',         'assets/hamlet/fx_dungeon_brazier.png'),
+    loadImage('fx_dungeon_pillar_brazier',  'assets/hamlet/fx_dungeon_pillar_brazier.png'),
     // Dungeon doors — two 4-frame open/close atlases per rotation.
     // 'door_s' = south rotation (door face points south toward player
     // who is south of the wall — used for NORTH-wall doors).

@@ -7233,10 +7233,13 @@ function render() {
     const _zoneWash = getActiveZoneWash();
     if (_zoneWash) drawZoneWash(ctx, canvas.width, canvas.height, _zoneWash);
     drawZoneAmbient(ctx);
-    // XP bar — top-of-screen progress bar + level label. Always shown
-    // when a zone run is active (level >= 1 means the system has been
-    // initialized via __startZoneRun).
-    if (typeof hero.level === 'number' && hero.level >= 1) {
+    // XP bar — top-of-screen progress bar + level label. Phase 3 fix:
+    // gate on the zone runner being ACTIVE rather than on `hero.level >= 1`,
+    // because hero.level stays elevated after a zone run even when the
+    // player returns to the legacy DAG flow (which has no XP system).
+    // This prevents the XP bar from leaking into legacy runs that follow.
+    const _runnerState = getZoneRunnerState();
+    if (_runnerState.zoneName) {
       drawXpBar(ctx, canvas.width);
     }
     // Zone HUD — wave dots + boss banner. No-op when not in a zone run.
