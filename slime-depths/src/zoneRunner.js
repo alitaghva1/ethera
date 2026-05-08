@@ -180,6 +180,15 @@ function _spawnBoss() {
   const sp = enc.bossLocation;
   const wx = (sp.x + 0.5) * TILE;
   const wy = (sp.y + 0.5) * TILE;
+  // Phase 6 polish — boss-arrival impact: camera punch + screen flash +
+  // chord. Lifts the moment from "next enemy spawned" to "the boss has
+  // arrived." All three already exist as project-wide feedback APIs.
+  // Imports are dynamic so the runner stays self-contained.
+  try {
+    import('./camera.js').then((m) => { m.shakeCamera(8, 0.35); m.pulseZoom(0.06, 0.4); });
+    import('./fx.js').then((m) => m.triggerScreenFlash('rgba(255, 90, 70, 0.18)', 0.45));
+    import('./synth.js').then((m) => m.synthChord(110, 1.2, 0.55));
+  } catch (_e) { /* feedback is optional; never block spawn */ }
   // Phase 4 — pass through optional `bossOpts` (affix / hpMul / damageMul)
   // so each zone's boss feels distinct even when sharing a sprite. The
   // cemetery's GRAVE WARDEN is a frost-affixed variant of the same

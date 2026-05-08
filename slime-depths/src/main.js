@@ -194,6 +194,7 @@ import {
   setOnLevelUp, getXpDebug,
 } from './xpSystem.js';
 import { drawZoneHud } from './zoneHud.js';
+import { openZoneCard, isZoneCardActive, updateZoneCard, drawZoneCard } from './zoneCard.js';
 import {
   isLevelUpModalOpen, openLevelUpModal, drawLevelUpModal,
   updateLevelUpModalMouse, handleLevelUpModalClick, handleLevelUpModalKey,
@@ -5082,6 +5083,17 @@ function _tickInner(now) {
     return;
   }
 
+  // Phase 6 — zone-card cinematic freeze. World ticks zero updates
+  // during the 1.8s card; just music + the card's own animation.
+  if (isZoneCardActive()) {
+    updateMusic(realDt);
+    updateZoneCard(realDt);
+    render();
+    endFrameInput();
+    requestAnimationFrame(tick);
+    return;
+  }
+
   // When main menu / weapon picker is active, just animate dust + music
   if (menuEl.style.display !== 'none' || weaponPickerEl.style.display !== 'none') {
     updateDust(realDt, 0, 0);
@@ -7788,6 +7800,13 @@ function render() {
     ctx.restore();
   }
 
+  // Phase 6 — zone-enter cinematic card. Drawn above HUD/ceremony but
+  // BELOW the level-up modal (which is the only thing that should ever
+  // sit above a zone-card freeze).
+  if (isZoneCardActive()) {
+    drawZoneCard(ctx, canvas.width, canvas.height);
+  }
+
   // Level-up modal — drawn ABOVE everything else (HUD, ceremony, etc.)
   // because it's a hard pause point. The modal has its own backdrop dim
   // and 3 cards. Gameplay paused via tick gating below.
@@ -8105,6 +8124,12 @@ function enterCanonicalRun(zoneName = 'ruins') {
     }
 
     camera.zoom = zEnc.cameraZoom || 1.0;
+
+    // Phase 6 polish — open the zone-enter cinematic card. World tick
+    // gates on isZoneCardActive() to freeze the world during the 1.8s
+    // freeze (player can't be hit / can't move). The card auto-closes;
+    // gameplay resumes seamlessly into wave 1's 1.0s spawn delay.
+    openZoneCard(zname);
 
     startZoneRun(zname, {
       onComplete: ({ bossPos }) => {
