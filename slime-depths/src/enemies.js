@@ -1443,6 +1443,63 @@ export const TYPES = {
     flavor: 'cinder-skinned, cinder-tongued. burns through life.',
   },
 
+  // ---- MOOSE — Ancient Ruins zone heavy melee. Charges with antlers,
+  // long attack cycle (30 frames in source — windup + strike + recovery
+  // all preserved). Pairs with stone_golem boss thematically: ancient
+  // creatures still guarding the ruins.
+  moose: {
+    prefix: 'moose_', cellSize: 128, drawSize: 110, radius: 28, bodyHeight: 80, speed: 95, hp: 130, damage: 2,
+    color: '#7a5a3a', hitCD: 1.10, fps: 12, behavior: 'melee',
+    attackReach: 86, attackArc: Math.PI * 0.50,
+    // Long windup matches the source's wide anticipation arc — 30
+    // frames at fps=12 ≈ 2.5s total. We slice the timing as
+    // windup 0.55 + swing 0.40 = 0.95s, letting the renderer cycle
+    // through ~12 frames of windup and the rest of the cycle bleeds
+    // naturally into the cooldown.
+    windup: 0.55, swing: 0.40,
+    telegraphColor: 'rgba(180, 140, 90, ',
+    windupSfx: { key: 'footstep_0', rate: 0.62, volume: 0.55 },
+    bloodColor: '#3a2818',
+    displayName: 'GREAT MOOSE',
+    flavor: 'antlers older than the standing stones.',
+  },
+
+  // ---- ORC WARRIOR (ERW Grass Land 2.0) — common ruins-zone melee.
+  // Replaces the slime/skel/crypt_spider grab-bag in ruins waves with
+  // a thematically-coherent fighter that visually matches the pack.
+  // Faster than the F2 orc (color1 = leaner build), HP slightly under
+  // standard orc since this is a ruins-Z1 mob.
+  orc_warrior: {
+    prefix: 'orc_warrior_', cellSize: 96, drawSize: 88, radius: 22, speed: 100, hp: 90, damage: 1,
+    color: '#90a865', hitCD: 0.85, fps: 10, behavior: 'melee',
+    attackReach: 56, attackArc: Math.PI * 0.55,
+    windup: 0.34, swing: 0.22,
+    telegraphColor: 'rgba(220, 80, 70, ',
+    windupSfx: { key: 'footstep_0', rate: 0.95, volume: 0.55 },
+    bloodColor: '#3a4a30',
+    displayName: 'RUINS ORC',
+    flavor: 'descendant of the clans that fell with the city.',
+  },
+
+  // ---- ORC MAGE (ERW Grass Land 2.0, "with hand fx" variant) — caster
+  // enemy for ruins zone. Uses the wizard behavior path so fireball
+  // projectile + cast windup come for free; the visual identity is
+  // distinct because of the orc-mage's signature hand-fx animations.
+  orc_mage_enemy: {
+    prefix: 'orc_mage_enemy_', cellSize: 96, drawSize: 88, radius: 20, speed: 70, hp: 65, damage: 2,
+    color: '#5a7a90', hitCD: 1.6, fps: 10, behavior: 'wizard',
+    preferDist: 320, minDist: 200,
+    castRange: 460,
+    castWindup: 0.65,
+    castCount: 1,
+    castSpread: 0,
+    telegraphColor: 'rgba(120, 180, 255, ',
+    windupSfx: { key: 'click', rate: 0.5, volume: 0.6 },
+    bloodColor: '#2a3a48',
+    displayName: 'RUINS SHAMAN',
+    flavor: 'speaks to stones that no longer answer.',
+  },
+
   // ---- ROCKY DUDE — volcano heavy melee. Slow movement, big HP, heavy
   // variant on every third swing. Reuses orc's heavy fields (no new
   // combat code). Pairs with imp_demon: imps swarm in close range while

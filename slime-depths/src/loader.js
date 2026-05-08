@@ -376,6 +376,26 @@ export async function loadAll(progressCb) {
     loadImage('rocky_dude_attack',      'assets/enemies/rocky_dude_attack.png'),
     loadImage('rocky_dude_hurt',        'assets/enemies/rocky_dude_hurt.png'),
     loadImage('rocky_dude_death',       'assets/enemies/rocky_dude_death.png'),
+    // ── RUINS-ZONE PACK CHARACTERS (2026-05-08) ───────────────────────────
+    // Pack-native enemies for the ruins zone — replaces the generic
+    // slime/skel/spider grab-bag with thematically-coherent mobs from
+    // ERW Ancient Ruins (Moose) + ERW Grass Land 2.0 (orc_warrior,
+    // orc_mage_enemy). Visual identity now matches the map art.
+    loadImage('moose_idle',             'assets/enemies/moose_idle.png'),
+    loadImage('moose_walk',             'assets/enemies/moose_walk.png'),
+    loadImage('moose_attack',           'assets/enemies/moose_attack.png'),
+    loadImage('moose_hurt',             'assets/enemies/moose_hurt.png'),
+    loadImage('moose_death',            'assets/enemies/moose_death.png'),
+    loadImage('orc_warrior_idle',       'assets/enemies/orc_warrior_idle.png'),
+    loadImage('orc_warrior_walk',       'assets/enemies/orc_warrior_walk.png'),
+    loadImage('orc_warrior_attack',     'assets/enemies/orc_warrior_attack.png'),
+    loadImage('orc_warrior_hurt',       'assets/enemies/orc_warrior_hurt.png'),
+    loadImage('orc_warrior_death',      'assets/enemies/orc_warrior_death.png'),
+    loadImage('orc_mage_enemy_idle',    'assets/enemies/orc_mage_enemy_idle.png'),
+    loadImage('orc_mage_enemy_walk',    'assets/enemies/orc_mage_enemy_walk.png'),
+    loadImage('orc_mage_enemy_attack',  'assets/enemies/orc_mage_enemy_attack.png'),
+    loadImage('orc_mage_enemy_hurt',    'assets/enemies/orc_mage_enemy_hurt.png'),
+    loadImage('orc_mage_enemy_death',   'assets/enemies/orc_mage_enemy_death.png'),
     // Phase 3 unification — REMOVED legacy procedural tile sheets:
     //   • dungeon_tiles (1 PNG)
     //   • floor_crypt_0..15 (16 PNGs)

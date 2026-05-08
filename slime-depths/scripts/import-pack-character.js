@@ -41,17 +41,27 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // any cwd (git-bash mount paths like /c/Users/... break sharp).
 const PACK_ROOT = 'C:/Users/14164/Documents/Claude/Projects/Game X';
 
-// Output dir — game's enemy sprite folder.
-const OUT_DIR = join(__dirname, '..', 'public', 'assets', 'enemies');
+// Output dirs.
+const OUT_DIR_ENEMIES = join(__dirname, '..', 'public', 'assets', 'enemies');
+const OUT_DIR_CHARACTERS = join(__dirname, '..', 'public', 'assets', 'characters');
 
 // ============================================================================
 // MANIFEST — one entry per imported character.
 //
 // Each entry declares:
+//   target          'enemy' (default) → outputs to public/assets/enemies/
+//                   'hero'             → outputs to public/assets/characters/
+//                                        as 8-row grid sheet (replicates the
+//                                        single source row across all 8
+//                                        directions; rows 5/6/7 = SW/W/NW
+//                                        get horizontally flipped frames so
+//                                        the hero faces left when moving
+//                                        west). The existing hero renderer
+//                                        in hero.js reads sy = dir × SPR
+//                                        unchanged.
 //   prefix          output filename prefix (foo_idle.png, foo_walk.png, …)
 //   cellSize        output square cell size in pixels (must match def.cellSize
-//                   in src/enemies.js — 64 for compact flyers, 96 for standard
-//                   humanoids, 128 for bosses)
+//                   in src/enemies.js for enemies, or SPR (=128) for hero)
 //   anchor          'bottom' for ground enemies, 'center' for flyers
 //   bodyHeightFrac  fraction of the cell the body should fill vertically
 //                   (default 0.92). Bosses with wide attack arcs (Mountain
@@ -170,6 +180,97 @@ const MANIFEST = {
   },
 
   // ──────────────────────────────────────────────────────────────────────
+  // MOOSE (Ancient Ruins pack — ruins-zone heavy melee)
+  // Source:  ERW - Ancient Ruins V 2.2.1
+  // Layout:  Single horizontal strip, 347×192 frames. Wide aspect like
+  //          the Mountain Boss — bodyHeightFrac stays modest so the
+  //          horizontal scale binds and we keep aspect ratio.
+  //          Frame counts:
+  //            idle 8, run 8, attack 30 (LONG cycle — covers windup +
+  //            strike + recovery), hurt 6, death 15.
+  // ──────────────────────────────────────────────────────────────────────
+  moose: {
+    prefix: 'moose',
+    cellSize: 128,
+    anchor: 'bottom',
+    bodyHeightFrac: 0.85,
+    states: {
+      idle:   { file: `${PACK_ROOT}/ERW - Ancient Ruins V 2.2.1/ERW - Ancient Ruins V 2.2.1/Characters/Moose/moose1-idle-347x192.png`,                cols: 8,  rows: 1, frames: 8 },
+      walk:   { file: `${PACK_ROOT}/ERW - Ancient Ruins V 2.2.1/ERW - Ancient Ruins V 2.2.1/Characters/Moose/moose1-run-347x192.png`,                 cols: 8,  rows: 1, frames: 8 },
+      attack: { file: `${PACK_ROOT}/ERW - Ancient Ruins V 2.2.1/ERW - Ancient Ruins V 2.2.1/Characters/Moose/moose1-attack-no effects-347x192.png`,   cols: 30, rows: 1, frames: 30 },
+      hurt:   { file: `${PACK_ROOT}/ERW - Ancient Ruins V 2.2.1/ERW - Ancient Ruins V 2.2.1/Characters/Moose/moose1-hurt-347x192.png`,                cols: 6,  rows: 1, frames: 6 },
+      death:  { file: `${PACK_ROOT}/ERW - Ancient Ruins V 2.2.1/ERW - Ancient Ruins V 2.2.1/Characters/Moose/moose1-death-347x192.png`,               cols: 15, rows: 1, frames: 15 },
+    },
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // ORC WARRIOR (Grass Land 2.0 — common ruins-zone melee enemy)
+  // Source:  ERW - Grass Land 2.0 v1.9
+  // Layout:  Single horizontal strip, 256×256 frames.
+  //          idle 9, walk 8, atk1 16, hurt 6, death 12.
+  //          (ERW orc has a wider color palette than the Tiny RPG kit's
+  //          orc — distinct silhouette, fits the ancient-ruins theme.)
+  // ──────────────────────────────────────────────────────────────────────
+  orc_warrior: {
+    prefix: 'orc_warrior',
+    cellSize: 96,
+    anchor: 'bottom',
+    bodyHeightFrac: 0.88,
+    states: {
+      idle:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc warrior/orc1/orc melee - anims-idle.png`,  cols: 9,  rows: 1, frames: 9 },
+      walk:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc warrior/orc1/orc melee - anims-walk.png`,  cols: 8,  rows: 1, frames: 8 },
+      attack: { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc warrior/orc1/orc melee - anims-atk1.png`,  cols: 16, rows: 1, frames: 16 },
+      hurt:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc warrior/orc1/orc melee - anims-hurt.png`,  cols: 6,  rows: 1, frames: 6 },
+      death:  { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc warrior/orc1/orc melee - anims-death.png`, cols: 12, rows: 1, frames: 12 },
+    },
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // ORC MAGE (Grass Land 2.0 — caster enemy variant for ruins zone)
+  // Source:  ERW - Grass Land 2.0 v1.9
+  // Layout:  Single horizontal strip, 256×256 frames. "with hand fx"
+  //          variant has the energy spell visual baked into attack
+  //          frames — looks great as a magical ruins-orc.
+  //          idle 8, walk 8, atk1 18, hurt 7, death 17.
+  // ──────────────────────────────────────────────────────────────────────
+  orc_mage_enemy: {
+    prefix: 'orc_mage_enemy',
+    cellSize: 96,
+    anchor: 'bottom',
+    bodyHeightFrac: 0.88,
+    states: {
+      idle:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-idle.png`,  cols: 8,  rows: 1, frames: 8 },
+      walk:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-walk.png`,  cols: 8,  rows: 1, frames: 8 },
+      attack: { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-atk1.png`,  cols: 18, rows: 1, frames: 18 },
+      hurt:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-hurt.png`,  cols: 7,  rows: 1, frames: 7 },
+      death:  { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-death.png`, cols: 17, rows: 1, frames: 17 },
+    },
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // ORC MAGE — HERO (Grass Land 2.0 — replaces PixelLab cloaked mage)
+  // Source:  same orc-mage spritesheet, but TARGETED to the hero slot
+  //          (assets/characters/mage_*.png) and emitted as an 8-row
+  //          grid (rows 0..4 N/NE/E/SE/S unflipped, rows 5..7 SW/W/NW
+  //          horizontally flipped) so the existing hero renderer in
+  //          hero.js works unchanged.
+  // ──────────────────────────────────────────────────────────────────────
+  orc_mage_hero: {
+    target: 'hero',
+    prefix: 'mage',
+    cellSize: 128,
+    anchor: 'bottom',
+    bodyHeightFrac: 0.92,
+    states: {
+      idle:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-idle.png`,  cols: 8,  rows: 1, frames: 8 },
+      walk:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-walk.png`,  cols: 8,  rows: 1, frames: 8 },
+      attack: { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-atk1.png`,  cols: 18, rows: 1, frames: 18 },
+      hurt:   { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-hurt.png`,  cols: 7,  rows: 1, frames: 7 },
+      death:  { file: `${PACK_ROOT}/ERW - Grass Land 2.0 v1.9/ERW - Grass Land 2.0 v1.9/Characters/orc mage/orc1/orc mage - with hand fx-death.png`, cols: 17, rows: 1, frames: 17 },
+    },
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
   // ROCKY DUDE (Volcano pack — heavy melee)
   // Source:  Epic RPG World - Volcano V1.6.1
   // Layout:  All grids. Frame counts in filename + 480-divisible widths
@@ -208,10 +309,19 @@ if (argv.includes('--list')) {
 const targets = argv.length ? argv : Object.keys(MANIFEST);
 
 // ── Per-state import: read sheet, slice frames, fit each into a cell,
-// emit a horizontal strip ──────────────────────────────────────────────
+// emit either a 1-row horizontal strip (enemies) or an 8-row grid
+// (hero) ──────────────────────────────────────────────────────────────
+//
+// Hero mode (target: 'hero') replicates the source row across all 8
+// directions of the existing 8-direction renderer, with rows 5/6/7
+// (SW/W/NW) horizontally flipped so the hero faces left when moving
+// west and right when moving east (or north/south, which use the
+// E-facing pose). The hero renderer in hero.js is unchanged — it
+// reads sy = dir × SPR + sx = frame × SPR exactly as before.
 async function importState(stateName, cfg, charCfg) {
   const { file, cols, rows, frames } = cfg;
   const { cellSize, anchor, bodyHeightFrac } = charCfg;
+  const isHero = charCfg.target === 'hero';
 
   // Load source. sharp.metadata gives us width/height; raw extraction
   // happens via .extract({ left, top, width, height }).
@@ -222,11 +332,10 @@ async function importState(stateName, cfg, charCfg) {
   const frameW = Math.floor(meta.width / cols);
   const frameH = Math.floor(meta.height / rows);
 
-  // Compose output: a sharp() blank canvas, composite each fitted frame.
-  const outW = cellSize * frames;
-  const outH = cellSize;
-  const composites = [];
-
+  // Per-frame fitted cells, in BOTH unflipped (rows 0..4) and flipped
+  // (rows 5..7) variants. We render both up-front then composite into
+  // the final sheet on the right rows.
+  const fittedCells = [];   // { unflipped: Buffer, flipped: Buffer | null, w, h }
   for (let i = 0; i < frames; i++) {
     const c = i % cols;
     const r = Math.floor(i / cols);
@@ -248,7 +357,8 @@ async function importState(stateName, cfg, charCfg) {
       trimmedBuf = await trimmed.toBuffer();
       trimmedMeta = await sharp(trimmedBuf).metadata();
     } catch {
-      // Fully-empty frame — skip the resize, leave a transparent cell.
+      // Fully-empty frame — leave the cell transparent.
+      fittedCells.push(null);
       continue;
     }
     const tw = trimmedMeta.width || 1;
@@ -265,8 +375,7 @@ async function importState(stateName, cfg, charCfg) {
     const newH = Math.max(1, Math.round(th * scale));
 
     // Step 4: nearest-neighbour for upscale (preserve pixel-art edges)
-    // / lanczos for downscale (smoother). sharp picks based on
-    // `kernel` setting.
+    // / lanczos for downscale (smoother).
     const resized = await sharp(trimmedBuf)
       .resize(newW, newH, {
         kernel: scale >= 1 ? 'nearest' : 'lanczos3',
@@ -274,22 +383,53 @@ async function importState(stateName, cfg, charCfg) {
       })
       .toBuffer();
 
-    // Step 5: anchor inside the cell — bottom for ground enemies
-    // (feet at cell bottom with a small ground margin), center for
-    // flyers.
-    const groundMargin = anchor === 'bottom' ? 2 : 0;
-    const offsetX = i * cellSize + Math.floor((cellSize - newW) / 2);
-    const offsetY =
-      anchor === 'bottom'
-        ? cellSize - newH - groundMargin
-        : Math.floor((cellSize - newH) / 2);
+    // For hero mode also produce a horizontally-flipped variant for
+    // the west-facing rows.
+    let flipped = null;
+    if (isHero) {
+      flipped = await sharp(resized).flop().toBuffer();
+    }
 
-    composites.push({ input: resized, left: offsetX, top: offsetY });
+    fittedCells.push({ unflipped: resized, flipped, w: newW, h: newH });
   }
 
-  // Build the output sheet on a transparent background.
-  await mkdir(OUT_DIR, { recursive: true });
-  const outPath = join(OUT_DIR, `${charCfg.prefix}_${stateName}.png`);
+  // Compose output sheet.
+  const outW = cellSize * frames;
+  const outRows = isHero ? 8 : 1;
+  const outH = cellSize * outRows;
+  const composites = [];
+  const groundMargin = anchor === 'bottom' ? 2 : 0;
+
+  // Hero direction-row mapping (matches src/hero.js heroDirection):
+  //   0 = N    (use unflipped E-facing source — closest match)
+  //   1 = NE   (unflipped)
+  //   2 = E    (unflipped)
+  //   3 = SE   (unflipped)
+  //   4 = S    (unflipped)
+  //   5 = SW   (flipped — west)
+  //   6 = W    (flipped — west)
+  //   7 = NW   (flipped — west)
+  const FLIP_ROWS = isHero ? new Set([5, 6, 7]) : new Set();
+
+  for (let i = 0; i < frames; i++) {
+    const cell = fittedCells[i];
+    if (!cell) continue;
+    for (let row = 0; row < outRows; row++) {
+      const useFlipped = FLIP_ROWS.has(row);
+      const buf = useFlipped ? cell.flipped : cell.unflipped;
+      const offsetX = i * cellSize + Math.floor((cellSize - cell.w) / 2);
+      const offsetY =
+        anchor === 'bottom'
+          ? row * cellSize + (cellSize - cell.h - groundMargin)
+          : row * cellSize + Math.floor((cellSize - cell.h) / 2);
+      composites.push({ input: buf, left: offsetX, top: offsetY });
+    }
+  }
+
+  // Output dir + filename based on target.
+  const outDir = isHero ? OUT_DIR_CHARACTERS : OUT_DIR_ENEMIES;
+  await mkdir(outDir, { recursive: true });
+  const outPath = join(outDir, `${charCfg.prefix}_${stateName}.png`);
   await sharp({
     create: {
       width: outW,
@@ -302,7 +442,7 @@ async function importState(stateName, cfg, charCfg) {
     .png()
     .toFile(outPath);
 
-  console.log(`  ${stateName.padEnd(7)} ${frames} frames  ${outW}x${outH}  → ${outPath.split(/[\\/]/).slice(-2).join('/')}`);
+  console.log(`  ${stateName.padEnd(7)} ${frames} frames  ${outW}x${outH}${isHero ? ' (8-row hero grid)' : ''}  → ${outPath.split(/[\\/]/).slice(-2).join('/')}`);
 }
 
 // ── Main ───────────────────────────────────────────────────────────────

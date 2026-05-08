@@ -65,14 +65,28 @@ export const ZONE_ENCOUNTERS = Object.freeze({
       { x: 18, y: 23 },     // S midline          (still valid)
     ],
     waves: [
-      // Wave 1 — light skirmish. Slimes from one side.
-      { types: ['slime', 'slime', 'slime', 'slime'],
+      // 2026-05-08 — RUINS PACK COHERENCE PASS. Replaced the generic
+      // slime/skel/crypt_spider/wizard grab-bag with mobs that visually
+      // match the ERW Ancient Ruins biome:
+      //   orc_warrior     ERW Grass Land 2.0 — common ruins-zone melee
+      //   orc_mage_enemy  ERW Grass Land 2.0 — caster variant
+      //   moose           ERW Ancient Ruins  — heavy melee, antler-charge
+      // Boss is stone_golem (ERW Ancient Ruins). Hero is orc_mage (ERW
+      // Grass Land 2.0). Whole zone now from one art family.
+      //
+      // Wave 1 — 4 ruins orcs entering from west + north (light-skirmish
+      // pacing preserved; just pack-coherent silhouettes now).
+      { types: ['orc_warrior', 'orc_warrior', 'orc_warrior', 'orc_warrior'],
         from: [0, 0, 1, 1] },
-      // Wave 2 — mixed. Skels + spider from two corners.
-      { types: ['skel', 'skel', 'crypt_spider'],
+      // Wave 2 — heavier. Two moose press from south, plus an orc
+      // warrior from the south-mid spawn for sustained close-range
+      // pressure during the moose windups.
+      { types: ['moose', 'moose', 'orc_warrior'],
         from: [2, 3, 5] },
-      // Wave 3 — pre-boss. Wizard + skel pair from three sides.
-      { types: ['skel', 'skel', 'wizard'],
+      // Wave 3 — pre-boss caster wave. One moose anchors close, two
+      // orc shamans fire from range — forces positioning before the
+      // golem fight.
+      { types: ['moose', 'orc_mage_enemy', 'orc_mage_enemy'],
         from: [0, 4, 1] },
     ],
     bossLocation: { x: 19, y: 12 },    // central courtyard
