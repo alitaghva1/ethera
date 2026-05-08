@@ -924,14 +924,73 @@ function beginDescent() {
 
 // Phase 4 unification entry point — wraps enterCanonicalRun so call sites
 // (menu CTA, beginDescent, weapon picker confirm) have a single helper to
-// invoke. Also handles the small bookkeeping: clear any open overlays,
-// hide the menu, mark `running = true` so the tick loop drives the world.
+// invoke.
+//
+// VERIFICATION FIX-A (CRIT #1) — does a full fresh-run state reset
+// equivalent to startRun() lines 3995-4082 + 4202-4224, minus the
+// DAG-specific generation. Without this, a hero death → quick restart
+// leaves stale hero stats / relics / gold / death-ceremony flags / fusion
+// flags from the prior run, which (a) makes restart feel broken and
+// (b) leaves `deathCeremonyActive=true` ticking the slow-mo forever.
 function beginCanonicalDescent(zoneName = 'ruins') {
+  // ── Run-bookkeeping ──────────────────────────────────────────────
+  _runSeq++;
+  _wave1DamageTally = null;
+  if (typeof window !== 'undefined') {
+    window.__recordCombatDamage = null;
+    delete window.__zoneRunInitialized;     // FIX-A also covers Med #7
+  }
+
+  // ── Hero / relics / gold / stats ─────────────────────────────────
+  // Preserve weapon across reset so the picker's choice carries through.
+  const prevWeapon = hero.weapon || 'sword';
+  resetHero();
+  hero.weapon = prevWeapon;
+  resetRelics();
+  clearFusions();
+  resetStats();
+  resetGold();
+  activeCurses.clear();
+  clearTarot();
+
+  // ── Apply selected memory so memory effects fire in canonical runs ──
+  const appliedMemory = applySelectedMemory({ seenRelicIds });
+  if (typeof window !== 'undefined') window.__activeMemory = appliedMemory || null;
+  if (appliedMemory && hero.startingGold) {
+    gold.total += hero.startingGold | 0;
+    hero.startingGold = 0;
+  }
+
+  // ── Reset modal visibility + transition + cinematic flags ───────
+  if (deathEl) deathEl.style.display = 'none';
+  if (winEl) winEl.style.display = 'none';
+  transition = { active: false, phase: 'out', t: 0, toIndex: 0 };
+  bossWinTriggered = false;
+  deathCeremonyActive = false;
+  deathCeremonyTime = 0;
+  deathSummaryShown = false;
+  phaseIntroTime = 0;
+  phaseIntroBoss = null;
+  phaseIntroStartedAt = 0;
+  floorCardStartedAt = 0;
+  bossIntroStartedAt = 0;
+  fusionBannerTime = 0;
+  // Fusion hero flags — wipe stuck flags from prior run.
+  hero.fusionTeslaStorm = false;
+  hero.fusionBloodMoon = false;
+  hero.fusionRebirthPyre = false;
+  hero.fusionConflagration = false;
+  hero.fusionPhantomBlade = false;
+  hero.fusionStormDance = false;
+  hero.fusionRiposte = false;
+  hero.fusionMountainsHeart = false;
+  hero.fusionObsidianEdge = false;
+
+  // ── Existing CTA logic ───────────────────────────────────────────
   hideAllOverlays();
   if (menuEl) menuEl.style.display = 'none';
   running = true;
   hero.state = 'idle';
-  hero.hp = hero.maxHp || 8;
   // Stop the menu / hamlet ambient pad — zone profile will start its
   // own track via applyZoneProfile() inside enterCanonicalRun.
   try { stopAmbientPad(); } catch (_e) {}
@@ -5287,9 +5346,17 @@ function _tickInner(now) {
     // player in floor 1's start room with no transition pending, so
     // nothing else would re-trigger playTrack on its own. Detect the
     // true→false edge and resume.
+    //
+    // VERIFICATION FIX-C (HIGH #4) — during a canonical zone run, the
+    // zone profile already started its own track via applyZoneProfile().
+    // Overriding it with BIOME_BY_FLOOR[1]='crypt' here would abruptly
+    // swap the music ~28s into the first-AWAKEN flow. Skip the override
+    // when room is a baked zone.
     if (_wasIntroActive && !wakeIntroActive) {
-      const biomeTrack = BIOME_BY_FLOOR[currentFloorLevel] || 'ambient';
-      playTrack(biomeTrack);
+      if (!room || room.kind !== 'tmx_crypt_sample') {
+        const biomeTrack = BIOME_BY_FLOOR[currentFloorLevel] || 'ambient';
+        playTrack(biomeTrack);
+      }
     }
     _wasIntroActive = wakeIntroActive;
     updateGold(dt, hero);
@@ -6463,6 +6530,18 @@ function _tickInner(now) {
     if (hero.state === 'dead' && hero.stateTime > 0.9 && !deathCeremonyActive && !deathSummaryShown) {
       deathCeremonyActive = true;
       deathCeremonyTime = 0;
+      // VERIFICATION FIX-B (CRIT #2) — when the hero dies during a zone
+      // run, tear down the canonical-run state so the runner doesn't
+      // keep spawning waves into a dead-hero room, the portal doesn't
+      // keep listening for hero touch, and __onEnemyKilled doesn't
+      // keep dropping XP gems on the corpse.
+      if (room && room.kind === 'tmx_crypt_sample') {
+        try { stopZoneRun(); } catch (_e) {}
+        try { clearZonePortal(); } catch (_e) {}
+        // (zoneCard auto-clears on duration; explicit clear is cheap insurance.)
+        try { import('./zoneCard.js').then((m) => m.clearZoneCard && m.clearZoneCard()); } catch (_e) {}
+        try { import('./zones.js').then((m) => m.clearZoneProfile && m.clearZoneProfile()); } catch (_e) {}
+      }
       // Wizard-kit Sprint 3D UX audit — actively cancel any in-flight
       // transient banners so they can't visibly persist into the death
       // ceremony / "YOU HAVE FALLEN" overlay. Belt-and-suspenders on
@@ -8168,6 +8247,10 @@ function enterCanonicalRun(zoneName = 'ruins') {
               clearZonePortal();
               console.log('%c[zone run] all 5 zones cleared!',
                 'color:#ffd070;font-weight:bold;font-size:14px');
+              // VERIFICATION FIX-D (MED #12) — clear the active zone
+              // profile before returning to hamlet so the volcano's lava
+              // wash + ember particles don't leak into the hub.
+              try { import('./zones.js').then((m) => m.clearZoneProfile && m.clearZoneProfile()); } catch (_e) {}
               // Phase 4 stub — return to hamlet on full clear.
               showHamlet();
             }
