@@ -234,11 +234,36 @@ function gidToTile(gid) {
   }
   if (!best) return null;
   const localId = d.id - best.firstGid;
-  // Bounds-check: if localId exceeds the tileset's tileCount, the gid
-  // referenced a tileset we couldn't load (skipped due to missing path).
-  // Returning null treats it as an empty tile rather than crashing the
-  // sharp slicer with a "bad extract area" error.
-  if (best.tsx.tileCount && localId >= best.tsx.tileCount) return null;
+  // Bounds-check: was added in Phase 1 P3 to catch GIDs pointing at
+  // a tileset that failed to load (volcano's broken Unity path
+  // reference). The original test trusted the .tsx's declared
+  // `tilecount` attribute — but pack authors sometimes set this
+  // wrong. Atlas-Props-Sprites.tsx in the ruins pack declares
+  // tilecount=641 but contains tile IDs up to 2258. Trusting the
+  // declared count silently dropped 237/240 ruins prop placements
+  // → ruins shipped with essentially no collision (only 7 of 960
+  // cells blocked instead of ~500). Audit playtest report.
+  //
+  // Better signal: did the tileset actually load tile entries that
+  // cover this localId? `ts.tiles` is the parsed `<tile>` map; for
+  // image-collection tilesets it has every tile; for grid atlases
+  // it's only entries with collision/animation, but the localId
+  // for those is still bounded by columns × rows of the source
+  // image — which we can derive from `ts.image` dimensions.
+  const tsx = best.tsx;
+  if (tsx.image && tsx.image.width && tsx.image.height) {
+    // Grid-atlas tileset: real bound = (cols * rows) of the source image.
+    const cols = tsx.columns || Math.floor(tsx.image.width / tsx.tileWidth);
+    const rows = Math.floor(tsx.image.height / tsx.tileHeight);
+    if (cols > 0 && rows > 0 && localId >= cols * rows) return null;
+  } else if (tsx.tiles && tsx.tiles.size > 0) {
+    // Image-collection tileset: only the explicitly-defined tile IDs
+    // are valid. Reject gids whose localId has no corresponding entry.
+    if (!tsx.tiles.has(localId)) return null;
+  } else if (tsx.tileCount && localId >= tsx.tileCount) {
+    // No image, no tiles map — fall back to the declared tilecount.
+    return null;
+  }
   return { tileset: best, localId, ...d };
 }
 

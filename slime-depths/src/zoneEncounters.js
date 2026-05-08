@@ -80,16 +80,18 @@ export const ZONE_ENCOUNTERS = Object.freeze({
   // Floor 2 — Cemetery. Stairs + upper graveyard + lower stone-path area.
   cemetery: {
     cameraZoom: 0.85,
-    // Phase 3 stabilization (audit B3+B5) — corrected spawn coords. Old
-    // [2] (3,17) was on the 26-cell unreachable SW island; replaced
-    // with a south-mid cell in the main 388-cell component. Old
-    // [0]/[1] NW/NE corners were both blocked.
+    // Phase 8 stabilization — re-validated post gidToTile fix. The fix
+    // exposed many more blocked cells (was 271 → now 407 blocked, main
+    // component shrank 388 → 240 cells). Several spawn coords that
+    // worked under the old loose-collision were now blocked or on
+    // newly-disconnected islands. All re-picked from main-component
+    // boundary cells via BFS verification.
     spawnPoints: [
-      { x:  1, y:  3 },     // NW upper           (was: 3,3 — BLOCKED)
-      { x: 27, y:  0 },     // NE upper           (was: 31,3 — BLOCKED)
-      { x: 22, y: 19 },     // South-mid          (was: 3,17 — UNREACHABLE ISLAND)
-      { x: 31, y: 17 },     // SE                 (was: same — already valid)
-      { x: 17, y:  3 },     // N midline          (was: same — already valid)
+      { x:  1, y:  4 },     // NW                 (was: 1,3 — still valid; nudged 1 cell)
+      { x: 27, y: 16 },     // far-east lower     (was: 27,0 — BLOCKED post-fix)
+      { x: 22, y: 19 },     // South-mid          (was: same — still valid)
+      { x: 27, y: 14 },     // far-east mid       (was: 31,17 — BLOCKED post-fix)
+      { x: 17, y:  3 },     // N midline          (was: same — still valid)
     ],
     waves: [
       { types: ['slime', 'slime', 'crypt_spider', 'crypt_spider'],
@@ -112,8 +114,10 @@ export const ZONE_ENCOUNTERS = Object.freeze({
       hpMul: 1.4,                        // slightly tankier than the crypt floor-3 boss
       damageMul: 0.9,                    // ... but hits softer (compensating for slow)
     },
-    // Phase 3 (B2) — east entry, walkable + reachable from boss via BFS.
-    heroSpawn: { x: 31, y: 9 },
+    // Phase 8 — east-mid entry, re-picked post gidToTile fix. The old
+    // (31,9) is now on a disconnected island. (27,13) is in main
+    // component, ~14 BFS steps from boss.
+    heroSpawn: { x: 27, y: 13 },
   },
 
   // Floor 3 — Crypt. Pillared corridor + carpet runner + dais.
