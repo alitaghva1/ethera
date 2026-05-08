@@ -345,6 +345,37 @@ export async function loadAll(progressCb) {
     loadImage('orc_rider_walk',         'assets/enemies/orc_rider_walk.png'),
     loadImage('orc_rider_attack',       'assets/enemies/orc_rider_attack.png'),
     loadImage('orc_rider_death',        'assets/enemies/orc_rider_death.png'),
+    // ── EPIC RPG WORLD PACK CHARACTERS (2026-05-08) ───────────────────────
+    // Imported via scripts/import-pack-character.js. Five characters with
+    // 5 states each (idle/walk/attack/hurt/death). cellSizes vary per def
+    // (64 for the bat flyer, 96 for medium humanoids, 128 for bosses) —
+    // the per-def cellSize override in TYPES routes the renderer through
+    // the right size. See enemies.js for the wiring.
+    loadImage('stone_golem_idle',       'assets/enemies/stone_golem_idle.png'),
+    loadImage('stone_golem_walk',       'assets/enemies/stone_golem_walk.png'),
+    loadImage('stone_golem_attack',     'assets/enemies/stone_golem_attack.png'),
+    loadImage('stone_golem_hurt',       'assets/enemies/stone_golem_hurt.png'),
+    loadImage('stone_golem_death',      'assets/enemies/stone_golem_death.png'),
+    loadImage('mountain_boss_idle',     'assets/enemies/mountain_boss_idle.png'),
+    loadImage('mountain_boss_walk',     'assets/enemies/mountain_boss_walk.png'),
+    loadImage('mountain_boss_attack',   'assets/enemies/mountain_boss_attack.png'),
+    loadImage('mountain_boss_hurt',     'assets/enemies/mountain_boss_hurt.png'),
+    loadImage('mountain_boss_death',    'assets/enemies/mountain_boss_death.png'),
+    loadImage('cemetery_bat_idle',      'assets/enemies/cemetery_bat_idle.png'),
+    loadImage('cemetery_bat_walk',      'assets/enemies/cemetery_bat_walk.png'),
+    loadImage('cemetery_bat_attack',    'assets/enemies/cemetery_bat_attack.png'),
+    loadImage('cemetery_bat_hurt',      'assets/enemies/cemetery_bat_hurt.png'),
+    loadImage('cemetery_bat_death',     'assets/enemies/cemetery_bat_death.png'),
+    loadImage('imp_demon_idle',         'assets/enemies/imp_demon_idle.png'),
+    loadImage('imp_demon_walk',         'assets/enemies/imp_demon_walk.png'),
+    loadImage('imp_demon_attack',       'assets/enemies/imp_demon_attack.png'),
+    loadImage('imp_demon_hurt',         'assets/enemies/imp_demon_hurt.png'),
+    loadImage('imp_demon_death',        'assets/enemies/imp_demon_death.png'),
+    loadImage('rocky_dude_idle',        'assets/enemies/rocky_dude_idle.png'),
+    loadImage('rocky_dude_walk',        'assets/enemies/rocky_dude_walk.png'),
+    loadImage('rocky_dude_attack',      'assets/enemies/rocky_dude_attack.png'),
+    loadImage('rocky_dude_hurt',        'assets/enemies/rocky_dude_hurt.png'),
+    loadImage('rocky_dude_death',       'assets/enemies/rocky_dude_death.png'),
     // Phase 3 unification — REMOVED legacy procedural tile sheets:
     //   • dungeon_tiles (1 PNG)
     //   • floor_crypt_0..15 (16 PNGs)

@@ -1323,6 +1323,147 @@ export const TYPES = {
     displayName: 'ORC RIDER',
     flavor: 'rides a thing that should not still be running.',
   },
+
+  // ==========================================================================
+  // EPIC RPG WORLD PACK CHARACTERS — first wave, ingested 2026-05-08 via
+  // scripts/import-pack-character.js. Each has a manifest entry there
+  // declaring source path + grid layout. All sprites are pre-bottom-aligned
+  // horizontal strips (or center-aligned for flyers).
+  //
+  // FIVE characters:
+  //   stone_golem    Zone 1 boss replacement — slow, tanky, heavy melee
+  //   mountain_boss  Mountain zone boss replacement — wide-arc heavy with cleave
+  //   cemetery_bat   Cemetery flying harasser — fast, low HP, dive-melee
+  //   imp_demon      Volcano fast melee — fire-themed, swarms the hero
+  //   rocky_dude     Volcano heavy melee — slow brute with heavy variant
+  // ==========================================================================
+
+  // ---- STONE GOLEM — Zone 1 (Ancient Ruins) boss. Slow, imposing, heavy
+  // cleave. Replaces the orc-as-boss hack (Grudnok was an orc def with
+  // boss-multipliers; the elite_orc/WARCHIEF GRUDNOK exists separately
+  // for F1 mini-boss rotations on later floors). The Golem fits the
+  // ruins theme natively — moss-cracked stone, ancient guardian. The
+  // zone's broken statues + obelisks foreshadow it.
+  //
+  // cellSize 128 matches the imported sheet (224×192 → 128 cell after
+  // bottom-aligned fit). drawSize 105 lands ~140px visible after
+  // bossSizeMul 1.45 × bodyHeightFrac 0.92 ≈ 1.33× — clearly bigger
+  // than the hero (60 visible) but not screen-dominating.
+  stone_golem: {
+    prefix: 'stone_golem_', cellSize: 128, drawSize: 105, radius: 32, bodyHeight: 110, speed: 60, hp: 240, damage: 2,
+    color: '#a89c8a', hitCD: 1.30, fps: 8, behavior: 'melee',
+    attackReach: 78, attackArc: Math.PI * 0.65,
+    windup: 0.62, swing: 0.34,
+    // Granite-grey telegraph — distinct from the F1 slime-green / skel-
+    // bone / orc-blood telegraphs already on screen during ruins fights.
+    telegraphColor: 'rgba(180, 170, 155, ',
+    // Heavy slam — every ~3rd swing. Wide arc, big windup, big damage.
+    // The boss's signature read.
+    heavyChance: 0.35,
+    heavyReach: 116, heavyArc: Math.PI * 0.95,
+    heavyWindup: 0.95, heavySwing: 0.40,
+    heavyDamage: 4,
+    heavyColor: 'rgba(220, 130, 70, ',
+    // Phase 2 — at 50% HP, body-cracks-and-glows. Speed bumps, heavy
+    // chance jumps. The "rage of the mountain" beat.
+    enrageAt: 0.50, enrageSpeedMul: 1.30, enrageDamageMul: 1.20,
+    enrageHeavyChance: 0.55,
+    windupSfx: { key: 'footstep_0', rate: 0.55, volume: 0.7 },
+    heavyWindupSfx: { key: 'footstep_0', rate: 0.40, volume: 0.95 },
+    bloodColor: '#5a4a3a',
+    displayName: 'THE STONE COLOSSUS',
+    flavor: 'older than the ruin. older than the names of its makers.',
+    bossTrack: 'boss',
+  },
+
+  // ---- MOUNTAIN BOSS — F4 boss replacement. Big wide-arc cleaver, heavy
+  // hammer-slam variant on every other swing. Imported sprite has frame
+  // size 351×207 (very wide pose); importer used bodyHeightFrac 0.70 to
+  // leave horizontal headroom for the swing arc, so visible body is
+  // smaller relative to cellSize than other bosses. drawSize 145
+  // compensates: 145 × 1.45 × 0.70 ≈ 147 visible — boss-scale.
+  mountain_boss: {
+    prefix: 'mountain_boss_', cellSize: 128, drawSize: 145, radius: 30, bodyHeight: 130, speed: 70, hp: 260, damage: 3,
+    color: '#7a6a52', hitCD: 1.20, fps: 8, behavior: 'melee',
+    attackReach: 90, attackArc: Math.PI * 0.72,
+    windup: 0.55, swing: 0.32,
+    telegraphColor: 'rgba(190, 145, 90, ',
+    // Heavy swing — wide cleave. Long telegraph, devastating damage.
+    heavyChance: 0.40,
+    heavyReach: 130, heavyArc: Math.PI * 1.05,
+    heavyWindup: 0.85, heavySwing: 0.42,
+    heavyDamage: 5,
+    heavyColor: 'rgba(255, 120, 60, ',
+    // Enrage at half HP — heavy windups speed up, more frequent.
+    enrageAt: 0.50, enrageSpeedMul: 1.35, enrageDamageMul: 1.25,
+    enrageHeavyChance: 0.60,
+    windupSfx: { key: 'hero_hurt', rate: 0.50, volume: 0.7 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.32, volume: 0.95 },
+    bloodColor: '#4a3a28',
+    displayName: 'GRIMHEART, GUARDIAN OF THE PEAK',
+    flavor: 'something the mountain made to keep the mountain.',
+    bossTrack: 'boss',
+  },
+
+  // ---- CEMETERY BAT — fast aerial harasser for cemetery zone. Dive-bomb
+  // melee (no projectile), tiny body (cellSize 64 like crypt_spider but
+  // anchor:'center' since they fly). Low HP — punishment for ignoring
+  // them, but trivially killable.
+  cemetery_bat: {
+    prefix: 'cemetery_bat_', cellSize: 64, drawSize: 56, radius: 14, speed: 175, hp: 32, damage: 1,
+    color: '#5a4870', hitCD: 0.65, fps: 14, behavior: 'melee',
+    attackReach: 30, attackArc: Math.PI * 0.40,
+    windup: 0.20, swing: 0.16,
+    // Sickly-purple telegraph — distinct from the slime-green / skel-
+    // bone / orc-blood telegraphs that dominate F2 cemetery comps.
+    telegraphColor: 'rgba(180, 130, 220, ',
+    windupSfx: { key: 'click', rate: 1.6, volume: 0.4 },
+    bloodColor: '#3a2848',
+    displayName: 'BAT',
+    flavor: 'leather wings stitched from older silences.',
+    flies: true,
+  },
+
+  // ---- IMP DEMON — volcano fast melee swarmer. Quick windup, low-medium
+  // HP, fire-themed (resists fire, weak to cold/shock per element system).
+  // Pairs with rocky_dude (slow brute) for volcano's chase/corner dynamic
+  // — same role as werewolf+werebear for F3 abyss.
+  imp_demon: {
+    element: 'fire',
+    prefix: 'imp_demon_', cellSize: 96, drawSize: 88, radius: 20, speed: 165, hp: 75, damage: 2,
+    color: '#d04030', hitCD: 0.75, fps: 12, behavior: 'melee',
+    attackReach: 52, attackArc: Math.PI * 0.46,
+    windup: 0.26, swing: 0.20,
+    // Hot-orange telegraph — fits the volcano biome but distinct from
+    // ember_tyrant's narrower red.
+    telegraphColor: 'rgba(255, 120, 60, ',
+    windupSfx: { key: 'slime_hit', rate: 1.5, volume: 0.5 },
+    bloodColor: '#a02818',
+    displayName: 'IMP',
+    flavor: 'cinder-skinned, cinder-tongued. burns through life.',
+  },
+
+  // ---- ROCKY DUDE — volcano heavy melee. Slow movement, big HP, heavy
+  // variant on every third swing. Reuses orc's heavy fields (no new
+  // combat code). Pairs with imp_demon: imps swarm in close range while
+  // rocky_dude heavy-cleaves — forces the player to disengage and reposition.
+  rocky_dude: {
+    prefix: 'rocky_dude_', cellSize: 96, drawSize: 100, radius: 26, bodyHeight: 92, speed: 75, hp: 145, damage: 2,
+    color: '#967050', hitCD: 1.05, fps: 9, behavior: 'melee',
+    attackReach: 64, attackArc: Math.PI * 0.55,
+    windup: 0.42, swing: 0.28,
+    telegraphColor: 'rgba(220, 130, 80, ',
+    heavyChance: 0.32,
+    heavyReach: 92, heavyArc: Math.PI * 0.88,
+    heavyWindup: 0.78, heavySwing: 0.34,
+    heavyDamage: 4,
+    heavyColor: 'rgba(255, 100, 50, ',
+    windupSfx: { key: 'hero_hurt', rate: 0.62, volume: 0.6 },
+    heavyWindupSfx: { key: 'hero_hurt', rate: 0.42, volume: 0.85 },
+    bloodColor: '#5a3a20',
+    displayName: 'ROCKBROW',
+    flavor: 'a shape carved by patience. it has more left.',
+  },
 };
 
 // ============================================================================

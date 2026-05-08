@@ -70,7 +70,13 @@ export const ZONE_ENCOUNTERS = Object.freeze({
         from: [0, 4, 1] },
     ],
     bossLocation: { x: 19, y: 12 },    // central courtyard
-    bossType: 'orc',                    // Grudnok
+    // 2026-05-08 — replaced 'orc' (a beefed-up regular orc) with the new
+    // stone_golem boss def. The Stone Colossus fits the ruins theme
+    // natively (moss-cracked statues, ancient guardian) where Grudnok
+    // never quite did. Visual identity is now zone-specific. Grudnok
+    // still exists as elite_orc — used for F1 mini-boss rotations on
+    // later floors when the player has progressed past Zone 1.
+    bossType: 'stone_golem',
     // Phase 3 stabilization (audit B2) — hero entry point separate from
     // boss location so the boss doesn't materialize on top of the player.
     // Walkable + reachable from boss via BFS (verified). West entry.
@@ -94,7 +100,11 @@ export const ZONE_ENCOUNTERS = Object.freeze({
       { x: 17, y:  3 },     // N midline          (was: same — still valid)
     ],
     waves: [
-      { types: ['slime', 'slime', 'crypt_spider', 'crypt_spider'],
+      // 2026-05-08 — wave 1 introduces the cemetery_bat (cemetery's
+      // signature flyer). Bat darts in fast/low-HP; pairs with slime as
+      // floor enemy / aerial harasser duo so the cemetery has a clear
+      // identity beyond "cemetery is just crypt with bats."
+      { types: ['cemetery_bat', 'cemetery_bat', 'slime', 'crypt_spider'],
         from: [2, 3, 0, 1] },
       { types: ['skel', 'skel', 'skel'],
         from: [4, 0, 1] },
@@ -102,7 +112,8 @@ export const ZONE_ENCOUNTERS = Object.freeze({
       // visible halo + slowed-hit). Cemetery is the first zone where
       // wizards appear; making this one elite gives the player a
       // mini-preview of frost combat before the GRAVE WARDEN boss.
-      { types: ['skel', 'wizard', 'crypt_spider', 'crypt_spider'],
+      // Plus 2 bats for sustained aerial pressure.
+      { types: ['skel', 'wizard', 'cemetery_bat', 'cemetery_bat'],
         from: [2, 3, 4, 0],
         eliteIdx: [1] },
     ],
@@ -180,7 +191,12 @@ export const ZONE_ENCOUNTERS = Object.freeze({
         eliteIdx: [2, 3] },
     ],
     bossLocation: { x: 22, y: 27 },    // throne / mid-arena
-    bossType: 'broodmother',
+    // 2026-05-08 — replaced 'broodmother' (a generic werebear-shaped
+    // boss whose flavor "she who laid the first ruin" never fit the
+    // mountain biome) with mountain_boss, the depths-of-the-mountain
+    // pack's signature wide-arc cleaver. Now the mountain zone has
+    // proper biome-native boss art instead of a recycled F3 werebear.
+    bossType: 'mountain_boss',
     // Phase 3 (B2) — bottom of the tall map. Player descends through 21 rows.
     heroSpawn: { x: 22, y: 48 },
   },
@@ -205,11 +221,18 @@ export const ZONE_ENCOUNTERS = Object.freeze({
       { x: 44, y: 43 },     // S close           (was: 44,52)
     ],
     waves: [
-      { types: ['orc', 'orc', 'wizard', 'skel', 'skel'],
+      // 2026-05-08 — wave 1 swaps in imp_demon (volcano's signature fast
+      // melee). 3 imps + 1 orc + 1 skel keeps it fast-paced and clearly
+      // volcano-flavored from the open.
+      { types: ['imp_demon', 'imp_demon', 'imp_demon', 'orc', 'skel'],
         from: [0, 1, 4] },
-      { types: ['orc', 'orc', 'orc', 'wizard', 'wizard'],
+      // Wave 2 — rocky_dude pair as the heavy-brute counterweight to
+      // the imp swarms. Pairs naturally: imps press while rocky lines
+      // up heavy cleaves, forcing the player to disengage + reposition.
+      { types: ['rocky_dude', 'rocky_dude', 'imp_demon', 'wizard', 'wizard'],
         from: [2, 3, 5] },
-      { types: ['orc', 'orc', 'wizard', 'wizard', 'skel', 'skel'],
+      // Wave 3 — full volcano comp: brutes + imps + casters.
+      { types: ['rocky_dude', 'imp_demon', 'imp_demon', 'wizard', 'wizard', 'skel'],
         from: [0, 1, 2, 3, 4] },
     ],
     bossLocation: { x: 44, y: 29 },    // central lava platform
