@@ -19,6 +19,7 @@ import {
   setBiome, currentBiomePal, roomSecrets, roomNextKind, drawUrns, drawChests, drawDecorPillars, roomChests, setDoorLookup,
   snapshotPrevRoom, tickPrevRoom, clearPrevRoom, prevRoom,
   getValidNorthDoorXRange, drawDoorLintels, drawTallPropOcclusion,
+  roomSpikes, roomFirePools, roomUrns, roomDecorPillars, invalidateTileCache,
 } from './room.js';
 import { MAX_FLOORS, FLOOR_ENEMY_MULS, BOSS_LOOT_POOL, EMBER_TYRANT_MYTHIC_POOL, EMBER_TYRANT_MYTHIC_CHANCE } from './floor.js';
 // SYSTEMS PASS 2c — branching floor map. Runs now traverse a DAG instead
@@ -175,13 +176,36 @@ import {
   consumeHamletInteract, resolveHamletCollision,
 } from './hamletScene.js';
 import { initMusic, playTrack, stopMusic, updateMusic, setMusicVolume, setIntensity as setMusicIntensity } from './music.js';
+import { applyZoneProfile, getActiveZoneWash } from './zones.js';
+import { updateZoneAmbient, drawZoneAmbient, drawZoneWash } from './zoneAmbient.js';
+import {
+  toggleWalkOverlay, drawWalkOverlay, isOverlayVisible as isWalkOverlayVisible,
+  setOverlayZone, toggleCellAtWorld, exportOverrides as exportWalkOverrides,
+  overrideCount as walkOverrideCount,
+} from './walkabilityOverlay.js';
+import { startZoneRun, stopZoneRun, updateZoneRunner, getZoneRunnerState } from './zoneRunner.js';
+import {
+  spawnZonePortal, clearZonePortal, updateZonePortal, drawZonePortal,
+  isZonePortalActive,
+} from './zonePortal.js';
+import { getNextZone, getZoneEncounters } from './zoneEncounters.js';
+import {
+  resetXp, dropXpGemFromEnemy, dropBossXpBurst, updateXp, drawXpGems, drawXpBar,
+  setOnLevelUp, getXpDebug,
+} from './xpSystem.js';
+import { drawZoneHud } from './zoneHud.js';
+import {
+  isLevelUpModalOpen, openLevelUpModal, drawLevelUpModal,
+  updateLevelUpModalMouse, handleLevelUpModalClick, handleLevelUpModalKey,
+} from './levelUpModal.js';
+import { resetPerks, getActivePerksDebug } from './perks.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 // Round-7 Sprint B refactor — composeRelicThumbDataURL +
 // composeEnemyThumbDataURL moved to achievementsModal (used only by
 // the bestiary + relicpedia + fusions tabs to compose grid thumbs).
 import { consumeHitStop, updateFx, drawDamageNumbers, drawSlashes, clearFx, getTimeScale, updatePerfectDodge, drawPerfectDodgeOverlay, drawScreenFlash, updateScreenFlash, drawCounterIndicator, triggerScreenFlash, updateHitMarkers, drawHitMarkers, hueRotateForTint, spawnDamageNumber, updateSoulTethers, drawSoulTethers, clearSoulTethers } from './fx.js';
 import { images as imageCache } from './loader.js';
-import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, clearSynergies } from './synergies.js';
+import { updateSynergies, drawSynergies, drawComboOverlay, drawHeroShield, drawWandererTrail, drawPyroCharge, clearSynergies } from './synergies.js';
 import { maybeSpawnWanderer, updateWanderer, drawWanderer, drawWandererTooltip, clearWanderer } from './wanderer.js';
 // Round-7 Sprint B refactor — MEMORIES + ALL_MEMORY_IDS + unlockedMemories
 // + selectedMemoryId + setSelectedMemory + memoriesUnlockedCount + totalMemories
@@ -280,6 +304,7 @@ if (document.readyState !== 'complete') {
 // order and keeps the window assignment below so hero.js can trigger the
 // RGB split on damage without importing main.js.
 import { triggerChromAberr, updateChromAberr, applyChromAberr, applyBloom, setPostfxPerfMode } from './postfx.js';
+import { setAtmosphericPerfMode } from './room.js';
 window.__triggerChromAberr = triggerChromAberr;
 
 // Per-run gameplay metrics — collapsed from 7 individual window.__ globals
@@ -2435,6 +2460,63 @@ canvas.addEventListener('pointerdown', () => {
   skipIntro();
 });
 
+// ── Walkability overlay (dev tool) ─────────────────────────────────
+// Backtick (`) toggles the tinted-grid overlay. Click cells while it's
+// visible to override walkable/blocked. Capture-phase so clicks don't
+// fall through to the hero attack on baked debug rooms.
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Backquote') return;
+  if (e.target && e.target.tagName === 'INPUT') return;     // typing in a field
+  toggleWalkOverlay();
+  e.preventDefault();
+});
+// Level-up modal click + key handlers — capture phase so they consume
+// before gameplay input fires. ESC / 1 / 2 / 3 also work.
+canvas.addEventListener('pointerdown', (e) => {
+  if (!isLevelUpModalOpen()) return;
+  const r = canvas.getBoundingClientRect();
+  const cssX = (e.clientX - r.left) * (canvas.width / r.width);
+  const cssY = (e.clientY - r.top) * (canvas.height / r.height);
+  if (handleLevelUpModalClick(cssX, cssY, canvas.width, canvas.height)) {
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
+window.addEventListener('keydown', (e) => {
+  if (!isLevelUpModalOpen()) return;
+  if (handleLevelUpModalKey(e.code)) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+}, true);
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!isWalkOverlayVisible()) return;
+  if (!room || !room.bakedImage) return;
+  // Convert canvas-pixel → world-pixel using current camera transform.
+  // Camera transform in render(): translate(-cam.x + halfW) then scale(zoom)
+  // around screen center. Inverse: world = (screen - halfW) / zoom + cam.x + halfW
+  // Simpler: account for the same translation/scale used in render().
+  const r = canvas.getBoundingClientRect();
+  const cssX = (e.clientX - r.left) * (canvas.width / r.width);
+  const cssY = (e.clientY - r.top) * (canvas.height / r.height);
+  const halfW = canvas.width / 2;
+  const halfH = canvas.height / 2;
+  const z = (camera && typeof camera.zoom === 'number') ? camera.zoom : 1;
+  const camX = (camera && typeof camera.x === 'number') ? camera.x : 0;
+  const camY = (camera && typeof camera.y === 'number') ? camera.y : 0;
+  const worldX = (cssX - halfW) / z + camX + halfW;
+  const worldY = (cssY - halfH) / z + camY + halfH;
+  const result = toggleCellAtWorld(room, worldX, worldY);
+  if (result) {
+    // Consume so the gameplay click handler doesn't also fire.
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);     // capture phase
+
 // Hook ESC key to toggle pause (only when game is actively running)
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape') return;
@@ -2629,9 +2711,118 @@ function computeDoorXs(roomW, n, roomH, shape) {
   return out;
 }
 
+// ── PHASE 3: ADAPTIVE WAVE 2 COMPOSITION ─────────────────────────────────
+// Tracks how much damage each enemy archetype dealt to the hero during
+// wave 1 of a combat room. Wave 2's composition reads this tally and
+// substitutes one wave-2 enemy of the dominant archetype for one of the
+// COUNTER archetype, biasing toward the threat type the player handled
+// LEAST well. Reads as "the room saw what worked against you and changed
+// tactics."
+//
+// Counter mapping (intent: vary the challenge, not pile on weakness):
+//   melee was hurting you most  → wave 2 swaps a melee for a ranged
+//                                 (forces movement / repositioning)
+//   ranged was hurting you most → wave 2 swaps a ranged for a melee/bomber
+//                                 (forces engagement / closing distance)
+//   bomber/lancer (rare archetypes) → no swap (tier pool may not have
+//                                  enough of these to swap meaningfully)
+//   no damage taken → wave 2 is unchanged (already balanced)
+//
+// Resets on combat-room enter. Hook is installed on combat rooms only,
+// so non-combat rooms (sanctuary, altar, etc.) don't accidentally
+// contribute damage that biases the next combat room.
+let _wave1DamageTally = null;
+const _COUNTER_ARCHETYPE = {
+  melee: 'ranged',
+  ranged: 'melee',
+};
+const _TIER_POOLS = {
+  tier1: ['slime', 'skel', 'bomber'],
+  tier2: ['skel', 'orc', 'archer', 'bomber'],
+  tier3: ['orc', 'archer', 'bomber', 'lancer'],
+};
+function _tierPoolForFloor(level) {
+  return _TIER_POOLS[level <= 1 ? 'tier1' : level <= 2 ? 'tier2' : 'tier3'];
+}
+function _archetypeOf(enemyType) {
+  const def = ENEMY_TYPES[enemyType];
+  return def ? def.behavior : null;
+}
+// Picks the archetype that dealt the most damage. Returns null if the
+// tally is empty or all-zero (= player took no damage in wave 1, no
+// signal to act on).
+function _dominantArchetype(tally) {
+  if (!tally) return null;
+  let best = null, bestVal = 0;
+  for (const k of Object.keys(tally)) {
+    if (tally[k] > bestVal) {
+      best = k;
+      bestVal = tally[k];
+    }
+  }
+  return best;
+}
+// Mutates wave2 in place — substitutes one enemy of the dominant
+// archetype for a counter-archetype enemy from the same tier pool.
+// No-ops when the tally is empty, no swap candidates exist, or the
+// counter-archetype isn't represented in the tier pool.
+//
+// Spawn-distance guard: if the swap would replace a melee with a ranged
+// enemy AT a spawn cell <100 px from the hero's current position, the
+// swap is skipped. Balance review flagged that a point-blank archer
+// spawning into a flanked hero is undodgeable on a 1-HP build. The
+// guard preserves the "wave 2 adapts" intent except in the specific
+// pathological case.
+function _adaptWave2Composition(wave2, tally, level, heroX, heroY) {
+  if (!wave2 || !tally) return;
+  const dom = _dominantArchetype(tally);
+  const counter = dom ? _COUNTER_ARCHETYPE[dom] : null;
+  if (!counter) return;
+  // Find the candidate swap (first enemy of the dominant archetype).
+  // Filter out candidates whose SPAWN POSITION is too close to the hero
+  // when the counter archetype is ranged — a point-blank archer spawn
+  // is the worst-case swap.
+  const isRangedCounter = (counter === 'ranged');
+  const candidates = wave2.filter((s) => {
+    if (_archetypeOf(s.type) !== dom) return false;
+    if (isRangedCounter) {
+      const sx = s.x * TILE + TILE / 2;
+      const sy = s.y * TILE + TILE / 2;
+      const dist = Math.hypot(heroX - sx, heroY - sy);
+      if (dist < 100) return false;     // too close — would be undodgeable
+    }
+    return true;
+  });
+  if (candidates.length === 0) return;
+  const candidate = candidates[0];
+  const pool = _tierPoolForFloor(level);
+  const counterTypes = pool.filter((t) => _archetypeOf(t) === counter);
+  if (counterTypes.length === 0) return;
+  candidate.type = counterTypes[Math.floor(Math.random() * counterTypes.length)];
+}
+
 function loadRoom(idx, entryFrom) {
   const data = floor[idx];
   data.entryFrom = entryFrom;
+  // Phase 3: install / reset the wave-1 damage tracker for combat rooms.
+  // Reset (not just install) so a previous combat room's tally doesn't
+  // leak into this one. Non-combat rooms uninstall the hook so their
+  // damage events (e.g. spike traps in challenge rooms) don't pollute
+  // the next combat room's tally.
+  if (data.kind === 'combat') {
+    _wave1DamageTally = { melee: 0, ranged: 0, bomber: 0, lancer: 0 };
+    if (typeof window !== 'undefined') {
+      window.__recordCombatDamage = (sourceType, amount) => {
+        const arch = _archetypeOf(sourceType);
+        if (arch && _wave1DamageTally) {
+          _wave1DamageTally[arch] = (_wave1DamageTally[arch] || 0) + amount;
+        }
+      };
+    }
+  } else {
+    _wave1DamageTally = null;
+    if (typeof window !== 'undefined') window.__recordCombatDamage = null;
+  }
   // Round-7-audit POLISH — stop any lingering 'cleared' ambient pad
   // from the PREVIOUS room. The pad is started when a combat room
   // clears (warm post-clear atmosphere); once we're loading a new
@@ -2758,6 +2949,9 @@ function loadRoom(idx, entryFrom) {
   // VOW T2 ascendance — "discipline blocks the first strike". Refresh the
   // per-room shield charge on every room entry. Consumed in damageHero.
   if ((hero.activeThemes?.vow || 0) >= 2) hero.themeVowShieldAvailable = true;
+  // STORMCALLER first-proc-per-room label flag — so the relic name is
+  // shown again next time the player walks into a fresh combat room.
+  hero._stormcallerShownThisRoom = false;
   // VOW ETERNAL legendary — first sword hit each room is a guaranteed
   // crit. Refresh the readiness flag on every room entry; consumed in
   // updateHero on the first damage-dealing sword swing. Pairs by
@@ -2885,13 +3079,16 @@ function loadRoom(idx, entryFrom) {
     // Cinematic skip-on-repeat — first time the player meets this boss
     // type they get the full 2.2s theatre treatment (full epithet read,
     // backdrop fade, name typography). Subsequent runs against the same
-    // boss cut to ~1.3s — still long enough to register the threat
-    // without making the player tap through the same cinematic on every
-    // descent. markSeen returns true on first sight; we invert it.
+    // boss cut to ~2.0s — long enough to actually read BOSS tag + name
+    // + flavor and brace for the fight. Earlier 1.3s sat below the
+    // threshold where Hades / Hollow Knight cinematics typically live
+    // (2.5–3.5s minimum even on repeats); 2.0s reads cleanly without
+    // making the player feel they're tapping through the same scene
+    // every descent. markSeen returns true on first sight; we invert it.
     const _bossKey = bossIntroBoss?.type || 'unknown';
     const _firstBoss = markSeen('boss_intro', _bossKey);
     bossIntroFast = !_firstBoss;
-    bossIntroTotal = _firstBoss ? 2.2 : 1.3;
+    bossIntroTotal = _firstBoss ? 2.2 : 2.0;
     bossIntroTime = bossIntroTotal;
     bossIntroStartedAt = performance.now();    // wall-clock mark for the 2.5s clamp
     // Hero invulnerability that covers the entire intro PLUS a post-intro
@@ -3589,6 +3786,11 @@ function resumeRun(snap) {
   // New run number — same rationale as startRun: invalidate stale
   // deferred callbacks from a prior aborted run.
   _runSeq++;
+  // Phase 3 cleanup — null the wave-1 damage hook + tally so a stale
+  // closure from the prior run can't pollute the new run's first
+  // combat room before loadRoom installs the fresh hook.
+  _wave1DamageTally = null;
+  if (typeof window !== 'undefined') window.__recordCombatDamage = null;
   hideAllOverlays();
   // Reset baseline first
   resetHero();
@@ -3767,6 +3969,11 @@ function startRun() {
   // runs (boss-drop poll, wave-2 spawn). They'll bail at the top of the
   // callback when they see _runSeq has moved past their captured value.
   _runSeq++;
+  // Phase 3 cleanup — null the wave-1 damage hook + tally so a stale
+  // closure from the prior run can't pollute the new run's first
+  // combat room before loadRoom installs the fresh hook.
+  _wave1DamageTally = null;
+  if (typeof window !== 'undefined') window.__recordCombatDamage = null;
   // (Prologue gate moved to enterHamletCanvas — the prose lands when the
   // player wakes in the hamlet, not after they've already toured it.)
   // ORACLE'S FORTUNES — if a card was drawn in the hamlet, push it into the
@@ -3781,9 +3988,18 @@ function startRun() {
   // Ambient pad fades out as the run begins — the real combat music system
   // (music.js, when OGG tracks land) will take over from here.
   stopAmbientPad();
-  // Re-enable camera breathe for combat (was disabled in hamlet to keep
-  // static tiles from shimmering — see enterHamletCanvas).
-  camera.breatheEnabled = true;
+  // Camera breathe stays OFF in combat too. The ±0.6% sin oscillation
+  // (camera.js updateCamera) shifts zoom every frame, which snaps pixel-
+  // art floor sprites to slightly different positions with
+  // imageSmoothingEnabled=false → reads as a slow CRT-screen shimmer
+  // across the cobblestone. Was originally enabled here for "living
+  // camera" feel during combat lulls, but since the per-biome tile
+  // sheets shipped (room.js drawFloorTile), the shimmer became visible
+  // enough to kill the painted texture's authored look. Camera life
+  // still comes from: zoom pulses on impact (camera.js zoomPulse*),
+  // shake on hits, hero-follow lerp, and the slight dolly on dodge —
+  // all well above the ±0.6% breathe threshold.
+  camera.breatheEnabled = false;
   currentFloorLevel = 1;
   setBiome(BIOME_BY_FLOOR[currentFloorLevel]);
   window.__currentBiome = BIOME_BY_FLOOR[currentFloorLevel];
@@ -4828,6 +5044,17 @@ function _tickInner(now) {
   // optimize no-op toggles to a tag check.
   document.body.classList.toggle('game-running', running);
 
+  // Level-up modal — hard pause on gameplay. Skip the entire update
+  // path but keep rendering so the modal animates. Mouse/key events
+  // still fire to the modal handler. Music keeps flowing for ambience.
+  if (isLevelUpModalOpen()) {
+    updateMusic(realDt);
+    render();
+    endFrameInput();
+    requestAnimationFrame(tick);
+    return;
+  }
+
   // When main menu / weapon picker is active, just animate dust + music
   if (menuEl.style.display !== 'none' || weaponPickerEl.style.display !== 'none') {
     updateDust(realDt, 0, 0);
@@ -5036,6 +5263,15 @@ function _tickInner(now) {
     updateDoorPan(realDt);
     updateParticles(dt);
     updateThemedRoomMotes(realDt, canvas.width, canvas.height);
+    updateZoneAmbient(realDt, canvas.width, canvas.height);
+    // Stand-and-Hold zone runner — wave state machine + portal entity.
+    // Only active when a zone run is in progress (started via __startZoneRun
+    // or __loadCryptSample in zone-run mode). Idempotent when idle.
+    updateZoneRunner(dt);
+    updateZonePortal(dt, hero.x, hero.y);
+    // XP gems — vacuum + collect. The level-up modal pauses gameplay
+    // when open, but gem motion still ticks (so they don't freeze in air).
+    updateXp(dt, hero.x, hero.y);
     updateDust(realDt, camera.x, camera.y);
     updateWeather(realDt, camera.x, camera.y);
     updateAmbientCreatures(realDt, camera.x, camera.y);
@@ -5608,11 +5844,26 @@ function _tickInner(now) {
 
     const data = floor[roomIndex];
 
+    // Phase 1 stabilization fix B4 — short-circuit ALL legacy per-room
+    // progression (combat/challenge/chestroom/boss/reward etc.) when the
+    // active room is a baked TMX zone. The zone runner owns wave/clear
+    // logic; without this gate, stale data.kind from a prior legacy room
+    // could phantom-spawn pedestals between zone-run waves.
+    const _inBakedZone = room.kind === 'tmx_crypt_sample';
+
     // Combat room progression: enemies dead → (optional wave2) → relic offer → cleared
-    if (data.kind === 'combat' && !room.cleared && enemies.length === 0) {
+    if (!_inBakedZone && data.kind === 'combat' && !room.cleared && enemies.length === 0) {
       // WAVE PATTERN — spawn second wave after a brief pause with warning VFX
       if (data.wave2 && !data._wave2Spawned) {
         data._wave2Spawned = true;
+        // Phase 3: adapt wave 2 composition based on what hurt the
+        // player in wave 1. Mutates data.wave2 in place — must run
+        // BEFORE the spawn loop below reads it. Tally is consumed
+        // here (set null) so a no-op replay from a stale window hook
+        // can't double-mutate.
+        _adaptWave2Composition(data.wave2, _wave1DamageTally, currentFloorLevel, hero.x, hero.y);
+        _wave1DamageTally = null;
+        if (typeof window !== 'undefined') window.__recordCombatDamage = null;
         // Announcement
         roomLabelText = '⚠ WAVE 2 INCOMING ⚠';
         roomLabelColor = '#ff9066';
@@ -5755,7 +6006,7 @@ function _tickInner(now) {
     }
 
     // Challenge room — like combat but with EXTRA gold drop on clear + a relic pedestal row
-    if (data.kind === 'challenge' && !room.cleared && enemies.length === 0) {
+    if (!_inBakedZone && data.kind === 'challenge' && !room.cleared && enemies.length === 0) {
       if (pedestals.length === 0) {
         import('./gold.js').then(g => g.dropGold(hero.x, hero.y - 20, 20));
         spawnRelicOffer(currentFloorLevel, data.roomTheme ? { theme: data.roomTheme } : {});
@@ -5774,7 +6025,7 @@ function _tickInner(now) {
     // mimic spawns, flip cleared back to true so doors unlock and the
     // run can continue. Without this, opening a mimic permanently
     // locks the room (was the case before this clear-check landed).
-    if (data.kind === 'chestroom' && !room.cleared && enemies.length === 0) {
+    if (!_inBakedZone && data.kind === 'chestroom' && !room.cleared && enemies.length === 0) {
       room.cleared = true;
       room.clearedAt = performance.now() / 1000;
       data.cleared = true;
@@ -5783,7 +6034,7 @@ function _tickInner(now) {
 
     // Boss room: instant clear on all enemies down.
     // Floor 3+ bosses drop a guaranteed legendary pedestal as reward.
-    if (data.kind === 'boss' && !room.cleared && enemies.length === 0) {
+    if (!_inBakedZone && data.kind === 'boss' && !room.cleared && enemies.length === 0) {
       room.cleared = true;
       room.clearedAt = performance.now() / 1000;
       data.cleared = true;
@@ -5832,7 +6083,7 @@ function _tickInner(now) {
     // Pedestal partial-heal on touch (once per room). Full heal is gated
     // behind gold so sanctuaries feel like a resource choice, not a free
     // reset. Starving curse disables it entirely.
-    if (data.kind === 'reward' && onPedestalWorld(hero.x, hero.y) && hero.hp < hero.maxHp) {
+    if (!_inBakedZone && data.kind === 'reward' && onPedestalWorld(hero.x, hero.y) && hero.hp < hero.maxHp) {
       if (!isCursed('starving') && consumePedestal()) {
         // Sanctuary heal — Round-6 economy retune.
         //   Round-1 : flat 3 HP — 100% at maxHp=3, ~25% at maxHp=12.
@@ -5972,7 +6223,8 @@ function _tickInner(now) {
     evaluateAchievements(stats, meta);
 
     // Boss room cleared → show either "Shop + Descend" (next floor) or "Run Complete"
-    if (data.kind === 'boss' && room.cleared && !bossWinTriggered) {
+    // Excluded during baked zone runs — the zone runner owns boss/clear flow.
+    if (!_inBakedZone && data.kind === 'boss' && room.cleared && !bossWinTriggered) {
       bossWinTriggered = true;
       running = false;
       // THE RUIN REMEMBERS — record this victory. Adds a scorch stain to the
@@ -6125,17 +6377,25 @@ function _tickInner(now) {
         // Run-sequence guard — if the player dies/quits/restarts during the
         // 15s timeout window, the captured _runSeq won't match and the poll
         // bails without firing openFloorUi against a fresh run state.
+        //
+        // BUGFIX 2026-05-06: previously each gate also checked `running`,
+        // but `running = false` is set at line 5983 right when the
+        // cascade starts (so the player can't move/take damage during
+        // the celebration). With `running` false, the openFloorUi calls
+        // ALL bailed → win modal never opened → game appeared frozen.
+        // _runSeq alone correctly captures the death/quit/restart race;
+        // `running` was redundant + actively breaking the flow.
         const pollStart = performance.now() + dropDelay;
         const pollRunSeq = _runSeq;
         const poll = setInterval(() => {
-          if (_runSeq !== pollRunSeq || !running) { clearInterval(poll); return; }
+          if (_runSeq !== pollRunSeq) { clearInterval(poll); return; }
           const now = performance.now();
           if (now < pollStart) return;                          // wait for spawn
           if (!hasActivePedestals() && pedestals.length > 0) {
             // All spawned pedestals are picked (length>0 guards against pre-spawn state)
             clearInterval(poll);
             setTimeout(() => {
-              if (_runSeq === pollRunSeq && running) openFloorUi();
+              if (_runSeq === pollRunSeq) openFloorUi();
             }, 3800);
           } else if (now - pollStart > 15000) {
             clearInterval(poll);
@@ -6143,16 +6403,17 @@ function _tickInner(now) {
             // it, a 15s-AFK-then-die-then-new-run race would fire
             // openFloorUi against a fresh run state and overlay the
             // between-floors shop on a player who hadn't earned it.
-            if (_runSeq === pollRunSeq && running) openFloorUi();
+            if (_runSeq === pollRunSeq) openFloorUi();
           }
         }, 200);
       } else {
         // No loot pool for this boss type → fall back to original timing.
         // Pin the run-seq so a death+new-run race during the cascade
-        // window doesn't fire openFloorUi on the fresh run.
+        // window doesn't fire openFloorUi on the fresh run. (See bugfix
+        // note above re: `running` gate removal.)
         const fallbackRunSeq = _runSeq;
         setTimeout(() => {
-          if (_runSeq === fallbackRunSeq && running) openFloorUi();
+          if (_runSeq === fallbackRunSeq) openFloorUi();
         }, cascadeDurationMs + 600);
       }
       if (isFinal) return;     // preserve the original early-return for final
@@ -6315,6 +6576,22 @@ function render() {
 
   drawRoom(ctx);
 
+  // Walkability overlay (dev tool) — drawn in world space ON TOP of the
+  // baked composite + tiles, BELOW hero/enemies, so it's always legible
+  // without obscuring the gameplay layer when toggled. Only visible when
+  // overlay is toggled on (backtick) and the room is a baked debug room.
+  drawWalkOverlay(ctx, room, camera.x, camera.y);
+
+  // Zone-run portal — drawn in world space on top of the floor, beneath
+  // sprites/enemies/hero so the player can clearly see when they walk
+  // onto it. No-op when no portal active.
+  drawZonePortal(ctx);
+
+  // XP gems — drawn in world space on top of floor, below sprites.
+  // Pop arc + vacuum trail are visible above hero (they orbit briefly
+  // before being consumed).
+  drawXpGems(ctx);
+
   // Spikes + fire pools draw on top of floor, below sprites
   drawSpikes(ctx, gameTime);
   drawUrns(ctx, 1 / 60);                // fixed small dt — break anim is visual only
@@ -6323,6 +6600,10 @@ function render() {
   drawFirePools(ctx, gameTime);
   // Wanderer halo draws beneath hero so hero sprite still reads
   drawWandererTrail(ctx);
+  // Pyromancer pre-proc charge — orange ground glow under hero when
+  // ONE hit from threshold. Drawn next to wanderer so both share the
+  // same elliptical-clip ground-glow render path (no float-shadow).
+  drawPyroCharge(ctx);
 
   // Enemy attack telegraphs + ember flame hazards render on the FLOOR, below sprites but above tiles
   drawEnemyTelegraphs(ctx);
@@ -6337,7 +6618,12 @@ function render() {
   drawPedestalTeasers(ctx);
   // Door labels — sigils + kind text float above each north door tile.
   // Drawn here so they appear on the wall plane, not blocked by hero/enemies.
-  if (room.kind !== 'hamlet') drawDoorLabels(ctx);
+  // Phase 1 stabilization fix B3 — gate door labels on the legacy DAG flow
+  // being active (currentGraph set). Skips during hamlet AND during baked
+  // zone runs (room.kind === 'tmx_crypt_sample'), which have no door graph.
+  if (room.kind !== 'hamlet' && room.kind !== 'tmx_crypt_sample' && currentGraph) {
+    drawDoorLabels(ctx);
+  }
   drawWanderer(ctx);
   // HAMLET CANVAS — layered composition:
   //   Layer 1 (room.js drawRoom hamlet branch): procedural sky + stars + ground slab
@@ -6482,7 +6768,16 @@ function render() {
   const _playableMask = room.kind === 'hamlet'
     ? null
     : { left: 0, top: 0, right: room.w * TILE, bottom: room.h * TILE };
-  drawDust(ctx, _playableMask, 0);
+  // Atmospheric haze layer (Phase A bridge to hamlet's painterly density).
+  // Was 0 alpha inside the playable mask — dungeon air read as sterile.
+  // 0.20 inside-mask lets dust drift visibly through combat rooms at low
+  // alpha so the air has the "weight + dust motes" the hamlet backdrop
+  // has. Above-room void area still gets full-alpha dust (1.0 outside
+  // the mask) to suggest atmosphere extending past the wall edge.
+  drawDust(ctx, _playableMask, 0.20);
+  // Weather (rain, snow) keeps its 0-inside-mask: those are EXTERNAL
+  // weather effects only meaningful in the open-air hamlet, not inside
+  // a stone dungeon corridor.
   drawWeather(ctx, _playableMask, 0);
   // Ambient creatures — bats, ravens, moths passing through. Silhouettes.
   drawAmbientCreatures(ctx);
@@ -6575,7 +6870,28 @@ function render() {
     // depends on. Reference roguelites (Hades, Dead Cells) sit around
     // 0.20-0.35. Dropped to 0.32 default / 0.42 boss / 0.36 altar — the
     // bright accents still glow but the world stays crisp.
-    const bloomIntensity = bloomKind === 'boss' ? 0.42 : bloomKind === 'altar' ? 0.36 : 0.32;
+    // Per-biome dial: when a painted floor sheet is loaded for the
+    // current biome, drop bloom further. The painterly stones already
+    // carry their own light/shade variation; layering bloom on top
+    // makes every cobblestone highlight pulse softly during the
+    // chromatic-aberration / vignette passes, which reads as the
+    // texture "breathing". Biomes still on procedural floor (vault /
+    // abyss / inferno until their sheets ship) keep the original 0.32
+    // since flat fills don't get that pulse.
+    const _biomeId = BIOME_BY_FLOOR[currentFloorLevel];
+    const _hasPaintedFloor = !!(_biomeId && imageCache[`floor_${_biomeId}_0`]);
+    // Lighting overhaul (2026-05-07): bloom intensities cut by ~30-35%
+    // across the board. Bloom has no color clamp (postfx.js line 94's
+    // brightness/contrast filter lifts ALL bright pixels equally), so
+    // any near-white sprite (torch core, hero halo, gold particles)
+    // blooms flat-bright — that's the "lens flare bokeh" the user was
+    // calling out. Lower bloom = less of those camera-like artifacts.
+    // Boss + altar still get the strongest bloom for theatrical effect
+    // but pulled back from 0.42/0.36 to 0.30/0.24.
+    const bloomIntensity = bloomKind === 'boss' ? 0.30
+      : bloomKind === 'altar' ? 0.24
+      : _hasPaintedFloor ? 0.14
+      : 0.20;
     applyBloom(ctx, canvas, bloomIntensity);
 
     // BIOME COLOR GRADE — two-pass tint giving each floor a distinct mood.
@@ -6660,6 +6976,28 @@ function render() {
   else if (kind === 'altar')     wash = 'rgba(180, 30, 50, 0.18)';
   else if (kind === 'challenge') wash = 'rgba(180, 100, 30, 0.12)';
   if (wash && !introActiveNow) {
+    // Soften per-kind wash on biomes where a painted floor sheet is
+    // active. The original wash alphas (0.08-0.22) were tuned against
+    // a flat procedural cool-grey floor where they read as a subtle
+    // tonal cue. On the warm-toned painterly cobblestone the wash
+    // stacks with the floor's existing warmth (combat blood-red onto
+    // warm-grey stone reads as overall pink, washing out the painted
+    // detail). Cutting alpha in half keeps the kind cue legible — you
+    // can still tell a combat room from a sanctuary at a glance —
+    // without drowning the painted base. Same condition as the bloom
+    // dial in W5 above; biomes still on procedural floor keep the
+    // original strengths.
+    const _washBiome = BIOME_BY_FLOOR[currentFloorLevel];
+    const _washHasPainted = !!(_washBiome && imageCache[`floor_${_washBiome}_0`]);
+    if (_washHasPainted) {
+      // rgba string format: "rgba(R, G, B, A)" — parse the tail alpha
+      // and rewrite at half strength. Cheap regex, runs once per frame.
+      const m = wash.match(/^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/);
+      if (m) {
+        const a = Math.max(0, parseFloat(m[4]) * 0.5);
+        wash = `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${a.toFixed(3)})`;
+      }
+    }
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
@@ -6674,22 +7012,29 @@ function render() {
   // gets a much softer treatment (no hero-centered darkness, only a mild
   // warm vignette) so it reads as welcoming, not dungeon-dim.
   const preBoss = roomNextKind.kind === 'boss' && kind !== 'boss';
+  // Hamlet vigBase shifted from 'rgba(30, 16, 10, ' (warm brown — reads
+  // "cozy hearth") to 'rgba(8, 10, 22, ' (cold dark blue-purple — reads
+  // "moonlit ruin"). Bridges to the dungeon's vignetteBase color family
+  // and supports the dark-fantasy unification of hamlet + dungeon.
   const vigBase = preBoss ? 'rgba(30, 4, 6, '
-    : kind === 'hamlet' ? 'rgba(30, 16, 10, '
+    : kind === 'hamlet' ? 'rgba(8, 10, 22, '
     : (pal.vignetteBase || 'rgba(4, 4, 8, ');
   if (!introActiveNow) {
     if (kind === 'hamlet') {
-      // HAMLET — no hero-centered darkness; just a gentle warm edge vignette
-      // so corners don't read as flat. The scene has its own painted fog +
-      // firepit halos; the dungeon darkness pass otherwise crushes the warm
-      // palette we painted on top.
+      // HAMLET — cool purple edge vignette (was warm brown). Stops bumped
+      // 0.08/0.28 → 0.18/0.45 after dark-fantasy unification audit
+      // flagged the previous strength as "homeopathic" — too weak to
+      // actually read as atmosphere. New stops sit between the dungeon
+      // boss-room (0.72) and the previous hamlet (0.28), giving the
+      // hamlet a real moody frame without flattening it into combat-
+      // room dimness.
       const cx = canvas.width / 2, cy = canvas.height / 2;
-      const vigInner = Math.min(canvas.width, canvas.height) * 0.35;
-      const vigOuter = Math.max(canvas.width, canvas.height) * 0.80;
+      const vigInner = Math.min(canvas.width, canvas.height) * 0.32;
+      const vigOuter = Math.max(canvas.width, canvas.height) * 0.78;
       const vig = ctx.createRadialGradient(cx, cy, vigInner, cx, cy, vigOuter);
       vig.addColorStop(0,    vigBase + '0)');
-      vig.addColorStop(0.65, vigBase + '0.08)');
-      vig.addColorStop(1,    vigBase + '0.28)');
+      vig.addColorStop(0.55, vigBase + '0.18)');
+      vig.addColorStop(1,    vigBase + '0.45)');
       ctx.fillStyle = vig;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     } else {
@@ -6773,10 +7118,15 @@ function render() {
     // sprite + small flame halo + soft warm pool — three layers, each
     // small. Pre-fix, the same torch contributed sprite + 100 px bright
     // halo + 230 px bright pool, reading as a stage spotlight.
-    const radius = 70 + flick * 8;
+    // Lighting overhaul (2026-05-07): radius 70 → 50, alphas 0.16/0.04
+    // → 0.10/0.025. With the new warm-amber torch palette, this halo
+    // contributes a tight bright pip RIGHT at the flame source rather
+    // than a wider glow, reducing the "bulb" feel and reinforcing
+    // "fire is local, dungeon stays dark elsewhere."
+    const radius = 50 + flick * 6;
     const g = ctx.createRadialGradient(tsx, tsy, 4, tsx, tsy, radius);
-    g.addColorStop(0, flameBase + (0.16 * flick).toFixed(3) + ')');
-    g.addColorStop(0.45, flameBase + (0.04 * flick).toFixed(3) + ')');
+    g.addColorStop(0, flameBase + (0.10 * flick).toFixed(3) + ')');
+    g.addColorStop(0.45, flameBase + (0.025 * flick).toFixed(3) + ')');
     g.addColorStop(1, flameBase + '0)');
     ctx.fillStyle = g;
     ctx.fillRect(tsx - radius, tsy - radius, radius * 2, radius * 2);
@@ -6875,6 +7225,22 @@ function render() {
   if (!(bossIntroTime > 0 || floorCardTime > 0 || phaseIntroTime > 0)) {
     const _motesAlpha = 1 - 0.7 * _atmosphericDim;
     drawThemedRoomMotes(ctx, _motesAlpha);
+    // Zone ambient — drawn AFTER themed motes (so themed-pickup motes
+    // remain salient over zone ambient when both are active) but BEFORE
+    // the HUD. The wash is drawn first as a subtle full-screen tint,
+    // then the particles drift over it. Both are suppressed during
+    // cinematic intros (same outer guard).
+    const _zoneWash = getActiveZoneWash();
+    if (_zoneWash) drawZoneWash(ctx, canvas.width, canvas.height, _zoneWash);
+    drawZoneAmbient(ctx);
+    // XP bar — top-of-screen progress bar + level label. Always shown
+    // when a zone run is active (level >= 1 means the system has been
+    // initialized via __startZoneRun).
+    if (typeof hero.level === 'number' && hero.level >= 1) {
+      drawXpBar(ctx, canvas.width);
+    }
+    // Zone HUD — wave dots + boss banner. No-op when not in a zone run.
+    drawZoneHud(ctx, canvas.width);
   }
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
@@ -7391,6 +7757,14 @@ function render() {
     }
     ctx.restore();
   }
+
+  // Level-up modal — drawn ABOVE everything else (HUD, ceremony, etc.)
+  // because it's a hard pause point. The modal has its own backdrop dim
+  // and 3 cards. Gameplay paused via tick gating below.
+  if (isLevelUpModalOpen()) {
+    updateLevelUpModalMouse(mouse.x, mouse.y, canvas.width, canvas.height);
+    drawLevelUpModal(ctx, canvas.width, canvas.height);
+  }
 }
 
 // Simple animated background for the main menu (dust particles + dark gradient)
@@ -7595,7 +7969,9 @@ async function boot() {
   // Performance mode — resolved here so postfx.js can early-return on
   // mid-range mobile / low-core-count devices. Default 'auto' enables
   // when hardwareConcurrency <= 4 OR primary touch device.
-  setPostfxPerfMode(resolvePerfMode());
+  const _perf = resolvePerfMode();
+  setPostfxPerfMode(_perf);
+  setAtmosphericPerfMode(_perf);
   // Wire the virtual-control DOM (joystick + action buttons). Listeners
   // are always installed; the overlay's CSS visibility is gated by
   // body.mobile-controls so desktop users never see/feel them.
@@ -7747,6 +8123,35 @@ if (import.meta.env.DEV) {
       return { ok: true, roomKind: floor[targetIdx]?.kind, roomIndex };
     },
 
+    // Walk to ANY graph node by id (same mechanism as __jumpToBoss but
+    // for arbitrary nodes). Used by the playthrough-test harness to
+    // walk through every room kind on a floor without manual hero
+    // door-crossings. Returns the new room's kind + idx for chaining.
+    walkToNode: (nodeId) => {
+      if (!currentGraph) return { error: 'no graph — call __startRun first' };
+      const node = currentGraph.nodes.find((n) => n.id === nodeId);
+      if (!node) return { error: 'no node with id ' + nodeId };
+      const targetIdx = floor.length;
+      floor.push(node.roomData);
+      currentNodeId = nodeId;
+      // Mark current on all nodes so the map screen reads consistent
+      currentGraph.nodes.forEach((n) => { n.current = (n.id === nodeId); });
+      beginTransition(targetIdx, 'south');
+      updateTransition(0.4);
+      updateTransition(0.4);
+      return { ok: true, roomKind: floor[targetIdx]?.kind, actualKind: node.actualKind, roomIndex };
+    },
+
+    // Kill all enemies in the current room — bypasses the actual fight
+    // for testing room-clear flow without playing through combat.
+    killAllEnemies: () => {
+      let n = 0;
+      for (const e of enemies) {
+        if (!e.dead && !e.boss) { e.hp = 0; n++; }
+      }
+      return { killed: n, alive: enemies.filter(e => !e.dead).length };
+    },
+
     // Synthetic boss-intro trigger — sets the intro timer directly without
     // changing rooms or spawning the enemy. Quickest way to visually
     // inspect the intro render itself.
@@ -7805,6 +8210,354 @@ if (import.meta.env.DEV) {
 
     // Inspect the Watcher's persisted + per-run state.
     watcherState: () => watcherSnapshot(),
+
+    // Spawn a slime_spitter at the hero's position for testing the
+    // ranged slime variant. Confirms (a) the def is registered,
+    // (b) the cast sheet loads, (c) updateRanged dispatches to the
+    // acid projectile path. Usage: __spawnSpitter()
+    spawnSpitter: () => {
+      const def = ENEMY_TYPES['slime_spitter'];
+      if (!def) return { error: 'slime_spitter def not found', defs: Object.keys(ENEMY_TYPES).filter(k => k.startsWith('slime')) };
+      const offsetX = 80;
+      spawnEnemy('slime_spitter', hero.x + offsetX, hero.y);
+      return {
+        ok: true,
+        type: 'slime_spitter',
+        attackSheet: def.attackSheet,
+        projectile: def.projectile,
+        attackRange: def.attackRange,
+        spawnedAt: { x: hero.x + offsetX, y: hero.y },
+      };
+    },
+
+    // ── _loadBakedZone — internal helper ────────────────────────────
+    // Loads a baked TMX room into the live `room` object. Used by both
+    // `loadCryptSample` (debug + 4-enemy spawn) and `startZoneRun`
+    // (production-shape, with the wave runner driving spawns).
+    //
+    // Phase 1 fix P3: previously startZoneRun reached through
+    // `window.__loadCryptSample` to share this code, creating a circular
+    // debug-hook dependency. Extracted here as a private closure so both
+    // entry points share the same path without going through window.*.
+    //
+    // Returns { ok, meta, baseKey, zoneName, sp } or { error }.
+    _loadBakedZone: (which) => {
+      const baseKey =
+        which === 'ruins' ? 'room_ruins_sample' :
+        which === 'mountain' ? 'room_mountain_sample' :
+        which === 'volcano' ? 'room_volcano_sample' :
+        which === 'crypt' ? 'room_crypt_sample' :
+        which === 'sample' ? 'room_crypt_sample' :
+        which === 'chamber_01' ? 'room_crypt_chamber_01' :
+        which === 'main_hall' ? 'room_crypt_main_hall' :
+        which === 'cemetery2' ? 'room_cemetery_sample_2' :
+        'room_cemetery_sample';
+
+      const zoneName =
+        which === 'ruins' ? 'ruins' :
+        which === 'mountain' ? 'mountain' :
+        which === 'volcano' ? 'volcano' :
+        (which === 'crypt' || which === 'sample' || which === 'chamber_01' || which === 'main_hall') ? 'crypt' :
+        'cemetery';
+
+      applyZoneProfile(zoneName);
+      setOverlayZone(zoneName);
+
+      const img = imageCache[baseKey];
+      const animsImg = imageCache[baseKey + '_anims'];
+      const meta = imageCache[baseKey + '_meta'];
+      if (!img || !animsImg || !meta) {
+        return { error: 'baked room not fully loaded',
+          hasImg: !!img, hasAnims: !!animsImg, hasMeta: !!meta };
+      }
+
+      room.w = meta.width;
+      room.h = meta.height;
+      room.kind = 'tmx_crypt_sample';
+      room.shape = 'rect';
+      room.cleared = false;
+      room.bakedImage = img;
+      room.bakedAnimsImage = animsImg;
+      room.bakedTileSize = meta.tileSize;
+      room.bakedAnimCellW = meta.animationAtlas.cellWidth;
+      room.bakedAnimCellH = meta.animationAtlas.cellHeight;
+      room.bakedAnimations = meta.animations;
+      room.bakedProps = meta.animatedProps;
+      room.bakedCollision = meta.collisionGrid;
+
+      room.tiles = [];
+      for (let y = 0; y < meta.height; y++) {
+        const tileRow = new Array(meta.width);
+        for (let x = 0; x < meta.width; x++) {
+          const cell = meta.collisionGrid[y][x];
+          tileRow[x] = (cell && cell.rects && cell.rects.length) ? 'wall' : 'floor';
+        }
+        room.tiles.push(tileRow);
+      }
+      room.decor = [];
+      room.spawns = [];
+      roomTorches.length = 0;
+      roomSpikes.length = 0;
+      roomFirePools.length = 0;
+      roomUrns.length = 0;
+      roomChests.length = 0;
+      roomDecorPillars.length = 0;
+      invalidateTileCache();
+
+      const sp = meta.spawn || { x: Math.floor(meta.width / 2), y: Math.floor(meta.height / 2) };
+      hero.x = sp.x * TILE + TILE / 2;
+      hero.y = sp.y * TILE + TILE / 2;
+
+      return { ok: true, meta, baseKey, zoneName, sp };
+    },
+
+    // Path-A demo — load a baked Tiled chamber. Five-zone progression:
+    // ruins → cemetery → crypt → mountain → volcano.
+    //
+    // Available rooms:
+    //   ── 5-zone progression (canonical) ──
+    //   'ruins'      — Floor 1, Ancient Ruins (40×24, sun-baked stone).
+    //   'cemetery'   — Floor 2, Cemetery Sample Map (35×20, ~560 cells).
+    //                  DEFAULT for back-compat.
+    //   'crypt'      — Floor 3, Crypt Sample Map (35×25, ~628 cells).
+    //   'mountain'   — Floor 4, Depths of the Mountain (45×54, ~2274 cells).
+    //   'volcano'    — Floor 5, Volcano (90×60, ~5207 cells main component).
+    //
+    //   ── Legacy / variants ──
+    //   'cemetery2'  — User's edited Sample Map - 2.tmx (cleaner objects).
+    //   'main_hall'  — Cropped lower-half of the Crypt Sample Map.
+    //   'chamber_01' — Sarcophagus chamber from Crypt example map.
+    //   'sample'     — Full Crypt Sample Map (alias of 'crypt').
+    //
+    // Usage:
+    //   __loadCryptSample()           → cemetery (default)
+    //   __loadCryptSample('ruins')    → floor 1
+    //   __loadCryptSample('mountain') → floor 4
+    //   __loadCryptSample('volcano')  → floor 5
+    loadCryptSample: (which = 'cemetery') => {
+      const r = window.__loadBakedZone ? window.__loadBakedZone(which) : null;
+      if (!r || r.error) return r || { error: '__loadBakedZone unavailable' };
+      const { meta, sp, zoneName } = r;
+
+      // ── End-to-end combat proof — spawn enemies in walkable cells ──
+      // Flood-fill from hero's spawn cell to find all cells in the
+      // SAME connected component (so enemies can actually reach the
+      // hero). Pick N spread cells from that pool for enemy spawns.
+      // This is the MVP proof: walk into a Tiled-baked room, see real
+      // gameplay happen.
+      clearEnemies();
+      const visited = new Map();
+      const cellKey = (x, y) => `${x},${y}`;
+      const queue = [[sp.x, sp.y]];
+      visited.set(cellKey(sp.x, sp.y), [sp.x, sp.y]);
+      while (queue.length) {
+        const [x, y] = queue.shift();
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= meta.width || ny >= meta.height) continue;
+          if (visited.has(cellKey(nx, ny))) continue;
+          const cell = meta.collisionGrid[ny][nx];
+          // A cell is "passable for enemies" if it has no rects, OR
+          // its rects don't fill the whole cell (sub-cell shapes).
+          let passable = !cell || !cell.rects || cell.rects.length === 0;
+          if (cell && cell.rects && cell.rects.length === 1) {
+            const r = cell.rects[0];
+            if (r.w < meta.tileSize || r.h < meta.tileSize) passable = true;
+          }
+          if (!passable) continue;
+          visited.set(cellKey(nx, ny), [nx, ny]);
+          queue.push([nx, ny]);
+        }
+      }
+      const reachable = [...visited.values()];
+      // Pick 4 enemy spawn cells from the reachable pool, spread out
+      // so they're not all clumped on the hero. Sort by distance from
+      // hero, take cells from across the distribution (close, mid, far).
+      reachable.sort((a, b) => {
+        const da = (a[0] - sp.x) ** 2 + (a[1] - sp.y) ** 2;
+        const db = (b[0] - sp.x) ** 2 + (b[1] - sp.y) ** 2;
+        return da - db;
+      });
+      // Skip cells too close to the hero (combat starts within reach).
+      const pool = reachable.filter((c) => {
+        const d2 = (c[0] - sp.x) ** 2 + (c[1] - sp.y) ** 2;
+        return d2 > 25;       // > 5 cells away
+      });
+      const enemyTypes = ['skel', 'crypt_spider', 'slime', 'crypt_spider'];
+      const spawnedCount = Math.min(enemyTypes.length, pool.length);
+      const stride = Math.max(1, Math.floor(pool.length / spawnedCount));
+      for (let i = 0; i < spawnedCount; i++) {
+        const cell = pool[Math.min(pool.length - 1, i * stride)];
+        const ex = cell[0] * TILE + TILE / 2;
+        const ey = cell[1] * TILE + TILE / 2;
+        spawnEnemy(enemyTypes[i], ex, ey);
+      }
+
+      return {
+        ok: true,
+        roomSize: `${meta.width}×${meta.height} tiles`,
+        worldSize: `${meta.width * TILE}×${meta.height * TILE} px`,
+        animations: meta.animations.length,
+        animatedProps: meta.animatedProps.length,
+        components: meta.componentCount,
+        largestComponent: meta.largestComponentSize,
+        spawnCell: sp,
+        reachableCells: reachable.length,
+        enemiesSpawned: spawnedCount,
+        heroAt: { x: hero.x, y: hero.y },
+        zone: zoneName,
+      };
+    },
+
+    // ── Walkability overlay (dev tool) ───────────────────────────────
+    // Press backtick (`) to toggle the tinted-grid overlay, then click
+    // cells to override walkable/blocked. Exports a sidecar JSON the
+    // bake script can merge.
+    toggleWalkOverlay: () => {
+      const visible = toggleWalkOverlay();
+      return { visible, overrides: walkOverrideCount() };
+    },
+    exportWalkOverrides: () => {
+      const json = exportWalkOverrides();
+      // Convenience: also copy to clipboard if available so the user
+      // can paste it directly into a sidecar file.
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(json);
+        }
+      } catch (_e) { /* clipboard not available — return-string fallback */ }
+      return json;
+    },
+
+    // ── Stand-and-Hold zone run (Phase 1) ─────────────────────────────
+    // Starts a complete 5-zone run. Wave system spawns enemies on a
+    // timer, boss arrives at the configured signature location after
+    // wave 3 clears, boss death spawns a portal that advances to the
+    // next zone. ruins → cemetery → crypt → mountain → volcano → win.
+    //
+    // Usage:
+    //   __startZoneRun()             → begin at ruins
+    //   __startZoneRun('volcano')    → jump to a specific zone
+    startZoneRun: (zoneName = 'ruins') => {
+      // Phase 1 fix P3: use the shared `__loadBakedZone` helper instead
+      // of reaching through `__loadCryptSample` (debug-only). Both paths
+      // share the same bake-load implementation; this one starts the
+      // wave runner, the other spawns 4 debug enemies.
+      const bakedLoad = window.__loadBakedZone;
+      if (!bakedLoad) return { error: '__loadBakedZone unavailable' };
+
+      const enc = getZoneEncounters(zoneName);
+      if (!enc) return { error: `no encounters config for: ${zoneName}` };
+
+      // ── XP / perks plumbing ──────────────────────────────────────
+      // Set up the global hooks once per zone-run start. Resets perk
+      // stacks + XP only on the FIRST zone (ruins or whatever the
+      // caller picked), so a player jumping mid-run via __startZoneRun
+      // ('volcano') doesn't lose their progress (debug-friendly).
+      if (zoneName === 'ruins' || !window.__zoneRunInitialized) {
+        resetXp();
+        resetPerks();
+        window.__zoneRunInitialized = true;
+      }
+      // Per-enemy XP gem drop — only active during zone runs.
+      window.__onEnemyKilled = (enemy) => {
+        try { dropXpGemFromEnemy(enemy); } catch (_e) {}
+      };
+      // Level-up: open the modal, which pauses gameplay until pick.
+      setOnLevelUp((newLevel) => {
+        openLevelUpModal(newLevel, () => {
+          // Modal closed (perk picked). Nothing else needed —
+          // perk.apply() already mutated hero stats.
+        });
+      });
+
+      const _enterZone = (zname) => {
+        const zEnc = getZoneEncounters(zname);
+        if (!zEnc) return { error: `no encounters: ${zname}` };
+
+        // Cleanup previous zone state.
+        clearZonePortal();
+        stopZoneRun();
+        clearEnemies();
+
+        // Phase 1 stabilization fix B2 — null any stale legacy DAG state
+        // so subsystems that read currentGraph / currentNodeId / floor[]
+        // (drawHud minimap, room-kind branches, etc.) don't draw garbage
+        // during a zone run. The legacy `floor` array is left in place
+        // (subsystems gate on currentGraph being null first).
+        currentGraph = null;
+        currentNodeId = null;
+
+        // Load bake via shared helper. No phantom debug enemies to clear.
+        const loadResult = bakedLoad(zname);
+        if (loadResult && loadResult.error) {
+          console.warn('[startZoneRun] load failed', loadResult);
+          return loadResult;
+        }
+
+        // Per-zone camera zoom — small maps pull back, large maps follow.
+        camera.zoom = zEnc.cameraZoom || 1.0;
+
+        // Start the wave runner. onComplete fires when the boss dies.
+        startZoneRun(zname, {
+          onComplete: ({ bossPos }) => {
+            const next = getNextZone(zname);
+            // Spawn the portal at the boss's last position. If we're at
+            // the final zone (volcano), portal label = 'WIN'; touching it
+            // ends the run (Phase 1 stub — proper win flow is later).
+            const px = bossPos ? bossPos.x : (zEnc.bossLocation.x + 0.5) * TILE;
+            const py = bossPos ? bossPos.y : (zEnc.bossLocation.y + 0.5) * TILE;
+            // Boss kill XP burst — fan of large gems at boss location.
+            // Counts per zone scale 8 → 14 across the run.
+            const burstByZone = { ruins: 8, cemetery: 9, crypt: 11, mountain: 12, volcano: 14 };
+            try { dropBossXpBurst(px, py, burstByZone[zname] || 10); } catch (_e) {}
+            spawnZonePortal(px, py, {
+              label: next ? next : 'victory',
+              onEnter: () => {
+                if (next) {
+                  _enterZone(next);
+                } else {
+                  // Final zone cleared. Stop the runner; show a stub
+                  // message in the console. Proper win cinematic is
+                  // Phase 3 work.
+                  stopZoneRun();
+                  clearZonePortal();
+                  console.log('%c[zone run] all 5 zones cleared!',
+                    'color:#ffd070;font-weight:bold;font-size:14px');
+                }
+              },
+            });
+          },
+        });
+        return { ok: true, zone: zname, waves: zEnc.waves.length };
+      };
+
+      return _enterZone(zoneName);
+    },
+
+    /** Read current zone-runner state (HUD / debug). */
+    zoneRunStatus: () => ({
+      runner: getZoneRunnerState(),
+      portal: { active: isZonePortalActive() },
+      xp: getXpDebug(),
+      perks: getActivePerksDebug(),
+    }),
+
+    /** Force a level-up (for testing the modal + perks). */
+    forceLevelUp: () => {
+      const s = getXpDebug();
+      // Add enough XP to cross the next threshold.
+      const need = s.next - s.xp + 1;
+      if (typeof hero.xp !== 'number') hero.xp = 0;
+      hero.xp += need;
+      // The XP system's _grantXp won't fire from a direct hp.xp mutation,
+      // so call updateXp to nudge the level-up check via the next tick.
+      // Simpler: just open the modal directly with the next level.
+      openLevelUpModal((hero.level || 1) + 1, () => {
+        hero.xp -= need;
+      });
+      return { ok: true, modalOpen: isLevelUpModalOpen() };
+    },
   });
 }
 
