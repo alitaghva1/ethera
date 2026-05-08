@@ -149,12 +149,34 @@ export function updateZoneRunner(dt) {
         } else {
           _runner.state = STATE_BOSS_PEND;
           _runner.timer = PRE_BOSS_DELAY;
+          // Phase 7 polish (audit F6) — fire a sub-bass rumble at the
+          // START of BOSS_PEND, plus a slow camera pull-back. Fills
+          // the 2.2s "dead air" between wave-3 clear and boss spawn
+          // with audio + visual buildup. Player feels something
+          // approaching, not a stalled game.
+          try {
+            // Three rising chord notes spaced through the 2.2s window
+            // — A1 → A1+5th → A1+oct, each 0.7s. Sub-bass that builds.
+            import('./synth.js').then((m) => {
+              if (m.synthChord) {
+                m.synthChord(55, 0.9, 0.32);                                  // A1, deep rumble
+                setTimeout(() => m.synthChord && m.synthChord(82, 0.9, 0.36), 700);  // ~E2 fifth
+                setTimeout(() => m.synthChord && m.synthChord(110, 1.0, 0.42), 1400); // A2 release
+              }
+            });
+            // Subtle camera zoom-out hint (negative pulse = zoom out).
+            // 0.4 amp over 1.0s = a slow draw-back. Mirrored by the
+            // big punch-IN at boss spawn (zoomPulse +0.06) for contrast.
+            import('./camera.js').then((m) => m.pulseZoom && m.pulseZoom(-0.04, 1.6));
+          } catch (_e) { /* feedback optional */ }
         }
       }
       break;
 
     case STATE_BOSS_PEND:
-      // Dramatic pause before boss spawn.
+      // Dramatic pause before boss spawn — buildup audio + camera fired
+      // at WAVE_CLEAR → BOSS_PEND transition above; this branch just
+      // ticks the timer down.
       if (_runner.timer <= 0) _spawnBoss();
       break;
 

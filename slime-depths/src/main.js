@@ -199,7 +199,7 @@ import {
   isLevelUpModalOpen, openLevelUpModal, drawLevelUpModal,
   updateLevelUpModalMouse, handleLevelUpModalClick, handleLevelUpModalKey,
 } from './levelUpModal.js';
-import { resetPerks, getActivePerksDebug } from './perks.js';
+import { resetPerks, getActivePerksDebug, drawPerkChipStrip } from './perks.js';
 import { gold, resetGold, updateGold, drawGold } from './gold.js';
 // Round-7 Sprint B refactor — composeRelicThumbDataURL +
 // composeEnemyThumbDataURL moved to achievementsModal (used only by
@@ -7359,6 +7359,11 @@ function render() {
     const _runnerState = getZoneRunnerState();
     if (_runnerState.zoneName) {
       drawXpBar(ctx, canvas.width);
+      // Phase 7 polish (audit U5) — perk-stack chip strip below XP bar.
+      // Top-left position so it doesn't fight with the centered zone
+      // HUD or the right-side floor panel. Visible only when at least
+      // one perk has been picked.
+      drawPerkChipStrip(ctx, 16, 60);
     }
     // Zone HUD — wave dots + boss banner. No-op when not in a zone run.
     drawZoneHud(ctx, canvas.width);
@@ -8251,6 +8256,31 @@ function enterCanonicalRun(zoneName = 'ruins') {
         const next = getNextZone(zname);
         const px = bossPos ? bossPos.x : (zEnc.bossLocation.x + 0.5) * TILE;
         const py = bossPos ? bossPos.y : (zEnc.bossLocation.y + 0.5) * TILE;
+
+        // Phase 7 polish (audit U3) — boss-kill climax beat. Currently
+        // boss death → XP gems + pedestal + portal lands as three
+        // ordinary spawns. The rarest reward of the run reads identical
+        // to a sanctuary pickup. Add a distinct climax FX bundle that
+        // fires BEFORE the pedestal/portal so the player feels the
+        // boss kill, then sees the rewards. Three layered hits:
+        //   • golden screen flash (warm, victorious — vs the red flash
+        //     used for boss SPAWN; opposite emotional valence)
+        //   • slow zoom-IN punch (camera celebrates the kill)
+        //   • tonic-major chord (C5+E5+G5 — "you won" tone)
+        // Imports dynamic + try-wrapped — never blocks the reward spawn.
+        try {
+          import('./fx.js').then((m) => m.triggerScreenFlash &&
+            m.triggerScreenFlash('rgba(255, 220, 130, 0.28)', 0.65));
+          import('./camera.js').then((m) => m.pulseZoom && m.pulseZoom(0.05, 0.5));
+          import('./synth.js').then((m) => {
+            if (m.synthChord) {
+              m.synthChord(523, 0.9, 0.42);
+              setTimeout(() => m.synthChord && m.synthChord(659, 0.9, 0.40), 140);
+              setTimeout(() => m.synthChord && m.synthChord(783, 1.1, 0.46), 280);
+            }
+          });
+        } catch (_e) { /* feedback optional */ }
+
         // Boss XP burst — fan of large gems at boss location.
         const burstByZone = { ruins: 8, cemetery: 9, crypt: 11, mountain: 12, volcano: 14 };
         try { dropBossXpBurst(px, py, burstByZone[zname] || 10); } catch (_e) {}
