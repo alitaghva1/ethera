@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="40" height="24" tilewidth="32" tileheight="32" infinite="0" nextlayerid="15" nextobjectid="704">
+<map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="40" height="24" tilewidth="32" tileheight="32" infinite="0" nextlayerid="15" nextobjectid="710">
  <tileset firstgid="1" source="Tilesets/Terrain - Ancient Ruins.tsx"/>
  <tileset firstgid="2210" source="Tilesets/Ancient Ruins-Tileset - wall 1.tsx"/>
  <tileset firstgid="2450" source="Tilesets/Ancient Ruins-Tileset-Terrain2.tsx"/>
@@ -252,7 +252,7 @@
   <object id="10" gid="9903" x="708" y="199" width="32" height="64"/>
   <object id="11" gid="9903" x="462" y="166" width="32" height="64"/>
   <object id="12" gid="9904" x="394" y="187" width="64" height="96"/>
-  <object id="13" gid="9902" x="454" y="194" width="32" height="64"/>
+  <object id="13" gid="9902" x="576" y="224" width="32" height="64"/>
   <object id="14" gid="9906" x="495" y="170" width="64" height="96"/>
   <object id="16" gid="9905" x="549" y="184" width="64" height="96"/>
   <object id="29" gid="9572" x="1184" y="320" width="160" height="192"/>
@@ -276,7 +276,6 @@
   <object id="49" gid="9698" x="1129" y="344" width="32" height="32"/>
   <object id="50" gid="9686" x="1159.33" y="339.333" width="32" height="32"/>
   <object id="51" gid="9693" x="1151.83" y="361" width="32" height="32"/>
-  <object id="54" gid="9764" x="1120" y="416" width="64" height="64"/>
   <object id="86" gid="9847" x="591" y="150" width="32" height="32"/>
   <object id="88" gid="10017" x="693.682" y="314.614" width="32" height="32"/>
   <object id="91" gid="10035" x="588" y="211" width="32" height="64"/>
@@ -310,10 +309,6 @@
   <object id="144" gid="9680" x="1200.5" y="402" width="32" height="32"/>
   <object id="145" gid="9694" x="1232.5" y="407" width="32" height="32"/>
   <object id="146" gid="2147493349" x="1258" y="421.5" width="32" height="32"/>
-  <object id="148" gid="9963" x="1212" y="610.5" width="128" height="192"/>
-  <object id="149" gid="9959" x="1142.5" y="651" width="128" height="192"/>
-  <object id="150" gid="9956" x="1201.5" y="693.5" width="128" height="192"/>
-  <object id="151" gid="9542" x="1202" y="524.5" width="96" height="128"/>
   <object id="152" gid="9534" x="1232.5" y="502" width="128" height="160"/>
   <object id="154" gid="9533" x="1220" y="363.5" width="128" height="160"/>
   <object id="155" gid="9560" x="1027.5" y="427" width="32" height="32"/>
@@ -341,9 +336,8 @@
   <object id="179" gid="9555" x="1085.33" y="539.333" width="32" height="32"/>
   <object id="183" gid="9949" x="1160.33" y="450.333" width="96" height="32"/>
   <object id="184" gid="9943" x="1151.33" y="486.333" width="64" height="32"/>
-  <object id="185" gid="10024" x="1163.33" y="426.833" width="32" height="32"/>
   <object id="186" gid="10023" x="1126" y="427" width="32" height="32"/>
-  <object id="187" gid="10028" x="1142.33" y="449" width="32" height="64"/>
+  <object id="187" gid="10028" x="1120" y="448" width="32" height="64"/>
   <object id="188" gid="10024" x="1106.67" y="423.667" width="32" height="32"/>
   <object id="189" gid="9883" x="1179" y="418.5" width="64" height="32"/>
   <object id="190" gid="9858" x="1173" y="411.5" width="32" height="32"/>
@@ -386,7 +380,7 @@
   <object id="291" gid="9944" x="811" y="457" width="64" height="32"/>
   <object id="294" gid="9919" x="826.5" y="475" width="32" height="32"/>
   <object id="295" gid="9921" x="763" y="489" width="32" height="32"/>
-  <object id="296" gid="9929" x="789" y="494" width="32" height="32"/>
+  <object id="296" gid="9929" x="736" y="608" width="32" height="32"/>
   <object id="297" gid="9937" x="766.5" y="501" width="32" height="32"/>
   <object id="298" gid="9926" x="753.5" y="520" width="32" height="32"/>
   <object id="299" gid="9923" x="763.5" y="515" width="32" height="32"/>
@@ -445,7 +439,6 @@
   <object id="483" gid="9697" x="798" y="295" width="32" height="32"/>
  </objectgroup>
  <objectgroup id="9" name="props-vegetation2">
-  <object id="59" gid="9918" x="452" y="176" width="32" height="32"/>
   <object id="109" gid="10082" x="739" y="213" width="32" height="32"/>
   <object id="111" gid="10069" x="753.5" y="210.5" width="32" height="32"/>
   <object id="112" gid="10092" x="805.5" y="164" width="32" height="32"/>
@@ -462,6 +455,8 @@
   <object id="306" gid="9854" x="784" y="599.5" width="32" height="32"/>
   <object id="359" gid="9998" x="492" y="353" width="32" height="64"/>
   <object id="361" gid="10075" x="524" y="478" width="32" height="32"/>
+  <object id="708" gid="9949" x="1170.5" y="632" width="96" height="32"/>
+  <object id="709" gid="9946" x="1170.5" y="607.5" width="64" height="32"/>
  </objectgroup>
  <layer id="6" name="walls" width="40" height="24">
   <data encoding="csv">

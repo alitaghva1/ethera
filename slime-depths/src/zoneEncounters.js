@@ -51,12 +51,18 @@ export const ZONE_ENCOUNTERS = Object.freeze({
     // walkable + reachable from boss via BFS. Previously 4/6 of the
     // configured spawns landed inside walls (sub-tile-rect cells).
     spawnPoints: [
-      { x:  4, y:  4 },     // NW corner          (was: same)
-      { x: 36, y:  5 },     // NE                 (was: 35,4 — BLOCKED)
-      { x:  4, y: 20 },     // SW                 (was: same)
-      { x: 16, y: 23 },     // South-west         (was: 35,20 — SE corner had no main-component cells)
-      { x: 16, y:  0 },     // N midline          (was: 19,2 — BLOCKED)
-      { x: 18, y: 23 },     // S midline          (was: 19,22 — BLOCKED)
+      // 2026-05-08 — re-validated post user's tighter ruins collision pass
+      // (8 polygons + 1 walkable rect, 269 blocked cells). spawn0 NW
+      // (4,4) was now BLOCKED by the refined polygon at the NW
+      // courtyard corner. Picked (3,6) instead — first walkable row in
+      // the NW area, in main 620-cell component, BFS-reachable to boss.
+      // All other spawns survived the new collision pass.
+      { x:  3, y:  6 },     // NW                 (was: 4,4 — BLOCKED post-tighter-collision)
+      { x: 36, y:  5 },     // NE                 (was: 35,4)
+      { x:  4, y: 20 },     // SW                 (still valid)
+      { x: 16, y: 23 },     // S-mid-west         (still valid)
+      { x: 16, y:  0 },     // N midline          (still valid)
+      { x: 18, y: 23 },     // S midline          (still valid)
     ],
     waves: [
       // Wave 1 — light skirmish. Slimes from one side.
