@@ -225,13 +225,27 @@ for (const m of xml.matchAll(/<objectgroup\s+([^>]*?)>([\s\S]*?)<\/objectgroup>/
       });
     }
   }
-  // Multi-line <object>...</object> form — used by gameplay_* rects.
+  // Multi-line <object>...</object> form — used by gameplay_* rects AND
+  // by polygon-shaped collision objects authored in Tiled. Polygons let
+  // the user trace walls precisely (not just bounding boxes), which is
+  // the right abstraction for ruined-stone-shape geometry.
   for (const om of m[2].matchAll(/<object\s+([^>]+?)>([\s\S]*?)<\/object>/g)) {
     const oa = parseAttrs(om[1]);
     const props = {};
     for (const pm of om[2].matchAll(/<property\s+name="([^"]+)"\s+value="([^"]*)"\s*\/>/g)) {
       props[pm[1]] = pm[2];
     }
+    // Polygon: <polygon points="x1,y1 x2,y2 ..."/>
+    let polygon = null;
+    const polyMatch = om[2].match(/<polygon\s+points="([^"]+)"\s*\/>/);
+    if (polyMatch) {
+      polygon = polyMatch[1].split(/\s+/).map((p) => {
+        const [px, py] = p.split(',').map(Number);
+        return [px, py];
+      }).filter(([px, py]) => Number.isFinite(px) && Number.isFinite(py));
+    }
+    // Polyline: <polyline points="x1,y1 x2,y2 ..."/> (ignored for collision —
+    // collision needs closed shapes; polylines are paths/decoration).
     objects.push({
       gid: oa.gid ? parseInt(oa.gid, 10) >>> 0 : 0,
       x: parseFloat(oa.x || '0'), y: parseFloat(oa.y || '0'),
@@ -239,6 +253,7 @@ for (const m of xml.matchAll(/<objectgroup\s+([^>]*?)>([\s\S]*?)<\/objectgroup>/
       type: oa.type || '',
       name: oa.name || '',
       properties: props,
+      polygon,    // null for plain rectangles, [[px,py], ...] for polygons
     });
   }
   events.push({ idx: m.index, kind: 'objects', name: a.name, objects });
@@ -542,26 +557,134 @@ console.log(`[bake] collision cells (per-tile shapes): ${collisionByCell.size}`)
 // doesn't crop so this works directly.
 if (gameplayCollisionAuthoritative) {
   let stamped = 0;
+  let polyCount = 0, rectCount = 0;
+  // Point-in-polygon test (ray casting). Polygon points are absolute
+  // (already translated by obj.x/obj.y at call site). Returns true if
+  // (px, py) is inside or on the polygon boundary.
+  function pointInPolygon(px, py, pts) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i];
+      const [xj, yj] = pts[j];
+      const intersect = ((yi > py) !== (yj > py))
+        && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
   for (const obj of gameplayCollisionLayer.objects) {
-    const x0 = Math.round(obj.x);
-    const y0 = Math.round(obj.y);
-    const x1 = Math.round(obj.x + obj.width);
-    const y1 = Math.round(obj.y + obj.height);
-    const cx0 = Math.floor(x0 / TW);
-    const cy0 = Math.floor(y0 / TH);
-    const cx1 = Math.floor((x1 - 1) / TW);
-    const cy1 = Math.floor((y1 - 1) / TH);
-    for (let cy = cy0; cy <= cy1; cy++) {
-      for (let cx = cx0; cx <= cx1; cx++) {
-        if (cx < 0 || cx >= W || cy < 0 || cy >= H) continue;
-        // Stamp full-cell rect — gameplay_collision is by design
-        // tile-aligned, no sub-tile geometry expected.
-        recordCellCollision(cx, cy, [{ x: 0, y: 0, w: TW, h: TH }]);
-        stamped++;
+    if (obj.polygon && obj.polygon.length >= 3) {
+      // Polygon — translate vertices by obj origin, find bbox, then
+      // test each cell's center for containment. Tiled polygons let
+      // the user trace ruined-stone-shaped walls precisely.
+      polyCount++;
+      const absPts = obj.polygon.map(([px, py]) => [obj.x + px, obj.y + py]);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const [px, py] of absPts) {
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+        if (px > maxX) maxX = px;
+        if (py > maxY) maxY = py;
+      }
+      const cx0 = Math.max(0, Math.floor(minX / TW));
+      const cy0 = Math.max(0, Math.floor(minY / TH));
+      const cx1 = Math.min(W - 1, Math.floor(maxX / TW));
+      const cy1 = Math.min(H - 1, Math.floor(maxY / TH));
+      for (let cy = cy0; cy <= cy1; cy++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          // Test the cell's CENTER against the polygon. With tile-
+          // aligned polygons this is exact; for sub-tile geometry it's
+          // a 1-sample approximation.
+          const centerX = (cx + 0.5) * TW;
+          const centerY = (cy + 0.5) * TH;
+          if (pointInPolygon(centerX, centerY, absPts)) {
+            recordCellCollision(cx, cy, [{ x: 0, y: 0, w: TW, h: TH }]);
+            stamped++;
+          }
+        }
+      }
+    } else if (obj.width > 0 && obj.height > 0) {
+      // Rectangle — bbox stamp.
+      rectCount++;
+      const x0 = Math.round(obj.x);
+      const y0 = Math.round(obj.y);
+      const x1 = Math.round(obj.x + obj.width);
+      const y1 = Math.round(obj.y + obj.height);
+      const cx0 = Math.floor(x0 / TW);
+      const cy0 = Math.floor(y0 / TH);
+      const cx1 = Math.floor((x1 - 1) / TW);
+      const cy1 = Math.floor((y1 - 1) / TH);
+      for (let cy = cy0; cy <= cy1; cy++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          if (cx < 0 || cx >= W || cy < 0 || cy >= H) continue;
+          recordCellCollision(cx, cy, [{ x: 0, y: 0, w: TW, h: TH }]);
+          stamped++;
+        }
       }
     }
   }
-  console.log(`[bake] gameplay_collision stamped ${stamped} cells from ${gameplayCollisionLayer.objects.length} rects`);
+  console.log(`[bake] gameplay_collision stamped ${stamped} cells from ${gameplayCollisionLayer.objects.length} objects (${polyCount} polygons + ${rectCount} rectangles)`);
+}
+
+// Phase Zone-1 (audit override) — gameplay_walkable rects + polygons
+// CARVE walkability through any prior collision. Applied AFTER
+// gameplay_collision stamping so the user's "this is actually walkable"
+// override wins. Used for: paths through walls, bridges across water,
+// gaps in ruined-stone outlines that the polygon trace conservatively
+// includes.
+if (gameplayWalkableLayer && gameplayWalkableLayer.objects.length > 0) {
+  let cleared = 0;
+  function pointInPolygon(px, py, pts) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i];
+      const [xj, yj] = pts[j];
+      const intersect = ((yi > py) !== (yj > py))
+        && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+  for (const obj of gameplayWalkableLayer.objects) {
+    let cellList = [];
+    if (obj.polygon && obj.polygon.length >= 3) {
+      const absPts = obj.polygon.map(([px, py]) => [obj.x + px, obj.y + py]);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const [px, py] of absPts) {
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+        if (px > maxX) maxX = px;
+        if (py > maxY) maxY = py;
+      }
+      const cx0 = Math.max(0, Math.floor(minX / TW));
+      const cy0 = Math.max(0, Math.floor(minY / TH));
+      const cx1 = Math.min(W - 1, Math.floor(maxX / TW));
+      const cy1 = Math.min(H - 1, Math.floor(maxY / TH));
+      for (let cy = cy0; cy <= cy1; cy++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const centerX = (cx + 0.5) * TW;
+          const centerY = (cy + 0.5) * TH;
+          if (pointInPolygon(centerX, centerY, absPts)) cellList.push([cx, cy]);
+        }
+      }
+    } else if (obj.width > 0 && obj.height > 0) {
+      const cx0 = Math.max(0, Math.floor(obj.x / TW));
+      const cy0 = Math.max(0, Math.floor(obj.y / TH));
+      const cx1 = Math.min(W - 1, Math.floor((obj.x + obj.width - 1) / TW));
+      const cy1 = Math.min(H - 1, Math.floor((obj.y + obj.height - 1) / TH));
+      for (let cy = cy0; cy <= cy1; cy++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          cellList.push([cx, cy]);
+        }
+      }
+    }
+    for (const [cx, cy] of cellList) {
+      // CLEAR collision in this cell — the walkable override wins.
+      collisionByCell.delete(cellKey(cx, cy));
+      cleared++;
+    }
+  }
+  console.log(`[bake] gameplay_walkable cleared ${cleared} cells (override) from ${gameplayWalkableLayer.objects.length} objects`);
 }
 
 // ─── PASS 2: render the STATIC composite (skipping animated tiles) ───
