@@ -96,8 +96,13 @@ export const ZONE_ENCOUNTERS = Object.freeze({
         from: [2, 3, 0, 1] },
       { types: ['skel', 'skel', 'skel'],
         from: [4, 0, 1] },
+      // Phase 4 (audit Z3) — wave 3 wizard tagged elite (frost affix
+      // visible halo + slowed-hit). Cemetery is the first zone where
+      // wizards appear; making this one elite gives the player a
+      // mini-preview of frost combat before the GRAVE WARDEN boss.
       { types: ['skel', 'wizard', 'crypt_spider', 'crypt_spider'],
-        from: [2, 3, 4, 0] },
+        from: [2, 3, 4, 0],
+        eliteIdx: [1] },
     ],
     bossLocation: { x: 17, y: 9 },     // upper graveyard center
     bossType: 'bone_captain',          // shared model with crypt boss; differentiated below
@@ -140,7 +145,13 @@ export const ZONE_ENCOUNTERS = Object.freeze({
   // Floor 4 — Depths of the Mountain. Tall (3.6 viewport) cavern with
   // throne dais. Camera follows hero with normal zoom.
   mountain: {
-    cameraZoom: 1.0,
+    // Phase 4 (audit W5) — pulled from 1.0 to 0.85. Mountain is 45×54
+    // (3.6× viewport tall). At 0.85, visible ≈ 31×17 tiles → hero at
+    // bottom (22,48) sees y=39..56 immediately, then sees the boss-row
+    // (y=27) spawns as they push up to ~y=35. Tighter than volcano
+    // because the map is smaller; player still pushes up through 3
+    // arena rows.
+    cameraZoom: 0.85,
     // Phase 3 (B3) — corrected coords. Old [2] and [3] were blocked
     // (the throne-dais row at y=27 has heavy collision).
     spawnPoints: [
@@ -156,8 +167,13 @@ export const ZONE_ENCOUNTERS = Object.freeze({
         from: [0, 1, 4] },
       { types: ['orc', 'orc', 'wizard', 'crypt_spider'],
         from: [2, 3, 5] },
+      // Phase 4 (audit Z3) — wave 3 has TWO elite wizards. Mountain is
+      // the penultimate zone; the encounter density should feel
+      // dangerous before the broodmother emerges. Elite wizards =
+      // tougher cast variants with affix glow + bigger orbs.
       { types: ['orc', 'orc', 'wizard', 'wizard', 'skel'],
-        from: [0, 1, 2, 3, 4] },
+        from: [0, 1, 2, 3, 4],
+        eliteIdx: [2, 3] },
     ],
     bossLocation: { x: 22, y: 27 },    // throne / mid-arena
     bossType: 'broodmother',
@@ -166,17 +182,23 @@ export const ZONE_ENCOUNTERS = Object.freeze({
   },
 
   // Floor 5 — Volcano. Huge (3.4×4.0 viewport) lava-fissured map with
-  // floating basalt platforms. Camera follows hero. Boss arrives at the
-  // central platform (which is the most dramatic spawn area).
+  // floating basalt platforms. Boss arrives at the central platform.
   volcano: {
-    cameraZoom: 1.0,
+    // Phase 4 (audit W5) — camera was 1.0 (showing ~7% of the 90×60 map),
+    // making spawn at distance 23-61 invisible until enemies closed for
+    // ~10s. Pulled to 0.65 — visible ~41×23 tiles ≈ half the map width.
+    cameraZoom: 0.65,
+    // Phase 4 (audit W5) — spawns moved INWARD to 14-25 cells from boss
+    // (was 21-42 cells). Enemies now visible to the hero at spawn time
+    // OR within ~3s of the boss-arena fight starting. All BFS-verified
+    // walkable + reachable from the boss tile.
     spawnPoints: [
-      { x: 12, y: 12 },
-      { x: 78, y: 12 },
-      { x: 12, y: 48 },
-      { x: 78, y: 48 },
-      { x: 44, y:  8 },
-      { x: 44, y: 52 },
+      { x: 30, y: 18 },     // NW inner          (was: 12,12 — 33 BFS steps)
+      { x: 58, y: 18 },     // NE inner          (was: 78,12)
+      { x: 30, y: 40 },     // SW inner          (was: 12,48)
+      { x: 58, y: 40 },     // SE inner          (was: 78,48)
+      { x: 44, y: 15 },     // N close           (was: 44,8)
+      { x: 44, y: 43 },     // S close           (was: 44,52)
     ],
     waves: [
       { types: ['orc', 'orc', 'wizard', 'skel', 'skel'],

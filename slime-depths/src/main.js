@@ -188,7 +188,7 @@ import {
   spawnZonePortal, clearZonePortal, updateZonePortal, drawZonePortal,
   isZonePortalActive,
 } from './zonePortal.js';
-import { getNextZone, getZoneEncounters } from './zoneEncounters.js';
+import { getNextZone, getZoneEncounters, getZoneLevel } from './zoneEncounters.js';
 import {
   resetXp, dropXpGemFromEnemy, dropBossXpBurst, updateXp, drawXpGems, drawXpBar,
   setOnLevelUp, getXpDebug, clearXpGems,
@@ -8220,6 +8220,22 @@ function enterCanonicalRun(zoneName = 'ruins') {
     if (loadResult && loadResult.error) {
       console.warn('[enterCanonicalRun] load failed', loadResult);
       return loadResult;
+    }
+
+    // Phase 4 (audit B7) — advance stats.floorReached per zone so the
+    // death summary shows the correct depth and meta-essence pays
+    // correctly. Without this, dying in volcano showed "FLOOR I" and
+    // awarded floorReached × 4 = 4 essence instead of 5 × 4 = 20.
+    const zoneLvl = getZoneLevel(zname);   // 1..5
+    if (typeof stats.floorReached === 'number') {
+      stats.floorReached = Math.max(stats.floorReached, zoneLvl);
+    }
+    // Mirror to currentFloorLevel so HUD floor panel + biome music
+    // chooser read the right depth too. Both legacy and canonical now
+    // agree on this single source of truth.
+    currentFloorLevel = zoneLvl;
+    if (typeof window !== 'undefined') {
+      window.__currentFloorLevel = zoneLvl;
     }
 
     camera.zoom = zEnc.cameraZoom || 1.0;
