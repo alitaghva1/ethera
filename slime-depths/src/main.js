@@ -191,7 +191,7 @@ import {
 import { getNextZone, getZoneEncounters } from './zoneEncounters.js';
 import {
   resetXp, dropXpGemFromEnemy, dropBossXpBurst, updateXp, drawXpGems, drawXpBar,
-  setOnLevelUp, getXpDebug,
+  setOnLevelUp, getXpDebug, clearXpGems,
 } from './xpSystem.js';
 import { drawZoneHud } from './zoneHud.js';
 import { openZoneCard, isZoneCardActive, updateZoneCard, drawZoneCard } from './zoneCard.js';
@@ -8150,7 +8150,15 @@ function loadBakedZone(which) {
   roomDecorPillars.length = 0;
   invalidateTileCache();
 
-  const sp = meta.spawn || { x: Math.floor(meta.width / 2), y: Math.floor(meta.height / 2) };
+  // Phase 3 stabilization (audit B2) — prefer the explicit `heroSpawn`
+  // from zoneEncounters over the bake's centroid. The bake centroid
+  // happens to coincide with the boss location in 4 of 5 zones, which
+  // caused the boss to materialize on top of the player. zoneEncounters'
+  // heroSpawn is hand-picked walkable + reachable + offset from boss.
+  const enc = getZoneEncounters(zoneName);
+  const sp = (enc && enc.heroSpawn)
+    ? enc.heroSpawn
+    : (meta.spawn || { x: Math.floor(meta.width / 2), y: Math.floor(meta.height / 2) });
   hero.x = sp.x * TILE + TILE / 2;
   hero.y = sp.y * TILE + TILE / 2;
 
@@ -8191,6 +8199,18 @@ function enterCanonicalRun(zoneName = 'ruins') {
     clearZonePortal();
     stopZoneRun();
     clearEnemies();
+
+    // Phase 3 stabilization (audit B4) — purge inter-zone state leaks.
+    // Previously only enemies/portal/runner were cleared. Pedestals from
+    // the prior zone (e.g. a skipped boss-relic drop) would render in
+    // the next zone, possibly inside walls. Projectiles in flight when
+    // the boss died kept ticking. XP gems, flames, ember rings — all
+    // accumulated across zones. This cleanup block fixes all of it.
+    clearPedestals();
+    clearProjectiles();
+    clearXpGems();
+    clearFlames();
+    clearEmberRings();
 
     // Phase 1 fix B2 — null stale legacy DAG state.
     currentGraph = null;

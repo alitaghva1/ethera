@@ -19,8 +19,46 @@
 // ============================================================================
 
 import { spawnEnemy, enemies } from './enemies.js';
-import { TILE } from './room.js';
+import { TILE, room } from './room.js';
 import { getZoneEncounters, ZONE_DIFFICULTY } from './zoneEncounters.js';
+
+// Phase 3 stabilization (audit B3) — validate a spawn cell against the
+// active room's collision grid. If the configured cell is blocked (a
+// sub-tile-rect cell or out of bounds), search outward up to radius 4
+// for the nearest walkable cell. Returns world-px coords or null if no
+// walkable cell found within the radius.
+//
+// Walkability rule matches `loadBakedZone` tile classifier: any cell
+// with non-empty `rects` array is treated as blocked.
+function _validateAndSnapSpawn(spawnTileX, spawnTileY) {
+  if (!room || !room.bakedCollision) {
+    // Legacy / hamlet path — assume valid (no rects metadata).
+    return { wx: (spawnTileX + 0.5) * TILE, wy: (spawnTileY + 0.5) * TILE, snapped: false };
+  }
+  const grid = room.bakedCollision;
+  const w = room.w, h = room.h;
+  const isWalk = (x, y) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return false;
+    const cell = grid[y] && grid[y][x];
+    return !(cell && cell.rects && cell.rects.length);
+  };
+  if (isWalk(spawnTileX, spawnTileY)) {
+    return { wx: (spawnTileX + 0.5) * TILE, wy: (spawnTileY + 0.5) * TILE, snapped: false };
+  }
+  // BFS outward — radii 1..4 in concentric rings.
+  for (let r = 1; r <= 4; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;     // ring only
+        const x = spawnTileX + dx, y = spawnTileY + dy;
+        if (isWalk(x, y)) {
+          return { wx: (x + 0.5) * TILE, wy: (y + 0.5) * TILE, snapped: true, originX: spawnTileX, originY: spawnTileY, snapX: x, snapY: y };
+        }
+      }
+    }
+  }
+  return null;
+}
 
 const STATE_IDLE        = 'idle';
 const STATE_WAVE_ACTIVE = 'waveActive';
@@ -163,15 +201,25 @@ function _spawnWave(idx) {
     const type = wave.types[i];
     const fromIdx = wave.from[i % wave.from.length] || 0;
     const sp = enc.spawnPoints[fromIdx] || enc.spawnPoints[0];
-    const wx = (sp.x + 0.5) * TILE;
-    const wy = (sp.y + 0.5) * TILE;
+    // Phase 3 fix B3 — validate the spawn cell before placing the enemy.
+    // If blocked, snap to the nearest walkable cell (up to radius 4).
+    // If no walkable cell found, skip the spawn + warn (defensive — the
+    // zone-config audit should have caught all cases).
+    const v = _validateAndSnapSpawn(sp.x, sp.y);
+    if (!v) {
+      console.warn(`[zoneRunner] spawn ${i} (${sp.x},${sp.y}) has no walkable cell within r=4 — skipping ${type}`);
+      continue;
+    }
+    if (v.snapped) {
+      console.warn(`[zoneRunner] spawn ${i} (${v.originX},${v.originY}) blocked → snapped to (${v.snapX},${v.snapY})`);
+    }
     const elite = !!(wave.eliteIdx && wave.eliteIdx.includes(i));
     const opts = {
       hpMul: diff.hpMul,
       damageMul: diff.damageMul,
     };
     if (elite) opts.elite = true;
-    spawnEnemy(type, wx, wy, opts);
+    spawnEnemy(type, v.wx, v.wy, opts);
   }
 }
 
@@ -197,9 +245,16 @@ function _spawnBoss() {
   // of the boss's base + bossOpts. Multiplicative so a 1.4× tankier
   // bossOpts at zone 5 (×2.2) lands at 3.1× — a real climax fight.
   const diff = ZONE_DIFFICULTY[_runner.zoneName] || { hpMul: 1, damageMul: 1 };
+  // Phase 3 stabilization (audit B1+B6) — `boss: true` was MISSING from
+  // the spawn opts. Without it, `enemies.js`'s spawnEnemy doesn't apply
+  // the canonical boss tier (3× HP, 2× damage, 1.45× draw size) and the
+  // per-enemy death hook doesn't increment `stats.bossesKilled`. Bosses
+  // ended up as glorified elite mobs and meta-progression underpaid by
+  // ~8 essence per boss. This single flag fixes both bugs at once.
   const baseOpts = enc.bossOpts ? { ...enc.bossOpts } : {};
   const opts = {
     ...baseOpts,
+    boss: true,
     hpMul: (baseOpts.hpMul || 1) * diff.hpMul,
     damageMul: (baseOpts.damageMul || 1) * diff.damageMul,
   };

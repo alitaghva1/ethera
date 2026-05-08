@@ -47,13 +47,16 @@ export const ZONE_ENCOUNTERS = Object.freeze({
   ruins: {
     cameraZoom: 0.75,                  // pull camera back so most of the
                                         // 1.5×1.6-viewport map is visible
+    // Phase 3 stabilization (audit B3+B5) — every spawn point verified
+    // walkable + reachable from boss via BFS. Previously 4/6 of the
+    // configured spawns landed inside walls (sub-tile-rect cells).
     spawnPoints: [
-      { x:  4, y:  4 },     // NW corner
-      { x: 35, y:  4 },     // NE
-      { x:  4, y: 20 },     // SW
-      { x: 35, y: 20 },     // SE
-      { x: 19, y:  2 },     // N midline
-      { x: 19, y: 22 },     // S midline
+      { x:  4, y:  4 },     // NW corner          (was: same)
+      { x: 36, y:  5 },     // NE                 (was: 35,4 — BLOCKED)
+      { x:  4, y: 20 },     // SW                 (was: same)
+      { x: 16, y: 23 },     // South-west         (was: 35,20 — SE corner had no main-component cells)
+      { x: 16, y:  0 },     // N midline          (was: 19,2 — BLOCKED)
+      { x: 18, y: 23 },     // S midline          (was: 19,22 — BLOCKED)
     ],
     waves: [
       // Wave 1 — light skirmish. Slimes from one side.
@@ -68,17 +71,25 @@ export const ZONE_ENCOUNTERS = Object.freeze({
     ],
     bossLocation: { x: 19, y: 12 },    // central courtyard
     bossType: 'orc',                    // Grudnok
+    // Phase 3 stabilization (audit B2) — hero entry point separate from
+    // boss location so the boss doesn't materialize on top of the player.
+    // Walkable + reachable from boss via BFS (verified). West entry.
+    heroSpawn: { x: 4, y: 12 },
   },
 
   // Floor 2 — Cemetery. Stairs + upper graveyard + lower stone-path area.
   cemetery: {
     cameraZoom: 0.85,
+    // Phase 3 stabilization (audit B3+B5) — corrected spawn coords. Old
+    // [2] (3,17) was on the 26-cell unreachable SW island; replaced
+    // with a south-mid cell in the main 388-cell component. Old
+    // [0]/[1] NW/NE corners were both blocked.
     spawnPoints: [
-      { x:  3, y:  3 },     // NW (upper graveyard)
-      { x: 31, y:  3 },     // NE (upper graveyard)
-      { x:  3, y: 17 },     // SW (lower path)
-      { x: 31, y: 17 },     // SE (lower path)
-      { x: 17, y:  3 },     // N midline (upper)
+      { x:  1, y:  3 },     // NW upper           (was: 3,3 — BLOCKED)
+      { x: 27, y:  0 },     // NE upper           (was: 31,3 — BLOCKED)
+      { x: 22, y: 19 },     // South-mid          (was: 3,17 — UNREACHABLE ISLAND)
+      { x: 31, y: 17 },     // SE                 (was: same — already valid)
+      { x: 17, y:  3 },     // N midline          (was: same — already valid)
     ],
     waves: [
       { types: ['slime', 'slime', 'crypt_spider', 'crypt_spider'],
@@ -96,17 +107,20 @@ export const ZONE_ENCOUNTERS = Object.freeze({
       hpMul: 1.4,                        // slightly tankier than the crypt floor-3 boss
       damageMul: 0.9,                    // ... but hits softer (compensating for slow)
     },
+    // Phase 3 (B2) — east entry, walkable + reachable from boss via BFS.
+    heroSpawn: { x: 31, y: 9 },
   },
 
   // Floor 3 — Crypt. Pillared corridor + carpet runner + dais.
   crypt: {
     cameraZoom: 0.85,
+    // Phase 3 (B3) — corrected coords. Old [0] and [4] were blocked.
     spawnPoints: [
-      { x:  3, y:  3 },
-      { x: 31, y:  3 },
-      { x:  3, y: 22 },
-      { x: 31, y: 22 },
-      { x: 17, y:  3 },     // N midline
+      { x:  5, y:  3 },     // NW                 (was: 3,3 — BLOCKED)
+      { x: 31, y:  3 },     // NE
+      { x:  3, y: 22 },     // SW
+      { x: 31, y: 22 },     // SE
+      { x: 18, y:  2 },     // N midline          (was: 17,3 — BLOCKED)
       { x: 17, y: 22 },     // S midline
     ],
     waves: [
@@ -119,17 +133,21 @@ export const ZONE_ENCOUNTERS = Object.freeze({
     ],
     bossLocation: { x: 17, y: 14 },    // dais / carpet runner end
     bossType: 'bone_captain',          // Iron Revenant
+    // Phase 3 (B2) — south end of the corridor. Player advances UP toward dais.
+    heroSpawn: { x: 17, y: 22 },
   },
 
   // Floor 4 — Depths of the Mountain. Tall (3.6 viewport) cavern with
   // throne dais. Camera follows hero with normal zoom.
   mountain: {
     cameraZoom: 1.0,
+    // Phase 3 (B3) — corrected coords. Old [2] and [3] were blocked
+    // (the throne-dais row at y=27 has heavy collision).
     spawnPoints: [
       { x:  6, y:  6 },     // top NW
       { x: 38, y:  6 },     // top NE
-      { x:  6, y: 27 },     // mid W
-      { x: 38, y: 27 },     // mid E
+      { x:  5, y: 26 },     // mid W              (was: 6,27 — BLOCKED)
+      { x: 37, y: 26 },     // mid E              (was: 38,27 — BLOCKED)
       { x:  6, y: 48 },     // bottom NW
       { x: 38, y: 48 },     // bottom NE
     ],
@@ -143,6 +161,8 @@ export const ZONE_ENCOUNTERS = Object.freeze({
     ],
     bossLocation: { x: 22, y: 27 },    // throne / mid-arena
     bossType: 'broodmother',
+    // Phase 3 (B2) — bottom of the tall map. Player descends through 21 rows.
+    heroSpawn: { x: 22, y: 48 },
   },
 
   // Floor 5 — Volcano. Huge (3.4×4.0 viewport) lava-fissured map with
@@ -168,6 +188,8 @@ export const ZONE_ENCOUNTERS = Object.freeze({
     ],
     bossLocation: { x: 44, y: 29 },    // central lava platform
     bossType: 'ember_tyrant',
+    // Phase 3 (B2) — top of the central column. Player descends ~17 cells.
+    heroSpawn: { x: 44, y: 12 },
   },
 });
 
