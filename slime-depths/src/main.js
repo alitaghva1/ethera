@@ -5233,6 +5233,50 @@ function _tickInner(now) {
   }
   updateCamera(realDt);                    // camera uses real time (no slo-mo jitter)
 
+  // ── CAMERA CLAMP — keep the viewport inside the map ─────────────────
+  // Without this, when the hero is near a map edge (heroSpawn for ruins
+  // is (4, 12) = world X=192 ≈ 4 tiles in), the camera centers on hero
+  // and ~half the viewport shows the OFF-MAP void as #0a0810 black.
+  // That's the "huge black region on the left" feel the user reported
+  // 2026-05-08 after the scale-audit pass — the audit didn't change
+  // camera, but with the smaller enemies the empty void became more
+  // perceptually dominant on screen.
+  //
+  // Clamp logic:
+  //   • Only applies in baked-TMX combat zones (room.bakedImage present).
+  //     Hamlet has its own bespoke clamp at line ~1449; procedural
+  //     rooms don't load through this path.
+  //   • If map is wider than viewport: clamp camera so viewport edges
+  //     never go past map edges. Hero can walk to a corner; camera
+  //     stops following horizontally before the void shows.
+  //   • If map is narrower than viewport: center on map (camera fixed
+  //     at map center). For maps that won't ever happen in ruins
+  //     (40×24 = 1920×1152 > 1280×720) but cheap insurance.
+  //   • Clamps both `camera.x/y` (post-lerp position) and
+  //     `camera.targetX/Y` (so the lerp settles cleanly instead of
+  //     pulling toward an unreachable target).
+  if (room && room.bakedImage && room.w > 0 && room.h > 0) {
+    const mapW = room.w * TILE;
+    const mapH = room.h * TILE;
+    const z = camera.zoom || 1;
+    const halfViewW = camera.viewW / (2 * z);
+    const halfViewH = camera.viewH / (2 * z);
+    if (mapW <= halfViewW * 2) {
+      camera.x = mapW / 2;
+      camera.targetX = mapW / 2;
+    } else {
+      camera.x = Math.max(halfViewW, Math.min(mapW - halfViewW, camera.x));
+      camera.targetX = Math.max(halfViewW, Math.min(mapW - halfViewW, camera.targetX));
+    }
+    if (mapH <= halfViewH * 2) {
+      camera.y = mapH / 2;
+      camera.targetY = mapH / 2;
+    } else {
+      camera.y = Math.max(halfViewH, Math.min(mapH - halfViewH, camera.y));
+      camera.targetY = Math.max(halfViewH, Math.min(mapH - halfViewH, camera.targetY));
+    }
+  }
+
   const frozen = consumeHitStop(realDt);
 
   // UNIFIED CINEMATIC FREEZE — any of the three intro overlays (floor card /
