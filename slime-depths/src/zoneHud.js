@@ -37,7 +37,10 @@ export function drawZoneHud(ctx, viewW) {
   if (!enc) return;
 
   const cx = viewW / 2;
-  const y = 22;             // just below the XP bar (which lives at y=6, h=8 + 12px label)
+  // Phase 5 — pushed down to y=20 so the zone label clears the XP bar
+  // (y=6, h=8 → bottom edge y=14). The wave dots at y+18 = 38 land
+  // safely below the level label and don't fight the bar geometry.
+  const y = 20;
 
   ctx.save();
   ctx.textAlign = 'center';

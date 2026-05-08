@@ -605,7 +605,10 @@ export const TYPES = {
     // swing for combat variety; HP stays at 200 (highest of the common
     // mobs) so the player feels orcs as the "heavy guy" tier in F2-F4
     // comps. SFX kept on hero_hurt so the windup still reads heavy.
-    prefix: 'orc_',    drawSize: 220, radius: 26, speed: 80, hp: 200, damage: 2,
+    // Phase 5 scale unification — drawSize 220 → 120 (was ~3.7× hero,
+    // now ~2× hero). Orc reads as a "big brawler" without dwarfing the
+    // mage. Hitbox `radius` unchanged (gameplay-relevant).
+    prefix: 'orc_',    drawSize: 120, radius: 26, speed: 80, hp: 200, damage: 2,
     color: '#7fa34a', hitCD: 0.92, fps: 8, behavior: 'melee',
     attackReach: 62, attackArc: Math.PI * 0.60,
     windup: 0.38, swing: 0.26,
@@ -701,7 +704,9 @@ export const TYPES = {
   // ---- WIZARD — backline caster. Homing orbs that track the hero. ----
   wizard: {
     element: 'shock',                // resists shock, weak to fire/cold
-    prefix: 'wiz_',    drawSize: 200, radius: 20, speed: 60, hp: 70, damage: 2,
+    // Phase 5 scale unification — drawSize 200 → 110 (was ~3.3× hero,
+    // now ~1.8× hero). Reads as a slender frontline caster.
+    prefix: 'wiz_',    drawSize: 110, radius: 20, speed: 60, hp: 70, damage: 2,
     color: '#b89cff', hitCD: 2.4, fps: 10, behavior: 'wizard',
     preferDist: 340, minDist: 240,
     castRange: 500,
@@ -762,7 +767,9 @@ export const TYPES = {
     // 240 → ~55 visible pixels — same as the hero. Iron Revenant should
     // read clearly bigger than the player. Radius (hit + collision) stays
     // 28 so the bump is purely visual; encounter feel is unchanged.
-    prefix: 'bonecap_', drawSize: 320, radius: 28, bodyHeight: 130, speed: 115, hp: 220, damage: 2,
+    // Phase 5 scale unification — drawSize 320 → 160 (was ~5.3× hero,
+    // now ~2.7× hero). Boss reads as authoritative without dwarfing.
+    prefix: 'bonecap_', drawSize: 160, radius: 28, bodyHeight: 130, speed: 115, hp: 220, damage: 2,
     color: '#cfd4d9', hitCD: 1.0, fps: 10, behavior: 'melee',
     attackReach: 72, attackArc: Math.PI * 0.52,
     windup: 0.40, swing: 0.24,
@@ -801,7 +808,10 @@ export const TYPES = {
   broodmother: {
     // BOSS PRESENCE BUMP: drawSize 280 → 360. Visible ~85 px, ~1.5× hero.
     // Radius unchanged.
-    prefix: 'brood_',  drawSize: 360, radius: 34, bodyHeight: 130, speed: 58,  hp: 240, damage: 3,
+    // Phase 5 scale unification — drawSize 360 → 180 (was ~6× hero,
+    // now ~3× hero). Multi-leg silhouette reads as the largest non-final
+    // boss without overwhelming the screen.
+    prefix: 'brood_',  drawSize: 180, radius: 34, bodyHeight: 130, speed: 58,  hp: 240, damage: 3,
     color: '#9a6b56', hitCD: 1.15, fps: 8, behavior: 'melee',
     attackReach: 86, attackArc: Math.PI * 0.70,
     windup: 0.55, swing: 0.32,
@@ -837,7 +847,10 @@ export const TYPES = {
     element: 'fire',                 // resists fire, weak to cold/shock
     // BOSS PRESENCE BUMP: drawSize 280 → 380. Final boss; biggest of the
     // four. Visible ~90 px, ~1.6× hero. Radius unchanged.
-    prefix: 'ember_',  drawSize: 380, radius: 30, bodyHeight: 150, speed: 82,  hp: 280, damage: 3,
+    // Phase 5 scale unification — drawSize 380 → 200 (was ~6.3× hero,
+    // now ~3.3× hero). Final boss; the only enemy in the roster that
+    // crosses the 3× threshold. Earned by being the climax.
+    prefix: 'ember_',  drawSize: 200, radius: 30, bodyHeight: 150, speed: 82,  hp: 280, damage: 3,
     color: '#e85020', hitCD: 0.95, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.62,
     windup: 0.42, swing: 0.28,

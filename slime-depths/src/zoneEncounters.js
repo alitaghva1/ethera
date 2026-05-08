@@ -25,6 +25,22 @@
 // Zone-name → 1..5 sequence index. Used by FLOOR_ENEMY_MULS for difficulty.
 export const ZONE_ORDER = ['ruins', 'cemetery', 'crypt', 'mountain', 'volcano'];
 
+// Phase 5 — per-zone HP + damage multipliers applied to every spawned
+// enemy (waves + boss). Soft ramp ruins → volcano: by zone 5, enemies
+// are ~2.2× HP and ~1.6× damage. Pairs with the perk system so a player
+// stacking damage+HP perks across all 5 zones keeps pace with the curve.
+//
+// Hero typically reaches L8-12 over 5 zones (~12 perks). Each Sharp Edge
+// stack = +12% dmg → 5 stacks = ×1.76. So the curve is balanced around
+// "if you take damage perks, you outscale the difficulty bump."
+export const ZONE_DIFFICULTY = Object.freeze({
+  ruins:    { hpMul: 1.0,  damageMul: 1.0 },
+  cemetery: { hpMul: 1.25, damageMul: 1.1 },
+  crypt:    { hpMul: 1.55, damageMul: 1.25 },
+  mountain: { hpMul: 1.85, damageMul: 1.4 },
+  volcano:  { hpMul: 2.2,  damageMul: 1.6 },
+});
+
 export const ZONE_ENCOUNTERS = Object.freeze({
   // Floor 1 — Ancient Ruins. Open courtyard with raised platforms.
   // Spawns from the four corners of the walkable area.

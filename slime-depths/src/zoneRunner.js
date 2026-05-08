@@ -20,7 +20,7 @@
 
 import { spawnEnemy, enemies } from './enemies.js';
 import { TILE } from './room.js';
-import { getZoneEncounters } from './zoneEncounters.js';
+import { getZoneEncounters, ZONE_DIFFICULTY } from './zoneEncounters.js';
 
 const STATE_IDLE        = 'idle';
 const STATE_WAVE_ACTIVE = 'waveActive';
@@ -154,6 +154,11 @@ function _spawnWave(idx) {
   _runner.waveIdx = idx;
   _runner.state   = STATE_WAVE_ACTIVE;
 
+  // Phase 5 — apply per-zone difficulty multipliers. Each spawn carries
+  // the zone's hpMul + damageMul so cemetery enemies are tougher than
+  // ruins enemies, etc. Curves to ~2.2× HP / 1.6× dmg by volcano.
+  const diff = ZONE_DIFFICULTY[_runner.zoneName] || { hpMul: 1, damageMul: 1 };
+
   for (let i = 0; i < wave.types.length; i++) {
     const type = wave.types[i];
     const fromIdx = wave.from[i % wave.from.length] || 0;
@@ -161,7 +166,12 @@ function _spawnWave(idx) {
     const wx = (sp.x + 0.5) * TILE;
     const wy = (sp.y + 0.5) * TILE;
     const elite = !!(wave.eliteIdx && wave.eliteIdx.includes(i));
-    spawnEnemy(type, wx, wy, elite ? { elite: true } : {});
+    const opts = {
+      hpMul: diff.hpMul,
+      damageMul: diff.damageMul,
+    };
+    if (elite) opts.elite = true;
+    spawnEnemy(type, wx, wy, opts);
   }
 }
 
@@ -174,7 +184,16 @@ function _spawnBoss() {
   // so each zone's boss feels distinct even when sharing a sprite. The
   // cemetery's GRAVE WARDEN is a frost-affixed variant of the same
   // bone_captain model used by the crypt's IRON REVENANT, etc.
-  const opts = enc.bossOpts ? { ...enc.bossOpts } : {};
+  // Phase 5 — also apply per-zone difficulty (hpMul + damageMul) on top
+  // of the boss's base + bossOpts. Multiplicative so a 1.4× tankier
+  // bossOpts at zone 5 (×2.2) lands at 3.1× — a real climax fight.
+  const diff = ZONE_DIFFICULTY[_runner.zoneName] || { hpMul: 1, damageMul: 1 };
+  const baseOpts = enc.bossOpts ? { ...enc.bossOpts } : {};
+  const opts = {
+    ...baseOpts,
+    hpMul: (baseOpts.hpMul || 1) * diff.hpMul,
+    damageMul: (baseOpts.damageMul || 1) * diff.damageMul,
+  };
   spawnEnemy(enc.bossType, wx, wy, opts);
   // Capture the just-spawned enemy as the boss reference. Bosses are
   // pushed onto enemies last, so the tail is ours.
