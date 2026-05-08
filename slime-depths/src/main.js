@@ -182,7 +182,9 @@ import {
   toggleWalkOverlay, drawWalkOverlay, isOverlayVisible as isWalkOverlayVisible,
   setOverlayZone, toggleCellAtWorld, exportOverrides as exportWalkOverrides,
   overrideCount as walkOverrideCount,
+  drawHeroCollisionDebug, drawWalkOverlayHud,
 } from './walkabilityOverlay.js';
+import { HERO_CONSTS } from './hero.js';
 import { startZoneRun, stopZoneRun, updateZoneRunner, getZoneRunnerState } from './zoneRunner.js';
 import {
   spawnZonePortal, clearZonePortal, updateZonePortal, drawZonePortal,
@@ -6837,6 +6839,9 @@ function render() {
   drawProjectiles(ctx);
   drawSynergies(ctx);
   drawHeroShield(ctx);
+  // Phase B (audit Step 6) — debug overlay: hero foot collision box +
+  // sprite bounds. Visible only when walkability overlay is toggled.
+  drawHeroCollisionDebug(ctx, hero, HERO_CONSTS.HERO_FEET_HALF_W, HERO_CONSTS.HERO_FEET_HALF_H, 60);
   // Perfect-dodge ring — gold pulse around the hero in the last 0.15s
   // of any enemy's melee windup. Round-6 combat-feel audit: the
   // perfect-dodge mechanic had no pre-strike telegraph, so the timing
@@ -7367,6 +7372,9 @@ function render() {
     }
     // Zone HUD — wave dots + boss banner. No-op when not in a zone run.
     drawZoneHud(ctx, canvas.width);
+    // Phase B (audit Step 6) — walkability HUD: tile coords + map +
+    // collision-mode flag. Visible only when overlay is toggled.
+    drawWalkOverlayHud(ctx, room, hero, canvas.width);
   }
   drawHud(ctx, canvas.width, canvas.height, {
     roomIndex, totalRooms: floor.length,
@@ -8135,6 +8143,16 @@ function loadBakedZone(which) {
   room.bakedAnimations = meta.animations;
   room.bakedProps = meta.animatedProps;
   room.bakedCollision = meta.collisionGrid;
+  // Phase B (audit Step 4) — explicit gameplay layers from the bake.
+  // Debug overlay reads room.bakedGameplay; runtime collision still
+  // uses room.bakedCollision (which was either authoritative-stamped
+  // from gameplay_collision OR heuristically inferred).
+  room.bakedGameplay = meta.gameplay || null;
+  room.bakedGameplayAuthoritative = !!meta.gameplayAuthoritative;
+  room.bakedSpawn = meta.spawn || null;
+  if (!meta.gameplayAuthoritative) {
+    console.warn(`[loadBakedZone] ${zoneName}: no authoritative gameplay_collision in TMX. Collision is heuristic — author one in Tiled to lock it down.`);
+  }
 
   room.tiles = [];
   for (let y = 0; y < meta.height; y++) {

@@ -80,7 +80,26 @@ const HERO_DRAW_HAMLET = 48;       // smaller in the hub — hamlet NPCs draw at
                                    // px, closer to the heavier minions
                                    // and below the bosses (boss drawSize
                                    // tuning is a follow-up pass).
-const HERO_RADIUS = 14;            // collision
+// Phase B (audit fix) — foot-based ellipse instead of full-circle
+// collision. Hero sprite is ~60 px wide and bottom-anchored at hero.y
+// (feet). The collision box is a foot-sized footprint — wider than tall,
+// centered horizontally on hero.x and vertically near the feet (hero.y).
+//
+// Per the user's design rule: "collision box smaller than sprite body,
+// around the feet/base area, not the full sprite."
+//   • width: ~24px (40% of sprite) → HERO_FEET_HALF_W = 12
+//   • height: ~14px (23% of sprite) → HERO_FEET_HALF_H = 7
+//
+// X-axis movement uses HALF_W as the leading-edge probe. Y-axis movement
+// uses HALF_H. Compared to the prior 14-radius circle the box is slightly
+// narrower on X (12 vs 14) and much shorter on Y (7 vs 14) — so the
+// player threads doorways comfortably and corners feel forgiving.
+//
+// HERO_RADIUS kept as the max of the two halves for any non-collision
+// consumer that still wants a single-number "approximate hero size."
+const HERO_FEET_HALF_W = 12;
+const HERO_FEET_HALF_H = 7;
+const HERO_RADIUS = Math.max(HERO_FEET_HALF_W, HERO_FEET_HALF_H);
 const HERO_SPEED = 230;
 // Dodge tuning. SPEED was 620 with a `(1 - t*t)` quadratic decel — the
 // last third felt stuck mid-roll. Replaced by constant 580 px/s
@@ -679,10 +698,18 @@ function moveAxis(axis, delta) {
     const d = delta / steps;
     if (axis === 'x') {
       const nx = hero.x + d;
-      if (!isWallAtWorld(nx + Math.sign(d) * HERO_RADIUS, hero.y)) hero.x = nx;
+      // X-axis: probe at the leading edge of the foot box (half-width).
+      // Single-point test at hero.y (foot-line) — narrow vertical extent
+      // means even a tile partially overlapping the head/shoulders
+      // doesn't block movement. Forgiving by design.
+      if (!isWallAtWorld(nx + Math.sign(d) * HERO_FEET_HALF_W, hero.y)) hero.x = nx;
     } else {
       const ny = hero.y + d;
-      if (!isWallAtWorld(hero.x, ny + Math.sign(d) * HERO_RADIUS)) hero.y = ny;
+      // Y-axis: probe with the SHORTER half-height. The hero's vertical
+      // body is much taller than the foot box; we only collide when the
+      // feet enter a wall band. Lets the player walk under archway
+      // headers and lintels that visually overlap the upper sprite.
+      if (!isWallAtWorld(hero.x, ny + Math.sign(d) * HERO_FEET_HALF_H)) hero.y = ny;
     }
   }
 }
@@ -1197,8 +1224,10 @@ export function updateHero(dt, enemies, mouseWorld) {
         const tryDist = targetDist * (1 - s / stepCount);
         const tx = hero.x + dirX * tryDist;
         const ty = hero.y + dirY * tryDist;
-        if (!isWallAtWorld(tx + Math.sign(dirX) * HERO_RADIUS, ty)
-          && !isWallAtWorld(tx, ty + Math.sign(dirY) * HERO_RADIUS)) {
+        // Dash-strike landing test — uses the same per-axis foot box as
+        // normal movement. HERO_FEET_HALF_W on X, HERO_FEET_HALF_H on Y.
+        if (!isWallAtWorld(tx + Math.sign(dirX) * HERO_FEET_HALF_W, ty)
+          && !isWallAtWorld(tx, ty + Math.sign(dirY) * HERO_FEET_HALF_H)) {
           hero.x = tx;
           hero.y = ty;
           landed = true;
@@ -3499,4 +3528,4 @@ export function drawHero(ctx) {
   ctx.restore();
 }
 
-export const HERO_CONSTS = { HERO_RADIUS };
+export const HERO_CONSTS = { HERO_RADIUS, HERO_FEET_HALF_W, HERO_FEET_HALF_H };

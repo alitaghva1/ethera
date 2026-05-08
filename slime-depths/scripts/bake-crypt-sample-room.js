@@ -198,15 +198,47 @@ for (const m of xml.matchAll(/<layer\s+([^>]*?)>([\s\S]*?)<\/layer>/g)) {
 for (const m of xml.matchAll(/<objectgroup\s+([^>]*?)>([\s\S]*?)<\/objectgroup>/g)) {
   const a = parseAttrs(m[1]);
   const objects = [];
+  // Capture both self-closing tile-objects (`<object gid="..." .../>`) AND
+  // rect-objects with children (`<object ...><properties>...</properties></object>`).
+  // The artist's prop layers use the first form; gameplay_* layers use the
+  // second form (rectangles with custom properties + a `type` attribute).
   for (const om of m[2].matchAll(/<object\s+([^>]+?)\/>/g)) {
     const oa = parseAttrs(om[1]);
-    if (!oa.gid) continue;
+    if (oa.gid) {
+      objects.push({
+        gid: parseInt(oa.gid, 10) >>> 0,
+        x: parseFloat(oa.x || '0'), y: parseFloat(oa.y || '0'),
+        width: parseFloat(oa.width || '32'), height: parseFloat(oa.height || '32'),
+        type: oa.type || '',
+        name: oa.name || '',
+        properties: {},
+      });
+    } else {
+      // Self-closing rect-object with no gid (rare — most rects have <properties>).
+      objects.push({
+        gid: 0,
+        x: parseFloat(oa.x || '0'), y: parseFloat(oa.y || '0'),
+        width: parseFloat(oa.width || '0'), height: parseFloat(oa.height || '0'),
+        type: oa.type || '',
+        name: oa.name || '',
+        properties: {},
+      });
+    }
+  }
+  // Multi-line <object>...</object> form — used by gameplay_* rects.
+  for (const om of m[2].matchAll(/<object\s+([^>]+?)>([\s\S]*?)<\/object>/g)) {
+    const oa = parseAttrs(om[1]);
+    const props = {};
+    for (const pm of om[2].matchAll(/<property\s+name="([^"]+)"\s+value="([^"]*)"\s*\/>/g)) {
+      props[pm[1]] = pm[2];
+    }
     objects.push({
-      gid: parseInt(oa.gid, 10) >>> 0,
-      x: parseFloat(oa.x || '0'),
-      y: parseFloat(oa.y || '0'),
-      width: parseFloat(oa.width || '32'),
-      height: parseFloat(oa.height || '32'),
+      gid: oa.gid ? parseInt(oa.gid, 10) >>> 0 : 0,
+      x: parseFloat(oa.x || '0'), y: parseFloat(oa.y || '0'),
+      width: parseFloat(oa.width || '0'), height: parseFloat(oa.height || '0'),
+      type: oa.type || '',
+      name: oa.name || '',
+      properties: props,
     });
   }
   events.push({ idx: m.index, kind: 'objects', name: a.name, objects });
@@ -341,6 +373,34 @@ function isBlockingProp(resolved) {
   return false;
 }
 
+// ── Detect gameplay_* layers — Zone 1 walkability contract ─────────
+// If the artist (or our generator) added explicit gameplay_* objectgroups,
+// they are AUTHORITATIVE for collision/spawn/transitions/stairs. The
+// heuristic prop-bbox + walls-layer inference is skipped when
+// gameplayCollisionAuthoritative is true.
+//
+// Layer naming contract:
+//   gameplay_collision   → rectangles that BLOCK movement
+//   gameplay_walkable    → rectangles defining playable bounds
+//                          (anything OUTSIDE these blocks if non-empty)
+//   gameplay_stairs      → rectangles with type=stairs + properties
+//                          (fromElevation, toElevation, direction)
+//   gameplay_spawns      → rectangles with type=player_spawn / spawnId
+//   gameplay_transitions → rectangles with type=transition + properties
+//                          (targetMap, targetSpawn)
+const gameplayCollisionLayer  = layers.find((l) => l.kind === 'objects' && l.name === 'gameplay_collision');
+const gameplayWalkableLayer   = layers.find((l) => l.kind === 'objects' && l.name === 'gameplay_walkable');
+const gameplayStairsLayer     = layers.find((l) => l.kind === 'objects' && l.name === 'gameplay_stairs');
+const gameplaySpawnsLayer     = layers.find((l) => l.kind === 'objects' && l.name === 'gameplay_spawns');
+const gameplayTransitionsLayer = layers.find((l) => l.kind === 'objects' && l.name === 'gameplay_transitions');
+const gameplayCollisionAuthoritative = !!(gameplayCollisionLayer && gameplayCollisionLayer.objects.length > 0);
+
+if (gameplayCollisionAuthoritative) {
+  console.log(`[bake] ✓ gameplay_collision layer present (${gameplayCollisionLayer.objects.length} rects). Heuristic prop/wall inference SKIPPED for this map.`);
+} else {
+  console.warn(`[bake] WARN: no gameplay_collision layer. Falling back to heuristic prop/wall inference. Author one in Tiled to make collision authoritative.`);
+}
+
 // ─── PASS 1: collect animated props + per-cell collision shapes ──────
 
 const animatedProps = [];     // { x, y, w, h, animKey: <unique id> }
@@ -375,9 +435,13 @@ for (const layer of layers) {
         const r = gidToTile(gid);
         if (!r) continue;
 
-        // Per-tile collision (output cell coords)
+        // Per-tile collision (output cell coords) — SKIPPED when
+        // gameplay_collision is authoritative. The .tsx-defined sub-tile
+        // rects are still author intent, but Zone 1's contract says
+        // gameplay_collision is the SOLE source of truth so the player
+        // can reason about collision without reading every tileset.
         const tileMeta = r.tileset.tsx.tiles.get(r.localId);
-        if (tileMeta && tileMeta.collision) {
+        if (!gameplayCollisionAuthoritative && tileMeta && tileMeta.collision) {
           const tw = r.tileset.tsx.tileWidth;
           const th = r.tileset.tsx.tileHeight;
           const transformed = tileMeta.collision.map((rect) => {
@@ -439,7 +503,10 @@ for (const layer of layers) {
         }
       }
 
-      if (isBlockingProp(r)) {
+      // Heuristic prop-bbox collision — SKIPPED if gameplay_collision is
+      // authoritative. The artist's gameplay_collision rects are the
+      // source of truth; props don't auto-block by filename match.
+      if (!gameplayCollisionAuthoritative && isBlockingProp(r)) {
         const x0 = dx, y0 = dy, x1 = dx + dw, y1 = dy + dh;
         const cx0 = Math.floor(x0 / TW);
         const cy0 = Math.floor(y0 / TH);
@@ -464,6 +531,38 @@ for (const layer of layers) {
 }
 console.log(`[bake] animated props: ${animatedProps.length} placements, ${animationsByKey.size} unique animations`);
 console.log(`[bake] collision cells (per-tile shapes): ${collisionByCell.size}`);
+
+// ── Stamp gameplay_collision rects directly into collisionByCell ─────
+// When gameplay_collision is authoritative, these rects are the ONLY
+// source of cell-level collision (PASS A's prop-bbox stamping was
+// already skipped above). Each rect spans 1+ cells; we stamp full
+// cell coverage (no sub-tile geometry) so the runtime tile classifier
+// reads them as full walls. Coordinates assume the source TMX origin
+// is (0,0) — for cropped maps we'd need to subtract X0/Y0 but Zone 1
+// doesn't crop so this works directly.
+if (gameplayCollisionAuthoritative) {
+  let stamped = 0;
+  for (const obj of gameplayCollisionLayer.objects) {
+    const x0 = Math.round(obj.x);
+    const y0 = Math.round(obj.y);
+    const x1 = Math.round(obj.x + obj.width);
+    const y1 = Math.round(obj.y + obj.height);
+    const cx0 = Math.floor(x0 / TW);
+    const cy0 = Math.floor(y0 / TH);
+    const cx1 = Math.floor((x1 - 1) / TW);
+    const cy1 = Math.floor((y1 - 1) / TH);
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        if (cx < 0 || cx >= W || cy < 0 || cy >= H) continue;
+        // Stamp full-cell rect — gameplay_collision is by design
+        // tile-aligned, no sub-tile geometry expected.
+        recordCellCollision(cx, cy, [{ x: 0, y: 0, w: TW, h: TH }]);
+        stamped++;
+      }
+    }
+  }
+  console.log(`[bake] gameplay_collision stamped ${stamped} cells from ${gameplayCollisionLayer.objects.length} rects`);
+}
 
 // ─── PASS 2: render the STATIC composite (skipping animated tiles) ───
 console.log('[bake] rendering static composite...');
@@ -694,6 +793,14 @@ for (let oy = 0; oy < H; oy++) {
     //      object props with BLOCKING_PROP_RE matching the source name.
     let hasBlockerLayerTile = false;
     let hasFloor2Here = false;
+    // PASS B blocker-layer inference is also gated on gameplay_collision.
+    // Skip the entire walls-layer scan when authoritative gameplay
+    // data is present.
+    if (gameplayCollisionAuthoritative) {
+      // Cell collision was already populated above by stamping
+      // gameplay_collision rects. Just respect the existing entries.
+      // Fall through to the row.push() below.
+    } else {
     // Scan elevated-tier layers FIRST so we know if floor2 is set.
     for (const layer of elevatedTierLayers) {
       if (sx < 0 || sx >= layer.width || sy < 0 || sy >= layer.height) continue;
@@ -718,6 +825,7 @@ for (let oy = 0; oy < H; oy++) {
       hasBlockerLayerTile = true;
       break;
     }
+    }   // end of `else { /* heuristic blocker-layer inference */ }`
 
     // ELEVATED TIER (terrain1-floor2): always WALKABLE.
     //
@@ -822,7 +930,58 @@ const syR = Math.round(cySum / biggest.size);
 let spawn = (componentId[syR] && componentId[syR][sxR] === biggest.id)
   ? { x: sxR, y: syR }
   : { x: biggest.cells[0][0], y: biggest.cells[0][1] };
-console.log(`[bake] spawn cell: (${spawn.x}, ${spawn.y})`);
+
+// ── Override spawn from gameplay_spawns if present ──────────────────
+// The artist-authored `spawn_player` object wins over the heuristic
+// centroid pick. Coords in TMX are top-left of the bbox; convert to
+// the cell containing the bbox's center.
+let spawnObj = null;
+if (gameplaySpawnsLayer) {
+  spawnObj = gameplaySpawnsLayer.objects.find(
+    (o) => o.type === 'player_spawn' || o.properties?.type === 'player_spawn',
+  );
+}
+if (spawnObj) {
+  const cxPx = spawnObj.x + (spawnObj.width || TW) / 2;
+  const cyPx = spawnObj.y + (spawnObj.height || TH) / 2;
+  spawn = { x: Math.floor(cxPx / TW), y: Math.floor(cyPx / TH) };
+  console.log(`[bake] spawn from gameplay_spawns spawn_player → (${spawn.x}, ${spawn.y})`);
+} else if (gameplayCollisionAuthoritative) {
+  console.warn(`[bake] WARN: gameplay_collision present but no spawn_player in gameplay_spawns. Using centroid fallback (${spawn.x}, ${spawn.y}).`);
+} else {
+  console.log(`[bake] spawn cell (centroid): (${spawn.x}, ${spawn.y})`);
+}
+
+// ── Extract gameplay metadata for runtime ──────────────────────────
+const gameplay = {};
+if (gameplayCollisionLayer) {
+  gameplay.collisionRects = gameplayCollisionLayer.objects.map((o) => ({
+    x: o.x, y: o.y, w: o.width, h: o.height,
+  }));
+}
+if (gameplayWalkableLayer && gameplayWalkableLayer.objects.length > 0) {
+  gameplay.walkableRects = gameplayWalkableLayer.objects.map((o) => ({
+    x: o.x, y: o.y, w: o.width, h: o.height,
+  }));
+}
+if (gameplayStairsLayer && gameplayStairsLayer.objects.length > 0) {
+  gameplay.stairs = gameplayStairsLayer.objects.map((o) => ({
+    x: o.x, y: o.y, w: o.width, h: o.height,
+    fromElevation: parseInt(o.properties?.fromElevation, 10) || 0,
+    toElevation:   parseInt(o.properties?.toElevation, 10) || 1,
+    direction:     o.properties?.direction || 'north',
+  }));
+}
+if (gameplayTransitionsLayer && gameplayTransitionsLayer.objects.length > 0) {
+  gameplay.transitions = gameplayTransitionsLayer.objects.map((o) => ({
+    x: o.x, y: o.y, w: o.width, h: o.height,
+    targetMap:   o.properties?.targetMap || '',
+    targetSpawn: o.properties?.targetSpawn || 'start',
+    name:        o.name || 'exit',
+  }));
+}
+const gameplayAuthoritative = gameplayCollisionAuthoritative;
+console.log(`[bake] gameplay layers: collision=${gameplay.collisionRects?.length || 0} walkable=${gameplay.walkableRects?.length || 0} stairs=${gameplay.stairs?.length || 0} transitions=${gameplay.transitions?.length || 0}`);
 
 // Resolve animated props' animKey → row index in animations[].
 const animatedPropsOut = animatedProps.map((p) => ({
@@ -849,6 +1008,13 @@ const meta = {
   spawn,
   componentCount: components.length,
   largestComponentSize: biggest.size,
+  // Zone 1 walkability contract — when these arrays are present, the
+  // runtime should treat them as authoritative (collision/walkable/
+  // stairs/transitions/spawn). When absent, the runtime falls back
+  // to the heuristic collisionGrid (which itself was derived from
+  // layer-name + prop-filename guessing).
+  gameplay,
+  gameplayAuthoritative,
 };
 
 await writeFile(OUT_JSON, JSON.stringify(meta));
