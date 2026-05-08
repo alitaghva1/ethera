@@ -45,8 +45,16 @@ export const ZONE_ENCOUNTERS = Object.freeze({
   // Floor 1 — Ancient Ruins. Open courtyard with raised platforms.
   // Spawns from the four corners of the walkable area.
   ruins: {
-    cameraZoom: 0.75,                  // pull camera back so most of the
-                                        // 1.5×1.6-viewport map is visible
+    // 2026-05-08 — Removed `cameraZoom: 0.75`. Per RUINS_SCALE_AUDIT.md
+    // Fix 2, the per-zone cameraZoom field was DEAD CODE: main.js sets
+    // camera.zoom once on zone load, but updateCamera overwrites it
+    // every frame with `_baselineZoom × (1 + pulse + breathe)`. Ruins
+    // has been silently playing at 1.0 zoom (not 0.75) since the field
+    // was added. With the enemy size fix (orc_warrior 88→62, moose
+    // 110→88, etc.) the 1.0 zoom now feels right — sprites are
+    // readable and the visible area covers most of the 40×24 map as
+    // the hero traverses. Other zones still carry the dead cameraZoom
+    // field; they'll be revisited per-zone.
     // Phase 3 stabilization (audit B3+B5) — every spawn point verified
     // walkable + reachable from boss via BFS. Previously 4/6 of the
     // configured spawns landed inside walls (sub-tile-rect cells).

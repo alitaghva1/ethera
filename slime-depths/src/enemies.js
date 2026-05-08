@@ -1349,8 +1349,14 @@ export const TYPES = {
   // bottom-aligned fit). drawSize 105 lands ~140px visible after
   // bossSizeMul 1.45 × bodyHeightFrac 0.92 ≈ 1.33× — clearly bigger
   // than the hero (60 visible) but not screen-dominating.
+  // SCALE PASS 2026-05-08 (RUINS_SCALE_AUDIT.md Fix 1) — drawSize
+  // 105 → 85. ERW stone_golem fills 0.92 of cell × bossSizeMul 1.45
+  // = 1.33× drawSize visible. 105 produced 140 visible = 2.64× hero
+  // (boss-sized but disproportionate to a 1.04× orc trash). 85 lands
+  // 113 visible = 2.13× hero — clearly authoritative, in line with
+  // bone_captain (drawSize 160 × 0.55 × 1.45 ≈ 128 visible).
   stone_golem: {
-    prefix: 'stone_golem_', cellSize: 128, drawSize: 105, radius: 32, bodyHeight: 110, speed: 60, hp: 240, damage: 2,
+    prefix: 'stone_golem_', cellSize: 128, drawSize: 85, radius: 32, bodyHeight: 110, speed: 60, hp: 240, damage: 2,
     color: '#a89c8a', hitCD: 1.30, fps: 8, behavior: 'melee',
     attackReach: 78, attackArc: Math.PI * 0.65,
     windup: 0.62, swing: 0.34,
@@ -1447,8 +1453,16 @@ export const TYPES = {
   // long attack cycle (30 frames in source — windup + strike + recovery
   // all preserved). Pairs with stone_golem boss thematically: ancient
   // creatures still guarding the ruins.
+  //
+  // SCALE PASS 2026-05-08 (RUINS_SCALE_AUDIT.md Fix 1) — drawSize
+  // 110 → 88. ERW pack frames are tightly cropped (bodyFrac ~0.85
+  // measured); the prior 110 produced a 94px visible body = 1.77×
+  // hero, which felt too big against the ruins-orc trash mobs and
+  // even the stone_golem boss. 88 lands ~75 visible = 1.41× hero,
+  // proper "heavy melee" presence without dwarfing the player.
+  // Radius unchanged (gameplay collision is independent of visual).
   moose: {
-    prefix: 'moose_', cellSize: 128, drawSize: 110, radius: 28, bodyHeight: 80, speed: 95, hp: 130, damage: 2,
+    prefix: 'moose_', cellSize: 128, drawSize: 88, radius: 28, bodyHeight: 80, speed: 95, hp: 130, damage: 2,
     color: '#7a5a3a', hitCD: 1.10, fps: 12, behavior: 'melee',
     attackReach: 86, attackArc: Math.PI * 0.50,
     // Long windup matches the source's wide anticipation arc — 30
@@ -1469,8 +1483,13 @@ export const TYPES = {
   // a thematically-coherent fighter that visually matches the pack.
   // Faster than the F2 orc (color1 = leaner build), HP slightly under
   // standard orc since this is a ruins-Z1 mob.
+  //
+  // SCALE PASS 2026-05-08 (RUINS_SCALE_AUDIT.md Fix 1) — drawSize
+  // 88 → 62. Source body fills 0.88 of cell (vs Tiny RPG's 0.55), so
+  // 88 read as 77 visible = 1.45× hero — too big for a wave-1 trash
+  // mob. 62 lands ~55 visible = 1.04× hero, peer-sized as intended.
   orc_warrior: {
-    prefix: 'orc_warrior_', cellSize: 96, drawSize: 88, radius: 22, speed: 100, hp: 90, damage: 1,
+    prefix: 'orc_warrior_', cellSize: 96, drawSize: 62, radius: 22, speed: 100, hp: 90, damage: 1,
     color: '#90a865', hitCD: 0.85, fps: 10, behavior: 'melee',
     attackReach: 56, attackArc: Math.PI * 0.55,
     windup: 0.34, swing: 0.22,
@@ -1485,8 +1504,14 @@ export const TYPES = {
   // enemy for ruins zone. Uses the wizard behavior path so fireball
   // projectile + cast windup come for free; the visual identity is
   // distinct because of the orc-mage's signature hand-fx animations.
+  //
+  // SCALE PASS 2026-05-08 (RUINS_SCALE_AUDIT.md Fix 1) — drawSize
+  // 88 → 72. Caster wants to read as a peer threat, slightly more
+  // present than the orc_warrior trash mob (taller staff/cape
+  // silhouette). 72 lands ~56 visible = 1.06× hero, matching the
+  // existing wizard def (drawSize 110 × 0.50 fill = 55 visible).
   orc_mage_enemy: {
-    prefix: 'orc_mage_enemy_', cellSize: 96, drawSize: 88, radius: 20, speed: 70, hp: 65, damage: 2,
+    prefix: 'orc_mage_enemy_', cellSize: 96, drawSize: 72, radius: 20, speed: 70, hp: 65, damage: 2,
     color: '#5a7a90', hitCD: 1.6, fps: 10, behavior: 'wizard',
     preferDist: 320, minDist: 200,
     castRange: 460,
