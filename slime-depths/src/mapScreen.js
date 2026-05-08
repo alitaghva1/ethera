@@ -1,3 +1,9 @@
+// LEGACY (Phase 2 quarantine — see CANONICAL.md):
+//   The KeyM-bound DAG map screen exists for the OLD branching-floor flow.
+//   Canonical zones use a linear progression (no path selection); the
+//   `zoneHud` shows wave dots instead. Active only while `currentGraph`
+//   is set (post Phase-1 fix). Will be deleted in Phase 4.
+//
 // ============================================================================
 // FLOOR MAP SCREEN — branching DAG path selection
 //

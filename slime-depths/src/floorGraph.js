@@ -1,3 +1,11 @@
+// LEGACY (Phase 2 quarantine — see CANONICAL.md):
+//   The DAG branching graph is the OLD progression model. The canonical
+//   game is a linear 5-zone progression (ruins → cemetery → crypt →
+//   mountain → volcano) driven by `src/zoneEncounters.js`. This file is
+//   only consumed when `__startRun()` (legacy menu CTA) is invoked. Will
+//   be deleted in Phase 4 alongside `floor.js` + `mapScreen.js`. Do NOT
+//   extend.
+//
 // ============================================================================
 // FLOOR GRAPH — branching map generator for the systems-roguelite pivot
 //

@@ -1,3 +1,10 @@
+// LEGACY (Phase 2 quarantine — see CANONICAL.md):
+//   Authored shells were a procedural-room polish layer. Canonical zones
+//   are baked TMX composites — there are no procedural rooms in the
+//   production flow. This file is only consumed when `room.bakedImage`
+//   is falsy (legacy DAG runs only). Will be deleted in Phase 3 alongside
+//   the procedural rendering paths in `room.js`.
+//
 // ============================================================================
 // AUTHORED ROOM SHELLS — proof-of-concept architecture layer
 //

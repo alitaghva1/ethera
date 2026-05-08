@@ -1,3 +1,10 @@
+// LEGACY (Phase 2 quarantine — see CANONICAL.md):
+//   Door system serves the OLD room-by-room DAG flow. Canonical zones use
+//   `src/zonePortal.js` for end-of-zone transitions instead. Phase 1 gated
+//   `drawDoorLabels` on `currentGraph` truthy + room.kind not being a baked
+//   zone, so doors won't render junk during zone runs. File will be
+//   deleted in Phase 4. Do NOT extend the door system.
+//
 // ============================================================================
 // DUNGEON DOORS — wall-integrated functional doors (Hades / Isaac feel).
 //
@@ -724,11 +731,18 @@ function _buildDoorVisualProfile(d) {
   const kind = d.targetKind || 'combat';
   // Default substrate — combat with crossed swords. Muted bronze/stone
   // colors so it whispers; brighter tiers below override.
+  // 2026-05-07: substrate combat doors got a faint NEUTRAL halo. Without
+  // it, the small bronze sword sprite blended into the dark niche
+  // recess (added with the 2026-05-06 door arch redesign) and read as
+  // a black blob. The halo just lifts the niche's interior tone enough
+  // for the icon outline to read against it. Themed/boss doors don't
+  // need this — their bright colored sprites + colored halos already
+  // pop against the niche.
   const profile = {
     iconKind: 'combat',
     rimColor: '#7a6a5a',
     iconColor: '#c8b894',
-    haloColor: null,
+    haloColor: 'rgba(160, 140, 110, 0.20)',     // faint warm-stone wash
     pulse: false,
     affixId: (kind === 'elite' && d.eliteAffixId) ? d.eliteAffixId : null,
   };
@@ -789,9 +803,15 @@ function _buildDoorVisualProfile(d) {
   } else if (kind === 'chestroom') {
     profile.iconKind = 'chest';
     profile.rimColor = '#c9a86a'; profile.iconColor = '#ffd680';
+    // Halo added 2026-05-07 — chest icons were rendering as dark blobs
+    // in the niche just like substrate combat doors did. Same pattern:
+    // small bright sprite needs a backing wash to read against the
+    // dark recess gradient. Warm gold matches the icon palette.
+    profile.haloColor = 'rgba(201, 168, 106, 0.40)';
   } else if (kind === 'trove') {
     profile.iconKind = 'trove';
     profile.rimColor = '#f4d9a0'; profile.iconColor = '#ffe9b0';
+    profile.haloColor = 'rgba(244, 217, 160, 0.45)';     // brighter than chestroom — trove is rarer
   }
   // Otherwise default substrate (combat) — already set
   return profile;
@@ -874,91 +894,56 @@ function _drawDoorMedallion(ctx, d, profile, now) {
   const x = d.tx * TILE;
   const y = d.ty * TILE;
   const cx = x + TILE / 2;
-  // Position bumped 28 → 34 so the medallion sits cleanly above the
-  // top-wall body extension (drawTopWallBody renders y=-32 to y=0
-  // above the wall row). At cy=-34, the medallion bottom is at -18,
-  // 2 px below the wall body edge — anchors the disc visually to the
-  // wall edge while leaving the bulk of the medallion in clear sky.
-  const cy = y - 34;
-  const baseR = 17;
-
-  // Pulse — special tiers (boss/fusion/legendary/mythic) breathe at
-  // 1.6 Hz with ±6% scale for the magical-waypoint feel. Theme + kind
-  // tier doesn't pulse (those are identity, not urgency).
-  const scale = profile.pulse ? (1 + 0.06 * Math.sin(now * 1.6 + d.tx * 0.3)) : 1;
+  // ── Niche-mounted medallion (Direction A redesign 2026-05-06) ──────
+  //
+  // The icon now sits INSIDE the carved circular niche that
+  // _drawDoorArch carves into the door frame's keystone (cy=-27, r=14
+  // in arch geometry — round-2 readability pass). What used to be a
+  // floating tablet + medallion assembly above the wall is now a
+  // recessed emblem that's physically part of the door's stonework.
+  //
+  // Render order in this function:
+  //   1. Niche-internal halo    (theme/reward color wash inside niche)
+  //   2. Icon                   (PixelLab sprite or procedural fallback)
+  //   3. Tinted niche-rim ring  (color band carrying door type)
+  //
+  // Round-2 sequencing fix: rim ring drawn LAST (over icon) so the door
+  // type color always reads at the niche edge regardless of icon shape.
+  // Previously the rim was beneath the icon and bright icons could
+  // bleed over it.
+  //
+  // Special tiers (boss/fusion/legendary/mythic) still pulse via a
+  // gentle scale oscillation on the rim ring + halo.
+  const cy = y - 27;            // matches niche cy in _drawDoorArch
+  const baseR = 14;             // matches niche radius in _drawDoorArch
+  const scale = profile.pulse ? (1 + 0.05 * Math.sin(now * 1.6 + d.tx * 0.3)) : 1;
   const r = baseR * scale;
-  const innerR = r - 2.5;
 
   ctx.save();
 
-  // ── Layer 0: stone tablet backing (anchors medallion to wall) ──────
-  // Without this, the medallion floats in the black void above the wall
-  // and reads as a HUD overlay rather than a physical doorway sign.
-  // The tablet is a procedural carved stone block that sits behind the
-  // medallion, with two bracket pegs visibly bolted into the wall body
-  // so the eye can trace "wall → bracket → tablet → medallion" as one
-  // physical structure.
-  //
-  // Geometry (relative to the medallion at cx, cy=-34, r=17):
-  //   tablet width  ≈ 2r + 14 (44 px) — wider than the medallion so
-  //                                     the disc reads as 'mounted on'
-  //   tablet top    ≈ cy - r - 4  (-55) — slightly above medallion top
-  //   tablet bottom ≈ -8           — overlaps the wall body extension
-  //                                  for visible attachment
-  //   bracket pegs  ≈ -8 to +4    — extend DOWN into the wall body so
-  //                                  the tablet looks bolted on
-  _drawDoorTablet(ctx, cx, cy, baseR);
-
-  // ── Layer 1: outer halo ─────────────────────────────────────────────
+  // ── Layer 1: niche-internal halo (drawn FIRST, behind icon) ─────────
+  // Soft glow CONTAINED within the niche. Round-2 boost: brighter inner
+  // stop (haloColor at full alpha at center) so the door type's color
+  // washes the niche backdrop, making icons read in tier color even
+  // when the icon itself is monochrome stone.
   if (profile.haloColor) {
-    const haloR = r + 12;
-    const halo = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, haloR);
+    const haloR = r + 10;
+    const halo = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, haloR);
     halo.addColorStop(0, profile.haloColor);
-    // Strip the alpha out of the halo color for the outer stop. Robust
-    // to any rgba(R, G, B, A) format including spaces and decimal
-    // alpha values; the trailing alpha-and-paren is replaced with 0.
+    halo.addColorStop(0.7, profile.haloColor.replace(/,\s*[\d.]+\)$/, ', 0.18)'));
     halo.addColorStop(1, profile.haloColor.replace(/,\s*[\d.]+\)$/, ', 0)'));
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = halo;
     ctx.fillRect(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
+    ctx.restore();
   }
 
-  // ── Layer 2: tinted rim disc (the "frame") ─────────────────────────
-  // Two-tone rim: full color on top half, slightly darkened bottom
-  // half for "lit from above" 3D feel. Accomplished via a vertical
-  // gradient instead of a flat fill.
-  const rimGrad = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
-  rimGrad.addColorStop(0,    profile.rimColor);
-  rimGrad.addColorStop(0.55, profile.rimColor);
-  rimGrad.addColorStop(1,    _darkenHex(profile.rimColor, 0.55));
-  ctx.fillStyle = rimGrad;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-
-  // ── Layer 3: dark stone inner disc ─────────────────────────────────
-  // Radial gradient anchored at upper-third for "stone pressed into
-  // frame, lit from above" depth. Slightly darker bottom edge gives
-  // the inner disc real depth instead of flat fill.
-  const innerGrad = ctx.createRadialGradient(cx, cy - innerR * 0.35, 1, cx, cy, innerR);
-  innerGrad.addColorStop(0, '#3a2a36');
-  innerGrad.addColorStop(0.7, '#1a1018');
-  innerGrad.addColorStop(1, '#0a0610');
-  ctx.fillStyle = innerGrad;
-  ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, Math.PI * 2); ctx.fill();
-
-  // ── Layer 3b: top-edge highlight ───────────────────────────────────
-  // A thin bright arc on the top-inside of the disc — sells "metal
-  // disc, lit from above". Same color as rim but with a soft alpha.
-  ctx.save();
-  ctx.strokeStyle = profile.rimColor;
-  ctx.globalAlpha = 0.55;
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  // Arc from upper-left to upper-right (top quarter of the disc edge)
-  ctx.arc(cx, cy, innerR + 0.3, Math.PI * 1.20, Math.PI * 1.80);
-  ctx.stroke();
-  ctx.restore();
-
-  // ── Layer 4: icon (kind-specific shape) ────────────────────────────
-  const iconR = innerR * 0.65;
+  // ── Layer 2: icon (kind-specific sprite or procedural) ─────────────
+  // The icon fills 92% of the niche radius — much larger than the first
+  // pass (85%) since the niche itself grew 40%. Ground icon contrast is
+  // the readability problem we're solving.
+  const iconR = r * 0.92;
   ctx.fillStyle = profile.iconColor;
   ctx.strokeStyle = profile.iconColor;
 
@@ -1003,8 +988,20 @@ function _drawDoorMedallion(ctx, d, profile, now) {
   if (_doorIcon && _doorIcon.width > 0) {
     const size = iconR * 2;
     ctx.drawImage(_doorIcon, Math.round(cx - iconR), Math.round(cy - iconR), size, size);
-    // Drop straight to the affix sub-line + restore — sprite carries
-    // the full visual, no additional procedural overlay needed.
+    // Rim ring drawn over the sprite so the type color frames the icon
+    // (round-2 — same boost as the procedural path: 2.2px, full alpha).
+    ctx.strokeStyle = profile.rimColor;
+    ctx.globalAlpha = 1.0;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 0.3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 1.2, Math.PI * 1.1, Math.PI * 1.9);
+    ctx.stroke();
+    // Affix sub-line — same style as the procedural fallback.
     if (profile.affixId && _AFFIX_DISPLAY[profile.affixId]) {
       const af = _AFFIX_DISPLAY[profile.affixId];
       ctx.fillStyle = af.color;
@@ -1185,6 +1182,26 @@ function _drawDoorMedallion(ctx, d, profile, now) {
     }
   }
 
+  // ── Layer 3: tinted niche-rim ring (drawn LAST, above icon) ─────────
+  // Bold colored stroke right at the niche edge. Carries the door type's
+  // identity color and frames the icon — the player reads color FIRST
+  // (across the room: "purple = mystery"), shape SECOND (up close: skull
+  // vs. spark vs. swords). Round-2 boost: 1.4 → 2.2 px and full alpha
+  // so theme tints actually pop.
+  ctx.strokeStyle = profile.rimColor;
+  ctx.globalAlpha = 1.0;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 0.3, 0, Math.PI * 2);
+  ctx.stroke();
+  // Inner highlight ring — 1px lighter band just inside the rim, sells
+  // the polished-metal-against-stone read.
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 1.2, Math.PI * 1.1, Math.PI * 1.9);
+  ctx.stroke();
+
   // ── Layer 5: affix sub-line (elite affixes only) ───────────────────
   if (profile.affixId && _AFFIX_DISPLAY[profile.affixId]) {
     const af = _AFFIX_DISPLAY[profile.affixId];
@@ -1201,89 +1218,14 @@ function _drawDoorMedallion(ctx, d, profile, now) {
   ctx.restore();
 }
 
-// Stone tablet that anchors the medallion to the wall. Painted before
-// the medallion's halo/rim/icon layers so the disc visually sits ON
-// the tablet rather than floating in the void above the wall.
-//
-// Composition:
-//   - 4-px-tall drop shadow on the wall body below the tablet
-//   - dark outline rectangle for the tablet silhouette
-//   - mid-tone stone fill
-//   - lit top edge (1-px highlight)
-//   - small triangular peak at the top center (heraldic shape)
-//   - two short bracket pegs at the bottom corners that extend DOWN
-//     into the wall body, selling "this is bolted to the wall"
-//
-// Colors mirror the wall palette but slightly lighter so the tablet
-// reads as foreground stone, not blending into the wall.
-function _drawDoorTablet(ctx, cx, cy, r) {
-  // Outer rectangle bounds.
-  const tabletW = (r * 2) + 14;            // 48 px @ r=17
-  const tabletH = 50;                      // covers medallion top down through wall body
-  const tabletL = cx - tabletW / 2;
-  const tabletT = cy - r - 5;              // slightly above medallion top
-  const tabletB = tabletT + tabletH;       // ≈ -6 — into wall body
-
-  // Drop shadow on the wall body below the tablet (very subtle —
-  // tablet is "in front of" the wall stone, so a thin band of
-  // dark right under its bottom edge sells depth).
-  ctx.fillStyle = 'rgba(8, 5, 10, 0.55)';
-  ctx.fillRect(tabletL + 2, tabletB, tabletW - 4, 3);
-
-  // Dark outline (1 px border for crisp silhouette).
-  ctx.fillStyle = '#0a0608';
-  ctx.fillRect(tabletL, tabletT, tabletW, tabletH);
-
-  // Top peak — small triangle protruding above the rectangle for a
-  // heraldic / coat-of-arms feel.
-  const peakH = 5;
-  ctx.beginPath();
-  ctx.moveTo(cx - 8, tabletT);
-  ctx.lineTo(cx + 8, tabletT);
-  ctx.lineTo(cx,     tabletT - peakH);
-  ctx.closePath();
-  ctx.fill();
-
-  // Mid-tone stone fill — slightly lighter than the wall body so the
-  // tablet reads as foreground stone.
-  ctx.fillStyle = '#3a2e34';
-  ctx.fillRect(tabletL + 1, tabletT + 1, tabletW - 2, tabletH - 2);
-  // Peak inner (mid stone)
-  ctx.beginPath();
-  ctx.moveTo(cx - 7, tabletT + 1);
-  ctx.lineTo(cx + 7, tabletT + 1);
-  ctx.lineTo(cx,     tabletT - peakH + 1.5);
-  ctx.closePath();
-  ctx.fill();
-
-  // Top-edge highlight — 1 px lighter band along the top inner edge
-  // so the tablet reads "lit from above."
-  ctx.fillStyle = '#5a4a52';
-  ctx.fillRect(tabletL + 1, tabletT + 1, tabletW - 2, 1);
-  // Highlight on the peak's left flank.
-  ctx.fillRect(cx - 6, tabletT, 1, 1);
-
-  // Side edge shadows — 1 px darker on the inner-right and inner-bottom
-  // for chiseled-stone depth.
-  ctx.fillStyle = '#2a1f24';
-  ctx.fillRect(tabletL + tabletW - 2, tabletT + 1, 1, tabletH - 2);
-  ctx.fillRect(tabletL + 1, tabletT + tabletH - 2, tabletW - 2, 1);
-
-  // Bracket pegs — two small dark bars at the bottom corners that
-  // extend DOWN into the wall body, visibly attaching the tablet.
-  // The wall body extension renders y=-32 to y=0; pegs at x=corner,
-  // y=tabletB to y=tabletB+8 sit inside that band.
-  const pegW = 4;
-  const pegH = 8;
-  const pegInset = 4;
-  ctx.fillStyle = '#0a0608';
-  ctx.fillRect(tabletL + pegInset,                 tabletB, pegW, pegH);
-  ctx.fillRect(tabletL + tabletW - pegInset - pegW, tabletB, pegW, pegH);
-  // Peg highlights (cap on top, sells iron rivet)
-  ctx.fillStyle = '#5a4a52';
-  ctx.fillRect(tabletL + pegInset,                 tabletB,     pegW, 1);
-  ctx.fillRect(tabletL + tabletW - pegInset - pegW, tabletB,     pegW, 1);
-}
+// (Removed 2026-05-06) — _drawDoorTablet was a transitional attempt to
+// anchor the floating medallion to the wall via a procedural stone
+// tablet with bracket pegs. Playtest showed it didn't solve the
+// disconnect — the rectangular tablet + circular medallion fought each
+// other shape-wise, and the topper ended up bigger than the door it
+// labeled. Replaced by the Direction A redesign: the medallion now sits
+// inside a niche carved INTO _drawDoorArch's keystone (see
+// roomComposition.js). No floating geometry remains.
 
 
 // Helper — draw a rounded rectangle path. Uses ctx.roundRect when

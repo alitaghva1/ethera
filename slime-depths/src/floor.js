@@ -1,3 +1,11 @@
+// LEGACY (Phase 2 quarantine — see CANONICAL.md):
+//   This is the OLD per-room DAG floor system. The canonical game uses
+//   `src/zoneEncounters.js` + `src/zoneRunner.js` with hand-drawn baked
+//   zones instead. This file is still active because the menu CTA still
+//   routes through `__startRun()` → `loadRoom(idx)` → this file. Will be
+//   deleted in Phase 4 (when the menu wires to zones). Do NOT add new
+//   room kinds or new content here.
+//
 // Floor — a sequence of 7 rooms. Structure:
 //   0: start         (no combat, entrance)
 //   1: combat1       (easy, tier-appropriate)
@@ -96,11 +104,20 @@ export const FLOOR_ENEMY_MULS = {
   4: { dmg: 2.10, hp: 1.80 },      // was 2.00/1.80
 };
 
-// Within-floor combat difficulty ramp — combat3 is harder than combat1
+// Within-floor combat difficulty ramp — combat3 is harder than combat1.
+//
+// 2026-05-07: count bumps +1 across all tiers per scale audit. Our
+// M-rooms (20×14 = 280 tiles²) are 3× a BoI room and 1.5× a Hades
+// chamber but were shipping with BoI-tier enemy counts (~4 typical),
+// making rooms feel sparse — traversal dominated over combat. New
+// density: combat1=2 → 5 typical, combat2=2 → 5, combat3=3 → 6+.
+// Density rises from 0.016 to ~0.025 e/t² (still shy of BoI's 0.04
+// but closer to Gungeon / Hades range). References from research
+// pass: BoI ~3-5/91, Gungeon 4-8/120, Hades peak 6-8/140-180.
 const COMBAT_SLOT_MULS = {
-  combat1: { dmg: 1.0, hp: 1.05, count: 1 },    // was 1.0/1.0/0 — first room now has one extra foe
-  combat2: { dmg: 1.1, hp: 1.15, count: 1 },
-  combat3: { dmg: 1.2, hp: 1.30, count: 2 },    // was 1.2/1.25/1 — final room is clearly tougher
+  combat1: { dmg: 1.0, hp: 1.05, count: 2 },    // was 1 — was 1.0/1.0/0 → 1.0/1.05/2
+  combat2: { dmg: 1.1, hp: 1.15, count: 2 },    // was 1
+  combat3: { dmg: 1.2, hp: 1.30, count: 3 },    // was 2 — final room clearly tougher
 };
 
 function randInt(min, max) { return (min + Math.random() * (max - min + 1)) | 0; }
@@ -162,6 +179,23 @@ const COMP = {
     ['slime', 'skel', 'skel_archer'],            // crypt-native bone ranged
     ['lancer', 'slime', 'slime'],                 // lancer introduces itself on floor 1
     ['skel', 'skel_archer', 'slime'],             // bone duo + slime
+    // Spitter compositions — slime variant introduces ranged slime
+    // threat on floor 1. Bumped to 4/9 entries (≈44% chance per room)
+    // because user playtests showed 2/7 (≈28%) was making the spitter
+    // feel undiscoverable — multiple combat rooms in a row could land
+    // entirely without one. We want first-floor players to encounter
+    // a spitter within 1-2 combat rooms reliably.
+    ['slime', 'slime_spitter', 'slime'],          // melee front, spitter back
+    ['slime_spitter', 'slime', 'slime'],          // single spitter mixed in
+    ['slime_spitter', 'slime', 'skel'],           // mixed comp with skeleton
+    ['slime', 'slime', 'slime_spitter'],          // 2 melee + 1 spitter
+    // Crypt spider compositions (Phase 2 — Epic RPG World import).
+    // Spiders are F1-only fodder; small + fast + lower HP than skeleton.
+    // Mixed with existing F1 enemies so they introduce as the "scuttling
+    // crypt creature" without feeling like a separate-game ambush.
+    ['slime', 'crypt_spider', 'crypt_spider'],    // 2 spiders + 1 melee slime
+    ['crypt_spider', 'crypt_spider', 'skel'],     // pack of spiders + skeleton
+    ['crypt_spider', 'slime', 'skel'],            // 1 spider mixed in
   ],
   tier2: [
     ['skel', 'skel', 'archer'],
@@ -170,6 +204,11 @@ const COMP = {
     ['archer', 'archer', 'slime', 'slime'],
     ['orc', 'slime', 'bomber'],
     ['lancer', 'archer', 'slime'],
+    // Tier2 spitter introductions — paired with melee slimes to give
+    // mixed-range slime rooms; introduces double-ranged-threat
+    // (spitter + archer) without making the floor pure ranged.
+    ['slime_spitter', 'slime_spitter', 'slime'],  // 2-spitter + 1 melee
+    ['orc', 'slime_spitter', 'slime'],            // melee front + ranged slime back
     ['priest', 'skel', 'skel', 'archer'],
     ['wizard', 'skel', 'slime'],                  // wizard introduced in tier2
     ['knight_enemy', 'archer', 'archer'],         // knight + 2 archers — flank while dodging arrows
@@ -825,7 +864,12 @@ export function makeEventRoom(level, eliteChance) {
 // ============================================================================
 export const BOSS_LOOT_POOL = {
   // Grudnok — orc warchief. Brute force, knockback, heavy weapons.
-  orc: ['heavy_blow', 'serrated_edge', 'warlord', 'ironhide', 'executioner'],
+  // Key was 'orc' historically (when common-orc def doubled as boss);
+  // F1 boss type is now 'elite_orc' (proper Grudnok sprite). Lookup at
+  // boss-clear time uses bossDef.type so the key MUST match the spawn
+  // type. Old 'orc:' key silently returned undefined → no loot drop +
+  // floor-clear path took the fallback branch which had a separate bug.
+  elite_orc: ['heavy_blow', 'serrated_edge', 'warlord', 'ironhide', 'executioner'],
   // Iron Revenant — undead reaper. Life drain, death-based mechanics.
   bone_captain: ['bloodstone', 'reaver', 'bloodrite', 'phoenix_tear', 'vampiric_aura'],
   // Broodmother — chaos and summoning. Explosions, chains, bursts.
