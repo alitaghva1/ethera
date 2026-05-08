@@ -170,7 +170,12 @@ function _spawnBoss() {
   const sp = enc.bossLocation;
   const wx = (sp.x + 0.5) * TILE;
   const wy = (sp.y + 0.5) * TILE;
-  spawnEnemy(enc.bossType, wx, wy);
+  // Phase 4 — pass through optional `bossOpts` (affix / hpMul / damageMul)
+  // so each zone's boss feels distinct even when sharing a sprite. The
+  // cemetery's GRAVE WARDEN is a frost-affixed variant of the same
+  // bone_captain model used by the crypt's IRON REVENANT, etc.
+  const opts = enc.bossOpts ? { ...enc.bossOpts } : {};
+  spawnEnemy(enc.bossType, wx, wy, opts);
   // Capture the just-spawned enemy as the boss reference. Bosses are
   // pushed onto enemies last, so the tail is ours.
   _runner.bossEntity = enemies[enemies.length - 1] || null;

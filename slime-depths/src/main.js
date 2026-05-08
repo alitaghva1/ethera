@@ -429,7 +429,8 @@ document.getElementById('restartBtn').addEventListener('click', () => {
     showHamlet();
     return;
   }
-  startRun();
+  // Phase 4 unification — restart from death goes to canonical zone run.
+  beginCanonicalDescent('ruins');
 });
 // Escape hatch from the death/victory screen back to the main menu. Essence
 // is already banked by the time this screen shows, so the player can safely
@@ -449,7 +450,8 @@ document.getElementById('deathMenuBtn')?.addEventListener('click', () => {
 document.getElementById('deathQuickRestartBtn')?.addEventListener('click', () => {
   if (_restartBtnOverridden) return;
   deathEl.style.display = 'none';
-  startRun();
+  // Phase 4 unification — quick restart routes to canonical zone run.
+  beginCanonicalDescent('ruins');
 });
 document.getElementById('deathQuickRestartBtn')?.addEventListener('mouseenter', (e) => {
   e.target.style.opacity = '1';
@@ -483,7 +485,8 @@ window.addEventListener('keydown', (e) => {
   if (_restartBtnOverridden) return;
   e.preventDefault();
   deathEl.style.display = 'none';
-  startRun();
+  // Phase 4 unification — R-key quick restart routes to canonical zone run.
+  beginCanonicalDescent('ruins');
 });
 
 // Between-floor + victory screen — extracted to src/modals/winModal.js
@@ -909,8 +912,29 @@ function beginDescent() {
     daily.activeForRun = true;
     showTip('first_daily');
   }
+  // Phase 4 unification — `beginDescent` now drops the player into the
+  // canonical 5-zone progression (ruins → cemetery → crypt → mountain →
+  // volcano) instead of the legacy DAG floor system. Weapon picker still
+  // gates IF multi-weapon is available; on confirm, picker invokes
+  // beginCanonicalDescent() (added below) to enter ruins.
   if (availableWeapons().length > 1) showWeaponPicker();
-  else { hideAllOverlays(); startRun(); }
+  else { hideAllOverlays(); beginCanonicalDescent(); }
+}
+
+// Phase 4 unification entry point — wraps enterCanonicalRun so call sites
+// (menu CTA, beginDescent, weapon picker confirm) have a single helper to
+// invoke. Also handles the small bookkeeping: clear any open overlays,
+// hide the menu, mark `running = true` so the tick loop drives the world.
+function beginCanonicalDescent(zoneName = 'ruins') {
+  hideAllOverlays();
+  if (menuEl) menuEl.style.display = 'none';
+  running = true;
+  hero.state = 'idle';
+  hero.hp = hero.maxHp || 8;
+  // Stop the menu / hamlet ambient pad — zone profile will start its
+  // own track via applyZoneProfile() inside enterCanonicalRun.
+  try { stopAmbientPad(); } catch (_e) {}
+  enterCanonicalRun(zoneName);
 }
 
 document.getElementById('menuNewRunBtn').addEventListener('click', () => {
@@ -941,7 +965,9 @@ document.getElementById('menuNewRunBtn').addEventListener('click', () => {
     // reloads mid-floor-1 would re-enter the menu, click AWAKEN, and
     // get a duplicate intro cinematic on top of their resumed run.
     markSeen('intro', 'heartbeat');
-    startRun();         // drop into floor 1, hero spawned in start room
+    // Phase 4 unification — first-time players also drop into the
+    // canonical 5-zone progression (ruins) instead of the legacy DAG.
+    beginCanonicalDescent('ruins');
     // Suppress the floor card — the intro overlay owns the screen for
     // the next 28s. The floor-card "FLOOR I — THE UNDERCROFT" reveal
     // is what the intro IS doing thematically; running both would
@@ -1171,7 +1197,8 @@ refreshMenuModeChips();
 // hideAllOverlays-before-show contract + wire onBegin (start the run)
 // and onBack (clear the drawn hand + return to menu) callbacks.
 setTarotOnBegin(() => {
-  startRun();
+  // Phase 4 unification — tarot-mode confirm routes to canonical zone run.
+  beginCanonicalDescent('ruins');
 });
 setTarotOnBack(() => {
   clearTarot();
@@ -2245,8 +2272,8 @@ function showAchievementsModal() {
 // hideAllOverlays) and onBack (restore the main menu) callbacks.
 setWeaponOnPick((weaponId) => {
   hero.weapon = weaponId;
-  hideAllOverlays();
-  startRun();
+  // Phase 4 unification — weapon-pick confirm routes to canonical zone run.
+  beginCanonicalDescent('ruins');
 });
 setWeaponOnBack(() => {
   menuEl.style.display = 'flex';
@@ -7948,6 +7975,187 @@ function renderMenuBg() {
   applyBloom(ctx, canvas, 0.45);
 }
 
+// ============================================================================
+// CANONICAL ZONE RUN — module-level entry point.
+//
+// Phase 4 unification: extracted from the debug-hooks closure so menu/hamlet
+// code paths can call it without going through `window.__startZoneRun`.
+// loadBakedZone + enterCanonicalRun are the production entry points; the
+// debug hooks (`__startZoneRun`, `__loadCryptSample`) are thin wrappers.
+// ============================================================================
+
+/** Load a baked TMX zone into the live `room` object. Mutates room state +
+ *  hero spawn, applies zone profile (biome/music/ambient/wash). Returns
+ *  { ok, meta, zoneName, sp } or { error }. Pure data transformation —
+ *  doesn't start the wave runner; caller decides the next step.
+ */
+function loadBakedZone(which) {
+  const baseKey =
+    which === 'ruins' ? 'room_ruins_sample' :
+    which === 'mountain' ? 'room_mountain_sample' :
+    which === 'volcano' ? 'room_volcano_sample' :
+    which === 'crypt' ? 'room_crypt_sample' :
+    which === 'sample' ? 'room_crypt_sample' :
+    which === 'chamber_01' ? 'room_crypt_chamber_01' :
+    which === 'main_hall' ? 'room_crypt_main_hall' :
+    which === 'cemetery2' ? 'room_cemetery_sample_2' :
+    'room_cemetery_sample';
+
+  const zoneName =
+    which === 'ruins' ? 'ruins' :
+    which === 'mountain' ? 'mountain' :
+    which === 'volcano' ? 'volcano' :
+    (which === 'crypt' || which === 'sample' || which === 'chamber_01' || which === 'main_hall') ? 'crypt' :
+    'cemetery';
+
+  applyZoneProfile(zoneName);
+  setOverlayZone(zoneName);
+
+  const img = imageCache[baseKey];
+  const animsImg = imageCache[baseKey + '_anims'];
+  const meta = imageCache[baseKey + '_meta'];
+  if (!img || !animsImg || !meta) {
+    return { error: 'baked room not fully loaded',
+      hasImg: !!img, hasAnims: !!animsImg, hasMeta: !!meta };
+  }
+
+  room.w = meta.width;
+  room.h = meta.height;
+  room.kind = 'tmx_crypt_sample';
+  room.shape = 'rect';
+  room.cleared = false;
+  room.bakedImage = img;
+  room.bakedAnimsImage = animsImg;
+  room.bakedTileSize = meta.tileSize;
+  room.bakedAnimCellW = meta.animationAtlas.cellWidth;
+  room.bakedAnimCellH = meta.animationAtlas.cellHeight;
+  room.bakedAnimations = meta.animations;
+  room.bakedProps = meta.animatedProps;
+  room.bakedCollision = meta.collisionGrid;
+
+  room.tiles = [];
+  for (let y = 0; y < meta.height; y++) {
+    const tileRow = new Array(meta.width);
+    for (let x = 0; x < meta.width; x++) {
+      const cell = meta.collisionGrid[y][x];
+      tileRow[x] = (cell && cell.rects && cell.rects.length) ? 'wall' : 'floor';
+    }
+    room.tiles.push(tileRow);
+  }
+  room.decor = [];
+  room.spawns = [];
+  roomTorches.length = 0;
+  roomSpikes.length = 0;
+  roomFirePools.length = 0;
+  roomUrns.length = 0;
+  roomChests.length = 0;
+  roomDecorPillars.length = 0;
+  invalidateTileCache();
+
+  const sp = meta.spawn || { x: Math.floor(meta.width / 2), y: Math.floor(meta.height / 2) };
+  hero.x = sp.x * TILE + TILE / 2;
+  hero.y = sp.y * TILE + TILE / 2;
+
+  return { ok: true, meta, baseKey, zoneName, sp };
+}
+
+/** Begin a canonical 5-zone run. Wires XP/perks/level-up callbacks then
+ *  enters the first zone. Recursive zone-to-zone transition via the
+ *  portal's onEnter callback. Used by:
+ *    - menu's primary CTA (first-time + returning paths)
+ *    - hamlet descent portal
+ *    - debug `window.__startZoneRun`
+ */
+function enterCanonicalRun(zoneName = 'ruins') {
+  const enc = getZoneEncounters(zoneName);
+  if (!enc) return { error: `no encounters config for: ${zoneName}` };
+
+  // ── XP / perks plumbing ──────────────────────────────────────
+  // Reset perk stacks + XP only on the FIRST zone (so debug calls
+  // mid-run with __startZoneRun('volcano') don't lose progress).
+  if (zoneName === 'ruins' || !window.__zoneRunInitialized) {
+    resetXp();
+    resetPerks();
+    window.__zoneRunInitialized = true;
+  }
+  window.__onEnemyKilled = (enemy) => {
+    try { dropXpGemFromEnemy(enemy); } catch (_e) {}
+  };
+  setOnLevelUp((newLevel) => {
+    openLevelUpModal(newLevel, () => { /* perk applied; resume play */ });
+  });
+
+  // ── Internal zone-to-zone transition (recursive via portal onEnter) ──
+  const _enterZone = (zname) => {
+    const zEnc = getZoneEncounters(zname);
+    if (!zEnc) return { error: `no encounters: ${zname}` };
+
+    clearZonePortal();
+    stopZoneRun();
+    clearEnemies();
+
+    // Phase 1 fix B2 — null stale legacy DAG state.
+    currentGraph = null;
+    currentNodeId = null;
+
+    const loadResult = loadBakedZone(zname);
+    if (loadResult && loadResult.error) {
+      console.warn('[enterCanonicalRun] load failed', loadResult);
+      return loadResult;
+    }
+
+    camera.zoom = zEnc.cameraZoom || 1.0;
+
+    startZoneRun(zname, {
+      onComplete: ({ bossPos }) => {
+        const next = getNextZone(zname);
+        const px = bossPos ? bossPos.x : (zEnc.bossLocation.x + 0.5) * TILE;
+        const py = bossPos ? bossPos.y : (zEnc.bossLocation.y + 0.5) * TILE;
+        // Boss XP burst — fan of large gems at boss location.
+        const burstByZone = { ruins: 8, cemetery: 9, crypt: 11, mountain: 12, volcano: 14 };
+        try { dropBossXpBurst(px, py, burstByZone[zname] || 10); } catch (_e) {}
+
+        // Phase 4 — boss kill relic drop. Spawn a tier-scaled pedestal at
+        // the boss's position, reusing the existing pedestal UI. Walking
+        // onto it offers a 3-card relic choice. The portal spawns AFTER
+        // the player picks (or skips) the relic — so the reward feels
+        // earned, not auto-skipped.
+        try {
+          // Tier scales with zone progression: floor 1-2 = rare, 3-4 = legendary,
+          // 5 = mythic. Reuses spawnRelicOffer (existing pedestal flow).
+          const tierByZone = { ruins: 'rare', cemetery: 'rare',
+                                crypt: 'legendary', mountain: 'legendary',
+                                volcano: 'mythic' };
+          const minTier = tierByZone[zname] || 'rare';
+          // Place the pedestal slightly offset from boss death pos (left)
+          // so it sits next to the portal (right) — both visible to the
+          // player as a "two-step reward" moment.
+          spawnRelicOffer(5, { minTier, placeAt: { wx: px - 60, wy: py } });
+        } catch (e) { console.warn('boss relic drop failed', e); }
+
+        spawnZonePortal(px + 36, py, {
+          label: next ? next : 'victory',
+          onEnter: () => {
+            if (next) {
+              _enterZone(next);
+            } else {
+              stopZoneRun();
+              clearZonePortal();
+              console.log('%c[zone run] all 5 zones cleared!',
+                'color:#ffd070;font-weight:bold;font-size:14px');
+              // Phase 4 stub — return to hamlet on full clear.
+              showHamlet();
+            }
+          },
+        });
+      },
+    });
+    return { ok: true, zone: zname, waves: zEnc.waves.length };
+  };
+
+  return _enterZone(zoneName);
+}
+
 async function boot() {
   initInput(canvas);
   setMasterVolume(0.5);
@@ -8442,100 +8650,10 @@ if (import.meta.env.DEV) {
     //   __startZoneRun()             → begin at ruins
     //   __startZoneRun('volcano')    → jump to a specific zone
     startZoneRun: (zoneName = 'ruins') => {
-      // Phase 1 fix P3: use the shared `__loadBakedZone` helper instead
-      // of reaching through `__loadCryptSample` (debug-only). Both paths
-      // share the same bake-load implementation; this one starts the
-      // wave runner, the other spawns 4 debug enemies.
-      const bakedLoad = window.__loadBakedZone;
-      if (!bakedLoad) return { error: '__loadBakedZone unavailable' };
-
-      const enc = getZoneEncounters(zoneName);
-      if (!enc) return { error: `no encounters config for: ${zoneName}` };
-
-      // ── XP / perks plumbing ──────────────────────────────────────
-      // Set up the global hooks once per zone-run start. Resets perk
-      // stacks + XP only on the FIRST zone (ruins or whatever the
-      // caller picked), so a player jumping mid-run via __startZoneRun
-      // ('volcano') doesn't lose their progress (debug-friendly).
-      if (zoneName === 'ruins' || !window.__zoneRunInitialized) {
-        resetXp();
-        resetPerks();
-        window.__zoneRunInitialized = true;
-      }
-      // Per-enemy XP gem drop — only active during zone runs.
-      window.__onEnemyKilled = (enemy) => {
-        try { dropXpGemFromEnemy(enemy); } catch (_e) {}
-      };
-      // Level-up: open the modal, which pauses gameplay until pick.
-      setOnLevelUp((newLevel) => {
-        openLevelUpModal(newLevel, () => {
-          // Modal closed (perk picked). Nothing else needed —
-          // perk.apply() already mutated hero stats.
-        });
-      });
-
-      const _enterZone = (zname) => {
-        const zEnc = getZoneEncounters(zname);
-        if (!zEnc) return { error: `no encounters: ${zname}` };
-
-        // Cleanup previous zone state.
-        clearZonePortal();
-        stopZoneRun();
-        clearEnemies();
-
-        // Phase 1 stabilization fix B2 — null any stale legacy DAG state
-        // so subsystems that read currentGraph / currentNodeId / floor[]
-        // (drawHud minimap, room-kind branches, etc.) don't draw garbage
-        // during a zone run. The legacy `floor` array is left in place
-        // (subsystems gate on currentGraph being null first).
-        currentGraph = null;
-        currentNodeId = null;
-
-        // Load bake via shared helper. No phantom debug enemies to clear.
-        const loadResult = bakedLoad(zname);
-        if (loadResult && loadResult.error) {
-          console.warn('[startZoneRun] load failed', loadResult);
-          return loadResult;
-        }
-
-        // Per-zone camera zoom — small maps pull back, large maps follow.
-        camera.zoom = zEnc.cameraZoom || 1.0;
-
-        // Start the wave runner. onComplete fires when the boss dies.
-        startZoneRun(zname, {
-          onComplete: ({ bossPos }) => {
-            const next = getNextZone(zname);
-            // Spawn the portal at the boss's last position. If we're at
-            // the final zone (volcano), portal label = 'WIN'; touching it
-            // ends the run (Phase 1 stub — proper win flow is later).
-            const px = bossPos ? bossPos.x : (zEnc.bossLocation.x + 0.5) * TILE;
-            const py = bossPos ? bossPos.y : (zEnc.bossLocation.y + 0.5) * TILE;
-            // Boss kill XP burst — fan of large gems at boss location.
-            // Counts per zone scale 8 → 14 across the run.
-            const burstByZone = { ruins: 8, cemetery: 9, crypt: 11, mountain: 12, volcano: 14 };
-            try { dropBossXpBurst(px, py, burstByZone[zname] || 10); } catch (_e) {}
-            spawnZonePortal(px, py, {
-              label: next ? next : 'victory',
-              onEnter: () => {
-                if (next) {
-                  _enterZone(next);
-                } else {
-                  // Final zone cleared. Stop the runner; show a stub
-                  // message in the console. Proper win cinematic is
-                  // Phase 3 work.
-                  stopZoneRun();
-                  clearZonePortal();
-                  console.log('%c[zone run] all 5 zones cleared!',
-                    'color:#ffd070;font-weight:bold;font-size:14px');
-                }
-              },
-            });
-          },
-        });
-        return { ok: true, zone: zname, waves: zEnc.waves.length };
-      };
-
-      return _enterZone(zoneName);
+      // Thin wrapper around enterCanonicalRun (Phase 4 — extracted to
+      // module level so the menu/hamlet code paths can call it without
+      // going through window.* debug hooks).
+      return enterCanonicalRun(zoneName);
     },
 
     /** Read current zone-runner state (HUD / debug). */

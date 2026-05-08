@@ -127,11 +127,22 @@ export function spawnRelicOffer(floorLevel = 1, opts = {}) {
   // vertically). One focal point instead of three side-by-side
   // pedestals — reads as "the offering" rather than "three things to
   // pick from."
+  //
+  // Phase 4 unification — opts.placeAt: { wx, wy } overrides the centroid.
+  // Used by boss-kill drops in baked zones to place the relic at the
+  // boss's death position so the reward feels earned, not auto-magicked.
   const w = (room && room.w) || 20;
   const h = (room && room.h) || 14;
-  const cx = Math.floor(w / 2);
-  const cy = Math.floor(h / 2);
-  const spot = findClearTile(cx, cy);
+  let spot;
+  if (opts.placeAt && typeof opts.placeAt.wx === 'number' && typeof opts.placeAt.wy === 'number') {
+    const tx = Math.floor(opts.placeAt.wx / TILE);
+    const ty = Math.floor(opts.placeAt.wy / TILE);
+    spot = findClearTile(tx, ty);
+  } else {
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+    spot = findClearTile(cx, cy);
+  }
   pedestals.push({
     kind: 'choice',
     x: spot.x * TILE + TILE/2,
