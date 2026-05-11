@@ -19,8 +19,8 @@
 extends Node
 
 const SAMPLE_RATE := 22050    # 22.05 kHz mono. Enough fidelity for short SFX
-                              # at a quarter the memory of 44.1 kHz, and avoids
-                              # GL_Compatibility-renderer audio quirks on 48 kHz.
+							  # at a quarter the memory of 44.1 kHz, and avoids
+							  # GL_Compatibility-renderer audio quirks on 48 kHz.
 
 # ── Sound config table — id → synthesis parameters ─────────────────────
 # Each entry is a Dictionary the synth reads:
@@ -100,7 +100,11 @@ func _synthesize(cfg: Dictionary) -> AudioStreamWAV:
 	var phase := 0.0
 	for i in n_samples:
 		var t := float(i) / float(n_samples)              # 0..1 progress
-		var freq := lerp(freq_start, freq_end, t)
+		# lerpf (not lerp) — lerp() returns Variant in Godot 4 because
+		# it's polymorphic (vectors / colors / floats). lerpf is the
+		# float-only variant; returns float so := type-inference works
+		# without the UNTYPED_DECLARATION warning-as-error.
+		var freq := lerpf(freq_start, freq_end, t)
 		phase += freq * TAU / SAMPLE_RATE
 		# Wrap to avoid float precision drift on long tones.
 		if phase > TAU:
