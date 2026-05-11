@@ -1,14 +1,22 @@
-# Hero — CharacterBody2D with WASD movement, mouse-aimed sword attack,
-# and a Space-key dodge roll.
+# Hero — CharacterBody2D with WASD movement, mouse-aimed sword + blast,
+# Space-key dodge roll, Q shield, Shift dash strike.
 #
-# Iteration 2 additions vs the original slice:
-#   • DODGE: Space key triggers a brief dash in input direction (or
-#     facing direction if no input) with iframes. Mirrors slime-depths'
-#     dodge from src/hero.js — short window + cooldown + visual flash.
-#   • Hit-stop hook: hero emits `hit_received` so the main scene can
-#     freeze Engine.time_scale briefly for impact feel.
-#   • Iframes during the dodge AND after taking damage (so you can't
-#     get juggled by a stack of slimes touching you simultaneously).
+# Iter 12 (this revision): full 8-direction sprite system.
+#   • mage_{idle,walk,attack,hurt,death}.png are 1024-tall sheets with
+#     8 direction rows (N, NE, E, SE, S, SW, W, NW — north-first
+#     clockwise; matches the PixelLab importer convention).
+#   • SpriteFrames is built programmatically in _ready() — 5 states ×
+#     8 directions × N frames = ~290 frames assembled from AtlasTexture
+#     sub-regions on the 5 sheets. Doing it in code lets us share one
+#     ANIM_DATA table rather than declare hundreds of sub_resources in
+#     the .tscn.
+#   • `_facing_dir` (0..7) replaces the old `_facing_west` bool. Direction
+#     is computed from context each tick: attack/dash → aim, dodge →
+#     dodge dir, walking → velocity, idle → sticky last facing.
+#   • Hurt + death animations finally land. Hurt is a sprite-only overlay
+#     during HURT_TIME so the player keeps control. Death freezes input
+#     and holds the last death frame while main.gd shows the death screen.
+#   • flip_h fakery is gone. Every facing has its own sprite row.
 class_name Hero
 extends CharacterBody2D
 
@@ -27,40 +35,68 @@ const DODGE_IFRAMES      := 0.45
 const DODGE_COOLDOWN     := 0.85
 const HIT_IFRAMES        := 0.55
 
-# Blast spell (Iter 3) — RMB ranged projectile. Base damage 1, +1 per
-# arcane_pulse relic owned. Slightly longer cooldown than the sword so
-# the player can't just spam projectiles from safety.
+# Blast spell (Iter 3) — RMB ranged projectile.
 const BLAST_COOLDOWN     := 0.55
 const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 
-# Shield (Iter 5) — Q-held stamina stance. Forces iframes each tick while
-# active so existing damage handling stays untouched, then breaks when
-# the meter empties. Break cooldown prevents shield-mash from chaining.
+# Shield (Iter 5) — Q-held stamina stance.
 const SHIELD_STAMINA_MAX := 100.0
 const SHIELD_DRAIN       := 60.0      # per second while held
 const SHIELD_RECOVER     := 25.0      # per second while released
 const SHIELD_BREAK_CD    := 0.5
 const SHIELD_TINT        := Color(0.7, 0.85, 1, 1)
 
-# Dash Strike (Iter 5) — Shift burst toward the cursor that lands an AoE
-# hit at the end of the dash. Short window + 1.2s cooldown make it a
-# committed engage tool, not a free reposition.
+# Dash Strike (Iter 5) — Shift burst toward the cursor.
 const DASH_STRIKE_SPEED    := 600.0
 const DASH_STRIKE_DURATION := 0.18
 const DASH_STRIKE_COOLDOWN := 1.2
 const DASH_STRIKE_RADIUS   := 50.0
 
-# Iter 11 — feel tuning. None of these change combat math; they're
-# all visual/audio coupling so the hero reads as a real character
-# instead of a sliding cursor.
-const CAMERA_LOOKAHEAD       := 90.0   # max px the camera leads in motion direction
-const CAMERA_LOOKAHEAD_LERP  := 3.5    # higher = snappier; lower = floatier
-const CAMERA_MOVE_THRESHOLD  := 15.0   # below this velocity we don't apply lookahead
-const SPRITE_BASE_Y          := -23.0  # baseline sprite.position.y from hero.tscn
-const IDLE_BOB_AMP           := 1.6    # px of vertical bob when standing still
-const IDLE_BOB_FREQ          := 1.7    # Hz of bob oscillation
-const IDLE_BOB_LERP          := 8.0    # how fast bob releases when motion starts
-const STEP_INTERVAL          := 28.0   # pixels of travel per footstep emit
+# Iter 11 — feel tuning.
+const CAMERA_LOOKAHEAD       := 90.0
+const CAMERA_LOOKAHEAD_LERP  := 3.5
+const CAMERA_MOVE_THRESHOLD  := 15.0
+const SPRITE_BASE_Y          := -23.0
+const IDLE_BOB_AMP           := 1.6
+const IDLE_BOB_FREQ          := 1.7
+const IDLE_BOB_LERP          := 8.0
+const STEP_INTERVAL          := 28.0
+
+# Iter 12 — direction tables + animation metadata. Reads:
+# DIR_NAMES[i] = direction suffix for bucket i (north-clockwise).
+# ANIM_DATA[state] = { sheet, frames, fps, loop } — used both to build
+# SpriteFrames at _ready and to pick the animation name each tick.
+const CELL_SIZE  := 128
+const NUM_DIRS   := 8
+# Typed arrays so DIR_NAMES[i] resolves to String and DIR_VECS[i] to
+# Vector2 — untyped Array elements come back as Variant and break := /
+# String concat under Godot 4.6 strict warning-as-error mode.
+const DIR_NAMES: Array[String] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
+# Unit vectors for each direction bucket. Diagonals use precomputed
+# 0.7071 (≈ √2/2) literals — Godot 4 const initializers must be
+# evaluable at script-load time, which excludes method calls like
+# Vector2(1,-1).normalized(). Same order as DIR_NAMES.
+const DIR_VECS: Array[Vector2] = [
+	Vector2(0, -1),
+	Vector2(0.7071068, -0.7071068),
+	Vector2(1, 0),
+	Vector2(0.7071068, 0.7071068),
+	Vector2(0, 1),
+	Vector2(-0.7071068, 0.7071068),
+	Vector2(-1, 0),
+	Vector2(-0.7071068, -0.7071068),
+]
+const ANIM_DATA  := {
+	"idle":   { "sheet": preload("res://assets/characters/mage_idle.png"),   "frames": 8, "fps":  8.0, "loop": true  },
+	"walk":   { "sheet": preload("res://assets/characters/mage_walk.png"),   "frames": 8, "fps": 10.0, "loop": true  },
+	"attack": { "sheet": preload("res://assets/characters/mage_attack.png"), "frames": 9, "fps": 14.0, "loop": false },
+	"hurt":   { "sheet": preload("res://assets/characters/mage_hurt.png"),   "frames": 6, "fps": 17.0, "loop": false },
+	"death":  { "sheet": preload("res://assets/characters/mage_death.png"),  "frames": 9, "fps": 10.0, "loop": false },
+}
+
+# Hurt anim plays for HURT_TIME — sprite-only, doesn't lock input. Shorter
+# than HIT_IFRAMES so the visual cue clears before iframes drop.
+const HURT_TIME := 0.35
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -69,7 +105,10 @@ var _attack_cd := 0.0
 var _attack_live := 0.0
 var _attack_aim := Vector2.RIGHT
 var _is_attacking := false
-var _facing_west := false
+
+# Iter 12 — 0..7 bucket (N,NE,E,SE,S,SW,W,NW). Default south so the
+# player sees the hero's face on spawn (not the back).
+var _facing_dir: int = 4
 
 var _dodge_cd := 0.0
 var _dodge_time := 0.0
@@ -86,16 +125,11 @@ var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
 var _dash_strike_dir := Vector2.RIGHT
 
-# Iter 11 — feel state. Camera resolved lazily because the Camera2D is
-# added as Hero's child by the *scene* (hamlet.tscn / main.tscn add a
-# Camera2D node under the Hero instance), NOT by hero.tscn itself —
-# so $Camera2D would be null at _ready() time. We grab it on first
-# physics tick and cache it.
-#
-# _last_anim caches the currently-playing animation name. AnimatedSprite2D's
-# play() restarts the animation from frame 0 every call, so spamming
-# sprite.play("walk") every physics tick froze the walk cycle on frame 0.
-# Compare-and-set fixes that.
+# Iter 12 — hurt is a transient visual; dying is terminal (locks input).
+var _hurt_time := 0.0
+var _is_dying := false
+
+# Iter 11 — feel state.
 var _camera: Camera2D = null
 var _camera_offset := Vector2.ZERO
 var _idle_time := 0.0
@@ -108,29 +142,47 @@ signal hit_received       # for camera shake + hit-stop in main.gd
 signal dodge_started
 
 func _ready() -> void:
-	sprite.play("idle")
+	_build_sprite_frames()
 	add_to_group("hero")
-	# Stoneheart / Heart of Stone relic — extra HP at spawn. Read once;
-	# live mid-run changes would require a more sophisticated stat
-	# system (out of scope for the slice — hp only changes via pedestal
-	# claims between scenes).
-	# Explicit `: int` — GameState is an autoload without class_name,
-	# so the parser can't statically resolve modifier_total's int return
-	# type. := would infer Variant and trip strict-mode parse error.
 	var hp_bonus: int = GameState.modifier_total("max_hp_bonus", 0)
 	hp = MAX_HP + hp_bonus
-	# HP carryover between rooms in a multi-room dungeon. Floor's
-	# start_floor / end_floor reset persisted_hp to -1 so new runs +
-	# hamlet returns always start fresh.
 	if GameState.persisted_hp > 0:
 		hp = min(GameState.persisted_hp, MAX_HP + hp_bonus)
-	# Save HP on scene exit so the next room reads our current state
-	# instead of full-healing the player on every transition.
 	tree_exiting.connect(_save_persistent_state)
+	# Play the default idle south so frame 0 of the right sheet shows
+	# immediately — without this the AnimatedSprite2D has no current
+	# animation and renders blank for a tick.
+	_play_anim(&"idle_s")
+
+# Build SpriteFrames programmatically from ANIM_DATA × DIR_NAMES. Each
+# (state, dir) becomes one animation; its frames are AtlasTextures over
+# the per-state sheet, sliced by (frame_index × CELL_SIZE, dir × CELL_SIZE).
+# Doing this in code keeps the .tscn small and means adding a new state
+# is a single ANIM_DATA entry, not 8 manual animation blocks.
+func _build_sprite_frames() -> void:
+	var sf: SpriteFrames = SpriteFrames.new()
+	# Drop the "default" empty animation Godot creates with new SpriteFrames.
+	if sf.has_animation("default"):
+		sf.remove_animation("default")
+	for state in ANIM_DATA:
+		var data: Dictionary = ANIM_DATA[state]
+		var sheet: Texture2D = data["sheet"]
+		var n_frames: int = data["frames"]
+		var fps: float = data["fps"]
+		var loop: bool = data["loop"]
+		for dir_idx in NUM_DIRS:
+			var anim_name: StringName = StringName("%s_%s" % [state, DIR_NAMES[dir_idx]])
+			sf.add_animation(anim_name)
+			sf.set_animation_speed(anim_name, fps)
+			sf.set_animation_loop(anim_name, loop)
+			for fr in n_frames:
+				var atlas: AtlasTexture = AtlasTexture.new()
+				atlas.atlas = sheet
+				atlas.region = Rect2(fr * CELL_SIZE, dir_idx * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+				sf.add_frame(anim_name, atlas)
+	sprite.sprite_frames = sf
 
 func _save_persistent_state() -> void:
-	# Only persist when leaving ALIVE. Dying drops HP to 0 which would
-	# otherwise spawn the next room with 0 HP and immediately re-die.
 	if hp > 0:
 		GameState.persisted_hp = hp
 
@@ -143,20 +195,32 @@ func _physics_process(delta: float) -> void:
 	_blast_cd         = max(0.0, _blast_cd         - delta)
 	_shield_break_cd  = max(0.0, _shield_break_cd  - delta)
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
+	_hurt_time        = max(0.0, _hurt_time        - delta)
 	if _attack_live <= 0.0:
 		_is_attacking = false
 
+	# Death is terminal — freeze input + motion, hold the death frame,
+	# and skip every gameplay branch below. The death screen renders on
+	# top via main.gd's _on_hero_died handler.
+	#
+	# Name-only check (no is_playing) — death anim is loop=false, so
+	# is_playing() goes false once the corpse reaches its last frame.
+	# The default _play_anim cache would re-trigger play() on every tick
+	# after that, re-playing death from frame 0 forever. Compare names
+	# directly so the corpse stays on its final frame.
+	if _is_dying:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		var death_anim := StringName("death_" + DIR_NAMES[_facing_dir])
+		if _last_anim != death_anim:
+			_last_anim = death_anim
+			sprite.play(death_anim)
+		return
+
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
-	# Shield resolves before velocity so its iframe/tint take effect this
-	# frame. Held + has stamina + not in break cooldown + not mid-dodge
-	# (dodge owns its own iframes/motion and shouldn't be hijacked).
 	_update_shield(delta)
 
-	# Resolve dash_strike END before velocity — when the dash window
-	# closes we issue the AoE hit. Doing it here (rather than during
-	# the input-check ladder) ensures the damage lands even if the
-	# player releases inputs mid-dash.
 	var dash_strike_just_ended := false
 	if _dash_strike_time > 0.0:
 		_dash_strike_time -= delta
@@ -164,9 +228,6 @@ func _physics_process(delta: float) -> void:
 			_dash_strike_time = 0.0
 			dash_strike_just_ended = true
 
-	# Velocity precedence: dodge > dash_strike > walk. Dodge wins
-	# because it's the panic button; dash_strike rides on top of the
-	# normal walk loop otherwise.
 	if _dodge_time > 0.0:
 		var t := 1.0 - (_dodge_time / DODGE_DURATION)
 		var ease: float = pow(1.0 - t, 2.0)
@@ -181,48 +242,33 @@ func _physics_process(delta: float) -> void:
 	if dash_strike_just_ended:
 		_resolve_dash_strike_hit()
 
-	if input.x < -0.1:
-		_facing_west = true
-	elif input.x > 0.1:
-		_facing_west = false
-	# Mid-dodge, lock facing to dodge direction so the sprite doesn't
-	# flicker when input + dodge disagree.
-	if _dodge_time > 0.0 and abs(_dodge_dir.x) > 0.1:
-		_facing_west = _dodge_dir.x < 0
-	# Same idea for dash_strike — face the burst direction during it.
-	if _dash_strike_time > 0.0 and abs(_dash_strike_dir.x) > 0.1:
-		_facing_west = _dash_strike_dir.x < 0
-	sprite.flip_h = _facing_west
+	# ── Facing ───────────────────────────────────────────────────────
+	# Locked directions during committed actions; movement direction
+	# during normal walk; sticky last-facing while idle.
+	_facing_dir = _compute_facing(input)
 
 	# Modulate: shield tint takes the RGB channel (blue stance), then
-	# iframes flicker the alpha on top. Restore to white when neither
-	# is active so we don't leave the sprite blue-tinted after release.
-	# Skip the alpha flicker while shielding so the blue stance reads as
-	# a steady tint instead of pulsing — the shield iframes are forced
-	# every tick, which would otherwise strobe at 60Hz.
+	# iframes flicker the alpha on top. Skip alpha flicker during shield
+	# so the blue stance reads as a steady tint instead of pulsing.
 	sprite.modulate = SHIELD_TINT if _shield_active else Color(1, 1, 1, 1)
 	if not _shield_active and _iframes > 0.0 and int(_iframes * 20) % 2 == 0:
 		sprite.modulate.a = 0.45
 
-	# Animation state — dodge > attack > walk > idle.
-	# Cached via _play_anim so we don't restart the cycle from frame 0
-	# every tick (the prior `sprite.play(...)` every-frame call was the
-	# reason the walk loop felt frozen — it WAS frozen, on frame 0).
+	# ── Animation state — dying handled above. hurt > attack > walk > idle.
+	# Each is suffixed with the current direction bucket.
 	var is_moving := input.length() > 0.1
-	if _dodge_time > 0.0 or _dash_strike_time > 0.0:
-		_play_anim(&"walk")     # no dedicated dodge anim yet; walk reads as motion
-	elif _is_attacking:
-		_play_anim(&"attack")
-	elif is_moving:
-		_play_anim(&"walk")
+	var state_name: String
+	if _hurt_time > 0.0:
+		state_name = "hurt"
+	elif _is_attacking or _dash_strike_time > 0.0:
+		state_name = "attack"
+	elif is_moving or _dodge_time > 0.0:
+		state_name = "walk"
 	else:
-		_play_anim(&"idle")
+		state_name = "idle"
+	_play_anim(StringName(state_name + "_" + DIR_NAMES[_facing_dir]))
 
-	# ── Camera lookahead ─────────────────────────────────────────────
-	# Bias the camera ~CAMERA_LOOKAHEAD px in the velocity direction
-	# so the player sees more of where they're going than where they
-	# came from. Below CAMERA_MOVE_THRESHOLD velocity we let it recenter
-	# (otherwise the camera would jitter while standing still).
+	# ── Camera lookahead (iter 11) ────────────────────────────────────
 	if _camera == null:
 		_camera = get_node_or_null("Camera2D") as Camera2D
 	if _camera != null:
@@ -232,16 +278,7 @@ func _physics_process(delta: float) -> void:
 		_camera_offset = _camera_offset.lerp(target_offset, CAMERA_LOOKAHEAD_LERP * delta)
 		_camera.offset = _camera_offset
 
-	# ── Idle bob + footsteps ─────────────────────────────────────────
-	# Bob: gentle sine wave on sprite Y when the player is standing
-	# still (not moving, not dodging, not dashing, not attacking). The
-	# sprite reads as breathing instead of a static decal. Eased back
-	# to SPRITE_BASE_Y when motion resumes so the bob doesn't snap.
-	#
-	# Footsteps: accumulate horizontal+vertical travel distance while
-	# walking; every STEP_INTERVAL pixels of travel emit hero_stepped
-	# so the audio bus plays a soft step tick. Decoupled from animation
-	# frame so it survives any speed-mod relic without re-syncing.
+	# ── Idle bob + footsteps (iter 11) ────────────────────────────────
 	if is_moving and _dodge_time <= 0.0 and _dash_strike_time <= 0.0 and not _is_attacking:
 		_idle_time = 0.0
 		_step_accumulator += velocity.length() * delta
@@ -255,9 +292,8 @@ func _physics_process(delta: float) -> void:
 		var bob := sin(_idle_time * TAU * IDLE_BOB_FREQ) * IDLE_BOB_AMP
 		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + bob, IDLE_BOB_LERP * delta)
 
-	# Input precedence: dodge > shield (handled in _update_shield) >
-	# dash_strike > blast > attack. Dodge always wins so the player
-	# can bail out of any other action.
+	# Input precedence: dodge > shield (handled above) > dash_strike >
+	# blast > attack. Dodge always wins so the player can bail out.
 	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0 and _dodge_time <= 0.0:
 		_start_dodge(input)
 	elif Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
@@ -267,33 +303,69 @@ func _physics_process(delta: float) -> void:
 	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dodge_time <= 0.0 and not _shield_active and _dash_strike_time <= 0.0:
 		_start_attack()
 
+# Facing picker. Returns the direction bucket the sprite should render
+# THIS tick. Priority: dying = sticky · hurt = sticky · attacking/dashing
+# point at the aim/dash vector · dodging points at the dodge vector ·
+# walking points at movement · idle keeps last facing.
+func _compute_facing(input: Vector2) -> int:
+	if _is_attacking and _attack_aim.length() > 0.001:
+		return _vector_to_dir_idx(_attack_aim)
+	if _dash_strike_time > 0.0:
+		return _vector_to_dir_idx(_dash_strike_dir)
+	if _dodge_time > 0.0:
+		return _vector_to_dir_idx(_dodge_dir)
+	if input.length() > 0.1:
+		return _vector_to_dir_idx(input)
+	return _facing_dir
+
+# Vector → row index. Returns bucket 0..7 for N, NE, E, SE, S, SW, W, NW.
+# Godot 2D: +X = east, +Y = south (Y axis points down). A zero-length
+# vector returns the current facing (callers should guard, but defensive
+# anyway).
+func _vector_to_dir_idx(v: Vector2) -> int:
+	if v.length() < 0.001:
+		return _facing_dir
+	# angle returns -PI..PI. Add PI/2 so north (-PI/2) → 0, east → PI/2,
+	# south → PI, west → 3PI/2. Divide by PI/4 → 0..7 buckets; round to
+	# pick the nearest one. posmod brings negatives back into 0..7.
+	var angle: float = v.angle()
+	var b: int = int(round((angle + PI / 2.0) / (PI / 4.0)))
+	return ((b % NUM_DIRS) + NUM_DIRS) % NUM_DIRS
+
 func _start_dodge(input: Vector2) -> void:
 	var dir := input
 	if dir.length() < 0.1:
-		dir = Vector2.LEFT if _facing_west else Vector2.RIGHT
+		# No input → dodge in current facing direction.
+		dir = _dir_to_vector(_facing_dir)
 	_dodge_dir = dir.normalized()
 	_dodge_time = DODGE_DURATION
 	_dodge_cd = DODGE_COOLDOWN * (1.0 + GameState.modifier_total_f("dodge_cooldown_mul", 0.0))
 	_iframes = max(_iframes, DODGE_IFRAMES)
-	# Starting a dodge cancels shield so we don't double-spend stamina
-	# on a frame where both states could overlap.
 	_shield_active = false
 	dodge_started.emit()
 	Events.hero_dodged.emit(global_position)
 
+# Inverse of _vector_to_dir_idx — used for "what direction is the hero
+# facing when no input vector is available" (e.g. dodge with no WASD).
+# Reads from the class-level DIR_VECS table (literal-only because const
+# initializers must be load-time-evaluable).
+func _dir_to_vector(dir_idx: int) -> Vector2:
+	return DIR_VECS[dir_idx]
+
 func _start_attack() -> void:
 	var aim_world := get_global_mouse_position() - global_position
 	if aim_world.length() < 1.0:
-		aim_world = Vector2(1, 0) if not _facing_west else Vector2(-1, 0)
+		aim_world = _dir_to_vector(_facing_dir)
 	_attack_aim = aim_world.normalized()
 	_attack_cd = ATTACK_COOLDOWN * (1.0 + GameState.modifier_total_f("sword_cooldown_mul", 0.0))
 	_attack_live = ATTACK_SWING_TIME
 	_is_attacking = true
-	_facing_west = _attack_aim.x < 0
-	sprite.flip_h = _facing_west
+	_facing_dir = _vector_to_dir_idx(_attack_aim)
+	# Force-restart the attack animation from frame 0 — _play_anim caches
+	# by name, so without setting frame=0 here a quick second swing in the
+	# same direction would skip the windup frames.
 	sprite.frame = 0
-	sprite.play("attack")
-	# Damage = 1 base + iron_fang relic bonus + future stack-bonuses.
+	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
@@ -310,19 +382,15 @@ func _start_attack() -> void:
 func _start_blast() -> void:
 	var aim_world := get_global_mouse_position() - global_position
 	if aim_world.length() < 1.0:
-		aim_world = Vector2(1, 0) if not _facing_west else Vector2(-1, 0)
+		aim_world = _dir_to_vector(_facing_dir)
 	var aim := aim_world.normalized()
 	_blast_cd = BLAST_COOLDOWN
-	_facing_west = aim.x < 0
-	sprite.flip_h = _facing_west
-	# Reuse the attack animation as a cast gesture for now. A dedicated
-	# cast pose comes when we port more PixelLab anims.
+	_facing_dir = _vector_to_dir_idx(aim)
+	# Reuse the attack animation as a cast gesture for now.
 	sprite.frame = 0
-	sprite.play("attack")
+	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
 	_attack_live = ATTACK_SWING_TIME
 	_is_attacking = true
-	# Spawn projectile slightly forward of the hero center so it doesn't
-	# immediately clip the hero's own collision body.
 	var p: Projectile = PROJECTILE_SCENE.instantiate()
 	p.global_position = global_position + Vector2(0, -22) + aim * 18.0
 	p.velocity = aim * Projectile.SPEED
@@ -333,10 +401,7 @@ func _start_blast() -> void:
 func take_damage(amount: int) -> void:
 	if hp <= 0 or _iframes > 0.0:
 		return
-	# Iron Skin: flat subtract, never below 0 so a relic can fully soak
-	# 1-damage trash hits without going negative (which would heal).
-	# maxi (not max) — max() is polymorphic in Godot 4 and returns
-	# Variant, which breaks := type-inference under strict mode.
+	# Iron Skin: flat subtract, never below 0.
 	var actual: int = maxi(0, amount - GameState.modifier_total("damage_taken_reduction", 0))
 	if actual <= 0:
 		return
@@ -346,25 +411,25 @@ func take_damage(amount: int) -> void:
 	hit_received.emit()
 	Events.hero_damaged.emit(global_position)
 	if hp <= 0:
+		_is_dying = true
+		_hurt_time = 0.0
+		# Force restart so we see frame 0 of the death anim.
+		sprite.frame = 0
 		hero_died.emit()
 		Events.hero_died.emit(global_position)
+	else:
+		# Hurt is a visual-only flash, doesn't block input.
+		_hurt_time = HURT_TIME
+		sprite.frame = 0
 
-# Shield is a held stance, not a one-shot — runs every tick so the
-# stamina meter actually animates with the player's input. Dodge takes
-# priority so shield never sticks during a panic roll.
 func _update_shield(delta: float) -> void:
 	var holding := Input.is_action_pressed("shield")
 	var can_hold := holding and _shield_stamina > 0.0 and _shield_break_cd <= 0.0 and _dodge_time <= 0.0
 	if can_hold:
 		_shield_active = true
 		_shield_stamina = max(0.0, _shield_stamina - SHIELD_DRAIN * delta)
-		# Force iframes each tick so the existing take_damage gate
-		# rejects hits without us having to add a parallel code path.
 		_iframes = max(_iframes, delta * 2.0)
 		if _shield_stamina <= 0.0:
-			# Shield breaks: lock out re-raise for the break cooldown
-			# so a button-mashing player can't infinite-tap to stay
-			# invuln through the recovery curve.
 			_shield_active = false
 			_shield_break_cd = SHIELD_BREAK_CD
 	else:
@@ -380,20 +445,14 @@ func _can_start_dash_strike() -> bool:
 func _start_dash_strike() -> void:
 	var aim_world := get_global_mouse_position() - global_position
 	if aim_world.length() < 1.0:
-		aim_world = Vector2(1, 0) if not _facing_west else Vector2(-1, 0)
+		aim_world = _dir_to_vector(_facing_dir)
 	_dash_strike_dir = aim_world.normalized()
 	_dash_strike_time = DASH_STRIKE_DURATION
 	_dash_strike_cd = DASH_STRIKE_COOLDOWN
-	# Iframes cover the full dash window so the player can blow through
-	# an enemy line without trading. Hit lands on dash END, not start.
 	_iframes = max(_iframes, DASH_STRIKE_DURATION)
-	_facing_west = _dash_strike_dir.x < 0
+	_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
 
 func _resolve_dash_strike_hit() -> void:
-	# Same damage formula as a sword swing so Iron Fang carries over —
-	# dash_strike is conceptually a charged sword attack, not a new
-	# weapon. Radius is wider than ATTACK_RANGE since the player
-	# committed travel to land it.
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
@@ -405,13 +464,11 @@ func _resolve_dash_strike_hit() -> void:
 			enemy.take_hit(damage)
 
 # Compare-and-set animation play. AnimatedSprite2D.play() restarts the
-# animation from frame 0 every call, so calling it from a per-tick
-# state machine froze the cycle on frame 0. This helper only forwards
-# the call when the requested anim actually differs from what's playing.
-# Attack is special-cased — we DO want attack to restart from frame 0
-# each swing, but _start_attack/_start_blast already call sprite.play
-# directly for that. By the time we reach the state machine those will
-# have set _last_anim, so this check passes through cleanly.
+# animation from frame 0 every call. Helper checks the cached name before
+# forwarding so we don't re-trigger frame 0 every physics tick. Callers
+# that DO want a frame-0 restart (e.g. starting an attack) set
+# sprite.frame = 0 before calling, which trips the is_playing branch on
+# the next call and we forward naturally.
 func _play_anim(name: StringName) -> void:
 	if _last_anim == name and sprite.is_playing():
 		return

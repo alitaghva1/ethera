@@ -9,13 +9,13 @@
 # pattern means upgrading to a DAG later is a structural change to
 # this file only.
 #
-# Lifecycle:
-#   Hamlet → DESCEND portal → RunState.start_floor() → load main.tscn
+# Lifecycle (iter 12: hamlet removed; menu → dungeon directly):
+#   Main menu BEGIN → start_dungeon_run() + start_floor() → load main.tscn
 #   Room cleared (not last) → Door spawns → walk into → RunState.advance()
 #     → reload main.tscn (which reads the new current_room_config)
-#   Room cleared (last) → Pedestal spawns → claim → ESC → hamlet
+#   Room cleared (last) → Pedestal spawns → claim → ESC → main menu
 #   Hero dies anywhere → death screen → RETRY (reload + reset to room 0)
-#                                       or HAMLET (RunState.end_floor)
+#                                       or MENU (RunState.end_floor)
 extends Node
 
 # Ordered room sequence for the current floor. For Iter 6 we hardcode a

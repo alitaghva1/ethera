@@ -30,7 +30,6 @@ Events="*res://scripts/events.gd"
 FX="*res://scripts/fx.gd"
 ScreenFlash="*res://scripts/screen_flash.gd"
 Audio="*res://scripts/audio.gd"
-Dialogue="*res://scenes/dialogue_ui.tscn"
 
 [debug]
 

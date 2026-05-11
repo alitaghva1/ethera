@@ -8,8 +8,10 @@ project is the migration target.
 
 Top-down action roguelite. Single hero class (cloaked mage), four
 biomes planned, branching DAG runs with relics + fusions + memories.
-Right now this is mid-port — combat loop + hamlet hub + multi-room
-dungeon are in; relic registry has 8 of 46; no audio yet.
+Right now this is mid-port — combat loop + multi-room dungeon are
+in; relic registry has 8 of 46. The hamlet hub was removed in iter 12
+to focus the project on the core dungeon loop; it'll come back later
+once the dungeon feels good.
 
 ## What you do
 
@@ -35,8 +37,8 @@ instant.
 | Space | Dodge roll (iframes + speed burst, cooldown 0.85s) |
 | **Q** | **Shield — held stamina stance, blue tint + invuln while up** |
 | **Shift** | **Dash Strike — burst toward cursor, AoE slash at the end (cd 1.2s)** |
-| E | Talk to NPCs / claim pedestal / advance dialogue |
-| ESC | Return to hamlet (on death or after room cleared) |
+| E | Claim relic at pedestal |
+| ESC | Return to main menu (on death or after the floor cleared) |
 | R | Retry the dungeon (after death) |
 
 ## What works in this slice (Iter 1–7)

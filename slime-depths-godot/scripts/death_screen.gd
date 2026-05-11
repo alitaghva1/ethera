@@ -1,14 +1,14 @@
 # DeathScreen — full-screen overlay (CanvasLayer @ layer 200) that
 # the dungeon scene shows on hero death. Reads `GameState.last_run_kills`,
 # `GameState.dungeon_runs`, and `GameState.owned_relics` for its
-# stats / relics summary, then emits `retry_pressed` or `hamlet_pressed`
+# stats / relics summary, then emits `retry_pressed` or `menu_pressed`
 # to let the host scene decide what to do next.
 #
 # Self-contained — does NOT change scenes by itself. The host owns the
 # transition (probably reload_current_scene for RETRY, change_scene_to_file
-# for HAMLET). Keeping the navigation out of here means the death
-# screen can be reused from any future combat scene (boss arena, etc.)
-# without baking in scene paths.
+# to main_menu for MENU). Keeping the navigation out of here means the
+# death screen can be reused from any future combat scene (boss arena,
+# etc.) without baking in scene paths.
 #
 # Visual treatment: panel reads as a scroll (thick top/bottom borders +
 # crimson→black gradient inside), the title "YOU DIED" gets the same
@@ -17,7 +17,7 @@
 extends CanvasLayer
 
 signal retry_pressed
-signal hamlet_pressed
+signal menu_pressed
 
 const HOVER_SCALE := 1.05
 const HOVER_TWEEN_TIME := 0.12
@@ -30,14 +30,14 @@ const HOVER_TWEEN_TIME := 0.12
 @onready var relics_title: Label = $Panel/Stack/RelicsTitle
 @onready var relics_list: VBoxContainer = $Panel/Stack/RelicsList
 @onready var retry_button: Button = $Panel/Stack/ButtonRow/RetryButton
-@onready var hamlet_button: Button = $Panel/Stack/ButtonRow/HamletButton
+@onready var menu_button: Button = $Panel/Stack/ButtonRow/MenuButton
 
 var _hover_tweens: Dictionary = {}
 
 func _ready() -> void:
 	retry_button.pressed.connect(_on_retry_pressed)
-	hamlet_button.pressed.connect(_on_hamlet_pressed)
-	for btn in [retry_button, hamlet_button]:
+	menu_button.pressed.connect(_on_menu_pressed)
+	for btn in [retry_button, menu_button]:
 		var b: Button = btn
 		b.pivot_offset = b.size / 2.0
 		b.mouse_entered.connect(_on_button_hover_enter.bind(b))
@@ -120,9 +120,9 @@ func _on_retry_pressed() -> void:
 	hide_death()
 	retry_pressed.emit()
 
-func _on_hamlet_pressed() -> void:
+func _on_menu_pressed() -> void:
 	hide_death()
-	hamlet_pressed.emit()
+	menu_pressed.emit()
 
 func _on_button_hover_enter(button: Button) -> void:
 	_animate_scale(button, HOVER_SCALE)

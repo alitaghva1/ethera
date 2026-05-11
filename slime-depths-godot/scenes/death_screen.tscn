@@ -304,7 +304,7 @@ theme_override_styles/pressed = SubResource("button_hover")
 theme_override_styles/focus = SubResource("button_focus")
 text = "RETRY"
 
-[node name="HamletButton" type="Button" parent="Panel/Stack/ButtonRow"]
+[node name="MenuButton" type="Button" parent="Panel/Stack/ButtonRow"]
 custom_minimum_size = Vector2(180, 48)
 focus_mode = 2
 theme_override_font_sizes/font_size = 20
@@ -317,4 +317,4 @@ theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
 theme_override_styles/focus = SubResource("button_focus")
-text = "HAMLET"
+text = "MAIN MENU"

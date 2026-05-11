@@ -98,7 +98,7 @@ func _ready() -> void:
 	_death_screen = DEATH_SCREEN_SCENE.instantiate()
 	add_child(_death_screen)
 	_death_screen.retry_pressed.connect(_on_death_retry)
-	_death_screen.hamlet_pressed.connect(_on_death_to_hamlet)
+	_death_screen.menu_pressed.connect(_on_death_to_menu)
 	_update_hp(hero.hp)
 	_update_kills()
 	_update_room_label()
@@ -252,18 +252,21 @@ func _on_death_retry() -> void:
 	RunState.start_floor()
 	get_tree().reload_current_scene()
 
-func _on_death_to_hamlet() -> void:
+func _on_death_to_menu() -> void:
+	# Iter 12: hamlet removed. ESC / MENU button returns to the main
+	# menu — the menu's BEGIN re-seeds RunState.start_floor() so we
+	# end_floor here defensively rather than relying on the menu side.
 	Engine.time_scale = 1.0
 	RunState.end_floor()
-	get_tree().change_scene_to_file("res://scenes/hamlet.tscn")
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if not _alive and ev is InputEventKey and ev.pressed:
 		if ev.physical_keycode == KEY_R:
 			_on_death_retry()
 		elif ev.physical_keycode == KEY_ESCAPE:
-			_on_death_to_hamlet()
+			_on_death_to_menu()
 	# ESC return after final-room pedestal claim too.
 	if _wave_state == WaveState.COMPLETE and _alive and ev is InputEventKey and ev.pressed:
 		if ev.physical_keycode == KEY_ESCAPE:
-			_on_death_to_hamlet()
+			_on_death_to_menu()

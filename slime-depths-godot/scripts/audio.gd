@@ -260,14 +260,12 @@ const AMBIENT_FADE_FLOOR_DB := -80.0     # effectively-silent endpoint of fades
 const AMBIENT_CONFIGS := {
 	"dungeon":     { "fundamental_hz":  55.0, "harmonic_hz": 110.0, "harmonic_gain": 0.5,  "noise_amount": 0.06, "target_db": -18.0 },
 	"menu_hush":   { "fundamental_hz": 220.0, "harmonic_hz": 330.0, "harmonic_gain": 0.5,  "noise_amount": 0.0,  "target_db": -22.0 },
-	"hamlet":      { "fundamental_hz": 165.0, "harmonic_hz": 247.5, "harmonic_gain": 0.35, "noise_amount": 0.12, "target_db": -20.0 },
 }
 
 # scene_file_path → ambient preset id (key into AMBIENT_CONFIGS).
 # Any scene not in this map fades to silence (death_screen, etc.).
 const SCENE_TO_AMBIENT := {
 	"res://scenes/main.tscn":            "dungeon",
-	"res://scenes/hamlet.tscn":          "hamlet",
 	"res://scenes/main_menu.tscn":       "menu_hush",
 	"res://scenes/settings_screen.tscn": "menu_hush",
 }

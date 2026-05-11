@@ -1,11 +1,12 @@
 # Door — Area2D trigger spawned in the dungeon's east wall after the
-# room clears. Walking into it advances Floor to the next room and
+# room clears. Walking into it advances RunState to the next room and
 # reloads the dungeon scene.
 #
-# Cousin of Portal (hamlet → dungeon) but lighter-weight:
-#   • Portal is hand-placed in hamlet.tscn with a configured target.
-#   • Door is script-spawned at room-clear time and ALWAYS routes to
-#     the same scene (the dungeon reloads, picks up the next config).
+# Iter 12: hamlet removed. Door is now the ONLY scene-transition surface
+# in active gameplay — it advances to the next room, or routes to the
+# main menu defensively if RunState.advance() returns false (which
+# normally shouldn't happen because the last room spawns a Pedestal,
+# not a Door, but we handle it cleanly).
 #
 # Visual: a wide glowing rectangle pulsing with the same warm gold as
 # torchlight, so it reads as "warmth ahead" rather than a separate
@@ -42,9 +43,9 @@ func _on_body_entered(body: Node) -> void:
 		await get_tree().create_timer(0.15).timeout
 		get_tree().change_scene_to_file("res://scenes/main.tscn")
 	else:
-		# Last room already cleared — Floor returned false. Should
+		# Last room already cleared — RunState returned false. Should
 		# not normally happen because the last room spawns a Pedestal
-		# instead of a Door, but route to hamlet defensively.
+		# instead of a Door, but route to the main menu defensively.
 		RunState.end_floor()
 		await get_tree().create_timer(0.15).timeout
-		get_tree().change_scene_to_file("res://scenes/hamlet.tscn")
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

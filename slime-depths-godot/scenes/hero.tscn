@@ -1,95 +1,36 @@
-[gd_scene load_steps=33 format=3 uid="uid://b3hero1234567"]
+[gd_scene load_steps=4 format=3 uid="uid://b3hero1234567"]
+
+; Hero scene — pruned dramatically in iter 12 (no per-state AtlasTexture
+; sub-resources here). hero.gd builds the full SpriteFrames programmatically
+; from 5 sheets × 8 directions in _ready(); doing it in code lets us
+; share a single per-state table of (sheet, frames, fps, loop) rather
+; than declaring ~290 sub-resources by hand.
+;
+; The drop shadow Sprite2D is intentionally a sibling drawn BEFORE the
+; AnimatedSprite2D so it renders underneath at the same z_index — same
+; trick we use for the hamlet decor drop shadows (now gone, but the
+; mechanic stays).
 
 [ext_resource type="Script" path="res://scripts/hero.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://assets/characters/mage_idle.png" id="2_idle"]
-[ext_resource type="Texture2D" path="res://assets/characters/mage_walk.png" id="3_walk"]
-[ext_resource type="Texture2D" path="res://assets/characters/mage_attack.png" id="4_attack"]
-[ext_resource type="Texture2D" path="res://assets/decor/shadow_ellipse.png" id="5_shadow"]
-
-; Animation frames — sliced from horizontal strips into AtlasTextures.
-; SpriteFrames bundles them into named animations the AnimatedSprite2D
-; plays by name. 128×128 cell per frame; sheets are 8 cells wide
-; (idle/walk) or 9 cells wide (attack).
-
-[sub_resource type="AtlasTexture" id="I0"] atlas = ExtResource("2_idle") region = Rect2(0, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="I1"] atlas = ExtResource("2_idle") region = Rect2(128, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="I2"] atlas = ExtResource("2_idle") region = Rect2(256, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="I3"] atlas = ExtResource("2_idle") region = Rect2(384, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="I4"] atlas = ExtResource("2_idle") region = Rect2(512, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="I5"] atlas = ExtResource("2_idle") region = Rect2(640, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="I6"] atlas = ExtResource("2_idle") region = Rect2(768, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="I7"] atlas = ExtResource("2_idle") region = Rect2(896, 0, 128, 128)
-
-[sub_resource type="AtlasTexture" id="W0"] atlas = ExtResource("3_walk") region = Rect2(0, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="W1"] atlas = ExtResource("3_walk") region = Rect2(128, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="W2"] atlas = ExtResource("3_walk") region = Rect2(256, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="W3"] atlas = ExtResource("3_walk") region = Rect2(384, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="W4"] atlas = ExtResource("3_walk") region = Rect2(512, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="W5"] atlas = ExtResource("3_walk") region = Rect2(640, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="W6"] atlas = ExtResource("3_walk") region = Rect2(768, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="W7"] atlas = ExtResource("3_walk") region = Rect2(896, 0, 128, 128)
-
-[sub_resource type="AtlasTexture" id="K0"] atlas = ExtResource("4_attack") region = Rect2(0, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K1"] atlas = ExtResource("4_attack") region = Rect2(128, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K2"] atlas = ExtResource("4_attack") region = Rect2(256, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K3"] atlas = ExtResource("4_attack") region = Rect2(384, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K4"] atlas = ExtResource("4_attack") region = Rect2(512, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K5"] atlas = ExtResource("4_attack") region = Rect2(640, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K6"] atlas = ExtResource("4_attack") region = Rect2(768, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K7"] atlas = ExtResource("4_attack") region = Rect2(896, 0, 128, 128)
-[sub_resource type="AtlasTexture" id="K8"] atlas = ExtResource("4_attack") region = Rect2(1024, 0, 128, 128)
-
-[sub_resource type="SpriteFrames" id="SpriteFrames_hero"]
-animations = [{
-"frames": [{"duration": 1.0, "texture": SubResource("I0")}, {"duration": 1.0, "texture": SubResource("I1")}, {"duration": 1.0, "texture": SubResource("I2")}, {"duration": 1.0, "texture": SubResource("I3")}, {"duration": 1.0, "texture": SubResource("I4")}, {"duration": 1.0, "texture": SubResource("I5")}, {"duration": 1.0, "texture": SubResource("I6")}, {"duration": 1.0, "texture": SubResource("I7")}],
-"loop": true,
-"name": &"idle",
-"speed": 8.0
-}, {
-"frames": [{"duration": 1.0, "texture": SubResource("W0")}, {"duration": 1.0, "texture": SubResource("W1")}, {"duration": 1.0, "texture": SubResource("W2")}, {"duration": 1.0, "texture": SubResource("W3")}, {"duration": 1.0, "texture": SubResource("W4")}, {"duration": 1.0, "texture": SubResource("W5")}, {"duration": 1.0, "texture": SubResource("W6")}, {"duration": 1.0, "texture": SubResource("W7")}],
-"loop": true,
-"name": &"walk",
-"speed": 10.0
-}, {
-"frames": [{"duration": 1.0, "texture": SubResource("K0")}, {"duration": 1.0, "texture": SubResource("K1")}, {"duration": 1.0, "texture": SubResource("K2")}, {"duration": 1.0, "texture": SubResource("K3")}, {"duration": 1.0, "texture": SubResource("K4")}, {"duration": 1.0, "texture": SubResource("K5")}, {"duration": 1.0, "texture": SubResource("K6")}, {"duration": 1.0, "texture": SubResource("K7")}, {"duration": 1.0, "texture": SubResource("K8")}],
-"loop": false,
-"name": &"attack",
-"speed": 14.0
-}]
+[ext_resource type="Texture2D" path="res://assets/decor/shadow_ellipse.png" id="2_shadow"]
 
 [sub_resource type="CircleShape2D" id="hero_collision"]
 radius = 14.0
-
-; ── Node tree ─────────────────────────────────────────────────────────
-; CharacterBody2D handles WASD-driven motion via move_and_slide().
-; AnimatedSprite2D shows the mage, offset upward so the bottom of the
-; sprite is the foot anchor. Scale ≈ 0.469 = HERO_DRAW (60) / SPR (128).
-; Collision is a small circle at the feet (radius 14).
 
 [node name="Hero" type="CharacterBody2D"]
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("1_script")
 
-; Drop shadow — small dark ellipse anchored at the hero's feet so the
-; sprite reads as standing ON the ground rather than floating above
-; their own pixel grid. Placed BEFORE AnimatedSprite2D so it draws
-; underneath at the same z_index (sibling order = draw order). Scale
-; tuned to roughly match the foot-print width of the mage body at
-; HERO_DRAW=60. Modulate alpha kept moderate so the shadow doesn't
-; punch through bright tiles in the hamlet.
 [node name="Shadow" type="Sprite2D" parent="."]
 position = Vector2(0, 2)
 scale = Vector2(0.18, 0.13)
 modulate = Color(0, 0, 0, 0.45)
-texture = ExtResource("5_shadow")
+texture = ExtResource("2_shadow")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, -23)
 scale = Vector2(0.469, 0.469)
-sprite_frames = SubResource("SpriteFrames_hero")
-animation = &"idle"
-autoplay = "idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("hero_collision")

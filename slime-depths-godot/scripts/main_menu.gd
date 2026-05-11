@@ -9,7 +9,7 @@
 # tween, hairlines flank the title above + below.
 extends Control
 
-const HAMLET_SCENE_PATH := "res://scenes/hamlet.tscn"
+const DUNGEON_SCENE_PATH := "res://scenes/main.tscn"
 const SETTINGS_SCENE_PATH := "res://scenes/settings_screen.tscn"
 const HOVER_SCALE := 1.05
 const HOVER_TWEEN_TIME := 0.12
@@ -62,7 +62,12 @@ func _ready() -> void:
 	begin_button.grab_focus()
 
 func _on_begin_pressed() -> void:
-	get_tree().change_scene_to_file(HAMLET_SCENE_PATH)
+	# Iter 12: hamlet removed. BEGIN goes straight into the dungeon.
+	# RunState.start_floor() seeds room 0 + resets HP/kills so main.tscn
+	# reads a fresh current_room_config at _ready().
+	GameState.start_dungeon_run()
+	RunState.start_floor()
+	get_tree().change_scene_to_file(DUNGEON_SCENE_PATH)
 
 func _on_settings_pressed() -> void:
 	get_tree().change_scene_to_file(SETTINGS_SCENE_PATH)

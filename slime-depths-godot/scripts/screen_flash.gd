@@ -3,12 +3,12 @@
 # VFX (slash arc on hero_attacked, blast trail on hero_blasted).
 #
 # Why an autoload (vs. a node in main.tscn): the player moves between
-# hamlet ↔ dungeon ↔ death screen, and the flash overlay should "always
-# be there" without re-wiring. Same logic as the FX autoload — connect
-# once to the Events bus and survive scene changes.
+# main_menu ↔ dungeon ↔ death screen, and the flash overlay should
+# "always be there" without re-wiring. Same logic as the FX autoload —
+# connect once to the Events bus and survive scene changes.
 #
-# CanvasLayer ordering — three overlay layers exist now:
-#   100  Dialogue
+# CanvasLayer ordering — two overlay layers exist now (iter 12 removed
+# the Dialogue autoload alongside the hamlet):
 #   180  ScreenFlash   ← us. Above HUD, below death screen.
 #   200  death_screen
 # So a damage flash paints on top of the HUD (intentional — should be
