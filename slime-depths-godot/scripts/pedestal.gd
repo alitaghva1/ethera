@@ -66,6 +66,20 @@ func _ready() -> void:
 	# missing the field so a typo never makes the pedestal disappear.
 	var tier: String = str(info.get("tier", "common"))
 	_apply_tier_visuals(tier)
+	# Iter 24 — swap in the real relic art if the registry provides
+	# one. Runs AFTER _apply_tier_visuals so we keep its tier-colored
+	# modulate then soften it 60% → 40% toward white (icons read
+	# poorly under heavy tint; the PointLight2D glow still carries
+	# the full tier color so rarity remains legible at distance).
+	var icon_path: String = str(info.get("icon_path", ""))
+	if icon_path != "" and ResourceLoader.exists(icon_path):
+		var tex: Resource = ResourceLoader.load(icon_path)
+		if tex is Texture2D:
+			orb.texture = tex
+			# 64×64 PixelLab icons over the orb's natural draw size —
+			# 0.6 scale keeps them readable without dwarfing the plinth.
+			orb.scale = Vector2(0.6, 0.6)
+			orb.modulate = orb.modulate.lerp(Color.WHITE, 0.4)
 	# Iter 16 — pedestals spawned as part of a 3-choice offer join
 	# this group so they can dismiss each other on claim.
 	add_to_group("pedestal_offer")

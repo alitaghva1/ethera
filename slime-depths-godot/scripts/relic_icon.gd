@@ -70,6 +70,7 @@ func set_relic(id: String) -> void:
 	var glyph: String = ""
 	if nm.length() > 0:
 		glyph = nm.substr(0, 1).to_upper()
+	var icon_path: String = str(info.get("icon_path", ""))
 
 	# Background plate — dark, slightly transparent, fills the badge.
 	var bg: ColorRect = ColorRect.new()
@@ -112,25 +113,51 @@ func set_relic(id: String) -> void:
 	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(fill)
 
-	# Glyph — single uppercase letter centered on the badge. Color
-	# chosen to read against the inner fill (which is a dimmed tier
-	# color).
-	var letter: Label = Label.new()
-	letter.text = glyph
-	letter.anchor_right = 1.0
-	letter.anchor_bottom = 1.0
-	letter.offset_left = 0.0
-	letter.offset_top = 0.0
-	letter.offset_right = 0.0
-	letter.offset_bottom = 0.0
-	letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	letter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	letter.add_theme_font_size_override("font_size", 16)
-	letter.add_theme_color_override("font_color", Color(1, 0.96, 0.88, 1))
-	letter.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	letter.add_theme_constant_override("outline_size", 3)
-	letter.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(letter)
+	# Iter 24 — real relic art. Attempt to load icon_path from the
+	# registry and render it as a centered TextureRect (24×24 inside the
+	# 28×28 frame, leaving 2px of tier rim/background visible on every
+	# side). ResourceLoader.load returns null on missing/corrupt assets,
+	# so we keep the procedural letter glyph as a defensive fallback —
+	# any relic without a usable icon_path still gets a readable badge.
+	var tex: Texture2D = null
+	if icon_path != "":
+		var loaded: Resource = ResourceLoader.load(icon_path) if ResourceLoader.exists(icon_path) else null
+		if loaded is Texture2D:
+			tex = loaded
+	if tex != null:
+		var icon_rect: TextureRect = TextureRect.new()
+		icon_rect.texture = tex
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		# Center a 24×24 cell inside the 28×28 outer (2px margin all around)
+		# via offsets — anchors at 0,0 keep the cell positioned from the
+		# top-left even if a parent re-layouts mid-frame.
+		icon_rect.anchor_right = 0.0
+		icon_rect.anchor_bottom = 0.0
+		icon_rect.offset_left = 2.0
+		icon_rect.offset_top = 2.0
+		icon_rect.offset_right = 26.0
+		icon_rect.offset_bottom = 26.0
+		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(icon_rect)
+	else:
+		# Fallback glyph — single uppercase letter centered on the badge.
+		# Reads against the inner fill (which is a dimmed tier color).
+		var letter: Label = Label.new()
+		letter.text = glyph
+		letter.anchor_right = 1.0
+		letter.anchor_bottom = 1.0
+		letter.offset_left = 0.0
+		letter.offset_top = 0.0
+		letter.offset_right = 0.0
+		letter.offset_bottom = 0.0
+		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		letter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		letter.add_theme_font_size_override("font_size", 16)
+		letter.add_theme_color_override("font_color", Color(1, 0.96, 0.88, 1))
+		letter.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		letter.add_theme_constant_override("outline_size", 3)
+		letter.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(letter)
 
 func _on_mouse_entered() -> void:
 	_show_tooltip()

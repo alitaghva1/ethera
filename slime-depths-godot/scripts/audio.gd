@@ -559,277 +559,81 @@ func _crossfade_to(preset_id: String) -> void:
 	_ambient_live_is_a = not _ambient_live_is_a
 
 # ══════════════════════════════════════════════════════════════════════
-# Procedural music system
+# Music system — real OGG tracks (replaces earlier procedural synth)
 # ══════════════════════════════════════════════════════════════════════
 #
 # Why this is separate from the ambient drone:
 #   The drone is a sustained chord with slow LFO — it sets atmosphere
-#   but has no pulse. Combat and menu both benefit from a rhythmic
-#   layer riding ON TOP of the drone. We keep the two systems totally
-#   independent: a SECOND A/B AudioStreamPlayer pair on its own
-#   tween, its own scene→preset table. Same scene-change trigger,
-#   different lookup. The drone is "where you are"; the music is
-#   "what you're doing."
+#   but has no pulse. The music layer rides ON TOP of the drone with
+#   melody + rhythm. Two independent A/B AudioStreamPlayer pairs,
+#   each with its own tween and scene→preset table. Same scene-change
+#   trigger, different lookups. The drone is "where you are"; the
+#   music is "what you're doing."
 #
-# Design constraints inherited from the brief:
-#   • SFX must dominate — music sits at -26 to -30 dB (vs drone at
-#     -18 to -22 dB and SFX from 0 to -6 dB).
-#   • Loop must wrap click-free. We achieve this by picking a buffer
-#     length that's an exact multiple of the beat period AND letting
-#     each note's amplitude envelope return to zero before the next
-#     beat starts. The last sample of the buffer is the tail of the
-#     final beat's decay (≈0); the first sample is the attack of the
-#     first beat — also near zero — so the wrap is essentially silent.
+# Source: real authored OGG tracks under res://assets/music/ (mirrored
+# from the JS project's slime-depths/public/assets/music/). Replaced
+# the previous procedural bass+arpeggio synth — OGGs have proper
+# mastered loudness and musicality the synth couldn't approach.
 #
-# Synthesis approach (per track):
-#   For each beat in the sequence, compute the start-sample, the
-#   note frequency from the cfg's "bass_seq" / "arp_seq", and an
-#   amplitude envelope across the beat (sharp attack + decay_pow
-#   fall-off, same shape as SFX). Sum bassline + arpeggio voices
-#   (and optionally a sub-bass octave below the bassline) into one
-#   buffer, then write s16 PCM. Same pattern as _synthesize_drone
-#   but multi-event rather than continuous-oscillator.
+# Loop handling: AudioStreamOggVorbis defaults to loop=false on
+# import. We set stream.loop = true at preload time (in _music_init)
+# so each track repeats seamlessly. The mastered tracks have clean
+# loop points; the Vorbis decoder wraps without an audible click.
+#
+# Volume: target -14 dB across all tracks. OGGs are mastered louder
+# than the synth was (which sat at -28 to -29 dB) — they don't need
+# the same headroom because their internal dynamics are tame.
 
 const MUSIC_FADE_DURATION := 1.2          # slower than ambient's 0.5s
 const MUSIC_FADE_FLOOR_DB := -80.0        # effective silence
+const MUSIC_TARGET_DB := -14.0            # playback volume when faded in
 
-# Note frequencies as constants — readable in the seq arrays below.
-# Chromatic, equal temperament, A4 = 440 Hz reference.
-const NOTE_C2 := 65.41
-const NOTE_F2 := 87.31
-const NOTE_G2 := 97.99
-const NOTE_A2 := 110.00
-const NOTE_D3 := 146.83
-const NOTE_F3 := 174.61
-const NOTE_A3 := 220.00
-const NOTE_C4 := 261.63
-const NOTE_E4 := 329.63
-const NOTE_G4 := 392.00
-
-# ── Music preset table ────────────────────────────────────────────────
-# Each entry:
-#   bpm              tempo in beats per minute
-#   beats            total beats in the loop (loop length = beats × 60/bpm)
-#   bass_seq         array of bass note Hz played one-per-beat (cycles
-#                    if shorter than `beats`)
-#   arp_seq          array of arpeggio note Hz played on off-beats
-#                    (cycles if shorter)
-#   sub_bass_gain    0..1, 0 = disabled. Adds a half-octave layer
-#                    below the bassline for fatness (combat only)
-#   bass_decay_pow   exponent on the bass amplitude decay (sharper =
-#                    punchier; combat uses sharp, menu uses soft)
-#   arp_decay_pow    exponent on the arp amplitude decay
-#   bass_gain        0..1 peak amplitude of the bassline voice
-#   arp_gain         0..1 peak amplitude of the arpeggio voice
-#   target_db        playback volume when fully faded in (negative)
-#
-# combat_drive (100 BPM, 16 beats = 9.6s):
-#   Bassline C-G-A-F repeats 4× across 16 beats. Arpeggio C-E-G
-#   cycles ~5.3× across 16 off-beats — the slight mismatch keeps
-#   the arp from feeling locked to the bass and makes the loop
-#   feel longer than it is. Sharp decay (2.0) on both voices for
-#   the propulsive feel. Sub-bass at half-frequency for body.
-#
-# menu_calm (70 BPM, 14 beats = 12.0s):
-#   D-F-A-C arpeggio cycles 3.5× over 14 off-beats. Bassline is
-#   D-A alternating on the strong beats. Long decay (1.0 = linear)
-#   so notes overlap into a pad-like wash. No sub-bass — keeps it
-#   light and contemplative. 14 beats × 60/70 = 12.0 s exactly,
-#   so the buffer length is integer-clean.
-const MUSIC_CONFIGS := {
-	"combat_drive": {
-		"bpm": 100.0,
-		"beats": 16,
-		"bass_seq": [NOTE_C2, NOTE_G2, NOTE_A2, NOTE_F2],
-		"arp_seq": [NOTE_C4, NOTE_E4, NOTE_G4],
-		"sub_bass_gain": 0.35,
-		"bass_decay_pow": 2.0,
-		"arp_decay_pow": 2.2,
-		"bass_gain": 0.42,
-		"arp_gain": 0.22,
-		"target_db": -28.0,
-	},
-	"menu_calm": {
-		"bpm": 70.0,
-		"beats": 14,
-		"bass_seq": [NOTE_D3, NOTE_A3],
-		"arp_seq": [NOTE_D3, NOTE_F3, NOTE_A3, NOTE_C4],
-		"sub_bass_gain": 0.0,
-		"bass_decay_pow": 1.0,
-		"arp_decay_pow": 1.0,
-		"bass_gain": 0.28,
-		"arp_gain": 0.20,
-		"target_db": -29.0,
-	},
+# Preloaded OGG streams keyed by track id. Preload at script-init time
+# so the import resolution + decoder setup happen once — subsequent
+# play() calls are zero-allocation. AudioStreamOggVorbis instances are
+# reused across scenes (no per-play recreate).
+const MUSIC_TRACKS := {
+	"ambient":  preload("res://assets/music/ambient.ogg"),
+	"crypt":    preload("res://assets/music/crypt.ogg"),
+	"vault":    preload("res://assets/music/vault.ogg"),
+	"boss":     preload("res://assets/music/boss.ogg"),
+	"abyss":    preload("res://assets/music/abyss.ogg"),
+	"inferno":  preload("res://assets/music/inferno.ogg"),
 }
 
-# scene_file_path → music preset id (key into MUSIC_CONFIGS). Parallel
-# to SCENE_TO_AMBIENT — same trigger, different lookup. Settings/death
-# screens fall through to silence so the music doesn't keep pumping
-# while the player is reading menus mid-run.
+# scene_file_path → music track id (key into MUSIC_TRACKS). Parallel
+# to SCENE_TO_AMBIENT — same trigger, different lookup. Death screens
+# and other scenes fall through to silence so the music doesn't keep
+# playing while the player reads menus mid-run.
 const SCENE_TO_MUSIC := {
-	"res://scenes/main.tscn":      "combat_drive",
-	"res://scenes/main_menu.tscn": "menu_calm",
+	"res://scenes/main_menu.tscn":       "ambient",
+	"res://scenes/settings_screen.tscn": "ambient",
+	"res://scenes/main.tscn":            "crypt",
 }
 
 # ── Music state ───────────────────────────────────────────────────────
-var _music_streams: Dictionary = {}    # preset_id → AudioStreamWAV
 var _music_player_a: AudioStreamPlayer = null
 var _music_player_b: AudioStreamPlayer = null
 var _music_live_is_a: bool = true
-var _music_current_preset: String = ""
+var _music_current_track: String = ""
 var _music_fade_tween: Tween = null
 
 # Bootstrap. Called from _ambient_init (we piggyback off the same
 # deferred entry-point so both subsystems initialize after _ready in
 # the same frame batch).
 func _music_init() -> void:
-	_synthesize_all_music()
+	# Set loop=true on every preloaded OGG stream. AudioStreamOggVorbis
+	# imports with loop=false by default; mutating it once here is
+	# cheaper than per-play setup and applies to all future plays since
+	# the stream resources are shared.
+	for track_id in MUSIC_TRACKS:
+		var stream: AudioStreamOggVorbis = MUSIC_TRACKS[track_id]
+		stream.loop = true
 	_build_music_players()
 	# Resolve the initial scene's music once — tree_changed already
 	# fired for ambient and may not fire again for the same scene, so
 	# we need a one-shot bootstrap call.
 	_resolve_music_for_current_scene()
-
-# ── Music synthesis ───────────────────────────────────────────────────
-
-func _synthesize_all_music() -> void:
-	for preset_id in MUSIC_CONFIGS:
-		var cfg: Dictionary = MUSIC_CONFIGS[preset_id]
-		var bpm: float = cfg.get("bpm", 100.0)
-		var beats: int = int(cfg.get("beats", 16))
-		var beat_sec: float = 60.0 / bpm
-		var duration_sec: float = beat_sec * float(beats)
-		_music_streams[preset_id] = _synthesize_music(cfg, duration_sec)
-
-# Synthesize a rhythmic loop into an AudioStreamWAV. Beat-by-beat:
-#   • bass note: bass_seq[(i) % len] at sample (i × beat_sec × rate)
-#   • arp note:  arp_seq[(i) % len] at sample ((i + 0.5) × beat_sec × rate)
-#   • optional sub-bass octave below the bass note, same start-sample
-#
-# Each note has its own phase accumulator that runs for AT MOST one
-# beat's worth of samples (so decay reaches ~zero by the next beat).
-# Notes are SUMMED into the shared output buffer — no per-sample
-# global oscillator, just per-note synthesis windows.
-#
-# Loop wrap: the last beat starts at sample (beats-1) × beat_sec × rate
-# and runs to sample beats × beat_sec × rate − 1 = n_samples − 1. Its
-# envelope reaches near-zero by the end of its beat. The first beat
-# starts at sample 0 with the envelope's attack near zero. So the
-# wrap-point amplitude is ≈ env_end ≈ env_start ≈ 0 — click-free.
-func _synthesize_music(cfg: Dictionary, duration_sec: float) -> AudioStreamWAV:
-	var bpm: float = cfg.get("bpm", 100.0)
-	var beats: int = int(cfg.get("beats", 16))
-	var bass_seq: Array = cfg.get("bass_seq", [NOTE_C2])
-	var arp_seq: Array = cfg.get("arp_seq", [NOTE_C4])
-	var sub_bass_gain: float = clampf(cfg.get("sub_bass_gain", 0.0), 0.0, 1.0)
-	var bass_decay_pow: float = cfg.get("bass_decay_pow", 2.0)
-	var arp_decay_pow: float = cfg.get("arp_decay_pow", 2.0)
-	var bass_gain: float = clampf(cfg.get("bass_gain", 0.4), 0.0, 1.0)
-	var arp_gain: float = clampf(cfg.get("arp_gain", 0.2), 0.0, 1.0)
-
-	var beat_sec: float = 60.0 / bpm
-	var samples_per_beat: int = int(beat_sec * float(SAMPLE_RATE))
-	var n_samples: int = int(duration_sec * float(SAMPLE_RATE))
-
-	# Use a float scratch buffer for mix-down so we can sum many
-	# voices without per-sample clamping (only clamp at quantize).
-	var scratch: PackedFloat32Array = PackedFloat32Array()
-	scratch.resize(n_samples)
-	# Zero-init explicitly — PackedFloat32Array.resize() in Godot 4
-	# does NOT guarantee zeroed storage on all platforms.
-	for i in n_samples:
-		scratch[i] = 0.0
-
-	# Render each beat.
-	for beat_idx in beats:
-		var bass_start_sample: int = beat_idx * samples_per_beat
-		var bass_freq: float = float(bass_seq[posmod(beat_idx, bass_seq.size())])
-		_render_note(
-			scratch,
-			bass_start_sample,
-			samples_per_beat,
-			bass_freq,
-			bass_gain,
-			bass_decay_pow,
-		)
-		# Sub-bass: half-frequency layer for body. Same envelope, scaled
-		# by sub_bass_gain × bass_gain so the user controls both the
-		# overall bass loudness and the sub mix independently.
-		if sub_bass_gain > 0.0:
-			_render_note(
-				scratch,
-				bass_start_sample,
-				samples_per_beat,
-				bass_freq * 0.5,
-				bass_gain * sub_bass_gain,
-				bass_decay_pow,
-			)
-		# Arpeggio on the off-beat. Starts half a beat after the bass.
-		var arp_start_sample: int = bass_start_sample + (samples_per_beat / 2)
-		var arp_freq: float = float(arp_seq[posmod(beat_idx, arp_seq.size())])
-		_render_note(
-			scratch,
-			arp_start_sample,
-			samples_per_beat,
-			arp_freq,
-			arp_gain,
-			arp_decay_pow,
-		)
-
-	# Quantize float scratch to s16 PCM.
-	var bytes: PackedByteArray = PackedByteArray()
-	bytes.resize(n_samples * 2)
-	for i in n_samples:
-		var s: float = clampf(scratch[i], -1.0, 1.0)
-		bytes.encode_s16(i * 2, int(s * 32767.0))
-
-	var stream: AudioStreamWAV = AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = SAMPLE_RATE
-	stream.stereo = false
-	stream.data = bytes
-	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	stream.loop_begin = 0
-	stream.loop_end = n_samples
-	return stream
-
-# Render one note into the scratch buffer at start_sample. The note
-# occupies up to `length_samples` (one beat's worth); its sine carrier
-# is multiplied by an amplitude envelope that decays from 1.0 to 0
-# over the note's duration via pow(1 - t, decay_pow). Writes are
-# additive — voices sum, no overwrite. Out-of-range writes are clipped
-# so the last note in the buffer doesn't extend past n_samples.
-func _render_note(
-	buffer: PackedFloat32Array,
-	start_sample: int,
-	length_samples: int,
-	freq_hz: float,
-	gain: float,
-	decay_pow: float,
-) -> void:
-	var n_buf: int = buffer.size()
-	var end_sample: int = mini(start_sample + length_samples, n_buf)
-	var actual_length: int = end_sample - start_sample
-	if actual_length <= 0:
-		return
-	var phase_inc: float = freq_hz * TAU / float(SAMPLE_RATE)
-	var phase: float = 0.0
-	# Brief linear attack to avoid a click at the start of each note —
-	# 3 ms feels punchy without being audibly slow. 3 ms × 22050 ≈ 66
-	# samples, well within one beat (samples_per_beat ≈ 13230 at 100 BPM).
-	var attack_samples: int = mini(66, actual_length / 4)
-	for j in actual_length:
-		var t: float = float(j) / float(length_samples)
-		var env: float = pow(maxf(1.0 - t, 0.0), decay_pow)
-		# Apply attack ramp on first attack_samples.
-		if j < attack_samples and attack_samples > 0:
-			env *= float(j) / float(attack_samples)
-		var sample: float = sin(phase) * env * gain
-		buffer[start_sample + j] += sample
-		phase += phase_inc
-		if phase > TAU:
-			phase -= TAU
 
 # ── Music players + scene-change crossfade ────────────────────────────
 
@@ -852,15 +656,15 @@ func _resolve_music_for_current_scene() -> void:
 	var path: String = ""
 	if scene != null:
 		path = scene.scene_file_path
-	var preset_id: String = SCENE_TO_MUSIC.get(path, "")
-	_crossfade_music_to(preset_id)
+	var track_id: String = SCENE_TO_MUSIC.get(path, "")
+	_crossfade_music_to(track_id)
 
 # Crossfade the live music player to silence and bring the idle player
 # up with the new track. Mirrors _crossfade_to (ambient) but with a
-# slower fade duration and its own tween/state. Empty preset_id =
-# fade music to silence (settings screen, death screen, etc.).
-func _crossfade_music_to(preset_id: String) -> void:
-	if preset_id == _music_current_preset:
+# slower 1.2s fade and its own tween/state. Empty track_id = fade
+# music to silence (death screen, other scenes not in the table).
+func _crossfade_music_to(track_id: String) -> void:
+	if track_id == _music_current_track:
 		return
 	if _music_fade_tween != null and _music_fade_tween.is_valid():
 		_music_fade_tween.kill()
@@ -875,18 +679,17 @@ func _crossfade_music_to(preset_id: String) -> void:
 		fading_out, "volume_db", MUSIC_FADE_FLOOR_DB, MUSIC_FADE_DURATION
 	)
 
-	if preset_id != "" and _music_streams.has(preset_id):
-		var cfg: Dictionary = MUSIC_CONFIGS[preset_id]
-		var target_db: float = cfg.get("target_db", -28.0)
-		fading_in.stream = _music_streams[preset_id]
+	if track_id != "" and MUSIC_TRACKS.has(track_id):
+		var stream: AudioStreamOggVorbis = MUSIC_TRACKS[track_id]
+		fading_in.stream = stream
 		fading_in.volume_db = MUSIC_FADE_FLOOR_DB
 		fading_in.play()
 		_music_fade_tween.tween_property(
-			fading_in, "volume_db", target_db, MUSIC_FADE_DURATION
+			fading_in, "volume_db", MUSIC_TARGET_DB, MUSIC_FADE_DURATION
 		)
 		_music_fade_tween.chain().tween_callback(fading_out.stop)
 	else:
 		_music_fade_tween.chain().tween_callback(fading_out.stop)
 
-	_music_current_preset = preset_id
+	_music_current_track = track_id
 	_music_live_is_a = not _music_live_is_a

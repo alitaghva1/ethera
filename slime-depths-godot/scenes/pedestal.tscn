@@ -79,9 +79,14 @@ texture = SubResource("halo_tex")
 texture_scale = 1.0
 
 [node name="NameLabel" type="Label" parent="."]
-offset_left = -120.0
+; Iter 24 — width tightened from ±120 (240 px) to ±90 (180 px) so
+; adjacent pedestals (spaced 200 px apart in the 3-choice offer) no
+; longer visually overlap each other's name + description labels.
+; clip_text guards long relic names from bleeding past the 180 px
+; budget.
+offset_left = -90.0
 offset_top = -118.0
-offset_right = 120.0
+offset_right = 90.0
 offset_bottom = -94.0
 theme_override_font_sizes/font_size = 18
 theme_override_colors/font_color = Color(1, 0.92, 0.62, 1)
@@ -89,11 +94,19 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 4
 text = "IRON FANG"
 horizontal_alignment = 1
+clip_text = true
 
 [node name="DescLabel" type="Label" parent="."]
-offset_left = -180.0
+; Iter 24 — width tightened from ±180 (360 px, the OVERLAPPING value
+; that caused pedestal descriptions to bleed into each other in the
+; 3-pedestal offer at 200 px spacing) to ±90 (180 px). Height kept
+; single-line (22 px) — the orb sits at y=-56, so a multi-line desc
+; would overlap the icon. Long relic descriptions (e.g. focused_eye)
+; get clipped here; the full text is still visible via the HUD
+; relic-strip tooltip after claim.
+offset_left = -90.0
 offset_top = -90.0
-offset_right = 180.0
+offset_right = 90.0
 offset_bottom = -68.0
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
@@ -101,6 +114,7 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 3
 text = "+1 sword damage"
 horizontal_alignment = 1
+clip_text = true
 
 [node name="Prompt" type="Label" parent="."]
 offset_left = -80.0
