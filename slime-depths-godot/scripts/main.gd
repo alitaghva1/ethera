@@ -84,6 +84,7 @@ func _spawn_enemy() -> void:
 
 func _on_enemy_died(world_pos: Vector2) -> void:
 	_kills += 1
+	GameState.register_run_kill()
 	_update_kills()
 	# Floating "+1" above the corpse.
 	var n: DamageNumber = DamageNumber.spawn(world_pos + Vector2(0, -36), "+1", Color(1, 0.95, 0.7))
@@ -117,9 +118,16 @@ func _update_kills() -> void:
 func _on_hero_died() -> void:
 	_alive = false
 	Engine.time_scale = 1.0   # safety — never leave the game frozen on death
-	status_label.text = "YOU DIED  ·  press R to restart"
+	status_label.text = "YOU DIED  ·  R retry · ESC return to hamlet"
 
 func _unhandled_input(ev: InputEvent) -> void:
-	if not _alive and ev is InputEventKey and ev.pressed and ev.physical_keycode == KEY_R:
-		Engine.time_scale = 1.0
-		get_tree().reload_current_scene()
+	if not _alive and ev is InputEventKey and ev.pressed:
+		if ev.physical_keycode == KEY_R:
+			Engine.time_scale = 1.0
+			# R = retry the dungeon (counts as a new run via the portal path
+			# in GameState; for slice purposes we just reload + restart count).
+			GameState.start_dungeon_run()
+			get_tree().reload_current_scene()
+		elif ev.physical_keycode == KEY_ESCAPE:
+			Engine.time_scale = 1.0
+			get_tree().change_scene_to_file("res://scenes/hamlet.tscn")

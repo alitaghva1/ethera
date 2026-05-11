@@ -1,0 +1,213 @@
+[gd_scene load_steps=11 format=3 uid="uid://b3hamlet1234"]
+
+[ext_resource type="Script" path="res://scripts/hamlet.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/rooms/hamlet_floor.png" id="2_floor"]
+[ext_resource type="PackedScene" path="res://scenes/hero.tscn" id="3_hero"]
+[ext_resource type="PackedScene" path="res://scenes/npc.tscn" id="4_npc"]
+[ext_resource type="PackedScene" path="res://scenes/portal.tscn" id="5_portal"]
+
+; Hamlet uses the same 1280×768 design space as the dungeon, with the
+; grass + path floor baked in extract-godot-hamlet-floor.js. The hero
+; spawns at the west end of the horizontal path; NPCs are scattered
+; around the central building cluster; a portal sits at the south
+; spur leading to main.tscn (the dungeon).
+
+[sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 768)
+[sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1280, 40)
+
+; Building placeholder style — dark stone walls + warm wood-tone roof.
+; Real pixel-art buildings are a follow-up; the rectangles read as
+; "structures the hero walks around" in the slice.
+[sub_resource type="StyleBoxFlat" id="building_style"]
+bg_color = Color(0.42, 0.28, 0.20, 1)
+border_width_left = 3
+border_width_top = 5
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.62, 0.45, 0.30, 1)
+
+[node name="Hamlet" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="Background" type="Sprite2D" parent="."]
+position = Vector2(640, 384)
+texture = ExtResource("2_floor")
+
+; ── Buildings (decorative + collidable) ───────────────────────────────
+; Three building footprints north of the east-west path: blacksmith
+; (left), tavern (center, larger), oracle's tower (right).
+
+[node name="Buildings" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Smithy" type="Panel" parent="Buildings"]
+offset_left = 220.0
+offset_top = 150.0
+offset_right = 380.0
+offset_bottom = 290.0
+theme_override_styles/panel = SubResource("building_style")
+
+[node name="SmithyShape" type="CollisionShape2D" parent="Buildings"]
+position = Vector2(300, 220)
+shape = SubResource("wall_h")
+scale = Vector2(0.125, 3.5)
+
+[node name="Tavern" type="Panel" parent="Buildings"]
+offset_left = 550.0
+offset_top = 130.0
+offset_right = 740.0
+offset_bottom = 300.0
+theme_override_styles/panel = SubResource("building_style")
+
+[node name="TavernShape" type="CollisionShape2D" parent="Buildings"]
+position = Vector2(645, 215)
+shape = SubResource("wall_h")
+scale = Vector2(0.148, 4.25)
+
+[node name="Tower" type="Panel" parent="Buildings"]
+offset_left = 910.0
+offset_top = 140.0
+offset_right = 1050.0
+offset_bottom = 300.0
+theme_override_styles/panel = SubResource("building_style")
+
+[node name="TowerShape" type="CollisionShape2D" parent="Buildings"]
+position = Vector2(980, 220)
+shape = SubResource("wall_h")
+scale = Vector2(0.109, 4.0)
+
+; Building name labels — small wooden signs above each entry.
+[node name="SmithLabel" type="Label" parent="Buildings"]
+offset_left = 240.0
+offset_top = 295.0
+offset_right = 360.0
+offset_bottom = 320.0
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "SMITHY"
+horizontal_alignment = 1
+
+[node name="TavernLabel" type="Label" parent="Buildings"]
+offset_left = 575.0
+offset_top = 305.0
+offset_right = 715.0
+offset_bottom = 330.0
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "WAYWARD INN"
+horizontal_alignment = 1
+
+[node name="TowerLabel" type="Label" parent="Buildings"]
+offset_left = 920.0
+offset_top = 305.0
+offset_right = 1040.0
+offset_bottom = 330.0
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "ORACLE'S WATCH"
+horizontal_alignment = 1
+
+; ── Outer-edge walls so the player can't walk off the hamlet map ─────
+[node name="OuterWalls" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="WallLeft" type="CollisionShape2D" parent="OuterWalls"]
+position = Vector2(20, 384)
+shape = SubResource("wall_v")
+
+[node name="WallRight" type="CollisionShape2D" parent="OuterWalls"]
+position = Vector2(1260, 384)
+shape = SubResource("wall_v")
+
+[node name="WallTop" type="CollisionShape2D" parent="OuterWalls"]
+position = Vector2(640, 20)
+shape = SubResource("wall_h")
+
+; (no south wall — the portal sits at the south edge instead)
+
+; ── NPCs ──────────────────────────────────────────────────────────────
+; Three speakers, each with their own dialogue array set via @export
+; in this scene. Body color tints differ so they read as distinct
+; characters at a glance even without proper pixel art.
+
+[node name="Wanderer" parent="." instance=ExtResource("4_npc")]
+position = Vector2(440, 400)
+npc_name = "THE WANDERER"
+body_color = Color(0.42, 0.6, 0.78, 1)
+lines = ["Strange roads, traveler. Each descent peels another layer off the world.", "Some say the depths once held an answer. We only have questions now.", "Walk softly. The slimes are the kind ones."]
+
+[node name="Smith" parent="." instance=ExtResource("4_npc")]
+position = Vector2(300, 320)
+npc_name = "BERIN THE SMITH"
+body_color = Color(0.78, 0.42, 0.3, 1)
+lines = ["You're going to need that edge, friend.", "I'd offer to sharpen it, but my forge is cold until you bring back something to feed it.", "Bring me skeleton bone-iron. Three pieces. Then we talk."]
+
+[node name="Oracle" parent="." instance=ExtResource("4_npc")]
+position = Vector2(980, 400)
+npc_name = "THE ORACLE"
+body_color = Color(0.65, 0.45, 0.78, 1)
+lines = ["The wheel turns. Twelve runs, twelve faces of the same wound.", "I see you swinging at a thing that was already dead. Save your blade for what's still hungry.", "When the torches gutter, that is when the depths look back."]
+
+; ── Portal to the dungeon ────────────────────────────────────────────
+; South-spur path leads here. Walking onto the glow loads main.tscn.
+
+[node name="DungeonPortal" parent="." instance=ExtResource("5_portal")]
+position = Vector2(640, 730)
+portal_label = "DESCEND"
+target_scene_path = "res://scenes/main.tscn"
+
+; ── Hero ──────────────────────────────────────────────────────────────
+[node name="Hero" parent="." instance=ExtResource("3_hero")]
+position = Vector2(160, 384)
+
+[node name="Camera2D" type="Camera2D" parent="Hero"]
+limit_left = 0
+limit_top = 0
+limit_right = 1280
+limit_bottom = 768
+limit_smoothed = true
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
+
+; ── UI overlay ────────────────────────────────────────────────────────
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TitleLabel" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 10.0
+offset_right = 600.0
+offset_bottom = 40.0
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+text = "HAMLET"
+
+[node name="StatusLabel" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 44.0
+offset_right = 900.0
+offset_bottom = 68.0
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+text = "Hamlet"
+
+[node name="RunLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -320.0
+offset_top = 14.0
+offset_right = -16.0
+offset_bottom = 42.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+text = ""
+horizontal_alignment = 2

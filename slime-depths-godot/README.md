@@ -28,9 +28,22 @@ instant.
 | WASD | Move |
 | Left mouse | Sword swing (cooldown 0.4s) |
 | Space | Dodge roll (iframes + speed burst, cooldown 0.85s) |
-| R | Restart (after death) |
+| **E** | Talk to NPCs / advance dialogue (Iter 2) |
+| **ESC** | Return to hamlet (on death, dungeon scene) |
+| R | Retry the dungeon (after death) |
 
-## What works in this slice (Iter 1)
+## What works in this slice (Iter 1 + Iter 2)
+
+**Iter 2 added** — hamlet hub, NPCs with dialogue, scene transitions.
+You now START in the hamlet, walk south to "DESCEND" through the
+portal into the dungeon. Dying in the dungeon (or pressing ESC)
+returns to the hamlet, where the run kill count is shown next to
+your name. Three NPCs to talk to: **The Wanderer** (lore), **Berin
+the Smith** (will offer a forge upgrade later), **The Oracle** (lore
++ hints). Press **E** within range to start a conversation, **E**
+or LMB to advance.
+
+**Iter 1 base**
 
 - **Hero**: cloaked mage, idle / walk / attack animations, dodge with
   iframes, hit-stop on damage taken, damage-flicker, 3 HP.

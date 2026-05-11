@@ -16,13 +16,15 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Slime Depths (Godot slice)"
 config/description="Vertical-slice port — test engine fit before committing to a full port. Original game lives at ../slime-depths/."
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/hamlet.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
 InputSetup="*res://scripts/input_setup.gd"
+GameState="*res://scripts/game_state.gd"
+Dialogue="*res://scenes/dialogue_ui.tscn"
 
 [display]
 

@@ -1,0 +1,38 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3portal12345"]
+
+[ext_resource type="Script" path="res://scripts/portal.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="portal_area"]
+size = Vector2(80, 80)
+
+; Portal — visual glow rect + label, Area2D trigger. The glow pulses
+; via _process in portal.gd. On body_entered (hero), changes scene
+; to target_scene_path (set per-instance via @export).
+
+[node name="Portal" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("portal_area")
+
+[node name="Glow" type="ColorRect" parent="."]
+offset_left = -42.0
+offset_top = -42.0
+offset_right = 42.0
+offset_bottom = 42.0
+color = Color(0.45, 0.25, 0.65, 0.7)
+
+[node name="Label" type="Label" parent="."]
+offset_left = -120.0
+offset_top = -68.0
+offset_right = 120.0
+offset_bottom = -44.0
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "DUNGEON"
+horizontal_alignment = 1

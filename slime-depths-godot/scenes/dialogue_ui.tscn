@@ -1,0 +1,76 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3dlg1234567"]
+
+[ext_resource type="Script" path="res://scripts/dialogue_ui.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="panel_style"]
+bg_color = Color(0.04, 0.03, 0.06, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.65, 0.41, 0.85)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+; Dialogue overlay — single Panel anchored bottom-center of the
+; viewport. Speaker name top, body line below, "press E" prompt
+; bottom-right. All sized at design 1280×720 (UI scale handled by
+; project.godot stretch_mode = viewport).
+
+[node name="Dialogue" type="CanvasLayer"]
+script = ExtResource("1_script")
+
+[node name="Panel" type="Panel" parent="."]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 120.0
+offset_top = -180.0
+offset_right = -120.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("panel_style")
+
+[node name="Speaker" type="Label" parent="Panel"]
+offset_left = 16.0
+offset_top = 8.0
+offset_right = 500.0
+offset_bottom = 36.0
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+text = "Speaker"
+
+[node name="Body" type="Label" parent="Panel"]
+offset_left = 16.0
+offset_top = 44.0
+offset_right = 1024.0
+offset_bottom = 116.0
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+autowrap_mode = 3
+text = "Body text goes here."
+
+[node name="Prompt" type="Label" parent="Panel"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -160.0
+offset_top = -28.0
+offset_right = -12.0
+offset_bottom = -8.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.6, 0.55, 0.42, 1)
+text = "[E] continue"
+horizontal_alignment = 2
