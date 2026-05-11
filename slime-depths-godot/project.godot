@@ -27,6 +27,7 @@ GameState="*res://scripts/game_state.gd"
 RunState="*res://scripts/floor_state.gd"
 Events="*res://scripts/events.gd"
 FX="*res://scripts/fx.gd"
+Audio="*res://scripts/audio.gd"
 Dialogue="*res://scenes/dialogue_ui.tscn"
 
 [display]

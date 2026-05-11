@@ -39,7 +39,28 @@ instant.
 | ESC | Return to hamlet (on death or after room cleared) |
 | R | Retry the dungeon (after death) |
 
-## What works in this slice (Iter 1–5)
+## What works in this slice (Iter 1–7)
+
+**Iter 7 added** — audio system. `scripts/audio.gd` autoload
+procedurally synthesizes 8 SFX (sword swing, blast, dodge, hero
+damaged, hero died, enemy hit, enemy died, pickup) at game start as
+22.05 kHz mono `AudioStreamWAV` resources — no audio asset files,
+no codec quirks. Each sound is a sine/square/noise oscillator with
+a pitch sweep + exponential-decay envelope. A 6-slot
+`AudioStreamPlayer2D` pool plays them round-robin, parented to the
+autoload so they survive scene transitions. Audio subscribes to the
+existing Events bus — gameplay code didn't change at all; same
+pattern FX uses. Settings volume slider now writes to the master
+bus via `Audio.set_master_volume(0..1)`. Real foley + music are
+follow-ups; placeholder tones give immediate "hits feel like hits".
+
+**Iter 6 added** — multi-room dungeon system. The single-room dungeon
+is replaced by a data-driven floor of 3 rooms (`scenes/rooms/*.tres`
+`RoomConfig` resources) with door progression + HP carryover between
+rooms via `GameState.persisted_hp`. Adding a 4th room is "drop a
+.tres + append to `RunState.FLOOR_ROOMS`", no code changes.
+
+
 
 **Combat-depth pass** — two new verbs and five new relics expand the
 moment-to-moment kit. **Q-shield** is a held stance that drains a

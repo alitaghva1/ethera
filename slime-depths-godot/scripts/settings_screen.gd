@@ -1,7 +1,7 @@
-# SettingsScreen — placeholder UI. The volume slider is wired to a
-# label readout for feedback but NOT to any AudioServer bus yet — the
-# slice doesn't ship audio. Future work: route this through a
-# `master_volume` field on GameState + AudioServer.set_bus_volume_db.
+# SettingsScreen — volume slider + canonical controls list. Slider
+# routes to the Audio autoload (which writes to AudioServer's master
+# bus). Value isn't persisted across sessions yet — that lands when
+# we add a save system.
 #
 # The controls list is read-only labels for now. Remap-friendly UI is
 # a follow-up; the controls match input_setup.gd's bindings 1:1.
@@ -38,10 +38,16 @@ func _ready() -> void:
 	# without reaching for the mouse.
 	volume_slider.grab_focus()
 	volume_value.text = str(int(volume_slider.value))
+	# Push the current slider value through Audio on open so the live
+	# bus volume matches whatever the slider's at — important if the
+	# scene re-opens after the user changed something.
+	Audio.set_master_volume(volume_slider.value / 100.0)
 
 func _on_volume_changed(value: float) -> void:
 	volume_value.text = str(int(value))
-	# NOTE: not wired to AudioServer yet — see header comment.
+	# 0..100 linear slider → 0..1 linear → dB via Audio autoload helper.
+	# linear_to_db clamps to a usable range; mute below threshold.
+	Audio.set_master_volume(value / 100.0)
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
