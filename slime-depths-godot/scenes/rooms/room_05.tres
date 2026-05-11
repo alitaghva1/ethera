@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RoomConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/room_config.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+hero_spawn = Vector2(192, 384)
+torch_positions = Array[Vector2]([Vector2(160, 200), Vector2(160, 560), Vector2(1120, 200), Vector2(1120, 560), Vector2(440, 130), Vector2(840, 130), Vector2(440, 640), Vector2(840, 640)])
+spawn_points = Array[Vector2]([Vector2(1088, 160), Vector2(1088, 608), Vector2(1088, 384), Vector2(640, 160), Vector2(640, 608), Vector2(280, 200), Vector2(280, 568), Vector2(900, 384)])
+waves = [[["skel", 2], ["bonecap", 2]], [["archer", 2], ["dreadmage", 1]], [["armored_skeleton", 2], ["lancer", 2], ["dreadmage", 1]]]
+pillar_positions = Array[Vector2]([Vector2(380, 290), Vector2(380, 480), Vector2(640, 290), Vector2(640, 480), Vector2(900, 290), Vector2(900, 480)])
+chest_positions = Array[Vector2]([Vector2(1080, 270)])
+is_last_room = false
+display_name = "OSSUARY"
+ambient_tint = Color(0.22, 0.26, 0.36, 1)
+decor_density = 18

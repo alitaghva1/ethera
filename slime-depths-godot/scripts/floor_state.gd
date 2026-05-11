@@ -18,13 +18,20 @@
 #                                       or MENU (RunState.end_floor)
 extends Node
 
-# Ordered room sequence for the current floor. For Iter 6 we hardcode a
-# single 3-room linear floor; future floors / biomes get their own
-# arrays here (or a dict keyed by floor id).
+# Ordered room sequence for the current floor. As of the floor-2
+# extension, ONE floor is now 6 rooms with 2 bosses (iron_revenant at
+# room 3, broodmother at room 6). Rooms 1-3 = floor 1 (crypt mouth,
+# rising threat into the iron revenant); rooms 4-6 = floor 2 (cold
+# blue-grey crypt depths into the broodmother's sickly green chamber).
+# Future biomes / DAG branching would key off a dict per floor id, but
+# for now the linear array is the whole content surface.
 const FLOOR_ROOMS: Array[String] = [
 	"res://scenes/rooms/room_01.tres",
 	"res://scenes/rooms/room_02.tres",
 	"res://scenes/rooms/room_03.tres",
+	"res://scenes/rooms/room_04.tres",
+	"res://scenes/rooms/room_05.tres",
+	"res://scenes/rooms/room_06.tres",
 ]
 
 # Current room index (0-based). -1 = not in a floor (hamlet / menus).

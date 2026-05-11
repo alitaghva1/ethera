@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_death.png" id="4_death"]
+
+; Broodmother — floor 2 boss. Visually reuses the crypt_spider sheets
+; scaled ~3x larger (4.0 vs 1.385). She charges the hero (chase_contact)
+; like her baby spiders, but with massively more reach, HP, and contact
+; damage. No dedicated attack sheet — crypt_spider walks while body-
+; bumping; the giant scale + faster speed sells the threat tier.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Broodmother"
+is_boss = true
+behavior = "chase_contact"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+death_sheet = ExtResource("4_death")
+cell_size = 64
+sprite_scale = 4.0
+sprite_y_offset = -22.0
+collision_radius = 32.0
+frames_idle = 8
+frames_walk = 8
+frames_attack = 0
+frames_death = 8
+fps_idle = 7.0
+fps_walk = 11.0
+fps_death = 8.0
+max_hp = 16
+move_speed = 110.0
+death_duration = 1.4
+contact_damage = 2
+contact_cooldown = 0.6
+contact_range = 48.0

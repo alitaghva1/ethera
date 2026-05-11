@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RoomConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/room_config.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+hero_spawn = Vector2(192, 384)
+torch_positions = Array[Vector2]([Vector2(220, 220), Vector2(220, 540), Vector2(1060, 220), Vector2(1060, 540), Vector2(640, 200), Vector2(640, 560)])
+spawn_points = Array[Vector2]([Vector2(1088, 160), Vector2(1088, 608), Vector2(1088, 384), Vector2(640, 160), Vector2(640, 608), Vector2(900, 384), Vector2(380, 240), Vector2(380, 528)])
+waves = [[["armored_skeleton", 2], ["dreadmage", 1], ["crypt_spider", 2]], [["werewolf", 2], ["lancer", 1], ["archer", 1]], [["broodmother", 1], ["crypt_spider", 4]]]
+pillar_positions = Array[Vector2]([Vector2(380, 280), Vector2(380, 488), Vector2(540, 280), Vector2(540, 488), Vector2(760, 280), Vector2(760, 488)])
+chest_positions = Array[Vector2]([Vector2(1040, 280)])
+is_last_room = true
+display_name = "BROOD CHAMBER"
+ambient_tint = Color(0.32, 0.26, 0.18, 1)
+decor_density = 20

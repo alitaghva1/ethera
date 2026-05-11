@@ -40,6 +40,7 @@ const BLAST_COOLDOWN     := 0.55
 const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
+const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
 
 # Shield (Iter 5) — Q-held stamina stance.
 const SHIELD_STAMINA_MAX := 100.0
@@ -197,6 +198,15 @@ var _last_anim: StringName = &""
 
 signal hp_changed(new_hp: int)
 signal hero_died
+# Iter 22 — fired at the SAME instant as hero_died, but on a distinct
+# channel so main.gd can split death-cinematic responsibilities from
+# the existing _on_hero_died handler (which still drives the death
+# screen + run-end state). The cinematic listener does slow-mo + camera
+# zoom + vignette + "YOU DIED" banner; _on_hero_died stays focused on
+# UI state. Separate signal = main.gd can connect/disconnect the
+# cinematic independently (e.g. skip on debug auto-restart) without
+# touching the existing teardown flow.
+signal hero_death_started(world_pos: Vector2)
 signal hit_received       # for camera shake + hit-stop in main.gd
 signal dodge_started
 # Iter 13 — fired when a melee swing actually connects with ≥1 enemy.
@@ -669,6 +679,25 @@ func take_damage(amount: int) -> void:
 		_hurt_time = 0.0
 		# Force restart so we see frame 0 of the death anim.
 		sprite.frame = 0
+		# Iter 22 — death cinematic punctuation. Spawn the crimson radial
+		# shockwave + blood spray AT the hero's feet (no chest offset —
+		# the death is grounded, not aerial like a blast muzzle). Parent
+		# to current_scene so the pulse persists in world space rather
+		# than getting torn down with the hero if scene-swap fires. Same
+		# pattern as DASH_TRAIL / BLAST_MUZZLE spawning.
+		var pulse_pos: Vector2 = global_position
+		var pulse: Node2D = DEATH_PULSE_SCENE.instantiate() as Node2D
+		if pulse != null:
+			pulse.global_position = pulse_pos
+			var scene_root: Node = get_tree().current_scene
+			if scene_root != null:
+				scene_root.add_child(pulse)
+		# hero_death_started fires BEFORE hero_died so main.gd's cinematic
+		# listener can install the slow-mo / camera zoom / vignette /
+		# "YOU DIED" banner WHILE the existing _on_hero_died handler
+		# still gates the death screen reveal. The cinematic chains into
+		# the death screen at the end of its ~1.6s ramp.
+		hero_death_started.emit(pulse_pos)
 		hero_died.emit()
 		Events.hero_died.emit(global_position)
 	else:

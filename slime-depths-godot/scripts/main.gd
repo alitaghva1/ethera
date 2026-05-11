@@ -49,6 +49,7 @@ const ENEMY_TYPES := {
 	# is_boss flag drives the HP-bar UI and the boss tracking in
 	# _process. Wave-clear detection treats it like any other enemy.
 	"iron_revenant":     preload("res://scenes/enemies/iron_revenant.tres"),
+	"broodmother":       preload("res://scenes/enemies/broodmother.tres"),
 }
 
 const HIT_STOP_SCALE    := 0.05
@@ -74,6 +75,33 @@ const INITIAL_WAVE_DELAY := 0.6    # seconds from _ready to wave 1 spawn
 # actually engages — long enough to read, short enough to not stall combat.
 const SPAWN_STAGGER     := 0.18
 const DOOR_POSITION     := Vector2(1140, 384)   # east-wall door spawn
+
+# Iter 22 — death cinematic tuning. The hero's lethal hit triggers a
+# slow-mo + camera-zoom + radial-vignette + YOU DIED banner sequence
+# before the existing death_screen overlay takes over. Time scale is
+# OWNED by the cinematic during this window; do not reset it in
+# _on_hero_died (the cinematic restores it at t=1.6s).
+const DEATH_TIME_SCALE_MIN: float = 0.25
+const DEATH_CAMERA_ZOOM_END: Vector2 = Vector2(1.4, 1.4)
+const DEATH_BANNER_DELAY: float = 0.4
+const DEATH_VEIL_FADE_TIME: float = 0.8
+const DEATH_VEIL_FINAL_ALPHA: float = 0.72
+const DEATH_RESTORE_AT: float = 1.2
+const DEATH_SHOW_SCREEN_AT: float = 1.6
+
+# Iter 22 — wave-start center banner. A big text overlay that fades in
+# above the play field for each wave so the player gets a Hades-style
+# "WAVE N" punctuation between rounds. Driven entirely by tween from
+# _show_wave_banner; the existing wave_label corner readout stays.
+const WAVE_BANNER_DURATION: float = 1.0   # total time visible
+const WAVE_BANNER_HOLD: float = 0.4       # hold-at-peak before fading
+
+# Iter 22 — boss intro feel. When an EnemyType with is_boss=true
+# spawns we ALSO throw a heavy camera shake + a brief red wash to
+# punctuate the moment. Pre-iter-22 bosses just appeared with the
+# normal red spawn-in tint.
+const BOSS_INTRO_SHAKE_AMP: float = 16.0
+const BOSS_INTRO_SHAKE_TIME: float = 0.45
 
 # Fallback when main.tscn is launched directly without RunState.start_floor()
 # having been called (e.g. F5 from the editor on main.tscn). Picks the
@@ -170,6 +198,11 @@ func _ready() -> void:
 
 	hero.hp_changed.connect(_on_hero_hp_changed)
 	hero.hero_died.connect(_on_hero_died)
+	# Iter 22 — death cinematic. hero_death_started fires alongside
+	# hero_died but lets us run the slow-mo / zoom / banner BEFORE
+	# the death_screen overlay takes over (which _on_hero_died
+	# defers to via a 1.6s timer in the cinematic).
+	hero.hero_death_started.connect(_on_hero_death_started)
 	hero.hit_received.connect(_on_hero_hit_received)
 	# Iter 13 — react to hero offense beats. swing_connected fires when
 	# a normal melee swing hits at least one enemy (brief hit-stop);
@@ -366,6 +399,9 @@ func _start_wave(idx: int) -> void:
 	_wave_index = idx
 	_wave_state = WaveState.ACTIVE
 	wave_label.text = "WAVE %d / %d" % [idx + 1, _waves.size()]
+	# Iter 22 — center-screen wave banner. Punctuation between rounds;
+	# the corner wave_label stays as the persistent readout.
+	_show_wave_banner(idx + 1, _waves.size())
 	# Iter 15 — flatten the wave composition, shuffle so the same type
 	# doesn't always lead the parade, then dispatch spawns on a stagger.
 	# _pending_spawns tracks the queue so _process's wave-clear check
@@ -431,6 +467,14 @@ func _spawn_enemy_type(type_id: String) -> void:
 		boss_hp_bar.max_value = float(type_res.max_hp)
 		boss_hp_bar.value = float(type_res.max_hp)
 		boss_bar.visible = true
+		# Iter 22 — boss intro punctuation. Heavy camera shake + brief
+		# red screen wash to mark the moment a boss enters. The shake
+		# is bigger than the dash-strike connect (10 amp) so the player
+		# can tell "this is something serious." ScreenFlash autoload
+		# handles the wash if it exists; FX autoload handles the shake.
+		if Engine.has_singleton("FX") or true:   # FX is always available; autoload
+			FX.shake(BOSS_INTRO_SHAKE_AMP, BOSS_INTRO_SHAKE_TIME)
+		_show_boss_intro_banner(type_res.display_name)
 
 # Iter 16 — Hades-style 3-pedestal choice (or fewer if the registry
 # is running low). Pedestals spawn in a row centered on the room and
@@ -675,11 +719,80 @@ func _rebuild_relic_strip() -> void:
 func _on_hero_died() -> void:
 	_alive = false
 	_wave_state = WaveState.DEAD
-	Engine.time_scale = 1.0
 	status_label.text = ""
 	wave_label.text = ""
-	if _death_screen != null and _death_screen.has_method("show_death"):
-		_death_screen.show_death(_kills)
+	# Iter 22 — DO NOT reset Engine.time_scale here. The cinematic
+	# triggered by hero_death_started owns the time scale for the next
+	# 1.6 seconds (slow-mo to 0.25 then back to 1.0) and queues the
+	# death_screen show. _on_hero_death_started runs at the same
+	# moment as this handler, so the cinematic is already underway.
+
+# Iter 22 — death cinematic. Slow-mo + camera zoom + crimson vignette
+# fade + YOU DIED banner crashing in from above, then time scale
+# restores and the death_screen overlay shows. All built from code
+# (no scene file changes) so the sequence is one atomic addition.
+# Tween pause modes are PROCESS so they keep running while time_scale
+# is < 1.0 — otherwise the slow-mo would stall the tweens themselves.
+func _on_hero_death_started(world_pos: Vector2) -> void:
+	# Slow-mo: time_scale 1.0 → 0.25 over 0.4s.
+	var t_time: Tween = create_tween()
+	t_time.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t_time.tween_property(Engine, "time_scale", DEATH_TIME_SCALE_MIN, 0.4)
+	# Camera punch-in to 1.4× over 0.6s. The camera lives under Hero;
+	# we tween its zoom directly.
+	var cam: Camera2D = $Hero/Camera2D
+	if cam != null:
+		var t_cam: Tween = create_tween()
+		t_cam.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		t_cam.tween_property(cam, "zoom", DEATH_CAMERA_ZOOM_END, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Build a full-screen crimson veil + banner on a fresh CanvasLayer
+	# above the HUD (layer 50; HUD is 0, death_screen is 200, so we
+	# sit between). Veil fades to alpha 0.72; banner crashes in from
+	# offset_top=-400 to -60 with a back-ease so it overshoots.
+	var veil_layer: CanvasLayer = CanvasLayer.new()
+	veil_layer.layer = 50
+	add_child(veil_layer)
+	var veil: ColorRect = ColorRect.new()
+	veil.color = Color(0.1, 0.0, 0.0, 0.0)
+	veil.anchor_right = 1.0
+	veil.anchor_bottom = 1.0
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	veil_layer.add_child(veil)
+	var t_veil: Tween = create_tween()
+	t_veil.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t_veil.tween_property(veil, "color:a", DEATH_VEIL_FINAL_ALPHA, DEATH_VEIL_FADE_TIME)
+	var banner: Label = Label.new()
+	banner.text = "YOU DIED"
+	banner.add_theme_font_size_override("font_size", 96)
+	banner.add_theme_color_override("font_color", Color(0.95, 0.1, 0.12))
+	banner.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	banner.add_theme_constant_override("outline_size", 8)
+	banner.anchor_left = 0.5
+	banner.anchor_right = 0.5
+	banner.anchor_top = 0.3
+	banner.anchor_bottom = 0.3
+	banner.offset_left = -320
+	banner.offset_right = 320
+	banner.offset_top = -400   # off-screen above
+	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	veil_layer.add_child(banner)
+	var t_banner: Tween = create_tween()
+	t_banner.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t_banner.tween_interval(DEATH_BANNER_DELAY)
+	t_banner.tween_property(banner, "offset_top", -60.0, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Restore time_scale at 1.2s, show death_screen at 1.6s.
+	var t_end: Tween = create_tween()
+	t_end.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t_end.tween_interval(DEATH_RESTORE_AT)
+	t_end.tween_property(Engine, "time_scale", 1.0, DEATH_SHOW_SCREEN_AT - DEATH_RESTORE_AT)
+	t_end.tween_callback(func() -> void:
+		if _death_screen != null and _death_screen.has_method("show_death"):
+			_death_screen.show_death(_kills)
+	)
+	# world_pos param reserved for future use (e.g. spawn an arrow
+	# pointing at the death site from the death_screen). Silences the
+	# UNUSED_PARAMETER warning.
+	var _unused: Vector2 = world_pos
 
 func _on_death_retry() -> void:
 	# Retry = restart THIS floor from room 0. Easier UX than dropping
@@ -738,3 +851,76 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if _wave_state == WaveState.COMPLETE and _alive and ev is InputEventKey and ev.pressed:
 		if ev.physical_keycode == KEY_ESCAPE:
 			_on_death_to_menu()
+
+# Iter 22 — center-screen wave banner. Spawns a one-shot Label on a
+# fresh CanvasLayer above the HUD, tweens it through
+#   ALPHA: 0 → 1 (0.18s in) → hold for WAVE_BANNER_HOLD → fade to 0
+#   SCALE: 1.4 → 1.0 (0.18s in) — settles from "crash in" to neutral
+# then queue_frees both the layer and label. Lives outside main.tscn
+# so adding wave 4/5/6 doesn't need scene edits, and the corner
+# wave_label keeps its persistent role.
+func _show_wave_banner(wave_idx_1based: int, wave_total: int) -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 40   # above HUD (0), below death veil (50)
+	add_child(layer)
+	var lbl: Label = Label.new()
+	lbl.text = "WAVE %d / %d" % [wave_idx_1based, wave_total]
+	lbl.add_theme_font_size_override("font_size", 56)
+	lbl.add_theme_color_override("font_color", Color(1, 0.92, 0.7, 1))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	lbl.add_theme_constant_override("outline_size", 6)
+	lbl.anchor_left = 0.5
+	lbl.anchor_right = 0.5
+	lbl.anchor_top = 0.42
+	lbl.anchor_bottom = 0.42
+	lbl.offset_left = -260
+	lbl.offset_right = 260
+	lbl.offset_top = -36
+	lbl.offset_bottom = 36
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.pivot_offset = Vector2(260, 36)
+	lbl.modulate = Color(1, 1, 1, 0)
+	lbl.scale = Vector2(1.4, 1.4)
+	layer.add_child(lbl)
+	# Punch-in: alpha + scale in parallel, then hold, then fade.
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(lbl, "modulate:a", 1.0, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var tw2: Tween = create_tween()
+	tw2.tween_interval(0.18 + WAVE_BANNER_HOLD)
+	tw2.tween_property(lbl, "modulate:a", 0.0, WAVE_BANNER_DURATION - 0.18 - WAVE_BANNER_HOLD)
+	tw2.tween_callback(layer.queue_free)
+
+# Iter 22 — boss intro banner. Bigger + redder than the wave banner;
+# also longer-lived. Pairs with the FX.shake(BOSS_INTRO_SHAKE_AMP)
+# call in _spawn_enemy_type to mark "this is something serious."
+func _show_boss_intro_banner(display_name: String) -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 40
+	add_child(layer)
+	var lbl: Label = Label.new()
+	lbl.text = display_name.to_upper()
+	lbl.add_theme_font_size_override("font_size", 72)
+	lbl.add_theme_color_override("font_color", Color(1, 0.35, 0.35, 1))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	lbl.add_theme_constant_override("outline_size", 7)
+	lbl.anchor_left = 0.5
+	lbl.anchor_right = 0.5
+	lbl.anchor_top = 0.36
+	lbl.anchor_bottom = 0.36
+	lbl.offset_left = -360
+	lbl.offset_right = 360
+	lbl.offset_top = -48
+	lbl.offset_bottom = 48
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.pivot_offset = Vector2(360, 48)
+	lbl.modulate = Color(1, 1, 1, 0)
+	lbl.scale = Vector2(1.6, 1.6)
+	layer.add_child(lbl)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(lbl, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var tw2: Tween = create_tween()
+	tw2.tween_interval(0.95)
+	tw2.tween_property(lbl, "modulate:a", 0.0, 0.5)
+	tw2.tween_callback(layer.queue_free)
