@@ -1,0 +1,40 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3slasharc0001"]
+
+[ext_resource type="Script" path="res://scripts/slash_arc.gd" id="1_script"]
+
+; Width curve — tapered at both ends so the arc reads as a sword stroke
+; (thinnest near the hilt and tip, fattest in the middle of the swing).
+; Drives Line2D.width_curve below.
+[sub_resource type="Curve" id="slash_width_curve"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.15), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.15), 0.0, 0.0, 0, 0]
+point_count = 3
+
+; Light gradient — pure white core fades through warm cream to gold edge.
+; Used as Line2D.gradient so each point along the arc is shaded.
+[sub_resource type="Gradient" id="slash_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 0.98, 0.92, 1, 1, 0.93, 0.7, 1, 0.96, 0.78, 0.4, 1)
+
+; Root authored along +X — slash_arc.gd rotates the Node2D to face the
+; aim direction. The Line2D's points trace a 90° arc centered on +X,
+; radius 40px. The hero's swing-side is biased to the right of the aim
+; vector; the upward bend reads as a roundhouse slash.
+[node name="SlashArc" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="Line2D" type="Line2D" parent="."]
+; Seven points span 90° (-45° → +45° around +X) at radius 40px. Computed:
+;   angles (rad): -0.7854, -0.5236, -0.2618, 0, 0.2618, 0.5236, 0.7854
+;   point = Vector2(cos(a), sin(a)) * 40
+; Result hand-rounded for readability.
+points = PackedVector2Array(28.28, -28.28, 34.64, -20, 38.64, -10.36, 40, 0, 38.64, 10.36, 34.64, 20, 28.28, 28.28)
+width = 8.0
+width_curve = SubResource("slash_width_curve")
+default_color = Color(1, 0.98, 0.92, 1)
+gradient = SubResource("slash_grad")
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
