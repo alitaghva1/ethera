@@ -18,6 +18,10 @@ extends Resource
 
 # ── Identity ──────────────────────────────────────────────────────────
 @export var display_name: String = "Enemy"
+# Iter 17 — boss flag. True = main.gd shows the floating HP bar UI and
+# binds it to this enemy's hp. Only one boss should be alive at a time;
+# main.gd's _boss_ref tracks the most recent boss spawn.
+@export var is_boss: bool = false
 # Behavior tag — enemy.gd dispatches its tick by string match. Keeping
 # this stringly-typed (not an enum) means new .tres files don't need a
 # script-side enum addition; just type the new tag and add a branch in

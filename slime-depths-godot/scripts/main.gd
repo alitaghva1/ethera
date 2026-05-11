@@ -44,6 +44,10 @@ const ENEMY_TYPES := {
 	"priest":            preload("res://scenes/enemies/priest.tres"),
 	"dreadmage":         preload("res://scenes/enemies/dreadmage.tres"),
 	"bonecap":           preload("res://scenes/enemies/bonecap.tres"),
+	# Iter 17 — boss type. Spawned alone in room 3's final wave; the
+	# is_boss flag drives the HP-bar UI and the boss tracking in
+	# _process. Wave-clear detection treats it like any other enemy.
+	"iron_revenant":     preload("res://scenes/enemies/iron_revenant.tres"),
 }
 
 const HIT_STOP_SCALE    := 0.05
@@ -83,6 +87,9 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 @onready var kills_label: Label = $UI/KillsLabel
 @onready var wave_label: Label = $UI/WaveLabel
 @onready var room_label: Label = $UI/RoomLabel
+@onready var boss_bar: VBoxContainer = $UI/BossBar
+@onready var boss_name: Label = $UI/BossBar/Name
+@onready var boss_hp_bar: ProgressBar = $UI/BossBar/Bar
 
 # Active room config — driven by Floor autoload. Cached at _ready so
 # late edits to RunState.current_room_config mid-run don't cause stutter.
@@ -107,6 +114,11 @@ var _pending_spawns := 0
 # Set true the first time a pedestal grants in this room; reset on
 # scene reload. Drives the door/run-complete branch.
 var _room_pickup_resolved := false
+# Iter 17 — boss tracking. Set on spawn when an enemy_type with
+# is_boss=true is instantiated. _process polls this each frame to
+# refresh the HP bar. Cleared (instance invalid) when the boss
+# dies, hiding the bar.
+var _boss_ref: Enemy = null
 
 func _ready() -> void:
 	# Resolve the active room config — fall back to room_01 for
@@ -167,6 +179,14 @@ func _process(_delta: float) -> void:
 		_hit_stop_timer -= 1.0 / 60.0
 		if _hit_stop_timer <= 0.0:
 			Engine.time_scale = 1.0
+	# Iter 17 — boss HP bar refresh + hide on death. Polling avoids
+	# adding an hp_changed signal to every enemy just to drive one UI.
+	if _boss_ref != null:
+		if is_instance_valid(_boss_ref) and _boss_ref.hp > 0:
+			boss_hp_bar.value = float(_boss_ref.hp)
+		else:
+			boss_bar.visible = false
+			_boss_ref = null
 	if _wave_state == WaveState.ACTIVE:
 		# Filter out "breakables" (chests) — they join the "enemies"
 		# group so the hero's sword swing iteration finds them, but
@@ -261,6 +281,16 @@ func _spawn_enemy_type(type_id: String) -> void:
 	enemy.global_position = _spawn_points[randi() % _spawn_points.size()]
 	enemy.died_at.connect(_on_enemy_died)
 	add_child(enemy)
+	# Iter 17 — boss spawn hook. The type's is_boss flag drives the HP
+	# bar UI. We bind via reference + _process polling rather than
+	# adding an hp_changed signal to every enemy (the bar only needs
+	# updates for one enemy in the whole scene).
+	if type_res != null and type_res.is_boss:
+		_boss_ref = enemy
+		boss_name.text = type_res.display_name.to_upper()
+		boss_hp_bar.max_value = float(type_res.max_hp)
+		boss_hp_bar.value = float(type_res.max_hp)
+		boss_bar.visible = true
 
 # Iter 16 — Hades-style 3-pedestal choice (or fewer if the registry
 # is running low). Pedestals spawn in a row centered on the room and

@@ -35,49 +35,113 @@ var persisted_hp: int = -1
 #   max_hp_bonus            (int)    added to Hero.MAX_HP at spawn
 #   damage_taken_reduction  (int)    flat subtract from incoming damage
 #   sword_cooldown_mul      (float)  multiplier delta on ATTACK_COOLDOWN
+#   blast_cooldown_mul      (float)  multiplier delta on BLAST_COOLDOWN  (iter 17)
 #   dodge_cooldown_mul      (float)  multiplier delta on DODGE_COOLDOWN
 #   move_speed_mul          (float)  multiplier delta on SPEED
+#   attack_range_mul        (float)  multiplier delta on ATTACK_RANGE  (iter 17)
 # Float-typed mods are folded via modifier_total_f (see below).
+#
+# Tier (iter 17): "common" / "rare" / "legendary". Drives the pedestal
+# offer-roll weighting (commoners are likely in room 1, rares in room
+# 2, legendaries gate to room 3) and future per-tier visual treatment.
+#
+# Triggered effects (iter 17) — relics whose effect can't be expressed
+# as a flat modifier. The mods dict is empty; hero.gd checks
+# GameState.has_relic(<id>) at the relevant beat. Listed for inventory
+# clarity:
+#   second_wind         revive once at 1 HP on the killing blow
+#   bloodstone          heal +1 HP every 3 enemy kills
+#   arcane_resonance    every 4th blast deals 2× damage
 const RELIC_REGISTRY := {
 	"iron_fang": {
 		"name": "IRON FANG",
 		"description": "Your sword hits harder. +1 sword damage.",
+		"tier": "common",
 		"mods": { "sword_damage_bonus": 1 },
 	},
 	"arcane_pulse": {
 		"name": "ARCANE PULSE",
 		"description": "Each blast strikes twice as hard. +1 blast damage.",
+		"tier": "common",
 		"mods": { "blast_damage_bonus": 1 },
 	},
 	"stoneheart": {
 		"name": "STONEHEART",
 		"description": "Bear another wound. +1 max HP.",
+		"tier": "common",
+		"mods": { "max_hp_bonus": 1 },
+	},
+	"iron_skin": {
+		"name": "IRON SKIN",
+		"description": "Take 1 less damage per hit.",
+		"tier": "common",
+		"mods": { "damage_taken_reduction": 1 },
+	},
+	"iron_will": {
+		"name": "IRON WILL",
+		"description": "Endure. +1 max HP, -1 incoming damage on the first hit each room.",
+		"tier": "common",
 		"mods": { "max_hp_bonus": 1 },
 	},
 	"swift_strike": {
 		"name": "SWIFT STRIKE",
 		"description": "Sword cooldown -20%.",
+		"tier": "rare",
 		"mods": { "sword_cooldown_mul": -0.2 },
 	},
 	"dodge_master": {
 		"name": "DODGE MASTER",
 		"description": "Dodge cooldown -30%.",
+		"tier": "rare",
 		"mods": { "dodge_cooldown_mul": -0.3 },
-	},
-	"iron_skin": {
-		"name": "IRON SKIN",
-		"description": "Take 1 less damage per hit.",
-		"mods": { "damage_taken_reduction": 1 },
 	},
 	"nimble": {
 		"name": "NIMBLE",
 		"description": "Move speed +30%.",
+		"tier": "rare",
 		"mods": { "move_speed_mul": 0.3 },
+	},
+	"swift_focus": {
+		"name": "SWIFT FOCUS",
+		"description": "Blast cooldown -30%. Cast faster.",
+		"tier": "rare",
+		"mods": { "blast_cooldown_mul": -0.3 },
+	},
+	"long_reach": {
+		"name": "LONG REACH",
+		"description": "Sword swings reach +25% farther.",
+		"tier": "rare",
+		"mods": { "attack_range_mul": 0.25 },
 	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",
+		"tier": "legendary",
 		"mods": { "max_hp_bonus": 2 },
+	},
+	"boots_of_haste": {
+		"name": "BOOTS OF HASTE",
+		"description": "Move speed +60%. The dungeon blurs by.",
+		"tier": "legendary",
+		"mods": { "move_speed_mul": 0.6 },
+	},
+	"second_wind": {
+		"name": "SECOND WIND",
+		"description": "Once per run, a killing blow leaves you at 1 HP instead.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero.take_damage
+	},
+	"bloodstone": {
+		"name": "BLOODSTONE",
+		"description": "Every 3rd enemy slain heals 1 HP.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero._on_enemy_died_for_relics
+	},
+	"arcane_resonance": {
+		"name": "ARCANE RESONANCE",
+		"description": "Every 4th blast strikes for double.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero._start_blast
 	},
 }
 

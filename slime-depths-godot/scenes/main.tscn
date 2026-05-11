@@ -134,3 +134,35 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
 theme_override_constants/outline_size = 3
 text = ""
 horizontal_alignment = 1
+
+; Iter 17 — boss HP bar. Hidden by default; main.gd makes it visible
+; when an EnemyType with is_boss=true spawns and binds the bar value
+; to the live enemy's hp each frame. Container is a VBoxContainer
+; centered horizontally just below the RoomLabel so it doesn't fight
+; with the corner HUD.
+[node name="BossBar" type="VBoxContainer" parent="UI"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -200.0
+offset_top = 50.0
+offset_right = 200.0
+offset_bottom = 100.0
+grow_horizontal = 2
+
+[node name="Name" type="Label" parent="UI/BossBar"]
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.55, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "BOSS"
+horizontal_alignment = 1
+
+[node name="Bar" type="ProgressBar" parent="UI/BossBar"]
+custom_minimum_size = Vector2(0, 14)
+show_percentage = false
+max_value = 100.0
+value = 100.0

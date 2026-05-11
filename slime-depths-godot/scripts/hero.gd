@@ -145,6 +145,14 @@ var _dash_strike_dir := Vector2.RIGHT
 var _hurt_time := 0.0
 var _is_dying := false
 
+# Iter 17 — relic trigger state.
+# _kill_counter  total enemies slain this run; bloodstone heals every 3rd
+# _blast_counter total blasts cast this run; arcane_resonance crits every 4th
+# _second_wind_used true once second_wind has revived; one-shot per run
+var _kill_counter: int = 0
+var _blast_counter: int = 0
+var _second_wind_used: bool = false
+
 # Iter 11 — feel state.
 var _camera: Camera2D = null
 var _camera_offset := Vector2.ZERO
@@ -174,6 +182,10 @@ func _ready() -> void:
 	if GameState.persisted_hp > 0:
 		hp = min(GameState.persisted_hp, MAX_HP + hp_bonus)
 	tree_exiting.connect(_save_persistent_state)
+	# Iter 17 — bloodstone relic listens for enemy deaths. Subscribed
+	# unconditionally; the handler checks ownership before healing, so
+	# we don't have to wire/unwire when the player claims it mid-run.
+	Events.enemy_died.connect(_on_enemy_died_for_relics)
 	# Play the default idle south so frame 0 of the right sheet shows
 	# immediately — without this the AnimatedSprite2D has no current
 	# animation and renders blank for a tick.
@@ -389,12 +401,15 @@ func _start_attack() -> void:
 	sprite.frame = 0
 	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# Iter 17 — long_reach relic widens the swing arc. Modifier is a
+	# fractional multiplier on top of the base; +0.25 → 25% farther.
+	var range_actual: float = ATTACK_RANGE * (1.0 + GameState.modifier_total_f("attack_range_mul", 0.0))
 	var hit_count: int = 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
 		var to_enemy: Vector2 = enemy.global_position - global_position
-		if to_enemy.length() > ATTACK_RANGE:
+		if to_enemy.length() > range_actual:
 			continue
 		if abs(to_enemy.angle_to(_attack_aim)) > ATTACK_ARC:
 			continue
@@ -421,7 +436,8 @@ func _start_blast() -> void:
 	if aim_world.length() < 1.0:
 		aim_world = _dir_to_vector(_facing_dir)
 	var aim := aim_world.normalized()
-	_blast_cd = BLAST_COOLDOWN
+	# Iter 17 — swift_focus reduces blast cooldown.
+	_blast_cd = BLAST_COOLDOWN * (1.0 + GameState.modifier_total_f("blast_cooldown_mul", 0.0))
 	_facing_dir = _vector_to_dir_idx(aim)
 	# Reuse the attack animation as a cast gesture for now.
 	sprite.frame = 0
@@ -431,7 +447,18 @@ func _start_blast() -> void:
 	var p: Projectile = PROJECTILE_SCENE.instantiate()
 	p.global_position = global_position + Vector2(0, -22) + aim * 18.0
 	p.velocity = aim * Projectile.SPEED
-	p.damage = 1 + GameState.modifier_total("blast_damage_bonus", 0)
+	var dmg: int = 1 + GameState.modifier_total("blast_damage_bonus", 0)
+	# Iter 17 — arcane_resonance: every 4th blast deals double damage.
+	# Counter is post-incremented so the 4th cast (counter == 4 after
+	# increment) is the lucky one. Resets implicitly on run start since
+	# the hero is re-instantiated for each new scene load.
+	_blast_counter += 1
+	if GameState.has_relic("arcane_resonance") and _blast_counter % 4 == 0:
+		dmg *= 2
+		# Visual cue — tint the projectile cyan-white so the player
+		# learns "the bright one hits harder."
+		p.orb_tint = Color(0.7, 1.0, 1.0, 1.0)
+	p.damage = dmg
 	get_parent().add_child(p)
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.
@@ -458,7 +485,25 @@ func take_damage(amount: int) -> void:
 	if actual <= 0:
 		return
 	hp -= actual
-	_iframes = HIT_IFRAMES
+	# Iter 17 — second_wind: the killing blow leaves you at 1 HP instead
+	# of dying, once per run. Triggers ONLY when HP would otherwise hit
+	# 0 or lower, so a partial hit can't burn the proc. _second_wind_used
+	# resets at scene reload (fresh hero instance per run).
+	if hp <= 0 and GameState.has_relic("second_wind") and not _second_wind_used:
+		_second_wind_used = true
+		hp = 1
+		# Brief invuln so the trigger doesn't immediately die to the
+		# next tick of contact damage from the same enemy.
+		_iframes = HIT_IFRAMES * 2.0
+		# Floating amber number marks the save so the player learns
+		# the relic worked rather than wondering why they survived.
+		var n: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -64),
+			"SECOND WIND",
+			Color(1, 0.8, 0.45),
+		)
+		get_parent().add_child(n)
+	_iframes = max(_iframes, HIT_IFRAMES)
 	hp_changed.emit(hp)
 	hit_received.emit()
 	Events.hero_damaged.emit(global_position)
@@ -473,6 +518,34 @@ func take_damage(amount: int) -> void:
 		# Hurt is a visual-only flash, doesn't block input.
 		_hurt_time = HURT_TIME
 		sprite.frame = 0
+
+# Iter 17 — bloodstone relic trigger. Every enemy_died bumps the kill
+# counter; every 3rd kill heals +1. Subscribed in _ready regardless of
+# ownership (cheaper than re-wiring on relic claim); the has_relic
+# check gates the heal. The counter is per-hero-instance (resets on
+# scene reload = new run).
+func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
+	_kill_counter += 1
+	if not GameState.has_relic("bloodstone"):
+		return
+	if _kill_counter % 3 != 0:
+		return
+	# Skip if already capped — no point spawning a +1 floater that lies.
+	var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hp >= cap or _is_dying:
+		return
+	heal(1)
+	# Crimson floater — matches the relic's blood theme, distinguishes
+	# from the green +1 room-clear heal so the player learns the source.
+	var n: DamageNumber = DamageNumber.spawn(
+		global_position + Vector2(0, -56),
+		"+1",
+		Color(1.0, 0.35, 0.4),
+	)
+	get_parent().add_child(n)
+	# Position param is unused here but kept on the signal signature for
+	# future "heal at the kill point" variants like vampiric_aura.
+	var _unused := world_pos
 
 func _update_shield(delta: float) -> void:
 	var holding := Input.is_action_pressed("shield")
