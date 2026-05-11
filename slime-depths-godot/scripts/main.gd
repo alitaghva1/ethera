@@ -12,21 +12,35 @@
 #     (wave structure replaces both).
 extends Node2D
 
-const SLIME_SCENE: PackedScene    = preload("res://scenes/slime.tscn")
-const SKELETON_SCENE: PackedScene = preload("res://scenes/skeleton.tscn")
 const DAMAGE_NUMBER_SCENE         = preload("res://scenes/damage_number.tscn")
 const PEDESTAL_SCENE: PackedScene = preload("res://scenes/pedestal.tscn")
+
+# Enemy type → scene lookup. Adding a new enemy type = drop a scene
+# into res://scenes/ and add ONE entry here. The wave compositions
+# below reference enemies by these keys.
+const ENEMY_SCENES := {
+	"slime":        preload("res://scenes/slime.tscn"),
+	"skel":         preload("res://scenes/skeleton.tscn"),
+	"crypt_spider": preload("res://scenes/crypt_spider.tscn"),
+	"wizard":       preload("res://scenes/wizard.tscn"),
+}
 
 const TILE        := 32
 const MAP_WIDTH   := 1280
 const MAP_HEIGHT  := 768
 
 # Wave compositions — list of (type_id, count) pairs per wave.
-# Escalating: trash → mixed → bone-heavy with skel-windup pressure.
+# Iter 4 design:
+#   W1 light skirmish (3 slimes + 1 spider) → easy ramp-in
+#   W2 mixed melee (2 slimes + 2 skels + 2 spiders) → dodging windups
+#       and chasing spiders simultaneously
+#   W3 ranged-pressure climax (1 skel + 2 spiders + 1 wizard) → the
+#       wizard kites and casts; player must close OR pillar-dodge while
+#       fighting the melee front
 const WAVES := [
-	[["slime", 4]],
-	[["slime", 3], ["skel", 2]],
-	[["slime", 2], ["skel", 3]],
+	[["slime", 3], ["crypt_spider", 1]],
+	[["slime", 2], ["skel", 2], ["crypt_spider", 2]],
+	[["skel", 1], ["crypt_spider", 2], ["wizard", 1]],
 ]
 
 const SPAWN_POINTS: Array[Vector2] = [
@@ -108,11 +122,12 @@ func _on_wave_cleared() -> void:
 		_spawn_pedestal()
 
 func _spawn_enemy_type(type_id: String) -> void:
-	var scene: PackedScene = SKELETON_SCENE if type_id == "skel" else SLIME_SCENE
-	var enemy: CharacterBody2D = scene.instantiate()
+	# Data-driven dispatch — no if/else chain. Falls back to slime on
+	# unknown types so a typo in WAVES doesn't crash mid-run.
+	var scene: PackedScene = ENEMY_SCENES.get(type_id, ENEMY_SCENES["slime"])
+	var enemy: Enemy = scene.instantiate()
 	enemy.global_position = SPAWN_POINTS[randi() % SPAWN_POINTS.size()]
-	if enemy.has_signal("died_at"):
-		enemy.died_at.connect(_on_enemy_died)
+	enemy.died_at.connect(_on_enemy_died)
 	add_child(enemy)
 
 func _spawn_pedestal() -> void:

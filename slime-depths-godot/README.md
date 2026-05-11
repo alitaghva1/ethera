@@ -33,7 +33,18 @@ instant.
 | ESC | Return to hamlet (on death or after room cleared) |
 | R | Retry the dungeon (after death) |
 
-## What works in this slice (Iter 1 + Iter 2 + Iter 3)
+## What works in this slice (Iter 1–4)
+
+**Iter 4 added** — Enemy base class refactor + 2 new enemy types.
+`scripts/enemy.gd` extracts the HP/take_hit/white-flash/death-machine
+plumbing that Slime + Skeleton previously duplicated; subclasses now
+just override `_enemy_tick(delta)`. Two new mob types build on it:
+**Crypt Spider** (small, fast, 1 HP — completes the F1 trash roster)
+and **Wizard** (ranged caster, kites the hero, fires a cyan arcane
+orb that does 1 damage on hit). Projectile scene now supports both
+hero blast AND enemy casts via a `target_group` @export. New wave
+mix puts a wizard in wave 3 — close the gap OR pillar-dodge while
+fighting the melee front.
 
 **Iter 3 added** — the run loop. The dungeon is now a 3-wave runner
 that drops a relic pedestal on clear; claiming a relic persists it

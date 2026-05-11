@@ -1,42 +1,28 @@
-# Slime enemy — chase the hero, body-bump for damage. Dies in one hit.
+# Slime — trash-mob enemy. Chases the hero, body-bumps for damage.
+# Dies in one hit. Mirrors slime-depths' `slime` def in src/enemies.js
+# but simplified (no acid spitter variant, no bomber explode).
 #
-# Behavior mirrors slime-depths' 'melee' enemy: pursue while alive, do
-# contact damage on touch with a per-enemy cooldown so a stack of slimes
-# doesn't insta-shred the player. Death plays the death anim then frees.
+# Refactored Iter 4 to extend Enemy (base class). The 30 lines of
+# HP / take_hit / death-machine / _hero / died_at / group / collision-
+# disable plumbing all live in enemy.gd now.
 class_name Slime
-extends CharacterBody2D
+extends Enemy
 
-const SPEED               := 95.0
-const RADIUS              := 22.0
-const HIT_COOLDOWN        := 0.6      # sec between contact damage ticks
-const DRAW_SIZE           := 58       # render size in design pixels
-const DEATH_ANIM_DURATION := 0.7
+const SPEED        := 95.0
+const RADIUS       := 22.0
+const HIT_COOLDOWN := 0.6        # sec between contact damage ticks
+const TOUCH_RANGE  := 36.0       # px of hero+slime radii overlap
 
-@onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
-
-var hp := 1
 var _hit_cd := 0.0
-var _dying := false
-var _death_timer := 0.0
-var _hero: Hero = null
 
-signal died_at(world_pos: Vector2)
+func _enemy_ready() -> void:
+	# Slime defaults. Setting max_hp is enough — Enemy._ready copies it
+	# to hp after _enemy_ready returns.
+	max_hp = 1
+	death_duration = 0.7
 
-func _ready() -> void:
-	add_to_group("enemies")
-	sprite.play("idle")
-	# Hero is in group "hero" — picked up from the level on spawn.
-	var heroes := get_tree().get_nodes_in_group("hero")
-	if heroes.size() > 0 and heroes[0] is Hero:
-		_hero = heroes[0]
-
-func _physics_process(delta: float) -> void:
+func _enemy_tick(delta: float) -> void:
 	_hit_cd = max(0.0, _hit_cd - delta)
-	if _dying:
-		_death_timer -= delta
-		if _death_timer <= 0.0:
-			queue_free()
-		return
 	if _hero == null or not is_instance_valid(_hero):
 		velocity = Vector2.ZERO
 		sprite.play("idle")
@@ -52,27 +38,10 @@ func _physics_process(delta: float) -> void:
 		sprite.play("idle")
 	move_and_slide()
 
-	# Contact damage — body-bump every HIT_COOLDOWN seconds while
-	# touching the hero (radius overlap).
-	if dist < RADIUS + 14.0 and _hit_cd <= 0.0:
+	# Contact damage tick — body-bump every HIT_COOLDOWN sec while
+	# touching. Distance check matches the radii-sum convention from
+	# slime-depths (hero radius ~14 + slime radius ~22 = 36).
+	if dist < TOUCH_RANGE and _hit_cd <= 0.0:
 		_hit_cd = HIT_COOLDOWN
 		if _hero.has_method("take_damage"):
 			_hero.take_damage(1)
-
-func take_hit(damage: int) -> void:
-	if _dying:
-		return
-	hp -= damage
-	# White flash on hit (same convention as slime-depths' fx.js).
-	var flash := create_tween()
-	flash.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.04)
-	flash.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
-	if hp <= 0:
-		_dying = true
-		_death_timer = DEATH_ANIM_DURATION
-		velocity = Vector2.ZERO
-		sprite.play("death")
-		# Stop colliding with hero so corpse doesn't keep dealing damage.
-		set_collision_layer_value(3, false)
-		set_collision_mask_value(2, false)
-		died_at.emit(global_position)

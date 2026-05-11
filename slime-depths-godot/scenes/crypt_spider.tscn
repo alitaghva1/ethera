@@ -1,0 +1,67 @@
+[gd_scene load_steps=20 format=3 uid="uid://b3spider12345"]
+
+[ext_resource type="Script" path="res://scripts/crypt_spider.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_death.png" id="5_death"]
+
+; Crypt spider — 64×64 cells. Idle 8, walk 8, attack 12 (we only slice 8
+; for the slice — the swing pose is in the first 8), death 17 (slice 8).
+
+[sub_resource type="AtlasTexture" id="i0"] atlas = ExtResource("2_idle") region = Rect2(0, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="i1"] atlas = ExtResource("2_idle") region = Rect2(64, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="i2"] atlas = ExtResource("2_idle") region = Rect2(128, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="i3"] atlas = ExtResource("2_idle") region = Rect2(192, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="i4"] atlas = ExtResource("2_idle") region = Rect2(256, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="i5"] atlas = ExtResource("2_idle") region = Rect2(320, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="i6"] atlas = ExtResource("2_idle") region = Rect2(384, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="i7"] atlas = ExtResource("2_idle") region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="w0"] atlas = ExtResource("3_walk") region = Rect2(0, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="w1"] atlas = ExtResource("3_walk") region = Rect2(64, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="w2"] atlas = ExtResource("3_walk") region = Rect2(128, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="w3"] atlas = ExtResource("3_walk") region = Rect2(192, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="w4"] atlas = ExtResource("3_walk") region = Rect2(256, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="w5"] atlas = ExtResource("3_walk") region = Rect2(320, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="w6"] atlas = ExtResource("3_walk") region = Rect2(384, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="w7"] atlas = ExtResource("3_walk") region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="d0"] atlas = ExtResource("5_death") region = Rect2(0, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="d1"] atlas = ExtResource("5_death") region = Rect2(64, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="d2"] atlas = ExtResource("5_death") region = Rect2(128, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="d3"] atlas = ExtResource("5_death") region = Rect2(192, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="d4"] atlas = ExtResource("5_death") region = Rect2(256, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="d5"] atlas = ExtResource("5_death") region = Rect2(320, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="d6"] atlas = ExtResource("5_death") region = Rect2(384, 0, 64, 64)
+[sub_resource type="AtlasTexture" id="d7"] atlas = ExtResource("5_death") region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="SpriteFrames" id="frames"]
+animations = [{
+"frames": [{"duration": 1.0, "texture": SubResource("i0")}, {"duration": 1.0, "texture": SubResource("i1")}, {"duration": 1.0, "texture": SubResource("i2")}, {"duration": 1.0, "texture": SubResource("i3")}, {"duration": 1.0, "texture": SubResource("i4")}, {"duration": 1.0, "texture": SubResource("i5")}, {"duration": 1.0, "texture": SubResource("i6")}, {"duration": 1.0, "texture": SubResource("i7")}],
+"loop": true, "name": &"idle", "speed": 10.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("w0")}, {"duration": 1.0, "texture": SubResource("w1")}, {"duration": 1.0, "texture": SubResource("w2")}, {"duration": 1.0, "texture": SubResource("w3")}, {"duration": 1.0, "texture": SubResource("w4")}, {"duration": 1.0, "texture": SubResource("w5")}, {"duration": 1.0, "texture": SubResource("w6")}, {"duration": 1.0, "texture": SubResource("w7")}],
+"loop": true, "name": &"walk", "speed": 14.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("d0")}, {"duration": 1.0, "texture": SubResource("d1")}, {"duration": 1.0, "texture": SubResource("d2")}, {"duration": 1.0, "texture": SubResource("d3")}, {"duration": 1.0, "texture": SubResource("d4")}, {"duration": 1.0, "texture": SubResource("d5")}, {"duration": 1.0, "texture": SubResource("d6")}, {"duration": 1.0, "texture": SubResource("d7")}],
+"loop": false, "name": &"death", "speed": 12.0
+}]
+
+[sub_resource type="CircleShape2D" id="spider_collision"]
+radius = 14.0
+
+[node name="CryptSpider" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("1_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -18)
+scale = Vector2(0.7, 0.7)
+sprite_frames = SubResource("frames")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("spider_collision")

@@ -66,6 +66,18 @@ async function copy(srcFile, dstFile) {
   await copy(`${SRC}/enemies/skel_attack.png`, `${DST}/enemies/skel_attack.png`);
   await copy(`${SRC}/enemies/skel_death.png`,  `${DST}/enemies/skel_death.png`);
 
+  console.log('--- Crypt Spider (64×64 compact, ERW crypt pack — fast trash mob) ---');
+  await copy(`${SRC}/enemies/crypt_spider_idle.png`,   `${DST}/enemies/crypt_spider_idle.png`);
+  await copy(`${SRC}/enemies/crypt_spider_walk.png`,   `${DST}/enemies/crypt_spider_walk.png`);
+  await copy(`${SRC}/enemies/crypt_spider_attack.png`, `${DST}/enemies/crypt_spider_attack.png`);
+  await copy(`${SRC}/enemies/crypt_spider_death.png`,  `${DST}/enemies/crypt_spider_death.png`);
+
+  console.log('--- Wizard (100×100, Tiny RPG pack — ranged caster) ---');
+  await copy(`${SRC}/enemies/wiz_idle.png`,   `${DST}/enemies/wiz_idle.png`);
+  await copy(`${SRC}/enemies/wiz_walk.png`,   `${DST}/enemies/wiz_walk.png`);
+  await copy(`${SRC}/enemies/wiz_attack.png`, `${DST}/enemies/wiz_attack.png`);
+  await copy(`${SRC}/enemies/wiz_death.png`,  `${DST}/enemies/wiz_death.png`);
+
   // 2026-05-08 — ancient_ruins.png deliberately NOT copied. The slice
   // uses the pre-pack procedural dungeon look instead; see
   // scripts/extract-godot-procedural-floor.js.
