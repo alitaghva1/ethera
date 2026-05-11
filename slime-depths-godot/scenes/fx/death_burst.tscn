@@ -1,0 +1,30 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3deathb00001"]
+
+[ext_resource type="Script" path="res://scripts/death_burst.gd" id="1_script"]
+
+; Death ember color ramp — orange-red core through deep crimson to
+; transparent black. Reads as charred ember falling, which fits the
+; mage-vs-undead tone.
+[sub_resource type="Gradient" id="death_grad"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(0.95, 0.45, 0.2, 1, 0.76, 0.29, 0.1, 1, 0.2, 0.05, 0.02, 0)
+
+[node name="DeathBurst" type="Node2D"]
+script = ExtResource("1_script")
+
+; Larger amount + gravity for the falling-ember beat. Higher speed
+; range so the burst has visual texture (some particles fast, some
+; slow). No damping — gravity does the deceleration work.
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 16
+lifetime = 0.6
+one_shot = true
+emitting = true
+explosiveness = 1.0
+spread = 180.0
+gravity = Vector2(0, 200)
+initial_velocity_min = 60.0
+initial_velocity_max = 160.0
+scale_amount_min = 2.0
+scale_amount_max = 3.0
+color_ramp = SubResource("death_grad")

@@ -1,0 +1,32 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3dodged00001"]
+
+[ext_resource type="Script" path="res://scripts/dodge_dust.gd" id="1_script"]
+
+; Dust color ramp — bone-gray fading to transparent. Cool-toned so it
+; doesn't compete with the warm sparks/embers for attention.
+[sub_resource type="Gradient" id="dust_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.78, 0.76, 0.72, 1, 0.54, 0.53, 0.5, 0.7, 0.4, 0.4, 0.4, 0)
+
+[node name="DodgeDust" type="Node2D"]
+script = ExtResource("1_script")
+
+; Narrow spread (80°) so the dust streaks behind the hero in a directed
+; fan rather than a full halo. The FX autoload sets the parent Node2D's
+; rotation at spawn so CPUParticles2D emits along the back-vector of
+; the dodge.
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 6
+lifetime = 0.5
+one_shot = true
+emitting = true
+explosiveness = 1.0
+spread = 80.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 30.0
+initial_velocity_max = 80.0
+damping_min = 4.0
+damping_max = 4.0
+scale_amount_min = 2.0
+scale_amount_max = 3.5
+color_ramp = SubResource("dust_grad")
