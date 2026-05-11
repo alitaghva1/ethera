@@ -50,6 +50,18 @@ const DASH_STRIKE_DURATION := 0.18
 const DASH_STRIKE_COOLDOWN := 1.2
 const DASH_STRIKE_RADIUS   := 50.0
 
+# Iter 11 — feel tuning. None of these change combat math; they're
+# all visual/audio coupling so the hero reads as a real character
+# instead of a sliding cursor.
+const CAMERA_LOOKAHEAD       := 90.0   # max px the camera leads in motion direction
+const CAMERA_LOOKAHEAD_LERP  := 3.5    # higher = snappier; lower = floatier
+const CAMERA_MOVE_THRESHOLD  := 15.0   # below this velocity we don't apply lookahead
+const SPRITE_BASE_Y          := -23.0  # baseline sprite.position.y from hero.tscn
+const IDLE_BOB_AMP           := 1.6    # px of vertical bob when standing still
+const IDLE_BOB_FREQ          := 1.7    # Hz of bob oscillation
+const IDLE_BOB_LERP          := 8.0    # how fast bob releases when motion starts
+const STEP_INTERVAL          := 28.0   # pixels of travel per footstep emit
+
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 var hp: int = MAX_HP
@@ -73,6 +85,22 @@ var _shield_break_cd := 0.0
 var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
 var _dash_strike_dir := Vector2.RIGHT
+
+# Iter 11 — feel state. Camera resolved lazily because the Camera2D is
+# added as Hero's child by the *scene* (hamlet.tscn / main.tscn add a
+# Camera2D node under the Hero instance), NOT by hero.tscn itself —
+# so $Camera2D would be null at _ready() time. We grab it on first
+# physics tick and cache it.
+#
+# _last_anim caches the currently-playing animation name. AnimatedSprite2D's
+# play() restarts the animation from frame 0 every call, so spamming
+# sprite.play("walk") every physics tick froze the walk cycle on frame 0.
+# Compare-and-set fixes that.
+var _camera: Camera2D = null
+var _camera_offset := Vector2.ZERO
+var _idle_time := 0.0
+var _step_accumulator := 0.0
+var _last_anim: StringName = &""
 
 signal hp_changed(new_hp: int)
 signal hero_died
@@ -177,14 +205,55 @@ func _physics_process(delta: float) -> void:
 		sprite.modulate.a = 0.45
 
 	# Animation state — dodge > attack > walk > idle.
+	# Cached via _play_anim so we don't restart the cycle from frame 0
+	# every tick (the prior `sprite.play(...)` every-frame call was the
+	# reason the walk loop felt frozen — it WAS frozen, on frame 0).
+	var is_moving := input.length() > 0.1
 	if _dodge_time > 0.0 or _dash_strike_time > 0.0:
-		sprite.play("walk")     # no dedicated dodge anim yet; walk reads as motion
+		_play_anim(&"walk")     # no dedicated dodge anim yet; walk reads as motion
 	elif _is_attacking:
-		sprite.play("attack")
-	elif input.length() > 0.1:
-		sprite.play("walk")
+		_play_anim(&"attack")
+	elif is_moving:
+		_play_anim(&"walk")
 	else:
-		sprite.play("idle")
+		_play_anim(&"idle")
+
+	# ── Camera lookahead ─────────────────────────────────────────────
+	# Bias the camera ~CAMERA_LOOKAHEAD px in the velocity direction
+	# so the player sees more of where they're going than where they
+	# came from. Below CAMERA_MOVE_THRESHOLD velocity we let it recenter
+	# (otherwise the camera would jitter while standing still).
+	if _camera == null:
+		_camera = get_node_or_null("Camera2D") as Camera2D
+	if _camera != null:
+		var target_offset := Vector2.ZERO
+		if velocity.length() > CAMERA_MOVE_THRESHOLD:
+			target_offset = velocity.normalized() * CAMERA_LOOKAHEAD
+		_camera_offset = _camera_offset.lerp(target_offset, CAMERA_LOOKAHEAD_LERP * delta)
+		_camera.offset = _camera_offset
+
+	# ── Idle bob + footsteps ─────────────────────────────────────────
+	# Bob: gentle sine wave on sprite Y when the player is standing
+	# still (not moving, not dodging, not dashing, not attacking). The
+	# sprite reads as breathing instead of a static decal. Eased back
+	# to SPRITE_BASE_Y when motion resumes so the bob doesn't snap.
+	#
+	# Footsteps: accumulate horizontal+vertical travel distance while
+	# walking; every STEP_INTERVAL pixels of travel emit hero_stepped
+	# so the audio bus plays a soft step tick. Decoupled from animation
+	# frame so it survives any speed-mod relic without re-syncing.
+	if is_moving and _dodge_time <= 0.0 and _dash_strike_time <= 0.0 and not _is_attacking:
+		_idle_time = 0.0
+		_step_accumulator += velocity.length() * delta
+		if _step_accumulator >= STEP_INTERVAL:
+			_step_accumulator = 0.0
+			Events.hero_stepped.emit(global_position)
+		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y, IDLE_BOB_LERP * delta)
+	else:
+		_idle_time += delta
+		_step_accumulator = 0.0
+		var bob := sin(_idle_time * TAU * IDLE_BOB_FREQ) * IDLE_BOB_AMP
+		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + bob, IDLE_BOB_LERP * delta)
 
 	# Input precedence: dodge > shield (handled in _update_shield) >
 	# dash_strike > blast > attack. Dodge always wins so the player
@@ -334,3 +403,17 @@ func _resolve_dash_strike_hit() -> void:
 			continue
 		if enemy.has_method("take_hit"):
 			enemy.take_hit(damage)
+
+# Compare-and-set animation play. AnimatedSprite2D.play() restarts the
+# animation from frame 0 every call, so calling it from a per-tick
+# state machine froze the cycle on frame 0. This helper only forwards
+# the call when the requested anim actually differs from what's playing.
+# Attack is special-cased — we DO want attack to restart from frame 0
+# each swing, but _start_attack/_start_blast already call sprite.play
+# directly for that. By the time we reach the state machine those will
+# have set _last_anim, so this check passes through cleanly.
+func _play_anim(name: StringName) -> void:
+	if _last_anim == name and sprite.is_playing():
+		return
+	_last_anim = name
+	sprite.play(name)

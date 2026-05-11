@@ -15,6 +15,7 @@ signal hero_damaged(world_pos: Vector2)                  # hero takes a hit
 signal hero_dodged(world_pos: Vector2)                   # hero dodge-rolled
 signal hero_attacked(world_pos: Vector2, aim: Vector2)   # sword swing started
 signal hero_blasted(world_pos: Vector2, aim: Vector2)    # blast spell cast
+signal hero_stepped(world_pos: Vector2)                  # hero footstep tick (every ~26px walked)
 signal enemy_hit(world_pos: Vector2)                     # any enemy took damage
 signal enemy_died(world_pos: Vector2)                    # any enemy died
 signal pickup_claimed(world_pos: Vector2, name: String)  # relic / pedestal claimed

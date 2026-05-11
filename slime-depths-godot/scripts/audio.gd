@@ -44,6 +44,10 @@ const SOUND_CONFIGS := {
 	"enemy_died":    { "freq_start": 320.0, "freq_end":  95.0, "duration": 0.28, "wave": "sin",    "gain": 0.50, "decay_pow": 1.6 },
 	# Pickups / UI
 	"pickup_claimed":{ "freq_start": 600.0, "freq_end":1280.0, "duration": 0.22, "wave": "sin",    "gain": 0.50, "decay_pow": 1.4 },
+	# Footstep — short low-energy noise puff every STEP_INTERVAL px of
+	# travel (hero.gd emits Events.hero_stepped). Kept quiet (-12 dB at
+	# play site) because it fires multiple times per second during walk.
+	"hero_stepped":  { "freq_start": 180.0, "freq_end":  90.0, "duration": 0.045,"wave": "noise",  "gain": 0.18, "decay_pow": 2.4 },
 }
 
 # Number of AudioStreamPlayer2D nodes to pre-create per bus. Six is
@@ -71,6 +75,7 @@ func _ready() -> void:
 	Events.enemy_hit.connect(_on_enemy_hit)
 	Events.enemy_died.connect(_on_enemy_died)
 	Events.pickup_claimed.connect(_on_pickup_claimed)
+	Events.hero_stepped.connect(_on_hero_stepped)
 
 # ── Synthesis ──────────────────────────────────────────────────────────
 
@@ -185,6 +190,12 @@ func _on_enemy_died(world_pos: Vector2) -> void:
 
 func _on_pickup_claimed(world_pos: Vector2, _name: String) -> void:
 	_play("pickup_claimed", world_pos, 0.0)
+
+# Footstep tick — emitted from hero.gd every STEP_INTERVAL px of travel.
+# Quiet by design (-12 dB) since this fires several times per second
+# during a brisk walk and would otherwise dominate the mix.
+func _on_hero_stepped(world_pos: Vector2) -> void:
+	_play("hero_stepped", world_pos, -12.0)
 
 # ── Public volume API (for settings screen) ───────────────────────────
 
