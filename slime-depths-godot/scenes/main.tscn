@@ -1,0 +1,87 @@
+[gd_scene load_steps=6 format=3 uid="uid://b3main123456"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Texture2D" path="res://assets/rooms/ancient_ruins.png" id="2_room"]
+[ext_resource type="PackedScene" path="res://scenes/hero.tscn" id="3_hero"]
+
+; Four boundary walls — quick-and-dirty "you can't walk off the map".
+; Per-tile collision from the bake's collisionGrid is a follow-up;
+; for the slice the perimeter is enough to feel out engine fit.
+;
+; Map = 1280 × 768 world units (the baked composite size). Walls sit
+; just outside that rectangle, 40 units thick.
+[sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 848)
+[sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1360, 40)
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="Background" type="Sprite2D" parent="."]
+position = Vector2(640, 384)
+texture = ExtResource("2_room")
+
+[node name="Walls" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="WallLeft" type="CollisionShape2D" parent="Walls"]
+position = Vector2(-20, 576)
+shape = SubResource("wall_v")
+
+[node name="WallRight" type="CollisionShape2D" parent="Walls"]
+position = Vector2(1300, 576)
+shape = SubResource("wall_v")
+
+[node name="WallTop" type="CollisionShape2D" parent="Walls"]
+position = Vector2(640, -20)
+shape = SubResource("wall_h")
+
+[node name="WallBottom" type="CollisionShape2D" parent="Walls"]
+position = Vector2(640, 788)
+shape = SubResource("wall_h")
+
+[node name="Hero" parent="." instance=ExtResource("3_hero")]
+position = Vector2(128, 384)
+
+[node name="Camera2D" type="Camera2D" parent="Hero"]
+limit_left = 0
+limit_top = 0
+limit_right = 1280
+limit_bottom = 768
+limit_smoothed = true
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="HPLabel" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 10.0
+offset_right = 200.0
+offset_bottom = 40.0
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.96, 0.46, 0.46, 1)
+text = "♥ ♥ ♥"
+
+[node name="StatusLabel" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 50.0
+offset_right = 800.0
+offset_bottom = 75.0
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+text = "RUINS — kill the slimes (LMB to swing)"
+
+[node name="TitleLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_top = 10.0
+offset_right = -16.0
+offset_bottom = 40.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+text = "GODOT SLICE"
+horizontal_alignment = 2

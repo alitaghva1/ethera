@@ -1,0 +1,46 @@
+; Godot 4 project — Slime Depths vertical slice
+;
+; Engine configuration. Most settings are managed via the editor UI;
+; the file format is line-oriented INI. Godot rewrites this file on
+; first open + first save, normalizing any minor formatting quirks.
+
+config_version=5
+
+[application]
+
+config/name="Slime Depths (Godot slice)"
+config/description="Vertical-slice port — test engine fit before committing to a full port. Original game lives at ../slime-depths/."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+InputSetup="*res://scripts/input_setup.gd"
+
+[display]
+
+; 1280x720 design canvas, matches slime-depths. "viewport" stretch + "keep"
+; aspect = pixel-perfect scale + letterbox on non-16:9 windows.
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="hero"
+2d_physics/layer_3="enemies"
+2d_physics/layer_4="hero_attack"
+
+[rendering]
+
+; Pixel-art: nearest-neighbor sampling. 0 = nearest, 1 = linear.
+; Without this PixelLab sprites look blurry at scale.
+textures/canvas_textures/default_texture_filter=0
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.04, 0.03, 0.06, 1)

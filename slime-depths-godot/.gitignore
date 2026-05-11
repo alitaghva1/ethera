@@ -1,0 +1,12 @@
+# Godot 4 — generated on first open. Don't commit.
+.godot/
+.import/
+*.import
+
+# Build artefacts
+export.cfg
+export_presets.cfg
+
+# Editor / OS noise
+.DS_Store
+*.tmp
