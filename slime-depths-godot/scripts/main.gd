@@ -24,13 +24,26 @@ const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
 
-# Enemy type → scene lookup. Adding a new enemy type = drop a scene
-# into res://scenes/ and add ONE entry here.
-const ENEMY_SCENES := {
-	"slime":        preload("res://scenes/slime.tscn"),
-	"skel":         preload("res://scenes/skeleton.tscn"),
-	"crypt_spider": preload("res://scenes/crypt_spider.tscn"),
-	"wizard":       preload("res://scenes/wizard.tscn"),
+# Enemy roster — iter 14 data-driven shape. ONE shared enemy.tscn for
+# all types; the type-specific data (sheets, stats, behavior, AI
+# tunables) lives in EnemyType .tres files under scenes/enemies/.
+# Adding a new enemy = one new .tres + one entry in this dict. No
+# per-enemy scene, no per-enemy script, no manual AtlasTexture wrangling.
+const ENEMY_SCENE: PackedScene = preload("res://scenes/enemy.tscn")
+const ENEMY_TYPES := {
+	"slime":             preload("res://scenes/enemies/slime.tres"),
+	"crypt_spider":      preload("res://scenes/enemies/crypt_spider.tres"),
+	"orc":               preload("res://scenes/enemies/orc.tres"),
+	"ember":             preload("res://scenes/enemies/ember.tres"),
+	"werewolf":          preload("res://scenes/enemies/werewolf.tres"),
+	"skel":              preload("res://scenes/enemies/skel.tres"),
+	"lancer":            preload("res://scenes/enemies/lancer.tres"),
+	"armored_skeleton":  preload("res://scenes/enemies/armored_skeleton.tres"),
+	"wizard":            preload("res://scenes/enemies/wiz.tres"),
+	"archer":            preload("res://scenes/enemies/archer.tres"),
+	"priest":            preload("res://scenes/enemies/priest.tres"),
+	"dreadmage":         preload("res://scenes/enemies/dreadmage.tres"),
+	"bonecap":           preload("res://scenes/enemies/bonecap.tres"),
 }
 
 const HIT_STOP_SCALE    := 0.05
@@ -190,8 +203,13 @@ func _on_wave_cleared() -> void:
 func _spawn_enemy_type(type_id: String) -> void:
 	if _spawn_points.is_empty():
 		return
-	var scene: PackedScene = ENEMY_SCENES.get(type_id, ENEMY_SCENES["slime"])
-	var enemy: Enemy = scene.instantiate()
+	# Resolve EnemyType for this id; fall back to slime if missing
+	# (typo'd a wave entry, or a room references an enemy that hasn't
+	# landed yet). The resolved type is assigned to the spawned node
+	# BEFORE add_child so enemy.gd's _ready can see it.
+	var type_res: EnemyType = ENEMY_TYPES.get(type_id, ENEMY_TYPES["slime"])
+	var enemy: Enemy = ENEMY_SCENE.instantiate()
+	enemy.enemy_type = type_res
 	enemy.global_position = _spawn_points[randi() % _spawn_points.size()]
 	enemy.died_at.connect(_on_enemy_died)
 	add_child(enemy)

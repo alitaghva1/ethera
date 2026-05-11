@@ -1,0 +1,112 @@
+# EnemyType — Resource describing one kind of enemy. The generic
+# enemy.gd reads this at _ready to build its SpriteFrames, set its
+# stats, and pick which AI tick to run.
+#
+# Why a Resource (vs a script per enemy): adding a new enemy used to
+# be authoring a hand-rolled .tscn with ~30 AtlasTexture sub-resources
+# plus a per-enemy .gd extending Enemy. That's why the roster sat at 4.
+# With this resource shape, a new enemy is a single .tres asset — fill
+# in sheets, frame counts, and stats; pick a behavior tag; done.
+#
+# Sheet layout convention (matches the slime-depths PixelLab sheets):
+#   Each state's sheet is one ROW of cell_size × cell_size frames laid
+#   out horizontally. Frames are sampled at (frame_idx * cell_size, 0).
+#   These aren't 8-directional sheets like the hero; enemies use a
+#   single facing + sprite.flip_h for east/west.
+class_name EnemyType
+extends Resource
+
+# ── Identity ──────────────────────────────────────────────────────────
+@export var display_name: String = "Enemy"
+# Behavior tag — enemy.gd dispatches its tick by string match. Keeping
+# this stringly-typed (not an enum) means new .tres files don't need a
+# script-side enum addition; just type the new tag and add a branch in
+# enemy.gd if it's truly a new behavior.
+#   "chase_contact"      walk at hero, body-bump for damage
+#   "telegraphed_melee"  approach → windup-tint → swing in cone
+#   "shoot"              kite + cast projectile in range
+#   "stationary_shoot"   never move, fire when hero in range
+@export var behavior: String = "chase_contact"
+
+# ── Sprite sheets ─────────────────────────────────────────────────────
+# attack_sheet is optional — chase_contact enemies (slimes, spiders) may
+# not have a dedicated attack pose; they just keep playing walk while
+# touching. Code in enemy.gd guards null.
+@export_group("Sheets")
+@export var idle_sheet: Texture2D
+@export var walk_sheet: Texture2D
+@export var attack_sheet: Texture2D = null
+@export var death_sheet: Texture2D
+
+# ── Sprite layout ─────────────────────────────────────────────────────
+# cell_size: side length of one frame's bounding box in source-pixel
+#   space. The pack-of-PixelLab humanoids ship at 100; tiny-rpg skeleton
+#   ships at 128; crypt spider ships at 64.
+# sprite_scale: AnimatedSprite2D.scale on the X+Y axes. Tuned per type
+#   so different-cell-size sheets render at coherent screen sizes.
+# sprite_y_offset: AnimatedSprite2D.position.y. Negative = lifts sprite
+#   off the feet anchor (collision is a circle at origin). Most humanoids
+#   want ~-8 to -16 to align feet with the ground.
+@export_group("Layout")
+@export var cell_size: int = 100
+@export var sprite_scale: float = 0.6
+@export var sprite_y_offset: float = -10.0
+@export var collision_radius: float = 16.0
+
+# ── Frame counts ──────────────────────────────────────────────────────
+# Per-state frame counts. attack_frames can be 0 for chase_contact types
+# with no attack sheet.
+@export_group("Frame counts", "frames_")
+@export var frames_idle: int = 6
+@export var frames_walk: int = 8
+@export var frames_attack: int = 6
+@export var frames_death: int = 4
+
+# ── FPS ───────────────────────────────────────────────────────────────
+# AnimatedSprite2D playback speed per state. Set so each anim plays out
+# in roughly the gameplay duration of its phase (e.g. attack_fps matched
+# to melee_swing or cast_windup).
+@export_group("FPS", "fps_")
+@export var fps_idle: float = 6.0
+@export var fps_walk: float = 8.0
+@export var fps_attack: float = 12.0
+@export var fps_death: float = 8.0
+
+# ── Combat stats ──────────────────────────────────────────────────────
+@export_group("Stats")
+@export var max_hp: int = 1
+@export var move_speed: float = 90.0   # px/s. 0 = never moves (also see can_move()).
+@export var death_duration: float = 0.8
+
+# ── Behavior tunables ─────────────────────────────────────────────────
+# Each group is only used when behavior matches. They're all declared
+# here so a .tres can specify any of them inline without needing a
+# subclass-per-behavior split.
+@export_group("Contact (chase_contact)")
+@export var contact_damage: int = 1
+@export var contact_cooldown: float = 0.6
+@export var contact_range: float = 36.0   # touch distance
+
+@export_group("Melee (telegraphed_melee)")
+@export var melee_reach: float = 54.0
+@export var melee_windup: float = 0.55
+@export var melee_swing: float = 0.35
+@export var melee_cooldown: float = 0.90
+@export var melee_damage: int = 1
+@export var melee_cone: float = 1.25   # half-angle in radians, ~PI*0.4
+
+@export_group("Ranged (shoot / stationary_shoot)")
+@export var prefer_dist: float = 320.0
+@export var min_dist: float = 220.0
+@export var cast_range: float = 480.0
+@export var cast_windup: float = 0.70
+@export var cast_cooldown: float = 1.80
+@export var projectile_damage: int = 1
+# Cool blue by default = "enemy magic"; archers / priests override.
+@export var projectile_tint: Color = Color(0.4, 0.7, 1, 1)
+
+# Tells the AI whether to issue any movement commands. False = the enemy
+# is rooted in place even during chase/shoot phases (used by bonecap-
+# style turret enemies).
+func can_move() -> bool:
+	return move_speed > 0.0

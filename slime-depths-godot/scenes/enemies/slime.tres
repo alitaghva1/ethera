@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/slime_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/slime_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/slime_death.png" id="4_death"]
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Slime"
+behavior = "chase_contact"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+death_sheet = ExtResource("4_death")
+cell_size = 100
+sprite_scale = 0.55
+sprite_y_offset = -12.0
+collision_radius = 22.0
+frames_idle = 4
+frames_walk = 4
+frames_attack = 0
+frames_death = 4
+fps_idle = 6.0
+fps_walk = 8.0
+fps_attack = 12.0
+fps_death = 8.0
+max_hp = 1
+move_speed = 95.0
+death_duration = 0.7
+contact_damage = 1
+contact_cooldown = 0.6
+contact_range = 36.0

@@ -1,110 +1,348 @@
-# Enemy — base class for all dungeon mobs. Pulls the shared scaffolding
-# out of Slime / Skeleton / CryptSpider so adding a new enemy is just
-# "extends Enemy, override _enemy_tick" instead of recopying 30 lines
-# of HP/take_hit/death-state plumbing.
+# Enemy — iter 14 rewrite. ONE enemy script + ONE enemy scene for the
+# whole roster. Per-type data (sheets, frame counts, stats, behavior)
+# lives in EnemyType resource .tres files under scenes/enemies/.
 #
-# Common ground covered here:
-#   • HP tracking + take_hit() with white-flash tween
-#   • Dying state machine (locks input, plays death anim, queue_frees
-#     after _death_duration)
-#   • _hero reference auto-populated via group lookup in _ready
-#   • Adds self to "enemies" group (so the hero's swing + main.gd's
-#     wave-clear count + projectile detection all just work)
-#   • Emits died_at(world_pos) on death — main.gd hooks this for the
-#     +1 damage number + GameState kill registration
-#   • Disables collision layer on death so the corpse doesn't keep
-#     dealing body-bump damage
+# Why this rewrite: pre-iter-14 each enemy had its own .tscn (with ~30
+# hand-declared AtlasTexture sub-resources for its anims) plus its own
+# .gd subclass extending Enemy. Adding a 5th enemy was a multi-file
+# undertaking. With the new shape, "new enemy" = "new .tres file" —
+# everything else is shared.
 #
-# Subclasses override:
-#   • _enemy_tick(delta)        per-frame AI / motion logic
-#   • _on_death()    (optional) extra death effects (loot drops, etc.)
+# Lifecycle:
+#   1. main.gd instantiates scenes/enemy.tscn, sets enemy_type = the
+#      relevant .tres, then add_child's it.
+#   2. _ready() reads enemy_type, builds SpriteFrames from the sheets
+#      programmatically, sets stats, plays idle.
+#   3. _physics_process dispatches to one of four behavior ticks based
+#      on enemy_type.behavior.
+#   4. take_hit / knockback / death (inherited from this single script)
+#      work the same regardless of type.
 #
-# Subclasses MUST set in _ready() or via @export:
-#   • max_hp        starting + cap HP
-#   • death_anim    AnimatedSprite2D anim name (default "death")
+# Behaviors:
+#   chase_contact      walk straight at hero, body-bump on touch
+#   telegraphed_melee  approach → stop + windup tint → swing in cone
+#   shoot              kite to prefer_dist → cast projectile cycle
+#   stationary_shoot   never move; cast projectile when hero in range
+#
+# All four use the same death + knockback + take_hit machinery — the
+# behavior switch only affects per-tick AI.
 class_name Enemy
 extends CharacterBody2D
 
-@export var max_hp: int = 1
-@export var death_anim: StringName = &"death"
-@export var death_duration: float = 0.7
+const PROJECTILE_SCENE = preload("res://scenes/projectile.tscn")
+
+# Set by the spawner (main.gd) BEFORE add_child. If null at _ready time
+# we push_warning and the enemy degenerates to a passive lump — that's
+# noisy enough that misconfigured spawns are visible immediately.
+@export var enemy_type: EnemyType = null
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var collision: CollisionShape2D = $CollisionShape2D
 
+# ── Universal state ───────────────────────────────────────────────────
 var hp: int = 1
 var _dying := false
 var _death_timer := 0.0
 var _hero: Node2D = null
 
-# Iter 13 — knockback state. apply_knockback() arms a velocity vector
-# that overrides the subclass tick for a short window. Decays linearly
-# back to zero so the enemy comes to rest, then control returns to AI.
-# Why we override _enemy_tick (rather than blending velocity): subclasses
-# all call move_and_slide() with their own velocity, and a melee impact
-# should fully halt their AI for the knockback window — they shouldn't
-# be trying to seek the player while sliding away from a hit.
+# Iter 13 knockback — linear-decay velocity push that suspends AI for
+# its window. apply_knockback() arms; _physics_process consumes.
 var _knockback_time := 0.0
 var _knockback_total := 0.0
 var _knockback_velocity := Vector2.ZERO
+
+# ── Per-behavior state ────────────────────────────────────────────────
+# chase_contact
+var _contact_cd := 0.0
+# telegraphed_melee state machine
+enum MeleeState { IDLE, WINDUP, SWING, COOLDOWN }
+var _melee_state: MeleeState = MeleeState.IDLE
+var _melee_timer := 0.0
+var _melee_aim := Vector2.RIGHT
+# shoot / stationary_shoot state machine
+enum CastState { IDLE, WINDUP, COOLDOWN }
+var _cast_state: CastState = CastState.IDLE
+var _cast_timer := 0.0
+var _cast_aim := Vector2.RIGHT
 
 signal died_at(world_pos: Vector2)
 
 func _ready() -> void:
 	add_to_group("enemies")
-	# Cache the hero reference on spawn. _hero stays null in scenes that
-	# don't have one (e.g. hamlet) — subclass tick code must guard.
-	var heroes := get_tree().get_nodes_in_group("hero")
+	if enemy_type == null:
+		push_warning("Enemy spawned with no enemy_type set — will sit inert.")
+		return
+	_build_sprite_frames()
+	_apply_type_to_sprite_and_collision()
+	hp = enemy_type.max_hp
+	# Cache hero reference. Group is set by hero.gd's _ready.
+	var heroes: Array = get_tree().get_nodes_in_group("hero")
 	if heroes.size() > 0:
 		_hero = heroes[0]
-	# Subclass init runs BEFORE we copy max_hp → hp, so subclasses can
-	# just set max_hp = N in _enemy_ready and get the matching starting
-	# hp without having to also set hp manually. Removes a fragile
-	# "remember to set both" footgun the slime/skel scripts had before.
-	_enemy_ready()
-	hp = max_hp
+	sprite.play(&"idle")
 
-# ── Override hooks ────────────────────────────────────────────────────
-# Subclasses do most of their work here. Keeping them as no-op virtuals
-# lets the base handle the universal stuff (die / flash / signals) while
-# the subclass keeps full control of behavior.
+# Build SpriteFrames from per-state sheets. Each state becomes one
+# animation; frames are AtlasTextures pointing into the sheet at
+# (idx * cell_size, 0). Same trick as hero.gd's _build_sprite_frames
+# but driven by an EnemyType resource instead of an inline table.
+func _build_sprite_frames() -> void:
+	var t: EnemyType = enemy_type
+	var sf: SpriteFrames = SpriteFrames.new()
+	if sf.has_animation("default"):
+		sf.remove_animation("default")
+	# Use a small inline table so we don't repeat the slice loop four times.
+	# Each row: (anim_name, sheet, frame_count, fps, loop).
+	var rows: Array = [
+		[&"idle",   t.idle_sheet,   t.frames_idle,   t.fps_idle,   true],
+		[&"walk",   t.walk_sheet,   t.frames_walk,   t.fps_walk,   true],
+		[&"attack", t.attack_sheet, t.frames_attack, t.fps_attack, false],
+		[&"death",  t.death_sheet,  t.frames_death,  t.fps_death,  false],
+	]
+	for row in rows:
+		var anim_name: StringName = row[0]
+		var sheet: Texture2D = row[1]
+		var n_frames: int = row[2]
+		var fps: float = row[3]
+		var loop: bool = row[4]
+		# attack_sheet may be null for chase_contact types. Skip cleanly —
+		# they never request the "attack" anim so the missing slot is fine.
+		if sheet == null or n_frames <= 0:
+			continue
+		sf.add_animation(anim_name)
+		sf.set_animation_speed(anim_name, fps)
+		sf.set_animation_loop(anim_name, loop)
+		for fr in n_frames:
+			var atlas: AtlasTexture = AtlasTexture.new()
+			atlas.atlas = sheet
+			atlas.region = Rect2(fr * t.cell_size, 0, t.cell_size, t.cell_size)
+			sf.add_frame(anim_name, atlas)
+	sprite.sprite_frames = sf
 
-func _enemy_ready() -> void:
-	# Subclasses can override for additional init (e.g. signal hookups).
-	pass
+# Apply per-type sprite + collision tweaks. Kept tiny — the enemy.tscn
+# carries reasonable defaults (scale, offset, collision shape) and we
+# just overwrite them with the type's values.
+func _apply_type_to_sprite_and_collision() -> void:
+	var t: EnemyType = enemy_type
+	sprite.scale = Vector2(t.sprite_scale, t.sprite_scale)
+	sprite.position.y = t.sprite_y_offset
+	# Collision shape — fresh CircleShape2D every spawn so we don't share
+	# a shape resource across all instances of one type (Godot would
+	# complain about resource mutation if we changed it later anyway).
+	var shape: CircleShape2D = CircleShape2D.new()
+	shape.radius = t.collision_radius
+	collision.shape = shape
 
-func _enemy_tick(_delta: float) -> void:
-	# Override in subclasses. Called only while alive.
-	pass
-
-func _on_death() -> void:
-	# Override for extra death FX (loot drops, spawn child enemies, etc.).
-	pass
-
-# ── Common machinery ──────────────────────────────────────────────────
-
+# ── Physics tick — universal scaffolding + behavior dispatch ──────────
 func _physics_process(delta: float) -> void:
+	# Death drain → free. Skip all gameplay logic so corpses don't keep
+	# chasing the hero.
 	if _dying:
 		_death_timer -= delta
 		if _death_timer <= 0.0:
 			queue_free()
 		return
-	# Knockback takes precedence over AI — linear decay from full force
-	# at impact down to 0 at the end of the window. move_and_slide is
-	# called here so the enemy actually slides instead of just teleporting
-	# at the end.
+	# Knockback overrides AI. Velocity decays linearly to zero by the end
+	# of the window, then control hands back to the behavior tick.
 	if _knockback_time > 0.0:
 		_knockback_time = max(0.0, _knockback_time - delta)
-		var t: float = _knockback_time / _knockback_total if _knockback_total > 0.0 else 0.0
-		velocity = _knockback_velocity * t
+		var k_t: float = _knockback_time / _knockback_total if _knockback_total > 0.0 else 0.0
+		velocity = _knockback_velocity * k_t
 		move_and_slide()
 		return
-	_enemy_tick(delta)
+	if enemy_type == null:
+		return
+	# Behavior dispatch — one branch per supported tag. Unknown tags fall
+	# through to chase_contact (the most forgiving default).
+	match enemy_type.behavior:
+		"telegraphed_melee":
+			_tick_telegraphed_melee(delta)
+		"shoot":
+			_tick_shoot(delta)
+		"stationary_shoot":
+			_tick_stationary_shoot(delta)
+		_:
+			_tick_chase_contact(delta)
 
-# Apply a momentary force push to this enemy. Called by hero.gd on
-# successful melee hits + dash-strike AoE. force is in px/s; duration
-# is in seconds. Subclass AI is suspended for the duration so the
-# knockback reads cleanly (an enemy trying to walk INTO you while being
-# pushed AWAY looks like both forces are weak).
+# ── Behavior: chase_contact ───────────────────────────────────────────
+# Walk straight at hero. Body-bump deals damage on a timer while in
+# contact range. Used by slime, crypt_spider, orc, ember, werewolf.
+func _tick_chase_contact(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	_contact_cd = max(0.0, _contact_cd - delta)
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	if t.can_move() and dist > 1.0:
+		velocity = to_hero.normalized() * t.move_speed
+		sprite.play(&"walk")
+	else:
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+	sprite.flip_h = to_hero.x < 0
+	move_and_slide()
+	if dist < t.contact_range and _contact_cd <= 0.0:
+		_contact_cd = t.contact_cooldown
+		if _hero.has_method("take_damage"):
+			_hero.take_damage(t.contact_damage)
+
+# ── Behavior: telegraphed_melee ───────────────────────────────────────
+# Approach → stop + windup-tint → swing in cone → cooldown. Damage
+# resolves on swing-start so a dodging hero escapes the cone.
+# Used by skel, armored_skeleton, lancer, etc.
+func _tick_telegraphed_melee(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	sprite.flip_h = to_hero.x < 0
+	match _melee_state:
+		MeleeState.IDLE:
+			if dist > t.melee_reach * 0.85:
+				if t.can_move():
+					velocity = to_hero.normalized() * t.move_speed
+					sprite.play(&"walk")
+					move_and_slide()
+				else:
+					velocity = Vector2.ZERO
+					sprite.play(&"idle")
+			else:
+				velocity = Vector2.ZERO
+				sprite.play(&"idle")
+				_melee_state = MeleeState.WINDUP
+				_melee_timer = t.melee_windup
+				_melee_aim = to_hero.normalized()
+		MeleeState.WINDUP:
+			velocity = Vector2.ZERO
+			sprite.play(&"idle")
+			# Red telegraph tint pulses over the windup so the player can
+			# read "about to swing" at a glance, distinct from the
+			# shoot-windup cyan.
+			var wt: float = 1.0 - (_melee_timer / t.melee_windup)
+			sprite.modulate = Color(1, 1.0 - wt * 0.6, 1.0 - wt * 0.6, 1)
+			_melee_timer -= delta
+			if _melee_timer <= 0.0:
+				_melee_state = MeleeState.SWING
+				_melee_timer = t.melee_swing
+				sprite.play(&"attack")
+				# Damage check at swing-start — final position lets dodge
+				# escape if the hero leaves the cone in time.
+				var final_to_hero: Vector2 = _hero.global_position - global_position
+				if final_to_hero.length() <= t.melee_reach \
+				   and abs(final_to_hero.angle_to(_melee_aim)) < t.melee_cone \
+				   and _hero.has_method("take_damage"):
+					_hero.take_damage(t.melee_damage)
+		MeleeState.SWING:
+			velocity = Vector2.ZERO
+			_melee_timer -= delta
+			if _melee_timer <= 0.0:
+				_melee_state = MeleeState.COOLDOWN
+				_melee_timer = t.melee_cooldown - t.melee_swing
+				sprite.modulate = Color(1, 1, 1, 1)
+		MeleeState.COOLDOWN:
+			if t.can_move() and dist > t.melee_reach * 0.85:
+				velocity = to_hero.normalized() * t.move_speed
+				sprite.play(&"walk")
+				move_and_slide()
+			else:
+				velocity = Vector2.ZERO
+				sprite.play(&"idle")
+			_melee_timer -= delta
+			if _melee_timer <= 0.0:
+				_melee_state = MeleeState.IDLE
+
+# ── Behavior: shoot ───────────────────────────────────────────────────
+# Kite + cast. Backs away if hero is closer than min_dist, approaches if
+# farther than prefer_dist, and casts when in cast_range with cooldown
+# clear. Used by wiz, archer, priest, dreadmage, skel_archer.
+func _tick_shoot(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	sprite.flip_h = to_hero.x < 0
+	match _cast_state:
+		CastState.IDLE:
+			if t.can_move() and dist < t.min_dist:
+				velocity = -to_hero.normalized() * t.move_speed
+				sprite.play(&"walk")
+				move_and_slide()
+			elif t.can_move() and dist > t.prefer_dist:
+				velocity = to_hero.normalized() * t.move_speed
+				sprite.play(&"walk")
+				move_and_slide()
+			else:
+				velocity = Vector2.ZERO
+				sprite.play(&"idle")
+			if dist <= t.cast_range and _cast_timer <= 0.0:
+				_cast_state = CastState.WINDUP
+				_cast_timer = t.cast_windup
+				_cast_aim = to_hero.normalized()
+				sprite.play(&"attack")
+			else:
+				_cast_timer = max(0.0, _cast_timer - delta)
+		CastState.WINDUP:
+			velocity = Vector2.ZERO
+			sprite.play(&"attack")
+			# Cyan telegraph — distinct from the melee red. Player learns
+			# "blue glow = ranged, red glow = melee."
+			var wt: float = 1.0 - (_cast_timer / t.cast_windup)
+			sprite.modulate = Color(1.0 - wt * 0.5, 1.0, 1.0, 1)
+			_cast_timer -= delta
+			if _cast_timer <= 0.0:
+				_fire_projectile()
+				_cast_state = CastState.COOLDOWN
+				_cast_timer = t.cast_cooldown
+				sprite.modulate = Color(1, 1, 1, 1)
+		CastState.COOLDOWN:
+			_cast_state = CastState.IDLE
+			sprite.play(&"idle")
+
+# ── Behavior: stationary_shoot ────────────────────────────────────────
+# Identical to shoot but skips all movement attempts. Implemented as
+# shoot-with-can_move-false so we don't duplicate the state machine.
+# The shoot tick already guards movement with t.can_move() so we just
+# forward.
+func _tick_stationary_shoot(delta: float) -> void:
+	_tick_shoot(delta)
+
+# Re-aim at hero at the moment of cast — running during windup is a
+# reasonable dodge, but instant teleport between aim and release would
+# be too cheesy. Matches the wizard's old fire_orb convention.
+func _fire_projectile() -> void:
+	var t: EnemyType = enemy_type
+	if _hero != null and is_instance_valid(_hero):
+		_cast_aim = (_hero.global_position - global_position).normalized()
+	var p: Projectile = PROJECTILE_SCENE.instantiate()
+	p.target_group = "hero"
+	p.orb_tint = t.projectile_tint
+	p.global_position = global_position + Vector2(0, -28) + _cast_aim * 22.0
+	p.velocity = _cast_aim * Projectile.SPEED
+	p.damage = t.projectile_damage
+	get_parent().add_child(p)
+
+# ── Universal: take_hit + knockback + death ───────────────────────────
+
+func take_hit(damage: int) -> void:
+	if _dying:
+		return
+	hp -= damage
+	if sprite != null:
+		var tween: Tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.04)
+		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
+	Events.enemy_hit.emit(global_position)
+	if hp <= 0:
+		_die()
+
 func apply_knockback(dir: Vector2, force: float, duration: float) -> void:
 	if _dying or duration <= 0.0:
 		return
@@ -114,33 +352,15 @@ func apply_knockback(dir: Vector2, force: float, duration: float) -> void:
 	_knockback_time = duration
 	_knockback_total = duration
 
-func take_hit(damage: int) -> void:
-	if _dying:
-		return
-	hp -= damage
-	# White flash on hit — same convention as slime-depths' fx.js.
-	# Tween-based so it self-cleans; cancels any in-flight flash so
-	# rapid hits don't queue up modulate changes.
-	if sprite != null:
-		var tween := create_tween()
-		tween.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.04)
-		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
-	Events.enemy_hit.emit(global_position)
-	if hp <= 0:
-		_die()
-
 func _die() -> void:
 	_dying = true
-	_death_timer = death_duration
+	_death_timer = enemy_type.death_duration if enemy_type != null else 0.8
 	velocity = Vector2.ZERO
 	if sprite != null:
 		sprite.modulate = Color(1, 1, 1, 1)
-		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(death_anim):
-			sprite.play(death_anim)
-	# Stop colliding so the corpse can't body-bump the hero anymore.
-	# (Layer 3 = enemies; mask 2 = hero in projectile-detection systems.)
+		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(&"death"):
+			sprite.play(&"death")
 	set_collision_layer_value(3, false)
 	set_collision_mask_value(2, false)
 	died_at.emit(global_position)
 	Events.enemy_died.emit(global_position)
-	_on_death()
