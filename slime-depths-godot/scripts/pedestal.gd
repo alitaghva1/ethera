@@ -71,7 +71,14 @@ func _claim() -> void:
 	# to spawn the door), the player can't sneak in a second claim.
 	# Also keeps siblings from doubling up by both responding to the
 	# same E-press in a tightly-spaced offer.
+	# Iter 20 — guard against a sibling that was queue_freed earlier
+	# in the same frame (rare but possible if a chained outro tween
+	# fired its tween_callback this frame). Godot 4 normally filters
+	# freed instances from get_nodes_in_group, but defensive check
+	# costs nothing.
 	for other in get_tree().get_nodes_in_group("pedestal_offer"):
+		if not is_instance_valid(other):
+			continue
 		if other != self and other.has_method("_dismiss"):
 			other._dismiss()
 	var granted: bool = GameState.grant_relic(relic_id)

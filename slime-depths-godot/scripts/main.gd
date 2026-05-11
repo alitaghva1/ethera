@@ -23,6 +23,7 @@ const PILLAR_SCENE: PackedScene   = preload("res://scenes/pillar.tscn")
 const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
+const RELIC_ICON_SCENE: PackedScene = preload("res://scenes/relic_icon.tscn")
 
 # Enemy roster — iter 14 data-driven shape. ONE shared enemy.tscn for
 # all types; the type-specific data (sheets, stats, behavior, AI
@@ -90,6 +91,10 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 @onready var boss_bar: VBoxContainer = $UI/BossBar
 @onready var boss_name: Label = $UI/BossBar/Name
 @onready var boss_hp_bar: ProgressBar = $UI/BossBar/Bar
+# HUD relic strip — horizontal row of small badges, one per owned
+# relic. Populated by _rebuild_relic_strip on _ready and refreshed
+# whenever Events.pickup_claimed fires (a new relic was just granted).
+@onready var relic_strip: HBoxContainer = $UI/RelicStrip
 
 # Active room config — driven by Floor autoload. Cached at _ready so
 # late edits to RunState.current_room_config mid-run don't cause stutter.
@@ -185,6 +190,7 @@ func _ready() -> void:
 	_update_hp(hero.hp)
 	_update_kills()
 	_update_room_label()
+	_rebuild_relic_strip()
 	status_label.text = "LMB swing · RMB blast · SPACE dodge · Q shield · SHIFT dash"
 	wave_label.text = "WAVE 1 / %d  incoming" % max(1, _waves.size())
 	var t := get_tree().create_timer(INITIAL_WAVE_DELAY)
@@ -489,8 +495,19 @@ func _resolve_room_pickup() -> void:
 		_spawn_door()
 
 func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
+	# Iter 20 bugfix — Events.pickup_claimed also fires when chests open
+	# (with _name = "gold"). Pre-fix, breaking ANY chest in ANY wave
+	# called _resolve_room_pickup() → spawned the floor-exit door right
+	# in the middle of combat. Filter: only RELIC ids resolve the room.
+	# Non-relic pickups (gold today, future keys/coins) still refresh
+	# the HUD if relevant but don't advance the floor.
+	if not GameState.RELIC_REGISTRY.has(_name):
+		return
 	# Pedestal-side dismissal of siblings already happened in
 	# pedestal._claim; we only need to drive the room-end branch.
+	# Also refresh the HUD relic strip — a new relic just landed in
+	# GameState.owned_relics and the strip needs a badge for it.
+	_rebuild_relic_strip()
 	_resolve_room_pickup()
 
 func _spawn_door() -> void:
@@ -569,6 +586,25 @@ func _update_room_label() -> void:
 	var total: int = RunState.FLOOR_ROOMS.size()
 	var idx: int = RunState.current_room_index + 1
 	room_label.text = "%s  ·  ROOM %d / %d" % [_room.display_name, idx, total]
+
+# Rebuild the HUD relic strip from GameState.owned_relics. Called on
+# _ready (so a hypothetical mid-run reload still shows the right
+# badges) and on every pickup_claimed event. Clears the strip first,
+# then spawns one RelicIcon per owned id. Each icon repaints itself
+# in set_relic based on the tier/name pulled from RELIC_REGISTRY, so
+# the strip doesn't need to know anything about visuals.
+func _rebuild_relic_strip() -> void:
+	if relic_strip == null:
+		return
+	for child in relic_strip.get_children():
+		child.queue_free()
+	for rid in GameState.owned_relics:
+		var icon: RelicIcon = RELIC_ICON_SCENE.instantiate()
+		relic_strip.add_child(icon)
+		# set_relic must run after add_child — the script's _ready
+		# may rely on the node being in the tree (autoload access,
+		# parent lookup for tooltips).
+		icon.set_relic(rid)
 
 func _on_hero_died() -> void:
 	_alive = false

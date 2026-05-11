@@ -98,6 +98,14 @@ func _ready() -> void:
 	if heroes.size() > 0:
 		_hero = heroes[0]
 	sprite.play(&"idle")
+	# Iter 20 — shoot-behavior enemies start with a cooldown already
+	# running, so they can't fire on the FIRST tick after spawn-in. Pre-
+	# fix, a bonecap (stationary turret) would instant-cast the moment
+	# the player walked into range with zero windup, since _cast_timer
+	# defaulted to 0.0. The full cast_cooldown is too long for a fair
+	# warmup; use half (matches the player's average reaction window).
+	if enemy_type.behavior == "shoot" or enemy_type.behavior == "stationary_shoot":
+		_cast_timer = enemy_type.cast_cooldown * 0.5
 
 # Build SpriteFrames from per-state sheets. Each state becomes one
 # animation; frames are AtlasTextures pointing into the sheet at
@@ -168,10 +176,14 @@ func _physics_process(delta: float) -> void:
 		var st: float = 1.0 - (_spawn_in_time / SPAWN_IN_DURATION)
 		sprite.modulate = SPAWN_IN_START_COLOR.lerp(SPAWN_IN_END_COLOR, st)
 		velocity = Vector2.ZERO
-		# Play idle so the sprite shows its first frame instead of a
-		# blank cell at scale.
+		# Iter 20 bugfix — only call play() if we're not already on idle.
+		# AnimatedSprite2D.play() RESTARTS the animation from frame 0;
+		# calling it every physics tick during the 0.5 s spawn-in window
+		# pinned the idle anim to frame 0 forever (it never cycled).
+		# Same compare-and-set trick hero.gd uses in _play_anim.
 		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(&"idle"):
-			sprite.play(&"idle")
+			if sprite.animation != &"idle" or not sprite.is_playing():
+				sprite.play(&"idle")
 		return
 	# Knockback overrides AI. Velocity decays linearly to zero by the end
 	# of the window, then control hands back to the behavior tick.

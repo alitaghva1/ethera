@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3relicicon01"]
+
+[ext_resource type="Script" path="res://scripts/relic_icon.gd" id="1_script"]
+
+; RelicIcon — single 28×28 HUD badge. Visual children (background,
+; tier rim, inner fill, glyph Label) are built procedurally inside
+; relic_icon.gd::set_relic so the registry can grow without scene-
+; editor authoring. The scene file is just the root Control + script.
+;
+; Sizing: custom_minimum_size + size locked to 28×28 in _ready so the
+; HBoxContainer parent doesn't stretch the icon vertically. mouse_filter
+; is STOP so hover events reach the script for tooltip dispatch.
+[node name="RelicIcon" type="Control"]
+custom_minimum_size = Vector2(28, 28)
+offset_right = 28.0
+offset_bottom = 28.0
+mouse_filter = 0
+script = ExtResource("1_script")

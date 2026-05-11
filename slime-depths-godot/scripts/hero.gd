@@ -268,9 +268,16 @@ func _physics_process(delta: float) -> void:
 	# strike + cached aim/range; when the windup timer expires here,
 	# we run the actual hit scan. Keeps damage timing aligned with the
 	# slash-arc growth animation (visible swing → solid hit).
+	# Iter 20 bugfix — guard against post-death resolution. If the hero
+	# dies during the 60 ms windup, cancel the pending strike so a
+	# corpse doesn't deal damage from beyond the grave. The death
+	# branch below also early-returns, but clearing the flag here is
+	# tidier (avoids a stale "pending" sitting on the corpse).
 	if _pending_melee_strike:
 		_melee_strike_timer = max(0.0, _melee_strike_timer - delta)
-		if _melee_strike_timer <= 0.0:
+		if _is_dying:
+			_pending_melee_strike = false
+		elif _melee_strike_timer <= 0.0:
 			_pending_melee_strike = false
 			_resolve_melee_strike()
 
@@ -564,12 +571,16 @@ func take_damage(amount: int) -> void:
 		_iframes = HIT_IFRAMES * 2.0
 		# Floating amber number marks the save so the player learns
 		# the relic worked rather than wondering why they survived.
-		var n: DamageNumber = DamageNumber.spawn(
-			global_position + Vector2(0, -64),
-			"SECOND WIND",
-			Color(1, 0.8, 0.45),
-		)
-		get_parent().add_child(n)
+		# Iter 20 — guard get_parent() in case take_damage fires during
+		# a scene-swap window where the hero is briefly orphaned.
+		var parent: Node = get_parent()
+		if parent != null:
+			var n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"SECOND WIND",
+				Color(1, 0.8, 0.45),
+			)
+			parent.add_child(n)
 	_iframes = max(_iframes, HIT_IFRAMES)
 	hp_changed.emit(hp)
 	hit_received.emit()

@@ -72,6 +72,20 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 4
 text = "♥ ♥ ♥"
 
+; Relic strip — horizontal row of small 28×28 badges showing every
+; relic the player owns. Sits directly under HPLabel (top=46) and to
+; the LEFT of StatusLabel (which is at top=50). Empty by default; the
+; main.gd::_rebuild_relic_strip helper populates it on _ready and
+; whenever Events.pickup_claimed fires. Mouse hover on each badge
+; opens a tooltip with name + description (handled in relic_icon.gd).
+[node name="RelicStrip" type="HBoxContainer" parent="UI"]
+offset_left = 16.0
+offset_top = 46.0
+offset_right = 400.0
+offset_bottom = 78.0
+theme_override_constants/separation = 4
+mouse_filter = 1
+
 [node name="StatusLabel" type="Label" parent="UI"]
 offset_left = 16.0
 offset_top = 50.0
