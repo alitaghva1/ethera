@@ -14,3 +14,6 @@ is_last_room = false
 display_name = "VAULTED PASSAGE"
 ambient_tint = Color(0.30, 0.27, 0.40, 1)
 decor_density = 16
+wall_rects = [Rect2(260, 240, 100, 28), Rect2(920, 240, 100, 28), Rect2(260, 500, 100, 28), Rect2(920, 500, 100, 28)]
+hazard_positions = Array[Vector2]([])
+hazard_kind = ""

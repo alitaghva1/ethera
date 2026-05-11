@@ -14,3 +14,6 @@ is_last_room = false
 display_name = "OSSUARY"
 ambient_tint = Color(0.22, 0.26, 0.36, 1)
 decor_density = 18
+wall_rects = [Rect2(280, 240, 28, 200), Rect2(440, 160, 28, 160), Rect2(440, 440, 28, 160), Rect2(800, 240, 28, 200), Rect2(960, 160, 28, 160), Rect2(960, 440, 28, 160)]
+hazard_positions = Array[Vector2]([Vector2(380, 240), Vector2(900, 240), Vector2(640, 540)])
+hazard_kind = "spike_pit"

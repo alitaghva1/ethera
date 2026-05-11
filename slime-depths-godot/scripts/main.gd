@@ -63,6 +63,13 @@ const SWING_HIT_STOP_TIME  := 0.035
 const DASH_HIT_STOP_SCALE  := 0.10
 const DASH_HIT_STOP_TIME   := 0.07
 const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn")
+# Iter 30 — hazard scenes. The room reads its hazard_kind string and
+# we pick the scene to instantiate at each hazard_positions entry.
+# Single dict entry per kind keeps the lookup cheap + makes adding
+# a new hazard (fire_jet, slow_zone, etc.) a one-line addition.
+const HAZARD_SCENES := {
+	"spike_pit": preload("res://scenes/hazards/spike_pit.tscn"),
+}
 # Iter 15 — pacing pass. Earlier values felt sluggish: 1.6s between
 # waves left dead-air, and 1.0s pre-first-wave kept the player idle on
 # room entry. Tighter values keep the loop pumping.
@@ -184,6 +191,13 @@ func _ready() -> void:
 		# top in z-order) but neither one depends on the other.
 		_spawn_pillars(_room.pillar_positions)
 		_spawn_chests(_room.chest_positions)
+		# Iter 30 — interior walls + hazards. Interior walls partition
+		# the otherwise-open 1280×720 arena into corridors / chambers /
+		# cover. Hazards push the player to keep moving. Both are
+		# data-driven from RoomConfig — empty arrays = open arena
+		# (the iter-23 default behavior).
+		_spawn_interior_walls(_room.wall_rects)
+		_spawn_hazards(_room.hazard_positions, _room.hazard_kind)
 		# Iter 18 — scatter procedural rubble across the play area so
 		# the floor doesn't read as a blank slate. Runs AFTER pillar /
 		# chest spawn so decor placement can avoid those positions.
@@ -274,6 +288,77 @@ func _spawn_chests(positions: Array[Vector2]) -> void:
 		var c: Chest = CHEST_SCENE.instantiate()
 		c.position = pos
 		add_child(c)
+
+# Iter 30 — interior walls. For each rect in wall_rects, build a
+# StaticBody2D + CollisionShape2D matching the rect, plus a visible
+# Polygon2D backdrop + Line2D outline so the wall reads against the
+# floor. Walls go on collision layer 1 ("world") to match the outer
+# wall colliders in main.tscn — enemies + projectiles already collide
+# with that layer, so we get full physics integration for free.
+#
+# Visual: dark blue-grey body (matches the iter-18 door stone) + a
+# warmer light-grey top edge so vertical walls cast an implied shadow
+# downward. Built in code (vs adding nodes per-room in the .tscn) so
+# adding a new room's layout is just a wall_rects edit in its .tres.
+func _spawn_interior_walls(rects: Array[Rect2]) -> void:
+	for r in rects:
+		var body: StaticBody2D = StaticBody2D.new()
+		body.collision_layer = 1
+		body.collision_mask = 0
+		body.position = r.position + r.size * 0.5
+		var shape: CollisionShape2D = CollisionShape2D.new()
+		var rect_shape: RectangleShape2D = RectangleShape2D.new()
+		rect_shape.size = r.size
+		shape.shape = rect_shape
+		body.add_child(shape)
+		# Visible body — dark stone polygon at the same position as the
+		# collider. Rounded corners via Line2D outline since Polygon2D
+		# doesn't natively support corner radii.
+		var w: float = r.size.x * 0.5
+		var h: float = r.size.y * 0.5
+		var poly: Polygon2D = Polygon2D.new()
+		poly.polygon = PackedVector2Array([
+			Vector2(-w, -h), Vector2(w, -h), Vector2(w, h), Vector2(-w, h),
+		])
+		poly.color = Color(0.18, 0.16, 0.22, 1)
+		body.add_child(poly)
+		# Lighter top-edge bevel — a 4-px Line2D across the top of the
+		# wall, slightly warm grey. Sells "this is a stone block with
+		# light catching its top edge."
+		var top_edge: Line2D = Line2D.new()
+		top_edge.points = PackedVector2Array([
+			Vector2(-w + 2, -h), Vector2(w - 2, -h),
+		])
+		top_edge.width = 3.0
+		top_edge.default_color = Color(0.42, 0.36, 0.30, 1)
+		top_edge.antialiased = true
+		body.add_child(top_edge)
+		# Bottom shadow strip — dark band along the wall's bottom edge,
+		# offset down 2 px so it reads as a contact shadow on the floor.
+		var bot_shadow: Line2D = Line2D.new()
+		bot_shadow.points = PackedVector2Array([
+			Vector2(-w + 4, h + 2), Vector2(w - 4, h + 2),
+		])
+		bot_shadow.width = 4.0
+		bot_shadow.default_color = Color(0, 0, 0, 0.45)
+		bot_shadow.antialiased = true
+		body.add_child(bot_shadow)
+		add_child(body)
+
+# Iter 30 — hazards. For each position in hazard_positions, instantiate
+# the scene matching hazard_kind. Unknown kinds emit a one-time warning
+# (so misconfigured rooms surface immediately) but otherwise no-op.
+func _spawn_hazards(positions: Array[Vector2], kind: String) -> void:
+	if kind == "" or positions.is_empty():
+		return
+	var scene: PackedScene = HAZARD_SCENES.get(kind)
+	if scene == null:
+		push_warning("main.gd: unknown hazard_kind '%s' — skipping" % kind)
+		return
+	for pos in positions:
+		var h: Area2D = scene.instantiate() as Area2D
+		h.position = pos
+		add_child(h)
 
 # Iter 18 — procedural decor scatter. Builds N small Polygon2D rubble
 # clusters at random walkable positions, avoiding the hero spawn /

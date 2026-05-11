@@ -14,3 +14,6 @@ is_last_room = true
 display_name = "BROOD CHAMBER"
 ambient_tint = Color(0.32, 0.26, 0.18, 1)
 decor_density = 20
+wall_rects = []
+hazard_positions = Array[Vector2]([Vector2(280, 220), Vector2(280, 548), Vector2(1000, 220), Vector2(1000, 548)])
+hazard_kind = "spike_pit"

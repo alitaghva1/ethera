@@ -73,3 +73,28 @@ extends Resource
 # walkable bounds, avoiding hero_spawn / spawn_points / room center
 # so they don't crowd combat space. 0 = no decor.
 @export var decor_density: int = 14
+
+# Iter 30 — interior walls. Each Rect2 = (top-left position in world
+# coords, width × height). main.gd spawns a StaticBody2D + visible
+# Polygon2D for each, partitioning the otherwise-open 1280×720 arena
+# into corridors / chambers / cover slots. Wall thickness 16-32 reads
+# well at the camera's zoom. Pre-iter-30 rooms had zero interior
+# obstacles — every combat collapsed into the same kite-and-strafe.
+# Empty array = open arena (old behavior).
+@export var wall_rects: Array[Rect2] = []
+
+# Iter 30 — hazards. Per-room positional damage sources. Single kind
+# per room (kept simple for the slice; mixed-hazard rooms can come
+# later via per-position tuple). main.gd reads hazard_kind to pick
+# the scene to instantiate at each hazard_positions entry.
+#
+# Supported hazard_kinds:
+#   ""            no hazards (default)
+#   "spike_pit"   periodic 1-damage Area2D the hero must walk around
+#                 or jump through quickly (no jump exists yet but
+#                 the cooldown means a single brief brush is safe).
+# The hazards' job is to push the player to MOVE rather than camp —
+# combined with interior walls, this is how rooms start to drive
+# tactical play instead of being passive arenas.
+@export var hazard_positions: Array[Vector2] = []
+@export var hazard_kind: String = ""

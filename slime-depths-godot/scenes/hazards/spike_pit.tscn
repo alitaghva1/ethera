@@ -1,0 +1,100 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3spikepit0001"]
+
+[ext_resource type="Script" path="res://scripts/spike_pit.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="spike_area"]
+radius = 26.0
+
+; Iter 30 spike pit — Area2D hazard that ticks 1 damage when the hero
+; stands on it. Visual is a dark pit polygon (the hole) with light
+; grey triangle spikes poking up around the rim.
+;
+; Children:
+;   CollisionShape2D — circular detection at radius 26.
+;   PitFloor (Polygon2D) — dark inset showing the bottom of the pit
+;     (almost black with a slight purple tint = "deep").
+;   PitRim (Line2D) — stone-grey outline so the pit reads against the
+;     dungeon floor (which is also dark).
+;   Spikes (8× small Polygon2D triangles) — ring around the rim, light
+;     grey with sharp tips. Sells "yes this is dangerous."
+;
+; CollisionShape2D radius (26) is a touch smaller than the visual
+; radius so the visible spikes hang OVER the damage zone — gives the
+; player a small visual margin before they actually take a hit.
+
+[node name="SpikePit" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("spike_area")
+
+; Pit floor — 16-vert near-circle Polygon2D at radius 28. Dark with a
+; cold purple tint so it reads as a hole against the warm-floor.
+[node name="PitFloor" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(28, 0, 24.25, 14, 14, 24.25, 0, 28, -14, 24.25, -24.25, 14, -28, 0, -24.25, -14, -14, -24.25, 0, -28, 14, -24.25, 24.25, -14)
+color = Color(0.06, 0.05, 0.10, 0.95)
+
+; Stone rim — line tracing the floor polygon. Brighter grey than the
+; rest of the pit so the silhouette pops.
+[node name="PitRim" type="Line2D" parent="."]
+points = PackedVector2Array(28, 0, 24.25, 14, 14, 24.25, 0, 28, -14, 24.25, -24.25, 14, -28, 0, -24.25, -14, -14, -24.25, 0, -28, 14, -24.25, 24.25, -14)
+closed = true
+width = 2.5
+default_color = Color(0.55, 0.50, 0.45, 0.95)
+joint_mode = 2
+antialiased = true
+
+; Spikes — 8 triangles pointing inward toward the pit center at
+; intervals of 45°. Each spike is 8 px tall + 6 px wide at the base.
+; Their tips poke into the damage radius, the base sits on the rim.
+; Authored at 0° rotation then rotated via Polygon2D's transform.
+[node name="Spike0" type="Polygon2D" parent="."]
+position = Vector2(28, 0)
+rotation = 0.0
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
+
+[node name="Spike1" type="Polygon2D" parent="."]
+position = Vector2(19.8, -19.8)
+rotation = 0.7854
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
+
+[node name="Spike2" type="Polygon2D" parent="."]
+position = Vector2(0, -28)
+rotation = 1.5708
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
+
+[node name="Spike3" type="Polygon2D" parent="."]
+position = Vector2(-19.8, -19.8)
+rotation = 2.3562
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
+
+[node name="Spike4" type="Polygon2D" parent="."]
+position = Vector2(-28, 0)
+rotation = 3.1416
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
+
+[node name="Spike5" type="Polygon2D" parent="."]
+position = Vector2(-19.8, 19.8)
+rotation = 3.927
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
+
+[node name="Spike6" type="Polygon2D" parent="."]
+position = Vector2(0, 28)
+rotation = 4.7124
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
+
+[node name="Spike7" type="Polygon2D" parent="."]
+position = Vector2(19.8, 19.8)
+rotation = 5.4978
+polygon = PackedVector2Array(0, 0, 8, -3, 8, 3)
+color = Color(0.78, 0.74, 0.66, 1)
