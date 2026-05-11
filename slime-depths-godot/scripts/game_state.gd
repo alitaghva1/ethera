@@ -16,9 +16,17 @@
 extends Node
 
 # ── Session metrics ──────────────────────────────────────────────────
+# session_kills: accumulates across runs forever (lifetime counter).
+# dungeon_runs: how many runs the player has STARTED (BEGIN pressed).
+# last_run_kills: kills in the most recent run (resets on new run).
+# best_run_kills: max last_run_kills across all runs (iter 23) — shown
+#   on the main-menu stats panel. Updated at the START of each new run
+#   by promoting the previous run's value, so death OR run-complete
+#   both contribute (whichever flow ended the previous run).
 var session_kills := 0
 var dungeon_runs := 0
 var last_run_kills := 0
+var best_run_kills := 0
 
 # HP carryover between rooms within a single floor run. -1 = no carry
 # (Hero uses MAX_HP + max_hp_bonus on spawn). Set by Hero.gd's
@@ -56,6 +64,9 @@ var persisted_hp: int = -1
 #   second_wind         revive once at 1 HP on the killing blow
 #   bloodstone          heal +1 HP every 3 enemy kills
 #   arcane_resonance    every 4th blast deals 2× damage
+#   executioner         +150% damage to enemies below 25% HP
+#   soul_burst          every 5th kill detonates an 80px AoE for 1 dmg
+#   iron_resolve        first wound each room is absorbed
 const RELIC_REGISTRY := {
 	"iron_fang": {
 		"name": "IRON FANG",
@@ -99,6 +110,12 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"mods": { "dodge_iframes_bonus_f": 0.15 },
 	},
+	"focused_eye": {
+		"name": "FOCUSED EYE",
+		"description": "Sharper casting. +1 blast damage, blast projectiles travel +20% faster.",
+		"tier": "common",
+		"mods": { "blast_damage_bonus": 1, "projectile_speed_mul": 0.2 },
+	},
 	"swift_strike": {
 		"name": "SWIFT STRIKE",
 		"description": "Sword cooldown -20%.",
@@ -140,6 +157,18 @@ const RELIC_REGISTRY := {
 		"description": "Sword swings cleave a +60% wider arc.",
 		"tier": "rare",
 		"mods": { "attack_arc_mul": 0.60 },
+	},
+	"stalwart": {
+		"name": "STALWART",
+		"description": "Stand your ground. +1 max HP, -1 incoming damage.",
+		"tier": "rare",
+		"mods": { "max_hp_bonus": 1, "damage_taken_reduction": 1 },
+	},
+	"gale_step": {
+		"name": "GALE STEP",
+		"description": "Wind at your back. +20% move speed, +0.1s dodge i-frames.",
+		"tier": "rare",
+		"mods": { "move_speed_mul": 0.2, "dodge_iframes_bonus_f": 0.1 },
 	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
@@ -183,6 +212,24 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"mods": {},   # triggered — see hero.take_damage (preempts second_wind)
 	},
+	"executioner": {
+		"name": "EXECUTIONER",
+		"description": "+150% damage to enemies below 25% HP.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero._resolve_melee_strike / _resolve_dash_strike_hit / projectile.gd
+	},
+	"soul_burst": {
+		"name": "SOUL BURST",
+		"description": "Every 5th enemy slain detonates a small soul burst.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero._on_enemy_died_for_relics
+	},
+	"iron_resolve": {
+		"name": "IRON RESOLVE",
+		"description": "The first wound each room is fully absorbed.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero.take_damage
+	},
 }
 
 var owned_relics: Array[String] = []
@@ -201,11 +248,12 @@ var master_volume: float = 0.7
 # easiest to diff in a text editor when debugging save files.
 func save_to_dict() -> Dictionary:
 	return {
-		"save_version": 1,
+		"save_version": 2,
 		"owned_relics": owned_relics,
 		"session_kills": session_kills,
 		"dungeon_runs": dungeon_runs,
 		"last_run_kills": last_run_kills,
+		"best_run_kills": best_run_kills,
 		"master_volume": master_volume,
 	}
 
@@ -218,6 +266,10 @@ func load_from_dict(d: Dictionary) -> void:
 	session_kills = int(d.get("session_kills", 0))
 	dungeon_runs = int(d.get("dungeon_runs", 0))
 	last_run_kills = int(d.get("last_run_kills", 0))
+	# best_run_kills (iter 23) — defaults to last_run_kills when missing
+	# (v1 save files), so an old save loaded into v2 gets a reasonable
+	# starting "best" instead of 0.
+	best_run_kills = int(d.get("best_run_kills", last_run_kills))
 	master_volume = clampf(float(d.get("master_volume", 0.7)), 0.0, 1.0)
 
 	# Array[String] needs a fresh typed array — JSON returns a plain
@@ -234,6 +286,12 @@ func load_from_dict(d: Dictionary) -> void:
 
 # ── Session API ──────────────────────────────────────────────────────
 func start_dungeon_run() -> void:
+	# Iter 23 — promote the PREVIOUS run's kill count to best_run_kills
+	# BEFORE resetting last_run_kills. Captures both flows (death → menu
+	# → BEGIN, and run-complete → menu → BEGIN) without requiring an
+	# explicit end-run hook.
+	if last_run_kills > best_run_kills:
+		best_run_kills = last_run_kills
 	dungeon_runs += 1
 	last_run_kills = 0
 	# Iter 16 bug fix: roguelite contract — a new run starts with no

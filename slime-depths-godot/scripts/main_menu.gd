@@ -23,6 +23,16 @@ const TITLE_PULSE_HALF_DURATION := 1.25
 @onready var quit_button: Button = $CenterStack/QuitButton
 @onready var title: Label = $TitleBlock/Title
 @onready var title_glow: Label = $TitleBlock/TitleGlow
+# Iter 23 — persistent stats panel. Populated from GameState at _ready;
+# SaveSystem already round-trips the underlying fields, so a player
+# returning between sessions sees their accumulated runs / kills /
+# best run carry over. last_run_kills sub-label appears only after
+# the first run finishes — pre-first-run, an empty line keeps layout
+# from jumping when it shows up.
+@onready var stats_runs: Label = $StatsBlock/StatsRuns
+@onready var stats_best: Label = $StatsBlock/StatsBestRun
+@onready var stats_lifetime: Label = $StatsBlock/StatsLifetimeKills
+@onready var stats_last: Label = $StatsBlock/StatsLastRun
 
 # Per-button tween cache. Storing the active tween lets a follow-up
 # hover_exited correctly kill the in-flight grow-in animation so the
@@ -60,6 +70,29 @@ func _ready() -> void:
 
 	# Default keyboard focus.
 	begin_button.grab_focus()
+	# Iter 23 — populate the persistent stats panel. start_dungeon_run
+	# promotes last_run_kills → best_run_kills BEFORE resetting, so by
+	# the time the player returns to this menu the "best" already
+	# reflects the run they just finished.
+	_populate_stats()
+
+# Pull the four stat lines from GameState. The dotted padding makes
+# the values align in a fixed-width-feel even though the font isn't
+# monospace — same trick the slime-depths JS HUD uses for its records
+# screen. Numeric formatting via "%d" so big numbers don't break the
+# layout (Godot defaults would print floats; we want clean ints).
+func _populate_stats() -> void:
+	var best: int = max(GameState.best_run_kills, GameState.last_run_kills)
+	stats_runs.text = "runs ··············· %d" % GameState.dungeon_runs
+	stats_best.text = "best run kills ······ %d" % best
+	stats_lifetime.text = "lifetime kills ······· %d" % GameState.session_kills
+	# Only show last-run line after at least one run completed; an
+	# empty line on first launch avoids the "0 kills" lie before the
+	# player has played anything.
+	if GameState.dungeon_runs > 0:
+		stats_last.text = "last run ············ %d kills" % GameState.last_run_kills
+	else:
+		stats_last.text = ""
 
 func _on_begin_pressed() -> void:
 	# Iter 12: hamlet removed. BEGIN goes straight into the dungeon.

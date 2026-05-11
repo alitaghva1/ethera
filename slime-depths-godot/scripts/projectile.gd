@@ -24,6 +24,12 @@ const LIFETIME := 1.4
 
 var velocity := Vector2.ZERO
 var damage   := 1
+# executioner relic — set TRUE at fire time by hero._start_blast when the
+# relic was owned at cast. Locked at fire time so a late pickup doesn't
+# retroactively buff in-flight orbs. Evaluated against the target's HP
+# ratio in _on_body_entered (the only point at which the projectile knows
+# WHO it's about to hurt).
+var executioner_active: bool = false
 
 @onready var glow: PointLight2D = $PointLight2D
 @onready var orb: Sprite2D = $Sprite2D
@@ -70,8 +76,33 @@ func _on_body_entered(body: Node) -> void:
 	if body.is_in_group(target_group):
 		# Enemies expose take_hit; hero exposes take_damage. Both are
 		# safe-to-call no-ops if missing.
+		var dmg_out: int = damage
+		# executioner — gate ONLY on enemy bodies (skip for friendly-fire
+		# orbs aimed at "hero"). 25% HP threshold matches the melee path.
+		if executioner_active and target_group == "enemies" and _is_low_hp(body):
+			dmg_out = int(round(float(damage) * 2.5))
 		if body.has_method("take_hit"):
-			body.take_hit(damage)
+			body.take_hit(dmg_out)
 		elif body.has_method("take_damage"):
-			body.take_damage(damage)
+			body.take_damage(dmg_out)
 	queue_free()
+
+# executioner helper — duplicated shape of hero._is_executable so the
+# projectile can evaluate at impact without coupling to the hero node.
+# Reads body.hp (int) and body.enemy_type.max_hp (int); returns false
+# defensively on missing fields so a degenerate enemy never crashes.
+func _is_low_hp(body: Node) -> bool:
+	if not is_instance_valid(body):
+		return false
+	if not ("hp" in body):
+		return false
+	var cur_hp: int = int(body.get("hp"))
+	var max_val: int = 0
+	if "enemy_type" in body:
+		var et: Variant = body.get("enemy_type")
+		if et != null and "max_hp" in et:
+			max_val = int(et.get("max_hp"))
+	if max_val <= 0:
+		return false
+	var ratio: float = float(cur_hp) / float(max_val)
+	return ratio < 0.25

@@ -41,6 +41,9 @@ const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
+# soul_burst relic — reuse the dash impact shockwave scene tinted red.
+# Cheap visual until a dedicated VFX prefab lands.
+const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
 
 # Shield (Iter 5) — Q-held stamina stance.
 const SHIELD_STAMINA_MAX := 100.0
@@ -175,6 +178,10 @@ var _sword_hit_counter: int = 0
 # distinct so a player who owns BOTH gets to trigger both in the same
 # run (phoenix on the first lethal blow, second_wind on a later one).
 var _phoenix_feather_used: bool = false
+# iron_resolve — first wound each ROOM is fully absorbed. Auto-resets
+# because every room transition reloads main.tscn and we get a fresh
+# hero instance with this flag back to false. No manual reset needed.
+var _iron_resolve_absorbed_this_room: bool = false
 
 # Iter 19 — melee feel state.
 # _lunge_time / _lunge_dir: brief forward push during the first
@@ -494,15 +501,38 @@ func _start_attack() -> void:
 # slice in front of the hero: any enemy within _pending_melee_range
 # and within ATTACK_ARC half-angle of _pending_melee_aim takes damage,
 # knockback, and counts toward swing_connected.
+# executioner helper — is this enemy at or below 25% HP? Reads
+# enemy.hp (int) and enemy.enemy_type.max_hp (int). Defensive against
+# missing fields / divide-by-zero on weird custom enemies — returns
+# false rather than crashing the swing.
+func _is_executable(enemy: Node) -> bool:
+	if not is_instance_valid(enemy):
+		return false
+	if not ("hp" in enemy):
+		return false
+	var cur_hp: int = int(enemy.get("hp"))
+	var max_val: int = 0
+	if "enemy_type" in enemy:
+		var et: Variant = enemy.get("enemy_type")
+		if et != null and "max_hp" in et:
+			max_val = int(et.get("max_hp"))
+	if max_val <= 0:
+		return false
+	var ratio: float = float(cur_hp) / float(max_val)
+	return ratio < 0.25
+
 func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	# Iter 21 — relic-driven modifiers:
 	#   wide_arc      widens the cone (attack_arc_mul)
 	#   iron_grip     amps knockback force (knockback_force_mul)
 	#   chain_lightning  arcs damage to a nearby second enemy on every 4th hit
+	#   executioner   +150% damage to enemies below 25% HP (per-enemy check
+	#                 inside the loop, since each enemy has its own ratio)
 	var arc_actual: float = ATTACK_ARC * (1.0 + GameState.modifier_total_f("attack_arc_mul", 0.0))
 	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
 	var has_chain: bool = GameState.has_relic("chain_lightning")
+	var has_execute: bool = GameState.has_relic("executioner")
 	var hit_count: int = 0
 	# Track which enemies were already hit this swing so the chain
 	# can't loop back to the original target.
@@ -516,7 +546,10 @@ func _resolve_melee_strike() -> void:
 		if abs(to_enemy.angle_to(_pending_melee_aim)) > arc_actual:
 			continue
 		if enemy.has_method("take_hit"):
-			enemy.take_hit(damage)
+			var dmg_for_this: int = damage
+			if has_execute and _is_executable(enemy):
+				dmg_for_this = int(round(float(damage) * 2.5))
+			enemy.take_hit(dmg_for_this)
 			hit_count += 1
 			hit_set[enemy.get_instance_id()] = true
 			_sword_hit_counter += 1
@@ -596,6 +629,12 @@ func _start_blast() -> void:
 		# learns "the bright one hits harder."
 		p.orb_tint = Color(0.7, 1.0, 1.0, 1.0)
 	p.damage = dmg
+	# executioner — projectile doesn't know its target at spawn, so the
+	# low-HP multiplier gets evaluated in projectile.gd's _on_body_entered
+	# against the body it actually hits. Just gate on relic ownership at
+	# fire time so a lategame pickup doesn't retroactively buff an orb
+	# that's already mid-flight.
+	p.executioner_active = GameState.has_relic("executioner")
 	get_parent().add_child(p)
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.
@@ -616,6 +655,23 @@ func heal(amount: int) -> void:
 
 func take_damage(amount: int) -> void:
 	if hp <= 0 or _iframes > 0.0:
+		return
+	# iron_resolve — the FIRST wound in a room is absorbed wholesale (no
+	# HP loss, no iframes set, just a floater cue). The flag auto-resets
+	# on room entry because every transition reloads main.tscn → fresh
+	# hero instance with the flag back to false. Sits ABOVE iron_skin
+	# subtract because the relic absorbs the WHOLE blow, not the reduced
+	# residual.
+	if GameState.has_relic("iron_resolve") and not _iron_resolve_absorbed_this_room:
+		_iron_resolve_absorbed_this_room = true
+		var p_iron: Node = get_parent()
+		if p_iron != null:
+			var floater_iron: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"ABSORBED",
+				Color(1.0, 0.75, 0.35),
+			)
+			p_iron.add_child(floater_iron)
 		return
 	# Iron Skin: flat subtract, never below 0.
 	var actual: int = maxi(0, amount - GameState.modifier_total("damage_taken_reduction", 0))
@@ -712,6 +768,13 @@ func take_damage(amount: int) -> void:
 # scene reload = new run).
 func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 	_kill_counter += 1
+	# soul_burst — every 5th kill detonates an 80 px AoE for 1 damage at
+	# the kill site. Reuses dash_impact.tscn with a red tint as the VFX
+	# placeholder (audio agent owns the proper effect prefab later).
+	# Checked BEFORE the bloodstone early-return so the two relics stack
+	# cleanly on a 15th / 30th / etc. kill (3 × 5 = 15 — both fire).
+	if GameState.has_relic("soul_burst") and _kill_counter % 5 == 0:
+		_trigger_soul_burst(world_pos)
 	if not GameState.has_relic("bloodstone"):
 		return
 	if _kill_counter % 3 != 0:
@@ -729,9 +792,29 @@ func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 		Color(1.0, 0.35, 0.4),
 	)
 	get_parent().add_child(n)
-	# Position param is unused here but kept on the signal signature for
-	# future "heal at the kill point" variants like vampiric_aura.
-	var _unused := world_pos
+
+# soul_burst — 80 px radial AoE for 1 damage centered on the kill point.
+# Scans the enemies group, applies take_hit(1) to anyone in range. The
+# triggering enemy is already dead (this fires from _on_enemy_died), so
+# no source-skip guard is needed. Spawns a red-tinted dash_impact at the
+# kill site for visual feedback.
+const SOUL_BURST_RADIUS: float = 80.0
+const SOUL_BURST_DAMAGE: int = 1
+func _trigger_soul_burst(world_pos: Vector2) -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		if enemy.global_position.distance_to(world_pos) > SOUL_BURST_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			enemy.take_hit(SOUL_BURST_DAMAGE)
+	var fx: Node2D = SOUL_BURST_SCENE.instantiate() as Node2D
+	if fx != null:
+		fx.global_position = world_pos
+		fx.modulate = Color(1.0, 0.6, 0.6, 1.0)
+		var scene_root: Node = get_tree().current_scene
+		if scene_root != null:
+			scene_root.add_child(fx)
 
 func _update_shield(delta: float) -> void:
 	var holding := Input.is_action_pressed("shield")
@@ -777,7 +860,9 @@ func _resolve_dash_strike_hit() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	# Iter 21 — iron_grip also amps the dash AoE knockback so the relic
 	# benefits BOTH offensive tools (not just basic swings).
+	# executioner amps damage on enemies below 25% HP (per-target check).
 	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
+	var has_execute: bool = GameState.has_relic("executioner")
 	var hit_count: int = 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
@@ -786,7 +871,10 @@ func _resolve_dash_strike_hit() -> void:
 		if to_enemy.length() > DASH_STRIKE_RADIUS:
 			continue
 		if enemy.has_method("take_hit"):
-			enemy.take_hit(damage)
+			var dmg_for_this: int = damage
+			if has_execute and _is_executable(enemy):
+				dmg_for_this = int(round(float(damage) * 2.5))
+			enemy.take_hit(dmg_for_this)
 			hit_count += 1
 		# Iter 13 — heavy radial knockback on dash AoE. Each enemy gets
 		# pushed straight away from the hero, harder + longer than the
