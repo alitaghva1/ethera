@@ -3,19 +3,31 @@
 # bus). Value isn't persisted across sessions yet — that lands when
 # we add a save system.
 #
-# The controls list is read-only labels for now. Remap-friendly UI is
-# a follow-up; the controls match input_setup.gd's bindings 1:1.
+# The controls list is read-only tabulated labels for now. Remap-
+# friendly UI is a follow-up; the controls match input_setup.gd's
+# bindings 1:1.
+#
+# Visuals: same layered radial-bloom background + back-glow Label trick
+# on the title as the main menu, for visual continuity between screens.
 extends Control
 
 const MAIN_MENU_SCENE_PATH := "res://scenes/main_menu.tscn"
 const HOVER_SCALE := 1.05
 const HOVER_TWEEN_TIME := 0.12
+# Title pulse — slower / shallower than the main menu so the settings
+# screen feels calmer.
+const TITLE_PULSE_MIN := 0.98
+const TITLE_PULSE_MAX := 1.02
+const TITLE_PULSE_HALF_DURATION := 1.4
 
 @onready var back_button: Button = $Content/BackButton
 @onready var volume_slider: HSlider = $Content/VolumeRow/VolumeSlider
 @onready var volume_value: Label = $Content/VolumeRow/VolumeValue
+@onready var title: Label = $TitleBlock/Title
+@onready var title_glow: Label = $TitleBlock/TitleGlow
 
 var _hover_tween: Tween
+var _title_tween: Tween
 
 func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
@@ -34,9 +46,16 @@ func _ready() -> void:
 		back_button.pivot_offset = back_button.size / 2.0
 	)
 
-	# Slider grabs initial focus so keyboard players can adjust volume
-	# without reaching for the mouse.
-	volume_slider.grab_focus()
+	# Title pulse — identical pattern to main_menu.gd, just gentler.
+	_recenter_title_pivots()
+	title.resized.connect(_recenter_title_pivots)
+	title_glow.resized.connect(_recenter_title_pivots)
+	_start_title_pulse()
+
+	# BACK is the primary action on this screen, so it gets initial
+	# keyboard focus. Players who want to drag the slider grab it with
+	# the mouse or Tab through.
+	back_button.grab_focus()
 	volume_value.text = str(int(volume_slider.value))
 	# Push the current slider value through Audio on open so the live
 	# bus volume matches whatever the slider's at — important if the
@@ -70,3 +89,22 @@ func _unhandled_input(ev: InputEvent) -> void:
 	# ESC also returns to the title — a common convention players try.
 	if ev is InputEventKey and ev.pressed and ev.physical_keycode == KEY_ESCAPE:
 		_on_back_pressed()
+
+func _recenter_title_pivots() -> void:
+	title.pivot_offset = title.size / 2.0
+	title_glow.pivot_offset = title_glow.size / 2.0
+
+func _start_title_pulse() -> void:
+	if _title_tween and _title_tween.is_valid():
+		_title_tween.kill()
+	_title_tween = create_tween()
+	_title_tween.set_loops()
+	_title_tween.set_trans(Tween.TRANS_SINE)
+	_title_tween.set_ease(Tween.EASE_IN_OUT)
+	_title_tween.tween_method(_apply_title_scale, TITLE_PULSE_MIN, TITLE_PULSE_MAX, TITLE_PULSE_HALF_DURATION)
+	_title_tween.tween_method(_apply_title_scale, TITLE_PULSE_MAX, TITLE_PULSE_MIN, TITLE_PULSE_HALF_DURATION)
+
+func _apply_title_scale(s: float) -> void:
+	var v: Vector2 = Vector2(s, s)
+	title.scale = v
+	title_glow.scale = v * 1.02

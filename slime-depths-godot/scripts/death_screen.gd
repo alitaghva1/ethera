@@ -9,6 +9,11 @@
 # for HAMLET). Keeping the navigation out of here means the death
 # screen can be reused from any future combat scene (boss arena, etc.)
 # without baking in scene paths.
+#
+# Visual treatment: panel reads as a scroll (thick top/bottom borders +
+# crimson→black gradient inside), the title "YOU DIED" gets the same
+# back-glow Label trick as the main menu, and the kills/runs stats are
+# laid out as big gold numbers with small cream sub-captions beneath.
 extends CanvasLayer
 
 signal retry_pressed
@@ -18,7 +23,10 @@ const HOVER_SCALE := 1.05
 const HOVER_TWEEN_TIME := 0.12
 
 @onready var panel: Panel = $Panel
-@onready var stats_label: Label = $Panel/Stack/StatsLabel
+@onready var title: Label = $Panel/Stack/TitleBlock/Title
+@onready var title_glow: Label = $Panel/Stack/TitleBlock/TitleGlow
+@onready var kills_number: Label = $Panel/Stack/StatsRow/KillsBlock/KillsNumber
+@onready var runs_number: Label = $Panel/Stack/StatsRow/RunsBlock/RunsNumber
 @onready var relics_title: Label = $Panel/Stack/RelicsTitle
 @onready var relics_list: VBoxContainer = $Panel/Stack/RelicsList
 @onready var retry_button: Button = $Panel/Stack/ButtonRow/RetryButton
@@ -40,16 +48,24 @@ func _ready() -> void:
 			b.pivot_offset = b.size / 2.0
 		)
 
+	# Pivot the title labels at their center so any future scale/glow
+	# tween anchors symmetrically. No infinite pulse on the death screen
+	# — the screen wants stillness, not life.
+	_recenter_title_pivots()
+	title.resized.connect(_recenter_title_pivots)
+	title_glow.resized.connect(_recenter_title_pivots)
+
 # Show the overlay with the kills count from this run. Reads dungeon_runs
 # + owned_relics straight from GameState — keeps the show_death signature
 # small while still letting it summarize the meta state. _has_game_state
 # guards make the scene runnable in isolation (no autoload registered)
 # for in-editor preview without crashing.
 func show_death(kills: int) -> void:
-	var runs := 0
+	var runs: int = 0
 	if _has_game_state():
 		runs = GameState.dungeon_runs
-	stats_label.text = "KILLS  %d   ·   RUNS  %d" % [kills, runs]
+	kills_number.text = str(kills)
+	runs_number.text = str(runs)
 	_rebuild_relics_list()
 	visible = true
 	# Defer focus by one frame — the CanvasLayer becomes visible THIS
@@ -71,7 +87,7 @@ func _rebuild_relics_list() -> void:
 	var owned: Array = GameState.owned_relics
 	if owned.is_empty():
 		relics_title.visible = true
-		var none_lbl := Label.new()
+		var none_lbl: Label = Label.new()
 		none_lbl.text = "(none)"
 		none_lbl.add_theme_font_size_override("font_size", 13)
 		none_lbl.add_theme_color_override("font_color", Color(0.55, 0.48, 0.36, 1))
@@ -82,10 +98,15 @@ func _rebuild_relics_list() -> void:
 	for rid in owned:
 		var info: Dictionary = GameState.relic_info(rid)
 		var nm: String = info.get("name", rid)
-		var lbl := Label.new()
-		lbl.text = nm
+		# Bullet glyph (• U+2022) prefixed at gold, name in cream. A
+		# single Label with both colors would need BBCode; using one
+		# label is fine here since the bullet reads as part of the line.
+		var lbl: Label = Label.new()
+		lbl.text = "•  %s" % nm
 		lbl.add_theme_font_size_override("font_size", 14)
 		lbl.add_theme_color_override("font_color", Color(0.96, 0.85, 0.63, 1))
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		lbl.add_theme_constant_override("outline_size", 2)
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		relics_list.add_child(lbl)
 
@@ -113,8 +134,12 @@ func _animate_scale(button: Button, target: float) -> void:
 	var prev: Tween = _hover_tweens.get(button)
 	if prev and prev.is_valid():
 		prev.kill()
-	var tween := create_tween()
+	var tween: Tween = create_tween()
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_OUT)
 	tween.tween_property(button, "scale", Vector2(target, target), HOVER_TWEEN_TIME)
 	_hover_tweens[button] = tween
+
+func _recenter_title_pivots() -> void:
+	title.pivot_offset = title.size / 2.0
+	title_glow.pivot_offset = title_glow.size / 2.0
