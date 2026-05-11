@@ -83,6 +83,51 @@ const RELIC_REGISTRY := {
 
 var owned_relics: Array[String] = []
 
+# ── Persisted settings ───────────────────────────────────────────────
+# Master audio volume in linear 0..1 space. Source-of-truth for the
+# settings slider; the slider seeds itself from this value on open and
+# writes back through SaveSystem on change. Audio.set_master_volume()
+# is the consumer (converts to dB for the Master bus).
+var master_volume: float = 0.7
+
+# ── Save / load serialization ────────────────────────────────────────
+# Round-tripped through SaveSystem (user://ethera_save.json). Versioned
+# so future schema changes can be migrated rather than dropped. Keep
+# this dict flat — JSON tolerates nesting fine, but a flat shape is
+# easiest to diff in a text editor when debugging save files.
+func save_to_dict() -> Dictionary:
+	return {
+		"save_version": 1,
+		"owned_relics": owned_relics,
+		"session_kills": session_kills,
+		"dungeon_runs": dungeon_runs,
+		"last_run_kills": last_run_kills,
+		"master_volume": master_volume,
+	}
+
+# Tolerant loader: every field has a default, missing keys are ignored,
+# wrong-type values fall back to defaults. This is the forward-compat
+# contract for older save files (e.g. a v0 file with no master_volume
+# still loads, just keeps the default volume). JSON round-trips ints
+# as floats, so we coerce numeric fields back to int explicitly.
+func load_from_dict(d: Dictionary) -> void:
+	session_kills = int(d.get("session_kills", 0))
+	dungeon_runs = int(d.get("dungeon_runs", 0))
+	last_run_kills = int(d.get("last_run_kills", 0))
+	master_volume = clampf(float(d.get("master_volume", 0.7)), 0.0, 1.0)
+
+	# Array[String] needs a fresh typed array — JSON returns a plain
+	# Array (no element typing) so we rebuild element-by-element and
+	# skip anything that isn't actually a string. Defensive against a
+	# user hand-editing the save file and putting garbage in here.
+	var loaded_relics: Variant = d.get("owned_relics", [])
+	var fresh: Array[String] = []
+	if loaded_relics is Array:
+		for rid in loaded_relics:
+			if rid is String:
+				fresh.append(rid)
+	owned_relics = fresh
+
 # ── Session API ──────────────────────────────────────────────────────
 func start_dungeon_run() -> void:
 	dungeon_runs += 1

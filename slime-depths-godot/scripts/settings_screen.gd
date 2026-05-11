@@ -30,6 +30,12 @@ var _hover_tween: Tween
 var _title_tween: Tween
 
 func _ready() -> void:
+	# Seed the slider from the persisted GameState value BEFORE wiring
+	# the value_changed signal — otherwise this initial set fires the
+	# handler and triggers a redundant save on screen open.
+	# master_volume is in linear 0..1 space; slider is 0..100.
+	volume_slider.set_value_no_signal(GameState.master_volume * 100.0)
+
 	back_button.pressed.connect(_on_back_pressed)
 	volume_slider.value_changed.connect(_on_volume_changed)
 
@@ -66,7 +72,14 @@ func _on_volume_changed(value: float) -> void:
 	volume_value.text = str(int(value))
 	# 0..100 linear slider → 0..1 linear → dB via Audio autoload helper.
 	# linear_to_db clamps to a usable range; mute below threshold.
-	Audio.set_master_volume(value / 100.0)
+	var linear: float = value / 100.0
+	Audio.set_master_volume(linear)
+	# Persist immediately so volume survives a quit. Slider drag fires
+	# value_changed continuously, but SaveSystem.save_now() is cheap
+	# (small JSON, .tmp + rename) so flushing on every tick is fine
+	# for our save-file size. If save cost ever balloons, debounce here.
+	GameState.master_volume = linear
+	SaveSystem.save_now()
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
