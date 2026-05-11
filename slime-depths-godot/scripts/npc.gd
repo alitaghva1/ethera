@@ -11,15 +11,26 @@ extends Area2D
 @export var npc_name: String = "Stranger"
 @export var lines: Array[String] = ["..."]
 @export var body_color: Color = Color(0.78, 0.65, 0.41, 1)
+# When set, the Sprite child renders this pixel-art texture and the
+# ColorRect placeholder body is hidden. Null = use ColorRect fallback.
+@export var npc_texture: Texture2D = null
 
 @onready var body: ColorRect = $Body
+@onready var sprite: Sprite2D = $Sprite
 @onready var name_label: Label = $NameLabel
 @onready var prompt: Label = $Prompt
 
 var _player_in_range := false
 
 func _ready() -> void:
-	body.color = body_color
+	if npc_texture != null:
+		sprite.texture = npc_texture
+		sprite.visible = true
+		body.visible = false
+	else:
+		body.color = body_color
+		body.visible = true
+		sprite.visible = false
 	name_label.text = npc_name
 	prompt.visible = false
 	body_entered.connect(_on_body_entered)

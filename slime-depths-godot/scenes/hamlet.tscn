@@ -1,10 +1,16 @@
-[gd_scene load_steps=11 format=3 uid="uid://b3hamlet1234"]
+[gd_scene load_steps=14 format=3 uid="uid://b3hamlet1234"]
 
 [ext_resource type="Script" path="res://scripts/hamlet.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/rooms/hamlet_floor.png" id="2_floor"]
 [ext_resource type="PackedScene" path="res://scenes/hero.tscn" id="3_hero"]
 [ext_resource type="PackedScene" path="res://scenes/npc.tscn" id="4_npc"]
 [ext_resource type="PackedScene" path="res://scenes/portal.tscn" id="5_portal"]
+[ext_resource type="Texture2D" path="res://assets/buildings/smithy.png" id="6_smithy"]
+[ext_resource type="Texture2D" path="res://assets/buildings/tavern.png" id="7_tavern"]
+[ext_resource type="Texture2D" path="res://assets/buildings/tower.png" id="8_tower"]
+[ext_resource type="Texture2D" path="res://assets/npc/wanderer.png" id="9_wanderer"]
+[ext_resource type="Texture2D" path="res://assets/npc/smith.png" id="10_smith"]
+[ext_resource type="Texture2D" path="res://assets/npc/oracle.png" id="11_oracle"]
 
 ; Hamlet uses the same 1280×768 design space as the dungeon, with the
 ; grass + path floor baked in extract-godot-hamlet-floor.js. The hero
@@ -41,41 +47,35 @@ texture = ExtResource("2_floor")
 collision_layer = 1
 collision_mask = 0
 
-[node name="Smithy" type="Panel" parent="Buildings"]
-offset_left = 220.0
-offset_top = 150.0
-offset_right = 380.0
-offset_bottom = 290.0
-theme_override_styles/panel = SubResource("building_style")
+; Buildings are pixel-art Sprite2D nodes (iter-9 agent A bake). Each
+; sits on its own collision rect so the hero walks around it rather
+; than through. Y-positions align the sprite base with the path.
+[node name="Smithy" type="Sprite2D" parent="Buildings"]
+position = Vector2(300, 230)
+texture = ExtResource("6_smithy")
 
 [node name="SmithyShape" type="CollisionShape2D" parent="Buildings"]
-position = Vector2(300, 220)
+position = Vector2(300, 230)
 shape = SubResource("wall_h")
-scale = Vector2(0.125, 3.5)
+scale = Vector2(0.143, 3.5)
 
-[node name="Tavern" type="Panel" parent="Buildings"]
-offset_left = 550.0
-offset_top = 130.0
-offset_right = 740.0
-offset_bottom = 300.0
-theme_override_styles/panel = SubResource("building_style")
+[node name="Tavern" type="Sprite2D" parent="Buildings"]
+position = Vector2(645, 220)
+texture = ExtResource("7_tavern")
 
 [node name="TavernShape" type="CollisionShape2D" parent="Buildings"]
-position = Vector2(645, 215)
+position = Vector2(645, 220)
 shape = SubResource("wall_h")
-scale = Vector2(0.148, 4.25)
+scale = Vector2(0.171, 4.0)
 
-[node name="Tower" type="Panel" parent="Buildings"]
-offset_left = 910.0
-offset_top = 140.0
-offset_right = 1050.0
-offset_bottom = 300.0
-theme_override_styles/panel = SubResource("building_style")
+[node name="Tower" type="Sprite2D" parent="Buildings"]
+position = Vector2(980, 220)
+texture = ExtResource("8_tower")
 
 [node name="TowerShape" type="CollisionShape2D" parent="Buildings"]
 position = Vector2(980, 220)
 shape = SubResource("wall_h")
-scale = Vector2(0.109, 4.0)
+scale = Vector2(0.078, 4.8)
 
 ; Building name labels — small wooden signs above each entry.
 [node name="SmithLabel" type="Label" parent="Buildings"]
@@ -142,18 +142,21 @@ shape = SubResource("wall_h")
 position = Vector2(440, 400)
 npc_name = "THE WANDERER"
 body_color = Color(0.42, 0.6, 0.78, 1)
+npc_texture = ExtResource("9_wanderer")
 lines = ["Strange roads, traveler. Each descent peels another layer off the world.", "Some say the depths once held an answer. We only have questions now.", "Walk softly. The slimes are the kind ones."]
 
 [node name="Smith" parent="." instance=ExtResource("4_npc")]
 position = Vector2(300, 320)
 npc_name = "BERIN THE SMITH"
 body_color = Color(0.78, 0.42, 0.3, 1)
+npc_texture = ExtResource("10_smith")
 lines = ["You're going to need that edge, friend.", "I'd offer to sharpen it, but my forge is cold until you bring back something to feed it.", "Bring me skeleton bone-iron. Three pieces. Then we talk."]
 
 [node name="Oracle" parent="." instance=ExtResource("4_npc")]
 position = Vector2(980, 400)
 npc_name = "THE ORACLE"
 body_color = Color(0.65, 0.45, 0.78, 1)
+npc_texture = ExtResource("11_oracle")
 lines = ["The wheel turns. Twelve runs, twelve faces of the same wound.", "I see you swinging at a thing that was already dead. Save your blade for what's still hungry.", "When the torches gutter, that is when the depths look back."]
 
 ; ── Portal to the dungeon ────────────────────────────────────────────

@@ -26,6 +26,14 @@ offset_right = 10.0
 offset_bottom = 0.0
 color = Color(0.78, 0.65, 0.41, 1)
 
+; Pixel-art body — auto-shown when @export var npc_texture is set on the
+; instance; falls back to the ColorRect "Body" above when null.
+; centered=false + the offset puts the sprite's feet at the NPC's anchor.
+[node name="Sprite" type="Sprite2D" parent="."]
+position = Vector2(-16, -56)
+centered = false
+visible = false
+
 [node name="NameLabel" type="Label" parent="."]
 offset_left = -80.0
 offset_top = -56.0
