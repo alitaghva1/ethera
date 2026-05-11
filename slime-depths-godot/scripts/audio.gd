@@ -48,6 +48,36 @@ const SOUND_CONFIGS := {
 	# travel (hero.gd emits Events.hero_stepped). Kept quiet (-12 dB at
 	# play site) because it fires multiple times per second during walk.
 	"hero_stepped":  { "freq_start": 180.0, "freq_end":  90.0, "duration": 0.045,"wave": "noise",  "gain": 0.18, "decay_pow": 2.4 },
+	# ── Combat VFX layer (iter-13 / 17 / 19) ──────────────────────────
+	# Each of these layers on top of an existing beat (hero_blasted /
+	# hero_attacked / enemy_hit chain) so character is the goal, not
+	# loudness. Tunings:
+	#
+	# blast_muzzle — HIGH (2600→1000 Hz), VERY short (80 ms), steep
+	#   decay (3.0). Sits in the treble well ABOVE hero_blasted's
+	#   820→160 Hz pitch sweep so it reads as a distinct "spark"
+	#   transient riding on top, not a clash with the body of the
+	#   blast. Sine wave kept (square at 2.6 kHz is harsh).
+	"blast_muzzle":  { "freq_start": 2600.0,"freq_end":1000.0, "duration": 0.08, "wave": "sin",    "gain": 0.42, "decay_pow": 3.0 },
+	# dash_impact — LOW thud (160→60 Hz) with a long tail (0.40s) for
+	#   the rumble after the initial whack. decay_pow=1.4 gives a fat
+	#   front end and a slow fall-off rather than a tight pluck. Sine
+	#   so the body is felt, not heard as a click. ONE beat regardless
+	#   of how many enemies are in the radius — the impact has weight.
+	"dash_impact":   { "freq_start": 160.0, "freq_end":  60.0, "duration": 0.40, "wave": "sin",    "gain": 0.65, "decay_pow": 1.4 },
+	# slash_arc — brief whoosh-cut layered on top of hero_swing when the
+	#   swing actually connects. Higher than hero_swing's 620→220 Hz
+	#   (850→360 Hz) so it reads as the "cut" through the air, not a
+	#   second swing. Short (70 ms), steep decay (2.4) — it should
+	#   accent the impact frame, not linger past it.
+	"slash_arc":     { "freq_start": 850.0, "freq_end": 360.0, "duration": 0.07, "wave": "sin",    "gain": 0.35, "decay_pow": 2.4 },
+	# second_wind — DRAMATIC chime: low fundamental (200→140 Hz) with a
+	#   long 0.55s tail and gentle decay (1.0 = linear) so it RINGS
+	#   rather than snaps. Distinct from hero_died's downward sweep
+	#   (240→55 Hz) — second_wind RISES at the start before settling,
+	#   reading as "saved" rather than "ended." Played at +1 dB so it
+	#   cuts through the otherwise-busy "I almost died" moment.
+	"second_wind":   { "freq_start": 200.0, "freq_end": 140.0, "duration": 0.55, "wave": "sin",    "gain": 0.65, "decay_pow": 1.0 },
 }
 
 # Number of AudioStreamPlayer2D nodes to pre-create per bus. Six is
@@ -76,6 +106,14 @@ func _ready() -> void:
 	Events.enemy_died.connect(_on_enemy_died)
 	Events.pickup_claimed.connect(_on_pickup_claimed)
 	Events.hero_stepped.connect(_on_hero_stepped)
+	# Combat-VFX layer (iter-13/17/19). hero_blast_muzzle is intentionally
+	# NOT subscribed here — we layer the muzzle sparkle inside the
+	# existing _on_hero_blasted handler instead, so the new audio works
+	# today without a hero.gd wiring change. The signal still exists in
+	# events.gd for future explicit emit.
+	Events.hero_dash_impacted.connect(_on_hero_dash_impacted)
+	Events.hero_swing_connected.connect(_on_hero_swing_connected)
+	Events.hero_second_wind.connect(_on_hero_second_wind)
 
 # ── Synthesis ──────────────────────────────────────────────────────────
 
@@ -172,6 +210,11 @@ func _on_hero_attacked(world_pos: Vector2, _aim: Vector2) -> void:
 
 func _on_hero_blasted(world_pos: Vector2, _aim: Vector2) -> void:
 	_play("hero_blasted", world_pos, -2.0)
+	# Iter-19 layer: bright sparkle on top of the blast body. Same frame
+	# as the launch — the 80ms duration + steep decay reads as the
+	# muzzle-flash "ping" sitting above the 820→160 Hz pitch sweep.
+	# Played -4 dB so it accents without out-shouting the blast itself.
+	_play("blast_muzzle", world_pos, -4.0)
 
 func _on_hero_dodged(world_pos: Vector2) -> void:
 	_play("hero_dodged", world_pos, -6.0)
@@ -196,6 +239,25 @@ func _on_pickup_claimed(world_pos: Vector2, _name: String) -> void:
 # during a brisk walk and would otherwise dominate the mix.
 func _on_hero_stepped(world_pos: Vector2) -> void:
 	_play("hero_stepped", world_pos, -12.0)
+
+# Dash-strike AoE landed — ONE beat regardless of how many enemies are
+# caught in the radius. The per-enemy enemy_hit chain still plays its
+# own ticks; this is the master "shockwave" layer on top. Played hot
+# (+2 dB) so the impact has real weight against the lighter hit chain.
+func _on_hero_dash_impacted(world_pos: Vector2) -> void:
+	_play("dash_impact", world_pos, 2.0)
+
+# Sword swing connected (NOT a whiff). hero_attacked already plays the
+# swing-motion sound at swing-START; this layers the "cut" accent on the
+# hit FRAME. -5 dB so it sits as accent, not a second swing.
+func _on_hero_swing_connected(world_pos: Vector2) -> void:
+	_play("slash_arc", world_pos, -5.0)
+
+# second_wind relic proc — long ringing chime signaling the save. Played
+# hot (+3 dB) so it cuts through the "almost died" moment, which will
+# typically include hero_damaged + flying-damage-number SFX already.
+func _on_hero_second_wind(world_pos: Vector2) -> void:
+	_play("second_wind", world_pos, 3.0)
 
 # ── Public volume API (for settings screen) ───────────────────────────
 

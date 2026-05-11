@@ -438,13 +438,46 @@ func _spawn_enemy_type(type_id: String) -> void:
 # via pedestal.gd's _claim sibling-sweep. If the player has already
 # picked the entire registry, we skip pedestals entirely and resolve
 # straight to the door (otherwise we'd offer phantom claims).
+# Iter 21 — tier weights per room. Earlier rooms favor commons; later
+# rooms bias toward legendaries so the player feels progress with each
+# clear. Each slot in the 3-pedestal offer rolls independently against
+# these weights, then a relic of that tier is drawn (without
+# replacement within the offer). Falls back to other tiers cleanly if
+# the rolled tier has no unowned relics left.
+const TIER_WEIGHTS_BY_ROOM := [
+	{ "common": 75.0, "rare": 22.0, "legendary":  3.0 },   # room 1
+	{ "common": 45.0, "rare": 45.0, "legendary": 10.0 },   # room 2
+	{ "common": 20.0, "rare": 45.0, "legendary": 35.0 },   # room 3
+]
+
 func _spawn_pedestal_offer(count: int) -> void:
-	var available: Array[String] = []
+	# Bucket all unowned relics by tier so the roller can pick a tier
+	# first then draw from that tier's pool. Drawing-without-replacement
+	# within the offer prevents duplicates among the 3 pedestals.
+	var by_tier: Dictionary = { "common": [], "rare": [], "legendary": [] }
 	for rid in GameState.RELIC_REGISTRY.keys():
-		if not GameState.has_relic(rid):
-			available.append(rid)
-	available.shuffle()
-	var n: int = mini(count, available.size())
+		if GameState.has_relic(rid):
+			continue
+		var info: Dictionary = GameState.relic_info(rid)
+		var tier: String = str(info.get("tier", "common"))
+		if by_tier.has(tier):
+			(by_tier[tier] as Array).append(rid)
+	# Pick the weight table for the current room index. -1 (no floor
+	# state) falls through to room 1 weights as a defensive default.
+	var room_idx: int = RunState.current_room_index if RunState.current_room_index >= 0 else 0
+	room_idx = clampi(room_idx, 0, TIER_WEIGHTS_BY_ROOM.size() - 1)
+	var weights: Dictionary = TIER_WEIGHTS_BY_ROOM[room_idx]
+	# Roll up to `count` distinct relics, each from a tier-weighted draw.
+	var picks: Array[String] = []
+	for i in range(count):
+		var tier_pick: String = _weighted_tier_pick(weights, by_tier)
+		if tier_pick == "":
+			break   # no unowned relics in any tier
+		var pool: Array = by_tier[tier_pick]
+		var idx: int = randi() % pool.size()
+		picks.append(str(pool[idx]))
+		pool.remove_at(idx)   # without-replacement inside the offer
+	var n: int = picks.size()
 	if n == 0:
 		# Nothing left to offer; full heal as consolation, then route.
 		hero.heal(99)
@@ -460,8 +493,31 @@ func _spawn_pedestal_offer(count: int) -> void:
 	for i in range(n):
 		var ped: Pedestal = PEDESTAL_SCENE.instantiate()
 		ped.global_position = Vector2(start_x + spacing * i, y)
-		ped.relic_id = available[i]
+		ped.relic_id = picks[i]
 		add_child(ped)
+
+# Weighted random tier picker. Empty tiers are excluded from the roll
+# entirely (their weight contribution becomes 0), so weights
+# dynamically re-balance as the player drains the pool. Returns ""
+# only when EVERY tier is empty — caller treats that as offer-exhausted.
+func _weighted_tier_pick(weights: Dictionary, by_tier: Dictionary) -> String:
+	var total: float = 0.0
+	for tier in weights:
+		var pool: Array = by_tier.get(tier, [])
+		if not pool.is_empty():
+			total += float(weights[tier])
+	if total <= 0.0:
+		return ""
+	var roll: float = randf() * total
+	var acc: float = 0.0
+	for tier in weights:
+		var pool2: Array = by_tier.get(tier, [])
+		if pool2.is_empty():
+			continue
+		acc += float(weights[tier])
+		if roll <= acc:
+			return str(tier)
+	return ""
 
 # Heal the hero +1 on room clear (Hades chamber-heal convention).
 # Spawns a green "+1" damage number rising from the hero's head so the
@@ -524,6 +580,11 @@ func _on_enemy_died(world_pos: Vector2) -> void:
 	add_child(n)
 
 func _on_hero_swing_connected(hit_count: int) -> void:
+	# Iter 21 — bridge to the audio bus. audio.gd subscribes to
+	# Events.hero_swing_connected for the slash_arc whoosh-cut layered
+	# on the existing hero_swing sound. We're the only emitter; hero
+	# already gates its swing_connected signal on hit_count > 0.
+	Events.hero_swing_connected.emit(hero.global_position)
 	# Brief hit-stop on a connecting melee swing. The freeze scale is
 	# the hero-took-damage one's bigger sibling — same machinery, just
 	# lighter / shorter. Don't stack: if we're already mid-stop from
@@ -543,6 +604,11 @@ func _on_hero_dash_strike_landed(world_pos: Vector2, hit_count: int) -> void:
 	if impact != null:
 		impact.global_position = world_pos
 		add_child(impact)
+	# Iter 21 — bridge to the audio bus. audio.gd subscribes to
+	# Events.hero_dash_impacted for the low-thud body of the impact.
+	# Fires ONCE per dash regardless of hit_count — the per-enemy
+	# enemy_hit chain handles the secondary "ka-tinks."
+	Events.hero_dash_impacted.emit(world_pos)
 	# Heavy shake on connect; lighter "thump" shake on whiff so the
 	# dash still has some recoil weight even when you miss.
 	if hit_count > 0:

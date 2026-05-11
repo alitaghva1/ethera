@@ -39,6 +39,10 @@ var persisted_hp: int = -1
 #   dodge_cooldown_mul      (float)  multiplier delta on DODGE_COOLDOWN
 #   move_speed_mul          (float)  multiplier delta on SPEED
 #   attack_range_mul        (float)  multiplier delta on ATTACK_RANGE  (iter 17)
+#   knockback_force_mul     (float)  multiplier delta on melee + dash knockback  (iter 21)
+#   dodge_iframes_bonus_f   (float)  extra seconds added to DODGE_IFRAMES  (iter 21)
+#   projectile_speed_mul    (float)  multiplier delta on hero blast velocity  (iter 21)
+#   attack_arc_mul          (float)  multiplier delta on ATTACK_ARC half-angle  (iter 21)
 # Float-typed mods are folded via modifier_total_f (see below).
 #
 # Tier (iter 17): "common" / "rare" / "legendary". Drives the pedestal
@@ -83,6 +87,18 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"mods": { "max_hp_bonus": 1 },
 	},
+	"iron_grip": {
+		"name": "IRON GRIP",
+		"description": "Strikes shove harder. +25% knockback force.",
+		"tier": "common",
+		"mods": { "knockback_force_mul": 0.25 },
+	},
+	"sturdy_step": {
+		"name": "STURDY STEP",
+		"description": "Steady on your feet. Dodge i-frames last +0.15s longer.",
+		"tier": "common",
+		"mods": { "dodge_iframes_bonus_f": 0.15 },
+	},
 	"swift_strike": {
 		"name": "SWIFT STRIKE",
 		"description": "Sword cooldown -20%.",
@@ -113,6 +129,18 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"mods": { "attack_range_mul": 0.25 },
 	},
+	"arcane_quiver": {
+		"name": "ARCANE QUIVER",
+		"description": "Blast projectiles travel +30% faster.",
+		"tier": "rare",
+		"mods": { "projectile_speed_mul": 0.30 },
+	},
+	"wide_arc": {
+		"name": "WIDE ARC",
+		"description": "Sword swings cleave a +60% wider arc.",
+		"tier": "rare",
+		"mods": { "attack_arc_mul": 0.60 },
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",
@@ -142,6 +170,18 @@ const RELIC_REGISTRY := {
 		"description": "Every 4th blast strikes for double.",
 		"tier": "legendary",
 		"mods": {},   # triggered — see hero._start_blast
+	},
+	"chain_lightning": {
+		"name": "CHAIN LIGHTNING",
+		"description": "Every 4th sword hit arcs to a 2nd enemy nearby.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero._resolve_melee_strike
+	},
+	"phoenix_feather": {
+		"name": "PHOENIX FEATHER",
+		"description": "Once per run, a killing blow restores you to FULL HP.",
+		"tier": "legendary",
+		"mods": {},   # triggered — see hero.take_damage (preempts second_wind)
 	},
 }
 

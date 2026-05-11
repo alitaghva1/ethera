@@ -167,6 +167,13 @@ var _is_dying := false
 var _kill_counter: int = 0
 var _blast_counter: int = 0
 var _second_wind_used: bool = false
+# Iter 21 — chain_lightning trigger counter. Bumps on every successful
+# enemy hit in melee; every 4th attempts a chain to a nearby enemy.
+var _sword_hit_counter: int = 0
+# Iter 21 — phoenix_feather one-shot. Like _second_wind_used but
+# distinct so a player who owns BOTH gets to trigger both in the same
+# run (phoenix on the first lethal blow, second_wind on a later one).
+var _phoenix_feather_used: bool = false
 
 # Iter 19 — melee feel state.
 # _lunge_time / _lunge_dir: brief forward push during the first
@@ -430,7 +437,9 @@ func _start_dodge(input: Vector2) -> void:
 	_dodge_dir = dir.normalized()
 	_dodge_time = DODGE_DURATION
 	_dodge_cd = DODGE_COOLDOWN * (1.0 + GameState.modifier_total_f("dodge_cooldown_mul", 0.0))
-	_iframes = max(_iframes, DODGE_IFRAMES)
+	# Iter 21 — sturdy_step relic extends the iframe window.
+	var iframes_actual: float = DODGE_IFRAMES + GameState.modifier_total_f("dodge_iframes_bonus_f", 0.0)
+	_iframes = max(_iframes, iframes_actual)
 	_shield_active = false
 	dodge_started.emit()
 	Events.hero_dodged.emit(global_position)
@@ -477,23 +486,65 @@ func _start_attack() -> void:
 # knockback, and counts toward swing_connected.
 func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# Iter 21 — relic-driven modifiers:
+	#   wide_arc      widens the cone (attack_arc_mul)
+	#   iron_grip     amps knockback force (knockback_force_mul)
+	#   chain_lightning  arcs damage to a nearby second enemy on every 4th hit
+	var arc_actual: float = ATTACK_ARC * (1.0 + GameState.modifier_total_f("attack_arc_mul", 0.0))
+	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
+	var has_chain: bool = GameState.has_relic("chain_lightning")
 	var hit_count: int = 0
+	# Track which enemies were already hit this swing so the chain
+	# can't loop back to the original target.
+	var hit_set: Dictionary = {}
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > _pending_melee_range:
 			continue
-		if abs(to_enemy.angle_to(_pending_melee_aim)) > ATTACK_ARC:
+		if abs(to_enemy.angle_to(_pending_melee_aim)) > arc_actual:
 			continue
 		if enemy.has_method("take_hit"):
 			enemy.take_hit(damage)
 			hit_count += 1
+			hit_set[enemy.get_instance_id()] = true
+			_sword_hit_counter += 1
+			# Chain on every 4th hit. Find the nearest other enemy
+			# within CHAIN_RADIUS px of the source and zap it for 1.
+			if has_chain and _sword_hit_counter % 4 == 0:
+				_try_chain_from(enemy, hit_set)
 		if enemy.has_method("apply_knockback"):
 			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _pending_melee_aim
-			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE, MELEE_KNOCKBACK_TIME)
+			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
 	if hit_count > 0:
 		swing_connected.emit(hit_count)
+
+# Iter 21 — chain_lightning effect. Find the nearest enemy within
+# CHAIN_RADIUS of `source` that wasn't already hit this swing, deal a
+# small fixed damage. No knockback (the chain is a visual sting, not
+# the swing's force). Damage number tinted cyan so the player sees
+# the chain land.
+const CHAIN_RADIUS: float = 80.0
+const CHAIN_DAMAGE: int = 1
+func _try_chain_from(source: Node, hit_set: Dictionary) -> void:
+	if not is_instance_valid(source):
+		return
+	var src_pos: Vector2 = source.global_position
+	var best: Node = null
+	var best_dist: float = CHAIN_RADIUS
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy) or enemy == source:
+			continue
+		if hit_set.has(enemy.get_instance_id()):
+			continue
+		var d: float = enemy.global_position.distance_to(src_pos)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
+	if best != null and best.has_method("take_hit"):
+		best.take_hit(CHAIN_DAMAGE)
+		hit_set[best.get_instance_id()] = true
 
 func _start_blast() -> void:
 	var aim_world := get_global_mouse_position() - global_position
@@ -511,7 +562,9 @@ func _start_blast() -> void:
 	var p: Projectile = PROJECTILE_SCENE.instantiate()
 	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
 	p.global_position = spawn_pos
-	p.velocity = aim * Projectile.SPEED
+	# Iter 21 — arcane_quiver multiplies projectile speed.
+	var proj_speed: float = Projectile.SPEED * (1.0 + GameState.modifier_total_f("projectile_speed_mul", 0.0))
+	p.velocity = aim * proj_speed
 	# Iter 19 — muzzle flash at the spawn point. Bright magenta burst
 	# that fades over 0.18s. Sells "projectile was LAUNCHED" instead
 	# of "projectile appeared." Parented to current_scene so it lives
@@ -563,12 +616,38 @@ func take_damage(amount: int) -> void:
 	# of dying, once per run. Triggers ONLY when HP would otherwise hit
 	# 0 or lower, so a partial hit can't burn the proc. _second_wind_used
 	# resets at scene reload (fresh hero instance per run).
-	if hp <= 0 and GameState.has_relic("second_wind") and not _second_wind_used:
+	# Iter 21 — phoenix_feather PREEMPTS second_wind. If the player owns
+	# both and is dying for the first time, phoenix wins (more dramatic
+	# beat + full heal). second_wind handles the SECOND lethal blow if
+	# phoenix already fired. Different flag per relic so they don't
+	# share state — a run with both gets two saves total.
+	if hp <= 0 and GameState.has_relic("phoenix_feather") and not _phoenix_feather_used:
+		_phoenix_feather_used = true
+		var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		hp = cap
+		_iframes = HIT_IFRAMES * 2.5  # longer invuln than second_wind
+		# Reuse the second_wind audio chime — players associate that
+		# sound with "you should have died." Dedicated phoenix SFX
+		# could land later.
+		Events.hero_second_wind.emit(global_position)
+		var parent_p: Node = get_parent()
+		if parent_p != null:
+			var n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"PHOENIX FEATHER",
+				Color(1, 0.55, 0.35),
+			)
+			parent_p.add_child(n)
+	elif hp <= 0 and GameState.has_relic("second_wind") and not _second_wind_used:
 		_second_wind_used = true
 		hp = 1
 		# Brief invuln so the trigger doesn't immediately die to the
 		# next tick of contact damage from the same enemy.
 		_iframes = HIT_IFRAMES * 2.0
+		# Iter 21 — fire the audio bus chime so the save HAS A SOUND.
+		# audio.gd subscribes to Events.hero_second_wind for the long
+		# rising 200→140 Hz ring distinct from the death sweep.
+		Events.hero_second_wind.emit(global_position)
 		# Floating amber number marks the save so the player learns
 		# the relic worked rather than wondering why they survived.
 		# Iter 20 — guard get_parent() in case take_damage fires during
@@ -667,6 +746,9 @@ func _start_dash_strike() -> void:
 
 func _resolve_dash_strike_hit() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# Iter 21 — iron_grip also amps the dash AoE knockback so the relic
+	# benefits BOTH offensive tools (not just basic swings).
+	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
 	var hit_count: int = 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
@@ -682,7 +764,7 @@ func _resolve_dash_strike_hit() -> void:
 		# normal melee knockback because the dash is a committed engage.
 		if enemy.has_method("apply_knockback"):
 			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _dash_strike_dir
-			enemy.apply_knockback(push_dir, DASH_KNOCKBACK_FORCE, DASH_KNOCKBACK_TIME)
+			enemy.apply_knockback(push_dir, DASH_KNOCKBACK_FORCE * knockback_mul, DASH_KNOCKBACK_TIME)
 	# Always emit even on whiff — the impact VFX still wants to fire so
 	# the player gets visual feedback that the dash committed.
 	dash_strike_landed.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), hit_count)
