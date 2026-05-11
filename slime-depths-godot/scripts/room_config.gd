@@ -39,6 +39,20 @@ extends Resource
 # Wave compositions (see file-header comment for format).
 @export var waves: Array = []
 
+# Pillar placements — each Vector2 is a world-pixel position where a
+# Pillar scene gets instantiated at _ready. Pillars are collidable
+# stone columns the hero must walk around; per-room placement gives
+# each room a distinct combat geometry. Don't place ON spawn_points
+# or hero_spawn — the player or an enemy would get stuck.
+@export var pillar_positions: Array[Vector2] = []
+
+# Chest placements — each Vector2 is a world-pixel position where a
+# Chest scene gets instantiated at _ready. Chests take 2 hits from
+# the hero's sword to break open + drop gold + fire pickup events.
+# Chests live in the "breakables" group so they don't block
+# wave-clear; see main.gd's _process filter.
+@export var chest_positions: Array[Vector2] = []
+
 # When true, this is the floor finale: room runner spawns a Pedestal
 # (relic offering) on clear instead of a Door. When false, spawns a
 # Door at the east wall to advance to the next room.

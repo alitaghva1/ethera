@@ -1,0 +1,84 @@
+[gd_scene load_steps=5 format=3 uid="uid://b3pillar12345"]
+
+[ext_resource type="Script" path="res://scripts/pillar.gd" id="1_script"]
+
+; Pillar collision footprint — small circle at the base so the hero
+; walks AROUND the column (not through it) while staying tight enough
+; not to make every doorway impassable.
+[sub_resource type="CircleShape2D" id="pillar_collision"]
+radius = 18.0
+
+; ── Pillar warm glow texture — same radial-gradient pattern the torch
+; uses, scaled down. Adds "this stone catches the firelight" warmth
+; without competing with the torches that actually light the room.
+[sub_resource type="Gradient" id="pillar_grad"]
+offsets = PackedFloat32Array(0, 0.45, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.45, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="pillar_glow_tex"]
+gradient = SubResource("pillar_grad")
+width = 160
+height = 160
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; ── Pillar node tree — StaticBody2D root with collision; visuals are
+; 3 stacked ColorRects forming a dark-stone column with subtle vertical
+; shading (top lighter where torchlight catches, base darker in shadow).
+; A small PointLight2D sits at the top of the column for the brazier
+; warmth glow.
+;
+; Layer 1 = world (same as walls), mask 0 = doesn't react to others.
+; Hero's mask 1 catches it the same way it catches walls.
+
+[node name="Pillar" type="StaticBody2D"]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("pillar_collision")
+
+; Body — top band (lighter, catches torchlight)
+[node name="Top" type="ColorRect" parent="."]
+offset_left = -16.0
+offset_top = -64.0
+offset_right = 16.0
+offset_bottom = -44.0
+color = Color(0.42, 0.40, 0.46, 1)
+
+; Body — middle band (midtone)
+[node name="Middle" type="ColorRect" parent="."]
+offset_left = -16.0
+offset_top = -44.0
+offset_right = 16.0
+offset_bottom = -18.0
+color = Color(0.32, 0.30, 0.36, 1)
+
+; Body — base band (darker, sits in floor shadow)
+[node name="Base" type="ColorRect" parent="."]
+offset_left = -18.0
+offset_top = -18.0
+offset_right = 18.0
+offset_bottom = 4.0
+color = Color(0.22, 0.20, 0.26, 1)
+
+; Top-edge highlight — thin gold pinstripe so the pillar reads as
+; "carved" rather than a flat slab.
+[node name="Highlight" type="ColorRect" parent="."]
+offset_left = -16.0
+offset_top = -64.0
+offset_right = 16.0
+offset_bottom = -61.0
+color = Color(0.62, 0.52, 0.38, 1)
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+position = Vector2(0, -58)
+color = Color(1, 0.72, 0.42, 1)
+energy = 0.6
+range_z_min = -1024
+range_z_max = 1024
+texture = SubResource("pillar_glow_tex")
+texture_scale = 0.5
+shadow_enabled = false

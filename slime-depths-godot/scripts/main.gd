@@ -19,6 +19,8 @@ extends Node2D
 const DAMAGE_NUMBER_SCENE         = preload("res://scenes/damage_number.tscn")
 const PEDESTAL_SCENE: PackedScene = preload("res://scenes/pedestal.tscn")
 const TORCH_SCENE: PackedScene    = preload("res://scenes/torch.tscn")
+const PILLAR_SCENE: PackedScene   = preload("res://scenes/pillar.tscn")
+const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
 
@@ -80,6 +82,12 @@ func _ready() -> void:
 		_spawn_points = _room.spawn_points
 		_waves = _room.waves
 		_spawn_torches(_room.torch_positions)
+		# Decor — collidable stone pillars + breakable chests. Both spawn
+		# from per-room arrays in the same data-driven shape as torches.
+		# Order matters cosmetically (pillars first → chests render on
+		# top in z-order) but neither one depends on the other.
+		_spawn_pillars(_room.pillar_positions)
+		_spawn_chests(_room.chest_positions)
 		hero.global_position = _room.hero_spawn
 	else:
 		push_warning("main.gd: no RoomConfig available; running with empty layout")
@@ -105,7 +113,13 @@ func _process(_delta: float) -> void:
 		if _hit_stop_timer <= 0.0:
 			Engine.time_scale = 1.0
 	if _wave_state == WaveState.ACTIVE:
-		var live := get_tree().get_nodes_in_group("enemies").size()
+		# Filter out "breakables" (chests) — they join the "enemies"
+		# group so the hero's sword swing iteration finds them, but
+		# they must NOT count toward the wave-clear threshold or wave
+		# 1 would never clear while a chest still stood unbroken.
+		var live: int = get_tree().get_nodes_in_group("enemies").filter(
+			func (n: Node) -> bool: return not n.is_in_group("breakables")
+		).size()
 		if live == 0:
 			_on_wave_cleared()
 
@@ -114,6 +128,18 @@ func _spawn_torches(positions: Array[Vector2]) -> void:
 		var t: Node2D = TORCH_SCENE.instantiate()
 		t.position = pos
 		add_child(t)
+
+func _spawn_pillars(positions: Array[Vector2]) -> void:
+	for pos in positions:
+		var p: Pillar = PILLAR_SCENE.instantiate()
+		p.position = pos
+		add_child(p)
+
+func _spawn_chests(positions: Array[Vector2]) -> void:
+	for pos in positions:
+		var c: Chest = CHEST_SCENE.instantiate()
+		c.position = pos
+		add_child(c)
 
 func _start_wave(idx: int) -> void:
 	if not _alive or idx >= _waves.size():

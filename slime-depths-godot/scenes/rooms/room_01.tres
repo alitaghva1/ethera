@@ -8,5 +8,7 @@ hero_spawn = Vector2(192, 384)
 torch_positions = Array[Vector2]([Vector2(220, 130), Vector2(640, 130), Vector2(1060, 130), Vector2(220, 640), Vector2(640, 640), Vector2(1060, 640)])
 spawn_points = Array[Vector2]([Vector2(160, 160), Vector2(1088, 160), Vector2(160, 608), Vector2(1088, 608), Vector2(640, 160), Vector2(640, 608)])
 waves = [[["slime", 3], ["crypt_spider", 1]], [["slime", 2], ["skel", 1]]]
+pillar_positions = Array[Vector2]([Vector2(400, 300), Vector2(880, 450)])
+chest_positions = Array[Vector2]([])
 is_last_room = false
 display_name = "OUTER HALL"
