@@ -132,6 +132,18 @@ func load_from_dict(d: Dictionary) -> void:
 func start_dungeon_run() -> void:
 	dungeon_runs += 1
 	last_run_kills = 0
+	# Iter 16 bug fix: roguelite contract — a new run starts with no
+	# relics. Previously owned_relics was never cleared, so relics from
+	# the first run persisted into the second (and third, and fourth…),
+	# defeating the choose-3-of-N decision loop. SaveSystem still
+	# persists the array between sessions, but a fresh run wipes it.
+	# Long-term metaprogression (true persistent unlocks) would live in
+	# a separate field.
+	owned_relics = []
+	persisted_hp = -1
+	# Reset HP carryover too — without this, a quit-mid-run could leave
+	# persisted_hp populated and the next run's hero would spawn at the
+	# saved HP value instead of full health.
 
 func register_run_kill() -> void:
 	last_run_kills += 1

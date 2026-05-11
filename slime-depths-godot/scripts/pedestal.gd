@@ -31,6 +31,9 @@ func _ready() -> void:
 	name_label.text = str(info.get("name", relic_id))
 	desc_label.text = str(info.get("description", ""))
 	prompt.visible = false
+	# Iter 16 — pedestals spawned as part of a 3-choice offer join
+	# this group so they can dismiss each other on claim.
+	add_to_group("pedestal_offer")
 
 func _process(delta: float) -> void:
 	if _claimed:
@@ -63,6 +66,14 @@ func _input(ev: InputEvent) -> void:
 func _claim() -> void:
 	_claimed = true
 	prompt.visible = false
+	# Iter 16: dismiss every other pedestal in the current offer FIRST,
+	# so by the time we emit pickup_claimed (which main.gd listens for
+	# to spawn the door), the player can't sneak in a second claim.
+	# Also keeps siblings from doubling up by both responding to the
+	# same E-press in a tightly-spaced offer.
+	for other in get_tree().get_nodes_in_group("pedestal_offer"):
+		if other != self and other.has_method("_dismiss"):
+			other._dismiss()
 	var granted: bool = GameState.grant_relic(relic_id)
 	# Spawn a pickup banner (damage-number-shaped). Yellow + bigger
 	# than damage numbers so it reads as a real beat.
@@ -83,4 +94,22 @@ func _claim() -> void:
 	tween.tween_property(orb, "modulate:a", 0.0, 0.35)
 	tween.tween_property(glow, "energy", 0.0, 0.35)
 	tween.tween_property(plinth, "modulate:a", 0.4, 0.35)
+	tween.chain().tween_callback(queue_free)
+
+# Iter 16 — dismissed (un-chosen) sibling in a 3-pedestal offer. No
+# relic granted, no pickup_claimed event; just a softer outro tween
+# than _claim so the dismissed pedestals visibly recede rather than
+# pop. Marks _claimed so a queued E-press can't re-trigger it.
+func _dismiss() -> void:
+	if _claimed:
+		return
+	_claimed = true
+	prompt.visible = false
+	monitoring = false
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(orb, "modulate:a", 0.0, 0.45)
+	tween.tween_property(glow, "energy", 0.0, 0.45)
+	tween.tween_property(plinth, "modulate:a", 0.25, 0.45)
+	tween.tween_property(name_label, "modulate:a", 0.0, 0.45)
+	tween.tween_property(desc_label, "modulate:a", 0.0, 0.45)
 	tween.chain().tween_callback(queue_free)

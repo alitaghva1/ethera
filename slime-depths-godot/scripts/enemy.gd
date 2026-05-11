@@ -74,8 +74,11 @@ enum MeleeState { IDLE, WINDUP, SWING, COOLDOWN }
 var _melee_state: MeleeState = MeleeState.IDLE
 var _melee_timer := 0.0
 var _melee_aim := Vector2.RIGHT
-# shoot / stationary_shoot state machine
-enum CastState { IDLE, WINDUP, COOLDOWN }
+# shoot / stationary_shoot state machine. Iter 16: dropped the
+# vestigial COOLDOWN value — the original code transitioned to it
+# briefly then bounced straight back to IDLE on the next tick, doing
+# nothing. The cooldown timer drains in IDLE's else-branch instead.
+enum CastState { IDLE, WINDUP }
 var _cast_state: CastState = CastState.IDLE
 var _cast_timer := 0.0
 var _cast_aim := Vector2.RIGHT
@@ -328,12 +331,11 @@ func _tick_shoot(delta: float) -> void:
 			_cast_timer -= delta
 			if _cast_timer <= 0.0:
 				_fire_projectile()
-				_cast_state = CastState.COOLDOWN
+				# Return straight to IDLE with the cooldown timer set;
+				# IDLE's else-branch drains it before next cast is armed.
+				_cast_state = CastState.IDLE
 				_cast_timer = t.cast_cooldown
 				sprite.modulate = Color(1, 1, 1, 1)
-		CastState.COOLDOWN:
-			_cast_state = CastState.IDLE
-			sprite.play(&"idle")
 
 # ── Behavior: stationary_shoot ────────────────────────────────────────
 # Identical to shoot but skips all movement attempts. Implemented as

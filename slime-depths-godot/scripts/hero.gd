@@ -437,6 +437,19 @@ func _start_blast() -> void:
 	# mage's hands, not under her feet.
 	Events.hero_blasted.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), aim)
 
+# Iter 16 — room-clear / relic / pickup healing. Caps at the current
+# MAX_HP + relic-modifier bonus so a Stoneheart pickup mid-run grows
+# the cap before this is called. Silent no-op while dying so a "heal
+# on enemy death" relic wouldn't accidentally resurrect us.
+func heal(amount: int) -> void:
+	if _is_dying or amount <= 0:
+		return
+	var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	var prev := hp
+	hp = mini(hp + amount, cap)
+	if hp != prev:
+		hp_changed.emit(hp)
+
 func take_damage(amount: int) -> void:
 	if hp <= 0 or _iframes > 0.0:
 		return

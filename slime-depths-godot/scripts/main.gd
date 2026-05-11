@@ -102,6 +102,11 @@ var _death_screen: Node = null
 # doesn't trigger false-positive "all enemies dead" between the first
 # kill and the last spawn.
 var _pending_spawns := 0
+# Iter 16 — guard against pickup_claimed firing twice on the same room
+# (e.g. a hypothetical double-event from a relic with multiple effects).
+# Set true the first time a pedestal grants in this room; reset on
+# scene reload. Drives the door/run-complete branch.
+var _room_pickup_resolved := false
 
 func _ready() -> void:
 	# Resolve the active room config — fall back to room_01 for
@@ -140,6 +145,11 @@ func _ready() -> void:
 	# hit-stop only if it landed).
 	hero.swing_connected.connect(_on_hero_swing_connected)
 	hero.dash_strike_landed.connect(_on_hero_dash_strike_landed)
+	# Iter 16 — pedestal offer flow. We listen on the Events bus rather
+	# than per-pedestal because pedestals come and go in groups of 3
+	# and we want one resolution path regardless of which one was
+	# picked.
+	Events.pickup_claimed.connect(_on_pickup_claimed)
 	_death_screen = DEATH_SCREEN_SCENE.instantiate()
 	add_child(_death_screen)
 	_death_screen.retry_pressed.connect(_on_death_retry)
@@ -226,13 +236,13 @@ func _on_wave_cleared() -> void:
 	else:
 		_wave_state = WaveState.COMPLETE
 		wave_label.text = "ROOM CLEAR"
-		# Last room of the floor → pedestal; otherwise → door to next room.
-		if _room != null and _room.is_last_room:
-			status_label.text = "Claim the relic at the pedestal · [E] when close"
-			_spawn_pedestal()
-		else:
-			status_label.text = "The way deeper has opened · walk east to descend"
-			_spawn_door()
+		# Iter 16 — Hades-style chamber reward. Small heal + a 3-relic
+		# choice spawn EVERY room (not just the last). The room only
+		# becomes "done" once a pedestal is claimed; until then the
+		# door / run-complete is gated behind the pickup.
+		_heal_on_room_clear()
+		status_label.text = "Choose a relic · walk near and press [E]"
+		_spawn_pedestal_offer(3)
 
 func _spawn_enemy_type(type_id: String) -> void:
 	# Iter 15: drain the pending counter regardless of whether we
@@ -252,16 +262,72 @@ func _spawn_enemy_type(type_id: String) -> void:
 	enemy.died_at.connect(_on_enemy_died)
 	add_child(enemy)
 
-func _spawn_pedestal() -> void:
-	var available: Array = []
+# Iter 16 — Hades-style 3-pedestal choice (or fewer if the registry
+# is running low). Pedestals spawn in a row centered on the room and
+# join the "pedestal_offer" group; claiming one dismisses the others
+# via pedestal.gd's _claim sibling-sweep. If the player has already
+# picked the entire registry, we skip pedestals entirely and resolve
+# straight to the door (otherwise we'd offer phantom claims).
+func _spawn_pedestal_offer(count: int) -> void:
+	var available: Array[String] = []
 	for rid in GameState.RELIC_REGISTRY.keys():
 		if not GameState.has_relic(rid):
 			available.append(rid)
-	var chosen: String = available[randi() % available.size()] if not available.is_empty() else "iron_fang"
-	var ped: Pedestal = PEDESTAL_SCENE.instantiate()
-	ped.global_position = Vector2(640, 384)
-	ped.relic_id = chosen
-	add_child(ped)
+	available.shuffle()
+	var n: int = mini(count, available.size())
+	if n == 0:
+		# Nothing left to offer; full heal as consolation, then route.
+		hero.heal(99)
+		_resolve_room_pickup()
+		return
+	# Lay out the pedestals in a horizontal row centered on the play
+	# field. 200 px spacing reads as "three distinct choices" without
+	# crowding the player into accidentally claiming the wrong one.
+	var center_x: float = 640.0
+	var y: float = 384.0
+	var spacing: float = 200.0
+	var start_x: float = center_x - spacing * (n - 1) / 2.0
+	for i in range(n):
+		var ped: Pedestal = PEDESTAL_SCENE.instantiate()
+		ped.global_position = Vector2(start_x + spacing * i, y)
+		ped.relic_id = available[i]
+		add_child(ped)
+
+# Heal the hero +1 on room clear (Hades chamber-heal convention).
+# Spawns a green "+1" damage number rising from the hero's head so the
+# beat is visible. No-op if already at cap so the number doesn't lie.
+func _heal_on_room_clear() -> void:
+	if not is_instance_valid(hero) or hero.hp <= 0:
+		return
+	var cap: int = Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hero.hp >= cap:
+		return
+	hero.heal(1)
+	var n: DamageNumber = DamageNumber.spawn(
+		hero.global_position + Vector2(0, -56),
+		"+1",
+		Color(0.55, 1.0, 0.55),
+	)
+	add_child(n)
+
+# Single entry point invoked when a pedestal in the current offer is
+# claimed. Drives the room-end branch (door vs run-complete). Guarded
+# against double-fire by _room_pickup_resolved so a hypothetical
+# secondary pickup event doesn't double-spawn doors.
+func _resolve_room_pickup() -> void:
+	if _room_pickup_resolved:
+		return
+	_room_pickup_resolved = true
+	if _room != null and _room.is_last_room:
+		_show_run_complete()
+	else:
+		status_label.text = "The way deeper has opened · walk east to descend"
+		_spawn_door()
+
+func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
+	# Pedestal-side dismissal of siblings already happened in
+	# pedestal._claim; we only need to drive the room-end branch.
+	_resolve_room_pickup()
 
 func _spawn_door() -> void:
 	var door: Door = DOOR_SCENE.instantiate()
@@ -356,6 +422,37 @@ func _on_death_retry() -> void:
 	GameState.start_dungeon_run()
 	RunState.start_floor()
 	get_tree().reload_current_scene()
+
+# Iter 16 — run-complete sequence. Replaces the previous "claim the
+# pedestal, then ESC to leave" flow (which left the player staring at
+# a stale 'walk to pedestal' status_label with no celebratory beat).
+# Now: a brief gold banner + summary, then auto-return to menu after
+# 2.5s so the run actually FEELS like it ended.
+const RUN_COMPLETE_DELAY := 2.5
+func _show_run_complete() -> void:
+	wave_label.text = "RUN COMPLETE"
+	# Compose a one-line summary of what the player walked out with.
+	# Uses the GOLD color family so it reads distinctly from the
+	# crimson death banner.
+	var relic_names: Array[String] = []
+	for rid in GameState.owned_relics:
+		var info: Dictionary = GameState.relic_info(rid)
+		relic_names.append(str(info.get("name", rid)))
+	var summary: String = "%d kills" % _kills
+	if relic_names.size() > 0:
+		summary += "  ·  " + " · ".join(relic_names)
+	status_label.text = summary
+	# Big floating banner so the moment registers even if the player's
+	# eyes are still tracking the hero, not the HUD corner.
+	var banner: DamageNumber = DamageNumber.spawn(
+		hero.global_position + Vector2(0, -96),
+		"FLOOR COMPLETE",
+		Color(1, 0.85, 0.45),
+	)
+	add_child(banner)
+	Engine.time_scale = 1.0
+	var t := get_tree().create_timer(RUN_COMPLETE_DELAY)
+	t.timeout.connect(_on_death_to_menu)
 
 func _on_death_to_menu() -> void:
 	# Iter 12: hamlet removed. ESC / MENU button returns to the main
