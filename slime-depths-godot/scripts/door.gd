@@ -2,32 +2,53 @@
 # room clears. Walking into it advances RunState to the next room and
 # reloads the dungeon scene.
 #
-# Iter 12: hamlet removed. Door is now the ONLY scene-transition surface
+# Iter 12: hamlet removed. Door is the ONLY scene-transition surface
 # in active gameplay — it advances to the next room, or routes to the
 # main menu defensively if RunState.advance() returns false (which
 # normally shouldn't happen because the last room spawns a Pedestal,
 # not a Door, but we handle it cleanly).
 #
-# Visual: a wide glowing rectangle pulsing with the same warm gold as
-# torchlight, so it reads as "warmth ahead" rather than a separate
-# magic portal. Floor-clear cinematic in a future phase can dramatize
-# it more.
+# Iter 18 visual rework: layered stone arched doorway. The pulse +
+# scale animation lives on the inner Portal polygon now (not the
+# whole node); the arch FRAME stays solid so the silhouette reads
+# stably while the glow breathes. The PointLight2D + CPUParticles2D
+# in the scene do the heavy lifting on "this is alive" — we just
+# modulate the portal alpha + scale on a slow sine.
 class_name Door
 extends Area2D
 
-@onready var glow: ColorRect = $Glow
+@onready var portal: Polygon2D = $Portal
+@onready var portal_glow: PointLight2D = $PortalGlow
 @onready var label: Label = $Label
 
 var _firing := false
+var _base_portal_color: Color = Color(1, 1, 1, 1)
+var _base_glow_energy: float = 1.4
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
+	# Cache the design-time values so the per-frame pulse multiplies
+	# them rather than overwriting them with hard-coded constants.
+	if portal != null:
+		_base_portal_color = portal.color
+	if portal_glow != null:
+		_base_glow_energy = portal_glow.energy
 
 func _process(_delta: float) -> void:
-	# Soft alpha pulse — same recipe as Portal so the visual language
-	# of "step here to transition" is consistent.
+	# Slow gold pulse — portal alpha oscillates ~0.78..1.0, glow
+	# energy 1.2..1.6. Combined with the always-emitting motes the
+	# door reads as breathing.
 	var t := Time.get_ticks_msec() / 1000.0
-	glow.modulate.a = 0.55 + 0.25 * sin(t * 3.0)
+	if portal != null:
+		var pulse: float = 0.78 + 0.22 * (0.5 + 0.5 * sin(t * 2.4))
+		portal.color = Color(
+			_base_portal_color.r,
+			_base_portal_color.g,
+			_base_portal_color.b,
+			_base_portal_color.a * pulse,
+		)
+	if portal_glow != null:
+		portal_glow.energy = _base_glow_energy + 0.25 * sin(t * 2.4)
 
 func _on_body_entered(body: Node) -> void:
 	if _firing or not body.is_in_group("hero"):

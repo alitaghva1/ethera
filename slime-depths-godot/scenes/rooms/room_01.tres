@@ -12,3 +12,5 @@ pillar_positions = Array[Vector2]([Vector2(400, 300), Vector2(880, 450)])
 chest_positions = Array[Vector2]([])
 is_last_room = false
 display_name = "OUTER HALL"
+ambient_tint = Color(0.42, 0.38, 0.46, 1)
+decor_density = 12

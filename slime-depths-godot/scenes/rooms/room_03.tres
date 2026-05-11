@@ -12,3 +12,5 @@ pillar_positions = Array[Vector2]([Vector2(380, 280), Vector2(380, 488), Vector2
 chest_positions = Array[Vector2]([Vector2(1040, 280)])
 is_last_room = true
 display_name = "INNER SANCTUM"
+ambient_tint = Color(0.38, 0.22, 0.30, 1)
+decor_density = 20

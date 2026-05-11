@@ -136,6 +136,14 @@ func _ready() -> void:
 	if _room != null:
 		_spawn_points = _room.spawn_points
 		_waves = _room.waves
+		# Iter 18 — per-room ambient tint applied to the CanvasModulate.
+		# Drives the "deeper = different mood" feeling: room 1 light
+		# purple, room 2 deep purple, room 3 (boss) red-purple. The
+		# torches layer their warm light on top, so the floor under
+		# them still reads gold.
+		var modulate_node: CanvasModulate = $CanvasModulate
+		if modulate_node != null:
+			modulate_node.color = _room.ambient_tint
 		_spawn_torches(_room.torch_positions)
 		# Decor — collidable stone pillars + breakable chests. Both spawn
 		# from per-room arrays in the same data-driven shape as torches.
@@ -143,7 +151,15 @@ func _ready() -> void:
 		# top in z-order) but neither one depends on the other.
 		_spawn_pillars(_room.pillar_positions)
 		_spawn_chests(_room.chest_positions)
+		# Iter 18 — scatter procedural rubble across the play area so
+		# the floor doesn't read as a blank slate. Runs AFTER pillar /
+		# chest spawn so decor placement can avoid those positions.
+		_scatter_decor(_room.decor_density)
 		hero.global_position = _room.hero_spawn
+		# Iter 18 — animate the room-name label on entry. Starts big +
+		# bright, settles to small + dim over 2s. Gives the player a
+		# Hades-style "you have arrived" beat without a separate UI.
+		_animate_room_entry()
 	else:
 		push_warning("main.gd: no RoomConfig available; running with empty layout")
 
@@ -219,6 +235,124 @@ func _spawn_chests(positions: Array[Vector2]) -> void:
 		var c: Chest = CHEST_SCENE.instantiate()
 		c.position = pos
 		add_child(c)
+
+# Iter 18 — procedural decor scatter. Builds N small Polygon2D rubble
+# clusters at random walkable positions, avoiding the hero spawn /
+# enemy spawn points / room center so the decor doesn't crowd combat
+# space. Each rubble is 4-5 irregular dark vertices at low alpha with
+# slight Y-jitter and rotation — keeps the floor reading as "ancient"
+# rather than "blank tile."
+#
+# Why procedural (vs hand-placed in RoomConfig): scatters are
+# perceptually noise, not gameplay-significant. Hand-authoring 60
+# positions across 3 rooms is wasted effort; randomness with a guard
+# on minimum distance from gameplay-relevant points is cheaper +
+# gives the room a different "feel" each load without re-authoring.
+func _scatter_decor(count: int) -> void:
+	if count <= 0:
+		return
+	# Walkable bounds — inside the wall colliders, with a margin so
+	# decor doesn't visually clip into walls. Hardcoded to match
+	# main.tscn's wall positions (96/1184 horizontally, 96/672
+	# vertically) plus the 30-px decor radius.
+	var play_left: float = 130.0
+	var play_right: float = 1150.0
+	var play_top: float = 130.0
+	var play_bottom: float = 640.0
+	var min_dist_spawn: float = 90.0
+	var min_dist_pillar: float = 60.0
+	var min_dist_chest: float = 50.0
+	var min_dist_center: float = 100.0  # leave the middle clear (pedestal lands there)
+	var center := Vector2(640, 384)
+	var attempts: int = 0
+	var placed: int = 0
+	var max_attempts: int = count * 30  # generous; aborts if room is over-constrained
+	while placed < count and attempts < max_attempts:
+		attempts += 1
+		var pos := Vector2(
+			randf_range(play_left, play_right),
+			randf_range(play_top, play_bottom),
+		)
+		if pos.distance_to(_room.hero_spawn) < min_dist_spawn:
+			continue
+		if pos.distance_to(center) < min_dist_center:
+			continue
+		var bad := false
+		for sp in _room.spawn_points:
+			if pos.distance_to(sp) < min_dist_spawn:
+				bad = true
+				break
+		if bad:
+			continue
+		for pp in _room.pillar_positions:
+			if pos.distance_to(pp) < min_dist_pillar:
+				bad = true
+				break
+		if bad:
+			continue
+		for cp in _room.chest_positions:
+			if pos.distance_to(cp) < min_dist_chest:
+				bad = true
+				break
+		if bad:
+			continue
+		_spawn_decor_at(pos)
+		placed += 1
+
+# Build one rubble cluster at world position `pos`. Uses Polygon2D
+# with 4 jittered vertices so each rubble has a slightly different
+# silhouette — feels hand-placed without authoring each one.
+func _spawn_decor_at(pos: Vector2) -> void:
+	var rubble := Polygon2D.new()
+	# 4 verts around an ellipse with random radii — fast, irregular,
+	# reads as a small dark patch on the floor.
+	var r1: float = randf_range(8.0, 14.0)
+	var r2: float = randf_range(6.0, 11.0)
+	var pts := PackedVector2Array()
+	pts.append(Vector2(-r1 + randf_range(-2, 2), randf_range(-1, 1)))
+	pts.append(Vector2(randf_range(-2, 2), -r2 + randf_range(-1, 1)))
+	pts.append(Vector2(r1 + randf_range(-2, 2), randf_range(-1, 1)))
+	pts.append(Vector2(randf_range(-2, 2), r2 + randf_range(-1, 1)))
+	rubble.polygon = pts
+	# Dark grey-brown, very low alpha — reads as "stain / cracked
+	# stone" not "rock pile." z_index -1 so the hero / enemies draw
+	# above.
+	rubble.color = Color(
+		randf_range(0.10, 0.18),
+		randf_range(0.09, 0.14),
+		randf_range(0.08, 0.13),
+		randf_range(0.35, 0.55),
+	)
+	rubble.position = pos
+	rubble.rotation = randf_range(0.0, TAU)
+	rubble.z_index = -1
+	add_child(rubble)
+
+# Iter 18 — entry banner. The room_label sits permanently in the HUD
+# but goes from FULL-ATTENTION (scale 1.6, full opacity, centered)
+# down to a small persistent corner-style label over 2 seconds. The
+# initial big state catches the eye as the scene loads; the settled
+# state stays for orientation.
+const ROOM_ENTRY_DURATION := 2.0
+const ROOM_ENTRY_START_SCALE := 1.7
+const ROOM_ENTRY_END_SCALE := 1.0
+func _animate_room_entry() -> void:
+	if room_label == null:
+		return
+	room_label.pivot_offset = room_label.size / 2.0
+	room_label.scale = Vector2(ROOM_ENTRY_START_SCALE, ROOM_ENTRY_START_SCALE)
+	room_label.modulate = Color(1, 1, 1, 1)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(
+		room_label, "scale",
+		Vector2(ROOM_ENTRY_END_SCALE, ROOM_ENTRY_END_SCALE),
+		ROOM_ENTRY_DURATION,
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+		room_label, "modulate:a",
+		0.75,
+		ROOM_ENTRY_DURATION,
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 func _start_wave(idx: int) -> void:
 	if not _alive or idx >= _waves.size():

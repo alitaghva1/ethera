@@ -61,3 +61,15 @@ extends Resource
 # Display name shown in the wave HUD ("WAVE 1 / 3  ·  RUIN PATH"). Helps
 # orient the player as they move through a multi-room floor.
 @export var display_name: String = "DUNGEON"
+
+# Iter 18 — per-room visual character.
+# ambient_tint: the CanvasModulate color applied by main.gd at _ready.
+# Drives the "deeper = darker" feeling without re-authoring backgrounds.
+# Default is the iter-13 cold-purple; rooms override per their mood
+# (entry chamber lighter, boss room red-tinted, etc).
+@export var ambient_tint: Color = Color(0.32, 0.30, 0.38, 1)
+# decor_density: how many procedural rubble/crack decals to scatter
+# across the play area. main.gd places them randomly within the
+# walkable bounds, avoiding hero_spawn / spawn_points / room center
+# so they don't crowd combat space. 0 = no decor.
+@export var decor_density: int = 14
