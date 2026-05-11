@@ -30,10 +30,20 @@ var _base_scale: Vector2 = Vector2.ONE
 var _halo_base_alpha: float = 1.0
 var _core_base_alpha: float = 1.0
 
-func setup(aim: Vector2) -> void:
-	# Orient the arc to face the aim direction.
+# Iter 19: setup accepts an optional sign for alternating swings. The
+# arc geometry is symmetric around the aim axis, so the visible
+# alternation comes from tilting the rotation a touch one way / the
+# other (±SWING_TILT rad). Reads as "one-two combo" without re-authoring
+# the line shape.
+const SWING_TILT := 0.28
+
+func setup(aim: Vector2, swing_sign: int = 1) -> void:
 	if aim.length_squared() > 0.0001:
 		rotation = aim.angle()
+		# Apply a small CW/CCW tilt so consecutive swings visibly
+		# alternate. Sign comes from the caller (ScreenFlash maintains
+		# a counter); we just translate it into rotation offset here.
+		rotation += SWING_TILT if swing_sign > 0 else -SWING_TILT
 
 func _ready() -> void:
 	_base_scale = scale

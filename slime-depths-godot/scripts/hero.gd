@@ -39,6 +39,7 @@ const HIT_IFRAMES        := 0.55
 const BLAST_COOLDOWN     := 0.55
 const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
+const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 
 # Shield (Iter 5) — Q-held stamina stance.
 const SHIELD_STAMINA_MAX := 100.0
@@ -113,6 +114,20 @@ const MELEE_KNOCKBACK_FORCE := 220.0
 const MELEE_KNOCKBACK_TIME  := 0.10
 const DASH_KNOCKBACK_FORCE  := 380.0
 const DASH_KNOCKBACK_TIME   := 0.16
+# Iter 19 — melee feel pass.
+# MELEE_WINDUP: time between LMB press and the damage scan landing.
+# Tiny (60 ms ≈ 3.6 frames) — barely perceptible as input lag, but
+# enough that the slash_arc VFX has time to form before damage hits.
+# Pre-iter-19 the slash arc spawned AT the same frame damage was
+# dealt, which made the arc feel like a hit-marker rather than the
+# swing itself.
+const MELEE_WINDUP          := 0.06
+# Forward lunge: a brief velocity additive in the aim direction so the
+# hero commits to the swing instead of staying planted. Decays linearly
+# over LUNGE_TIME. 220 × 0.10 / 2 = ~11 px of forward movement; the
+# player FEELS the swing but doesn't teleport.
+const LUNGE_SPEED           := 220.0
+const LUNGE_TIME            := 0.10
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -152,6 +167,19 @@ var _is_dying := false
 var _kill_counter: int = 0
 var _blast_counter: int = 0
 var _second_wind_used: bool = false
+
+# Iter 19 — melee feel state.
+# _lunge_time / _lunge_dir: brief forward push during the first
+# LUNGE_TIME seconds of a swing. Decays linearly to 0 then releases
+# control back to the input vector.
+# _pending_melee_strike + aim/range cached so the windowed damage
+# scan in _physics_process knows what to hit.
+var _lunge_time: float = 0.0
+var _lunge_dir: Vector2 = Vector2.ZERO
+var _pending_melee_strike: bool = false
+var _melee_strike_timer: float = 0.0
+var _pending_melee_aim: Vector2 = Vector2.RIGHT
+var _pending_melee_range: float = 0.0
 
 # Iter 11 — feel state.
 var _camera: Camera2D = null
@@ -233,8 +261,18 @@ func _physics_process(delta: float) -> void:
 	_shield_break_cd  = max(0.0, _shield_break_cd  - delta)
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
 	_hurt_time        = max(0.0, _hurt_time        - delta)
+	_lunge_time       = max(0.0, _lunge_time       - delta)
 	if _attack_live <= 0.0:
 		_is_attacking = false
+	# Iter 19 — windowed melee damage. _start_attack arms the pending
+	# strike + cached aim/range; when the windup timer expires here,
+	# we run the actual hit scan. Keeps damage timing aligned with the
+	# slash-arc growth animation (visible swing → solid hit).
+	if _pending_melee_strike:
+		_melee_strike_timer = max(0.0, _melee_strike_timer - delta)
+		if _melee_strike_timer <= 0.0:
+			_pending_melee_strike = false
+			_resolve_melee_strike()
 
 	# Death is terminal — freeze input + motion, hold the death frame,
 	# and skip every gameplay branch below. The death screen renders on
@@ -274,6 +312,14 @@ func _physics_process(delta: float) -> void:
 	else:
 		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0))
 		velocity = input * speed
+		# Iter 19 — forward lunge on swing. Linear-decay impulse in the
+		# aim direction layered ON TOP of walk velocity. The player can
+		# still steer mid-lunge via WASD; the lunge just commits the
+		# initial swing direction. Pure-press LMB (no movement input)
+		# produces a clean ~11 px forward dart.
+		if _lunge_time > 0.0:
+			var lunge_t: float = _lunge_time / LUNGE_TIME
+			velocity += _lunge_dir * (LUNGE_SPEED * lunge_t)
 	move_and_slide()
 
 	if dash_strike_just_ended:
@@ -400,34 +446,45 @@ func _start_attack() -> void:
 	_facing_dir = _vector_to_dir_idx(_attack_aim)
 	sprite.frame = 0
 	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
+	# Iter 19 — spawn the slash arc IMMEDIATELY (so the player sees the
+	# swing form) but defer the actual damage scan by MELEE_WINDUP. The
+	# damage lands when the arc has visibly extended; the swing reads
+	# as a real motion arc instead of a hit-marker.
+	Events.hero_attacked.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), _attack_aim)
+	# Arm the forward lunge. Direction = aim, decays linearly across
+	# LUNGE_TIME inside _physics_process.
+	_lunge_dir = _attack_aim
+	_lunge_time = LUNGE_TIME
+	# Arm the damage scan. _physics_process runs _resolve_melee_strike
+	# when the timer hits 0. The aim + range are cached now so a player
+	# spinning the cursor during the windup doesn't change where the
+	# strike lands (matches the visible arc direction).
+	_pending_melee_aim = _attack_aim
+	_pending_melee_range = ATTACK_RANGE * (1.0 + GameState.modifier_total_f("attack_range_mul", 0.0))
+	_pending_melee_strike = true
+	_melee_strike_timer = MELEE_WINDUP
+
+# Damage scan deferred from _start_attack by MELEE_WINDUP. Hit pizza-
+# slice in front of the hero: any enemy within _pending_melee_range
+# and within ATTACK_ARC half-angle of _pending_melee_aim takes damage,
+# knockback, and counts toward swing_connected.
+func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
-	# Iter 17 — long_reach relic widens the swing arc. Modifier is a
-	# fractional multiplier on top of the base; +0.25 → 25% farther.
-	var range_actual: float = ATTACK_RANGE * (1.0 + GameState.modifier_total_f("attack_range_mul", 0.0))
 	var hit_count: int = 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
 		var to_enemy: Vector2 = enemy.global_position - global_position
-		if to_enemy.length() > range_actual:
+		if to_enemy.length() > _pending_melee_range:
 			continue
-		if abs(to_enemy.angle_to(_attack_aim)) > ATTACK_ARC:
+		if abs(to_enemy.angle_to(_pending_melee_aim)) > ATTACK_ARC:
 			continue
 		if enemy.has_method("take_hit"):
 			enemy.take_hit(damage)
 			hit_count += 1
-		# Iter 13 — light knockback per hit. Direction = away from hero,
-		# not along aim (so flanking enemies get pushed out laterally
-		# instead of getting yanked into the swing line). Guarded by
-		# has_method so non-Enemy "breakables" (chests) don't choke on
-		# the call.
 		if enemy.has_method("apply_knockback"):
-			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _attack_aim
+			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _pending_melee_aim
 			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE, MELEE_KNOCKBACK_TIME)
-	# Emit at chest height so the slash arc lines up with the cast pose,
-	# not the floor. Iter 12 / earlier emitted at global_position which
-	# is the feet anchor.
-	Events.hero_attacked.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), _attack_aim)
 	if hit_count > 0:
 		swing_connected.emit(hit_count)
 
@@ -445,8 +502,18 @@ func _start_blast() -> void:
 	_attack_live = ATTACK_SWING_TIME
 	_is_attacking = true
 	var p: Projectile = PROJECTILE_SCENE.instantiate()
-	p.global_position = global_position + Vector2(0, -22) + aim * 18.0
+	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
+	p.global_position = spawn_pos
 	p.velocity = aim * Projectile.SPEED
+	# Iter 19 — muzzle flash at the spawn point. Bright magenta burst
+	# that fades over 0.18s. Sells "projectile was LAUNCHED" instead
+	# of "projectile appeared." Parented to current_scene so it lives
+	# in world space (not on the hero, which would drag the flash
+	# along as the hero moves).
+	var muzzle: Node2D = BLAST_MUZZLE_SCENE.instantiate() as Node2D
+	if muzzle != null:
+		muzzle.global_position = spawn_pos
+		get_tree().current_scene.add_child(muzzle)
 	var dmg: int = 1 + GameState.modifier_total("blast_damage_bonus", 0)
 	# Iter 17 — arcane_resonance: every 4th blast deals double damage.
 	# Counter is post-incremented so the 4th cast (counter == 4 after

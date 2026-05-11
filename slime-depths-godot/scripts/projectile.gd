@@ -48,6 +48,15 @@ func _ready() -> void:
 	# Align visuals to flight direction.
 	if velocity.length() > 0.0:
 		rotation = velocity.angle()
+	# Iter 19 — spawn-pop. Start at 60% scale and ease out to full
+	# size over 50 ms. Combined with the muzzle flash spawned by
+	# hero.gd at the same world position, the launch reads as a
+	# punctuated "BANG fire" instead of "projectile fades in".
+	scale = Vector2(0.6, 0.6)
+	var tw: Tween = create_tween()
+	tw.set_trans(Tween.TRANS_QUAD)
+	tw.set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "scale", Vector2.ONE, 0.05)
 
 func _physics_process(delta: float) -> void:
 	global_position += velocity * delta

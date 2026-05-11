@@ -38,6 +38,12 @@ var _rect: ColorRect = null
 # color and leave residual tint).
 var _flash_tween: Tween = null
 
+# Iter 19 — sign counter for alternating slash-arc tilt. Bumps each
+# time a slash arc spawns; the arc reads its parity to decide whether
+# to tilt CW or CCW. Living on ScreenFlash (the spawn site) means the
+# Events.hero_attacked signal signature stays unchanged.
+var _swing_counter: int = 0
+
 func _ready() -> void:
 	# Layer 180: above HUD (100), below death_screen (200). Picked
 	# explicitly rather than relying on autoload registration order
@@ -127,7 +133,23 @@ func _on_hero_dodged(_world_pos: Vector2) -> void:
 func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
 	# No screen flash on swing — only on hit. The slash arc IS the
 	# visual feedback for the swing.
-	_spawn_directional(SLASH_ARC_SCENE, world_pos, aim)
+	# Iter 19 — pass alternating sign so consecutive swings tilt
+	# opposite directions (reads as "one-two combo"). _spawn_directional
+	# is generic; we set up + call setup ourselves here so we can pass
+	# the extra arg.
+	_swing_counter += 1
+	var inst: Node2D = SLASH_ARC_SCENE.instantiate() as Node2D
+	if inst == null:
+		return
+	inst.global_position = world_pos
+	var swing_sign: int = 1 if (_swing_counter % 2) == 0 else -1
+	if inst.has_method("setup"):
+		inst.call("setup", aim, swing_sign)
+	var parent: Node = get_tree().current_scene
+	if parent == null:
+		inst.queue_free()
+		return
+	parent.add_child(inst)
 
 func _on_hero_blasted(world_pos: Vector2, aim: Vector2) -> void:
 	# Blast trail along the aim direction. The projectile itself
