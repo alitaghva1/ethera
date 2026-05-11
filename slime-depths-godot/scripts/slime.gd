@@ -20,6 +20,8 @@ var _dying := false
 var _death_timer := 0.0
 var _hero: Hero = null
 
+signal died_at(world_pos: Vector2)
+
 func _ready() -> void:
 	add_to_group("enemies")
 	sprite.play("idle")
@@ -61,6 +63,10 @@ func take_hit(damage: int) -> void:
 	if _dying:
 		return
 	hp -= damage
+	# White flash on hit (same convention as slime-depths' fx.js).
+	var flash := create_tween()
+	flash.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.04)
+	flash.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
 	if hp <= 0:
 		_dying = true
 		_death_timer = DEATH_ANIM_DURATION
@@ -69,3 +75,4 @@ func take_hit(damage: int) -> void:
 		# Stop colliding with hero so corpse doesn't keep dealing damage.
 		set_collision_layer_value(3, false)
 		set_collision_mask_value(2, false)
+		died_at.emit(global_position)

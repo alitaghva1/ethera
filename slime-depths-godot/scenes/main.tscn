@@ -1,18 +1,24 @@
-[gd_scene load_steps=6 format=3 uid="uid://b3main123456"]
+[gd_scene load_steps=7 format=3 uid="uid://b3main123456"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://assets/rooms/procedural_dungeon.png" id="2_room"]
 [ext_resource type="PackedScene" path="res://scenes/hero.tscn" id="3_hero"]
+[ext_resource type="PackedScene" path="res://scenes/torch.tscn" id="4_torch"]
 
-; Four boundary walls inside the procedural-dungeon's 3-tile wall
-; border (3 × 32 = 96 px). Playable area is (96, 96)..(1184, 672).
-; Walls 40 units thick, centered ON the border line so collision lines
-; up visually with the painted wall edge.
+; Boundary walls inside the procedural dungeon's 3-tile border.
+; Playable area: (96, 96)..(1184, 672).
 [sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 768)
 [sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1280, 40)
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
+
+; CanvasModulate — multiplies the entire 2D world by this color. Makes
+; the room dark so the torches do the actual lighting. Slight blue
+; tint = "cold dungeon" ambient. Without this, PointLight2D energy just
+; adds on top of fully-lit floors and torches look like flat decals.
+[node name="CanvasModulate" type="CanvasModulate" parent="."]
+color = Color(0.32, 0.30, 0.38, 1)
 
 [node name="Background" type="Sprite2D" parent="."]
 position = Vector2(640, 384)
@@ -37,6 +43,22 @@ shape = SubResource("wall_h")
 [node name="WallBottom" type="CollisionShape2D" parent="Walls"]
 position = Vector2(640, 672)
 shape = SubResource("wall_h")
+
+; ── Torches — six along the wall border. Each is a flickering
+;    PointLight2D + small flame sprite. Random per-torch phase
+;    (set in torch.gd via randf()) so they don't pulse in lockstep.
+[node name="Torch1" parent="." instance=ExtResource("4_torch")]
+position = Vector2(220, 130)
+[node name="Torch2" parent="." instance=ExtResource("4_torch")]
+position = Vector2(640, 130)
+[node name="Torch3" parent="." instance=ExtResource("4_torch")]
+position = Vector2(1060, 130)
+[node name="Torch4" parent="." instance=ExtResource("4_torch")]
+position = Vector2(220, 640)
+[node name="Torch5" parent="." instance=ExtResource("4_torch")]
+position = Vector2(640, 640)
+[node name="Torch6" parent="." instance=ExtResource("4_torch")]
+position = Vector2(1060, 640)
 
 [node name="Hero" parent="." instance=ExtResource("3_hero")]
 position = Vector2(192, 384)
@@ -68,18 +90,18 @@ offset_right = 800.0
 offset_bottom = 75.0
 theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
-text = "RUINS — kill the slimes (LMB to swing)"
+text = "RUINS — LMB swing, SPACE dodge, R restart"
 
-[node name="TitleLabel" type="Label" parent="UI"]
+[node name="KillsLabel" type="Label" parent="UI"]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -200.0
-offset_top = 10.0
+offset_top = 14.0
 offset_right = -16.0
-offset_bottom = 40.0
+offset_bottom = 42.0
 grow_horizontal = 0
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
-text = "GODOT SLICE"
+text = "KILLS  0"
 horizontal_alignment = 2

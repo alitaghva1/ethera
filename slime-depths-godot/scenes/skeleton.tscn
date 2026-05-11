@@ -1,0 +1,82 @@
+[gd_scene load_steps=24 format=3 uid="uid://b3skel123456"]
+
+[ext_resource type="Script" path="res://scripts/skeleton.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/skel_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/skel_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/skel_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/skel_death.png" id="5_death"]
+
+; Skeleton frames — 128×128 cells. Frame counts vary per state.
+; Idle 7, walk 8, attack 17, death 13.
+
+[sub_resource type="AtlasTexture" id="i0"] atlas = ExtResource("2_idle") region = Rect2(0, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="i1"] atlas = ExtResource("2_idle") region = Rect2(128, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="i2"] atlas = ExtResource("2_idle") region = Rect2(256, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="i3"] atlas = ExtResource("2_idle") region = Rect2(384, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="i4"] atlas = ExtResource("2_idle") region = Rect2(512, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="i5"] atlas = ExtResource("2_idle") region = Rect2(640, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="i6"] atlas = ExtResource("2_idle") region = Rect2(768, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="w0"] atlas = ExtResource("3_walk") region = Rect2(0, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="w1"] atlas = ExtResource("3_walk") region = Rect2(128, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="w2"] atlas = ExtResource("3_walk") region = Rect2(256, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="w3"] atlas = ExtResource("3_walk") region = Rect2(384, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="w4"] atlas = ExtResource("3_walk") region = Rect2(512, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="w5"] atlas = ExtResource("3_walk") region = Rect2(640, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="w6"] atlas = ExtResource("3_walk") region = Rect2(768, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="w7"] atlas = ExtResource("3_walk") region = Rect2(896, 0, 128, 128)
+
+; Attack + death sheets are wide — we slice the first 8 frames each
+; (the eye reads the windup → strike → recovery in those frames; the
+; later frames are recovery tail not visible in combat at typical
+; play distance). Add more later if needed.
+[sub_resource type="AtlasTexture" id="a0"] atlas = ExtResource("4_attack") region = Rect2(0, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="a1"] atlas = ExtResource("4_attack") region = Rect2(128, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="a2"] atlas = ExtResource("4_attack") region = Rect2(256, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="a3"] atlas = ExtResource("4_attack") region = Rect2(384, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="a4"] atlas = ExtResource("4_attack") region = Rect2(512, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="a5"] atlas = ExtResource("4_attack") region = Rect2(640, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="a6"] atlas = ExtResource("4_attack") region = Rect2(768, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="a7"] atlas = ExtResource("4_attack") region = Rect2(896, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="d0"] atlas = ExtResource("5_death") region = Rect2(0, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="d1"] atlas = ExtResource("5_death") region = Rect2(128, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="d2"] atlas = ExtResource("5_death") region = Rect2(256, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="d3"] atlas = ExtResource("5_death") region = Rect2(384, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="d4"] atlas = ExtResource("5_death") region = Rect2(512, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="d5"] atlas = ExtResource("5_death") region = Rect2(640, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="d6"] atlas = ExtResource("5_death") region = Rect2(768, 0, 128, 128)
+[sub_resource type="AtlasTexture" id="d7"] atlas = ExtResource("5_death") region = Rect2(896, 0, 128, 128)
+
+[sub_resource type="SpriteFrames" id="frames"]
+animations = [{
+"frames": [{"duration": 1.0, "texture": SubResource("i0")}, {"duration": 1.0, "texture": SubResource("i1")}, {"duration": 1.0, "texture": SubResource("i2")}, {"duration": 1.0, "texture": SubResource("i3")}, {"duration": 1.0, "texture": SubResource("i4")}, {"duration": 1.0, "texture": SubResource("i5")}, {"duration": 1.0, "texture": SubResource("i6")}],
+"loop": true, "name": &"idle", "speed": 8.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("w0")}, {"duration": 1.0, "texture": SubResource("w1")}, {"duration": 1.0, "texture": SubResource("w2")}, {"duration": 1.0, "texture": SubResource("w3")}, {"duration": 1.0, "texture": SubResource("w4")}, {"duration": 1.0, "texture": SubResource("w5")}, {"duration": 1.0, "texture": SubResource("w6")}, {"duration": 1.0, "texture": SubResource("w7")}],
+"loop": true, "name": &"walk", "speed": 10.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("a0")}, {"duration": 1.0, "texture": SubResource("a1")}, {"duration": 1.0, "texture": SubResource("a2")}, {"duration": 1.0, "texture": SubResource("a3")}, {"duration": 1.0, "texture": SubResource("a4")}, {"duration": 1.0, "texture": SubResource("a5")}, {"duration": 1.0, "texture": SubResource("a6")}, {"duration": 1.0, "texture": SubResource("a7")}],
+"loop": false, "name": &"attack", "speed": 18.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("d0")}, {"duration": 1.0, "texture": SubResource("d1")}, {"duration": 1.0, "texture": SubResource("d2")}, {"duration": 1.0, "texture": SubResource("d3")}, {"duration": 1.0, "texture": SubResource("d4")}, {"duration": 1.0, "texture": SubResource("d5")}, {"duration": 1.0, "texture": SubResource("d6")}, {"duration": 1.0, "texture": SubResource("d7")}],
+"loop": false, "name": &"death", "speed": 12.0
+}]
+
+[sub_resource type="CircleShape2D" id="skel_collision"]
+radius = 22.0
+
+[node name="Skeleton" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("1_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -36)
+scale = Vector2(0.625, 0.625)
+sprite_frames = SubResource("frames")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("skel_collision")

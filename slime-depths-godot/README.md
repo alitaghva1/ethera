@@ -27,45 +27,54 @@ instant.
 |---|---|
 | WASD | Move |
 | Left mouse | Sword swing (cooldown 0.4s) |
+| Space | Dodge roll (iframes + speed burst, cooldown 0.85s) |
 | R | Restart (after death) |
 
-## What works in this slice
+## What works in this slice (Iter 1)
 
-- **Hero**: cloaked mage with idle / walk / attack animations
-  (south-facing strip extracted from the 8-direction sheet,
-  horizontally flipped for west). HP = 3.
-- **Slimes**: spawn at one of six points from the ruins waves config,
-  chase the hero, body-bump for 1 damage on contact, die in one hit.
-  Cap of 5 concurrent.
-- **Map**: procedural dungeon floor (1280×768) baked from the
-  vault biome palette — `floorBase #33292f`, `floorLit #3a2f35`,
-  `floorDark #2b2228` with the same hash-driven 12%/5% noise rule
-  as `src/room.js → drawFloorTile`. Includes a 3-tile-wide stone
-  wall border with rim shadow + top-edge highlight. Four collision
-  walls sit on the inner border edge so the playable area matches
-  what you see.
-- **Camera**: smooth follow with map-bounds clamp — set declaratively
-  on the Camera2D node (`limit_left/top/right/bottom` +
-  `position_smoothing_enabled`). **This is the entire "no off-map
-  void" fix from slime-depths in one node config, no custom code.**
-- **HUD**: hearts top-left, status text top-left, "GODOT SLICE" tag
-  top-right.
+- **Hero**: cloaked mage, idle / walk / attack animations, dodge with
+  iframes, hit-stop on damage taken, damage-flicker, 3 HP.
+- **Two enemy types**:
+  - **Slime** — 1 HP trash mob, body-bumps for damage, chases on sight
+  - **Skeleton** — 2 HP, real attack with windup telegraph (sprite tints
+    red during the 0.55s wind-up — back away or take 1 dmg), attack-
+    swing-cooldown state machine. ~30% of spawns.
+- **Map**: procedural dungeon floor (1280×768) baked from the vault
+  biome palette in `src/room.js` (`floorBase #33292f`, `floorLit
+  #3a2f35`, `floorDark #2b2228`). Hash-driven 12%/5% noise rule
+  matches `drawFloorTile`. 3-tile-wide stone wall border with rim
+  shadow + top-edge highlight.
+- **Lighting** (THE Godot showcase): `CanvasModulate` dims the world
+  to dungeon-dark; six wall torches use `PointLight2D` with a baked
+  radial-gradient texture + per-torch flicker (layered sin waves +
+  per-frame jitter, same recipe as slime-depths' `main.js` torch
+  rendering, ~20 lines of GDScript). Real dynamic 2D lighting in 6
+  instances, zero custom shader code.
+- **Camera**: smooth follow + map-bounds clamp via Camera2D's built-in
+  `limit_*` + `position_smoothing_enabled`. Zero custom camera code —
+  same fix that took ~50 lines in `slime-depths/src/main.js`.
+- **Combat feel**:
+  - Hit-stop: `Engine.time_scale = 0.05` for 0.08s on hero damage
+  - Damage numbers: floating `+1` on enemy kill, `-1` on hero damage
+  - White flash on enemy hit (Tween-based, matches `fx.js`)
+- **HUD**: hearts top-left, controls hint top-left, kill counter top-right.
 
-## What's intentionally stubbed
+## What's still stubbed (next iterations)
 
 | | slime-depths (JS) | this slice |
 |---|---|---|
 | 8-dir sprites | yes, atlas + direction-row math | south-only + h-flip |
 | Per-tile collision | bake-time gameplay_collision JSON | 4 perimeter walls |
-| Relics / fusions / themes | 46 relics, 17 fusions, 5 themes | none |
-| Hamlet hub | 8 NPCs + dialogue + smith + altar | none |
-| Boss + waves | 3 waves → stone_golem / orc Grudnok | random slime spawns |
+| Relics / fusions / themes | 46 relics, 17 fusions, 5 themes | none (Iter 4) |
+| Pedestals + pickups | tier-scaled visuals, banner | none (Iter 2) |
+| Wave runner | 3-wave state machine per zone | random spawn timer (Iter 2) |
+| Hamlet hub | 8 NPCs + dialogue + smith + altar | none (Iter 5) |
 | Memories / ascension / daily | full | none |
-| Hit-stop / dash / dodge / particles | rich | none |
+| Multiple rooms / doors | DAG of rooms + transitions | single room (Iter 3) |
+| Boss intros | full-frame painted scenes | none (Iter 5) |
+| Particles + slash VFX | rich | none (Iter 5) |
 
-The slice is ~250 lines of GDScript + 3 scenes + 7 PNGs. If feel-test
-passes, the next iteration ports the gameplay layers in priority order
-(see "Next steps" below).
+Iter 1 total: ~600 lines of GDScript across 5 scripts + 6 scenes + 10 PNGs.
 
 ## How to evaluate (5-minute test)
 

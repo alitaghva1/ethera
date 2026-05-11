@@ -9,6 +9,7 @@
 #   move_left  A
 #   move_right D
 #   attack     Left mouse button
+#   dodge      Space (added Iter 1)
 extends Node
 
 func _ready() -> void:
@@ -16,6 +17,7 @@ func _ready() -> void:
 	_bind_key("move_down",  KEY_S)
 	_bind_key("move_left",  KEY_A)
 	_bind_key("move_right", KEY_D)
+	_bind_key("dodge",      KEY_SPACE)
 	_bind_mouse("attack", MOUSE_BUTTON_LEFT)
 
 func _bind_key(action: StringName, keycode: int) -> void:

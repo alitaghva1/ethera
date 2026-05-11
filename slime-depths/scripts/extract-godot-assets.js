@@ -60,8 +60,15 @@ async function copy(srcFile, dstFile) {
   await copy(`${SRC}/enemies/slime_walk.png`,   `${DST}/enemies/slime_walk.png`);
   await copy(`${SRC}/enemies/slime_death.png`,  `${DST}/enemies/slime_death.png`);
 
-  console.log('--- Ruins map composite ---');
-  await copy(`${SRC}/rooms/ruins_sample.png`,   `${DST}/rooms/ancient_ruins.png`);
+  console.log('--- Skeleton enemy (128×128 cells, ERW crypt pack — single-direction) ---');
+  await copy(`${SRC}/enemies/skel_idle.png`,   `${DST}/enemies/skel_idle.png`);
+  await copy(`${SRC}/enemies/skel_walk.png`,   `${DST}/enemies/skel_walk.png`);
+  await copy(`${SRC}/enemies/skel_attack.png`, `${DST}/enemies/skel_attack.png`);
+  await copy(`${SRC}/enemies/skel_death.png`,  `${DST}/enemies/skel_death.png`);
+
+  // 2026-05-08 — ancient_ruins.png deliberately NOT copied. The slice
+  // uses the pre-pack procedural dungeon look instead; see
+  // scripts/extract-godot-procedural-floor.js.
 
   console.log('\n[done] assets prepared at slime-depths-godot/assets/');
 })();

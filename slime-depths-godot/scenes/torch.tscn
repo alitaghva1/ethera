@@ -1,0 +1,52 @@
+[gd_scene load_steps=6 format=3 uid="uid://b3torch12345"]
+
+[ext_resource type="Script" path="res://scripts/torch.gd" id="1_script"]
+
+; ── Torch light texture — radial gradient baked as a GradientTexture2D.
+; White-center → transparent-edge. PointLight2D uses this as the alpha
+; falloff for its energy contribution. Same shape as slime-depths'
+; canvas radialGradient torchlight ringel.
+
+[sub_resource type="Gradient" id="torch_grad"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.55, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="torch_grad_tex"]
+gradient = SubResource("torch_grad")
+width = 256
+height = 256
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; ── Flame texture — tiny orange diamond drawn via gradient. Sits at
+; the wall position so each torch has a visible "anchor" in addition
+; to the light pool it casts.
+
+[sub_resource type="Gradient" id="flame_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 0.95, 0.6, 1, 1, 0.55, 0.15, 1, 1, 0.25, 0.05, 0)
+
+[sub_resource type="GradientTexture2D" id="flame_grad_tex"]
+gradient = SubResource("flame_grad")
+width = 32
+height = 32
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[node name="Torch" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+color = Color(1, 0.62, 0.32, 1)
+energy = 1.4
+range_z_min = -1024
+range_z_max = 1024
+texture = SubResource("torch_grad_tex")
+texture_scale = 1.4
+shadow_enabled = false
+
+[node name="Flame" type="Sprite2D" parent="."]
+texture = SubResource("flame_grad_tex")
+modulate = Color(1, 0.8, 0.45, 1)
