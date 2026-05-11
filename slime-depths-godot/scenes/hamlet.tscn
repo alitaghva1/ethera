@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://b3hamlet1234"]
+[gd_scene load_steps=23 format=3 uid="uid://b3hamlet1234"]
 
 [ext_resource type="Script" path="res://scripts/hamlet.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/rooms/hamlet_floor.png" id="2_floor"]
@@ -11,6 +11,15 @@
 [ext_resource type="Texture2D" path="res://assets/npc/wanderer.png" id="9_wanderer"]
 [ext_resource type="Texture2D" path="res://assets/npc/smith.png" id="10_smith"]
 [ext_resource type="Texture2D" path="res://assets/npc/oracle.png" id="11_oracle"]
+[ext_resource type="Texture2D" path="res://assets/decor/shadow_ellipse.png" id="12_shadow"]
+[ext_resource type="Texture2D" path="res://assets/decor/lamppost.png" id="13_lamp"]
+[ext_resource type="Texture2D" path="res://assets/decor/signpost.png" id="14_sign"]
+[ext_resource type="Texture2D" path="res://assets/decor/barrel.png" id="15_barrel"]
+[ext_resource type="Texture2D" path="res://assets/decor/well.png" id="16_well"]
+[ext_resource type="Texture2D" path="res://assets/decor/bush.png" id="17_bush"]
+[ext_resource type="Texture2D" path="res://assets/decor/cart.png" id="18_cart"]
+[ext_resource type="Texture2D" path="res://assets/decor/fence_h.png" id="19_fence_h"]
+[ext_resource type="Texture2D" path="res://assets/decor/fence_v.png" id="20_fence_v"]
 
 ; Hamlet uses the same 1280×768 design space as the dungeon, with the
 ; grass + path floor baked in extract-godot-hamlet-floor.js. The hero
@@ -169,6 +178,154 @@ lines = ["The wheel turns. Twelve runs, twelve faces of the same wound.", "I see
 position = Vector2(640, 730)
 portal_label = "DESCEND"
 target_scene_path = "res://scenes/main.tscn"
+
+; ── Decor — drop shadows + scattered hamlet props (iter-10b) ─────────
+; All under one Decor Node2D so Y-sort sees them as part of the
+; world. Drop shadows render BENEATH everything (z_index = -1) so
+; they don't fight the hero / NPCs / buildings for visual hierarchy.
+;
+; Building shadow ellipses are 192×64 — the texture is scaled per
+; building to match its footprint. Anchored at each building's
+; visual base (slightly south of the sprite center).
+
+[node name="Decor" type="Node2D" parent="."]
+
+[node name="ShadowSmithy" type="Sprite2D" parent="Decor"]
+position = Vector2(300, 320)
+scale = Vector2(0.9, 0.9)
+z_index = -1
+texture = ExtResource("12_shadow")
+
+[node name="ShadowTavern" type="Sprite2D" parent="Decor"]
+position = Vector2(645, 320)
+scale = Vector2(1.1, 1.0)
+z_index = -1
+texture = ExtResource("12_shadow")
+
+[node name="ShadowTower" type="Sprite2D" parent="Decor"]
+position = Vector2(980, 330)
+scale = Vector2(0.5, 0.85)
+z_index = -1
+texture = ExtResource("12_shadow")
+
+; Lamp posts — flank the east-west path + the south-spur portal.
+; Y positions sit just below the path's south edge (y=416) and
+; just north of the portal so they frame the descent visually.
+[node name="LampPath1" type="Sprite2D" parent="Decor"]
+position = Vector2(420, 442)
+texture = ExtResource("13_lamp")
+
+[node name="LampPath2" type="Sprite2D" parent="Decor"]
+position = Vector2(860, 442)
+texture = ExtResource("13_lamp")
+
+[node name="LampPortal1" type="Sprite2D" parent="Decor"]
+position = Vector2(580, 680)
+texture = ExtResource("13_lamp")
+
+[node name="LampPortal2" type="Sprite2D" parent="Decor"]
+position = Vector2(700, 680)
+texture = ExtResource("13_lamp")
+
+; Signposts — one in front of each building, north of the path.
+[node name="SignSmithy" type="Sprite2D" parent="Decor"]
+position = Vector2(360, 340)
+texture = ExtResource("14_sign")
+
+[node name="SignTavern" type="Sprite2D" parent="Decor"]
+position = Vector2(540, 345)
+texture = ExtResource("14_sign")
+
+[node name="SignTower" type="Sprite2D" parent="Decor"]
+position = Vector2(1040, 350)
+texture = ExtResource("14_sign")
+
+; Smithy area — barrels + cart suggest a working forge.
+[node name="Barrel1" type="Sprite2D" parent="Decor"]
+position = Vector2(220, 320)
+texture = ExtResource("15_barrel")
+
+[node name="Barrel2" type="Sprite2D" parent="Decor"]
+position = Vector2(248, 322)
+texture = ExtResource("15_barrel")
+
+[node name="Cart" type="Sprite2D" parent="Decor"]
+position = Vector2(180, 380)
+texture = ExtResource("18_cart")
+
+; Well — sits between smithy and tavern, north of the path.
+[node name="Well" type="Sprite2D" parent="Decor"]
+position = Vector2(470, 345)
+texture = ExtResource("16_well")
+
+; Bushes — scattered along path edges + corners for grass texture
+; relief. Mostly south of the buildings, away from playable space.
+[node name="Bush1" type="Sprite2D" parent="Decor"]
+position = Vector2(120, 480)
+texture = ExtResource("17_bush")
+
+[node name="Bush2" type="Sprite2D" parent="Decor"]
+position = Vector2(800, 470)
+texture = ExtResource("17_bush")
+
+[node name="Bush3" type="Sprite2D" parent="Decor"]
+position = Vector2(1180, 500)
+texture = ExtResource("17_bush")
+
+[node name="Bush4" type="Sprite2D" parent="Decor"]
+position = Vector2(80, 200)
+texture = ExtResource("17_bush")
+
+[node name="Bush5" type="Sprite2D" parent="Decor"]
+position = Vector2(1200, 200)
+texture = ExtResource("17_bush")
+
+[node name="Bush6" type="Sprite2D" parent="Decor"]
+position = Vector2(1100, 600)
+texture = ExtResource("17_bush")
+
+[node name="Bush7" type="Sprite2D" parent="Decor"]
+position = Vector2(60, 600)
+texture = ExtResource("17_bush")
+
+; Fences — a stretch along the very south edge of the map to suggest
+; a village boundary, broken by the portal opening (x=608..704).
+[node name="FenceS1" type="Sprite2D" parent="Decor"]
+position = Vector2(80, 740)
+texture = ExtResource("19_fence_h")
+
+[node name="FenceS2" type="Sprite2D" parent="Decor"]
+position = Vector2(112, 740)
+texture = ExtResource("19_fence_h")
+
+[node name="FenceS3" type="Sprite2D" parent="Decor"]
+position = Vector2(144, 740)
+texture = ExtResource("19_fence_h")
+
+[node name="FenceS4" type="Sprite2D" parent="Decor"]
+position = Vector2(1120, 740)
+texture = ExtResource("19_fence_h")
+
+[node name="FenceS5" type="Sprite2D" parent="Decor"]
+position = Vector2(1152, 740)
+texture = ExtResource("19_fence_h")
+
+[node name="FenceS6" type="Sprite2D" parent="Decor"]
+position = Vector2(1184, 740)
+texture = ExtResource("19_fence_h")
+
+; West-edge fence (vertical) — partial stretch north of the path.
+[node name="FenceW1" type="Sprite2D" parent="Decor"]
+position = Vector2(40, 80)
+texture = ExtResource("20_fence_v")
+
+[node name="FenceW2" type="Sprite2D" parent="Decor"]
+position = Vector2(40, 112)
+texture = ExtResource("20_fence_v")
+
+[node name="FenceW3" type="Sprite2D" parent="Decor"]
+position = Vector2(40, 144)
+texture = ExtResource("20_fence_v")
 
 ; ── Hero ──────────────────────────────────────────────────────────────
 [node name="Hero" parent="." instance=ExtResource("3_hero")]
