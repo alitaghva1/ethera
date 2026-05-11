@@ -224,7 +224,7 @@ func _ready() -> void:
 	_update_kills()
 	_update_room_label()
 	_rebuild_relic_strip()
-	status_label.text = "LMB swing · RMB blast · SPACE dodge · Q shield · SHIFT dash"
+	status_label.text = "LMB swing · RMB blast · SPACE dodge · Q parry · SHIFT dash"
 	wave_label.text = "WAVE 1 / %d  incoming" % max(1, _waves.size())
 	var t := get_tree().create_timer(INITIAL_WAVE_DELAY)
 	t.timeout.connect(func (): _start_wave(0))

@@ -72,30 +72,34 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 4
 text = "♥ ♥ ♥"
 
-; Relic strip — horizontal row of small 28×28 badges showing every
-; relic the player owns. Sits directly under HPLabel (top=46) and to
-; the LEFT of StatusLabel (which is at top=50). Empty by default; the
-; main.gd::_rebuild_relic_strip helper populates it on _ready and
-; whenever Events.pickup_claimed fires. Mouse hover on each badge
-; opens a tooltip with name + description (handled in relic_icon.gd).
-[node name="RelicStrip" type="HBoxContainer" parent="UI"]
-offset_left = 16.0
-offset_top = 46.0
-offset_right = 400.0
-offset_bottom = 78.0
-theme_override_constants/separation = 4
-mouse_filter = 1
-
+; Iter 26 — layout reflow. Pre-iter-26 RelicStrip (top=46-78) and
+; StatusLabel (top=50-75) overlapped: the controls hint text painted
+; directly under the relic badges. StatusLabel now sits just below
+; HPLabel (top=46-68) and the strip drops to top=74 so the bigger 40 px
+; badges (was 28 px) have clean vertical room and don't fight the hint.
 [node name="StatusLabel" type="Label" parent="UI"]
 offset_left = 16.0
-offset_top = 50.0
+offset_top = 46.0
 offset_right = 800.0
-offset_bottom = 75.0
+offset_bottom = 68.0
 theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 3
 text = "RUINS — LMB swing, SPACE dodge, R restart"
+
+; Relic strip — horizontal row of 40×40 badges showing every relic
+; the player owns. main.gd::_rebuild_relic_strip populates it on
+; _ready and whenever Events.pickup_claimed fires. Mouse hover on a
+; badge opens a tooltip with name + description. Spacing bumped from
+; 4 → 6 px to match the larger badge size.
+[node name="RelicStrip" type="HBoxContainer" parent="UI"]
+offset_left = 16.0
+offset_top = 74.0
+offset_right = 900.0
+offset_bottom = 122.0
+theme_override_constants/separation = 6
+mouse_filter = 1
 
 [node name="KillsLabel" type="Label" parent="UI"]
 anchors_preset = 1
