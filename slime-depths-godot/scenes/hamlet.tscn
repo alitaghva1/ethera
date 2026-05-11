@@ -184,31 +184,37 @@ position_smoothing_speed = 6.0
 offset_left = 16.0
 offset_top = 10.0
 offset_right = 600.0
-offset_bottom = 40.0
-theme_override_font_sizes/font_size = 24
+offset_bottom = 44.0
+theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
 text = "HAMLET"
 
 [node name="StatusLabel" type="Label" parent="UI"]
 offset_left = 16.0
-offset_top = 44.0
+offset_top = 48.0
 offset_right = 900.0
-offset_bottom = 68.0
+offset_bottom = 72.0
 theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
 text = "Hamlet"
 
 [node name="RunLabel" type="Label" parent="UI"]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -320.0
+offset_left = -360.0
 offset_top = 14.0
 offset_right = -16.0
 offset_bottom = 42.0
 grow_horizontal = 0
 theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
 text = ""
 horizontal_alignment = 2
 
@@ -219,15 +225,17 @@ horizontal_alignment = 2
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -320.0
+offset_left = -360.0
 offset_top = 50.0
 offset_right = -16.0
-offset_bottom = 300.0
+offset_bottom = 320.0
 grow_horizontal = 0
 theme_override_constants/separation = 4
 
 [node name="Title" type="Label" parent="UI/RelicsPanel"]
-theme_override_font_sizes/font_size = 13
-theme_override_colors/font_color = Color(0.55, 0.48, 0.36, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
 text = "RELICS  (none yet)"
 horizontal_alignment = 2
