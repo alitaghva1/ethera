@@ -34,9 +34,12 @@ func _on_body_entered(body: Node) -> void:
 	if not body.is_in_group("hero"):
 		return
 	_firing = true
-	# GameState hook — dungeon entries are tracked.
+	# Dungeon-entry hooks — track the run + initialize the Floor's
+	# room sequence (so the dungeon scene knows it's on room 0 of N
+	# when it _readys).
 	if target_scene_path.find("main.tscn") >= 0:
 		GameState.start_dungeon_run()
+		Floor.start_floor()
 	# Brief delay so the player sees they walked into the portal before
 	# the scene swap. Use a Timer so we don't block input.
 	var t := get_tree().create_timer(0.15)

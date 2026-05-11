@@ -82,12 +82,26 @@ signal dodge_started
 func _ready() -> void:
 	sprite.play("idle")
 	add_to_group("hero")
-	# Stoneheart relic — extra HP at spawn. Read once; live changes
-	# would require a more sophisticated stat system (out of scope for
-	# Iter 3 since hp is only granted via pedestal between scenes).
+	# Stoneheart / Heart of Stone relic — extra HP at spawn. Read once;
+	# live mid-run changes would require a more sophisticated stat
+	# system (out of scope for the slice — hp only changes via pedestal
+	# claims between scenes).
 	var hp_bonus := GameState.modifier_total("max_hp_bonus", 0)
-	if hp_bonus > 0:
-		hp = MAX_HP + hp_bonus
+	hp = MAX_HP + hp_bonus
+	# HP carryover between rooms in a multi-room dungeon. Floor's
+	# start_floor / end_floor reset persisted_hp to -1 so new runs +
+	# hamlet returns always start fresh.
+	if GameState.persisted_hp > 0:
+		hp = min(GameState.persisted_hp, MAX_HP + hp_bonus)
+	# Save HP on scene exit so the next room reads our current state
+	# instead of full-healing the player on every transition.
+	tree_exiting.connect(_save_persistent_state)
+
+func _save_persistent_state() -> void:
+	# Only persist when leaving ALIVE. Dying drops HP to 0 which would
+	# otherwise spawn the next room with 0 HP and immediately re-die.
+	if hp > 0:
+		GameState.persisted_hp = hp
 
 func _physics_process(delta: float) -> void:
 	_attack_cd        = max(0.0, _attack_cd        - delta)

@@ -24,6 +24,7 @@ config/icon="res://icon.svg"
 
 InputSetup="*res://scripts/input_setup.gd"
 GameState="*res://scripts/game_state.gd"
+Floor="*res://scripts/floor_state.gd"
 Events="*res://scripts/events.gd"
 FX="*res://scripts/fx.gd"
 Dialogue="*res://scenes/dialogue_ui.tscn"

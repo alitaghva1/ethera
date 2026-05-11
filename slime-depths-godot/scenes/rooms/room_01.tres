@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RoomConfig" load_steps=2 format=3 uid="uid://b3room01abcde"]
+
+[ext_resource type="Script" path="res://scripts/room_config.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+hero_spawn = Vector2(192, 384)
+torch_positions = Array[Vector2]([Vector2(220, 130), Vector2(640, 130), Vector2(1060, 130), Vector2(220, 640), Vector2(640, 640), Vector2(1060, 640)])
+spawn_points = Array[Vector2]([Vector2(160, 160), Vector2(1088, 160), Vector2(160, 608), Vector2(1088, 608), Vector2(640, 160), Vector2(640, 608)])
+waves = [[["slime", 3], ["crypt_spider", 1]], [["slime", 2], ["skel", 1]]]
+is_last_room = false
+display_name = "OUTER HALL"
