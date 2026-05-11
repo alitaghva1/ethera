@@ -22,10 +22,14 @@ var last_run_kills := 0
 
 # ── Relic registry ───────────────────────────────────────────────────
 # Modifier keys read by hero.gd:
-#   sword_damage_bonus  (int)  added to LMB-swing damage
-#   blast_damage_bonus  (int)  added to RMB-projectile damage
-#   max_hp_bonus        (int)  added to Hero.MAX_HP at spawn
-# Future relics can add more keys (move_speed_mul, dodge_cd_mul, etc.)
+#   sword_damage_bonus      (int)    added to LMB-swing damage
+#   blast_damage_bonus      (int)    added to RMB-projectile damage
+#   max_hp_bonus            (int)    added to Hero.MAX_HP at spawn
+#   damage_taken_reduction  (int)    flat subtract from incoming damage
+#   sword_cooldown_mul      (float)  multiplier delta on ATTACK_COOLDOWN
+#   dodge_cooldown_mul      (float)  multiplier delta on DODGE_COOLDOWN
+#   move_speed_mul          (float)  multiplier delta on SPEED
+# Float-typed mods are folded via modifier_total_f (see below).
 const RELIC_REGISTRY := {
 	"iron_fang": {
 		"name": "IRON FANG",
@@ -41,6 +45,31 @@ const RELIC_REGISTRY := {
 		"name": "STONEHEART",
 		"description": "Bear another wound. +1 max HP.",
 		"mods": { "max_hp_bonus": 1 },
+	},
+	"swift_strike": {
+		"name": "SWIFT STRIKE",
+		"description": "Sword cooldown -20%.",
+		"mods": { "sword_cooldown_mul": -0.2 },
+	},
+	"dodge_master": {
+		"name": "DODGE MASTER",
+		"description": "Dodge cooldown -30%.",
+		"mods": { "dodge_cooldown_mul": -0.3 },
+	},
+	"iron_skin": {
+		"name": "IRON SKIN",
+		"description": "Take 1 less damage per hit.",
+		"mods": { "damage_taken_reduction": 1 },
+	},
+	"nimble": {
+		"name": "NIMBLE",
+		"description": "Move speed +30%.",
+		"mods": { "move_speed_mul": 0.3 },
+	},
+	"heart_of_stone": {
+		"name": "HEART OF STONE",
+		"description": "+2 max HP.",
+		"mods": { "max_hp_bonus": 2 },
 	},
 }
 
@@ -83,4 +112,15 @@ func modifier_total(key: String, default_value: int = 0) -> int:
 		var info: Dictionary = RELIC_REGISTRY.get(rid, {})
 		var mods: Dictionary = info.get("mods", {})
 		total += int(mods.get(key, 0))
+	return total
+
+# Float variant for fractional mods (e.g. -0.2 cooldown, +0.3 speed).
+# Int casting in modifier_total would silently round these to 0, which
+# is why this lives as a separate helper rather than a single overload.
+func modifier_total_f(key: String, default_value: float = 0.0) -> float:
+	var total := default_value
+	for rid in owned_relics:
+		var info: Dictionary = RELIC_REGISTRY.get(rid, {})
+		var mods: Dictionary = info.get("mods", {})
+		total += float(mods.get(key, 0.0))
 	return total

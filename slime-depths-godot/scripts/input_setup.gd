@@ -4,23 +4,27 @@
 # code is cleaner and easier to audit/diff.
 #
 # Actions wired:
-#   move_up    W
-#   move_down  S
-#   move_left  A
-#   move_right D
-#   attack     Left mouse button
-#   blast      Right mouse button (added Iter 3 — ranged spell)
-#   dodge      Space (added Iter 1)
-#   interact   E (added Iter 2 — talk to NPCs, advance dialogue)
+#   move_up      W
+#   move_down    S
+#   move_left    A
+#   move_right   D
+#   attack       Left mouse button
+#   blast        Right mouse button (added Iter 3 — ranged spell)
+#   dodge        Space (added Iter 1)
+#   shield       Q (added Iter 5 — stamina-drained invuln stance)
+#   dash_strike  Shift (added Iter 5 — burst + AoE slash)
+#   interact     E (added Iter 2 — talk to NPCs, advance dialogue)
 extends Node
 
 func _ready() -> void:
-	_bind_key("move_up",    KEY_W)
-	_bind_key("move_down",  KEY_S)
-	_bind_key("move_left",  KEY_A)
-	_bind_key("move_right", KEY_D)
-	_bind_key("dodge",      KEY_SPACE)
-	_bind_key("interact",   KEY_E)
+	_bind_key("move_up",     KEY_W)
+	_bind_key("move_down",   KEY_S)
+	_bind_key("move_left",   KEY_A)
+	_bind_key("move_right",  KEY_D)
+	_bind_key("dodge",       KEY_SPACE)
+	_bind_key("shield",      KEY_Q)
+	_bind_key("dash_strike", KEY_SHIFT)
+	_bind_key("interact",    KEY_E)
 	_bind_mouse("attack", MOUSE_BUTTON_LEFT)
 	_bind_mouse("blast",  MOUSE_BUTTON_RIGHT)
 
