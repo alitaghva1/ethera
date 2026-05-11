@@ -1,0 +1,57 @@
+[gd_scene load_steps=7 format=3 uid="uid://b3proj12345"]
+
+[ext_resource type="Script" path="res://scripts/projectile.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="proj_shape"]
+radius = 6.0
+
+; Magenta-cored orb — distinct from torch orange + slime/skel red.
+; Reads as "magic" at a glance in the torchlit dungeon.
+[sub_resource type="Gradient" id="orb_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 0.4, 0.95, 0.8, 0.6, 0.1, 0.4, 0)
+
+[sub_resource type="GradientTexture2D" id="orb_tex"]
+gradient = SubResource("orb_grad")
+width = 32
+height = 32
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; Light texture — wider radial falloff for the point-light glow.
+[sub_resource type="Gradient" id="light_grad"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="light_tex"]
+gradient = SubResource("light_grad")
+width = 128
+height = 128
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; ── Projectile node tree ──────────────────────────────────────────────
+; Area2D detects body overlaps (collision_mask=1+4 → world walls AND
+; enemies, NOT the hero on layer 2). Light is purely cosmetic but adds
+; meaningful dungeon-lit reads as the bolt streaks past torches.
+
+[node name="Projectile" type="Area2D"]
+collision_layer = 8
+collision_mask = 5
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("proj_shape")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = SubResource("orb_tex")
+modulate = Color(1, 0.55, 1, 1)
+scale = Vector2(1.4, 1)
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+color = Color(1, 0.6, 1, 1)
+energy = 1.6
+texture = SubResource("light_tex")
+texture_scale = 0.7

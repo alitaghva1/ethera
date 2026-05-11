@@ -9,6 +9,7 @@
 #   move_left  A
 #   move_right D
 #   attack     Left mouse button
+#   blast      Right mouse button (added Iter 3 — ranged spell)
 #   dodge      Space (added Iter 1)
 #   interact   E (added Iter 2 — talk to NPCs, advance dialogue)
 extends Node
@@ -21,6 +22,7 @@ func _ready() -> void:
 	_bind_key("dodge",      KEY_SPACE)
 	_bind_key("interact",   KEY_E)
 	_bind_mouse("attack", MOUSE_BUTTON_LEFT)
+	_bind_mouse("blast",  MOUSE_BUTTON_RIGHT)
 
 func _bind_key(action: StringName, keycode: int) -> void:
 	if not InputMap.has_action(action):

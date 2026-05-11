@@ -211,3 +211,23 @@ theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
 text = ""
 horizontal_alignment = 2
+
+; Relics panel — top-right sidebar listing acquired relics + descriptions.
+; Hamlet script populates this in _ready by inspecting GameState.owned_relics.
+
+[node name="RelicsPanel" type="VBoxContainer" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -320.0
+offset_top = 50.0
+offset_right = -16.0
+offset_bottom = 300.0
+grow_horizontal = 0
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="UI/RelicsPanel"]
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.55, 0.48, 0.36, 1)
+text = "RELICS  (none yet)"
+horizontal_alignment = 2

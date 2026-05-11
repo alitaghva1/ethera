@@ -27,12 +27,23 @@ instant.
 |---|---|
 | WASD | Move |
 | Left mouse | Sword swing (cooldown 0.4s) |
+| **Right mouse** | **Blast spell — magenta projectile (Iter 3, cooldown 0.55s)** |
 | Space | Dodge roll (iframes + speed burst, cooldown 0.85s) |
-| **E** | Talk to NPCs / advance dialogue (Iter 2) |
-| **ESC** | Return to hamlet (on death, dungeon scene) |
+| E | Talk to NPCs / claim pedestal / advance dialogue |
+| ESC | Return to hamlet (on death or after room cleared) |
 | R | Retry the dungeon (after death) |
 
-## What works in this slice (Iter 1 + Iter 2)
+## What works in this slice (Iter 1 + Iter 2 + Iter 3)
+
+**Iter 3 added** — the run loop. The dungeon is now a 3-wave runner
+that drops a relic pedestal on clear; claiming a relic persists it
+via the `GameState` autoload and the hamlet's top-right RELICS panel
+shows your collection. New combat verb: **right mouse = blast spell**
+(magenta projectile, hits enemies with 1 damage + Arcane Pulse bonus,
+casts a real PointLight2D as it streaks past). Relic registry has
+three starter relics — Iron Fang (+1 sword dmg), Arcane Pulse (+1
+blast dmg), Stoneheart (+1 max HP). Each clear randomly offers one
+you don't already own.
 
 **Iter 2 added** — hamlet hub, NPCs with dialogue, scene transitions.
 You now START in the hamlet, walk south to "DESCEND" through the

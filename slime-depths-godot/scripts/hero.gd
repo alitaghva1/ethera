@@ -22,10 +22,16 @@ const MAX_HP             := 3
 
 # Dodge tuning — matches slime-depths/src/hero.js values.
 const DODGE_SPEED        := 480.0
-const DODGE_DURATION     := 0.25       # sec the dash motion lasts
-const DODGE_IFRAMES      := 0.45       # sec invuln (overlaps dash + brief recovery)
-const DODGE_COOLDOWN     := 0.85       # sec between dodges
-const HIT_IFRAMES        := 0.55       # post-damage invuln window
+const DODGE_DURATION     := 0.25
+const DODGE_IFRAMES      := 0.45
+const DODGE_COOLDOWN     := 0.85
+const HIT_IFRAMES        := 0.55
+
+# Blast spell (Iter 3) — RMB ranged projectile. Base damage 1, +1 per
+# arcane_pulse relic owned. Slightly longer cooldown than the sword so
+# the player can't just spam projectiles from safety.
+const BLAST_COOLDOWN     := 0.55
+const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -41,6 +47,8 @@ var _dodge_time := 0.0
 var _dodge_dir := Vector2.RIGHT
 var _iframes := 0.0
 
+var _blast_cd := 0.0
+
 signal hp_changed(new_hp: int)
 signal hero_died
 signal hit_received       # for camera shake + hit-stop in main.gd
@@ -49,6 +57,12 @@ signal dodge_started
 func _ready() -> void:
 	sprite.play("idle")
 	add_to_group("hero")
+	# Stoneheart relic — extra HP at spawn. Read once; live changes
+	# would require a more sophisticated stat system (out of scope for
+	# Iter 3 since hp is only granted via pedestal between scenes).
+	var hp_bonus := GameState.modifier_total("max_hp_bonus", 0)
+	if hp_bonus > 0:
+		hp = MAX_HP + hp_bonus
 
 func _physics_process(delta: float) -> void:
 	_attack_cd  = max(0.0, _attack_cd  - delta)
@@ -56,6 +70,7 @@ func _physics_process(delta: float) -> void:
 	_dodge_cd   = max(0.0, _dodge_cd   - delta)
 	_dodge_time = max(0.0, _dodge_time - delta)
 	_iframes    = max(0.0, _iframes    - delta)
+	_blast_cd   = max(0.0, _blast_cd   - delta)
 	if _attack_live <= 0.0:
 		_is_attacking = false
 
@@ -98,6 +113,8 @@ func _physics_process(delta: float) -> void:
 	# Dodge first — feels worse if dodge gets queued behind an attack.
 	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0 and _dodge_time <= 0.0:
 		_start_dodge(input)
+	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dodge_time <= 0.0:
+		_start_blast()
 	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dodge_time <= 0.0:
 		_start_attack()
 
@@ -123,6 +140,8 @@ func _start_attack() -> void:
 	sprite.flip_h = _facing_west
 	sprite.frame = 0
 	sprite.play("attack")
+	# Damage = 1 base + iron_fang relic bonus + future stack-bonuses.
+	var damage := 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
@@ -132,7 +151,29 @@ func _start_attack() -> void:
 		if abs(to_enemy.angle_to(_attack_aim)) > ATTACK_ARC:
 			continue
 		if enemy.has_method("take_hit"):
-			enemy.take_hit(1)
+			enemy.take_hit(damage)
+
+func _start_blast() -> void:
+	var aim_world := get_global_mouse_position() - global_position
+	if aim_world.length() < 1.0:
+		aim_world = Vector2(1, 0) if not _facing_west else Vector2(-1, 0)
+	var aim := aim_world.normalized()
+	_blast_cd = BLAST_COOLDOWN
+	_facing_west = aim.x < 0
+	sprite.flip_h = _facing_west
+	# Reuse the attack animation as a cast gesture for now. A dedicated
+	# cast pose comes when we port more PixelLab anims.
+	sprite.frame = 0
+	sprite.play("attack")
+	_attack_live = ATTACK_SWING_TIME
+	_is_attacking = true
+	# Spawn projectile slightly forward of the hero center so it doesn't
+	# immediately clip the hero's own collision body.
+	var p: Projectile = PROJECTILE_SCENE.instantiate()
+	p.global_position = global_position + Vector2(0, -22) + aim * 18.0
+	p.velocity = aim * Projectile.SPEED
+	p.damage = 1 + GameState.modifier_total("blast_damage_bonus", 0)
+	get_parent().add_child(p)
 
 func take_damage(amount: int) -> void:
 	if hp <= 0 or _iframes > 0.0:

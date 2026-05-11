@@ -105,3 +105,17 @@ theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
 text = "KILLS  0"
 horizontal_alignment = 2
+
+[node name="WaveLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 46.0
+offset_right = -16.0
+offset_bottom = 70.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+text = ""
+horizontal_alignment = 2
