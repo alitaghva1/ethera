@@ -1,0 +1,199 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3settings12345"]
+
+[ext_resource type="Script" path="res://scripts/settings_screen.gd" id="1_script"]
+
+; Settings screen — placeholder volume slider + read-only controls
+; list. Same color palette as the main menu. Single BACK button
+; returns to the title.
+
+[sub_resource type="StyleBoxFlat" id="button_normal"]
+bg_color = Color(0.04, 0.03, 0.06, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.65, 0.41, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="button_hover"]
+bg_color = Color(0.08, 0.06, 0.10, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.96, 0.85, 0.63, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+
+[node name="SettingsScreen" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.039, 0.031, 0.063, 1)
+
+; Centered content column.
+[node name="Content" type="VBoxContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -280.0
+offset_right = 300.0
+offset_bottom = 280.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 70)
+theme_override_font_sizes/font_size = 48
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "SETTINGS"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="Content"]
+custom_minimum_size = Vector2(0, 16)
+
+; ── Master volume row ────────────────────────────────────────────────
+[node name="VolumeRow" type="HBoxContainer" parent="Content"]
+custom_minimum_size = Vector2(0, 36)
+theme_override_constants/separation = 16
+
+[node name="VolumeLabel" type="Label" parent="Content/VolumeRow"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "MASTER VOLUME"
+vertical_alignment = 1
+
+[node name="VolumeSlider" type="HSlider" parent="Content/VolumeRow"]
+custom_minimum_size = Vector2(300, 30)
+focus_mode = 2
+min_value = 0.0
+max_value = 100.0
+step = 1.0
+value = 80.0
+
+[node name="VolumeValue" type="Label" parent="Content/VolumeRow"]
+custom_minimum_size = Vector2(50, 0)
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+text = "80"
+vertical_alignment = 1
+horizontal_alignment = 2
+
+[node name="Spacer2" type="Control" parent="Content"]
+custom_minimum_size = Vector2(0, 14)
+
+; ── Controls header + list ───────────────────────────────────────────
+[node name="ControlsHeader" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 26)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "CONTROLS"
+horizontal_alignment = 1
+
+[node name="ControlsList" type="VBoxContainer" parent="Content"]
+theme_override_constants/separation = 4
+
+[node name="C1" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "MOVE: WASD"
+horizontal_alignment = 1
+
+[node name="C2" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "ATTACK: Left Mouse"
+horizontal_alignment = 1
+
+[node name="C3" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "BLAST: Right Mouse"
+horizontal_alignment = 1
+
+[node name="C4" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "DODGE: Space"
+horizontal_alignment = 1
+
+[node name="C5" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "SHIELD: Q"
+horizontal_alignment = 1
+
+[node name="C6" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "DASH STRIKE: Shift"
+horizontal_alignment = 1
+
+[node name="C7" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "INTERACT: E"
+horizontal_alignment = 1
+
+[node name="C8" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "RESTART: R"
+horizontal_alignment = 1
+
+[node name="C9" type="Label" parent="Content/ControlsList"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "RETURN TO HAMLET: ESC"
+horizontal_alignment = 1
+
+[node name="Spacer3" type="Control" parent="Content"]
+custom_minimum_size = Vector2(0, 18)
+
+[node name="BackButton" type="Button" parent="Content"]
+custom_minimum_size = Vector2(220, 44)
+focus_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_hover")
+text = "BACK"

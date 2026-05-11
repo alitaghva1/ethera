@@ -1,0 +1,174 @@
+[gd_scene load_steps=5 format=3 uid="uid://b3menu1234567"]
+
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
+
+; Main menu — title screen that frames the run.
+; Anchored full-rect Control with a flat dark background, centered title
+; stack, and three focusable buttons. Mirrors dialogue_ui's color palette:
+; gold #c9a86a borders + #f4d9a0 text on near-black #0a0810 ground.
+
+[sub_resource type="StyleBoxFlat" id="button_normal"]
+bg_color = Color(0.04, 0.03, 0.06, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.65, 0.41, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="button_hover"]
+bg_color = Color(0.08, 0.06, 0.10, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.96, 0.85, 0.63, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="button_focus"]
+bg_color = Color(0.08, 0.06, 0.10, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.96, 0.85, 0.63, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+
+[node name="MainMenu" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+; Solid dark background — the bottom layer behind every UI element.
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.039, 0.031, 0.063, 1)
+
+; Centered title stack.
+[node name="CenterStack" type="VBoxContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -240.0
+offset_right = 200.0
+offset_bottom = 240.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="Title" type="Label" parent="CenterStack"]
+custom_minimum_size = Vector2(0, 90)
+theme_override_font_sizes/font_size = 72
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "SLIME DEPTHS"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="CenterStack"]
+custom_minimum_size = Vector2(0, 28)
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "beneath the ruin"
+horizontal_alignment = 1
+
+; Empty spacer — pushes the buttons down from the subtitle.
+[node name="Spacer" type="Control" parent="CenterStack"]
+custom_minimum_size = Vector2(0, 60)
+
+[node name="BeginButton" type="Button" parent="CenterStack"]
+custom_minimum_size = Vector2(260, 48)
+focus_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "BEGIN"
+
+[node name="SettingsButton" type="Button" parent="CenterStack"]
+custom_minimum_size = Vector2(260, 48)
+focus_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="CenterStack"]
+custom_minimum_size = Vector2(260, 48)
+focus_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "QUIT"
+
+; Bottom-right version stamp.
+[node name="VersionLabel" type="Label" parent="."]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -32.0
+offset_right = -16.0
+offset_bottom = -10.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.55, 0.48, 0.36, 1)
+text = "v0.4 godot slice"
+horizontal_alignment = 2
