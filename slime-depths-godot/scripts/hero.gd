@@ -264,6 +264,26 @@ var _melee_strike_timer: float = 0.0
 var _pending_melee_aim: Vector2 = Vector2.RIGHT
 var _pending_melee_range: float = 0.0
 
+# Iter 31 — environmental speed multiplier, applied to walk velocity.
+# slow_zone hazards write to this (0.5 while hero inside) and reset to
+# 1.0 on exit. Stacks multiplicatively so two overlapping slows = 0.25.
+# Set by the slow_zone hazard's body_entered / body_exited via setters.
+# Does NOT affect dodge or dash speed — those are committed actions
+# that bypass the mire (treat as "you can escape if you blow a cooldown").
+var _environment_speed_mul: float = 1.0
+var _active_slow_zones: int = 0
+
+func enter_slow_zone(mul: float) -> void:
+	_active_slow_zones += 1
+	_environment_speed_mul *= mul
+
+func exit_slow_zone(mul: float) -> void:
+	_active_slow_zones = max(0, _active_slow_zones - 1)
+	if _active_slow_zones == 0:
+		_environment_speed_mul = 1.0
+	else:
+		_environment_speed_mul /= mul
+
 # Iter 11 — feel state.
 var _camera: Camera2D = null
 var _camera_offset := Vector2.ZERO
@@ -438,7 +458,11 @@ func _physics_process(delta: float) -> void:
 			_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
 		velocity = _dash_strike_dir * DASH_STRIKE_SPEED
 	else:
-		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0))
+		# Iter 31 — slow_zone hazards multiply walk speed via
+		# _environment_speed_mul (default 1.0, halves while inside).
+		# Multiplied IN, not added, so two overlapping slows stack
+		# correctly (see enter_slow_zone/exit_slow_zone setters).
+		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0)) * _environment_speed_mul
 		velocity = input * speed
 		# Iter 19 — forward lunge on swing. Linear-decay impulse in the
 		# aim direction layered ON TOP of walk velocity. The player can

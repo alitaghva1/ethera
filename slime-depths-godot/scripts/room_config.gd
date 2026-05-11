@@ -83,18 +83,37 @@ extends Resource
 # Empty array = open arena (old behavior).
 @export var wall_rects: Array[Rect2] = []
 
-# Iter 30 — hazards. Per-room positional damage sources. Single kind
-# per room (kept simple for the slice; mixed-hazard rooms can come
-# later via per-position tuple). main.gd reads hazard_kind to pick
-# the scene to instantiate at each hazard_positions entry.
-#
-# Supported hazard_kinds:
-#   ""            no hazards (default)
-#   "spike_pit"   periodic 1-damage Area2D the hero must walk around
-#                 or jump through quickly (no jump exists yet but
-#                 the cooldown means a single brief brush is safe).
-# The hazards' job is to push the player to MOVE rather than camp —
-# combined with interior walls, this is how rooms start to drive
-# tactical play instead of being passive arenas.
+# Iter 30 — hazards (single-kind, legacy). Per-room positional damage
+# sources. main.gd reads hazard_kind to pick the scene to instantiate
+# at each hazard_positions entry. This format is kept for the rooms
+# authored in iter 30 (all-spike-pit). Iter 31+ uses `hazards` below
+# for mixed-kind rooms; both lists spawn at load.
 @export var hazard_positions: Array[Vector2] = []
 @export var hazard_kind: String = ""
+
+# Iter 31 — mixed-hazard array. Each entry is a Dictionary describing
+# one hazard, letting a single room mix spike pits + fire jets + slow
+# zones + lightning rods without needing N parallel arrays.
+#
+# Entry schema (all per-kind fields optional):
+#   {
+#     "kind": String,          # "spike_pit" | "fire_jet" | "slow_zone" | "lightning_rod"
+#     "position": Vector2,     # world-pixel placement
+#     "phase": float,          # fire_jet/lightning_rod cycle offset (0..1)
+#                              # so adjacent jets don't fire in lockstep.
+#     "interval": float,       # lightning_rod: seconds between strikes.
+#   }
+#
+# Supported kinds:
+#   "spike_pit"     periodic 1-damage Area2D — camp-punishing static hazard.
+#   "fire_jet"      cyclic OFF (telegraph glow) → ON (damage column) loop.
+#                   Forces rhythmic movement around timed windows.
+#   "slow_zone"     passive Area2D, no damage, halves move speed while inside.
+#                   Avoidance pressure WITHOUT killing the player.
+#   "lightning_rod" every N seconds emits a vertical bolt with a brief
+#                   telegraph. AoE damage in a fixed radius around the rod.
+#
+# Hazards push the player to MOVE rather than camp — combined with
+# interior walls, this is how rooms start to drive tactical play
+# instead of being passive arenas.
+@export var hazards: Array[Dictionary] = []

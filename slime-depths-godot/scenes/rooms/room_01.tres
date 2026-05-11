@@ -17,3 +17,4 @@ decor_density = 12
 wall_rects = [Rect2(530, 200, 220, 28), Rect2(530, 540, 220, 28)]
 hazard_positions = Array[Vector2]([])
 hazard_kind = ""
+hazards = [{"kind": "slow_zone", "position": Vector2(640, 384)}]

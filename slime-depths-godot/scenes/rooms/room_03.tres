@@ -17,3 +17,4 @@ decor_density = 20
 wall_rects = [Rect2(280, 200, 40, 100), Rect2(280, 468, 40, 100), Rect2(960, 200, 40, 100), Rect2(960, 468, 40, 100)]
 hazard_positions = Array[Vector2]([Vector2(640, 220), Vector2(640, 548)])
 hazard_kind = "spike_pit"
+hazards = [{"kind": "lightning_rod", "position": Vector2(640, 384), "interval": 4.0, "phase": 0.0}]

@@ -65,10 +65,15 @@ const DASH_HIT_STOP_TIME   := 0.07
 const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn")
 # Iter 30 — hazard scenes. The room reads its hazard_kind string and
 # we pick the scene to instantiate at each hazard_positions entry.
+# Iter 31 — added fire_jet, slow_zone, lightning_rod for mixed-hazard
+# rooms (consumed via room.hazards Array[Dictionary], see _spawn_hazards).
 # Single dict entry per kind keeps the lookup cheap + makes adding
-# a new hazard (fire_jet, slow_zone, etc.) a one-line addition.
+# a new hazard a one-line addition.
 const HAZARD_SCENES := {
 	"spike_pit": preload("res://scenes/hazards/spike_pit.tscn"),
+	"fire_jet": preload("res://scenes/hazards/fire_jet.tscn"),
+	"slow_zone": preload("res://scenes/hazards/slow_zone.tscn"),
+	"lightning_rod": preload("res://scenes/hazards/lightning_rod.tscn"),
 }
 # Iter 15 — pacing pass. Earlier values felt sluggish: 1.6s between
 # waves left dead-air, and 1.0s pre-first-wave kept the player idle on
@@ -198,6 +203,11 @@ func _ready() -> void:
 		# (the iter-23 default behavior).
 		_spawn_interior_walls(_room.wall_rects)
 		_spawn_hazards(_room.hazard_positions, _room.hazard_kind)
+		# Iter 31 — mixed-hazard list. Each entry is a Dictionary with
+		# "kind" + "position" (+ optional "phase"/"interval" for cyclic
+		# hazards). Spawns alongside the legacy single-kind list above
+		# so iter-30 rooms keep working.
+		_spawn_hazards_mixed(_room.hazards)
 		# Iter 18 — scatter procedural rubble across the play area so
 		# the floor doesn't read as a blank slate. Runs AFTER pillar /
 		# chest spawn so decor placement can avoid those positions.
@@ -345,9 +355,10 @@ func _spawn_interior_walls(rects: Array[Rect2]) -> void:
 		body.add_child(bot_shadow)
 		add_child(body)
 
-# Iter 30 — hazards. For each position in hazard_positions, instantiate
-# the scene matching hazard_kind. Unknown kinds emit a one-time warning
-# (so misconfigured rooms surface immediately) but otherwise no-op.
+# Iter 30 — hazards (legacy single-kind path). For each position in
+# hazard_positions, instantiate the scene matching hazard_kind. Unknown
+# kinds emit a one-time warning (so misconfigured rooms surface
+# immediately) but otherwise no-op.
 func _spawn_hazards(positions: Array[Vector2], kind: String) -> void:
 	if kind == "" or positions.is_empty():
 		return
@@ -356,8 +367,37 @@ func _spawn_hazards(positions: Array[Vector2], kind: String) -> void:
 		push_warning("main.gd: unknown hazard_kind '%s' — skipping" % kind)
 		return
 	for pos in positions:
-		var h: Area2D = scene.instantiate() as Area2D
+		var h: Node2D = scene.instantiate() as Node2D
 		h.position = pos
+		add_child(h)
+
+# Iter 31 — mixed-hazard spawn path. Reads Array[Dictionary] from
+# RoomConfig.hazards; each entry describes ONE hazard. Supports
+# heterogeneous kinds (spike pit + fire jet + slow zone in the same
+# room). Per-kind extra fields like "phase" (fire_jet / lightning_rod
+# cycle offset) and "interval" (lightning_rod cadence) are written
+# onto the instance BEFORE add_child so _ready picks them up.
+func _spawn_hazards_mixed(entries: Array[Dictionary]) -> void:
+	if entries.is_empty():
+		return
+	for entry in entries:
+		var kind: String = entry.get("kind", "") as String
+		if kind == "":
+			continue
+		var scene: PackedScene = HAZARD_SCENES.get(kind)
+		if scene == null:
+			push_warning("main.gd: unknown hazard kind '%s' in hazards[] — skipping" % kind)
+			continue
+		var h: Node2D = scene.instantiate() as Node2D
+		var pos: Vector2 = entry.get("position", Vector2.ZERO) as Vector2
+		h.position = pos
+		# Per-kind extras. Read explicitly rather than blast all keys
+		# onto the node — keeps the contract narrow + makes typos
+		# surface during authoring.
+		if entry.has("phase") and ("phase" in h):
+			h.set("phase", entry.get("phase", 0.0))
+		if entry.has("interval") and ("interval" in h):
+			h.set("interval", entry.get("interval", 3.0))
 		add_child(h)
 
 # Iter 18 — procedural decor scatter. Builds N small Polygon2D rubble

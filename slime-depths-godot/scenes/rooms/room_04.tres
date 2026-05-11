@@ -17,3 +17,4 @@ decor_density = 14
 wall_rects = [Rect2(320, 280, 240, 28), Rect2(320, 460, 240, 28), Rect2(720, 280, 240, 28), Rect2(720, 460, 240, 28)]
 hazard_positions = Array[Vector2]([Vector2(640, 200)])
 hazard_kind = "spike_pit"
+hazards = [{"kind": "slow_zone", "position": Vector2(500, 384)}, {"kind": "slow_zone", "position": Vector2(780, 384)}]
