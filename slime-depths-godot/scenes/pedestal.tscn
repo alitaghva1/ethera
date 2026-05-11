@@ -1,12 +1,13 @@
-[gd_scene load_steps=8 format=3 uid="uid://b3pedestal12"]
+[gd_scene load_steps=10 format=3 uid="uid://b3pedestal12"]
 
 [ext_resource type="Script" path="res://scripts/pedestal.gd" id="1_script"]
 
 [sub_resource type="CircleShape2D" id="pedestal_area"]
 radius = 64.0
 
-; Orb gradient — bright gold core fading to warm orange edge. Reads
-; as "valuable" against the dim torch-lit dungeon palette.
+; Iter 28 — fallback orb gradient if a relic has no icon_path. Pedestal.gd
+; loads the real icon over this, so the gradient only shows for relics
+; whose icon failed to resolve (defensive fallback).
 [sub_resource type="Gradient" id="orb_grad"]
 offsets = PackedFloat32Array(0, 0.45, 1)
 colors = PackedColorArray(1, 1, 0.85, 1, 1, 0.78, 0.35, 1, 0.78, 0.4, 0.1, 0)
@@ -19,6 +20,10 @@ fill = 1
 fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(1, 0.5)
 
+; Halo gradient — white center fading to transparent at the rim. Used
+; by the HaloSprite (sibling of Orb, lower z_index) which is tinted to
+; tier color by pedestal.gd. Frames the icon as "the relic" without
+; relying solely on the PointLight2D's floor-cast.
 [sub_resource type="Gradient" id="halo_grad"]
 offsets = PackedFloat32Array(0, 1)
 colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
@@ -31,25 +36,59 @@ fill = 1
 fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(1, 0.5)
 
-[sub_resource type="StyleBoxFlat" id="plinth_style"]
-bg_color = Color(0.28, 0.22, 0.28, 1)
+; Iter 28 — InfoPanel backdrop StyleBoxFlat. Tier color is applied in
+; pedestal.gd._apply_tier_visuals so the panel border matches the orb
+; halo + glow color. Default values here are the COMMON tier (so the
+; .tscn looks reasonable in the editor preview).
+[sub_resource type="StyleBoxFlat" id="info_panel_style"]
+bg_color = Color(0.07, 0.06, 0.10, 0.85)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.55, 0.45, 0.32, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
+border_color = Color(0.78, 0.65, 0.41, 0.9)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
 
-; Pedestal node tree — Area2D root with proximity sensor. Children:
-;   • Plinth (Panel)        — stone base, visible "I am a thing"
-;   • Orb (Sprite2D)        — the relic visual, bobs in _process
-;   • NameLabel + DescLabel — what relic + what it does
-;   • Prompt                — "[E] CLAIM" appears in range
-;   • PointLight2D          — gold halo so the pedestal LIGHTS the
-;                              room around it (real dungeon-light feel)
+; Plinth body — taller stone slab StyleBox. Iter 28 replaces the iter-21
+; squat 28-px slab with a 68-px column that actually reads as a shrine.
+; Tier-colored top strip lives as a separate ColorRect (TierCap below).
+[sub_resource type="StyleBoxFlat" id="plinth_style"]
+bg_color = Color(0.22, 0.18, 0.24, 1)
+border_width_left = 2
+border_width_top = 0
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.45, 0.36, 0.26, 1)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0, 0, 0, 0.4)
+shadow_size = 3
+shadow_offset = Vector2(0, 2)
+
+; ── Node tree (iter 28 reorg) ─────────────────────────────────────────
+; Vertical layout from top to bottom:
+;   y=-180 to -100   InfoPanel (Panel backdrop, tier-colored border)
+;                     containing:
+;     y=-176 to -148   NameLabel
+;     y=-144 to -104   DescLabel (autowrapped, up to 3 lines)
+;   y=-80             HaloSprite (tier-tinted glow under icon)
+;   y=-80             Orb (icon Sprite2D, normalized scale)
+;   y=-80             PointLight2D (casts onto floor)
+;   y=-50 to +18      Plinth body
+;   y=-50 to -46      TierCap (tier-colored strip at plinth top)
+;   y=+28 to +52      Prompt ([E] CLAIM)
+;
+; Spacing chosen so 3 pedestals at 200 px horizontal stride don't
+; visually collide — InfoPanel is ~196 px wide, leaves 4 px gap.
 
 [node name="Pedestal" type="Area2D"]
 collision_layer = 0
@@ -60,34 +99,20 @@ script = ExtResource("1_script")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("pedestal_area")
 
-[node name="Plinth" type="Panel" parent="."]
-offset_left = -22.0
-offset_top = -28.0
-offset_right = 22.0
-offset_bottom = 0.0
-theme_override_styles/panel = SubResource("plinth_style")
+[node name="InfoPanel" type="Panel" parent="."]
+offset_left = -98.0
+offset_top = -180.0
+offset_right = 98.0
+offset_bottom = -100.0
+theme_override_styles/panel = SubResource("info_panel_style")
+mouse_filter = 2
 
-[node name="Orb" type="Sprite2D" parent="."]
-position = Vector2(0, -56)
-texture = SubResource("orb_tex")
-
-[node name="PointLight2D" type="PointLight2D" parent="."]
-position = Vector2(0, -56)
-color = Color(1, 0.85, 0.45, 1)
-energy = 1.3
-texture = SubResource("halo_tex")
-texture_scale = 1.0
-
-[node name="NameLabel" type="Label" parent="."]
-; Iter 24 — width tightened from ±120 (240 px) to ±90 (180 px) so
-; adjacent pedestals (spaced 200 px apart in the 3-choice offer) no
-; longer visually overlap each other's name + description labels.
-; clip_text guards long relic names from bleeding past the 180 px
-; budget.
-offset_left = -90.0
-offset_top = -118.0
-offset_right = 90.0
-offset_bottom = -94.0
+[node name="NameLabel" type="Label" parent="InfoPanel"]
+anchor_right = 1.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = -4.0
+offset_bottom = 32.0
 theme_override_font_sizes/font_size = 18
 theme_override_colors/font_color = Color(1, 0.92, 0.62, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
@@ -95,32 +120,66 @@ theme_override_constants/outline_size = 4
 text = "IRON FANG"
 horizontal_alignment = 1
 clip_text = true
+mouse_filter = 2
 
-[node name="DescLabel" type="Label" parent="."]
-; Iter 24 — width tightened from ±180 (360 px, the OVERLAPPING value
-; that caused pedestal descriptions to bleed into each other in the
-; 3-pedestal offer at 200 px spacing) to ±90 (180 px). Height kept
-; single-line (22 px) — the orb sits at y=-56, so a multi-line desc
-; would overlap the icon. Long relic descriptions (e.g. focused_eye)
-; get clipped here; the full text is still visible via the HUD
-; relic-strip tooltip after claim.
-offset_left = -90.0
-offset_top = -90.0
-offset_right = 90.0
-offset_bottom = -68.0
+[node name="DescLabel" type="Label" parent="InfoPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 34.0
+offset_right = -4.0
+offset_bottom = -4.0
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
+theme_override_colors/font_color = Color(0.88, 0.82, 0.66, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 3
 text = "+1 sword damage"
 horizontal_alignment = 1
-clip_text = true
+vertical_alignment = 1
+autowrap_mode = 3
+mouse_filter = 2
+
+[node name="HaloSprite" type="Sprite2D" parent="."]
+position = Vector2(0, -80)
+scale = Vector2(0.4, 0.4)
+modulate = Color(1, 0.85, 0.45, 0.6)
+texture = SubResource("halo_tex")
+z_index = -1
+
+[node name="Orb" type="Sprite2D" parent="."]
+position = Vector2(0, -80)
+texture = SubResource("orb_tex")
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+position = Vector2(0, -80)
+color = Color(1, 0.85, 0.45, 1)
+energy = 1.3
+texture = SubResource("halo_tex")
+texture_scale = 1.0
+
+[node name="Plinth" type="Panel" parent="."]
+offset_left = -26.0
+offset_top = -50.0
+offset_right = 26.0
+offset_bottom = 18.0
+theme_override_styles/panel = SubResource("plinth_style")
+
+; Tier-colored cap strip at the top of the plinth — 4 px tall band
+; that visibly indicates rarity even on the column itself. Tinted by
+; pedestal.gd._apply_tier_visuals.
+[node name="TierCap" type="ColorRect" parent="."]
+offset_left = -28.0
+offset_top = -52.0
+offset_right = 28.0
+offset_bottom = -47.0
+color = Color(0.78, 0.65, 0.41, 1)
+mouse_filter = 2
 
 [node name="Prompt" type="Label" parent="."]
 offset_left = -80.0
-offset_top = 14.0
+offset_top = 28.0
 offset_right = 80.0
-offset_bottom = 38.0
+offset_bottom = 52.0
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(1, 0.92, 0.62, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)

@@ -38,10 +38,17 @@ const RARE_RING_DURATION: float = 1.4
 
 @onready var plinth: Panel = $Plinth
 @onready var orb: Sprite2D = $Orb
-@onready var name_label: Label = $NameLabel
-@onready var desc_label: Label = $DescLabel
+@onready var name_label: Label = $InfoPanel/NameLabel
+@onready var desc_label: Label = $InfoPanel/DescLabel
 @onready var prompt: Label = $Prompt
 @onready var glow: PointLight2D = $PointLight2D
+# Iter 28 — new framing nodes. info_panel is the bordered backdrop
+# behind the name+desc; halo_sprite is the soft tier-colored glow
+# under the icon; tier_cap is the colored strip at the top of the
+# plinth that indicates rarity even when the orb is off-screen.
+@onready var info_panel: Panel = $InfoPanel
+@onready var halo_sprite: Sprite2D = $HaloSprite
+@onready var tier_cap: ColorRect = $TierCap
 
 var _hero_in_range: bool = false
 var _claimed: bool = false
@@ -66,20 +73,27 @@ func _ready() -> void:
 	# missing the field so a typo never makes the pedestal disappear.
 	var tier: String = str(info.get("tier", "common"))
 	_apply_tier_visuals(tier)
-	# Iter 24 — swap in the real relic art if the registry provides
-	# one. Runs AFTER _apply_tier_visuals so we keep its tier-colored
-	# modulate then soften it 60% → 40% toward white (icons read
-	# poorly under heavy tint; the PointLight2D glow still carries
-	# the full tier color so rarity remains legible at distance).
+	# Iter 28 — swap in the real relic art with NORMALIZED scale.
+	# Source icons range 32×32 to 209×192 (same chaos that caused the
+	# iter-26 HUD bug). A flat 0.6 scale rendered 32-px icons at 19 px
+	# and 192-px icons at 115 px — wildly inconsistent on the row of
+	# three pedestals. Now we read the texture's actual size and
+	# compute scale = TARGET_ICON_DISPLAY / max(width, height), so
+	# every icon renders at ~56 px regardless of source resolution.
 	var icon_path: String = str(info.get("icon_path", ""))
 	if icon_path != "" and ResourceLoader.exists(icon_path):
 		var tex: Resource = ResourceLoader.load(icon_path)
 		if tex is Texture2D:
 			orb.texture = tex
-			# 64×64 PixelLab icons over the orb's natural draw size —
-			# 0.6 scale keeps them readable without dwarfing the plinth.
-			orb.scale = Vector2(0.6, 0.6)
-			orb.modulate = orb.modulate.lerp(Color.WHITE, 0.4)
+			var tex_size: Vector2 = (tex as Texture2D).get_size()
+			var max_dim: float = maxf(tex_size.x, tex_size.y)
+			if max_dim > 0.0:
+				var s: float = 56.0 / max_dim
+				orb.scale = Vector2(s, s)
+			# Soften the tier tint on the icon itself — the painted art
+			# reads poorly under heavy color overlays. The Halo + glow
+			# carry the tier hue at full strength.
+			orb.modulate = orb.modulate.lerp(Color.WHITE, 0.6)
 	# Iter 16 — pedestals spawned as part of a 3-choice offer join
 	# this group so they can dismiss each other on claim.
 	add_to_group("pedestal_offer")
@@ -91,8 +105,15 @@ func _process(delta: float) -> void:
 	# Vertical bob + halo pulse — the orb feels "alive" while waiting.
 	# Bob amplitude is tier-scaled (legendaries lift higher) so even at
 	# rest the rarity reads at distance.
-	orb.position.y = -56.0 + sin(t * 2.2) * _bob_amplitude
+	# Iter 28 — base Y shifted from -56 to -80 to fit the taller plinth +
+	# new InfoPanel above. HaloSprite + PointLight2D bob in phase with
+	# the orb so the whole frame breathes together.
+	var bob_y: float = -80.0 + sin(t * 2.2) * _bob_amplitude
+	orb.position.y = bob_y
+	if halo_sprite != null:
+		halo_sprite.position.y = bob_y
 	if glow != null:
+		glow.position.y = bob_y
 		glow.energy = _glow_energy_base + sin(t * 2.2) * 0.25
 
 # ── Tier visuals ─────────────────────────────────────────────────────
@@ -107,6 +128,7 @@ func _apply_tier_visuals(tier: String) -> void:
 			_bob_amplitude = BOB_AMP_RARE
 			if glow != null:
 				glow.color = GLOW_COLOR_RARE
+			_tint_frame(GLOW_COLOR_RARE)
 			_build_rare_ring()
 		"legendary":
 			orb.modulate = ORB_TINT_LEGENDARY
@@ -114,6 +136,7 @@ func _apply_tier_visuals(tier: String) -> void:
 			_bob_amplitude = BOB_AMP_LEGENDARY
 			if glow != null:
 				glow.color = GLOW_COLOR_LEGENDARY
+			_tint_frame(GLOW_COLOR_LEGENDARY)
 			_build_legendary_aura()
 		_:
 			orb.modulate = ORB_TINT_COMMON
@@ -121,6 +144,27 @@ func _apply_tier_visuals(tier: String) -> void:
 			_bob_amplitude = BOB_AMP_COMMON
 			if glow != null:
 				glow.color = GLOW_COLOR_COMMON
+			_tint_frame(GLOW_COLOR_COMMON)
+
+# Iter 28 — apply tier color to the three new framing nodes:
+#   • InfoPanel — duplicates the stylebox so each pedestal instance
+#     owns its own (Godot StyleBoxFlat is a resource and mutating it
+#     in place would affect every pedestal sharing the .tscn's default).
+#     Border color = tier; bg stays dark for text legibility.
+#   • HaloSprite — modulate to tier color, slightly desaturated alpha
+#     so the halo reads as ambient glow not a solid disk.
+#   • TierCap — tier-colored strip on top of the plinth so the rarity
+#     reads even when the orb is dimmed or off-screen.
+func _tint_frame(tier_color: Color) -> void:
+	if info_panel != null:
+		var sb_existing: StyleBox = info_panel.get_theme_stylebox("panel")
+		var sb: StyleBoxFlat = (sb_existing.duplicate() as StyleBoxFlat) if sb_existing is StyleBoxFlat else StyleBoxFlat.new()
+		sb.border_color = tier_color
+		info_panel.add_theme_stylebox_override("panel", sb)
+	if halo_sprite != null:
+		halo_sprite.modulate = Color(tier_color.r, tier_color.g, tier_color.b, 0.55)
+	if tier_cap != null:
+		tier_cap.color = tier_color
 
 # Rare ring — Line2D circle (12 verts, closed) on a slow scale-up +
 # fade-out loop at the plinth's top edge. Stays just under the orb so
@@ -248,10 +292,21 @@ func _claim() -> void:
 	# interact doesn't double-trigger.
 	monitoring = false
 	var tween: Tween = create_tween().set_parallel(true)
-	tween.tween_property(orb, "scale", Vector2(2.0, 2.0), 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(orb, "scale", orb.scale * 1.8, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(orb, "modulate:a", 0.0, 0.35)
 	tween.tween_property(glow, "energy", 0.0, 0.35)
 	tween.tween_property(plinth, "modulate:a", 0.4, 0.35)
+	# Iter 28 — fade the new framing nodes alongside the orb. info_panel
+	# carries the tier-colored backdrop + labels; halo_sprite frames the
+	# icon; tier_cap is the strip atop the plinth. Without these the
+	# outro would dim the orb but leave the labels + frame at full
+	# opacity, which reads as "the relic vanished but its sign stayed."
+	if info_panel != null:
+		tween.tween_property(info_panel, "modulate:a", 0.0, 0.35)
+	if halo_sprite != null:
+		tween.tween_property(halo_sprite, "modulate:a", 0.0, 0.35)
+	if tier_cap != null:
+		tween.tween_property(tier_cap, "modulate:a", 0.0, 0.35)
 	# Fade tier effect nodes alongside the orb so a legendary outro
 	# doesn't leave a stray particle stream after the orb is gone.
 	# CPUParticles2D's "emitting" stops new sparks; in-flight sparks
@@ -277,8 +332,15 @@ func _dismiss() -> void:
 	tween.tween_property(orb, "modulate:a", 0.0, 0.45)
 	tween.tween_property(glow, "energy", 0.0, 0.45)
 	tween.tween_property(plinth, "modulate:a", 0.25, 0.45)
-	tween.tween_property(name_label, "modulate:a", 0.0, 0.45)
-	tween.tween_property(desc_label, "modulate:a", 0.0, 0.45)
+	# Iter 28 — info_panel carries name+desc as children, so fading the
+	# panel automatically dims the labels with it. Halo + cap fade in
+	# parallel so the entire shrine recedes as a unit.
+	if info_panel != null:
+		tween.tween_property(info_panel, "modulate:a", 0.0, 0.45)
+	if halo_sprite != null:
+		tween.tween_property(halo_sprite, "modulate:a", 0.0, 0.45)
+	if tier_cap != null:
+		tween.tween_property(tier_cap, "modulate:a", 0.0, 0.45)
 	# Match the claim outro: tier effects fade with the orb.
 	if _rare_ring != null:
 		tween.tween_property(_rare_ring, "modulate:a", 0.0, 0.45)
