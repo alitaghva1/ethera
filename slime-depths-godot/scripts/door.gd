@@ -36,15 +36,15 @@ func _on_body_entered(body: Node) -> void:
 	# screen swaps. Reset time_scale defensively in case a hit-stop
 	# was still in flight.
 	Engine.time_scale = 1.0
-	if Floor.advance():
+	if RunState.advance():
 		# More rooms left — reload the dungeon scene so it re-reads
-		# the new current_room_config from Floor.
+		# the new current_room_config from RunState.
 		await get_tree().create_timer(0.15).timeout
 		get_tree().change_scene_to_file("res://scenes/main.tscn")
 	else:
 		# Last room already cleared — Floor returned false. Should
 		# not normally happen because the last room spawns a Pedestal
 		# instead of a Door, but route to hamlet defensively.
-		Floor.end_floor()
+		RunState.end_floor()
 		await get_tree().create_timer(0.15).timeout
 		get_tree().change_scene_to_file("res://scenes/hamlet.tscn")

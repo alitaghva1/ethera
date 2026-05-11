@@ -10,12 +10,12 @@
 # this file only.
 #
 # Lifecycle:
-#   Hamlet → DESCEND portal → Floor.start_floor() → load main.tscn
-#   Room cleared (not last) → Door spawns → walk into → Floor.advance()
+#   Hamlet → DESCEND portal → RunState.start_floor() → load main.tscn
+#   Room cleared (not last) → Door spawns → walk into → RunState.advance()
 #     → reload main.tscn (which reads the new current_room_config)
 #   Room cleared (last) → Pedestal spawns → claim → ESC → hamlet
 #   Hero dies anywhere → death screen → RETRY (reload + reset to room 0)
-#                                       or HAMLET (Floor.end_floor)
+#                                       or HAMLET (RunState.end_floor)
 extends Node
 
 # Ordered room sequence for the current floor. For Iter 6 we hardcode a

@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3 uid="uid://b3menu1234567"]
+[gd_scene format=3 uid="uid://b3menu1234567"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
 
@@ -94,7 +94,7 @@ theme_override_font_sizes/font_size = 72
 theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 4
-text = "SLIME DEPTHS"
+text = "ETHERA"
 horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="CenterStack"]
@@ -170,5 +170,5 @@ grow_horizontal = 0
 grow_vertical = 0
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.55, 0.48, 0.36, 1)
-text = "v0.4 godot slice"
+text = "ETHERA · godot port · v0.6"
 horizontal_alignment = 2

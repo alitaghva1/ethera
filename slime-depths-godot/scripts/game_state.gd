@@ -23,7 +23,7 @@ var last_run_kills := 0
 # HP carryover between rooms within a single floor run. -1 = no carry
 # (Hero uses MAX_HP + max_hp_bonus on spawn). Set by Hero.gd's
 # tree_exiting hook when leaving the dungeon scene alive; reset to -1
-# by Floor.start_floor() / end_floor() so each new run begins fresh.
+# by RunState.start_floor() / end_floor() so each new run begins fresh.
 # Without this, every room transition would silently full-heal the
 # player, defeating the multi-room difficulty curve.
 var persisted_hp: int = -1

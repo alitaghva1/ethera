@@ -1,11 +1,15 @@
-# Slime Depths — Godot 4 vertical slice
+# ETHERA — Godot 4 port
 
-A small, runnable Godot 4 port of the **pre-ERW-pack version** of
-slime-depths — procedural-dungeon look (vault biome), PixelLab
-hero + slimes. None of the Epic RPG World asset-pack content (no
-Ancient Ruins map, no orc-warrior, no stone golem). **Purpose**:
-feel-test the engine on the gameplay layer you actually like
-before committing to a full port.
+In-game title **ETHERA** · tagline *beneath the ruin*. The folder name
+is `slime-depths-godot` for parity with the original JS codebase at
+`../slime-depths/`, but the game shipping to players is ETHERA. The
+JS version remains the source of truth during the port; this Godot
+project is the migration target.
+
+Top-down action roguelite. Single hero class (cloaked mage), four
+biomes planned, branching DAG runs with relics + fusions + memories.
+Right now this is mid-port — combat loop + hamlet hub + multi-room
+dungeon are in; relic registry has 8 of 46; no audio yet.
 
 ## What you do
 

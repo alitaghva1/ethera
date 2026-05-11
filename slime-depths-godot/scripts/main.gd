@@ -6,11 +6,11 @@
 # Iter 6 architecture vs Iter 3-5 (single hardcoded room):
 #   • SPAWN_POINTS + WAVES + torch positions now live in RoomConfig
 #     .tres resources (scenes/rooms/room_NN.tres). main.gd reads
-#     Floor.current_room_config at _ready and configures itself.
+#     RunState.current_room_config at _ready and configures itself.
 #   • main.tscn no longer has hand-placed Torch nodes; torches spawn
 #     from the config so per-room layouts vary visually.
 #   • On wave clear: spawn Door (not last room) OR Pedestal (last).
-#   • Door → Floor.advance() → reload main.tscn → room rebuilds with
+#   • Door → RunState.advance() → reload main.tscn → room rebuilds with
 #     the next config. Linear progression; DAG/branching is future work.
 #
 # Hit-stop, death screen, kill counting, signals unchanged from Iter 5.
@@ -36,7 +36,7 @@ const HIT_STOP_TIME     := 0.08
 const WAVE_CLEAR_PAUSE  := 1.6
 const DOOR_POSITION     := Vector2(1140, 384)   # east-wall door spawn
 
-# Fallback when main.tscn is launched directly without Floor.start_floor()
+# Fallback when main.tscn is launched directly without RunState.start_floor()
 # having been called (e.g. F5 from the editor on main.tscn). Picks the
 # first room so the scene is testable in isolation.
 const FALLBACK_ROOM_CONFIG := "res://scenes/rooms/room_01.tres"
@@ -51,7 +51,7 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 @onready var room_label: Label = $UI/RoomLabel
 
 # Active room config — driven by Floor autoload. Cached at _ready so
-# late edits to Floor.current_room_config mid-run don't cause stutter.
+# late edits to RunState.current_room_config mid-run don't cause stutter.
 var _room: RoomConfig = null
 var _spawn_points: Array[Vector2] = []
 var _waves: Array = []
@@ -66,12 +66,12 @@ var _death_screen: Node = null
 func _ready() -> void:
 	# Resolve the active room config — fall back to room_01 for
 	# editor-direct launches so the scene is debuggable in isolation.
-	if Floor.current_room_config == null:
+	if RunState.current_room_config == null:
 		var fb := load(FALLBACK_ROOM_CONFIG)
 		if fb is RoomConfig:
-			Floor.current_room_index = 0
-			Floor.current_room_config = fb
-	_room = Floor.current_room_config
+			RunState.current_room_index = 0
+			RunState.current_room_config = fb
+	_room = RunState.current_room_config
 	if _room != null:
 		_spawn_points = _room.spawn_points
 		_waves = _room.waves
@@ -169,7 +169,7 @@ func _spawn_door() -> void:
 func _on_enemy_died(world_pos: Vector2) -> void:
 	_kills += 1
 	GameState.register_run_kill()
-	Floor.register_kill()
+	RunState.register_kill()
 	_update_kills()
 	var n: DamageNumber = DamageNumber.spawn(world_pos + Vector2(0, -36), "+1", Color(1, 0.95, 0.7))
 	add_child(n)
@@ -198,11 +198,11 @@ func _update_kills() -> void:
 	kills_label.text = "KILLS  %d" % _kills
 
 func _update_room_label() -> void:
-	if _room == null or Floor.current_room_index < 0:
+	if _room == null or RunState.current_room_index < 0:
 		room_label.text = ""
 		return
-	var total := Floor.FLOOR_ROOMS.size()
-	var idx := Floor.current_room_index + 1
+	var total := RunState.FLOOR_ROOMS.size()
+	var idx := RunState.current_room_index + 1
 	room_label.text = "%s  ·  ROOM %d / %d" % [_room.display_name, idx, total]
 
 func _on_hero_died() -> void:
@@ -219,12 +219,12 @@ func _on_death_retry() -> void:
 	# the player into the room they died on with no preamble.
 	Engine.time_scale = 1.0
 	GameState.start_dungeon_run()
-	Floor.start_floor()
+	RunState.start_floor()
 	get_tree().reload_current_scene()
 
 func _on_death_to_hamlet() -> void:
 	Engine.time_scale = 1.0
-	Floor.end_floor()
+	RunState.end_floor()
 	get_tree().change_scene_to_file("res://scenes/hamlet.tscn")
 
 func _unhandled_input(ev: InputEvent) -> void:
