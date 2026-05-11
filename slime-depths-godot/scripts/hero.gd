@@ -41,22 +41,63 @@ const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
+const PARRY_PULSE_SCENE  = preload("res://scenes/fx/parry_pulse.tscn")
 # soul_burst relic — reuse the dash impact shockwave scene tinted red.
 # Cheap visual until a dedicated VFX prefab lands.
 const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
 
-# Shield (Iter 5) — Q-held stamina stance.
-const SHIELD_STAMINA_MAX := 100.0
-const SHIELD_DRAIN       := 60.0      # per second while held
-const SHIELD_RECOVER     := 25.0      # per second while released
-const SHIELD_BREAK_CD    := 0.5
-const SHIELD_TINT        := Color(0.7, 0.85, 1, 1)
+# Parry (Iter 25 — replaces the iter-5 held-shield-stance).
+# Tap Q for a brief perfect-block WINDOW. Any incoming damage during
+# the window is fully negated, spawns a cyan ring VFX, and triggers a
+# short slow-mo so the player feels the catch. Outside the window, Q
+# does nothing. After the window closes a flat cooldown blocks
+# re-parrying so spamming Q can't substitute for actual timing.
+#
+# Why this design (vs the held stance it replaces):
+# - Twin-stick top-down + mouse-aim + WASD + LMB/RMB already taxes the
+#   hands; a held pinky-on-Q stance was awkward to maintain.
+# - The held stance's stamina cycle (1.67 s drain + 4 s recover) made
+#   it strictly worse than dodge for any threat under 2 seconds.
+# - Tap-parry is a SKILL gate, not a resource gate. Mastering the
+#   timing window is rewarding; the stamina bar was just punishing.
+const PARRY_WINDOW   := 0.20
+const PARRY_COOLDOWN := 0.7
+const PARRY_TINT     := Color(0.65, 0.95, 1.0, 1)   # cyan, distinct from dodge
+# Brief slow-mo when the parry catches an incoming hit. Driven by
+# Engine.time_scale via a one-shot tween in the hit handler.
+const PARRY_HIT_SLOWMO_SCALE := 0.30
+const PARRY_HIT_SLOWMO_TIME  := 0.10
+# Iframes granted after a successful parry catch — long enough to
+# prevent the same enemy from re-bumping us, short enough that we
+# can't chain-parry through a wave for free.
+const PARRY_HIT_IFRAMES      := 0.30
 
-# Dash Strike (Iter 5) — Shift burst toward the cursor.
+# Dash Strike (Iter 25 — reworked). Pre-iter-25 the dash was 0.18 s
+# of 600 px/s = 108 px of travel, with damage ONLY at the END radius.
+# That meant the player had to pre-position the end point ON an enemy
+# — easy to misjudge. Now:
+#   - Duration extended to 0.28 s (168 px travel, visible commit)
+#   - Pass-through damage along the path: any enemy the hero crosses
+#     during the dash window takes a hit (one-shot per dash via the
+#     _dash_hit_set tracker), in ADDITION to the final AoE.
+#   - AoE radius bumped to 60 (was 50) so the boom feels bigger.
+#   - Iframes extend 0.10 s PAST the dash end so a player who lands
+#     next to a swinging enemy doesn't immediately eat damage.
+#   - Light directional steering during the dash (input × 0.15 added
+#     to dash_dir each tick) so the player can curve through tight
+#     enemy groups.
+#   - Cooldown 1.2 → 1.4 s to balance the strictly-stronger ability.
 const DASH_STRIKE_SPEED    := 600.0
-const DASH_STRIKE_DURATION := 0.18
-const DASH_STRIKE_COOLDOWN := 1.2
-const DASH_STRIKE_RADIUS   := 50.0
+const DASH_STRIKE_DURATION := 0.28
+const DASH_STRIKE_COOLDOWN := 1.4
+const DASH_STRIKE_RADIUS   := 60.0
+const DASH_STRIKE_POST_IFRAMES := 0.10
+const DASH_STRIKE_STEER_GAIN   := 0.15
+# Hero collision radius is 14; we want a generous pass-through hit-box
+# during dash so glancing impacts register. 40 covers hero body + small
+# enemies (slimes ~22, spider ~12) without grabbing distant ones.
+const DASH_STRIKE_PIERCE_RADIUS := 40.0
+const DASH_STRIKE_PIERCE_DAMAGE := 1
 
 # Iter 11 — feel tuning.
 const CAMERA_LOOKAHEAD       := 90.0
@@ -152,13 +193,22 @@ var _iframes := 0.0
 
 var _blast_cd := 0.0
 
-var _shield_stamina := SHIELD_STAMINA_MAX
-var _shield_active := false
-var _shield_break_cd := 0.0
+# Iter 25 — parry state (replaces shield_stamina/_shield_active/_shield_break_cd).
+# _parry_time   counts down from PARRY_WINDOW while the catch window is open.
+# _parry_cd     blocks re-trigger until elapsed. Set in _update_parry after
+#               the window closes (caught or not), keyed to PARRY_COOLDOWN.
+var _parry_time := 0.0
+var _parry_cd   := 0.0
 
 var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
 var _dash_strike_dir := Vector2.RIGHT
+# Iter 25 — per-dash hit tracker. Reset on _start_dash_strike. Every
+# physics tick during the dash, we scan enemies within
+# DASH_STRIKE_PIERCE_RADIUS and damage any not already in this dict.
+# Final AoE in _resolve_dash_strike_hit also skips already-hit ids so
+# the same enemy can't be double-counted.
+var _dash_hit_set: Dictionary = {}
 
 # Iter 12 — hurt is a transient visual; dying is terminal (locks input).
 var _hurt_time := 0.0
@@ -282,7 +332,8 @@ func _physics_process(delta: float) -> void:
 	_dodge_time       = max(0.0, _dodge_time       - delta)
 	_iframes          = max(0.0, _iframes          - delta)
 	_blast_cd         = max(0.0, _blast_cd         - delta)
-	_shield_break_cd  = max(0.0, _shield_break_cd  - delta)
+	_parry_time       = max(0.0, _parry_time       - delta)
+	_parry_cd         = max(0.0, _parry_cd         - delta)
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
 	_hurt_time        = max(0.0, _hurt_time        - delta)
 	_lunge_time       = max(0.0, _lunge_time       - delta)
@@ -325,7 +376,18 @@ func _physics_process(delta: float) -> void:
 
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
-	_update_shield(delta)
+	# Iter 25 — parry decays via the timer block above. No per-tick
+	# behavior needed here (vs the held-stance shield, which had to
+	# tick stamina drain/recover each frame). _start_parry arms it;
+	# take_damage catches incoming hits during the window.
+
+	# Dash pass-through damage: while the dash window is active, scan
+	# enemies within DASH_STRIKE_PIERCE_RADIUS of the hero each tick.
+	# Any enemy not yet in _dash_hit_set gets damaged + added. The
+	# final AoE in _resolve_dash_strike_hit skips already-hit ids so
+	# we don't double-count enemies hit mid-dash.
+	if _dash_strike_time > 0.0:
+		_apply_dash_pierce_tick()
 
 	var dash_strike_just_ended := false
 	if _dash_strike_time > 0.0:
@@ -339,6 +401,13 @@ func _physics_process(delta: float) -> void:
 		var ease: float = pow(1.0 - t, 2.0)
 		velocity = _dodge_dir * (DODGE_SPEED * ease + 60.0)
 	elif _dash_strike_time > 0.0:
+		# Iter 25 — light steering during dash. WASD input nudges the
+		# dash direction by DASH_STRIKE_STEER_GAIN per axis, then we
+		# renormalize. Lets the player curve through tight groups
+		# without breaking the "committed engage" feel.
+		if input.length() > 0.1:
+			_dash_strike_dir = (_dash_strike_dir + input.normalized() * DASH_STRIKE_STEER_GAIN).normalized()
+			_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
 		velocity = _dash_strike_dir * DASH_STRIKE_SPEED
 	else:
 		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0))
@@ -361,12 +430,17 @@ func _physics_process(delta: float) -> void:
 	# during normal walk; sticky last-facing while idle.
 	_facing_dir = _compute_facing(input)
 
-	# Modulate: shield tint takes the RGB channel (blue stance), then
-	# iframes flicker the alpha on top. Skip alpha flicker during shield
-	# so the blue stance reads as a steady tint instead of pulsing.
-	sprite.modulate = SHIELD_TINT if _shield_active else Color(1, 1, 1, 1)
-	if not _shield_active and _iframes > 0.0 and int(_iframes * 20) % 2 == 0:
-		sprite.modulate.a = 0.45
+	# Iter 25 — modulate. Parry tint takes priority (steady cyan during
+	# the catch window so the player can SEE the active parry frame),
+	# then iframes flicker on top when the parry isn't running. The
+	# parry tint is steady, not pulsing, so it reads as "active block"
+	# rather than "incoming damage."
+	if _parry_time > 0.0:
+		sprite.modulate = PARRY_TINT
+	else:
+		sprite.modulate = Color(1, 1, 1, 1)
+		if _iframes > 0.0 and int(_iframes * 20) % 2 == 0:
+			sprite.modulate.a = 0.45
 
 	# ── Animation state — dying handled above. hurt > attack > walk > idle.
 	# Each is suffixed with the current direction bucket.
@@ -406,15 +480,20 @@ func _physics_process(delta: float) -> void:
 		var bob := sin(_idle_time * TAU * IDLE_BOB_FREQ) * IDLE_BOB_AMP
 		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + bob, IDLE_BOB_LERP * delta)
 
-	# Input precedence: dodge > shield (handled above) > dash_strike >
-	# blast > attack. Dodge always wins so the player can bail out.
+	# Iter 25 input precedence: dodge > parry > dash_strike > blast >
+	# attack. The "shield" input action still binds to Q (no key remap
+	# needed) — it now triggers a TAP parry (just_pressed) instead of
+	# the previous held-stance. Dodge still wins so the player can
+	# always bail to safety.
 	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0 and _dodge_time <= 0.0:
 		_start_dodge(input)
+	elif Input.is_action_just_pressed("shield") and _parry_cd <= 0.0 and _parry_time <= 0.0 and _dodge_time <= 0.0:
+		_start_parry()
 	elif Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
 		_start_dash_strike()
-	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dodge_time <= 0.0 and not _shield_active and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dodge_time <= 0.0 and _parry_time <= 0.0 and _dash_strike_time <= 0.0:
 		_start_blast()
-	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dodge_time <= 0.0 and not _shield_active and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dodge_time <= 0.0 and _parry_time <= 0.0 and _dash_strike_time <= 0.0:
 		_start_attack()
 
 # Facing picker. Returns the direction bucket the sprite should render
@@ -457,7 +536,11 @@ func _start_dodge(input: Vector2) -> void:
 	# Iter 21 — sturdy_step relic extends the iframe window.
 	var iframes_actual: float = DODGE_IFRAMES + GameState.modifier_total_f("dodge_iframes_bonus_f", 0.0)
 	_iframes = max(_iframes, iframes_actual)
-	_shield_active = false
+	# Iter 25 — starting a dodge cancels any in-flight parry so the
+	# two defensive options don't double-up on iframes. The dodge owns
+	# motion + iframes for its window; the parry would just sit idle
+	# under it anyway.
+	_parry_time = 0.0
 	dodge_started.emit()
 	Events.hero_dodged.emit(global_position)
 
@@ -654,7 +737,16 @@ func heal(amount: int) -> void:
 		hp_changed.emit(hp)
 
 func take_damage(amount: int) -> void:
-	if hp <= 0 or _iframes > 0.0:
+	if hp <= 0:
+		return
+	# Iter 25 — parry catch. Checked BEFORE the iframes early-return so
+	# a successful parry CONSUMES the incoming hit (vs the normal-iframe
+	# path which just silently ignores it). _on_parry_hit clears the
+	# window, sets iframes, spawns the bigger VFX, and triggers slow-mo.
+	if _parry_time > 0.0:
+		_on_parry_hit()
+		return
+	if _iframes > 0.0:
 		return
 	# iron_resolve — the FIRST wound in a room is absorbed wholesale (no
 	# HP loss, no iframes set, just a floater cue). The flag auto-resets
@@ -816,25 +908,95 @@ func _trigger_soul_burst(world_pos: Vector2) -> void:
 		if scene_root != null:
 			scene_root.add_child(fx)
 
-func _update_shield(delta: float) -> void:
-	var holding := Input.is_action_pressed("shield")
-	var can_hold := holding and _shield_stamina > 0.0 and _shield_break_cd <= 0.0 and _dodge_time <= 0.0
-	if can_hold:
-		_shield_active = true
-		_shield_stamina = max(0.0, _shield_stamina - SHIELD_DRAIN * delta)
-		_iframes = max(_iframes, delta * 2.0)
-		if _shield_stamina <= 0.0:
-			_shield_active = false
-			_shield_break_cd = SHIELD_BREAK_CD
-	else:
-		_shield_active = false
-		_shield_stamina = min(SHIELD_STAMINA_MAX, _shield_stamina + SHIELD_RECOVER * delta)
+# Iter 25 — parry trigger. Tap Q opens the catch window for PARRY_WINDOW
+# seconds. Hits during that window are routed through _on_parry_hit
+# (which negates damage + spawns the parry VFX + does brief slow-mo).
+# Cooldown is set NOW (window + cd) so a player can't re-tap to extend
+# coverage past the natural window.
+func _start_parry() -> void:
+	_parry_time = PARRY_WINDOW
+	_parry_cd = PARRY_WINDOW + PARRY_COOLDOWN
+	# Spawn the parry pulse so the player gets immediate visual
+	# confirmation of the input, regardless of whether a hit catches.
+	# Parented to current_scene so it stays in world space.
+	var pulse: Node2D = PARRY_PULSE_SCENE.instantiate() as Node2D
+	if pulse != null:
+		pulse.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
+		var scene_root: Node = get_tree().current_scene
+		if scene_root != null:
+			scene_root.add_child(pulse)
+	# Reuse the dodge sound — both are short defensive flourishes. A
+	# dedicated parry chime can land in a later audio pass.
+	Events.hero_dodged.emit(global_position)
+
+# Called from take_damage when the parry window catches an incoming
+# hit. Negates damage, fires a bigger pulse VFX, triggers brief
+# slow-mo, and ends the parry window early so the cooldown starts
+# counting from the moment of the catch (not the original window end).
+func _on_parry_hit() -> void:
+	# End the window early — the parry just resolved.
+	_parry_time = 0.0
+	# Long-ish iframes so the same enemy can't immediately re-bump.
+	_iframes = max(_iframes, PARRY_HIT_IFRAMES)
+	# Brief slow-mo punctuation. Tween-driven so it eases cleanly.
+	Engine.time_scale = PARRY_HIT_SLOWMO_SCALE
+	var tw: Tween = create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.tween_interval(PARRY_HIT_SLOWMO_TIME)
+	tw.tween_property(Engine, "time_scale", 1.0, 0.18)
+	# Larger pulse on the actual catch — distinguishes "I parried"
+	# from "I just tapped Q." Scale up the existing pulse by overlaying
+	# a second instance at the catch site.
+	var burst: Node2D = PARRY_PULSE_SCENE.instantiate() as Node2D
+	if burst != null:
+		burst.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
+		burst.scale = Vector2(1.6, 1.6)
+		var scene_root: Node = get_tree().current_scene
+		if scene_root != null:
+			scene_root.add_child(burst)
+	# Re-fire the dodge sfx as the catch confirm. Two stacked plays
+	# read distinctly from a single tap.
+	Events.hero_dodged.emit(global_position)
+	# Amber floater so the player learns the relic-like beat triggered.
+	var parent: Node = get_parent()
+	if parent != null:
+		var n: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -64),
+			"PARRY",
+			Color(0.65, 0.95, 1.0),
+		)
+		parent.add_child(n)
+
+# Iter 25 — dash pass-through damage tick. Called from _physics_process
+# while _dash_strike_time > 0. Scans enemies near the hero this frame
+# and damages any not already in the per-dash hit_set. Knockback uses
+# the dash direction so enemies sliced through are pushed AHEAD of the
+# hero rather than back into them.
+func _apply_dash_pierce_tick() -> void:
+	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var id: int = enemy.get_instance_id()
+		if _dash_hit_set.has(id):
+			continue
+		var to_enemy: Vector2 = enemy.global_position - global_position
+		if to_enemy.length() > DASH_STRIKE_PIERCE_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			enemy.take_hit(DASH_STRIKE_PIERCE_DAMAGE)
+			_dash_hit_set[id] = true
+		if enemy.has_method("apply_knockback"):
+			# Push enemies ALONG the dash direction so the player
+			# clears a corridor instead of leaving stunned enemies
+			# behind them.
+			enemy.apply_knockback(_dash_strike_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
 
 func _can_start_dash_strike() -> bool:
 	return _dash_strike_cd <= 0.0 \
 		and _dash_strike_time <= 0.0 \
 		and _dodge_time <= 0.0 \
-		and not _shield_active
+		and _parry_time <= 0.0
 
 func _start_dash_strike() -> void:
 	var aim_world := get_global_mouse_position() - global_position
@@ -843,12 +1005,17 @@ func _start_dash_strike() -> void:
 	_dash_strike_dir = aim_world.normalized()
 	_dash_strike_time = DASH_STRIKE_DURATION
 	_dash_strike_cd = DASH_STRIKE_COOLDOWN
-	_iframes = max(_iframes, DASH_STRIKE_DURATION)
+	# Iter 25 — iframes cover the full dash + POST_IFRAMES seconds AFTER
+	# so a player landing next to a swinging enemy has a window to
+	# reposition. Previously iframes ended exactly at dash end, leaving
+	# the hero vulnerable on the worst possible frame.
+	_iframes = max(_iframes, DASH_STRIKE_DURATION + DASH_STRIKE_POST_IFRAMES)
 	_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
-	# Iter 13 — spawn a motion trail behind us. Parent to current_scene
-	# so it lives in world space (not at the hero's transform, which
-	# would drag the trail along with us). dash_trail.gd handles its own
-	# lifetime + emission curve.
+	# Iter 25 — reset the pass-through hit_set for this dash so the
+	# tick scanner can start fresh. Dictionary cleared (not reassigned)
+	# so any in-flight references remain valid.
+	_dash_hit_set.clear()
+	# Iter 13 — spawn a motion trail behind us.
 	var trail: Node2D = DASH_TRAIL_SCENE.instantiate() as Node2D
 	if trail != null:
 		trail.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
@@ -858,9 +1025,6 @@ func _start_dash_strike() -> void:
 
 func _resolve_dash_strike_hit() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
-	# Iter 21 — iron_grip also amps the dash AoE knockback so the relic
-	# benefits BOTH offensive tools (not just basic swings).
-	# executioner amps damage on enemies below 25% HP (per-target check).
 	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
 	var has_execute: bool = GameState.has_relic("executioner")
 	var hit_count: int = 0
@@ -870,7 +1034,13 @@ func _resolve_dash_strike_hit() -> void:
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > DASH_STRIKE_RADIUS:
 			continue
-		if enemy.has_method("take_hit"):
+		# Iter 25 — pass-through damage already hit this enemy during
+		# the dash window; skip the final AoE damage to avoid double-
+		# counting. We still apply the radial knockback so the final
+		# impact still SHOVES enemies hit en-route, not just the new
+		# ones in the AoE.
+		var already_hit: bool = _dash_hit_set.has(enemy.get_instance_id())
+		if enemy.has_method("take_hit") and not already_hit:
 			var dmg_for_this: int = damage
 			if has_execute and _is_executable(enemy):
 				dmg_for_this = int(round(float(damage) * 2.5))

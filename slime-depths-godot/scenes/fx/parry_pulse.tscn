@@ -1,0 +1,80 @@
+[gd_scene load_steps=5 format=3 uid="uid://b3parrypulse001"]
+
+[ext_resource type="Script" path="res://scripts/parry_pulse.gd" id="1_script"]
+
+; Parry pulse — iter 25. Cyan cousin of dash_impact: two concentric
+; Line2D rings (halo + core) expanding from radius 22 → ~2.8× over
+; the pulse lifetime, plus an 8-particle radial spark burst. Same
+; asymmetric ease decay trick as iter-13 slash_arc / dash_impact so
+; the kit reads cohesively — halo fades on t², core on t³ for a
+; sharp leading edge.
+;
+; Spawned twice per use: once on _start_parry (immediate input
+; confirmation) and once on _on_parry_hit (bigger, marks the catch).
+; The hit-pulse spawns scaled 1.6× by hero.gd so the same scene serves
+; both moments without needing a separate "big parry" variant.
+
+[sub_resource type="Gradient" id="sparks_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.7, 1, 1, 1, 0.55, 0.9, 1, 0.85, 0.4, 0.7, 1, 0)
+
+[sub_resource type="Curve" id="ring_halo_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.4), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="ring_core_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.7), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.7), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[node name="ParryPulse" type="Node2D"]
+script = ExtResource("1_script")
+
+; 12-vert closed polygon approximating a circle at radius 22 — same
+; geometry as dash_impact for consistency. The script tweens scale
+; outward on both rings.
+
+[node name="Halo" type="Line2D" parent="."]
+points = PackedVector2Array(22, 0, 19.05, 11, 11, 19.05, 0, 22, -11, 19.05, -19.05, 11, -22, 0, -19.05, -11, -11, -19.05, 0, -22, 11, -19.05, 19.05, -11)
+closed = true
+width = 12.0
+width_curve = SubResource("ring_halo_width")
+default_color = Color(0.55, 0.9, 1.0, 0.7)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+[node name="Core" type="Line2D" parent="."]
+points = PackedVector2Array(22, 0, 19.05, 11, 11, 19.05, 0, 22, -11, 19.05, -19.05, 11, -22, 0, -19.05, -11, -11, -19.05, 0, -22, 11, -19.05, 19.05, -11)
+closed = true
+width = 3.5
+width_curve = SubResource("ring_core_width")
+default_color = Color(0.95, 1.0, 1.0, 1)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+; Spark burst — 8 radial particles. Smaller / fewer than dash_impact
+; (14) because the parry is a defensive flourish, not a damage event.
+; spread 180° with damping pulls sparks to a halt before they fly off.
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 8
+lifetime = 0.35
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 100.0
+initial_velocity_max = 170.0
+damping_min = 8.0
+damping_max = 12.0
+scale_amount_min = 1.8
+scale_amount_max = 3.2
+color_ramp = SubResource("sparks_grad")
