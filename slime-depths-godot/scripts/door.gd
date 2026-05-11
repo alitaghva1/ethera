@@ -17,38 +17,81 @@
 class_name Door
 extends Area2D
 
-@onready var portal: Polygon2D = $Portal
+# Iter 27 — rotation rates for the counter-spinning vortex rings.
+# Outer ring spins CW at OUTER_RPS revolutions/sec; inner spins CCW
+# (negative) at INNER_RPS, which is intentionally faster so the
+# counter-rotation reads as a real swirl rather than two parallel
+# spinning circles. PROXIMITY_RADIUS triggers the intensifier when
+# the hero is within range.
+const OUTER_RPS: float = 0.45
+const INNER_RPS: float = -0.85
+const CORE_PULSE_HZ: float = 2.4
+const PROXIMITY_RADIUS: float = 140.0
+const PROXIMITY_INTENSITY_BOOST: float = 0.75  # added to glow energy when in range
+
+@onready var vortex_outer: Line2D = $VortexOuter
+@onready var vortex_inner: Line2D = $VortexInner
+@onready var portal_core: Polygon2D = $PortalCore
 @onready var portal_glow: PointLight2D = $PortalGlow
+@onready var motes: CPUParticles2D = $Motes
 @onready var label: Label = $Label
 
 var _firing := false
-var _base_portal_color: Color = Color(1, 1, 1, 1)
-var _base_glow_energy: float = 1.4
+var _base_glow_energy: float = 1.8
+var _base_core_scale: Vector2 = Vector2.ONE
+# Cached hero reference for the proximity check. Resolved lazily on
+# first _process tick so the door doesn't depend on _ready ordering
+# vs the hero (hero is in the scene already, but defensive is cheap).
+var _hero: Node2D = null
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
-	# Cache the design-time values so the per-frame pulse multiplies
-	# them rather than overwriting them with hard-coded constants.
-	if portal != null:
-		_base_portal_color = portal.color
 	if portal_glow != null:
 		_base_glow_energy = portal_glow.energy
+	if portal_core != null:
+		_base_core_scale = portal_core.scale
 
-func _process(_delta: float) -> void:
-	# Slow gold pulse — portal alpha oscillates ~0.78..1.0, glow
-	# energy 1.2..1.6. Combined with the always-emitting motes the
-	# door reads as breathing.
-	var t := Time.get_ticks_msec() / 1000.0
-	if portal != null:
-		var pulse: float = 0.78 + 0.22 * (0.5 + 0.5 * sin(t * 2.4))
-		portal.color = Color(
-			_base_portal_color.r,
-			_base_portal_color.g,
-			_base_portal_color.b,
-			_base_portal_color.a * pulse,
-		)
+func _process(delta: float) -> void:
+	var t: float = Time.get_ticks_msec() / 1000.0
+	# Counter-rotating vortex rings — accumulating rotation each tick
+	# (vs sin-based) so the spin is constant-velocity rather than
+	# oscillating. Outer CW, inner CCW (faster) for the swirl effect.
+	if vortex_outer != null:
+		vortex_outer.rotation += OUTER_RPS * TAU * delta
+	if vortex_inner != null:
+		vortex_inner.rotation += INNER_RPS * TAU * delta
+	# Core dot pulses scale 0.85→1.15 in phase with the glow energy.
+	# Sin-based so the pulse breathes rather than snaps.
+	var pulse: float = sin(t * CORE_PULSE_HZ * TAU)
+	if portal_core != null:
+		var s: float = 1.0 + 0.15 * pulse
+		portal_core.scale = _base_core_scale * s
+	# Glow pulses with the core. Adds proximity-based intensifier when
+	# the hero is within PROXIMITY_RADIUS — the door visibly "reacts"
+	# to the player approaching, sells "step inside."
 	if portal_glow != null:
-		portal_glow.energy = _base_glow_energy + 0.25 * sin(t * 2.4)
+		var energy: float = _base_glow_energy + 0.3 * pulse
+		if _is_hero_in_range():
+			energy += PROXIMITY_INTENSITY_BOOST
+		portal_glow.energy = energy
+	# Motes emit faster when hero is close — particle stream density
+	# scales with player attention. Default rate is `amount / lifetime`;
+	# we modulate by toggling emitting + adjusting amount_ratio if the
+	# Godot version supports it. Simpler: leave amount fixed and rely
+	# on the glow + core feedback to sell the proximity beat.
+
+# Lazy hero resolution + distance check. Returns true when the hero
+# is within PROXIMITY_RADIUS world units of the door's portal center.
+# Returns false if the hero couldn't be resolved (hero in group not
+# populated yet, etc.) — failure mode is "no intensifier," door
+# still pulses normally.
+func _is_hero_in_range() -> bool:
+	if not is_instance_valid(_hero):
+		var heroes: Array = get_tree().get_nodes_in_group("hero")
+		if heroes.is_empty():
+			return false
+		_hero = heroes[0]
+	return global_position.distance_to(_hero.global_position) < PROXIMITY_RADIUS
 
 func _on_body_entered(body: Node) -> void:
 	if _firing or not body.is_in_group("hero"):

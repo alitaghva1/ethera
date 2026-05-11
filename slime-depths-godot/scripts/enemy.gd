@@ -30,6 +30,11 @@ class_name Enemy
 extends CharacterBody2D
 
 const PROJECTILE_SCENE = preload("res://scenes/projectile.tscn")
+# Iter 27 — shared ground-shadow texture. Same asset hero uses; sized
+# per-instance below by collision_radius so a slime gets a small
+# shadow and the iron_revenant gets a big one. Drawn under the sprite
+# so the enemy reads as standing ON the floor rather than floating.
+const SHADOW_TEXTURE: Texture2D = preload("res://assets/decor/shadow_ellipse.png")
 
 # Iter 15 — spawn-in window. Newly-spawned enemies fade from a bright
 # red translucent ghost to full opacity over SPAWN_IN_DURATION seconds.
@@ -157,6 +162,28 @@ func _apply_type_to_sprite_and_collision() -> void:
 	var shape: CircleShape2D = CircleShape2D.new()
 	shape.radius = t.collision_radius
 	collision.shape = shape
+	# Iter 27 — drop shadow. Same beat the hero has had since iter 11;
+	# without it enemies float "above" the floor and feel pasted-on.
+	# Built in code so we don't have to add the node to enemy.tscn (which
+	# would force a fixed scale across all enemy types). The ellipse
+	# texture is 256×128 — at scale_x = collision_radius / 160 the shadow
+	# reads as a soft pool roughly 2× the hitbox wide. Scale_y is 60%
+	# of x so the ellipse stays squashed (top-down perspective trick the
+	# hero shadow uses). Drawn BEFORE the AnimatedSprite2D in scene-tree
+	# order so it renders underneath at the same z_index.
+	var shadow: Sprite2D = Sprite2D.new()
+	shadow.texture = SHADOW_TEXTURE
+	# Anchor a few px below the collision center so it sits at the feet,
+	# not the body. Negative offsets would place it above (Godot Y-down).
+	shadow.position = Vector2(0, 4)
+	var shadow_scale: float = t.collision_radius / 160.0
+	shadow.scale = Vector2(shadow_scale, shadow_scale * 0.6)
+	shadow.modulate = Color(0, 0, 0, 0.45)
+	shadow.z_index = -1
+	# Move-before-sprite in the parent's child order so it draws
+	# underneath. add_child appends, then move_child puts it FIRST.
+	add_child(shadow)
+	move_child(shadow, 0)
 
 # ── Physics tick — universal scaffolding + behavior dispatch ──────────
 func _physics_process(delta: float) -> void:
