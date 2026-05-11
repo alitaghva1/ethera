@@ -57,7 +57,17 @@ const SWING_HIT_STOP_TIME  := 0.035
 const DASH_HIT_STOP_SCALE  := 0.10
 const DASH_HIT_STOP_TIME   := 0.07
 const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn")
-const WAVE_CLEAR_PAUSE  := 1.6
+# Iter 15 — pacing pass. Earlier values felt sluggish: 1.6s between
+# waves left dead-air, and 1.0s pre-first-wave kept the player idle on
+# room entry. Tighter values keep the loop pumping.
+const WAVE_CLEAR_PAUSE  := 0.9     # seconds between waves
+const INITIAL_WAVE_DELAY := 0.6    # seconds from _ready to wave 1 spawn
+# Stagger between enemies WITHIN a wave. ALL-at-once spawning made each
+# wave feel chaotic; spacing the spawns ~0.18s apart sells "enemies are
+# arriving" instead of "enemies popped." Combined with the spawn-in fade
+# in enemy.gd, each individual unit has ~0.7s of telegraph before it
+# actually engages — long enough to read, short enough to not stall combat.
+const SPAWN_STAGGER     := 0.18
 const DOOR_POSITION     := Vector2(1140, 384)   # east-wall door spawn
 
 # Fallback when main.tscn is launched directly without RunState.start_floor()
@@ -86,6 +96,12 @@ var _alive := true
 var _kills := 0
 var _hit_stop_timer := 0.0
 var _death_screen: Node = null
+# Iter 15 — count of enemies queued by _start_wave that haven't
+# actually spawned yet (timer-deferred). The wave-clear check in
+# _process needs to know about these so the staggered spawn window
+# doesn't trigger false-positive "all enemies dead" between the first
+# kill and the last spawn.
+var _pending_spawns := 0
 
 func _ready() -> void:
 	# Resolve the active room config — fall back to room_01 for
@@ -133,7 +149,7 @@ func _ready() -> void:
 	_update_room_label()
 	status_label.text = "LMB swing · RMB blast · SPACE dodge · Q shield · SHIFT dash"
 	wave_label.text = "WAVE 1 / %d  incoming" % max(1, _waves.size())
-	var t := get_tree().create_timer(1.0)
+	var t := get_tree().create_timer(INITIAL_WAVE_DELAY)
 	t.timeout.connect(func (): _start_wave(0))
 
 func _process(_delta: float) -> void:
@@ -149,7 +165,11 @@ func _process(_delta: float) -> void:
 		var live: int = get_tree().get_nodes_in_group("enemies").filter(
 			func (n: Node) -> bool: return not n.is_in_group("breakables")
 		).size()
-		if live == 0:
+		# Iter 15: also wait for _pending_spawns to drain. Staggered
+		# spawns from _start_wave defer enemy instantiation via timers;
+		# without this guard, killing the first enemy before the second
+		# spawns would false-positive "wave clear."
+		if live == 0 and _pending_spawns == 0:
 			_on_wave_cleared()
 
 func _spawn_torches(positions: Array[Vector2]) -> void:
@@ -175,13 +195,27 @@ func _start_wave(idx: int) -> void:
 		return
 	_wave_index = idx
 	_wave_state = WaveState.ACTIVE
-	var comp: Array = _waves[idx]
-	for pair in comp:
+	wave_label.text = "WAVE %d / %d" % [idx + 1, _waves.size()]
+	# Iter 15 — flatten the wave composition, shuffle so the same type
+	# doesn't always lead the parade, then dispatch spawns on a stagger.
+	# _pending_spawns tracks the queue so _process's wave-clear check
+	# can wait for it to drain (timers fire after first kills otherwise).
+	var spawn_queue: Array[String] = []
+	for pair in _waves[idx]:
 		var type_id: String = pair[0]
 		var count: int = pair[1]
 		for i in range(count):
-			_spawn_enemy_type(type_id)
-	wave_label.text = "WAVE %d / %d" % [idx + 1, _waves.size()]
+			spawn_queue.append(type_id)
+	spawn_queue.shuffle()
+	_pending_spawns = spawn_queue.size()
+	for i in range(spawn_queue.size()):
+		# Small jitter on top of the base stagger so the rhythm doesn't
+		# feel metronomic. Tween-friendly Bind so each closure captures
+		# its own type_id (vs all closures seeing the last one).
+		var delay: float = i * SPAWN_STAGGER + randf_range(0.0, 0.08)
+		var t: SceneTreeTimer = get_tree().create_timer(delay)
+		var captured: String = spawn_queue[i]
+		t.timeout.connect(func (): _spawn_enemy_type(captured))
 
 func _on_wave_cleared() -> void:
 	_wave_state = WaveState.CLEAR
@@ -201,7 +235,11 @@ func _on_wave_cleared() -> void:
 			_spawn_door()
 
 func _spawn_enemy_type(type_id: String) -> void:
-	if _spawn_points.is_empty():
+	# Iter 15: drain the pending counter regardless of whether we
+	# actually spawn — a dead player or empty spawn_points still
+	# needs the counter to decrement so the wave-clear check unblocks.
+	_pending_spawns = maxi(0, _pending_spawns - 1)
+	if not _alive or _spawn_points.is_empty():
 		return
 	# Resolve EnemyType for this id; fall back to slime if missing
 	# (typo'd a wave entry, or a room references an enemy that hasn't

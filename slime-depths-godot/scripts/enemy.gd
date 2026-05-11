@@ -31,6 +31,16 @@ extends CharacterBody2D
 
 const PROJECTILE_SCENE = preload("res://scenes/projectile.tscn")
 
+# Iter 15 — spawn-in window. Newly-spawned enemies fade from a bright
+# red translucent ghost to full opacity over SPAWN_IN_DURATION seconds.
+# During this window: no AI, no take_hit, velocity locked to zero. This
+# gives the player a clear visual telegraph that "an enemy is materializing
+# HERE" instead of the iter-14 behavior where enemies popped into existence
+# at full opacity and immediately started chasing.
+const SPAWN_IN_DURATION := 0.5
+const SPAWN_IN_START_COLOR := Color(1.8, 0.3, 0.3, 0.3)   # bright red, low alpha
+const SPAWN_IN_END_COLOR   := Color(1.0, 1.0, 1.0, 1.0)   # normal
+
 # Set by the spawner (main.gd) BEFORE add_child. If null at _ready time
 # we push_warning and the enemy degenerates to a passive lump — that's
 # noisy enough that misconfigured spawns are visible immediately.
@@ -50,6 +60,11 @@ var _hero: Node2D = null
 var _knockback_time := 0.0
 var _knockback_total := 0.0
 var _knockback_velocity := Vector2.ZERO
+
+# Iter 15 — spawn-in countdown. Set on _ready; ticks down each physics
+# frame. While > 0, AI is suspended, take_hit returns early, and the
+# sprite modulates from SPAWN_IN_START_COLOR to SPAWN_IN_END_COLOR.
+var _spawn_in_time := SPAWN_IN_DURATION
 
 # ── Per-behavior state ────────────────────────────────────────────────
 # chase_contact
@@ -140,6 +155,20 @@ func _physics_process(delta: float) -> void:
 		_death_timer -= delta
 		if _death_timer <= 0.0:
 			queue_free()
+		return
+	# Iter 15 spawn-in fade. While ticking down, the enemy is locked,
+	# invulnerable (see take_hit guard), and modulating from red-ghost
+	# to full opacity. This is the visual telegraph window for
+	# wave-spawn placement.
+	if _spawn_in_time > 0.0:
+		_spawn_in_time = max(0.0, _spawn_in_time - delta)
+		var st: float = 1.0 - (_spawn_in_time / SPAWN_IN_DURATION)
+		sprite.modulate = SPAWN_IN_START_COLOR.lerp(SPAWN_IN_END_COLOR, st)
+		velocity = Vector2.ZERO
+		# Play idle so the sprite shows its first frame instead of a
+		# blank cell at scale.
+		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(&"idle"):
+			sprite.play(&"idle")
 		return
 	# Knockback overrides AI. Velocity decays linearly to zero by the end
 	# of the window, then control hands back to the behavior tick.
@@ -332,7 +361,10 @@ func _fire_projectile() -> void:
 # ── Universal: take_hit + knockback + death ───────────────────────────
 
 func take_hit(damage: int) -> void:
-	if _dying:
+	# Iter 15: ignore hits during the spawn-in fade so the player can't
+	# pre-kill an enemy that's still materializing. Mirrors the AI lock —
+	# the enemy isn't "present" yet.
+	if _dying or _spawn_in_time > 0.0:
 		return
 	hp -= damage
 	if sprite != null:
