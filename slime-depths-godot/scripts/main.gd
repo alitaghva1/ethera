@@ -9,15 +9,16 @@ const TILE        := 32         # native TMX tile size — Godot uses the raw ba
 const MAP_WIDTH   := 1280       # 40 tiles × 32 px
 const MAP_HEIGHT  := 768        # 24 tiles × 32 px
 
-# Spawn points (tile-coord, matches slime-depths/src/zoneEncounters.js
-# ruins.spawnPoints, multiplied by 32 for world px in this slice).
+# Spawn points (tile-coord). The procedural dungeon has a 3-tile wall
+# border, so all spawns sit at row/col 4..19 vertically / 4..36 horiz.
+# Six entry points spread around the playable area.
 const SPAWN_POINTS: Array[Vector2] = [
-	Vector2( 3 * TILE,  6 * TILE),  # NW
-	Vector2(36 * TILE,  5 * TILE),  # NE
-	Vector2( 4 * TILE, 20 * TILE),  # SW
-	Vector2(16 * TILE, 23 * TILE),  # S-mid-west
-	Vector2(16 * TILE,  2 * TILE),  # N  (was y=0, nudged 2 tiles inside the map)
-	Vector2(18 * TILE, 23 * TILE),  # S
+	Vector2( 5 * TILE,  5 * TILE),  # NW
+	Vector2(34 * TILE,  5 * TILE),  # NE
+	Vector2( 5 * TILE, 18 * TILE),  # SW
+	Vector2(34 * TILE, 18 * TILE),  # SE
+	Vector2(20 * TILE,  5 * TILE),  # N midline
+	Vector2(20 * TILE, 18 * TILE),  # S midline
 ]
 
 @onready var hero: Hero = $Hero

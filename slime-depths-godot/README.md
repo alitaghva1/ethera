@@ -1,8 +1,11 @@
 # Slime Depths — Godot 4 vertical slice
 
-A small, runnable Godot 4 port of the Ancient Ruins zone from the
-vanilla-JS game at `../slime-depths/`. **Purpose**: feel-test the
-engine before committing to a full port.
+A small, runnable Godot 4 port of the **pre-ERW-pack version** of
+slime-depths — procedural-dungeon look (vault biome), PixelLab
+hero + slimes. None of the Epic RPG World asset-pack content (no
+Ancient Ruins map, no orc-warrior, no stone golem). **Purpose**:
+feel-test the engine on the gameplay layer you actually like
+before committing to a full port.
 
 ## What you do
 
@@ -34,8 +37,13 @@ instant.
 - **Slimes**: spawn at one of six points from the ruins waves config,
   chase the hero, body-bump for 1 damage on contact, die in one hit.
   Cap of 5 concurrent.
-- **Map**: ERW Ancient Ruins composite (1280×768) as a static
-  backdrop. Four boundary walls keep you on-map.
+- **Map**: procedural dungeon floor (1280×768) baked from the
+  vault biome palette — `floorBase #33292f`, `floorLit #3a2f35`,
+  `floorDark #2b2228` with the same hash-driven 12%/5% noise rule
+  as `src/room.js → drawFloorTile`. Includes a 3-tile-wide stone
+  wall border with rim shadow + top-edge highlight. Four collision
+  walls sit on the inner border edge so the playable area matches
+  what you see.
 - **Camera**: smooth follow with map-bounds clamp — set declaratively
   on the Camera2D node (`limit_left/top/right/bottom` +
   `position_smoothing_enabled`). **This is the entire "no off-map

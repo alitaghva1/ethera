@@ -1,17 +1,15 @@
 [gd_scene load_steps=6 format=3 uid="uid://b3main123456"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
-[ext_resource type="Texture2D" path="res://assets/rooms/ancient_ruins.png" id="2_room"]
+[ext_resource type="Texture2D" path="res://assets/rooms/procedural_dungeon.png" id="2_room"]
 [ext_resource type="PackedScene" path="res://scenes/hero.tscn" id="3_hero"]
 
-; Four boundary walls — quick-and-dirty "you can't walk off the map".
-; Per-tile collision from the bake's collisionGrid is a follow-up;
-; for the slice the perimeter is enough to feel out engine fit.
-;
-; Map = 1280 × 768 world units (the baked composite size). Walls sit
-; just outside that rectangle, 40 units thick.
-[sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 848)
-[sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1360, 40)
+; Four boundary walls inside the procedural-dungeon's 3-tile wall
+; border (3 × 32 = 96 px). Playable area is (96, 96)..(1184, 672).
+; Walls 40 units thick, centered ON the border line so collision lines
+; up visually with the painted wall edge.
+[sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 768)
+[sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1280, 40)
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -25,23 +23,23 @@ collision_layer = 1
 collision_mask = 0
 
 [node name="WallLeft" type="CollisionShape2D" parent="Walls"]
-position = Vector2(-20, 576)
+position = Vector2(96, 384)
 shape = SubResource("wall_v")
 
 [node name="WallRight" type="CollisionShape2D" parent="Walls"]
-position = Vector2(1300, 576)
+position = Vector2(1184, 384)
 shape = SubResource("wall_v")
 
 [node name="WallTop" type="CollisionShape2D" parent="Walls"]
-position = Vector2(640, -20)
+position = Vector2(640, 96)
 shape = SubResource("wall_h")
 
 [node name="WallBottom" type="CollisionShape2D" parent="Walls"]
-position = Vector2(640, 788)
+position = Vector2(640, 672)
 shape = SubResource("wall_h")
 
 [node name="Hero" parent="." instance=ExtResource("3_hero")]
-position = Vector2(128, 384)
+position = Vector2(192, 384)
 
 [node name="Camera2D" type="Camera2D" parent="Hero"]
 limit_left = 0
