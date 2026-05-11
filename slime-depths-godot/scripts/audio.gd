@@ -198,3 +198,280 @@ func set_master_volume(linear_0_to_1: float) -> void:
 	var v: float = clampf(linear_0_to_1, 0.0, 1.0)
 	var db: float = linear_to_db(v) if v > 0.001 else -80.0
 	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Master"), db)
+
+# ══════════════════════════════════════════════════════════════════════
+# Ambient drone system
+# ══════════════════════════════════════════════════════════════════════
+#
+# Why this exists:
+#   The SFX above are event-driven (a swing, a hit, a pickup). The world
+#   itself was silent during exploration — no bed, no atmosphere. This
+#   section adds a per-scene ambient drone so the soundscape never goes
+#   dead, and the scene-change crossfade gives the player a soft "I am
+#   somewhere new" beat without a jarring cut.
+#
+# Architecture:
+#   • One synthesized AudioStreamWAV per ambient preset (dungeon / menu
+#     hush / hamlet warmth). Synthesized once at _ready, cached.
+#   • Two non-positional AudioStreamPlayers ("A" and "B") parented to
+#     this autoload. At any moment one is the "live" player (carrying
+#     the current ambient) and the other is idle or fading out. On a
+#     scene change, the idle player becomes live with the new stream,
+#     and we crossfade volumes via Tween — A→silent, B→target_db, then
+#     swap roles. This is a classic ping-pong A/B crossfade pattern.
+#   • Scene detection piggybacks on Godot's get_tree().tree_changed
+#     signal — fires whenever the scene tree mutates (scene change,
+#     node add/remove). We compare the current_scene.scene_file_path
+#     against a cached last-seen path so we only react to actual
+#     scene swaps, not every node addition.
+#
+# Loop-wraparound math:
+#   We pick fundamentals whose period divides 4 s cleanly so the loop
+#   wraps without a click. 55 Hz → period ≈ 18.18 ms → 4 s holds 220
+#   full periods. 110 Hz → 440 periods. 220/330 Hz and 165 Hz are also
+#   integer-period fits at 4 s. The LFO is exactly 0.3 Hz → 1.2 cycles
+#   per 4 s — NOT integer, but the LFO modulates AMPLITUDE so the wrap
+#   is on a smooth multiplicative envelope rather than the carrier.
+#   To kill the wrap discontinuity on the LFO, we phase-shift the LFO
+#   so its value at sample 0 equals its value at sample N. See the
+#   _synthesize_drone implementation.
+
+const AMBIENT_LOOP_DURATION := 4.0       # seconds — loop length for all drones
+const AMBIENT_FADE_DURATION := 0.5       # seconds — crossfade ramp
+const AMBIENT_FADE_FLOOR_DB := -80.0     # effectively-silent endpoint of fades
+
+# Preset table — scene_file_path → ambient config dict. Each config:
+#   fundamental_hz    base sine carrier frequency
+#   harmonic_hz       second sine on top (0 = no harmonic layer)
+#   harmonic_gain     0..1 multiplier on the harmonic
+#   noise_amount      0..1 wind/birdsong texture amount (very subtle)
+#   target_db         playback volume when fully faded in (negative = quieter)
+const AMBIENT_CONFIGS := {
+	"dungeon":     { "fundamental_hz":  55.0, "harmonic_hz": 110.0, "harmonic_gain": 0.5,  "noise_amount": 0.06, "target_db": -18.0 },
+	"menu_hush":   { "fundamental_hz": 220.0, "harmonic_hz": 330.0, "harmonic_gain": 0.5,  "noise_amount": 0.0,  "target_db": -22.0 },
+	"hamlet":      { "fundamental_hz": 165.0, "harmonic_hz": 247.5, "harmonic_gain": 0.35, "noise_amount": 0.12, "target_db": -20.0 },
+}
+
+# scene_file_path → ambient preset id (key into AMBIENT_CONFIGS).
+# Any scene not in this map fades to silence (death_screen, etc.).
+const SCENE_TO_AMBIENT := {
+	"res://scenes/main.tscn":            "dungeon",
+	"res://scenes/hamlet.tscn":          "hamlet",
+	"res://scenes/main_menu.tscn":       "menu_hush",
+	"res://scenes/settings_screen.tscn": "menu_hush",
+}
+
+# ── Ambient state ──────────────────────────────────────────────────────
+var _ambient_streams: Dictionary = {}    # preset_id → AudioStreamWAV
+var _ambient_player_a: AudioStreamPlayer = null
+var _ambient_player_b: AudioStreamPlayer = null
+var _ambient_live_is_a: bool = true      # which player currently carries audio
+var _ambient_current_preset: String = "" # id of the currently-live preset (empty = silence)
+var _ambient_last_scene_path: String = ""
+var _ambient_fade_tween: Tween = null
+
+# Bootstrap ambient subsystem. Called from _ready below via the
+# extension hook — we don't touch the existing _ready() so as to keep
+# the change strictly additive. Instead we use a deferred call from
+# _enter_tree (which fires before _ready) to schedule init AFTER the
+# existing _ready completes.
+func _enter_tree() -> void:
+	# Defer so this runs after _ready in the same frame batch.
+	call_deferred("_ambient_init")
+
+func _ambient_init() -> void:
+	_synthesize_all_ambients()
+	_build_ambient_players()
+	# tree_changed fires for every subtree mutation, not just scene
+	# swaps. _on_tree_changed dedupes via _ambient_last_scene_path.
+	get_tree().tree_changed.connect(_on_tree_changed)
+	# Resolve the initial scene once at startup — tree_changed won't
+	# necessarily fire for the first scene since it was already loaded
+	# before our autoload finished initializing.
+	_on_tree_changed()
+
+# ── Drone synthesis ────────────────────────────────────────────────────
+
+func _synthesize_all_ambients() -> void:
+	for preset_id in AMBIENT_CONFIGS:
+		var cfg: Dictionary = AMBIENT_CONFIGS[preset_id]
+		_ambient_streams[preset_id] = _synthesize_drone(
+			cfg.get("fundamental_hz", 55.0),
+			cfg.get("harmonic_hz", 110.0),
+			cfg.get("harmonic_gain", 0.5),
+			cfg.get("noise_amount", 0.0),
+			AMBIENT_LOOP_DURATION,
+		)
+
+# Synthesize a multi-layer drone into a looping AudioStreamWAV.
+# Layers:
+#   • Fundamental sine at fundamental_hz (full amplitude budget shared
+#     with the harmonic; we normalize so peak stays under ~0.7)
+#   • Harmonic sine at harmonic_hz, scaled by harmonic_gain
+#   • Slow amplitude LFO at 0.3 Hz, ±30% — gives the drone "breathing"
+#   • Optional noise layer at noise_amount * 0.15 — wind/chirp texture
+#
+# Loopability: the sample buffer is exactly duration_sec × SAMPLE_RATE
+# samples long. Caller sets loop_mode = LOOP_FORWARD, loop_begin = 0,
+# loop_end = sample_count. For the wrap to be click-free, the fundamental
+# and harmonic must have periods that divide duration_sec cleanly. The
+# AMBIENT_CONFIGS frequencies are picked specifically so they do at
+# duration_sec=4.0 (55, 110, 165, 220, 247.5, 330 Hz all integer-period
+# at 4s within float precision). The LFO uses a phase offset so its
+# value at sample 0 equals its value at sample N — no discontinuity.
+func _synthesize_drone(
+	fundamental_hz: float,
+	harmonic_hz: float,
+	harmonic_gain: float,
+	noise_amount: float,
+	duration_sec: float,
+) -> AudioStreamWAV:
+	var n_samples := int(duration_sec * SAMPLE_RATE)
+	var bytes := PackedByteArray()
+	bytes.resize(n_samples * 2)   # s16 mono
+
+	var fund_phase_inc: float = fundamental_hz * TAU / float(SAMPLE_RATE)
+	var harm_phase_inc: float = harmonic_hz * TAU / float(SAMPLE_RATE)
+	# LFO at 0.3 Hz — frames per cycle = SAMPLE_RATE / 0.3.
+	var lfo_phase_inc: float = 0.3 * TAU / float(SAMPLE_RATE)
+
+	# Per-layer gain. The fundamental claims the bigger budget; the
+	# harmonic rides on top scaled by harmonic_gain. Final mix is
+	# normalized below.
+	var fund_gain := 0.55
+	var harm_gain: float = 0.55 * clampf(harmonic_gain, 0.0, 1.0)
+	var noise_gain: float = 0.15 * clampf(noise_amount, 0.0, 1.0)
+
+	var fund_phase := 0.0
+	var harm_phase := 0.0
+	var lfo_phase := 0.0   # starts at 0 → value sin(0)=0 → ends at sin(0.3*TAU*4)=sin(2.4π)
+	# To make LFO seamless across the loop wrap we want lfo at sample N
+	# to equal lfo at sample 0. 0.3 Hz × 4 s = 1.2 cycles → 0.2 cycle
+	# offset at wrap. We absorb that by adding an extra 0.8-cycle ramp
+	# spread across the buffer — equivalent to running LFO at
+	# 2 cycles / 4 s = 0.5 Hz. Slight cheat: the effective LFO rate is
+	# 0.5 Hz, not exactly 0.3 Hz, but it's loop-clean and still reads
+	# as "slow breathing." Recompute the phase inc accordingly:
+	lfo_phase_inc = 0.5 * TAU / float(SAMPLE_RATE)
+
+	for i in n_samples:
+		# Three oscillators advancing in lockstep with their own phase
+		# accumulators (vs recomputing sin(2πft) per sample) so float
+		# drift doesn't accumulate across the buffer.
+		var fund: float = sin(fund_phase)
+		var harm: float = sin(harm_phase)
+		var lfo: float = sin(lfo_phase)
+		# LFO modulates amplitude ±30% around 1.0 → ranges 0.7..1.3.
+		var lfo_env: float = 1.0 + 0.30 * lfo
+		# Cheap deterministic noise — same hash trick as the SFX noise
+		# waveform. Centered to [-1, 1] (the (i*K + C) hash is uniform
+		# in [0, 0xFFFF]; divide-32768 puts it in [0, 2], shift by -1).
+		var noise: float = 0.0
+		if noise_gain > 0.0:
+			noise = (float((i * 1103515245 + 12345) & 0xFFFF) / 32768.0) - 1.0
+
+		var mix: float = (fund * fund_gain + harm * harm_gain + noise * noise_gain) * lfo_env
+		# Cap to [-1, 1] before s16 quantize — layered sines + noise
+		# can overshoot 1.0 even with conservative per-layer gains.
+		bytes.encode_s16(i * 2, int(clampf(mix, -1.0, 1.0) * 32767.0))
+
+		fund_phase += fund_phase_inc
+		harm_phase += harm_phase_inc
+		lfo_phase += lfo_phase_inc
+		# Wrap phases to keep float precision tight on long-running loops.
+		# (The loop_end resets the stream playhead at the WAV layer, but
+		# the phase accumulators we use here are one-shot during synth —
+		# wrapping is just hygiene.)
+		if fund_phase > TAU:
+			fund_phase -= TAU
+		if harm_phase > TAU:
+			harm_phase -= TAU
+		if lfo_phase > TAU:
+			lfo_phase -= TAU
+
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = SAMPLE_RATE
+	stream.stereo = false
+	stream.data = bytes
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = n_samples
+	return stream
+
+# ── Player setup (non-positional) ──────────────────────────────────────
+
+# Build the A/B AudioStreamPlayer pair. AudioStreamPlayer (not 2D) —
+# ambient is bus-mixed, no spatial attenuation. Both start silent.
+func _build_ambient_players() -> void:
+	_ambient_player_a = AudioStreamPlayer.new()
+	_ambient_player_a.bus = "Master"
+	_ambient_player_a.volume_db = AMBIENT_FADE_FLOOR_DB
+	add_child(_ambient_player_a)
+	_ambient_player_b = AudioStreamPlayer.new()
+	_ambient_player_b.bus = "Master"
+	_ambient_player_b.volume_db = AMBIENT_FADE_FLOOR_DB
+	add_child(_ambient_player_b)
+
+# ── Scene detection + crossfade ────────────────────────────────────────
+
+# tree_changed handler. Dedupes by scene_file_path so we only react to
+# actual scene swaps, not every node add/remove (which also fires this
+# signal).
+func _on_tree_changed() -> void:
+	var scene: Node = get_tree().current_scene
+	var path: String = ""
+	if scene != null:
+		path = scene.scene_file_path
+	if path == _ambient_last_scene_path:
+		return
+	_ambient_last_scene_path = path
+	var preset_id: String = SCENE_TO_AMBIENT.get(path, "")
+	_crossfade_to(preset_id)
+
+# Crossfade the currently-live player to silence and bring the idle
+# player up with the new stream. If preset_id is empty (unknown scene),
+# we just fade the live player to silence.
+func _crossfade_to(preset_id: String) -> void:
+	if preset_id == _ambient_current_preset:
+		return
+	# Always kill any in-flight crossfade — without this, a fast double
+	# scene swap (menu → game → menu) leaves dueling tweens fighting
+	# over the same player volumes.
+	if _ambient_fade_tween != null and _ambient_fade_tween.is_valid():
+		_ambient_fade_tween.kill()
+
+	var fading_out: AudioStreamPlayer = _ambient_player_a if _ambient_live_is_a else _ambient_player_b
+	var fading_in: AudioStreamPlayer = _ambient_player_b if _ambient_live_is_a else _ambient_player_a
+
+	_ambient_fade_tween = create_tween()
+	_ambient_fade_tween.set_parallel(true)
+
+	# Fade the old live player down to silence.
+	_ambient_fade_tween.tween_property(
+		fading_out, "volume_db", AMBIENT_FADE_FLOOR_DB, AMBIENT_FADE_DURATION
+	)
+
+	if preset_id != "" and _ambient_streams.has(preset_id):
+		var cfg: Dictionary = AMBIENT_CONFIGS[preset_id]
+		var target_db: float = cfg.get("target_db", -20.0)
+		# Prime the incoming player: assign stream, start silent, then
+		# tween up to target_db. Calling play() while already silent is
+		# free — Godot doesn't allocate per play() for AudioStreamWAV.
+		fading_in.stream = _ambient_streams[preset_id]
+		fading_in.volume_db = AMBIENT_FADE_FLOOR_DB
+		fading_in.play()
+		_ambient_fade_tween.tween_property(
+			fading_in, "volume_db", target_db, AMBIENT_FADE_DURATION
+		)
+		# Stop the fading-out player after its fade completes so it's
+		# not silently churning samples in the background. The chain
+		# is set_parallel(true) globally, so we need finished()-based
+		# stop via tween_callback on the same parallel set.
+		_ambient_fade_tween.chain().tween_callback(fading_out.stop)
+	else:
+		# No new ambient — just stop the old player after its fade.
+		_ambient_fade_tween.chain().tween_callback(fading_out.stop)
+
+	_ambient_current_preset = preset_id
+	_ambient_live_is_a = not _ambient_live_is_a
