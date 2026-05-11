@@ -35,6 +35,15 @@ const ENEMY_SCENES := {
 
 const HIT_STOP_SCALE    := 0.05
 const HIT_STOP_TIME     := 0.08
+# Iter 13 — lighter hit-stop when the player CONNECTS (vs takes damage).
+# Brief enough that mashing attack still feels responsive, heavy enough
+# that each hit has a tiny "thud" of friction. Scales up slightly on
+# multi-hit (clamped) so a clean cleave-through reads bigger.
+const SWING_HIT_STOP_SCALE := 0.18
+const SWING_HIT_STOP_TIME  := 0.035
+const DASH_HIT_STOP_SCALE  := 0.10
+const DASH_HIT_STOP_TIME   := 0.07
+const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn")
 const WAVE_CLEAR_PAUSE  := 1.6
 const DOOR_POSITION     := Vector2(1140, 384)   # east-wall door spawn
 
@@ -95,6 +104,13 @@ func _ready() -> void:
 	hero.hp_changed.connect(_on_hero_hp_changed)
 	hero.hero_died.connect(_on_hero_died)
 	hero.hit_received.connect(_on_hero_hit_received)
+	# Iter 13 — react to hero offense beats. swing_connected fires when
+	# a normal melee swing hits at least one enemy (brief hit-stop);
+	# dash_strike_landed fires at the END of the dash AoE scan whether
+	# or not it connected (heavy shake + impact VFX always; bigger
+	# hit-stop only if it landed).
+	hero.swing_connected.connect(_on_hero_swing_connected)
+	hero.dash_strike_landed.connect(_on_hero_dash_strike_landed)
 	_death_screen = DEATH_SCREEN_SCENE.instantiate()
 	add_child(_death_screen)
 	_death_screen.retry_pressed.connect(_on_death_retry)
@@ -203,6 +219,39 @@ func _on_enemy_died(world_pos: Vector2) -> void:
 	_update_kills()
 	var n: DamageNumber = DamageNumber.spawn(world_pos + Vector2(0, -36), "+1", Color(1, 0.95, 0.7))
 	add_child(n)
+
+func _on_hero_swing_connected(hit_count: int) -> void:
+	# Brief hit-stop on a connecting melee swing. The freeze scale is
+	# the hero-took-damage one's bigger sibling — same machinery, just
+	# lighter / shorter. Don't stack: if we're already mid-stop from
+	# the hero-getting-hit handler, leave that one alone (it's bigger).
+	if _hit_stop_timer > 0.0:
+		return
+	# Tiny bonus on multi-hit, clamped so a cleave-through doesn't
+	# freeze the screen.
+	var multi_bonus: float = mini(hit_count - 1, 2) * 0.01
+	Engine.time_scale = SWING_HIT_STOP_SCALE
+	_hit_stop_timer = SWING_HIT_STOP_TIME + multi_bonus
+
+func _on_hero_dash_strike_landed(world_pos: Vector2, hit_count: int) -> void:
+	# Spawn impact VFX at the end of the dash regardless of hits —
+	# the player committed to the dash and deserves visual payoff.
+	var impact: Node2D = DASH_IMPACT_SCENE.instantiate() as Node2D
+	if impact != null:
+		impact.global_position = world_pos
+		add_child(impact)
+	# Heavy shake on connect; lighter "thump" shake on whiff so the
+	# dash still has some recoil weight even when you miss.
+	if hit_count > 0:
+		FX.shake(10.0, 0.16)
+		# Hit-stop only on connect — a whiffed dash shouldn't freeze
+		# the screen mid-movement. Skip if a heavier hero-damage stop
+		# is already running.
+		if _hit_stop_timer <= 0.0:
+			Engine.time_scale = DASH_HIT_STOP_SCALE
+			_hit_stop_timer = DASH_HIT_STOP_TIME
+	else:
+		FX.shake(4.0, 0.10)
 
 func _on_hero_hit_received() -> void:
 	Engine.time_scale = HIT_STOP_SCALE

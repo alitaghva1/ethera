@@ -38,6 +38,7 @@ const HIT_IFRAMES        := 0.55
 # Blast spell (Iter 3) — RMB ranged projectile.
 const BLAST_COOLDOWN     := 0.55
 const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
+const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 
 # Shield (Iter 5) — Q-held stamina stance.
 const SHIELD_STAMINA_MAX := 100.0
@@ -89,7 +90,7 @@ const DIR_VECS: Array[Vector2] = [
 const ANIM_DATA  := {
 	"idle":   { "sheet": preload("res://assets/characters/mage_idle.png"),   "frames": 8, "fps":  8.0, "loop": true  },
 	"walk":   { "sheet": preload("res://assets/characters/mage_walk.png"),   "frames": 8, "fps": 10.0, "loop": true  },
-	"attack": { "sheet": preload("res://assets/characters/mage_attack.png"), "frames": 9, "fps": 14.0, "loop": false },
+	"attack": { "sheet": preload("res://assets/characters/mage_attack.png"), "frames": 9, "fps": 22.0, "loop": false },
 	"hurt":   { "sheet": preload("res://assets/characters/mage_hurt.png"),   "frames": 6, "fps": 17.0, "loop": false },
 	"death":  { "sheet": preload("res://assets/characters/mage_death.png"),  "frames": 9, "fps": 10.0, "loop": false },
 }
@@ -97,6 +98,21 @@ const ANIM_DATA  := {
 # Hurt anim plays for HURT_TIME — sprite-only, doesn't lock input. Shorter
 # than HIT_IFRAMES so the visual cue clears before iframes drop.
 const HURT_TIME := 0.35
+
+# Iter 13 — melee + dash impact tuning.
+# VFX_HEIGHT_OFFSET: the slash arc / blast trail spawn point sits at the
+# mage's CHEST (sprite is offset Y=-23 with origin at her feet), so we
+# emit Events.hero_attacked at global_position + (0, this). Previously
+# they spawned at the hero's feet and looked detached from the casting
+# animation.
+const VFX_HEIGHT_OFFSET    := -28.0
+# Knockback per successful melee hit. Light push, very brief — sells
+# weight without trivializing tracking. Dash strike applies the bigger
+# DASH_KNOCKBACK below since it's a committed engage.
+const MELEE_KNOCKBACK_FORCE := 220.0
+const MELEE_KNOCKBACK_TIME  := 0.10
+const DASH_KNOCKBACK_FORCE  := 380.0
+const DASH_KNOCKBACK_TIME   := 0.16
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -140,6 +156,15 @@ signal hp_changed(new_hp: int)
 signal hero_died
 signal hit_received       # for camera shake + hit-stop in main.gd
 signal dodge_started
+# Iter 13 — fired when a melee swing actually connects with ≥1 enemy.
+# main.gd listens for a brief hit-stop scaled by hit_count. Distinct
+# from Events.enemy_hit (which fires once per enemy and would multi-
+# trigger hit-stop on a multi-hit swing).
+signal swing_connected(hit_count: int)
+# Iter 13 — fired at the END of dash strike, AFTER the AoE scan runs.
+# main.gd listens to spawn the dash impact VFX + heavy camera shake.
+# Reports hit_count so the shake / scene can scale with the kill.
+signal dash_strike_landed(world_pos: Vector2, hit_count: int)
 
 func _ready() -> void:
 	_build_sprite_frames()
@@ -361,12 +386,10 @@ func _start_attack() -> void:
 	_attack_live = ATTACK_SWING_TIME
 	_is_attacking = true
 	_facing_dir = _vector_to_dir_idx(_attack_aim)
-	# Force-restart the attack animation from frame 0 — _play_anim caches
-	# by name, so without setting frame=0 here a quick second swing in the
-	# same direction would skip the windup frames.
 	sprite.frame = 0
 	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	var hit_count: int = 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
@@ -377,7 +400,21 @@ func _start_attack() -> void:
 			continue
 		if enemy.has_method("take_hit"):
 			enemy.take_hit(damage)
-	Events.hero_attacked.emit(global_position, _attack_aim)
+			hit_count += 1
+		# Iter 13 — light knockback per hit. Direction = away from hero,
+		# not along aim (so flanking enemies get pushed out laterally
+		# instead of getting yanked into the swing line). Guarded by
+		# has_method so non-Enemy "breakables" (chests) don't choke on
+		# the call.
+		if enemy.has_method("apply_knockback"):
+			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _attack_aim
+			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE, MELEE_KNOCKBACK_TIME)
+	# Emit at chest height so the slash arc lines up with the cast pose,
+	# not the floor. Iter 12 / earlier emitted at global_position which
+	# is the feet anchor.
+	Events.hero_attacked.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), _attack_aim)
+	if hit_count > 0:
+		swing_connected.emit(hit_count)
 
 func _start_blast() -> void:
 	var aim_world := get_global_mouse_position() - global_position
@@ -396,7 +433,9 @@ func _start_blast() -> void:
 	p.velocity = aim * Projectile.SPEED
 	p.damage = 1 + GameState.modifier_total("blast_damage_bonus", 0)
 	get_parent().add_child(p)
-	Events.hero_blasted.emit(global_position, aim)
+	# Emit at chest height so the muzzle streak originates from the
+	# mage's hands, not under her feet.
+	Events.hero_blasted.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), aim)
 
 func take_damage(amount: int) -> void:
 	if hp <= 0 or _iframes > 0.0:
@@ -451,9 +490,20 @@ func _start_dash_strike() -> void:
 	_dash_strike_cd = DASH_STRIKE_COOLDOWN
 	_iframes = max(_iframes, DASH_STRIKE_DURATION)
 	_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
+	# Iter 13 — spawn a motion trail behind us. Parent to current_scene
+	# so it lives in world space (not at the hero's transform, which
+	# would drag the trail along with us). dash_trail.gd handles its own
+	# lifetime + emission curve.
+	var trail: Node2D = DASH_TRAIL_SCENE.instantiate() as Node2D
+	if trail != null:
+		trail.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
+		if trail.has_method("setup"):
+			trail.call("setup", _dash_strike_dir)
+		get_tree().current_scene.add_child(trail)
 
 func _resolve_dash_strike_hit() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	var hit_count: int = 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
@@ -462,6 +512,16 @@ func _resolve_dash_strike_hit() -> void:
 			continue
 		if enemy.has_method("take_hit"):
 			enemy.take_hit(damage)
+			hit_count += 1
+		# Iter 13 — heavy radial knockback on dash AoE. Each enemy gets
+		# pushed straight away from the hero, harder + longer than the
+		# normal melee knockback because the dash is a committed engage.
+		if enemy.has_method("apply_knockback"):
+			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _dash_strike_dir
+			enemy.apply_knockback(push_dir, DASH_KNOCKBACK_FORCE, DASH_KNOCKBACK_TIME)
+	# Always emit even on whiff — the impact VFX still wants to fire so
+	# the player gets visual feedback that the dash committed.
+	dash_strike_landed.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), hit_count)
 
 # Compare-and-set animation play. AnimatedSprite2D.play() restarts the
 # animation from frame 0 every call. Helper checks the cached name before

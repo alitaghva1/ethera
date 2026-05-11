@@ -36,6 +36,17 @@ var _dying := false
 var _death_timer := 0.0
 var _hero: Node2D = null
 
+# Iter 13 — knockback state. apply_knockback() arms a velocity vector
+# that overrides the subclass tick for a short window. Decays linearly
+# back to zero so the enemy comes to rest, then control returns to AI.
+# Why we override _enemy_tick (rather than blending velocity): subclasses
+# all call move_and_slide() with their own velocity, and a melee impact
+# should fully halt their AI for the knockback window — they shouldn't
+# be trying to seek the player while sliding away from a hit.
+var _knockback_time := 0.0
+var _knockback_total := 0.0
+var _knockback_velocity := Vector2.ZERO
+
 signal died_at(world_pos: Vector2)
 
 func _ready() -> void:
@@ -77,7 +88,31 @@ func _physics_process(delta: float) -> void:
 		if _death_timer <= 0.0:
 			queue_free()
 		return
+	# Knockback takes precedence over AI — linear decay from full force
+	# at impact down to 0 at the end of the window. move_and_slide is
+	# called here so the enemy actually slides instead of just teleporting
+	# at the end.
+	if _knockback_time > 0.0:
+		_knockback_time = max(0.0, _knockback_time - delta)
+		var t: float = _knockback_time / _knockback_total if _knockback_total > 0.0 else 0.0
+		velocity = _knockback_velocity * t
+		move_and_slide()
+		return
 	_enemy_tick(delta)
+
+# Apply a momentary force push to this enemy. Called by hero.gd on
+# successful melee hits + dash-strike AoE. force is in px/s; duration
+# is in seconds. Subclass AI is suspended for the duration so the
+# knockback reads cleanly (an enemy trying to walk INTO you while being
+# pushed AWAY looks like both forces are weak).
+func apply_knockback(dir: Vector2, force: float, duration: float) -> void:
+	if _dying or duration <= 0.0:
+		return
+	if dir.length_squared() < 0.0001:
+		return
+	_knockback_velocity = dir.normalized() * force
+	_knockback_time = duration
+	_knockback_total = duration
 
 func take_hit(damage: int) -> void:
 	if _dying:

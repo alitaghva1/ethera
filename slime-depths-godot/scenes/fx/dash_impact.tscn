@@ -1,0 +1,79 @@
+[gd_scene load_steps=5 format=3 uid="uid://b3dashimpact001"]
+
+[ext_resource type="Script" path="res://scripts/dash_impact.gd" id="1_script"]
+
+; Sparks ramp — bright magenta-pink at the spark, fading through warm
+; cream to nothing. Matches the dash_trail palette so the impact reads
+; as the same energy detonating outward.
+[sub_resource type="Gradient" id="sparks_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 0.7, 1, 1, 1, 0.9, 0.7, 1, 1, 0.7, 0.4, 0)
+
+[sub_resource type="Curve" id="ring_halo_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.4), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="ring_core_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.7), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.7), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[node name="DashImpact" type="Node2D"]
+script = ExtResource("1_script")
+
+; ── Two concentric expanding rings — same trick as slash_arc ──────────
+; Halo (wide, magenta bloom) under Core (narrow, bright cream edge).
+; Both expand from radius 22 → ~60 over the impact lifetime via
+; dash_impact.gd's _process tween.
+;
+; Points form a 12-segment polygon approximating a circle at radius 22.
+; closed = true wraps the last segment back to the first. Pre-computed
+; to keep the .tscn declarative — no init code needed for geometry.
+
+[node name="Halo" type="Line2D" parent="."]
+points = PackedVector2Array(22, 0, 19.05, 11, 11, 19.05, 0, 22, -11, 19.05, -19.05, 11, -22, 0, -19.05, -11, -11, -19.05, 0, -22, 11, -19.05, 19.05, -11)
+closed = true
+width = 14.0
+width_curve = SubResource("ring_halo_width")
+default_color = Color(1, 0.6, 1, 0.65)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+[node name="Core" type="Line2D" parent="."]
+points = PackedVector2Array(22, 0, 19.05, 11, 11, 19.05, 0, 22, -11, 19.05, -19.05, 11, -22, 0, -19.05, -11, -11, -19.05, 0, -22, 11, -19.05, 19.05, -11)
+closed = true
+width = 4.5
+width_curve = SubResource("ring_core_width")
+default_color = Color(1, 0.98, 0.95, 1)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+; Radial spark burst — 14 particles fired outward in all directions.
+; explosiveness = 1.0 so they all leave at the same instant; the
+; lifetime curve + damping pulls them to a halt before they fly off
+; screen. local_coords = false so they stay anchored to where the
+; impact happened, even though this Node2D might be inside a moving
+; transform tree.
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 14
+lifetime = 0.4
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 140.0
+initial_velocity_max = 220.0
+damping_min = 7.0
+damping_max = 10.0
+scale_amount_min = 2.5
+scale_amount_max = 4.5
+color_ramp = SubResource("sparks_grad")

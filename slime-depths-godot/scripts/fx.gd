@@ -68,6 +68,12 @@ func _get_camera() -> Camera2D:
 		return _camera
 	return null
 
+# Public shake wrapper — for callers outside FX (e.g. main.gd reacts
+# to dash strike impact). Same parameters as _shake; just gives us a
+# non-underscored API surface for autoload calls.
+func shake(amp: float, dur: float) -> void:
+	_shake(amp, dur)
+
 # Camera shake — generate a short sequence of jittery offsets that
 # end exactly at Vector2.ZERO. amp = peak displacement in pixels;
 # dur = total duration in seconds. Splits the duration into 4 hops
