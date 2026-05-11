@@ -58,6 +58,8 @@ const WAVE_CLEAR_PAUSE  := 1.6   # sec between waves (breather + read)
 
 enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 
+const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
+
 @onready var hero: Hero = $Hero
 @onready var hp_label: Label = $UI/HPLabel
 @onready var status_label: Label = $UI/StatusLabel
@@ -69,11 +71,19 @@ var _wave_state := WaveState.PRE
 var _alive := true
 var _kills := 0
 var _hit_stop_timer := 0.0
+var _death_screen: Node = null
 
 func _ready() -> void:
 	hero.hp_changed.connect(_on_hero_hp_changed)
 	hero.hero_died.connect(_on_hero_died)
 	hero.hit_received.connect(_on_hero_hit_received)
+	# Death-screen overlay is instantiated up-front but stays hidden.
+	# Avoids a per-death allocation + ensures GameState reads at show
+	# time reflect the moment of death.
+	_death_screen = DEATH_SCREEN_SCENE.instantiate()
+	add_child(_death_screen)
+	_death_screen.retry_pressed.connect(_on_death_retry)
+	_death_screen.hamlet_pressed.connect(_on_death_to_hamlet)
 	_update_hp(hero.hp)
 	_update_kills()
 	# Start the run timer — wave 1 launches after a brief beat so the
@@ -178,8 +188,22 @@ func _on_hero_died() -> void:
 	_alive = false
 	_wave_state = WaveState.DEAD
 	Engine.time_scale = 1.0
-	status_label.text = "YOU DIED  ·  R retry · ESC return to hamlet"
+	status_label.text = ""
 	wave_label.text = ""
+	# Hand the death beat to the overlay screen. It reads
+	# GameState.last_run_kills / dungeon_runs / owned_relics directly
+	# so we just trigger it; signals carry the player's choice back.
+	if _death_screen != null and _death_screen.has_method("show_death"):
+		_death_screen.show_death(_kills)
+
+func _on_death_retry() -> void:
+	Engine.time_scale = 1.0
+	GameState.start_dungeon_run()
+	get_tree().reload_current_scene()
+
+func _on_death_to_hamlet() -> void:
+	Engine.time_scale = 1.0
+	get_tree().change_scene_to_file("res://scenes/hamlet.tscn")
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if not _alive and ev is InputEventKey and ev.pressed:

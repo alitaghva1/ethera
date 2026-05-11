@@ -29,11 +29,55 @@ instant.
 | Left mouse | Sword swing (cooldown 0.4s) |
 | **Right mouse** | **Blast spell — magenta projectile (Iter 3, cooldown 0.55s)** |
 | Space | Dodge roll (iframes + speed burst, cooldown 0.85s) |
+| **Q** | **Shield — held stamina stance, blue tint + invuln while up** |
+| **Shift** | **Dash Strike — burst toward cursor, AoE slash at the end (cd 1.2s)** |
 | E | Talk to NPCs / claim pedestal / advance dialogue |
 | ESC | Return to hamlet (on death or after room cleared) |
 | R | Retry the dungeon (after death) |
 
-## What works in this slice (Iter 1–4)
+## What works in this slice (Iter 1–5)
+
+**Combat-depth pass** — two new verbs and five new relics expand the
+moment-to-moment kit. **Q-shield** is a held stance that drains a
+100-point stamina meter at 60/s (full bar = ~1.7s of invuln) and
+recovers at 25/s when released; running it dry trips a 0.5s break
+cooldown so you can't button-mash it. **Shift-dash-strike** is a 0.18s
+burst toward the cursor with iframes the whole way and an AoE sword
+hit on landing (50 px radius, same damage as a normal swing — Iron Fang
+carries over). New relics: **Swift Strike** (-20% sword cd), **Dodge
+Master** (-30% dodge cd), **Iron Skin** (-1 dmg per hit), **Nimble**
+(+30% move speed), **Heart of Stone** (+2 max HP). Float-typed mods
+fold through a new `GameState.modifier_total_f` so fractional values
+like -0.2 don't get int-truncated.
+
+**Meta-UI layer** — three new screens frame the run.
+`scenes/main_menu.tscn` is the title with **BEGIN / SETTINGS / QUIT**
+on a centered stack, hover-scale tweens, and keyboard-first focus on
+BEGIN so you can drive the menu without the mouse.
+`scenes/settings_screen.tscn` hosts a placeholder **MASTER VOLUME**
+slider (display-only; not wired to AudioServer yet) plus the canonical
+controls list — WASD / LMB / RMB / Space / Q / Shift / E / R / ESC.
+`scenes/death_screen.tscn` is a CanvasLayer-at-layer-200 overlay that
+the dungeon shows on `hero_died` — reads `GameState.last_run_kills`,
+`GameState.dungeon_runs`, and `GameState.owned_relics` to summarize
+the run, then emits `retry_pressed` / `hamlet_pressed` signals so the
+host scene owns the actual transition. Color palette mirrors
+`dialogue_ui.tscn`: gold #c9a86a borders, cream #f4d9a0 text, near-black
+#0a0810 ground, dark red #c04040 on the death title.
+
+**Iter 5 added** — game-feel polish layer. Two new autoloads:
+`scripts/events.gd` is a global signal bus (`hero_damaged`,
+`enemy_hit`, `enemy_died`, `hero_dodged`, etc.); `scripts/fx.gd`
+listens to those signals and applies screen shake (Tween on the
+active Camera2D's `offset`, always ending at zero so it never
+permanently drifts) + spawns CPUParticles2D bursts at the event
+position. Four particle scenes under `scenes/fx/`: gold hit-spark
+on enemy damage, red death-burst with gravity on enemy/hero death,
+gray dodge-dust fan on the hero's roll, and a red blood-spatter on
+hero damage. All particle scenes self-free after their lifetime —
+no orphan nodes. The pattern is deliberately decoupled: gameplay
+code (hero.gd, enemy.gd, main.gd) just emits an Events signal, and
+both FX and any future system (audio, achievements) subscribe.
 
 **Iter 4 added** — Enemy base class refactor + 2 new enemy types.
 `scripts/enemy.gd` extracts the HP/take_hit/white-flash/death-machine

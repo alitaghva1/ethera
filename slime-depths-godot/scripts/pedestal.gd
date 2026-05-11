@@ -72,6 +72,8 @@ func _claim() -> void:
 		Color(1, 0.85, 0.45)
 	)
 	get_parent().add_child(n)
+	if granted:
+		Events.pickup_claimed.emit(global_position, relic_id)
 	# Brief outro tween — orb swells + fades, plinth dims, then we
 	# delete the pedestal. Disable collision immediately so a queued
 	# interact doesn't double-trigger.

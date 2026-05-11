@@ -90,6 +90,7 @@ func take_hit(damage: int) -> void:
 		var tween := create_tween()
 		tween.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.04)
 		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
+	Events.enemy_hit.emit(global_position)
 	if hp <= 0:
 		_die()
 
@@ -106,4 +107,5 @@ func _die() -> void:
 	set_collision_layer_value(3, false)
 	set_collision_mask_value(2, false)
 	died_at.emit(global_position)
+	Events.enemy_died.emit(global_position)
 	_on_death()

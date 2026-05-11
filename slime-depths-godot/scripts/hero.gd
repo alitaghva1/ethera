@@ -193,6 +193,7 @@ func _start_dodge(input: Vector2) -> void:
 	# on a frame where both states could overlap.
 	_shield_active = false
 	dodge_started.emit()
+	Events.hero_dodged.emit(global_position)
 
 func _start_attack() -> void:
 	var aim_world := get_global_mouse_position() - global_position
@@ -218,6 +219,7 @@ func _start_attack() -> void:
 			continue
 		if enemy.has_method("take_hit"):
 			enemy.take_hit(damage)
+	Events.hero_attacked.emit(global_position, _attack_aim)
 
 func _start_blast() -> void:
 	var aim_world := get_global_mouse_position() - global_position
@@ -240,6 +242,7 @@ func _start_blast() -> void:
 	p.velocity = aim * Projectile.SPEED
 	p.damage = 1 + GameState.modifier_total("blast_damage_bonus", 0)
 	get_parent().add_child(p)
+	Events.hero_blasted.emit(global_position, aim)
 
 func take_damage(amount: int) -> void:
 	if hp <= 0 or _iframes > 0.0:
@@ -253,8 +256,10 @@ func take_damage(amount: int) -> void:
 	_iframes = HIT_IFRAMES
 	hp_changed.emit(hp)
 	hit_received.emit()
+	Events.hero_damaged.emit(global_position)
 	if hp <= 0:
 		hero_died.emit()
+		Events.hero_died.emit(global_position)
 
 # Shield is a held stance, not a one-shot — runs every tick so the
 # stamina meter actually animates with the player's input. Dodge takes
