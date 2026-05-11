@@ -73,7 +73,9 @@ func _ready() -> void:
 		if fb is RoomConfig:
 			RunState.current_room_index = 0
 			RunState.current_room_config = fb
-	_room = RunState.current_room_config
+	# Explicit cast — RunState is an autoload, parser sees its fields
+	# as Variant. `as RoomConfig` keeps the typed _room field happy.
+	_room = RunState.current_room_config as RoomConfig
 	if _room != null:
 		_spawn_points = _room.spawn_points
 		_waves = _room.waves
@@ -191,7 +193,7 @@ func _on_hero_hp_changed(new_hp: int) -> void:
 
 func _update_hp(v: int) -> void:
 	var hearts := ""
-	var max_hp := Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	var max_hp: int = Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
 	for i in range(max_hp):
 		hearts += "♥ " if i < v else "♡ "
 	hp_label.text = hearts.strip_edges()
@@ -203,8 +205,8 @@ func _update_room_label() -> void:
 	if _room == null or RunState.current_room_index < 0:
 		room_label.text = ""
 		return
-	var total := RunState.FLOOR_ROOMS.size()
-	var idx := RunState.current_room_index + 1
+	var total: int = RunState.FLOOR_ROOMS.size()
+	var idx: int = RunState.current_room_index + 1
 	room_label.text = "%s  ·  ROOM %d / %d" % [_room.display_name, idx, total]
 
 func _on_hero_died() -> void:

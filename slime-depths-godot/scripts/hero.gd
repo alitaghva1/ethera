@@ -86,7 +86,10 @@ func _ready() -> void:
 	# live mid-run changes would require a more sophisticated stat
 	# system (out of scope for the slice — hp only changes via pedestal
 	# claims between scenes).
-	var hp_bonus := GameState.modifier_total("max_hp_bonus", 0)
+	# Explicit `: int` — GameState is an autoload without class_name,
+	# so the parser can't statically resolve modifier_total's int return
+	# type. := would infer Variant and trip strict-mode parse error.
+	var hp_bonus: int = GameState.modifier_total("max_hp_bonus", 0)
 	hp = MAX_HP + hp_bonus
 	# HP carryover between rooms in a multi-room dungeon. Floor's
 	# start_floor / end_floor reset persisted_hp to -1 so new runs +
@@ -138,12 +141,12 @@ func _physics_process(delta: float) -> void:
 	# normal walk loop otherwise.
 	if _dodge_time > 0.0:
 		var t := 1.0 - (_dodge_time / DODGE_DURATION)
-		var ease := pow(1.0 - t, 2.0)
+		var ease: float = pow(1.0 - t, 2.0)
 		velocity = _dodge_dir * (DODGE_SPEED * ease + 60.0)
 	elif _dash_strike_time > 0.0:
 		velocity = _dash_strike_dir * DASH_STRIKE_SPEED
 	else:
-		var speed := SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0))
+		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0))
 		velocity = input * speed
 	move_and_slide()
 
@@ -222,7 +225,7 @@ func _start_attack() -> void:
 	sprite.frame = 0
 	sprite.play("attack")
 	# Damage = 1 base + iron_fang relic bonus + future stack-bonuses.
-	var damage := 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
@@ -263,7 +266,9 @@ func take_damage(amount: int) -> void:
 		return
 	# Iron Skin: flat subtract, never below 0 so a relic can fully soak
 	# 1-damage trash hits without going negative (which would heal).
-	var actual := max(0, amount - GameState.modifier_total("damage_taken_reduction", 0))
+	# maxi (not max) — max() is polymorphic in Godot 4 and returns
+	# Variant, which breaks := type-inference under strict mode.
+	var actual: int = maxi(0, amount - GameState.modifier_total("damage_taken_reduction", 0))
 	if actual <= 0:
 		return
 	hp -= actual
@@ -320,7 +325,7 @@ func _resolve_dash_strike_hit() -> void:
 	# dash_strike is conceptually a charged sword attack, not a new
 	# weapon. Radius is wider than ATTACK_RANGE since the player
 	# committed travel to land it.
-	var damage := 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue

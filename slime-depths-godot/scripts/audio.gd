@@ -124,7 +124,7 @@ func _synthesize(cfg: Dictionary) -> AudioStreamWAV:
 		# Exponential-ish amplitude decay — 0..1 ramped through the
 		# decay_pow exponent. decay_pow=1 → linear fade, 1.5/2 → sharper
 		# "thwack" attack.
-		var amp_env := pow(1.0 - t, decay_pow)
+		var amp_env: float = pow(1.0 - t, decay_pow)
 		var sample := osc * amp_env * gain
 		bytes.encode_s16(i * 2, int(clamp(sample, -1.0, 1.0) * 32767))
 

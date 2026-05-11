@@ -27,7 +27,7 @@ func _ready() -> void:
 	body_exited.connect(_on_body_exited)
 	# Pull display from the registry so future relics auto-inherit
 	# the right labels.
-	var info := GameState.relic_info(relic_id)
+	var info: Dictionary = GameState.relic_info(relic_id)
 	name_label.text = str(info.get("name", relic_id))
 	desc_label.text = str(info.get("description", ""))
 	prompt.visible = false
@@ -63,7 +63,7 @@ func _input(ev: InputEvent) -> void:
 func _claim() -> void:
 	_claimed = true
 	prompt.visible = false
-	var granted := GameState.grant_relic(relic_id)
+	var granted: bool = GameState.grant_relic(relic_id)
 	# Spawn a pickup banner (damage-number-shaped). Yellow + bigger
 	# than damage numbers so it reads as a real beat.
 	var n: DamageNumber = DamageNumber.spawn(
