@@ -42,6 +42,7 @@ const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
 const PARRY_PULSE_SCENE  = preload("res://scenes/fx/parry_pulse.tscn")
+const PARRY_SHIELD_SCENE = preload("res://scenes/fx/parry_shield.tscn")
 # soul_burst relic — reuse the dash impact shockwave scene tinted red.
 # Cheap visual until a dedicated VFX prefab lands.
 const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
@@ -98,6 +99,15 @@ const DASH_STRIKE_STEER_GAIN   := 0.15
 # enemies (slimes ~22, spider ~12) without grabbing distant ones.
 const DASH_STRIKE_PIERCE_RADIUS := 40.0
 const DASH_STRIKE_PIERCE_DAMAGE := 1
+# Iter 29 — afterimage cadence. Spawn one ghost every AFTERIMAGE_INTERVAL
+# seconds during the dash window. 0.04 s ≈ 7 ghosts over a 0.28 s dash,
+# enough to sell "leaving light behind" without flooding the scene.
+const AFTERIMAGE_INTERVAL: float = 0.04
+# Color tint applied to each afterimage Sprite2D. Cyan-purple matches
+# the dash trail's particle palette so the afterimages + trail read
+# as the SAME energy phenomenon.
+const AFTERIMAGE_TINT: Color = Color(0.55, 0.85, 1.0, 0.55)
+const AFTERIMAGE_FADE_TIME: float = 0.22
 
 # Iter 11 — feel tuning.
 const CAMERA_LOOKAHEAD       := 90.0
@@ -199,6 +209,9 @@ var _blast_cd := 0.0
 #               the window closes (caught or not), keyed to PARRY_COOLDOWN.
 var _parry_time := 0.0
 var _parry_cd   := 0.0
+# Iter 29 — handle to the currently-active parry_shield instance so
+# _on_parry_hit can call shatter() on it. Null when no shield is up.
+var _parry_shield_ref: Node2D = null
 
 var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
@@ -209,6 +222,11 @@ var _dash_strike_dir := Vector2.RIGHT
 # Final AoE in _resolve_dash_strike_hit also skips already-hit ids so
 # the same enemy can't be double-counted.
 var _dash_hit_set: Dictionary = {}
+# Iter 29 — afterimage spawn cadence. Reset to 0 on _start_dash_strike;
+# accumulates each tick during the dash window. When it crosses
+# AFTERIMAGE_INTERVAL we spawn a ghost + subtract the interval (so the
+# spawn rate is exact regardless of physics tick rate).
+var _afterimage_timer: float = 0.0
 
 # Iter 12 — hurt is a transient visual; dying is terminal (locks input).
 var _hurt_time := 0.0
@@ -388,6 +406,16 @@ func _physics_process(delta: float) -> void:
 	# we don't double-count enemies hit mid-dash.
 	if _dash_strike_time > 0.0:
 		_apply_dash_pierce_tick()
+		# Iter 29 — afterimages. Every AFTERIMAGE_INTERVAL seconds spawn
+		# a cyan-purple ghost of the current sprite frame at the hero's
+		# current position. The ghost fades alpha 0.55 → 0 over
+		# AFTERIMAGE_FADE_TIME, then queue_frees. Combined with the
+		# existing magenta particle trail, sells "the wizard is moving
+		# so fast they leave light behind."
+		_afterimage_timer += delta
+		if _afterimage_timer >= AFTERIMAGE_INTERVAL:
+			_afterimage_timer -= AFTERIMAGE_INTERVAL
+			_spawn_dash_afterimage()
 
 	var dash_strike_just_ended := false
 	if _dash_strike_time > 0.0:
@@ -916,15 +944,33 @@ func _trigger_soul_burst(world_pos: Vector2) -> void:
 func _start_parry() -> void:
 	_parry_time = PARRY_WINDOW
 	_parry_cd = PARRY_WINDOW + PARRY_COOLDOWN
-	# Spawn the parry pulse so the player gets immediate visual
-	# confirmation of the input, regardless of whether a hit catches.
-	# Parented to current_scene so it stays in world space.
+	# Resolve aim from cursor — the parry shield orients toward the
+	# threat the player is facing, not the hero's current movement
+	# direction. Fallback to facing-direction if the cursor is right
+	# on top of the hero.
+	var aim_world: Vector2 = get_global_mouse_position() - global_position
+	if aim_world.length() < 1.0:
+		aim_world = _dir_to_vector(_facing_dir)
+	var aim: Vector2 = aim_world.normalized()
+	# Iter 29 — kite-silhouette parry shield IN FRONT of the hero,
+	# oriented toward the aim direction. Replaces the iter-25 ring
+	# pulse as the primary "I am blocking from THIS direction"
+	# visual. The pulse below STILL fires as a quick activation
+	# flourish; the shield is the persistent guard indicator.
+	var shield: Node2D = PARRY_SHIELD_SCENE.instantiate() as Node2D
+	var scene_root: Node = get_tree().current_scene
+	if shield != null and scene_root != null:
+		shield.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
+		if shield.has_method("setup"):
+			shield.call("setup", aim)
+		scene_root.add_child(shield)
+		_parry_shield_ref = shield
+	# Activation flourish — small expanding ring at hero chest. Doubles
+	# as the "hit caught" effect at 1.6× scale via _on_parry_hit.
 	var pulse: Node2D = PARRY_PULSE_SCENE.instantiate() as Node2D
-	if pulse != null:
+	if pulse != null and scene_root != null:
 		pulse.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
-		var scene_root: Node = get_tree().current_scene
-		if scene_root != null:
-			scene_root.add_child(pulse)
+		scene_root.add_child(pulse)
 	# Reuse the dodge sound — both are short defensive flourishes. A
 	# dedicated parry chime can land in a later audio pass.
 	Events.hero_dodged.emit(global_position)
@@ -944,7 +990,14 @@ func _on_parry_hit() -> void:
 	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	tw.tween_interval(PARRY_HIT_SLOWMO_TIME)
 	tw.tween_property(Engine, "time_scale", 1.0, 0.18)
-	# Larger pulse on the actual catch — distinguishes "I parried"
+	# Iter 29 — shatter the active parry shield. shatter() scales it
+	# to 1.6× while fading alpha to 0 over 0.18s, then queue_frees.
+	# Sells "the shield deflected the hit and dispersed its energy."
+	if _parry_shield_ref != null and is_instance_valid(_parry_shield_ref):
+		if _parry_shield_ref.has_method("shatter"):
+			_parry_shield_ref.shatter()
+		_parry_shield_ref = null
+	# Larger ring pulse on the actual catch — distinguishes "I parried"
 	# from "I just tapped Q." Scale up the existing pulse by overlaying
 	# a second instance at the catch site.
 	var burst: Node2D = PARRY_PULSE_SCENE.instantiate() as Node2D
@@ -1015,6 +1068,11 @@ func _start_dash_strike() -> void:
 	# tick scanner can start fresh. Dictionary cleared (not reassigned)
 	# so any in-flight references remain valid.
 	_dash_hit_set.clear()
+	# Iter 29 — reset afterimage cadence so the first ghost spawns
+	# AFTERIMAGE_INTERVAL after the dash starts (rather than immediately,
+	# which would visually overlap with the hero itself for the first
+	# frame).
+	_afterimage_timer = 0.0
 	# Iter 13 — spawn a motion trail behind us.
 	var trail: Node2D = DASH_TRAIL_SCENE.instantiate() as Node2D
 	if trail != null:
@@ -1022,6 +1080,43 @@ func _start_dash_strike() -> void:
 		if trail.has_method("setup"):
 			trail.call("setup", _dash_strike_dir)
 		get_tree().current_scene.add_child(trail)
+
+# Iter 29 — spawn a single dash afterimage at the hero's current world
+# pose. Grabs the AnimatedSprite2D's current frame texture as an
+# AtlasTexture, slaps it on a fresh Sprite2D parented to current_scene,
+# and tweens alpha → 0 with a small extra scale-out for that "echo of
+# light" feel. The tween belongs to the new Sprite2D so its lifetime
+# is bounded by its own queue_free — no leaks if the hero is freed
+# mid-dash (scene reload / death).
+func _spawn_dash_afterimage() -> void:
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return
+	var anim: StringName = sprite.animation
+	if not sprite.sprite_frames.has_animation(anim):
+		return
+	var frame_idx: int = sprite.frame
+	var tex: Texture2D = sprite.sprite_frames.get_frame_texture(anim, frame_idx)
+	if tex == null:
+		return
+	var ghost: Sprite2D = Sprite2D.new()
+	ghost.texture = tex
+	ghost.global_position = global_position + sprite.position
+	ghost.scale = sprite.scale
+	ghost.flip_h = sprite.flip_h
+	ghost.modulate = AFTERIMAGE_TINT
+	# Behind the hero in draw order so the active sprite always reads
+	# as "in front." z_index relative to the parent's own.
+	ghost.z_index = -1
+	scene_root.add_child(ghost)
+	# Tween belongs to the ghost so its life ends with itself; outliving
+	# the hero (scene reload) just drops the tween cleanly.
+	var tw: Tween = ghost.create_tween().set_parallel(true)
+	tw.tween_property(ghost, "modulate:a", 0.0, AFTERIMAGE_FADE_TIME)
+	tw.tween_property(ghost, "scale", ghost.scale * 1.1, AFTERIMAGE_FADE_TIME)
+	tw.chain().tween_callback(ghost.queue_free)
 
 func _resolve_dash_strike_hit() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)

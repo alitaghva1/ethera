@@ -1,61 +1,107 @@
-[gd_scene load_steps=7 format=3 uid="uid://b3slasharc0001"]
+[gd_scene load_steps=11 format=3 uid="uid://b3slasharc0001"]
 
 [ext_resource type="Script" path="res://scripts/slash_arc.gd" id="1_script"]
 
-; ── Layered slash arc — iter 13 rework ──────────────────────────────────
-; Two Line2D's stacked on the same arc geometry:
-;   • Halo (lower)   — wide, soft, blooming magenta-gold (the "glow")
-;   • Core (upper)   — narrow, sharp, near-white (the "edge")
-; Together they read as a magical crescent of energy rather than a
-; sword stroke. Both fade + scale through the same _process tween in
-; slash_arc.gd so they stay synced.
+; ── Magical energy-sword cut — iter 29 rework ───────────────────────────
+; Three layered Line2Ds + two particle bursts. Pre-iter-29 this was a
+; two-layer halo+core arc that read as a smear — not a sword cut. The
+; "magical energy sword" feel needs:
+;   • A bright SHARP edge (the actual blade slash)
+;   • A wider GLOW that crackles around the cut (energy aura)
+;   • A FURTHEST glow that bleeds into the dungeon dark (atmospheric)
+;   • SPARKS at the blade tip (energy bleeds off the cutting edge)
+;   • A SPARKLE at the hilt (the wizard's hand channeling)
+;
+; Layer order (back to front):
+;   OuterHalo — widest, purple-magenta, very low alpha
+;   Halo      — mid, gold-magenta-cyan gradient
+;   Core      — narrow bright cream-white edge
+;   HiltSparkle — particle burst at origin (wizard's hand)
+;   TipBurst  — particle burst at arc peak (blade tip)
 
-; Width curves — both have tapered ends but the core is thinner overall
-; so the halo bloom shows around the edge of the core.
-[sub_resource type="Curve" id="halo_width"]
+; Width curves
+[sub_resource type="Curve" id="outer_width"]
 min_value = 0.0
 max_value = 1.0
 _data = [Vector2(0, 0.0), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.0), 0.0, 0.0, 0, 0]
 point_count = 3
 
+[sub_resource type="Curve" id="halo_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.0), 0.0, 0.0, 0, 0, Vector2(0.55, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.0), 0.0, 0.0, 0, 0]
+point_count = 3
+
 [sub_resource type="Curve" id="core_width"]
 min_value = 0.0
 max_value = 1.0
-_data = [Vector2(0, 0.10), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.10), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 0.05), 0.0, 0.0, 0, 0, Vector2(0.55, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.05), 0.0, 0.0, 0, 0]
 point_count = 3
 
-; Halo gradient — magenta core fading through warm gold to cyan tip.
-; Reads as "magical arc" rather than steel. Matches the blast (magenta)
-; and shield (cyan) palettes so the kit feels coherent.
+; Outer halo gradient — purple-magenta bleeding to transparent at the
+; edges. This is the "energy field" the cut leaves behind.
+[sub_resource type="Gradient" id="outer_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.8, 0.4, 1.0, 0.6, 0.95, 0.55, 1.0, 0.7, 0.55, 0.85, 1.0, 0.6)
+
+; Halo gradient — magenta to gold to cyan, brighter than iter-13.
 [sub_resource type="Gradient" id="halo_grad"]
 offsets = PackedFloat32Array(0, 0.4, 0.75, 1)
-colors = PackedColorArray(0.95, 0.6, 1.0, 0.9, 1.0, 0.85, 0.5, 0.95, 1.0, 0.95, 0.78, 0.85, 0.6, 0.9, 1.0, 0.8)
+colors = PackedColorArray(1.0, 0.65, 1.0, 0.95, 1.0, 0.92, 0.55, 1.0, 0.95, 1.0, 0.85, 0.9, 0.6, 0.95, 1.0, 0.85)
 
-; Core gradient — bright cream with a hot pink center, super saturated.
-; This is the "edge" of the slash that catches the eye.
+; Core gradient — bright cream white, even more saturated.
 [sub_resource type="Gradient" id="core_grad"]
 offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(1, 1, 0.95, 1, 1, 0.9, 0.95, 1, 0.85, 1, 1, 1)
+colors = PackedColorArray(1, 1, 0.95, 1, 1, 0.95, 1.0, 1, 0.9, 1, 1, 1)
+
+; Tip sparks ramp — bright cyan core fading through gold to transparent.
+; Sparks fly OFF the leading blade tip when the swing peaks.
+[sub_resource type="Gradient" id="tip_spark_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.85, 1.0, 1.0, 1, 1.0, 0.9, 0.7, 0.85, 0.95, 0.6, 1.0, 0)
+
+; Hilt sparkle ramp — soft magenta at the wizard's hand. Subtle
+; channeling effect so the swing feels like spell + sword combo.
+[sub_resource type="Gradient" id="hilt_spark_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1.0, 0.85, 1.0, 0.85, 0.9, 0.55, 1.0, 0.65, 0.7, 0.4, 1.0, 0)
 
 [node name="SlashArc" type="Node2D"]
 script = ExtResource("1_script")
 
-; Halo — wide, bloomy. Drawn first so it sits BEHIND the core.
+; OuterHalo — widest, magenta-purple atmospheric glow. Drawn first so
+; it sits BEHIND everything. width 38 + low alpha = bleeds into the
+; dim dungeon palette without competing with the core edge.
+[node name="OuterHalo" type="Line2D" parent="."]
+points = PackedVector2Array(28.28, -28.28, 34.64, -20, 38.64, -10.36, 40, 0, 38.64, 10.36, 34.64, 20, 28.28, 28.28)
+width = 38.0
+width_curve = SubResource("outer_width")
+default_color = Color(0.85, 0.5, 1.0, 0.55)
+gradient = SubResource("outer_grad")
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+; Halo — mid layer, bloomy. Bumped from iter-13's width 22 → 28 for
+; more presence. Gradient warmed slightly to brighter saturation.
 [node name="Halo" type="Line2D" parent="."]
 points = PackedVector2Array(28.28, -28.28, 34.64, -20, 38.64, -10.36, 40, 0, 38.64, 10.36, 34.64, 20, 28.28, 28.28)
-width = 22.0
+width = 28.0
 width_curve = SubResource("halo_width")
-default_color = Color(1, 0.92, 0.82, 0.7)
+default_color = Color(1, 0.92, 0.82, 0.78)
 gradient = SubResource("halo_grad")
 joint_mode = 2
 begin_cap_mode = 2
 end_cap_mode = 2
 antialiased = true
 
-; Core — narrow, sharp, near-white. Drawn on top of the halo.
+; Core — narrow sharp edge. Bumped from iter-13's width 6 → 9 so the
+; "blade edge" actually reads as a blade, not a wire. Same name as
+; before ("Line2D") so slash_arc.gd's @onready var _core still binds.
 [node name="Line2D" type="Line2D" parent="."]
 points = PackedVector2Array(28.28, -28.28, 34.64, -20, 38.64, -10.36, 40, 0, 38.64, 10.36, 34.64, 20, 28.28, 28.28)
-width = 6.0
+width = 9.0
 width_curve = SubResource("core_width")
 default_color = Color(1, 0.98, 0.95, 1)
 gradient = SubResource("core_grad")
@@ -63,3 +109,49 @@ joint_mode = 2
 begin_cap_mode = 2
 end_cap_mode = 2
 antialiased = true
+
+; TipBurst — sparks fly off the blade tip (the arc's peak at +X).
+; explosiveness = 1.0 so all sparks emit at spawn instant. spread 90°
+; throws them forward + sideways from the tip in a fan that reads as
+; "the magical blade slashed THROUGH something and bled energy."
+[node name="TipBurst" type="CPUParticles2D" parent="."]
+position = Vector2(40, 0)
+amount = 10
+lifetime = 0.35
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 90.0
+gravity = Vector2(0, 0)
+direction = Vector2(1, 0)
+initial_velocity_min = 80.0
+initial_velocity_max = 180.0
+damping_min = 6.0
+damping_max = 10.0
+scale_amount_min = 2.0
+scale_amount_max = 3.5
+color_ramp = SubResource("tip_spark_grad")
+
+; HiltSparkle — soft magenta sparkle at the wizard's hand (arc origin).
+; Lower amount + slower velocity + 360° spread = "the spell channeling
+; that LAUNCHED the cut." Sells "this isn't a sword swing, it's a
+; conjured energy blade."
+[node name="HiltSparkle" type="CPUParticles2D" parent="."]
+position = Vector2(-4, 0)
+amount = 6
+lifetime = 0.28
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+direction = Vector2(1, 0)
+initial_velocity_min = 30.0
+initial_velocity_max = 70.0
+damping_min = 8.0
+damping_max = 12.0
+scale_amount_min = 1.5
+scale_amount_max = 2.5
+color_ramp = SubResource("hilt_spark_grad")

@@ -1,0 +1,77 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3parryshield01"]
+
+[ext_resource type="Script" path="res://scripts/parry_shield.gd" id="1_script"]
+
+; Iter 29 parry shield — actual kite-shield silhouette that appears
+; IN FRONT of the hero for the duration of the parry window. Pre-iter-29
+; the parry visual was just an expanding cyan ring, which read as an
+; OFFENSIVE pulse, not a DEFENSIVE block. The kite silhouette reads as
+; "I am holding a shield up THIS way" — orientation comes from the
+; hero's aim vector at activation time.
+;
+; Three layered polygons:
+;   Halo  — outer wide kite, low-alpha cyan glow (the "field")
+;   Core  — narrower kite, brighter cyan-white (the "ward")
+;   Boss  — small central diamond, bright white (the shield's "boss"/
+;            center stud)
+; Plus a Line2D RIM tracing the halo's outline for crisp edges.
+;
+; On parry CATCH (called by hero.gd), shatter() scales the shield to
+; 1.6× while fading alpha to 0 over 0.18s — sells "the shield deflected
+; the hit and dispersed its energy."
+
+[sub_resource type="Curve" id="rim_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 1.0), 0.0, 0.0, 0, 0, Vector2(0.5, 0.7), 0.0, 0.0, 0, 0, Vector2(1.0, 1.0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+; Cyan gradient for the rim line — bright cyan at the front tip,
+; slightly cooler at the back. Sells "the shield FACES the threat."
+[sub_resource type="Gradient" id="rim_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.55, 0.95, 1.0, 0.95, 0.75, 1.0, 1.0, 0.85, 0.55, 0.95, 1.0, 0.95)
+
+[node name="ParryShield" type="Node2D"]
+script = ExtResource("1_script")
+
+; ── Halo — wide kite, soft cyan glow ─────────────────────────────────
+; 6-vert kite shape pointing toward +X (the "forward" of the shield).
+; setup() rotates the whole node so +X aligns with the hero's aim.
+; Tip at x=42 (front), back at x=-26 (heel of the shield).
+[node name="Halo" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(42, 0, 28, -22, 0, -28, -26, 0, 0, 28, 28, 22)
+color = Color(0.5, 0.95, 1.0, 0.45)
+
+; ── Core — narrower kite, brighter ───────────────────────────────────
+; Inset ~6 px from the halo on each side. Bright cyan-white so the
+; "ward" reads as the solid part of the shield. The halo around it
+; reads as the energy field.
+[node name="Core" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(34, 0, 22, -16, 0, -20, -18, 0, 0, 20, 22, 16)
+color = Color(0.75, 1.0, 1.0, 0.85)
+
+; ── Boss — small bright diamond at the shield's center ──────────────
+; 4-vert diamond. The boss is the metal stud at a real shield's center —
+; here it's a tiny bright dot that visually anchors the shield. Stays
+; in proportion when the shield scales up on shatter.
+[node name="Boss" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(7, 0, 0, -5, -5, 0, 0, 5)
+color = Color(1.0, 1.0, 1.0, 1.0)
+
+; ── Rim — Line2D outline tracing the halo's silhouette ──────────────
+; closed = true wraps the polyline. Width-curve tapers the rim slightly
+; in the middle to give the silhouette some elegance without going full
+; thin/thick variation. Gradient brightens toward the tip so the shield
+; reads as facing the threat.
+[node name="Rim" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 28, -22, 0, -28, -26, 0, 0, 28, 28, 22)
+closed = true
+width = 2.5
+width_curve = SubResource("rim_width")
+default_color = Color(0.85, 1.0, 1.0, 0.95)
+gradient = SubResource("rim_grad")
+joint_mode = 2
+begin_cap_mode = 1
+end_cap_mode = 1
+antialiased = true

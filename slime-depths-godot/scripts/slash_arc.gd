@@ -22,11 +22,16 @@ const DURATION: float = 0.25
 const HALO_SCALE_BOOST: float = 0.85
 const CORE_SCALE_BOOST: float = 0.35
 
+# Iter 29 — third outermost halo for the energy-aura look. Bleeds
+# into the dim dungeon palette; decays fastest of the three lines so
+# the outer glow blooms then dies while the core edge lingers.
+@onready var _outer: Line2D = $OuterHalo
 @onready var _halo: Line2D = $Halo
 @onready var _core: Line2D = $Line2D
 
 var _elapsed: float = 0.0
 var _base_scale: Vector2 = Vector2.ONE
+var _outer_base_alpha: float = 1.0
 var _halo_base_alpha: float = 1.0
 var _core_base_alpha: float = 1.0
 
@@ -47,6 +52,8 @@ func setup(aim: Vector2, swing_sign: int = 1) -> void:
 
 func _ready() -> void:
 	_base_scale = scale
+	if _outer != null:
+		_outer_base_alpha = _outer.default_color.a
 	if _halo != null:
 		_halo_base_alpha = _halo.default_color.a
 	if _core != null:
@@ -58,19 +65,26 @@ func _process(delta: float) -> void:
 	if t >= 1.0:
 		queue_free()
 		return
-	# Halo fades to alpha 0 faster (ease-out cube) than the core (ease-
-	# out quad). The halo blooms then dies; the core lingers a touch
-	# longer so the player still sees the "edge" cut at the end.
+	# Iter 29 — three asymmetric decay curves, each layer has its own
+	# "lifetime feel":
+	#   outer  t^3.5  fastest decay — bloom-and-die atmospheric glow
+	#   halo   t^3    mid decay
+	#   core   t^2    slowest decay — the sharp edge lingers
+	# Combined: the wide energy aura puffs out and dies while the
+	# sharp blade-cut edge is still visible. Same trick as iter-13
+	# but with one more layer for a fuller crescent.
+	var outer_fade: float = 1.0 - pow(t, 3.5)
 	var halo_fade: float = 1.0 - pow(t, 3.0)
 	var core_fade: float = 1.0 - pow(t, 2.0)
-	# Both lines share the parent transform but scale_boost differs —
-	# we apply per-line scale via the node's children to avoid stacking
-	# transforms. Simpler: set parent scale to the average growth, then
-	# nudge each line's modulate alpha individually. The visual offset
-	# between halo+core is the asymmetric alpha + the natural width
-	# difference baked into the .tscn.
+	# Scale grows on the average across the layers — keeps the three
+	# Line2Ds visually locked together as one slash even though their
+	# alphas drift apart.
 	var avg_boost: float = (HALO_SCALE_BOOST + CORE_SCALE_BOOST) * 0.5
 	scale = _base_scale * (1.0 + avg_boost * t)
+	if _outer != null:
+		var outer_col: Color = _outer.default_color
+		outer_col.a = _outer_base_alpha * outer_fade
+		_outer.default_color = outer_col
 	if _halo != null:
 		var halo_col: Color = _halo.default_color
 		halo_col.a = _halo_base_alpha * halo_fade
