@@ -67,7 +67,9 @@ func _ready() -> void:
 	# Resolve the active room config — fall back to room_01 for
 	# editor-direct launches so the scene is debuggable in isolation.
 	if RunState.current_room_config == null:
-		var fb := load(FALLBACK_ROOM_CONFIG)
+		# load() returns Variant in Godot 4 — explicit Resource typing
+		# stops the := inference warning under strict 4.6 mode.
+		var fb: Resource = load(FALLBACK_ROOM_CONFIG)
 		if fb is RoomConfig:
 			RunState.current_room_index = 0
 			RunState.current_room_config = fb

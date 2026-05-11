@@ -192,6 +192,9 @@ func _on_pickup_claimed(world_pos: Vector2, _name: String) -> void:
 # -60 dB to effectively-mute when slider is at zero (audio rarely
 # benefits from going lower; below that is just float noise).
 func set_master_volume(linear_0_to_1: float) -> void:
-	var v := clamp(linear_0_to_1, 0.0, 1.0)
-	var db := linear_to_db(v) if v > 0.001 else -80.0
+	# clampf / explicit float typing — clamp() is polymorphic in Godot 4
+	# and returns Variant, which breaks := type-inference under the 4.6
+	# strict warning regime.
+	var v: float = clampf(linear_0_to_1, 0.0, 1.0)
+	var db: float = linear_to_db(v) if v > 0.001 else -80.0
 	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Master"), db)

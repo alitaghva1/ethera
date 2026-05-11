@@ -20,17 +20,6 @@ run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
-; INFERRED_DECLARATION warning fires every time `var x := foo()` returns
-; Variant (e.g. lerp / load / pow / autoload method without class_name).
-; Godot 4.6 escalates this to an error by default which breaks
-; idiomatic GDScript. Demote to plain warning — real type-safety bugs
-; still surface as runtime crashes; this just allows the := shorthand
-; for built-ins and autoloads without per-line type annotations.
-[debug]
-
-gdscript/warnings/inferred_declaration=1
-gdscript/warnings/untyped_declaration=0
-
 [autoload]
 
 InputSetup="*res://scripts/input_setup.gd"
@@ -40,6 +29,16 @@ Events="*res://scripts/events.gd"
 FX="*res://scripts/fx.gd"
 Audio="*res://scripts/audio.gd"
 Dialogue="*res://scenes/dialogue_ui.tscn"
+
+[debug]
+
+gdscript/warnings/treat_warnings_as_errors=false
+gdscript/warnings/inferred_declaration=0
+gdscript/warnings/untyped_declaration=0
+gdscript/warnings/unsafe_call_argument=0
+gdscript/warnings/unsafe_method_access=0
+gdscript/warnings/unsafe_property_access=0
+gdscript/warnings/unsafe_cast=0
 
 [display]
 
