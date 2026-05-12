@@ -52,6 +52,13 @@ static func spawn(host: Node, world_pos: Vector2, sheet_name: String, opts: Dict
 	fx.rotation = float(opts.get("rotation", 0.0))
 	fx.scale = opts.get("scale", Vector2(1.0, 1.0))
 	fx.modulate = opts.get("modulate", Color(1.0, 1.0, 1.0, 1.0))
+	# iter-89: optional texture offset (LOCAL coords, rotates + scales
+	# with the node). Used by the slash to push the sprite forward in
+	# the aim direction so the slash arc's visual mass appears IN FRONT
+	# of the hero instead of centered on them. Native pixels — gets
+	# scaled by fx.scale. Default (0,0) keeps existing FX behavior
+	# unchanged.
+	fx.offset = opts.get("offset", Vector2.ZERO)
 	# Wire the auto-free on animation_finished. Each FxSprite is
 	# single-shot — fires its animation, then queue_frees.
 	fx.animation_finished.connect(fx.queue_free)

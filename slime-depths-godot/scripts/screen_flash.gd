@@ -176,11 +176,26 @@ func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
 	#   aim.angle()     → rotation so the arc points where the player is
 	#                     swinging at
 	var scale_mul: float = clampf(float(opts.get("width", 14.0)) / 18.0, 0.7, 1.3)
+	# iter-89: shift the slash texture FORWARD in local coords so the
+	# arc's visual mass appears IN FRONT of the hero. The Frostwindz
+	# slash sheet has its arc concentrated in the upper-right diagonal
+	# of the 128px cell — centered on hero, that puts the slash mass
+	# off-axis from the swing direction (the user-reported "ahead or
+	# behind" feel). Local-coord offset rotates with the node, so the
+	# texture always shifts in the aim direction regardless of which
+	# way the hero is facing.
+	#
+	# 48 native px ≈ 38% of the 128px cell — pushes the "swing origin"
+	# of the slash to the hero position, with the arc's full sweep
+	# extending forward. Tune if playtesting reads it as too-far or
+	# too-close.
+	const SLASH_FORWARD_OFFSET: float = 48.0
 	FxSprite.spawn(parent, world_pos, "slash_arc", {
 		"rotation": aim.angle(),
 		"scale": Vector2(scale_mul, scale_mul * float(swing_sign)),
 		"modulate": opts.get("color", Color(1.0, 1.0, 1.0, 1.0)),
 		"z_index": 5,
+		"offset": Vector2(SLASH_FORWARD_OFFSET, 0.0),
 	})
 
 func _on_hero_blasted(world_pos: Vector2, aim: Vector2) -> void:
