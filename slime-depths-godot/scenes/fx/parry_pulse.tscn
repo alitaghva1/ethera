@@ -1,13 +1,17 @@
-[gd_scene load_steps=5 format=3 uid="uid://b3parrypulse001"]
+[gd_scene load_steps=6 format=3 uid="uid://b3parrypulse001"]
 
 [ext_resource type="Script" path="res://scripts/parry_pulse.gd" id="1_script"]
 
-; Parry pulse — iter 25. Cyan cousin of dash_impact: two concentric
-; Line2D rings (halo + core) expanding from radius 22 → ~2.8× over
-; the pulse lifetime, plus an 8-particle radial spark burst. Same
-; asymmetric ease decay trick as iter-13 slash_arc / dash_impact so
-; the kit reads cohesively — halo fades on t², core on t³ for a
-; sharp leading edge.
+; Parry pulse — iter 73 phasing rework. Iter 25 baseline: two concentric
+; Line2D rings (halo + core) + an 8-particle radial spark burst (peak
+; phase only). Iter 73 prepends a PreFlash Polygon2D — a bright cyan-
+; white starburst at the parry origin that flashes for ~0.05s before
+; the rings expand. Tells the eye "I parried that" the moment the parry
+; lands, instead of waiting for the ring to grow into readability.
+;
+; Same asymmetric ease decay trick as iter-13 slash_arc / dash_impact
+; so the kit reads cohesively — halo fades on t², core on t^1.5 for a
+; sharp leading edge that lingers longer than iter-25.
 ;
 ; Spawned twice per use: once on _start_parry (immediate input
 ; confirmation) and once on _on_parry_hit (bigger, marks the catch).
@@ -32,6 +36,15 @@ point_count = 3
 
 [node name="ParryPulse" type="Node2D"]
 script = ExtResource("1_script")
+
+; PreFlash — iter 73 anticipation pulse. A bright cyan-white Polygon2D
+; that flashes at the parry origin for ~0.05s before fading. Reads as
+; "I just deflected something" the instant the parry connects. Drawn
+; FIRST so it sits behind the rings (the rings then expand THROUGH
+; the fading flash). 16-vert polygon approximates a circle at r=14.
+[node name="PreFlash" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(14, 0, 12.93, 5.36, 9.9, 9.9, 5.36, 12.93, 0, 14, -5.36, 12.93, -9.9, 9.9, -12.93, 5.36, -14, 0, -12.93, -5.36, -9.9, -9.9, -5.36, -12.93, 0, -14, 5.36, -12.93, 9.9, -9.9, 12.93, -5.36)
+color = Color(0.85, 1.0, 1.0, 0.95)
 
 ; 12-vert closed polygon approximating a circle at radius 22 — same
 ; geometry as dash_impact for consistency. The script tweens scale

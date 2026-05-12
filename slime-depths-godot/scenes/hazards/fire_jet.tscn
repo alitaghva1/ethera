@@ -12,8 +12,15 @@ size = Vector2(22, 80)
 ; Children (ordered back-to-front; later siblings draw on top):
 ;   CollisionShape2D — narrow vertical rectangle (22×80) covering the
 ;     full damage column.
+;   GroundFootprint (Polygon2D, z=1) — readability pass: dim charred
+;     ellipse on the floor showing WHERE the stream lands even in IDLE.
+;     Brightens with the telegraph + flashes during ON. Lets the player
+;     learn "this tile is unsafe" without needing to see the column.
 ;   BaseEmber (Polygon2D) — always-visible smoldering pip on the floor,
 ;     so the hazard is discoverable even when OFF.
+;   PreFireSpark (Polygon2D) — extra bright yellow pip that pops in the
+;     final ~0.25s before eruption (last half of telegraph). Sharper
+;     visual cue than the warmup column alone: "fire RIGHT NOW."
 ;   WarmupColumn (Polygon2D) — orange-faded tall rect that telegraphs
 ;     ignition in the final ~0.5s of OFF phase. Scaled vertically by
 ;     the script (grows from base up).
@@ -38,11 +45,28 @@ script = ExtResource("1_script")
 position = Vector2(0, -32)
 shape = SubResource("firejet_area")
 
+; Ground footprint — charred ellipse on the floor (20px wide × 6px tall)
+; persistently visible even during IDLE so player learns "this tile is
+; a fire vent." z_index=1 puts it above the background but below hero (z=5).
+; Script ramps color/alpha across IDLE → TELEGRAPH → ON.
+[node name="GroundFootprint" type="Polygon2D" parent="."]
+z_index = 1
+polygon = PackedVector2Array(-10, 0, -7, -4, 0, -5, 7, -4, 10, 0, 7, 4, 0, 5, -7, 4)
+color = Color(0.45, 0.20, 0.10, 0.55)
+
 ; Base ember — small flat oval on the floor, always visible. 18 px wide
 ; × 5 px tall. Reads as "smoldering vent" between eruptions.
 [node name="BaseEmber" type="Polygon2D" parent="."]
 polygon = PackedVector2Array(-9, 0, -6, -3, 0, -4, 6, -3, 9, 0, 6, 2, 0, 3, -6, 2)
 color = Color(0.7, 0.35, 0.1, 0.75)
+
+; Pre-fire spark — small bright yellow-white pip that pops in the final
+; ~0.25s of telegraph (the back half of the warmup window). Sharper "fire
+; NOW" cue than the warmup column alone. Hidden in IDLE + early TELEGRAPH.
+[node name="PreFireSpark" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-3, -2, -2, -5, 0, -7, 2, -5, 3, -2, 2, 0, 0, 1, -2, 0)
+color = Color(1.0, 0.95, 0.55, 1.0)
+visible = false
 
 ; Warmup column — narrow vertical bar (10 px wide × 60 px tall) that
 ; ramps in during the last 0.5s before eruption. Scaled vertically by

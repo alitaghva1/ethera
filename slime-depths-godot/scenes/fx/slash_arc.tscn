@@ -1,23 +1,30 @@
-[gd_scene load_steps=11 format=3 uid="uid://b3slasharc0001"]
+[gd_scene load_steps=14 format=3 uid="uid://b3slasharc0001"]
 
 [ext_resource type="Script" path="res://scripts/slash_arc.gd" id="1_script"]
 
-; ── Magical energy-sword cut — iter 29 rework ───────────────────────────
-; Three layered Line2Ds + two particle bursts. Pre-iter-29 this was a
-; two-layer halo+core arc that read as a smear — not a sword cut. The
-; "magical energy sword" feel needs:
-;   • A bright SHARP edge (the actual blade slash)
-;   • A wider GLOW that crackles around the cut (energy aura)
-;   • A FURTHEST glow that bleeds into the dungeon dark (atmospheric)
-;   • SPARKS at the blade tip (energy bleeds off the cutting edge)
-;   • A SPARKLE at the hilt (the wizard's hand channeling)
+; ── Magical energy-sword cut — iter 73 phasing rework ────────────────────
+; Iter 29 baseline: three Line2D layers (OuterHalo/Halo/Core) + two
+; particle bursts. Iter 73 adds:
+;   • HiltFlash node — bright cyan-white anticipation pulse at the
+;     swing origin. Tells the eye "the hero just swung" in the first
+;     0.08s, before the arc's sweep registers.
+;   • GhostArc — fourth widest, low-alpha Line2D that lags 0.06s
+;     behind the main arc to read as motion-blur trailing the cut.
+;
+; The shoot has anticipation/travel/connection/theme phases the eye
+; reads. The slash now matches by adding anticipation (HiltFlash) +
+; motion blur (GhostArc), keeping peak (the three arcs) and lingering
+; longer (DURATION 0.25 → 0.32 in slash_arc.gd).
 ;
 ; Layer order (back to front):
-;   OuterHalo — widest, purple-magenta, very low alpha
-;   Halo      — mid, gold-magenta-cyan gradient
-;   Core      — narrow bright cream-white edge
+;   GhostArc    — widest, lowest-alpha cyan-magenta trail (motion blur)
+;   OuterHalo   — wide, purple-magenta atmospheric glow
+;   Halo        — mid, gold-magenta-cyan gradient
+;   Core        — narrow bright cream-white edge
 ;   HiltSparkle — particle burst at origin (wizard's hand)
-;   TipBurst  — particle burst at arc peak (blade tip)
+;   TipBurst    — particle burst at arc peak (blade tip)
+;   HiltFlash   — bright Polygon2D anticipation pulse at origin
+;                  (drawn last = topmost for the brief flash window)
 
 ; Width curves
 [sub_resource type="Curve" id="outer_width"]
@@ -38,6 +45,14 @@ max_value = 1.0
 _data = [Vector2(0, 0.05), 0.0, 0.0, 0, 0, Vector2(0.55, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.05), 0.0, 0.0, 0, 0]
 point_count = 3
 
+; Ghost arc width curve — slightly broader than the outer halo so it
+; reads as a soft tail behind the cut, not a second cut.
+[sub_resource type="Curve" id="ghost_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.0), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.0), 0.0, 0.0, 0, 0]
+point_count = 3
+
 ; Outer halo gradient — purple-magenta bleeding to transparent at the
 ; edges. This is the "energy field" the cut leaves behind.
 [sub_resource type="Gradient" id="outer_grad"]
@@ -54,6 +69,12 @@ colors = PackedColorArray(1.0, 0.65, 1.0, 0.95, 1.0, 0.92, 0.55, 1.0, 0.95, 1.0,
 offsets = PackedFloat32Array(0, 0.5, 1)
 colors = PackedColorArray(1, 1, 0.95, 1, 1, 0.95, 1.0, 1, 0.9, 1, 1, 1)
 
+; Ghost arc gradient — desaturated cyan-magenta. Lower saturation so
+; it reads as "the arc that WAS there" rather than a second cut.
+[sub_resource type="Gradient" id="ghost_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.75, 0.5, 0.95, 0.45, 0.85, 0.7, 0.95, 0.55, 0.6, 0.8, 1.0, 0.4)
+
 ; Tip sparks ramp — bright cyan core fading through gold to transparent.
 ; Sparks fly OFF the leading blade tip when the swing peaks.
 [sub_resource type="Gradient" id="tip_spark_grad"]
@@ -68,6 +89,22 @@ colors = PackedColorArray(1.0, 0.85, 1.0, 0.85, 0.9, 0.55, 1.0, 0.65, 0.7, 0.4, 
 
 [node name="SlashArc" type="Node2D"]
 script = ExtResource("1_script")
+
+; GhostArc — widest, low-alpha cyan-magenta trail. Same arc geometry
+; as the others (so the silhouette matches), bumped to width 46 so it
+; sits visibly BEHIND/AROUND the other layers. Starts at alpha 0 — the
+; script fades it IN over GHOST_LAG (0.06s) so it reads as motion-blur
+; trailing the cut, not a second cut.
+[node name="GhostArc" type="Line2D" parent="."]
+points = PackedVector2Array(28.28, -28.28, 34.64, -20, 38.64, -10.36, 40, 0, 38.64, 10.36, 34.64, 20, 28.28, 28.28)
+width = 46.0
+width_curve = SubResource("ghost_width")
+default_color = Color(0.75, 0.6, 1.0, 0.55)
+gradient = SubResource("ghost_grad")
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
 
 ; OuterHalo — widest, magenta-purple atmospheric glow. Drawn first so
 ; it sits BEHIND everything. width 38 + low alpha = bleeds into the
@@ -155,3 +192,13 @@ damping_max = 12.0
 scale_amount_min = 1.5
 scale_amount_max = 2.5
 color_ramp = SubResource("hilt_spark_grad")
+
+; HiltFlash — iter 73 anticipation pulse. A bright cyan-white Polygon2D
+; circle (12-vert approximation) drawn at the swing origin. The script
+; fades it from alpha 1.0 → 0 over HILT_FLASH_DURATION (0.08s) so it
+; reads as the "wind-up snap" the moment the hero swings. Acts as the
+; visual signature for "swing started here" before the arc takes over.
+[node name="HiltFlash" type="Polygon2D" parent="."]
+position = Vector2(-4, 0)
+polygon = PackedVector2Array(10, 0, 8.66, 5, 5, 8.66, 0, 10, -5, 8.66, -8.66, 5, -10, 0, -8.66, -5, -5, -8.66, 0, -10, 5, -8.66, 8.66, -5)
+color = Color(0.9, 1.0, 1.0, 0.9)

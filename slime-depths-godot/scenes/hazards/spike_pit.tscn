@@ -11,6 +11,9 @@ radius = 26.0
 ;
 ; Children:
 ;   CollisionShape2D — circular detection at radius 26.
+;   DangerHalo (Polygon2D, z=1) — readability pass: dim red ring that
+;     pulses faintly so the player can see the DAMAGE RADIUS from across
+;     the room even when not on the pit. Brightens on each tick.
 ;   PitFloor (Polygon2D) — dark inset showing the bottom of the pit
 ;     (almost black with a slight purple tint = "deep").
 ;   PitRim (Line2D) — stone-grey outline so the pit reads against the
@@ -34,6 +37,15 @@ script = ExtResource("1_script")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("spike_area")
+
+; Danger halo — wider faint reddish ring on the floor at radius ~28.
+; Pulses gently in IDLE so player learns "this is the bite radius"
+; from a distance. Script brightens it sharply on each damage tick.
+; z=1 = above background, below hero (z=5).
+[node name="DangerHalo" type="Polygon2D" parent="."]
+z_index = 1
+polygon = PackedVector2Array(32, 0, 28, 16, 16, 28, 0, 32, -16, 28, -28, 16, -32, 0, -28, -16, -16, -28, 0, -32, 16, -28, 28, -16)
+color = Color(0.85, 0.20, 0.15, 0.18)
 
 ; Iter 58 — z_index=-1 set on the SpikePit root above; children
 ; inherit via z_as_relative (default). Hero renders ABOVE the pit

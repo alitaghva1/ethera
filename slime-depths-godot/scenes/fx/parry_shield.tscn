@@ -1,20 +1,31 @@
-[gd_scene load_steps=4 format=3 uid="uid://b3parryshield01"]
+[gd_scene load_steps=5 format=3 uid="uid://b3parryshield01"]
 
 [ext_resource type="Script" path="res://scripts/parry_shield.gd" id="1_script"]
 
-; Iter 29 parry shield — actual kite-shield silhouette that appears
-; IN FRONT of the hero for the duration of the parry window. Pre-iter-29
-; the parry visual was just an expanding cyan ring, which read as an
-; OFFENSIVE pulse, not a DEFENSIVE block. The kite silhouette reads as
-; "I am holding a shield up THIS way" — orientation comes from the
-; hero's aim vector at activation time.
+; Iter 73 parry shield rework — kite silhouette + forward-projecting
+; geometric energy beams. Pre-iter-73 the shield was a single kite
+; shape with a rim outline (clear "I am holding a shield" silhouette,
+; but no read of WHERE the energy is going).
 ;
-; Three layered polygons:
+; Now also: a fan of geometric beam shapes (BeamFan Line2Ds) shooting
+; FORWARD from the shield tip in a 60° cone. The beams use sharp
+; geometric edges, not radial rays — same crisp grammar as the chain_arc
+; and arcane_bolt FX. When the parry catches a hit and shatter() runs,
+; the whole composite (shield + beams) scales 1.6× and fades, reading
+; as "the shield FIRED its stored energy outward."
+;
+; Pre-iter-29 the parry visual was just an expanding cyan ring, which
+; read as an OFFENSIVE pulse, not a DEFENSIVE block. The kite silhouette
+; reads as "I am holding a shield up THIS way" — orientation comes from
+; the hero's aim vector at activation time. Iter 73 adds the projected
+; beams so on a successful parry the shield SHOWS what it deflects.
+;
+; Layered composition (back to front):
+;   BeamFan1/2/3 — three forward-projected geometric beams (cyan)
 ;   Halo  — outer wide kite, low-alpha cyan glow (the "field")
 ;   Core  — narrower kite, brighter cyan-white (the "ward")
-;   Boss  — small central diamond, bright white (the shield's "boss"/
-;            center stud)
-; Plus a Line2D RIM tracing the halo's outline for crisp edges.
+;   Boss  — small central diamond, bright white (shield's center stud)
+;   Rim   — Line2D tracing the halo's outline for crisp edges
 ;
 ; On parry CATCH (called by hero.gd), shatter() scales the shield to
 ; 1.6× while fading alpha to 0 over 0.18s — sells "the shield deflected
@@ -26,14 +37,74 @@ max_value = 1.0
 _data = [Vector2(0, 1.0), 0.0, 0.0, 0, 0, Vector2(0.5, 0.7), 0.0, 0.0, 0, 0, Vector2(1.0, 1.0), 0.0, 0.0, 0, 0]
 point_count = 3
 
+; Beam width curve — tapers from wide at the shield tip to narrow at
+; the far end, giving each beam a directional "lance" silhouette.
+[sub_resource type="Curve" id="beam_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 1.0), 0.0, 0.0, 0, 0, Vector2(0.6, 0.4), 0.0, 0.0, 0, 0, Vector2(1.0, 0.0), 0.0, 0.0, 0, 0]
+point_count = 3
+
 ; Cyan gradient for the rim line — bright cyan at the front tip,
 ; slightly cooler at the back. Sells "the shield FACES the threat."
 [sub_resource type="Gradient" id="rim_grad"]
 offsets = PackedFloat32Array(0, 0.5, 1)
 colors = PackedColorArray(0.55, 0.95, 1.0, 0.95, 0.75, 1.0, 1.0, 0.85, 0.55, 0.95, 1.0, 0.95)
 
+; Beam gradient — bright cyan-white at the root, fading to translucent
+; deep cyan at the tip. Reads as energy projected outward.
+[sub_resource type="Gradient" id="beam_grad"]
+offsets = PackedFloat32Array(0, 0.4, 0.8, 1)
+colors = PackedColorArray(0.95, 1.0, 1.0, 0.95, 0.7, 0.98, 1.0, 0.8, 0.5, 0.85, 1.0, 0.5, 0.35, 0.7, 1.0, 0)
+
 [node name="ParryShield" type="Node2D"]
 script = ExtResource("1_script")
+
+; ── BeamFan — forward-projected geometric energy beams ──────────────
+; Three Line2Ds projecting from the shield tip (at x=42) outward in a
+; 60° cone. Each beam is a tapered lance (wide at root, narrow at tip).
+; Drawn FIRST so they sit BEHIND the kite silhouette — the shield
+; "front" reads as the energy source the beams emerge from.
+;
+; Geometry per beam: a straight Line2D from (42, 0) to a point ~90 px
+; further along its angle. The middle beam goes straight forward
+; (+30° / -30° in radians ≈ ±0.523 for the side beams).
+;
+; Side beams angled to ±30° from forward: at 90 px the perpendicular
+; offset = 90 * sin(30°) = 45; forward = 90 * cos(30°) ≈ 78. So beam
+; endpoints are at (42 + 78, ±45) = (120, ±45).
+[node name="BeamFan1" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 120, -45)
+width = 6.0
+width_curve = SubResource("beam_width")
+default_color = Color(0.7, 1.0, 1.0, 0.85)
+gradient = SubResource("beam_grad")
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+[node name="BeamFan2" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 132, 0)
+width = 7.0
+width_curve = SubResource("beam_width")
+default_color = Color(0.75, 1.0, 1.0, 0.9)
+gradient = SubResource("beam_grad")
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+[node name="BeamFan3" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 120, 45)
+width = 6.0
+width_curve = SubResource("beam_width")
+default_color = Color(0.7, 1.0, 1.0, 0.85)
+gradient = SubResource("beam_grad")
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
 
 ; ── Halo — wide kite, soft cyan glow ─────────────────────────────────
 ; 6-vert kite shape pointing toward +X (the "forward" of the shield).

@@ -37,22 +37,39 @@ var _state: String = "idle"  # "idle" | "telegraph" | "strike"
 @onready var _ground_ring: Line2D = $GroundRing
 @onready var _bolt: Line2D = $Bolt
 @onready var _strike_flash: Polygon2D = $StrikeFlash
+# Iter-readability additions: filled ground footprint disc + two tip
+# sparks for the back half of telegraph. See scene file for layout.
+@onready var _ground_footprint: Polygon2D = $GroundFootprint
+@onready var _tip_spark_a: Polygon2D = $TipSparkA
+@onready var _tip_spark_b: Polygon2D = $TipSparkB
+# Heartbeat for the IDLE ground footprint pulse.
+var _idle_t: float = 0.0
 
 func _ready() -> void:
 	var cycle_total: float = interval
 	_t = clampf(phase, 0.0, 1.0) * cycle_total
-	_ground_ring.modulate.a = 0.0
+	# Keep a faint outline glimmer in idle so the player sees the ring
+	# even before a telegraph; the disc footprint also handles this.
+	_ground_ring.modulate = Color(1.0, 0.92, 0.45, 0.18)
 	_bolt.visible = false
 	_strike_flash.visible = false
+	_tip_spark_a.visible = false
+	_tip_spark_b.visible = false
 
 func _physics_process(delta: float) -> void:
 	_t += delta
+	_idle_t += delta
 	if _t >= interval:
 		_t -= interval
 	var idle_window: float = interval - TELEGRAPH_TIME - STRIKE_TIME
 	if _t < idle_window:
 		if _state != "idle":
 			_enter_idle()
+		# IDLE: ground footprint shimmers very faintly — ozone breathing
+		# so the player can see the zone from a distance without it
+		# screaming "danger" yet. Period ~2.4s.
+		var ipulse: float = 0.5 + 0.5 * sin(_idle_t * 2.6)
+		_ground_footprint.color = Color(0.55, 0.75, 1.0, 0.10 + 0.06 * ipulse)
 	elif _t < idle_window + TELEGRAPH_TIME:
 		if _state != "telegraph":
 			_enter_telegraph()
@@ -63,6 +80,28 @@ func _physics_process(delta: float) -> void:
 		# Rod glow brightens as charge builds.
 		var glow_a: float = 0.3 + 0.7 * telegraph_t
 		_rod_glow.modulate.a = glow_a
+		# Ground footprint ramps to a much more visible blue-white "zone is
+		# about to be live" wash. Player can see the danger circle even if
+		# the rod itself is partially off-camera.
+		_ground_footprint.color = Color(0.65, 0.85, 1.0, 0.12 + 0.45 * telegraph_t)
+		_ground_footprint.scale = Vector2(1.0 + 0.06 * telegraph_t, 1.0 + 0.06 * telegraph_t)
+		# Tip sparks pop in the back HALF of telegraph (~last 0.2s) so the
+		# player gets a sharp "right now!" cue distinct from the ramp.
+		if telegraph_t > 0.5:
+			var spark_t: float = (telegraph_t - 0.5) * 2.0   # 0..1
+			_tip_spark_a.visible = true
+			_tip_spark_b.visible = true
+			# Alternating pulse — A and B are 180° out of phase so they
+			# crackle rather than blink together.
+			var pa: float = 0.5 + 0.5 * sin(spark_t * 36.0)
+			var pb: float = 0.5 + 0.5 * sin(spark_t * 36.0 + PI)
+			_tip_spark_a.modulate.a = 0.4 + 0.6 * pa
+			_tip_spark_a.scale = Vector2(0.7 + 0.5 * pa, 0.7 + 0.5 * pa)
+			_tip_spark_b.modulate.a = 0.4 + 0.6 * pb
+			_tip_spark_b.scale = Vector2(0.7 + 0.5 * pb, 0.7 + 0.5 * pb)
+		else:
+			_tip_spark_a.visible = false
+			_tip_spark_b.visible = false
 	else:
 		if _state != "strike":
 			_enter_strike()
@@ -70,13 +109,23 @@ func _physics_process(delta: float) -> void:
 		# across the window so it doesn't read as a static decal.
 		var strike_t: float = (_t - idle_window - TELEGRAPH_TIME) / STRIKE_TIME
 		_strike_flash.modulate.a = 0.95 - 0.4 * strike_t
+		# Ground footprint goes white-hot for the strike duration —
+		# unambiguous "this zone is being struck."
+		_ground_footprint.color = Color(1.0, 1.0, 1.0, 0.85 - 0.45 * strike_t)
+		_ground_footprint.scale = Vector2(1.08, 1.08)
 
 func _enter_idle() -> void:
 	_state = "idle"
-	_ground_ring.modulate = Color(1.0, 0.92, 0.45, 0.0)
+	# Keep a faint outline + footprint shimmer in idle. Modulate.a > 0
+	# so the line is barely visible — beats invisible-then-snap-on.
+	_ground_ring.modulate = Color(1.0, 0.92, 0.45, 0.18)
+	_ground_ring.width = 2.0
 	_rod_glow.modulate.a = 0.25
 	_bolt.visible = false
 	_strike_flash.visible = false
+	_tip_spark_a.visible = false
+	_tip_spark_b.visible = false
+	_ground_footprint.scale = Vector2(1.0, 1.0)
 
 func _enter_telegraph() -> void:
 	_state = "telegraph"
@@ -88,6 +137,8 @@ func _enter_strike() -> void:
 	_bolt.visible = true
 	_strike_flash.visible = true
 	_strike_flash.modulate.a = 0.95
+	_tip_spark_a.visible = false
+	_tip_spark_b.visible = false
 	# Damage: scan for hero within DAMAGE_RADIUS of strike point
 	# (= rod position). Direct distance check rather than Area2D
 	# overlap because the strike is instantaneous (one-frame) and

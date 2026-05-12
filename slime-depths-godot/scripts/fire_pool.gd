@@ -35,6 +35,13 @@ var _fading: bool = false
 var _disc: Polygon2D = null
 var _glow: PointLight2D = null
 var _pulse: Polygon2D = null
+# Iter-readability: small ember dots that scatter ON TOP of the pool
+# and pulse asynchronously — sells "actively burning fuel" rather than
+# a flat decal. Three pips at different offsets, each driven by its own
+# phase in _physics_process.
+var _ember_a: Polygon2D = null
+var _ember_b: Polygon2D = null
+var _ember_c: Polygon2D = null
 
 func _ready() -> void:
 	# Iter 61 — join "fire_pools" group so tests / future systems can
@@ -51,31 +58,47 @@ func _ready() -> void:
 	collision_layer = 0
 	collision_mask = 4   # bit 3 = enemies (layer 3 sets bit 3 = value 4)
 	monitorable = false
+	# Iter-readability: z=1 puts the pool on the ground footprint layer
+	# (above background, below hero/enemies/FX). Makes the pool read as
+	# a floor hazard rather than a stamp on top of everything.
+	z_index = 1
 	_build_visuals()
 
 func _build_visuals() -> void:
-	# Disc — warm orange-red, semi-transparent. 12-vert near-circle so
-	# the outline reads as a real burn pool, not a perfect disc.
+	# Disc — warm orange-red. Iter-readability pass: replaced the smooth
+	# 12-vert near-circle with a JAGGED 16-vert flame outline (alternating
+	# inner/outer radii) so the silhouette reads as FIRE not as a colored
+	# coaster. Two adjacent outer points form each lick of flame.
 	_disc = Polygon2D.new()
-	_disc.polygon = PackedVector2Array([
-		Vector2(22, 0), Vector2(19, 11), Vector2(11, 19),
-		Vector2(0, 22), Vector2(-11, 19), Vector2(-19, 11),
-		Vector2(-22, 0), Vector2(-19, -11), Vector2(-11, -19),
-		Vector2(0, -22), Vector2(11, -19), Vector2(19, -11),
-	])
+	var outline: PackedVector2Array = PackedVector2Array()
+	var disc_segs: int = 16
+	for i in range(disc_segs):
+		var a: float = (TAU / float(disc_segs)) * float(i)
+		# Alternate radii — outer 22 / inner 16 — for a flame-tongue edge.
+		var r: float = 22.0 if (i % 2 == 0) else 16.0
+		outline.append(Vector2(cos(a), sin(a)) * r)
+	_disc.polygon = outline
 	_disc.color = Color(0.95, 0.40, 0.18, 0.75)
 	add_child(_disc)
-	# Inner pulse ring — brighter, smaller. Drives a fast sin wave on
-	# alpha + scale so the pool reads as ACTIVE flame, not static decal.
+	# Inner pulse ring — brighter, smaller. Also jagged so the inner core
+	# matches the silhouette. Drives a fast sin wave on alpha + scale so
+	# the pool reads as ACTIVE flame, not static decal.
 	_pulse = Polygon2D.new()
-	_pulse.polygon = PackedVector2Array([
-		Vector2(14, 0), Vector2(12, 7), Vector2(7, 12),
-		Vector2(0, 14), Vector2(-7, 12), Vector2(-12, 7),
-		Vector2(-14, 0), Vector2(-12, -7), Vector2(-7, -12),
-		Vector2(0, -14), Vector2(7, -12), Vector2(12, -7),
-	])
+	var inner_poly: PackedVector2Array = PackedVector2Array()
+	for i in range(disc_segs):
+		var a2: float = (TAU / float(disc_segs)) * float(i) + 0.196   # offset so points don't align
+		var r2: float = 14.0 if (i % 2 == 0) else 9.0
+		inner_poly.append(Vector2(cos(a2), sin(a2)) * r2)
+	_pulse.polygon = inner_poly
 	_pulse.color = Color(1.0, 0.75, 0.40, 0.90)
 	add_child(_pulse)
+	# Ember pips — three tiny bright yellow diamonds scattered across
+	# the pool. Each gets its own sin-phase in _physics_process so they
+	# crackle out of sync. Sells "this is burning fuel" rather than a
+	# painted blob.
+	_ember_a = _make_ember(Vector2(-7, 4))
+	_ember_b = _make_ember(Vector2(8, -6))
+	_ember_c = _make_ember(Vector2(2, 9))
 	# Light — warm orange. Modest energy so a single pool doesn't
 	# dominate, but a CARPET of pools turns the floor orange (the
 	# desired bullet-hell aesthetic).
@@ -86,6 +109,18 @@ func _build_visuals() -> void:
 	_glow.range_z_min = -1024
 	_glow.range_z_max = 1024
 	add_child(_glow)
+
+# Small bright-yellow ember pip. Shared shape so the three embers are
+# visually consistent (just at different positions / phases).
+func _make_ember(offset: Vector2) -> Polygon2D:
+	var pip: Polygon2D = Polygon2D.new()
+	pip.position = offset
+	pip.polygon = PackedVector2Array([
+		Vector2(-2, 0), Vector2(0, -3), Vector2(2, 0), Vector2(0, 3),
+	])
+	pip.color = Color(1.0, 0.95, 0.55, 1.0)
+	add_child(pip)
+	return pip
 
 func _physics_process(delta: float) -> void:
 	_life -= delta
@@ -99,12 +134,41 @@ func _physics_process(delta: float) -> void:
 		var s: float = 1.0 + 0.18 * sin(t)
 		_pulse.scale = Vector2(s, s)
 		_pulse.modulate.a = 0.6 + 0.4 * (0.5 + 0.5 * sin(t * 0.7))
-	# Tail-fade — last 0.4s of life dims the disc + light.
-	var fade_t: float = clampf(_life / 0.4, 0.0, 1.0)
+	# Embers — each pip pulses on its own phase + freq so they crackle.
+	# Phase offsets (0 / 1.7 / 3.4) make sure no two pips peak together.
+	var et: float = (POOL_LIFETIME - _life)
+	if _ember_a != null:
+		_ember_a.modulate.a = 0.4 + 0.55 * (0.5 + 0.5 * sin(et * 14.0))
+		var es_a: float = 0.7 + 0.5 * (0.5 + 0.5 * sin(et * 14.0))
+		_ember_a.scale = Vector2(es_a, es_a)
+	if _ember_b != null:
+		_ember_b.modulate.a = 0.4 + 0.55 * (0.5 + 0.5 * sin(et * 11.0 + 1.7))
+		var es_b: float = 0.7 + 0.5 * (0.5 + 0.5 * sin(et * 11.0 + 1.7))
+		_ember_b.scale = Vector2(es_b, es_b)
+	if _ember_c != null:
+		_ember_c.modulate.a = 0.4 + 0.55 * (0.5 + 0.5 * sin(et * 17.0 + 3.4))
+		var es_c: float = 0.7 + 0.5 * (0.5 + 0.5 * sin(et * 17.0 + 3.4))
+		_ember_c.scale = Vector2(es_c, es_c)
+	# Tail-fade — iter-readability: stretched from 0.4s → 0.6s so the
+	# "ending soon" signal lands earlier. Also contracts the disc scale
+	# slightly across the fade window — the pool VISIBLY shrinks before
+	# it disappears, so the player can predict when it's safe to step in.
+	var fade_t: float = clampf(_life / 0.6, 0.0, 1.0)
 	if _disc != null:
 		_disc.modulate.a = fade_t
+		_disc.scale = Vector2(0.72 + 0.28 * fade_t, 0.72 + 0.28 * fade_t)
 	if _glow != null:
 		_glow.energy = 0.8 * (fade_t * 0.6 + 0.4)
+	# In the final 0.6s, the embers cluster INWARD as fuel runs out —
+	# tween-style scale-down on their positions (cheap to recompute).
+	if _life < 0.6:
+		var inset: float = _life / 0.6
+		if _ember_a != null:
+			_ember_a.position = Vector2(-7, 4) * inset
+		if _ember_b != null:
+			_ember_b.position = Vector2(8, -6) * inset
+		if _ember_c != null:
+			_ember_c.position = Vector2(2, 9) * inset
 	# Tick damage — count down a shared tick interval, then poll all
 	# overlapping enemies and damage anyone whose per-enemy cooldown
 	# has elapsed.
@@ -142,4 +206,11 @@ func _fade_and_free() -> void:
 		tween.tween_property(_pulse, "modulate:a", 0.0, 0.3)
 	if _glow != null:
 		tween.tween_property(_glow, "energy", 0.0, 0.3)
+	# Embers fade with the rest of the pool — clean handoff to queue_free.
+	if _ember_a != null:
+		tween.tween_property(_ember_a, "modulate:a", 0.0, 0.25)
+	if _ember_b != null:
+		tween.tween_property(_ember_b, "modulate:a", 0.0, 0.25)
+	if _ember_c != null:
+		tween.tween_property(_ember_c, "modulate:a", 0.0, 0.25)
 	tween.chain().tween_callback(queue_free)

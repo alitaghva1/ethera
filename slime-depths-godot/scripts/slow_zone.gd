@@ -27,6 +27,11 @@ var _t: float = 0.0
 @onready var _ripple: Polygon2D = $RippleRing
 @onready var _bubble_a: Polygon2D = $BubbleA
 @onready var _bubble_b: Polygon2D = $BubbleB
+# Iter-readability additions: footprint halo (wider faint outer disc to
+# show the field's reach) + swirl wrapper (rotated slowly so the zone
+# reads as MAGIC field, not static decor).
+@onready var _footprint_halo: Polygon2D = $FootprintHalo
+@onready var _swirl: Node2D = $Swirl
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
@@ -43,6 +48,17 @@ func _physics_process(delta: float) -> void:
 	# Bubbles — offset phases so they rise out of sync.
 	_bubble_a.modulate.a = 0.4 + 0.4 * sin(_t * 2.1)
 	_bubble_b.modulate.a = 0.4 + 0.4 * sin(_t * 2.7 + 1.5)
+	# Footprint halo — very slow alpha breathe so the OUTER edge of the
+	# field is readable from a distance. Slower than the ripple so the
+	# two pulses don't sync up and feel mechanical.
+	if _footprint_halo != null:
+		var hpulse: float = 0.5 + 0.5 * sin(_t * 1.1)
+		_footprint_halo.modulate.a = 0.55 + 0.45 * hpulse
+	# Swirl rotation — clockwise, ~0.7 rad/s. Slow enough to read as
+	# "thick magic stirring," fast enough to never look static. The
+	# wisps trace a ring just inside the pool rim.
+	if _swirl != null:
+		_swirl.rotation += 0.7 * delta
 
 func _on_body_entered(body: Node) -> void:
 	if body.is_in_group("hero") and body.has_method("enter_slow_zone"):

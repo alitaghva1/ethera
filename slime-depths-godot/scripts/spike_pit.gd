@@ -29,10 +29,16 @@ var _hero: Node2D = null
 var _hero_inside: bool = false
 var _tick_timer: float = 0.0
 var _flash_timer: float = 0.0
+# Visual heartbeat for the danger halo — pulses regardless of hero.
+var _halo_t: float = 0.0
 # Cached refs to all the spike polygons. We brighten them in unison
 # on each tick rather than tracking individuals.
 var _spikes: Array[Polygon2D] = []
 var _spike_base_color: Color = Color(0.78, 0.74, 0.66, 1)
+# Iter-readability: dim red ground halo at z=1 that pulses faintly so the
+# player can read the danger radius from across the room. Brightens
+# sharply on each damage tick alongside the spike flash.
+@onready var _danger_halo: Polygon2D = $DangerHalo
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
@@ -45,6 +51,16 @@ func _ready() -> void:
 			_spikes.append(s)
 
 func _physics_process(delta: float) -> void:
+	# Danger halo heartbeat — slow sin pulse on alpha + scale, always on.
+	# Period ~1.6s so it reads as a passive warning, not an alarm strobe.
+	_halo_t += delta
+	if _danger_halo != null:
+		var hpulse: float = 0.5 + 0.5 * sin(_halo_t * 3.9)
+		# Base alpha drops slightly during the flash so the contrast on
+		# tick is sharper — script overrides during _flash_spikes.
+		if _flash_timer <= 0.0:
+			_danger_halo.color = Color(0.85, 0.20, 0.15, 0.16 + 0.12 * hpulse)
+			_danger_halo.scale = Vector2(1.0 + 0.04 * hpulse, 1.0 + 0.04 * hpulse)
 	# Tick damage while hero is inside. The timer ALWAYS counts down so
 	# the first tick on entry fires immediately (timer starts at 0).
 	# After damage, timer resets to SPIKE_TICK_INTERVAL.
@@ -83,7 +99,17 @@ func _flash_spikes() -> void:
 	# a visible CAUSE the player can connect to the floating "-1".
 	for s in _spikes:
 		s.color = Color(1.0, 0.95, 0.85, 1)
+	# Danger halo flares — hard red flash + slight scale-up. Reinforces
+	# "the bite radius just bit you" in case the player was at the edge.
+	if _danger_halo != null:
+		_danger_halo.color = Color(1.0, 0.30, 0.20, 0.65)
+		_danger_halo.scale = Vector2(1.15, 1.15)
 
 func _restore_spike_color() -> void:
 	for s in _spikes:
 		s.color = _spike_base_color
+	# Halo drops back to its quiet heartbeat; _physics_process will
+	# resume modulating alpha from the next frame.
+	if _danger_halo != null:
+		_danger_halo.color = Color(0.85, 0.20, 0.15, 0.18)
+		_danger_halo.scale = Vector2(1.0, 1.0)

@@ -9,11 +9,21 @@ radius = 36.0
 ; while inside. Visual = murky green/teal pool with a slow ripple ring
 ; + two bubble pips that pulse out of sync.
 ;
+; Iter-readability pass: zone is ALWAYS active (no telegraph state) so
+; the goal is "persistently visible bounded ground threat with subtle
+; motion that says SLOWING MAGIC." Added Swirl marks rotating slowly
+; around the rim — instantly disambiguates "this is a magical drag
+; field" from any dark decor patch.
+;
 ; Children (back-to-front):
 ;   CollisionShape2D — circular detection at radius 36.
+;   FootprintHalo (Polygon2D, z=1) — extra-wide soft outer halo so the
+;     zone's bounds read at a glance even on a busy floor.
 ;   Pool (Polygon2D) — main murky disc, mid-dark teal at 70% alpha.
 ;   PoolRim (Line2D) — soft darker outline so the pool reads against
 ;     the floor.
+;   Swirl (Node2D wrapper) — rotates a few wisp polygons around the
+;     center to communicate "magic field, slowing you."
 ;   RippleRing (Polygon2D) — inner ring polygon; script modulates its
 ;     alpha and scale for a slow breathing pulse.
 ;   BubbleA / BubbleB — small bright dots offset from center, script
@@ -36,6 +46,15 @@ script = ExtResource("1_script")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("slowzone_area")
 
+; Footprint halo — soft greenish-teal disc at radius ~44, very translucent.
+; Sits at z=1 below the main pool so the player sees a wider danger
+; footprint on the floor (the pool itself is opaque + bounded; the halo
+; bleeds out further to communicate "you're inside the field").
+[node name="FootprintHalo" type="Polygon2D" parent="."]
+z_index = 1
+polygon = PackedVector2Array(44, 0, 38.2, 22, 22, 38.2, 0, 44, -22, 38.2, -38.2, 22, -44, 0, -38.2, -22, -22, -38.2, 0, -44, 22, -38.2, 38.2, -22)
+color = Color(0.40, 0.78, 0.52, 0.18)
+
 ; Pool — 16-vert near-circle, radius 38, murky teal. Slightly larger
 ; than the collision radius so the visual "leaks past" where it
 ; actually catches the hero.
@@ -50,6 +69,28 @@ width = 2.0
 default_color = Color(0.10, 0.22, 0.16, 0.85)
 joint_mode = 2
 antialiased = true
+
+; Swirl — wrapper Node2D the script rotates slowly. Three wisp pips
+; arranged 120° apart trace a circle just inside the pool rim — clear
+; "magic at work" cue distinguishing this from a static dark patch.
+[node name="Swirl" type="Node2D" parent="."]
+
+[node name="WispA" type="Polygon2D" parent="Swirl"]
+position = Vector2(26, 0)
+polygon = PackedVector2Array(-4, -2, -1, -3, 4, 0, -1, 3)
+color = Color(0.78, 1.0, 0.85, 0.65)
+
+[node name="WispB" type="Polygon2D" parent="Swirl"]
+position = Vector2(-13, 22.5)
+rotation = 2.094
+polygon = PackedVector2Array(-4, -2, -1, -3, 4, 0, -1, 3)
+color = Color(0.78, 1.0, 0.85, 0.65)
+
+[node name="WispC" type="Polygon2D" parent="Swirl"]
+position = Vector2(-13, -22.5)
+rotation = -2.094
+polygon = PackedVector2Array(-4, -2, -1, -3, 4, 0, -1, 3)
+color = Color(0.78, 1.0, 0.85, 0.65)
 
 ; Ripple ring — smaller polygon, brighter teal-green. Script pulses
 ; alpha and scale so the pool breathes.

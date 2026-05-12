@@ -54,7 +54,13 @@ func _ready() -> void:
 	collision_layer = 0
 	collision_mask = 2
 	monitorable = false
-	z_index = -1   # under enemies/hero, like other ground hazards
+	# Iter-readability: z=1 puts the glyph footprint on the ground hazard
+	# layer (above background, below hero z=5 + FX z=2/5). Matches the
+	# convention used by fire_jet/spike_pit/lightning_rod ground footprints.
+	# Was -1 historically, which (per iter-58/59 lesson) risked hiding the
+	# glyph under the procedural_dungeon Background sprite. The hero
+	# already renders on top via the iter-58 fix (tree-order in main.gd._ready).
+	z_index = 1
 	var shape: CollisionShape2D = CollisionShape2D.new()
 	var circle: CircleShape2D = CircleShape2D.new()
 	circle.radius = GLYPH_RADIUS

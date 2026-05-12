@@ -5,9 +5,14 @@
 ; Magenta → purple → cyan ramp. Reads as arcane energy bleeding off the
 ; mage during the dash. Tail fades cleanly to alpha 0 so the trail
 ; dissolves rather than abruptly cutting.
+;
+; Iter 73: alpha bumped at peak (0.95 → 1.0) and along the warm-mid
+; (0.85 → 0.95) so the trail reads CLEARLY against the dim dungeon
+; floor mid-dash. The tail still fades to 0 so the trail dissolves
+; cleanly behind the hero.
 [sub_resource type="Gradient" id="trail_grad"]
 offsets = PackedFloat32Array(0, 0.4, 0.8, 1)
-colors = PackedColorArray(1.0, 0.5, 1.0, 0.95, 0.85, 0.55, 1.0, 0.85, 0.55, 0.85, 1.0, 0.6, 0.4, 0.7, 1.0, 0.0)
+colors = PackedColorArray(1.0, 0.55, 1.0, 1.0, 0.9, 0.6, 1.0, 0.95, 0.6, 0.88, 1.0, 0.7, 0.4, 0.7, 1.0, 0.0)
 
 [node name="DashTrail" type="Node2D"]
 script = ExtResource("1_script")
@@ -23,8 +28,8 @@ script = ExtResource("1_script")
 ; past the dash distance and reveal that they're particles, not a
 ; coherent streak.
 [node name="CPUParticles2D" type="CPUParticles2D" parent="."]
-amount = 18
-lifetime = 0.5
+amount = 24
+lifetime = 0.55
 one_shot = true
 emitting = true
 explosiveness = 0.5
@@ -32,10 +37,10 @@ local_coords = false
 spread = 22.0
 gravity = Vector2(0, 0)
 direction = Vector2(-1, 0)
-initial_velocity_min = 60.0
-initial_velocity_max = 140.0
+initial_velocity_min = 70.0
+initial_velocity_max = 160.0
 damping_min = 5.0
 damping_max = 8.0
-scale_amount_min = 2.0
-scale_amount_max = 4.0
+scale_amount_min = 2.5
+scale_amount_max = 5.0
 color_ramp = SubResource("trail_grad")
