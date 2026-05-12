@@ -46,6 +46,10 @@ const PARRY_SHIELD_SCENE = preload("res://scenes/fx/parry_shield.tscn")
 # soul_burst relic — reuse the dash impact shockwave scene tinted red.
 # Cheap visual until a dedicated VFX prefab lands.
 const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
+# Iter 40 — FLAME ascendance fire pool. Spawned at every kill site
+# when the hero owns 4+ FLAME relics. Stacks with soul_burst (which
+# triggers on every 5th kill) — both can fire on a 5/10/15th kill.
+const FIRE_POOL_SCENE = preload("res://scenes/fire_pool.tscn")
 
 # Parry (Iter 25 — replaces the iter-5 held-shield-stance).
 # Tap Q for a brief perfect-block WINDOW. Any incoming damage during
@@ -595,6 +599,13 @@ func _start_dodge(input: Vector2) -> void:
 	_parry_time = 0.0
 	dodge_started.emit()
 	Events.hero_dodged.emit(global_position)
+	# Iter 40 — SHADOW ascendance (4+ SHADOW relics owned). Every dodge
+	# releases a 60-px shockwave at the hero's position dealing 1 damage
+	# to all enemies inside. Pairs with iframes naturally — you're
+	# untouchable AND launching a small AoE around yourself. Stacks
+	# with the existing iframe-bonus + cd-mul SHADOW resonance benefits.
+	if GameState.theme_tier("shadow") >= 2:
+		_trigger_shadow_shockwave()
 
 # Inverse of _vector_to_dir_idx — used for "what direction is the hero
 # facing when no input vector is available" (e.g. dodge with no WASD).
@@ -921,6 +932,14 @@ func take_damage(amount: int) -> void:
 # scene reload = new run).
 func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 	_kill_counter += 1
+	# Iter 40 — FLAME ascendance (4+ FLAME relics owned). Every kill
+	# drops a fire pool at the kill site that damages other enemies
+	# walking through it. Carpet pools = bullet-hell scaling: a 5-mob
+	# clear leaves 5 overlapping pools melting the next wave. Checked
+	# BEFORE other on-kill hooks so the pool spawn is independent of
+	# soul_burst / bloodstone gates.
+	if GameState.theme_tier("flame") >= 2:
+		_trigger_fire_pool(world_pos)
 	# soul_burst — every 5th kill detonates an 80 px AoE for 1 damage at
 	# the kill site. Reuses dash_impact.tscn with a red tint as the VFX
 	# placeholder (audio agent owns the proper effect prefab later).
@@ -968,6 +987,48 @@ func _trigger_soul_burst(world_pos: Vector2) -> void:
 		var scene_root: Node = get_tree().current_scene
 		if scene_root != null:
 			scene_root.add_child(fx)
+
+# Iter 40 — FLAME ascendance fire pool. Spawned at kill site every
+# time an enemy dies WHILE the hero owns 4+ FLAME relics. Each pool
+# damages other enemies inside for ~2s then fades. The compositional
+# heart of the FLAME bullet-hell direction: chain kills → pool carpet
+# → next wave melts on arrival.
+func _trigger_fire_pool(world_pos: Vector2) -> void:
+	var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+	if pool == null:
+		return
+	pool.global_position = world_pos
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(pool)
+
+# Iter 40 — SHADOW ascendance dodge shockwave. Sweeps a 60-px radius
+# around the hero, dealing 1 damage to any enemy inside. Pairs with
+# the dodge's existing iframes so the hero is untouchable for the
+# punch. Also spawns a quick visual ring for feedback — reuses the
+# dash_impact scene with an indigo tint to read as "shadow shock"
+# distinct from FLAME's red soul_burst.
+const SHADOW_SHOCKWAVE_RADIUS: float = 60.0
+const SHADOW_SHOCKWAVE_DAMAGE: int = 1
+func _trigger_shadow_shockwave() -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		if enemy.global_position.distance_to(global_position) > SHADOW_SHOCKWAVE_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			enemy.take_hit(SHADOW_SHOCKWAVE_DAMAGE)
+	# Visual ring — reuse SOUL_BURST_SCENE (a dash_impact tinted indigo).
+	# Different tint from soul_burst's red so the player can tell which
+	# proc fired when both are visible.
+	var fx: Node2D = SOUL_BURST_SCENE.instantiate() as Node2D
+	if fx == null:
+		return
+	fx.global_position = global_position
+	fx.modulate = Color(0.65, 0.55, 1.0, 1.0)
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(fx)
 
 # Iter 25 — parry trigger. Tap Q opens the catch window for PARRY_WINDOW
 # seconds. Hits during that window are routed through _on_parry_hit
@@ -1052,6 +1113,23 @@ func _on_parry_hit() -> void:
 			Color(0.65, 0.95, 1.0),
 		)
 		parent.add_child(n)
+	# Iter 40 — VOW ascendance (4+ VOW relics owned). Every successful
+	# parry restores 1 HP (capped at max). Mirrors slime-depths' VOW
+	# tier-2 grant: "stand firm + master timing → blood and bone return."
+	# Capped so the player can't over-heal; the floater only fires if
+	# the heal lands.
+	if GameState.theme_tier("vow") >= 2:
+		var cap_v: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < cap_v and not _is_dying:
+			heal(1)
+			var parent_v: Node = get_parent()
+			if parent_v != null:
+				var hn: DamageNumber = DamageNumber.spawn(
+					global_position + Vector2(0, -82),
+					"+1 VOW",
+					Color(0.92, 0.92, 0.78),
+				)
+				parent_v.add_child(hn)
 
 # Iter 25 — dash pass-through damage tick. Called from _physics_process
 # while _dash_strike_time > 0. Scans enemies near the hero this frame

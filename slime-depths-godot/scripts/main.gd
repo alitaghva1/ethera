@@ -1248,16 +1248,33 @@ func _weighted_tier_pick(weights: Dictionary, by_tier: Dictionary) -> String:
 # Heal the hero +1 on room clear (Hades chamber-heal convention).
 # Spawns a green "+1" damage number rising from the hero's head so the
 # beat is visible. No-op if already at cap so the number doesn't lie.
+# Iter 40 — BLOOD ascendance (4+ BLOOD relics owned). On top of the
+# baseline +1, restore 25% of MISSING HP (rounded up). Reads as "your
+# blood-soaked relics knit you back together after the fight." With
+# bloodstone + heart_of_stone + 2 more BLOOD relics, the player ends
+# every room near-full.
 func _heal_on_room_clear() -> void:
 	if not is_instance_valid(hero) or hero.hp <= 0:
 		return
 	var cap: int = Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
 	if hero.hp >= cap:
 		return
+	# Baseline heal.
 	hero.heal(1)
+	var heal_amount: int = 1
+	# BLOOD ascendance — fill 25% of remaining missing HP (after the
+	# +1 above). ceili so partial fractions round up — "tiny missing
+	# bar = full top-off."
+	if GameState.theme_tier("blood") >= 2:
+		var missing: int = cap - hero.hp
+		if missing > 0:
+			var extra: int = int(ceili(float(missing) * 0.25))
+			if extra > 0:
+				hero.heal(extra)
+				heal_amount += extra
 	var n: DamageNumber = DamageNumber.spawn(
 		hero.global_position + Vector2(0, -56),
-		"+1",
+		"+%d" % heal_amount,
 		Color(0.55, 1.0, 0.55),
 	)
 	add_child(n)

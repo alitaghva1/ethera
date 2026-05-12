@@ -132,6 +132,17 @@ const RELIC_REGISTRY := {
 		"mods": { "blast_damage_bonus": 1, "projectile_speed_mul": 0.2 },
 		"themes": ["storm"],
 	},
+	# Iter 40 — new common BLOOD relic. Cheap entry into the BLOOD
+	# theme so a player who finds 2 commons can hit BLOOD resonance
+	# without legendary-tier picks.
+	"lifestone": {
+		"name": "LIFESTONE",
+		"description": "A pulsing red gem fused to your heart. +1 max HP.",
+		"tier": "common",
+		"icon_path": "res://assets/icons/relic_bloodstone.png",
+		"mods": { "max_hp_bonus": 1 },
+		"themes": ["blood"],
+	},
 	"swift_strike": {
 		"name": "SWIFT STRIKE",
 		"description": "Sword cooldown -20%.",
@@ -203,6 +214,17 @@ const RELIC_REGISTRY := {
 		"icon_path": "res://assets/icons/relic_gale_step.png",
 		"mods": { "move_speed_mul": 0.2, "dodge_iframes_bonus_f": 0.1 },
 		"themes": ["shadow"],
+	},
+	# Iter 40 — new rare VOW relic. Stronger VOW pick that gives both
+	# the HP buffer AND the chip-damage reduction, so a stalwart-style
+	# tank build is accessible at rare tier (not just legendary).
+	"aegis_plate": {
+		"name": "AEGIS PLATE",
+		"description": "Lacquered armor of the old guard. +2 max HP, -1 incoming damage.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_bulwark.png",
+		"mods": { "max_hp_bonus": 2, "damage_taken_reduction": 1 },
+		"themes": ["vow"],
 	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
