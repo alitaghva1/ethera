@@ -102,16 +102,17 @@ func _initialize() -> void:
 		print("OK iter-86 SpawnBurst files deleted (superseded by Frostwindz portal)")
 
 	# ═══ screen_flash scale tuning updated for 128-px cells ═══
+	# iter-88 first bumped the divisor from /9.3 (64-px cells) to /18.0 (128-px).
+	# iter-90 retuned to /28.0 to bring the slash visual within ATTACK_RANGE
+	# (the slash was reading as a giant disconnected overlay at /18.0).
+	# We still assert the 64-px-cell divisor is gone — that's the real iter-88
+	# guarantee. Specific 128-px divisor is verified in test_iter90.gd.
 	var sf_src := FileAccess.get_file_as_string("res://scripts/screen_flash.gd")
-	# scale_mul divisor jumped from /9.3 (for 64-px cells) to /18.0 (for 128-px cells)
 	if sf_src.contains("/ 9.3"):
 		push_error("FAIL: screen_flash.gd still has 64-px-cell scale_mul divisor (/ 9.3)")
 		ok = false
-	elif not sf_src.contains("/ 18.0"):
-		push_error("FAIL: screen_flash.gd missing 128-px-cell scale_mul divisor (/ 18.0)")
-		ok = false
 	else:
-		print("OK screen_flash.gd scale_mul tuned for 128-px cells")
+		print("OK screen_flash.gd scale_mul no longer uses 64-px-cell divisor")
 
 	if ok:
 		print("=== ITER 88 INTEGRATION PASSED ===")

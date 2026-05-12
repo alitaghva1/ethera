@@ -161,7 +161,17 @@ func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
 		"swing_sign": swing_sign,
 	}
 	var opts: Dictionary = AttackFeel.compose_slash_opts(hero, ctx)
-	var parent: Node = get_tree().current_scene
+	# iter-90: parent the slash to the HERO node (was current_scene). Two
+	# wins from this:
+	#   1. The slash follows the hero's forward lunge + any WASD input
+	#      during the 0.18s swing. Previously the slash hung in world
+	#      space while the hero moved 11+ px forward — user-reported
+	#      "floaty, not connected to the character frame."
+	#   2. Slash auto-frees with the hero on death (no orphan VFX after
+	#      a death mid-swing).
+	# Falls back to current_scene if the hero lookup fails (e.g. boss
+	# intro fires hero_attacked from an off-stage sim).
+	var parent: Node = hero if hero != null else get_tree().current_scene
 	if parent == null:
 		return
 	# Map composer opts → FxSprite params:
@@ -175,7 +185,15 @@ func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
 	#                     hero like a one-two combo
 	#   aim.angle()     → rotation so the arc points where the player is
 	#                     swinging at
-	var scale_mul: float = clampf(float(opts.get("width", 14.0)) / 18.0, 0.7, 1.3)
+	# iter-90: tighter scale so the slash visual roughly matches
+	# ATTACK_RANGE (56 px in hero.gd) rather than overshooting it.
+	#   width=14 (default) → 14/28 ≈ 0.50 → 128*0.50 = 64 px sprite
+	#   width=22 (max relics) → 22/28 ≈ 0.79 → clamped to 0.70 → 90 px
+	# Was /18.0 + clamp (0.7-1.3) which produced a 90-166 px sprite —
+	# 1.5x-2.7x the hero's 60 px drawn height, reading as a giant
+	# disconnected overlay. /28 + (0.4-0.7) keeps the slash within
+	# hero proportions while still scaling visibly with build width.
+	var scale_mul: float = clampf(float(opts.get("width", 14.0)) / 28.0, 0.4, 0.7)
 	# iter-89: shift the slash texture FORWARD in local coords so the
 	# arc's visual mass appears IN FRONT of the hero. The Frostwindz
 	# slash sheet has its arc concentrated in the upper-right diagonal
