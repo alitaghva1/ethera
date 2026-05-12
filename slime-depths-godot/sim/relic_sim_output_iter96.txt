@@ -1,0 +1,99 @@
+
+======================================================================
+ETHERA RELIC SIM — 2000 runs × 4 strategies
+======================================================================
+
+── PICK RATES BY STRATEGY (% of runs containing each relic) ──
+relic                  tier         greedy   random  defensiv    aggro
+----------------------------------------------------------------------
+Iron Fang              common        34.9%    16.6%      8.4%    43.9%
+Sturdy Step            common        32.2%    16.1%     37.3%     5.7%
+Iron Skin              common        29.8%    17.2%     32.0%     6.2%
+Arcane Pulse           common        26.7%    17.5%     10.4%    39.3%
+Focused Eye            common        25.2%    16.9%      9.8%    38.2%
+Detonator              legendary     22.4%    10.3%      6.0%    24.9%
+Twin Cast              legendary     21.9%    10.0%      6.2%    25.8%
+Stoneheart             common        19.6%    16.9%     37.0%     6.0%
+Aegis Plate            rare          19.4%    12.4%     20.6%     4.5%
+Piercing Quarrel       rare          18.9%    12.1%      8.1%    27.6%
+Eye of Ether           mythic        17.7%     6.6%      3.6%    17.1%
+Stalwart               rare          16.4%    12.0%     18.5%     5.0%
+Swift Focus            rare          16.2%    13.7%      8.3%    23.6%
+Wide Arc               rare          16.2%    13.1%      7.7%    23.9%
+Soul Burst             legendary     15.8%    11.9%      6.2%    19.2%
+Swift Strike           rare          15.8%    13.1%      6.9%    24.1%
+Cataclysm              mythic        15.6%     6.7%      3.9%    16.1%
+Phantom Squad          legendary     14.8%    10.7%      6.3%    18.4%
+Ricochet Talisman      rare          14.0%    12.8%      8.0%    18.6%
+Chain Lightning        legendary     14.0%    12.0%      6.8%    16.2%
+Combustion Core        rare          12.9%    12.8%      7.8%    19.6%
+Focused Strike         rare          12.2%    12.2%      8.1%    22.1%
+Phantom Step           mythic        11.4%     7.2%      4.6%     1.7%
+Boots of Haste         legendary     11.2%    10.6%      7.8%     3.5%
+Wisp Companion         rare          10.7%    14.1%      8.7%    17.2%
+Dash Master            rare          10.5%    12.6%      7.2%     4.4%
+Soul Reaver            mythic         9.2%     6.0%     15.7%     9.7%
+Arcane Resonance       legendary      9.0%    10.6%      6.4%    14.6%
+Iron Resolve           legendary      8.9%    11.6%     25.2%     4.0%
+Gale Step              rare           8.7%    11.5%      7.3%     3.5%
+Glacial Resonance      legendary      8.0%    10.1%      9.1%     3.5%
+Frost Pulse            rare           7.7%    12.2%      7.2%     4.7%
+Nimble                 rare           7.3%    14.2%      8.6%     4.5%
+Tempest Cloak          rare           7.0%    12.5%      7.5%     5.0%
+Drinking Edge          rare           7.0%    12.3%     25.5%     4.3%
+Bloodstone             legendary      7.0%    10.8%     28.5%     3.7%
+Embers of Ruin         rare           5.7%    13.3%      8.0%     4.5%
+Crimson Hunger         legendary      5.3%    11.4%     23.7%     4.2%
+Phoenix Feather        legendary      5.2%    11.1%     22.2%     4.0%
+Keen Focus             common         5.2%    17.8%      9.2%    18.9%
+Iron Will              common         4.8%    17.1%     18.1%     6.2%
+Second Wind            legendary      4.2%    11.3%     20.4%     4.2%
+Long Reach             rare           3.2%    13.6%      6.5%     4.5%
+Lifestone              common         3.1%    15.5%     21.2%     6.1%
+Heart of Stone         legendary      2.8%    10.2%     10.7%     3.8%
+Arcane Quiver          rare           2.2%    12.9%      7.4%     4.7%
+Executioner            legendary      1.9%     8.8%      6.8%     3.5%
+Iron Grip              common         0.1%    17.2%      8.6%     5.6%
+
+── AVG BUILD SCORE BY STRATEGY ──
+  greedy       avg= 170.86  stdev=100.55
+  random       avg=  72.56  stdev= 51.52
+  defensive    avg=  90.67  stdev= 36.23
+  aggressive   avg=  74.89  stdev= 86.46
+
+── THEME BONUS REACH BY GREEDY STRATEGY (% runs) ──
+  storm    resonance(2+):  64.1%   ascendance(4+):   8.3%
+  flame    resonance(2+):  38.6%   ascendance(4+):   2.2%
+  blood    resonance(2+):  12.4%   ascendance(4+):   0.2%
+  vow      resonance(2+):  31.4%   ascendance(4+):   0.3%
+  shadow   resonance(2+):  17.5%   ascendance(4+):   0.5%
+
+── NEVER-PICKED BY GREEDY (potential dead pool) ──
+  (none — every relic was picked at least once)
+
+── BOTTOM QUINTILE BY GREEDY PICK RATE (likely needs retune) ──
+  · iron_will              (common    )   4.8%
+  · iron_grip              (common    )   0.1%
+  · lifestone              (common    )   3.1%
+  · keen_focus             (common    )   5.2%
+  · long_reach             (rare      )   3.2%
+  · arcane_quiver          (rare      )   2.2%
+  · heart_of_stone         (legendary )   2.8%
+  · second_wind            (legendary )   4.2%
+  · phoenix_feather        (legendary )   5.2%
+  · executioner            (legendary )   1.9%
+
+── TOP QUINTILE BY GREEDY PICK RATE (defines the meta) ──
+  ★ iron_fang              (common    )  34.9%
+  ★ sturdy_step            (common    )  32.2%
+  ★ iron_skin              (common    )  29.8%
+  ★ arcane_pulse           (common    )  26.7%
+  ★ focused_eye            (common    )  25.2%
+  ★ detonator              (legendary )  22.4%
+  ★ twin_cast              (legendary )  21.9%
+  ★ stoneheart             (common    )  19.6%
+  ★ aegis_plate            (rare      )  19.4%
+  ★ piercing_quarrel       (rare      )  18.9%
+
+======================================================================
+

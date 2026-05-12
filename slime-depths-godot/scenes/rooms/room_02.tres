@@ -22,4 +22,4 @@ branches = [{"kind": "safe", "label": "SAFE", "subtitle": "+1 HP · common relic
 biome = "crypt"
 position_jitter = 16.0
 waves_pool = [[[["orc", 2], ["skel", 2]], [["lancer", 1], ["crypt_spider", 2], ["priest", 1]], [["werewolf", 2], ["wizard", 1], ["bonecap", 1]]], [[["skel", 3], ["orc", 1]], [["crypt_spider", 3], ["priest", 1]], [["werewolf", 1], ["lancer", 2], ["wizard", 1]]], [[["orc", 3]], [["lancer", 2], ["priest", 1], ["archer", 1]], [["werewolf", 2], ["bonecap", 2], ["wizard", 1]]]]
-lore_stones = [{"position": Vector2(1080, 200), "text": "etched in stone: \"do not run from the dark — it remembers\"", "stat_key": "sword_damage_bonus", "stat_value": 1}, {"position": Vector2(180, 560), "text": "scratched: \"the vault opens only once\"", "stat_key": "dodge_iframes_bonus_f", "stat_value": 0.05}]
+lore_stones = [{"position": Vector2(1080, 200), "text": "etched in stone: \"do not run from the dark — it remembers\"", "stat_key": "sword_damage_bonus", "stat_value": 1}, {"position": Vector2(180, 560), "text": "scratched: \"the vault opens only once\"", "stat_key": "crit_chance_f", "stat_value": 0.05}]

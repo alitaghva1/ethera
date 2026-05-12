@@ -2116,7 +2116,12 @@ func _start_dash_strike() -> void:
 		aim_world = _dir_to_vector(_facing_dir)
 	_dash_strike_dir = aim_world.normalized()
 	_dash_strike_time = DASH_STRIKE_DURATION
-	_dash_strike_cd = DASH_STRIKE_COOLDOWN
+	# iter-96: relics + SHADOW theme can shrink the cooldown via
+	# `dash_strike_cooldown_mul`. Modifier folds additively (e.g. -0.30
+	# from dash_master + -0.40 from phantom_step = -0.70 → 30% of base).
+	# Clamped to a 0.25s floor so the engage stays meaningful.
+	var dscd_mul: float = 1.0 + GameState.modifier_total_f("dash_strike_cooldown_mul", 0.0)
+	_dash_strike_cd = max(0.25, DASH_STRIKE_COOLDOWN * dscd_mul)
 	# Iter 64 — capture the dash's origin so _resolve_dash_strike_hit
 	# can stamp FLAME fire-trail pools evenly between start and end.
 	_dash_strike_start_pos = global_position
@@ -2124,7 +2129,10 @@ func _start_dash_strike() -> void:
 	# so a player landing next to a swinging enemy has a window to
 	# reposition. Previously iframes ended exactly at dash end, leaving
 	# the hero vulnerable on the worst possible frame.
-	_iframes = max(_iframes, DASH_STRIKE_DURATION + DASH_STRIKE_POST_IFRAMES)
+	# iter-96: relics that previously extended dodge i-frames now extend
+	# DASH STRIKE post-iframes via `dash_strike_post_iframes_bonus_f`.
+	var ds_post_bonus: float = GameState.modifier_total_f("dash_strike_post_iframes_bonus_f", 0.0)
+	_iframes = max(_iframes, DASH_STRIKE_DURATION + DASH_STRIKE_POST_IFRAMES + ds_post_bonus)
 	_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
 	# Iter 25 — reset the pass-through hit_set for this dash so the
 	# tick scanner can start fresh. Dictionary cleared (not reassigned)

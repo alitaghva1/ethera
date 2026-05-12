@@ -67,7 +67,12 @@ FLOORS_PER_RUN     = 4
 #   id, name, tier, themes, mods, trigger_kind, dead_keys
 # ─────────────────────────────────────────────────────────────────────────
 
-DEAD_KEYS = {"dodge_iframes_bonus_f", "dodge_cooldown_mul"}
+# iter-96: retired DODGE_* keys. dash_strike_cooldown_mul +
+# dash_strike_post_iframes_bonus_f are the new live keys that read in
+# hero.gd's _start_dash_strike. The sim treats them as "DPS-relevant
+# because more dashes per fight = more AoE" and "survival-relevant
+# because longer post-iframes = more free repositioning."
+DEAD_KEYS = set()  # iter-96 cleaned up the dead-modifier slots
 
 RELICS = {
     # ── COMMON ───────────────────────────────────────────────────────────
@@ -75,23 +80,23 @@ RELICS = {
     "arcane_pulse":     ("Arcane Pulse",     "common", ["storm"], {"blast_damage_bonus": 1}, "passive+on_blast_proc"),
     "stoneheart":       ("Stoneheart",       "common", ["blood"], {"max_hp_bonus": 1}, "passive+first_kill_heal"),
     "iron_skin":        ("Iron Skin",        "common", ["vow"],   {"damage_taken_reduction": 1}, "passive+on_block_proc"),
-    "iron_will":        ("Iron Will",        "common", ["vow"],   {"max_hp_bonus": 1}, "passive"),  # description lies — no first-hit DR handler
+    "iron_will":        ("Iron Will",        "common", ["vow"],   {"max_hp_bonus": 1}, "passive"),  # description lies — phase B will retune
     "iron_grip":        ("Iron Grip",        "common", [],        {"knockback_force_mul": 0.25}, "passive"),
-    "sturdy_step":      ("Sturdy Step",      "common", [],        {"dodge_iframes_bonus_f": 0.15}, "passive"),  # DEAD
+    "sturdy_step":      ("Sturdy Step",      "common", ["vow"],   {"damage_taken_reduction": 1}, "passive"),  # iter-96 retune (was DEAD)
     "focused_eye":      ("Focused Eye",      "common", ["storm"], {"blast_damage_bonus": 1, "projectile_speed_mul": 0.2}, "passive"),
     "lifestone":        ("Lifestone",        "common", ["blood"], {"max_hp_bonus": 1}, "passive"),
     "keen_focus":       ("Keen Focus",       "common", [],        {"crit_chance_f": 0.15}, "passive"),
 
     # ── RARE ─────────────────────────────────────────────────────────────
     "swift_strike":     ("Swift Strike",     "rare",   ["flame"], {"sword_cooldown_mul": -0.2}, "passive"),
-    "dodge_master":     ("Dodge Master",     "rare",   ["shadow"], {"dodge_cooldown_mul": -0.3}, "passive"),  # DEAD
+    "dash_master":      ("Dash Master",      "rare",   ["shadow"], {"dash_strike_cooldown_mul": -0.3}, "passive"),  # iter-96 rename (was dodge_master / DEAD)
     "nimble":           ("Nimble",           "rare",   ["shadow"], {"move_speed_mul": 0.3}, "passive"),
     "swift_focus":      ("Swift Focus",      "rare",   ["storm"], {"blast_cooldown_mul": -0.3}, "passive"),
     "long_reach":       ("Long Reach",       "rare",   [],        {"attack_range_mul": 0.25}, "passive"),
     "arcane_quiver":    ("Arcane Quiver",    "rare",   ["storm"], {"projectile_speed_mul": 0.30}, "passive"),
     "wide_arc":         ("Wide Arc",         "rare",   ["flame"], {"attack_arc_mul": 0.60}, "passive"),
     "stalwart":         ("Stalwart",         "rare",   ["vow"],   {"max_hp_bonus": 1, "damage_taken_reduction": 1}, "passive"),
-    "gale_step":        ("Gale Step",        "rare",   ["shadow"], {"move_speed_mul": 0.2, "dodge_iframes_bonus_f": 0.1}, "passive"),  # partial-DEAD
+    "gale_step":        ("Gale Step",        "rare",   ["shadow"], {"move_speed_mul": 0.25, "dash_strike_post_iframes_bonus_f": 0.05}, "passive"),  # iter-96 retune
     "aegis_plate":      ("Aegis Plate",      "rare",   ["vow"],   {"max_hp_bonus": 2, "damage_taken_reduction": 1}, "passive"),
     "piercing_quarrel": ("Piercing Quarrel", "rare",   ["storm"], {"pierce_count": 1}, "passive"),
     "ricochet_talisman":("Ricochet Talisman","rare",   ["storm"], {"ricochet_count": 1}, "passive"),
@@ -99,7 +104,7 @@ RELICS = {
     "embers_of_ruin":   ("Embers of Ruin",   "rare",   ["flame"], {"burn_chance_f": 0.25}, "passive+on_hit_proc"),
     "drinking_edge":    ("Drinking Edge",    "rare",   ["blood"], {"lifesteal_chance_f": 0.15}, "on_kill_proc"),
     "combustion_core":  ("Combustion Core",  "rare",   ["flame"], {"explode_on_kill_chance_f": 0.20}, "on_kill_proc"),
-    "tempest_cloak":    ("Tempest Cloak",    "rare",   ["storm"], {"move_speed_mul": 0.10, "dodge_iframes_bonus_f": 0.05, "projectile_speed_mul": 0.10}, "passive"),  # partial-DEAD
+    "tempest_cloak":    ("Tempest Cloak",    "rare",   ["storm", "shadow"], {"move_speed_mul": 0.15, "projectile_speed_mul": 0.15}, "passive"),  # iter-96 retune
     "frost_pulse":      ("Frost Pulse",      "rare",   ["storm"], {"slow_chance_f": 0.30}, "passive+on_hit_proc"),
     "wisp_companion":   ("Wisp Companion",   "rare",   [],        {"familiar_count": 1}, "active_familiar"),
 
@@ -124,7 +129,7 @@ RELICS = {
     "cataclysm":        ("Cataclysm",        "mythic",  ["flame"], {"explode_on_kill_chance_f": 0.50, "burn_chance_f": 0.25}, "passive+on_kill"),
     "eye_of_ether":     ("Eye of Ether",     "mythic",  ["storm"], {"pierce_count": 2, "ricochet_count": 2, "projectile_count": 1}, "passive"),
     "soul_reaver":      ("Soul Reaver",      "mythic",  ["blood"], {"lifesteal_chance_f": 0.40, "max_hp_bonus": 2, "crit_chance_f": 0.20}, "passive+on_kill"),
-    "phantom_step":     ("Phantom Step",     "mythic",  ["shadow"], {"move_speed_mul": 0.50, "dodge_cooldown_mul": -0.40, "dodge_iframes_bonus_f": 0.15}, "passive"),  # mostly-DEAD
+    "phantom_step":     ("Phantom Step",     "mythic",  ["shadow"], {"move_speed_mul": 0.50, "dash_strike_cooldown_mul": -0.40, "dash_strike_post_iframes_bonus_f": 0.15}, "passive"),  # iter-96 retune
 }
 
 
@@ -269,12 +274,23 @@ def effective_hp(b: Build) -> float:
 
 def utility_score(b: Build) -> float:
     """Movement / control / status. Move speed lets you reposition; slow
-    chance debuffs enemies; range lets you stay out of swings."""
+    chance debuffs enemies; range lets you stay out of swings.
+
+    iter-96: also score dash_strike CD reduction + post-iframes bonus,
+    since those control how often you can re-engage AND how much free
+    repositioning you get per engage."""
     score = 0.0
     score += b.mod("move_speed_mul") * 5.0
     score += b.mod("attack_range_mul") * 3.0
     score += min(0.95, b.mod("slow_chance_f")) * 4.0
     score += min(0.95, b.mod("burn_chance_f")) * 3.0
+    # Dash CD reduction → more dash AoEs per fight. Each -10% CD ≈ +10%
+    # dash-uptime, which translates to extra AoE damage + extra i-frame
+    # coverage. -0.30 (dash_master) gives roughly +30% defensive uptime.
+    score += -b.mod("dash_strike_cooldown_mul") * 6.0
+    # Post-iframes extend the "free reposition" tail of each dash. 0.10
+    # base + bonus is the safety window. Each +0.05s of bonus is meaningful.
+    score += b.mod("dash_strike_post_iframes_bonus_f") * 8.0
     return score
 
 

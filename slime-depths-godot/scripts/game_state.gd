@@ -44,18 +44,20 @@ var persisted_hp: int = -1
 #   damage_taken_reduction  (int)    flat subtract from incoming damage
 #   sword_cooldown_mul      (float)  multiplier delta on ATTACK_COOLDOWN
 #   blast_cooldown_mul      (float)  multiplier delta on BLAST_COOLDOWN  (iter 17)
-#   dodge_cooldown_mul      (float)  DEAD KEY (iter-95). Relics that declared this
-#                                    still do — the modifier silently no-ops since
-#                                    hero.gd no longer reads it. Repurpose in a
-#                                    follow-up: dash_strike_cooldown_mul or remove.
-#   move_speed_mul          (float)  multiplier delta on SPEED
-#   attack_range_mul        (float)  multiplier delta on ATTACK_RANGE  (iter 17)
-#   knockback_force_mul     (float)  multiplier delta on melee + dash knockback  (iter 21)
-#   dodge_iframes_bonus_f   (float)  DEAD KEY (iter-95). Same story as
-#                                    dodge_cooldown_mul — declared by relics but
-#                                    no longer read. Dash strike has its own
-#                                    DASH_STRIKE_POST_IFRAMES window; no relic
-#                                    currently extends it.
+#   dodge_cooldown_mul          (float)  RETIRED (iter-95 → iter-96). No relic
+#                                        declares this anymore — repurposed to
+#                                        dash_strike_cooldown_mul below.
+#   move_speed_mul              (float)  multiplier delta on SPEED
+#   attack_range_mul            (float)  multiplier delta on ATTACK_RANGE  (iter 17)
+#   knockback_force_mul         (float)  multiplier delta on melee + dash knockback  (iter 21)
+#   dodge_iframes_bonus_f       (float)  RETIRED (iter-95 → iter-96). Repurposed
+#                                        as dash_strike_post_iframes_bonus_f below.
+#   dash_strike_cooldown_mul    (float)  iter-96. Multiplier delta on
+#                                        DASH_STRIKE_COOLDOWN. Floor 0.25s in hero.gd.
+#                                        Used by dash_master (-0.3), phantom_step (-0.4).
+#   dash_strike_post_iframes_bonus_f (float)  iter-96. Extra seconds added to
+#                                        DASH_STRIKE_POST_IFRAMES (default 0.10s).
+#                                        Used by phantom_step (+0.15), gale_step (+0.05).
 #   projectile_speed_mul    (float)  multiplier delta on hero blast velocity  (iter 21)
 #   attack_arc_mul          (float)  multiplier delta on ATTACK_ARC half-angle  (iter 21)
 # Float-typed mods are folded via modifier_total_f (see below).
@@ -156,12 +158,15 @@ const RELIC_REGISTRY := {
 		"mods": { "knockback_force_mul": 0.25 },
 		"themes": ["flame"],
 	},
+	# iter-96 retune: dodge_iframes_bonus_f became a dead key when iter-95
+	# removed the dodge ability. Repurposed to a flat -1 damage taken — a
+	# common VOW stat-stick that actually does something.
 	"sturdy_step": {
 		"name": "STURDY STEP",
-		"description": "Steady on your feet. Dodge i-frames last +0.15s longer.",
+		"description": "Steady on your feet. -1 incoming damage.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_iron_greaves.png",
-		"mods": { "dodge_iframes_bonus_f": 0.15 },
+		"mods": { "damage_taken_reduction": 1 },
 		"themes": ["vow"],
 	},
 	"focused_eye": {
@@ -191,12 +196,16 @@ const RELIC_REGISTRY := {
 		"mods": { "sword_cooldown_mul": -0.2 },
 		"themes": ["flame"],
 	},
-	"dodge_master": {
-		"name": "DODGE MASTER",
-		"description": "Dodge cooldown -30%.",
+	# iter-96 retune: was DODGE MASTER, anchored to a now-deleted ability.
+	# Renamed to DASH MASTER — same SHADOW theme, same flavor of "move
+	# more often," but the cooldown reduction now hits dash_strike (the
+	# only mobility option after iter-95).
+	"dash_master": {
+		"name": "DASH MASTER",
+		"description": "Dash strike cooldown -30%.",
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_dodge.png",
-		"mods": { "dodge_cooldown_mul": -0.3 },
+		"mods": { "dash_strike_cooldown_mul": -0.3 },
 		"themes": ["shadow"],
 	},
 	"nimble": {
@@ -247,12 +256,16 @@ const RELIC_REGISTRY := {
 		"mods": { "max_hp_bonus": 1, "damage_taken_reduction": 1 },
 		"themes": ["vow"],
 	},
+	# iter-96 retune: dodge_iframes_bonus_f → dash_strike_post_iframes_bonus_f.
+	# Move-speed bump (0.20 → 0.25) so this no longer reads as a strictly
+	# worse nimble; the dash i-frames extension adds a defensive flavor
+	# distinct from nimble's pure mobility.
 	"gale_step": {
 		"name": "GALE STEP",
-		"description": "Wind at your back. +20% move speed, +0.1s dodge i-frames.",
+		"description": "Wind at your back. +25% move speed, +0.05s dash strike post-iframes.",
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_gale_step.png",
-		"mods": { "move_speed_mul": 0.2, "dodge_iframes_bonus_f": 0.1 },
+		"mods": { "move_speed_mul": 0.25, "dash_strike_post_iframes_bonus_f": 0.05 },
 		"themes": ["shadow"],
 	},
 	# Iter 40 — new rare VOW relic. Stronger VOW pick that gives both
@@ -380,15 +393,17 @@ const RELIC_REGISTRY := {
 	# Iter 45 — dual-theme STORM/SHADOW relic. Cheap entry into BOTH
 	# themes simultaneously, so one pick contributes to two resonance
 	# tallies. Pairs naturally — both themes favor mobility + procs.
+	# iter-96 retune: dropped the dead dodge_iframes mod, bumped the two
+	# live mods to compensate (0.10 → 0.15 each). Still a dual-theme
+	# STORM/SHADOW rare for cheap two-theme entry.
 	"tempest_cloak": {
 		"name": "TEMPEST CLOAK",
-		"description": "Wind and lightning answer your call. +10% move speed, +0.05s dodge i-frames, +10% projectile speed.",
+		"description": "Wind and lightning answer your call. +15% move speed, +15% projectile speed.",
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_gale_step.png",
 		"mods": {
-			"move_speed_mul": 0.10,
-			"dodge_iframes_bonus_f": 0.05,
-			"projectile_speed_mul": 0.10,
+			"move_speed_mul": 0.15,
+			"projectile_speed_mul": 0.15,
 		},
 		"themes": ["storm", "shadow"],
 	},
@@ -446,15 +461,21 @@ const RELIC_REGISTRY := {
 		"mods": { "lifesteal_chance_f": 0.40, "max_hp_bonus": 2, "crit_chance_f": 0.20 },
 		"themes": ["blood"],
 	},
+	# iter-96 retune: 2 of 3 mods were dead post-iter-95 (dodge ability
+	# removed). Reanchored to dash_strike — same flavor ("you move between
+	# heartbeats") via the only mobility option that's left. The combined
+	# -0.40 dash cooldown + 0.15s post-iframes makes dash strike feel
+	# genuinely chained-together, distinct from boots_of_haste legendary
+	# which is pure walk speed.
 	"phantom_step": {
 		"name": "PHANTOM STEP",
-		"description": "+50% move speed. -40% dodge cooldown. +0.15s dodge i-frames. You move between heartbeats.",
+		"description": "+50% move speed. -40% dash strike cooldown. +0.15s dash strike post-iframes. You move between heartbeats.",
 		"tier": "mythic",
 		"icon_path": "res://assets/icons/relic_nimble_step.png",
 		"mods": {
 			"move_speed_mul": 0.50,
-			"dodge_cooldown_mul": -0.40,
-			"dodge_iframes_bonus_f": 0.15,
+			"dash_strike_cooldown_mul": -0.40,
+			"dash_strike_post_iframes_bonus_f": 0.15,
 		},
 		"themes": ["shadow"],
 	},
@@ -726,7 +747,8 @@ func theme_tier(theme: String) -> int:
 #   VOW     +1 damage taken reduction on first hit each room
 #           (stacks with iron_will's first-hit, applies to ALL
 #           VOW owners — flat folded as 1 incoming dmg reduction).
-#   SHADOW  +0.08s dodge i-frames
+#   SHADOW  +5% crit chance, +5% move speed (iter-96 retune — was
+#           +0.08s dodge i-frames pre-iter-95 dodge deletion)
 # Ascendance (≥4 owned) bonuses are mechanical effects, handled by
 # hero.gd / projectile.gd hooks; this function only returns the
 # stat-fold contributions.
@@ -740,8 +762,14 @@ func theme_stat_bonuses() -> Dictionary:
 		out["max_hp_bonus"] = int(out.get("max_hp_bonus", 0)) + 1
 	if theme_tier("vow") >= 1:
 		out["damage_taken_reduction"] = int(out.get("damage_taken_reduction", 0)) + 1
+	# iter-96: SHADOW resonance used to grant `dodge_iframes_bonus_f`
+	# which became a dead key when iter-95 deleted the dodge ability.
+	# Re-anchored to two live, on-brand mods — crit chance + move speed.
+	# Both feel "shadowy" (precision strikes + glide between heartbeats)
+	# and stack naturally with the SHADOW relic identity.
 	if theme_tier("shadow") >= 1:
-		out["dodge_iframes_bonus_f"] = float(out.get("dodge_iframes_bonus_f", 0.0)) + 0.08
+		out["crit_chance_f"] = float(out.get("crit_chance_f", 0.0)) + 0.05
+		out["move_speed_mul"] = float(out.get("move_speed_mul", 0.0)) + 0.05
 	return out
 
 # Helper for HUD: returns the active themes (tier >= 1) keyed to
