@@ -1372,6 +1372,11 @@ func _apply_aim_assist(aim: Vector2) -> Vector2:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
+		# iter-101: skip chests / breakables. They join "enemies" for
+		# wave-clear bookkeeping but the blast aim should snap to actual
+		# combat targets, not treasure boxes.
+		if enemy.is_in_group("breakables"):
+			continue
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		var dist: float = to_enemy.length()
 		if dist < 1.0 or dist > AIM_ASSIST_RANGE:

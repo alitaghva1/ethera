@@ -468,7 +468,11 @@ vertical_alignment = 1
 custom_minimum_size = Vector2(220, 0)
 theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
-text = "return to main menu"
+; iter-101: was "return to main menu" — but mid-run ESC actually opens
+; the pause overlay (main.gd:2746). Only after death/run-complete does
+; ESC route back to main menu. Pause menu has its own "return to main"
+; button. "pause / menu" covers both contexts truthfully.
+text = "pause / menu"
 horizontal_alignment = 0
 vertical_alignment = 1
 

@@ -117,6 +117,18 @@ const SOUND_CONFIGS := {
 	#   threat just got worse" via the unusual ascending shape.
 	#   Played hot in the handler since it's a once-per-boss beat.
 	"boss_enrage":   { "freq_start":  90.0, "freq_end": 160.0, "duration": 0.65, "wave": "sin",    "gain": 0.70, "decay_pow": 0.9 },
+	# iter-101: boss phase-3 transition sting. Pre-iter-101 the visual
+	# (banner + hot-red sprite flash at boss.gd:1630) had NO audio cue
+	# while phase 2 had boss_enrage. Phase 3 sting is hotter + longer
+	# than phase 2 (lower start freq, broader sweep, +5 dB) so the
+	# escalation reads in the mix even during busy combat.
+	"boss_phase_3":  { "freq_start":  70.0, "freq_end": 220.0, "duration": 0.85, "wave": "sin",    "gain": 0.78, "decay_pow": 0.8 },
+	# iter-101: achievement unlock chime. Soft 2-step rising bell,
+	# distinct from pickup_claimed (warmer) and pickup_mythic (longer +
+	# faster sweep). Decoupled from combat so a 4.8s achievement popup
+	# in the top-right corner has audible feedback even when the player
+	# is also clearing a wave.
+	"achievement":   { "freq_start": 660.0, "freq_end":1320.0, "duration": 0.28, "wave": "sin",    "gain": 0.50, "decay_pow": 1.2 },
 	# pickup_mythic — distinct from pickup_claimed (600→1280 Hz).
 	#   Mythic plays a TWO-PART sweep up: 400→900→1800 over 320 ms.
 	#   We approximate the two-part feel with a longer duration +
@@ -167,6 +179,9 @@ func _ready() -> void:
 	Events.kill_exploded.connect(_on_kill_exploded)
 	Events.boss_enraged.connect(_on_boss_enraged)
 	Events.pickup_mythic.connect(_on_pickup_mythic)
+	# iter-101: boss phase-3 + achievement audio (previously silent).
+	Events.boss_phase_3.connect(_on_boss_phase_3)
+	Events.achievement_unlocked.connect(_on_achievement_unlocked)
 
 # ── Synthesis ──────────────────────────────────────────────────────────
 
@@ -352,6 +367,20 @@ func _on_boss_enraged(world_pos: Vector2) -> void:
 # rare beat lands audibly.
 func _on_pickup_mythic(world_pos: Vector2) -> void:
 	_play("pickup_mythic", world_pos, 2.0)
+
+# iter-101: boss phase-3 transition sting. Hot +5 dB (one over
+# boss_enrage's +4) so the escalation lands in the mix. Played
+# positional at the boss world_pos so it spatializes with the visual.
+func _on_boss_phase_3(world_pos: Vector2) -> void:
+	_play("boss_phase_3", world_pos, 5.0)
+
+# iter-101: achievement unlock chime. Achievement signal carries only
+# an id (not a world_pos), so play centered on the camera/origin.
+# Played at -2 dB so the chime sits above HUD ambient but doesn't
+# fight the FloorClearBurst / enemy_died chain that often coincides
+# with achievement unlocks (e.g. boss-clear → "first boss kill" pop).
+func _on_achievement_unlocked(_id: String) -> void:
+	_play("achievement", Vector2.ZERO, -2.0)
 
 # ── Public volume API (for settings screen) ───────────────────────────
 

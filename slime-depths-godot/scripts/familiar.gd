@@ -101,11 +101,19 @@ func _physics_process(delta: float) -> void:
 	_fire_cd = FIRE_COOLDOWN
 
 # Find the nearest enemy within SCAN_RANGE. Returns null if none.
+# iter-101 BUG FIX: chests join the "enemies" group at chest.gd:37
+# (so wave-clear polls + AoE FX see them). The familiar's auto-fire was
+# treating them as combat targets and wasting its 1.2s cooldown bolt
+# on treasure boxes. Skip anything in the "breakables" group (the
+# canonical "this is a container, not an enemy" tag — same filter
+# main.gd:488 uses for wave-clear).
 func _find_nearest_enemy() -> Node2D:
 	var best: Node2D = null
 	var best_dist: float = SCAN_RANGE
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
+			continue
+		if enemy.is_in_group("breakables"):
 			continue
 		var d: float = enemy.global_position.distance_to(global_position)
 		if d < best_dist:

@@ -337,6 +337,16 @@ func _physics_process(delta: float) -> void:
 	if _burn_active and _spawn_in_time <= 0.0:
 		_burn_remaining -= delta
 		_burn_tick_timer -= delta
+		# iter-101 BUG FIX: paint the sprite warm-orange while burning.
+		# The slow-tick block below carries a comment ("Don't overwrite
+		# the burn tint — orange wins") that gates AROUND a burn tint
+		# which was never actually applied anywhere. FLAME DoT relics
+		# (Embers of Ruin, Cataclysm) had no enemy-side visual feedback
+		# — players saw one orange damage number and nothing else for
+		# the remaining ~3 ticks. Now the sprite reads as on fire while
+		# the DoT runs.
+		if sprite != null:
+			sprite.modulate = Color(1.35, 0.75, 0.40, 1.0)
 		if _burn_tick_timer <= 0.0:
 			_burn_tick_timer = BURN_TICK_INTERVAL
 			hp -= BURN_DAMAGE_PER_TICK
@@ -357,6 +367,14 @@ func _physics_process(delta: float) -> void:
 				return
 		if _burn_remaining <= 0.0:
 			_burn_active = false
+			# iter-101: restore baseline (or slow tint if also slowed)
+			# now that the burn ended. Slow tick below handles the slow
+			# case separately when burn isn't active.
+			if sprite != null:
+				if _slow_remaining > 0.0:
+					sprite.modulate = Color(0.7, 0.9, 1.2, 1.0)
+				else:
+					sprite.modulate = _baseline_modulate()
 	# Iter 46 — slow tick. Drains _slow_remaining; resets multiplier
 	# when it expires. Applied via _effective_move_speed() in the
 	# behavior ticks; this block just manages the timer. Sprite gets

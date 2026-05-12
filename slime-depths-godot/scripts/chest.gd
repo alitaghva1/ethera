@@ -45,7 +45,19 @@ func _ready() -> void:
 	if closed_root != null:
 		closed_root.visible = true
 
-func take_hit(damage: int) -> void:
+# iter-101 BUG FIX: signature was `take_hit(damage)` (1 arg). The iter-43
+# crit pass updated every primary damage path (sword swing, dash strike,
+# dash pierce, blast projectile, STORM chain) to pass `(damage, is_crit)`
+# (2 args). Chests join the "enemies" group at _ready (line 37), so
+# get_tree().get_nodes_in_group("enemies") iterators dispatched 2-arg
+# calls to a 1-arg signature → Godot 4 GDScript "Invalid call,
+# Nonexistent function with 2 arguments" at runtime → call returns null
+# → chest never takes damage. Chests were unbreakable by ordinary melee
+# + dash + blast. Only legacy 1-arg callers (soul_burst, kill_explosion,
+# shadow_shockwave, ember_burst, fire_pool, shock_pulse) could break
+# them. Defaulted `_is_crit` arg accepts the 2-arg dispatch without
+# changing chest visuals (no crit color needed on a treasure box).
+func take_hit(damage: int, _is_crit: bool = false) -> void:
 	if _opened:
 		return
 	hp -= damage

@@ -585,9 +585,18 @@ const RELIC_REGISTRY := {
 		"mods": {},   # triggered — see hero._resolve_melee_strike
 		"themes": ["storm"],
 	},
+	# iter-101 BUG FIX: description was "Once per run" — but the gating
+	# flag (_phoenix_feather_used in hero.gd:374) is a hero instance var
+	# that resets every time the hero re-instantiates on room transition.
+	# Same per-room reset mechanism iter-96 surfaced for second_wind.
+	# Description now matches actual behavior. Promoting the flag to
+	# GameState for a true once-per-run gate is deferred to a balance
+	# pass — at six rooms per floor, per-room revive is plainly
+	# mythic-tier on a legendary stat-line, but rebalancing the entire
+	# revive economy is bigger than a Sprint A scope.
 	"phoenix_feather": {
 		"name": "PHOENIX FEATHER",
-		"description": "Once per run, a killing blow restores you to FULL HP.",
+		"description": "Each room, a killing blow restores you to FULL HP.",
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_phoenix.png",
 		"mods": {},   # triggered — see hero.take_damage (preempts second_wind)
