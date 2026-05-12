@@ -66,6 +66,12 @@ func show_death(kills: int) -> void:
 		runs = GameState.dungeon_runs
 	kills_number.text = str(kills)
 	runs_number.text = str(runs)
+	# Iter 49 — death-screen polish. Three new content blocks injected
+	# at show time (vs hardcoded scene nodes) so adding a 4th later is
+	# cheap and the .tscn stays lean. _rebuild_relics_list already
+	# clears+rebuilds its panel; the new blocks follow that pattern.
+	_rebuild_reached_label(kills)
+	_rebuild_themes_summary()
 	_rebuild_relics_list()
 	visible = true
 	# Defer focus by one frame — the CanvasLayer becomes visible THIS
@@ -73,6 +79,106 @@ func show_death(kills: int) -> void:
 	# hidden tree. One frame later they're ready.
 	await get_tree().process_frame
 	retry_button.grab_focus()
+
+# Iter 49 — "REACHED" line: shows the room display_name + floor/room
+# index of the death site. Optionally a "NEW BEST!" callout if this
+# run's kills beat the prior best. Injected above the StatsRow so
+# it reads first as the player scans the screen.
+var _reached_label: Label = null
+var _best_callout: Label = null
+func _rebuild_reached_label(kills: int) -> void:
+	if not _has_game_state():
+		return
+	# Pull room info from RunState autoload.
+	var run_state: Node = Engine.get_main_loop().root.get_node_or_null("/root/RunState")
+	if run_state == null:
+		return
+	var idx: int = int(run_state.get("current_room_index"))
+	var cfg = run_state.get("current_room_config")
+	var room_name: String = "DUNGEON"
+	if cfg != null and "display_name" in cfg:
+		room_name = str(cfg.get("display_name"))
+	# Floor numbering: rooms 1-3 = floor 1, 4-6 = floor 2 (matches
+	# floor_state.gd's 2-boss-per-floor layout). Special detour rooms
+	# (treasure/shrine) report the slot they replaced.
+	var floor_n: int = 1 if idx < 3 else 2
+	var room_n: int = (idx % 3) + 1
+	# Stack injection: insert above StatsRow.
+	var stack: VBoxContainer = $Panel/Stack as VBoxContainer
+	if _reached_label != null and is_instance_valid(_reached_label):
+		_reached_label.queue_free()
+	_reached_label = Label.new()
+	_reached_label.text = "REACHED %s  ·  FLOOR %d · ROOM %d" % [room_name, floor_n, room_n]
+	_reached_label.add_theme_font_size_override("font_size", 14)
+	_reached_label.add_theme_color_override("font_color", Color(0.78, 0.65, 0.41, 1))
+	_reached_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	_reached_label.add_theme_constant_override("outline_size", 2)
+	_reached_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stack.add_child(_reached_label)
+	stack.move_child(_reached_label, 2)   # below TitleBlock+Divider, above StatsRow
+	# "NEW BEST!" callout when this run's kills beat the prior best.
+	# start_dungeon_run promotes prior → best BEFORE the new run starts,
+	# so best_run_kills here = prior best (not yet updated for the dying
+	# run). Comparison is therefore against the previous PB.
+	if _best_callout != null and is_instance_valid(_best_callout):
+		_best_callout.queue_free()
+	_best_callout = null   # clear ref so subsequent !null checks work
+	var prior_best: int = int(GameState.best_run_kills)
+	if kills > prior_best and prior_best > 0:
+		_best_callout = Label.new()
+		_best_callout.text = "★  NEW BEST  ★"
+		_best_callout.add_theme_font_size_override("font_size", 18)
+		_best_callout.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45, 1))
+		_best_callout.add_theme_color_override("font_outline_color", Color(0.45, 0.20, 0.0, 0.95))
+		_best_callout.add_theme_constant_override("outline_size", 3)
+		_best_callout.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stack.add_child(_best_callout)
+		stack.move_child(_best_callout, 3)
+
+# Iter 49 — active themes summary. Shows a small horizontal strip
+# of theme chips on the death screen so the player sees what build
+# they were running at death. Resonance chips ◆, ascendance chips ◆◆.
+var _themes_strip: HBoxContainer = null
+func _rebuild_themes_summary() -> void:
+	if not _has_game_state():
+		return
+	if not GameState.has_method("active_themes"):
+		return
+	var stack: VBoxContainer = $Panel/Stack as VBoxContainer
+	if _themes_strip != null and is_instance_valid(_themes_strip):
+		_themes_strip.queue_free()
+	_themes_strip = HBoxContainer.new()
+	_themes_strip.add_theme_constant_override("separation", 12)
+	_themes_strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_child(_themes_strip)
+	# Position: just above the RelicsTitle (which is index 5 typically,
+	# but iter 49 inserts reached_label + best_callout above, so
+	# RelicsTitle is now at a higher index. Move via end-of-stack +
+	# move_child for clarity).
+	var relics_title_idx: int = stack.get_children().find($Panel/Stack/RelicsTitle)
+	if relics_title_idx >= 0:
+		stack.move_child(_themes_strip, relics_title_idx)
+	var active: Dictionary = GameState.active_themes()
+	if active.is_empty():
+		_themes_strip.visible = false
+		return
+	var theme_colors: Dictionary = {
+		"storm": Color(0.55, 0.85, 1.0, 1.0),
+		"flame": Color(1.0, 0.55, 0.30, 1.0),
+		"blood": Color(0.95, 0.45, 0.45, 1.0),
+		"vow": Color(0.92, 0.92, 0.78, 1.0),
+		"shadow": Color(0.78, 0.65, 1.0, 1.0),
+	}
+	for theme in active.keys():
+		var tier: int = int(active[theme])
+		var glyph: String = "◆" if tier == 1 else "◆◆"
+		var lbl: Label = Label.new()
+		lbl.text = "%s  %s" % [str(theme).to_upper(), glyph]
+		lbl.add_theme_font_size_override("font_size", 13)
+		lbl.add_theme_color_override("font_color", theme_colors.get(theme, Color.WHITE))
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
+		lbl.add_theme_constant_override("outline_size", 3)
+		_themes_strip.add_child(lbl)
 
 func hide_death() -> void:
 	visible = false
