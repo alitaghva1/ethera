@@ -304,6 +304,10 @@ func _ready() -> void:
 		# dispatcher is data-driven from _room.biome; "crypt" is the
 		# iter-30 default look.
 		_apply_biome_visuals(_room.biome)
+		# Iter 51 — atmospheric polish: vignette + dust motes. Both
+		# code-built so adding a new room doesn't require .tscn edits.
+		_spawn_vignette_overlay()
+		_spawn_ambient_motes()
 		# Iter 38 — optional secret content: spawn lore stones in their
 		# authored hidden positions. Done BEFORE decor so the stones
 		# get drawn under the random rubble (z-order parity with chests).
@@ -480,11 +484,34 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 	rect_shape.size = r.size
 	shape.shape = rect_shape
 	body.add_child(shape)
+	var w: float = r.size.x * 0.5
+	var h: float = r.size.y * 0.5
+	# Iter 51 — drop shadow polygon. Soft dark ellipse footprint extending
+	# 8 px past the wall's outer edge in all directions, with vertex-color
+	# fade from solid-center to transparent-edge. Reads as "the wall casts
+	# a shadow on the floor" and grounds the wall to the room — previously
+	# the wall polygon looked like it was floating on the tile grid.
+	# Added BEFORE the wall body so it draws underneath.
+	var shadow_extra: float = 8.0
+	var shadow: Polygon2D = Polygon2D.new()
+	shadow.polygon = PackedVector2Array([
+		Vector2(-w - shadow_extra, -h - shadow_extra),
+		Vector2(w + shadow_extra, -h - shadow_extra),
+		Vector2(w + shadow_extra, h + shadow_extra),
+		Vector2(-w - shadow_extra, h + shadow_extra),
+	])
+	var sh_edge: Color = Color(0, 0, 0, 0.0)
+	var sh_core: Color = Color(0, 0, 0, 0.55)
+	# Per-vertex colors: corners transparent, would-ideally be a circle
+	# but quad-with-edge-fade reads acceptably as ambient occlusion at
+	# this scale. Top corners slightly less dark (light angle assumes
+	# overhead-ish), bottom corners full so the bottom shadow lip wins.
+	shadow.vertex_colors = PackedColorArray([sh_edge, sh_edge, sh_core, sh_core])
+	shadow.z_index = -1
+	body.add_child(shadow)
 	# Visible body — dark stone polygon at the same position as the
 	# collider. Rounded corners via Line2D outline since Polygon2D
 	# doesn't natively support corner radii.
-	var w: float = r.size.x * 0.5
-	var h: float = r.size.y * 0.5
 	var poly: Polygon2D = Polygon2D.new()
 	poly.polygon = PackedVector2Array([
 		Vector2(-w, -h), Vector2(w, -h), Vector2(w, h), Vector2(-w, h),
@@ -776,6 +803,112 @@ func _spawn_decor_sanctuary(pos: Vector2) -> void:
 # alpha so it shifts the floor MOOD without overriding the static
 # backdrop's pattern. Centerpiece accents are larger fixed-position
 # props that establish the biome's identity at a glance.
+# Iter 51 — screen-edge vignette. Frames the play area with a soft
+# darkening at the corners + screen edges. Built as 4 Polygon2D wedges
+# (top / bottom / left / right) with vertex-colored fades from dark
+# (edge) to transparent (toward center). Polygon2D supports per-vertex
+# colors out of the box; no shader needed.
+#
+# Lives on a CanvasLayer between the world and the UI so the HUD draws
+# above it (vignette doesn't darken the hearts / wave label) but the
+# world below gets the framing effect. Layer 30 = above world (0),
+# below boss banner (40) + UI HUD (varies).
+func _spawn_vignette_overlay() -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 30
+	layer.name = "VignetteLayer"
+	add_child(layer)
+	# Screen extends — using the room/viewport area (1280x720). 4 wedge
+	# polygons make a hollow frame: each is a quad with outer-corner
+	# vertices dark and inner-corner vertices transparent.
+	var dark: Color = Color(0, 0, 0, 0.45)
+	var clear: Color = Color(0, 0, 0, 0.0)
+	# Vignette thickness inward (px) per side. Larger = more dramatic
+	# but eats more play-area readability.
+	var w: float = 160.0
+	# TOP wedge: outer edge along y=0, inner edge along y=w.
+	var top: Polygon2D = Polygon2D.new()
+	top.polygon = PackedVector2Array([
+		Vector2(0, 0), Vector2(1280, 0), Vector2(1280, w), Vector2(0, w),
+	])
+	top.vertex_colors = PackedColorArray([dark, dark, clear, clear])
+	top.z_index = 0
+	layer.add_child(top)
+	# BOTTOM wedge.
+	var bot: Polygon2D = Polygon2D.new()
+	bot.polygon = PackedVector2Array([
+		Vector2(0, 720 - w), Vector2(1280, 720 - w), Vector2(1280, 720), Vector2(0, 720),
+	])
+	bot.vertex_colors = PackedColorArray([clear, clear, dark, dark])
+	layer.add_child(bot)
+	# LEFT wedge.
+	var lf: Polygon2D = Polygon2D.new()
+	lf.polygon = PackedVector2Array([
+		Vector2(0, 0), Vector2(w, 0), Vector2(w, 720), Vector2(0, 720),
+	])
+	lf.vertex_colors = PackedColorArray([dark, clear, clear, dark])
+	layer.add_child(lf)
+	# RIGHT wedge.
+	var rt: Polygon2D = Polygon2D.new()
+	rt.polygon = PackedVector2Array([
+		Vector2(1280 - w, 0), Vector2(1280, 0), Vector2(1280, 720), Vector2(1280 - w, 720),
+	])
+	rt.vertex_colors = PackedColorArray([clear, dark, dark, clear])
+	layer.add_child(rt)
+
+# Iter 51 — ambient dust motes. Sparse drifting particles across the
+# play area for atmospheric depth. Slow upward drift, low alpha, brief
+# lifetime so the dust never accumulates visibly — reads as "the air
+# is moving slightly." Color picked from biome warm/cool to harmonize
+# with the room's existing tint.
+func _spawn_ambient_motes() -> void:
+	var motes: CPUParticles2D = CPUParticles2D.new()
+	motes.name = "AmbientMotes"
+	motes.amount = 32
+	motes.lifetime = 6.0
+	motes.emitting = true
+	motes.preprocess = 3.0   # fill the field before _ready completes
+	# Emission rect covers the playable area; particles spawn anywhere
+	# inside the room boundaries.
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(560.0, 290.0)
+	motes.position = Vector2(640, 384)
+	# Slow upward drift with random spread.
+	motes.direction = Vector2(0, -1)
+	motes.spread = 60.0
+	motes.initial_velocity_min = 6.0
+	motes.initial_velocity_max = 14.0
+	motes.gravity = Vector2.ZERO
+	motes.damping_min = 0.2
+	motes.damping_max = 0.6
+	# Tiny scale, low alpha.
+	motes.scale_amount_min = 0.6
+	motes.scale_amount_max = 1.4
+	# Per-biome tint — match the wash so dust harmonizes with the room.
+	var tint: Color = Color(0.85, 0.85, 0.85, 0.22)
+	if _room != null:
+		match _room.biome:
+			"ember":
+				tint = Color(1.0, 0.78, 0.5, 0.22)
+			"sanctuary":
+				tint = Color(0.78, 0.85, 1.0, 0.22)
+			"ossuary":
+				tint = Color(0.95, 0.92, 0.78, 0.22)
+			_:
+				tint = Color(0.85, 0.85, 0.85, 0.22)
+	# Color ramp — fades in/out so motes appear from nothing + vanish.
+	var ramp: Gradient = Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+	ramp.colors = PackedColorArray([
+		Color(tint.r, tint.g, tint.b, 0.0),
+		tint,
+		tint,
+		Color(tint.r, tint.g, tint.b, 0.0),
+	])
+	motes.color_ramp = ramp
+	motes.z_index = 5   # above floor/decor, below hero/enemies
+	add_child(motes)
+
 func _apply_biome_visuals(biome: String) -> void:
 	var wash: Color = Color(0, 0, 0, 0)
 	match biome:

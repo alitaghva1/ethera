@@ -35,6 +35,13 @@ fill = 1
 fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(1, 0.5)
 
+; Iter 51 — smoke gradient. Fades in over the first ~15% of lifetime,
+; holds dim, fades out over the last ~35%. Reads as "wisp visible
+; only mid-rise" rather than "appears + disappears abruptly."
+[sub_resource type="Gradient" id="smoke_grad"]
+offsets = PackedFloat32Array(0, 0.15, 0.65, 1)
+colors = PackedColorArray(0.55, 0.50, 0.55, 0, 0.55, 0.50, 0.55, 0.55, 0.45, 0.42, 0.48, 0.32, 0.35, 0.32, 0.40, 0)
+
 [node name="Torch" type="Node2D"]
 script = ExtResource("1_script")
 
@@ -44,9 +51,36 @@ energy = 1.4
 range_z_min = -1024
 range_z_max = 1024
 texture = SubResource("torch_grad_tex")
-texture_scale = 1.4
+texture_scale = 2.1
 shadow_enabled = false
 
 [node name="Flame" type="Sprite2D" parent="."]
 texture = SubResource("flame_grad_tex")
 modulate = Color(1, 0.8, 0.45, 1)
+
+; Iter 51 — torch smoke wisps. Sparse upward-drift particles that
+; rise + fade from the torch flame. Gives every torch a subtle
+; vertical movement axis distinct from the static flame sprite —
+; "this fire is alive" without needing animated sprites. The smoke
+; lives ABOVE the flame in z-order so it occludes the bright pip
+; appropriately as it drifts. Low amount (8) keeps the budget light
+; even with 6+ torches per room.
+[node name="Smoke" type="CPUParticles2D" parent="."]
+position = Vector2(0, -4)
+amount = 8
+lifetime = 1.4
+emitting = true
+preprocess = 0.7
+emission_shape = 1
+emission_sphere_radius = 3.0
+direction = Vector2(0, -1)
+spread = 25.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 18.0
+initial_velocity_max = 28.0
+damping_min = 0.4
+damping_max = 1.0
+scale_amount_min = 1.2
+scale_amount_max = 2.4
+color_ramp = SubResource("smoke_grad")
+z_index = 4
