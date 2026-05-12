@@ -174,11 +174,22 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 @onready var relic_strip: HBoxContainer = $UI/RelicStrip
 
 # Iter 39 — theme chip strip. Code-built HBoxContainer mounted on the
-# UI CanvasLayer just below the relic strip. Each chip is a Label
-# colored per theme with a "◆" glyph count for tier (◆ = resonance,
-# ◆◆ = ascendance). Built lazily on first refresh + repopulated by
-# _rebuild_theme_chips on each relic grant.
+# UI CanvasLayer just below the relic strip. Each chip is a Control-
+# rooted PanelContainer with theme-colored border, theme name label,
+# tier indicator (— / ◆◆ / ◆◆◆◆), and a count badge. Built lazily on
+# first refresh + repopulated by _rebuild_theme_chips on each relic
+# grant. Iter 74 — graduated from plain Labels to proper Panel chips
+# with tier-state visuals (dim → resonance → ascendance) + tier-up
+# flash on threshold cross.
 var theme_chip_strip: HBoxContainer = null
+
+# Iter 74 — previous-tier cache keyed by theme name. _rebuild_theme_chips
+# compares each theme's new tier to the cached value; if it INCREASED
+# the chip plays a brief "you just unlocked this" pulse on appear. Reset
+# on hero death via _rebuild_theme_chips' natural refresh (death respawn
+# starts with no relics → all tiers back to 0 → first pickup re-fires
+# the flash, which is the desired feel).
+var _theme_prev_tiers: Dictionary = {}
 
 # Iter 48 — singleton tooltip panel for theme chips. Lazily built on
 # first hover, shown/hidden via the chip's mouse_entered/exited
@@ -1429,6 +1440,14 @@ func _spawn_enemy_type(type_id: String) -> void:
 		if Engine.has_singleton("FX") or true:   # FX is always available; autoload
 			FX.shake(BOSS_INTRO_SHAKE_AMP, BOSS_INTRO_SHAKE_TIME)
 		_show_boss_intro_banner(type_res.display_name)
+		# Wizard-kit sprint 3 — cinematic boss-arrival NAME CARD on top
+		# of the iter-22 red banner. Letterboxed + letterspaced cream-gold
+		# typography + optional role subtitle, ~2.3s total. Layered at
+		# CanvasLayer 48 so it reads as the moment's headline beat (above
+		# iter-71's floor_clear_burst at 45 and the iter-22 banner at 40,
+		# below the iter-22 death veil at 50). Self-frees on tween-finish;
+		# matches PickupBanner.spawn / FloorClearBurst.spawn convention.
+		BossIntro.spawn(self, type_res.display_name)
 
 # Iter 16 — Hades-style 3-pedestal choice (or fewer if the registry
 # is running low). Pedestals spawn in a row centered on the room and
@@ -1991,16 +2010,29 @@ func _sync_familiars() -> void:
 		if is_instance_valid(f):
 			f.queue_free()
 
-# Iter 39 — theme chip strip builder. Iterates GameState.active_themes
-# (only themes with tier >= 1 appear) and emits one Label chip per
-# theme. Color-coded per theme; glyph count communicates tier
-# (◆ resonance, ◆◆ ascendance). The strip lives in the same UI
-# CanvasLayer so it doesn't move with the world camera.
+# Iter 39 — theme chip strip builder. Iterates ALL 5 themes (so the
+# player sees pre-resonance progress, not just active themes once they
+# cross 2) and emits one Panel chip per theme. Each chip surfaces:
+#   • theme-colored border + dim fill (alpha gated by tier — 0.4 below
+#     resonance, 0.6 at resonance, ascendance gets a faint outer glow)
+#   • letterspaced theme name in cream-gold
+#   • tier indicator row: "—" (below resonance), "◆◆" (resonance),
+#     "◆◆◆◆" (ascendance)
+#   • count badge in top-right corner showing exact owned (e.g. "2/4")
+# Iter 74 — replaces the iter-39 plain-Label chip with a proper Control
+# subtree so the strip reads as visual status, not text. Also caches
+# previous tier in _theme_prev_tiers — when a theme's tier INCREASES
+# on rebuild, the chip plays a brief scale-up + glow flash to signal
+# "you just unlocked this." The strip lives in the same UI CanvasLayer
+# so it doesn't move with the world camera.
 func _rebuild_theme_chips() -> void:
 	# Lazily build the container on first rebuild. UI is a CanvasLayer
 	# (queried via $UI from the @onready hp_label path); we mount the
 	# strip there so it inherits the canvas-layer rendering of the
-	# rest of the HUD (immune to world-camera transforms).
+	# rest of the HUD (immune to world-camera transforms). Strip height
+	# bumped to 60 px (up from 24) to accommodate the new vertical Panel
+	# chips. Stays within the y=126-186 band — relic strip ends at 122,
+	# combo counter is top-right not top-left, so no overlap.
 	var ui: CanvasLayer = $UI as CanvasLayer
 	if theme_chip_strip == null:
 		theme_chip_strip = HBoxContainer.new()
@@ -2008,8 +2040,8 @@ func _rebuild_theme_chips() -> void:
 		theme_chip_strip.offset_left = 16.0
 		theme_chip_strip.offset_top = 126.0
 		theme_chip_strip.offset_right = 900.0
-		theme_chip_strip.offset_bottom = 150.0
-		theme_chip_strip.add_theme_constant_override("separation", 8)
+		theme_chip_strip.offset_bottom = 186.0
+		theme_chip_strip.add_theme_constant_override("separation", 6)
 		theme_chip_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		ui.add_child(theme_chip_strip)
 	# Clear any prior chips. Also kill any orphan tooltip in case a
@@ -2019,42 +2051,213 @@ func _rebuild_theme_chips() -> void:
 	for child in theme_chip_strip.get_children():
 		child.queue_free()
 	_hide_theme_tooltip()
-	# Theme palette — keyed to in-game flavor (cyan storm, red flame,
-	# crimson blood, ivory vow, indigo shadow). Both bg + text are
-	# defined so each chip reads as a distinct identity.
-	var theme_colors: Dictionary = {
-		"storm": Color(0.55, 0.85, 1.0, 1.0),
-		"flame": Color(1.0, 0.55, 0.30, 1.0),
-		"blood": Color(0.95, 0.45, 0.45, 1.0),
-		"vow": Color(0.92, 0.92, 0.78, 1.0),
-		"shadow": Color(0.78, 0.65, 1.0, 1.0),
-	}
-	var active: Dictionary = GameState.active_themes()
-	for theme in active.keys():
-		var tier: int = int(active[theme])
-		var lbl: Label = Label.new()
-		var glyph: String = "◆" if tier == 1 else "◆◆"
-		lbl.text = "%s  %s" % [str(theme).to_upper(), glyph]
-		lbl.add_theme_font_size_override("font_size", 13)
-		var col: Color = theme_colors.get(theme, Color.WHITE)
-		lbl.add_theme_color_override("font_color", col)
-		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
-		lbl.add_theme_constant_override("outline_size", 3)
-		# Iter 48 — hover tooltip showing the theme's bonuses. Each
-		# Label gets mouse_filter STOP so the chip catches the mouse
-		# (default IGNORE would let it pass through). bind() captures
-		# the theme name into the callback so the hover handler knows
-		# which chip fired without needing per-chip handler methods.
-		lbl.mouse_filter = Control.MOUSE_FILTER_STOP
-		lbl.mouse_entered.connect(_on_theme_chip_hover.bind(str(theme), lbl))
-		lbl.mouse_exited.connect(_on_theme_chip_unhover)
-		theme_chip_strip.add_child(lbl)
+	# Iterate ALL five themes in canonical order (storm/flame/blood/vow/
+	# shadow). This is a change from the iter-39 behavior (which only
+	# emitted active themes) — the player benefits from seeing pre-
+	# resonance progress so they can plan toward the 2-of-X threshold.
+	# A theme with 0 owned still renders, but very dim.
+	var themes_in_order: Array = ["storm", "flame", "blood", "vow", "shadow"]
+	for theme in themes_in_order:
+		var owned: int = GameState.theme_count(theme)
+		var tier: int = GameState.theme_tier(theme)
+		# Skip themes the player has zero exposure to — chip is just
+		# clutter at that point. Once a single relic of the theme is
+		# picked up the chip appears and starts tracking progress.
+		if owned <= 0:
+			# Still cache 0 so the eventual tier-up flash detection has
+			# a baseline to compare against.
+			_theme_prev_tiers[theme] = tier
+			continue
+		var prev_tier: int = int(_theme_prev_tiers.get(theme, 0))
+		var tier_up: bool = tier > prev_tier
+		_theme_prev_tiers[theme] = tier
+		var chip: Control = _build_theme_chip(theme, owned, tier)
+		theme_chip_strip.add_child(chip)
+		if tier_up and tier >= 1:
+			_play_theme_chip_tier_flash(chip)
+
+# Iter 74 — build a single theme chip Control subtree. Returns a sized
+# PanelContainer with all visuals layered (border, fill, label, tier
+# indicator, count badge, optional outer-glow Panel for ascendance).
+# Hover signals are wired here so the caller doesn't need to know about
+# the chip's internals.
+func _build_theme_chip(theme: String, owned: int, tier: int) -> Control:
+	var col: Color = ThemePalette.color_for(theme)
+	# Outer container — sets the chip's overall size + hosts the optional
+	# ascendance glow panel behind the main panel.
+	var root: Control = Control.new()
+	root.name = "Chip_" + theme
+	root.custom_minimum_size = Vector2(108, 54)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.pivot_offset = Vector2(54, 27)  # center for scale tweens
+	# Ascendance outer glow — a slightly-larger Panel layer sitting
+	# BEHIND the main panel (added first → drawn first → covered by
+	# subsequent siblings unless we offset it). Only built for tier >= 2
+	# so the lookup is cheap; pulse is driven by a looping tween.
+	if tier >= 2:
+		var glow: Panel = Panel.new()
+		glow.name = "Glow"
+		glow.anchor_right = 1.0
+		glow.anchor_bottom = 1.0
+		glow.offset_left = -4.0
+		glow.offset_top = -4.0
+		glow.offset_right = 4.0
+		glow.offset_bottom = 4.0
+		glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var glow_sb: StyleBoxFlat = StyleBoxFlat.new()
+		glow_sb.bg_color = Color(col.r, col.g, col.b, 0.30)
+		glow_sb.corner_radius_top_left = 6
+		glow_sb.corner_radius_top_right = 6
+		glow_sb.corner_radius_bottom_right = 6
+		glow_sb.corner_radius_bottom_left = 6
+		glow.add_theme_stylebox_override("panel", glow_sb)
+		root.add_child(glow)
+		# Pulsing glow alpha 0.3 → 1.0 → 0.3 over 1.5s, looping.
+		var tw_glow: Tween = create_tween()
+		tw_glow.set_loops()
+		tw_glow.tween_property(glow, "modulate:a", 1.0, 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw_glow.tween_property(glow, "modulate:a", 0.30, 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Main panel — border + fill. Alpha pattern from spec:
+	#   tier 0  (owned 1, no resonance):  fill 0.18 × 0.4 = dim
+	#   tier 1  (resonance, 2-3 owned):   fill 0.18 × 1.0
+	#   tier 2  (ascendance, 4+ owned):   fill 0.22 × 1.0 (slightly brighter)
+	var panel: PanelContainer = PanelContainer.new()
+	panel.name = "Panel"
+	panel.anchor_right = 1.0
+	panel.anchor_bottom = 1.0
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	var fill_alpha: float = 0.18
+	if tier >= 2:
+		fill_alpha = 0.22
+	sb.bg_color = Color(col.r, col.g, col.b, fill_alpha)
+	# Border brightens with tier — below resonance borders sit dim at
+	# alpha 0.55, resonance + ascendance get the full opaque border.
+	var border_alpha: float = 1.0 if tier >= 1 else 0.55
+	sb.border_color = Color(col.r, col.g, col.b, border_alpha)
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.corner_radius_bottom_right = 4
+	sb.corner_radius_bottom_left = 4
+	sb.content_margin_left = 8.0
+	sb.content_margin_top = 6.0
+	sb.content_margin_right = 8.0
+	sb.content_margin_bottom = 6.0
+	panel.add_theme_stylebox_override("panel", sb)
+	root.add_child(panel)
+	# Dim everything below resonance so the chip reads as "future
+	# potential" rather than "active power."
+	if tier == 0:
+		panel.modulate = Color(1, 1, 1, 0.55)
+	# Vertical layout: name label on top, tier-indicator dots below.
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(box)
+	# Theme name — letterspaced "S T O R M" style. Cream-gold so the
+	# text reads as HUD typography rather than competing with the
+	# theme-tinted border.
+	var name_lbl: Label = Label.new()
+	name_lbl.text = _letterspace_theme(theme)
+	name_lbl.add_theme_font_size_override("font_size", 13)
+	name_lbl.add_theme_color_override("font_color", Color(0.92, 0.86, 0.66))
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
+	name_lbl.add_theme_constant_override("outline_size", 3)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(name_lbl)
+	# Tier indicator row — "—" for below resonance, "◆◆" at resonance,
+	# "◆◆◆◆" at ascendance. Colored in the theme tint so the indicator
+	# acts as a colored progress meter rather than just inert text.
+	var tier_lbl: Label = Label.new()
+	var glyph: String = "—"
+	if tier == 1:
+		glyph = "◆ ◆"
+	elif tier >= 2:
+		glyph = "◆ ◆ ◆ ◆"
+	tier_lbl.text = glyph
+	tier_lbl.add_theme_font_size_override("font_size", 11)
+	var dot_color: Color = col if tier >= 1 else Color(col.r, col.g, col.b, 0.5)
+	tier_lbl.add_theme_color_override("font_color", dot_color)
+	tier_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	tier_lbl.add_theme_constant_override("outline_size", 2)
+	tier_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tier_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(tier_lbl)
+	# Count badge — small "N/4" in the top-right corner showing exact
+	# owned vs ascendance threshold. Drawn as a sibling of the panel so
+	# it sits above the border. anchor_left/right both 1.0 + negative
+	# offsets glues it to the top-right.
+	var badge: Label = Label.new()
+	badge.text = "%d/4" % owned
+	badge.add_theme_font_size_override("font_size", 10)
+	badge.add_theme_color_override("font_color", Color(0.95, 0.92, 0.78))
+	badge.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	badge.add_theme_constant_override("outline_size", 2)
+	badge.anchor_left = 1.0
+	badge.anchor_right = 1.0
+	badge.offset_left = -28.0
+	badge.offset_top = 2.0
+	badge.offset_right = -4.0
+	badge.offset_bottom = 16.0
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(badge)
+	# Resonance pulse — subtle 1.0 ↔ 1.04 scale loop. Drives the eye to
+	# active chips without being distracting. Tied to root.pivot_offset
+	# (set above) so the chip scales around its center, not its corner.
+	if tier == 1:
+		var tw_pulse: Tween = create_tween()
+		tw_pulse.set_loops()
+		tw_pulse.tween_property(root, "scale", Vector2(1.04, 1.04), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw_pulse.tween_property(root, "scale", Vector2(1.0, 1.0), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Hover wiring lives on the root Control. STOP filter on root +
+	# IGNORE on every descendant funnels the mouse_entered to exactly
+	# one signal regardless of which sub-Label the cursor crosses.
+	root.mouse_entered.connect(_on_theme_chip_hover.bind(theme, root))
+	root.mouse_exited.connect(_on_theme_chip_unhover)
+	return root
+
+# Iter 74 — letter-space a theme name for HUD display. Godot 4 Label
+# has no native letter-spacing, so we hand-insert thin spaces between
+# characters. "storm" → "S T O R M". Cached as a 5-entry lookup since
+# the theme set is fixed.
+func _letterspace_theme(theme: String) -> String:
+	var upper: String = str(theme).to_upper()
+	var out: PackedStringArray = []
+	for i in upper.length():
+		out.append(upper[i])
+	return " ".join(out)
+
+# Iter 74 — tier-up flash. Fires when a theme's tier increased on the
+# current _rebuild_theme_chips pass. Brief scale-up (1.0 → 1.3 → 1.0
+# over 0.5s) signals "you just unlocked this." Played on top of any
+# resonance pulse — the one-shot tween here doesn't conflict with the
+# looping pulse since they target the same property but the one-shot
+# completes before the pulse's first cycle interferes.
+func _play_theme_chip_tier_flash(chip: Control) -> void:
+	if chip == null:
+		return
+	# Start small so the tween's tween_property "ramps in" from the
+	# default 1.0; we override the start point explicitly so the
+	# tier-up moment reads as a deliberate burst.
+	chip.scale = Vector2(1.0, 1.0)
+	var tw: Tween = create_tween()
+	tw.tween_property(chip, "scale", Vector2(1.3, 1.3), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(chip, "scale", Vector2(1.0, 1.0), 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 
 # Iter 48 — theme chip hover handler. Shows a tooltip Panel near the
 # hovered chip with the theme name, owned count, and the resonance
 # + ascendance bonus descriptions (ascendance grayed if not yet
 # unlocked). Single tooltip reused across hovers — _theme_tooltip
-# holds the panel ref, repositioned + retextd per hover.
+# holds the panel ref, repositioned + retextd per hover. Iter 74 —
+# tooltip bg now picks up a subtle theme tint so cyan-STORM and
+# crimson-BLOOD tooltips look distinct at a glance, not just the
+# border. Color helpers consolidated into ThemePalette.color_for.
 func _on_theme_chip_hover(theme: String, anchor_label: Control) -> void:
 	_hide_theme_tooltip()
 	var info: Dictionary = THEME_TOOLTIP_DESC.get(theme, {})
@@ -2063,18 +2266,19 @@ func _on_theme_chip_hover(theme: String, anchor_label: Control) -> void:
 	var owned_count: int = GameState.theme_count(theme)
 	var tier: int = GameState.theme_tier(theme)
 	var ui: CanvasLayer = $UI as CanvasLayer
-	# Theme palette — same as the chip color for visual continuity.
-	var theme_colors: Dictionary = {
-		"storm": Color(0.55, 0.85, 1.0, 1.0),
-		"flame": Color(1.0, 0.55, 0.30, 1.0),
-		"blood": Color(0.95, 0.45, 0.45, 1.0),
-		"vow": Color(0.92, 0.92, 0.78, 1.0),
-		"shadow": Color(0.78, 0.65, 1.0, 1.0),
-	}
-	var col: Color = theme_colors.get(theme, Color.WHITE)
+	var col: Color = ThemePalette.color_for(theme)
 	var panel: PanelContainer = PanelContainer.new()
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.05, 0.09, 0.96)
+	# Tint the dark base background with a tiny lean toward the theme
+	# color — 0.04 of the theme's RGB folded over the base 0.06 ink.
+	# Keeps the tooltip readable (still very dark) while STORM tooltips
+	# read cooler than FLAME tooltips at a glance.
+	sb.bg_color = Color(
+		0.06 + col.r * 0.04,
+		0.05 + col.g * 0.04,
+		0.09 + col.b * 0.04,
+		0.96
+	)
 	sb.border_color = col
 	sb.border_width_left = 1
 	sb.border_width_top = 1
@@ -2393,94 +2597,18 @@ func _on_boss_phase_changed(phase: int, boss_display_name: String) -> void:
 # Iter 37 — boss phase 2 banner. Smaller + redder than the boss intro
 # banner (this is a mid-fight beat, not an opener). Drops in from the
 # top, holds 1.2s, fades.
-# Iter 57 — achievement unlock popup. Briefly shows the achievement
-# name + description at the top-center of the screen, then fades.
-# Stacks in vertical sequence if multiple unlock back-to-back (e.g.
-# centurion + flame_devotee on the same kill).
-var _achievement_popup_count: int = 0   # how many popups currently visible
-
+# Iter 57 — achievement unlock popup. Inline implementation replaced
+# by AchievementPopup (scenes/achievement_popup.tscn + script). Toast
+# slides in from the top-right corner with a queue so back-to-back
+# unlocks (boss kill triggering 3 at once) play sequentially rather
+# than overlapping. `self` is the host per iter 61 convention.
 func _on_achievement_unlocked(id: String) -> void:
 	if not GameState.ACHIEVEMENTS.has(id):
 		return
 	var info: Dictionary = GameState.ACHIEVEMENTS[id]
 	var nm: String = str(info.get("name", id))
 	var desc: String = str(info.get("description", ""))
-	var layer: CanvasLayer = CanvasLayer.new()
-	layer.layer = 42
-	add_child(layer)
-	var panel: PanelContainer = PanelContainer.new()
-	var sb: StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.05, 0.09, 0.95)
-	sb.border_color = Color(1.0, 0.85, 0.40, 0.95)
-	sb.border_width_left = 2
-	sb.border_width_top = 2
-	sb.border_width_right = 2
-	sb.border_width_bottom = 2
-	sb.corner_radius_top_left = 4
-	sb.corner_radius_top_right = 4
-	sb.corner_radius_bottom_right = 4
-	sb.corner_radius_bottom_left = 4
-	sb.content_margin_left = 14.0
-	sb.content_margin_top = 8.0
-	sb.content_margin_right = 14.0
-	sb.content_margin_bottom = 8.0
-	panel.add_theme_stylebox_override("panel", sb)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_top = 0.0
-	panel.anchor_bottom = 0.0
-	# Stack vertically — successive popups appear below the prior.
-	var slot: int = _achievement_popup_count
-	panel.offset_left = -190
-	panel.offset_right = 190
-	panel.offset_top = 110 + (slot * 70)
-	panel.offset_bottom = 170 + (slot * 70)
-	panel.modulate = Color(1, 1, 1, 0)
-	layer.add_child(panel)
-	var box: VBoxContainer = VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(box)
-	var heading: Label = Label.new()
-	heading.text = "★ ACHIEVEMENT UNLOCKED ★"
-	heading.add_theme_font_size_override("font_size", 11)
-	heading.add_theme_color_override("font_color", Color(1.0, 0.85, 0.40, 1))
-	heading.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	heading.add_theme_constant_override("outline_size", 2)
-	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(heading)
-	var name_lbl: Label = Label.new()
-	name_lbl.text = nm
-	name_lbl.add_theme_font_size_override("font_size", 18)
-	name_lbl.add_theme_color_override("font_color", Color(1, 0.95, 0.85, 1))
-	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	name_lbl.add_theme_constant_override("outline_size", 3)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(name_lbl)
-	var desc_lbl: Label = Label.new()
-	desc_lbl.text = desc
-	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_lbl.custom_minimum_size = Vector2(360, 0)
-	desc_lbl.add_theme_font_size_override("font_size", 12)
-	desc_lbl.add_theme_color_override("font_color", Color(0.80, 0.78, 0.72, 1))
-	desc_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	desc_lbl.add_theme_constant_override("outline_size", 2)
-	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(desc_lbl)
-	_achievement_popup_count += 1
-	# Drop-in tween + hold + fade out + queue_free + slot release.
-	var tw: Tween = create_tween()
-	tw.tween_property(panel, "modulate:a", 1.0, 0.25)
-	tw.tween_interval(3.0)
-	tw.tween_property(panel, "modulate:a", 0.0, 0.6)
-	tw.tween_callback(layer.queue_free)
-	tw.tween_callback(func ():
-		_achievement_popup_count = max(0, _achievement_popup_count - 1)
-	)
+	AchievementPopup.spawn(self, nm, desc)
 
 # Iter 55 — banner driver. Phase 2 and phase 3 share this with
 # different label / color / size / shake-intensity / flash-color

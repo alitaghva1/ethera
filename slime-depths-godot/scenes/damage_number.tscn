@@ -5,11 +5,15 @@
 ; Label-based damage number. Auto-frees after LIFETIME seconds.
 ; Anchored to its world position via global_position; the script
 ; lerps Y upward over time and fades alpha to 0 on the second half.
+;
+; Iter 74 — widened bounds (-56..56 horizontal, -40..-4 vertical) so
+; the crit variant's 33px font + "!" suffix doesn't clip. Normal/heal/
+; hero_damage/resist all fit comfortably inside.
 [node name="DamageNumber" type="Label"]
-offset_left = -40.0
-offset_top = -32.0
-offset_right = 40.0
-offset_bottom = -8.0
+offset_left = -56.0
+offset_top = -40.0
+offset_right = 56.0
+offset_bottom = -4.0
 theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
 text = "1"
