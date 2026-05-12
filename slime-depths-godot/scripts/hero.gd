@@ -268,6 +268,25 @@ var _phoenix_feather_used: bool = false
 # hero instance with this flag back to false. No manual reset needed.
 var _iron_resolve_absorbed_this_room: bool = false
 
+# Iter 66 — BLOOD theme sword lifesteal state.
+# _pending_blood_tier is locked at SWING-time (in _start_attack) so a
+# relic gained between swing-press and hit-resolve doesn't retroactively
+# proc lifesteal (mirrors the burn/slow/flame-pool locking pattern at
+# spawn-time on projectiles). Read in _resolve_melee_strike to decide
+# the chance + +HP per proc.
+#   0 = no BLOOD bonus
+#   1 = resonance (≥2 BLOOD relics owned) — 20% chance per sword hit, +1 HP
+#   2 = ascendance (≥4 BLOOD relics owned) — 40% chance per sword hit, +1 HP
+#         AND the next sword hit after any enemy kill is guaranteed +2 HP
+# _blood_guaranteed_next_hit fires once on the next melee hit when set
+# (consumed at use); set by _on_enemy_died_for_relics when tier ≥ 2.
+var _pending_blood_tier: int = 0
+var _blood_guaranteed_next_hit: bool = false
+# Iter 66 — tracked so back-to-back lifesteal procs can kill the prior
+# pulse before starting a new one (otherwise scale-tweens compound and
+# leave the hero sprite stuck mid-pulse).
+var _blood_pulse_tween: Tween = null
+
 # Iter 19 — melee feel state.
 # _lunge_time / _lunge_dir: brief forward push during the first
 # LUNGE_TIME seconds of a swing. Decays linearly to 0 then releases
@@ -694,6 +713,13 @@ func _start_attack() -> void:
 	_pending_melee_range = ATTACK_RANGE * (1.0 + GameState.modifier_total_f("attack_range_mul", 0.0))
 	_pending_melee_strike = true
 	_melee_strike_timer = MELEE_WINDUP
+	# Iter 66 — lock the BLOOD theme tier at swing-time. Reading the tier
+	# again at hit-time would let a relic gained between press and resolve
+	# retroactively proc lifesteal on the in-flight swing — same locking
+	# pattern as burn_chance / slow_chance / flame_impact_pool_life on
+	# projectiles. Re-reads each swing, so claiming the relic mid-room
+	# still procs on subsequent swings.
+	_pending_blood_tier = GameState.theme_tier("blood")
 
 # Damage scan deferred from _start_attack by MELEE_WINDUP. Hit pizza-
 # slice in front of the hero: any enemy within _pending_melee_range
@@ -803,6 +829,21 @@ func _resolve_melee_strike() -> void:
 			# the enemy.gd guard).
 			if _roll_slow() and enemy.has_method("apply_slow"):
 				enemy.apply_slow(SLOW_DURATION)
+			# Iter 66 — BLOOD theme sword lifesteal. Per-hit roll using the
+			# tier locked at swing-time. Tier 1 (resonance): 20% chance for
+			# +1 HP. Tier 2 (ascendance): 40% chance for +1 HP AND a
+			# guaranteed +2 HP on the very next sword hit after any kill
+			# (the guaranteed flag is set in _on_enemy_died_for_relics).
+			# The guaranteed-hit consumes the flag and short-circuits the
+			# chance roll — it can stack ON TOP of a separate chance proc
+			# on the SAME hit if a non-guaranteed mob is also struck this
+			# swing (cleave: first enemy in loop pops guaranteed, second
+			# rolls 40%). Lifesteal is independent of bloodstone (kill-
+			# counter +1 HP every 3rd) and the iter-44 on-kill lifesteal
+			# (lifesteal_chance_f → +1 HP magenta). Reads at the player as
+			# "your sword is drinking" vs "the relic was satisfied."
+			if _pending_blood_tier > 0:
+				_try_blood_lifesteal(enemy)
 			hit_count += 1
 			hit_set[enemy.get_instance_id()] = true
 			# Iter 54 — combo: each melee hit landed counts.
@@ -857,6 +898,108 @@ func _trigger_swing_fire_trail() -> void:
 	var host: Node = get_parent()
 	if host != null:
 		host.add_child(pool)
+
+# Iter 66 — BLOOD theme lifesteal proc. Called from _resolve_melee_strike
+# for every enemy a swing damages, while _pending_blood_tier > 0.
+#
+# Trigger model:
+#   guaranteed flag set → always procs, heals +2, consumes the flag,
+#                          short-circuits the chance roll
+#   tier 1 → 20% per-hit chance, heals +1
+#   tier 2 → 40% per-hit chance, heals +1 (independent of the guaranteed
+#            flag — both can fire on the same swing across separate
+#            enemies in a cleave)
+#
+# Visuals on proc:
+#   - red blood-spatter at the enemy position (reuses FX.BLOOD_DROP_SCENE
+#     via Events… no — the existing scene only fires on hero damage. We
+#     spawn directly so the visual reads "blood pulled from THIS enemy"
+#     rather than the hero's hurt cue)
+#   - sprite scale-pulse on the hero — matches the iter-29 afterimage
+#     scale-tween idiom (Tween created on the sprite; goes 1→1.18→1)
+#   - crimson floater above the hero distinguishing it from bloodstone's
+#     "+1" (no STEAL suffix) and the iter-44 magenta "+1 STEAL" floater
+#     (those are kill-driven; BLOOD is hit-driven, so the player can
+#     tell which proc fired)
+#
+# Skipped when capped or dying — silent no-op rather than a lying floater.
+func _try_blood_lifesteal(enemy: Node) -> void:
+	if _is_dying:
+		return
+	var cap_bs: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hp >= cap_bs:
+		# Still consume the guaranteed flag so it doesn't stick around
+		# forever waiting for a missing-HP moment that may not come.
+		# Skipping the consume would let a guaranteed proc "save up"
+		# for hours which feels like a bug, not a feature.
+		if _blood_guaranteed_next_hit:
+			_blood_guaranteed_next_hit = false
+		return
+	var heal_amount: int = 0
+	var is_guaranteed: bool = false
+	if _blood_guaranteed_next_hit:
+		_blood_guaranteed_next_hit = false
+		heal_amount = 2
+		is_guaranteed = true
+	else:
+		var chance: float = 0.20 if _pending_blood_tier == 1 else 0.40
+		if randf() < chance:
+			heal_amount = 1
+	if heal_amount <= 0:
+		return
+	heal(heal_amount)
+	_spawn_blood_lifesteal_fx(enemy, is_guaranteed)
+
+# Iter 66 — visual portion of the lifesteal proc. Split from
+# _try_blood_lifesteal so the heal logic stays readable; this is "just
+# VFX." Spawns three things:
+#   1) red blood spatter at the enemy position (BLOOD_DROP_SCENE reused —
+#      reads as "drained")
+#   2) crimson floater above the hero with the heal amount
+#   3) brief sprite scale-pulse on the hero (1 → 1.18 → 1 over 0.18s)
+#
+# Tier-2 guaranteed procs render a brighter, longer floater and a
+# slightly stronger pulse so the player feels the bigger heal.
+func _spawn_blood_lifesteal_fx(enemy: Node, is_guaranteed: bool) -> void:
+	var host: Node = get_parent()
+	if host == null:
+		return
+	# 1) Blood spatter at the enemy. Reuses BLOOD_DROP_SCENE (5-particle
+	# red spatter, 0.7s lifetime). Spawn at the enemy's body, not feet —
+	# lift slightly so the puff originates from the wound, not the floor.
+	if is_instance_valid(enemy):
+		var spatter: Node2D = preload("res://scenes/fx/blood_drop.tscn").instantiate() as Node2D
+		if spatter != null:
+			spatter.global_position = enemy.global_position + Vector2(0, -16)
+			host.add_child(spatter)
+	# 2) Crimson floater. Tier-2 guaranteed proc gets a darker, larger
+	# label so the +2 stands out from the chance +1 above.
+	var floater_text: String = "+%d" % (2 if is_guaranteed else 1)
+	var floater_color: Color = Color(0.95, 0.15, 0.25) if is_guaranteed else Color(0.85, 0.25, 0.30)
+	var floater: DamageNumber = DamageNumber.spawn(
+		global_position + Vector2(0, -88),
+		floater_text,
+		floater_color,
+	)
+	host.add_child(floater)
+	# 3) Sprite scale-pulse — matches the iter-29 afterimage scale-tween
+	# idiom. Pulse magnitude scales with the heal: +1 → 1.12, +2 → 1.20.
+	# Tween is parented to the sprite so a scene reload mid-tween drops
+	# it cleanly with the hero. Killed any prior pulse tween via the same
+	# pattern ScreenFlash uses — without this, rapid back-to-back procs
+	# would compound scale and leave the hero permanently swollen.
+	if sprite != null:
+		if _blood_pulse_tween != null and _blood_pulse_tween.is_valid():
+			_blood_pulse_tween.kill()
+		var peak: float = 1.20 if is_guaranteed else 1.12
+		var base_scale: Vector2 = Vector2.ONE
+		# Reset to a known scale before pulsing — defensive against a
+		# killed mid-tween leaving sprite.scale somewhere between base
+		# and peak. Cheap, harmless if already at 1.
+		sprite.scale = base_scale
+		_blood_pulse_tween = sprite.create_tween()
+		_blood_pulse_tween.tween_property(sprite, "scale", base_scale * peak, 0.07)
+		_blood_pulse_tween.tween_property(sprite, "scale", base_scale, 0.11)
 
 # Iter 21 — chain_lightning effect. Find the nearest enemy within
 # CHAIN_RADIUS of `source` that wasn't already hit this swing, deal a
@@ -1133,6 +1276,16 @@ func take_damage(amount: int) -> void:
 # scene reload = new run).
 func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 	_kill_counter += 1
+	# Iter 66 — BLOOD ascendance (≥4 BLOOD relics): after any kill, arm
+	# the NEXT sword hit to guaranteed-lifesteal +2 HP. Reads tier LIVE
+	# (not swing-locked) because this is a kill-time effect, not a swing
+	# effect — gaining the relic mid-room should immediately enable the
+	# next kill→next-hit chain. The flag is consumed in _try_blood_
+	# lifesteal on the next melee hit. Stays armed across rooms (would
+	# fire on first hit in next room if a kill happened in a transition
+	# window) — fine, just rare.
+	if GameState.theme_tier("blood") >= 2:
+		_blood_guaranteed_next_hit = true
 	# Iter 40 — FLAME ascendance (4+ FLAME relics owned). Every kill
 	# drops a fire pool at the kill site that damages other enemies
 	# walking through it. Carpet pools = bullet-hell scaling: a 5-mob

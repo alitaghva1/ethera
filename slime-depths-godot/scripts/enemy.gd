@@ -26,6 +26,8 @@
 #   bomber             kamikaze charge → prime + scale → detonate AoE
 #   healer             keep distance from hero → windup tint → pulse heal
 #                      to the most-wounded ally in HEAL_RADIUS
+#   summoner           kite from hero → windup spiral → spawn 1-2 bonecap
+#                      minions within SUMMON_RADIUS (cap 3 concurrent)
 #
 # All behaviors use the same death + knockback + take_hit machinery —
 # the behavior switch only affects per-tick AI.
@@ -354,6 +356,8 @@ func _physics_process(delta: float) -> void:
 			_tick_bomber(delta)
 		"healer":
 			_tick_healer(delta)
+		"summoner":
+			_tick_summoner(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -740,6 +744,257 @@ func _spawn_heal_pulse(target_pos: Vector2) -> void:
 func _force_heal_for_test(target: Enemy) -> void:
 	_heal_target = target
 	_apply_heal()
+
+# ── Behavior: summoner ────────────────────────────────────────────────
+# Iter 66 — caster that periodically spawns minion enemies during
+# combat. Kites from the hero at SUMMONER_KEEP_DIST; on the SUMMON_
+# INTERVAL cycle, telegraphs with a dark expanding ring + sprite tint,
+# then fires 1-2 enemy_summon_requested events for bonecaps around
+# itself. Tracks summoned minions on the instance and caps the live
+# pool at SUMMONER_MAX_MINIONS so a single summoner can't infinitely
+# stuff the arena.
+#
+# State machine (mirrors healer pattern):
+#   IDLE      — kite at KEEP_DIST. When _summon_cooldown_timer <= 0 AND
+#               live-minion-count < cap, transition to WINDUP.
+#   WINDUP    — SUMMON_WINDUP seconds. Locked in place. Dark-red tint
+#               ramps on the sprite + an expanding dark ring is spawned
+#               under the sprite layer as telegraph. Transitions to
+#               SUMMON when the timer expires.
+#   SUMMON    — one-frame state: pick 1-2 spawn positions around the
+#               summoner inside SUMMON_RADIUS, emit enemy_summon_
+#               requested for each (main.gd subscribes and instantiates
+#               bonecaps via its ENEMY_TYPES pathway). Transition to
+#               COOLDOWN with _summon_cooldown_timer set to
+#               SUMMON_COOLDOWN.
+#   COOLDOWN  — kite as in IDLE but no scan; drain timer; back to IDLE.
+#
+# Live-minion tracking is per-summoner: we stash WeakRefs to spawned
+# minions in _summoned_minions and prune dead/invalid entries before
+# the cap check. Using WeakRef so a freed Enemy doesn't keep the array
+# entry alive; the cap reflects the current live count.
+enum SummonerState { IDLE, WINDUP, SUMMON, COOLDOWN }
+const SUMMON_INTERVAL: float = 5.0
+const SUMMON_WINDUP: float = 0.8
+const SUMMON_COOLDOWN: float = 1.0
+const SUMMON_RADIUS: float = 80.0
+const SUMMON_KEEP_DIST: float = 240.0
+const SUMMONER_MIN_DIST: float = 200.0
+const SUMMONER_MAX_MINIONS: int = 3
+const SUMMONER_MINION_TYPE: String = "bonecap"
+const SUMMONER_TINT_PEAK: Color = Color(1.4, 0.45, 0.55, 1.0)   # dark red at peak windup
+# Visual telegraph: dark-red expanding ring (same Polygon2D-annulus
+# trick as the heal pulse), scaled out from a small radius at the
+# summoner across the windup so the player can read "summoner is
+# about to spawn something HERE."
+const SUMMON_RING_SEGMENTS: int = 28
+const SUMMON_RING_WIDTH: float = 4.0
+var _summoner_state: SummonerState = SummonerState.IDLE
+var _summoner_timer: float = 0.0
+var _summon_cooldown_timer: float = 0.0
+var _summoned_minions: Array = []   # Array[WeakRef], pruned on cap check
+
+func _tick_summoner(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	sprite.flip_h = to_hero.x < 0
+	match _summoner_state:
+		SummonerState.IDLE:
+			_summoner_movement(to_hero, dist)
+			# Tick cooldown and scan to summon. Only fire if we're
+			# under the live-minion cap — pruning happens inside the
+			# cap-count helper.
+			if _summon_cooldown_timer > 0.0:
+				_summon_cooldown_timer = max(0.0, _summon_cooldown_timer - delta)
+			elif _live_minion_count() < SUMMONER_MAX_MINIONS:
+				_summoner_state = SummonerState.WINDUP
+				_summoner_timer = SUMMON_WINDUP
+				sprite.play(&"attack")
+				_spawn_summon_telegraph()
+		SummonerState.WINDUP:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			# Dark-red tint ramps from 0 to peak across the windup.
+			# Distinct from the healer's green tint so the player reads
+			# "summoner is winding up" vs "healer is winding up".
+			var wt: float = 1.0 - (_summoner_timer / SUMMON_WINDUP)
+			sprite.modulate = Color(1, 1, 1, 1).lerp(SUMMONER_TINT_PEAK, wt)
+			_summoner_timer -= delta
+			if _summoner_timer <= 0.0:
+				_summoner_state = SummonerState.SUMMON
+		SummonerState.SUMMON:
+			# One-frame state — fire the summons, then enter cooldown.
+			_apply_summon()
+			sprite.modulate = Color(1, 1, 1, 1)
+			_summoner_state = SummonerState.COOLDOWN
+			_summon_cooldown_timer = SUMMON_COOLDOWN
+		SummonerState.COOLDOWN:
+			_summoner_movement(to_hero, dist)
+			_summon_cooldown_timer = max(0.0, _summon_cooldown_timer - delta)
+			if _summon_cooldown_timer <= 0.0:
+				_summoner_state = SummonerState.IDLE
+				_summon_cooldown_timer = SUMMON_INTERVAL - SUMMON_WINDUP - SUMMON_COOLDOWN
+
+# Summoner kite movement. Same shape as _healer_movement but with the
+# summoner's KEEP_DIST. Backs away if hero is closer than MIN_DIST,
+# pulls in if past KEEP_DIST + 40 px, idles in the dead zone between.
+func _summoner_movement(to_hero: Vector2, dist: float) -> void:
+	var t: EnemyType = enemy_type
+	if t.can_move() and dist < SUMMONER_MIN_DIST:
+		velocity = -to_hero.normalized() * _effective_move_speed()
+		sprite.play(&"walk")
+		move_and_slide()
+	elif t.can_move() and dist > SUMMON_KEEP_DIST + 40.0:
+		velocity = to_hero.normalized() * _effective_move_speed() * 0.6
+		sprite.play(&"walk")
+		move_and_slide()
+	else:
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+
+# Prune stale WeakRef entries from _summoned_minions and return the
+# live count. Done lazily on each cap check so a dying minion's slot
+# frees up on the next summoner tick rather than needing a connect-
+# back from the minion.
+func _live_minion_count() -> int:
+	var alive: Array = []
+	for w in _summoned_minions:
+		if w == null:
+			continue
+		var ref: WeakRef = w
+		var node: Object = ref.get_ref()
+		if node == null:
+			continue
+		if not (node is Enemy):
+			continue
+		var e: Enemy = node
+		if e._dying or not is_instance_valid(e):
+			continue
+		alive.append(w)
+	_summoned_minions = alive
+	return alive.size()
+
+# Fire the summon request events. Spawns 1-2 minions at random
+# positions inside SUMMON_RADIUS of the summoner, capped by remaining
+# room under SUMMONER_MAX_MINIONS. Uses Events.enemy_summon_requested
+# so main.gd's existing handler (originally added for boss phase
+# summons) instantiates the enemies via ENEMY_TYPES — keeps this
+# script free of the preload dict.
+#
+# We DEFERRED-connect each spawned Enemy's tree_entered so we can grab
+# a reference and stash it in _summoned_minions for cap tracking.
+# Since main.gd add_child's the new enemy synchronously, we instead
+# match by querying the "enemies" group right after emission — the
+# new spawn is the closest unowned enemy at the summon point.
+func _apply_summon() -> void:
+	var room: int = _live_minion_count()
+	var slots: int = SUMMONER_MAX_MINIONS - room
+	if slots <= 0:
+		return
+	var count: int = mini(slots, 1 + randi() % 2)   # 1 or 2 per summon
+	for i in range(count):
+		var ang: float = randf() * TAU
+		var r: float = randf_range(SUMMON_RADIUS * 0.35, SUMMON_RADIUS)
+		var spawn_pos: Vector2 = global_position + Vector2(cos(ang) * r, sin(ang) * r)
+		# Spawn a small dark burst at each minion's spawn point so the
+		# arrival reads on screen rather than just appearing.
+		_spawn_summon_burst(spawn_pos)
+		Events.enemy_summon_requested.emit(spawn_pos, SUMMONER_MINION_TYPE)
+		# Track the newly-spawned minion. main.gd's handler runs
+		# synchronously on the signal emit, so by this line the
+		# minion is already in the "enemies" group at spawn_pos.
+		# Find it by closest-to-spawn_pos (cheap: a wave is rarely
+		# more than ~12 enemies) and stash its WeakRef.
+		var best: Enemy = null
+		var best_d: float = INF
+		for node in get_tree().get_nodes_in_group("enemies"):
+			if not (node is Enemy):
+				continue
+			var e: Enemy = node
+			if e == self:
+				continue
+			var d: float = e.global_position.distance_to(spawn_pos)
+			if d < best_d and d < 2.0:   # spawned exactly at spawn_pos
+				best_d = d
+				best = e
+		if best != null:
+			_summoned_minions.append(weakref(best))
+
+# Spawn the windup telegraph ring at the summoner. Same Polygon2D
+# annulus trick as _spawn_heal_pulse but in dark red and expanding
+# in place (no drift toward a target). The ring grows from a small
+# radius to ~outer_r across SUMMON_WINDUP, then queue_frees.
+func _spawn_summon_telegraph() -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	var fx: Node2D = Node2D.new()
+	fx.global_position = global_position
+	fx.z_index = -1   # under the sprite so it reads as a ground FX
+	parent.add_child(fx)
+	var ring: Polygon2D = Polygon2D.new()
+	var outer_r: float = 24.0
+	var inner_r: float = max(0.5, outer_r - SUMMON_RING_WIDTH)
+	var verts: PackedVector2Array = PackedVector2Array()
+	for i in range(SUMMON_RING_SEGMENTS):
+		var a: float = (TAU / float(SUMMON_RING_SEGMENTS)) * float(i)
+		verts.append(Vector2(cos(a), sin(a)) * outer_r)
+	for i in range(SUMMON_RING_SEGMENTS - 1, -1, -1):
+		var a: float = (TAU / float(SUMMON_RING_SEGMENTS)) * float(i)
+		verts.append(Vector2(cos(a), sin(a)) * inner_r)
+	ring.polygon = verts
+	ring.color = Color(0.85, 0.25, 0.30, 0.75)
+	fx.add_child(ring)
+	# Scale out across the windup; ending scale ~ SUMMON_RADIUS / outer_r
+	# so the ring reaches the spawn-out radius at the moment summons fire.
+	var final_scale: float = max(1.5, SUMMON_RADIUS / outer_r)
+	fx.scale = Vector2(0.4, 0.4)
+	var tw: Tween = fx.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(fx, "scale", Vector2(final_scale, final_scale), SUMMON_WINDUP) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, SUMMON_WINDUP) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(fx.queue_free)
+
+# Small dark burst at each minion spawn point. A scaling-out + fading
+# dark-red circle so the moment of arrival reads on screen.
+func _spawn_summon_burst(pos: Vector2) -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	var fx: Node2D = Node2D.new()
+	fx.global_position = pos
+	fx.z_index = -1
+	parent.add_child(fx)
+	var dot: Polygon2D = Polygon2D.new()
+	var verts: PackedVector2Array = PackedVector2Array()
+	var burst_r: float = 14.0
+	var segments: int = 20
+	for i in range(segments):
+		var a: float = (TAU / float(segments)) * float(i)
+		verts.append(Vector2(cos(a), sin(a)) * burst_r)
+	dot.polygon = verts
+	dot.color = Color(0.7, 0.2, 0.25, 0.85)
+	fx.add_child(dot)
+	var tw: Tween = fx.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(fx, "scale", Vector2(1.6, 1.6), 0.3) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(dot, "modulate:a", 0.0, 0.3) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(fx.queue_free)
+
+# Iter 66 — test-only force-trigger for headless verification. Skips
+# the windup/cooldown gating so a test can assert "summoner emits a
+# spawn request" without simulating ~6 seconds of physics ticks.
+func _force_summon_for_test() -> void:
+	_apply_summon()
 
 # ── Behavior: telegraphed_melee ───────────────────────────────────────
 # Approach → stop + windup-tint → swing in cone → cooldown. Damage

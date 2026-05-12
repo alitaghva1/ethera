@@ -58,6 +58,12 @@ const ENEMY_TYPES := {
 	# Squishy (4 HP, 60 px/s) so the player can focus-kill if they read
 	# the green telegraph in time.
 	"spectral_priest":   preload("res://scenes/enemies/spectral_priest.tres"),
+	# Iter 66 — summoner caster. Uses the "summoner" behavior in enemy.gd.
+	# Kites at ~240 px and on a 5s cycle spawns 1-2 bonecaps around itself
+	# (0.8s windup + dark expanding ring + 1.0s recovery). Capped at 3
+	# live minions to prevent wave-stuffing. Slightly tankier (6 HP) than
+	# the spectral_priest since it has no direct attack of its own.
+	"bone_summoner":     preload("res://scenes/enemies/bone_summoner.tres"),
 	# Iter 17 — boss type. Spawned alone in room 3's final wave; the
 	# is_boss flag drives the HP-bar UI and the boss tracking in
 	# _process. Wave-clear detection treats it like any other enemy.
