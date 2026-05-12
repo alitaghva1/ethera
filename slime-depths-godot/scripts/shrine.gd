@@ -4,7 +4,11 @@
 # instead of a relic. Three flavors:
 #
 #   stat_kind = "hp"     +1 max HP (cap raised; hero also healed +1).
-#   stat_kind = "dodge"  -0.15s dodge cooldown.
+#   stat_kind = "dash"   -0.15s dash strike cooldown. (iter-100 — was
+#                        "dodge" granting dodge_cd_reduction_f which was
+#                        a typo'd dead key AND tied to the iter-95
+#                        removed dodge ability. Re-anchored to the only
+#                        mobility option left.)
 #   stat_kind = "atk"    +1 melee damage.
 #
 # Pray-once contract: claiming any shrine in the room dismisses the
@@ -32,12 +36,19 @@ const SHRINE_KINDS: Dictionary = {
 		"modifier_key": "max_hp_bonus",
 		"modifier_value": 1,
 	},
-	"dodge": {
+	# iter-100: renamed dodge → dash. The dodge ability was removed in
+	# iter-95; this shrine entry was doubly broken because it pointed at
+	# `dodge_cd_reduction_f` which never existed as a live modifier key
+	# anyway (the iter-95 dead key was `dodge_cooldown_mul`, also gone).
+	# Now grants a -15% dash strike cooldown via `dash_strike_cooldown_mul`
+	# — the live key hero.gd reads in _start_dash_strike. ALACRITY label
+	# survives — it still means "quick-move stat" for the player.
+	"dash": {
 		"label": "ALACRITY",
-		"subtitle": "-0.15s DODGE CD",
+		"subtitle": "-15% DASH STRIKE CD",
 		"color": Color(0.55, 0.9, 1.0, 1.0),
-		"modifier_key": "dodge_cd_reduction_f",
-		"modifier_value": 0.15,
+		"modifier_key": "dash_strike_cooldown_mul",
+		"modifier_value": -0.15,
 	},
 	"atk": {
 		"label": "WRATH",

@@ -160,7 +160,8 @@ extends Resource
 # Iter 33 — shrine placements (only consumed when room_kind == "shrine").
 # Each position spawns one Shrine node at _ready. Each Shrine offers
 # one stat boost type — main.gd assigns types round-robin so a 3-shrine
-# room gets one each of HP / DODGE_CD / ATK_DMG.
+# room gets one each of HP / DASH_CD / ATK_DMG. (iter-100: DODGE_CD →
+# DASH_CD after the dodge ability was deleted in iter-95.)
 @export var shrine_positions: Array[Vector2] = []
 
 # Iter 34 — biome flavor. Distinct visual themes layered on top of the

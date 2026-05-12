@@ -357,27 +357,10 @@ text = "blast"
 horizontal_alignment = 0
 vertical_alignment = 1
 
-[node name="R4" type="HBoxContainer" parent="Content/ControlsList"]
-theme_override_constants/separation = 18
-alignment = 1
-
-[node name="Key" type="Label" parent="Content/ControlsList/R4"]
-custom_minimum_size = Vector2(140, 0)
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 2
-text = "SPACE"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="Action" type="Label" parent="Content/ControlsList/R4"]
-custom_minimum_size = Vector2(220, 0)
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
-text = "dodge"
-horizontal_alignment = 0
-vertical_alignment = 1
+; iter-100: R4 (SPACE → dodge) row removed. The dodge ability was
+; deleted in iter-95 and Space is no longer bound. R5 (Q → shield),
+; R6 (SHIFT → dash strike), etc. retain their original names — the
+; node-name numbering is purely positional, not referenced by code.
 
 [node name="R5" type="HBoxContainer" parent="Content/ControlsList"]
 theme_override_constants/separation = 18

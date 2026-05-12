@@ -236,11 +236,13 @@ const THEME_TOOLTIP_DESC: Dictionary = {
 	},
 	"vow": {
 		"resonance": "+1 damage taken reduction",
-		"ascendance": "each parry restores 1 HP",
+		"ascendance": "each shield catch restores 1 HP",
 	},
 	"shadow": {
-		"resonance": "+0.08s dodge i-frames",
-		"ascendance": "dodge fires a 60-px shockwave (1 dmg)",
+		# iter-95/96: dodge ability removed, theme procs reanchored to
+		# dash strike. Resonance stat-bonus is now crit + move speed.
+		"resonance": "+5% crit chance, +5% move speed",
+		"ascendance": "dash strike fires a 60-px shockwave (1 dmg)",
 	},
 }
 
@@ -436,7 +438,9 @@ func _ready() -> void:
 	_update_kills()
 	_update_room_label()
 	_rebuild_relic_strip()
-	status_label.text = "LMB swing · RMB blast · SPACE dodge · Q parry · SHIFT dash"
+	# iter-95: dodge removed, parry renamed to shield. Defensive toolkit
+	# is now SHIELD (Q, timing catch) + DASH (Shift, mobility + i-frames).
+	status_label.text = "LMB swing · RMB blast · Q shield · SHIFT dash"
 	wave_label.text = "WAVE 1 / %d  incoming" % max(1, _waves.size())
 	# Iter 33 — special-room dispatch. Combat rooms run the wave timer
 	# as before; treasure / shrine rooms skip waves and route through
@@ -1730,10 +1734,13 @@ func _enter_shrine_room() -> void:
 	wave_label.text = "[ SHRINE ROOM ]"
 	_wave_state = WaveState.COMPLETE
 	# Round-robin the three stat kinds across whatever shrines spawn.
-	# Order is fixed (hp / dodge / atk) so the LEFT-MOST shrine is
+	# Order is fixed (hp / dash / atk) so the LEFT-MOST shrine is
 	# always HP — players can rely on visual position to read the
 	# offer rather than having to walk up to each one.
-	var stat_kinds: Array[String] = ["hp", "dodge", "atk"]
+	# iter-100: was "dodge" — dodge ability removed in iter-95. The
+	# middle shrine now reduces dash strike cooldown (the only mobility
+	# option left).
+	var stat_kinds: Array[String] = ["hp", "dash", "atk"]
 	var positions: Array[Vector2] = _room.shrine_positions
 	if positions.is_empty():
 		# Fallback layout — 3 shrines centered horizontally on the
