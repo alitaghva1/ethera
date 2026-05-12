@@ -1320,6 +1320,11 @@ func _start_parry() -> void:
 	if aim_world.length() < 1.0:
 		aim_world = _dir_to_vector(_facing_dir)
 	var aim: Vector2 = aim_world.normalized()
+	# Iter 63 — store parry aim so VOW ascendance's reflect-fan in
+	# _on_parry_hit knows which direction to fire the projectile burst
+	# (parry catch happens AFTER _start_parry, so _parry_aim is set
+	# by the time the reflect would fire).
+	_parry_aim = aim
 	# Iter 29 — kite-silhouette parry shield IN FRONT of the hero,
 	# oriented toward the aim direction. Replaces the iter-25 ring
 	# pulse as the primary "I am blocking from THIS direction"
@@ -1404,6 +1409,47 @@ func _on_parry_hit() -> void:
 					Color(0.92, 0.92, 0.78),
 				)
 				parent_v.add_child(hn)
+		# Iter 63 — VOW ascendance parry REFLECT. In addition to the
+		# +1 HP heal above, a successful parry catch fans 5 small ivory
+		# projectiles outward in a 90° cone facing the parry aim. Each
+		# does 1 damage to whoever it hits. Turns parry from purely
+		# DEFENSIVE into a real OFFENSIVE punctuation — bait an enemy
+		# into a swing, tap Q, watch them get pierced for their trouble.
+		# Visually distinct from the iter-39 STORM chain bolt (cyan,
+		# arcs to one target) — these are 5 straight ivory bolts in a
+		# fan from the parry catch point.
+		_spawn_parry_reflect_fan()
+
+# Iter 63 — parry reflect fan. 5 small projectiles in a 90° cone
+# centered on the parry's stored aim direction (_parry_aim is set
+# in _start_parry). Each projectile is a fresh instance of the
+# regular Projectile scene with ivory tint + low damage so the
+# burst reads as "spirit retaliation" not "spell cast."
+const PARRY_REFLECT_COUNT: int = 5
+const PARRY_REFLECT_CONE: float = PI * 0.5   # 90° total spread
+const PARRY_REFLECT_DAMAGE: int = 1
+const PARRY_REFLECT_SPEED: float = 380.0
+var _parry_aim: Vector2 = Vector2.RIGHT   # set in _start_parry
+
+func _spawn_parry_reflect_fan() -> void:
+	var aim: Vector2 = _parry_aim if _parry_aim.length_squared() > 0.001 else Vector2.RIGHT
+	# 5 projectiles spread across 90°. Outer ones get +/- 45°.
+	var step: float = PARRY_REFLECT_CONE / float(PARRY_REFLECT_COUNT - 1)
+	var base_angle: float = aim.angle() - PARRY_REFLECT_CONE * 0.5
+	var host: Node = get_parent()
+	if host == null:
+		return
+	for i in range(PARRY_REFLECT_COUNT):
+		var a: float = base_angle + step * float(i)
+		var dir: Vector2 = Vector2(cos(a), sin(a))
+		var p: Projectile = PROJECTILE_SCENE.instantiate()
+		p.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET) + dir * 22.0
+		p.velocity = dir * PARRY_REFLECT_SPEED
+		p.damage = PARRY_REFLECT_DAMAGE
+		p.target_group = "enemies"
+		# Ivory tint matching the VOW theme palette (iter-39 chip color).
+		p.orb_tint = Color(0.92, 0.92, 0.78, 1.0)
+		host.add_child(p)
 
 # Iter 25 — dash pass-through damage tick. Called from _physics_process
 # while _dash_strike_time > 0. Scans enemies near the hero this frame
