@@ -353,6 +353,11 @@ func _ready() -> void:
 	# and we want one resolution path regardless of which one was
 	# picked.
 	Events.pickup_claimed.connect(_on_pickup_claimed)
+	# Iter 55 — boss summon listener. Bosses fire this signal at phase
+	# transitions to request adds; main.gd has the ENEMY_TYPES preload
+	# dict so it owns the actual spawn. Decouples enemy.gd from the
+	# scene-side registry.
+	Events.enemy_summon_requested.connect(_on_enemy_summon_requested)
 	_death_screen = DEATH_SCREEN_SCENE.instantiate()
 	add_child(_death_screen)
 	_death_screen.retry_pressed.connect(_on_death_retry)
@@ -1266,6 +1271,30 @@ func _on_wave_cleared() -> void:
 		status_label.text = "Choose a relic · walk near and press [E]"
 		_spawn_pedestal_offer(3)
 
+# Iter 55 — handle a boss summon request. Spawns the requested enemy
+# type at the given position. Mirrors _spawn_enemy_type but skips the
+# wave-runner _pending_spawns counter (summons aren't part of a wave;
+# they're mid-wave reinforcements that wave-clear should NOT wait for).
+# Wait — actually wave-clear DOES need to wait for them: a boss room
+# is "cleared" when the boss dies + any remaining enemies are gone.
+# Solution: increment _pending_spawns BEFORE spawn so the running
+# wave-clear poll sees them as pending — the post-add decrement
+# in _spawn_enemy_type's path already balances, but here we manage
+# it inline. Actually simpler: just add to "enemies" group and let
+# the wave-clear poll (which counts live enemies) handle it.
+func _on_enemy_summon_requested(world_pos: Vector2, type_id: String) -> void:
+	if not _alive:
+		return
+	if not ENEMY_TYPES.has(type_id):
+		push_warning("main.gd: enemy_summon_requested unknown type '%s'" % type_id)
+		return
+	var type_res: EnemyType = ENEMY_TYPES.get(type_id)
+	var enemy: Enemy = ENEMY_SCENE.instantiate()
+	enemy.enemy_type = type_res
+	enemy.global_position = world_pos
+	enemy.died_at.connect(_on_enemy_died)
+	add_child(enemy)
+
 func _spawn_enemy_type(type_id: String) -> void:
 	# Iter 15: drain the pending counter regardless of whether we
 	# actually spawn — a dead player or empty spawn_points still
@@ -1299,6 +1328,8 @@ func _spawn_enemy_type(type_id: String) -> void:
 		# spider crosses 50% HP — that's just plinking). Bind to a
 		# closure that captures the enemy ref so the banner can show
 		# the boss's display name.
+		# Iter 55 — same closure now handles phase 2 AND phase 3 via the
+		# `phase` int parameter — _on_boss_phase_changed dispatches.
 		var boss_name_str: String = type_res.display_name.to_upper()
 		enemy.phase_changed.connect(func (phase: int): _on_boss_phase_changed(phase, boss_name_str))
 		# Iter 22 — boss intro punctuation. Heavy camera shake + brief
@@ -2208,43 +2239,62 @@ func _show_boss_intro_banner(display_name: String) -> void:
 # punch. Connects ONCE per boss (the signal can only fire once because
 # enemy.gd guards on _phase == 1).
 func _on_boss_phase_changed(phase: int, boss_display_name: String) -> void:
-	if phase != 2:
-		return
-	_show_boss_phase_banner(boss_display_name)
-	# Camera shake + screen flash for impact. Same energy as boss intro
-	# but lighter — phase 2 is mid-fight, intro was the opener.
-	if has_node("/root/FX"):
-		var fx = get_node("/root/FX")
-		if fx.has_method("shake"):
-			fx.shake(7.0, 0.25)
-	if has_node("/root/ScreenFlash"):
-		var sf = get_node("/root/ScreenFlash")
-		if sf.has_method("flash"):
-			sf.flash(Color(0.85, 0.18, 0.18, 0.32), 0.4)
+	# Iter 55 — phase 3 banner branch. Phase 3 reads as "DESPERATE"
+	# (vs phase 2's "ENRAGED") — deeper red tint, bigger banner,
+	# heavier camera + screen flash. Different label text so the
+	# player learns "phase 3 is the danger spike."
+	if phase == 2:
+		_show_boss_phase_banner(boss_display_name, "ENRAGED",
+			Color(1.0, 0.55, 0.45, 1.0), 44, 7.0,
+			Color(0.85, 0.18, 0.18, 0.32))
+	elif phase == 3:
+		_show_boss_phase_banner(boss_display_name, "DESPERATE",
+			Color(1.0, 0.32, 0.30, 1.0), 52, 11.0,
+			Color(0.95, 0.10, 0.10, 0.46))
 
 # Iter 37 — boss phase 2 banner. Smaller + redder than the boss intro
 # banner (this is a mid-fight beat, not an opener). Drops in from the
 # top, holds 1.2s, fades.
-func _show_boss_phase_banner(boss_display_name: String) -> void:
+# Iter 55 — banner driver. Phase 2 and phase 3 share this with
+# different label / color / size / shake-intensity / flash-color
+# parameters so the player reads "phase 3 is the more dangerous state"
+# via the visual escalation.
+func _show_boss_phase_banner(
+	boss_display_name: String,
+	subtitle: String = "ENRAGED",
+	color: Color = Color(1.0, 0.55, 0.45, 1.0),
+	font_size: int = 44,
+	shake_amp: float = 7.0,
+	flash_color: Color = Color(0.85, 0.18, 0.18, 0.32),
+) -> void:
+	# Camera shake + screen flash for impact.
+	if has_node("/root/FX"):
+		var fx = get_node("/root/FX")
+		if fx.has_method("shake"):
+			fx.shake(shake_amp, 0.25)
+	if has_node("/root/ScreenFlash"):
+		var sf = get_node("/root/ScreenFlash")
+		if sf.has_method("flash"):
+			sf.flash(flash_color, 0.4)
 	var layer: CanvasLayer = CanvasLayer.new()
 	layer.layer = 40
 	add_child(layer)
 	var lbl: Label = Label.new()
-	lbl.text = "%s · ENRAGED" % boss_display_name
-	lbl.add_theme_font_size_override("font_size", 44)
-	lbl.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45, 1))
+	lbl.text = "%s · %s" % [boss_display_name, subtitle]
+	lbl.add_theme_font_size_override("font_size", font_size)
+	lbl.add_theme_color_override("font_color", color)
 	lbl.add_theme_color_override("font_outline_color", Color(0.15, 0, 0, 0.95))
 	lbl.add_theme_constant_override("outline_size", 6)
 	lbl.anchor_left = 0.5
 	lbl.anchor_right = 0.5
 	lbl.anchor_top = 0.25
 	lbl.anchor_bottom = 0.25
-	lbl.offset_left = -340
-	lbl.offset_right = 340
-	lbl.offset_top = -32
-	lbl.offset_bottom = 32
+	lbl.offset_left = -360
+	lbl.offset_right = 360
+	lbl.offset_top = -36
+	lbl.offset_bottom = 36
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.pivot_offset = Vector2(340, 32)
+	lbl.pivot_offset = Vector2(360, 36)
 	lbl.modulate = Color(1, 1, 1, 0)
 	lbl.scale = Vector2(1.4, 1.4)
 	layer.add_child(lbl)

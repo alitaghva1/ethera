@@ -137,3 +137,30 @@ func can_move() -> bool:
 # even if phase2_overrides is non-empty (useful as a kill-switch for
 # tuning). Threshold compared as `hp / max_hp <= phase2_hp_threshold`.
 @export_range(0.0, 1.0, 0.05) var phase2_hp_threshold: float = 0.5
+
+# Iter 55 — phase 3 overrides. Same shape as phase2_overrides; applied
+# the first time hp crosses phase3_hp_threshold (typically 0.25 = 25%).
+# Stacks ON TOP of phase 2's mutations — at phase 3, the enemy_type
+# is duplicated again and phase3_overrides applied to the local copy.
+# Result: phase-3 values are absolute (e.g. melee_windup=0.4 means
+# "0.4s windup in phase 3", not "0.4s OFFSET from phase 2").
+#
+# Empty dict = no phase 3 (default — most enemies stop at phase 1).
+@export var phase3_overrides: Dictionary = {}
+
+@export_range(0.0, 1.0, 0.05) var phase3_hp_threshold: float = 0.25
+
+# Iter 55 — phase-transition summon. Optional adds spawned when the
+# enemy transitions to phase 2 OR phase 3. Drives "boss in trouble →
+# calls for help" dramatic moments. Spawn positions are picked at
+# random within ~96 px of the boss.
+#
+#   phase2_summon_type / phase3_summon_type: enemy id from main.gd's
+#     ENEMY_TYPES dict ("skel", "crypt_spider", "ember_bomber", etc.).
+#     Empty string = no summons at that phase.
+#   phase2_summon_count / phase3_summon_count: how many to spawn.
+#     0 = no summons even if the type is set.
+@export var phase2_summon_type: String = ""
+@export var phase2_summon_count: int = 0
+@export var phase3_summon_type: String = ""
+@export var phase3_summon_count: int = 0

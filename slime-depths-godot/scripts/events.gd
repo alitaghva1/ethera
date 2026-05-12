@@ -84,3 +84,17 @@ signal enemy_slowed(world_pos: Vector2)
 signal kill_exploded(world_pos: Vector2)
 signal boss_enraged(world_pos: Vector2)
 signal pickup_mythic(world_pos: Vector2)
+
+# Iter 55 — boss phase 3 + summon request signals.
+# boss_phase_3:
+#   Fires when a boss enters phase 3 (typically 25% HP). Drives the
+#   second cinematic banner + audio sting + camera shake. Parallel
+#   pattern to boss_enraged (which fires at phase 2).
+# enemy_summon_requested:
+#   Boss-side request for the host scene (main.gd) to spawn an enemy
+#   of `type_id` near `world_pos`. Decouples enemy.gd from the
+#   ENEMY_TYPES preload dict (which lives in main.gd). main.gd
+#   subscribes and instantiates the requested enemy via its existing
+#   _spawn_enemy_type pathway.
+signal boss_phase_3(world_pos: Vector2)
+signal enemy_summon_requested(world_pos: Vector2, type_id: String)

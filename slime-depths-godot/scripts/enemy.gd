@@ -656,19 +656,29 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 	if is_crit:
 		Events.enemy_crit_hit.emit(global_position)
 	# Iter 37 — phase transition check. Only triggers when:
-	#   - we're still in phase 1
-	#   - enemy_type declares phase2_overrides (non-empty)
-	#   - phase2_hp_threshold > 0 (kill-switch respect)
+	#   - we're still in phase N
+	#   - enemy_type declares phaseN_overrides (non-empty)
+	#   - phaseN_hp_threshold > 0 (kill-switch respect)
 	#   - current hp is at or below threshold
 	#   - hit didn't drop hp to 0 (avoid firing during death frame)
-	# Done BEFORE the death check so an enemy can't "skip" phase 2 by
-	# being burst from 100% to 0%.
+	# Done BEFORE the death check so an enemy can't "skip" a phase by
+	# being burst from 100% to 0%. Iter 55 — extended to phase 3.
+	# Phase 3 can fire on the SAME hit as phase 2 (e.g. a massive crit
+	# drops hp from 100% to 20%) — checked after phase 2 transition so
+	# the ratio sees the post-mutation max_hp (though max_hp is rarely
+	# changed by phase overrides, the order is defensive).
 	if hp > 0 and _phase == 1 and enemy_type != null:
-		var thr: float = enemy_type.phase2_hp_threshold
-		if thr > 0.0 and not enemy_type.phase2_overrides.is_empty():
+		var thr2: float = enemy_type.phase2_hp_threshold
+		if thr2 > 0.0 and not enemy_type.phase2_overrides.is_empty():
 			var ratio: float = float(hp) / float(maxi(1, enemy_type.max_hp))
-			if ratio <= thr:
+			if ratio <= thr2:
 				_trigger_phase_2()
+	if hp > 0 and _phase == 2 and enemy_type != null:
+		var thr3: float = enemy_type.phase3_hp_threshold
+		if thr3 > 0.0 and not enemy_type.phase3_overrides.is_empty():
+			var ratio: float = float(hp) / float(maxi(1, enemy_type.max_hp))
+			if ratio <= thr3:
+				_trigger_phase_3()
 	if hp <= 0:
 		_die()
 
@@ -703,7 +713,48 @@ func _trigger_phase_2() -> void:
 	# sting — they get a smaller in-built audio cue if needed later.
 	if enemy_type != null and enemy_type.is_boss:
 		Events.boss_enraged.emit(global_position)
+	# Iter 55 — phase-2 summon. If the EnemyType configured adds for
+	# this phase, fire N enemy_summon_requested events; main.gd
+	# subscribes and instantiates them via its existing _spawn_enemy_type
+	# pathway. Decouples the spawn from this script (which doesn't
+	# know about ENEMY_TYPES preload).
+	_request_phase_summons(enemy_type.phase2_summon_type, enemy_type.phase2_summon_count)
 	phase_changed.emit(2)
+
+# Iter 55 — boss phase 3. Same architecture as phase 2: duplicates the
+# enemy_type, applies phase3_overrides on the local copy, fires red
+# tint flash, emits boss_phase_3 + phase_changed(3), fires summons if
+# configured. Idempotent via _phase >= 3 guard in take_hit.
+func _trigger_phase_3() -> void:
+	_phase = 3
+	var local: EnemyType = enemy_type.duplicate() as EnemyType
+	var overrides: Dictionary = local.phase3_overrides
+	for key in overrides:
+		if key in local:
+			local.set(key, overrides[key])
+	enemy_type = local
+	# Visual: brighter / hotter red than phase 2 — desperation state.
+	if sprite != null:
+		var t: Tween = create_tween()
+		t.tween_property(sprite, "modulate", Color(3.2, 0.5, 0.3, 1), 0.10)
+		t.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.50)
+	if enemy_type.is_boss:
+		Events.boss_phase_3.emit(global_position)
+	_request_phase_summons(enemy_type.phase3_summon_type, enemy_type.phase3_summon_count)
+	phase_changed.emit(3)
+
+# Iter 55 — emit N summon requests for the specified type. main.gd
+# listens to Events.enemy_summon_requested and instantiates. Spawn
+# positions are picked here as offsets from the boss so they appear
+# in a ring around her — telegraphs "she called for help" visually.
+func _request_phase_summons(type_id: String, count: int) -> void:
+	if type_id == "" or count <= 0:
+		return
+	for i in range(count):
+		var ang: float = (TAU / float(count)) * float(i) + randf_range(-0.4, 0.4)
+		var dist: float = randf_range(80.0, 112.0)
+		var spawn_pos: Vector2 = global_position + Vector2(cos(ang) * dist, sin(ang) * dist)
+		Events.enemy_summon_requested.emit(spawn_pos, type_id)
 
 func apply_knockback(dir: Vector2, force: float, duration: float) -> void:
 	if _dying or duration <= 0.0:
