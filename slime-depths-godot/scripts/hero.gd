@@ -1147,6 +1147,10 @@ func _trigger_fire_pool(world_pos: Vector2) -> void:
 const KILL_EXPLOSION_RADIUS: float = 72.0
 const KILL_EXPLOSION_DAMAGE: int = 2
 func _trigger_kill_explosion(world_pos: Vector2) -> void:
+	# Iter 53 — audio boom for the chain explosion. Fires alongside the
+	# enemy_died signal of the triggering kill so a cascade reads as
+	# escalating booms layered with shrinking death-sweep tones.
+	Events.kill_exploded.emit(world_pos)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue

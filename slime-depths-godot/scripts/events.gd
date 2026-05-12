@@ -52,3 +52,35 @@ signal hero_blast_muzzle(world_pos: Vector2)             # blast muzzle-flash be
 signal hero_dash_impacted(world_pos: Vector2)            # dash-strike AoE shockwave landed (iter-13)
 signal hero_swing_connected(world_pos: Vector2)          # sword swing connected on at least one enemy (iter-13)
 signal hero_second_wind(world_pos: Vector2)              # second_wind relic saved the hero from death (iter-17)
+
+# ── Iter 53 — audio coverage for iter 39-50 mechanics ─────────────────
+# Each of these announces a SPECIFIC proc/state change that earned a
+# dedicated audio cue during the recent combat-depth expansion. Without
+# them, crits / burns / slows / kill-explosions all play the generic
+# enemy_hit "thud" — robbing the player of feedback on which proc just
+# fired.
+#
+# enemy_crit_hit:
+#   Layered on top of enemy_hit for crit damage rolls (iter-42). High
+#   sparkle chime so a crit reads visually (yellow "5!") AND audibly.
+#
+# enemy_burned / enemy_slowed:
+#   First-tick of a freshly applied burn (iter 43) or slow (iter 46).
+#   Subtle sizzle / crystalline tinkle so the proc lands audibly.
+#
+# kill_exploded:
+#   The chain explosion from iter 45's explode_on_kill_chance_f. Big
+#   low boom layered on enemy_died.
+#
+# boss_enraged:
+#   Iter 37 phase-2 transition. Dramatic sting on the dramatic banner.
+#
+# pickup_mythic:
+#   Mythic-tier relic claimed (iter 50). Distinct from generic
+#   pickup_claimed so the 4th-tier feel is reinforced audibly.
+signal enemy_crit_hit(world_pos: Vector2)
+signal enemy_burned(world_pos: Vector2)
+signal enemy_slowed(world_pos: Vector2)
+signal kill_exploded(world_pos: Vector2)
+signal boss_enraged(world_pos: Vector2)
+signal pickup_mythic(world_pos: Vector2)

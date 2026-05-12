@@ -287,6 +287,13 @@ func _claim() -> void:
 	get_parent().add_child(n)
 	if granted:
 		Events.pickup_claimed.emit(global_position, relic_id)
+		# Iter 53 — mythic tier audio. Layered on top of the generic
+		# pickup_claimed chime so the rare 4th-tier acquisition has
+		# its own dramatic rising sweep. Mythic-tier check reads the
+		# relic registry, no special pedestal state needed.
+		var tier_info: Dictionary = GameState.relic_info(relic_id)
+		if str(tier_info.get("tier", "common")) == "mythic":
+			Events.pickup_mythic.emit(global_position)
 	# Brief outro tween — orb swells + fades, plinth dims, then we
 	# delete the pedestal. Disable collision immediately so a queued
 	# interact doesn't double-trigger.

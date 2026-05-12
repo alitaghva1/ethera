@@ -122,9 +122,15 @@ func apply_burn(duration: float) -> void:
 	# single big proc.
 	if _dying:
 		return
+	# Iter 53 — emit audio cue only on the FIRST tick of a fresh burn
+	# (was_burning false → true). Refresh applications during an
+	# already-active burn don't re-trigger the sound to avoid drone.
+	var was_burning: bool = _burn_active
 	_burn_remaining = max(_burn_remaining, duration)
 	_burn_tick_timer = 0.0   # first tick fires within ~one frame
 	_burn_active = true
+	if not was_burning:
+		Events.enemy_burned.emit(global_position)
 
 # Iter 46 — slow status. Multiplies the enemy's effective move_speed by
 # _slow_multiplier (defaults 1.0 = no slow). Tick down _slow_remaining
@@ -140,9 +146,15 @@ var _slow_multiplier: float = 1.0
 func apply_slow(duration: float, multiplier: float = SLOW_DEFAULT_MULTIPLIER) -> void:
 	if _dying:
 		return
+	# Iter 53 — emit audio cue only on the FIRST application of a slow
+	# (previously unslowed → slowed). Refresh applications during an
+	# active slow don't re-trigger.
+	var was_slowed: bool = _slow_remaining > 0.0
 	_slow_remaining = max(_slow_remaining, duration)
 	# Stronger slow wins (lower multiplier = more slowed).
 	_slow_multiplier = min(_slow_multiplier, multiplier)
+	if not was_slowed:
+		Events.enemy_slowed.emit(global_position)
 
 # Iter 46 — slow-aware speed read. Used by all behavior ticks instead
 # of direct enemy_type.move_speed accesses so slow applies uniformly
@@ -638,6 +650,11 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 		tween.tween_property(sprite, "modulate", flash_color, 0.04)
 		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
 	Events.enemy_hit.emit(global_position)
+	# Iter 53 — audio sparkle for crit hits. Layered on top of the
+	# enemy_hit "thud" so the crit feedback hits both visually (yellow
+	# damage number) and audibly (rising sparkle chime).
+	if is_crit:
+		Events.enemy_crit_hit.emit(global_position)
 	# Iter 37 — phase transition check. Only triggers when:
 	#   - we're still in phase 1
 	#   - enemy_type declares phase2_overrides (non-empty)
@@ -679,6 +696,13 @@ func _trigger_phase_2() -> void:
 		var t: Tween = create_tween()
 		t.tween_property(sprite, "modulate", Color(2.5, 0.8, 0.6, 1), 0.10)
 		t.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.40)
+	# Iter 53 — audio sting for the phase transition. Same beat as the
+	# "ENRAGED" banner + camera shake from main.gd. Gated to is_boss
+	# enemies via the enemy_type flag so non-boss enemies with
+	# phase2_overrides (future elites) don't trigger the boss-specific
+	# sting — they get a smaller in-built audio cue if needed later.
+	if enemy_type != null and enemy_type.is_boss:
+		Events.boss_enraged.emit(global_position)
 	phase_changed.emit(2)
 
 func apply_knockback(dir: Vector2, force: float, duration: float) -> void:

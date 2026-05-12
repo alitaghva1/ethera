@@ -78,6 +78,50 @@ const SOUND_CONFIGS := {
 	#   reading as "saved" rather than "ended." Played at +1 dB so it
 	#   cuts through the otherwise-busy "I almost died" moment.
 	"second_wind":   { "freq_start": 200.0, "freq_end": 140.0, "duration": 0.55, "wave": "sin",    "gain": 0.65, "decay_pow": 1.0 },
+	# ── Iter 53 — audio for the iter 39-50 mechanics ──────────────────
+	# Each one is tuned to layer ON TOP of the existing hit/death/etc
+	# beats rather than replace them, so the proc reads as "this hit
+	# was special" without going silent on the base beat.
+	#
+	# crit_chime — HIGH bright sparkle (1800→2400 Hz then settles).
+	#   Brief (90 ms) so it accents the enemy_hit body without
+	#   stretching past the moment. RISING pitch sweep so it reads
+	#   as "ascending" / "lucky" rather than the falling enemy_hit
+	#   (240→170 Hz). Sine wave at this frequency stays musical
+	#   (square would be screechy).
+	"crit_chime":    { "freq_start": 1800.0, "freq_end": 2400.0, "duration": 0.09, "wave": "sin",    "gain": 0.38, "decay_pow": 2.0 },
+	# burn_apply — low sizzle (140→90 Hz) with noise mixed via the
+	#   noise waveform tag. Short (120 ms). Reads as "fwooosh ignite"
+	#   — a quick whoosh that doesn't linger like a continuous burn
+	#   tone would. Fired only on the FIRST tick of a fresh burn
+	#   (via Events.enemy_burned); subsequent burn ticks play just
+	#   the regular enemy_hit so a long burn doesn't drone.
+	"burn_apply":    { "freq_start": 140.0, "freq_end":  90.0, "duration": 0.12, "wave": "noise",  "gain": 0.35, "decay_pow": 1.6 },
+	# slow_apply — crystalline freeze tinkle. HIGH (1400→2000 Hz
+	#   rising) and brief (110 ms). Reads as "ice crystallizes"
+	#   distinct from crit_chime's narrower 1800→2400 sweep — slow
+	#   starts a bit lower + has a faster rise. Sine for the
+	#   musical quality.
+	"slow_apply":    { "freq_start": 1400.0, "freq_end": 2000.0, "duration": 0.11, "wave": "sin",    "gain": 0.32, "decay_pow": 2.2 },
+	# kill_explode — fatter LOW boom than dash_impact (which is the
+	#   hero's shockwave). 120→40 Hz with a longer tail (480ms)
+	#   evokes a real explosion. Sine so the body is felt through
+	#   speakers. Fires alongside enemy_died for chain explosions
+	#   so a 5-mob cascade reads as escalating booms.
+	"kill_explode":  { "freq_start": 120.0, "freq_end":  40.0, "duration": 0.48, "wave": "sin",    "gain": 0.55, "decay_pow": 1.3 },
+	# boss_enrage — dramatic sting at boss phase 2 transition. Long
+	#   (650 ms) low rising tone (90→160 Hz) — anti-pattern to the
+	#   game's other downward-sweeping enemy beats. Reads as "the
+	#   threat just got worse" via the unusual ascending shape.
+	#   Played hot in the handler since it's a once-per-boss beat.
+	"boss_enrage":   { "freq_start":  90.0, "freq_end": 160.0, "duration": 0.65, "wave": "sin",    "gain": 0.70, "decay_pow": 0.9 },
+	# pickup_mythic — distinct from pickup_claimed (600→1280 Hz).
+	#   Mythic plays a TWO-PART sweep up: 400→900→1800 over 320 ms.
+	#   We approximate the two-part feel with a longer duration +
+	#   higher endpoint than the regular pickup chime. Gain hot
+	#   so the rare proc has clear "you found something amazing"
+	#   audio impact.
+	"pickup_mythic": { "freq_start": 400.0, "freq_end":1800.0, "duration": 0.32, "wave": "sin",    "gain": 0.62, "decay_pow": 1.2 },
 }
 
 # Number of AudioStreamPlayer2D nodes to pre-create per bus. Six is
@@ -114,6 +158,13 @@ func _ready() -> void:
 	Events.hero_dash_impacted.connect(_on_hero_dash_impacted)
 	Events.hero_swing_connected.connect(_on_hero_swing_connected)
 	Events.hero_second_wind.connect(_on_hero_second_wind)
+	# Iter 53 — audio for iter 39-50 procs.
+	Events.enemy_crit_hit.connect(_on_enemy_crit_hit)
+	Events.enemy_burned.connect(_on_enemy_burned)
+	Events.enemy_slowed.connect(_on_enemy_slowed)
+	Events.kill_exploded.connect(_on_kill_exploded)
+	Events.boss_enraged.connect(_on_boss_enraged)
+	Events.pickup_mythic.connect(_on_pickup_mythic)
 
 # ── Synthesis ──────────────────────────────────────────────────────────
 
@@ -258,6 +309,47 @@ func _on_hero_swing_connected(world_pos: Vector2) -> void:
 # typically include hero_damaged + flying-damage-number SFX already.
 func _on_hero_second_wind(world_pos: Vector2) -> void:
 	_play("second_wind", world_pos, 3.0)
+
+# Iter 53 — proc-specific audio handlers. Each layers a distinctive
+# sound onto an existing beat (enemy_hit / enemy_died) so the player
+# learns "that was a crit / burn / explosion" from the audio cue
+# without breaking the existing hit-feedback loop.
+
+# enemy_crit_hit — sparkle chime layered on top of enemy_hit. Played
+# at the crit's enemy position so spatial audio is correct.
+func _on_enemy_crit_hit(world_pos: Vector2) -> void:
+	_play("crit_chime", world_pos, -4.0)
+
+# enemy_burned — fires only on the FIRST tick of a fresh burn (when
+# enemy._burn_active flips false→true). Subsequent ticks of the same
+# burn play standard enemy_hit. Keeps the audio rhythm punctuated
+# rather than a continuous sizzle drone.
+func _on_enemy_burned(world_pos: Vector2) -> void:
+	_play("burn_apply", world_pos, -3.0)
+
+# enemy_slowed — fires when slow lands on a previously-unsslowed
+# enemy. Parallel pattern to enemy_burned; subsequent slow refreshes
+# don't re-trigger the audio.
+func _on_enemy_slowed(world_pos: Vector2) -> void:
+	_play("slow_apply", world_pos, -4.0)
+
+# kill_exploded — chain explosion from the explode_on_kill proc.
+# Played alongside enemy_died (which fires for the trigger kill).
+# In a long cascade this stacks the boom multiple times — by design.
+# Pool is round-robin so old explosions cut off cleanly.
+func _on_kill_exploded(world_pos: Vector2) -> void:
+	_play("kill_explode", world_pos, -1.0)
+
+# boss_enraged — boss phase-2 transition. Once-per-boss beat. Hot
+# volume (+4 dB) so it punctuates the ENRAGED banner clearly.
+func _on_boss_enraged(world_pos: Vector2) -> void:
+	_play("boss_enrage", world_pos, 4.0)
+
+# pickup_mythic — distinct from pickup_claimed (which fires for
+# any relic). Mythic-tier pickup gets its own rising chime so the
+# rare beat lands audibly.
+func _on_pickup_mythic(world_pos: Vector2) -> void:
+	_play("pickup_mythic", world_pos, 2.0)
 
 # ── Public volume API (for settings screen) ───────────────────────────
 
