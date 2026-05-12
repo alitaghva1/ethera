@@ -1009,49 +1009,143 @@ func _spawn_vignette_overlay() -> void:
 	rt.vertex_colors = PackedColorArray([clear, dark, dark, clear])
 	layer.add_child(rt)
 
-# Iter 51 — ambient dust motes. Sparse drifting particles across the
-# play area for atmospheric depth. Slow upward drift, low alpha, brief
-# lifetime so the dust never accumulates visibly — reads as "the air
-# is moving slightly." Color picked from biome warm/cool to harmonize
-# with the room's existing tint.
+# iter-82 immersion pass: biome-specific ambient particle systems.
+#
+# The previous (iter-51) implementation was ONE generic mote emitter
+# with only the tint varying per biome. All 4 biomes shared the same
+# motion (slow upward drift), the same density (32 particles), and
+# the same scale range — so the player's eye couldn't read crypt vs
+# ember biome from the AIR alone. Tint alone wasn't enough.
+#
+# This rewrite gives each biome its own motion grammar + density +
+# secondary accent emitter, so the AIR ITSELF tells you what biome
+# you're in:
+#
+#   CRYPT       Pale grey dust drifting DOWNWARD slowly. Air feels
+#               "settled" — old stone, stillness, dust falling from
+#               cracks in the ceiling. Sparse (24 particles).
+#   OSSUARY     Bone-pale motes drifting in lazy SWIRLS (high angular
+#               velocity, low linear speed). "Pale spirits passing
+#               through." Medium density (32).
+#   EMBER       Orange-yellow sparks rising UPWARD with bigger scale
+#               + secondary BIG-EMBER emitter (sparse, slow, brighter).
+#               "Heat rising off the floor." High density (48 + 12).
+#   SANCTUARY   Cool-blue rune motes drifting upward + outward with
+#               slight rotation. Secondary GLYPH emitter for occasional
+#               larger drifting runes. "Sacred air, magic ambient."
+#               Medium density (28 + 8).
+#
+# All emitters at z_index = 5 (above floor/decor, below hero/enemies).
+# Each is parented to main so they free with the scene on reload.
 func _spawn_ambient_motes() -> void:
+	var biome: String = _room.biome if _room != null else "crypt"
+	# Build the primary mote emitter — biome-specific parameters.
+	var primary: CPUParticles2D = _build_ambient_mote_primary(biome)
+	add_child(primary)
+	# Some biomes get a SECOND emitter for distinctive accents that the
+	# base motes can't carry alone (rising embers, drifting runes).
+	# Returning null = no secondary for this biome.
+	var accent: CPUParticles2D = _build_ambient_mote_accent(biome)
+	if accent != null:
+		add_child(accent)
+
+# Per-biome primary mote emitter. Different motion / density / scale
+# per biome so the AIR alone reads biome identity.
+func _build_ambient_mote_primary(biome: String) -> CPUParticles2D:
 	var motes: CPUParticles2D = CPUParticles2D.new()
 	motes.name = "AmbientMotes"
-	motes.amount = 32
-	motes.lifetime = 6.0
 	motes.emitting = true
-	motes.preprocess = 3.0   # fill the field before _ready completes
-	# Emission rect covers the playable area; particles spawn anywhere
-	# inside the room boundaries.
+	motes.preprocess = 3.0
 	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	motes.emission_rect_extents = Vector2(560.0, 290.0)
 	motes.position = Vector2(640, 384)
-	# Slow upward drift with random spread.
-	motes.direction = Vector2(0, -1)
-	motes.spread = 60.0
-	motes.initial_velocity_min = 6.0
-	motes.initial_velocity_max = 14.0
 	motes.gravity = Vector2.ZERO
-	motes.damping_min = 0.2
-	motes.damping_max = 0.6
-	# Tiny scale, low alpha.
-	motes.scale_amount_min = 0.6
-	motes.scale_amount_max = 1.4
-	# Per-biome tint — match the wash so dust harmonizes with the room.
-	var tint: Color = Color(0.85, 0.85, 0.85, 0.22)
-	if _room != null:
-		match _room.biome:
-			"ember":
-				tint = Color(1.0, 0.78, 0.5, 0.22)
-			"sanctuary":
-				tint = Color(0.78, 0.85, 1.0, 0.22)
-			"ossuary":
-				tint = Color(0.95, 0.92, 0.78, 0.22)
-			_:
-				tint = Color(0.85, 0.85, 0.85, 0.22)
-	# Color ramp — fades in/out so motes appear from nothing + vanish.
+	motes.z_index = 5
+	var tint: Color
+	match biome:
+		"crypt":
+			# Pale dust falling slowly. Air feels still — gravity does
+			# the work, no horizontal drift.
+			motes.amount = 24
+			motes.lifetime = 7.0
+			motes.direction = Vector2(0, 1)     # DOWNWARD (was always up)
+			motes.spread = 35.0
+			motes.initial_velocity_min = 4.0
+			motes.initial_velocity_max = 10.0
+			motes.damping_min = 0.4
+			motes.damping_max = 0.9
+			motes.scale_amount_min = 0.5
+			motes.scale_amount_max = 1.0
+			motes.angular_velocity_min = -8.0
+			motes.angular_velocity_max = 8.0
+			tint = Color(0.78, 0.76, 0.74, 0.20)
+		"ossuary":
+			# Bone-pale motes in LAZY SWIRLS — high angular velocity, low
+			# linear speed, so each mote orbits/drifts rather than streaks.
+			motes.amount = 32
+			motes.lifetime = 8.0
+			motes.direction = Vector2(0, -1)
+			motes.spread = 180.0                # full circle — random direction
+			motes.initial_velocity_min = 3.0
+			motes.initial_velocity_max = 9.0
+			motes.tangential_accel_min = -18.0  # tangential = lazy curve
+			motes.tangential_accel_max = 18.0
+			motes.angular_velocity_min = -40.0
+			motes.angular_velocity_max = 40.0
+			motes.damping_min = 0.2
+			motes.damping_max = 0.5
+			motes.scale_amount_min = 0.6
+			motes.scale_amount_max = 1.3
+			tint = Color(0.96, 0.93, 0.80, 0.22)
+		"ember":
+			# Sparks RISING upward — denser, slightly faster, bigger scale
+			# variance so the eye reads "things floating up off the heat."
+			motes.amount = 48
+			motes.lifetime = 5.0
+			motes.direction = Vector2(0, -1)
+			motes.spread = 25.0
+			motes.initial_velocity_min = 14.0
+			motes.initial_velocity_max = 32.0
+			motes.gravity = Vector2(0, -12.0)   # negative gravity = rising acceleration
+			motes.damping_min = 0.1
+			motes.damping_max = 0.4
+			motes.scale_amount_min = 0.7
+			motes.scale_amount_max = 1.8
+			tint = Color(1.0, 0.65, 0.32, 0.26)
+		"sanctuary":
+			# Cool-blue runes drifting upward + outward with slow rotation.
+			motes.amount = 28
+			motes.lifetime = 7.5
+			motes.direction = Vector2(0, -1)
+			motes.spread = 75.0
+			motes.initial_velocity_min = 5.0
+			motes.initial_velocity_max = 12.0
+			motes.tangential_accel_min = -6.0
+			motes.tangential_accel_max = 6.0
+			motes.angular_velocity_min = -20.0
+			motes.angular_velocity_max = 20.0
+			motes.damping_min = 0.3
+			motes.damping_max = 0.6
+			motes.scale_amount_min = 0.6
+			motes.scale_amount_max = 1.4
+			tint = Color(0.72, 0.82, 1.0, 0.24)
+		_:
+			# Unknown biome — fall back to the iter-51 generic mote.
+			motes.amount = 32
+			motes.lifetime = 6.0
+			motes.direction = Vector2(0, -1)
+			motes.spread = 60.0
+			motes.initial_velocity_min = 6.0
+			motes.initial_velocity_max = 14.0
+			motes.damping_min = 0.2
+			motes.damping_max = 0.6
+			motes.scale_amount_min = 0.6
+			motes.scale_amount_max = 1.4
+			tint = Color(0.85, 0.85, 0.85, 0.22)
+	# Common color ramp pattern — fades in/out so motes appear from
+	# nothing + vanish before the scale-cap reads "particle dying."
 	var ramp: Gradient = Gradient.new()
-	ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+	ramp.offsets = PackedFloat32Array([0.0, 0.18, 0.82, 1.0])
 	ramp.colors = PackedColorArray([
 		Color(tint.r, tint.g, tint.b, 0.0),
 		tint,
@@ -1059,8 +1153,84 @@ func _spawn_ambient_motes() -> void:
 		Color(tint.r, tint.g, tint.b, 0.0),
 	])
 	motes.color_ramp = ramp
-	motes.z_index = 5   # above floor/decor, below hero/enemies
-	add_child(motes)
+	return motes
+
+# Per-biome accent emitter — adds a second visual layer for distinctive
+# biomes that need more than just primary motes to read. Returns null
+# for biomes where the primary alone is enough (crypt, ossuary).
+func _build_ambient_mote_accent(biome: String) -> CPUParticles2D:
+	match biome:
+		"ember":
+			# Big slow rising embers — fewer, larger, brighter than the
+			# primary spark layer. Reads as "the floor itself is giving
+			# off heat-flecks" rather than the dense spark shower.
+			var p: CPUParticles2D = CPUParticles2D.new()
+			p.name = "AmbientMotesAccent"
+			p.emitting = true
+			p.preprocess = 4.0
+			p.amount = 12
+			p.lifetime = 8.0
+			p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+			p.emission_rect_extents = Vector2(540.0, 280.0)
+			p.position = Vector2(640, 384)
+			p.direction = Vector2(0, -1)
+			p.spread = 12.0
+			p.initial_velocity_min = 6.0
+			p.initial_velocity_max = 14.0
+			p.gravity = Vector2(0, -4.0)
+			p.scale_amount_min = 1.6
+			p.scale_amount_max = 3.0
+			p.angular_velocity_min = -12.0
+			p.angular_velocity_max = 12.0
+			p.z_index = 5
+			var tint: Color = Color(1.0, 0.50, 0.20, 0.34)
+			var ramp: Gradient = Gradient.new()
+			ramp.offsets = PackedFloat32Array([0.0, 0.15, 0.7, 1.0])
+			ramp.colors = PackedColorArray([
+				Color(tint.r, tint.g, tint.b, 0.0),
+				tint,
+				Color(tint.r * 0.9, tint.g * 0.5, tint.b * 0.4, tint.a * 0.7),
+				Color(tint.r * 0.7, tint.g * 0.3, tint.b * 0.2, 0.0),
+			])
+			p.color_ramp = ramp
+			return p
+		"sanctuary":
+			# Drifting larger rune-flecks — slower, more visible, with
+			# rotation so they read as "glyph fragments floating in
+			# magic air."
+			var p: CPUParticles2D = CPUParticles2D.new()
+			p.name = "AmbientMotesAccent"
+			p.emitting = true
+			p.preprocess = 4.0
+			p.amount = 8
+			p.lifetime = 9.0
+			p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+			p.emission_rect_extents = Vector2(540.0, 280.0)
+			p.position = Vector2(640, 384)
+			p.direction = Vector2(0, -1)
+			p.spread = 100.0
+			p.initial_velocity_min = 4.0
+			p.initial_velocity_max = 9.0
+			p.tangential_accel_min = -5.0
+			p.tangential_accel_max = 5.0
+			p.angular_velocity_min = -45.0
+			p.angular_velocity_max = 45.0
+			p.scale_amount_min = 1.4
+			p.scale_amount_max = 2.4
+			p.z_index = 5
+			var tint: Color = Color(0.55, 0.78, 1.0, 0.35)
+			var ramp: Gradient = Gradient.new()
+			ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+			ramp.colors = PackedColorArray([
+				Color(tint.r, tint.g, tint.b, 0.0),
+				tint,
+				tint,
+				Color(tint.r, tint.g, tint.b, 0.0),
+			])
+			p.color_ramp = ramp
+			return p
+		_:
+			return null
 
 func _apply_biome_visuals(biome: String) -> void:
 	var wash: Color = Color(0, 0, 0, 0)
