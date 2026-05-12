@@ -18,3 +18,4 @@ wall_rects = []
 hazard_positions = Array[Vector2]([Vector2(280, 220), Vector2(280, 548), Vector2(1000, 220), Vector2(1000, 548)])
 hazard_kind = "spike_pit"
 hazards = [{"kind": "lightning_rod", "position": Vector2(640, 384), "interval": 3.5, "phase": 0.0}, {"kind": "fire_jet", "position": Vector2(440, 384), "phase": 0.0}, {"kind": "fire_jet", "position": Vector2(840, 384), "phase": 0.5}]
+biome = "ossuary"

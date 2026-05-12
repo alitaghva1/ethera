@@ -21,3 +21,4 @@ hazards = []
 branches = []
 room_kind = "treasure"
 shrine_positions = Array[Vector2]([])
+biome = "ember"

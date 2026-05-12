@@ -19,3 +19,4 @@ hazard_positions = Array[Vector2]([])
 hazard_kind = ""
 hazards = [{"kind": "slow_zone", "position": Vector2(640, 384)}]
 branches = [{"kind": "safe", "label": "SAFE", "subtitle": "+1 HP · common relics"}, {"kind": "treasure", "label": "TREASURE", "subtitle": "skip fight · legendary relic", "room_path": "res://scenes/rooms/room_treasure.tres"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]
+biome = "crypt"

@@ -19,3 +19,4 @@ hazard_positions = Array[Vector2]([])
 hazard_kind = ""
 hazards = [{"kind": "fire_jet", "position": Vector2(560, 384), "phase": 0.0}, {"kind": "fire_jet", "position": Vector2(720, 384), "phase": 0.5}]
 branches = [{"kind": "safe", "label": "SAFE", "subtitle": "+1 HP · common relics"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]
+biome = "crypt"

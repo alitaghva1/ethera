@@ -223,6 +223,13 @@ func _ready() -> void:
 		# hazards). Spawns alongside the legacy single-kind list above
 		# so iter-30 rooms keep working.
 		_spawn_hazards_mixed(_room.hazards)
+		# Iter 34 — biome floor overlay + centerpiece accents BEFORE
+		# decor. The overlay sits at z=-2 (behind decor and most other
+		# layers); accents at z=-1 so they ride along with the rubble
+		# but read as authored landmarks rather than scatter. The biome
+		# dispatcher is data-driven from _room.biome; "crypt" is the
+		# iter-30 default look.
+		_apply_biome_visuals(_room.biome)
 		# Iter 18 — scatter procedural rubble across the play area so
 		# the floor doesn't read as a blank slate. Runs AFTER pillar /
 		# chest spawn so decor placement can avoid those positions.
@@ -490,13 +497,26 @@ func _scatter_decor(count: int) -> void:
 		_spawn_decor_at(pos)
 		placed += 1
 
-# Build one rubble cluster at world position `pos`. Uses Polygon2D
-# with 4 jittered vertices so each rubble has a slightly different
-# silhouette — feels hand-placed without authoring each one.
+# Iter 34 — biome-aware decor. The biome of the current room (read
+# from _room.biome at the dispatcher) controls which decor flavor we
+# instantiate at each rubble position. "crypt" preserves the iter-18
+# dark stains; new biomes get distinct shape + color recipes for
+# instantly-readable atmosphere.
 func _spawn_decor_at(pos: Vector2) -> void:
+	var biome: String = _room.biome if _room != null else "crypt"
+	match biome:
+		"ossuary":
+			_spawn_decor_ossuary(pos)
+		"ember":
+			_spawn_decor_ember(pos)
+		"sanctuary":
+			_spawn_decor_sanctuary(pos)
+		_:
+			_spawn_decor_crypt(pos)
+
+# Crypt — iter-18 baseline. 4-vert dark grey-brown ellipse stain.
+func _spawn_decor_crypt(pos: Vector2) -> void:
 	var rubble := Polygon2D.new()
-	# 4 verts around an ellipse with random radii — fast, irregular,
-	# reads as a small dark patch on the floor.
 	var r1: float = randf_range(8.0, 14.0)
 	var r2: float = randf_range(6.0, 11.0)
 	var pts := PackedVector2Array()
@@ -505,9 +525,6 @@ func _spawn_decor_at(pos: Vector2) -> void:
 	pts.append(Vector2(r1 + randf_range(-2, 2), randf_range(-1, 1)))
 	pts.append(Vector2(randf_range(-2, 2), r2 + randf_range(-1, 1)))
 	rubble.polygon = pts
-	# Dark grey-brown, very low alpha — reads as "stain / cracked
-	# stone" not "rock pile." z_index -1 so the hero / enemies draw
-	# above.
 	rubble.color = Color(
 		randf_range(0.10, 0.18),
 		randf_range(0.09, 0.14),
@@ -518,6 +535,227 @@ func _spawn_decor_at(pos: Vector2) -> void:
 	rubble.rotation = randf_range(0.0, TAU)
 	rubble.z_index = -1
 	add_child(rubble)
+
+# Ossuary — small bone fragments. Authored as elongated ivory
+# polygons (6 vertices, longer than tall) tilted at random angles.
+# Brighter than crypt stains (alpha 0.5-0.7) so the bones stand out
+# against the dark backdrop and read as scattered remains.
+func _spawn_decor_ossuary(pos: Vector2) -> void:
+	var bone := Polygon2D.new()
+	var len_: float = randf_range(8.0, 16.0)
+	var th: float = randf_range(2.0, 3.5)
+	# Bone shape: two bulbous knobs at the ends + thin shaft. Mirrors
+	# a femur silhouette in 6 verts.
+	bone.polygon = PackedVector2Array([
+		Vector2(-len_ - 2, -th - 1), Vector2(-len_ + th, -th * 0.6),
+		Vector2(len_ - th, -th * 0.6), Vector2(len_ + 2, -th - 1),
+		Vector2(len_ + 2, th + 1), Vector2(len_ - th, th * 0.6),
+		Vector2(-len_ + th, th * 0.6), Vector2(-len_ - 2, th + 1),
+	])
+	bone.color = Color(
+		randf_range(0.78, 0.92),
+		randf_range(0.72, 0.85),
+		randf_range(0.62, 0.74),
+		randf_range(0.55, 0.75),
+	)
+	bone.position = pos
+	bone.rotation = randf_range(0.0, TAU)
+	bone.z_index = -1
+	add_child(bone)
+
+# Ember — small glowing red/orange pip. Two-layer composition: outer
+# halo (low alpha, warm) + inner core (high alpha, bright). Adds a
+# tiny PointLight2D for the rare "active ember" so a few decors
+# actually cast light. The light is gated to ~20% of spawns so we
+# don't fragment the lighting budget.
+func _spawn_decor_ember(pos: Vector2) -> void:
+	var halo := Polygon2D.new()
+	var r: float = randf_range(7.0, 12.0)
+	halo.polygon = PackedVector2Array([
+		Vector2(r, 0), Vector2(r * 0.7, r * 0.7),
+		Vector2(0, r), Vector2(-r * 0.7, r * 0.7),
+		Vector2(-r, 0), Vector2(-r * 0.7, -r * 0.7),
+		Vector2(0, -r), Vector2(r * 0.7, -r * 0.7),
+	])
+	halo.color = Color(0.85, 0.35, 0.15, randf_range(0.28, 0.45))
+	halo.position = pos
+	halo.rotation = randf_range(0.0, TAU)
+	halo.z_index = -1
+	add_child(halo)
+	# Inner core — smaller bright pip.
+	var core := Polygon2D.new()
+	var cr: float = r * 0.42
+	core.polygon = PackedVector2Array([
+		Vector2(cr, 0), Vector2(cr * 0.7, cr * 0.7),
+		Vector2(0, cr), Vector2(-cr * 0.7, cr * 0.7),
+		Vector2(-cr, 0), Vector2(-cr * 0.7, -cr * 0.7),
+		Vector2(0, -cr), Vector2(cr * 0.7, -cr * 0.7),
+	])
+	core.color = Color(1.0, 0.78, 0.40, randf_range(0.7, 0.9))
+	core.position = pos
+	core.z_index = -1
+	add_child(core)
+	# ~1-in-5 spawns get a tiny light so the room reads as "alive
+	# with embers" without flooding every spawn with a light.
+	if randf() < 0.20:
+		var light := PointLight2D.new()
+		light.energy = 0.5
+		light.texture_scale = 0.6
+		light.color = Color(1.0, 0.7, 0.35, 1.0)
+		light.position = pos
+		light.range_z_min = -1024
+		light.range_z_max = 1024
+		add_child(light)
+
+# Sanctuary — faint blue rune marks. 8-vert star/glyph shape,
+# pale-cyan low-alpha so the runes read as inscribed lines rather
+# than glowing geometry. No light — sanctuary's mood is calm + cold.
+func _spawn_decor_sanctuary(pos: Vector2) -> void:
+	var rune := Polygon2D.new()
+	var r: float = randf_range(7.0, 11.0)
+	var ri: float = r * 0.42
+	# 8-point star: outer point, inner point, outer point, …
+	rune.polygon = PackedVector2Array([
+		Vector2(r, 0), Vector2(ri * 0.7, ri * 0.7),
+		Vector2(0, r), Vector2(-ri * 0.7, ri * 0.7),
+		Vector2(-r, 0), Vector2(-ri * 0.7, -ri * 0.7),
+		Vector2(0, -r), Vector2(ri * 0.7, -ri * 0.7),
+	])
+	rune.color = Color(
+		randf_range(0.55, 0.72),
+		randf_range(0.68, 0.85),
+		randf_range(0.85, 1.0),
+		randf_range(0.35, 0.55),
+	)
+	rune.position = pos
+	rune.rotation = randf_range(0.0, TAU)
+	rune.z_index = -1
+	add_child(rune)
+	# Subtle white-blue inner mark, smaller, brighter.
+	var pip := Polygon2D.new()
+	var pr: float = r * 0.28
+	pip.polygon = PackedVector2Array([
+		Vector2(pr, 0), Vector2(pr * 0.7, pr * 0.7),
+		Vector2(0, pr), Vector2(-pr * 0.7, pr * 0.7),
+		Vector2(-pr, 0), Vector2(-pr * 0.7, -pr * 0.7),
+		Vector2(0, -pr), Vector2(pr * 0.7, -pr * 0.7),
+	])
+	pip.color = Color(0.85, 0.92, 1.0, 0.72)
+	pip.position = pos
+	pip.z_index = -1
+	add_child(pip)
+
+# Iter 34 — biome floor overlay + centerpiece. Called once per room
+# load. The overlay is a single large Polygon2D covering the
+# walkable area, tinted with the biome's wash color at very low
+# alpha so it shifts the floor MOOD without overriding the static
+# backdrop's pattern. Centerpiece accents are larger fixed-position
+# props that establish the biome's identity at a glance.
+func _apply_biome_visuals(biome: String) -> void:
+	var wash: Color = Color(0, 0, 0, 0)
+	match biome:
+		"ossuary":
+			wash = Color(0.35, 0.32, 0.22, 0.18)
+		"ember":
+			wash = Color(0.45, 0.18, 0.10, 0.22)
+		"sanctuary":
+			wash = Color(0.20, 0.28, 0.45, 0.22)
+		"crypt":
+			wash = Color(0.12, 0.10, 0.16, 0.15)
+		_:
+			wash = Color(0, 0, 0, 0)
+	if wash.a > 0.0:
+		var overlay: Polygon2D = Polygon2D.new()
+		# Cover the play area (160..1120 x 130..640) — wider than the
+		# strict walkable bounds so the wash bleeds out under walls
+		# and torches rather than ending in a hard edge.
+		overlay.polygon = PackedVector2Array([
+			Vector2(140, 110), Vector2(1140, 110),
+			Vector2(1140, 660), Vector2(140, 660),
+		])
+		overlay.color = wash
+		overlay.z_index = -2
+		add_child(overlay)
+	_spawn_biome_centerpieces(biome)
+
+# Iter 34 — biome centerpieces. Large authored accents that anchor
+# the biome's identity (a big rune circle for sanctuary, an ash pool
+# for ember, a bone pile for ossuary). Two accents per room at
+# corners that read clearly without crowding the combat space.
+func _spawn_biome_centerpieces(biome: String) -> void:
+	# Fixed corners (slightly inset from the playable bounds) so the
+	# centerpieces are visible but don't block combat lanes.
+	var positions: Array[Vector2] = [
+		Vector2(220, 200), Vector2(1060, 560),
+	]
+	for pos in positions:
+		match biome:
+			"ossuary":
+				_spawn_centerpiece_bone_pile(pos)
+			"ember":
+				_spawn_centerpiece_ash_pool(pos)
+			"sanctuary":
+				_spawn_centerpiece_rune_circle(pos)
+			"crypt":
+				_spawn_centerpiece_crack(pos)
+			_:
+				pass
+
+func _spawn_centerpiece_crack(pos: Vector2) -> void:
+	# Long jagged crack across the floor. Single Line2D, 5 vertices,
+	# dark grey, semi-transparent. Reads as "structural damage."
+	var crack := Line2D.new()
+	var jitter: float = 6.0
+	crack.points = PackedVector2Array([
+		Vector2(-40, randf_range(-jitter, jitter)),
+		Vector2(-15, randf_range(-jitter, jitter) - 4),
+		Vector2(8, randf_range(-jitter, jitter) + 2),
+		Vector2(28, randf_range(-jitter, jitter) - 2),
+		Vector2(48, randf_range(-jitter, jitter)),
+	])
+	crack.width = 2.5
+	crack.default_color = Color(0.06, 0.05, 0.09, 0.85)
+	crack.antialiased = true
+	crack.position = pos
+	crack.rotation = randf_range(0.0, TAU)
+	crack.z_index = -1
+	add_child(crack)
+
+func _spawn_centerpiece_bone_pile(pos: Vector2) -> void:
+	# Small pile of 4-6 overlapping bones at one position. Distinctly
+	# more "concentrated" than the scattered single-bone decor — reads
+	# as a real ossuary heap.
+	for i in range(5):
+		var off: Vector2 = Vector2(randf_range(-18, 18), randf_range(-10, 10))
+		_spawn_decor_ossuary(pos + off)
+
+func _spawn_centerpiece_ash_pool(pos: Vector2) -> void:
+	# Large dark ash patch with a few glowing embers on top.
+	var pool := Polygon2D.new()
+	pool.polygon = PackedVector2Array([
+		Vector2(28, 0), Vector2(22, 16), Vector2(8, 26),
+		Vector2(-8, 26), Vector2(-22, 16), Vector2(-28, 0),
+		Vector2(-22, -16), Vector2(-8, -26),
+		Vector2(8, -26), Vector2(22, -16),
+	])
+	pool.color = Color(0.10, 0.06, 0.04, 0.85)
+	pool.position = pos
+	pool.z_index = -1
+	add_child(pool)
+	# 3 ember pips on top of the ash.
+	for i in range(3):
+		var off: Vector2 = Vector2(randf_range(-14, 14), randf_range(-12, 12))
+		_spawn_decor_ember(pos + off)
+
+func _spawn_centerpiece_rune_circle(pos: Vector2) -> void:
+	# Larger circle of small rune marks arranged around a perimeter.
+	# 6 runes evenly spaced + 1 center rune. Reads as "ritual ground."
+	for i in range(6):
+		var ang: float = (TAU / 6.0) * i
+		var off: Vector2 = Vector2(cos(ang) * 22.0, sin(ang) * 22.0)
+		_spawn_decor_sanctuary(pos + off)
+	# Center rune slightly larger via being two stacked.
+	_spawn_decor_sanctuary(pos)
 
 # Iter 18 — entry banner. The room_label sits permanently in the HUD
 # but goes from FULL-ATTENTION (scale 1.6, full opacity, centered)

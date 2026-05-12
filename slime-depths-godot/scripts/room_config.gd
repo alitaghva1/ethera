@@ -162,3 +162,22 @@ extends Resource
 # one stat boost type — main.gd assigns types round-robin so a 3-shrine
 # room gets one each of HP / DODGE_CD / ATK_DMG.
 @export var shrine_positions: Array[Vector2] = []
+
+# Iter 34 — biome flavor. Distinct visual themes layered on top of the
+# (still shared) procedural_dungeon backdrop. Drives:
+#   1) a large biome-tinted Polygon2D overlay at z=-2 (color wash)
+#   2) the SHAPE + COLOR of procedural decor (dark stains vs. bones
+#      vs. embers vs. runes — see main.gd._spawn_decor_at_*)
+#   3) 1-3 large biome "centerpiece" accents at room corners / center
+#
+# Together these make a "crypt" room look palpably different from an
+# "ember" room even though both reuse the same wall geometry + ambient
+# tint pipeline. Adding a new biome stays a single-file edit on the
+# main.gd BIOME_OVERLAY_COLORS + decor dispatcher.
+#
+# Values:
+#   "crypt"      iter-30 default — dark grey-brown stains. Cold neutral.
+#   "ossuary"    pale ivory bone fragments + greyed floor wash.
+#   "ember"      warm orange ember pips + reddish floor wash + glow.
+#   "sanctuary"  faint blue rune glyphs + cool indigo floor wash.
+@export var biome: String = "crypt"
