@@ -31,12 +31,25 @@ func _initialize() -> void:
 	else:
 		print("OK portal footprint is restrained (crack 22 + rune 28)")
 
-	# Subtle peak alpha — design brief said "subtle inner glow", "gentle pulsing alpha".
-	if not portal_src.contains("INNER_GLOW_PEAK_ALPHA: float = 0.30"):
-		push_error("FAIL: INNER_GLOW_PEAK_ALPHA should be ≤0.30 (subtle, not neon)")
+	# Subtle peak alpha — design brief said "subtle inner glow", "gentle
+	# pulsing alpha". iter-78 lowered the value further (0.30 → 0.22)
+	# after user feedback that the portal still competed with fire spots.
+	# Test the design INTENT (alpha is low) not the exact number, so a
+	# future tuning pass doesn't break the assertion.
+	var glow_re := RegEx.new()
+	glow_re.compile("INNER_GLOW_PEAK_ALPHA:\\s*float\\s*=\\s*0\\.([0-9]+)")
+	var m := glow_re.search(portal_src)
+	if m == null:
+		push_error("FAIL: INNER_GLOW_PEAK_ALPHA constant not found")
 		ok = false
 	else:
-		print("OK inner glow alpha is restrained (0.30)")
+		var digits: String = m.get_string(1)
+		var val: float = float("0." + digits)
+		if val > 0.35:
+			push_error("FAIL: INNER_GLOW_PEAK_ALPHA=%s too high (should be ≤0.35 for 'subtle')" % val)
+			ok = false
+		else:
+			print("OK inner glow alpha is restrained (%s, ≤0.35)" % val)
 
 	# 3 explicit phase states (TELEGRAPH → ACTIVE → COLLAPSE) per design brief.
 	for fn in ["_tick_telegraph", "_tick_active", "_tick_collapse"]:

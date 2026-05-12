@@ -45,9 +45,11 @@ func _initialize() -> void:
 
 	# Confirm _open_wave_portals calls the validator (the hazard filter
 	# is now inside the validator, so the validator must be called).
-	var idx: int = main_src.find("_open_wave_portals")
+	# Search for the function DEFINITION specifically — `_open_wave_portals`
+	# alone matches comments earlier in the file.
+	var idx: int = main_src.find("func _open_wave_portals")
 	if idx < 0:
-		push_error("FAIL: _open_wave_portals not found in main.gd")
+		push_error("FAIL: func _open_wave_portals not found in main.gd")
 		ok = false
 	else:
 		var body: String = main_src.substr(idx, 4000)

@@ -63,9 +63,14 @@ const CRACK_SEGMENT_COUNT: int = 6
 # loud. Restraint goal: an attentive player notices, a fighting player
 # isn't distracted.
 const CRACK_PEAK_ALPHA: float = 0.85
-const INNER_GLOW_PEAK_ALPHA: float = 0.30
-const RUNE_PEAK_ALPHA: float = 0.55
-const EMBER_PEAK_ALPHA: float = 0.65
+# iter-78: alpha further reduced. The user said the portal still "fights
+# with fire spots" — both are bright, glowing, ember-emitting things.
+# Lowering glow + ember alpha so the portal recedes visually relative
+# to active fire/lightning hazards. Cracks stay readable (0.85) because
+# they're DARK ink, not bright glow — they don't compete with fire.
+const INNER_GLOW_PEAK_ALPHA: float = 0.22
+const RUNE_PEAK_ALPHA: float = 0.48
+const EMBER_PEAK_ALPHA: float = 0.55
 
 # Phase timings.
 const TELEGRAPH_DURATION: float = 0.6
@@ -77,21 +82,31 @@ const RUNE_ROTATION_SPEED: float = 0.45   # rad/s
 const GLOW_BREATHE_HZ: float = 1.6        # cycles per sec
 const GLOW_BREATHE_AMP: float = 0.08      # alpha amplitude
 
-# Color palette — dark purple-magenta floor-mark feel. NOT neon.
-const CRACK_COLOR: Color = Color(0.22, 0.10, 0.30, 1.0)  # alpha set in tick
-const RUNE_COLOR: Color = Color(0.55, 0.30, 0.70, 1.0)   # muted magenta
-# InnerGlow color uses theme_color blended toward magenta-purple at low
-# saturation so dark-ambient rooms still see a hint of warmth.
+# Color palette — dark INDIGO floor-mark feel (NOT magenta-purple).
+# iter-78: shifted away from the prior magenta-purple because fire
+# hazards are orange and magenta-on-orange is color-wheel COMPLEMENTARY
+# — high contrast, fights for attention. Indigo sits 90° off orange on
+# the wheel: still distinct from the dungeon ambient grey, but doesn't
+# vibrate against fire. The portal feels like "void/shadow" not
+# "summoner magic carnival."
+const CRACK_COLOR: Color = Color(0.15, 0.10, 0.30, 1.0)  # near-black indigo (was 0.22,0.10,0.30)
+const RUNE_COLOR: Color = Color(0.40, 0.30, 0.70, 1.0)   # muted indigo (was 0.55,0.30,0.70)
+# InnerGlow color uses theme_color blended toward indigo at low saturation
+# so dark-ambient rooms still see a hint of cool magic. Mixing function
+# below uses (0.30, 0.20, 0.60) as the base (was 0.55, 0.25, 0.75).
 
 # Particle tuning — small + sparse so the portal feels atmospheric, not
-# spectacular. 6 particles over 1.2 s lifetime means ~5 visible at any
-# given moment.
-const EMBER_AMOUNT: int = 6
-const EMBER_LIFETIME: float = 1.2
-const EMBER_SPAWN_RADIUS: float = 8.0     # where embers originate (small disc)
-const EMBER_VELOCITY_MIN: float = 16.0
-const EMBER_VELOCITY_MAX: float = 38.0
-const EMBER_GRAVITY: float = -28.0        # negative = rising
+# spectacular. iter-78: dropped 6 → 4 (less density), and embers SINK
+# INWARD (was rising upward). Rising embers visually fought with fire
+# jets' rising embers; inward-sinking embers read instead as "matter
+# being pulled into the void." Different motion grammar = different
+# meaning at a glance.
+const EMBER_AMOUNT: int = 4
+const EMBER_LIFETIME: float = 1.0          # was 1.2 — shorter, fewer-visible-at-once
+const EMBER_SPAWN_RADIUS: float = 22.0    # was 8.0 — spawn near OUTER edge so they have
+                                           # room to sink inward
+const EMBER_VELOCITY_MIN: float = 14.0
+const EMBER_VELOCITY_MAX: float = 30.0
 
 # Z-index. Portal stays at FLOOR LEVEL — hero (default z=0 → renders at
 # tree order ~hero level) and FX (z=2/5) draw ABOVE the portal. The
@@ -228,20 +243,29 @@ func _build_visuals() -> void:
 	_embers.lifetime = EMBER_LIFETIME
 	_embers.preprocess = 0.4   # half-prewarmed so first frame isn't empty
 	_embers.randomness = 0.55
-	_embers.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	# iter-78: particles spawn on the SPHERE_SURFACE outer ring (radius
+	# EMBER_SPAWN_RADIUS=22, ~outer edge of the portal) and travel
+	# INWARD toward center. Negative initial_velocity flips the sphere-
+	# surface outward-radial default into radial-inward. Different motion
+	# grammar from fire jets' upward-rising embers — at a glance, the
+	# player can tell "things are being pulled INTO this" rather than
+	# "this is shooting things OUT," even peripherally.
+	_embers.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE_SURFACE
 	_embers.emission_sphere_radius = EMBER_SPAWN_RADIUS
-	_embers.direction = Vector2(0, -1)
-	_embers.spread = 25.0
-	_embers.initial_velocity_min = EMBER_VELOCITY_MIN
-	_embers.initial_velocity_max = EMBER_VELOCITY_MAX
-	_embers.gravity = Vector2(0, EMBER_GRAVITY)
-	_embers.scale_amount_min = 1.0
-	_embers.scale_amount_max = 1.8
+	_embers.direction = Vector2.ZERO   # default — radial from sphere center
+	_embers.spread = 12.0              # narrow spread so particles travel ~radial
+	_embers.initial_velocity_min = -EMBER_VELOCITY_MAX  # negative = inward sink
+	_embers.initial_velocity_max = -EMBER_VELOCITY_MIN  # min/max swap for negatives
+	_embers.gravity = Vector2(0, 0)    # no gravity — pure inward sink, no rising
+	_embers.scale_amount_min = 0.8
+	_embers.scale_amount_max = 1.5
 	var ember_grad: Gradient = Gradient.new()
-	# Start at theme color, fade through magenta, end transparent.
+	# iter-78: ember palette shifted to indigo (was magenta). Start at
+	# theme color blended with cool indigo base, fade through cooler
+	# purple-blue, end transparent. Distinct from fire's warm-orange.
 	ember_grad.add_point(0.0, _portal_color(_theme_color, EMBER_PEAK_ALPHA))
-	ember_grad.add_point(0.6, Color(0.75, 0.40, 0.85, 0.35))
-	ember_grad.add_point(1.0, Color(0.50, 0.25, 0.65, 0.0))
+	ember_grad.add_point(0.6, Color(0.45, 0.35, 0.85, 0.30))
+	ember_grad.add_point(1.0, Color(0.25, 0.20, 0.55, 0.0))
 	_embers.color_ramp = ember_grad
 	_embers.z_index = EMBER_Z_INDEX
 	add_child(_embers)
@@ -251,7 +275,10 @@ func _build_visuals() -> void:
 # but the tint nudges biome-specific. Returns the mixed color with
 # the requested alpha applied.
 func _portal_color(theme: Color, target_alpha: float) -> Color:
-	var base: Color = Color(0.55, 0.25, 0.75)
+	# iter-78: base shifted from magenta-purple (0.55, 0.25, 0.75) to
+	# cool indigo (0.30, 0.20, 0.60) so the portal doesn't visually
+	# compete with orange fire hazards.
+	var base: Color = Color(0.30, 0.20, 0.60)
 	return Color(
 		base.r * 0.65 + theme.r * 0.35,
 		base.g * 0.65 + theme.g * 0.35,

@@ -109,7 +109,14 @@ const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn
 # diffuse spray of red ghosts. The portal scene is built in code by
 # spawn_portal.gd; this is just the preloaded entry point.
 const SPAWN_PORTAL_SCENE: PackedScene = preload("res://scenes/fx/spawn_portal.tscn")
-const MAX_WAVE_PORTALS: int = 3
+# iter-78: lowered 3 → 2. Combined with portals persisting across waves
+# (vs opening fresh each wave, see _open_wave_portals + _on_wave_cleared),
+# a typical room now sees ONE portal-open event total (2 portals at room
+# start, kept open through all waves, closed only at room clear) instead
+# of 3-9 events (3 portals × 1-3 waves) previously. Per the user spec:
+# "too many of them, making their appearance less important" — making
+# the opening moment rare makes it dramatic.
+const MAX_WAVE_PORTALS: int = 2
 
 # ─── PORTAL PLACEMENT VALIDATOR (iter 77 design pass) ───────────────
 # A valid portal position must clear every room feature listed below by
@@ -1324,6 +1331,14 @@ func _start_wave(idx: int) -> void:
 # itself to AFTER opening, so the flash on the first enemy lands as
 # the ring finishes its in-tween.
 func _open_wave_portals() -> void:
+	# iter-78: portals now PERSIST across waves within a room. If they're
+	# already open (i.e. wave 1 opened them and we're starting wave 2+),
+	# no-op. Closing happens in _on_wave_cleared's room-clear branch
+	# only. Enemies from later waves emerge through the SAME portals
+	# with another emit_enemy() pulse — same spatial pattern, different
+	# enemy composition. Makes the opening moment rare = dramatic.
+	if not _active_wave_portals.is_empty():
+		return
 	_active_wave_portals = []
 	_active_wave_portal_nodes = []
 	if _spawn_points.is_empty():
@@ -1665,12 +1680,12 @@ func _event_announce(entry: Dictionary) -> void:
 
 func _on_wave_cleared() -> void:
 	_wave_state = WaveState.CLEAR
-	# Wizard-kit sprint 3 (track C) — close active wave portals at every
-	# wave-cleared transition so the inter-wave WAVE_CLEAR_PAUSE shows
-	# the player a clean arena. _start_wave on the next wave will open
-	# fresh portals at NEW positions, reinforcing the rhythm of "portal
-	# opens → enemies emerge → portal closes."
-	_close_active_wave_portals()
+	# iter-78: portals are now ROOM-scoped, not wave-scoped. We do NOT
+	# close them on inter-wave clears — wave 2+ will reuse the same
+	# portals (idempotent _open_wave_portals call is a no-op there).
+	# Closing happens only on the room-clear branch below. This makes
+	# the open/close moments rare + meaningful, vs the iter-77 rhythm
+	# where portals opened/closed every wave (3-9 transitions per room).
 	if _wave_index + 1 < _waves.size():
 		wave_label.text = "WAVE %d CLEAR  ·  next in %.1fs" % [_wave_index + 1, WAVE_CLEAR_PAUSE]
 		var t := get_tree().create_timer(WAVE_CLEAR_PAUSE)
@@ -1678,6 +1693,13 @@ func _on_wave_cleared() -> void:
 	else:
 		_wave_state = WaveState.COMPLETE
 		wave_label.text = "ROOM CLEAR"
+		# iter-78: close active portals NOW — final wave is over,
+		# the dungeon "withdraws" its summoning circles before the
+		# pedestal offer / door spawn. The collapse animation runs
+		# under the floor-clear celebration burst, so the player
+		# sees the threat infrastructure fade out as the reward
+		# infrastructure fades in.
+		_close_active_wave_portals()
 		# Iter 16 — Hades-style chamber reward. Small heal + a 3-relic
 		# choice spawn EVERY room (not just the last). The room only
 		# becomes "done" once a pedestal is claimed; until then the
