@@ -80,20 +80,20 @@ RELICS = {
     "arcane_pulse":     ("Arcane Pulse",     "common", ["storm"], {"blast_damage_bonus": 1}, "passive+on_blast_proc"),
     "stoneheart":       ("Stoneheart",       "common", ["blood"], {"max_hp_bonus": 1}, "passive+first_kill_heal"),
     "iron_skin":        ("Iron Skin",        "common", ["vow"],   {"damage_taken_reduction": 1}, "passive+on_block_proc"),
-    "iron_will":        ("Iron Will",        "common", ["vow"],   {"max_hp_bonus": 1}, "passive"),  # description lies — phase B will retune
-    "iron_grip":        ("Iron Grip",        "common", [],        {"knockback_force_mul": 0.25}, "passive"),
-    "sturdy_step":      ("Sturdy Step",      "common", ["vow"],   {"damage_taken_reduction": 1}, "passive"),  # iter-96 retune (was DEAD)
+    "iron_will":        ("Iron Will",        "common", ["vow"],   {"max_hp_bonus": 2}, "passive"),  # iter-96 Phase B: 1 → 2 HP, stripped lying DR claim
+    "iron_grip":        ("Iron Grip",        "common", ["flame"], {"knockback_force_mul": 0.25, "damage_taken_reduction": 1}, "passive"),  # iter-96 Phase B retune
+    "sturdy_step":      ("Sturdy Step",      "common", ["vow"],   {"damage_taken_reduction": 1}, "passive"),  # iter-96 Phase A retune (was DEAD)
     "focused_eye":      ("Focused Eye",      "common", ["storm"], {"blast_damage_bonus": 1, "projectile_speed_mul": 0.2}, "passive"),
-    "lifestone":        ("Lifestone",        "common", ["blood"], {"max_hp_bonus": 1}, "passive"),
-    "keen_focus":       ("Keen Focus",       "common", [],        {"crit_chance_f": 0.15}, "passive"),
+    "lifestone":        ("Lifestone",        "common", ["blood"], {"max_hp_bonus": 1}, "passive+regen_8_kills"),  # iter-96 Phase B: +every-8-kills heal
+    "keen_focus":       ("Keen Focus",       "common", ["flame"], {"crit_chance_f": 0.15, "crit_damage_bonus_f": 0.10}, "passive"),  # iter-96 Phase B retune
 
     # ── RARE ─────────────────────────────────────────────────────────────
     "swift_strike":     ("Swift Strike",     "rare",   ["flame"], {"sword_cooldown_mul": -0.2}, "passive"),
     "dash_master":      ("Dash Master",      "rare",   ["shadow"], {"dash_strike_cooldown_mul": -0.3}, "passive"),  # iter-96 rename (was dodge_master / DEAD)
     "nimble":           ("Nimble",           "rare",   ["shadow"], {"move_speed_mul": 0.3}, "passive"),
     "swift_focus":      ("Swift Focus",      "rare",   ["storm"], {"blast_cooldown_mul": -0.3}, "passive"),
-    "long_reach":       ("Long Reach",       "rare",   [],        {"attack_range_mul": 0.25}, "passive"),
-    "arcane_quiver":    ("Arcane Quiver",    "rare",   ["storm"], {"projectile_speed_mul": 0.30}, "passive"),
+    "long_reach":       ("Long Reach",       "rare",   ["flame"], {"attack_range_mul": 0.25, "sword_damage_bonus": 1}, "passive"),  # iter-96 Phase B retune
+    "arcane_quiver":    ("Arcane Quiver",    "rare",   ["storm"], {"projectile_speed_mul": 0.30, "pierce_count": 1}, "passive"),  # iter-96 Phase B retune
     "wide_arc":         ("Wide Arc",         "rare",   ["flame"], {"attack_arc_mul": 0.60}, "passive"),
     "stalwart":         ("Stalwart",         "rare",   ["vow"],   {"max_hp_bonus": 1, "damage_taken_reduction": 1}, "passive"),
     "gale_step":        ("Gale Step",        "rare",   ["shadow"], {"move_speed_mul": 0.25, "dash_strike_post_iframes_bonus_f": 0.05}, "passive"),  # iter-96 retune
@@ -114,7 +114,7 @@ RELICS = {
     "detonator":        ("Detonator",        "legendary", ["flame"], {"explode_on_kill_chance_f": 0.40}, "on_kill_proc"),
     "glacial_resonance":("Glacial Resonance","legendary", ["storm"], {"slow_chance_f": 0.50, "max_hp_bonus": 1}, "passive+on_hit_proc"),
     "phantom_squad":    ("Phantom Squad",    "legendary", [],        {"familiar_count": 2}, "active_familiar"),
-    "heart_of_stone":   ("Heart of Stone",   "legendary", ["vow"],   {"max_hp_bonus": 2}, "passive"),
+    "heart_of_stone":   ("Heart of Stone",   "legendary", ["blood"], {"max_hp_bonus": 3, "damage_taken_reduction": 1}, "passive"),  # iter-96 Phase B retune (was 2 HP / no DR, dominated by aegis_plate)
     "boots_of_haste":   ("Boots of Haste",   "legendary", ["shadow"], {"move_speed_mul": 0.6}, "passive"),
     "second_wind":      ("Second Wind",      "legendary", ["vow"],   {}, "on_lethal_proc"),
     "bloodstone":       ("Bloodstone",       "legendary", ["blood"], {}, "on_kill_counter_heal"),
@@ -167,6 +167,12 @@ class Build:
 # Combat math — the heart of the AI's value function
 # ─────────────────────────────────────────────────────────────────────────
 
+def _effective_crit_mul(b: Build) -> float:
+    """Folded crit damage multiplier (iter-96). Base 1.5× + crit_damage_bonus_f.
+    keen_focus grants +0.10 → 1.6× when stacked."""
+    return CRIT_DMG_MUL + b.mod("crit_damage_bonus_f")
+
+
 def slash_dps(b: Build) -> float:
     """Effective slash DPS = damage_per_hit * hits_per_second * crit_factor *
     proc_factor. Wide arc adds a 'cleave' multiplier since the slash hits
@@ -176,7 +182,8 @@ def slash_dps(b: Build) -> float:
     hps = 1.0 / max(0.05, BASE_ATTACK_CD * cd_mul)
     arc_factor = 1.0 + 0.5 * b.mod("attack_arc_mul")  # wide arc → more cleave
     crit = min(0.95, b.mod("crit_chance_f"))
-    crit_factor = 1.0 + crit * (CRIT_DMG_MUL - 1.0)
+    crit_mul = _effective_crit_mul(b)
+    crit_factor = 1.0 + crit * (crit_mul - 1.0)
     # On-hit procs add flat DPS estimate
     proc_dps = 0.0
     if b.has("chain_lightning"):
@@ -197,7 +204,8 @@ def blast_dps(b: Build) -> float:
     ricochet = b.mod_int("ricochet_count")
     hits_per_cast = proj_count * (1 + 0.6 * pierce + 0.4 * ricochet)
     crit = min(0.95, b.mod("crit_chance_f"))
-    crit_factor = 1.0 + crit * (CRIT_DMG_MUL - 1.0)
+    crit_mul = _effective_crit_mul(b)
+    crit_factor = 1.0 + crit * (crit_mul - 1.0)
     base = dmg * hits_per_cast * cps * crit_factor
     proc_dps = 0.0
     if b.has("arcane_resonance"):
@@ -259,9 +267,18 @@ def effective_hp(b: Build) -> float:
     # Per-room first-wound absorb
     if b.has("iron_resolve"):
         eff_hp += ROOMS_PER_FLOOR * FLOORS_PER_RUN  # 1 free hit per room
-    # Bloodstone regen
+    # Bloodstone regen — every 3rd kill heals 1 HP
     if b.has("bloodstone"):
         eff_hp += ENEMIES_PER_ROOM * ROOMS_PER_FLOOR * FLOORS_PER_RUN / 3.0
+    # iter-96 Phase B: lifestone slow regen — every 8th kill heals 1 HP
+    if b.has("lifestone"):
+        eff_hp += ENEMIES_PER_ROOM * ROOMS_PER_FLOOR * FLOORS_PER_RUN / 8.0
+    # iter-96 Phase B: second_wind extended i-frames bump → roughly +1
+    # avoided-hit per room of activity beyond the base revive value
+    if b.has("second_wind"):
+        # Was: just +1 to eff_hp below. Bump represents the 1.4s i-frames
+        # giving ~2 avoided ticks of repositioning per revive.
+        eff_hp += 1   # additional iframe value on top of the base +1
     # Lifesteal regen
     lifesteal = min(0.95, b.mod("lifesteal_chance_f"))
     if lifesteal > 0:

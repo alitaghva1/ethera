@@ -947,7 +947,7 @@ func _resolve_melee_strike() -> void:
 			# or-nothing."
 			var is_crit: bool = _roll_crit()
 			if is_crit:
-				dmg_for_this = int(round(float(dmg_for_this) * CRIT_DAMAGE_MUL))
+				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 			enemy.take_hit(dmg_for_this, is_crit)
 			# Iter 43 — burn roll per enemy hit. burn_chance_f is a
 			# float modifier (0..1). Burn duration is fixed (1.6s = 4
@@ -1180,7 +1180,7 @@ func _try_chain_from(source: Node, hit_set: Dictionary) -> void:
 		var dmg_chain: int = CHAIN_DAMAGE
 		var is_crit_chain: bool = _roll_crit()
 		if is_crit_chain:
-			dmg_chain = int(round(float(dmg_chain) * CRIT_DAMAGE_MUL))
+			dmg_chain = int(round(float(dmg_chain) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 		best.take_hit(dmg_chain, is_crit_chain)
 		hit_set[best.get_instance_id()] = true
 		_bump_combo()   # iter 54 — chain bolts count toward combo
@@ -1445,7 +1445,7 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 	# downstream procs (executioner) compound off the crit'd damage too.
 	var is_crit: bool = _roll_crit()
 	if is_crit:
-		dmg = int(round(float(dmg) * CRIT_DAMAGE_MUL))
+		dmg = int(round(float(dmg) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 		# Yellow-warm tint distinct from arcane_resonance's cyan crit.
 		# A double-crit (resonance + crit) still reads as cyan dominant
 		# (set above) since this overwrites after — the player sees
@@ -1594,9 +1594,11 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 	elif hp <= 0 and GameState.has_relic("second_wind") and not _second_wind_used:
 		_second_wind_used = true
 		hp = 1
-		# Brief invuln so the trigger doesn't immediately die to the
-		# next tick of contact damage from the same enemy.
-		_iframes = HIT_IFRAMES * 2.0
+		# iter-96 Phase B: bumped from HIT_IFRAMES*2.0 → 2.5 (1.1s → 1.4s)
+		# so the post-revive window is generous enough to actually
+		# REPOSITION rather than just absorb one more bump. Differentiates
+		# from phoenix_feather (which is full-HP + 2.5× already).
+		_iframes = HIT_IFRAMES * 2.5
 		# Iter 21 — fire the audio bus chime so the save HAS A SOUND.
 		# audio.gd subscribes to Events.hero_second_wind for the long
 		# rising 200→140 Hz ring distinct from the death sweep.
@@ -1743,6 +1745,20 @@ func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 				Color(1.0, 0.35, 0.4),
 			)
 			get_parent().add_child(n)
+	# iter-96 Phase B — lifestone slow regen. Common-tier BLOOD entry
+	# parallel to bloodstone but on a longer 8-kill cadence so it's not
+	# competing with bloodstone (every-3-kill, legendary). Same cap +
+	# floater pattern as bloodstone for consistency.
+	if GameState.has_relic("lifestone") and _kill_counter % 8 == 0:
+		var ls_cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < ls_cap and not _is_dying:
+			heal(1)
+			var ls_floater: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -56),
+				"+1",
+				Color(1.0, 0.55, 0.50),  # dimmer rose vs bloodstone's bright crimson
+			)
+			get_parent().add_child(ls_floater)
 	# Iter 44 — lifesteal on kill. Stacks via modifier_total_f
 	# (Drinking Edge 0.15 + Crimson Hunger 0.30 = 0.45 combined chance).
 	# Independent of bloodstone's every-3rd-kill counter so the two
@@ -2090,7 +2106,7 @@ func _apply_dash_pierce_tick() -> void:
 			var dmg_dp: int = DASH_STRIKE_PIERCE_DAMAGE
 			var is_crit_dp: bool = _roll_crit()
 			if is_crit_dp:
-				dmg_dp = int(round(float(dmg_dp) * CRIT_DAMAGE_MUL))
+				dmg_dp = int(round(float(dmg_dp) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 			enemy.take_hit(dmg_dp, is_crit_dp)
 			_dash_hit_set[id] = true
 			_bump_combo()   # iter 54 — dash pierce hits count toward combo
@@ -2239,7 +2255,7 @@ func _resolve_dash_strike_hit() -> void:
 			# the roll.
 			var is_crit_ds: bool = _roll_crit()
 			if is_crit_ds:
-				dmg_for_this = int(round(float(dmg_for_this) * CRIT_DAMAGE_MUL))
+				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 			enemy.take_hit(dmg_for_this, is_crit_ds)
 			hit_count += 1
 			_bump_combo()   # iter 54 — dash final-AoE hits count

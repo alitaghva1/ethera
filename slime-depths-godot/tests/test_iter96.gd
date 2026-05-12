@@ -153,6 +153,56 @@ func _initialize() -> void:
 	else:
 		print("OK hero.gd folds dash_strike_post_iframes_bonus_f into _iframes window")
 
+	# ═══ 8. Phase B — new crit_damage_bonus_f modifier read in hero.gd ═══
+	if not hero_src.contains("modifier_total_f(\"crit_damage_bonus_f\""):
+		push_error("FAIL: hero.gd doesn't fold crit_damage_bonus_f at any CRIT_DAMAGE_MUL site")
+		ok = false
+	else:
+		print("OK hero.gd folds crit_damage_bonus_f into the crit damage formula")
+
+	# ═══ 9. Phase B retuned relics — each new mod must be in place ═══
+	var phase_b_checks: Array = [
+		# (relic, must-contain-substring-in-its-stanza, label)
+		["iron_grip",       "\"damage_taken_reduction\": 1",  "iron_grip gained -1 DR (was knockback-only at 0.1% pick rate)"],
+		["iron_will",       "\"max_hp_bonus\": 2",            "iron_will bumped to +2 HP (was +1 with lying description)"],
+		["lifestone",       "Every 8 kills",                  "lifestone gained every-8-kills regen description"],
+		["keen_focus",      "\"crit_damage_bonus_f\": 0.10",  "keen_focus gained +10% crit damage"],
+		["arcane_quiver",   "\"pierce_count\": 1",            "arcane_quiver gained pierce_count (was speed-only at 2.2%)"],
+		["long_reach",      "\"sword_damage_bonus\": 1",      "long_reach gained +1 sword damage (was reach-only at 3.2%)"],
+		["heart_of_stone",  "\"max_hp_bonus\": 3",            "heart_of_stone bumped to +3 HP (was strictly worse than aegis_plate)"],
+	]
+	for entry in phase_b_checks:
+		var rid: String = entry[0]
+		var needle: String = entry[1]
+		var label: String = entry[2]
+		var r_idx: int = gs_src.find("\"%s\":" % rid)
+		if r_idx < 0:
+			push_error("FAIL: %s missing from registry" % rid)
+			ok = false
+			continue
+		var slice: String = gs_src.substr(r_idx, 500)
+		if needle not in slice:
+			push_error("FAIL: %s — needle '%s' not in registry stanza" % [rid, needle])
+			ok = false
+		else:
+			print("OK %s" % label)
+
+	# ═══ 10. Phase B — lifestone regen handler in hero.gd ═══
+	# The handler fires on enemy_died via the existing kill_counter path.
+	# Look for a `has_relic("lifestone")` + `_kill_counter % 8` block.
+	if not (hero_src.contains("has_relic(\"lifestone\")") and hero_src.contains("_kill_counter % 8")):
+		push_error("FAIL: hero.gd missing lifestone every-8-kills regen handler")
+		ok = false
+	else:
+		print("OK hero.gd has lifestone every-8-kills regen handler")
+
+	# ═══ 11. Phase B — second_wind i-frames bumped 2.0 → 2.5 ═══
+	if not hero_src.contains("HIT_IFRAMES * 2.5"):
+		push_error("FAIL: second_wind i-frames not bumped (looking for HIT_IFRAMES * 2.5)")
+		ok = false
+	else:
+		print("OK second_wind post-revive i-frames bumped (1.1s → 1.4s)")
+
 	if ok:
 		print("=== ITER 96 INTEGRATION PASSED ===")
 	else:

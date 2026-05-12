@@ -58,6 +58,9 @@ var persisted_hp: int = -1
 #   dash_strike_post_iframes_bonus_f (float)  iter-96. Extra seconds added to
 #                                        DASH_STRIKE_POST_IFRAMES (default 0.10s).
 #                                        Used by phantom_step (+0.15), gale_step (+0.05).
+#   crit_damage_bonus_f         (float)  iter-96 Phase B. Additive bonus to the
+#                                        base CRIT_DAMAGE_MUL of 1.5. Used by
+#                                        keen_focus (+0.10 → 1.6× crits).
 #   projectile_speed_mul    (float)  multiplier delta on hero blast velocity  (iter 21)
 #   attack_arc_mul          (float)  multiplier delta on ATTACK_ARC half-angle  (iter 21)
 # Float-typed mods are folded via modifier_total_f (see below).
@@ -142,20 +145,29 @@ const RELIC_REGISTRY := {
 		"mods": { "damage_taken_reduction": 1 },
 		"themes": ["vow"],
 	},
+	# iter-96 Phase B retune: previous description PROMISED "first-hit DR"
+	# but no handler existed in hero.gd — pure lying chrome. Stripped the
+	# false promise + bumped HP 1 → 2 so iron_will is now the
+	# straightforward HP-bigger-than-lifestone common. Differentiates
+	# from `lifestone` (which gained a regen proc below) and from
+	# `sturdy_step` (DR-focused). Three distinct VOW commons.
 	"iron_will": {
 		"name": "IRON WILL",
-		"description": "Endure. +1 max HP, -1 incoming damage on the first hit each room.",
+		"description": "Endure. +2 max HP.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_iron_greaves.png",
-		"mods": { "max_hp_bonus": 1 },
+		"mods": { "max_hp_bonus": 2 },
 		"themes": ["vow"],
 	},
+	# iter-96 Phase B retune: knockback alone was a 0.1% pick rate dud.
+	# Added flat -1 incoming damage so the relic has a survival axis.
+	# Stays in FLAME (the "hit hard, keep enemies off" identity).
 	"iron_grip": {
 		"name": "IRON GRIP",
-		"description": "Strikes shove harder. +25% knockback force.",
+		"description": "Strikes shove harder. +25% knockback force, -1 incoming damage.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_heavy_blow.png",
-		"mods": { "knockback_force_mul": 0.25 },
+		"mods": { "knockback_force_mul": 0.25, "damage_taken_reduction": 1 },
 		"themes": ["flame"],
 	},
 	# iter-96 retune: dodge_iframes_bonus_f became a dead key when iter-95
@@ -177,12 +189,14 @@ const RELIC_REGISTRY := {
 		"mods": { "blast_damage_bonus": 1, "projectile_speed_mul": 0.2 },
 		"themes": ["storm"],
 	},
-	# Iter 40 — new common BLOOD relic. Cheap entry into the BLOOD
-	# theme so a player who finds 2 commons can hit BLOOD resonance
-	# without legendary-tier picks.
+	# Iter 40 — common BLOOD entry. iter-96 Phase B retune: pure +1 HP
+	# at common was strictly dominated. Added a slow regen proc (every
+	# 8 kills, heal 1 HP) to give lifestone a build identity distinct
+	# from iron_will (now +2 HP flat). Pairs with bloodstone (legendary
+	# every-3rd-kill) for a BLOOD regen ramp.
 	"lifestone": {
 		"name": "LIFESTONE",
-		"description": "A pulsing red gem fused to your heart. +1 max HP.",
+		"description": "A pulsing red gem fused to your heart. +1 max HP. Every 8 kills, heal 1 HP.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_bloodstone.png",
 		"mods": { "max_hp_bonus": 1 },
@@ -224,20 +238,28 @@ const RELIC_REGISTRY := {
 		"mods": { "blast_cooldown_mul": -0.3 },
 		"themes": ["storm", "shadow"],
 	},
+	# iter-96 Phase B retune: range-only was 3.2% pick rate. Added +1
+	# sword damage so the relic commits to melee builds with a real DPS
+	# axis. Stays in FLAME — the melee theme.
 	"long_reach": {
 		"name": "LONG REACH",
-		"description": "Sword swings reach +25% farther.",
+		"description": "Sword swings reach +25% farther. +1 sword damage.",
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_long_reach.png",
-		"mods": { "attack_range_mul": 0.25 },
+		"mods": { "attack_range_mul": 0.25, "sword_damage_bonus": 1 },
 		"themes": ["flame"],
 	},
+	# iter-96 Phase B retune: speed-only was 2.2% pick rate (dud-tier).
+	# Added pierce_count:1 so the relic actually changes how blasts feel.
+	# Now it's the rare "blast hits through one enemy" — pairs with
+	# piercing_quarrel for a 2-pierce stack, or twin_cast for projectile
+	# count × pierce.
 	"arcane_quiver": {
 		"name": "ARCANE QUIVER",
-		"description": "Blast projectiles travel +30% faster.",
+		"description": "Blast projectiles travel +30% faster and pierce through 1 enemy.",
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_arcane_quiver.png",
-		"mods": { "projectile_speed_mul": 0.30 },
+		"mods": { "projectile_speed_mul": 0.30, "pierce_count": 1 },
 		"themes": ["storm"],
 	},
 	"wide_arc": {
@@ -310,15 +332,17 @@ const RELIC_REGISTRY := {
 		"mods": { "projectile_count": 1 },
 		"themes": ["storm"],
 	},
-	# Iter 42 — crit chance entry-tier. Common so 2 picks can stack into
-	# a 30% crit rate that still feels reliable. FLAME theme because
-	# crits are flat damage amplification — the offense axis.
+	# Iter 42 — crit chance entry-tier. iter-96 Phase B retune: added
+	# crit_damage_bonus_f:0.10 so the relic delivers a +25% expected
+	# damage from crits (was just chance, capped at 1.5× damage).
+	# Pairs with focused_strike (rare crit chance) for the FLAME crit
+	# ramp build.
 	"keen_focus": {
 		"name": "KEEN FOCUS",
-		"description": "+15% chance for hits to crit for 1.5× damage.",
+		"description": "+15% crit chance, +10% crit damage.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_eye_of_ether.png",
-		"mods": { "crit_chance_f": 0.15 },
+		"mods": { "crit_chance_f": 0.15, "crit_damage_bonus_f": 0.10 },
 		"themes": ["flame"],
 	},
 	# Iter 42 — crit chance rare. Same mechanic, bigger stack. Stacks
@@ -501,12 +525,16 @@ const RELIC_REGISTRY := {
 		"mods": { "familiar_count": 2 },
 		"themes": ["storm"],
 	},
+	# iter-96 Phase B retune: was legendary +2 HP, which the rare
+	# aegis_plate (+2 HP, -1 DR) strictly dominated. Bumped to +3 HP
+	# and added -1 DR so heart_of_stone is a real legendary tank
+	# stat-stick, distinct from aegis_plate and a worthy late-floor pick.
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
-		"description": "+2 max HP.",
+		"description": "+3 max HP, -1 incoming damage.",
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_max_hp.png",
-		"mods": { "max_hp_bonus": 2 },
+		"mods": { "max_hp_bonus": 3, "damage_taken_reduction": 1 },
 		"themes": ["blood"],
 	},
 	"boots_of_haste": {
@@ -517,9 +545,17 @@ const RELIC_REGISTRY := {
 		"mods": { "move_speed_mul": 0.6 },
 		"themes": ["shadow"],
 	},
+	# iter-96 Phase B retune: description now honest about behavior —
+	# the per-room hero re-instantiation means _second_wind_used resets
+	# on room transition, so the relic fires once per ROOM (not per run
+	# as the old description claimed). That makes it the "safety net
+	# per encounter" relic, distinct from phoenix_feather's premium
+	# "once per run, full HP" revive. Also bumped post-revive i-frames
+	# from HIT_IFRAMES*2.0 to HIT_IFRAMES*2.5 in hero.take_damage so the
+	# brief invuln window feels generous enough to reposition.
 	"second_wind": {
 		"name": "SECOND WIND",
-		"description": "Once per run, a killing blow leaves you at 1 HP instead.",
+		"description": "A killing blow each room leaves you at 1 HP instead — and grants extended invulnerability.",
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_second_wind.png",
 		"mods": {},   # triggered — see hero.take_damage
