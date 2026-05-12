@@ -735,6 +735,16 @@ func _physics_process(delta: float) -> void:
 		if _step_accumulator >= STEP_INTERVAL:
 			_step_accumulator = 0.0
 			Events.hero_stepped.emit(global_position)
+			# iter-85 immersion: tiny dust puff at hero's feet on each
+			# step. Pairs with audio.gd's hero_stepped sound so the
+			# player feels physical floor contact rather than gliding.
+			# get_parent() (= main scene) is the spawn host so dust
+			# stays in world space (vs parenting under hero, which
+			# would drag the dust along — breaks the "left-behind"
+			# read of the iter-29 particles convention).
+			var parent_for_dust: Node = get_parent()
+			if parent_for_dust != null:
+				FootstepDust.spawn(parent_for_dust, global_position)
 		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y, IDLE_BOB_LERP * delta)
 	else:
 		_idle_time += delta

@@ -1,0 +1,50 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3footstep0001"]
+
+[ext_resource type="Script" path="res://scripts/footstep_dust.gd" id="1_script"]
+
+; iter-85 immersion: tiny ground-dust puff fired at hero's feet on
+; every step. Hero.gd already emits hero_stepped at a distance-based
+; cadence (STEP_INTERVAL in hero.gd); this scene is what that beat
+; spawns visually. Pairs with the existing audio.gd step sound so
+; running has both audio AND visual contact with the floor.
+
+; Color ramp — fade in fast then drift to transparent. Color is a
+; warm-neutral floor dust (light grey-brown) — works across all
+; biomes without per-biome tinting in the hero step path.
+[sub_resource type="Gradient" id="dust_grad"]
+offsets = PackedFloat32Array(0, 0.18, 0.7, 1)
+colors = PackedColorArray(0.72, 0.66, 0.58, 0, 0.72, 0.66, 0.58, 0.45, 0.62, 0.57, 0.50, 0.25, 0.50, 0.45, 0.40, 0)
+
+[sub_resource type="Curve" id="dust_scale_curve"]
+_data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1, 0.4), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[node name="FootstepDust" type="Node2D"]
+script = ExtResource("1_script")
+
+; CPUParticles2D — 5-particle burst that spreads slightly outward + up
+; from the hero's feet. damping settles the dust quickly so it doesn't
+; drift far. Small scale_amount + scale_amount_curve makes each puff
+; grow + shrink mid-life (peaks then settles).
+[node name="Particles" type="CPUParticles2D" parent="."]
+emitting = true
+amount = 5
+lifetime = 0.35
+one_shot = true
+preprocess = 0.0
+explosiveness = 1.0
+randomness = 0.4
+emission_shape = 1
+emission_sphere_radius = 4.0
+direction = Vector2(0, -1)
+spread = 80.0
+gravity = Vector2(0, 18)
+initial_velocity_min = 12.0
+initial_velocity_max = 28.0
+damping_min = 4.0
+damping_max = 8.0
+scale_amount_min = 1.6
+scale_amount_max = 2.8
+scale_amount_curve = SubResource("dust_scale_curve")
+color_ramp = SubResource("dust_grad")
+z_index = 0
