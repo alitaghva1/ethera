@@ -540,6 +540,106 @@ func grant_shrine_bonus(key: String, value) -> void:
 	var current = shrine_bonuses.get(key, 0)
 	shrine_bonuses[key] = current + value
 
+# Iter 57 — achievements. Persistent across runs (save_to_dict
+# includes unlocked_achievements). Tracks milestones that the player
+# accomplishes across all play sessions, giving long-term goals
+# beyond the per-run roguelite loop.
+#
+# Registry maps id → {name, description}. Adding a new achievement
+# is a single entry here + the corresponding unlock check at the
+# emit site (kill counter / combo / boss death / etc).
+#
+# Achievements never UN-lock — once granted, they persist forever
+# (until the save file is deleted). The unlock_achievement helper
+# guards against re-firing and emits Events.achievement_unlocked
+# so the HUD popup banner can show.
+const ACHIEVEMENTS := {
+	"first_blood": {
+		"name": "FIRST BLOOD",
+		"description": "Slay your first enemy.",
+	},
+	"centurion": {
+		"name": "CENTURION",
+		"description": "Slay 100 enemies in a single run.",
+	},
+	"hot_streak": {
+		"name": "HOT STREAK",
+		"description": "Reach a 50-hit combo.",
+	},
+	"perfect_streak": {
+		"name": "PERFECT STREAK",
+		"description": "Reach a 100-hit combo.",
+	},
+	"mythic_find": {
+		"name": "MYTHIC FIND",
+		"description": "Claim a mythic-tier relic.",
+	},
+	"phase_3_survivor": {
+		"name": "PHASE 3 SURVIVOR",
+		"description": "Witness a boss enter phase 3.",
+	},
+	"iron_revenant_slain": {
+		"name": "IRON CRYPT CLEARED",
+		"description": "Defeat the Iron Revenant.",
+	},
+	"broodmother_slain": {
+		"name": "QUEEN OF SPIDERS",
+		"description": "Defeat the Broodmother.",
+	},
+	"flame_devotee": {
+		"name": "FLAME DEVOTEE",
+		"description": "Own 4 FLAME relics in one run.",
+	},
+	"storm_devotee": {
+		"name": "STORM DEVOTEE",
+		"description": "Own 4 STORM relics in one run.",
+	},
+	"blood_devotee": {
+		"name": "BLOOD DEVOTEE",
+		"description": "Own 4 BLOOD relics in one run.",
+	},
+	"vow_devotee": {
+		"name": "VOW DEVOTEE",
+		"description": "Own 4 VOW relics in one run.",
+	},
+	"shadow_devotee": {
+		"name": "SHADOW DEVOTEE",
+		"description": "Own 4 SHADOW relics in one run.",
+	},
+}
+
+var unlocked_achievements: Array[String] = []
+
+# Idempotent — re-fire is a silent no-op. Emits the unlock event +
+# saves immediately so a crash after unlock doesn't lose the
+# achievement. Returns true if this call actually unlocked it.
+func unlock_achievement(id: String) -> bool:
+	if not ACHIEVEMENTS.has(id):
+		return false
+	if id in unlocked_achievements:
+		return false
+	unlocked_achievements.append(id)
+	Events.achievement_unlocked.emit(id)
+	# Save immediately so the unlock persists even if the game crashes.
+	if Engine.get_main_loop().root.has_node("/root/SaveSystem"):
+		var ss = Engine.get_main_loop().root.get_node("/root/SaveSystem")
+		if ss.has_method("save_now"):
+			ss.save_now()
+	return true
+
+# Helper for the theme-devotee achievements — checks current count.
+func _check_theme_devotee_achievements() -> void:
+	var theme_to_id: Dictionary = {
+		"flame": "flame_devotee",
+		"storm": "storm_devotee",
+		"blood": "blood_devotee",
+		"vow": "vow_devotee",
+		"shadow": "shadow_devotee",
+	}
+	for theme in theme_to_id.keys():
+		if theme_count(theme) >= 4:
+			unlock_achievement(theme_to_id[theme])
+
 # Iter 39 — theme tagging + resonance. Each relic in RELIC_REGISTRY
 # carries a "themes" array (one or two strings from STORM / FLAME /
 # BLOOD / VOW / SHADOW). Owning N relics of a theme unlocks tiered
@@ -629,13 +729,14 @@ var master_volume: float = 0.7
 # easiest to diff in a text editor when debugging save files.
 func save_to_dict() -> Dictionary:
 	return {
-		"save_version": 2,
+		"save_version": 3,   # iter 57 — added unlocked_achievements
 		"owned_relics": owned_relics,
 		"session_kills": session_kills,
 		"dungeon_runs": dungeon_runs,
 		"last_run_kills": last_run_kills,
 		"best_run_kills": best_run_kills,
 		"master_volume": master_volume,
+		"unlocked_achievements": unlocked_achievements,
 	}
 
 # Tolerant loader: every field has a default, missing keys are ignored,
@@ -664,6 +765,17 @@ func load_from_dict(d: Dictionary) -> void:
 			if rid is String:
 				fresh.append(rid)
 	owned_relics = fresh
+	# Iter 57 — load achievements. Same tolerant pattern as owned_relics:
+	# typed Array[String] rebuild element-by-element, skip garbage.
+	# Missing key on older save files → empty array (no unlocks yet),
+	# graceful first-time-with-new-version upgrade.
+	var loaded_achievements: Variant = d.get("unlocked_achievements", [])
+	var fresh_ach: Array[String] = []
+	if loaded_achievements is Array:
+		for ach in loaded_achievements:
+			if ach is String and ACHIEVEMENTS.has(ach):
+				fresh_ach.append(ach)
+	unlocked_achievements = fresh_ach
 
 # ── Session API ──────────────────────────────────────────────────────
 func start_dungeon_run() -> void:
@@ -692,6 +804,11 @@ func start_dungeon_run() -> void:
 func register_run_kill() -> void:
 	last_run_kills += 1
 	session_kills += 1
+	# Iter 57 — kill-based achievement checks.
+	if last_run_kills == 1:
+		unlock_achievement("first_blood")
+	if last_run_kills >= 100:
+		unlock_achievement("centurion")
 
 # Back-compat for hamlet's existing call.
 func register_kill() -> void:
@@ -708,6 +825,13 @@ func grant_relic(id: String) -> bool:
 		push_warning("GameState.grant_relic: unknown id '%s'" % id)
 		return false
 	owned_relics.append(id)
+	# Iter 57 — achievement triggers tied to relic grant.
+	# Mythic find: any mythic-tier relic claimed unlocks the achievement.
+	# Theme devotee: 4+ owned of a single theme.
+	var info: Dictionary = RELIC_REGISTRY.get(id, {})
+	if str(info.get("tier", "common")) == "mythic":
+		unlock_achievement("mythic_find")
+	_check_theme_devotee_achievements()
 	return true
 
 func relic_info(id: String) -> Dictionary:

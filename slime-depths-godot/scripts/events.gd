@@ -98,3 +98,7 @@ signal pickup_mythic(world_pos: Vector2)
 #   _spawn_enemy_type pathway.
 signal boss_phase_3(world_pos: Vector2)
 signal enemy_summon_requested(world_pos: Vector2, type_id: String)
+
+# Iter 57 — achievement unlocked. Carries the achievement id; HUD
+# subscribes to show a popup banner with the name + description.
+signal achievement_unlocked(id: String)

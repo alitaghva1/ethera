@@ -294,6 +294,12 @@ signal combo_changed(new_value: int)
 func _bump_combo() -> void:
 	_combo += 1
 	combo_changed.emit(_combo)
+	# Iter 57 — combo-tier achievements. Fired at exact thresholds so
+	# the unlock lands ON the milestone, not after.
+	if _combo == 50:
+		GameState.unlock_achievement("hot_streak")
+	elif _combo == 100:
+		GameState.unlock_achievement("perfect_streak")
 
 func _reset_combo() -> void:
 	if _combo > 0:

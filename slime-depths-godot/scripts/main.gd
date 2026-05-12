@@ -359,6 +359,8 @@ func _ready() -> void:
 	# dict so it owns the actual spawn. Decouples enemy.gd from the
 	# scene-side registry.
 	Events.enemy_summon_requested.connect(_on_enemy_summon_requested)
+	# Iter 57 — achievement unlock popup banner.
+	Events.achievement_unlocked.connect(_on_achievement_unlocked)
 	_death_screen = DEATH_SCREEN_SCENE.instantiate()
 	add_child(_death_screen)
 	_death_screen.retry_pressed.connect(_on_death_retry)
@@ -396,6 +398,16 @@ func _process(_delta: float) -> void:
 			boss_hp_bar.value = float(_boss_ref.hp)
 		else:
 			boss_bar.visible = false
+			# Iter 57 — boss-kill achievements. Identified by the boss's
+			# display_name at the moment of death (boss_name label still
+			# carries the upper-cased name we set at spawn). Each boss
+			# unlocks its dedicated achievement; future bosses get new
+			# entries via the registry.
+			var bn: String = boss_name.text
+			if bn == "IRON REVENANT":
+				GameState.unlock_achievement("iron_revenant_slain")
+			elif bn == "BROODMOTHER":
+				GameState.unlock_achievement("broodmother_slain")
 			_boss_ref = null
 	if _wave_state == WaveState.ACTIVE:
 		# Filter out "breakables" (chests) — they join the "enemies"
@@ -2280,10 +2292,101 @@ func _on_boss_phase_changed(phase: int, boss_display_name: String) -> void:
 		_show_boss_phase_banner(boss_display_name, "DESPERATE",
 			Color(1.0, 0.32, 0.30, 1.0), 52, 11.0,
 			Color(0.95, 0.10, 0.10, 0.46))
+		# Iter 57 — phase 3 achievement.
+		GameState.unlock_achievement("phase_3_survivor")
 
 # Iter 37 — boss phase 2 banner. Smaller + redder than the boss intro
 # banner (this is a mid-fight beat, not an opener). Drops in from the
 # top, holds 1.2s, fades.
+# Iter 57 — achievement unlock popup. Briefly shows the achievement
+# name + description at the top-center of the screen, then fades.
+# Stacks in vertical sequence if multiple unlock back-to-back (e.g.
+# centurion + flame_devotee on the same kill).
+var _achievement_popup_count: int = 0   # how many popups currently visible
+
+func _on_achievement_unlocked(id: String) -> void:
+	if not GameState.ACHIEVEMENTS.has(id):
+		return
+	var info: Dictionary = GameState.ACHIEVEMENTS[id]
+	var nm: String = str(info.get("name", id))
+	var desc: String = str(info.get("description", ""))
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 42
+	add_child(layer)
+	var panel: PanelContainer = PanelContainer.new()
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.05, 0.09, 0.95)
+	sb.border_color = Color(1.0, 0.85, 0.40, 0.95)
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.corner_radius_bottom_right = 4
+	sb.corner_radius_bottom_left = 4
+	sb.content_margin_left = 14.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_right = 14.0
+	sb.content_margin_bottom = 8.0
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.0
+	panel.anchor_bottom = 0.0
+	# Stack vertically — successive popups appear below the prior.
+	var slot: int = _achievement_popup_count
+	panel.offset_left = -190
+	panel.offset_right = 190
+	panel.offset_top = 110 + (slot * 70)
+	panel.offset_bottom = 170 + (slot * 70)
+	panel.modulate = Color(1, 1, 1, 0)
+	layer.add_child(panel)
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(box)
+	var heading: Label = Label.new()
+	heading.text = "★ ACHIEVEMENT UNLOCKED ★"
+	heading.add_theme_font_size_override("font_size", 11)
+	heading.add_theme_color_override("font_color", Color(1.0, 0.85, 0.40, 1))
+	heading.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	heading.add_theme_constant_override("outline_size", 2)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(heading)
+	var name_lbl: Label = Label.new()
+	name_lbl.text = nm
+	name_lbl.add_theme_font_size_override("font_size", 18)
+	name_lbl.add_theme_color_override("font_color", Color(1, 0.95, 0.85, 1))
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	name_lbl.add_theme_constant_override("outline_size", 3)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(name_lbl)
+	var desc_lbl: Label = Label.new()
+	desc_lbl.text = desc
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_lbl.custom_minimum_size = Vector2(360, 0)
+	desc_lbl.add_theme_font_size_override("font_size", 12)
+	desc_lbl.add_theme_color_override("font_color", Color(0.80, 0.78, 0.72, 1))
+	desc_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	desc_lbl.add_theme_constant_override("outline_size", 2)
+	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(desc_lbl)
+	_achievement_popup_count += 1
+	# Drop-in tween + hold + fade out + queue_free + slot release.
+	var tw: Tween = create_tween()
+	tw.tween_property(panel, "modulate:a", 1.0, 0.25)
+	tw.tween_interval(3.0)
+	tw.tween_property(panel, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(layer.queue_free)
+	tw.tween_callback(func ():
+		_achievement_popup_count = max(0, _achievement_popup_count - 1)
+	)
+
 # Iter 55 — banner driver. Phase 2 and phase 3 share this with
 # different label / color / size / shake-intensity / flash-color
 # parameters so the player reads "phase 3 is the more dangerous state"
