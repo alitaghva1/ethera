@@ -102,6 +102,30 @@ signal phase_changed(phase: int)
 # can't retrigger).
 var _phase: int = 1
 
+# Iter 43 — burn status. Set by hero.gd when a FLAME-themed proc (e.g.
+# Embers of Ruin relic) rolls successfully. Each tick deals 1 damage
+# every _burn_tick_interval; total burn life = _burn_remaining. Burn
+# DOES NOT count as a "hit" for is_crit visuals — the burn tick is a
+# discreet orange floater, not a crit highlight. Burn damage CAN kill
+# (calls _die normally) so a chain of burns can finish off low-HP mobs.
+const BURN_TICK_INTERVAL: float = 0.4
+const BURN_DAMAGE_PER_TICK: int = 1
+var _burn_remaining: float = 0.0
+var _burn_tick_timer: float = 0.0
+# Cached for restoring the sprite tint when burn fades.
+var _burn_active: bool = false
+
+func apply_burn(duration: float) -> void:
+	# Refresh: a fresh burn application either extends the existing
+	# burn OR resets to `duration` (whichever is longer). Avoids
+	# back-to-back applications producing shorter total burn than a
+	# single big proc.
+	if _dying:
+		return
+	_burn_remaining = max(_burn_remaining, duration)
+	_burn_tick_timer = 0.0   # first tick fires within ~one frame
+	_burn_active = true
+
 func _ready() -> void:
 	add_to_group("enemies")
 	if enemy_type == null:
@@ -206,6 +230,34 @@ func _physics_process(delta: float) -> void:
 		if _death_timer <= 0.0:
 			queue_free()
 		return
+	# Iter 43 — burn tick. Drains _burn_remaining and applies tick
+	# damage at intervals. Runs BEFORE spawn-in / knockback gates so
+	# burns persist through knockbacks (consistent with player
+	# expectations — getting hit doesn't extinguish a fire). Skip
+	# during _spawn_in_time so an enemy can't be pre-burned-to-death.
+	if _burn_active and _spawn_in_time <= 0.0:
+		_burn_remaining -= delta
+		_burn_tick_timer -= delta
+		if _burn_tick_timer <= 0.0:
+			_burn_tick_timer = BURN_TICK_INTERVAL
+			hp -= BURN_DAMAGE_PER_TICK
+			# Orange floater so burn damage reads distinct from melee/
+			# crit/spike damage. Smaller font (default) so a stream of
+			# burns doesn't dominate the HUD.
+			var dn: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -28),
+				str(BURN_DAMAGE_PER_TICK),
+				Color(1.0, 0.55, 0.20),
+			)
+			var parent_b: Node = get_parent()
+			if parent_b != null:
+				parent_b.add_child(dn)
+			Events.enemy_hit.emit(global_position)
+			if hp <= 0:
+				_die()
+				return
+		if _burn_remaining <= 0.0:
+			_burn_active = false
 	# Iter 15 spawn-in fade. While ticking down, the enemy is locked,
 	# invulnerable (see take_hit guard), and modulating from red-ghost
 	# to full opacity. This is the visual telegraph window for
@@ -413,16 +465,32 @@ func _fire_projectile() -> void:
 
 # ── Universal: take_hit + knockback + death ───────────────────────────
 
-func take_hit(damage: int) -> void:
+func take_hit(damage: int, is_crit: bool = false) -> void:
 	# Iter 15: ignore hits during the spawn-in fade so the player can't
 	# pre-kill an enemy that's still materializing. Mirrors the AI lock —
 	# the enemy isn't "present" yet.
 	if _dying or _spawn_in_time > 0.0:
 		return
 	hp -= damage
+	# Iter 43 — per-hit damage number. Crit hits use spawn_crit (yellow,
+	# bigger, "!" suffix, longer life); normal hits use the standard
+	# white number. Spawned at the enemy head so it reads as "X damage
+	# to this enemy" rather than floating in the void.
+	var num_pos: Vector2 = global_position + Vector2(0, -28)
+	var dn: DamageNumber
+	if is_crit:
+		dn = DamageNumber.spawn_crit(num_pos, damage)
+	else:
+		dn = DamageNumber.spawn(num_pos, str(damage), Color(1, 0.95, 0.9))
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(dn)
 	if sprite != null:
 		var tween: Tween = create_tween()
-		tween.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.04)
+		# Iter 43 — crit flash is warmer (gold) so the player sees both
+		# the damage number AND the sprite reaction confirm the crit.
+		var flash_color: Color = Color(3, 2.4, 1.5, 1) if is_crit else Color(2, 2, 2, 1)
+		tween.tween_property(sprite, "modulate", flash_color, 0.04)
 		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
 	Events.enemy_hit.emit(global_position)
 	# Iter 37 — phase transition check. Only triggers when:

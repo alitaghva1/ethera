@@ -31,6 +31,17 @@ var damage   := 1
 # WHO it's about to hurt).
 var executioner_active: bool = false
 
+# Iter 43 — crit flag locked at spawn (hero._spawn_blast_projectile
+# rolls _roll_crit per projectile). Passed to enemy.take_hit so the
+# crit damage number renders correctly. Same locked-at-fire pattern
+# as executioner_active so a relic gained mid-flight doesn't
+# retroactively crit.
+var is_crit: bool = false
+# Iter 43 — burn duration locked at spawn (0 = no burn). hero reads
+# burn_chance_f at spawn time, rolls, sets duration if successful.
+# Projectile applies the burn on hit alongside the damage.
+var burn_duration: float = 0.0
+
 # Iter 41 — pierce + ricochet mechanics. Both are set by hero._start_blast
 # at cast time from STORM-themed relics ("piercing_quarrel" → pierce,
 # "ricochet_talisman" → ricochet) so adding a new pierce/bounce relic
@@ -117,9 +128,14 @@ func _on_body_entered(body: Node) -> void:
 	if executioner_active and target_group == "enemies" and _is_low_hp(body):
 		dmg_out = int(round(float(damage) * 2.5))
 	if body.has_method("take_hit"):
-		body.take_hit(dmg_out)
+		body.take_hit(dmg_out, is_crit)
 	elif body.has_method("take_damage"):
 		body.take_damage(dmg_out)
+	# Iter 43 — projectile burn application. Locked at spawn from
+	# hero's burn_chance_f roll. Apply alongside the damage so a
+	# pierce/ricochet projectile burns every enemy it traverses.
+	if burn_duration > 0.0 and body.has_method("apply_burn"):
+		body.apply_burn(burn_duration)
 	# Iter 41 — pierce > ricochet > queue_free. Pierce takes priority
 	# because it's "keep going in a straight line" (no velocity change);
 	# ricochet is a fallback that REDIRECTS velocity when pierce is out.

@@ -686,6 +686,16 @@ func _roll_crit() -> bool:
 		return false
 	return randf() < chance
 
+# Iter 43 — burn roll. Reads burn_chance_f modifier (default 0.0,
+# range 0..1). Applies DoT to the hit enemy via enemy.apply_burn.
+# Burn duration is fixed (1.6s = 4 × 0.4s ticks for 4 damage total)
+# so the BURN_CHANCE_F stat is purely a trigger probability.
+func _roll_burn() -> bool:
+	var chance: float = GameState.modifier_total_f("burn_chance_f", 0.0)
+	if chance <= 0.0:
+		return false
+	return randf() < chance
+
 func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	# Iter 21 — relic-driven modifiers:
@@ -719,9 +729,17 @@ func _resolve_melee_strike() -> void:
 			# rounded). Per-enemy roll means a cleave hits some enemies
 			# for crit and others not — reads as "lucky swing" not "every-
 			# or-nothing."
-			if _roll_crit():
+			var is_crit: bool = _roll_crit()
+			if is_crit:
 				dmg_for_this = int(round(float(dmg_for_this) * CRIT_DAMAGE_MUL))
-			enemy.take_hit(dmg_for_this)
+			enemy.take_hit(dmg_for_this, is_crit)
+			# Iter 43 — burn roll per enemy hit. burn_chance_f is a
+			# float modifier (0..1). Burn duration is fixed (1.6s = 4
+			# ticks @ 0.4s) so the proc is "set on fire" rather than
+			# scaling with relic count. Stacking relics increases the
+			# CHANCE to trigger; the burn itself is a binary state.
+			if _roll_burn() and enemy.has_method("apply_burn"):
+				enemy.apply_burn(1.6)
 			hit_count += 1
 			hit_set[enemy.get_instance_id()] = true
 			_sword_hit_counter += 1
@@ -832,7 +850,8 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 	# projectiles crit and others not (reads as "lucky spray" rather than
 	# "all-or-nothing"). Roll happens at spawn, baked into damage so
 	# downstream procs (executioner) compound off the crit'd damage too.
-	if _roll_crit():
+	var is_crit: bool = _roll_crit()
+	if is_crit:
 		dmg = int(round(float(dmg) * CRIT_DAMAGE_MUL))
 		# Yellow-warm tint distinct from arcane_resonance's cyan crit.
 		# A double-crit (resonance + crit) still reads as cyan dominant
@@ -840,9 +859,15 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 		# WARM = crit, CYAN = resonance, WARM-CYAN = both.
 		p.orb_tint = Color(1.0, 0.85, 0.45, 1.0)
 	p.damage = dmg
+	p.is_crit = is_crit   # iter 43 — pass crit flag for take_hit visual
 	p.executioner_active = GameState.has_relic("executioner")
 	p.pierce_count = GameState.modifier_total("pierce_count", 0)
 	p.ricochet_count = GameState.modifier_total("ricochet_count", 0)
+	# Iter 43 — burn roll. Independent of crit so a non-crit hit can
+	# still burn. Locked at spawn (pierce + ricochet hits all apply
+	# the same burn duration since the proc fired once at cast).
+	if _roll_burn():
+		p.burn_duration = 1.6
 	get_parent().add_child(p)
 
 # Iter 16 — room-clear / relic / pickup healing. Caps at the current

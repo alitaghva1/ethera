@@ -279,6 +279,19 @@ const RELIC_REGISTRY := {
 		"mods": { "crit_chance_f": 0.25 },
 		"themes": ["flame"],
 	},
+	# Iter 43 — burn DoT. New axis: applies a 1.6s burn (4 ticks of 1
+	# damage @ 0.4s each) on hit. Compounds with FLAME ascendance fire
+	# pools (pools damage in-zone; burns damage the moving enemies).
+	# A FLAME-ascendant player with this relic chains: hit → burn ticks +
+	# pool stands → kill → pool drops → next mob enters → repeat.
+	"embers_of_ruin": {
+		"name": "EMBERS OF RUIN",
+		"description": "+25% chance for hits to ignite enemies. Burning enemies take 1 damage every 0.4s for 1.6s.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"mods": { "burn_chance_f": 0.25 },
+		"themes": ["flame"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",
