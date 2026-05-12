@@ -36,3 +36,5 @@ death_duration = 1.4
 contact_damage = 2
 contact_cooldown = 0.6
 contact_range = 48.0
+phase2_overrides = {"move_speed": 165.0, "contact_damage": 3, "contact_cooldown": 0.4, "contact_range": 56.0}
+phase2_hp_threshold = 0.5

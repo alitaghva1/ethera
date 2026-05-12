@@ -44,3 +44,5 @@ melee_swing = 0.5
 melee_cooldown = 1.5
 melee_damage = 2
 melee_cone = 1.6
+phase2_overrides = {"melee_windup": 0.55, "melee_cooldown": 0.85, "melee_damage": 3, "move_speed": 95.0}
+phase2_hp_threshold = 0.5

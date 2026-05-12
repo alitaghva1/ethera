@@ -1018,6 +1018,14 @@ func _spawn_enemy_type(type_id: String) -> void:
 		boss_hp_bar.max_value = float(type_res.max_hp)
 		boss_hp_bar.value = float(type_res.max_hp)
 		boss_bar.visible = true
+		# Iter 37 — wire the phase-changed signal for boss escalation.
+		# Connects ONLY for bosses (the signal exists on every Enemy but
+		# we don't need cinematic feedback when, say, a regular elite
+		# spider crosses 50% HP — that's just plinking). Bind to a
+		# closure that captures the enemy ref so the banner can show
+		# the boss's display name.
+		var boss_name_str: String = type_res.display_name.to_upper()
+		enemy.phase_changed.connect(func (phase: int): _on_boss_phase_changed(phase, boss_name_str))
 		# Iter 22 — boss intro punctuation. Heavy camera shake + brief
 		# red screen wash to mark the moment a boss enters. The shake
 		# is bigger than the dash-strike connect (10 amp) so the player
@@ -1670,4 +1678,59 @@ func _show_boss_intro_banner(display_name: String) -> void:
 	var tw2: Tween = create_tween()
 	tw2.tween_interval(0.95)
 	tw2.tween_property(lbl, "modulate:a", 0.0, 0.5)
+	tw2.tween_callback(layer.queue_free)
+
+# Iter 37 — boss phase-change handler. Fires when a boss crosses below
+# its phase2_hp_threshold (default 50%) for the first time. Pairs the
+# stat-mutation done by enemy._trigger_phase_2 with cinematic feedback:
+# a red "<NAME> · ENRAGED" banner, a brief screen flash, and a camera
+# punch. Connects ONCE per boss (the signal can only fire once because
+# enemy.gd guards on _phase == 1).
+func _on_boss_phase_changed(phase: int, boss_display_name: String) -> void:
+	if phase != 2:
+		return
+	_show_boss_phase_banner(boss_display_name)
+	# Camera shake + screen flash for impact. Same energy as boss intro
+	# but lighter — phase 2 is mid-fight, intro was the opener.
+	if has_node("/root/FX"):
+		var fx = get_node("/root/FX")
+		if fx.has_method("shake"):
+			fx.shake(7.0, 0.25)
+	if has_node("/root/ScreenFlash"):
+		var sf = get_node("/root/ScreenFlash")
+		if sf.has_method("flash"):
+			sf.flash(Color(0.85, 0.18, 0.18, 0.32), 0.4)
+
+# Iter 37 — boss phase 2 banner. Smaller + redder than the boss intro
+# banner (this is a mid-fight beat, not an opener). Drops in from the
+# top, holds 1.2s, fades.
+func _show_boss_phase_banner(boss_display_name: String) -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 40
+	add_child(layer)
+	var lbl: Label = Label.new()
+	lbl.text = "%s · ENRAGED" % boss_display_name
+	lbl.add_theme_font_size_override("font_size", 44)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45, 1))
+	lbl.add_theme_color_override("font_outline_color", Color(0.15, 0, 0, 0.95))
+	lbl.add_theme_constant_override("outline_size", 6)
+	lbl.anchor_left = 0.5
+	lbl.anchor_right = 0.5
+	lbl.anchor_top = 0.25
+	lbl.anchor_bottom = 0.25
+	lbl.offset_left = -340
+	lbl.offset_right = 340
+	lbl.offset_top = -32
+	lbl.offset_bottom = 32
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.pivot_offset = Vector2(340, 32)
+	lbl.modulate = Color(1, 1, 1, 0)
+	lbl.scale = Vector2(1.4, 1.4)
+	layer.add_child(lbl)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(lbl, "modulate:a", 1.0, 0.20).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var tw2: Tween = create_tween()
+	tw2.tween_interval(1.2)
+	tw2.tween_property(lbl, "modulate:a", 0.0, 0.4)
 	tw2.tween_callback(layer.queue_free)

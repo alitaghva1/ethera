@@ -89,6 +89,18 @@ var _cast_timer := 0.0
 var _cast_aim := Vector2.RIGHT
 
 signal died_at(world_pos: Vector2)
+# Iter 37 — boss phase machine. Emitted by take_hit the first time hp
+# drops below enemy_type.phase2_hp_threshold * max_hp. main.gd connects
+# this on boss spawn to fire the "ENRAGED" banner + camera punch.
+# Non-boss enemies CAN also use phase 2 if their enemy_type has
+# phase2_overrides set, but typically only bosses author it.
+signal phase_changed(phase: int)
+
+# Iter 37 — current phase. Starts at 1; transitions to 2 the first time
+# HP crosses the phase2 threshold (default 50%). Used to gate the
+# transition to once-per-enemy (re-crossing the threshold from healing
+# can't retrigger).
+var _phase: int = 1
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -413,8 +425,48 @@ func take_hit(damage: int) -> void:
 		tween.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.04)
 		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
 	Events.enemy_hit.emit(global_position)
+	# Iter 37 — phase transition check. Only triggers when:
+	#   - we're still in phase 1
+	#   - enemy_type declares phase2_overrides (non-empty)
+	#   - phase2_hp_threshold > 0 (kill-switch respect)
+	#   - current hp is at or below threshold
+	#   - hit didn't drop hp to 0 (avoid firing during death frame)
+	# Done BEFORE the death check so an enemy can't "skip" phase 2 by
+	# being burst from 100% to 0%.
+	if hp > 0 and _phase == 1 and enemy_type != null:
+		var thr: float = enemy_type.phase2_hp_threshold
+		if thr > 0.0 and not enemy_type.phase2_overrides.is_empty():
+			var ratio: float = float(hp) / float(maxi(1, enemy_type.max_hp))
+			if ratio <= thr:
+				_trigger_phase_2()
 	if hp <= 0:
 		_die()
+
+# Iter 37 — boss phase 2 transition. Duplicates the enemy_type so we
+# can mutate it without polluting the shared resource, applies the
+# phase2_overrides on the copy, fires a brief red enrage tint on the
+# sprite, and emits phase_changed(2) so main.gd can show its banner.
+# Idempotent — guarded by _phase == 1 in take_hit so it only fires
+# once per enemy lifetime.
+func _trigger_phase_2() -> void:
+	_phase = 2
+	# Copy the EnemyType so our mutations don't leak to other enemies
+	# (or persist after this run since resources are cached). After
+	# this point, enemy_type points at the local duplicate.
+	var local: EnemyType = enemy_type.duplicate() as EnemyType
+	var overrides: Dictionary = local.phase2_overrides
+	for key in overrides:
+		if key in local:
+			local.set(key, overrides[key])
+	enemy_type = local
+	# Visual feedback — brief red enrage flash on the sprite. Distinct
+	# from the white hit-flash (modulate(2,2,2)) so the player reads
+	# "the boss just got worse" rather than "the boss just got hit."
+	if sprite != null:
+		var t: Tween = create_tween()
+		t.tween_property(sprite, "modulate", Color(2.5, 0.8, 0.6, 1), 0.10)
+		t.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.40)
+	phase_changed.emit(2)
 
 func apply_knockback(dir: Vector2, force: float, duration: float) -> void:
 	if _dying or duration <= 0.0:

@@ -114,3 +114,26 @@ extends Resource
 # style turret enemies).
 func can_move() -> bool:
 	return move_speed > 0.0
+
+# Iter 37 — boss phase 2 overrides. When non-empty, the enemy transitions
+# to phase 2 the first time hp crosses below 50% (phase2_hp_threshold by
+# default). At transition, enemy.gd DUPLICATES this resource (so the
+# shared .tres stays clean) and overrides the listed fields with the
+# values from this Dictionary.
+#
+# Supported override keys = any @export field on EnemyType. Common ones:
+#   "melee_cooldown" / "melee_windup" / "melee_damage"
+#   "contact_damage" / "contact_cooldown"
+#   "move_speed"
+#   "projectile_damage" / "cast_cooldown"
+#
+# Empty dict = no phase 2 (default — regular enemies stay one-phase).
+# A non-empty dict on a non-boss enemy ALSO triggers normally; phase
+# transitions aren't gated by is_boss. (Lets future "elite" mobs share
+# the same machinery.)
+@export var phase2_overrides: Dictionary = {}
+
+# When to trigger phase 2. 0.5 = 50% HP. Set to 0 to disable phase 2
+# even if phase2_overrides is non-empty (useful as a kill-switch for
+# tuning). Threshold compared as `hp / max_hp <= phase2_hp_threshold`.
+@export_range(0.0, 1.0, 0.05) var phase2_hp_threshold: float = 0.5
