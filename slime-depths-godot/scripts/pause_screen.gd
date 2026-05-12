@@ -72,12 +72,20 @@ func _ready() -> void:
 	# pause_mode = PROCESS handles the get_tree().paused = true above:
 	# without explicit pause_mode, the tween would freeze immediately
 	# and the overlay would stay at alpha 0.
-	modulate.a = 0.0
+	# iter-107 FIX: CanvasLayer doesn't have a `modulate` property
+	# (only CanvasItem subclasses do). Iter-102 broke load with
+	# "Identifier 'modulate' not declared." Tween each CanvasItem
+	# CHILD's modulate in parallel instead.
 	var fade_tw: Tween = create_tween()
+	fade_tw.set_parallel(true)
 	fade_tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	fade_tw.set_trans(Tween.TRANS_QUAD)
 	fade_tw.set_ease(Tween.EASE_OUT)
-	fade_tw.tween_property(self, "modulate:a", 1.0, 0.20)
+	for child in get_children():
+		if child is CanvasItem:
+			var ci: CanvasItem = child
+			ci.modulate.a = 0.0
+			fade_tw.tween_property(ci, "modulate:a", 1.0, 0.20)
 
 	# Default keyboard focus on RESUME — the safest first action.
 	# Defer by one frame so focus applies AFTER the layer becomes
