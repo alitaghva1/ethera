@@ -52,6 +52,12 @@ const ENEMY_TYPES := {
 	# in enemy.gd — charges hero, primes 0.45s with red pulse, then
 	# explodes for AoE damage and self-destructs.
 	"ember_bomber":      preload("res://scenes/enemies/ember_bomber.tres"),
+	# Iter 65 — support caster. Uses the "healer" behavior in enemy.gd.
+	# Stays at ~200 px from the hero and heals the most-wounded ally
+	# within 120 px on a 3.5s cycle (0.6s windup + green pulse ring).
+	# Squishy (4 HP, 60 px/s) so the player can focus-kill if they read
+	# the green telegraph in time.
+	"spectral_priest":   preload("res://scenes/enemies/spectral_priest.tres"),
 	# Iter 17 — boss type. Spawned alone in room 3's final wave; the
 	# is_boss flag drives the HP-bar UI and the boss tracking in
 	# _process. Wave-clear detection treats it like any other enemy.

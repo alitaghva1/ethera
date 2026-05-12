@@ -979,6 +979,17 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 	# enemies blue, hampering their pursuit while STORM bolts arc.
 	if _roll_slow():
 		p.slow_duration = SLOW_DURATION
+	# Iter 65 — BLAST × FLAME ability evolution. Lock the on-impact fire
+	# pool lifetime at SPAWN from the hero's FLAME theme tier, mirroring
+	# the burn/slow locking pattern so a relic gained mid-flight doesn't
+	# retroactively buff in-flight orbs. Tier 1 (≥2 FLAME relics) →
+	# 0.5s mini-pool; tier 2 (≥4 FLAME relics) → 0.8s larger pool.
+	# Projectile.gd's _on_body_entered spawns the pool on enemy hit.
+	var flame_tier_now: int = GameState.theme_tier("flame")
+	if flame_tier_now >= 2:
+		p.flame_impact_pool_life = 0.8
+	elif flame_tier_now >= 1:
+		p.flame_impact_pool_life = 0.5
 	get_parent().add_child(p)
 
 # Iter 16 — room-clear / relic / pickup healing. Caps at the current

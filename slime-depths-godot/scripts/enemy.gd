@@ -23,9 +23,12 @@
 #   telegraphed_melee  approach → stop + windup tint → swing in cone
 #   shoot              kite to prefer_dist → cast projectile cycle
 #   stationary_shoot   never move; cast projectile when hero in range
+#   bomber             kamikaze charge → prime + scale → detonate AoE
+#   healer             keep distance from hero → windup tint → pulse heal
+#                      to the most-wounded ally in HEAL_RADIUS
 #
-# All four use the same death + knockback + take_hit machinery — the
-# behavior switch only affects per-tick AI.
+# All behaviors use the same death + knockback + take_hit machinery —
+# the behavior switch only affects per-tick AI.
 class_name Enemy
 extends CharacterBody2D
 
@@ -349,6 +352,8 @@ func _physics_process(delta: float) -> void:
 			_tick_stationary_shoot(delta)
 		"bomber":
 			_tick_bomber(delta)
+		"healer":
+			_tick_healer(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -479,6 +484,262 @@ func _bomber_detonate() -> void:
 		parent_b.add_child(dn)
 	# Bombers always die on detonate — even if hero dodged.
 	_die()
+
+# ── Behavior: healer ──────────────────────────────────────────────────
+# Iter 65 — support caster. Stays at HEALER_PREFER_DIST from the hero
+# (kites away if hero gets too close), scans the `enemies` group at
+# HEAL_INTERVAL ticks for the most-wounded ally in HEAL_RADIUS, and
+# emits a HEAL_AMOUNT heal on a brief windup. Heals are gated by
+# is_instance_valid + _dying so dead enemies can't be resurrected, and
+# the most-wounded sort uses hp/max_hp ratio so a 1/10 elite is healed
+# before a 2/4 squishy.
+#
+# State machine:
+#   IDLE        — keep ~HEALER_PREFER_DIST from hero, scan for targets;
+#                 transition to WINDUP when a wounded ally is in range
+#                 AND _heal_cooldown_timer <= 0.
+#   WINDUP      — 0.6s windup with a green/teal tint pulse on the healer.
+#                 Locked in place. Target stored as _heal_target; if the
+#                 target dies or leaves radius during windup, abort back
+#                 to IDLE (no cooldown — let the healer pick again).
+#   HEAL_PULSE  — single-frame state: apply the heal, spawn the pulse-
+#                 ring VFX, transition straight to COOLDOWN.
+#   COOLDOWN    — drain _heal_cooldown_timer; while > 0, kite as in IDLE
+#                 but skip target scanning. Transition to IDLE at 0.
+#
+# Telegraph: WINDUP paints the healer in a green tint that intensifies
+# over the windup, so the player can read "healer is about to cast" at
+# a glance. On HEAL_PULSE we spawn a Polygon2D ring that scales out
+# from the healer to the target and fades, drawn under the sprite layer
+# so it reads as a ground effect rather than an in-air projectile.
+enum HealerState { IDLE, WINDUP, HEAL_PULSE, COOLDOWN }
+const HEAL_INTERVAL: float = 3.5
+const HEAL_WINDUP: float = 0.6
+const HEAL_RADIUS: float = 120.0
+const HEAL_AMOUNT: int = 2
+const HEALER_PREFER_DIST: float = 200.0
+const HEALER_MIN_DIST: float = 160.0
+# Ring pulse visual config. The ring expands from ~10 px at the healer
+# to ring_max_radius at the target, fades alpha to 0 across PULSE_LIFE.
+const HEAL_PULSE_LIFE: float = 0.45
+const HEAL_PULSE_RING_SEGMENTS: int = 28
+const HEAL_PULSE_RING_WIDTH: float = 4.0
+const HEAL_TINT_PEAK: Color = Color(0.6, 1.6, 1.1, 1.0)   # green/teal at peak windup
+var _healer_state: HealerState = HealerState.IDLE
+var _healer_timer: float = 0.0
+var _heal_cooldown_timer: float = 0.0
+var _heal_target: Enemy = null
+
+func _tick_healer(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	sprite.flip_h = to_hero.x < 0
+	match _healer_state:
+		HealerState.IDLE:
+			_healer_movement(to_hero, dist)
+			# Scan for a heal target. Pick the most-wounded ally in
+			# HEAL_RADIUS; if found AND cooldown is clear, transition.
+			if _heal_cooldown_timer > 0.0:
+				_heal_cooldown_timer = max(0.0, _heal_cooldown_timer - delta)
+			else:
+				var target: Enemy = _find_heal_target()
+				if target != null:
+					_heal_target = target
+					_healer_state = HealerState.WINDUP
+					_healer_timer = HEAL_WINDUP
+					sprite.play(&"attack")
+		HealerState.WINDUP:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			# Bail if target died / despawned / left HEAL_RADIUS during
+			# windup — no cooldown so the healer can pick again next tick.
+			if not _heal_target_valid():
+				_heal_target = null
+				_healer_state = HealerState.IDLE
+				sprite.modulate = Color(1, 1, 1, 1)
+				return
+			# Green tint ramps from 0 to peak across the windup so the
+			# player reads "the healer is winding up a cast."
+			var wt: float = 1.0 - (_healer_timer / HEAL_WINDUP)
+			sprite.modulate = Color(1, 1, 1, 1).lerp(HEAL_TINT_PEAK, wt)
+			_healer_timer -= delta
+			if _healer_timer <= 0.0:
+				_healer_state = HealerState.HEAL_PULSE
+		HealerState.HEAL_PULSE:
+			# One-frame state — apply heal + spawn VFX, then enter cooldown.
+			_apply_heal()
+			sprite.modulate = Color(1, 1, 1, 1)
+			_healer_state = HealerState.COOLDOWN
+			_heal_cooldown_timer = HEAL_INTERVAL
+			_heal_target = null
+		HealerState.COOLDOWN:
+			# Kite as in IDLE but skip target scanning until cooldown done.
+			_healer_movement(to_hero, dist)
+			_heal_cooldown_timer = max(0.0, _heal_cooldown_timer - delta)
+			if _heal_cooldown_timer <= 0.0:
+				_healer_state = HealerState.IDLE
+
+# Healer kite movement. Pushes away from the hero if too close, pulls
+# closer if too far, idles in the dead zone between MIN_DIST and
+# PREFER_DIST. Speed scales with _effective_move_speed() so slow status
+# still applies as expected.
+func _healer_movement(to_hero: Vector2, dist: float) -> void:
+	var t: EnemyType = enemy_type
+	if t.can_move() and dist < HEALER_MIN_DIST:
+		# Hero is too close — back away.
+		velocity = -to_hero.normalized() * _effective_move_speed()
+		sprite.play(&"walk")
+		move_and_slide()
+	elif t.can_move() and dist > HEALER_PREFER_DIST + 40.0:
+		# Hero is far — drift toward HEAL range, but stay slow.
+		velocity = to_hero.normalized() * _effective_move_speed() * 0.6
+		sprite.play(&"walk")
+		move_and_slide()
+	else:
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+
+# Scan the `enemies` group for the most-wounded ally in HEAL_RADIUS.
+# Excludes self, dying enemies, enemies still in spawn-in fade, and
+# allies at full HP. Sort key = hp ratio ascending → lowest-ratio wins.
+func _find_heal_target() -> Enemy:
+	var best: Enemy = null
+	var best_ratio: float = INF
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if node == self:
+			continue
+		if not (node is Enemy):
+			continue
+		var e: Enemy = node
+		if e._dying:
+			continue
+		if e._spawn_in_time > 0.0:
+			continue
+		if e.enemy_type == null:
+			continue
+		if e.hp >= e.enemy_type.max_hp:
+			continue
+		if global_position.distance_to(e.global_position) > HEAL_RADIUS:
+			continue
+		var ratio: float = float(e.hp) / float(maxi(1, e.enemy_type.max_hp))
+		if ratio < best_ratio:
+			best_ratio = ratio
+			best = e
+	return best
+
+# Confirm the stashed _heal_target is still a valid heal candidate.
+# Same rules as _find_heal_target plus a still-in-radius check.
+func _heal_target_valid() -> bool:
+	if _heal_target == null:
+		return false
+	if not is_instance_valid(_heal_target):
+		return false
+	if _heal_target._dying:
+		return false
+	if _heal_target.enemy_type == null:
+		return false
+	if _heal_target.hp >= _heal_target.enemy_type.max_hp:
+		return false
+	if global_position.distance_to(_heal_target.global_position) > HEAL_RADIUS:
+		return false
+	return true
+
+# Apply the heal pulse: bump target HP (capped at max_hp), spawn the
+# green floater so the player reads "+2", and spawn the expanding ring
+# VFX from healer toward target.
+func _apply_heal() -> void:
+	if not _heal_target_valid():
+		return
+	var target: Enemy = _heal_target
+	var heal_amount: int = mini(HEAL_AMOUNT, target.enemy_type.max_hp - target.hp)
+	if heal_amount <= 0:
+		return
+	target.hp += heal_amount
+	# Green floater above the target — distinct color from damage
+	# numbers so the player reads "this enemy was healed."
+	var dn: DamageNumber = DamageNumber.spawn(
+		target.global_position + Vector2(0, -28),
+		"+" + str(heal_amount),
+		Color(0.55, 1.0, 0.65, 1.0),
+	)
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(dn)
+	# Brief healing flash on the target so it reads as receiving the
+	# pulse, not just a free HP refill. Matches the take_hit tween shape.
+	if target.sprite != null:
+		var tw: Tween = target.create_tween()
+		tw.tween_property(target.sprite, "modulate", Color(0.6, 1.6, 1.1, 1), 0.06)
+		tw.tween_property(target.sprite, "modulate", Color(1, 1, 1, 1), 0.18)
+	# Spawn the pulse ring VFX — expands from the healer toward the
+	# target across HEAL_PULSE_LIFE, then queue_frees itself.
+	_spawn_heal_pulse(target.global_position)
+
+# Code-built ring VFX. A Node2D wrapper holds a Polygon2D ring (built
+# from HEAL_PULSE_RING_SEGMENTS sample points around a circle); a tween
+# scales it up + fades alpha across HEAL_PULSE_LIFE, then queue_frees.
+# No new .tscn required.
+func _spawn_heal_pulse(target_pos: Vector2) -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	var fx: Node2D = Node2D.new()
+	fx.global_position = global_position
+	fx.z_index = -1   # under the sprite layer so it reads as ground FX
+	parent.add_child(fx)
+	# Build the ring as a stroked polygon. Polygon2D doesn't have a
+	# native ring primitive; we author a thin annulus by sampling the
+	# outer + inner circles and concatenating them with a winding
+	# reversal in the middle.
+	var ring: Polygon2D = Polygon2D.new()
+	var outer_r: float = 28.0
+	var inner_r: float = max(0.5, outer_r - HEAL_PULSE_RING_WIDTH)
+	var verts: PackedVector2Array = PackedVector2Array()
+	for i in range(HEAL_PULSE_RING_SEGMENTS):
+		var a: float = (TAU / float(HEAL_PULSE_RING_SEGMENTS)) * float(i)
+		verts.append(Vector2(cos(a), sin(a)) * outer_r)
+	# Inner loop in reverse so the polygon is a true annulus, not a
+	# disc with a chord through it.
+	for i in range(HEAL_PULSE_RING_SEGMENTS - 1, -1, -1):
+		var a: float = (TAU / float(HEAL_PULSE_RING_SEGMENTS)) * float(i)
+		verts.append(Vector2(cos(a), sin(a)) * inner_r)
+	ring.polygon = verts
+	ring.color = Color(0.55, 1.0, 0.7, 0.85)
+	fx.add_child(ring)
+	# Compute final scale so the ring's outer edge lands roughly at the
+	# target's position. Stops one-shot effects from going off-screen
+	# when the target is at the very edge of HEAL_RADIUS.
+	var travel: float = global_position.distance_to(target_pos)
+	var final_scale: float = max(1.2, (travel + 24.0) / outer_r)
+	var tw: Tween = fx.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(fx, "scale", Vector2(final_scale, final_scale), HEAL_PULSE_LIFE) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, HEAL_PULSE_LIFE) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# Drift the ring's center toward the target so it visually "travels"
+	# rather than spawning around the healer. Half-distance offset reads
+	# as "directed pulse" without losing the source anchor.
+	var mid: Vector2 = (global_position + target_pos) * 0.5
+	tw.tween_property(fx, "global_position", mid, HEAL_PULSE_LIFE) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Reap the FX node when the tween finishes so we don't leak nodes
+	# every cast (3.5s cooldown × long room = dozens of orphans).
+	tw.chain().tween_callback(fx.queue_free)
+
+# Iter 65 — test-only force-trigger entry point for the headless
+# verification script. Skips the windup/cooldown gating so a test can
+# assert "calling this heals the wounded ally" without simulating
+# 4+ seconds of physics_process ticks. Production AI always goes
+# through the IDLE → WINDUP → HEAL_PULSE → COOLDOWN flow.
+func _force_heal_for_test(target: Enemy) -> void:
+	_heal_target = target
+	_apply_heal()
 
 # ── Behavior: telegraphed_melee ───────────────────────────────────────
 # Approach → stop + windup-tint → swing in cone → cooldown. Damage

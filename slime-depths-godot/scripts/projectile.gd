@@ -19,6 +19,13 @@ extends Area2D
 const SPEED    := 520.0
 const LIFETIME := 1.4
 
+# Iter 65 — FIRE_POOL preload for BLAST × FLAME ability evolution. On
+# projectile impact against an enemy, if `flame_impact_pool_life` was
+# locked > 0 at spawn (FLAME theme tier ≥ 1 on the hero), spawn a fire
+# pool at the impact point. Hosted on get_parent() (main scene root) so
+# the pool persists after the projectile queue_frees.
+const FIRE_POOL_SCENE: PackedScene = preload("res://scenes/fire_pool.tscn")
+
 @export var target_group: String = "enemies"
 @export var orb_tint: Color = Color(1, 0.55, 1, 1)         # magenta default
 
@@ -45,6 +52,12 @@ var burn_duration: float = 0.0
 # at-fire pattern as burn. Projectile applies slow on every enemy it
 # touches (pierce + ricochet propagate the proc across all hits).
 var slow_duration: float = 0.0
+# Iter 65 — BLAST × FLAME ability evolution. Locked at spawn from the
+# hero's FLAME theme tier (0 = none, 0.5s = tier 1, 0.8s = tier 2).
+# On enemy hit, projectile spawns a FirePool at the impact point with
+# this `_life`. Same locked-at-fire pattern as burn/slow so a relic
+# picked up mid-flight doesn't retroactively buff in-flight orbs.
+var flame_impact_pool_life: float = 0.0
 
 # Iter 41 — pierce + ricochet mechanics. Both are set by hero._start_blast
 # at cast time from STORM-themed relics ("piercing_quarrel" → pierce,
@@ -204,6 +217,22 @@ func _on_body_entered(body: Node) -> void:
 	# hits on the projectile's path.
 	if slow_duration > 0.0 and body.has_method("apply_slow"):
 		body.apply_slow(slow_duration)
+	# Iter 65 — BLAST × FLAME ability evolution. Hero owns ≥2 FLAME
+	# relics → tier 1 spawns a 0.5s mini-pool; ≥4 → tier 2 spawns a
+	# 0.8s pool. Only fires on ENEMY impact (skip for friendly-fire
+	# orbs aimed at the hero). Pool is hosted on get_parent() (main
+	# scene root) so it persists after the projectile queue_frees on
+	# the last hit. _life set BEFORE add_child so fire_pool's
+	# _physics_process uses the overridden lifetime, matching iter 61
+	# / iter 64's host pattern.
+	if flame_impact_pool_life > 0.0 and target_group == "enemies":
+		var host: Node = get_parent()
+		if host != null:
+			var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+			if pool != null:
+				pool.global_position = global_position
+				pool.set("_life", flame_impact_pool_life)
+				host.add_child(pool)
 	# Iter 41 — pierce > ricochet > queue_free. Pierce takes priority
 	# because it's "keep going in a straight line" (no velocity change);
 	# ricochet is a fallback that REDIRECTS velocity when pierce is out.
