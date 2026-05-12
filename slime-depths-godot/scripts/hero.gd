@@ -644,6 +644,15 @@ func _start_dodge(input: Vector2) -> void:
 	# with the existing iframe-bonus + cd-mul SHADOW resonance benefits.
 	if GameState.theme_tier("shadow") >= 2:
 		_trigger_shadow_shockwave()
+	# Iter 62 — SHADOW resonance dodge trail. Tier >= 1 (2+ SHADOW
+	# relics owned) emits a fading indigo particle trail behind the
+	# hero on every dodge. Reuses the existing dash_trail.tscn (which
+	# the dash-strike ability uses) with a color modulate that
+	# overrides the magenta-cyan ramp into the SHADOW palette. Reads
+	# as "you stepped between heartbeats" — the missing visual axis
+	# for the SHADOW theme's mobility role.
+	if GameState.theme_tier("shadow") >= 1:
+		_spawn_shadow_dodge_trail()
 
 # Inverse of _vector_to_dir_idx — used for "what direction is the hero
 # facing when no input vector is available" (e.g. dodge with no WASD).
@@ -1252,6 +1261,29 @@ func _trigger_kill_explosion(world_pos: Vector2) -> void:
 # distinct from FLAME's red soul_burst.
 const SHADOW_SHOCKWAVE_RADIUS: float = 60.0
 const SHADOW_SHOCKWAVE_DAMAGE: int = 1
+# Iter 62 — SHADOW resonance dodge trail. Spawns a dash_trail instance
+# behind the hero, oriented along the dodge direction, and tints the
+# whole node indigo via modulate (cascades to the CPUParticles2D child).
+# Trail lives 0.7s then queue_free's itself.
+func _spawn_shadow_dodge_trail() -> void:
+	var trail: Node2D = DASH_TRAIL_SCENE.instantiate() as Node2D
+	if trail == null:
+		return
+	trail.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
+	if trail.has_method("setup"):
+		trail.call("setup", _dodge_dir)
+	# Indigo modulate — overrides the magenta-cyan ramp into the
+	# SHADOW palette. modulate is multiplicative so the inner ramp's
+	# bright colors get tinted, not replaced — which keeps the trail
+	# looking like particles, not a solid block.
+	trail.modulate = Color(0.65, 0.55, 1.0, 1.0)
+	# get_parent() rather than get_tree().current_scene so the spawn
+	# works in both production and test instantiate contexts (the
+	# current_scene path silently fails in test, as iter-61 caught).
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(trail)
+
 func _trigger_shadow_shockwave() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
