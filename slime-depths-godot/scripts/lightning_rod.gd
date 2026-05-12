@@ -95,7 +95,10 @@ func _enter_strike() -> void:
 	var hero: Node2D = _find_hero()
 	if hero != null and hero.global_position.distance_to(global_position) <= DAMAGE_RADIUS:
 		if hero.has_method("take_damage"):
-			hero.take_damage(DAMAGE_PER_STRIKE)
+			# iter-70 polish: knockback radially outward from the rod's
+			# strike point. Hero standing on the splash-zone edge gets
+			# shoved off; hero dead-center just gets the fallback push.
+			hero.take_damage(DAMAGE_PER_STRIKE, global_position)
 
 func _find_hero() -> Node2D:
 	# Hero is in the "hero" group; tree lookup is cheap (single node).

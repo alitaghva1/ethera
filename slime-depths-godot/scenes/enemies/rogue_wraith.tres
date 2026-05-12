@@ -38,6 +38,14 @@ cell_size = 100
 sprite_scale = 2.6
 sprite_y_offset = -22.0
 collision_radius = 16.0
+; Iter 70 — violet + slight transparency so the wraith reads as a
+; PHANTOM compared to the regular wiz (also using wiz_*.png). The
+; partial alpha (0.85) sells the "phasing" theme even when the
+; wraith ISN'T mid-phase (during PHASE_OUT the modulate snaps fully
+; transparent at the existing wraith block in enemy.gd). R 1.1 / G
+; 0.6 / B 1.3 = pale violet, distinct from the dreadmage's blue
+; cast tint and the wiz's neutral coloring.
+sprite_modulate = Color(1.1, 0.6, 1.3, 0.85)
 frames_idle = 6
 frames_walk = 8
 frames_attack = 6

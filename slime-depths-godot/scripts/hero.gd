@@ -200,6 +200,58 @@ const MELEE_WINDUP          := 0.06
 const LUNGE_SPEED           := 220.0
 const LUNGE_TIME            := 0.10
 
+# Iter 70 — feel pass for walk acceleration / hit knockback / aim assist.
+#
+# Pre-iter-70 walk velocity snapped instantly to `input * speed` each
+# physics tick. On stop, it snapped to zero. That made stop/start reads
+# as "teleporting" rather than "running" — particularly noticeable when
+# the player taps a direction for a quick step. Necesse / VS feel
+# benchmarks both ramp velocity over ~0.10 s so the avatar reads as a
+# body with inertia.
+#
+# MOVE_ACCEL is intentionally HIGHER than MOVE_DECEL so press-release
+# rounds the front but stops crisply — the press shouldn't feel mushy
+# and the stop shouldn't feel like sliding on ice. Numbers tuned to:
+#   - reach full SPEED (200) in ~0.083s (200/2400) — barely perceptible
+#     as lag, just enough to round the curve.
+#   - decel to zero in ~0.063s (200/3200) — feels like real release.
+const MOVE_ACCEL: float = 2400.0
+const MOVE_DECEL: float = 3200.0
+# Speed below which we treat the hero as "not really moving" — drives
+# the idle/walk anim swap so a tiny residual velocity from accel decay
+# doesn't twitch the walk anim for one frame.
+const IDLE_VELOCITY_THRESHOLD: float = 12.0
+
+# Iter 70 — knockback on hero hurt. Brief impulse in the direction AWAY
+# from the damage source, decays linearly over KNOCKBACK_TIME. Read in
+# the walk-velocity branch of _physics_process and ADDED on top of the
+# input velocity (instead of overriding) so the player can still steer
+# OUT of the push if they react fast. Smaller than enemy knockback by
+# design — the hero should feel slapped, not yeeted.
+const HERO_KNOCKBACK_FORCE: float = 160.0
+const HERO_KNOCKBACK_TIME: float = 0.14
+
+# Iter 70 — projectile aim assist. When the player's cursor is within
+# AIM_ASSIST_CONE radians of an enemy AND that enemy is within
+# AIM_ASSIST_RANGE pixels, the blast direction snaps to point exactly
+# at that enemy's center. Cone is ~10° (slightly tighter than the
+# 12° feel-game default — the existing blast already has a 14° spread
+# step for multi-shot, and we don't want assist to swallow the spread).
+# Range covers typical engagement (the blast lives 1.4s × 520 px/s
+# = 728 px, but the player aims at closer targets).
+const AIM_ASSIST_CONE: float = 0.175      # ~10° in radians
+const AIM_ASSIST_RANGE: float = 520.0
+
+# Iter 70 — dodge-cancel-into-dash-strike window. After 50% of the
+# dodge has elapsed, pressing the dash-strike key cancels the remaining
+# dodge into a dash-strike. Common feel improvement in
+# Hades/Necesse-likes — lets the player "dash through and stab."
+# Implemented in the input precedence block: dash-strike's normal
+# eligibility check (_can_start_dash_strike) bars during dodge, so we
+# add a parallel branch that accepts the cancel when _dodge_time has
+# decayed below DODGE_DURATION * (1 - DODGE_CANCEL_THRESHOLD).
+const DODGE_CANCEL_THRESHOLD: float = 0.5
+
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 var hp: int = MAX_HP
@@ -303,6 +355,18 @@ var _pending_melee_strike: bool = false
 var _melee_strike_timer: float = 0.0
 var _pending_melee_aim: Vector2 = Vector2.RIGHT
 var _pending_melee_range: float = 0.0
+
+# Iter 70 — hero hurt knockback state. Set in take_damage when a hit
+# lands and the source position is known (Enemy.gd passes the contact
+# point via the damaging signal path — for sources without a known
+# position we fall back to "push along the hero's facing inversion"
+# so we still see a small kinesthetic response).
+# _knockback_dir is unit-normalized (or zero when no active push).
+# _knockback_time counts down from HERO_KNOCKBACK_TIME; while > 0 the
+# walk-velocity branch ADDS this vector × (time/total) on top of the
+# input velocity so the player can still steer OUT of the push.
+var _knockback_dir: Vector2 = Vector2.ZERO
+var _knockback_time: float = 0.0
 
 # Iter 54 — combo counter. Tracks consecutive successful hits landed
 # by the hero (melee swing, dash strike, chain bolt, projectile,
@@ -445,6 +509,7 @@ func _physics_process(delta: float) -> void:
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
 	_hurt_time        = max(0.0, _hurt_time        - delta)
 	_lunge_time       = max(0.0, _lunge_time       - delta)
+	_knockback_time   = max(0.0, _knockback_time   - delta)
 	if _attack_live <= 0.0:
 		_is_attacking = false
 	# Iter 19 — windowed melee damage. _start_attack arms the pending
@@ -533,7 +598,18 @@ func _physics_process(delta: float) -> void:
 		# Multiplied IN, not added, so two overlapping slows stack
 		# correctly (see enter_slow_zone/exit_slow_zone setters).
 		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0)) * _environment_speed_mul
-		velocity = input * speed
+		# Iter 70 — accel-ramped walk. Pre-iter-70 this was `velocity = input
+		# * speed` (snap). That gave the hero an instant on/off response
+		# that read as "teleporting" — particularly noticeable when the
+		# player taps a direction for a quick step. move_toward ramps up
+		# to the target velocity over MOVE_ACCEL px/s² and decays to zero
+		# over MOVE_DECEL (faster than accel so the stop still feels
+		# crisp, not slidey). Released input → target is Vector2.ZERO,
+		# which decays via the same call. Lunge / knockback layer on TOP
+		# afterward (additive).
+		var target_velocity: Vector2 = input * speed
+		var rate: float = MOVE_ACCEL if input.length() > 0.01 else MOVE_DECEL
+		velocity = velocity.move_toward(target_velocity, rate * delta)
 		# Iter 19 — forward lunge on swing. Linear-decay impulse in the
 		# aim direction layered ON TOP of walk velocity. The player can
 		# still steer mid-lunge via WASD; the lunge just commits the
@@ -542,6 +618,15 @@ func _physics_process(delta: float) -> void:
 		if _lunge_time > 0.0:
 			var lunge_t: float = _lunge_time / LUNGE_TIME
 			velocity += _lunge_dir * (LUNGE_SPEED * lunge_t)
+		# Iter 70 — hero hurt knockback. Linear-decay impulse layered ON
+		# TOP of walk velocity (same pattern as lunge). Player can steer
+		# OUT of the push by holding the opposite direction — this is the
+		# "30% control during hurt" feel: the push wins for the first few
+		# frames but the input integrates fast enough that a reactive
+		# player isn't stuck on a wall.
+		if _knockback_time > 0.0:
+			var knockback_t: float = _knockback_time / HERO_KNOCKBACK_TIME
+			velocity += _knockback_dir * (HERO_KNOCKBACK_FORCE * knockback_t)
 	move_and_slide()
 
 	if dash_strike_just_ended:
@@ -566,7 +651,13 @@ func _physics_process(delta: float) -> void:
 
 	# ── Animation state — dying handled above. hurt > attack > walk > idle.
 	# Each is suffixed with the current direction bucket.
-	var is_moving := input.length() > 0.1
+	# Iter 70 — read actual velocity, not raw input, so the accel ramp's
+	# decay tail doesn't twitch back to idle on the frame input releases.
+	# Threshold IDLE_VELOCITY_THRESHOLD px/s is well below the input cutoff
+	# (input.length() > 0.1 mapped through SPEED = 20 px/s) so a tap-release
+	# reads as "walk → continues walk for 50ms while decelerating → idle"
+	# rather than "walk → snap to idle while still sliding."
+	var is_moving := input.length() > 0.1 or velocity.length() > IDLE_VELOCITY_THRESHOLD
 	var state_name: String
 	if _hurt_time > 0.0:
 		state_name = "hurt"
@@ -607,10 +698,23 @@ func _physics_process(delta: float) -> void:
 	# needed) — it now triggers a TAP parry (just_pressed) instead of
 	# the previous held-stance. Dodge still wins so the player can
 	# always bail to safety.
+	#
+	# Iter 70 — dodge-cancel-into-dash-strike. After 50% of the dodge has
+	# elapsed (_dodge_time decayed below DODGE_DURATION * 0.5), pressing
+	# the dash-strike key cancels the dodge into a dash-strike. Reads as
+	# "dash through them, then stab" — a common feel improvement in
+	# Hades / Necesse-likes. The cancel path zeros the remaining dodge
+	# timer + clears the dodge dir so _physics_process exits the dodge
+	# branch cleanly before the dash-strike begins this same frame.
 	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0 and _dodge_time <= 0.0:
 		_start_dodge(input)
 	elif Input.is_action_just_pressed("shield") and _parry_cd <= 0.0 and _parry_time <= 0.0 and _dodge_time <= 0.0:
 		_start_parry()
+	elif Input.is_action_just_pressed("dash_strike") and _can_cancel_dodge_into_dash_strike():
+		# Dodge-cancel path: kill the remaining dodge motion and let the
+		# dash-strike take over starting THIS frame.
+		_dodge_time = 0.0
+		_start_dash_strike()
 	elif Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
 		_start_dash_strike()
 	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dodge_time <= 0.0 and _parry_time <= 0.0 and _dash_strike_time <= 0.0:
@@ -1052,11 +1156,56 @@ func _try_chain_from(source: Node, hit_set: Dictionary) -> void:
 		hit_set[best.get_instance_id()] = true
 		_bump_combo()   # iter 54 — chain bolts count toward combo
 
+# Iter 70 — aim assist. Returns aim snapped to point at the best
+# in-cone enemy if one qualifies, otherwise the original aim. "Best"
+# means smallest angle deviation, tie-broken by closeness. We scan
+# get_nodes_in_group("enemies") — same pattern as _try_chain_from /
+# dash pierce — so it picks up every regular spawn without coupling.
+#
+# Scoped to the BLAST (ranged) path only. Melee swing already uses a
+# wide ATTACK_ARC and doesn't need cursor-to-enemy assist — the player
+# is close enough that mouse precision isn't the limiting factor.
+func _apply_aim_assist(aim: Vector2) -> Vector2:
+	if aim.length_squared() < 0.0001:
+		return aim
+	var best_enemy: Node = null
+	var best_angle: float = AIM_ASSIST_CONE
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var to_enemy: Vector2 = enemy.global_position - global_position
+		var dist: float = to_enemy.length()
+		if dist < 1.0 or dist > AIM_ASSIST_RANGE:
+			continue
+		var enemy_dir: Vector2 = to_enemy / dist
+		# angle_to returns signed angle from aim to enemy_dir; abs() so
+		# we measure how far OFF the cursor is regardless of side.
+		var off_angle: float = abs(aim.angle_to(enemy_dir))
+		if off_angle < best_angle:
+			best_angle = off_angle
+			best_enemy = enemy
+	if best_enemy == null:
+		return aim
+	# Snap aim to point AT the enemy's center. Preserves the cursor's
+	# distance intent (the projectile keeps its preset speed × LIFETIME
+	# range) while correcting the angle.
+	var snap_dir: Vector2 = (best_enemy.global_position - global_position).normalized()
+	return snap_dir
+
 func _start_blast() -> void:
 	var aim_world := get_global_mouse_position() - global_position
 	if aim_world.length() < 1.0:
 		aim_world = _dir_to_vector(_facing_dir)
 	var aim := aim_world.normalized()
+	# Iter 70 — light aim assist. If the cursor is within AIM_ASSIST_CONE
+	# of an enemy AND that enemy is within AIM_ASSIST_RANGE, snap aim
+	# to point exactly at that enemy. Compensates for mouse precision in
+	# mid-combat — the player "feels" their shots are responsive without
+	# the snap being so aggressive that intentional misses (e.g. shooting
+	# past an enemy to break a pot) become impossible. Skips entirely if
+	# no enemy qualifies, so a player who aims into empty space still
+	# shoots the empty space.
+	aim = _apply_aim_assist(aim)
 	# Iter 17 — swift_focus reduces blast cooldown.
 	_blast_cd = BLAST_COOLDOWN * (1.0 + GameState.modifier_total_f("blast_cooldown_mul", 0.0))
 	_facing_dir = _vector_to_dir_idx(aim)
@@ -1180,7 +1329,15 @@ func heal(amount: int) -> void:
 	if hp != prev:
 		hp_changed.emit(hp)
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
+	# Iter 70 — optional source_pos for knockback. Defaults to Vector2.INF
+	# (sentinel "unknown source") so existing callers in enemy.gd /
+	# fire_jet.gd / spike_pit.gd / projectile.gd still work without
+	# modification — the knockback path falls back to a small push along
+	# the hero's facing inversion when no source position is supplied.
+	# Callers that DO want directional knockback (the contact path in
+	# enemy.gd is the obvious candidate) can pass enemy.global_position;
+	# they don't HAVE to update, the feature degrades gracefully.
 	if hp <= 0:
 		return
 	# Iter 25 — parry catch. Checked BEFORE the iframes early-return so
@@ -1270,6 +1427,28 @@ func take_damage(amount: int) -> void:
 	# landed (not absorbed by iron_resolve / parry — those return
 	# earlier in take_damage). Reaching here means damage was dealt.
 	_reset_combo()
+	# Iter 70 — arm hero hurt knockback. Direction is AWAY from the
+	# source. If source_pos was supplied (Vector2.INF sentinel = not
+	# supplied), aim along (hero - source). Otherwise fall back to the
+	# hero's facing-inversion (the hero is probably facing the threat
+	# since they were attacking it — pushing along the back of the facing
+	# gives a sensible "knocked away" read even without a source). The
+	# walk-velocity branch in _physics_process consumes this each tick
+	# while _knockback_time > 0, so the impulse layers on top of player
+	# input rather than overriding it.
+	var knock_from_known: bool = source_pos.x != INF
+	var knock_dir: Vector2
+	if knock_from_known:
+		knock_dir = global_position - source_pos
+	else:
+		knock_dir = -_dir_to_vector(_facing_dir)
+	if knock_dir.length_squared() < 0.0001:
+		# Coincident source / zero facing — pick a safe fallback. Use
+		# -facing again (which DIR_VECS guarantees is non-zero) but if
+		# that's zero somehow, southbound is a fine sentinel.
+		knock_dir = Vector2.DOWN
+	_knockback_dir = knock_dir.normalized()
+	_knockback_time = HERO_KNOCKBACK_TIME
 	if hp <= 0:
 		_is_dying = true
 		_hurt_time = 0.0
@@ -1739,6 +1918,23 @@ func _can_start_dash_strike() -> bool:
 	return _dash_strike_cd <= 0.0 \
 		and _dash_strike_time <= 0.0 \
 		and _dodge_time <= 0.0 \
+		and _parry_time <= 0.0
+
+# Iter 70 — dodge-cancel-into-dash-strike check. Allows the player to
+# cancel into a dash-strike AFTER 50% of the dodge has elapsed (so the
+# initial dodge motion still reads as a real dodge, not a 1-frame
+# shimmer). The dash-strike's own cooldown / dash_strike_time guards
+# still apply — you can't cancel a dodge into a dash that's still on
+# cooldown. Parry-time still blocks (same as the normal _can_start
+# path) since parry is the only ability with stricter contracts.
+func _can_cancel_dodge_into_dash_strike() -> bool:
+	if _dodge_time <= 0.0:
+		return false
+	# Half-way through the dodge — remaining time below half its total.
+	if _dodge_time > DODGE_DURATION * (1.0 - DODGE_CANCEL_THRESHOLD):
+		return false
+	return _dash_strike_cd <= 0.0 \
+		and _dash_strike_time <= 0.0 \
 		and _parry_time <= 0.0
 
 func _start_dash_strike() -> void:

@@ -29,6 +29,14 @@ cell_size = 100
 sprite_scale = 2.6
 sprite_y_offset = -16.0
 collision_radius = 18.0
+; Iter 70 — RED-HOT baseline so the bomber reads "more volatile" than
+; the regular ember (both reuse ember_*.png). The bomber's prime state
+; OVERWRITES this with a red pulse during the 0.45s priming window —
+; the baseline tint just ensures players READ the threat at a glance
+; the moment a bomber walks into the room, before it primes. R 1.4 /
+; G 0.7 / B 0.6 = a clearly fiery hue distinct from the ember's neutral
+; orange sprite color.
+sprite_modulate = Color(1.4, 0.7, 0.6, 1.0)
 frames_idle = 6
 frames_walk = 8
 frames_attack = 7

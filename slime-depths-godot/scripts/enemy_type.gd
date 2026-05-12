@@ -51,11 +51,23 @@ extends Resource
 # sprite_y_offset: AnimatedSprite2D.position.y. Negative = lifts sprite
 #   off the feet anchor (collision is a circle at origin). Most humanoids
 #   want ~-8 to -16 to align feet with the ground.
+# sprite_modulate: Iter 70 — baseline color tint applied to the
+#   AnimatedSprite2D at spawn (after the spawn-in red fade settles).
+#   Used to visually distinguish enemies that REUSE another enemy's
+#   sprite sheets — without this, e.g. priest and spectral_priest are
+#   visually identical in combat. Default (1,1,1,1) = no tint (passes
+#   through the sheet unchanged). Status-effect tints (burn orange,
+#   slow blue, healer-windup green, etc.) override this temporarily in
+#   enemy.gd; once the status clears the code restores sprite_modulate
+#   as the baseline. Choose tints that READ at small sprite scales —
+#   subtle hue shifts (e.g. 1.05 / 0.95) won't differentiate; 1.3 / 0.7
+#   reads clearly even on a 60-px-tall sprite mid-combat.
 @export_group("Layout")
 @export var cell_size: int = 100
 @export var sprite_scale: float = 0.6
 @export var sprite_y_offset: float = -10.0
 @export var collision_radius: float = 16.0
+@export var sprite_modulate: Color = Color(1, 1, 1, 1)
 
 # ── Frame counts ──────────────────────────────────────────────────────
 # Per-state frame counts. attack_frames can be 0 for chase_contact types

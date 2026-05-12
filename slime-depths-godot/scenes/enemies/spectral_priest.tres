@@ -30,6 +30,14 @@ cell_size = 100
 sprite_scale = 2.8
 sprite_y_offset = -22.4
 collision_radius = 16.0
+; Iter 70 — green-shifted baseline modulate so the spectral_priest reads
+; as DISTINCT from the regular priest in combat. Without this they share
+; the priest_*.png sheets verbatim and the only differentiator was the
+; transient green windup tint during a heal cast — outside that window
+; the two enemies were visually identical. R 1.0 / G 1.3 / B 1.0 lifts
+; the green channel ~30% to "healer aura" territory while keeping the
+; sprite recognizable as a priest figure.
+sprite_modulate = Color(1.0, 1.3, 1.0, 1.0)
 frames_idle = 6
 frames_walk = 8
 frames_attack = 6

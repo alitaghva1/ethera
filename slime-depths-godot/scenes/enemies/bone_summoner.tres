@@ -34,6 +34,12 @@ cell_size = 100
 sprite_scale = 1.789
 sprite_y_offset = -30.4
 collision_radius = 20.0
+; Iter 70 — purple-red modulate distinguishes the bone_summoner from
+; the dreadmage (both reuse dreadmage_*.png). The dreadmage stays
+; default white = "void/dark caster"; the summoner shifts toward
+; necromancer-warm: R 1.2 / G 0.7 / B 1.0 = magenta-blood haze. Picks
+; up the "raising minions" theme without changing the silhouette.
+sprite_modulate = Color(1.2, 0.7, 1.0, 1.0)
 frames_idle = 8
 frames_walk = 8
 frames_attack = 8

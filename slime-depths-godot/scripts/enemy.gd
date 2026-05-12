@@ -172,6 +172,18 @@ func _effective_move_speed() -> float:
 		return 0.0
 	return enemy_type.move_speed * _slow_multiplier
 
+# Iter 70 — baseline modulate read. Returns the EnemyType's authored
+# sprite_modulate, defaulting to white if no type is bound. Used by
+# every status-effect restoration path (burn fade, slow fade, melee/
+# cast/heal/summoner windup-end, _die, knockback) instead of a hard-
+# coded white so enemies that REUSE another's sheets but author a
+# baseline tint (e.g. spectral_priest greener than priest) retain
+# their distinguishing color after the status clears.
+func _baseline_modulate() -> Color:
+	if enemy_type == null:
+		return Color(1, 1, 1, 1)
+	return enemy_type.sprite_modulate
+
 func _ready() -> void:
 	add_to_group("enemies")
 	if enemy_type == null:
@@ -238,6 +250,12 @@ func _apply_type_to_sprite_and_collision() -> void:
 	var t: EnemyType = enemy_type
 	sprite.scale = Vector2(t.sprite_scale, t.sprite_scale)
 	sprite.position.y = t.sprite_y_offset
+	# Iter 70 — start with the SPAWN_IN_START red ghost (the spawn-in fade
+	# in _physics_process lerps from this toward _baseline_modulate over
+	# SPAWN_IN_DURATION). Without this initialization the first frame
+	# would briefly paint the enemy at sprite_modulate before the fade
+	# overrides it — a 1-frame pop is visible at small framerates.
+	sprite.modulate = SPAWN_IN_START_COLOR
 	# Collision shape — fresh CircleShape2D every spawn so we don't share
 	# a shape resource across all instances of one type (Godot would
 	# complain about resource mutation if we changed it later anyway).
@@ -313,7 +331,7 @@ func _physics_process(delta: float) -> void:
 		if _slow_remaining <= 0.0:
 			_slow_multiplier = 1.0
 			if sprite != null and not _burn_active:
-				sprite.modulate = Color(1, 1, 1, 1)
+				sprite.modulate = _baseline_modulate()
 		elif sprite != null and not _burn_active:
 			# Don't overwrite the burn tint (orange wins — burn is more
 			# damaging). Only paint blue when slowed-without-burning.
@@ -322,10 +340,14 @@ func _physics_process(delta: float) -> void:
 	# invulnerable (see take_hit guard), and modulating from red-ghost
 	# to full opacity. This is the visual telegraph window for
 	# wave-spawn placement.
+	# Iter 70 — lerp end target is _baseline_modulate() (was a hardcoded
+	# SPAWN_IN_END_COLOR white). Enemies that authored a sprite_modulate
+	# on their EnemyType (e.g. spectral_priest green) settle into THAT
+	# tint after spawn-in, not white.
 	if _spawn_in_time > 0.0:
 		_spawn_in_time = max(0.0, _spawn_in_time - delta)
 		var st: float = 1.0 - (_spawn_in_time / SPAWN_IN_DURATION)
-		sprite.modulate = SPAWN_IN_START_COLOR.lerp(SPAWN_IN_END_COLOR, st)
+		sprite.modulate = SPAWN_IN_START_COLOR.lerp(_baseline_modulate(), st)
 		velocity = Vector2.ZERO
 		# Iter 20 bugfix — only call play() if we're not already on idle.
 		# AnimatedSprite2D.play() RESTARTS the animation from frame 0;
@@ -389,7 +411,9 @@ func _tick_chase_contact(delta: float) -> void:
 	if dist < t.contact_range and _contact_cd <= 0.0:
 		_contact_cd = t.contact_cooldown
 		if _hero.has_method("take_damage"):
-			_hero.take_damage(t.contact_damage)
+			# iter-70 polish: pass our position so hero knockback is
+			# AWAY from us, not hero-facing-inversion fallback.
+			_hero.take_damage(t.contact_damage, global_position)
 
 # ── Behavior: bomber ──────────────────────────────────────────────────
 # Iter 47 — kamikaze enemy. Charges hero at high speed. When close
@@ -463,8 +487,8 @@ func _tick_bomber(delta: float) -> void:
 			if dist > t.contact_range * 1.6:
 				_bomber_state = BomberState.APPROACH
 				if sprite != null:
-					sprite.modulate = Color(1, 1, 1, 1)
-					sprite.scale = Vector2.ONE
+					sprite.modulate = _baseline_modulate()
+					sprite.scale = Vector2(t.sprite_scale, t.sprite_scale)
 				return
 			if _bomber_prime_timer <= 0.0:
 				_bomber_state = BomberState.DETONATING
@@ -479,7 +503,8 @@ func _bomber_detonate() -> void:
 		var d: float = _hero.global_position.distance_to(global_position)
 		if d < BOMBER_EXPLODE_RADIUS:
 			if _hero.has_method("take_damage"):
-				_hero.take_damage(enemy_type.contact_damage)
+				# iter-70 polish: knockback away from the bomber blast center.
+				_hero.take_damage(enemy_type.contact_damage, global_position)
 	# Spawn an orange-red VFX. Reuse damage_number for a "BOOM" floater
 	# since dash_impact is hero-owned and shouldn't be preloaded here.
 	# A custom bomber blast scene could land later.
@@ -570,19 +595,22 @@ func _tick_healer(delta: float) -> void:
 			if not _heal_target_valid():
 				_heal_target = null
 				_healer_state = HealerState.IDLE
-				sprite.modulate = Color(1, 1, 1, 1)
+				sprite.modulate = _baseline_modulate()
 				return
 			# Green tint ramps from 0 to peak across the windup so the
 			# player reads "the healer is winding up a cast."
+			# Iter 70 — lerp source is _baseline_modulate() so an enemy
+			# with an authored tint (e.g. spectral_priest green) stays
+			# distinguishable through the windup ramp.
 			var wt: float = 1.0 - (_healer_timer / HEAL_WINDUP)
-			sprite.modulate = Color(1, 1, 1, 1).lerp(HEAL_TINT_PEAK, wt)
+			sprite.modulate = _baseline_modulate().lerp(HEAL_TINT_PEAK, wt)
 			_healer_timer -= delta
 			if _healer_timer <= 0.0:
 				_healer_state = HealerState.HEAL_PULSE
 		HealerState.HEAL_PULSE:
 			# One-frame state — apply heal + spawn VFX, then enter cooldown.
 			_apply_heal()
-			sprite.modulate = Color(1, 1, 1, 1)
+			sprite.modulate = _baseline_modulate()
 			_healer_state = HealerState.COOLDOWN
 			_heal_cooldown_timer = HEAL_INTERVAL
 			_heal_target = null
@@ -827,15 +855,17 @@ func _tick_summoner(delta: float) -> void:
 			# Dark-red tint ramps from 0 to peak across the windup.
 			# Distinct from the healer's green tint so the player reads
 			# "summoner is winding up" vs "healer is winding up".
+			# Iter 70 — lerp from baseline so e.g. bone_summoner's authored
+			# purple-red tint stays read through the ramp.
 			var wt: float = 1.0 - (_summoner_timer / SUMMON_WINDUP)
-			sprite.modulate = Color(1, 1, 1, 1).lerp(SUMMONER_TINT_PEAK, wt)
+			sprite.modulate = _baseline_modulate().lerp(SUMMONER_TINT_PEAK, wt)
 			_summoner_timer -= delta
 			if _summoner_timer <= 0.0:
 				_summoner_state = SummonerState.SUMMON
 		SummonerState.SUMMON:
 			# One-frame state — fire the summons, then enter cooldown.
 			_apply_summon()
-			sprite.modulate = Color(1, 1, 1, 1)
+			sprite.modulate = _baseline_modulate()
 			_summoner_state = SummonerState.COOLDOWN
 			_summon_cooldown_timer = SUMMON_COOLDOWN
 		SummonerState.COOLDOWN:
@@ -1127,12 +1157,18 @@ func _enter_wraith_phase_out() -> void:
 		collision_mask = 0
 	# Alpha tween — full opacity to ghostly. Tween locks to PHASE_OUT_TIME
 	# so it lands the moment the teleport fires.
+	# Iter 70 — tween TARGET preserves the type's baseline RGB tint (e.g.
+	# rogue_wraith's violet) and only drops alpha to WRAITH_PHASE_ALPHA.
+	# Was hardcoded Color(1,1,1,a) which would have snapped a violet
+	# wraith to neutral white mid-phase.
 	if sprite != null:
+		var base_phase: Color = _baseline_modulate()
+		var phase_color: Color = Color(base_phase.r, base_phase.g, base_phase.b, WRAITH_PHASE_ALPHA)
 		var tw: Tween = create_tween()
 		tw.tween_property(
 			sprite,
 			"modulate",
-			Color(1, 1, 1, WRAITH_PHASE_ALPHA),
+			phase_color,
 			WRAITH_PHASE_OUT_TIME,
 		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	# Vanish-mote burst at the disappearance point — small purple/black
@@ -1200,7 +1236,11 @@ func _apply_wraith_strike() -> void:
 		return
 	var d: float = _hero.global_position.distance_to(global_position)
 	if d <= WRAITH_STRIKE_REACH and _hero.has_method("take_damage"):
-		_hero.take_damage(WRAITH_STRIKE_DAMAGE)
+		# iter-70 polish: knockback away from where the wraith reappeared
+		# (its post-teleport global_position). Sells the "I got flanked"
+		# moment visually — hero gets shoved forward, AWAY from the wraith
+		# behind them.
+		_hero.take_damage(WRAITH_STRIKE_DAMAGE, global_position)
 		# Brief attack pose so the swing reads even if the player wasn't
 		# looking at the wraith mid-teleport.
 		if sprite != null and sprite.sprite_frames != null \
@@ -1217,7 +1257,9 @@ func _enter_wraith_strike_recovery() -> void:
 		collision_layer = _wraith_saved_layer if _wraith_saved_layer != 0 else 4
 		collision_mask = _wraith_saved_mask if _wraith_saved_mask != 0 else 1
 	if sprite != null:
-		sprite.modulate = Color(1, 1, 1, 1)
+		# Iter 70 — restore to the type's baseline modulate (was hardcoded
+		# white), so e.g. rogue_wraith's violet tint persists after phase.
+		sprite.modulate = _baseline_modulate()
 
 # Vanish-mote burst — 5 small purple/black Polygon2D specks scattered
 # around the disappearance point, drifting outward and fading. Same
@@ -1310,8 +1352,13 @@ func _tick_telegraphed_melee(delta: float) -> void:
 			# Red telegraph tint pulses over the windup so the player can
 			# read "about to swing" at a glance, distinct from the
 			# shoot-windup cyan.
+			# Iter 70 — channel the red pulse THROUGH the baseline tint so
+			# tinted enemies keep their identity color underneath the
+			# windup signal (multiplicative: baseline.r * 1, baseline.g/b
+			# fade darker per wt).
 			var wt: float = 1.0 - (_melee_timer / t.melee_windup)
-			sprite.modulate = Color(1, 1.0 - wt * 0.6, 1.0 - wt * 0.6, 1)
+			var base: Color = _baseline_modulate()
+			sprite.modulate = Color(base.r, base.g * (1.0 - wt * 0.6), base.b * (1.0 - wt * 0.6), base.a)
 			_melee_timer -= delta
 			if _melee_timer <= 0.0:
 				_melee_state = MeleeState.SWING
@@ -1323,14 +1370,15 @@ func _tick_telegraphed_melee(delta: float) -> void:
 				if final_to_hero.length() <= t.melee_reach \
 				   and abs(final_to_hero.angle_to(_melee_aim)) < t.melee_cone \
 				   and _hero.has_method("take_damage"):
-					_hero.take_damage(t.melee_damage)
+					# iter-70 polish: knockback away from the attacker.
+					_hero.take_damage(t.melee_damage, global_position)
 		MeleeState.SWING:
 			velocity = Vector2.ZERO
 			_melee_timer -= delta
 			if _melee_timer <= 0.0:
 				_melee_state = MeleeState.COOLDOWN
 				_melee_timer = t.melee_cooldown - t.melee_swing
-				sprite.modulate = Color(1, 1, 1, 1)
+				sprite.modulate = _baseline_modulate()
 		MeleeState.COOLDOWN:
 			if t.can_move() and dist > t.melee_reach * 0.85:
 				velocity = to_hero.normalized() * _effective_move_speed()
@@ -1381,8 +1429,11 @@ func _tick_shoot(delta: float) -> void:
 			sprite.play(&"attack")
 			# Cyan telegraph — distinct from the melee red. Player learns
 			# "blue glow = ranged, red glow = melee."
+			# Iter 70 — channel through the baseline so tinted ranged
+			# enemies (none right now, but future-proof) keep identity.
 			var wt: float = 1.0 - (_cast_timer / t.cast_windup)
-			sprite.modulate = Color(1.0 - wt * 0.5, 1.0, 1.0, 1)
+			var base: Color = _baseline_modulate()
+			sprite.modulate = Color(base.r * (1.0 - wt * 0.5), base.g, base.b, base.a)
 			_cast_timer -= delta
 			if _cast_timer <= 0.0:
 				_fire_projectile()
@@ -1390,7 +1441,7 @@ func _tick_shoot(delta: float) -> void:
 				# IDLE's else-branch drains it before next cast is armed.
 				_cast_state = CastState.IDLE
 				_cast_timer = t.cast_cooldown
-				sprite.modulate = Color(1, 1, 1, 1)
+				sprite.modulate = _baseline_modulate()
 
 # ── Behavior: stationary_shoot ────────────────────────────────────────
 # Identical to shoot but skips all movement attempts. Implemented as
@@ -1565,7 +1616,11 @@ func _die() -> void:
 	_death_timer = enemy_type.death_duration if enemy_type != null else 0.8
 	velocity = Vector2.ZERO
 	if sprite != null:
-		sprite.modulate = Color(1, 1, 1, 1)
+		# Iter 70 — restore baseline so a tinted enemy (e.g. spectral_priest
+		# green, rogue_wraith violet) keeps its identity color through the
+		# death anim. Was hardcoded white, which made a green priest snap
+		# to a regular-priest white corpse — visually jarring.
+		sprite.modulate = _baseline_modulate()
 		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(&"death"):
 			sprite.play(&"death")
 	set_collision_layer_value(3, false)

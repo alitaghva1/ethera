@@ -1,103 +1,157 @@
-[gd_scene load_steps=10 format=3 uid="uid://b3menu1234567"]
+[gd_scene load_steps=14 format=3 uid="uid://b3menu1234567"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
 
-; Main menu — title screen that frames the run.
-; Anchored full-rect Control. Three layered backgrounds (deep black,
-; radial purple bloom, soft vignette) provide depth vs. a flat panel.
-; A glow-Label sits beneath the title for a sub-glow effect, and two
-; gold hairlines frame the title. Mirrors dialogue_ui's palette:
-; gold #c9a86a borders + cream #f4d9a0 text on near-black #0a0810.
+; ── Main menu — dark-fantasy title screen ──────────────────────────────
+; Aesthetic anchored on the JS reference at slime-depths/src/menuScreen.js
+; (drifting amber embers, gold/cream palette over a near-black ground,
+; serif typography, ghost buttons, page-frame corner flourishes).
+;
+; Layer order (back→front):
+;   1. BackgroundBase      — deep navy/charcoal solid (NOT pure black)
+;   2. BackgroundGradient  — soft vertical wash, slightly lighter at the
+;                            bottom (suggests ground glow from torches)
+;   3. ArchSilhouette      — faint cracked-arch keyart hint (single Polygon2D,
+;                            very low opacity, anchors composition)
+;   4. CenterVignette      — radial darkness behind the title block so the
+;                            gold typography lifts off the ground
+;   5. EmberParticles      — CPUParticles2D, ~70 amber embers drifting up
+;   6. Corner flourishes   — four gold L-hairlines (page-frame motif)
+;   7. Title / tagline / button stack
+;   8. Stats / version labels
+;
+; All colors are warm cream/gold over deep blue-black — no arcade tropes,
+; no pure white, no primary saturation. The button stack uses ghost styling
+; (transparent fill, dim gold border) that brightens on hover/focus.
 
-; ── Background gradients (radial purple bloom + lower vignette) ────────
-[sub_resource type="Gradient" id="bg_radial_gradient"]
-; Centered radial — slight purple in the middle bleeds out to black.
-offsets = PackedFloat32Array(0, 0.55, 1)
-colors = PackedColorArray(0.10196, 0.039215, 0.094117, 1, 0.054901, 0.027450, 0.058823, 1, 0.019607, 0.011764, 0.031372, 1)
+; ── Backgrounds ────────────────────────────────────────────────────────
+; Vertical gradient — deeper at the top (sky/void), warmer hint at the
+; bottom (suggesting torchlight pooling on stone). Both stops sit inside
+; the 0.06–0.10 RGB range from the design spec.
+[sub_resource type="Gradient" id="bg_vertical_gradient"]
+offsets = PackedFloat32Array(0, 0.65, 1)
+colors = PackedColorArray(0.035, 0.030, 0.055, 1, 0.055, 0.050, 0.075, 1, 0.085, 0.065, 0.060, 1)
 
-[sub_resource type="GradientTexture2D" id="bg_radial_tex"]
-gradient = SubResource("bg_radial_gradient")
-fill = 1
-fill_from = Vector2(0.5, 0.45)
-fill_to = Vector2(1, 1)
-width = 256
-height = 256
-
-[sub_resource type="Gradient" id="bg_vignette_gradient"]
-; Bottom→top: a faint inky wash that anchors the lower third visually.
-offsets = PackedFloat32Array(0, 0.7, 1)
-colors = PackedColorArray(0, 0, 0, 0, 0, 0, 0, 0.22, 0, 0, 0, 0.55)
-
-[sub_resource type="GradientTexture2D" id="bg_vignette_tex"]
-gradient = SubResource("bg_vignette_gradient")
+[sub_resource type="GradientTexture2D" id="bg_vertical_tex"]
+gradient = SubResource("bg_vertical_gradient")
 fill = 0
 fill_from = Vector2(0.5, 0)
 fill_to = Vector2(0.5, 1)
 width = 32
 height = 256
 
-; ── Button styles ───────────────────────────────────────────────────────
+; Center vignette — small pool of darkness behind the title so cream
+; typography reads cleanly against the ground gradient. Radial alpha,
+; centered on the title block (about 42% down the screen).
+[sub_resource type="Gradient" id="center_vignette_gradient"]
+offsets = PackedFloat32Array(0, 0.45, 1)
+colors = PackedColorArray(0, 0, 0, 0.42, 0, 0, 0, 0.22, 0, 0, 0, 0)
+
+[sub_resource type="GradientTexture2D" id="center_vignette_tex"]
+gradient = SubResource("center_vignette_gradient")
+fill = 1
+fill_from = Vector2(0.5, 0.42)
+fill_to = Vector2(1.0, 1.0)
+width = 256
+height = 256
+
+; ── Ember particle texture ─────────────────────────────────────────────
+; Soft radial glow used as the particle texture — a small bright core
+; fading to transparent. CPUParticles2D modulates color/alpha per-particle,
+; so the texture itself is white→transparent and the warm amber comes from
+; the per-particle color ramp below.
+[sub_resource type="Gradient" id="ember_tex_gradient"]
+offsets = PackedFloat32Array(0, 0.35, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.55, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="ember_texture"]
+gradient = SubResource("ember_tex_gradient")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1.0, 0.5)
+width = 32
+height = 32
+
+; Per-particle color ramp: warm cream-gold core → amber → orange-red dim.
+; Mirrors the hsla(28..46, 75..95%, ...) range the JS menuEmbers.js uses.
+[sub_resource type="Gradient" id="ember_color_gradient"]
+offsets = PackedFloat32Array(0, 0.35, 0.75, 1)
+colors = PackedColorArray(1.0, 0.92, 0.68, 1, 1.0, 0.72, 0.34, 0.92, 1.0, 0.45, 0.16, 0.6, 0.85, 0.30, 0.10, 0)
+
+; Per-particle scale curve: small start, grow slightly, then shrink to dust.
+[sub_resource type="Curve" id="ember_scale_curve"]
+_data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(0.35, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.2), 0.0, 0.0, 0, 0]
+point_count = 3
+
+; ── Button styles (ghost buttons — transparent fill, dim gold border) ──
+; Normal: almost-transparent fill (slight darken so text doesn't sit on
+; the gradient unaided), dim gold 1-2px border.
 [sub_resource type="StyleBoxFlat" id="button_normal"]
-bg_color = Color(0.04, 0.03, 0.06, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.78, 0.65, 0.41, 0.85)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-content_margin_left = 24.0
-content_margin_top = 12.0
-content_margin_right = 24.0
-content_margin_bottom = 12.0
+bg_color = Color(0.04, 0.03, 0.05, 0.30)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.62, 0.52, 0.32, 0.55)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+content_margin_left = 28.0
+content_margin_top = 14.0
+content_margin_right = 28.0
+content_margin_bottom = 14.0
 
+; Hover: brighter border, faint warm fill, soft outer glow.
 [sub_resource type="StyleBoxFlat" id="button_hover"]
-bg_color = Color(0.08, 0.06, 0.10, 0.96)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
+bg_color = Color(0.10, 0.07, 0.05, 0.45)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
 border_color = Color(0.96, 0.85, 0.63, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-content_margin_left = 24.0
-content_margin_top = 12.0
-content_margin_right = 24.0
-content_margin_bottom = 12.0
-
-; Focused buttons get a brighter inner border + a wider outline-ring so
-; the keyboard-driven focus is unmistakable.
-[sub_resource type="StyleBoxFlat" id="button_focus"]
-bg_color = Color(0.10, 0.07, 0.13, 0.98)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(1, 0.92, 0.72, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-content_margin_left = 23.0
-content_margin_top = 11.0
-content_margin_right = 23.0
-content_margin_bottom = 11.0
-shadow_color = Color(0.96, 0.85, 0.63, 0.35)
-shadow_size = 6
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+content_margin_left = 28.0
+content_margin_top = 14.0
+content_margin_right = 28.0
+content_margin_bottom = 14.0
+shadow_color = Color(0.96, 0.78, 0.40, 0.28)
+shadow_size = 10
 shadow_offset = Vector2(0, 0)
 
-; ── Hairline styles (gold rules flanking the title) ─────────────────────
+; Focus: same look as hover but with a thin inner highlight so keyboard
+; users see exactly where they are.
+[sub_resource type="StyleBoxFlat" id="button_focus"]
+bg_color = Color(0.10, 0.07, 0.05, 0.45)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.92, 0.72, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+content_margin_left = 27.0
+content_margin_top = 13.0
+content_margin_right = 27.0
+content_margin_bottom = 13.0
+shadow_color = Color(0.96, 0.78, 0.40, 0.40)
+shadow_size = 12
+shadow_offset = Vector2(0, 0)
+
+; ── Hairline style (thin gold rules flanking the title) ────────────────
 [sub_resource type="StyleBoxFlat" id="hairline_style"]
-bg_color = Color(0.78, 0.65, 0.41, 0.8)
+bg_color = Color(0.78, 0.65, 0.41, 0.6)
 border_width_left = 0
 border_width_top = 0
 border_width_right = 0
 border_width_bottom = 0
 
+; ── Scene tree ─────────────────────────────────────────────────────────
 [node name="MainMenu" type="Control"]
 anchors_preset = 15
 anchor_right = 1.0
@@ -106,109 +160,259 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_script")
 
-; Deepest black layer — fills any spot the gradient texture's edges miss.
+; Deepest layer — solid navy/charcoal. Matches the rendering/default_clear_color
+; in project.godot so any uncovered edge blends seamlessly.
 [node name="BackgroundBase" type="ColorRect" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.0117, 0.0078, 0.0235, 1)
+color = Color(0.035, 0.030, 0.055, 1)
 
-; Radial purple bloom layered on top — adds depth vs. flat #0a0810.
-[node name="BackgroundRadial" type="TextureRect" parent="."]
+; Vertical gradient — top→bottom wash. Darker sky, warmer ground glow.
+[node name="BackgroundGradient" type="TextureRect" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("bg_radial_tex")
+texture = SubResource("bg_vertical_tex")
 expand_mode = 1
 stretch_mode = 6
+mouse_filter = 2
 
-; Subtle vertical vignette wash to weight the lower third visually.
-[node name="BackgroundVignette" type="TextureRect" parent="."]
+; Cracked-arch silhouette — single faint Polygon2D suggesting a ruined
+; stone archway behind the title. Very low opacity (modulate alpha 0.06)
+; so it reads as form, not detail. Anchors the composition without
+; competing with the typography. Centered at 50% horizontal, sits in the
+; mid-band of the viewport behind the title block.
+[node name="ArchSilhouette" type="Polygon2D" parent="."]
+position = Vector2(640, 240)
+color = Color(0.10, 0.08, 0.13, 1)
+polygon = PackedVector2Array(-340, 320, -340, 60, -300, 60, -260, 30, -200, 5, -100, -25, 0, -32, 100, -25, 200, 5, 260, 30, 300, 60, 340, 60, 340, 320, 260, 320, 260, 90, 220, 60, 160, 35, 80, 15, 0, 8, -80, 15, -160, 35, -220, 60, -260, 90, -260, 320)
+modulate = Color(1, 1, 1, 0.55)
+mouse_filter = 2
+
+; Center vignette behind title — gives gold typography clean breathing room.
+[node name="CenterVignette" type="TextureRect" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("bg_vignette_tex")
+texture = SubResource("center_vignette_tex")
 expand_mode = 1
 stretch_mode = 6
-modulate = Color(1, 1, 1, 0.85)
+mouse_filter = 2
 
-; ── Title block — glow Label behind, then main Label, framed by hairlines.
+; ── Atmospheric ember particles ───────────────────────────────────────
+; CPUParticles2D — warm amber sparks drifting upward from the bottom
+; of the viewport. Parameters tuned for an "alive but unobtrusive" feel:
+;   • amount 70, lifetime 6.0s → ~12/s spawn rate
+;   • emission line along the entire viewport width at y ≈ 720
+;   • upward velocity 18-44 px/s
+;   • slight horizontal drift via per-particle angular_velocity + tangential
+;   • additive blend so the warm core stacks softly over the dark ground
+[node name="EmberParticles" type="CPUParticles2D" parent="."]
+position = Vector2(640, 760)
+amount = 70
+lifetime = 6.0
+preprocess = 3.0
+texture = SubResource("ember_texture")
+emission_shape = 1
+emission_rect_extents = Vector2(720, 4)
+gravity = Vector2(0, 0)
+initial_velocity_min = 18.0
+initial_velocity_max = 44.0
+direction = Vector2(0, -1)
+spread = 12.0
+tangential_accel_min = -8.0
+tangential_accel_max = 8.0
+angular_velocity_min = -45.0
+angular_velocity_max = 45.0
+damping_min = 0.4
+damping_max = 1.2
+scale_amount_min = 0.05
+scale_amount_max = 0.12
+scale_amount_curve = SubResource("ember_scale_curve")
+color_ramp = SubResource("ember_color_gradient")
+mouse_filter = 2
+
+; ── Corner flourishes — four thin gold L-marks (page-frame motif) ─────
+; Mirrors slime-depths' menuScreen.js corner flourishes. Subtle, just
+; enough to signal "manuscript page" rather than "arcade screen."
+[node name="CornerTL" type="Control" parent="."]
+anchors_preset = 0
+offset_left = 36.0
+offset_top = 36.0
+offset_right = 100.0
+offset_bottom = 100.0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerTL"]
+offset_right = 64.0
+offset_bottom = 1.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerTL"]
+offset_right = 1.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="CornerTR" type="Control" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 36.0
+offset_right = -36.0
+offset_bottom = 100.0
+grow_horizontal = 0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerTR"]
+offset_right = 64.0
+offset_bottom = 1.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerTR"]
+offset_left = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="CornerBL" type="Control" parent="."]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = -36.0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerBL"]
+offset_top = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerBL"]
+offset_right = 1.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="CornerBR" type="Control" parent="."]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -100.0
+offset_top = -100.0
+offset_right = -36.0
+offset_bottom = -36.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerBR"]
+offset_top = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerBR"]
+offset_left = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+; ── Title block (title + tagline + flanking hairlines) ─────────────────
 [node name="TitleBlock" type="Control" parent="."]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -300.0
-offset_top = -240.0
-offset_right = 300.0
+offset_left = -320.0
+offset_top = -250.0
+offset_right = 320.0
 offset_bottom = -100.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
+; Thin gold hairline above the title — sits ~50 px above the cap line.
 [node name="TitleHairlineTop" type="Panel" parent="TitleBlock"]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -150.0
-offset_top = -52.0
-offset_right = 150.0
-offset_bottom = -51.0
+offset_left = -180.0
+offset_top = -64.0
+offset_right = 180.0
+offset_bottom = -63.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("hairline_style")
 mouse_filter = 2
 
-; Glow Label — same word, larger font, gold at half opacity, fat outline.
-; This is the "sub-glow" — Godot Labels don't support a true blur, so a
-; back-copy at lower opacity is the standard workaround.
+; Glow Label — soft warm aura behind the title (Godot Labels don't blur
+; natively, so a fatter outline copy at lower opacity is the workaround).
 [node name="TitleGlow" type="Label" parent="TitleBlock"]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -300.0
-offset_top = -52.0
-offset_right = 300.0
-offset_bottom = 52.0
+offset_left = -320.0
+offset_top = -60.0
+offset_right = 320.0
+offset_bottom = 60.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 84
-theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 0.32)
-theme_override_colors/font_outline_color = Color(0.78, 0.55, 0.32, 0.42)
-theme_override_constants/outline_size = 14
+theme_override_font_sizes/font_size = 110
+theme_override_colors/font_color = Color(0.92, 0.72, 0.36, 0.20)
+theme_override_colors/font_outline_color = Color(0.95, 0.55, 0.20, 0.32)
+theme_override_constants/outline_size = 18
 text = "ETHERA"
 horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
 
+; Foreground title — warm cream/gold, wide letter-spacing implied via
+; the spaced characters in the text string itself (Godot Labels don't
+; expose letter_spacing on default fonts; manual spacing keeps the
+; "grandeur" feel without requiring a custom theme resource).
 [node name="Title" type="Label" parent="TitleBlock"]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -300.0
-offset_top = -52.0
-offset_right = 300.0
-offset_bottom = 52.0
+offset_left = -320.0
+offset_top = -60.0
+offset_right = 320.0
+offset_bottom = 60.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 72
-theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_font_sizes/font_size = 96
+theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 4
-text = "ETHERA"
+theme_override_constants/outline_size = 5
+text = "E T H E R A"
 horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
@@ -219,58 +423,62 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -150.0
-offset_top = 52.0
-offset_right = 150.0
-offset_bottom = 53.0
+offset_left = -180.0
+offset_top = 64.0
+offset_right = 180.0
+offset_bottom = 65.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("hairline_style")
 mouse_filter = 2
 
-; Subtitle. "Italic feel" via spaced lowercase letters + faded gold.
+; Tagline — italic feel via spaced lowercase letters. Dim cream so it
+; sits softly below the title. main_menu.gd animates its alpha in a
+; slow 3s pulse (0.7 → 1.0 → 0.7).
 [node name="Subtitle" type="Label" parent="TitleBlock"]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -300.0
-offset_top = 70.0
-offset_right = 300.0
-offset_bottom = 96.0
+offset_left = -320.0
+offset_top = 84.0
+offset_right = 320.0
+offset_bottom = 124.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 0.92)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.70, 0.66, 0.55, 0.92)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
 theme_override_constants/outline_size = 3
 text = "b e n e a t h   t h e   r u i n"
 horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
 
-; ── Button stack — sits below the title block.
+; ── Button stack ──────────────────────────────────────────────────────
+; Three ghost buttons: BEGIN, SETTINGS, QUIT. Stacked centered, anchored
+; to the viewport center so the layout scales with any 16:9 resolution.
 [node name="CenterStack" type="VBoxContainer" parent="."]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -150.0
-offset_top = -10.0
-offset_right = 150.0
-offset_bottom = 240.0
+offset_left = -160.0
+offset_top = 20.0
+offset_right = 160.0
+offset_bottom = 280.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 16
 alignment = 1
 
 [node name="BeginButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(280, 54)
+custom_minimum_size = Vector2(320, 52)
 focus_mode = 2
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
 theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
@@ -282,10 +490,10 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "BEGIN"
 
 [node name="SettingsButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(280, 54)
+custom_minimum_size = Vector2(320, 52)
 focus_mode = 2
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
 theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
@@ -297,10 +505,10 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "SETTINGS"
 
 [node name="QuitButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(280, 54)
+custom_minimum_size = Vector2(320, 52)
 focus_mode = 2
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
 theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
@@ -311,66 +519,66 @@ theme_override_styles/pressed = SubResource("button_hover")
 theme_override_styles/focus = SubResource("button_focus")
 text = "QUIT"
 
-; Iter 23 — persistent stats panel, bottom-left. Anchors to the
-; bottom-left corner; populated by main_menu.gd at _ready from
-; GameState (saved + restored across sessions by SaveSystem). Low-
-; key cream-on-dark so it doesn't fight the title for attention.
+; ── Records panel — bottom-left, low-key cream-on-dark ─────────────────
+; Persistent stats populated by main_menu.gd from GameState. Carries the
+; player's accumulated history between sessions without competing with
+; the title for attention.
 [node name="StatsBlock" type="VBoxContainer" parent="."]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 24.0
-offset_top = -120.0
-offset_right = 320.0
-offset_bottom = -16.0
+offset_left = 48.0
+offset_top = -132.0
+offset_right = 344.0
+offset_bottom = -28.0
 theme_override_constants/separation = 2
 
 [node name="StatsTitle" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.78, 0.66, 0.42, 0.85)
+theme_override_colors/font_color = Color(0.78, 0.66, 0.42, 0.78)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
 theme_override_constants/outline_size = 2
 text = "RECORDS"
 
 [node name="StatsRuns" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.85)
+theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.78)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
 theme_override_constants/outline_size = 2
 text = "runs ··············· 0"
 
 [node name="StatsBestRun" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.85)
+theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.78)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
 theme_override_constants/outline_size = 2
 text = "best run kills ······ 0"
 
 [node name="StatsLifetimeKills" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.85)
+theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.78)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
 theme_override_constants/outline_size = 2
 text = "lifetime kills ······· 0"
 
 [node name="StatsLastRun" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.6)
+theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.55)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
 theme_override_constants/outline_size = 2
 text = ""
 
-; Bottom-right version stamp — low opacity so it doesn't compete.
+; Bottom-right version stamp — quiet so it doesn't compete.
 [node name="VersionLabel" type="Label" parent="."]
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -240.0
-offset_top = -32.0
-offset_right = -16.0
-offset_bottom = -10.0
+offset_left = -260.0
+offset_top = -42.0
+offset_right = -36.0
+offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
 theme_override_font_sizes/font_size = 11

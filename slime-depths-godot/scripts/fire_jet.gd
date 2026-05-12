@@ -74,7 +74,8 @@ func _physics_process(delta: float) -> void:
 		_tick_timer -= delta
 		if _tick_timer <= 0.0:
 			if _hero != null and is_instance_valid(_hero) and _hero.has_method("take_damage"):
-				_hero.take_damage(DAMAGE_PER_TICK)
+				# iter-70 polish: knockback away from the jet base.
+				_hero.take_damage(DAMAGE_PER_TICK, global_position)
 			_tick_timer = TICK_INTERVAL
 
 func _on_body_entered(body: Node) -> void:

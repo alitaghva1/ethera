@@ -227,7 +227,11 @@ func _on_body_entered(body: Node) -> void:
 	if body.has_method("take_hit"):
 		body.take_hit(dmg_out, is_crit)
 	elif body.has_method("take_damage"):
-		body.take_damage(dmg_out)
+		# Hero is the only body without take_hit. Pass the projectile's
+		# global_position as the damage source so hero knockback shoves
+		# the player AWAY from the incoming arrow / orb, not along a
+		# facing-inversion guess (iter-70 polish).
+		body.take_damage(dmg_out, global_position)
 	# Iter 43 — projectile burn application. Locked at spawn from
 	# hero's burn_chance_f roll. Apply alongside the damage so a
 	# pierce/ricochet projectile burns every enemy it traverses.
