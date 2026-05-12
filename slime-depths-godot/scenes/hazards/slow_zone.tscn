@@ -20,16 +20,18 @@ radius = 36.0
 ;     modulates their alpha sin-waves at different phases so they
 ;     read as gas pockets surfacing.
 
-; Iter 58 — z_index=-1 on the SlowZone root pushes all child visuals
-; behind hero/enemy plane via z_as_relative. Hero now renders ABOVE
-; the pool when standing inside. Previously the pool/bubbles drew
-; over the hero (same z=0 + later tree order = covers).
+; Iter 59 — z_index back to default 0. The iter-58 fix (setting z=-1)
+; accidentally pushed the pool BELOW the static procedural_dungeon
+; Background sprite at z=0, making the slow_zone completely invisible
+; on the floor. Hero-on-top is now solved via tree-order: main.gd
+; moves the hero to the END of the children list after spawns, so
+; the hero (later in tree) draws above hazards (earlier in tree)
+; at the same z=0.
 [node name="SlowZone" type="Area2D"]
 collision_layer = 0
 collision_mask = 2
 monitorable = false
 script = ExtResource("1_script")
-z_index = -1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("slowzone_area")

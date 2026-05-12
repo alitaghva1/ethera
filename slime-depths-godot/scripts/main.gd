@@ -324,6 +324,15 @@ func _ready() -> void:
 		# chest spawn so decor placement can avoid those positions.
 		_scatter_decor(_room.decor_density)
 		hero.global_position = _room.hero_spawn
+		# Iter 59 — push hero to the END of the children list so it
+		# renders ON TOP of all the spawn pipeline's outputs (hazards,
+		# pillars, chests, decor, lore stones, biome accents). All of
+		# those share z_index=0 (default) with the hero; without this
+		# reorder they cover the hero because they're added LATER in
+		# the tree. enemies spawned during waves still come AFTER hero
+		# in tree order — that overlap is brief + transient (combat
+		# contact) vs hazards which are persistent floor props.
+		move_child(hero, -1)
 		# Iter 18 — animate the room-name label on entry. Starts big +
 		# bright, settles to small + dim over 2s. Gives the player a
 		# Hades-style "you have arrived" beat without a separate UI.

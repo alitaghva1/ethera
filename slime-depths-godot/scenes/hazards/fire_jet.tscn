@@ -25,16 +25,14 @@ size = Vector2(22, 80)
 ; ember) and extend UPWARD (negative Y) so vertical scaling grows the
 ; flame from the ground up rather than from the center.
 
-; Iter 58 — z_index=-1 on root so the FireJet (including its vertical
-; flame column) draws BELOW the hero. Player standing inside an
-; erupting jet still reads as on top — the damage feedback comes from
-; the hero's hurt flash, not from the flame covering them visually.
+; Iter 59 — z_index back to default 0 (was -1 in iter 58, which hid the
+; jet behind the background sprite). Hero-on-top now handled via tree
+; order in main.gd._ready.
 [node name="FireJet" type="Area2D"]
 collision_layer = 0
 collision_mask = 2
 monitorable = false
 script = ExtResource("1_script")
-z_index = -1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, -32)

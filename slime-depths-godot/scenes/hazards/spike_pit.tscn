@@ -22,12 +22,15 @@ radius = 26.0
 ; radius so the visible spikes hang OVER the damage zone — gives the
 ; player a small visual margin before they actually take a hit.
 
+; Iter 59 — z_index back to default 0 (was -1 in iter 58, which hid the
+; pit BEHIND the background sprite). Hero-on-top now handled via tree
+; order in main.gd._ready (hero moved to end of children list after
+; hazard/decor spawns).
 [node name="SpikePit" type="Area2D"]
 collision_layer = 0
 collision_mask = 2
 monitorable = false
 script = ExtResource("1_script")
-z_index = -1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("spike_area")
