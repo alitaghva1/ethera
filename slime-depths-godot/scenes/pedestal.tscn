@@ -114,13 +114,20 @@ offset_bottom = -100.0
 theme_override_styles/panel = SubResource("info_panel_style")
 mouse_filter = 2
 
+; iter-108 readability pass: bumped fonts so pedestal cards no longer
+; require leaning toward the screen. Name 18→20 (more impactful header),
+; description 12→14 (was the user's "hard to read" complaint). The
+; dynamic _sync_offer_panel_height in pedestal.gd auto-grows the panel
+; upward to fit the larger wrapped text, capped at MAX_PANEL_HEIGHT
+; (raised 160→200 in iter-108). DescLabel offset_top bumped 34→38 to
+; clear the taller NameLabel area. line_separation +2 for breathing.
 [node name="NameLabel" type="Label" parent="InfoPanel"]
 anchor_right = 1.0
 offset_left = 4.0
 offset_top = 4.0
 offset_right = -4.0
-offset_bottom = 32.0
-theme_override_font_sizes/font_size = 18
+offset_bottom = 36.0
+theme_override_font_sizes/font_size = 20
 theme_override_colors/font_color = Color(1, 0.92, 0.62, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 4
@@ -133,14 +140,15 @@ mouse_filter = 2
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 4.0
-offset_top = 34.0
+offset_top = 38.0
 offset_right = -4.0
 offset_bottom = -4.0
 custom_minimum_size = Vector2(188, 0)
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.88, 0.82, 0.66, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.86, 0.70, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 3
+theme_override_constants/line_separation = 2
 text = "+1 sword damage"
 horizontal_alignment = 1
 vertical_alignment = 0

@@ -42,8 +42,15 @@ const RARE_RING_DURATION: float = 1.4
 # can't shove the panel off-screen — if needed > MAX, drop font size 1
 # point and re-measure. 160 px ≈ 8 wrapped lines at font_size=11.
 const DESC_INNER_WIDTH: float = 188.0
-const MAX_PANEL_HEIGHT: float = 160.0
-const DESC_FONT_SHRUNK: int = 11
+# iter-108 readability pass: MAX_PANEL_HEIGHT bumped 160→220 to fit the
+# 14-pt description font (was 12 pt). Longer descriptions like
+# AVATAR OF FLAME (155 chars) still need 5-6 wrapped lines at the new
+# font, and at line_separation = 2 each row eats ~22 px vs the prior
+# ~18, so the cap had to grow ~30%. DESC_FONT_SHRUNK fallback raised
+# 11→13 — the previous 11-pt shrink was almost as small as the
+# pre-iter-108 base font; that's not really "readable fallback."
+const MAX_PANEL_HEIGHT: float = 220.0
+const DESC_FONT_SHRUNK: int = 13
 
 @export var relic_id: String = "iron_fang"
 
@@ -314,7 +321,11 @@ func _sync_offer_panel_height() -> void:
 	const BASELINE_TOP: float = -220.0
 	const BASELINE_BOTTOM: float = -100.0
 	const BASELINE_HEIGHT: float = BASELINE_BOTTOM - BASELINE_TOP  # 120
-	const DESC_VERTICAL_MARGIN: float = 38.0  # NameLabel area (34) + bottom pad (4)
+	# iter-108 readability pass: NameLabel grew (offset_bottom 32 → 36)
+	# to fit the 20-pt name font, and DescLabel offset_top moved 34 → 38
+	# for breathing. New vertical margin = 38 (name area + top pad) + 4
+	# (bottom pad) = 42.
+	const DESC_VERTICAL_MARGIN: float = 42.0
 	# Two-frame await: frame 1 lets custom_minimum_size propagate, frame
 	# 2 lets the autowrap pass settle. After this, get_minimum_size.y on
 	# every offer's DescLabel reflects the WRAPPED content height.
