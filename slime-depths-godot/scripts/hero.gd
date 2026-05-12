@@ -785,7 +785,17 @@ func _try_chain_from(source: Node, hit_set: Dictionary) -> void:
 			best_dist = d
 			best = enemy
 	if best != null and best.has_method("take_hit"):
-		best.take_hit(CHAIN_DAMAGE)
+		# Iter 44 — chain bolt crit roll. STORM ascendance fires chain
+		# bolts from the hero on every connecting swing; chain_lightning
+		# relic fires them on every 4th hit. With keen_focus +
+		# focused_strike both owned (40% crit) a chain-heavy build
+		# should see crits on the chain hits too. Previously they were
+		# capped at base CHAIN_DAMAGE = 1 forever.
+		var dmg_chain: int = CHAIN_DAMAGE
+		var is_crit_chain: bool = _roll_crit()
+		if is_crit_chain:
+			dmg_chain = int(round(float(dmg_chain) * CRIT_DAMAGE_MUL))
+		best.take_hit(dmg_chain, is_crit_chain)
 		hit_set[best.get_instance_id()] = true
 
 func _start_blast() -> void:
@@ -815,20 +825,19 @@ func _start_blast() -> void:
 	var bonus_count: int = GameState.modifier_total("projectile_count", 0)
 	var total_count: int = 1 + bonus_count
 	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
-	# Iter 19 — muzzle flash at the spawn point. Single flash regardless
-	# of multi-shot — keeps the launch beat tight. Parented to
-	# current_scene so it lives in world space (not on the hero, which
-	# would drag the flash along as the hero moves).
-	var muzzle: Node2D = BLAST_MUZZLE_SCENE.instantiate() as Node2D
-	if muzzle != null:
-		muzzle.global_position = spawn_pos
-		get_tree().current_scene.add_child(muzzle)
+	# Iter 44 — multi-shot muzzle: spawn ONE flash per projectile so a
+	# spread of 3 shots reads as 3 distinct launch points rather than
+	# 3 orbs emerging from 1 puff. Each muzzle is oriented to its
+	# projectile's aim so the streak runs in the right direction.
 	for i in range(total_count):
-		# Spread offset: for N projectiles, distribute them across
-		# total angular span = (N-1) * BLAST_SPREAD_STEP, centered on aim.
 		var offset_idx: float = float(i) - float(total_count - 1) * 0.5
 		var spread_angle: float = offset_idx * BLAST_SPREAD_STEP
 		var spread_aim: Vector2 = aim.rotated(spread_angle)
+		var muzzle: Node2D = BLAST_MUZZLE_SCENE.instantiate() as Node2D
+		if muzzle != null:
+			muzzle.global_position = spawn_pos
+			muzzle.rotation = spread_aim.angle()
+			get_tree().current_scene.add_child(muzzle)
 		_spawn_blast_projectile(spawn_pos, spread_aim, resonance_active)
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.
@@ -1022,23 +1031,41 @@ func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 	# cleanly on a 15th / 30th / etc. kill (3 × 5 = 15 — both fire).
 	if GameState.has_relic("soul_burst") and _kill_counter % 5 == 0:
 		_trigger_soul_burst(world_pos)
-	if not GameState.has_relic("bloodstone"):
-		return
-	if _kill_counter % 3 != 0:
-		return
-	# Skip if already capped — no point spawning a +1 floater that lies.
-	var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
-	if hp >= cap or _is_dying:
-		return
-	heal(1)
-	# Crimson floater — matches the relic's blood theme, distinguishes
-	# from the green +1 room-clear heal so the player learns the source.
-	var n: DamageNumber = DamageNumber.spawn(
-		global_position + Vector2(0, -56),
-		"+1",
-		Color(1.0, 0.35, 0.4),
-	)
-	get_parent().add_child(n)
+	# Bloodstone heal — every 3rd kill, +1 HP. Refactored iter 44
+	# from early-return into a guarded block so subsequent kill-based
+	# heals (lifesteal) can run on the same event without being
+	# starved by bloodstone's gate.
+	if GameState.has_relic("bloodstone") and _kill_counter % 3 == 0:
+		var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < cap and not _is_dying:
+			heal(1)
+			# Crimson floater — matches the relic's blood theme,
+			# distinguishes from the green +1 room-clear heal so the
+			# player learns the source.
+			var n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -56),
+				"+1",
+				Color(1.0, 0.35, 0.4),
+			)
+			get_parent().add_child(n)
+	# Iter 44 — lifesteal on kill. Stacks via modifier_total_f
+	# (Drinking Edge 0.15 + Crimson Hunger 0.30 = 0.45 combined chance).
+	# Independent of bloodstone's every-3rd-kill counter so the two
+	# relics complement: bloodstone is deterministic regen, lifesteal
+	# is bursty top-off. Skip if dying / capped to avoid lying floaters.
+	var lifesteal_chance: float = GameState.modifier_total_f("lifesteal_chance_f", 0.0)
+	if lifesteal_chance > 0.0 and randf() < lifesteal_chance:
+		var cap_ls: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < cap_ls and not _is_dying:
+			heal(1)
+			# Magenta floater so lifesteal is visually distinct from
+			# both bloodstone (red) and the room-clear heal (green).
+			var ls_n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -72),
+				"+1 STEAL",
+				Color(0.95, 0.55, 0.85),
+			)
+			get_parent().add_child(ls_n)
 
 # soul_burst — 80 px radial AoE for 1 damage centered on the kill point.
 # Scans the enemies group, applies take_hit(1) to anyone in range. The
@@ -1223,7 +1250,15 @@ func _apply_dash_pierce_tick() -> void:
 		if to_enemy.length() > DASH_STRIKE_PIERCE_RADIUS:
 			continue
 		if enemy.has_method("take_hit"):
-			enemy.take_hit(DASH_STRIKE_PIERCE_DAMAGE)
+			# Iter 44 — dash pierce crit roll. Previously skipped — only
+			# melee swings rolled crit, so a dash-strike build with 40%
+			# crit chance saw zero crit feedback. Apply same per-hit roll
+			# pattern; multiply damage on success, pass is_crit through.
+			var dmg_dp: int = DASH_STRIKE_PIERCE_DAMAGE
+			var is_crit_dp: bool = _roll_crit()
+			if is_crit_dp:
+				dmg_dp = int(round(float(dmg_dp) * CRIT_DAMAGE_MUL))
+			enemy.take_hit(dmg_dp, is_crit_dp)
 			_dash_hit_set[id] = true
 		if enemy.has_method("apply_knockback"):
 			# Push enemies ALONG the dash direction so the player
@@ -1325,7 +1360,13 @@ func _resolve_dash_strike_hit() -> void:
 			var dmg_for_this: int = damage
 			if has_execute and _is_executable(enemy):
 				dmg_for_this = int(round(float(damage) * 2.5))
-			enemy.take_hit(dmg_for_this)
+			# Iter 44 — dash-strike final-AoE crit roll. Parity with
+			# melee swing crit; previously this path silently skipped
+			# the roll.
+			var is_crit_ds: bool = _roll_crit()
+			if is_crit_ds:
+				dmg_for_this = int(round(float(dmg_for_this) * CRIT_DAMAGE_MUL))
+			enemy.take_hit(dmg_for_this, is_crit_ds)
 			hit_count += 1
 		# Iter 13 — heavy radial knockback on dash AoE. Each enemy gets
 		# pushed straight away from the hero, harder + longer than the

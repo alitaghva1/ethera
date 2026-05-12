@@ -292,6 +292,30 @@ const RELIC_REGISTRY := {
 		"mods": { "burn_chance_f": 0.25 },
 		"themes": ["flame"],
 	},
+	# Iter 44 — lifesteal on kill. Independent of bloodstone (every-3rd
+	# kill flat heal) so the two stack naturally: a player with both gets
+	# bloodstone's deterministic regen + chance for extra heals on top.
+	# Drinking Edge is dual-themed (BLOOD primary for the regen role,
+	# FLAME secondary because it ALSO requires aggression to trigger).
+	"drinking_edge": {
+		"name": "DRINKING EDGE",
+		"description": "+15% chance to heal 1 HP on enemy kill.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_bloodstone.png",
+		"mods": { "lifesteal_chance_f": 0.15 },
+		"themes": ["blood", "flame"],
+	},
+	# Iter 44 — legendary lifesteal. Higher rate, BLOOD-only theme.
+	# Pairs perfectly with executioner (kills below 25% HP) + crit
+	# stacks (low-HP enemies one-shot more often → more kills).
+	"crimson_hunger": {
+		"name": "CRIMSON HUNGER",
+		"description": "+30% chance to heal 1 HP on enemy kill. Vampiric tendrils stitch wounds shut.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_bloodstone.png",
+		"mods": { "lifesteal_chance_f": 0.30 },
+		"themes": ["blood"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",
