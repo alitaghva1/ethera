@@ -316,6 +316,42 @@ const RELIC_REGISTRY := {
 		"mods": { "lifesteal_chance_f": 0.30 },
 		"themes": ["blood"],
 	},
+	# Iter 45 — chance-based kill explosion. Drives the bullet-hell
+	# chain-reaction loop: an exploding kill damages nearby enemies,
+	# which may themselves explode, etc. Pair with executioner (+150%
+	# damage to <25% HP enemies) and the chain death-cascade can clear
+	# a wave from a single 1-shot kill on a wounded mob.
+	"combustion_core": {
+		"name": "COMBUSTION CORE",
+		"description": "+20% chance for kills to detonate a 72-px AoE for 2 damage.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"mods": { "explode_on_kill_chance_f": 0.20 },
+		"themes": ["flame"],
+	},
+	"detonator": {
+		"name": "DETONATOR",
+		"description": "+40% chance for kills to detonate a 72-px AoE for 2 damage. The brood remembers fire.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_cataclysm.png",
+		"mods": { "explode_on_kill_chance_f": 0.40 },
+		"themes": ["flame"],
+	},
+	# Iter 45 — dual-theme STORM/SHADOW relic. Cheap entry into BOTH
+	# themes simultaneously, so one pick contributes to two resonance
+	# tallies. Pairs naturally — both themes favor mobility + procs.
+	"tempest_cloak": {
+		"name": "TEMPEST CLOAK",
+		"description": "Wind and lightning answer your call. +10% move speed, +0.05s dodge i-frames, +10% projectile speed.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_gale_step.png",
+		"mods": {
+			"move_speed_mul": 0.10,
+			"dodge_iframes_bonus_f": 0.05,
+			"projectile_speed_mul": 0.10,
+		},
+		"themes": ["storm", "shadow"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",

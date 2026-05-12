@@ -1031,6 +1031,16 @@ func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 	# cleanly on a 15th / 30th / etc. kill (3 × 5 = 15 — both fire).
 	if GameState.has_relic("soul_burst") and _kill_counter % 5 == 0:
 		_trigger_soul_burst(world_pos)
+	# Iter 45 — chance-based kill explosion. Independent of soul_burst's
+	# every-5th counter; rolls explode_on_kill_chance_f for a chance to
+	# detonate a kill-site AoE. Stacks via modifier_total_f
+	# (Combustion Core 0.20 + Detonator 0.40 = 60% combined). Chain
+	# reactions: an explosion that kills a low-HP enemy can itself
+	# trigger another roll on THAT enemy's death (via Events.enemy_died
+	# → this same handler). Carpet-bombing build = real.
+	var explode_chance: float = GameState.modifier_total_f("explode_on_kill_chance_f", 0.0)
+	if explode_chance > 0.0 and randf() < explode_chance:
+		_trigger_kill_explosion(world_pos)
 	# Bloodstone heal — every 3rd kill, +1 HP. Refactored iter 44
 	# from early-return into a guarded block so subsequent kill-based
 	# heals (lifesteal) can run on the same event without being
@@ -1103,6 +1113,40 @@ func _trigger_fire_pool(world_pos: Vector2) -> void:
 	var scene_root: Node = get_tree().current_scene
 	if scene_root != null:
 		scene_root.add_child(pool)
+
+# Iter 45 — chance-based kill explosion. Reuses the soul_burst
+# pattern (radial AoE on kill site, reuses SOUL_BURST_SCENE for VFX)
+# but with a configurable radius + damage. Drives the bullet-hell
+# chain-reaction loop: explode → kill more enemies → more explosions.
+# Each chained explosion can re-trigger on its own kill (the rolled
+# chance compounds per enemy killed by the explosion).
+const KILL_EXPLOSION_RADIUS: float = 72.0
+const KILL_EXPLOSION_DAMAGE: int = 2
+func _trigger_kill_explosion(world_pos: Vector2) -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		if enemy.global_position.distance_to(world_pos) > KILL_EXPLOSION_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			# Pass is_crit=false here — explosions are area damage, not
+			# crits. The 2-damage hit reads clearly without crit styling.
+			enemy.take_hit(KILL_EXPLOSION_DAMAGE, false)
+	var fx: Node2D = SOUL_BURST_SCENE.instantiate() as Node2D
+	if fx == null:
+		return
+	fx.global_position = world_pos
+	# Warm orange tint — distinct from soul_burst's red + SHADOW
+	# shockwave's indigo. Three different proc visuals now read as
+	# three different damage sources.
+	fx.modulate = Color(1.0, 0.75, 0.30, 1.0)
+	# Slightly larger scale because the explosion radius (72) is
+	# smaller than soul_burst (80) — but the visual presence should
+	# convey "this is the bigger boom" since the damage is +1.
+	fx.scale = Vector2(1.15, 1.15)
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(fx)
 
 # Iter 40 — SHADOW ascendance dodge shockwave. Sweeps a 60-px radius
 # around the hero, dealing 1 damage to any enemy inside. Pairs with
