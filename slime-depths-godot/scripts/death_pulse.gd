@@ -27,6 +27,10 @@ var _halo_base_alpha: float = 1.0
 var _core_base_alpha: float = 1.0
 
 func _ready() -> void:
+	# Iter 69 — z_index 2 matches the rest of the iter-60+ ring FX layer
+	# (dash_impact, parry_pulse, shock_pulse). Death is dramatic but it's
+	# still a ring effect, not an always-on-top beam.
+	z_index = 2
 	if _halo != null:
 		_halo_base_alpha = _halo.default_color.a
 	if _core != null:

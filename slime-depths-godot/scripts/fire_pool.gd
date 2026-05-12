@@ -26,6 +26,11 @@ var _tick: float = 0.0
 # POOL_TICK_INTERVAL inside the pool. Mapping: instance_id -> next
 # eligible time. Defends against multi-tick on a single overlap.
 var _next_hit: Dictionary = {}
+# Iter 69 — idempotency guard for _fade_and_free. set_physics_process(false)
+# stops future ticks, but a second call within the same frame (e.g. if the
+# engine re-enters _physics_process for any reason) would start a second
+# tween chain that calls queue_free twice. _fading short-circuits that.
+var _fading: bool = false
 
 var _disc: Polygon2D = null
 var _glow: PointLight2D = null
@@ -124,6 +129,11 @@ func _physics_process(delta: float) -> void:
 			body.take_hit(POOL_DAMAGE)
 
 func _fade_and_free() -> void:
+	# Iter 69 — idempotent. Second call no-ops so we never start two
+	# parallel tweens both racing to queue_free this node.
+	if _fading:
+		return
+	_fading = true
 	monitoring = false
 	var tween: Tween = create_tween().set_parallel(true)
 	if _disc != null:

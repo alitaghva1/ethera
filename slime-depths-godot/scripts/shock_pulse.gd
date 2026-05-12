@@ -61,10 +61,6 @@ var _core: Line2D = null
 # / BASE_RADIUS so the visible ring end-state matches the hit radius.
 var _scale_end: float = 1.0
 var _initialized: bool = false
-# Damage + stun applied ONCE on spawn — the ring is a snapshot AoE.
-# Guard so a queued re-ready during weird tree manipulation doesn't
-# double-fire.
-var _hit_applied: bool = false
 
 func setup(radius: float, damage: int, stun_duration: float = 0.0) -> void:
 	_radius_target = max(1.0, radius)
@@ -72,14 +68,17 @@ func setup(radius: float, damage: int, stun_duration: float = 0.0) -> void:
 	_stun_duration = max(0.0, stun_duration)
 
 func _ready() -> void:
+	# Iter 69 — z_index 2 puts the ring above the floor and in line with
+	# the rest of the iter-60+ FX cell (dash_impact / parry_pulse / etc.).
+	# z_as_relative=true is the Node2D default; left as-is so the ring sits
+	# 2 above whatever its parent draws at (typically the room/scene root).
+	z_index = 2
 	_scale_end = _radius_target / BASE_RADIUS
 	# Start at START_SCALE × end so the ring "punches out" already
 	# partway expanded — softens the otherwise-flat zero-size start.
 	scale = Vector2(_scale_end * START_SCALE, _scale_end * START_SCALE)
 	_build_rings()
-	if not _hit_applied:
-		_apply_damage_and_stun()
-		_hit_applied = true
+	_apply_damage_and_stun()
 	_initialized = true
 
 # Two-ring construction: outer wide cyan glow, inner crisp white core.

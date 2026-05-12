@@ -52,6 +52,12 @@ func setup(from_pos: Vector2, to_pos: Vector2) -> void:
 	_to = to_pos
 
 func _ready() -> void:
+	# Iter 69 — z_index 5 puts the beam ABOVE the standard FX layer (z=2
+	# used by dash_impact / parry_pulse / shock_pulse) so a chain arc fired
+	# during a busy combat moment is never occluded by ring expansions
+	# spawned in the same beat. Matches the "beam/arc always reads on top"
+	# convention the kit settled on.
+	z_index = 5
 	_build_arc()
 	_initialized = true
 

@@ -27,6 +27,10 @@ var _halo_base_alpha: float = 1.0
 var _core_base_alpha: float = 1.0
 
 func _ready() -> void:
+	# Iter 69 — z_index 2 standardizes the iter-60+ ring FX layer
+	# (shock_pulse, parry_pulse, death_pulse, dash_impact). Above floor,
+	# below the hero's z_index. Chain/beam FX sit at z=5 above this.
+	z_index = 2
 	if _halo != null:
 		_halo_base_alpha = _halo.default_color.a
 	if _core != null:

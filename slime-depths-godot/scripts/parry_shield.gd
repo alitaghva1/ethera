@@ -47,6 +47,11 @@ func setup(aim: Vector2) -> void:
 		position += dir * FORWARD_OFFSET
 
 func _ready() -> void:
+	# Iter 69 — z_index 2 keeps the shield on the standard FX layer.
+	# The kite silhouette sits IN FRONT of the hero spatially (offset
+	# by FORWARD_OFFSET) so the z bump just guarantees it draws above
+	# the floor regardless of which sub-room it's spawned into.
+	z_index = 2
 	_base_modulate = modulate
 
 func _process(delta: float) -> void:

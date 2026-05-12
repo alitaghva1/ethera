@@ -591,7 +591,17 @@ func _build_ambient_players() -> void:
 # has its own A/B player pair, fade tween, and current-preset state —
 # they don't interfere with each other.
 func _on_tree_changed() -> void:
-	var scene: Node = get_tree().current_scene
+	# Teardown guard: during --quit / engine shutdown, tree_changed can
+	# fire one more time after the SceneTree has been torn down. At that
+	# point get_tree() returns null (or the tree's current_scene is null
+	# mid-disposal). Without these early-outs we'd crash trying to read
+	# current_scene on a null tree.
+	if not is_inside_tree():
+		return
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	var scene: Node = tree.current_scene
 	var path: String = ""
 	if scene != null:
 		path = scene.scene_file_path

@@ -19,6 +19,9 @@ var _halo_base_alpha: float = 1.0
 var _core_base_alpha: float = 1.0
 
 func _ready() -> void:
+	# Iter 69 — z_index 2 keeps the parry pulse on the same FX layer as
+	# the other ring effects (dash_impact, shock_pulse, death_pulse).
+	z_index = 2
 	if _halo != null:
 		_halo_base_alpha = _halo.default_color.a
 	if _core != null:

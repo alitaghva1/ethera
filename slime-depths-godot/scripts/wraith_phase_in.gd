@@ -7,9 +7,11 @@
 #
 # The visual: a violet Polygon2D ring expands from 0 → 30 px over 0.18s
 # while modulating from full alpha to 0; three small spark Polygon2Ds
-# offset around the center drift outward and fade in parallel. The whole
-# effect self-frees when the tween chain completes, so we never leak
-# nodes through hundreds of phase cycles per run.
+# offset around the center drift outward and fade in parallel. The parent
+# Node2D self-frees via a SceneTreeTimer at LIFETIME + 0.05s (slightly
+# after the tweens land) so we never leak nodes through hundreds of phase
+# cycles per run. The tweens animate the CHILDREN's properties; the
+# timer-driven queue_free recursively cleans them up.
 #
 # Why scripted instead of a static .tscn: building the ring annulus +
 # spark verts at runtime keeps the resource file small (single .tscn

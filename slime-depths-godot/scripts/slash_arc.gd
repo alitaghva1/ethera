@@ -51,6 +51,9 @@ func setup(aim: Vector2, swing_sign: int = 1) -> void:
 		rotation += SWING_TILT if swing_sign > 0 else -SWING_TILT
 
 func _ready() -> void:
+	# Iter 69 — z_index 2 places the slash on the standard FX layer
+	# (consistent with dash_impact, parry_pulse, shock_pulse, death_pulse).
+	z_index = 2
 	_base_scale = scale
 	if _outer != null:
 		_outer_base_alpha = _outer.default_color.a
