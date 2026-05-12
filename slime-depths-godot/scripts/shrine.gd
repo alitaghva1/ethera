@@ -214,7 +214,14 @@ func _pray() -> void:
 		label_text,
 		Color(1, 0.85, 0.45),
 	)
-	get_parent().add_child(num)
+	# iter-72 bug-fix: defensive get_parent() null guard — same pattern
+	# as chest.gd / pedestal.gd. Parent is normally main.gd; bail clean
+	# if it's been freed mid-claim.
+	var parent_node: Node = get_parent()
+	if parent_node != null:
+		parent_node.add_child(num)
+	else:
+		num.queue_free()
 	# Dismiss siblings.
 	for other in get_tree().get_nodes_in_group("shrine_offer"):
 		if not is_instance_valid(other):

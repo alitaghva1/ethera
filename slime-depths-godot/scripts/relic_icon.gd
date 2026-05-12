@@ -243,6 +243,14 @@ func _show_tooltip() -> void:
 	# anchoring to its size on the same frame produces a 0-sized rect
 	# offset (the tooltip would appear in the wrong place).
 	await get_tree().process_frame
+	# iter-72 bug-fix: also guard against the icon itself being freed
+	# mid-await (the strip rebuilds on every pickup_claimed; if a strip
+	# rebuild fires the same frame as a hover, _exit_tree queue_frees
+	# the tooltip but the await here would then call get_global_rect()
+	# on a freed Control). Bail if we're no longer in the tree.
+	if not is_inside_tree():
+		_hide_tooltip()
+		return
 	if _tooltip == null or not is_instance_valid(_tooltip):
 		return
 	var icon_rect: Rect2 = get_global_rect()

@@ -385,6 +385,8 @@ func _physics_process(delta: float) -> void:
 			_tick_summoner(delta)
 		"wraith":
 			_tick_wraith(delta)
+		"glyph_warden":
+			_tick_glyph_warden(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -1627,3 +1629,257 @@ func _die() -> void:
 	set_collision_mask_value(2, false)
 	died_at.emit(global_position)
 	Events.enemy_died.emit(global_position)
+
+# ── Behavior: glyph_warden ────────────────────────────────────────────
+# Iter 72 — conjurer / trap-layer. Kites the hero at WARDEN_KEEP_DIST
+# (same shape as healer/summoner movement) and on a GLYPH_INTERVAL cycle
+# plants a STATIONARY glyph hazard at the warden's OWN feet. The glyph
+# arms 0.6s after placement (visible pulsing rune mark), then sits as
+# floor damage for up to GLYPH_LIFETIME seconds — if the hero steps in
+# the glyph's radius while armed, it detonates for GLYPH_DAMAGE + a
+# brief slow, then despawns. Crucially, glyphs OUTLIVE their warden:
+# kill the warden, the planted glyphs keep ticking. Forces the player to
+# remember "the warden was standing HERE three seconds ago" and avoid
+# that ground while focusing other threats.
+#
+# Why this is novel vs the existing 19-strong roster:
+#   - chase_contact / charge / bomber all run AT you; they don't poison
+#     the floor.
+#   - healer / summoner / wraith are all centered on themselves or other
+#     enemies — they don't change the SPATIAL game.
+#   - existing hazards (spike_pit, fire_jet, lightning_rod) are STATIC
+#     room features placed at design time. The glyph warden adds the
+#     first ENEMY-AUTHORED dynamic hazard — every fight against a
+#     warden produces a different floor pattern.
+#
+# State machine (mirrors healer/summoner shape):
+#   IDLE       — kite at WARDEN_KEEP_DIST; tick _glyph_cooldown_timer.
+#                When timer <=0 transition to WINDUP.
+#   WINDUP     — GLYPH_WINDUP seconds. Locked in place. Gold-eye tint
+#                ramps on the sprite + a small spinning rune mark
+#                grows on the ground at the warden's feet. The mark
+#                is the placement telegraph: it tells the player
+#                "a glyph is going to live HERE."
+#   PLACE      — one-frame: instantiate the glyph_trap scene at the
+#                warden's current global_position. Hand off ownership
+#                to the room parent so the glyph outlives the warden.
+#   COOLDOWN   — kite as in IDLE but skip the scan; drain timer; back
+#                to IDLE when 0.
+#
+# Telegraph stack:
+#   1. Gold-yellow sprite tint ramping during WINDUP — same convention
+#      as healer green / summoner dark-red / wraith violet.
+#   2. Spinning rune mark drawn on the ground UNDER the warden during
+#      WINDUP. Reads as "a glyph is being inscribed HERE." Spawned at
+#      WINDUP entry; tween scales + fades it to its final size as the
+#      windup elapses.
+#   3. The placed glyph itself ARMS over 0.6s — its inner ring pulses
+#      from amber to bright red as it transitions from disarmed (safe)
+#      to armed (hot). The player has a ~0.6s window after the warden
+#      lifts the glyph to escape its radius.
+enum WardenState { IDLE, WINDUP, PLACE, COOLDOWN }
+const GLYPH_INTERVAL: float = 3.5
+const GLYPH_WINDUP: float = 0.7
+const GLYPH_COOLDOWN: float = 0.6
+const WARDEN_KEEP_DIST: float = 220.0
+const WARDEN_MIN_DIST: float = 180.0
+const WARDEN_TINT_PEAK: Color = Color(1.55, 1.30, 0.55, 1.0)   # gold/amber rune light
+const GLYPH_TRAP_SCENE: PackedScene = preload("res://scenes/fx/glyph_trap.tscn")
+# Inscription mark — small spinning rune drawn UNDER the warden during
+# WINDUP so the player can read "the warden is laying a glyph HERE." A
+# stylized 6-pointed star (two interlocked triangles) inscribed in a
+# faint circle. Code-built like the healer's pulse ring; one Polygon2D
+# per triangle plus an outline Polygon2D for the circle.
+const INSCRIPTION_MARK_COLOR: Color = Color(1.0, 0.78, 0.30, 0.85)
+const INSCRIPTION_MARK_RADIUS: float = 22.0
+var _warden_state: WardenState = WardenState.IDLE
+var _warden_timer: float = 0.0
+var _glyph_cooldown_timer: float = 0.0
+# WeakRef to the inscription-mark FX so we can spin it during WINDUP
+# without leaking a strong reference (the FX self-frees on PLACE or
+# state-abort via its own tween chain).
+var _warden_inscription_ref: WeakRef = null
+
+func _tick_glyph_warden(delta: float) -> void:
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	sprite.flip_h = to_hero.x < 0
+	match _warden_state:
+		WardenState.IDLE:
+			_warden_movement(to_hero, dist)
+			if _glyph_cooldown_timer > 0.0:
+				_glyph_cooldown_timer = max(0.0, _glyph_cooldown_timer - delta)
+			else:
+				_warden_state = WardenState.WINDUP
+				_warden_timer = GLYPH_WINDUP
+				sprite.play(&"attack")
+				_spawn_inscription_mark()
+		WardenState.WINDUP:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			# Gold-eye tint ramps from baseline to WARDEN_TINT_PEAK so the
+			# player reads "warden is winding up a glyph." Same iter-70
+			# baseline-aware lerp pattern as healer/summoner so tinted
+			# warden variants stay distinguishable through the ramp.
+			var wt: float = 1.0 - (_warden_timer / GLYPH_WINDUP)
+			sprite.modulate = _baseline_modulate().lerp(WARDEN_TINT_PEAK, wt)
+			# Spin the inscription mark if still alive (it self-frees on
+			# PLACE or abort). The rotation speed scales with windup
+			# progress so the rune visibly accelerates toward placement.
+			_spin_inscription_mark(delta, wt)
+			_warden_timer -= delta
+			if _warden_timer <= 0.0:
+				_warden_state = WardenState.PLACE
+		WardenState.PLACE:
+			# One-frame state — plant the glyph + transition to cooldown.
+			_apply_glyph_place()
+			sprite.modulate = _baseline_modulate()
+			_warden_state = WardenState.COOLDOWN
+			_glyph_cooldown_timer = GLYPH_COOLDOWN
+		WardenState.COOLDOWN:
+			_warden_movement(to_hero, dist)
+			_glyph_cooldown_timer = max(0.0, _glyph_cooldown_timer - delta)
+			if _glyph_cooldown_timer <= 0.0:
+				_warden_state = WardenState.IDLE
+				# Re-arm the long interval — subtract windup + cooldown
+				# already spent so the visible "next glyph in N seconds"
+				# beat reads as a steady cycle, not GLYPH_INTERVAL after
+				# the COOLDOWN exits.
+				_glyph_cooldown_timer = max(0.0, GLYPH_INTERVAL - GLYPH_WINDUP - GLYPH_COOLDOWN)
+
+# Warden kite movement. Same shape as _healer_movement / _summoner_movement
+# but with WARDEN_KEEP_DIST. Backs away if hero is closer than MIN_DIST,
+# pulls in if past KEEP_DIST + 40 px, idles in the dead zone between.
+func _warden_movement(to_hero: Vector2, dist: float) -> void:
+	var t: EnemyType = enemy_type
+	if t.can_move() and dist < WARDEN_MIN_DIST:
+		velocity = -to_hero.normalized() * _effective_move_speed()
+		sprite.play(&"walk")
+		move_and_slide()
+	elif t.can_move() and dist > WARDEN_KEEP_DIST + 40.0:
+		velocity = to_hero.normalized() * _effective_move_speed() * 0.6
+		sprite.play(&"walk")
+		move_and_slide()
+	else:
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+
+# Plant the glyph hazard at the warden's CURRENT feet position. The
+# trap.tscn is added to the WARDEN's parent (the room), NOT as a child
+# of the warden — so the glyph outlives the warden. This is the design
+# centerpiece: killing the warden does NOT clear its previously-laid
+# traps, forcing the player to navigate around its legacy.
+func _apply_glyph_place() -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	if GLYPH_TRAP_SCENE == null:
+		return
+	var trap: Node2D = GLYPH_TRAP_SCENE.instantiate()
+	trap.global_position = global_position
+	parent.add_child(trap)
+	# Free the inscription mark — the glyph itself is now visible at
+	# the same spot, so the mark would just be visual noise on top of
+	# the new trap.
+	if _warden_inscription_ref != null:
+		var node: Object = _warden_inscription_ref.get_ref()
+		if node != null and node is Node2D and is_instance_valid(node):
+			(node as Node2D).queue_free()
+		_warden_inscription_ref = null
+
+# Build the inscription-mark FX at the warden's feet. A code-built
+# 6-pointed star (two overlapping triangles) inside a faint circle,
+# initially scaled small and faded; tween scales it up across WINDUP
+# and ramps alpha to peak so it READS as "rune being drawn." On
+# PLACE / abort the mark is queue_freed in _apply_glyph_place; on
+# state-abort (warden interrupted by knockback / death) the mark
+# self-frees via a safety SceneTreeTimer.
+func _spawn_inscription_mark() -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	var fx: Node2D = Node2D.new()
+	fx.global_position = global_position
+	fx.z_index = -1
+	parent.add_child(fx)
+	# Outer faint circle so the star reads as inscribed.
+	var ring: Polygon2D = Polygon2D.new()
+	var ring_segments: int = 24
+	var outer_r: float = INSCRIPTION_MARK_RADIUS
+	var inner_r: float = max(0.5, outer_r - 1.4)
+	var verts: PackedVector2Array = PackedVector2Array()
+	for i in range(ring_segments):
+		var a: float = (TAU / float(ring_segments)) * float(i)
+		verts.append(Vector2(cos(a), sin(a)) * outer_r)
+	for i in range(ring_segments - 1, -1, -1):
+		var a: float = (TAU / float(ring_segments)) * float(i)
+		verts.append(Vector2(cos(a), sin(a)) * inner_r)
+	ring.polygon = verts
+	ring.color = Color(INSCRIPTION_MARK_COLOR.r, INSCRIPTION_MARK_COLOR.g, INSCRIPTION_MARK_COLOR.b, 0.55)
+	fx.add_child(ring)
+	# Two interlocking triangles → 6-pointed star. Triangle A points up,
+	# triangle B points down; together they form the rune.
+	var star_r: float = INSCRIPTION_MARK_RADIUS * 0.78
+	var tri_a: Polygon2D = Polygon2D.new()
+	tri_a.polygon = PackedVector2Array([
+		Vector2(cos(-PI/2.0), sin(-PI/2.0)) * star_r,
+		Vector2(cos(-PI/2.0 + TAU/3.0), sin(-PI/2.0 + TAU/3.0)) * star_r,
+		Vector2(cos(-PI/2.0 + 2.0 * TAU/3.0), sin(-PI/2.0 + 2.0 * TAU/3.0)) * star_r,
+	])
+	tri_a.color = INSCRIPTION_MARK_COLOR
+	fx.add_child(tri_a)
+	var tri_b: Polygon2D = Polygon2D.new()
+	tri_b.polygon = PackedVector2Array([
+		Vector2(cos(PI/2.0), sin(PI/2.0)) * star_r,
+		Vector2(cos(PI/2.0 + TAU/3.0), sin(PI/2.0 + TAU/3.0)) * star_r,
+		Vector2(cos(PI/2.0 + 2.0 * TAU/3.0), sin(PI/2.0 + 2.0 * TAU/3.0)) * star_r,
+	])
+	tri_b.color = INSCRIPTION_MARK_COLOR
+	fx.add_child(tri_b)
+	# Start small + faded, tween up to full scale + alpha across windup.
+	fx.scale = Vector2(0.35, 0.35)
+	fx.modulate.a = 0.45
+	var tw: Tween = fx.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(fx, "scale", Vector2(1.0, 1.0), GLYPH_WINDUP) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(fx, "modulate:a", 1.0, GLYPH_WINDUP) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_warden_inscription_ref = weakref(fx)
+	# Safety reap — if the warden dies mid-windup the PLACE branch never
+	# runs, so the mark needs to self-free. Free after WINDUP + a small
+	# guard window; the PLACE branch frees it earlier on the normal path.
+	var safety: SceneTreeTimer = get_tree().create_timer(GLYPH_WINDUP + 0.4)
+	safety.timeout.connect(func():
+		if _warden_inscription_ref == null:
+			return
+		var node: Object = _warden_inscription_ref.get_ref()
+		if node != null and node is Node2D and is_instance_valid(node):
+			(node as Node2D).queue_free()
+		_warden_inscription_ref = null
+	)
+
+# Spin the inscription-mark during WINDUP. Rotation speed scales with
+# windup-progress so the rune visibly ACCELERATES into placement —
+# reads as "the warden is finishing the spell."
+func _spin_inscription_mark(delta: float, wt: float) -> void:
+	if _warden_inscription_ref == null:
+		return
+	var node: Object = _warden_inscription_ref.get_ref()
+	if node == null or not (node is Node2D) or not is_instance_valid(node):
+		return
+	var n: Node2D = node
+	# Base spin = 1.5 rad/s; ramps to 5.0 rad/s at peak windup.
+	var spin: float = lerp(1.5, 5.0, wt)
+	n.rotation += spin * delta
+
+# Iter 72 — test-only force-trigger for headless verification. Skips
+# the windup/cooldown gating so a test can assert "calling this plants
+# a glyph trap" without simulating ~4 seconds of physics_process ticks.
+# Production AI always goes through IDLE → WINDUP → PLACE → COOLDOWN.
+func _force_glyph_place_for_test() -> void:
+	_apply_glyph_place()

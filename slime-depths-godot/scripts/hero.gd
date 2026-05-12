@@ -62,6 +62,21 @@ const SHOCK_PULSE_SCENE  = preload("res://scenes/fx/shock_pulse.tscn")
 # when the hero owns 4+ FLAME relics. Stacks with soul_burst (which
 # triggers on every 5th kill) — both can fire on a 5/10/15th kill.
 const FIRE_POOL_SCENE = preload("res://scenes/fire_pool.tscn")
+# Iter 72 — stat-stick redesigns. Four common-tier relics get triggered
+# effects layered on top of their existing flat modifiers, each with a
+# dedicated visual:
+#   iron_fang     → every 6th sword hit drops EmberBurst at impact point
+#   arcane_pulse  → every 5th blast forks ArcaneBolt to nearby enemy
+#   stoneheart    → first kill each room spawns StonePulse + heals +1
+#   iron_skin     → every absorbed hit sparks StoneShardBurst; every 4th
+#                   absorption triggers a knock-back shard ring (no dmg,
+#                   pure spacing — reuses StoneShardBurst at the hero)
+# All FX follow the iter 67/68 minimal-scene grammar (geometry built in
+# code, palette baked into the .gd, ring + fade lifecycle).
+const EMBER_BURST_SCENE  = preload("res://scenes/fx/ember_burst.tscn")
+const ARCANE_BOLT_SCENE  = preload("res://scenes/fx/arcane_bolt.tscn")
+const STONE_PULSE_SCENE  = preload("res://scenes/fx/stone_pulse.tscn")
+const STONE_SHARD_SCENE  = preload("res://scenes/fx/stone_shard_burst.tscn")
 
 # Parry (Iter 25 — replaces the iter-5 held-shield-stance).
 # Tap Q for a brief perfect-block WINDOW. Any incoming damage during
@@ -323,6 +338,26 @@ var _phoenix_feather_used: bool = false
 # because every room transition reloads main.tscn and we get a fresh
 # hero instance with this flag back to false. No manual reset needed.
 var _iron_resolve_absorbed_this_room: bool = false
+
+# Iter 72 — IRON FANG redesign counter. Bumps on every successful sword
+# hit; on every 6th increment, spawn EmberBurst at the hit position for
+# a 40-px AoE / 1 damage. Persists per-run (mirrors _sword_hit_counter)
+# rather than per-room so a player whose 5th hit was end-of-room sees
+# the 6th proc on the first hit of the next room.
+var _iron_fang_hit_counter: int = 0
+# Iter 72 — ARCANE PULSE redesign counter. Bumps on every blast cast;
+# on every 5th increment, the cast also forks a violet bolt to the
+# nearest off-target enemy within 140px for 1 damage. Persists per-run.
+var _arcane_pulse_cast_counter: int = 0
+# Iter 72 — STONEHEART redesign per-room flag. Auto-resets on scene
+# reload (same pattern as _iron_resolve_absorbed_this_room) so each
+# new room re-arms the first-kill heal. No manual reset needed.
+var _stoneheart_first_kill_armed: bool = true
+# Iter 72 — IRON SKIN redesign counter. Bumps on every hit where the
+# damage_taken_reduction subtraction actually saved damage; every 4th
+# increment also fires a no-damage knockback shard ring around the
+# hero. Persists per-run.
+var _iron_skin_block_counter: int = 0
 
 # Iter 66 — BLOOD theme sword lifesteal state.
 # _pending_blood_tier is locked at SWING-time (in _start_attack) so a
@@ -971,6 +1006,20 @@ func _resolve_melee_strike() -> void:
 			# within CHAIN_RADIUS px of the source and zap it for 1.
 			if has_chain and _sword_hit_counter % 4 == 0:
 				_try_chain_from(enemy, hit_set)
+			# Iter 72 — IRON FANG redesign. +1 sword dmg already folded
+			# into `damage` via sword_damage_bonus; here we add the
+			# every-6th-hit ember burst. Snapshot AoE: 40-px radius, 1
+			# damage at the hit position (enemy.global_position). Skips
+			# the originally-hit enemy implicitly because EmberBurst's
+			# damage scan re-finds enemies in range — if the original
+			# enemy died from `enemy.take_hit(dmg_for_this)` above, it's
+			# no longer in the "enemies" group; if it survived, taking a
+			# second 1-damage tick is fine (mirrors how soul_burst /
+			# kill_explosion both can re-damage the triggering kill site).
+			if GameState.has_relic("iron_fang"):
+				_iron_fang_hit_counter += 1
+				if _iron_fang_hit_counter % 6 == 0:
+					_trigger_iron_fang_burst(enemy.global_position)
 		if enemy.has_method("apply_knockback"):
 			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _pending_melee_aim
 			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
@@ -1156,6 +1205,145 @@ func _try_chain_from(source: Node, hit_set: Dictionary) -> void:
 		hit_set[best.get_instance_id()] = true
 		_bump_combo()   # iter 54 — chain bolts count toward combo
 
+# Iter 72 — IRON FANG redesign. Spawn an EmberBurst at `pos` with a
+# 40-px radius / 1 damage snapshot AoE. Reuses the existing minimal-
+# scene grammar from iter 67/68 (setup() called BEFORE add_child so
+# _ready sees the configured values). Host = get_parent() so the
+# burst survives if the hero dies in the same frame as the proc fires
+# (matches the iter-61 / iter-62 spawn-host pattern).
+const IRON_FANG_BURST_RADIUS: float = 40.0
+const IRON_FANG_BURST_DAMAGE: int = 1
+func _trigger_iron_fang_burst(pos: Vector2) -> void:
+	var burst: Node2D = EMBER_BURST_SCENE.instantiate() as Node2D
+	if burst == null:
+		return
+	burst.global_position = pos
+	if burst.has_method("setup"):
+		burst.call("setup", IRON_FANG_BURST_RADIUS, IRON_FANG_BURST_DAMAGE)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(burst)
+
+# Iter 72 — ARCANE PULSE redesign. Find the nearest off-target enemy
+# within 140px of `impact_pos`, deal 1 damage, spawn ArcaneBolt FX
+# from impact → target. The "off-target" exclusion is handled by the
+# caller passing an exclusion set seeded with the just-spawned
+# projectile's intended trajectory — but since we fire this at CAST
+# time (not impact time), there's no specific target to exclude.
+# Instead we pick the nearest enemy regardless; the relic reads as
+# "casting reaches an extra enemy" which is the intended feel.
+const ARCANE_PULSE_BOLT_RANGE: float = 140.0
+const ARCANE_PULSE_BOLT_DAMAGE: int = 1
+func _trigger_arcane_pulse_bolt(impact_pos: Vector2) -> void:
+	# Scan for nearest enemy within range.
+	var best: Node = null
+	var best_dist: float = ARCANE_PULSE_BOLT_RANGE
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var d: float = enemy.global_position.distance_to(impact_pos)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
+	if best == null:
+		return   # no target in range; no proc this cast (cheap miss)
+	# Damage. Pass is_crit=false — arcane pulse is a flat proc, not a
+	# crit. If the player happens to have crit_chance_f, the regular
+	# blast roll already handled THAT projectile's crit; the fork is a
+	# separate bolt.
+	if best.has_method("take_hit"):
+		best.take_hit(ARCANE_PULSE_BOLT_DAMAGE)
+	# Spawn the ArcaneBolt visual from impact → target. setup() before
+	# add_child so _ready sees the endpoints.
+	var bolt: Node2D = ARCANE_BOLT_SCENE.instantiate() as Node2D
+	if bolt == null:
+		return
+	if bolt.has_method("setup"):
+		bolt.call("setup", impact_pos, best.global_position)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(bolt)
+
+# Iter 72 — STONEHEART redesign. Heal +1 and spawn the StonePulse FX at
+# the hero. Called from _on_enemy_died_for_relics on the very first kill
+# of each room (gated by _stoneheart_first_kill_armed, which auto-resets
+# on scene reload alongside _iron_resolve_absorbed_this_room).
+const STONEHEART_PULSE_RADIUS: float = 60.0
+func _trigger_stoneheart_pulse() -> void:
+	# Don't heal-and-spawn if we're already at cap or dying.
+	if _is_dying:
+		return
+	var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hp < cap:
+		heal(1)
+		# Emerald floater so the heal source is distinct from bloodstone
+		# (red), lifesteal (magenta), and room-clear heal (light green).
+		# Stoneheart uses a slightly deeper emerald to mark "the FIRST
+		# kill" beat.
+		var floater: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -64),
+			"+1",
+			Color(0.35, 0.95, 0.55),
+		)
+		var p: Node = get_parent()
+		if p != null:
+			p.add_child(floater)
+	# Spawn the StonePulse regardless of whether the heal applied —
+	# the proc beat fires on EVERY first-kill, even if HP was full.
+	# The player sees the relic working even on a clean run.
+	var pulse: Node2D = STONE_PULSE_SCENE.instantiate() as Node2D
+	if pulse == null:
+		return
+	pulse.global_position = global_position
+	if pulse.has_method("setup"):
+		pulse.call("setup", STONEHEART_PULSE_RADIUS)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(pulse)
+
+# Iter 72 — IRON SKIN redesign. Spawn a StoneShardBurst at the hero
+# to visualize the deflection. If this is the 4th block in a row,
+# also apply a no-damage knockback ring to nearby enemies — pure
+# spacing tool. Returns nothing; called from take_damage AFTER the
+# reduction has actually saved damage.
+const IRON_SKIN_KNOCKBACK_RADIUS: float = 60.0
+const IRON_SKIN_KNOCKBACK_FORCE: float = 280.0
+const IRON_SKIN_KNOCKBACK_TIME: float = 0.20
+func _trigger_iron_skin_deflect() -> void:
+	# Always spawn the deflect FX so the player sees the proc.
+	var burst: Node2D = STONE_SHARD_SCENE.instantiate() as Node2D
+	if burst != null:
+		burst.global_position = global_position
+		var host: Node = get_parent()
+		if host != null:
+			host.add_child(burst)
+	# Every 4th block also pushes back nearby enemies. No damage —
+	# this is a defensive spacing tool, not an offensive trigger.
+	if _iron_skin_block_counter % 4 == 0:
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			if not is_instance_valid(enemy):
+				continue
+			var d: float = enemy.global_position.distance_to(global_position)
+			if d > IRON_SKIN_KNOCKBACK_RADIUS:
+				continue
+			if enemy.has_method("apply_knockback"):
+				var push_dir: Vector2 = (enemy.global_position - global_position)
+				if push_dir.length() > 0.01:
+					push_dir = push_dir.normalized()
+				else:
+					push_dir = Vector2.RIGHT
+				enemy.apply_knockback(push_dir, IRON_SKIN_KNOCKBACK_FORCE, IRON_SKIN_KNOCKBACK_TIME)
+		# Spawn a SECOND larger shard burst at the hero to read as the
+		# louder "shield burst" beat. Same FX class, just stacked — the
+		# two bursts overlay into a visibly bigger ring.
+		var bigger: Node2D = STONE_SHARD_SCENE.instantiate() as Node2D
+		if bigger != null:
+			bigger.global_position = global_position
+			bigger.scale = Vector2(1.4, 1.4)
+			var host2: Node = get_parent()
+			if host2 != null:
+				host2.add_child(bigger)
+
 # Iter 70 — aim assist. Returns aim snapped to point at the best
 # in-cone enemy if one qualifies, otherwise the original aim. "Best"
 # means smallest angle deviation, tie-broken by closeness. We scan
@@ -1242,6 +1430,19 @@ func _start_blast() -> void:
 			muzzle.rotation = spread_aim.angle()
 			get_tree().current_scene.add_child(muzzle)
 		_spawn_blast_projectile(spawn_pos, spread_aim, resonance_active)
+	# Iter 72 — ARCANE PULSE redesign. Once per cast (not per projectile
+	# in a multi-shot), bump the cast counter; on every 5th cast, fork a
+	# violet bolt to the nearest enemy within 140px of the spawn_pos.
+	# Tracked counter is independent of _blast_counter (which is the
+	# arcane_resonance every-4th counter) so the two relics' procs land
+	# on DIFFERENT casts most of the time. Fires AFTER the projectile
+	# spawn loop so the bolt's source pos is the cast origin, not
+	# whatever the loop left as final spread_aim. Independent of
+	# resonance_active — both can fire on the same cast.
+	if GameState.has_relic("arcane_pulse"):
+		_arcane_pulse_cast_counter += 1
+		if _arcane_pulse_cast_counter % 5 == 0:
+			_trigger_arcane_pulse_bolt(spawn_pos)
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.
 	Events.hero_blasted.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), aim)
@@ -1367,7 +1568,20 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 			p_iron.add_child(floater_iron)
 		return
 	# Iron Skin: flat subtract, never below 0.
-	var actual: int = maxi(0, amount - GameState.modifier_total("damage_taken_reduction", 0))
+	var reduction: int = GameState.modifier_total("damage_taken_reduction", 0)
+	var actual: int = maxi(0, amount - reduction)
+	# Iter 72 — IRON SKIN redesign. If the relic is owned AND the
+	# reduction actually saved damage on THIS hit (amount > 0 and the
+	# reduction subtracted at least 1), spawn the stone-shard deflect
+	# burst. Also bump the per-run block counter so the every-4th
+	# knockback ring fires on schedule. Stalwart / aegis_plate also
+	# carry damage_taken_reduction but get NO deflect FX — keeping the
+	# proc scoped to iron_skin specifically preserves each relic's
+	# identity. Fires even if `actual <= 0` (i.e. fully absorbed) — a
+	# fully-blocked hit is the most satisfying moment to see the FX.
+	if GameState.has_relic("iron_skin") and amount > 0 and reduction > 0:
+		_iron_skin_block_counter += 1
+		_trigger_iron_skin_deflect()
 	if actual <= 0:
 		return
 	hp -= actual
@@ -1487,6 +1701,16 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 # scene reload = new run).
 func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 	_kill_counter += 1
+	# Iter 72 — STONEHEART redesign. Per-room flag pattern: the FIRST
+	# enemy felled each room triggers a vital pulse + +1 HP heal. Flag
+	# auto-resets on scene reload (mirrors _iron_resolve_absorbed_this_
+	# room). Independent of bloodstone (every-3rd kill) so the two stack
+	# cleanly — bloodstone proc on kill 3, stoneheart on kill 1 of EACH
+	# room. Checked FIRST so other on-kill hooks (soul_burst, FLAME
+	# ascendance) still run in the same beat.
+	if GameState.has_relic("stoneheart") and _stoneheart_first_kill_armed:
+		_stoneheart_first_kill_armed = false
+		_trigger_stoneheart_pulse()
 	# Iter 66 — BLOOD ascendance (≥4 BLOOD relics): after any kill, arm
 	# the NEXT sword hit to guaranteed-lifesteal +2 HP. Reads tier LIVE
 	# (not swing-locked) because this is a kill-time effect, not a swing

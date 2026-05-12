@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://bpause7e1e45a"]
+[gd_scene format=3 uid="uid://bpause7e1e45a"]
 
 [ext_resource type="Script" path="res://scripts/pause_screen.gd" id="1_script"]
 

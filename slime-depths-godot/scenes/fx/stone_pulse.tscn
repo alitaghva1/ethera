@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3stonepulse0072"]
+
+[ext_resource type="Script" path="res://scripts/stone_pulse.gd" id="1_script"]
+
+; Iter 72 — STONEHEART redesign FX. Thin scene wrapper around
+; stone_pulse.gd, which builds the two concentric Line2D rings in code
+; so the geometry scales to the configured radius (set via setup()).
+; Same minimal-scene pattern as ember_burst.tscn / shock_pulse.tscn —
+; the visuals depend on radius which only setup() knows.
+;
+; STONEHEART: the FIRST enemy slain in each room heals the hero +1 HP
+; and spawns this green pulse around the hero so the relic proc is
+; visible.
+
+[node name="StonePulse" type="Node2D"]
+script = ExtResource("1_script")

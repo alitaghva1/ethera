@@ -83,7 +83,16 @@ func _open() -> void:
 		"+%d GOLD" % GOLD_REWARD,
 		Color(1, 0.86, 0.36)
 	)
-	get_parent().add_child(n)
+	# iter-72 bug-fix: defensive get_parent() null guard. If the chest
+	# is opened during scene teardown (e.g. a queued attack lands on the
+	# same frame as a scene change), get_parent() can be null and the
+	# add_child call would crash. Free the orphan DamageNumber if we
+	# can't park it under our parent.
+	var parent_node: Node = get_parent()
+	if parent_node != null:
+		parent_node.add_child(n)
+	else:
+		n.queue_free()
 	# Fire the same pickup event a pedestal claim fires → audio /
 	# screen flash autoloads respond without any chest-specific code.
 	Events.pickup_claimed.emit(global_position, "gold")

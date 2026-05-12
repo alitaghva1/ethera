@@ -57,44 +57,77 @@ var persisted_hp: int = -1
 # offer-roll weighting (commoners are likely in room 1, rares in room
 # 2, legendaries gate to room 3) and future per-tier visual treatment.
 #
-# Triggered effects (iter 17) — relics whose effect can't be expressed
-# as a flat modifier. The mods dict is empty; hero.gd checks
-# GameState.has_relic(<id>) at the relevant beat. Listed for inventory
-# clarity:
+# Triggered effects (iter 17 + iter 72) — relics whose effect can't be
+# expressed (entirely) as a flat modifier. hero.gd checks has_relic(<id>)
+# at the relevant beat. Listed for inventory clarity:
 #   second_wind         revive once at 1 HP on the killing blow
 #   bloodstone          heal +1 HP every 3 enemy kills
 #   arcane_resonance    every 4th blast deals 2× damage
 #   executioner         +150% damage to enemies below 25% HP
 #   soul_burst          every 5th kill detonates an 80px AoE for 1 dmg
 #   iron_resolve        first wound each room is absorbed
+#   iron_fang           (iter 72) +1 sword dmg + every 6th hit drops ember burst
+#   arcane_pulse        (iter 72) +1 blast dmg + every 5th cast forks bolt
+#   stoneheart          (iter 72) +1 max HP + first kill each room heals +1
+#   iron_skin           (iter 72) -1 dmg + deflect FX + every 4th block knocks back
 const RELIC_REGISTRY := {
+	# Iter 72 — IRON FANG redesign. +1 sword damage AS BEFORE, plus an
+	# every-6th-hit ember burst at the impact point (40-px AoE for 1
+	# damage, FLAME-orange ring visual). Mechanic + visual replaces the
+	# old pure stat-stick — the ember burst is what a FLAME-themed
+	# common relic should look like at-a-glance. Hero handler reads
+	# the relic id with has_relic + a per-run _iron_fang_hit_counter
+	# (mirrors _sword_hit_counter / _blast_counter pattern).
 	"iron_fang": {
 		"name": "IRON FANG",
-		"description": "Your sword hits harder. +1 sword damage.",
+		"description": "+1 sword damage. Every 6th sword hit detonates a small ember burst at the strike, scorching nearby enemies.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_damage.png",
 		"mods": { "sword_damage_bonus": 1 },
 		"themes": ["flame"],
 	},
+	# Iter 72 — ARCANE PULSE redesign. +1 blast damage AS BEFORE, plus an
+	# every-5th-blast "arcane surge": that cast also forks a small
+	# magenta-violet bolt to the nearest off-target enemy within 140px
+	# for 1 damage. Visual: arcane_bolt FX (chain_arc grammar with a
+	# distinct violet palette). The relic now COMPOSES with itself
+	# (counter ticks every cast) rather than disappearing into the
+	# damage line.
 	"arcane_pulse": {
 		"name": "ARCANE PULSE",
-		"description": "Each blast strikes twice as hard. +1 blast damage.",
+		"description": "+1 blast damage. Every 5th blast also forks a violet bolt to a nearby enemy.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_arcane_quiver.png",
 		"mods": { "blast_damage_bonus": 1 },
 		"themes": ["storm"],
 	},
+	# Iter 72 — STONEHEART redesign. +1 max HP AS BEFORE, plus a
+	# first-kill-each-room emerald pulse around the hero that heals +1 HP
+	# (capped). Reads as "the relic mends you on a kill" — visible, gated
+	# on a per-room flag so it can't farm trivial heals from a long wave.
+	# Independent of bloodstone (every-3rd-kill heal) so a player with
+	# both gets: room kill 1 → stoneheart heal, kill 3 → bloodstone heal,
+	# kill 6 → bloodstone, etc. Visible distinction in floater color.
 	"stoneheart": {
 		"name": "STONEHEART",
-		"description": "Bear another wound. +1 max HP.",
+		"description": "+1 max HP. The first enemy felled each room sends a vital pulse — heal +1 HP.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_max_hp.png",
 		"mods": { "max_hp_bonus": 1 },
 		"themes": ["blood"],
 	},
+	# Iter 72 — IRON SKIN redesign. -1 incoming damage AS BEFORE, plus a
+	# visible stone-shard deflect burst that fires every time the
+	# reduction actually saves damage. Every 4th time the reduction
+	# triggers, the hero also releases a 60-px shard-push that knocks
+	# adjacent enemies away (no damage — purely defensive spacing tool).
+	# Counter persists per-run (mirrors _sword_hit_counter pattern). The
+	# new mechanic gives IRON SKIN a positional/defensive identity
+	# distinct from iron_resolve (full first-hit absorb) and stalwart
+	# (HP buffer + reduction).
 	"iron_skin": {
 		"name": "IRON SKIN",
-		"description": "Take 1 less damage per hit.",
+		"description": "-1 incoming damage. Hits chip stone fragments off you. Every 4th deflection releases a shard-push that knocks back nearby enemies.",
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_ironhide.png",
 		"mods": { "damage_taken_reduction": 1 },

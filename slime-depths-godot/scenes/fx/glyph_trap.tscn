@@ -1,0 +1,28 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3glyphtrap0001"]
+
+; Iter 72 — Glyph trap hazard. Spawned by a glyph_warden enemy at the
+; end of its WINDUP → PLACE cycle, planted at the warden's OWN feet.
+; The trap is added to the ROOM parent so it OUTLIVES the warden:
+; killing the warden doesn't clear its previously-laid glyphs.
+;
+; Script (glyph_trap.gd) builds the visuals + collision in code:
+;   - Area2D root with collision_mask = 2 (hero layer, same as spike_pit)
+;   - Outer thin amber ring (Polygon2D annulus) defines the danger edge
+;   - Inner 6-pointed star (two interlocking triangles) on a wrapper
+;     Node2D so we can rotate just the star while arming
+;   - Tween-driven scale/alpha burst on detonation
+;
+; Lifecycle:
+;   PLACED   → 0.6s ARMING (amber pulse, no damage)
+;   ARMED    → up to 6.0s HOT (slow-spin rune, hero-step detonates)
+;   DETONATE → 0.28s fade + queue_free
+;   TIMEOUT  → 0.3s fade + queue_free if never triggered
+;
+; Same script-built convention the wraith_phase_in / heal_pulse FX use
+; — keeps the .tscn tiny + avoids fiddly Polygon2D vertex arrays in
+; the .tscn text format.
+
+[ext_resource type="Script" path="res://scripts/glyph_trap.gd" id="1_script"]
+
+[node name="GlyphTrap" type="Area2D"]
+script = ExtResource("1_script")

@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://b3floorclr0071"]
+[gd_scene format=3 uid="uid://k2q8umkqr03s"]
 
 [ext_resource type="Script" path="res://scripts/floor_clear_burst.gd" id="1_script"]
 

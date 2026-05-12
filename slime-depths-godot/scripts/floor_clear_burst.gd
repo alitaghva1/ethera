@@ -113,9 +113,17 @@ func _build_small_variant() -> void:
 	layer.layer = LAYER_INDEX
 	add_child(layer)
 
+	# iter-72 bug-fix: viewport is 1280×720 (project.godot display/window/
+	# size/viewport_height=720), not 768 as the original comment claimed.
+	# 384 was 24 px below true screen center (which made the burst feel
+	# slightly off when stacked against the iter-22 wave banner anchored
+	# at anchor_top=0.42). Pull from the viewport rect so a future
+	# resolution change is auto-tracked.
+	var screen_center: Vector2 = get_viewport().get_visible_rect().size * 0.5
+
 	# Sparkle burst — radial from screen center.
 	var burst: CPUParticles2D = CPUParticles2D.new()
-	burst.position = Vector2(640, 384)  # screen center (1280×768 viewport)
+	burst.position = screen_center
 	burst.amount = SMALL_PARTICLE_COUNT
 	burst.lifetime = SMALL_PARTICLE_LIFETIME
 	burst.one_shot = true
@@ -164,11 +172,17 @@ func _build_big_variant() -> void:
 	layer.layer = LAYER_INDEX
 	add_child(layer)
 
+	# iter-72 bug-fix: same as _build_small_variant — viewport is 1280×720
+	# not 1280×768, so the hardcoded 384 sat 24 px below true center.
+	# Pull from the viewport for resolution independence.
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size
+	var screen_center: Vector2 = vp_size * 0.5
+
 	# Radial wash — Polygon2D circle, faint gold-cream, fades over 0.5s.
 	# Built FIRST so it sits behind the banner + cascade in draw order.
 	var wash: Polygon2D = _make_circle(BIG_WASH_RADIUS, 32)
 	wash.color = COLOR_WASH
-	wash.position = Vector2(640, 384)
+	wash.position = screen_center
 	layer.add_child(wash)
 	var wash_tw: Tween = create_tween()
 	wash_tw.tween_property(wash, "modulate:a", 0.0, BIG_WASH_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -178,13 +192,16 @@ func _build_big_variant() -> void:
 	# bright gold → warm amber → fade so the cascade has temperature
 	# variation rather than flat gold flakes.
 	var cascade: CPUParticles2D = CPUParticles2D.new()
-	cascade.position = Vector2(640, -40)  # just above the screen
+	cascade.position = Vector2(screen_center.x, -40.0)  # just above the screen
 	cascade.amount = BIG_PARTICLE_COUNT
 	cascade.lifetime = BIG_PARTICLE_LIFETIME
 	cascade.one_shot = true
 	cascade.explosiveness = 0.4
 	cascade.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	cascade.emission_rect_extents = Vector2(640, 8)  # full screen width
+	# iter-72 bug-fix: emission_rect_extents is HALF-width, so 640 covered
+	# a 1280-wide band — matches viewport at 1280×720 today but pulled
+	# from the viewport for resolution independence.
+	cascade.emission_rect_extents = Vector2(vp_size.x * 0.5, 8.0)
 	cascade.direction = Vector2(0, 1)
 	cascade.spread = 18.0
 	cascade.initial_velocity_min = 60.0

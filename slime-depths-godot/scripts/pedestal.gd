@@ -319,7 +319,15 @@ func _sync_offer_panel_height() -> void:
 	# 2 lets the autowrap pass settle. After this, get_minimum_size.y on
 	# every offer's DescLabel reflects the WRAPPED content height.
 	await get_tree().process_frame
+	# iter-72 bug-fix: if the pedestal was queue_freed between _ready and
+	# the await resuming (e.g. an instant claim on a sibling on frame 1),
+	# `get_tree()` and `get_nodes_in_group` calls below would push errors
+	# on a freed pedestal. Bail if no longer in the tree.
+	if not is_inside_tree():
+		return
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	var max_needed: float = _measure_max_desc_height(BASELINE_HEIGHT, DESC_VERTICAL_MARGIN)
 	# Iter 67 — cap with a font-shrink fallback. If even at font_size=12
 	# the tallest description blows past MAX_PANEL_HEIGHT, drop to 11 on
@@ -334,7 +342,14 @@ func _sync_offer_panel_height() -> void:
 				continue
 			od.add_theme_font_size_override("font_size", DESC_FONT_SHRUNK)
 		await get_tree().process_frame
+		# iter-72 bug-fix: same race guard as above — the font-shrink path
+		# adds 2 more frames of wait, doubling the window where this
+		# pedestal might be freed before we resume.
+		if not is_inside_tree():
+			return
 		await get_tree().process_frame
+		if not is_inside_tree():
+			return
 		max_needed = _measure_max_desc_height(BASELINE_HEIGHT, DESC_VERTICAL_MARGIN)
 		max_needed = minf(max_needed, MAX_PANEL_HEIGHT)
 	# Apply the unified height (anchored at the panel BOTTOM so the
@@ -411,7 +426,14 @@ func _claim() -> void:
 		str(GameState.relic_info(relic_id).get("name", relic_id)) + (" CLAIMED" if granted else " (already owned)"),
 		Color(1, 0.85, 0.45)
 	)
-	get_parent().add_child(n)
+	# iter-72 bug-fix: defensive get_parent() null guard. Parent should
+	# always be main.gd, but during scene teardown (an unlikely but
+	# possible interleave with a final-frame claim) it could be null.
+	var parent_node: Node = get_parent()
+	if parent_node != null:
+		parent_node.add_child(n)
+	else:
+		n.queue_free()
 	if granted:
 		Events.pickup_claimed.emit(global_position, relic_id)
 		# Iter 53 — mythic tier audio. Layered on top of the generic

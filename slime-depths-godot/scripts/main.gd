@@ -72,6 +72,16 @@ const ENEMY_TYPES := {
 	# reach. Invulnerable during phase but squishy (4 HP) in chase /
 	# 0.8s strike recovery — the player can punish a missed flank.
 	"rogue_wraith":      preload("res://scenes/enemies/rogue_wraith.tres"),
+	# Iter 72 — trap-layer conjurer. Uses the "glyph_warden" behavior in
+	# enemy.gd. Kites at ~220 px and on a 3.5s cycle plants a stationary
+	# glyph hazard at its OWN feet (0.7s gold-amber windup + spinning
+	# rune mark inscribed on the ground as telegraph). Glyphs arm 0.6s
+	# after placement then sit as floor damage for up to 6.0s — hero
+	# stepping in their radius takes 1 damage + brief slow. Crucially,
+	# glyphs OUTLIVE the warden: kill the warden, its previously-laid
+	# glyphs keep ticking. First enemy that authors persistent dynamic
+	# ground hazards. Squishy support (5 HP, 65 px/s) — no direct attack.
+	"glyph_warden":      preload("res://scenes/enemies/glyph_warden.tres"),
 	# Iter 17 — boss type. Spawned alone in room 3's final wave; the
 	# is_boss flag drives the HP-bar UI and the boss tracking in
 	# _process. Wave-clear detection treats it like any other enemy.

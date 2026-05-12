@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3arcanebolt0072"]
+
+[ext_resource type="Script" path="res://scripts/arcane_bolt.gd" id="1_script"]
+
+; Iter 72 — ARCANE PULSE redesign FX. Thin scene wrapper around
+; arcane_bolt.gd, which builds the jagged Line2D bolt + endpoint sparks
+; in code so the geometry can be re-jittered every spawn. Same pattern
+; as chain_arc.tscn (iter 67) only the palette differs (magenta-violet
+; vs cyan-white) so a player can tell the two procs apart.
+;
+; ARCANE PULSE: every 5th blast picks the nearest off-target enemy
+; within 140px and zaps it for 1 damage with this FX flashing between
+; the impact point and the chosen target.
+
+[node name="ArcaneBolt" type="Node2D"]
+script = ExtResource("1_script")

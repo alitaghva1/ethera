@@ -78,6 +78,16 @@ static func spawn(relic_id: String, host: Node) -> PickupBanner:
 		return null
 	if not GameState.RELIC_REGISTRY.has(relic_id):
 		return null
+	# iter-72 bug-fix: double-spawn guard. main.gd's _on_pickup_claimed
+	# only filters chest/gold pickups out — if pickup_claimed ever fires
+	# twice for the same relic (the iter-16 guard in main.gd only protects
+	# _resolve_room_pickup, not banner spawn), two banners would stack
+	# on top of each other at the same top-center anchor. Dismiss any
+	# existing PickupBanner sibling so only the latest claim is visible.
+	# Cheap: walks the host's direct children once.
+	for sibling in host.get_children():
+		if sibling is PickupBanner and is_instance_valid(sibling):
+			(sibling as PickupBanner).queue_free()
 	var inst: PickupBanner = BANNER_SCENE.instantiate()
 	inst._relic_id = relic_id
 	host.add_child(inst)

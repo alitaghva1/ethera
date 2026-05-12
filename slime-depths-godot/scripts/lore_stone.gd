@@ -163,7 +163,14 @@ func _read() -> void:
 			lore_text,
 			Color(0.92, 0.82, 1.0),
 		)
-		get_parent().add_child(num)
+		# iter-72 bug-fix: defensive get_parent() null guard — same pattern
+		# as chest.gd / pedestal.gd. Parent is normally main.gd; bail clean
+		# if it's been freed mid-read.
+		var parent_node: Node = get_parent()
+		if parent_node != null:
+			parent_node.add_child(num)
+		else:
+			num.queue_free()
 	# Outro tween — crystal scales up briefly then fades out, glow dims.
 	monitoring = false
 	var tween: Tween = create_tween().set_parallel(true)
