@@ -74,12 +74,12 @@ shadow_color = Color(0, 0, 0, 0.4)
 shadow_size = 3
 shadow_offset = Vector2(0, 2)
 
-; ── Node tree (iter 28 reorg) ─────────────────────────────────────────
+; ── Node tree (iter 28 reorg, iter 64 panel resize) ──────────────────
 ; Vertical layout from top to bottom:
-;   y=-180 to -100   InfoPanel (Panel backdrop, tier-colored border)
+;   y=-220 to -100   InfoPanel (Panel backdrop, tier-colored border)
 ;                     containing:
-;     y=-176 to -148   NameLabel
-;     y=-144 to -104   DescLabel (autowrapped, up to 3 lines)
+;     y=-216 to -188   NameLabel
+;     y=-186 to -104   DescLabel (autowrapped WORD_SMART, ~5 lines)
 ;   y=-80             HaloSprite (tier-tinted glow under icon)
 ;   y=-80             Orb (icon Sprite2D, normalized scale)
 ;   y=-80             PointLight2D (casts onto floor)
@@ -89,6 +89,13 @@ shadow_offset = Vector2(0, 2)
 ;
 ; Spacing chosen so 3 pedestals at 200 px horizontal stride don't
 ; visually collide — InfoPanel is ~196 px wide, leaves 4 px gap.
+;
+; Iter 64 — panel grew 80→120 px tall so descriptions like FOCUSED EYE
+; ("Sharper casting. +1 blast damage, blast projectiles travel +20%
+; faster.") fit on 4 wrapped lines without mid-word breaks. Width is
+; locked at 196 px (anchored to the 200 px pedestal stride) so all 3
+; pedestals in a row render uniformly regardless of description length.
+; DescLabel's autowrap_mode = 3 = TextServer.AUTOWRAP_WORD_SMART.
 
 [node name="Pedestal" type="Area2D"]
 collision_layer = 0
@@ -101,7 +108,7 @@ shape = SubResource("pedestal_area")
 
 [node name="InfoPanel" type="Panel" parent="."]
 offset_left = -98.0
-offset_top = -180.0
+offset_top = -220.0
 offset_right = 98.0
 offset_bottom = -100.0
 theme_override_styles/panel = SubResource("info_panel_style")
@@ -137,6 +144,7 @@ text = "+1 sword damage"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
+clip_text = false
 mouse_filter = 2
 
 [node name="HaloSprite" type="Sprite2D" parent="."]

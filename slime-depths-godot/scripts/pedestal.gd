@@ -69,6 +69,18 @@ func _ready() -> void:
 	name_label.text = str(info.get("name", relic_id))
 	desc_label.text = str(info.get("description", ""))
 	prompt.visible = false
+	# Iter 64 — defensive autowrap pin. The .tscn already sets
+	# autowrap_mode=3 (WORD_SMART), but pin it in code so any future
+	# theme/scene edit that drops the override can't reintroduce the
+	# mid-word break bug (e.g. "blas:" instead of "blast" on FOCUSED EYE).
+	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_label.clip_text = false
+	# Iter 64 — sync panel height across the 3-pedestal offer so a long
+	# description (FOCUSED EYE, AVATAR OF FLAME) doesn't render with a
+	# taller frame than its siblings. Run on the next frame after every
+	# pedestal's _ready has computed its DescLabel layout. Uniform width
+	# is already enforced by the .tscn (-98 to 98 offsets, locked).
+	call_deferred("_sync_offer_panel_height")
 	# Iter 21 — tier dispatch. Defaults to "common" if a relic is
 	# missing the field so a typo never makes the pedestal disappear.
 	var tier: String = str(info.get("tier", "common"))
@@ -238,6 +250,54 @@ func _build_legendary_aura() -> void:
 	aura.color_ramp = grad
 	add_child(aura)
 	_legendary_aura = aura
+
+# Iter 64 — panel-height uniformity across a pedestal_offer group.
+# Called via call_deferred from every pedestal's _ready, so by the time
+# this runs the DescLabel has measured its wrapped content. Each pedestal
+# computes its own "needed" height from desc_label.get_content_height,
+# then we max across the offer group and apply that height to ALL
+# pedestals' InfoPanels. Result: 3 uniformly-sized panels even when one
+# description is 1 line and another is 5.
+#
+# The .tscn-defined minimum (120 px tall, -220 to -100) is the floor —
+# we never SHRINK below the baked design, only grow upward when a long
+# description like AVATAR OF FLAME (155 chars) needs more room.
+func _sync_offer_panel_height() -> void:
+	if not is_instance_valid(info_panel) or not is_instance_valid(desc_label):
+		return
+	# Baseline from the .tscn — keep this as the floor so common-case
+	# short descriptions don't visually shrink the panel.
+	const BASELINE_TOP: float = -220.0
+	const BASELINE_BOTTOM: float = -100.0
+	const BASELINE_HEIGHT: float = BASELINE_BOTTOM - BASELINE_TOP  # 120
+	const DESC_VERTICAL_MARGIN: float = 38.0  # NameLabel area (34) + bottom pad (4)
+	var max_needed: float = BASELINE_HEIGHT
+	# Walk the offer group and ask each sibling pedestal what height its
+	# DescLabel needs. get_minimum_size on an autowrapped Label returns
+	# the content height for its current width — exactly what we want.
+	for other in get_tree().get_nodes_in_group("pedestal_offer"):
+		if not is_instance_valid(other):
+			continue
+		var other_desc: Label = other.get_node_or_null("InfoPanel/DescLabel") as Label
+		if other_desc == null:
+			continue
+		# Force a layout pass so get_minimum_size reflects the wrapped
+		# content, not the pre-wrap single-line height.
+		other_desc.reset_size()
+		var desc_h: float = other_desc.get_minimum_size().y
+		var needed: float = desc_h + DESC_VERTICAL_MARGIN
+		if needed > max_needed:
+			max_needed = needed
+	# Apply the unified height (anchored at the panel BOTTOM so the
+	# Orb/Plinth stack below stays put — the panel grows UPWARD).
+	for other in get_tree().get_nodes_in_group("pedestal_offer"):
+		if not is_instance_valid(other):
+			continue
+		var other_panel: Panel = other.get_node_or_null("InfoPanel") as Panel
+		if other_panel == null:
+			continue
+		other_panel.offset_top = BASELINE_BOTTOM - max_needed
+		other_panel.offset_bottom = BASELINE_BOTTOM
 
 func _on_body_entered(body: Node) -> void:
 	if _claimed:

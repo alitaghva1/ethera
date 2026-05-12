@@ -228,6 +228,11 @@ var _parry_shield_ref: Node2D = null
 var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
 var _dash_strike_dir := Vector2.RIGHT
+# Iter 64 — cached start position of the current dash-strike. Captured
+# in _start_dash_strike, consumed in _resolve_dash_strike_hit by the
+# FLAME resonance fire-trail spawner so it can stamp fire pools evenly
+# along the dash path. Zero-vector when no dash is active.
+var _dash_strike_start_pos: Vector2 = Vector2.ZERO
 # Iter 25 — per-dash hit tracker. Reset on _start_dash_strike. Every
 # physics tick during the dash, we scan enemies within
 # DASH_STRIKE_PIERCE_RADIUS and damage any not already in this dict.
@@ -1498,6 +1503,9 @@ func _start_dash_strike() -> void:
 	_dash_strike_dir = aim_world.normalized()
 	_dash_strike_time = DASH_STRIKE_DURATION
 	_dash_strike_cd = DASH_STRIKE_COOLDOWN
+	# Iter 64 — capture the dash's origin so _resolve_dash_strike_hit
+	# can stamp FLAME fire-trail pools evenly between start and end.
+	_dash_strike_start_pos = global_position
 	# Iter 25 — iframes cover the full dash + POST_IFRAMES seconds AFTER
 	# so a player landing next to a swinging enemy has a window to
 	# reposition. Previously iframes ended exactly at dash end, leaving
@@ -1594,9 +1602,45 @@ func _resolve_dash_strike_hit() -> void:
 		if enemy.has_method("apply_knockback"):
 			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _dash_strike_dir
 			enemy.apply_knockback(push_dir, DASH_KNOCKBACK_FORCE * knockback_mul, DASH_KNOCKBACK_TIME)
+	# Iter 64 — FLAME resonance/ascendance dash-strike fire trail. The
+	# dash is a committed engage that carves a 168px line through enemy
+	# space; FLAME owners turn that line into a burning streak the next
+	# wave has to walk through. Tier 1 (≥2 FLAME relics): 3 pools, 0.5s
+	# each. Tier 2 (≥4 FLAME relics): 5 pools, 0.7s each — wider trail
+	# (more pools = more overlap) AND longer-lasting. Independent of
+	# whether the dash connected (whiff still leaves a trail — the
+	# player committed the resource cost, they get the AoE).
+	var flame_tier: int = GameState.theme_tier("flame")
+	if flame_tier >= 1:
+		var pool_count: int = 5 if flame_tier >= 2 else 3
+		var pool_life: float = 0.7 if flame_tier >= 2 else 0.5
+		_trigger_dash_fire_trail(_dash_strike_start_pos, global_position, pool_count, pool_life)
 	# Always emit even on whiff — the impact VFX still wants to fire so
 	# the player gets visual feedback that the dash committed.
 	dash_strike_landed.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), hit_count)
+
+# Iter 64 — drop `count` fire pools evenly spaced along the dash path
+# from `start` to `end`. Pool _life set BEFORE add_child so the pool's
+# _physics_process uses the overridden lifetime. Pools are added to the
+# hero's parent (main.tscn) to mirror iter 61's swing-trail host pattern
+# — get_tree().current_scene can be null during test instantiation.
+func _trigger_dash_fire_trail(start: Vector2, end: Vector2, count: int, pool_life: float) -> void:
+	if count <= 0:
+		return
+	var host: Node = get_parent()
+	if host == null:
+		return
+	# Evenly space pools along the path: t = 0, 1/(N-1), 2/(N-1), ... 1.0.
+	# For count=1 we just drop one at the midpoint.
+	for i in range(count):
+		var t: float = 0.5 if count == 1 else float(i) / float(count - 1)
+		var pos: Vector2 = start.lerp(end, t)
+		var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+		if pool == null:
+			continue
+		pool.global_position = pos
+		pool.set("_life", pool_life)
+		host.add_child(pool)
 
 # Compare-and-set animation play. AnimatedSprite2D.play() restarts the
 # animation from frame 0 every call. Helper checks the cached name before
