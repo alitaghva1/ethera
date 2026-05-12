@@ -418,6 +418,28 @@ const RELIC_REGISTRY := {
 		},
 		"themes": ["shadow"],
 	},
+	# Iter 56 — familiar pet relics. Drive familiar_count modifier
+	# which main.gd._sync_familiars reads to spawn / despawn wisps
+	# that orbit the hero and auto-fire at nearby enemies. Pairs
+	# perfectly with the STORM bullet-hell direction: hero swings +
+	# chains arcs + multi-shot blasts + 1-3 familiars also fire =
+	# full screen coverage.
+	"wisp_companion": {
+		"name": "WISP COMPANION",
+		"description": "A glowing wisp orbits you and fires bolts at nearby enemies.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_chain_lightning.png",
+		"mods": { "familiar_count": 1 },
+		"themes": ["storm"],
+	},
+	"phantom_squad": {
+		"name": "PHANTOM SQUAD",
+		"description": "Two more wisps join the orbit. Three lightning-bolts seek alongside you.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_echoing_strike.png",
+		"mods": { "familiar_count": 2 },
+		"themes": ["storm"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",

@@ -24,6 +24,7 @@ const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const SHRINE_SCENE: PackedScene   = preload("res://scenes/shrine.tscn")
 const LORE_STONE_SCENE: PackedScene = preload("res://scenes/lore_stone.tscn")
+const FAMILIAR_SCENE: PackedScene = preload("res://scenes/familiar.tscn")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
 const RELIC_ICON_SCENE: PackedScene = preload("res://scenes/relic_icon.tscn")
 
@@ -1866,6 +1867,34 @@ func _rebuild_relic_strip() -> void:
 	# roster (a newly-granted relic that pushes a theme over 2/4
 	# owned crosses a tier instantly).
 	_rebuild_theme_chips()
+	# Iter 56 — sync familiars to the familiar_count modifier. A relic
+	# pickup that grants familiars triggers _rebuild_relic_strip
+	# (already wired by _on_pickup_claimed), and the sync method
+	# spawns / despawns familiars to match the new total.
+	_sync_familiars()
+
+# Iter 56 — familiar sync. Reads the current familiar_count modifier
+# total and ensures exactly that many Familiar nodes exist in the
+# "familiars" group. Adds spawn at hero position; removes excess (in
+# case of a future relic that REMOVES a familiar). Orbit phase is
+# distributed evenly so multiple familiars spread out around the hero.
+func _sync_familiars() -> void:
+	var target_count: int = GameState.modifier_total("familiar_count", 0)
+	var existing: Array = get_tree().get_nodes_in_group("familiars")
+	# Spawn missing.
+	while existing.size() < target_count:
+		var fam: Node2D = FAMILIAR_SCENE.instantiate() as Node2D
+		# Distribute orbit phases so 2 familiars are on opposite sides,
+		# 3 are at 120° spacing, etc.
+		fam.orbit_phase = (TAU / float(max(1, target_count))) * float(existing.size())
+		fam.global_position = hero.global_position if is_instance_valid(hero) else Vector2(640, 384)
+		add_child(fam)
+		existing = get_tree().get_nodes_in_group("familiars")
+	# Despawn excess (rare — only if a future de-grant relic ships).
+	while existing.size() > target_count:
+		var f: Node = existing.pop_back()
+		if is_instance_valid(f):
+			f.queue_free()
 
 # Iter 39 — theme chip strip builder. Iterates GameState.active_themes
 # (only themes with tier >= 1 appear) and emits one Label chip per
