@@ -234,12 +234,29 @@ const DASH_KNOCKBACK_TIME   := 0.16
 # dealt, which made the arc feel like a hit-marker rather than the
 # swing itself.
 const MELEE_WINDUP          := 0.06
-# Forward lunge: a brief velocity additive in the aim direction so the
-# hero commits to the swing instead of staying planted. Decays linearly
-# over LUNGE_TIME. 220 × 0.10 / 2 = ~11 px of forward movement; the
-# player FEELS the swing but doesn't teleport.
-const LUNGE_SPEED           := 220.0
-const LUNGE_TIME            := 0.10
+# iter-97 — combat movement feel rework.
+#
+# The pre-iter-97 design had an additive forward lunge (220 px/s × 0.10s
+# = ~11 px) layered on top of WASD velocity at every swing. Playtest
+# feedback: "melee dashes forward in an almost unrealistic way" and
+# "shooting/meleeing while moving feels unnatural." The lunge was the
+# culprit on both fronts:
+#   1. ~11 px instant push reads as "lurch" when WASD walk is also
+#      ramping up via move_toward (out-of-sync acceleration curves).
+#   2. With sustained walk + repeated swings, total velocity spiked to
+#      ~390 px/s vs. the 200 px/s base walk.
+#
+# The JS reference (slime-depths/src/hero.js:1812-1817) has NO lunge —
+# it plants the feet at 35% walk speed during the swing window. That's
+# the "committed swing" feel of Hades / Diablo / PoE. Iter-97 ports
+# that pattern verbatim.
+#
+# Companion: BLAST_FACING_WINDOW commits sprite facing to aim direction
+# for 0.32s after each blast cast. Without it, walking west + shooting
+# east left the sprite facing west while bolts emerged from the back.
+# Mirrors hero.js:1413-1420.
+const ATTACK_MOVE_SPEED_MUL := 0.35
+const BLAST_FACING_WINDOW   := 0.32
 
 # Iter 70 — feel pass for walk acceleration / hit knockback / aim assist.
 #
@@ -399,14 +416,15 @@ var _blood_guaranteed_next_hit: bool = false
 # leave the hero sprite stuck mid-pulse).
 var _blood_pulse_tween: Tween = null
 
-# Iter 19 — melee feel state.
-# _lunge_time / _lunge_dir: brief forward push during the first
-# LUNGE_TIME seconds of a swing. Decays linearly to 0 then releases
-# control back to the input vector.
+# iter-97 — melee feel state. Replaced iter-19's _lunge_time / _lunge_dir
+# pair with a blast-facing window so the sprite commits to the shot
+# direction while WASD movement continues. While `_is_attacking` is
+# true, walk velocity is multiplied by ATTACK_MOVE_SPEED_MUL — no
+# additive lunge impulse anywhere.
 # _pending_melee_strike + aim/range cached so the windowed damage
 # scan in _physics_process knows what to hit.
-var _lunge_time: float = 0.0
-var _lunge_dir: Vector2 = Vector2.ZERO
+var _blast_facing_time: float = 0.0
+var _blast_facing_dir: Vector2 = Vector2.RIGHT
 var _pending_melee_strike: bool = false
 var _melee_strike_timer: float = 0.0
 var _pending_melee_aim: Vector2 = Vector2.RIGHT
@@ -565,7 +583,9 @@ func _physics_process(delta: float) -> void:
 	_shield_cd        = max(0.0, _shield_cd        - delta)
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
 	_hurt_time        = max(0.0, _hurt_time        - delta)
-	_lunge_time       = max(0.0, _lunge_time       - delta)
+	# iter-97: _lunge_time gone. _blast_facing_time decays here so sprite
+	# facing returns to walk-direction inference after the post-shot window.
+	_blast_facing_time = max(0.0, _blast_facing_time - delta)
 	_knockback_time   = max(0.0, _knockback_time   - delta)
 	if _attack_live <= 0.0:
 		_is_attacking = false
@@ -653,6 +673,14 @@ func _physics_process(delta: float) -> void:
 		# Multiplied IN, not added, so two overlapping slows stack
 		# correctly (see enter_slow_zone/exit_slow_zone setters).
 		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0)) * _environment_speed_mul
+		# iter-97: while attacking (sword OR blast — _is_attacking is set
+		# by both _start_attack and _start_blast), plant the feet at 35%
+		# walk speed. JS reference at slime-depths/src/hero.js:1812-1817
+		# describes this as the Hades/Diablo/PoE "committed swing" feel:
+		# you can still reposition but the hero is COMMITTING to the
+		# action, not full-speed running mid-swing.
+		if _is_attacking:
+			speed *= ATTACK_MOVE_SPEED_MUL
 		# Iter 70 — accel-ramped walk. Pre-iter-70 this was `velocity = input
 		# * speed` (snap). That gave the hero an instant on/off response
 		# that read as "teleporting" — particularly noticeable when the
@@ -660,19 +688,16 @@ func _physics_process(delta: float) -> void:
 		# to the target velocity over MOVE_ACCEL px/s² and decays to zero
 		# over MOVE_DECEL (faster than accel so the stop still feels
 		# crisp, not slidey). Released input → target is Vector2.ZERO,
-		# which decays via the same call. Lunge / knockback layer on TOP
+		# which decays via the same call. Knockback layers on TOP
 		# afterward (additive).
 		var target_velocity: Vector2 = input * speed
 		var rate: float = MOVE_ACCEL if input.length() > 0.01 else MOVE_DECEL
 		velocity = velocity.move_toward(target_velocity, rate * delta)
-		# Iter 19 — forward lunge on swing. Linear-decay impulse in the
-		# aim direction layered ON TOP of walk velocity. The player can
-		# still steer mid-lunge via WASD; the lunge just commits the
-		# initial swing direction. Pure-press LMB (no movement input)
-		# produces a clean ~11 px forward dart.
-		if _lunge_time > 0.0:
-			var lunge_t: float = _lunge_time / LUNGE_TIME
-			velocity += _lunge_dir * (LUNGE_SPEED * lunge_t)
+		# iter-97: additive forward lunge removed (was 220 × 0.1 = ~11 px
+		# per swing). It read as "unrealistic dash forward" because the
+		# instantaneous impulse stacked on top of the move_toward walk
+		# acceleration ramp out-of-sync. The new ATTACK_MOVE_SPEED_MUL
+		# above replaces it with a stance / planted-feet feel.
 		# Iter 70 — hero hurt knockback. Linear-decay impulse layered ON
 		# TOP of walk velocity (same pattern as lunge). Player can steer
 		# OUT of the push by holding the opposite direction — this is the
@@ -786,6 +811,13 @@ func _compute_facing(input: Vector2) -> int:
 		return _vector_to_dir_idx(_attack_aim)
 	if _dash_strike_time > 0.0:
 		return _vector_to_dir_idx(_dash_strike_dir)
+	# iter-97: blast facing window. For 0.32s after a shot the sprite
+	# faces the aim direction even if WASD continues — JS hero.js:1413-1420.
+	# Comes AFTER the attack/dash branches so an in-flight attack still
+	# takes priority, but BEFORE the walk-direction inference so movement
+	# doesn't override the recent shot commitment.
+	if _blast_facing_time > 0.0 and _blast_facing_dir.length() > 0.001:
+		return _vector_to_dir_idx(_blast_facing_dir)
 	if input.length() > 0.1:
 		return _vector_to_dir_idx(input)
 	return _facing_dir
@@ -834,10 +866,9 @@ func _start_attack() -> void:
 	# damage lands when the arc has visibly extended; the swing reads
 	# as a real motion arc instead of a hit-marker.
 	Events.hero_attacked.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), _attack_aim)
-	# Arm the forward lunge. Direction = aim, decays linearly across
-	# LUNGE_TIME inside _physics_process.
-	_lunge_dir = _attack_aim
-	_lunge_time = LUNGE_TIME
+	# iter-97: lunge arming removed. The forward impulse is gone — see
+	# the ATTACK_MOVE_SPEED_MUL block in _physics_process for the
+	# replacement "committed stance" feel.
 	# Arm the damage scan. _physics_process runs _resolve_melee_strike
 	# when the timer hits 0. The aim + range are cached now so a player
 	# spinning the cursor during the windup doesn't change where the
@@ -1377,6 +1408,15 @@ func _start_blast() -> void:
 	# Iter 17 — swift_focus reduces blast cooldown.
 	_blast_cd = BLAST_COOLDOWN * (1.0 + GameState.modifier_total_f("blast_cooldown_mul", 0.0))
 	_facing_dir = _vector_to_dir_idx(aim)
+	# iter-97: blast facing window. JS reference (hero.js:1413-1420):
+	# walking west + shooting east left the sprite facing west while
+	# bolts flew east — the body wasn't COMMITTING to the shot. Stamping
+	# a 0.32s window keeps the sprite facing the aim direction while
+	# WASD movement continues unrestricted. Window is slightly longer
+	# than the blast cooldown so sustained fire never reveals a
+	# facing-gap between shots.
+	_blast_facing_dir = aim
+	_blast_facing_time = BLAST_FACING_WINDOW
 	# Reuse the attack animation as a cast gesture for now.
 	sprite.frame = 0
 	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
