@@ -322,6 +322,22 @@ var _facing_dir: int = 4
 # successful shield catches.
 var _iframes := 0.0
 
+# iter-103 — elite affix status effects (player-side mirror of the
+# enemy.gd burn/slow machinery). Frost elites apply slow on contact;
+# venom elites apply a DoT on contact.
+#   _hero_slow_remaining     seconds until slow expires
+#   _hero_slow_multiplier    current walk-speed multiplier (1.0 = normal)
+#   _hero_venom_remaining    seconds until DoT expires
+#   _hero_venom_tick_timer   countdown to next damage tick
+# Multiple stacking calls take the WORSE / LONGER value (max-duration,
+# min-multiplier) so an enemy can't accidentally clear an active effect.
+var _hero_slow_remaining: float = 0.0
+var _hero_slow_multiplier: float = 1.0
+var _hero_venom_remaining: float = 0.0
+var _hero_venom_tick_timer: float = 0.0
+const HERO_VENOM_TICK_INTERVAL: float = 0.5   # tick every 0.5s
+const HERO_VENOM_DAMAGE_PER_TICK: int = 1
+
 var _blast_cd := 0.0
 
 # Iter 25 — parry state (replaces shield_stamina/_shield_active/_shield_break_cd).
@@ -587,6 +603,38 @@ func _physics_process(delta: float) -> void:
 	# facing returns to walk-direction inference after the post-shot window.
 	_blast_facing_time = max(0.0, _blast_facing_time - delta)
 	_knockback_time   = max(0.0, _knockback_time   - delta)
+	# iter-103: hero-side slow + venom status decay. Slow restores walk
+	# multiplier when expired; venom ticks damage on a fixed interval
+	# (HERO_VENOM_TICK_INTERVAL = 0.5s) and respects _iframes so the
+	# DoT can't kill through dash-strike's safety window.
+	if _hero_slow_remaining > 0.0:
+		_hero_slow_remaining -= delta
+		if _hero_slow_remaining <= 0.0:
+			_hero_slow_multiplier = 1.0
+	if _hero_venom_remaining > 0.0:
+		_hero_venom_remaining -= delta
+		_hero_venom_tick_timer -= delta
+		if _hero_venom_tick_timer <= 0.0 and _hero_venom_remaining > 0.0:
+			_hero_venom_tick_timer = HERO_VENOM_TICK_INTERVAL
+			# DoT applies even through _iframes — that's the point of
+			# poison, it bleeds you regardless of dodge windows. But
+			# never below 0 hp + skip during death.
+			if not _is_dying:
+				hp = max(0, hp - HERO_VENOM_DAMAGE_PER_TICK)
+				# Sickly green floater so the tick reads distinct from
+				# enemy melee damage. Damage number library handles
+				# the spawn; no scene needed.
+				var parent: Node = get_parent()
+				if parent != null:
+					var dn: DamageNumber = DamageNumber.spawn(
+						global_position + Vector2(0, -64),
+						"-" + str(HERO_VENOM_DAMAGE_PER_TICK),
+						Color(0.55, 0.85, 0.45),
+					)
+					parent.add_child(dn)
+				if hp <= 0 and not _is_dying:
+					# Venom kill: route through the existing death path.
+					take_damage(0, global_position)
 	if _attack_live <= 0.0:
 		_is_attacking = false
 	# Iter 19 — windowed melee damage. _start_attack arms the pending
@@ -673,6 +721,11 @@ func _physics_process(delta: float) -> void:
 		# Multiplied IN, not added, so two overlapping slows stack
 		# correctly (see enter_slow_zone/exit_slow_zone setters).
 		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0)) * _environment_speed_mul
+		# iter-103: frost elite affix applies slow to hero on contact.
+		# _hero_slow_multiplier defaults to 1.0; frost call drops it to
+		# ~0.6 for ~1.0s. Multiplicative with environment slow (slow_zone
+		# hazard) so the two stack correctly.
+		speed *= _hero_slow_multiplier
 		# iter-97: while attacking (sword OR blast — _is_attacking is set
 		# by both _start_attack and _start_blast), plant the feet at 35%
 		# walk speed. JS reference at slime-depths/src/hero.js:1812-1817
@@ -1554,6 +1607,29 @@ func heal(amount: int) -> void:
 	hp = mini(hp + amount, cap)
 	if hp != prev:
 		hp_changed.emit(hp)
+
+# iter-103 — elite affix status application API. Enemy contact paths
+# call into these. Both stack via "take the WORSE / LONGER value" so
+# repeated bumps from the same affix can't cancel themselves.
+#
+# apply_slow(duration, multiplier): frost elites call with (1.0, 0.6).
+# apply_venom(duration): venom elites call with 2.0 (4 ticks at 0.5s
+# interval × 1 dmg each = 4 dmg over 2s, gnarly).
+func apply_slow(duration: float, multiplier: float) -> void:
+	if duration > _hero_slow_remaining:
+		_hero_slow_remaining = duration
+	# Worse (smaller) multiplier wins so consecutive frost bumps don't
+	# overwrite a deeper slow with a shallower one.
+	if multiplier < _hero_slow_multiplier:
+		_hero_slow_multiplier = multiplier
+
+func apply_venom(duration: float) -> void:
+	if duration > _hero_venom_remaining:
+		_hero_venom_remaining = duration
+		# Re-arm the tick timer on first application or refresh so the
+		# next tick lands at the configured interval, not whenever
+		# the previous DoT happened to be in its cycle.
+		_hero_venom_tick_timer = HERO_VENOM_TICK_INTERVAL
 
 func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 	# Iter 70 — optional source_pos for knockback. Defaults to Vector2.INF

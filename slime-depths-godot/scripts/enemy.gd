@@ -127,6 +127,59 @@ signal phase_changed(phase: int)
 # can't retrigger).
 var _phase: int = 1
 
+# iter-103 — elite affix per-instance state. Set by main.gd._spawn_enemy_type
+# AFTER instantiate but BEFORE add_child, so the affix is applied at
+# _ready time (where the visual tint lands). Values:
+#   ""        no affix (default — most enemies)
+#   "frost"   slows hero on contact (apply_slow 1.0s × 0.6)
+#   "ember"   spawns death AoE damaging hero in radius
+#   "venom"   applies DoT on contact (apply_venom 2.0s → 4 ticks)
+#   "warded"  -1 incoming damage (clamped min 1 so DoT-only setups
+#             aren't fully invalidated)
+# Rolled at spawn time in main.gd for floor 2+ non-boss enemies at
+# a base 22% chance — see _maybe_apply_elite_affix in main.gd.
+var elite_affix: String = ""
+const ELITE_AFFIX_TINTS: Dictionary = {
+	"frost":  Color(0.55, 0.85, 1.20, 1.0),   # cool cyan-blue
+	"ember":  Color(1.30, 0.65, 0.45, 1.0),   # warm red-orange
+	"venom":  Color(0.65, 1.20, 0.55, 1.0),   # sickly green
+	"warded": Color(1.20, 1.10, 0.75, 1.0),   # silver-gold
+}
+const ELITE_AFFIX_NAMES: Dictionary = {
+	"frost":  "FROST",
+	"ember":  "EMBER",
+	"venom":  "VENOM",
+	"warded": "WARDED",
+}
+# Frost slow tuning.
+const ELITE_FROST_DURATION: float = 1.0
+const ELITE_FROST_MULTIPLIER: float = 0.6
+# Venom DoT tuning. duration passed to apply_venom; hero ticks at 0.5s
+# for HERO_VENOM_TICK_INTERVAL → 2.0s = 4 ticks × 1 dmg = 4 total.
+const ELITE_VENOM_DURATION: float = 2.0
+# Ember death AoE tuning.
+const ELITE_EMBER_RADIUS: float = 56.0
+const ELITE_EMBER_DAMAGE: int = 2
+# Warded incoming-damage reduction.
+const ELITE_WARDED_DR: int = 1
+
+# iter-103: apply on-contact elite affix effect to the hero. Called
+# from every enemy-contact-damage site (chase_contact body bump,
+# bomber detonation, wraith strike, telegraphed_melee swing). Each
+# affix dispatches to the hero's matching apply_* method:
+#   frost  → apply_slow(1.0s, 0.6×)
+#   venom  → apply_venom(2.0s, 4 ticks × 1 dmg = 4 over 2s)
+#   ember  → fires in _die() instead (death explosion, not on-contact)
+#   warded → defensive only, clamps incoming damage in take_hit
+# No-op for non-affix enemies and for affix=="ember"/"warded".
+func _apply_contact_affix() -> void:
+	if _hero == null or not is_instance_valid(_hero):
+		return
+	if elite_affix == "frost" and _hero.has_method("apply_slow"):
+		_hero.apply_slow(ELITE_FROST_DURATION, ELITE_FROST_MULTIPLIER)
+	elif elite_affix == "venom" and _hero.has_method("apply_venom"):
+		_hero.apply_venom(ELITE_VENOM_DURATION)
+
 # Iter 43 — burn status. Set by hero.gd when a FLAME-themed proc (e.g.
 # Embers of Ruin relic) rolls successfully. Each tick deals 1 damage
 # every _burn_tick_interval; total burn life = _burn_remaining. Burn
@@ -199,7 +252,19 @@ func _effective_move_speed() -> float:
 func _baseline_modulate() -> Color:
 	if enemy_type == null:
 		return Color(1, 1, 1, 1)
-	return enemy_type.sprite_modulate
+	# iter-103: if the enemy has an elite affix, the baseline tint
+	# multiplies the EnemyType's natural sprite_modulate with the affix
+	# tint. Burn / slow / windup status tints still override temporarily
+	# (those bypass _baseline_modulate by assigning directly to
+	# sprite.modulate), but every restore-to-baseline path here picks up
+	# the affix coloring. Multiplicative (not replacement) so an enemy
+	# with a non-default sprite_modulate (spectral_priest green, etc.)
+	# blends with the affix rather than losing its base identity.
+	var base: Color = enemy_type.sprite_modulate
+	if elite_affix != "" and ELITE_AFFIX_TINTS.has(elite_affix):
+		var affix_tint: Color = ELITE_AFFIX_TINTS[elite_affix]
+		base = Color(base.r * affix_tint.r, base.g * affix_tint.g, base.b * affix_tint.b, base.a)
+	return base
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -469,6 +534,11 @@ func _tick_chase_contact(delta: float) -> void:
 			# iter-70 polish: pass our position so hero knockback is
 			# AWAY from us, not hero-facing-inversion fallback.
 			_hero.take_damage(t.contact_damage, global_position)
+			# iter-103: elite affix on-contact effects. Frost slows the
+			# hero; venom applies a DoT. Ember + warded fire elsewhere
+			# (_die and take_hit). Guarded by has_method so the call
+			# is robust to test contexts where _hero isn't a full hero.
+			_apply_contact_affix()
 
 # ── Behavior: bomber ──────────────────────────────────────────────────
 # Iter 47 — kamikaze enemy. Charges hero at high speed. When close
@@ -560,6 +630,8 @@ func _bomber_detonate() -> void:
 			if _hero.has_method("take_damage"):
 				# iter-70 polish: knockback away from the bomber blast center.
 				_hero.take_damage(enemy_type.contact_damage, global_position)
+				# iter-103: bomber detonation also applies the affix on-hit.
+				_apply_contact_affix()
 	# Spawn an orange-red VFX. Reuse damage_number for a "BOOM" floater
 	# since dash_impact is hero-owned and shouldn't be preloaded here.
 	# A custom bomber blast scene could land later.
@@ -1296,6 +1368,8 @@ func _apply_wraith_strike() -> void:
 		# moment visually — hero gets shoved forward, AWAY from the wraith
 		# behind them.
 		_hero.take_damage(WRAITH_STRIKE_DAMAGE, global_position)
+		# iter-103: wraith strike applies the affix on-hit.
+		_apply_contact_affix()
 		# Brief attack pose so the swing reads even if the player wasn't
 		# looking at the wraith mid-teleport.
 		if sprite != null and sprite.sprite_frames != null \
@@ -1427,6 +1501,8 @@ func _tick_telegraphed_melee(delta: float) -> void:
 				   and _hero.has_method("take_damage"):
 					# iter-70 polish: knockback away from the attacker.
 					_hero.take_damage(t.melee_damage, global_position)
+					# iter-103: telegraphed-melee swing applies the affix.
+					_apply_contact_affix()
 		MeleeState.SWING:
 			velocity = Vector2.ZERO
 			_melee_timer -= delta
@@ -1529,6 +1605,13 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 	# the enemy isn't "present" yet.
 	if _dying or _spawn_in_time > 0.0:
 		return
+	# iter-103: WARDED elite affix clamps incoming damage by -1, min 1.
+	# Floor of 1 so a player with all 1-damage attacks isn't fully shut
+	# out (would invalidate the entire common-tier slash). Clamp BEFORE
+	# the hp subtract so the damage number floater shows the clamped
+	# value the player actually dealt.
+	if elite_affix == "warded":
+		damage = maxi(1, damage - ELITE_WARDED_DR)
 	hp -= damage
 	# Iter 43 — per-hit damage number. Crit hits use spawn_crit (yellow,
 	# bigger, "!" suffix, longer life); normal hits use the standard
@@ -1688,6 +1771,15 @@ func _die() -> void:
 			sprite.play(&"death")
 	set_collision_layer_value(3, false)
 	set_collision_mask_value(2, false)
+	# iter-103: EMBER elite affix — death explosion. Spawns a small AoE
+	# at the impact location, dealing damage to the hero if within
+	# ELITE_EMBER_RADIUS. Reuses the hero's distance-check pattern;
+	# does NOT damage other enemies (focused on hero threat). Routed
+	# through the hero's take_damage so iframes / DR mods still apply.
+	if elite_affix == "ember" and _hero != null and is_instance_valid(_hero):
+		var d_hero: float = _hero.global_position.distance_to(global_position)
+		if d_hero <= ELITE_EMBER_RADIUS and _hero.has_method("take_damage"):
+			_hero.take_damage(ELITE_EMBER_DAMAGE, global_position)
 	died_at.emit(global_position)
 	Events.enemy_died.emit(global_position)
 

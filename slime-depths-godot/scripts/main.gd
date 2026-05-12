@@ -1638,6 +1638,11 @@ func _spawn_enemy_type(type_id: String) -> void:
 	# The portal override system that lived here in iters 75-78 is gone.
 	enemy.global_position = _spawn_points[randi() % _spawn_points.size()]
 	enemy.died_at.connect(_on_enemy_died)
+	# iter-103: elite affix roll. Floor 2+, non-boss enemies have a 22%
+	# chance to roll one of 4 affixes (frost / ember / venom / warded).
+	# Set BEFORE add_child so _ready picks it up for the baseline tint.
+	# Bosses skip — they have their own phase mechanics + scaling.
+	_maybe_apply_elite_affix(enemy, type_res)
 	add_child(enemy)
 	# Iter 17 — boss spawn hook. The type's is_boss flag drives the HP
 	# bar UI. We bind via reference + _process polling rather than
@@ -1704,6 +1709,40 @@ const TIER_WEIGHTS_BY_ROOM := [
 	{ "common": 35.0, "rare": 40.0, "legendary": 22.0, "mythic":  3.0 },   # room 5
 	{ "common": 15.0, "rare": 35.0, "legendary": 44.0, "mythic":  6.0 },   # room 6 (boss)
 ]
+
+# iter-103 — elite affix roll. Called from _spawn_enemy_type for every
+# wave-spawned enemy. Rooms 2+ get a 22% chance to roll one of four
+# affixes (frost / ember / venom / warded). Room 1 stays affix-free
+# so new players aren't ambushed by status-effect surprises before
+# they've internalized the basic combat loop.
+#
+# RunState exposes current_room_index 0..N within a floor (the game
+# is currently single-floor with multiple rooms). Gate at index ≥ 1
+# so the first room of every run is affix-free.
+#
+# Skipped for bosses (their phase escalation IS their elite identity).
+#
+# Affix distribution: uniform across the 4 — no weighting. Tunable
+# via ELITE_AFFIX_BASE_CHANCE if late-game rooms need different rates.
+const ELITE_AFFIX_BASE_CHANCE: float = 0.22
+const ELITE_AFFIX_OPTIONS: Array[String] = ["frost", "ember", "venom", "warded"]
+const ELITE_AFFIX_MIN_ROOM_INDEX: int = 1
+
+func _maybe_apply_elite_affix(enemy: Enemy, type_res: EnemyType) -> void:
+	if enemy == null or type_res == null:
+		return
+	# Skip bosses — their phase escalation IS their elite identity.
+	if type_res.is_boss:
+		return
+	# Room gate — affixes start in room 2 onward.
+	var room_idx: int = 0
+	if RunState != null and "current_room_index" in RunState:
+		room_idx = int(RunState.current_room_index)
+	if room_idx < ELITE_AFFIX_MIN_ROOM_INDEX:
+		return
+	if randf() > ELITE_AFFIX_BASE_CHANCE:
+		return
+	enemy.elite_affix = ELITE_AFFIX_OPTIONS[randi() % ELITE_AFFIX_OPTIONS.size()]
 
 # Iter 33 — TREASURE ROOM entry. Skips the wave runner entirely.
 # Spawns a 3-pedestal offer immediately, with by_tier biased to
