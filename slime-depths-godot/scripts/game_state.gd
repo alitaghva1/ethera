@@ -74,6 +74,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_damage.png",
 		"mods": { "sword_damage_bonus": 1 },
+		"themes": ["flame"],
 	},
 	"arcane_pulse": {
 		"name": "ARCANE PULSE",
@@ -81,6 +82,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_arcane_quiver.png",
 		"mods": { "blast_damage_bonus": 1 },
+		"themes": ["storm"],
 	},
 	"stoneheart": {
 		"name": "STONEHEART",
@@ -88,6 +90,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_max_hp.png",
 		"mods": { "max_hp_bonus": 1 },
+		"themes": ["blood"],
 	},
 	"iron_skin": {
 		"name": "IRON SKIN",
@@ -95,6 +98,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_ironhide.png",
 		"mods": { "damage_taken_reduction": 1 },
+		"themes": ["vow"],
 	},
 	"iron_will": {
 		"name": "IRON WILL",
@@ -102,6 +106,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_iron_greaves.png",
 		"mods": { "max_hp_bonus": 1 },
+		"themes": ["vow"],
 	},
 	"iron_grip": {
 		"name": "IRON GRIP",
@@ -109,6 +114,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_heavy_blow.png",
 		"mods": { "knockback_force_mul": 0.25 },
+		"themes": ["flame"],
 	},
 	"sturdy_step": {
 		"name": "STURDY STEP",
@@ -116,6 +122,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_iron_greaves.png",
 		"mods": { "dodge_iframes_bonus_f": 0.15 },
+		"themes": ["vow"],
 	},
 	"focused_eye": {
 		"name": "FOCUSED EYE",
@@ -123,6 +130,7 @@ const RELIC_REGISTRY := {
 		"tier": "common",
 		"icon_path": "res://assets/icons/relic_eye_of_ether.png",
 		"mods": { "blast_damage_bonus": 1, "projectile_speed_mul": 0.2 },
+		"themes": ["storm"],
 	},
 	"swift_strike": {
 		"name": "SWIFT STRIKE",
@@ -130,6 +138,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_attack_speed.png",
 		"mods": { "sword_cooldown_mul": -0.2 },
+		"themes": ["flame"],
 	},
 	"dodge_master": {
 		"name": "DODGE MASTER",
@@ -137,6 +146,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_dodge.png",
 		"mods": { "dodge_cooldown_mul": -0.3 },
+		"themes": ["shadow"],
 	},
 	"nimble": {
 		"name": "NIMBLE",
@@ -144,6 +154,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_nimble_step.png",
 		"mods": { "move_speed_mul": 0.3 },
+		"themes": ["shadow"],
 	},
 	"swift_focus": {
 		"name": "SWIFT FOCUS",
@@ -151,6 +162,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_swift_arm.png",
 		"mods": { "blast_cooldown_mul": -0.3 },
+		"themes": ["storm", "shadow"],
 	},
 	"long_reach": {
 		"name": "LONG REACH",
@@ -158,6 +170,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_long_reach.png",
 		"mods": { "attack_range_mul": 0.25 },
+		"themes": ["flame"],
 	},
 	"arcane_quiver": {
 		"name": "ARCANE QUIVER",
@@ -165,6 +178,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_arcane_quiver.png",
 		"mods": { "projectile_speed_mul": 0.30 },
+		"themes": ["storm"],
 	},
 	"wide_arc": {
 		"name": "WIDE ARC",
@@ -172,6 +186,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_keen_edge.png",
 		"mods": { "attack_arc_mul": 0.60 },
+		"themes": ["flame"],
 	},
 	"stalwart": {
 		"name": "STALWART",
@@ -179,6 +194,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_bulwark.png",
 		"mods": { "max_hp_bonus": 1, "damage_taken_reduction": 1 },
+		"themes": ["vow"],
 	},
 	"gale_step": {
 		"name": "GALE STEP",
@@ -186,6 +202,7 @@ const RELIC_REGISTRY := {
 		"tier": "rare",
 		"icon_path": "res://assets/icons/relic_gale_step.png",
 		"mods": { "move_speed_mul": 0.2, "dodge_iframes_bonus_f": 0.1 },
+		"themes": ["shadow"],
 	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
@@ -193,6 +210,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_max_hp.png",
 		"mods": { "max_hp_bonus": 2 },
+		"themes": ["blood"],
 	},
 	"boots_of_haste": {
 		"name": "BOOTS OF HASTE",
@@ -200,6 +218,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_nimble_step.png",
 		"mods": { "move_speed_mul": 0.6 },
+		"themes": ["shadow"],
 	},
 	"second_wind": {
 		"name": "SECOND WIND",
@@ -207,6 +226,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_second_wind.png",
 		"mods": {},   # triggered — see hero.take_damage
+		"themes": ["blood"],
 	},
 	"bloodstone": {
 		"name": "BLOODSTONE",
@@ -214,6 +234,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_bloodstone.png",
 		"mods": {},   # triggered — see hero._on_enemy_died_for_relics
+		"themes": ["blood"],
 	},
 	"arcane_resonance": {
 		"name": "ARCANE RESONANCE",
@@ -221,6 +242,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_echoing_strike.png",
 		"mods": {},   # triggered — see hero._start_blast
+		"themes": ["storm"],
 	},
 	"chain_lightning": {
 		"name": "CHAIN LIGHTNING",
@@ -228,6 +250,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_chain_lightning.png",
 		"mods": {},   # triggered — see hero._resolve_melee_strike
+		"themes": ["storm"],
 	},
 	"phoenix_feather": {
 		"name": "PHOENIX FEATHER",
@@ -235,6 +258,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_phoenix.png",
 		"mods": {},   # triggered — see hero.take_damage (preempts second_wind)
+		"themes": ["blood"],
 	},
 	"executioner": {
 		"name": "EXECUTIONER",
@@ -242,6 +266,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_executioner.png",
 		"mods": {},   # triggered — see hero._resolve_melee_strike / _resolve_dash_strike_hit / projectile.gd
+		"themes": ["flame"],
 	},
 	"soul_burst": {
 		"name": "SOUL BURST",
@@ -249,6 +274,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_soul_burst.png",
 		"mods": {},   # triggered — see hero._on_enemy_died_for_relics
+		"themes": ["flame"],
 	},
 	"iron_resolve": {
 		"name": "IRON RESOLVE",
@@ -256,6 +282,7 @@ const RELIC_REGISTRY := {
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_iron_resolve.png",
 		"mods": {},   # triggered — see hero.take_damage
+		"themes": ["vow"],
 	},
 }
 
@@ -276,6 +303,81 @@ var shrine_bonuses: Dictionary = {}
 func grant_shrine_bonus(key: String, value) -> void:
 	var current = shrine_bonuses.get(key, 0)
 	shrine_bonuses[key] = current + value
+
+# Iter 39 — theme tagging + resonance. Each relic in RELIC_REGISTRY
+# carries a "themes" array (one or two strings from STORM / FLAME /
+# BLOOD / VOW / SHADOW). Owning N relics of a theme unlocks tiered
+# bonuses:
+#   tier 1 (RESONANCE)  — 2+ owned: small stat fold (handled in
+#                         modifier_total via theme_stat_bonuses)
+#   tier 2 (ASCENDANCE) — 4+ owned: mechanical flavor (e.g. STORM
+#                         fires a mini-bolt on every Nth swing —
+#                         hooked in hero.gd via theme_tier checks)
+#
+# theme_count tallies the player's currently-owned relics that
+# include `theme` in their themes array. Used by HUD chips, by the
+# resonance/ascendance gates in hero.gd, and by modifier_total's
+# theme_stat_bonuses fold.
+const RESONANCE_THRESHOLD: int = 2
+const ASCENDANCE_THRESHOLD: int = 4
+
+func theme_count(theme: String) -> int:
+	var n: int = 0
+	for rid in owned_relics:
+		var info: Dictionary = RELIC_REGISTRY.get(rid, {})
+		var themes: Array = info.get("themes", [])
+		if theme in themes:
+			n += 1
+	return n
+
+# Returns 0 (none), 1 (resonance, ≥2 owned), or 2 (ascendance, ≥4
+# owned). Used by HUD + by hero.gd's combat hooks to gate the
+# mechanical flavor (ascendance) effects.
+func theme_tier(theme: String) -> int:
+	var n: int = theme_count(theme)
+	if n >= ASCENDANCE_THRESHOLD:
+		return 2
+	if n >= RESONANCE_THRESHOLD:
+		return 1
+	return 0
+
+# Per-theme resonance bonuses. Returns a Dictionary of modifier_key →
+# value to fold into modifier_total / modifier_total_f.
+# Resonance bonus (≥2 owned):
+#   STORM   +1 blast damage
+#   FLAME   +1 sword damage
+#   BLOOD   +1 max HP
+#   VOW     +1 damage taken reduction on first hit each room
+#           (stacks with iron_will's first-hit, applies to ALL
+#           VOW owners — flat folded as 1 incoming dmg reduction).
+#   SHADOW  +0.08s dodge i-frames
+# Ascendance (≥4 owned) bonuses are mechanical effects, handled by
+# hero.gd / projectile.gd hooks; this function only returns the
+# stat-fold contributions.
+func theme_stat_bonuses() -> Dictionary:
+	var out: Dictionary = {}
+	if theme_tier("storm") >= 1:
+		out["blast_damage_bonus"] = int(out.get("blast_damage_bonus", 0)) + 1
+	if theme_tier("flame") >= 1:
+		out["sword_damage_bonus"] = int(out.get("sword_damage_bonus", 0)) + 1
+	if theme_tier("blood") >= 1:
+		out["max_hp_bonus"] = int(out.get("max_hp_bonus", 0)) + 1
+	if theme_tier("vow") >= 1:
+		out["damage_taken_reduction"] = int(out.get("damage_taken_reduction", 0)) + 1
+	if theme_tier("shadow") >= 1:
+		out["dodge_iframes_bonus_f"] = float(out.get("dodge_iframes_bonus_f", 0.0)) + 0.08
+	return out
+
+# Helper for HUD: returns the active themes (tier >= 1) keyed to
+# their tier so the chip strip can render them in display order
+# without re-counting.
+func active_themes() -> Dictionary:
+	var out: Dictionary = {}
+	for theme in ["storm", "flame", "blood", "vow", "shadow"]:
+		var t: int = theme_tier(theme)
+		if t > 0:
+			out[theme] = t
+	return out
 
 # ── Persisted settings ───────────────────────────────────────────────
 # Master audio volume in linear 0..1 space. Source-of-truth for the
@@ -386,6 +488,12 @@ func modifier_total(key: String, default_value: int = 0) -> int:
 	# Iter 33 — fold shrine grants into the same total so callers
 	# don't need a parallel API.
 	total += int(shrine_bonuses.get(key, 0))
+	# Iter 39 — fold theme resonance bonuses. theme_stat_bonuses()
+	# computes the active resonance contributions once per call;
+	# downstream consumers (hero.gd, projectile.gd) see one combined
+	# total without needing to know about themes.
+	var theme_bonuses: Dictionary = theme_stat_bonuses()
+	total += int(theme_bonuses.get(key, 0))
 	return total
 
 # Float variant for fractional mods (e.g. -0.2 cooldown, +0.3 speed).
@@ -398,4 +506,6 @@ func modifier_total_f(key: String, default_value: float = 0.0) -> float:
 		var mods: Dictionary = info.get("mods", {})
 		total += float(mods.get(key, 0.0))
 	total += float(shrine_bonuses.get(key, 0.0))
+	var theme_bonuses: Dictionary = theme_stat_bonuses()
+	total += float(theme_bonuses.get(key, 0.0))
 	return total

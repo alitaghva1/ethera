@@ -697,6 +697,15 @@ func _resolve_melee_strike() -> void:
 			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
 	if hit_count > 0:
 		swing_connected.emit(hit_count)
+		# Iter 39 — STORM ascendance (4+ STORM relics owned). Every
+		# connecting swing fires an extra bolt at the nearest enemy
+		# in CHAIN_RADIUS of the HERO (not of a hit enemy — keeps the
+		# proc reliable even when the swing hit a clump close to the
+		# hero). With chain_lightning ALSO owned, every 4th swing
+		# yields TWO bolts (chain_lightning's plus STORM's), every
+		# other swing yields ONE — concrete bullet-hell scaling.
+		if GameState.theme_tier("storm") >= 2:
+			_try_chain_from(self, hit_set)
 
 # Iter 21 — chain_lightning effect. Find the nearest enemy within
 # CHAIN_RADIUS of `source` that wasn't already hit this swing, deal a

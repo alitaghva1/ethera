@@ -138,6 +138,13 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 # whenever Events.pickup_claimed fires (a new relic was just granted).
 @onready var relic_strip: HBoxContainer = $UI/RelicStrip
 
+# Iter 39 — theme chip strip. Code-built HBoxContainer mounted on the
+# UI CanvasLayer just below the relic strip. Each chip is a Label
+# colored per theme with a "◆" glyph count for tier (◆ = resonance,
+# ◆◆ = ascendance). Built lazily on first refresh + repopulated by
+# _rebuild_theme_chips on each relic grant.
+var theme_chip_strip: HBoxContainer = null
+
 # Active room config — driven by Floor autoload. Cached at _ready so
 # late edits to RunState.current_room_config mid-run don't cause stutter.
 var _room: RoomConfig = null
@@ -1493,6 +1500,58 @@ func _rebuild_relic_strip() -> void:
 		# may rely on the node being in the tree (autoload access,
 		# parent lookup for tooltips).
 		icon.set_relic(rid)
+	# Iter 39 — refresh theme chips. Reading active themes off
+	# GameState every rebuild keeps the strip in sync with the relic
+	# roster (a newly-granted relic that pushes a theme over 2/4
+	# owned crosses a tier instantly).
+	_rebuild_theme_chips()
+
+# Iter 39 — theme chip strip builder. Iterates GameState.active_themes
+# (only themes with tier >= 1 appear) and emits one Label chip per
+# theme. Color-coded per theme; glyph count communicates tier
+# (◆ resonance, ◆◆ ascendance). The strip lives in the same UI
+# CanvasLayer so it doesn't move with the world camera.
+func _rebuild_theme_chips() -> void:
+	# Lazily build the container on first rebuild. UI is a CanvasLayer
+	# (queried via $UI from the @onready hp_label path); we mount the
+	# strip there so it inherits the canvas-layer rendering of the
+	# rest of the HUD (immune to world-camera transforms).
+	var ui: CanvasLayer = $UI as CanvasLayer
+	if theme_chip_strip == null:
+		theme_chip_strip = HBoxContainer.new()
+		theme_chip_strip.name = "ThemeChipStrip"
+		theme_chip_strip.offset_left = 16.0
+		theme_chip_strip.offset_top = 126.0
+		theme_chip_strip.offset_right = 900.0
+		theme_chip_strip.offset_bottom = 150.0
+		theme_chip_strip.add_theme_constant_override("separation", 8)
+		theme_chip_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ui.add_child(theme_chip_strip)
+	# Clear any prior chips.
+	for child in theme_chip_strip.get_children():
+		child.queue_free()
+	# Theme palette — keyed to in-game flavor (cyan storm, red flame,
+	# crimson blood, ivory vow, indigo shadow). Both bg + text are
+	# defined so each chip reads as a distinct identity.
+	var theme_colors: Dictionary = {
+		"storm": Color(0.55, 0.85, 1.0, 1.0),
+		"flame": Color(1.0, 0.55, 0.30, 1.0),
+		"blood": Color(0.95, 0.45, 0.45, 1.0),
+		"vow": Color(0.92, 0.92, 0.78, 1.0),
+		"shadow": Color(0.78, 0.65, 1.0, 1.0),
+	}
+	var active: Dictionary = GameState.active_themes()
+	for theme in active.keys():
+		var tier: int = int(active[theme])
+		var lbl: Label = Label.new()
+		var glyph: String = "◆" if tier == 1 else "◆◆"
+		lbl.text = "%s  %s" % [str(theme).to_upper(), glyph]
+		lbl.add_theme_font_size_override("font_size", 13)
+		var col: Color = theme_colors.get(theme, Color.WHITE)
+		lbl.add_theme_color_override("font_color", col)
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
+		lbl.add_theme_constant_override("outline_size", 3)
+		theme_chip_strip.add_child(lbl)
 
 func _on_hero_died() -> void:
 	_alive = false
