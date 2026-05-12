@@ -1133,6 +1133,24 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 		p.flame_impact_pool_life = 0.8
 	elif flame_tier_now >= 1:
 		p.flame_impact_pool_life = 0.5
+	# Iter 67 — BLAST × STORM ability evolution. Lock chain count + radius
+	# + damage multiplier at SPAWN from the hero's STORM theme tier,
+	# mirroring the flame/burn/slow locking so a relic gained mid-flight
+	# can't retroactively buff in-flight orbs. Tier 1 (≥2 STORM relics):
+	# 1 chain hop within 120px at full damage. Tier 2 (≥4 STORM relics):
+	# 2 chain hops within 160px at 60% damage each — primary blast
+	# damage is UNCHANGED, the chains carry the spread. Projectile.gd
+	# resolves the chains in _on_body_entered (enemy hit) and spawns
+	# ChainArc visuals from impact → each chain target.
+	var storm_tier_now: int = GameState.theme_tier("storm")
+	if storm_tier_now >= 2:
+		p.storm_chain_count = 2
+		p.storm_chain_radius = 160.0
+		p.storm_chain_dmg_mul = 0.6
+	elif storm_tier_now >= 1:
+		p.storm_chain_count = 1
+		p.storm_chain_radius = 120.0
+		p.storm_chain_dmg_mul = 1.0
 	get_parent().add_child(p)
 
 # Iter 16 — room-clear / relic / pickup healing. Caps at the current

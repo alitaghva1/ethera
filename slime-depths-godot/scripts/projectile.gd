@@ -26,6 +26,16 @@ const LIFETIME := 1.4
 # the pool persists after the projectile queue_frees.
 const FIRE_POOL_SCENE: PackedScene = preload("res://scenes/fire_pool.tscn")
 
+# Iter 67 — CHAIN_ARC preload for BLAST × STORM ability evolution. On
+# projectile impact against an enemy, if `storm_chain_count` was locked
+# > 0 at spawn (STORM theme tier ≥ 1 on the hero), pick the N nearest
+# OTHER enemies within `storm_chain_radius` of the impact, apply chain
+# damage to each, and spawn a ChainArc visual from impact → each target.
+# No re-chaining from chain-hit enemies (single hop per blast) — chain
+# damage is applied via take_hit directly, NOT by spawning a new
+# projectile, which would otherwise risk a chain loop.
+const CHAIN_ARC_SCENE: PackedScene = preload("res://scenes/fx/chain_arc.tscn")
+
 @export var target_group: String = "enemies"
 @export var orb_tint: Color = Color(1, 0.55, 1, 1)         # magenta default
 
@@ -58,6 +68,17 @@ var slow_duration: float = 0.0
 # this `_life`. Same locked-at-fire pattern as burn/slow so a relic
 # picked up mid-flight doesn't retroactively buff in-flight orbs.
 var flame_impact_pool_life: float = 0.0
+# Iter 67 — BLAST × STORM ability evolution. Locked at spawn from the
+# hero's STORM theme tier:
+#   tier 1 (≥2 STORM relics): chain to 1 enemy within 120px, full dmg.
+#   tier 2 (≥4 STORM relics): chain to 2 enemies within 160px, 0.6× dmg.
+# Same locked-at-spawn pattern as burn/slow/flame_impact_pool_life so a
+# relic picked up mid-flight doesn't retroactively buff in-flight orbs.
+# storm_chain_dmg_mul lets tier 2 use a 60% chain damage modifier while
+# tier 1 keeps full damage on its single chain link.
+var storm_chain_count: int = 0
+var storm_chain_radius: float = 0.0
+var storm_chain_dmg_mul: float = 1.0
 
 # Iter 41 — pierce + ricochet mechanics. Both are set by hero._start_blast
 # at cast time from STORM-themed relics ("piercing_quarrel" → pierce,
@@ -233,6 +254,19 @@ func _on_body_entered(body: Node) -> void:
 				pool.global_position = global_position
 				pool.set("_life", flame_impact_pool_life)
 				host.add_child(pool)
+	# Iter 67 — BLAST × STORM chain lightning. Only fires on ENEMY impact
+	# (skip for friendly-fire orbs aimed at the hero) and only if the
+	# count + radius were locked > 0 at spawn (STORM theme tier ≥ 1).
+	# Finds the N nearest enemies within radius using the same group-iter
+	# pattern as _redirect_to_nearest_enemy / hero._try_chain_from — the
+	# project's consistent "find enemies near me" pattern. Skips the just-
+	# hit body so the chain can't loop back to the original target, and
+	# applies damage via take_hit directly (NOT a fresh Projectile spawn)
+	# to guarantee single-hop semantics with no risk of an infinite chain.
+	# Chain arc visuals are hosted on get_parent() so they persist after
+	# the projectile queue_frees on the last pierce/ricochet hit.
+	if storm_chain_count > 0 and target_group == "enemies":
+		_fire_storm_chains(body)
 	# Iter 41 — pierce > ricochet > queue_free. Pierce takes priority
 	# because it's "keep going in a straight line" (no velocity change);
 	# ricochet is a fallback that REDIRECTS velocity when pierce is out.
@@ -306,3 +340,69 @@ func _is_low_hp(body: Node) -> bool:
 		return false
 	var ratio: float = float(cur_hp) / float(max_val)
 	return ratio < 0.25
+
+# Iter 67 — Fire STORM chain bolts off an impact. Picks the storm_chain_count
+# nearest enemies within storm_chain_radius of the impact point (NOT the
+# projectile's current position, since the projectile may briefly move
+# past the body in the same physics step). Each chain link applies
+# `damage * storm_chain_dmg_mul` via take_hit (NOT a new projectile —
+# we want single-hop, no infinite recursion), spawns a ChainArc visual
+# from impact → target, and is excluded from subsequent picks this hit.
+# `source_body` is the body the projectile just hit; we add it to the
+# exclusion set + _hit_ids so pierce/ricochet doesn't re-find it either.
+func _fire_storm_chains(source_body: Node) -> void:
+	if storm_chain_count <= 0 or storm_chain_radius <= 0.0:
+		return
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	var host: Node = get_parent()
+	# Track which enemies have already been chained from this single
+	# impact so picking the "next nearest" can't double-target. Seed with
+	# the source body's instance id so the chain doesn't loop back.
+	var chained: Dictionary = {}
+	if is_instance_valid(source_body):
+		chained[source_body.get_instance_id()] = true
+	var impact_pos: Vector2 = global_position
+	var chain_dmg: int = maxi(1, int(round(float(damage) * storm_chain_dmg_mul)))
+	# Run up to storm_chain_count passes, each picking the nearest enemy
+	# NOT yet chained this impact. Stops early if no eligible target
+	# remains (out of enemies, or all the nearby ones already chained).
+	for _i in range(storm_chain_count):
+		var best: Node = null
+		var best_dist: float = storm_chain_radius
+		for enemy in tree.get_nodes_in_group("enemies"):
+			if not is_instance_valid(enemy):
+				continue
+			var eid: int = enemy.get_instance_id()
+			if chained.has(eid):
+				continue
+			# Also skip enemies already hit by this projectile (pierce/
+			# ricochet) — chaining to one of them would feel like wasted
+			# bolts when the player can see the same enemy already
+			# exploded.
+			if _hit_ids.has(eid):
+				continue
+			var d: float = enemy.global_position.distance_to(impact_pos)
+			if d < best_dist:
+				best_dist = d
+				best = enemy
+		if best == null:
+			break
+		chained[best.get_instance_id()] = true
+		# Apply chain damage directly via take_hit (no projectile spawn,
+		# no further storm_chain_count propagation — single-hop chain).
+		# Pass is_crit forward so the visual crit beat carries through.
+		if best.has_method("take_hit"):
+			best.take_hit(chain_dmg, is_crit)
+		# Spawn ChainArc visual on the parent host so it survives our
+		# queue_free. Skip if no host (test mode without a parent — keep
+		# damage application but no visual rather than crashing).
+		if host != null:
+			var arc: Node = CHAIN_ARC_SCENE.instantiate()
+			if arc != null:
+				# setup() before add_child so _ready() sees the
+				# endpoints when it builds the line geometry.
+				if arc.has_method("setup"):
+					arc.call("setup", impact_pos, best.global_position)
+				host.add_child(arc)

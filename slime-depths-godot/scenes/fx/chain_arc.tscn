@@ -1,0 +1,15 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3chainarc0067"]
+
+[ext_resource type="Script" path="res://scripts/chain_arc.gd" id="1_script"]
+
+; Iter 67 — BLAST × STORM chain lightning visual. Thin scene wrapper around
+; chain_arc.gd, which builds the jagged Line2D bolt + endpoint sparks in
+; code so the bolt geometry can be re-jittered every spawn.
+;
+; Why no @onready visuals in this scene: a chain arc connects two DYNAMIC
+; world positions (impact + chain target), so we can't bake the geometry
+; into the .tscn — the script HAS to construct it after setup(from, to) is
+; called. Keeping the scene this thin matches fire_pool.tscn's pattern.
+
+[node name="ChainArc" type="Node2D"]
+script = ExtResource("1_script")
