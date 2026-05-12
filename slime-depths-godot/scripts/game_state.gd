@@ -245,6 +245,40 @@ const RELIC_REGISTRY := {
 		"mods": { "ricochet_count": 1 },
 		"themes": ["storm"],
 	},
+	# Iter 42 — multi-shot legendary. Doubles every blast into a spread
+	# pair. Stacks with pierce_count + ricochet_count — a Twin Cast +
+	# Piercing Quarrel + Ricochet Talisman build lays down 2 shots that
+	# each pierce 1 enemy then bounce. Real bullet-hell density.
+	"twin_cast": {
+		"name": "TWIN CAST",
+		"description": "Every blast fires two projectiles in a spread.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_echoing_strike.png",
+		"mods": { "projectile_count": 1 },
+		"themes": ["storm"],
+	},
+	# Iter 42 — crit chance entry-tier. Common so 2 picks can stack into
+	# a 30% crit rate that still feels reliable. FLAME theme because
+	# crits are flat damage amplification — the offense axis.
+	"keen_focus": {
+		"name": "KEEN FOCUS",
+		"description": "+15% chance for hits to crit for 1.5× damage.",
+		"tier": "common",
+		"icon_path": "res://assets/icons/relic_eye_of_ether.png",
+		"mods": { "crit_chance_f": 0.15 },
+		"themes": ["flame"],
+	},
+	# Iter 42 — crit chance rare. Same mechanic, bigger stack. Stacks
+	# multiplicatively with FLAME ascendance (fire pool on every kill)
+	# because higher crit rate = more kills = more pools.
+	"focused_strike": {
+		"name": "FOCUSED STRIKE",
+		"description": "+25% chance for hits to crit for 1.5× damage.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_executioner.png",
+		"mods": { "crit_chance_f": 0.25 },
+		"themes": ["flame"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",

@@ -37,6 +37,14 @@ const HIT_IFRAMES        := 0.55
 
 # Blast spell (Iter 3) — RMB ranged projectile.
 const BLAST_COOLDOWN     := 0.55
+# Iter 42 — multi-shot spread step. Angular offset (radians) between
+# adjacent projectiles in a multi-shot. ~14° = noticeable spread that
+# still lets all projectiles hit a clumped group at melee-blast range.
+const BLAST_SPREAD_STEP: float = 0.245
+# Iter 42 — crit damage multiplier. 1.5× chosen over 2× so crits feel
+# rewarding without single-shotting tough enemies. Crit chance comes
+# from `crit_chance_f` modifier (default 0; relic-driven).
+const CRIT_DAMAGE_MUL: float = 1.5
 const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
@@ -667,6 +675,17 @@ func _is_executable(enemy: Node) -> bool:
 	var ratio: float = float(cur_hp) / float(max_val)
 	return ratio < 0.25
 
+# Iter 42 — crit roll helper. Reads crit_chance_f modifier (default 0.0,
+# range 0..1) and rolls. Returns true on crit. Used by both melee and
+# projectile damage paths so a single relic key drives all crit
+# behavior cleanly. randf() < chance avoids the off-by-one of
+# `<=`-with-equal-to-chance edge cases.
+func _roll_crit() -> bool:
+	var chance: float = GameState.modifier_total_f("crit_chance_f", 0.0)
+	if chance <= 0.0:
+		return false
+	return randf() < chance
+
 func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	# Iter 21 — relic-driven modifiers:
@@ -695,6 +714,13 @@ func _resolve_melee_strike() -> void:
 			var dmg_for_this: int = damage
 			if has_execute and _is_executable(enemy):
 				dmg_for_this = int(round(float(damage) * 2.5))
+			# Iter 42 — crit roll per enemy hit. Stacks with executioner's
+			# 2.5× (a crit on an executable enemy lands at exec_dmg × 1.5,
+			# rounded). Per-enemy roll means a cleave hits some enemies
+			# for crit and others not — reads as "lucky swing" not "every-
+			# or-nothing."
+			if _roll_crit():
+				dmg_for_this = int(round(float(dmg_for_this) * CRIT_DAMAGE_MUL))
 			enemy.take_hit(dmg_for_this)
 			hit_count += 1
 			hit_set[enemy.get_instance_id()] = true
@@ -757,48 +783,67 @@ func _start_blast() -> void:
 	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
 	_attack_live = ATTACK_SWING_TIME
 	_is_attacking = true
-	var p: Projectile = PROJECTILE_SCENE.instantiate()
-	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
-	p.global_position = spawn_pos
-	# Iter 21 — arcane_quiver multiplies projectile speed.
-	var proj_speed: float = Projectile.SPEED * (1.0 + GameState.modifier_total_f("projectile_speed_mul", 0.0))
-	p.velocity = aim * proj_speed
-	# Iter 19 — muzzle flash at the spawn point. Bright magenta burst
-	# that fades over 0.18s. Sells "projectile was LAUNCHED" instead
-	# of "projectile appeared." Parented to current_scene so it lives
-	# in world space (not on the hero, which would drag the flash
-	# along as the hero moves).
-	var muzzle: Node2D = BLAST_MUZZLE_SCENE.instantiate() as Node2D
-	if muzzle != null:
-		muzzle.global_position = spawn_pos
-		get_tree().current_scene.add_child(muzzle)
-	var dmg: int = 1 + GameState.modifier_total("blast_damage_bonus", 0)
 	# Iter 17 — arcane_resonance: every 4th blast deals double damage.
 	# Counter is post-incremented so the 4th cast (counter == 4 after
 	# increment) is the lucky one. Resets implicitly on run start since
 	# the hero is re-instantiated for each new scene load.
 	_blast_counter += 1
-	if GameState.has_relic("arcane_resonance") and _blast_counter % 4 == 0:
-		dmg *= 2
-		# Visual cue — tint the projectile cyan-white so the player
-		# learns "the bright one hits harder."
-		p.orb_tint = Color(0.7, 1.0, 1.0, 1.0)
-	p.damage = dmg
-	# executioner — projectile doesn't know its target at spawn, so the
-	# low-HP multiplier gets evaluated in projectile.gd's _on_body_entered
-	# against the body it actually hits. Just gate on relic ownership at
-	# fire time so a lategame pickup doesn't retroactively buff an orb
-	# that's already mid-flight.
-	p.executioner_active = GameState.has_relic("executioner")
-	# Iter 41 — pierce + ricochet modifiers. Read at cast time so a
-	# late relic pickup doesn't retroactively buff in-flight orbs
-	# (same locked-at-fire-time pattern as executioner_active above).
-	p.pierce_count = GameState.modifier_total("pierce_count", 0)
-	p.ricochet_count = GameState.modifier_total("ricochet_count", 0)
-	get_parent().add_child(p)
+	var resonance_active: bool = GameState.has_relic("arcane_resonance") and _blast_counter % 4 == 0
+	# Iter 42 — multi-shot. projectile_count mod (Twin Cast etc.) adds
+	# extra projectiles in a small spread around the aim direction.
+	# 1 (default) = single shot; 2 = two projectiles 14° apart; 3 = three
+	# at -14/0/+14°. The center projectile always uses the unmodified aim
+	# so straight-line accuracy is preserved.
+	var bonus_count: int = GameState.modifier_total("projectile_count", 0)
+	var total_count: int = 1 + bonus_count
+	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
+	# Iter 19 — muzzle flash at the spawn point. Single flash regardless
+	# of multi-shot — keeps the launch beat tight. Parented to
+	# current_scene so it lives in world space (not on the hero, which
+	# would drag the flash along as the hero moves).
+	var muzzle: Node2D = BLAST_MUZZLE_SCENE.instantiate() as Node2D
+	if muzzle != null:
+		muzzle.global_position = spawn_pos
+		get_tree().current_scene.add_child(muzzle)
+	for i in range(total_count):
+		# Spread offset: for N projectiles, distribute them across
+		# total angular span = (N-1) * BLAST_SPREAD_STEP, centered on aim.
+		var offset_idx: float = float(i) - float(total_count - 1) * 0.5
+		var spread_angle: float = offset_idx * BLAST_SPREAD_STEP
+		var spread_aim: Vector2 = aim.rotated(spread_angle)
+		_spawn_blast_projectile(spawn_pos, spread_aim, resonance_active)
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.
 	Events.hero_blasted.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), aim)
+
+# Iter 42 — extracted single-projectile spawn. Carries all the modifier
+# reads that iter-41 left inline in _start_blast. Multi-shot calls this
+# N times with different spread aims.
+func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_active: bool) -> void:
+	var p: Projectile = PROJECTILE_SCENE.instantiate()
+	p.global_position = spawn_pos
+	var proj_speed: float = Projectile.SPEED * (1.0 + GameState.modifier_total_f("projectile_speed_mul", 0.0))
+	p.velocity = aim_dir * proj_speed
+	var dmg: int = 1 + GameState.modifier_total("blast_damage_bonus", 0)
+	if resonance_active:
+		dmg *= 2
+		p.orb_tint = Color(0.7, 1.0, 1.0, 1.0)
+	# Iter 42 — crit roll. Per-projectile so a multi-shot can have some
+	# projectiles crit and others not (reads as "lucky spray" rather than
+	# "all-or-nothing"). Roll happens at spawn, baked into damage so
+	# downstream procs (executioner) compound off the crit'd damage too.
+	if _roll_crit():
+		dmg = int(round(float(dmg) * CRIT_DAMAGE_MUL))
+		# Yellow-warm tint distinct from arcane_resonance's cyan crit.
+		# A double-crit (resonance + crit) still reads as cyan dominant
+		# (set above) since this overwrites after — the player sees
+		# WARM = crit, CYAN = resonance, WARM-CYAN = both.
+		p.orb_tint = Color(1.0, 0.85, 0.45, 1.0)
+	p.damage = dmg
+	p.executioner_active = GameState.has_relic("executioner")
+	p.pierce_count = GameState.modifier_total("pierce_count", 0)
+	p.ricochet_count = GameState.modifier_total("ricochet_count", 0)
+	get_parent().add_child(p)
 
 # Iter 16 — room-clear / relic / pickup healing. Caps at the current
 # MAX_HP + relic-modifier bonus so a Stoneheart pickup mid-run grows
