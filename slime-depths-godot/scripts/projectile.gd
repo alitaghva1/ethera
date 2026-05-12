@@ -31,6 +31,30 @@ var damage   := 1
 # WHO it's about to hurt).
 var executioner_active: bool = false
 
+# Iter 41 — pierce + ricochet mechanics. Both are set by hero._start_blast
+# at cast time from STORM-themed relics ("piercing_quarrel" → pierce,
+# "ricochet_talisman" → ricochet) so adding a new pierce/bounce relic
+# is a single GameState.modifier_total read on the spawn side.
+#
+# pierce_count: max enemies the projectile can pass through before
+#   queue_free. 0 (default) = first hit ends the projectile (iter-30
+#   baseline). 1+ = pass through that many enemies.
+#
+# ricochet_count: max bounces to nearby unhit enemies after a regular
+#   hit. 0 (default) = no bounce. On bounce: redirect velocity toward
+#   the nearest enemy NOT in _hit_ids within RICOCHET_RANGE and decrement
+#   the counter. Out of bounces or no eligible target = queue_free.
+#
+# pierce and ricochet STACK: a projectile with pierce=1 + ricochet=1
+# pierces enemy A, hits enemy B, bounces to enemy C, hits C, queue_frees.
+# Per-hit damage stays at `damage` for both (no falloff).
+const RICOCHET_RANGE: float = 200.0
+var pierce_count: int = 0
+var ricochet_count: int = 0
+# Track which enemies this projectile has already hit so pierce + ricochet
+# can't loop back to a previous target.
+var _hit_ids: Dictionary = {}
+
 @onready var glow: PointLight2D = $PointLight2D
 @onready var orb: Sprite2D = $Sprite2D
 var _life := LIFETIME
@@ -73,19 +97,82 @@ func _physics_process(delta: float) -> void:
 		glow.energy = max(0.3, 1.6 * (_life / LIFETIME))
 
 func _on_body_entered(body: Node) -> void:
-	if body.is_in_group(target_group):
-		# Enemies expose take_hit; hero exposes take_damage. Both are
-		# safe-to-call no-ops if missing.
-		var dmg_out: int = damage
-		# executioner — gate ONLY on enemy bodies (skip for friendly-fire
-		# orbs aimed at "hero"). 25% HP threshold matches the melee path.
-		if executioner_active and target_group == "enemies" and _is_low_hp(body):
-			dmg_out = int(round(float(damage) * 2.5))
-		if body.has_method("take_hit"):
-			body.take_hit(dmg_out)
-		elif body.has_method("take_damage"):
-			body.take_damage(dmg_out)
+	# Wall (or any non-target body) — always ends the projectile.
+	# Pierce and ricochet only apply to target_group hits.
+	if not body.is_in_group(target_group):
+		queue_free()
+		return
+	# Don't re-hit an enemy we already pierced/ricocheted off of.
+	# Defends against the projectile registering multiple body_entered
+	# in the same frame on a single enemy (Area2D weirdness).
+	var bid: int = body.get_instance_id()
+	if _hit_ids.has(bid):
+		return
+	_hit_ids[bid] = true
+	# Enemies expose take_hit; hero exposes take_damage. Both are
+	# safe-to-call no-ops if missing.
+	var dmg_out: int = damage
+	# executioner — gate ONLY on enemy bodies (skip for friendly-fire
+	# orbs aimed at "hero"). 25% HP threshold matches the melee path.
+	if executioner_active and target_group == "enemies" and _is_low_hp(body):
+		dmg_out = int(round(float(damage) * 2.5))
+	if body.has_method("take_hit"):
+		body.take_hit(dmg_out)
+	elif body.has_method("take_damage"):
+		body.take_damage(dmg_out)
+	# Iter 41 — pierce > ricochet > queue_free. Pierce takes priority
+	# because it's "keep going in a straight line" (no velocity change);
+	# ricochet is a fallback that REDIRECTS velocity when pierce is out.
+	# This ordering means a pierce+ricochet projectile uses pierces first
+	# (cheap straight shots) then bounces (more dramatic) — reads as a
+	# satisfying progression rather than a single ambiguous behavior.
+	if pierce_count > 0:
+		pierce_count -= 1
+		return
+	if ricochet_count > 0 and target_group == "enemies":
+		var found: bool = _redirect_to_nearest_enemy()
+		if found:
+			ricochet_count -= 1
+			return
 	queue_free()
+
+# Iter 41 — pick the nearest enemy NOT already hit, within RICOCHET_RANGE,
+# and aim velocity at them while preserving speed. Returns true if a
+# new target was selected (caller decrements ricochet_count); false
+# means no eligible target → caller queue_frees.
+func _redirect_to_nearest_enemy() -> bool:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return false
+	var best: Node = null
+	var best_dist: float = RICOCHET_RANGE
+	for enemy in tree.get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		if _hit_ids.has(enemy.get_instance_id()):
+			continue
+		var d: float = enemy.global_position.distance_to(global_position)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
+	if best == null:
+		return false
+	var to_target: Vector2 = best.global_position - global_position
+	if to_target.length() < 0.1:
+		return false
+	# Preserve speed; just redirect.
+	var speed: float = velocity.length()
+	if speed < 1.0:
+		speed = SPEED
+	velocity = to_target.normalized() * speed
+	# Align sprite + spawn-pop a brief visual cue so the bounce reads.
+	rotation = velocity.angle()
+	var tw: Tween = create_tween()
+	tw.set_trans(Tween.TRANS_QUAD)
+	tw.set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "scale", Vector2(1.25, 1.25), 0.06)
+	tw.tween_property(self, "scale", Vector2.ONE, 0.10)
+	return true
 
 # executioner helper — duplicated shape of hero._is_executable so the
 # projectile can evaluate at impact without coupling to the hero node.

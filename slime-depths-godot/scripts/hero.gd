@@ -790,6 +790,11 @@ func _start_blast() -> void:
 	# fire time so a lategame pickup doesn't retroactively buff an orb
 	# that's already mid-flight.
 	p.executioner_active = GameState.has_relic("executioner")
+	# Iter 41 — pierce + ricochet modifiers. Read at cast time so a
+	# late relic pickup doesn't retroactively buff in-flight orbs
+	# (same locked-at-fire-time pattern as executioner_active above).
+	p.pierce_count = GameState.modifier_total("pierce_count", 0)
+	p.ricochet_count = GameState.modifier_total("ricochet_count", 0)
 	get_parent().add_child(p)
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.

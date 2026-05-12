@@ -226,6 +226,25 @@ const RELIC_REGISTRY := {
 		"mods": { "max_hp_bonus": 2, "damage_taken_reduction": 1 },
 		"themes": ["vow"],
 	},
+	# Iter 41 — projectile pipeline expansion. Adds two NEW modifier
+	# keys (pierce_count, ricochet_count) read by hero._start_blast at
+	# cast time and locked onto each spawned projectile.
+	"piercing_quarrel": {
+		"name": "PIERCING QUARREL",
+		"description": "Blasts pass through 1 enemy before stopping.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_long_reach.png",
+		"mods": { "pierce_count": 1 },
+		"themes": ["storm"],
+	},
+	"ricochet_talisman": {
+		"name": "RICOCHET TALISMAN",
+		"description": "Blasts ricochet to a nearby enemy after the first hit.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_chain_lightning.png",
+		"mods": { "ricochet_count": 1 },
+		"themes": ["storm"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",
