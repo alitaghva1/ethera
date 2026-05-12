@@ -172,13 +172,36 @@ const ELITE_WARDED_DR: int = 1
 #   ember  → fires in _die() instead (death explosion, not on-contact)
 #   warded → defensive only, clamps incoming damage in take_hit
 # No-op for non-affix enemies and for affix=="ember"/"warded".
+#
+# iter-104: spawn a labeled floater on the hero so the player sees
+# which affix just procced. Without the floater, status effects fire
+# silently and players have to trial-and-error which colored enemy
+# does what.
 func _apply_contact_affix() -> void:
 	if _hero == null or not is_instance_valid(_hero):
 		return
 	if elite_affix == "frost" and _hero.has_method("apply_slow"):
 		_hero.apply_slow(ELITE_FROST_DURATION, ELITE_FROST_MULTIPLIER)
+		_spawn_affix_floater("SLOW", ELITE_AFFIX_TINTS["frost"], _hero.global_position)
 	elif elite_affix == "venom" and _hero.has_method("apply_venom"):
 		_hero.apply_venom(ELITE_VENOM_DURATION)
+		_spawn_affix_floater("VENOM", ELITE_AFFIX_TINTS["venom"], _hero.global_position)
+
+# iter-104: floater helper. Wraps DamageNumber.spawn with a slightly
+# higher vertical offset and the affix tint, so proc feedback reads
+# distinct from damage numbers (which spawn at -28). Parented to the
+# enemy's parent (the room scene) so the label survives this enemy's
+# death (relevant for ember's death AoE label).
+func _spawn_affix_floater(label: String, color: Color, anchor_pos: Vector2) -> void:
+	var host: Node = get_parent()
+	if host == null:
+		return
+	var n: DamageNumber = DamageNumber.spawn(
+		anchor_pos + Vector2(0, -88),
+		label,
+		color,
+	)
+	host.add_child(n)
 
 # Iter 43 — burn status. Set by hero.gd when a FLAME-themed proc (e.g.
 # Embers of Ruin relic) rolls successfully. Each tick deals 1 damage
@@ -1610,8 +1633,14 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 	# out (would invalidate the entire common-tier slash). Clamp BEFORE
 	# the hp subtract so the damage number floater shows the clamped
 	# value the player actually dealt.
+	# iter-104: also spawn a "WARDED" floater above the enemy on the
+	# FIRST hit where the clamp actually applies (damage > 1). Avoids
+	# spamming the floater on 1-damage hits where the clamp is a no-op.
 	if elite_affix == "warded":
+		var original_damage: int = damage
 		damage = maxi(1, damage - ELITE_WARDED_DR)
+		if original_damage > 1:
+			_spawn_affix_floater("WARDED", ELITE_AFFIX_TINTS["warded"], global_position)
 	hp -= damage
 	# Iter 43 — per-hit damage number. Crit hits use spawn_crit (yellow,
 	# bigger, "!" suffix, longer life); normal hits use the standard
@@ -1776,10 +1805,15 @@ func _die() -> void:
 	# ELITE_EMBER_RADIUS. Reuses the hero's distance-check pattern;
 	# does NOT damage other enemies (focused on hero threat). Routed
 	# through the hero's take_damage so iframes / DR mods still apply.
-	if elite_affix == "ember" and _hero != null and is_instance_valid(_hero):
-		var d_hero: float = _hero.global_position.distance_to(global_position)
-		if d_hero <= ELITE_EMBER_RADIUS and _hero.has_method("take_damage"):
-			_hero.take_damage(ELITE_EMBER_DAMAGE, global_position)
+	# iter-104: spawn a "BURST" floater at the corpse so the player
+	# sees the AoE moment even if they were out of range — teaches
+	# "don't stand on ember corpses" for the next encounter.
+	if elite_affix == "ember":
+		_spawn_affix_floater("BURST", ELITE_AFFIX_TINTS["ember"], global_position)
+		if _hero != null and is_instance_valid(_hero):
+			var d_hero: float = _hero.global_position.distance_to(global_position)
+			if d_hero <= ELITE_EMBER_RADIUS and _hero.has_method("take_damage"):
+				_hero.take_damage(ELITE_EMBER_DAMAGE, global_position)
 	died_at.emit(global_position)
 	Events.enemy_died.emit(global_position)
 
