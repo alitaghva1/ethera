@@ -23,12 +23,18 @@ const JITTER        := 0.05    # per-frame random amplitude
 # Per-torch phase so adjacent torches don't pulse in lockstep.
 var _phase := randf() * TAU
 
+# Iter 35 — per-torch dim multiplier. main.gd's dim_lights wave_event
+# tweens this from 1.0 down (e.g. 0.45) so the final energy = base +
+# flicker, then * energy_mul. Tweening this instead of light.energy
+# directly survives _process's per-frame energy assignment.
+var energy_mul: float = 1.0
+
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var fast := sin(t * 9.5 + _phase) * FLICKER_FAST
 	var slow := sin(t * 2.7 + _phase * 1.7) * FLICKER_SLOW
 	var jitter := randf_range(-JITTER, JITTER)
-	light.energy = BASE_ENERGY + fast + slow + jitter
+	light.energy = (BASE_ENERGY + fast + slow + jitter) * energy_mul
 	# Flame sprite scales subtly with the brightness for visual coupling.
 	var s := 1.0 + (fast + slow) * 0.6
 	flame.scale = Vector2(s, s)

@@ -19,3 +19,4 @@ hazard_positions = Array[Vector2]([Vector2(280, 220), Vector2(280, 548), Vector2
 hazard_kind = "spike_pit"
 hazards = [{"kind": "lightning_rod", "position": Vector2(640, 384), "interval": 3.5, "phase": 0.0}, {"kind": "fire_jet", "position": Vector2(440, 384), "phase": 0.0}, {"kind": "fire_jet", "position": Vector2(840, 384), "phase": 0.5}]
 biome = "ossuary"
+wave_events = [{"wave": 1, "kind": "announce", "text": "The brood stirs · darkness gathers"}, {"wave": 1, "kind": "dim_lights", "energy_mul": 0.5}, {"wave": 2, "kind": "announce", "text": "The hive awakens"}, {"wave": 2, "kind": "activate_hazard", "hazard_kind": "spike_pit", "position": Vector2(640, 384)}]

@@ -181,3 +181,36 @@ extends Resource
 #   "ember"      warm orange ember pips + reddish floor wash + glow.
 #   "sanctuary"  faint blue rune glyphs + cool indigo floor wash.
 @export var biome: String = "crypt"
+
+# Iter 35 — mid-fight dynamic events. Each entry fires when the
+# specified wave starts (0-indexed: wave 0 = first wave, wave 1 =
+# second, etc). Lets a room ESCALATE mid-combat rather than being a
+# static arena. Empty array = no events (iter-30 baseline).
+#
+# Entry schema (kind-specific extras vary):
+#   {
+#     "wave": int,       # 0-based wave index that triggers this event
+#     "kind": String,    # one of the event kinds below
+#     # — kind-specific extras —
+#     "position": Vector2,    # for activate_hazard / raise_wall
+#     "hazard_kind": String,  # for activate_hazard ("fire_jet" etc.)
+#     "phase": float,         # for activate_hazard (cycle offset)
+#     "interval": float,      # for activate_hazard (lightning_rod cadence)
+#     "rect": Rect2,          # for raise_wall (target wall geometry)
+#     "energy_mul": float,    # for dim_lights (target torch energy fraction)
+#     "text": String,         # for announce (banner text)
+#   }
+#
+# Event kinds:
+#   "activate_hazard"  spawn a new hazard at `position` with a brief
+#                      scale-in tween. Used to escalate threat mid-fight.
+#   "raise_wall"       build a wall matching `rect`, position it below
+#                      floor, tween up over 0.6s. Changes cover layout
+#                      mid-combat — the player has to re-read the room.
+#   "dim_lights"       tween every torch's energy down by `energy_mul`
+#                      (e.g. 0.35 = "lights drop to 35% of original").
+#                      Atmospheric, boss-room dramatic.
+#   "announce"         show `text` as a brief banner on status_label.
+#                      Companion event — pair with activate_hazard etc.
+#                      to telegraph the change.
+@export var wave_events: Array[Dictionary] = []

@@ -319,6 +319,7 @@ func _spawn_torches(positions: Array[Vector2]) -> void:
 	for pos in positions:
 		var t: Node2D = TORCH_SCENE.instantiate()
 		t.position = pos
+		t.add_to_group("torches")   # iter 35 — dim_lights events iterate this group
 		add_child(t)
 
 func _spawn_pillars(positions: Array[Vector2]) -> void:
@@ -346,48 +347,56 @@ func _spawn_chests(positions: Array[Vector2]) -> void:
 # adding a new room's layout is just a wall_rects edit in its .tres.
 func _spawn_interior_walls(rects: Array[Rect2]) -> void:
 	for r in rects:
-		var body: StaticBody2D = StaticBody2D.new()
-		body.collision_layer = 1
-		body.collision_mask = 0
-		body.position = r.position + r.size * 0.5
-		var shape: CollisionShape2D = CollisionShape2D.new()
-		var rect_shape: RectangleShape2D = RectangleShape2D.new()
-		rect_shape.size = r.size
-		shape.shape = rect_shape
-		body.add_child(shape)
-		# Visible body — dark stone polygon at the same position as the
-		# collider. Rounded corners via Line2D outline since Polygon2D
-		# doesn't natively support corner radii.
-		var w: float = r.size.x * 0.5
-		var h: float = r.size.y * 0.5
-		var poly: Polygon2D = Polygon2D.new()
-		poly.polygon = PackedVector2Array([
-			Vector2(-w, -h), Vector2(w, -h), Vector2(w, h), Vector2(-w, h),
-		])
-		poly.color = Color(0.18, 0.16, 0.22, 1)
-		body.add_child(poly)
-		# Lighter top-edge bevel — a 4-px Line2D across the top of the
-		# wall, slightly warm grey. Sells "this is a stone block with
-		# light catching its top edge."
-		var top_edge: Line2D = Line2D.new()
-		top_edge.points = PackedVector2Array([
-			Vector2(-w + 2, -h), Vector2(w - 2, -h),
-		])
-		top_edge.width = 3.0
-		top_edge.default_color = Color(0.42, 0.36, 0.30, 1)
-		top_edge.antialiased = true
-		body.add_child(top_edge)
-		# Bottom shadow strip — dark band along the wall's bottom edge,
-		# offset down 2 px so it reads as a contact shadow on the floor.
-		var bot_shadow: Line2D = Line2D.new()
-		bot_shadow.points = PackedVector2Array([
-			Vector2(-w + 4, h + 2), Vector2(w - 4, h + 2),
-		])
-		bot_shadow.width = 4.0
-		bot_shadow.default_color = Color(0, 0, 0, 0.45)
-		bot_shadow.antialiased = true
-		body.add_child(bot_shadow)
+		var body: StaticBody2D = _build_interior_wall(r)
 		add_child(body)
+
+# Iter 35 — extracted wall builder so wave_events.raise_wall can build
+# a wall WITHOUT immediately adding it (it gets tweened in from below
+# floor). Returns a StaticBody2D positioned at the rect's center with
+# all visual children attached but NOT yet in the tree.
+func _build_interior_wall(r: Rect2) -> StaticBody2D:
+	var body: StaticBody2D = StaticBody2D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	body.position = r.position + r.size * 0.5
+	var shape: CollisionShape2D = CollisionShape2D.new()
+	var rect_shape: RectangleShape2D = RectangleShape2D.new()
+	rect_shape.size = r.size
+	shape.shape = rect_shape
+	body.add_child(shape)
+	# Visible body — dark stone polygon at the same position as the
+	# collider. Rounded corners via Line2D outline since Polygon2D
+	# doesn't natively support corner radii.
+	var w: float = r.size.x * 0.5
+	var h: float = r.size.y * 0.5
+	var poly: Polygon2D = Polygon2D.new()
+	poly.polygon = PackedVector2Array([
+		Vector2(-w, -h), Vector2(w, -h), Vector2(w, h), Vector2(-w, h),
+	])
+	poly.color = Color(0.18, 0.16, 0.22, 1)
+	body.add_child(poly)
+	# Lighter top-edge bevel — a 4-px Line2D across the top of the
+	# wall, slightly warm grey. Sells "this is a stone block with
+	# light catching its top edge."
+	var top_edge: Line2D = Line2D.new()
+	top_edge.points = PackedVector2Array([
+		Vector2(-w + 2, -h), Vector2(w - 2, -h),
+	])
+	top_edge.width = 3.0
+	top_edge.default_color = Color(0.42, 0.36, 0.30, 1)
+	top_edge.antialiased = true
+	body.add_child(top_edge)
+	# Bottom shadow strip — dark band along the wall's bottom edge,
+	# offset down 2 px so it reads as a contact shadow on the floor.
+	var bot_shadow: Line2D = Line2D.new()
+	bot_shadow.points = PackedVector2Array([
+		Vector2(-w + 4, h + 2), Vector2(w - 4, h + 2),
+	])
+	bot_shadow.width = 4.0
+	bot_shadow.default_color = Color(0, 0, 0, 0.45)
+	bot_shadow.antialiased = true
+	body.add_child(bot_shadow)
+	return body
 
 # Iter 30 — hazards (legacy single-kind path). For each position in
 # hazard_positions, instantiate the scene matching hazard_kind. Unknown
@@ -792,6 +801,11 @@ func _start_wave(idx: int) -> void:
 	# Iter 22 — center-screen wave banner. Punctuation between rounds;
 	# the corner wave_label stays as the persistent readout.
 	_show_wave_banner(idx + 1, _waves.size())
+	# Iter 35 — fire any wave_events keyed to this wave index. Runs
+	# BEFORE the enemy spawn timers so a "raise_wall" event finishes
+	# its 0.6s animation before enemies arrive (modifies cover layout
+	# without trapping spawning enemies inside a wall).
+	_handle_wave_events(idx)
 	# Iter 15 — flatten the wave composition, shuffle so the same type
 	# doesn't always lead the parade, then dispatch spawns on a stagger.
 	# _pending_spawns tracks the queue so _process's wave-clear check
@@ -812,6 +826,104 @@ func _start_wave(idx: int) -> void:
 		var t: SceneTreeTimer = get_tree().create_timer(delay)
 		var captured: String = spawn_queue[i]
 		t.timeout.connect(func (): _spawn_enemy_type(captured))
+
+# Iter 35 — wave-event dispatcher. Iterates _room.wave_events, filters
+# to entries matching `wave_idx`, dispatches each by `kind`. Unknown
+# kinds emit a one-time warning + no-op so a misconfigured event can't
+# crash the run.
+func _handle_wave_events(wave_idx: int) -> void:
+	if _room == null:
+		return
+	for entry in _room.wave_events:
+		var w = entry.get("wave", -1)
+		if int(w) != wave_idx:
+			continue
+		var kind: String = str(entry.get("kind", ""))
+		match kind:
+			"activate_hazard":
+				_event_activate_hazard(entry)
+			"raise_wall":
+				_event_raise_wall(entry)
+			"dim_lights":
+				_event_dim_lights(entry)
+			"announce":
+				_event_announce(entry)
+			_:
+				push_warning("main.gd: unknown wave_event kind '%s'" % kind)
+
+# Spawn a hazard mid-fight with a brief scale-in tween so the player
+# sees it materialize (vs popping into place). Reuses HAZARD_SCENES
+# from iter 31 so any kind authored there is available as an event.
+func _event_activate_hazard(entry: Dictionary) -> void:
+	var hk: String = str(entry.get("hazard_kind", ""))
+	var scene: PackedScene = HAZARD_SCENES.get(hk)
+	if scene == null:
+		push_warning("main.gd: activate_hazard unknown kind '%s'" % hk)
+		return
+	var pos: Vector2 = entry.get("position", Vector2.ZERO) as Vector2
+	var h: Node2D = scene.instantiate() as Node2D
+	h.position = pos
+	if entry.has("phase") and ("phase" in h):
+		h.set("phase", entry.get("phase", 0.0))
+	if entry.has("interval") and ("interval" in h):
+		h.set("interval", entry.get("interval", 3.0))
+	# Tween-in: start at scale 0, grow to 1 over 0.35s with ease-out.
+	# Modulate alpha matches so the materialization reads as a fade-in
+	# rather than just an instant pop.
+	h.scale = Vector2(0.0, 0.0)
+	h.modulate.a = 0.0
+	add_child(h)
+	var tween: Tween = create_tween().set_parallel(true)
+	tween.tween_property(h, "scale", Vector2(1.0, 1.0), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(h, "modulate:a", 1.0, 0.25)
+
+# Raise a wall from below floor over 0.6s. The wall is BUILT in its
+# final position via _build_interior_wall, then offset down 80px,
+# then tweened back to 0. Collision is live the whole time — there's
+# a brief moment where the player can be physically pushed by the
+# rising wall, but the tween is fast enough that this reads as
+# "ground emerging" not "lag glitch."
+func _event_raise_wall(entry: Dictionary) -> void:
+	if not entry.has("rect"):
+		push_warning("main.gd: raise_wall missing 'rect'")
+		return
+	var r: Rect2 = entry.get("rect") as Rect2
+	var body: StaticBody2D = _build_interior_wall(r)
+	var final_y: float = body.position.y
+	body.position.y = final_y + 80.0  # start below floor
+	body.modulate.a = 0.0
+	add_child(body)
+	var tween: Tween = create_tween().set_parallel(true)
+	tween.tween_property(body, "position:y", final_y, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(body, "modulate:a", 1.0, 0.4)
+
+# Dim torches by tweening every torch's PointLight2D energy by the
+# given multiplier. Used for boss-room atmospheric drama. The dim is
+# permanent for the room — there's no "restore lights" event yet, so
+# author it as a one-way escalation.
+func _event_dim_lights(entry: Dictionary) -> void:
+	var mul: float = float(entry.get("energy_mul", 0.4))
+	mul = clampf(mul, 0.0, 1.0)
+	# Torches flicker their PointLight2D.energy every frame in
+	# torch.gd._process, so a tween targeting light.energy is clobbered.
+	# Instead we tween the torch's own energy_mul field; _process picks
+	# it up via a final * energy_mul scaling.
+	for torch in get_tree().get_nodes_in_group("torches"):
+		if not is_instance_valid(torch):
+			continue
+		if not ("energy_mul" in torch):
+			continue
+		var tween: Tween = create_tween()
+		tween.tween_property(torch, "energy_mul", mul, 0.9).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+# Show a brief escalation banner on status_label. Pairs naturally
+# with activate_hazard / raise_wall events to telegraph the change
+# ("the floor shifts", "embers awaken", etc).
+func _event_announce(entry: Dictionary) -> void:
+	var text: String = str(entry.get("text", ""))
+	if text == "":
+		return
+	status_label.text = text
 
 func _on_wave_cleared() -> void:
 	_wave_state = WaveState.CLEAR

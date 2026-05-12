@@ -20,3 +20,4 @@ hazard_kind = "spike_pit"
 hazards = [{"kind": "fire_jet", "position": Vector2(360, 400), "phase": 0.25}, {"kind": "fire_jet", "position": Vector2(920, 400), "phase": 0.75}]
 branches = [{"kind": "safe", "label": "SAFE", "subtitle": "+1 HP · common relics"}, {"kind": "standard", "label": "ONWARD", "subtitle": "no modifier"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]
 biome = "ossuary"
+wave_events = [{"wave": 2, "kind": "announce", "text": "The maze closes"}, {"wave": 2, "kind": "raise_wall", "rect": Rect2(560, 240, 28, 200)}, {"wave": 2, "kind": "raise_wall", "rect": Rect2(700, 240, 28, 200)}]
