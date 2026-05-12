@@ -2043,6 +2043,13 @@ func _on_enemy_died(world_pos: Vector2) -> void:
 	_update_kills()
 	var n: DamageNumber = DamageNumber.spawn(world_pos + Vector2(0, -36), "+1", Color(1, 0.95, 0.7))
 	add_child(n)
+	# iter-83 immersion pass: persistent blood mark on the floor at the
+	# kill site. Sits at z=-1 (above floor wash, below decor/hero) and
+	# fades over FULL_LIFE=30s so the room visibly accumulates battle
+	# damage through a wave and clears by next room. Matches the JS
+	# reference's drawRoomMarks atmosphere — empty space after a kill
+	# carries narrative of what happened.
+	BloodMark.spawn(self, world_pos)
 
 func _on_hero_swing_connected(hit_count: int) -> void:
 	# Iter 21 — bridge to the audio bus. audio.gd subscribes to
