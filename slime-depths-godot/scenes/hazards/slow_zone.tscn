@@ -20,11 +20,16 @@ radius = 36.0
 ;     modulates their alpha sin-waves at different phases so they
 ;     read as gas pockets surfacing.
 
+; Iter 58 — z_index=-1 on the SlowZone root pushes all child visuals
+; behind hero/enemy plane via z_as_relative. Hero now renders ABOVE
+; the pool when standing inside. Previously the pool/bubbles drew
+; over the hero (same z=0 + later tree order = covers).
 [node name="SlowZone" type="Area2D"]
 collision_layer = 0
 collision_mask = 2
 monitorable = false
 script = ExtResource("1_script")
+z_index = -1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("slowzone_area")

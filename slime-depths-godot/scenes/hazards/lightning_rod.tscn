@@ -23,8 +23,12 @@
 ;   StrikeFlash (Polygon2D) — bright circle on the ground at strike
 ;     point, visible only during STRIKE. Sells the impact.
 
+; Iter 58 — z_index=-1 root so the rod + bolt + ground ring draw
+; below the hero plane. Hero reads above all rod visuals even during
+; the strike frame.
 [node name="LightningRod" type="Node2D"]
 script = ExtResource("1_script")
+z_index = -1
 
 ; Ground ring — Line2D drawing a 24-point circle outline at radius 44.
 ; Script writes the modulate.a + width to animate the telegraph.

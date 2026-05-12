@@ -27,12 +27,16 @@ collision_layer = 0
 collision_mask = 2
 monitorable = false
 script = ExtResource("1_script")
+z_index = -1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("spike_area")
 
-; Pit floor — 16-vert near-circle Polygon2D at radius 28. Dark with a
-; cold purple tint so it reads as a hole against the warm-floor.
+; Iter 58 — z_index=-1 set on the SpikePit root above; children
+; inherit via z_as_relative (default). Hero renders ABOVE the pit
+; as a result. Don't set z_index on individual children here or
+; their relative z stacks ON TOP of root's -1, double-dipping below
+; where they should sit.
 [node name="PitFloor" type="Polygon2D" parent="."]
 polygon = PackedVector2Array(28, 0, 24.25, 14, 14, 24.25, 0, 28, -14, 24.25, -24.25, 14, -28, 0, -24.25, -14, -14, -24.25, 0, -28, 14, -24.25, 24.25, -14)
 color = Color(0.06, 0.05, 0.10, 0.95)
