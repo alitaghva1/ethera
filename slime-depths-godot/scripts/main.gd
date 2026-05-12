@@ -149,6 +149,39 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 # _rebuild_theme_chips on each relic grant.
 var theme_chip_strip: HBoxContainer = null
 
+# Iter 48 — singleton tooltip panel for theme chips. Lazily built on
+# first hover, shown/hidden via the chip's mouse_entered/exited
+# callbacks. Reused across chips (re-textd + repositioned per hover)
+# rather than spawning a new tooltip per chip.
+var _theme_tooltip: Control = null
+
+# Iter 48 — per-theme resonance + ascendance descriptions for tooltip
+# content. Keyed to the theme strings used by GameState. Authored
+# inline here (vs in game_state.gd) since this is UI-facing content
+# and the mechanics descriptions are in the relic registry already.
+const THEME_TOOLTIP_DESC: Dictionary = {
+	"storm": {
+		"resonance": "+1 blast damage",
+		"ascendance": "every swing fires an extra chain bolt",
+	},
+	"flame": {
+		"resonance": "+1 sword damage",
+		"ascendance": "kills drop a fire pool (1 dmg/0.4s × 2s)",
+	},
+	"blood": {
+		"resonance": "+1 max HP",
+		"ascendance": "room-clear heal restores +25% missing HP",
+	},
+	"vow": {
+		"resonance": "+1 damage taken reduction",
+		"ascendance": "each parry restores 1 HP",
+	},
+	"shadow": {
+		"resonance": "+0.08s dodge i-frames",
+		"ascendance": "dodge fires a 60-px shockwave (1 dmg)",
+	},
+}
+
 # Active room config — driven by Floor autoload. Cached at _ready so
 # late edits to RunState.current_room_config mid-run don't cause stutter.
 var _room: RoomConfig = null
@@ -1548,9 +1581,13 @@ func _rebuild_theme_chips() -> void:
 		theme_chip_strip.add_theme_constant_override("separation", 8)
 		theme_chip_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		ui.add_child(theme_chip_strip)
-	# Clear any prior chips.
+	# Clear any prior chips. Also kill any orphan tooltip in case a
+	# strip rebuild happens mid-hover (a relic granted while the
+	# player was hovering a chip → strip rebuilds → tooltip still
+	# pointed at the now-freed chip).
 	for child in theme_chip_strip.get_children():
 		child.queue_free()
+	_hide_theme_tooltip()
 	# Theme palette — keyed to in-game flavor (cyan storm, red flame,
 	# crimson blood, ivory vow, indigo shadow). Both bg + text are
 	# defined so each chip reads as a distinct identity.
@@ -1572,7 +1609,112 @@ func _rebuild_theme_chips() -> void:
 		lbl.add_theme_color_override("font_color", col)
 		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
 		lbl.add_theme_constant_override("outline_size", 3)
+		# Iter 48 — hover tooltip showing the theme's bonuses. Each
+		# Label gets mouse_filter STOP so the chip catches the mouse
+		# (default IGNORE would let it pass through). bind() captures
+		# the theme name into the callback so the hover handler knows
+		# which chip fired without needing per-chip handler methods.
+		lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+		lbl.mouse_entered.connect(_on_theme_chip_hover.bind(str(theme), lbl))
+		lbl.mouse_exited.connect(_on_theme_chip_unhover)
 		theme_chip_strip.add_child(lbl)
+
+# Iter 48 — theme chip hover handler. Shows a tooltip Panel near the
+# hovered chip with the theme name, owned count, and the resonance
+# + ascendance bonus descriptions (ascendance grayed if not yet
+# unlocked). Single tooltip reused across hovers — _theme_tooltip
+# holds the panel ref, repositioned + retextd per hover.
+func _on_theme_chip_hover(theme: String, anchor_label: Control) -> void:
+	_hide_theme_tooltip()
+	var info: Dictionary = THEME_TOOLTIP_DESC.get(theme, {})
+	if info.is_empty():
+		return
+	var owned_count: int = GameState.theme_count(theme)
+	var tier: int = GameState.theme_tier(theme)
+	var ui: CanvasLayer = $UI as CanvasLayer
+	# Theme palette — same as the chip color for visual continuity.
+	var theme_colors: Dictionary = {
+		"storm": Color(0.55, 0.85, 1.0, 1.0),
+		"flame": Color(1.0, 0.55, 0.30, 1.0),
+		"blood": Color(0.95, 0.45, 0.45, 1.0),
+		"vow": Color(0.92, 0.92, 0.78, 1.0),
+		"shadow": Color(0.78, 0.65, 1.0, 1.0),
+	}
+	var col: Color = theme_colors.get(theme, Color.WHITE)
+	var panel: PanelContainer = PanelContainer.new()
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.05, 0.09, 0.96)
+	sb.border_color = col
+	sb.border_width_left = 1
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.corner_radius_bottom_right = 4
+	sb.corner_radius_bottom_left = 4
+	sb.content_margin_left = 10.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_right = 10.0
+	sb.content_margin_bottom = 8.0
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.custom_minimum_size = Vector2(220, 60)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(box)
+	# Header — theme name + owned count.
+	var hdr: Label = Label.new()
+	hdr.text = "%s  ·  %d owned" % [theme.to_upper(), owned_count]
+	hdr.add_theme_font_size_override("font_size", 14)
+	hdr.add_theme_color_override("font_color", col)
+	hdr.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	hdr.add_theme_constant_override("outline_size", 2)
+	hdr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(hdr)
+	# Resonance line — dimmed grey if not active, full if active.
+	var res_lbl: Label = Label.new()
+	var res_text: String = "RESONANCE (2+):  " + str(info.get("resonance", ""))
+	res_lbl.text = res_text
+	res_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	res_lbl.custom_minimum_size = Vector2(200, 0)
+	res_lbl.add_theme_font_size_override("font_size", 11)
+	var res_color: Color = Color(0.85, 0.80, 0.66, 1) if tier >= 1 else Color(0.45, 0.43, 0.40, 1)
+	res_lbl.add_theme_color_override("font_color", res_color)
+	res_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	res_lbl.add_theme_constant_override("outline_size", 2)
+	res_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(res_lbl)
+	# Ascendance line — same pattern.
+	var asc_lbl: Label = Label.new()
+	var asc_text: String = "ASCENDANCE (4+):  " + str(info.get("ascendance", ""))
+	asc_lbl.text = asc_text
+	asc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	asc_lbl.custom_minimum_size = Vector2(200, 0)
+	asc_lbl.add_theme_font_size_override("font_size", 11)
+	var asc_color: Color = Color(1.0, 0.85, 0.45, 1) if tier >= 2 else Color(0.45, 0.43, 0.40, 1)
+	asc_lbl.add_theme_color_override("font_color", asc_color)
+	asc_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	asc_lbl.add_theme_constant_override("outline_size", 2)
+	asc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(asc_lbl)
+	ui.add_child(panel)
+	_theme_tooltip = panel
+	# Position: below the chip strip, anchored to the hovered chip's
+	# left edge. Tooltip can extend right; if it would clip off the
+	# screen edge we'd handle that — but the chip strip sits at top-
+	# left so a 220-wide tooltip never clips at 1280-wide window.
+	var chip_rect: Rect2 = anchor_label.get_global_rect()
+	panel.global_position = Vector2(chip_rect.position.x, chip_rect.position.y + chip_rect.size.y + 4)
+
+func _on_theme_chip_unhover() -> void:
+	_hide_theme_tooltip()
+
+func _hide_theme_tooltip() -> void:
+	if _theme_tooltip != null and is_instance_valid(_theme_tooltip):
+		_theme_tooltip.queue_free()
+	_theme_tooltip = null
 
 func _on_hero_died() -> void:
 	_alive = false
