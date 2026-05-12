@@ -202,6 +202,49 @@ const RELIC_REGISTRY := {
 		"mods": { "max_hp_bonus": 1 },
 		"themes": ["blood"],
 	},
+	# iter-102 NEW: VOW common. Pool was 8 relics (smallest of the
+	# defense-themed pools); sim showed VOW ascendance triggering in
+	# 0.0% of greedy runs. Adds a second pure-DR VOW common alongside
+	# sturdy_step so the theme has TWO common ramps (was 1) — gives
+	# players a real chance to land 2 VOW relics by floor 1 and 4 by
+	# floor 3. Flavor distinct from sturdy_step (-1 dmg taken) by
+	# adding a small max_hp_bonus too: bulwark is "stand your ground"
+	# vs sturdy_step's "weather it." Different shapes, same theme.
+	"bulwark": {
+		"name": "BULWARK",
+		"description": "Brace and endure. +1 max HP, -1 incoming damage.",
+		"tier": "common",
+		"icon_path": "res://assets/icons/relic_bulwark.png",
+		"mods": { "max_hp_bonus": 1, "damage_taken_reduction": 1 },
+		"themes": ["vow"],
+	},
+	# iter-102 NEW: SHADOW common. Pool was 6 relics; sim showed SHADOW
+	# ascendance triggering in 0.1% of greedy runs. Single-mod crit-chance
+	# entry tier — pairs naturally with keen_focus / focused_strike for
+	# a crit ramp build that also banks SHADOW theme tier. Common at
+	# +10% crit (smaller than keen_focus's 15%) so it doesn't outshine
+	# the FLAME-themed crit anchor.
+	"umbral_thread": {
+		"name": "UMBRAL THREAD",
+		"description": "Strike from shadow. +10% crit chance.",
+		"tier": "common",
+		"icon_path": "res://assets/icons/relic_eye_of_ether.png",
+		"mods": { "crit_chance_f": 0.10 },
+		"themes": ["shadow"],
+	},
+	# iter-102 NEW: dual-theme STORM+SHADOW common. Cheap two-theme
+	# entry; one pickup contributes to both pools at the same time —
+	# similar pattern to tempest_cloak (rare storm+shadow) but at
+	# common tier. Move-speed + projectile-speed combo reads as
+	# "step quickly, fire quickly" — on-brand for both themes.
+	"dusk_walker": {
+		"name": "DUSK WALKER",
+		"description": "Quick step, quick shot. +15% move speed, +15% projectile speed.",
+		"tier": "common",
+		"icon_path": "res://assets/icons/relic_nimble_step.png",
+		"mods": { "move_speed_mul": 0.15, "projectile_speed_mul": 0.15 },
+		"themes": ["storm", "shadow"],
+	},
 	"swift_strike": {
 		"name": "SWIFT STRIKE",
 		"description": "Sword cooldown -20%.",

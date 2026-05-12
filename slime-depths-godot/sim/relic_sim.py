@@ -86,6 +86,12 @@ RELICS = {
     "focused_eye":      ("Focused Eye",      "common", ["storm"], {"blast_damage_bonus": 1, "projectile_speed_mul": 0.2}, "passive"),
     "lifestone":        ("Lifestone",        "common", ["blood"], {"max_hp_bonus": 1}, "passive+regen_8_kills"),  # iter-96 Phase B: +every-8-kills heal
     "keen_focus":       ("Keen Focus",       "common", ["flame"], {"crit_chance_f": 0.15, "crit_damage_bonus_f": 0.10}, "passive"),  # iter-96 Phase B retune
+    # iter-102 NEW commons — fix theme ascendance reach (sim iter-96b
+    # showed VOW 0.0% / SHADOW 0.1% ascendance hit rate due to small
+    # pool size).
+    "bulwark":          ("Bulwark",          "common", ["vow"],    {"max_hp_bonus": 1, "damage_taken_reduction": 1}, "passive"),
+    "umbral_thread":    ("Umbral Thread",    "common", ["shadow"], {"crit_chance_f": 0.10}, "passive"),
+    "dusk_walker":      ("Dusk Walker",      "common", ["storm", "shadow"], {"move_speed_mul": 0.15, "projectile_speed_mul": 0.15}, "passive"),
 
     # ── RARE ─────────────────────────────────────────────────────────────
     "swift_strike":     ("Swift Strike",     "rare",   ["flame"], {"sword_cooldown_mul": -0.2}, "passive"),

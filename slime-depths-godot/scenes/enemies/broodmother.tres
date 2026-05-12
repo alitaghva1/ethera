@@ -38,7 +38,13 @@ contact_cooldown = 0.6
 contact_range = 48.0
 phase2_overrides = {"move_speed": 165.0, "contact_damage": 3, "contact_cooldown": 0.4, "contact_range": 56.0}
 phase2_hp_threshold = 0.5
-phase3_overrides = {"move_speed": 200.0, "contact_damage": 4, "contact_cooldown": 0.3, "contact_range": 60.0}
+; iter-102: phase 3 was 4 contact_damage vs hero MAX_HP=3 + 200 move_speed
+; (tied with hero SPEED — kiting fails). Math: full-HP hero ate a single
+; unblocked bump and died. Audit team flagged this as a 1-shot from full.
+; Reduced to 2 dmg (no longer one-shots full-HP), 175 move_speed (kiteable
+; with shield + dash strike i-frames). Cooldown 0.3 unchanged — pressure
+; stays high, just no longer instant-kill.
+phase3_overrides = {"move_speed": 175.0, "contact_damage": 2, "contact_cooldown": 0.3, "contact_range": 60.0}
 phase3_hp_threshold = 0.25
 phase2_summon_type = "crypt_spider"
 phase2_summon_count = 3

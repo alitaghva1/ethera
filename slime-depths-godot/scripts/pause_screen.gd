@@ -65,6 +65,20 @@ func _ready() -> void:
 	# local. _exit_tree() undoes it as a safety net.
 	get_tree().paused = true
 
+	# iter-102: fade-in tween. The pause overlay was hard-cutting to
+	# full opacity in one frame — reads as an alt-tab. 0.20s is faster
+	# than the death-screen fade (0.35s) because pause has to feel
+	# responsive (player wants the menu NOW). process_mode + the tween's
+	# pause_mode = PROCESS handles the get_tree().paused = true above:
+	# without explicit pause_mode, the tween would freeze immediately
+	# and the overlay would stay at alpha 0.
+	modulate.a = 0.0
+	var fade_tw: Tween = create_tween()
+	fade_tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	fade_tw.set_trans(Tween.TRANS_QUAD)
+	fade_tw.set_ease(Tween.EASE_OUT)
+	fade_tw.tween_property(self, "modulate:a", 1.0, 0.20)
+
 	# Default keyboard focus on RESUME — the safest first action.
 	# Defer by one frame so focus applies AFTER the layer becomes
 	# visible (Control focus is not applied to a hidden subtree).

@@ -73,7 +73,17 @@ func show_death(kills: int) -> void:
 	_rebuild_reached_label(kills)
 	_rebuild_themes_summary()
 	_rebuild_relics_list()
+	# iter-102: fade in instead of hard-cut. Every other cinematic
+	# transition in the kit tweens (boss intro 0.25s, pickup banner,
+	# floor card) — the death overlay was the only one that slammed
+	# to full opacity in one frame. Reads more like an alt-tab than
+	# a polished death. 0.35s ease-out feels weighty without dragging.
+	modulate.a = 0.0
 	visible = true
+	var fade_tw: Tween = create_tween()
+	fade_tw.set_trans(Tween.TRANS_QUAD)
+	fade_tw.set_ease(Tween.EASE_OUT)
+	fade_tw.tween_property(self, "modulate:a", 1.0, 0.35)
 	# Defer focus by one frame — the CanvasLayer becomes visible THIS
 	# frame, but Control children's focus_mode isn't applied to a
 	# hidden tree. One frame later they're ready.
