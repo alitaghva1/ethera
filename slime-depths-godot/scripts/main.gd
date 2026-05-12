@@ -1293,6 +1293,37 @@ func _open_wave_portals() -> void:
 	for sp in _spawn_points:
 		pool.append(sp)
 	pool.shuffle()
+	# iter-75 followup: filter out spawn_points that overlap hazards
+	# (fire jets, lightning rods, spike pits) or the hero spawn. The
+	# bug surfaced when room_05's spawn_point (900,384) sat 22px from a
+	# fire_jet hazard at (920,400) — a portal opened directly on the
+	# flame. Hazards have ~40-50px effective danger radius; portals
+	# are now radius 48 + aura 80 footprint. Clearance 80px gives a
+	# comfortable margin without over-rejecting in tight rooms.
+	const PORTAL_MIN_DIST_FROM_HAZARD: float = 80.0
+	const PORTAL_MIN_DIST_FROM_HERO: float = 100.0
+	var hazards: Array[Vector2] = _gather_hazard_positions()
+	var hero_pos: Vector2 = Vector2.INF
+	var heroes: Array = get_tree().get_nodes_in_group("hero")
+	if not heroes.is_empty() and heroes[0] is Node2D:
+		hero_pos = (heroes[0] as Node2D).global_position
+	var filtered: Array[Vector2] = []
+	for candidate in pool:
+		var ok: bool = true
+		for hz in hazards:
+			if candidate.distance_to(hz) < PORTAL_MIN_DIST_FROM_HAZARD:
+				ok = false
+				break
+		if ok and hero_pos != Vector2.INF:
+			if candidate.distance_to(hero_pos) < PORTAL_MIN_DIST_FROM_HERO:
+				ok = false
+		if ok:
+			filtered.append(candidate)
+	# If filtering rejected too aggressively (e.g. a dense hazard room),
+	# fall back to the original unfiltered pool so we never end up with
+	# zero portals when enemies are queued to emerge.
+	if filtered.size() >= mini(2, pool.size()):
+		pool = filtered
 	var n: int = mini(MAX_WAVE_PORTALS, pool.size())
 	for i in range(n):
 		var pos: Vector2 = pool[i]
@@ -1362,6 +1393,28 @@ func _close_active_wave_portals() -> void:
 			node.close()
 	_active_wave_portal_nodes.clear()
 	_active_wave_portals.clear()
+
+# iter-75 followup: gather every authored hazard position in the room
+# so _open_wave_portals can reject spawn_points that overlap hazards.
+# RoomConfig keeps hazard positions in two separate arrays for legacy
+# reasons:
+#   hazard_positions  — Array[Vector2]   (iter-30 layout; spike_pit by default)
+#   hazards           — Array[Dictionary] of {kind, position, [phase], ...}
+#                       (iter-31 typed hazards: fire_jet, lightning_rod, etc.)
+# We union both into a single Vector2 list; the caller distance-checks
+# each candidate against the union.
+func _gather_hazard_positions() -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	if _room == null:
+		return result
+	for hp in _room.hazard_positions:
+		result.append(hp)
+	for h in _room.hazards:
+		if h is Dictionary and h.has("position"):
+			var p = h["position"]
+			if p is Vector2:
+				result.append(p)
+	return result
 
 # Iter 35 — wave-event dispatcher. Iterates _room.wave_events, filters
 # to entries matching `wave_idx`, dispatches each by `kind`. Unknown
