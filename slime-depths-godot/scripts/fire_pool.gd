@@ -17,6 +17,9 @@ const POOL_TICK_INTERVAL: float = 0.4
 const POOL_LIFETIME: float = 2.0
 const POOL_RADIUS: float = 22.0
 
+# Iter 61 — per-instance _life lets callers spawn shorter-lived pools
+# (e.g. melee swing connect creates a brief 0.6s mini-pool vs the
+# 2.0s kill pool). Set BEFORE add_child to override the default.
 var _life: float = POOL_LIFETIME
 var _tick: float = 0.0
 # Per-enemy hit cooldown so each enemy takes one tick per
@@ -29,6 +32,9 @@ var _glow: PointLight2D = null
 var _pulse: Polygon2D = null
 
 func _ready() -> void:
+	# Iter 61 — join "fire_pools" group so tests / future systems can
+	# find all active pools without walking the scene tree by parent.
+	add_to_group("fire_pools")
 	# Detection shape — circle radius 22.
 	var shape: CollisionShape2D = CollisionShape2D.new()
 	var circle: CircleShape2D = CircleShape2D.new()

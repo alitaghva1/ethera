@@ -812,6 +812,37 @@ func _resolve_melee_strike() -> void:
 		# other swing yields ONE — concrete bullet-hell scaling.
 		if GameState.theme_tier("storm") >= 2:
 			_try_chain_from(self, hit_set)
+		# Iter 61 — FLAME ascendance (4+ FLAME relics): connecting melee
+		# swings drop a MINI fire pool (0.6s vs the 2s kill pool) at the
+		# hero's aim point. Reads as "your sword is on fire — its trail
+		# burns the ground." Stacks with embers_of_ruin burn (which
+		# lights enemies directly) for layered FLAME pressure.
+		if GameState.theme_tier("flame") >= 2:
+			_trigger_swing_fire_trail()
+
+# Iter 61 — drop a brief fire pool at the position the sword swung to.
+# Uses the existing FIRE_POOL_SCENE but with a shorter _life (0.6s)
+# so the swing trail decays faster than the kill pool. The pool's
+# overlap-damage logic still applies — enemies walking through the
+# trail in the next 0.6s take ticks.
+func _trigger_swing_fire_trail() -> void:
+	var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+	if pool == null:
+		return
+	# Position the trail at the swing's aim direction, slightly forward
+	# of the hero — so the burn appears WHERE THE SWORD ARC LANDED, not
+	# at the hero's feet.
+	var trail_pos: Vector2 = global_position + _pending_melee_aim * (_pending_melee_range * 0.55)
+	pool.global_position = trail_pos
+	pool.set("_life", 0.6)
+	# Iter 61 — add to the hero's parent (main.tscn) rather than
+	# get_tree().current_scene, which can be null in scenes-loaded-
+	# via-instantiate contexts (the iter-40 fire pool's behavior was
+	# the same, but parented via current_scene which works in real
+	# gameplay but not in test instantiation).
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(pool)
 
 # Iter 21 — chain_lightning effect. Find the nearest enemy within
 # CHAIN_RADIUS of `source` that wasn't already hit this swing, deal a

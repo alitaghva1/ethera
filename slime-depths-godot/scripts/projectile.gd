@@ -110,11 +110,55 @@ func _ready() -> void:
 	# previously the orb looked identical to a base blast.
 	# Also bake glow energy bump so the visual+light scale together.
 	_dmg_scale = 1.0 + clampf(float(damage - 1) * 0.20, 0.0, 0.60)
+	# Iter 61 — ability SHAPE evolution. The mechanics flags set on the
+	# projectile at spawn (pierce_count, ricochet_count) drive visible
+	# shape changes so the player can SEE what their projectile does:
+	#   pierce > 0    → elongated along velocity (arrow-like)
+	#   ricochet > 0  → outer ring halo (bouncy)
+	#   both          → elongated arrow with halo (a "homing dart")
+	# Visual reads at a glance — a player who picked up Piercing Quarrel
+	# sees their blast morph into a longer streak immediately on next cast.
+	var aspect_x: float = 1.0
+	var aspect_y: float = 1.0
+	if pierce_count > 0:
+		# Stretch along the velocity axis (sprite is rotated to face
+		# velocity in _ready, so .x is along the flight path).
+		aspect_x = 1.40
+		aspect_y = 0.85
+	var target_scale: Vector2 = Vector2(aspect_x, aspect_y) * _dmg_scale
 	scale = Vector2(0.6, 0.6) * _dmg_scale
 	var tw: Tween = create_tween()
 	tw.set_trans(Tween.TRANS_QUAD)
 	tw.set_ease(Tween.EASE_OUT)
-	tw.tween_property(self, "scale", Vector2(_dmg_scale, _dmg_scale), 0.05)
+	tw.tween_property(self, "scale", target_scale, 0.05)
+	# Ricochet halo — outer Line2D ring drawn around the orb. Scales
+	# with damage too (matches the orb glow size). Only built when
+	# ricochet_count > 0; absence means base orb shape.
+	if ricochet_count > 0:
+		_build_ricochet_halo()
+
+# Iter 61 — build a circular halo ring around the projectile to signal
+# "this one bounces". Done as a Line2D so the ring stays a thin
+# outline (not a filled disc that'd cover the orb). Color matches
+# orb_tint so the halo reads as part of the projectile, not a
+# separate floating ring.
+func _build_ricochet_halo() -> void:
+	var halo: Line2D = Line2D.new()
+	# 12-vert near-circle at radius 14 (in projectile local space).
+	var r: float = 14.0
+	var pts: PackedVector2Array = PackedVector2Array()
+	var n: int = 12
+	for i in range(n + 1):
+		var a: float = (TAU / float(n)) * float(i)
+		pts.append(Vector2(cos(a) * r, sin(a) * r))
+	halo.points = pts
+	halo.width = 2.0
+	halo.default_color = Color(orb_tint.r, orb_tint.g, orb_tint.b, 0.85)
+	halo.joint_mode = 2   # Line2D.LINE_JOINT_ROUND
+	halo.antialiased = true
+	# z below sprite so the orb draws on top of the rim (cleaner read).
+	halo.z_index = -1
+	add_child(halo)
 
 func _physics_process(delta: float) -> void:
 	global_position += velocity * delta
