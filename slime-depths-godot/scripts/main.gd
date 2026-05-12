@@ -110,6 +110,47 @@ const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn
 # spawn_portal.gd; this is just the preloaded entry point.
 const SPAWN_PORTAL_SCENE: PackedScene = preload("res://scenes/fx/spawn_portal.tscn")
 const MAX_WAVE_PORTALS: int = 3
+
+# ─── PORTAL PLACEMENT VALIDATOR (iter 77 design pass) ───────────────
+# A valid portal position must clear every room feature listed below by
+# at least the matching MIN_DIST. The user's design brief was explicit:
+# "should never spawn on top of fire spots, torches, doors, walls,
+# pillars, obstacles, exits, rewards, or other important room features."
+#
+# Distance budget reasoning: portal visual footprint ≈ 32 px (crack
+# radius 22 + rune fragments 28 outer). Other feature footprints below
+# are approximate; min-dists add a small margin so the eye sees clear
+# air between the portal and the feature.
+#
+# Tune these values to adjust how PERMISSIVE the validator is — lower
+# = portals can crowd closer to features; higher = more empty rooms
+# fail validation and we fall back to the unfiltered pool.
+const PORTAL_MIN_DIST_FROM_HERO: float = 110.0      # give the player room to react
+const PORTAL_MIN_DIST_FROM_HAZARD: float = 80.0     # fire_jet / spike_pit / lightning_rod / glyph_trap
+const PORTAL_MIN_DIST_FROM_TORCH: float = 64.0      # don't crowd light sources
+const PORTAL_MIN_DIST_FROM_PILLAR: float = 60.0
+const PORTAL_MIN_DIST_FROM_CHEST: float = 60.0
+const PORTAL_MIN_DIST_FROM_DOOR: float = 110.0      # exit sightline must stay clear
+const PORTAL_MIN_DIST_FROM_LORESTONE: float = 60.0
+const PORTAL_MIN_DIST_FROM_SHRINE: float = 70.0
+const PORTAL_MIN_DIST_FROM_WALL_RECT: float = 28.0  # outside-rect distance
+const PORTAL_MIN_DIST_FROM_OTHER_PORTAL: float = 80.0  # anti-clustering
+const PORTAL_MIN_DIST_FROM_ROOM_CENTER: float = 90.0   # pedestals spawn at center
+const PORTAL_PLAY_MARGIN: float = 16.0              # inset from play_rect edges
+# Walkable bounds (matches the play_left/right/top/bottom used in the
+# decor scatter at ~line 717 — kept as constants here so the validator
+# doesn't compute them per-call).
+const PORTAL_PLAY_LEFT: float = 130.0
+const PORTAL_PLAY_RIGHT: float = 1150.0
+const PORTAL_PLAY_TOP: float = 130.0
+const PORTAL_PLAY_BOTTOM: float = 640.0
+const PORTAL_ROOM_CENTER: Vector2 = Vector2(640, 384)
+# Fallback sampling — if every authored spawn_point fails validation
+# (e.g. a dense hazard room), we sample random positions inside the
+# walkable rect and validate each. PORTAL_FALLBACK_ATTEMPTS caps the
+# search so a hopelessly-crowded room can't hang the wave start.
+const PORTAL_FALLBACK_ATTEMPTS: int = 40
+# ────────────────────────────────────────────────────────────────────
 # Iter 30 — hazard scenes. The room reads its hazard_kind string and
 # we pick the scene to instantiate at each hazard_positions entry.
 # Iter 31 — added fire_jet, slow_zone, lightning_rod for mixed-hazard
@@ -1287,46 +1328,55 @@ func _open_wave_portals() -> void:
 	_active_wave_portal_nodes = []
 	if _spawn_points.is_empty():
 		return
-	# Take a copy so .shuffle() doesn't mutate the source array (which
-	# is stored on the room config Resource and shared across runs).
-	var pool: Array[Vector2] = []
+	# iter-77 design pass: portal placement is now a full validator that
+	# checks every room feature (hazards, torches, pillars, chests, door,
+	# walls, lore stones, shrines, hero, other portals, room center,
+	# walkable bounds). Authored spawn_points are tried first (designer
+	# intent); if too few survive validation, we sample random positions
+	# inside the walkable rect as a fallback.
+	#
+	# Algorithm:
+	#   1. Shuffle authored spawn_points (designer-blessed positions).
+	#   2. For each, validate against ALL room features + previously
+	#      selected portals. Accept up to MAX_WAVE_PORTALS.
+	#   3. If we still need more portals after exhausting authored
+	#      points, sample random positions in the walkable rect and
+	#      validate each. Bail after PORTAL_FALLBACK_ATTEMPTS so a
+	#      hopelessly-crowded room can't hang.
+	#   4. If even fallback yields too few, accept whatever we have (or
+	#      revert to legacy unfiltered pool as last resort to guarantee
+	#      enemies have somewhere to emerge).
+	var n_target: int = mini(MAX_WAVE_PORTALS, _spawn_points.size())
+	var chosen: Array[Vector2] = []
+	# Step 1+2: authored spawn_points, shuffled, validated.
+	var authored_pool: Array[Vector2] = []
 	for sp in _spawn_points:
-		pool.append(sp)
-	pool.shuffle()
-	# iter-75 followup: filter out spawn_points that overlap hazards
-	# (fire jets, lightning rods, spike pits) or the hero spawn. The
-	# bug surfaced when room_05's spawn_point (900,384) sat 22px from a
-	# fire_jet hazard at (920,400) — a portal opened directly on the
-	# flame. Hazards have ~40-50px effective danger radius; portals
-	# are now radius 48 + aura 80 footprint. Clearance 80px gives a
-	# comfortable margin without over-rejecting in tight rooms.
-	const PORTAL_MIN_DIST_FROM_HAZARD: float = 80.0
-	const PORTAL_MIN_DIST_FROM_HERO: float = 100.0
-	var hazards: Array[Vector2] = _gather_hazard_positions()
-	var hero_pos: Vector2 = Vector2.INF
-	var heroes: Array = get_tree().get_nodes_in_group("hero")
-	if not heroes.is_empty() and heroes[0] is Node2D:
-		hero_pos = (heroes[0] as Node2D).global_position
-	var filtered: Array[Vector2] = []
-	for candidate in pool:
-		var ok: bool = true
-		for hz in hazards:
-			if candidate.distance_to(hz) < PORTAL_MIN_DIST_FROM_HAZARD:
-				ok = false
-				break
-		if ok and hero_pos != Vector2.INF:
-			if candidate.distance_to(hero_pos) < PORTAL_MIN_DIST_FROM_HERO:
-				ok = false
-		if ok:
-			filtered.append(candidate)
-	# If filtering rejected too aggressively (e.g. a dense hazard room),
-	# fall back to the original unfiltered pool so we never end up with
-	# zero portals when enemies are queued to emerge.
-	if filtered.size() >= mini(2, pool.size()):
-		pool = filtered
-	var n: int = mini(MAX_WAVE_PORTALS, pool.size())
-	for i in range(n):
-		var pos: Vector2 = pool[i]
+		authored_pool.append(sp)
+	authored_pool.shuffle()
+	for candidate in authored_pool:
+		if chosen.size() >= n_target:
+			break
+		if _is_portal_position_valid(candidate, chosen):
+			chosen.append(candidate)
+	# Step 3: random-sample fallback if validation rejected too much.
+	if chosen.size() < n_target:
+		var attempts: int = 0
+		while chosen.size() < n_target and attempts < PORTAL_FALLBACK_ATTEMPTS:
+			attempts += 1
+			var sample: Vector2 = Vector2(
+				randf_range(PORTAL_PLAY_LEFT + PORTAL_PLAY_MARGIN,
+					PORTAL_PLAY_RIGHT - PORTAL_PLAY_MARGIN),
+				randf_range(PORTAL_PLAY_TOP + PORTAL_PLAY_MARGIN,
+					PORTAL_PLAY_BOTTOM - PORTAL_PLAY_MARGIN),
+			)
+			if _is_portal_position_valid(sample, chosen):
+				chosen.append(sample)
+	# Step 4: last-resort guarantee. If even fallback returned nothing,
+	# fall back to one unfiltered shuffled spawn_point so enemies have
+	# somewhere to emerge. Better to spawn on a torch than have nothing.
+	if chosen.is_empty() and not authored_pool.is_empty():
+		chosen.append(authored_pool[0])
+	for pos in chosen:
 		_active_wave_portals.append(pos)
 		# Tint the portal with the room's ambient_tint nudged toward the
 		# spec-required purple-magenta, so a deep-purple room still gets
@@ -1415,6 +1465,105 @@ func _gather_hazard_positions() -> Array[Vector2]:
 			if p is Vector2:
 				result.append(p)
 	return result
+
+# iter-77 placement validator. Returns true iff `pos` is a valid spawn
+# portal position — i.e. clears every room feature by the matching
+# PORTAL_MIN_DIST_FROM_* threshold (see constants block near line 113).
+#
+# `already_chosen` is the list of portals already accepted for THIS
+# wave; we enforce anti-clustering against them so two portals never
+# land within PORTAL_MIN_DIST_FROM_OTHER_PORTAL of each other.
+#
+# Features checked (in order, fast-fail):
+#   1. Walkable bounds (play_rect with PORTAL_PLAY_MARGIN inset)
+#   2. Other portals already chosen this wave
+#   3. Hero (live or hero_spawn fallback)
+#   4. Room hazards (fire_jet, spike_pit, lightning_rod, slow_zone, glyph_trap)
+#   5. Torch positions (don't crowd light sources)
+#   6. Pillar positions
+#   7. Chest positions
+#   8. Door (east wall — sightline must stay clear)
+#   9. Wall rects (rect-to-point distance check)
+#  10. Lore stones
+#  11. Shrine positions
+#  12. Room center (pedestals spawn there at clear)
+#
+# All checks use Euclidean distance except wall rects (uses Rect2's
+# distance_to-equivalent via min-axis clamping).
+func _is_portal_position_valid(pos: Vector2, already_chosen: Array[Vector2]) -> bool:
+	# 1. Walkable bounds.
+	if pos.x < PORTAL_PLAY_LEFT + PORTAL_PLAY_MARGIN: return false
+	if pos.x > PORTAL_PLAY_RIGHT - PORTAL_PLAY_MARGIN: return false
+	if pos.y < PORTAL_PLAY_TOP + PORTAL_PLAY_MARGIN: return false
+	if pos.y > PORTAL_PLAY_BOTTOM - PORTAL_PLAY_MARGIN: return false
+
+	# 2. Other portals chosen earlier this wave (anti-cluster).
+	for other in already_chosen:
+		if pos.distance_to(other) < PORTAL_MIN_DIST_FROM_OTHER_PORTAL:
+			return false
+
+	# 3. Hero — prefer live position, fall back to hero_spawn.
+	var hero_pos: Vector2 = Vector2.INF
+	var heroes: Array = get_tree().get_nodes_in_group("hero")
+	if not heroes.is_empty() and heroes[0] is Node2D:
+		hero_pos = (heroes[0] as Node2D).global_position
+	elif _room != null:
+		hero_pos = _room.hero_spawn
+	if hero_pos != Vector2.INF:
+		if pos.distance_to(hero_pos) < PORTAL_MIN_DIST_FROM_HERO:
+			return false
+
+	# 4. Hazards.
+	for hz in _gather_hazard_positions():
+		if pos.distance_to(hz) < PORTAL_MIN_DIST_FROM_HAZARD:
+			return false
+
+	if _room != null:
+		# 5. Torches.
+		for t in _room.torch_positions:
+			if pos.distance_to(t) < PORTAL_MIN_DIST_FROM_TORCH:
+				return false
+		# 6. Pillars.
+		for p in _room.pillar_positions:
+			if pos.distance_to(p) < PORTAL_MIN_DIST_FROM_PILLAR:
+				return false
+		# 7. Chests.
+		for c in _room.chest_positions:
+			if pos.distance_to(c) < PORTAL_MIN_DIST_FROM_CHEST:
+				return false
+		# 9. Wall rects — distance from a point to a Rect2 is
+		# max(0, dx) + max(0, dy) in axis terms, but for portal
+		# clearance we want Euclidean distance to the nearest rect
+		# edge. Compute via clamping the point INTO the rect; the
+		# distance from pos to that clamped point is the rect distance.
+		for wall in _room.wall_rects:
+			var clamped: Vector2 = Vector2(
+				clampf(pos.x, wall.position.x, wall.position.x + wall.size.x),
+				clampf(pos.y, wall.position.y, wall.position.y + wall.size.y),
+			)
+			if pos.distance_to(clamped) < PORTAL_MIN_DIST_FROM_WALL_RECT:
+				return false
+		# 10. Lore stones.
+		for ls in _room.lore_stones:
+			if ls is Dictionary and ls.has("position"):
+				var lpos = ls["position"]
+				if lpos is Vector2 and pos.distance_to(lpos) < PORTAL_MIN_DIST_FROM_LORESTONE:
+					return false
+		# 11. Shrines.
+		for s in _room.shrine_positions:
+			if pos.distance_to(s) < PORTAL_MIN_DIST_FROM_SHRINE:
+				return false
+
+	# 8. Door (east-wall exit — fixed constant per main.gd:136).
+	if pos.distance_to(DOOR_POSITION) < PORTAL_MIN_DIST_FROM_DOOR:
+		return false
+
+	# 12. Room center — pedestals spawn here at room clear, so keep
+	# portals away from the eventual reward zone.
+	if pos.distance_to(PORTAL_ROOM_CENTER) < PORTAL_MIN_DIST_FROM_ROOM_CENTER:
+		return false
+
+	return true
 
 # Iter 35 — wave-event dispatcher. Iterates _room.wave_events, filters
 # to entries matching `wave_idx`, dispatches each by `kind`. Unknown
