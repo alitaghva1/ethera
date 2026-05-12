@@ -21,3 +21,5 @@ hazards = [{"kind": "slow_zone", "position": Vector2(640, 384)}]
 branches = [{"kind": "safe", "label": "SAFE", "subtitle": "+1 HP · common relics"}, {"kind": "treasure", "label": "TREASURE", "subtitle": "skip fight · legendary relic", "room_path": "res://scenes/rooms/room_treasure.tres"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]
 biome = "crypt"
 wave_events = [{"wave": 1, "kind": "announce", "text": "The floor shifts · take cover"}, {"wave": 1, "kind": "raise_wall", "rect": Rect2(380, 300, 28, 180)}, {"wave": 1, "kind": "raise_wall", "rect": Rect2(872, 300, 28, 180)}]
+position_jitter = 14.0
+waves_pool = [[[["slime", 3], ["crypt_spider", 1]], [["ember", 2], ["orc", 1]], [["slime", 2], ["skel", 1], ["archer", 1]]], [[["crypt_spider", 2], ["slime", 2]], [["orc", 2], ["skel", 1]], [["slime", 1], ["archer", 2], ["ember", 1]]], [[["slime", 4]], [["crypt_spider", 3], ["ember", 1]], [["skel", 2], ["orc", 1], ["archer", 1]]]]

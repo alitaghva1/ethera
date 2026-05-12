@@ -153,6 +153,13 @@ var _branch_modifier: String = ""
 # _do_spawn_pending_shrines. Cleared after consumption.
 var _pending_shrine_spawns: Array = []
 
+# Iter 36 — per-visit RNG. Seeded at room load with (room_idx * 1000
+# + dungeon_runs) so each run's visit to a given room gets a fresh
+# but in-run-stable pattern: pillar jitter, wave pool selection, and
+# any future per-visit rolls draw from this stream rather than the
+# global random (which is shared by spawn shuffle / decor / etc).
+var _visit_rng: RandomNumberGenerator = null
+
 var _wave_index := -1
 var _wave_state := WaveState.PRE
 var _alive := true
@@ -191,10 +198,27 @@ func _ready() -> void:
 	_room = RunState.current_room_config as RoomConfig
 	if _room != null:
 		_spawn_points = _room.spawn_points
+		# Iter 36 — per-visit variation seed. Seeds with the room slot
+		# AND the run counter so within one run the variation is stable
+		# (no mid-run swap weirdness), but each new run rolls fresh.
+		# Wrapped in its own RNG instance so room-level rolls don't
+		# burn the global random sequence relied on by spawn shuffle /
+		# decor scatter / projectile jitter elsewhere.
+		_visit_rng = RandomNumberGenerator.new()
+		_visit_rng.seed = int((RunState.current_room_index + 1) * 1000 + GameState.dungeon_runs)
+		# Iter 36 — wave variant pool. If the room declares waves_pool,
+		# pick ONE entry as this visit's wave composition; otherwise
+		# fall back to the baseline `waves` field.
+		var base_waves: Array = _room.waves
+		if not _room.waves_pool.is_empty():
+			var pool_idx: int = _visit_rng.randi() % _room.waves_pool.size()
+			var picked = _room.waves_pool[pool_idx]
+			if picked is Array:
+				base_waves = picked as Array
 		# Iter 32 — branching modifiers can mutate waves. Deep-copy so we
 		# never mutate the source RoomConfig resource (a "+1 enemy" risk
 		# bump on first visit would otherwise persist on subsequent runs).
-		_waves = _room.waves.duplicate(true)
+		_waves = base_waves.duplicate(true)
 		_apply_pending_branch_modifier()
 		# Iter 18 — per-room ambient tint applied to the CanvasModulate.
 		# Drives the "deeper = different mood" feeling: room 1 light
@@ -209,7 +233,12 @@ func _ready() -> void:
 		# from per-room arrays in the same data-driven shape as torches.
 		# Order matters cosmetically (pillars first → chests render on
 		# top in z-order) but neither one depends on the other.
-		_spawn_pillars(_room.pillar_positions)
+		# Iter 36 — pillar positions get a per-visit ±position_jitter
+		# offset so the room reads as related-but-not-identical across
+		# multiple runs. Hazards / spawn_points are deliberately NOT
+		# jittered — those are load-bearing for timing + composition.
+		var pillars: Array[Vector2] = _maybe_jitter_pillars(_room.pillar_positions, _room.position_jitter)
+		_spawn_pillars(pillars)
 		_spawn_chests(_room.chest_positions)
 		# Iter 30 — interior walls + hazards. Interior walls partition
 		# the otherwise-open 1280×720 arena into corridors / chambers /
@@ -321,6 +350,26 @@ func _spawn_torches(positions: Array[Vector2]) -> void:
 		t.position = pos
 		t.add_to_group("torches")   # iter 35 — dim_lights events iterate this group
 		add_child(t)
+
+# Iter 36 — pillar position jitter. Returns a NEW array (doesn't
+# mutate the source RoomConfig.pillar_positions) with each entry
+# offset by ±jitter radius drawn from _visit_rng. jitter <= 0 or
+# missing RNG returns the original array unchanged.
+#
+# Rationale: pillars are decorative cover; a ±15px shift doesn't
+# break combat geometry but reads as a real per-visit variant. Spawn
+# points + hazards are NOT jittered (those gate combat timing).
+func _maybe_jitter_pillars(positions: Array[Vector2], jitter: float) -> Array[Vector2]:
+	if jitter <= 0.0 or _visit_rng == null:
+		return positions
+	var out: Array[Vector2] = []
+	for p in positions:
+		var off: Vector2 = Vector2(
+			_visit_rng.randf_range(-jitter, jitter),
+			_visit_rng.randf_range(-jitter, jitter),
+		)
+		out.append(p + off)
+	return out
 
 func _spawn_pillars(positions: Array[Vector2]) -> void:
 	for pos in positions:

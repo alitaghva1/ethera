@@ -214,3 +214,31 @@ extends Resource
 #                      Companion event — pair with activate_hazard etc.
 #                      to telegraph the change.
 @export var wave_events: Array[Dictionary] = []
+
+# Iter 36 — procedural variation per visit. Two opt-in mechanisms
+# so a room that's seen multiple times across runs doesn't read as
+# pixel-identical. Both are seeded with RunState.current_room_index
+# + GameState.dungeon_runs so the variation is DETERMINISTIC inside
+# a single run (no mid-run swap weirdness) but DIFFERENT between
+# runs (visit 1 has pattern A, visit 2 picks B/C/etc.).
+#
+# position_jitter: max radius in pixels for the per-visit jitter
+#   applied to pillar_positions on load. 0 = no jitter (iter-30
+#   baseline). 12-20 reads as "this room remembers being similar
+#   but not identical" without breaking carefully-placed chokepoints.
+#   Hazards and spawn_points are NOT jittered — those are
+#   load-bearing for gameplay timing.
+@export var position_jitter: float = 0.0
+
+# waves_pool: optional Array of waves entries. When non-empty,
+# main.gd rolls per-visit to pick ONE pool entry as the wave
+# composition (replacing this RoomConfig's `waves` field for the
+# current visit). Each pool entry is structured identically to
+# `waves` (Array of Array of [type_id, count] pairs).
+#
+# Empty array = use the baseline `waves` field every visit
+# (iter-30 behavior).
+#
+# Authoring tip: keep pool entries balanced in total enemy count
+# + tier so the variation is FLAVOR not difficulty swings.
+@export var waves_pool: Array = []
