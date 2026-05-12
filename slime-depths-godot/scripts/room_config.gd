@@ -117,3 +117,27 @@ extends Resource
 # interior walls, this is how rooms start to drive tactical play
 # instead of being passive arenas.
 @export var hazards: Array[Dictionary] = []
+
+# Iter 32 — branching room choice. When non-empty, the room spawns N
+# branch doors at clear instead of the single iter-30 door. Each entry
+# in `branches` defines ONE option offered to the player.
+#
+# Entry schema:
+#   {
+#     "label": String,   # short text shown above the door, eg "RISK"
+#     "kind": String,    # "safe" | "standard" | "risk" — drives modifier
+#                        # applied to the NEXT room. See RunState.apply_branch.
+#     "subtitle": String # optional, second-line peek text eg "rare relics +1 enemy"
+#   }
+#
+# Branch kind effects (applied at next-room _ready via
+# RunState.pending_branch):
+#   "safe"      Heal +1 HP on entry. Pedestal/relic offer is forced to
+#               common tier only (modest reward, room itself unchanged
+#               but the safety net is the heal).
+#   "standard"  No modifier. The iter-30 default behavior.
+#   "risk"      +1 enemy added to wave 1. Pedestal/relic offer is forced
+#               to rare tier minimum.
+#
+# Empty array = iter-30 single-door legacy behavior at DOOR_POSITION.
+@export var branches: Array[Dictionary] = []

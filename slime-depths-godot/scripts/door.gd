@@ -35,6 +35,15 @@ const PROXIMITY_INTENSITY_BOOST: float = 0.75  # added to glow energy when in ra
 @onready var portal_glow: PointLight2D = $PortalGlow
 @onready var motes: CPUParticles2D = $Motes
 @onready var label: Label = $Label
+@onready var subtitle: Label = $Subtitle
+
+# Iter 32 — branch metadata. Set by main.gd BEFORE add_child() when
+# spawning a multi-door fork. _ready applies them to the label/tint/
+# glow color. Empty branch_kind = legacy single-door behavior (the
+# iter-30 "ONWARD →" cyan-magenta portal).
+var branch_label: String = ""
+var branch_kind: String = ""
+var branch_subtitle: String = ""
 
 var _firing := false
 var _base_glow_energy: float = 1.8
@@ -50,6 +59,56 @@ func _ready() -> void:
 		_base_glow_energy = portal_glow.energy
 	if portal_core != null:
 		_base_core_scale = portal_core.scale
+	# Iter 32 — apply branch metadata if this is a branch-door fork.
+	# Legacy (single-door) spawns leave branch_kind = "" and the door
+	# keeps the iter-27 magenta-cyan portal look + "ONWARD →" label.
+	if branch_kind != "":
+		_apply_branch_styling()
+
+# Iter 32 — branch-door visual theming. Tints the vortex rings, glow
+# light, and core dot per branch_kind so the player reads each door's
+# RISK / SAFE / STANDARD identity at a glance from across the room.
+# Also rewrites the label text + subtitle to peek what's behind.
+#
+# Tint approach: modulate the Line2D / PointLight2D color WITHOUT
+# touching the per-vertex gradients (those keep the swirl readable).
+# Result reads like "the same portal, but burning red for risk / glowing
+# green for safe" — same shape, different mood.
+func _apply_branch_styling() -> void:
+	if label != null and branch_label != "":
+		label.text = branch_label
+	if subtitle != null:
+		subtitle.text = branch_subtitle
+		subtitle.visible = branch_subtitle != ""
+	var tint: Color = Color(1, 1, 1, 1)
+	var label_color: Color = Color(1, 0.88, 0.7, 1)
+	match branch_kind:
+		"safe":
+			tint = Color(0.55, 1.0, 0.65, 1.0)
+			label_color = Color(0.75, 1.0, 0.85, 1.0)
+		"risk":
+			tint = Color(1.0, 0.55, 0.45, 1.0)
+			label_color = Color(1.0, 0.78, 0.65, 1.0)
+		"standard":
+			tint = Color(0.95, 0.92, 1.0, 1.0)
+			label_color = Color(0.92, 0.92, 1.0, 1.0)
+		_:
+			# Unknown kind — leave the iter-27 magenta-cyan default in place.
+			tint = Color(1, 1, 1, 1)
+	if vortex_outer != null:
+		vortex_outer.modulate = tint
+	if vortex_inner != null:
+		vortex_inner.modulate = tint
+	if portal_core != null:
+		portal_core.modulate = tint
+	if portal_glow != null:
+		# Re-tint the cast light too — the floor pool color shifts to
+		# the branch palette so the door's identity propagates outward.
+		portal_glow.color = tint
+	if label != null:
+		label.add_theme_color_override("font_color", label_color)
+	if subtitle != null:
+		subtitle.add_theme_color_override("font_color", label_color)
 
 func _process(delta: float) -> void:
 	var t: float = Time.get_ticks_msec() / 1000.0
@@ -101,6 +160,13 @@ func _on_body_entered(body: Node) -> void:
 	# screen swaps. Reset time_scale defensively in case a hit-stop
 	# was still in flight.
 	Engine.time_scale = 1.0
+	# Iter 32 — record the player's branch choice on RunState BEFORE
+	# advancing so the next room's _ready can read it and apply the
+	# corresponding modifier (heal, wave bump, pedestal tier shift).
+	# Empty kind = legacy single-door run; pending_branch stays "" and
+	# the next room loads with no modifier (iter-30 baseline).
+	if branch_kind != "":
+		RunState.pending_branch = branch_kind
 	if RunState.advance():
 		# More rooms left — reload the dungeon scene so it re-reads
 		# the new current_room_config from RunState.

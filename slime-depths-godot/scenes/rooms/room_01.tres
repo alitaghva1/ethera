@@ -18,3 +18,4 @@ wall_rects = [Rect2(530, 200, 220, 28), Rect2(530, 540, 220, 28)]
 hazard_positions = Array[Vector2]([])
 hazard_kind = ""
 hazards = [{"kind": "slow_zone", "position": Vector2(640, 384)}]
+branches = [{"kind": "safe", "label": "SAFE", "subtitle": "+1 HP · common relics"}, {"kind": "standard", "label": "ONWARD", "subtitle": "no modifier"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]

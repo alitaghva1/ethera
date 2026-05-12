@@ -42,6 +42,12 @@ var current_room_index: int = -1
 # editing a .tres in the editor between runs picks up cleanly.
 var current_room_config: RoomConfig = null
 
+# Iter 32 — pending branch modifier. Set by branch-door entry on its
+# way to advance(); consumed by main.gd at next-room _ready and then
+# cleared. "" = no modifier (legacy single-door path).
+# Valid values: "" | "safe" | "standard" | "risk"
+var pending_branch: String = ""
+
 # Total kills accumulated across the current floor (resets each run).
 # Surfaces in the death screen / pedestal banner.
 var floor_kills: int = 0
@@ -49,6 +55,7 @@ var floor_kills: int = 0
 func start_floor() -> void:
 	current_room_index = 0
 	floor_kills = 0
+	pending_branch = ""           # iter 32 — never carry a branch into a new run
 	GameState.persisted_hp = -1   # fresh full HP on new run
 	_load_current()
 
@@ -74,6 +81,7 @@ func end_floor() -> void:
 	current_room_index = -1
 	current_room_config = null
 	floor_kills = 0
+	pending_branch = ""           # iter 32 — clear any pending branch
 	GameState.persisted_hp = -1   # no carry into the next run
 
 func is_last_room() -> bool:

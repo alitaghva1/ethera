@@ -18,3 +18,4 @@ wall_rects = [Rect2(280, 240, 28, 200), Rect2(440, 160, 28, 160), Rect2(440, 440
 hazard_positions = Array[Vector2]([Vector2(380, 240), Vector2(900, 240), Vector2(640, 540)])
 hazard_kind = "spike_pit"
 hazards = [{"kind": "fire_jet", "position": Vector2(360, 400), "phase": 0.25}, {"kind": "fire_jet", "position": Vector2(920, 400), "phase": 0.75}]
+branches = [{"kind": "safe", "label": "SAFE", "subtitle": "+1 HP · common relics"}, {"kind": "standard", "label": "ONWARD", "subtitle": "no modifier"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]

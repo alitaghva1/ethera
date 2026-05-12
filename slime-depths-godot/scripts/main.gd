@@ -142,6 +142,11 @@ var _room: RoomConfig = null
 var _spawn_points: Array[Vector2] = []
 var _waves: Array = []
 
+# Iter 32 — branch modifier consumed from RunState.pending_branch at
+# _ready. Persists for the room's lifetime so _spawn_pedestal_offer can
+# bias tier weights at room clear. "" = no modifier active.
+var _branch_modifier: String = ""
+
 var _wave_index := -1
 var _wave_state := WaveState.PRE
 var _alive := true
@@ -180,7 +185,11 @@ func _ready() -> void:
 	_room = RunState.current_room_config as RoomConfig
 	if _room != null:
 		_spawn_points = _room.spawn_points
-		_waves = _room.waves
+		# Iter 32 — branching modifiers can mutate waves. Deep-copy so we
+		# never mutate the source RoomConfig resource (a "+1 enemy" risk
+		# bump on first visit would otherwise persist on subsequent runs).
+		_waves = _room.waves.duplicate(true)
+		_apply_pending_branch_modifier()
 		# Iter 18 — per-room ambient tint applied to the CanvasModulate.
 		# Drives the "deeper = different mood" feeling: room 1 light
 		# purple, room 2 deep purple, room 3 (boss) red-purple. The
@@ -631,6 +640,25 @@ func _spawn_pedestal_offer(count: int) -> void:
 		var tier: String = str(info.get("tier", "common"))
 		if by_tier.has(tier):
 			(by_tier[tier] as Array).append(rid)
+	# Iter 32 — branch modifier biases the by_tier pool BEFORE the
+	# weighted roll, so "safe" gives a stable common floor and "risk"
+	# guarantees the offer cannot drop below rare. Tier filtering is
+	# applied destructively to a local copy so the original pool is
+	# preserved for the weights-driven roll on standard / no-branch
+	# rooms.
+	if _branch_modifier == "safe":
+		# Safe: cap upside at common. If common is empty (everything
+		# owned at that tier), fall through to the unbiased pool
+		# rather than starve the offer.
+		if not (by_tier["common"] as Array).is_empty():
+			by_tier["rare"] = []
+			by_tier["legendary"] = []
+	elif _branch_modifier == "risk":
+		# Risk: drop common entirely so the floor becomes rare. If
+		# both rare AND legendary are empty, fall through unbiased so
+		# the player still gets SOMETHING.
+		if not ((by_tier["rare"] as Array).is_empty() and (by_tier["legendary"] as Array).is_empty()):
+			by_tier["common"] = []
 	# Pick the weight table for the current room index. -1 (no floor
 	# state) falls through to room 1 weights as a defensive default.
 	var room_idx: int = RunState.current_room_index if RunState.current_room_index >= 0 else 0
@@ -716,7 +744,12 @@ func _resolve_room_pickup() -> void:
 	if _room != null and _room.is_last_room:
 		_show_run_complete()
 	else:
-		status_label.text = "The way deeper has opened · walk east to descend"
+		# Iter 32 — branching rooms read "the path forks"; single-door
+		# legacy rooms keep the iter-30 single-passage line.
+		if _room != null and not _room.branches.is_empty():
+			status_label.text = "The path forks · choose your passage"
+		else:
+			status_label.text = "The way deeper has opened · walk east to descend"
 		_spawn_door()
 
 func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
@@ -736,9 +769,99 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	_resolve_room_pickup()
 
 func _spawn_door() -> void:
+	# Iter 32 — when the cleared room declared branches, spawn 2-3 fork
+	# doors instead of the single iter-30 portal. The player reads the
+	# label + peek and walks into the path they want. Each branch door
+	# carries its kind so door.gd sets RunState.pending_branch on entry.
+	if _room != null and not _room.branches.is_empty():
+		_spawn_branch_doors(_room.branches)
+		return
 	var door: Door = DOOR_SCENE.instantiate()
 	door.global_position = DOOR_POSITION
 	add_child(door)
+
+# Iter 32 — multi-door fork. Place N doors along the east edge,
+# vertically spaced so each is reachable as a distinct destination.
+# Positions per-N:
+#   2 branches: y=270, 498
+#   3 branches: y=200, 384, 568
+# 4+ branches: clamp to 3 (excess entries silently dropped so a
+# misconfigured room degrades gracefully rather than crashing).
+func _spawn_branch_doors(branches: Array[Dictionary]) -> void:
+	var n: int = mini(branches.size(), 3)
+	var ys: Array[float] = []
+	match n:
+		1:
+			ys = [DOOR_POSITION.y]
+		2:
+			ys = [270.0, 498.0]
+		3:
+			ys = [200.0, 384.0, 568.0]
+		_:
+			ys = [DOOR_POSITION.y]
+	for i in range(n):
+		var entry: Dictionary = branches[i]
+		var door: Door = DOOR_SCENE.instantiate()
+		# Set branch metadata BEFORE add_child so door._ready picks
+		# the label / tint / glow color up on first frame.
+		door.branch_kind = str(entry.get("kind", "standard"))
+		door.branch_label = str(entry.get("label", "ONWARD"))
+		door.branch_subtitle = str(entry.get("subtitle", ""))
+		door.global_position = Vector2(DOOR_POSITION.x, ys[i])
+		add_child(door)
+
+# Iter 32 — branch modifier dispatch. Called from _ready right after
+# _waves is populated. Reads RunState.pending_branch (set by the
+# branch-door we came through), applies one-shot effects, then clears
+# it so a subsequent legacy single-door advance doesn't re-fire the
+# modifier on the next-next room.
+#
+# Effects per kind:
+#   "safe"      Heal +1 (capped at max HP) on entry. Stored kind
+#               drops pedestal offer's tier ceiling to common-only.
+#   "risk"      Random pair in wave 0 gets +1 count. Stored kind
+#               raises pedestal offer's tier floor to rare.
+#   "standard"  No effect; kind stored only for HUD parity.
+#   ""          No branch was set (legacy single-door room) — early-out.
+func _apply_pending_branch_modifier() -> void:
+	var kind: String = RunState.pending_branch
+	RunState.pending_branch = ""   # always consume — single-use per room
+	if kind == "":
+		return
+	_branch_modifier = kind
+	match kind:
+		"safe":
+			# Defer heal slightly so the damage-number's spawn point is
+			# the hero's resting position (not the spawn-flicker frame).
+			# Mirrors _heal_on_room_clear's timing pattern.
+			var t: SceneTreeTimer = get_tree().create_timer(0.25)
+			t.timeout.connect(_apply_safe_heal)
+		"risk":
+			if not _waves.is_empty():
+				var w0 = _waves[0]
+				if w0 is Array and (w0 as Array).size() > 0:
+					var pair_idx: int = randi() % (w0 as Array).size()
+					var pair = (w0 as Array)[pair_idx]
+					if pair is Array and (pair as Array).size() >= 2:
+						(pair as Array)[1] = int((pair as Array)[1]) + 1
+		"standard":
+			pass
+
+# Iter 32 — safe-branch heal. Extracted so the timer callback has a
+# stable target. Heal is capped at max HP (no-op overflow); +1 floater
+# spawns regardless to confirm the player chose the safe branch.
+func _apply_safe_heal() -> void:
+	if not is_instance_valid(hero) or hero.hp <= 0:
+		return
+	var cap: int = Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hero.hp < cap:
+		hero.heal(1)
+	var n: DamageNumber = DamageNumber.spawn(
+		hero.global_position + Vector2(0, -56),
+		"+1 SAFE",
+		Color(0.65, 1.0, 0.7),
+	)
+	add_child(n)
 
 func _on_enemy_died(world_pos: Vector2) -> void:
 	_kills += 1
