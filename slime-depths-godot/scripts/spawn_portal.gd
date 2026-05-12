@@ -187,13 +187,17 @@ func _build_sparks() -> CPUParticles2D:
 	p.explosiveness = 0.0
 	p.randomness = 0.45
 	# Emit from a ring around the outer edge, INWARD-aiming velocity.
-	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RING
-	p.emission_ring_radius = RING_RADIUS - 2.0
-	p.emission_ring_inner_radius = RING_RADIUS - 6.0
-	p.emission_ring_axis = Vector3(0, 0, 1)
-	# Direction (0,0) means use the emission_ring's outward normal;
-	# we flip with negative initial_velocity so particles aim INWARD
-	# toward the portal center.
+	# Iter-75 bug-fix: CPUParticles2D only has EMISSION_SHAPE_SPHERE_SURFACE
+	# (a ring outline in 2D) — EMISSION_SHAPE_RING + emission_ring_radius/
+	# emission_ring_inner_radius/emission_ring_axis are CPUParticles3D-only
+	# and threw "Invalid assignment of property" at scene load. The 2D
+	# equivalent is SPHERE_SURFACE with emission_sphere_radius (single
+	# radius, no inner-band fidelity — collapsed to the midpoint).
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE_SURFACE
+	p.emission_sphere_radius = RING_RADIUS - 4.0
+	# Direction (0,0) means use the emission's outward normal from the
+	# sphere surface; we flip with negative initial_velocity so particles
+	# aim INWARD toward the portal center.
 	p.direction = Vector2.ZERO   # default — let initial_velocity_min/max < 0 invert
 	p.spread = 35.0
 	p.initial_velocity_min = -60.0
