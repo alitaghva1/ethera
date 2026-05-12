@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://b3dashimpact001"]
+[gd_scene load_steps=7 format=3 uid="uid://b3dashimpact001"]
 
 [ext_resource type="Script" path="res://scripts/dash_impact.gd" id="1_script"]
 
@@ -10,6 +10,15 @@
 [sub_resource type="Gradient" id="sparks_grad"]
 offsets = PackedFloat32Array(0, 0.5, 1)
 colors = PackedColorArray(0.98, 0.88, 0.62, 1, 0.78, 0.65, 0.45, 0.9, 0.55, 0.42, 0.28, 0)
+
+; iter-99 NEW — DustCloud gradient. Slow ground-level dust that puffs
+; outward from the impact and SETTLES (no gravity, high damping) within
+; the ring radius. Cream-gold → warm tan → fade-earth, slightly cooler
+; and dimmer than the sparks so the two emitters read as distinct
+; layers (sparks = quick embers, dustcloud = lingering haze).
+[sub_resource type="Gradient" id="dustcloud_grad"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(0.85, 0.78, 0.60, 0.85, 0.65, 0.55, 0.40, 0.55, 0.42, 0.34, 0.24, 0)
 
 ; Debris ramp — brown-cream chunks darkening + fading. Reads as
 ; physical floor matter knocked loose rather than energy. Distinct
@@ -122,3 +131,35 @@ damping_max = 3.0
 scale_amount_min = 1.6
 scale_amount_max = 3.2
 color_ramp = SubResource("debris_grad")
+
+; iter-99 NEW — DustCloud. Replaces the 5 radial ground cracks that
+; read as a spider web at peak parent scale. This is a SLOW ground-
+; level dust burst:
+;   • 28 particles, lifetime 0.55s (longer than sparks, shorter than
+;     ring fade) → fills the visual hole left by the cracks
+;   • spread 180° + low velocity 30–90 px/s → particles puff outward
+;     to roughly the ring radius, not flying off
+;   • NO gravity → stays at floor level, simulating dust that hangs
+;     briefly before settling
+;   • High damping 4-7 → spreads then halts rather than streaking
+;   • Chunky scale 4–8 → reads as visible dust puffs, not tiny embers
+;   • Warm earth ramp via dustcloud_grad
+;   • z_index = 1, alongside debris (above the rings, below the
+;     hero in the world stack)
+[node name="DustCloud" type="CPUParticles2D" parent="."]
+z_index = 1
+amount = 28
+lifetime = 0.55
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 30.0
+initial_velocity_max = 90.0
+damping_min = 4.0
+damping_max = 7.0
+scale_amount_min = 4.0
+scale_amount_max = 8.0
+color_ramp = SubResource("dustcloud_grad")
