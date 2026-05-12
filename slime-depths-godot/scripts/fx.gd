@@ -155,7 +155,13 @@ func _on_hero_blasted(_world_pos: Vector2, _aim: Vector2) -> void:
 	pass
 
 func _on_enemy_hit(world_pos: Vector2) -> void:
-	_shake(4.0, 0.06)
+	# iter-81 (Workstream A): shake was uniform 4.0/0.06 regardless of
+	# damage — a 1-dmg nick on a boss looked identical to a crushing
+	# crit. AttackFeel.apply_hit_feedback_tier (called from enemy.gd's
+	# take_hit) now drives shake scaled by damage/max_hp ratio. This
+	# handler keeps spawning the baseline hit_spark (every hit deserves
+	# at least one visible spark), but the shake is the tier system's
+	# job now.
 	_spawn(HIT_SPARK_SCENE, world_pos)
 
 func _on_enemy_died(world_pos: Vector2) -> void:

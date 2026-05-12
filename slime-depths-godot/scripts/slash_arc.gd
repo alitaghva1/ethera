@@ -1,257 +1,181 @@
-# SlashArc — iter 75 swept-blade rework. The previous build (iter 73)
-# was a stack of arc-shaped Line2Ds + HiltFlash anticipation + a
-# GhostArc "motion blur" duplicate. It had lots of layers, but user
-# feedback was "the sword attack feels like a weird drawn-on thing in
-# front of the character than a proper energy sword."
+# SlashArc — iter 81 rewrite (Workstream A of the post-iter-78 plan).
 #
-# Root cause: an arc SHAPE is geometric — it reads as a static curve
-# in space, not a swung weapon. A proper energy sword has six readable
-# elements the player's eye tracks:
-#   1. ORIGIN at the hand
-#   2. BLADE — a thin bright line from hand to tip
-#   3. ROTATION — that blade sweeping from start to end angle
-#   4. TRAIL — a fading wake BEHIND the tip's path
-#   5. SPARKS at the tip during peak motion
-#   6. CONNECT frame on impact (handled elsewhere — hit_spark / damage)
+# Ported from slime-depths/src/fx.js drawSlashes. Previous Godot
+# slash_arc accumulated layers across iters 60/73/75 (BladeRig +
+# GhostArc + 3 arc Line2Ds + HiltFlash + TipBurst + HiltSparkle) trying
+# to read as "a swept blade." User feedback (iter 78 conclusion): it
+# still felt like a "drawn-on thing in front of the character."
 #
-# Iter 73 had #5 (TipBurst) and a static silhouette that approximated
-# #4, but lacked #2 and #3. The eye saw the arc decoration appear,
-# not a weapon SWING THROUGH the arc.
+# Diagnosis after studying the JS reference: the JS draws a multi-trail
+# COMPOSITE every frame via canvas paths — N quadratic-curve strokes
+# at time offsets, plus a wider additive-glow pass underneath. The eye
+# reads motion blur of one arc, not a static node tree of overlapping
+# ring-shapes.
 #
-# Iter 75 reframes the slash around BladeRig: a Node2D that lives
-# inside SlashArc, holds the Blade Line2D + BladeGlow Line2D + TipBurst,
-# and whose local rotation TWEENS from -SWING_HALF*sign to
-# +SWING_HALF*sign across SWING_TIME (0.18s, faster than iter 73's
-# linger duration so the blade itself reads as MOTION). The existing
-# arc Line2Ds (OuterHalo / Halo / Core) become the wake the blade
-# leaves behind — their alpha ramps in with TRAIL_DELAY so they appear
-# AFTER the blade has started moving, not at the same instant.
+# This rewrite is _draw()-based, not Line2D-based. Each frame:
 #
-# Key preservation:
-#   • setup(aim, swing_sign) signature unchanged so screen_flash.gd's
-#     existing call inst.call("setup", aim, swing_sign) still works.
-#   • HiltFlash + GhostArc nodes preserved (iter 73 integration test
-#     greps the source for those identifiers; the references must
-#     remain so test_iter73 keeps passing).
-#   • _core onready var still binds to a node named "Line2D" because
-#     iter-29 baseline named it that way and we don't want to churn
-#     the scene UID's child set unnecessarily.
+#   PASS 1 (glow, 2 ghost layers max): wide soft stroke, alpha ~0.35,
+#     width = base_width × 3. Stacks beneath the crisp pass to bloom
+#     the slash.
+#   PASS 2 (crisp): N strokes (trail_count from setup opts), each at
+#     time-offset k × 0.07 behind the leading edge. Width tapers as
+#     k increases; alpha fades as k increases AND as t advances.
+#
+# Each stroke is a quadratic Bezier sampled at 10 points — bulges
+# outward at the tip like a real blade arc, not a straight line endpoint.
+#
+# Phases:
+#   ANTICIPATION (HiltFlash): first ~0.08s — bright burst at swing origin.
+#   SWEEP: 0 → dur, multi-trail composite tracks the sweep angle.
+#   LINGER: 0 → 0.15s post-dur, trail decays to alpha 0 then queue_free.
+#
+# setup() takes (aim: Vector2, opts: Dictionary | int = 1). opts is the
+# dict returned by AttackFeel.compose_slash_opts; the int form preserves
+# the pre-iter-81 signature (legacy swing_sign param) for any caller
+# that hasn't been migrated yet.
 extends Node2D
 
-# Total time the slash visual is alive. Iter 73 was 0.32; the wake
-# trail still lingers that long. The blade itself moves faster (see
-# SWING_TIME) so the eye reads motion, not a static decal.
-const DURATION: float = 0.32
+# Linger phase — fixed +0.15s on top of dur so the last trail fades.
+const LINGER_DURATION: float = 0.15
 
-# Sweep time for BladeRig.rotation. Faster than DURATION so the blade
-# completes its arc visibly mid-effect and dissipates while the wake
-# is still fading — sells "the blade swept through, the energy lingers".
-# Reference: a real-world fast sword swing reads as roughly 150-200 ms.
-const SWING_TIME: float = 0.18
+# Per-trail time offset (seconds). Each ghost k is k × this far behind
+# the leading edge in the sweep. JS uses 0.07.
+const TRAIL_OFFSET: float = 0.07
 
-# How long after the blade starts moving before the trail (OuterHalo /
-# Halo / Core) becomes visible. Small but readable — the eye gets to
-# see the blade lead before the wake materializes.
-const TRAIL_DELAY: float = 0.04
+# Glow pass tuning — wider stroke + lower alpha than crisp pass.
+const GLOW_WIDTH_MUL: float = 3.0
+const GLOW_ALPHA_MUL: float = 0.35
+const GLOW_LAYERS: int = 2   # JS uses min(2, trails); we hardcode 2
 
-# After SWING_TIME the blade fades over BLADE_FADE seconds. The wake
-# continues until DURATION expires.
-const BLADE_FADE: float = 0.08
+# Quadratic curve sampling — points per stroke. Higher = smoother arc
+# but more draw calls. 10 reads smooth at the camera's zoom.
+const CURVE_SAMPLES: int = 10
 
-# Half-angle the BladeRig sweeps through, in radians. The full arc is
-# 2× this (~85°). Multiplied by ±swing_sign so consecutive presses
-# alternate CW/CCW (one-two combo reads visibly).
-const SWING_HALF: float = 0.75
-
-# Iter 73 ghost arc lag — preserved (the GhostArc layer still uses
-# this timing curve below).
-const GHOST_LAG: float = 0.06
-
-const HALO_SCALE_BOOST: float = 0.85
-const CORE_SCALE_BOOST: float = 0.35
+# Anticipation flash at swing origin.
 const HILT_FLASH_DURATION: float = 0.08
+const HILT_FLASH_RADIUS: float = 14.0
 
-# Iter 29 — three halo wake layers. Iter 73 added Ghost + HiltFlash.
-# Iter 75 adds BladeRig (swept blade) on top of all of this.
-@onready var _outer: Line2D = $OuterHalo
-@onready var _halo: Line2D = $Halo
-@onready var _core: Line2D = $Line2D
-@onready var _ghost: Line2D = get_node_or_null("GhostArc")
-@onready var _hilt_flash: Node2D = get_node_or_null("HiltFlash")
-@onready var _blade_rig: Node2D = get_node_or_null("BladeRig")
-@onready var _blade: Line2D = get_node_or_null("BladeRig/Blade")
-@onready var _blade_glow: Line2D = get_node_or_null("BladeRig/BladeGlow")
+# z_index — per iter-69 convention slash sits at the beam layer above
+# ring FX so it reads clearly on top of any ground decor.
+const SLASH_Z_INDEX: int = 5
 
-var _elapsed: float = 0.0
-var _base_scale: Vector2 = Vector2.ONE
-var _outer_base_alpha: float = 1.0
-var _halo_base_alpha: float = 1.0
-var _core_base_alpha: float = 1.0
-var _ghost_base_alpha: float = 0.55
-var _blade_base_alpha: float = 1.0
-var _blade_glow_base_alpha: float = 0.65
-var _hilt_flash_base_modulate: Color = Color(1, 1, 1, 1)
+# Setup-time params (filled by setup()). Defaults match a base sword swing
+# so a script-only spawn still draws something sane in tests.
+var _aim: float = 0.0
+var _reach: float = 60.0
+var _width: float = 14.0
+var _trail_count: int = 3
+var _arc: float = PI * 0.75
+var _dur: float = 0.20
+var _color: Color = Color(1.0, 1.0, 1.0, 1.0)
+var _swing_sign: int = 1
 
-# Sweep start and end (in local radians, relative to the SlashArc node's
-# own rotation which already faces the aim). Set in setup() so the rig
-# starts pre-rotated to its "wind-up" position and tweens forward.
-var _swing_start: float = -SWING_HALF
-var _swing_end: float = SWING_HALF
+# Live state.
+var _t: float = 0.0
+var _hilt_flash_remaining: float = HILT_FLASH_DURATION
 
-# Iter 19 setup signature — preserved verbatim so the autoload caller
-# (screen_flash._on_hero_attacked) doesn't need to change. swing_sign
-# alternates ±1 each press; iter 75 uses it to invert the sweep
-# direction (CW vs. CCW) so the one-two combo reads visibly.
-func setup(aim: Vector2, swing_sign: int = 1) -> void:
+# setup(aim, opts) — opts may be a Dictionary (iter-81 path, output of
+# AttackFeel.compose_slash_opts) or an int (legacy iter-75 swing_sign).
+# The dual signature keeps backwards compat for any caller still using
+# the int form during the transition.
+func setup(aim: Vector2, opts = 1) -> void:
 	if aim.length_squared() > 0.0001:
-		rotation = aim.angle()
-	# Sweep direction: positive sign rotates from -HALF → +HALF (CCW
-	# in screen space, since +Y is down). Negative sign reverses to
-	# +HALF → -HALF (CW). The visible result is alternating swing arcs
-	# like a real two-hand combo. Pre-iter-75 we tilted the WHOLE node
-	# by ±SWING_TILT; iter 75 instead actually sweeps so the alternation
-	# is motion, not a static offset.
-	var s: float = SWING_HALF * (1.0 if swing_sign > 0 else -1.0)
-	_swing_start = -s
-	_swing_end = s
+		_aim = aim.angle()
+	if typeof(opts) == TYPE_DICTIONARY:
+		_width       = float(opts.get("width", _width))
+		_trail_count = int(opts.get("trail_count", _trail_count))
+		_arc         = float(opts.get("arc", _arc))
+		_dur         = float(opts.get("dur", _dur))
+		_color       = opts.get("color", _color)
+		_swing_sign  = int(opts.get("swing_sign", 1))
+		_reach       = float(opts.get("reach", _reach))
+	elif typeof(opts) == TYPE_INT:
+		_swing_sign = int(opts)
+	# Clamp trail count to a sane range — too many reads as a fan, too
+	# few reads as a single strike with no motion.
+	_trail_count = clampi(_trail_count, 2, 6)
 
 func _ready() -> void:
-	# Iter 69 — z_index 5 places the slash on the beam/arc layer
-	# (above standard ring FX at z=2). The cut's silhouette reads
-	# clearly against rings/aura/etc. spawned during the same combo
-	# beat. BladeRig and its children inherit this layer via the
-	# scene tree.
-	z_index = 5
-	_base_scale = scale
-	if _outer != null:
-		_outer_base_alpha = _outer.default_color.a
-		# Trail layers start INVISIBLE — they ramp in over TRAIL_DELAY
-		# so the blade visibly leads. Pre-iter-75 the arcs spawned at
-		# t=0 alongside the blade, which is exactly what made the cut
-		# read as a static decoration.
-		var oc: Color = _outer.default_color
-		oc.a = 0.0
-		_outer.default_color = oc
-	if _halo != null:
-		_halo_base_alpha = _halo.default_color.a
-		var hc: Color = _halo.default_color
-		hc.a = 0.0
-		_halo.default_color = hc
-	if _core != null:
-		_core_base_alpha = _core.default_color.a
-		var cc: Color = _core.default_color
-		cc.a = 0.0
-		_core.default_color = cc
-	if _ghost != null:
-		_ghost_base_alpha = _ghost.default_color.a
-		var gc: Color = _ghost.default_color
-		gc.a = 0.0
-		_ghost.default_color = gc
-	if _blade != null:
-		_blade_base_alpha = _blade.default_color.a
-	if _blade_glow != null:
-		_blade_glow_base_alpha = _blade_glow.default_color.a
-	if _hilt_flash != null:
-		_hilt_flash_base_modulate = _hilt_flash.modulate
-	if _blade_rig != null:
-		# Start the rig at the wind-up pose. The eye sees the blade
-		# pre-positioned for the swing in the same frame HiltFlash
-		# bursts at the hand — anticipation reads correctly.
-		_blade_rig.rotation = _swing_start
+	z_index = SLASH_Z_INDEX
+	queue_redraw()
 
 func _process(delta: float) -> void:
-	_elapsed += delta
-	if _elapsed >= DURATION:
+	_t += delta
+	if _hilt_flash_remaining > 0.0:
+		_hilt_flash_remaining = max(0.0, _hilt_flash_remaining - delta)
+	queue_redraw()
+	if _t >= _dur + LINGER_DURATION:
 		queue_free()
-		return
-	var t: float = _elapsed / DURATION
 
-	# ── Phase 1: Blade sweep ──────────────────────────────────────────
-	# Rotate BladeRig from _swing_start → _swing_end over SWING_TIME.
-	# TRANS_QUAD EASE_OUT (fast start, decelerates) gives the
-	# "heavy energy swing" feel — committed thrust into the arc.
-	if _blade_rig != null:
-		var swing_t: float = clampf(_elapsed / SWING_TIME, 0.0, 1.0)
-		# Manual EASE_OUT_QUAD: f(x) = 1 - (1-x)² so slope is high near
-		# x=0 and tapers to 0 near x=1. Mirrors Tween's TRANS_QUAD +
-		# EASE_OUT without spawning a Tween node every swing.
-		var eased: float = 1.0 - (1.0 - swing_t) * (1.0 - swing_t)
-		_blade_rig.rotation = lerpf(_swing_start, _swing_end, eased)
+func _draw() -> void:
+	# Local t in [0..1] across the visible window (dur + linger).
+	var total: float = _dur + LINGER_DURATION
+	var t_norm: float = clampf(_t / total, 0.0, 1.0)
 
-	# Blade fade-out: while sweeping the blade is full-alpha. After
-	# SWING_TIME it dissipates over BLADE_FADE seconds while the wake
-	# trail keeps showing — sells "the blade swept through, leaving
-	# residual energy."
-	var blade_alpha_t: float = 1.0
-	if _elapsed > SWING_TIME:
-		var fade_t: float = clampf((_elapsed - SWING_TIME) / BLADE_FADE, 0.0, 1.0)
-		blade_alpha_t = 1.0 - fade_t
-	if _blade != null:
-		var bc: Color = _blade.default_color
-		bc.a = _blade_base_alpha * blade_alpha_t
-		_blade.default_color = bc
-	if _blade_glow != null:
-		var bgc: Color = _blade_glow.default_color
-		bgc.a = _blade_glow_base_alpha * blade_alpha_t
-		_blade_glow.default_color = bgc
-
-	# ── Phase 2: Wake trail (OuterHalo / Halo / Core) ─────────────────
-	# Each layer ramps IN linearly over TRAIL_DELAY, then decays on its
-	# own iter-29 curve. Net effect: the eye sees the blade lead, then
-	# the wake materializes IN ITS PATH and fades.
-	# Decay curves (iter 29 timings preserved):
-	#   outer  t^3.5  fastest decay — atmospheric glow
-	#   halo   t^3    mid decay
-	#   core   t^1.7  slowest decay — sharp wake edge lingers
-	var outer_fade: float = 1.0 - pow(t, 3.5)
-	var halo_fade: float = 1.0 - pow(t, 3.0)
-	var core_fade: float = 1.0 - pow(t, 1.7)
-	# Trail ramp-in. After TRAIL_DELAY this stays at 1.0.
-	var trail_ramp: float = clampf(_elapsed / TRAIL_DELAY, 0.0, 1.0)
-
-	# Scale grows on the average across the wake layers — the wake
-	# breathes outward as it fades.
-	var avg_boost: float = (HALO_SCALE_BOOST + CORE_SCALE_BOOST) * 0.5
-	scale = _base_scale * (1.0 + avg_boost * t)
-
-	if _outer != null:
-		var outer_col: Color = _outer.default_color
-		outer_col.a = _outer_base_alpha * outer_fade * trail_ramp
-		_outer.default_color = outer_col
-	if _halo != null:
-		var halo_col: Color = _halo.default_color
-		halo_col.a = _halo_base_alpha * halo_fade * trail_ramp
-		_halo.default_color = halo_col
-	if _core != null:
-		var core_col: Color = _core.default_color
-		core_col.a = _core_base_alpha * core_fade * trail_ramp
-		_core.default_color = core_col
-
-	# ── Phase 3: GhostArc — preserved iter-73 motion-blur layer ──────
-	# Still ramps in over GHOST_LAG then decays on its softer curve.
-	# In the new arrangement it reads as the WIDEST, FAINTEST wake
-	# layer behind the wake proper — a "far echo" of the swing.
-	if _ghost != null:
-		var ga: float = 0.0
-		if _elapsed < GHOST_LAG:
-			ga = (_elapsed / GHOST_LAG) * _ghost_base_alpha
-		else:
-			var gt: float = (_elapsed - GHOST_LAG) / (DURATION - GHOST_LAG)
-			ga = _ghost_base_alpha * (1.0 - pow(gt, 2.3))
-		var gc: Color = _ghost.default_color
-		gc.a = ga
-		_ghost.default_color = gc
-
-	# ── Phase 4: HiltFlash — preserved iter-73 anticipation ──────────
-	# Bright at t=0, fades over HILT_FLASH_DURATION (0.08s). Visible
-	# during the wind-up; gone before the blade reaches end-of-swing.
-	if _hilt_flash != null:
-		var fa: float = 0.0
-		if _elapsed < HILT_FLASH_DURATION:
-			fa = 1.0 - (_elapsed / HILT_FLASH_DURATION)
-		_hilt_flash.modulate = Color(
-			_hilt_flash_base_modulate.r,
-			_hilt_flash_base_modulate.g,
-			_hilt_flash_base_modulate.b,
-			_hilt_flash_base_modulate.a * fa,
+	# Anticipation flash (first ~80ms) — soft cream disc at swing origin.
+	if _hilt_flash_remaining > 0.0:
+		var ha: float = _hilt_flash_remaining / HILT_FLASH_DURATION
+		var flash_color: Color = Color(
+			min(1.0, _color.r * 1.1),
+			min(1.0, _color.g * 1.05),
+			min(1.0, _color.b * 1.1),
+			ha * 0.85,
 		)
+		draw_circle(Vector2.ZERO, HILT_FLASH_RADIUS * (0.6 + 0.4 * (1.0 - ha)), flash_color)
+
+	# Multi-trail composite. Each trail k has its own sweep-time kt that
+	# lags by k × TRAIL_OFFSET. The leading trail (k=0) draws the most-
+	# advanced sweep position; trailing trails draw earlier sweep angles,
+	# leaving a fading wake behind the leading edge.
+	for k in range(_trail_count):
+		var kt: float = max(0.0, _t - float(k) * TRAIL_OFFSET) / _dur
+		if kt <= 0.0:
+			continue
+		kt = clampf(kt, 0.0, 1.0)
+		# Sweep angle for this trail. _swing_sign flips CW vs CCW.
+		var sweep: float = float(_swing_sign) * (-_arc * 0.5 + _arc * kt)
+		# Crisp alpha fades with t_norm + trail-depth.
+		var alpha: float = (1.0 - float(k) * 0.9 / float(_trail_count)) * (1.0 - t_norm) * 0.9
+		alpha = clampf(alpha, 0.0, 1.0)
+		# Width tapers as trail ages and as overall t advances.
+		var width: float = (_width - float(k) * (_width / float(_trail_count + 1))) * (1.0 - t_norm * 0.4)
+		width = max(1.0, width)
+		var points: PackedVector2Array = _sample_blade_curve(_aim + sweep, kt)
+		# GLOW pass — only for first GLOW_LAYERS trails. Wider stroke,
+		# lower alpha, blends as a soft halo under the crisp blade.
+		if k < GLOW_LAYERS:
+			var glow_color: Color = Color(_color.r, _color.g, _color.b, alpha * GLOW_ALPHA_MUL)
+			draw_polyline(points, glow_color, width * GLOW_WIDTH_MUL, true)
+		# CRISP pass — narrower, higher alpha. The blade edge itself.
+		var crisp_color: Color = Color(_color.r, _color.g, _color.b, alpha)
+		draw_polyline(points, crisp_color, width, true)
+
+# Sample the blade curve for a given world-relative angle and sweep
+# parameter. Returns CURVE_SAMPLES+1 points in local space.
+#
+# JS curve: quadratic Bezier from (r*0.55, -3) via control (r*0.85, 0)
+# to (r*0.55, 3). The control bulges the curve outward beyond the
+# endpoints — gives the slash a tapered-blade silhouette, not a straight
+# chord. Sampled explicitly and rotated into world-relative space.
+func _sample_blade_curve(angle: float, kt: float) -> PackedVector2Array:
+	var pts: PackedVector2Array = PackedVector2Array()
+	# Reach contracts slightly as the trail ages — JS uses
+	# r = reach × (0.6 + 0.25 × (1 - kt)) so r at kt=0 is 0.85×reach,
+	# r at kt=1 is 0.60×reach.
+	var r: float = _reach * (0.60 + 0.25 * (1.0 - kt))
+	var p0: Vector2 = Vector2(r * 0.55, -3.0)
+	var p1: Vector2 = Vector2(r * 0.85,  0.0)
+	var p2: Vector2 = Vector2(r * 0.55,  3.0)
+	var cos_a: float = cos(angle)
+	var sin_a: float = sin(angle)
+	for i in range(CURVE_SAMPLES + 1):
+		var u: float = float(i) / float(CURVE_SAMPLES)
+		var iu: float = 1.0 - u
+		# Quadratic Bezier: B(u) = (1-u)² p0 + 2u(1-u) p1 + u² p2
+		var bx: float = iu * iu * p0.x + 2.0 * u * iu * p1.x + u * u * p2.x
+		var by: float = iu * iu * p0.y + 2.0 * u * iu * p1.y + u * u * p2.y
+		# Rotate into world-relative space.
+		var x: float = bx * cos_a - by * sin_a
+		var y: float = bx * sin_a + by * cos_a
+		pts.append(Vector2(x, y))
+	return pts

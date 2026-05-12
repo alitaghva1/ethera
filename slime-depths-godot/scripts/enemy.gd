@@ -43,6 +43,11 @@ const PROJECTILE_SCENE = preload("res://scenes/projectile.tscn")
 # shadow and the iron_revenant gets a big one. Drawn under the sprite
 # so the enemy reads as standing ON the floor rather than floating.
 const SHADOW_TEXTURE: Texture2D = preload("res://assets/decor/shadow_ellipse.png")
+# iter-81: preload AttackFeel rather than using class_name. Defensive
+# (matches the screen_flash.gd autoload pattern) so the static
+# apply_hit_feedback_tier call in take_hit resolves at parse time
+# regardless of class_name registration order.
+const AttackFeel = preload("res://scripts/attack_feel.gd")
 
 # Iter 15 — spawn-in window. Newly-spawned enemies fade from a bright
 # red translucent ghost to full opacity over SPAWN_IN_DURATION seconds.
@@ -1506,6 +1511,14 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 		tween.tween_property(sprite, "modulate", flash_color, 0.04)
 		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
 	Events.enemy_hit.emit(global_position)
+	# iter-81 (Workstream A): tiered hit feedback. damage / max_hp ratio
+	# picks a tier (nick/solid/heavy/crushing) and fires shake + extra
+	# sparks scaled to it. Replaces the previous uniform FX.shake(4,
+	# 0.06) which fired the SAME shake on a 1-dmg nick of a boss as on
+	# a 200-dmg crushing crit. fx.gd's _on_enemy_hit still spawns the
+	# baseline hit_spark; this adds tier-specific extras on top + the
+	# tier-scaled shake.
+	AttackFeel.apply_hit_feedback_tier(self, damage, {"is_crit": is_crit})
 	# Iter 53 — audio sparkle for crit hits. Layered on top of the
 	# enemy_hit "thud" so the crit feedback hits both visually (yellow
 	# damage number) and audibly (rising sparkle chime).

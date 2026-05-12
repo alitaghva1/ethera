@@ -27,6 +27,12 @@
 extends CanvasLayer
 
 const SLASH_ARC_SCENE: PackedScene   = preload("res://scenes/fx/slash_arc.tscn")
+# iter-81: preload AttackFeel rather than using its class_name. ScreenFlash
+# is an autoload (loads BEFORE class_name registration for non-autoloaded
+# RefCounted scripts), so `AttackFeel.method()` via class_name fails at
+# parse time. Preload binds the script statically so the static methods
+# resolve cleanly.
+const AttackFeel = preload("res://scripts/attack_feel.gd")
 const BLAST_TRAIL_SCENE: PackedScene = preload("res://scenes/fx/blast_trail.tscn")
 
 # The single full-viewport ColorRect that paints every flash. Built in
@@ -131,31 +137,36 @@ func _on_hero_dodged(_world_pos: Vector2) -> void:
 	_flash(Color(0.5, 0.85, 1.0, 0.15), 0.15)
 
 func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
-	# No screen flash on swing — only on hit. The slash arc IS the
-	# visual feedback for the swing.
-	# Iter 19 — pass alternating sign so consecutive swings tilt
-	# opposite directions (reads as "one-two combo"). _spawn_directional
-	# is generic; we set up + call setup ourselves here so we can pass
-	# the extra arg.
+	# iter-81 (Workstream A): hand the slash visual to AttackFeel's
+	# composer. The composer reads hero state (relic count, dominant
+	# theme tier, charged/finisher context) and returns a Dictionary of
+	# slash params — width, trail_count, arc, dur, color, swing_sign.
+	# Slash visuals now SCALE with build (1.0× → 1.6× width over relic
+	# count), TINT toward dominant theme color (storm-cyan, flame-orange,
+	# etc.), and pick up storm's +1 trail / flame-T2's wider arc.
+	# Replaces the iter-60 sword_damage_bonus scale-by-size hack.
 	_swing_counter += 1
 	var inst: Node2D = SLASH_ARC_SCENE.instantiate() as Node2D
 	if inst == null:
 		return
 	inst.global_position = world_pos
+	# Alternating swing sign so consecutive swings tilt opposite (one-two combo).
 	var swing_sign: int = 1 if (_swing_counter % 2) == 0 else -1
+	var hero: Node = null
+	var heroes: Array = get_tree().get_nodes_in_group("hero")
+	if not heroes.is_empty():
+		hero = heroes[0]
+	# Build context for the composer. swing_index alternates 0/1 to drive
+	# the per-swing color shift (cream vs off-white). is_charged /
+	# is_finisher gates would come from hero state if/when those modes
+	# land — false for now.
+	var ctx: Dictionary = {
+		"swing_index": _swing_counter % 2,
+		"swing_sign": swing_sign,
+	}
+	var opts: Dictionary = AttackFeel.compose_slash_opts(hero, ctx)
 	if inst.has_method("setup"):
-		inst.call("setup", aim, swing_sign)
-	# Iter 60 — slash arc scales with sword damage bonus. Base damage=1
-	# → scale 1.0; +1 dmg = +18% size, capped at +54%. Same scaling
-	# pattern as projectile damage (slightly gentler so a maxed melee
-	# build's slash arc reads as bigger but doesn't dominate the room).
-	# Parallel to "if a blast is hitting twice as hard the bullet should
-	# be twice as large" — for sword swings, the slash visual reads
-	# proportionally bigger as iron_fang / wide_arc / executioner /
-	# theme bonuses stack damage.
-	var sword_dmg_bonus: int = GameState.modifier_total("sword_damage_bonus", 0)
-	var slash_scale: float = 1.0 + clampf(float(sword_dmg_bonus) * 0.18, 0.0, 0.54)
-	inst.scale = Vector2(slash_scale, slash_scale)
+		inst.call("setup", aim, opts)
 	var parent: Node = get_tree().current_scene
 	if parent == null:
 		inst.queue_free()
