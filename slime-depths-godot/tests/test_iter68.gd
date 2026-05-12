@@ -12,16 +12,19 @@ func _initialize() -> void:
 	else:
 		print("OK shock_pulse.tscn loads")
 
-	# Track A: hero.gd spawns storm shock pulse on dodge
+	# Track A: hero.gd spawns the STORM shock pulse. iter-95 reanchored
+	# the trigger from dodge to dash_strike (dodge ability deleted) and
+	# renamed the fn: _spawn_storm_shock_pulse → _spawn_storm_dash_shock_pulse.
+	# Same scene + same tier scaling; only the spawn site moved.
 	var hero_src := FileAccess.get_file_as_string("res://scripts/hero.gd")
-	if not hero_src.contains("_spawn_storm_shock_pulse"):
-		push_error("FAIL: hero.gd missing _spawn_storm_shock_pulse")
+	if not hero_src.contains("_spawn_storm_dash_shock_pulse"):
+		push_error("FAIL: hero.gd missing _spawn_storm_dash_shock_pulse (renamed in iter-95)")
 		ok = false
 	elif not hero_src.contains("SHOCK_PULSE_SCENE"):
 		push_error("FAIL: hero.gd missing SHOCK_PULSE_SCENE preload")
 		ok = false
 	else:
-		print("OK hero.gd has _spawn_storm_shock_pulse + SHOCK_PULSE_SCENE")
+		print("OK hero.gd has _spawn_storm_dash_shock_pulse + SHOCK_PULSE_SCENE")
 
 	# Track B: rogue_wraith.tres exists with wraith behavior
 	var wraith_res: Resource = load("res://scenes/enemies/rogue_wraith.tres")

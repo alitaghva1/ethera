@@ -10,10 +10,14 @@
 #   move_right   D
 #   attack       Left mouse button
 #   blast        Right mouse button (added Iter 3 — ranged spell)
-#   dodge        Space (added Iter 1)
-#   shield       Q (added Iter 5 — stamina-drained invuln stance)
-#   dash_strike  Shift (added Iter 5 — burst + AoE slash)
+#   shield       Q (Iter 5 → renamed from parry in iter-95)
+#   dash_strike  Shift (Iter 5 — burst + AoE slash; iter-95 made it the
+#                only defensive movement option after dodge was removed)
 #   interact     E (added Iter 2 — talk to NPCs, advance dialogue)
+#
+# iter-95: dodge binding (Space) deleted along with the dodge ability.
+# The defensive toolkit is now shield (timing-based catch) + dash_strike
+# (movement-based engage with i-frames). Space remains unbound.
 extends Node
 
 func _ready() -> void:
@@ -21,7 +25,6 @@ func _ready() -> void:
 	_bind_key("move_down",   KEY_S)
 	_bind_key("move_left",   KEY_A)
 	_bind_key("move_right",  KEY_D)
-	_bind_key("dodge",       KEY_SPACE)
 	_bind_key("shield",      KEY_Q)
 	_bind_key("dash_strike", KEY_SHIFT)
 	_bind_key("interact",    KEY_E)

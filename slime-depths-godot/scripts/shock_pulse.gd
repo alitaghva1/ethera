@@ -15,10 +15,10 @@
 #   texture) and lets tier 1 vs tier 2 use the same scene with different
 #   radii driven by setup().
 #
-# Pairs cleanly with _spawn_shadow_dodge_trail — STORM tier 1 spawns
-# this ring AT the dodge start, SHADOW tier 1 spawns the dash_trail
-# behind the hero along the dodge direction. Both layer on the same
-# dodge event without conflict (separate spawn calls in _start_dodge).
+# iter-95: was paired with the SHADOW dodge trail; both anchored to the
+# dodge event. Dodge is gone, SHADOW resonance trail is gone, and the
+# STORM pulse spawn was reanchored to dash_strike start. The pulse
+# scene itself is unchanged — only the spawn site moved.
 #
 # Setup contract:
 #   setup(radius, damage, stun_duration)

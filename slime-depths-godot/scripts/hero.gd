@@ -28,11 +28,10 @@ const ATTACK_COOLDOWN    := 0.40
 const ATTACK_SWING_TIME  := 0.18
 const MAX_HP             := 3
 
-# Dodge tuning — matches slime-depths/src/hero.js values.
-const DODGE_SPEED        := 480.0
-const DODGE_DURATION     := 0.25
-const DODGE_IFRAMES      := 0.45
-const DODGE_COOLDOWN     := 0.85
+# iter-95: DODGE_* constants removed. The dodge ability is gone — the
+# defensive toolkit is now just SHIELD (timing-based catch on Q) and
+# DASH_STRIKE (i-frame engage on Shift). User design intent: "the only
+# real dodge is the dash strike that keeps gameplay aggressive."
 const HIT_IFRAMES        := 0.55
 
 # Blast spell (Iter 3) — RMB ranged projectile.
@@ -50,7 +49,7 @@ const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
 # iter-87: PARRY_PULSE_SCENE removed (replaced by a sprite-sheet flash).
-# iter-94: that sprite-sheet flash was removed too — see _start_parry.
+# iter-94: that sprite-sheet flash was removed too — see _start_shield.
 # FxSpriteHelper preload retained because other systems (e.g. enemy
 # spawn portals, slash arc via screen_flash) still use FxSprite.spawn.
 const FxSpriteHelper = preload("res://scripts/fx_sprite.gd")
@@ -101,17 +100,17 @@ const STONE_SHARD_SCENE  = preload("res://scenes/fx/stone_shard_burst.tscn")
 #   it strictly worse than dodge for any threat under 2 seconds.
 # - Tap-parry is a SKILL gate, not a resource gate. Mastering the
 #   timing window is rewarding; the stamina bar was just punishing.
-const PARRY_WINDOW   := 0.20
-const PARRY_COOLDOWN := 0.7
-const PARRY_TINT     := Color(0.65, 0.95, 1.0, 1)   # cyan, distinct from dodge
+const SHIELD_WINDOW   := 0.20
+const SHIELD_COOLDOWN := 0.7
+const SHIELD_TINT     := Color(0.65, 0.95, 1.0, 1)   # cyan, distinct from dodge
 # Brief slow-mo when the parry catches an incoming hit. Driven by
 # Engine.time_scale via a one-shot tween in the hit handler.
-const PARRY_HIT_SLOWMO_SCALE := 0.30
-const PARRY_HIT_SLOWMO_TIME  := 0.10
+const SHIELD_HIT_SLOWMO_SCALE := 0.30
+const SHIELD_HIT_SLOWMO_TIME  := 0.10
 # Iframes granted after a successful parry catch — long enough to
 # prevent the same enemy from re-bumping us, short enough that we
 # can't chain-parry through a wave for free.
-const PARRY_HIT_IFRAMES      := 0.30
+const SHIELD_HIT_IFRAMES      := 0.30
 
 # Dash Strike (Iter 25 — reworked). Pre-iter-25 the dash was 0.18 s
 # of 600 px/s = 108 px of travel, with damage ONLY at the END radius.
@@ -130,7 +129,11 @@ const PARRY_HIT_IFRAMES      := 0.30
 #   - Cooldown 1.2 → 1.4 s to balance the strictly-stronger ability.
 const DASH_STRIKE_SPEED    := 600.0
 const DASH_STRIKE_DURATION := 0.28
-const DASH_STRIKE_COOLDOWN := 1.4
+# iter-95: cooldown trimmed 1.4 → 0.9. Dash strike is the only mobility
+# option now (dodge ability removed); to keep the "aggressive" feel the
+# user asked for, the engage is available roughly every second instead
+# of every 1.4 s.
+const DASH_STRIKE_COOLDOWN := 0.9
 const DASH_STRIKE_RADIUS   := 60.0
 const DASH_STRIKE_POST_IFRAMES := 0.10
 const DASH_STRIKE_STEER_GAIN   := 0.15
@@ -280,15 +283,10 @@ const HERO_KNOCKBACK_TIME: float = 0.14
 const AIM_ASSIST_CONE: float = 0.175      # ~10° in radians
 const AIM_ASSIST_RANGE: float = 520.0
 
-# Iter 70 — dodge-cancel-into-dash-strike window. After 50% of the
-# dodge has elapsed, pressing the dash-strike key cancels the remaining
-# dodge into a dash-strike. Common feel improvement in
-# Hades/Necesse-likes — lets the player "dash through and stab."
-# Implemented in the input precedence block: dash-strike's normal
-# eligibility check (_can_start_dash_strike) bars during dodge, so we
-# add a parallel branch that accepts the cancel when _dodge_time has
-# decayed below DODGE_DURATION * (1 - DODGE_CANCEL_THRESHOLD).
-const DODGE_CANCEL_THRESHOLD: float = 0.5
+# iter-95: DODGE_CANCEL_THRESHOLD removed alongside the dodge ability.
+# Iter-70 added a "cancel a half-elapsed dodge into a dash strike" feel
+# improvement; with no dodge to cancel, the mechanic is gone too.
+# Dash strike is now the only mobility option from a standing start.
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -302,22 +300,22 @@ var _is_attacking := false
 # player sees the hero's face on spawn (not the back).
 var _facing_dir: int = 4
 
-var _dodge_cd := 0.0
-var _dodge_time := 0.0
-var _dodge_dir := Vector2.RIGHT
+# iter-95: _dodge_cd / _dodge_time / _dodge_dir removed alongside the
+# dodge ability. _iframes survives — still set by dash_strike and by
+# successful shield catches.
 var _iframes := 0.0
 
 var _blast_cd := 0.0
 
 # Iter 25 — parry state (replaces shield_stamina/_shield_active/_shield_break_cd).
-# _parry_time   counts down from PARRY_WINDOW while the catch window is open.
-# _parry_cd     blocks re-trigger until elapsed. Set in _update_parry after
-#               the window closes (caught or not), keyed to PARRY_COOLDOWN.
-var _parry_time := 0.0
-var _parry_cd   := 0.0
+# _shield_time   counts down from SHIELD_WINDOW while the catch window is open.
+# _shield_cd     blocks re-trigger until elapsed. Set in _update_parry after
+#               the window closes (caught or not), keyed to SHIELD_COOLDOWN.
+var _shield_time := 0.0
+var _shield_cd   := 0.0
 # Iter 29 — handle to the currently-active parry_shield instance so
-# _on_parry_hit can call shatter() on it. Null when no shield is up.
-var _parry_shield_ref: Node2D = null
+# _on_shield_block can call shatter() on it. Null when no shield is up.
+var _shield_ref: Node2D = null
 
 var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
@@ -495,7 +493,8 @@ signal hero_died
 # touching the existing teardown flow.
 signal hero_death_started(world_pos: Vector2)
 signal hit_received       # for camera shake + hit-stop in main.gd
-signal dodge_started
+# iter-95: dodge_started signal removed (it had no subscribers anyway,
+# but it was emitted from _start_dodge which is also gone).
 # Iter 13 — fired when a melee swing actually connects with ≥1 enemy.
 # main.gd listens for a brief hit-stop scaled by hit_count. Distinct
 # from Events.enemy_hit (which fires once per enemy and would multi-
@@ -558,12 +557,12 @@ func _save_persistent_state() -> void:
 func _physics_process(delta: float) -> void:
 	_attack_cd        = max(0.0, _attack_cd        - delta)
 	_attack_live      = max(0.0, _attack_live      - delta)
-	_dodge_cd         = max(0.0, _dodge_cd         - delta)
-	_dodge_time       = max(0.0, _dodge_time       - delta)
+	# iter-95: _dodge_cd and _dodge_time timer decrements removed with
+	# the dodge ability.
 	_iframes          = max(0.0, _iframes          - delta)
 	_blast_cd         = max(0.0, _blast_cd         - delta)
-	_parry_time       = max(0.0, _parry_time       - delta)
-	_parry_cd         = max(0.0, _parry_cd         - delta)
+	_shield_time      = max(0.0, _shield_time      - delta)
+	_shield_cd        = max(0.0, _shield_cd        - delta)
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
 	_hurt_time        = max(0.0, _hurt_time        - delta)
 	_lunge_time       = max(0.0, _lunge_time       - delta)
@@ -609,7 +608,7 @@ func _physics_process(delta: float) -> void:
 
 	# Iter 25 — parry decays via the timer block above. No per-tick
 	# behavior needed here (vs the held-stance shield, which had to
-	# tick stamina drain/recover each frame). _start_parry arms it;
+	# tick stamina drain/recover each frame). _start_shield arms it;
 	# take_damage catches incoming hits during the window.
 
 	# Dash pass-through damage: while the dash window is active, scan
@@ -637,11 +636,9 @@ func _physics_process(delta: float) -> void:
 			_dash_strike_time = 0.0
 			dash_strike_just_ended = true
 
-	if _dodge_time > 0.0:
-		var t := 1.0 - (_dodge_time / DODGE_DURATION)
-		var ease: float = pow(1.0 - t, 2.0)
-		velocity = _dodge_dir * (DODGE_SPEED * ease + 60.0)
-	elif _dash_strike_time > 0.0:
+	# iter-95: dodge velocity branch removed. Dash strike is now the
+	# only "burst movement" mode.
+	if _dash_strike_time > 0.0:
 		# Iter 25 — light steering during dash. WASD input nudges the
 		# dash direction by DASH_STRIKE_STEER_GAIN per axis, then we
 		# renormalize. Lets the player curve through tight groups
@@ -700,8 +697,8 @@ func _physics_process(delta: float) -> void:
 	# then iframes flicker on top when the parry isn't running. The
 	# parry tint is steady, not pulsing, so it reads as "active block"
 	# rather than "incoming damage."
-	if _parry_time > 0.0:
-		sprite.modulate = PARRY_TINT
+	if _shield_time > 0.0:
+		sprite.modulate = SHIELD_TINT
 	else:
 		sprite.modulate = Color(1, 1, 1, 1)
 		if _iframes > 0.0 and int(_iframes * 20) % 2 == 0:
@@ -721,7 +718,7 @@ func _physics_process(delta: float) -> void:
 		state_name = "hurt"
 	elif _is_attacking or _dash_strike_time > 0.0:
 		state_name = "attack"
-	elif is_moving or _dodge_time > 0.0:
+	elif is_moving:
 		state_name = "walk"
 	else:
 		state_name = "idle"
@@ -738,7 +735,7 @@ func _physics_process(delta: float) -> void:
 		_camera.offset = _camera_offset
 
 	# ── Idle bob + footsteps (iter 11) ────────────────────────────────
-	if is_moving and _dodge_time <= 0.0 and _dash_strike_time <= 0.0 and not _is_attacking:
+	if is_moving and _dash_strike_time <= 0.0 and not _is_attacking:
 		_idle_time = 0.0
 		_step_accumulator += velocity.length() * delta
 		if _step_accumulator >= STEP_INTERVAL:
@@ -761,46 +758,34 @@ func _physics_process(delta: float) -> void:
 		var bob := sin(_idle_time * TAU * IDLE_BOB_FREQ) * IDLE_BOB_AMP
 		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + bob, IDLE_BOB_LERP * delta)
 
-	# Iter 25 input precedence: dodge > parry > dash_strike > blast >
-	# attack. The "shield" input action still binds to Q (no key remap
-	# needed) — it now triggers a TAP parry (just_pressed) instead of
-	# the previous held-stance. Dodge still wins so the player can
-	# always bail to safety.
-	#
-	# Iter 70 — dodge-cancel-into-dash-strike. After 50% of the dodge has
-	# elapsed (_dodge_time decayed below DODGE_DURATION * 0.5), pressing
-	# the dash-strike key cancels the dodge into a dash-strike. Reads as
-	# "dash through them, then stab" — a common feel improvement in
-	# Hades / Necesse-likes. The cancel path zeros the remaining dodge
-	# timer + clears the dodge dir so _physics_process exits the dodge
-	# branch cleanly before the dash-strike begins this same frame.
-	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0 and _dodge_time <= 0.0:
-		_start_dodge(input)
-	elif Input.is_action_just_pressed("shield") and _parry_cd <= 0.0 and _parry_time <= 0.0 and _dodge_time <= 0.0:
-		_start_parry()
-	elif Input.is_action_just_pressed("dash_strike") and _can_cancel_dodge_into_dash_strike():
-		# Dodge-cancel path: kill the remaining dodge motion and let the
-		# dash-strike take over starting THIS frame.
-		_dodge_time = 0.0
-		_start_dash_strike()
+	# iter-95 input precedence: shield > dash_strike > blast > attack.
+	# Dodge is gone (and with it the iter-70 dodge-cancel-into-dash
+	# feel-improver). The defensive toolkit collapses to two options:
+	#   • SHIELD (Q) — stand-still timing-based catch
+	#   • DASH_STRIKE (Shift) — aggressive engage with i-frames + AoE
+	# Per user design intent: "the only real dodge is the dash strike
+	# that keeps gameplay aggressive."
+	if Input.is_action_just_pressed("shield") and _shield_cd <= 0.0 and _shield_time <= 0.0:
+		_start_shield()
 	elif Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
 		_start_dash_strike()
-	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dodge_time <= 0.0 and _parry_time <= 0.0 and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _shield_time <= 0.0 and _dash_strike_time <= 0.0:
 		_start_blast()
-	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dodge_time <= 0.0 and _parry_time <= 0.0 and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _shield_time <= 0.0 and _dash_strike_time <= 0.0:
 		_start_attack()
 
 # Facing picker. Returns the direction bucket the sprite should render
 # THIS tick. Priority: dying = sticky · hurt = sticky · attacking/dashing
-# point at the aim/dash vector · dodging points at the dodge vector ·
-# walking points at movement · idle keeps last facing.
+# point at the aim/dash vector · walking points at movement · idle keeps
+# last facing.
+#
+# iter-95: the dodge branch is gone — dodge ability removed. Dash
+# strike already covers "moving fast in a direction" for facing purposes.
 func _compute_facing(input: Vector2) -> int:
 	if _is_attacking and _attack_aim.length() > 0.001:
 		return _vector_to_dir_idx(_attack_aim)
 	if _dash_strike_time > 0.0:
 		return _vector_to_dir_idx(_dash_strike_dir)
-	if _dodge_time > 0.0:
-		return _vector_to_dir_idx(_dodge_dir)
 	if input.length() > 0.1:
 		return _vector_to_dir_idx(input)
 	return _facing_dir
@@ -819,53 +804,15 @@ func _vector_to_dir_idx(v: Vector2) -> int:
 	var b: int = int(round((angle + PI / 2.0) / (PI / 4.0)))
 	return ((b % NUM_DIRS) + NUM_DIRS) % NUM_DIRS
 
-func _start_dodge(input: Vector2) -> void:
-	var dir := input
-	if dir.length() < 0.1:
-		# No input → dodge in current facing direction.
-		dir = _dir_to_vector(_facing_dir)
-	_dodge_dir = dir.normalized()
-	_dodge_time = DODGE_DURATION
-	_dodge_cd = DODGE_COOLDOWN * (1.0 + GameState.modifier_total_f("dodge_cooldown_mul", 0.0))
-	# Iter 21 — sturdy_step relic extends the iframe window.
-	var iframes_actual: float = DODGE_IFRAMES + GameState.modifier_total_f("dodge_iframes_bonus_f", 0.0)
-	_iframes = max(_iframes, iframes_actual)
-	# Iter 25 — starting a dodge cancels any in-flight parry so the
-	# two defensive options don't double-up on iframes. The dodge owns
-	# motion + iframes for its window; the parry would just sit idle
-	# under it anyway.
-	_parry_time = 0.0
-	dodge_started.emit()
-	Events.hero_dodged.emit(global_position)
-	# Iter 40 — SHADOW ascendance (4+ SHADOW relics owned). Every dodge
-	# releases a 60-px shockwave at the hero's position dealing 1 damage
-	# to all enemies inside. Pairs with iframes naturally — you're
-	# untouchable AND launching a small AoE around yourself. Stacks
-	# with the existing iframe-bonus + cd-mul SHADOW resonance benefits.
-	if GameState.theme_tier("shadow") >= 2:
-		_trigger_shadow_shockwave()
-	# Iter 62 — SHADOW resonance dodge trail. Tier >= 1 (2+ SHADOW
-	# relics owned) emits a fading indigo particle trail behind the
-	# hero on every dodge. Reuses the existing dash_trail.tscn (which
-	# the dash-strike ability uses) with a color modulate that
-	# overrides the magenta-cyan ramp into the SHADOW palette. Reads
-	# as "you stepped between heartbeats" — the missing visual axis
-	# for the SHADOW theme's mobility role.
-	if GameState.theme_tier("shadow") >= 1:
-		_spawn_shadow_dodge_trail()
-	# Iter 68 — DODGE × STORM shock pulse. Tier >= 1 (2+ STORM relics
-	# owned) spawns an expanding cyan-white electric ring at the dodge
-	# START position (current global_position — _start_dodge fires
-	# BEFORE the motion integration in _physics_process moves the hero
-	# along _dodge_dir). Tier 1: 80px radius, 1 damage. Tier 2 (4+
-	# STORM): 120px, 2 damage, 0.5s stun on every hit enemy.
-	# Composes additively with the SHADOW dodge trail above — both
-	# effects fire on the same dodge if both themes are active.
-	if GameState.theme_tier("storm") >= 1:
-		_spawn_storm_shock_pulse()
+# iter-95: _start_dodge() removed alongside the dodge ability. The
+# SHADOW + STORM theme procs (iter-40 shockwave, iter-62 trail, iter-68
+# shock pulse) that used to fire here have been REANCHORED to
+# _start_dash_strike — see that function. The SHADOW resonance dodge
+# trail (iter-62) is fully removed since dash_strike already spawns its
+# own trail via DASH_TRAIL_SCENE.
 
 # Inverse of _vector_to_dir_idx — used for "what direction is the hero
-# facing when no input vector is available" (e.g. dodge with no WASD).
+# facing when no input vector is available" (e.g. attack with no WASD).
 # Reads from the class-level DIR_VECS table (literal-only because const
 # initializers must be load-time-evaluable).
 func _dir_to_vector(dir_idx: int) -> Vector2:
@@ -1576,10 +1523,10 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 		return
 	# Iter 25 — parry catch. Checked BEFORE the iframes early-return so
 	# a successful parry CONSUMES the incoming hit (vs the normal-iframe
-	# path which just silently ignores it). _on_parry_hit clears the
+	# path which just silently ignores it). _on_shield_block clears the
 	# window, sets iframes, spawns the bigger VFX, and triggers slow-mo.
-	if _parry_time > 0.0:
-		_on_parry_hit()
+	if _shield_time > 0.0:
+		_on_shield_block()
 		return
 	if _iframes > 0.0:
 		return
@@ -1902,29 +1849,18 @@ const SHADOW_SHOCKWAVE_DAMAGE: int = 1
 # behind the hero, oriented along the dodge direction, and tints the
 # whole node indigo via modulate (cascades to the CPUParticles2D child).
 # Trail lives 0.7s then queue_free's itself.
-func _spawn_shadow_dodge_trail() -> void:
-	var trail: Node2D = DASH_TRAIL_SCENE.instantiate() as Node2D
-	if trail == null:
-		return
-	trail.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
-	if trail.has_method("setup"):
-		trail.call("setup", _dodge_dir)
-	# Indigo modulate — overrides the magenta-cyan ramp into the
-	# SHADOW palette. modulate is multiplicative so the inner ramp's
-	# bright colors get tinted, not replaced — which keeps the trail
-	# looking like particles, not a solid block.
-	trail.modulate = Color(0.65, 0.55, 1.0, 1.0)
-	# get_parent() rather than get_tree().current_scene so the spawn
-	# works in both production and test instantiate contexts (the
-	# current_scene path silently fails in test, as iter-61 caught).
-	var host: Node = get_parent()
-	if host != null:
-		host.add_child(trail)
+# iter-95: _spawn_shadow_dodge_trail removed. SHADOW theme tier-1
+# previously spawned an indigo-tinted dash_trail behind the hero on
+# every dodge; without dodge there's no separate event to anchor it
+# to (dash_strike already spawns its own DASH_TRAIL_SCENE on start).
+# Tier-1 SHADOW players lose the indigo trail visual but keep all
+# stat bonuses; the tier-2 shockwave (reanchored to dash_strike below)
+# still gives the theme its identity beat.
 
-# Iter 68 — DODGE × STORM shock pulse. Spawns a shock_pulse instance
-# at the hero's CURRENT global_position — which is the dodge START,
-# because _start_dodge runs BEFORE _physics_process moves the hero
-# along _dodge_dir for the DODGE_DURATION window. The pulse is a
+# iter-95: was DODGE × STORM shock pulse — reanchored to dash_strike.
+# Spawns a shock_pulse at the hero's CURRENT global_position when
+# _start_dash_strike fires (which is BEFORE the dash-time motion
+# integration moves the hero along _dash_strike_dir). The pulse is a
 # snapshot AoE: it scans get_tree().get_nodes_in_group("enemies") in
 # _ready() and applies damage (+ stun at tier 2) to everything inside
 # the configured radius.
@@ -1945,13 +1881,13 @@ const SHOCK_PULSE_TIER2_RADIUS: float = 120.0
 const SHOCK_PULSE_TIER2_DAMAGE: int = 2
 const SHOCK_PULSE_TIER2_STUN: float = 0.5
 
-func _spawn_storm_shock_pulse() -> void:
+func _spawn_storm_dash_shock_pulse() -> void:
 	var pulse: Node2D = SHOCK_PULSE_SCENE.instantiate() as Node2D
 	if pulse == null:
 		return
-	# Dodge START — current global_position. _start_dodge runs before
-	# the motion integration, so this is the spawn point even though
-	# the hero will be moving away over DODGE_DURATION.
+	# Dash START — current global_position. _start_dash_strike runs
+	# before the motion integration, so this is the spawn point even
+	# though the hero will be moving away over DASH_STRIKE_DURATION.
 	pulse.global_position = global_position
 	var tier: int = GameState.theme_tier("storm")
 	var radius: float = SHOCK_PULSE_TIER1_RADIUS
@@ -1970,7 +1906,7 @@ func _spawn_storm_shock_pulse() -> void:
 	if host != null:
 		host.add_child(pulse)
 
-func _trigger_shadow_shockwave() -> void:
+func _trigger_shadow_dash_shockwave() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
@@ -1990,14 +1926,14 @@ func _trigger_shadow_shockwave() -> void:
 	if scene_root != null:
 		scene_root.add_child(fx)
 
-# Iter 25 — parry trigger. Tap Q opens the catch window for PARRY_WINDOW
-# seconds. Hits during that window are routed through _on_parry_hit
+# Iter 25 — parry trigger. Tap Q opens the catch window for SHIELD_WINDOW
+# seconds. Hits during that window are routed through _on_shield_block
 # (which negates damage + spawns the parry VFX + does brief slow-mo).
 # Cooldown is set NOW (window + cd) so a player can't re-tap to extend
 # coverage past the natural window.
-func _start_parry() -> void:
-	_parry_time = PARRY_WINDOW
-	_parry_cd = PARRY_WINDOW + PARRY_COOLDOWN
+func _start_shield() -> void:
+	_shield_time = SHIELD_WINDOW
+	_shield_cd = SHIELD_WINDOW + SHIELD_COOLDOWN
 	# Resolve aim from cursor — the parry shield orients toward the
 	# threat the player is facing, not the hero's current movement
 	# direction. Fallback to facing-direction if the cursor is right
@@ -2007,10 +1943,10 @@ func _start_parry() -> void:
 		aim_world = _dir_to_vector(_facing_dir)
 	var aim: Vector2 = aim_world.normalized()
 	# Iter 63 — store parry aim so VOW ascendance's reflect-fan in
-	# _on_parry_hit knows which direction to fire the projectile burst
-	# (parry catch happens AFTER _start_parry, so _parry_aim is set
+	# _on_shield_block knows which direction to fire the projectile burst
+	# (parry catch happens AFTER _start_shield, so _shield_aim is set
 	# by the time the reflect would fire).
-	_parry_aim = aim
+	_shield_aim = aim
 	# Iter 29 — kite-silhouette parry shield IN FRONT of the hero,
 	# oriented toward the aim direction. Replaces the iter-25 ring
 	# pulse as the primary "I am blocking from THIS direction"
@@ -2023,37 +1959,37 @@ func _start_parry() -> void:
 		if shield.has_method("setup"):
 			shield.call("setup", aim)
 		scene_root.add_child(shield)
-		_parry_shield_ref = shield
+		_shield_ref = shield
 	# iter-94: secondary sprite-sheet activation flourish removed — the
 	# parry_shield bubble (now a procedural cyan sphere wrapping the
 	# hero) is the only parry VFX. User feedback: "the parry/shield are
 	# a bit much, lets just keep a shield or parry."
 	# Reuse the dodge sound — both are short defensive flourishes. A
 	# dedicated parry chime can land in a later audio pass.
-	Events.hero_dodged.emit(global_position)
+	Events.hero_shielded.emit(global_position)
 
 # Called from take_damage when the parry window catches an incoming
 # hit. Negates damage, fires a bigger pulse VFX, triggers brief
 # slow-mo, and ends the parry window early so the cooldown starts
 # counting from the moment of the catch (not the original window end).
-func _on_parry_hit() -> void:
+func _on_shield_block() -> void:
 	# End the window early — the parry just resolved.
-	_parry_time = 0.0
+	_shield_time = 0.0
 	# Long-ish iframes so the same enemy can't immediately re-bump.
-	_iframes = max(_iframes, PARRY_HIT_IFRAMES)
+	_iframes = max(_iframes, SHIELD_HIT_IFRAMES)
 	# Brief slow-mo punctuation. Tween-driven so it eases cleanly.
-	Engine.time_scale = PARRY_HIT_SLOWMO_SCALE
+	Engine.time_scale = SHIELD_HIT_SLOWMO_SCALE
 	var tw: Tween = create_tween()
 	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	tw.tween_interval(PARRY_HIT_SLOWMO_TIME)
+	tw.tween_interval(SHIELD_HIT_SLOWMO_TIME)
 	tw.tween_property(Engine, "time_scale", 1.0, 0.18)
 	# Iter 29 — shatter the active parry shield. shatter() scales it
 	# to 1.6× while fading alpha to 0 over 0.18s, then queue_frees.
 	# Sells "the shield deflected the hit and dispersed its energy."
-	if _parry_shield_ref != null and is_instance_valid(_parry_shield_ref):
-		if _parry_shield_ref.has_method("shatter"):
-			_parry_shield_ref.shatter()
-		_parry_shield_ref = null
+	if _shield_ref != null and is_instance_valid(_shield_ref):
+		if _shield_ref.has_method("shatter"):
+			_shield_ref.shatter()
+		_shield_ref = null
 	# iter-94: secondary sprite-sheet catch flourish removed. The
 	# shatter() call above already supplies the catch beat — the bubble
 	# expands to 1.6× and fades over 0.18s, which the player reads as
@@ -2061,13 +1997,13 @@ func _on_parry_hit() -> void:
 	# top was the "too much" the user flagged.
 	# Re-fire the dodge sfx as the catch confirm. Two stacked plays
 	# read distinctly from a single tap.
-	Events.hero_dodged.emit(global_position)
+	Events.hero_shielded.emit(global_position)
 	# Amber floater so the player learns the relic-like beat triggered.
 	var parent: Node = get_parent()
 	if parent != null:
 		var n: DamageNumber = DamageNumber.spawn(
 			global_position + Vector2(0, -64),
-			"PARRY",
+			"SHIELD",
 			Color(0.65, 0.95, 1.0),
 		)
 		parent.add_child(n)
@@ -2097,34 +2033,34 @@ func _on_parry_hit() -> void:
 		# Visually distinct from the iter-39 STORM chain bolt (cyan,
 		# arcs to one target) — these are 5 straight ivory bolts in a
 		# fan from the parry catch point.
-		_spawn_parry_reflect_fan()
+		_spawn_shield_reflect_fan()
 
 # Iter 63 — parry reflect fan. 5 small projectiles in a 90° cone
-# centered on the parry's stored aim direction (_parry_aim is set
-# in _start_parry). Each projectile is a fresh instance of the
+# centered on the parry's stored aim direction (_shield_aim is set
+# in _start_shield). Each projectile is a fresh instance of the
 # regular Projectile scene with ivory tint + low damage so the
 # burst reads as "spirit retaliation" not "spell cast."
-const PARRY_REFLECT_COUNT: int = 5
-const PARRY_REFLECT_CONE: float = PI * 0.5   # 90° total spread
-const PARRY_REFLECT_DAMAGE: int = 1
-const PARRY_REFLECT_SPEED: float = 380.0
-var _parry_aim: Vector2 = Vector2.RIGHT   # set in _start_parry
+const SHIELD_REFLECT_COUNT: int = 5
+const SHIELD_REFLECT_CONE: float = PI * 0.5   # 90° total spread
+const SHIELD_REFLECT_DAMAGE: int = 1
+const SHIELD_REFLECT_SPEED: float = 380.0
+var _shield_aim: Vector2 = Vector2.RIGHT   # set in _start_shield
 
-func _spawn_parry_reflect_fan() -> void:
-	var aim: Vector2 = _parry_aim if _parry_aim.length_squared() > 0.001 else Vector2.RIGHT
+func _spawn_shield_reflect_fan() -> void:
+	var aim: Vector2 = _shield_aim if _shield_aim.length_squared() > 0.001 else Vector2.RIGHT
 	# 5 projectiles spread across 90°. Outer ones get +/- 45°.
-	var step: float = PARRY_REFLECT_CONE / float(PARRY_REFLECT_COUNT - 1)
-	var base_angle: float = aim.angle() - PARRY_REFLECT_CONE * 0.5
+	var step: float = SHIELD_REFLECT_CONE / float(SHIELD_REFLECT_COUNT - 1)
+	var base_angle: float = aim.angle() - SHIELD_REFLECT_CONE * 0.5
 	var host: Node = get_parent()
 	if host == null:
 		return
-	for i in range(PARRY_REFLECT_COUNT):
+	for i in range(SHIELD_REFLECT_COUNT):
 		var a: float = base_angle + step * float(i)
 		var dir: Vector2 = Vector2(cos(a), sin(a))
 		var p: Projectile = PROJECTILE_SCENE.instantiate()
 		p.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET) + dir * 22.0
-		p.velocity = dir * PARRY_REFLECT_SPEED
-		p.damage = PARRY_REFLECT_DAMAGE
+		p.velocity = dir * SHIELD_REFLECT_SPEED
+		p.damage = SHIELD_REFLECT_DAMAGE
 		p.target_group = "enemies"
 		# Ivory tint matching the VOW theme palette (iter-39 chip color).
 		p.orb_tint = Color(0.92, 0.92, 0.78, 1.0)
@@ -2165,27 +2101,14 @@ func _apply_dash_pierce_tick() -> void:
 			enemy.apply_knockback(_dash_strike_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
 
 func _can_start_dash_strike() -> bool:
+	# iter-95: _dodge_time check removed (dodge ability gone).
 	return _dash_strike_cd <= 0.0 \
 		and _dash_strike_time <= 0.0 \
-		and _dodge_time <= 0.0 \
-		and _parry_time <= 0.0
+		and _shield_time <= 0.0
 
-# Iter 70 — dodge-cancel-into-dash-strike check. Allows the player to
-# cancel into a dash-strike AFTER 50% of the dodge has elapsed (so the
-# initial dodge motion still reads as a real dodge, not a 1-frame
-# shimmer). The dash-strike's own cooldown / dash_strike_time guards
-# still apply — you can't cancel a dodge into a dash that's still on
-# cooldown. Parry-time still blocks (same as the normal _can_start
-# path) since parry is the only ability with stricter contracts.
-func _can_cancel_dodge_into_dash_strike() -> bool:
-	if _dodge_time <= 0.0:
-		return false
-	# Half-way through the dodge — remaining time below half its total.
-	if _dodge_time > DODGE_DURATION * (1.0 - DODGE_CANCEL_THRESHOLD):
-		return false
-	return _dash_strike_cd <= 0.0 \
-		and _dash_strike_time <= 0.0 \
-		and _parry_time <= 0.0
+# iter-95: _can_cancel_dodge_into_dash_strike() removed alongside the
+# dodge ability. With no dodge to cancel, the iter-70 dodge-cancel
+# feel-improver is gone too.
 
 func _start_dash_strike() -> void:
 	var aim_world := get_global_mouse_position() - global_position
@@ -2234,6 +2157,16 @@ func _start_dash_strike() -> void:
 		# parry shield's chest anchor.
 		ds.position = Vector2(0, VFX_HEIGHT_OFFSET)
 		add_child(ds)
+	# iter-95: SHADOW + STORM theme procs reanchored from dodge to
+	# dash_strike. Dash strike is now the only mobility / aggressive-
+	# engage option, so the "moving fast unleashes a shockwave/pulse"
+	# theme identity moves with it.
+	#   SHADOW tier 2: 60-px shockwave + 1 dmg at dash start
+	#   STORM tier 1+: shock pulse (80-120 px) at dash start
+	if GameState.theme_tier("shadow") >= 2:
+		_trigger_shadow_dash_shockwave()
+	if GameState.theme_tier("storm") >= 1:
+		_spawn_storm_dash_shock_pulse()
 
 # Iter 29 — spawn a single dash afterimage at the hero's current world
 # pose. Grabs the AnimatedSprite2D's current frame texture as an

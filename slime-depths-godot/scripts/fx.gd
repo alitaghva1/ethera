@@ -23,8 +23,11 @@ extends Node
 
 const HIT_SPARK_SCENE: PackedScene   = preload("res://scenes/fx/hit_spark.tscn")
 const DEATH_BURST_SCENE: PackedScene = preload("res://scenes/fx/death_burst.tscn")
-const DODGE_DUST_SCENE: PackedScene  = preload("res://scenes/fx/dodge_dust.tscn")
 const BLOOD_DROP_SCENE: PackedScene  = preload("res://scenes/fx/blood_drop.tscn")
+# iter-95: DODGE_DUST_SCENE removed — dodge ability deleted. The dust
+# puff was tied to the dodge motion; dash_strike (now the only defensive
+# movement) already spawns its own dash_trail particle trail behind the
+# hero.
 
 # Cached camera reference + the active shake tween. Camera gets
 # re-resolved whenever it's null / freed — cheap, and survives scene
@@ -40,7 +43,10 @@ func _ready() -> void:
 	# CONNECT_PERSIST would also be wrong here (autoloads outlive every
 	# scene anyway, so they wouldn't be cleared even without the flag).
 	Events.hero_damaged.connect(_on_hero_damaged)
-	Events.hero_dodged.connect(_on_hero_dodged)
+	# iter-95: hero_dodged subscriber removed alongside the dodge ability.
+	# Audio + screen flash still react to the renamed hero_shielded signal
+	# (raised + caught beats); this FX layer has no DODGE_DUST_SCENE to
+	# spawn anymore.
 	Events.hero_attacked.connect(_on_hero_attacked)
 	Events.hero_blasted.connect(_on_hero_blasted)
 	Events.enemy_hit.connect(_on_enemy_hit)
@@ -134,11 +140,6 @@ func _spawn(scene: PackedScene, world_pos: Vector2, rot: float = 0.0) -> Node2D:
 func _on_hero_damaged(world_pos: Vector2) -> void:
 	_shake(12.0, 0.18)
 	_spawn(BLOOD_DROP_SCENE, world_pos)
-
-func _on_hero_dodged(world_pos: Vector2) -> void:
-	# No shake on dodge — it's a *defensive* beat, not an impact. The
-	# dust puff alone reads as "the hero moved fast."
-	_spawn(DODGE_DUST_SCENE, world_pos)
 
 func _on_hero_attacked(_world_pos: Vector2, _aim: Vector2) -> void:
 	# Sword swings don't shake on their own — only the hits matter,

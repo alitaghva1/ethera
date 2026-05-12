@@ -12,7 +12,10 @@
 extends Node
 
 signal hero_damaged(world_pos: Vector2)                  # hero takes a hit
-signal hero_dodged(world_pos: Vector2)                   # hero dodge-rolled
+# iter-95: dodge ability deleted; renamed signal carries the SHIELD beat
+# (window raised + catch resolved). Same payload, same audio + screen
+# flash subscribers as the old hero_dodged signal.
+signal hero_shielded(world_pos: Vector2)                 # hero raised shield OR caught a hit
 signal hero_attacked(world_pos: Vector2, aim: Vector2)   # sword swing started
 signal hero_blasted(world_pos: Vector2, aim: Vector2)    # blast spell cast
 signal hero_stepped(world_pos: Vector2)                  # hero footstep tick (every ~26px walked)

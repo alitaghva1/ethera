@@ -35,7 +35,9 @@ const SOUND_CONFIGS := {
 	# Combat — hero side
 	"hero_swing":    { "freq_start": 620.0, "freq_end": 220.0, "duration": 0.09, "wave": "sin",    "gain": 0.40, "decay_pow": 1.6 },
 	"hero_blasted":  { "freq_start": 820.0, "freq_end": 160.0, "duration": 0.18, "wave": "sin",    "gain": 0.45, "decay_pow": 1.8 },
-	"hero_dodged":   { "freq_start": 220.0, "freq_end": 360.0, "duration": 0.08, "wave": "noise",  "gain": 0.30, "decay_pow": 1.4 },
+	# iter-95: was "hero_dodged" — dodge ability deleted, sound now plays
+	# on the SHIELD raise + catch beats via the renamed hero_shielded signal.
+	"hero_shielded": { "freq_start": 220.0, "freq_end": 360.0, "duration": 0.08, "wave": "noise",  "gain": 0.30, "decay_pow": 1.4 },
 	# Combat — receiving end
 	"hero_damaged":  { "freq_start": 110.0, "freq_end":  55.0, "duration": 0.14, "wave": "sin",    "gain": 0.55, "decay_pow": 1.5 },
 	"hero_died":     { "freq_start": 240.0, "freq_end":  55.0, "duration": 0.55, "wave": "sin",    "gain": 0.60, "decay_pow": 1.8 },
@@ -143,7 +145,7 @@ func _ready() -> void:
 	# entry + add a connect here, no gameplay-side edits.
 	Events.hero_attacked.connect(_on_hero_attacked)
 	Events.hero_blasted.connect(_on_hero_blasted)
-	Events.hero_dodged.connect(_on_hero_dodged)
+	Events.hero_shielded.connect(_on_hero_shielded)
 	Events.hero_damaged.connect(_on_hero_damaged)
 	Events.hero_died.connect(_on_hero_died)
 	Events.enemy_hit.connect(_on_enemy_hit)
@@ -267,8 +269,8 @@ func _on_hero_blasted(world_pos: Vector2, _aim: Vector2) -> void:
 	# Played -4 dB so it accents without out-shouting the blast itself.
 	_play("blast_muzzle", world_pos, -4.0)
 
-func _on_hero_dodged(world_pos: Vector2) -> void:
-	_play("hero_dodged", world_pos, -6.0)
+func _on_hero_shielded(world_pos: Vector2) -> void:
+	_play("hero_shielded", world_pos, -6.0)
 
 func _on_hero_damaged(world_pos: Vector2) -> void:
 	_play("hero_damaged", world_pos, 0.0)

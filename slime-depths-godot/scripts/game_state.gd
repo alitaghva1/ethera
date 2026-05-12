@@ -44,11 +44,18 @@ var persisted_hp: int = -1
 #   damage_taken_reduction  (int)    flat subtract from incoming damage
 #   sword_cooldown_mul      (float)  multiplier delta on ATTACK_COOLDOWN
 #   blast_cooldown_mul      (float)  multiplier delta on BLAST_COOLDOWN  (iter 17)
-#   dodge_cooldown_mul      (float)  multiplier delta on DODGE_COOLDOWN
+#   dodge_cooldown_mul      (float)  DEAD KEY (iter-95). Relics that declared this
+#                                    still do — the modifier silently no-ops since
+#                                    hero.gd no longer reads it. Repurpose in a
+#                                    follow-up: dash_strike_cooldown_mul or remove.
 #   move_speed_mul          (float)  multiplier delta on SPEED
 #   attack_range_mul        (float)  multiplier delta on ATTACK_RANGE  (iter 17)
 #   knockback_force_mul     (float)  multiplier delta on melee + dash knockback  (iter 21)
-#   dodge_iframes_bonus_f   (float)  extra seconds added to DODGE_IFRAMES  (iter 21)
+#   dodge_iframes_bonus_f   (float)  DEAD KEY (iter-95). Same story as
+#                                    dodge_cooldown_mul — declared by relics but
+#                                    no longer read. Dash strike has its own
+#                                    DASH_STRIKE_POST_IFRAMES window; no relic
+#                                    currently extends it.
 #   projectile_speed_mul    (float)  multiplier delta on hero blast velocity  (iter 21)
 #   attack_arc_mul          (float)  multiplier delta on ATTACK_ARC half-angle  (iter 21)
 # Float-typed mods are folded via modifier_total_f (see below).

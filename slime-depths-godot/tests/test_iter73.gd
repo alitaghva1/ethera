@@ -84,21 +84,18 @@ func _initialize() -> void:
 	#   parry_pulse.gd had PreFlash anticipation (REMOVED)
 	print("SKIP slash_arc + parry_pulse phasing (superseded by iter-87 sprite-sheet rewrite)")
 
-	# parry_shield: BeamFan additions
-	var ps_scene_src := FileAccess.get_file_as_string("res://scenes/fx/parry_shield.tscn")
-	if not ps_scene_src.contains("BeamFan"):
-		push_error("FAIL: parry_shield.tscn missing BeamFan beams")
-		ok = false
-	else:
-		print("OK parry_shield has BeamFan reflect beams")
+	# parry_shield BeamFan (iter-73) superseded by iter-94 procedural
+	# bubble rewrite. The iter-73 enhancement (forward-projecting energy
+	# beams) was deleted as part of the "parry/shield are a bit much"
+	# simplification. test_iter94.gd owns the new contract.
+	print("SKIP parry_shield BeamFan check (superseded by iter-94 bubble rewrite)")
 
-	# dodge_dust beefed up
-	var dd_src := FileAccess.get_file_as_string("res://scripts/dodge_dust.gd")
-	if not (dd_src.contains("BackStreak") or dd_src.contains("back_streak") or dd_src.contains("_back_streak") or dd_src.contains("GroundStreak") or dd_src.contains("ground_streak")):
-		push_error("FAIL: dodge_dust.gd missing BackStreak/GroundStreak")
-		ok = false
-	else:
-		print("OK dodge_dust has BackStreak/GroundStreak additions")
+	# dodge_dust (iter-73) superseded by iter-95 dodge deletion. The
+	# entire dodge ability is gone; dodge_dust.tscn + .gd were deleted
+	# along with the spawn site in fx.gd. Dash strike (now the only
+	# defensive movement) has its own DASH_TRAIL_SCENE for trailing
+	# particles. test_iter95.gd owns the new contract.
+	print("SKIP dodge_dust check (superseded by iter-95 dodge ability removal)")
 
 	# dash_impact: radial ground cracks. dash_impact.gd is RETAINED in
 	# iter-87 because hero.gd's SOUL_BURST_SCENE still reuses dash_impact
@@ -110,8 +107,9 @@ func _initialize() -> void:
 	else:
 		print("OK dash_impact has ground cracks (SOUL_BURST reuse, post iter-87)")
 
-	# ═══ Scene loads still work (iter-87: slash_arc + parry_pulse deleted) ═══
-	for fx in ["parry_shield", "dodge_dust", "dash_trail"]:
+	# ═══ Scene loads still work (iter-87: slash_arc + parry_pulse deleted;
+	#     iter-95: dodge_dust deleted with the dodge ability) ═══
+	for fx in ["parry_shield", "dash_trail"]:
 		var scn := load("res://scenes/fx/%s.tscn" % fx)
 		if scn == null:
 			push_error("FAIL: %s.tscn failed to load" % fx)

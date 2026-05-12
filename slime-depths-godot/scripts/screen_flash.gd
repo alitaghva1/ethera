@@ -83,7 +83,7 @@ func _ready() -> void:
 	# means no risk of duplicate connections, but we still defensively
 	# avoid re-connecting if something weird happens.
 	Events.hero_damaged.connect(_on_hero_damaged)
-	Events.hero_dodged.connect(_on_hero_dodged)
+	Events.hero_shielded.connect(_on_hero_shielded)
 	Events.hero_attacked.connect(_on_hero_attacked)
 	Events.hero_blasted.connect(_on_hero_blasted)
 	Events.enemy_died.connect(_on_enemy_died)
@@ -135,10 +135,11 @@ func _on_hero_damaged(_world_pos: Vector2) -> void:
 	# Red, mid-strength, quick fade — should *feel* like a slap.
 	_flash(Color(0.95, 0.2, 0.2, 0.35), 0.25)
 
-func _on_hero_dodged(_world_pos: Vector2) -> void:
-	# Cyan, very brief — reinforces the i-frame moment without
-	# overwhelming the screen. (Matches the dust-puff cool palette in
-	# dodge_dust.tscn.)
+func _on_hero_shielded(_world_pos: Vector2) -> void:
+	# iter-95: was _on_hero_dodged. The dodge ability is gone — this
+	# brief cyan flash now reinforces the SHIELD raise + catch beats
+	# (parry_shield.gd's bubble visual is the primary feedback; the
+	# flash sells the i-frame moment in the player's peripheral vision).
 	_flash(Color(0.5, 0.85, 1.0, 0.15), 0.15)
 
 func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
