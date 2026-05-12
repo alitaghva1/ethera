@@ -10,9 +10,14 @@
 ; (0.85 → 0.95) so the trail reads CLEARLY against the dim dungeon
 ; floor mid-dash. The tail still fades to 0 so the trail dissolves
 ; cleanly behind the hero.
+;
+; Iter 75: brighter peak (added a near-white hot stop at the head) +
+; the cyan tail goes lighter so the streak reads as a hot SLASH of
+; energy mid-dash. Color stops re-ordered to 0.0 / 0.25 / 0.65 / 1.0
+; so the cyan dominates the visible tail length.
 [sub_resource type="Gradient" id="trail_grad"]
-offsets = PackedFloat32Array(0, 0.4, 0.8, 1)
-colors = PackedColorArray(1.0, 0.55, 1.0, 1.0, 0.9, 0.6, 1.0, 0.95, 0.6, 0.88, 1.0, 0.7, 0.4, 0.7, 1.0, 0.0)
+offsets = PackedFloat32Array(0, 0.25, 0.65, 1)
+colors = PackedColorArray(1.0, 0.95, 1.0, 1.0, 1.0, 0.6, 1.0, 1.0, 0.65, 0.92, 1.0, 0.85, 0.4, 0.8, 1.0, 0.0)
 
 [node name="DashTrail" type="Node2D"]
 script = ExtResource("1_script")
@@ -27,20 +32,31 @@ script = ExtResource("1_script")
 ; damping pulls the particles to a stop quickly so they don't fly out
 ; past the dash distance and reveal that they're particles, not a
 ; coherent streak.
+;
+; Iter 75 — beefed up for visible-collision feel:
+;   amount:    24 → 40       (denser streak so the path reads as a
+;                             contiguous trail, not dotted)
+;   lifetime:  0.55 → 0.65   (slightly longer tail so the trail bridges
+;                             the dash duration + a beat after)
+;   spread:    22° → 28°     (wider so the streak has visible
+;                             "thickness" rather than a single line)
+;   velocity:  70-160 → 90-200 (faster particles → longer streak length
+;                             before damping pulls them to rest)
+;   scale:     2.5-5.0 → 3.0-6.0 (chunkier particles for visibility)
 [node name="CPUParticles2D" type="CPUParticles2D" parent="."]
-amount = 24
-lifetime = 0.55
+amount = 40
+lifetime = 0.65
 one_shot = true
 emitting = true
 explosiveness = 0.5
 local_coords = false
-spread = 22.0
+spread = 28.0
 gravity = Vector2(0, 0)
 direction = Vector2(-1, 0)
-initial_velocity_min = 70.0
-initial_velocity_max = 160.0
+initial_velocity_min = 90.0
+initial_velocity_max = 200.0
 damping_min = 5.0
 damping_max = 8.0
-scale_amount_min = 2.5
-scale_amount_max = 5.0
+scale_amount_min = 3.0
+scale_amount_max = 6.0
 color_ramp = SubResource("trail_grad")

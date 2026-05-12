@@ -100,6 +100,16 @@ const SWING_HIT_STOP_TIME  := 0.035
 const DASH_HIT_STOP_SCALE  := 0.10
 const DASH_HIT_STOP_TIME   := 0.07
 const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn")
+# Wizard-kit sprint 3 (track C) — consolidated wave-spawn portal scene.
+# Previously waves spawned 6+ enemies each at random spawn_points, each
+# fading from SPAWN_IN_START_COLOR (enemy.gd:54) — which read as 6
+# different "portals" to the player. Track C limits a wave to AT MOST
+# MAX_WAVE_PORTALS spawn positions and renders a real portal visual at
+# each, so enemies emerge from a small set of dramatic locations vs a
+# diffuse spray of red ghosts. The portal scene is built in code by
+# spawn_portal.gd; this is just the preloaded entry point.
+const SPAWN_PORTAL_SCENE: PackedScene = preload("res://scenes/fx/spawn_portal.tscn")
+const MAX_WAVE_PORTALS: int = 3
 # Iter 30 — hazard scenes. The room reads its hazard_kind string and
 # we pick the scene to instantiate at each hazard_positions entry.
 # Iter 31 — added fire_jet, slow_zone, lightning_rod for mixed-hazard
@@ -265,6 +275,28 @@ var _death_screen: Node = null
 # doesn't trigger false-positive "all enemies dead" between the first
 # kill and the last spawn.
 var _pending_spawns := 0
+# Wizard-kit sprint 3 (track C) — active wave-spawn portal positions.
+# When _start_wave fires, we pick min(MAX_WAVE_PORTALS, _spawn_points.size())
+# random positions from _spawn_points and store them here; each enemy in
+# the wave emerges from one of these (vs a per-enemy random spawn_point).
+# Cleared + portals queue_free()'d on _on_wave_cleared. Empty array means
+# the wave-spawn path falls back to legacy random-spawn-point behavior,
+# which keeps boss-summon / non-wave spawns working unchanged.
+var _active_wave_portals: Array[Vector2] = []
+# Parallel array — the actual portal nodes corresponding 1:1 with
+# _active_wave_portals positions. Tracked so _spawn_enemy_type can fire
+# emit_enemy() on the right portal AND _close_active_wave_portals can
+# tell each one to play its close animation.
+var _active_wave_portal_nodes: Array = []
+# Wizard-kit sprint 3 (track C) — single-shot override that _spawn_wave_
+# enemy sets immediately before calling _spawn_enemy_type, so the body
+# of _spawn_enemy_type uses this position instead of randi() % _spawn_
+# points. Vector2.INF is the "no override" sentinel — _spawn_enemy_type
+# checks for it and falls through to the legacy random-spawn-point pick.
+# Cleared back to INF by _spawn_wave_enemy after each call. Boss-summon
+# (_on_enemy_summon_requested) doesn't touch this, so summons still
+# spawn at their argument position unchanged.
+var _wave_spawn_override_pos: Vector2 = Vector2.INF
 # Iter 16 — guard against pickup_claimed firing twice on the same room
 # (e.g. a hypothetical double-event from a relic with multiple effects).
 # Set true the first time a pedestal grants in this room; reset on
@@ -1210,6 +1242,16 @@ func _start_wave(idx: int) -> void:
 			spawn_queue.append(type_id)
 	spawn_queue.shuffle()
 	_pending_spawns = spawn_queue.size()
+	# Wizard-kit sprint 3 (track C) — pick the wave's portal positions
+	# BEFORE we schedule any spawn timers, so each enemy can be assigned
+	# to one of these portals at queue time. _open_wave_portals also
+	# spawns the SpawnPortal nodes so the OPEN telegraph plays during
+	# the initial wave delay AND the stagger window (~0.5s OPEN + N *
+	# 0.18s stagger = portal is visibly there before each enemy emerges).
+	# Empty _spawn_points or empty queue → _open_wave_portals no-ops and
+	# we fall through to the legacy random-spawn-point branch in
+	# _spawn_enemy_type (preserves backwards compat for any edge case).
+	_open_wave_portals()
 	for i in range(spawn_queue.size()):
 		# Small jitter on top of the base stagger so the rhythm doesn't
 		# feel metronomic. Tween-friendly Bind so each closure captures
@@ -1217,7 +1259,109 @@ func _start_wave(idx: int) -> void:
 		var delay: float = i * SPAWN_STAGGER + randf_range(0.0, 0.08)
 		var t: SceneTreeTimer = get_tree().create_timer(delay)
 		var captured: String = spawn_queue[i]
-		t.timeout.connect(func (): _spawn_enemy_type(captured))
+		# Pre-select a portal index for THIS enemy (round-robin shuffled
+		# so the load is even across the up-to-3 portals). Captured into
+		# the lambda alongside the type_id so the timer fires the right
+		# wave-spawn enemy at the right portal.
+		var portal_idx: int = -1
+		if not _active_wave_portals.is_empty():
+			portal_idx = i % _active_wave_portals.size()
+		t.timeout.connect(func (): _spawn_wave_enemy(captured, portal_idx))
+
+# Wizard-kit sprint 3 (track C) — select up to MAX_WAVE_PORTALS positions
+# from the room's spawn_points and spawn a SpawnPortal at each. Picking
+# happens fresh each wave: a 3-wave room with 6 spawn_points opens
+# different portals in waves 1/2/3 so the player can't camp one corner.
+#
+# The portals visually open over ~0.5s. Since INITIAL_WAVE_DELAY = 0.6s
+# AND SPAWN_STAGGER = 0.18s, this means by the time the first enemy
+# emerges (wave 1 fires at t≈0.6 + jitter ≤ 0.08 = ~0.6 - 0.68s post-
+# room-entry), the portal is fully open and the player has seen it.
+# Subsequent waves: portals open right when _start_wave fires and the
+# first enemy on that wave starts spawning ~0.0 - 0.08s later. The
+# 0.5s OPEN phase plays through the first spawn — emit_enemy gates
+# itself to AFTER opening, so the flash on the first enemy lands as
+# the ring finishes its in-tween.
+func _open_wave_portals() -> void:
+	_active_wave_portals = []
+	_active_wave_portal_nodes = []
+	if _spawn_points.is_empty():
+		return
+	# Take a copy so .shuffle() doesn't mutate the source array (which
+	# is stored on the room config Resource and shared across runs).
+	var pool: Array[Vector2] = []
+	for sp in _spawn_points:
+		pool.append(sp)
+	pool.shuffle()
+	var n: int = mini(MAX_WAVE_PORTALS, pool.size())
+	for i in range(n):
+		var pos: Vector2 = pool[i]
+		_active_wave_portals.append(pos)
+		# Tint the portal with the room's ambient_tint nudged toward the
+		# spec-required purple-magenta, so a deep-purple room still gets
+		# a recognizable portal but it doesn't feel pasted-on. Falls back
+		# to the SpawnPortal default if _room is null (editor-direct
+		# launch).
+		var tint: Color = Color(0.55, 0.22, 0.75, 0.78)
+		if _room != null:
+			# Blend 65% spec purple + 35% room ambient so each biome reads
+			# slightly different. Don't apply to the ring (which keeps its
+			# bright magenta), just to the inner vortex via theme_color.
+			var amb: Color = _room.ambient_tint
+			tint = Color(
+				tint.r * 0.65 + amb.r * 0.35,
+				tint.g * 0.65 + amb.g * 0.35,
+				tint.b * 0.65 + amb.b * 0.35,
+				0.78,
+			)
+		var portal: Node = SpawnPortal.spawn(self, pos, tint)
+		_active_wave_portal_nodes.append(portal)
+
+# Wizard-kit sprint 3 (track C) — wave-spawn helper. Wraps
+# _spawn_enemy_type with two extras: route the enemy's spawn position
+# to the assigned wave portal (vs the legacy random-spawn-point pick),
+# and fire emit_enemy() on that portal node so the center white-hot
+# point flashes as the enemy emerges. Bosses + summons keep using
+# _spawn_enemy_type / _on_enemy_summon_requested directly, so neither
+# of those code paths is affected.
+#
+# If portal_idx < 0 (no portals open — e.g. _spawn_points was empty),
+# fall through to _spawn_enemy_type which still picks a random
+# spawn_point — preserves the legacy behavior for any edge case where
+# _open_wave_portals couldn't build the pool.
+func _spawn_wave_enemy(type_id: String, portal_idx: int) -> void:
+	# Out-of-bounds guard — if portals were closed mid-wave (shouldn't
+	# happen but defensive) or the index drifted, fall through.
+	if portal_idx < 0 or portal_idx >= _active_wave_portals.size():
+		_spawn_enemy_type(type_id)
+		return
+	# Spawn the enemy at the portal's exact world position. We set
+	# _wave_spawn_override_pos so the _spawn_enemy_type body can pick
+	# it up — keeps the existing function as the canonical "build an
+	# enemy and add it to the scene" path so future enemy_type fields
+	# don't need to be mirrored across two functions.
+	_wave_spawn_override_pos = _active_wave_portals[portal_idx]
+	_spawn_enemy_type(type_id)
+	_wave_spawn_override_pos = Vector2.INF   # sentinel: consume the override
+	# Fire the portal's emergence flash on the matching node. is_instance_
+	# valid guards against a portal that was queue_free'd between schedule
+	# time and timeout — shouldn't happen since _close_active_wave_portals
+	# is only called on wave-clear (after all spawns landed), but the
+	# guard costs nothing.
+	var node: Node = _active_wave_portal_nodes[portal_idx]
+	if is_instance_valid(node) and node.has_method("emit_enemy"):
+		node.emit_enemy()
+
+# Wizard-kit sprint 3 (track C) — close all active wave portals + clear
+# the parallel arrays. Called from _on_wave_cleared (between waves AND
+# at room-clear). Each portal queue_free's itself after its close
+# animation, so we don't free them here directly.
+func _close_active_wave_portals() -> void:
+	for node in _active_wave_portal_nodes:
+		if is_instance_valid(node) and node.has_method("close"):
+			node.close()
+	_active_wave_portal_nodes.clear()
+	_active_wave_portals.clear()
 
 # Iter 35 — wave-event dispatcher. Iterates _room.wave_events, filters
 # to entries matching `wave_idx`, dispatches each by `kind`. Unknown
@@ -1319,6 +1463,12 @@ func _event_announce(entry: Dictionary) -> void:
 
 func _on_wave_cleared() -> void:
 	_wave_state = WaveState.CLEAR
+	# Wizard-kit sprint 3 (track C) — close active wave portals at every
+	# wave-cleared transition so the inter-wave WAVE_CLEAR_PAUSE shows
+	# the player a clean arena. _start_wave on the next wave will open
+	# fresh portals at NEW positions, reinforcing the rhythm of "portal
+	# opens → enemies emerge → portal closes."
+	_close_active_wave_portals()
 	if _wave_index + 1 < _waves.size():
 		wave_label.text = "WAVE %d CLEAR  ·  next in %.1fs" % [_wave_index + 1, WAVE_CLEAR_PAUSE]
 		var t := get_tree().create_timer(WAVE_CLEAR_PAUSE)
@@ -1409,7 +1559,17 @@ func _spawn_enemy_type(type_id: String) -> void:
 	var type_res: EnemyType = ENEMY_TYPES.get(type_id, ENEMY_TYPES["slime"])
 	var enemy: Enemy = ENEMY_SCENE.instantiate()
 	enemy.enemy_type = type_res
-	enemy.global_position = _spawn_points[randi() % _spawn_points.size()]
+	# Wizard-kit sprint 3 (track C) — if _spawn_wave_enemy set an override
+	# position (= we're spawning a wave enemy at a portal), use that;
+	# otherwise fall through to the legacy random-spawn-point pick so
+	# any non-wave-enemy callers (none currently — summons use a dedicated
+	# path — but future ones) still work unchanged. Vector2.INF is the
+	# sentinel; Godot's Vector2.INF.is_finite() returns false on both
+	# components so this check is unambiguous.
+	if _wave_spawn_override_pos.is_finite():
+		enemy.global_position = _wave_spawn_override_pos
+	else:
+		enemy.global_position = _spawn_points[randi() % _spawn_points.size()]
 	enemy.died_at.connect(_on_enemy_died)
 	add_child(enemy)
 	# Iter 17 — boss spawn hook. The type's is_boss flag drives the HP

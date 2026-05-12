@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3 uid="uid://b3dashimpact001"]
+[gd_scene load_steps=6 format=3 uid="uid://b3dashimpact001"]
 
 [ext_resource type="Script" path="res://scripts/dash_impact.gd" id="1_script"]
 
@@ -8,6 +8,14 @@
 [sub_resource type="Gradient" id="sparks_grad"]
 offsets = PackedFloat32Array(0, 0.5, 1)
 colors = PackedColorArray(1, 0.7, 1, 1, 1, 0.9, 0.7, 1, 1, 0.7, 0.4, 0)
+
+; Debris ramp — brown-cream chunks darkening + fading. Reads as
+; physical floor matter knocked loose rather than energy. Distinct
+; palette from the magenta-pink sparks so the eye separates the two
+; layers (energy + matter).
+[sub_resource type="Gradient" id="debris_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.62, 0.50, 0.35, 1, 0.45, 0.36, 0.24, 0.85, 0.30, 0.24, 0.18, 0)
 
 [sub_resource type="Curve" id="ring_halo_width"]
 min_value = 0.0
@@ -77,3 +85,34 @@ damping_max = 10.0
 scale_amount_min = 2.5
 scale_amount_max = 4.5
 color_ramp = SubResource("sparks_grad")
+
+; Debris burst — iter 75. Brown-cream chunks fired in all directions
+; with gravity, settling on the ground. Reads as physical floor matter
+; knocked loose by the slam. Distinct visual layer from the energy
+; sparks above — sparks fly fast and damp out, debris arcs and falls.
+;
+; amount tuned for visual density without overwhelming the rings;
+; gravity gives the parabolic settle that sells "chunks falling back
+; down" rather than "more energy radiating out." local_coords = false
+; so debris stays anchored where it spawned even as parent scales.
+;
+; z_index = 1 — above rings (z=0), below central flash (z=3) and
+; streaks (z=2). Order chosen so the bright flash + streaks read on
+; top of the dirtier debris layer.
+[node name="Debris" type="CPUParticles2D" parent="."]
+z_index = 1
+amount = 24
+lifetime = 0.45
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 240)
+initial_velocity_min = 80.0
+initial_velocity_max = 180.0
+damping_min = 1.5
+damping_max = 3.0
+scale_amount_min = 1.6
+scale_amount_max = 3.2
+color_ramp = SubResource("debris_grad")
