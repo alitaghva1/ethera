@@ -1115,9 +1115,20 @@ func _spawn_enemy_type(type_id: String) -> void:
 # replacement within the offer). Falls back to other tiers cleanly if
 # the rolled tier has no unowned relics left.
 const TIER_WEIGHTS_BY_ROOM := [
-	{ "common": 75.0, "rare": 22.0, "legendary":  3.0 },   # room 1
-	{ "common": 45.0, "rare": 45.0, "legendary": 10.0 },   # room 2
-	{ "common": 20.0, "rare": 45.0, "legendary": 35.0 },   # room 3
+	# Iter 50 — mythic tier added. 4th rarity, run-defining effects.
+	# Floor 1 (rooms 1-3): zero mythic chance — first floor is the
+	#   "learn the basics" act. Mythics would trivialize it.
+	# Floor 2 (rooms 4-6): mythic appears with small (1-6%) chance,
+	#   gated behind owning at least one rare/legendary so a fresh
+	#   build doesn't get a 1% mythic on room 4 that breaks the
+	#   ramp curve. The roll itself respects available relics so
+	#   small contribution + small pool = rare event in practice.
+	{ "common": 75.0, "rare": 22.0, "legendary":  3.0, "mythic":  0.0 },   # room 1
+	{ "common": 45.0, "rare": 45.0, "legendary": 10.0, "mythic":  0.0 },   # room 2
+	{ "common": 20.0, "rare": 45.0, "legendary": 35.0, "mythic":  0.0 },   # room 3 (boss)
+	{ "common": 50.0, "rare": 30.0, "legendary": 18.0, "mythic":  2.0 },   # room 4
+	{ "common": 35.0, "rare": 40.0, "legendary": 22.0, "mythic":  3.0 },   # room 5
+	{ "common": 15.0, "rare": 35.0, "legendary": 44.0, "mythic":  6.0 },   # room 6 (boss)
 ]
 
 # Iter 33 — TREASURE ROOM entry. Skips the wave runner entirely.
@@ -1188,7 +1199,7 @@ func _spawn_pedestal_offer(count: int) -> void:
 	# Bucket all unowned relics by tier so the roller can pick a tier
 	# first then draw from that tier's pool. Drawing-without-replacement
 	# within the offer prevents duplicates among the 3 pedestals.
-	var by_tier: Dictionary = { "common": [], "rare": [], "legendary": [] }
+	var by_tier: Dictionary = { "common": [], "rare": [], "legendary": [], "mythic": [] }
 	for rid in GameState.RELIC_REGISTRY.keys():
 		if GameState.has_relic(rid):
 			continue
@@ -1209,11 +1220,12 @@ func _spawn_pedestal_offer(count: int) -> void:
 		if not (by_tier["common"] as Array).is_empty():
 			by_tier["rare"] = []
 			by_tier["legendary"] = []
+			by_tier["mythic"] = []
 	elif _branch_modifier == "risk":
 		# Risk: drop common entirely so the floor becomes rare. If
-		# both rare AND legendary are empty, fall through unbiased so
-		# the player still gets SOMETHING.
-		if not ((by_tier["rare"] as Array).is_empty() and (by_tier["legendary"] as Array).is_empty()):
+		# rare AND legendary AND mythic are empty, fall through unbiased
+		# so the player still gets SOMETHING.
+		if not ((by_tier["rare"] as Array).is_empty() and (by_tier["legendary"] as Array).is_empty() and (by_tier["mythic"] as Array).is_empty()):
 			by_tier["common"] = []
 	elif _branch_modifier == "treasure":
 		# Iter 33 — treasure room (the player skipped combat for this).

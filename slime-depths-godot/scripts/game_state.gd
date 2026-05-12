@@ -377,6 +377,47 @@ const RELIC_REGISTRY := {
 		"mods": { "slow_chance_f": 0.50, "max_hp_bonus": 1 },
 		"themes": ["storm"],
 	},
+	# Iter 50 — MYTHIC tier (4th rarity). Each one stacks multiple
+	# axes of an existing build to a run-defining degree. Rolls only
+	# on floor 2 (rooms 4-6) at 2-6% per offer. With 35 other relics
+	# in the pool a player might see one mythic per 3-5 runs — they
+	# stay as the chase prize that defines a memorable run.
+	"cataclysm": {
+		"name": "CATACLYSM",
+		"description": "+50% chance for kills to detonate a 72-px AoE for 2 damage. +25% chance for hits to ignite. The dungeon answers your hunger.",
+		"tier": "mythic",
+		"icon_path": "res://assets/icons/relic_cataclysm.png",
+		"mods": { "explode_on_kill_chance_f": 0.50, "burn_chance_f": 0.25 },
+		"themes": ["flame"],
+	},
+	"eye_of_ether": {
+		"name": "EYE OF ETHER",
+		"description": "Blasts pierce 2, ricochet 2, and fire 1 extra projectile. The arcane sees through everything.",
+		"tier": "mythic",
+		"icon_path": "res://assets/icons/relic_eye_of_ether.png",
+		"mods": { "pierce_count": 2, "ricochet_count": 2, "projectile_count": 1 },
+		"themes": ["storm"],
+	},
+	"soul_reaver": {
+		"name": "SOUL REAVER",
+		"description": "+40% chance to heal 1 HP on kill. +2 max HP. +20% chance for hits to crit. Each life feeds the next.",
+		"tier": "mythic",
+		"icon_path": "res://assets/icons/relic_bloodstone.png",
+		"mods": { "lifesteal_chance_f": 0.40, "max_hp_bonus": 2, "crit_chance_f": 0.20 },
+		"themes": ["blood"],
+	},
+	"phantom_step": {
+		"name": "PHANTOM STEP",
+		"description": "+50% move speed. -40% dodge cooldown. +0.15s dodge i-frames. You move between heartbeats.",
+		"tier": "mythic",
+		"icon_path": "res://assets/icons/relic_nimble_step.png",
+		"mods": {
+			"move_speed_mul": 0.50,
+			"dodge_cooldown_mul": -0.40,
+			"dodge_iframes_bonus_f": 0.15,
+		},
+		"themes": ["shadow"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",
