@@ -49,11 +49,17 @@ const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
-# iter-87: PARRY_PULSE_SCENE removed. The procedural parry_pulse.gd is
-# replaced by a PixelLab-generated sprite-sheet animation (gold shield
-# burst with radial beams) via FxSprite.spawn("parry_burst", ...).
+# iter-87: PARRY_PULSE_SCENE removed (replaced by a sprite-sheet flash).
+# iter-94: that sprite-sheet flash was removed too — see _start_parry.
+# FxSpriteHelper preload retained because other systems (e.g. enemy
+# spawn portals, slash arc via screen_flash) still use FxSprite.spawn.
 const FxSpriteHelper = preload("res://scripts/fx_sprite.gd")
 const PARRY_SHIELD_SCENE = preload("res://scenes/fx/parry_shield.tscn")
+# iter-94: forward-facing dash shield — rides with the hero during the
+# 0.28s dash strike motion, paired with the existing trailing particles
+# from DASH_TRAIL_SCENE. Replaces the sprite-sheet "broken square"
+# dash_impact flash that fired at landing time.
+const DASH_SHIELD_SCENE = preload("res://scenes/fx/dash_shield.tscn")
 # soul_burst relic — reuse the dash impact shockwave scene tinted red.
 # Cheap visual until a dedicated VFX prefab lands.
 const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
@@ -2018,16 +2024,10 @@ func _start_parry() -> void:
 			shield.call("setup", aim)
 		scene_root.add_child(shield)
 		_parry_shield_ref = shield
-	# iter-87 — activation flourish is now a PixelLab parry_burst
-	# sprite sheet (golden shield with radial beams). 1.2× scale on
-	# activation; the larger catch scale is set separately in _on_parry_hit.
-	if scene_root != null:
-		FxSpriteHelper.spawn(
-			scene_root,
-			global_position + Vector2(0, VFX_HEIGHT_OFFSET),
-			"parry_burst",
-			{"scale": Vector2(1.2, 1.2), "z_index": 5}
-		)
+	# iter-94: secondary sprite-sheet activation flourish removed — the
+	# parry_shield bubble (now a procedural cyan sphere wrapping the
+	# hero) is the only parry VFX. User feedback: "the parry/shield are
+	# a bit much, lets just keep a shield or parry."
 	# Reuse the dodge sound — both are short defensive flourishes. A
 	# dedicated parry chime can land in a later audio pass.
 	Events.hero_dodged.emit(global_position)
@@ -2054,17 +2054,11 @@ func _on_parry_hit() -> void:
 		if _parry_shield_ref.has_method("shatter"):
 			_parry_shield_ref.shatter()
 		_parry_shield_ref = null
-	# iter-87 — bigger catch flourish via FxSprite at 1.9× scale.
-	# Distinguishes "I parried THAT" from "I just tapped Q" via the
-	# larger painted burst.
-	var scene_root_catch: Node = get_tree().current_scene
-	if scene_root_catch != null:
-		FxSpriteHelper.spawn(
-			scene_root_catch,
-			global_position + Vector2(0, VFX_HEIGHT_OFFSET),
-			"parry_burst",
-			{"scale": Vector2(1.9, 1.9), "z_index": 5}
-		)
+	# iter-94: secondary sprite-sheet catch flourish removed. The
+	# shatter() call above already supplies the catch beat — the bubble
+	# expands to 1.6× and fades over 0.18s, which the player reads as
+	# "the shield deflected the hit." Adding a second sprite-sheet on
+	# top was the "too much" the user flagged.
 	# Re-fire the dodge sfx as the catch confirm. Two stacked plays
 	# read distinctly from a single tap.
 	Events.hero_dodged.emit(global_position)
@@ -2225,6 +2219,21 @@ func _start_dash_strike() -> void:
 		if trail.has_method("setup"):
 			trail.call("setup", _dash_strike_dir)
 		get_tree().current_scene.add_child(trail)
+	# iter-94 — forward-facing dash shield. Parented to the HERO (not
+	# current_scene) so it rides along with our movement during the
+	# 0.28s dash motion. Combined with the trail above this delivers
+	# the "shield-in-front + particles-behind" feel the user asked for.
+	# Self-frees at LIFETIME (0.34s — a hair past dash duration so the
+	# trailing fade lands cleanly past the impact moment).
+	var ds: Node2D = DASH_SHIELD_SCENE.instantiate() as Node2D
+	if ds != null:
+		if ds.has_method("setup"):
+			ds.call("setup", _dash_strike_dir)
+		# Position at chest height in hero-local space; the local origin
+		# is at the feet (root), so VFX_HEIGHT_OFFSET on Y matches the
+		# parry shield's chest anchor.
+		ds.position = Vector2(0, VFX_HEIGHT_OFFSET)
+		add_child(ds)
 
 # Iter 29 — spawn a single dash afterimage at the hero's current world
 # pose. Grabs the AnimatedSprite2D's current frame texture as an

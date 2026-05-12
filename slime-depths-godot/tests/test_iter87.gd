@@ -119,27 +119,26 @@ func _initialize() -> void:
 	else:
 		print("OK screen_flash.gd: SLASH_ARC_SCENE preload removed")
 
+	# iter-94 SUPERSEDES the dash_impact + parry_burst FxSprite spawns:
+	# the sprite sheets read as "broken squares" / "too much" in playtest
+	# and have been reverted (dash_impact → procedural scene; parry_burst
+	# → procedural bubble parry_shield). The asset files survive on disk
+	# (checked above) for any future reuse, but the call sites are gone.
+	# These assertions are intentionally not pinning the spawn call any
+	# longer — iter-94's test owns the new visual contract.
 	var main_src := FileAccess.get_file_as_string("res://scripts/main.gd")
-	if not main_src.contains("FxSprite.spawn") or not main_src.contains("\"dash_impact\""):
-		push_error("FAIL: main.gd doesn't FxSprite.spawn the dash_impact sheet")
+	# main.gd must still load FxSprite (slash_arc uses it).
+	if not main_src.contains("res://scripts/fx_sprite.gd"):
+		push_error("FAIL: main.gd no longer preloads FxSprite (slash_arc still uses it)")
 		ok = false
 	else:
-		print("OK main.gd spawns dash_impact via FxSprite")
-
-	# main.gd should no longer preload DASH_IMPACT_SCENE.
-	if main_src.contains("DASH_IMPACT_SCENE: PackedScene"):
-		push_error("FAIL: main.gd still preloads DASH_IMPACT_SCENE for the dash strike")
-		ok = false
-	else:
-		print("OK main.gd: DASH_IMPACT_SCENE preload removed")
-
+		print("OK main.gd still preloads FxSprite for slash_arc")
 	var hero_src := FileAccess.get_file_as_string("res://scripts/hero.gd")
-	if not (hero_src.contains("FxSpriteHelper.spawn") or hero_src.contains("FxSprite.spawn")) \
-			or not hero_src.contains("\"parry_burst\""):
-		push_error("FAIL: hero.gd doesn't FxSprite.spawn the parry_burst sheet")
+	if not hero_src.contains("FxSpriteHelper"):
+		push_error("FAIL: hero.gd missing FxSpriteHelper preload")
 		ok = false
 	else:
-		print("OK hero.gd spawns parry_burst via FxSprite")
+		print("OK hero.gd retains FxSpriteHelper preload")
 
 	# hero.gd should no longer preload PARRY_PULSE_SCENE.
 	if hero_src.contains("PARRY_PULSE_SCENE  = preload"):

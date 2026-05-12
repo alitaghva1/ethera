@@ -99,10 +99,14 @@ const SWING_HIT_STOP_SCALE := 0.18
 const SWING_HIT_STOP_TIME  := 0.035
 const DASH_HIT_STOP_SCALE  := 0.10
 const DASH_HIT_STOP_TIME   := 0.07
-# iter-87: DASH_IMPACT_SCENE removed. The procedural dash_impact.gd
-# (iters 73/75) is replaced by a PixelLab-generated sprite sheet
-# (assets/fx/dash_impact_sheet.png) played via FxSprite.spawn.
+# iter-87 → iter-94: the sprite-sheet replacement for the dash impact
+# read as a "broken square" in playtest (the AtlasTexture cell boundary
+# was visible). iter-94 reverts to the procedural dash_impact.tscn (still
+# loaded anyway for SOUL_BURST relic reuse in hero.gd) so the impact has
+# no visible cell edge. FxSprite is kept loaded — slash_arc and other
+# sheet-based FX still use it.
 const FxSprite = preload("res://scripts/fx_sprite.gd")
+const DASH_IMPACT_SCENE = preload("res://scenes/fx/dash_impact.tscn")
 # iter-79: spawn portal system REMOVED. Four iterations (75/76/77/78) of
 # patching a "summoning portal" visual on top of the existing iter-15
 # enemy spawn-in fade never landed right — the JS reference (slime-depths/)
@@ -2073,16 +2077,25 @@ func _on_hero_swing_connected(hit_count: int) -> void:
 	_hit_stop_timer = SWING_HIT_STOP_TIME + multi_bonus
 
 func _on_hero_dash_strike_landed(world_pos: Vector2, hit_count: int) -> void:
-	# iter-87: dash impact is now a PixelLab-generated sprite-sheet
-	# animation (radial cyan-white shockwave with expanding dust ring +
-	# scattering ground fragments). Replaces the procedural multi-element
-	# scene that lived in dash_impact.gd through iters 73/75. Scale 2.4×
-	# makes the 64-px sheet read as ~150px in-world — matches the dash
-	# AoE radius the player can feel.
-	FxSprite.spawn(self, world_pos, "dash_impact", {
-		"scale": Vector2(2.4, 2.4),
-		"z_index": 5,
-	})
+	# iter-94: dash impact reverts from the iter-87 PixelLab sprite-sheet
+	# back to the procedural dash_impact.tscn (which we already keep
+	# loaded for SOUL_BURST relic reuse). The sheet's cell boundary was
+	# rendering as a visible "broken square" in playtest — the procedural
+	# scene has no such boundary and looks cleaner. The forward dash
+	# shield + trailing particles supplied by hero.gd's dash_shield +
+	# dash_trail spawns now carry most of the in-flight visual weight;
+	# this landing impact reads as the moment-of-stop punctuation.
+	var impact: Node2D = DASH_IMPACT_SCENE.instantiate() as Node2D
+	if impact != null:
+		impact.global_position = world_pos
+		if impact.has_method("set_dash_dir") and hit_count > 0:
+			# Orient the streaks back along the dash direction — the
+			# hero just stopped moving so global_position is the landing
+			# point. We don't have direct access to dash_dir here; the
+			# procedural scene falls back to a ±100° arc if no hint is
+			# provided, which still reads correctly. No-op if absent.
+			pass
+		add_child(impact)
 	# Iter 21 — bridge to the audio bus. audio.gd subscribes to
 	# Events.hero_dash_impacted for the low-thud body of the impact.
 	# Fires ONCE per dash regardless of hit_count — the per-enemy
