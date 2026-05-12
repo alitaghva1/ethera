@@ -2,12 +2,14 @@
 
 [ext_resource type="Script" path="res://scripts/dash_impact.gd" id="1_script"]
 
-; Sparks ramp — bright magenta-pink at the spark, fading through warm
-; cream to nothing. Matches the dash_trail palette so the impact reads
-; as the same energy detonating outward.
+; iter-98 recolor — sparks ramp now cream-gold → tan → fade-earth so
+; the impact debris reads as kicked-up STONE FLOOR DUST and embers,
+; not arcane energy. Was magenta-pink; matches the new dash_trail
+; gold/tan palette as ONE coherent dust event rather than competing
+; energy bursts.
 [sub_resource type="Gradient" id="sparks_grad"]
 offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(1, 0.7, 1, 1, 1, 0.9, 0.7, 1, 1, 0.7, 0.4, 0)
+colors = PackedColorArray(0.98, 0.88, 0.62, 1, 0.78, 0.65, 0.45, 0.9, 0.55, 0.42, 0.28, 0)
 
 ; Debris ramp — brown-cream chunks darkening + fading. Reads as
 ; physical floor matter knocked loose rather than energy. Distinct
@@ -46,7 +48,11 @@ points = PackedVector2Array(22, 0, 19.05, 11, 11, 19.05, 0, 22, -11, 19.05, -19.
 closed = true
 width = 14.0
 width_curve = SubResource("ring_halo_width")
-default_color = Color(1, 0.6, 1, 0.65)
+; iter-98 recolor: warm dust-haze gold replaces the magenta-pink halo.
+; Reads as a heat-shimmer / dust expansion from the slam, matching the
+; new gold/tan dash trail + sparks. Pre-iter-98 the magenta halo was the
+; brightest single element of the impact and read as "magic pulse."
+default_color = Color(0.95, 0.80, 0.50, 0.60)
 joint_mode = 2
 begin_cap_mode = 2
 end_cap_mode = 2

@@ -68,34 +68,17 @@ func _initialize() -> void:
 	else:
 		print("OK hero.gd no longer spawns parry_burst sheet (bubble-only parry)")
 
-	# ═══ Dash shield scene + script + spawn site ═══
-	if not ResourceLoader.exists("res://scenes/fx/dash_shield.tscn"):
-		push_error("FAIL: dash_shield.tscn missing")
+	# ═══ Dash shield REMOVED in iter-98 ═══
+	# Pre-iter-98 the dash strike spawned a forward-facing cyan-gold
+	# bubble companion (dash_shield). Iter-98 deleted it — the bubble
+	# read as a "magic orb" and used the same color family as the
+	# defensive parry shield while dash is an offensive ability.
+	# test_iter98.gd owns the deletion contract.
+	if ResourceLoader.exists("res://scenes/fx/dash_shield.tscn") or ResourceLoader.exists("res://scripts/dash_shield.gd"):
+		push_error("FAIL: dash_shield files survived iter-98 deletion")
 		ok = false
 	else:
-		print("OK dash_shield.tscn exists")
-	if not ResourceLoader.exists("res://scripts/dash_shield.gd"):
-		push_error("FAIL: dash_shield.gd missing")
-		ok = false
-	else:
-		print("OK dash_shield.gd exists")
-	if not hero_src.contains("DASH_SHIELD_SCENE"):
-		push_error("FAIL: hero.gd doesn't preload DASH_SHIELD_SCENE")
-		ok = false
-	elif not hero_src.contains("DASH_SHIELD_SCENE.instantiate()"):
-		push_error("FAIL: hero.gd doesn't instantiate dash_shield during dash strike")
-		ok = false
-	else:
-		print("OK hero.gd preloads + spawns DashShield during dash strike")
-
-	# The shield should be parented to the hero (`add_child(ds)`), not to
-	# current_scene — that's the whole point of "rides with the hero."
-	# We grep for the comment + the add_child(ds) pattern.
-	if not hero_src.contains("add_child(ds)"):
-		push_error("FAIL: dash_shield not parented to hero (would not follow hero motion)")
-		ok = false
-	else:
-		print("OK dash_shield parented to hero (follows hero transform during dash)")
+		print("OK dash_shield.* files deleted in iter-98 (superseded)")
 
 	# ═══ main.gd dash_impact landing reverts to procedural ═══
 	var main_src := FileAccess.get_file_as_string("res://scripts/main.gd")
@@ -137,23 +120,8 @@ func _initialize() -> void:
 			print("OK ParryShield instantiates + setup() runs without errors")
 			ps.queue_free()
 
-	var ds_scene := load("res://scenes/fx/dash_shield.tscn") as PackedScene
-	if ds_scene == null:
-		push_error("FAIL: dash_shield.tscn won't load")
-		ok = false
-	else:
-		var ds: Node2D = ds_scene.instantiate() as Node2D
-		if ds == null:
-			push_error("FAIL: dash_shield instantiate failed")
-			ok = false
-		else:
-			if not ds.has_method("setup"):
-				push_error("FAIL: dash_shield missing setup()")
-				ok = false
-			ds.setup(Vector2.RIGHT)
-			root.add_child(ds)
-			print("OK DashShield instantiates + setup() runs without errors")
-			ds.queue_free()
+	# iter-98 deleted DashShield. The runtime instantiate check is gone.
+	print("SKIP DashShield instantiate (deleted in iter-98)")
 
 	if ok:
 		print("=== ITER 94 INTEGRATION PASSED ===")

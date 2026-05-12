@@ -54,11 +54,11 @@ const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
 # spawn portals, slash arc via screen_flash) still use FxSprite.spawn.
 const FxSpriteHelper = preload("res://scripts/fx_sprite.gd")
 const PARRY_SHIELD_SCENE = preload("res://scenes/fx/parry_shield.tscn")
-# iter-94: forward-facing dash shield — rides with the hero during the
-# 0.28s dash strike motion, paired with the existing trailing particles
-# from DASH_TRAIL_SCENE. Replaces the sprite-sheet "broken square"
-# dash_impact flash that fired at landing time.
-const DASH_SHIELD_SCENE = preload("res://scenes/fx/dash_shield.tscn")
+# iter-98: DASH_SHIELD_SCENE removed. The forward-facing cyan-gold bubble
+# read as a "magical orb" and used the same color family as parry_shield
+# (defensive) — but dash is offensive. The afterimages already sell
+# "hero moving forward fast"; the bubble added nothing physical, only a
+# magic-aura vibe that didn't fit the painted dark-fantasy palette.
 # soul_burst relic — reuse the dash impact shockwave scene tinted red.
 # Cheap visual until a dedicated VFX prefab lands.
 const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
@@ -2206,21 +2206,10 @@ func _start_dash_strike() -> void:
 		if trail.has_method("setup"):
 			trail.call("setup", _dash_strike_dir)
 		get_tree().current_scene.add_child(trail)
-	# iter-94 — forward-facing dash shield. Parented to the HERO (not
-	# current_scene) so it rides along with our movement during the
-	# 0.28s dash motion. Combined with the trail above this delivers
-	# the "shield-in-front + particles-behind" feel the user asked for.
-	# Self-frees at LIFETIME (0.34s — a hair past dash duration so the
-	# trailing fade lands cleanly past the impact moment).
-	var ds: Node2D = DASH_SHIELD_SCENE.instantiate() as Node2D
-	if ds != null:
-		if ds.has_method("setup"):
-			ds.call("setup", _dash_strike_dir)
-		# Position at chest height in hero-local space; the local origin
-		# is at the feet (root), so VFX_HEIGHT_OFFSET on Y matches the
-		# parry shield's chest anchor.
-		ds.position = Vector2(0, VFX_HEIGHT_OFFSET)
-		add_child(ds)
+	# iter-98: dash_shield spawn removed (see DASH_SHIELD_SCENE comment
+	# at the top of the file). The dash visual stack is now: hero
+	# afterimages + DASH_TRAIL particles behind + the dash_impact slam
+	# at landing. No leading "magic orb" anymore.
 	# iter-95: SHADOW + STORM theme procs reanchored from dodge to
 	# dash_strike. Dash strike is now the only mobility / aggressive-
 	# engage option, so the "moving fast unleashes a shockwave/pulse"
