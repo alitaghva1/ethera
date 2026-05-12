@@ -45,6 +45,13 @@ var branch_label: String = ""
 var branch_kind: String = ""
 var branch_subtitle: String = ""
 
+# Iter 33 — destination room path override. When non-empty, the door
+# tells RunState to load THIS room file next (rather than the linear
+# FLOOR_ROOMS[idx+1] slot). Used for branch entries that route to
+# treasure / shrine / other non-combat detours. "" = follow linear
+# floor sequence (the iter-32 default for safe / standard / risk).
+var branch_room_path: String = ""
+
 var _firing := false
 var _base_glow_energy: float = 1.8
 var _base_core_scale: Vector2 = Vector2.ONE
@@ -92,6 +99,17 @@ func _apply_branch_styling() -> void:
 		"standard":
 			tint = Color(0.95, 0.92, 1.0, 1.0)
 			label_color = Color(0.92, 0.92, 1.0, 1.0)
+		"treasure":
+			# Iter 33 — gold-warm treasure portal. Same energy as the
+			# risk variant (urgent) but warmth-shifted toward "reward"
+			# instead of "threat" — yellow gold rather than red.
+			tint = Color(1.0, 0.85, 0.35, 1.0)
+			label_color = Color(1.0, 0.92, 0.6, 1.0)
+		"shrine":
+			# Iter 33 — pale blue-violet shrine portal, reads as
+			# "sanctified / mystical" vs safe's warmer healing green.
+			tint = Color(0.65, 0.75, 1.0, 1.0)
+			label_color = Color(0.82, 0.88, 1.0, 1.0)
 		_:
 			# Unknown kind — leave the iter-27 magenta-cyan default in place.
 			tint = Color(1, 1, 1, 1)
@@ -167,6 +185,12 @@ func _on_body_entered(body: Node) -> void:
 	# the next room loads with no modifier (iter-30 baseline).
 	if branch_kind != "":
 		RunState.pending_branch = branch_kind
+	# Iter 33 — destination override. When the branch points to a
+	# specific room file (treasure / shrine / etc.), tell RunState to
+	# load THAT path next instead of the linear FLOOR_ROOMS slot.
+	# Consumed inside RunState._load_current the moment it's read.
+	if branch_room_path != "":
+		RunState.pending_branch_path = branch_room_path
 	if RunState.advance():
 		# More rooms left — reload the dungeon scene so it re-reads
 		# the new current_room_config from RunState.

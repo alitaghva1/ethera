@@ -261,6 +261,22 @@ const RELIC_REGISTRY := {
 
 var owned_relics: Array[String] = []
 
+# Iter 33 — shrine grants. Permanent (within-run) stat bonuses from
+# Shrine Of Vows prayer rooms. Stacks WITH relic modifiers via
+# modifier_total / modifier_total_f (both sum shrine_bonuses[key]
+# into their relic-side total). Cleared on start_dungeon_run so
+# bonuses don't carry across runs.
+#
+# Key naming matches the relic modifier convention (e.g.
+# "max_hp_bonus", "melee_damage_bonus", "dodge_cd_mul_f") so callers
+# don't need to know about shrines specifically — they just read the
+# combined modifier_total and shrine values participate transparently.
+var shrine_bonuses: Dictionary = {}
+
+func grant_shrine_bonus(key: String, value) -> void:
+	var current = shrine_bonuses.get(key, 0)
+	shrine_bonuses[key] = current + value
+
 # ── Persisted settings ───────────────────────────────────────────────
 # Master audio volume in linear 0..1 space. Source-of-truth for the
 # settings slider; the slider seeds itself from this value on open and
@@ -329,6 +345,7 @@ func start_dungeon_run() -> void:
 	# Long-term metaprogression (true persistent unlocks) would live in
 	# a separate field.
 	owned_relics = []
+	shrine_bonuses = {}            # iter 33 — clear stat grants from prior run
 	persisted_hp = -1
 	# Reset HP carryover too — without this, a quit-mid-run could leave
 	# persisted_hp populated and the next run's hero would spawn at the
@@ -366,6 +383,9 @@ func modifier_total(key: String, default_value: int = 0) -> int:
 		var info: Dictionary = RELIC_REGISTRY.get(rid, {})
 		var mods: Dictionary = info.get("mods", {})
 		total += int(mods.get(key, 0))
+	# Iter 33 — fold shrine grants into the same total so callers
+	# don't need a parallel API.
+	total += int(shrine_bonuses.get(key, 0))
 	return total
 
 # Float variant for fractional mods (e.g. -0.2 cooldown, +0.3 speed).
@@ -377,4 +397,5 @@ func modifier_total_f(key: String, default_value: float = 0.0) -> float:
 		var info: Dictionary = RELIC_REGISTRY.get(rid, {})
 		var mods: Dictionary = info.get("mods", {})
 		total += float(mods.get(key, 0.0))
+	total += float(shrine_bonuses.get(key, 0.0))
 	return total

@@ -141,3 +141,24 @@ extends Resource
 #
 # Empty array = iter-30 single-door legacy behavior at DOOR_POSITION.
 @export var branches: Array[Dictionary] = []
+
+# Iter 33 — room category. Drives main.gd's behavior at _ready: combat
+# rooms run waves + spawn relic offer on clear; treasure rooms skip
+# the wave runner and spawn an immediate forced-legendary pedestal
+# offer; shrine rooms skip waves and spawn interactable Shrine nodes
+# at shrine_positions for one-pray-per-room stat boosts.
+#
+# Values:
+#   "combat"    iter-30 default — wave runner + clear → pedestal + door
+#   "treasure"  no waves; pedestal offer auto-spawns at _ready, forced
+#               legendary tier (or rare fallback if no legendary owned).
+#   "shrine"    no waves; 3 Shrine nodes at shrine_positions, each
+#               offers ONE permanent stat boost. Door spawns after
+#               first pray.
+@export var room_kind: String = "combat"
+
+# Iter 33 — shrine placements (only consumed when room_kind == "shrine").
+# Each position spawns one Shrine node at _ready. Each Shrine offers
+# one stat boost type — main.gd assigns types round-robin so a 3-shrine
+# room gets one each of HP / DODGE_CD / ATK_DMG.
+@export var shrine_positions: Array[Vector2] = []

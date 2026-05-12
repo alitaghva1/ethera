@@ -48,6 +48,14 @@ var current_room_config: RoomConfig = null
 # Valid values: "" | "safe" | "standard" | "risk"
 var pending_branch: String = ""
 
+# Iter 33 — pending branch destination ROOM PATH. When non-empty,
+# overrides the FLOOR_ROOMS[current_room_index] lookup in _load_current
+# so a branch can route the player to a treasure / shrine / etc. room
+# instead of the next combat slot. Consumed (cleared) the moment the
+# override is read so subsequent advances return to the linear path.
+# "" = use the next FLOOR_ROOMS entry as normal.
+var pending_branch_path: String = ""
+
 # Total kills accumulated across the current floor (resets each run).
 # Surfaces in the death screen / pedestal banner.
 var floor_kills: int = 0
@@ -56,6 +64,7 @@ func start_floor() -> void:
 	current_room_index = 0
 	floor_kills = 0
 	pending_branch = ""           # iter 32 — never carry a branch into a new run
+	pending_branch_path = ""      # iter 33 — same, for destination override
 	GameState.persisted_hp = -1   # fresh full HP on new run
 	_load_current()
 
@@ -82,6 +91,7 @@ func end_floor() -> void:
 	current_room_config = null
 	floor_kills = 0
 	pending_branch = ""           # iter 32 — clear any pending branch
+	pending_branch_path = ""      # iter 33
 	GameState.persisted_hp = -1   # no carry into the next run
 
 func is_last_room() -> bool:
@@ -93,7 +103,14 @@ func register_kill() -> void:
 	floor_kills += 1
 
 func _load_current() -> void:
+	# Iter 33 — branch destination override. If a branch-door set
+	# pending_branch_path before calling advance(), we load THAT room
+	# this turn instead of the linear FLOOR_ROOMS slot. Consume on
+	# read so the next advance() returns to the linear path.
 	var path: String = FLOOR_ROOMS[current_room_index]
+	if pending_branch_path != "":
+		path = pending_branch_path
+		pending_branch_path = ""
 	var cfg: Resource = load(path)
 	if cfg is RoomConfig:
 		current_room_config = cfg

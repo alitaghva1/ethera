@@ -22,6 +22,7 @@ const TORCH_SCENE: PackedScene    = preload("res://scenes/torch.tscn")
 const PILLAR_SCENE: PackedScene   = preload("res://scenes/pillar.tscn")
 const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
+const SHRINE_SCENE: PackedScene   = preload("res://scenes/shrine.tscn")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
 const RELIC_ICON_SCENE: PackedScene = preload("res://scenes/relic_icon.tscn")
 
@@ -147,6 +148,11 @@ var _waves: Array = []
 # bias tier weights at room clear. "" = no modifier active.
 var _branch_modifier: String = ""
 
+# Iter 33 — queued shrine spawn pairs ([kind, position], …) handed
+# off from _enter_shrine_room to the deferred timer callback
+# _do_spawn_pending_shrines. Cleared after consumption.
+var _pending_shrine_spawns: Array = []
+
 var _wave_index := -1
 var _wave_state := WaveState.PRE
 var _alive := true
@@ -259,8 +265,20 @@ func _ready() -> void:
 	_rebuild_relic_strip()
 	status_label.text = "LMB swing · RMB blast · SPACE dodge · Q parry · SHIFT dash"
 	wave_label.text = "WAVE 1 / %d  incoming" % max(1, _waves.size())
-	var t := get_tree().create_timer(INITIAL_WAVE_DELAY)
-	t.timeout.connect(func (): _start_wave(0))
+	# Iter 33 — special-room dispatch. Combat rooms run the wave timer
+	# as before; treasure / shrine rooms skip waves and route through
+	# dedicated helpers that spawn their own content. The room_kind
+	# field is "combat" by default so existing rooms keep iter-30
+	# behavior with zero per-room changes.
+	var kind: String = _room.room_kind if _room != null else "combat"
+	match kind:
+		"treasure":
+			_enter_treasure_room()
+		"shrine":
+			_enter_shrine_room()
+		_:
+			var t := get_tree().create_timer(INITIAL_WAVE_DELAY)
+			t.timeout.connect(func (): _start_wave(0))
 
 func _process(_delta: float) -> void:
 	if _hit_stop_timer > 0.0:
@@ -628,6 +646,70 @@ const TIER_WEIGHTS_BY_ROOM := [
 	{ "common": 20.0, "rare": 45.0, "legendary": 35.0 },   # room 3
 ]
 
+# Iter 33 — TREASURE ROOM entry. Skips the wave runner entirely.
+# Spawns a 3-pedestal offer immediately, with by_tier biased to
+# legendary-only (falls through to rare → common only if every
+# legendary is owned). The trade vs combat is: NO relic offer at the
+# room you'd have fought = no choice between 3 tiers, BUT what you
+# DO get is locked at high tier. Net = skip combat, guarantee elite.
+func _enter_treasure_room() -> void:
+	status_label.text = "TREASURE VAULT · Claim your prize"
+	wave_label.text = "[ TREASURE ROOM ]"
+	_wave_state = WaveState.COMPLETE   # so _process doesn't enter the
+									   # wave-clear branch + double-spawn
+	# Lean on the existing "treasure" branch-modifier path inside
+	# _spawn_pedestal_offer: it pins by_tier to legendary-only.
+	_branch_modifier = "treasure"
+	# Short delay so the player sees they entered the room before
+	# pedestals materialize. Matches INITIAL_WAVE_DELAY's pacing.
+	var t: SceneTreeTimer = get_tree().create_timer(0.65)
+	t.timeout.connect(func (): _spawn_pedestal_offer(3))
+
+# Iter 33 — SHRINE ROOM entry. Skips waves; spawns 3 Shrine nodes at
+# shrine_positions (or a 3-slot fallback if positions empty). Each
+# shrine grants ONE permanent stat boost on first pray; first pray
+# also triggers _resolve_room_pickup so the exit door appears (same
+# beat as claiming a pedestal in a combat room).
+func _enter_shrine_room() -> void:
+	status_label.text = "ALTAR OF VOWS · Pray at one shrine"
+	wave_label.text = "[ SHRINE ROOM ]"
+	_wave_state = WaveState.COMPLETE
+	# Round-robin the three stat kinds across whatever shrines spawn.
+	# Order is fixed (hp / dodge / atk) so the LEFT-MOST shrine is
+	# always HP — players can rely on visual position to read the
+	# offer rather than having to walk up to each one.
+	var stat_kinds: Array[String] = ["hp", "dodge", "atk"]
+	var positions: Array[Vector2] = _room.shrine_positions
+	if positions.is_empty():
+		# Fallback layout — 3 shrines centered horizontally on the
+		# arena, slightly above the y=384 hero line so the player
+		# can see all three on entry from the west.
+		positions = [Vector2(440, 360), Vector2(640, 360), Vector2(840, 360)]
+	var n: int = mini(positions.size(), stat_kinds.size())
+	# Pre-bind the kind+position pairs so the deferred spawn doesn't
+	# need to recompute mins or capture loop indices via lambda.
+	var spawn_pairs: Array = []
+	for i in range(n):
+		spawn_pairs.append([stat_kinds[i], positions[i]])
+	_pending_shrine_spawns = spawn_pairs
+	var t: SceneTreeTimer = get_tree().create_timer(0.4)
+	t.timeout.connect(_do_spawn_pending_shrines)
+
+# Iter 33 — deferred shrine spawner. Reads _pending_shrine_spawns
+# (built by _enter_shrine_room) and instantiates one Shrine per pair.
+# Lives as a named method (vs an inline lambda) because GDScript
+# lambdas with multi-line for-loops are flaky — extracting to a
+# proper method gives clean stack traces if a spawn ever errors.
+func _do_spawn_pending_shrines() -> void:
+	for pair in _pending_shrine_spawns:
+		var kind: String = pair[0]
+		var pos: Vector2 = pair[1]
+		var sh: Node2D = SHRINE_SCENE.instantiate() as Node2D
+		sh.global_position = pos
+		sh.set("stat_kind", kind)
+		add_child(sh)
+	_pending_shrine_spawns.clear()
+
 func _spawn_pedestal_offer(count: int) -> void:
 	# Bucket all unowned relics by tier so the roller can pick a tier
 	# first then draw from that tier's pool. Drawing-without-replacement
@@ -658,6 +740,16 @@ func _spawn_pedestal_offer(count: int) -> void:
 		# both rare AND legendary are empty, fall through unbiased so
 		# the player still gets SOMETHING.
 		if not ((by_tier["rare"] as Array).is_empty() and (by_tier["legendary"] as Array).is_empty()):
+			by_tier["common"] = []
+	elif _branch_modifier == "treasure":
+		# Iter 33 — treasure room (the player skipped combat for this).
+		# Force legendary only. If every legendary is owned, gracefully
+		# fall back to rare-only (still better than the iter-30 baseline
+		# mixed offer) so the room can't be visited as a dead end.
+		if not (by_tier["legendary"] as Array).is_empty():
+			by_tier["common"] = []
+			by_tier["rare"] = []
+		elif not (by_tier["rare"] as Array).is_empty():
 			by_tier["common"] = []
 	# Pick the weight table for the current room index. -1 (no floor
 	# state) falls through to room 1 weights as a defensive default.
@@ -759,7 +851,10 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# in the middle of combat. Filter: only RELIC ids resolve the room.
 	# Non-relic pickups (gold today, future keys/coins) still refresh
 	# the HUD if relevant but don't advance the floor.
-	if not GameState.RELIC_REGISTRY.has(_name):
+	# Iter 33 — shrine pickups also resolve the room (single-pray-per-
+	# shrine-room contract). They aren't in RELIC_REGISTRY, so the iter-
+	# 20 filter rejects them by default; explicit pass-through here.
+	if not GameState.RELIC_REGISTRY.has(_name) and not _name.begins_with("shrine_"):
 		return
 	# Pedestal-side dismissal of siblings already happened in
 	# pedestal._claim; we only need to drive the room-end branch.
@@ -807,6 +902,11 @@ func _spawn_branch_doors(branches: Array[Dictionary]) -> void:
 		door.branch_kind = str(entry.get("kind", "standard"))
 		door.branch_label = str(entry.get("label", "ONWARD"))
 		door.branch_subtitle = str(entry.get("subtitle", ""))
+		# Iter 33 — destination room path override. Branches that route
+		# to a non-combat room (treasure / shrine) set "room_path" in
+		# the branches Dictionary; legacy safe/standard/risk leaves it
+		# absent so we follow the linear FLOOR_ROOMS sequence.
+		door.branch_room_path = str(entry.get("room_path", ""))
 		door.global_position = Vector2(DOOR_POSITION.x, ys[i])
 		add_child(door)
 
