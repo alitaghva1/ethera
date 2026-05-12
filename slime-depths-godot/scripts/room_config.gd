@@ -242,3 +242,22 @@ extends Resource
 # Authoring tip: keep pool entries balanced in total enemy count
 # + tier so the variation is FLAVOR not difficulty swings.
 @export var waves_pool: Array = []
+
+# Iter 38 — optional secret content. Lore stones are interactable
+# crystals tucked in hidden corners of a room. Walk near + press E
+# to read a flavor text + receive a small permanent (within-run)
+# stat boost. They're entirely optional — players who never look
+# don't lose anything; players who explore are rewarded with both
+# story flavor AND a tangible bonus.
+#
+# Entry schema:
+#   {
+#     "position": Vector2,    # world-pixel placement, usually a corner
+#     "text": String,         # 1-2 line lore fragment shown on read
+#     "stat_key": String,     # GameState shrine_bonuses key
+#     "stat_value": int|float # additive value granted on read
+#   }
+#
+# Empty array = no lore stones in this room. Author 0-2 per room so
+# the discovery beat stays special.
+@export var lore_stones: Array[Dictionary] = []

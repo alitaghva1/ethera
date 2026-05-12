@@ -20,3 +20,4 @@ hazard_kind = "spike_pit"
 hazards = [{"kind": "slow_zone", "position": Vector2(500, 384)}, {"kind": "slow_zone", "position": Vector2(780, 384)}]
 branches = [{"kind": "shrine", "label": "SHRINE", "subtitle": "skip fight · pray for stat", "room_path": "res://scenes/rooms/room_shrine.tres"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]
 biome = "sanctuary"
+lore_stones = [{"position": Vector2(220, 200), "text": "altar fragment: \"vows kept · debts paid\"", "stat_key": "max_hp_bonus", "stat_value": 1}]

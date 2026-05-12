@@ -23,3 +23,4 @@ biome = "ossuary"
 wave_events = [{"wave": 2, "kind": "announce", "text": "The maze closes"}, {"wave": 2, "kind": "raise_wall", "rect": Rect2(560, 240, 28, 200)}, {"wave": 2, "kind": "raise_wall", "rect": Rect2(700, 240, 28, 200)}]
 position_jitter = 18.0
 waves_pool = [[[["skel", 2], ["bonecap", 2]], [["archer", 2], ["dreadmage", 1]], [["armored_skeleton", 2], ["lancer", 2], ["dreadmage", 1]]], [[["skel", 3], ["bonecap", 1]], [["dreadmage", 2], ["archer", 2]], [["armored_skeleton", 3], ["lancer", 1]]], [[["bonecap", 3], ["archer", 1]], [["lancer", 3], ["dreadmage", 1]], [["armored_skeleton", 1], ["skel", 3], ["dreadmage", 1]]]]
+lore_stones = [{"position": Vector2(210, 180), "text": "carved bone: \"every name read aloud once · then forgotten\"", "stat_key": "max_hp_bonus", "stat_value": 1}, {"position": Vector2(1070, 580), "text": "scrawled: \"the dead don't count the living\"", "stat_key": "sword_damage_bonus", "stat_value": 1}]

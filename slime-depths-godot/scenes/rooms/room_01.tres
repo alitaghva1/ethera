@@ -23,3 +23,4 @@ biome = "crypt"
 wave_events = [{"wave": 1, "kind": "announce", "text": "The floor shifts · take cover"}, {"wave": 1, "kind": "raise_wall", "rect": Rect2(380, 300, 28, 180)}, {"wave": 1, "kind": "raise_wall", "rect": Rect2(872, 300, 28, 180)}]
 position_jitter = 14.0
 waves_pool = [[[["slime", 3], ["crypt_spider", 1]], [["ember", 2], ["orc", 1]], [["slime", 2], ["skel", 1], ["archer", 1]]], [[["crypt_spider", 2], ["slime", 2]], [["orc", 2], ["skel", 1]], [["slime", 1], ["archer", 2], ["ember", 1]]], [[["slime", 4]], [["crypt_spider", 3], ["ember", 1]], [["skel", 2], ["orc", 1], ["archer", 1]]]]
+lore_stones = [{"position": Vector2(210, 180), "text": "stone whispers: \"the first to fall, knelt here\"", "stat_key": "max_hp_bonus", "stat_value": 1}]

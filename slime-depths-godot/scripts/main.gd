@@ -23,6 +23,7 @@ const PILLAR_SCENE: PackedScene   = preload("res://scenes/pillar.tscn")
 const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const SHRINE_SCENE: PackedScene   = preload("res://scenes/shrine.tscn")
+const LORE_STONE_SCENE: PackedScene = preload("res://scenes/lore_stone.tscn")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
 const RELIC_ICON_SCENE: PackedScene = preload("res://scenes/relic_icon.tscn")
 
@@ -259,6 +260,10 @@ func _ready() -> void:
 		# dispatcher is data-driven from _room.biome; "crypt" is the
 		# iter-30 default look.
 		_apply_biome_visuals(_room.biome)
+		# Iter 38 — optional secret content: spawn lore stones in their
+		# authored hidden positions. Done BEFORE decor so the stones
+		# get drawn under the random rubble (z-order parity with chests).
+		_spawn_lore_stones(_room.lore_stones)
 		# Iter 18 — scatter procedural rubble across the play area so
 		# the floor doesn't read as a blank slate. Runs AFTER pillar /
 		# chest spawn so decor placement can avoid those positions.
@@ -376,6 +381,24 @@ func _spawn_pillars(positions: Array[Vector2]) -> void:
 		var p: Pillar = PILLAR_SCENE.instantiate()
 		p.position = pos
 		add_child(p)
+
+# Iter 38 — optional content spawner. Each entry from RoomConfig.
+# lore_stones spawns one LoreStone with its position + lore text +
+# stat grant config wired BEFORE add_child so _ready picks it up
+# on first frame. Unknown stat_keys still work (GameState.shrine_
+# bonuses accepts arbitrary keys and just contributes nothing to
+# downstream modifier_total reads).
+func _spawn_lore_stones(entries: Array[Dictionary]) -> void:
+	if entries.is_empty():
+		return
+	for entry in entries:
+		var stone: Area2D = LORE_STONE_SCENE.instantiate() as Area2D
+		stone.set("lore_text", str(entry.get("text", "")))
+		stone.set("stat_key", str(entry.get("stat_key", "")))
+		stone.set("stat_value", entry.get("stat_value", 0))
+		var pos: Vector2 = entry.get("position", Vector2.ZERO) as Vector2
+		stone.position = pos
+		add_child(stone)
 
 func _spawn_chests(positions: Array[Vector2]) -> void:
 	for pos in positions:
