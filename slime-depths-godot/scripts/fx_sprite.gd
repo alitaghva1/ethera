@@ -48,7 +48,9 @@ static func spawn(host: Node, world_pos: Vector2, sheet_name: String, opts: Dict
 	# z_index BEFORE add_child so the first frame renders at the right
 	# layer (same pattern as iter-83 BloodMark + iter-86 SpawnBurst).
 	fx.z_index = int(opts.get("z_index", 5))
-	fx.global_position = world_pos
+	# Local-space props (rotation/scale/offset/modulate) are fine to set
+	# before add_child — they're stored on the node and don't depend on
+	# the parent transform.
 	fx.rotation = float(opts.get("rotation", 0.0))
 	fx.scale = opts.get("scale", Vector2(1.0, 1.0))
 	fx.modulate = opts.get("modulate", Color(1.0, 1.0, 1.0, 1.0))
@@ -63,6 +65,19 @@ static func spawn(host: Node, world_pos: Vector2, sheet_name: String, opts: Dict
 	# single-shot — fires its animation, then queue_frees.
 	fx.animation_finished.connect(fx.queue_free)
 	host.add_child(fx)
+	# iter-91 BUG FIX: global_position MUST be set AFTER add_child.
+	# Before add_child, fx has no parent → setting global_position is
+	# equivalent to setting LOCAL position. Then on add_child the local
+	# position is interpreted relative to the parent transform — so a
+	# slash meant for world_pos = (350, 180) landed at host_pos + (350,
+	# 180) instead. Worked accidentally before iter-90 because every FX
+	# was parented to current_scene (origin); broke when the slash
+	# re-parented to the hero (offset from origin). User-visible symptom:
+	# "the sword appears totally somewhere else." Assigning global_position
+	# AFTER add_child uses Godot's inverse-parent-transform logic to
+	# resolve the correct local position, so the FX lands exactly at the
+	# requested world coordinate regardless of host position.
+	fx.global_position = world_pos
 	fx.play("play")
 	return fx
 
