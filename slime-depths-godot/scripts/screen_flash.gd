@@ -165,17 +165,17 @@ func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
 	if parent == null:
 		return
 	# Map composer opts → FxSprite params:
-	#   width (12-22)   → sprite scale.x (1.4× - 2.4×). Wider slash =
-	#                     bigger sprite. Sheet cell is 64px; we want the
-	#                     slash to read ~90-150px wide in-world, so scale
-	#                     somewhere in the 1.4-2.4 range.
+	#   width (12-22)   → sprite scale.x. iter-88: sheet cell bumped
+	#                     from 64px (PixelLab) to 128px (Frostwindz pack),
+	#                     so the divisor + clamp range halve. Effective
+	#                     in-world size stays ~90-170px wide.
 	#   color           → modulate tint (theme blend lives here)
 	#   swing_sign      → scale.y sign — flips the sweep direction so
 	#                     consecutive swings alternate above/below the
 	#                     hero like a one-two combo
 	#   aim.angle()     → rotation so the arc points where the player is
 	#                     swinging at
-	var scale_mul: float = clampf(float(opts.get("width", 14.0)) / 9.3, 1.3, 2.5)
+	var scale_mul: float = clampf(float(opts.get("width", 14.0)) / 18.0, 0.7, 1.3)
 	FxSprite.spawn(parent, world_pos, "slash_arc", {
 		"rotation": aim.angle(),
 		"scale": Vector2(scale_mul, scale_mul * float(swing_sign)),

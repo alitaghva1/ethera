@@ -48,6 +48,10 @@ const SHADOW_TEXTURE: Texture2D = preload("res://assets/decor/shadow_ellipse.png
 # apply_hit_feedback_tier call in take_hit resolves at parse time
 # regardless of class_name registration order.
 const AttackFeel = preload("res://scripts/attack_feel.gd")
+# iter-88: FxSpriteCls (renamed locally to avoid clash with the
+# class_name FxSprite — preload resolves at parse time before
+# class_name registration in enemy.gd's load order).
+const FxSpriteCls = preload("res://scripts/fx_sprite.gd")
 
 # Iter 15 — spawn-in window. Newly-spawned enemies fade from a bright
 # red translucent ghost to full opacity over SPAWN_IN_DURATION seconds.
@@ -269,15 +273,24 @@ func _apply_type_to_sprite_and_collision() -> void:
 	# would briefly paint the enemy at sprite_modulate before the fade
 	# overrides it — a 1-frame pop is visible at small framerates.
 	sprite.modulate = SPAWN_IN_START_COLOR
-	# iter-86 — spawn-burst companion FX. Small floor crack + rising
-	# wisps that fade in/out alongside the enemy's sprite fade-in.
-	# Reads as "the floor briefly opens, the enemy steps through" —
-	# decisively NOT a portal (iter-75-78 failed experiment). Spawned
-	# into the parent scene so the FX lives in world space and persists
-	# even if the enemy moves away before the wisps settle.
+	# iter-88 — spawn portal companion FX. Hand-painted Frostwindz
+	# portal sprite sheet (7 frames @ 14fps, ~0.5s lifetime) — purple
+	# summoning vortex opening, sparking, closing. Replaces the
+	# iter-86 SpawnBurst (which was procedural floor-crack + wisps
+	# CPUParticles2D) since the painted asset reads dramatically better.
+	# Spawned into the parent scene so the FX lives in world space
+	# and trails off after the enemy materializes.
+	#
+	# Scale 1.5× makes the 64-px sheet read ~96px in-world — visible
+	# but not dominating. z_index 2 sits above floor/blood marks but
+	# below the enemy sprite (default z) so the enemy emerges THROUGH
+	# the portal rather than behind it.
 	var parent_for_burst: Node = get_parent()
 	if parent_for_burst != null:
-		SpawnBurst.spawn(parent_for_burst, global_position)
+		FxSpriteCls.spawn(parent_for_burst, global_position, "spawn_portal", {
+			"scale": Vector2(1.5, 1.5),
+			"z_index": 2,
+		})
 	# Collision shape — fresh CircleShape2D every spawn so we don't share
 	# a shape resource across all instances of one type (Godot would
 	# complain about resource mutation if we changed it later anyway).

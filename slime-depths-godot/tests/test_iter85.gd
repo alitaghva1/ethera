@@ -69,50 +69,20 @@ func _initialize() -> void:
 			else:
 				print("OK fire_jet instantiates with all new children")
 
-	# ═══ SpawnBurst companion ═══
-
-	var sb_scene := load("res://scenes/fx/spawn_burst.tscn")
-	if sb_scene == null:
-		push_error("FAIL: spawn_burst.tscn failed to load")
-		ok = false
-	else:
-		print("OK spawn_burst.tscn loads")
-
-	var sb_script := load("res://scripts/spawn_burst.gd")
-	if sb_script == null or not sb_script.has_method("spawn"):
-		push_error("FAIL: SpawnBurst missing static spawn()")
-		ok = false
-	else:
-		print("OK SpawnBurst has static spawn()")
-
-	var host2 := Node2D.new()
-	root.add_child(host2)
-	var burst = sb_script.spawn(host2, Vector2(640, 384))
-	if burst == null:
-		push_error("FAIL: SpawnBurst.spawn returned null")
-		ok = false
-	else:
-		print("OK SpawnBurst.spawn instantiates + parents to host")
-		if burst.z_index != 1:
-			push_error("FAIL: SpawnBurst z_index should be 1, got %d" % burst.z_index)
-			ok = false
-		else:
-			print("OK SpawnBurst z_index = 1")
-
+	# ═══ Spawn-in companion (iter-86 SpawnBurst SUPERSEDED by iter-88) ═══
+	# iter-86 procedural SpawnBurst (floor crack + wisps CPUParticles2D)
+	# replaced by iter-88's Frostwindz hand-painted spawn_portal sprite
+	# sheet (7 frames @ 14fps). enemy.gd now calls FxSprite.spawn with
+	# the "spawn_portal" sheet. The intent — companion FX that reads as
+	# "the floor opens, enemy steps through" — survives; the rendering
+	# went from procedural to painted. See test_iter88.gd for the
+	# sprite-sheet assertions.
 	var enemy_src := FileAccess.get_file_as_string("res://scripts/enemy.gd")
-	if not enemy_src.contains("SpawnBurst.spawn"):
-		push_error("FAIL: enemy.gd doesn't spawn SpawnBurst at spawn-in")
+	if not enemy_src.contains("\"spawn_portal\""):
+		push_error("FAIL: enemy.gd no longer spawns the portal companion FX")
 		ok = false
 	else:
-		print("OK enemy.gd _ready spawns SpawnBurst alongside sprite fade")
-
-	var sb_src := FileAccess.get_file_as_string("res://scripts/spawn_burst.gd")
-	for c in ["LIFETIME", "CRACK_RADIUS", "CRACK_PEAK_ALPHA", "FEET_Y_OFFSET"]:
-		if not sb_src.contains("const %s" % c):
-			push_error("FAIL: spawn_burst.gd missing const %s" % c)
-			ok = false
-	if ok:
-		print("OK spawn_burst.gd exposes 4 tuning constants")
+		print("OK enemy.gd spawns spawn_portal FxSprite at spawn-in (iter-88 supersedes iter-86 SpawnBurst)")
 
 	if ok:
 		print("=== ITER 85 INTEGRATION PASSED ===")
