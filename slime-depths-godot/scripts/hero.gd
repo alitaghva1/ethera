@@ -54,6 +54,10 @@ const PARRY_SHIELD_SCENE = preload("res://scenes/fx/parry_shield.tscn")
 # soul_burst relic — reuse the dash impact shockwave scene tinted red.
 # Cheap visual until a dedicated VFX prefab lands.
 const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
+# Iter 68 — DODGE × STORM shock pulse. Dedicated cyan-white expanding
+# ring spawned at the dodge START position when STORM tier >= 1. Scales
+# with STORM tier (resonance: 80px / 1dmg; ascendance: 120px / 2dmg + stun).
+const SHOCK_PULSE_SCENE  = preload("res://scenes/fx/shock_pulse.tscn")
 # Iter 40 — FLAME ascendance fire pool. Spawned at every kill site
 # when the hero owns 4+ FLAME relics. Stacks with soul_burst (which
 # triggers on every 5th kill) — both can fire on a 5/10/15th kill.
@@ -677,6 +681,16 @@ func _start_dodge(input: Vector2) -> void:
 	# for the SHADOW theme's mobility role.
 	if GameState.theme_tier("shadow") >= 1:
 		_spawn_shadow_dodge_trail()
+	# Iter 68 — DODGE × STORM shock pulse. Tier >= 1 (2+ STORM relics
+	# owned) spawns an expanding cyan-white electric ring at the dodge
+	# START position (current global_position — _start_dodge fires
+	# BEFORE the motion integration in _physics_process moves the hero
+	# along _dodge_dir). Tier 1: 80px radius, 1 damage. Tier 2 (4+
+	# STORM): 120px, 2 damage, 0.5s stun on every hit enemy.
+	# Composes additively with the SHADOW dodge trail above — both
+	# effects fire on the same dodge if both themes are active.
+	if GameState.theme_tier("storm") >= 1:
+		_spawn_storm_shock_pulse()
 
 # Inverse of _vector_to_dir_idx — used for "what direction is the hero
 # facing when no input vector is available" (e.g. dodge with no WASD).
@@ -1470,6 +1484,55 @@ func _spawn_shadow_dodge_trail() -> void:
 	var host: Node = get_parent()
 	if host != null:
 		host.add_child(trail)
+
+# Iter 68 — DODGE × STORM shock pulse. Spawns a shock_pulse instance
+# at the hero's CURRENT global_position — which is the dodge START,
+# because _start_dodge runs BEFORE _physics_process moves the hero
+# along _dodge_dir for the DODGE_DURATION window. The pulse is a
+# snapshot AoE: it scans get_tree().get_nodes_in_group("enemies") in
+# _ready() and applies damage (+ stun at tier 2) to everything inside
+# the configured radius.
+#
+# Tier scaling (matches the brief from iter 68):
+#   tier 1 (resonance, 2+ STORM): radius 80, damage 1, stun 0.0
+#   tier 2 (ascendance, 4+ STORM): radius 120, damage 2, stun 0.5s
+# The stun is delivered via apply_slow(0.5, 0.0) — see shock_pulse.gd
+# for why we route through the slow system rather than a separate
+# stun field.
+#
+# Spawn host is get_parent() — same pattern iter 62's shadow dodge
+# trail uses, since current_scene silently fails in test instantiate
+# contexts (iter 61's lesson).
+const SHOCK_PULSE_TIER1_RADIUS: float = 80.0
+const SHOCK_PULSE_TIER1_DAMAGE: int = 1
+const SHOCK_PULSE_TIER2_RADIUS: float = 120.0
+const SHOCK_PULSE_TIER2_DAMAGE: int = 2
+const SHOCK_PULSE_TIER2_STUN: float = 0.5
+
+func _spawn_storm_shock_pulse() -> void:
+	var pulse: Node2D = SHOCK_PULSE_SCENE.instantiate() as Node2D
+	if pulse == null:
+		return
+	# Dodge START — current global_position. _start_dodge runs before
+	# the motion integration, so this is the spawn point even though
+	# the hero will be moving away over DODGE_DURATION.
+	pulse.global_position = global_position
+	var tier: int = GameState.theme_tier("storm")
+	var radius: float = SHOCK_PULSE_TIER1_RADIUS
+	var damage: int = SHOCK_PULSE_TIER1_DAMAGE
+	var stun: float = 0.0
+	if tier >= 2:
+		radius = SHOCK_PULSE_TIER2_RADIUS
+		damage = SHOCK_PULSE_TIER2_DAMAGE
+		stun = SHOCK_PULSE_TIER2_STUN
+	# setup() must run BEFORE add_child so _ready sees the configured
+	# values (shock_pulse.gd reads them in _ready to build the rings
+	# AND apply the snapshot AoE damage in the same frame).
+	if pulse.has_method("setup"):
+		pulse.call("setup", radius, damage, stun)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(pulse)
 
 func _trigger_shadow_shockwave() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):

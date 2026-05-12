@@ -28,6 +28,9 @@
 #                      to the most-wounded ally in HEAL_RADIUS
 #   summoner           kite from hero → windup spiral → spawn 1-2 bonecap
 #                      minions within SUMMON_RADIUS (cap 3 concurrent)
+#   wraith             fast melee that periodically PHASES — vanishes,
+#                      reappears BEHIND hero, lands a flanking strike.
+#                      Invulnerable + non-colliding during the phase window.
 #
 # All behaviors use the same death + knockback + take_hit machinery —
 # the behavior switch only affects per-tick AI.
@@ -358,6 +361,8 @@ func _physics_process(delta: float) -> void:
 			_tick_healer(delta)
 		"summoner":
 			_tick_summoner(delta)
+		"wraith":
+			_tick_wraith(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -995,6 +1000,280 @@ func _spawn_summon_burst(pos: Vector2) -> void:
 # spawn request" without simulating ~6 seconds of physics ticks.
 func _force_summon_for_test() -> void:
 	_apply_summon()
+
+# ── Behavior: wraith ──────────────────────────────────────────────────
+# Iter 68 — flanking melee phantom. Chases hero at high speed; when
+# within WRAITH_PHASE_RANGE and the phase cooldown is clear, the wraith
+# VANISHES (alpha 1.0 → 0.3, collision off) for WRAITH_PHASE_OUT_TIME,
+# then reappears BEHIND the hero (offset opposite hero motion / facing)
+# and lands a single flanking strike on the hero if still in reach.
+#
+# Counterplay: the wraith is invulnerable during PHASE_OUT/PHASE_IN
+# (both alpha-faded + collision-disabled — sword swings whiff, projectiles
+# pass through), but it's squishy in CHASE / STRIKE_RECOVERY (4 HP). So
+# the player can punish a wraith that's already committed to its strike
+# wind-down. The 4.5s interval keeps the phase from feeling spammy.
+#
+# State machine:
+#   IDLE              — no hero in sight; sit at zero velocity. Transitions
+#                       to CHASE the moment a hero ref exists.
+#   CHASE             — pursue hero at WRAITH_CHASE_SPEED. When within
+#                       WRAITH_PHASE_RANGE AND _wraith_cooldown_timer <= 0,
+#                       transition to PHASE_OUT.
+#   PHASE_OUT         — vanish window. Alpha tween 1.0 → 0.3, collision
+#                       suppressed, vanish-mote burst spawned. After
+#                       WRAITH_PHASE_OUT_TIME, teleport to behind-hero
+#                       and transition to PHASE_IN.
+#   PHASE_IN          — reappear window. Alpha tween 0.3 → 1.0, shimmer
+#                       FX spawned at the new position. On expiry, swing
+#                       at hero if within WRAITH_STRIKE_REACH.
+#   STRIKE_RECOVERY   — 0.8s vulnerable pause. Normal speed + alpha;
+#                       lets the player punish a missed flank.
+enum WraithState { IDLE, CHASE, PHASE_OUT, PHASE_IN, STRIKE_RECOVERY }
+const WRAITH_CHASE_SPEED: float = 130.0
+const WRAITH_PHASE_INTERVAL: float = 4.5
+const WRAITH_PHASE_RANGE: float = 220.0
+const WRAITH_PHASE_OUT_TIME: float = 0.35
+const WRAITH_PHASE_IN_TIME: float = 0.18
+const WRAITH_REAPPEAR_OFFSET: float = 40.0
+const WRAITH_STRIKE_DAMAGE: int = 2
+const WRAITH_STRIKE_REACH: float = 36.0
+const WRAITH_STRIKE_RECOVERY_TIME: float = 0.8
+const WRAITH_INVULN_DURING_PHASE: bool = true
+# Alpha targets for the phase fade. Not fully transparent so the player
+# can still TRACK the wraith during PHASE_OUT (anti-frustration — the
+# vanish reads as "ghostly", not "off-screen").
+const WRAITH_PHASE_ALPHA: float = 0.3
+# Vanish-mote burst — small purple/black motes scattered around the
+# wraith's PHASE_OUT origin so the disappearance reads on-screen.
+const WRAITH_PHASE_FX_SCENE: PackedScene = preload("res://scenes/fx/wraith_phase_in.tscn")
+var _wraith_state: WraithState = WraithState.IDLE
+var _wraith_timer: float = 0.0
+var _wraith_cooldown_timer: float = 0.0
+# Saved collision layer/mask during PHASE_OUT/PHASE_IN so we can restore
+# the wraith's normal collision profile when it reappears. Stashed via
+# the CharacterBody2D collision_layer/collision_mask read; the body
+# starts non-colliding at PHASE_OUT and stays so until STRIKE_RECOVERY.
+var _wraith_saved_layer: int = 0
+var _wraith_saved_mask: int = 0
+
+func _tick_wraith(delta: float) -> void:
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	# Don't flip the sprite during the phase windows — it'd flicker as the
+	# wraith teleports across the hero. Only update facing on grounded
+	# states (CHASE / STRIKE_RECOVERY).
+	match _wraith_state:
+		WraithState.IDLE:
+			velocity = Vector2.ZERO
+			sprite.play(&"idle")
+			# Once the hero ref is present (set at _ready), there's no real
+			# "idle" — drop straight to CHASE so the wraith engages.
+			_wraith_state = WraithState.CHASE
+		WraithState.CHASE:
+			sprite.flip_h = to_hero.x < 0
+			if dist > 1.0:
+				velocity = to_hero.normalized() * (WRAITH_CHASE_SPEED * _slow_multiplier)
+				sprite.play(&"walk")
+			else:
+				velocity = Vector2.ZERO
+				sprite.play(&"idle")
+			move_and_slide()
+			# Tick phase cooldown and check for trigger conditions.
+			if _wraith_cooldown_timer > 0.0:
+				_wraith_cooldown_timer = max(0.0, _wraith_cooldown_timer - delta)
+			elif dist <= WRAITH_PHASE_RANGE:
+				_enter_wraith_phase_out()
+		WraithState.PHASE_OUT:
+			velocity = Vector2.ZERO
+			# Don't move during phase-out — the wraith is dissolving in
+			# place; teleport happens at the end of the window.
+			_wraith_timer -= delta
+			# Sprite stays on the last walk frame; alpha-tween is handled
+			# at PHASE_OUT entry. Nothing tick-driven here beyond the timer.
+			if _wraith_timer <= 0.0:
+				_perform_wraith_teleport()
+		WraithState.PHASE_IN:
+			velocity = Vector2.ZERO
+			_wraith_timer -= delta
+			if _wraith_timer <= 0.0:
+				_apply_wraith_strike()
+				_enter_wraith_strike_recovery()
+		WraithState.STRIKE_RECOVERY:
+			sprite.flip_h = to_hero.x < 0
+			velocity = Vector2.ZERO
+			sprite.play(&"idle")
+			_wraith_timer -= delta
+			if _wraith_timer <= 0.0:
+				_wraith_state = WraithState.CHASE
+				_wraith_cooldown_timer = WRAITH_PHASE_INTERVAL
+
+# Enter PHASE_OUT: stash collision profile, suppress collisions, start
+# the alpha tween, spawn the vanish-mote burst. The teleport itself
+# happens at the END of the timer in _perform_wraith_teleport.
+func _enter_wraith_phase_out() -> void:
+	_wraith_state = WraithState.PHASE_OUT
+	_wraith_timer = WRAITH_PHASE_OUT_TIME
+	# Stash + clear collision so sword swings whiff and projectiles pass
+	# through. The body still exists; it just isn't on any layer.
+	if WRAITH_INVULN_DURING_PHASE:
+		_wraith_saved_layer = collision_layer
+		_wraith_saved_mask = collision_mask
+		collision_layer = 0
+		collision_mask = 0
+	# Alpha tween — full opacity to ghostly. Tween locks to PHASE_OUT_TIME
+	# so it lands the moment the teleport fires.
+	if sprite != null:
+		var tw: Tween = create_tween()
+		tw.tween_property(
+			sprite,
+			"modulate",
+			Color(1, 1, 1, WRAITH_PHASE_ALPHA),
+			WRAITH_PHASE_OUT_TIME,
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# Vanish-mote burst at the disappearance point — small purple/black
+	# Polygon2D specks scattered around the wraith.
+	_spawn_wraith_vanish_motes(global_position)
+
+# Compute the BEHIND-HERO target and teleport. "Behind" is determined by
+# hero motion direction when moving, falling back to the hero→wraith
+# vector inverted when idle (i.e. teleport to opposite side of where the
+# wraith currently is — preserves flank fantasy even when the hero
+# stands still).
+func _perform_wraith_teleport() -> void:
+	if _hero == null or not is_instance_valid(_hero):
+		_enter_wraith_strike_recovery()
+		return
+	var hero_pos: Vector2 = _hero.global_position
+	var hero_forward: Vector2 = Vector2.ZERO
+	# Prefer hero velocity (last-frame motion) — if the hero is running,
+	# "behind" is opposite their movement. CharacterBody2D.velocity is
+	# public so we can read it without poking into private fields. The
+	# `in` check defends against a future hero-class refactor that might
+	# move velocity off the CharacterBody2D path.
+	if "velocity" in _hero:
+		var hv: Vector2 = _hero.velocity
+		if hv.length_squared() > 1.0:
+			hero_forward = hv.normalized()
+	# Fallback: if the hero is stationary, use the wraith→hero vector as
+	# "forward" (so the wraith reappears on the OPPOSITE side of the hero
+	# from where it started — still a flank, just along the LOS axis).
+	if hero_forward == Vector2.ZERO:
+		var from_wraith: Vector2 = hero_pos - global_position
+		if from_wraith.length_squared() > 1.0:
+			hero_forward = from_wraith.normalized()
+		else:
+			# Truly degenerate (wraith on top of hero) — just pick right.
+			hero_forward = Vector2.RIGHT
+	# Teleport BEHIND hero = hero_pos minus hero_forward × offset.
+	global_position = hero_pos - hero_forward * WRAITH_REAPPEAR_OFFSET
+	# Face the hero on reappearance so the strike telegraph reads natural.
+	sprite.flip_h = (hero_pos.x - global_position.x) < 0
+	_enter_wraith_phase_in()
+
+# Enter PHASE_IN: start the reappear alpha tween, spawn the shimmer FX.
+# Collision STAYS off through this window — the wraith is still phasing.
+func _enter_wraith_phase_in() -> void:
+	_wraith_state = WraithState.PHASE_IN
+	_wraith_timer = WRAITH_PHASE_IN_TIME
+	if sprite != null:
+		var tw: Tween = create_tween()
+		tw.tween_property(
+			sprite,
+			"modulate",
+			Color(1, 1, 1, 1),
+			WRAITH_PHASE_IN_TIME,
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Spawn the shimmer-in FX at the new position. This is the visual
+	# read for the player: "wraith appears HERE — dodge NOW."
+	_spawn_wraith_phase_in_fx(global_position)
+
+# Apply the flanking strike. Damage lands only if the hero is within
+# WRAITH_STRIKE_REACH at the moment of expiry, so a panicked hero who
+# rolled away during PHASE_IN escapes the swing.
+func _apply_wraith_strike() -> void:
+	if _hero == null or not is_instance_valid(_hero):
+		return
+	var d: float = _hero.global_position.distance_to(global_position)
+	if d <= WRAITH_STRIKE_REACH and _hero.has_method("take_damage"):
+		_hero.take_damage(WRAITH_STRIKE_DAMAGE)
+		# Brief attack pose so the swing reads even if the player wasn't
+		# looking at the wraith mid-teleport.
+		if sprite != null and sprite.sprite_frames != null \
+				and sprite.sprite_frames.has_animation(&"attack"):
+			sprite.play(&"attack")
+
+# Enter STRIKE_RECOVERY: restore collision profile, settle to full alpha,
+# arm the next phase via WRAITH_PHASE_INTERVAL when the timer expires.
+func _enter_wraith_strike_recovery() -> void:
+	_wraith_state = WraithState.STRIKE_RECOVERY
+	_wraith_timer = WRAITH_STRIKE_RECOVERY_TIME
+	# Restore collision so the player can punish the recovery window.
+	if WRAITH_INVULN_DURING_PHASE:
+		collision_layer = _wraith_saved_layer if _wraith_saved_layer != 0 else 4
+		collision_mask = _wraith_saved_mask if _wraith_saved_mask != 0 else 1
+	if sprite != null:
+		sprite.modulate = Color(1, 1, 1, 1)
+
+# Vanish-mote burst — 5 small purple/black Polygon2D specks scattered
+# around the disappearance point, drifting outward and fading. Same
+# self-tween+queue_free pattern the summoner uses.
+func _spawn_wraith_vanish_motes(pos: Vector2) -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	var mote_count: int = 5
+	for i in range(mote_count):
+		var ang: float = (TAU / float(mote_count)) * float(i) + randf_range(-0.3, 0.3)
+		var mote: Node2D = Node2D.new()
+		mote.global_position = pos + Vector2(cos(ang), sin(ang)) * 4.0
+		mote.z_index = -1
+		parent.add_child(mote)
+		var poly: Polygon2D = Polygon2D.new()
+		var verts: PackedVector2Array = PackedVector2Array()
+		var r: float = 3.0
+		var segments: int = 8
+		for j in range(segments):
+			var a: float = (TAU / float(segments)) * float(j)
+			verts.append(Vector2(cos(a), sin(a)) * r)
+		poly.polygon = verts
+		# Deep purple-black — distinct from the summoner's dark red and
+		# the healer's green. Wraith owns the "shadow / phase" color.
+		poly.color = Color(0.30, 0.18, 0.45, 0.90)
+		mote.add_child(poly)
+		var drift: Vector2 = Vector2(cos(ang), sin(ang)) * 22.0
+		var tw: Tween = mote.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(mote, "global_position", mote.global_position + drift, 0.28) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(poly, "modulate:a", 0.0, 0.28) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(mote.queue_free)
+
+# Instantiate the wraith_phase_in shimmer scene at the reappear point.
+# Falls back to a code-built burst if the scene resource isn't available
+# (defensive — keeps the gameplay loop working even if the .tscn is
+# missing on a partial sync).
+func _spawn_wraith_phase_in_fx(pos: Vector2) -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	if WRAITH_PHASE_FX_SCENE == null:
+		_spawn_wraith_vanish_motes(pos)
+		return
+	var fx: Node2D = WRAITH_PHASE_FX_SCENE.instantiate()
+	fx.global_position = pos
+	parent.add_child(fx)
+
+# Iter 68 — test-only force-trigger for headless verification. Skips the
+# CHASE → PHASE_OUT cooldown gating so a test can assert "phase strikes
+# the hero" without simulating 4.5+ seconds of physics ticks.
+func _force_wraith_phase_for_test() -> void:
+	_enter_wraith_phase_out()
 
 # ── Behavior: telegraphed_melee ───────────────────────────────────────
 # Approach → stop + windup-tint → swing in cone → cooldown. Damage

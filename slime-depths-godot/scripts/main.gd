@@ -64,6 +64,13 @@ const ENEMY_TYPES := {
 	# live minions to prevent wave-stuffing. Slightly tankier (6 HP) than
 	# the spectral_priest since it has no direct attack of its own.
 	"bone_summoner":     preload("res://scenes/enemies/bone_summoner.tres"),
+	# Iter 68 — flanking phantom. Uses the "wraith" behavior in enemy.gd.
+	# Fast melee (130 px/s) that periodically PHASES on a 4.5s cycle:
+	# vanishes 0.35s, teleports BEHIND the hero, reappears 0.18s with a
+	# violet shimmer, then lands a 2-damage flanking strike if still in
+	# reach. Invulnerable during phase but squishy (4 HP) in chase /
+	# 0.8s strike recovery — the player can punish a missed flank.
+	"rogue_wraith":      preload("res://scenes/enemies/rogue_wraith.tres"),
 	# Iter 17 — boss type. Spawned alone in room 3's final wave; the
 	# is_boss flag drives the HP-bar UI and the boss tracking in
 	# _process. Wave-clear detection treats it like any other enemy.

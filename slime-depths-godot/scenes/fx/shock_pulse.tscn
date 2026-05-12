@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3shockpulse0068"]
+
+[ext_resource type="Script" path="res://scripts/shock_pulse.gd" id="1_script"]
+
+; Iter 68 — DODGE × STORM shock pulse. Thin scene wrapper around
+; shock_pulse.gd, which builds the two concentric Line2D rings + applies
+; the snapshot AoE damage/stun in code. Same minimal-scene pattern as
+; chain_arc.tscn (iter 67) — the geometry depends on radius_target which
+; only setup() knows, so it can't be baked into the .tscn.
+;
+; STORM tier 1 (resonance, 2+): radius 80, damage 1, no stun.
+; STORM tier 2 (ascendance, 4+): radius 120, damage 2, 0.5s stun
+;   (delivered via apply_slow with 0.0 multiplier — see shock_pulse.gd).
+
+[node name="ShockPulse" type="Node2D"]
+script = ExtResource("1_script")
