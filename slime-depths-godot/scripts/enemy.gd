@@ -50,8 +50,16 @@ const SHADOW_TEXTURE: Texture2D = preload("res://assets/decor/shadow_ellipse.png
 # gives the player a clear visual telegraph that "an enemy is materializing
 # HERE" instead of the iter-14 behavior where enemies popped into existence
 # at full opacity and immediately started chasing.
-const SPAWN_IN_DURATION := 0.5
-const SPAWN_IN_START_COLOR := Color(1.8, 0.3, 0.3, 0.3)   # bright red, low alpha
+# iter-79 retune: after the spawn-portal experiment was removed (iters
+# 75-78), the per-enemy fade-in is once again THE spawn telegraph. User
+# feedback through that arc was that the iter-15 "bright red ghost" was
+# too aggressive — it screamed danger the way a hazard would.
+#   • duration 0.5s → 0.35s (faster — less time as a ghost)
+#   • start color 1.8/0.3/0.3 → 1.25/0.45/0.55 (muted, slightly pink-cooled,
+#     reads "arriving" not "hot danger")
+#   • alpha 0.3 → 0.40 (slightly more visible so the player still notices)
+const SPAWN_IN_DURATION := 0.35
+const SPAWN_IN_START_COLOR := Color(1.25, 0.45, 0.55, 0.40)
 const SPAWN_IN_END_COLOR   := Color(1.0, 1.0, 1.0, 1.0)   # normal
 
 # Set by the spawner (main.gd) BEFORE add_child. If null at _ready time

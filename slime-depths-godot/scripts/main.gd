@@ -100,64 +100,13 @@ const SWING_HIT_STOP_TIME  := 0.035
 const DASH_HIT_STOP_SCALE  := 0.10
 const DASH_HIT_STOP_TIME   := 0.07
 const DASH_IMPACT_SCENE: PackedScene = preload("res://scenes/fx/dash_impact.tscn")
-# Wizard-kit sprint 3 (track C) — consolidated wave-spawn portal scene.
-# Previously waves spawned 6+ enemies each at random spawn_points, each
-# fading from SPAWN_IN_START_COLOR (enemy.gd:54) — which read as 6
-# different "portals" to the player. Track C limits a wave to AT MOST
-# MAX_WAVE_PORTALS spawn positions and renders a real portal visual at
-# each, so enemies emerge from a small set of dramatic locations vs a
-# diffuse spray of red ghosts. The portal scene is built in code by
-# spawn_portal.gd; this is just the preloaded entry point.
-const SPAWN_PORTAL_SCENE: PackedScene = preload("res://scenes/fx/spawn_portal.tscn")
-# iter-78: lowered 3 → 2. Combined with portals persisting across waves
-# (vs opening fresh each wave, see _open_wave_portals + _on_wave_cleared),
-# a typical room now sees ONE portal-open event total (2 portals at room
-# start, kept open through all waves, closed only at room clear) instead
-# of 3-9 events (3 portals × 1-3 waves) previously. Per the user spec:
-# "too many of them, making their appearance less important" — making
-# the opening moment rare makes it dramatic.
-const MAX_WAVE_PORTALS: int = 2
-
-# ─── PORTAL PLACEMENT VALIDATOR (iter 77 design pass) ───────────────
-# A valid portal position must clear every room feature listed below by
-# at least the matching MIN_DIST. The user's design brief was explicit:
-# "should never spawn on top of fire spots, torches, doors, walls,
-# pillars, obstacles, exits, rewards, or other important room features."
-#
-# Distance budget reasoning: portal visual footprint ≈ 32 px (crack
-# radius 22 + rune fragments 28 outer). Other feature footprints below
-# are approximate; min-dists add a small margin so the eye sees clear
-# air between the portal and the feature.
-#
-# Tune these values to adjust how PERMISSIVE the validator is — lower
-# = portals can crowd closer to features; higher = more empty rooms
-# fail validation and we fall back to the unfiltered pool.
-const PORTAL_MIN_DIST_FROM_HERO: float = 110.0      # give the player room to react
-const PORTAL_MIN_DIST_FROM_HAZARD: float = 80.0     # fire_jet / spike_pit / lightning_rod / glyph_trap
-const PORTAL_MIN_DIST_FROM_TORCH: float = 64.0      # don't crowd light sources
-const PORTAL_MIN_DIST_FROM_PILLAR: float = 60.0
-const PORTAL_MIN_DIST_FROM_CHEST: float = 60.0
-const PORTAL_MIN_DIST_FROM_DOOR: float = 110.0      # exit sightline must stay clear
-const PORTAL_MIN_DIST_FROM_LORESTONE: float = 60.0
-const PORTAL_MIN_DIST_FROM_SHRINE: float = 70.0
-const PORTAL_MIN_DIST_FROM_WALL_RECT: float = 28.0  # outside-rect distance
-const PORTAL_MIN_DIST_FROM_OTHER_PORTAL: float = 80.0  # anti-clustering
-const PORTAL_MIN_DIST_FROM_ROOM_CENTER: float = 90.0   # pedestals spawn at center
-const PORTAL_PLAY_MARGIN: float = 16.0              # inset from play_rect edges
-# Walkable bounds (matches the play_left/right/top/bottom used in the
-# decor scatter at ~line 717 — kept as constants here so the validator
-# doesn't compute them per-call).
-const PORTAL_PLAY_LEFT: float = 130.0
-const PORTAL_PLAY_RIGHT: float = 1150.0
-const PORTAL_PLAY_TOP: float = 130.0
-const PORTAL_PLAY_BOTTOM: float = 640.0
-const PORTAL_ROOM_CENTER: Vector2 = Vector2(640, 384)
-# Fallback sampling — if every authored spawn_point fails validation
-# (e.g. a dense hazard room), we sample random positions inside the
-# walkable rect and validate each. PORTAL_FALLBACK_ATTEMPTS caps the
-# search so a hopelessly-crowded room can't hang the wave start.
-const PORTAL_FALLBACK_ATTEMPTS: int = 40
-# ────────────────────────────────────────────────────────────────────
+# iter-79: spawn portal system REMOVED. Four iterations (75/76/77/78) of
+# patching a "summoning portal" visual on top of the existing iter-15
+# enemy spawn-in fade never landed right — the JS reference (slime-depths/)
+# doesn't have one at all, enemies just appear with a sprite fade. Reverted
+# to that simpler approach; the iter-15 SPAWN_IN_START_COLOR fade in
+# enemy.gd is now tuned subtler so it reads as "incoming" without
+# dominating the screen.
 # Iter 30 — hazard scenes. The room reads its hazard_kind string and
 # we pick the scene to instantiate at each hazard_positions entry.
 # Iter 31 — added fire_jet, slow_zone, lightning_rod for mixed-hazard
@@ -323,28 +272,9 @@ var _death_screen: Node = null
 # doesn't trigger false-positive "all enemies dead" between the first
 # kill and the last spawn.
 var _pending_spawns := 0
-# Wizard-kit sprint 3 (track C) — active wave-spawn portal positions.
-# When _start_wave fires, we pick min(MAX_WAVE_PORTALS, _spawn_points.size())
-# random positions from _spawn_points and store them here; each enemy in
-# the wave emerges from one of these (vs a per-enemy random spawn_point).
-# Cleared + portals queue_free()'d on _on_wave_cleared. Empty array means
-# the wave-spawn path falls back to legacy random-spawn-point behavior,
-# which keeps boss-summon / non-wave spawns working unchanged.
-var _active_wave_portals: Array[Vector2] = []
-# Parallel array — the actual portal nodes corresponding 1:1 with
-# _active_wave_portals positions. Tracked so _spawn_enemy_type can fire
-# emit_enemy() on the right portal AND _close_active_wave_portals can
-# tell each one to play its close animation.
-var _active_wave_portal_nodes: Array = []
-# Wizard-kit sprint 3 (track C) — single-shot override that _spawn_wave_
-# enemy sets immediately before calling _spawn_enemy_type, so the body
-# of _spawn_enemy_type uses this position instead of randi() % _spawn_
-# points. Vector2.INF is the "no override" sentinel — _spawn_enemy_type
-# checks for it and falls through to the legacy random-spawn-point pick.
-# Cleared back to INF by _spawn_wave_enemy after each call. Boss-summon
-# (_on_enemy_summon_requested) doesn't touch this, so summons still
-# spawn at their argument position unchanged.
-var _wave_spawn_override_pos: Vector2 = Vector2.INF
+# iter-79: removed _active_wave_portals / _active_wave_portal_nodes /
+# _wave_spawn_override_pos state. The portal system (iters 75-78) is
+# gone — enemies spawn at random _spawn_points per the iter-15 path.
 # Iter 16 — guard against pickup_claimed firing twice on the same room
 # (e.g. a hypothetical double-event from a relic with multiple effects).
 # Set true the first time a pedestal grants in this room; reset on
@@ -1290,16 +1220,10 @@ func _start_wave(idx: int) -> void:
 			spawn_queue.append(type_id)
 	spawn_queue.shuffle()
 	_pending_spawns = spawn_queue.size()
-	# Wizard-kit sprint 3 (track C) — pick the wave's portal positions
-	# BEFORE we schedule any spawn timers, so each enemy can be assigned
-	# to one of these portals at queue time. _open_wave_portals also
-	# spawns the SpawnPortal nodes so the OPEN telegraph plays during
-	# the initial wave delay AND the stagger window (~0.5s OPEN + N *
-	# 0.18s stagger = portal is visibly there before each enemy emerges).
-	# Empty _spawn_points or empty queue → _open_wave_portals no-ops and
-	# we fall through to the legacy random-spawn-point branch in
-	# _spawn_enemy_type (preserves backwards compat for any edge case).
-	_open_wave_portals()
+	# iter-79: removed wave-portal pool. Each enemy now spawns directly
+	# at a random _spawn_point via _spawn_enemy_type (the iter-15 baseline
+	# behavior). The portal system that lived here in iters 75-78 has been
+	# deleted — see the comment block above _spawn_enemy_type.
 	for i in range(spawn_queue.size()):
 		# Small jitter on top of the base stagger so the rhythm doesn't
 		# feel metronomic. Tween-friendly Bind so each closure captures
@@ -1307,167 +1231,23 @@ func _start_wave(idx: int) -> void:
 		var delay: float = i * SPAWN_STAGGER + randf_range(0.0, 0.08)
 		var t: SceneTreeTimer = get_tree().create_timer(delay)
 		var captured: String = spawn_queue[i]
-		# Pre-select a portal index for THIS enemy (round-robin shuffled
-		# so the load is even across the up-to-3 portals). Captured into
-		# the lambda alongside the type_id so the timer fires the right
-		# wave-spawn enemy at the right portal.
-		var portal_idx: int = -1
-		if not _active_wave_portals.is_empty():
-			portal_idx = i % _active_wave_portals.size()
-		t.timeout.connect(func (): _spawn_wave_enemy(captured, portal_idx))
+		t.timeout.connect(func (): _spawn_enemy_type(captured))
 
-# Wizard-kit sprint 3 (track C) — select up to MAX_WAVE_PORTALS positions
-# from the room's spawn_points and spawn a SpawnPortal at each. Picking
-# happens fresh each wave: a 3-wave room with 6 spawn_points opens
-# different portals in waves 1/2/3 so the player can't camp one corner.
-#
-# The portals visually open over ~0.5s. Since INITIAL_WAVE_DELAY = 0.6s
-# AND SPAWN_STAGGER = 0.18s, this means by the time the first enemy
-# emerges (wave 1 fires at t≈0.6 + jitter ≤ 0.08 = ~0.6 - 0.68s post-
-# room-entry), the portal is fully open and the player has seen it.
-# Subsequent waves: portals open right when _start_wave fires and the
-# first enemy on that wave starts spawning ~0.0 - 0.08s later. The
-# 0.5s OPEN phase plays through the first spawn — emit_enemy gates
-# itself to AFTER opening, so the flash on the first enemy lands as
-# the ring finishes its in-tween.
-func _open_wave_portals() -> void:
-	# iter-78: portals now PERSIST across waves within a room. If they're
-	# already open (i.e. wave 1 opened them and we're starting wave 2+),
-	# no-op. Closing happens in _on_wave_cleared's room-clear branch
-	# only. Enemies from later waves emerge through the SAME portals
-	# with another emit_enemy() pulse — same spatial pattern, different
-	# enemy composition. Makes the opening moment rare = dramatic.
-	if not _active_wave_portals.is_empty():
-		return
-	_active_wave_portals = []
-	_active_wave_portal_nodes = []
-	if _spawn_points.is_empty():
-		return
-	# iter-77 design pass: portal placement is now a full validator that
-	# checks every room feature (hazards, torches, pillars, chests, door,
-	# walls, lore stones, shrines, hero, other portals, room center,
-	# walkable bounds). Authored spawn_points are tried first (designer
-	# intent); if too few survive validation, we sample random positions
-	# inside the walkable rect as a fallback.
-	#
-	# Algorithm:
-	#   1. Shuffle authored spawn_points (designer-blessed positions).
-	#   2. For each, validate against ALL room features + previously
-	#      selected portals. Accept up to MAX_WAVE_PORTALS.
-	#   3. If we still need more portals after exhausting authored
-	#      points, sample random positions in the walkable rect and
-	#      validate each. Bail after PORTAL_FALLBACK_ATTEMPTS so a
-	#      hopelessly-crowded room can't hang.
-	#   4. If even fallback yields too few, accept whatever we have (or
-	#      revert to legacy unfiltered pool as last resort to guarantee
-	#      enemies have somewhere to emerge).
-	var n_target: int = mini(MAX_WAVE_PORTALS, _spawn_points.size())
-	var chosen: Array[Vector2] = []
-	# Step 1+2: authored spawn_points, shuffled, validated.
-	var authored_pool: Array[Vector2] = []
-	for sp in _spawn_points:
-		authored_pool.append(sp)
-	authored_pool.shuffle()
-	for candidate in authored_pool:
-		if chosen.size() >= n_target:
-			break
-		if _is_portal_position_valid(candidate, chosen):
-			chosen.append(candidate)
-	# Step 3: random-sample fallback if validation rejected too much.
-	if chosen.size() < n_target:
-		var attempts: int = 0
-		while chosen.size() < n_target and attempts < PORTAL_FALLBACK_ATTEMPTS:
-			attempts += 1
-			var sample: Vector2 = Vector2(
-				randf_range(PORTAL_PLAY_LEFT + PORTAL_PLAY_MARGIN,
-					PORTAL_PLAY_RIGHT - PORTAL_PLAY_MARGIN),
-				randf_range(PORTAL_PLAY_TOP + PORTAL_PLAY_MARGIN,
-					PORTAL_PLAY_BOTTOM - PORTAL_PLAY_MARGIN),
-			)
-			if _is_portal_position_valid(sample, chosen):
-				chosen.append(sample)
-	# Step 4: last-resort guarantee. If even fallback returned nothing,
-	# fall back to one unfiltered shuffled spawn_point so enemies have
-	# somewhere to emerge. Better to spawn on a torch than have nothing.
-	if chosen.is_empty() and not authored_pool.is_empty():
-		chosen.append(authored_pool[0])
-	for pos in chosen:
-		_active_wave_portals.append(pos)
-		# Tint the portal with the room's ambient_tint nudged toward the
-		# spec-required purple-magenta, so a deep-purple room still gets
-		# a recognizable portal but it doesn't feel pasted-on. Falls back
-		# to the SpawnPortal default if _room is null (editor-direct
-		# launch).
-		var tint: Color = Color(0.55, 0.22, 0.75, 0.78)
-		if _room != null:
-			# Blend 65% spec purple + 35% room ambient so each biome reads
-			# slightly different. Don't apply to the ring (which keeps its
-			# bright magenta), just to the inner vortex via theme_color.
-			var amb: Color = _room.ambient_tint
-			tint = Color(
-				tint.r * 0.65 + amb.r * 0.35,
-				tint.g * 0.65 + amb.g * 0.35,
-				tint.b * 0.65 + amb.b * 0.35,
-				0.78,
-			)
-		var portal: Node = SpawnPortal.spawn(self, pos, tint)
-		_active_wave_portal_nodes.append(portal)
+# iter-79: _open_wave_portals / _spawn_wave_enemy / _close_active_wave_portals
+# / _is_portal_position_valid all REMOVED. See top-of-file comment above
+# SPAWN_PORTAL_SCENE — the JS reference doesn't have a portal system and
+# four iterations of patching ours never landed right. Enemies now spawn
+# via _spawn_enemy_type directly. _gather_hazard_positions kept as a
+# generally-useful helper (used by other features that need to know where
+# hazards are).
 
-# Wizard-kit sprint 3 (track C) — wave-spawn helper. Wraps
-# _spawn_enemy_type with two extras: route the enemy's spawn position
-# to the assigned wave portal (vs the legacy random-spawn-point pick),
-# and fire emit_enemy() on that portal node so the center white-hot
-# point flashes as the enemy emerges. Bosses + summons keep using
-# _spawn_enemy_type / _on_enemy_summon_requested directly, so neither
-# of those code paths is affected.
-#
-# If portal_idx < 0 (no portals open — e.g. _spawn_points was empty),
-# fall through to _spawn_enemy_type which still picks a random
-# spawn_point — preserves the legacy behavior for any edge case where
-# _open_wave_portals couldn't build the pool.
-func _spawn_wave_enemy(type_id: String, portal_idx: int) -> void:
-	# Out-of-bounds guard — if portals were closed mid-wave (shouldn't
-	# happen but defensive) or the index drifted, fall through.
-	if portal_idx < 0 or portal_idx >= _active_wave_portals.size():
-		_spawn_enemy_type(type_id)
-		return
-	# Spawn the enemy at the portal's exact world position. We set
-	# _wave_spawn_override_pos so the _spawn_enemy_type body can pick
-	# it up — keeps the existing function as the canonical "build an
-	# enemy and add it to the scene" path so future enemy_type fields
-	# don't need to be mirrored across two functions.
-	_wave_spawn_override_pos = _active_wave_portals[portal_idx]
-	_spawn_enemy_type(type_id)
-	_wave_spawn_override_pos = Vector2.INF   # sentinel: consume the override
-	# Fire the portal's emergence flash on the matching node. is_instance_
-	# valid guards against a portal that was queue_free'd between schedule
-	# time and timeout — shouldn't happen since _close_active_wave_portals
-	# is only called on wave-clear (after all spawns landed), but the
-	# guard costs nothing.
-	var node: Node = _active_wave_portal_nodes[portal_idx]
-	if is_instance_valid(node) and node.has_method("emit_enemy"):
-		node.emit_enemy()
-
-# Wizard-kit sprint 3 (track C) — close all active wave portals + clear
-# the parallel arrays. Called from _on_wave_cleared (between waves AND
-# at room-clear). Each portal queue_free's itself after its close
-# animation, so we don't free them here directly.
-func _close_active_wave_portals() -> void:
-	for node in _active_wave_portal_nodes:
-		if is_instance_valid(node) and node.has_method("close"):
-			node.close()
-	_active_wave_portal_nodes.clear()
-	_active_wave_portals.clear()
-
-# iter-75 followup: gather every authored hazard position in the room
-# so _open_wave_portals can reject spawn_points that overlap hazards.
+# iter-75 followup: gather every authored hazard position in the room.
 # RoomConfig keeps hazard positions in two separate arrays for legacy
 # reasons:
 #   hazard_positions  — Array[Vector2]   (iter-30 layout; spike_pit by default)
 #   hazards           — Array[Dictionary] of {kind, position, [phase], ...}
 #                       (iter-31 typed hazards: fire_jet, lightning_rod, etc.)
-# We union both into a single Vector2 list; the caller distance-checks
-# each candidate against the union.
+# We union both into a single Vector2 list.
 func _gather_hazard_positions() -> Array[Vector2]:
 	var result: Array[Vector2] = []
 	if _room == null:
@@ -1481,104 +1261,6 @@ func _gather_hazard_positions() -> Array[Vector2]:
 				result.append(p)
 	return result
 
-# iter-77 placement validator. Returns true iff `pos` is a valid spawn
-# portal position — i.e. clears every room feature by the matching
-# PORTAL_MIN_DIST_FROM_* threshold (see constants block near line 113).
-#
-# `already_chosen` is the list of portals already accepted for THIS
-# wave; we enforce anti-clustering against them so two portals never
-# land within PORTAL_MIN_DIST_FROM_OTHER_PORTAL of each other.
-#
-# Features checked (in order, fast-fail):
-#   1. Walkable bounds (play_rect with PORTAL_PLAY_MARGIN inset)
-#   2. Other portals already chosen this wave
-#   3. Hero (live or hero_spawn fallback)
-#   4. Room hazards (fire_jet, spike_pit, lightning_rod, slow_zone, glyph_trap)
-#   5. Torch positions (don't crowd light sources)
-#   6. Pillar positions
-#   7. Chest positions
-#   8. Door (east wall — sightline must stay clear)
-#   9. Wall rects (rect-to-point distance check)
-#  10. Lore stones
-#  11. Shrine positions
-#  12. Room center (pedestals spawn there at clear)
-#
-# All checks use Euclidean distance except wall rects (uses Rect2's
-# distance_to-equivalent via min-axis clamping).
-func _is_portal_position_valid(pos: Vector2, already_chosen: Array[Vector2]) -> bool:
-	# 1. Walkable bounds.
-	if pos.x < PORTAL_PLAY_LEFT + PORTAL_PLAY_MARGIN: return false
-	if pos.x > PORTAL_PLAY_RIGHT - PORTAL_PLAY_MARGIN: return false
-	if pos.y < PORTAL_PLAY_TOP + PORTAL_PLAY_MARGIN: return false
-	if pos.y > PORTAL_PLAY_BOTTOM - PORTAL_PLAY_MARGIN: return false
-
-	# 2. Other portals chosen earlier this wave (anti-cluster).
-	for other in already_chosen:
-		if pos.distance_to(other) < PORTAL_MIN_DIST_FROM_OTHER_PORTAL:
-			return false
-
-	# 3. Hero — prefer live position, fall back to hero_spawn.
-	var hero_pos: Vector2 = Vector2.INF
-	var heroes: Array = get_tree().get_nodes_in_group("hero")
-	if not heroes.is_empty() and heroes[0] is Node2D:
-		hero_pos = (heroes[0] as Node2D).global_position
-	elif _room != null:
-		hero_pos = _room.hero_spawn
-	if hero_pos != Vector2.INF:
-		if pos.distance_to(hero_pos) < PORTAL_MIN_DIST_FROM_HERO:
-			return false
-
-	# 4. Hazards.
-	for hz in _gather_hazard_positions():
-		if pos.distance_to(hz) < PORTAL_MIN_DIST_FROM_HAZARD:
-			return false
-
-	if _room != null:
-		# 5. Torches.
-		for t in _room.torch_positions:
-			if pos.distance_to(t) < PORTAL_MIN_DIST_FROM_TORCH:
-				return false
-		# 6. Pillars.
-		for p in _room.pillar_positions:
-			if pos.distance_to(p) < PORTAL_MIN_DIST_FROM_PILLAR:
-				return false
-		# 7. Chests.
-		for c in _room.chest_positions:
-			if pos.distance_to(c) < PORTAL_MIN_DIST_FROM_CHEST:
-				return false
-		# 9. Wall rects — distance from a point to a Rect2 is
-		# max(0, dx) + max(0, dy) in axis terms, but for portal
-		# clearance we want Euclidean distance to the nearest rect
-		# edge. Compute via clamping the point INTO the rect; the
-		# distance from pos to that clamped point is the rect distance.
-		for wall in _room.wall_rects:
-			var clamped: Vector2 = Vector2(
-				clampf(pos.x, wall.position.x, wall.position.x + wall.size.x),
-				clampf(pos.y, wall.position.y, wall.position.y + wall.size.y),
-			)
-			if pos.distance_to(clamped) < PORTAL_MIN_DIST_FROM_WALL_RECT:
-				return false
-		# 10. Lore stones.
-		for ls in _room.lore_stones:
-			if ls is Dictionary and ls.has("position"):
-				var lpos = ls["position"]
-				if lpos is Vector2 and pos.distance_to(lpos) < PORTAL_MIN_DIST_FROM_LORESTONE:
-					return false
-		# 11. Shrines.
-		for s in _room.shrine_positions:
-			if pos.distance_to(s) < PORTAL_MIN_DIST_FROM_SHRINE:
-				return false
-
-	# 8. Door (east-wall exit — fixed constant per main.gd:136).
-	if pos.distance_to(DOOR_POSITION) < PORTAL_MIN_DIST_FROM_DOOR:
-		return false
-
-	# 12. Room center — pedestals spawn here at room clear, so keep
-	# portals away from the eventual reward zone.
-	if pos.distance_to(PORTAL_ROOM_CENTER) < PORTAL_MIN_DIST_FROM_ROOM_CENTER:
-		return false
-
-	return true
 
 # Iter 35 — wave-event dispatcher. Iterates _room.wave_events, filters
 # to entries matching `wave_idx`, dispatches each by `kind`. Unknown
@@ -1680,12 +1362,7 @@ func _event_announce(entry: Dictionary) -> void:
 
 func _on_wave_cleared() -> void:
 	_wave_state = WaveState.CLEAR
-	# iter-78: portals are now ROOM-scoped, not wave-scoped. We do NOT
-	# close them on inter-wave clears — wave 2+ will reuse the same
-	# portals (idempotent _open_wave_portals call is a no-op there).
-	# Closing happens only on the room-clear branch below. This makes
-	# the open/close moments rare + meaningful, vs the iter-77 rhythm
-	# where portals opened/closed every wave (3-9 transitions per room).
+	# iter-79: portal close-call removed along with the portal system.
 	if _wave_index + 1 < _waves.size():
 		wave_label.text = "WAVE %d CLEAR  ·  next in %.1fs" % [_wave_index + 1, WAVE_CLEAR_PAUSE]
 		var t := get_tree().create_timer(WAVE_CLEAR_PAUSE)
@@ -1693,13 +1370,6 @@ func _on_wave_cleared() -> void:
 	else:
 		_wave_state = WaveState.COMPLETE
 		wave_label.text = "ROOM CLEAR"
-		# iter-78: close active portals NOW — final wave is over,
-		# the dungeon "withdraws" its summoning circles before the
-		# pedestal offer / door spawn. The collapse animation runs
-		# under the floor-clear celebration burst, so the player
-		# sees the threat infrastructure fade out as the reward
-		# infrastructure fades in.
-		_close_active_wave_portals()
 		# Iter 16 — Hades-style chamber reward. Small heal + a 3-relic
 		# choice spawn EVERY room (not just the last). The room only
 		# becomes "done" once a pedestal is claimed; until then the
@@ -1783,17 +1453,9 @@ func _spawn_enemy_type(type_id: String) -> void:
 	var type_res: EnemyType = ENEMY_TYPES.get(type_id, ENEMY_TYPES["slime"])
 	var enemy: Enemy = ENEMY_SCENE.instantiate()
 	enemy.enemy_type = type_res
-	# Wizard-kit sprint 3 (track C) — if _spawn_wave_enemy set an override
-	# position (= we're spawning a wave enemy at a portal), use that;
-	# otherwise fall through to the legacy random-spawn-point pick so
-	# any non-wave-enemy callers (none currently — summons use a dedicated
-	# path — but future ones) still work unchanged. Vector2.INF is the
-	# sentinel; Godot's Vector2.INF.is_finite() returns false on both
-	# components so this check is unambiguous.
-	if _wave_spawn_override_pos.is_finite():
-		enemy.global_position = _wave_spawn_override_pos
-	else:
-		enemy.global_position = _spawn_points[randi() % _spawn_points.size()]
+	# iter-79: simplified back to random-spawn-point pick (iter-15 baseline).
+	# The portal override system that lived here in iters 75-78 is gone.
+	enemy.global_position = _spawn_points[randi() % _spawn_points.size()]
 	enemy.died_at.connect(_on_enemy_died)
 	add_child(enemy)
 	# Iter 17 — boss spawn hook. The type's is_boss flag drives the HP
