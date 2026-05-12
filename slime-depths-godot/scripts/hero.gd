@@ -130,15 +130,29 @@ const DASH_STRIKE_STEER_GAIN   := 0.15
 # enemies (slimes ~22, spider ~12) without grabbing distant ones.
 const DASH_STRIKE_PIERCE_RADIUS := 40.0
 const DASH_STRIKE_PIERCE_DAMAGE := 1
+# iter-80 retune (Workstream B of the post-iter-78 plan): port the JS
+# dash afterimage feel. JS captures every ~0.018s (we were at 0.04 —
+# 4× less dense) and tints golden (#ffd27a) — we were cyan-purple. The
+# JS dash reads as "echo of light streaking through space"; cyan
+# reads cold + un-rooted from the rest of the combat palette where
+# slash/blast already use cyan-cream. Switching to gold gives dash a
+# unique color identity AND matches the dash_trail particles which
+# already lean warm in the JS reference.
+#
+# Tuning:
+#   AFTERIMAGE_INTERVAL: 0.04 → 0.025  (denser ghost trail)
+#   AFTERIMAGE_TINT:    cyan-purple    → warm gold
+#   AFTERIMAGE_FADE_TIME: 0.22 → 0.30  (matches the JS AFTERIMAGE_LIFE)
+#
 # Iter 29 — afterimage cadence. Spawn one ghost every AFTERIMAGE_INTERVAL
 # seconds during the dash window. 0.04 s ≈ 7 ghosts over a 0.28 s dash,
 # enough to sell "leaving light behind" without flooding the scene.
-const AFTERIMAGE_INTERVAL: float = 0.04
+const AFTERIMAGE_INTERVAL: float = 0.025
 # Color tint applied to each afterimage Sprite2D. Cyan-purple matches
 # the dash trail's particle palette so the afterimages + trail read
 # as the SAME energy phenomenon.
-const AFTERIMAGE_TINT: Color = Color(0.55, 0.85, 1.0, 0.55)
-const AFTERIMAGE_FADE_TIME: float = 0.22
+const AFTERIMAGE_TINT: Color = Color(1.0, 0.82, 0.48, 0.65)
+const AFTERIMAGE_FADE_TIME: float = 0.30
 
 # Iter 11 — feel tuning.
 const CAMERA_LOOKAHEAD       := 90.0
