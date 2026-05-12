@@ -276,6 +276,30 @@ var _melee_strike_timer: float = 0.0
 var _pending_melee_aim: Vector2 = Vector2.RIGHT
 var _pending_melee_range: float = 0.0
 
+# Iter 54 — combo counter. Tracks consecutive successful hits landed
+# by the hero (melee swing, dash strike, chain bolt, projectile,
+# kill explosion damage). Resets to 0 whenever the hero takes
+# damage. Pure cosmetic for now — drives a HUD label that scales
+# up at tier thresholds (10/25/50/100). Future iter could attach
+# damage multipliers or relic-driven bonuses.
+#
+# Why this matters: skill expression. A perfect dodge-and-counter
+# run racks up massive combos visibly; a sloppy run resets to 0
+# constantly. Without scoring stakes, the player still gets the
+# "going off" feel from racking the counter up.
+var _combo: int = 0
+
+signal combo_changed(new_value: int)
+
+func _bump_combo() -> void:
+	_combo += 1
+	combo_changed.emit(_combo)
+
+func _reset_combo() -> void:
+	if _combo > 0:
+		_combo = 0
+		combo_changed.emit(0)
+
 # Iter 31 — environmental speed multiplier, applied to walk velocity.
 # slow_zone hazards write to this (0.5 while hero inside) and reset to
 # 1.0 on exit. Stacks multiplicatively so two overlapping slows = 0.25.
@@ -761,6 +785,8 @@ func _resolve_melee_strike() -> void:
 				enemy.apply_slow(SLOW_DURATION)
 			hit_count += 1
 			hit_set[enemy.get_instance_id()] = true
+			# Iter 54 — combo: each melee hit landed counts.
+			_bump_combo()
 			_sword_hit_counter += 1
 			# Chain on every 4th hit. Find the nearest other enemy
 			# within CHAIN_RADIUS px of the source and zap it for 1.
@@ -816,6 +842,7 @@ func _try_chain_from(source: Node, hit_set: Dictionary) -> void:
 			dmg_chain = int(round(float(dmg_chain) * CRIT_DAMAGE_MUL))
 		best.take_hit(dmg_chain, is_crit_chain)
 		hit_set[best.get_instance_id()] = true
+		_bump_combo()   # iter 54 — chain bolts count toward combo
 
 func _start_blast() -> void:
 	var aim_world := get_global_mouse_position() - global_position
@@ -1002,6 +1029,10 @@ func take_damage(amount: int) -> void:
 	hp_changed.emit(hp)
 	hit_received.emit()
 	Events.hero_damaged.emit(global_position)
+	# Iter 54 — combo reset on damage. Resets ONLY if damage actually
+	# landed (not absorbed by iron_resolve / parry — those return
+	# earlier in take_damage). Reaching here means damage was dealt.
+	_reset_combo()
 	if hp <= 0:
 		_is_dying = true
 		_hurt_time = 0.0
@@ -1332,6 +1363,7 @@ func _apply_dash_pierce_tick() -> void:
 				dmg_dp = int(round(float(dmg_dp) * CRIT_DAMAGE_MUL))
 			enemy.take_hit(dmg_dp, is_crit_dp)
 			_dash_hit_set[id] = true
+			_bump_combo()   # iter 54 — dash pierce hits count toward combo
 		if enemy.has_method("apply_knockback"):
 			# Push enemies ALONG the dash direction so the player
 			# clears a corridor instead of leaving stunned enemies
@@ -1440,6 +1472,7 @@ func _resolve_dash_strike_hit() -> void:
 				dmg_for_this = int(round(float(dmg_for_this) * CRIT_DAMAGE_MUL))
 			enemy.take_hit(dmg_for_this, is_crit_ds)
 			hit_count += 1
+			_bump_combo()   # iter 54 — dash final-AoE hits count
 		# Iter 13 — heavy radial knockback on dash AoE. Each enemy gets
 		# pushed straight away from the hero, harder + longer than the
 		# normal melee knockback because the dash is a committed engage.

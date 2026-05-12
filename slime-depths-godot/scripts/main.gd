@@ -155,6 +155,12 @@ var theme_chip_strip: HBoxContainer = null
 # rather than spawning a new tooltip per chip.
 var _theme_tooltip: Control = null
 
+# Iter 54 — combo counter HUD. Built lazily on the first combo_changed
+# event. Anchored top-right under the WAVE label. Hidden when combo
+# <= 4 (no clutter for small streaks); appears + scales up at tier
+# thresholds (10/25/50/100).
+var _combo_label: Label = null
+
 # Iter 48 — per-theme resonance + ascendance descriptions for tooltip
 # content. Keyed to the theme strings used by GameState. Authored
 # inline here (vs in game_state.gd) since this is UI-facing content
@@ -326,6 +332,9 @@ func _ready() -> void:
 
 	hero.hp_changed.connect(_on_hero_hp_changed)
 	hero.hero_died.connect(_on_hero_died)
+	# Iter 54 — combo counter HUD label. Connected after the chip strip
+	# is built so the combo label can mount on the same UI canvas.
+	hero.combo_changed.connect(_on_hero_combo_changed)
 	# Iter 22 — death cinematic. hero_death_started fires alongside
 	# hero_died but lets us run the slow-mo / zoom / banner BEFORE
 	# the death_screen overlay takes over (which _on_hero_died
@@ -1728,6 +1737,62 @@ func _on_hero_hit_received() -> void:
 
 func _on_hero_hp_changed(new_hp: int) -> void:
 	_update_hp(new_hp)
+
+# Iter 54 — combo counter HUD updater. Lazy-builds the Label on first
+# call so the .tscn stays untouched. Visibility gates at combo >= 5 to
+# avoid HUD spam during short streaks. Color + scale ramp at tier
+# thresholds (10/25/50/100) — bigger + warmer as the streak grows.
+func _on_hero_combo_changed(new_value: int) -> void:
+	# Lazy-init: mount on the UI CanvasLayer top-right.
+	if _combo_label == null:
+		var ui: CanvasLayer = $UI as CanvasLayer
+		_combo_label = Label.new()
+		_combo_label.name = "ComboLabel"
+		# Top-right corner anchor, under the WAVE label.
+		_combo_label.anchor_left = 1.0
+		_combo_label.anchor_right = 1.0
+		_combo_label.offset_left = -240.0
+		_combo_label.offset_top = 92.0
+		_combo_label.offset_right = -16.0
+		_combo_label.offset_bottom = 132.0
+		_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_combo_label.add_theme_font_size_override("font_size", 22)
+		_combo_label.add_theme_color_override("font_color", Color(1, 0.92, 0.6, 1))
+		_combo_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		_combo_label.add_theme_constant_override("outline_size", 4)
+		_combo_label.pivot_offset = Vector2(112, 20)
+		ui.add_child(_combo_label)
+	# Below 5: hide (no clutter for normal play).
+	if new_value < 5:
+		_combo_label.visible = false
+		_combo_label.scale = Vector2.ONE
+		return
+	_combo_label.visible = true
+	_combo_label.text = "x%d COMBO" % new_value
+	# Tier ramp — bigger size + warmer hue as the streak grows.
+	# 5+ default; 10+ slightly warmer; 25+ orange-yellow; 50+ red-hot;
+	# 100+ peak crimson + larger.
+	var size: int = 22
+	var col: Color = Color(1, 0.92, 0.6, 1)
+	if new_value >= 100:
+		size = 38
+		col = Color(1.0, 0.45, 0.30, 1)
+	elif new_value >= 50:
+		size = 32
+		col = Color(1.0, 0.65, 0.30, 1)
+	elif new_value >= 25:
+		size = 28
+		col = Color(1.0, 0.82, 0.40, 1)
+	elif new_value >= 10:
+		size = 24
+		col = Color(1.0, 0.92, 0.50, 1)
+	_combo_label.add_theme_font_size_override("font_size", size)
+	_combo_label.add_theme_color_override("font_color", col)
+	# Bump pulse on tier crossings (10/25/50/100 exactly) — punch tween.
+	if new_value == 10 or new_value == 25 or new_value == 50 or new_value == 100:
+		var tw: Tween = create_tween().set_parallel(true)
+		tw.tween_property(_combo_label, "scale", Vector2(1.35, 1.35), 0.08)
+		tw.chain().tween_property(_combo_label, "scale", Vector2.ONE, 0.18)
 
 func _update_hp(v: int) -> void:
 	var hearts := ""
