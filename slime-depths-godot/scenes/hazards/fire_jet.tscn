@@ -1,9 +1,23 @@
-[gd_scene load_steps=3 format=3 uid="uid://b3firejet0001"]
+[gd_scene load_steps=5 format=3 uid="uid://b3firejet0001"]
 
 [ext_resource type="Script" path="res://scripts/fire_jet.gd" id="1_script"]
 
 [sub_resource type="RectangleShape2D" id="firejet_area"]
 size = Vector2(22, 80)
+
+; iter-85 ember color gradient — bright yellow-white core fades through
+; orange to deep red transparent. Tracks the "bottom = hot, top = cool"
+; gradient of a real flame's separating embers.
+[sub_resource type="Gradient" id="ember_grad"]
+offsets = PackedFloat32Array(0, 0.3, 0.8, 1)
+colors = PackedColorArray(1.0, 0.95, 0.55, 0.95, 1.0, 0.62, 0.18, 0.85, 0.8, 0.25, 0.05, 0.40, 0.4, 0.10, 0.0, 0.0)
+
+; iter-85 smoke gradient — translucent grey that fades in fast then
+; drifts out. Reads as "wisp visible mid-rise" without abrupt appear/
+; disappear at endpoints.
+[sub_resource type="Gradient" id="smoke_grad"]
+offsets = PackedFloat32Array(0, 0.15, 0.65, 1)
+colors = PackedColorArray(0.50, 0.45, 0.40, 0.0, 0.50, 0.45, 0.40, 0.55, 0.35, 0.32, 0.30, 0.30, 0.22, 0.20, 0.20, 0.0)
 
 ; Iter 31 fire-jet hazard. Cyclic vertical flame column. The Area2D
 ; matches the ON-phase column footprint so hero only takes damage
@@ -89,3 +103,59 @@ visible = false
 polygon = PackedVector2Array(-6, -2, -5, -28, -3, -55, -2, -76, 0, -88, 2, -76, 3, -55, 5, -28, 6, -2)
 color = Color(1.0, 0.9, 0.55, 0.95)
 visible = false
+
+; iter-85 — RisingEmbers. Orange-yellow ember sparks shooting upward
+; from the column base during ON. Hidden during OFF + telegraph.
+; Replaces the previous "scale-flickering rectangle reads as fire"
+; failure mode: real fire ALWAYS has bits of itself separating and
+; rising. ~12 particles at 0.7s lifetime gives a continuous spray
+; without dominating.
+[node name="RisingEmbers" type="CPUParticles2D" parent="."]
+position = Vector2(0, -8)
+emitting = false
+amount = 12
+lifetime = 0.7
+preprocess = 0.2
+explosiveness = 0.0
+randomness = 0.5
+emission_shape = 1
+emission_sphere_radius = 6.0
+direction = Vector2(0, -1)
+spread = 18.0
+initial_velocity_min = 50.0
+initial_velocity_max = 95.0
+gravity = Vector2(0, -28)
+damping_min = 0.2
+damping_max = 0.8
+scale_amount_min = 0.8
+scale_amount_max = 1.8
+color_ramp = SubResource("ember_grad")
+z_index = 1
+
+; iter-85 — SmokeWisps. Grey smoke rising from the TOP of the flame
+; column during ON. Cools the visual from "pure heat" to "fire AND
+; smoke" — sells "this is burning fuel" not "this is a glowing
+; rectangle." Sparser than embers (6 particles) since smoke reads at
+; bigger scale; longer lifetime so each wisp drifts up well past the
+; column tip.
+[node name="SmokeWisps" type="CPUParticles2D" parent="."]
+position = Vector2(0, -82)
+emitting = false
+amount = 6
+lifetime = 1.4
+preprocess = 0.4
+explosiveness = 0.0
+randomness = 0.6
+emission_shape = 1
+emission_sphere_radius = 4.0
+direction = Vector2(0, -1)
+spread = 30.0
+initial_velocity_min = 18.0
+initial_velocity_max = 36.0
+gravity = Vector2(0, -10)
+damping_min = 0.5
+damping_max = 1.0
+scale_amount_min = 1.6
+scale_amount_max = 3.4
+color_ramp = SubResource("smoke_grad")
+z_index = 1

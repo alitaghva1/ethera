@@ -269,6 +269,15 @@ func _apply_type_to_sprite_and_collision() -> void:
 	# would briefly paint the enemy at sprite_modulate before the fade
 	# overrides it — a 1-frame pop is visible at small framerates.
 	sprite.modulate = SPAWN_IN_START_COLOR
+	# iter-86 — spawn-burst companion FX. Small floor crack + rising
+	# wisps that fade in/out alongside the enemy's sprite fade-in.
+	# Reads as "the floor briefly opens, the enemy steps through" —
+	# decisively NOT a portal (iter-75-78 failed experiment). Spawned
+	# into the parent scene so the FX lives in world space and persists
+	# even if the enemy moves away before the wisps settle.
+	var parent_for_burst: Node = get_parent()
+	if parent_for_burst != null:
+		SpawnBurst.spawn(parent_for_burst, global_position)
 	# Collision shape — fresh CircleShape2D every spawn so we don't share
 	# a shape resource across all instances of one type (Godot would
 	# complain about resource mutation if we changed it later anyway).

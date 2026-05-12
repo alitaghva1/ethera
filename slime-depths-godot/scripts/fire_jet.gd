@@ -51,10 +51,38 @@ var _tick_timer: float = 0.0
 @onready var _warmup_col: Polygon2D = $WarmupColumn
 @onready var _ground_footprint: Polygon2D = $GroundFootprint
 @onready var _pre_fire_spark: Polygon2D = $PreFireSpark
+# iter-85 — particle emitters for rising embers + smoke. Toggled per
+# phase below: both OFF during IDLE/TELEGRAPH, both ON during the
+# damaging ON phase. The scene defines them with emitting=false; we
+# flip emitting at phase transitions in _update_visuals.
+@onready var _rising_embers: CPUParticles2D = $RisingEmbers
+@onready var _smoke_wisps: CPUParticles2D = $SmokeWisps
+# Base (non-wobbled) polygon points captured in _ready. _update_visuals
+# during ON writes a wobbled copy back into FlameBody.polygon /
+# FlameHalo.polygon — per-vertex sine wobble perpendicular to the
+# vertex's outward direction. Replaces the iter-31 scale.y flicker
+# which read as "rectangle stretching" not "fire licking upward."
+var _flame_body_base: PackedVector2Array
+var _flame_halo_base: PackedVector2Array
+
+# iter-85 wobble tuning. Amplitude clamped low enough that the flame's
+# outline still reads as "vertical column" not "blob," but high enough
+# that consecutive frames have visibly different silhouettes.
+const FLAME_WOBBLE_AMPLITUDE: float = 1.8     # max px offset per vertex
+const FLAME_WOBBLE_FREQ_HZ: float = 18.0      # how fast vertices wiggle
+# Per-vertex phase offset so adjacent vertices don't sync — gives the
+# flame its "licking" feel instead of a uniform breath.
+const FLAME_WOBBLE_PHASE_STRIDE: float = 1.37
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	# iter-85 — cache the base polygon shape for FlameBody + FlameHalo
+	# so the per-frame wobble can offset from a stable reference.
+	# Without this, wobble would accumulate across frames into a chaotic
+	# blob within a few seconds.
+	_flame_body_base = _flame_body.polygon.duplicate()
+	_flame_halo_base = _flame_halo.polygon.duplicate()
 	# Apply phase offset — a 0.5 phase means we start halfway through
 	# the OFF phase, so adjacent jets eg at phase 0.0 and 0.5 will
 	# erupt out-of-sync (the second jet fires ~0.9s after the first
@@ -110,20 +138,42 @@ func _update_visuals(_delta: float) -> void:
 		_flame_halo.visible = true
 		_warmup_col.visible = false
 		_pre_fire_spark.visible = false
-		# Quick flicker — scale jitter on the body so the flame
-		# reads as alive, not a static rectangle.
+		# iter-85 — per-vertex wobble + particle emitters. The flame
+		# now consists of:
+		#   • FlameBody/Halo polygons with per-vertex sine wobble
+		#     (each vertex offset perpendicular to its position vector,
+		#     unique phase per vertex via FLAME_WOBBLE_PHASE_STRIDE).
+		#   • RisingEmbers CPUParticles2D shooting up from the base.
+		#   • SmokeWisps CPUParticles2D drifting from the column top.
+		# Together they read as "burning fuel" — vertical column +
+		# escaping bits + smoke trail — not "scale-flickering rectangle."
+		_flame_body.polygon = _wobble_polygon(_flame_body_base)
+		_flame_halo.polygon = _wobble_polygon(_flame_halo_base)
+		# Subtle scale flicker on the halo kept as a secondary breath
+		# (just on the alpha/modulate, not on shape, since shape is
+		# now driven by the vertex wobble).
 		var on_t: float = (_t - PHASE_OFF_TIME) / PHASE_ON_TIME
-		var flicker: float = 0.92 + 0.08 * sin(on_t * 28.0)
-		_flame_body.scale = Vector2(1.0, flicker)
+		var halo_flicker: float = 0.85 + 0.15 * sin(on_t * 22.0)
+		_flame_halo.modulate.a = halo_flicker
+		# Particle emitters ON during the burn.
+		if _rising_embers != null and not _rising_embers.emitting:
+			_rising_embers.emitting = true
+		if _smoke_wisps != null and not _smoke_wisps.emitting:
+			_smoke_wisps.emitting = true
 		_base_ember.color = Color(1.0, 0.85, 0.45, 1.0)
-		# Ground footprint glows bright yellow-orange during ON — sells
-		# "this tile is on fire" even if hero is at the top of the column.
 		var fp_pulse: float = 0.85 + 0.15 * sin(on_t * 32.0)
 		_ground_footprint.color = Color(1.0, 0.62, 0.18, fp_pulse)
 		_ground_footprint.scale = Vector2(1.20, 1.20)
 	else:
 		_flame_body.visible = false
 		_flame_halo.visible = false
+		# iter-85 — turn off particle emitters when OFF/TELEGRAPH.
+		# CPUParticles2D.emitting = false stops NEW emissions but lets
+		# existing particles finish their lifetime — natural fade-out.
+		if _rising_embers != null and _rising_embers.emitting:
+			_rising_embers.emitting = false
+		if _smoke_wisps != null and _smoke_wisps.emitting:
+			_smoke_wisps.emitting = false
 		var time_until_on: float = PHASE_OFF_TIME - _t
 		if time_until_on <= TELEGRAPH_TIME:
 			# Telegraph: warmup column fades in + grows vertically
@@ -163,3 +213,31 @@ func _update_visuals(_delta: float) -> void:
 			# but quiet — the tile is unsafe but not actively threatening.
 			_ground_footprint.color = Color(0.45, 0.20, 0.10, 0.55)
 			_ground_footprint.scale = Vector2(1.0, 1.0)
+
+# iter-85 — per-vertex wobble helper. For each vertex in the base
+# polygon, computes an offset perpendicular to the vertex's
+# direction-from-origin (so the wobble pushes the silhouette IN/OUT,
+# not stretches it along its length). Sine-driven with per-vertex
+# phase stride so adjacent vertices wiggle independently — the
+# flame's outline reads as "licking" not "breathing as a single shape."
+func _wobble_polygon(base: PackedVector2Array) -> PackedVector2Array:
+	var out: PackedVector2Array = base.duplicate()
+	var time: float = _t
+	for i in range(out.size()):
+		var p: Vector2 = base[i]
+		# Vertex direction from local origin (0, 0). Skip near-origin
+		# vertices (the base of the flame); they should stay anchored
+		# so the column doesn't float off its source.
+		var dist: float = p.length()
+		if dist < 4.0:
+			continue
+		var dir: Vector2 = p / dist
+		# Perpendicular direction (rotate 90° CCW: (-y, x))
+		var perp: Vector2 = Vector2(-dir.y, dir.x)
+		# Wobble amount scales linearly with distance from base so the
+		# tip wiggles more than the base (real fire tongues are wider
+		# at the tip's tongue).
+		var amp: float = FLAME_WOBBLE_AMPLITUDE * (dist / 90.0)
+		var phase: float = time * FLAME_WOBBLE_FREQ_HZ + float(i) * FLAME_WOBBLE_PHASE_STRIDE
+		out[i] = p + perp * sin(phase) * amp
+	return out
