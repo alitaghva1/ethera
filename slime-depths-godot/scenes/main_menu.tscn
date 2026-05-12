@@ -402,48 +402,48 @@ mouse_filter = 2
 
 ; ── Title block (top of screen, above arch peak) ──────────────────────
 ; iter-92: moved from "above viewport center" to "top-center anchored
-; at y=60" so the title sits on the dark cavern roof, with the painted
+; at y=80" so the title sits on the dark cavern roof, with the painted
 ; arch stones framing it from below.
+;
+; iter-93: removed TitleHairline{Top,Bottom} — they crowded the title
+; against the subtitle for no visual payoff (the painted backdrop's own
+; archway frame supplies the "manuscript page" structure). More vertical
+; breathing room between title and tagline.
 [node name="TitleBlock" type="Control" parent="."]
 anchors_preset = 1
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -360.0
-offset_top = 60.0
+offset_top = 80.0
 offset_right = 360.0
-offset_bottom = 220.0
+offset_bottom = 260.0
 grow_horizontal = 2
-mouse_filter = 2
-
-; Thin gold hairline above the title.
-[node name="TitleHairlineTop" type="Panel" parent="TitleBlock"]
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -180.0
-offset_top = 0.0
-offset_right = 180.0
-offset_bottom = 1.0
-grow_horizontal = 2
-theme_override_styles/panel = SubResource("hairline_style")
 mouse_filter = 2
 
 ; Glow Label — outline "fat-copy" workaround for blur. Sits behind the
 ; foreground title so the warm aura reads as bloom.
+;
+; iter-93 BUG FIX: text MUST match the foreground Title verbatim. Prior
+; iter-92 had the glow saying "ETHERA" while the foreground said
+; "E T H E R A". Because the foreground letters are SPACED, the dimmer
+; orange glow letters were peeking through the gaps — visible in
+; playtest as a ghost duplicate of the title. Matching the text makes
+; the glow stack exactly under the foreground so it reads as bloom
+; rather than a typographic artifact.
 [node name="TitleGlow" type="Label" parent="TitleBlock"]
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -360.0
-offset_top = 18.0
+offset_top = 0.0
 offset_right = 360.0
-offset_bottom = 138.0
+offset_bottom = 120.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 110
 theme_override_colors/font_color = Color(0.92, 0.72, 0.36, 0.20)
 theme_override_colors/font_outline_color = Color(0.95, 0.55, 0.20, 0.32)
 theme_override_constants/outline_size = 18
-text = "ETHERA"
+text = "E T H E R A"
 horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
@@ -454,9 +454,9 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -360.0
-offset_top = 18.0
+offset_top = 0.0
 offset_right = 360.0
-offset_bottom = 138.0
+offset_bottom = 120.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 96
 theme_override_colors/font_color = Color(0.96, 0.88, 0.66, 1)
@@ -467,29 +467,21 @@ horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
 
-[node name="TitleHairlineBottom" type="Panel" parent="TitleBlock"]
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -180.0
-offset_top = 140.0
-offset_right = 180.0
-offset_bottom = 141.0
-grow_horizontal = 2
-theme_override_styles/panel = SubResource("hairline_style")
-mouse_filter = 2
-
 ; Tagline — diamond flourishes (◇) flank lowercase-spaced "beneath the ruin"
 ; per the JS reference (slime-depths/src/menuScreen.js line ~135).
 ; main_menu.gd animates its alpha in a slow 3s pulse (0.65 → 1.0 → 0.65).
+;
+; iter-93: bumped vertical offset 148 → 150 so the tagline sits a clean
+; 30 px below the title baseline (was crammed against the now-removed
+; bottom hairline).
 [node name="Subtitle" type="Label" parent="TitleBlock"]
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -360.0
-offset_top = 148.0
+offset_top = 150.0
 offset_right = 360.0
-offset_bottom = 188.0
+offset_bottom = 190.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 20
 theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.95)
@@ -568,14 +560,17 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "QUIT"
 
 ; ── Records panel (bottom-left, low-key) ──────────────────────────────
+; iter-93: shifted up by 18 px (offset_top -132 → -150, offset_bottom
+; -28 → -46) so the "last run" line has clean breathing room from the
+; viewport bottom edge. Was clipping low in playtest.
 [node name="StatsBlock" type="VBoxContainer" parent="."]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 48.0
-offset_top = -132.0
+offset_top = -150.0
 offset_right = 344.0
-offset_bottom = -28.0
+offset_bottom = -46.0
 theme_override_constants/separation = 2
 
 [node name="StatsTitle" type="Label" parent="StatsBlock"]
