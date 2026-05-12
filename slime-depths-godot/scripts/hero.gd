@@ -384,10 +384,17 @@ var _second_wind_used: bool = false
 # Iter 21 — chain_lightning trigger counter. Bumps on every successful
 # enemy hit in melee; every 4th attempts a chain to a nearby enemy.
 var _sword_hit_counter: int = 0
-# Iter 21 — phoenix_feather one-shot. Like _second_wind_used but
-# distinct so a player who owns BOTH gets to trigger both in the same
-# run (phoenix on the first lethal blow, second_wind on a later one).
-var _phoenix_feather_used: bool = false
+# iter-105: _phoenix_feather_used PROMOTED to GameState.phoenix_feather_used.
+# Pre-iter-105 this was a hero instance var, which reset every room when
+# main.tscn reloaded → relic effectively triggered once per ROOM (mythic-
+# tier output on a legendary stat-line). Now read/written through the
+# GameState autoload so it survives room transitions and resets only on
+# start_dungeon_run. Iter-101 honest-fix had updated the description to
+# "Each room" to match buggy behavior; iter-105 restores the original
+# "Once per run" intent + reverts the description. See GameState
+# `phoenix_feather_used` for the source-of-truth flag.
+# (second_wind keeps its per-room reset — that's its design role: the
+# per-encounter safety net, distinct from phoenix's premium one-shot.)
 # iron_resolve — first wound each ROOM is fully absorbed. Auto-resets
 # because every room transition reloads main.tscn and we get a fresh
 # hero instance with this flag back to false. No manual reset needed.
@@ -1695,8 +1702,10 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 	# beat + full heal). second_wind handles the SECOND lethal blow if
 	# phoenix already fired. Different flag per relic so they don't
 	# share state — a run with both gets two saves total.
-	if hp <= 0 and GameState.has_relic("phoenix_feather") and not _phoenix_feather_used:
-		_phoenix_feather_used = true
+	# iter-105: phoenix gate now reads/writes GameState.phoenix_feather_used
+	# (was hero-instance _phoenix_feather_used, which reset every room).
+	if hp <= 0 and GameState.has_relic("phoenix_feather") and not GameState.phoenix_feather_used:
+		GameState.phoenix_feather_used = true
 		var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
 		hp = cap
 		_iframes = HIT_IFRAMES * 2.5  # longer invuln than second_wind

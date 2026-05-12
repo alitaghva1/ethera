@@ -36,6 +36,21 @@ var best_run_kills := 0
 # player, defeating the multi-room difficulty curve.
 var persisted_hp: int = -1
 
+# iter-105: phoenix_feather true once-per-run gate. Iter-101 surfaced
+# that the relic's description claimed "Once per run" but the hero-
+# local flag reset every room (since hero re-instantiates on each room
+# load). Iter-101 honest-fix updated the DESCRIPTION to "Each room."
+# Iter-105 reverts to the original design — promotes the flag to
+# GameState so it survives room transitions. Reset on start_dungeon_run
+# so each new run gets a fresh revive.
+#
+# Why honor the original intent: at 6 rooms/floor, per-room revive
+# was mythic-tier output on a legendary stat-line. Six full-HP saves
+# trivializes any single-room threat. Phoenix should be a dramatic
+# one-shot save, not a per-encounter safety net (that's second_wind's
+# job — which now honestly says "Each room" in its description).
+var phoenix_feather_used: bool = false
+
 # ── Relic registry ───────────────────────────────────────────────────
 # Modifier keys read by hero.gd:
 #   sword_damage_bonus      (int)    added to LMB-swing damage
@@ -628,18 +643,17 @@ const RELIC_REGISTRY := {
 		"mods": {},   # triggered — see hero._resolve_melee_strike
 		"themes": ["storm"],
 	},
-	# iter-101 BUG FIX: description was "Once per run" — but the gating
-	# flag (_phoenix_feather_used in hero.gd:374) is a hero instance var
-	# that resets every time the hero re-instantiates on room transition.
-	# Same per-room reset mechanism iter-96 surfaced for second_wind.
-	# Description now matches actual behavior. Promoting the flag to
-	# GameState for a true once-per-run gate is deferred to a balance
-	# pass — at six rooms per floor, per-room revive is plainly
-	# mythic-tier on a legendary stat-line, but rebalancing the entire
-	# revive economy is bigger than a Sprint A scope.
+	# iter-105: phoenix_feather restored to original design intent —
+	# truly once per RUN, not per room. The gating flag was promoted
+	# from a hero-instance var (which reset on every room reload) to
+	# GameState.phoenix_feather_used, which only resets in
+	# start_dungeon_run. Description reverted to the honest "Once per
+	# run" claim. (Iter-101 had updated text to "Each room" to match
+	# the buggy behavior as a stop-gap; iter-105 fixes the BEHAVIOR
+	# instead.)
 	"phoenix_feather": {
 		"name": "PHOENIX FEATHER",
-		"description": "Each room, a killing blow restores you to FULL HP.",
+		"description": "Once per run, a killing blow restores you to FULL HP.",
 		"tier": "legendary",
 		"icon_path": "res://assets/icons/relic_phoenix.png",
 		"mods": {},   # triggered — see hero.take_damage (preempts second_wind)
@@ -953,6 +967,8 @@ func start_dungeon_run() -> void:
 	owned_relics = []
 	shrine_bonuses = {}            # iter 33 — clear stat grants from prior run
 	persisted_hp = -1
+	# iter-105: phoenix_feather true once-per-run reset.
+	phoenix_feather_used = false
 	# Reset HP carryover too — without this, a quit-mid-run could leave
 	# persisted_hp populated and the next run's hero would spawn at the
 	# saved HP value instead of full health.
