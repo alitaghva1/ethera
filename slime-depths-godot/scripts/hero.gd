@@ -696,6 +696,19 @@ func _roll_burn() -> bool:
 		return false
 	return randf() < chance
 
+# Iter 46 — slow roll. STORM's parallel to FLAME's burn. Reads
+# slow_chance_f modifier (default 0.0, range 0..1). On success, the
+# hit enemy gets a 1.4s slow (~45% speed reduction) via apply_slow.
+# Composes with chain_lightning + STORM ascendance: a chain bolt that
+# lands also rolls slow, so an arc-cannon build can paint a wave in
+# blue and burn-yellow simultaneously.
+const SLOW_DURATION: float = 1.4
+func _roll_slow() -> bool:
+	var chance: float = GameState.modifier_total_f("slow_chance_f", 0.0)
+	if chance <= 0.0:
+		return false
+	return randf() < chance
+
 func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
 	# Iter 21 — relic-driven modifiers:
@@ -740,6 +753,12 @@ func _resolve_melee_strike() -> void:
 			# CHANCE to trigger; the burn itself is a binary state.
 			if _roll_burn() and enemy.has_method("apply_burn"):
 				enemy.apply_burn(1.6)
+			# Iter 46 — slow roll per enemy hit. Same per-hit pattern
+			# as burn; the two can stack on a single enemy (burning AND
+			# slowed = orange-blue mixed tint, but burn tint wins per
+			# the enemy.gd guard).
+			if _roll_slow() and enemy.has_method("apply_slow"):
+				enemy.apply_slow(SLOW_DURATION)
 			hit_count += 1
 			hit_set[enemy.get_instance_id()] = true
 			_sword_hit_counter += 1
@@ -877,6 +896,11 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 	# the same burn duration since the proc fired once at cast).
 	if _roll_burn():
 		p.burn_duration = 1.6
+	# Iter 46 — slow roll. Same locked-at-spawn semantics as burn.
+	# A multi-shot piercing projectile with slow can paint a row of
+	# enemies blue, hampering their pursuit while STORM bolts arc.
+	if _roll_slow():
+		p.slow_duration = SLOW_DURATION
 	get_parent().add_child(p)
 
 # Iter 16 — room-clear / relic / pickup healing. Caps at the current

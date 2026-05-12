@@ -41,6 +41,10 @@ var is_crit: bool = false
 # burn_chance_f at spawn time, rolls, sets duration if successful.
 # Projectile applies the burn on hit alongside the damage.
 var burn_duration: float = 0.0
+# Iter 46 — slow duration locked at spawn (0 = no slow). Same locked-
+# at-fire pattern as burn. Projectile applies slow on every enemy it
+# touches (pierce + ricochet propagate the proc across all hits).
+var slow_duration: float = 0.0
 
 # Iter 41 — pierce + ricochet mechanics. Both are set by hero._start_blast
 # at cast time from STORM-themed relics ("piercing_quarrel" → pierce,
@@ -136,6 +140,11 @@ func _on_body_entered(body: Node) -> void:
 	# pierce/ricochet projectile burns every enemy it traverses.
 	if burn_duration > 0.0 and body.has_method("apply_burn"):
 		body.apply_burn(burn_duration)
+	# Iter 46 — projectile slow application. Same locked-at-spawn
+	# pattern as burn. Pierce/ricochet propagate the slow across all
+	# hits on the projectile's path.
+	if slow_duration > 0.0 and body.has_method("apply_slow"):
+		body.apply_slow(slow_duration)
 	# Iter 41 — pierce > ricochet > queue_free. Pierce takes priority
 	# because it's "keep going in a straight line" (no velocity change);
 	# ricochet is a fallback that REDIRECTS velocity when pierce is out.

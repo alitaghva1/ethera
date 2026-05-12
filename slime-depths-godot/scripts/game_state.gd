@@ -352,6 +352,31 @@ const RELIC_REGISTRY := {
 		},
 		"themes": ["storm", "shadow"],
 	},
+	# Iter 46 — STORM slow debuff. Rare entry tier. Paired with chain
+	# bolt / multi-shot / pierce / ricochet, slow stacks the chase
+	# tempo against the enemy: they move at 55% speed for 1.4s while
+	# you cleave + arc bolts. Anti-aggro positioning tool.
+	"frost_pulse": {
+		"name": "FROST PULSE",
+		"description": "+30% chance for hits to slow enemies (55% speed for 1.4s).",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_chain_lightning.png",
+		"mods": { "slow_chance_f": 0.30 },
+		"themes": ["storm"],
+	},
+	# Iter 46 — STORM slow legendary. Higher rate + an HP buffer so
+	# the player doesn't have to glass-cannon for the slow build. The
+	# +max HP tag also gates a bit of synergy with BLOOD (a player
+	# who picks this AND any 1 BLOOD relic gets BLOOD resonance from
+	# the dual benefits even though the relic itself is mono-themed).
+	"glacial_resonance": {
+		"name": "GLACIAL RESONANCE",
+		"description": "+50% chance for hits to slow enemies. +1 max HP. The cold seeps into your bones.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_echoing_strike.png",
+		"mods": { "slow_chance_f": 0.50, "max_hp_bonus": 1 },
+		"themes": ["storm"],
+	},
 	"heart_of_stone": {
 		"name": "HEART OF STONE",
 		"description": "+2 max HP.",

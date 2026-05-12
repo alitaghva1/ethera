@@ -126,6 +126,32 @@ func apply_burn(duration: float) -> void:
 	_burn_tick_timer = 0.0   # first tick fires within ~one frame
 	_burn_active = true
 
+# Iter 46 — slow status. Multiplies the enemy's effective move_speed by
+# _slow_multiplier (defaults 1.0 = no slow). Tick down _slow_remaining
+# each physics frame; when it hits 0, reset multiplier to 1.0.
+# Stronger slows OVERRIDE weaker ones (min comparison) so a Glacial
+# Resonance proc lands a 0.40 multiplier on top of a Frost Pulse's 0.60
+# rather than the weaker effect winning. Sprite gets a blue tint while
+# slowed so the player reads the status at a glance.
+const SLOW_DEFAULT_MULTIPLIER: float = 0.55   # 45% slow
+var _slow_remaining: float = 0.0
+var _slow_multiplier: float = 1.0
+
+func apply_slow(duration: float, multiplier: float = SLOW_DEFAULT_MULTIPLIER) -> void:
+	if _dying:
+		return
+	_slow_remaining = max(_slow_remaining, duration)
+	# Stronger slow wins (lower multiplier = more slowed).
+	_slow_multiplier = min(_slow_multiplier, multiplier)
+
+# Iter 46 — slow-aware speed read. Used by all behavior ticks instead
+# of direct enemy_type.move_speed accesses so slow applies uniformly
+# across chase / approach / kite / shoot behaviors.
+func _effective_move_speed() -> float:
+	if enemy_type == null:
+		return 0.0
+	return enemy_type.move_speed * _slow_multiplier
+
 func _ready() -> void:
 	add_to_group("enemies")
 	if enemy_type == null:
@@ -258,6 +284,20 @@ func _physics_process(delta: float) -> void:
 				return
 		if _burn_remaining <= 0.0:
 			_burn_active = false
+	# Iter 46 — slow tick. Drains _slow_remaining; resets multiplier
+	# when it expires. Applied via _effective_move_speed() in the
+	# behavior ticks; this block just manages the timer. Sprite gets
+	# a cyan-blue modulate while slowed so the status is visible.
+	if _slow_remaining > 0.0:
+		_slow_remaining -= delta
+		if _slow_remaining <= 0.0:
+			_slow_multiplier = 1.0
+			if sprite != null and not _burn_active:
+				sprite.modulate = Color(1, 1, 1, 1)
+		elif sprite != null and not _burn_active:
+			# Don't overwrite the burn tint (orange wins — burn is more
+			# damaging). Only paint blue when slowed-without-burning.
+			sprite.modulate = Color(0.7, 0.9, 1.2, 1.0)
 	# Iter 15 spawn-in fade. While ticking down, the enemy is locked,
 	# invulnerable (see take_hit guard), and modulating from red-ghost
 	# to full opacity. This is the visual telegraph window for
@@ -311,7 +351,7 @@ func _tick_chase_contact(delta: float) -> void:
 	var to_hero: Vector2 = _hero.global_position - global_position
 	var dist: float = to_hero.length()
 	if t.can_move() and dist > 1.0:
-		velocity = to_hero.normalized() * t.move_speed
+		velocity = to_hero.normalized() * _effective_move_speed()
 		sprite.play(&"walk")
 	else:
 		velocity = Vector2.ZERO
@@ -340,7 +380,7 @@ func _tick_telegraphed_melee(delta: float) -> void:
 		MeleeState.IDLE:
 			if dist > t.melee_reach * 0.85:
 				if t.can_move():
-					velocity = to_hero.normalized() * t.move_speed
+					velocity = to_hero.normalized() * _effective_move_speed()
 					sprite.play(&"walk")
 					move_and_slide()
 				else:
@@ -381,7 +421,7 @@ func _tick_telegraphed_melee(delta: float) -> void:
 				sprite.modulate = Color(1, 1, 1, 1)
 		MeleeState.COOLDOWN:
 			if t.can_move() and dist > t.melee_reach * 0.85:
-				velocity = to_hero.normalized() * t.move_speed
+				velocity = to_hero.normalized() * _effective_move_speed()
 				sprite.play(&"walk")
 				move_and_slide()
 			else:
@@ -407,11 +447,11 @@ func _tick_shoot(delta: float) -> void:
 	match _cast_state:
 		CastState.IDLE:
 			if t.can_move() and dist < t.min_dist:
-				velocity = -to_hero.normalized() * t.move_speed
+				velocity = -to_hero.normalized() * _effective_move_speed()
 				sprite.play(&"walk")
 				move_and_slide()
 			elif t.can_move() and dist > t.prefer_dist:
-				velocity = to_hero.normalized() * t.move_speed
+				velocity = to_hero.normalized() * _effective_move_speed()
 				sprite.play(&"walk")
 				move_and_slide()
 			else:
