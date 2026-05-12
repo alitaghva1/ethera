@@ -147,6 +147,10 @@ func _reposition_embers() -> void:
 		right_torch_embers.position = Vector2(vp_size.x * RIGHT_TORCH_REL_X, vp_size.y * TORCH_REL_Y)
 
 func _on_begin_pressed() -> void:
+	# iter-109: UI press cue. ui_press is a short downward chunk
+	# (420 → 260 Hz over 90 ms) so the player has audible confirmation
+	# the BEGIN actually committed before the scene change kicks in.
+	Audio.play_ui_cue("ui_press", -2.0)
 	# BEGIN goes straight into the dungeon. RunState.start_floor() seeds
 	# room 0 + resets HP/kills so main.tscn reads a fresh
 	# current_room_config at _ready().
@@ -155,12 +159,19 @@ func _on_begin_pressed() -> void:
 	get_tree().change_scene_to_file(DUNGEON_SCENE_PATH)
 
 func _on_settings_pressed() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
 	get_tree().change_scene_to_file(SETTINGS_SCENE_PATH)
 
 func _on_quit_pressed() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
 	get_tree().quit()
 
 func _on_button_hover_enter(button: Button) -> void:
+	# iter-109: UI hover cue. ui_hover is a soft high pip (880 Hz, 40 ms)
+	# played quietly so the menu doesn't audio-spam as the cursor brushes
+	# the button stack. Fires on focus_entered as well (wired in _ready),
+	# so keyboard navigation gets the same feedback.
+	Audio.play_ui_cue("ui_hover", -8.0)
 	_animate_scale(button, HOVER_SCALE)
 
 func _on_button_hover_exit(button: Button) -> void:

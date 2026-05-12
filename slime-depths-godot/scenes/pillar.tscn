@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://b3pillar12345"]
+[gd_scene load_steps=7 format=3 uid="uid://b3pillar12345"]
 
 [ext_resource type="Script" path="res://scripts/pillar.gd" id="1_script"]
 ; iter-84 immersion: soft ground shadow under each pillar base. Hero,
@@ -13,6 +13,17 @@
 ; not to make every doorway impassable.
 [sub_resource type="CircleShape2D" id="pillar_collision"]
 radius = 18.0
+
+; iter-109 light occluder polygon. Octagon approximating the 18-px
+; collision radius — gives the pillar a real shape for torch shadows
+; without paying for a perfect circle's vertex cost. The PointLight2D
+; nodes on every torch (with shadow_enabled = true in iter-109) cast
+; long pillar shadows across the floor when the torch sits behind
+; the column relative to the camera/hero — adds real depth perception
+; vs. the pre-iter-109 "flat-lit dim void" feel.
+[sub_resource type="OccluderPolygon2D" id="pillar_occluder"]
+closed = true
+polygon = PackedVector2Array(18, 0, 12.7, 12.7, 0, 18, -12.7, 12.7, -18, 0, -12.7, -12.7, 0, -18, 12.7, -12.7)
 
 ; ── Pillar warm glow texture — same radial-gradient pattern the torch
 ; uses, scaled down. Adds "this stone catches the firelight" warmth
@@ -101,3 +112,10 @@ range_z_max = 1024
 texture = SubResource("pillar_glow_tex")
 texture_scale = 0.5
 shadow_enabled = false
+
+; iter-109: LightOccluder2D. Cast shadows from external torch
+; PointLight2Ds across the floor when the torch is behind this pillar
+; relative to the camera. The OccluderPolygon2D approximates the
+; pillar's 18-px collision radius as an octagon (cheap, smooth-looking).
+[node name="LightOccluder2D" type="LightOccluder2D" parent="."]
+occluder = SubResource("pillar_occluder")

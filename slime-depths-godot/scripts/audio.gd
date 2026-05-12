@@ -129,6 +129,14 @@ const SOUND_CONFIGS := {
 	# in the top-right corner has audible feedback even when the player
 	# is also clearing a wave.
 	"achievement":   { "freq_start": 660.0, "freq_end":1320.0, "duration": 0.28, "wave": "sin",    "gain": 0.50, "decay_pow": 1.2 },
+	# iter-109: UI hover + press cues. Pre-iter-109 the menu was mute —
+	# no music, no hover/press audio. Hover is a soft high pip (40 ms);
+	# press is a short downward chunk (75 ms). Synthesized procedurally
+	# via the existing sine-sweep pipeline so no asset import needed.
+	# Played at low gain so the menu doesn't audio-spam when the cursor
+	# brushes a button row.
+	"ui_hover":      { "freq_start": 880.0, "freq_end": 880.0, "duration": 0.04, "wave": "sin",    "gain": 0.16, "decay_pow": 2.2 },
+	"ui_press":      { "freq_start": 420.0, "freq_end": 260.0, "duration": 0.09, "wave": "sin",    "gain": 0.28, "decay_pow": 1.8 },
 	# pickup_mythic — distinct from pickup_claimed (600→1280 Hz).
 	#   Mythic plays a TWO-PART sweep up: 400→900→1800 over 320 ms.
 	#   We approximate the two-part feel with a longer duration +
@@ -381,6 +389,13 @@ func _on_boss_phase_3(world_pos: Vector2) -> void:
 # with achievement unlocks (e.g. boss-clear → "first boss kill" pop).
 func _on_achievement_unlocked(_id: String) -> void:
 	_play("achievement", Vector2.ZERO, -2.0)
+
+# iter-109: public UI-cue helper. Wraps _play for non-positional UI
+# audio (button hover, press, etc.) so call sites read as intent
+# ("Audio.play_ui_cue('ui_press')") rather than poking the private
+# _play API with a Vector2.ZERO sentinel.
+func play_ui_cue(id: String, volume_db: float = -4.0) -> void:
+	_play(id, Vector2.ZERO, volume_db)
 
 # ── Public volume API (for settings screen) ───────────────────────────
 

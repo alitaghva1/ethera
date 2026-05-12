@@ -52,7 +52,16 @@ range_z_min = -1024
 range_z_max = 1024
 texture = SubResource("torch_grad_tex")
 texture_scale = 2.1
-shadow_enabled = false
+; iter-109: shadows on. Pillars (and any future LightOccluder2D-bearing
+; node) now cast a long pillar-shaped shadow across the floor when
+; this torch is behind them. The flat-darkened scene reads as a
+; volume-lit space instead of a flat 2D backdrop. shadow_color soft
+; black with ~80% alpha so the cast is visible but doesn't kill the
+; warm-stone palette under the rest of the torch's pool.
+shadow_enabled = true
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_filter = 1
+shadow_filter_smooth = 2.0
 
 [node name="Flame" type="Sprite2D" parent="."]
 texture = SubResource("flame_grad_tex")
