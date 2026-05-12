@@ -77,16 +77,25 @@ text = "♥ ♥ ♥"
 ; directly under the relic badges. StatusLabel now sits just below
 ; HPLabel (top=46-68) and the strip drops to top=74 so the bigger 40 px
 ; badges (was 28 px) have clean vertical room and don't fight the hint.
+; Iter 60 — widened to offset_right=1180 (was 800) so "Choose a relic ·
+; walk near and press [E]" + future longer status messages have room
+; without clipping. Explicit autowrap_mode=0 (OFF) + clip_text=false
+; defensively guard against any Godot 4 default change that would
+; let the label wrap into multiple lines + drop the bottom line off
+; the 22-px-tall bounds (which was the suspected clipping mode in the
+; user's screenshot showing "d press [E]" as the trailing fragment).
 [node name="StatusLabel" type="Label" parent="UI"]
 offset_left = 16.0
 offset_top = 46.0
-offset_right = 800.0
-offset_bottom = 68.0
+offset_right = 1180.0
+offset_bottom = 70.0
 theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 3
 text = "RUINS — LMB swing, SPACE dodge, R restart"
+autowrap_mode = 0
+clip_text = false
 
 ; Relic strip — horizontal row of 40×40 badges showing every relic
 ; the player owns. main.gd::_rebuild_relic_strip populates it on

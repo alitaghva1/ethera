@@ -73,6 +73,11 @@ var _hit_ids: Dictionary = {}
 @onready var glow: PointLight2D = $PointLight2D
 @onready var orb: Sprite2D = $Sprite2D
 var _life := LIFETIME
+# Iter 60 — projectile damage-scale factor cached for _physics_process to
+# apply to glow energy each frame (since _physics_process overwrites
+# glow.energy unconditionally per lifetime, the spawn-time energy
+# bump would be lost otherwise).
+var _dmg_scale: float = 1.0
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
@@ -97,11 +102,19 @@ func _ready() -> void:
 	# size over 50 ms. Combined with the muzzle flash spawned by
 	# hero.gd at the same world position, the launch reads as a
 	# punctuated "BANG fire" instead of "projectile fades in".
-	scale = Vector2(0.6, 0.6)
+	# Iter 60 — final scale also reflects DAMAGE so upgrades are
+	# visually legible. Base damage=1 → scale 1.0; each +1 damage adds
+	# +20% size, capped at +60% (so a damage-4+ projectile reads as
+	# ~"bullet 60% larger" without becoming so big it covers the room).
+	# This makes Arcane Pulse (+1) feel like an actual upgrade —
+	# previously the orb looked identical to a base blast.
+	# Also bake glow energy bump so the visual+light scale together.
+	_dmg_scale = 1.0 + clampf(float(damage - 1) * 0.20, 0.0, 0.60)
+	scale = Vector2(0.6, 0.6) * _dmg_scale
 	var tw: Tween = create_tween()
 	tw.set_trans(Tween.TRANS_QUAD)
 	tw.set_ease(Tween.EASE_OUT)
-	tw.tween_property(self, "scale", Vector2.ONE, 0.05)
+	tw.tween_property(self, "scale", Vector2(_dmg_scale, _dmg_scale), 0.05)
 
 func _physics_process(delta: float) -> void:
 	global_position += velocity * delta
@@ -109,7 +122,9 @@ func _physics_process(delta: float) -> void:
 	if _life <= 0.0:
 		queue_free()
 	if glow != null:
-		glow.energy = max(0.3, 1.6 * (_life / LIFETIME))
+		# Iter 60 — scale base energy by damage so a +damage build's
+		# projectiles glow brighter (matches their larger silhouette).
+		glow.energy = max(0.3, 1.6 * _dmg_scale * (_life / LIFETIME))
 
 func _on_body_entered(body: Node) -> void:
 	# Wall (or any non-target body) — always ends the projectile.

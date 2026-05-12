@@ -145,6 +145,17 @@ func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
 	var swing_sign: int = 1 if (_swing_counter % 2) == 0 else -1
 	if inst.has_method("setup"):
 		inst.call("setup", aim, swing_sign)
+	# Iter 60 — slash arc scales with sword damage bonus. Base damage=1
+	# → scale 1.0; +1 dmg = +18% size, capped at +54%. Same scaling
+	# pattern as projectile damage (slightly gentler so a maxed melee
+	# build's slash arc reads as bigger but doesn't dominate the room).
+	# Parallel to "if a blast is hitting twice as hard the bullet should
+	# be twice as large" — for sword swings, the slash visual reads
+	# proportionally bigger as iron_fang / wide_arc / executioner /
+	# theme bonuses stack damage.
+	var sword_dmg_bonus: int = GameState.modifier_total("sword_damage_bonus", 0)
+	var slash_scale: float = 1.0 + clampf(float(sword_dmg_bonus) * 0.18, 0.0, 0.54)
+	inst.scale = Vector2(slash_scale, slash_scale)
 	var parent: Node = get_tree().current_scene
 	if parent == null:
 		inst.queue_free()
