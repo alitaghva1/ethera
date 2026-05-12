@@ -75,24 +75,14 @@ func _initialize() -> void:
 
 	# ═══ TRACK B — CHARACTER ACTION FX PHASING ═══
 
-	# slash_arc: HiltFlash anticipation + GhostArc motion blur
-	var slash_src := FileAccess.get_file_as_string("res://scripts/slash_arc.gd")
-	if not (slash_src.contains("HiltFlash") or slash_src.contains("hilt_flash") or slash_src.contains("_hilt_flash")):
-		push_error("FAIL: slash_arc.gd missing HiltFlash anticipation node")
-		ok = false
-	elif not (slash_src.contains("GhostArc") or slash_src.contains("ghost_arc") or slash_src.contains("_ghost_arc")):
-		push_error("FAIL: slash_arc.gd missing GhostArc motion-blur layer")
-		ok = false
-	else:
-		print("OK slash_arc has HiltFlash + GhostArc")
-
-	# parry_pulse: PreFlash anticipation
-	var pp_src := FileAccess.get_file_as_string("res://scripts/parry_pulse.gd")
-	if not (pp_src.contains("PreFlash") or pp_src.contains("pre_flash") or pp_src.contains("_pre_flash")):
-		push_error("FAIL: parry_pulse.gd missing PreFlash anticipation")
-		ok = false
-	else:
-		print("OK parry_pulse has PreFlash anticipation")
+	# iter-87 SUPERSEDED: slash_arc.gd + parry_pulse.gd were deleted when
+	# the procedural FX were replaced by PixelLab-generated sprite sheets.
+	# The iter-73 phasing pass shipped its intended improvements; the FX
+	# evolved beyond those assertions. test_iter87 carries the new
+	# sprite-sheet checks. Originally:
+	#   slash_arc.gd had HiltFlash anticipation + GhostArc motion-blur (REMOVED)
+	#   parry_pulse.gd had PreFlash anticipation (REMOVED)
+	print("SKIP slash_arc + parry_pulse phasing (superseded by iter-87 sprite-sheet rewrite)")
 
 	# parry_shield: BeamFan additions
 	var ps_scene_src := FileAccess.get_file_as_string("res://scenes/fx/parry_shield.tscn")
@@ -110,16 +100,18 @@ func _initialize() -> void:
 	else:
 		print("OK dodge_dust has BackStreak/GroundStreak additions")
 
-	# dash_impact: radial ground cracks
+	# dash_impact: radial ground cracks. dash_impact.gd is RETAINED in
+	# iter-87 because hero.gd's SOUL_BURST_SCENE still reuses dash_impact
+	# as the soul-burst relic VFX. Its ground-crack content is preserved.
 	var di_src := FileAccess.get_file_as_string("res://scripts/dash_impact.gd")
 	if not (di_src.contains("crack") or di_src.contains("Crack")):
 		push_error("FAIL: dash_impact.gd missing ground cracks")
 		ok = false
 	else:
-		print("OK dash_impact has ground cracks")
+		print("OK dash_impact has ground cracks (SOUL_BURST reuse, post iter-87)")
 
-	# ═══ Scene loads still work ═══
-	for fx in ["slash_arc", "parry_pulse", "parry_shield", "dodge_dust", "dash_trail"]:
+	# ═══ Scene loads still work (iter-87: slash_arc + parry_pulse deleted) ═══
+	for fx in ["parry_shield", "dodge_dust", "dash_trail"]:
 		var scn := load("res://scenes/fx/%s.tscn" % fx)
 		if scn == null:
 			push_error("FAIL: %s.tscn failed to load" % fx)

@@ -73,73 +73,14 @@ func _initialize() -> void:
 	if ok:
 		print("OK THEME_RGB has all 5 themes")
 
-	# ═══ slash_arc.gd rewrite ═══
-
-	var slash_scene := load("res://scenes/fx/slash_arc.tscn")
-	if slash_scene == null:
-		push_error("FAIL: slash_arc.tscn failed to load")
-		ok = false
-		quit(1)
-		return
-	print("OK slash_arc.tscn loads")
-
-	# Runtime smoke — instantiate, add to a tree, exercise setup().
-	var host := Node2D.new()
-	root.add_child(host)
-	var slash: Node2D = slash_scene.instantiate() as Node2D
-	if slash == null:
-		push_error("FAIL: slash_arc instance is null")
-		ok = false
-	else:
-		host.add_child(slash)
-		if slash.has_method("setup"):
-			# Call with the composer's opts dict shape.
-			var test_opts: Dictionary = {
-				"width": 14.0, "trail_count": 3, "arc": PI * 0.75,
-				"dur": 0.20, "color": Color(1.0, 1.0, 1.0), "swing_sign": 1,
-				"reach": 60.0,
-			}
-			slash.call("setup", Vector2(1.0, 0.0), test_opts)
-			print("OK slash_arc.setup(aim, opts_dict) accepted")
-			# Backward-compat: int swing_sign form.
-			slash.call("setup", Vector2(1.0, 0.0), -1)
-			print("OK slash_arc.setup(aim, swing_sign_int) backward-compat works")
-		else:
-			push_error("FAIL: slash_arc missing setup()")
-			ok = false
-
-	var slash_src := FileAccess.get_file_as_string("res://scripts/slash_arc.gd")
-	# The rewrite is _draw()-based — must contain _draw() + draw_polyline.
-	if not slash_src.contains("func _draw"):
-		push_error("FAIL: slash_arc.gd missing _draw() (rewrite is _draw-based)")
-		ok = false
-	elif not slash_src.contains("draw_polyline"):
-		push_error("FAIL: slash_arc.gd doesn't use draw_polyline (multi-trail strokes)")
-		ok = false
-	else:
-		print("OK slash_arc.gd uses _draw + draw_polyline")
-
-	# Quadratic Bezier blade sampling — _sample_blade_curve helper.
-	if not slash_src.contains("_sample_blade_curve"):
-		push_error("FAIL: slash_arc.gd missing _sample_blade_curve helper")
-		ok = false
-	else:
-		print("OK slash_arc.gd has _sample_blade_curve (curved blade shape)")
-
-	# Old iter-75 @onready var bindings should be GONE (the architectural
-	# change — slash is now _draw-rendered, not scene-tree-children).
-	# "BladeRig" can still appear in the historical comment explaining
-	# what was removed — only @onready var references count.
-	if slash_src.contains("@onready var _blade") \
-		or slash_src.contains("@onready var _ghost") \
-		or slash_src.contains("@onready var _hilt_flash") \
-		or slash_src.contains("@onready var _outer_ring") \
-		or slash_src.contains("@onready var _tip_burst") \
-		or slash_src.contains("@onready var _hilt_sparkle"):
-		push_error("FAIL: slash_arc.gd still has iter-75 @onready var bindings")
-		ok = false
-	else:
-		print("OK slash_arc.gd has no leftover @onready var bindings")
+	# ═══ slash_arc.gd rewrite SUPERSEDED ═══
+	# iter-87 replaced the procedural _draw()-based slash_arc.gd with a
+	# PixelLab-generated sprite-sheet animation played via FxSprite.
+	# slash_arc.gd + slash_arc.tscn were DELETED. The intent of iter-81
+	# (composer-driven, build-scaling, theme-tinted slash) survives —
+	# scale + modulate now come from the composer and feed into FxSprite.
+	# See test_iter87.gd for the new sprite-sheet assertions.
+	print("SKIP slash_arc rewrite assertions (iter-87 sprite sheet supersedes)")
 
 	# ═══ Call sites wired ═══
 

@@ -1,0 +1,14 @@
+{
+  "name": "slash_arc",
+  "frames": 4,
+  "fps": 28,
+  "cell_size": 64,
+  "sheet_width": 256,
+  "sheet_height": 64,
+  "generated_at": "2026-05-12T17:56:52.231Z",
+  "prompt": {
+    "base_description": "curved cyan and white energy slash arc, glowing magical sweep with motion blur trail, painterly pixel art, dark fantasy game effect, viewed from above, isolated effect on transparent background",
+    "action": "energy arc sweeping from upper-left to lower-right across the frame, brightening at peak motion, then dissipating into faint sparks",
+    "negative": "character, person, warrior, knight, wizard, sword, weapon, hand, body, blood, gore, background, scenery, ground, floor"
+  }
+}

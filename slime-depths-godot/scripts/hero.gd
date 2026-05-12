@@ -49,7 +49,10 @@ const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
 const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
 const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
-const PARRY_PULSE_SCENE  = preload("res://scenes/fx/parry_pulse.tscn")
+# iter-87: PARRY_PULSE_SCENE removed. The procedural parry_pulse.gd is
+# replaced by a PixelLab-generated sprite-sheet animation (gold shield
+# burst with radial beams) via FxSprite.spawn("parry_burst", ...).
+const FxSpriteHelper = preload("res://scripts/fx_sprite.gd")
 const PARRY_SHIELD_SCENE = preload("res://scenes/fx/parry_shield.tscn")
 # soul_burst relic — reuse the dash impact shockwave scene tinted red.
 # Cheap visual until a dedicated VFX prefab lands.
@@ -2015,12 +2018,16 @@ func _start_parry() -> void:
 			shield.call("setup", aim)
 		scene_root.add_child(shield)
 		_parry_shield_ref = shield
-	# Activation flourish — small expanding ring at hero chest. Doubles
-	# as the "hit caught" effect at 1.6× scale via _on_parry_hit.
-	var pulse: Node2D = PARRY_PULSE_SCENE.instantiate() as Node2D
-	if pulse != null and scene_root != null:
-		pulse.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
-		scene_root.add_child(pulse)
+	# iter-87 — activation flourish is now a PixelLab parry_burst
+	# sprite sheet (golden shield with radial beams). 1.2× scale on
+	# activation; the larger catch scale is set separately in _on_parry_hit.
+	if scene_root != null:
+		FxSpriteHelper.spawn(
+			scene_root,
+			global_position + Vector2(0, VFX_HEIGHT_OFFSET),
+			"parry_burst",
+			{"scale": Vector2(1.2, 1.2), "z_index": 5}
+		)
 	# Reuse the dodge sound — both are short defensive flourishes. A
 	# dedicated parry chime can land in a later audio pass.
 	Events.hero_dodged.emit(global_position)
@@ -2047,16 +2054,17 @@ func _on_parry_hit() -> void:
 		if _parry_shield_ref.has_method("shatter"):
 			_parry_shield_ref.shatter()
 		_parry_shield_ref = null
-	# Larger ring pulse on the actual catch — distinguishes "I parried"
-	# from "I just tapped Q." Scale up the existing pulse by overlaying
-	# a second instance at the catch site.
-	var burst: Node2D = PARRY_PULSE_SCENE.instantiate() as Node2D
-	if burst != null:
-		burst.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
-		burst.scale = Vector2(1.6, 1.6)
-		var scene_root: Node = get_tree().current_scene
-		if scene_root != null:
-			scene_root.add_child(burst)
+	# iter-87 — bigger catch flourish via FxSprite at 1.9× scale.
+	# Distinguishes "I parried THAT" from "I just tapped Q" via the
+	# larger painted burst.
+	var scene_root_catch: Node = get_tree().current_scene
+	if scene_root_catch != null:
+		FxSpriteHelper.spawn(
+			scene_root_catch,
+			global_position + Vector2(0, VFX_HEIGHT_OFFSET),
+			"parry_burst",
+			{"scale": Vector2(1.9, 1.9), "z_index": 5}
+		)
 	# Re-fire the dodge sfx as the catch confirm. Two stacked plays
 	# read distinctly from a single tap.
 	Events.hero_dodged.emit(global_position)

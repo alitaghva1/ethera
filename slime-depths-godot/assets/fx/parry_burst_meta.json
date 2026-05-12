@@ -1,0 +1,14 @@
+{
+  "name": "parry_burst",
+  "frames": 4,
+  "fps": 18,
+  "cell_size": 64,
+  "sheet_width": 256,
+  "sheet_height": 64,
+  "generated_at": "2026-05-12T17:59:48.481Z",
+  "prompt": {
+    "base_description": "top-down view of a circular golden shield deflect flash with four radial energy beams firing outward in cardinal directions, holy magic, painterly pixel art, dark fantasy game effect, isolated on transparent background",
+    "action": "golden ring forming and brightening, four energy beams shooting outward in cardinal directions, then ring expands and everything fades",
+    "negative": "character, person, warrior, knight, hero, shield prop, weapon, body, ground, background, scenery"
+  }
+}
