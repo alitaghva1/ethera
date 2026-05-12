@@ -26,6 +26,7 @@ const SHRINE_SCENE: PackedScene   = preload("res://scenes/shrine.tscn")
 const LORE_STONE_SCENE: PackedScene = preload("res://scenes/lore_stone.tscn")
 const FAMILIAR_SCENE: PackedScene = preload("res://scenes/familiar.tscn")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
+const PAUSE_SCREEN_SCENE: PackedScene = preload("res://scenes/pause_screen.tscn")
 const RELIC_ICON_SCENE: PackedScene = preload("res://scenes/relic_icon.tscn")
 
 # Enemy roster — iter 14 data-driven shape. ONE shared enemy.tscn for
@@ -1309,8 +1310,45 @@ func _on_wave_cleared() -> void:
 		# becomes "done" once a pedestal is claimed; until then the
 		# door / run-complete is gated behind the pickup.
 		_heal_on_room_clear()
+		# Iter 71 — celebration burst. Two flavors:
+		#   BIG (variant B): floor-end (_room.is_last_room) OR any wave
+		#     in this room had an is_boss=true enemy type. Gold cascade
+		#     from screen top + 56px "FLOOR CLEAR" banner + radial wash.
+		#     ~3s — pure visual celebration; game continues underneath.
+		#   SMALL (variant A): every other combat clear. Subtle gold
+		#     sparkle + small "ROOM CLEAR" label, ~1.5s. Doesn't gate
+		#     progression — player can run through the door immediately.
+		# The burst is on its own CanvasLayer (layer=45, above the wave
+		# banner at 40, below death veil at 50) so it never fights the
+		# iter-18 entry banner (which only fires on _ready of a new
+		# room) or the iter-22 wave banner (different lifecycle).
+		var is_big: bool = false
+		if _room != null and _room.is_last_room:
+			is_big = true
+		elif _room != null and _room_had_boss():
+			is_big = true
+		FloorClearBurst.spawn(self, is_big)
 		status_label.text = "Choose a relic · walk near and press [E]"
 		_spawn_pedestal_offer(3)
+
+# Iter 71 — scan the active room's wave compositions for any enemy type
+# flagged is_boss=true. Used by _on_wave_cleared to pick the BIG vs
+# SMALL clear-burst flavor. Reads _room.waves (live config, not the
+# RoomConfig template — these are post-jitter / post-pool-pick) and
+# resolves each [type_id, count] pair against ENEMY_TYPES.
+# Returns true if ANY wave in the room contained a boss; false otherwise.
+func _room_had_boss() -> bool:
+	if _room == null:
+		return false
+	for wave in _waves:
+		for pair in wave:
+			if pair == null or pair.size() < 1:
+				continue
+			var type_id: String = str(pair[0])
+			var et: EnemyType = ENEMY_TYPES.get(type_id)
+			if et != null and et.is_boss:
+				return true
+	return false
 
 # Iter 55 — handle a boss summon request. Spawns the requested enemy
 # type at the given position. Mirrors _spawn_enemy_type but skips the
@@ -1639,6 +1677,13 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# 20 filter rejects them by default; explicit pass-through here.
 	if not GameState.RELIC_REGISTRY.has(_name) and not _name.begins_with("shrine_"):
 		return
+	# Iter 72 — spawn the celebratory pickup banner (480-px frame,
+	# theme-colored border, ~3.35 s standard / ~5.5 s + mythic wash).
+	# Shrine pickups aren't in RELIC_REGISTRY so the registry check
+	# below filters them out — PickupBanner is relic-only feedback.
+	# `self` (main) is the host per iter 61's test-mode-safe convention.
+	if GameState.RELIC_REGISTRY.has(_name):
+		PickupBanner.spawn(_name, self)
 	# Pedestal-side dismissal of siblings already happened in
 	# pedestal._claim; we only need to drive the room-end branch.
 	# Also refresh the HUD relic strip — a new relic just landed in
@@ -2227,6 +2272,18 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if _wave_state == WaveState.COMPLETE and _alive and ev is InputEventKey and ev.pressed:
 		if ev.physical_keycode == KEY_ESCAPE:
 			_on_death_to_menu()
+	# Mid-run ESC → mount pause overlay. Gated on _alive + not-complete
+	# so the existing death-screen and run-complete ESC paths above
+	# still win. Overlay is a CanvasLayer with PROCESS_MODE_WHEN_PAUSED;
+	# once mounted, it pauses the tree and owns ESC itself (its own
+	# _unhandled_input runs while ours is frozen). Multi-mount guard:
+	# bail if a pause overlay already lives on us.
+	if _alive and _wave_state != WaveState.COMPLETE and ev is InputEventKey and ev.pressed:
+		if ev.physical_keycode == KEY_ESCAPE and not has_node("PauseScreen"):
+			var pause: CanvasLayer = PAUSE_SCREEN_SCENE.instantiate()
+			pause.name = "PauseScreen"
+			add_child(pause)
+			get_viewport().set_input_as_handled()
 
 # Iter 22 — center-screen wave banner. Spawns a one-shot Label on a
 # fresh CanvasLayer above the HUD, tweens it through

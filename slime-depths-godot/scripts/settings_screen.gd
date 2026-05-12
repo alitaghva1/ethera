@@ -29,6 +29,12 @@ const TITLE_PULSE_HALF_DURATION := 1.4
 var _hover_tween: Tween
 var _title_tween: Tween
 
+# Iter-71 polish: when opened from the pause overlay rather than as a
+# top-level scene (e.g. from main menu or death screen), we are a child
+# Control of PauseScreen and need to queue_free on BACK instead of
+# scene-changing. PauseScreen sets this flag right after instantiation.
+var _is_overlay: bool = false
+
 func _ready() -> void:
 	# Seed the slider from the persisted GameState value BEFORE wiring
 	# the value_changed signal — otherwise this initial set fires the
@@ -82,6 +88,13 @@ func _on_volume_changed(value: float) -> void:
 	SaveSystem.save_now()
 
 func _on_back_pressed() -> void:
+	# Overlay mode (opened from PauseScreen): the dungeon scene is alive
+	# underneath and we just queue_free ourselves — the pause menu is
+	# restored to interactive state. Scene-mode: jump back to main menu
+	# as before.
+	if _is_overlay:
+		queue_free()
+		return
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 
 func _on_back_hover_enter() -> void:
@@ -99,9 +112,15 @@ func _animate_back_scale(target: float) -> void:
 	_hover_tween.tween_property(back_button, "scale", Vector2(target, target), HOVER_TWEEN_TIME)
 
 func _unhandled_input(ev: InputEvent) -> void:
-	# ESC also returns to the title — a common convention players try.
+	# ESC closes settings — back to title in scene mode, back to the
+	# pause overlay in overlay mode. _on_back_pressed branches on
+	# _is_overlay so the same handler covers both cases.
 	if ev is InputEventKey and ev.pressed and ev.physical_keycode == KEY_ESCAPE:
 		_on_back_pressed()
+		# Iter-71 polish: claim the event so PauseScreen's ESC handler
+		# (which would resume the whole game) doesn't fire.
+		if _is_overlay:
+			get_viewport().set_input_as_handled()
 
 func _recenter_title_pivots() -> void:
 	title.pivot_offset = title.size / 2.0
