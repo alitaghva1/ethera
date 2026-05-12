@@ -1,65 +1,80 @@
-[gd_scene load_steps=14 format=3 uid="uid://b3menu1234567"]
+[gd_scene load_steps=13 format=3 uid="uid://b3menu1234567"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/menu/menu_backdrop.jpg" id="2_backdrop"]
 
-; ── Main menu — dark-fantasy title screen ──────────────────────────────
-; Aesthetic anchored on the JS reference at slime-depths/src/menuScreen.js
-; (drifting amber embers, gold/cream palette over a near-black ground,
-; serif typography, ghost buttons, page-frame corner flourishes).
+; ── Main menu — dark-fantasy title screen, iter-92 rewrite ─────────────
+; Pre-iter-92 was hand-drawing atmosphere with a single faint Polygon2D
+; arch silhouette + gradients. The JS reference (slime-depths/src/menuScreen.js)
+; uses a PAINTED backdrop (assets/menu/menu_backdrop.jpg) — an archway
+; with two torch flames, stairs going down into mist, vines and moss
+; framing the stone. Iter-92 ports that backdrop into Godot and stages
+; every UI element against the painting's natural composition:
+;
+;   • TITLE — sits on the dark cavern roof, ABOVE the arch peak.
+;     Cream-gold typography reads cleanly against the near-black band
+;     between viewport top and the arch stones.
+;   • BUTTON STACK — nested inside the dark archway interior. Visually
+;     the doorway-into-the-dungeon. Ghost styling so the painted texture
+;     reads through the button fills.
+;   • RECORDS / VERSION — bottom corners on the foreground stone path,
+;     low-key cream-on-dark so persistent stats don't compete.
+;   • EMBERS — three CPUParticles2D emitters. One along the bottom mist
+;     line, two at each torch flame position so the painted torches read
+;     as alive. Per-particle warm-amber color ramp, additive blend.
+;   • CORNERS — four gold L-hairlines, manuscript page-frame motif.
 ;
 ; Layer order (back→front):
-;   1. BackgroundBase      — deep navy/charcoal solid (NOT pure black)
-;   2. BackgroundGradient  — soft vertical wash, slightly lighter at the
-;                            bottom (suggests ground glow from torches)
-;   3. ArchSilhouette      — faint cracked-arch keyart hint (single Polygon2D,
-;                            very low opacity, anchors composition)
-;   4. CenterVignette      — radial darkness behind the title block so the
-;                            gold typography lifts off the ground
-;   5. EmberParticles      — CPUParticles2D, ~70 amber embers drifting up
-;   6. Corner flourishes   — four gold L-hairlines (page-frame motif)
-;   7. Title / tagline / button stack
-;   8. Stats / version labels
-;
-; All colors are warm cream/gold over deep blue-black — no arcade tropes,
-; no pure white, no primary saturation. The button stack uses ghost styling
-; (transparent fill, dim gold border) that brightens on hover/focus.
+;   1. BackgroundBase      — deep black, peeks through any uncovered edge
+;   2. BackdropImage       — the painted archway (full-screen, covered)
+;   3. EdgeVignette        — thin rim darkening so backdrop blends to black
+;   4. TitleHalo           — warm radial glow behind title for breathing-light feel
+;   5. EmberParticles      — bottom-line embers drifting up across viewport
+;   6. LeftTorchEmbers     — small ember cluster at the left torch flame
+;   7. RightTorchEmbers    — small ember cluster at the right torch flame
+;   8. Corner flourishes   — four gold L-hairlines (page-frame motif)
+;   9. Title block         — title + tagline + flanking hairlines
+;  10. Button stack        — AWAKEN / SETTINGS / QUIT
+;  11. Stats + version     — bottom corners
 
-; ── Backgrounds ────────────────────────────────────────────────────────
-; Vertical gradient — deeper at the top (sky/void), warmer hint at the
-; bottom (suggesting torchlight pooling on stone). Both stops sit inside
-; the 0.06–0.10 RGB range from the design spec.
-[sub_resource type="Gradient" id="bg_vertical_gradient"]
-offsets = PackedFloat32Array(0, 0.65, 1)
-colors = PackedColorArray(0.035, 0.030, 0.055, 1, 0.055, 0.050, 0.075, 1, 0.085, 0.065, 0.060, 1)
+; ── Edge vignette (subtle rim darkening over backdrop) ─────────────────
+; The painted backdrop already vignettes to near-black at its corners,
+; but its native aspect (1376×768 ≈ 1.79) is slightly wider than 16:9
+; (1.78) so keep_aspect_covered crops ~1% top+bottom. This vignette
+; ensures the viewport edge ALWAYS reads pure black regardless of how
+; the painting cropped.
+[sub_resource type="Gradient" id="edge_vignette_gradient"]
+offsets = PackedFloat32Array(0, 0.6, 1)
+colors = PackedColorArray(0, 0, 0, 0, 0, 0, 0, 0.18, 0, 0, 0, 0.65)
 
-[sub_resource type="GradientTexture2D" id="bg_vertical_tex"]
-gradient = SubResource("bg_vertical_gradient")
-fill = 0
-fill_from = Vector2(0.5, 0)
-fill_to = Vector2(0.5, 1)
-width = 32
-height = 256
-
-; Center vignette — small pool of darkness behind the title so cream
-; typography reads cleanly against the ground gradient. Radial alpha,
-; centered on the title block (about 42% down the screen).
-[sub_resource type="Gradient" id="center_vignette_gradient"]
-offsets = PackedFloat32Array(0, 0.45, 1)
-colors = PackedColorArray(0, 0, 0, 0.42, 0, 0, 0, 0.22, 0, 0, 0, 0)
-
-[sub_resource type="GradientTexture2D" id="center_vignette_tex"]
-gradient = SubResource("center_vignette_gradient")
+[sub_resource type="GradientTexture2D" id="edge_vignette_tex"]
+gradient = SubResource("edge_vignette_gradient")
 fill = 1
-fill_from = Vector2(0.5, 0.42)
-fill_to = Vector2(1.0, 1.0)
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1.0, 0.95)
 width = 256
 height = 256
 
-; ── Ember particle texture ─────────────────────────────────────────────
-; Soft radial glow used as the particle texture — a small bright core
-; fading to transparent. CPUParticles2D modulates color/alpha per-particle,
-; so the texture itself is white→transparent and the warm amber comes from
-; the per-particle color ramp below.
+; ── Title halo (warm radial glow behind the title block) ───────────────
+; The JS reference layers a halo div behind the CTA with rgba(201,168,106,0.18).
+; This achieves the same effect — a soft amber pool that makes the gold
+; typography feel like it's emitting heat. Sits in the top-center area
+; ABOVE the arch peak (where the title lives).
+[sub_resource type="Gradient" id="title_halo_gradient"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.95, 0.72, 0.36, 0.22, 0.85, 0.50, 0.20, 0.08, 0.85, 0.50, 0.20, 0)
+
+[sub_resource type="GradientTexture2D" id="title_halo_tex"]
+gradient = SubResource("title_halo_gradient")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1.0, 0.5)
+width = 256
+height = 128
+
+; ── Ember particle texture (white→transparent core) ────────────────────
+; CPUParticles2D colors each particle via the warm-amber color_ramp
+; below, so the texture itself is monochrome.
 [sub_resource type="Gradient" id="ember_tex_gradient"]
 offsets = PackedFloat32Array(0, 0.35, 1)
 colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.55, 1, 1, 1, 0)
@@ -78,16 +93,14 @@ height = 32
 offsets = PackedFloat32Array(0, 0.35, 0.75, 1)
 colors = PackedColorArray(1.0, 0.92, 0.68, 1, 1.0, 0.72, 0.34, 0.92, 1.0, 0.45, 0.16, 0.6, 0.85, 0.30, 0.10, 0)
 
-; Per-particle scale curve: small start, grow slightly, then shrink to dust.
+; Per-particle scale curve: small start, peak, shrink to dust.
 [sub_resource type="Curve" id="ember_scale_curve"]
 _data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(0.35, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.2), 0.0, 0.0, 0, 0]
 point_count = 3
 
-; ── Button styles (ghost buttons — transparent fill, dim gold border) ──
-; Normal: almost-transparent fill (slight darken so text doesn't sit on
-; the gradient unaided), dim gold 1-2px border.
+; ── Button styles (ghost — transparent fill, dim gold border) ──────────
 [sub_resource type="StyleBoxFlat" id="button_normal"]
-bg_color = Color(0.04, 0.03, 0.05, 0.30)
+bg_color = Color(0.04, 0.03, 0.05, 0.38)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
@@ -102,9 +115,8 @@ content_margin_top = 14.0
 content_margin_right = 28.0
 content_margin_bottom = 14.0
 
-; Hover: brighter border, faint warm fill, soft outer glow.
 [sub_resource type="StyleBoxFlat" id="button_hover"]
-bg_color = Color(0.10, 0.07, 0.05, 0.45)
+bg_color = Color(0.10, 0.07, 0.05, 0.52)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
@@ -118,14 +130,12 @@ content_margin_left = 28.0
 content_margin_top = 14.0
 content_margin_right = 28.0
 content_margin_bottom = 14.0
-shadow_color = Color(0.96, 0.78, 0.40, 0.28)
+shadow_color = Color(0.96, 0.78, 0.40, 0.32)
 shadow_size = 10
 shadow_offset = Vector2(0, 0)
 
-; Focus: same look as hover but with a thin inner highlight so keyboard
-; users see exactly where they are.
 [sub_resource type="StyleBoxFlat" id="button_focus"]
-bg_color = Color(0.10, 0.07, 0.05, 0.45)
+bg_color = Color(0.10, 0.07, 0.05, 0.52)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
@@ -139,11 +149,10 @@ content_margin_left = 27.0
 content_margin_top = 13.0
 content_margin_right = 27.0
 content_margin_bottom = 13.0
-shadow_color = Color(0.96, 0.78, 0.40, 0.40)
+shadow_color = Color(0.96, 0.78, 0.40, 0.45)
 shadow_size = 12
 shadow_offset = Vector2(0, 0)
 
-; ── Hairline style (thin gold rules flanking the title) ────────────────
 [sub_resource type="StyleBoxFlat" id="hairline_style"]
 bg_color = Color(0.78, 0.65, 0.41, 0.6)
 border_width_left = 0
@@ -160,60 +169,65 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_script")
 
-; Deepest layer — solid navy/charcoal. Matches the rendering/default_clear_color
-; in project.godot so any uncovered edge blends seamlessly.
+; Deepest layer — pure-black fallback in case the backdrop fails to load.
 [node name="BackgroundBase" type="ColorRect" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.035, 0.030, 0.055, 1)
+color = Color(0, 0, 0, 1)
 
-; Vertical gradient — top→bottom wash. Darker sky, warmer ground glow.
-[node name="BackgroundGradient" type="TextureRect" parent="."]
+; iter-92: painted archway backdrop. stretch_mode = 6 (keep_aspect_covered)
+; fills the viewport entirely; the painting's 1376×768 aspect ≈ matches
+; the 1280×720 (~1.78) viewport so the crop is minimal (~1% at top/bottom).
+[node name="BackdropImage" type="TextureRect" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("bg_vertical_tex")
+texture = ExtResource("2_backdrop")
 expand_mode = 1
 stretch_mode = 6
 mouse_filter = 2
 
-; Cracked-arch silhouette — single faint Polygon2D suggesting a ruined
-; stone archway behind the title. Very low opacity (modulate alpha 0.06)
-; so it reads as form, not detail. Anchors the composition without
-; competing with the typography. Centered at 50% horizontal, sits in the
-; mid-band of the viewport behind the title block.
-[node name="ArchSilhouette" type="Polygon2D" parent="."]
-position = Vector2(640, 240)
-color = Color(0.10, 0.08, 0.13, 1)
-polygon = PackedVector2Array(-340, 320, -340, 60, -300, 60, -260, 30, -200, 5, -100, -25, 0, -32, 100, -25, 200, 5, 260, 30, 300, 60, 340, 60, 340, 320, 260, 320, 260, 90, 220, 60, 160, 35, 80, 15, 0, 8, -80, 15, -160, 35, -220, 60, -260, 90, -260, 320)
-modulate = Color(1, 1, 1, 0.55)
-mouse_filter = 2
-
-; Center vignette behind title — gives gold typography clean breathing room.
-[node name="CenterVignette" type="TextureRect" parent="."]
+; Edge vignette — thin radial fade ensuring viewport corners are pure black
+; regardless of how the backdrop cropped. Subtle (0.18 → 0.65 alpha) so
+; the painting's own internal vignette isn't doubled into mud.
+[node name="EdgeVignette" type="TextureRect" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("center_vignette_tex")
+texture = SubResource("edge_vignette_tex")
+expand_mode = 1
+stretch_mode = 6
+mouse_filter = 2
+
+; Title halo — warm amber radial behind the title block. Positioned to
+; pool over the dark cavern roof where the title lives. Pulses with the
+; title scale (main_menu.gd ties its modulate alpha to the title tween).
+[node name="TitleHalo" type="TextureRect" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -380.0
+offset_top = 20.0
+offset_right = 380.0
+offset_bottom = 280.0
+grow_horizontal = 2
+texture = SubResource("title_halo_tex")
 expand_mode = 1
 stretch_mode = 6
 mouse_filter = 2
 
 ; ── Atmospheric ember particles ───────────────────────────────────────
-; CPUParticles2D — warm amber sparks drifting upward from the bottom
-; of the viewport. Parameters tuned for an "alive but unobtrusive" feel:
-;   • amount 70, lifetime 6.0s → ~12/s spawn rate
-;   • emission line along the entire viewport width at y ≈ 720
-;   • upward velocity 18-44 px/s
-;   • slight horizontal drift via per-particle angular_velocity + tangential
-;   • additive blend so the warm core stacks softly over the dark ground
+; Bottom emission line — embers rise across the entire foreground.
+; Positioned by main_menu.gd at the viewport bottom edge.
 [node name="EmberParticles" type="CPUParticles2D" parent="."]
 position = Vector2(640, 760)
 amount = 70
@@ -239,9 +253,57 @@ scale_amount_curve = SubResource("ember_scale_curve")
 color_ramp = SubResource("ember_color_gradient")
 mouse_filter = 2
 
-; ── Corner flourishes — four thin gold L-marks (page-frame motif) ─────
-; Mirrors slime-depths' menuScreen.js corner flourishes. Subtle, just
-; enough to signal "manuscript page" rather than "arcade screen."
+; iter-92: Left torch ember emitter. Backdrop's left torch flame sits
+; at roughly (495, 365) in the 1280×720 viewport (when the painting is
+; covered-cropped). Small emitter sells the painted flame as alive.
+[node name="LeftTorchEmbers" type="CPUParticles2D" parent="."]
+position = Vector2(495, 365)
+amount = 22
+lifetime = 1.6
+preprocess = 1.0
+texture = SubResource("ember_texture")
+emission_shape = 1
+emission_rect_extents = Vector2(8, 4)
+gravity = Vector2(0, 0)
+initial_velocity_min = 22.0
+initial_velocity_max = 46.0
+direction = Vector2(0, -1)
+spread = 18.0
+tangential_accel_min = -10.0
+tangential_accel_max = 10.0
+damping_min = 0.6
+damping_max = 1.4
+scale_amount_min = 0.06
+scale_amount_max = 0.10
+scale_amount_curve = SubResource("ember_scale_curve")
+color_ramp = SubResource("ember_color_gradient")
+mouse_filter = 2
+
+; iter-92: Right torch ember emitter. Mirrored — same tuning at (785, 365).
+[node name="RightTorchEmbers" type="CPUParticles2D" parent="."]
+position = Vector2(785, 365)
+amount = 22
+lifetime = 1.6
+preprocess = 1.0
+texture = SubResource("ember_texture")
+emission_shape = 1
+emission_rect_extents = Vector2(8, 4)
+gravity = Vector2(0, 0)
+initial_velocity_min = 22.0
+initial_velocity_max = 46.0
+direction = Vector2(0, -1)
+spread = 18.0
+tangential_accel_min = -10.0
+tangential_accel_max = 10.0
+damping_min = 0.6
+damping_max = 1.4
+scale_amount_min = 0.06
+scale_amount_max = 0.10
+scale_amount_curve = SubResource("ember_scale_curve")
+color_ramp = SubResource("ember_color_gradient")
+mouse_filter = 2
+
+; ── Corner flourishes — manuscript page-frame motif ───────────────────
 [node name="CornerTL" type="Control" parent="."]
 anchors_preset = 0
 offset_left = 36.0
@@ -338,51 +400,45 @@ offset_bottom = 64.0
 theme_override_styles/panel = SubResource("hairline_style")
 mouse_filter = 2
 
-; ── Title block (title + tagline + flanking hairlines) ─────────────────
+; ── Title block (top of screen, above arch peak) ──────────────────────
+; iter-92: moved from "above viewport center" to "top-center anchored
+; at y=60" so the title sits on the dark cavern roof, with the painted
+; arch stones framing it from below.
 [node name="TitleBlock" type="Control" parent="."]
-anchors_preset = 8
+anchors_preset = 1
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -250.0
-offset_right = 320.0
-offset_bottom = -100.0
+offset_left = -360.0
+offset_top = 60.0
+offset_right = 360.0
+offset_bottom = 220.0
 grow_horizontal = 2
-grow_vertical = 2
 mouse_filter = 2
 
-; Thin gold hairline above the title — sits ~50 px above the cap line.
+; Thin gold hairline above the title.
 [node name="TitleHairlineTop" type="Panel" parent="TitleBlock"]
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
 offset_left = -180.0
-offset_top = -64.0
+offset_top = 0.0
 offset_right = 180.0
-offset_bottom = -63.0
+offset_bottom = 1.0
 grow_horizontal = 2
-grow_vertical = 2
 theme_override_styles/panel = SubResource("hairline_style")
 mouse_filter = 2
 
-; Glow Label — soft warm aura behind the title (Godot Labels don't blur
-; natively, so a fatter outline copy at lower opacity is the workaround).
+; Glow Label — outline "fat-copy" workaround for blur. Sits behind the
+; foreground title so the warm aura reads as bloom.
 [node name="TitleGlow" type="Label" parent="TitleBlock"]
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -60.0
-offset_right = 320.0
-offset_bottom = 60.0
+offset_left = -360.0
+offset_top = 18.0
+offset_right = 360.0
+offset_bottom = 138.0
 grow_horizontal = 2
-grow_vertical = 2
 theme_override_font_sizes/font_size = 110
 theme_override_colors/font_color = Color(0.92, 0.72, 0.36, 0.20)
 theme_override_colors/font_outline_color = Color(0.95, 0.55, 0.20, 0.32)
@@ -392,73 +448,62 @@ horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
 
-; Foreground title — warm cream/gold, wide letter-spacing implied via
-; the spaced characters in the text string itself (Godot Labels don't
-; expose letter_spacing on default fonts; manual spacing keeps the
-; "grandeur" feel without requiring a custom theme resource).
+; Foreground title — warm cream-gold, manual letter-spacing via spaced text.
 [node name="Title" type="Label" parent="TitleBlock"]
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -60.0
-offset_right = 320.0
-offset_bottom = 60.0
+offset_left = -360.0
+offset_top = 18.0
+offset_right = 360.0
+offset_bottom = 138.0
 grow_horizontal = 2
-grow_vertical = 2
 theme_override_font_sizes/font_size = 96
-theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 5
+theme_override_colors/font_color = Color(0.96, 0.88, 0.66, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
 text = "E T H E R A"
 horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
 
 [node name="TitleHairlineBottom" type="Panel" parent="TitleBlock"]
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
 offset_left = -180.0
-offset_top = 64.0
+offset_top = 140.0
 offset_right = 180.0
-offset_bottom = 65.0
+offset_bottom = 141.0
 grow_horizontal = 2
-grow_vertical = 2
 theme_override_styles/panel = SubResource("hairline_style")
 mouse_filter = 2
 
-; Tagline — italic feel via spaced lowercase letters. Dim cream so it
-; sits softly below the title. main_menu.gd animates its alpha in a
-; slow 3s pulse (0.7 → 1.0 → 0.7).
+; Tagline — diamond flourishes (◇) flank lowercase-spaced "beneath the ruin"
+; per the JS reference (slime-depths/src/menuScreen.js line ~135).
+; main_menu.gd animates its alpha in a slow 3s pulse (0.65 → 1.0 → 0.65).
 [node name="Subtitle" type="Label" parent="TitleBlock"]
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = 84.0
-offset_right = 320.0
-offset_bottom = 124.0
+offset_left = -360.0
+offset_top = 148.0
+offset_right = 360.0
+offset_bottom = 188.0
 grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.70, 0.66, 0.55, 0.92)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
 theme_override_constants/outline_size = 3
-text = "b e n e a t h   t h e   r u i n"
+text = "◇   b e n e a t h   t h e   r u i n   ◇"
 horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
 
 ; ── Button stack ──────────────────────────────────────────────────────
-; Three ghost buttons: BEGIN, SETTINGS, QUIT. Stacked centered, anchored
-; to the viewport center so the layout scales with any 16:9 resolution.
+; iter-92: stack nests INSIDE the painted archway interior so the buttons
+; visually open into the dungeon. Anchored to viewport center, shifted
+; down ~60 px so the top button sits at the arch's interior y ≈ 350.
 [node name="CenterStack" type="VBoxContainer" parent="."]
 anchors_preset = 8
 anchor_left = 0.5
@@ -466,28 +511,31 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -160.0
-offset_top = 20.0
+offset_top = -30.0
 offset_right = 160.0
-offset_bottom = 280.0
+offset_bottom = 240.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 16
 alignment = 1
 
+; iter-92: BEGIN → AWAKEN to match the JS reference. "Awaken" carries
+; the dark-fantasy revival feel ("you are roused from the slumber...")
+; that "BEGIN" reads as flat-arcade.
 [node name="BeginButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(320, 52)
+custom_minimum_size = Vector2(320, 56)
 focus_mode = 2
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.96, 0.88, 0.66, 1)
 theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 3
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
 theme_override_styles/focus = SubResource("button_focus")
-text = "BEGIN"
+text = "AWAKEN"
 
 [node name="SettingsButton" type="Button" parent="CenterStack"]
 custom_minimum_size = Vector2(320, 52)
@@ -496,8 +544,8 @@ theme_override_font_sizes/font_size = 20
 theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
 theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 3
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
@@ -511,18 +559,15 @@ theme_override_font_sizes/font_size = 20
 theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
 theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
 theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 3
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
 theme_override_styles/focus = SubResource("button_focus")
 text = "QUIT"
 
-; ── Records panel — bottom-left, low-key cream-on-dark ─────────────────
-; Persistent stats populated by main_menu.gd from GameState. Carries the
-; player's accumulated history between sessions without competing with
-; the title for attention.
+; ── Records panel (bottom-left, low-key) ──────────────────────────────
 [node name="StatsBlock" type="VBoxContainer" parent="."]
 anchors_preset = 2
 anchor_top = 1.0
@@ -535,40 +580,39 @@ theme_override_constants/separation = 2
 
 [node name="StatsTitle" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.78, 0.66, 0.42, 0.78)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
-theme_override_constants/outline_size = 2
+theme_override_colors/font_color = Color(0.82, 0.68, 0.42, 0.85)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 text = "RECORDS"
 
 [node name="StatsRuns" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.78)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
-theme_override_constants/outline_size = 2
+theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 text = "runs ··············· 0"
 
 [node name="StatsBestRun" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.78)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
-theme_override_constants/outline_size = 2
+theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 text = "best run kills ······ 0"
 
 [node name="StatsLifetimeKills" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.92, 0.86, 0.74, 0.78)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
-theme_override_constants/outline_size = 2
+theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 text = "lifetime kills ······· 0"
 
 [node name="StatsLastRun" type="Label" parent="StatsBlock"]
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.55)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
-theme_override_constants/outline_size = 2
+theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.65)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 text = ""
 
-; Bottom-right version stamp — quiet so it doesn't compete.
 [node name="VersionLabel" type="Label" parent="."]
 anchors_preset = 3
 anchor_left = 1.0
@@ -582,6 +626,8 @@ offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
 theme_override_font_sizes/font_size = 11
-theme_override_colors/font_color = Color(0.55, 0.48, 0.36, 0.55)
+theme_override_colors/font_color = Color(0.65, 0.55, 0.40, 0.75)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
 text = "ETHERA · godot port · v0.6"
 horizontal_alignment = 2

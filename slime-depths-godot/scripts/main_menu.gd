@@ -43,7 +43,10 @@ const SUBTITLE_PULSE_HALF_DURATION := 1.5
 @onready var title: Label = $TitleBlock/Title
 @onready var title_glow: Label = $TitleBlock/TitleGlow
 @onready var subtitle: Label = $TitleBlock/Subtitle
+@onready var title_halo: TextureRect = $TitleHalo
 @onready var ember_particles: CPUParticles2D = $EmberParticles
+@onready var left_torch_embers: CPUParticles2D = $LeftTorchEmbers
+@onready var right_torch_embers: CPUParticles2D = $RightTorchEmbers
 # Persistent stats panel (bottom-left). Populated from GameState at _ready;
 # SaveSystem already round-trips the underlying fields so a player returning
 # between sessions sees their accumulated runs / kills / best run carry over.
@@ -89,9 +92,10 @@ func _ready() -> void:
 	_start_subtitle_pulse()
 
 	# Position the ember emission line along the actual viewport bottom +
-	# stretch its emission_rect_extents to the viewport width. The scene's
-	# baked values target 1280×720, but the viewport may scale — re-pin
-	# here and on resize so embers always emit from the bottom edge.
+	# stretch its emission_rect_extents to the viewport width. iter-92
+	# also re-pins the two torch ember emitters to track where the painted
+	# torches land after keep_aspect_covered scaling. The scene's baked
+	# positions target 1280×720; resize handler rescales them.
 	_reposition_embers()
 	get_viewport().size_changed.connect(_reposition_embers)
 
@@ -124,10 +128,23 @@ func _populate_stats() -> void:
 # the viewport so the first spawn frame isn't visible. The preprocess on the
 # CPUParticles2D node already advances each particle 3s into its lifetime,
 # so the field is full from frame 0.
+#
+# iter-92: also re-pin the two torch emitters to track the painted torches
+# under keep_aspect_covered scaling. The torches sit at roughly 38.7% and
+# 61.3% of the viewport width, at ~50.7% of the height in the 1280×720
+# native composition. We keep those percentages so a resized viewport still
+# centers the embers on the painted flames.
+const LEFT_TORCH_REL_X: float = 0.387
+const RIGHT_TORCH_REL_X: float = 0.613
+const TORCH_REL_Y: float = 0.507
 func _reposition_embers() -> void:
 	var vp_size: Vector2 = get_viewport_rect().size
 	ember_particles.position = Vector2(vp_size.x * 0.5, vp_size.y + 40.0)
 	ember_particles.emission_rect_extents = Vector2(vp_size.x * 0.5 + 60.0, 4.0)
+	if left_torch_embers != null:
+		left_torch_embers.position = Vector2(vp_size.x * LEFT_TORCH_REL_X, vp_size.y * TORCH_REL_Y)
+	if right_torch_embers != null:
+		right_torch_embers.position = Vector2(vp_size.x * RIGHT_TORCH_REL_X, vp_size.y * TORCH_REL_Y)
 
 func _on_begin_pressed() -> void:
 	# BEGIN goes straight into the dungeon. RunState.start_floor() seeds
@@ -198,6 +215,16 @@ func _apply_title_scale(s: float) -> void:
 	# Glow breathes a hair wider than the main title so the bloom feels
 	# softly anchored without "clicking" alignment-wise.
 	title_glow.scale = v * 1.02
+	# iter-92: title halo modulate.a tracks the breath. Maps the scale
+	# range (TITLE_PULSE_MIN..TITLE_PULSE_MAX) onto a (0.78..1.0) alpha
+	# window so the warm pool behind the title swells and dims with the
+	# typography rather than just sitting flat.
+	if title_halo != null:
+		var t: float = (s - TITLE_PULSE_MIN) / (TITLE_PULSE_MAX - TITLE_PULSE_MIN)
+		var a: float = lerp(0.78, 1.0, clampf(t, 0.0, 1.0))
+		var c: Color = title_halo.modulate
+		c.a = a
+		title_halo.modulate = c
 
 func _apply_subtitle_alpha(a: float) -> void:
 	var c: Color = subtitle.modulate
