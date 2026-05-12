@@ -335,6 +335,8 @@ func _physics_process(delta: float) -> void:
 			_tick_shoot(delta)
 		"stationary_shoot":
 			_tick_stationary_shoot(delta)
+		"bomber":
+			_tick_bomber(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -362,6 +364,109 @@ func _tick_chase_contact(delta: float) -> void:
 		_contact_cd = t.contact_cooldown
 		if _hero.has_method("take_damage"):
 			_hero.take_damage(t.contact_damage)
+
+# ── Behavior: bomber ──────────────────────────────────────────────────
+# Iter 47 — kamikaze enemy. Charges hero at high speed. When close
+# enough, starts a brief windup (red flash + scale pulse), then
+# self-detonates for AoE damage to hero. Always dies on detonation
+# regardless of HP. Used by ember_bomber and future kamikaze variants.
+#
+# State machine:
+#   APPROACH   — chase hero at move_speed. When dist < BOMBER_PRIME_DIST,
+#                transition to PRIMING.
+#   PRIMING    — windup tint + scale pulse for BOMBER_PRIME_TIME. Locked
+#                in place; if hero leaves the radius, abort + return
+#                to APPROACH. If timer expires while hero in radius,
+#                detonate.
+#   DETONATING — apply AoE damage + spawn VFX + queue _die.
+#
+# Reuses contact_range (RoomConfig prime distance), contact_damage
+# (detonation damage), contact_cooldown (re-arm interval) from
+# EnemyType so authoring stays in the existing schema.
+enum BomberState { APPROACH, PRIMING, DETONATING }
+const BOMBER_PRIME_TIME: float = 0.45
+const BOMBER_EXPLODE_RADIUS: float = 48.0
+var _bomber_state: BomberState = BomberState.APPROACH
+var _bomber_prime_timer: float = 0.0
+
+func _tick_bomber(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	match _bomber_state:
+		BomberState.APPROACH:
+			if t.can_move() and dist > 1.0:
+				velocity = to_hero.normalized() * _effective_move_speed()
+				sprite.play(&"walk")
+			else:
+				velocity = Vector2.ZERO
+				sprite.play(&"idle")
+			sprite.flip_h = to_hero.x < 0
+			move_and_slide()
+			# Transition to PRIMING when in contact range.
+			if dist < t.contact_range:
+				_bomber_state = BomberState.PRIMING
+				_bomber_prime_timer = BOMBER_PRIME_TIME
+				if sprite != null:
+					# Red pulse — telegraph the impending detonation.
+					sprite.modulate = Color(1.6, 0.7, 0.6, 1.0)
+		BomberState.PRIMING:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			_bomber_prime_timer -= delta
+			# Scale pulse — sin wave so the bomber visibly grows
+			# closer to detonation.
+			if sprite != null:
+				var pulse_t: float = 1.0 - (_bomber_prime_timer / BOMBER_PRIME_TIME)
+				var s: float = 1.0 + 0.18 * pulse_t
+				sprite.scale = Vector2(s, s)
+				sprite.modulate = Color(
+					1.0 + 0.6 * pulse_t,
+					0.7 - 0.2 * pulse_t,
+					0.5,
+					1.0,
+				)
+			# Abort priming if hero escapes — gives the player a
+			# real "dodge the bomb" beat. Distance check uses
+			# contact_range * 1.6 as the abort threshold (slight
+			# hysteresis so frame-perfect edges don't oscillate).
+			if dist > t.contact_range * 1.6:
+				_bomber_state = BomberState.APPROACH
+				if sprite != null:
+					sprite.modulate = Color(1, 1, 1, 1)
+					sprite.scale = Vector2.ONE
+				return
+			if _bomber_prime_timer <= 0.0:
+				_bomber_state = BomberState.DETONATING
+				_bomber_detonate()
+		BomberState.DETONATING:
+			pass   # _bomber_detonate triggers _die; rest of state is moot
+
+func _bomber_detonate() -> void:
+	# Hero damage if within blast radius. Damage = contact_damage
+	# (authored on the EnemyType — bombers typically have 2 contact dmg).
+	if _hero != null and is_instance_valid(_hero):
+		var d: float = _hero.global_position.distance_to(global_position)
+		if d < BOMBER_EXPLODE_RADIUS:
+			if _hero.has_method("take_damage"):
+				_hero.take_damage(enemy_type.contact_damage)
+	# Spawn an orange-red VFX. Reuse damage_number for a "BOOM" floater
+	# since dash_impact is hero-owned and shouldn't be preloaded here.
+	# A custom bomber blast scene could land later.
+	var dn: DamageNumber = DamageNumber.spawn(
+		global_position,
+		"BOOM",
+		Color(1.0, 0.45, 0.20),
+	)
+	var parent_b: Node = get_parent()
+	if parent_b != null:
+		parent_b.add_child(dn)
+	# Bombers always die on detonate — even if hero dodged.
+	_die()
 
 # ── Behavior: telegraphed_melee ───────────────────────────────────────
 # Approach → stop + windup-tint → swing in cone → cooldown. Damage

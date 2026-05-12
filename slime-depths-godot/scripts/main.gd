@@ -47,6 +47,10 @@ const ENEMY_TYPES := {
 	"priest":            preload("res://scenes/enemies/priest.tres"),
 	"dreadmage":         preload("res://scenes/enemies/dreadmage.tres"),
 	"bonecap":           preload("res://scenes/enemies/bonecap.tres"),
+	# Iter 47 — bomber kamikaze enemy. Uses the new "bomber" behavior
+	# in enemy.gd — charges hero, primes 0.45s with red pulse, then
+	# explodes for AoE damage and self-destructs.
+	"ember_bomber":      preload("res://scenes/enemies/ember_bomber.tres"),
 	# Iter 17 — boss type. Spawned alone in room 3's final wave; the
 	# is_boss flag drives the HP-bar UI and the boss tracking in
 	# _process. Wave-clear detection treats it like any other enemy.
