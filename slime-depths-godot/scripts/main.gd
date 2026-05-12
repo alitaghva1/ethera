@@ -648,6 +648,72 @@ func _scatter_decor(count: int) -> void:
 			continue
 		_spawn_decor_at(pos)
 		placed += 1
+	# Iter 52 — second pass: larger "rubble pile" clusters scattered
+	# around the room. Each pile is 4 decor pieces clustered within
+	# ~14 px so they read as a single debris pile rather than 4 stray
+	# stains. Spawn ~5 piles per room (independent of decor_density)
+	# so even low-decor rooms get the heavier visual anchors.
+	# Same collision rules as the single-piece scatter — avoid hero
+	# spawn / enemy spawn / pillar / chest / center.
+	var pile_count: int = 5
+	var piles_placed: int = 0
+	var pile_attempts: int = 0
+	while piles_placed < pile_count and pile_attempts < pile_count * 20:
+		pile_attempts += 1
+		var pos := Vector2(
+			randf_range(play_left, play_right),
+			randf_range(play_top, play_bottom),
+		)
+		if pos.distance_to(_room.hero_spawn) < min_dist_spawn:
+			continue
+		if pos.distance_to(center) < min_dist_center + 30.0:   # extra margin for the bigger pile silhouette
+			continue
+		var bad_p := false
+		for sp in _room.spawn_points:
+			if pos.distance_to(sp) < min_dist_spawn:
+				bad_p = true
+				break
+		if bad_p:
+			continue
+		for pp in _room.pillar_positions:
+			if pos.distance_to(pp) < min_dist_pillar + 12.0:
+				bad_p = true
+				break
+		if bad_p:
+			continue
+		# Tight cluster of 4 pieces.
+		for _i in range(4):
+			var off: Vector2 = Vector2(randf_range(-14, 14), randf_range(-10, 10))
+			_spawn_decor_at(pos + off)
+		piles_placed += 1
+	# Iter 52 — stone speckle highlights. Subtle bright pips scattered
+	# across the floor at z=-2 so they sit BELOW regular decor but
+	# ABOVE the biome floor wash. Reads as "granite flecks / weathered
+	# stone shine" — breaks up the otherwise-uniform floor backdrop
+	# noticeably better than the larger decor alone. Density is fixed
+	# (28 per room) since these are smaller / cheaper than full decor.
+	for _i in range(28):
+		var sp_pos: Vector2 = Vector2(
+			randf_range(110.0, 1170.0),
+			randf_range(110.0, 660.0),
+		)
+		var pip: Polygon2D = Polygon2D.new()
+		var sz: float = randf_range(1.5, 3.0)
+		pip.polygon = PackedVector2Array([
+			Vector2(sz, 0), Vector2(0, sz), Vector2(-sz, 0), Vector2(0, -sz),
+		])
+		# Warm-grey speckle with low alpha so it reads as floor
+		# texture grain rather than discrete props.
+		pip.color = Color(
+			randf_range(0.45, 0.65),
+			randf_range(0.40, 0.58),
+			randf_range(0.36, 0.50),
+			randf_range(0.22, 0.38),
+		)
+		pip.position = sp_pos
+		pip.rotation = randf_range(0.0, TAU)
+		pip.z_index = -2
+		add_child(pip)
 
 # Iter 34 — biome-aware decor. The biome of the current room (read
 # from _room.biome at the dispatcher) controls which decor flavor we

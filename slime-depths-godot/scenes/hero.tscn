@@ -22,10 +22,14 @@ collision_layer = 2
 collision_mask = 1
 script = ExtResource("1_script")
 
+; Iter 52 — bumped shadow visibility. Was scale (0.18, 0.13) at 0.45
+; alpha — barely readable on the screenshot review. Wider + darker
+; ellipse grounds the hero on the dungeon floor without competing
+; with enemy shadows (still smaller than them by sprite-size).
 [node name="Shadow" type="Sprite2D" parent="."]
-position = Vector2(0, 2)
-scale = Vector2(0.18, 0.13)
-modulate = Color(0, 0, 0, 0.45)
+position = Vector2(0, 3)
+scale = Vector2(0.22, 0.16)
+modulate = Color(0, 0, 0, 0.6)
 texture = ExtResource("2_shadow")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
