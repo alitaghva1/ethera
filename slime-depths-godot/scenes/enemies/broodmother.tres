@@ -1,15 +1,22 @@
-[gd_resource type="Resource" script_class="EnemyType" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_idle.png" id="2_idle"]
-[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_walk.png" id="3_walk"]
-[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_death.png" id="4_death"]
+[ext_resource type="Texture2D" path="res://assets/enemies/brood_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/brood_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/brood_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/brood_death.png" id="5_death"]
 
-; Broodmother — floor 2 boss. Visually reuses the crypt_spider sheets
-; scaled ~3x larger (4.0 vs 1.385). She charges the hero (chase_contact)
-; like her baby spiders, but with massively more reach, HP, and contact
-; damage. No dedicated attack sheet — crypt_spider walks while body-
-; bumping; the giant scale + faster speed sells the threat tier.
+; Broodmother — floor 2 boss. iter-106 sprite upgrade: was using
+; crypt_spider sheets at 4× bilinear-upscale ("4.0 vs 1.385" in the
+; old comment), which turned a 26-px purple lump into a fuzzy ~100-px
+; blob. Now uses the dedicated brood_*.png sheets at 100-px cells —
+; distinct silhouette from the baby spiders she summons (her squat,
+; armored profile vs their lanky 8-legged form). The visual hierarchy
+; "boss vs trash" finally reads at a glance.
+;
+; Brood sheets: 6 idle / 8 walk / 9 attack / 4 death frames at 100-px
+; horizontal strips. sprite_scale = 2.5 keeps her in-world footprint
+; ~250 px tall (was ~256 from the old scale 4.0 × 64-px crypt spider).
 
 [resource]
 script = ExtResource("1_script")
@@ -18,17 +25,19 @@ is_boss = true
 behavior = "chase_contact"
 idle_sheet = ExtResource("2_idle")
 walk_sheet = ExtResource("3_walk")
-death_sheet = ExtResource("4_death")
-cell_size = 64
-sprite_scale = 4.0
-sprite_y_offset = -22.0
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 2.5
+sprite_y_offset = -32.0
 collision_radius = 32.0
-frames_idle = 8
+frames_idle = 6
 frames_walk = 8
-frames_attack = 0
-frames_death = 8
+frames_attack = 8
+frames_death = 4
 fps_idle = 7.0
 fps_walk = 11.0
+fps_attack = 13.0
 fps_death = 8.0
 max_hp = 16
 move_speed = 110.0

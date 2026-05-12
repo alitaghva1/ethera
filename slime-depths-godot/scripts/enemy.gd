@@ -99,6 +99,15 @@ var _spawn_in_time := SPAWN_IN_DURATION
 # ── Per-behavior state ────────────────────────────────────────────────
 # chase_contact
 var _contact_cd := 0.0
+# iter-106: brief window after a chase_contact body-bump during which
+# the sprite plays the "attack" animation (if the enemy has one) so
+# the hit reads visually. Pre-iter-106 the slime / orc / ember /
+# werewolf bumped the hero while gliding in their walk animation —
+# the attack sheets were declared in the .tres files and built into
+# the SpriteFrames at _ready, then never triggered. This timer is
+# the bridge: set in the contact-damage block, drained by the tick.
+var _contact_attack_anim_time: float = 0.0
+const CONTACT_ATTACK_ANIM_DURATION: float = 0.25
 # telegraphed_melee state machine
 enum MeleeState { IDLE, WINDUP, SWING, COOLDOWN }
 var _melee_state: MeleeState = MeleeState.IDLE
@@ -537,6 +546,10 @@ func _physics_process(delta: float) -> void:
 func _tick_chase_contact(delta: float) -> void:
 	var t: EnemyType = enemy_type
 	_contact_cd = max(0.0, _contact_cd - delta)
+	# iter-106: brief attack-anim window after a body-bump (see decl
+	# at line ~104). Drains every tick; when > 0 we hold the attack
+	# pose instead of letting walk/idle override below.
+	_contact_attack_anim_time = max(0.0, _contact_attack_anim_time - delta)
 	if _hero == null or not is_instance_valid(_hero):
 		velocity = Vector2.ZERO
 		sprite.play(&"idle")
@@ -545,14 +558,29 @@ func _tick_chase_contact(delta: float) -> void:
 	var dist: float = to_hero.length()
 	if t.can_move() and dist > 1.0:
 		velocity = to_hero.normalized() * _effective_move_speed()
-		sprite.play(&"walk")
+		# iter-106: hold "attack" pose during the post-hit window so
+		# the sprite reads as the bite/lunge that landed damage.
+		# Fall back to walk if the enemy has no attack frames OR the
+		# window has expired.
+		if _contact_attack_anim_time > 0.0 and t.frames_attack > 0:
+			sprite.play(&"attack")
+		else:
+			sprite.play(&"walk")
 	else:
 		velocity = Vector2.ZERO
-		sprite.play(&"idle")
+		if _contact_attack_anim_time > 0.0 and t.frames_attack > 0:
+			sprite.play(&"attack")
+		else:
+			sprite.play(&"idle")
 	sprite.flip_h = to_hero.x < 0
 	move_and_slide()
 	if dist < t.contact_range and _contact_cd <= 0.0:
 		_contact_cd = t.contact_cooldown
+		# iter-106: arm the attack-anim hold so the next ~250 ms plays
+		# the attack pose. Only set when the enemy actually has attack
+		# frames declared (no-op for legacy contact mobs with frames_attack=0).
+		if t.frames_attack > 0:
+			_contact_attack_anim_time = CONTACT_ATTACK_ANIM_DURATION
 		if _hero.has_method("take_damage"):
 			# iter-70 polish: pass our position so hero knockback is
 			# AWAY from us, not hero-facing-inversion fallback.

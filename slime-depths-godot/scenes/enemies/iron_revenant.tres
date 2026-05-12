@@ -1,18 +1,30 @@
 [gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_idle.png" id="2_idle"]
-[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_walk.png" id="3_walk"]
-[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_attack.png" id="4_attack"]
-[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_death.png" id="5_death"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_death.png" id="5_death"]
 
-; Iron Revenant — floor 1 boss. Iter 17.
-; Visually reuses the armored_skeleton sheets scaled ~33% larger
-; (4.0 vs 2.957). The longer reach + heavier windup + 2-damage swing
-; reads as a "different threat tier" without needing dedicated boss
-; art. Real boss sprites are queued for later; this gets the systemic
-; piece — HP bar UI, single-enemy room finale, run-complete pacing —
-; in place first.
+; Iron Revenant — floor 1 boss. iter-106 sprite upgrade: pre-iter-106
+; reused armored_skeleton sheets at sprite_scale 4.0 — the comment in
+; the old .tres explicitly said "Real boss sprites are queued for
+; later; this gets the systemic piece in place first." Now uses the
+; dedicated elite_orc_*.png sheets — heavily-armored knight at 100-px
+; cells with a red-eye glow, sitting unused on disk in
+; slime-depths/public/assets/enemies/ until iter-106.
+;
+; Sheet layout (verified): 8-row × N-col grids at 100-px cells.
+; enemy.gd reads the top row only (single-facing + flip_h pattern).
+;   idle:   400/100 = 4 cols  → frames_idle = 4
+;   walk:   900/100 = 9 cols  → frames_walk = 8 (cap one frame short)
+;   attack: 1100/100 = 11 cols → frames_attack = 8
+;   death:  900/100 = 9 cols  → frames_death = 4
+;
+; sprite_scale dropped 4.0 → 2.0 because the new sheet IS already at
+; boss-target resolution. Same in-world footprint (~200 px tall) with
+; no upscale bilinear smearing. Visual hierarchy "this is a boss" now
+; reads from the silhouette + armor detail, not from blurry pixels.
 
 [resource]
 script = ExtResource("1_script")
@@ -24,10 +36,10 @@ walk_sheet = ExtResource("3_walk")
 attack_sheet = ExtResource("4_attack")
 death_sheet = ExtResource("5_death")
 cell_size = 100
-sprite_scale = 4.0
+sprite_scale = 2.0
 sprite_y_offset = -32.0
 collision_radius = 26.0
-frames_idle = 6
+frames_idle = 4
 frames_walk = 8
 frames_attack = 8
 frames_death = 4
