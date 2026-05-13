@@ -1,9 +1,10 @@
-[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="EnemyType" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_idle.png" id="2_idle"]
 [ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_walk.png" id="3_walk"]
 [ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_hurt.png" id="6_hurt"]
 [ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_death.png" id="5_death"]
 
 ; Iron Revenant — floor 1 boss. iter-106 sprite upgrade: pre-iter-106
@@ -34,6 +35,7 @@ behavior = "telegraphed_melee"
 idle_sheet = ExtResource("2_idle")
 walk_sheet = ExtResource("3_walk")
 attack_sheet = ExtResource("4_attack")
+hurt_sheet = ExtResource("6_hurt")
 death_sheet = ExtResource("5_death")
 cell_size = 100
 sprite_scale = 2.0
@@ -42,6 +44,7 @@ collision_radius = 26.0
 frames_idle = 4
 frames_walk = 8
 frames_attack = 8
+frames_hurt = 4
 frames_death = 4
 fps_idle = 5.0
 fps_walk = 7.0

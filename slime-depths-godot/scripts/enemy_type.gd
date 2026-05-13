@@ -40,6 +40,14 @@ extends Resource
 @export var idle_sheet: Texture2D
 @export var walk_sheet: Texture2D
 @export var attack_sheet: Texture2D = null
+# iter-110: optional hurt sheet — short 1-3 frame recoil pose played
+# briefly when the enemy takes damage. Adds a damage-recoil read on
+# top of the existing white-tint flash. Most enemies don't have one
+# (defaults to null → fallback to white-tint only); skel /
+# crypt_spider / elite_orc (iron_revenant) ship with dedicated
+# hurt sheets sitting unused in the JS reference assets folder
+# before iter-110.
+@export var hurt_sheet: Texture2D = null
 @export var death_sheet: Texture2D
 
 # ── Sprite layout ─────────────────────────────────────────────────────
@@ -76,6 +84,11 @@ extends Resource
 @export var frames_idle: int = 6
 @export var frames_walk: int = 8
 @export var frames_attack: int = 6
+# iter-110: hurt animation frame count. Default 0 = no hurt sheet
+# wired (white-tint flash carries the damage feedback alone). Set
+# to 1-4 frames for enemies that ship dedicated hurt art. Played
+# at HURT_FPS (declared in enemy.gd) for ~0.15s total duration.
+@export var frames_hurt: int = 0
 @export var frames_death: int = 4
 
 # ── FPS ───────────────────────────────────────────────────────────────

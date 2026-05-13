@@ -108,6 +108,17 @@ var _contact_cd := 0.0
 # the bridge: set in the contact-damage block, drained by the tick.
 var _contact_attack_anim_time: float = 0.0
 const CONTACT_ATTACK_ANIM_DURATION: float = 0.25
+
+# iter-110: brief hurt-anim hold after take_hit. Mirrors the contact-
+# attack-anim pattern above but on the receiving end. Set in take_hit
+# when the enemy has a hurt_sheet, drained by every behavior tick. The
+# behavior animation dispatch checks this flag and plays "hurt" until
+# it expires. 0.18s ≈ 3 frames at HURT_ANIM_FPS = 18, which is the
+# slime-depths feel-window for "hit registered" recoil before the
+# enemy resumes its AI.
+var _hurt_anim_time: float = 0.0
+const HURT_ANIM_DURATION: float = 0.18
+const HURT_ANIM_FPS: float = 18.0
 # telegraphed_melee state machine
 enum MeleeState { IDLE, WINDUP, SWING, COOLDOWN }
 var _melee_state: MeleeState = MeleeState.IDLE
@@ -331,10 +342,15 @@ func _build_sprite_frames() -> void:
 		sf.remove_animation("default")
 	# Use a small inline table so we don't repeat the slice loop four times.
 	# Each row: (anim_name, sheet, frame_count, fps, loop).
+	# iter-110: hurt row added. Plays once at HURT_ANIM_FPS for ~0.15s
+	# when the enemy takes damage AND has a hurt_sheet declared. Loop
+	# false so it doesn't replay forever; enemy.gd routes back to walk/
+	# idle after the hold window expires.
 	var rows: Array = [
 		[&"idle",   t.idle_sheet,   t.frames_idle,   t.fps_idle,   true],
 		[&"walk",   t.walk_sheet,   t.frames_walk,   t.fps_walk,   true],
 		[&"attack", t.attack_sheet, t.frames_attack, t.fps_attack, false],
+		[&"hurt",   t.hurt_sheet,   t.frames_hurt,   HURT_ANIM_FPS,  false],
 		[&"death",  t.death_sheet,  t.frames_death,  t.fps_death,  false],
 	]
 	for row in rows:
@@ -550,6 +566,17 @@ func _tick_chase_contact(delta: float) -> void:
 	# at line ~104). Drains every tick; when > 0 we hold the attack
 	# pose instead of letting walk/idle override below.
 	_contact_attack_anim_time = max(0.0, _contact_attack_anim_time - delta)
+	# iter-110: hurt-anim hold has higher priority than attack-anim
+	# hold — getting hit interrupts whatever the enemy was doing.
+	_hurt_anim_time = max(0.0, _hurt_anim_time - delta)
+	if _hurt_anim_time > 0.0 and t.frames_hurt > 0:
+		# Hold the hurt pose; AI still updates velocity but visually
+		# the enemy is staggered. Don't override sprite below.
+		if _hero != null and is_instance_valid(_hero):
+			var to_hero_h: Vector2 = _hero.global_position - global_position
+			sprite.flip_h = to_hero_h.x < 0
+		move_and_slide()
+		return
 	if _hero == null or not is_instance_valid(_hero):
 		velocity = Vector2.ZERO
 		sprite.play(&"idle")
@@ -1670,6 +1697,15 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 		if original_damage > 1:
 			_spawn_affix_floater("WARDED", ELITE_AFFIX_TINTS["warded"], global_position)
 	hp -= damage
+	# iter-110: arm the hurt-anim hold IF the enemy ships a hurt_sheet.
+	# Behavior ticks check _hurt_anim_time > 0 + frames_hurt > 0 and
+	# play the "hurt" animation for the hold window before resuming
+	# walk/idle/attack. Enemies without a hurt sheet fall through to
+	# the existing white-tint flash only.
+	if enemy_type != null and enemy_type.frames_hurt > 0 and sprite != null \
+			and sprite.sprite_frames != null and sprite.sprite_frames.has_animation(&"hurt"):
+		_hurt_anim_time = HURT_ANIM_DURATION
+		sprite.play(&"hurt")
 	# Iter 43 — per-hit damage number. Crit hits use spawn_crit (yellow,
 	# bigger, "!" suffix, longer life); normal hits use the standard
 	# white number. Spawned at the enemy head so it reads as "X damage
