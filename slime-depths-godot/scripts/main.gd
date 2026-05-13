@@ -391,6 +391,12 @@ var _room_pickup_resolved := false
 # refresh the HP bar. Cleared (instance invalid) when the boss
 # dies, hiding the bar.
 var _boss_ref: Enemy = null
+# Iter 157 — track previous boss HP so the polling tick can detect a
+# DAMAGE event (hp dropped) and fire a brief pulse on the boss HP bar
+# Control. Without this, the bar smoothly decremented with no on-hit
+# emphasis — boss hits felt identical to small ticks.
+var _prev_boss_hp: int = 0
+var _boss_hp_pulse_tween: Tween = null
 # iter-133: Track death cinematic resources for cleanup before scene reload.
 # Without cleanup, tweens and particles accumulate across retries → 2 FPS.
 var _death_tweens: Array[Tween] = []
@@ -608,7 +614,18 @@ func _process(_delta: float) -> void:
 	# adding an hp_changed signal to every enemy just to drive one UI.
 	if _boss_ref != null:
 		if is_instance_valid(_boss_ref) and _boss_ref.hp > 0:
+			# Iter 157 — pulse the bar Control on every HP drop. We poll
+			# this tick anyway; one int compare is free. Without this
+			# beat the HP bar smoothly decremented with no on-hit
+			# emphasis — boss hits looked identical to small ticks.
+			# Only fires on DECREASE (heals don't pulse) and skips the
+			# initial spawn-tick (_prev_boss_hp = 0 means we haven't
+			# armed yet — first hp set runs this update path and arms
+			# the tracker for next frame).
+			if _prev_boss_hp > 0 and _boss_ref.hp < _prev_boss_hp:
+				_pulse_boss_bar()
 			boss_hp_bar.value = float(_boss_ref.hp)
+			_prev_boss_hp = _boss_ref.hp
 		else:
 			boss_bar.visible = false
 			# Iter 57 — boss-kill achievements. Identified by the boss's
@@ -622,6 +639,12 @@ func _process(_delta: float) -> void:
 			elif bn == "BROODMOTHER":
 				GameState.unlock_achievement("broodmother_slain")
 			_boss_ref = null
+			# Iter 157 — reset pulse tracker so next boss-spawn starts
+			# clean. Without this, killing one boss then spawning the
+			# next would have _prev_boss_hp = (dead boss HP at death)
+			# leftover, which is technically harmless but conceptually
+			# stale.
+			_prev_boss_hp = 0
 	if _wave_state == WaveState.ACTIVE:
 		# Filter out "breakables" (chests) — they join the "enemies"
 		# group so the hero's sword swing iteration finds them, but
@@ -2320,6 +2343,11 @@ func _spawn_enemy_type(type_id: String) -> void:
 		boss_hp_bar.max_value = float(type_res.max_hp)
 		boss_hp_bar.value = float(type_res.max_hp)
 		boss_bar.visible = true
+		# Iter 157 — arm the pulse tracker with the boss's full HP so
+		# the first damage tick reads as a decrement (vs the 0-baseline
+		# we'd otherwise compare against, which would fire a false
+		# pulse on the first frame).
+		_prev_boss_hp = type_res.max_hp
 		# Iter 37 — wire the phase-changed signal for boss escalation.
 		# Connects ONLY for bosses (the signal exists on every Enemy but
 		# we don't need cinematic feedback when, say, a regular elite
@@ -3521,6 +3549,27 @@ func _rebuild_relic_strip(newly_added_id: String = "") -> void:
 	# (already wired by _on_pickup_claimed), and the sync method
 	# spawns / despawns familiars to match the new total.
 	_sync_familiars()
+
+# Iter 157 — boss HP bar damage pulse. Fired on every HP DECREASE
+# detected in _process (the boss tracking poll). Snap-then-tween
+# pattern matching _pulse_label: scale 1.06 + slight red modulate
+# on entry, parallel tween both back to rest over 0.22 s. Pivot is
+# the boss_bar Control's center so the scale punch animates
+# symmetrically. Kill any prior pulse so a rapid succession of hits
+# always ends at neutral.
+func _pulse_boss_bar() -> void:
+	if boss_bar == null:
+		return
+	if _boss_hp_pulse_tween != null and _boss_hp_pulse_tween.is_valid():
+		_boss_hp_pulse_tween.kill()
+	boss_bar.pivot_offset = boss_bar.size * 0.5
+	boss_bar.scale = Vector2(1.06, 1.06)
+	boss_bar.modulate = Color(1.5, 0.85, 0.85, 1.0)  # warm red HDR
+	_boss_hp_pulse_tween = create_tween().set_parallel(true)
+	_boss_hp_pulse_tween.tween_property(boss_bar, "scale", Vector2.ONE, 0.22)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_boss_hp_pulse_tween.tween_property(boss_bar, "modulate", Color(1, 1, 1, 1), 0.22)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 # Iter 156 — new-icon arrival tween. Snaps the icon to 1.45x scale +
 # gold modulate, then parallel-tweens both back to rest over 0.45 s.
