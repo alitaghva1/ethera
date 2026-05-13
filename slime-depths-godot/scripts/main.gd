@@ -993,6 +993,12 @@ func _scatter_decor(count: int) -> void:
 	var min_dist_pillar: float = 60.0
 	var min_dist_chest: float = 50.0
 	var min_dist_center: float = 100.0  # leave the middle clear (pedestal lands there)
+	# iter-118: reserve clear space around every future door spawn so
+	# decor doesn't appear inside or directly adjacent to the portal
+	# silhouette. Door positions are deterministic per room (see
+	# _door_positions_for_room) so we can compute them at scatter time
+	# even though the doors don't physically spawn until wave-clear.
+	var door_positions: Array[Vector2] = _door_positions_for_room()
 	var center := Vector2(640, 384)
 	var attempts: int = 0
 	var placed: int = 0
@@ -1022,6 +1028,13 @@ func _scatter_decor(count: int) -> void:
 			continue
 		for cp in _room.chest_positions:
 			if pos.distance_to(cp) < min_dist_chest:
+				bad = true
+				break
+		if bad:
+			continue
+		# iter-118: reserve area around door positions.
+		for dp in door_positions:
+			if pos.distance_to(dp) < DOOR_CLEARANCE_RADIUS:
 				bad = true
 				break
 		if bad:
@@ -1057,6 +1070,14 @@ func _scatter_decor(count: int) -> void:
 			continue
 		for pp in _room.pillar_positions:
 			if pos.distance_to(pp) < min_dist_pillar + 12.0:
+				bad_p = true
+				break
+		if bad_p:
+			continue
+		# iter-118: piles also avoid door zones (extra-wide margin since
+		# piles span ~28 px diameter — larger than single decor).
+		for dp in door_positions:
+			if pos.distance_to(dp) < DOOR_CLEARANCE_RADIUS + 14.0:
 				bad_p = true
 				break
 		if bad_p:
@@ -2304,6 +2325,68 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	_rebuild_relic_strip()
 	_resolve_room_pickup()
 
+# iter-118: Portal placement clearance. Doors visually want at least
+# DOOR_CLEARANCE_RADIUS px of free space around their spawn position so
+# they don't overlap torches/pillars/chests/hazards/etc. Single source
+# of truth — _scatter_decor reads it to gap decor from door zones, and
+# _validate_door_placement uses it to warn on per-room conflicts.
+const DOOR_CLEARANCE_RADIUS: float = 90.0
+
+# Returns every position where a door MIGHT spawn in this room — used by
+# _scatter_decor to reserve clear space (decor that lands inside any
+# door's clearance gets skipped) and by _validate_door_placement to
+# audit per-room data files for overlap. Logic mirrors _spawn_branch_doors:
+# 1 door → DOOR_POSITION; 2 doors → y={270, 498}; 3 doors → y={200, 384, 568}.
+func _door_positions_for_room() -> Array[Vector2]:
+	var positions: Array[Vector2] = []
+	if _room == null:
+		positions.append(DOOR_POSITION)
+		return positions
+	if _room.branches.is_empty():
+		positions.append(DOOR_POSITION)
+		return positions
+	var n: int = mini(_room.branches.size(), 3)
+	match n:
+		1:
+			positions.append(DOOR_POSITION)
+		2:
+			positions.append(Vector2(DOOR_POSITION.x, 270.0))
+			positions.append(Vector2(DOOR_POSITION.x, 498.0))
+		3:
+			positions.append(Vector2(DOOR_POSITION.x, 200.0))
+			positions.append(Vector2(DOOR_POSITION.x, 384.0))
+			positions.append(Vector2(DOOR_POSITION.x, 568.0))
+		_:
+			positions.append(DOOR_POSITION)
+	return positions
+
+# iter-118: Audit each authored room for door↔obstacle overlap. Runs
+# once per door spawn. If any torch/pillar/chest/hazard/spawn-point is
+# within DOOR_CLEARANCE_RADIUS of a door position, log a warning so a
+# misconfigured room.tres surfaces immediately. Non-fatal — the door
+# still spawns; the warning helps the level designer (or future me)
+# fix the conflict in data rather than the engine silently masking it.
+func _validate_door_placement(door_positions: Array[Vector2]) -> void:
+	if _room == null:
+		return
+	for dp in door_positions:
+		_warn_if_within(dp, _room.torch_positions, "torch")
+		_warn_if_within(dp, _room.pillar_positions, "pillar")
+		_warn_if_within(dp, _room.chest_positions, "chest")
+		_warn_if_within(dp, _room.hazard_positions, "hazard")
+		_warn_if_within(dp, _room.spawn_points, "spawn_point")
+		# hazards[] (mixed-kind list) carries {position: Vector2}
+		for h in _room.hazards:
+			if h is Dictionary and h.has("position"):
+				var hp = h["position"]
+				if hp is Vector2 and (dp.distance_to(hp) < DOOR_CLEARANCE_RADIUS):
+					push_warning("door at %s sits %s px from hazard (%s) at %s — within DOOR_CLEARANCE_RADIUS" % [dp, dp.distance_to(hp), str(h.get("kind", "?")), hp])
+
+func _warn_if_within(door_pos: Vector2, positions: Array, label: String) -> void:
+	for p in positions:
+		if p is Vector2 and door_pos.distance_to(p) < DOOR_CLEARANCE_RADIUS:
+			push_warning("door at %s sits %s px from %s at %s — within DOOR_CLEARANCE_RADIUS (%s)" % [door_pos, door_pos.distance_to(p), label, p, DOOR_CLEARANCE_RADIUS])
+
 func _spawn_door() -> void:
 	# Iter 32 — when the cleared room declared branches, spawn 2-3 fork
 	# doors instead of the single iter-30 portal. The player reads the
@@ -2312,6 +2395,8 @@ func _spawn_door() -> void:
 	if _room != null and not _room.branches.is_empty():
 		_spawn_branch_doors(_room.branches)
 		return
+	# iter-118: validate placement against authored obstacles before spawn.
+	_validate_door_placement([DOOR_POSITION])
 	var door: Door = DOOR_SCENE.instantiate()
 	door.global_position = DOOR_POSITION
 	add_child(door)
@@ -2335,6 +2420,15 @@ func _spawn_branch_doors(branches: Array[Dictionary]) -> void:
 			ys = [200.0, 384.0, 568.0]
 		_:
 			ys = [DOOR_POSITION.y]
+	# iter-118: validate the WHOLE branch fan against authored obstacles
+	# before any door spawns. Pre-iter-118 a misconfigured room could
+	# place a torch directly under a branch door y-offset (e.g. y=200
+	# overlapping torch_positions[0]) and the player would see a portal
+	# growing INSIDE a flame — caught at warning time now.
+	var positions: Array[Vector2] = []
+	for y in ys:
+		positions.append(Vector2(DOOR_POSITION.x, y))
+	_validate_door_placement(positions)
 	for i in range(n):
 		var entry: Dictionary = branches[i]
 		var door: Door = DOOR_SCENE.instantiate()

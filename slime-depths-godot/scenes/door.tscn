@@ -2,51 +2,66 @@
 
 [ext_resource type="Script" path="res://scripts/door.gd" id="1_script"]
 
-; Iter 27 door rework — replaces iter-18's static 80×140 arch with a
-; 120×180 imposing portal that actually feels like a destination:
-;   StoneFrame    bigger silhouette (Polygon2D ~120×180)
-;   StoneOutline  highlight line along the arch edge
-;   PortalBack    dark void fill behind the vortex — sells "depth"
-;   VortexOuter   Line2D circle inside the portal, rotates CW
-;   VortexInner   second Line2D circle, rotates CCW (faster) — counter-
-;                 rotation reads as "swirl" without authoring a custom
-;                 spiral shape
-;   PortalCore    bright Polygon2D dot at center for the magic pinpoint
-;   PortalGlow    PointLight2D casting onto surrounding floor
-;   Motes         CPUParticles2D inward-spiraling particles (emitted
-;                 from an OUTER ring, drift INWARD toward center via
-;                 negative initial_velocity along their radial axis)
-;   Label         "ONWARD →"
+; Iter 118 — Portal redesign. Pre-iter-118 the door was a rectangular
+; stone arch (120×180) with TWO counter-rotating Line2D rings + bright
+; core + large mote stream + magenta-cyan PointLight2D. Playtester read:
+; "visually chaotic — competes with combat for attention; doesn't read
+; as a destination so much as a particle accident." Iter 118 cleans
+; up the silhouette + reduces visual noise:
 ;
-; Collision is 60×140 RectangleShape2D centered on the portal so the
-; hero has to step INTO the doorway to trigger. Door.gd handles the
-; per-frame ring rotation, proximity-based glow intensification, and
-; the scene swap on body_entered.
+;   • CIRCULAR SILHOUETTE — Line2D ring at radius 56 in dark stone tone.
+;     Reads as a clean disk rather than a doorway-shaped arch.
+;   • FLOOR RUNE — faint warm-gold Polygon2D circle at radius 100 below
+;     the ring at z=-3. The portal is "standing on" the rune; pulses
+;     slowly via door.gd. Sells "this is a destination" without flashing.
+;   • SINGLE VORTEX — one Line2D inside the ring (radius 38) with cyan-
+;     to-magenta gradient + slow CW rotation. The iter-27 counter-rotating
+;     inner-vortex is gone; one ring + the floor rune carry the motion.
+;   • CONTROLLED MOTES — particle count 20 → 10, scale 1.8-3.0 → 1.2-2.0,
+;     velocity 50-90 → 30-55. Reads as "drifting inward" not "snow storm."
+;   • SMALLER GLOW — PortalGlow energy 1.8 → 1.1, texture_scale 2.0 → 1.4.
+;     The portal lights its immediate footprint without competing with
+;     torches for "what's the brightest object on screen."
+;
+; Collision is the same 60×140 RectangleShape2D so existing playtests
+; (where the player walks through the same hitbox) are not disrupted.
 
 [sub_resource type="RectangleShape2D" id="door_area"]
 size = Vector2(60, 140)
 
-; Mote ramp — cyan-to-magenta-to-transparent matching the portal's
-; arcane palette. Sells "magic flowing INWARD" via the gradient
-; running cyan-at-spawn → magenta-mid → transparent-at-death so
-; particles "fade into" the portal core.
+; ── Floor rune gradient (warm gold, very low alpha) ───────────────────
+; iter-118 floor rune. Lives at z=-3 BELOW the stone ring so the portal
+; appears to be standing inside a glowing runic circle inscribed on the
+; ground. Peak alpha 0.30 mid-radius so the rune reads without
+; overpowering the floor pattern underneath.
+[sub_resource type="Gradient" id="rune_gradient"]
+offsets = PackedFloat32Array(0, 0.55, 0.85, 1)
+colors = PackedColorArray(0.95, 0.78, 0.42, 0, 0.95, 0.78, 0.42, 0.32, 0.95, 0.78, 0.42, 0.18, 0.95, 0.78, 0.42, 0)
+
+[sub_resource type="GradientTexture2D" id="rune_tex"]
+gradient = SubResource("rune_gradient")
+width = 256
+height = 256
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; ── Mote ramp — cooler than iter-27 (was cyan→magenta) ────────────────
+; Stays cyan-to-cream-to-transparent so the particles read as "magical
+; air drifting into the gate" not "fireworks."
 [sub_resource type="Gradient" id="mote_ramp"]
 offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(0.7, 0.95, 1, 0.85, 1, 0.55, 1, 0.6, 0.85, 0.3, 1, 0)
+colors = PackedColorArray(0.65, 0.92, 1.0, 0.75, 0.95, 0.92, 0.78, 0.55, 0.85, 0.7, 1.0, 0)
 
-; Vortex line gradients — outer ring magenta to gold, inner ring cyan
-; to white. Both fade through their lengths so the rotation feels
-; like flowing energy instead of a stiff circle outline.
-[sub_resource type="Gradient" id="vortex_outer_grad"]
+; ── Vortex gradient ───────────────────────────────────────────────────
+; Single ring now (no counter-rotating inner). Cyan-leading to magenta
+; pop so the ring still has visible motion as it rotates.
+[sub_resource type="Gradient" id="vortex_gradient"]
 offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(0.95, 0.5, 1, 0.9, 1, 0.75, 0.45, 0.85, 0.6, 0.95, 1, 0.7)
+colors = PackedColorArray(0.65, 0.95, 1.0, 0.85, 0.95, 0.75, 1.0, 0.8, 0.55, 0.85, 1.0, 0.7)
 
-[sub_resource type="Gradient" id="vortex_inner_grad"]
-offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(0.6, 1, 1, 0.95, 1, 1, 1, 1, 0.4, 0.85, 1, 0.7)
-
-; Width curves — taper at start/end so the line doesn't look like a
-; hard-edged ring. Pairs with the gradients for "flowing energy."
+; Width curve — taper at start/end so the line reads as "flowing energy"
+; rather than a hard-edged circle outline.
 [sub_resource type="Curve" id="vortex_width"]
 min_value = 0.0
 max_value = 1.0
@@ -62,122 +77,101 @@ script = ExtResource("1_script")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("door_area")
 
-; ── Stone frame — outer arch silhouette (120×180) ─────────────────────
-; 11 vertices: vertical legs to y=-50, then curved top to y=-100.
-; Filled with deep blue-grey so the silhouette pops against both the
-; warm-floor and dim-purple-modulated areas of the dungeon.
-[node name="StoneFrame" type="Polygon2D" parent="."]
-polygon = PackedVector2Array(-60, 80, -60, -50, -56, -68, -46, -84, -30, -94, 0, -100, 30, -94, 46, -84, 56, -68, 60, -50, 60, 80)
-color = Color(0.14, 0.12, 0.18, 1)
+; ── Floor rune — warm gold ring on the ground at z=-3. Sells "the
+; portal is grounded at a real position on the floor" — single most
+; impactful iter-118 addition for the "less chaotic" goal. door.gd
+; modulates its alpha in phase with the core pulse so the rune
+; breathes alongside the portal.
+[node name="FloorRune" type="Sprite2D" parent="."]
+position = Vector2(0, 0)
+scale = Vector2(0.8, 0.8)
+texture = SubResource("rune_tex")
 z_index = -3
 
-[node name="StoneOutline" type="Line2D" parent="."]
-points = PackedVector2Array(-60, 80, -60, -50, -56, -68, -46, -84, -30, -94, 0, -100, 30, -94, 46, -84, 56, -68, 60, -50, 60, 80)
-width = 3.0
-default_color = Color(0.55, 0.48, 0.40, 0.9)
+; ── Outer stone ring — clean circular silhouette at radius 56. Closed
+; Line2D approximates a circle via 24 vertices. Dark blue-grey to read
+; as stone against the warm floor.
+[node name="StoneRing" type="Line2D" parent="."]
+points = PackedVector2Array(56, 0, 53.6, 14.5, 46.8, 27.5, 36.4, 38.4, 23.3, 46, 8, 50.4, -8, 50.4, -23.3, 46, -36.4, 38.4, -46.8, 27.5, -53.6, 14.5, -56, 0, -53.6, -14.5, -46.8, -27.5, -36.4, -38.4, -23.3, -46, -8, -50.4, 8, -50.4, 23.3, -46, 36.4, -38.4, 46.8, -27.5, 53.6, -14.5)
+closed = true
+width = 6.5
+default_color = Color(0.16, 0.14, 0.20, 1)
 joint_mode = 2
-begin_cap_mode = 1
-end_cap_mode = 1
 antialiased = true
 z_index = -2
 
-; ── Portal back — dark void inside the arch ──────────────────────────
-; Inset ~14 px from the StoneFrame. Very dark fill (almost black-purple)
-; so the swirling rings + center core POP off this backdrop instead of
-; competing with the stone frame's grey.
-[node name="PortalBack" type="Polygon2D" parent="."]
-polygon = PackedVector2Array(-46, 66, -46, -38, -42, -54, -34, -68, -22, -78, 0, -84, 22, -78, 34, -68, 42, -54, 46, -38, 46, 66)
-color = Color(0.04, 0.02, 0.08, 1)
+; ── Stone ring inner highlight — a thinner Line2D inside the StoneRing,
+; warm grey, sells "torchlight catches the inside edge of the gate."
+; Slightly smaller radius (52) than the StoneRing (56) so it sits inside.
+[node name="StoneRingHighlight" type="Line2D" parent="."]
+points = PackedVector2Array(52, 0, 49.8, 13.4, 43.4, 25.5, 33.8, 35.7, 21.6, 42.7, 7.4, 46.8, -7.4, 46.8, -21.6, 42.7, -33.8, 35.7, -43.4, 25.5, -49.8, 13.4, -52, 0, -49.8, -13.4, -43.4, -25.5, -33.8, -35.7, -21.6, -42.7, -7.4, -46.8, 7.4, -46.8, 21.6, -42.7, 33.8, -35.7, 43.4, -25.5, 49.8, -13.4)
+closed = true
+width = 1.5
+default_color = Color(0.55, 0.48, 0.40, 0.55)
+joint_mode = 2
+antialiased = true
 z_index = -1
 
-; ── Vortex outer ring — Line2D circle, rotated CW by door.gd ─────────
-; 16-vert polygon approximating a circle at radius 40 inside the portal.
-; closed = true wraps the polyline. door.gd rotates this node on _process
-; so the gradient appears to spin around the portal center.
-[node name="VortexOuter" type="Line2D" parent="."]
-position = Vector2(0, -8)
-points = PackedVector2Array(40, 0, 36.96, 15.31, 28.28, 28.28, 15.31, 36.96, 0, 40, -15.31, 36.96, -28.28, 28.28, -36.96, 15.31, -40, 0, -36.96, -15.31, -28.28, -28.28, -15.31, -36.96, 0, -40, 15.31, -36.96, 28.28, -28.28, 36.96, -15.31)
+; ── Portal back — dark void inside the ring at radius 46. Reads as
+; "depth" — the inside of the portal is darker than the surrounding
+; stone, so the swirling vortex pops.
+[node name="PortalBack" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(46, 0, 44, 11.9, 38.4, 22.6, 29.9, 31.5, 19.1, 37.8, 6.5, 41.4, -6.5, 41.4, -19.1, 37.8, -29.9, 31.5, -38.4, 22.6, -44, 11.9, -46, 0, -44, -11.9, -38.4, -22.6, -29.9, -31.5, -19.1, -37.8, -6.5, -41.4, 6.5, -41.4, 19.1, -37.8, 29.9, -31.5, 38.4, -22.6, 44, -11.9)
+color = Color(0.03, 0.02, 0.06, 1)
+z_index = -1
+
+; ── Vortex — single rotating ring at radius 38 (was 40 + 22 in iter-27).
+; door.gd rotates this CW; one ring is much calmer than the iter-27
+; counter-rotating pair.
+[node name="Vortex" type="Line2D" parent="."]
+points = PackedVector2Array(38, 0, 35.1, 14.5, 26.9, 26.9, 14.5, 35.1, 0, 38, -14.5, 35.1, -26.9, 26.9, -35.1, 14.5, -38, 0, -35.1, -14.5, -26.9, -26.9, -14.5, -35.1, 0, -38, 14.5, -35.1, 26.9, -26.9, 35.1, -14.5)
 closed = true
-width = 4.5
+width = 3.5
 width_curve = SubResource("vortex_width")
-default_color = Color(0.95, 0.6, 1, 0.85)
-gradient = SubResource("vortex_outer_grad")
+default_color = Color(0.85, 0.95, 1.0, 0.85)
+gradient = SubResource("vortex_gradient")
 joint_mode = 2
 antialiased = true
 
-; ── Vortex inner ring — counter-rotating, smaller, brighter ──────────
-; Radius 22 (half the outer). door.gd rotates this CCW + faster than
-; the outer ring so the counter-rotation reads as a real swirl rather
-; than two concentric spinning circles.
-[node name="VortexInner" type="Line2D" parent="."]
-position = Vector2(0, -8)
-points = PackedVector2Array(22, 0, 20.32, 8.42, 15.56, 15.56, 8.42, 20.32, 0, 22, -8.42, 20.32, -15.56, 15.56, -20.32, 8.42, -22, 0, -20.32, -8.42, -15.56, -15.56, -8.42, -20.32, 0, -22, 8.42, -20.32, 15.56, -15.56, 20.32, -8.42)
-closed = true
-width = 3.0
-width_curve = SubResource("vortex_width")
-default_color = Color(0.75, 1, 1, 0.95)
-gradient = SubResource("vortex_inner_grad")
-joint_mode = 2
-antialiased = true
-
-; ── Portal core — bright pinpoint at center ──────────────────────────
-; Small Polygon2D circle at the middle of the swirl. Pulses via
-; door.gd. Reads as "the destination" — the actual point you'd step
-; through to leave the room.
+; ── Portal core — small bright pinpoint. Pulses via door.gd.
 [node name="PortalCore" type="Polygon2D" parent="."]
-position = Vector2(0, -8)
-polygon = PackedVector2Array(6, 0, 5.2, 3, 3, 5.2, 0, 6, -3, 5.2, -5.2, 3, -6, 0, -5.2, -3, -3, -5.2, 0, -6, 3, -5.2, 5.2, -3)
-color = Color(1, 0.98, 0.95, 1)
+polygon = PackedVector2Array(7, 0, 6, 3.5, 3.5, 6, 0, 7, -3.5, 6, -6, 3.5, -7, 0, -6, -3.5, -3.5, -6, 0, -7, 3.5, -6, 6, -3.5)
+color = Color(1, 0.96, 0.85, 1)
+z_index = 1
 
-; ── Light cast onto floor ─────────────────────────────────────────────
-; Bigger energy + texture_scale than iter-18. Pulses via door.gd in
-; phase with the core. Color = magenta-cyan blend so it reads as
-; "arcane light" rather than the iter-18 warm-gold (which felt like a
-; torch, not a portal).
+; ── PointLight2D glow — smaller + tamer than iter-27. Lights the
+; portal's immediate footprint without competing with torches.
 [node name="PortalGlow" type="PointLight2D" parent="."]
-position = Vector2(0, -8)
-energy = 1.8
-texture_scale = 2.0
-color = Color(0.9, 0.65, 1.0, 1)
+position = Vector2(0, 0)
+energy = 1.1
+texture_scale = 1.4
+color = Color(0.85, 0.78, 1.0, 1)
 range_z_min = -1024
 range_z_max = 1024
 
-; ── Inward-spiraling particles ───────────────────────────────────────
-; Iter 27 — flow direction reversed vs iter 18 (was upward drift; now
-; inward-toward-portal). emission_shape = ring at radius 60 around the
-; portal center, direction (-1, 0) with local_coords = false. The radial
-; emission distributes spawn points around the ring; direction pulls
-; the particle leftward in screen-space — combined with the strong
-; damping and gravity = 0, this gives a "particles fall into the
-; portal" look as the emitter rotates via door.gd's _process.
+; ── Inward-drifting motes. Lower count (10) + lower velocity than
+; iter-27 (which had 20 at 50-90 px/s — read as snow storm).
 [node name="Motes" type="CPUParticles2D" parent="."]
-position = Vector2(0, -8)
-amount = 20
-lifetime = 1.0
+position = Vector2(0, 0)
+amount = 10
+lifetime = 1.4
 emitting = true
 emission_shape = 2
-emission_sphere_radius = 60.0
+emission_sphere_radius = 56.0
 local_coords = false
 direction = Vector2(-1, 0)
 spread = 35.0
 gravity = Vector2(0, 0)
-initial_velocity_min = 50.0
-initial_velocity_max = 90.0
-damping_min = 1.0
-damping_max = 2.0
-scale_amount_min = 1.8
-scale_amount_max = 3.0
+initial_velocity_min = 30.0
+initial_velocity_max = 55.0
+damping_min = 1.5
+damping_max = 2.8
+scale_amount_min = 1.2
+scale_amount_max = 2.0
 color_ramp = SubResource("mote_ramp")
 
-; ── Caller label ──────────────────────────────────────────────────────
-; Iter 58 — labels moved to the LEFT of the portal (was below at +92).
-; With branch doors at y=[200, 384, 568] (184 px spacing), the old
-; below-portal layout collided: door 1's label at y=292-320 sat inside
-; door 2's silhouette (y=294-464). Going LEFT avoids the vertical
-; collision entirely — portals on the right side of the screen have
-; ~880 px of horizontal space to fan labels into. Each label is
-; centered vertically on its door's origin so the relationship reads
-; clearly: "this label belongs to THIS portal."
+; ── Labels — unchanged from iter-58 (left-of-portal layout). Branch-door
+; metadata still applies via door.gd.
 [node name="Label" type="Label" parent="."]
 offset_left = -260.0
 offset_top = -14.0
@@ -190,10 +184,6 @@ theme_override_constants/outline_size = 4
 text = "ONWARD  →"
 horizontal_alignment = 2
 
-; ── Subtitle — iter 32 branch peek ─────────────────────────────────────
-; Iter 58 — subtitle moved below the main label (right of portal still).
-; Stacks under the name so the pair reads top-down: kind name in
-; bigger warm tone, peek hint in smaller dim grey.
 [node name="Subtitle" type="Label" parent="."]
 offset_left = -270.0
 offset_top = 12.0

@@ -17,23 +17,25 @@
 class_name Door
 extends Area2D
 
-# Iter 27 — rotation rates for the counter-spinning vortex rings.
-# Outer ring spins CW at OUTER_RPS revolutions/sec; inner spins CCW
-# (negative) at INNER_RPS, which is intentionally faster so the
-# counter-rotation reads as a real swirl rather than two parallel
-# spinning circles. PROXIMITY_RADIUS triggers the intensifier when
-# the hero is within range.
-const OUTER_RPS: float = 0.45
-const INNER_RPS: float = -0.85
+# iter-118: Single vortex ring + floor rune pulse. The iter-27 counter-
+# rotating pair was visually chaotic — pre-iter-118 PROXIMITY check held,
+# but the visual budget was over-spent (one ring + the floor rune carry
+# the motion now). Floor rune pulses 1:1 with the core so the portal
+# breathes as one entity. Glow intensifier still applies on hero proximity.
+const VORTEX_RPS: float = 0.45
 const CORE_PULSE_HZ: float = 2.4
 const PROXIMITY_RADIUS: float = 140.0
-const PROXIMITY_INTENSITY_BOOST: float = 0.75  # added to glow energy when in range
+const PROXIMITY_INTENSITY_BOOST: float = 0.55   # tamer than iter-27's 0.75
+const RUNE_BASE_ALPHA: float = 1.0
+const RUNE_PULSE_DEPTH: float = 0.30  # rune alpha varies ±RUNE_PULSE_DEPTH from base
 
-@onready var vortex_outer: Line2D = $VortexOuter
-@onready var vortex_inner: Line2D = $VortexInner
+@onready var vortex: Line2D = $Vortex
 @onready var portal_core: Polygon2D = $PortalCore
 @onready var portal_glow: PointLight2D = $PortalGlow
 @onready var motes: CPUParticles2D = $Motes
+@onready var floor_rune: Sprite2D = $FloorRune
+@onready var stone_ring: Line2D = $StoneRing
+@onready var stone_ring_highlight: Line2D = $StoneRingHighlight
 @onready var label: Label = $Label
 @onready var subtitle: Label = $Subtitle
 
@@ -53,8 +55,13 @@ var branch_subtitle: String = ""
 var branch_room_path: String = ""
 
 var _firing := false
-var _base_glow_energy: float = 1.8
+var _base_glow_energy: float = 1.1
 var _base_core_scale: Vector2 = Vector2.ONE
+# iter-118: captured at _ready BEFORE _apply_branch_styling may overwrite
+# the rune.modulate with a branch tint. _process then animates only the
+# alpha channel relative to this captured base, so a green-tinted safe
+# door keeps its green while the brightness breathes.
+var _rune_base_alpha: float = 1.0
 # Cached hero reference for the proximity check. Resolved lazily on
 # first _process tick so the door doesn't depend on _ready ordering
 # vs the hero (hero is in the scene already, but defensive is cheap).
@@ -66,9 +73,14 @@ func _ready() -> void:
 		_base_glow_energy = portal_glow.energy
 	if portal_core != null:
 		_base_core_scale = portal_core.scale
+	# iter-118: capture rune alpha BEFORE _apply_branch_styling can stamp
+	# a branch tint over the modulate. The pulse in _process tweens the
+	# alpha around this captured value.
+	if floor_rune != null:
+		_rune_base_alpha = floor_rune.modulate.a
 	# Iter 32 — apply branch metadata if this is a branch-door fork.
 	# Legacy (single-door) spawns leave branch_kind = "" and the door
-	# keeps the iter-27 magenta-cyan portal look + "ONWARD →" label.
+	# keeps the iter-118 cyan-magenta portal look + "ONWARD →" label.
 	if branch_kind != "":
 		_apply_branch_styling()
 
@@ -111,18 +123,18 @@ func _apply_branch_styling() -> void:
 			tint = Color(0.65, 0.75, 1.0, 1.0)
 			label_color = Color(0.82, 0.88, 1.0, 1.0)
 		_:
-			# Unknown kind — leave the iter-27 magenta-cyan default in place.
+			# Unknown kind — leave the iter-118 cyan-magenta default in place.
 			tint = Color(1, 1, 1, 1)
-	if vortex_outer != null:
-		vortex_outer.modulate = tint
-	if vortex_inner != null:
-		vortex_inner.modulate = tint
+	# iter-118: tint the single vortex + core + glow + floor rune so the
+	# door's branch identity propagates outward into the floor pool too.
+	if vortex != null:
+		vortex.modulate = tint
 	if portal_core != null:
 		portal_core.modulate = tint
 	if portal_glow != null:
-		# Re-tint the cast light too — the floor pool color shifts to
-		# the branch palette so the door's identity propagates outward.
 		portal_glow.color = tint
+	if floor_rune != null:
+		floor_rune.modulate = tint
 	if label != null:
 		label.add_theme_color_override("font_color", label_color)
 	if subtitle != null:
@@ -130,15 +142,14 @@ func _apply_branch_styling() -> void:
 
 func _process(delta: float) -> void:
 	var t: float = Time.get_ticks_msec() / 1000.0
-	# Counter-rotating vortex rings — accumulating rotation each tick
-	# (vs sin-based) so the spin is constant-velocity rather than
-	# oscillating. Outer CW, inner CCW (faster) for the swirl effect.
-	if vortex_outer != null:
-		vortex_outer.rotation += OUTER_RPS * TAU * delta
-	if vortex_inner != null:
-		vortex_inner.rotation += INNER_RPS * TAU * delta
-	# Core dot pulses scale 0.85→1.15 in phase with the glow energy.
-	# Sin-based so the pulse breathes rather than snaps.
+	# iter-118: single vortex rotation (the iter-27 counter-rotating
+	# pair was visually chaotic — see scenes/door.tscn comment header).
+	# Accumulating rotation each tick is constant-velocity rather than
+	# oscillating; reads as "consistent swirl" not "wobble."
+	if vortex != null:
+		vortex.rotation += VORTEX_RPS * TAU * delta
+	# Core dot pulses scale 0.85→1.15 in phase with the glow energy +
+	# floor rune alpha — one breath unifies the portal's three layers.
 	var pulse: float = sin(t * CORE_PULSE_HZ * TAU)
 	if portal_core != null:
 		var s: float = 1.0 + 0.15 * pulse
@@ -151,11 +162,15 @@ func _process(delta: float) -> void:
 		if _is_hero_in_range():
 			energy += PROXIMITY_INTENSITY_BOOST
 		portal_glow.energy = energy
-	# Motes emit faster when hero is close — particle stream density
-	# scales with player attention. Default rate is `amount / lifetime`;
-	# we modulate by toggling emitting + adjusting amount_ratio if the
-	# Godot version supports it. Simpler: leave amount fixed and rely
-	# on the glow + core feedback to sell the proximity beat.
+	# iter-118: floor rune pulses in lockstep with the core. RUNE_BASE_ALPHA
+	# is captured at _ready before any branch tinting touches the rune's
+	# modulate; we modulate just the alpha channel here so a branch-tinted
+	# rune (e.g. green for safe) keeps its hue while the brightness
+	# breathes. Range is RUNE_BASE_ALPHA ± RUNE_PULSE_DEPTH.
+	if floor_rune != null:
+		var rune_mod: Color = floor_rune.modulate
+		rune_mod.a = clampf(_rune_base_alpha + RUNE_PULSE_DEPTH * pulse, 0.0, 1.0)
+		floor_rune.modulate = rune_mod
 
 # Lazy hero resolution + distance check. Returns true when the hero
 # is within PROXIMITY_RADIUS world units of the door's portal center.
