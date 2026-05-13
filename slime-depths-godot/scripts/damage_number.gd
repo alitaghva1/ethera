@@ -111,6 +111,9 @@ static func _apply_variant(
 			# Bigger font, warm red-orange tint, "!" suffix on digit-only
 			# text. Wobble + longer life + bigger rise so the crit reads
 			# as the highlight of the moment.
+			# iter-137 — font_size 33 -> 36 to widen the gap from the new
+			# 28 pt normal baseline. Crits should feel ~30% bigger than
+			# regular hits, not just 18%.
 			var crit_text: String = text
 			if not crit_text.ends_with("!") and crit_text.is_valid_int():
 				crit_text += "!"
@@ -118,7 +121,7 @@ static func _apply_variant(
 			n.add_theme_color_override("font_color", Color(1.0, 0.55, 0.25, 1.0))
 			n.add_theme_color_override("font_outline_color", Color(0.20, 0.06, 0.0, 0.95))
 			n.add_theme_constant_override("outline_size", 5)
-			n.add_theme_font_size_override("font_size", 33)
+			n.add_theme_font_size_override("font_size", 36)
 			n.add_theme_constant_override("letter_spacing", 1)
 			n._life = 1.0
 			n._init_life = 1.0
@@ -145,16 +148,18 @@ static func _apply_variant(
 		"hero_damage":
 			# Light red, slightly bigger than normal, one-shot shake on
 			# spawn so the player FEELS the hit register in the HUD.
+			# iter-137 — font 26 -> 32. Player damage is more important
+			# than enemy damage; should hit harder visually too.
 			n.text = text
 			n.add_theme_color_override("font_color", Color(1.0, 0.35, 0.35, 1.0))
 			n.add_theme_color_override("font_outline_color", Color(0.18, 0.0, 0.02, 0.95))
 			n.add_theme_constant_override("outline_size", 5)
-			n.add_theme_font_size_override("font_size", 26)
+			n.add_theme_font_size_override("font_size", 32)
 			n._life = 0.85
 			n._init_life = 0.85
 			n._rise = 44.0
-			n._shake_amp = 4.0
-			n._shake_time = 0.08
+			n._shake_amp = 5.0
+			n._shake_time = 0.10
 		"resist":
 			# Dim grey, smaller — marks "shrugged it off". Wrapped in
 			# parens to read distinct from a normal damage number.
@@ -170,8 +175,23 @@ static func _apply_variant(
 		_:
 			# "normal" or unrecognized variant — preserve legacy contract:
 			# caller's text + color, default size, default rise/life.
+			# iter-137 — magnitude-based size scaling. Hades / Isaac /
+			# Diablo / virtually every action-roguelike scales damage
+			# numbers by hit magnitude so the player FEELS heavy hits
+			# without doing math. If the text parses as an integer, we
+			# add 0-8 pt on top of the 28 pt baseline depending on hit
+			# size. 1 dmg = 28 pt baseline; 3 dmg = 30 pt; 6 dmg = 32 pt;
+			# 10+ dmg = 36 pt (caps at +8 to leave headroom under crit).
 			n.text = text
 			n.add_theme_color_override("font_color", color)
+			if text.is_valid_int():
+				var dmg: int = abs(text.to_int())
+				var bonus: int = clampi(dmg - 1, 0, 8)
+				n.add_theme_font_size_override("font_size", 28 + bonus)
+				# Heavier hits also rise slightly further — extra weight
+				# in vertical motion reinforces the "this was a big hit"
+				# read without needing extra pixels.
+				n._rise = RISE + float(bonus) * 1.5
 
 # ──────────────────────────────────────────────────────────────────────
 # Lifecycle

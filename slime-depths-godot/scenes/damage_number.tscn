@@ -9,12 +9,16 @@
 ; Iter 74 — widened bounds (-56..56 horizontal, -40..-4 vertical) so
 ; the crit variant's 33px font + "!" suffix doesn't clip. Normal/heal/
 ; hero_damage/resist all fit comfortably inside.
+; iter-137 — base font_size 22 -> 28. Hades/Isaac use 28-32 pt baseline
+; for damage numbers; 22 felt mousy against busy combat. Bounds widened
+; -56..56 -> -72..72 horizontal + -56..-4 vertical to accommodate the
+; larger baseline + larger crit (now 36 pt) without clipping the "!".
 [node name="DamageNumber" type="Label"]
-offset_left = -56.0
-offset_top = -40.0
-offset_right = 56.0
+offset_left = -72.0
+offset_top = -56.0
+offset_right = 72.0
 offset_bottom = -4.0
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
 text = "1"
 horizontal_alignment = 1
