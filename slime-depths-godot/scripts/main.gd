@@ -246,6 +246,12 @@ var _theme_tooltip: Control = null
 # <= 4 (no clutter for small streaks); appears + scales up at tier
 # thresholds (10/25/50/100).
 var _combo_label: Label = null
+# Iter 151 — track previous combo so we can detect "streak broken"
+# transitions (combo dropping from a meaningful tier ≥ 10 to 0) and
+# fire a red flash + scale punch. Reset to 0 on respawn / new run is
+# implicit because main.gd is reloaded per room transition.
+var _prev_combo: int = 0
+var _combo_break_tween: Tween = null
 
 # Iter 48 — per-theme resonance + ascendance descriptions for tooltip
 # content. Keyed to the theme strings used by GameState. Authored
@@ -2944,10 +2950,27 @@ func _on_hero_combo_changed(new_value: int) -> void:
 		_combo_label.add_theme_constant_override("outline_size", 4)
 		_combo_label.pivot_offset = Vector2(112, 20)
 		ui.add_child(_combo_label)
+	# Iter 151 — combo BREAK feedback. If the new value is 0 AND we
+	# were in a meaningful tier (≥ 10), the player just LOST a real
+	# streak (most commonly: they took damage). Flash the label red +
+	# scale-punch before the visibility hide kicks in. The 0.6 s
+	# total beat (peak red @ 0.08, fade to dimmer red @ 0.32, hide at
+	# 0.20 alpha-out) is short enough to read at a glance but long
+	# enough to register the loss. Without this beat, losing a 50+
+	# combo on a single bad hit felt invisible — players didn't
+	# notice the streak ended until they checked the corner.
+	# Note: we DO want the visibility=false to kick at the end so the
+	# label doesn't hang around after the break beat. The chain
+	# tween includes a final scale-reset for safety.
+	if new_value == 0 and _prev_combo >= 10 and _combo_label != null:
+		_show_combo_break()
+		_prev_combo = new_value
+		return
 	# Below 5: hide (no clutter for normal play).
 	if new_value < 5:
 		_combo_label.visible = false
 		_combo_label.scale = Vector2.ONE
+		_prev_combo = new_value
 		return
 	_combo_label.visible = true
 	_combo_label.text = "x%d COMBO" % new_value
@@ -2975,6 +2998,39 @@ func _on_hero_combo_changed(new_value: int) -> void:
 		var tw: Tween = create_tween().set_parallel(true)
 		tw.tween_property(_combo_label, "scale", Vector2(1.35, 1.35), 0.08)
 		tw.chain().tween_property(_combo_label, "scale", Vector2.ONE, 0.18)
+	_prev_combo = new_value
+
+# Iter 151 — combo break flash. Shown only when a meaningful streak
+# (≥ 10) drops to 0. Three-phase tween:
+#   1. Snap to red + scale 1.30 (instant — the "OOF" frame)
+#   2. Tween scale → 1.0, modulate → dim red over 0.30s
+#   3. Final alpha fade-out + hide so the label clears
+# The label text shifts to "STREAK LOST" so the player has a clear
+# message in addition to the color punch.
+func _show_combo_break() -> void:
+	if _combo_label == null:
+		return
+	if _combo_break_tween != null and _combo_break_tween.is_valid():
+		_combo_break_tween.kill()
+	_combo_label.visible = true
+	_combo_label.text = "STREAK LOST"
+	_combo_label.scale = Vector2(1.30, 1.30)
+	_combo_label.modulate = Color(1.5, 0.35, 0.30, 1.0)  # HDR-red punch
+	_combo_break_tween = create_tween().set_parallel(true)
+	_combo_break_tween.tween_property(_combo_label, "scale", Vector2.ONE, 0.30)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_combo_break_tween.tween_property(_combo_label, "modulate", Color(0.85, 0.32, 0.30, 1.0), 0.30)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Phase 2: fade alpha → 0 + hide. Chain so the alpha fade starts
+	# AFTER the scale + modulate settle.
+	_combo_break_tween.chain().tween_property(_combo_label, "modulate:a", 0.0, 0.30)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_combo_break_tween.tween_callback(func ():
+		if _combo_label != null:
+			_combo_label.visible = false
+			_combo_label.scale = Vector2.ONE
+			_combo_label.modulate = Color(1, 1, 1, 1)
+	)
 
 # iter-125: heart-pip geometry. 12-vertex pixel-art heart, anchored at
 # its visual centroid. Clockwise from the bottom-tip. Scaled up
