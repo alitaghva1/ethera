@@ -273,6 +273,17 @@ var _wave_index := -1
 var _wave_state := WaveState.PRE
 var _alive := true
 var _kills := 0
+# iter-113: track previous HUD values so _update_hp / _update_kills can
+# detect WHICH WAY the value changed (damage/heal/kill) and flash the
+# correct accent color. Initial -1 sentinel means "no prior value" so the
+# first _update_hp call on scene load doesn't flash a phantom heal.
+var _prev_hp: int = -1
+var _prev_kills: int = -1
+# Cached tweens so a rapid sequence of hits doesn't pile up overlapping
+# scale tweens (last one would always win, but the in-flight ones would
+# fight). Same kill-previous-tween pattern as ScreenFlash._flash_tween.
+var _hp_pulse_tween: Tween = null
+var _kills_pulse_tween: Tween = null
 var _hit_stop_timer := 0.0
 var _death_screen: Node = null
 # Iter 15 — count of enemies queued by _start_wave that haven't
@@ -2243,9 +2254,80 @@ func _update_hp(v: int) -> void:
 	for i in range(max_hp):
 		hearts += "♥ " if i < v else "♡ "
 	hp_label.text = hearts.strip_edges()
+	# iter-113: punch the heart row when HP changes. Direction-aware:
+	#   • HP DOWN  → scale 1.0 → 1.22 → 1.0, red flash on top of the
+	#                already-red modulate. Reads as "you took a hit."
+	#   • HP UP    → scale 1.0 → 1.12 → 1.0, brief green-cream tint.
+	#                Reads as "you healed." Smaller scale than the damage
+	#                pulse so heals don't overshadow hits.
+	# First call (_prev_hp == -1) skips the pulse so spawn-in doesn't
+	# flash a phantom heal up to full HP.
+	if _prev_hp >= 0 and v != _prev_hp:
+		if v < _prev_hp:
+			_pulse_label(hp_label, "_hp_pulse_tween", 1.22, HP_DAMAGE_FLASH_MODULATE, 0.32)
+		else:
+			_pulse_label(hp_label, "_hp_pulse_tween", 1.12, HP_HEAL_FLASH_MODULATE, 0.28)
+	_prev_hp = v
+
+# iter-113: HUD pulse palette. Label modulate is a per-pixel MULTIPLY on
+# top of the theme_override font_color, so to BRIGHTEN we set components
+# above 1.0 (Godot 2D modulate accepts >1 as HDR brighten). Lower the
+# blue/green channels relative to red to keep damage flash red-leaning;
+# the opposite for heal so the player's eye reads green→good. Kill
+# flash brightens uniformly for cream-gold pop.
+const HP_DAMAGE_FLASH_MODULATE: Color = Color(1.8, 1.0, 1.0, 1.0)
+const HP_HEAL_FLASH_MODULATE: Color = Color(1.0, 1.8, 1.0, 1.0)
+const KILLS_FLASH_MODULATE: Color = Color(1.6, 1.6, 1.4, 1.0)
+const HUD_NEUTRAL_MODULATE: Color = Color(1.0, 1.0, 1.0, 1.0)
 
 func _update_kills() -> void:
 	kills_label.text = "KILLS  %d" % _kills
+	# iter-113: punch the kill counter on every increment. Only ever
+	# pulses up (kills are monotonic), so no direction branching. Skipping
+	# the pulse on the initial set (_prev_kills == -1) matches the
+	# _update_hp pattern — no phantom-flash on scene load.
+	if _prev_kills >= 0 and _kills > _prev_kills:
+		_pulse_label(kills_label, "_kills_pulse_tween", 1.18, KILLS_FLASH_MODULATE, 0.30)
+	_prev_kills = _kills
+
+# Shared scale + modulate flash helper. Pivot is set to the label's
+# center so the scale animates symmetrically (default Control pivot is
+# top-left, which makes the scale visually pull DOWN and RIGHT — wrong
+# for a punch). tween_field_name is the string name of the cached Tween
+# var on `self`, so the helper can kill any prior pulse on the same
+# target before starting a new one (otherwise a rapid hit sequence stacks
+# scales / modulates).
+#
+# Two-stage tween:
+#   1. Snap to scale_peak + flash_modulate (no tween — instant)
+#   2. Tween back to scale=1.0 + neutral-white modulate over `total_dur`
+# The snap-then-tween shape reads as a HIT rather than a slow grow.
+#
+# Note: flash_modulate is the WHOLE Color, used as Godot's HDR-multiply
+# tint over the theme_override font_color. Values > 1 brighten the
+# corresponding channel (no clamp in Godot 2D). End state is white
+# (1,1,1,1) which yields the resting font_color from the theme override.
+func _pulse_label(label: Label, tween_field_name: String, scale_peak: float, flash_modulate: Color, total_dur: float) -> void:
+	if label == null:
+		return
+	# Kill any in-flight pulse on this label so we always end at neutral.
+	var prev: Tween = get(tween_field_name)
+	if prev != null and prev.is_valid():
+		prev.kill()
+	# Pivot at center so scale punches symmetrically. label.size won't
+	# resolve correctly until the layout has been processed at least
+	# once, but at this point in the frame it has been (we're called
+	# from the hp_changed signal, which fires after physics_process /
+	# layout pass on the same frame).
+	label.pivot_offset = label.size * 0.5
+	label.scale = Vector2(scale_peak, scale_peak)
+	label.modulate = flash_modulate
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(label, "scale", Vector2.ONE, total_dur)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(label, "modulate", HUD_NEUTRAL_MODULATE, total_dur)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	set(tween_field_name, tw)
 
 func _update_room_label() -> void:
 	if _room == null or RunState.current_room_index < 0:
