@@ -284,6 +284,18 @@ var _prev_kills: int = -1
 # fight). Same kill-previous-tween pattern as ScreenFlash._flash_tween.
 var _hp_pulse_tween: Tween = null
 var _kills_pulse_tween: Tween = null
+# iter-119: control-hint auto-fade. After HINT_FADE_DELAY seconds of
+# unchanged StatusLabel text, the label tweens its alpha down to
+# HINT_FADED_ALPHA so the help text stops competing with combat reads.
+# Any new status text (set elsewhere via status_label.text = "...")
+# resets the timer + restores full alpha — picked up by the _process
+# poll comparing label.text to _last_status_text.
+const HINT_FADE_DELAY: float = 8.0
+const HINT_FADE_DURATION: float = 1.0
+const HINT_FADED_ALPHA: float = 0.30
+var _status_hint_fade_t: float = 0.0
+var _last_status_text: String = ""
+var _status_fade_tween: Tween = null
 var _hit_stop_timer := 0.0
 var _death_screen: Node = null
 # Iter 15 — count of enemies queued by _start_wave that haven't
@@ -484,6 +496,10 @@ func _ready() -> void:
 			t.timeout.connect(func (): _start_wave(0))
 
 func _process(_delta: float) -> void:
+	# iter-119: tick the status-hint auto-fade. Uses get_process_delta_time
+	# directly so we don't have to rename `_delta` (kept underscored to
+	# preserve "param unused" intent for the existing _process body).
+	_process_status_fade(get_process_delta_time())
 	if _hit_stop_timer > 0.0:
 		_hit_stop_timer -= 1.0 / 60.0
 		if _hit_stop_timer <= 0.0:
@@ -2726,6 +2742,42 @@ func _update_room_label() -> void:
 	var total: int = RunState.FLOOR_ROOMS.size()
 	var idx: int = RunState.current_room_index + 1
 	room_label.text = "%s  ·  ROOM %d / %d" % [_room.display_name, idx, total]
+
+# iter-119: control-hint / status-text auto-fade. Polls status_label.text
+# each tick — if it changed since last poll, reset the fade timer +
+# snap alpha back to 1.0. If it's been unchanged for HINT_FADE_DELAY
+# seconds, kick off a one-shot fade tween down to HINT_FADED_ALPHA so
+# the help text stops competing with combat reads.
+#
+# Polling avoids having to wrap all 9 call sites that set
+# status_label.text — they keep working unmodified, and this loop
+# handles state reset automatically.
+func _process_status_fade(delta: float) -> void:
+	if status_label == null:
+		return
+	if status_label.text != _last_status_text:
+		# New text → reset fade.
+		_last_status_text = status_label.text
+		_status_hint_fade_t = 0.0
+		if _status_fade_tween != null and _status_fade_tween.is_valid():
+			_status_fade_tween.kill()
+			_status_fade_tween = null
+		var m: Color = status_label.modulate
+		m.a = 1.0
+		status_label.modulate = m
+		return
+	_status_hint_fade_t += delta
+	# Fire the fade tween exactly once when we cross the delay threshold.
+	# is_valid() check prevents stacking new tweens each frame while the
+	# fade is in flight; the threshold-vs-alpha check prevents re-firing
+	# after the fade settled.
+	if _status_hint_fade_t > HINT_FADE_DELAY and status_label.modulate.a > HINT_FADED_ALPHA + 0.01:
+		if _status_fade_tween != null and _status_fade_tween.is_valid():
+			return
+		_status_fade_tween = create_tween()
+		_status_fade_tween.set_trans(Tween.TRANS_QUAD)
+		_status_fade_tween.set_ease(Tween.EASE_OUT)
+		_status_fade_tween.tween_property(status_label, "modulate:a", HINT_FADED_ALPHA, HINT_FADE_DURATION)
 
 # Rebuild the HUD relic strip from GameState.owned_relics. Called on
 # _ready (so a hypothetical mid-run reload still shows the right
