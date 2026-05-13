@@ -122,6 +122,16 @@ const CONTACT_ATTACK_ANIM_DURATION: float = 0.25
 # enemy resumes its AI.
 var _hurt_anim_time: float = 0.0
 const HURT_ANIM_DURATION: float = 0.18
+# Iter 152 — idle bob: subtle vertical sin oscillation on the sprite
+# during non-action states so enemies look ALIVE instead of statues
+# pinned to the floor. Each enemy gets a random phase at _ready so a
+# clump doesn't bob in lockstep — that lockstep would read as "synced
+# zombies," the opposite of alive. Amplitude is 1.5 px which is sub-
+# pixel-ish for our 64-px sprites: visible only at peripheral focus,
+# never distracting.
+const IDLE_BOB_AMP: float = 1.5
+const IDLE_BOB_FREQ: float = 2.0  # Hz
+var _idle_bob_phase: float = 0.0
 # Iter 145 — sprite-scale punch on hit. Stacks parallel with the white-
 # flash modulate so the enemy "recoils" visually from each hit. Crit
 # punch is stronger (1.32 vs 1.15) so crits read distinctly bigger at
@@ -351,6 +361,10 @@ func _ready() -> void:
 		var tele: Node2D = SPAWN_TELEGRAPH_SCENE.instantiate() as Node2D
 		if tele != null:
 			add_child(tele)
+	# Iter 152 — randomize idle-bob phase so a clump of enemies doesn't
+	# bob in lockstep. randf() gives a 0..1 value; multiplied by TAU
+	# spreads phases evenly across the sin cycle.
+	_idle_bob_phase = randf() * TAU
 
 # Build SpriteFrames from per-state sheets. Each state becomes one
 # animation; frames are AtlasTextures pointing into the sheet at
@@ -461,6 +475,31 @@ func _apply_type_to_sprite_and_collision() -> void:
 	move_child(shadow, 0)
 
 # ── Physics tick — universal scaffolding + behavior dispatch ──────────
+# Iter 152 — idle bob runs in _process (separate from physics) so the
+# visual oscillation is smooth at the render framerate, not snapped to
+# the physics step. Gated to suppress during action states where other
+# sprite-position writers might already be active or where the bob
+# would fight an in-flight transform tween:
+#   • _dying           — death anim takes over the sprite
+#   • _spawn_in_time   — spawn-in fade owns the modulate; position
+#                         stays at baseline (no fight, but visually
+#                         the materialization beat should be still)
+#   • _hurt_anim_time  — hurt anim should look like a real flinch,
+#                         not a flinch + ambient bob
+# Outside those, the bob is constant — applied to walk + attack +
+# idle. Walk + attack feels right (the bob layered over locomotion
+# reads as "breathing while moving"). Attack mid-windup carries an
+# iter-139 scale ramp but the iter-139 path doesn't touch
+# position, so the bob coexists cleanly.
+func _process(_delta: float) -> void:
+	if enemy_type == null or sprite == null:
+		return
+	if _dying or _spawn_in_time > 0.0 or _hurt_anim_time > 0.0:
+		return
+	var t: float = Time.get_ticks_msec() / 1000.0
+	var bob: float = sin((t * TAU * IDLE_BOB_FREQ) + _idle_bob_phase) * IDLE_BOB_AMP
+	sprite.position.y = enemy_type.sprite_y_offset + bob
+
 func _physics_process(delta: float) -> void:
 	# Death drain → free. Skip all gameplay logic so corpses don't keep
 	# chasing the hero.
