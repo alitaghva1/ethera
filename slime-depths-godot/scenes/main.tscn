@@ -18,12 +18,12 @@
 ; Bottom-border-only (not full perimeter) so the shelf has a clean lower
 ; edge defining the play area below.
 [sub_resource type="StyleBoxFlat" id="top_bar_style"]
-bg_color = Color(0.04, 0.04, 0.08, 0.42)
+bg_color = Color(0.04, 0.04, 0.08, 0.30)
 border_width_left = 0
 border_width_top = 0
 border_width_right = 0
 border_width_bottom = 1
-border_color = Color(0.55, 0.48, 0.32, 0.55)
+border_color = Color(0.55, 0.48, 0.32, 0.40)
 corner_radius_top_left = 0
 corner_radius_top_right = 0
 corner_radius_bottom_right = 0
@@ -104,10 +104,19 @@ position_smoothing_speed = 6.0
 ; label so the HUD reads as a deliberate UI strip framing the play
 ; area instead of bare debug text. mouse_filter = IGNORE (2) so the
 ; backing doesn't eat clicks intended for the world below.
+;
+; iter-121: shrunk offset_bottom 130 → 96 so the shelf stops EXACTLY
+; at the play-area top boundary (PLAY_AREA_MIN.y = 96). Playtest
+; feedback after iter-119: "the dark bar comes down into the play
+; area, feels intrusive." The RelicStrip (offset_top=74..122) used
+; to live entirely inside the shelf; now its bottom 26 px renders
+; against the floor without backing — acceptable because relic
+; badges have their own per-icon styling and the empty-strip case
+; (first room, no relics owned) was the worst offender.
 [node name="TopBarBacking" type="Panel" parent="UI"]
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 130.0
+offset_bottom = 96.0
 theme_override_styles/panel = SubResource("top_bar_style")
 mouse_filter = 2
 

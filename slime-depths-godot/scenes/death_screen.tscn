@@ -28,23 +28,30 @@ height = 256
 ; StyleBoxFlat handles the border + corner radii; the gradient TextureRect
 ; layered inside the Panel paints the actual fill, so the border colors
 ; visually frame the gradient.
+;
+; iter-121: pre-iter-121 the border was 4 px crimson at alpha 0.95 with
+; a 14 px crimson shadow — playtest read as "garish neon-red frame
+; that fights the rest of the dark-fantasy palette." Pulled to a uniform
+; 2 px gold-tinted border at alpha 0.40 + warmer ember shadow (alpha
+; 0.55, 18 px reach). The panel now reads as "ancient scroll with a
+; subtle warm glow" instead of "warning siren."
 [sub_resource type="StyleBoxFlat" id="panel_style"]
 bg_color = Color(0.04, 0.03, 0.06, 0)
 border_width_left = 2
-border_width_top = 4
+border_width_top = 2
 border_width_right = 2
-border_width_bottom = 4
-border_color = Color(0.85, 0.30, 0.30, 0.95)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-content_margin_left = 28.0
-content_margin_top = 24.0
-content_margin_right = 28.0
-content_margin_bottom = 24.0
-shadow_color = Color(0.85, 0.30, 0.30, 0.35)
-shadow_size = 14
+border_width_bottom = 2
+border_color = Color(0.78, 0.55, 0.35, 0.45)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+content_margin_left = 32.0
+content_margin_top = 26.0
+content_margin_right = 32.0
+content_margin_bottom = 26.0
+shadow_color = Color(0.85, 0.45, 0.18, 0.40)
+shadow_size = 18
 shadow_offset = Vector2(0, 0)
 
 ; ── Button styles ───────────────────────────────────────────────────────
@@ -173,16 +180,24 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(0, 140)
 mouse_filter = 2
 
+; iter-121: pre-iter-121 the TitleGlow was 108 pt and the Title 96 pt
+; — the 12 pt size differential made the dim-red glow letters peek
+; ABOVE AND BELOW the bright-red foreground, reading as a stamped
+; "double image" (playtest screenshot shows it clearly). Matched both
+; labels to 96 pt; the glow now contributes only its outline halo
+; (18 px wide vs the foreground's 5 px) so the bloom reads as a halo
+; on the SAME letterforms, not a second letterform behind. Same fix
+; pattern iter-93 used on the main menu title.
 [node name="TitleGlow" type="Label" parent="Panel/Stack/TitleBlock"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 108
-theme_override_colors/font_color = Color(0.75, 0.20, 0.20, 0.32)
-theme_override_colors/font_outline_color = Color(0.70, 0.15, 0.15, 0.45)
-theme_override_constants/outline_size = 14
+theme_override_font_sizes/font_size = 96
+theme_override_colors/font_color = Color(0.92, 0.30, 0.30, 0)
+theme_override_colors/font_outline_color = Color(0.95, 0.45, 0.30, 0.55)
+theme_override_constants/outline_size = 18
 text = "YOU DIED"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -195,9 +210,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 96
-theme_override_colors/font_color = Color(0.92, 0.30, 0.30, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 5
+theme_override_colors/font_color = Color(0.96, 0.42, 0.36, 1)
+theme_override_colors/font_outline_color = Color(0.18, 0.04, 0.04, 1)
+theme_override_constants/outline_size = 6
 text = "YOU DIED"
 horizontal_alignment = 1
 vertical_alignment = 1
