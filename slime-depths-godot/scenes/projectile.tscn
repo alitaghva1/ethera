@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://b3proj12345"]
+[gd_scene load_steps=9 format=3 uid="uid://b3proj12345"]
 
 [ext_resource type="Script" path="res://scripts/projectile.gd" id="1_script"]
 
@@ -55,3 +55,38 @@ color = Color(1, 0.6, 1, 1)
 energy = 1.6
 texture = SubResource("light_tex")
 texture_scale = 0.7
+
+; Iter 154 — projectile motion trail. Pre-iter-154 the orb just streaked
+; in a straight line with no visible "tail" — felt floaty/uncommitted,
+; especially the faster bonecap shots that crossed the room in under
+; 0.3s. A trailing particle stream sells the projectile as a "lobbed
+; energy bolt" instead of "geometric circle moving." Magenta-purple
+; ramp matches the orb's modulate color so the trail reads as the
+; SAME entity decaying behind, not a separate FX.
+;
+; Direction (-1, 0) emits backwards along the projectile's local +X.
+; The projectile script rotates the node so its facing matches velocity,
+; so backwards-local = behind the bolt in world space. local_coords =
+; false bakes each particle's world position at emit time — they stay
+; in world space as the bolt races forward, giving the "left behind"
+; read instead of "stuck to me."
+
+[sub_resource type="Gradient" id="trail_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1.0, 0.55, 1.0, 1.0, 0.85, 0.32, 0.92, 0.7, 0.45, 0.10, 0.55, 0.0)
+
+[node name="Trail" type="CPUParticles2D" parent="."]
+amount = 12
+lifetime = 0.28
+emitting = true
+local_coords = false
+direction = Vector2(-1, 0)
+spread = 18.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 14.0
+initial_velocity_max = 28.0
+damping_min = 4.0
+damping_max = 8.0
+scale_amount_min = 1.6
+scale_amount_max = 2.4
+color_ramp = SubResource("trail_grad")
