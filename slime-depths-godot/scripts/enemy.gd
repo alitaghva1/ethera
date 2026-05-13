@@ -132,6 +132,17 @@ const HURT_ANIM_DURATION: float = 0.18
 const IDLE_BOB_AMP: float = 1.5
 const IDLE_BOB_FREQ: float = 2.0  # Hz
 var _idle_bob_phase: float = 0.0
+# Iter 153 — ground shadow under each enemy. Built programmatically in
+# _ready so enemy.tscn stays untouched. Pulses in COUNTER-phase with
+# the iter-152 sprite bob (shadow shrinks when sprite is high, grows
+# when sprite is low) — same trick as iter-132 hero shadow_pulse.
+# Reinforces "feet on the floor" read; enemies without a shadow look
+# like they're floating, especially boss enemies that have larger
+# sprites.
+const SHADOW_BASE_ALPHA: float = 0.35
+const SHADOW_PULSE_AMP: float = 0.12  # ±12% of base scale at peak bob
+var _shadow: Polygon2D = null
+var _shadow_base_scale: Vector2 = Vector2.ONE
 # Iter 145 — sprite-scale punch on hit. Stacks parallel with the white-
 # flash modulate so the enemy "recoils" visually from each hit. Crit
 # punch is stronger (1.32 vs 1.15) so crits read distinctly bigger at
@@ -365,6 +376,40 @@ func _ready() -> void:
 	# bob in lockstep. randf() gives a 0..1 value; multiplied by TAU
 	# spreads phases evenly across the sin cycle.
 	_idle_bob_phase = randf() * TAU
+	# Iter 153 — build ground shadow. Built programmatically (not in the
+	# .tscn) so the shadow scales with enemy_type.sprite_scale at spawn
+	# time; bosses get a bigger shadow, slimes get a smaller one.
+	_build_ground_shadow()
+
+# Iter 153 — construct the per-enemy ground shadow Polygon2D. 12-segment
+# elliptical disc with 1.0:0.45 aspect ratio (matches the spawn_telegraph
+# top-down perspective squash). Radius scales linearly with sprite_scale,
+# baseline 14 px at scale=1.0 so a slime (scale ~0.6) gets ~8 px, a
+# boss (scale ~1.3) gets ~18 px. Color is dark with 0.35 alpha — visible
+# on bright floors, not opaque on dark ones.
+#
+# z_index = -2 places it BEHIND both the sprite (z=0) and the iter-147
+# spawn_telegraph (z=-1) — the spawn telegraph briefly OVERLAYS the
+# shadow during materialization, then disappears leaving the shadow
+# alone.
+func _build_ground_shadow() -> void:
+	if enemy_type == null:
+		return
+	var sc: float = enemy_type.sprite_scale
+	var rx: float = 14.0 * sc
+	var ry: float = rx * 0.45
+	var pts: PackedVector2Array = PackedVector2Array()
+	for i in range(12):
+		var ang: float = (float(i) / 12.0) * TAU
+		pts.append(Vector2(cos(ang) * rx, sin(ang) * ry))
+	_shadow = Polygon2D.new()
+	_shadow.name = "Shadow"
+	_shadow.position = Vector2(0, 12)  # at the "feet" — same as spawn_telegraph
+	_shadow.color = Color(0, 0, 0, SHADOW_BASE_ALPHA)
+	_shadow.polygon = pts
+	_shadow.z_index = -2
+	_shadow_base_scale = Vector2.ONE
+	add_child(_shadow)
 
 # Build SpriteFrames from per-state sheets. Each state becomes one
 # animation; frames are AtlasTextures pointing into the sheet at
@@ -497,8 +542,18 @@ func _process(_delta: float) -> void:
 	if _dying or _spawn_in_time > 0.0 or _hurt_anim_time > 0.0:
 		return
 	var t: float = Time.get_ticks_msec() / 1000.0
-	var bob: float = sin((t * TAU * IDLE_BOB_FREQ) + _idle_bob_phase) * IDLE_BOB_AMP
+	var sin_v: float = sin((t * TAU * IDLE_BOB_FREQ) + _idle_bob_phase)
+	var bob: float = sin_v * IDLE_BOB_AMP
 	sprite.position.y = enemy_type.sprite_y_offset + bob
+	# Iter 153 — shadow pulse in COUNTER-phase with the bob. When the
+	# sprite is HIGH (sin_v > 0 → bob > 0 → sprite moved up), the foot
+	# is "off the ground," so shadow SHRINKS. When sprite is LOW
+	# (sin_v < 0 → bob < 0 → sprite settled down), foot is "on the
+	# ground," shadow GROWS. Counter-phase by negating sin_v before
+	# applying the pulse amplitude.
+	if _shadow != null:
+		var shadow_pulse: float = -sin_v * SHADOW_PULSE_AMP
+		_shadow.scale = _shadow_base_scale * (1.0 + shadow_pulse)
 
 func _physics_process(delta: float) -> void:
 	# Death drain → free. Skip all gameplay logic so corpses don't keep
