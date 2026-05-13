@@ -175,6 +175,15 @@ const IDLE_BOB_AMP           := 1.6
 const IDLE_BOB_FREQ          := 1.7
 const IDLE_BOB_LERP          := 8.0
 const STEP_INTERVAL          := 28.0
+# Iter 132 — walk bob + shadow pulse. Fixes "up/down feels slidey" —
+# front/back walk frames have minimal silhouette change, so the hero
+# appears to glide. Adding a vertical bob synced to footfalls gives
+# instant motion read from any angle. Shadow pulse (shrink on foot-up,
+# expand on foot-down) reinforces the ground contact.
+const WALK_BOB_AMP           := 2.5   # ±2.5 px vertical bob while walking
+const WALK_BOB_FREQ          := 7.0   # ~7 cycles/sec at 200 px/s = synced to steps
+const SHADOW_BASE_SCALE      := Vector2(0.22, 0.16)  # matches hero.tscn
+const SHADOW_PULSE_AMP       := 0.025  # ±2.5% scale pulse per step
 
 # Iter 12 — direction tables + animation metadata. Reads:
 # DIR_NAMES[i] = direction suffix for bucket i (north-clockwise).
@@ -306,6 +315,7 @@ const AIM_ASSIST_RANGE: float = 520.0
 # Dash strike is now the only mobility option from a standing start.
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var shadow: Sprite2D = $Shadow  # iter-132: shadow pulse
 
 var hp: int = MAX_HP
 var _attack_cd := 0.0
@@ -520,6 +530,7 @@ var _camera: Camera2D = null
 var _camera_offset := Vector2.ZERO
 var _idle_time := 0.0
 var _step_accumulator := 0.0
+var _walk_time := 0.0  # iter-132: walk bob phase accumulator
 var _last_anim: StringName = &""
 
 signal hp_changed(new_hp: int)
@@ -820,8 +831,10 @@ func _physics_process(delta: float) -> void:
 		_camera.offset = _camera_offset
 
 	# ── Idle bob + footsteps (iter 11) ────────────────────────────────
+	# ── iter-132: walk bob + shadow pulse (fixes "up/down feels slidey")
 	if is_moving and _dash_strike_time <= 0.0 and not _is_attacking:
 		_idle_time = 0.0
+		_walk_time += delta  # iter-132: accumulate walk phase
 		_step_accumulator += velocity.length() * delta
 		if _step_accumulator >= STEP_INTERVAL:
 			_step_accumulator = 0.0
@@ -836,12 +849,24 @@ func _physics_process(delta: float) -> void:
 			var parent_for_dust: Node = get_parent()
 			if parent_for_dust != null:
 				FootstepDust.spawn(parent_for_dust, global_position)
-		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y, IDLE_BOB_LERP * delta)
+		# iter-132: walk bob — vertical oscillation synced to footfalls.
+		# sin() wave at WALK_BOB_FREQ cycles/sec gives instant motion read
+		# from front/back views where the walk sprite has minimal silhouette change.
+		var walk_bob := sin(_walk_time * TAU * WALK_BOB_FREQ) * WALK_BOB_AMP
+		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + walk_bob, IDLE_BOB_LERP * delta)
+		# iter-132: shadow pulse — scale shrinks at bob peak (foot up), expands
+		# at bob trough (foot down). Inverted sin() so shadow is smallest when
+		# sprite is highest. Reinforces ground contact from any viewing angle.
+		var shadow_pulse := -sin(_walk_time * TAU * WALK_BOB_FREQ) * SHADOW_PULSE_AMP
+		shadow.scale = SHADOW_BASE_SCALE * (1.0 + shadow_pulse)
 	else:
 		_idle_time += delta
+		_walk_time = 0.0  # iter-132: reset walk phase when stopped
 		_step_accumulator = 0.0
 		var bob := sin(_idle_time * TAU * IDLE_BOB_FREQ) * IDLE_BOB_AMP
 		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + bob, IDLE_BOB_LERP * delta)
+		# iter-132: shadow returns to base scale when idle
+		shadow.scale = shadow.scale.lerp(SHADOW_BASE_SCALE, IDLE_BOB_LERP * delta)
 
 	# iter-95 input precedence: shield > dash_strike > blast > attack.
 	# Dodge is gone (and with it the iter-70 dodge-cancel-into-dash
