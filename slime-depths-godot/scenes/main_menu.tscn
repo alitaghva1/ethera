@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://b3menu1234567"]
+[gd_scene load_steps=17 format=3 uid="uid://b3menu1234567"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/menu/menu_backdrop.jpg" id="2_backdrop"]
@@ -64,14 +64,11 @@ font_weight = 700
 font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
 font_weight = 400
 
-; iter-127 italic variant for the tagline. Same fallback chain so the
-; OS picks the same family's italic face when available; falls back to
-; the engine's default italicization if not. Keeps the typographic
-; family unified while letting "beneath the ruin" whisper in italic.
-[sub_resource type="SystemFont" id="body_font_italic"]
-font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
-font_weight = 400
-font_italic = true
+; iter-128 — body_font_italic sub-resource dropped along with the
+; subtitle it served. See the design note in the Subtitle deletion
+; below: genre peers (Elden Ring, Dark Souls, Bloodborne, Hades,
+; Hollow Knight, Slay the Spire, Enter the Gungeon) all show just
+; the title alone — a separate subtitle Label is the wrong move.
 
 ; ── Edge vignette (subtle rim darkening over backdrop) ─────────────────
 ; The painted backdrop already vignettes to near-black at its corners,
@@ -617,48 +614,21 @@ mouse_filter = 2
 ; iter-93: bumped vertical offset 148 → 150 so the tagline sits a clean
 ; 30 px below the title baseline (was crammed against the now-removed
 ; bottom hairline).
-; iter-127 subtitle redesign — dropped the heavy "◇ B E N E A T H …"
-; letterspacing + diamond flourishes. Both made the tagline feel
-; stretched and decorative; under the iter-126 serif font, natural
-; serif rhythm reads MORE atmospheric than forced letterspacing.
-; Italic via SystemFont body_font_italic (separate sub_resource not
-; needed — we just style this single label with font_italic). Font
-; size 19 → 15 + alpha 0.95 → 0.65 so the tagline whispers below
-; the title rather than competing with it.
-[node name="Subtitle" type="Label" parent="TitleBlock"]
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -360.0
-offset_top = 144.0
-offset_right = 360.0
-offset_bottom = 178.0
-grow_horizontal = 2
-theme_override_fonts/font = SubResource("body_font_italic")
-theme_override_font_sizes/font_size = 15
-theme_override_colors/font_color = Color(0.88, 0.78, 0.58, 0.62)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
-theme_override_constants/outline_size = 1
-text = "beneath the ruin"
-horizontal_alignment = 1
-vertical_alignment = 1
-mouse_filter = 2
-
-; iter-127 manuscript divider — a 1-px gold hairline 160 px wide
-; centered below the subtitle. Thin enough to read as a quiet
-; flourish (not a UI element), wide enough to anchor the title
-; block as a composed unit.
-[node name="SubtitleRule" type="Panel" parent="TitleBlock"]
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -80.0
-offset_top = 184.0
-offset_right = 80.0
-offset_bottom = 185.0
-grow_horizontal = 2
-theme_override_styles/panel = SubResource("hairline_style")
-mouse_filter = 2
+; iter-128 — Subtitle "beneath the ruin" REMOVED entirely. Design
+; review: zero of the premier dark-fantasy / roguelite menus (Elden
+; Ring, Dark Souls 3, Bloodborne, Hollow Knight, Hades, Sekiro,
+; Diablo IV, Slay the Spire, Enter the Gungeon) carry a separate
+; subtitle Label on the title screen. The title brand stands alone.
+; Every attempt to style "beneath the ruin" — full letterspaced
+; (iter-92), dimmed italic (iter-127) — read as either placeholder
+; flavor text or whisper-text mistaken for a render bug.
+;
+; The decorative SubtitleRule manuscript hairline went with it; it
+; was finishing punctuation FOR the subtitle. Without the subtitle
+; the hairline sits in empty space without anchoring anything, and
+; adds visual noise the screen doesn't need. The gap between title
+; and button stack now reads as confident breathing room rather
+; than "we forgot to put something there."
 
 ; ── Button stack ──────────────────────────────────────────────────────
 ; iter-92: stack nests INSIDE the painted archway interior so the buttons

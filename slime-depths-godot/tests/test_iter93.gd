@@ -59,23 +59,17 @@ func _initialize() -> void:
 		else:
 			print("OK TitleBlock starts at y=80 (more top headroom)")
 
-	# ═══ Subtitle pushed further from title baseline ═══
-	# iter-93's spec was offset_top = 150. iter-127 nudged it to 144 to
-	# leave room for the new SubtitleRule manuscript hairline at y=184.
-	# Either value is fine — we just check the subtitle still has clear
-	# breath from the title (offset_top ≥ 140).
-	var sub_idx: int = src.find("name=\"Subtitle\"")
-	if sub_idx < 0:
-		push_error("FAIL: Subtitle node missing")
+	# ═══ Subtitle node ═══
+	# iter-128 retired the Subtitle Label entirely after a design review
+	# against genre peers (Elden Ring / Dark Souls / Bloodborne / Hades /
+	# Hollow Knight all show title alone). The iter-93 spacing concern
+	# is now moot — there's no subtitle to position. We just confirm
+	# the node is gone so the deletion is intentional, not a regression.
+	if src.find("name=\"Subtitle\"") >= 0:
+		push_error("FAIL: Subtitle node still present — iter-128 should have removed it")
 		ok = false
 	else:
-		var sub_slice: String = src.substr(sub_idx, 400)
-		var has_breath: bool = sub_slice.contains("offset_top = 150.0") or sub_slice.contains("offset_top = 144.0")
-		if not has_breath:
-			push_error("FAIL: Subtitle offset_top not in the iter-93/iter-127 range (140-150)")
-			ok = false
-		else:
-			print("OK Subtitle has breath from title baseline (iter-93 / iter-127 spacing)")
+		print("OK Subtitle node retired (iter-128 design call: title stands alone)")
 
 	# ═══ Stats block shifted up for bottom clearance ═══
 	var sb_idx: int = src.find("name=\"StatsBlock\"")
@@ -108,8 +102,8 @@ func _initialize() -> void:
 			if inst.get_node_or_null("TitleBlock/TitleHairlineBottom") != null:
 				push_error("FAIL: TitleHairlineBottom survived instantiation")
 				ok = false
-			# Title + glow + subtitle still present.
-			for n in ["TitleBlock/Title", "TitleBlock/TitleGlow", "TitleBlock/Subtitle"]:
+			# Title + glow still present. iter-128 removed Subtitle.
+			for n in ["TitleBlock/Title", "TitleBlock/TitleGlow"]:
 				if inst.get_node_or_null(n) == null:
 					push_error("FAIL: %s missing after instantiation" % n)
 					ok = false

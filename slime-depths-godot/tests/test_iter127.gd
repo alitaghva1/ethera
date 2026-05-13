@@ -76,34 +76,24 @@ func _initialize() -> void:
 	if ok:
 		print("OK title drop-shadow wired (3-layer stack: shadow + glow + foreground)")
 
-	# ═══ 2. Subtitle refined ═══
-	if "[sub_resource type=\"SystemFont\" id=\"body_font_italic\"]" not in tscn:
-		push_error("FAIL: missing body_font_italic SystemFont sub_resource")
+	# ═══ 2. Subtitle removed (iter-128 design call) ═══
+	# Iter-127 added a refined italic subtitle + manuscript hairline.
+	# Iter-128 retired both entirely after the design review against
+	# genre peers showed every premium dark-fantasy title carries no
+	# separate subtitle Label. The CONTRACT iter-127 asserted (subtitle
+	# styled atmospherically + hairline divider) is superseded by
+	# iter-128's "title stands alone" decision.
+	if "name=\"Subtitle\" type=\"Label\"" in tscn:
+		push_error("FAIL: Subtitle Label still present — iter-128 removed it")
 		ok = false
-	if "font_italic = true" not in tscn:
-		push_error("FAIL: body_font_italic doesn't set font_italic = true")
+	if "name=\"SubtitleRule\" type=\"Panel\"" in tscn:
+		push_error("FAIL: SubtitleRule hairline still present — iter-128 removed it")
 		ok = false
-	# Subtitle text simplified
-	if "text = \"beneath the ruin\"" not in tscn:
-		push_error("FAIL: subtitle text should be 'beneath the ruin' (no letterspacing / diamonds)")
-		ok = false
-	# Old letterspaced text gone
-	if "b e n e a t h" in tscn:
-		push_error("FAIL: pre-iter-127 letterspaced subtitle still present")
-		ok = false
-	# Subtitle uses italic font
-	if "theme_override_fonts/font = SubResource(\"body_font_italic\")" not in tscn:
-		push_error("FAIL: Subtitle doesn't use body_font_italic")
+	if "[sub_resource type=\"SystemFont\" id=\"body_font_italic\"]" in tscn:
+		push_error("FAIL: body_font_italic sub_resource still present (orphaned after subtitle removal)")
 		ok = false
 	if ok:
-		print("OK subtitle: 'beneath the ruin' in italic body_font @ alpha 0.62")
-
-	# ═══ 3. Manuscript hairline ═══
-	if "name=\"SubtitleRule\" type=\"Panel\"" not in tscn:
-		push_error("FAIL: SubtitleRule Panel (manuscript hairline) missing")
-		ok = false
-	if ok:
-		print("OK manuscript hairline divider added beneath subtitle")
+		print("OK subtitle + rule retired in iter-128 — title now stands alone")
 
 	# ═══ 4. Buttons restyled ═══
 	# button_normal: top/bottom borders only, squared corners

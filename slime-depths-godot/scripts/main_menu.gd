@@ -47,11 +47,12 @@ const PARALLAX_BACKDROP_MAX_PX := 10.0
 const PARALLAX_TITLE_MAX_PX := 4.0
 const PARALLAX_LERP_RATE := 6.0
 
-# Subtitle alpha pulse — 0.65 → 1.0 over 1.5s, then back (3s full cycle).
-# Slow enough to read as "atmospheric breathing," not a strobe.
-const SUBTITLE_ALPHA_MIN := 0.65
-const SUBTITLE_ALPHA_MAX := 1.0
-const SUBTITLE_PULSE_HALF_DURATION := 1.5
+# iter-128 — SUBTITLE_ALPHA_* constants removed alongside the Subtitle
+# Label they animated. The "beneath the ruin" tagline got cut after
+# a design review against genre peers (Elden Ring / Dark Souls /
+# Bloodborne / Hades / Hollow Knight all show TITLE alone, never a
+# separate subtitle Label). See scenes/main_menu.tscn for the full
+# rationale.
 
 @onready var begin_button: Button = $CenterStack/BeginButton
 @onready var settings_button: Button = $CenterStack/SettingsButton
@@ -62,7 +63,6 @@ const SUBTITLE_PULSE_HALF_DURATION := 1.5
 # title pulse alongside title + title_glow so the 3-layer stack moves
 # as one unit.
 @onready var title_shadow: Label = $TitleBlock/TitleShadow
-@onready var subtitle: Label = $TitleBlock/Subtitle
 @onready var title_halo: TextureRect = $TitleHalo
 @onready var title_block: Control = $TitleBlock
 @onready var backdrop_image: TextureRect = $BackdropImage
@@ -84,7 +84,6 @@ const SUBTITLE_PULSE_HALF_DURATION := 1.5
 # quickly. (Same pattern as the JS fx.js tween management.)
 var _hover_tweens: Dictionary = {}
 var _title_tween: Tween
-var _subtitle_tween: Tween
 
 # iter-111: Parallax state. _parallax_offset is the SMOOTHED [-1..1]-ish
 # vector currently driving the layered offsets; _parallax_target is the
@@ -136,7 +135,6 @@ func _ready() -> void:
 	if title_shadow != null:
 		title_shadow.resized.connect(_recenter_title_pivots)
 	_start_title_pulse()
-	_start_subtitle_pulse()
 
 	# Position the ember emission line along the actual viewport bottom +
 	# stretch its emission_rect_extents to the viewport width. iter-92
@@ -298,19 +296,9 @@ func _start_title_pulse() -> void:
 	_title_tween.tween_method(_apply_title_scale, TITLE_PULSE_MIN, TITLE_PULSE_MAX, TITLE_PULSE_HALF_DURATION)
 	_title_tween.tween_method(_apply_title_scale, TITLE_PULSE_MAX, TITLE_PULSE_MIN, TITLE_PULSE_HALF_DURATION)
 
-# Infinite-loop alpha pulse on the subtitle. Slow enough (3s full cycle) to
-# read as ambient atmosphere rather than a strobe. Independent timing from
-# the title pulse so the two animations don't reinforce each other into a
-# single hard beat.
-func _start_subtitle_pulse() -> void:
-	if _subtitle_tween and _subtitle_tween.is_valid():
-		_subtitle_tween.kill()
-	_subtitle_tween = create_tween()
-	_subtitle_tween.set_loops()
-	_subtitle_tween.set_trans(Tween.TRANS_SINE)
-	_subtitle_tween.set_ease(Tween.EASE_IN_OUT)
-	_subtitle_tween.tween_method(_apply_subtitle_alpha, SUBTITLE_ALPHA_MIN, SUBTITLE_ALPHA_MAX, SUBTITLE_PULSE_HALF_DURATION)
-	_subtitle_tween.tween_method(_apply_subtitle_alpha, SUBTITLE_ALPHA_MAX, SUBTITLE_ALPHA_MIN, SUBTITLE_PULSE_HALF_DURATION)
+# iter-128 — _start_subtitle_pulse + SUBTITLE_ALPHA_* constants
+# removed alongside the Subtitle Label. See scenes/main_menu.tscn for
+# the design rationale (no genre peer uses a separate subtitle Label).
 
 func _apply_title_scale(s: float) -> void:
 	var v: Vector2 = Vector2(s, s)
@@ -335,10 +323,7 @@ func _apply_title_scale(s: float) -> void:
 		c.a = a
 		title_halo.modulate = c
 
-func _apply_subtitle_alpha(a: float) -> void:
-	var c: Color = subtitle.modulate
-	c.a = a
-	subtitle.modulate = c
+# iter-128 — _apply_subtitle_alpha removed; Subtitle Label is gone.
 
 # iter-111: Capture the layout-resolved positions of every parallax target.
 # Called from _reposition_embers (which runs on _ready AND on every
