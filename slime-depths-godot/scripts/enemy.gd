@@ -1941,6 +1941,12 @@ func _die() -> void:
 				_hero.take_damage(ELITE_EMBER_DAMAGE, global_position)
 	died_at.emit(global_position)
 	Events.enemy_died.emit(global_position)
+	# Iter 148 — boss-defeated savor beat. Fired AFTER the generic
+	# enemy_died emit so subscribers that filter on is_boss don't have
+	# to check enemy_type themselves. main.gd handler installs the
+	# slow-mo + heavy shake; screen_flash.gd flashes gold.
+	if enemy_type != null and enemy_type.is_boss:
+		Events.boss_died.emit(global_position, enemy_type.display_name)
 	# iter-141 — direct call into FX with size + heavy info. The
 	# generic enemy_died signal can't carry these (it has 4 subscribers,
 	# three of which are gameplay logic that don't care about

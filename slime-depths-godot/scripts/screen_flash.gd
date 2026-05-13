@@ -89,6 +89,11 @@ func _ready() -> void:
 	Events.enemy_died.connect(_on_enemy_died)
 	Events.pickup_claimed.connect(_on_pickup_claimed)
 	Events.hero_died.connect(_on_hero_died)
+	# Iter 148 — gold wash on boss-defeated, longer & warmer than the
+	# generic enemy_died white pop. Pairs with main.gd's slow-mo + shake
+	# for a layered "you killed the boss" beat that lands BEFORE the
+	# FloorClearBurst gold cascade takes over.
+	Events.boss_died.connect(_on_boss_died)
 
 # ── Flash helper ──────────────────────────────────────────────────────
 
@@ -284,6 +289,17 @@ func _on_enemy_died(_world_pos: Vector2) -> void:
 	# enemy anywhere on screen. Short duration so it doesn't fight the
 	# death_burst particle for attention.
 	_flash(Color(1.0, 1.0, 0.92, 0.10), 0.12)
+
+# Iter 148 — boss-defeated gold wash. Bigger and warmer than the
+# generic _on_enemy_died white pop, longer fade (0.55s vs 0.12s) so
+# the screen-space punctuation registers ALONGSIDE the slow-mo + shake
+# from main.gd's _on_boss_died handler. Color is a saturated warm gold
+# matching the iter-71 FloorClearBurst BIG-variant palette so the
+# whole boss-clear sequence reads as a unified beat: boss takes hit →
+# gold flash + slow-mo + shake → flash fades → FloorClearBurst cascade
+# kicks in.
+func _on_boss_died(_world_pos: Vector2, _boss_name: String) -> void:
+	_flash(Color(1.0, 0.78, 0.32, 0.32), 0.55)
 
 func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# Gold wash — same hue family as the hit-spark / damage-number

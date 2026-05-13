@@ -106,6 +106,13 @@ signal pickup_mythic(world_pos: Vector2)
 #   subscribes and instantiates the requested enemy via its existing
 #   _spawn_enemy_type pathway.
 signal boss_phase_3(world_pos: Vector2)
+# Iter 148 — boss-defeated cinematic trigger. Emitted from enemy._die()
+# when is_boss=true, AFTER the generic enemy_died emit. main.gd uses
+# this to apply a savor beat: slow-mo + heavy shake + gold screen
+# flash for ~0.6s before FloorClearBurst's BIG variant takes over.
+# screen_flash.gd subscribes for the gold wash. Distinct from
+# enemy_died so non-boss-aware subscribers don't have to filter.
+signal boss_died(world_pos: Vector2, boss_name: String)
 signal enemy_summon_requested(world_pos: Vector2, type_id: String)
 
 # Iter 57 — achievement unlocked. Carries the achievement id; HUD

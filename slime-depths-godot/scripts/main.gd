@@ -110,6 +110,21 @@ const CRIT_SWING_HIT_STOP_SCALE := 0.05
 const CRIT_SWING_HIT_STOP_TIME  := 0.10
 const DASH_HIT_STOP_SCALE  := 0.10
 const DASH_HIT_STOP_TIME   := 0.07
+# Iter 148 — boss death savor beat. After a boss takes its lethal hit,
+# slow-mo for 0.6 real-seconds + heavy camera shake. The FloorClearBurst
+# BIG variant already plays after _on_wave_cleared resolves, so this
+# fills the ~1 s gap between "killing blow lands" and "FLOOR CLEAR
+# banner appears" with a proper boss-fight punctuation moment.
+#
+# 0.35 time-scale is heavier than the crit hit-stop (0.05) but lasts
+# 6× longer — feel grammar: brief deep freezes for crits, sustained
+# milder slow-mo for bosses. The 14-amp / 0.45-time shake is bigger
+# than a crushing kill (11/0.22) so boss deaths read as a distinct
+# class of event.
+const BOSS_DEATH_TIME_SCALE: float = 0.35
+const BOSS_DEATH_HIT_STOP_TIME: float = 0.6
+const BOSS_DEATH_SHAKE_AMP: float = 14.0
+const BOSS_DEATH_SHAKE_TIME: float = 0.45
 # iter-87 → iter-94: the sprite-sheet replacement for the dash impact
 # read as a "broken square" in playtest (the AtlasTexture cell boundary
 # was visible). iter-94 reverts to the procedural dash_impact.tscn (still
@@ -520,6 +535,11 @@ func _ready() -> void:
 	Events.enemy_summon_requested.connect(_on_enemy_summon_requested)
 	# Iter 57 — achievement unlock popup banner.
 	Events.achievement_unlocked.connect(_on_achievement_unlocked)
+	# Iter 148 — boss-defeated savor beat. Slow-mo + heavy shake when
+	# a boss takes its lethal hit. FloorClearBurst still plays after
+	# _on_wave_cleared resolves — this fills the gap between the hit
+	# landing and the celebration banner appearing.
+	Events.boss_died.connect(_on_boss_died)
 	_death_screen = DEATH_SCREEN_SCENE.instantiate()
 	add_child(_death_screen)
 	_death_screen.retry_pressed.connect(_on_death_retry)
@@ -2834,6 +2854,20 @@ func _on_hero_swing_connected(hit_count: int, any_crit: bool = false) -> void:
 	else:
 		Engine.time_scale = SWING_HIT_STOP_SCALE
 		_hit_stop_timer = SWING_HIT_STOP_TIME + multi_bonus
+
+# Iter 148 — boss-defeated cinematic moment. Fired right after the
+# boss takes its lethal hit, BEFORE _on_wave_cleared resolves and
+# spawns FloorClearBurst. The slow-mo + shake creates a "wait, did
+# I just—" beat that makes the boss kill feel weighty. The hit-stop
+# uses the existing _hit_stop_timer machinery — Engine.time_scale
+# resets to 1.0 automatically via the _process loop when the timer
+# elapses. Boss-death stop OVERRIDES any in-flight crit/swing/dash
+# stop (those checks `if _hit_stop_timer > 0.0: return`, so we
+# unconditionally set here regardless of an existing tiny stop).
+func _on_boss_died(_world_pos: Vector2, _boss_name: String) -> void:
+	Engine.time_scale = BOSS_DEATH_TIME_SCALE
+	_hit_stop_timer = BOSS_DEATH_HIT_STOP_TIME
+	FX.shake(BOSS_DEATH_SHAKE_AMP, BOSS_DEATH_SHAKE_TIME)
 
 func _on_hero_dash_strike_landed(world_pos: Vector2, hit_count: int) -> void:
 	# iter-94: dash impact reverts from the iter-87 PixelLab sprite-sheet
