@@ -21,7 +21,14 @@ extends Control
 # Iter 26 — badge size bumped 28 → 40 px. The iter-23 size made the
 # painted icon art (32-64 px sources) hard to read. 40 px gives the
 # inner texture room to breathe + room for a proper rounded border.
-const ICON_SIZE: float = 40.0
+#
+# Iter-125 — pulled back from 40 → 32 px after playtest read on a
+# treasure-vault screenshot showed the single-relic state reading as
+# "an oversized magenta-bordered badge floating in the corner." 32 px
+# keeps the texture readable while letting a full row of 8-10 relics
+# (legendary roll late-game) sit cleanly in the HUD strip without the
+# whole row dominating the screen edge.
+const ICON_SIZE: float = 32.0
 
 # Tier color palette + tier-specific glow alpha. Reads against the
 # dim dungeon HUD background. Iter 26 saturates the colors slightly
@@ -92,19 +99,22 @@ func set_relic(id: String) -> void:
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
 	sb.bg_color = bg_color
 	sb.border_color = tier_color
-	sb.border_width_left = 2
-	sb.border_width_top = 2
-	sb.border_width_right = 2
-	sb.border_width_bottom = 2
-	sb.corner_radius_top_left = 5
-	sb.corner_radius_top_right = 5
-	sb.corner_radius_bottom_left = 5
-	sb.corner_radius_bottom_right = 5
+	# Iter-125 — border thinned 2 → 1 px + corner radius 5 → 3 px +
+	# legendary shadow 4 → 3 px. Reads as a refined frame rather than a
+	# 2-px tier rim that competed with the texture inside.
+	sb.border_width_left = 1
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.corner_radius_top_left = 3
+	sb.corner_radius_top_right = 3
+	sb.corner_radius_bottom_left = 3
+	sb.corner_radius_bottom_right = 3
 	# Legendary tier gets a soft glow via shadow — costs nothing and
 	# makes the rarest badge pop without needing a separate VFX node.
 	if tier == "legendary":
 		sb.shadow_color = Color(tier_color.r, tier_color.g, tier_color.b, 0.55)
-		sb.shadow_size = 4
+		sb.shadow_size = 3
 	frame.add_theme_stylebox_override("panel", sb)
 	frame.anchor_right = 1.0
 	frame.anchor_bottom = 1.0
@@ -158,7 +168,8 @@ func set_relic(id: String) -> void:
 		letter.offset_bottom = 0.0
 		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		letter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		letter.add_theme_font_size_override("font_size", 22)
+		# Iter-125: font 22 → 18 pt to match the smaller 32 px badge.
+		letter.add_theme_font_size_override("font_size", 18)
 		letter.add_theme_color_override("font_color", Color(1, 0.96, 0.88, 1))
 		letter.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 		letter.add_theme_constant_override("outline_size", 3)

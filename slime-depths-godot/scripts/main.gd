@@ -175,6 +175,10 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 
 @onready var hero: Hero = $Hero
 @onready var hp_label: Label = $UI/HPLabel
+# iter-125: custom polygon heart pips replace the Unicode HPLabel.
+# _update_hp populates this row with one pip per max_hp slot; iter-113
+# damage / heal pulse targets the row's scale + modulate.
+@onready var heart_row: HBoxContainer = $UI/HeartRow
 @onready var status_label: Label = $UI/StatusLabel
 @onready var kills_label: Label = $UI/KillsLabel
 @onready var wave_label: Label = $UI/WaveLabel
@@ -2880,26 +2884,147 @@ func _on_hero_combo_changed(new_value: int) -> void:
 		tw.tween_property(_combo_label, "scale", Vector2(1.35, 1.35), 0.08)
 		tw.chain().tween_property(_combo_label, "scale", Vector2.ONE, 0.18)
 
+# iter-125: heart-pip geometry. 12-vertex pixel-art heart, anchored at
+# its visual centroid. Clockwise from the bottom-tip. Scaled up
+# HEART_SCALE × to get a ~26 px wide visible heart inside a 30 px pip.
+#
+# Stored as a non-const var because Godot 4's `const` only accepts
+# literal expressions — `PackedVector2Array([Vector2(...), ...])` calls
+# the Vector2 constructor at evaluation time, which the parser rejects
+# in a const context. Lazy-init pattern: empty array sentinel, filled
+# on first call to _heart_verts_polygon().
+var _heart_verts_cache: PackedVector2Array = PackedVector2Array()
+const HEART_SCALE: float = 2.4
+
+func _heart_verts_polygon() -> PackedVector2Array:
+	if _heart_verts_cache.is_empty():
+		_heart_verts_cache = PackedVector2Array([
+			Vector2(0, 5),      # bottom tip (anchor)
+			Vector2(4, 3),      # right lower curve
+			Vector2(5, 0),      # right mid
+			Vector2(5, -2),     # right upper
+			Vector2(3, -3.5),   # right lobe peak
+			Vector2(1, -3),     # right arch top (inner notch side)
+			Vector2(0, -1.5),   # center notch
+			Vector2(-1, -3),    # left arch top
+			Vector2(-3, -3.5),  # left lobe peak
+			Vector2(-5, -2),    # left upper
+			Vector2(-5, 0),     # left mid
+			Vector2(-4, 3),     # left lower curve
+		])
+	return _heart_verts_cache
+const HEART_PIP_SIZE: float = 30.0
+const HEART_FILL_COLOR: Color = Color(1.0, 0.34, 0.36, 1.0)
+const HEART_EMPTY_COLOR: Color = Color(0.18, 0.18, 0.20, 0.85)
+const HEART_OUTLINE_COLOR: Color = Color(0.06, 0.02, 0.02, 1.0)
+const HEART_SHADOW_COLOR: Color = Color(0.0, 0.0, 0.0, 0.55)
+const HEART_HIGHLIGHT_COLOR: Color = Color(1.0, 0.72, 0.62, 0.85)
+
 func _update_hp(v: int) -> void:
-	var hearts := ""
 	var max_hp: int = Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
-	for i in range(max_hp):
-		hearts += "♥ " if i < v else "♡ "
-	hp_label.text = hearts.strip_edges()
+	# iter-125: rebuild pip count when max_hp changes (relic pickup that
+	# bumps max_hp_bonus). Cheap because the pips are simple polygons.
+	if heart_row != null:
+		if heart_row.get_child_count() != max_hp:
+			for child in heart_row.get_children():
+				child.queue_free()
+			for i in range(max_hp):
+				heart_row.add_child(_make_heart_pip())
+		# Toggle fill state per pip. Children already exist after the
+		# rebuild branch above; if max_hp didn't change we just update colors.
+		var pips: Array = heart_row.get_children()
+		for i in range(pips.size()):
+			_set_pip_filled(pips[i], i < v)
 	# iter-113: punch the heart row when HP changes. Direction-aware:
-	#   • HP DOWN  → scale 1.0 → 1.22 → 1.0, red flash on top of the
-	#                already-red modulate. Reads as "you took a hit."
-	#   • HP UP    → scale 1.0 → 1.12 → 1.0, brief green-cream tint.
-	#                Reads as "you healed." Smaller scale than the damage
-	#                pulse so heals don't overshadow hits.
+	#   • HP DOWN  → scale 1.0 → 1.22 → 1.0 — reads as "you took a hit."
+	#   • HP UP    → scale 1.0 → 1.12 → 1.0 — gentler, "you healed."
 	# First call (_prev_hp == -1) skips the pulse so spawn-in doesn't
-	# flash a phantom heal up to full HP.
-	if _prev_hp >= 0 and v != _prev_hp:
+	# flash a phantom heal up to full HP. iter-125: pulse retargeted from
+	# the (now-hidden) HPLabel to the new heart_row Control.
+	if _prev_hp >= 0 and v != _prev_hp and heart_row != null:
 		if v < _prev_hp:
-			_pulse_label(hp_label, "_hp_pulse_tween", 1.22, HP_DAMAGE_FLASH_MODULATE, 0.32)
+			_pulse_label(heart_row, "_hp_pulse_tween", 1.22, HP_DAMAGE_FLASH_MODULATE, 0.32)
 		else:
-			_pulse_label(hp_label, "_hp_pulse_tween", 1.12, HP_HEAL_FLASH_MODULATE, 0.28)
+			_pulse_label(heart_row, "_hp_pulse_tween", 1.12, HP_HEAL_FLASH_MODULATE, 0.28)
 	_prev_hp = v
+
+# iter-125: build one heart pip. The pip is a Control sized
+# HEART_PIP_SIZE × HEART_PIP_SIZE with three layered Polygon2Ds:
+#   • Shadow — same shape, offset (+1, +1.5) px, dark 0.55 alpha
+#   • Body   — same shape, color set by _set_pip_filled (full red or
+#              dim grey)
+#   • Outline — Line2D tracing the heart silhouette in near-black
+# The pip's geometry is in LOCAL coords centered at (PIP_SIZE/2, PIP_SIZE/2)
+# so HBoxContainer + horizontal layout puts them in a clean row.
+func _make_heart_pip() -> Control:
+	var pip: Control = Control.new()
+	pip.custom_minimum_size = Vector2(HEART_PIP_SIZE, HEART_PIP_SIZE)
+	pip.size = Vector2(HEART_PIP_SIZE, HEART_PIP_SIZE)
+	pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var center: Vector2 = Vector2(HEART_PIP_SIZE * 0.5, HEART_PIP_SIZE * 0.5)
+	var template: PackedVector2Array = _heart_verts_polygon()
+	var scaled: PackedVector2Array = PackedVector2Array()
+	for vert in template:
+		scaled.append(vert * HEART_SCALE)
+	# Shadow first (drawn first → underneath).
+	var shadow: Polygon2D = Polygon2D.new()
+	shadow.polygon = scaled
+	shadow.color = HEART_SHADOW_COLOR
+	shadow.position = center + Vector2(1.0, 1.5)
+	shadow.name = "Shadow"
+	pip.add_child(shadow)
+	# Body — fill changes between HEART_FILL_COLOR / HEART_EMPTY_COLOR
+	# in _set_pip_filled.
+	var body: Polygon2D = Polygon2D.new()
+	body.polygon = scaled
+	body.color = HEART_FILL_COLOR
+	body.position = center
+	body.name = "Body"
+	pip.add_child(body)
+	# Inner highlight — a small lighter polygon offset up-left on the
+	# left lobe. Sells "this heart catches a torchlight pulse."
+	var highlight: Polygon2D = Polygon2D.new()
+	var hl_pts: PackedVector2Array = PackedVector2Array([
+		Vector2(-3, -3) * HEART_SCALE * 0.7,
+		Vector2(-1.5, -2) * HEART_SCALE * 0.7,
+		Vector2(-2, -0.5) * HEART_SCALE * 0.7,
+		Vector2(-4, -1.5) * HEART_SCALE * 0.7,
+	])
+	highlight.polygon = hl_pts
+	highlight.color = HEART_HIGHLIGHT_COLOR
+	highlight.position = center + Vector2(-1.0, -1.0)
+	highlight.name = "Highlight"
+	pip.add_child(highlight)
+	# Outline — Line2D closing back to vertex 0 so the silhouette reads
+	# crisp against bright torch sparks underneath.
+	var outline: Line2D = Line2D.new()
+	var outline_pts: PackedVector2Array = PackedVector2Array()
+	for vert in template:
+		outline_pts.append(vert * HEART_SCALE)
+	outline_pts.append(template[0] * HEART_SCALE)
+	outline.points = outline_pts
+	outline.width = 1.5
+	outline.default_color = HEART_OUTLINE_COLOR
+	outline.antialiased = true
+	outline.position = center
+	outline.name = "Outline"
+	pip.add_child(outline)
+	return pip
+
+# Toggle a pip between "filled" (current HP) and "empty" (lost HP).
+# Color the body + show / hide the highlight + dim the shadow so an
+# empty pip reads visually distinct from a filled one at a glance.
+func _set_pip_filled(pip: Control, filled: bool) -> void:
+	var body: Polygon2D = pip.get_node_or_null("Body") as Polygon2D
+	var highlight: Polygon2D = pip.get_node_or_null("Highlight") as Polygon2D
+	var shadow: Polygon2D = pip.get_node_or_null("Shadow") as Polygon2D
+	if body != null:
+		body.color = HEART_FILL_COLOR if filled else HEART_EMPTY_COLOR
+	if highlight != null:
+		highlight.visible = filled
+	if shadow != null:
+		# Dim the shadow on empty pips so the pip recedes visually.
+		shadow.modulate.a = 1.0 if filled else 0.5
 
 # iter-113: HUD pulse palette. Label modulate is a per-pixel MULTIPLY on
 # top of the theme_override font_color, so to BRIGHTEN we set components
@@ -2939,7 +3064,7 @@ func _update_kills() -> void:
 # tint over the theme_override font_color. Values > 1 brighten the
 # corresponding channel (no clamp in Godot 2D). End state is white
 # (1,1,1,1) which yields the resting font_color from the theme override.
-func _pulse_label(label: Label, tween_field_name: String, scale_peak: float, flash_modulate: Color, total_dur: float) -> void:
+func _pulse_label(label: Control, tween_field_name: String, scale_peak: float, flash_modulate: Color, total_dur: float) -> void:
 	if label == null:
 		return
 	# Kill any in-flight pulse on this label so we always end at neutral.
@@ -3109,198 +3234,135 @@ func _sync_familiars() -> void:
 # "you just unlocked this." The strip lives in the same UI CanvasLayer
 # so it doesn't move with the world camera.
 func _rebuild_theme_chips() -> void:
-	# Lazily build the container on first rebuild. UI is a CanvasLayer
-	# (queried via $UI from the @onready hp_label path); we mount the
-	# strip there so it inherits the canvas-layer rendering of the
-	# rest of the HUD (immune to world-camera transforms). Strip height
-	# bumped to 60 px (up from 24) to accommodate the new vertical Panel
-	# chips. Stays within the y=126-186 band — relic strip ends at 122,
-	# combo counter is top-right not top-left, so no overlap.
-	var ui: CanvasLayer = $UI as CanvasLayer
-	if theme_chip_strip == null:
-		theme_chip_strip = HBoxContainer.new()
-		theme_chip_strip.name = "ThemeChipStrip"
-		theme_chip_strip.offset_left = 16.0
-		theme_chip_strip.offset_top = 126.0
-		theme_chip_strip.offset_right = 900.0
-		theme_chip_strip.offset_bottom = 186.0
-		theme_chip_strip.add_theme_constant_override("separation", 6)
-		theme_chip_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		ui.add_child(theme_chip_strip)
-	# Clear any prior chips. Also kill any orphan tooltip in case a
-	# strip rebuild happens mid-hover (a relic granted while the
-	# player was hovering a chip → strip rebuilds → tooltip still
-	# pointed at the now-freed chip).
-	for child in theme_chip_strip.get_children():
-		child.queue_free()
+	# iter-125 redesign — replaced the iter-74 standalone theme_chip_strip
+	# (108×54 pill chips with name label + tier dots + count badge) with
+	# small 22×22 inline diamond glyphs APPENDED INTO the relic_strip
+	# itself. The HUD becomes a single unified row:
+	#   [HP hearts row] / [relic icons … theme glyphs]
+	# Detail that used to live in the chip's text (BLOOD / 1/4 / tier)
+	# now lives in the hover tooltip; the resting visual is a single
+	# colored diamond that pulses subtly at Resonance and gains a halo
+	# at Ascendance.
+	#
+	# Free any orphaned legacy theme_chip_strip (iter-74 may have built
+	# one before this iter; sweep it on first rebuild so the canvas
+	# isn't left with dead nodes).
+	if theme_chip_strip != null and is_instance_valid(theme_chip_strip):
+		theme_chip_strip.queue_free()
+		theme_chip_strip = null
+	if relic_strip == null:
+		return
+	# The relic icons just got placed by _rebuild_relic_strip's parent
+	# loop above — we don't touch them; we just append our glyphs at
+	# the end of the HBoxContainer. The next pickup_claimed rebuild
+	# will clear the whole strip and re-add both layers, keeping things
+	# in sync.
 	_hide_theme_tooltip()
-	# Iterate ALL five themes in canonical order (storm/flame/blood/vow/
-	# shadow). This is a change from the iter-39 behavior (which only
-	# emitted active themes) — the player benefits from seeing pre-
-	# resonance progress so they can plan toward the 2-of-X threshold.
-	# A theme with 0 owned still renders, but very dim.
 	var themes_in_order: Array = ["storm", "flame", "blood", "vow", "shadow"]
 	for theme in themes_in_order:
 		var owned: int = GameState.theme_count(theme)
 		var tier: int = GameState.theme_tier(theme)
-		# Skip themes the player has zero exposure to — chip is just
-		# clutter at that point. Once a single relic of the theme is
-		# picked up the chip appears and starts tracking progress.
 		if owned <= 0:
-			# Still cache 0 so the eventual tier-up flash detection has
-			# a baseline to compare against.
 			_theme_prev_tiers[theme] = tier
 			continue
 		var prev_tier: int = int(_theme_prev_tiers.get(theme, 0))
 		var tier_up: bool = tier > prev_tier
 		_theme_prev_tiers[theme] = tier
-		var chip: Control = _build_theme_chip(theme, owned, tier)
-		theme_chip_strip.add_child(chip)
+		var glyph: Control = _build_theme_chip(theme, owned, tier)
+		relic_strip.add_child(glyph)
 		if tier_up and tier >= 1:
-			_play_theme_chip_tier_flash(chip)
+			_play_theme_chip_tier_flash(glyph)
 
-# Iter 74 — build a single theme chip Control subtree. Returns a sized
-# PanelContainer with all visuals layered (border, fill, label, tier
-# indicator, count badge, optional outer-glow Panel for ascendance).
-# Hover signals are wired here so the caller doesn't need to know about
-# the chip's internals.
+# Iter 125 — Build a single theme glyph (replaces the iter-74 pill).
+# Returns a 24×24 Control hosting:
+#   • Shadow Polygon2D (diamond, dark, offset +1/+1.5)
+#   • Diamond Polygon2D in theme color — alpha 0.50 below Resonance,
+#     1.0 at Resonance, brighter still at Ascendance
+#   • Outline Line2D in near-black for crisp silhouette
+#   • Ascendance: pulsing outer halo Polygon2D underneath
+#   • Resonance: gentle scale-loop pulse on the root
+# Hover wiring is identical to the pre-iter-125 chip so the existing
+# _on_theme_chip_hover tooltip code keeps working.
+const THEME_GLYPH_SIZE: float = 24.0
+const THEME_GLYPH_RADIUS: float = 6.5
+
 func _build_theme_chip(theme: String, owned: int, tier: int) -> Control:
+	# `owned` is the tooltip-relevant count; the glyph itself only uses
+	# tier for visual variation. owned still flows into the hover tip via
+	# the existing _on_theme_chip_hover code (which re-reads GameState).
+	var _unused_count: int = owned
 	var col: Color = ThemePalette.color_for(theme)
-	# Outer container — sets the chip's overall size + hosts the optional
-	# ascendance glow panel behind the main panel.
 	var root: Control = Control.new()
-	root.name = "Chip_" + theme
-	root.custom_minimum_size = Vector2(108, 54)
+	root.name = "Glyph_" + theme
+	root.custom_minimum_size = Vector2(THEME_GLYPH_SIZE, THEME_GLYPH_SIZE)
+	root.size = Vector2(THEME_GLYPH_SIZE, THEME_GLYPH_SIZE)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
-	root.pivot_offset = Vector2(54, 27)  # center for scale tweens
-	# Ascendance outer glow — a slightly-larger Panel layer sitting
-	# BEHIND the main panel (added first → drawn first → covered by
-	# subsequent siblings unless we offset it). Only built for tier >= 2
-	# so the lookup is cheap; pulse is driven by a looping tween.
+	var center: Vector2 = Vector2(THEME_GLYPH_SIZE * 0.5, THEME_GLYPH_SIZE * 0.5)
+	root.pivot_offset = center
+	var r: float = THEME_GLYPH_RADIUS
+	var diamond_pts: PackedVector2Array = PackedVector2Array([
+		Vector2(0, -r), Vector2(r, 0), Vector2(0, r), Vector2(-r, 0),
+	])
+	# Ascendance — pulsing outer halo. Drawn first so it sits under the
+	# diamond. Halo radius 1.8× core for a clear "aura" read.
 	if tier >= 2:
-		var glow: Panel = Panel.new()
-		glow.name = "Glow"
-		glow.anchor_right = 1.0
-		glow.anchor_bottom = 1.0
-		glow.offset_left = -4.0
-		glow.offset_top = -4.0
-		glow.offset_right = 4.0
-		glow.offset_bottom = 4.0
-		glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var glow_sb: StyleBoxFlat = StyleBoxFlat.new()
-		glow_sb.bg_color = Color(col.r, col.g, col.b, 0.30)
-		glow_sb.corner_radius_top_left = 6
-		glow_sb.corner_radius_top_right = 6
-		glow_sb.corner_radius_bottom_right = 6
-		glow_sb.corner_radius_bottom_left = 6
-		glow.add_theme_stylebox_override("panel", glow_sb)
-		root.add_child(glow)
-		# Pulsing glow alpha 0.3 → 1.0 → 0.3 over 1.5s, looping.
-		var tw_glow: Tween = create_tween()
-		tw_glow.set_loops()
-		tw_glow.tween_property(glow, "modulate:a", 1.0, 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tw_glow.tween_property(glow, "modulate:a", 0.30, 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	# Main panel — border + fill. Alpha pattern from spec:
-	#   tier 0  (owned 1, no resonance):  fill 0.18 × 0.4 = dim
-	#   tier 1  (resonance, 2-3 owned):   fill 0.18 × 1.0
-	#   tier 2  (ascendance, 4+ owned):   fill 0.22 × 1.0 (slightly brighter)
-	var panel: PanelContainer = PanelContainer.new()
-	panel.name = "Panel"
-	panel.anchor_right = 1.0
-	panel.anchor_bottom = 1.0
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb: StyleBoxFlat = StyleBoxFlat.new()
-	var fill_alpha: float = 0.18
-	if tier >= 2:
-		fill_alpha = 0.22
-	sb.bg_color = Color(col.r, col.g, col.b, fill_alpha)
-	# Border brightens with tier — below resonance borders sit dim at
-	# alpha 0.55, resonance + ascendance get the full opaque border.
-	var border_alpha: float = 1.0 if tier >= 1 else 0.55
-	sb.border_color = Color(col.r, col.g, col.b, border_alpha)
-	sb.border_width_left = 2
-	sb.border_width_top = 2
-	sb.border_width_right = 2
-	sb.border_width_bottom = 2
-	sb.corner_radius_top_left = 4
-	sb.corner_radius_top_right = 4
-	sb.corner_radius_bottom_right = 4
-	sb.corner_radius_bottom_left = 4
-	sb.content_margin_left = 8.0
-	sb.content_margin_top = 6.0
-	sb.content_margin_right = 8.0
-	sb.content_margin_bottom = 6.0
-	panel.add_theme_stylebox_override("panel", sb)
-	root.add_child(panel)
-	# Dim everything below resonance so the chip reads as "future
-	# potential" rather than "active power."
-	if tier == 0:
-		panel.modulate = Color(1, 1, 1, 0.55)
-	# Vertical layout: name label on top, tier-indicator dots below.
-	var box: VBoxContainer = VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(box)
-	# Theme name — letterspaced "S T O R M" style. Cream-gold so the
-	# text reads as HUD typography rather than competing with the
-	# theme-tinted border.
-	var name_lbl: Label = Label.new()
-	name_lbl.text = _letterspace_theme(theme)
-	name_lbl.add_theme_font_size_override("font_size", 13)
-	name_lbl.add_theme_color_override("font_color", Color(0.92, 0.86, 0.66))
-	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
-	name_lbl.add_theme_constant_override("outline_size", 3)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(name_lbl)
-	# Tier indicator row — "—" for below resonance, "◆◆" at resonance,
-	# "◆◆◆◆" at ascendance. Colored in the theme tint so the indicator
-	# acts as a colored progress meter rather than just inert text.
-	var tier_lbl: Label = Label.new()
-	var glyph: String = "—"
-	if tier == 1:
-		glyph = "◆ ◆"
-	elif tier >= 2:
-		glyph = "◆ ◆ ◆ ◆"
-	tier_lbl.text = glyph
-	tier_lbl.add_theme_font_size_override("font_size", 11)
-	var dot_color: Color = col if tier >= 1 else Color(col.r, col.g, col.b, 0.5)
-	tier_lbl.add_theme_color_override("font_color", dot_color)
-	tier_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	tier_lbl.add_theme_constant_override("outline_size", 2)
-	tier_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tier_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(tier_lbl)
-	# Count badge — small "N/4" in the top-right corner showing exact
-	# owned vs ascendance threshold. Drawn as a sibling of the panel so
-	# it sits above the border. anchor_left/right both 1.0 + negative
-	# offsets glues it to the top-right.
-	var badge: Label = Label.new()
-	badge.text = "%d/4" % owned
-	badge.add_theme_font_size_override("font_size", 10)
-	badge.add_theme_color_override("font_color", Color(0.95, 0.92, 0.78))
-	badge.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	badge.add_theme_constant_override("outline_size", 2)
-	badge.anchor_left = 1.0
-	badge.anchor_right = 1.0
-	badge.offset_left = -28.0
-	badge.offset_top = 2.0
-	badge.offset_right = -4.0
-	badge.offset_bottom = 16.0
-	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(badge)
-	# Resonance pulse — subtle 1.0 ↔ 1.04 scale loop. Drives the eye to
-	# active chips without being distracting. Tied to root.pivot_offset
-	# (set above) so the chip scales around its center, not its corner.
+		var halo: Polygon2D = Polygon2D.new()
+		var hr: float = r * 1.8
+		halo.polygon = PackedVector2Array([
+			Vector2(0, -hr), Vector2(hr, 0), Vector2(0, hr), Vector2(-hr, 0),
+		])
+		halo.color = Color(col.r, col.g, col.b, 0.40)
+		halo.position = center
+		halo.name = "Halo"
+		root.add_child(halo)
+		var tw_halo: Tween = create_tween()
+		tw_halo.set_loops()
+		tw_halo.tween_property(halo, "modulate:a", 1.0, 0.85)\
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw_halo.tween_property(halo, "modulate:a", 0.40, 0.85)\
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Shadow — same diamond shape offset down-right.
+	var shadow: Polygon2D = Polygon2D.new()
+	shadow.polygon = diamond_pts
+	shadow.color = Color(0, 0, 0, 0.55)
+	shadow.position = center + Vector2(1.0, 1.5)
+	root.add_child(shadow)
+	# Core diamond — alpha encodes tier.
+	var diamond: Polygon2D = Polygon2D.new()
+	diamond.polygon = diamond_pts
+	var fill_alpha: float = 0.50
+	if tier >= 1:
+		fill_alpha = 1.0
+	diamond.color = Color(col.r, col.g, col.b, fill_alpha)
+	diamond.position = center
+	diamond.name = "Diamond"
+	root.add_child(diamond)
+	# Crisp outline so the silhouette holds against torch sparks.
+	var outline: Line2D = Line2D.new()
+	var ol_pts: PackedVector2Array = PackedVector2Array()
+	for p in diamond_pts:
+		ol_pts.append(p)
+	ol_pts.append(diamond_pts[0])  # close the loop
+	outline.points = ol_pts
+	outline.width = 1.0
+	outline.default_color = Color(0.05, 0.04, 0.07, 0.95)
+	outline.antialiased = true
+	outline.position = center
+	root.add_child(outline)
+	# Resonance pulse — subtle scale-loop. Lower amplitude than the
+	# iter-74 chip (1.06 vs 1.04) since the glyph is smaller and the
+	# pulse needs to read at this scale. Pivot already set on root.
 	if tier == 1:
 		var tw_pulse: Tween = create_tween()
 		tw_pulse.set_loops()
-		tw_pulse.tween_property(root, "scale", Vector2(1.04, 1.04), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tw_pulse.tween_property(root, "scale", Vector2(1.0, 1.0), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	# Hover wiring lives on the root Control. STOP filter on root +
-	# IGNORE on every descendant funnels the mouse_entered to exactly
-	# one signal regardless of which sub-Label the cursor crosses.
+		tw_pulse.tween_property(root, "scale", Vector2(1.08, 1.08), 0.9)\
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw_pulse.tween_property(root, "scale", Vector2(1.0, 1.0), 0.9)\
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Hover tooltip — exact same wiring as iter-74. _on_theme_chip_hover
+	# rebuilds tooltip text from theme + GameState.theme_count, so the
+	# tooltip still shows "BLOOD · 1/4 toward Resonance" with no glyph-
+	# side data.
 	root.mouse_entered.connect(_on_theme_chip_hover.bind(theme, root))
 	root.mouse_exited.connect(_on_theme_chip_unhover)
 	return root

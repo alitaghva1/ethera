@@ -98,21 +98,25 @@ position_smoothing_speed = 6.0
 ; legible against bright flame pixels or hit-spark VFX that might
 ; pass under the HUD.
 
-; ── LEFT — Hearts only ──────────────────────────────────────────────
-; Small, slightly translucent. Anchored top-left at (20, 14). The
-; hearts use a Unicode glyph row built in main.gd._update_hp; the iter
-; -113 pulse on damage / heal still animates this label.
+; ── LEFT — Hearts (iter-125 custom polygon pips) ────────────────────
+; Pre-iter-125 the HP display was a row of Unicode ♥ / ♡ glyphs at
+; 22 pt — playtest read: "hearts are hard to see against the dungeon
+; floor." Iter-125 replaces them with custom Polygon2D heart pips built
+; in main.gd at room load. The HBoxContainer here is the mount point;
+; main.gd._update_hp populates it with one pip per max_hp slot. The
+; legacy HPLabel node is kept as an empty hidden placeholder so any
+; future code that walks the UI tree by name doesn't null-crash.
 [node name="HPLabel" type="Label" parent="UI"]
+visible = false
+text = ""
+
+[node name="HeartRow" type="HBoxContainer" parent="UI"]
 offset_left = 20.0
-offset_top = 14.0
-offset_right = 220.0
-offset_bottom = 44.0
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.92, 0.42, 0.42, 0.92)
-theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.02, 0.85)
-theme_override_constants/outline_size = 1
-text = "♥ ♥ ♥"
-vertical_alignment = 1
+offset_top = 12.0
+offset_right = 240.0
+offset_bottom = 52.0
+theme_override_constants/separation = 6
+mouse_filter = 2
 
 ; ── Status — exists but starts BLANK + auto-hides ───────────────────
 ; main.gd sets a transient hint on first room entry; iter-119's

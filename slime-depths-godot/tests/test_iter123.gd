@@ -85,20 +85,19 @@ func _initialize() -> void:
 	# The iter-123 contract just required the HUD labels to be smaller
 	# than the iter-122 design — captured by the HP and RoomLabel
 	# checks above; specific WaveLabel size is iter-124's call.
-	# All HUD labels (HP/Room/Kills/Wave/Status) should have outline_size = 1.
-	# The BossBar's "Name" label keeps its iter-22 outline_size = 4 because
-	# it's a transient cinematic element, not the resting HUD. Check that
-	# every iter-123 HUD label uses outline 1 by counting occurrences —
-	# we expect 5 (HP, Status, Room, Kills, Wave).
+	# All HUD labels (Status/Room/Kills/Wave) should have outline_size = 1.
+	# HP became a polygon HeartRow in iter-125 (no Label, no outline).
+	# The BossBar's "Name" label keeps its iter-22 outline_size = 4
+	# because it's a transient cinematic element, not the resting HUD.
 	var hud_outline_count: int = 0
 	for line in main_tscn.split("\n"):
 		if "theme_override_constants/outline_size = 1" in line and not line.contains("outline_size = 10"):
 			hud_outline_count += 1
-	if hud_outline_count < 5:
-		push_error("FAIL: only %d HUD labels use outline_size=1, expected 5 (HP/Status/Room/Kills/Wave)" % hud_outline_count)
+	if hud_outline_count < 4:
+		push_error("FAIL: only %d HUD labels use outline_size=1, expected ≥4 (Status/Room/Kills/Wave)" % hud_outline_count)
 		ok = false
 	if ok:
-		print("OK labels reduced: 22/16/12 pt + 5 HUD outline_size=1 + alpha 0.7-0.92")
+		print("OK HUD text labels remain at outline_size=1 + low alpha")
 
 	# ═══ Status hint becomes truly invisible ═══
 	if "HINT_FADED_ALPHA: float = 0.0" not in main_gd:
