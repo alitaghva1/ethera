@@ -166,8 +166,59 @@ func _on_enemy_hit(world_pos: Vector2) -> void:
 	_spawn(HIT_SPARK_SCENE, world_pos)
 
 func _on_enemy_died(world_pos: Vector2) -> void:
-	_shake(6.0, 0.12)
-	_spawn(DEATH_BURST_SCENE, world_pos)
+	# iter-141: the burst spawn + shake moved to spawn_enemy_kill_burst,
+	# which enemy.gd calls directly with size + heavy-kill info. Without
+	# that data the burst was uniform — a 1-HP slime popped identically
+	# to a boss. Keeping this stub so the existing `Events.enemy_died`
+	# connection still binds (other autoloads / future audio polish may
+	# care about the position alone), but the visual work happens in the
+	# new path.
+	pass
+
+# iter-141 — Hades/Isaac-tier kill burst. enemy.gd calls this directly
+# at death-emit time with the enemy's sprite_scale and an is_heavy flag
+# (boss or max_hp >= 8). The burst's visual chunkiness scales with the
+# enemy's size, so trash mobs pop modest while bosses pop big — the
+# combat scene has consistent grammar instead of a 16-particle uniform
+# blip regardless of what just died.
+#
+# scale_factor    enemy_type.sprite_scale (clamped 0.85..1.4 — bounded
+#                 so a max-scale boss doesn't dominate the screen and a
+#                 min-scale enemy still reads chunky)
+# is_heavy        if true: shake amp/time goes 6.0/0.12 → 9.0/0.16, plus
+#                 3 white "flash core" sparks land at small radius
+#                 BEFORE the falling red embers — that white-flash beat
+#                 is what makes boss/elite kills FEEL fundamentally
+#                 different from a chip kill in Hades / Isaac
+func spawn_enemy_kill_burst(world_pos: Vector2, scale_factor: float, is_heavy: bool) -> void:
+	var clamped: float = clampf(scale_factor, 0.85, 1.4)
+	# Spawn the burst scene; we need to set scale on the instance, so we
+	# inline the spawn (vs _spawn helper that just spawns + positions).
+	var scene := get_tree().current_scene
+	if scene != null:
+		var burst: Node2D = DEATH_BURST_SCENE.instantiate() as Node2D
+		if burst != null:
+			burst.global_position = world_pos
+			burst.scale = Vector2(clamped, clamped)
+			scene.add_child(burst)
+	# Heavy kills: white flash-core layer + heavier shake. The 3 sparks
+	# land within an 8 px radius so they read as a single bright pulse,
+	# not as a second ring (the iter-138 crit splash IS a ring; we don't
+	# want death bursts to mimic crit splashes — they live in different
+	# beats).
+	if is_heavy:
+		_shake(9.0, 0.16)
+		if scene != null:
+			for i in range(3):
+				var ang: float = randf() * TAU
+				var r: float = randf() * 8.0
+				var s: Node2D = HIT_SPARK_SCENE.instantiate() as Node2D
+				if s != null:
+					s.global_position = world_pos + Vector2(cos(ang), sin(ang)) * r
+					s.modulate = Color(1.4, 1.35, 1.05, 1.0)  # HDR white core
+					scene.add_child(s)
+	else:
+		_shake(6.0, 0.12)
 
 func _on_pickup_claimed(world_pos: Vector2, _name: String) -> void:
 	# Reuse hit-spark gold for now — a dedicated pickup burst can land

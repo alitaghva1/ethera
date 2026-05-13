@@ -15,8 +15,15 @@ script = ExtResource("1_script")
 ; Larger amount + gravity for the falling-ember beat. Higher speed
 ; range so the burst has visual texture (some particles fast, some
 ; slow). No damping — gravity does the deceleration work.
+;
+; iter-141 — slightly chunkier baseline: amount 16 → 20, scale 2-3 →
+; 2.2-3.4, initial_velocity_max 160 → 180. Compounds with the per-
+; spawn scale factor from FX.spawn_enemy_kill_burst (clamped 0.85–1.4)
+; so a normal trash mob pops a hair more substantial than before AND
+; a boss pops noticeably bigger than that. Lifetime stays 0.6s — the
+; bursts shouldn't linger in a wave-clear room.
 [node name="CPUParticles2D" type="CPUParticles2D" parent="."]
-amount = 16
+amount = 20
 lifetime = 0.6
 one_shot = true
 emitting = true
@@ -24,7 +31,7 @@ explosiveness = 1.0
 spread = 180.0
 gravity = Vector2(0, 200)
 initial_velocity_min = 60.0
-initial_velocity_max = 160.0
-scale_amount_min = 2.0
-scale_amount_max = 3.0
+initial_velocity_max = 180.0
+scale_amount_min = 2.2
+scale_amount_max = 3.4
 color_ramp = SubResource("death_grad")

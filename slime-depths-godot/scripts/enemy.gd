@@ -1900,6 +1900,20 @@ func _die() -> void:
 				_hero.take_damage(ELITE_EMBER_DAMAGE, global_position)
 	died_at.emit(global_position)
 	Events.enemy_died.emit(global_position)
+	# iter-141 — direct call into FX with size + heavy info. The
+	# generic enemy_died signal can't carry these (it has 4 subscribers,
+	# three of which are gameplay logic that don't care about
+	# sprite_scale), so VFX gets its own explicit call. Heavy = boss or
+	# any enemy with max_hp ≥ 8 (covers elites + chunkier mobs). The
+	# burst's chunkiness scales with sprite_scale so a 1-HP slime pops
+	# modest while a boss pops big — consistent grammar instead of a
+	# 16-particle uniform blip on every death.
+	var s_factor: float = 1.0
+	var is_heavy_kill: bool = false
+	if enemy_type != null:
+		s_factor = enemy_type.sprite_scale
+		is_heavy_kill = enemy_type.is_boss or enemy_type.max_hp >= 8
+	FX.spawn_enemy_kill_burst(global_position, s_factor, is_heavy_kill)
 
 # ── Behavior: glyph_warden ────────────────────────────────────────────
 # Iter 72 — conjurer / trap-layer. Kites the hero at WARDEN_KEEP_DIST
