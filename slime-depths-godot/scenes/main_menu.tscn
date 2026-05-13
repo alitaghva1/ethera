@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://b3menu1234567"]
+[gd_scene load_steps=17 format=3 uid="uid://b3menu1234567"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/menu/menu_backdrop.jpg" id="2_backdrop"]
@@ -36,6 +36,33 @@
 ;   9. Title block         — title + tagline + flanking hairlines
 ;  10. Button stack        — AWAKEN / SETTINGS / QUIT
 ;  11. Stats + version     — bottom corners
+
+; ── iter-126: typography ─────────────────────────────────────────────
+; Pre-iter-126 every label rendered in Godot's default Noto Sans — a
+; clean modern sans-serif that fought the dark-fantasy mood (playtester
+; read: "the text choice for ETHERA and the sub is bad").
+;
+; Two SystemFont sub-resources. SystemFont tries each name in order
+; and falls back to whichever the OS has installed; if none of these
+; ship with the OS the user can drop Cinzel.ttf into assets/fonts/
+; (future iter wires it up via load() at runtime). The fallback chain
+; here is built so the WORST case is Georgia or Times New Roman, which
+; every desktop OS ships with — and is already far more "dark fantasy"
+; than the bundled Noto Sans.
+;
+; title_font: bold serif, used by TitleGlow + Title. Bold weight gives
+; "ETHERA" the carved-stone presence the prior 700-weight Noto Sans
+; couldn't.
+[sub_resource type="SystemFont" id="title_font"]
+font_names = PackedStringArray("Cinzel", "Cinzel Decorative", "Trajan Pro", "Trajan", "Georgia", "Times New Roman", "serif")
+font_weight = 700
+
+; body_font: regular serif, used by Subtitle + every records / version
+; label. Same family but normal weight so the tagline + stats read as
+; companion text to the title, not three different fonts competing.
+[sub_resource type="SystemFont" id="body_font"]
+font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
+font_weight = 400
 
 ; ── Edge vignette (subtle rim darkening over backdrop) ─────────────────
 ; The painted backdrop already vignettes to near-black at its corners,
@@ -487,6 +514,13 @@ mouse_filter = 2
 ; playtest as a ghost duplicate of the title. Matching the text makes
 ; the glow stack exactly under the foreground so it reads as bloom
 ; rather than a typographic artifact.
+; iter-126: TitleGlow size matched to Title (88 pt) — was 110 pt
+; pre-iter-126, which under the new serif font_face would re-introduce
+; the same "ghost-letters peeking above/below the foreground" bug that
+; iter-121 fixed on the death screen. Bloom now comes purely from the
+; outline_size differential (18 px on glow vs 6 px on Title) — both
+; labels render IDENTICAL letterforms; the glow's outline halo extends
+; ~12 px past the Title's outline so the warm aura reads cleanly.
 [node name="TitleGlow" type="Label" parent="TitleBlock"]
 anchors_preset = 5
 anchor_left = 0.5
@@ -496,9 +530,10 @@ offset_top = 0.0
 offset_right = 360.0
 offset_bottom = 120.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 110
-theme_override_colors/font_color = Color(0.92, 0.72, 0.36, 0.20)
-theme_override_colors/font_outline_color = Color(0.95, 0.55, 0.20, 0.32)
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 88
+theme_override_colors/font_color = Color(0.92, 0.72, 0.36, 0)
+theme_override_colors/font_outline_color = Color(0.95, 0.62, 0.28, 0.45)
 theme_override_constants/outline_size = 18
 text = "E T H E R A"
 horizontal_alignment = 1
@@ -506,6 +541,10 @@ vertical_alignment = 1
 mouse_filter = 2
 
 ; Foreground title — warm cream-gold, manual letter-spacing via spaced text.
+; iter-126: serif title_font + slightly reduced font_size (96 → 88) — the
+; serif glyphs are visually heavier than Noto Sans at the same point
+; size, so backing off ~8 pt keeps the visible silhouette where the
+; iter-92 design wanted it.
 [node name="Title" type="Label" parent="TitleBlock"]
 anchors_preset = 5
 anchor_left = 0.5
@@ -515,7 +554,8 @@ offset_top = 0.0
 offset_right = 360.0
 offset_bottom = 120.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 96
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 88
 theme_override_colors/font_color = Color(0.96, 0.88, 0.66, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
@@ -531,6 +571,9 @@ mouse_filter = 2
 ; iter-93: bumped vertical offset 148 → 150 so the tagline sits a clean
 ; 30 px below the title baseline (was crammed against the now-removed
 ; bottom hairline).
+; iter-126: subtitle gets the body_font (serif, regular weight) so it
+; reads as the companion tagline to the serif title, not a third font
+; competing with the rest of the menu. Letterspacing kept verbatim.
 [node name="Subtitle" type="Label" parent="TitleBlock"]
 anchors_preset = 5
 anchor_left = 0.5
@@ -540,10 +583,11 @@ offset_top = 150.0
 offset_right = 360.0
 offset_bottom = 190.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.95)
+theme_override_fonts/font = SubResource("body_font")
+theme_override_font_sizes/font_size = 19
+theme_override_colors/font_color = Color(0.85, 0.74, 0.55, 0.95)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 3
+theme_override_constants/outline_size = 2
 text = "◇   b e n e a t h   t h e   r u i n   ◇"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -617,69 +661,88 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "QUIT"
 
 ; ── Records panel (bottom-left, low-key) ──────────────────────────────
-; iter-93: shifted up by 18 px (offset_top -132 → -150, offset_bottom
-; -28 → -46) so the "last run" line has clean breathing room from the
-; viewport bottom edge. Was clipping low in playtest.
+; iter-93: shifted up by 18 px so the "last run" line has clean
+; breathing room from the viewport bottom edge.
+; iter-126: shifted RIGHT-edge of x range from 48 → 116 (16 px past
+; CornerBL's x=100 right edge). Pre-iter-126 the records text ran
+; UNDER the corner-flourish L-hairlines on the bottom-left — the user
+; called this out. Same correction on the right edge: 344 → 412 to
+; preserve the block's 296 px text width.
+; Plus body_font applied to every line so the records read as the
+; same typographic family as the title + tagline.
 [node name="StatsBlock" type="VBoxContainer" parent="."]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 48.0
+offset_left = 116.0
 offset_top = -150.0
-offset_right = 344.0
+offset_right = 412.0
 offset_bottom = -46.0
 theme_override_constants/separation = 2
 
 [node name="StatsTitle" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.82, 0.68, 0.42, 0.85)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 3
+theme_override_constants/outline_size = 2
 text = "RECORDS"
 
 [node name="StatsRuns" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 3
+theme_override_constants/outline_size = 2
 text = "runs ··············· 0"
 
 [node name="StatsBestRun" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 3
+theme_override_constants/outline_size = 2
 text = "best run kills ······ 0"
 
 [node name="StatsLifetimeKills" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 3
+theme_override_constants/outline_size = 2
 text = "lifetime kills ······· 0"
 
 [node name="StatsLastRun" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.65)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 3
+theme_override_constants/outline_size = 2
 text = ""
 
+; iter-126: version label moved away from CornerBR. Pre-iter-126
+; offset_right was -36 (right edge of viewport−36, exactly where CornerBR
+; sits at viewport−100..viewport−36) — the version text drew OVER the
+; corner's L-hairline. Shifted offset_left -260 → -340 + offset_right
+; -36 → -116 to put the text's right edge at viewport−116, a clean
+; 16 px before the corner starts at viewport−100.
+; body_font applied so the version reads as the same family as records.
 [node name="VersionLabel" type="Label" parent="."]
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -260.0
+offset_left = -340.0
 offset_top = -42.0
-offset_right = -36.0
+offset_right = -116.0
 offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
+theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.65, 0.55, 0.40, 0.75)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 2
+theme_override_constants/outline_size = 1
 text = "ETHERA · godot port · v0.6"
 horizontal_alignment = 2
