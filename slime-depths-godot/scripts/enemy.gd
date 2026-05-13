@@ -118,6 +118,12 @@ const CONTACT_ATTACK_ANIM_DURATION: float = 0.25
 # enemy resumes its AI.
 var _hurt_anim_time: float = 0.0
 const HURT_ANIM_DURATION: float = 0.18
+# Iter 145 — sprite-scale punch on hit. Stacks parallel with the white-
+# flash modulate so the enemy "recoils" visually from each hit. Crit
+# punch is stronger (1.32 vs 1.15) so crits read distinctly bigger at
+# a glance — pairs with the iter-138 red crit splash ring.
+const HIT_SCALE_PUNCH: float = 1.15
+const HIT_SCALE_PUNCH_CRIT: float = 1.32
 const HURT_ANIM_FPS: float = 18.0
 # telegraphed_melee state machine
 enum MeleeState { IDLE, WINDUP, SWING, COOLDOWN }
@@ -1740,12 +1746,32 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 	if parent != null:
 		parent.add_child(dn)
 	if sprite != null:
-		var tween: Tween = create_tween()
 		# Iter 43 — crit flash is warmer (gold) so the player sees both
 		# the damage number AND the sprite reaction confirm the crit.
+		# Iter 145 — STACKED scale punch in parallel with the modulate
+		# flash. Pre-iter-145 only the modulate flashed white — the
+		# sprite stayed the same size, so a 1-damage nick on a boss
+		# looked visually identical to a 50-damage crit on the same
+		# boss (both got the same white flash + same size). Adding a
+		# brief scale punch (1.15× normal, 1.32× crit) makes the enemy
+		# visibly RECOIL from the hit, then settle back. Genre cue:
+		# Hades enemies all do a squash-and-stretch reaction frame on
+		# hit — for sprites without a hurt sheet (most of our trash
+		# mobs), this tween adds the missing "OOF" beat. Stacks with
+		# the iter-110 hurt-anim hold if the enemy has one — the scale
+		# punch lands BEFORE the hurt anim plays out so they don't
+		# fight; the punch is the impact, hurt is the recovery.
 		var flash_color: Color = Color(3, 2.4, 1.5, 1) if is_crit else Color(2, 2, 2, 1)
+		var base_scale: Vector2 = Vector2.ONE
+		if enemy_type != null:
+			base_scale = Vector2(enemy_type.sprite_scale, enemy_type.sprite_scale)
+		var punch_factor: float = HIT_SCALE_PUNCH_CRIT if is_crit else HIT_SCALE_PUNCH
+		var tween: Tween = create_tween().set_parallel(true)
 		tween.tween_property(sprite, "modulate", flash_color, 0.04)
+		tween.tween_property(sprite, "scale", base_scale * punch_factor, 0.04)
+		tween.chain().set_parallel(true)
 		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
+		tween.tween_property(sprite, "scale", base_scale, 0.10)
 	Events.enemy_hit.emit(global_position)
 	# iter-81 (Workstream A): tiered hit feedback. damage / max_hp ratio
 	# picks a tier (nick/solid/heavy/crushing) and fires shake + extra
