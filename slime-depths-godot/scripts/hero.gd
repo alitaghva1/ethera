@@ -1837,6 +1837,11 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 # check gates the heal. The counter is per-hero-instance (resets on
 # scene reload = new run).
 func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
+	# iter-133: Don't process relic effects after hero death. Prevents VFX
+	# spam (soul_burst, fire_pool, kill_explosion) during death cinematic
+	# when enemies are still dying from DoT or chain effects.
+	if _is_dying:
+		return
 	_kill_counter += 1
 	# Iter 72 — STONEHEART redesign. Per-room flag pattern: the FIRST
 	# enemy felled each room triggers a vital pulse + +1 HP heal. Flag

@@ -342,6 +342,10 @@ var _room_pickup_resolved := false
 # refresh the HP bar. Cleared (instance invalid) when the boss
 # dies, hiding the bar.
 var _boss_ref: Enemy = null
+# iter-133: Track death cinematic resources for cleanup before scene reload.
+# Without cleanup, tweens and particles accumulate across retries → 2 FPS.
+var _death_tweens: Array[Tween] = []
+var _death_veil_layer: CanvasLayer = null
 
 func _ready() -> void:
 	# iter-112: Fade up from black on entry. The menu / settings / death
@@ -3514,10 +3518,16 @@ func _on_hero_died() -> void:
 # Tween pause modes are PROCESS so they keep running while time_scale
 # is < 1.0 — otherwise the slow-mo would stall the tweens themselves.
 func _on_hero_death_started(world_pos: Vector2) -> void:
+	# iter-133: Clear previous death resources if somehow called twice
+	_death_tweens.clear()
+	if _death_veil_layer != null and is_instance_valid(_death_veil_layer):
+		_death_veil_layer.queue_free()
+		_death_veil_layer = null
 	# Slow-mo: time_scale 1.0 → 0.25 over 0.4s.
 	var t_time: Tween = create_tween()
 	t_time.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	t_time.tween_property(Engine, "time_scale", DEATH_TIME_SCALE_MIN, 0.4)
+	_death_tweens.append(t_time)  # iter-133: track for cleanup
 	# Camera punch-in to 1.4× over 0.6s. The camera lives under Hero;
 	# we tween its zoom directly.
 	var cam: Camera2D = $Hero/Camera2D
@@ -3525,6 +3535,7 @@ func _on_hero_death_started(world_pos: Vector2) -> void:
 		var t_cam: Tween = create_tween()
 		t_cam.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 		t_cam.tween_property(cam, "zoom", DEATH_CAMERA_ZOOM_END, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_death_tweens.append(t_cam)  # iter-133: track for cleanup
 	# Build a full-screen crimson veil + banner on a fresh CanvasLayer
 	# above the HUD (layer 50; HUD is 0, death_screen is 200, so we
 	# sit between). Veil fades to alpha 0.72; banner crashes in from
@@ -3532,6 +3543,7 @@ func _on_hero_death_started(world_pos: Vector2) -> void:
 	var veil_layer: CanvasLayer = CanvasLayer.new()
 	veil_layer.layer = 50
 	add_child(veil_layer)
+	_death_veil_layer = veil_layer  # iter-133: track for cleanup
 	var veil: ColorRect = ColorRect.new()
 	veil.color = Color(0.1, 0.0, 0.0, 0.0)
 	veil.anchor_right = 1.0
@@ -3541,6 +3553,7 @@ func _on_hero_death_started(world_pos: Vector2) -> void:
 	var t_veil: Tween = create_tween()
 	t_veil.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	t_veil.tween_property(veil, "color:a", DEATH_VEIL_FINAL_ALPHA, DEATH_VEIL_FADE_TIME)
+	_death_tweens.append(t_veil)  # iter-133: track for cleanup
 	var banner: Label = Label.new()
 	banner.text = "YOU DIED"
 	banner.add_theme_font_size_override("font_size", 96)
@@ -3560,6 +3573,7 @@ func _on_hero_death_started(world_pos: Vector2) -> void:
 	t_banner.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	t_banner.tween_interval(DEATH_BANNER_DELAY)
 	t_banner.tween_property(banner, "offset_top", -60.0, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_death_tweens.append(t_banner)  # iter-133: track for cleanup
 	# Restore time_scale at 1.2s, show death_screen at 1.6s.
 	var t_end: Tween = create_tween()
 	t_end.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
@@ -3569,10 +3583,37 @@ func _on_hero_death_started(world_pos: Vector2) -> void:
 		if _death_screen != null and _death_screen.has_method("show_death"):
 			_death_screen.show_death(_kills)
 	)
+	_death_tweens.append(t_end)  # iter-133: track for cleanup
 	# world_pos param reserved for future use (e.g. spawn an arrow
 	# pointing at the death site from the death_screen). Silences the
 	# UNUSED_PARAMETER warning.
 	var _unused: Vector2 = world_pos
+
+# iter-133: Cleanup function to prevent resource accumulation across retries.
+# Without this, death tweens + ambient particles survive scene reload and
+# compound: 5+ tweens and 60+ particles per death → 2 FPS after a few retries.
+func _cleanup_before_scene_change() -> void:
+	# Kill all tracked death tweens
+	for tween in _death_tweens:
+		if tween != null and tween.is_valid():
+			tween.kill()
+	_death_tweens.clear()
+	# Free the death veil layer (banner + veil ColorRect)
+	if _death_veil_layer != null and is_instance_valid(_death_veil_layer):
+		_death_veil_layer.queue_free()
+		_death_veil_layer = null
+	# Stop ALL CPUParticles2D in the scene tree — ambient motes, death bursts,
+	# footstep dust, etc. They're re-created on scene load anyway.
+	for node in get_tree().get_nodes_in_group("particles"):
+		if node is CPUParticles2D:
+			node.emitting = false
+	# Also catch particles not in the group (ambient motes aren't grouped)
+	for child in get_children():
+		if child is CPUParticles2D:
+			child.emitting = false
+			child.queue_free()
+	# Reset engine time scale in case death cinematic left it slow
+	Engine.time_scale = 1.0
 
 func _on_death_retry() -> void:
 	# Retry = restart THIS floor from room 0. Easier UX than dropping
@@ -3580,7 +3621,7 @@ func _on_death_retry() -> void:
 	# iter-112: fade to black before reload — matches the menu→dungeon
 	# transition fade, so the retry cycles through black instead of
 	# snapping the death screen out and the room 1 in.
-	Engine.time_scale = 1.0
+	_cleanup_before_scene_change()  # iter-133: prevent resource accumulation
 	GameState.start_dungeon_run()
 	RunState.start_floor()
 	await ScreenFlash.fade_to_black(0.30)
@@ -3623,7 +3664,7 @@ func _on_death_to_menu() -> void:
 	# end_floor here defensively rather than relying on the menu side.
 	# iter-112: fade to black before scene change so the dungeon → menu
 	# transition matches the menu → dungeon fade (symmetric cinematic).
-	Engine.time_scale = 1.0
+	_cleanup_before_scene_change()  # iter-133: prevent resource accumulation
 	RunState.end_floor()
 	await ScreenFlash.fade_to_black(0.30)
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
