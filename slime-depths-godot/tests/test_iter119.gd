@@ -33,26 +33,23 @@ func _initialize() -> void:
 	var ok := true
 
 	# ═══ Top-bar backing exists ═══
+	# Note: iter-122 replaced RoomLabelBacking + the iter-119 sub-style
+	# with a single full-width opaque TopBarBacking. We keep this test
+	# focused on the iter-119-era contract: SOMETHING covers the HUD
+	# area + the auto-fade logic (below) still applies.
 	var tscn_src := FileAccess.get_file_as_string("res://scenes/main.tscn")
 	if "name=\"TopBarBacking\"" not in tscn_src:
 		push_error("FAIL: main.tscn missing TopBarBacking panel")
 		ok = false
-	if "name=\"RoomLabelBacking\"" not in tscn_src:
-		push_error("FAIL: main.tscn missing RoomLabelBacking panel")
-		ok = false
 	if "top_bar_style" not in tscn_src:
 		push_error("FAIL: main.tscn missing top_bar_style StyleBoxFlat")
 		ok = false
-	if "room_label_style" not in tscn_src:
-		push_error("FAIL: main.tscn missing room_label_style StyleBoxFlat")
-		ok = false
-	# Both panels MUST set mouse_filter so they don't eat world clicks.
-	# Search for the panel block + verify mouse_filter is wired.
+	# HUD backing must set mouse_filter so it doesn't eat world clicks.
 	if not tscn_src.contains("mouse_filter = 2"):
-		push_error("FAIL: HUD backing panels should set mouse_filter = 2 (IGNORE)")
+		push_error("FAIL: HUD backing panel should set mouse_filter = 2 (IGNORE)")
 		ok = false
 	if ok:
-		print("OK main.tscn has TopBarBacking + RoomLabelBacking with click-through")
+		print("OK main.tscn has TopBarBacking with click-through")
 
 	# ═══ Auto-fade logic in main.gd ═══
 	var main_src := FileAccess.get_file_as_string("res://scripts/main.gd")

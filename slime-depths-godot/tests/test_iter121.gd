@@ -37,18 +37,13 @@ func _initialize() -> void:
 	var ok := true
 
 	# ═══ HUD shelf intrusion fix ═══
-	var main_tscn := FileAccess.get_file_as_string("res://scenes/main.tscn")
-	if "offset_bottom = 96.0" not in main_tscn:
-		push_error("FAIL: TopBarBacking offset_bottom should be 96 (was 130)")
-		ok = false
-	if "Color(0.04, 0.04, 0.08, 0.30)" not in main_tscn:
-		push_error("FAIL: top_bar_style bg alpha should be 0.30 (was 0.42)")
-		ok = false
-	if "Color(0.55, 0.48, 0.32, 0.40)" not in main_tscn:
-		push_error("FAIL: top_bar_style border alpha should be 0.40 (was 0.55)")
-		ok = false
+	# Note: iter-122 superseded this iter-121 fix by moving the WORLD
+	# top wall to y=128 and making the shelf fully opaque. The iter-121
+	# fix (shrunk shelf to 96 + translucent) was a stopgap that the
+	# proper iter-122 refactor replaced. We keep this test focused on
+	# the iter-121-era DEATH-SCREEN fixes (below) which are unchanged.
 	if ok:
-		print("OK HUD shelf shrunk to 96 px + alpha pulled back (no longer intrudes on play area)")
+		print("OK HUD intrusion fix is now subsumed by iter-122's world-shift design")
 
 	# ═══ Death screen title — eliminate size differential ═══
 	var death_tscn := FileAccess.get_file_as_string("res://scenes/death_screen.tscn")

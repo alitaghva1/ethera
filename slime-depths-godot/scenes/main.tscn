@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://b3main123456"]
+[gd_scene load_steps=11 format=3 uid="uid://b3main123456"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://assets/rooms/procedural_dungeon.png" id="2_room"]
@@ -9,43 +9,72 @@
 [sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 768)
 [sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1280, 40)
 
-; ── iter-119: HUD backing styles ──────────────────────────────────────
-; Pre-iter-119 the top HUD (hearts / status / relics / kills / wave /
-; room) floated bare-text over the world — readable but "felt like
-; debug text not game UI." A single full-width top-bar Panel sits behind
-; every top HUD element, dark-translucent with a thin gold bottom border
-; so the strip reads as an intentional UI shelf framing the gameplay.
-; Bottom-border-only (not full perimeter) so the shelf has a clean lower
-; edge defining the play area below.
+; ── iter-122: Proper fantasy HUD shelf ──────────────────────────────
+;
+; Pre-iter-122 the HUD was a 0.30-alpha translucent strip that competed
+; with the play area visually. Iter-122 rebuilds it as a dedicated
+; non-gameplay header zone (y=0..128) with three distinct regions:
+;
+;   • TopBarBacking (Panel): fully opaque dark-purple shelf at 0.92
+;     alpha. Hides the world entirely behind y=128 — combined with the
+;     WallTop move from y=96 → y=128 (see main.gd PLAY_AREA_MIN), this
+;     means no gameplay element can render under the HUD.
+;   • TopBarTrim (Panel, 3 px tall): warm gold bar at y=125..128. The
+;     "you've left UI, this is the world" divider line.
+;   • TopBarFalloff (Polygon2D vertex-color gradient): 12 px shadow
+;     fading from dark at y=128 to transparent at y=140. Smooths the
+;     visual transition into the play area without leaking opacity.
+;
+; The shelf hosts three layout zones via standard Control anchoring
+; (left/center/right), each padded 24 px from the screen edges:
+;   • LEFT:   HP hearts (top row) + Status hint (bottom row)
+;   • CENTER: Room title (top row) + Relic strip (bottom row)
+;   • RIGHT:  KILLS counter (top row) + WAVE indicator (bottom row)
+;
 [sub_resource type="StyleBoxFlat" id="top_bar_style"]
-bg_color = Color(0.04, 0.04, 0.08, 0.30)
+bg_color = Color(0.05, 0.04, 0.09, 0.92)
 border_width_left = 0
 border_width_top = 0
 border_width_right = 0
-border_width_bottom = 1
-border_color = Color(0.55, 0.48, 0.32, 0.40)
+border_width_bottom = 0
 corner_radius_top_left = 0
 corner_radius_top_right = 0
 corner_radius_bottom_right = 0
 corner_radius_bottom_left = 0
 
-; Slightly punchier inset behind the room label so the centered
-; "OUTER HALL · ROOM 1 / 3" reads as a chapter heading, not a HUD
-; element on the same visual layer as hearts.
-[sub_resource type="StyleBoxFlat" id="room_label_style"]
-bg_color = Color(0.06, 0.05, 0.10, 0.55)
+; The bottom gold trim that divides HUD from world. Thin StyleBoxFlat
+; with a solid warm-gold fill, no borders — drawn as a Panel sitting at
+; y=125..128. Reads as the embossed bronze line on a dungeon parchment
+; header.
+[sub_resource type="StyleBoxFlat" id="top_bar_trim_style"]
+bg_color = Color(0.62, 0.48, 0.22, 0.95)
 border_width_left = 0
 border_width_top = 0
 border_width_right = 0
-border_width_bottom = 1
-border_color = Color(0.78, 0.65, 0.41, 0.65)
+border_width_bottom = 0
 corner_radius_top_left = 0
 corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+
+; Iter-122 relic strip backing — a sub-panel inside the HUD shelf
+; behind the centered RelicStrip so the badge row has its own framed
+; rest position. Empty (no relics) reads as a clean dark slot; populated
+; rows show against a slightly punched-in fill.
+[sub_resource type="StyleBoxFlat" id="relic_slot_style"]
+bg_color = Color(0.02, 0.02, 0.05, 0.55)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.42, 0.34, 0.22, 0.65)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
-content_margin_left = 12.0
+content_margin_left = 6.0
 content_margin_top = 4.0
-content_margin_right = 12.0
+content_margin_right = 6.0
 content_margin_bottom = 4.0
 
 [node name="Main" type="Node2D"]
@@ -74,8 +103,15 @@ shape = SubResource("wall_v")
 position = Vector2(1184, 384)
 shape = SubResource("wall_v")
 
+; iter-122: pushed top wall y from 96 → 128 to carve out a dedicated
+; non-gameplay HUD zone at the top of the screen. The shape is the same
+; 1280×40 horizontal rect; its center y just moves down by 32. Verified
+; against every room.tres — every authored spawn / torch / pillar /
+; hazard / lore-stone y is ≥130, so this new floor doesn't strand any
+; data. PLAY_AREA_MIN.y in main.gd matches; iter-115 chrome auto-
+; redraws against the new top.
 [node name="WallTop" type="CollisionShape2D" parent="Walls"]
-position = Vector2(640, 96)
+position = Vector2(640, 128)
 shape = SubResource("wall_h")
 
 [node name="WallBottom" type="CollisionShape2D" parent="Walls"]
@@ -100,151 +136,173 @@ position_smoothing_speed = 6.0
 
 [node name="UI" type="CanvasLayer" parent="."]
 
-; iter-119: full-width HUD backing shelf. Sits behind every top-edge
-; label so the HUD reads as a deliberate UI strip framing the play
-; area instead of bare debug text. mouse_filter = IGNORE (2) so the
-; backing doesn't eat clicks intended for the world below.
+; ── iter-122 HUD shelf (replaces iter-119 + iter-121 layout) ─────────
 ;
-; iter-121: shrunk offset_bottom 130 → 96 so the shelf stops EXACTLY
-; at the play-area top boundary (PLAY_AREA_MIN.y = 96). Playtest
-; feedback after iter-119: "the dark bar comes down into the play
-; area, feels intrusive." The RelicStrip (offset_top=74..122) used
-; to live entirely inside the shelf; now its bottom 26 px renders
-; against the floor without backing — acceptable because relic
-; badges have their own per-icon styling and the empty-strip case
-; (first room, no relics owned) was the worst offender.
+; TopBarBacking is now FULLY opaque (alpha 0.92) and 128 px tall —
+; matches the play-area top boundary exactly. Nothing in the world
+; can render under it because the WallTop was pushed to y=128 in
+; lockstep, so enemies / projectiles / spawn portals all live BELOW
+; the shelf in screen space.
+;
+; mouse_filter = IGNORE so the shelf doesn't eat clicks intended for
+; pedestals / pickups in the world.
 [node name="TopBarBacking" type="Panel" parent="UI"]
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 96.0
+offset_bottom = 128.0
 theme_override_styles/panel = SubResource("top_bar_style")
 mouse_filter = 2
 
-; iter-119: dedicated centered backing behind the room title. Slightly
-; punchier than the global top-bar so the chapter title reads as a
-; distinct element. Anchored top-center, fixed width that matches the
-; existing RoomLabel offsets so the bar hugs the text + breathing room.
-; mouse_filter = IGNORE so it doesn't block clicks.
-[node name="RoomLabelBacking" type="Panel" parent="UI"]
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 0.0
-anchor_right = 0.5
-anchor_bottom = 0.0
-offset_left = -200.0
-offset_top = 6.0
-offset_right = 200.0
-offset_bottom = 44.0
-grow_horizontal = 2
-theme_override_styles/panel = SubResource("room_label_style")
+; Bronze trim line at the HUD↔world boundary. Sits at y=125..128, a
+; 3-px solid warm-gold bar across the full screen width. The "this is
+; UI, that is the world" divider.
+[node name="TopBarTrim" type="Panel" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 125.0
+offset_bottom = 128.0
+theme_override_styles/panel = SubResource("top_bar_trim_style")
 mouse_filter = 2
 
+; ── LEFT zone — HP (top) + Status text (bottom). 24 px padding from
+; the left edge of the screen so nothing crowds the screen edge.
 [node name="HPLabel" type="Label" parent="UI"]
-offset_left = 16.0
-offset_top = 10.0
-offset_right = 200.0
-offset_bottom = 40.0
-theme_override_font_sizes/font_size = 28
+offset_left = 24.0
+offset_top = 18.0
+offset_right = 360.0
+offset_bottom = 60.0
+theme_override_font_sizes/font_size = 32
 theme_override_colors/font_color = Color(0.96, 0.46, 0.46, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0.08, 0.02, 0.02, 0.95)
 theme_override_constants/outline_size = 4
 text = "♥ ♥ ♥"
+vertical_alignment = 1
 
-; Iter 26 — layout reflow. Pre-iter-26 RelicStrip (top=46-78) and
-; StatusLabel (top=50-75) overlapped: the controls hint text painted
-; directly under the relic badges. StatusLabel now sits just below
-; HPLabel (top=46-68) and the strip drops to top=74 so the bigger 40 px
-; badges (was 28 px) have clean vertical room and don't fight the hint.
-; Iter 60 — widened to offset_right=1180 (was 800) so "Choose a relic ·
-; walk near and press [E]" + future longer status messages have room
-; without clipping. Explicit autowrap_mode=0 (OFF) + clip_text=false
-; defensively guard against any Godot 4 default change that would
-; let the label wrap into multiple lines + drop the bottom line off
-; the 22-px-tall bounds (which was the suspected clipping mode in the
-; user's screenshot showing "d press [E]" as the trailing fragment).
+; Status hint — bottom-left of the HUD. Auto-fades after 8 s of
+; unchanged text (iter-119 _process_status_fade). 16 pt cream-gold
+; against the 0.92-alpha dark shelf reads cleanly without an outline
+; flare. Width tightened to ~480 px so it doesn't sprawl into the
+; centered room title.
 [node name="StatusLabel" type="Label" parent="UI"]
-offset_left = 16.0
-offset_top = 46.0
-offset_right = 1180.0
-offset_bottom = 70.0
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 3
-text = "RUINS — LMB swing, Q shield, R restart"
+offset_left = 24.0
+offset_top = 78.0
+offset_right = 500.0
+offset_bottom = 110.0
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.86, 0.74, 0.50, 1)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
+theme_override_constants/outline_size = 2
+text = "LMB swing  ·  RMB blast  ·  Q shield  ·  SHIFT dash"
 autowrap_mode = 0
 clip_text = false
+vertical_alignment = 1
 
-; Relic strip — horizontal row of 40×40 badges showing every relic
-; the player owns. main.gd::_rebuild_relic_strip populates it on
-; _ready and whenever Events.pickup_claimed fires. Mouse hover on a
-; badge opens a tooltip with name + description. Spacing bumped from
-; 4 → 6 px to match the larger badge size.
-[node name="RelicStrip" type="HBoxContainer" parent="UI"]
-offset_left = 16.0
-offset_top = 74.0
-offset_right = 900.0
-offset_bottom = 122.0
-theme_override_constants/separation = 6
-mouse_filter = 1
-
-[node name="KillsLabel" type="Label" parent="UI"]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -200.0
-offset_top = 14.0
-offset_right = -16.0
-offset_bottom = 42.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 4
-text = "KILLS  0"
-horizontal_alignment = 2
-
-[node name="WaveLabel" type="Label" parent="UI"]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -340.0
-offset_top = 46.0
-offset_right = -16.0
-offset_bottom = 70.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 3
-text = ""
-horizontal_alignment = 2
-
-; Room label — "OUTER HALL · ROOM 1 / 3" — populated from
-; Floor.current_room_config.display_name in main.gd._update_room_label.
+; ── CENTER zone — Room title (top) + Relic strip (bottom) ────────────
+; RoomLabel is centered. main.gd._animate_room_entry tweens this label
+; (scale + alpha) on each room load, so it stays a Control child of
+; the UI canvas and animates without disturbing siblings.
 [node name="RoomLabel" type="Label" parent="UI"]
 anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 0.0
 anchor_right = 0.5
 anchor_bottom = 0.0
-offset_left = -240.0
-offset_top = 12.0
-offset_right = 240.0
-offset_bottom = 38.0
+offset_left = -260.0
+offset_top = 20.0
+offset_right = 260.0
+offset_bottom = 58.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1.0, 0.92, 0.72, 1)
+theme_override_colors/font_outline_color = Color(0.10, 0.06, 0.04, 0.95)
 theme_override_constants/outline_size = 3
 text = ""
 horizontal_alignment = 1
+vertical_alignment = 1
+
+; Slot panel behind the RelicStrip — gives the icon row a defined
+; container so empty slots read as "rest state" rather than nothing.
+; Slot is 56 px tall to comfortably host the 40×40 relic icons
+; (relic_icon.gd ICON_SIZE = 40) with 4 px stylebox content margin
+; top + bottom.
+[node name="RelicSlotBacking" type="Panel" parent="UI"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -240.0
+offset_top = 64.0
+offset_right = 240.0
+offset_bottom = 120.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("relic_slot_style")
+mouse_filter = 2
+
+; Relic strip — centered horizontal row of badges. Hosted inside the
+; RelicSlotBacking. mouse_filter STOP (1) so hover-tooltips on each
+; badge still fire. 6 px separation matches the iter-26 spacing.
+[node name="RelicStrip" type="HBoxContainer" parent="UI"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -230.0
+offset_top = 72.0
+offset_right = 230.0
+offset_bottom = 112.0
+grow_horizontal = 2
+theme_override_constants/separation = 6
+alignment = 1
+mouse_filter = 1
+
+; ── RIGHT zone — KILLS (top) + WAVE (bottom). 24 px padding from
+; the right edge of the screen.
+[node name="KillsLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 18.0
+offset_right = -24.0
+offset_bottom = 60.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(1.0, 0.88, 0.62, 1)
+theme_override_colors/font_outline_color = Color(0.10, 0.06, 0.04, 0.95)
+theme_override_constants/outline_size = 3
+text = "KILLS  0"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="WaveLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 78.0
+offset_right = -24.0
+offset_bottom = 110.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.86, 0.74, 0.50, 1)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
+theme_override_constants/outline_size = 2
+text = ""
+horizontal_alignment = 2
+vertical_alignment = 1
 
 ; Iter 17 — boss HP bar. Hidden by default; main.gd makes it visible
 ; when an EnemyType with is_boss=true spawns and binds the bar value
 ; to the live enemy's hp each frame. Container is a VBoxContainer
 ; centered horizontally just below the RoomLabel so it doesn't fight
 ; with the corner HUD.
+; iter-122: shifted below the HUD shelf (was offset_top=50, which
+; collided with the new room title at y=20..58 + relic slot at
+; y=70..116). Boss bar now floats over the room interior at y=140..200,
+; just below the HUD trim line so it reads as combat info coming
+; FROM the dungeon, not from the HUD shelf above.
 [node name="BossBar" type="VBoxContainer" parent="UI"]
 visible = false
 anchors_preset = 7
@@ -253,9 +311,9 @@ anchor_top = 0.0
 anchor_right = 0.5
 anchor_bottom = 0.0
 offset_left = -200.0
-offset_top = 50.0
+offset_top = 140.0
 offset_right = 200.0
-offset_bottom = 100.0
+offset_bottom = 200.0
 grow_horizontal = 2
 
 [node name="Name" type="Label" parent="UI/BossBar"]

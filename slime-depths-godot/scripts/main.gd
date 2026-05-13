@@ -710,7 +710,13 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 # on top of every chrome polygon. z_index values mirror the existing
 # shadow-stack: z=-1 for floor decor + wall AO + center wash; default
 # z=0 for the wall mass + top-edge highlights.
-const PLAY_AREA_MIN: Vector2 = Vector2(96, 96)
+# iter-122: PLAY_AREA_MIN.y bumped 96 → 128 so the top of the playable
+# interior sits BELOW the HUD shelf (y=0..128 in screen coords). main.tscn's
+# WallTop collision was moved in lockstep. Every iter-115 chrome routine
+# (perimeter wall mass, top-edge highlight, inner wall AO, corner AO,
+# center mute) re-derives from these constants → no separate edits
+# needed for the chrome layer.
+const PLAY_AREA_MIN: Vector2 = Vector2(96, 128)
 const PLAY_AREA_MAX: Vector2 = Vector2(1184, 672)
 const SCREEN_SIZE: Vector2 = Vector2(1280, 768)
 
