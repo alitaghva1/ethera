@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://b3menu1234567"]
+[gd_scene load_steps=15 format=3 uid="uid://b3menu1234567"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/menu/menu_backdrop.jpg" id="2_backdrop"]
@@ -96,6 +96,21 @@ colors = PackedColorArray(1.0, 0.92, 0.68, 1, 1.0, 0.72, 0.34, 0.92, 1.0, 0.45, 
 ; Per-particle scale curve: small start, peak, shrink to dust.
 [sub_resource type="Curve" id="ember_scale_curve"]
 _data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(0.35, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.2), 0.0, 0.0, 0, 0]
+point_count = 3
+
+; iter-111: Mist color ramp — cool gray-blue, mostly transparent. Mist
+; doesn't compete with the warm ember palette; instead it cools the stair
+; line and reads as "cave breath" rising up the steps. Peak alpha 0.32
+; mid-life so individual puffs never read as opaque clouds.
+[sub_resource type="Gradient" id="mist_color_gradient"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(0.72, 0.78, 0.86, 0, 0.72, 0.78, 0.86, 0.32, 0.72, 0.78, 0.86, 0)
+
+; Mist scale envelope — slow expand from a wisp into a soft puff, then
+; slow fade. Wider than the ember curve so the mist appears to BREATHE
+; in and out across its 10s lifetime rather than spark and die.
+[sub_resource type="Curve" id="mist_scale_curve"]
+_data = [Vector2(0, 0.35), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.4), 0.0, 0.0, 0, 0]
 point_count = 3
 
 ; ── Button styles (ghost — transparent fill, dim gold border) ──────────
@@ -204,6 +219,48 @@ grow_vertical = 2
 texture = SubResource("edge_vignette_tex")
 expand_mode = 1
 stretch_mode = 6
+mouse_filter = 2
+
+; iter-111: Mist particles at the stair-mist line. Slow horizontal drift,
+; large soft puffs, cool blue-gray, 0→0.32→0 alpha envelope. Sits behind
+; the title halo and the warm embers so it reads as "the dungeon depths
+; breathe cold air up the stairs at you." main_menu.gd repositions it on
+; viewport resize and parallaxes it WITH the backdrop (drifts opposite
+; to cursor) so it stays attached to the painted stair landing.
+;
+; Tuning rationale:
+;   • amount = 32: low so individual puffs are distinguishable
+;   • lifetime = 10s: long enough for the slow drift to feel ambient
+;   • initial_velocity 6-14: nearly motionless, just slight rise + drift
+;   • direction (0.3, -0.4): mostly upward with a faint rightward drift
+;     so the air feels like it's escaping the cave UP toward the title
+;   • tangential_accel ±2: gentle swirl, not turbulence
+;   • damping 0.05-0.2: low so velocity stays through most of the life
+;   • scale_amount 2.5-4.0: BIG soft puffs (texture is 32×32, this
+;     renders 80-128px) — only viable because the color ramp peaks at
+;     0.32 alpha. Bigger + softer reads as fog; small + opaque reads
+;     as sparks (which is the embers' job).
+[node name="MistParticles" type="CPUParticles2D" parent="."]
+position = Vector2(640, 562)
+amount = 32
+lifetime = 10.0
+preprocess = 6.0
+texture = SubResource("ember_texture")
+emission_shape = 1
+emission_rect_extents = Vector2(720, 6)
+gravity = Vector2(0, 0)
+initial_velocity_min = 6.0
+initial_velocity_max = 14.0
+direction = Vector2(0.3, -0.4)
+spread = 28.0
+tangential_accel_min = -2.0
+tangential_accel_max = 2.0
+damping_min = 0.05
+damping_max = 0.20
+scale_amount_min = 2.5
+scale_amount_max = 4.0
+scale_amount_curve = SubResource("mist_scale_curve")
+color_ramp = SubResource("mist_color_gradient")
 mouse_filter = 2
 
 ; Title halo — warm amber radial behind the title block. Positioned to

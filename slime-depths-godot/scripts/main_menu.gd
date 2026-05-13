@@ -26,10 +26,26 @@ const SETTINGS_SCENE_PATH := "res://scenes/settings_screen.tscn"
 const HOVER_SCALE := 1.05
 const HOVER_TWEEN_TIME := 0.12
 
-# Title pulse — 0.97× → 1.03× over ~1.25s, then back. Loops forever.
-const TITLE_PULSE_MIN := 0.97
-const TITLE_PULSE_MAX := 1.03
+# Title pulse — 0.94× → 1.06× over ~1.25s, then back. Loops forever.
+# iter-111: widened from 0.97/1.03 → 0.94/1.06 so the breath actually reads
+# at a glance. Pre-iter-111 the pulse was almost imperceptible — playtester
+# feedback was "is the title even animated?" The new range is ~2× more
+# motion but still well shy of "wobble" territory.
+const TITLE_PULSE_MIN := 0.94
+const TITLE_PULSE_MAX := 1.06
 const TITLE_PULSE_HALF_DURATION := 1.25
+
+# iter-111: Mouse parallax. The painted backdrop drifts gently OPPOSITE to
+# the cursor while the title block drifts SAME direction at lower magnitude
+# — the "card floats toward your cursor" trick. Physically wrong (real
+# parallax shifts everything in the same direction at different rates) but
+# the inverse-coupling reads strongly as depth on a 2D plane, and is the
+# pattern modern UIs use (the JS reference's menu has the same touch).
+# Tuning: backdrop max 10 px, title max 4 px, lerp rate 6.0/s — slow
+# enough to feel like the canvas is "settling," not snapping.
+const PARALLAX_BACKDROP_MAX_PX := 10.0
+const PARALLAX_TITLE_MAX_PX := 4.0
+const PARALLAX_LERP_RATE := 6.0
 
 # Subtitle alpha pulse — 0.65 → 1.0 over 1.5s, then back (3s full cycle).
 # Slow enough to read as "atmospheric breathing," not a strobe.
@@ -44,9 +60,12 @@ const SUBTITLE_PULSE_HALF_DURATION := 1.5
 @onready var title_glow: Label = $TitleBlock/TitleGlow
 @onready var subtitle: Label = $TitleBlock/Subtitle
 @onready var title_halo: TextureRect = $TitleHalo
+@onready var title_block: Control = $TitleBlock
+@onready var backdrop_image: TextureRect = $BackdropImage
 @onready var ember_particles: CPUParticles2D = $EmberParticles
 @onready var left_torch_embers: CPUParticles2D = $LeftTorchEmbers
 @onready var right_torch_embers: CPUParticles2D = $RightTorchEmbers
+@onready var mist_particles: CPUParticles2D = $MistParticles
 # Persistent stats panel (bottom-left). Populated from GameState at _ready;
 # SaveSystem already round-trips the underlying fields so a player returning
 # between sessions sees their accumulated runs / kills / best run carry over.
@@ -62,6 +81,22 @@ const SUBTITLE_PULSE_HALF_DURATION := 1.5
 var _hover_tweens: Dictionary = {}
 var _title_tween: Tween
 var _subtitle_tween: Tween
+
+# iter-111: Parallax state. _parallax_offset is the SMOOTHED [-1..1]-ish
+# vector currently driving the layered offsets; _parallax_target is the
+# raw mouse-from-center delta updated each frame. We lerp from offset →
+# target so cursor moves feel like the canvas is settling toward your
+# eye, not snapping. Base positions are captured once at _ready so we
+# always parallax around the original layout, never against the previously
+# offset position (which would let drift accumulate).
+var _parallax_offset: Vector2 = Vector2.ZERO
+var _parallax_target: Vector2 = Vector2.ZERO
+var _backdrop_base_pos: Vector2 = Vector2.ZERO
+var _title_block_base_pos: Vector2 = Vector2.ZERO
+var _title_halo_base_pos: Vector2 = Vector2.ZERO
+var _left_torch_base_pos: Vector2 = Vector2.ZERO
+var _right_torch_base_pos: Vector2 = Vector2.ZERO
+var _mist_base_pos: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	# Wire button presses.
@@ -137,6 +172,11 @@ func _populate_stats() -> void:
 const LEFT_TORCH_REL_X: float = 0.387
 const RIGHT_TORCH_REL_X: float = 0.613
 const TORCH_REL_Y: float = 0.507
+# iter-111: MIST emitter sits where the painted stairs descend into fog
+# — roughly the lower third of the backdrop. Slow horizontal drift,
+# huge soft particles, near-transparent. Reads as "the dungeon breathes
+# cold air up the stairs at you."
+const MIST_REL_Y: float = 0.78
 func _reposition_embers() -> void:
 	var vp_size: Vector2 = get_viewport_rect().size
 	ember_particles.position = Vector2(vp_size.x * 0.5, vp_size.y + 40.0)
@@ -145,6 +185,16 @@ func _reposition_embers() -> void:
 		left_torch_embers.position = Vector2(vp_size.x * LEFT_TORCH_REL_X, vp_size.y * TORCH_REL_Y)
 	if right_torch_embers != null:
 		right_torch_embers.position = Vector2(vp_size.x * RIGHT_TORCH_REL_X, vp_size.y * TORCH_REL_Y)
+	if mist_particles != null:
+		mist_particles.position = Vector2(vp_size.x * 0.5, vp_size.y * MIST_REL_Y)
+		# Emission band spans the full viewport width so the mist sells the
+		# whole stair landing, not just a centered puff.
+		mist_particles.emission_rect_extents = Vector2(vp_size.x * 0.5 + 80.0, 6.0)
+	# iter-111: parallax bases — captured here (rather than _ready) so that
+	# resize events re-anchor the parallax to the new layout. Otherwise a
+	# fullscreen toggle would leave the parallax drifting around stale
+	# positions that no longer match where the layers actually live.
+	_capture_parallax_bases()
 
 func _on_begin_pressed() -> void:
 	# iter-109: UI press cue. ui_press is a short downward chunk
@@ -241,3 +291,71 @@ func _apply_subtitle_alpha(a: float) -> void:
 	var c: Color = subtitle.modulate
 	c.a = a
 	subtitle.modulate = c
+
+# iter-111: Capture the layout-resolved positions of every parallax target.
+# Called from _reposition_embers (which runs on _ready AND on every
+# viewport resize), so the parallax always operates around the current
+# canonical layout — never against the previously-offset position, which
+# would let drift accumulate over a long session.
+#
+# Note: backdrop_image is a fully-stretched Control; setting its `position`
+# shifts the rendered texture by that offset relative to the anchor-derived
+# layout, which is exactly what we want for parallax. Same applies to the
+# title block + halo. For the CPUParticles2D (Node2D) children we store
+# the world-space position assigned in _reposition_embers.
+func _capture_parallax_bases() -> void:
+	if backdrop_image != null:
+		_backdrop_base_pos = backdrop_image.position
+	if title_block != null:
+		_title_block_base_pos = title_block.position
+	if title_halo != null:
+		_title_halo_base_pos = title_halo.position
+	if left_torch_embers != null:
+		_left_torch_base_pos = left_torch_embers.position
+	if right_torch_embers != null:
+		_right_torch_base_pos = right_torch_embers.position
+	if mist_particles != null:
+		_mist_base_pos = mist_particles.position
+	# Reset offset so a resize doesn't snap-shift the canvas; the parallax
+	# will re-converge on the new layout from zero.
+	_parallax_offset = Vector2.ZERO
+
+# iter-111: Per-frame parallax tick. Reads mouse position, normalizes to
+# [-1, 1] across viewport size, lerps the smoothed offset toward that
+# target, then applies it. Backdrop + torch embers + mist drift OPPOSITE
+# to the cursor; title block + halo drift SAME direction at smaller
+# magnitude. Lerp damping (PARALLAX_LERP_RATE) keeps the canvas from
+# tracking the cursor like a laser pointer — it should feel like the
+# painting is gently settling toward where you're looking.
+func _process(delta: float) -> void:
+	var vp_size: Vector2 = get_viewport_rect().size
+	if vp_size.x <= 0.0 or vp_size.y <= 0.0:
+		return
+	var mouse_pos: Vector2 = get_viewport().get_mouse_position()
+	var center: Vector2 = vp_size * 0.5
+	# Normalized [-1, 1] mouse offset (clamped so out-of-window cursors
+	# don't fling the canvas off-axis).
+	_parallax_target = Vector2(
+		clampf((mouse_pos.x - center.x) / center.x, -1.0, 1.0),
+		clampf((mouse_pos.y - center.y) / center.y, -1.0, 1.0),
+	)
+	var lerp_t: float = clampf(PARALLAX_LERP_RATE * delta, 0.0, 1.0)
+	_parallax_offset = _parallax_offset.lerp(_parallax_target, lerp_t)
+
+	# Backdrop layer (OPPOSITE direction).
+	var backdrop_drift: Vector2 = -_parallax_offset * PARALLAX_BACKDROP_MAX_PX
+	if backdrop_image != null:
+		backdrop_image.position = _backdrop_base_pos + backdrop_drift
+	if left_torch_embers != null:
+		left_torch_embers.position = _left_torch_base_pos + backdrop_drift
+	if right_torch_embers != null:
+		right_torch_embers.position = _right_torch_base_pos + backdrop_drift
+	if mist_particles != null:
+		mist_particles.position = _mist_base_pos + backdrop_drift
+
+	# Foreground / title layer (SAME direction, lower magnitude).
+	var title_drift: Vector2 = _parallax_offset * PARALLAX_TITLE_MAX_PX
+	if title_block != null:
+		title_block.position = _title_block_base_pos + title_drift
+	if title_halo != null:
+		title_halo.position = _title_halo_base_pos + title_drift
