@@ -241,14 +241,23 @@ func _has_game_state() -> bool:
 	return ResourceLoader.exists("res://scripts/game_state.gd") and Engine.get_main_loop().root.has_node("/root/GameState")
 
 func _on_retry_pressed() -> void:
+	# iter-114: ui_press cue. Matches the main_menu / pause_screen
+	# convention so the death-screen actions feel acoustically part
+	# of the same UI family.
+	Audio.play_ui_cue("ui_press", -2.0)
 	hide_death()
 	retry_pressed.emit()
 
 func _on_menu_pressed() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
 	hide_death()
 	menu_pressed.emit()
 
 func _on_button_hover_enter(button: Button) -> void:
+	# iter-114: ui_hover cue at -8 dB (same level as the main menu).
+	# Focus_entered is also bound to this handler in _ready, so keyboard
+	# nav (Tab between RETRY / MAIN MENU) gets the same audible cue.
+	Audio.play_ui_cue("ui_hover", -8.0)
 	_animate_scale(button, HOVER_SCALE)
 
 func _on_button_hover_exit(button: Button) -> void:

@@ -114,10 +114,14 @@ func _unhandled_input(ev: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _on_resume_pressed() -> void:
+	# iter-114: UI press cue + scaled-down volume so the resume click
+	# doesn't punch over the (now-unpaused) dungeon ambient audio.
+	Audio.play_ui_cue("ui_press", -2.0)
 	get_tree().paused = false
 	queue_free()
 
 func _on_settings_pressed() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
 	# Iter-71 polish: open settings as a CHILD overlay so the dungeon
 	# scene stays alive underneath. Without this, the previous flow did
 	# change_scene_to_file(settings) → discarded the dungeon → BEGIN
@@ -150,14 +154,26 @@ func _on_quit_pressed() -> void:
 	# hit RESUME first. Unpause + RunState.end_floor() so the menu
 	# reads a clean slate (parallels what _on_death_to_menu does in
 	# main.gd on the death path).
+	#
+	# iter-114: ui_press cue + fade-to-black before the scene change,
+	# matching the dungeon→menu fade pattern from iter-112. Pre-iter-114
+	# this transition hard-cut from "paused dungeon under overlay" to
+	# "main menu" — incongruous with every other nav fade in the game.
+	Audio.play_ui_cue("ui_press", -2.0)
 	get_tree().paused = false
 	if Engine.get_main_loop().root.has_node("/root/RunState"):
 		var rs: Node = Engine.get_main_loop().root.get_node("/root/RunState")
 		if rs.has_method("end_floor"):
 			rs.end_floor()
+	await ScreenFlash.fade_to_black(0.30)
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 
 func _on_button_hover_enter(button: Button) -> void:
+	# iter-114: UI hover cue — same pattern as main_menu (soft 880 Hz pip
+	# at -8 dB so the menu doesn't audio-spam as the cursor brushes the
+	# button stack). Keyboard focus_entered fires this too via the
+	# binding in _ready, so controller / keyboard nav gets the same beat.
+	Audio.play_ui_cue("ui_hover", -8.0)
 	_animate_scale(button, HOVER_SCALE)
 
 func _on_button_hover_exit(button: Button) -> void:

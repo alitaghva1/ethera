@@ -103,6 +103,8 @@ func _on_back_pressed() -> void:
 	# transition back to the main menu mirrors the AWAKEN → dungeon
 	# fade. Overlay mode skips the fade (settings is just dismissed,
 	# the dungeon below is already visible).
+	# iter-114: ui_press cue on either path.
+	Audio.play_ui_cue("ui_press", -2.0)
 	if _is_overlay:
 		queue_free()
 		return
@@ -110,6 +112,10 @@ func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 
 func _on_back_hover_enter() -> void:
+	# iter-114: ui_hover cue. Matches main_menu / pause_screen /
+	# death_screen so navigating the BACK button feels acoustically
+	# consistent with every other UI screen in the kit.
+	Audio.play_ui_cue("ui_hover", -8.0)
 	_animate_back_scale(HOVER_SCALE)
 
 func _on_back_hover_exit() -> void:
