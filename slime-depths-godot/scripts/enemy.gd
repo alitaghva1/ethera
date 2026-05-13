@@ -1569,9 +1569,20 @@ func _tick_telegraphed_melee(delta: float) -> void:
 			# tinted enemies keep their identity color underneath the
 			# windup signal (multiplicative: baseline.r * 1, baseline.g/b
 			# fade darker per wt).
+			# iter-139 — strengthened the windup telegraph for Hades-tier
+			# clarity. Two changes:
+			#   (1) green/blue fade depth 0.6 → 0.75 so the red signal is
+			#       louder at peak windup (player sees red enemy unmistakably)
+			#   (2) ADD a monotonic scale pulse (1.0 → 1.08) so the enemy
+			#       visibly "tenses up" before the strike. Same grammar
+			#       the bomber prime already uses (line ~683). Color cue
+			#       + motion cue together = readable at a glance during
+			#       chaotic multi-enemy combat.
 			var wt: float = 1.0 - (_melee_timer / t.melee_windup)
 			var base: Color = _baseline_modulate()
-			sprite.modulate = Color(base.r, base.g * (1.0 - wt * 0.6), base.b * (1.0 - wt * 0.6), base.a)
+			sprite.modulate = Color(base.r, base.g * (1.0 - wt * 0.75), base.b * (1.0 - wt * 0.75), base.a)
+			var sc: float = t.sprite_scale * (1.0 + 0.08 * wt)
+			sprite.scale = Vector2(sc, sc)
 			_melee_timer -= delta
 			if _melee_timer <= 0.0:
 				_melee_state = MeleeState.SWING
@@ -1594,6 +1605,9 @@ func _tick_telegraphed_melee(delta: float) -> void:
 				_melee_state = MeleeState.COOLDOWN
 				_melee_timer = t.melee_cooldown - t.melee_swing
 				sprite.modulate = _baseline_modulate()
+				# iter-139 — restore base scale at swing-end so cooldown
+				# state doesn't keep the tensed-up silhouette.
+				sprite.scale = Vector2(t.sprite_scale, t.sprite_scale)
 		MeleeState.COOLDOWN:
 			if t.can_move() and dist > t.melee_reach * 0.85:
 				velocity = to_hero.normalized() * _effective_move_speed()
