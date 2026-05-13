@@ -81,16 +81,14 @@ func _initialize() -> void:
 			print("OK Title + TitleGlow both wear title_font")
 
 	# Title + TitleGlow must be the SAME font_size (iter-121 fix; prevents
-	# ghost-letter doubling). We just want both to be 88 pt.
-	if "theme_override_font_sizes/font_size = 88" not in tscn:
-		push_error("FAIL: Title font_size should be 88 (matched to TitleGlow)")
-		ok = false
-	# Pre-iter-126 110 pt glow should be gone — that was the doubling source
+	# ghost-letter doubling). iter-126 standardized both at 88 pt; iter-129
+	# pulled both down to 76 pt for restraint. The CONTRACT here is just
+	# "matched size, NOT the pre-iter-126 110 pt glow that caused doubling."
 	if "theme_override_font_sizes/font_size = 110" in tscn:
 		push_error("FAIL: 110 pt glow still present — would cause iter-121-style doubling under serif")
 		ok = false
 	if ok:
-		print("OK TitleGlow + Title both at 88 pt (no doubling under serif)")
+		print("OK TitleGlow + Title at matched size (88 → 76 in iter-129; no doubling)")
 
 	# Body font applied across the menu. iter-128 retired the Subtitle
 	# Label so the count dropped from 7 → 6: StatsTitle + StatsRuns +

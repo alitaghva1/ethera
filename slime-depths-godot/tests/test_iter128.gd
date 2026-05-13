@@ -86,14 +86,16 @@ func _initialize() -> void:
 		print("OK script-side subtitle code removed (constants, vars, fns, call sites)")
 
 	# ═══ The title stack is intact ═══
-	# Title + TitleGlow + TitleShadow stay — they're the brand. We
-	# just verify the deletion didn't accidentally take them along.
-	for keep in ["name=\"Title\" type=\"Label\"", "name=\"TitleGlow\"", "name=\"TitleShadow\""]:
+	# Title + TitleGlow stay — they're the brand. iter-129 retired
+	# TitleShadow separately (its "3D drop shadow" read was wrong);
+	# the iter-128 contract only cares that the foreground + glow
+	# survived the subtitle deletion.
+	for keep in ["name=\"Title\" type=\"Label\"", "name=\"TitleGlow\""]:
 		if keep not in tscn:
 			push_error("FAIL: %s missing — subtitle removal accidentally took the title stack" % keep)
 			ok = false
 	if ok:
-		print("OK title stack intact: TitleShadow + TitleGlow + Title")
+		print("OK title stack intact: TitleGlow + Title (TitleShadow retired in iter-129)")
 
 	# ═══ Runtime ═══
 	var scene: PackedScene = load("res://scenes/main_menu.tscn")

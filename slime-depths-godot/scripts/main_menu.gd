@@ -59,14 +59,16 @@ const PARALLAX_LERP_RATE := 6.0
 @onready var quit_button: Button = $CenterStack/QuitButton
 @onready var title: Label = $TitleBlock/Title
 @onready var title_glow: Label = $TitleBlock/TitleGlow
-# iter-127: drop-shadow Label for carved-stone depth. Animated by the
-# title pulse alongside title + title_glow so the 3-layer stack moves
-# as one unit.
-@onready var title_shadow: Label = $TitleBlock/TitleShadow
+# iter-129 — title_shadow @onready ref removed alongside the
+# TitleShadow Label it referenced. Carved-stone-depth concept was
+# producing a 3D-movie-headline read rather than the intended carved
+# inscription; see scenes/main_menu.tscn for the deletion rationale.
 @onready var title_halo: TextureRect = $TitleHalo
 @onready var title_block: Control = $TitleBlock
 @onready var backdrop_image: TextureRect = $BackdropImage
-@onready var ember_particles: CPUParticles2D = $EmberParticles
+# iter-129 — ember_particles @onready ref removed alongside the
+# EmberParticles bottom spray. See scenes/main_menu.tscn for the
+# design rationale ("tiny random spray that adds almost nothing").
 @onready var left_torch_embers: CPUParticles2D = $LeftTorchEmbers
 @onready var right_torch_embers: CPUParticles2D = $RightTorchEmbers
 @onready var mist_particles: CPUParticles2D = $MistParticles
@@ -132,8 +134,6 @@ func _ready() -> void:
 	_recenter_title_pivots()
 	title.resized.connect(_recenter_title_pivots)
 	title_glow.resized.connect(_recenter_title_pivots)
-	if title_shadow != null:
-		title_shadow.resized.connect(_recenter_title_pivots)
 	_start_title_pulse()
 
 	# Position the ember emission line along the actual viewport bottom +
@@ -189,8 +189,9 @@ const TORCH_REL_Y: float = 0.507
 const MIST_REL_Y: float = 0.78
 func _reposition_embers() -> void:
 	var vp_size: Vector2 = get_viewport_rect().size
-	ember_particles.position = Vector2(vp_size.x * 0.5, vp_size.y + 40.0)
-	ember_particles.emission_rect_extents = Vector2(vp_size.x * 0.5 + 60.0, 4.0)
+	# iter-129 — ember_particles reposition removed; the bottom emitter
+	# is gone. Function name retained for tree-history continuity even
+	# though it now only handles torch + mist emitters.
 	if left_torch_embers != null:
 		left_torch_embers.position = Vector2(vp_size.x * LEFT_TORCH_REL_X, vp_size.y * TORCH_REL_Y)
 	if right_torch_embers != null:
@@ -281,8 +282,6 @@ func _animate_scale(button: Button, target: float) -> void:
 func _recenter_title_pivots() -> void:
 	title.pivot_offset = title.size / 2.0
 	title_glow.pivot_offset = title_glow.size / 2.0
-	if title_shadow != null:
-		title_shadow.pivot_offset = title_shadow.size / 2.0
 
 # Infinite-loop pulse on the title scale. The glow Label rides along so the
 # bloom stays anchored under the foreground text.
@@ -306,19 +305,16 @@ func _apply_title_scale(s: float) -> void:
 	# Glow breathes a hair wider than the main title so the bloom feels
 	# softly anchored without "clicking" alignment-wise.
 	title_glow.scale = v * 1.02
-	# iter-127: drop-shadow rides the same pulse so the 3-layer stack
-	# moves as one. No extra scale offset — shadow tracks the foreground
-	# exactly; only its FIXED +3/+4 offset_left/top in the .tscn gives
-	# the carved depth.
-	if title_shadow != null:
-		title_shadow.scale = v
-	# iter-92: title halo modulate.a tracks the breath. Maps the scale
-	# range (TITLE_PULSE_MIN..TITLE_PULSE_MAX) onto a (0.78..1.0) alpha
-	# window so the warm pool behind the title swells and dims with the
-	# typography rather than just sitting flat.
+	# iter-129 — TitleShadow scale-coupling removed alongside the
+	# TitleShadow Label.
+	# iter-92: title halo modulate.a tracks the breath.
+	# iter-129 — halo pulse range pulled from (0.78..1.0) → (0.36..0.50)
+	# so the warm pool behind the title reads as quiet ambient warmth,
+	# not a stage spotlight. Combined with the smaller / desaturated
+	# title, the whole title block now WHISPERS instead of shouts.
 	if title_halo != null:
 		var t: float = (s - TITLE_PULSE_MIN) / (TITLE_PULSE_MAX - TITLE_PULSE_MIN)
-		var a: float = lerp(0.78, 1.0, clampf(t, 0.0, 1.0))
+		var a: float = lerp(0.36, 0.50, clampf(t, 0.0, 1.0))
 		var c: Color = title_halo.modulate
 		c.a = a
 		title_halo.modulate = c

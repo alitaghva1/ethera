@@ -137,7 +137,11 @@ func _initialize() -> void:
 			ok = false
 		else:
 			# Critical children must be present after instantiation.
-			for child_path in ["BackdropImage", "TitleHalo", "EmberParticles", "LeftTorchEmbers", "RightTorchEmbers", "TitleBlock", "CenterStack"]:
+			# iter-129 — EmberParticles dropped from this list (bottom
+			# spray removed per "tiny random spray" playtest feedback;
+			# the two torch ember emitters carry the iter-92 atmospheric
+			# contract together with the iter-111 MistParticles).
+			for child_path in ["BackdropImage", "TitleHalo", "LeftTorchEmbers", "RightTorchEmbers", "TitleBlock", "CenterStack"]:
 				if inst.get_node_or_null(child_path) == null:
 					push_error("FAIL: instantiated main_menu missing %s" % child_path)
 					ok = false

@@ -55,26 +55,19 @@ func _initialize() -> void:
 	var tscn := FileAccess.get_file_as_string("res://scenes/main_menu.tscn")
 	var gd := FileAccess.get_file_as_string("res://scripts/main_menu.gd")
 
-	# ═══ 1. Title drop-shadow ═══
-	if "name=\"TitleShadow\" type=\"Label\" parent=\"TitleBlock\"" not in tscn:
-		push_error("FAIL: TitleShadow Label missing from TitleBlock")
+	# ═══ 1. Title drop-shadow — RETIRED in iter-129 ═══
+	# iter-127 added a TitleShadow Label for "carved-stone depth" but
+	# playtest read it as "3D movie headline" — the bevel-and-emboss
+	# look was the opposite of intent. iter-129 retired the TitleShadow
+	# entirely; the iter-127 contract is superseded.
+	if "name=\"TitleShadow\"" in tscn:
+		push_error("FAIL: TitleShadow Label still present — iter-129 retired it")
 		ok = false
-	# Dark warm-brown shadow color
-	if "Color(0.08, 0.04, 0.02, 0.90)" not in tscn:
-		push_error("FAIL: TitleShadow font_color should be (0.08, 0.04, 0.02, 0.90) — dark warm brown")
-		ok = false
-	# Wired into main_menu.gd
-	if "@onready var title_shadow: Label" not in gd:
-		push_error("FAIL: main_menu.gd missing title_shadow @onready ref")
-		ok = false
-	if "title_shadow.scale = v" not in gd:
-		push_error("FAIL: title pulse doesn't scale title_shadow alongside title + glow")
-		ok = false
-	if "title_shadow.pivot_offset" not in gd:
-		push_error("FAIL: _recenter_title_pivots doesn't center title_shadow")
+	if "@onready var title_shadow:" in gd:
+		push_error("FAIL: title_shadow @onready ref still in main_menu.gd")
 		ok = false
 	if ok:
-		print("OK title drop-shadow wired (3-layer stack: shadow + glow + foreground)")
+		print("OK iter-127 TitleShadow retired in iter-129 (3D headline read was wrong)")
 
 	# ═══ 2. Subtitle removed (iter-128 design call) ═══
 	# Iter-127 added a refined italic subtitle + manuscript hairline.
