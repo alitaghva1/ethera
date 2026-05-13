@@ -228,18 +228,23 @@ static func apply_hit_feedback_tier(target, damage: int, opts: Dictionary = {}) 
 				if s != null:
 					s.global_position = base_pos + Vector2(cos(ang), sin(ang)) * r
 					parent.add_child(s)
-		# Crit splash ring — extra 5 sparks at red tint in a ring around the head.
+		# Crit splash ring.
+		# iter-138 — bumped from 5 → 9 sparks, ring radius 12-18 → 18-32,
+		# per-spark scale ×1.4, color shifted to a more saturated red-
+		# orange (was salmon-pink). Crits now SHOUT visually instead of
+		# just adding "5 extra particles." Modulate propagates to the
+		# Node2D's child CPUParticles2D so the gold color_ramp gets
+		# multiplied by the red tint — the sparks read as red embers
+		# bursting outward, not as red-tinted gold sparks.
 		if is_crit and hit_spark_scene != null and parent != null:
-			for i in range(5):
-				var ang2: float = (float(i) / 5.0) * TAU + randf() * 0.4
-				var r2: float = 12.0 + randf() * 6.0
+			for i in range(9):
+				var ang2: float = (float(i) / 9.0) * TAU + randf() * 0.35
+				var r2: float = 18.0 + randf() * 14.0
 				var s2: Node2D = hit_spark_scene.instantiate() as Node2D
 				if s2 != null:
 					s2.global_position = base_pos + Vector2(cos(ang2), sin(ang2)) * r2
-					# Tint red — hit_spark.gd may or may not honor modulate
-					# depending on its impl; setting it is harmless.
-					if "modulate" in s2:
-						s2.modulate = Color(1.0, 0.25, 0.30, 1.0)
+					s2.modulate = Color(1.10, 0.22, 0.16, 1.0)
+					s2.scale = Vector2(1.4, 1.4)
 					parent.add_child(s2)
 	return tier
 
