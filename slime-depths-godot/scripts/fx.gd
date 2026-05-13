@@ -21,9 +21,14 @@
 # everywhere and the volumes we're spawning are tiny (≤16 particles).
 extends Node
 
-const HIT_SPARK_SCENE: PackedScene   = preload("res://scenes/fx/hit_spark.tscn")
-const DEATH_BURST_SCENE: PackedScene = preload("res://scenes/fx/death_burst.tscn")
-const BLOOD_DROP_SCENE: PackedScene  = preload("res://scenes/fx/blood_drop.tscn")
+const HIT_SPARK_SCENE: PackedScene    = preload("res://scenes/fx/hit_spark.tscn")
+const DEATH_BURST_SCENE: PackedScene  = preload("res://scenes/fx/death_burst.tscn")
+const BLOOD_DROP_SCENE: PackedScene   = preload("res://scenes/fx/blood_drop.tscn")
+# iter-143: dedicated gold-ring + spark celebration for relic / shrine
+# pickups. Gold chest pickups keep the smaller hit_spark behavior so
+# gold-drop frequency doesn't visually inflate (every "gold" pickup
+# popping with a full ring would devalue the celebration moment).
+const PICKUP_BURST_SCENE: PackedScene = preload("res://scenes/fx/pickup_burst.tscn")
 # iter-95: DODGE_DUST_SCENE removed — dodge ability deleted. The dust
 # puff was tied to the dodge motion; dash_strike (now the only defensive
 # movement) already spawns its own dash_trail particle trail behind the
@@ -221,9 +226,23 @@ func spawn_enemy_kill_burst(world_pos: Vector2, scale_factor: float, is_heavy: b
 		_shake(6.0, 0.12)
 
 func _on_pickup_claimed(world_pos: Vector2, _name: String) -> void:
-	# Reuse hit-spark gold for now — a dedicated pickup burst can land
-	# later when relic art is finalized.
-	_spawn(HIT_SPARK_SCENE, world_pos)
+	# iter-143: route by pickup importance.
+	#   • Relics (anything in GameState.RELIC_REGISTRY) → PICKUP_BURST
+	#     concentric gold rings + 14 chunky sparks. Mirrors main.gd's
+	#     own filter at _on_pickup_claimed line ~2580 — these are the
+	#     genuine acquisitions worth celebrating.
+	#   • Shrines ("shrine_*") → also PICKUP_BURST. The free-stat pickup
+	#     is rare enough to merit the same celebration.
+	#   • Everything else (gold drops from chests, future keys, etc.) →
+	#     small HIT_SPARK like before. Gold drops are FREQUENT — a full
+	#     ring every chest break would inflate the visual language and
+	#     drown out actual relic claims.
+	var is_relic: bool = GameState.RELIC_REGISTRY.has(_name)
+	var is_shrine: bool = _name.begins_with("shrine_")
+	if is_relic or is_shrine:
+		_spawn(PICKUP_BURST_SCENE, world_pos)
+	else:
+		_spawn(HIT_SPARK_SCENE, world_pos)
 
 func _on_hero_died(world_pos: Vector2) -> void:
 	_shake(18.0, 0.4)
