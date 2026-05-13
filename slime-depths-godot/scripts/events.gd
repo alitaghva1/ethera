@@ -23,6 +23,12 @@ signal enemy_hit(world_pos: Vector2)                     # any enemy took damage
 signal enemy_died(world_pos: Vector2)                    # any enemy died
 signal pickup_claimed(world_pos: Vector2, name: String)  # relic / pedestal claimed
 signal hero_died(world_pos: Vector2)                     # run-ending hit
+# Iter 146 — hero gained HP from any source (heal call). Emitted after
+# the hp_changed signal so handlers see the new hp value. fx.gd subscribes
+# for a green sparkle at hero position — the existing iter-113 heart-row
+# green pulse handles HUD; this is the world-space twin so heals read
+# both inside and outside the HUD.
+signal hero_healed(world_pos: Vector2, amount: int)
 
 # ── New combat-VFX beats (iter-13/17/19) ──────────────────────────────
 # Emitted by gameplay code at the precise frame of each visual event so

@@ -1651,6 +1651,14 @@ func heal(amount: int) -> void:
 	hp = mini(hp + amount, cap)
 	if hp != prev:
 		hp_changed.emit(hp)
+		# Iter 146 — fire the world-space heal event AFTER hp_changed so
+		# any subscriber that wants to react to "the new hp" sees the
+		# updated value. fx.gd spawns a green sparkle here; future audio
+		# could layer a chime. Pass actual gained HP (not the request)
+		# in case the cap clamped it down — a request-for-5 that only
+		# yielded 1 HP should pop a small sparkle, not a big one.
+		var actual_gain: int = hp - prev
+		Events.hero_healed.emit(global_position, actual_gain)
 
 # iter-103 — elite affix status application API. Enemy contact paths
 # call into these. Both stack via "take the WORSE / LONGER value" so

@@ -29,6 +29,12 @@ const BLOOD_DROP_SCENE: PackedScene   = preload("res://scenes/fx/blood_drop.tscn
 # gold-drop frequency doesn't visually inflate (every "gold" pickup
 # popping with a full ring would devalue the celebration moment).
 const PICKUP_BURST_SCENE: PackedScene = preload("res://scenes/fx/pickup_burst.tscn")
+# iter-146: heal sparkle — green upward-drift particles spawned at
+# hero position whenever heal() actually gained HP. Pairs with iter-
+# 113's HUD heart-row green pulse so heals read both in-HUD and
+# in-world. Reuses hit_spark.gd (just a queue_free timer) — only the
+# scene's color ramp + gravity differ.
+const HEAL_SPARKLE_SCENE: PackedScene = preload("res://scenes/fx/heal_sparkle.tscn")
 # iter-95: DODGE_DUST_SCENE removed — dodge ability deleted. The dust
 # puff was tied to the dodge motion; dash_strike (now the only defensive
 # movement) already spawns its own dash_trail particle trail behind the
@@ -58,6 +64,8 @@ func _ready() -> void:
 	Events.enemy_died.connect(_on_enemy_died)
 	Events.pickup_claimed.connect(_on_pickup_claimed)
 	Events.hero_died.connect(_on_hero_died)
+	# iter-146: world-space heal sparkle.
+	Events.hero_healed.connect(_on_hero_healed)
 
 # ── Camera resolve + shake ────────────────────────────────────────────
 
@@ -247,3 +255,13 @@ func _on_pickup_claimed(world_pos: Vector2, _name: String) -> void:
 func _on_hero_died(world_pos: Vector2) -> void:
 	_shake(18.0, 0.4)
 	_spawn(DEATH_BURST_SCENE, world_pos)
+
+# iter-146: world-space heal feedback. Spawns the green upward-drift
+# sparkle at the hero position. The `amount` is currently unused
+# visually — small heals and big heals get the same sparkle — because
+# the iter-113 HUD heart-row green pulse already conveys magnitude
+# (pip count change). Future polish could scale the sparkle amount
+# proportionally, but the current 10-particle baseline reads cleanly
+# at any heal size.
+func _on_hero_healed(world_pos: Vector2, _amount: int) -> void:
+	_spawn(HEAL_SPARKLE_SCENE, world_pos)
