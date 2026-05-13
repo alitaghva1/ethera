@@ -419,6 +419,12 @@ func _apply_type_to_sprite_and_collision() -> void:
 	# of x so the ellipse stays squashed (top-down perspective trick the
 	# hero shadow uses). Drawn BEFORE the AnimatedSprite2D in scene-tree
 	# order so it renders underneath at the same z_index.
+	#
+	# iter-117: bumped alpha 0.45 → 0.55 for parity with the hero shadow
+	# (0.60) — enemies now ground to the floor with comparable AO weight.
+	# Without this, the hero-rim-light-lit player at iter-116 cast a
+	# noticeably darker pool than nearby enemies, throwing the silhouette
+	# read off ("the player looks heavier than the enemies").
 	var shadow: Sprite2D = Sprite2D.new()
 	shadow.texture = SHADOW_TEXTURE
 	# Anchor a few px below the collision center so it sits at the feet,
@@ -426,7 +432,7 @@ func _apply_type_to_sprite_and_collision() -> void:
 	shadow.position = Vector2(0, 4)
 	var shadow_scale: float = t.collision_radius / 160.0
 	shadow.scale = Vector2(shadow_scale, shadow_scale * 0.6)
-	shadow.modulate = Color(0, 0, 0, 0.45)
+	shadow.modulate = Color(0, 0, 0, 0.55)
 	shadow.z_index = -1
 	# Move-before-sprite in the parent's child order so it draws
 	# underneath. add_child appends, then move_child puts it FIRST.

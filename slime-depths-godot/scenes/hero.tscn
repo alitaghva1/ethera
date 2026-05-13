@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://b3hero1234567"]
+[gd_scene load_steps=9 format=3 uid="uid://b3hero1234567"]
 
 ; Hero scene — pruned dramatically in iter 12 (no per-state AtlasTexture
 ; sub-resources here). hero.gd builds the full SpriteFrames programmatically
@@ -13,6 +13,7 @@
 
 [ext_resource type="Script" path="res://scripts/hero.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/decor/shadow_ellipse.png" id="2_shadow"]
+[ext_resource type="Shader" path="res://assets/shaders/sprite_outline.gdshader" id="3_outline"]
 
 [sub_resource type="CircleShape2D" id="hero_collision"]
 radius = 14.0
@@ -37,6 +38,18 @@ height = 192
 fill = 1
 fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(1, 0.5)
+
+; iter-117: Sprite outline material. ShaderMaterial wraps the
+; sprite_outline shader and sets a near-black outline at width 1.0 px
+; (in underlying texture pixel space — ~1/128 of the sprite cell at the
+; mage's 128 px cell size, so the outline reads as 1-2 in-world pixels).
+; outline_color leans very-dark blue (matching CHROME_WALL_STONE_COLOR
+; from iter-115) so the player silhouette pops out as DEEPER than the
+; ambient floor without reading as a stark black halo.
+[sub_resource type="ShaderMaterial" id="hero_outline_mat"]
+shader = ExtResource("3_outline")
+shader_parameter/outline_color = Color(0.04, 0.04, 0.08, 0.85)
+shader_parameter/outline_width = 1.0
 
 [node name="Hero" type="CharacterBody2D"]
 collision_layer = 2
@@ -68,6 +81,7 @@ range_z_max = 1024
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, -23)
 scale = Vector2(0.469, 0.469)
+material = SubResource("hero_outline_mat")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("hero_collision")
