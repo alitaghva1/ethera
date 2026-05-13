@@ -96,12 +96,22 @@ func _initialize() -> void:
 	if ok:
 		print("OK TitleGlow halo dimmed: size 12 + alpha 0.25")
 
-	# ═══ TitleHalo pulse range lowered ═══
-	if "lerp(0.36, 0.50, clampf" not in gd:
-		push_error("FAIL: _apply_title_scale halo range should be (0.36..0.50), was (0.78..1.0)")
+	# ═══ TitleHalo pulse RETIRED in iter-130 ═══
+	# iter-129 lowered the halo pulse range from (0.78..1.0) to
+	# (0.36..0.50) to dim the stage-spotlight feel. iter-130 went
+	# further and removed the pulse system ENTIRELY — the halo
+	# now renders at its texture's natural ~0.22 peak alpha without
+	# any script-side modulate animation. The iter-129 range tuning
+	# is superseded; this assertion just confirms no leftover
+	# halo-pulse code exists.
+	if "lerp(0.36, 0.50" in gd:
+		push_error("FAIL: iter-129 halo pulse lerp still present — iter-130 retired the whole pulse")
+		ok = false
+	if "func _apply_title_scale" in gd:
+		push_error("FAIL: _apply_title_scale function still present — iter-130 deleted it")
 		ok = false
 	if ok:
-		print("OK TitleHalo pulse pulled to (0.36..0.50) — quiet warmth, not stage spotlight")
+		print("OK halo pulse retired in iter-130 (texture's natural alpha is the resting state)")
 
 	# ═══ Bottom EmberParticles retired ═══
 	if "name=\"EmberParticles\"" in tscn:

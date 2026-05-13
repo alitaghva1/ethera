@@ -28,16 +28,24 @@ extends SceneTree
 func _initialize() -> void:
 	var ok := true
 
-	# ═══ 1. Title pulse range widened ═══
+	# ═══ 1. Title pulse RETIRED in iter-130 ═══
+	# iter-111's wider pulse (0.94..1.06) made the breath visible, but
+	# the entire pulse system was scrapped in iter-130 — playtest read
+	# was "moving like a 3D movie." Genre peers (Dark Souls / Elden
+	# Ring) all keep the LOGO static. The iter-111 contract is now
+	# inverted: TITLE_PULSE_* constants must be ABSENT, not present.
 	var menu_src := FileAccess.get_file_as_string("res://scripts/main_menu.gd")
-	if "TITLE_PULSE_MIN := 0.94" not in menu_src:
-		push_error("FAIL: TITLE_PULSE_MIN should be 0.94 (was 0.97)")
+	if "TITLE_PULSE_MIN" in menu_src and not menu_src.contains("# TITLE_PULSE_MIN"):
+		push_error("FAIL: TITLE_PULSE_MIN still declared — iter-130 retired the pulse system")
 		ok = false
-	if "TITLE_PULSE_MAX := 1.06" not in menu_src:
-		push_error("FAIL: TITLE_PULSE_MAX should be 1.06 (was 1.03)")
+	if "func _start_title_pulse" in menu_src:
+		push_error("FAIL: _start_title_pulse function still defined — should be deleted")
+		ok = false
+	if "func _apply_title_scale" in menu_src:
+		push_error("FAIL: _apply_title_scale function still defined — should be deleted")
 		ok = false
 	if ok:
-		print("OK title pulse widened 0.97/1.03 → 0.94/1.06")
+		print("OK iter-111 title pulse retired in iter-130 (logo stays static)")
 
 	# ═══ 2. Mouse parallax wiring ═══
 	if "PARALLAX_BACKDROP_MAX_PX" not in menu_src:

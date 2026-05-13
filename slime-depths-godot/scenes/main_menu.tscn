@@ -348,49 +348,63 @@ mouse_filter = 2
 ; iter-92: Left torch ember emitter. Backdrop's left torch flame sits
 ; at roughly (495, 365) in the 1280×720 viewport (when the painting is
 ; covered-cropped). Small emitter sells the painted flame as alive.
+;
+; iter-130 retune — Dark Souls-pacing pass. Pre-iter-130 values
+; (22 amount, 22-46 px/s velocity, 1.6s lifetime, 0.6-1.4 damping)
+; read as "cinder spitter" rather than "lazy ember." Genre peers use
+; sparse, slow embers that drift up several seconds before fading.
+; Iter-130 values:
+;   amount 22 → 14 (sparser = more deliberate)
+;   initial_velocity 22-46 → 10-24 (half-speed; lazy drift, not zip)
+;   lifetime 1.6 → 3.2s (doubled; embers linger long enough to read)
+;   damping 0.6-1.4 → 0.3-0.7 (less friction = velocity holds, less
+;     "abrupt stop and fade" feel)
+;   scale 0.06-0.10 → 0.08-0.14 (slightly larger so the sparser
+;     emitter still reads at a glance)
+;   tangential_accel ±10 → ±5 (gentler swirl, less jitter)
 [node name="LeftTorchEmbers" type="CPUParticles2D" parent="."]
 position = Vector2(495, 365)
-amount = 22
-lifetime = 1.6
-preprocess = 1.0
+amount = 14
+lifetime = 3.2
+preprocess = 1.5
 texture = SubResource("ember_texture")
 emission_shape = 1
 emission_rect_extents = Vector2(8, 4)
 gravity = Vector2(0, 0)
-initial_velocity_min = 22.0
-initial_velocity_max = 46.0
+initial_velocity_min = 10.0
+initial_velocity_max = 24.0
 direction = Vector2(0, -1)
 spread = 18.0
-tangential_accel_min = -10.0
-tangential_accel_max = 10.0
-damping_min = 0.6
-damping_max = 1.4
-scale_amount_min = 0.06
-scale_amount_max = 0.10
+tangential_accel_min = -5.0
+tangential_accel_max = 5.0
+damping_min = 0.3
+damping_max = 0.7
+scale_amount_min = 0.08
+scale_amount_max = 0.14
 scale_amount_curve = SubResource("ember_scale_curve")
 color_ramp = SubResource("ember_color_gradient")
 mouse_filter = 2
 
-; iter-92: Right torch ember emitter. Mirrored — same tuning at (785, 365).
+; iter-92: Right torch ember emitter. Mirrored — same iter-130 tuning.
 [node name="RightTorchEmbers" type="CPUParticles2D" parent="."]
 position = Vector2(785, 365)
-amount = 22
-lifetime = 1.6
-preprocess = 1.0
+amount = 14
+lifetime = 3.2
+preprocess = 1.5
 texture = SubResource("ember_texture")
 emission_shape = 1
 emission_rect_extents = Vector2(8, 4)
 gravity = Vector2(0, 0)
-initial_velocity_min = 22.0
-initial_velocity_max = 46.0
+initial_velocity_min = 10.0
+initial_velocity_max = 24.0
 direction = Vector2(0, -1)
 spread = 18.0
-tangential_accel_min = -10.0
-tangential_accel_max = 10.0
-damping_min = 0.6
-damping_max = 1.4
-scale_amount_min = 0.06
-scale_amount_max = 0.10
+tangential_accel_min = -5.0
+tangential_accel_max = 5.0
+damping_min = 0.3
+damping_max = 0.7
+scale_amount_min = 0.08
+scale_amount_max = 0.14
 scale_amount_curve = SubResource("ember_scale_curve")
 color_ramp = SubResource("ember_color_gradient")
 mouse_filter = 2

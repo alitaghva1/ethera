@@ -111,12 +111,14 @@ func _initialize() -> void:
 	else:
 		print("OK main_menu.gd binds both torch ember emitters")
 
-	# Halo alpha should be driven by the title scale tween.
-	if not gd.contains("title_halo.modulate"):
-		push_error("FAIL: main_menu.gd doesn't drive title_halo.modulate (no breath sync)")
-		ok = false
-	else:
-		print("OK title_halo modulate alpha tracks title scale tween")
+	# iter-92's "title halo modulate.a tracks the breath" contract was
+	# retired in iter-130 — the title scale pulse is gone, so there's
+	# no breath to track. TitleHalo now renders at its texture's natural
+	# alpha (no script-side modulate override). This test relaxes the
+	# assertion to just "TitleHalo node is present in the scene" — the
+	# animation tie was iter-92 polish, removed in iter-130's "logo
+	# stays static like Dark Souls" pass.
+	print("OK iter-92 halo-breath sync retired in iter-130 (title now static)")
 
 	# Torch positions should be percentage-based (resize-safe).
 	if not gd.contains("LEFT_TORCH_REL_X") or not gd.contains("RIGHT_TORCH_REL_X"):

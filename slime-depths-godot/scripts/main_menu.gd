@@ -26,25 +26,23 @@ const SETTINGS_SCENE_PATH := "res://scenes/settings_screen.tscn"
 const HOVER_SCALE := 1.05
 const HOVER_TWEEN_TIME := 0.12
 
-# Title pulse — 0.94× → 1.06× over ~1.25s, then back. Loops forever.
-# iter-111: widened from 0.97/1.03 → 0.94/1.06 so the breath actually reads
-# at a glance. Pre-iter-111 the pulse was almost imperceptible — playtester
-# feedback was "is the title even animated?" The new range is ~2× more
-# motion but still well shy of "wobble" territory.
-const TITLE_PULSE_MIN := 0.94
-const TITLE_PULSE_MAX := 1.06
-const TITLE_PULSE_HALF_DURATION := 1.25
+# iter-130 — Title scale pulse + title parallax both retired.
+# Playtester read on the iter-111 pulse: "moving like a 3D movie." Every
+# real dark-fantasy menu (Dark Souls, Elden Ring, Bloodborne, Hollow
+# Knight) keeps the LOGO completely static — no scale, no parallax, no
+# breath. The world has motion (embers, smoke, fog) but the brand is
+# rock solid. That contrast is the gravitas.
+# TITLE_PULSE_MIN / MAX / HALF_DURATION constants removed alongside
+# the _start_title_pulse / _apply_title_scale functions.
 
-# iter-111: Mouse parallax. The painted backdrop drifts gently OPPOSITE to
-# the cursor while the title block drifts SAME direction at lower magnitude
-# — the "card floats toward your cursor" trick. Physically wrong (real
-# parallax shifts everything in the same direction at different rates) but
-# the inverse-coupling reads strongly as depth on a 2D plane, and is the
-# pattern modern UIs use (the JS reference's menu has the same touch).
-# Tuning: backdrop max 10 px, title max 4 px, lerp rate 6.0/s — slow
-# enough to feel like the canvas is "settling," not snapping.
+# iter-111: Mouse parallax for the backdrop layer. The painted backdrop
+# drifts gently OPPOSITE to the cursor — the world reacts to cursor
+# movement, giving subtle depth.
+# iter-130: PARALLAX_TITLE_MAX_PX dropped 4.0 → 0.0. Title no longer
+# drifts with the cursor — it stays anchored as the brand should.
+# Backdrop parallax kept at 10 px (the world moves; the title doesn't).
 const PARALLAX_BACKDROP_MAX_PX := 10.0
-const PARALLAX_TITLE_MAX_PX := 4.0
+const PARALLAX_TITLE_MAX_PX := 0.0
 const PARALLAX_LERP_RATE := 6.0
 
 # iter-128 — SUBTITLE_ALPHA_* constants removed alongside the Subtitle
@@ -85,7 +83,8 @@ const PARALLAX_LERP_RATE := 6.0
 # button doesn't end up stuck at scale 1.05 if the cursor passes
 # quickly. (Same pattern as the JS fx.js tween management.)
 var _hover_tweens: Dictionary = {}
-var _title_tween: Tween
+# iter-130 — _title_tween var removed. Title scale pulse system gone;
+# nothing tweens the title anymore.
 
 # iter-111: Parallax state. _parallax_offset is the SMOOTHED [-1..1]-ish
 # vector currently driving the layered offsets; _parallax_target is the
@@ -129,12 +128,12 @@ func _ready() -> void:
 			b.pivot_offset = b.size / 2.0
 		)
 
-	# Pivot all three title labels (shadow + glow + foreground) at their
-	# own centers so the pulse scales symmetrically. Re-pinned on resize.
+	# iter-130 — title scale pulse retired; pivot-centering kept so any
+	# future static layout / hover tween targets the label's center
+	# rather than its top-left. Re-pinned on resize.
 	_recenter_title_pivots()
 	title.resized.connect(_recenter_title_pivots)
 	title_glow.resized.connect(_recenter_title_pivots)
-	_start_title_pulse()
 
 	# Position the ember emission line along the actual viewport bottom +
 	# stretch its emission_rect_extents to the viewport width. iter-92
@@ -283,41 +282,22 @@ func _recenter_title_pivots() -> void:
 	title.pivot_offset = title.size / 2.0
 	title_glow.pivot_offset = title_glow.size / 2.0
 
-# Infinite-loop pulse on the title scale. The glow Label rides along so the
-# bloom stays anchored under the foreground text.
-func _start_title_pulse() -> void:
-	if _title_tween and _title_tween.is_valid():
-		_title_tween.kill()
-	_title_tween = create_tween()
-	_title_tween.set_loops()
-	_title_tween.set_trans(Tween.TRANS_SINE)
-	_title_tween.set_ease(Tween.EASE_IN_OUT)
-	_title_tween.tween_method(_apply_title_scale, TITLE_PULSE_MIN, TITLE_PULSE_MAX, TITLE_PULSE_HALF_DURATION)
-	_title_tween.tween_method(_apply_title_scale, TITLE_PULSE_MAX, TITLE_PULSE_MIN, TITLE_PULSE_HALF_DURATION)
-
+# iter-130 — _start_title_pulse / _apply_title_scale removed entirely.
+# The title is now STATIC: no scale animation, no halo alpha coupling.
+# TitleHalo renders at its texture's natural ~0.22 peak alpha (set
+# baked into the gradient sub-resource in main_menu.tscn). That's a
+# quiet warm pool of light behind the title; without the iter-129
+# multiplier (0.36..0.50) on top, the halo is slightly brighter at
+# rest — exactly what an ancient torchlit logo should look like.
+#
+# Genre reference: Dark Souls / Elden Ring / Bloodborne / Hollow Knight
+# all keep the title LOGO rock-solid. World motion (embers, fog, smoke)
+# is intentionally contrasted against a still logo — that contrast is
+# the gravitas.
+#
 # iter-128 — _start_subtitle_pulse + SUBTITLE_ALPHA_* constants
 # removed alongside the Subtitle Label. See scenes/main_menu.tscn for
 # the design rationale (no genre peer uses a separate subtitle Label).
-
-func _apply_title_scale(s: float) -> void:
-	var v: Vector2 = Vector2(s, s)
-	title.scale = v
-	# Glow breathes a hair wider than the main title so the bloom feels
-	# softly anchored without "clicking" alignment-wise.
-	title_glow.scale = v * 1.02
-	# iter-129 — TitleShadow scale-coupling removed alongside the
-	# TitleShadow Label.
-	# iter-92: title halo modulate.a tracks the breath.
-	# iter-129 — halo pulse range pulled from (0.78..1.0) → (0.36..0.50)
-	# so the warm pool behind the title reads as quiet ambient warmth,
-	# not a stage spotlight. Combined with the smaller / desaturated
-	# title, the whole title block now WHISPERS instead of shouts.
-	if title_halo != null:
-		var t: float = (s - TITLE_PULSE_MIN) / (TITLE_PULSE_MAX - TITLE_PULSE_MIN)
-		var a: float = lerp(0.36, 0.50, clampf(t, 0.0, 1.0))
-		var c: Color = title_halo.modulate
-		c.a = a
-		title_halo.modulate = c
 
 # iter-128 — _apply_subtitle_alpha removed; Subtitle Label is gone.
 
