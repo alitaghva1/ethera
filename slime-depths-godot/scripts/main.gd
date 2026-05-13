@@ -741,6 +741,12 @@ func _spawn_room_chrome() -> void:
 	_spawn_center_floor_mute()
 	_spawn_wall_inner_shadows()
 	_spawn_corner_ao()
+	# iter-120: edge-only atmosphere. Scratches on the perimeter wall
+	# mass + low-alpha stains along the wall→floor seam + small rubble
+	# clusters at corners. All gated to the OUTER 80 px of the room so
+	# the playable center stays uncluttered (the explicit goal of the
+	# iter-115 center mute).
+	_spawn_wall_atmosphere()
 
 # Solid dark stone fills along the 4 perimeter wall regions (the
 # unused frame between the playable interior and the viewport edge).
@@ -904,6 +910,165 @@ func _spawn_corner_ao() -> void:
 		[clear, clear, dark, clear],
 		-1,
 	)
+
+# ── iter-120: Edge-only atmosphere ───────────────────────────────────
+#
+# Restrained decoration along the wall→floor seam to dirty up the
+# perimeter without crowding the play-area center. THREE sub-layers:
+#
+#   WALL SCRATCHES — short dark Line2Ds (4-14 px) drawn on the
+#   perimeter wall mass. Random rotation ±25° from perpendicular to the
+#   wall. Reads as ancient stone with weathered etchings.
+#
+#   EDGE STAINS — low-alpha dark Polygon2D blots in the strip between
+#   wall and 60 px into the floor. Distinct from the iter-115 AO
+#   gradient (which is a uniform falloff strip) — stains are
+#   irregular splotches that catch the eye as wear marks.
+#
+#   CORNER RUBBLE — 3 small dark pebble shapes clustered at each of
+#   the 4 inside corners. Anchors the AO with physical detail.
+#
+# All three layers stay in the OUTER 80 px of the room. _scatter_decor
+# (iter-18+) handles play-area decor; this iter is purely the rim
+# detail that _scatter_decor was leaving sparse.
+const ATMOSPHERE_SCRATCH_COUNT: int = 24
+const ATMOSPHERE_STAIN_COUNT: int = 18
+const ATMOSPHERE_CORNER_RUBBLE_PER_CORNER: int = 3
+# Pre-cached colors so the spawn loop doesn't recreate Color objects.
+const ATMOSPHERE_SCRATCH_COLOR: Color = Color(0.04, 0.03, 0.06, 0.7)
+const ATMOSPHERE_STAIN_COLOR: Color = Color(0.05, 0.04, 0.08, 0.45)
+const ATMOSPHERE_RUBBLE_COLOR: Color = Color(0.12, 0.10, 0.14, 0.85)
+
+func _spawn_wall_atmosphere() -> void:
+	_spawn_wall_scratches()
+	_spawn_edge_stains()
+	_spawn_corner_rubble()
+
+# Short dark scratches drawn on the perimeter wall mass. 6 per wall
+# (24 total). Random offset along each wall, perpendicular-ish rotation.
+func _spawn_wall_scratches() -> void:
+	var per_wall: int = ATMOSPHERE_SCRATCH_COUNT / 4
+	var walls := _atmosphere_wall_strips()
+	for w in walls:
+		# w is a Dictionary with "axis" ("h" or "v"), "fixed" (the wall
+		# y/x coord), "from", "to" (range along the axis), "perp_dir"
+		# (-1 or +1 — where INTO the wall mass is)
+		var axis: String = w["axis"]
+		var fixed: float = w["fixed"]
+		var from: float = w["from"]
+		var to: float = w["to"]
+		var perp: int = int(w["perp"])
+		for i in per_wall:
+			var t: float = randf_range(from, to)
+			var depth_into_wall: float = randf_range(8.0, 24.0)
+			var scratch_len: float = randf_range(4.0, 14.0)
+			var pos: Vector2
+			if axis == "h":
+				# Wall runs horizontal (top or bottom). Fixed coord is y;
+				# scratch is positioned along x=t, y=fixed+perp*depth.
+				pos = Vector2(t, fixed + perp * depth_into_wall)
+			else:
+				pos = Vector2(fixed + perp * depth_into_wall, t)
+			# Scratch direction: mostly perpendicular to the wall but
+			# with ±25° jitter so scratches don't all look parallel.
+			var base_angle: float = 0.0 if axis == "v" else PI * 0.5
+			var angle: float = base_angle + randf_range(-0.44, 0.44)
+			var dir: Vector2 = Vector2(cos(angle), sin(angle))
+			var line: Line2D = Line2D.new()
+			line.points = PackedVector2Array([
+				pos - dir * (scratch_len * 0.5),
+				pos + dir * (scratch_len * 0.5),
+			])
+			line.width = 1.0
+			line.default_color = ATMOSPHERE_SCRATCH_COLOR
+			line.antialiased = true
+			line.z_index = 1
+			add_child(line)
+
+# Irregular dark blots in the strip near the walls. 4-5 per side.
+func _spawn_edge_stains() -> void:
+	var per_side: int = ATMOSPHERE_STAIN_COUNT / 4
+	var walls := _atmosphere_wall_strips()
+	for w in walls:
+		var axis: String = w["axis"]
+		var fixed: float = w["fixed"]
+		var from: float = w["from"]
+		var to: float = w["to"]
+		var perp: int = int(w["perp"])
+		# Stains live INSIDE the room, in the 16..60 px band from the wall.
+		for i in per_side:
+			var along: float = randf_range(from, to)
+			var into_floor: float = randf_range(16.0, 60.0)
+			var pos: Vector2
+			if axis == "h":
+				pos = Vector2(along, fixed - perp * into_floor)
+			else:
+				pos = Vector2(fixed - perp * into_floor, along)
+			# 6-vert irregular blob — randf jitter per vertex creates a
+			# different silhouette each spawn.
+			var r: float = randf_range(8.0, 16.0)
+			var verts: PackedVector2Array = PackedVector2Array()
+			for j in 6:
+				var a: float = TAU * float(j) / 6.0
+				var jr: float = r * randf_range(0.65, 1.15)
+				verts.append(Vector2(cos(a) * jr, sin(a) * jr))
+			var stain: Polygon2D = Polygon2D.new()
+			stain.polygon = verts
+			stain.color = ATMOSPHERE_STAIN_COLOR
+			stain.position = pos
+			stain.rotation = randf_range(0.0, TAU)
+			stain.z_index = -1
+			add_child(stain)
+
+# Small pebble clusters at each inside corner. 3 pebbles per corner,
+# tight ±8 px scatter, dark color so they read as rubble accumulating
+# in the corners.
+func _spawn_corner_rubble() -> void:
+	var pad: float = 18.0
+	var corners: Array[Vector2] = [
+		PLAY_AREA_MIN + Vector2(pad, pad),
+		Vector2(PLAY_AREA_MAX.x - pad, PLAY_AREA_MIN.y + pad),
+		PLAY_AREA_MAX - Vector2(pad, pad),
+		Vector2(PLAY_AREA_MIN.x + pad, PLAY_AREA_MAX.y - pad),
+	]
+	for corner in corners:
+		for i in ATMOSPHERE_CORNER_RUBBLE_PER_CORNER:
+			var off := Vector2(randf_range(-12.0, 12.0), randf_range(-12.0, 12.0))
+			var pebble: Polygon2D = Polygon2D.new()
+			var s: float = randf_range(3.0, 6.0)
+			var verts: PackedVector2Array = PackedVector2Array()
+			for j in 5:
+				var a: float = TAU * float(j) / 5.0
+				var jr: float = s * randf_range(0.7, 1.15)
+				verts.append(Vector2(cos(a) * jr, sin(a) * jr))
+			pebble.polygon = verts
+			pebble.color = ATMOSPHERE_RUBBLE_COLOR
+			pebble.position = corner + off
+			pebble.rotation = randf_range(0.0, TAU)
+			pebble.z_index = 0
+			add_child(pebble)
+
+# Returns the 4 wall-strip parameters used by the scratch + stain spawners.
+# Each dict carries: axis ("h" for horizontal wall, "v" for vertical),
+# fixed (the wall's coord on its NORMAL axis), from/to (range along the
+# wall), and perp (+1 / -1, the direction INTO the wall from the play
+# area). Single source of truth so scratch + stain offsets stay aligned.
+func _atmosphere_wall_strips() -> Array[Dictionary]:
+	var play_min := PLAY_AREA_MIN
+	var play_max := PLAY_AREA_MAX
+	# Inset from the corners so atmosphere doesn't collide with the
+	# corner rubble piles at the very edge.
+	var inset: float = 40.0
+	return [
+		# TOP wall — horizontal, fixed y = play_min.y, perp = -1 (into wall = up)
+		{"axis": "h", "fixed": play_min.y, "from": play_min.x + inset, "to": play_max.x - inset, "perp": -1},
+		# BOTTOM wall — fixed y = play_max.y, perp = +1 (into wall = down)
+		{"axis": "h", "fixed": play_max.y, "from": play_min.x + inset, "to": play_max.x - inset, "perp": +1},
+		# LEFT wall — vertical, fixed x = play_min.x, perp = -1 (into wall = left)
+		{"axis": "v", "fixed": play_min.x, "from": play_min.y + inset, "to": play_max.y - inset, "perp": -1},
+		# RIGHT wall — fixed x = play_max.x, perp = +1
+		{"axis": "v", "fixed": play_max.x, "from": play_min.y + inset, "to": play_max.y - inset, "perp": +1},
+	]
 
 # ── Generic primitive helpers (used only by _spawn_room_chrome). ──────
 # Kept inline rather than extracted to a separate file because they
