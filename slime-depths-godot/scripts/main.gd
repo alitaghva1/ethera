@@ -285,14 +285,18 @@ var _prev_kills: int = -1
 var _hp_pulse_tween: Tween = null
 var _kills_pulse_tween: Tween = null
 # iter-119: control-hint auto-fade. After HINT_FADE_DELAY seconds of
-# unchanged StatusLabel text, the label tweens its alpha down to
-# HINT_FADED_ALPHA so the help text stops competing with combat reads.
-# Any new status text (set elsewhere via status_label.text = "...")
-# resets the timer + restores full alpha — picked up by the _process
-# poll comparing label.text to _last_status_text.
-const HINT_FADE_DELAY: float = 8.0
+# unchanged StatusLabel text, the label tweens its alpha down so the
+# help text stops competing with combat reads.
+# iter-123: TARGET is now 0.0 (fully invisible), not 0.30 (dim-but-
+# visible). Controls should never be PERMANENTLY in the HUD — the
+# first-time hint shows briefly then leaves the screen entirely.
+# Delay also shortened 8 → 5 s — playtester read on the iter-119
+# version was "controls hang around forever." Gameplay events that
+# set status_label.text reset the timer + restore full alpha via the
+# poll-and-compare path; no call-site changes needed.
+const HINT_FADE_DELAY: float = 5.0
 const HINT_FADE_DURATION: float = 1.0
-const HINT_FADED_ALPHA: float = 0.30
+const HINT_FADED_ALPHA: float = 0.0
 var _status_hint_fade_t: float = 0.0
 var _last_status_text: String = ""
 var _status_fade_tween: Tween = null
@@ -478,7 +482,19 @@ func _ready() -> void:
 	_rebuild_relic_strip()
 	# iter-95: dodge removed, parry renamed to shield. Defensive toolkit
 	# is now SHIELD (Q, timing catch) + DASH (Shift, mobility + i-frames).
-	status_label.text = "LMB swing · RMB blast · Q shield · SHIFT dash"
+	#
+	# iter-123: first-time-only controls hint. Show the brief tutorial
+	# ONCE per save profile; after that the hint never re-appears across
+	# rooms, runs, or sessions. The flag is saved immediately so a quit
+	# during the first room still records that the hint was shown.
+	# iter-119's _process_status_fade carries the hint off-screen over
+	# HINT_FADE_DELAY (5 s) + HINT_FADE_DURATION (1 s).
+	if not GameState.has_seen_controls_hint:
+		status_label.text = "LMB swing  ·  RMB blast  ·  Q shield  ·  SHIFT dash"
+		GameState.has_seen_controls_hint = true
+		SaveSystem.save_now()
+	else:
+		status_label.text = ""
 	wave_label.text = "WAVE 1 / %d  incoming" % max(1, _waves.size())
 	# Iter 33 — special-room dispatch. Combat rooms run the wave timer
 	# as before; treasure / shrine rooms skip waves and route through
@@ -710,13 +726,13 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 # on top of every chrome polygon. z_index values mirror the existing
 # shadow-stack: z=-1 for floor decor + wall AO + center wash; default
 # z=0 for the wall mass + top-edge highlights.
-# iter-122: PLAY_AREA_MIN.y bumped 96 → 128 so the top of the playable
-# interior sits BELOW the HUD shelf (y=0..128 in screen coords). main.tscn's
-# WallTop collision was moved in lockstep. Every iter-115 chrome routine
-# (perimeter wall mass, top-edge highlight, inner wall AO, corner AO,
-# center mute) re-derives from these constants → no separate edits
-# needed for the chrome layer.
-const PLAY_AREA_MIN: Vector2 = Vector2(96, 128)
+# iter-123: PLAY_AREA_MIN.y reverted 128 → 96 alongside the WallTop
+# move in main.tscn. The iter-122 HUD shelf was scrapped in favor of
+# minimal floating text — no shelf means no need to reserve vertical
+# space for it, so the play area extends to its natural y=96 boundary
+# again. iter-115's chrome layers auto-redraw against the original
+# bounds.
+const PLAY_AREA_MIN: Vector2 = Vector2(96, 96)
 const PLAY_AREA_MAX: Vector2 = Vector2(1184, 672)
 const SCREEN_SIZE: Vector2 = Vector2(1280, 768)
 

@@ -51,6 +51,15 @@ var persisted_hp: int = -1
 # job — which now honestly says "Each room" in its description).
 var phoenix_feather_used: bool = false
 
+# iter-123: persistent "I've seen the controls" flag. The first-ever
+# room load shows a brief controls hint via main.gd's StatusLabel; the
+# iter-119 auto-fade carries it off-screen after 5 s. After that first
+# show this flag is set + saved, so the hint never re-appears across
+# rooms, runs, or sessions. Cleared by SaveSystem on a "wipe profile"
+# action (not implemented yet — when it lands, just include this
+# field in the reset list).
+var has_seen_controls_hint: bool = false
+
 # ── Relic registry ───────────────────────────────────────────────────
 # Modifier keys read by hero.gd:
 #   sword_damage_bonus      (int)    added to LMB-swing damage
@@ -899,7 +908,7 @@ var master_volume: float = 0.7
 # easiest to diff in a text editor when debugging save files.
 func save_to_dict() -> Dictionary:
 	return {
-		"save_version": 3,   # iter 57 — added unlocked_achievements
+		"save_version": 4,   # iter 123 — added has_seen_controls_hint
 		"owned_relics": owned_relics,
 		"session_kills": session_kills,
 		"dungeon_runs": dungeon_runs,
@@ -907,6 +916,7 @@ func save_to_dict() -> Dictionary:
 		"best_run_kills": best_run_kills,
 		"master_volume": master_volume,
 		"unlocked_achievements": unlocked_achievements,
+		"has_seen_controls_hint": has_seen_controls_hint,
 	}
 
 # Tolerant loader: every field has a default, missing keys are ignored,
@@ -923,6 +933,10 @@ func load_from_dict(d: Dictionary) -> void:
 	# starting "best" instead of 0.
 	best_run_kills = int(d.get("best_run_kills", last_run_kills))
 	master_volume = clampf(float(d.get("master_volume", 0.7)), 0.0, 1.0)
+	# iter-123: tolerant load of the controls-hint flag. Missing key on
+	# pre-v4 saves → false (player hasn't seen the hint on this profile,
+	# so it shows on next room load — desired behavior on upgrade).
+	has_seen_controls_hint = bool(d.get("has_seen_controls_hint", false))
 
 	# Array[String] needs a fresh typed array — JSON returns a plain
 	# Array (no element typing) so we rebuild element-by-element and

@@ -32,24 +32,12 @@ extends SceneTree
 func _initialize() -> void:
 	var ok := true
 
-	# ═══ Top-bar backing exists ═══
-	# Note: iter-122 replaced RoomLabelBacking + the iter-119 sub-style
-	# with a single full-width opaque TopBarBacking. We keep this test
-	# focused on the iter-119-era contract: SOMETHING covers the HUD
-	# area + the auto-fade logic (below) still applies.
-	var tscn_src := FileAccess.get_file_as_string("res://scenes/main.tscn")
-	if "name=\"TopBarBacking\"" not in tscn_src:
-		push_error("FAIL: main.tscn missing TopBarBacking panel")
-		ok = false
-	if "top_bar_style" not in tscn_src:
-		push_error("FAIL: main.tscn missing top_bar_style StyleBoxFlat")
-		ok = false
-	# HUD backing must set mouse_filter so it doesn't eat world clicks.
-	if not tscn_src.contains("mouse_filter = 2"):
-		push_error("FAIL: HUD backing panel should set mouse_filter = 2 (IGNORE)")
-		ok = false
-	if ok:
-		print("OK main.tscn has TopBarBacking with click-through")
+	# ═══ Top-bar backing existed in iter-119/121/122 ═══
+	# iter-123 stripped the backing chassis entirely in favor of a
+	# minimal floating-text HUD. The auto-fade behavior (below) is the
+	# only iter-119 contract still load-bearing; the panel-existence
+	# checks are retired.
+	print("OK iter-119 backing panels superseded by iter-123 minimal HUD design")
 
 	# ═══ Auto-fade logic in main.gd ═══
 	var main_src := FileAccess.get_file_as_string("res://scripts/main.gd")
