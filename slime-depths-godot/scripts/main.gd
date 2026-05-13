@@ -2652,7 +2652,11 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# pedestal._claim; we only need to drive the room-end branch.
 	# Also refresh the HUD relic strip — a new relic just landed in
 	# GameState.owned_relics and the strip needs a badge for it.
-	_rebuild_relic_strip()
+	# Iter 156 — pass the picked-up name so the new icon gets the
+	# arrival tween (scale punch + gold pop) on the strip rebuild.
+	# Shrines (_name = "shrine_*") aren't in RELIC_REGISTRY → no
+	# matching icon → no tween fires for them, which is correct.
+	_rebuild_relic_strip(_name)
 	_resolve_room_pickup()
 
 # iter-118: Portal placement clearance. Doors visually want at least
@@ -3487,7 +3491,7 @@ func _process_wave_fade(delta: float) -> void:
 # then spawns one RelicIcon per owned id. Each icon repaints itself
 # in set_relic based on the tier/name pulled from RELIC_REGISTRY, so
 # the strip doesn't need to know anything about visuals.
-func _rebuild_relic_strip() -> void:
+func _rebuild_relic_strip(newly_added_id: String = "") -> void:
 	if relic_strip == null:
 		return
 	for child in relic_strip.get_children():
@@ -3499,6 +3503,14 @@ func _rebuild_relic_strip() -> void:
 		# may rely on the node being in the tree (autoload access,
 		# parent lookup for tooltips).
 		icon.set_relic(rid)
+		# Iter 156 — celebrate the new icon. When this rebuild was
+		# triggered by a fresh pickup AND this icon represents that
+		# pickup, snap it to bigger + gold-tinted then tween back to
+		# rest size + neutral over 0.45 s. Without this beat the new
+		# relic just "appears" in the strip — the PickupBanner does
+		# the headline, but the HUD-strip arrival was invisible.
+		if newly_added_id != "" and rid == newly_added_id:
+			_animate_new_relic_icon(icon)
 	# Iter 39 — refresh theme chips. Reading active themes off
 	# GameState every rebuild keeps the strip in sync with the relic
 	# roster (a newly-granted relic that pushes a theme over 2/4
@@ -3509,6 +3521,24 @@ func _rebuild_relic_strip() -> void:
 	# (already wired by _on_pickup_claimed), and the sync method
 	# spawns / despawns familiars to match the new total.
 	_sync_familiars()
+
+# Iter 156 — new-icon arrival tween. Snaps the icon to 1.45x scale +
+# gold modulate, then parallel-tweens both back to rest over 0.45 s.
+# Pivot is set to icon center so the scale punch animates symmetrically.
+# Same architectural shape as _pulse_label — short, sharp, kill-prior-
+# tween-via-overwrite, ends at neutral so a follow-up tween from
+# another system can't be left fighting an in-flight modulate.
+func _animate_new_relic_icon(icon: Control) -> void:
+	if icon == null:
+		return
+	icon.pivot_offset = icon.size * 0.5
+	icon.scale = Vector2(1.45, 1.45)
+	icon.modulate = Color(1.6, 1.35, 0.85, 1.0)  # HDR gold pop
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(icon, "scale", Vector2.ONE, 0.45)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(icon, "modulate", Color(1, 1, 1, 1), 0.45)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 # Iter 56 — familiar sync. Reads the current familiar_count modifier
 # total and ensures exactly that many Familiar nodes exist in the
