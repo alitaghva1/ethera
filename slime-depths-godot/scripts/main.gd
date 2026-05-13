@@ -377,6 +377,13 @@ func _ready() -> void:
 		# data-driven from RoomConfig — empty arrays = open arena
 		# (the iter-23 default behavior).
 		_spawn_interior_walls(_room.wall_rects)
+		# iter-115: Room readability chrome. Layers a quiet center
+		# floor wash, thick perimeter wall mass + top-edge highlights,
+		# inner wall shadow strips (AO at the wall→floor seam), and
+		# corner darkness. Must run AFTER interior walls so the perimeter
+		# wall art's tree-order positions us under the hero (which is
+		# move_child'd to -1 at the end of _ready). See _spawn_room_chrome.
+		_spawn_room_chrome()
 		_spawn_hazards(_room.hazard_positions, _room.hazard_kind)
 		# Iter 31 — mixed-hazard list. Each entry is a Dictionary with
 		# "kind" + "position" (+ optional "phase"/"interval" for cyclic
@@ -657,6 +664,262 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 	bot_shadow.antialiased = true
 	body.add_child(bot_shadow)
 	return body
+
+# ── iter-115: Room readability chrome ───────────────────────────────────
+#
+# Pre-iter-115 the room looked like a prototype: procedural_dungeon.png
+# painted a textured floor with a dark border, and the 4 boundary walls
+# in main.tscn were collision-only — no extra art. Result: walls felt
+# thin (just the printed edge of the floor texture), the floor noise
+# competed with combat in the play-area center, and the wall-to-floor
+# seam had no AO. Iter-115 adds three layers of programmatic chrome:
+#
+#   1. CENTER FLOOR MUTE — a single dark Polygon2D covering the center
+#      ~75% of the play area at 22% alpha. Mutes the floor noise where
+#      combat happens; edges keep their tile variation for atmosphere.
+#   2. PERIMETER WALL MASS — 4 solid Polygon2D strips along the room's
+#      outer border, painted the same dark stone tone as interior walls.
+#      Sells "the room is bounded by thick stone," not "a thin frame
+#      painted on the floor." Plus per-side top-edge highlight Line2Ds
+#      where the wall meets the floor (warm gray) so the silhouette
+#      reads as receding-up rather than coplanar with the floor.
+#   3. INNER WALL SHADOWS + CORNER AO — gradient strips fading from
+#      dark at the wall edge to clear ~32 px into the floor. Plus
+#      stronger darkness at the 4 corners. Reads as the ambient
+#      occlusion you'd expect along the seam of a stone room.
+#
+# All chrome is added to the same canvas layer as the world (no separate
+# CanvasLayer — it's part of the room geometry). Tree order is BEFORE
+# the `move_child(hero, -1)` at the end of _ready, so the hero draws
+# on top of every chrome polygon. z_index values mirror the existing
+# shadow-stack: z=-1 for floor decor + wall AO + center wash; default
+# z=0 for the wall mass + top-edge highlights.
+const PLAY_AREA_MIN: Vector2 = Vector2(96, 96)
+const PLAY_AREA_MAX: Vector2 = Vector2(1184, 672)
+const SCREEN_SIZE: Vector2 = Vector2(1280, 768)
+
+# Visual tuning constants — single source of truth so per-biome swaps
+# (a future iter) can re-skin without hunting through code. Center mute
+# alpha stays below 0.25 so combat readability isn't sacrificed.
+const CHROME_CENTER_MUTE_COLOR: Color = Color(0.05, 0.04, 0.07, 0.22)
+const CHROME_WALL_STONE_COLOR: Color = Color(0.10, 0.08, 0.13, 1.0)
+const CHROME_WALL_TOP_HIGHLIGHT: Color = Color(0.48, 0.42, 0.32, 0.85)
+const CHROME_INNER_SHADOW_DARK: Color = Color(0, 0, 0, 0.55)
+const CHROME_INNER_SHADOW_CLEAR: Color = Color(0, 0, 0, 0)
+const CHROME_CORNER_DARK: Color = Color(0, 0, 0, 0.65)
+# How far the AO shadow strip reaches into the play area from each wall.
+# 32 px is large enough to read as a real shadow but small enough that
+# combat doesn't get visually compressed.
+const CHROME_INNER_SHADOW_DEPTH: float = 32.0
+# Corner AO triangle reach. Larger than the inner-shadow depth so the
+# corners read distinctly deeper than the straight edges.
+const CHROME_CORNER_DEPTH: float = 96.0
+# Center mute inset from the play-area edges. Polygon covers PLAY_AREA
+# minus a CENTER_INSET margin so the wall AO strips can still read at
+# full strength along the edges.
+const CHROME_CENTER_INSET: float = 60.0
+
+func _spawn_room_chrome() -> void:
+	_spawn_perimeter_wall_mass()
+	_spawn_wall_top_edge_highlights()
+	_spawn_center_floor_mute()
+	_spawn_wall_inner_shadows()
+	_spawn_corner_ao()
+
+# Solid dark stone fills along the 4 perimeter wall regions (the
+# unused frame between the playable interior and the viewport edge).
+# Opaque so the texture noise inside procedural_dungeon.png's dark
+# border doesn't peek through — gives a uniform mass read.
+func _spawn_perimeter_wall_mass() -> void:
+	var play_min := PLAY_AREA_MIN
+	var play_max := PLAY_AREA_MAX
+	var screen := SCREEN_SIZE
+	# TOP strip — y=0 to y=play_min.y
+	_add_rect_polygon(Rect2(0, 0, screen.x, play_min.y), CHROME_WALL_STONE_COLOR, 0)
+	# BOTTOM strip — y=play_max.y to y=screen.y
+	_add_rect_polygon(Rect2(0, play_max.y, screen.x, screen.y - play_max.y), CHROME_WALL_STONE_COLOR, 0)
+	# LEFT strip — x=0 to x=play_min.x (covers full height; top + bottom
+	# strips already covered the corners, but a tiny overlap is invisible)
+	_add_rect_polygon(Rect2(0, play_min.y, play_min.x, play_max.y - play_min.y), CHROME_WALL_STONE_COLOR, 0)
+	# RIGHT strip — x=play_max.x to x=screen.x
+	_add_rect_polygon(Rect2(play_max.x, play_min.y, screen.x - play_max.x, play_max.y - play_min.y), CHROME_WALL_STONE_COLOR, 0)
+
+# Per-side warm-gray Line2D where each wall meets the floor. Mirrors
+# the iter-30 interior-wall top-edge highlight grammar — sells "this
+# is a stone block with light catching its inside edge."
+func _spawn_wall_top_edge_highlights() -> void:
+	var play_min := PLAY_AREA_MIN
+	var play_max := PLAY_AREA_MAX
+	# Inset 2 px from the corner so the 4 highlights don't double up
+	# in the corner pixels.
+	# TOP highlight
+	_add_line(
+		Vector2(play_min.x + 2, play_min.y),
+		Vector2(play_max.x - 2, play_min.y),
+		CHROME_WALL_TOP_HIGHLIGHT, 2.5, 0,
+	)
+	# BOTTOM highlight (slightly dimmer — floor side is in shadow)
+	var bot_color := Color(
+		CHROME_WALL_TOP_HIGHLIGHT.r * 0.5,
+		CHROME_WALL_TOP_HIGHLIGHT.g * 0.5,
+		CHROME_WALL_TOP_HIGHLIGHT.b * 0.5,
+		CHROME_WALL_TOP_HIGHLIGHT.a,
+	)
+	_add_line(
+		Vector2(play_min.x + 2, play_max.y),
+		Vector2(play_max.x - 2, play_max.y),
+		bot_color, 2.5, 0,
+	)
+	# LEFT highlight
+	_add_line(
+		Vector2(play_min.x, play_min.y + 2),
+		Vector2(play_min.x, play_max.y - 2),
+		CHROME_WALL_TOP_HIGHLIGHT, 2.5, 0,
+	)
+	# RIGHT highlight
+	_add_line(
+		Vector2(play_max.x, play_min.y + 2),
+		Vector2(play_max.x, play_max.y - 2),
+		CHROME_WALL_TOP_HIGHLIGHT, 2.5, 0,
+	)
+
+# Single low-alpha rectangle muting the texture noise in the play-area
+# center. Stays inside CENTER_INSET margins so the perimeter wall AO
+# below can still read at full strength along the edges.
+func _spawn_center_floor_mute() -> void:
+	var inset: float = CHROME_CENTER_INSET
+	var r := Rect2(
+		PLAY_AREA_MIN + Vector2(inset, inset),
+		PLAY_AREA_MAX - PLAY_AREA_MIN - Vector2(inset * 2.0, inset * 2.0),
+	)
+	_add_rect_polygon(r, CHROME_CENTER_MUTE_COLOR, -1)
+
+# 4 gradient strips fading from solid dark at the wall edge to clear
+# CHROME_INNER_SHADOW_DEPTH px into the floor. Reads as the AO line you'd
+# expect along the seam between vertical stone and horizontal floor.
+func _spawn_wall_inner_shadows() -> void:
+	var play_min := PLAY_AREA_MIN
+	var play_max := PLAY_AREA_MAX
+	var depth: float = CHROME_INNER_SHADOW_DEPTH
+	var dark := CHROME_INNER_SHADOW_DARK
+	var clear := CHROME_INNER_SHADOW_CLEAR
+	# TOP edge: gradient from wall (dark) down to floor (clear)
+	_add_quad_vertex_colors(
+		Vector2(play_min.x, play_min.y),
+		Vector2(play_max.x, play_min.y),
+		Vector2(play_max.x, play_min.y + depth),
+		Vector2(play_min.x, play_min.y + depth),
+		[dark, dark, clear, clear],
+		-1,
+	)
+	# BOTTOM edge
+	_add_quad_vertex_colors(
+		Vector2(play_min.x, play_max.y - depth),
+		Vector2(play_max.x, play_max.y - depth),
+		Vector2(play_max.x, play_max.y),
+		Vector2(play_min.x, play_max.y),
+		[clear, clear, dark, dark],
+		-1,
+	)
+	# LEFT edge
+	_add_quad_vertex_colors(
+		Vector2(play_min.x, play_min.y),
+		Vector2(play_min.x + depth, play_min.y),
+		Vector2(play_min.x + depth, play_max.y),
+		Vector2(play_min.x, play_max.y),
+		[dark, clear, clear, dark],
+		-1,
+	)
+	# RIGHT edge
+	_add_quad_vertex_colors(
+		Vector2(play_max.x - depth, play_min.y),
+		Vector2(play_max.x, play_min.y),
+		Vector2(play_max.x, play_max.y),
+		Vector2(play_max.x - depth, play_max.y),
+		[clear, dark, dark, clear],
+		-1,
+	)
+
+# 4 corner AO triangles — deeper darkness at the inside corners than
+# the straight-edge AO. Compounds with the inner_shadows so corners read
+# distinctly heavier than mid-wall.
+func _spawn_corner_ao() -> void:
+	var play_min := PLAY_AREA_MIN
+	var play_max := PLAY_AREA_MAX
+	var d: float = CHROME_CORNER_DEPTH
+	var dark := CHROME_CORNER_DARK
+	var clear := CHROME_INNER_SHADOW_CLEAR
+	# Top-left: dark at corner vertex, clear at the other 3
+	_add_quad_vertex_colors(
+		play_min,
+		play_min + Vector2(d, 0),
+		play_min + Vector2(d, d),
+		play_min + Vector2(0, d),
+		[dark, clear, clear, clear],
+		-1,
+	)
+	# Top-right
+	var tr := Vector2(play_max.x, play_min.y)
+	_add_quad_vertex_colors(
+		tr + Vector2(-d, 0),
+		tr,
+		tr + Vector2(0, d),
+		tr + Vector2(-d, d),
+		[clear, dark, clear, clear],
+		-1,
+	)
+	# Bottom-left
+	var bl := Vector2(play_min.x, play_max.y)
+	_add_quad_vertex_colors(
+		bl + Vector2(0, -d),
+		bl + Vector2(d, -d),
+		bl + Vector2(d, 0),
+		bl,
+		[clear, clear, clear, dark],
+		-1,
+	)
+	# Bottom-right
+	var br := play_max
+	_add_quad_vertex_colors(
+		br + Vector2(-d, -d),
+		br + Vector2(0, -d),
+		br,
+		br + Vector2(-d, 0),
+		[clear, clear, dark, clear],
+		-1,
+	)
+
+# ── Generic primitive helpers (used only by _spawn_room_chrome). ──────
+# Kept inline rather than extracted to a separate file because they
+# only ever take Polygon2D / Line2D nodes added as children of the main
+# scene. Same shape grammar as floor_clear_burst._make_rect.
+func _add_rect_polygon(r: Rect2, c: Color, z: int) -> void:
+	var p: Polygon2D = Polygon2D.new()
+	p.polygon = PackedVector2Array([
+		r.position,
+		r.position + Vector2(r.size.x, 0),
+		r.end,
+		r.position + Vector2(0, r.size.y),
+	])
+	p.color = c
+	p.z_index = z
+	add_child(p)
+
+func _add_line(a: Vector2, b: Vector2, c: Color, w: float, z: int) -> void:
+	var ln: Line2D = Line2D.new()
+	ln.points = PackedVector2Array([a, b])
+	ln.width = w
+	ln.default_color = c
+	ln.antialiased = true
+	ln.z_index = z
+	add_child(ln)
+
+func _add_quad_vertex_colors(v0: Vector2, v1: Vector2, v2: Vector2, v3: Vector2, colors: Array, z: int) -> void:
+	var p: Polygon2D = Polygon2D.new()
+	p.polygon = PackedVector2Array([v0, v1, v2, v3])
+	p.vertex_colors = PackedColorArray(colors)
+	p.z_index = z
+	add_child(p)
 
 # Iter 30 — hazards (legacy single-kind path). For each position in
 # hazard_positions, instantiate the scene matching hazard_kind. Unknown
