@@ -69,6 +69,10 @@ const FxSpriteCls = preload("res://scripts/fx_sprite.gd")
 #   • alpha 0.3 → 0.40 (slightly more visible so the player still notices)
 const SPAWN_IN_DURATION := 0.35
 const SPAWN_IN_START_COLOR := Color(1.25, 0.45, 0.55, 0.40)
+# Iter 147 — telegraph the spawn position on the GROUND so the player
+# can read where a new enemy is materializing even before the red-
+# translucent sprite is fully visible. Auto-frees at lifetime end.
+const SPAWN_TELEGRAPH_SCENE: PackedScene = preload("res://scenes/fx/spawn_telegraph.tscn")
 const SPAWN_IN_END_COLOR   := Color(1.0, 1.0, 1.0, 1.0)   # normal
 
 # Set by the spawner (main.gd) BEFORE add_child. If null at _ready time
@@ -336,6 +340,17 @@ func _ready() -> void:
 	# warmup; use half (matches the player's average reaction window).
 	if enemy_type.behavior == "shoot" or enemy_type.behavior == "stationary_shoot":
 		_cast_timer = enemy_type.cast_cooldown * 0.5
+	# Iter 147 — spawn telegraph. Bright red ground-ring pulse at the
+	# enemy's feet for SPAWN_IN_DURATION seconds so the player sees
+	# WHERE materialization is happening in peripheral vision, not
+	# just the (already-present) red-translucent sprite fade. Self-
+	# destructs at its own lifetime; no cleanup needed here. Bosses
+	# already have their own boss-intro cinematic; skip the ground
+	# telegraph for them (the cinematic IS the telegraph).
+	if _spawn_in_time > 0.0 and not enemy_type.is_boss:
+		var tele: Node2D = SPAWN_TELEGRAPH_SCENE.instantiate() as Node2D
+		if tele != null:
+			add_child(tele)
 
 # Build SpriteFrames from per-state sheets. Each state becomes one
 # animation; frames are AtlasTextures pointing into the sheet at

@@ -1,0 +1,26 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3spwntel0001"]
+
+[ext_resource type="Script" path="res://scripts/spawn_telegraph.gd" id="1_script"]
+
+[node name="SpawnTelegraph" type="Node2D"]
+script = ExtResource("1_script")
+
+; 16-segment polygon approximating a filled red disc at radius 18 px.
+; Slightly squashed Y (×0.55) so it reads as a GROUND ring (top-down
+; perspective ellipse) rather than a floating sphere. Same trick as
+; the iter-87 enemy shadow's elliptical shape — sells "this is at
+; floor level" without needing a separate floor-mapping shader.
+;
+; Points pre-computed at 22.5° intervals, scaled by (1.0, 0.55) for
+; the ground-ellipse look. The Y offset puts the ring at ~+12 px
+; below the enemy origin so it lands roughly where the enemy's feet
+; will be when materialized.
+;
+; Color authored at full alpha — spawn_telegraph.gd modulates the
+; alpha each frame via a sine pulse + tail fade. The script reads
+; the polygon's baseline color in _ready, so authoring the alpha
+; here would lock the pulse range to that ceiling.
+[node name="Ring" type="Polygon2D" parent="."]
+position = Vector2(0, 12)
+color = Color(1.0, 0.32, 0.32, 1.0)
+polygon = PackedVector2Array(18.0, 0.0, 16.63, 3.79, 12.73, 6.99, 6.89, 9.15, 0.0, 9.9, -6.89, 9.15, -12.73, 6.99, -16.63, 3.79, -18.0, 0.0, -16.63, -3.79, -12.73, -6.99, -6.89, -9.15, 0.0, -9.9, 6.89, -9.15, 12.73, -6.99, 16.63, -3.79)
