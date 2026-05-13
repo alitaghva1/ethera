@@ -1814,6 +1814,14 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 	hp_changed.emit(hp)
 	hit_received.emit()
 	Events.hero_damaged.emit(global_position)
+	# Iter 155 — emit the directional cue if the source is known.
+	# Iter-70 set source_pos to Vector2.INF as the "unknown source"
+	# sentinel — DoT ticks, environmental hazards, etc. don't pass a
+	# meaningful source. Skip those: a misdirected indicator would
+	# train the player to mistrust the cue. Reuse the existing
+	# `source_pos.x != INF` check from the knock_dir branch above.
+	if source_pos.x != INF:
+		Events.hero_damage_directional.emit(source_pos, global_position)
 	# Iter 54 — combo reset on damage. Resets ONLY if damage actually
 	# landed (not absorbed by iron_resolve / parry — those return
 	# earlier in take_damage). Reaching here means damage was dealt.

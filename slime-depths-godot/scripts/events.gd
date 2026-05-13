@@ -12,6 +12,13 @@
 extends Node
 
 signal hero_damaged(world_pos: Vector2)                  # hero takes a hit
+# Iter 155 — fired alongside hero_damaged ONLY when the damage source's
+# world position is known (i.e., source_pos was passed to take_damage,
+# not the Vector2.INF sentinel). Used by main.gd to paint a brief red
+# screen-edge bar pointing toward the damage source so the player can
+# spot offscreen threats. DoT ticks / hazards with unknown sources
+# don't fire this — the directional cue would be misleading.
+signal hero_damage_directional(source_pos: Vector2, hero_pos: Vector2)
 # iter-95: dodge ability deleted; renamed signal carries the SHIELD beat
 # (window raised + catch resolved). Same payload, same audio + screen
 # flash subscribers as the old hero_dodged signal.

@@ -246,6 +246,11 @@ var _theme_tooltip: Control = null
 # <= 4 (no clutter for small streaks); appears + scales up at tier
 # thresholds (10/25/50/100).
 var _combo_label: Label = null
+# Iter 155 — directional damage indicator. ColorRect overlay on the
+# UI CanvasLayer that paints a red bar along the screen edge nearest
+# the damage source. Lazily created on first damage event.
+var _dmg_indicator: ColorRect = null
+var _dmg_indicator_tween: Tween = null
 # Iter 151 — track previous combo so we can detect "streak broken"
 # transitions (combo dropping from a meaningful tier ≥ 10 to 0) and
 # fire a red flash + scale punch. Reset to 0 on respawn / new run is
@@ -546,6 +551,8 @@ func _ready() -> void:
 	# _on_wave_cleared resolves — this fills the gap between the hit
 	# landing and the celebration banner appearing.
 	Events.boss_died.connect(_on_boss_died)
+	# Iter 155 — directional damage indicator on offscreen-source hits.
+	Events.hero_damage_directional.connect(_on_hero_damage_directional)
 	_death_screen = DEATH_SCREEN_SCENE.instantiate()
 	add_child(_death_screen)
 	_death_screen.retry_pressed.connect(_on_death_retry)
@@ -2874,6 +2881,86 @@ func _on_boss_died(_world_pos: Vector2, _boss_name: String) -> void:
 	Engine.time_scale = BOSS_DEATH_TIME_SCALE
 	_hit_stop_timer = BOSS_DEATH_HIT_STOP_TIME
 	FX.shake(BOSS_DEATH_SHAKE_AMP, BOSS_DEATH_SHAKE_TIME)
+
+# Iter 155 — directional damage indicator. Paint a brief red bar
+# along the screen edge nearest the damage source so the player can
+# spot offscreen threats (bonecap turrets behind a wall, projectiles
+# arriving from outside camera view). Only fires when source_pos is
+# known (DoT ticks / environmental hazards don't emit
+# hero_damage_directional, see hero.gd take_damage).
+#
+# Edge picker: pick the dominant axis of (source - hero) in world
+# coords. If |dx| > |dy| → horizontal axis dominant → LEFT or RIGHT
+# edge; else → TOP or BOTTOM edge. Sign picks which side.
+#
+# Tween: snap to alpha 0.55 + position to chosen edge, then fade
+# alpha → 0 over 0.55s. Kill any in-flight tween so rapid succession
+# of hits doesn't pile up alpha (the latest direction wins).
+const DMG_INDICATOR_THICKNESS: float = 96.0
+const DMG_INDICATOR_PEAK_ALPHA: float = 0.55
+const DMG_INDICATOR_FADE_DUR: float = 0.55
+const DMG_INDICATOR_COLOR: Color = Color(0.85, 0.10, 0.12, 1.0)
+
+func _on_hero_damage_directional(source_pos: Vector2, hero_pos: Vector2) -> void:
+	# Lazy-init. Mount on the UI CanvasLayer so it sits above world
+	# render but below death veil. Mouse filter STOP so the indicator
+	# absorbs no input (it'd be a tooltip-eating problem otherwise).
+	if _dmg_indicator == null:
+		var ui: CanvasLayer = $UI as CanvasLayer
+		_dmg_indicator = ColorRect.new()
+		_dmg_indicator.name = "DamageDirectionalIndicator"
+		_dmg_indicator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_dmg_indicator.color = DMG_INDICATOR_COLOR
+		_dmg_indicator.color.a = 0.0
+		ui.add_child(_dmg_indicator)
+	# Reset all anchors then re-pin to the chosen edge. anchor_left =
+	# anchor_right = 0..1 in screen-fraction space; offset_* in px.
+	var d: Vector2 = source_pos - hero_pos
+	# Position the ColorRect at the dominant-axis edge.
+	if abs(d.x) > abs(d.y):
+		# Horizontal-dominant — pick LEFT or RIGHT edge.
+		_dmg_indicator.anchor_top = 0.0
+		_dmg_indicator.anchor_bottom = 1.0
+		_dmg_indicator.offset_top = 0.0
+		_dmg_indicator.offset_bottom = 0.0
+		if d.x > 0.0:
+			# Source to the RIGHT — paint right edge.
+			_dmg_indicator.anchor_left = 1.0
+			_dmg_indicator.anchor_right = 1.0
+			_dmg_indicator.offset_left = -DMG_INDICATOR_THICKNESS
+			_dmg_indicator.offset_right = 0.0
+		else:
+			# Source to the LEFT — paint left edge.
+			_dmg_indicator.anchor_left = 0.0
+			_dmg_indicator.anchor_right = 0.0
+			_dmg_indicator.offset_left = 0.0
+			_dmg_indicator.offset_right = DMG_INDICATOR_THICKNESS
+	else:
+		# Vertical-dominant — pick TOP or BOTTOM edge.
+		_dmg_indicator.anchor_left = 0.0
+		_dmg_indicator.anchor_right = 1.0
+		_dmg_indicator.offset_left = 0.0
+		_dmg_indicator.offset_right = 0.0
+		if d.y > 0.0:
+			# Source BELOW (Godot 2D +Y is down) — paint bottom edge.
+			_dmg_indicator.anchor_top = 1.0
+			_dmg_indicator.anchor_bottom = 1.0
+			_dmg_indicator.offset_top = -DMG_INDICATOR_THICKNESS
+			_dmg_indicator.offset_bottom = 0.0
+		else:
+			# Source ABOVE — paint top edge.
+			_dmg_indicator.anchor_top = 0.0
+			_dmg_indicator.anchor_bottom = 0.0
+			_dmg_indicator.offset_top = 0.0
+			_dmg_indicator.offset_bottom = DMG_INDICATOR_THICKNESS
+	# Kill any in-flight fade so a rapid succession of hits doesn't
+	# pile up alpha (last direction wins).
+	if _dmg_indicator_tween != null and _dmg_indicator_tween.is_valid():
+		_dmg_indicator_tween.kill()
+	_dmg_indicator.color = Color(DMG_INDICATOR_COLOR.r, DMG_INDICATOR_COLOR.g, DMG_INDICATOR_COLOR.b, DMG_INDICATOR_PEAK_ALPHA)
+	_dmg_indicator_tween = create_tween()
+	_dmg_indicator_tween.tween_property(_dmg_indicator, "color:a", 0.0, DMG_INDICATOR_FADE_DUR)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 func _on_hero_dash_strike_landed(world_pos: Vector2, hit_count: int) -> void:
 	# iter-94: dash impact reverts from the iter-87 PixelLab sprite-sheet
