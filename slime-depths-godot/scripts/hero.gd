@@ -806,12 +806,24 @@ func _physics_process(delta: float) -> void:
 	# then iframes flicker on top when the parry isn't running. The
 	# parry tint is steady, not pulsing, so it reads as "active block"
 	# rather than "incoming damage."
+	# Iter 150 — iframes upgrade: the pre-iter-150 hard binary flicker
+	# (alpha snap between 0.45 and 1.0 at 10 Hz) read as "the hero is
+	# broken / glitching." Replaced with a smooth 6 Hz SIN-pulse alpha
+	# plus slight cyan tint (R=0.78, G=1.0, B=1.18) so the hero reads
+	# as "spectral / invulnerable shielding" — the same visual
+	# semantic Hades uses for Zagreus's dash i-frames. Pulse uses
+	# Time.get_ticks_msec() so phase is global-clock-stable, not
+	# _iframes-progress-dependent (consistent breathe regardless of
+	# how long iframes have left).
 	if _shield_time > 0.0:
 		sprite.modulate = SHIELD_TINT
+	elif _iframes > 0.0:
+		var t_iframe: float = Time.get_ticks_msec() / 1000.0
+		var pulse_iframe: float = 0.5 + 0.5 * sin(t_iframe * TAU * 6.0)
+		var alpha_iframe: float = lerpf(0.50, 0.95, pulse_iframe)
+		sprite.modulate = Color(0.78, 1.0, 1.18, alpha_iframe)
 	else:
 		sprite.modulate = Color(1, 1, 1, 1)
-		if _iframes > 0.0 and int(_iframes * 20) % 2 == 0:
-			sprite.modulate.a = 0.45
 
 	# ── Animation state — dying handled above. hurt > attack > walk > idle.
 	# Each is suffixed with the current direction bucket.
