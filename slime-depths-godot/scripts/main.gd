@@ -299,6 +299,13 @@ var _prev_kills: int = -1
 # fight). Same kill-previous-tween pattern as ScreenFlash._flash_tween.
 var _hp_pulse_tween: Tween = null
 var _kills_pulse_tween: Tween = null
+# iter-142: low-HP heartbeat tell. When the hero drops into the danger
+# zone (hp ≤ max(2, max_hp / 3)), the heart row breathes — a slow
+# looping scale + warm-red modulate pulse — until hp recovers or the
+# hero dies. _hp_low_pulse_active gates re-starts so the looping tween
+# doesn't get re-created on every _update_hp call while in-danger.
+var _hp_low_pulse_tween: Tween = null
+var _hp_low_pulse_active: bool = false
 # iter-119: control-hint auto-fade. After HINT_FADE_DELAY seconds of
 # unchanged StatusLabel text, the label tweens its alpha down so the
 # help text stops competing with combat reads.
@@ -2969,6 +2976,75 @@ func _update_hp(v: int) -> void:
 		else:
 			_pulse_label(heart_row, "_hp_pulse_tween", 1.12, HP_HEAL_FLASH_MODULATE, 0.28)
 	_prev_hp = v
+	# iter-142: low-HP heartbeat tell.
+	#   • v > 0 and v ≤ threshold → start (or keep) breathing
+	#   • else → stop + reset modulate / scale
+	# Threshold floors at 2 so a 6-HP hero pulses at ≤2 (matches the JS
+	# reference's "two heart" danger zone) and a 9-HP boosted hero pulses
+	# at ≤3. v == 0 means hero just died — kill the loop so the death
+	# screen doesn't overlay a still-breathing heart row.
+	if heart_row != null:
+		var low_th: int = _hp_low_threshold()
+		if v > 0 and v <= low_th:
+			# Entering / staying in the danger zone. If a damage pulse just
+			# kicked in (still tweening), defer the loop start so the
+			# damage flash plays out cleanly first. Otherwise start now.
+			if not _hp_low_pulse_active:
+				if _hp_pulse_tween != null and _hp_pulse_tween.is_valid():
+					_hp_pulse_tween.finished.connect(_start_hp_low_pulse, CONNECT_ONE_SHOT)
+				else:
+					_start_hp_low_pulse()
+		else:
+			_stop_hp_low_pulse()
+
+# iter-142: derive the low-HP threshold from current max_hp. Floor at 2
+# so the breathing always kicks in with at least 2 hearts of warning
+# (anything tighter feels like a surprise rather than a danger tell).
+func _hp_low_threshold() -> int:
+	var max_hp: int = Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	return maxi(2, max_hp / 3)
+
+# iter-142: start the heart-row breathing pulse. Re-checks hp at fire
+# time (a deferred call via CONNECT_ONE_SHOT could race with a heal),
+# kills any prior loop, then starts a SINE ping-pong:
+#   scale + modulate ramp up over HP_LOW_PULSE_DUR/2 (warm red HDR)
+#   scale + modulate ramp down over HP_LOW_PULSE_DUR/2 (neutral)
+#   set_loops() repeats forever until _stop_hp_low_pulse() kills.
+func _start_hp_low_pulse() -> void:
+	if heart_row == null:
+		return
+	if not is_instance_valid(hero) or hero.hp <= 0:
+		return
+	if hero.hp > _hp_low_threshold():
+		return
+	if _hp_low_pulse_tween != null and _hp_low_pulse_tween.is_valid():
+		_hp_low_pulse_tween.kill()
+	heart_row.pivot_offset = heart_row.size * 0.5
+	var half_dur: float = HP_LOW_PULSE_DUR * 0.5
+	var tw: Tween = create_tween().set_loops()
+	tw.set_parallel(true)
+	tw.tween_property(heart_row, "scale", Vector2(HP_LOW_PULSE_SCALE, HP_LOW_PULSE_SCALE), half_dur)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(heart_row, "modulate", HP_LOW_PULSE_MODULATE, half_dur)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.chain().set_parallel(true)
+	tw.tween_property(heart_row, "scale", Vector2.ONE, half_dur)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(heart_row, "modulate", HUD_NEUTRAL_MODULATE, half_dur)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_hp_low_pulse_tween = tw
+	_hp_low_pulse_active = true
+
+# iter-142: stop the heart-row breathing pulse and reset to neutral. Safe
+# to call when nothing is running (no-op).
+func _stop_hp_low_pulse() -> void:
+	if _hp_low_pulse_tween != null and _hp_low_pulse_tween.is_valid():
+		_hp_low_pulse_tween.kill()
+	_hp_low_pulse_tween = null
+	_hp_low_pulse_active = false
+	if heart_row != null:
+		heart_row.scale = Vector2.ONE
+		heart_row.modulate = HUD_NEUTRAL_MODULATE
 
 # iter-125: build one heart pip. The pip is a Control sized
 # HEART_PIP_SIZE × HEART_PIP_SIZE with three layered Polygon2Ds:
@@ -3058,6 +3134,17 @@ const HP_DAMAGE_FLASH_MODULATE: Color = Color(1.8, 1.0, 1.0, 1.0)
 const HP_HEAL_FLASH_MODULATE: Color = Color(1.0, 1.8, 1.0, 1.0)
 const KILLS_FLASH_MODULATE: Color = Color(1.6, 1.6, 1.4, 1.0)
 const HUD_NEUTRAL_MODULATE: Color = Color(1.0, 1.0, 1.0, 1.0)
+# iter-142: low-HP heartbeat tell. Hades / Isaac both surface "you're in
+# trouble" before the player consciously reads the heart count — a
+# looping scale + warm-red modulate breathe on the heart row that
+# starts when hp falls into the danger zone (max(2, max_hp/3)) and
+# stops when hp recovers or the hero dies. SINE ease keeps it
+# breathing organically (no sharp triangle wave), HDR red boost
+# (1.45, 0.55, 0.55) brightens on torch-lit floors. 0.9s full cycle
+# = peripheral-vision pace, slow enough not to feel like a stutter.
+const HP_LOW_PULSE_MODULATE: Color = Color(1.45, 0.55, 0.55, 1.0)
+const HP_LOW_PULSE_DUR: float = 0.9
+const HP_LOW_PULSE_SCALE: float = 1.08
 
 func _update_kills() -> void:
 	kills_label.text = "KILLS  %d" % _kills
