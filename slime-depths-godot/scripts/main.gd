@@ -296,6 +296,14 @@ var _room_pickup_resolved := false
 var _boss_ref: Enemy = null
 
 func _ready() -> void:
+	# iter-112: Fade up from black on entry. The menu / settings / death
+	# screen all faded the screen to opaque-black via the ScreenFlash
+	# autoload before changing scenes; this call here on the destination
+	# side completes the cross-fade so the dungeon doesn't snap on. If
+	# the scene was loaded directly (F5 from editor), the rect is already
+	# transparent → fade_from_black snaps it to black for one frame then
+	# fades back, which is fine.
+	ScreenFlash.fade_from_black(0.45)
 	# Resolve the active room config — fall back to room_01 for
 	# editor-direct launches so the scene is debuggable in isolation.
 	if RunState.current_room_config == null:
@@ -2721,9 +2729,13 @@ func _on_hero_death_started(world_pos: Vector2) -> void:
 func _on_death_retry() -> void:
 	# Retry = restart THIS floor from room 0. Easier UX than dropping
 	# the player into the room they died on with no preamble.
+	# iter-112: fade to black before reload — matches the menu→dungeon
+	# transition fade, so the retry cycles through black instead of
+	# snapping the death screen out and the room 1 in.
 	Engine.time_scale = 1.0
 	GameState.start_dungeon_run()
 	RunState.start_floor()
+	await ScreenFlash.fade_to_black(0.30)
 	get_tree().reload_current_scene()
 
 # Iter 16 — run-complete sequence. Replaces the previous "claim the
@@ -2761,8 +2773,11 @@ func _on_death_to_menu() -> void:
 	# Iter 12: hamlet removed. ESC / MENU button returns to the main
 	# menu — the menu's BEGIN re-seeds RunState.start_floor() so we
 	# end_floor here defensively rather than relying on the menu side.
+	# iter-112: fade to black before scene change so the dungeon → menu
+	# transition matches the menu → dungeon fade (symmetric cinematic).
 	Engine.time_scale = 1.0
 	RunState.end_floor()
+	await ScreenFlash.fade_to_black(0.30)
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 func _unhandled_input(ev: InputEvent) -> void:

@@ -108,6 +108,63 @@ func _flash(color: Color, dur: float) -> void:
 	_flash_tween = create_tween()
 	_flash_tween.tween_property(_rect, "color", end_color, dur)
 
+# ── Scene transition fades (iter-112) ─────────────────────────────────
+#
+# Two public helpers for cross-scene fade-to-black / fade-from-black,
+# both built on the same ColorRect _flash() uses. Crucial design points:
+#
+#   • The autoload SURVIVES scene changes, so a fade started here
+#     persists across change_scene_to_file. The caller awaits the
+#     promise returned by fade_to_black BEFORE swapping scenes, so the
+#     screen is fully opaque when the new scene loads — no half-faded
+#     ugly frame.
+#   • fade_from_black sets the rect to opaque immediately, THEN tweens
+#     it to transparent. Called from the destination scene's _ready so
+#     the player sees a clean fade-up rather than a snap-onto-already-
+#     loaded geometry.
+#   • Both kill any in-flight _flash_tween so a fade isn't fighting a
+#     residual hit-flash (e.g. a damage flash 50ms before a door
+#     walk-through into the next room).
+#
+# Why not async-callbacks or signals: the await-on-timer pattern from
+# callers is more readable than a signal+callback dance, and Godot's
+# create_tween().finished signal is also awaitable directly so the
+# helper could return Tween — but the rect-color discipline is simpler
+# to reason about as "fade to opaque + duration constant" than as a
+# tween handle the caller has to track.
+const FADE_BLACK := Color(0.0, 0.0, 0.0, 1.0)
+const FADE_CLEAR := Color(0.0, 0.0, 0.0, 0.0)
+
+# Fade the screen to opaque black over `dur`. After this returns (await
+# this method to wait for it to finish), the rect sits at full-black
+# until something clears it — typically the next scene calling
+# fade_from_black on _ready.
+func fade_to_black(dur: float = 0.30) -> void:
+	if _rect == null:
+		return
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(_rect, "color", FADE_BLACK, dur)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# Await the tween so the caller can `await ScreenFlash.fade_to_black()`
+	# and continue once the screen is fully black.
+	await _flash_tween.finished
+
+# Snap the rect to opaque black RIGHT NOW, then tween it to transparent
+# over `dur`. Called from a destination scene's _ready (e.g. main.gd
+# after a room reload) to fade in from black instead of snapping the
+# new world onto screen.
+func fade_from_black(dur: float = 0.40) -> void:
+	if _rect == null:
+		return
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	_rect.color = FADE_BLACK
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(_rect, "color", FADE_CLEAR, dur)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
 # ── Directional VFX spawn ─────────────────────────────────────────────
 
 # Spawn a directional VFX scene (slash arc / blast trail) at the given

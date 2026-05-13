@@ -191,15 +191,22 @@ func _on_body_entered(body: Node) -> void:
 	# Consumed inside RunState._load_current the moment it's read.
 	if branch_room_path != "":
 		RunState.pending_branch_path = branch_room_path
+	# iter-112: the prior implementation paused 0.15s then snapped the
+	# next room on. The pause was there so the player could SEE they hit
+	# the door, but the snap-cut still felt abrupt. Replacing the bare
+	# timer with a fade-to-black gives the same 0.25s pause AND ends on
+	# fully-opaque black, so main.gd._ready can cross-fade up cleanly.
+	# Subtotal across the transition: 0.25s fade out + room load +
+	# 0.45s fade in from main.gd._ready.
 	if RunState.advance():
 		# More rooms left — reload the dungeon scene so it re-reads
 		# the new current_room_config from RunState.
-		await get_tree().create_timer(0.15).timeout
+		await ScreenFlash.fade_to_black(0.25)
 		get_tree().change_scene_to_file("res://scenes/main.tscn")
 	else:
 		# Last room already cleared — RunState returned false. Should
 		# not normally happen because the last room spawns a Pedestal
 		# instead of a Door, but route to the main menu defensively.
 		RunState.end_floor()
-		await get_tree().create_timer(0.15).timeout
+		await ScreenFlash.fade_to_black(0.25)
 		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

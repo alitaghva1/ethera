@@ -99,6 +99,12 @@ var _right_torch_base_pos: Vector2 = Vector2.ZERO
 var _mist_base_pos: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
+	# iter-112: Fade up from black on menu entry. Matches the destination-
+	# side fade in main.gd / settings_screen.gd, so navigating BACK to the
+	# menu from settings or from the death-screen "MAIN MENU" button
+	# completes the cross-fade. On first launch the rect is already
+	# transparent so this is a single-frame black-flash → fade-up; trivial.
+	ScreenFlash.fade_from_black(0.40)
 	# Wire button presses.
 	begin_button.pressed.connect(_on_begin_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
@@ -196,24 +202,52 @@ func _reposition_embers() -> void:
 	# positions that no longer match where the layers actually live.
 	_capture_parallax_bases()
 
+# iter-112: AWAKEN/SETTINGS/QUIT all gain a 0.30s fade-to-black BEFORE
+# the scene change kicks in. Pre-iter-112 the menu snapped instantly to
+# main.tscn (or quit) — abrupt enough that the AWAKEN button's UI cue
+# felt disconnected from the actual transition. The fade gives the
+# moment proper weight: cue plays → screen darkens → world arrives.
+# main.gd._ready calls ScreenFlash.fade_from_black to complete the
+# cross-fade from the destination side.
+const TRANSITION_FADE_DUR: float = 0.30
+
+# Track whether a transition is in flight so the player can't queue
+# multiple scene changes by rapid-clicking different buttons during the
+# fade window. Once set, all button handlers early-out.
+var _transitioning: bool = false
+
 func _on_begin_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	# iter-109: UI press cue. ui_press is a short downward chunk
 	# (420 → 260 Hz over 90 ms) so the player has audible confirmation
 	# the BEGIN actually committed before the scene change kicks in.
 	Audio.play_ui_cue("ui_press", -2.0)
 	# BEGIN goes straight into the dungeon. RunState.start_floor() seeds
 	# room 0 + resets HP/kills so main.tscn reads a fresh
-	# current_room_config at _ready().
+	# current_room_config at _ready(). We start the floor BEFORE the
+	# fade so the autoload state is set even if the scene change is
+	# delayed; the fade is purely cosmetic.
 	GameState.start_dungeon_run()
 	RunState.start_floor()
+	await ScreenFlash.fade_to_black(TRANSITION_FADE_DUR)
 	get_tree().change_scene_to_file(DUNGEON_SCENE_PATH)
 
 func _on_settings_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	Audio.play_ui_cue("ui_press", -2.0)
+	await ScreenFlash.fade_to_black(TRANSITION_FADE_DUR)
 	get_tree().change_scene_to_file(SETTINGS_SCENE_PATH)
 
 func _on_quit_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	Audio.play_ui_cue("ui_press", -2.0)
+	await ScreenFlash.fade_to_black(TRANSITION_FADE_DUR)
 	get_tree().quit()
 
 func _on_button_hover_enter(button: Button) -> void:

@@ -36,6 +36,14 @@ var _title_tween: Tween
 var _is_overlay: bool = false
 
 func _ready() -> void:
+	# iter-112: Fade up from black on settings entry — unless we were
+	# opened as an OVERLAY on top of the pause menu (in which case the
+	# pause screen is alive underneath and a black wash would dim it
+	# inappropriately). _is_overlay is set by PauseScreen BEFORE add_child,
+	# so by _ready time it's already correct. Scene-mode entries (from
+	# the main menu) get the fade.
+	if not _is_overlay:
+		ScreenFlash.fade_from_black(0.40)
 	# Seed the slider from the persisted GameState value BEFORE wiring
 	# the value_changed signal — otherwise this initial set fires the
 	# handler and triggers a redundant save on screen open.
@@ -91,10 +99,14 @@ func _on_back_pressed() -> void:
 	# Overlay mode (opened from PauseScreen): the dungeon scene is alive
 	# underneath and we just queue_free ourselves — the pause menu is
 	# restored to interactive state. Scene-mode: jump back to main menu
-	# as before.
+	# as before. iter-112: in scene-mode, fade to black first so the
+	# transition back to the main menu mirrors the AWAKEN → dungeon
+	# fade. Overlay mode skips the fade (settings is just dismissed,
+	# the dungeon below is already visible).
 	if _is_overlay:
 		queue_free()
 		return
+	await ScreenFlash.fade_to_black(0.30)
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 
 func _on_back_hover_enter() -> void:
