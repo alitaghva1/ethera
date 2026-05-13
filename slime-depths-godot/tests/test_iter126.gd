@@ -92,18 +92,19 @@ func _initialize() -> void:
 	if ok:
 		print("OK TitleGlow + Title both at 88 pt (no doubling under serif)")
 
-	# Body font applied to subtitle + every records line + version
+	# Body font applied across the menu — count both body_font and the
+	# iter-127 body_font_italic (Subtitle moved to italic). Expecting:
+	# Subtitle (italic) + StatsTitle + StatsRuns + StatsBestRun +
+	# StatsLifetimeKills + StatsLastRun + VersionLabel = 7 total.
 	var body_font_uses: int = 0
 	for line in tscn.split("\n"):
-		if "SubResource(\"body_font\")" in line:
+		if "SubResource(\"body_font\")" in line or "SubResource(\"body_font_italic\")" in line:
 			body_font_uses += 1
-	# Expecting: Subtitle, StatsTitle, StatsRuns, StatsBestRun,
-	# StatsLifetimeKills, StatsLastRun, VersionLabel — 7 uses minimum.
 	if body_font_uses < 7:
-		push_error("FAIL: body_font applied to only %d labels, expected ≥7 (Subtitle + 5 records + version)" % body_font_uses)
+		push_error("FAIL: body_font(+_italic) applied to only %d labels, expected ≥7" % body_font_uses)
 		ok = false
 	else:
-		print("OK body_font applied to %d labels (subtitle + records + version)" % body_font_uses)
+		print("OK serif body fonts applied to %d labels (subtitle italic + records + version)" % body_font_uses)
 
 	# ═══ Corner-overlap fix ═══
 	# StatsBlock: offset_left 116 + offset_right 412 (was 48 + 344)

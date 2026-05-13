@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://b3menu1234567"]
+[gd_scene load_steps=18 format=3 uid="uid://b3menu1234567"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/menu/menu_backdrop.jpg" id="2_backdrop"]
@@ -63,6 +63,15 @@ font_weight = 700
 [sub_resource type="SystemFont" id="body_font"]
 font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
 font_weight = 400
+
+; iter-127 italic variant for the tagline. Same fallback chain so the
+; OS picks the same family's italic face when available; falls back to
+; the engine's default italicization if not. Keeps the typographic
+; family unified while letting "beneath the ruin" whisper in italic.
+[sub_resource type="SystemFont" id="body_font_italic"]
+font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
+font_weight = 400
+font_italic = true
 
 ; ── Edge vignette (subtle rim darkening over backdrop) ─────────────────
 ; The painted backdrop already vignettes to near-black at its corners,
@@ -140,59 +149,72 @@ colors = PackedColorArray(0.72, 0.78, 0.86, 0, 0.72, 0.78, 0.86, 0.32, 0.72, 0.7
 _data = [Vector2(0, 0.35), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.4), 0.0, 0.0, 0, 0]
 point_count = 3
 
-; ── Button styles (ghost — transparent fill, dim gold border) ──────────
+; ── iter-127 button styles — stone-plaque restyle ────────────────────
+; Pre-iter-127 the buttons were thin 1-px-bordered transparent rectangles
+; — read as "modern web UI dropped on a dungeon backdrop." Iter-127
+; rebuilds them as ruin-tablet plaques: dark stone fill, gold trim on
+; the TOP and BOTTOM edges only (no side borders) so the plaque reads
+; horizontally inscribed, squared corners (no rounding — stone doesn't
+; round), and warm-amber glow on hover/focus instead of just brighter
+; border lines. Center text rendered in body_font (serif).
+;
+; Plate corners stay squared (corner_radius = 0). content_margin
+; widened so the text breathes inside the plaque.
 [sub_resource type="StyleBoxFlat" id="button_normal"]
-bg_color = Color(0.04, 0.03, 0.05, 0.38)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.62, 0.52, 0.32, 0.55)
-corner_radius_top_left = 2
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
-content_margin_left = 28.0
+bg_color = Color(0.07, 0.05, 0.08, 0.66)
+border_width_left = 0
+border_width_top = 2
+border_width_right = 0
+border_width_bottom = 2
+border_color = Color(0.52, 0.42, 0.26, 0.78)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+content_margin_left = 36.0
 content_margin_top = 14.0
-content_margin_right = 28.0
+content_margin_right = 36.0
 content_margin_bottom = 14.0
+shadow_color = Color(0, 0, 0, 0.32)
+shadow_size = 4
+shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="button_hover"]
-bg_color = Color(0.10, 0.07, 0.05, 0.52)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.96, 0.85, 0.63, 1)
-corner_radius_top_left = 2
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
-content_margin_left = 28.0
+bg_color = Color(0.12, 0.09, 0.11, 0.82)
+border_width_left = 0
+border_width_top = 2
+border_width_right = 0
+border_width_bottom = 2
+border_color = Color(0.95, 0.78, 0.42, 0.95)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+content_margin_left = 36.0
 content_margin_top = 14.0
-content_margin_right = 28.0
+content_margin_right = 36.0
 content_margin_bottom = 14.0
-shadow_color = Color(0.96, 0.78, 0.40, 0.32)
-shadow_size = 10
+shadow_color = Color(0.96, 0.70, 0.32, 0.45)
+shadow_size = 14
 shadow_offset = Vector2(0, 0)
 
 [sub_resource type="StyleBoxFlat" id="button_focus"]
-bg_color = Color(0.10, 0.07, 0.05, 0.52)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 0.92, 0.72, 1)
-corner_radius_top_left = 2
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
-content_margin_left = 27.0
+bg_color = Color(0.14, 0.10, 0.12, 0.88)
+border_width_left = 1
+border_width_top = 3
+border_width_right = 1
+border_width_bottom = 3
+border_color = Color(1, 0.92, 0.65, 1)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+content_margin_left = 35.0
 content_margin_top = 13.0
-content_margin_right = 27.0
+content_margin_right = 35.0
 content_margin_bottom = 13.0
-shadow_color = Color(0.96, 0.78, 0.40, 0.45)
-shadow_size = 12
+shadow_color = Color(1, 0.82, 0.45, 0.60)
+shadow_size = 18
 shadow_offset = Vector2(0, 0)
 
 [sub_resource type="StyleBoxFlat" id="hairline_style"]
@@ -514,6 +536,30 @@ mouse_filter = 2
 ; playtest as a ghost duplicate of the title. Matching the text makes
 ; the glow stack exactly under the foreground so it reads as bloom
 ; rather than a typographic artifact.
+; iter-127 TitleShadow — drop-shadow Label sitting BEHIND the glow.
+; Same letterforms, same font, offset (+3, +4) down-right, dark warm-
+; brown so the title reads "carved into stone with light from above-
+; left." Drawn FIRST in tree order so it renders underneath. No
+; outline, no glow — pure shape. The iter-111 title pulse animates this
+; alongside the foreground via main_menu.gd::_apply_title_scale.
+[node name="TitleShadow" type="Label" parent="TitleBlock"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -357.0
+offset_top = 4.0
+offset_right = 363.0
+offset_bottom = 124.0
+grow_horizontal = 2
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 88
+theme_override_colors/font_color = Color(0.08, 0.04, 0.02, 0.90)
+theme_override_constants/outline_size = 0
+text = "E T H E R A"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
 ; iter-126: TitleGlow size matched to Title (88 pt) — was 110 pt
 ; pre-iter-126, which under the new serif font_face would re-introduce
 ; the same "ghost-letters peeking above/below the foreground" bug that
@@ -571,26 +617,47 @@ mouse_filter = 2
 ; iter-93: bumped vertical offset 148 → 150 so the tagline sits a clean
 ; 30 px below the title baseline (was crammed against the now-removed
 ; bottom hairline).
-; iter-126: subtitle gets the body_font (serif, regular weight) so it
-; reads as the companion tagline to the serif title, not a third font
-; competing with the rest of the menu. Letterspacing kept verbatim.
+; iter-127 subtitle redesign — dropped the heavy "◇ B E N E A T H …"
+; letterspacing + diamond flourishes. Both made the tagline feel
+; stretched and decorative; under the iter-126 serif font, natural
+; serif rhythm reads MORE atmospheric than forced letterspacing.
+; Italic via SystemFont body_font_italic (separate sub_resource not
+; needed — we just style this single label with font_italic). Font
+; size 19 → 15 + alpha 0.95 → 0.65 so the tagline whispers below
+; the title rather than competing with it.
 [node name="Subtitle" type="Label" parent="TitleBlock"]
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -360.0
-offset_top = 150.0
+offset_top = 144.0
 offset_right = 360.0
-offset_bottom = 190.0
+offset_bottom = 178.0
 grow_horizontal = 2
-theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 19
-theme_override_colors/font_color = Color(0.85, 0.74, 0.55, 0.95)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
-theme_override_constants/outline_size = 2
-text = "◇   b e n e a t h   t h e   r u i n   ◇"
+theme_override_fonts/font = SubResource("body_font_italic")
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.88, 0.78, 0.58, 0.62)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
+theme_override_constants/outline_size = 1
+text = "beneath the ruin"
 horizontal_alignment = 1
 vertical_alignment = 1
+mouse_filter = 2
+
+; iter-127 manuscript divider — a 1-px gold hairline 160 px wide
+; centered below the subtitle. Thin enough to read as a quiet
+; flourish (not a UI element), wide enough to anchor the title
+; block as a composed unit.
+[node name="SubtitleRule" type="Panel" parent="TitleBlock"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -80.0
+offset_top = 184.0
+offset_right = 80.0
+offset_bottom = 185.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("hairline_style")
 mouse_filter = 2
 
 ; ── Button stack ──────────────────────────────────────────────────────
@@ -616,14 +683,15 @@ alignment = 1
 ; the dark-fantasy revival feel ("you are roused from the slumber...")
 ; that "BEGIN" reads as flat-arcade.
 [node name="BeginButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(320, 56)
+custom_minimum_size = Vector2(360, 58)
 focus_mode = 2
+theme_override_fonts/font = SubResource("title_font")
 theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.96, 0.88, 0.66, 1)
-theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
-theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_color = Color(0.94, 0.84, 0.58, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
+theme_override_colors/font_focus_color = Color(1, 0.96, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 4
+theme_override_constants/outline_size = 3
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
@@ -631,14 +699,15 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "AWAKEN"
 
 [node name="SettingsButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(320, 52)
+custom_minimum_size = Vector2(360, 54)
 focus_mode = 2
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
-theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
-theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.86, 0.76, 0.52, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
+theme_override_colors/font_focus_color = Color(1, 0.96, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 4
+theme_override_constants/outline_size = 3
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
@@ -646,14 +715,15 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "SETTINGS"
 
 [node name="QuitButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(320, 52)
+custom_minimum_size = Vector2(360, 54)
 focus_mode = 2
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
-theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
-theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.86, 0.76, 0.52, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
+theme_override_colors/font_focus_color = Color(1, 0.96, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 4
+theme_override_constants/outline_size = 3
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
@@ -680,44 +750,38 @@ offset_right = 412.0
 offset_bottom = -46.0
 theme_override_constants/separation = 2
 
+; iter-127 records — dimmed further so they read as quiet annotation,
+; not active UI. Header alpha 0.85 → 0.55, body alpha 0.85 → 0.55.
+; Font sizes 14/12 → 11/10. Outlines removed entirely — at this alpha
+; + size, an outline reads as halo noise rather than legibility help.
 [node name="StatsTitle" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.82, 0.68, 0.42, 0.85)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.82, 0.68, 0.42, 0.55)
 text = "RECORDS"
 
 [node name="StatsRuns" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
 text = "runs ··············· 0"
 
 [node name="StatsBestRun" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
 text = "best run kills ······ 0"
 
 [node name="StatsLifetimeKills" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.94, 0.88, 0.74, 0.85)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
 text = "lifetime kills ······· 0"
 
 [node name="StatsLastRun" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.65)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.45)
 text = ""
 
 ; iter-126: version label moved away from CornerBR. Pre-iter-126
@@ -727,6 +791,10 @@ text = ""
 ; -36 → -116 to put the text's right edge at viewport−116, a clean
 ; 16 px before the corner starts at viewport−100.
 ; body_font applied so the version reads as the same family as records.
+; iter-127 version label — further dimmed (alpha 0.75 → 0.45) and
+; font size 11 → 9. Outline removed. At this weight the version
+; reads as a near-invisible footnote — present for build-info clarity
+; without competing with the menu at all.
 [node name="VersionLabel" type="Label" parent="."]
 anchors_preset = 3
 anchor_left = 1.0
@@ -740,9 +808,7 @@ offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 11
-theme_override_colors/font_color = Color(0.65, 0.55, 0.40, 0.75)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 1
-text = "ETHERA · godot port · v0.6"
+theme_override_font_sizes/font_size = 9
+theme_override_colors/font_color = Color(0.62, 0.52, 0.38, 0.45)
+text = "ETHERA  ·  v0.6"
 horizontal_alignment = 2

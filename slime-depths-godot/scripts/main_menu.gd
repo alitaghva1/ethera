@@ -58,6 +58,10 @@ const SUBTITLE_PULSE_HALF_DURATION := 1.5
 @onready var quit_button: Button = $CenterStack/QuitButton
 @onready var title: Label = $TitleBlock/Title
 @onready var title_glow: Label = $TitleBlock/TitleGlow
+# iter-127: drop-shadow Label for carved-stone depth. Animated by the
+# title pulse alongside title + title_glow so the 3-layer stack moves
+# as one unit.
+@onready var title_shadow: Label = $TitleBlock/TitleShadow
 @onready var subtitle: Label = $TitleBlock/Subtitle
 @onready var title_halo: TextureRect = $TitleHalo
 @onready var title_block: Control = $TitleBlock
@@ -124,11 +128,13 @@ func _ready() -> void:
 			b.pivot_offset = b.size / 2.0
 		)
 
-	# Pivot both title labels at their own center so the pulse looks
-	# symmetric. Done once at _ready and re-pinned on resize.
+	# Pivot all three title labels (shadow + glow + foreground) at their
+	# own centers so the pulse scales symmetrically. Re-pinned on resize.
 	_recenter_title_pivots()
 	title.resized.connect(_recenter_title_pivots)
 	title_glow.resized.connect(_recenter_title_pivots)
+	if title_shadow != null:
+		title_shadow.resized.connect(_recenter_title_pivots)
 	_start_title_pulse()
 	_start_subtitle_pulse()
 
@@ -277,6 +283,8 @@ func _animate_scale(button: Button, target: float) -> void:
 func _recenter_title_pivots() -> void:
 	title.pivot_offset = title.size / 2.0
 	title_glow.pivot_offset = title_glow.size / 2.0
+	if title_shadow != null:
+		title_shadow.pivot_offset = title_shadow.size / 2.0
 
 # Infinite-loop pulse on the title scale. The glow Label rides along so the
 # bloom stays anchored under the foreground text.
@@ -310,6 +318,12 @@ func _apply_title_scale(s: float) -> void:
 	# Glow breathes a hair wider than the main title so the bloom feels
 	# softly anchored without "clicking" alignment-wise.
 	title_glow.scale = v * 1.02
+	# iter-127: drop-shadow rides the same pulse so the 3-layer stack
+	# moves as one. No extra scale offset — shadow tracks the foreground
+	# exactly; only its FIXED +3/+4 offset_left/top in the .tscn gives
+	# the carved depth.
+	if title_shadow != null:
+		title_shadow.scale = v
 	# iter-92: title halo modulate.a tracks the breath. Maps the scale
 	# range (TITLE_PULSE_MIN..TITLE_PULSE_MAX) onto a (0.78..1.0) alpha
 	# window so the warm pool behind the title swells and dims with the

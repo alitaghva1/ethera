@@ -60,19 +60,22 @@ func _initialize() -> void:
 			print("OK TitleBlock starts at y=80 (more top headroom)")
 
 	# ═══ Subtitle pushed further from title baseline ═══
-	# Subtitle's offset_top inside TitleBlock should be 150 (was 148).
-	# Find the Subtitle node block.
+	# iter-93's spec was offset_top = 150. iter-127 nudged it to 144 to
+	# leave room for the new SubtitleRule manuscript hairline at y=184.
+	# Either value is fine — we just check the subtitle still has clear
+	# breath from the title (offset_top ≥ 140).
 	var sub_idx: int = src.find("name=\"Subtitle\"")
 	if sub_idx < 0:
 		push_error("FAIL: Subtitle node missing")
 		ok = false
 	else:
 		var sub_slice: String = src.substr(sub_idx, 400)
-		if not sub_slice.contains("offset_top = 150.0"):
-			push_error("FAIL: Subtitle offset_top should be 150.0 (more breath from title)")
+		var has_breath: bool = sub_slice.contains("offset_top = 150.0") or sub_slice.contains("offset_top = 144.0")
+		if not has_breath:
+			push_error("FAIL: Subtitle offset_top not in the iter-93/iter-127 range (140-150)")
 			ok = false
 		else:
-			print("OK Subtitle pushed down for breathing room from title")
+			print("OK Subtitle has breath from title baseline (iter-93 / iter-127 spacing)")
 
 	# ═══ Stats block shifted up for bottom clearance ═══
 	var sb_idx: int = src.find("name=\"StatsBlock\"")
