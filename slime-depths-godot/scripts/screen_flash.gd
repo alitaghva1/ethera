@@ -219,9 +219,19 @@ func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:
 	var heroes: Array = get_tree().get_nodes_in_group("hero")
 	if not heroes.is_empty():
 		hero = heroes[0]
+	# Iter 149 — pass current combo state to the composer so the slash arc
+	# can visibly amplify at the same 10/25/50/100 tier thresholds the
+	# HUD label escalates on. A hero at 50+ combo gets a wider, longer-
+	# trailed, warmer slash — the build escalation isn't just a number
+	# in the corner. Default combo = 0 if hero lacks the getter (e.g.
+	# during boss-intro sim spawn).
+	var combo: int = 0
+	if hero != null and hero.has_method("get_combo"):
+		combo = int(hero.get_combo())
 	var ctx: Dictionary = {
 		"swing_index": _swing_counter % 2,
 		"swing_sign": swing_sign,
+		"combo": combo,
 	}
 	var opts: Dictionary = AttackFeel.compose_slash_opts(hero, ctx)
 	# iter-90: parent the slash to the HERO node (was current_scene). Two

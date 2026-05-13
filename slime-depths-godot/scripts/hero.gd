@@ -505,6 +505,14 @@ func _reset_combo() -> void:
 		_combo = 0
 		combo_changed.emit(0)
 
+# Iter 149 — public getter so AttackFeel.compose_slash_opts can read the
+# current combo state at swing-start and amplify the slash arc visuals
+# (width / trail / color) at the same 10/25/50/100 tier thresholds the
+# HUD combo label already escalates on. Keeping _combo itself private
+# so combo math stays inside hero.gd; the getter is the read-only seam.
+func get_combo() -> int:
+	return _combo
+
 # Iter 31 — environmental speed multiplier, applied to walk velocity.
 # slow_zone hazards write to this (0.5 while hero inside) and reset to
 # 1.0 on exit. Stacks multiplicatively so two overlapping slows = 0.25.

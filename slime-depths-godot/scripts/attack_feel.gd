@@ -90,6 +90,9 @@ static func compose_slash_opts(hero, ctx: Dictionary = {}) -> Dictionary:
 	var is_finisher: bool = bool(ctx.get("is_finisher", false))
 	var swing_index: int = int(ctx.get("swing_index", 0))
 	var swing_sign: int = int(ctx.get("swing_sign", 1))
+	# Iter 149 — combo amplification. Defaults to 0 when caller doesn't
+	# supply it (e.g. boss intro sim swings).
+	var combo: int = int(ctx.get("combo", 0))
 
 	# Base values — match the JS weapon "sword" defaults.
 	var width: float = 14.0 * (1.6 if is_charged else (1.3 if is_finisher else 1.0))
@@ -131,6 +134,29 @@ static func compose_slash_opts(hero, ctx: Dictionary = {}) -> Dictionary:
 	if not dom.is_empty() and not is_charged:
 		var blend: float = min(0.35, 0.18 * float(dom.tier))
 		base = _mix(base, dom.rgb, blend)
+
+	# Iter 149 — combo amplification. Mirrors the HUD label's 10/25/50/100
+	# tier thresholds so the slash arc visibly grows in lockstep with the
+	# combo counter readout. Width / trail / color all escalate; arc width
+	# stays fixed (escalating that AND width would push the slash off-
+	# screen on max combo). Tier 4 (100+) shifts color toward gold-warm
+	# so the player FEELS the streak peaking, not just sees a number.
+	# Charged releases keep their gold-clarity rule from above — combo
+	# amplification stacks on top of theme/build/charged math.
+	if combo >= 100:
+		width *= 1.30
+		trail_count += 4
+		base = _mix(base, Color(1.0, 0.65, 0.30), 0.30)
+	elif combo >= 50:
+		width *= 1.18
+		trail_count += 3
+		base = _mix(base, Color(1.0, 0.78, 0.40), 0.20)
+	elif combo >= 25:
+		width *= 1.10
+		trail_count += 2
+	elif combo >= 10:
+		width *= 1.05
+		trail_count += 1
 
 	return {
 		"width": width,
