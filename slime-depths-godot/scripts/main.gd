@@ -1267,10 +1267,15 @@ func _spawn_vignette_overlay() -> void:
 	# Screen extends — using the room/viewport area (1280x720). 4 wedge
 	# polygons make a hollow frame: each is a quad with outer-corner
 	# vertices dark and inner-corner vertices transparent.
-	var dark: Color = Color(0, 0, 0, 0.45)
+	#
+	# iter-116: Pre-iter-116 dark alpha was 0.45 over a 160 px reach.
+	# Playtester read: "edges feel slightly dim but corners aren't
+	# noticeably darker than mid-edges." Pushed alpha to 0.62 + added
+	# 4 dedicated corner-darkening triangles so the corners are
+	# distinctly deeper than the straight edges. The wedge thickness
+	# stays at 160 px (any larger eats combat-readable play area).
+	var dark: Color = Color(0, 0, 0, 0.62)
 	var clear: Color = Color(0, 0, 0, 0.0)
-	# Vignette thickness inward (px) per side. Larger = more dramatic
-	# but eats more play-area readability.
 	var w: float = 160.0
 	# TOP wedge: outer edge along y=0, inner edge along y=w.
 	var top: Polygon2D = Polygon2D.new()
@@ -1301,6 +1306,34 @@ func _spawn_vignette_overlay() -> void:
 	])
 	rt.vertex_colors = PackedColorArray([clear, dark, dark, clear])
 	layer.add_child(rt)
+	# iter-116: 4 corner darkening triangles compounded on top of the
+	# wedges. Each triangle has its corner vertex at 0.50 extra alpha so
+	# corners read distinctly deeper than mid-walls. Corner reach 220 px
+	# (larger than the 160 px wedge reach) so the darkness PROGRESSES
+	# from "dim mid-edge" to "deep corner" smoothly as the eye scans.
+	var corner_dark: Color = Color(0, 0, 0, 0.50)
+	var cw: float = 220.0
+	_add_vignette_corner(layer, Vector2(0, 0), Vector2(cw, cw), 0, corner_dark, clear)         # TL
+	_add_vignette_corner(layer, Vector2(1280 - cw, 0), Vector2(1280, cw), 1, corner_dark, clear) # TR
+	_add_vignette_corner(layer, Vector2(1280 - cw, 720 - cw), Vector2(1280, 720), 2, corner_dark, clear) # BR
+	_add_vignette_corner(layer, Vector2(0, 720 - cw), Vector2(cw, 720), 3, corner_dark, clear)  # BL
+
+# Helper for the iter-116 corner pieces. `corner_index` 0=TL, 1=TR, 2=BR,
+# 3=BL — selects which vertex of the quad gets the dark color; the other
+# three are clear. Single helper avoids the 16-line copy-paste a literal
+# 4× quad block would need.
+func _add_vignette_corner(layer: CanvasLayer, top_left: Vector2, bot_right: Vector2, corner_index: int, dark: Color, clear: Color) -> void:
+	var p: Polygon2D = Polygon2D.new()
+	p.polygon = PackedVector2Array([
+		top_left,
+		Vector2(bot_right.x, top_left.y),
+		bot_right,
+		Vector2(top_left.x, bot_right.y),
+	])
+	var colors := [clear, clear, clear, clear]
+	colors[corner_index] = dark
+	p.vertex_colors = PackedColorArray(colors)
+	layer.add_child(p)
 
 # iter-82 immersion pass: biome-specific ambient particle systems.
 #

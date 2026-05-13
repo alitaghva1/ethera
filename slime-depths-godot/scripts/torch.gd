@@ -12,10 +12,14 @@
 # main.js torch rendering, ported to GDScript.
 extends Node2D
 
-const BASE_ENERGY   := 1.40
-const FLICKER_FAST  := 0.18    # high-freq sin amplitude
-const FLICKER_SLOW  := 0.10    # low-freq sin amplitude
-const JITTER        := 0.05    # per-frame random amplitude
+# iter-116: BASE_ENERGY 1.40 → 1.55 to match the brighter torch.tscn
+# rest pool. Flicker amplitudes scaled up proportionally so the relative
+# flicker depth (fast / slow / jitter as % of base) stays the same —
+# otherwise torches would feel weirdly stable under the brighter base.
+const BASE_ENERGY   := 1.55
+const FLICKER_FAST  := 0.20    # high-freq sin amplitude
+const FLICKER_SLOW  := 0.11    # low-freq sin amplitude
+const JITTER        := 0.06    # per-frame random amplitude
 
 @onready var light: PointLight2D = $PointLight2D
 @onready var flame: Sprite2D = $Flame

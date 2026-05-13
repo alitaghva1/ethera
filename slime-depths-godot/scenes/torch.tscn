@@ -45,13 +45,20 @@ colors = PackedColorArray(0.55, 0.50, 0.55, 0, 0.55, 0.50, 0.55, 0.55, 0.45, 0.4
 [node name="Torch" type="Node2D"]
 script = ExtResource("1_script")
 
+; iter-116: torch tuning. Pre-iter-116 the warm pool felt thin —
+; energy = 1.4 + texture_scale 2.1 produced a tight bright core that
+; faded too quickly into the muddy ambient. Bumping texture_scale to
+; 2.4 widens the readable warm pool ~14%; energy 1.55 makes the
+; brightest pixel closer to the painted flame's hue so the torch reads
+; as "this light source." color shifted slightly warmer (more red)
+; to push it further from the slightly-purple CanvasModulate ambient.
 [node name="PointLight2D" type="PointLight2D" parent="."]
-color = Color(1, 0.62, 0.32, 1)
-energy = 1.4
+color = Color(1, 0.58, 0.28, 1)
+energy = 1.55
 range_z_min = -1024
 range_z_max = 1024
 texture = SubResource("torch_grad_tex")
-texture_scale = 2.1
+texture_scale = 2.4
 ; iter-109: shadows on. Pillars (and any future LightOccluder2D-bearing
 ; node) now cast a long pillar-shaped shadow across the floor when
 ; this torch is behind them. The flat-darkened scene reads as a

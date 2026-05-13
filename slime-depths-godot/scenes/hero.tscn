@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://b3hero1234567"]
+[gd_scene load_steps=7 format=3 uid="uid://b3hero1234567"]
 
 ; Hero scene — pruned dramatically in iter 12 (no per-state AtlasTexture
 ; sub-resources here). hero.gd builds the full SpriteFrames programmatically
@@ -17,6 +17,27 @@
 [sub_resource type="CircleShape2D" id="hero_collision"]
 radius = 14.0
 
+; ── iter-116: Hero rim light. A subtle cream-white radial pool centered
+; on the hero so the player is INSTANTLY findable in dark rooms. This is
+; not a spotlight — energy is intentionally low (0.55) and the texture
+; scale is small (~120 px diameter pool) so it adds findability without
+; spotlighting nearby enemies or overlapping torch warmth. Color leans
+; warm cream so the hero ground reads "torchlit" rather than fluorescent.
+; shadow_enabled = false because the rim light's purpose is FINDABILITY,
+; not lighting the world — letting it cast shadows would create
+; conflicting double shadows around pillars from the hero side.
+[sub_resource type="Gradient" id="hero_rim_gradient"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.5, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="hero_rim_tex"]
+gradient = SubResource("hero_rim_gradient")
+width = 192
+height = 192
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
 [node name="Hero" type="CharacterBody2D"]
 collision_layer = 2
 collision_mask = 1
@@ -31,6 +52,18 @@ position = Vector2(0, 3)
 scale = Vector2(0.22, 0.16)
 modulate = Color(0, 0, 0, 0.6)
 texture = ExtResource("2_shadow")
+
+; iter-116: subtle hero rim light. Pool the player into instant
+; findability without becoming a spotlight on adjacent enemies.
+[node name="RimLight" type="PointLight2D" parent="."]
+position = Vector2(0, -8)
+color = Color(1.0, 0.94, 0.82, 1)
+energy = 0.55
+texture = SubResource("hero_rim_tex")
+texture_scale = 1.0
+shadow_enabled = false
+range_z_min = -1024
+range_z_max = 1024
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, -23)
