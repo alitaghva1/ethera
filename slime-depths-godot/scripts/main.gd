@@ -299,6 +299,11 @@ var _prev_kills: int = -1
 # fight). Same kill-previous-tween pattern as ScreenFlash._flash_tween.
 var _hp_pulse_tween: Tween = null
 var _kills_pulse_tween: Tween = null
+# iter-144: wave-clear pulse on the corner wave_label. Same pulse-cache
+# pattern as _hp_pulse_tween / _kills_pulse_tween. Pulses on every
+# mid-wave clear (not the final room clear — that one fires
+# FloorClearBurst, which is its own loud celebration).
+var _wave_label_pulse_tween: Tween = null
 # iter-142: low-HP heartbeat tell. When the hero drops into the danger
 # zone (hp ≤ max(2, max_hp / 3)), the heart row breathes — a slow
 # looping scale + warm-red modulate pulse — until hp recovers or the
@@ -2150,6 +2155,30 @@ func _on_wave_cleared() -> void:
 	# iter-79: portal close-call removed along with the portal system.
 	if _wave_index + 1 < _waves.size():
 		wave_label.text = "WAVE %d CLEAR  ·  next in %.1fs" % [_wave_index + 1, WAVE_CLEAR_PAUSE]
+		# iter-144: mid-wave clear payoff. Without this beat, surviving a
+		# wave reads as just a text-update — the player has no visible
+		# acknowledgment that they accomplished something. Genre peers
+		# (Hades' "well-fought" stinger, Isaac's wave-clear pop) layer a
+		# tiny celebration here so the moment lands.
+		#
+		# Three lightweight cues, all comfortably under the 0.9s
+		# WAVE_CLEAR_PAUSE so they finish before the next wave spawns:
+		#   • wave_label scale + gold-cream pulse (0.45s)
+		#   • Brief camera shake (1.8 amp / 0.08s — quieter than a kill
+		#     shake at 6.0 / 0.12, louder than nothing)
+		#   • Small gold spark at the hero position (HIT_SPARK_SCENE
+		#     reuse — same gold semantic as iter-143's pickup spark
+		#     fallback)
+		# The final-wave clear (else branch below) already gets the
+		# FloorClearBurst loud celebration — no need to double-up.
+		_pulse_label(wave_label, "_wave_label_pulse_tween", 1.20, KILLS_FLASH_MODULATE, 0.45)
+		FX.shake(1.8, 0.08)
+		if is_instance_valid(hero):
+			var spark_pos: Vector2 = hero.global_position + Vector2(0, -10)
+			var spark: Node2D = FX.HIT_SPARK_SCENE.instantiate() as Node2D
+			if spark != null:
+				spark.global_position = spark_pos
+				add_child(spark)
 		var t := get_tree().create_timer(WAVE_CLEAR_PAUSE)
 		t.timeout.connect(func (): _start_wave(_wave_index + 1))
 	else:
