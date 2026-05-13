@@ -159,12 +159,18 @@ text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
 
-; ── RIGHT — kills + wave, compact + low weight ──────────────────────
-; KILLS shows the player's progress through the room; WAVE shows
-; current wave / total. Both right-aligned, anchored at -20 from the
-; right edge. Smaller fonts + lower alpha than the iter-122 design
-; so they read as "ambient status," not "scoreboard."
+; ── RIGHT — wave only. KillsLabel hidden during gameplay (it lives on
+; for the death screen which reads _kills directly from main.gd).
+;
+; Iter-124 game-design pass: genre peers (Hades / Dead Cells / Hyper
+; Light Drifter / Diablo / Enter the Gungeon) all surface run-score
+; data at the END of a run, not during combat. Live kills counter is
+; meta-score, not gameplay-critical; surfacing it during play just adds
+; visual noise. Hidden via `visible = false` so the node + the
+; _update_kills code keeps working (writes still go through; just the
+; screen never shows them).
 [node name="KillsLabel" type="Label" parent="UI"]
+visible = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -181,17 +187,23 @@ text = "KILLS  0"
 horizontal_alignment = 2
 vertical_alignment = 1
 
+; Wave indicator. Iter-124: now transient — _process_wave_fade polls
+; the text and tweens alpha 1.0 → 0 after WAVE_HOLD_DURATION. Sits at
+; the natural top-right slot (where KillsLabel used to be before
+; iter-124 hid it). Starts invisible (modulate alpha 0) so the
+; first-frame "" doesn't trigger the fade poll into a flash.
 [node name="WaveLabel" type="Label" parent="UI"]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -220.0
-offset_top = 38.0
+offset_top = 14.0
 offset_right = -20.0
-offset_bottom = 60.0
+offset_bottom = 38.0
 grow_horizontal = 0
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.78, 0.66, 0.42, 0.70)
+modulate = Color(1, 1, 1, 0)
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.92, 0.80, 0.52, 0.85)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
 theme_override_constants/outline_size = 1
 text = ""

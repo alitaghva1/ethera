@@ -300,6 +300,23 @@ const HINT_FADED_ALPHA: float = 0.0
 var _status_hint_fade_t: float = 0.0
 var _last_status_text: String = ""
 var _status_fade_tween: Tween = null
+
+# iter-124: wave-label auto-fade. The wave_label is set from 8 different
+# call sites (wave start, wave clear, room clear, treasure / shrine
+# room enter, run complete, etc.). Rather than wrapping each setter
+# in a tween, we poll the text from _process — when it changes, snap
+# alpha to 1.0 and reset a timer; after WAVE_HOLD_DURATION the alpha
+# tweens down to 0 over WAVE_FADE_DURATION. Same shape as the iter-119
+# status fade.
+#
+# Net effect: any wave-transition text pops in for ~1.5s of readable
+# time then fades to invisible. Wave info becomes EVENT-DRIVEN, not
+# resting HUD.
+const WAVE_HOLD_DURATION: float = 1.6
+const WAVE_FADE_DURATION: float = 1.0
+var _wave_label_fade_t: float = 0.0
+var _last_wave_text: String = ""
+var _wave_fade_tween: Tween = null
 var _hit_stop_timer := 0.0
 var _death_screen: Node = null
 # Iter 15 — count of enemies queued by _start_wave that haven't
@@ -516,6 +533,9 @@ func _process(_delta: float) -> void:
 	# directly so we don't have to rename `_delta` (kept underscored to
 	# preserve "param unused" intent for the existing _process body).
 	_process_status_fade(get_process_delta_time())
+	# iter-124: same poll for the wave_label so wave transitions are
+	# transient instead of permanent.
+	_process_wave_fade(get_process_delta_time())
 	if _hit_stop_timer > 0.0:
 		_hit_stop_timer -= 1.0 / 60.0
 		if _hit_stop_timer <= 0.0:
@@ -1888,30 +1908,49 @@ func _spawn_centerpiece_rune_circle(pos: Vector2) -> void:
 	# Center rune slightly larger via being two stacked.
 	_spawn_decor_sanctuary(pos)
 
-# Iter 18 — entry banner. The room_label sits permanently in the HUD
-# but goes from FULL-ATTENTION (scale 1.6, full opacity, centered)
-# down to a small persistent corner-style label over 2 seconds. The
-# initial big state catches the eye as the scene loads; the settled
-# state stays for orientation.
-const ROOM_ENTRY_DURATION := 2.0
-const ROOM_ENTRY_START_SCALE := 1.7
-const ROOM_ENTRY_END_SCALE := 1.0
+# iter-124 — Transient room banner. Pre-iter-124 the room_label faded
+# from full-attention down to 0.75 alpha but stayed VISIBLE permanently,
+# pulling attention from combat. Genre peers (Hades, Dead Cells, Skyrim,
+# Diablo, Hyper Light Drifter, Risk of Rain 2, Enter the Gungeon) all
+# show location names as transient on-enter banners and never permanently.
+# Iter-124 matches that pattern:
+#
+#   Phase 1 (0.0 → 0.30s): fade in from 0 alpha to 1.0, scale 1.7 → 1.0
+#   Phase 2 (0.30 → 1.80s): hold at scale 1.0, alpha 1.0 (~1.5s readable)
+#   Phase 3 (1.80 → 3.00s): fade out alpha 1.0 → 0 over 1.2s
+#   After 3.0s: room_label is invisible until the next room load.
+#
+# _update_room_label still writes the text (so the banner shows the
+# right thing on entry); the modulate alpha controls visibility.
+const ROOM_BANNER_FADE_IN: float = 0.30
+const ROOM_BANNER_HOLD: float = 1.50
+const ROOM_BANNER_FADE_OUT: float = 1.20
+const ROOM_BANNER_START_SCALE: float = 1.7
+const ROOM_BANNER_END_SCALE: float = 1.0
+
 func _animate_room_entry() -> void:
 	if room_label == null:
 		return
 	room_label.pivot_offset = room_label.size / 2.0
-	room_label.scale = Vector2(ROOM_ENTRY_START_SCALE, ROOM_ENTRY_START_SCALE)
-	room_label.modulate = Color(1, 1, 1, 1)
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(
-		room_label, "scale",
-		Vector2(ROOM_ENTRY_END_SCALE, ROOM_ENTRY_END_SCALE),
-		ROOM_ENTRY_DURATION,
+	room_label.scale = Vector2(ROOM_BANNER_START_SCALE, ROOM_BANNER_START_SCALE)
+	room_label.modulate = Color(1, 1, 1, 0.0)
+	# Phase 1: fade IN + scale down to rest. Parallel tween so both
+	# happen simultaneously.
+	var tw_in: Tween = create_tween().set_parallel(true)
+	tw_in.tween_property(room_label, "scale",
+		Vector2(ROOM_BANNER_END_SCALE, ROOM_BANNER_END_SCALE),
+		ROOM_BANNER_FADE_IN
 	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(
-		room_label, "modulate:a",
-		0.75,
-		ROOM_ENTRY_DURATION,
+	tw_in.tween_property(room_label, "modulate:a", 1.0,
+		ROOM_BANNER_FADE_IN
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Phase 2 + 3: hold, then fade out. Sequential timeline starts at
+	# t=0 alongside the in-tween; the interval covers the in + hold
+	# windows before the out-tween kicks.
+	var tw_out: Tween = create_tween()
+	tw_out.tween_interval(ROOM_BANNER_FADE_IN + ROOM_BANNER_HOLD)
+	tw_out.tween_property(room_label, "modulate:a", 0.0,
+		ROOM_BANNER_FADE_OUT
 	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 func _start_wave(idx: int) -> void:
@@ -2965,6 +3004,42 @@ func _process_status_fade(delta: float) -> void:
 		_status_fade_tween.set_trans(Tween.TRANS_QUAD)
 		_status_fade_tween.set_ease(Tween.EASE_OUT)
 		_status_fade_tween.tween_property(status_label, "modulate:a", HINT_FADED_ALPHA, HINT_FADE_DURATION)
+
+# iter-124: poll-and-fade for wave_label.text. Same shape as
+# _process_status_fade but with no permanent "dim" state — any wave
+# transition pops the label in at full alpha; after WAVE_HOLD_DURATION
+# it fades to 0 over WAVE_FADE_DURATION. Net effect: wave / room-clear
+# / run-complete text appears as transient banner pulses, never resting.
+#
+# Empty text triggers an immediate fade-out — _show_run_complete and
+# similar setters that clear the label end the transient cleanly.
+func _process_wave_fade(delta: float) -> void:
+	if wave_label == null:
+		return
+	if wave_label.text != _last_wave_text:
+		_last_wave_text = wave_label.text
+		_wave_label_fade_t = 0.0
+		if _wave_fade_tween != null and _wave_fade_tween.is_valid():
+			_wave_fade_tween.kill()
+			_wave_fade_tween = null
+		# Empty new text → don't snap to alpha 1.0; let the existing
+		# alpha continue its current course. Otherwise full opacity.
+		if wave_label.text != "":
+			var m: Color = wave_label.modulate
+			m.a = 1.0
+			wave_label.modulate = m
+		return
+	_wave_label_fade_t += delta
+	# Fade out once hold elapses, and only if the label isn't already
+	# faded. is_valid() check prevents re-firing while a fade is in
+	# flight.
+	if _wave_label_fade_t > WAVE_HOLD_DURATION and wave_label.modulate.a > 0.01:
+		if _wave_fade_tween != null and _wave_fade_tween.is_valid():
+			return
+		_wave_fade_tween = create_tween()
+		_wave_fade_tween.set_trans(Tween.TRANS_QUAD)
+		_wave_fade_tween.set_ease(Tween.EASE_OUT)
+		_wave_fade_tween.tween_property(wave_label, "modulate:a", 0.0, WAVE_FADE_DURATION)
 
 # Rebuild the HUD relic strip from GameState.owned_relics. Called on
 # _ready (so a hypothetical mid-run reload still shows the right

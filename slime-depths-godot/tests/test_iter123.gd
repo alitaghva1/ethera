@@ -81,10 +81,10 @@ func _initialize() -> void:
 	if "theme_override_font_sizes/font_size = 16" not in main_tscn:
 		push_error("FAIL: RoomLabel font_size should be 16 (was 22) — minimal centered caption")
 		ok = false
-	# WaveLabel at 12 pt (was 15)
-	if "theme_override_font_sizes/font_size = 12" not in main_tscn:
-		push_error("FAIL: WaveLabel font_size should be 12 (was 15) — lowest visual weight")
-		ok = false
+	# WaveLabel size is iter-124's concern now (it became transient).
+	# The iter-123 contract just required the HUD labels to be smaller
+	# than the iter-122 design — captured by the HP and RoomLabel
+	# checks above; specific WaveLabel size is iter-124's call.
 	# All HUD labels (HP/Room/Kills/Wave/Status) should have outline_size = 1.
 	# The BossBar's "Name" label keeps its iter-22 outline_size = 4 because
 	# it's a transient cinematic element, not the resting HUD. Check that
