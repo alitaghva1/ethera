@@ -97,6 +97,17 @@ const HIT_STOP_TIME     := 0.08
 # multi-hit (clamped) so a clean cleave-through reads bigger.
 const SWING_HIT_STOP_SCALE := 0.18
 const SWING_HIT_STOP_TIME  := 0.035
+# Iter 140 — CRIT swings get a deeper, longer freeze. Genre cue: Hades and
+# Isaac both punch hit-stop noticeably harder on crits / heavy hits, and
+# the moment of "wait, did I just—" is what makes crits feel celebratory
+# instead of being a hidden +damage stat. The freeze is closer to the
+# took-damage stop (0.05/0.08) than to the normal swing stop (0.18/0.035)
+# — the swing FEELS heavier without yanking control away as long as a
+# real damage stop. Scale 0.05 = 95% time slowdown (vs 82% on normal
+# swing); hold 0.10s gives the player ~6 frames to read the crit splash
+# ring before motion resumes.
+const CRIT_SWING_HIT_STOP_SCALE := 0.05
+const CRIT_SWING_HIT_STOP_TIME  := 0.10
 const DASH_HIT_STOP_SCALE  := 0.10
 const DASH_HIT_STOP_TIME   := 0.07
 # iter-87 → iter-94: the sprite-sheet replacement for the dash impact
@@ -2763,7 +2774,7 @@ func _on_enemy_died(world_pos: Vector2) -> void:
 	# carries narrative of what happened.
 	BloodMark.spawn(self, world_pos)
 
-func _on_hero_swing_connected(hit_count: int) -> void:
+func _on_hero_swing_connected(hit_count: int, any_crit: bool = false) -> void:
 	# Iter 21 — bridge to the audio bus. audio.gd subscribes to
 	# Events.hero_swing_connected for the slash_arc whoosh-cut layered
 	# on the existing hero_swing sound. We're the only emitter; hero
@@ -2778,8 +2789,15 @@ func _on_hero_swing_connected(hit_count: int) -> void:
 	# Tiny bonus on multi-hit, clamped so a cleave-through doesn't
 	# freeze the screen.
 	var multi_bonus: float = mini(hit_count - 1, 2) * 0.01
-	Engine.time_scale = SWING_HIT_STOP_SCALE
-	_hit_stop_timer = SWING_HIT_STOP_TIME + multi_bonus
+	# Iter 140 — branch on `any_crit`. Crit swings drop into a deeper
+	# (95% slowdown) and longer (~6 frames) freeze. The multi-hit bonus
+	# stacks on either path so a 3-hit crit cleave still scales up.
+	if any_crit:
+		Engine.time_scale = CRIT_SWING_HIT_STOP_SCALE
+		_hit_stop_timer = CRIT_SWING_HIT_STOP_TIME + multi_bonus
+	else:
+		Engine.time_scale = SWING_HIT_STOP_SCALE
+		_hit_stop_timer = SWING_HIT_STOP_TIME + multi_bonus
 
 func _on_hero_dash_strike_landed(world_pos: Vector2, hit_count: int) -> void:
 	# iter-94: dash impact reverts from the iter-87 PixelLab sprite-sheet

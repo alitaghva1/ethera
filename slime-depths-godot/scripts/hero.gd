@@ -21,7 +21,7 @@ class_name Hero
 extends CharacterBody2D
 
 const SPEED              := 200.0
-const HERO_DRAW          := 60
+const HERO_DRAW          := 64
 const ATTACK_RANGE       := 56
 const ATTACK_ARC         := PI * 0.55
 const ATTACK_COOLDOWN    := 0.40
@@ -189,7 +189,7 @@ const SHADOW_PULSE_AMP       := 0.025  # ±2.5% scale pulse per step
 # DIR_NAMES[i] = direction suffix for bucket i (north-clockwise).
 # ANIM_DATA[state] = { sheet, frames, fps, loop } — used both to build
 # SpriteFrames at _ready and to pick the animation name each tick.
-const CELL_SIZE  := 128
+const CELL_SIZE  := 64
 const NUM_DIRS   := 8
 # Typed arrays so DIR_NAMES[i] resolves to String and DIR_VECS[i] to
 # Vector2 — untyped Array elements come back as Variant and break := /
@@ -551,7 +551,12 @@ signal hit_received       # for camera shake + hit-stop in main.gd
 # main.gd listens for a brief hit-stop scaled by hit_count. Distinct
 # from Events.enemy_hit (which fires once per enemy and would multi-
 # trigger hit-stop on a multi-hit swing).
-signal swing_connected(hit_count: int)
+# Iter 140 — `any_crit` added so the hit-stop handler can pick a deeper
+# freeze when the swing rolled at least one crit. Genre cue: Hades crit
+# slashes hold the freeze noticeably longer than a normal poke; that
+# moment of "wait, did I just—" is what makes crits feel celebratory
+# instead of being a hidden +damage.
+signal swing_connected(hit_count: int, any_crit: bool)
 # Iter 13 — fired at the END of dash strike, AFTER the AoE scan runs.
 # main.gd listens to spawn the dash impact VFX + heavy camera shake.
 # Reports hit_count so the shake / scene can scale with the kill.
@@ -1041,6 +1046,12 @@ func _resolve_melee_strike() -> void:
 	var has_chain: bool = GameState.has_relic("chain_lightning")
 	var has_execute: bool = GameState.has_relic("executioner")
 	var hit_count: int = 0
+	# Iter 140 — track whether ANY enemy in this swing's hit list rolled a
+	# crit. Used at emit time so main.gd's hit-stop handler can deepen the
+	# freeze on crit swings. A swing that hits 3 enemies and crits ONE of
+	# them still counts as a "crit swing" for the freeze — the celebratory
+	# beat is owned by the swing, not by each individual enemy.
+	var any_crit: bool = false
 	# Track which enemies were already hit this swing so the chain
 	# can't loop back to the original target.
 	var hit_set: Dictionary = {}
@@ -1064,6 +1075,7 @@ func _resolve_melee_strike() -> void:
 			var is_crit: bool = _roll_crit()
 			if is_crit:
 				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
+				any_crit = true  # iter-140 — sticky across the swing
 			enemy.take_hit(dmg_for_this, is_crit)
 			# Iter 43 — burn roll per enemy hit. burn_chance_f is a
 			# float modifier (0..1). Burn duration is fixed (1.6s = 4
@@ -1120,7 +1132,7 @@ func _resolve_melee_strike() -> void:
 			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _pending_melee_aim
 			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
 	if hit_count > 0:
-		swing_connected.emit(hit_count)
+		swing_connected.emit(hit_count, any_crit)
 		# Iter 39 — STORM ascendance (4+ STORM relics owned). Every
 		# connecting swing fires an extra bolt at the nearest enemy
 		# in CHAIN_RADIUS of the HERO (not of a hit enemy — keeps the
