@@ -145,15 +145,18 @@ mouse_filter = 2
 ; appears briefly on room entry then fades; this label is always-on
 ; reference for "where am I in the run." Dim baseline color so it
 ; doesn't compete with the hearts.
+; Iter 184 batch 3 — alpha 0.72 → 0.50, font 13 → 11, outline 2 → 1.
+; Same restraint pass as the run timer — this is reference info you
+; glance at, not gameplay-critical info you need lit constantly.
 [node name="RoomProgressLabel" type="Label" parent="UI"]
 offset_left = 20.0
 offset_top = 50.0
 offset_right = 240.0
 offset_bottom = 72.0
-theme_override_font_sizes/font_size = 13
-theme_override_colors/font_color = Color(0.70, 0.78, 0.88, 0.72)
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.62, 0.66, 0.72, 0.50)
 theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
-theme_override_constants/outline_size = 2
+theme_override_constants/outline_size = 1
 text = "ROOM 1 / 6"
 
 ; ── Status — exists but starts BLANK + auto-hides ───────────────────
@@ -188,6 +191,10 @@ vertical_alignment = 1
 ; main.gd._animate_room_entry tweens scale + alpha on each room load
 ; — the scale-back pulse is now the only attention-grabbing moment
 ; for this label; afterwards it sits as a quiet caption.
+; Iter 184 batch 3 — font 16 → 14, alpha 0.75 → 0.66. Still has the
+; entry pulse + fade-out cycle so it's only visible briefly; smaller
+; size keeps the "quiet caption" feel during the show without losing
+; legibility at the title moment.
 [node name="RoomLabel" type="Label" parent="UI"]
 anchors_preset = 7
 anchor_left = 0.5
@@ -199,8 +206,8 @@ offset_top = 14.0
 offset_right = 220.0
 offset_bottom = 38.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.96, 0.86, 0.62, 0.75)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.86, 0.62, 0.66)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
 theme_override_constants/outline_size = 1
 text = ""
@@ -240,6 +247,9 @@ vertical_alignment = 1
 ; the natural top-right slot (where KillsLabel used to be before
 ; iter-124 hid it). Starts invisible (modulate alpha 0) so the
 ; first-frame "" doesn't trigger the fade poll into a flash.
+; Iter 184 batch 3 — font 13 → 11 (parity with run timer below), keeps
+; color/alpha unchanged since this is a transient banner that
+; auto-fades, so when it IS visible it should pop briefly.
 [node name="WaveLabel" type="Label" parent="UI"]
 anchors_preset = 1
 anchor_left = 1.0
@@ -250,7 +260,7 @@ offset_right = -20.0
 offset_bottom = 38.0
 grow_horizontal = 0
 modulate = Color(1, 1, 1, 0)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.92, 0.80, 0.52, 0.85)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
 theme_override_constants/outline_size = 1
@@ -262,6 +272,17 @@ vertical_alignment = 1
 ; Updated each frame by main.gd from RunState.run_elapsed_seconds()
 ; formatted as m:ss. Dim baseline color so it doesn't compete with
 ; combat reads, but bright enough to glance at between waves.
+; Iter 184 batch 3 — HUD restraint pass. The persistent run timer was
+; the only ALWAYS-VISIBLE non-essential HUD element (Hades / Dead Cells /
+; Hyper Light Drifter all hide run time during combat — it's a
+; speedrun / completionist stat, not gameplay info). Drastically dimmed:
+;   font_size  14   → 11   (smaller stamp)
+;   alpha      0.78 → 0.34 (barely visible at a glance)
+;   color cool-blue → stone-grey so it dissolves into the new dark
+;          ambient palette instead of contrasting with it
+;   outline    2    → 1    (less "UI stamp" feel)
+; Result: timer still ticks and is readable if you LOOK for it, but it
+; doesn't compete with combat reads.
 [node name="RunTimerLabel" type="Label" parent="UI"]
 anchors_preset = 1
 anchor_left = 1.0
@@ -271,10 +292,10 @@ offset_top = 38.0
 offset_right = -20.0
 offset_bottom = 60.0
 grow_horizontal = 0
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.78, 0.84, 0.92, 0.78)
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.55, 0.55, 0.62, 0.34)
 theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
-theme_override_constants/outline_size = 2
+theme_override_constants/outline_size = 1
 text = "0:00"
 horizontal_alignment = 2
 vertical_alignment = 1
