@@ -315,7 +315,12 @@ const AIM_ASSIST_RANGE: float = 520.0
 # Dash strike is now the only mobility option from a standing start.
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
-@onready var shadow: Sprite2D = $Shadow  # iter-132: shadow pulse
+# Iter 195 — Shadow @onready removed. iter-192 batch 1 removed the
+# Shadow Sprite2D node from hero.tscn (per user direction to remove
+# character ground shadows entirely). The @onready var was missed,
+# leaving `shadow` as null and triggering one spam-error per physics
+# frame from the shadow.scale references at lines 885 + 894 (also
+# removed by this commit).
 
 var hp: int = MAX_HP
 var _attack_cd := 0.0
@@ -879,19 +884,17 @@ func _physics_process(delta: float) -> void:
 		# from front/back views where the walk sprite has minimal silhouette change.
 		var walk_bob := sin(_walk_time * TAU * WALK_BOB_FREQ) * WALK_BOB_AMP
 		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + walk_bob, IDLE_BOB_LERP * delta)
-		# iter-132: shadow pulse — scale shrinks at bob peak (foot up), expands
-		# at bob trough (foot down). Inverted sin() so shadow is smallest when
-		# sprite is highest. Reinforces ground contact from any viewing angle.
-		var shadow_pulse := -sin(_walk_time * TAU * WALK_BOB_FREQ) * SHADOW_PULSE_AMP
-		shadow.scale = SHADOW_BASE_SCALE * (1.0 + shadow_pulse)
+		# Iter 195 — iter-132 shadow pulse removed alongside the hero
+		# Shadow Sprite2D node deletion in iter-192. The shadow_pulse
+		# math was driving shadow.scale on null → physics-frame spam.
 	else:
 		_idle_time += delta
 		_walk_time = 0.0  # iter-132: reset walk phase when stopped
 		_step_accumulator = 0.0
 		var bob := sin(_idle_time * TAU * IDLE_BOB_FREQ) * IDLE_BOB_AMP
 		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + bob, IDLE_BOB_LERP * delta)
-		# iter-132: shadow returns to base scale when idle
-		shadow.scale = shadow.scale.lerp(SHADOW_BASE_SCALE, IDLE_BOB_LERP * delta)
+		# Iter 195 — iter-132 shadow scale-lerp removed alongside the
+		# hero Shadow Sprite2D node deletion in iter-192.
 
 	# iter-95 input precedence: shield > dash_strike > blast > attack.
 	# Dodge is gone (and with it the iter-70 dodge-cancel-into-dash
