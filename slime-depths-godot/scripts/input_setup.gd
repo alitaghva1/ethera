@@ -30,6 +30,13 @@ func _ready() -> void:
 	_bind_key("interact",    KEY_E)
 	_bind_mouse("attack", MOUSE_BUTTON_LEFT)
 	_bind_mouse("blast",  MOUSE_BUTTON_RIGHT)
+	# Physics-tether prototype (post-iter-157 pivot). Held to yank the
+	# CursedGravestone toward the player; release for momentum. Right
+	# mouse is bound to both `blast` (used by the main game) and
+	# `tether_pull` (used by the prototype) — they coexist because
+	# each scene only reads one of them.
+	_bind_key("tether_pull",   KEY_SPACE)
+	_bind_mouse("tether_pull", MOUSE_BUTTON_RIGHT)
 
 func _bind_key(action: StringName, keycode: int) -> void:
 	if not InputMap.has_action(action):

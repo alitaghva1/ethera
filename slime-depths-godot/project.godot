@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Ethera"
 config/description="Top-down action roguelite. Folder name is slime-depths-godot for historical reasons; the actual game title is ETHERA (tagline: 'beneath the ruin'). Original JS codebase lives at ../slime-depths/."
-run/main_scene="res://scenes/main_menu.tscn"
+run/main_scene="res://scenes/prototype/physics_toy_room.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 

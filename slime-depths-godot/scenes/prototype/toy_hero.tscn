@@ -1,0 +1,31 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3toyhero001"]
+
+; ToyHero — prototype player. 28-px circle, no anim, no shadow. Layer 2
+; (hero), masks layer 1 (world walls only) — does NOT mask the
+; gravestone (layer 8) so the tether doesn't tangle when the gravestone
+; passes through the player.
+
+[ext_resource type="Script" path="res://scripts/prototype/toy_hero.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="toy_hero_shape"]
+radius = 14.0
+
+[node name="ToyHero" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("toy_hero_shape")
+
+; 16-vertex octagon-ish circle in pale blue. Polygon2D (not Sprite2D)
+; so no texture loading — the prototype's "art" is one shape per entity.
+[node name="Visual" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(14, 0, 12.9, 5.4, 9.9, 9.9, 5.4, 12.9, 0, 14, -5.4, 12.9, -9.9, 9.9, -12.9, 5.4, -14, 0, -12.9, -5.4, -9.9, -9.9, -5.4, -12.9, 0, -14, 5.4, -12.9, 9.9, -9.9, 12.9, -5.4)
+color = Color(0.78, 0.88, 1.0, 1.0)
+
+; Aim indicator — small dart pointing along +X. Doesn't track velocity
+; or mouse; just a static marker so the player has a "facing" reference.
+[node name="AimDart" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(14, 0, 6, -3, 6, 3)
+color = Color(0.95, 0.97, 1.0, 1.0)
