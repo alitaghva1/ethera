@@ -64,8 +64,13 @@ func _initialize() -> void:
 	if "Time.get_ticks_msec() / 1000.0" not in gd:
 		push_error("FAIL: bob phase should use Time.get_ticks_msec() for global clock")
 		ok = false
-	if "sin((t * TAU * IDLE_BOB_FREQ) + _idle_bob_phase) * IDLE_BOB_AMP" not in gd:
-		push_error("FAIL: bob formula should be sin(t*TAU*FREQ + phase) * AMP")
+	# Iter 153 refactored the one-line bob into (sin_v, bob) so the shadow
+	# pulse could share sin_v. Check the two-line form here.
+	if "sin((t * TAU * IDLE_BOB_FREQ) + _idle_bob_phase)" not in gd:
+		push_error("FAIL: bob phase formula should be sin(t*TAU*FREQ + phase)")
+		ok = false
+	if "sin_v * IDLE_BOB_AMP" not in gd:
+		push_error("FAIL: bob amplitude should be sin_v * IDLE_BOB_AMP")
 		ok = false
 
 	# ═══ Bob applied as offset from baseline ═══
