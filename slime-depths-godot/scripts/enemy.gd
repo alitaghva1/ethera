@@ -144,6 +144,16 @@ var _stuck_check_timer: float = 0.0
 var _stuck_check_pos: Vector2 = Vector2.ZERO
 var _stuck_dodge_timer: float = 0.0
 var _stuck_dodge_dir: Vector2 = Vector2.ZERO
+
+# Iter 173 — boids-style separation. Pre-iter-173 when 4+ enemies
+# converged on the hero they all stacked on the same point — looked
+# like a single fat enemy, not a pack. Now each chase tick adds a
+# small lateral force pushing AWAY from nearby allies, weighted by
+# inverse distance. The hero is naturally encircled instead of
+# dog-piled. SEPARATION_FORCE 0.45 keeps the chase primary; this
+# isn't an AI overhaul, it's a spacing nudge.
+const SEPARATION_RADIUS: float = 56.0
+const SEPARATION_FORCE: float = 0.45
 # Iter 152 — idle bob: subtle vertical sin oscillation on the sprite
 # during non-action states so enemies look ALIVE instead of statues
 # pinned to the floor. Each enemy gets a random phase at _ready so a
@@ -808,6 +818,29 @@ func _maybe_stuck_dodge(delta: float, intended: Vector2) -> Vector2:
 	_stuck_dodge_timer = STUCK_DODGE_DURATION
 	return perp * intended.length()
 
+# Iter 173 — boids separation force. Returns a unit vector pointing
+# AWAY from nearby allies, weighted by inverse distance (closer
+# enemies push harder). Returns Vector2.ZERO if no neighbors are
+# within SEPARATION_RADIUS. Dying / fading-corpse enemies are
+# ignored so survivors don't dodge ghosts. O(n²) per frame but n
+# is small (≤ ~10/wave) and the check is cheap arithmetic.
+func _compute_separation_vector() -> Vector2:
+	var v: Vector2 = Vector2.ZERO
+	var n: int = 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or not is_instance_valid(e):
+			continue
+		if bool(e.get("_dying")):
+			continue
+		var d: Vector2 = global_position - (e as Node2D).global_position
+		var dist: float = d.length()
+		if dist > 0.001 and dist < SEPARATION_RADIUS:
+			v += d / (dist * dist)  # inverse-distance squared weight
+			n += 1
+	if n > 0 and v.length() > 0.001:
+		v = v.normalized()
+	return v
+
 # Iter 172 — wall-slide. Call AFTER move_and_slide(). When the enemy
 # hit a static body this frame, project the INTENDED velocity (the
 # chase direction × speed) onto the wall tangent — the direction
@@ -874,7 +907,15 @@ func _tick_chase_contact(delta: float) -> void:
 		# Iter 169 — stuck-dodge fallback (random perpendicular for
 		# long-stuck cases). Iter 172 — wall-slide post-move below
 		# handles the COMMON "I'm hitting a wall right now" case.
-		intended = to_hero.normalized() * _effective_move_speed()
+		# Iter 173 — separation. Blend a lateral force pushing away
+		# from nearby allies so 4+ chasers encircle the hero instead
+		# of stacking on one point. SEPARATION_FORCE 0.45 keeps the
+		# chase primary; the separation is a spacing nudge, not an
+		# AI overhaul.
+		var to_dir: Vector2 = to_hero.normalized()
+		var speed: float = _effective_move_speed()
+		var sep: Vector2 = _compute_separation_vector()
+		intended = (to_dir + sep * SEPARATION_FORCE).normalized() * speed
 		velocity = _maybe_stuck_dodge(delta, intended)
 		# iter-106: hold "attack" pose during the post-hit window so
 		# the sprite reads as the bite/lunge that landed damage.
@@ -1837,12 +1878,14 @@ func _tick_telegraphed_melee(delta: float) -> void:
 			if dist > t.melee_reach * 0.85:
 				if t.can_move():
 					# Iter 169 — stuck-dodge fallback for long-pinned cases.
-					# Iter 172 — wall-slide post-move below handles the
-					# common "I'm grinding against this wall right now" case.
-					# Without these together, large melee enemies (Iron
-					# Revenant, elite orcs, armored skel) push into corners
-					# and never reach the hero.
-					var intended: Vector2 = to_hero.normalized() * _effective_move_speed()
+					# Iter 172 — wall-slide post-move handles "grinding
+					# against this wall right now."
+					# Iter 173 — separation force so multiple melee enemies
+					# spread instead of stacking.
+					var to_dir: Vector2 = to_hero.normalized()
+					var speed: float = _effective_move_speed()
+					var sep: Vector2 = _compute_separation_vector()
+					var intended: Vector2 = (to_dir + sep * SEPARATION_FORCE).normalized() * speed
 					velocity = _maybe_stuck_dodge(delta, intended)
 					sprite.play(&"walk")
 					move_and_slide()
