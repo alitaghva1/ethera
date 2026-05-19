@@ -412,11 +412,41 @@ func _ready() -> void:
 	# .tscn) so the shadow scales with enemy_type.sprite_scale at spawn
 	# time; bosses get a bigger shadow, slimes get a smaller one.
 	_build_ground_shadow()
+	# Iter 177 — apply the iter-117 sprite outline shader. Pre-iter-177
+	# only the hero used it; enemies blended into the dark floor with
+	# no rim definition. Now every enemy sprite gets a 1-px near-black
+	# outline so the silhouette pops the same way the hero's does.
+	# Bosses get a slightly thicker outline (1.5 px) so their bigger
+	# sprites carry the silhouette weight too.
+	_apply_outline_shader()
 	# Iter 166 — first-encounter banner. If this enemy type hasn't been
 	# seen this session, briefly show its display_name above the head.
 	# Helps players learn the 20-enemy roster — Hades canonical. Bosses
 	# skipped (they have their own iter-148 intro cinematic).
 	_maybe_show_first_encounter_banner()
+
+# Iter 177 — outline shader applied at runtime so every enemy gets
+# the same silhouette definition the hero has had since iter-117.
+# ShaderMaterial built programmatically vs baked into enemy.tscn so
+# the .tscn stays minimal and the shader-param tuning lives in
+# code where it's easy to scan/adjust per enemy class.
+#
+# Outline color matches the hero (dark blue (0.04, 0.04, 0.08)) so
+# every silhouette in the scene shares the same edge family.
+# Width 1.0 px for normal enemies; 1.5 for bosses so their bigger
+# sprites carry the outline weight proportionally.
+const OUTLINE_SHADER: Shader = preload("res://assets/shaders/sprite_outline.gdshader")
+const OUTLINE_COLOR: Color = Color(0.04, 0.04, 0.08, 0.85)
+
+func _apply_outline_shader() -> void:
+	if sprite == null:
+		return
+	var mat: ShaderMaterial = ShaderMaterial.new()
+	mat.shader = OUTLINE_SHADER
+	mat.set_shader_parameter("outline_color", OUTLINE_COLOR)
+	var width: float = 1.5 if (enemy_type != null and enemy_type.is_boss) else 1.0
+	mat.set_shader_parameter("outline_width", width)
+	sprite.material = mat
 
 # Iter 166 — first-encounter banner. Each unique enemy type the player
 # meets THIS SESSION gets a one-shot floating label above the head:
