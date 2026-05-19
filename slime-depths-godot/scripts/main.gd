@@ -3834,11 +3834,17 @@ const HEART_PIP_SIZE: float = 30.0
 #     pip silhouette holds against any backdrop.
 #   • SHADOW alpha bumped 0.55 → 0.70 so the drop-shadow visibly
 #     anchors each pip on the floor.
-const HEART_FILL_COLOR: Color = Color(1.25, 0.36, 0.40, 1.0)
-const HEART_EMPTY_COLOR: Color = Color(0.42, 0.32, 0.34, 0.90)
+# Iter 185 batch 3 — fill HDR softened (1.25 → 1.10) + emptys
+# desaturated. The iter-170 brightening was tuned against the muddy
+# old ambient where dim reds got swallowed; iter-185 batch 1's
+# per-biome palette is darker and more deliberate, so the previous
+# HDR reads as "stamped video-game-UI red" rather than "blood red on
+# stone." Still bright enough to be legible at a glance.
+const HEART_FILL_COLOR: Color = Color(1.10, 0.30, 0.32, 1.0)
+const HEART_EMPTY_COLOR: Color = Color(0.36, 0.26, 0.28, 0.92)
 const HEART_OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 1.0)
 const HEART_SHADOW_COLOR: Color = Color(0.0, 0.0, 0.0, 0.70)
-const HEART_HIGHLIGHT_COLOR: Color = Color(1.0, 0.72, 0.62, 0.85)
+const HEART_HIGHLIGHT_COLOR: Color = Color(0.95, 0.65, 0.58, 0.82)
 
 func _update_hp(v: int) -> void:
 	var max_hp: int = Hero.MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
