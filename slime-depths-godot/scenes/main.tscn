@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://b3main123456"]
+[gd_scene load_steps=8 format=3 uid="uid://b3main123456"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://assets/rooms/procedural_dungeon.png" id="2_room"]
@@ -8,6 +8,24 @@
 ; Playable area: (96, 96)..(1184, 672).
 [sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 768)
 [sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1280, 40)
+
+; ── Iter 186 batch 3 — HUD typography parity ─────────────────────────
+; Pre-iter-186 the HUD used Godot's default Noto Sans (a modern sans-
+; serif) while the main menu used Cinzel/Cormorant Garamond (carved-
+; stone serif). Cross-screen TYPOGRAPHY MISMATCH — menu reads as
+; "dark fantasy," HUD reads as "developer overlay." Directive critique
+; #6: "HUD still feels somewhat like a development overlay."
+; Same SystemFont chain as main_menu.tscn so the OS falls back through
+; Cinzel → Cinzel Decorative → Trajan → Georgia → serif. Worst case
+; is Georgia (every OS ships it), which is FAR more dark-fantasy than
+; Noto Sans.
+[sub_resource type="SystemFont" id="hud_title_font"]
+font_names = PackedStringArray("Cinzel", "Cinzel Decorative", "Trajan Pro", "Trajan", "Georgia", "Times New Roman", "serif")
+font_weight = 700
+
+[sub_resource type="SystemFont" id="hud_body_font"]
+font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
+font_weight = 400
 
 ; iter-123: All iter-119/121/122 HUD chassis sub_resources removed.
 ; The new HUD design is minimal floating text — no panels, no borders,
@@ -153,6 +171,7 @@ offset_left = 20.0
 offset_top = 50.0
 offset_right = 240.0
 offset_bottom = 72.0
+theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.62, 0.66, 0.72, 0.50)
 theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
@@ -177,6 +196,7 @@ offset_left = 20.0
 offset_top = 78.0
 offset_right = 520.0
 offset_bottom = 102.0
+theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.86, 0.74, 0.50, 0.80)
 theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.02, 0.85)
@@ -206,8 +226,9 @@ offset_top = 14.0
 offset_right = 220.0
 offset_bottom = 38.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.96, 0.86, 0.62, 0.66)
+theme_override_fonts/font = SubResource("hud_title_font")
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.96, 0.86, 0.62, 0.72)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
 theme_override_constants/outline_size = 1
 text = ""
@@ -260,6 +281,7 @@ offset_right = -20.0
 offset_bottom = 38.0
 grow_horizontal = 0
 modulate = Color(1, 1, 1, 0)
+theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.92, 0.80, 0.52, 0.85)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
@@ -292,6 +314,7 @@ offset_top = 38.0
 offset_right = -20.0
 offset_bottom = 60.0
 grow_horizontal = 0
+theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.55, 0.55, 0.62, 0.34)
 theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
@@ -334,6 +357,7 @@ offset_bottom = -6.0
 grow_horizontal = 2
 grow_vertical = 0
 modulate = Color(1, 1, 1, 0)
+theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 15
 theme_override_colors/font_color = Color(0.74, 0.68, 0.55, 0.78)
 theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.0, 0.85)

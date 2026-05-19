@@ -930,6 +930,25 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 		masonry.antialiased = true
 		body.add_child(masonry)
 		seam_x += seam_spacing
+	# Iter 186 batch 3 — carved ornament "rivets" on top face. For walls
+	# wide enough to afford them (>= 30 px half-width), add a tiny warm-
+	# cream diamond at each masonry seam position on the top-face
+	# vertical center. Reads as bronze studs holding fitted stone — the
+	# wall now feels like architectural masonry rather than a gameplay
+	# rectangle. One rivet per seam, ~1.5 px diamond, ~0.80 alpha.
+	if w >= 30.0 and top_face_h >= 3.0:
+		var rivet_y: float = -h + top_face_h * 0.5
+		var rivet_x: float = -w + seam_spacing
+		while rivet_x < w - 4.0:
+			var rivet: Polygon2D = Polygon2D.new()
+			rivet.polygon = PackedVector2Array([
+				Vector2(1.6, 0), Vector2(0, 1.3),
+				Vector2(-1.6, 0), Vector2(0, -1.3),
+			])
+			rivet.position = Vector2(rivet_x, rivet_y)
+			rivet.color = Color(0.62, 0.50, 0.34, 0.85)
+			body.add_child(rivet)
+			rivet_x += seam_spacing
 	# CONTACT — soft gradient strip just below the wall's bottom edge.
 	# Quad polygon with vertex-color fade: solid black at top (where
 	# it meets the wall) → transparent at bottom (12 px below). Adds
