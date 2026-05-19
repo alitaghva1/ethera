@@ -208,6 +208,10 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 @onready var status_label: Label = $UI/StatusLabel
 @onready var kills_label: Label = $UI/KillsLabel
 @onready var wave_label: Label = $UI/WaveLabel
+# Iter 158 — run timer HUD. Updated each _process tick from
+# RunState.run_elapsed_seconds(). Stops updating when _alive flips
+# false (hero death finalizes via GameState.finalize_run_time).
+@onready var run_timer_label: Label = $UI/RunTimerLabel
 @onready var room_label: Label = $UI/RoomLabel
 @onready var boss_bar: VBoxContainer = $UI/BossBar
 @onready var boss_name: Label = $UI/BossBar/Name
@@ -606,6 +610,11 @@ func _process(_delta: float) -> void:
 	# iter-124: same poll for the wave_label so wave transitions are
 	# transient instead of permanent.
 	_process_wave_fade(get_process_delta_time())
+	# Iter 158 — run timer HUD. Polled rather than tween-driven because
+	# the display formatting (m:ss) snaps each second and a tween would
+	# fight the snapping. Stops updating after hero death (_alive flips
+	# false in _on_hero_died) so the last visible time is the death-time.
+	_update_run_timer_label()
 	if _hit_stop_timer > 0.0:
 		_hit_stop_timer -= 1.0 / 60.0
 		if _hit_stop_timer <= 0.0:
@@ -3450,6 +3459,24 @@ func _update_room_label() -> void:
 # Polling avoids having to wrap all 9 call sites that set
 # status_label.text — they keep working unmodified, and this loop
 # handles state reset automatically.
+# Iter 158 — format current run elapsed seconds as "m:ss" into the
+# HUD label. Reads RunState.run_elapsed_seconds() (returns 0.0 when
+# not in an active run, so the HUD stays at "0:00" on edge cases).
+# Capped at 99:59 — runs reaching that mark exceed the design budget
+# and the column-width assumption.
+func _update_run_timer_label() -> void:
+	if run_timer_label == null:
+		return
+	# Freeze the displayed time once the hero is dead so the death
+	# screen sees the same value GameState.finalize_run_time captured.
+	if not _alive:
+		return
+	var t: float = RunState.run_elapsed_seconds()
+	var total_sec: int = int(t)
+	var m: int = mini(99, total_sec / 60)
+	var s: int = total_sec % 60
+	run_timer_label.text = "%d:%02d" % [m, s]
+
 func _process_status_fade(delta: float) -> void:
 	if status_label == null:
 		return
@@ -3895,6 +3922,11 @@ func _on_hero_died() -> void:
 	_wave_state = WaveState.DEAD
 	status_label.text = ""
 	wave_label.text = ""
+	# Iter 158 — snapshot the run timer into GameState BEFORE the death
+	# cinematic queues the death_screen overlay. SaveSystem persists
+	# immediately inside finalize_run_time() so a crash mid-cinematic
+	# doesn't lose the time.
+	GameState.finalize_run_time()
 	# Iter 22 — DO NOT reset Engine.time_scale here. The cinematic
 	# triggered by hero_death_started owns the time scale for the next
 	# 1.6 seconds (slow-mo to 0.25 then back to 1.0) and queues the

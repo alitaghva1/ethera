@@ -27,6 +27,12 @@ var session_kills := 0
 var dungeon_runs := 0
 var last_run_kills := 0
 var best_run_kills := 0
+# Iter 158 — run time tracking. last_run_time captured at run end
+# (hero death or final-boss victory) from RunState.run_elapsed_seconds();
+# best_run_time is the MIN (faster = better) across all runs, with -1.0
+# sentinel meaning "no run completed yet." Persisted in save_to_dict.
+var last_run_time: float = 0.0
+var best_run_time: float = -1.0
 
 # HP carryover between rooms within a single floor run. -1 = no carry
 # (Hero uses MAX_HP + max_hp_bonus on spawn). Set by Hero.gd's
@@ -908,12 +914,14 @@ var master_volume: float = 0.7
 # easiest to diff in a text editor when debugging save files.
 func save_to_dict() -> Dictionary:
 	return {
-		"save_version": 4,   # iter 123 — added has_seen_controls_hint
+		"save_version": 5,   # iter 158 — added last_run_time / best_run_time
 		"owned_relics": owned_relics,
 		"session_kills": session_kills,
 		"dungeon_runs": dungeon_runs,
 		"last_run_kills": last_run_kills,
 		"best_run_kills": best_run_kills,
+		"last_run_time": last_run_time,
+		"best_run_time": best_run_time,
 		"master_volume": master_volume,
 		"unlocked_achievements": unlocked_achievements,
 		"has_seen_controls_hint": has_seen_controls_hint,
@@ -932,6 +940,10 @@ func load_from_dict(d: Dictionary) -> void:
 	# (v1 save files), so an old save loaded into v2 gets a reasonable
 	# starting "best" instead of 0.
 	best_run_kills = int(d.get("best_run_kills", last_run_kills))
+	# Iter 158 — run-time fields. Missing on pre-v5 saves → 0.0 last, -1.0
+	# best (sentinel for "no completed run yet").
+	last_run_time = float(d.get("last_run_time", 0.0))
+	best_run_time = float(d.get("best_run_time", -1.0))
 	master_volume = clampf(float(d.get("master_volume", 0.7)), 0.0, 1.0)
 	# iter-123: tolerant load of the controls-hint flag. Missing key on
 	# pre-v4 saves → false (player hasn't seen the hint on this profile,
@@ -969,6 +981,17 @@ func start_dungeon_run() -> void:
 	# explicit end-run hook.
 	if last_run_kills > best_run_kills:
 		best_run_kills = last_run_kills
+	# Iter 158 — same promotion for time. last_run_time is captured by
+	# finalize_run_time() at hero death OR final-boss victory; here we
+	# promote it to best_run_time (faster = better, so MIN rather than
+	# MAX). The -1 sentinel on best means "no completed run yet" and any
+	# positive last_run_time wins on the first comparison.
+	if last_run_time > 0.0 and (best_run_time < 0.0 or last_run_time < best_run_time):
+		best_run_time = last_run_time
+	# Reset last_run_time so the in-run HUD label can show 0:00 freshly
+	# while the new run starts. RunState.start_floor() sets the actual
+	# run_start_msec on the very next call.
+	last_run_time = 0.0
 	dungeon_runs += 1
 	last_run_kills = 0
 	# Iter 16 bug fix: roguelite contract — a new run starts with no
@@ -995,6 +1018,27 @@ func register_run_kill() -> void:
 		unlock_achievement("first_blood")
 	if last_run_kills >= 100:
 		unlock_achievement("centurion")
+
+# Iter 158 — snapshot the current run timer into last_run_time and
+# persist immediately. Called once per run, from main.gd at either:
+#   • Hero death (final defeat)
+#   • Final-boss victory (when Broodmother is_last_room cleared)
+# Idempotent: re-calling within the same run just overwrites with the
+# same elapsed value. Doesn't promote to best_run_time here — that
+# happens on the NEXT start_dungeon_run() so we don't have to detect
+# whether the just-ended run was a victory vs death (best-time should
+# arguably only count victories, but for the prototype we treat any
+# completed-shape run as worthy of the leaderboard).
+func finalize_run_time() -> void:
+	if Engine.get_main_loop().root.has_node("/root/RunState"):
+		var rs = Engine.get_main_loop().root.get_node("/root/RunState")
+		if rs.has_method("run_elapsed_seconds"):
+			last_run_time = float(rs.run_elapsed_seconds())
+	# Persist immediately so a crash post-finalize doesn't lose it.
+	if Engine.get_main_loop().root.has_node("/root/SaveSystem"):
+		var ss = Engine.get_main_loop().root.get_node("/root/SaveSystem")
+		if ss.has_method("save_now"):
+			ss.save_now()
 
 # Back-compat for hamlet's existing call.
 func register_kill() -> void:

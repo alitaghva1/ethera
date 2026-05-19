@@ -60,12 +60,27 @@ var pending_branch_path: String = ""
 # Surfaces in the death screen / pedestal banner.
 var floor_kills: int = 0
 
+# Iter 158 — run timer. Captured at start_floor() in Time.get_ticks_msec()
+# (engine-tick clock, NOT wall clock — but the prototype uses
+# Time.get_ticks_msec so a long compute spike wouldn't lose seconds).
+# Surfaces in the HUD via run_elapsed_seconds() and gets snapshotted
+# into GameState on run-end (death or victory).
+var run_start_msec: int = 0
+
+# Returns seconds elapsed since start_floor() was called. Returns 0.0
+# when there's no active run (between runs / at the main menu).
+func run_elapsed_seconds() -> float:
+	if current_room_index < 0 or run_start_msec <= 0:
+		return 0.0
+	return float(Time.get_ticks_msec() - run_start_msec) / 1000.0
+
 func start_floor() -> void:
 	current_room_index = 0
 	floor_kills = 0
 	pending_branch = ""           # iter 32 — never carry a branch into a new run
 	pending_branch_path = ""      # iter 33 — same, for destination override
 	GameState.persisted_hp = -1   # fresh full HP on new run
+	run_start_msec = Time.get_ticks_msec()   # iter 158 — run timer begins
 	_load_current()
 
 func advance() -> bool:

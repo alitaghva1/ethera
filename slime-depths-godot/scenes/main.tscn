@@ -214,6 +214,27 @@ text = ""
 horizontal_alignment = 2
 vertical_alignment = 1
 
+; Iter 158 — run timer. Top-right corner, just under the wave label.
+; Updated each frame by main.gd from RunState.run_elapsed_seconds()
+; formatted as m:ss. Dim baseline color so it doesn't compete with
+; combat reads, but bright enough to glance at between waves.
+[node name="RunTimerLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -220.0
+offset_top = 38.0
+offset_right = -20.0
+offset_bottom = 60.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.84, 0.92, 0.78)
+theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
+theme_override_constants/outline_size = 2
+text = "0:00"
+horizontal_alignment = 2
+vertical_alignment = 1
+
 ; ── Relics: small unobtrusive row top-left under HP ─────────────────
 ; No backing panel — the badges have their own per-icon styling and
 ; sit floating in the corner. When the player owns no relics (most of
