@@ -1611,9 +1611,46 @@ func _start_blast() -> void:
 		_arcane_pulse_cast_counter += 1
 		if _arcane_pulse_cast_counter % 5 == 0:
 			_trigger_arcane_pulse_bolt(spawn_pos)
+	# Iter 203 — Echo Quill. Noita-tier spell-modifier relic. Every
+	# blast schedules a follow-up projectile 0.16 s later, fired from
+	# the hero's CURRENT position (chases the hero's movement) toward
+	# the latest cursor direction. Reads as the spell echoing — the
+	# player can fire-and-move and the echo lands where they ended
+	# up. Compounds with multi-shot (projectile_count bonus): N main
+	# shots → echo shoots N shots again at the new position.
+	if GameState.has_relic("echo_quill"):
+		var echo_resonance: bool = resonance_active
+		var echo_tween: Tween = create_tween()
+		echo_tween.tween_interval(0.16)
+		echo_tween.tween_callback(_fire_echo_blast.bind(echo_resonance))
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.
 	Events.hero_blasted.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), aim)
+
+# Iter 203 — Echo Quill follow-up cast. Fires N projectiles (same
+# count as the original cast) from the hero's CURRENT position with
+# fresh cursor aim. Skipped if hero died between the original cast
+# and this firing (cleanly handles the "blast then die in 0.16 s"
+# edge case via _alive check).
+func _fire_echo_blast(echo_resonance: bool) -> void:
+	if not _alive:
+		return
+	# Re-resolve aim at echo time so it tracks the moving cursor.
+	var aim_world: Vector2 = get_global_mouse_position() - global_position
+	if aim_world.length() < 1.0:
+		aim_world = _dir_to_vector(_facing_dir)
+	var aim: Vector2 = aim_world.normalized()
+	aim = _apply_aim_assist(aim)
+	var bonus_count: int = GameState.modifier_total("projectile_count", 0)
+	var total_count: int = 1 + bonus_count
+	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
+	for i in range(total_count):
+		var offset_idx: float = float(i) - float(total_count - 1) * 0.5
+		var spread_angle: float = offset_idx * BLAST_SPREAD_STEP
+		var spread_aim: Vector2 = aim.rotated(spread_angle)
+		# Echo skips the muzzle flash to read as a softer follow-up
+		# vs. the main cast's louder launch.
+		_spawn_blast_projectile(spawn_pos, spread_aim, echo_resonance)
 
 # Iter 42 — extracted single-projectile spawn. Carries all the modifier
 # reads that iter-41 left inline in _start_blast. Multi-shot calls this

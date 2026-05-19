@@ -605,6 +605,26 @@ const RELIC_REGISTRY := {
 		},
 		"themes": ["shadow"],
 	},
+	# Iter 203 — ECHO QUILL. Noita-tier spell-modifier relic. Pre-iter-203
+	# blast was always a single-cast event (modified by relics, but
+	# fundamentally one trigger = one fire). Echo Quill MODIFIES the
+	# cast itself: every blast now ALSO fires a second projectile 0.16
+	# s later, from the same hero position, aimed at the latest mouse
+	# direction. Reads as "the spell has an after-image / echo."
+	# Implementation hook: hero._start_blast detects has_relic("echo_quill")
+	# and schedules a follow-up Projectile spawn via a per-cast timer.
+	# Doesn't stack with itself (one echo per cast); compounds well with
+	# Twin Cast (legendary) → 4 projectiles per trigger.
+	"echo_quill": {
+		"name": "ECHO QUILL",
+		"description": "Every blast fires a SECOND projectile shortly after, aimed at your current cursor. The spell echoes.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_arcane_quiver.png",
+		"mods": {
+			"blast_echo_count": 1,
+		},
+		"themes": ["storm"],
+	},
 	# Iter 56 — familiar pet relics. Drive familiar_count modifier
 	# which main.gd._sync_familiars reads to spawn / despawn wisps
 	# that orbit the hero and auto-fire at nearby enemies. Pairs
