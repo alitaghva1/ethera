@@ -268,6 +268,20 @@ func _build_player_pool() -> void:
 		add_child(p)
 		_player_pool.append(p)
 
+# Iter 176 — per-play pitch variance. Pre-iter-176 every play()
+# emitted the IDENTICAL pre-baked stream — same waveform, same
+# frequency sweep, same duration. Fatiguing for combat cues that
+# fire 50+ times per minute (hero_swing, enemy_hit). Now each call
+# applies ±5% pitch_scale jitter so two consecutive swings sound
+# subtly different. 5% is small enough to never sound "off-key"
+# but enough to break the loop-detection in the listener's ear.
+#
+# Some cues should stay perfectly tonal (boss_intro stings, the
+# crit_chime — these are designed to be musical at specific pitches).
+# A future pass could exempt them via a per-cue config flag; for
+# now 5% is mild enough that even the tonal cues survive cleanly.
+const PITCH_VARIANCE: float = 0.05
+
 func _play(id: String, world_pos: Vector2 = Vector2.ZERO, volume_db: float = 0.0) -> void:
 	if not _streams.has(id):
 		push_warning("Audio: unknown sound id '%s'" % id)
@@ -276,6 +290,7 @@ func _play(id: String, world_pos: Vector2 = Vector2.ZERO, volume_db: float = 0.0
 	_next_player = (_next_player + 1) % PLAYER_POOL_SIZE
 	player.stream = _streams[id]
 	player.volume_db = volume_db
+	player.pitch_scale = 1.0 + randf_range(-PITCH_VARIANCE, PITCH_VARIANCE)
 	player.global_position = world_pos
 	player.play()
 

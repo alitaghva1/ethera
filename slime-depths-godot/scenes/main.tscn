@@ -141,11 +141,17 @@ text = "ROOM 1 / 6"
 ; Position kept just below HP so when the rare gameplay event sets
 ; it ("Choose a relic · walk near and press [E]"), it appears in a
 ; predictable spot.
+; Iter 175 — StatusLabel was at y=46..70 which OVERLAPS the iter-161
+; RoomProgressLabel at y=50..72. When wave-events fire announces
+; ("The floor shifts · take cover") they rendered on top of
+; "ROOM 1 / 6" — text on text. Now anchored at y=78..102 — directly
+; below the room progress with a 6 px gap so the HUD column reads
+; HEARTS → ROOM → STATUS clean top-to-bottom.
 [node name="StatusLabel" type="Label" parent="UI"]
 offset_left = 20.0
-offset_top = 46.0
+offset_top = 78.0
 offset_right = 520.0
-offset_bottom = 70.0
+offset_bottom = 102.0
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.86, 0.74, 0.50, 0.80)
 theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.02, 0.85)
