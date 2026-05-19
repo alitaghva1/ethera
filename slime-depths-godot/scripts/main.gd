@@ -4721,7 +4721,30 @@ func _update_room_label() -> void:
 	# the first 2-3s of every room you saw the same number twice.
 	room_label.text = _room.display_name
 	if room_progress_label != null:
-		room_progress_label.text = "ROOM %d / %d" % [idx, total]
+		# Iter 193 batch 3 — roman numerals for the room chip. Atmospheric
+		# manuscript-style read instead of "ROOM 3 / 6" debug-text feel.
+		# Using a middle dot separator instead of slash for tighter
+		# tracking. Same alpha + same Cinzel font from cycle 3 batch 3.
+		room_progress_label.text = "%s  ·  %s" % [_to_roman(idx), _to_roman(total)]
+
+# Iter 193 batch 3 — roman numeral helper for the room chip.
+# Standard greedy conversion. Capped at MMM (3000) which is far more
+# rooms than any conceivable run; the inputs are 1..6 in practice.
+func _to_roman(n: int) -> String:
+	if n <= 0:
+		return ""
+	var pairs: Array = [
+		[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
+		[100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
+		[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+	]
+	var result: String = ""
+	var rem: int = n
+	for entry in pairs:
+		while rem >= int(entry[0]):
+			result += str(entry[1])
+			rem -= int(entry[0])
+	return result
 
 # iter-119: control-hint / status-text auto-fade. Polls status_label.text
 # each tick — if it changed since last poll, reset the fade timer +

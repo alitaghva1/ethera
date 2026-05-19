@@ -157,13 +157,26 @@ point_count = 3
 ;
 ; Plate corners stay squared (corner_radius = 0). content_margin
 ; widened so the text breathes inside the plaque.
+; Iter 193 batch 1 — buttons restyled away from "menu box energy"
+; toward ceremonial-marker typography. User: "buttons feel too heavy /
+; generic / not fully integrated with the background." Old style was
+; opaque dark bg + 2 px bronze border + drop shadow → reads as
+; "stamped UI rectangle floating over the painting." New approach:
+;   • bg_color alpha 0.66 → 0.28 — painted backdrop bleeds through,
+;     button feels integrated not pasted on
+;   • borders 2 → 1 — thin horizontal rules read as elegant
+;     typography underline/overline, not a button frame
+;   • Resting shadow REMOVED — no halo/drop, button is just text +
+;     horizontal rules
+;   • Hover/focus keep their gentle gold glow but at smaller shadow
+;     size so the warmth pools without "neon sign" energy
 [sub_resource type="StyleBoxFlat" id="button_normal"]
-bg_color = Color(0.07, 0.05, 0.08, 0.66)
+bg_color = Color(0.07, 0.05, 0.08, 0.28)
 border_width_left = 0
-border_width_top = 2
+border_width_top = 1
 border_width_right = 0
-border_width_bottom = 2
-border_color = Color(0.52, 0.42, 0.26, 0.78)
+border_width_bottom = 1
+border_color = Color(0.55, 0.44, 0.28, 0.68)
 corner_radius_top_left = 0
 corner_radius_top_right = 0
 corner_radius_bottom_right = 0
@@ -172,17 +185,14 @@ content_margin_left = 36.0
 content_margin_top = 14.0
 content_margin_right = 36.0
 content_margin_bottom = 14.0
-shadow_color = Color(0, 0, 0, 0.32)
-shadow_size = 4
-shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="button_hover"]
-bg_color = Color(0.12, 0.09, 0.11, 0.82)
+bg_color = Color(0.10, 0.07, 0.10, 0.48)
 border_width_left = 0
-border_width_top = 2
+border_width_top = 1
 border_width_right = 0
-border_width_bottom = 2
-border_color = Color(0.95, 0.78, 0.42, 0.95)
+border_width_bottom = 1
+border_color = Color(0.92, 0.74, 0.40, 0.92)
 corner_radius_top_left = 0
 corner_radius_top_right = 0
 corner_radius_bottom_right = 0
@@ -191,27 +201,27 @@ content_margin_left = 36.0
 content_margin_top = 14.0
 content_margin_right = 36.0
 content_margin_bottom = 14.0
-shadow_color = Color(0.96, 0.70, 0.32, 0.45)
-shadow_size = 14
+shadow_color = Color(0.96, 0.70, 0.32, 0.32)
+shadow_size = 10
 shadow_offset = Vector2(0, 0)
 
 [sub_resource type="StyleBoxFlat" id="button_focus"]
-bg_color = Color(0.14, 0.10, 0.12, 0.88)
-border_width_left = 1
-border_width_top = 3
-border_width_right = 1
-border_width_bottom = 3
-border_color = Color(1, 0.92, 0.65, 1)
+bg_color = Color(0.12, 0.08, 0.10, 0.58)
+border_width_left = 0
+border_width_top = 2
+border_width_right = 0
+border_width_bottom = 2
+border_color = Color(1, 0.90, 0.62, 0.96)
 corner_radius_top_left = 0
 corner_radius_top_right = 0
 corner_radius_bottom_right = 0
 corner_radius_bottom_left = 0
-content_margin_left = 35.0
+content_margin_left = 36.0
 content_margin_top = 13.0
-content_margin_right = 35.0
+content_margin_right = 36.0
 content_margin_bottom = 13.0
-shadow_color = Color(1, 0.82, 0.45, 0.60)
-shadow_size = 18
+shadow_color = Color(1, 0.82, 0.45, 0.42)
+shadow_size = 12
 shadow_offset = Vector2(0, 0)
 
 [sub_resource type="StyleBoxFlat" id="hairline_style"]
@@ -728,28 +738,39 @@ offset_right = 360.0
 offset_bottom = -42.0
 theme_override_constants/separation = 2
 
+; Iter 193 batch 2 — readable but secondary. Pre-iter-193 the stats
+; block was font 10 + alpha 0.55, which over the painted backdrop's
+; moss + vine detail was nearly illegible. User: "readable at a
+; glance, but secondary to the main focal area."
+; Changes:
+;   StatsTitle "RECORDS" — alpha 0.55 → 0.78, font 11 → 12, slightly
+;     warmer color (more aged-gold than neutral cream), letter-spaced
+;     in the text since Label has no letter_spacing theme prop.
+;   Stat lines — alpha 0.55 → 0.82, font 10 → 11. Color shifted from
+;     cool cream to muted aged-bone for more "manuscript" reading.
+;   Dot leader pattern kept (looks like manuscript page).
 [node name="StatsTitle" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 11
-theme_override_colors/font_color = Color(0.82, 0.68, 0.42, 0.55)
-text = "RECORDS"
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.88, 0.70, 0.42, 0.78)
+text = "R E C O R D S"
 
 [node name="StatsRuns" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 10
-theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.90, 0.82, 0.66, 0.82)
 text = "runs ··············· 0"
 
 [node name="StatsBestTime" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 10
-theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.90, 0.82, 0.66, 0.82)
 text = "best time ··········· --"
 
 [node name="StatsBestRun" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 10
-theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.90, 0.82, 0.66, 0.82)
 text = "best kills ·········· 0"
 
 ; iter-126: version label moved away from CornerBR. Pre-iter-126
