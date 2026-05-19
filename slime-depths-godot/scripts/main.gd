@@ -3675,11 +3675,83 @@ func _spawn_pedestal_offer(count: int) -> void:
 	var y: float = 384.0
 	var spacing: float = 200.0
 	var start_x: float = center_x - spacing * (n - 1) / 2.0
+	# Iter 192 batch 3 — ritual framing. Spawn the dais + header BEFORE
+	# the pedestals so they sit underneath / above the offering cluster
+	# (tree order = draw order at same z). Frees on offer dismiss via
+	# _offer_ritual_frame ref tracked below.
+	_spawn_offer_ritual_frame(Vector2(center_x, y), spacing, n)
 	for i in range(n):
 		var ped: Pedestal = PEDESTAL_SCENE.instantiate()
 		ped.global_position = Vector2(start_x + spacing * i, y)
 		ped.relic_id = picks[i]
 		add_child(ped)
+
+# Iter 192 batch 3 — ritual framing for the relic offer. Two components:
+#   A) A faint stone dais (Polygon2D ellipse) UNDER the pedestal row
+#      so the 3 pedestals sit ON a deliberate platform rather than
+#      floating on the dungeon floor. Reads as "this is the altar."
+#   B) A header label above the cluster reading "OFFERING" — the
+#      ritual signal: this isn't a random pickup, it's a moment.
+# Both wrapped in a single Node2D so dismiss can free both at once.
+#
+# User direction: "Think shrine / altar / offering / ritual selection,
+# not just UI cards floating over gameplay."
+var _offer_ritual_frame: Node2D = null
+
+func _spawn_offer_ritual_frame(center: Vector2, spacing: float, count: int) -> void:
+	var frame: Node2D = Node2D.new()
+	frame.name = "OfferRitualFrame"
+	# A) DAIS — broad ellipse under the pedestal row. Sized to span the
+	# full row + 80 px margin on each end. Y bias +28 so it sits below
+	# the pedestal feet (which are around y_offset +18 from pedestal
+	# origin per iter-178 plinth dimensions).
+	var dais_half_w: float = spacing * (count - 1) * 0.5 + 130.0
+	var dais_half_h: float = 36.0
+	var dais: Polygon2D = Polygon2D.new()
+	dais.polygon = _ellipse_polygon(dais_half_w, dais_half_h, 24)
+	dais.position = center + Vector2(0, 38)
+	# Color: slightly lighter than the BaseFloor — implied stone slab
+	# catching ambient light. Low alpha so it's a SUGGESTION, not a
+	# competing visual block.
+	dais.color = Color(0.22, 0.20, 0.24, 0.40)
+	dais.z_index = -2  # under decor, under pedestals
+	frame.add_child(dais)
+	# Dais rim — thin warm-gold line around the ellipse edge so the
+	# dais reads as carved stone with a finished edge, not a blob.
+	var rim: Line2D = Line2D.new()
+	var rim_pts: PackedVector2Array = _ellipse_polygon(dais_half_w, dais_half_h, 32)
+	# Close the loop by re-appending first point.
+	rim_pts.append(rim_pts[0])
+	rim.points = rim_pts
+	rim.position = center + Vector2(0, 38)
+	rim.width = 1.5
+	rim.default_color = Color(0.58, 0.46, 0.28, 0.60)
+	rim.antialiased = true
+	rim.z_index = -1
+	frame.add_child(rim)
+	# B) HEADER — "OFFERING" label centered above the offer cluster.
+	# Positioned so it sits above the top of the relic cards (cards
+	# top is at center.y - 128 per iter-192 batch 2; header bottom at
+	# center.y - 152 gives 24 px breathing room).
+	var header: Label = Label.new()
+	header.text = "OFFERING"
+	header.add_theme_font_size_override("font_size", 18)
+	header.add_theme_color_override("font_color", Color(0.96, 0.86, 0.62, 0.82))
+	header.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.02, 0.95))
+	header.add_theme_constant_override("outline_size", 2)
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Width = full offer span, anchored over center.
+	var hdr_half_w: float = dais_half_w
+	header.position = center + Vector2(-hdr_half_w, -174)
+	header.size = Vector2(hdr_half_w * 2.0, 24)
+	# Increase letter-spacing manually by inserting a space pattern (the
+	# `letter_spacing` theme property doesn't exist in Godot 4's Label
+	# theme; pre-spacing the text is the simplest workaround).
+	header.text = "O F F E R I N G"
+	frame.add_child(header)
+	# Track for dismiss.
+	_offer_ritual_frame = frame
+	add_child(frame)
 
 # Iter 178 — offer-room vignette. Spawned alongside _spawn_pedestal_offer
 # to dim the floor + outer edges so the player's eye is drawn to the
@@ -3723,6 +3795,17 @@ func _spawn_offer_vignette() -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 func _dismiss_offer_vignette() -> void:
+	# Iter 192 batch 3 — also fade out the ritual frame (dais + header)
+	# spawned alongside the vignette. Same fade timing so the offer
+	# moment exits as a single coordinated dissolve, not "vignette
+	# leaves but the dais lingers" jank.
+	if _offer_ritual_frame != null and is_instance_valid(_offer_ritual_frame):
+		var frame: Node2D = _offer_ritual_frame
+		_offer_ritual_frame = null
+		var fr_tw: Tween = create_tween()
+		fr_tw.tween_property(frame, "modulate:a", 0.0, OFFER_VIGNETTE_FADE_OUT)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		fr_tw.tween_callback(frame.queue_free)
 	if _offer_vignette == null or not is_instance_valid(_offer_vignette):
 		return
 	var layer: CanvasLayer = _offer_vignette
