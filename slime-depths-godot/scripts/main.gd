@@ -893,6 +893,28 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 	seam.default_color = Color(0.04, 0.03, 0.05, 0.85)
 	seam.antialiased = true
 	body.add_child(seam)
+	# Iter 184 batch 2 — masonry seams matching the perimeter wall
+	# pattern (PERIMETER_MASONRY_SPACING = 160 px). Wall mass on the
+	# perimeter now shows stone-block divisions; without this the
+	# interior walls would read as smooth slabs while perimeter reads
+	# as masonry — visual inconsistency. Seams are vertical near-black
+	# 1-px lines across the SIDE FACE, spaced 56 px apart (denser than
+	# perimeter because interior walls are shorter; 56 is roughly
+	# 1/3 of 160 scaled for the smaller block size). Skipped if the
+	# wall is too narrow for at least one interior seam.
+	var seam_spacing: float = 56.0
+	var seam_x: float = -w + seam_spacing
+	while seam_x < w - 4.0:
+		var masonry: Line2D = Line2D.new()
+		masonry.points = PackedVector2Array([
+			Vector2(seam_x, -h + top_face_h + 1),
+			Vector2(seam_x, h - 1),
+		])
+		masonry.width = 1.0
+		masonry.default_color = Color(0.04, 0.03, 0.06, 0.70)
+		masonry.antialiased = true
+		body.add_child(masonry)
+		seam_x += seam_spacing
 	# CONTACT — soft gradient strip just below the wall's bottom edge.
 	# Quad polygon with vertex-color fade: solid black at top (where
 	# it meets the wall) → transparent at bottom (12 px below). Adds
@@ -1754,6 +1776,19 @@ func _spawn_hazards_mixed(entries: Array[Dictionary]) -> void:
 func _scatter_decor(count: int) -> void:
 	if count <= 0:
 		return
+	# Iter 184 batch 2 — decor density was tuned against a noisy texture
+	# floor that masked individual decor pieces. With iter-183 item 1's
+	# solid dark BaseFloor, every decor piece is much more visible — the
+	# previous 30-60 single-piece scatter + 5 piles + 28 speckles totaled
+	# 80-110 pieces per room which now reads as visual clutter rather
+	# than weathering (directive: "Less but better").
+	#
+	# Multiply input count by 0.55 (~45% reduction). This respects the
+	# per-room .tres files (which declare relative density) while
+	# bringing absolute counts in line with the new readable floor.
+	count = int(count * 0.55)
+	if count <= 0:
+		return
 	# Walkable bounds — inside the wall colliders, with a margin so
 	# decor doesn't visually clip into walls. Hardcoded to match
 	# main.tscn's wall positions (96/1184 horizontally, 96/672
@@ -1821,7 +1856,12 @@ func _scatter_decor(count: int) -> void:
 	# so even low-decor rooms get the heavier visual anchors.
 	# Same collision rules as the single-piece scatter — avoid hero
 	# spawn / enemy spawn / pillar / chest / center.
-	var pile_count: int = 5
+	# Iter 184 batch 2 — pile_count 5 → 3. With iter-183 item 2's 4
+	# perimeter prop clusters already providing authored anchors at the
+	# corners, 5 procedural debris piles in the middle was over-stuffing
+	# the floor. 3 piles + 4 corner clusters = 7 anchored points around
+	# the room, which is the Hades "few-but-deliberate" density.
+	var pile_count: int = 3
 	var piles_placed: int = 0
 	var pile_attempts: int = 0
 	while piles_placed < pile_count and pile_attempts < pile_count * 20:
@@ -1864,9 +1904,11 @@ func _scatter_decor(count: int) -> void:
 	# across the floor at z=-2 so they sit BELOW regular decor but
 	# ABOVE the biome floor wash. Reads as "granite flecks / weathered
 	# stone shine" — breaks up the otherwise-uniform floor backdrop
-	# noticeably better than the larger decor alone. Density is fixed
-	# (28 per room) since these are smaller / cheaper than full decor.
-	for _i in range(28):
+	# noticeably better than the larger decor alone.
+	# Iter 184 batch 2 — 28 → 18 to match the cycle 3 decor density
+	# reduction. The solid dark BaseFloor lets every speckle read more
+	# clearly than the old noisy texture did, so fewer is enough.
+	for _i in range(18):
 		var sp_pos: Vector2 = Vector2(
 			randf_range(110.0, 1170.0),
 			randf_range(110.0, 660.0),
