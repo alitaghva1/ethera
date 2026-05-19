@@ -212,6 +212,9 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 # RunState.run_elapsed_seconds(). Stops updating when _alive flips
 # false (hero death finalizes via GameState.finalize_run_time).
 @onready var run_timer_label: Label = $UI/RunTimerLabel
+# Iter 161 — persistent room progress (always-visible "ROOM 3 / 6"
+# under the heart row). Synced with room_label inside _update_room_label.
+@onready var room_progress_label: Label = $UI/RoomProgressLabel
 # Iter 160 — first-run tutorial prompt label. Lifecycle managed by
 # the tutorial state machine below. Hidden (modulate.a = 0) until
 # armed in _ready (only on first-ever run AND room 0).
@@ -3487,10 +3490,17 @@ func _pulse_label(label: Control, tween_field_name: String, scale_peak: float, f
 func _update_room_label() -> void:
 	if _room == null or RunState.current_room_index < 0:
 		room_label.text = ""
+		if room_progress_label != null:
+			room_progress_label.text = ""
 		return
 	var total: int = RunState.FLOOR_ROOMS.size()
 	var idx: int = RunState.current_room_index + 1
 	room_label.text = "%s  ·  ROOM %d / %d" % [_room.display_name, idx, total]
+	# Iter 161 — also feed the persistent indicator. Same idx/total so
+	# the player can reference it any time mid-combat (the banner
+	# above fades on a timer).
+	if room_progress_label != null:
+		room_progress_label.text = "ROOM %d / %d" % [idx, total]
 
 # iter-119: control-hint / status-text auto-fade. Polls status_label.text
 # each tick — if it changed since last poll, reset the fade timer +

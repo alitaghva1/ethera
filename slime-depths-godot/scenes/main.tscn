@@ -118,6 +118,22 @@ offset_bottom = 52.0
 theme_override_constants/separation = 6
 mouse_filter = 2
 
+; Iter 161 — persistent room progress indicator. Top-left under the
+; heart row. The animated room banner (room_label, top-center) only
+; appears briefly on room entry then fades; this label is always-on
+; reference for "where am I in the run." Dim baseline color so it
+; doesn't compete with the hearts.
+[node name="RoomProgressLabel" type="Label" parent="UI"]
+offset_left = 20.0
+offset_top = 50.0
+offset_right = 240.0
+offset_bottom = 72.0
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.70, 0.78, 0.88, 0.72)
+theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
+theme_override_constants/outline_size = 2
+text = "ROOM 1 / 6"
+
 ; ── Status — exists but starts BLANK + auto-hides ───────────────────
 ; main.gd sets a transient hint on first room entry; iter-119's
 ; _process_status_fade now drives it all the way to alpha 0.0 (gone)
