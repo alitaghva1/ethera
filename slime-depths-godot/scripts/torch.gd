@@ -16,10 +16,16 @@ extends Node2D
 # rest pool. Flicker amplitudes scaled up proportionally so the relative
 # flicker depth (fast / slow / jitter as % of base) stays the same —
 # otherwise torches would feel weirdly stable under the brighter base.
-const BASE_ENERGY   := 1.55
-const FLICKER_FAST  := 0.20    # high-freq sin amplitude
-const FLICKER_SLOW  := 0.11    # low-freq sin amplitude
-const JITTER        := 0.06    # per-frame random amplitude
+# Iter 187 batch 3 — BUG FOUND: iter-183 item 3 bumped torch.tscn energy
+# 1.55 → 1.95, but _process here OVERWRITES light.energy every frame
+# with BASE_ENERGY + flicker, ignoring the .tscn value. My iter-183
+# torch boost was a no-op at runtime. Fix: bump BASE_ENERGY 1.55 → 1.95
+# to match the intended brighter rest pool. Flicker amps scaled +25%
+# proportionally so depth holds.
+const BASE_ENERGY   := 1.95
+const FLICKER_FAST  := 0.25    # high-freq sin amplitude
+const FLICKER_SLOW  := 0.14    # low-freq sin amplitude
+const JITTER        := 0.07    # per-frame random amplitude
 
 @onready var light: PointLight2D = $PointLight2D
 @onready var flame: Sprite2D = $Flame
@@ -42,3 +48,11 @@ func _process(delta: float) -> void:
 	# Flame sprite scales subtly with the brightness for visual coupling.
 	var s := 1.0 + (fast + slow) * 0.6
 	flame.scale = Vector2(s, s)
+	# Iter 187 batch 3 — alpha flicker on the flame sprite. Pre-iter-187
+	# the flame's brightness was constant while the light pulsed; eye
+	# could see the LIGHT flicker but the source orb stayed static.
+	# Now alpha varies ~0.78..1.0 in sync with the brightness curve so
+	# the flame visually IS the pulse, not just casting it.
+	# Modifies only the alpha channel — RGB is set by main.gd per biome
+	# (sanctuary blue-white, ember hot red, etc).
+	flame.modulate.a = 0.85 + (fast + slow) * 0.35
