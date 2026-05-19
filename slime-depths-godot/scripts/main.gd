@@ -2142,6 +2142,16 @@ func _scatter_decor(count: int) -> void:
 # instantly-readable atmosphere.
 func _spawn_decor_at(pos: Vector2) -> void:
 	var biome: String = _room.biome if _room != null else "crypt"
+	# Iter 187 batch 1 — 55% chance to spawn a PixelLab pixel-art decal
+	# instead of the procedural Polygon2D shape. Floor decor now shares
+	# the same pixel-art language as the enemies (PixelLab sprite sheets),
+	# fixing the iter-186 critique that "enemy sprites aren't fully
+	# integrated into the room's visual language."
+	# The 45% Polygon2D path preserves biome-specific shape character
+	# (ember halos, sanctuary rune stars) that no decal replicates 1:1.
+	if randf() < 0.55:
+		_spawn_pixel_decor(pos, biome)
+		return
 	match biome:
 		"ossuary":
 			_spawn_decor_ossuary(pos)
@@ -2151,6 +2161,61 @@ func _spawn_decor_at(pos: Vector2) -> void:
 			_spawn_decor_sanctuary(pos)
 		_:
 			_spawn_decor_crypt(pos)
+
+# Iter 187 batch 1 — pixel-art floor decal spawner. Picks from the
+# biome-appropriate PixelLab decal pool. Each decal is 32×32 px native
+# (pixel-art scale matches enemy sprites). Random rotation + scale +
+# alpha variance so the same decal looks distinct across placements
+# and doesn't read as "the same stamp 30 times."
+const PIXEL_DECOR_BY_BIOME: Dictionary = {
+	"crypt": [
+		preload("res://assets/decor/decal_pebbles.png"),
+		preload("res://assets/decor/decal_scratches.png"),
+		preload("res://assets/decor/decal_dirt.png"),
+		preload("res://assets/decor/decal_web.png"),
+		preload("res://assets/decor/decal_crack.png"),
+		preload("res://assets/decor/decal_shards.png"),
+	],
+	"ossuary": [
+		preload("res://assets/decor/decal_skull.png"),
+		preload("res://assets/decor/decal_bone.png"),
+		preload("res://assets/decor/decal_blood.png"),
+		preload("res://assets/decor/decal_claws.png"),
+		preload("res://assets/decor/decal_dirt.png"),
+	],
+	"ember": [
+		preload("res://assets/decor/decal_scratches.png"),
+		preload("res://assets/decor/decal_blood.png"),
+		preload("res://assets/decor/decal_claws.png"),
+		preload("res://assets/decor/decal_shards.png"),
+	],
+	"sanctuary": [
+		preload("res://assets/decor/decal_rune.png"),
+		preload("res://assets/decor/decal_candle.png"),
+		preload("res://assets/decor/decal_scroll.png"),
+		preload("res://assets/decor/decal_leaves.png"),
+		preload("res://assets/decor/decal_mushroom.png"),
+	],
+}
+
+func _spawn_pixel_decor(pos: Vector2, biome: String) -> void:
+	var pool: Array = PIXEL_DECOR_BY_BIOME.get(biome, PIXEL_DECOR_BY_BIOME["crypt"]) as Array
+	if pool.is_empty():
+		return
+	var sprite: Sprite2D = Sprite2D.new()
+	sprite.texture = pool[randi() % pool.size()]
+	sprite.position = pos
+	sprite.rotation = randf() * TAU
+	# Slight scale variance 0.75-1.05 keeps decals visually small (the
+	# perimeter prop-cluster decals already use this exact range — same
+	# grammar everywhere).
+	var s: float = randf_range(0.72, 1.05)
+	sprite.scale = Vector2(s, s)
+	# Alpha variance so decals read as weathered remnants, not freshly
+	# painted. 0.50-0.85 range.
+	sprite.modulate = Color(1, 1, 1, randf_range(0.50, 0.85))
+	sprite.z_index = -1
+	add_child(sprite)
 
 # Crypt — iter-18 baseline. 4-vert dark grey-brown ellipse stain.
 func _spawn_decor_crypt(pos: Vector2) -> void:
