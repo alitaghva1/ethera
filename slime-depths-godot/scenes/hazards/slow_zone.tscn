@@ -46,6 +46,71 @@ script = ExtResource("1_script")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("slowzone_area")
 
+; ── Iter 186 batch 2 — carved-stone basin frame ───────────────────────
+; Pre-iter-186 the slow zone was a 5-layer Polygon2D pool that read as
+; "procedural shape painted on the floor" — directive critique 4: "the
+; central hazard lacks identity, doesn't feel embedded in the world."
+; New: a stone rim ring + 4 cardinal rune marks suggest the hazard is
+; a CARVED RITUAL BASIN, not a paint stain. The toxic pool sits INSIDE
+; a real architectural feature.
+
+; StoneRim — thick dark Line2D ring at radius 42 (just outside the
+; Pool's 38). 6 px width reads as a chunky chiseled lip around the
+; basin. Closed = true joins ends seamlessly. Drawn at z = 0 so it
+; sits ABOVE the FootprintHalo (z=1) — wait, FootprintHalo z=1 means
+; halo above StoneRim. Tree order: StoneRim added BEFORE FootprintHalo
+; below, so even at same z=0 the rim draws first / below. The halo
+; alpha 0.22 lets the stone rim show through faintly even through it.
+[node name="StoneRim" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 36.5, 21, 21, 36.5, 0, 42, -21, 36.5, -36.5, 21, -42, 0, -36.5, -21, -21, -36.5, 0, -42, 21, -36.5, 36.5, -21)
+closed = true
+width = 6.0
+default_color = Color(0.09, 0.08, 0.11, 0.95)
+joint_mode = 2
+antialiased = true
+
+; StoneRimHighlight — thin 1 px brighter line ON TOP of the StoneRim
+; on the side facing implied overhead light (top half slightly
+; brighter). Suggests carved 3D edge catching ambient light.
+[node name="StoneRimHighlight" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 36.5, 21, 21, 36.5, 0, 42, -21, 36.5, -36.5, 21, -42, 0, -36.5, -21, -21, -36.5, 0, -42, 21, -36.5, 36.5, -21)
+closed = true
+width = 1.0
+default_color = Color(0.30, 0.26, 0.22, 0.55)
+joint_mode = 2
+antialiased = true
+
+; 4 cardinal RuneMark chevrons outside the rim. Reads as CARVED SIGILS
+; — the basin is ritual / cursed, not just a hole in the floor.
+; Color (0.62, 0.78, 0.32) toxic yellow-green at low alpha so the
+; runes feel etched-and-faintly-glowing rather than painted.
+[node name="RuneN" type="Polygon2D" parent="."]
+position = Vector2(0, -50)
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.62, 0.78, 0.32, 0.50)
+z_index = 0
+
+[node name="RuneE" type="Polygon2D" parent="."]
+position = Vector2(50, 0)
+rotation = 1.571
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.62, 0.78, 0.32, 0.50)
+z_index = 0
+
+[node name="RuneS" type="Polygon2D" parent="."]
+position = Vector2(0, 50)
+rotation = 3.142
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.62, 0.78, 0.32, 0.50)
+z_index = 0
+
+[node name="RuneW" type="Polygon2D" parent="."]
+position = Vector2(-50, 0)
+rotation = 4.712
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.62, 0.78, 0.32, 0.50)
+z_index = 0
+
 ; Footprint halo — soft greenish-teal disc at radius ~44, very translucent.
 ; Sits at z=1 below the main pool so the player sees a wider danger
 ; footprint on the floor (the pool itself is opaque + bounded; the halo
