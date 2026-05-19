@@ -27,6 +27,11 @@ const HOVER_TWEEN_TIME := 0.12
 @onready var title_glow: Label = $Panel/Stack/TitleBlock/TitleGlow
 @onready var kills_number: Label = $Panel/Stack/StatsRow/KillsBlock/KillsNumber
 @onready var runs_number: Label = $Panel/Stack/StatsRow/RunsBlock/RunsNumber
+# Iter 159 — TimeBlock readouts. last_run_time was snapshotted at
+# hero-death by GameState.finalize_run_time (iter-158). The caption
+# flips to "best!" + warm gold when this run set a new best.
+@onready var time_number: Label = $Panel/Stack/StatsRow/TimeBlock/TimeNumber
+@onready var time_caption: Label = $Panel/Stack/StatsRow/TimeBlock/TimeCaption
 @onready var relics_title: Label = $Panel/Stack/RelicsTitle
 @onready var relics_list: VBoxContainer = $Panel/Stack/RelicsList
 @onready var retry_button: Button = $Panel/Stack/ButtonRow/RetryButton
@@ -66,6 +71,26 @@ func show_death(kills: int) -> void:
 		runs = GameState.dungeon_runs
 	kills_number.text = str(kills)
 	runs_number.text = str(runs)
+	# Iter 159 — read run time from GameState (snapshotted at hero
+	# death by iter-158's finalize_run_time hook). Compare against
+	# best_run_time to decide whether this is a NEW BEST (faster).
+	# Sentinel: best_run_time < 0 means "no completed run yet" — in
+	# that case the FIRST completed run is automatically a best.
+	var last_t: float = 0.0
+	var best_t: float = -1.0
+	if _has_game_state():
+		last_t = GameState.last_run_time
+		best_t = GameState.best_run_time
+	if time_number != null:
+		time_number.text = _format_mss(last_t)
+	if time_caption != null:
+		var is_best: bool = last_t > 0.0 and (best_t < 0.0 or last_t <= best_t)
+		if is_best:
+			time_caption.text = "best!"
+			time_caption.add_theme_color_override("font_color", Color(1.0, 0.85, 0.42, 1.0))
+		else:
+			time_caption.text = "time"
+			time_caption.add_theme_color_override("font_color", Color(0.78, 0.72, 0.62, 1.0))
 	# Iter 49 — death-screen polish. Three new content blocks injected
 	# at show time (vs hardcoded scene nodes) so adding a 4th later is
 	# cheap and the .tscn stays lean. _rebuild_relics_list already
@@ -276,3 +301,12 @@ func _animate_scale(button: Button, target: float) -> void:
 func _recenter_title_pivots() -> void:
 	title.pivot_offset = title.size / 2.0
 	title_glow.pivot_offset = title_glow.size / 2.0
+
+# Iter 159 — format a duration in seconds as "m:ss". Used by the
+# death-screen TIME block. Capped at 99:59 (a run exceeding that is
+# off-design and overflowing the column width assumption).
+func _format_mss(secs: float) -> String:
+	var total_sec: int = maxi(0, int(secs))
+	var m: int = mini(99, total_sec / 60)
+	var s: int = total_sec % 60
+	return "%d:%02d" % [m, s]

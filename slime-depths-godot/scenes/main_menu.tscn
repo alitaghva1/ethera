@@ -742,6 +742,15 @@ theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
 text = "best run kills ······ 0"
 
+; Iter 159 — best run TIME, formatted m:ss. Mirrors the dotted-leader
+; visual of the other records lines. Populated by main_menu.gd from
+; GameState.best_run_time at _ready.
+[node name="StatsBestTime" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
+text = "best run time ······· --"
+
 [node name="StatsLifetimeKills" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 10

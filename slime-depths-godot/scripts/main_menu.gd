@@ -75,6 +75,8 @@ const PARALLAX_LERP_RATE := 6.0
 # between sessions sees their accumulated runs / kills / best run carry over.
 @onready var stats_runs: Label = $StatsBlock/StatsRuns
 @onready var stats_best: Label = $StatsBlock/StatsBestRun
+# Iter 159 — best run TIME, shown alongside best kills.
+@onready var stats_best_time: Label = $StatsBlock/StatsBestTime
 @onready var stats_lifetime: Label = $StatsBlock/StatsLifetimeKills
 @onready var stats_last: Label = $StatsBlock/StatsLastRun
 
@@ -159,6 +161,10 @@ func _populate_stats() -> void:
 	var best: int = max(GameState.best_run_kills, GameState.last_run_kills)
 	stats_runs.text = "runs ··············· %d" % GameState.dungeon_runs
 	stats_best.text = "best run kills ······ %d" % best
+	# Iter 159 — best run time. -1 sentinel for "no run completed yet"
+	# renders as "--" so the player sees a fresh-slate state on launch
+	# rather than "0:00" which would falsely imply they've already run.
+	stats_best_time.text = "best run time ······· %s" % _format_best_time()
 	stats_lifetime.text = "lifetime kills ······· %d" % GameState.session_kills
 	# Only show last-run line after at least one run completed; an empty
 	# line on first launch avoids the "0 kills" lie before the player has
@@ -167,6 +173,19 @@ func _populate_stats() -> void:
 		stats_last.text = "last run ············ %d kills" % GameState.last_run_kills
 	else:
 		stats_last.text = ""
+
+# Iter 159 — format GameState.best_run_time as m:ss, or "--" when no
+# run has completed yet. The promotion from last_run_time → best_run_time
+# happens at start_dungeon_run() (game_state.gd), so by the time the
+# main menu is shown after a death the value is already up-to-date.
+func _format_best_time() -> String:
+	var t: float = GameState.best_run_time
+	if t < 0.0:
+		return "--"
+	var total_sec: int = maxi(0, int(t))
+	var m: int = mini(99, total_sec / 60)
+	var s: int = total_sec % 60
+	return "%d:%02d" % [m, s]
 
 # Embers emit from a thin horizontal strip just below the visible bottom of
 # the viewport so the first spawn frame isn't visible. The preprocess on the

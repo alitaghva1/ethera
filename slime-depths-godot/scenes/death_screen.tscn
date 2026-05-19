@@ -277,6 +277,33 @@ theme_override_colors/font_color = Color(0.78, 0.72, 0.62, 1)
 text = "runs"
 horizontal_alignment = 1
 
+; Iter 159 — TimeBlock alongside Kills + Runs. Surfaces last_run_time
+; from GameState (snapshot taken at hero-death in iter-158). When this
+; run BEAT the previous best, the caption text reads "best!" in warm
+; gold instead of "time" — same payoff pattern as the iter-49 NEW BEST
+; callout for kills.
+[node name="TimeBlock" type="VBoxContainer" parent="Panel/Stack/StatsRow"]
+custom_minimum_size = Vector2(180, 0)
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="TimeNumber" type="Label" parent="Panel/Stack/StatsRow/TimeBlock"]
+custom_minimum_size = Vector2(0, 56)
+theme_override_font_sizes/font_size = 44
+theme_override_colors/font_color = Color(0.92, 0.94, 1.0, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "0:00"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TimeCaption" type="Label" parent="Panel/Stack/StatsRow/TimeBlock"]
+custom_minimum_size = Vector2(0, 18)
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.78, 0.72, 0.62, 1)
+text = "time"
+horizontal_alignment = 1
+
 ; Hairline divider under stats.
 [node name="DividerBottomSpacer" type="Control" parent="Panel/Stack"]
 custom_minimum_size = Vector2(0, 4)
