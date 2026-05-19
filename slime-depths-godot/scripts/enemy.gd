@@ -980,6 +980,109 @@ func _tick_chase_contact(delta: float) -> void:
 			# (_die and take_hit). Guarded by has_method so the call
 			# is robust to test contexts where _hero isn't a full hero.
 			_apply_contact_affix()
+			# Iter 198 — per-enemy signature contact attack. Pre-iter-
+			# 198 every chase_contact enemy did identical body-bumps
+			# (5 stat reskins per agent audit). Now orc slams, slime
+			# bounces, etc. Empty contact_attack = legacy bump only.
+			if t.contact_attack != "":
+				_apply_contact_signature(t.contact_attack)
+
+# Iter 198 — per-enemy signature contact-attack dispatch. Routes the
+# enemy's contact_attack tag to a specific visual + mechanical extra
+# that fires alongside the base body-bump damage. Each signature is
+# small enough not to lengthen the contact moment (still feels like
+# "the enemy hit me"), but distinct enough that orc-slam reads
+# different from slime-bounce reads different from werewolf-leap.
+func _apply_contact_signature(kind: String) -> void:
+	match kind:
+		"slam":
+			# ORC SLAM — heavy thump ring. Visual: dark ground-shake
+			# polygon expanding from enemy feet. Also adds trauma to
+			# camera (light shake on top of the existing hit shake).
+			# Reads as "the orc planted a heavy foot and the ground
+			# shook." Doesn't deal extra damage — the visual + shake is
+			# what makes the orc feel WEIGHTY vs other chasers.
+			_spawn_slam_ring()
+			if FX != null and FX.has_method("add_trauma"):
+				FX.add_trauma(0.15)
+		"bounce":
+			# SLIME BOUNCE — recoil knockback ON THE SLIME ITSELF. Slime
+			# hops backward 80 px over 0.18 s after each contact, then
+			# re-engages. Reads as "rubber-ball physics." Uses the
+			# existing iter-13 knockback path (apply_knockback) but with
+			# direction AWAY from the hero.
+			if _hero != null and is_instance_valid(_hero):
+				var away: Vector2 = (global_position - _hero.global_position).normalized()
+				apply_knockback(away * 420.0, 0.18)
+		"leap":
+			# WEREWOLF LEAP — short forward velocity burst as the
+			# werewolf "pounces" through the hero. Sets velocity in the
+			# current chase direction for 0.12 s, then resumes normal
+			# chase. Reads as "leap-through" pass.
+			if _hero != null and is_instance_valid(_hero):
+				var toward: Vector2 = (_hero.global_position - global_position).normalized()
+				velocity = toward * 400.0
+		"ignite":
+			# EMBER IGNITE — small warm pulse ring at the ember's feet.
+			# Pure visual; the ember's existing on-death AoE handles
+			# the damage layer. This makes the ember READ as fire
+			# every time it bumps, even when it survives.
+			_spawn_ignite_pulse()
+		_:
+			pass
+
+# Iter 198 — slam ring. Dark expanding ground-shake circle for ORC.
+# Sized to enemy's collision radius × 2.5. Color near-black with low
+# alpha so it reads as a shadow/dust shockwave, not a damage hitbox.
+# Tweens scale up + alpha down over 240 ms then queue_frees.
+func _spawn_slam_ring() -> void:
+	if enemy_type == null:
+		return
+	var r: float = enemy_type.collision_radius * 2.5
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 16
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * r, sin(ang) * r * 0.6))
+	ring.polygon = pts
+	ring.position = Vector2(0, 12)
+	ring.color = Color(0.03, 0.02, 0.03, 0.55)
+	ring.scale = Vector2(0.3, 0.3)
+	ring.z_index = -1
+	add_child(ring)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.24)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, 0.24)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(ring.queue_free)
+
+# Iter 198 — ignite pulse. Warm orange/red expanding ring for EMBER.
+# Same shape as slam ring but in warm fire color, slightly smaller +
+# faster. Pure visual cue that the ember is hot to touch.
+func _spawn_ignite_pulse() -> void:
+	if enemy_type == null:
+		return
+	var r: float = enemy_type.collision_radius * 2.0
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 14
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * r, sin(ang) * r * 0.7))
+	ring.polygon = pts
+	ring.position = Vector2(0, 6)
+	ring.color = Color(1.0, 0.45, 0.18, 0.55)
+	ring.scale = Vector2(0.35, 0.35)
+	ring.z_index = -1
+	add_child(ring)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.1, 1.1), 0.18)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, 0.18)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(ring.queue_free)
 
 # ── Behavior: bomber ──────────────────────────────────────────────────
 # Iter 47 — kamikaze enemy. Charges hero at high speed. When close

@@ -32,3 +32,4 @@ death_duration = 0.85
 contact_damage = 1
 contact_cooldown = 0.5
 contact_range = 36.0
+contact_attack = "leap"

@@ -115,6 +115,17 @@ extends Resource
 @export var contact_damage: int = 1
 @export var contact_cooldown: float = 0.6
 @export var contact_range: float = 36.0   # touch distance
+# Iter 198 — per-enemy signature contact attack. Pre-iter-198 every
+# chase_contact enemy did the exact same thing (walk + bump), making
+# orc / werewolf / slime / ember / crypt_spider into 5 stat reskins.
+# This field lets a specific enemy override the default body-bump
+# with a unique behavior. Empty string = default body-bump (current
+# behavior preserved for un-tagged enemies). Recognized kinds:
+#   "slam"   — on contact, spawn a small AoE damage ring (orc)
+#   "bounce" — on contact, knockback the ENEMY itself away (slime)
+#   "leap"   — short forward velocity burst on first contact (werewolf)
+#   "ignite" — small flame pulse + warm burst ring (ember)
+@export var contact_attack: String = ""
 
 @export_group("Melee (telegraphed_melee)")
 @export var melee_reach: float = 54.0

@@ -32,3 +32,4 @@ death_duration = 0.7
 contact_damage = 1
 contact_cooldown = 0.5
 contact_range = 32.0
+contact_attack = "ignite"

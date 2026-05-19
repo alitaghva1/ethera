@@ -32,3 +32,4 @@ death_duration = 1.0
 contact_damage = 1
 contact_cooldown = 0.7
 contact_range = 38.0
+contact_attack = "slam"

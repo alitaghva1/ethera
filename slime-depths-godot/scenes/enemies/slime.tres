@@ -40,3 +40,4 @@ death_duration = 0.7
 contact_damage = 1
 contact_cooldown = 0.6
 contact_range = 36.0
+contact_attack = "bounce"
