@@ -1066,8 +1066,10 @@ func _spawn_room_chrome() -> void:
 	# a single subtle central floor anchor sigil. Three small additions
 	# that together break the "perfect rectangle" feel.
 	_spawn_perimeter_masonry_seams()
+	_spawn_perimeter_columns()
 	_spawn_wall_overlays()
 	_spawn_floor_focal_anchor()
+	_spawn_torch_scorch_marks()
 
 # Solid dark stone fills along the 4 perimeter wall regions (the
 # unused frame between the playable interior and the viewport edge).
@@ -1624,6 +1626,13 @@ const WALL_OVERLAY_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/decor/wall_overlay_cobweb.png"),
 	preload("res://assets/decor/wall_overlay_crack_v.png"),
 	preload("res://assets/decor/wall_overlay_rune.png"),
+	# Iter 186 — 3 additional overlays for richer environmental story:
+	# fresco (faded mural fragment), handprint (blood handprint),
+	# ivy (overgrown plant). Pool grows 5 → 8 so room-to-room overlay
+	# variety becomes much more pronounced.
+	preload("res://assets/decor/wall_overlay_fresco.png"),
+	preload("res://assets/decor/wall_overlay_handprint.png"),
+	preload("res://assets/decor/wall_overlay_ivy.png"),
 ]
 # Candidate positions on the 4 perimeter wall strips. Top + bottom
 # strips are 96 px tall (PLAY_AREA_MIN.y = 96); left + right are 96 px
@@ -1685,6 +1694,124 @@ func _spawn_perimeter_masonry_seams() -> void:
 			PERIMETER_MASONRY_COLOR, 1.0, 1
 		)
 		y += PERIMETER_MASONRY_SPACING
+
+# Iter 186 — perimeter architectural columns. Adds painted "support
+# column" suggestions on the top + bottom wall strips so the wall mass
+# reads as STRUCTURED MASONRY (supporting a vaulted ceiling) instead
+# of an undifferentiated dark border. 3 columns per side, placed AT
+# the masonry seam positions so the column visually anchors the seam
+# break — the seam reads as "where two stone blocks meet between the
+# columns." Color sits slightly lighter than _biome_wall_color so the
+# column face catches implied light; capital pieces 0.10 brighter
+# again for a clean light-catching highlight.
+#
+# Skips the left/right wall strips — vertical "horizontal columns"
+# don't read; the user's eye accepts top/bottom column verticality as
+# the room's structural support without needing all four walls.
+func _spawn_perimeter_columns() -> void:
+	var screen: Vector2 = SCREEN_SIZE
+	var play_min: Vector2 = PLAY_AREA_MIN
+	var play_max: Vector2 = PLAY_AREA_MAX
+	# Column face = wall stone +0.04 brightness on each RGB channel.
+	# Capital piece = wall stone +0.10 (catches more implied light).
+	var col_face: Color = Color(
+		_biome_wall_color.r + 0.04,
+		_biome_wall_color.g + 0.04,
+		_biome_wall_color.b + 0.05,
+		1.0
+	)
+	var col_cap: Color = Color(
+		_biome_wall_color.r + 0.10,
+		_biome_wall_color.g + 0.09,
+		_biome_wall_color.b + 0.10,
+		1.0
+	)
+	# 3 columns per top/bottom strip at x = 320, 640, 960 — aligned with
+	# masonry seam positions (PERIMETER_MASONRY_SPACING = 160 starting
+	# at 160 px → seams at 160/320/480/640/800/960/1120). Columns sit
+	# at every other seam so the architectural rhythm is column → seam →
+	# column → seam → column across the wall strip.
+	var column_xs: Array[float] = [320.0, 640.0, 960.0]
+	var col_w: float = 22.0
+	var cap_extend: float = 4.0
+	var cap_h: float = 7.0
+	for cx in column_xs:
+		# TOP strip column (0 to play_min.y = 96).
+		var top_col: Polygon2D = Polygon2D.new()
+		top_col.polygon = PackedVector2Array([
+			Vector2(cx - col_w * 0.5, 0),
+			Vector2(cx + col_w * 0.5, 0),
+			Vector2(cx + col_w * 0.5, play_min.y - cap_h),
+			Vector2(cx - col_w * 0.5, play_min.y - cap_h),
+		])
+		top_col.color = col_face
+		top_col.z_index = 1
+		add_child(top_col)
+		# TOP capital — wider trapezoid catching implied overhead light.
+		var top_capital: Polygon2D = Polygon2D.new()
+		top_capital.polygon = PackedVector2Array([
+			Vector2(cx - col_w * 0.5, play_min.y - cap_h),
+			Vector2(cx + col_w * 0.5, play_min.y - cap_h),
+			Vector2(cx + col_w * 0.5 + cap_extend, play_min.y),
+			Vector2(cx - col_w * 0.5 - cap_extend, play_min.y),
+		])
+		top_capital.color = col_cap
+		top_capital.z_index = 1
+		add_child(top_capital)
+		# BOTTOM strip column (play_max.y to screen.y = 720).
+		var bot_col: Polygon2D = Polygon2D.new()
+		bot_col.polygon = PackedVector2Array([
+			Vector2(cx - col_w * 0.5, play_max.y + cap_h),
+			Vector2(cx + col_w * 0.5, play_max.y + cap_h),
+			Vector2(cx + col_w * 0.5, screen.y),
+			Vector2(cx - col_w * 0.5, screen.y),
+		])
+		bot_col.color = col_face
+		bot_col.z_index = 1
+		add_child(bot_col)
+		# BOTTOM capital (mirrored — wider at the play-area side).
+		var bot_capital: Polygon2D = Polygon2D.new()
+		bot_capital.polygon = PackedVector2Array([
+			Vector2(cx - col_w * 0.5 - cap_extend, play_max.y),
+			Vector2(cx + col_w * 0.5 + cap_extend, play_max.y),
+			Vector2(cx + col_w * 0.5, play_max.y + cap_h),
+			Vector2(cx - col_w * 0.5, play_max.y + cap_h),
+		])
+		bot_capital.color = col_cap
+		bot_capital.z_index = 1
+		add_child(bot_capital)
+
+# Iter 186 — torch scorch marks. Each torch lives on a perimeter wall
+# strip. Adding a small dark "soot" ellipse just under the torch sells
+# "this is a wall that has held a flame for years" — environmental
+# storytelling at zero gameplay cost. Drawn BELOW the perimeter wall
+# masonry (z=1 → torch sprite z above), but ABOVE the wall mass at
+# z=0 so the soot reads as deposited on the wall face.
+func _spawn_torch_scorch_marks() -> void:
+	if _room == null:
+		return
+	for tp in _room.torch_positions:
+		var scorch: Polygon2D = Polygon2D.new()
+		# Wide flat ellipse — 20x6 — small enough not to dominate but
+		# visible at the resolution we render.
+		scorch.polygon = _ellipse_polygon(20.0, 6.0, 14)
+		# Position slightly UNDER the torch's flame location. Torches
+		# are mounted on the wall, with the flame sprite hanging just
+		# inside the play area; soot accumulates above the flame head.
+		# Offset depends on which wall the torch sits on.
+		var off: Vector2 = Vector2.ZERO
+		if tp.y < 140:
+			off = Vector2(0, -28)  # top wall — soot above flame on wall above
+		elif tp.y > 600:
+			off = Vector2(0, 28)   # bottom wall — soot below flame on wall below
+		elif tp.x < 140:
+			off = Vector2(-28, 0)
+		elif tp.x > 1140:
+			off = Vector2(28, 0)
+		scorch.position = tp + off
+		scorch.color = Color(0.03, 0.03, 0.04, 0.62)
+		scorch.z_index = 1
+		add_child(scorch)
 
 # Wall overlays — 2-3 random PixelLab decals placed on the perimeter
 # wall mass per room. Sits at z = 1 so it's above the wall mass and the
