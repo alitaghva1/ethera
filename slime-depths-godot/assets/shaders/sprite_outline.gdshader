@@ -22,6 +22,12 @@ shader_type canvas_item;
 
 uniform vec4 outline_color : source_color = vec4(0.04, 0.04, 0.08, 0.85);
 uniform float outline_width : hint_range(0.0, 4.0) = 1.0;
+// iter-181 — hit flash. enemy.gd sets this to 1.0 on take_hit and tweens
+// back to 0.0 over ~120 ms. At 1.0 the entire opaque sprite is replaced
+// by pure white at the sprite's existing alpha; at 0.0 the sprite renders
+// untouched. The mix() approach (vs replacing with a flat color) keeps
+// the alpha channel intact so the outline still works.
+uniform float flash_strength : hint_range(0.0, 1.0) = 0.0;
 
 void fragment() {
     vec4 src = texture(TEXTURE, UV);
@@ -29,8 +35,11 @@ void fragment() {
     // outline branch unconditionally and select via an if/else at the
     // end. The if-skip cost is negligible.
     if (src.a > 0.01) {
-        // Inside the sprite — pass through unchanged.
-        COLOR = src;
+        // Inside the sprite — mix toward pure white based on flash_strength.
+        // HDR-ish white (1.05) so the punch reads slightly hotter than
+        // the brightest sprite pixel for the 2-3 frames it's at peak.
+        vec3 flash_rgb = vec3(1.05);
+        COLOR = vec4(mix(src.rgb, flash_rgb, flash_strength), src.a);
     } else {
         // Outside-but-near: 8-tap neighbor sample to detect proximity
         // to an opaque pixel.

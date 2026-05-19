@@ -2136,6 +2136,19 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 		tween.chain().set_parallel(true)
 		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.10)
 		tween.tween_property(sprite, "scale", base_scale, 0.10)
+		# Iter 181 — shader-driven hit flash. The modulate tween above
+		# MULTIPLIES the sprite color (so dark pixels stay dark, bright
+		# pixels saturate); the shader flash REPLACES the interior with
+		# pure white. This is the Hades / Isaac canonical "the silhouette
+		# pops bone-white on impact" effect that the modulate alone can't
+		# achieve. Lives in parallel to the modulate tween — both peak at
+		# frame 2 and decay over ~120 ms.
+		if sprite.material is ShaderMaterial:
+			var mat: ShaderMaterial = sprite.material as ShaderMaterial
+			mat.set_shader_parameter("flash_strength", 1.0)
+			var flash_tween: Tween = create_tween()
+			flash_tween.tween_property(mat, "shader_parameter/flash_strength", 0.0, 0.12)\
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	Events.enemy_hit.emit(global_position)
 	# iter-81 (Workstream A): tiered hit feedback. damage / max_hp ratio
 	# picks a tier (nick/solid/heavy/crushing) and fires shake + extra

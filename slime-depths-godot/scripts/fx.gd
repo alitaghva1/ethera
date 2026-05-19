@@ -180,6 +180,61 @@ func _process(delta: float) -> void:
 
 # ── Particle helpers ──────────────────────────────────────────────────
 
+# Iter 181 — programmatic radial impact ring. Used by _on_enemy_hit (and
+# any future hit-feedback call site) to spawn a brief soft cream/gold
+# pop at impact location. Built inline rather than as a .tscn:
+#   • Stateless visual (one gradient + scale tween + fade tween + free)
+#     — a 9-line function reads cleaner than a 30-line scene file.
+#   • Procedural GradientTexture2D = no asset to maintain, color/falloff
+#     all tunable in one place.
+#   • z_index 6 puts it above ground decor (z 0) and floor chrome (z 1)
+#     but below the hero (default z 0 in canvas with manual ordering;
+#     hit spark is z 4) — the ring is meant to PAIR with the spark, not
+#     drown it.
+# scale_factor lets future callers spawn bigger rings for boss / heavy
+# hits without each hit-handler reimplementing the gradient math.
+func _spawn_impact_ring(world_pos: Vector2, scale_factor: float = 1.0) -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var grad: Gradient = Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.55, 0.82, 1.0])
+	# Warm cream center fading through gold to transparent. The 0.55
+	# offset is where the bright rim sits — pre-rim mostly transparent,
+	# post-rim quick falloff. Result is a "ring" rather than a "ball."
+	grad.colors = PackedColorArray([
+		Color(1.0, 0.95, 0.85, 0.0),
+		Color(1.0, 0.92, 0.72, 0.55),
+		Color(1.0, 0.78, 0.45, 0.30),
+		Color(1.0, 0.78, 0.45, 0.0),
+	])
+	var tex: GradientTexture2D = GradientTexture2D.new()
+	tex.gradient = grad
+	tex.width = 96
+	tex.height = 96
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	var ring: Sprite2D = Sprite2D.new()
+	ring.texture = tex
+	ring.global_position = world_pos
+	ring.scale = Vector2(0.25, 0.25) * scale_factor
+	ring.modulate.a = 1.0
+	ring.z_index = 6
+	scene.add_child(ring)
+	# Scale up + fade out in parallel over 140 ms. EASE_OUT on scale so
+	# the ring expands FAST then slows (like an air shockwave); EASE_IN
+	# on alpha so it stays bright early and fades late, peaking the
+	# visual at the same moment the shader hit-flash peaks.
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.4, 1.4) * scale_factor, 0.14)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, 0.14)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# Free after the parallel batch finishes. Chain a non-parallel
+	# callback so it runs once both tweens are done, not midway.
+	tw.chain().tween_callback(ring.queue_free)
+
 # Spawn a particle scene at world_pos. Parented to the active scene so
 # the particle is part of the same coordinate space as the gameplay —
 # attaching to `self` (the FX autoload) would put it outside any
@@ -230,6 +285,12 @@ func _on_enemy_hit(world_pos: Vector2) -> void:
 	# at least one visible spark), but the shake is the tier system's
 	# job now.
 	_spawn(HIT_SPARK_SCENE, world_pos)
+	# Iter 181 — radial "impact pop": a soft warm-cream ring that
+	# scales from 0.25 → 1.4 and fades out over 140 ms. Pairs with
+	# the shader hit-flash (in enemy.gd take_hit) to sell the impact
+	# moment. Single-frame instantiated Sprite2D with a procedural
+	# radial gradient — no scene file needed for a stateless effect.
+	_spawn_impact_ring(world_pos)
 
 func _on_enemy_died(world_pos: Vector2) -> void:
 	# iter-141: the burst spawn + shake moved to spawn_enemy_kill_burst,
