@@ -39,11 +39,14 @@ class_name CursedGravestone
 extends RigidBody2D
 
 # ── Tether tuning ────────────────────────────────────────────────────
-const TETHER_REST_LENGTH: float = 140.0
+# Retuned for the readability pass — smaller room (680×440 interior)
+# means shorter rest length, tighter cap. Gravestone starts ~100 px
+# from hero so it reads "leashed" from the first frame.
+const TETHER_REST_LENGTH: float = 100.0
 const PULL_STIFFNESS_IDLE: float = 22.0
 const PULL_STIFFNESS_ACTIVE: float = 260.0
 const TETHER_DAMPING: float = 3.0
-const MAX_TETHER_LENGTH: float = 360.0
+const MAX_TETHER_LENGTH: float = 260.0
 # Stiffness coefficient applied to the (dist - MAX) overflow when the
 # gravestone drifts past the hard cap. Steeper than the active pull
 # so a fly-away always snaps cleanly back into reach.
@@ -57,11 +60,22 @@ const MIN_DAMAGE_VEL: float = 260.0
 # knockback. 0.55 means a 400 px/s slam transfers a ~220 px/s shove.
 const ENEMY_KNOCKBACK_MULT: float = 0.55
 
+# ── Danger glow tuning ───────────────────────────────────────────────
+# Velocity overshoot above MIN_DAMAGE_VEL that maps to peak glow alpha.
+# A slam at MIN_DAMAGE_VEL + DANGER_GLOW_FULL_OVERSHOOT shows the glow
+# at GLOW_PEAK_ALPHA. Below the threshold the glow stays at 0.
+const DANGER_GLOW_FULL_OVERSHOOT: float = 220.0
+const GLOW_PEAK_ALPHA: float = 0.70
+
 @export var player_path: NodePath
 # Base-typed (not class_name ToyHero) to avoid a cross-file class_name
 # resolution issue at first-load. The script reads `.pulling` via
 # duck-typing — set wherever a ToyHero is the actual node.
 var _player: CharacterBody2D = null
+# Danger-glow child cached at _ready. Each physics tick we set its
+# modulate.a from linear_velocity. Resolved by NODE NAME (not type)
+# so the scene file can swap the visual without code edits.
+var _danger_glow: Polygon2D = null
 
 func _ready() -> void:
 	contact_monitor = true
@@ -71,6 +85,7 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	if player_path != NodePath():
 		_player = get_node_or_null(player_path) as CharacterBody2D
+	_danger_glow = get_node_or_null("DangerGlow") as Polygon2D
 
 func _physics_process(_delta: float) -> void:
 	if _player == null or not is_instance_valid(_player):
@@ -96,6 +111,27 @@ func _physics_process(_delta: float) -> void:
 	if dist > MAX_TETHER_LENGTH:
 		var snap_back: Vector2 = dir * (dist - MAX_TETHER_LENGTH) * SNAP_BACK_STIFFNESS
 		apply_central_force(snap_back)
+	_update_danger_glow()
+
+# Set the danger-glow child's alpha based on velocity overshoot.
+# Linear ramp from 0 (at MIN_DAMAGE_VEL) to GLOW_PEAK_ALPHA (at
+# MIN_DAMAGE_VEL + DANGER_GLOW_FULL_OVERSHOOT). Clamped at both ends.
+# The READOUT in the debug panel's SLAM flag is the same threshold;
+# the glow gives the player a continuous in-world tell rather than
+# making them read the HUD.
+func _update_danger_glow() -> void:
+	if _danger_glow == null:
+		return
+	var v: float = linear_velocity.length()
+	var overshoot: float = v - MIN_DAMAGE_VEL
+	var target: float = clampf(
+		overshoot / DANGER_GLOW_FULL_OVERSHOOT,
+		0.0,
+		1.0,
+	) * GLOW_PEAK_ALPHA
+	var c: Color = _danger_glow.color
+	c.a = target
+	_danger_glow.color = c
 
 func _on_body_entered(body: Node) -> void:
 	if not body.is_in_group("toy_enemies"):

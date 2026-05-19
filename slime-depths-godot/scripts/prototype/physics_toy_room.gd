@@ -44,21 +44,36 @@ extends Node2D
 const ENEMY_SCENE: PackedScene = preload("res://scenes/prototype/blob_chaser.tscn")
 
 # ── Hit-stop tuning ──────────────────────────────────────────────────
-const HIT_STOP_SCALE: float = 0.06   # 94% slowdown — deep freeze beat
-const HIT_STOP_TIME: float = 0.08    # ~5 frames at 60fps real-time
+# Pre-readability pass: uniform 0.06×/0.08s on every valid slam.
+# Now scaled by impact velocity overshoot so a marginal-threshold tap
+# freezes lightly + a heavy slam freezes hard. The player should INSTANTLY
+# tell the difference between "barely qualified" and "real slam."
+const HIT_STOP_SCALE_LIGHT: float = 0.18   # marginal slam (just over thresh)
+const HIT_STOP_TIME_LIGHT: float = 0.05
+const HIT_STOP_SCALE_HEAVY: float = 0.05   # full-bore slam
+const HIT_STOP_TIME_HEAVY: float = 0.12
+# Velocity overshoot above MIN_DAMAGE_VEL that maps to "heavy" slam.
+# Below this we lerp between LIGHT and HEAVY values for smooth scaling.
+const HIT_STOP_FULL_OVERSHOOT: float = 200.0
 
 # ── Spawn config ─────────────────────────────────────────────────────
 const ENEMIES_PER_WAVE: int = 5
-const RESPAWN_DELAY: float = 1.5
+const RESPAWN_DELAY: float = 1.2
 
 # ── Shake mapping (impact_vel → camera amp) ──────────────────────────
-const SHAKE_PER_VEL: float = 0.035
-const SHAKE_MAX: float = 18.0
-const SHAKE_DUR: float = 0.18
+# Same shape as hit-stop: ramps with overshoot rather than firing
+# uniform amp on every valid hit. SHAKE_MIN ensures a slam-at-threshold
+# still feels like an event.
+const SHAKE_MIN: float = 5.0
+const SHAKE_MAX: float = 16.0
+const SHAKE_DUR: float = 0.16
 
 # ── Reset / spawn anchor points ──────────────────────────────────────
+# Room interior is x=300..980, y=140..580 → center is (640, 360).
+# Gravestone home is 100 px right of hero — within the 100-px TETHER_REST
+# so it reads "leashed" from the first frame.
 const HERO_HOME: Vector2 = Vector2(640, 360)
-const GRAVESTONE_HOME: Vector2 = Vector2(780, 360)
+const GRAVESTONE_HOME: Vector2 = Vector2(740, 360)
 
 # Mirror of CursedGravestone.MIN_DAMAGE_VEL. Duplicated here so the
 # debug panel can show the threshold every frame without taking a
@@ -68,45 +83,51 @@ const GRAVESTONE_HOME: Vector2 = Vector2(780, 360)
 const DEBUG_DAMAGE_VEL_THRESHOLD: float = 260.0
 
 # ── Pillar layout (PILLAR_ROOM) ──────────────────────────────────────
-# 4 pillars at the corners of an inner rectangle. Center stays open
-# so the hero + gravestone have room to maneuver. Radius 32 px gives
-# the gravestone (~44 px tall) something to wrap around without
-# letting tiny chasers (28 px) get stuck on them.
-const PILLAR_RADIUS: float = 32.0
+# 4 pillars closer to center than before so the gravestone can
+# realistically ricochet off + get caught on them mid-swing. Room
+# interior is now 680×440; placing the pillars near (450, 260) /
+# (830, 260) / (450, 460) / (830, 460) keeps a ~190-px-wide central
+# corridor open for hero+gravestone maneuvering. Radius 30 px is a
+# hair smaller than before; gravestone (~52 px) still wraps around
+# them, chasers (~28 px) still path past them.
+const PILLAR_RADIUS: float = 30.0
 const PILLAR_POSITIONS: Array[Vector2] = [
-	Vector2(380, 220),
-	Vector2(900, 220),
-	Vector2(380, 500),
-	Vector2(900, 500),
+	Vector2(450, 260),
+	Vector2(830, 260),
+	Vector2(450, 460),
+	Vector2(830, 460),
 ]
 
 # ── Chokepoint layout (CHOKEPOINT) ───────────────────────────────────
-# Single horizontal interior wall at y=400, split into two slabs with
-# a 240-px gap at x=520..760. Enemies spawn below the wall; the hero
-# above. Forces funneling.
-const CHOKEPOINT_WALL_Y: float = 400.0
-const CHOKEPOINT_WALL_HEIGHT: float = 40.0
-const CHOKEPOINT_LEFT_CENTER: Vector2 = Vector2(300, 400)
-const CHOKEPOINT_LEFT_SIZE: Vector2 = Vector2(440, 40)
-const CHOKEPOINT_RIGHT_CENTER: Vector2 = Vector2(980, 400)
-const CHOKEPOINT_RIGHT_SIZE: Vector2 = Vector2(440, 40)
+# Single horizontal interior wall splitting the room at y=400, with a
+# narrower 140-px center gap (was 240 before the shrink). Forces
+# enemies through a real squeeze where the gravestone can lock them
+# in place. Wall slabs land at x=300..520 (left) and x=760..980 (right).
+const CHOKEPOINT_LEFT_CENTER: Vector2 = Vector2(410, 400)
+const CHOKEPOINT_LEFT_SIZE: Vector2 = Vector2(220, 36)
+const CHOKEPOINT_RIGHT_CENTER: Vector2 = Vector2(870, 400)
+const CHOKEPOINT_RIGHT_SIZE: Vector2 = Vector2(220, 36)
 
 # ── Spawn points per room type ───────────────────────────────────────
-const SPAWN_OPEN_OR_PILLAR: Array[Vector2] = [
-	Vector2(180, 160),
-	Vector2(1100, 160),
-	Vector2(180, 560),
-	Vector2(1100, 560),
-	Vector2(640, 140),
+# Loose ring around the hero at ~200 px so chasers reach contact in
+# ~2.5 s at MOVE_SPEED 80. Stays within the tight interior bounds
+# (x=300..980, y=140..580). Used by OPEN_ARENA + PILLAR_ROOM.
+const SPAWN_RING: Array[Vector2] = [
+	Vector2(640, 200),
+	Vector2(820, 260),
+	Vector2(820, 470),
+	Vector2(460, 470),
+	Vector2(460, 260),
 ]
-# All 5 below the chokepoint wall (y > 460) — enemies MUST funnel
-# through the gap to reach the hero up top.
+# All 5 below the chokepoint wall (y > 470) so enemies MUST funnel up
+# through the 140-px gap. Closer to the wall than before so the player
+# doesn't wait 5 s for them to reach the chokepoint.
 const SPAWN_CHOKEPOINT: Array[Vector2] = [
-	Vector2(200, 620),
-	Vector2(640, 640),
-	Vector2(1080, 620),
-	Vector2(420, 540),
-	Vector2(860, 540),
+	Vector2(640, 540),
+	Vector2(420, 500),
+	Vector2(860, 500),
+	Vector2(540, 560),
+	Vector2(740, 560),
 ]
 
 # ── Room type state ──────────────────────────────────────────────────
@@ -122,11 +143,14 @@ const WALL_COLOR: Color = Color(0.22, 0.18, 0.26, 1.0)
 @onready var gravestone: RigidBody2D = $CursedGravestone
 @onready var obstacle_layer: Node2D = $ObstacleLayer
 @onready var enemy_layer: Node2D = $EnemyLayer
-@onready var enemies_left_label: Label = $UI/EnemiesLeft
+@onready var tether_line: Line2D = $TetherLine
 @onready var debug_panel: Label = $UI/DebugPanel
+@onready var hint_label: Label = $UI/HintLabel
 
 var _hit_stop_timer: float = 0.0
 var _respawn_pending: bool = false
+# F1 toggles the debug panel visibility. Default visible.
+var _debug_visible: bool = true
 
 func _ready() -> void:
 	gravestone.player_path = hero.get_path()
@@ -156,6 +180,10 @@ func _input(event: InputEvent) -> void:
 			_switch_room(RoomType.CHOKEPOINT)
 		KEY_R:
 			_reset_current_room()
+		KEY_F1:
+			_debug_visible = not _debug_visible
+			if debug_panel != null:
+				debug_panel.visible = _debug_visible
 
 func _switch_room(rt: RoomType) -> void:
 	_room_type = rt
@@ -167,19 +195,26 @@ func _switch_room(rt: RoomType) -> void:
 func _reset_current_room() -> void:
 	_reset_entities_and_respawn()
 
-# ── Per-frame: hit-stop tick + debug panel refresh ───────────────────
+# ── Per-frame: hit-stop tick + tether line + debug panel refresh ─────
 func _process(_delta: float) -> void:
 	if _hit_stop_timer > 0.0:
 		_hit_stop_timer -= 1.0 / 60.0
 		if _hit_stop_timer <= 0.0:
 			Engine.time_scale = 1.0
-	_update_label()
+	_update_tether_line()
 	_update_debug_panel()
 
-func _update_label() -> void:
-	if enemies_left_label == null or enemy_layer == null:
+# Redraw the tether between hero and gravestone every frame. Two-point
+# Line2D — straight cord, no slack physics. Cheap (just sets the
+# points array); the Line2D renders behind both entities via the
+# scene's z_index = -1.
+func _update_tether_line() -> void:
+	if tether_line == null or hero == null or gravestone == null:
 		return
-	enemies_left_label.text = "ENEMIES  %d" % _alive_enemy_count()
+	tether_line.points = PackedVector2Array([
+		hero.global_position,
+		gravestone.global_position,
+	])
 
 func _update_debug_panel() -> void:
 	if debug_panel == null:
@@ -308,10 +343,12 @@ func _spawn_points_for_current_room() -> Array[Vector2]:
 		RoomType.CHOKEPOINT:
 			return SPAWN_CHOKEPOINT
 		_:
-			# Open arena AND pillar room share corner spawns. Pillars
-			# are inside the rectangle, so spawn-corner pathing around
-			# them tests the "chasers navigate obstacles" case.
-			return SPAWN_OPEN_OR_PILLAR
+			# Open arena AND pillar room share the ring layout. Ring
+			# is at ~200 px from hero so combat starts within ~2.5 s
+			# (MOVE_SPEED 80 × 2.5 = 200). For the pillar room, the
+			# ring positions are between/outside the pillars so
+			# chasers naturally path around them.
+			return SPAWN_RING
 
 func _spawn_blob(pos: Vector2) -> void:
 	var blob: Node = ENEMY_SCENE.instantiate()
@@ -321,10 +358,32 @@ func _spawn_blob(pos: Vector2) -> void:
 	enemy_layer.add_child(blob)
 
 # ── Hit-feedback API (called by BlobChaser.take_hit) ─────────────────
+# Hit-stop AND shake scale with impact overshoot. A marginal-threshold
+# slam (just over MIN_DAMAGE_VEL) freezes lightly + shakes lightly; a
+# full-bore slam freezes deep + shakes hard. The player should
+# INSTANTLY tell the difference between "barely qualified hit" and
+# "real slam" without reading the debug panel.
+#
+# Slow bumps (impact_vel < MIN_DAMAGE_VEL) never reach this function —
+# they're filtered out in CursedGravestone._on_body_entered. Below-
+# threshold contact produces NO feedback (no shake, no flash, no
+# stop), which is the right contrast.
 func on_gravestone_impact(world_pos: Vector2, impact_vel: float) -> void:
-	Engine.time_scale = HIT_STOP_SCALE
-	_hit_stop_timer = HIT_STOP_TIME
-	FX.shake(min(impact_vel * SHAKE_PER_VEL, SHAKE_MAX), SHAKE_DUR)
+	# Mirror of CursedGravestone.MIN_DAMAGE_VEL — used as the base of
+	# the overshoot calc here. Kept in sync via the matching constant
+	# DEBUG_DAMAGE_VEL_THRESHOLD below.
+	var overshoot: float = impact_vel - DEBUG_DAMAGE_VEL_THRESHOLD
+	var t: float = clampf(overshoot / HIT_STOP_FULL_OVERSHOOT, 0.0, 1.0)
+	# Lerp the hit-stop scale + duration AND the shake amp between the
+	# LIGHT and HEAVY presets so the feel ramps smoothly with slam force.
+	var stop_scale: float = lerpf(HIT_STOP_SCALE_LIGHT, HIT_STOP_SCALE_HEAVY, t)
+	var stop_time: float = lerpf(HIT_STOP_TIME_LIGHT, HIT_STOP_TIME_HEAVY, t)
+	var shake_amp: float = lerpf(SHAKE_MIN, SHAKE_MAX, t)
+	Engine.time_scale = stop_scale
+	_hit_stop_timer = stop_time
+	FX.shake(shake_amp, SHAKE_DUR)
+	# Fires audio.gd's enemy_hit beep AND fx.gd's HIT_SPARK particle
+	# burst — both already subscribed to Events.enemy_hit.
 	Events.enemy_hit.emit(world_pos)
 
 # Called by BlobChaser._die. Schedules a fresh wave if this kill

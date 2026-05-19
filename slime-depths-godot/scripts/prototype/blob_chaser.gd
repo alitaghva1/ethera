@@ -37,11 +37,21 @@ var _knockback_time: float = 0.0
 
 @export var player_path: NodePath
 var _player: Node2D = null
+# Visual node cached at _ready. take_hit tweens its modulate from
+# HDR-white back to the original red so the player gets a clear
+# per-enemy flash on every valid slam (the iter-138/145-style hit
+# punch, but contained to this prototype's scope).
+var _visual: Polygon2D = null
+var _visual_base_color: Color = Color(0.82, 0.30, 0.28, 1.0)
+var _hit_flash_tween: Tween = null
 
 func _ready() -> void:
 	add_to_group("toy_enemies")
 	if player_path != NodePath():
 		_player = get_node_or_null(player_path)
+	_visual = get_node_or_null("Visual") as Polygon2D
+	if _visual != null:
+		_visual_base_color = _visual.color
 
 func _physics_process(delta: float) -> void:
 	if _dying:
@@ -75,6 +85,20 @@ func take_hit(impact_vel: float, knockback_impulse: Vector2) -> void:
 	hp -= 1
 	_knockback_velocity = knockback_impulse
 	_knockback_time = KNOCKBACK_TIME
+	# Per-enemy white-flash so the SPRITE itself reacts. Previously
+	# the only on-enemy reaction was the knockback motion + the
+	# HIT_SPARK nearby; the blob's own color stayed identical. With
+	# the flash, the player gets a clear "this body absorbed a real
+	# slam" tell without needing the HUD or the particle.
+	if _visual != null:
+		if _hit_flash_tween != null and _hit_flash_tween.is_valid():
+			_hit_flash_tween.kill()
+		# Snap to HDR white (2.5×) so the flash is bright on a dark
+		# floor, then tween back to baseline red over 0.18 s.
+		_visual.color = Color(2.5, 2.5, 2.5, 1.0)
+		_hit_flash_tween = create_tween()
+		_hit_flash_tween.tween_property(_visual, "color", _visual_base_color, 0.18)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	# Tell the room to fire the impact feedback. Going through a
 	# room-level callback (not autoloads) keeps the prototype scene
 	# self-contained and easy to reason about.

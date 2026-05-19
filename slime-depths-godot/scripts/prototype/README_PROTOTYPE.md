@@ -30,6 +30,7 @@ to `run/main_scene="res://scenes/main_menu.tscn"`.
 | `2`                | Switch to Pillar Room                      |
 | `3`                | Switch to Chokepoint Room                  |
 | `R`                | Reset current room (respawn wave, home hero + stone) |
+| `F1`               | Toggle debug panel visibility              |
 
 ## Room types
 
