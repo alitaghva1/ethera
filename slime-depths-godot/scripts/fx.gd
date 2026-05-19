@@ -40,15 +40,47 @@ const HEAL_SPARKLE_SCENE: PackedScene = preload("res://scenes/fx/heal_sparkle.ts
 # movement) already spawns its own dash_trail particle trail behind the
 # hero.
 
-# Cached camera reference + the active shake tween. Camera gets
-# re-resolved whenever it's null / freed — cheap, and survives scene
-# changes without explicit reconnection. The tween is tracked so we
-# can kill the previous shake before starting a new one (otherwise
-# overlapping shakes fight each other and can drift away from zero).
+# Cached camera reference. Camera gets re-resolved whenever it's null /
+# freed — cheap, and survives scene changes without explicit reconnection.
 var _camera: Camera2D = null
-var _shake_tween: Tween = null
+
+# ── Iter 180 — trauma-based screen shake ─────────────────────────────
+# Replaces the iter-30 4-hop tween shake. Trauma model (Squirrel
+# Eiserloh / KidsCanCode recipe): each "punch" event adds to a 0..1
+# trauma counter; the per-frame camera offset is sampled from
+# FastNoiseLite, scaled by trauma^2 (squaring keeps tiny hits subtle
+# and big hits violent), and trauma decays linearly at TRAUMA_DECAY/s.
+# Multiple punches in quick succession ADD rather than fight each
+# other (the old tween path stomped every prior shake, so a hit during
+# an enemy_died had its shake cancelled). _process drives the offset
+# every frame; when trauma reaches 0 the offset snaps back to (0,0).
+#
+# MAX_OFFSET = absolute peak pixel displacement at trauma=1.0. Tuned
+# down from the iter-30 raw amps (peaked at ~18 px in a single hop)
+# because the noise-driven path samples continuously — sustained 18 px
+# reads as nausea, while a 16 px peak with quadratic falloff reads as
+# a solid punch then settles.
+const MAX_OFFSET: float = 16.0
+const TRAUMA_DECAY: float = 1.6
+# Higher = faster shake oscillation. 22 reads as a "rapid punch" — low
+# enough to not look like static, high enough to feel violent.
+const NOISE_SPEED: float = 22.0
+
+var _trauma: float = 0.0
+var _shake_time: float = 0.0
+var _noise: FastNoiseLite = null
 
 func _ready() -> void:
+	# Iter 180 — initialize the noise generator once. FastNoiseLite default
+	# is SIMPLEX_SMOOTH at frequency 0.01; we override frequency to 1.0 and
+	# control "speed" via the time multiplier in _process so the same noise
+	# field works at any framerate.
+	_noise = FastNoiseLite.new()
+	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_noise.frequency = 1.0
+	# Random seed so back-to-back runs don't shake identically (cosmetic;
+	# without this every fresh game starts with the same noise pattern).
+	_noise.seed = randi()
 	# Connect once at game start. _ready on an autoload only fires the
 	# single time, so there's no risk of duplicate connections — but we
 	# CONNECT_PERSIST would also be wrong here (autoloads outlive every
@@ -87,43 +119,64 @@ func _get_camera() -> Camera2D:
 		return _camera
 	return null
 
-# Public shake wrapper — for callers outside FX (e.g. main.gd reacts
-# to dash strike impact). Same parameters as _shake; just gives us a
-# non-underscored API surface for autoload calls.
-func shake(amp: float, dur: float) -> void:
-	_shake(amp, dur)
+# Iter 180 — canonical trauma entry point. Callers use this when they
+# already know a magnitude in trauma units (0.0 = nothing, 1.0 =
+# maximum violent shake). Most existing callers go through `shake`
+# (amp/dur back-compat path) which converts amp → trauma internally.
+func add_trauma(amount: float) -> void:
+	_trauma = clampf(_trauma + amount, 0.0, 1.0)
 
-# Camera shake — generate a short sequence of jittery offsets that
-# end exactly at Vector2.ZERO. amp = peak displacement in pixels;
-# dur = total duration in seconds. Splits the duration into 4 hops
-# so the shake has visible texture (just lerping offset → 0 reads as
-# a soft drift, not a punch).
+# Back-compat shake API. The amp/dur arguments are legacy from the
+# iter-30 tween-based shake; we now convert amp to a trauma value and
+# ignore dur (trauma decays at a fixed rate so all shake events share
+# one cohesive feel). amp/20 → trauma roughly matches the old
+# amp-magnitudes:
+#   amp  →  trauma  → trauma²  (offset multiplier)
+#   1.8  →   0.09   →   0.008  (wave-clear blip, barely visible)
+#   4.0  →   0.20   →   0.040  (chip kill)
+#   6.0  →   0.30   →   0.090  (normal kill)
+#   12.0 →   0.60   →   0.360  (hero damaged — solid punch)
+#   18.0 →   0.90   →   0.810  (hero died — violent)
+# The quadratic curve is what makes Hades-style juice possible: small
+# events stay readable, big events feel earned.
+func shake(amp: float, dur: float) -> void:
+	# `dur` accepted for API compatibility but unused — trauma curve has
+	# its own decay rate. Underscore prefix dropped because callers
+	# pass real values.
+	var _ignored: float = dur
+	add_trauma(clampf(amp / 20.0, 0.0, 1.0))
+
+# Internal alias kept so the prior `_shake` name still works if any
+# call site uses it. Public path is `shake` or `add_trauma`.
 func _shake(amp: float, dur: float) -> void:
+	shake(amp, dur)
+
+# Per-frame trauma decay + camera offset sample. Runs every tick.
+# Three noise samples (offset on two separate "y" rows of the field
+# so they're decorrelated) drive x/y offset. Trauma squared keeps
+# small hits subtle; raw trauma would over-shake on light feedback.
+func _process(delta: float) -> void:
+	if _trauma <= 0.0:
+		# Idle path. If a camera was previously shaken and we drifted to
+		# exactly 0 trauma, ensure the offset is fully reset so we don't
+		# leave a sub-pixel residual after the noise samples settle.
+		var cam_idle := _get_camera()
+		if cam_idle != null and cam_idle.offset != Vector2.ZERO:
+			cam_idle.offset = Vector2.ZERO
+		return
+	_trauma = maxf(0.0, _trauma - TRAUMA_DECAY * delta)
+	_shake_time += delta
 	var cam := _get_camera()
 	if cam == null:
 		return
-	# Kill any in-flight shake so we always end at (0,0) — without
-	# this, a fresh shake mid-old-shake leaves a residual offset.
-	if _shake_tween != null and _shake_tween.is_valid():
-		_shake_tween.kill()
-	# Snap to a punchy starting offset, then tween in 4 hops with
-	# decaying amplitude back to zero. Each hop is randomized so it
-	# doesn't feel mechanical.
-	const HOPS := 4
-	var hop_dur := dur / float(HOPS)
-	_shake_tween = create_tween()
-	cam.offset = Vector2(randf_range(-amp, amp), randf_range(-amp, amp))
-	for i in range(HOPS):
-		var falloff := 1.0 - (float(i + 1) / float(HOPS))  # 0.75, 0.5, 0.25, 0
-		var target := Vector2(
-			randf_range(-amp, amp) * falloff,
-			randf_range(-amp, amp) * falloff,
-		)
-		# Last hop is forced to zero — guarantees we end clean even if
-		# randf_range rolls a non-zero number on falloff=0.
-		if i == HOPS - 1:
-			target = Vector2.ZERO
-		_shake_tween.tween_property(cam, "offset", target, hop_dur)
+	var t: float = _shake_time * NOISE_SPEED
+	var shake_curve: float = _trauma * _trauma
+	# Sample two decorrelated rows of the noise field for x/y. The y=0
+	# vs y=137.0 rows are far enough apart in FastNoiseLite's simplex
+	# space that they read as independent without needing a 3-axis noise.
+	var off_x: float = _noise.get_noise_2d(t, 0.0) * MAX_OFFSET * shake_curve
+	var off_y: float = _noise.get_noise_2d(t, 137.0) * MAX_OFFSET * shake_curve
+	cam.offset = Vector2(off_x, off_y)
 
 # ── Particle helpers ──────────────────────────────────────────────────
 
