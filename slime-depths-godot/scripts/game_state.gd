@@ -70,6 +70,13 @@ var has_seen_controls_hint: bool = false
 # in their very first run's room 0. Persistent, so subsequent runs
 # never see the tutorial again unless the save is wiped.
 var has_completed_tutorial: bool = false
+# Iter 166 — first-encounter banner. Tracks which enemy display_names
+# have already been intro'd THIS SESSION (cleared on game launch by
+# nature of being an in-memory autoload field). Each new enemy type
+# that spawns checks this set; if absent, fires a brief banner above
+# the enemy's head + adds the name. Bosses skip this — they have
+# their own iter-148 intro cinematic.
+var seen_enemy_names_session: Array[String] = []
 
 # ── Relic registry ───────────────────────────────────────────────────
 # Modifier keys read by hero.gd:

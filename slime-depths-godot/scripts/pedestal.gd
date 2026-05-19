@@ -165,6 +165,26 @@ func _ready() -> void:
 	# (≥2 owned) or ASCENDANCE (≥4 owned) — both displayed with
 	# a star + theme color so the build payoff is legible at a glance.
 	_populate_synergy_label(info)
+	# Iter 165 — rise-in animation. Pre-iter-165 pedestals just snapped
+	# into existence at their fixed spawn positions when the wave
+	# cleared — felt like a debug spawn, not a reward. Now each one
+	# scales from 0.4 → 1.0 + fades alpha 0 → 1 over 0.55 s with
+	# TRANS_BACK ease-out for a slight overshoot. Reads as "rising
+	# from the floor / materializing" which is the right beat for
+	# the relic-offer moment. All 3 rise simultaneously (the parent
+	# spawns them on the same frame); no per-pedestal stagger because
+	# matching the SoundCloud/wave-clear timing matters more than
+	# choreographing the three.
+	_play_rise_in_animation()
+
+func _play_rise_in_animation() -> void:
+	modulate.a = 0.0
+	scale = Vector2(0.4, 0.4)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(self, "modulate:a", 1.0, 0.55)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "scale", Vector2.ONE, 0.55)\
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _process(delta: float) -> void:
 	if _claimed:

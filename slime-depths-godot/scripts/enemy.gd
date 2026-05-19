@@ -380,6 +380,60 @@ func _ready() -> void:
 	# .tscn) so the shadow scales with enemy_type.sprite_scale at spawn
 	# time; bosses get a bigger shadow, slimes get a smaller one.
 	_build_ground_shadow()
+	# Iter 166 — first-encounter banner. If this enemy type hasn't been
+	# seen this session, briefly show its display_name above the head.
+	# Helps players learn the 20-enemy roster — Hades canonical. Bosses
+	# skipped (they have their own iter-148 intro cinematic).
+	_maybe_show_first_encounter_banner()
+
+# Iter 166 — first-encounter banner. Each unique enemy type the player
+# meets THIS SESSION gets a one-shot floating label above the head:
+# fade in 0.2 s, hold 1.1 s, fade out 0.4 s. Helps the player learn
+# the 20-enemy roster. Skipped for:
+#   • Bosses (they have their own iter-22 / iter-148 cinematics)
+#   • Enemies whose type is already in GameState.seen_enemy_names_session
+# The "_session" field resets only on game launch (in-memory autoload),
+# so repeated runs in one session won't re-spam intros — the player
+# learns once per game-launch then plays uninterrupted.
+const FIRST_ENCOUNTER_FADE_IN: float = 0.20
+const FIRST_ENCOUNTER_HOLD: float = 1.10
+const FIRST_ENCOUNTER_FADE_OUT: float = 0.40
+
+func _maybe_show_first_encounter_banner() -> void:
+	if enemy_type == null or enemy_type.is_boss:
+		return
+	var name: String = str(enemy_type.display_name)
+	if name == "" or name == "Enemy":
+		return
+	if name in GameState.seen_enemy_names_session:
+		return
+	GameState.seen_enemy_names_session.append(name)
+	# Build a small Label as a CHILD of the enemy node — it follows the
+	# enemy's position so even if the player moves the camera the
+	# banner stays visually anchored to the introducing creature.
+	var lbl: Label = Label.new()
+	lbl.text = name.to_upper()
+	lbl.add_theme_font_size_override("font_size", 16)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.93, 0.80, 1.0))
+	lbl.add_theme_color_override("font_outline_color", Color(0.08, 0.04, 0.02, 0.95))
+	lbl.add_theme_constant_override("outline_size", 3)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Width centered around the enemy center: 240 px wide, offset_left = -120.
+	# Position above the head — y -60 is roughly above any enemy silhouette
+	# given our sprite_y_offset values of -20 to -32.
+	lbl.size = Vector2(240, 24)
+	lbl.position = Vector2(-120, -64)
+	lbl.modulate.a = 0.0
+	# z_index +5 so it draws above the enemy + its shadow + spawn ring.
+	lbl.z_index = 5
+	add_child(lbl)
+	var tw: Tween = create_tween()
+	tw.tween_property(lbl, "modulate:a", 1.0, FIRST_ENCOUNTER_FADE_IN)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(FIRST_ENCOUNTER_HOLD)
+	tw.tween_property(lbl, "modulate:a", 0.0, FIRST_ENCOUNTER_FADE_OUT)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(lbl.queue_free)
 
 # Iter 153 — construct the per-enemy ground shadow Polygon2D. 12-segment
 # elliptical disc with 1.0:0.45 aspect ratio (matches the spawn_telegraph
