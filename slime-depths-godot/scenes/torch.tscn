@@ -69,10 +69,16 @@ texture_scale = 2.85
 ; iter-109: shadows on. Pillars (and any future LightOccluder2D-bearing
 ; node) now cast a long pillar-shaped shadow across the floor when
 ; this torch is behind them. The flat-darkened scene reads as a
-; volume-lit space instead of a flat 2D backdrop. shadow_color soft
-; black with ~80% alpha so the cast is visible but doesn't kill the
-; warm-stone palette under the rest of the torch's pool.
-shadow_enabled = true
+; volume-lit space instead of a flat 2D backdrop.
+; Iter 190 batch 1 — REVERTED. In top-down 2D the radial cast shadows
+; from torches read as fake 3D (user screenshot iter-189 showed 2 long
+; diagonal dark masses from interior walls fighting the camera
+; perspective). The right top-down language is: drop shadows + contact
+; shadows on the floor, NOT radial cast shadows from vertical objects.
+; Disabling shadow_enabled removes pillar shadows too; pillars keep
+; their drop-shadow Sprite + ground-shadow ellipse from pillar.tscn
+; which already grounded them top-down-appropriately.
+shadow_enabled = false
 shadow_color = Color(0, 0, 0, 0.55)
 shadow_filter = 1
 shadow_filter_smooth = 2.0

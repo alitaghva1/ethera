@@ -628,7 +628,13 @@ func _apply_type_to_sprite_and_collision() -> void:
 	shadow.position = Vector2(0, 4)
 	var shadow_scale: float = t.collision_radius / 160.0
 	shadow.scale = Vector2(shadow_scale, shadow_scale * 0.6)
-	shadow.modulate = Color(0, 0, 0, 0.55)
+	# Iter 190 batch 1 — alpha 0.55 → 0.38 per user direction "small,
+	# subtle contact shadows directly beneath them for grounding." The
+	# iter-117 0.55 was tuned for parity with the iter-116 hero shadow
+	# at 0.60 — but in top-down 2D, contact shadows want to be quieter
+	# than full-saturation black blobs. Player reads "this thing has
+	# weight on the floor" without the shadow becoming a focal point.
+	shadow.modulate = Color(0, 0, 0, 0.38)
 	shadow.z_index = -1
 	# Move-before-sprite in the parent's child order so it draws
 	# underneath. add_child appends, then move_child puts it FIRST.

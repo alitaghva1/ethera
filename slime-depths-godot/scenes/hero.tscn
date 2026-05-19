@@ -46,6 +46,7 @@ fill_to = Vector2(1, 0.5)
 ; outline_color leans very-dark blue (matching CHROME_WALL_STONE_COLOR
 ; from iter-115) so the player silhouette pops out as DEEPER than the
 ; ambient floor without reading as a stark black halo.
+; iter-134: 64px cells at scale 1.0 — outline_width 1.0 now reads as 1px.
 [sub_resource type="ShaderMaterial" id="hero_outline_mat"]
 shader = ExtResource("3_outline")
 shader_parameter/outline_color = Color(0.04, 0.04, 0.08, 0.85)
@@ -60,10 +61,14 @@ script = ExtResource("1_script")
 ; alpha — barely readable on the screenshot review. Wider + darker
 ; ellipse grounds the hero on the dungeon floor without competing
 ; with enemy shadows (still smaller than them by sprite-size).
+; Iter 190 batch 1 — alpha 0.60 → 0.42 per user direction "small,
+; subtle contact shadow." Hero shadow stays a touch darker than
+; enemy shadows (0.42 vs 0.38) because the hero is the visual anchor
+; and benefits from slightly more weight without becoming "stamped."
 [node name="Shadow" type="Sprite2D" parent="."]
 position = Vector2(0, 3)
 scale = Vector2(0.22, 0.16)
-modulate = Color(0, 0, 0, 0.6)
+modulate = Color(0, 0, 0, 0.42)
 texture = ExtResource("2_shadow")
 
 ; iter-116: subtle hero rim light. Pool the player into instant
@@ -79,8 +84,8 @@ range_z_min = -1024
 range_z_max = 1024
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
-position = Vector2(0, -23)
-scale = Vector2(0.469, 0.469)
+position = Vector2(0, -29)
+scale = Vector2(1.0, 1.0)
 material = SubResource("hero_outline_mat")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]

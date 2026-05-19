@@ -197,6 +197,11 @@ z_index = 0
 ; INTERACTS with the hazard's emission. Energy kept low (0.45) so it
 ; doesn't compete with torches; range_z_max negative keeps it on the
 ; floor plane.
+; Iter 190 batch 1 — shadow_enabled FALSE (was true in iter-189 batch 2).
+; Consistent top-down language: no radial cast shadows from any light
+; source. The toxic light still TINTS the floor / walls / props within
+; range; what changes is that the light no longer projects pillar-
+; shaped shadows that fight the top-down camera perspective.
 [node name="ToxicLight" type="PointLight2D" parent="."]
 color = Color(0.40, 0.85, 0.32, 1)
 energy = 0.45
@@ -204,10 +209,7 @@ range_z_min = -1024
 range_z_max = 1024
 texture = SubResource("toxic_light_tex")
 texture_scale = 1.0
-shadow_enabled = true
-shadow_color = Color(0, 0, 0, 0.30)
-shadow_filter = 1
-shadow_filter_smooth = 2.0
+shadow_enabled = false
 
 ; Footprint halo — soft greenish-teal disc at radius ~44, very translucent.
 ; Sits at z=1 below the main pool so the player sees a wider danger
