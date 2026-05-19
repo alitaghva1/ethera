@@ -315,6 +315,13 @@ func apply_burn(duration: float) -> void:
 	_burn_active = true
 	if not was_burning:
 		Events.enemy_burned.emit(global_position)
+	# Iter 202 — Noita-tier status combo. If this enemy was already
+	# slowed when burn lands, trigger the SHATTER combo (thermal
+	# shock — frost-stiff body + sudden heat = extra damage burst).
+	# Single-direction guard via _shatter_cd avoids loop-firing when
+	# multiple sources stack burn over the same window.
+	if _slow_remaining > 0.0 and _shatter_cd <= 0.0:
+		_trigger_shatter_combo()
 
 # Iter 46 — slow status. Multiplies the enemy's effective move_speed by
 # _slow_multiplier (defaults 1.0 = no slow). Tick down _slow_remaining
@@ -339,6 +346,61 @@ func apply_slow(duration: float, multiplier: float = SLOW_DEFAULT_MULTIPLIER) ->
 	_slow_multiplier = min(_slow_multiplier, multiplier)
 	if not was_slowed:
 		Events.enemy_slowed.emit(global_position)
+	# Iter 202 — Noita-tier status combo. Mirror of the burn-onto-slow
+	# case in apply_burn above: if this enemy is already BURNING when
+	# slow lands, the same SHATTER combo fires (thermal shock — heat
+	# meets frost). Symmetric so the trigger order doesn't matter.
+	if _burn_remaining > 0.0 and _shatter_cd <= 0.0:
+		_trigger_shatter_combo()
+
+# Iter 202 — status combo dispatcher. Noita's signature design move:
+# two compatible statuses combining into a third effect that's bigger
+# than either alone. Currently one combo wired:
+#   BURN + SLOW → SHATTER (thermal shock damage burst)
+# Future combos go on this dispatcher (e.g., FROST + SHADOW → PETRIFY,
+# FLAME + STORM → CHAIN_IGNITE). Cooldown prevents loop-firing when
+# multiple sources stack the trigger status in the same frame.
+const SHATTER_COMBO_COOLDOWN: float = 0.45
+const SHATTER_COMBO_DAMAGE: int = 2
+var _shatter_cd: float = 0.0
+
+func _trigger_shatter_combo() -> void:
+	_shatter_cd = SHATTER_COMBO_COOLDOWN
+	# Apply combo damage. take_hit handles the death path + tier
+	# feedback + damage number + audio so we get the full feedback
+	# stack for free.
+	take_hit(SHATTER_COMBO_DAMAGE, false)
+	# Visual: bright cyan-white expanding ring at the enemy. Read as
+	# "frost shattered by heat" — pale frost color rather than the
+	# warm orange of a fire pulse, since the freeze is what BREAKS.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 18
+	var r: float = (enemy_type.collision_radius if enemy_type != null else 16.0) * 2.2
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * r, sin(ang) * r * 0.85))
+	ring.polygon = pts
+	ring.color = Color(0.75, 0.92, 1.0, 0.78)
+	ring.scale = Vector2(0.25, 0.25)
+	ring.z_index = 3
+	add_child(ring)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.15, 1.15), 0.22)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, 0.22)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(ring.queue_free)
+	# Pop a "SHATTER" damage floater above the head (orange-pink crit
+	# styling tells the player a special proc happened, not a regular
+	# hit).
+	var dn_pos: Vector2 = global_position + Vector2(0, -40)
+	var dn: DamageNumber = DamageNumber.spawn(
+		dn_pos, "SHATTER!", Color(0.95, 0.78, 0.55)
+	)
+	var parent_for_dn: Node = get_parent()
+	if parent_for_dn != null:
+		parent_for_dn.add_child(dn)
 
 # Iter 46 — slow-aware speed read. Used by all behavior ticks instead
 # of direct enemy_type.move_speed accesses so slow applies uniformly
@@ -663,6 +725,11 @@ func _process(_delta: float) -> void:
 		_shadow.scale = _shadow_base_scale * (1.0 + shadow_pulse)
 
 func _physics_process(delta: float) -> void:
+	# Iter 202 — status combo cooldown tick. Decrements even during
+	# spawn-in / knockback / death so the value stays sane across all
+	# states. Empty cooldown = next status application can trigger
+	# the SHATTER combo again.
+	_shatter_cd = maxf(0.0, _shatter_cd - delta)
 	# Death drain → free. Skip all gameplay logic so corpses don't keep
 	# chasing the hero.
 	if _dying:
