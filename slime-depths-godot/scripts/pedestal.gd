@@ -139,7 +139,12 @@ func _ready() -> void:
 	# theme/scene edit that drops the override can't reintroduce the
 	# mid-word break bug (e.g. "blas:" instead of "blast" on FOCUSED EYE).
 	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_label.clip_text = false
+	# Iter 178 — clip_text TRUE so long descriptions clip cleanly at the
+	# fixed-size panel edge. Pre-iter-178 the panel grew to fit text;
+	# now we have a fixed 168×76 premium card and clipping is the
+	# correct overflow handling. Text gets truncated at the panel
+	# bottom rather than pushing into the orb space below.
+	desc_label.clip_text = true
 	# Iter 67 — pin DescLabel inner width + top-alignment in code, so
 	# get_minimum_size().y returns the WRAPPED-content height instead of
 	# the single-line height (the iter-64 sync was measuring the wrong
@@ -477,65 +482,36 @@ func _sync_offer_panel_height_async() -> void:
 # we never SHRINK below the baked design, only grow upward when a long
 # description like AVATAR OF FLAME (155 chars) needs more room.
 func _sync_offer_panel_height() -> void:
-	if not is_instance_valid(info_panel) or not is_instance_valid(desc_label):
+	# Iter 178 — sync simplified. Pre-iter-178 this function MEASURED
+	# the tallest description's wrapped height across the 3-pedestal
+	# offer and grew every panel upward to match, with a font-shrink
+	# fallback when MAX_PANEL_HEIGHT was exceeded. That was right for
+	# the iter-28 design (variable-height cards expanding to fit
+	# flavor text).
+	#
+	# The iter-178 design uses FIXED-size cards (168×76) with
+	# clip_text = true on DescLabel — long descriptions clip cleanly
+	# rather than blowing the card up. No measurement needed; just
+	# pin every offer's panel to the iter-178 baked offsets so a
+	# theme change or scene re-instance can't drift.
+	if not is_instance_valid(info_panel):
 		return
-	# Baseline from the .tscn — keep this as the floor so common-case
-	# short descriptions don't visually shrink the panel.
-	const BASELINE_TOP: float = -220.0
-	const BASELINE_BOTTOM: float = -100.0
-	const BASELINE_HEIGHT: float = BASELINE_BOTTOM - BASELINE_TOP  # 120
-	# iter-108 readability pass: NameLabel grew (offset_bottom 32 → 36)
-	# to fit the 20-pt name font, and DescLabel offset_top moved 34 → 38
-	# for breathing. New vertical margin = 38 (name area + top pad) + 4
-	# (bottom pad) = 42.
-	const DESC_VERTICAL_MARGIN: float = 42.0
-	# Two-frame await: frame 1 lets custom_minimum_size propagate, frame
-	# 2 lets the autowrap pass settle. After this, get_minimum_size.y on
-	# every offer's DescLabel reflects the WRAPPED content height.
-	await get_tree().process_frame
-	# iter-72 bug-fix: if the pedestal was queue_freed between _ready and
-	# the await resuming (e.g. an instant claim on a sibling on frame 1),
-	# `get_tree()` and `get_nodes_in_group` calls below would push errors
-	# on a freed pedestal. Bail if no longer in the tree.
-	if not is_inside_tree():
-		return
+	const PANEL_TOP: float = -196.0
+	const PANEL_BOTTOM: float = -120.0
+	# One frame for sibling pedestals to have completed _ready (the
+	# offer group is fully populated by then). No measure await
+	# needed — fixed sizes.
 	await get_tree().process_frame
 	if not is_inside_tree():
 		return
-	var max_needed: float = _measure_max_desc_height(BASELINE_HEIGHT, DESC_VERTICAL_MARGIN)
-	# Iter 67 — cap with a font-shrink fallback. If even at font_size=12
-	# the tallest description blows past MAX_PANEL_HEIGHT, drop to 11 on
-	# every sibling (keeps panels uniform) and re-measure. We never grow
-	# past MAX_PANEL_HEIGHT — that's the contract.
-	if max_needed > MAX_PANEL_HEIGHT:
-		for other in get_tree().get_nodes_in_group("pedestal_offer"):
-			if not is_instance_valid(other):
-				continue
-			var od: Label = other.get_node_or_null("InfoPanel/DescLabel") as Label
-			if od == null:
-				continue
-			od.add_theme_font_size_override("font_size", DESC_FONT_SHRUNK)
-		await get_tree().process_frame
-		# iter-72 bug-fix: same race guard as above — the font-shrink path
-		# adds 2 more frames of wait, doubling the window where this
-		# pedestal might be freed before we resume.
-		if not is_inside_tree():
-			return
-		await get_tree().process_frame
-		if not is_inside_tree():
-			return
-		max_needed = _measure_max_desc_height(BASELINE_HEIGHT, DESC_VERTICAL_MARGIN)
-		max_needed = minf(max_needed, MAX_PANEL_HEIGHT)
-	# Apply the unified height (anchored at the panel BOTTOM so the
-	# Orb/Plinth stack below stays put — the panel grows UPWARD).
 	for other in get_tree().get_nodes_in_group("pedestal_offer"):
 		if not is_instance_valid(other):
 			continue
 		var other_panel: Panel = other.get_node_or_null("InfoPanel") as Panel
 		if other_panel == null:
 			continue
-		other_panel.offset_top = BASELINE_BOTTOM - max_needed
-		other_panel.offset_bottom = BASELINE_BOTTOM
+		other_panel.offset_top = PANEL_TOP
+		other_panel.offset_bottom = PANEL_BOTTOM
 
 # Iter 67 helper — walks the offer group and returns the tallest
 # "needed" height (DescLabel wrapped height + vertical margin), clamped
