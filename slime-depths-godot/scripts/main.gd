@@ -1000,6 +1000,48 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 			rivet.color = Color(0.62, 0.50, 0.34, 0.85)
 			body.add_child(rivet)
 			rivet_x += seam_spacing
+	# Iter 188 batch 2 — sarcophagus character. User direction: "Rework
+	# cover blocks so they feel like fallen stone slabs, sarcophagus
+	# pieces, or broken crypt walls." Two additions push the wall from
+	# "fitted masonry block" to "tomb-lid fragment":
+	#
+	# A) CENTERED SIGIL on top face — a slightly larger warm-cream
+	#    diamond at x=0 (vs the rivets distributed at seam positions).
+	#    Reads as the engraved focal marking of a tomb-lid — every
+	#    sarcophagus has its sigil. 3.5×2.4 vs the 1.6×1.3 rivets, so
+	#    the sigil clearly dominates as the central ornament.
+	if w >= 40.0 and top_face_h >= 3.0:
+		var sigil: Polygon2D = Polygon2D.new()
+		sigil.polygon = PackedVector2Array([
+			Vector2(3.5, 0), Vector2(0, 2.4),
+			Vector2(-3.5, 0), Vector2(0, -2.4),
+		])
+		sigil.position = Vector2(0, -h + top_face_h * 0.5)
+		sigil.color = Color(0.82, 0.64, 0.40, 0.92)
+		body.add_child(sigil)
+	# B) DIAGONAL CRACK on side face — 50% chance, suggests fractured
+	#    stone (the slab cracked when it fell off the wall). Random
+	#    endpoints + direction so each wall's crack is distinct.
+	if w >= 30.0 and randf() < 0.5:
+		var side_top_y: float = -h + top_face_h + 2.0
+		var side_bot_y: float = h - 2.0
+		var crack: Line2D = Line2D.new()
+		var cx_a: float = randf_range(-w * 0.35, -w * 0.05)
+		var cx_b: float = randf_range(w * 0.05, w * 0.35)
+		if randf() < 0.5:
+			crack.points = PackedVector2Array([
+				Vector2(cx_a, side_top_y),
+				Vector2(cx_b, side_bot_y),
+			])
+		else:
+			crack.points = PackedVector2Array([
+				Vector2(cx_a, side_bot_y),
+				Vector2(cx_b, side_top_y),
+			])
+		crack.width = 1.0
+		crack.default_color = Color(0.03, 0.02, 0.05, 0.65)
+		crack.antialiased = true
+		body.add_child(crack)
 	# CONTACT — soft gradient strip just below the wall's bottom edge.
 	# Quad polygon with vertex-color fade: solid black at top (where
 	# it meets the wall) → transparent at bottom (12 px below). Adds
