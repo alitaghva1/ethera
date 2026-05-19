@@ -736,11 +736,62 @@ func _process(_delta: float) -> void:
 			_on_wave_cleared()
 
 func _spawn_torches(positions: Array[Vector2]) -> void:
+	# Iter 187 batch 2 — per-biome torch color. Pre-iter-187 every torch
+	# was warm orange (1.0, 0.58, 0.28). With cycle 4's per-biome palette
+	# this made all biomes feel "lit by the same fire" — atmospheric
+	# distinction was only coming from CanvasModulate / floor / walls.
+	# Now the LIGHT itself shifts per biome:
+	#   crypt:     warm orange (default) — abandoned dungeon torches
+	#   ossuary:   slightly more amber/yellow — old bone-dust torches
+	#   ember:     hot red-orange — volcanic/cursed flames
+	#   sanctuary: cool white-blue — magical/holy lights, not fire
+	# The flame Sprite2D color is shifted in parallel so the visible
+	# flame matches the light color it casts.
+	var biome: String = _room.biome if _room != null else "crypt"
+	var light_tint: Color = _biome_torch_color(biome)
+	var flame_tint: Color = _biome_flame_color(biome)
 	for pos in positions:
 		var t: Node2D = TORCH_SCENE.instantiate()
 		t.position = pos
 		t.add_to_group("torches")   # iter 35 — dim_lights events iterate this group
 		add_child(t)
+		# Walk children to find PointLight2D + Flame and recolor.
+		# Done AFTER add_child so @onready bindings inside torch.gd
+		# (if any) resolve first.
+		var light: Node = t.get_node_or_null("PointLight2D")
+		if light is PointLight2D:
+			(light as PointLight2D).color = light_tint
+		var flame: Node = t.get_node_or_null("Flame")
+		if flame is Sprite2D:
+			(flame as Sprite2D).modulate = flame_tint
+
+func _biome_torch_color(biome: String) -> Color:
+	match biome:
+		"sanctuary":
+			# Cool white-blue holy light — not fire, magical illumination.
+			return Color(0.75, 0.85, 1.0, 1.0)
+		"ember":
+			# Hot red-orange — volcanic / cursed flames.
+			return Color(1.0, 0.42, 0.18, 1.0)
+		"ossuary":
+			# Amber-yellow — old dusty bone-realm torches.
+			return Color(1.0, 0.72, 0.38, 1.0)
+		_:
+			# Crypt default — warm orange.
+			return Color(1.0, 0.58, 0.28, 1.0)
+
+func _biome_flame_color(biome: String) -> Color:
+	# Flame sprite modulate. Slightly more saturated / brighter than the
+	# light color so the flame visibly OUTPUTS the light it casts.
+	match biome:
+		"sanctuary":
+			return Color(0.92, 0.95, 1.0, 1.0)
+		"ember":
+			return Color(1.0, 0.62, 0.22, 1.0)
+		"ossuary":
+			return Color(1.0, 0.88, 0.45, 1.0)
+		_:
+			return Color(1.0, 0.80, 0.45, 1.0)
 
 # Iter 36 — pillar position jitter. Returns a NEW array (doesn't
 # mutate the source RoomConfig.pillar_positions) with each entry
@@ -1563,8 +1614,13 @@ func _spawn_prop_anchor(pos: Vector2, is_pillar: bool) -> void:
 	# corner AO (0.65 → 0.80 alpha). texture_scale 1.0 → 1.35 widens
 	# the brazier's pool reach so the cluster feels lit, not just
 	# tinted at the centerpoint.
+	# Iter 187 batch 2 — color now matches per-biome torch palette.
+	# Sanctuary corner braziers cast cool-white holy light; ember
+	# braziers cast hot red. Consistency between centerline torches
+	# and corner braziers reinforces the biome's lighting story.
+	var biome_for_light: String = _room.biome if _room != null else "crypt"
 	var light: PointLight2D = PointLight2D.new()
-	light.color = Color(1.0, 0.62, 0.28, 1.0)
+	light.color = _biome_torch_color(biome_for_light)
 	light.energy = 0.95
 	light.position = pos + Vector2(0, -38)
 	light.range_z_min = -1024
