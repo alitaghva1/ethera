@@ -606,40 +606,25 @@ func _apply_type_to_sprite_and_collision() -> void:
 	var shape: CircleShape2D = CircleShape2D.new()
 	shape.radius = t.collision_radius
 	collision.shape = shape
-	# Iter 27 — drop shadow. Same beat the hero has had since iter 11;
-	# without it enemies float "above" the floor and feel pasted-on.
-	# Built in code so we don't have to add the node to enemy.tscn (which
-	# would force a fixed scale across all enemy types). The ellipse
-	# texture is 256×128 — at scale_x = collision_radius / 160 the shadow
-	# reads as a soft pool roughly 2× the hitbox wide. Scale_y is 60%
-	# of x so the ellipse stays squashed (top-down perspective trick the
-	# hero shadow uses). Drawn BEFORE the AnimatedSprite2D in scene-tree
-	# order so it renders underneath at the same z_index.
+	# Iter 27 (REMOVED iter-192) — enemy ground shadow.
 	#
-	# iter-117: bumped alpha 0.45 → 0.55 for parity with the hero shadow
-	# (0.60) — enemies now ground to the floor with comparable AO weight.
-	# Without this, the hero-rim-light-lit player at iter-116 cast a
-	# noticeably darker pool than nearby enemies, throwing the silhouette
-	# read off ("the player looks heavier than the enemies").
-	var shadow: Sprite2D = Sprite2D.new()
-	shadow.texture = SHADOW_TEXTURE
-	# Anchor a few px below the collision center so it sits at the feet,
-	# not the body. Negative offsets would place it above (Godot Y-down).
-	shadow.position = Vector2(0, 4)
-	var shadow_scale: float = t.collision_radius / 160.0
-	shadow.scale = Vector2(shadow_scale, shadow_scale * 0.6)
-	# Iter 190 batch 1 — alpha 0.55 → 0.38 per user direction "small,
-	# subtle contact shadows directly beneath them for grounding." The
-	# iter-117 0.55 was tuned for parity with the iter-116 hero shadow
-	# at 0.60 — but in top-down 2D, contact shadows want to be quieter
-	# than full-saturation black blobs. Player reads "this thing has
-	# weight on the floor" without the shadow becoming a focal point.
-	shadow.modulate = Color(0, 0, 0, 0.38)
-	shadow.z_index = -1
-	# Move-before-sprite in the parent's child order so it draws
-	# underneath. add_child appends, then move_child puts it FIRST.
-	add_child(shadow)
-	move_child(shadow, 0)
+	# Iter 192 batch 1 — Removed entirely per user direction. The fixed-
+	# position (0, 4) shadow ellipse didn't track each enemy_type's
+	# sprite_y_offset variation, so enemies with negative offsets had
+	# their visual feet land ABOVE the shadow → "floating" reading.
+	# Fix options were (a) per-enemy shadow Y derived from offset, or
+	# (b) remove. User flagged (b) as the cleaner choice:
+	#   "if contact shadows still look wrong, remove them entirely."
+	#
+	# Removal works because the room provides other grounding:
+	#   • Decor scatter (bones / runes / blood) under enemies' feet
+	#   • Wall + pillar drop shadows define floor depth
+	#   • CanvasModulate creates a dim ambient that the bottom rows of
+	#     enemy sprites blend into, anchoring them to the floor
+	# Without an ellipse shadow, top-down 2D enemies sit cleanly on
+	# the floor by virtue of their own pixel-art bottom edges (the same
+	# reason Hollow Knight + Isaac + Hyper Light Drifter don't draw
+	# ellipse shadows under their actors).
 
 # ── Physics tick — universal scaffolding + behavior dispatch ──────────
 # Iter 152 — idle bob runs in _process (separate from physics) so the

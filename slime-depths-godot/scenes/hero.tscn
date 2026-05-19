@@ -57,19 +57,11 @@ collision_layer = 2
 collision_mask = 1
 script = ExtResource("1_script")
 
-; Iter 52 — bumped shadow visibility. Was scale (0.18, 0.13) at 0.45
-; alpha — barely readable on the screenshot review. Wider + darker
-; ellipse grounds the hero on the dungeon floor without competing
-; with enemy shadows (still smaller than them by sprite-size).
-; Iter 190 batch 1 — alpha 0.60 → 0.42 per user direction "small,
-; subtle contact shadow." Hero shadow stays a touch darker than
-; enemy shadows (0.42 vs 0.38) because the hero is the visual anchor
-; and benefits from slightly more weight without becoming "stamped."
-[node name="Shadow" type="Sprite2D" parent="."]
-position = Vector2(0, 3)
-scale = Vector2(0.22, 0.16)
-modulate = Color(0, 0, 0, 0.42)
-texture = ExtResource("2_shadow")
+; Iter 192 batch 1 — REMOVED Shadow Sprite2D entirely. User direction:
+; "if contact shadows still look wrong, remove them entirely." Hero
+; matches enemy grounding language (enemy.gd ground shadow also
+; removed iter-192). Top-down 2D doesn't need ellipse contact shadows
+; when the actor's own pixel-art bottom edge sits on the dim floor.
 
 ; iter-116: subtle hero rim light. Pool the player into instant
 ; findability without becoming a spotlight on adjacent enemies.
