@@ -528,6 +528,14 @@ func _ready() -> void:
 		# dispatcher is data-driven from _room.biome; "crypt" is the
 		# iter-30 default look.
 		_apply_biome_visuals(_room.biome)
+		# Iter 183 item 2 — perimeter prop clusters (set-dressing islands).
+		# Places PixelLab brazier/pillar-brazier props with decals at the
+		# room's 4 corners. The "rectangular test arena" feel goes away when
+		# the perimeter has authored landmarks instead of bare wall mass.
+		# (ChatGPT critique #2: "room reads like a generated box rather than
+		# a designed combat space.") Skipped on a per-corner basis if a
+		# pillar / chest / wall / spawn is already there.
+		_spawn_perimeter_prop_clusters()
 		# Iter 51 — atmospheric polish: vignette + dust motes. Both
 		# code-built so adding a new room doesn't require .tscn edits.
 		_spawn_vignette_overlay()
@@ -1329,6 +1337,176 @@ func _add_quad_vertex_colors(v0: Vector2, v1: Vector2, v2: Vector2, v3: Vector2,
 	p.vertex_colors = PackedColorArray(colors)
 	p.z_index = z
 	add_child(p)
+
+# ── Iter 183 Item 2 — Perimeter prop clusters ────────────────────────
+#
+# Background: the iter-? room was a 1280×720 rectangle with pillars in
+# the middle and decor scatter across the floor. Reads as "generated
+# box" (ChatGPT critique #2). The Hades / Isaac pattern is "set-
+# dressing islands" along the perimeter — authored prop clusters at
+# the corners + edges that give the room recognizable architectural
+# anchors while keeping the center clear for combat.
+#
+# What this places: at each of 4 corner positions (inset 200/220 px),
+# spawn an anchor prop (random pick between bowl-brazier and pillar-
+# brazier from PixelLab assets) + a ground shadow + a warm PointLight2D
+# at the flame + 2-3 random decals (skull / bone / shards / crack /
+# blood) scattered within 36 px of the prop base. Per-corner skip
+# chance (20%) so not every room gets all 4 — variation between rooms.
+#
+# Skipped per-corner if pillar / chest / spawn / wall / hazard already
+# occupies the area (radius 80 px). Seed is room-scoped so the cluster
+# layout is stable within a run but fresh per run.
+const PROP_BRAZIER_TEX: Texture2D = preload("res://assets/props/dungeon_brazier.png")
+const PROP_PILLAR_BRAZIER_TEX: Texture2D = preload("res://assets/props/dungeon_pillar_brazier.png")
+const PROP_FRAME_SIZE: int = 64
+const DECAL_TEXTURES: Array[Texture2D] = [
+	preload("res://assets/decor/decal_skull.png"),
+	preload("res://assets/decor/decal_bone.png"),
+	preload("res://assets/decor/decal_shards.png"),
+	preload("res://assets/decor/decal_crack.png"),
+	preload("res://assets/decor/decal_blood.png"),
+]
+# Four corner cluster positions. Inset 200/220 px from the corner so
+# the prop sits inside the playable area but reads as "edge."
+const PERIMETER_CLUSTER_POSITIONS: Array[Vector2] = [
+	Vector2(200, 220),
+	Vector2(1080, 220),
+	Vector2(200, 548),
+	Vector2(1080, 548),
+]
+# Per-cluster skip chance (some rooms get 3 anchors, some get 4).
+const PERIMETER_CLUSTER_SKIP_CHANCE: float = 0.20
+# Min distance to a pre-existing obstacle before we count a corner as
+# "blocked" and skip its cluster.
+const PERIMETER_OBSTACLE_RADIUS: float = 80.0
+
+func _spawn_perimeter_prop_clusters() -> void:
+	if _room == null:
+		return
+	# Build occupied list from per-room data so we don't place a prop on
+	# top of an existing landmark. Pillar/chest positions are Vector2;
+	# walls and hazards need rect-center conversion.
+	var occupied: Array[Vector2] = []
+	occupied.append_array(_room.pillar_positions)
+	occupied.append_array(_room.chest_positions)
+	occupied.append_array(_room.spawn_points)
+	for h_pos in _room.hazard_positions:
+		occupied.append(h_pos)
+	for wall_r in _room.wall_rects:
+		occupied.append(wall_r.position + wall_r.size * 0.5)
+	# Seed RNG per-room so cluster prop choice + decal scatter is stable
+	# within a run but fresh per run.
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 7919 + GameState.dungeon_runs * 17 + 31
+	for base_pos in PERIMETER_CLUSTER_POSITIONS:
+		if _too_close_to_occupied(base_pos, occupied, PERIMETER_OBSTACLE_RADIUS):
+			continue
+		# Skip 20% of corners so not every room has all 4 — variation.
+		if rng.randf() < PERIMETER_CLUSTER_SKIP_CHANCE:
+			continue
+		var jitter: Vector2 = Vector2(
+			rng.randf_range(-14.0, 14.0),
+			rng.randf_range(-14.0, 14.0)
+		)
+		var pos: Vector2 = base_pos + jitter
+		var use_pillar: bool = rng.randf() < 0.45  # 45% pillar-brazier, 55% bowl
+		_spawn_prop_anchor(pos, use_pillar)
+		# 2-3 decals scattered within 36 px of the anchor base.
+		var num_decals: int = rng.randi_range(2, 3)
+		for i in range(num_decals):
+			var off: Vector2 = Vector2(
+				rng.randf_range(-36.0, 36.0),
+				rng.randf_range(-30.0, 30.0)
+			)
+			_spawn_decal_at(pos + off, rng)
+
+func _spawn_prop_anchor(pos: Vector2, is_pillar: bool) -> void:
+	# Ground shadow under the prop. Pillar variant is narrower than
+	# bowl. Drawn FIRST so tree order puts it under the body sprite.
+	var shadow: Polygon2D = Polygon2D.new()
+	var shadow_w: float = 22.0 if is_pillar else 28.0
+	shadow.polygon = _ellipse_polygon(shadow_w, 8.0, 14)
+	shadow.position = pos + Vector2(0, 4)
+	shadow.color = Color(0, 0, 0, 0.55)
+	shadow.z_index = 0
+	add_child(shadow)
+	# Prop sprite — AtlasTexture isolating frame 0 of the 7-frame sheet.
+	# We render it static (no animation) — the warm flame light below
+	# carries the "alive" cue; animating the sprite + light together
+	# would cost cycles for marginal perception gain at this distance.
+	var sprite: Sprite2D = Sprite2D.new()
+	var atlas: AtlasTexture = AtlasTexture.new()
+	atlas.atlas = PROP_PILLAR_BRAZIER_TEX if is_pillar else PROP_BRAZIER_TEX
+	atlas.region = Rect2(0, 0, PROP_FRAME_SIZE, PROP_FRAME_SIZE)
+	sprite.texture = atlas
+	sprite.position = pos
+	# offset.y = -28 puts the sprite's bottom ~4 px BELOW the position.
+	# The prop's "feet" land just below the position so it reads as
+	# standing on the floor (not floating above).
+	sprite.offset = Vector2(0, -28)
+	sprite.z_index = 2
+	add_child(sprite)
+	# Warm brazier light. Flame is near the TOP of the 64×64 sprite, so
+	# the light source sits ~38 px above the position. Energy 0.55 is
+	# similar to torch.gd's baseline so corner braziers don't outshine
+	# centerline torches.
+	var light: PointLight2D = PointLight2D.new()
+	light.color = Color(1.0, 0.62, 0.28, 1.0)
+	light.energy = 0.55
+	light.position = pos + Vector2(0, -38)
+	light.range_z_min = -1024
+	light.range_z_max = 1024
+	light.shadow_enabled = false
+	light.texture = _prop_light_radial_tex(128)
+	light.texture_scale = 1.0
+	light.z_index = 3
+	add_child(light)
+
+func _spawn_decal_at(pos: Vector2, rng: RandomNumberGenerator) -> void:
+	var sprite: Sprite2D = Sprite2D.new()
+	sprite.texture = DECAL_TEXTURES[rng.randi() % DECAL_TEXTURES.size()]
+	sprite.position = pos
+	# Random rotation so the same decal looks distinct at different
+	# placements. Scale variation 0.75-1.1 adds light size variation.
+	sprite.rotation = rng.randf() * TAU
+	var s: float = rng.randf_range(0.75, 1.1)
+	sprite.scale = Vector2(s, s)
+	# Alpha variance so decals look like weathered remnants of varying
+	# age, not freshly painted.
+	sprite.modulate = Color(1, 1, 1, rng.randf_range(0.55, 0.88))
+	sprite.z_index = 0
+	add_child(sprite)
+
+func _too_close_to_occupied(pos: Vector2, occupied: Array[Vector2], radius: float) -> bool:
+	for occ in occupied:
+		if pos.distance_to(occ) < radius:
+			return true
+	return false
+
+func _ellipse_polygon(rx: float, ry: float, vertices: int) -> PackedVector2Array:
+	var pts: PackedVector2Array = PackedVector2Array()
+	for i in range(vertices):
+		var t: float = float(i) / vertices * TAU
+		pts.append(Vector2(cos(t) * rx, sin(t) * ry))
+	return pts
+
+func _prop_light_radial_tex(size: int) -> Texture2D:
+	var grad: Gradient = Gradient.new()
+	grad.offsets = PackedFloat32Array([0, 0.6, 1])
+	grad.colors = PackedColorArray([
+		Color(1, 1, 1, 1),
+		Color(1, 1, 1, 0.4),
+		Color(1, 1, 1, 0),
+	])
+	var tex: GradientTexture2D = GradientTexture2D.new()
+	tex.gradient = grad
+	tex.width = size
+	tex.height = size
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	return tex
 
 # Iter 30 — hazards (legacy single-kind path). For each position in
 # hazard_positions, instantiate the scene matching hazard_kind. Unknown
