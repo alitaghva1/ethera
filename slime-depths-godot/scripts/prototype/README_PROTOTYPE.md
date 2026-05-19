@@ -26,6 +26,61 @@ to `run/main_scene="res://scenes/main_menu.tscn"`.
 | `W A S D`          | Move                                       |
 | Right Mouse `or` Space | Hold to pull the gravestone toward you |
 | Release pull       | Gravestone keeps momentum                  |
+| `1`                | Switch to Open Arena room                  |
+| `2`                | Switch to Pillar Room                      |
+| `3`                | Switch to Chokepoint Room                  |
+| `R`                | Reset current room (respawn wave, home hero + stone) |
+
+## Room types
+
+Three layouts hot-swap on 1 / 2 / 3 without leaving the scene. All
+three share the same shell (1280×720 rectangle with exterior walls,
+hero + gravestone, debug HUD). Only the interior obstacles and
+enemy spawn points change.
+
+| Room                | Tests                                              |
+|---------------------|----------------------------------------------------|
+| **Open Arena** (1)  | Raw movement, pull, release, swing, damage threshold |
+| **Pillar Room** (2) | Ricochet, wrapping the tether around obstacles, gravestone getting caught, using cover |
+| **Chokepoint** (3)  | Defensive use — parking the gravestone in a doorway as a battering ram against funneled enemies |
+
+### Pillar Room layout
+
+4 circular pillars (radius 32 px) at the corners of an inner
+rectangle, leaving the center fully open for hero + gravestone:
+
+- `(380, 220)` `(900, 220)`
+- `(380, 500)` `(900, 500)`
+
+Enemies still spawn at the room corners + top-center, so they have
+to path around pillars to reach the hero.
+
+### Chokepoint Room layout
+
+One interior horizontal wall at y=400, split into two slabs with a
+240-px gap at the center (x=520..760):
+
+- Left slab: center `(300, 400)`, size `(440, 40)` — spans x=80..520
+- Right slab: center `(980, 400)`, size `(440, 40)` — spans x=760..1200
+
+Hero starts above the wall (y=360); chasers spawn below (y=540..640)
+and must funnel through the gap.
+
+## Debug panel
+
+Top-right corner. Updated every frame with:
+
+```
+VEL     423 px/s
+SLAM    YES
+ROOM    PILLAR ROOM
+ENEMIES 3
+```
+
+- `VEL` — gravestone's current linear velocity magnitude
+- `SLAM` — `YES` if VEL ≥ 260 px/s (damage threshold), else `no`
+- `ROOM` — current room type label
+- `ENEMIES` — alive chaser count (excludes corpses mid-fade)
 
 ## What's in this folder
 
@@ -66,7 +121,7 @@ On `take_hit`: decrement HP, adopt the knockback velocity (decays
 over `KNOCKBACK_TIME = 0.25 s`), tell the room to fire impact
 feedback. On 0 HP: fade alpha → 0, then `queue_free`.
 
-#### `physics_toy_room.gd` — 130 lines
+#### `physics_toy_room.gd` — ~280 lines
 The root-scene controller. Owns the hit-feedback pipeline:
 - `Engine.time_scale = 0.06` freeze for 0.08 s (hit-stop)
 - `FX.shake(amp, dur)` — reuses the existing FX autoload
@@ -74,8 +129,19 @@ The root-scene controller. Owns the hit-feedback pipeline:
   `audio.gd` enemy_hit beep AND `fx.gd` HIT_SPARK particle burst
   (both already subscribed to that signal in the main project)
 
-Also: spawns 5 chasers per wave, respawns 1.5 s after the room
-empties so playtesting doesn't require scene reloads.
+Also owns:
+- `RoomType` enum + `_build_room(rt)` dispatch — clears the
+  ObstacleLayer and programmatically rebuilds pillars / chokepoint
+  slabs when 1 / 2 / 3 is pressed.
+- `_input(event)` handler — reads physical_keycode for KEY_1/2/3/R
+  directly (no InputMap actions). Switches room or resets entities.
+- `_reset_entities_and_respawn()` — wipes chasers, homes the hero
+  and gravestone, clears gravestone velocity, respawns the wave.
+- `_update_debug_panel()` — refreshes the top-right Label every
+  frame with VEL / SLAM / ROOM / ENEMIES readouts.
+
+Spawns 5 chasers per wave; respawns 1.5 s after the room empties
+so playtesting doesn't require scene reloads.
 
 ### New scenes (`scenes/prototype/`)
 
@@ -103,10 +169,11 @@ the player reads the blob as a creature, not a hitbox.
 #### `physics_toy_room.tscn`
 1280×720 single-screen rectangle. Dark plate floor, four
 StaticBody2D wall slabs, hero spawned at (640, 360), gravestone at
-(780, 360) so it's already within tether range. EnemyLayer is an
-empty Node2D the script fills. Camera2D at room center so
-`FX.shake` finds it. Two UI labels (enemies counter + control
-hint).
+(780, 360) so it's already within tether range. EnemyLayer and
+**ObstacleLayer** are empty `Node2D`s that the script populates at
+runtime — the obstacle layer gets rebuilt by `_build_room(rt)` on
+every room switch. Camera2D at room center so `FX.shake` finds it.
+Three UI labels (enemies counter, control hint, debug panel).
 
 ### Modified files
 
@@ -123,6 +190,42 @@ no scene reads both `blast` and `tether_pull`.
 `run/main_scene` switched from `res://scenes/main_menu.tscn` to
 `res://scenes/prototype/physics_toy_room.tscn`. One-line revert to
 get back to the main game (see "How to launch" above).
+
+## Where to tune
+
+The two files worth opening first when something feels off:
+
+### `scripts/prototype/cursed_gravestone.gd`
+Top of file, under `─── Tether tuning ───`:
+- `TETHER_REST_LENGTH = 140.0` — idle distance the stone trails at
+- `PULL_STIFFNESS_IDLE = 22.0` — soft spring when not pulling
+- `PULL_STIFFNESS_ACTIVE = 260.0` — yank strength when pulling
+- `TETHER_DAMPING = 3.0` — bleeds off oscillation (lower = looser)
+- `MAX_TETHER_LENGTH = 360.0` — hard cap before snap-back
+- `SNAP_BACK_STIFFNESS = 28.0` — how forcefully it snaps back
+
+Under `─── Damage / impact thresholds ───`:
+- `MIN_DAMAGE_VEL = 260.0` — slam threshold (debug panel SLAM flag)
+- `ENEMY_KNOCKBACK_MULT = 0.55` — fraction of gravestone vel → enemy
+
+Mass / inertia (in `cursed_gravestone.tscn`):
+- `mass = 5.0` — heavier feels more inertial; lower swings faster
+
+### `scripts/prototype/physics_toy_room.gd`
+Top of file, under various sections:
+- `HIT_STOP_SCALE = 0.06` / `HIT_STOP_TIME = 0.08` — slam freeze
+- `SHAKE_PER_VEL = 0.035` / `SHAKE_MAX = 18.0` / `SHAKE_DUR = 0.18`
+- `ENEMIES_PER_WAVE = 5` / `RESPAWN_DELAY = 1.5`
+- `HERO_HOME = (640, 360)` / `GRAVESTONE_HOME = (780, 360)` — reset anchors
+- `PILLAR_RADIUS` + `PILLAR_POSITIONS` — pillar layout
+- `CHOKEPOINT_LEFT_CENTER / SIZE`, `CHOKEPOINT_RIGHT_CENTER / SIZE` — chokepoint geometry
+- `SPAWN_OPEN_OR_PILLAR` / `SPAWN_CHOKEPOINT` — per-room spawn arrays
+- `DEBUG_DAMAGE_VEL_THRESHOLD = 260.0` — duplicate of MIN_DAMAGE_VEL for the debug panel (keep in sync)
+
+### `scripts/prototype/blob_chaser.gd`
+- `MOVE_SPEED = 80.0` — enemy chase speed
+- `MAX_HP = 2` — hits to kill
+- `KNOCKBACK_TIME = 0.25` / `KNOCKBACK_DECAY = 8.0` — recovery feel
 
 ## What the prototype reuses from the main project
 
