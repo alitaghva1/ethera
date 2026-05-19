@@ -2343,6 +2343,13 @@ func _start_dash_strike() -> void:
 		aim_world = _dir_to_vector(_facing_dir)
 	_dash_strike_dir = aim_world.normalized()
 	_dash_strike_time = DASH_STRIKE_DURATION
+	# Iter 197 — dash whoosh audio. Pre-iter-197 dash_strike was visually
+	# distinctive (golden afterimages) but audibly silent. Adding a
+	# 400→1200 Hz sine sweep over 200 ms gives the move the iconic
+	# "energy in motion" sonic cue Hades' dash has. Played at hero
+	# position so it spatially tracks with the move's start.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("dash_whoosh", global_position)
 	# iter-96: relics + SHADOW theme can shrink the cooldown via
 	# `dash_strike_cooldown_mul`. Modifier folds additively (e.g. -0.30
 	# from dash_master + -0.40 from phantom_step = -0.70 → 30% of base).

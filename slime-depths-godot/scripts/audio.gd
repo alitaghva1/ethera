@@ -37,7 +37,21 @@ const SOUND_CONFIGS := {
 	"hero_blasted":  { "freq_start": 820.0, "freq_end": 160.0, "duration": 0.18, "wave": "sin",    "gain": 0.45, "decay_pow": 1.8 },
 	# iter-95: was "hero_dodged" — dodge ability deleted, sound now plays
 	# on the SHIELD raise + catch beats via the renamed hero_shielded signal.
-	"hero_shielded": { "freq_start": 220.0, "freq_end": 360.0, "duration": 0.08, "wave": "noise",  "gain": 0.30, "decay_pow": 1.4 },
+	# Iter 197 — upgraded to a Hades-style PARRY CHIME (was a noise puff
+	# at 220-360 Hz). Parry catch is timing-skill gated; rewarding it
+	# with a clean musical bell strike is the canonical "you nailed it"
+	# audio cue (Hades' clash-hit sound). 880 → 1320 Hz is an
+	# ascending perfect-fifth on a sine wave, 180 ms with linear decay
+	# so it RINGS rather than snaps.
+	"hero_shielded": { "freq_start": 880.0, "freq_end":1320.0, "duration": 0.18, "wave": "sin",    "gain": 0.45, "decay_pow": 1.0 },
+	# Iter 197 — dash whoosh. Pre-iter-197 dash_strike had golden
+	# afterimages (visual commitment) but no audio — the move felt
+	# weighted but silent. Rising 400 → 1200 Hz sine sweep over 200 ms
+	# evokes "energy in motion" / "blink" — matches the DASH_STRIKE
+	# duration of 280 ms. Sine for clean musicality; gain 0.35 keeps
+	# it present without overpowering the kill/hit beats it often
+	# fires alongside.
+	"dash_whoosh":   { "freq_start": 400.0, "freq_end":1200.0, "duration": 0.20, "wave": "sin",    "gain": 0.35, "decay_pow": 1.3 },
 	# Combat — receiving end
 	"hero_damaged":  { "freq_start": 110.0, "freq_end":  55.0, "duration": 0.14, "wave": "sin",    "gain": 0.55, "decay_pow": 1.5 },
 	"hero_died":     { "freq_start": 240.0, "freq_end":  55.0, "duration": 0.55, "wave": "sin",    "gain": 0.60, "decay_pow": 1.8 },
