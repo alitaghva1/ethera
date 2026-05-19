@@ -4189,17 +4189,11 @@ func _on_death_retry() -> void:
 const RUN_COMPLETE_DELAY := 2.5
 func _show_run_complete() -> void:
 	wave_label.text = "RUN COMPLETE"
-	# Compose a one-line summary of what the player walked out with.
-	# Uses the GOLD color family so it reads distinctly from the
-	# crimson death banner.
-	var relic_names: Array[String] = []
-	for rid in GameState.owned_relics:
-		var info: Dictionary = GameState.relic_info(rid)
-		relic_names.append(str(info.get("name", rid)))
-	var summary: String = "%d kills" % _kills
-	if relic_names.size() > 0:
-		summary += "  ·  " + " · ".join(relic_names)
-	status_label.text = summary
+	# Iter 162 — capture the run time for the victory screen BEFORE
+	# showing it (mirror of iter-158's hero-death capture path).
+	# Without this, GameState.last_run_time would still hold the
+	# previous run's value when victory screen reads it.
+	GameState.finalize_run_time()
 	# Big floating banner so the moment registers even if the player's
 	# eyes are still tracking the hero, not the HUD corner.
 	var banner: DamageNumber = DamageNumber.spawn(
@@ -4209,8 +4203,22 @@ func _show_run_complete() -> void:
 	)
 	add_child(banner)
 	Engine.time_scale = 1.0
+	# Iter 162 — proper victory screen instead of fade-to-menu. Reuses
+	# the death_screen scene with a show_victory variant that swaps
+	# title text/color + REACHED line to celebratory copy. Buttons
+	# still emit retry_pressed / menu_pressed (same handlers as death).
+	#
+	# Short delay so the FLOOR COMPLETE floater + FloorClearBurst BIG
+	# cascade have time to land before the screen takes over.
 	var t := get_tree().create_timer(RUN_COMPLETE_DELAY)
-	t.timeout.connect(_on_death_to_menu)
+	t.timeout.connect(_on_victory_show)
+
+# Iter 162 — bridge from the RUN_COMPLETE_DELAY timer to the
+# victory-screen reveal. Same instance as the death screen (single
+# overlay), just a different display call.
+func _on_victory_show() -> void:
+	if _death_screen != null and _death_screen.has_method("show_victory"):
+		_death_screen.show_victory(_kills)
 
 func _on_death_to_menu() -> void:
 	# Iter 12: hamlet removed. ESC / MENU button returns to the main

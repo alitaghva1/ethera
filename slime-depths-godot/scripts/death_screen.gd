@@ -38,6 +38,12 @@ const HOVER_TWEEN_TIME := 0.12
 @onready var menu_button: Button = $Panel/Stack/ButtonRow/MenuButton
 
 var _hover_tweens: Dictionary = {}
+# Iter 162 — original title text + color, captured so show_victory()
+# can override them without leaking the override into a subsequent
+# show_death() call.
+var _baseline_title_text: String = ""
+var _baseline_title_color: Color = Color(1.0, 0.2, 0.2, 1.0)
+var _baseline_glow_color: Color = Color(0.85, 0.10, 0.10, 0.55)
 
 func _ready() -> void:
 	retry_button.pressed.connect(_on_retry_pressed)
@@ -57,6 +63,13 @@ func _ready() -> void:
 	# tween anchors symmetrically. No infinite pulse on the death screen
 	# — the screen wants stillness, not life.
 	_recenter_title_pivots()
+	# Iter 162 — snapshot the .tscn-authored title text + colors so
+	# show_victory() can restore the death styling on a subsequent
+	# show_death (the screen is single-instance, so a victory state
+	# would otherwise leak into the next death display).
+	_baseline_title_text = title.text
+	_baseline_title_color = title.get_theme_color("font_color")
+	_baseline_glow_color = title_glow.get_theme_color("font_color")
 	title.resized.connect(_recenter_title_pivots)
 	title_glow.resized.connect(_recenter_title_pivots)
 
@@ -65,6 +78,37 @@ func _ready() -> void:
 # small while still letting it summarize the meta state. _has_game_state
 # guards make the scene runnable in isolation (no autoload registered)
 # for in-editor preview without crashing.
+# Iter 162 — VICTORY variant. Same screen, same stat blocks, same
+# buttons — just a different title text + warm-gold color palette so
+# the player reads "you cleared the run" instead of "you died."
+# Called from main.gd._show_run_complete when room_06 (Broodmother)
+# is cleared. Restoring the death baseline happens on the next
+# show_death() automatically because that method's flow doesn't
+# touch the title (we override here, _baseline_title_* fields hold
+# the originals for that case if we ever need to restore explicitly).
+func show_victory(kills: int) -> void:
+	# Override title styling. Warm cream-gold (1.0, 0.88, 0.55) +
+	# softer gold glow. The death "YOU DIED" red is replaced with
+	# "ETHERA CLEARED" cream.
+	title.text = "ETHERA CLEARED"
+	title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.55, 1.0))
+	title_glow.text = "ETHERA CLEARED"
+	title_glow.add_theme_color_override("font_color", Color(0.92, 0.65, 0.22, 0.55))
+	# Retry button reads "PLAY AGAIN" on victory (vs the death-screen
+	# "RETRY" which implies "this time do better"). Menu button stays
+	# the same.
+	retry_button.text = "PLAY AGAIN"
+	# Reuse the rest of the death-screen flow for stats + relics +
+	# fade-in. show_death() already populates kills, runs, time,
+	# reached label, themes summary, relics list — perfect for the
+	# victory screen too.
+	show_death(kills)
+	# Override REACHED label: death said "you reached X kills" — for
+	# a victory the line should celebrate the completion instead.
+	if _reached_label != null:
+		_reached_label.text = "you walked into the dark · and out again"
+		_reached_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.66, 1.0))
+
 func show_death(kills: int) -> void:
 	var runs: int = 0
 	if _has_game_state():
