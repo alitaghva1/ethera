@@ -156,6 +156,27 @@ autowrap_mode = 3
 clip_text = false
 mouse_filter = 2
 
+; Iter 163 — theme synergy line. Sits just OUTSIDE the InfoPanel,
+; below it, so it doesn't fight the description's autowrap layout.
+; pedestal.gd populates this with "STORM x3 ★ RESONANCE" / etc. at
+; _ready based on this relic's themes vs the player's currently
+; owned relics. Empty when this relic has no themes (most utility
+; relics have at least one). Color is set per-theme.
+[node name="SynergyLabel" type="Label" parent="."]
+offset_left = -120.0
+offset_top = -94.0
+offset_right = 120.0
+offset_bottom = -68.0
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.85, 0.85, 0.95, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+clip_text = false
+mouse_filter = 2
+
 [node name="HaloSprite" type="Sprite2D" parent="."]
 position = Vector2(0, -80)
 scale = Vector2(0.4, 0.4)

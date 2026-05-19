@@ -59,6 +59,29 @@ const DESC_FONT_SHRUNK: int = 13
 @onready var name_label: Label = $InfoPanel/NameLabel
 @onready var desc_label: Label = $InfoPanel/DescLabel
 @onready var prompt: Label = $Prompt
+# Iter 163 — theme synergy line below the InfoPanel. Populated at
+# _ready based on this relic's themes vs the player's currently
+# owned relics. Empty when the relic has no themes.
+@onready var synergy_label: Label = $SynergyLabel
+
+# Iter 163 — theme display names + per-theme color tints. Matches
+# the slime-depths/src/themes.js palette + the iter-66 audio
+# ascendance colors. Falls back to neutral white when a theme isn't
+# in this table (defensive — RELIC_REGISTRY only contains these 5).
+const THEME_DISPLAY: Dictionary = {
+	"storm":  "STORM",
+	"flame":  "FLAME",
+	"blood":  "BLOOD",
+	"vow":    "VOW",
+	"shadow": "SHADOW",
+}
+const THEME_COLORS: Dictionary = {
+	"storm":  Color(0.55, 0.85, 1.0,  1.0),
+	"flame":  Color(1.0,  0.62, 0.30, 1.0),
+	"blood":  Color(0.90, 0.30, 0.36, 1.0),
+	"vow":    Color(1.0,  0.88, 0.50, 1.0),
+	"shadow": Color(0.72, 0.55, 0.92, 1.0),
+}
 @onready var glow: PointLight2D = $PointLight2D
 # Iter 28 — new framing nodes. info_panel is the bordered backdrop
 # behind the name+desc; halo_sprite is the soft tier-colored glow
@@ -136,6 +159,12 @@ func _ready() -> void:
 	# Iter 16 — pedestals spawned as part of a 3-choice offer join
 	# this group so they can dismiss each other on claim.
 	add_to_group("pedestal_offer")
+	# Iter 163 — populate the theme synergy line. Reads this relic's
+	# themes array, looks up the player's current owned counts, and
+	# decides whether picking this relic would tip into RESONANCE
+	# (≥2 owned) or ASCENDANCE (≥4 owned) — both displayed with
+	# a star + theme color so the build payoff is legible at a glance.
+	_populate_synergy_label(info)
 
 func _process(delta: float) -> void:
 	if _claimed:
@@ -159,6 +188,61 @@ func _process(delta: float) -> void:
 # Dispatch table. Unknown tiers fall through to the common baseline so
 # a future "mythic" string in the registry won't render as an invisible
 # pedestal — it just renders as common until this match grows a branch.
+# Iter 163 — synergy display. For each theme this relic carries:
+#   • Compute `would_have = current_owned + 1` (post-pickup count).
+#   • If would_have >= ASCENDANCE_THRESHOLD AND current < threshold →
+#     "STORM ★ ASCENDANCE" — biggest payoff, gold star + theme tint.
+#   • If would_have >= RESONANCE_THRESHOLD AND current < threshold →
+#     "STORM ★ RESONANCE" — tipping into the first synergy tier.
+#   • Else if current_owned >= 1 → "STORM ×3" — informational; the
+#     player already has stacks but isn't tipping into a new tier.
+#   • Else → "STORM" alone — flat theme tag for newcomers.
+#
+# When the relic has multiple themes (e.g. nightblade is storm+shadow)
+# we line them up separated by " · ". Color is the FIRST theme's tint;
+# the secondary theme inherits brightness via the outline. Keeps the
+# label single-line + readable.
+func _populate_synergy_label(info: Dictionary) -> void:
+	if synergy_label == null:
+		return
+	var themes: Array = info.get("themes", [])
+	if themes.is_empty():
+		synergy_label.text = ""
+		return
+	var parts: Array[String] = []
+	var primary_color: Color = Color(0.85, 0.85, 0.95, 1.0)
+	var any_tipping: bool = false
+	for i in range(themes.size()):
+		var t: String = str(themes[i])
+		var display: String = THEME_DISPLAY.get(t, t.to_upper())
+		var owned: int = 0
+		if "theme_count" in GameState:
+			owned = GameState.theme_count(t)
+		var would_have: int = owned + 1
+		var resonance_thr: int = GameState.RESONANCE_THRESHOLD if "RESONANCE_THRESHOLD" in GameState else 2
+		var ascendance_thr: int = GameState.ASCENDANCE_THRESHOLD if "ASCENDANCE_THRESHOLD" in GameState else 4
+		var segment: String = display
+		if would_have >= ascendance_thr and owned < ascendance_thr:
+			segment = "%s ★ ASCENDANCE" % display
+			any_tipping = true
+		elif would_have >= resonance_thr and owned < resonance_thr:
+			segment = "%s ★ RESONANCE" % display
+			any_tipping = true
+		elif owned >= 1:
+			segment = "%s ×%d" % [display, would_have]
+		parts.append(segment)
+		if i == 0:
+			primary_color = THEME_COLORS.get(t, primary_color)
+	synergy_label.text = "  ·  ".join(parts)
+	# When any theme is tipping into a new tier, brighten the
+	# overall color so the line POPS. Otherwise dim it slightly so
+	# the "informational" case reads as quiet annotation.
+	if any_tipping:
+		synergy_label.add_theme_color_override("font_color", primary_color)
+	else:
+		var dimmed: Color = primary_color.lerp(Color(0.78, 0.78, 0.86, 1.0), 0.45)
+		synergy_label.add_theme_color_override("font_color", dimmed)
+
 func _apply_tier_visuals(tier: String) -> void:
 	match tier:
 		"rare":
