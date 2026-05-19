@@ -1,9 +1,25 @@
-[gd_scene load_steps=3 format=3 uid="uid://b3slowzone0001"]
+[gd_scene load_steps=5 format=3 uid="uid://b3slowzone0001"]
 
 [ext_resource type="Script" path="res://scripts/slow_zone.gd" id="1_script"]
 
 [sub_resource type="CircleShape2D" id="slowzone_area"]
 radius = 36.0
+
+; Iter 189 batch 2 — toxic light texture. Soft radial gradient sized
+; 192×192 so the slow zone's PointLight2D emits a ~120 px green-tinted
+; pool. Hazard now INTERACTS with the room's lighting: pillars near
+; the well throw faintly green shadows; walls catch the toxic glow.
+[sub_resource type="Gradient" id="toxic_light_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.45, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="toxic_light_tex"]
+gradient = SubResource("toxic_light_grad")
+width = 192
+height = 192
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
 
 ; Iter 31 slow-zone hazard. Passive Area2D that halves hero walk speed
 ; while inside. Visual = murky green/teal pool with a slow ripple ring
@@ -174,6 +190,24 @@ position = Vector2(52, 14)
 polygon = PackedVector2Array(7, 0, 6, 4, 0, 6, -6, 4, -7, 0, -6, -4, 0, -6, 6, -4)
 color = Color(0.18, 0.24, 0.08, 0.60)
 z_index = 0
+
+; Iter 189 batch 2 — toxic light emission. The cursed well becomes
+; an actual LIGHT SOURCE in the room: pillars near it cast greenish
+; shadows, walls catch the toxic glow, hero standing close visually
+; INTERACTS with the hazard's emission. Energy kept low (0.45) so it
+; doesn't compete with torches; range_z_max negative keeps it on the
+; floor plane.
+[node name="ToxicLight" type="PointLight2D" parent="."]
+color = Color(0.40, 0.85, 0.32, 1)
+energy = 0.45
+range_z_min = -1024
+range_z_max = 1024
+texture = SubResource("toxic_light_tex")
+texture_scale = 1.0
+shadow_enabled = true
+shadow_color = Color(0, 0, 0, 0.30)
+shadow_filter = 1
+shadow_filter_smooth = 2.0
 
 ; Footprint halo — soft greenish-teal disc at radius ~44, very translucent.
 ; Sits at z=1 below the main pool so the player sees a wider danger
