@@ -72,10 +72,17 @@ const GLOW_PEAK_ALPHA: float = 0.70
 # resolution issue at first-load. The script reads `.pulling` via
 # duck-typing — set wherever a ToyHero is the actual node.
 var _player: CharacterBody2D = null
-# Danger-glow child cached at _ready. Each physics tick we set its
-# modulate.a from linear_velocity. Resolved by NODE NAME (not type)
-# so the scene file can swap the visual without code edits.
+# Visual children cached at _ready. Each physics tick we set their
+# modulate / default_color based on linear_velocity overshoot above
+# MIN_DAMAGE_VEL. Two channels react in unison so the slam state
+# READS UNAMBIGUOUSLY:
+#   • DangerGlow (Polygon2D behind body) — red halo around silhouette
+#   • Outline    (Line2D tracing the body) — lerps from dark navy to
+#                  saturated red so the body itself glows on slam
+const OUTLINE_BASE_COLOR: Color = Color(0.08, 0.06, 0.10, 1.0)
+const OUTLINE_DANGER_COLOR: Color = Color(1.0, 0.28, 0.20, 1.0)
 var _danger_glow: Polygon2D = null
+var _outline: Line2D = null
 
 func _ready() -> void:
 	contact_monitor = true
@@ -86,6 +93,7 @@ func _ready() -> void:
 	if player_path != NodePath():
 		_player = get_node_or_null(player_path) as CharacterBody2D
 	_danger_glow = get_node_or_null("DangerGlow") as Polygon2D
+	_outline = get_node_or_null("Outline") as Line2D
 
 func _physics_process(_delta: float) -> void:
 	if _player == null or not is_instance_valid(_player):
@@ -113,25 +121,29 @@ func _physics_process(_delta: float) -> void:
 		apply_central_force(snap_back)
 	_update_danger_glow()
 
-# Set the danger-glow child's alpha based on velocity overshoot.
-# Linear ramp from 0 (at MIN_DAMAGE_VEL) to GLOW_PEAK_ALPHA (at
-# MIN_DAMAGE_VEL + DANGER_GLOW_FULL_OVERSHOOT). Clamped at both ends.
-# The READOUT in the debug panel's SLAM flag is the same threshold;
-# the glow gives the player a continuous in-world tell rather than
-# making them read the HUD.
+# Drive the danger-state visuals based on velocity overshoot. Two
+# layers react in unison:
+#
+#   • DangerGlow polygon alpha — ramps 0 → GLOW_PEAK_ALPHA across
+#     DANGER_GLOW_FULL_OVERSHOOT px/s of overshoot. The halo extends
+#     past the body silhouette so the player sees a red aura.
+#   • Outline Line2D color — lerps from dark navy (OUTLINE_BASE) to
+#     saturated red (OUTLINE_DANGER) over the same overshoot range.
+#     The body's own silhouette LIGHTS UP, which is much higher-
+#     contrast than the under-body glow alone.
+#
+# Both off the same `t = overshoot / DANGER_GLOW_FULL_OVERSHOOT` so
+# they ramp together. Below MIN_DAMAGE_VEL both reset to baseline.
 func _update_danger_glow() -> void:
-	if _danger_glow == null:
-		return
 	var v: float = linear_velocity.length()
 	var overshoot: float = v - MIN_DAMAGE_VEL
-	var target: float = clampf(
-		overshoot / DANGER_GLOW_FULL_OVERSHOOT,
-		0.0,
-		1.0,
-	) * GLOW_PEAK_ALPHA
-	var c: Color = _danger_glow.color
-	c.a = target
-	_danger_glow.color = c
+	var t: float = clampf(overshoot / DANGER_GLOW_FULL_OVERSHOOT, 0.0, 1.0)
+	if _danger_glow != null:
+		var c: Color = _danger_glow.color
+		c.a = t * GLOW_PEAK_ALPHA
+		_danger_glow.color = c
+	if _outline != null:
+		_outline.default_color = OUTLINE_BASE_COLOR.lerp(OUTLINE_DANGER_COLOR, t)
 
 func _on_body_entered(body: Node) -> void:
 	var impact_vel: float = linear_velocity.length()
