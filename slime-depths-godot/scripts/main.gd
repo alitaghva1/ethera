@@ -1460,8 +1460,10 @@ const PERIMETER_CLUSTER_POSITIONS: Array[Vector2] = [
 	Vector2(200, 548),
 	Vector2(1080, 548),
 ]
-# Per-cluster skip chance (some rooms get 3 anchors, some get 4).
-const PERIMETER_CLUSTER_SKIP_CHANCE: float = 0.20
+# Per-cluster skip chance. Iter 185 batch 2 — pushed 0.20 → 0.30 so
+# room-to-room variation is more pronounced. Typical room now has 2-3
+# anchor clusters out of 4 candidates; ~10% of rooms have only 2.
+const PERIMETER_CLUSTER_SKIP_CHANCE: float = 0.30
 # Min distance to a pre-existing obstacle before we count a corner as
 # "blocked" and skip its cluster.
 const PERIMETER_OBSTACLE_RADIUS: float = 80.0
@@ -1692,7 +1694,11 @@ func _spawn_perimeter_masonry_seams() -> void:
 func _spawn_wall_overlays() -> void:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = (RunState.current_room_index + 1) * 4133 + GameState.dungeon_runs * 13 + 71
-	var num_overlays: int = rng.randi_range(2, 3)
+	# Iter 185 batch 2 — count range 2-3 → 1-4. Spreads variation: some
+	# rooms get a single sparse overlay, others get up to 4 dense ones.
+	# Combined with the 12 candidate position pool, room-to-room
+	# overlay placement now feels meaningfully different.
+	var num_overlays: int = rng.randi_range(1, 4)
 	# Pull-without-replacement so we don't double-stack on the same
 	# candidate position.
 	var pool: Array[Vector2] = WALL_OVERLAY_CANDIDATES.duplicate()
