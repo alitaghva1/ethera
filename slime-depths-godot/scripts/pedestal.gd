@@ -27,9 +27,15 @@ const GLOW_COLOR_LEGENDARY: Color = Color(0.9, 0.55, 1.0)
 const GLOW_ENERGY_BASE_COMMON: float = 1.3
 const GLOW_ENERGY_BASE_RARE: float = 1.95
 const GLOW_ENERGY_BASE_LEGENDARY: float = 2.6
-const BOB_AMP_COMMON: float = 4.0
-const BOB_AMP_RARE: float = 4.0
-const BOB_AMP_LEGENDARY: float = 8.0
+# Iter 178 — bob amplitudes standardized. Pre-iter-178 legendary was
+# 8.0 (visibly distinct lift) but the inconsistency read as "the
+# legendary is broken / jumping" next to its 4.0 siblings. Same
+# amplitude across all tiers; tier is communicated by the orb tint,
+# tier_cap, halo color, and now the active glow ring — no need to
+# overload the bob with rarity info.
+const BOB_AMP_COMMON: float = 5.0
+const BOB_AMP_RARE: float = 5.0
+const BOB_AMP_LEGENDARY: float = 5.0
 const RARE_RING_RADIUS: float = 30.0
 const RARE_RING_VERTS: int = 12
 const RARE_RING_DURATION: float = 1.4
@@ -41,7 +47,9 @@ const RARE_RING_DURATION: float = 1.4
 # MAX_PANEL_HEIGHT bounds the upward growth so a runaway flavor text
 # can't shove the panel off-screen — if needed > MAX, drop font size 1
 # point and re-measure. 160 px ≈ 8 wrapped lines at font_size=11.
-const DESC_INNER_WIDTH: float = 188.0
+# Iter 178 — panel narrowed from 196 → 168 px, so DescLabel inner width
+# is 160 px (168 - 4 - 4 padding). Was 188.
+const DESC_INNER_WIDTH: float = 160.0
 # iter-108 readability pass: MAX_PANEL_HEIGHT bumped 160→220 to fit the
 # 14-pt description font (was 12 pt). Longer descriptions like
 # AVATAR OF FLAME (155 chars) still need 5-6 wrapped lines at the new
@@ -89,7 +97,21 @@ const THEME_COLORS: Dictionary = {
 # plinth that indicates rarity even when the orb is off-screen.
 @onready var info_panel: Panel = $InfoPanel
 @onready var halo_sprite: Sprite2D = $HaloSprite
-@onready var tier_cap: ColorRect = $TierCap
+# Iter 178 — TierCap changed from ColorRect → Polygon2D (3-piece stone
+# plinth). Same role: tier-colored strip on the plinth top. Polygon2D
+# allows the trapezoidal silhouette of the new plinth.
+@onready var tier_cap: Polygon2D = $TierCap
+# Iter 178 — new framing nodes for the polished relic-choice room.
+# All resolved by NODE NAME so the scene file can be re-laid-out
+# without touching code.
+@onready var active_glow_ring: Polygon2D = $ActiveGlowRing
+@onready var vertical_aura: Sprite2D = $VerticalAura
+@onready var orb_shadow: Polygon2D = $OrbShadow
+@onready var plinth_side: Polygon2D = $PlinthSide
+@onready var plinth_top: Polygon2D = $PlinthTop
+# Tracks the active-glow alpha tween so a rapid enter/exit doesn't
+# pile alpha. Same kill-prior pattern as main.gd's pulse helpers.
+var _active_glow_tween: Tween = null
 
 var _hero_in_range: bool = false
 var _claimed: bool = false
@@ -150,7 +172,11 @@ func _ready() -> void:
 			var tex_size: Vector2 = (tex as Texture2D).get_size()
 			var max_dim: float = maxf(tex_size.x, tex_size.y)
 			if max_dim > 0.0:
-				var s: float = 56.0 / max_dim
+				# Iter 178 — TARGET 56 → 44. Smaller icon so it doesn't
+				# overlap the (now smaller) info panel above during bob,
+				# and the row of three pedestals reads as premium-sized
+				# rather than crowded.
+				var s: float = 44.0 / max_dim
 				orb.scale = Vector2(s, s)
 			# Soften the tier tint on the icon itself — the painted art
 			# reads poorly under heavy color overlays. The Halo + glow
@@ -196,13 +222,24 @@ func _process(delta: float) -> void:
 	# Iter 28 — base Y shifted from -56 to -80 to fit the taller plinth +
 	# new InfoPanel above. HaloSprite + PointLight2D bob in phase with
 	# the orb so the whole frame breathes together.
-	var bob_y: float = -80.0 + sin(t * 2.2) * _bob_amplitude
+	var bob_phase: float = sin(t * 2.2)
+	var bob_y: float = -80.0 + bob_phase * _bob_amplitude
 	orb.position.y = bob_y
 	if halo_sprite != null:
 		halo_sprite.position.y = bob_y
 	if glow != null:
 		glow.position.y = bob_y
-		glow.energy = _glow_energy_base + sin(t * 2.2) * 0.25
+		glow.energy = _glow_energy_base + bob_phase * 0.25
+	# Iter 178 — orb shadow shrinks/grows inverse to bob: when the orb
+	# lifts (bob_phase < 0 in our sin sign convention here means UP
+	# since y goes more-negative when bob_phase is negative — orb.y
+	# = -80 + phase*amp, so phase = +1 means y = -75, phase = -1
+	# means y = -85). When orb is HIGHER (phase ≈ -1), the shadow
+	# should SHRINK. Map phase ∈ [-1, +1] to shadow scale ∈ [0.7, 1.1].
+	# Same depth cue main characters in 2D platformers use.
+	if orb_shadow != null:
+		var shadow_scale: float = lerpf(0.7, 1.1, (bob_phase + 1.0) * 0.5)
+		orb_shadow.scale = Vector2(shadow_scale, shadow_scale)
 
 # ── Tier visuals ─────────────────────────────────────────────────────
 # Dispatch table. Unknown tiers fall through to the common baseline so
@@ -272,7 +309,11 @@ func _apply_tier_visuals(tier: String) -> void:
 			if glow != null:
 				glow.color = GLOW_COLOR_RARE
 			_tint_frame(GLOW_COLOR_RARE)
-			_build_rare_ring()
+			# Iter 178 — rare ring removed. Pre-iter-178 rare pedestals
+			# spawned a Line2D ring (iter-21) that competed with the
+			# new ActiveGlowRing for attention. Rarity is now in
+			# tier_cap + halo + vertical aura + border + orb tint —
+			# five overlapping channels. The extra ring was noise.
 		"legendary":
 			orb.modulate = ORB_TINT_LEGENDARY
 			_glow_energy_base = GLOW_ENERGY_BASE_LEGENDARY
@@ -302,12 +343,28 @@ func _tint_frame(tier_color: Color) -> void:
 	if info_panel != null:
 		var sb_existing: StyleBox = info_panel.get_theme_stylebox("panel")
 		var sb: StyleBoxFlat = (sb_existing.duplicate() as StyleBoxFlat) if sb_existing is StyleBoxFlat else StyleBoxFlat.new()
-		sb.border_color = tier_color
+		# Iter 178 — soft border. Pre-iter-178 active state slammed a
+		# harsh 2-px white border; the default rest state still used
+		# the full tier saturation. Now: rest state uses a dim mix of
+		# tier color + dark cream (subdued), active state (via
+		# _on_body_entered's glow ring + brightened halo) carries the
+		# attention. Border width is locked to 1 px in the .tscn.
+		var dim_border: Color = tier_color.lerp(Color(0.50, 0.42, 0.30, 1.0), 0.35)
+		sb.border_color = Color(dim_border.r, dim_border.g, dim_border.b, 0.85)
 		info_panel.add_theme_stylebox_override("panel", sb)
 	if halo_sprite != null:
 		halo_sprite.modulate = Color(tier_color.r, tier_color.g, tier_color.b, 0.55)
 	if tier_cap != null:
+		# Iter 178 — TierCap is now a Polygon2D, not ColorRect. Use .color.
 		tier_cap.color = tier_color
+	# Iter 178 — vertical aura takes the tier color. Alpha is locked
+	# in the gradient texture; we only swap the hue via modulate.
+	if vertical_aura != null:
+		vertical_aura.modulate = Color(tier_color.r, tier_color.g, tier_color.b, 0.55)
+	# Iter 178 — pre-tint the active glow ring so it's ready to
+	# brighten on body_entered. Alpha 0 baseline (invisible at rest).
+	if active_glow_ring != null:
+		active_glow_ring.color = Color(tier_color.r, tier_color.g, tier_color.b, 0.0)
 
 # Rare ring — Line2D circle (12 verts, closed) on a slow scale-up +
 # fade-out loop at the plinth's top edge. Stays just under the orb so
@@ -502,11 +559,30 @@ func _on_body_entered(body: Node) -> void:
 	if body.is_in_group("hero"):
 		_hero_in_range = true
 		prompt.visible = true
+		_set_active_glow(true)
 
 func _on_body_exited(body: Node) -> void:
 	if body.is_in_group("hero"):
 		_hero_in_range = false
 		prompt.visible = false
+		_set_active_glow(false)
+
+# Iter 178 — active glow ring + soft halo brighten when the hero is in
+# range. Replaces the prior "harsh white border" pattern. Brings the
+# tier color forward instead of layering a neutral outline on top —
+# preserves rarity grammar at the moment of selection.
+const ACTIVE_GLOW_PEAK_ALPHA: float = 0.45
+const ACTIVE_GLOW_TWEEN_DUR: float = 0.18
+
+func _set_active_glow(on: bool) -> void:
+	if active_glow_ring == null:
+		return
+	if _active_glow_tween != null and _active_glow_tween.is_valid():
+		_active_glow_tween.kill()
+	var target_alpha: float = ACTIVE_GLOW_PEAK_ALPHA if on else 0.0
+	_active_glow_tween = create_tween()
+	_active_glow_tween.tween_property(active_glow_ring, "color:a", target_alpha, ACTIVE_GLOW_TWEEN_DUR)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 func _input(ev: InputEvent) -> void:
 	if _claimed or not _hero_in_range:

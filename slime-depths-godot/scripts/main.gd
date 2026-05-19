@@ -417,6 +417,10 @@ var _pending_spawns := 0
 # Set true the first time a pedestal grants in this room; reset on
 # scene reload. Drives the door/run-complete branch.
 var _room_pickup_resolved := false
+# Iter 178 — offer-vignette CanvasLayer. Mounted by _spawn_offer_vignette
+# when the relic offer appears, dismissed by _dismiss_offer_vignette
+# when the player claims (or the offer otherwise resolves).
+var _offer_vignette: CanvasLayer = null
 # Iter 17 — boss tracking. Set on spawn when an enemy_type with
 # is_boss=true is instantiated. _process polls this each frame to
 # refresh the HP bar. Cleared (instance invalid) when the boss
@@ -2311,7 +2315,15 @@ func _on_wave_cleared() -> void:
 		elif _room != null and _room_had_boss():
 			is_big = true
 		FloorClearBurst.spawn(self, is_big)
-		status_label.text = "Choose a relic · walk near and press [E]"
+		# Iter 178 — shorter status copy + a soft floor-darkening vignette
+		# while the offer is up. Pre-iter-178 the long instructional
+		# string ("Choose a relic · walk near and press [E]") competed
+		# with the pedestals themselves for the player's attention; the
+		# [E] CLAIM prompt on each pedestal already teaches the action.
+		# The vignette suppresses random floor decor noise so the eye
+		# goes to the reward row, not the rubble.
+		status_label.text = "Choose one relic"
+		_spawn_offer_vignette()
 		_spawn_pedestal_offer(3)
 
 # Iter 71 — scan the active room's wave compositions for any enemy type
@@ -2629,6 +2641,66 @@ func _spawn_pedestal_offer(count: int) -> void:
 		ped.relic_id = picks[i]
 		add_child(ped)
 
+# Iter 178 — offer-room vignette. Spawned alongside _spawn_pedestal_offer
+# to dim the floor + outer edges so the player's eye is drawn to the
+# pedestal row. NOT a full overlay — a darkening Polygon2D anchored
+# at room edges with a brighter cutout around the pedestal row.
+# Hades / Isaac reward rooms both use this trick to reduce floor-noise
+# competition with the cards.
+#
+# Structure (built programmatically — no .tscn dependency):
+#   CanvasLayer (layer 5, between world and HUD)
+#   └ ColorRect (full-screen, dark)
+#       baked alpha 0.35 — subtle, not a blackout. With the iter-115
+#       cave-wall chrome ALSO on screen the effect is "the floor
+#       around the offer goes quiet" rather than "the world dimmed."
+# Future: a true radial-cutout via shader would carve a brighter
+# circle around the pedestals. For now the full-screen dim plus the
+# pedestals' tier-colored point lights provide enough contrast.
+const OFFER_VIGNETTE_ALPHA: float = 0.35
+const OFFER_VIGNETTE_FADE_IN: float = 0.45
+const OFFER_VIGNETTE_FADE_OUT: float = 0.35
+const OFFER_VIGNETTE_LAYER: int = 5
+
+func _spawn_offer_vignette() -> void:
+	if _offer_vignette != null and is_instance_valid(_offer_vignette):
+		return
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = OFFER_VIGNETTE_LAYER
+	layer.name = "OfferVignette"
+	var rect: ColorRect = ColorRect.new()
+	rect.color = Color(0.02, 0.02, 0.05, 0.0)  # start invisible, fade in
+	rect.anchor_right = 1.0
+	rect.anchor_bottom = 1.0
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(rect)
+	add_child(layer)
+	_offer_vignette = layer
+	# Fade in over OFFER_VIGNETTE_FADE_IN seconds — smooth transition
+	# from "combat just ended" to "now look at this."
+	var tw: Tween = create_tween()
+	tw.tween_property(rect, "color:a", OFFER_VIGNETTE_ALPHA, OFFER_VIGNETTE_FADE_IN)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+func _dismiss_offer_vignette() -> void:
+	if _offer_vignette == null or not is_instance_valid(_offer_vignette):
+		return
+	var layer: CanvasLayer = _offer_vignette
+	_offer_vignette = null
+	# Fade the ColorRect alpha to 0, then free the whole CanvasLayer.
+	var rect: ColorRect = null
+	for child in layer.get_children():
+		if child is ColorRect:
+			rect = child
+			break
+	if rect == null:
+		layer.queue_free()
+		return
+	var tw: Tween = create_tween()
+	tw.tween_property(rect, "color:a", 0.0, OFFER_VIGNETTE_FADE_OUT)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(layer.queue_free)
+
 # Weighted random tier picker. Empty tiers are excluded from the roll
 # entirely (their weight contribution becomes 0), so weights
 # dynamically re-balance as the player drains the pool. Returns ""
@@ -2694,6 +2766,10 @@ func _resolve_room_pickup() -> void:
 	if _room_pickup_resolved:
 		return
 	_room_pickup_resolved = true
+	# Iter 178 — tear down the offer vignette now that a relic was picked
+	# (or the offer otherwise resolved). The room returns to its normal
+	# brightness for the walk-to-door beat.
+	_dismiss_offer_vignette()
 	if _room != null and _room.is_last_room:
 		_show_run_complete()
 	else:
