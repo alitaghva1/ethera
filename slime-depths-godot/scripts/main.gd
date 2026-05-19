@@ -1042,6 +1042,24 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 		crack.default_color = Color(0.03, 0.02, 0.05, 0.65)
 		crack.antialiased = true
 		body.add_child(crack)
+	# Iter 189 batch 1 — LightOccluder2D so the wall casts dynamic
+	# shadows from torch PointLight2Ds (which have shadow_enabled =
+	# true since iter-109). Pre-iter-189 only pillars cast shadows;
+	# interior walls sat in torch light without interacting with it.
+	# Adding the occluder makes sarcophagus pieces cast long shadows
+	# across the floor whenever a torch is behind them — the player
+	# walking past these shadows visually INTEGRATES with the scene's
+	# lighting, vs the pre-iter-189 "actor floating on lit floor."
+	# Occluder polygon matches the wall's rectangular footprint.
+	var occluder: OccluderPolygon2D = OccluderPolygon2D.new()
+	occluder.polygon = PackedVector2Array([
+		Vector2(-w, -h), Vector2(w, -h),
+		Vector2(w, h), Vector2(-w, h),
+	])
+	occluder.closed = true
+	var light_occ: LightOccluder2D = LightOccluder2D.new()
+	light_occ.occluder = occluder
+	body.add_child(light_occ)
 	# CONTACT — soft gradient strip just below the wall's bottom edge.
 	# Quad polygon with vertex-color fade: solid black at top (where
 	# it meets the wall) → transparent at bottom (12 px below). Adds
