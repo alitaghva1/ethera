@@ -487,9 +487,24 @@ func _ready() -> void:
 		# purple, room 2 deep purple, room 3 (boss) red-purple. The
 		# torches layer their warm light on top, so the floor under
 		# them still reads gold.
+		# Iter 185 — all 8 room .tres files updated to darker / cooler /
+		# biome-distinct ambient_tints (cycle 4 batch 1). Pre-iter-185
+		# every room used a 0.30+ brightness ambient that mostly read
+		# as "muddy purple" regardless of biome; new values keep peak
+		# component under 0.32 and use biome-specific hue:
+		#   crypt:     cool purple-grey
+		#   ossuary:   warm sandy bone
+		#   ember:     warm red-rust
+		#   sanctuary: cool blue-grey
 		var modulate_node: CanvasModulate = $CanvasModulate
 		if modulate_node != null:
 			modulate_node.color = _room.ambient_tint
+		# Iter 185 — per-biome BaseFloor + wall stone color. Different
+		# from CanvasModulate (which multiplies the whole scene): these
+		# set the actual base color of the floor + wall mass so each
+		# biome has its own distinct stone tone, not just a tinted view
+		# of the same color.
+		_apply_biome_palette(_room.biome)
 		_spawn_torches(_room.torch_positions)
 		# Decor — collidable stone pillars + breakable chests. Both spawn
 		# from per-room arrays in the same data-driven shape as torches.
@@ -977,6 +992,43 @@ const SCREEN_SIZE: Vector2 = Vector2(1280, 768)
 # alpha stays below 0.25 so combat readability isn't sacrificed.
 const CHROME_CENTER_MUTE_COLOR: Color = Color(0.05, 0.04, 0.07, 0.22)
 const CHROME_WALL_STONE_COLOR: Color = Color(0.10, 0.08, 0.13, 1.0)
+# Iter 185 — runtime per-biome wall color. Defaults to the const above;
+# _apply_biome_palette overrides per biome before _spawn_perimeter_wall_mass
+# reads it. Same fallback if biome doesn't match a known case.
+var _biome_wall_color: Color = CHROME_WALL_STONE_COLOR
+# Per-biome BaseFloor color lookup. Keys are RoomConfig.biome values;
+# floors are slightly LIGHTER than walls so the wall edges read as
+# deeper than floor center (the implicit composition).
+const BIOME_FLOOR_COLOR: Dictionary = {
+	"crypt":     Color(0.14, 0.13, 0.17, 1.0),
+	"ossuary":   Color(0.18, 0.15, 0.12, 1.0),
+	"ember":     Color(0.18, 0.12, 0.10, 1.0),
+	"sanctuary": Color(0.12, 0.14, 0.18, 1.0),
+}
+# Per-biome wall stone color. Slightly darker than the corresponding
+# floor so edges read as deeper than center.
+const BIOME_WALL_COLOR: Dictionary = {
+	"crypt":     Color(0.10, 0.08, 0.13, 1.0),
+	"ossuary":   Color(0.12, 0.10, 0.07, 1.0),
+	"ember":     Color(0.13, 0.07, 0.05, 1.0),
+	"sanctuary": Color(0.08, 0.10, 0.13, 1.0),
+}
+
+# Sets BaseFloor color + _biome_wall_color based on the active biome.
+# Called from _ready after ambient_tint is set, BEFORE _spawn_room_chrome
+# runs (so the wall mass picks up the per-biome wall color).
+func _apply_biome_palette(biome: String) -> void:
+	# BaseFloor — Polygon2D in main.tscn at z=-3 (iter-183 item 1).
+	# Per-biome color makes the FLOOR ITSELF differ between rooms, not
+	# just a translucent wash on top.
+	var bf: Node = get_node_or_null("BaseFloor")
+	if bf is Polygon2D and BIOME_FLOOR_COLOR.has(biome):
+		(bf as Polygon2D).color = BIOME_FLOOR_COLOR[biome] as Color
+	# Wall mass color — runtime var read by _spawn_perimeter_wall_mass.
+	if BIOME_WALL_COLOR.has(biome):
+		_biome_wall_color = BIOME_WALL_COLOR[biome] as Color
+	else:
+		_biome_wall_color = CHROME_WALL_STONE_COLOR
 const CHROME_WALL_TOP_HIGHLIGHT: Color = Color(0.48, 0.42, 0.32, 0.85)
 const CHROME_INNER_SHADOW_DARK: Color = Color(0, 0, 0, 0.55)
 const CHROME_INNER_SHADOW_CLEAR: Color = Color(0, 0, 0, 0)
@@ -1026,14 +1078,14 @@ func _spawn_perimeter_wall_mass() -> void:
 	var play_max := PLAY_AREA_MAX
 	var screen := SCREEN_SIZE
 	# TOP strip — y=0 to y=play_min.y
-	_add_rect_polygon(Rect2(0, 0, screen.x, play_min.y), CHROME_WALL_STONE_COLOR, 0)
+	_add_rect_polygon(Rect2(0, 0, screen.x, play_min.y), _biome_wall_color, 0)
 	# BOTTOM strip — y=play_max.y to y=screen.y
-	_add_rect_polygon(Rect2(0, play_max.y, screen.x, screen.y - play_max.y), CHROME_WALL_STONE_COLOR, 0)
+	_add_rect_polygon(Rect2(0, play_max.y, screen.x, screen.y - play_max.y), _biome_wall_color, 0)
 	# LEFT strip — x=0 to x=play_min.x (covers full height; top + bottom
 	# strips already covered the corners, but a tiny overlap is invisible)
-	_add_rect_polygon(Rect2(0, play_min.y, play_min.x, play_max.y - play_min.y), CHROME_WALL_STONE_COLOR, 0)
+	_add_rect_polygon(Rect2(0, play_min.y, play_min.x, play_max.y - play_min.y), _biome_wall_color, 0)
 	# RIGHT strip — x=play_max.x to x=screen.x
-	_add_rect_polygon(Rect2(play_max.x, play_min.y, screen.x - play_max.x, play_max.y - play_min.y), CHROME_WALL_STONE_COLOR, 0)
+	_add_rect_polygon(Rect2(play_max.x, play_min.y, screen.x - play_max.x, play_max.y - play_min.y), _biome_wall_color, 0)
 
 # Per-side warm-gray Line2D where each wall meets the floor. Mirrors
 # the iter-30 interior-wall top-edge highlight grammar — sells "this
